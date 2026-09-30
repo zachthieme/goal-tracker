@@ -288,7 +288,7 @@ templ checkinForm(d checkinFormData) {
 			</label>
 			@checkinFieldError(d.Error, "path_to_green")
 		</fieldset>
-		@checkinLifecycleFields(d.Lifecycle)
+		@checkinLifecycleFields(d.Lifecycle, d.Error)
 		@checkinDateFields(d.Dates)
 		if len(d.Metrics) > 0 {
 			<fieldset data-testid="checkin-readings">
@@ -389,7 +389,7 @@ templ checkinDateFields(d checkinDatesFormData) {
 // Check-in. On Hold and Cancelled need a reason; Done needs a one-line outcome
 // and a final value for every Metric (the readings below). A Check-in that
 // takes the Goal out of Active records no Health (CONTEXT.md: Lifecycle).
-templ checkinLifecycleFields(d lifecycleFormData) {
+templ checkinLifecycleFields(d lifecycleFormData, e checkinError) {
 	<fieldset data-testid="checkin-lifecycle-fields">
 		<legend>Lifecycle</legend>
 		<label>
@@ -405,15 +405,18 @@ templ checkinLifecycleFields(d lifecycleFormData) {
 				<option value={ domain.LifecycleCancelled } selected?={ d.To == domain.LifecycleCancelled }>Cancelled</option>
 			</select>
 		</label>
+		@checkinFieldError(e, "lifecycle")
 		<label>
 			Reason (required for On Hold or Cancelled)
 			<textarea name="lifecycle_reason">{ d.Reason }</textarea>
 		</label>
+		@checkinFieldError(e, "lifecycle_reason")
 		if d.Current != domain.LifecycleOnHold {
 			<label>
 				Outcome, in one line (required for Done, with a final value for every Metric)
 				<input type="text" name="outcome" value={ d.Outcome }/>
 			</label>
+			@checkinFieldError(e, "outcome")
 		}
 	</fieldset>
 }

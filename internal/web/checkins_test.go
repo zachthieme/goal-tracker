@@ -606,3 +606,82 @@ func fieldError(t *testing.T, body, fieldMarker string) string {
 	}
 	return pageElement(t, after, "p", "checkin-error")
 }
+
+// A Yellow Check-in without a Path to Green gets its error next to the Path to
+// Green fields.
+func TestCheckinPathToGreenErrorShownNextToPathToGreenField(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthYellow},
+		"status": {"Slipping a little."},
+	})
+	if msg := fieldError(t, body, `name="path_target_date"`); !strings.Contains(msg, "needs a Path to Green") {
+		t.Errorf("Path to Green field's error = %q, want the Path to Green one", msg)
+	}
+}
+
+// A Check-in that puts the Goal On Hold without a reason gets its error next to
+// the Lifecycle reason field.
+func TestCheckinLifecycleReasonErrorShownNextToReasonField(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":    {domain.HealthGreen},
+		"status":    {"Pausing."},
+		"lifecycle": {domain.LifecycleOnHold},
+	})
+	if msg := fieldError(t, body, `name="lifecycle_reason"`); !strings.Contains(msg, "On Hold needs a reason") {
+		t.Errorf("Lifecycle reason field's error = %q, want the On Hold one", msg)
+	}
+}
+
+// A Check-in that marks the Goal Done without an outcome gets its error next to
+// the outcome field.
+func TestCheckinOutcomeErrorShownNextToOutcomeField(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":    {domain.HealthGreen},
+		"status":    {"Finished."},
+		"lifecycle": {domain.LifecycleDone},
+	})
+	if msg := fieldError(t, body, `name="outcome"`); !strings.Contains(msg, "needs an outcome") {
+		t.Errorf("outcome field's error = %q, want the outcome one", msg)
+	}
+}
+
+// A Check-in asking for a Lifecycle change it can't make gets its error next to
+// the Lifecycle choice.
+func TestCheckinLifecycleChangeErrorShownNextToLifecycleField(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":    {domain.HealthGreen},
+		"status":    {"Back to the drawing board."},
+		"lifecycle": {domain.LifecycleProposed},
+	})
+	if msg := fieldError(t, body, `name="lifecycle"`); !strings.Contains(msg, "Active Goal to") {
+		t.Errorf("Lifecycle field's error = %q, want the Lifecycle change one", msg)
+	}
+}

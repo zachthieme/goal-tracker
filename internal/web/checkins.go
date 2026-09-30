@@ -113,6 +113,12 @@ func checkinErrorField(msg string) string {
 	switch {
 	case strings.Contains(msg, "differs from the Rolled-up Health"):
 		return "explanation"
+	case strings.Contains(msg, "cancelling a Goal needs a reason"), strings.Contains(msg, "On Hold needs a reason"):
+		return "lifecycle_reason"
+	case strings.Contains(msg, "can't move a"), strings.Contains(msg, "can only be resumed or Cancelled"):
+		return "lifecycle"
+	case strings.Contains(msg, "needs an outcome"), strings.Contains(msg, "outcome is one line"):
+		return "outcome"
 	default:
 		return "path_to_green"
 	}
