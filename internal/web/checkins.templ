@@ -8,7 +8,7 @@ import (
 
 // checkinFormData is the state the Check-in form renders from: the Goal it posts
 // to, the prefilled Health, status, and Path to Green, and an optional
-// validation message shown next to the Path to Green field.
+// validation error shown next to the field it is about.
 type checkinFormData struct {
 	GoalID         int64
 	Health         string
@@ -36,7 +36,16 @@ type checkinFormData struct {
 	// Lifecycle is the Lifecycle change the reader is making, if any
 	// (CONTEXT.md: Lifecycle).
 	Lifecycle lifecycleFormData
-	Error     string
+	Error     checkinError
+}
+
+// checkinError is a Check-in validation message and the field it is about,
+// named as the form names the field's input (e.g. "explanation"), so the form
+// shows the message next to that field. An empty Field is an error about the
+// Check-in as a whole, shown at the top of the form.
+type checkinError struct {
+	Field   string
+	Message string
 }
 
 // lifecycleFormData is the Check-in form's Lifecycle fields as typed. Current is
@@ -235,8 +244,7 @@ templ checkinSection(v goalView, canCheckin bool) {
 
 // checkinForm is the Owner's Check-in form. It posts with htmx and targets
 // itself, so a validation error re-renders it in place with the message next to
-// the Path to Green field (CONTEXT.md: Path to Green is required when Yellow or
-// Red).
+// the field it is about.
 templ checkinForm(d checkinFormData) {
 	<form
 		id="checkin-form"
@@ -247,6 +255,7 @@ templ checkinForm(d checkinFormData) {
 		method="post"
 		action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins", d.GoalID)) }
 	>
+		@checkinFieldError(d.Error, "")
 		<label>
 			Health
 			<select name="health">
@@ -255,6 +264,7 @@ templ checkinForm(d checkinFormData) {
 				<option value={ domain.HealthRed } selected?={ d.Health == domain.HealthRed }>Red</option>
 			</select>
 		</label>
+		@checkinFieldError(d.Error, "health")
 		if d.RolledUp.Present {
 			<p data-testid="checkin-form-rollup">
 				Rolled-up Health: <strong>{ d.RolledUp.Health }</strong> — the worst among your Active children.
@@ -263,11 +273,13 @@ templ checkinForm(d checkinFormData) {
 				Explanation (required if your Health differs from the Rolled-up Health)
 				<textarea name="explanation" data-testid="checkin-explanation">{ d.Explanation }</textarea>
 			</label>
+			@checkinFieldError(d.Error, "explanation")
 		}
 		<label>
 			Status
 			<textarea name="status" required>{ d.Status }</textarea>
 		</label>
+		@checkinFieldError(d.Error, "status")
 		<fieldset data-testid="path-to-green-field">
 			<legend>Path to Green (required when Yellow or Red)</legend>
 			<label>
@@ -278,12 +290,10 @@ templ checkinForm(d checkinFormData) {
 				Back to Green by
 				<input type="date" name="path_target_date" value={ d.PathTargetDate }/>
 			</label>
-			if d.Error != "" {
-				<p data-testid="checkin-error" role="alert">{ d.Error }</p>
-			}
+			@checkinFieldError(d.Error, "path_to_green")
 		</fieldset>
-		@checkinLifecycleFields(d.Lifecycle)
-		@checkinDateFields(d.Dates)
+		@checkinLifecycleFields(d.Lifecycle, d.Error)
+		@checkinDateFields(d.Dates, d.Error)
 		if len(d.Metrics) > 0 {
 			<fieldset data-testid="checkin-readings">
 				<legend>Metric readings</legend>
@@ -293,10 +303,11 @@ templ checkinForm(d checkinFormData) {
 						<input
 							type="number"
 							step="any"
-							name={ fmt.Sprintf("reading_%d", m.ID) }
+							name={ readingField(m.ID) }
 							value={ d.reading(m.ID) }
 						/>
 					</label>
+					@checkinFieldError(d.Error, readingField(m.ID))
 				}
 			</fieldset>
 		}
@@ -311,10 +322,12 @@ templ checkinForm(d checkinFormData) {
 					<option value={ domain.HighlightMiss } selected?={ d.Highlight.Kind == domain.HighlightMiss }>Miss</option>
 				</select>
 			</label>
+			@checkinFieldError(d.Error, "highlight_kind")
 			<label>
 				Note
 				<textarea name="highlight_note">{ d.Highlight.Note }</textarea>
 			</label>
+			@checkinFieldError(d.Error, "highlight_note")
 		</fieldset>
 		<button type="submit">Submit Check-in</button>
 	</form>
@@ -324,7 +337,7 @@ templ checkinForm(d checkinFormData) {
 // remove Planned Milestones, and add new ones. Every date change needs a reason
 // and is kept as a Date Slip; moving the delivery date later rules out Green
 // (CONTEXT.md: Date Slip, Milestone).
-templ checkinDateFields(d checkinDatesFormData) {
+templ checkinDateFields(d checkinDatesFormData, e checkinError) {
 	<fieldset data-testid="checkin-dates">
 		<legend>Dates and Milestones</legend>
 		if d.Dated {
@@ -332,10 +345,12 @@ templ checkinDateFields(d checkinDatesFormData) {
 				Delivery date
 				<input type="date" name="delivery_date" value={ d.DeliveryDate }/>
 			</label>
+			@checkinFieldError(e, "delivery_date")
 			<label>
 				Reason (required if the delivery date changes)
 				<textarea name="delivery_date_reason">{ d.DeliveryDateReason }</textarea>
 			</label>
+			@checkinFieldError(e, "delivery_date_reason")
 		}
 		for _, row := range d.Milestones {
 			{{ id := row.Milestone.ID }}
@@ -345,10 +360,12 @@ templ checkinDateFields(d checkinDatesFormData) {
 					Date
 					<input type="date" name={ fmt.Sprintf("milestone_date_%d", id) } value={ row.Date }/>
 				</label>
+				@checkinFieldError(e, fmt.Sprintf("milestone_date_%d", id))
 				<label>
 					Reason (required if the date changes)
 					<textarea name={ fmt.Sprintf("milestone_date_reason_%d", id) }>{ row.DateReason }</textarea>
 				</label>
+				@checkinFieldError(e, fmt.Sprintf("milestone_date_reason_%d", id))
 				<label>
 					Status
 					<select name={ fmt.Sprintf("milestone_status_%d", id) }>
@@ -361,9 +378,10 @@ templ checkinDateFields(d checkinDatesFormData) {
 					Reason for removing (required if Removed)
 					<textarea name={ fmt.Sprintf("milestone_removed_reason_%d", id) }>{ row.RemovedReason }</textarea>
 				</label>
+				@checkinFieldError(e, fmt.Sprintf("milestone_removed_reason_%d", id))
 			</fieldset>
 		}
-		for _, row := range append(d.NewMilestones, newMilestoneFormRow{}) {
+		for i, row := range append(d.NewMilestones, newMilestoneFormRow{}) {
 			<fieldset data-testid="checkin-new-milestone">
 				<legend>Add a Milestone</legend>
 				<label>
@@ -374,6 +392,7 @@ templ checkinDateFields(d checkinDatesFormData) {
 					Date
 					<input type="date" name="new_milestone_date" value={ row.Date }/>
 				</label>
+				@checkinFieldError(e, fmt.Sprintf("new_milestone_%d", i))
 			</fieldset>
 		}
 	</fieldset>
@@ -383,7 +402,7 @@ templ checkinDateFields(d checkinDatesFormData) {
 // Check-in. On Hold and Cancelled need a reason; Done needs a one-line outcome
 // and a final value for every Metric (the readings below). A Check-in that
 // takes the Goal out of Active records no Health (CONTEXT.md: Lifecycle).
-templ checkinLifecycleFields(d lifecycleFormData) {
+templ checkinLifecycleFields(d lifecycleFormData, e checkinError) {
 	<fieldset data-testid="checkin-lifecycle-fields">
 		<legend>Lifecycle</legend>
 		<label>
@@ -399,15 +418,26 @@ templ checkinLifecycleFields(d lifecycleFormData) {
 				<option value={ domain.LifecycleCancelled } selected?={ d.To == domain.LifecycleCancelled }>Cancelled</option>
 			</select>
 		</label>
+		@checkinFieldError(e, "lifecycle")
 		<label>
 			Reason (required for On Hold or Cancelled)
 			<textarea name="lifecycle_reason">{ d.Reason }</textarea>
 		</label>
+		@checkinFieldError(e, "lifecycle_reason")
 		if d.Current != domain.LifecycleOnHold {
 			<label>
 				Outcome, in one line (required for Done, with a final value for every Metric)
 				<input type="text" name="outcome" value={ d.Outcome }/>
 			</label>
+			@checkinFieldError(e, "outcome")
 		}
 	</fieldset>
+}
+
+// checkinFieldError shows the form's validation message when it is about the
+// named field.
+templ checkinFieldError(e checkinError, field string) {
+	if e.Message != "" && e.Field == field {
+		<p data-testid="checkin-error" role="alert">{ e.Message }</p>
+	}
 }
