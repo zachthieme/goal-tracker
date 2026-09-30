@@ -88,6 +88,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Spreadsheet import numbers rows as the spreadsheet does: the header is row 1, so the first Goal is row 2, not "Row 1" (#30).
 - [user] Spreadsheet import reports every error on a row in one dry run — an unknown Dimension value no longer hides an unknown parent title or a bad Milestone (#30).
 - [user] The seeded demo org marks its three org outcomes Top-level Goals, so the Unaligned list on the signals page shows only the five side projects (#31).
+- [user] A Check-in validation error is shown next to the field it is about instead of always under the Path to Green: "this Health differs from the Rolled-up Health (Red); explain why" sits by the explanation, a Date Slip's missing reason by that date's reason, an overdue Milestone by its date, a Lifecycle's missing reason or outcome by that field, and a reading error by its Metric. An error about the Check-in as a whole is shown at the top of the form (#28).
 
 **Code quality:**
 - [internal] Split the skeleton's shared files by feature area (one sqlc query file, handler file, templ file, and domain file per area, with route registration in one place), so tickets can land without all editing the same files and campaigns can run tickets in parallel (#24).
