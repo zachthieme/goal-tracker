@@ -106,3 +106,15 @@ WHERE goals.lifecycle = 'Active'
     WHERE links.child_id = goals.id AND links.status = 'accepted'
   )
 ORDER BY goals.created_at DESC, goals.id DESC;
+
+-- name: ListAcceptedLinkGoals :many
+-- Every accepted "contributes to" link with its child and parent Goals and their
+-- Owners resolved, for reading risks off the graph (ticket #11).
+SELECT sqlc.embed(child), sqlc.embed(child_owner), sqlc.embed(parent), sqlc.embed(parent_owner)
+FROM links
+JOIN goals child ON child.id = links.child_id
+JOIN accounts child_owner ON child_owner.id = child.owner_id
+JOIN goals parent ON parent.id = links.parent_id
+JOIN accounts parent_owner ON parent_owner.id = parent.owner_id
+WHERE links.status = 'accepted'
+ORDER BY links.created_at, links.id;

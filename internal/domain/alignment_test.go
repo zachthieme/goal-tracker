@@ -3,7 +3,9 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -121,6 +123,164 @@ func TestTopLevelMarkTakesGoalOffUnalignedList(t *testing.T) {
 	if got := h.Unaligned(); len(got) != 1 || got[0].ID != g.ID {
 		t.Errorf("Unaligned after unmarking = %v, want [%q]", titles(got), g.Title)
 	}
+}
+
+// A child whose delivery date is later than its parent's is a schedule conflict
+// nobody reported: the org-wide signals list the pair, and both the child and
+// the parent are flagged on their own. An earlier or equal date is fine, as is
+// an Ongoing child with no delivery date.
+func TestChildDeliveringAfterParentFlagsBoth(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
+	parent := h.ActiveGoalDue(sam, "Launch", june)
+	late := h.ActiveGoalDue(sam, "Late piece", june.AddDate(0, 1, 0))
+	h.RequestLink(sam, late, parent, "")
+	early := h.ActiveGoalDue(sam, "Early piece", june.AddDate(0, -1, 0))
+	h.RequestLink(sam, early, parent, "")
+	onTime := h.ActiveGoalDue(sam, "On-time piece", june)
+	h.RequestLink(sam, onTime, parent, "")
+	ongoing := h.CreateGoal(sam, "Ongoing piece", "Always on.")
+	if _, err := h.Service.MarkGoalOngoing(context.Background(), ongoing.ID); err != nil {
+		t.Fatalf("MarkGoalOngoing: %v", err)
+	}
+	h.RequestLink(sam, ongoing, parent, "")
+
+	want := []string{"Late piece -> Launch"}
+	if got := conflictPairs(h.GraphSignals().ScheduleConflicts); !equalStrings(got, want) {
+		t.Errorf("org-wide ScheduleConflicts = %v, want %v", got, want)
+	}
+	if got := conflictPairs(h.GoalSignals(late).ScheduleConflicts); !equalStrings(got, want) {
+		t.Errorf("child's ScheduleConflicts = %v, want %v", got, want)
+	}
+	if got := conflictPairs(h.GoalSignals(parent).ScheduleConflicts); !equalStrings(got, want) {
+		t.Errorf("parent's ScheduleConflicts = %v, want %v", got, want)
+	}
+	if got := h.GoalSignals(early).ScheduleConflicts; len(got) != 0 {
+		t.Errorf("early child's ScheduleConflicts = %v, want none", conflictPairs(got))
+	}
+}
+
+// A schedule conflict appears when a Date Slip moves the child past its parent,
+// since it is read from the graph's current dates rather than reported.
+func TestDateSlipPastParentRaisesScheduleConflict(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	parent := h.ActiveGoalDue(sam, "Launch", june)
+	child := h.ActiveGoalDue(sam, "Piece", june.AddDate(0, -1, 0))
+	h.RequestLink(sam, child, parent, "")
+	if got := h.GraphSignals().ScheduleConflicts; len(got) != 0 {
+		t.Fatalf("ScheduleConflicts before the slip = %v, want none", conflictPairs(got))
+	}
+
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:             child.ID,
+		AuthorID:           sam.ID,
+		Health:             domain.HealthYellow,
+		Status:             "Slipping.",
+		PathToGreen:        "Add a second engineer.",
+		PathTargetDate:     june,
+		DeliveryDate:       june.AddDate(0, 2, 0),
+		DeliveryDateReason: "Vendor delay.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin with a Date Slip: %v", err)
+	}
+
+	want := []string{"Piece -> Launch"}
+	if got := conflictPairs(h.GraphSignals().ScheduleConflicts); !equalStrings(got, want) {
+		t.Errorf("ScheduleConflicts after the slip = %v, want %v", got, want)
+	}
+}
+
+// A Goal that is Cancelled no longer puts its partner's date at risk, so a
+// Cancelled late child raises no schedule conflict.
+func TestCancelledChildRaisesNoScheduleConflict(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	parent := h.ActiveGoalDue(sam, "Launch", june)
+	child := h.ActiveGoalDue(sam, "Piece", june.AddDate(0, 1, 0))
+	h.RequestLink(sam, child, parent, "")
+
+	changeLifecycle(t, h, sam, child, domain.LifecycleCancelled)
+
+	if got := h.GraphSignals().ScheduleConflicts; len(got) != 0 {
+		t.Errorf("ScheduleConflicts = %v, want none for a Cancelled child", conflictPairs(got))
+	}
+}
+
+// When a parent goes On Hold or is Cancelled, the Goals contributing to it are
+// flagged: their work may no longer be needed. Children of an Active parent
+// aren't, nor is a child that is itself Cancelled.
+func TestChildrenFlaggedWhenParentOnHoldOrCancelled(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+
+	paused := h.ActiveGoal(sam, "Paused outcome", "It mattered.")
+	pausedChild := h.ActiveChildOf(sam, paused, "Under paused", "Feeds paused.")
+	cancelledKid := h.ActiveChildOf(sam, paused, "Already cancelled", "Stopped too.")
+	dropped := h.ActiveGoal(sam, "Dropped outcome", "It mattered once.")
+	droppedChild := h.ActiveChildOf(sam, dropped, "Under dropped", "Feeds dropped.")
+	running := h.ActiveGoal(sam, "Running outcome", "Still matters.")
+	runningChild := h.ActiveChildOf(sam, running, "Under running", "Feeds running.")
+
+	if got := h.GraphSignals().HaltedParents; len(got) != 0 {
+		t.Fatalf("HaltedParents with every parent Active = %v, want none", haltedPairs(got))
+	}
+
+	changeLifecycle(t, h, sam, cancelledKid, domain.LifecycleCancelled)
+	changeLifecycle(t, h, sam, paused, domain.LifecycleOnHold)
+	changeLifecycle(t, h, sam, dropped, domain.LifecycleCancelled)
+
+	want := []string{"Under paused -> Paused outcome", "Under dropped -> Dropped outcome"}
+	if got := haltedPairs(h.GraphSignals().HaltedParents); !equalStrings(got, want) {
+		t.Errorf("org-wide HaltedParents = %v, want %v", got, want)
+	}
+	if got := haltedPairs(h.GoalSignals(pausedChild).HaltedParents); !equalStrings(got, want[:1]) {
+		t.Errorf("paused parent's child HaltedParents = %v, want %v", got, want[:1])
+	}
+	if got := haltedPairs(h.GoalSignals(droppedChild).HaltedParents); !equalStrings(got, want[1:]) {
+		t.Errorf("cancelled parent's child HaltedParents = %v, want %v", got, want[1:])
+	}
+	if got := h.GoalSignals(runningChild).HaltedParents; len(got) != 0 {
+		t.Errorf("Active parent's child HaltedParents = %v, want none", haltedPairs(got))
+	}
+	if got := h.GoalSignals(paused).HaltedParents; len(got) != 0 {
+		t.Errorf("the On Hold parent itself HaltedParents = %v, want none (only children are flagged)", haltedPairs(got))
+	}
+}
+
+// changeLifecycle moves g to the Lifecycle `to` in a Check-in by owner, giving a
+// reason, failing the test on error.
+func changeLifecycle(t *testing.T, h *testsupport.Harness, owner domain.Account, g domain.Goal, to string) {
+	t.Helper()
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:          g.ID,
+		AuthorID:        owner.ID,
+		Status:          "Changing course.",
+		Lifecycle:       to,
+		LifecycleReason: "Priorities moved.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin to %s: %v", to, err)
+	}
+}
+
+func haltedPairs(hs []domain.HaltedParent) []string {
+	out := make([]string, 0, len(hs))
+	for _, hp := range hs {
+		out = append(out, fmt.Sprintf("%s -> %s", hp.Child.Title, hp.Parent.Title))
+	}
+	return out
+}
+
+func conflictPairs(cs []domain.ScheduleConflict) []string {
+	out := make([]string, 0, len(cs))
+	for _, c := range cs {
+		out = append(out, fmt.Sprintf("%s -> %s", c.Child.Title, c.Parent.Title))
+	}
+	return out
 }
 
 func titles(goals []domain.Goal) []string {

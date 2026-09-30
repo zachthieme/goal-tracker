@@ -279,6 +279,80 @@ func (q *Queries) GetMilestone(ctx context.Context, id int64) (Milestone, error)
 	return i, err
 }
 
+const listAcceptedLinkGoals = `-- name: ListAcceptedLinkGoals :many
+SELECT child.id, child.title, child.so_what, child.owner_id, child.lifecycle, child.created_at, child.kind, child.delivery_date, child.cadence_days, child.top_level, child_owner.id, child_owner.email, child_owner.is_admin, child_owner.created_at, child_owner.departed, parent.id, parent.title, parent.so_what, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent.top_level, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed
+FROM links
+JOIN goals child ON child.id = links.child_id
+JOIN accounts child_owner ON child_owner.id = child.owner_id
+JOIN goals parent ON parent.id = links.parent_id
+JOIN accounts parent_owner ON parent_owner.id = parent.owner_id
+WHERE links.status = 'accepted'
+ORDER BY links.created_at, links.id
+`
+
+type ListAcceptedLinkGoalsRow struct {
+	Goal      Goal
+	Account   Account
+	Goal_2    Goal
+	Account_2 Account
+}
+
+// Every accepted "contributes to" link with its child and parent Goals and their
+// Owners resolved, for reading risks off the graph (ticket #11).
+func (q *Queries) ListAcceptedLinkGoals(ctx context.Context) ([]ListAcceptedLinkGoalsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAcceptedLinkGoals)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAcceptedLinkGoalsRow
+	for rows.Next() {
+		var i ListAcceptedLinkGoalsRow
+		if err := rows.Scan(
+			&i.Goal.ID,
+			&i.Goal.Title,
+			&i.Goal.SoWhat,
+			&i.Goal.OwnerID,
+			&i.Goal.Lifecycle,
+			&i.Goal.CreatedAt,
+			&i.Goal.Kind,
+			&i.Goal.DeliveryDate,
+			&i.Goal.CadenceDays,
+			&i.Goal.TopLevel,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Goal_2.ID,
+			&i.Goal_2.Title,
+			&i.Goal_2.SoWhat,
+			&i.Goal_2.OwnerID,
+			&i.Goal_2.Lifecycle,
+			&i.Goal_2.CreatedAt,
+			&i.Goal_2.Kind,
+			&i.Goal_2.DeliveryDate,
+			&i.Goal_2.CadenceDays,
+			&i.Goal_2.TopLevel,
+			&i.Account_2.ID,
+			&i.Account_2.Email,
+			&i.Account_2.IsAdmin,
+			&i.Account_2.CreatedAt,
+			&i.Account_2.Departed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listContributors = `-- name: ListContributors :many
 SELECT accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
 FROM contributors
