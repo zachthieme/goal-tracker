@@ -492,3 +492,38 @@ func TestRowsAreNumberedAsInTheSpreadsheet(t *testing.T) {
 		t.Errorf("xlsx rows = %+v, want First as row 2", xlsxRep.Rows)
 	}
 }
+
+// A row with several problems reports all of them in one dry run, not just the
+// first found (#30; docs/import-format.md: "each error found").
+func TestDryRunReportsEveryErrorOnARow(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Milestones,Parents,Pillar
+Otherwise fine,owner@example.com,It matters.,Ongoing,,No such parent,Sideways
+Missing so what,owner@example.com,,Ongoing,Beta @ someday,Also missing,Upwards
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateDimension(admin, "Pillar", "Growth", "Reliability")
+
+	rep, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	if len(rep.Rows) != 2 {
+		t.Fatalf("want 2 row results, got %+v", rep.Rows)
+	}
+	for i, wants := range [][]string{
+		{`"Sideways" is not a value of Dimension "Pillar"`, `parent Goal "No such parent"`},
+		{"So What is required", `bad Milestone date in "Beta @ someday"`, `parent Goal "Also missing"`, `"Upwards" is not a value of Dimension "Pillar"`},
+	} {
+		row := rep.Rows[i]
+		joined := strings.Join(row.Errors, "; ")
+		for _, want := range wants {
+			if !strings.Contains(joined, want) {
+				t.Errorf("row %d (%s) errors = %v, want one mentioning %s", row.Line, row.Title, row.Errors, want)
+			}
+		}
+		if len(row.Errors) != len(wants) {
+			t.Errorf("row %d (%s) has %d errors, want %d: %v", row.Line, row.Title, len(row.Errors), len(wants), row.Errors)
+		}
+	}
+}

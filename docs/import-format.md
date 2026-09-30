@@ -82,9 +82,10 @@ and an unknown value is reported on that row. A blank cell assigns nothing.
 ## What is reported
 
 The dry run and a rolled-back commit report, per row: the row number, the Goal
-title, and each error found — a missing required field, a bad `Kind` or date, a
-malformed Milestone or Metric, a `Parents` title that is not in the file, an
-unknown Dimension value, or a cycle.
+title, and every error found on the row — a missing required field, a bad `Kind`
+or date, a malformed Milestone or Metric, a `Parents` title that is not in the
+file, an unknown Dimension value, or a cycle. A row with several problems lists
+them all in one dry run.
 
 Rows are numbered as the spreadsheet numbers them: the header is row 1, so the
 first Goal is row 2. In a CSV file a blank line still counts as a row, and a
