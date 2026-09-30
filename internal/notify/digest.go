@@ -56,7 +56,7 @@ func (n *Notifier) SendReminders(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if !f.Stale {
+		if !dueBeforeNextReminder(f) {
 			continue
 		}
 		addr := g.Owner.Email
@@ -78,12 +78,27 @@ func (n *Notifier) SendReminders(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+// daysPerWeek is how far apart the weekly emails are, in days of the org's
+// calendar.
+const daysPerWeek = 7
+
+// dueBeforeNextReminder reports whether a Goal's Check-in is due: it is Stale
+// already, or it would go Stale before next week's reminder if nobody checked
+// in (CONTEXT.md: Stale).
+func dueBeforeNextReminder(f domain.Freshness) bool {
+	return f.Stale || f.DaysSince+daysPerWeek > f.CadenceDays
+}
+
 func (n *Notifier) reminderBody(items []reminderItem) string {
 	var b strings.Builder
 	b.WriteString("These Goals need a Check-in:\n\n")
 	for _, it := range items {
-		fmt.Fprintf(&b, "- %s: Stale, %d days since its last Check-in\n  %s\n",
-			it.goal.Title, it.freshness.DaysSince, n.checkinURL(it.goal.ID))
+		state := "Check-in due"
+		if it.freshness.Stale {
+			state = "Stale"
+		}
+		fmt.Fprintf(&b, "- %s: %s, %d days since its last Check-in (cadence: %d days)\n  %s\n",
+			it.goal.Title, state, it.freshness.DaysSince, it.freshness.CadenceDays, n.checkinURL(it.goal.ID))
 	}
 	return b.String()
 }

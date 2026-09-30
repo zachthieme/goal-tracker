@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/email"
 	"github.com/zachthieme/goal-tracker/internal/notify"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -60,5 +61,39 @@ func TestReminderListsStaleGoalWithLinkToItsCheckin(t *testing.T) {
 	link := fmt.Sprintf("http://goals.test/goals/%d#checkin-form", g.ID)
 	if !strings.Contains(body, link) {
 		t.Errorf("reminder does not link to %s:\n%s", link, body)
+	}
+}
+
+// A Goal is due when it would go Stale before next week's reminder if nobody
+// checked in: on a weekly cadence, a Goal last checked in 3 days ago is due. A
+// Goal on a 14-day cadence checked in 2 days ago is not, and an Owner with
+// nothing due gets no email.
+func TestReminderListsGoalsDueBeforeNextWeek(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	weekly := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	fortnightly := h.ActiveGoal(kim, "Grow revenue", "It pays for everything.")
+	if _, err := h.Service.SetCadence(context.Background(), fortnightly.ID, 14); err != nil {
+		t.Fatalf("SetCadence: %v", err)
+	}
+	h.Checkin(sam, weekly.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(1 * day)
+	h.Checkin(kim, fortnightly.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(2 * day)
+
+	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
+		t.Fatalf("SendReminders: %v", err)
+	}
+
+	msgs := sentTo(h.Email, "sam@example.com")
+	if len(msgs) != 1 {
+		t.Fatalf("reminders to sam = %d, want 1", len(msgs))
+	}
+	if body := msgs[0].Body; !strings.Contains(body, "Ship search") || strings.Contains(body, "Stale") {
+		t.Errorf("want Ship search listed as due, not Stale:\n%s", body)
+	}
+	if got := sentTo(h.Email, "kim@example.com"); len(got) != 0 {
+		t.Errorf("kim has nothing due but was sent %d reminders: %+v", len(got), got)
 	}
 }
