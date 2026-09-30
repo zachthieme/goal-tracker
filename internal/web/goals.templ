@@ -85,17 +85,18 @@ templ goalList(view goalsListData) {
 							Unassigned
 						}
 					</h3>
-					@goalItems(grp.Goals)
+					@goalItems(grp.Goals, view.Freshness)
 				</section>
 			}
 		} else {
-			@goalItems(view.Goals)
+			@goalItems(view.Goals, view.Freshness)
 		}
 	</div>
 }
 
-// goalItems renders a flat list of Goals with their assigned Dimension values.
-templ goalItems(goals []domain.GoalWithValues) {
+// goalItems renders a flat list of Goals with their assigned Dimension values,
+// marking those that are Stale or whose Path to Green is overdue.
+templ goalItems(goals []domain.GoalWithValues, freshness map[int64]domain.Freshness) {
 	<ul>
 		if len(goals) == 0 {
 			<li data-testid="no-goals">No Goals yet.</li>
@@ -107,6 +108,7 @@ templ goalItems(goals []domain.GoalWithValues) {
 				if gv.Goal.Ownerless {
 					<strong data-testid="ownerless">— Ownerless</strong>
 				}
+				@goalRowFreshness(freshness[gv.Goal.ID])
 				for _, val := range gv.Values {
 					<span data-testid="goal-value-tag">[{ val.Value }]</span>
 				}

@@ -47,7 +47,12 @@ func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, curren
 			http.Error(w, "could not list goals", http.StatusInternalServerError)
 			return
 		}
-		render(w, r, http.StatusOK, goalList(goalsListData{Goals: goals}))
+		flagged, err := s.flaggedFreshness(r.Context())
+		if err != nil {
+			http.Error(w, "could not read freshness signals", http.StatusInternalServerError)
+			return
+		}
+		render(w, r, http.StatusOK, goalList(goalsListData{Goals: goals, Freshness: flagged}))
 		return
 	}
 	http.Redirect(w, r, "/goals", http.StatusSeeOther)
@@ -62,6 +67,9 @@ type goalsListData struct {
 	Selected   map[int64]bool
 	GroupID    int64
 	Groups     []domain.GoalGroup
+	// Freshness holds the Goals that are Stale or whose Path to Green is
+	// overdue, keyed by Goal, so their rows are marked.
+	Freshness map[int64]domain.Freshness
 }
 
 // goalsListView reads the Goal list's filter (?value=) and grouping (?group=)
@@ -72,6 +80,10 @@ func (s *Server) goalsListView(r *http.Request) (goalsListData, error) {
 		return goalsListData{}, err
 	}
 	goals, err := s.svc.ListGoalsWithValues(r.Context())
+	if err != nil {
+		return goalsListData{}, err
+	}
+	flagged, err := s.flaggedFreshness(r.Context())
 	if err != nil {
 		return goalsListData{}, err
 	}
@@ -101,6 +113,7 @@ func (s *Server) goalsListView(r *http.Request) (goalsListData, error) {
 		Goals:      domain.FilterGoals(goals, byDimension),
 		Dimensions: dims,
 		Selected:   selected,
+		Freshness:  flagged,
 	}
 	if raw := r.URL.Query().Get("group"); raw != "" {
 		if groupID, err := strconv.ParseInt(raw, 10, 64); err == nil {

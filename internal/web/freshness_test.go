@@ -90,3 +90,40 @@ func TestGoalPageFlagsFreshness(t *testing.T) {
 		t.Errorf("fresh Green Goal's page carries a freshness flag")
 	}
 }
+
+// The Goal list marks a Stale Goal and a Goal whose Path to Green is overdue on
+// its own row, as it marks an Ownerless one, so neither hides until someone
+// opens the Goal. A fresh Goal's row carries no mark.
+func TestGoalListMarksStaleAndOverdueGoals(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.")
+	h.Clock.Advance(10 * 24 * time.Hour)
+	fresh := h.ActiveGoal(sam, "Fresh work", "It matters.")
+	h.Checkin(sam, fresh.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	stalled := h.ActiveGoal(sam, "Stalled recovery", "It matters.")
+	h.Checkin(sam, stalled.ID, domain.HealthRed, "Blocked.", "Escalate.", time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC))
+
+	client := signInClient(t, ts.URL, "sam@example.com")
+	list := getBody(t, client, ts.URL+"/goals")
+	row := func(g domain.Goal) string {
+		at := strings.Index(list, navTo(g.ID))
+		if at < 0 {
+			t.Fatalf("Goal list has no row for %q; body:\n%s", g.Title, list)
+		}
+		start := strings.LastIndex(list[:at], "<li")
+		end := strings.Index(list[at:], "</li>")
+		return list[start : at+end]
+	}
+
+	if r := row(silent); !strings.Contains(r, `data-testid="stale"`) {
+		t.Errorf("Stale Goal's row is not marked Stale; row:\n%s", r)
+	}
+	if r := row(stalled); !strings.Contains(r, `data-testid="path-overdue"`) || strings.Contains(r, `data-testid="stale"`) {
+		t.Errorf("row of a Goal past its Path to Green target is not marked overdue (and only that); row:\n%s", r)
+	}
+	if r := row(fresh); strings.Contains(r, `data-testid="stale"`) || strings.Contains(r, `data-testid="path-overdue"`) {
+		t.Errorf("fresh Goal's row carries a freshness mark; row:\n%s", r)
+	}
+}

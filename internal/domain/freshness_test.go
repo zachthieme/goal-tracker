@@ -206,3 +206,74 @@ func TestFreshnessSignalsListStaleGoalsAndOverduePaths(t *testing.T) {
 		t.Errorf("Silent Goal's last update, days since = %v, %d; want its activation %v, 12 days", got.Stale[0].Freshness.LastUpdate, got.Stale[0].Freshness.DaysSince, silent.ActivatedAt)
 	}
 }
+
+// Resuming an On Hold Goal is a Check-in, so the count restarts from the resume,
+// not from the Check-in before the Goal was paused.
+func TestResumedGoalIsJudgedFromItsResume(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.OnHoldGoal(sam, "Paused work", "It mattered.", "Budget freeze.")
+	h.Clock.Advance(60 * day)
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID: g.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Back on.", Lifecycle: domain.LifecycleActive,
+	}); err != nil {
+		t.Fatalf("SubmitCheckin resume: %v", err)
+	}
+	h.Clock.Advance(3 * day)
+	if f := h.Freshness(g.ID); f.Stale || f.DaysSince != 3 {
+		t.Errorf("Stale, DaysSince = %v, %d three days after resuming; want fresh, 3", f.Stale, f.DaysSince)
+	}
+}
+
+// A Done Goal owes no more updates, so it is never Stale, and a Red Path to Green
+// it left behind is never flagged.
+func TestDoneGoalIsNeitherStaleNorOverdue(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, g.ID, domain.HealthRed, "Blocked.", "Escalate.", time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC))
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID: g.ID, AuthorID: sam.ID, Status: "Shipped.", Lifecycle: domain.LifecycleDone, Outcome: "Search shipped.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin Done: %v", err)
+	}
+	h.Clock.Advance(90 * day)
+	if f := h.Freshness(g.ID); f.Stale || f.PathToGreenOverdue {
+		t.Errorf("Done Goal: Stale %v, Path to Green overdue %v; want neither", f.Stale, f.PathToGreenOverdue)
+	}
+}
+
+// Days are calendar days in the org's timezone, so a daylight-saving change
+// inside the cadence neither adds nor loses one: Los Angeles springs forward on
+// 8 March 2026, and a Check-in at 09:00 on 2 March is exactly 7 days old at 08:00
+// on 9 March — not yet Stale — though fewer than 7×24 hours have passed.
+func TestCadenceCountsCalendarDaysAcrossDaylightSaving(t *testing.T) {
+	la, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		t.Fatalf("LoadLocation: %v", err)
+	}
+	h := testsupport.New(t)
+	svc := domain.NewService(h.DB, h.Clock, h.Email, nil, domain.WithTimezone(la))
+	sam := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Clock.Set(time.Date(2026, 3, 2, 9, 0, 0, 0, la))
+	h.Checkin(sam, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	for _, tc := range []struct {
+		now       time.Time
+		days      int
+		wantStale bool
+	}{
+		{time.Date(2026, 3, 9, 8, 0, 0, 0, la), 7, false},
+		{time.Date(2026, 3, 10, 0, 30, 0, 0, la), 8, true},
+	} {
+		h.Clock.Set(tc.now)
+		f, err := svc.Freshness(context.Background(), g.ID)
+		if err != nil {
+			t.Fatalf("Freshness: %v", err)
+		}
+		if f.Stale != tc.wantStale || f.DaysSince != tc.days {
+			t.Errorf("at %v: Stale, DaysSince = %v, %d; want %v, %d", tc.now, f.Stale, f.DaysSince, tc.wantStale, tc.days)
+		}
+	}
+}

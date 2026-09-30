@@ -62,6 +62,17 @@ templ goalFreshness(f domain.Freshness) {
 	}
 }
 
+// goalRowFreshness marks a Goal's row in the Goal list when it is Stale or its
+// Path to Green is overdue, as prominently as Ownerless.
+templ goalRowFreshness(f domain.Freshness) {
+	if f.Stale {
+		<strong data-testid="stale">— Stale</strong>
+	}
+	if f.PathToGreenOverdue {
+		<strong data-testid="path-overdue">— Path to Green overdue</strong>
+	}
+}
+
 // rolledUpStale says, beside the Rolled-up Health, how many Active children are
 // Stale. It never changes the color, and renders nothing when none are.
 templ rolledUpStale(r domain.RolledUpHealth) {
