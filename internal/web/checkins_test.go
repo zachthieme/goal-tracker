@@ -909,7 +909,8 @@ func TestCheckinHealthErrorShownNextToHealthField(t *testing.T) {
 		"health": {"Purple"},
 		"status": {"On track."},
 	})
-	if msg := fieldError(t, body, `name="health"`); !strings.Contains(msg, "Health must be") {
+	// Health is a radio group; its error follows the last radio.
+	if msg := fieldError(t, body, `name="health" value="Red"`); !strings.Contains(msg, "Health must be") {
 		t.Errorf("Health field's error = %q, want the Health one", msg)
 	}
 }
@@ -998,5 +999,57 @@ func TestGoalPageLinksToCheckinPage(t *testing.T) {
 	}
 	if !strings.Contains(section, `data-testid="no-change-checkin"`) {
 		t.Errorf("Goal page lost the no-change button; section:\n%s", section)
+	}
+}
+
+// Health is picked from a radio group, not a select, prefilled from the latest
+// Check-in. The Path to Green fieldset stays in the form, hidden by CSS alone
+// while Green is picked.
+func TestCheckinPageHealthIsRadioGroup(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Slipping.", "Add a second on-call.", pathDate)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	if strings.Contains(page, `<select name="health"`) {
+		t.Errorf("Health is still a select")
+	}
+	for _, want := range []string{
+		`type="radio" name="health" value="Green"`,
+		`type="radio" name="health" value="Yellow" checked`,
+		`type="radio" name="health" value="Red"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("Health radio group missing %s; body:\n%s", want, page)
+		}
+	}
+	if !strings.Contains(page, `data-testid="path-to-green-field"`) {
+		t.Errorf("Path to Green fieldset left the form")
+	}
+	if !strings.Contains(page, `:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error)`) {
+		t.Errorf("no CSS rule hides the Path to Green while Green is picked; body:\n%s", page)
+	}
+}
+
+// A Path to Green error keeps the fieldset shown whatever Health is picked.
+func TestCheckinPathToGreenFieldShownOnError(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":           {domain.HealthGreen},
+		"status":           {"Fine."},
+		"path_target_date": {"not a date"},
+	})
+	field := pageElement(t, body, "fieldset", "path-to-green-field")
+	if !strings.Contains(field, "has-error") {
+		t.Errorf("Path to Green fieldset holding an error is not marked to stay shown; fieldset:\n%s", field)
 	}
 }

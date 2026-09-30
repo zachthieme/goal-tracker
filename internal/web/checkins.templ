@@ -291,6 +291,7 @@ templ checkinPage(current *domain.Account, v goalView) {
 templ checkinForm(d checkinFormData) {
 	<form
 		id="checkin-form"
+		class="checkin-form"
 		data-testid="checkin-form"
 		hx-post={ fmt.Sprintf("/goals/%d/checkins", d.GoalID) }
 		hx-target="#checkin-form"
@@ -298,15 +299,17 @@ templ checkinForm(d checkinFormData) {
 		method="post"
 		action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins", d.GoalID)) }
 	>
+		@checkinStyles()
 		@checkinFieldError(d.Error, "")
-		<label>
-			Health
-			<select name="health">
-				<option value={ domain.HealthGreen } selected?={ d.Health == domain.HealthGreen }>Green</option>
-				<option value={ domain.HealthYellow } selected?={ d.Health == domain.HealthYellow }>Yellow</option>
-				<option value={ domain.HealthRed } selected?={ d.Health == domain.HealthRed }>Red</option>
-			</select>
-		</label>
+		<fieldset data-testid="checkin-health" class="health-toggle">
+			<legend>Health</legend>
+			for _, health := range []string{domain.HealthGreen, domain.HealthYellow, domain.HealthRed} {
+				<label class={ "badge", healthClass(health) }>
+					<input type="radio" name="health" value={ health } checked?={ d.Health == health }/>
+					<span class="dot"></span>{ health }
+				</label>
+			}
+		</fieldset>
 		@checkinFieldError(d.Error, "health")
 		if d.RolledUp.Present {
 			<p data-testid="checkin-form-rollup">
@@ -323,7 +326,7 @@ templ checkinForm(d checkinFormData) {
 			<textarea name="status" required>{ d.Status }</textarea>
 		</label>
 		@checkinFieldError(d.Error, "status")
-		<fieldset data-testid="path-to-green-field">
+		<fieldset data-testid="path-to-green-field" class={ "path-to-green", templ.KV("has-error", d.Error.Field == "path_to_green") }>
 			<legend>Path to Green (required when Yellow or Red)</legend>
 			<label>
 				Plan
@@ -374,6 +377,33 @@ templ checkinForm(d checkinFormData) {
 		</fieldset>
 		<button type="submit">Submit Check-in</button>
 	</form>
+}
+
+// checkinStylesOnce renders the Check-in form's styles once per page, however
+// many forms the page carries (the Delegates page has one per Goal).
+var checkinStylesOnce = templ.NewOnceHandle()
+
+// checkinStyles lays out the Check-in form. The Path to Green hides while Green
+// is picked, by CSS alone, unless it holds a validation error; its fields stay
+// in the form either way, so the server's validation is what decides.
+templ checkinStyles() {
+	@checkinStylesOnce.Once() {
+		<style>
+			.checkin-page{max-width:760px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+			.checkin-form{display:flex;flex-direction:column;gap:16px}
+			.checkin-form fieldset{border:1px solid #E2E3DE;border-radius:8px;padding:12px 16px;margin:0;display:flex;flex-direction:column;gap:8px}
+			.checkin-form label{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:13px}
+			.health-toggle{flex-direction:row!important;flex-wrap:wrap;border:none!important;padding:0!important}
+			.health-toggle legend{font-weight:600;font-size:13px;margin-bottom:6px}
+			.health-toggle label.badge{flex-direction:row;align-items:center;font-size:15px;padding:10px 20px;border:2px solid transparent;cursor:pointer;line-height:20px}
+			.health-toggle input{position:absolute;opacity:0;pointer-events:none}
+			.health-toggle label:has(input:checked){border-color:currentColor}
+			.health-toggle label:has(input:focus-visible){outline:2px solid #24519E;outline-offset:1px}
+			.checkin-form:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error){display:none}
+			.checkin-form:has(input[name=health][value=Yellow]:checked) .path-to-green{background:#FDF6E3}
+			.checkin-form:has(input[name=health][value=Red]:checked) .path-to-green{background:#FCEEEC}
+		</style>
+	}
 }
 
 // checkinDateFields lets the Owner move the delivery date, move, finish, or
