@@ -24,6 +24,24 @@ another area's file.
   harness (fresh database, clock, email recorder, sign-in). Scenario builders
   live one file per area (e.g. `goals.go`).
 
+## Changelog
+
+**Log every change, and tag who it reaches.** Every change, internal work
+included, gets a bullet opening with an audience tag (`[user]`, `[ops]`,
+`[api]`, `[internal]`). Where the bullet goes depends on who is writing it:
+
+- A **campaign agent** writes a fragment to `changelog.d/<issue>.md` and **never
+  edits `CHANGELOG.md`**. vetinari folds each wave's fragments into the top
+  milestone when the wave merges. Never cite the fragment in a file-set marker.
+- **Interactive work** that isn't racing a wave adds the bullet to the top
+  milestone directly, or writes a fragment and runs `vetinari changelog collect`.
+
+Use jjforge's section labels (`New features`, `Improvements`, `Bug fixes`, …),
+not Keep-a-Changelog's `Added`/`Changed`. A breaking change goes in a
+`**Breaking changes:**` section that names the contract it broke. The format,
+tags, and contracts are in
+[`docs/changelog-conventions.md`](docs/changelog-conventions.md).
+
 ## Agent skills
 
 ### Issue tracker
