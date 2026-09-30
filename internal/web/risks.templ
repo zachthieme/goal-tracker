@@ -21,6 +21,10 @@ templ risksPage(current *domain.Account, v risksView) {
 		<nav data-testid="risks-summary" class="rk-tiles" aria-label="Risks by type">
 			@riskTile("stale", "Stale", len(v.Stale))
 			@riskTile("path-overdue", "Path to Green overdue", len(v.OverduePaths))
+			@riskTile("ownerless", "Ownerless", len(v.Ownerless))
+			@riskTile("unaligned", "Unaligned", len(v.Unaligned))
+			@riskTile("schedule-conflicts", "Schedule conflicts", len(v.ScheduleConflicts))
+			@riskTile("halted-parents", "Parent On Hold or Cancelled", len(v.HaltedParents))
 		</nav>
 		@riskSection("stale", "Stale", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence.", "No Stale Goals.", len(v.Stale)) {
 			for _, gf := range v.Stale {
@@ -33,6 +37,38 @@ templ risksPage(current *domain.Account, v risksView) {
 			for _, gf := range v.OverduePaths {
 				@riskRow(gf.Goal) {
 					{ pathOverdue(gf.Freshness) }
+				}
+			}
+		}
+		@riskSection("ownerless", "Ownerless", "Active Goals whose Owner has left the org and hasn't been replaced.", "No Ownerless Goals.", len(v.Ownerless)) {
+			for _, g := range v.Ownerless {
+				@riskRow(g) {
+					<span class="badge ol">Ownerless</span> its Owner has left the org and hasn't been replaced
+				}
+			}
+		}
+		@riskSection("unaligned", "Unaligned", "Active Goals that contribute to no other Goal and aren't Top-level.", "No Unaligned Goals.", len(v.Unaligned)) {
+			for _, g := range v.Unaligned {
+				@riskRow(g) {
+					contributes to no other Goal and isn't Top-level
+				}
+			}
+		}
+		@riskSection("schedule-conflicts", "Schedule conflicts", "Goals due later than a Goal they contribute to.", "No schedule conflicts.", len(v.ScheduleConflicts)) {
+			for _, c := range v.ScheduleConflicts {
+				@riskRow(c.Child) {
+					due { fmtDate(c.Child.DeliveryDate) }, later than
+					@goalRef(c.Parent)
+					(due { fmtDate(c.Parent.DeliveryDate) }), which it contributes to
+				}
+			}
+		}
+		@riskSection("halted-parents", "Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled.", "No Goals under an On Hold or Cancelled parent.", len(v.HaltedParents)) {
+			for _, hp := range v.HaltedParents {
+				@riskRow(hp.Child) {
+					contributes to
+					@goalRef(hp.Parent)
+					, which is <span class="badge lc">{ hp.Parent.Lifecycle }</span>
 				}
 			}
 		}
@@ -78,8 +114,9 @@ templ riskRow(g domain.Goal) {
 	<tr data-testid="risk-row">
 		<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></td>
 		<td>{ g.Owner.Email }</td>
-		<td>{ children... }
-</td>
+		<td>
+			{ children... }
+		</td>
 	</tr>
 }
 

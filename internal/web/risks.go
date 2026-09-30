@@ -22,6 +22,13 @@ func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current dom
 type risksView struct {
 	Stale        []domain.GoalFreshness
 	OverduePaths []domain.GoalFreshness
+	// Ownerless are the Active Goals whose Owner has left the org.
+	Ownerless []domain.Goal
+	Unaligned []domain.Goal
+	// ScheduleConflicts and HaltedParents are listed by their child, the Goal
+	// that needs to change.
+	ScheduleConflicts []domain.ScheduleConflict
+	HaltedParents     []domain.HaltedParent
 }
 
 // loadRisks reads every Goal the org's signals flag.
@@ -30,5 +37,25 @@ func (s *Server) loadRisks(ctx context.Context) (risksView, error) {
 	if err != nil {
 		return risksView{}, err
 	}
-	return risksView{Stale: fresh.Stale, OverduePaths: fresh.OverduePaths}, nil
+	goals, err := s.svc.ListGoals(ctx)
+	if err != nil {
+		return risksView{}, err
+	}
+	graph, err := s.svc.GraphSignals(ctx)
+	if err != nil {
+		return risksView{}, err
+	}
+	v := risksView{
+		Stale:             fresh.Stale,
+		OverduePaths:      fresh.OverduePaths,
+		Unaligned:         graph.Unaligned,
+		ScheduleConflicts: graph.ScheduleConflicts,
+		HaltedParents:     graph.HaltedParents,
+	}
+	for _, g := range goals {
+		if g.Ownerless && g.Lifecycle == domain.LifecycleActive {
+			v.Ownerless = append(v.Ownerless, g)
+		}
+	}
+	return v, nil
 }
