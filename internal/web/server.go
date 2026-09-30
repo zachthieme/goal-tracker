@@ -4,7 +4,6 @@
 package web
 
 import (
-	"errors"
 	"net/http"
 	"strconv"
 
@@ -31,16 +30,6 @@ func NewServer(svc *domain.Service) *Server {
 // ServeHTTP makes Server an http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mux.ServeHTTP(w, r)
-}
-
-func (s *Server) routes() {
-	s.mux.HandleFunc("GET /", s.handleIndex)
-	s.mux.HandleFunc("GET /signin", s.handleSignInForm)
-	s.mux.HandleFunc("POST /signin", s.handleSignIn)
-	s.mux.HandleFunc("POST /signout", s.handleSignOut)
-	s.mux.HandleFunc("GET /goals", s.requireAuth(s.handleGoals))
-	s.mux.HandleFunc("POST /goals", s.requireAuth(s.handleCreateGoal))
-	s.mux.HandleFunc("GET /goals/{id}", s.requireAuth(s.handleViewGoal))
 }
 
 // currentAccount resolves the signed-in Account from the session cookie, or nil
@@ -72,113 +61,6 @@ func (s *Server) requireAuth(h func(http.ResponseWriter, *http.Request, domain.A
 		}
 		h(w, r, *acc)
 	}
-}
-
-func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
-	if s.currentAccount(r) != nil {
-		http.Redirect(w, r, "/goals", http.StatusSeeOther)
-		return
-	}
-	http.Redirect(w, r, "/signin", http.StatusSeeOther)
-}
-
-func (s *Server) handleSignInForm(w http.ResponseWriter, r *http.Request) {
-	if s.currentAccount(r) != nil {
-		http.Redirect(w, r, "/goals", http.StatusSeeOther)
-		return
-	}
-	render(w, r, http.StatusOK, signInPage())
-}
-
-func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
-	emailAddr := r.FormValue("email")
-	if emailAddr == "" {
-		http.Error(w, "email is required", http.StatusBadRequest)
-		return
-	}
-	acc, err := s.svc.SignIn(r.Context(), emailAddr)
-	if err != nil {
-		http.Error(w, "sign-in failed", http.StatusInternalServerError)
-		return
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
-		Value:    strconv.FormatInt(acc.ID, 10),
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
-	http.Redirect(w, r, "/goals", http.StatusSeeOther)
-}
-
-func (s *Server) handleSignOut(w http.ResponseWriter, r *http.Request) {
-	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-	})
-	http.Redirect(w, r, "/signin", http.StatusSeeOther)
-}
-
-func (s *Server) handleGoals(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	goals, err := s.svc.ListGoals(r.Context())
-	if err != nil {
-		http.Error(w, "could not list goals", http.StatusInternalServerError)
-		return
-	}
-	render(w, r, http.StatusOK, goalsPage(&current, goals))
-}
-
-func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	_, err := s.svc.CreateGoal(r.Context(), domain.CreateGoalInput{
-		Title:   r.FormValue("title"),
-		SoWhat:  r.FormValue("so_what"),
-		OwnerID: current.ID,
-	})
-	if err != nil {
-		if errors.Is(err, domain.ErrValidation) {
-			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
-			return
-		}
-		http.Error(w, "could not create goal", http.StatusInternalServerError)
-		return
-	}
-
-	// htmx swaps the Goal list in place; a plain form post reloads the page.
-	if r.Header.Get("HX-Request") == "true" {
-		goals, err := s.svc.ListGoals(r.Context())
-		if err != nil {
-			http.Error(w, "could not list goals", http.StatusInternalServerError)
-			return
-		}
-		render(w, r, http.StatusOK, goalList(goals))
-		return
-	}
-	http.Redirect(w, r, "/goals", http.StatusSeeOther)
-}
-
-func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	g, err := s.svc.ViewGoal(r.Context(), id)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			http.NotFound(w, r)
-			return
-		}
-		http.Error(w, "could not load goal", http.StatusInternalServerError)
-		return
-	}
-	render(w, r, http.StatusOK, goalPage(&current, g))
 }
 
 // render writes a templ component with the given status.

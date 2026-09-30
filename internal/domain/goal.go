@@ -11,6 +11,26 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/db"
 )
 
+// Goal is the single unit of work being tracked (CONTEXT.md: Goal).
+type Goal struct {
+	ID        int64
+	Title     string
+	SoWhat    string
+	Owner     Account
+	Lifecycle string
+	CreatedAt time.Time
+}
+
+// Lifecycle values a Goal can be in (CONTEXT.md: Lifecycle). Only Proposed is
+// reachable in the walking skeleton.
+const (
+	LifecycleProposed = "Proposed"
+)
+
+// ErrValidation is returned when a command's input is not acceptable, e.g. a
+// Goal created without a title or a So What.
+var ErrValidation = errors.New("validation failed")
+
 // CreateGoalInput is the create-Goal command's input.
 type CreateGoalInput struct {
 	Title   string
