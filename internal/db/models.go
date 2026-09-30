@@ -19,3 +19,13 @@ type Goal struct {
 	Lifecycle string
 	CreatedAt string
 }
+
+type Link struct {
+	ID          int64
+	ChildID     int64
+	ParentID    int64
+	Status      string
+	Note        string
+	RequestedBy int64
+	CreatedAt   string
+}
