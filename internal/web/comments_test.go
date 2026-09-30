@@ -179,3 +179,46 @@ func TestCloseActionItemNeverRedirectsOffSite(t *testing.T) {
 		}
 	}
 }
+
+// Under each Goal the discussion is a footer row: the comment count opens the
+// threads, a Comment button opens the form, and the author's form to make a
+// comment an Action Item sits behind its own toggle — all collapsed until the
+// reader opens them, without JS. Replies are indented under the comment.
+func TestPublicationDiscussionIsCollapsedOverHTTP(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	author := h.SignIn("author@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+	question, err := h.Service.AddComment(context.Background(), author.ID, pub.ID, g.ID, "Why did the vendor slip?")
+	if err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+	if _, err := h.Service.ReplyToComment(context.Background(), owner.ID, question.ID, "Their factory flooded."); err != nil {
+		t.Fatalf("ReplyToComment: %v", err)
+	}
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "author@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID))
+
+	footer := pageElement(t, page, "footer", "goal-discussion")
+	if strings.Contains(footer, "<details open") {
+		t.Errorf("discussion opens something by default; footer:\n%s", footer)
+	}
+	if count := pageElement(t, footer, "summary", "comment-count"); !strings.HasSuffix(count, ">2 comments") {
+		t.Errorf("comment count %q, want 2 comments", count)
+	}
+	if toggle := pageElement(t, footer, "details", "comment-toggle"); !strings.Contains(toggle, `data-testid="comment-form"`) {
+		t.Errorf("the comment form is not behind the Comment button; toggle:\n%s", toggle)
+	}
+	if toggle := pageElement(t, footer, "details", "make-action-item"); !strings.Contains(toggle, `data-testid="comment-action-item-form"`) {
+		t.Errorf("Make Action Item is not behind its own toggle; toggle:\n%s", toggle)
+	}
+	if toggle := pageElement(t, footer, "details", "reply-toggle"); !strings.Contains(toggle, `data-testid="reply-form"`) {
+		t.Errorf("the reply form is not behind a toggle; toggle:\n%s", toggle)
+	}
+	if _, reply, ok := strings.Cut(footer, `<p data-testid="comment" class="rp-reply">`); !ok || !strings.Contains(reply, "Their factory flooded.") {
+		t.Errorf("the reply is not indented under the comment; footer:\n%s", footer)
+	}
+}

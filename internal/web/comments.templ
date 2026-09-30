@@ -33,53 +33,90 @@ templ reportActionItems(items []domain.ActionItem, d discussion) {
 }
 
 // goalDiscussion is the discussion under one Goal's block in a published
-// Report: its comment threads, each with a reply form, and the form to start
-// a new one. The Report's author may turn any comment into an Action Item.
+// Report, a footer row: the comment count opens its threads, each with a reply
+// form behind a Reply toggle, and a Comment button opens the form to start a
+// new one. Everything is collapsed until the reader opens it, without JS. The
+// Report's author may turn any comment into an Action Item.
 templ goalDiscussion(goalID int64, d discussion) {
 	if d.Pub != nil {
 		<footer data-testid="goal-discussion" class="rp-discussion">
-			for _, t := range d.Threads[goalID] {
-				<div data-testid="comment-thread">
-					@comment(t.Comment, d)
-					for _, reply := range t.Replies {
-						@comment(reply, d)
+			if n := commentCount(d.Threads[goalID]); n > 0 {
+				<details>
+					<summary data-testid="comment-count">{ plural(n, "comment") }</summary>
+					for _, t := range d.Threads[goalID] {
+						<div data-testid="comment-thread" class="rp-thread">
+							@comment(t.Comment, d, false)
+							for _, reply := range t.Replies {
+								@comment(reply, d, true)
+							}
+							<details data-testid="reply-toggle" class="rp-reply">
+								<summary class="small">Reply</summary>
+								<form data-testid="reply-form" class="rp-inline-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/comments/%d/replies", t.Comment.ID)) }>
+									<label>
+										Reply
+										<input type="text" name="body" required/>
+									</label>
+									<button type="submit" class="btn sm">Reply</button>
+								</form>
+							</details>
+						</div>
 					}
-					<form data-testid="reply-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/comments/%d/replies", t.Comment.ID)) }>
-						<label>
-							Reply
-							<input type="text" name="body" required/>
-						</label>
-						<button type="submit">Reply</button>
-					</form>
-				</div>
+				</details>
+			} else {
+				<span data-testid="comment-count" class="small muted">No comments</span>
 			}
-			<form data-testid="comment-form" method="post" action={ templ.SafeURL(publicationPath(*d.Pub) + "/comments") }>
-				<input type="hidden" name="goal" value={ fmt.Sprintf("%d", goalID) }/>
-				<label>
-					Comment
-					<input type="text" name="body" required/>
-				</label>
-				<button type="submit">Comment</button>
-			</form>
+			<details data-testid="comment-toggle">
+				<summary class="btn sm">Comment</summary>
+				<form data-testid="comment-form" class="rp-inline-form" method="post" action={ templ.SafeURL(publicationPath(*d.Pub) + "/comments") }>
+					<input type="hidden" name="goal" value={ fmt.Sprintf("%d", goalID) }/>
+					<label>
+						Comment
+						<input type="text" name="body" required/>
+					</label>
+					<button type="submit" class="btn primary sm">Comment</button>
+				</form>
+			</details>
 		</footer>
 	}
 }
 
-// comment is one comment in a thread: who wrote it, when, and what it says.
-// The Report's author gets the form to turn it into an Action Item.
-templ comment(c domain.Comment, d discussion) {
-	<p data-testid="comment">
-		<strong>{ c.Author.Email }</strong>{ " · " }{ fmtPublished(c.CreatedAt) }
+// comment is one comment in a thread — who wrote it, when, and what it says —
+// indented when it is a reply. The Report's author gets the form to turn it
+// into an Action Item, behind its own toggle.
+templ comment(c domain.Comment, d discussion, reply bool) {
+	<p data-testid="comment" class={ templ.KV("rp-reply", reply) }>
+		<strong>{ c.Author.Email }</strong>
+		<span class="small muted">{ " · " }{ fmtPublished(c.CreatedAt) }</span>
 		<br/>
 		{ c.Body }
 	</p>
 	if d.Author {
-		<form data-testid="comment-action-item-form" method="post" action={ templ.SafeURL(publicationPath(*d.Pub) + "/action-items") }>
-			<input type="hidden" name="comment" value={ fmt.Sprintf("%d", c.ID) }/>
-			@actionItemFields(false)
-			<button type="submit">Make Action Item</button>
-		</form>
+		<details data-testid="make-action-item" class={ templ.KV("rp-reply", reply) }>
+			<summary class="small">Make action item</summary>
+			<form data-testid="comment-action-item-form" class="rp-inline-form" method="post" action={ templ.SafeURL(publicationPath(*d.Pub) + "/action-items") }>
+				<input type="hidden" name="comment" value={ fmt.Sprintf("%d", c.ID) }/>
+				@actionItemFields(false)
+				<button type="submit" class="btn sm">Make Action Item</button>
+			</form>
+		</details>
 	}
+}
+
+// commentCount counts the comments in a Goal's threads, replies included.
+func commentCount(threads []domain.Thread) int {
+	n := 0
+	for _, t := range threads {
+		n += 1 + len(t.Replies)
+	}
+	return n
+}
+
+// plural says how many of a thing there are: "1 comment", "2 comments".
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 // publicationActionItems lists the Action Items raised on a publication, open
