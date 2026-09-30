@@ -7,3 +7,6 @@ bin/
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Go test binaries (go test -c)
+*.test

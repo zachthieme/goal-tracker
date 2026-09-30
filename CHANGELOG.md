@@ -82,5 +82,6 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Code quality:**
 - [internal] Split the skeleton's shared files by feature area (one sqlc query file, handler file, templ file, and domain file per area, with route registration in one place), so tickets can land without all editing the same files and campaigns can run tickets in parallel (#24).
+- [internal] Remove a Go test binary (`seed.test`, 15 MB) committed by accident with the seed command, and ignore `*.test` (#23).
 
 For usage details, see [README](README.md).
