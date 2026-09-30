@@ -71,6 +71,18 @@ type goalsListData struct {
 	Groups     []goalRowGroup
 }
 
+// moreFiltersSet reports whether a Dimension filter or grouping is chosen, so
+// More filters, where they're folded away, opens to show it.
+func (v goalsListData) moreFiltersSet() bool {
+	return len(v.Selected) > 0 || v.GroupID != 0
+}
+
+// filtered reports whether any filter is narrowing the list, so an empty list
+// says nothing matches rather than that there are no Goals.
+func (v goalsListData) filtered() bool {
+	return len(v.Selected) > 0 || v.Filter != goalFilter{}
+}
+
 // goalFilter is the Goal list's filter bar, read from the URL so a filtered
 // list can be shared and reloaded.
 type goalFilter struct {

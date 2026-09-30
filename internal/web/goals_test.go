@@ -666,3 +666,53 @@ func TestGoalListFiltersToMine(t *testing.T) {
 		t.Errorf("Mine only is checked without ?mine=1: %s", box)
 	}
 }
+
+// The Dimension filters and Group by fold under More filters, which opens when
+// either is set; grouping gives each value its own table section headed by a
+// row naming it, sorted problems first within.
+func TestGoalListFoldsDimensionFiltersAndGroupsIntoSections(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	growth := pillar.Values[0]
+	calm := h.ActiveGoal(sam, "Calm growth", "It matters.")
+	h.Checkin(sam, calm.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	fire := h.ActiveGoal(sam, "Burning growth", "It matters.")
+	h.Checkin(sam, fire.ID, domain.HealthRed, "On fire.", "Put it out.", testsupport.Epoch.AddDate(0, 2, 0))
+	loose := h.CreateGoal(sam, "Loose end", "It matters.")
+	h.AssignGoalValue(calm, growth)
+	h.AssignGoalValue(fire, growth)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	plain := getBody(t, client, ts.URL+"/goals")
+	if more := pageTag(t, plain, "details", "more-filters"); strings.Contains(more, "open") {
+		t.Errorf("More filters is open with none set: %s", more)
+	}
+
+	filtered := getBody(t, client, fmt.Sprintf("%s/goals?value=%d", ts.URL, growth.ID))
+	if more := pageTag(t, filtered, "details", "more-filters"); !strings.Contains(more, "open") {
+		t.Errorf("More filters is closed with a value chosen: %s", more)
+	}
+
+	grouped := getBody(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, pillar.ID))
+	if more := pageTag(t, grouped, "details", "more-filters"); !strings.Contains(more, "open") {
+		t.Errorf("More filters is closed while grouping: %s", more)
+	}
+	section := pageElement(t, grouped, "tbody", "goal-group")
+	if label := pageElement(t, section, "th", "goal-group-label"); !strings.Contains(label, "Growth") {
+		t.Errorf("first section is not headed Growth: %s", label)
+	}
+	if got := rowTitles(goalRows(t, section), calm, fire, loose); !slices.Equal(got, []string{"Burning growth", "Calm growth"}) {
+		t.Errorf("Growth section rows = %q, want the Red Goal first", got)
+	}
+	if !strings.Contains(grouped, "Unassigned") {
+		t.Errorf("Goals without a Pillar have no Unassigned section; body:\n%s", grouped)
+	}
+
+	empty := getBody(t, client, ts.URL+"/goals?q=nothing+like+it")
+	if none := pageElement(t, empty, "td", "no-goals"); !strings.Contains(none, "No Goals match.") {
+		t.Errorf("a filtered-out list does not say nothing matches: %s", none)
+	}
+}

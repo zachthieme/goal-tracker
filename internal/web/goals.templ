@@ -67,7 +67,7 @@ templ goalFilters(view goalsListData) {
 			<a href="/goals" class="btn quiet">Clear</a>
 		</div>
 		if len(view.Dimensions) > 0 {
-			<details data-testid="more-filters">
+			<details data-testid="more-filters" open?={ view.moreFiltersSet() }>
 				<summary>More filters</summary>
 				for _, d := range view.Dimensions {
 					<fieldset>
@@ -114,7 +114,7 @@ templ goalList(view goalsListData) {
 				for _, grp := range view.Groups {
 					<tbody data-testid="goal-group">
 						<tr class="gl-group">
-							<th colspan="6" scope="colgroup" data-testid="goal-group-label">
+							<th data-testid="goal-group-label" colspan="6" scope="colgroup">
 								if grp.Value != nil {
 									{ grp.Value.Value }
 								} else {
@@ -129,7 +129,9 @@ templ goalList(view goalsListData) {
 				}
 			} else {
 				<tbody>
-					if len(view.Rows) == 0 {
+					if len(view.Rows) == 0 && view.filtered() {
+						@noGoals("No Goals match.")
+					} else if len(view.Rows) == 0 {
 						@noGoals("No Goals yet.")
 					}
 					for _, row := range view.Rows {
@@ -143,7 +145,7 @@ templ goalList(view goalsListData) {
 
 // noGoals is the Goal list's empty state, spanning the table.
 templ noGoals(text string) {
-	<tr><td colspan="6" data-testid="no-goals" class="muted">{ text }</td></tr>
+	<tr><td data-testid="no-goals" colspan="6" class="muted">{ text }</td></tr>
 }
 
 // goalListRow is one Goal in the list: its Health, its title with the Ownerless
