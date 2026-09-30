@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -226,5 +227,70 @@ func TestCurateNarrativeRejectsHighlightsOutsideTheReport(t *testing.T) {
 	}
 	if err := h.Service.CurateNarrative(ctx, 9999, domain.CurateNarrativeInput{}); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("unknown Report Definition: err %v, want ErrNotFound", err)
+	}
+}
+
+// Publishing freezes the narrative with the snapshot: curating afterwards never
+// changes the publication, and the next publication's narrative starts empty.
+// The Highlights the author left out are not part of the snapshot.
+func TestNarrativeIsFrozenWithTheSnapshot(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	alice := h.SignIn("alice@example.com")
+	eu := h.ActiveGoal(alice, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlight(alice, eu.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	h.CheckinWithHighlight(alice, eu.ID, domain.HighlightInsight, "EU buyers want invoices.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{eu.ID}})
+	r, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	signed := highlightID(t, r, "Signed the first EU customer.")
+	if err := h.Service.CurateNarrative(ctx, def.ID, domain.CurateNarrativeInput{
+		Picks: []domain.NarrativePick{{HighlightID: signed, Section: domain.HighlightAccomplishment}},
+		Text:  map[string]string{domain.HighlightAccomplishment: "EU is open for business."},
+	}); err != nil {
+		t.Fatalf("CurateNarrative: %v", err)
+	}
+
+	pub := publish(t, h, boss, def, time.Time{})
+	wins, ok := section(pub.Report, domain.HighlightAccomplishment)
+	if !ok || len(pub.Report.Narrative) != 1 || wins.Text != "EU is open for business." ||
+		!slices.Equal(highlightNotes(wins.Highlights), []string{"Signed the first EU customer."}) {
+		t.Fatalf("published narrative %+v, want the curated Accomplishments", pub.Report.Narrative)
+	}
+	if got := wins.Highlights[0].Highlight.Owner.Email; got != alice.Email {
+		t.Errorf("published Highlight credits %s, want the Goal's Owner %s", got, alice.Email)
+	}
+	if len(pub.Report.Highlights) != 0 {
+		t.Errorf("snapshot keeps %d uncurated Highlights, want none", len(pub.Report.Highlights))
+	}
+
+	// The next publication's narrative starts empty.
+	h.Clock.Advance(day)
+	h.CheckinWithHighlight(alice, eu.ID, domain.HighlightMiss, "Lost the second customer.")
+	next, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	if len(next.Narrative) != 0 {
+		t.Errorf("next draft's narrative %+v, want it to start empty", next.Narrative)
+	}
+	if got := highlightNotes(next.Highlights); !slices.Equal(got, []string{"Lost the second customer."}) {
+		t.Errorf("next draft's Highlights %q, want only those since the publication", got)
+	}
+	if err := h.Service.CurateNarrative(ctx, def.ID, domain.CurateNarrativeInput{
+		Picks: []domain.NarrativePick{{HighlightID: highlightID(t, next, "Lost the second customer."), Section: domain.HighlightMiss}},
+		Text:  map[string]string{domain.HighlightAccomplishment: "Rewritten."},
+	}); err != nil {
+		t.Fatalf("CurateNarrative: %v", err)
+	}
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if !reflect.DeepEqual(got.Report.Narrative, pub.Report.Narrative) {
+		t.Errorf("published narrative changed after re-curating\n got %+v\nwant %+v", got.Report.Narrative, pub.Report.Narrative)
 	}
 }
