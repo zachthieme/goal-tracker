@@ -28,3 +28,17 @@ VALUES (?, ?);
 SELECT dimension_value_id FROM report_definition_filters
 WHERE report_definition_id = ?
 ORDER BY id;
+
+-- name: CreateReportPublication :one
+INSERT INTO report_publications (report_definition_id, published_by, published_at, snapshot)
+VALUES (?, ?, ?, ?)
+RETURNING *;
+
+-- name: GetReportPublication :one
+SELECT * FROM report_publications WHERE id = ? LIMIT 1;
+
+-- name: ListReportPublications :many
+-- A Report Definition's publications, newest first.
+SELECT * FROM report_publications
+WHERE report_definition_id = ?
+ORDER BY id DESC;
