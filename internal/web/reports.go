@@ -132,6 +132,16 @@ func (s *Server) handleViewPublication(w http.ResponseWriter, r *http.Request, c
 	render(w, r, http.StatusOK, publicationPage(&current, pub))
 }
 
+// handlePrintPublication shows a published Report on a print-friendly page, to
+// print to PDF from the browser.
+func (s *Server) handlePrintPublication(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+	pub, ok := s.publication(w, r)
+	if !ok {
+		return
+	}
+	render(w, r, http.StatusOK, publicationPrintPage(pub))
+}
+
 // handleExportMarkdown downloads a published Report as Markdown, with the same
 // content as its snapshot.
 func (s *Server) handleExportMarkdown(w http.ResponseWriter, r *http.Request, _ domain.Account) {

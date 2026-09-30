@@ -270,3 +270,53 @@ func TestSmokeExportPublicationAsMarkdownOverHTTP(t *testing.T) {
 		t.Errorf("export under another definition: status %d, want 404", resp.StatusCode)
 	}
 }
+
+// A published Report has a print-friendly page to print to PDF from the
+// browser: the snapshot's content without the app's navigation.
+func TestSmokePrintPublicationOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, g.ID, domain.HealthRed, "Vendor is late.", "Chase the vendor.", h.Clock.Now().AddDate(0, 0, 14))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", Introduction: "Where the EU launch stands.", RootIDs: []int64{g.ID}})
+	other := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "WBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	pubPath := "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10)
+
+	page := getBody(t, client, ts.URL+pubPath)
+	if link := pageElement(t, page, "a", "export-print"); !strings.Contains(link, pubPath+"/print") {
+		t.Errorf("publication page does not link its print page; link:\n%s", link)
+	}
+
+	printed := getBody(t, client, ts.URL+pubPath+"/print")
+	if line := pageElement(t, printed, "p", "report-published"); !strings.Contains(line, "boss@example.com") {
+		t.Errorf("print page does not say who published it; line:\n%s", line)
+	}
+	block := pageElement(t, printed, "article", "report-exception")
+	for _, want := range []string{"Launch in EU", domain.HealthRed, "Vendor is late.", "Chase the vendor."} {
+		if !strings.Contains(block, want) {
+			t.Errorf("print page's exception block missing %q; block:\n%s", want, block)
+		}
+	}
+	if !strings.Contains(printed, "Where the EU launch stands.") {
+		t.Errorf("print page missing the introduction; body:\n%s", printed)
+	}
+	for _, chrome := range []string{`data-testid="nav-reports"`, `action="/signout"`} {
+		if strings.Contains(printed, chrome) {
+			t.Errorf("print page carries the app's navigation (%s); body:\n%s", chrome, printed)
+		}
+	}
+
+	resp, err := client.Get(ts.URL + "/reports/" + strconv.FormatInt(other.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10) + "/print")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("print page under another definition: status %d, want 404", resp.StatusCode)
+	}
+}
