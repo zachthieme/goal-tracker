@@ -32,7 +32,21 @@ type checkinFormData struct {
 	// Dates are the delivery date and Milestone changes the reader is making
 	// (CONTEXT.md: a Check-in carries Date Slips and Milestone changes).
 	Dates checkinDatesFormData
-	Error string
+	// Lifecycle is the Lifecycle change the reader is making, if any
+	// (CONTEXT.md: Lifecycle).
+	Lifecycle lifecycleFormData
+	Error     string
+}
+
+// lifecycleFormData is the Check-in form's Lifecycle fields as typed. Current is
+// the Goal's Lifecycle: an Active Goal may go On Hold, be marked Done, or be
+// Cancelled; an On Hold Goal may be resumed or Cancelled. To is empty to leave
+// the Lifecycle alone.
+type lifecycleFormData struct {
+	Current string
+	To      string
+	Reason  string
+	Outcome string
 }
 
 // checkinDatesFormData is the Check-in form's date and Milestone fields as
@@ -95,6 +109,12 @@ func checkinFormFromLatest(v goalView) checkinFormData {
 		d.PathTargetDate = fmtDate(latest.PathTargetDate)
 		d.Explanation = latest.Explanation
 	}
+	d.Lifecycle.Current = g.Lifecycle
+	if g.Lifecycle == domain.LifecycleOnHold {
+		// An On Hold Goal's Check-in resumes or Cancels it; resuming is the
+		// common case, so it is preselected.
+		d.Lifecycle.To = domain.LifecycleActive
+	}
 	d.Dates.Dated = g.Kind == domain.GoalDated
 	d.Dates.DeliveryDate = fmtDate(g.DeliveryDate)
 	for _, m := range v.Milestones {
@@ -118,7 +138,12 @@ templ checkinSection(v goalView, canCheckin bool) {
 	{{ g := v.Goal }}
 	<section data-testid="goal-checkins">
 		<h2>Check-ins</h2>
-		if v.LatestCheckin != nil {
+		if g.Lifecycle != domain.LifecycleActive && g.Lifecycle != domain.LifecycleProposed {
+			<p data-testid="goal-no-health">{ fmt.Sprintf("A %s Goal has no Health.", g.Lifecycle) }</p>
+			if v.LatestCheckin != nil {
+				<p data-testid="goal-status">{ v.LatestCheckin.Status }</p>
+			}
+		} else if v.LatestCheckin != nil {
 			<p>
 				<strong>Current Health:</strong> <span data-testid="goal-health">{ v.LatestCheckin.Health }</span>
 				if v.RolledUp.Present {
@@ -150,9 +175,9 @@ templ checkinSection(v goalView, canCheckin bool) {
 				</p>
 			}
 		}
-		if canCheckin && g.Lifecycle == domain.LifecycleActive {
+		if canCheckin && (g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold) {
 			@checkinForm(checkinFormFromLatest(v))
-			if v.LatestCheckin != nil {
+			if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
 				<form
 					data-testid="no-change-checkin"
 					hx-post={ fmt.Sprintf("/goals/%d/checkins/no-change", g.ID) }
@@ -171,11 +196,26 @@ templ checkinSection(v goalView, canCheckin bool) {
 			}
 			for _, c := range v.Checkins {
 				<li data-testid="checkin">
-					<span>{ c.Health } — { c.Status }</span>
-					if c.PathToGreen != "" {
-						<span> — Path to Green: { c.PathToGreen } (by { fmtDate(c.PathTargetDate) })</span>
+					if c.Health != "" {
+						<span>{ c.Health } — { c.Status }</span>
+					} else {
+						<span>{ c.Status }</span>
 					}
-					<span> — by { c.Author.Email }, owner { c.Owner.Email }, at { c.CreatedAt.Format("2006-01-02 15:04") }</span>
+					if c.LifecycleChange.Changed() {
+						<span data-testid="checkin-lifecycle">
+							{ fmt.Sprintf(" — Lifecycle: %s → %s", c.LifecycleChange.From, c.LifecycleChange.To) }
+							if c.LifecycleChange.Reason != "" {
+								{ ": " + c.LifecycleChange.Reason }
+							}
+							if c.LifecycleChange.Outcome != "" {
+								{ " — Outcome: " + c.LifecycleChange.Outcome }
+							}
+						</span>
+					}
+					if c.PathToGreen != "" {
+						<span>— Path to Green: { c.PathToGreen } (by { fmtDate(c.PathTargetDate) })</span>
+					}
+					<span>— by { c.Author.Email }, owner { c.Owner.Email }, at { c.CreatedAt.Format("2006-01-02 15:04") }</span>
 				</li>
 			}
 		</ul>
@@ -231,6 +271,7 @@ templ checkinForm(d checkinFormData) {
 				<p data-testid="checkin-error" role="alert">{ d.Error }</p>
 			}
 		</fieldset>
+		@checkinLifecycleFields(d.Lifecycle)
 		@checkinDateFields(d.Dates)
 		if len(d.Metrics) > 0 {
 			<fieldset data-testid="checkin-readings">
@@ -323,6 +364,39 @@ templ checkinDateFields(d checkinDatesFormData) {
 					<input type="date" name="new_milestone_date" value={ row.Date }/>
 				</label>
 			</fieldset>
+		}
+	</fieldset>
+}
+
+// checkinLifecycleFields lets the Owner change the Goal's Lifecycle in the
+// Check-in. On Hold and Cancelled need a reason; Done needs a one-line outcome
+// and a final value for every Metric (the readings below). A Check-in that
+// takes the Goal out of Active records no Health (CONTEXT.md: Lifecycle).
+templ checkinLifecycleFields(d lifecycleFormData) {
+	<fieldset data-testid="checkin-lifecycle-fields">
+		<legend>Lifecycle</legend>
+		<label>
+			Lifecycle
+			<select name="lifecycle">
+				if d.Current == domain.LifecycleOnHold {
+					<option value={ domain.LifecycleActive } selected?={ d.To == domain.LifecycleActive }>Resume (Active)</option>
+				} else {
+					<option value="" selected?={ d.To == "" }>Keep Active</option>
+					<option value={ domain.LifecycleOnHold } selected?={ d.To == domain.LifecycleOnHold }>On Hold</option>
+					<option value={ domain.LifecycleDone } selected?={ d.To == domain.LifecycleDone }>Done</option>
+				}
+				<option value={ domain.LifecycleCancelled } selected?={ d.To == domain.LifecycleCancelled }>Cancelled</option>
+			</select>
+		</label>
+		<label>
+			Reason (required for On Hold or Cancelled)
+			<textarea name="lifecycle_reason">{ d.Reason }</textarea>
+		</label>
+		if d.Current != domain.LifecycleOnHold {
+			<label>
+				Outcome, in one line (required for Done, with a final value for every Metric)
+				<input type="text" name="outcome" value={ d.Outcome }/>
+			</label>
 		}
 	</fieldset>
 }

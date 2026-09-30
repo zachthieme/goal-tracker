@@ -327,6 +327,30 @@ func (v goalView) priorDates(milestoneID int64) []time.Time {
 	return out
 }
 
+// lifecycleNote explains the Goal's current Lifecycle from the Check-in that
+// moved it there: the outcome of a Done Goal, or the reason it is On Hold or
+// Cancelled (CONTEXT.md: Lifecycle). It is empty when there is nothing to say,
+// such as for a Goal activated through the activation gate.
+func (v goalView) lifecycleNote() string {
+	for _, c := range v.Checkins {
+		ch := c.LifecycleChange
+		if !ch.Changed() {
+			continue
+		}
+		if ch.To != v.Goal.Lifecycle {
+			return ""
+		}
+		switch {
+		case ch.Outcome != "":
+			return "Outcome: " + ch.Outcome
+		case ch.Reason != "":
+			return "Reason: " + ch.Reason
+		}
+		return ""
+	}
+	return ""
+}
+
 // milestoneName names the Milestone a Date Slip moved, for the slip history.
 func (v goalView) milestoneName(id int64) string {
 	for _, m := range v.Milestones {

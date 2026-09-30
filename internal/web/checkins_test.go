@@ -329,3 +329,120 @@ func pageElement(t *testing.T, page, tag, testID string) string {
 	}
 	return page[start : start+end]
 }
+
+// Through the Check-in form an Owner puts a Goal On Hold with a reason, then
+// resumes it. The Goal page shows the Lifecycle and why, the Check-in history
+// shows each change, and while On Hold the form offers only to resume or Cancel.
+func TestSmokeCheckinPutsGoalOnHoldAndResumes(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	resp := postForm(t, samClient, goalURL+"/checkins", url.Values{
+		"health":           {domain.HealthGreen},
+		"status":           {"Pausing for the reorg."},
+		"lifecycle":        {domain.LifecycleOnHold},
+		"lifecycle_reason": {"Team moved to the payments incident."},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("put On Hold: status %d", resp.StatusCode)
+	}
+
+	page := getBody(t, samClient, goalURL)
+	if !strings.Contains(page, `data-testid="goal-lifecycle">On Hold<`) {
+		t.Errorf("Goal page does not show the Goal On Hold")
+	}
+	if note := pageElement(t, page, "p", "goal-lifecycle-note"); !strings.Contains(note, "Team moved to the payments incident.") {
+		t.Errorf("Goal page missing why it is On Hold; element:\n%s", note)
+	}
+	if entry := pageElement(t, page, "span", "checkin-lifecycle"); !strings.Contains(entry, "Active → On Hold") || !strings.Contains(entry, "Team moved to the payments incident.") {
+		t.Errorf("Check-in history missing the Lifecycle change; element:\n%s", entry)
+	}
+	form := pageElement(t, page, "fieldset", "checkin-lifecycle-fields")
+	if !strings.Contains(form, `value="Active"`) || strings.Contains(form, `value="Done"`) {
+		t.Errorf("On Hold form should offer resume and Cancel only; form:\n%s", form)
+	}
+	if strings.Contains(page, `data-testid="no-change-checkin"`) {
+		t.Errorf("On Hold Goal offers the no-change Check-in")
+	}
+
+	resp = postForm(t, samClient, goalURL+"/checkins", url.Values{
+		"health":    {domain.HealthGreen},
+		"status":    {"Back on it."},
+		"lifecycle": {domain.LifecycleActive},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("resume: status %d", resp.StatusCode)
+	}
+	page = getBody(t, samClient, goalURL)
+	if !strings.Contains(page, `data-testid="goal-lifecycle">Active<`) {
+		t.Errorf("Goal page does not show the resumed Goal Active")
+	}
+	if !strings.Contains(page, "On Hold → Active") {
+		t.Errorf("Check-in history missing the resume")
+	}
+}
+
+// Marking a Goal Done through the form without a final value for every Metric
+// comes back as the form with the error inline and the typed outcome kept; with
+// the final value it succeeds, and the Goal page shows the Goal Done with its
+// outcome and no Check-in form.
+func TestSmokeCheckinMarksGoalDone(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Cut latency", "Faster checkout lifts conversion.")
+	metric, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+		GoalID:     goal.ID,
+		Name:       "p95 checkout latency",
+		Unit:       "ms",
+		Direction:  domain.MetricDown,
+		Baseline:   1200,
+		Target:     400,
+		TargetDate: h.Clock.Now().AddDate(0, 6, 0),
+	})
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+	done := url.Values{
+		"health":    {domain.HealthGreen},
+		"status":    {"Shipped the cache."},
+		"lifecycle": {domain.LifecycleDone},
+		"outcome":   {"p95 latency down to 380ms."},
+	}
+
+	body, status := postFormHX(t, samClient, goalURL+"/checkins", done)
+	if status != http.StatusOK {
+		t.Fatalf("htmx validation response status = %d, want 200", status)
+	}
+	if !strings.Contains(body, `data-testid="checkin-error"`) || !strings.Contains(body, "final value") {
+		t.Errorf("response missing the inline final-value error; body:\n%s", body)
+	}
+	if !strings.Contains(body, "p95 latency down to 380ms.") {
+		t.Errorf("re-rendered form lost the typed outcome; body:\n%s", body)
+	}
+
+	done.Set(fmt.Sprintf("reading_%d", metric.ID), "380")
+	resp := postForm(t, samClient, goalURL+"/checkins", done)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("mark Done: status %d", resp.StatusCode)
+	}
+
+	page := getBody(t, samClient, goalURL)
+	if !strings.Contains(page, `data-testid="goal-lifecycle">Done<`) {
+		t.Errorf("Goal page does not show the Goal Done")
+	}
+	if note := pageElement(t, page, "p", "goal-lifecycle-note"); !strings.Contains(note, "Outcome: p95 latency down to 380ms.") {
+		t.Errorf("Goal page missing the outcome; element:\n%s", note)
+	}
+	if strings.Contains(page, `data-testid="checkin-form"`) {
+		t.Errorf("a Done Goal still offers the Check-in form")
+	}
+}
