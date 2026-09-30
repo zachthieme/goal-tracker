@@ -33,21 +33,24 @@ func New(svc *domain.Service, sender email.Sender, baseURL string, loc *time.Loc
 	return &Notifier{svc: svc, sender: sender, baseURL: strings.TrimRight(baseURL, "/"), loc: loc}
 }
 
-// reminderItem is one Goal on a person's reminder.
+// reminderItem is one Goal on a person's reminder. asDelegate is set when the
+// person is reminded as the Goal's Delegate rather than its Owner.
 type reminderItem struct {
-	goal      domain.Goal
-	freshness domain.Freshness
+	goal       domain.Goal
+	freshness  domain.Freshness
+	asDelegate bool
 }
 
-// SendReminders emails each Owner the Goals whose Check-in is due or that are
-// Stale, each linking to its pre-filled Check-in.
+// SendReminders emails each Owner and Delegate the Active Goals whose Check-in
+// is due — it would go Stale before next week's reminder — or that are Stale
+// already, each linking to its pre-filled Check-in. Someone with nothing due
+// gets no email, and nobody who has left the org is emailed.
 func (n *Notifier) SendReminders(ctx context.Context) error {
 	goals, err := n.svc.ListGoals(ctx)
 	if err != nil {
 		return err
 	}
-	byEmail := map[string][]reminderItem{}
-	var order []string
+	var out outbox[reminderItem]
 	for _, g := range goals {
 		if g.Lifecycle != domain.LifecycleActive {
 			continue
@@ -59,23 +62,16 @@ func (n *Notifier) SendReminders(ctx context.Context) error {
 		if !dueBeforeNextReminder(f) {
 			continue
 		}
-		addr := g.Owner.Email
-		if _, ok := byEmail[addr]; !ok {
-			order = append(order, addr)
+		out.add(g.Owner, reminderItem{goal: g, freshness: f})
+		delegates, err := n.svc.ListDelegates(ctx, g.ID)
+		if err != nil {
+			return err
 		}
-		byEmail[addr] = append(byEmail[addr], reminderItem{goal: g, freshness: f})
-	}
-	var errs []error
-	for _, addr := range order {
-		if err := n.sender.Send(ctx, email.Message{
-			To:      addr,
-			Subject: "Your Check-ins this week",
-			Body:    n.reminderBody(byEmail[addr]),
-		}); err != nil {
-			errs = append(errs, fmt.Errorf("send reminder to %s: %w", addr, err))
+		for _, d := range delegates {
+			out.add(d, reminderItem{goal: g, freshness: f, asDelegate: true})
 		}
 	}
-	return errors.Join(errs...)
+	return out.send(ctx, n.sender, "Your Check-ins this week", n.reminderBody)
 }
 
 // daysPerWeek is how far apart the weekly emails are, in days of the org's
@@ -93,12 +89,16 @@ func (n *Notifier) reminderBody(items []reminderItem) string {
 	var b strings.Builder
 	b.WriteString("These Goals need a Check-in:\n\n")
 	for _, it := range items {
+		title := it.goal.Title
+		if it.asDelegate {
+			title += " (as Delegate for " + it.goal.Owner.Email + ")"
+		}
 		state := "Check-in due"
 		if it.freshness.Stale {
 			state = "Stale"
 		}
 		fmt.Fprintf(&b, "- %s: %s, %d days since its last Check-in (cadence: %d days)\n  %s\n",
-			it.goal.Title, state, it.freshness.DaysSince, it.freshness.CadenceDays, n.checkinURL(it.goal.ID))
+			title, state, it.freshness.DaysSince, it.freshness.CadenceDays, n.checkinURL(it.goal.ID))
 	}
 	return b.String()
 }
@@ -107,4 +107,41 @@ func (n *Notifier) reminderBody(items []reminderItem) string {
 // from its latest Check-in.
 func (n *Notifier) checkinURL(goalID int64) string {
 	return fmt.Sprintf("%s/goals/%d#checkin-form", n.baseURL, goalID)
+}
+
+// outbox collects the items bound for each recipient, in the order recipients
+// were first seen, so each person gets one email however many items they have.
+// It never collects for someone who has left the org.
+type outbox[T any] struct {
+	order []string
+	items map[string][]T
+}
+
+func (o *outbox[T]) add(to domain.Account, item T) {
+	if to.Departed {
+		return
+	}
+	if o.items == nil {
+		o.items = map[string][]T{}
+	}
+	if _, ok := o.items[to.Email]; !ok {
+		o.order = append(o.order, to.Email)
+	}
+	o.items[to.Email] = append(o.items[to.Email], item)
+}
+
+// send emails each recipient one message whose body renders their items. A
+// failed send doesn't stop the rest; every failure is returned together.
+func (o *outbox[T]) send(ctx context.Context, sender email.Sender, subject string, body func([]T) string) error {
+	var errs []error
+	for _, addr := range o.order {
+		if err := sender.Send(ctx, email.Message{
+			To:      addr,
+			Subject: subject,
+			Body:    body(o.items[addr]),
+		}); err != nil {
+			errs = append(errs, fmt.Errorf("send %q to %s: %w", subject, addr, err))
+		}
+	}
+	return errors.Join(errs...)
 }

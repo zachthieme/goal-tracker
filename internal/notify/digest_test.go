@@ -97,3 +97,60 @@ func TestReminderListsGoalsDueBeforeNextWeek(t *testing.T) {
 		t.Errorf("kim has nothing due but was sent %d reminders: %+v", len(got), got)
 	}
 }
+
+// A Delegate writes Check-ins for the Owner, so they are reminded of the Goals
+// they're a Delegate on, alongside the Owner, and told whose Goal it is.
+func TestReminderGoesToDelegatesToo(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.AddDelegate(sam, dee, g.ID)
+	h.Clock.Advance(10 * day)
+
+	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
+		t.Fatalf("SendReminders: %v", err)
+	}
+
+	if got := sentTo(h.Email, "sam@example.com"); len(got) != 1 {
+		t.Errorf("reminders to the Owner = %d, want 1", len(got))
+	}
+	msgs := sentTo(h.Email, "dee@example.com")
+	if len(msgs) != 1 {
+		t.Fatalf("reminders to the Delegate = %d, want 1", len(msgs))
+	}
+	body := msgs[0].Body
+	link := fmt.Sprintf("http://goals.test/goals/%d#checkin-form", g.ID)
+	if !strings.Contains(body, "Ship search") || !strings.Contains(body, link) {
+		t.Errorf("Delegate's reminder does not list the Goal with its Check-in link:\n%s", body)
+	}
+	if !strings.Contains(body, "sam@example.com") {
+		t.Errorf("Delegate's reminder does not say whose Goal it is:\n%s", body)
+	}
+}
+
+// Someone who has left the org isn't emailed: their Goal is Ownerless, but its
+// Delegate is still reminded.
+func TestReminderSkipsADepartedOwner(t *testing.T) {
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.AddDelegate(sam, dee, g.ID)
+	if err := h.Service.MarkDeparted(context.Background(), admin.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	h.Clock.Advance(10 * day)
+
+	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
+		t.Fatalf("SendReminders: %v", err)
+	}
+
+	if got := sentTo(h.Email, "sam@example.com"); len(got) != 0 {
+		t.Errorf("departed Owner was sent %d reminders, want none", len(got))
+	}
+	if got := sentTo(h.Email, "dee@example.com"); len(got) != 1 {
+		t.Errorf("reminders to the Delegate = %d, want 1", len(got))
+	}
+}
