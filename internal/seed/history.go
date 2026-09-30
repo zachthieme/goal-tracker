@@ -21,11 +21,17 @@ const (
 	// troubled projects turn Yellow partway through, then Red, and some recover
 	// to Yellow.
 	troubled
+	// churning projects stay on track but their scope moves: partway through
+	// they add a Milestone, and two weeks later drop a planned one.
+	churning
 )
 
 // profileDeck is dealt, shuffled, to the projects; any project beyond the deck
 // is steady.
-var profileDeck = []profile{troubled, troubled, troubled, troubled, troubled, troubled}
+var profileDeck = []profile{
+	troubled, troubled, troubled, troubled, troubled, troubled,
+	churning, churning, churning, churning, churning,
+}
 
 // history writes the org's weeks of Check-ins through the domain commands,
 // moving the clock forward as it goes.
@@ -114,6 +120,9 @@ func (h *history) checkIn(ctx context.Context, g *plannedGoal, w int) error {
 		}
 		in.Milestones = append(in.Milestones, domain.MilestoneChangeInput{MilestoneID: m.ID, Status: domain.MilestoneDone})
 	}
+	if g.profile == churning {
+		h.churn(g, w, today, milestones, &in)
+	}
 	// The week a troubled project turns, its Owner moves the delivery date.
 	if g.profile == troubled && w == g.turn && !g.ongoing {
 		g.delivery = g.delivery.AddDate(0, 0, 7*(2+h.rng.IntN(3)))
@@ -140,6 +149,29 @@ func (h *history) checkIn(ctx context.Context, g *plannedGoal, w int) error {
 
 	_, err = h.svc.SubmitCheckin(ctx, in)
 	return err
+}
+
+// churn adds a Milestone in the week a churning project turns and, two weeks
+// later, removes its next planned Milestone that isn't yet due.
+func (h *history) churn(g *plannedGoal, w int, today time.Time, milestones []domain.Milestone, in *domain.SubmitCheckinInput) {
+	switch w {
+	case g.turn:
+		in.NewMilestones = append(in.NewMilestones, domain.NewMilestoneInput{
+			Name:       pick(h.rng, addedMilestones),
+			TargetDate: today.AddDate(0, 0, 7*(2+h.rng.IntN(4))),
+		})
+	case g.turn + 2:
+		for _, m := range milestones {
+			if m.Status == domain.MilestonePlanned && m.TargetDate.After(today) {
+				in.Milestones = append(in.Milestones, domain.MilestoneChangeInput{
+					MilestoneID:   m.ID,
+					Status:        domain.MilestoneRemoved,
+					RemovedReason: pick(h.rng, removalReasons),
+				})
+				return
+			}
+		}
+	}
 }
 
 // followRollup sets a parent's Health from its Rolled-up Health. Most weeks the
@@ -228,6 +260,14 @@ var slipReasons = []string{
 	"Lost a week to an incident on the critical path.",
 	"Scope grew after customer interviews.",
 	"Vendor contract took longer to sign than planned.",
+}
+
+var addedMilestones = []string{"Security review", "Load test", "Legal sign-off", "Pilot with design partners", "Migration dry run"}
+
+var removalReasons = []string{
+	"Folded into the next Milestone to save a release cycle.",
+	"Customer research showed nobody needs this step.",
+	"Another team's project already covers it.",
 }
 
 var explanations = []string{

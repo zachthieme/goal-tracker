@@ -54,6 +54,7 @@ func TestSeededOrg(t *testing.T) {
 	t.Run("about 50 Goals across teams and three levels", func(t *testing.T) { orgAcrossTeamsAndThreeLevels(t, h) })
 	t.Run("Check-in history with mixed Health", func(t *testing.T) { checkinHistoryWithMixedHealth(t, h) })
 	t.Run("Date Slips", func(t *testing.T) { dateSlips(t, h) })
+	t.Run("Milestone Churn", func(t *testing.T) { milestoneChurn(t, h) })
 }
 
 // The seed builds a realistic org: about 50 Goals spread across several teams
@@ -184,5 +185,39 @@ func dateSlips(t *testing.T, h *testsupport.Harness) {
 	}
 	if milestoneSlipped < 3 {
 		t.Errorf("want several Goals with a Milestone date slip, got %d", milestoneSlipped)
+	}
+}
+
+// Some Goals have Milestone Churn: Milestones added in a Check-in after the Goal
+// became Active, and Milestones removed with a reason.
+func milestoneChurn(t *testing.T, h *testsupport.Harness) {
+	ctx := context.Background()
+	var churned, removed int
+	for _, g := range listGoals(t, h) {
+		churn, err := h.Service.MilestoneChurn(ctx, g.ID)
+		if err != nil {
+			t.Fatalf("MilestoneChurn: %v", err)
+		}
+		if churn > 0 {
+			churned++
+		}
+		milestones, err := h.Service.ListMilestones(ctx, g.ID)
+		if err != nil {
+			t.Fatalf("ListMilestones: %v", err)
+		}
+		for _, m := range milestones {
+			if m.Status == domain.MilestoneRemoved {
+				removed++
+				if m.RemovedReason == "" {
+					t.Errorf("Goal %q: removed Milestone %q has no reason", g.Title, m.Name)
+				}
+			}
+		}
+	}
+	if churned < 3 {
+		t.Errorf("want several Goals with Milestone Churn, got %d", churned)
+	}
+	if removed == 0 {
+		t.Errorf("want some Milestones removed, got none")
 	}
 }

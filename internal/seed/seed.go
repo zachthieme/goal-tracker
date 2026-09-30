@@ -180,8 +180,8 @@ func newPlan(rng *rand.Rand, day0 time.Time) *plan {
 // dealProfile gives a project its profile and decides when its turns come.
 func dealProfile(rng *rand.Rand, g *plannedGoal, pr profile) {
 	g.profile = pr
+	g.turn = 3 + rng.IntN(5)
 	if pr == troubled {
-		g.turn = 3 + rng.IntN(5)
 		if rng.IntN(2) == 0 {
 			g.recover = g.turn + 4 + rng.IntN(3)
 		}
