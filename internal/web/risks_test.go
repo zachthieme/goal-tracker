@@ -225,4 +225,110 @@ func TestRisksPageShowsEmptyStates(t *testing.T) {
 		}
 		lastTile, lastSection = tile, section
 	}
+	if risks := pageElement(t, page, "a", "nav-risks"); strings.Contains(risks, "count") {
+		t.Errorf("Risks shows a count with nothing flagged: %s", risks)
+	}
+}
+
+// Every page's top bar has Risks after Goals, counting the Goals the Risks page
+// flags, each once however many sections list it, for everyone. The nav doesn't
+// link to the Graph or Freshness signals pages it replaces.
+func TestNavCountsFlaggedGoalsOnce(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
+	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	h.Clock.Advance(10 * day)
+	h.Checkin(sam, launch.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.ActiveGoal(kim, "Orphaned work", "It matters.") // Ownerless and Unaligned
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	late := h.ActiveGoalDue(sam, "Late piece", june.AddDate(0, 1, 0)) // Schedule conflict
+	h.RequestLink(sam, late, launch, "")
+
+	for _, who := range []string{"sam@example.com", "ada@example.com"} {
+		client := signInClient(t, ts.URL, who)
+		for _, path := range []string{"/home", "/goals", "/risks"} {
+			page := getBody(t, client, ts.URL+path)
+			nav := page[strings.Index(page, "<nav"):strings.Index(page, "</nav>")]
+			risks := pageElement(t, page, "a", "nav-risks")
+			if !strings.Contains(risks, `href="/risks"`) || !strings.Contains(risks, `<span class="count">3</span>`) {
+				t.Errorf("%s on %s: Risks does not count the 3 flagged Goals: %s", who, path, risks)
+			}
+			at := strings.Index(nav, `data-testid="nav-risks"`)
+			for _, before := range []string{"nav-home", "nav-goals"} {
+				if i := strings.Index(nav, `data-testid="`+before+`"`); i > at {
+					t.Errorf("%s on %s: Risks comes before %s:\n%s", who, path, before, nav)
+				}
+			}
+			for _, gone := range []string{`href="/signals"`, `href="/freshness"`} {
+				if strings.Contains(nav, gone) {
+					t.Errorf("%s on %s: the top bar still links %s", who, path, gone)
+				}
+			}
+		}
+	}
+}
+
+// A Goal's page shows its freshness and graph signals as alert banners, Stale
+// in its own color, and the Goal list marks a Stale or overdue row with a chip
+// in the same color saying how long. The data-testids other tests find them by
+// don't change.
+func TestRiskFlagsUseAlertBannersAndChips(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	silent := h.ActiveGoalDue(sam, "Silent work", june.AddDate(0, 1, 0))
+	h.Clock.Advance(16 * day)
+	parent := h.ActiveGoalDue(sam, "Launch", june)
+	h.RequestLink(sam, silent, parent, "")
+	stalled := h.ActiveGoal(sam, "Stalled recovery", "It matters.")
+	h.Checkin(sam, stalled.ID, domain.HealthRed, "Blocked.", "Escalate.", testsupport.Epoch)
+
+	client := signInClient(t, ts.URL, "sam@example.com")
+	silentPage := getBody(t, client, goalPageURL(ts.URL, silent))
+	for testID, class := range map[string]string{
+		"goal-stale":             `class="alert st"`,
+		"goal-schedule-conflict": `class="alert lc"`,
+	} {
+		if el := pageElement(t, silentPage, "p", testID); !strings.Contains(openTag(el), class) {
+			t.Errorf("%s banner is not %s: %s", testID, class, openTag(el))
+		}
+	}
+	if !strings.Contains(silentPage, `data-testid="goal-signals"`) {
+		t.Errorf("Goal page lost its goal-signals group")
+	}
+	parentPage := getBody(t, client, goalPageURL(ts.URL, parent))
+	if el := pageElement(t, parentPage, "p", "goal-unaligned"); !strings.Contains(openTag(el), `class="alert lc"`) {
+		t.Errorf("Unaligned banner is not an alert: %s", openTag(el))
+	}
+	stalledPage := getBody(t, client, goalPageURL(ts.URL, stalled))
+	if el := pageElement(t, stalledPage, "p", "goal-path-overdue"); !strings.Contains(openTag(el), `class="alert st"`) {
+		t.Errorf("Path to Green overdue banner is not an alert: %s", openTag(el))
+	}
+
+	list := getBody(t, client, ts.URL+"/goals")
+	if chip := pageElement(t, list, "span", "stale"); !strings.Contains(chip, `class="badge st"`) || !strings.Contains(chip, "Stale · 16 days") {
+		t.Errorf("Stale row chip is not a Stale badge saying how long: %s", chip)
+	}
+	if chip := pageElement(t, list, "span", "path-overdue"); !strings.Contains(chip, `class="badge st"`) || !strings.Contains(chip, "Path to Green overdue") {
+		t.Errorf("overdue row chip is not a Stale-colored badge: %s", chip)
+	}
+
+	adaPage := getBody(t, signInClient(t, ts.URL, "ada@example.com"), goalPageURL(ts.URL, silent))
+	if control := pageElement(t, adaPage, "section", "mark-top-level"); !strings.Contains(control, `<button type="submit" class="btn">`) {
+		t.Errorf("Top-level control is not a plain button: %s", control)
+	}
+}
+
+// goalPageURL is the address of g's page on the server at base.
+func goalPageURL(base string, g domain.Goal) string {
+	return base + "/goals/" + strconv.FormatInt(g.ID, 10)
 }

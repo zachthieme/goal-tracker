@@ -52,24 +52,25 @@ templ freshnessItem(g domain.Goal, why string) {
 }
 
 // goalFreshness flags, at the top of a Goal's page, a Goal that is Stale or
-// whose Path to Green is overdue. It renders nothing for a fresh Goal.
+// whose Path to Green is overdue, as a banner in Stale's color. It renders
+// nothing for a fresh Goal.
 templ goalFreshness(f domain.Freshness) {
 	if f.Stale {
-		<p data-testid="goal-stale" role="alert"><strong>Stale</strong> — { staleSince(f) }</p>
+		<p data-testid="goal-stale" class="alert st" role="alert"><strong>Stale</strong><span>{ staleSince(f) }</span></p>
 	}
 	if f.PathToGreenOverdue {
-		<p data-testid="goal-path-overdue" role="alert"><strong>Path to Green overdue</strong> — { pathOverdue(f) }</p>
+		<p data-testid="goal-path-overdue" class="alert st" role="alert"><strong>Path to Green overdue</strong><span>{ pathOverdue(f) }</span></p>
 	}
 }
 
-// goalRowFreshness marks a Goal's row in the Goal list when it is Stale or its
-// Path to Green is overdue, as prominently as Ownerless.
+// goalRowFreshness marks a Goal's row in the Goal list with a chip in Stale's
+// color when it is Stale, saying for how long, or its Path to Green is overdue.
 templ goalRowFreshness(f domain.Freshness) {
 	if f.Stale {
-		<strong data-testid="stale">— Stale</strong>
+		<span data-testid="stale" class="badge st">Stale · { fmt.Sprintf("%d days", f.DaysSince) }</span>
 	}
 	if f.PathToGreenOverdue {
-		<strong data-testid="path-overdue">— Path to Green overdue</strong>
+		<span data-testid="path-overdue" class="badge st">Path to Green overdue</span>
 	}
 }
 

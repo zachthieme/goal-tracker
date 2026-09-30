@@ -36,6 +36,20 @@ func needsYou(ctx context.Context) int {
 	return n
 }
 
+type risksKey struct{}
+
+// withRisks records how many Goals the Risks page flags, so the top bar's Risks
+// item can count them without every page passing it along.
+func withRisks(ctx context.Context, n int) context.Context {
+	return context.WithValue(ctx, risksKey{}, n)
+}
+
+// risks is how many Goals the Risks page flags, 0 when uncounted.
+func risks(ctx context.Context) int {
+	n, _ := ctx.Value(risksKey{}).(int)
+	return n
+}
+
 // fontsURL loads the design system's faces; the font stacks in app.css fall
 // back to system fonts when it can't be reached.
 const fontsURL = "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:wght@600&display=swap"
@@ -59,6 +73,7 @@ templ layout(title string, current *domain.Account) {
 				<a class="brand" href="/goals">Goal Tracker</a>
 				if current != nil {
 					@navItem("/home", "nav-home", "Home", needsYou(ctx))
+					@navItem("/risks", "nav-risks", "Risks", risks(ctx))
 					@navItem("/dimensions", "nav-dimensions", "Dimensions", 0)
 					@navItem("/reports", "nav-reports", "Reports", 0)
 					<div class="me">

@@ -31,6 +31,29 @@ type risksView struct {
 	HaltedParents     []domain.HaltedParent
 }
 
+// Flagged counts the Goals the Risks page lists, each once however many
+// sections it is in.
+func (v risksView) Flagged() int {
+	flagged := map[int64]bool{}
+	for _, list := range [][]domain.GoalFreshness{v.Stale, v.OverduePaths} {
+		for _, gf := range list {
+			flagged[gf.Goal.ID] = true
+		}
+	}
+	for _, list := range [][]domain.Goal{v.Ownerless, v.Unaligned} {
+		for _, g := range list {
+			flagged[g.ID] = true
+		}
+	}
+	for _, c := range v.ScheduleConflicts {
+		flagged[c.Child.ID] = true
+	}
+	for _, hp := range v.HaltedParents {
+		flagged[hp.Child.ID] = true
+	}
+	return len(flagged)
+}
+
 // loadRisks reads every Goal the org's signals flag.
 func (s *Server) loadRisks(ctx context.Context) (risksView, error) {
 	fresh, err := s.svc.FreshnessSignals(ctx)
