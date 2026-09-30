@@ -484,3 +484,48 @@ func TestGoalListSortsProblemsFirst(t *testing.T) {
 		t.Errorf("a Goal with no Health shows no Lifecycle: %s", health)
 	}
 }
+
+// Each row shows when the Goal is due, with the dates its Date Slips moved it
+// from struck through, or a dash for an Ongoing Goal, and how long ago its last
+// Check-in was.
+func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	slipped := h.ActiveGoal(sam, "Slipped", "It matters.")
+	if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
+		GoalID:             slipped.ID,
+		AuthorID:           sam.ID,
+		Health:             domain.HealthYellow,
+		Status:             "Later than planned.",
+		PathToGreen:        "Swap vendors.",
+		PathTargetDate:     testsupport.Epoch.AddDate(0, 2, 0),
+		DeliveryDate:       time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC),
+		DeliveryDateReason: "Vendor slipped.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	ongoing := h.CreateGoal(sam, "Keep the lights on", "It matters.")
+	if _, err := h.Service.MarkGoalOngoing(t.Context(), ongoing.ID); err != nil {
+		t.Fatalf("MarkGoalOngoing: %v", err)
+	}
+	h.Clock.Advance(3 * day)
+	ts := newServer(t, h)
+
+	rows := goalRows(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals"))
+	if got := rowTitles(rows, slipped, ongoing); !slices.Equal(got, []string{"Slipped", "Keep the lights on"}) {
+		t.Fatalf("rows = %q", got)
+	}
+
+	if due := strings.Join(strings.Fields(pageElement(t, rows[0], "td", "goal-row-due")), " "); !strings.Contains(due, "<del>2026-07-02</del> 2026-07-16") {
+		t.Errorf("slipped Goal's Due does not strike its prior date: %s", due)
+	}
+	if last := pageElement(t, rows[0], "td", "goal-row-last-checkin"); !strings.Contains(last, "3 days ago") {
+		t.Errorf("Last check-in is not relative: %s", last)
+	}
+	if due := pageElement(t, rows[1], "td", "goal-row-due"); !strings.Contains(due, "—") || strings.Contains(due, "20") {
+		t.Errorf("Ongoing Goal's Due is not a dash: %s", due)
+	}
+	if last := pageElement(t, rows[1], "td", "goal-row-last-checkin"); !strings.Contains(last, "—") {
+		t.Errorf("a Goal with no Check-in shows a Last check-in: %s", last)
+	}
+}

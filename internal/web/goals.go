@@ -77,6 +77,9 @@ type goalRow struct {
 	// Latest is the Goal's most recent Check-in, nil when it has none.
 	Latest    *domain.Checkin
 	Freshness domain.Freshness
+	// PriorDates are the delivery dates the Goal's Date Slips moved it from,
+	// earliest first, shown struck through ahead of its current date.
+	PriorDates []time.Time
 }
 
 // goalRowGroup is one bucket of the grouped Goal list: the rows sharing Value,
@@ -93,6 +96,16 @@ func (r goalRow) health() string {
 		return ""
 	}
 	return r.Latest.Health
+}
+
+// lastCheckin says how long ago the Goal's latest Check-in was, counted on the
+// org's calendar, or a dash when it has none. With a Check-in, the Goal's last
+// update is that Check-in, so its freshness has already counted the days.
+func (r goalRow) lastCheckin() string {
+	if r.Latest == nil {
+		return "—"
+	}
+	return daysAgo(r.Freshness.DaysSince)
 }
 
 // problemRank orders the Goal list so problems sort to the top: Red, then
@@ -202,6 +215,15 @@ func (s *Server) loadGoalRow(ctx context.Context, gv domain.GoalWithValues) (goa
 	}
 	if row.Freshness, err = s.svc.Freshness(ctx, gv.Goal.ID); err != nil {
 		return goalRow{}, fmt.Errorf("read freshness: %w", err)
+	}
+	slips, err := s.svc.ListDateSlips(ctx, gv.Goal.ID)
+	if err != nil {
+		return goalRow{}, fmt.Errorf("load date slips: %w", err)
+	}
+	for _, slip := range slips {
+		if slip.MilestoneID == 0 {
+			row.PriorDates = append(row.PriorDates, slip.OldDate)
+		}
 	}
 	return row, nil
 }

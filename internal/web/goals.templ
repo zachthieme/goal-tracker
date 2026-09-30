@@ -141,8 +141,15 @@ templ goalListRow(row goalRow) {
 			}
 		</td>
 		<td>{ g.Owner.Email }</td>
-		<td></td>
-		<td></td>
+		<td data-testid="goal-row-due" class="num">
+			if g.DeliveryDate.IsZero() {
+				<span class="muted">—</span>
+			} else {
+				@struckDates(row.PriorDates)
+				{ fmtDate(g.DeliveryDate) }
+			}
+		</td>
+		<td data-testid="goal-row-last-checkin" class="muted">{ row.lastCheckin() }</td>
 		<td>
 			for _, val := range row.Values {
 				<span data-testid="goal-value-tag" class="tag">{ val.Value }</span>
