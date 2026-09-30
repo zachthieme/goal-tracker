@@ -227,39 +227,9 @@ templ goalPage(current *domain.Account, v goalView) {
 		}
 		@goalFreshness(v.Freshness)
 		@goalSignals(v.Signals)
+		@goalPageStyles()
+		@goalHead(v)
 		<article data-testid="goal">
-			<h1 data-testid="goal-title">{ g.Title }</h1>
-			if g.TopLevel {
-				<p data-testid="goal-top-level"><strong>Top-level Goal</strong> — one of the org's root outcomes</p>
-			}
-			<p><strong>Lifecycle:</strong> <span data-testid="goal-lifecycle">{ g.Lifecycle }</span></p>
-			if note := v.lifecycleNote(); note != "" {
-				<p data-testid="goal-lifecycle-note">{ note }</p>
-			}
-			<p><strong>Owner:</strong> <span data-testid="goal-owner">{ g.Owner.Email }</span></p>
-			<p>
-				<strong>Kind:</strong>
-				<span data-testid="goal-kind">
-					if g.Kind == "" {
-						Not yet Dated or Ongoing
-					} else {
-						{ g.Kind }
-					}
-				</span>
-				if !g.DeliveryDate.IsZero() {
-					<span data-testid="goal-delivery-date">
-						{ " — delivers " }
-						@struckDates(v.priorDates(0))
-						{ fmtDate(g.DeliveryDate) }
-					</span>
-				}
-			</p>
-			<p><strong>Check-in cadence:</strong> <span data-testid="goal-cadence">every { fmt.Sprintf("%d", g.CadenceDays) } days</span></p>
-			<p>
-				<strong>Date Slips:</strong> <span data-testid="goal-slip-count">{ fmt.Sprintf("%d", len(v.DateSlips)) }</span>
-				· <strong>Milestone Churn:</strong> <span data-testid="goal-milestone-churn">{ fmt.Sprintf("%d", v.MilestoneChurn) }</span>
-				<span>(Milestones added or removed since Active)</span>
-			</p>
 			<h2>So What</h2>
 			<p data-testid="goal-so-what">{ g.SoWhat }</p>
 		</article>
@@ -345,6 +315,74 @@ templ goalPage(current *domain.Account, v goalView) {
 		@addChildGoal(v)
 		<p><a href="/goals">Back to Goals</a></p>
 	}
+}
+
+// goalHead is the Goal's summary a reader takes in at a glance — badges for
+// its Health, Lifecycle, Kind, Top-level and Dimension values, its title, and a
+// meta line naming the Owner, the delivery date with its slips struck, and the
+// cadence — with Check in and No change top right for whoever may check in.
+templ goalHead(v goalView) {
+	{{ g := v.Goal }}
+	<header data-testid="goal-head" class="gp-head">
+		<div class="gp-summary">
+			<div data-testid="goal-badges" class="gp-badges">
+				if health := v.health(); health != "" {
+					<span class={ "badge", healthClass(health) }><span class="dot"></span>{ health }</span>
+				}
+				<span class="badge lc" data-testid="goal-lifecycle">{ g.Lifecycle }</span>
+				<span class="badge lc" data-testid="goal-kind">
+					if g.Kind == "" {
+						Not yet Dated or Ongoing
+					} else {
+						{ g.Kind }
+					}
+				</span>
+				if g.TopLevel {
+					<span class="badge lc" data-testid="goal-top-level" title="One of the org's root outcomes">Top-level</span>
+				}
+				for _, val := range v.Values {
+					<span class="tag">{ val.Value }</span>
+				}
+			</div>
+			<h1 data-testid="goal-title">{ g.Title }</h1>
+			<p data-testid="goal-meta" class="gp-meta">
+				<span>Owner <strong data-testid="goal-owner">{ g.Owner.Email }</strong></span>
+				if !g.DeliveryDate.IsZero() {
+					<span>Delivers <span data-testid="goal-delivery-date">@struckDates(v.priorDates(0))
+<strong>{ fmtDate(g.DeliveryDate) }</strong></span></span>
+				}
+				<span>Checks in <span data-testid="goal-cadence">every { fmt.Sprintf("%d", g.CadenceDays) } days</span></span>
+			</p>
+			if note := v.lifecycleNote(); note != "" {
+				<p data-testid="goal-lifecycle-note" class="muted">{ note }</p>
+			}
+		</div>
+		<div data-testid="goal-actions" class="gp-actions">
+			if v.CanCheckin && (g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold) {
+				<a class="btn primary" data-testid="checkin-link" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", g.ID)) }>Check in</a>
+				if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
+					@noChangeCheckinButton(g.ID, "No change")
+				}
+			}
+			<details data-testid="goal-more" class="gp-more"></details>
+		</div>
+	</header>
+}
+
+// goalPageStyles are the Goal page's own rules on top of app.css: the header
+// with its actions and More menu, the main column and sidebar, and the Metric
+// cards.
+templ goalPageStyles() {
+	<style>
+		.gp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap}
+		.gp-summary{display:flex;flex-direction:column;gap:10px;min-width:0;flex:1}
+		.gp-badges{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+		.gp-meta{display:flex;flex-wrap:wrap;gap:4px 20px;color:#5A606B}
+		.gp-meta strong{color:#1B1E23}
+		.gp-actions{display:flex;gap:8px;align-items:flex-start}
+		.gp-actions form{margin:0}
+		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+	</style>
 }
 
 // goalDimensions shows the Goal's value in each Dimension — retired values stay
@@ -536,40 +574,65 @@ templ defineGoal(v goalView) {
 	</section>
 }
 
-// milestoneList lists a Goal's Milestones with their status and date history
-// struck through (CONTEXT.md: Date Slip). editable gives the Owner of a Proposed
-// Goal an inline edit form on each; once Active, Milestones change in a Check-in.
+// milestoneList is a Goal's Milestones as a table of status, name, and date
+// with its history struck through (CONTEXT.md: Date Slip), headed by the Goal's
+// slip count and Milestone Churn. editable gives the Owner of a Proposed Goal an
+// edit form on each; once Active, Milestones change in a Check-in.
 templ milestoneList(v goalView, editable bool) {
-	<ul>
-		if len(v.Milestones) == 0 {
-			<li data-testid="no-milestones">No Milestones yet.</li>
-		}
-		for _, m := range v.Milestones {
-			<li data-testid="goal-milestone">
-				<span>
-					if m.Status == domain.MilestoneRemoved {
-						<del>{ m.Name }</del>
-					} else {
-						{ m.Name }
+	<p class="muted small">
+		<span data-testid="goal-slip-count">{ fmt.Sprintf("%d", len(v.DateSlips)) }</span> slips
+		·
+		<span data-testid="goal-milestone-churn">{ fmt.Sprintf("%d", v.MilestoneChurn) }</span> added or removed since Active
+	</p>
+	if len(v.Milestones) == 0 {
+		<p data-testid="no-milestones" class="muted">No Milestones yet.</p>
+	} else {
+		<table>
+			<thead>
+				<tr>
+					<th>Status</th>
+					<th>Milestone</th>
+					<th>Date</th>
+					if editable {
+						<th><span class="sr-only">Edit</span></th>
 					}
-					{ " — " }
-					@struckDates(v.priorDates(m.ID))
-					{ fmtDate(m.TargetDate) }
-				</span>
-				<span data-testid="milestone-status">({ m.Status })</span>
-				if m.RemovedReason != "" {
-					<span>— removed: { m.RemovedReason }</span>
+				</tr>
+			</thead>
+			<tbody>
+				for _, m := range v.Milestones {
+					<tr data-testid="goal-milestone">
+						<td><span class="badge lc" data-testid="milestone-status">{ m.Status }</span></td>
+						if m.Status == domain.MilestoneRemoved {
+							<td>
+								<del>{ m.Name }</del>
+								if m.RemovedReason != "" {
+									<div class="muted small">Removed: { m.RemovedReason }</div>
+								}
+							</td>
+						} else {
+							<td>{ m.Name }</td>
+						}
+						<td class="num">
+							@struckDates(v.priorDates(m.ID))
+							{ fmtDate(m.TargetDate) }
+						</td>
+						if editable {
+							<td>
+								<details class="gp-edit">
+									<summary class="btn quiet sm">Edit</summary>
+									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/milestones/%d", m.ID)) }>
+										<input type="text" name="name" value={ m.Name } aria-label="Name" required/>
+										<input type="date" name="target_date" value={ fmtDate(m.TargetDate) } aria-label="Date" required/>
+										<button type="submit" class="btn sm">Save</button>
+									</form>
+								</details>
+							</td>
+						}
+					</tr>
 				}
-				if editable {
-					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/milestones/%d", m.ID)) } style="display:inline">
-						<input type="text" name="name" value={ m.Name } required/>
-						<input type="date" name="target_date" value={ fmtDate(m.TargetDate) } required/>
-						<button type="submit">Save</button>
-					</form>
-				}
-			</li>
-		}
-	</ul>
+			</tbody>
+		</table>
+	}
 }
 
 // struckDates renders the dates a date held before its Date Slips, each struck

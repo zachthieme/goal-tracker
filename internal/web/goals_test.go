@@ -769,3 +769,96 @@ func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 		t.Errorf("swapped list lacks the new Goal's row:\n%s", swap)
 	}
 }
+
+// The Goal page opens on a header a reader takes in at a glance: badges for
+// Health, Lifecycle, Kind, Top-level and the Goal's Dimension values, the title,
+// and a meta line naming the Owner, the delivery date with its slips struck,
+// and the cadence. Check in and No change sit top right for whoever may check
+// in.
+func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	growth := h.CreateDimension(ada, "Pillar", "Growth").Values[0]
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, growth)
+	h.MarkTopLevel(ada, goal)
+	if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
+		GoalID:             goal.ID,
+		AuthorID:           sam.ID,
+		Health:             domain.HealthYellow,
+		Status:             "Later than planned.",
+		PathToGreen:        "Swap vendors.",
+		PathTargetDate:     testsupport.Epoch.AddDate(0, 2, 0),
+		DeliveryDate:       time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC),
+		DeliveryDateReason: "Vendor slipped.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	head := pageElement(t, page, "header", "goal-head")
+	badges := pageElement(t, head, "div", "goal-badges")
+	for _, want := range []string{
+		`class="badge y"`, "Yellow",
+		`data-testid="goal-lifecycle">Active<`,
+		`data-testid="goal-kind">Dated<`,
+		`data-testid="goal-top-level"`,
+		`class="tag">Growth<`,
+	} {
+		if !strings.Contains(badges, want) {
+			t.Errorf("header badges lack %s: %s", want, badges)
+		}
+	}
+	if title := pageElement(t, head, "h1", "goal-title"); !strings.Contains(title, "Reduce outages") {
+		t.Errorf("header title: %s", title)
+	}
+	meta := strings.Join(strings.Fields(pageElement(t, head, "p", "goal-meta")), " ")
+	for _, want := range []string{
+		`Owner <strong data-testid="goal-owner">sam@example.com</strong>`,
+		`Delivers <span data-testid="goal-delivery-date"><del>2026-07-02</del> <strong>2026-07-16</strong></span>`,
+		`Checks in <span data-testid="goal-cadence">every 7 days</span>`,
+	} {
+		if !strings.Contains(meta, want) {
+			t.Errorf("meta line lacks %s: %s", want, meta)
+		}
+	}
+	actions := between(t, head, `data-testid="goal-actions"`, `data-testid="goal-more"`)
+	if !strings.Contains(actions, fmt.Sprintf(`href="/goals/%d/checkin"`, goal.ID)) || !strings.Contains(actions, `class="btn primary"`) {
+		t.Errorf("header has no primary Check in link: %s", actions)
+	}
+	if !strings.Contains(actions, `data-testid="no-change-checkin"`) {
+		t.Errorf("header has no No change button: %s", actions)
+	}
+	if strings.Count(page, `data-testid="checkin-link"`) != 1 {
+		t.Errorf("the Check in link should appear once, in the header")
+	}
+}
+
+// The Goal page's Milestones are a table of status badge, name and date, the
+// date's slips struck, headed by the Goal's slip count and Milestone Churn.
+func TestGoalPageMilestonesTable(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	section := strings.Join(strings.Fields(pageElement(t, page, "section", "goal-milestones")), " ")
+	for _, want := range []string{
+		`<span data-testid="goal-slip-count">0</span> slips`,
+		`<span data-testid="goal-milestone-churn">0</span> added or removed since Active`,
+		"<table>",
+	} {
+		if !strings.Contains(section, want) {
+			t.Errorf("Milestones lack %s: %s", want, section)
+		}
+	}
+	row := pageElement(t, section, "tr", "goal-milestone")
+	for _, want := range []string{`class="badge lc" data-testid="milestone-status">Planned<`, "<td>Beta</td>", "2026-04-02"} {
+		if !strings.Contains(row, want) {
+			t.Errorf("Milestone row lacks %s: %s", want, row)
+		}
+	}
+}

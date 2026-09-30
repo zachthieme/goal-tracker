@@ -345,14 +345,6 @@ templ checkinSection(v goalView, canCheckin bool) {
 				</p>
 			}
 		}
-		if canCheckin && (g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold) {
-			<div class="checkin-actions">
-				<a class="btn primary" data-testid="checkin-link" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", g.ID)) }>Check in</a>
-				if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
-					@noChangeCheckinButton(g.ID, "No change")
-				}
-			</div>
-		}
 		<h3>Check-in history</h3>
 		<ul class="checkin-history" data-testid="checkin-history">
 			if len(v.Checkins) == 0 {

@@ -958,3 +958,13 @@ func (s *Server) renderChildGoalFormError(w http.ResponseWriter, r *http.Request
 	view.ChildForm = form
 	render(w, r, http.StatusUnprocessableEntity, goalPage(&current, view))
 }
+
+// health is the Goal's current Health — its latest Check-in's — while it is
+// Active, or "" when it has none: a Proposed Goal, one not yet checked in on,
+// or one On Hold, Done or Cancelled.
+func (v goalView) health() string {
+	if v.LatestCheckin == nil || v.Goal.Lifecycle != domain.LifecycleActive {
+		return ""
+	}
+	return v.LatestCheckin.Health
+}

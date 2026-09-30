@@ -202,7 +202,7 @@ func TestSmokeCheckinDeliveryDateSlipShownStruckThrough(t *testing.T) {
 	}
 
 	page := getBody(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	if delivery := pageElement(t, page, "span", "goal-delivery-date"); !strings.Contains(delivery, fmt.Sprintf("delivers <del>%s</del> %s", oldDate, newDate)) {
+	if delivery := pageElement(t, page, "span", "goal-delivery-date"); !strings.Contains(delivery, fmt.Sprintf("<del>%s</del> <strong>%s</strong>", oldDate, newDate)) {
 		t.Errorf("delivery date not shown struck through; element:\n%s", delivery)
 	}
 	if slips := pageElement(t, page, "section", "goal-date-slips"); !strings.Contains(slips, "Vendor API delayed two weeks.") {
@@ -980,8 +980,8 @@ func TestCheckinPageForOwnerAndDelegatesOnly(t *testing.T) {
 	}
 }
 
-// The Goal page no longer embeds the Check-in form: it links the Owner to the
-// Check-in page and keeps the one-click no-change button beside it.
+// The Goal page no longer embeds the Check-in form: its header links the Owner
+// to the Check-in page and keeps the one-click no-change button beside it.
 func TestGoalPageLinksToCheckinPage(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
@@ -991,7 +991,7 @@ func TestGoalPageLinksToCheckinPage(t *testing.T) {
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	section := pageElement(t, page, "section", "goal-checkins")
+	section := between(t, page, `data-testid="goal-actions"`, `data-testid="goal-more"`)
 	if !strings.Contains(section, fmt.Sprintf(`href="/goals/%d/checkin"`, goal.ID)) {
 		t.Errorf("Goal page does not link to the Check-in page; section:\n%s", section)
 	}
