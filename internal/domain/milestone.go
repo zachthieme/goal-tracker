@@ -109,7 +109,9 @@ type EditMilestoneInput struct {
 	TargetDate  time.Time
 }
 
-// EditMilestone changes a Milestone's name and date. Both are required.
+// EditMilestone changes a Milestone's name and date. Both are required. The
+// date can only change here while the Goal is Proposed; after that it moves in a
+// Check-in as a Date Slip.
 func (s *Service) EditMilestone(ctx context.Context, in EditMilestoneInput) (Milestone, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
@@ -118,11 +120,24 @@ func (s *Service) EditMilestone(ctx context.Context, in EditMilestoneInput) (Mil
 	if in.TargetDate.IsZero() {
 		return Milestone{}, fmt.Errorf("%w: a Milestone needs a date", ErrValidation)
 	}
-	if _, err := s.queries.GetMilestone(ctx, in.MilestoneID); err != nil {
+	current, err := s.queries.GetMilestone(ctx, in.MilestoneID)
+	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Milestone{}, fmt.Errorf("%w: milestone %d", ErrNotFound, in.MilestoneID)
 		}
 		return Milestone{}, fmt.Errorf("look up milestone: %w", err)
+	}
+	// Once the Goal is past Proposed its Milestone dates move only in a
+	// Check-in, which records the Date Slip and its reason (CONTEXT.md: Date
+	// Slip).
+	if in.TargetDate.Format(dateFormat) != current.TargetDate {
+		goal, err := s.queries.GetGoal(ctx, current.GoalID)
+		if err != nil {
+			return Milestone{}, fmt.Errorf("look up goal: %w", err)
+		}
+		if goal.Goal.Lifecycle != LifecycleProposed {
+			return Milestone{}, fmt.Errorf("%w: change a Milestone's date in a Check-in, with a reason", ErrValidation)
+		}
 	}
 
 	row, err := s.queries.UpdateMilestone(ctx, db.UpdateMilestoneParams{

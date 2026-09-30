@@ -211,3 +211,35 @@ func TestCheckinRejectsMilestoneOnAnotherGoal(t *testing.T) {
 		t.Fatalf("err = %v, want ErrValidation", err)
 	}
 }
+
+// Every date change on an Active Goal is explained: outside a Check-in, a
+// Milestone's date and the delivery date can't be moved (so no change skips its
+// Date Slip), though a Milestone can still be renamed.
+func TestActiveGoalDatesMoveOnlyInACheckin(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	beta := onlyMilestone(t, h, goal.ID)
+	ctx := context.Background()
+
+	if _, err := h.Service.EditMilestone(ctx, domain.EditMilestoneInput{
+		MilestoneID: beta.ID, Name: "Beta", TargetDate: beta.TargetDate.AddDate(0, 0, 5),
+	}); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("EditMilestone moving the date on an Active Goal: err = %v, want ErrValidation", err)
+	}
+	if _, err := h.Service.EditMilestone(ctx, domain.EditMilestoneInput{
+		MilestoneID: beta.ID, Name: "Public beta", TargetDate: beta.TargetDate,
+	}); err != nil {
+		t.Errorf("EditMilestone renaming on an Active Goal: %v", err)
+	}
+	if _, err := h.Service.MarkGoalDated(ctx, goal.ID, goal.DeliveryDate.AddDate(0, 1, 0)); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("MarkGoalDated on an Active Goal: err = %v, want ErrValidation", err)
+	}
+	if _, err := h.Service.MarkGoalOngoing(ctx, goal.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("MarkGoalOngoing on an Active Goal: err = %v, want ErrValidation", err)
+	}
+	g, _ := h.Service.ViewGoal(ctx, goal.ID)
+	if !g.DeliveryDate.Equal(goal.DeliveryDate) {
+		t.Errorf("delivery date moved to %s outside a Check-in", g.DeliveryDate)
+	}
+}

@@ -372,6 +372,9 @@ func (s *Service) MarkGoalDated(ctx context.Context, goalID int64, deliveryDate 
 	if deliveryDate.IsZero() {
 		return Goal{}, fmt.Errorf("%w: a Dated Goal needs a delivery date", ErrValidation)
 	}
+	if err := s.requireProposedToSetDelivery(ctx, goalID); err != nil {
+		return Goal{}, err
+	}
 	if _, err := s.queries.SetGoalKind(ctx, db.SetGoalKindParams{
 		Kind:         GoalDated,
 		DeliveryDate: deliveryDate.Format(dateFormat),
@@ -464,6 +467,9 @@ func (s *Service) ListContributors(ctx context.Context, goalID int64) ([]Account
 // MarkGoalOngoing marks the Goal as Ongoing, clearing any delivery date; its
 // Health is judged against its Metrics instead (CONTEXT.md: Ongoing Goal).
 func (s *Service) MarkGoalOngoing(ctx context.Context, goalID int64) (Goal, error) {
+	if err := s.requireProposedToSetDelivery(ctx, goalID); err != nil {
+		return Goal{}, err
+	}
 	if _, err := s.queries.SetGoalKind(ctx, db.SetGoalKindParams{
 		Kind:         GoalOngoing,
 		DeliveryDate: "",
@@ -472,4 +478,21 @@ func (s *Service) MarkGoalOngoing(ctx context.Context, goalID int64) (Goal, erro
 		return Goal{}, fmt.Errorf("mark goal ongoing: %w", err)
 	}
 	return s.loadGoal(ctx, goalID)
+}
+
+// requireProposedToSetDelivery allows marking a Goal Dated or Ongoing only while
+// it is Proposed. After that its delivery date moves only in a Check-in, which
+// records the Date Slip and its reason (CONTEXT.md: Date Slip).
+func (s *Service) requireProposedToSetDelivery(ctx context.Context, goalID int64) error {
+	g, err := s.queries.GetGoal(ctx, goalID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: goal %d", ErrNotFound, goalID)
+		}
+		return fmt.Errorf("look up goal: %w", err)
+	}
+	if g.Goal.Lifecycle != LifecycleProposed {
+		return fmt.Errorf("%w: a %s Goal's delivery date changes only in a Check-in, with a reason", ErrValidation, g.Goal.Lifecycle)
+	}
+	return nil
 }
