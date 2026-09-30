@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -332,7 +333,8 @@ func pageElement(t *testing.T, page, tag, testID string) string {
 
 // Through the Check-in form an Owner puts a Goal On Hold with a reason, then
 // resumes it. The Goal page shows the Lifecycle and why, the Check-in history
-// shows each change, and while On Hold the form offers only to resume or Cancel.
+// shows each change, and while On Hold the Check-in page offers only to resume
+// or Cancel.
 func TestSmokeCheckinPutsGoalOnHoldAndResumes(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
@@ -362,7 +364,7 @@ func TestSmokeCheckinPutsGoalOnHoldAndResumes(t *testing.T) {
 	if entry := pageElement(t, page, "span", "checkin-lifecycle"); !strings.Contains(entry, "Active → On Hold") || !strings.Contains(entry, "Team moved to the payments incident.") {
 		t.Errorf("Check-in history missing the Lifecycle change; element:\n%s", entry)
 	}
-	form := pageElement(t, page, "fieldset", "checkin-lifecycle-fields")
+	form := pageElement(t, getBody(t, samClient, goalURL+"/checkin"), "fieldset", "checkin-lifecycle-fields")
 	if !strings.Contains(form, `value="Active"`) || strings.Contains(form, `value="Done"`) {
 		t.Errorf("On Hold form should offer resume and Cancel only; form:\n%s", form)
 	}
@@ -554,7 +556,7 @@ func TestCheckinFormPrefillsLatestReadings(t *testing.T) {
 		}
 	}
 
-	form := pageElement(t, getBody(t, samClient, goalURL), "fieldset", "checkin-readings")
+	form := pageElement(t, getBody(t, samClient, goalURL+"/checkin"), "fieldset", "checkin-readings")
 	if want := fmt.Sprintf(`name="reading_%d" value="135.5"`, signups.ID); !strings.Contains(form, want) {
 		t.Errorf("Signups reading not pre-filled with its latest value (want %s); form:\n%s", want, form)
 	}
@@ -973,5 +975,28 @@ func TestCheckinPageForOwnerAndDelegatesOnly(t *testing.T) {
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("someone neither Owner nor Delegate got status %d, want 403", resp.StatusCode)
+	}
+}
+
+// The Goal page no longer embeds the Check-in form: it links the Owner to the
+// Check-in page and keeps the one-click no-change button beside it.
+func TestGoalPageLinksToCheckinPage(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	section := pageElement(t, page, "section", "goal-checkins")
+	if !strings.Contains(section, fmt.Sprintf(`href="/goals/%d/checkin"`, goal.ID)) {
+		t.Errorf("Goal page does not link to the Check-in page; section:\n%s", section)
+	}
+	if strings.Contains(page, `data-testid="checkin-form"`) {
+		t.Errorf("Goal page still embeds the Check-in form")
+	}
+	if !strings.Contains(section, `data-testid="no-change-checkin"`) {
+		t.Errorf("Goal page lost the no-change button; section:\n%s", section)
 	}
 }
