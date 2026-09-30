@@ -534,3 +534,35 @@ func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
 		t.Errorf("publications are not in a sidebar; body:\n%s", page)
 	}
 }
+
+// The reports page lists saved definitions as cards and keeps the form behind
+// a New report button. Its Root Goals picker is a scrolling list with the
+// top-level Goals first, and Depth says what its numbers mean.
+func TestReportsListFormOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	child := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	root := h.MarkTopLevel(boss, h.ActiveGoal(boss, "Grow revenue", "The org needs to grow."))
+	h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{root.ID}})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports")
+
+	if def := pageElement(t, page, "li", "report-definition"); !strings.Contains(def, `class="card`) || !strings.Contains(def, "MBR") {
+		t.Errorf("saved definition is not a card; item:\n%s", def)
+	}
+	create := pageElement(t, page, "details", "create-report")
+	if !strings.Contains(create, ">New report</summary>") || strings.HasPrefix(create, `<details data-testid="create-report" open`) {
+		t.Errorf("the definition form is not behind a collapsed New report button; details:\n%s", create)
+	}
+	roots := pageElement(t, create, "fieldset", "report-roots")
+	if !strings.Contains(roots, `class="rp-picker"`) {
+		t.Errorf("root picker does not scroll; fieldset:\n%s", roots)
+	}
+	if strings.Index(roots, root.Title) > strings.Index(roots, child.Title) {
+		t.Errorf("top-level Goal is not listed first; fieldset:\n%s", roots)
+	}
+	if !strings.Contains(create, "0 = just the roots, 1 = roots and their direct contributors, …") {
+		t.Errorf("Depth is not explained; details:\n%s", create)
+	}
+}

@@ -8,51 +8,64 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// reportsPage lists every saved Report Definition and the form to build a new one
-// (CONTEXT.md: Report Definition). A definition selects Goals by root Goals plus a
+// reportsPage lists every saved Report Definition as a card, and behind a New
+// report button the form to build a new one (CONTEXT.md: Report Definition). A definition selects Goals by root Goals plus a
 // depth, by Dimension or Owner filters, or by filters alone.
 templ reportsPage(current *domain.Account, data reportsListData) {
 	@layout("Reports", current) {
-		<h1>Reports</h1>
-		<section data-testid="report-definitions">
+		@reportStyles()
+		<div class="page-head">
+			<h1>Reports</h1>
+		</div>
+		<section data-testid="report-definitions" class="rp-body">
 			<h2>Saved Report Definitions</h2>
-			<ul>
+			<ul class="rp-cards">
 				if len(data.Defs) == 0 {
-					<li data-testid="no-reports">No Report Definitions yet.</li>
+					<li data-testid="no-reports" class="muted">No Report Definitions yet.</li>
 				}
 				for _, d := range data.Defs {
-					<li data-testid="report-definition">
-						<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d", d.ID)) }>{ d.Name }</a>
+					<li data-testid="report-definition" class="card rp-card">
+						<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d", d.ID)) }><strong>{ d.Name }</strong></a>
+						if d.Introduction != "" {
+							<span class="small muted">{ d.Introduction }</span>
+						}
 					</li>
 				}
 			</ul>
 		</section>
-		<section data-testid="create-report">
-			<h2>New Report Definition</h2>
-			<form method="post" action="/reports">
-				<label>
-					Name
+		<details data-testid="create-report">
+			<summary class="btn primary">New report</summary>
+			<form class="card rp-card rp-form" method="post" action="/reports">
+				<h2>New Report Definition</h2>
+				<label class="field">
+					<span>Name</span>
 					<input type="text" name="name" required/>
 				</label>
-				<label>
-					Introduction
+				<label class="field">
+					<span>Introduction</span>
 					<textarea name="introduction"></textarea>
 				</label>
-				<fieldset data-testid="report-roots">
-					<legend>Root Goals</legend>
-					for _, g := range data.Goals {
-						<label>
-							<input type="checkbox" name="root" value={ fmt.Sprintf("%d", g.ID) }/>
-							{ g.Title }
-						</label>
-					}
-				</fieldset>
-				<label>
-					Depth
+				<div class="field">
+					<fieldset data-testid="report-roots" class="rp-picker">
+						<legend>Root Goals <span class="hint">— Top-level Goals first</span></legend>
+						for _, g := range data.Goals {
+							<label>
+								<input type="checkbox" name="root" value={ fmt.Sprintf("%d", g.ID) }/>
+								{ g.Title }
+								if g.TopLevel {
+									{ " " }<span class="tag">Top-level</span>
+								}
+							</label>
+						}
+					</fieldset>
+				</div>
+				<label class="field">
+					<span>Depth</span>
 					<input type="number" name="depth" min="0" value="1"/>
+					<span class="hint">0 = just the roots, 1 = roots and their direct contributors, …</span>
 				</label>
-				<label data-testid="report-owner-filter">
-					Owner filter
+				<label data-testid="report-owner-filter" class="field">
+					<span>Owner filter</span>
 					<select name="owner">
 						<option value="">Any Owner</option>
 						for _, o := range data.Owners {
@@ -63,7 +76,7 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 				<fieldset data-testid="report-dimension-filters">
 					<legend>Dimension filters</legend>
 					if len(data.Dims) == 0 {
-						<p data-testid="no-dimensions-defined">No Dimensions defined yet.</p>
+						<p data-testid="no-dimensions-defined" class="muted">No Dimensions defined yet.</p>
 					}
 					for _, d := range data.Dims {
 						<fieldset>
@@ -79,9 +92,9 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 						</fieldset>
 					}
 				</fieldset>
-				<button type="submit">Save Report Definition</button>
+				<div><button type="submit" class="btn primary">Save Report Definition</button></div>
 			</form>
-		</section>
+		</details>
 	}
 }
 
@@ -620,9 +633,11 @@ templ reportStyles() {
 		.rp-reply{margin-left:24px}
 		.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
 		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
+		.rp-cards{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+		.rp-cards>.rp-card{padding:14px 20px;gap:4px}
 		.rp-picker{max-height:280px;overflow-y:auto;border:1px solid #C9CCC4;border-radius:6px;background:#fff;padding:8px 12px;display:flex;flex-direction:column;gap:4px}
 		.rp-form{display:flex;flex-direction:column;gap:16px;padding:16px 0 0}
-		.rp-form fieldset{border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
+		.rp-form fieldset:not(.rp-picker){border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
 		.rp-form legend{font-weight:600;font-size:13px;padding:0 0 6px}
 		.rp-publish{padding:20px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 		@media (max-width:900px){.rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
