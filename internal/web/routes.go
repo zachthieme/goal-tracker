@@ -40,4 +40,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /goals/{id}/children", s.requireAuth(s.handleCreateChildGoal))
 	s.mux.HandleFunc("POST /goals/{id}/checkins", s.requireAuth(s.handleSubmitCheckin))
 	s.mux.HandleFunc("POST /goals/{id}/checkins/no-change", s.requireAuth(s.handleNoChangeCheckin))
+	s.mux.HandleFunc("GET /imports", s.requireAuth(s.handleImportForm))
+	s.mux.HandleFunc("POST /imports", s.requireAuth(s.handleRunImport))
 }
