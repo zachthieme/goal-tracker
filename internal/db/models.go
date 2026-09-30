@@ -29,6 +29,16 @@ type Checkin struct {
 	Outcome         string
 }
 
+type Comment struct {
+	ID            int64
+	PublicationID int64
+	GoalID        int64
+	ParentID      int64
+	AuthorID      int64
+	Body          string
+	CreatedAt     string
+}
+
 type Contributor struct {
 	ID        int64
 	GoalID    int64
