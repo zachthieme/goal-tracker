@@ -105,6 +105,28 @@ type Milestone struct {
 	CreatedAt  string
 }
 
+type ReportDefinition struct {
+	ID            int64
+	Name          string
+	Introduction  string
+	Depth         int64
+	OwnerFilterID int64
+	CreatedBy     int64
+	CreatedAt     string
+}
+
+type ReportDefinitionFilter struct {
+	ID                 int64
+	ReportDefinitionID int64
+	DimensionValueID   int64
+}
+
+type ReportDefinitionRoot struct {
+	ID                 int64
+	ReportDefinitionID int64
+	GoalID             int64
+}
+
 type SoWhatRevision struct {
 	ID        int64
 	GoalID    int64

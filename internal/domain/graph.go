@@ -59,6 +59,50 @@ func (s *Service) traverse(
 	return out, nil
 }
 
+// SelectDescendants returns the Goals reached by traversing down from rootIDs
+// through accepted contributes-to links: each root Goal itself, plus every Goal
+// that contributes (directly or transitively) to a root within depth levels
+// below it. A Goal reached through several paths, or listed under several roots,
+// appears once (a Report Definition selects each Goal once). depth 0 selects the
+// roots alone; a depth below 0 is treated as 0. Roots come first in the given
+// order, then newly reached descendants in breadth-first order.
+func (s *Service) SelectDescendants(ctx context.Context, rootIDs []int64, depth int) ([]Goal, error) {
+	seen := map[int64]bool{}
+	var out []Goal
+	var frontier []int64
+	for _, id := range rootIDs {
+		if seen[id] {
+			continue
+		}
+		root, err := s.loadGoal(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		seen[id] = true
+		out = append(out, root)
+		frontier = append(frontier, id)
+	}
+	for level := 0; level < depth && len(frontier) > 0; level++ {
+		var nextFrontier []int64
+		for _, id := range frontier {
+			children, err := s.ChildrenOf(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			for _, c := range children {
+				if seen[c.ID] {
+					continue
+				}
+				seen[c.ID] = true
+				out = append(out, c)
+				nextFrontier = append(nextFrontier, c.ID)
+			}
+		}
+		frontier = nextFrontier
+	}
+	return out, nil
+}
+
 // ensureNoCycle returns ErrCycle if accepting a link from childID to parentID
 // would make the graph cyclic — that is, if parentID already contributes,
 // directly or transitively, to childID (ADR-0001).
