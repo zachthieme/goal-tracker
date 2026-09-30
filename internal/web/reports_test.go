@@ -113,7 +113,7 @@ func TestSmokeReportDraftShowsExceptionBlocksAgainstBaseline(t *testing.T) {
 	if got := strings.Count(page, `data-testid="report-exception"`); got != 1 {
 		t.Errorf("%d exception blocks, want 1; body:\n%s", got, page)
 	}
-	if line := pageElement(t, page, "li", "selected-goal"); !strings.Contains(line, "Cut churn") {
+	if line := pageElement(t, page, "tr", "selected-goal"); !strings.Contains(line, "Cut churn") {
 		t.Errorf("unchanged Green is not one line; line:\n%s", line)
 	}
 
@@ -428,6 +428,45 @@ func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 	for tile, want := range map[string]string{"red": "1", "yellow": "1", "green": "1", "stale": "1"} {
 		if count := pageElement(t, summary, "span", "health-count-"+tile); !strings.HasSuffix(count, ">"+want) {
 			t.Errorf("%s tile: %q, want a count of %s", tile, count, want)
+		}
+	}
+}
+
+// The publication splits the selected Goals in two: exceptions as cards under
+// Needs attention, each with its Health badge and its So What, Status, and
+// Path to Green — marked Overdue once its target date has passed — and the
+// rest as a table of Health, Goal, Owner, and Due under On track.
+func TestPublicationSplitsNeedsAttentionFromOnTrackOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 0, 1))
+	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(3 * 24 * time.Hour)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{red.ID, green.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
+
+	attention := pageElement(t, page, "section", "needs-attention")
+	card := pageElement(t, attention, "article", "report-exception")
+	if !strings.Contains(card, `class="card`) || !strings.Contains(card, `class="badge r"`) {
+		t.Errorf("exception is not a card with a Red badge; card:\n%s", card)
+	}
+	if status := pageElement(t, card, "div", "report-status-box"); !strings.Contains(status, "Hire counsel.") ||
+		!strings.Contains(status, `data-testid="path-overdue"`) {
+		t.Errorf("status box does not mark the missed Path to Green Overdue; box:\n%s", status)
+	}
+
+	onTrack := pageElement(t, page, "table", "on-track")
+	row := pageElement(t, onTrack, "tr", "selected-goal")
+	for _, want := range []string{"Cut churn", "boss@example.com", domain.HealthGreen} {
+		if !strings.Contains(row, want) {
+			t.Errorf("On track row missing %q; row:\n%s", want, row)
 		}
 	}
 }

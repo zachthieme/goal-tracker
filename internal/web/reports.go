@@ -97,7 +97,7 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 		http.Error(w, "could not load Action Items", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, reportDraftPage(&current, report, pubs, d))
+	render(w, r, http.StatusOK, reportDraftPage(&current, report, s.svc.Now(), pubs, d))
 }
 
 // handleCurateNarrative sets the narrative of a Report Definition's next

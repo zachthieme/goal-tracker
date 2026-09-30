@@ -37,7 +37,7 @@ templ reportActionItems(items []domain.ActionItem, d discussion) {
 // a new one. The Report's author may turn any comment into an Action Item.
 templ goalDiscussion(goalID int64, d discussion) {
 	if d.Pub != nil {
-		<section data-testid="goal-discussion">
+		<footer data-testid="goal-discussion" class="rp-discussion">
 			for _, t := range d.Threads[goalID] {
 				<div data-testid="comment-thread">
 					@comment(t.Comment, d)
@@ -61,7 +61,7 @@ templ goalDiscussion(goalID int64, d discussion) {
 				</label>
 				<button type="submit">Comment</button>
 			</form>
-		</section>
+		</footer>
 	}
 }
 

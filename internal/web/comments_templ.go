@@ -114,7 +114,7 @@ func goalDiscussion(goalID int64, d discussion) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if d.Pub != nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<section data-testid=\"goal-discussion\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<footer data-testid=\"goal-discussion\" class=\"rp-discussion\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -177,7 +177,7 @@ func goalDiscussion(goalID int64, d discussion) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\"> <label>Comment <input type=\"text\" name=\"body\" required></label> <button type=\"submit\">Comment</button></form></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\"> <label>Comment <input type=\"text\" name=\"body\" required></label> <button type=\"submit\">Comment</button></form></footer>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

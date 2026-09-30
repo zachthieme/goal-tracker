@@ -90,7 +90,7 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 // publication — with the button that publishes it, the form to curate its
 // narrative from Highlights, and the list of its publications (CONTEXT.md:
 // Report, Report Definition).
-templ reportDraftPage(current *domain.Account, r domain.Report, pubs []domain.Publication, d discussion) {
+templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion) {
 	@layout(r.Definition.Name, current) {
 		<h1 data-testid="report-name">{ r.Definition.Name }</h1>
 		<form method="get" data-testid="report-baseline">
@@ -114,7 +114,7 @@ templ reportDraftPage(current *domain.Account, r domain.Report, pubs []domain.Pu
 		@narrativeCuration(r)
 		<section data-testid="report-draft">
 			<h2>Draft</h2>
-			@reportBody(r, d)
+			@reportBody(r, asOf, d)
 		</section>
 		<section data-testid="report-publications">
 			<h2>Publications</h2>
@@ -158,7 +158,7 @@ templ publicationPage(current *domain.Account, p domain.Publication, d discussio
 			</header>
 			@healthSummary(p.Report)
 			<section data-testid="report-snapshot" class="rp-body">
-				@reportBody(p.Report, d)
+				@reportBody(p.Report, p.PublishedAt, d)
 			</section>
 			@publicationActionItems(d)
 		</div>
@@ -193,7 +193,7 @@ templ publicationPrintPage(p domain.Publication) {
 			<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
 			@publishedLine(p)
 			<section data-testid="report-snapshot">
-				@reportBody(p.Report, discussion{})
+				@reportBody(p.Report, p.PublishedAt, discussion{})
 			</section>
 		</body>
 	</html>
@@ -227,10 +227,12 @@ templ publishedLine(p domain.Publication) {
 }
 
 // reportBody is a Report's content, drafted or published: its open Action
-// Items, the introduction, the narrative curated from Highlights, then
-// exceptions with the full MBR block and every other selected Goal one line
-// with title, Owner, Health, and due date (CONTEXT.md: Report). On a publication, each Goal carries its discussion.
-templ reportBody(r domain.Report, d discussion) {
+// Items, the introduction, the narrative curated from Highlights, then the
+// exceptions that need attention, each a card with the full MBR block, and
+// every other selected Goal on track, one table row with its Health, title,
+// Owner, and due date (CONTEXT.md: Report). A Path to Green is judged overdue
+// as of asOf. On a publication, each Goal carries its discussion.
+templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 	@reportActionItems(r.ActionItems, d)
 	if r.Definition.Introduction != "" {
 		<p data-testid="report-introduction">{ r.Definition.Introduction }</p>
@@ -239,23 +241,48 @@ templ reportBody(r domain.Report, d discussion) {
 	if len(r.Exceptions) == 0 && len(r.Lines) == 0 {
 		<p data-testid="no-selected-goals">No Goals selected.</p>
 	}
-	for _, b := range r.Exceptions {
-		@reportBlock(b, d)
+	if len(r.Exceptions) > 0 {
+		<section data-testid="needs-attention">
+			<h2>Needs attention</h2>
+			for _, b := range r.Exceptions {
+				@reportBlock(b, asOf, d)
+			}
+		</section>
 	}
 	if len(r.Lines) > 0 {
-		<ul>
-			for _, sg := range r.Lines {
-				<li data-testid="selected-goal" id={ fmt.Sprintf("goal-%d", sg.Goal.ID) }>
-					<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a>
-					<span data-testid="selected-owner">— { sg.Goal.Owner.Email }</span>
-					<span data-testid="selected-health">— { reportHealth(sg.Health) }</span>
-					if !sg.Goal.DeliveryDate.IsZero() {
-						<span data-testid="selected-due">— due { fmtDate(sg.Goal.DeliveryDate) }</span>
-					}
-					@goalDiscussion(sg.Goal.ID, d)
-				</li>
-			}
-		</ul>
+		<section data-testid="on-track-section">
+			<h2>On track</h2>
+			<div class="card">
+				<table data-testid="on-track">
+					<thead>
+						<tr><th>Health</th><th>Goal</th><th>Owner</th><th>Due</th></tr>
+					</thead>
+					<tbody>
+						for _, sg := range r.Lines {
+							<tr data-testid="selected-goal" id={ fmt.Sprintf("goal-%d", sg.Goal.ID) }>
+								<td><span data-testid="selected-health" class={ "badge", healthClass(sg.Health) }>{ reportHealth(sg.Health) }</span></td>
+								<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a></td>
+								<td data-testid="selected-owner">{ sg.Goal.Owner.Email }</td>
+								<td>
+									if !sg.Goal.DeliveryDate.IsZero() {
+										<span data-testid="selected-due" class="num">{ fmtDate(sg.Goal.DeliveryDate) }</span>
+									} else {
+										<span class="muted">—</span>
+									}
+								</td>
+							</tr>
+							if d.Pub != nil {
+								<tr>
+									<td colspan="4">
+										@goalDiscussion(sg.Goal.ID, d)
+									</td>
+								</tr>
+							}
+						}
+					</tbody>
+				</table>
+			</div>
+		</section>
 	}
 }
 
@@ -334,77 +361,96 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 	</span>
 }
 
-// reportBlock is an exception Goal's full MBR block: title, due date with its
-// history struck through, Health, badges, So What, latest status, Path to
-// Green, Milestones, Metrics against target, and the Rolled-up Health with the
-// Owner's explanation. On a publication it ends with the Goal's discussion.
-templ reportBlock(b domain.ReportBlock, d discussion) {
-	<article data-testid="report-exception" id={ fmt.Sprintf("goal-%d", b.Goal.ID) }>
-		<h3>
-			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", b.Goal.ID)) }>{ b.Goal.Title }</a>
-			for _, badge := range b.Badges {
-				{ " " }<strong data-testid="report-badge">[{ badge }]</strong>
-			}
-		</h3>
-		<p>
-			<span data-testid="report-owner">{ b.Goal.Owner.Email }</span>
-			{ " · " }{ b.Goal.Lifecycle }
-			{ " · Health: " }<strong data-testid="report-health">{ reportHealth(b.Health) }</strong>
-			if !b.Goal.DeliveryDate.IsZero() {
-				{ " · due " }
-				<span data-testid="report-due">
-					@struckDates(b.PriorDueDates)
-					{ fmtDate(b.Goal.DeliveryDate) }
-				</span>
-			}
-		</p>
-		<p data-testid="report-so-what"><strong>So What:</strong> { b.Goal.SoWhat }</p>
-		if b.Status != "" {
-			<p data-testid="report-status"><strong>Status:</strong> { b.Status }</p>
-		}
-		if b.PathToGreen != "" {
-			<p data-testid="report-path-to-green"><strong>Path to Green:</strong> { b.PathToGreen } (back to Green by { fmtDate(b.PathTargetDate) })</p>
-		}
-		if len(b.Milestones) > 0 {
-			<ul data-testid="report-milestones">
-				for _, m := range b.Milestones {
-					<li data-testid="report-milestone">
-						if m.Milestone.Status == domain.MilestoneRemoved {
-							<del>{ m.Milestone.Name }</del>
-						} else {
-							{ m.Milestone.Name }
-						}
-						{ " — " }
-						@struckDates(m.PriorDates)
-						{ fmtDate(m.Milestone.TargetDate) }
-						if m.New {
-							{ " " }<strong>[New]</strong>
-						}
-						if m.Milestone.Status != domain.MilestonePlanned {
-							{ " " }<strong>[{ m.Milestone.Status }]</strong>
-						}
-						if m.Milestone.RemovedReason != "" {
-							<span>— { m.Milestone.RemovedReason }</span>
-						}
-					</li>
+// reportBlock is an exception Goal's full MBR block, as a card: title, Owner,
+// Lifecycle, and due date with its history struck through; Health and badges
+// top right; So What, latest status, and Path to Green in a tinted box, marked
+// Overdue when its target date passed before asOf; Milestones, Metrics against
+// target, and the Rolled-up Health with the Owner's explanation. On a
+// publication it ends with the Goal's discussion.
+templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
+	<article data-testid="report-exception" class="card rp-card" id={ fmt.Sprintf("goal-%d", b.Goal.ID) }>
+		<div class="rp-card-head">
+			<div>
+				<h3><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", b.Goal.ID)) }>{ b.Goal.Title }</a></h3>
+				<p class="small muted">
+					<span data-testid="report-owner">{ b.Goal.Owner.Email }</span>
+					{ " · " }{ b.Goal.Lifecycle }
+					if !b.Goal.DeliveryDate.IsZero() {
+						{ " · due " }
+						<span data-testid="report-due">
+							@struckDates(b.PriorDueDates)
+							{ fmtDate(b.Goal.DeliveryDate) }
+						</span>
+					}
+				</p>
+			</div>
+			<div class="rp-badges">
+				<span data-testid="report-health" class={ "badge", healthClass(b.Health) }><span class="dot"></span>{ reportHealth(b.Health) }</span>
+				for _, badge := range b.Badges {
+					<span data-testid="report-badge" class={ "badge", badgeClass(badge) }>{ badge }</span>
 				}
-			</ul>
+			</div>
+		</div>
+		<div data-testid="report-status-box" class={ "rp-tint", templ.KV("overdue", pathOverdueAt(b, asOf)) }>
+			<p data-testid="report-so-what"><strong>So What:</strong> { b.Goal.SoWhat }</p>
+			if b.Status != "" {
+				<p data-testid="report-status"><strong>Status:</strong> { b.Status }</p>
+			}
+			if b.PathToGreen != "" {
+				<p data-testid="report-path-to-green">
+					<strong>Path to Green:</strong> { b.PathToGreen } (back to Green by { fmtDate(b.PathTargetDate) })
+					if pathOverdueAt(b, asOf) {
+						{ " " }<strong data-testid="path-overdue" class="badge r">Overdue</strong>
+					}
+				</p>
+			}
+		</div>
+		if len(b.Milestones) > 0 {
+			<div>
+				<p class="label">Milestones</p>
+				<ul data-testid="report-milestones">
+					for _, m := range b.Milestones {
+						<li data-testid="report-milestone">
+							if m.Milestone.Status == domain.MilestoneRemoved {
+								<del>{ m.Milestone.Name }</del>
+							} else {
+								{ m.Milestone.Name }
+							}
+							{ " — " }
+							@struckDates(m.PriorDates)
+							{ fmtDate(m.Milestone.TargetDate) }
+							if m.New {
+								{ " " }<span class="badge lc">New</span>
+							}
+							if m.Milestone.Status != domain.MilestonePlanned {
+								{ " " }<span class="badge lc">{ m.Milestone.Status }</span>
+							}
+							if m.Milestone.RemovedReason != "" {
+								<span>— { m.Milestone.RemovedReason }</span>
+							}
+						</li>
+					}
+				</ul>
+			</div>
 		}
 		if len(b.Metrics) > 0 {
-			<ul data-testid="report-metrics">
-				for _, m := range b.Metrics {
-					<li data-testid="report-metric">
-						{ m.Metric.Name }:
-						if m.Read {
-							{ fmtNum(m.Current) }
-						} else {
-							no reading yet
-						}
-						{ " against a target of " }{ fmtNum(m.Metric.Target) } { m.Metric.Unit } by { fmtDate(m.Metric.TargetDate) }
-						{ " (baseline " }{ fmtNum(m.Metric.Baseline) }, { m.Metric.Direction })
-					</li>
-				}
-			</ul>
+			<div>
+				<p class="label">Metrics</p>
+				<ul data-testid="report-metrics">
+					for _, m := range b.Metrics {
+						<li data-testid="report-metric">
+							{ m.Metric.Name }:
+							if m.Read {
+								{ fmtNum(m.Current) }
+							} else {
+								no reading yet
+							}
+							{ " against a target of " }{ fmtNum(m.Metric.Target) } { m.Metric.Unit } by { fmtDate(m.Metric.TargetDate) }
+							{ " (baseline " }{ fmtNum(m.Metric.Baseline) }, { m.Metric.Direction })
+						</li>
+					}
+				</ul>
+			</div>
 		}
 		if b.RolledUp.Present || b.RolledUp.StaleChildren > 0 {
 			<p data-testid="report-rollup">
@@ -420,6 +466,46 @@ templ reportBlock(b domain.ReportBlock, d discussion) {
 		}
 		@goalDiscussion(b.Goal.ID, d)
 	</article>
+}
+
+// healthClass is the badge colour for a Health; no Health yet is neutral.
+func healthClass(health string) string {
+	switch health {
+	case domain.HealthRed:
+		return "r"
+	case domain.HealthYellow:
+		return "y"
+	case domain.HealthGreen:
+		return "g"
+	}
+	return "lc"
+}
+
+// badgeClass is a report badge's colour: Stale in its own colour, Ownerless as
+// prominent as Red, a New Date as a warning, and the rest neutral.
+func badgeClass(badge string) string {
+	switch badge {
+	case domain.BadgeStale:
+		return "st"
+	case domain.BadgeOwnerless:
+		return "r"
+	case domain.BadgeNewDate:
+		return "y"
+	}
+	return "lc"
+}
+
+// pathOverdueAt reports whether an Active exception's Path to Green had missed
+// its target date as of asOf — the day it was published, or today on the
+// draft (CONTEXT.md: Path to Green).
+func pathOverdueAt(b domain.ReportBlock, asOf time.Time) bool {
+	if b.Goal.Lifecycle != domain.LifecycleActive || b.PathTargetDate.IsZero() {
+		return false
+	}
+	if b.Health != domain.HealthRed && b.Health != domain.HealthYellow {
+		return false
+	}
+	return fmtDate(asOf.UTC()) > fmtDate(b.PathTargetDate)
 }
 
 // healthTile is one count on a Report's Health summary.
