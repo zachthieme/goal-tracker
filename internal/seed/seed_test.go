@@ -53,6 +53,7 @@ func TestSeededOrg(t *testing.T) {
 	h := seeded(t)
 	t.Run("about 50 Goals across teams and three levels", func(t *testing.T) { orgAcrossTeamsAndThreeLevels(t, h) })
 	t.Run("Check-in history with mixed Health", func(t *testing.T) { checkinHistoryWithMixedHealth(t, h) })
+	t.Run("Date Slips", func(t *testing.T) { dateSlips(t, h) })
 }
 
 // The seed builds a realistic org: about 50 Goals spread across several teams
@@ -142,5 +143,46 @@ func checkinHistoryWithMixedHealth(t *testing.T, h *testsupport.Harness) {
 		if health[want] == 0 {
 			t.Errorf("want some Goals currently %s, got %v", want, health)
 		}
+	}
+}
+
+// Some Goals' delivery dates have slipped and some Milestones' dates have
+// moved, each Date Slip moving the date later with a reason, and the Goal's
+// delivery date now reads as the latest slip's new date.
+func dateSlips(t *testing.T, h *testsupport.Harness) {
+	ctx := context.Background()
+	var deliverySlipped, milestoneSlipped int
+	for _, g := range listGoals(t, h) {
+		slips, err := h.Service.ListDateSlips(ctx, g.ID)
+		if err != nil {
+			t.Fatalf("ListDateSlips: %v", err)
+		}
+		var lastDelivery time.Time
+		var delivery, milestone bool
+		for _, s := range slips {
+			if s.Reason == "" || !s.NewDate.After(s.OldDate) {
+				t.Errorf("Goal %q: want each Date Slip later and with a reason, got %+v", g.Title, s)
+			}
+			if s.MilestoneID == 0 {
+				delivery, lastDelivery = true, s.NewDate
+			} else {
+				milestone = true
+			}
+		}
+		if delivery {
+			deliverySlipped++
+			if !g.DeliveryDate.Equal(lastDelivery) {
+				t.Errorf("Goal %q: delivery date %v, want the last slip's %v", g.Title, g.DeliveryDate, lastDelivery)
+			}
+		}
+		if milestone {
+			milestoneSlipped++
+		}
+	}
+	if deliverySlipped < 3 {
+		t.Errorf("want several Goals whose delivery date slipped, got %d", deliverySlipped)
+	}
+	if milestoneSlipped < 3 {
+		t.Errorf("want several Goals with a Milestone date slip, got %d", milestoneSlipped)
 	}
 }

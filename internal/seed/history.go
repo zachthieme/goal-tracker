@@ -93,10 +93,32 @@ func (h *history) checkIn(ctx context.Context, g *plannedGoal, w int) error {
 	if err != nil {
 		return err
 	}
+	behind := g.profile == troubled && w >= g.turn
 	for _, m := range milestones {
-		if m.Status == domain.MilestonePlanned && !m.TargetDate.After(today) {
-			in.Milestones = append(in.Milestones, domain.MilestoneChangeInput{MilestoneID: m.ID, Status: domain.MilestoneDone})
+		if m.Status != domain.MilestonePlanned || m.TargetDate.After(today) {
+			continue
 		}
+		// A troubled project moves each Milestone that comes due while it is
+		// behind, once; otherwise the Milestone is done.
+		if behind && !g.slipped[m.ID] {
+			if g.slipped == nil {
+				g.slipped = map[int64]bool{}
+			}
+			g.slipped[m.ID] = true
+			in.Milestones = append(in.Milestones, domain.MilestoneChangeInput{
+				MilestoneID: m.ID,
+				TargetDate:  m.TargetDate.AddDate(0, 0, 7*(1+h.rng.IntN(2))),
+				DateReason:  pick(h.rng, slipReasons),
+			})
+			continue
+		}
+		in.Milestones = append(in.Milestones, domain.MilestoneChangeInput{MilestoneID: m.ID, Status: domain.MilestoneDone})
+	}
+	// The week a troubled project turns, its Owner moves the delivery date.
+	if g.profile == troubled && w == g.turn && !g.ongoing {
+		g.delivery = g.delivery.AddDate(0, 0, 7*(2+h.rng.IntN(3)))
+		in.DeliveryDate = g.delivery
+		in.DeliveryDateReason = pick(h.rng, slipReasons)
 	}
 
 	if g.level < 3 {
@@ -198,6 +220,14 @@ var pathsToGreen = []string{
 	"Escalating the dependency at the next staff meeting; need a decision on priority.",
 	"Run the migration in two phases so the first half can ship on its own.",
 	"Ask leadership to trade one of this quarter's smaller Goals for the capacity.",
+}
+
+var slipReasons = []string{
+	"A dependency from another team landed late.",
+	"Security review found issues we have to fix before launch.",
+	"Lost a week to an incident on the critical path.",
+	"Scope grew after customer interviews.",
+	"Vendor contract took longer to sign than planned.",
 }
 
 var explanations = []string{

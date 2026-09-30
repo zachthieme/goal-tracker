@@ -117,6 +117,7 @@ type plannedGoal struct {
 	id      int64
 	ownerID int64
 	metrics []domain.Metric
+	slipped map[int64]bool // Milestones whose date has moved
 }
 
 type plannedMilestone struct {
