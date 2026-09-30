@@ -91,6 +91,64 @@ func TestSmokeNoChangeCheckinButton(t *testing.T) {
 	}
 }
 
+// An Owner records a Metric reading and a Highlight in a Check-in through the
+// web form: both are persisted, and the Goal page then shows the Metric's trend
+// value against its target and the Highlight. This is the readings/Highlight
+// smoke test (ticket #6).
+func TestSmokeCheckinRecordsReadingAndHighlight(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Cut latency", "Faster checkout lifts conversion.")
+	metric, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+		GoalID:     goal.ID,
+		Name:       "p95 checkout latency",
+		Unit:       "ms",
+		Direction:  domain.MetricDown,
+		Baseline:   1200,
+		Target:     400,
+		TargetDate: h.Clock.Now().AddDate(0, 6, 0),
+	})
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	resp := postForm(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":                             {domain.HealthGreen},
+		"status":                             {"On track."},
+		fmt.Sprintf("reading_%d", metric.ID): {"850"},
+		"highlight_kind":                     {domain.HighlightAccomplishment},
+		"highlight_note":                     {"Shipped the caching layer."},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("submit check-in: status %d", resp.StatusCode)
+	}
+
+	readings, err := h.Service.ListMetricReadings(context.Background(), metric.ID)
+	if err != nil {
+		t.Fatalf("ListMetricReadings: %v", err)
+	}
+	if len(readings) != 1 || readings[0].Value != 850 {
+		t.Fatalf("readings = %+v, want one reading of 850", readings)
+	}
+	highlights, err := h.Service.ListHighlightsByGoal(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ListHighlightsByGoal: %v", err)
+	}
+	if len(highlights) != 1 || highlights[0].Note != "Shipped the caching layer." {
+		t.Fatalf("highlights = %+v, want the Accomplishment just recorded", highlights)
+	}
+
+	page := getBody(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	for _, want := range []string{"850", "Shipped the caching layer.", domain.HighlightAccomplishment} {
+		if !strings.Contains(page, want) {
+			t.Errorf("Goal page missing %q; body:\n%s", want, page)
+		}
+	}
+}
+
 // postFormHX posts a form with the HX-Request header set, as htmx does, and
 // returns the body and status without following redirects or asserting 200.
 func postFormHX(t *testing.T, client *http.Client, rawURL string, form url.Values) (string, int) {

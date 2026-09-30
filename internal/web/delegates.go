@@ -57,10 +57,15 @@ func (s *Server) handleDelegatePage(w http.ResponseWriter, r *http.Request, curr
 			http.Error(w, "could not compute rolled-up health", http.StatusInternalServerError)
 			return
 		}
+		metrics, err := s.svc.ListMetrics(r.Context(), g.ID)
+		if err != nil {
+			http.Error(w, "could not load metrics", http.StatusInternalServerError)
+			return
+		}
 		items = append(items, delegatedGoal{
 			Goal:   g,
 			Latest: latestPtr,
-			Form:   checkinFormFromLatest(g.ID, latestPtr, rollup),
+			Form:   checkinFormFromLatest(g.ID, latestPtr, rollup, metrics),
 		})
 	}
 	render(w, r, http.StatusOK, delegatePage(&current, items))

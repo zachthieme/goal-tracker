@@ -154,7 +154,11 @@ templ goalPage(current *domain.Account, v goalView) {
 		</section>
 		<section data-testid="goal-metrics">
 			<h2>Metrics</h2>
-			@metricList(v.Metrics, owner)
+			@metricList(v.Trends, owner)
+		</section>
+		<section data-testid="goal-highlights">
+			<h2>Highlights</h2>
+			@highlightList(v.Highlights)
 		</section>
 		<section data-testid="goal-contributors">
 			<h2>Contributors</h2>
@@ -425,21 +429,59 @@ templ milestoneList(milestones []domain.Milestone, owner bool) {
 	</ul>
 }
 
-// metricList lists a Goal's Metrics; the Owner gets an inline edit form on each.
-templ metricList(metrics []domain.Metric, owner bool) {
+// metricList lists a Goal's Metrics with each Metric's trend over time against
+// its target (CONTEXT.md: the Goal page shows each Metric's trend); the Owner
+// gets an inline edit form on each.
+templ metricList(trends []metricTrend, owner bool) {
 	<ul>
-		if len(metrics) == 0 {
+		if len(trends) == 0 {
 			<li data-testid="no-metrics">No Metrics yet.</li>
 		}
-		for _, m := range metrics {
-			<li>
+		for _, t := range trends {
+			{{ m := t.Metric }}
+			<li data-testid="goal-metric">
 				<span>{ m.Name }: { fmtNum(m.Baseline) } → { fmtNum(m.Target) } { m.Unit } ({ m.Direction }) by { fmtDate(m.TargetDate) }</span>
+				@metricTrendReadings(t)
 				if owner {
 					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/metrics/%d", m.ID)) } style="display:inline">
 						@metricFields(m)
 						<button type="submit">Save</button>
 					</form>
 				}
+			</li>
+		}
+	</ul>
+}
+
+// metricTrendReadings shows a Metric's readings over time against its target, so
+// the reader can see the trend (CONTEXT.md: Metric - its current value is
+// recorded at each Check-in).
+templ metricTrendReadings(t metricTrend) {
+	{{ m := t.Metric }}
+	<ol data-testid="metric-trend">
+		if len(t.Readings) == 0 {
+			<li data-testid="no-readings">No readings yet.</li>
+		}
+		for _, rd := range t.Readings {
+			<li data-testid="metric-reading">
+				<span>{ rd.CreatedAt.Format("2006-01-02") }: { fmtNum(rd.Value) } { m.Unit }</span>
+				<span> (target { fmtNum(m.Target) })</span>
+			</li>
+		}
+	</ol>
+}
+
+// highlightList shows a Goal's Highlights, newest first, each with its kind,
+// note, the Owner credited, and when it was flagged (CONTEXT.md: Highlight).
+templ highlightList(highlights []domain.Highlight) {
+	<ul>
+		if len(highlights) == 0 {
+			<li data-testid="no-highlights">No Highlights yet.</li>
+		}
+		for _, hl := range highlights {
+			<li data-testid="highlight">
+				<strong>{ hl.Kind }</strong>: { hl.Note }
+				<span> — { hl.Owner.Email } at { hl.CreatedAt.Format("2006-01-02 15:04") }</span>
 			</li>
 		}
 	</ul>

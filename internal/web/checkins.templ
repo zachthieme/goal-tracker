@@ -21,15 +21,39 @@ type checkinFormData struct {
 	// only when their Health differs from the Rolled-up Health.
 	RolledUp    domain.RolledUpHealth
 	Explanation string
-	Error       string
+	// Metrics are the Goal's Metrics, one reading input each (CONTEXT.md: a
+	// Metric's current value is recorded at each Check-in). Readings holds what
+	// the reader typed, keyed by Metric ID, so an error re-render keeps it.
+	Metrics  []domain.Metric
+	Readings map[int64]string
+	// Highlight is the optional Highlight the reader flagged (CONTEXT.md:
+	// Highlight). Its Kind is empty when nothing was flagged.
+	Highlight highlightFormData
+	Error     string
+}
+
+// highlightFormData is the Check-in form's optional Highlight: its kind (empty
+// for none) and note.
+type highlightFormData struct {
+	Kind string
+	Note string
+}
+
+// reading returns what the reader typed for a Metric's reading, for prefilling
+// the input on an error re-render.
+func (d checkinFormData) reading(metricID int64) string {
+	if d.Readings == nil {
+		return ""
+	}
+	return d.Readings[metricID]
 }
 
 // checkinFormFromLatest prefills the Check-in form from a Goal's latest Check-in,
 // or with a fresh Green form when there is none (CONTEXT.md: the form is
 // pre-filled from the latest Check-in). It also carries the Rolled-up Health so
 // the form can show it beside the Owner's Health.
-func checkinFormFromLatest(goalID int64, latest *domain.Checkin, rollup domain.RolledUpHealth) checkinFormData {
-	d := checkinFormData{GoalID: goalID, Health: domain.HealthGreen, RolledUp: rollup}
+func checkinFormFromLatest(goalID int64, latest *domain.Checkin, rollup domain.RolledUpHealth, metrics []domain.Metric) checkinFormData {
+	d := checkinFormData{GoalID: goalID, Health: domain.HealthGreen, RolledUp: rollup, Metrics: metrics}
 	if latest != nil {
 		d.Health = latest.Health
 		d.Status = latest.Status
@@ -82,7 +106,7 @@ templ checkinSection(v goalView, canCheckin bool) {
 			}
 		}
 		if canCheckin && g.Lifecycle == domain.LifecycleActive {
-			@checkinForm(checkinFormFromLatest(g.ID, v.LatestCheckin, v.RolledUp))
+			@checkinForm(checkinFormFromLatest(g.ID, v.LatestCheckin, v.RolledUp, v.Metrics))
 			if v.LatestCheckin != nil {
 				<form
 					data-testid="no-change-checkin"
@@ -161,6 +185,38 @@ templ checkinForm(d checkinFormData) {
 			if d.Error != "" {
 				<p data-testid="checkin-error" role="alert">{ d.Error }</p>
 			}
+		</fieldset>
+		if len(d.Metrics) > 0 {
+			<fieldset data-testid="checkin-readings">
+				<legend>Metric readings</legend>
+				for _, m := range d.Metrics {
+					<label>
+						{ m.Name } ({ m.Unit }) — target { fmtNum(m.Target) }
+						<input
+							type="number"
+							step="any"
+							name={ fmt.Sprintf("reading_%d", m.ID) }
+							value={ d.reading(m.ID) }
+						/>
+					</label>
+				}
+			</fieldset>
+		}
+		<fieldset data-testid="checkin-highlight">
+			<legend>Highlight (optional)</legend>
+			<label>
+				Kind
+				<select name="highlight_kind">
+					<option value="" selected?={ d.Highlight.Kind == "" }>None</option>
+					<option value={ domain.HighlightInsight } selected?={ d.Highlight.Kind == domain.HighlightInsight }>Insight</option>
+					<option value={ domain.HighlightAccomplishment } selected?={ d.Highlight.Kind == domain.HighlightAccomplishment }>Accomplishment</option>
+					<option value={ domain.HighlightMiss } selected?={ d.Highlight.Kind == domain.HighlightMiss }>Miss</option>
+				</select>
+			</label>
+			<label>
+				Note
+				<textarea name="highlight_note">{ d.Highlight.Note }</textarea>
+			</label>
 		</fieldset>
 		<button type="submit">Submit Check-in</button>
 	</form>
