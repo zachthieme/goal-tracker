@@ -294,27 +294,27 @@ func checkinFormFromLatest(v goalView) checkinFormData {
 	return d
 }
 
-// checkinSection shows a Goal's current Health, status, and Path to Green (from
-// its latest Check-in), a link to the Check-in page and a one-click "no change"
-// button, and the immutable Check-in history. canCheckin is true for whoever may
-// write a Check-in — the Owner or a Delegate (CONTEXT.md: Check-in, Delegate).
-templ checkinSection(v goalView, canCheckin bool) {
+// checkinSection is the Goal page's Latest status card: the Goal's current
+// Health, status, and Path to Green from its latest Check-in, its Rolled-up
+// Health and any explanation of the difference, and who wrote the Check-in and
+// when (CONTEXT.md: Check-in, Rolled-up Health).
+templ checkinSection(v goalView) {
 	{{ g := v.Goal }}
-	<section data-testid="goal-checkins">
+	<section data-testid="goal-checkins" class="card gp-card">
 		@checkinStyles()
-		<h2>Check-ins</h2>
+		<h2>Latest status</h2>
 		if g.Lifecycle != domain.LifecycleActive && g.Lifecycle != domain.LifecycleProposed {
-			<p data-testid="goal-no-health">{ fmt.Sprintf("A %s Goal has no Health.", g.Lifecycle) }</p>
+			<p data-testid="goal-no-health" class="muted">{ fmt.Sprintf("A %s Goal has no Health.", g.Lifecycle) }</p>
 			if v.LatestCheckin != nil {
 				<p data-testid="goal-status">{ v.LatestCheckin.Status }</p>
+				@checkinByline(*v.LatestCheckin)
 			}
 		} else if v.LatestCheckin != nil {
 			<p>
-				<strong>Current Health:</strong>
 				<span class={ "badge", healthClass(v.LatestCheckin.Health) }><span class="dot"></span><span data-testid="goal-health">{ v.LatestCheckin.Health }</span></span>
 				if v.RolledUp.Present {
 					· <strong>Rolled-up Health:</strong> <span data-testid="goal-rollup-health">{ v.RolledUp.Health }</span>
-					<span>(worst among Active children)</span>
+					<span class="muted">(worst among Active children)</span>
 				}
 				@rolledUpStale(v.RolledUp)
 			</p>
@@ -329,53 +329,71 @@ templ checkinSection(v goalView, canCheckin bool) {
 					<strong>Why this differs from the Rolled-up Health:</strong> { v.LatestCheckin.Explanation }
 				</p>
 			}
+			@checkinByline(*v.LatestCheckin)
 		} else {
 			if g.Lifecycle == domain.LifecycleProposed {
-				<p data-testid="goal-no-health">A Proposed Goal has no Health until it is Active.</p>
+				<p data-testid="goal-no-health" class="muted">A Proposed Goal has no Health until it is Active.</p>
 			} else {
-				<p data-testid="goal-no-health">No Check-ins yet.</p>
+				<p data-testid="goal-no-health" class="muted">No Check-ins yet.</p>
 			}
 			if v.RolledUp.Present || v.RolledUp.StaleChildren > 0 {
 				<p>
 					if v.RolledUp.Present {
 						<strong>Rolled-up Health:</strong> <span data-testid="goal-rollup-health">{ v.RolledUp.Health }</span>
-						<span>(worst among Active children)</span>
+						<span class="muted">(worst among Active children)</span>
 					}
 					@rolledUpStale(v.RolledUp)
 				</p>
 			}
 		}
-		<h3>Check-in history</h3>
-		<ul class="checkin-history" data-testid="checkin-history">
-			if len(v.Checkins) == 0 {
-				<li data-testid="no-checkins">No Check-ins yet.</li>
-			}
-			for _, c := range v.Checkins {
-				<li data-testid="checkin">
-					<span class="muted small">{ c.CreatedAt.Format("2006-01-02 15:04") }</span>
-					if c.Health != "" {
-						<span class={ "badge", healthClass(c.Health) }><span class="dot"></span>{ c.Health }</span>
-					}
-					<span>{ c.Status }</span>
-					if c.LifecycleChange.Changed() {
-						<span data-testid="checkin-lifecycle">
-							{ fmt.Sprintf(" — Lifecycle: %s → %s", c.LifecycleChange.From, c.LifecycleChange.To) }
-							if c.LifecycleChange.Reason != "" {
-								{ ": " + c.LifecycleChange.Reason }
-							}
-							if c.LifecycleChange.Outcome != "" {
-								{ " — Outcome: " + c.LifecycleChange.Outcome }
-							}
-						</span>
-					}
-					if c.PathToGreen != "" {
-						<span>— Path to Green: { c.PathToGreen } (by { fmtDate(c.PathTargetDate) })</span>
-					}
-					<span class="muted small">— by { c.Author.Email }, owner { c.Owner.Email }</span>
-				</li>
-			}
-		</ul>
 	</section>
+}
+
+// checkinByline says who wrote a Check-in and when, and whom a Delegate wrote
+// it for (CONTEXT.md: each Check-in records who wrote it).
+templ checkinByline(c domain.Checkin) {
+	<p class="muted small">
+		if c.Author.ID != c.Owner.ID {
+			{ fmt.Sprintf("%s for %s · %s", c.Author.Email, c.Owner.Email, c.CreatedAt.Format("2006-01-02")) }
+		} else {
+			{ fmt.Sprintf("%s · %s", c.Author.Email, c.CreatedAt.Format("2006-01-02")) }
+		}
+	</p>
+}
+
+// checkinHistory is a Goal's immutable Check-in history, newest first, each
+// with its Health, status, any Lifecycle change and Path to Green, and who wrote
+// it (CONTEXT.md: Check-in).
+templ checkinHistory(checkins []domain.Checkin) {
+	<ul class="checkin-history" data-testid="checkin-history">
+		if len(checkins) == 0 {
+			<li data-testid="no-checkins">No Check-ins yet.</li>
+		}
+		for _, c := range checkins {
+			<li data-testid="checkin">
+				<span class="muted small">{ c.CreatedAt.Format("2006-01-02 15:04") }</span>
+				if c.Health != "" {
+					<span class={ "badge", healthClass(c.Health) }><span class="dot"></span>{ c.Health }</span>
+				}
+				<span>{ c.Status }</span>
+				if c.LifecycleChange.Changed() {
+					<span data-testid="checkin-lifecycle">
+						{ fmt.Sprintf(" — Lifecycle: %s → %s", c.LifecycleChange.From, c.LifecycleChange.To) }
+						if c.LifecycleChange.Reason != "" {
+							{ ": " + c.LifecycleChange.Reason }
+						}
+						if c.LifecycleChange.Outcome != "" {
+							{ " — Outcome: " + c.LifecycleChange.Outcome }
+						}
+					</span>
+				}
+				if c.PathToGreen != "" {
+					<span>— Path to Green: { c.PathToGreen } (by { fmtDate(c.PathTargetDate) })</span>
+				}
+				<span class="muted small">— by { c.Author.Email }, owner { c.Owner.Email }</span>
+			</li>
+		}
+	</ul>
 }
 
 // noChangeCheckinButton records a Check-in repeating the Goal's previous values
@@ -586,8 +604,6 @@ templ checkinStyles() {
 			.checkin-submit{display:flex;justify-content:flex-end;gap:12px}
 			.checkin-history{list-style:none;padding:0;margin:0}
 			.checkin-history li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #EEEFEA}
-			.checkin-actions{display:flex;gap:12px;align-items:center}
-			.checkin-actions form{margin:0}
 		</style>
 	}
 }

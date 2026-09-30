@@ -244,7 +244,7 @@ templ goalPage(current *domain.Account, v goalView) {
 				if owner && g.Lifecycle == domain.LifecycleProposed {
 					@defineGoal(v)
 				}
-				@checkinSection(v, v.CanCheckin)
+				@checkinSection(v)
 				<article data-testid="goal" class="card gp-card">
 					<h2><span class="help" title="The customer problem this Goal addresses and what is expected to change when it succeeds.">So What</span></h2>
 					<p data-testid="goal-so-what">{ g.SoWhat }</p>
@@ -261,21 +261,34 @@ templ goalPage(current *domain.Account, v goalView) {
 					<h2>Highlights</h2>
 					@highlightList(v.Highlights)
 				</section>
-				<section data-testid="goal-date-slips">
-					<h2>Date Slips</h2>
-					@dateSlipList(v)
-				</section>
-				<section data-testid="goal-so-what-history">
-					<h2>So What history</h2>
-					<ul>
-						for _, rev := range v.Revisions {
-							<li>
-								<span>{ rev.SoWhat }</span>
-								<span>— { rev.Author.Email } at { rev.CreatedAt.Format("2006-01-02 15:04") }</span>
-							</li>
-						}
-					</ul>
-				</section>
+				<div data-testid="goal-history" class="card gp-card">
+					<h2>History</h2>
+					<section data-testid="goal-checkin-history">
+						<details>
+							<summary>{ fmt.Sprintf("Check-in history (%d)", len(v.Checkins)) }</summary>
+							@checkinHistory(v.Checkins)
+						</details>
+					</section>
+					<section data-testid="goal-date-slips">
+						<details>
+							<summary>{ fmt.Sprintf("Date Slips (%d)", len(v.DateSlips)) }</summary>
+							@dateSlipList(v)
+						</details>
+					</section>
+					<section data-testid="goal-so-what-history">
+						<details>
+							<summary>{ fmt.Sprintf("So What history (%d)", len(v.Revisions)) }</summary>
+							<ul class="gp-list">
+								for _, rev := range v.Revisions {
+									<li>
+										<span>{ rev.SoWhat }</span>
+										<span class="muted small">— { rev.Author.Email } at { rev.CreatedAt.Format("2006-01-02 15:04") }</span>
+									</li>
+								}
+							</ul>
+						</details>
+					</section>
+				</div>
 				@addChildGoal(v)
 			</div>
 			<aside data-testid="goal-sidebar" class="gp-col">

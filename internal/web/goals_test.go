@@ -1083,3 +1083,61 @@ func TestGoalPageMetricCardsShowASparkline(t *testing.T) {
 		t.Errorf("a non-Owner is offered the Metric edit form")
 	}
 }
+
+// The Goal page's history — Check-ins, Date Slips and So What revisions — sits
+// under History, each collapsed with its count in the summary.
+func TestGoalPageHistoryIsCollapsedWithCounts(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "Still fine.", "", time.Time{})
+	if _, err := h.Service.EditSoWhat(t.Context(), goal.ID, "Outages cost trust and money.", sam.ID); err != nil {
+		t.Fatalf("EditSoWhat: %v", err)
+	}
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	history := between(t, page, `data-testid="goal-history"`, "</aside>")
+	for _, tc := range []struct{ testID, summary string }{
+		{"goal-checkin-history", "Check-in history (2)"},
+		{"goal-date-slips", "Date Slips (0)"},
+		{"goal-so-what-history", "So What history (2)"}, // the original and the edit
+	} {
+		section := pageElement(t, history, "section", tc.testID)
+		details := between(t, section, "<details", "</summary>")
+		if strings.Contains(openTag(details), "open") {
+			t.Errorf("%s is not collapsed: %s", tc.testID, openTag(details))
+		}
+		if !strings.Contains(details, tc.summary) {
+			t.Errorf("%s summary lacks %q: %s", tc.testID, tc.summary, details)
+		}
+	}
+	if !strings.Contains(pageElement(t, history, "section", "goal-checkin-history"), `data-testid="checkin-history"`) {
+		t.Errorf("Check-in history section lacks the history list")
+	}
+}
+
+// The Latest status card leads the main column with the latest Check-in's
+// Health, status and Path to Green, and who wrote it and when.
+func TestGoalPageLatestStatusCard(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Wobbling.", "Add a second on-call.", testsupport.Epoch.AddDate(0, 2, 0))
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	status := pageElement(t, page, "section", "goal-checkins")
+	if !strings.Contains(openTag(status), "card") {
+		t.Errorf("Latest status is not a card: %s", openTag(status))
+	}
+	for _, want := range []string{"Latest status", "Wobbling.", "Add a second on-call.", "sam@example.com", "2026-01-02"} {
+		if !strings.Contains(status, want) {
+			t.Errorf("Latest status lacks %q:\n%s", want, status)
+		}
+	}
+	if strings.Contains(status, `data-testid="checkin-history"`) {
+		t.Errorf("Latest status still carries the history")
+	}
+}
