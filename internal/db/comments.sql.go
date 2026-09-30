@@ -9,6 +9,66 @@ import (
 	"context"
 )
 
+const closeActionItem = `-- name: CloseActionItem :exec
+UPDATE action_items SET closed_at = ?, closing_note = ? WHERE id = ? AND closed_at = ''
+`
+
+type CloseActionItemParams struct {
+	ClosedAt    string
+	ClosingNote string
+	ID          int64
+}
+
+func (q *Queries) CloseActionItem(ctx context.Context, arg CloseActionItemParams) error {
+	_, err := q.db.ExecContext(ctx, closeActionItem, arg.ClosedAt, arg.ClosingNote, arg.ID)
+	return err
+}
+
+const createActionItem = `-- name: CreateActionItem :one
+INSERT INTO action_items (report_definition_id, publication_id, comment_id, text, owner_id, due_date, created_by, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, report_definition_id, publication_id, comment_id, text, owner_id, due_date, created_by, created_at, closed_at, closing_note
+`
+
+type CreateActionItemParams struct {
+	ReportDefinitionID int64
+	PublicationID      int64
+	CommentID          int64
+	Text               string
+	OwnerID            int64
+	DueDate            string
+	CreatedBy          int64
+	CreatedAt          string
+}
+
+func (q *Queries) CreateActionItem(ctx context.Context, arg CreateActionItemParams) (ActionItem, error) {
+	row := q.db.QueryRowContext(ctx, createActionItem,
+		arg.ReportDefinitionID,
+		arg.PublicationID,
+		arg.CommentID,
+		arg.Text,
+		arg.OwnerID,
+		arg.DueDate,
+		arg.CreatedBy,
+		arg.CreatedAt,
+	)
+	var i ActionItem
+	err := row.Scan(
+		&i.ID,
+		&i.ReportDefinitionID,
+		&i.PublicationID,
+		&i.CommentID,
+		&i.Text,
+		&i.OwnerID,
+		&i.DueDate,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.ClosedAt,
+		&i.ClosingNote,
+	)
+	return i, err
+}
+
 const createComment = `-- name: CreateComment :one
 INSERT INTO comments (publication_id, goal_id, parent_id, author_id, body, created_at)
 VALUES (?, ?, ?, ?, ?, ?)
@@ -46,6 +106,29 @@ func (q *Queries) CreateComment(ctx context.Context, arg CreateCommentParams) (C
 	return i, err
 }
 
+const getActionItem = `-- name: GetActionItem :one
+SELECT id, report_definition_id, publication_id, comment_id, text, owner_id, due_date, created_by, created_at, closed_at, closing_note FROM action_items WHERE id = ? LIMIT 1
+`
+
+func (q *Queries) GetActionItem(ctx context.Context, id int64) (ActionItem, error) {
+	row := q.db.QueryRowContext(ctx, getActionItem, id)
+	var i ActionItem
+	err := row.Scan(
+		&i.ID,
+		&i.ReportDefinitionID,
+		&i.PublicationID,
+		&i.CommentID,
+		&i.Text,
+		&i.OwnerID,
+		&i.DueDate,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.ClosedAt,
+		&i.ClosingNote,
+	)
+	return i, err
+}
+
 const getComment = `-- name: GetComment :one
 SELECT comments.id, comments.publication_id, comments.goal_id, comments.parent_id, comments.author_id, comments.body, comments.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
 FROM comments
@@ -77,6 +160,90 @@ func (q *Queries) GetComment(ctx context.Context, id int64) (GetCommentRow, erro
 		&i.Account.Departed,
 	)
 	return i, err
+}
+
+const listOpenActionItems = `-- name: ListOpenActionItems :many
+SELECT id, report_definition_id, publication_id, comment_id, text, owner_id, due_date, created_by, created_at, closed_at, closing_note FROM action_items
+WHERE report_definition_id = ? AND closed_at = ''
+ORDER BY due_date, id
+`
+
+// A Report Definition's open Action Items, soonest due first.
+func (q *Queries) ListOpenActionItems(ctx context.Context, reportDefinitionID int64) ([]ActionItem, error) {
+	rows, err := q.db.QueryContext(ctx, listOpenActionItems, reportDefinitionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ActionItem
+	for rows.Next() {
+		var i ActionItem
+		if err := rows.Scan(
+			&i.ID,
+			&i.ReportDefinitionID,
+			&i.PublicationID,
+			&i.CommentID,
+			&i.Text,
+			&i.OwnerID,
+			&i.DueDate,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.ClosedAt,
+			&i.ClosingNote,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPublicationActionItems = `-- name: ListPublicationActionItems :many
+SELECT id, report_definition_id, publication_id, comment_id, text, owner_id, due_date, created_by, created_at, closed_at, closing_note FROM action_items
+WHERE publication_id = ?
+ORDER BY id
+`
+
+// The Action Items raised on one publication, in the order they were raised.
+func (q *Queries) ListPublicationActionItems(ctx context.Context, publicationID int64) ([]ActionItem, error) {
+	rows, err := q.db.QueryContext(ctx, listPublicationActionItems, publicationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ActionItem
+	for rows.Next() {
+		var i ActionItem
+		if err := rows.Scan(
+			&i.ID,
+			&i.ReportDefinitionID,
+			&i.PublicationID,
+			&i.CommentID,
+			&i.Text,
+			&i.OwnerID,
+			&i.DueDate,
+			&i.CreatedBy,
+			&i.CreatedAt,
+			&i.ClosedAt,
+			&i.ClosingNote,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listPublicationComments = `-- name: ListPublicationComments :many

@@ -27,3 +27,26 @@ FROM comments
 JOIN accounts ON accounts.id = comments.author_id
 WHERE comments.id = sqlc.arg(thread_id) OR comments.parent_id = sqlc.arg(thread_id)
 ORDER BY accounts.email;
+
+-- name: CreateActionItem :one
+INSERT INTO action_items (report_definition_id, publication_id, comment_id, text, owner_id, due_date, created_by, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: GetActionItem :one
+SELECT * FROM action_items WHERE id = ? LIMIT 1;
+
+-- name: CloseActionItem :exec
+UPDATE action_items SET closed_at = ?, closing_note = ? WHERE id = ? AND closed_at = '';
+
+-- name: ListOpenActionItems :many
+-- A Report Definition's open Action Items, soonest due first.
+SELECT * FROM action_items
+WHERE report_definition_id = ? AND closed_at = ''
+ORDER BY due_date, id;
+
+-- name: ListPublicationActionItems :many
+-- The Action Items raised on one publication, in the order they were raised.
+SELECT * FROM action_items
+WHERE publication_id = ?
+ORDER BY id;
