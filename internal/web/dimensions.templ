@@ -6,73 +6,117 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// dimensionsPage lists every Dimension with its values, and — for an Admin — the
-// controls to define a Dimension and to add, rename, and retire values
-// (CONTEXT.md: Admin defines Dimensions). Retired values stay listed, flagged.
+// confirmRetire is what Retire asks before retiring a Dimension value.
+const confirmRetire = "Retire this value? Goals that have it keep it, but it can no longer be assigned."
+
+// dimensionsPage lists every Dimension as a card of its values, and — for an
+// Admin — the controls to define a Dimension and, behind each card's Edit
+// toggle, to add, rename, and retire values (CONTEXT.md: Admin defines
+// Dimensions). Retired values stay listed, struck through.
 templ dimensionsPage(current *domain.Account, dims []domain.Dimension) {
 	{{ admin := current != nil && current.IsAdmin }}
 	@layout("Dimensions", current) {
-		<h1>Dimensions</h1>
+		@dimensionsStyles()
+		<header class="page-head">
+			<div>
+				<h1>Dimensions</h1>
+				<p class="muted">The Dimensions Goals are tagged with, and their values.</p>
+			</div>
+		</header>
 		if admin {
-			<section data-testid="create-dimension">
-				<h2>Define a Dimension</h2>
-				<form method="post" action="/dimensions">
-					<label>
-						Name
+			<details data-testid="create-dimension">
+				<summary class="btn primary">Define a Dimension</summary>
+				<form class="card dm-card" style="margin-top:12px" method="post" action="/dimensions">
+					<h2>Define a Dimension</h2>
+					<label class="field">
+						<span>Name</span>
 						<input type="text" name="name" required/>
 					</label>
-					<label>
-						Values (comma-separated)
+					<label class="field">
+						<span>Values <span class="hint">— comma-separated</span></span>
 						<input type="text" name="values" required/>
 					</label>
-					<button type="submit">Create Dimension</button>
+					<div>
+						<button type="submit" class="btn primary">Create Dimension</button>
+					</div>
 				</form>
-			</section>
+			</details>
 		}
-		<ul data-testid="dimensions">
+		<ul data-testid="dimensions" class="dm-list">
 			if len(dims) == 0 {
-				<li data-testid="no-dimensions">No Dimensions yet.</li>
+				<li data-testid="no-dimensions" class="card dm-card muted">No Dimensions yet.</li>
 			}
 			for _, d := range dims {
-				<li data-testid="dimension">
+				<li data-testid="dimension" class="card dm-card">
 					<h2>{ d.Name }</h2>
-					@dimensionValues(d, admin)
+					@dimensionValues(d)
 					if admin {
-						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/values", d.ID)) }>
-							<label>
-								Add a value
-								<input type="text" name="value" required/>
-							</label>
-							<button type="submit">Add value</button>
-						</form>
+						@dimensionEdit(d)
 					}
 				</li>
 			}
 		</ul>
-		<p><a href="/goals">Back to Goals</a></p>
 	}
 }
 
-// dimensionValues lists a Dimension's values, retired ones flagged; an Admin
-// gets a rename form and a retire button on each value still in use.
-templ dimensionValues(d domain.Dimension, admin bool) {
-	<ul>
+// dimensionValues shows a Dimension's values as tags, retired ones struck
+// through and muted.
+templ dimensionValues(d domain.Dimension) {
+	<ul class="dm-values">
 		for _, v := range d.Values {
 			<li data-testid="dimension-value">
-				<span>{ v.Value }</span>
 				if v.Retired {
-					<strong data-testid="retired"> — retired</strong>
-				}
-				if admin && !v.Retired {
-					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/rename", v.ID)) } style="display:inline">
-						<input type="text" name="value" value={ v.Value } required/>
-						<button type="submit">Rename</button>
-					</form>
-					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/retire", v.ID)) } style="display:inline">
-						<button type="submit">Retire</button>
-					</form>
+					<del class="tag muted">{ v.Value }</del>
+					<span data-testid="retired" class="muted small">retired</span>
+				} else {
+					<span class="tag">{ v.Value }</span>
 				}
 			</li>
 		}
 	</ul>
+}
+
+// dimensionEdit is an Admin's Edit toggle on a Dimension card: a rename form and
+// a Retire button on each value still in use, then a form to add a value.
+// Retire asks for confirmation first.
+templ dimensionEdit(d domain.Dimension) {
+	<details class="dm-edit">
+		<summary class="btn sm">Edit</summary>
+		<ul class="dm-rows">
+			for _, v := range d.Values {
+				if !v.Retired {
+					<li>
+						<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/rename", v.ID)) }>
+							<input type="text" name="value" value={ v.Value } aria-label={ "Rename " + v.Value } required/>
+							<button type="submit" class="btn sm">Rename</button>
+						</form>
+						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/retire", v.ID)) } onsubmit={ confirmScript(confirmRetire) }>
+							<button type="submit" class="btn danger sm">Retire</button>
+						</form>
+					</li>
+				}
+			}
+		</ul>
+		<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/values", d.ID)) }>
+			<input type="text" name="value" placeholder="New value" aria-label="Add a value" required/>
+			<button type="submit" class="btn sm">Add value</button>
+		</form>
+	</details>
+}
+
+// dimensionsStyles are the Dimensions page's own rules on top of app.css.
+templ dimensionsStyles() {
+	<style>
+		.dm-list,.dm-values,.dm-rows{list-style:none;margin:0;padding:0}
+		.dm-list{display:flex;flex-direction:column;gap:16px}
+		.dm-card{padding:20px;display:flex;flex-direction:column;gap:12px}
+		.dm-values{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+		.dm-values li{display:inline-flex;align-items:center;gap:6px}
+		del.tag{border-style:dashed}
+		.dm-edit summary{align-self:flex-start;width:max-content}
+		.dm-rows{display:flex;flex-direction:column;gap:8px;margin:12px 0}
+		.dm-rows li{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+		.dm-rows form{margin:0}
+		.dm-row{display:flex;gap:8px;align-items:center;margin:0}
+	</style>
 }

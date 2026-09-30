@@ -5,6 +5,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -62,6 +63,29 @@ func TestSignedInPersonLandsOnHome(t *testing.T) {
 		_ = resp.Body.Close()
 		if loc := resp.Header.Get("Location"); resp.StatusCode != http.StatusSeeOther || loc != "/home" {
 			t.Errorf("GET %s signed in: status %d to %q, want 303 to /home", path, resp.StatusCode, loc)
+		}
+	}
+}
+
+// The sign-in page is a single narrow card: the brand, the development sign-in
+// note, and the email field with its button.
+func TestSignInPageIsACentredCard(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	page := getBody(t, http.DefaultClient, ts.URL+"/signin")
+
+	at := strings.Index(page, `<form data-testid="signin-card"`)
+	if at < 0 {
+		t.Fatalf("the sign-in page has no card:\n%s", page)
+	}
+	card := page[at:strings.Index(page, "</form>")]
+	if !strings.Contains(openTag(card), `class="card`) {
+		t.Errorf("the sign-in form isn't a card: %s", openTag(card))
+	}
+	for _, want := range []string{"Goal Tracker", "Development sign-in", `type="email" name="email"`, `<button type="submit" class="btn primary`} {
+		if !strings.Contains(card, want) {
+			t.Errorf("the sign-in card lacks %s:\n%s", want, card)
 		}
 	}
 }

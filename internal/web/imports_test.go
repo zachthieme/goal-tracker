@@ -135,3 +135,37 @@ func postImportRaw(t *testing.T, client *http.Client, rawURL, filename, content,
 	}
 	return resp
 }
+
+// The import form is a card whose primary button is Dry run, beside Commit. The
+// report opens with its summary as an alert — red when rows have errors — then
+// a table of the rows with their errors.
+func TestImportReportIsAnAlertThenATable(t *testing.T) {
+	const badCSV = `Title,Owner,So What,Kind,Delivery Date
+Fine,owner@example.com,It matters.,Ongoing,
+,owner@example.com,No title here.,Sideways,
+`
+	h := testsupport.New(t, "admin@example.com")
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "admin@example.com")
+
+	form := pageElement(t, getBody(t, admin, ts.URL+"/imports"), "form", "import-form")
+	if !strings.Contains(openTag(form), `class="card`) {
+		t.Errorf("the import form isn't a card: %s", openTag(form))
+	}
+	if !strings.Contains(form, `class="btn primary" name="action" value="dry-run"`) || !strings.Contains(form, `value="commit">Commit</button>`) {
+		t.Errorf("the form lacks a primary Dry run and a Commit:\n%s", form)
+	}
+
+	body := postImport(t, admin, ts.URL+"/imports", "goals.csv", badCSV, "dry-run")
+	report := between(t, body, `data-testid="import-report"`, "")
+	summary := pageElement(t, report, "p", "import-summary")
+	if !strings.Contains(openTag(summary), `class="alert r"`) {
+		t.Errorf("a report with errors doesn't open with a red alert: %s", summary)
+	}
+	if !strings.Contains(report, "<table") || !strings.Contains(report, `<tr data-testid="import-row"`) {
+		t.Errorf("the report's rows aren't a table:\n%s", report)
+	}
+	if strings.Index(report, "import-summary") > strings.Index(report, "<table") {
+		t.Errorf("the summary doesn't come before the rows:\n%s", report)
+	}
+}

@@ -7,28 +7,35 @@ import (
 )
 
 // pendingHandoffsPage lists the Handoffs awaiting the current Account's decision
-// as the proposed new Owner, with accept and reject actions. A Handoff takes
-// effect only once accepted (CONTEXT.md: Handoff).
+// as the proposed new Owner, a card each with accept and reject actions; Reject
+// asks for confirmation. A Handoff takes effect only once accepted (CONTEXT.md:
+// Handoff).
 templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) {
 	@layout("Pending handoffs", current) {
-		<h1>Pending handoffs</h1>
-		<ul data-testid="pending-handoffs">
+		@pendingStyles()
+		<header class="page-head">
+			<div>
+				<h1>Pending handoffs</h1>
+				<p class="muted">Goals someone wants to hand to you. Nothing changes hands until you accept.</p>
+			</div>
+		</header>
+		<ul data-testid="pending-handoffs" class="pd-list">
 			if len(pending) == 0 {
-				<li data-testid="no-pending-handoffs">No pending handoffs.</li>
+				<li data-testid="no-pending-handoffs" class="card pd-row muted">No pending handoffs.</li>
 			}
 			for _, ho := range pending {
-				<li data-testid="pending-handoff">
-					<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)) }>{ ho.Goal.Title }</a>
-					<span> — { ho.From.Email } wants to hand this Goal to you</span>
-					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/accept", ho.ID)) } style="display:inline">
-						<button type="submit">Accept</button>
-					</form>
-					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/reject", ho.ID)) } style="display:inline">
-						<button type="submit">Reject</button>
-					</form>
+				<li data-testid="pending-handoff" class="card pd-row">
+					<p class="pd-what">
+						<span>
+							<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)) }>{ ho.Goal.Title }</a>
+							<span class="muted">— { ho.From.Email } wants to hand this Goal to you</span>
+						</span>
+					</p>
+					<div class="pd-actions">
+						@acceptReject(fmt.Sprintf("/handoffs/%d", ho.ID), "Reject this Handoff?")
+					</div>
 				</li>
 			}
 		</ul>
-		<p><a href="/goals">Back to Goals</a></p>
 	}
 }

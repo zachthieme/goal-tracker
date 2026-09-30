@@ -45,7 +45,7 @@ func TestTopBarMarksTheCurrentPage(t *testing.T) {
 	for _, tc := range []struct{ path, current string }{
 		{"/reports", "nav-reports"},
 		{"/home", "nav-home"},
-		{"/dimensions", "nav-dimensions"},
+		{"/dimensions", ""},
 		{"/goals", ""},
 	} {
 		page := getBody(t, client, ts.URL+tc.path)
@@ -58,7 +58,7 @@ func TestTopBarMarksTheCurrentPage(t *testing.T) {
 		if !strings.Contains(page, `<main class="page">`) {
 			t.Errorf("%s does not wrap its content in the page; body:\n%s", tc.path, page)
 		}
-		for _, item := range []string{"nav-home", "nav-dimensions", "nav-reports"} {
+		for _, item := range []string{"nav-home", "nav-risks", "nav-reports"} {
 			link := pageElement(t, page, "a", item)
 			marked := strings.Contains(link, `aria-current="page"`) && strings.Contains(link, `class="navitem on"`)
 			if item == tc.current && !marked {

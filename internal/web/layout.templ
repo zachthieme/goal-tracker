@@ -74,8 +74,10 @@ templ layout(title string, current *domain.Account) {
 				if current != nil {
 					@navItem("/home", "nav-home", "Home", needsYou(ctx))
 					@navItem("/risks", "nav-risks", "Risks", risks(ctx))
-					@navItem("/dimensions", "nav-dimensions", "Dimensions", 0)
 					@navItem("/reports", "nav-reports", "Reports", 0)
+					if current.IsAdmin {
+						@navItem("/admin", "nav-admin", "Admin", 0)
+					}
 					<div class="me">
 						<span data-testid="current-user">
 							Signed in as { current.Email }

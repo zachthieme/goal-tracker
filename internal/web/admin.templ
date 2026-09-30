@@ -1,0 +1,71 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// adminPage gathers the Admin tools: a card per tool, then the Ownerless Goals
+// waiting for an Admin to reassign them (CONTEXT.md: Ownerless).
+templ adminPage(current *domain.Account, ownerless []domain.Goal) {
+	@layout("Admin", current) {
+		@adminStyles()
+		<header class="page-head">
+			<div>
+				<h1>Admin</h1>
+				<p class="muted">The tools only an Admin uses.</p>
+			</div>
+		</header>
+		<nav class="ad-tools" aria-label="Admin tools">
+			@adminTool("admin-dimensions", "/dimensions", "Dimensions", "Define the Dimensions Goals are tagged with")
+			@adminTool("admin-imports", "/imports", "Import goals", "Load Goals from a CSV or XLSX spreadsheet")
+		</nav>
+		<section data-testid="admin-ownerless" class="ad-section">
+			<div>
+				<h2>Ownerless Goals</h2>
+				<p class="muted">Goals whose Owner has left the org, waiting for an Admin to reassign them on the Goal's page.</p>
+			</div>
+			<div class="card">
+				if len(ownerless) == 0 {
+					<p data-testid="admin-ownerless-empty" class="muted ad-empty">No Goals are waiting for reassignment.</p>
+				} else {
+					<table>
+						<thead>
+							<tr><th>Goal</th><th>Former Owner</th><th>Lifecycle</th></tr>
+						</thead>
+						<tbody>
+							for _, g := range ownerless {
+								<tr data-testid="admin-ownerless-goal">
+									<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></td>
+									<td>{ g.Owner.Email }</td>
+									<td><span class="badge lc">{ g.Lifecycle }</span></td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				}
+			</div>
+		</section>
+	}
+}
+
+// adminTool is a card linking to one Admin tool, saying what it's for.
+templ adminTool(testID, href, label, blurb string) {
+	<a data-testid={ testID } class="card ad-tool" href={ templ.SafeURL(href) }>
+		<h2>{ label }</h2>
+		<p class="muted">{ blurb }</p>
+	</a>
+}
+
+// adminStyles are the Admin page's own rules on top of app.css.
+templ adminStyles() {
+	<style>
+		.ad-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+		.ad-tool{padding:20px;display:flex;flex-direction:column;gap:6px;color:#1B1E23}
+		.ad-tool:hover{text-decoration:none;border-color:#C9CCC4;color:#1B1E23}
+		.ad-section{display:flex;flex-direction:column;gap:12px}
+		.ad-empty{padding:16px}
+		@media (max-width:900px){.ad-tools{grid-template-columns:1fr}}
+	</style>
+}
