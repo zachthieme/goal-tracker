@@ -2,6 +2,9 @@ package seed_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -57,6 +60,8 @@ func TestSeededOrg(t *testing.T) {
 	t.Run("Milestone Churn", func(t *testing.T) { milestoneChurn(t, h) })
 	t.Run("Stale and Unaligned Goals", func(t *testing.T) { staleAndUnaligned(t, h) })
 	t.Run("Lifecycle changes", func(t *testing.T) { lifecycleChanges(t, h) })
+	t.Run("only into a fresh database", func(t *testing.T) { onlyIntoAFreshDatabase(t, h) })
+	t.Run("deterministic", func(t *testing.T) { deterministic(t, h) })
 }
 
 // The seed builds a realistic org: about 50 Goals spread across several teams
@@ -293,4 +298,61 @@ func lifecycleChanges(t *testing.T, h *testsupport.Harness) {
 			t.Errorf("want some %s Goals, got %v", want, lifecycles)
 		}
 	}
+}
+
+// Seeding a database that already has Goals is refused, and leaves it as it
+// was: the seed builds an org into a fresh database only.
+func onlyIntoAFreshDatabase(t *testing.T, h *testsupport.Harness) {
+	before := len(listGoals(t, h))
+	_, err := seed.Run(context.Background(), h.Service, h.Clock, seed.Options{Seed: seed.DefaultSeed, Admin: admin})
+	if !errors.Is(err, seed.ErrNotFresh) {
+		t.Fatalf("seeding a seeded database: want ErrNotFresh, got %v", err)
+	}
+	if after := len(listGoals(t, h)); after != before {
+		t.Errorf("refused seed changed the Goal count from %d to %d", before, after)
+	}
+}
+
+// The same seed rerun into another fresh database, ending at the same time,
+// builds the same org, Check-in for Check-in.
+func deterministic(t *testing.T, h *testsupport.Harness) {
+	again := seeded(t)
+	if got, want := fingerprint(t, again), fingerprint(t, h); got != want {
+		t.Errorf("reseeding built a different org:\n got: %s\nwant: %s", got, want)
+	}
+}
+
+// fingerprint renders every Goal with its Lifecycle, dates, parents, and full
+// Check-in, Date Slip, and Milestone history.
+func fingerprint(t *testing.T, h *testsupport.Harness) string {
+	t.Helper()
+	ctx := context.Background()
+	var b strings.Builder
+	for _, g := range listGoals(t, h) {
+		fmt.Fprintf(&b, "%d %q owner=%s %s %s due=%s cadence=%d\n", g.ID, g.Title, g.Owner.Email, g.Lifecycle, g.Kind, g.DeliveryDate.Format(time.DateOnly), g.CadenceDays)
+		parents, _ := h.Service.ParentsOf(ctx, g.ID)
+		for _, p := range parents {
+			fmt.Fprintf(&b, "  parent %d\n", p.ID)
+		}
+		checkins, _ := h.Service.ListCheckins(ctx, g.ID)
+		for _, c := range checkins {
+			fmt.Fprintf(&b, "  checkin %s %s %q %q %s %+v\n", c.CreatedAt.Format(time.RFC3339), c.Health, c.Status, c.PathToGreen, c.PathTargetDate.Format(time.DateOnly), c.LifecycleChange)
+		}
+		slips, _ := h.Service.ListDateSlips(ctx, g.ID)
+		for _, s := range slips {
+			fmt.Fprintf(&b, "  slip %d %s->%s %q\n", s.MilestoneID, s.OldDate.Format(time.DateOnly), s.NewDate.Format(time.DateOnly), s.Reason)
+		}
+		milestones, _ := h.Service.ListMilestones(ctx, g.ID)
+		for _, m := range milestones {
+			fmt.Fprintf(&b, "  milestone %q %s %s\n", m.Name, m.TargetDate.Format(time.DateOnly), m.Status)
+		}
+		metrics, _ := h.Service.ListMetrics(ctx, g.ID)
+		for _, m := range metrics {
+			readings, _ := h.Service.ListMetricReadings(ctx, m.ID)
+			for _, r := range readings {
+				fmt.Fprintf(&b, "  reading %q %v\n", m.Name, r.Value)
+			}
+		}
+	}
+	return b.String()
 }

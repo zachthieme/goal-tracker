@@ -59,6 +59,14 @@ type Summary struct {
 // Run moves clk back to the start of the history and forward week by week as
 // the Owners check in, leaving it where it started.
 func Run(ctx context.Context, svc *domain.Service, clk *clock.Fixed, opts Options) (Summary, error) {
+	existing, err := svc.ListGoals(ctx)
+	if err != nil {
+		return Summary{}, fmt.Errorf("list goals: %w", err)
+	}
+	if len(existing) > 0 {
+		return Summary{}, ErrNotFresh
+	}
+
 	end := clk.Now()
 	start := end.AddDate(0, 0, -7*weeks)
 	rng := rand.New(rand.NewPCG(opts.Seed, opts.Seed))
