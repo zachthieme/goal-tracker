@@ -296,6 +296,7 @@ func checkinFormFromLatest(v goalView) checkinFormData {
 templ checkinSection(v goalView, canCheckin bool) {
 	{{ g := v.Goal }}
 	<section data-testid="goal-checkins">
+		@checkinStyles()
 		<h2>Check-ins</h2>
 		if g.Lifecycle != domain.LifecycleActive && g.Lifecycle != domain.LifecycleProposed {
 			<p data-testid="goal-no-health">{ fmt.Sprintf("A %s Goal has no Health.", g.Lifecycle) }</p>
@@ -410,16 +411,27 @@ func healthClass(health string) string {
 }
 
 // checkinPage is the Check-in on its own page, reached from the Goal page by
-// the Owner or a Delegate: a breadcrumb back to the Goal and the form,
+// the Owner or a Delegate: a breadcrumb back to the Goal, then the one-click
+// "no change" card when there is a previous Check-in to repeat, then the form,
 // prefilled from the latest Check-in.
 templ checkinPage(current *domain.Account, v goalView) {
 	{{ g := v.Goal }}
 	@layout("Check in · "+g.Title, current) {
+		@checkinStyles()
 		<div class="checkin-page">
 			<nav class="small muted" aria-label="Breadcrumb">
 				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a> › Check in
 			</nav>
 			<h1>Check in</h1>
+			if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
+				<div data-testid="no-change-card" class="card">
+					<div>
+						<h2>{ "Nothing changed since " + v.LatestCheckin.CreatedAt.Format("Jan 2") + "?" }</h2>
+						<p class="muted">Records the same Health and status with today's date.</p>
+					</div>
+					@noChangeCheckinButton(g.ID, "No change")
+				</div>
+			}
 			if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold {
 				@checkinForm(checkinFormFromLatest(v))
 			} else {

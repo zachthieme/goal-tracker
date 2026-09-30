@@ -1117,3 +1117,56 @@ func TestCheckinSectionOpensOnErrorOrSubmittedValue(t *testing.T) {
 		})
 	}
 }
+
+// When the Goal is Active and has a previous Check-in, the Check-in page opens
+// with the one-click no-change card, dated from that Check-in, above the form.
+// With no previous Check-in there is nothing to repeat, so there is no card.
+func TestCheckinPageOffersNoChangeFirst(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	checkinURL := fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)
+
+	if page := getBody(t, samClient, checkinURL); strings.Contains(page, `data-testid="no-change-checkin"`) {
+		t.Errorf("a Goal with no Check-in offers the no-change card")
+	}
+
+	latest := h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	page := getBody(t, samClient, checkinURL)
+	card := strings.Index(page, `data-testid="no-change-card"`)
+	if card < 0 {
+		t.Fatalf("Check-in page has no no-change card; body:\n%s", page)
+	}
+	if form := strings.Index(page, `data-testid="checkin-form"`); form < card {
+		t.Errorf("the no-change card does not come before the form")
+	}
+	for _, want := range []string{
+		"Nothing changed since " + latest.CreatedAt.Format("Jan 2") + "?",
+		"Records the same Health and status with today's date.",
+		`data-testid="no-change-checkin"`,
+	} {
+		if !strings.Contains(page[card:], want) {
+			t.Errorf("no-change card missing %q; body:\n%s", want, page)
+		}
+	}
+}
+
+// Cancelling a Goal through the Lifecycle section asks for confirmation
+// before the Check-in is sent.
+func TestCheckinFormConfirmsCancellingTheGoal(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	form := page[strings.Index(page, `data-testid="checkin-form"`):]
+	form = form[:strings.Index(form, ">")]
+	if !strings.Contains(form, "hx-on:htmx:confirm=") || !strings.Contains(form, "value=Cancelled]:checked") || !strings.Contains(form, "confirm(") {
+		t.Errorf("the form does not confirm a Cancel before sending; form tag:\n%s", form)
+	}
+}
