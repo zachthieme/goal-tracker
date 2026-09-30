@@ -315,3 +315,56 @@ func TestCreateChildGoalOffersParentDefaults(t *testing.T) {
 		t.Errorf("child without the default should be unassigned; body:\n%s", barePage)
 	}
 }
+
+// Creating a child Goal is all-or-nothing: when a default the form still offered
+// was retired before the submit, the Goal is not created, no link is requested,
+// and the form comes back with the error and what the person typed (ticket #26).
+func TestCreateChildGoalWithRetiredValueLeavesNoGoal(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	core := h.CreateDimension(boss, "Team", "Core").Values[0]
+	growth := h.CreateDimension(boss, "Pillar", "Growth").Values[0]
+	parent := h.CreateGoal(sam, "Parent", "Parent matters.")
+	h.AssignGoalValue(parent, core)
+	h.AssignGoalValue(parent, growth)
+	ts := newServer(t, h)
+
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	parentURL := fmt.Sprintf("%s/goals/%d", ts.URL, parent.ID)
+
+	// The form is loaded while Growth is still live, then Growth is retired.
+	if page := getBody(t, samClient, parentURL); !strings.Contains(page, fmt.Sprintf(`value="%d" checked`, growth.ID)) {
+		t.Fatalf("parent page does not offer Growth as a default; body:\n%s", page)
+	}
+	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, growth.ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+
+	resp := postForm(t, samClient, parentURL+"/children", url.Values{
+		"title":    {"GrandKid"},
+		"so_what":  {"Feeds the parent."},
+		"value_id": {fmt.Sprintf("%d", core.ID), fmt.Sprintf("%d", growth.ID)},
+	})
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status %d, want 422; body:\n%s", resp.StatusCode, body)
+	}
+	form := pageElement(t, body, "section", "add-child-goal")
+	if !strings.Contains(form, "retired") {
+		t.Errorf("child form does not say the value is retired; form:\n%s", form)
+	}
+	if !strings.Contains(form, `value="GrandKid"`) || !strings.Contains(form, "Feeds the parent.") {
+		t.Errorf("child form lost the title or So What; form:\n%s", form)
+	}
+	if !strings.Contains(form, fmt.Sprintf(`value="%d" checked`, core.ID)) {
+		t.Errorf("child form lost the kept Core default; form:\n%s", form)
+	}
+
+	if list := getBody(t, samClient, ts.URL+"/goals"); strings.Contains(list, "GrandKid") {
+		t.Errorf("a failed child create left a Goal behind; list:\n%s", list)
+	}
+	if children := h.ChildrenOf(parent); len(children) != 0 {
+		t.Errorf("a failed child create requested a link: %v", children)
+	}
+}
