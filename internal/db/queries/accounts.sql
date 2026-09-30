@@ -1,0 +1,10 @@
+-- name: GetAccountByEmail :one
+SELECT * FROM accounts WHERE email = ? LIMIT 1;
+
+-- name: CreateAccount :one
+INSERT INTO accounts (email, is_admin, created_at)
+VALUES (?, ?, ?)
+RETURNING *;
+
+-- name: GetAccount :one
+SELECT * FROM accounts WHERE id = ? LIMIT 1;

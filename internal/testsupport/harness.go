@@ -70,17 +70,3 @@ func (h *Harness) SignIn(emailAddr string) domain.Account {
 	}
 	return acc
 }
-
-// CreateGoal creates a Proposed Goal owned by owner, failing the test on error.
-func (h *Harness) CreateGoal(owner domain.Account, title, soWhat string) domain.Goal {
-	h.T.Helper()
-	g, err := h.Service.CreateGoal(context.Background(), domain.CreateGoalInput{
-		Title:   title,
-		SoWhat:  soWhat,
-		OwnerID: owner.ID,
-	})
-	if err != nil {
-		h.T.Fatalf("CreateGoal: %v", err)
-	}
-	return g
-}

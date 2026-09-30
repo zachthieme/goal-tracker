@@ -1,0 +1,35 @@
+package web
+
+import "github.com/zachthieme/goal-tracker/internal/domain"
+
+// layout is the shared page chrome. htmx drives the in-place create-Goal swap.
+templ layout(title string, current *domain.Account) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } · Goal Tracker</title>
+			<script src="https://unpkg.com/htmx.org@2.0.3" crossorigin="anonymous"></script>
+		</head>
+		<body>
+			<header>
+				<a href="/goals"><strong>Goal Tracker</strong></a>
+				if current != nil {
+					<span data-testid="current-user">
+						Signed in as { current.Email }
+						if current.IsAdmin {
+							(Admin)
+						}
+					</span>
+					<form method="post" action="/signout" style="display:inline">
+						<button type="submit">Sign out</button>
+					</form>
+				}
+			</header>
+			<main>
+				{ children... }
+			</main>
+		</body>
+	</html>
+}
