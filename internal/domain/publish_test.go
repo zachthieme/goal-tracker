@@ -54,3 +54,74 @@ func TestPublishedReportNeverChanges(t *testing.T) {
 			b.Health, b.Goal.SoWhat, b.PriorDueDates)
 	}
 }
+
+// The next publication of a Report Definition reads its changes against the
+// previous publication, not 30 days ago; so does the draft leading up to it.
+// A baseline the reader picks still overrides it (CONTEXT.md: Report
+// Definition).
+func TestNextPublicationComparesAgainstThePrevious(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	root := h.ActiveGoal(boss, "Grow revenue", "The org needs to grow.")
+	settle(h)
+	early := h.CreateGoal(boss, "Launch in EU", "Expand the market.")
+	h.RequestLink(boss, early, root, "")
+	h.Checkin(boss, root.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{root.ID}, Depth: 1})
+
+	first := publish(t, h, boss, def, time.Time{})
+	if first.Report.Previous.ID != 0 {
+		t.Errorf("first publication compares against publication %d, want none", first.Report.Previous.ID)
+	}
+	if got, want := blockIDs(first.Report), []int64{early.ID}; !sameSet(got, want) {
+		t.Errorf("first publication's exceptions %v, want %v (created since 30 days ago)", got, want)
+	}
+
+	h.Clock.Advance(7 * day)
+	late := h.CreateGoal(boss, "Cut churn", "Keep customers.")
+	h.RequestLink(boss, late, root, "")
+	h.Checkin(boss, root.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	second := publish(t, h, boss, def, time.Time{})
+	for name, r := range map[string]domain.Report{"draft": draft, "second publication": second.Report} {
+		if r.Previous.ID != first.ID || !r.Previous.PublishedAt.Equal(first.PublishedAt) {
+			t.Errorf("%s compares against %+v, want the first publication (%d at %v)", name, r.Previous, first.ID, first.PublishedAt)
+		}
+		if want := time.Date(2026, 2, 11, 0, 0, 0, 0, time.UTC); !r.Baseline.Equal(want) {
+			t.Errorf("%s baseline %v, want the first publication's date %v", name, r.Baseline, want)
+		}
+		if got, want := blockIDs(r), []int64{late.ID}; !sameSet(got, want) {
+			t.Errorf("%s exceptions %v, want %v (created since the first publication)", name, got, want)
+		}
+		if got, want := lineIDs(r), []int64{root.ID, early.ID}; !sameSet(got, want) {
+			t.Errorf("%s one-line Goals %v, want %v", name, got, want)
+		}
+	}
+
+	// A baseline the reader picks, before both Goals were created, overrides
+	// the previous publication.
+	chosen := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+	third := publish(t, h, boss, def, chosen)
+	if third.Report.Previous.ID != 0 || !third.Report.Baseline.Equal(chosen) {
+		t.Errorf("with a chosen baseline, compares against %+v from %v; want no publication, from %v",
+			third.Report.Previous, third.Report.Baseline, chosen)
+	}
+	if got, want := blockIDs(third.Report), []int64{early.ID, late.ID}; !sameSet(got, want) {
+		t.Errorf("with a chosen baseline, exceptions %v, want %v", got, want)
+	}
+}
+
+// publish publishes def against baseline as actor, failing the test on error.
+func publish(t *testing.T, h *testsupport.Harness, actor domain.Account, def domain.ReportDefinition, baseline time.Time) domain.Publication {
+	t.Helper()
+	p, err := h.Service.PublishReport(context.Background(), actor.ID, def.ID, baseline)
+	if err != nil {
+		t.Fatalf("PublishReport: %v", err)
+	}
+	return p
+}

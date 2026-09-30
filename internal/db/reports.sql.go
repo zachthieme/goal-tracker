@@ -143,6 +143,27 @@ func (q *Queries) GetReportPublication(ctx context.Context, id int64) (ReportPub
 	return i, err
 }
 
+const latestReportPublication = `-- name: LatestReportPublication :one
+SELECT id, published_at FROM report_publications
+WHERE report_definition_id = ?
+ORDER BY id DESC
+LIMIT 1
+`
+
+type LatestReportPublicationRow struct {
+	ID          int64
+	PublishedAt string
+}
+
+// A Report Definition's latest publication, without its snapshot: what the
+// next publication reads its changes against.
+func (q *Queries) LatestReportPublication(ctx context.Context, reportDefinitionID int64) (LatestReportPublicationRow, error) {
+	row := q.db.QueryRowContext(ctx, latestReportPublication, reportDefinitionID)
+	var i LatestReportPublicationRow
+	err := row.Scan(&i.ID, &i.PublishedAt)
+	return i, err
+}
+
 const listReportDefinitionFilters = `-- name: ListReportDefinitionFilters :many
 SELECT dimension_value_id FROM report_definition_filters
 WHERE report_definition_id = ?

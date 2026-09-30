@@ -11,9 +11,13 @@ import (
 // selected Goal takes one line.
 type Report struct {
 	Definition ReportDefinition
-	// Baseline is the date changes are read against: the reader's choice, or 30
-	// days ago by default. It is a calendar date in the org's timezone.
-	Baseline   time.Time
+	// Baseline is the date changes are read against: the reader's choice, or
+	// by default the date of the Definition's previous publication, or 30 days
+	// ago when it has none. It is a calendar date in the org's timezone.
+	Baseline time.Time
+	// Previous is the previous publication changes are read against, from the
+	// instant it was published; its ID is 0 when they are read against a date.
+	Previous   PreviousPublication
 	Exceptions []ReportBlock
 	Lines      []SelectedGoal
 }
@@ -74,22 +78,36 @@ const (
 const defaultBaselineDays = 30
 
 // DraftReport drafts the Report for def against baseline. A zero baseline
-// takes the default, 30 days before today.
+// takes the default: the Definition's previous publication, so the next one
+// marks what changed since it, or 30 days before today when there is none.
 func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baseline time.Time) (Report, error) {
 	selected, err := s.SelectGoals(ctx, def)
 	if err != nil {
 		return Report{}, err
 	}
+	r := Report{Definition: def}
 	if baseline.IsZero() {
-		baseline = orgDate(s.clock.Now(), s.loc).AddDate(0, 0, -defaultBaselineDays)
-	} else {
-		y, m, d := baseline.Date()
-		baseline = time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+		if r.Previous, err = s.previousPublication(ctx, def.ID); err != nil {
+			return Report{}, err
+		}
 	}
-	// since reports whether an instant falls on or after the baseline date in
-	// the org's calendar.
-	since := func(t time.Time) bool { return !orgDate(t, s.loc).Before(baseline) }
-	r := Report{Definition: def, Baseline: baseline}
+	// since reports whether an instant counts as a change: after the previous
+	// publication, which already showed anything recorded by then, or on or
+	// after the baseline date in the org's calendar.
+	var since func(time.Time) bool
+	switch {
+	case r.Previous.ID != 0:
+		r.Baseline = orgDate(r.Previous.PublishedAt, s.loc)
+		since = func(t time.Time) bool { return t.After(r.Previous.PublishedAt) }
+	case baseline.IsZero():
+		r.Baseline = orgDate(s.clock.Now(), s.loc).AddDate(0, 0, -defaultBaselineDays)
+	default:
+		y, m, d := baseline.Date()
+		r.Baseline = time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	}
+	if since == nil {
+		since = func(t time.Time) bool { return !orgDate(t, s.loc).Before(r.Baseline) }
+	}
 	for _, sg := range selected {
 		h, err := s.goalHistory(ctx, sg.Goal)
 		if err != nil {

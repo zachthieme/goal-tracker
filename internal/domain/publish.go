@@ -23,9 +23,17 @@ type Publication struct {
 	Report Report
 }
 
+// PreviousPublication identifies the publication a Report reads its changes
+// against: the latest earlier publication of the same Report Definition.
+type PreviousPublication struct {
+	ID          int64
+	PublishedAt time.Time
+}
+
 // PublishReport publishes the Report Definition defID: it drafts the Report
-// against baseline, as DraftReport does, and freezes the result. Anyone signed
-// in may publish; actorID records who did.
+// against baseline, as DraftReport does — so by default against the previous
+// publication — and freezes the result. Anyone signed in may publish; actorID
+// records who did.
 func (s *Service) PublishReport(ctx context.Context, actorID, defID int64, baseline time.Time) (Publication, error) {
 	def, err := s.GetReportDefinition(ctx, defID)
 	if err != nil {
@@ -81,4 +89,18 @@ func (s *Service) publicationFromRow(ctx context.Context, row db.ReportPublicati
 		PublishedAt:  publishedAt,
 		Report:       report,
 	}, nil
+}
+
+// previousPublication returns the latest publication of the Report Definition
+// defID, or the zero PreviousPublication when it has never been published.
+func (s *Service) previousPublication(ctx context.Context, defID int64) (PreviousPublication, error) {
+	row, err := s.queries.LatestReportPublication(ctx, defID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return PreviousPublication{}, nil
+		}
+		return PreviousPublication{}, fmt.Errorf("latest publication: %w", err)
+	}
+	publishedAt, _ := time.Parse(timeFormat, row.PublishedAt)
+	return PreviousPublication{ID: row.ID, PublishedAt: publishedAt}, nil
 }

@@ -42,3 +42,11 @@ SELECT * FROM report_publications WHERE id = ? LIMIT 1;
 SELECT * FROM report_publications
 WHERE report_definition_id = ?
 ORDER BY id DESC;
+
+-- name: LatestReportPublication :one
+-- A Report Definition's latest publication, without its snapshot: what the
+-- next publication reads its changes against.
+SELECT id, published_at FROM report_publications
+WHERE report_definition_id = ?
+ORDER BY id DESC
+LIMIT 1;
