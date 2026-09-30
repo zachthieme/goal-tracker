@@ -8,9 +8,12 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 	"github.com/zachthieme/goal-tracker/internal/web"
 )
@@ -395,5 +398,374 @@ func TestCreateChildGoalWithRetiredValueLeavesNoGoal(t *testing.T) {
 	}
 	if children := h.ChildrenOf(parent); len(children) != 0 {
 		t.Errorf("a failed child create requested a link: %v", children)
+	}
+}
+
+// goalRows returns the Goal list's rows in the order they render, each from its
+// opening <tr> to its closing </tr>.
+func goalRows(t *testing.T, page string) []string {
+	t.Helper()
+	const marker = `<tr data-testid="goal-row"`
+	var rows []string
+	for {
+		start := strings.Index(page, marker)
+		if start < 0 {
+			return rows
+		}
+		end := strings.Index(page[start:], "</tr>")
+		if end < 0 {
+			t.Fatalf("unterminated goal row:\n%s", page[start:])
+		}
+		rows = append(rows, page[start:start+end+len("</tr>")])
+		page = page[start+end:]
+	}
+}
+
+// pageTag returns the opening tag of the tag element carrying data-testid, for
+// void elements such as <input> that pageElement can't close.
+func pageTag(t *testing.T, page, tag, testID string) string {
+	t.Helper()
+	start := strings.Index(page, "<"+tag+` data-testid="`+testID+`"`)
+	if start < 0 {
+		t.Fatalf("page has no <%s> %q", tag, testID)
+	}
+	return openTag(page[start:])
+}
+
+// rowTitles names the Goals in rows, in order, by matching each row against the
+// Goals it could be.
+func rowTitles(rows []string, goals ...domain.Goal) []string {
+	titles := make([]string, 0, len(rows))
+	for _, r := range rows {
+		for _, g := range goals {
+			if strings.Contains(r, navTo(g.ID)) {
+				titles = append(titles, g.Title)
+			}
+		}
+	}
+	return titles
+}
+
+// The Goal list is a table led by each Goal's Health, and problems sort to the
+// top: Red, then Ownerless, then Stale or Path to Green overdue, then Yellow,
+// then Green, then Goals with no Health, alphabetical within each group.
+func TestGoalListSortsProblemsFirst(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	later := testsupport.Epoch.AddDate(0, 2, 0)
+
+	stale := h.ActiveGoal(sam, "Stale work", "It matters.")
+	h.Clock.Advance(10 * day)
+	proposed := h.CreateGoal(sam, "Proposed idea", "It matters.")
+	betaGreen := h.ActiveGoal(sam, "Beta green", "It matters.")
+	h.Checkin(sam, betaGreen.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	alphaGreen := h.ActiveGoal(sam, "Alpha green", "It matters.")
+	h.Checkin(sam, alphaGreen.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	yellow := h.ActiveGoal(sam, "Wobbly", "It matters.")
+	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Wobbling.", "Fix it.", later)
+	ownerless := h.ActiveGoal(kim, "Orphaned", "It matters.")
+	h.Checkin(kim, ownerless.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	red := h.ActiveGoal(sam, "Zulu fire", "It matters.")
+	h.Checkin(sam, red.ID, domain.HealthRed, "On fire.", "Put it out.", later)
+	ts := newServer(t, h)
+
+	list := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals")
+	rows := goalRows(t, list)
+
+	got := rowTitles(rows, stale, proposed, betaGreen, alphaGreen, yellow, ownerless, red)
+	want := []string{"Zulu fire", "Orphaned", "Stale work", "Wobbly", "Alpha green", "Beta green", "Proposed idea"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("row order = %q, want %q", got, want)
+	}
+	if !strings.Contains(list, "<th>Health</th>") {
+		t.Errorf("Goal list has no Health column; body:\n%s", list)
+	}
+	for i, class := range []string{"r", "g", "lc", "y", "g", "g", "lc"} {
+		health := pageElement(t, rows[i], "span", "goal-row-health")
+		if !strings.Contains(openTag(health), `class="badge `+class+`"`) {
+			t.Errorf("%s: Health badge is not .%s: %s", want[i], class, health)
+		}
+	}
+	if health := pageElement(t, rows[6], "span", "goal-row-health"); !strings.Contains(health, "Proposed") {
+		t.Errorf("a Goal with no Health shows no Lifecycle: %s", health)
+	}
+}
+
+// Each row shows when the Goal is due, with the dates its Date Slips moved it
+// from struck through, or a dash for an Ongoing Goal, and how long ago its last
+// Check-in was.
+func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	slipped := h.ActiveGoal(sam, "Slipped", "It matters.")
+	if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
+		GoalID:             slipped.ID,
+		AuthorID:           sam.ID,
+		Health:             domain.HealthYellow,
+		Status:             "Later than planned.",
+		PathToGreen:        "Swap vendors.",
+		PathTargetDate:     testsupport.Epoch.AddDate(0, 2, 0),
+		DeliveryDate:       time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC),
+		DeliveryDateReason: "Vendor slipped.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	ongoing := h.CreateGoal(sam, "Keep the lights on", "It matters.")
+	if _, err := h.Service.MarkGoalOngoing(t.Context(), ongoing.ID); err != nil {
+		t.Fatalf("MarkGoalOngoing: %v", err)
+	}
+	h.Clock.Advance(3 * day)
+	ts := newServer(t, h)
+
+	rows := goalRows(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals"))
+	if got := rowTitles(rows, slipped, ongoing); !slices.Equal(got, []string{"Slipped", "Keep the lights on"}) {
+		t.Fatalf("rows = %q", got)
+	}
+
+	if due := strings.Join(strings.Fields(pageElement(t, rows[0], "td", "goal-row-due")), " "); !strings.Contains(due, "<del>2026-07-02</del> 2026-07-16") {
+		t.Errorf("slipped Goal's Due does not strike its prior date: %s", due)
+	}
+	if last := pageElement(t, rows[0], "td", "goal-row-last-checkin"); !strings.Contains(last, "3 days ago") {
+		t.Errorf("Last check-in is not relative: %s", last)
+	}
+	if due := pageElement(t, rows[1], "td", "goal-row-due"); !strings.Contains(due, "—") || strings.Contains(due, "20") {
+		t.Errorf("Ongoing Goal's Due is not a dash: %s", due)
+	}
+	if last := pageElement(t, rows[1], "td", "goal-row-last-checkin"); !strings.Contains(last, "—") {
+		t.Errorf("a Goal with no Check-in shows a Last check-in: %s", last)
+	}
+}
+
+// Searching the Goal list keeps the Goals whose title or Owner's email holds the
+// text, ignoring case, and the search box keeps what was typed.
+func TestGoalListSearchesTitleAndOwner(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	latency := h.CreateGoal(sam, "Cut checkout latency", "It matters.")
+	hiring := h.CreateGoal(kim, "Hire two engineers", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, tc := range []struct {
+		q    string
+		want []string
+	}{
+		{"LATENCY", []string{"Cut checkout latency"}},
+		{"kim@", []string{"Hire two engineers"}},
+		{"example.com", []string{"Cut checkout latency", "Hire two engineers"}},
+		{"nothing like it", nil},
+	} {
+		page := getBody(t, client, ts.URL+"/goals?q="+url.QueryEscape(tc.q))
+		if got := rowTitles(goalRows(t, page), latency, hiring); !slices.Equal(got, tc.want) {
+			t.Errorf("q=%q: rows = %q, want %q", tc.q, got, tc.want)
+		}
+		if search := pageTag(t, page, "input", "goal-search"); !strings.Contains(search, `value="`+tc.q+`"`) {
+			t.Errorf("q=%q: search box lost the query: %s", tc.q, search)
+		}
+		if tc.want == nil && !strings.Contains(page, `data-testid="no-goals"`) {
+			t.Errorf("q=%q: no empty state", tc.q)
+		}
+	}
+}
+
+// The Health filter keeps the Goals at the chosen Health, or those with none,
+// and its select keeps the choice.
+func TestGoalListFiltersByHealth(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	later := testsupport.Epoch.AddDate(0, 2, 0)
+	green := h.ActiveGoal(sam, "Green one", "It matters.")
+	h.Checkin(sam, green.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	yellow := h.ActiveGoal(sam, "Yellow one", "It matters.")
+	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Wobbling.", "Fix it.", later)
+	red := h.ActiveGoal(sam, "Red one", "It matters.")
+	h.Checkin(sam, red.ID, domain.HealthRed, "On fire.", "Put it out.", later)
+	proposed := h.CreateGoal(sam, "Proposed one", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for health, want := range map[string]string{
+		"green":  "Green one",
+		"yellow": "Yellow one",
+		"red":    "Red one",
+		"none":   "Proposed one",
+	} {
+		page := getBody(t, client, ts.URL+"/goals?health="+health)
+		if got := rowTitles(goalRows(t, page), green, yellow, red, proposed); !slices.Equal(got, []string{want}) {
+			t.Errorf("health=%s: rows = %q, want [%q]", health, got, want)
+		}
+		if sel := pageElement(t, page, "select", "goal-health-filter"); !strings.Contains(sel, `value="`+health+`" selected`) {
+			t.Errorf("health=%s: select lost the choice: %s", health, sel)
+		}
+	}
+}
+
+// The Lifecycle filter keeps the Goals in the chosen Lifecycle and, left at its
+// default, keeps every Lifecycle; its select keeps the choice.
+func TestGoalListFiltersByLifecycle(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	active := h.ActiveGoal(sam, "Active one", "It matters.")
+	paused := h.OnHoldGoal(sam, "Paused one", "It matters.", "Budget freeze.")
+	proposed := h.CreateGoal(sam, "Proposed one", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	all := getBody(t, client, ts.URL+"/goals")
+	if got := rowTitles(goalRows(t, all), active, paused, proposed); len(got) != 3 {
+		t.Errorf("default Lifecycle filter should keep every Goal; rows = %q", got)
+	}
+	for lifecycle, want := range map[string]string{
+		domain.LifecycleActive:   "Active one",
+		domain.LifecycleOnHold:   "Paused one",
+		domain.LifecycleProposed: "Proposed one",
+	} {
+		page := getBody(t, client, ts.URL+"/goals?lifecycle="+url.QueryEscape(lifecycle))
+		if got := rowTitles(goalRows(t, page), active, paused, proposed); !slices.Equal(got, []string{want}) {
+			t.Errorf("lifecycle=%s: rows = %q, want [%q]", lifecycle, got, want)
+		}
+		if sel := pageElement(t, page, "select", "goal-lifecycle-filter"); !strings.Contains(sel, `value="`+lifecycle+`" selected`) {
+			t.Errorf("lifecycle=%s: select lost the choice: %s", lifecycle, sel)
+		}
+	}
+}
+
+// Mine only keeps the Goals the viewer Owns or is a Delegate on, and its
+// checkbox stays checked.
+func TestGoalListFiltersToMine(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	owned := h.CreateGoal(sam, "Sam's own", "It matters.")
+	delegated := h.CreateGoal(kim, "Kim's, delegated to Sam", "It matters.")
+	h.AddDelegate(kim, sam, delegated.ID)
+	others := h.CreateGoal(kim, "Kim's alone", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals?mine=1")
+	got := rowTitles(goalRows(t, page), owned, delegated, others)
+	if want := []string{"Kim's, delegated to Sam", "Sam's own"}; !slices.Equal(got, want) {
+		t.Errorf("mine=1: rows = %q, want %q", got, want)
+	}
+	if box := pageTag(t, page, "input", "goal-mine-filter"); !strings.Contains(box, "checked") {
+		t.Errorf("Mine only checkbox lost its check: %s", box)
+	}
+
+	page = getBody(t, client, ts.URL+"/goals")
+	if got := rowTitles(goalRows(t, page), owned, delegated, others); len(got) != 3 {
+		t.Errorf("without Mine only every Goal shows; rows = %q", got)
+	}
+	if box := pageTag(t, page, "input", "goal-mine-filter"); strings.Contains(box, "checked") {
+		t.Errorf("Mine only is checked without ?mine=1: %s", box)
+	}
+}
+
+// The Dimension filters and Group by fold under More filters, which opens when
+// either is set; grouping gives each value its own table section headed by a
+// row naming it, sorted problems first within.
+func TestGoalListFoldsDimensionFiltersAndGroupsIntoSections(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	growth := pillar.Values[0]
+	calm := h.ActiveGoal(sam, "Calm growth", "It matters.")
+	h.Checkin(sam, calm.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	fire := h.ActiveGoal(sam, "Burning growth", "It matters.")
+	h.Checkin(sam, fire.ID, domain.HealthRed, "On fire.", "Put it out.", testsupport.Epoch.AddDate(0, 2, 0))
+	loose := h.CreateGoal(sam, "Loose end", "It matters.")
+	h.AssignGoalValue(calm, growth)
+	h.AssignGoalValue(fire, growth)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	plain := getBody(t, client, ts.URL+"/goals")
+	if more := pageTag(t, plain, "details", "more-filters"); strings.Contains(more, "open") {
+		t.Errorf("More filters is open with none set: %s", more)
+	}
+
+	filtered := getBody(t, client, fmt.Sprintf("%s/goals?value=%d", ts.URL, growth.ID))
+	if more := pageTag(t, filtered, "details", "more-filters"); !strings.Contains(more, "open") {
+		t.Errorf("More filters is closed with a value chosen: %s", more)
+	}
+
+	grouped := getBody(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, pillar.ID))
+	if more := pageTag(t, grouped, "details", "more-filters"); !strings.Contains(more, "open") {
+		t.Errorf("More filters is closed while grouping: %s", more)
+	}
+	section := pageElement(t, grouped, "tbody", "goal-group")
+	if label := pageElement(t, section, "th", "goal-group-label"); !strings.Contains(label, "Growth") {
+		t.Errorf("first section is not headed Growth: %s", label)
+	}
+	if got := rowTitles(goalRows(t, section), calm, fire, loose); !slices.Equal(got, []string{"Burning growth", "Calm growth"}) {
+		t.Errorf("Growth section rows = %q, want the Red Goal first", got)
+	}
+	if !strings.Contains(grouped, "Unassigned") {
+		t.Errorf("Goals without a Pillar have no Unassigned section; body:\n%s", grouped)
+	}
+
+	empty := getBody(t, client, ts.URL+"/goals?q=nothing+like+it")
+	if none := pageElement(t, empty, "td", "no-goals"); !strings.Contains(none, "No Goals match.") {
+		t.Errorf("a filtered-out list does not say nothing matches: %s", none)
+	}
+}
+
+// The Goal list's header names the page and offers New goal, which opens the
+// propose form; the form still swaps the list in place under htmx. The Risks
+// page has replaced the links to the signal pages.
+func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals")
+	head := pageElement(t, page, "header", "goals-head")
+	for _, want := range []string{"<h1>Goals</h1>", "Every goal in the org. Problems sort to the top."} {
+		if !strings.Contains(head, want) {
+			t.Errorf("header lacks %q: %s", want, head)
+		}
+	}
+	propose := pageElement(t, page, "details", "propose-goal")
+	if summary := pageElement(t, propose, "summary", "new-goal"); !strings.Contains(openTag(summary), `class="btn primary"`) || !strings.Contains(summary, "New goal") {
+		t.Errorf("New goal is not a primary button: %s", summary)
+	}
+	for _, want := range []string{`hx-post="/goals"`, `hx-target="#goal-list"`, `method="post"`, `action="/goals"`, `name="title"`, `name="so_what"`} {
+		if !strings.Contains(propose, want) {
+			t.Errorf("propose form lacks %s: %s", want, propose)
+		}
+	}
+	for _, gone := range []string{`href="/signals"`, `href="/freshness"`} {
+		if strings.Contains(page, gone) {
+			t.Errorf("Goal list still links %s", gone)
+		}
+	}
+
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/goals", strings.NewReader(url.Values{
+		"title":   {"Cut checkout latency"},
+		"so_what": {"Shoppers abandon slow carts."},
+	}.Encode()))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /goals: %v", err)
+	}
+	swap := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(swap, `<div id="goal-list"`) {
+		t.Fatalf("htmx create should answer with the list alone; status %d, body:\n%s", resp.StatusCode, swap)
+	}
+	if rows := goalRows(t, swap); len(rows) != 1 || !strings.Contains(rows[0], "Cut checkout latency") {
+		t.Errorf("swapped list lacks the new Goal's row:\n%s", swap)
 	}
 }

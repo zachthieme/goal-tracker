@@ -59,7 +59,7 @@ func TestAdminMarksAndUnmarksTopLevelOverHTTP(t *testing.T) {
 
 // The Graph signals page lists the risks the graph flags on its own: Unaligned
 // Goals, children due later than their parents, and children of a parent that
-// is On Hold or Cancelled. The Goal list links to it so leadership can find it.
+// is On Hold or Cancelled.
 func TestGraphSignalsPageListsRisks(t *testing.T) {
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
@@ -84,9 +84,6 @@ func TestGraphSignalsPageListsRisks(t *testing.T) {
 	}
 
 	client := signInClient(t, ts.URL, "sam@example.com")
-	if list := getBody(t, client, ts.URL+"/goals"); !strings.Contains(list, `href="/signals"`) {
-		t.Errorf("Goal list does not link to the Graph signals page; body:\n%s", list)
-	}
 	page := getBody(t, client, ts.URL+"/signals")
 
 	unaligned := pageElement(t, page, "ul", "unaligned-goals")

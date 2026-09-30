@@ -1,11 +1,15 @@
 package web
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -16,7 +20,7 @@ import (
 const dateLayout = "2006-01-02"
 
 func (s *Server) handleGoals(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	view, err := s.goalsListView(r)
+	view, err := s.goalsListView(r, current)
 	if err != nil {
 		http.Error(w, "could not list goals", http.StatusInternalServerError)
 		return
@@ -40,51 +44,192 @@ func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, curren
 	}
 
 	// htmx swaps the Goal list in place; a plain form post reloads the page. The
-	// swap re-renders the default flat list — the propose form carries no
-	// filter or grouping to preserve.
+	// swap re-renders the default unfiltered list — the propose form posts to
+	// /goals with no query, so there is no filter or grouping to preserve.
 	if r.Header.Get("HX-Request") == "true" {
-		goals, err := s.svc.ListGoalsWithValues(r.Context())
+		view, err := s.goalsListView(r, current)
 		if err != nil {
 			http.Error(w, "could not list goals", http.StatusInternalServerError)
 			return
 		}
-		flagged, err := s.flaggedFreshness(r.Context())
-		if err != nil {
-			http.Error(w, "could not read freshness signals", http.StatusInternalServerError)
-			return
-		}
-		render(w, r, http.StatusOK, goalList(goalsListData{Goals: goals, Freshness: flagged}))
+		render(w, r, http.StatusOK, goalList(view))
 		return
 	}
 	http.Redirect(w, r, "/goals", http.StatusSeeOther)
 }
 
-// goalsListData is everything the Goal list renders: the Goals (filtered), the
-// Dimensions offered for filtering and grouping, which values are currently
-// selected, and — when grouping — the Goals bucketed by a Dimension's values.
+// goalsListData is everything the Goal list renders: the Goals (filtered and
+// sorted problems first), the Dimensions offered for filtering and grouping,
+// which values are currently selected, and — when grouping — the Goals bucketed
+// by a Dimension's values.
 type goalsListData struct {
-	Goals      []domain.GoalWithValues
+	Rows       []goalRow
+	Filter     goalFilter
 	Dimensions []domain.Dimension
 	Selected   map[int64]bool
 	GroupID    int64
-	Groups     []domain.GoalGroup
-	// Freshness holds the Goals that are Stale or whose Path to Green is
-	// overdue, keyed by Goal, so their rows are marked.
-	Freshness map[int64]domain.Freshness
+	Groups     []goalRowGroup
 }
 
-// goalsListView reads the Goal list's filter (?value=) and grouping (?group=)
-// from the request, then loads, filters, and (optionally) groups the Goals.
-func (s *Server) goalsListView(r *http.Request) (goalsListData, error) {
-	dims, err := s.svc.ListDimensions(r.Context())
+// moreFiltersSet reports whether a Dimension filter or grouping is chosen, so
+// More filters, where they're folded away, opens to show it.
+func (v goalsListData) moreFiltersSet() bool {
+	return len(v.Selected) > 0 || v.GroupID != 0
+}
+
+// filtered reports whether any filter is narrowing the list, so an empty list
+// says nothing matches rather than that there are no Goals.
+func (v goalsListData) filtered() bool {
+	return len(v.Selected) > 0 || v.Filter != goalFilter{}
+}
+
+// goalFilter is the Goal list's filter bar, read from the URL so a filtered
+// list can be shared and reloaded.
+type goalFilter struct {
+	// Query keeps the Goals whose title or Owner's email holds it, ignoring
+	// case (?q=).
+	Query string
+	// Health keeps the Goals at one Health: "green", "yellow", "red", or "none"
+	// for those with no Health yet (?health=). "" keeps every Health.
+	Health string
+	// Lifecycle keeps the Goals in one Lifecycle (?lifecycle=). "" keeps every
+	// Lifecycle.
+	Lifecycle string
+	// Mine keeps the Goals the viewer Owns or is a Delegate on (?mine=1).
+	Mine bool
+}
+
+// lifecycleFilters are the Lifecycle filter's choices, in the order a Goal
+// moves through them.
+var lifecycleFilters = []string{
+	domain.LifecycleProposed,
+	domain.LifecycleActive,
+	domain.LifecycleOnHold,
+	domain.LifecycleDone,
+	domain.LifecycleCancelled,
+}
+
+// healthFilters are the Health filter's choices, each keyed by its URL value to
+// the Health it keeps; "none" keeps the Goals with no Health.
+var healthFilters = []struct{ Value, Health string }{
+	{"red", domain.HealthRed},
+	{"yellow", domain.HealthYellow},
+	{"green", domain.HealthGreen},
+	{"none", ""},
+}
+
+// readGoalFilter reads the filter bar's fields from the query string.
+func readGoalFilter(q url.Values) goalFilter {
+	return goalFilter{
+		Query:     strings.TrimSpace(q.Get("q")),
+		Health:    q.Get("health"),
+		Lifecycle: q.Get("lifecycle"),
+		Mine:      q.Get("mine") == "1",
+	}
+}
+
+// keeps reports whether row passes the filter. mine reports whether the viewer
+// Owns the row's Goal or is a Delegate on it.
+func (f goalFilter) keeps(row goalRow, mine func(domain.Goal) bool) bool {
+	if f.Mine && !mine(row.Goal) {
+		return false
+	}
+	if f.Query != "" {
+		q := strings.ToLower(f.Query)
+		if !strings.Contains(strings.ToLower(row.Goal.Title), q) && !strings.Contains(strings.ToLower(row.Goal.Owner.Email), q) {
+			return false
+		}
+	}
+	if f.Lifecycle != "" && row.Goal.Lifecycle != f.Lifecycle {
+		return false
+	}
+	for _, hf := range healthFilters {
+		if f.Health == hf.Value && row.health() != hf.Health {
+			return false
+		}
+	}
+	return true
+}
+
+// goalRow is one Goal in the Goal list with what its row shows beyond the Goal
+// and its Dimension values: its latest Check-in, which carries its Health, and
+// whether it is Stale or its Path to Green is overdue.
+type goalRow struct {
+	domain.GoalWithValues
+	// Latest is the Goal's most recent Check-in, nil when it has none.
+	Latest    *domain.Checkin
+	Freshness domain.Freshness
+	// PriorDates are the delivery dates the Goal's Date Slips moved it from,
+	// earliest first, shown struck through ahead of its current date.
+	PriorDates []time.Time
+}
+
+// goalRowGroup is one bucket of the grouped Goal list: the rows sharing Value,
+// or those with no value in the grouping Dimension when Value is nil.
+type goalRowGroup struct {
+	Value *domain.DimensionValue
+	Rows  []goalRow
+}
+
+// health is the Goal's current Health — its latest Check-in's — or "" when it
+// has none, as a Proposed Goal or one a Check-in moved out of Active.
+func (r goalRow) health() string {
+	if r.Latest == nil {
+		return ""
+	}
+	return r.Latest.Health
+}
+
+// lastCheckin says how long ago the Goal's latest Check-in was, counted on the
+// org's calendar, or a dash when it has none. With a Check-in, the Goal's last
+// update is that Check-in, so its freshness has already counted the days.
+func (r goalRow) lastCheckin() string {
+	if r.Latest == nil {
+		return "—"
+	}
+	return daysAgo(r.Freshness.DaysSince)
+}
+
+// problemRank orders the Goal list so problems sort to the top: Red, then
+// Ownerless, then Stale or Path to Green overdue, then Yellow, then Green, then
+// no Health.
+func (r goalRow) problemRank() int {
+	switch {
+	case r.health() == domain.HealthRed:
+		return 0
+	case r.Goal.Ownerless:
+		return 1
+	case r.Freshness.Stale || r.Freshness.PathToGreenOverdue:
+		return 2
+	case r.health() == domain.HealthYellow:
+		return 3
+	case r.health() == domain.HealthGreen:
+		return 4
+	}
+	return 5
+}
+
+// sortGoalRows puts problems first (problemRank), alphabetical by title within
+// each rank.
+func sortGoalRows(rows []goalRow) {
+	slices.SortStableFunc(rows, func(a, b goalRow) int {
+		if c := cmp.Compare(a.problemRank(), b.problemRank()); c != 0 {
+			return c
+		}
+		return cmp.Compare(strings.ToLower(a.Goal.Title), strings.ToLower(b.Goal.Title))
+	})
+}
+
+// goalsListView reads the Goal list's filters (the filter bar's fields and
+// ?value=) and grouping (?group=) from the request, then loads, filters, sorts,
+// and (optionally) groups the Goals.
+func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsListData, error) {
+	ctx := r.Context()
+	dims, err := s.svc.ListDimensions(ctx)
 	if err != nil {
 		return goalsListData{}, err
 	}
-	goals, err := s.svc.ListGoalsWithValues(r.Context())
-	if err != nil {
-		return goalsListData{}, err
-	}
-	flagged, err := s.flaggedFreshness(r.Context())
+	goals, err := s.svc.ListGoalsWithValues(ctx)
 	if err != nil {
 		return goalsListData{}, err
 	}
@@ -109,24 +254,95 @@ func (s *Server) goalsListView(r *http.Request) (goalsListData, error) {
 			byDimension[dimID] = append(byDimension[dimID], id)
 		}
 	}
+	goals = domain.FilterGoals(goals, byDimension)
+	filter := readGoalFilter(r.URL.Query())
+	delegatedIDs := map[int64]bool{}
+	if filter.Mine {
+		delegated, err := s.svc.DelegatedGoals(ctx, current.ID)
+		if err != nil {
+			return goalsListData{}, err
+		}
+		for _, g := range delegated {
+			delegatedIDs[g.ID] = true
+		}
+	}
+	mine := func(g domain.Goal) bool { return g.Owner.ID == current.ID || delegatedIDs[g.ID] }
+
+	rows := make([]goalRow, 0, len(goals))
+	for _, gv := range goals {
+		row, err := s.loadGoalRow(ctx, gv)
+		if err != nil {
+			return goalsListData{}, err
+		}
+		if filter.keeps(row, mine) {
+			rows = append(rows, row)
+		}
+	}
+	sortGoalRows(rows)
 
 	view := goalsListData{
-		Goals:      domain.FilterGoals(goals, byDimension),
+		Rows:       rows,
+		Filter:     filter,
 		Dimensions: dims,
 		Selected:   selected,
-		Freshness:  flagged,
 	}
 	if raw := r.URL.Query().Get("group"); raw != "" {
 		if groupID, err := strconv.ParseInt(raw, 10, 64); err == nil {
 			for _, d := range dims {
 				if d.ID == groupID {
 					view.GroupID = groupID
-					view.Groups = domain.GroupGoalsByDimension(view.Goals, d)
+					view.Groups = groupGoalRows(rows, d)
 				}
 			}
 		}
 	}
 	return view, nil
+}
+
+// loadGoalRow reads what gv's row shows beyond the Goal itself. It costs a few
+// queries per Goal, which the list can afford for now.
+func (s *Server) loadGoalRow(ctx context.Context, gv domain.GoalWithValues) (goalRow, error) {
+	row := goalRow{GoalWithValues: gv}
+	latest, ok, err := s.svc.LatestCheckin(ctx, gv.Goal.ID)
+	if err != nil {
+		return goalRow{}, fmt.Errorf("load latest check-in: %w", err)
+	}
+	if ok {
+		row.Latest = &latest
+	}
+	if row.Freshness, err = s.svc.Freshness(ctx, gv.Goal.ID); err != nil {
+		return goalRow{}, fmt.Errorf("read freshness: %w", err)
+	}
+	slips, err := s.svc.ListDateSlips(ctx, gv.Goal.ID)
+	if err != nil {
+		return goalRow{}, fmt.Errorf("load date slips: %w", err)
+	}
+	for _, slip := range slips {
+		if slip.MilestoneID == 0 {
+			row.PriorDates = append(row.PriorDates, slip.OldDate)
+		}
+	}
+	return row, nil
+}
+
+// groupGoalRows buckets rows under dim's values the way
+// domain.GroupGoalsByDimension does, keeping their sorted order in each bucket.
+func groupGoalRows(rows []goalRow, dim domain.Dimension) []goalRowGroup {
+	goals := make([]domain.GoalWithValues, 0, len(rows))
+	byID := make(map[int64]goalRow, len(rows))
+	for _, row := range rows {
+		goals = append(goals, row.GoalWithValues)
+		byID[row.Goal.ID] = row
+	}
+	var groups []goalRowGroup
+	for _, g := range domain.GroupGoalsByDimension(goals, dim) {
+		grp := goalRowGroup{Value: g.Value}
+		for _, gv := range g.Goals {
+			grp.Rows = append(grp.Rows, byID[gv.Goal.ID])
+		}
+		groups = append(groups, grp)
+	}
+	return groups
 }
 
 func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {

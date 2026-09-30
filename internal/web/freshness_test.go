@@ -11,8 +11,8 @@ import (
 )
 
 // The Freshness signals page is the Stale list: every Stale Goal with how long
-// since its last update, and every Goal whose Path to Green is overdue. The
-// Goal list links to it, and fresh Goals aren't listed.
+// since its last update, and every Goal whose Path to Green is overdue.
+// Fresh Goals aren't listed.
 func TestFreshnessPageListsStaleGoalsAndOverduePaths(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
@@ -25,9 +25,6 @@ func TestFreshnessPageListsStaleGoalsAndOverduePaths(t *testing.T) {
 	h.Checkin(sam, stalled.ID, domain.HealthRed, "Blocked.", "Escalate.", time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC))
 
 	client := signInClient(t, ts.URL, "sam@example.com")
-	if list := getBody(t, client, ts.URL+"/goals"); !strings.Contains(list, `href="/freshness"`) {
-		t.Errorf("Goal list does not link to the Freshness signals page; body:\n%s", list)
-	}
 	page := getBody(t, client, ts.URL+"/freshness")
 
 	stale := pageElement(t, page, "ul", "stale-goals")
@@ -112,8 +109,8 @@ func TestGoalListMarksStaleAndOverdueGoals(t *testing.T) {
 		if at < 0 {
 			t.Fatalf("Goal list has no row for %q; body:\n%s", g.Title, list)
 		}
-		start := strings.LastIndex(list[:at], "<li")
-		end := strings.Index(list[at:], "</li>")
+		start := strings.LastIndex(list[:at], "<tr")
+		end := strings.Index(list[at:], "</tr>")
 		return list[start : at+end]
 	}
 
