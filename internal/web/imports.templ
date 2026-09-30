@@ -13,21 +13,29 @@ import (
 templ importsPage(current *domain.Account, report *importer.Report, flash string) {
 	{{ admin := current != nil && current.IsAdmin }}
 	@layout("Import Goals", current) {
-		<h1>Import Goals</h1>
-		<p>Load the pilot's Goals from a spreadsheet (CSV or XLSX), one Goal per row. The column format is documented in <code>docs/import-format.md</code>.</p>
+		@importsStyles()
+		<header class="page-head">
+			<div>
+				<h1>Import Goals</h1>
+				<p class="muted">Load the pilot's Goals from a spreadsheet (CSV or XLSX), one Goal per row. The column format is documented in <code>docs/import-format.md</code>.</p>
+			</div>
+		</header>
 		if !admin {
-			<p data-testid="import-forbidden">Only an Admin may import Goals.</p>
+			<p data-testid="import-forbidden" class="alert lc">Only an Admin may import Goals.</p>
 		} else {
 			if flash != "" {
-				<p data-testid="import-flash">{ flash }</p>
+				<p data-testid="import-flash" class="alert r" role="alert">{ flash }</p>
 			}
-			<form method="post" action="/imports" enctype="multipart/form-data" data-testid="import-form">
-				<label>
-					Spreadsheet
+			<form data-testid="import-form" class="card im-form" method="post" action="/imports" enctype="multipart/form-data">
+				<label class="field">
+					<span>Spreadsheet <span class="hint">— CSV or XLSX</span></span>
 					<input type="file" name="file" accept=".csv,.xlsx" required/>
 				</label>
-				<button type="submit" name="action" value="dry-run">Dry run</button>
-				<button type="submit" name="action" value="commit">Commit</button>
+				<div class="im-actions">
+					<button type="submit" class="btn primary" name="action" value="dry-run">Dry run</button>
+					<button type="submit" class="btn" name="action" value="commit">Commit</button>
+				</div>
+				<p class="hint">A dry run checks every row and saves nothing. Commit saves the Goals only if no row has errors.</p>
 			</form>
 			if report != nil {
 				@importReport(report)
@@ -36,30 +44,52 @@ templ importsPage(current *domain.Account, report *importer.Report, flash string
 	}
 }
 
-// importReport renders the outcome of an import: a summary line and, per row, its
-// line number, the Goal it named, and any errors.
+// importReport renders the outcome of an import: a summary alert and then a
+// table giving, per row, its line number, the Goal it named, and any errors.
 templ importReport(report *importer.Report) {
-	<section data-testid="import-report">
+	<section data-testid="import-report" class="im-report">
 		if report.Committed {
-			<p data-testid="import-summary">Imported { fmt.Sprint(len(report.Rows)) } Goals.</p>
+			<p data-testid="import-summary" class="alert g" role="status">Imported { fmt.Sprint(len(report.Rows)) } Goals.</p>
 		} else if report.HasErrors() {
-			<p data-testid="import-summary">Found { fmt.Sprint(report.ErrorCount()) } row(s) with errors; nothing was saved.</p>
+			<p data-testid="import-summary" class="alert r" role="alert">Found { fmt.Sprint(report.ErrorCount()) } row(s) with errors; nothing was saved.</p>
 		} else {
-			<p data-testid="import-summary">Dry run: { fmt.Sprint(len(report.Rows)) } row(s) look good; nothing saved. Commit to save.</p>
+			<p data-testid="import-summary" class="alert lc" role="status">Dry run: { fmt.Sprint(len(report.Rows)) } row(s) look good; nothing saved. Commit to save.</p>
 		}
-		<ol data-testid="import-rows">
-			for _, row := range report.Rows {
-				<li data-testid="import-row">
-					<strong>Row { fmt.Sprint(row.Line) }</strong>: { importRowLabel(row) }
-					if len(row.Errors) > 0 {
-						<ul data-testid="import-row-errors">
-							for _, e := range row.Errors {
-								<li>{ e }</li>
-							}
-						</ul>
+		<div class="card">
+			<table>
+				<thead>
+					<tr><th>Row</th><th>Goal</th><th>Errors</th></tr>
+				</thead>
+				<tbody data-testid="import-rows">
+					for _, row := range report.Rows {
+						<tr data-testid="import-row">
+							<td class="num">{ fmt.Sprint(row.Line) }</td>
+							<td>{ importRowLabel(row) }</td>
+							<td>
+								if len(row.Errors) > 0 {
+									<ul data-testid="import-row-errors" class="im-errors">
+										for _, e := range row.Errors {
+											<li>{ e }</li>
+										}
+									</ul>
+								} else {
+									<span class="muted">None</span>
+								}
+							</td>
+						</tr>
 					}
-				</li>
-			}
-		</ol>
+				</tbody>
+			</table>
+		</div>
 	</section>
+}
+
+// importsStyles are the Import page's own rules on top of app.css.
+templ importsStyles() {
+	<style>
+		.im-form{padding:20px;display:flex;flex-direction:column;gap:16px;max-width:560px}
+		.im-actions{display:flex;gap:8px}
+		.im-report{display:flex;flex-direction:column;gap:12px}
+		.im-errors{margin:0;padding-left:18px;color:#9A231B}
+	</style>
 }
