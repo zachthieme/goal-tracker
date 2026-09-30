@@ -148,6 +148,49 @@ func validateMetric(name, unit, direction string, targetDate time.Time) error {
 	return nil
 }
 
+// MetricReading is a Metric's value recorded at a Check-in (CONTEXT.md: Metric -
+// its current value is recorded at each Check-in). A Metric's readings ordered
+// over time give its trend against target.
+type MetricReading struct {
+	ID        int64
+	CheckinID int64
+	MetricID  int64
+	Value     float64
+	CreatedAt time.Time
+}
+
+// MetricReadingInput records one Metric's current value in a Check-in. The
+// Metric must be on the Goal being checked in on.
+type MetricReadingInput struct {
+	MetricID int64
+	Value    float64
+}
+
+// ListMetricReadings returns a Metric's readings over time, earliest first, for
+// its trend against target (CONTEXT.md: the Goal page shows each Metric's trend).
+func (s *Service) ListMetricReadings(ctx context.Context, metricID int64) ([]MetricReading, error) {
+	rows, err := s.queries.ListMetricReadings(ctx, metricID)
+	if err != nil {
+		return nil, fmt.Errorf("list metric readings: %w", err)
+	}
+	out := make([]MetricReading, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, metricReadingFromRow(r))
+	}
+	return out, nil
+}
+
+func metricReadingFromRow(r db.MetricReading) MetricReading {
+	createdAt, _ := time.Parse(timeFormat, r.CreatedAt)
+	return MetricReading{
+		ID:        r.ID,
+		CheckinID: r.CheckinID,
+		MetricID:  r.MetricID,
+		Value:     r.Value,
+		CreatedAt: createdAt,
+	}
+}
+
 func metricFromRow(m db.Metric) Metric {
 	targetDate, _ := time.Parse(dateFormat, m.TargetDate)
 	createdAt, _ := time.Parse(timeFormat, m.CreatedAt)

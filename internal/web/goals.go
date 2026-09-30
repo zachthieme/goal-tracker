@@ -164,6 +164,22 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		http.Error(w, "could not load metrics", http.StatusInternalServerError)
 		return
 	}
+	// Each Metric's readings over time, for its trend against target (CONTEXT.md:
+	// the Goal page shows each Metric's trend over time against its target).
+	trends := make([]metricTrend, 0, len(metrics))
+	for _, m := range metrics {
+		readings, err := s.svc.ListMetricReadings(r.Context(), m.ID)
+		if err != nil {
+			http.Error(w, "could not load metric readings", http.StatusInternalServerError)
+			return
+		}
+		trends = append(trends, metricTrend{Metric: m, Readings: readings})
+	}
+	highlights, err := s.svc.ListHighlightsByGoal(r.Context(), id)
+	if err != nil {
+		http.Error(w, "could not load highlights", http.StatusInternalServerError)
+		return
+	}
 	contributors, err := s.svc.ListContributors(r.Context(), id)
 	if err != nil {
 		http.Error(w, "could not load contributors", http.StatusInternalServerError)
@@ -225,6 +241,8 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		Candidates:    candidates,
 		Milestones:    milestones,
 		Metrics:       metrics,
+		Trends:        trends,
+		Highlights:    highlights,
 		Contributors:  contributors,
 		Delegates:     delegates,
 		CanCheckin:    canCheckin,
@@ -242,12 +260,17 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 // graph links, and the Milestones, Metrics, Contributors, and So What history an
 // Owner fills in before activating it.
 type goalView struct {
-	Goal         domain.Goal
-	Parents      []domain.GoalLink
-	Children     []domain.GoalLink
-	Candidates   []domain.Goal
-	Milestones   []domain.Milestone
-	Metrics      []domain.Metric
+	Goal       domain.Goal
+	Parents    []domain.GoalLink
+	Children   []domain.GoalLink
+	Candidates []domain.Goal
+	Milestones []domain.Milestone
+	Metrics    []domain.Metric
+	// Trends pairs each Metric with its readings over time, for the trend against
+	// target shown on the Goal page. Highlights are the Goal's flagged notes,
+	// newest first (CONTEXT.md: Metric, Highlight).
+	Trends       []metricTrend
+	Highlights   []domain.Highlight
 	Contributors []domain.Account
 	// Delegates are the Accounts the Owner has authorized to write Check-ins on
 	// this Goal, and CanCheckin is true when the viewer may write one — the Owner
@@ -270,6 +293,13 @@ type goalView struct {
 	// Present is false when there is nothing to roll up.
 	RolledUp      domain.RolledUpHealth
 	SuggestedDate string
+}
+
+// metricTrend pairs a Metric with its readings over time, so the Goal page can
+// show each Metric's trend against its target (CONTEXT.md: Metric).
+type metricTrend struct {
+	Metric   domain.Metric
+	Readings []domain.MetricReading
 }
 
 // assignedValue returns the value this Goal carries in the given Dimension, or

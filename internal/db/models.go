@@ -82,6 +82,14 @@ type Handoff struct {
 	CreatedAt   string
 }
 
+type Highlight struct {
+	ID        int64
+	CheckinID int64
+	Kind      string
+	Note      string
+	CreatedAt string
+}
+
 type Link struct {
 	ID          int64
 	ChildID     int64
@@ -102,6 +110,14 @@ type Metric struct {
 	Target     float64
 	TargetDate string
 	CreatedAt  string
+}
+
+type MetricReading struct {
+	ID        int64
+	CheckinID int64
+	MetricID  int64
+	Value     float64
+	CreatedAt string
 }
 
 type Milestone struct {
