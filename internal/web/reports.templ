@@ -35,7 +35,7 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 		</section>
 		<details data-testid="create-report">
 			<summary class="btn primary">New report</summary>
-			<form class="card rp-card rp-form" method="post" action="/reports">
+			<form class="card rp-card rp-form" style="margin-top:12px" method="post" action="/reports">
 				<h2>New Report Definition</h2>
 				<label class="field">
 					<span>Name</span>
@@ -686,7 +686,7 @@ templ reportStyles() {
 		.rp-cards{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 		.rp-cards>.rp-card{padding:14px 20px;gap:4px}
 		.rp-picker{max-height:280px;overflow-y:auto;border:1px solid #C9CCC4;border-radius:6px;background:#fff;padding:8px 12px;display:flex;flex-direction:column;gap:4px}
-		.rp-form{display:flex;flex-direction:column;gap:16px;padding:16px 0 0}
+		.rp-form{display:flex;flex-direction:column;gap:16px}
 		.rp-form fieldset:not(.rp-picker){border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
 		.rp-form legend{font-weight:600;font-size:13px;padding:0 0 6px}
 		.rp-publish{padding:20px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
