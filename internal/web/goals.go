@@ -441,14 +441,18 @@ func parseDate(value string) (time.Time, error) {
 }
 
 // writeCommandResult redirects back to the Goal on success and surfaces a
-// validation error (e.g. an activation gate failure) as 422 with its message.
+// validation error (e.g. an activation gate failure) as 422 and a refusal to act
+// on someone else's Goal as 403, each with its message.
 func writeCommandResult(w http.ResponseWriter, r *http.Request, goalID int64, err error) {
 	if err != nil {
-		if errors.Is(err, domain.ErrValidation) {
+		switch {
+		case errors.Is(err, domain.ErrValidation):
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
-			return
+		case errors.Is(err, domain.ErrNotAuthorized):
+			http.Error(w, err.Error(), http.StatusForbidden)
+		default:
+			http.Error(w, "could not update goal", http.StatusInternalServerError)
 		}
-		http.Error(w, "could not update goal", http.StatusInternalServerError)
 		return
 	}
 	http.Redirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10), http.StatusSeeOther)
@@ -626,8 +630,9 @@ func (s *Server) handleActivateGoal(w http.ResponseWriter, r *http.Request, _ do
 
 // handleAssignGoalValue assigns a Dimension value to the Goal, replacing any
 // value it already carries in the same Dimension (CONTEXT.md: Owners assign
-// Dimension values to their Goals). An empty selection is a no-op.
-func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+// Dimension values to their Goals). An empty selection is a no-op. Anyone but
+// the Owner or an Admin is refused.
+func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := goalIDFromPath(w, r)
 	if !ok {
 		return
@@ -642,7 +647,7 @@ func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, _
 		http.Error(w, "invalid value", http.StatusUnprocessableEntity)
 		return
 	}
-	writeCommandResult(w, r, id, s.svc.AssignGoalValue(r.Context(), id, valueID))
+	writeCommandResult(w, r, id, s.svc.AssignGoalValue(r.Context(), current.ID, id, valueID))
 }
 
 // handleCreateChildGoal creates a Goal under the parent in the path: it is owned
@@ -684,7 +689,7 @@ func (s *Server) handleCreateChildGoal(w http.ResponseWriter, r *http.Request, c
 			return err
 		}
 		for _, valueID := range valueIDs {
-			if err := tx.AssignGoalValue(r.Context(), child.ID, valueID); err != nil {
+			if err := tx.AssignGoalValue(r.Context(), current.ID, child.ID, valueID); err != nil {
 				return err
 			}
 		}

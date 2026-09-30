@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -157,10 +158,19 @@ func (s *Service) ListDimensions(ctx context.Context) ([]Dimension, error) {
 // AssignGoalValue assigns a Dimension value to a Goal (CONTEXT.md: Owners assign
 // Dimension values to their Goals). A Goal carries at most one value per
 // Dimension, so this replaces any value the Goal already has in the same
-// Dimension. A retired value is not offered for a new assignment.
-func (s *Service) AssignGoalValue(ctx context.Context, goalID, valueID int64) error {
-	if _, err := s.queries.GetGoal(ctx, goalID); err != nil {
+// Dimension. A retired value is not offered for a new assignment. Only the
+// Goal's Owner or an Admin may assign its values.
+func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID int64) error {
+	goal, err := s.queries.GetGoal(ctx, goalID)
+	if err != nil {
 		return fmt.Errorf("%w: goal does not exist", ErrValidation)
+	}
+	if goal.Goal.OwnerID != actorID {
+		if err := s.requireAdmin(ctx, actorID); errors.Is(err, ErrNotAuthorized) {
+			return fmt.Errorf("%w: only the Owner or an Admin may set a Goal's Dimension values", ErrNotAuthorized)
+		} else if err != nil {
+			return err
+		}
 	}
 	val, err := s.queries.GetDimensionValue(ctx, valueID)
 	if err != nil {

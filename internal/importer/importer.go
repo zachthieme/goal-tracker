@@ -124,7 +124,7 @@ func (im *Importer) run(ctx context.Context, adminID int64, filename string, dat
 	stopImport := errors.New("import rolled back")
 	var report Report
 	txErr := im.svc.WithinTx(ctx, func(tx *domain.Service) error {
-		report = applyRows(ctx, tx, specs)
+		report = applyRows(ctx, tx, adminID, specs)
 		if !commit || report.HasErrors() {
 			return stopImport
 		}
@@ -371,7 +371,7 @@ func parseMetric(entry string) (metricSpec, error) {
 // parents, collecting every error found on each row rather than stopping at the
 // first. It runs inside the caller's transaction, so a caller that rolls back (a
 // dry run, or a commit that found errors) saves nothing.
-func applyRows(ctx context.Context, tx *domain.Service, specs []rowSpec) Report {
+func applyRows(ctx context.Context, tx *domain.Service, adminID int64, specs []rowSpec) Report {
 	results := make([]RowResult, len(specs))
 	titleCount := map[string]int{}
 	for _, s := range specs {
@@ -394,7 +394,7 @@ func applyRows(ctx context.Context, tx *domain.Service, specs []rowSpec) Report 
 		if s.incomplete || titleCount[s.title] > 1 {
 			continue
 		}
-		goalID, errs := createGoal(ctx, tx, s)
+		goalID, errs := createGoal(ctx, tx, adminID, s)
 		results[i].Errors = append(results[i].Errors, errs...)
 		if goalID != 0 {
 			goalIDs[i] = goalID
@@ -431,7 +431,7 @@ func applyRows(ctx context.Context, tx *domain.Service, specs []rowSpec) Report 
 // createGoal creates the row's Goal with its Kind, Milestones, Metrics and
 // Dimension values. It returns the Goal's id (0 if the Goal itself could not be
 // created) and every error found adding the rest.
-func createGoal(ctx context.Context, tx *domain.Service, s rowSpec) (int64, []string) {
+func createGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpec) (int64, []string) {
 	owner, err := tx.EnsureAccount(ctx, s.owner)
 	if err != nil {
 		return 0, []string{fmt.Sprintf("could not create Owner account: %v", err)}
@@ -470,7 +470,7 @@ func createGoal(ctx context.Context, tx *domain.Service, s rowSpec) (int64, []st
 		}
 	}
 	for _, dv := range s.dimensions {
-		if err := tx.AssignGoalValue(ctx, g.ID, dv.valueID); err != nil {
+		if err := tx.AssignGoalValue(ctx, adminID, g.ID, dv.valueID); err != nil {
 			errs = append(errs, message(err))
 		}
 	}
