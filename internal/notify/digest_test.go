@@ -393,3 +393,21 @@ func TestDigestListsChildrenWithAParentOnHoldOrCancelled(t *testing.T) {
 		}
 	}
 }
+
+// Only Active Goals are checked in on routinely: a Proposed Goal or one On Hold
+// is never on a reminder.
+func TestReminderSkipsGoalsThatArentActive(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.CreateGoal(sam, "Explore voice search", "Typing is slow on phones.")
+	h.OnHoldGoal(sam, "Enter Japan", "Japan is our next market.", "Budget freeze.")
+	h.Clock.Advance(30 * day)
+
+	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
+		t.Fatalf("SendReminders: %v", err)
+	}
+
+	if got := sentTo(h.Email, "sam@example.com"); len(got) != 0 {
+		t.Errorf("sent %d reminders for Goals that aren't Active, want none: %+v", len(got), got)
+	}
+}

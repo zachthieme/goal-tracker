@@ -44,3 +44,48 @@ func TestSchedulerSendsTheWeeklyEmailsAtTheConfiguredTime(t *testing.T) {
 		t.Fatalf("sent %d emails by the next Monday 09:00, want 2", got)
 	}
 }
+
+// The day and time are on the org's calendar: Monday 09:00 in Los Angeles is
+// 17:00 UTC in winter.
+func TestSchedulerReadsTheTimeInTheOrgsTimezone(t *testing.T) {
+	h := testsupport.New(t)
+	loc, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		t.Fatalf("LoadLocation: %v", err)
+	}
+	when, err := notify.ParseWeekly("monday", "09:00", loc)
+	if err != nil {
+		t.Fatalf("ParseWeekly: %v", err)
+	}
+	runs := 0
+	sched := notify.NewScheduler(h.Clock, when, func(context.Context) error { runs++; return nil })
+
+	h.Clock.Set(time.Date(2026, 1, 5, 16, 59, 0, 0, time.UTC))
+	if err := sched.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if runs != 0 {
+		t.Fatalf("ran at 08:59 in Los Angeles, want it to wait for 09:00")
+	}
+	h.Clock.Set(time.Date(2026, 1, 5, 17, 0, 0, 0, time.UTC))
+	if err := sched.Tick(context.Background()); err != nil {
+		t.Fatalf("Tick: %v", err)
+	}
+	if runs != 1 {
+		t.Fatalf("runs at 09:00 in Los Angeles = %d, want 1", runs)
+	}
+}
+
+// A day or time that can't be read is refused rather than guessed at.
+func TestParseWeeklyRefusesAnUnreadableDayOrTime(t *testing.T) {
+	for _, tc := range []struct{ day, at string }{
+		{"Mon", "09:00"},
+		{"Funday", "09:00"},
+		{"Monday", "9am"},
+		{"Monday", "25:00"},
+	} {
+		if _, err := notify.ParseWeekly(tc.day, tc.at, time.UTC); err == nil {
+			t.Errorf("ParseWeekly(%q, %q) accepted it, want an error", tc.day, tc.at)
+		}
+	}
+}
