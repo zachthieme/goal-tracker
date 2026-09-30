@@ -56,6 +56,7 @@ func TestSeededOrg(t *testing.T) {
 	t.Run("Date Slips", func(t *testing.T) { dateSlips(t, h) })
 	t.Run("Milestone Churn", func(t *testing.T) { milestoneChurn(t, h) })
 	t.Run("Stale and Unaligned Goals", func(t *testing.T) { staleAndUnaligned(t, h) })
+	t.Run("Lifecycle changes", func(t *testing.T) { lifecycleChanges(t, h) })
 }
 
 // The seed builds a realistic org: about 50 Goals spread across several teams
@@ -259,5 +260,37 @@ func staleAndUnaligned(t *testing.T, h *testsupport.Harness) {
 	}
 	if unaligned < 3 {
 		t.Errorf("want a few Unaligned Goals, got %d", unaligned)
+	}
+}
+
+// Not every Goal is Active: some were finished Done with an outcome, some put
+// On Hold or Cancelled with a reason, and a couple are still Proposed.
+func lifecycleChanges(t *testing.T, h *testsupport.Harness) {
+	ctx := context.Background()
+	lifecycles := map[string]int{}
+	for _, g := range listGoals(t, h) {
+		lifecycles[g.Lifecycle]++
+		if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleProposed {
+			continue
+		}
+		latest, ok, err := h.Service.LatestCheckin(ctx, g.ID)
+		if err != nil || !ok {
+			t.Fatalf("LatestCheckin(%q): ok=%v err=%v", g.Title, ok, err)
+		}
+		change := latest.LifecycleChange
+		if change.To != g.Lifecycle {
+			t.Errorf("Goal %q is %s but its latest Check-in moved it to %q", g.Title, g.Lifecycle, change.To)
+		}
+		if g.Lifecycle == domain.LifecycleDone && change.Outcome == "" {
+			t.Errorf("Done Goal %q has no outcome", g.Title)
+		}
+		if g.Lifecycle != domain.LifecycleDone && change.Reason == "" {
+			t.Errorf("%s Goal %q has no reason", g.Lifecycle, g.Title)
+		}
+	}
+	for _, want := range []string{domain.LifecycleProposed, domain.LifecycleDone, domain.LifecycleOnHold, domain.LifecycleCancelled} {
+		if lifecycles[want] == 0 {
+			t.Errorf("want some %s Goals, got %v", want, lifecycles)
+		}
 	}
 }

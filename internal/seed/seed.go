@@ -114,10 +114,11 @@ type plannedGoal struct {
 	recover    int     // the week a troubled project recovers to Yellow, or 0
 
 	// Set once the Goal exists.
-	id      int64
-	ownerID int64
-	metrics []domain.Metric
-	slipped map[int64]bool // Milestones whose date has moved
+	id        int64
+	ownerID   int64
+	metrics   []domain.Metric
+	slipped   map[int64]bool // Milestones whose date has moved
+	lifecycle string         // the Goal's Lifecycle as the history plays out
 }
 
 type plannedMilestone struct {
@@ -138,16 +139,8 @@ var milestoneNames = []string{"Design review", "Prototype", "Beta", "Rollout to 
 func newPlan(rng *rand.Rand, day0 time.Time) *plan {
 	p := &plan{}
 	add := func(level int, e entry, teamName, owner string, parents []string, deliveryWeeks int) *plannedGoal {
-		g := &plannedGoal{entry: e, team: teamName, owner: owner, parents: parents, level: level}
-		if e.ongoing {
-			g.metric = e.metric + " | " + day0.AddDate(0, 0, 7*40).Format(dateFormat)
-		} else {
-			g.delivery = domain.SuggestDeliveryDate(day0.AddDate(0, 0, 7*deliveryWeeks))
-			g.milestones = planMilestones(rng, day0, g.delivery)
-			if e.metric != "" {
-				g.metric = e.metric + " | " + g.delivery.Format(dateFormat)
-			}
-		}
+		g := &plannedGoal{entry: e, team: teamName, owner: owner, parents: parents, level: level, lifecycle: domain.LifecycleProposed}
+		g.schedule(rng, day0, deliveryWeeks)
 		p.goals = append(p.goals, g)
 		return g
 	}
@@ -160,26 +153,48 @@ func newPlan(rng *rand.Rand, day0 time.Time) *plan {
 			add(2, e, t.name, t.lead, titlesOf(e.parents, outcomeEntries()), 14+rng.IntN(9))
 		}
 	}
-	var projects []*plannedGoal
+	// Profiles are dealt to the aligned projects only; the Unaligned ones stay
+	// steady and Active, so they are always there to be seen.
+	var aligned []*plannedGoal
 	for _, t := range teams {
 		for _, e := range t.projects {
-			projects = append(projects, add(3, e, t.name, t.people[rng.IntN(len(t.people))], titlesOf(e.parents, t.goals), 14+rng.IntN(11)))
+			aligned = append(aligned, add(3, e, t.name, t.people[rng.IntN(len(t.people))], titlesOf(e.parents, t.goals), 14+rng.IntN(11)))
 		}
 		for _, e := range t.unaligned {
-			projects = append(projects, add(3, e, t.name, t.people[rng.IntN(len(t.people))], nil, 14+rng.IntN(11)))
+			add(3, e, t.name, t.people[rng.IntN(len(t.people))], nil, 14+rng.IntN(11))
 		}
 	}
-	for i, j := range rng.Perm(len(projects)) {
+	for i, j := range rng.Perm(len(aligned)) {
 		if i < len(profileDeck) {
-			dealProfile(rng, projects[j], profileDeck[i])
+			dealProfile(rng, day0, aligned[j], profileDeck[i])
 		}
 	}
 	return p
 }
 
-// dealProfile gives a project its profile and decides when its turns come.
-func dealProfile(rng *rand.Rand, g *plannedGoal, pr profile) {
+// schedule sets a Goal's dates: an Ongoing Goal's Metric targets the end of
+// the year; a Dated Goal is due deliveryWeeks after day0 (on the date the picker
+// would suggest), with its Milestones spread before that and its Metric, if
+// any, targeting the delivery date.
+func (g *plannedGoal) schedule(rng *rand.Rand, day0 time.Time, deliveryWeeks int) {
+	if g.ongoing {
+		g.metric = g.entry.metric + " | " + day0.AddDate(0, 0, 7*40).Format(dateFormat)
+		return
+	}
+	g.delivery = domain.SuggestDeliveryDate(day0.AddDate(0, 0, 7*deliveryWeeks))
+	g.milestones = planMilestones(rng, day0, g.delivery)
+	if g.entry.metric != "" {
+		g.metric = g.entry.metric + " | " + g.delivery.Format(dateFormat)
+	}
+}
+
+// dealProfile gives a project its profile and decides when its turns come. A
+// finished project is rescheduled to deliver within the history.
+func dealProfile(rng *rand.Rand, day0 time.Time, g *plannedGoal, pr profile) {
 	g.profile = pr
+	if pr == finished {
+		g.schedule(rng, day0, 5+rng.IntN(3))
+	}
 	g.turn = 3 + rng.IntN(5)
 	if pr == stale {
 		g.turn = weeks - 1 - rng.IntN(5)

@@ -27,6 +27,16 @@ const (
 	// stale projects start well and then their Owner stops checking in, so
 	// their last Check-in ends up older than their cadence.
 	stale
+	// finished projects stay on track and are marked Done, with an outcome, once
+	// their last Milestone is done.
+	finished
+	// paused projects are put On Hold partway through.
+	paused
+	// cancelled projects are put On Hold partway through and Cancelled two
+	// weeks later.
+	cancelled
+	// proposed projects are never activated.
+	proposed
 )
 
 // profileDeck is dealt, shuffled, to the projects; any project beyond the deck
@@ -35,6 +45,7 @@ var profileDeck = []profile{
 	troubled, troubled, troubled, troubled, troubled, troubled,
 	churning, churning, churning, churning, churning,
 	stale, stale, stale, stale,
+	finished, finished, paused, cancelled, proposed, proposed,
 }
 
 // history writes the org's weeks of Check-ins through the domain commands,
@@ -57,9 +68,13 @@ func (h *history) run(ctx context.Context, p *plan) (int, error) {
 			return 0, fmt.Errorf("sign in Owner %s: %w", g.owner, err)
 		}
 		g.ownerID = owner.ID
+		if g.profile == proposed {
+			continue
+		}
 		if _, err := h.svc.ActivateGoal(ctx, g.id); err != nil {
 			return 0, fmt.Errorf("activate %q: %w", g.title, err)
 		}
+		g.lifecycle = domain.LifecycleActive
 		if g.team == "" {
 			// Org outcomes move slowly and are reviewed every other week.
 			if _, err := h.svc.SetCadence(ctx, g.id, 14); err != nil {
@@ -80,10 +95,7 @@ func (h *history) run(ctx context.Context, p *plan) (int, error) {
 		for i := len(p.goals) - 1; i >= 0; i-- {
 			g := p.goals[i]
 			h.clk.Set(afternoon.Add(time.Duration(len(p.goals)-1-i) * time.Minute))
-			if g.team == "" && (weeks-w)%2 != 0 {
-				continue
-			}
-			if g.profile == stale && w >= g.turn {
+			if !g.checksInAt(w) {
 				continue
 			}
 			if err := h.checkIn(ctx, g, w); err != nil {
@@ -95,10 +107,42 @@ func (h *history) run(ctx context.Context, p *plan) (int, error) {
 	return checkins, nil
 }
 
+// checksInAt reports whether g's Owner checks in in week w: every week while
+// the Goal is Active — every other week for an org outcome — until a stale
+// project's Owner goes quiet, and once more on an On Hold project to cancel it.
+func (g *plannedGoal) checksInAt(w int) bool {
+	switch g.lifecycle {
+	case domain.LifecycleActive:
+	case domain.LifecycleOnHold:
+		return g.profile == cancelled && w == g.turn+2
+	default:
+		return false
+	}
+	if g.team == "" {
+		return (weeks-w)%2 == 0
+	}
+	return g.profile != stale || w < g.turn
+}
+
 // checkIn writes one week's Check-in on g: it marks the Milestones that have
 // come due Done, sets the Health the Goal's profile (or, for a parent, its
-// roll-up) calls for, and records a reading for each Metric.
+// roll-up) calls for, and records a reading for each Metric. When the profile
+// calls for it, the Check-in also moves the Goal's Lifecycle.
 func (h *history) checkIn(ctx context.Context, g *plannedGoal, w int) error {
+	if g.lifecycle == domain.LifecycleOnHold {
+		_, err := h.svc.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+			GoalID:          g.id,
+			AuthorID:        g.ownerID,
+			Status:          "Not coming back: cancelling rather than leaving it parked.",
+			Lifecycle:       domain.LifecycleCancelled,
+			LifecycleReason: pick(h.rng, cancelReasons),
+		})
+		if err == nil {
+			g.lifecycle = domain.LifecycleCancelled
+		}
+		return err
+	}
+
 	today := day(h.clk.Now())
 	in := domain.SubmitCheckinInput{GoalID: g.id, AuthorID: g.ownerID}
 
@@ -154,8 +198,39 @@ func (h *history) checkIn(ctx context.Context, g *plannedGoal, w int) error {
 		in.Readings = append(in.Readings, domain.MetricReadingInput{MetricID: m.ID, Value: h.reading(g, m, w)})
 	}
 
-	_, err = h.svc.SubmitCheckin(ctx, in)
-	return err
+	switch {
+	case g.profile == finished && allDone(milestones, in.Milestones):
+		in.Lifecycle, in.Outcome = domain.LifecycleDone, pick(h.rng, outcomesReached)
+		in.Status = "Shipped. Closing this out."
+	case (g.profile == paused || g.profile == cancelled) && w == g.turn:
+		in.Lifecycle, in.LifecycleReason = domain.LifecycleOnHold, pick(h.rng, holdReasons)
+		in.Status = "Pausing this Goal; the team is needed elsewhere."
+	}
+
+	if _, err := h.svc.SubmitCheckin(ctx, in); err != nil {
+		return err
+	}
+	if in.Lifecycle != "" {
+		g.lifecycle = in.Lifecycle
+	}
+	return nil
+}
+
+// allDone reports whether every Milestone is done once this Check-in's changes
+// land.
+func allDone(milestones []domain.Milestone, changes []domain.MilestoneChangeInput) bool {
+	doneNow := map[int64]bool{}
+	for _, c := range changes {
+		if c.Status == domain.MilestoneDone {
+			doneNow[c.MilestoneID] = true
+		}
+	}
+	for _, m := range milestones {
+		if m.Status == domain.MilestonePlanned && !doneNow[m.ID] {
+			return false
+		}
+	}
+	return true
 }
 
 // churn adds a Milestone in the week a churning project turns and, two weeks
@@ -275,6 +350,22 @@ var removalReasons = []string{
 	"Folded into the next Milestone to save a release cycle.",
 	"Customer research showed nobody needs this step.",
 	"Another team's project already covers it.",
+}
+
+var outcomesReached = []string{
+	"Shipped on time; early customers are already using it.",
+	"Delivered as planned and handed over to the owning team.",
+	"Done: the old path is switched off and nobody noticed, which was the point.",
+}
+
+var holdReasons = []string{
+	"The team moved to an urgent reliability push for the rest of the quarter.",
+	"Waiting on a pricing decision from leadership before we build more.",
+}
+
+var cancelReasons = []string{
+	"A vendor now covers this; building it ourselves no longer makes sense.",
+	"Customer interviews showed the problem is smaller than we thought.",
 }
 
 var explanations = []string{
