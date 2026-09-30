@@ -11,13 +11,23 @@ type Account struct {
 	CreatedAt string
 }
 
-type Goal struct {
+type Contributor struct {
 	ID        int64
-	Title     string
-	SoWhat    string
-	OwnerID   int64
-	Lifecycle string
+	GoalID    int64
+	AccountID int64
 	CreatedAt string
+}
+
+type Goal struct {
+	ID           int64
+	Title        string
+	SoWhat       string
+	OwnerID      int64
+	Lifecycle    string
+	CreatedAt    string
+	Kind         string
+	DeliveryDate string
+	CadenceDays  int64
 }
 
 type Link struct {
@@ -28,4 +38,32 @@ type Link struct {
 	Note        string
 	RequestedBy int64
 	CreatedAt   string
+}
+
+type Metric struct {
+	ID         int64
+	GoalID     int64
+	Name       string
+	Unit       string
+	Direction  string
+	Baseline   float64
+	Target     float64
+	TargetDate string
+	CreatedAt  string
+}
+
+type Milestone struct {
+	ID         int64
+	GoalID     int64
+	Name       string
+	TargetDate string
+	CreatedAt  string
+}
+
+type SoWhatRevision struct {
+	ID        int64
+	GoalID    int64
+	SoWhat    string
+	AuthorID  int64
+	CreatedAt string
 }
