@@ -13,16 +13,20 @@ type Account struct {
 }
 
 type Checkin struct {
-	ID             int64
-	GoalID         int64
-	AuthorID       int64
-	OwnerID        int64
-	Health         string
-	Status         string
-	PathToGreen    string
-	PathTargetDate string
-	CreatedAt      string
-	Explanation    string
+	ID              int64
+	GoalID          int64
+	AuthorID        int64
+	OwnerID         int64
+	Health          string
+	Status          string
+	PathToGreen     string
+	PathTargetDate  string
+	CreatedAt       string
+	Explanation     string
+	LifecycleFrom   string
+	LifecycleTo     string
+	LifecycleReason string
+	Outcome         string
 }
 
 type Contributor struct {

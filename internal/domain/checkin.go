@@ -31,7 +31,12 @@ type Checkin struct {
 	// Health (ADR-0003). Empty when the two match, or when there is nothing to
 	// roll up.
 	Explanation string
-	CreatedAt   time.Time
+	// LifecycleChange is the move between Lifecycle states this Check-in made;
+	// the zero value when it made none. A Check-in that takes the Goal out of
+	// Active records no Health (CONTEXT.md: Health is how an Active Goal is
+	// tracking; Lifecycle is independent of it).
+	LifecycleChange LifecycleChange
+	CreatedAt       time.Time
 }
 
 // Health values a Check-in can set (CONTEXT.md: Health). Green needs no Path to
@@ -82,15 +87,24 @@ type SubmitCheckinInput struct {
 	// NewMilestones are Milestones added to the Goal in this Check-in; they
 	// count toward its Milestone Churn.
 	NewMilestones []NewMilestoneInput
+	// Lifecycle moves the Goal to another Lifecycle in this Check-in; "" leaves
+	// it alone (CONTEXT.md: Lifecycle). On Hold and Cancelled need a
+	// LifecycleReason; Done needs a one-line Outcome and a reading for every
+	// Metric on the Goal, its final value.
+	Lifecycle       string
+	LifecycleReason string
+	Outcome         string
 }
 
 // SubmitCheckin records a Check-in on a Goal. The Goal must be Active — a
 // Proposed Goal has no Health and can't be checked in on (CONTEXT.md: Health is
-// how an Active Goal is tracking). Health must be Green, Yellow, or Red and the
-// status is required. Yellow or Red requires a Path to Green with text and a
-// target date. Only the Goal's Owner may submit; the Check-in records its author
-// and the Owner it was written for. Check-ins are immutable, so this always
-// inserts a new one.
+// how an Active Goal is tracking) — or On Hold, when the Check-in resumes or
+// Cancels it. Health must be Green, Yellow, or Red and the status is required.
+// Yellow or Red requires a Path to Green with text and a target date. A Check-in
+// may also change the Goal's Lifecycle (see planLifecycleChange); one that takes
+// the Goal out of Active records no Health. Only the Goal's Owner may submit;
+// the Check-in records its author and the Owner it was written for. Check-ins
+// are immutable, so this always inserts a new one.
 func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Checkin, error) {
 	goal, err := s.queries.GetGoal(ctx, in.GoalID)
 	if err != nil {
@@ -99,8 +113,9 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 		}
 		return Checkin{}, fmt.Errorf("look up goal: %w", err)
 	}
-	if goal.Goal.Lifecycle != LifecycleActive {
-		return Checkin{}, fmt.Errorf("%w: only an Active Goal can be checked in on", ErrValidation)
+	lifecycle, err := planLifecycleChange(goal.Goal.Lifecycle, in.Lifecycle, in.LifecycleReason, in.Outcome)
+	if err != nil {
+		return Checkin{}, err
 	}
 	// The Owner writes a Goal's Check-ins, as may any Delegate the Owner has
 	// authorized; the Check-in records its author and still credits the Owner it
@@ -112,23 +127,38 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	status := strings.TrimSpace(in.Status)
 	path := strings.TrimSpace(in.PathToGreen)
 	explanation := strings.TrimSpace(in.Explanation)
-	if err := validateCheckin(in.Health, status, path, in.PathTargetDate); err != nil {
-		return Checkin{}, err
-	}
-
-	// The Owner has to explain why their Health differs from the Rolled-up
-	// Health — the worst among the Goal's Active children (ADR-0003). When there
-	// is nothing to roll up, or the two match, no explanation is required and any
-	// stray one is dropped.
-	explanation, err = s.resolveRollupExplanation(ctx, goal.Goal.ID, in.Health, explanation)
-	if err != nil {
-		return Checkin{}, err
+	// Health is how an Active Goal is tracking, so only a Check-in that leaves
+	// the Goal Active sets one; the rest record just their status.
+	health := in.Health
+	tracked := lifecycle.resultingLifecycle(goal.Goal.Lifecycle) == LifecycleActive
+	if tracked {
+		if err := validateCheckin(health, status, path, in.PathTargetDate); err != nil {
+			return Checkin{}, err
+		}
+		// The Owner has to explain why their Health differs from the Rolled-up
+		// Health — the worst among the Goal's Active children (ADR-0003). When
+		// there is nothing to roll up, or the two match, no explanation is
+		// required and any stray one is dropped.
+		explanation, err = s.resolveRollupExplanation(ctx, goal.Goal.ID, health, explanation)
+		if err != nil {
+			return Checkin{}, err
+		}
+	} else {
+		if status == "" {
+			return Checkin{}, fmt.Errorf("%w: a Check-in needs a status", ErrValidation)
+		}
+		health, path, explanation = "", "", ""
 	}
 
 	// A reading may only name a Metric on this Goal (CONTEXT.md: a Check-in
 	// records the current value of the Goal's Metrics).
 	if err := s.validateReadings(ctx, goal.Goal.ID, in.Readings); err != nil {
 		return Checkin{}, err
+	}
+	if lifecycle.To == LifecycleDone {
+		if err := s.requireFinalValues(ctx, goal.Goal.ID, in.Readings); err != nil {
+			return Checkin{}, err
+		}
 	}
 	if in.Highlight != nil {
 		if err := validateHighlight(*in.Highlight); err != nil {
@@ -142,7 +172,7 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	}
 	// A slip is never hidden behind a Green: moving the delivery date later
 	// means the Goal is not on track (CONTEXT.md: Date Slip).
-	if in.Health == HealthGreen && deliverySlip != nil && deliverySlip.later() {
+	if health == HealthGreen && deliverySlip != nil && deliverySlip.later() {
 		return Checkin{}, fmt.Errorf("%w: a Check-in that moves the delivery date later can't be Green", ErrValidation)
 	}
 	// A Milestone slip that doesn't move the delivery date doesn't affect Health
@@ -151,12 +181,12 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	if err != nil {
 		return Checkin{}, err
 	}
-	if err := s.rejectGreenWhileOverdue(in.Health, milestones.resulting); err != nil {
+	if err := s.rejectGreenWhileOverdue(health, milestones.resulting); err != nil {
 		return Checkin{}, err
 	}
 
 	pathTargetDate := ""
-	if needsPathToGreen(in.Health) {
+	if needsPathToGreen(health) {
 		pathTargetDate = in.PathTargetDate.Format(dateFormat)
 	} else {
 		// A Green Check-in carries no Path to Green.
@@ -167,9 +197,27 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	// so they are written together or not at all.
 	var out Checkin
 	err = s.WithinTx(ctx, func(tx *Service) error {
-		c, err := tx.createCheckin(ctx, goal.Goal.ID, in.AuthorID, goal.Goal.OwnerID, in.Health, status, path, pathTargetDate, explanation)
+		c, err := tx.createCheckin(ctx, db.CreateCheckinParams{
+			GoalID:          goal.Goal.ID,
+			AuthorID:        in.AuthorID,
+			OwnerID:         goal.Goal.OwnerID,
+			Health:          health,
+			Status:          status,
+			PathToGreen:     path,
+			PathTargetDate:  pathTargetDate,
+			Explanation:     explanation,
+			LifecycleFrom:   lifecycle.From,
+			LifecycleTo:     lifecycle.To,
+			LifecycleReason: lifecycle.Reason,
+			Outcome:         lifecycle.Outcome,
+		})
 		if err != nil {
 			return err
+		}
+		if lifecycle.Changed() {
+			if _, err := tx.queries.SetGoalLifecycle(ctx, db.SetGoalLifecycleParams{Lifecycle: lifecycle.To, ID: goal.Goal.ID}); err != nil {
+				return fmt.Errorf("set goal lifecycle: %w", err)
+			}
 		}
 		if err := tx.recordReadings(ctx, c.ID, in.Readings); err != nil {
 			return err
@@ -273,7 +321,16 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 	if err := s.rejectGreenWhileOverdue(prev.Health, milestones); err != nil {
 		return Checkin{}, fmt.Errorf("%w — submit a Check-in to update it", err)
 	}
-	return s.createCheckin(ctx, goalID, authorID, goal.Goal.OwnerID, prev.Health, prev.Status, prev.PathToGreen, prev.PathTargetDate, explanation)
+	return s.createCheckin(ctx, db.CreateCheckinParams{
+		GoalID:         goalID,
+		AuthorID:       authorID,
+		OwnerID:        goal.Goal.OwnerID,
+		Health:         prev.Health,
+		Status:         prev.Status,
+		PathToGreen:    prev.PathToGreen,
+		PathTargetDate: prev.PathTargetDate,
+		Explanation:    explanation,
+	})
 }
 
 // authorizeCheckinAuthor allows a Check-in to be written only by the Goal's
@@ -331,27 +388,19 @@ func validateCheckin(health, status, path string, pathTargetDate time.Time) erro
 	return nil
 }
 
-// createCheckin inserts an immutable Check-in row and returns it resolved.
-func (s *Service) createCheckin(ctx context.Context, goalID, authorID, ownerID int64, health, status, path, pathTargetDate, explanation string) (Checkin, error) {
-	row, err := s.queries.CreateCheckin(ctx, db.CreateCheckinParams{
-		GoalID:         goalID,
-		AuthorID:       authorID,
-		OwnerID:        ownerID,
-		Health:         health,
-		Status:         status,
-		PathToGreen:    path,
-		PathTargetDate: pathTargetDate,
-		Explanation:    explanation,
-		CreatedAt:      s.clock.Now().Format(timeFormat),
-	})
+// createCheckin inserts an immutable Check-in row, stamped with the Service's
+// clock, and returns it resolved.
+func (s *Service) createCheckin(ctx context.Context, p db.CreateCheckinParams) (Checkin, error) {
+	p.CreatedAt = s.clock.Now().Format(timeFormat)
+	row, err := s.queries.CreateCheckin(ctx, p)
 	if err != nil {
 		return Checkin{}, fmt.Errorf("create checkin: %w", err)
 	}
-	author, err := s.queries.GetAccount(ctx, authorID)
+	author, err := s.queries.GetAccount(ctx, p.AuthorID)
 	if err != nil {
 		return Checkin{}, fmt.Errorf("look up author: %w", err)
 	}
-	owner, err := s.queries.GetAccount(ctx, ownerID)
+	owner, err := s.queries.GetAccount(ctx, p.OwnerID)
 	if err != nil {
 		return Checkin{}, fmt.Errorf("look up owner: %w", err)
 	}
@@ -409,6 +458,12 @@ func checkinFromRow(c db.Checkin, author, owner db.Account) Checkin {
 		PathToGreen:    c.PathToGreen,
 		PathTargetDate: pathTargetDate,
 		Explanation:    c.Explanation,
-		CreatedAt:      createdAt,
+		LifecycleChange: LifecycleChange{
+			From:    c.LifecycleFrom,
+			To:      c.LifecycleTo,
+			Reason:  c.LifecycleReason,
+			Outcome: c.Outcome,
+		},
+		CreatedAt: createdAt,
 	}
 }

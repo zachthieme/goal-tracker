@@ -1,6 +1,7 @@
 -- name: CreateCheckin :one
-INSERT INTO checkins (goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, explanation, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+INSERT INTO checkins (goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, explanation,
+                      lifecycle_from, lifecycle_to, lifecycle_reason, outcome, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetLatestCheckin :one

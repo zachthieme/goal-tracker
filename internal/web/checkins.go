@@ -51,10 +51,12 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	}
 	dates := datesFromForm(r, goal, milestones)
 
+	lifecycle := lifecycleFromForm(r, goal)
+
 	formData := func(msg string) checkinFormData {
 		return checkinFormData{
 			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, Explanation: explanation,
-			Metrics: metrics, Readings: rawReadings, Highlight: highlight, Dates: dates, Error: msg,
+			Metrics: metrics, Readings: rawReadings, Highlight: highlight, Dates: dates, Lifecycle: lifecycle, Error: msg,
 		}
 	}
 
@@ -78,6 +80,11 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		PathTargetDate: date,
 		Explanation:    explanation,
 		Readings:       readings,
+		// The Lifecycle fields go through as typed; the domain decides which
+		// changes a Check-in may make and what each needs.
+		Lifecycle:       lifecycle.To,
+		LifecycleReason: lifecycle.Reason,
+		Outcome:         lifecycle.Outcome,
 	}
 	if err := dates.applyTo(&in); err != nil {
 		s.renderCheckinFormError(w, r, goalID, formData(err.Error()))
@@ -194,6 +201,18 @@ func (d checkinDatesFormData) applyTo(in *domain.SubmitCheckinInput) error {
 		in.NewMilestones = append(in.NewMilestones, domain.NewMilestoneInput{Name: row.Name, TargetDate: date})
 	}
 	return nil
+}
+
+// lifecycleFromForm reads the Check-in's Lifecycle fields: the Lifecycle to move
+// the Goal to (empty to leave it alone), and the reason or outcome that change
+// needs. Current is the Goal's Lifecycle, which decides the choices offered.
+func lifecycleFromForm(r *http.Request, goal domain.Goal) lifecycleFormData {
+	return lifecycleFormData{
+		Current: goal.Lifecycle,
+		To:      r.FormValue("lifecycle"),
+		Reason:  r.FormValue("lifecycle_reason"),
+		Outcome: r.FormValue("outcome"),
+	}
 }
 
 // highlightFromForm reads the optional Highlight fields; an empty kind means the

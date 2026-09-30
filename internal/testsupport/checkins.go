@@ -66,3 +66,21 @@ func (h *Harness) CheckinWithHighlight(author domain.Account, goalID int64, kind
 	}
 	return c
 }
+
+// OnHoldGoal creates an Active Goal owned by owner and puts it On Hold in a
+// Check-in with the given reason, failing the test on error.
+func (h *Harness) OnHoldGoal(owner domain.Account, title, soWhat, reason string) domain.Goal {
+	h.T.Helper()
+	g := h.ActiveGoal(owner, title, soWhat)
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:          g.ID,
+		AuthorID:        owner.ID,
+		Status:          "Putting this On Hold.",
+		Lifecycle:       domain.LifecycleOnHold,
+		LifecycleReason: reason,
+	}); err != nil {
+		h.T.Fatalf("SubmitCheckin On Hold: %v", err)
+	}
+	g.Lifecycle = domain.LifecycleOnHold
+	return g
+}

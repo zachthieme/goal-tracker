@@ -45,7 +45,7 @@ templ goalFilters(view goalsListData) {
 							<input type="checkbox" name="value" value={ fmt.Sprintf("%d", v.ID) } checked?={ view.Selected[v.ID] }/>
 							{ v.Value }
 							if v.Retired {
-								<span> (retired)</span>
+								<span>(retired)</span>
 							}
 						</label>
 					}
@@ -101,12 +101,12 @@ templ goalItems(goals []domain.GoalWithValues) {
 		for _, gv := range goals {
 			<li>
 				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", gv.Goal.ID)) }>{ gv.Goal.Title }</a>
-				<span> — { gv.Goal.Lifecycle } — Owner { gv.Goal.Owner.Email }</span>
+				<span>— { gv.Goal.Lifecycle } — Owner { gv.Goal.Owner.Email }</span>
 				if gv.Goal.Ownerless {
-					<strong data-testid="ownerless"> — Ownerless</strong>
+					<strong data-testid="ownerless">— Ownerless</strong>
 				}
 				for _, val := range gv.Values {
-					<span data-testid="goal-value-tag"> [{ val.Value }]</span>
+					<span data-testid="goal-value-tag">[{ val.Value }]</span>
 				}
 			</li>
 		}
@@ -127,6 +127,9 @@ templ goalPage(current *domain.Account, v goalView) {
 		<article data-testid="goal">
 			<h1 data-testid="goal-title">{ g.Title }</h1>
 			<p><strong>Lifecycle:</strong> <span data-testid="goal-lifecycle">{ g.Lifecycle }</span></p>
+			if note := v.lifecycleNote(); note != "" {
+				<p data-testid="goal-lifecycle-note">{ note }</p>
+			}
 			<p><strong>Owner:</strong> <span data-testid="goal-owner">{ g.Owner.Email }</span></p>
 			<p>
 				<strong>Kind:</strong>
@@ -196,7 +199,7 @@ templ goalPage(current *domain.Account, v goalView) {
 				for _, rev := range v.Revisions {
 					<li>
 						<span>{ rev.SoWhat }</span>
-						<span> — { rev.Author.Email } at { rev.CreatedAt.Format("2006-01-02 15:04") }</span>
+						<span>— { rev.Author.Email } at { rev.CreatedAt.Format("2006-01-02 15:04") }</span>
 					</li>
 				}
 			</ul>
@@ -251,7 +254,7 @@ templ goalDimensions(v goalView, owner bool) {
 				if current != nil {
 					<span data-testid="goal-dimension-value">{ current.Value }</span>
 					if current.Retired {
-						<strong data-testid="retired"> (retired)</strong>
+						<strong data-testid="retired">(retired)</strong>
 					}
 				} else {
 					<span data-testid="goal-dimension-unassigned">unassigned</span>
@@ -441,9 +444,9 @@ templ milestoneList(v goalView, editable bool) {
 					@struckDates(v.priorDates(m.ID))
 					{ fmtDate(m.TargetDate) }
 				</span>
-				<span data-testid="milestone-status"> ({ m.Status })</span>
+				<span data-testid="milestone-status">({ m.Status })</span>
 				if m.RemovedReason != "" {
-					<span> — removed: { m.RemovedReason }</span>
+					<span>— removed: { m.RemovedReason }</span>
 				}
 				if editable {
 					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/milestones/%d", m.ID)) } style="display:inline">
@@ -523,7 +526,7 @@ templ metricTrendReadings(t metricTrend) {
 		for _, rd := range t.Readings {
 			<li data-testid="metric-reading">
 				<span>{ rd.CreatedAt.Format("2006-01-02") }: { fmtNum(rd.Value) } { m.Unit }</span>
-				<span> (target { fmtNum(m.Target) })</span>
+				<span>(target { fmtNum(m.Target) })</span>
 			</li>
 		}
 	</ol>
@@ -539,7 +542,7 @@ templ highlightList(highlights []domain.Highlight) {
 		for _, hl := range highlights {
 			<li data-testid="highlight">
 				<strong>{ hl.Kind }</strong>: { hl.Note }
-				<span> — { hl.Owner.Email } at { hl.CreatedAt.Format("2006-01-02 15:04") }</span>
+				<span>— { hl.Owner.Email } at { hl.CreatedAt.Format("2006-01-02 15:04") }</span>
 			</li>
 		}
 	</ul>
@@ -587,9 +590,9 @@ templ linkList(links []domain.GoalLink, emptyTestID, emptyText string) {
 		for _, l := range links {
 			<li>
 				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Goal.ID)) }>{ l.Goal.Title }</a>
-				<span> — Owner { l.Goal.Owner.Email }</span>
+				<span>— Owner { l.Goal.Owner.Email }</span>
 				if l.Goal.Ownerless {
-					<strong data-testid="ownerless"> — Ownerless</strong>
+					<strong data-testid="ownerless">— Ownerless</strong>
 				}
 				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/remove", l.LinkID)) } style="display:inline">
 					<button type="submit">Remove</button>
