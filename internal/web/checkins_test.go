@@ -1071,7 +1071,7 @@ func TestCheckinPageOptionalSectionsCollapsedByDefault(t *testing.T) {
 		"checkin-lifecycle-section": "Pause, finish, or cancel this goal · stays Active",
 	} {
 		section := pageElement(t, page, "details", testID)
-		if strings.Contains(section[:strings.Index(section, ">")], " open") {
+		if strings.Contains(openTag(section), " open") {
 			t.Errorf("%s is open on a fresh Check-in", testID)
 		}
 		if !strings.Contains(section, summary) {
@@ -1111,7 +1111,7 @@ func TestCheckinSectionOpensOnErrorOrSubmittedValue(t *testing.T) {
 				t.Fatalf("expected a validation error; body:\n%s", body)
 			}
 			section := pageElement(t, body, "details", tc.section)
-			if !strings.Contains(section[:strings.Index(section, ">")], " open") {
+			if !strings.Contains(openTag(section), " open") {
 				t.Errorf("%s stays collapsed; section:\n%s", tc.section, section)
 			}
 		})
@@ -1164,9 +1164,21 @@ func TestCheckinFormConfirmsCancellingTheGoal(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	form := page[strings.Index(page, `data-testid="checkin-form"`):]
-	form = form[:strings.Index(form, ">")]
+	_, form, ok := strings.Cut(page, `data-testid="checkin-form"`)
+	if !ok {
+		t.Fatalf("Check-in page has no form; body:\n%s", page)
+	}
+	form = openTag(form)
 	if !strings.Contains(form, "hx-on:htmx:confirm=") || !strings.Contains(form, "value=Cancelled]:checked") || !strings.Contains(form, "confirm(") {
 		t.Errorf("the form does not confirm a Cancel before sending; form tag:\n%s", form)
 	}
+}
+
+// openTag returns element up to the end of its opening tag, so an assertion
+// about the tag's attributes can't match its content.
+func openTag(element string) string {
+	if end := strings.Index(element, ">"); end >= 0 {
+		return element[:end]
+	}
+	return element
 }

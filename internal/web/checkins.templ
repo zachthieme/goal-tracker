@@ -93,6 +93,11 @@ type newMilestoneFormRow struct {
 	Date string
 }
 
+// planned reports whether the row leaves its Milestone Planned.
+func (row milestoneFormRow) planned() bool {
+	return row.Status == "" || row.Status == domain.MilestonePlanned
+}
+
 // highlightFormData is the Check-in form's optional Highlight: its kind (empty
 // for none) and note.
 type highlightFormData struct {
@@ -147,7 +152,7 @@ func (d checkinDatesFormData) changed() bool {
 		return true
 	}
 	for _, row := range d.Milestones {
-		if row.Date != fmtDate(row.Milestone.TargetDate) || (row.Status != "" && row.Status != domain.MilestonePlanned) ||
+		if row.Date != fmtDate(row.Milestone.TargetDate) || !row.planned() ||
 			strings.TrimSpace(row.DateReason) != "" || strings.TrimSpace(row.RemovedReason) != "" {
 			return true
 		}
@@ -164,7 +169,7 @@ func (d checkinDatesFormData) summary() string {
 	}
 	planned := 0
 	for _, row := range d.Milestones {
-		if row.Status == "" || row.Status == domain.MilestonePlanned {
+		if row.planned() {
 			planned++
 		}
 	}
@@ -212,9 +217,9 @@ func (d lifecycleFormData) choices() []lifecycleChoice {
 	}
 }
 
-// unchanged is the Lifecycle the form picks by default: leave an Active Goal
+// defaultTo is the Lifecycle the form picks by default: leave an Active Goal
 // alone, resume an On Hold one.
-func (d lifecycleFormData) unchanged() string {
+func (d lifecycleFormData) defaultTo() string {
 	if d.Current == domain.LifecycleOnHold {
 		return domain.LifecycleActive
 	}
@@ -226,7 +231,7 @@ func (d lifecycleFormData) unchanged() string {
 // outcome.
 func (d checkinFormData) lifecycleOpen() bool {
 	l := d.Lifecycle
-	return d.Error.about("lifecycle", "outcome") || l.To != l.unchanged() ||
+	return d.Error.about("lifecycle", "outcome") || l.To != l.defaultTo() ||
 		strings.TrimSpace(l.Reason) != "" || strings.TrimSpace(l.Outcome) != ""
 }
 
@@ -454,7 +459,7 @@ templ checkinForm(d checkinFormData) {
 		hx-post={ fmt.Sprintf("/goals/%d/checkins", d.GoalID) }
 		hx-target="#checkin-form"
 		hx-swap="outerHTML"
-		hx-on:htmx:confirm="if (this.querySelector('input[name=lifecycle][value=Cancelled]:checked') && !confirm('Cancel this Goal? It will take no more Check-ins.')) event.preventDefault()"
+		hx-on:htmx:confirm={ confirmCancelScript }
 		method="post"
 		action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins", d.GoalID)) }
 	>
@@ -550,6 +555,13 @@ templ checkinForm(d checkinFormData) {
 	</form>
 }
 
+// confirmCancelScript asks the reader to confirm before a Check-in that
+// Cancels the Goal is sent; declining stops the htmx request.
+var confirmCancelScript = templ.ComponentScript{Call: fmt.Sprintf(
+	"if (this.querySelector('input[name=lifecycle][value=%s]:checked') && !confirm('Cancel this Goal? It will take no more Check-ins.')) event.preventDefault()",
+	domain.LifecycleCancelled,
+)}
+
 // checkinStylesOnce renders the Check-in form's styles once per page, however
 // many forms the page carries (the Delegates page has one per Goal).
 var checkinStylesOnce = templ.NewOnceHandle()
@@ -640,7 +652,7 @@ templ checkinDateFields(d checkinDatesFormData, e checkinError) {
 					<div>
 						<label>
 							<select name={ fmt.Sprintf("milestone_status_%d", id) } aria-label={ "Status of " + row.Milestone.Name }>
-								<option value={ domain.MilestonePlanned } selected?={ row.Status == "" || row.Status == domain.MilestonePlanned }>Planned</option>
+								<option value={ domain.MilestonePlanned } selected?={ row.planned() }>Planned</option>
 								<option value={ domain.MilestoneDone } selected?={ row.Status == domain.MilestoneDone }>Done</option>
 								<option value={ domain.MilestoneRemoved } selected?={ row.Status == domain.MilestoneRemoved }>Removed</option>
 							</select>
