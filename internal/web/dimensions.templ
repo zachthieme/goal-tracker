@@ -1,0 +1,78 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// dimensionsPage lists every Dimension with its values, and — for an Admin — the
+// controls to define a Dimension and to add, rename, and retire values
+// (CONTEXT.md: Admin defines Dimensions). Retired values stay listed, flagged.
+templ dimensionsPage(current *domain.Account, dims []domain.Dimension) {
+	{{ admin := current != nil && current.IsAdmin }}
+	@layout("Dimensions", current) {
+		<h1>Dimensions</h1>
+		if admin {
+			<section data-testid="create-dimension">
+				<h2>Define a Dimension</h2>
+				<form method="post" action="/dimensions">
+					<label>
+						Name
+						<input type="text" name="name" required/>
+					</label>
+					<label>
+						Values (comma-separated)
+						<input type="text" name="values" required/>
+					</label>
+					<button type="submit">Create Dimension</button>
+				</form>
+			</section>
+		}
+		<ul data-testid="dimensions">
+			if len(dims) == 0 {
+				<li data-testid="no-dimensions">No Dimensions yet.</li>
+			}
+			for _, d := range dims {
+				<li data-testid="dimension">
+					<h2>{ d.Name }</h2>
+					@dimensionValues(d, admin)
+					if admin {
+						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/values", d.ID)) }>
+							<label>
+								Add a value
+								<input type="text" name="value" required/>
+							</label>
+							<button type="submit">Add value</button>
+						</form>
+					}
+				</li>
+			}
+		</ul>
+		<p><a href="/goals">Back to Goals</a></p>
+	}
+}
+
+// dimensionValues lists a Dimension's values, retired ones flagged; an Admin
+// gets a rename form and a retire button on each value still in use.
+templ dimensionValues(d domain.Dimension, admin bool) {
+	<ul>
+		for _, v := range d.Values {
+			<li data-testid="dimension-value">
+				<span>{ v.Value }</span>
+				if v.Retired {
+					<strong data-testid="retired"> — retired</strong>
+				}
+				if admin && !v.Retired {
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/rename", v.ID)) } style="display:inline">
+						<input type="text" name="value" value={ v.Value } required/>
+						<button type="submit">Rename</button>
+					</form>
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/retire", v.ID)) } style="display:inline">
+						<button type="submit">Retire</button>
+					</form>
+				}
+			</li>
+		}
+	</ul>
+}
