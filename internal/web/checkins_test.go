@@ -684,7 +684,8 @@ func TestCheckinLifecycleChangeErrorShownNextToLifecycleField(t *testing.T) {
 		"status":    {"Back to the drawing board."},
 		"lifecycle": {domain.LifecycleProposed},
 	})
-	if msg := fieldError(t, body, `name="lifecycle"`); !strings.Contains(msg, "Active Goal to") {
+	// The Lifecycle is a radio group; its error follows the last radio.
+	if msg := fieldError(t, body, `name="lifecycle" value="Cancelled"`); !strings.Contains(msg, "Active Goal to") {
 		t.Errorf("Lifecycle field's error = %q, want the Lifecycle change one", msg)
 	}
 }
@@ -1051,5 +1052,68 @@ func TestCheckinPathToGreenFieldShownOnError(t *testing.T) {
 	field := pageElement(t, body, "fieldset", "path-to-green-field")
 	if !strings.Contains(field, "has-error") {
 		t.Errorf("Path to Green fieldset holding an error is not marked to stay shown; fieldset:\n%s", field)
+	}
+}
+
+// The Highlight, the dates and Milestones, and the Lifecycle each sit in a
+// section collapsed by default, its summary line showing the current value.
+func TestCheckinPageOptionalSectionsCollapsedByDefault(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	for testID, summary := range map[string]string{
+		"checkin-highlight-section": "Flag a highlight",
+		"checkin-dates-section":     "Change dates or milestones · delivers Jul 2 · 1 planned milestone",
+		"checkin-lifecycle-section": "Pause, finish, or cancel this goal · stays Active",
+	} {
+		section := pageElement(t, page, "details", testID)
+		if strings.Contains(section[:strings.Index(section, ">")], " open") {
+			t.Errorf("%s is open on a fresh Check-in", testID)
+		}
+		if !strings.Contains(section, summary) {
+			t.Errorf("%s summary missing %q; section:\n%s", testID, summary, section)
+		}
+	}
+}
+
+// A collapsed section opens on a re-render when it holds the error or a value
+// the reader typed, so the field at fault is never hidden.
+func TestCheckinSectionOpensOnErrorOrSubmittedValue(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		form    url.Values
+		section string
+	}{
+		{"highlight error", url.Values{"highlight_kind": {domain.HighlightInsight}}, "checkin-highlight-section"},
+		{"highlight typed", url.Values{"status": {""}, "highlight_note": {"Found a cheaper vendor."}}, "checkin-highlight-section"},
+		{"delivery date error", url.Values{"delivery_date": {"2026-08-01"}}, "checkin-dates-section"},
+		{"new milestone typed", url.Values{"status": {""}, "new_milestone_name": {"GA"}, "new_milestone_date": {"2026-05-01"}}, "checkin-dates-section"},
+		{"lifecycle error", url.Values{"lifecycle": {domain.LifecycleOnHold}}, "checkin-lifecycle-section"},
+		{"lifecycle picked", url.Values{"status": {""}, "lifecycle": {domain.LifecycleDone}, "outcome": {"Shipped."}}, "checkin-lifecycle-section"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t)
+			ts := newServer(t, h)
+
+			sam := h.SignIn("sam@example.com")
+			goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+			form := url.Values{"health": {domain.HealthGreen}, "status": {"On track."}}
+			for k, v := range tc.form {
+				form[k] = v
+			}
+
+			body, _ := postFormHX(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), form)
+			if !strings.Contains(body, `data-testid="checkin-error"`) {
+				t.Fatalf("expected a validation error; body:\n%s", body)
+			}
+			section := pageElement(t, body, "details", tc.section)
+			if !strings.Contains(section[:strings.Index(section, ">")], " open") {
+				t.Errorf("%s stays collapsed; section:\n%s", tc.section, section)
+			}
+		})
 	}
 }

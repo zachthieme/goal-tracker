@@ -256,7 +256,7 @@ func readingsFromForm(metrics []domain.Metric, raw map[int64]string) ([]domain.M
 // (milestone_*_<id>), and the new-Milestone rows (new_milestone_name and
 // new_milestone_date, paired by position).
 func datesFromForm(r *http.Request, goal domain.Goal, milestones []domain.Milestone) checkinDatesFormData {
-	d := checkinDatesFormData{Dated: goal.Kind == domain.GoalDated}
+	d := checkinDatesFormData{Dated: goal.Kind == domain.GoalDated, CurrentDeliveryDate: fmtDate(goal.DeliveryDate)}
 	if d.Dated {
 		d.DeliveryDate = strings.TrimSpace(r.FormValue("delivery_date"))
 		d.DeliveryDateReason = r.FormValue("delivery_date_reason")
