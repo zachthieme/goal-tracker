@@ -24,7 +24,8 @@ type entry struct {
 }
 
 // outcomes are the org-wide outcomes the team Goals contribute to, owned by the
-// leadership team.
+// leadership team. The Admin marks them Top-level Goals, so they are never
+// Unaligned.
 var outcomes = []struct {
 	entry
 	owner string
