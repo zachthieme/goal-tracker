@@ -64,4 +64,5 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /freshness", s.requireAuth(s.handleFreshnessSignals))
 	s.mux.HandleFunc("GET /risks", s.requireAuth(s.handleRisks))
 	s.mux.HandleFunc("POST /goals/{id}/top-level", s.requireAuth(s.handleSetTopLevel))
+	s.mux.HandleFunc("GET /admin", s.requireAuth(s.handleAdmin))
 }

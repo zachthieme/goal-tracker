@@ -61,7 +61,7 @@ templ dimensionValues(d domain.Dimension, admin bool) {
 			<li data-testid="dimension-value">
 				<span>{ v.Value }</span>
 				if v.Retired {
-					<strong data-testid="retired"> — retired</strong>
+					<strong data-testid="retired">— retired</strong>
 				}
 				if admin && !v.Retired {
 					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/rename", v.ID)) } style="display:inline">
