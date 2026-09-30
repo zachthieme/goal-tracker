@@ -18,14 +18,6 @@ type reportsListData struct {
 	Dims   []domain.Dimension
 }
 
-// reportDraftData is a saved Report Definition together with the live draft of
-// the Goals it currently selects (CONTEXT.md: a live draft of the Goals it
-// selects).
-type reportDraftData struct {
-	Def      domain.ReportDefinition
-	Selected []domain.SelectedGoal
-}
-
 // handleReports shows every saved Report Definition and the form to build a new
 // one (CONTEXT.md: Report Definition). Anyone signed in may save one.
 func (s *Server) handleReports(w http.ResponseWriter, r *http.Request, current domain.Account) {
@@ -61,8 +53,9 @@ func (s *Server) handleSaveReport(w http.ResponseWriter, r *http.Request, curren
 	http.Redirect(w, r, "/reports/"+strconv.FormatInt(def.ID, 10), http.StatusSeeOther)
 }
 
-// handleViewReport shows a saved Report Definition and the live draft of the
-// Goals it selects, recomputed on each view.
+// handleViewReport shows a saved Report Definition and its draft Report,
+// recomputed on each view against the baseline the reader picks (the baseline
+// query parameter, a date) or 30 days ago by default.
 func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -78,12 +71,17 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 		http.Error(w, "could not load report", http.StatusInternalServerError)
 		return
 	}
-	selected, err := s.svc.SelectGoals(r.Context(), def)
+	baseline, err := parseDate(r.URL.Query().Get("baseline"))
+	if err != nil {
+		http.Error(w, "the baseline must be a date", http.StatusBadRequest)
+		return
+	}
+	report, err := s.svc.DraftReport(r.Context(), def, baseline)
 	if err != nil {
 		http.Error(w, "could not build the draft", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, reportDraftPage(&current, reportDraftData{Def: def, Selected: selected}))
+	render(w, r, http.StatusOK, reportDraftPage(&current, report))
 }
 
 // reportsList gathers the saved definitions and the choices a new one picks from.

@@ -83,35 +83,135 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 	}
 }
 
-// reportDraftPage shows a saved Report Definition and the live draft of the Goals
-// it selects, one line each with title, Owner, Health, and due date (CONTEXT.md:
-// the live draft lists the selected Goals one line each).
-templ reportDraftPage(current *domain.Account, data reportDraftData) {
-	@layout(data.Def.Name, current) {
-		<h1 data-testid="report-name">{ data.Def.Name }</h1>
-		if data.Def.Introduction != "" {
-			<p data-testid="report-introduction">{ data.Def.Introduction }</p>
+// reportDraftPage shows a saved Report Definition and its draft Report read
+// against a baseline the reader can change: exceptions get the full MBR block,
+// and every other selected Goal one line with title, Owner, Health, and due date
+// (CONTEXT.md: Report).
+templ reportDraftPage(current *domain.Account, r domain.Report) {
+	@layout(r.Definition.Name, current) {
+		<h1 data-testid="report-name">{ r.Definition.Name }</h1>
+		if r.Definition.Introduction != "" {
+			<p data-testid="report-introduction">{ r.Definition.Introduction }</p>
 		}
+		<form method="get" data-testid="report-baseline">
+			<label>
+				Changes since
+				<input type="date" name="baseline" value={ fmtDate(r.Baseline) }/>
+			</label>
+			<button type="submit">Update</button>
+		</form>
 		<section data-testid="report-draft">
 			<h2>Draft</h2>
-			<ul>
-				if len(data.Selected) == 0 {
-					<li data-testid="no-selected-goals">No Goals selected.</li>
-				}
-				for _, sg := range data.Selected {
-					<li data-testid="selected-goal">
-						<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a>
-						<span data-testid="selected-owner"> — { sg.Goal.Owner.Email }</span>
-						<span data-testid="selected-health"> — { reportHealth(sg.Health) }</span>
-						if !sg.Goal.DeliveryDate.IsZero() {
-							<span data-testid="selected-due"> — due { fmtDate(sg.Goal.DeliveryDate) }</span>
+			if len(r.Exceptions) == 0 && len(r.Lines) == 0 {
+				<p data-testid="no-selected-goals">No Goals selected.</p>
+			}
+			for _, b := range r.Exceptions {
+				@reportBlock(b)
+			}
+			if len(r.Lines) > 0 {
+				<ul>
+					for _, sg := range r.Lines {
+						<li data-testid="selected-goal">
+							<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a>
+							<span data-testid="selected-owner">— { sg.Goal.Owner.Email }</span>
+							<span data-testid="selected-health">— { reportHealth(sg.Health) }</span>
+							if !sg.Goal.DeliveryDate.IsZero() {
+								<span data-testid="selected-due">— due { fmtDate(sg.Goal.DeliveryDate) }</span>
+							}
+						</li>
+					}
+				</ul>
+			}
+		</section>
+		<p><a href="/reports">Back to Reports</a></p>
+	}
+}
+
+// reportBlock is an exception Goal's full MBR block: title, due date with its
+// history struck through, Health, badges, So What, latest status, Path to
+// Green, Milestones, Metrics against target, and the Rolled-up Health with the
+// Owner's explanation.
+templ reportBlock(b domain.ReportBlock) {
+	<article data-testid="report-exception">
+		<h3>
+			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", b.Goal.ID)) }>{ b.Goal.Title }</a>
+			for _, badge := range b.Badges {
+				{ " " }<strong data-testid="report-badge">[{ badge }]</strong>
+			}
+		</h3>
+		<p>
+			<span data-testid="report-owner">{ b.Goal.Owner.Email }</span>
+			{ " · " }{ b.Goal.Lifecycle }
+			{ " · Health: " }<strong data-testid="report-health">{ reportHealth(b.Health) }</strong>
+			if !b.Goal.DeliveryDate.IsZero() {
+				{ " · due " }
+				<span data-testid="report-due">
+					@struckDates(b.PriorDueDates)
+					{ fmtDate(b.Goal.DeliveryDate) }
+				</span>
+			}
+		</p>
+		<p data-testid="report-so-what"><strong>So What:</strong> { b.Goal.SoWhat }</p>
+		if b.Status != "" {
+			<p data-testid="report-status"><strong>Status:</strong> { b.Status }</p>
+		}
+		if b.PathToGreen != "" {
+			<p data-testid="report-path-to-green"><strong>Path to Green:</strong> { b.PathToGreen } (back to Green by { fmtDate(b.PathTargetDate) })</p>
+		}
+		if len(b.Milestones) > 0 {
+			<ul data-testid="report-milestones">
+				for _, m := range b.Milestones {
+					<li data-testid="report-milestone">
+						if m.Milestone.Status == domain.MilestoneRemoved {
+							<del>{ m.Milestone.Name }</del>
+						} else {
+							{ m.Milestone.Name }
+						}
+						{ " — " }
+						@struckDates(m.PriorDates)
+						{ fmtDate(m.Milestone.TargetDate) }
+						if m.New {
+							{ " " }<strong>[New]</strong>
+						}
+						if m.Milestone.Status != domain.MilestonePlanned {
+							{ " " }<strong>[{ m.Milestone.Status }]</strong>
+						}
+						if m.Milestone.RemovedReason != "" {
+							<span>— { m.Milestone.RemovedReason }</span>
 						}
 					</li>
 				}
 			</ul>
-		</section>
-		<p><a href="/reports">Back to Reports</a></p>
-	}
+		}
+		if len(b.Metrics) > 0 {
+			<ul data-testid="report-metrics">
+				for _, m := range b.Metrics {
+					<li data-testid="report-metric">
+						{ m.Metric.Name }:
+						if m.Read {
+							{ fmtNum(m.Current) }
+						} else {
+							no reading yet
+						}
+						{ " against a target of " }{ fmtNum(m.Metric.Target) } { m.Metric.Unit } by { fmtDate(m.Metric.TargetDate) }
+						{ " (baseline " }{ fmtNum(m.Metric.Baseline) }, { m.Metric.Direction })
+					</li>
+				}
+			</ul>
+		}
+		if b.RolledUp.Present || b.RolledUp.StaleChildren > 0 {
+			<p data-testid="report-rollup">
+				if b.RolledUp.Present {
+					<strong>Rolled-up Health:</strong> { b.RolledUp.Health }
+				}
+				@rolledUpStale(b.RolledUp)
+				if b.Explanation != "" {
+					<br/>
+					<strong>Why the Health differs:</strong> { b.Explanation }
+				}
+			</p>
+		}
+	</article>
 }
 
 // reportHealth renders a selected Goal's Health, or a dash when it has no Check-in
