@@ -65,7 +65,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		s.renderCheckinFormError(w, r, goalID, formData("invalid target date"))
 		return
 	}
-	readings, err := readingsFromForm(rawReadings)
+	readings, err := readingsFromForm(metrics, rawReadings)
 	if err != nil {
 		s.renderCheckinFormError(w, r, goalID, formData(err.Error()))
 		return
@@ -116,19 +116,20 @@ func rawReadingsFromForm(r *http.Request, metrics []domain.Metric) map[int64]str
 	return out
 }
 
-// readingsFromForm parses the non-blank raw readings into domain input. A field
-// that is not a number is rejected with a message naming the Metric.
-func readingsFromForm(raw map[int64]string) ([]domain.MetricReadingInput, error) {
+// readingsFromForm parses the Goal's non-blank raw readings into domain input. A
+// field that is not a number is rejected with a message naming the Metric.
+func readingsFromForm(metrics []domain.Metric, raw map[int64]string) ([]domain.MetricReadingInput, error) {
 	out := make([]domain.MetricReadingInput, 0, len(raw))
-	for metricID, text := range raw {
+	for _, m := range metrics {
+		text := raw[m.ID]
 		if text == "" {
 			continue
 		}
 		value, err := strconv.ParseFloat(text, 64)
 		if err != nil {
-			return nil, fmt.Errorf("invalid reading for metric %d", metricID)
+			return nil, fmt.Errorf("%q needs a number", m.Name)
 		}
-		out = append(out, domain.MetricReadingInput{MetricID: metricID, Value: value})
+		out = append(out, domain.MetricReadingInput{MetricID: m.ID, Value: value})
 	}
 	return out, nil
 }

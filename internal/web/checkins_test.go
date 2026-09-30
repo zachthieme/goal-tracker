@@ -446,3 +446,118 @@ func TestSmokeCheckinMarksGoalDone(t *testing.T) {
 		t.Errorf("a Done Goal still offers the Check-in form")
 	}
 }
+
+// Cancelling a Goal through the form without a reason is rejected with a
+// message that reads naturally (ticket #29).
+func TestCheckinCancelWithoutReasonErrorReadsNaturally(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, status := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":    {domain.HealthGreen},
+		"status":    {"s"},
+		"lifecycle": {domain.LifecycleCancelled},
+	})
+	if status != http.StatusOK {
+		t.Fatalf("htmx validation response status = %d, want 200", status)
+	}
+	if msg := pageElement(t, body, "p", "checkin-error"); !strings.Contains(msg, "cancelling a Goal needs a reason") {
+		t.Errorf("error = %q, want it to say cancelling a Goal needs a reason", msg)
+	}
+}
+
+// A reading that isn't a number is rejected with a message naming the Metric,
+// not its database id, and the typed text stays in the input (ticket #29).
+func TestCheckinNonNumericReadingNamesTheMetric(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Grow the product", "Growth funds the roadmap.")
+	metric, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+		GoalID:     goal.ID,
+		Name:       "Signups",
+		Unit:       "per week",
+		Direction:  domain.MetricUp,
+		Baseline:   100,
+		Target:     500,
+		TargetDate: h.Clock.Now().AddDate(0, 6, 0),
+	})
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, status := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":                             {domain.HealthGreen},
+		"status":                             {"On track."},
+		fmt.Sprintf("reading_%d", metric.ID): {"abc"},
+	})
+	if status != http.StatusOK {
+		t.Fatalf("htmx validation response status = %d, want 200", status)
+	}
+	msg := pageElement(t, body, "p", "checkin-error")
+	if !strings.Contains(msg, `&#34;Signups&#34; needs a number`) {
+		t.Errorf("error = %q, want it to say \"Signups\" needs a number", msg)
+	}
+	if strings.Contains(msg, "metric") {
+		t.Errorf("error = %q, still names the Metric by its id", msg)
+	}
+	if !strings.Contains(body, `value="abc"`) {
+		t.Errorf("re-rendered form lost the typed reading; body:\n%s", body)
+	}
+}
+
+// The Check-in form pre-fills each Metric's reading with its latest value, like
+// the rest of the form, so a "same as last week" Check-in stays one click; a
+// Metric with no readings yet stays blank (ticket #29).
+func TestCheckinFormPrefillsLatestReadings(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Grow the product", "Growth funds the roadmap.")
+	addMetric := func(name string) domain.Metric {
+		t.Helper()
+		m, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+			GoalID:     goal.ID,
+			Name:       name,
+			Unit:       "per week",
+			Direction:  domain.MetricUp,
+			Baseline:   100,
+			Target:     500,
+			TargetDate: h.Clock.Now().AddDate(0, 6, 0),
+		})
+		if err != nil {
+			t.Fatalf("AddMetric: %v", err)
+		}
+		return m
+	}
+	signups := addMetric("Signups")
+	referrals := addMetric("Referrals")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	for _, reading := range []string{"120", "135.5"} {
+		resp := postForm(t, samClient, goalURL+"/checkins", url.Values{
+			"health":                              {domain.HealthGreen},
+			"status":                              {"On track."},
+			fmt.Sprintf("reading_%d", signups.ID): {reading},
+		})
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("submit check-in: status %d", resp.StatusCode)
+		}
+	}
+
+	form := pageElement(t, getBody(t, samClient, goalURL), "fieldset", "checkin-readings")
+	if want := fmt.Sprintf(`name="reading_%d" value="135.5"`, signups.ID); !strings.Contains(form, want) {
+		t.Errorf("Signups reading not pre-filled with its latest value (want %s); form:\n%s", want, form)
+	}
+	if want := fmt.Sprintf(`name="reading_%d" value=""`, referrals.ID); !strings.Contains(form, want) {
+		t.Errorf("Referrals has no readings, so its input should be blank (want %s); form:\n%s", want, form)
+	}
+}

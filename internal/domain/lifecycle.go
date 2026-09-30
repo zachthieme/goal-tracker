@@ -48,8 +48,11 @@ func planLifecycleChange(current, to, reason, outcome string) (LifecycleChange, 
 	switch {
 	case current == LifecycleActive && (to == LifecycleOnHold || to == LifecycleCancelled),
 		current == LifecycleOnHold && to == LifecycleCancelled:
+		if reason == "" && to == LifecycleCancelled {
+			return LifecycleChange{}, fmt.Errorf("%w: cancelling a Goal needs a reason", ErrValidation)
+		}
 		if reason == "" {
-			return LifecycleChange{}, fmt.Errorf("%w: putting a Goal %s needs a reason", ErrValidation, to)
+			return LifecycleChange{}, fmt.Errorf("%w: putting a Goal On Hold needs a reason", ErrValidation)
 		}
 	case current == LifecycleActive && to == LifecycleDone:
 		if outcome == "" {
