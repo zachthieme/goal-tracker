@@ -55,6 +55,48 @@ func (q *Queries) CreateCheckin(ctx context.Context, arg CreateCheckinParams) (C
 	return i, err
 }
 
+const createDateSlip = `-- name: CreateDateSlip :one
+INSERT INTO date_slips (goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id, goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at
+`
+
+type CreateDateSlipParams struct {
+	GoalID      int64
+	CheckinID   int64
+	MilestoneID *int64
+	OldDate     string
+	NewDate     string
+	Reason      string
+	CreatedAt   string
+}
+
+// Record a change to a Goal's delivery date (milestone_id NULL) or a Milestone's
+// date, keeping the old and new dates and the reason (CONTEXT.md: Date Slip).
+func (q *Queries) CreateDateSlip(ctx context.Context, arg CreateDateSlipParams) (DateSlip, error) {
+	row := q.db.QueryRowContext(ctx, createDateSlip,
+		arg.GoalID,
+		arg.CheckinID,
+		arg.MilestoneID,
+		arg.OldDate,
+		arg.NewDate,
+		arg.Reason,
+		arg.CreatedAt,
+	)
+	var i DateSlip
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.CheckinID,
+		&i.MilestoneID,
+		&i.OldDate,
+		&i.NewDate,
+		&i.Reason,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createHighlight = `-- name: CreateHighlight :one
 INSERT INTO highlights (checkin_id, kind, note, created_at)
 VALUES (?, ?, ?, ?)
@@ -193,6 +235,43 @@ func (q *Queries) ListCheckins(ctx context.Context, goalID int64) ([]ListCheckin
 			&i.Account_2.IsAdmin,
 			&i.Account_2.CreatedAt,
 			&i.Account_2.Departed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listDateSlips = `-- name: ListDateSlips :many
+SELECT id, goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at FROM date_slips WHERE goal_id = ? ORDER BY created_at, id
+`
+
+// A Goal's Date Slips, earliest first, so a date's history reads in order.
+func (q *Queries) ListDateSlips(ctx context.Context, goalID int64) ([]DateSlip, error) {
+	rows, err := q.db.QueryContext(ctx, listDateSlips, goalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DateSlip
+	for rows.Next() {
+		var i DateSlip
+		if err := rows.Scan(
+			&i.ID,
+			&i.GoalID,
+			&i.CheckinID,
+			&i.MilestoneID,
+			&i.OldDate,
+			&i.NewDate,
+			&i.Reason,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -348,4 +427,18 @@ func (q *Queries) ListMetricReadings(ctx context.Context, metricID int64) ([]Met
 		return nil, err
 	}
 	return items, nil
+}
+
+const setGoalDeliveryDate = `-- name: SetGoalDeliveryDate :exec
+UPDATE goals SET delivery_date = ? WHERE id = ?
+`
+
+type SetGoalDeliveryDateParams struct {
+	DeliveryDate string
+	ID           int64
+}
+
+func (q *Queries) SetGoalDeliveryDate(ctx context.Context, arg SetGoalDeliveryDateParams) error {
+	_, err := q.db.ExecContext(ctx, setGoalDeliveryDate, arg.DeliveryDate, arg.ID)
+	return err
 }

@@ -318,3 +318,37 @@ func TestNoChangeCheckinRejectedWithoutPrevious(t *testing.T) {
 		t.Fatalf("err = %v, want ErrValidation", err)
 	}
 }
+
+// A slip is never hidden behind a Green: a Check-in that moves the delivery date
+// later can't be Green, while one that pulls it in can (CONTEXT.md: Date Slip).
+func TestGreenRejectedWhenDeliveryDateMovesLater(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+
+	_, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:             goal.ID,
+		AuthorID:           sam.ID,
+		Health:             domain.HealthGreen,
+		Status:             "Still fine.",
+		DeliveryDate:       goal.DeliveryDate.AddDate(0, 0, 7),
+		DeliveryDateReason: "Vendor slipped.",
+	})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("Green with a later delivery date: err = %v, want ErrValidation", err)
+	}
+	if slips, _ := h.Service.ListDateSlips(context.Background(), goal.ID); len(slips) != 0 {
+		t.Errorf("recorded %d Date Slips despite the rejection", len(slips))
+	}
+
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:             goal.ID,
+		AuthorID:           sam.ID,
+		Health:             domain.HealthGreen,
+		Status:             "Ahead of plan.",
+		DeliveryDate:       goal.DeliveryDate.AddDate(0, 0, -7),
+		DeliveryDateReason: "Beta went faster than planned.",
+	}); err != nil {
+		t.Errorf("Green with an earlier delivery date: %v", err)
+	}
+}

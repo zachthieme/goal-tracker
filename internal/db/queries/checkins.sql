@@ -59,3 +59,17 @@ WHERE checkins.goal_id = @goal_id
   AND checkins.created_at >= @from
   AND checkins.created_at <= @to
 ORDER BY checkins.created_at DESC, highlights.id DESC;
+
+-- name: CreateDateSlip :one
+-- Record a change to a Goal's delivery date (milestone_id NULL) or a Milestone's
+-- date, keeping the old and new dates and the reason (CONTEXT.md: Date Slip).
+INSERT INTO date_slips (goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: ListDateSlips :many
+-- A Goal's Date Slips, earliest first, so a date's history reads in order.
+SELECT * FROM date_slips WHERE goal_id = ? ORDER BY created_at, id;
+
+-- name: SetGoalDeliveryDate :exec
+UPDATE goals SET delivery_date = ? WHERE id = ?;

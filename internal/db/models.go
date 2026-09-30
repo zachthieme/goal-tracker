@@ -32,6 +32,17 @@ type Contributor struct {
 	CreatedAt string
 }
 
+type DateSlip struct {
+	ID          int64
+	GoalID      int64
+	CheckinID   int64
+	MilestoneID *int64
+	OldDate     string
+	NewDate     string
+	Reason      string
+	CreatedAt   string
+}
+
 type Delegate struct {
 	ID        int64
 	GoalID    int64
@@ -121,11 +132,14 @@ type MetricReading struct {
 }
 
 type Milestone struct {
-	ID         int64
-	GoalID     int64
-	Name       string
-	TargetDate string
-	CreatedAt  string
+	ID               int64
+	GoalID           int64
+	Name             string
+	TargetDate       string
+	CreatedAt        string
+	Status           string
+	RemovedReason    string
+	AddedWhileActive int64
 }
 
 type ReportDefinition struct {

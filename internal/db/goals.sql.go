@@ -116,7 +116,7 @@ func (q *Queries) CreateMetric(ctx context.Context, arg CreateMetricParams) (Met
 const createMilestone = `-- name: CreateMilestone :one
 INSERT INTO milestones (goal_id, name, target_date, created_at)
 VALUES (?, ?, ?, ?)
-RETURNING id, goal_id, name, target_date, created_at
+RETURNING id, goal_id, name, target_date, created_at, status, removed_reason, added_while_active
 `
 
 type CreateMilestoneParams struct {
@@ -140,6 +140,9 @@ func (q *Queries) CreateMilestone(ctx context.Context, arg CreateMilestoneParams
 		&i.Name,
 		&i.TargetDate,
 		&i.CreatedAt,
+		&i.Status,
+		&i.RemovedReason,
+		&i.AddedWhileActive,
 	)
 	return i, err
 }
@@ -253,7 +256,7 @@ func (q *Queries) GetMetric(ctx context.Context, id int64) (Metric, error) {
 }
 
 const getMilestone = `-- name: GetMilestone :one
-SELECT id, goal_id, name, target_date, created_at FROM milestones WHERE id = ? LIMIT 1
+SELECT id, goal_id, name, target_date, created_at, status, removed_reason, added_while_active FROM milestones WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetMilestone(ctx context.Context, id int64) (Milestone, error) {
@@ -265,6 +268,9 @@ func (q *Queries) GetMilestone(ctx context.Context, id int64) (Milestone, error)
 		&i.Name,
 		&i.TargetDate,
 		&i.CreatedAt,
+		&i.Status,
+		&i.RemovedReason,
+		&i.AddedWhileActive,
 	)
 	return i, err
 }
@@ -398,7 +404,7 @@ func (q *Queries) ListMetrics(ctx context.Context, goalID int64) ([]Metric, erro
 }
 
 const listMilestones = `-- name: ListMilestones :many
-SELECT id, goal_id, name, target_date, created_at FROM milestones WHERE goal_id = ? ORDER BY target_date, id
+SELECT id, goal_id, name, target_date, created_at, status, removed_reason, added_while_active FROM milestones WHERE goal_id = ? ORDER BY target_date, id
 `
 
 func (q *Queries) ListMilestones(ctx context.Context, goalID int64) ([]Milestone, error) {
@@ -416,6 +422,9 @@ func (q *Queries) ListMilestones(ctx context.Context, goalID int64) ([]Milestone
 			&i.Name,
 			&i.TargetDate,
 			&i.CreatedAt,
+			&i.Status,
+			&i.RemovedReason,
+			&i.AddedWhileActive,
 		); err != nil {
 			return nil, err
 		}
@@ -629,7 +638,7 @@ func (q *Queries) UpdateMetric(ctx context.Context, arg UpdateMetricParams) (Met
 
 const updateMilestone = `-- name: UpdateMilestone :one
 UPDATE milestones SET name = ?, target_date = ? WHERE id = ?
-RETURNING id, goal_id, name, target_date, created_at
+RETURNING id, goal_id, name, target_date, created_at, status, removed_reason, added_while_active
 `
 
 type UpdateMilestoneParams struct {
@@ -647,6 +656,9 @@ func (q *Queries) UpdateMilestone(ctx context.Context, arg UpdateMilestoneParams
 		&i.Name,
 		&i.TargetDate,
 		&i.CreatedAt,
+		&i.Status,
+		&i.RemovedReason,
+		&i.AddedWhileActive,
 	)
 	return i, err
 }

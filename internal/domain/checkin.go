@@ -71,6 +71,11 @@ type SubmitCheckinInput struct {
 	// Highlight is the Check-in's optional Highlight (CONTEXT.md: Highlight). Nil
 	// when the Owner flags nothing.
 	Highlight *HighlightInput
+	// DeliveryDate moves a Dated Goal's delivery date, recording a Date Slip
+	// that needs DeliveryDateReason (CONTEXT.md: Date Slip). The zero time, or
+	// the Goal's current date, leaves it unchanged.
+	DeliveryDate       time.Time
+	DeliveryDateReason string
 }
 
 // SubmitCheckin records a Check-in on a Goal. The Goal must be Active — a
@@ -125,6 +130,16 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 		}
 	}
 
+	deliverySlip, err := planDeliverySlip(goal.Goal, in.DeliveryDate, in.DeliveryDateReason)
+	if err != nil {
+		return Checkin{}, err
+	}
+	// A slip is never hidden behind a Green: moving the delivery date later
+	// means the Goal is not on track (CONTEXT.md: Date Slip).
+	if in.Health == HealthGreen && deliverySlip != nil && deliverySlip.later() {
+		return Checkin{}, fmt.Errorf("%w: a Check-in that moves the delivery date later can't be Green", ErrValidation)
+	}
+
 	pathTargetDate := ""
 	if needsPathToGreen(in.Health) {
 		pathTargetDate = in.PathTargetDate.Format(dateFormat)
@@ -143,6 +158,11 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 		}
 		if err := tx.recordReadings(ctx, c.ID, in.Readings); err != nil {
 			return err
+		}
+		if deliverySlip != nil {
+			if err := tx.recordSlip(ctx, goal.Goal.ID, c.ID, *deliverySlip); err != nil {
+				return err
+			}
 		}
 		if in.Highlight != nil {
 			if err := tx.recordHighlight(ctx, c.ID, *in.Highlight); err != nil {
