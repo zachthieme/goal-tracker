@@ -100,7 +100,7 @@ func (n *Notifier) reminderBody(items []reminderItem) string {
 		if it.freshness.Stale {
 			state = "Stale"
 		}
-		fmt.Fprintf(&b, "- %s: %s, %d days since its last Check-in (cadence: %d days)\n  %s\n",
+		fmt.Fprintf(&b, "- %s: %s, %d days without a Check-in (cadence: %d days)\n  %s\n",
 			title, state, it.freshness.DaysSince, it.freshness.CadenceDays, n.checkinURL(it.goal.ID))
 	}
 	return b.String()
@@ -175,7 +175,8 @@ func (n *Notifier) SendDigests(ctx context.Context) error {
 
 // childProblems says what went wrong this week with child, a Goal that
 // contributes to one of the recipient's: whether its Health got worse, to
-// Yellow or to Red, and each Date Slip it recorded since weekStart.
+// Yellow or to Red; each Date Slip it recorded; and whether it went Stale — all
+// since weekStart, a week ago.
 func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekStart time.Time) ([]string, error) {
 	if child.Lifecycle != domain.LifecycleActive {
 		return nil, nil
@@ -187,6 +188,13 @@ func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekSta
 	var reasons []string
 	if now, before := healthAt(checkins, time.Time{}), healthAt(checkins, weekStart); worsened(before, now) {
 		reasons = append(reasons, "went "+now)
+	}
+	f, err := n.svc.Freshness(ctx, child.ID)
+	if err != nil {
+		return nil, err
+	}
+	if wentStaleThisWeek(f) {
+		reasons = append(reasons, fmt.Sprintf("went Stale, %d days without a Check-in", f.DaysSince))
 	}
 	slips, err := n.svc.ListDateSlips(ctx, child.ID)
 	if err != nil {
@@ -204,6 +212,12 @@ func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekSta
 			what, sl.OldDate.Format(dateFormat), sl.NewDate.Format(dateFormat), sl.Reason))
 	}
 	return reasons, nil
+}
+
+// wentStaleThisWeek reports whether a Goal is Stale now but wasn't a week ago:
+// it has been Stale for no more than a week's days (CONTEXT.md: Stale).
+func wentStaleThisWeek(f domain.Freshness) bool {
+	return f.Stale && f.DaysSince-daysPerWeek <= f.CadenceDays
 }
 
 // healthAt is the Health a Goal's Check-ins (newest first) had set as of t, or

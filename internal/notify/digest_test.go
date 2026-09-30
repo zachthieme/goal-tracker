@@ -300,3 +300,35 @@ func TestDigestListsChildrenThatSlippedThisWeek(t *testing.T) {
 		t.Errorf("digest mentions Cut churn, which slipped the week before:\n%s", body)
 	}
 }
+
+// The digest names a child that turned Stale this week, but not one that was
+// Stale already a week ago, nor one that's fresh.
+func TestDigestListsChildrenThatWentStaleThisWeek(t *testing.T) {
+	h := testsupport.New(t)
+	pat := h.SignIn("pat@example.com")
+	kim := h.SignIn("kim@example.com")
+	parent := h.ActiveGoal(pat, "Grow revenue", "It pays for everything.")
+	wentStale := childOf(h, kim, parent, "Launch pricing page")
+	childOf(h, kim, parent, "Cut churn")
+	fresh := childOf(h, kim, parent, "Upsell annual plans")
+	h.Clock.Advance(11 * day)
+	checkinHealth(h, kim, wentStale.ID, domain.HealthGreen) // 9 days before the digest
+	h.Clock.Advance(8 * day)
+	checkinHealth(h, kim, fresh.ID, domain.HealthGreen)
+	h.Clock.Advance(1 * day)
+	// Cut churn has gone 20 days without a Check-in: Stale since day 8.
+
+	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
+		t.Fatalf("SendDigests: %v", err)
+	}
+
+	body := digestTo(t, h.Email, "pat@example.com")
+	if !strings.Contains(body, "Launch pricing page") || !strings.Contains(body, "went Stale") {
+		t.Errorf("digest does not say Launch pricing page went Stale:\n%s", body)
+	}
+	for _, unwanted := range []string{"Cut churn", "Upsell annual plans"} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("digest mentions %q, which didn't go Stale this week:\n%s", unwanted, body)
+		}
+	}
+}
