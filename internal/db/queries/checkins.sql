@@ -73,3 +73,6 @@ SELECT * FROM date_slips WHERE goal_id = ? ORDER BY created_at, id;
 
 -- name: SetGoalDeliveryDate :exec
 UPDATE goals SET delivery_date = ? WHERE id = ?;
+
+-- name: SetMilestoneTargetDate :exec
+UPDATE milestones SET target_date = ? WHERE id = ?;

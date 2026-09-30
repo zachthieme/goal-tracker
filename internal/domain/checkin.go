@@ -76,6 +76,9 @@ type SubmitCheckinInput struct {
 	// the Goal's current date, leaves it unchanged.
 	DeliveryDate       time.Time
 	DeliveryDateReason string
+	// Milestones are changes to the Goal's Milestones; each must name a
+	// Milestone on this Goal.
+	Milestones []MilestoneChangeInput
 }
 
 // SubmitCheckin records a Check-in on a Goal. The Goal must be Active — a
@@ -139,6 +142,15 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	if in.Health == HealthGreen && deliverySlip != nil && deliverySlip.later() {
 		return Checkin{}, fmt.Errorf("%w: a Check-in that moves the delivery date later can't be Green", ErrValidation)
 	}
+	// A Milestone slip that doesn't move the delivery date doesn't affect Health
+	// (CONTEXT.md: Milestone), so it is recorded but never gates the Health.
+	milestones, err := s.planMilestoneChanges(ctx, goal.Goal.ID, in.Milestones)
+	if err != nil {
+		return Checkin{}, err
+	}
+	if err := s.rejectGreenWhileOverdue(in.Health, milestones.after); err != nil {
+		return Checkin{}, err
+	}
 
 	pathTargetDate := ""
 	if needsPathToGreen(in.Health) {
@@ -161,6 +173,11 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 		}
 		if deliverySlip != nil {
 			if err := tx.recordSlip(ctx, goal.Goal.ID, c.ID, *deliverySlip); err != nil {
+				return err
+			}
+		}
+		for _, slip := range milestones.slips {
+			if err := tx.recordSlip(ctx, goal.Goal.ID, c.ID, slip); err != nil {
 				return err
 			}
 		}
@@ -246,6 +263,14 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 	explanation, err := s.resolveRollupExplanation(ctx, goalID, prev.Health, prev.Explanation)
 	if err != nil {
 		return Checkin{}, fmt.Errorf("%w — submit a Check-in to explain", err)
+	}
+	// Nor can it repeat a Green once a Milestone has gone overdue.
+	milestones, err := s.queries.ListMilestones(ctx, goalID)
+	if err != nil {
+		return Checkin{}, fmt.Errorf("list milestones: %w", err)
+	}
+	if err := s.rejectGreenWhileOverdue(prev.Health, milestones); err != nil {
+		return Checkin{}, fmt.Errorf("%w — submit a Check-in to update it", err)
 	}
 	return s.createCheckin(ctx, goalID, authorID, goal.Goal.OwnerID, prev.Health, prev.Status, prev.PathToGreen, prev.PathTargetDate, explanation)
 }

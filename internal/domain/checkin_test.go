@@ -352,3 +352,80 @@ func TestGreenRejectedWhenDeliveryDateMovesLater(t *testing.T) {
 		t.Errorf("Green with an earlier delivery date: %v", err)
 	}
 }
+
+// Green is rejected while any Milestone is overdue — Planned and past its date —
+// judged by the Service's clock. On the Milestone's own date it is not yet
+// overdue.
+func TestGreenRejectedWhileMilestoneOverdue(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	beta := onlyMilestone(t, h, goal.ID)
+
+	green := domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: sam.ID,
+		Health:   domain.HealthGreen,
+		Status:   "On track.",
+	}
+
+	h.Clock.Set(beta.TargetDate.Add(23 * time.Hour))
+	if _, err := h.Service.SubmitCheckin(context.Background(), green); err != nil {
+		t.Fatalf("Green on the Milestone's own date: %v", err)
+	}
+
+	h.Clock.Set(beta.TargetDate.AddDate(0, 0, 1))
+	if _, err := h.Service.SubmitCheckin(context.Background(), green); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("Green with an overdue Milestone: err = %v, want ErrValidation", err)
+	}
+
+	// Yellow is still accepted, with its Path to Green.
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:         goal.ID,
+		AuthorID:       sam.ID,
+		Health:         domain.HealthYellow,
+		Status:         "Beta is late.",
+		PathToGreen:    "Cut scope.",
+		PathTargetDate: pathDate,
+	}); err != nil {
+		t.Fatalf("Yellow with an overdue Milestone: %v", err)
+	}
+}
+
+// Slipping the overdue Milestone to a future date in the same Check-in means it
+// is no longer overdue, and a Milestone slip doesn't affect Health, so Green is
+// accepted.
+func TestGreenAcceptedWhenOverdueMilestoneSlipsInSameCheckin(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	beta := onlyMilestone(t, h, goal.ID)
+	h.Clock.Set(beta.TargetDate.AddDate(0, 0, 2))
+
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: sam.ID,
+		Health:   domain.HealthGreen,
+		Status:   "Beta re-planned; launch holds.",
+		Milestones: []domain.MilestoneChangeInput{
+			{MilestoneID: beta.ID, TargetDate: beta.TargetDate.AddDate(0, 0, 14), DateReason: "Design review moved."},
+		},
+	}); err != nil {
+		t.Fatalf("Green after slipping the overdue Milestone: %v", err)
+	}
+}
+
+// The one-click no-change Check-in can't repeat a Green while a Milestone is
+// overdue.
+func TestNoChangeGreenRejectedWhileMilestoneOverdue(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	beta := onlyMilestone(t, h, goal.ID)
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	h.Clock.Set(beta.TargetDate.AddDate(0, 0, 1))
+	if _, err := h.Service.SubmitNoChangeCheckin(context.Background(), goal.ID, sam.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("no-change Green with an overdue Milestone: err = %v, want ErrValidation", err)
+	}
+}

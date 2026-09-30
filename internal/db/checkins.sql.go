@@ -442,3 +442,17 @@ func (q *Queries) SetGoalDeliveryDate(ctx context.Context, arg SetGoalDeliveryDa
 	_, err := q.db.ExecContext(ctx, setGoalDeliveryDate, arg.DeliveryDate, arg.ID)
 	return err
 }
+
+const setMilestoneTargetDate = `-- name: SetMilestoneTargetDate :exec
+UPDATE milestones SET target_date = ? WHERE id = ?
+`
+
+type SetMilestoneTargetDateParams struct {
+	TargetDate string
+	ID         int64
+}
+
+func (q *Queries) SetMilestoneTargetDate(ctx context.Context, arg SetMilestoneTargetDateParams) error {
+	_, err := q.db.ExecContext(ctx, setMilestoneTargetDate, arg.TargetDate, arg.ID)
+	return err
+}

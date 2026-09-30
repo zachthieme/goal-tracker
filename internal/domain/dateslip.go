@@ -57,6 +57,23 @@ func planDeliverySlip(goal db.Goal, newDate time.Time, reason string) (*slipPlan
 	return &slipPlan{oldDate: oldDate, newDate: newDate, reason: reason}, nil
 }
 
+// planMilestoneSlip validates a Check-in's new date for a Milestone. A zero or
+// unchanged date is no slip (nil); a change needs a reason.
+func planMilestoneSlip(m db.Milestone, newDate time.Time, reason string) (*slipPlan, error) {
+	if newDate.IsZero() || newDate.Format(dateFormat) == m.TargetDate {
+		return nil, nil
+	}
+	oldDate, err := time.Parse(dateFormat, m.TargetDate)
+	if err != nil {
+		return nil, fmt.Errorf("parse milestone date: %w", err)
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return nil, fmt.Errorf("%w: changing the date of Milestone %q needs a reason", ErrValidation, m.Name)
+	}
+	return &slipPlan{milestoneID: m.ID, oldDate: oldDate, newDate: newDate, reason: reason}, nil
+}
+
 // recordSlip writes a Date Slip for checkinID and moves the date it changes.
 func (s *Service) recordSlip(ctx context.Context, goalID, checkinID int64, p slipPlan) error {
 	var milestoneID *int64
@@ -75,13 +92,20 @@ func (s *Service) recordSlip(ctx context.Context, goalID, checkinID int64, p sli
 	}); err != nil {
 		return fmt.Errorf("create date slip: %w", err)
 	}
-	if p.milestoneID == 0 {
-		if err := s.queries.SetGoalDeliveryDate(ctx, db.SetGoalDeliveryDateParams{
-			DeliveryDate: p.newDate.Format(dateFormat),
-			ID:           goalID,
+	if p.milestoneID != 0 {
+		if err := s.queries.SetMilestoneTargetDate(ctx, db.SetMilestoneTargetDateParams{
+			TargetDate: p.newDate.Format(dateFormat),
+			ID:         p.milestoneID,
 		}); err != nil {
-			return fmt.Errorf("set delivery date: %w", err)
+			return fmt.Errorf("set milestone date: %w", err)
 		}
+		return nil
+	}
+	if err := s.queries.SetGoalDeliveryDate(ctx, db.SetGoalDeliveryDateParams{
+		DeliveryDate: p.newDate.Format(dateFormat),
+		ID:           goalID,
+	}); err != nil {
+		return fmt.Errorf("set delivery date: %w", err)
 	}
 	return nil
 }

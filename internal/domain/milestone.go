@@ -17,7 +17,43 @@ type Milestone struct {
 	GoalID     int64
 	Name       string
 	TargetDate time.Time
-	CreatedAt  time.Time
+	// Status is MilestonePlanned until a Check-in marks it MilestoneDone or
+	// MilestoneRemoved; RemovedReason explains a removal.
+	Status        string
+	RemovedReason string
+	CreatedAt     time.Time
+}
+
+// Milestone statuses. A Planned Milestone past its date is overdue, and Green is
+// rejected while one is.
+const (
+	MilestonePlanned = "Planned"
+	MilestoneDone    = "Done"
+	MilestoneRemoved = "Removed"
+)
+
+// overdueMilestone returns the first of milestones that is overdue — Planned and
+// past its date — as of today (a dateFormat date), or ok false when none is.
+func overdueMilestone(milestones []db.Milestone, today string) (db.Milestone, bool) {
+	for _, m := range milestones {
+		if m.Status == MilestonePlanned && m.TargetDate < today {
+			return m, true
+		}
+	}
+	return db.Milestone{}, false
+}
+
+// rejectGreenWhileOverdue refuses a Green Health while any of the Goal's
+// Milestones, as they will stand after the Check-in, is overdue: a slip is
+// never hidden behind a Green (CONTEXT.md: Date Slip).
+func (s *Service) rejectGreenWhileOverdue(health string, milestones []db.Milestone) error {
+	if health != HealthGreen {
+		return nil
+	}
+	if m, ok := overdueMilestone(milestones, s.clock.Now().Format(dateFormat)); ok {
+		return fmt.Errorf("%w: Milestone %q is overdue (due %s), so the Goal can't be Green", ErrValidation, m.Name, m.TargetDate)
+	}
+	return nil
 }
 
 // AddMilestoneInput is the add-Milestone command's input.
@@ -89,6 +125,58 @@ func (s *Service) EditMilestone(ctx context.Context, in EditMilestoneInput) (Mil
 	return milestoneFromRow(row), nil
 }
 
+// MilestoneChangeInput is one Milestone's change in a Check-in (CONTEXT.md:
+// Check-in carries Date Slips and Milestone changes). TargetDate moves the
+// Milestone's date, recording a Date Slip that needs DateReason; the zero time,
+// or the Milestone's current date, leaves it unchanged.
+type MilestoneChangeInput struct {
+	MilestoneID int64
+	TargetDate  time.Time
+	DateReason  string
+}
+
+// milestonePlan is a Check-in's validated Milestone changes: the Date Slips
+// they make, and the Goal's Milestones as they will stand once applied.
+type milestonePlan struct {
+	slips []slipPlan
+	after []db.Milestone
+}
+
+// planMilestoneChanges validates a Check-in's Milestone changes against the
+// Goal's Milestones: each must name a Milestone on this Goal, at most once.
+func (s *Service) planMilestoneChanges(ctx context.Context, goalID int64, changes []MilestoneChangeInput) (milestonePlan, error) {
+	rows, err := s.queries.ListMilestones(ctx, goalID)
+	if err != nil {
+		return milestonePlan{}, fmt.Errorf("list milestones: %w", err)
+	}
+	index := make(map[int64]int, len(rows))
+	for i, r := range rows {
+		index[r.ID] = i
+	}
+	seen := make(map[int64]bool, len(changes))
+	plan := milestonePlan{after: rows}
+	for _, ch := range changes {
+		i, ok := index[ch.MilestoneID]
+		if !ok {
+			return milestonePlan{}, fmt.Errorf("%w: milestone %d is not on this Goal", ErrValidation, ch.MilestoneID)
+		}
+		m := &plan.after[i]
+		if seen[m.ID] {
+			return milestonePlan{}, fmt.Errorf("%w: Milestone %q is changed twice", ErrValidation, m.Name)
+		}
+		seen[m.ID] = true
+		slip, err := planMilestoneSlip(*m, ch.TargetDate, ch.DateReason)
+		if err != nil {
+			return milestonePlan{}, err
+		}
+		if slip != nil {
+			plan.slips = append(plan.slips, *slip)
+			m.TargetDate = slip.newDate.Format(dateFormat)
+		}
+	}
+	return plan, nil
+}
+
 // ListMilestones returns a Goal's Milestones, earliest target date first.
 func (s *Service) ListMilestones(ctx context.Context, goalID int64) ([]Milestone, error) {
 	rows, err := s.queries.ListMilestones(ctx, goalID)
@@ -106,10 +194,12 @@ func milestoneFromRow(m db.Milestone) Milestone {
 	targetDate, _ := time.Parse(dateFormat, m.TargetDate)
 	createdAt, _ := time.Parse(timeFormat, m.CreatedAt)
 	return Milestone{
-		ID:         m.ID,
-		GoalID:     m.GoalID,
-		Name:       m.Name,
-		TargetDate: targetDate,
-		CreatedAt:  createdAt,
+		ID:            m.ID,
+		GoalID:        m.GoalID,
+		Name:          m.Name,
+		TargetDate:    targetDate,
+		Status:        m.Status,
+		RemovedReason: m.RemovedReason,
+		CreatedAt:     createdAt,
 	}
 }
