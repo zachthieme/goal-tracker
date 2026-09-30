@@ -103,6 +103,11 @@ func (n *Notifier) reminderBody(items []reminderItem) string {
 	return b.String()
 }
 
+// goalURL links to a Goal's page.
+func (n *Notifier) goalURL(goalID int64) string {
+	return fmt.Sprintf("%s/goals/%d", n.baseURL, goalID)
+}
+
 // checkinURL links to a Goal's Check-in form, which the Goal page pre-fills
 // from its latest Check-in.
 func (n *Notifier) checkinURL(goalID int64) string {
@@ -113,6 +118,14 @@ func (n *Notifier) checkinURL(goalID int64) string {
 // on them, or a problem with a Goal that contributes to one of theirs.
 type digestEntry struct {
 	pendingLink *domain.Link
+	problem     *childProblem
+}
+
+// childProblem is a Goal contributing to one of the recipient's Goals, and what
+// went wrong with it.
+type childProblem struct {
+	parent, child domain.Goal
+	reasons       []string
 }
 
 // SendDigests emails each parent Owner a digest of what needs their attention:
@@ -123,6 +136,7 @@ func (n *Notifier) SendDigests(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	weekStart := n.svc.Now().In(n.loc).AddDate(0, 0, -daysPerWeek)
 	var out outbox[digestEntry]
 	seen := map[int64]bool{}
 	for _, g := range goals {
@@ -138,21 +152,85 @@ func (n *Notifier) SendDigests(ctx context.Context) error {
 			out.add(g.Owner, digestEntry{pendingLink: &links[i]})
 		}
 	}
+	for _, parent := range goals {
+		children, err := n.svc.ChildrenOf(ctx, parent.ID)
+		if err != nil {
+			return err
+		}
+		for _, child := range children {
+			reasons, err := n.childProblems(ctx, child, weekStart)
+			if err != nil {
+				return err
+			}
+			if len(reasons) > 0 {
+				out.add(parent.Owner, digestEntry{problem: &childProblem{parent: parent, child: child, reasons: reasons}})
+			}
+		}
+	}
 	return out.send(ctx, n.sender, "Your weekly digest", n.digestBody)
+}
+
+// childProblems says what went wrong this week with child, a Goal that
+// contributes to one of the recipient's: whether its Health got worse, to
+// Yellow or to Red, since weekStart.
+func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekStart time.Time) ([]string, error) {
+	if child.Lifecycle != domain.LifecycleActive {
+		return nil, nil
+	}
+	checkins, err := n.svc.ListCheckins(ctx, child.ID)
+	if err != nil {
+		return nil, err
+	}
+	var reasons []string
+	if now, before := healthAt(checkins, time.Time{}), healthAt(checkins, weekStart); worsened(before, now) {
+		reasons = append(reasons, "went "+now)
+	}
+	return reasons, nil
+}
+
+// healthAt is the Health a Goal's Check-ins (newest first) had set as of t, or
+// its current Health when t is the zero time. It is "" when none had set one.
+func healthAt(checkins []domain.Checkin, t time.Time) string {
+	for _, c := range checkins {
+		if c.Health == "" || (!t.IsZero() && c.CreatedAt.After(t)) {
+			continue
+		}
+		return c.Health
+	}
+	return ""
+}
+
+// worsened reports whether Health went from before to a worse now that is
+// Yellow or Red: Green to Yellow, Yellow to Red, or no Health yet to either.
+func worsened(before, now string) bool {
+	rank := map[string]int{domain.HealthGreen: 1, domain.HealthYellow: 2, domain.HealthRed: 3}
+	return (now == domain.HealthYellow || now == domain.HealthRed) && rank[now] > rank[before]
 }
 
 func (n *Notifier) digestBody(entries []digestEntry) string {
 	var b strings.Builder
 	var pending []*domain.Link
+	var problems []*childProblem
 	for _, e := range entries {
 		if e.pendingLink != nil {
 			pending = append(pending, e.pendingLink)
+		}
+		if e.problem != nil {
+			problems = append(problems, e.problem)
 		}
 	}
 	if len(pending) > 0 {
 		fmt.Fprintf(&b, "Link requests waiting on you (%s/links):\n\n", n.baseURL)
 		for _, l := range pending {
 			fmt.Fprintf(&b, "- %s (%s) asks to contribute to %s\n", l.Child.Title, l.Child.Owner.Email, l.Parent.Title)
+		}
+		b.WriteString("\n")
+	}
+	if len(problems) > 0 {
+		b.WriteString("Goals contributing to yours that need your attention:\n\n")
+		for _, p := range problems {
+			fmt.Fprintf(&b, "- %s (%s), contributing to %s: %s\n  %s\n",
+				p.child.Title, p.child.Owner.Email, p.parent.Title, strings.Join(p.reasons, "; "), n.goalURL(p.child.ID))
 		}
 	}
 	return b.String()

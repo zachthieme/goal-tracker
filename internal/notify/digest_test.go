@@ -190,3 +190,67 @@ func TestDigestListsPendingLinkRequests(t *testing.T) {
 		t.Errorf("kim owns no parent Goal but was sent %d digests", len(got))
 	}
 }
+
+// childOf creates an Active Goal owned by owner contributing to parent, the
+// link accepted by the parent's Owner.
+func childOf(h *testsupport.Harness, owner domain.Account, parent domain.Goal, title string) domain.Goal {
+	h.T.Helper()
+	child := h.ActiveGoal(owner, title, title+" matters.")
+	link := h.RequestLink(owner, child, parent, "")
+	if link.Status == domain.LinkPending {
+		if _, err := h.Service.AcceptLink(context.Background(), link.ID, parent.Owner.ID); err != nil {
+			h.T.Fatalf("AcceptLink: %v", err)
+		}
+	}
+	return child
+}
+
+// checkinHealth submits a Check-in setting health, with a Path to Green when
+// it isn't Green.
+func checkinHealth(h *testsupport.Harness, author domain.Account, goalID int64, health string) {
+	h.T.Helper()
+	if health == domain.HealthGreen {
+		h.Checkin(author, goalID, health, "On track.", "", time.Time{})
+		return
+	}
+	h.Checkin(author, goalID, health, "Behind.", "Add a second engineer.", h.Clock.Now().AddDate(0, 1, 0))
+}
+
+// The digest names children whose Health got worse this week — to Yellow or to
+// Red — but not a child that was already Yellow a week ago and still is.
+func TestDigestListsChildrenThatWentYellowOrRedThisWeek(t *testing.T) {
+	h := testsupport.New(t)
+	pat := h.SignIn("pat@example.com")
+	kim := h.SignIn("kim@example.com")
+	parent := h.ActiveGoal(pat, "Grow revenue", "It pays for everything.")
+	wentRed := childOf(h, kim, parent, "Launch pricing page")
+	stillYellow := childOf(h, kim, parent, "Cut churn")
+	green := childOf(h, kim, parent, "Upsell annual plans")
+	wentYellow := childOf(h, kim, parent, "Partner referrals")
+	checkinHealth(h, kim, wentRed.ID, domain.HealthGreen)
+	checkinHealth(h, kim, stillYellow.ID, domain.HealthYellow)
+	checkinHealth(h, kim, green.ID, domain.HealthGreen)
+	checkinHealth(h, kim, wentYellow.ID, domain.HealthGreen)
+	h.Clock.Advance(8 * day)
+	checkinHealth(h, kim, wentRed.ID, domain.HealthRed)
+	checkinHealth(h, kim, stillYellow.ID, domain.HealthYellow)
+	checkinHealth(h, kim, green.ID, domain.HealthGreen)
+	checkinHealth(h, kim, wentYellow.ID, domain.HealthYellow)
+	h.Clock.Advance(2 * day)
+
+	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
+		t.Fatalf("SendDigests: %v", err)
+	}
+
+	body := digestTo(t, h.Email, "pat@example.com")
+	for _, want := range []string{"Launch pricing page", "went Red", "Partner referrals", "went Yellow"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("digest does not mention %q:\n%s", want, body)
+		}
+	}
+	for _, unwanted := range []string{"Cut churn", "Upsell annual plans"} {
+		if strings.Contains(body, unwanted) {
+			t.Errorf("digest mentions %q, which didn't get worse this week:\n%s", unwanted, body)
+		}
+	}
+}
