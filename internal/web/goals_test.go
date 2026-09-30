@@ -421,6 +421,17 @@ func goalRows(t *testing.T, page string) []string {
 	}
 }
 
+// pageTag returns the opening tag of the tag element carrying data-testid, for
+// void elements such as <input> that pageElement can't close.
+func pageTag(t *testing.T, page, tag, testID string) string {
+	t.Helper()
+	start := strings.Index(page, "<"+tag+` data-testid="`+testID+`"`)
+	if start < 0 {
+		t.Fatalf("page has no <%s> %q", tag, testID)
+	}
+	return openTag(page[start:])
+}
+
 // rowTitles names the Goals in rows, in order, by matching each row against the
 // Goals it could be.
 func rowTitles(rows []string, goals ...domain.Goal) []string {
@@ -527,5 +538,38 @@ func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
 	}
 	if last := pageElement(t, rows[1], "td", "goal-row-last-checkin"); !strings.Contains(last, "—") {
 		t.Errorf("a Goal with no Check-in shows a Last check-in: %s", last)
+	}
+}
+
+// Searching the Goal list keeps the Goals whose title or Owner's email holds the
+// text, ignoring case, and the search box keeps what was typed.
+func TestGoalListSearchesTitleAndOwner(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	latency := h.CreateGoal(sam, "Cut checkout latency", "It matters.")
+	hiring := h.CreateGoal(kim, "Hire two engineers", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, tc := range []struct {
+		q    string
+		want []string
+	}{
+		{"LATENCY", []string{"Cut checkout latency"}},
+		{"kim@", []string{"Hire two engineers"}},
+		{"example.com", []string{"Cut checkout latency", "Hire two engineers"}},
+		{"nothing like it", nil},
+	} {
+		page := getBody(t, client, ts.URL+"/goals?q="+url.QueryEscape(tc.q))
+		if got := rowTitles(goalRows(t, page), latency, hiring); !slices.Equal(got, tc.want) {
+			t.Errorf("q=%q: rows = %q, want %q", tc.q, got, tc.want)
+		}
+		if search := pageTag(t, page, "input", "goal-search"); !strings.Contains(search, `value="`+tc.q+`"`) {
+			t.Errorf("q=%q: search box lost the query: %s", tc.q, search)
+		}
+		if tc.want == nil && !strings.Contains(page, `data-testid="no-goals"`) {
+			t.Errorf("q=%q: no empty state", tc.q)
+		}
 	}
 }

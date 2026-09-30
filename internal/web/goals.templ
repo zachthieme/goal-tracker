@@ -34,38 +34,45 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 	}
 }
 
-// goalFilters offers the filter checkboxes and the group-by selector, submitted
-// as a GET so the chosen slice lives in the URL.
+// goalFilters is the filter bar — search, Health, Lifecycle, and Mine only —
+// with the Dimension filters and Group by folded under More filters, all
+// submitted as a GET so the chosen slice lives in the URL.
 templ goalFilters(view goalsListData) {
-	if len(view.Dimensions) > 0 {
-		<form method="get" action="/goals" data-testid="goal-filters">
-			for _, d := range view.Dimensions {
-				<fieldset>
-					<legend>{ d.Name }</legend>
-					for _, v := range d.Values {
-						<label>
-							<input type="checkbox" name="value" value={ fmt.Sprintf("%d", v.ID) } checked?={ view.Selected[v.ID] }/>
-							{ v.Value }
-							if v.Retired {
-								<span>(retired)</span>
-							}
-						</label>
-					}
-				</fieldset>
-			}
-			<label>
-				Group by
-				<select name="group">
-					<option value="" selected?={ view.GroupID == 0 }>— none —</option>
-					for _, d := range view.Dimensions {
-						<option value={ fmt.Sprintf("%d", d.ID) } selected?={ view.GroupID == d.ID }>{ d.Name }</option>
-					}
-				</select>
-			</label>
-			<button type="submit">Apply</button>
-			<a href="/goals">Clear</a>
-		</form>
-	}
+	<form method="get" action="/goals" data-testid="goal-filters" class="gl-filters">
+		<div class="gl-bar">
+			<input data-testid="goal-search" type="search" name="q" value={ view.Filter.Query } placeholder="Search title or Owner email" aria-label="Search Goals by title or Owner email"/>
+			<button type="submit" class="btn">Apply</button>
+			<a href="/goals" class="btn quiet">Clear</a>
+		</div>
+		if len(view.Dimensions) > 0 {
+			<details data-testid="more-filters">
+				<summary>More filters</summary>
+				for _, d := range view.Dimensions {
+					<fieldset>
+						<legend>{ d.Name }</legend>
+						for _, v := range d.Values {
+							<label>
+								<input type="checkbox" name="value" value={ fmt.Sprintf("%d", v.ID) } checked?={ view.Selected[v.ID] }/>
+								{ v.Value }
+								if v.Retired {
+									<span>(retired)</span>
+								}
+							</label>
+						}
+					</fieldset>
+				}
+				<label>
+					Group by
+					<select name="group">
+						<option value="" selected?={ view.GroupID == 0 }>— none —</option>
+						for _, d := range view.Dimensions {
+							<option value={ fmt.Sprintf("%d", d.ID) } selected?={ view.GroupID == d.ID }>{ d.Name }</option>
+						}
+					</select>
+				</label>
+			</details>
+		}
+	</form>
 }
 
 // goalList is the htmx swap target: the Goal list as a table led by Health,

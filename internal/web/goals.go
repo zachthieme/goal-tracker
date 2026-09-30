@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -63,10 +64,37 @@ func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, curren
 // by a Dimension's values.
 type goalsListData struct {
 	Rows       []goalRow
+	Filter     goalFilter
 	Dimensions []domain.Dimension
 	Selected   map[int64]bool
 	GroupID    int64
 	Groups     []goalRowGroup
+}
+
+// goalFilter is the Goal list's filter bar, read from the URL so a filtered
+// list can be shared and reloaded.
+type goalFilter struct {
+	// Query keeps the Goals whose title or Owner's email holds it, ignoring
+	// case (?q=).
+	Query string
+}
+
+// readGoalFilter reads the filter bar's fields from the query string.
+func readGoalFilter(q url.Values) goalFilter {
+	return goalFilter{
+		Query: strings.TrimSpace(q.Get("q")),
+	}
+}
+
+// keeps reports whether row passes the filter.
+func (f goalFilter) keeps(row goalRow) bool {
+	if f.Query != "" {
+		q := strings.ToLower(f.Query)
+		if !strings.Contains(strings.ToLower(row.Goal.Title), q) && !strings.Contains(strings.ToLower(row.Goal.Owner.Email), q) {
+			return false
+		}
+	}
+	return true
 }
 
 // goalRow is one Goal in the Goal list with what its row shows beyond the Goal
@@ -138,9 +166,9 @@ func sortGoalRows(rows []goalRow) {
 	})
 }
 
-// goalsListView reads the Goal list's filter (?value=) and grouping (?group=)
-// from the request, then loads, filters, sorts, and (optionally) groups the
-// Goals.
+// goalsListView reads the Goal list's filters (the filter bar's fields and
+// ?value=) and grouping (?group=) from the request, then loads, filters, sorts,
+// and (optionally) groups the Goals.
 func (s *Server) goalsListView(r *http.Request) (goalsListData, error) {
 	ctx := r.Context()
 	dims, err := s.svc.ListDimensions(ctx)
@@ -173,6 +201,7 @@ func (s *Server) goalsListView(r *http.Request) (goalsListData, error) {
 		}
 	}
 	goals = domain.FilterGoals(goals, byDimension)
+	filter := readGoalFilter(r.URL.Query())
 
 	rows := make([]goalRow, 0, len(goals))
 	for _, gv := range goals {
@@ -180,12 +209,15 @@ func (s *Server) goalsListView(r *http.Request) (goalsListData, error) {
 		if err != nil {
 			return goalsListData{}, err
 		}
-		rows = append(rows, row)
+		if filter.keeps(row) {
+			rows = append(rows, row)
+		}
 	}
 	sortGoalRows(rows)
 
 	view := goalsListData{
 		Rows:       rows,
+		Filter:     filter,
 		Dimensions: dims,
 		Selected:   selected,
 	}
