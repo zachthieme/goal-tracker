@@ -169,6 +169,11 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		http.Error(w, "could not load contributors", http.StatusInternalServerError)
 		return
 	}
+	delegates, err := s.svc.ListDelegates(r.Context(), id)
+	if err != nil {
+		http.Error(w, "could not load delegates", http.StatusInternalServerError)
+		return
+	}
 	revisions, err := s.svc.ListSoWhatRevisions(r.Context(), id)
 	if err != nil {
 		http.Error(w, "could not load So What history", http.StatusInternalServerError)
@@ -204,6 +209,15 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		return
 	}
 
+	// A Delegate may write Check-ins too, so the Goal page shows the Check-in
+	// form to the Owner or any authorized Delegate (CONTEXT.md: Delegate).
+	canCheckin := current.ID == g.Owner.ID
+	for _, d := range delegates {
+		if d.ID == current.ID {
+			canCheckin = true
+		}
+	}
+
 	render(w, r, http.StatusOK, goalPage(&current, goalView{
 		Goal:          g,
 		Parents:       parents,
@@ -212,6 +226,8 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		Milestones:    milestones,
 		Metrics:       metrics,
 		Contributors:  contributors,
+		Delegates:     delegates,
+		CanCheckin:    canCheckin,
 		Revisions:     revisions,
 		Dimensions:    dimensions,
 		Values:        values,
@@ -233,7 +249,12 @@ type goalView struct {
 	Milestones   []domain.Milestone
 	Metrics      []domain.Metric
 	Contributors []domain.Account
-	Revisions    []domain.SoWhatRevision
+	// Delegates are the Accounts the Owner has authorized to write Check-ins on
+	// this Goal, and CanCheckin is true when the viewer may write one — the Owner
+	// or one of those Delegates (CONTEXT.md: Delegate).
+	Delegates  []domain.Account
+	CanCheckin bool
+	Revisions  []domain.SoWhatRevision
 	// Dimensions are all defined Dimensions, for the value-assignment selects and
 	// the defaults offered when creating a child Goal. Values are the values this
 	// Goal currently carries, retired ones included so they stay readable.

@@ -50,14 +50,14 @@ func layout(title string, current *domain.Account) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if current != nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<a href=\"/links\" data-testid=\"nav-pending-links\">Pending links</a> <a href=\"/handoffs\" data-testid=\"nav-pending-handoffs\">Pending handoffs</a> <a href=\"/dimensions\" data-testid=\"nav-dimensions\">Dimensions</a> <a href=\"/reports\" data-testid=\"nav-reports\">Reports</a> <span data-testid=\"current-user\">Signed in as ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<a href=\"/links\" data-testid=\"nav-pending-links\">Pending links</a> <a href=\"/handoffs\" data-testid=\"nav-pending-handoffs\">Pending handoffs</a> <a href=\"/delegates\" data-testid=\"nav-delegated-goals\">Delegated to me</a> <a href=\"/dimensions\" data-testid=\"nav-dimensions\">Dimensions</a> <a href=\"/reports\" data-testid=\"nav-reports\">Reports</a> <span data-testid=\"current-user\">Signed in as ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(current.Email)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/layout.templ`, Line: 24, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/layout.templ`, Line: 25, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {

@@ -41,10 +41,11 @@ func checkinFormFromLatest(goalID int64, latest *domain.Checkin, rollup domain.R
 }
 
 // checkinSection shows a Goal's current Health, status, and Path to Green (from
-// its latest Check-in), the Owner's form to submit a new Check-in on an Active
-// Goal, a one-click "no change" button, and the immutable Check-in history
-// (CONTEXT.md: Check-in).
-templ checkinSection(v goalView, owner bool) {
+// its latest Check-in), the form to submit a new Check-in on an Active Goal, a
+// one-click "no change" button, and the immutable Check-in history. canCheckin
+// is true for whoever may write a Check-in — the Owner or a Delegate (CONTEXT.md:
+// Check-in, Delegate).
+templ checkinSection(v goalView, canCheckin bool) {
 	{{ g := v.Goal }}
 	<section data-testid="goal-checkins">
 		<h2>Check-ins</h2>
@@ -80,7 +81,7 @@ templ checkinSection(v goalView, owner bool) {
 				</p>
 			}
 		}
-		if owner && g.Lifecycle == domain.LifecycleActive {
+		if canCheckin && g.Lifecycle == domain.LifecycleActive {
 			@checkinForm(checkinFormFromLatest(g.ID, v.LatestCheckin, v.RolledUp))
 			if v.LatestCheckin != nil {
 				<form

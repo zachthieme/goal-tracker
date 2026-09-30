@@ -1,0 +1,90 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// delegatePage is the Delegate's worklist: every Goal an Owner has authorized
+// them to check in on, each with the current Health and a Check-in form so they
+// can update it without sharing the Owner's login (CONTEXT.md: Delegate).
+templ delegatePage(current *domain.Account, goals []delegatedGoal) {
+	@layout("Delegated to me", current) {
+		<h1>Goals delegated to me</h1>
+		<p>Goals whose Owner has authorized you to write Check-ins on their behalf.</p>
+		if len(goals) == 0 {
+			<p data-testid="no-delegated-goals">No Goals have been delegated to you yet.</p>
+		}
+		<ul data-testid="delegated-goals">
+			for _, item := range goals {
+				<li data-testid="delegated-goal">
+					<h2>
+						<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", item.Goal.ID)) }>{ item.Goal.Title }</a>
+					</h2>
+					<p>
+						<strong>Owner:</strong> <span data-testid="delegated-goal-owner">{ item.Goal.Owner.Email }</span>
+					</p>
+					if item.Latest != nil {
+						<p>
+							<strong>Current Health:</strong> <span data-testid="delegated-goal-health">{ item.Latest.Health }</span>
+						</p>
+						<p>
+							<span>Last Check-in by { item.Latest.Author.Email }, for { item.Latest.Owner.Email }.</span>
+						</p>
+					} else {
+						<p data-testid="delegated-goal-no-health">No Check-ins yet.</p>
+					}
+					if item.Goal.Lifecycle == domain.LifecycleActive {
+						@checkinForm(item.Form)
+					} else {
+						<p data-testid="delegated-goal-not-active">This Goal is not Active yet, so it can't be checked in on.</p>
+					}
+				</li>
+			}
+		</ul>
+		<p><a href="/goals">Back to Goals</a></p>
+	}
+}
+
+// delegatesSection lists a Goal's Delegates and, for its Owner, the controls to
+// authorize or revoke one by email (CONTEXT.md: an Owner authorizes a Delegate).
+templ delegatesSection(v goalView, owner bool) {
+	{{ g := v.Goal }}
+	<section data-testid="goal-delegates">
+		<h2>Delegates</h2>
+		<ul data-testid="delegate-list">
+			if len(v.Delegates) == 0 {
+				<li data-testid="no-delegates">No Delegates yet.</li>
+			}
+			for _, d := range v.Delegates {
+				<li data-testid="delegate">
+					<span>{ d.Email }</span>
+					if owner {
+						<form
+							method="post"
+							style="display:inline"
+							action={ templ.SafeURL(fmt.Sprintf("/goals/%d/delegates/remove", g.ID)) }
+						>
+							<input type="hidden" name="email" value={ d.Email }/>
+							<button type="submit">Remove</button>
+						</form>
+					}
+				</li>
+			}
+		</ul>
+		if owner {
+			<form
+				data-testid="add-delegate"
+				method="post"
+				action={ templ.SafeURL(fmt.Sprintf("/goals/%d/delegates", g.ID)) }
+			>
+				<label>
+					Delegate email
+					<input type="email" name="email" required/>
+				</label>
+				<button type="submit">Add Delegate</button>
+			</form>
+		}
+	</section>
+}
