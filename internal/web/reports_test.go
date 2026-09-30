@@ -131,3 +131,81 @@ func TestSmokeReportDraftShowsExceptionBlocksAgainstBaseline(t *testing.T) {
 		t.Errorf("unreadable baseline: status %d, want 400", resp.StatusCode)
 	}
 }
+
+// From the draft a reader publishes the Report and lands on the frozen
+// publication, which later Check-ins never change. The Definition's page lists
+// its publications, and the next draft reads its changes against the previous
+// publication unless the reader picks a date, which publishing carries through
+// (CONTEXT.md: Report Definition). The snapshot's content is asserted on its
+// view model in the domain tests; this checks the pages wire it through.
+func TestSmokePublishReportOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, g.ID, domain.HealthYellow, "Vendor is late.", "Chase the vendor.", h.Clock.Now().AddDate(0, 0, 14))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	other := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "WBR", RootIDs: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+
+	draft := getBody(t, client, reportURL)
+	if !strings.Contains(draft, `data-testid="no-publications"`) {
+		t.Errorf("an unpublished definition does not say so; body:\n%s", draft)
+	}
+	resp := postForm(t, client, reportURL+"/publications", url.Values{"baseline": {""}})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("publish: status %d", resp.StatusCode)
+	}
+	pubURL := resp.Request.URL.String()
+	if !strings.HasPrefix(pubURL, reportURL+"/publications/") {
+		t.Fatalf("publish redirected to %s, want a publication of the definition", pubURL)
+	}
+	published := readBody(t, resp)
+	if line := pageElement(t, published, "p", "report-published"); !strings.Contains(line, "boss@example.com") {
+		t.Errorf("publication does not say who published it; line:\n%s", line)
+	}
+	for _, want := range []string{"MBR", "Vendor is late."} {
+		if !strings.Contains(published, want) {
+			t.Errorf("publication missing %q; body:\n%s", want, published)
+		}
+	}
+
+	h.Clock.Advance(24 * time.Hour)
+	h.Checkin(boss, g.ID, domain.HealthRed, "Vendor is gone.", "Find a new vendor.", h.Clock.Now().AddDate(0, 0, 14))
+	published = getBody(t, client, pubURL)
+	if !strings.Contains(published, "Vendor is late.") || strings.Contains(published, "Vendor is gone.") {
+		t.Errorf("publication changed after a later Check-in; body:\n%s", published)
+	}
+
+	draft = getBody(t, client, reportURL)
+	if item := pageElement(t, draft, "li", "report-publication"); !strings.Contains(item, strings.TrimPrefix(pubURL, ts.URL)) {
+		t.Errorf("definition page does not link its publication; item:\n%s", item)
+	}
+	if !strings.Contains(draft, `data-testid="report-since-publication"`) {
+		t.Errorf("the next draft does not say it reads against the previous publication; body:\n%s", draft)
+	}
+
+	// A date the reader picks is carried into the publication.
+	draft = getBody(t, client, reportURL+"?baseline=2026-01-01")
+	if form := pageElement(t, draft, "form", "report-publish"); !strings.Contains(form, `value="2026-01-01"`) {
+		t.Errorf("publish form does not carry the chosen baseline; form:\n%s", form)
+	}
+	resp = postForm(t, client, reportURL+"/publications", url.Values{"baseline": {"2026-01-01"}})
+	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "Changes since 2026-01-01") {
+		t.Errorf("publication does not read against the chosen baseline; line:\n%s", line)
+	}
+
+	// A publication is only found under its own definition.
+	wrong := ts.URL + "/reports/" + strconv.FormatInt(other.ID, 10) + strings.TrimPrefix(pubURL, reportURL)
+	resp, err := client.Get(wrong)
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("publication under another definition: status %d, want 404", resp.StatusCode)
+	}
+}

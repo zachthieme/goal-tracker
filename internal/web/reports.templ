@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -84,15 +85,12 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 }
 
 // reportDraftPage shows a saved Report Definition and its draft Report read
-// against a baseline the reader can change: exceptions get the full MBR block,
-// and every other selected Goal one line with title, Owner, Health, and due date
-// (CONTEXT.md: Report).
-templ reportDraftPage(current *domain.Account, r domain.Report) {
+// against a baseline the reader can change — by default the previous
+// publication — with the button that publishes it and the list of its
+// publications (CONTEXT.md: Report, Report Definition).
+templ reportDraftPage(current *domain.Account, r domain.Report, pubs []domain.Publication) {
 	@layout(r.Definition.Name, current) {
 		<h1 data-testid="report-name">{ r.Definition.Name }</h1>
-		if r.Definition.Introduction != "" {
-			<p data-testid="report-introduction">{ r.Definition.Introduction }</p>
-		}
 		<form method="get" data-testid="report-baseline">
 			<label>
 				Changes since
@@ -100,30 +98,85 @@ templ reportDraftPage(current *domain.Account, r domain.Report) {
 			</label>
 			<button type="submit">Update</button>
 		</form>
+		if r.Previous.ID != 0 {
+			<p data-testid="report-since-publication">Showing what changed since the previous publication, { fmtPublished(r.Previous.PublishedAt) }.</p>
+		}
+		<form data-testid="report-publish" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications", r.Definition.ID)) }>
+			// A date the reader picked is carried through; otherwise publishing
+			// reads against the previous publication, as the draft does.
+			if r.Previous.ID == 0 {
+				<input type="hidden" name="baseline" value={ fmtDate(r.Baseline) }/>
+			}
+			<button type="submit">Publish</button>
+		</form>
 		<section data-testid="report-draft">
 			<h2>Draft</h2>
-			if len(r.Exceptions) == 0 && len(r.Lines) == 0 {
-				<p data-testid="no-selected-goals">No Goals selected.</p>
-			}
-			for _, b := range r.Exceptions {
-				@reportBlock(b)
-			}
-			if len(r.Lines) > 0 {
-				<ul>
-					for _, sg := range r.Lines {
-						<li data-testid="selected-goal">
-							<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a>
-							<span data-testid="selected-owner">— { sg.Goal.Owner.Email }</span>
-							<span data-testid="selected-health">— { reportHealth(sg.Health) }</span>
-							if !sg.Goal.DeliveryDate.IsZero() {
-								<span data-testid="selected-due">— due { fmtDate(sg.Goal.DeliveryDate) }</span>
-							}
-						</li>
-					}
-				</ul>
-			}
+			@reportBody(r)
+		</section>
+		<section data-testid="report-publications">
+			<h2>Publications</h2>
+			<ul>
+				if len(pubs) == 0 {
+					<li data-testid="no-publications">Not published yet.</li>
+				}
+				for _, p := range pubs {
+					<li data-testid="report-publication">
+						<a href={ templ.SafeURL(publicationPath(p)) }>{ fmtPublished(p.PublishedAt) }</a>
+						{ " by " }{ p.PublishedBy.Email }
+					</li>
+				}
+			</ul>
 		</section>
 		<p><a href="/reports">Back to Reports</a></p>
+	}
+}
+
+// publicationPage shows a published Report exactly as it was frozen: who
+// published it and when, and what it read its changes against.
+templ publicationPage(current *domain.Account, p domain.Publication) {
+	@layout(p.Report.Definition.Name, current) {
+		<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
+		<p data-testid="report-published">
+			Published { fmtPublished(p.PublishedAt) } by { p.PublishedBy.Email }.
+			if p.Report.Previous.ID != 0 {
+				Changes since the previous publication, { fmtPublished(p.Report.Previous.PublishedAt) }.
+			} else {
+				Changes since { fmtDate(p.Report.Baseline) }.
+			}
+		</p>
+		<section data-testid="report-snapshot">
+			@reportBody(p.Report)
+		</section>
+		<p><a href={ templ.SafeURL(fmt.Sprintf("/reports/%d", p.DefinitionID)) }>Back to { p.Report.Definition.Name }</a></p>
+	}
+}
+
+// reportBody is a Report's content, drafted or published: the introduction,
+// then exceptions with the full MBR block and every other selected Goal one
+// line with title, Owner, Health, and due date (CONTEXT.md: Report).
+templ reportBody(r domain.Report) {
+	if r.Definition.Introduction != "" {
+		<p data-testid="report-introduction">{ r.Definition.Introduction }</p>
+	}
+	if len(r.Exceptions) == 0 && len(r.Lines) == 0 {
+		<p data-testid="no-selected-goals">No Goals selected.</p>
+	}
+	for _, b := range r.Exceptions {
+		@reportBlock(b)
+	}
+	if len(r.Lines) > 0 {
+		<ul>
+			for _, sg := range r.Lines {
+				<li data-testid="selected-goal">
+					<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a>
+					<span data-testid="selected-owner">— { sg.Goal.Owner.Email }</span>
+					<span data-testid="selected-health">— { reportHealth(sg.Health) }</span>
+					if !sg.Goal.DeliveryDate.IsZero() {
+						<span data-testid="selected-due">— due { fmtDate(sg.Goal.DeliveryDate) }</span>
+					}
+				</li>
+			}
+		</ul>
 	}
 }
 
@@ -221,4 +274,9 @@ func reportHealth(health string) string {
 		return "—"
 	}
 	return health
+}
+
+// fmtPublished renders the instant a Report was published, to the minute.
+func fmtPublished(t time.Time) string {
+	return t.UTC().Format("2006-01-02 15:04 UTC")
 }
