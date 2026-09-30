@@ -23,7 +23,8 @@ type entry struct {
 	parents []int
 }
 
-// outcomes are the org's Top-level outcomes, owned by the leadership team.
+// outcomes are the org-wide outcomes the team Goals contribute to, owned by the
+// leadership team.
 var outcomes = []struct {
 	entry
 	owner string

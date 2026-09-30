@@ -115,11 +115,14 @@ type plannedGoal struct {
 	parents    []string // titles of the Goals it contributes to
 	delivery   time.Time
 	milestones []plannedMilestone
-	metric     string  // import-format Metric with its target date, or ""
+	metricCell string  // import-format Metric with its target date, or ""
 	level      int     // 1 for an org outcome, 2 for a team Goal, 3 for a project
 	profile    profile // how a project's weeks play out
-	turn       int     // the week a troubled project turns Yellow
-	recover    int     // the week a troubled project recovers to Yellow, or 0
+	// turn is the week a project's profile plays out: a troubled one turns
+	// Yellow, a churning one's scope moves, a stale one's Owner goes quiet, and
+	// a paused or cancelled one goes On Hold.
+	turn    int
+	recover int // the week a troubled project recovers to Yellow, or 0
 
 	// Set once the Goal exists.
 	id        int64
@@ -169,7 +172,7 @@ func newPlan(rng *rand.Rand, day0 time.Time) *plan {
 			aligned = append(aligned, add(3, e, t.name, t.people[rng.IntN(len(t.people))], titlesOf(e.parents, t.goals), 14+rng.IntN(11)))
 		}
 		for _, e := range t.unaligned {
-			add(3, e, t.name, t.people[rng.IntN(len(t.people))], nil, 14+rng.IntN(11))
+			add(3, e, t.name, t.people[rng.IntN(len(t.people))], nil, 14+rng.IntN(11)).profile = steady
 		}
 	}
 	for i, j := range rng.Perm(len(aligned)) {
@@ -186,13 +189,13 @@ func newPlan(rng *rand.Rand, day0 time.Time) *plan {
 // any, targeting the delivery date.
 func (g *plannedGoal) schedule(rng *rand.Rand, day0 time.Time, deliveryWeeks int) {
 	if g.ongoing {
-		g.metric = g.entry.metric + " | " + day0.AddDate(0, 0, 7*40).Format(dateFormat)
+		g.metricCell = g.metric + " | " + day0.AddDate(0, 0, 7*40).Format(dateFormat)
 		return
 	}
 	g.delivery = domain.SuggestDeliveryDate(day0.AddDate(0, 0, 7*deliveryWeeks))
 	g.milestones = planMilestones(rng, day0, g.delivery)
-	if g.entry.metric != "" {
-		g.metric = g.entry.metric + " | " + g.delivery.Format(dateFormat)
+	if g.metric != "" {
+		g.metricCell = g.metric + " | " + g.delivery.Format(dateFormat)
 	}
 }
 
@@ -262,7 +265,7 @@ func (p *plan) csv() []byte {
 		}
 		_ = w.Write([]string{
 			g.title, g.owner, g.soWhat, kind, delivery,
-			strings.Join(milestones, "; "), g.metric, strings.Join(g.parents, "; "), g.team,
+			strings.Join(milestones, "; "), g.metricCell, strings.Join(g.parents, "; "), g.team,
 		})
 	}
 	w.Flush()

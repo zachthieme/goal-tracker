@@ -1,4 +1,4 @@
-.PHONY: build test lint generate generate-check
+.PHONY: build test lint generate generate-check seed
 
 # templ and sqlc are pinned as `tool` deps in go.mod and run via `go tool`, so
 # the generator versions travel with the repo, not the developer's machine.
@@ -20,3 +20,9 @@ test:
 
 lint:
 	golangci-lint run
+
+# Fill a fresh database with a fake org for demos (see README). SEED_DB defaults
+# to the server's default database; the seed refuses one that already has Goals.
+SEED_DB ?= goal-tracker.db
+seed:
+	go run ./cmd/seed -db $(SEED_DB)
