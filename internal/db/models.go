@@ -12,6 +12,20 @@ type Account struct {
 	Departed  int64
 }
 
+type ActionItem struct {
+	ID                 int64
+	ReportDefinitionID int64
+	PublicationID      int64
+	CommentID          int64
+	Text               string
+	OwnerID            int64
+	DueDate            string
+	CreatedBy          int64
+	CreatedAt          string
+	ClosedAt           string
+	ClosingNote        string
+}
+
 type Checkin struct {
 	ID              int64
 	GoalID          int64
@@ -27,6 +41,16 @@ type Checkin struct {
 	LifecycleTo     string
 	LifecycleReason string
 	Outcome         string
+}
+
+type Comment struct {
+	ID            int64
+	PublicationID int64
+	GoalID        int64
+	ParentID      int64
+	AuthorID      int64
+	Body          string
+	CreatedAt     string
 }
 
 type Contributor struct {

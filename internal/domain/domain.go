@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/clock"
@@ -25,6 +26,9 @@ type Service struct {
 	admins  map[string]bool
 	// loc is the org's timezone: the calendar a Goal's cadence is counted in.
 	loc *time.Location
+	// baseURL is where people reach the web app, for the links in the emails
+	// the Service sends itself (a comment alert). Empty leaves links relative.
+	baseURL string
 }
 
 // Option configures a Service at construction.
@@ -34,6 +38,12 @@ type Option func(*Service)
 // is counted in (CONTEXT.md: Stale). Without it the org runs on UTC.
 func WithTimezone(loc *time.Location) Option {
 	return func(s *Service) { s.loc = loc }
+}
+
+// WithBaseURL sets where people reach the web app (e.g.
+// http://localhost:8080), so links in the emails the Service sends point there.
+func WithBaseURL(url string) Option {
+	return func(s *Service) { s.baseURL = strings.TrimRight(url, "/") }
 }
 
 // NewService builds a Service over sqlDB. adminEmails are the addresses that
@@ -75,6 +85,7 @@ func (s *Service) WithinTx(ctx context.Context, fn func(tx *Service) error) erro
 		email:   s.email,
 		admins:  s.admins,
 		loc:     s.loc,
+		baseURL: s.baseURL,
 	}
 	if err := fn(txSvc); err != nil {
 		_ = sqlTx.Rollback()

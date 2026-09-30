@@ -88,7 +88,7 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 // against a baseline the reader can change — by default the previous
 // publication — with the button that publishes it and the list of its
 // publications (CONTEXT.md: Report, Report Definition).
-templ reportDraftPage(current *domain.Account, r domain.Report, pubs []domain.Publication) {
+templ reportDraftPage(current *domain.Account, r domain.Report, pubs []domain.Publication, d discussion) {
 	@layout(r.Definition.Name, current) {
 		<h1 data-testid="report-name">{ r.Definition.Name }</h1>
 		<form method="get" data-testid="report-baseline">
@@ -111,7 +111,7 @@ templ reportDraftPage(current *domain.Account, r domain.Report, pubs []domain.Pu
 		</form>
 		<section data-testid="report-draft">
 			<h2>Draft</h2>
-			@reportBody(r)
+			@reportBody(r, d)
 		</section>
 		<section data-testid="report-publications">
 			<h2>Publications</h2>
@@ -134,7 +134,9 @@ templ reportDraftPage(current *domain.Account, r domain.Report, pubs []domain.Pu
 // publicationPage shows a published Report exactly as it was frozen: who
 // published it and when, and what it read its changes against. It links the
 // ways to read it outside the tool: Markdown, and a page to print to PDF.
-templ publicationPage(current *domain.Account, p domain.Publication) {
+// Readers discuss it in place: comments on each Goal's block, and the Action
+// Items raised on it (ticket #19).
+templ publicationPage(current *domain.Account, p domain.Publication, d discussion) {
 	@layout(p.Report.Definition.Name, current) {
 		<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
 		@publishedLine(p)
@@ -144,8 +146,9 @@ templ publicationPage(current *domain.Account, p domain.Publication) {
 			<a data-testid="export-print" href={ templ.SafeURL(publicationPath(p) + "/print") }>Print</a>
 		</p>
 		<section data-testid="report-snapshot">
-			@reportBody(p.Report)
+			@reportBody(p.Report, d)
 		</section>
+		@publicationActionItems(d)
 		<p><a href={ templ.SafeURL(fmt.Sprintf("/reports/%d", p.DefinitionID)) }>Back to { p.Report.Definition.Name }</a></p>
 	}
 }
@@ -178,7 +181,7 @@ templ publicationPrintPage(p domain.Publication) {
 			<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
 			@publishedLine(p)
 			<section data-testid="report-snapshot">
-				@reportBody(p.Report)
+				@reportBody(p.Report, discussion{})
 			</section>
 		</body>
 	</html>
@@ -197,10 +200,12 @@ templ publishedLine(p domain.Publication) {
 	</p>
 }
 
-// reportBody is a Report's content, drafted or published: the introduction,
-// then exceptions with the full MBR block and every other selected Goal one
-// line with title, Owner, Health, and due date (CONTEXT.md: Report).
-templ reportBody(r domain.Report) {
+// reportBody is a Report's content, drafted or published: its open Action
+// Items, the introduction, then exceptions with the full MBR block and every
+// other selected Goal one line with title, Owner, Health, and due date
+// (CONTEXT.md: Report). On a publication, each Goal carries its discussion.
+templ reportBody(r domain.Report, d discussion) {
+	@reportActionItems(r.ActionItems, d)
 	if r.Definition.Introduction != "" {
 		<p data-testid="report-introduction">{ r.Definition.Introduction }</p>
 	}
@@ -208,18 +213,19 @@ templ reportBody(r domain.Report) {
 		<p data-testid="no-selected-goals">No Goals selected.</p>
 	}
 	for _, b := range r.Exceptions {
-		@reportBlock(b)
+		@reportBlock(b, d)
 	}
 	if len(r.Lines) > 0 {
 		<ul>
 			for _, sg := range r.Lines {
-				<li data-testid="selected-goal">
+				<li data-testid="selected-goal" id={ fmt.Sprintf("goal-%d", sg.Goal.ID) }>
 					<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a>
 					<span data-testid="selected-owner">— { sg.Goal.Owner.Email }</span>
 					<span data-testid="selected-health">— { reportHealth(sg.Health) }</span>
 					if !sg.Goal.DeliveryDate.IsZero() {
 						<span data-testid="selected-due">— due { fmtDate(sg.Goal.DeliveryDate) }</span>
 					}
+					@goalDiscussion(sg.Goal.ID, d)
 				</li>
 			}
 		</ul>
@@ -229,9 +235,9 @@ templ reportBody(r domain.Report) {
 // reportBlock is an exception Goal's full MBR block: title, due date with its
 // history struck through, Health, badges, So What, latest status, Path to
 // Green, Milestones, Metrics against target, and the Rolled-up Health with the
-// Owner's explanation.
-templ reportBlock(b domain.ReportBlock) {
-	<article data-testid="report-exception">
+// Owner's explanation. On a publication it ends with the Goal's discussion.
+templ reportBlock(b domain.ReportBlock, d discussion) {
+	<article data-testid="report-exception" id={ fmt.Sprintf("goal-%d", b.Goal.ID) }>
 		<h3>
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", b.Goal.ID)) }>{ b.Goal.Title }</a>
 			for _, badge := range b.Badges {
@@ -310,6 +316,7 @@ templ reportBlock(b domain.ReportBlock) {
 				}
 			</p>
 		}
+		@goalDiscussion(b.Goal.ID, d)
 	</article>
 }
 

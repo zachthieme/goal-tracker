@@ -21,7 +21,7 @@ The server is configured from the environment:
 | `GOAL_TRACKER_TIMEZONE` | `UTC` | The org's IANA timezone (e.g. `America/Los_Angeles`). Check-in cadences are counted in its days, so a Goal turns Stale and a Path to Green goes overdue at its midnight. |
 | `GOAL_TRACKER_REMINDER_DAY` | `Monday` | Day of the week the weekly emails go out (see [Weekly emails](#weekly-emails)). |
 | `GOAL_TRACKER_REMINDER_TIME` | `09:00` | 24-hour time of day, in the org's timezone, the weekly emails go out. |
-| `GOAL_TRACKER_BASE_URL` | from `GOAL_TRACKER_ADDR`, e.g. `http://localhost:8080` | Where people reach the app. Links in emails point here. |
+| `GOAL_TRACKER_BASE_URL` | from `GOAL_TRACKER_ADDR`, e.g. `http://localhost:8080` | Where people reach the app. Links in emails (the weekly emails and comment alerts) point here. |
 
 Sign-in is a development sign-in by email: any address works, and an account is
 created on first sign-in.
@@ -45,6 +45,13 @@ The server sends two emails once a week, at the configured day and time:
 People with nothing to report get no email, and people marked departed get
 none. The prototype has no mail transport, so it logs each email's recipient
 and subject instead of sending it.
+
+## Comment alerts
+
+Readers comment on a Goal in a published Report from its publication page. The
+comment emails the Goal's current Owner. Replies in the thread email the Owner
+and everyone else who has written in it, except the reply's author. As with the
+weekly emails, the prototype logs these instead of sending them.
 
 ## Seed a fake org
 

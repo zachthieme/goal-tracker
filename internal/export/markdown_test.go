@@ -160,3 +160,28 @@ func TestMarkdownEscapesWhatPeopleType(t *testing.T) {
 		}
 	}
 }
+
+// A publication's open Action Items open the export, ahead of the
+// introduction, each with its owner and due date (CONTEXT.md: Action Item).
+func TestMarkdownOpensWithActionItems(t *testing.T) {
+	pub := publication(nil, nil)
+	pub.Report.ActionItems = []domain.ActionItem{
+		{Text: "Get a *second* vendor quote.", Owner: boss, DueDate: date(2026, 3, 1)},
+	}
+
+	want := `# EU MBR
+
+Published 2026-02-21 09:30 UTC by boss@example.com. Changes since 2026-01-12.
+
+## Open Action Items
+
+- Get a \*second\* vendor quote. — boss@example.com — due 2026-03-01
+
+Quarterly business review.
+
+No Goals selected.
+`
+	if got := export.Markdown(pub); got != want {
+		t.Errorf("Markdown:\n%s\nwant:\n%s", got, want)
+	}
+}

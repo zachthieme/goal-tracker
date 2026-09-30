@@ -17,9 +17,28 @@ type Report struct {
 	Baseline time.Time
 	// Previous is the previous publication changes are read against, from the
 	// instant it was published; its ID is 0 when they are read against a date.
-	Previous   PreviousPublication
-	Exceptions []ReportBlock
-	Lines      []SelectedGoal
+	Previous PreviousPublication
+	// ActionItems are the Definition's open Action Items, soonest due first,
+	// shown at the top of the Report until each is closed.
+	ActionItems []ActionItem
+	Exceptions  []ReportBlock
+	Lines       []SelectedGoal
+}
+
+// covers reports whether the Report includes the Goal, as an exception block
+// or one line.
+func (r Report) covers(goalID int64) bool {
+	for _, b := range r.Exceptions {
+		if b.Goal.ID == goalID {
+			return true
+		}
+	}
+	for _, sg := range r.Lines {
+		if sg.Goal.ID == goalID {
+			return true
+		}
+	}
+	return false
 }
 
 // ReportBlock is one exception Goal's full MBR block.
@@ -86,6 +105,9 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 		return Report{}, err
 	}
 	r := Report{Definition: def}
+	if r.ActionItems, err = s.OpenActionItems(ctx, def.ID); err != nil {
+		return Report{}, err
+	}
 	if baseline.IsZero() {
 		if r.Previous, err = s.previousPublication(ctx, def.ID); err != nil {
 			return Report{}, err
