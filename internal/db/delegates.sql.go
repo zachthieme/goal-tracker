@@ -56,7 +56,7 @@ func (q *Queries) GetDelegate(ctx context.Context, arg GetDelegateParams) (Deleg
 }
 
 const listDelegatedGoals = `-- name: ListDelegatedGoals :many
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
+SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
 FROM delegates
 JOIN goals ON goals.id = delegates.goal_id
 JOIN accounts ON accounts.id = goals.owner_id
@@ -91,6 +91,7 @@ func (q *Queries) ListDelegatedGoals(ctx context.Context, accountID int64) ([]Li
 			&i.Goal.DeliveryDate,
 			&i.Goal.CadenceDays,
 			&i.Goal.TopLevel,
+			&i.Goal.ActivatedAt,
 			&i.Account.ID,
 			&i.Account.Email,
 			&i.Account.IsAdmin,
