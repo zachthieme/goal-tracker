@@ -201,10 +201,19 @@ templ publicationPrintPage(p domain.Publication) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ p.Report.Definition.Name } · { fmtPublished(p.PublishedAt) }</title>
+			<link rel="preconnect" href="https://fonts.googleapis.com"/>
+			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+			<link rel="stylesheet" href={ reportFontsURL }/>
 			<style>
-				body { font-family: Georgia, serif; max-width: 48rem; margin: 2rem auto; line-height: 1.4; }
+				body { font-family: 'Source Serif 4', Georgia, serif; max-width: 48rem; margin: 2rem auto; line-height: 1.4; }
 				a { color: inherit; text-decoration: none; }
 				article { break-inside: avoid; border-top: 1px solid #ccc; }
+				table { border-collapse: collapse; width: 100%; }
+				th, td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid #ccc; }
+				tr { break-inside: avoid; }
+				.dot { display: none; }
+				.badge { font-weight: 600; white-space: nowrap; }
+				.label { font-variant: small-caps; letter-spacing: 0.05em; }
 				@media print {
 					body { margin: 0; max-width: none; }
 					.no-print { display: none; }
@@ -287,7 +296,12 @@ templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 					<tbody>
 						for _, sg := range r.Lines {
 							<tr data-testid="selected-goal" id={ fmt.Sprintf("goal-%d", sg.Goal.ID) }>
-								<td><span data-testid="selected-health" class={ "badge", healthClass(sg.Health) }>{ reportHealth(sg.Health) }</span></td>
+								<td>
+									<span data-testid="selected-health" class={ "badge", healthClass(sg.Health) }>
+										@healthMark(sg.Health)
+										{ reportHealth(sg.Health) }
+									</span>
+								</td>
 								<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a></td>
 								<td data-testid="selected-owner">{ sg.Goal.Owner.Email }</td>
 								<td>
@@ -412,7 +426,10 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 				</p>
 			</div>
 			<div class="rp-badges">
-				<span data-testid="report-health" class={ "badge", healthClass(b.Health) }><span class="dot"></span>{ reportHealth(b.Health) }</span>
+				<span data-testid="report-health" class={ "badge", healthClass(b.Health) }>
+					@healthMark(b.Health)
+					{ reportHealth(b.Health) }
+				</span>
 				for _, badge := range b.Badges {
 					<span data-testid="report-badge" class={ "badge", badgeClass(badge) }>{ badge }</span>
 				}
@@ -482,7 +499,11 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 		if b.RolledUp.Present || b.RolledUp.StaleChildren > 0 {
 			<p data-testid="report-rollup">
 				if b.RolledUp.Present {
-					<strong>Rolled-up Health:</strong> { b.RolledUp.Health }
+					<strong>Rolled-up Health:</strong>
+					<span class={ "badge", healthClass(b.RolledUp.Health) }>
+						@healthMark(b.RolledUp.Health)
+						{ b.RolledUp.Health }
+					</span>
 				}
 				@rolledUpStale(b.RolledUp)
 				if b.Explanation != "" {
@@ -494,6 +515,33 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 		@goalDiscussion(b.Goal.ID, d)
 	</article>
 }
+
+// healthMark marks a Health on a badge: the design system's coloured dot on
+// screen, and on the print page, which hides the dot, a shape that survives
+// black-and-white printing — ■ Red, ▲ Yellow, ● Green.
+templ healthMark(health string) {
+	<span class="dot"></span>
+	if shape := healthShape(health); shape != "" {
+		<span class="shape" aria-hidden="true">{ shape }</span>
+	}
+}
+
+// healthShape is the shape the print page marks a Health with.
+func healthShape(health string) string {
+	switch health {
+	case domain.HealthRed:
+		return "■"
+	case domain.HealthYellow:
+		return "▲"
+	case domain.HealthGreen:
+		return "●"
+	}
+	return ""
+}
+
+// reportFontsURL loads the serif a Report's narrative and print page read in,
+// at body weight as well as the display weight the layout loads.
+const reportFontsURL = "https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap"
 
 // healthClass is the badge colour for a Health; no Health yet is neutral.
 func healthClass(health string) string {
@@ -601,7 +649,9 @@ func narrativeText(r domain.Report, section string) string {
 // their tinted status box, the discussion footer, and the scrolling root-Goal
 // picker.
 templ reportStyles() {
+	<link rel="stylesheet" href={ reportFontsURL }/>
 	<style>
+		.shape{display:none}
 		.page>.rp-read{width:100%;max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
 		.rp-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
 		.rp-head h1{margin:4px 0}

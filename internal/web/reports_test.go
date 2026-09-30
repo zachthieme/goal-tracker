@@ -566,3 +566,31 @@ func TestReportsListFormOverHTTP(t *testing.T) {
 		t.Errorf("Depth is not explained; details:\n%s", create)
 	}
 }
+
+// The print page sets the Report in the design system's serif, falling back to
+// Georgia, and marks Health with a shape as well as its name so it survives
+// black-and-white printing: ■ Red, ▲ Yellow, ● Green.
+func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{red.ID, green.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	printed := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
+
+	if !strings.Contains(printed, "font-family: 'Source Serif 4', Georgia, serif") {
+		t.Errorf("print page is not set in Source Serif 4 with a Georgia fallback; body:\n%s", printed)
+	}
+	if block := pageElement(t, printed, "article", "report-exception"); !strings.Contains(block, "■</span>Red") {
+		t.Errorf("Red is not marked ■; block:\n%s", block)
+	}
+	if row := pageElement(t, printed, "tr", "selected-goal"); !strings.Contains(row, "●</span>Green") {
+		t.Errorf("Green is not marked ●; row:\n%s", row)
+	}
+}
