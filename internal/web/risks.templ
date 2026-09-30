@@ -1,0 +1,98 @@
+package web
+
+import (
+	"fmt"
+	"strconv"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// risksPage answers "what's going wrong?": a tile counting each problem type,
+// then a section per type listing the Goals it flags, their Owners, and why.
+templ risksPage(current *domain.Account, v risksView) {
+	@layout("Risks", current) {
+		@risksStyles()
+		<header class="page-head">
+			<div>
+				<h1>Risks</h1>
+				<p class="muted">What's going wrong: the Goals the signals flag that nobody reported.</p>
+			</div>
+		</header>
+		<nav data-testid="risks-summary" class="rk-tiles" aria-label="Risks by type">
+			@riskTile("stale", "Stale", len(v.Stale))
+			@riskTile("path-overdue", "Path to Green overdue", len(v.OverduePaths))
+		</nav>
+		@riskSection("stale", "Stale", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence.", "No Stale Goals.", len(v.Stale)) {
+			for _, gf := range v.Stale {
+				@riskRow(gf.Goal) {
+					{ staleSince(gf.Freshness) }
+				}
+			}
+		}
+		@riskSection("path-overdue", "Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green.", "No overdue Paths to Green.", len(v.OverduePaths)) {
+			for _, gf := range v.OverduePaths {
+				@riskRow(gf.Goal) {
+					{ pathOverdue(gf.Freshness) }
+				}
+			}
+		}
+	}
+}
+
+// riskTile counts one problem type and links down to its section.
+templ riskTile(anchor, label string, count int) {
+	<a data-testid={ "risks-tile-" + anchor } href={ templ.SafeURL("#" + anchor) } class="card rk-tile">
+		<span class="label">{ label }</span>
+		<span class="num">{ strconv.Itoa(count) }</span>
+	</a>
+}
+
+// riskSection is one problem type: its heading, a line explaining it, and a
+// table of the flagged Goals (its children, one riskRow each), or the empty
+// state when there are none.
+templ riskSection(anchor, heading, explain, empty string, count int) {
+	<section data-testid={ "risks-" + anchor } id={ anchor } class="rk-section">
+		<div>
+			<h2>{ heading }</h2>
+			<p class="muted">{ explain }</p>
+		</div>
+		<div class="card">
+			if count == 0 {
+				<p data-testid={ "risks-" + anchor + "-empty" } class="muted rk-empty">{ empty }</p>
+			} else {
+				<table>
+					<thead>
+						<tr><th>Goal</th><th>Owner</th><th>Why it's flagged</th></tr>
+					</thead>
+					<tbody>
+						{ children... }
+					</tbody>
+				</table>
+			}
+		</div>
+	</section>
+}
+
+// riskRow is one flagged Goal: its title, its Owner, and why (its children).
+templ riskRow(g domain.Goal) {
+	<tr data-testid="risk-row">
+		<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></td>
+		<td>{ g.Owner.Email }</td>
+		<td>{ children... }
+</td>
+	</tr>
+}
+
+// risksStyles are the Risks page's own rules on top of app.css: the summary
+// tiles and the section layout.
+templ risksStyles() {
+	<style>
+		.rk-tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+		.rk-tile{padding:14px 16px;display:flex;flex-direction:column;gap:4px;color:#1B1E23}
+		.rk-tile:hover{text-decoration:none;border-color:#C9CCC4;color:#1B1E23}
+		.rk-tile .num{font-size:24px}
+		.rk-section{display:flex;flex-direction:column;gap:12px;scroll-margin-top:16px}
+		.rk-empty{padding:16px}
+		@media (max-width:900px){.rk-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+	</style>
+}
