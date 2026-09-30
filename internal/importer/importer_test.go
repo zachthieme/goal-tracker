@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -307,5 +309,29 @@ func TestCommitCleanImportFromXLSX(t *testing.T) {
 	}
 	if len(parents) != 1 || parents[0].Title != "Parent goal" {
 		t.Errorf("child parents from xlsx = %+v, want [Parent goal]", parents)
+	}
+}
+
+// The example file shipped with the format docs is valid: with the Dimension it
+// uses defined, a dry run of it reports no errors (ticket #22: the column format
+// is documented, with an example file in the repo).
+func TestExampleFileDryRunsClean(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "import-example.csv"))
+	if err != nil {
+		t.Fatalf("read example: %v", err)
+	}
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateDimension(admin, "Pillar", "Growth", "Reliability")
+
+	rep, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "import-example.csv", data)
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	if rep.HasErrors() {
+		t.Fatalf("example file reported errors: %+v", rep.Rows)
+	}
+	if len(rep.Rows) != 3 {
+		t.Errorf("example has %d rows, want 3", len(rep.Rows))
 	}
 }
