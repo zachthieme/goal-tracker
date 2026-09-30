@@ -1087,3 +1087,38 @@ func (t metricTrend) trendLabel() string {
 	}
 	return fmt.Sprintf("%s: %d readings, %s from %s to %s %s, %s %s", m.Name, n, moved, fmtNum(first), fmtNum(last), m.Unit, toward, target)
 }
+
+// activationItem is one line of a Proposed Goal's activation checklist: a rule
+// activation enforces and whether the Goal meets it yet.
+type activationItem struct {
+	Label string
+	Done  bool
+}
+
+// activationChecklist restates the minimum standard domain.ActivateGoal
+// enforces, so the Owner sees what's missing before they try: a So What, an
+// Owner, Dated with a delivery date or Ongoing, and a Milestone or Metric for a
+// Dated Goal or a Metric for an Ongoing one. The server still enforces the rules
+// on activation.
+func (v goalView) activationChecklist() []activationItem {
+	g := v.Goal
+	items := []activationItem{
+		{"So What", strings.TrimSpace(g.SoWhat) != ""},
+		{"Owner", g.Owner.ID != 0},
+		{"Dated with a delivery date, or Ongoing", g.Kind == domain.GoalOngoing || (g.Kind == domain.GoalDated && !g.DeliveryDate.IsZero())},
+	}
+	if g.Kind == domain.GoalOngoing {
+		return append(items, activationItem{"A Metric", len(v.Metrics) > 0})
+	}
+	return append(items, activationItem{"A Milestone or Metric", len(v.Milestones)+len(v.Metrics) > 0})
+}
+
+// readyToActivate reports whether every activation checklist item is done.
+func (v goalView) readyToActivate() bool {
+	for _, item := range v.activationChecklist() {
+		if !item.Done {
+			return false
+		}
+	}
+	return true
+}

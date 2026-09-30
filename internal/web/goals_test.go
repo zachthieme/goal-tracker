@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -1139,5 +1141,91 @@ func TestGoalPageLatestStatusCard(t *testing.T) {
 	}
 	if strings.Contains(status, `data-testid="checkin-history"`) {
 		t.Errorf("Latest status still carries the history")
+	}
+}
+
+// activationItems reads the activation checklist on a Proposed Goal's page as
+// each item's label mapped to whether it is done. Each item reads as a mark,
+// its label, and "done" or "missing", so it never relies on the mark alone.
+func activationItems(t *testing.T, page string) map[string]bool {
+	t.Helper()
+	list := pageElement(t, page, "ul", "activation-checklist")
+	items := map[string]bool{}
+	for _, li := range strings.Split(list, "<li ")[1:] {
+		words := strings.Fields(regexpTags.ReplaceAllString(li[strings.Index(li, ">")+1:], " "))
+		if len(words) < 3 {
+			t.Fatalf("checklist item has no mark, label and state: %s", li)
+		}
+		done := strings.Contains(openTag(li), `data-done="true"`)
+		if state := words[len(words)-1]; state != map[bool]string{true: "done", false: "missing"}[done] {
+			t.Errorf("checklist item says %q against data-done=%v: %s", state, done, li)
+		}
+		items[strings.Join(words[1:len(words)-1], " ")] = done
+	}
+	return items
+}
+
+var regexpTags = regexp.MustCompile(`<[^>]*>`)
+
+// A Proposed Goal's Owner sees the activation checklist drawn from the rules
+// activation enforces, each item done or missing, and Activate stays disabled
+// until every item is done.
+func TestProposedGoalShowsActivationChecklist(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	page := getBody(t, client, goalURL)
+	want := map[string]bool{
+		"So What":                                true,
+		"Owner":                                  true,
+		"Dated with a delivery date, or Ongoing": false,
+		"A Milestone or Metric":                  false,
+	}
+	if got := activationItems(t, page); !maps.Equal(got, want) {
+		t.Errorf("bare Proposed Goal checklist = %v, want %v", got, want)
+	}
+	if button := between(t, pageElement(t, page, "form", "activate-goal"), "<button", ">"); !strings.Contains(button, "disabled") {
+		t.Errorf("Activate is enabled with items missing: %s", button)
+	}
+
+	postForm(t, client, goalURL+"/dated", url.Values{"delivery_date": {"2026-06-15"}})
+	page = getBody(t, client, goalURL)
+	if got := activationItems(t, page); !got["Dated with a delivery date, or Ongoing"] || got["A Milestone or Metric"] {
+		t.Errorf("Dated Goal with no Milestone or Metric: checklist = %v", got)
+	}
+	postForm(t, client, goalURL+"/milestones", url.Values{"name": {"Beta cut"}, "target_date": {"2026-03-16"}})
+	page = getBody(t, client, goalURL)
+	for item, done := range activationItems(t, page) {
+		if !done {
+			t.Errorf("%q still missing once the Goal is ready", item)
+		}
+	}
+	if button := between(t, pageElement(t, page, "form", "activate-goal"), "<button", ">"); strings.Contains(button, "disabled") {
+		t.Errorf("Activate is disabled with every item done: %s", button)
+	}
+}
+
+// An Ongoing Goal needs a Metric to activate, and a Milestone alone doesn't
+// satisfy its checklist.
+func TestOngoingGoalChecklistNeedsAMetric(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Keep the lights on", "Uptime is table stakes.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	postForm(t, client, goalURL+"/ongoing", nil)
+	postForm(t, client, goalURL+"/milestones", url.Values{"name": {"Runbook"}, "target_date": {"2026-03-16"}})
+	page := getBody(t, client, goalURL)
+	if done, listed := activationItems(t, page)["A Metric"]; !listed || done {
+		t.Errorf("Ongoing Goal with only a Milestone: A Metric listed=%v done=%v", listed, done)
+	}
+	if button := between(t, pageElement(t, page, "form", "activate-goal"), "<button", ">"); !strings.Contains(button, "disabled") {
+		t.Errorf("Activate is enabled for an Ongoing Goal with no Metric: %s", button)
 	}
 }

@@ -422,6 +422,12 @@ templ goalPageStyles() {
 		.gp-current .num{font-size:28px;line-height:1.1}
 		.gp-spark{width:100%;height:56px;display:block;overflow:visible}
 		.gp-edit form{flex-direction:column}
+		.gp-define>section{display:flex;flex-direction:column;gap:4px;padding-top:12px;border-top:1px solid #EEEFEA}
+		.gp-define textarea{flex:1;min-width:240px}
+		.gp-check{display:flex;gap:8px;align-items:baseline}
+		.gp-check>span:first-child{width:16px;font-weight:600;color:#9A231B}
+		.gp-check.done>span:first-child{color:#17593A}
+		.btn[disabled]{opacity:.5;cursor:not-allowed}
 		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 	</style>
 }
@@ -618,53 +624,54 @@ templ addChildGoal(v goalView) {
 
 // defineGoal is the Owner's toolkit for a Proposed Goal: mark it Dated or
 // Ongoing, set the cadence, revise the So What, add Contributors, Milestones and
-// Metrics, and — once it meets the minimum standard — activate it.
+// Metrics, and — once the activation checklist is done — activate it.
 templ defineGoal(v goalView) {
 	{{ g := v.Goal }}
-	<section data-testid="define-goal">
+	<section data-testid="define-goal" class="card gp-card gp-define">
+		<h2>Define this Goal</h2>
 		<section data-testid="mark-kind">
-			<h2>Delivery</h2>
-			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/dated", g.ID)) }>
+			<h3>Delivery</h3>
+			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/dated", g.ID)) }>
 				<label>
 					Delivery date
 					<input type="date" name="delivery_date" value={ v.SuggestedDate } required/>
 				</label>
-				<button type="submit">Mark Dated</button>
+				<button type="submit" class="btn">Mark Dated</button>
 			</form>
-			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/ongoing", g.ID)) }>
-				<button type="submit">Mark Ongoing</button>
+			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/ongoing", g.ID)) }>
+				<button type="submit" class="btn">Mark Ongoing</button>
 			</form>
 		</section>
 		<section data-testid="set-cadence">
-			<h2>Check-in cadence</h2>
-			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/cadence", g.ID)) }>
+			<h3>Check-in cadence</h3>
+			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/cadence", g.ID)) }>
 				<label>
 					Days between Check-ins
 					<input type="number" name="cadence_days" min="1" value={ fmt.Sprintf("%d", g.CadenceDays) } required/>
 				</label>
-				<button type="submit">Set cadence</button>
+				<button type="submit" class="btn">Set cadence</button>
 			</form>
 		</section>
 		<section data-testid="edit-so-what">
-			<h2>Revise the So What</h2>
-			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/so-what", g.ID)) }>
+			<h3>Revise the So What</h3>
+			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/so-what", g.ID)) }>
 				<textarea name="so_what" required>{ g.SoWhat }</textarea>
-				<button type="submit">Save So What</button>
+				<button type="submit" class="btn">Save So What</button>
 			</form>
 		</section>
 		<section data-testid="add-contributor">
-			<h2>Add a Contributor</h2>
-			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/contributors", g.ID)) }>
+			<h3>Add a Contributor</h3>
+			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/contributors", g.ID)) }>
 				<label>
 					Email
 					<input type="email" name="email" required/>
 				</label>
-				<button type="submit">Add Contributor</button>
+				<button type="submit" class="btn">Add Contributor</button>
 			</form>
 		</section>
 		<section data-testid="add-milestone">
-			<h2>Add a Milestone</h2>
-			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/milestones", g.ID)) }>
+			<h3>Add a Milestone</h3>
+			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/milestones", g.ID)) }>
 				<label>
 					Name
 					<input type="text" name="name" required/>
@@ -673,18 +680,30 @@ templ defineGoal(v goalView) {
 					Date
 					<input type="date" name="target_date" required/>
 				</label>
-				<button type="submit">Add Milestone</button>
+				<button type="submit" class="btn">Add Milestone</button>
 			</form>
 		</section>
 		<section data-testid="add-metric">
-			<h2>Add a Metric</h2>
-			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/metrics", g.ID)) }>
+			<h3>Add a Metric</h3>
+			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/metrics", g.ID)) }>
 				@metricFields(domain.Metric{Direction: domain.MetricUp})
-				<button type="submit">Add Metric</button>
+				<button type="submit" class="btn">Add Metric</button>
 			</form>
 		</section>
-		<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/activate", g.ID)) } data-testid="activate-goal">
-			<button type="submit">Activate Goal</button>
+		<section data-testid="activation" class="gp-activation">
+			<h3>Ready to activate?</h3>
+			<ul data-testid="activation-checklist" class="gp-list">
+				for _, item := range v.activationChecklist() {
+					if item.Done {
+						<li data-done="true" class="gp-check done"><span aria-hidden="true">✓</span> <span>{ item.Label }</span> <span class="muted small">done</span></li>
+					} else {
+						<li data-done="false" class="gp-check"><span aria-hidden="true">✗</span> <span>{ item.Label }</span> <span class="muted small">missing</span></li>
+					}
+				}
+			</ul>
+		</section>
+		<form data-testid="activate-goal" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/activate", g.ID)) }>
+			<button type="submit" class="btn primary" disabled?={ !v.readyToActivate() }>Activate Goal</button>
 		</form>
 	</section>
 }
