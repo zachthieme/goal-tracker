@@ -38,4 +38,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /dimension-values/{id}/retire", s.requireAuth(s.handleRetireDimensionValue))
 	s.mux.HandleFunc("POST /goals/{id}/dimensions", s.requireAuth(s.handleAssignGoalValue))
 	s.mux.HandleFunc("POST /goals/{id}/children", s.requireAuth(s.handleCreateChildGoal))
+	s.mux.HandleFunc("POST /goals/{id}/checkins", s.requireAuth(s.handleSubmitCheckin))
+	s.mux.HandleFunc("POST /goals/{id}/checkins/no-change", s.requireAuth(s.handleNoChangeCheckin))
 }

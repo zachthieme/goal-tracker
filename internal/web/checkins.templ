@@ -1,0 +1,132 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// checkinFormData is the state the Check-in form renders from: the Goal it posts
+// to, the prefilled Health, status, and Path to Green, and an optional
+// validation message shown next to the Path to Green field.
+type checkinFormData struct {
+	GoalID         int64
+	Health         string
+	Status         string
+	PathToGreen    string
+	PathTargetDate string
+	Error          string
+}
+
+// checkinFormFromLatest prefills the Check-in form from a Goal's latest Check-in,
+// or with a fresh Green form when there is none (CONTEXT.md: the form is
+// pre-filled from the latest Check-in).
+func checkinFormFromLatest(goalID int64, latest *domain.Checkin) checkinFormData {
+	d := checkinFormData{GoalID: goalID, Health: domain.HealthGreen}
+	if latest != nil {
+		d.Health = latest.Health
+		d.Status = latest.Status
+		d.PathToGreen = latest.PathToGreen
+		d.PathTargetDate = fmtDate(latest.PathTargetDate)
+	}
+	return d
+}
+
+// checkinSection shows a Goal's current Health, status, and Path to Green (from
+// its latest Check-in), the Owner's form to submit a new Check-in on an Active
+// Goal, a one-click "no change" button, and the immutable Check-in history
+// (CONTEXT.md: Check-in).
+templ checkinSection(v goalView, owner bool) {
+	{{ g := v.Goal }}
+	<section data-testid="goal-checkins">
+		<h2>Check-ins</h2>
+		if v.LatestCheckin != nil {
+			<p><strong>Current Health:</strong> <span data-testid="goal-health">{ v.LatestCheckin.Health }</span></p>
+			<p data-testid="goal-status">{ v.LatestCheckin.Status }</p>
+			if v.LatestCheckin.PathToGreen != "" {
+				<p data-testid="goal-path-to-green">
+					<strong>Path to Green:</strong> { v.LatestCheckin.PathToGreen } — back to Green by { fmtDate(v.LatestCheckin.PathTargetDate) }
+				</p>
+			}
+		} else {
+			if g.Lifecycle == domain.LifecycleProposed {
+				<p data-testid="goal-no-health">A Proposed Goal has no Health until it is Active.</p>
+			} else {
+				<p data-testid="goal-no-health">No Check-ins yet.</p>
+			}
+		}
+		if owner && g.Lifecycle == domain.LifecycleActive {
+			@checkinForm(checkinFormFromLatest(g.ID, v.LatestCheckin))
+			if v.LatestCheckin != nil {
+				<form
+					data-testid="no-change-checkin"
+					hx-post={ fmt.Sprintf("/goals/%d/checkins/no-change", g.ID) }
+					hx-target="body"
+					method="post"
+					action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins/no-change", g.ID)) }
+				>
+					<button type="submit">No change since last Check-in</button>
+				</form>
+			}
+		}
+		<h3>Check-in history</h3>
+		<ul data-testid="checkin-history">
+			if len(v.Checkins) == 0 {
+				<li data-testid="no-checkins">No Check-ins yet.</li>
+			}
+			for _, c := range v.Checkins {
+				<li data-testid="checkin">
+					<span>{ c.Health } — { c.Status }</span>
+					if c.PathToGreen != "" {
+						<span> — Path to Green: { c.PathToGreen } (by { fmtDate(c.PathTargetDate) })</span>
+					}
+					<span> — by { c.Author.Email }, owner { c.Owner.Email }, at { c.CreatedAt.Format("2006-01-02 15:04") }</span>
+				</li>
+			}
+		</ul>
+	</section>
+}
+
+// checkinForm is the Owner's Check-in form. It posts with htmx and targets
+// itself, so a validation error re-renders it in place with the message next to
+// the Path to Green field (CONTEXT.md: Path to Green is required when Yellow or
+// Red).
+templ checkinForm(d checkinFormData) {
+	<form
+		id="checkin-form"
+		data-testid="checkin-form"
+		hx-post={ fmt.Sprintf("/goals/%d/checkins", d.GoalID) }
+		hx-target="#checkin-form"
+		hx-swap="outerHTML"
+		method="post"
+		action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins", d.GoalID)) }
+	>
+		<label>
+			Health
+			<select name="health">
+				<option value={ domain.HealthGreen } selected?={ d.Health == domain.HealthGreen }>Green</option>
+				<option value={ domain.HealthYellow } selected?={ d.Health == domain.HealthYellow }>Yellow</option>
+				<option value={ domain.HealthRed } selected?={ d.Health == domain.HealthRed }>Red</option>
+			</select>
+		</label>
+		<label>
+			Status
+			<textarea name="status" required>{ d.Status }</textarea>
+		</label>
+		<fieldset data-testid="path-to-green-field">
+			<legend>Path to Green (required when Yellow or Red)</legend>
+			<label>
+				Plan
+				<textarea name="path_to_green">{ d.PathToGreen }</textarea>
+			</label>
+			<label>
+				Back to Green by
+				<input type="date" name="path_target_date" value={ d.PathTargetDate }/>
+			</label>
+			if d.Error != "" {
+				<p data-testid="checkin-error" role="alert">{ d.Error }</p>
+			}
+		</fieldset>
+		<button type="submit">Submit Check-in</button>
+	</form>
+}
