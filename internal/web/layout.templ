@@ -16,6 +16,7 @@ templ layout(title string, current *domain.Account) {
 			<header>
 				<a href="/goals"><strong>Goal Tracker</strong></a>
 				if current != nil {
+					<a href="/links" data-testid="nav-pending-links">Pending links</a>
 					<span data-testid="current-user">
 						Signed in as { current.Email }
 						if current.IsAdmin {
