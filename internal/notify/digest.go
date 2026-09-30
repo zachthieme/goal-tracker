@@ -65,7 +65,7 @@ func (n *Notifier) SendReminders(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if !dueBeforeNextReminder(f) {
+		if !f.DueBeforeNextReminder() {
 			continue
 		}
 		out.add(g.Owner, reminderItem{goal: g, freshness: f})
@@ -86,13 +86,6 @@ const dateFormat = "2006-01-02"
 // daysPerWeek is how far apart the weekly emails are, in days of the org's
 // calendar.
 const daysPerWeek = 7
-
-// dueBeforeNextReminder reports whether a Goal's Check-in is due: it is Stale
-// already, or it would go Stale before next week's reminder if nobody checked
-// in (CONTEXT.md: Stale).
-func dueBeforeNextReminder(f domain.Freshness) bool {
-	return f.Stale || f.DaysSince+daysPerWeek > f.CadenceDays
-}
 
 func (n *Notifier) reminderBody(items []reminderItem) string {
 	var b strings.Builder

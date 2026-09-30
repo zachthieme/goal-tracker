@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"slices"
 	"time"
+
+	"github.com/zachthieme/goal-tracker/internal/db"
 )
 
 // Freshness is how current a Goal's updates are (CONTEXT.md: Stale). It is
@@ -28,6 +30,18 @@ type Freshness struct {
 	// PathTargetDate is the date the latest Path to Green aims to be back at
 	// Green by, the zero time when the Goal is Green or has no Check-in.
 	PathTargetDate time.Time
+}
+
+// reminderIntervalDays is how far apart the weekly Check-in reminders go out,
+// in days of the org's calendar.
+const reminderIntervalDays = 7
+
+// DueBeforeNextReminder reports whether the Goal's Check-in is due: it is Stale
+// already, or it would go Stale before next week's reminder if nobody checked
+// in (CONTEXT.md: Stale). The weekly reminder and the Home page both list the
+// Goals it holds for.
+func (f Freshness) DueBeforeNextReminder() bool {
+	return f.Stale || f.DaysSince+reminderIntervalDays > f.CadenceDays
 }
 
 // Freshness reads goalID's freshness signals.
@@ -70,11 +84,7 @@ func (s *Service) FreshnessSignals(ctx context.Context) (FreshnessSignals, error
 	var out FreshnessSignals
 	for _, r := range rows {
 		g := goalFromRow(r.Goal, r.Account)
-		var last lastCheckin
-		last.at, _ = time.Parse(timeFormat, r.CheckinCreatedAt)
-		last.health = r.CheckinHealth
-		last.pathTargetDate, _ = time.Parse(dateFormat, r.CheckinPathTargetDate)
-		gf := GoalFreshness{Goal: g, Freshness: s.judgeFreshness(g, last)}
+		gf := GoalFreshness{Goal: g, Freshness: s.judgeFreshness(g, lastCheckinFromRow(r))}
 		if gf.Freshness.Stale {
 			out.Stale = append(out.Stale, gf)
 		}
@@ -91,6 +101,56 @@ func (s *Service) FreshnessSignals(ctx context.Context) (FreshnessSignals, error
 	return out, nil
 }
 
+// PersonalGoal is an Active Goal someone Owns or is a Delegate on, with what
+// their Home page reads of it: its freshness signals and the Health of its
+// latest Check-in ("" when it has none, or that Check-in set none).
+type PersonalGoal struct {
+	Goal      Goal
+	Freshness Freshness
+	Health    string
+	// CheckedIn is true when the Goal has a Check-in to repeat unchanged.
+	CheckedIn bool
+	// AsDelegate is true when the person is the Goal's Delegate, not its Owner.
+	AsDelegate bool
+}
+
+// ActiveGoalsFor reads every Active Goal accountID Owns or is a Delegate on,
+// longest since its last update first.
+func (s *Service) ActiveGoalsFor(ctx context.Context, accountID int64) ([]PersonalGoal, error) {
+	delegated, err := s.DelegatedGoals(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	isDelegate := make(map[int64]bool, len(delegated))
+	for _, g := range delegated {
+		isDelegate[g.ID] = true
+	}
+	rows, err := s.queries.ListActiveGoalsWithLatestCheckin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list active goals: %w", err)
+	}
+	var out []PersonalGoal
+	for _, r := range rows {
+		owns := r.Goal.OwnerID == accountID
+		if !owns && !isDelegate[r.Goal.ID] {
+			continue
+		}
+		g := goalFromRow(r.Goal, r.Account)
+		last := lastCheckinFromRow(r)
+		out = append(out, PersonalGoal{
+			Goal:       g,
+			Freshness:  s.judgeFreshness(g, last),
+			Health:     r.CheckinHealth,
+			CheckedIn:  !last.at.IsZero(),
+			AsDelegate: !owns,
+		})
+	}
+	slices.SortStableFunc(out, func(a, b PersonalGoal) int {
+		return a.Freshness.LastUpdate.Compare(b.Freshness.LastUpdate)
+	})
+	return out, nil
+}
+
 // lastCheckin is what judging freshness reads from a Goal's latest Check-in:
 // when it was written, its Health, and its Path to Green's target date. It is
 // the zero value when the Goal has no Check-in.
@@ -98,6 +158,15 @@ type lastCheckin struct {
 	at             time.Time
 	health         string
 	pathTargetDate time.Time
+}
+
+// lastCheckinFromRow reads the latest Check-in an Active Goal row carries.
+func lastCheckinFromRow(r db.ListActiveGoalsWithLatestCheckinRow) lastCheckin {
+	var last lastCheckin
+	last.at, _ = time.Parse(timeFormat, r.CheckinCreatedAt)
+	last.health = r.CheckinHealth
+	last.pathTargetDate, _ = time.Parse(dateFormat, r.CheckinPathTargetDate)
+	return last
 }
 
 // judgeFreshness applies the Stale and overdue-Path-to-Green rules to g, given

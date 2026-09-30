@@ -1,0 +1,74 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// homePage is the signed-in person's week: the Goals to check in on, and what
+// else is waiting on them.
+templ homePage(current *domain.Account, v homeView) {
+	@layout("Home", current) {
+		<div class="page-head">
+			<h1>Your week</h1>
+		</div>
+		<div class="grid-main-aside">
+			<div>
+				<section data-testid="home-checkins" class="card">
+					<h2>Check in on these</h2>
+					if len(v.Due) == 0 {
+						<p data-testid="home-due-empty" class="muted">You're all caught up.</p>
+					}
+					<ul data-testid="home-due">
+						for _, g := range v.Due {
+							@dueRow(g)
+						}
+					</ul>
+				</section>
+			</div>
+			<aside>
+				if len(v.Delegated) > 0 {
+					<section data-testid="home-delegated" class="card">
+						<h2>Delegated to you</h2>
+						<ul>
+							for _, g := range v.Delegated {
+								<li>
+									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
+									<span class="muted small">{ g.Owner.Email }</span>
+								</li>
+							}
+						</ul>
+						<a href="/delegates">Check in as a Delegate →</a>
+					</section>
+				}
+			</aside>
+		</div>
+	}
+}
+
+// dueRow is one Goal to check in on: its Health, why it's listed, and the
+// one-click No change beside the Check in link.
+templ dueRow(g domain.PersonalGoal) {
+	<li data-testid="home-due-goal">
+		<span data-testid="home-due-health" class={ "badge", healthClass(g.Health) }>
+			<span class="dot"></span>
+			if g.Health == "" {
+				No Health yet
+			} else {
+				{ g.Health }
+			}
+		</span>
+		<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
+		if g.Freshness.Stale {
+			<span data-testid="home-due-stale" class="badge st">Stale</span>
+		}
+		<p class="muted small">{ dueReason(g) }</p>
+		if g.CheckedIn {
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins/no-change", g.Goal.ID)) } style="display:inline">
+				<button type="submit" class="btn sm">No change</button>
+			</form>
+		}
+		<a data-testid="home-due-checkin" class="btn primary sm" href={ templ.SafeURL(fmt.Sprintf("/goals/%d#checkin-form", g.Goal.ID)) }>Check in</a>
+	</li>
+}
