@@ -852,3 +852,87 @@ func TestCheckinInvalidMilestoneDateErrorShownNextToMilestoneDate(t *testing.T) 
 		t.Errorf("Milestone date field's error = %q, want the invalid date one", msg)
 	}
 }
+
+// A Highlight flagged without a note gets its error next to the Highlight note.
+func TestCheckinHighlightErrorShownNextToHighlightNote(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":         {domain.HealthGreen},
+		"status":         {"On track."},
+		"highlight_kind": {domain.HighlightInsight},
+	})
+	if msg := fieldError(t, body, `name="highlight_note"`); !strings.Contains(msg, "Highlight needs a note") {
+		t.Errorf("Highlight note's error = %q, want the missing note one", msg)
+	}
+}
+
+// A Check-in without a status gets its error next to the status field.
+func TestCheckinStatusErrorShownNextToStatusField(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"  "},
+	})
+	if msg := fieldError(t, body, `name="status"`); !strings.Contains(msg, "needs a status") {
+		t.Errorf("status field's error = %q, want the missing status one", msg)
+	}
+}
+
+// A Check-in with a Health that isn't Green, Yellow, or Red gets its error next
+// to the Health field.
+func TestCheckinHealthErrorShownNextToHealthField(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {"Purple"},
+		"status": {"On track."},
+	})
+	if msg := fieldError(t, body, `name="health"`); !strings.Contains(msg, "Health must be") {
+		t.Errorf("Health field's error = %q, want the Health one", msg)
+	}
+}
+
+// An error about the Check-in as a whole rather than one field — here, checking
+// in on a Cancelled Goal — is shown at the top of the form.
+func TestCheckinErrorAboutNoOneFieldShownAtTopOfForm(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.OnHoldGoal(sam, "Reduce outages", "Outages cost trust.", "Waiting on budget.")
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:          goal.ID,
+		AuthorID:        sam.ID,
+		Status:          "No budget this year.",
+		Lifecycle:       domain.LifecycleCancelled,
+		LifecycleReason: "Budget cut.",
+	}); err != nil {
+		t.Fatalf("cancel the Goal: %v", err)
+	}
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"Trying anyway."},
+	})
+	if msg := fieldError(t, body, `data-testid="checkin-form"`); !strings.Contains(msg, "only an Active Goal") {
+		t.Errorf("the form's top error = %q, want the Active Goal one", msg)
+	}
+}

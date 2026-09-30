@@ -137,6 +137,10 @@ func checkinErrorField(msg string, dates checkinDatesFormData, metrics []domain.
 		}
 	}
 	switch {
+	case strings.Contains(msg, "Health must be"):
+		return "health"
+	case strings.Contains(msg, "needs a status"):
+		return "status"
 	case strings.Contains(msg, "differs from the Rolled-up Health"):
 		return "explanation"
 	case strings.Contains(msg, "cancelling a Goal needs a reason"), strings.Contains(msg, "On Hold needs a reason"):
@@ -149,8 +153,15 @@ func checkinErrorField(msg string, dates checkinDatesFormData, metrics []domain.
 		return "delivery_date"
 	case strings.Contains(msg, "changing the delivery date needs a reason"):
 		return "delivery_date_reason"
-	default:
+	case strings.Contains(msg, "a Highlight must be"):
+		return "highlight_kind"
+	case strings.Contains(msg, "a Highlight needs a note"):
+		return "highlight_note"
+	case strings.Contains(msg, "needs a Path to Green"), strings.Contains(msg, "Path to Green needs a target date"):
 		return "path_to_green"
+	default:
+		// About the Check-in as a whole: shown at the top of the form.
+		return ""
 	}
 }
 

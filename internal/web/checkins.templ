@@ -41,7 +41,8 @@ type checkinFormData struct {
 
 // checkinError is a Check-in validation message and the field it is about,
 // named as the form names the field's input (e.g. "explanation"), so the form
-// shows the message next to that field.
+// shows the message next to that field. An empty Field is an error about the
+// Check-in as a whole, shown at the top of the form.
 type checkinError struct {
 	Field   string
 	Message string
@@ -254,6 +255,7 @@ templ checkinForm(d checkinFormData) {
 		method="post"
 		action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins", d.GoalID)) }
 	>
+		@checkinFieldError(d.Error, "")
 		<label>
 			Health
 			<select name="health">
@@ -262,6 +264,7 @@ templ checkinForm(d checkinFormData) {
 				<option value={ domain.HealthRed } selected?={ d.Health == domain.HealthRed }>Red</option>
 			</select>
 		</label>
+		@checkinFieldError(d.Error, "health")
 		if d.RolledUp.Present {
 			<p data-testid="checkin-form-rollup">
 				Rolled-up Health: <strong>{ d.RolledUp.Health }</strong> — the worst among your Active children.
@@ -276,6 +279,7 @@ templ checkinForm(d checkinFormData) {
 			Status
 			<textarea name="status" required>{ d.Status }</textarea>
 		</label>
+		@checkinFieldError(d.Error, "status")
 		<fieldset data-testid="path-to-green-field">
 			<legend>Path to Green (required when Yellow or Red)</legend>
 			<label>
@@ -318,10 +322,12 @@ templ checkinForm(d checkinFormData) {
 					<option value={ domain.HighlightMiss } selected?={ d.Highlight.Kind == domain.HighlightMiss }>Miss</option>
 				</select>
 			</label>
+			@checkinFieldError(d.Error, "highlight_kind")
 			<label>
 				Note
 				<textarea name="highlight_note">{ d.Highlight.Note }</textarea>
 			</label>
+			@checkinFieldError(d.Error, "highlight_note")
 		</fieldset>
 		<button type="submit">Submit Check-in</button>
 	</form>
