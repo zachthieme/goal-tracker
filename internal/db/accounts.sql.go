@@ -12,7 +12,7 @@ import (
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO accounts (email, is_admin, created_at)
 VALUES (?, ?, ?)
-RETURNING id, email, is_admin, created_at
+RETURNING id, email, is_admin, created_at, departed
 `
 
 type CreateAccountParams struct {
@@ -29,12 +29,13 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.Email,
 		&i.IsAdmin,
 		&i.CreatedAt,
+		&i.Departed,
 	)
 	return i, err
 }
 
 const getAccount = `-- name: GetAccount :one
-SELECT id, email, is_admin, created_at FROM accounts WHERE id = ? LIMIT 1
+SELECT id, email, is_admin, created_at, departed FROM accounts WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetAccount(ctx context.Context, id int64) (Account, error) {
@@ -45,12 +46,13 @@ func (q *Queries) GetAccount(ctx context.Context, id int64) (Account, error) {
 		&i.Email,
 		&i.IsAdmin,
 		&i.CreatedAt,
+		&i.Departed,
 	)
 	return i, err
 }
 
 const getAccountByEmail = `-- name: GetAccountByEmail :one
-SELECT id, email, is_admin, created_at FROM accounts WHERE email = ? LIMIT 1
+SELECT id, email, is_admin, created_at, departed FROM accounts WHERE email = ? LIMIT 1
 `
 
 func (q *Queries) GetAccountByEmail(ctx context.Context, email string) (Account, error) {
@@ -61,6 +63,7 @@ func (q *Queries) GetAccountByEmail(ctx context.Context, email string) (Account,
 		&i.Email,
 		&i.IsAdmin,
 		&i.CreatedAt,
+		&i.Departed,
 	)
 	return i, err
 }
