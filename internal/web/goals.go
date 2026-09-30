@@ -467,6 +467,21 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		return goalView{}, fmt.Errorf("read freshness signals: %w", err)
 	}
 
+	// Each linked Goal's Health, shown beside it in the sidebar.
+	linkHealth := map[int64]string{}
+	for _, l := range slices.Concat(parents, children) {
+		if l.Goal.Lifecycle != domain.LifecycleActive {
+			continue
+		}
+		c, ok, err := s.svc.LatestCheckin(ctx, l.Goal.ID)
+		if err != nil {
+			return goalView{}, fmt.Errorf("load linked goal's check-in: %w", err)
+		}
+		if ok {
+			linkHealth[l.Goal.ID] = c.Health
+		}
+	}
+
 	// A Delegate may write Check-ins too, so the Goal page shows the Check-in
 	// form to the Owner or any authorized Delegate (CONTEXT.md: Delegate).
 	canCheckin := current.ID == g.Owner.ID
@@ -480,6 +495,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Goal:           g,
 		Parents:        parents,
 		Children:       children,
+		LinkHealth:     linkHealth,
 		Candidates:     candidates,
 		Milestones:     milestones,
 		Metrics:        metrics,
@@ -506,9 +522,12 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 // graph links, and the Milestones, Metrics, Contributors, and So What history an
 // Owner fills in before activating it.
 type goalView struct {
-	Goal       domain.Goal
-	Parents    []domain.GoalLink
-	Children   []domain.GoalLink
+	Goal     domain.Goal
+	Parents  []domain.GoalLink
+	Children []domain.GoalLink
+	// LinkHealth is the Health of each Active parent and child with a
+	// Check-in, keyed by Goal ID.
+	LinkHealth map[int64]string
 	Candidates []domain.Goal
 	Milestones []domain.Milestone
 	Metrics    []domain.Metric
@@ -957,4 +976,149 @@ func (s *Server) renderChildGoalFormError(w http.ResponseWriter, r *http.Request
 	}
 	view.ChildForm = form
 	render(w, r, http.StatusUnprocessableEntity, goalPage(&current, view))
+}
+
+// health is the Goal's current Health — its latest Check-in's — while it is
+// Active, or "" when it has none: a Proposed Goal, one not yet checked in on,
+// or one On Hold, Done or Cancelled.
+func (v goalView) health() string {
+	if v.LatestCheckin == nil || v.Goal.Lifecycle != domain.LifecycleActive {
+		return ""
+	}
+	return v.LatestCheckin.Health
+}
+
+// Sparkline geometry, in SVG user units: a Metric card's trend is drawn in a
+// sparkW × sparkH box, inset by sparkPad so the end dot isn't clipped.
+const (
+	sparkW   = 240.0
+	sparkH   = 56.0
+	sparkPad = 5.0
+)
+
+// sparkline is a Metric's readings laid out for its card: a point per reading,
+// oldest first, and the height of the target line, on a scale that fits both.
+type sparkline struct {
+	Points  []sparkPoint
+	TargetY float64
+}
+
+// sparkPoint is one reading's place on the sparkline, with the value and date
+// its hover tooltip names.
+type sparkPoint struct {
+	X, Y  float64
+	Title string
+}
+
+// polyline is the readings as an SVG polyline's points attribute.
+func (s sparkline) polyline() string {
+	pts := make([]string, 0, len(s.Points))
+	for _, p := range s.Points {
+		pts = append(pts, fmt.Sprintf("%.1f,%.1f", p.X, p.Y))
+	}
+	return strings.Join(pts, " ")
+}
+
+// last is the latest reading's point, drawn in the accent colour.
+func (s sparkline) last() sparkPoint {
+	return s.Points[len(s.Points)-1]
+}
+
+// sparkline lays the Metric's readings out against its target.
+func (t metricTrend) sparkline() sparkline {
+	lo, hi := t.Metric.Target, t.Metric.Target
+	for _, r := range t.Readings {
+		lo, hi = min(lo, r.Value), max(hi, r.Value)
+	}
+	if lo == hi {
+		lo, hi = lo-1, hi+1
+	}
+	y := func(v float64) float64 {
+		return sparkPad + (hi-v)/(hi-lo)*(sparkH-2*sparkPad)
+	}
+	s := sparkline{TargetY: y(t.Metric.Target)}
+	for i, r := range t.Readings {
+		x := sparkW / 2
+		if n := len(t.Readings); n > 1 {
+			x = sparkPad + float64(i)*(sparkW-2*sparkPad)/float64(n-1)
+		}
+		s.Points = append(s.Points, sparkPoint{
+			X: x, Y: y(r.Value),
+			Title: fmt.Sprintf("%s: %s %s", fmtDate(r.CreatedAt), fmtNum(r.Value), t.Metric.Unit),
+		})
+	}
+	return s
+}
+
+// current is the Metric's latest reading, and whether it has one.
+func (t metricTrend) current() (float64, bool) {
+	if len(t.Readings) == 0 {
+		return 0, false
+	}
+	return t.Readings[len(t.Readings)-1].Value, true
+}
+
+// trendLabel describes the sparkline for a screen reader: how many readings,
+// which way they moved, and whether that is toward the target.
+func (t metricTrend) trendLabel() string {
+	m := t.Metric
+	target := fmt.Sprintf("the target of %s %s", fmtNum(m.Target), m.Unit)
+	n := len(t.Readings)
+	switch n {
+	case 0:
+		return fmt.Sprintf("%s: no readings yet; %s", m.Name, target)
+	case 1:
+		return fmt.Sprintf("%s: 1 reading of %s %s, against %s", m.Name, fmtNum(t.Readings[0].Value), m.Unit, target)
+	}
+	first, last := t.Readings[0].Value, t.Readings[n-1].Value
+	if first == last {
+		return fmt.Sprintf("%s: %d readings, holding at %s %s, against %s", m.Name, n, fmtNum(last), m.Unit, target)
+	}
+	moved, better := "rising", last > first
+	if last < first {
+		moved = "falling"
+	}
+	if m.Direction == domain.MetricDown {
+		better = !better
+	}
+	toward := "away from"
+	if better {
+		toward = "toward"
+	}
+	return fmt.Sprintf("%s: %d readings, %s from %s to %s %s, %s %s", m.Name, n, moved, fmtNum(first), fmtNum(last), m.Unit, toward, target)
+}
+
+// activationItem is one line of a Proposed Goal's activation checklist: a rule
+// activation enforces and whether the Goal meets it yet.
+type activationItem struct {
+	Label string
+	Done  bool
+}
+
+// activationChecklist restates the minimum standard domain.ActivateGoal
+// enforces, so the Owner sees what's missing before they try: a So What, an
+// Owner, Dated with a delivery date or Ongoing, and a Milestone or Metric for a
+// Dated Goal or a Metric for an Ongoing one. The server still enforces the rules
+// on activation.
+func (v goalView) activationChecklist() []activationItem {
+	g := v.Goal
+	items := []activationItem{
+		{"So What", strings.TrimSpace(g.SoWhat) != ""},
+		{"Owner", g.Owner.ID != 0},
+		{"Dated with a delivery date, or Ongoing", g.Kind == domain.GoalOngoing || (g.Kind == domain.GoalDated && !g.DeliveryDate.IsZero())},
+	}
+	if g.Kind == domain.GoalOngoing {
+		return append(items, activationItem{"A Metric", len(v.Metrics) > 0})
+	}
+	return append(items, activationItem{"A Milestone or Metric", len(v.Milestones)+len(v.Metrics) > 0})
+}
+
+// readyToActivate reports whether every activation checklist item is done.
+func (v goalView) readyToActivate() bool {
+	for _, item := range v.activationChecklist() {
+		if !item.Done {
+			return false
+		}
+	}
+	return true
 }

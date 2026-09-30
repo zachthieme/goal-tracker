@@ -7,84 +7,93 @@ import (
 )
 
 // delegatePage is the Delegate's worklist: every Goal an Owner has authorized
-// them to check in on, each with the current Health and a Check-in form so they
-// can update it without sharing the Owner's login (CONTEXT.md: Delegate).
+// them to check in on, each a card with its Health, its Owner, when it was last
+// checked in on, and a Check in link to the Check-in page, so they can update it
+// without sharing the Owner's login (CONTEXT.md: Delegate).
 templ delegatePage(current *domain.Account, goals []delegatedGoal) {
 	@layout("Delegated to me", current) {
-		<h1>Goals delegated to me</h1>
-		<p>Goals whose Owner has authorized you to write Check-ins on their behalf.</p>
+		<style>
+			.dg-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+			.dg-card{padding:20px 24px;display:flex;flex-direction:column;gap:10px}
+			.dg-card .btn{align-self:flex-start}
+		</style>
+		<header class="page-head">
+			<div>
+				<h1>Goals delegated to me</h1>
+				<p class="muted">Goals whose Owner has authorized you to write Check-ins on their behalf.</p>
+			</div>
+		</header>
 		if len(goals) == 0 {
-			<p data-testid="no-delegated-goals">No Goals have been delegated to you yet.</p>
+			<p data-testid="no-delegated-goals" class="muted">No Goals have been delegated to you yet.</p>
 		}
-		<ul data-testid="delegated-goals">
+		<ul data-testid="delegated-goals" class="dg-list">
 			for _, item := range goals {
-				<li data-testid="delegated-goal">
-					<h2>
-						<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", item.Goal.ID)) }>{ item.Goal.Title }</a>
-					</h2>
-					<p>
-						<strong>Owner:</strong> <span data-testid="delegated-goal-owner">{ item.Goal.Owner.Email }</span>
-					</p>
+				{{ g := item.Goal }}
+				<li data-testid="delegated-goal" class="card dg-card">
+					<div>
+						if item.Latest != nil && item.Latest.Health != "" && g.Lifecycle == domain.LifecycleActive {
+							<span class={ "badge", healthClass(item.Latest.Health) }><span class="dot"></span><span data-testid="delegated-goal-health">{ item.Latest.Health }</span></span>
+						} else {
+							<span class="badge lc">{ g.Lifecycle }</span>
+						}
+					</div>
+					<h2><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></h2>
+					<p class="muted">Owner <strong data-testid="delegated-goal-owner">{ g.Owner.Email }</strong></p>
 					if item.Latest != nil {
-						<p>
-							<strong>Current Health:</strong> <span data-testid="delegated-goal-health">{ item.Latest.Health }</span>
-						</p>
-						<p>
-							<span>Last Check-in by { item.Latest.Author.Email }, for { item.Latest.Owner.Email }.</span>
-						</p>
+						<p class="muted small">Last check-in { daysAgo(item.DaysSince) } by { item.Latest.Author.Email }</p>
 					} else {
-						<p data-testid="delegated-goal-no-health">No Check-ins yet.</p>
+						<p data-testid="delegated-goal-no-health" class="muted small">No Check-ins yet.</p>
 					}
-					if item.Goal.Lifecycle == domain.LifecycleActive {
-						@checkinForm(item.Form)
+					if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold {
+						<a class="btn primary" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", g.ID)) }>Check in</a>
 					} else {
-						<p data-testid="delegated-goal-not-active">This Goal is not Active yet, so it can't be checked in on.</p>
+						<p data-testid="delegated-goal-not-active" class="muted small">{ fmt.Sprintf("A %s Goal takes no Check-ins.", g.Lifecycle) }</p>
 					}
 				</li>
 			}
 		</ul>
-		<p><a href="/goals">Back to Goals</a></p>
 	}
 }
 
-// delegatesSection lists a Goal's Delegates and, for its Owner, the controls to
-// authorize or revoke one by email (CONTEXT.md: an Owner authorizes a Delegate).
+// delegatesSection lists a Goal's Delegates and, for its Owner, a collapsed
+// Manage people section to authorize or revoke one by email (CONTEXT.md: an
+// Owner authorizes a Delegate).
 templ delegatesSection(v goalView, owner bool) {
 	{{ g := v.Goal }}
 	<section data-testid="goal-delegates">
-		<h2>Delegates</h2>
-		<ul data-testid="delegate-list">
+		<h3 class="label">Delegates</h3>
+		<ul data-testid="delegate-list" class="gp-list">
 			if len(v.Delegates) == 0 {
-				<li data-testid="no-delegates">No Delegates yet.</li>
+				<li data-testid="no-delegates" class="muted">No Delegates yet.</li>
 			}
 			for _, d := range v.Delegates {
-				<li data-testid="delegate">
-					<span>{ d.Email }</span>
-					if owner {
-						<form
-							method="post"
-							style="display:inline"
-							action={ templ.SafeURL(fmt.Sprintf("/goals/%d/delegates/remove", g.ID)) }
-						>
-							<input type="hidden" name="email" value={ d.Email }/>
-							<button type="submit">Remove</button>
-						</form>
-					}
-				</li>
+				<li data-testid="delegate">{ d.Email }</li>
 			}
 		</ul>
 		if owner {
-			<form
-				data-testid="add-delegate"
-				method="post"
-				action={ templ.SafeURL(fmt.Sprintf("/goals/%d/delegates", g.ID)) }
-			>
-				<label>
-					Delegate email
-					<input type="email" name="email" required/>
-				</label>
-				<button type="submit">Add Delegate</button>
-			</form>
+			<details id="manage-people">
+				<summary class="small">Manage people</summary>
+				for _, d := range v.Delegates {
+					<form
+						method="post"
+						class="gp-inline"
+						action={ templ.SafeURL(fmt.Sprintf("/goals/%d/delegates/remove", g.ID)) }
+					>
+						<input type="hidden" name="email" value={ d.Email }/>
+						<span>{ d.Email }</span>
+						<button type="submit" class="btn quiet sm">Remove</button>
+					</form>
+				}
+				<form
+					data-testid="add-delegate"
+					method="post"
+					class="gp-inline"
+					action={ templ.SafeURL(fmt.Sprintf("/goals/%d/delegates", g.ID)) }
+				>
+					<input type="email" name="email" aria-label="Delegate email" placeholder="Delegate email" required/>
+					<button type="submit" class="btn sm">Add Delegate</button>
+				</form>
+			</details>
 		}
 	</section>
 }

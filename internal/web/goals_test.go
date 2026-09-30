@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -767,5 +769,463 @@ func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 	}
 	if rows := goalRows(t, swap); len(rows) != 1 || !strings.Contains(rows[0], "Cut checkout latency") {
 		t.Errorf("swapped list lacks the new Goal's row:\n%s", swap)
+	}
+}
+
+// The Goal page opens on a header a reader takes in at a glance: badges for
+// Health, Lifecycle, Kind, Top-level and the Goal's Dimension values, the title,
+// and a meta line naming the Owner, the delivery date with its slips struck,
+// and the cadence. Check in and No change sit top right for whoever may check
+// in.
+func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	growth := h.CreateDimension(ada, "Pillar", "Growth").Values[0]
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, growth)
+	h.MarkTopLevel(ada, goal)
+	if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
+		GoalID:             goal.ID,
+		AuthorID:           sam.ID,
+		Health:             domain.HealthYellow,
+		Status:             "Later than planned.",
+		PathToGreen:        "Swap vendors.",
+		PathTargetDate:     testsupport.Epoch.AddDate(0, 2, 0),
+		DeliveryDate:       time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC),
+		DeliveryDateReason: "Vendor slipped.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	head := pageElement(t, page, "header", "goal-head")
+	badges := pageElement(t, head, "div", "goal-badges")
+	for _, want := range []string{
+		`class="badge y"`, "Yellow",
+		`data-testid="goal-lifecycle">Active<`,
+		`data-testid="goal-kind">Dated<`,
+		`data-testid="goal-top-level"`,
+		`class="tag">Growth<`,
+	} {
+		if !strings.Contains(badges, want) {
+			t.Errorf("header badges lack %s: %s", want, badges)
+		}
+	}
+	if title := pageElement(t, head, "h1", "goal-title"); !strings.Contains(title, "Reduce outages") {
+		t.Errorf("header title: %s", title)
+	}
+	meta := strings.Join(strings.Fields(pageElement(t, head, "p", "goal-meta")), " ")
+	for _, want := range []string{
+		`Owner <strong data-testid="goal-owner">sam@example.com</strong>`,
+		`Delivers <span data-testid="goal-delivery-date"><del>2026-07-02</del> <strong>2026-07-16</strong></span>`,
+		`Checks in <span data-testid="goal-cadence">every 7 days</span>`,
+	} {
+		if !strings.Contains(meta, want) {
+			t.Errorf("meta line lacks %s: %s", want, meta)
+		}
+	}
+	actions := between(t, head, `data-testid="goal-actions"`, `data-testid="goal-more"`)
+	if !strings.Contains(actions, fmt.Sprintf(`href="/goals/%d/checkin"`, goal.ID)) || !strings.Contains(actions, `class="btn primary"`) {
+		t.Errorf("header has no primary Check in link: %s", actions)
+	}
+	if !strings.Contains(actions, `data-testid="no-change-checkin"`) {
+		t.Errorf("header has no No change button: %s", actions)
+	}
+	if strings.Count(page, `data-testid="checkin-link"`) != 1 {
+		t.Errorf("the Check in link should appear once, in the header")
+	}
+}
+
+// The Goal page's Milestones are a table of status badge, name and date, the
+// date's slips struck, headed by the Goal's slip count and Milestone Churn.
+func TestGoalPageMilestonesTable(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	section := strings.Join(strings.Fields(pageElement(t, page, "section", "goal-milestones")), " ")
+	for _, want := range []string{
+		`<span data-testid="goal-slip-count">0</span> slips`,
+		`<span data-testid="goal-milestone-churn">0</span> added or removed since Active`,
+		"<table>",
+	} {
+		if !strings.Contains(section, want) {
+			t.Errorf("Milestones lack %s: %s", want, section)
+		}
+	}
+	row := pageElement(t, section, "tr", "goal-milestone")
+	for _, want := range []string{`class="badge lc" data-testid="milestone-status">Planned<`, "<td>Beta</td>", "2026-04-02"} {
+		if !strings.Contains(row, want) {
+			t.Errorf("Milestone row lacks %s: %s", want, row)
+		}
+	}
+}
+
+// moreMenu returns the Goal page's More menu: from its <details> to the end of
+// the header, where it sits last.
+func moreMenu(t *testing.T, page string) string {
+	t.Helper()
+	return between(t, page, `data-testid="goal-more"`, "</header>")
+}
+
+// assertMenuReaches checks the More menu offers label and that it opens a form
+// posting to action — inline in the menu, or in the collapsed section the item
+// links to lower on the page.
+func assertMenuReaches(t *testing.T, page, label, action string) {
+	t.Helper()
+	menu := moreMenu(t, page)
+	at := strings.Index(menu, ">"+label+"<")
+	if at < 0 {
+		t.Errorf("More menu lacks %q:\n%s", label, menu)
+		return
+	}
+	item := between(t, menu[strings.LastIndex(menu[:at], "<li"):], "", "</li>")
+	if i := strings.Index(item, `href="#`); i >= 0 {
+		id := item[i+len(`href="#`):]
+		id = id[:strings.IndexByte(id, '"')]
+		section := between(t, page, `<details id="`+id+`"`, "</details>")
+		if !strings.Contains(section, `action="`+action+`"`) {
+			t.Errorf("%q links to #%s, which has no form posting to %s:\n%s", label, id, action, section)
+		}
+		return
+	}
+	if !strings.Contains(item, `action="`+action+`"`) {
+		t.Errorf("%q does not open a form posting to %s:\n%s", label, action, item)
+	}
+}
+
+// Every action an Owner takes on their Goal sits in the header's More menu,
+// either inline or as a link to its collapsed form lower on the page.
+func TestGoalPageMoreMenuHoldsOwnerActions(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.CreateDimension(ada, "Pillar", "Growth")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	if summary := between(t, moreMenu(t, page), "<summary", "</summary>"); !strings.Contains(summary, "More ▾") {
+		t.Errorf("the menu is not headed More ▾: %s", summary)
+	}
+	base := fmt.Sprintf("/goals/%d", goal.ID)
+	assertMenuReaches(t, page, "Hand off", base+"/handoff")
+	assertMenuReaches(t, page, "Add a delegate", base+"/delegates")
+	assertMenuReaches(t, page, "Link to a parent goal", base+"/links")
+	assertMenuReaches(t, page, "Add a child goal", base+"/children")
+	assertMenuReaches(t, page, "Edit Dimension values", base+"/dimensions")
+	for _, adminOnly := range []string{"Mark Top-level", "Mark owner departed…", "Reassign"} {
+		if strings.Contains(moreMenu(t, page), adminOnly) {
+			t.Errorf("an Owner who isn't an Admin is offered %q", adminOnly)
+		}
+	}
+}
+
+// An Admin's More menu adds Mark Top-level and Mark owner departed…, which asks
+// for confirmation; on an Ownerless Goal it offers Reassign instead of Hand off.
+func TestGoalPageMoreMenuHoldsAdminActions(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	orphan := h.ActiveGoal(kim, "Orphaned", "It matters.")
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	ts := newServer(t, h)
+	adaClient := signInClient(t, ts.URL, "ada@example.com")
+
+	page := getBody(t, adaClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	base := fmt.Sprintf("/goals/%d", goal.ID)
+	assertMenuReaches(t, page, "Hand off", base+"/handoff")
+	assertMenuReaches(t, page, "Mark Top-level", base+"/top-level")
+	assertMenuReaches(t, page, "Mark owner departed…", fmt.Sprintf("/accounts/%d/depart", sam.ID))
+	if depart := openTag(between(t, moreMenu(t, page), fmt.Sprintf(`action="/accounts/%d/depart"`, sam.ID), "")); !strings.Contains(depart, `onsubmit="return confirm(`) {
+		t.Errorf("Mark departed doesn't ask for confirmation: %s", depart)
+	}
+
+	page = getBody(t, adaClient, fmt.Sprintf("%s/goals/%d", ts.URL, orphan.ID))
+	assertMenuReaches(t, page, "Reassign", fmt.Sprintf("/goals/%d/reassign", orphan.ID))
+	if strings.Contains(moreMenu(t, page), "Hand off") {
+		t.Errorf("an Ownerless Goal offers Hand off")
+	}
+}
+
+// Someone who neither Owns the Goal nor is an Admin can only add a child Goal
+// from the More menu.
+func TestGoalPageMoreMenuForOthersOffersOnlyAChildGoal(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("mel@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "mel@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	assertMenuReaches(t, page, "Add a child goal", fmt.Sprintf("/goals/%d/children", goal.ID))
+	for _, other := range []string{"Hand off", "Add a delegate", "Link to a parent goal", "Edit Dimension values", "Mark Top-level"} {
+		if strings.Contains(moreMenu(t, page), other) {
+			t.Errorf("a non-Owner is offered %q", other)
+		}
+	}
+	if strings.Contains(page, `data-testid="checkin-link"`) {
+		t.Errorf("a non-Owner is offered Check in")
+	}
+}
+
+// The sidebar lists the Goals this one contributes to and those contributing to
+// it, each with its Health, and removing a link asks for confirmation first. A
+// breadcrumb leads back through Goals and the first parent.
+func TestGoalPageSidebarLinksCarryHealthAndConfirmRemove(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	parent := h.ActiveGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	h.Checkin(sam, parent.ID, domain.HealthRed, "On fire.", "Put it out.", testsupport.Epoch.AddDate(0, 2, 0))
+	goal := h.ActiveChildOf(sam, parent, "Reduce outages", "Outages cost trust.")
+	child := h.ActiveChildOf(sam, goal, "Migrate displays", "Displays fail often.")
+	h.Checkin(sam, child.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	crumbs := strings.Join(strings.Fields(pageElement(t, page, "nav", "goal-breadcrumb")), " ")
+	for _, want := range []string{`<a href="/goals">Goals</a>`, navTo(parent.ID) + `>Grow revenue</a>`, `<span aria-current="page">Reduce outages</span>`} {
+		if !strings.Contains(crumbs, want) {
+			t.Errorf("breadcrumb lacks %s: %s", want, crumbs)
+		}
+	}
+
+	for _, tc := range []struct {
+		section string
+		linked  domain.Goal
+		class   string
+	}{
+		{"goal-parents", parent, "r"},
+		{"goal-children", child, "g"},
+	} {
+		section := pageElement(t, page, "section", tc.section)
+		entry := between(t, section, navTo(tc.linked.ID), "</li>")
+		if !strings.Contains(entry, `class="badge `+tc.class+`"`) {
+			t.Errorf("%s: %s has no .%s Health badge: %s", tc.section, tc.linked.Title, tc.class, entry)
+		}
+		if remove := openTag(between(t, section, `/remove"`, "")); !strings.Contains(remove, `onsubmit="return confirm(`) {
+			t.Errorf("%s: Remove doesn't ask for confirmation: %s", tc.section, remove)
+		}
+	}
+}
+
+// Each Metric is a card: its current value large, "baseline → target by date",
+// and a sparkline of its readings with a dashed target line, labelled for a
+// screen reader with the trend. The Owner edits it in a collapsed section.
+func TestGoalPageMetricCardsShowASparkline(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("mel@example.com")
+	ctx := t.Context()
+	goal := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	if _, err := h.Service.MarkGoalDated(ctx, goal.ID, testsupport.Epoch.AddDate(0, 6, 0)); err != nil {
+		t.Fatalf("MarkGoalDated: %v", err)
+	}
+	metric, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
+		GoalID: goal.ID, Name: "p95 latency", Unit: "ms", Direction: domain.MetricDown,
+		Baseline: 1200, Target: 400, TargetDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	if _, err := h.Service.ActivateGoal(ctx, goal.ID); err != nil {
+		t.Fatalf("ActivateGoal: %v", err)
+	}
+	for _, v := range []float64{1000, 800} {
+		if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+			GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Faster.",
+			Readings: []domain.MetricReadingInput{{MetricID: metric.ID, Value: v}},
+		}); err != nil {
+			t.Fatalf("SubmitCheckin: %v", err)
+		}
+	}
+	ts := newServer(t, h)
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalURL)
+	card := between(t, page, `data-testid="goal-metric"`, `data-testid="goal-milestones"`)
+	if !strings.Contains(openTag(card), "card") {
+		t.Errorf("the Metric is not a card: %s", openTag(card))
+	}
+	if current := between(t, card, `data-testid="metric-current"`, "</"); !strings.Contains(current, ">800") {
+		t.Errorf("current value is not the latest reading: %s", current)
+	}
+	if !strings.Contains(between(t, card, "<", `data-testid="metric-current"`), "num") {
+		t.Errorf("current value is not set as a number")
+	}
+	if !strings.Contains(card, "1200 → 400 ms by 2026-06-15") {
+		t.Errorf("card lacks baseline → target by date:\n%s", card)
+	}
+	svg := between(t, card, "<svg", "</svg>")
+	for _, want := range []string{
+		`role="img"`,
+		`aria-label="p95 latency: 2 readings, falling from 1000 to 800 ms, toward the target of 400 ms"`,
+		"<polyline",
+		`stroke-dasharray`,
+	} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("sparkline lacks %s:\n%s", want, svg)
+		}
+	}
+	edit := between(t, card, `<details data-testid="metric-edit"`, "</details>")
+	if strings.Contains(openTag(edit), "open") || !strings.Contains(edit, fmt.Sprintf(`action="/metrics/%d"`, metric.ID)) {
+		t.Errorf("the Owner's edit form is not in a collapsed section: %s", edit)
+	}
+
+	if other := getBody(t, signInClient(t, ts.URL, "mel@example.com"), goalURL); strings.Contains(other, fmt.Sprintf(`action="/metrics/%d"`, metric.ID)) {
+		t.Errorf("a non-Owner is offered the Metric edit form")
+	}
+}
+
+// The Goal page's history — Check-ins, Date Slips and So What revisions — sits
+// under History, each collapsed with its count in the summary.
+func TestGoalPageHistoryIsCollapsedWithCounts(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "Still fine.", "", time.Time{})
+	if _, err := h.Service.EditSoWhat(t.Context(), goal.ID, "Outages cost trust and money.", sam.ID); err != nil {
+		t.Fatalf("EditSoWhat: %v", err)
+	}
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	history := between(t, page, `data-testid="goal-history"`, "</aside>")
+	for _, tc := range []struct{ testID, summary string }{
+		{"goal-checkin-history", "Check-in history (2)"},
+		{"goal-date-slips", "Date Slips (0)"},
+		{"goal-so-what-history", "So What history (2)"}, // the original and the edit
+	} {
+		section := pageElement(t, history, "section", tc.testID)
+		details := between(t, section, "<details", "</summary>")
+		if strings.Contains(openTag(details), "open") {
+			t.Errorf("%s is not collapsed: %s", tc.testID, openTag(details))
+		}
+		if !strings.Contains(details, tc.summary) {
+			t.Errorf("%s summary lacks %q: %s", tc.testID, tc.summary, details)
+		}
+	}
+	if !strings.Contains(pageElement(t, history, "section", "goal-checkin-history"), `data-testid="checkin-history"`) {
+		t.Errorf("Check-in history section lacks the history list")
+	}
+}
+
+// The Latest status card leads the main column with the latest Check-in's
+// Health, status and Path to Green, and who wrote it and when.
+func TestGoalPageLatestStatusCard(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Wobbling.", "Add a second on-call.", testsupport.Epoch.AddDate(0, 2, 0))
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	status := pageElement(t, page, "section", "goal-checkins")
+	if !strings.Contains(openTag(status), "card") {
+		t.Errorf("Latest status is not a card: %s", openTag(status))
+	}
+	for _, want := range []string{"Latest status", "Wobbling.", "Add a second on-call.", "sam@example.com", "2026-01-02"} {
+		if !strings.Contains(status, want) {
+			t.Errorf("Latest status lacks %q:\n%s", want, status)
+		}
+	}
+	if strings.Contains(status, `data-testid="checkin-history"`) {
+		t.Errorf("Latest status still carries the history")
+	}
+}
+
+// activationItems reads the activation checklist on a Proposed Goal's page as
+// each item's label mapped to whether it is done. Each item reads as a mark,
+// its label, and "done" or "missing", so it never relies on the mark alone.
+func activationItems(t *testing.T, page string) map[string]bool {
+	t.Helper()
+	list := pageElement(t, page, "ul", "activation-checklist")
+	items := map[string]bool{}
+	for _, li := range strings.Split(list, "<li ")[1:] {
+		words := strings.Fields(regexpTags.ReplaceAllString(li[strings.Index(li, ">")+1:], " "))
+		if len(words) < 3 {
+			t.Fatalf("checklist item has no mark, label and state: %s", li)
+		}
+		done := strings.Contains(openTag(li), `data-done="true"`)
+		if state := words[len(words)-1]; state != map[bool]string{true: "done", false: "missing"}[done] {
+			t.Errorf("checklist item says %q against data-done=%v: %s", state, done, li)
+		}
+		items[strings.Join(words[1:len(words)-1], " ")] = done
+	}
+	return items
+}
+
+var regexpTags = regexp.MustCompile(`<[^>]*>`)
+
+// A Proposed Goal's Owner sees the activation checklist drawn from the rules
+// activation enforces, each item done or missing, and Activate stays disabled
+// until every item is done.
+func TestProposedGoalShowsActivationChecklist(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	page := getBody(t, client, goalURL)
+	want := map[string]bool{
+		"So What":                                true,
+		"Owner":                                  true,
+		"Dated with a delivery date, or Ongoing": false,
+		"A Milestone or Metric":                  false,
+	}
+	if got := activationItems(t, page); !maps.Equal(got, want) {
+		t.Errorf("bare Proposed Goal checklist = %v, want %v", got, want)
+	}
+	if button := between(t, pageElement(t, page, "form", "activate-goal"), "<button", ">"); !strings.Contains(button, "disabled") {
+		t.Errorf("Activate is enabled with items missing: %s", button)
+	}
+
+	postForm(t, client, goalURL+"/dated", url.Values{"delivery_date": {"2026-06-15"}})
+	page = getBody(t, client, goalURL)
+	if got := activationItems(t, page); !got["Dated with a delivery date, or Ongoing"] || got["A Milestone or Metric"] {
+		t.Errorf("Dated Goal with no Milestone or Metric: checklist = %v", got)
+	}
+	postForm(t, client, goalURL+"/milestones", url.Values{"name": {"Beta cut"}, "target_date": {"2026-03-16"}})
+	page = getBody(t, client, goalURL)
+	for item, done := range activationItems(t, page) {
+		if !done {
+			t.Errorf("%q still missing once the Goal is ready", item)
+		}
+	}
+	if button := between(t, pageElement(t, page, "form", "activate-goal"), "<button", ">"); strings.Contains(button, "disabled") {
+		t.Errorf("Activate is disabled with every item done: %s", button)
+	}
+}
+
+// An Ongoing Goal needs a Metric to activate, and a Milestone alone doesn't
+// satisfy its checklist.
+func TestOngoingGoalChecklistNeedsAMetric(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Keep the lights on", "Uptime is table stakes.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	postForm(t, client, goalURL+"/ongoing", nil)
+	postForm(t, client, goalURL+"/milestones", url.Values{"name": {"Runbook"}, "target_date": {"2026-03-16"}})
+	page := getBody(t, client, goalURL)
+	if done, listed := activationItems(t, page)["A Metric"]; !listed || done {
+		t.Errorf("Ongoing Goal with only a Milestone: A Metric listed=%v done=%v", listed, done)
+	}
+	if button := between(t, pageElement(t, page, "form", "activate-goal"), "<button", ">"); !strings.Contains(button, "disabled") {
+		t.Errorf("Activate is enabled for an Ongoing Goal with no Metric: %s", button)
 	}
 }
