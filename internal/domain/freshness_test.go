@@ -139,3 +139,33 @@ func TestPathToGreenIsOverdueOnceItsTargetDatePassesWithoutGreen(t *testing.T) {
 		t.Errorf("Goal back at Green is still flagged with an overdue Path to Green")
 	}
 }
+
+// Rolled-up Health counts how many of a Goal's Active children are Stale
+// ("2 of 3 Stale") without letting it change the color: two Stale Green
+// children and a fresh Green one still roll up Green. An On Hold child is
+// neither Stale nor counted.
+func TestRolledUpHealthCountsStaleChildrenWithoutChangingTheColor(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	parent := h.ActiveGoal(sam, "Org outcome", "It matters.")
+	quiet := h.ActiveChildOf(sam, parent, "Quiet work", "Quiet so what.")
+	h.Checkin(sam, quiet.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.ActiveChildOf(sam, parent, "Never checked in", "Silent so what.")
+	paused := h.OnHoldGoal(sam, "Paused work", "Paused so what.", "Budget freeze.")
+	h.RequestLink(sam, paused, parent, "")
+
+	h.Clock.Advance(10 * day)
+	fresh := h.ActiveChildOf(sam, parent, "Fresh work", "Fresh so what.")
+	h.Checkin(sam, fresh.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	got, err := h.Service.RolledUpHealth(context.Background(), parent.ID)
+	if err != nil {
+		t.Fatalf("RolledUpHealth: %v", err)
+	}
+	if !got.Present || got.Health != domain.HealthGreen {
+		t.Errorf("Rolled-up Health = %q (present %v), want Green: Stale children don't change the color", got.Health, got.Present)
+	}
+	if got.StaleChildren != 2 || got.ActiveChildren != 3 {
+		t.Errorf("Stale children = %d of %d, want 2 of 3", got.StaleChildren, got.ActiveChildren)
+	}
+}

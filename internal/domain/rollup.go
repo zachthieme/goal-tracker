@@ -7,9 +7,15 @@ import "context"
 // Health). It sits next to the Owner-set Health, and when the two differ the
 // Owner has to explain why. Present is false when the Goal has no Active child
 // that has set a Health yet — there is nothing to roll up.
+//
+// StaleChildren counts how many of the ActiveChildren are Stale ("3 of 12
+// Stale"). It is shown beside the color and never changes it: Health stays
+// Owner-set, and a missing update is its own signal (CONTEXT.md: Stale).
 type RolledUpHealth struct {
-	Health  string
-	Present bool
+	Health         string
+	Present        bool
+	StaleChildren  int
+	ActiveChildren int
 }
 
 // healthRank orders Health from best to worst so the worst is the maximum:
@@ -32,7 +38,8 @@ func healthRank(health string) int {
 // this reads each Active child's latest Check-in and keeps the worst. Only
 // Active children count: a Proposed child has no Health, and a child with no
 // Check-in yet has none either, so both are skipped. When no Active child has a
-// Health, Present is false. The traversal is one level — each parent shows the
+// Health, Present is false. Each Active child is also judged Stale or not and
+// counted. The traversal is one level — each parent shows the
 // roll-up of its own direct children, which itself already reflects the levels
 // below it.
 func (s *Service) RolledUpHealth(ctx context.Context, goalID int64) (RolledUpHealth, error) {
@@ -49,11 +56,15 @@ func (s *Service) RolledUpHealth(ctx context.Context, goalID int64) (RolledUpHea
 		if err != nil {
 			return RolledUpHealth{}, err
 		}
+		out.ActiveChildren++
+		if s.judgeFreshness(child, latest).Stale {
+			out.StaleChildren++
+		}
 		if !ok {
 			continue
 		}
 		if !out.Present || healthRank(latest.Health) > healthRank(out.Health) {
-			out = RolledUpHealth{Health: latest.Health, Present: true}
+			out.Health, out.Present = latest.Health, true
 		}
 	}
 	return out, nil
