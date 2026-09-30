@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
@@ -99,6 +100,35 @@ func (s *Service) StartHandoff(ctx context.Context, in StartHandoffInput) (Hando
 		Status:    row.Status,
 		CreatedAt: now,
 	}, nil
+}
+
+// StartHandoffByEmail starts a Handoff to the Account with the given email. It is
+// the web-facing convenience over StartHandoff, since the tool identifies people
+// by email (CONTEXT.md: development sign-in by email). An email with no account
+// is rejected.
+func (s *Service) StartHandoffByEmail(ctx context.Context, goalID int64, toEmail string, actorID int64) (Handoff, error) {
+	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(toEmail))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Handoff{}, fmt.Errorf("%w: no account with email %q", ErrValidation, toEmail)
+		}
+		return Handoff{}, fmt.Errorf("look up new owner: %w", err)
+	}
+	return s.StartHandoff(ctx, StartHandoffInput{GoalID: goalID, ToOwnerID: acc.ID, ActorID: actorID})
+}
+
+// ReassignGoalByEmail reassigns an Ownerless Goal to the Account with the given
+// email. It is the web-facing convenience over ReassignGoal. An email with no
+// account is rejected.
+func (s *Service) ReassignGoalByEmail(ctx context.Context, actorID, goalID int64, newOwnerEmail string) (Goal, error) {
+	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(newOwnerEmail))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Goal{}, fmt.Errorf("%w: no account with email %q", ErrValidation, newOwnerEmail)
+		}
+		return Goal{}, fmt.Errorf("look up new owner: %w", err)
+	}
+	return s.ReassignGoal(ctx, actorID, goalID, acc.ID)
 }
 
 // AcceptHandoff accepts a pending Handoff, moving the Goal to the new Owner. Only

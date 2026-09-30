@@ -25,4 +25,10 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /links/{id}/accept", s.requireAuth(s.handleAcceptLink))
 	s.mux.HandleFunc("POST /links/{id}/reject", s.requireAuth(s.handleRejectLink))
 	s.mux.HandleFunc("POST /links/{id}/remove", s.requireAuth(s.handleRemoveLink))
+	s.mux.HandleFunc("POST /goals/{id}/handoff", s.requireAuth(s.handleStartHandoff))
+	s.mux.HandleFunc("POST /goals/{id}/reassign", s.requireAuth(s.handleReassignGoal))
+	s.mux.HandleFunc("GET /handoffs", s.requireAuth(s.handlePendingHandoffs))
+	s.mux.HandleFunc("POST /handoffs/{id}/accept", s.requireAuth(s.handleAcceptHandoff))
+	s.mux.HandleFunc("POST /handoffs/{id}/reject", s.requireAuth(s.handleRejectHandoff))
+	s.mux.HandleFunc("POST /accounts/{id}/depart", s.requireAuth(s.handleDepartAccount))
 }
