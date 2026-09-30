@@ -112,8 +112,8 @@ func TestGoalListMarksStaleAndOverdueGoals(t *testing.T) {
 		if at < 0 {
 			t.Fatalf("Goal list has no row for %q; body:\n%s", g.Title, list)
 		}
-		start := strings.LastIndex(list[:at], "<li")
-		end := strings.Index(list[at:], "</li>")
+		start := strings.LastIndex(list[:at], "<tr")
+		end := strings.Index(list[at:], "</tr>")
 		return list[start : at+end]
 	}
 

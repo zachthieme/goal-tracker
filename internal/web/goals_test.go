@@ -8,9 +8,12 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 	"github.com/zachthieme/goal-tracker/internal/web"
 )
@@ -395,5 +398,89 @@ func TestCreateChildGoalWithRetiredValueLeavesNoGoal(t *testing.T) {
 	}
 	if children := h.ChildrenOf(parent); len(children) != 0 {
 		t.Errorf("a failed child create requested a link: %v", children)
+	}
+}
+
+// goalRows returns the Goal list's rows in the order they render, each from its
+// opening <tr> to its closing </tr>.
+func goalRows(t *testing.T, page string) []string {
+	t.Helper()
+	const marker = `<tr data-testid="goal-row"`
+	var rows []string
+	for {
+		start := strings.Index(page, marker)
+		if start < 0 {
+			return rows
+		}
+		end := strings.Index(page[start:], "</tr>")
+		if end < 0 {
+			t.Fatalf("unterminated goal row:\n%s", page[start:])
+		}
+		rows = append(rows, page[start:start+end+len("</tr>")])
+		page = page[start+end:]
+	}
+}
+
+// rowTitles names the Goals in rows, in order, by matching each row against the
+// Goals it could be.
+func rowTitles(rows []string, goals ...domain.Goal) []string {
+	titles := make([]string, 0, len(rows))
+	for _, r := range rows {
+		for _, g := range goals {
+			if strings.Contains(r, navTo(g.ID)) {
+				titles = append(titles, g.Title)
+			}
+		}
+	}
+	return titles
+}
+
+// The Goal list is a table led by each Goal's Health, and problems sort to the
+// top: Red, then Ownerless, then Stale or Path to Green overdue, then Yellow,
+// then Green, then Goals with no Health, alphabetical within each group.
+func TestGoalListSortsProblemsFirst(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	later := testsupport.Epoch.AddDate(0, 2, 0)
+
+	stale := h.ActiveGoal(sam, "Stale work", "It matters.")
+	h.Clock.Advance(10 * day)
+	proposed := h.CreateGoal(sam, "Proposed idea", "It matters.")
+	betaGreen := h.ActiveGoal(sam, "Beta green", "It matters.")
+	h.Checkin(sam, betaGreen.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	alphaGreen := h.ActiveGoal(sam, "Alpha green", "It matters.")
+	h.Checkin(sam, alphaGreen.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	yellow := h.ActiveGoal(sam, "Wobbly", "It matters.")
+	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Wobbling.", "Fix it.", later)
+	ownerless := h.ActiveGoal(kim, "Orphaned", "It matters.")
+	h.Checkin(kim, ownerless.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	red := h.ActiveGoal(sam, "Zulu fire", "It matters.")
+	h.Checkin(sam, red.ID, domain.HealthRed, "On fire.", "Put it out.", later)
+	ts := newServer(t, h)
+
+	list := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals")
+	rows := goalRows(t, list)
+
+	got := rowTitles(rows, stale, proposed, betaGreen, alphaGreen, yellow, ownerless, red)
+	want := []string{"Zulu fire", "Orphaned", "Stale work", "Wobbly", "Alpha green", "Beta green", "Proposed idea"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("row order = %q, want %q", got, want)
+	}
+	if !strings.Contains(list, "<th>Health</th>") {
+		t.Errorf("Goal list has no Health column; body:\n%s", list)
+	}
+	for i, class := range []string{"r", "g", "lc", "y", "g", "g", "lc"} {
+		health := pageElement(t, rows[i], "span", "goal-row-health")
+		if !strings.Contains(openTag(health), `class="badge `+class+`"`) {
+			t.Errorf("%s: Health badge is not .%s: %s", want[i], class, health)
+		}
+	}
+	if health := pageElement(t, rows[6], "span", "goal-row-health"); !strings.Contains(health, "Proposed") {
+		t.Errorf("a Goal with no Health shows no Lifecycle: %s", health)
 	}
 }

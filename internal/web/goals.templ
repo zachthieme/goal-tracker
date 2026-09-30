@@ -68,53 +68,87 @@ templ goalFilters(view goalsListData) {
 	}
 }
 
-// goalList is the htmx swap target: the Goal list, flat or grouped by a
-// Dimension's values.
+// goalList is the htmx swap target: the Goal list as a table led by Health,
+// flat or with a section per value of the grouping Dimension.
 templ goalList(view goalsListData) {
-	<div id="goal-list" data-testid="goal-list">
-		if view.GroupID != 0 {
-			if len(view.Groups) == 0 {
-				<p data-testid="no-goals">No Goals match.</p>
-			}
-			for _, grp := range view.Groups {
-				<section data-testid="goal-group">
-					<h3 data-testid="goal-group-label">
-						if grp.Value != nil {
-							{ grp.Value.Value }
-						} else {
-							Unassigned
+	<div id="goal-list" data-testid="goal-list" class="card">
+		<table>
+			<thead>
+				<tr><th>Health</th><th>Goal</th><th>Owner</th><th>Due</th><th>Last check-in</th><th>Dimension tags</th></tr>
+			</thead>
+			if view.GroupID != 0 {
+				if len(view.Groups) == 0 {
+					<tbody>
+						@noGoals("No Goals match.")
+					</tbody>
+				}
+				for _, grp := range view.Groups {
+					<tbody data-testid="goal-group">
+						<tr class="gl-group">
+							<th colspan="6" scope="colgroup" data-testid="goal-group-label">
+								if grp.Value != nil {
+									{ grp.Value.Value }
+								} else {
+									Unassigned
+								}
+							</th>
+						</tr>
+						for _, row := range grp.Rows {
+							@goalListRow(row)
 						}
-					</h3>
-					@goalItems(grp.Goals, view.Freshness)
-				</section>
+					</tbody>
+				}
+			} else {
+				<tbody>
+					if len(view.Rows) == 0 {
+						@noGoals("No Goals yet.")
+					}
+					for _, row := range view.Rows {
+						@goalListRow(row)
+					}
+				</tbody>
 			}
-		} else {
-			@goalItems(view.Goals, view.Freshness)
-		}
+		</table>
 	</div>
 }
 
-// goalItems renders a flat list of Goals with their assigned Dimension values,
-// marking those that are Stale or whose Path to Green is overdue.
-templ goalItems(goals []domain.GoalWithValues, freshness map[int64]domain.Freshness) {
-	<ul>
-		if len(goals) == 0 {
-			<li data-testid="no-goals">No Goals yet.</li>
-		}
-		for _, gv := range goals {
-			<li>
-				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", gv.Goal.ID)) }>{ gv.Goal.Title }</a>
-				<span>— { gv.Goal.Lifecycle } — Owner { gv.Goal.Owner.Email }</span>
-				if gv.Goal.Ownerless {
-					<strong data-testid="ownerless">— Ownerless</strong>
-				}
-				@goalRowFreshness(freshness[gv.Goal.ID])
-				for _, val := range gv.Values {
-					<span data-testid="goal-value-tag">[{ val.Value }]</span>
-				}
-			</li>
-		}
-	</ul>
+// noGoals is the Goal list's empty state, spanning the table.
+templ noGoals(text string) {
+	<tr><td colspan="6" data-testid="no-goals" class="muted">{ text }</td></tr>
+}
+
+// goalListRow is one Goal in the list: its Health, its title with the Ownerless
+// and freshness marks under it, its Owner, and its Dimension values.
+templ goalListRow(row goalRow) {
+	{{ g := row.Goal }}
+	<tr data-testid="goal-row">
+		<td>
+			if health := row.health(); health != "" {
+				<span data-testid="goal-row-health" class={ "badge", healthClass(health) }><span class="dot"></span>{ health }</span>
+			} else {
+				<span data-testid="goal-row-health" class="badge lc">{ g.Lifecycle }</span>
+			}
+		</td>
+		<td>
+			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
+			if g.Ownerless || row.Freshness.Stale || row.Freshness.PathToGreenOverdue {
+				<div class="gl-marks">
+					if g.Ownerless {
+						<span data-testid="ownerless" class="badge ol">Ownerless</span>
+					}
+					@goalRowFreshness(row.Freshness)
+				</div>
+			}
+		</td>
+		<td>{ g.Owner.Email }</td>
+		<td></td>
+		<td></td>
+		<td>
+			for _, val := range row.Values {
+				<span data-testid="goal-value-tag" class="tag">{ val.Value }</span>
+			}
+		</td>
+	</tr>
 }
 
 // goalPage shows a single Goal on its own page, with its parents and children
