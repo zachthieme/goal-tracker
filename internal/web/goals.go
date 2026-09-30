@@ -184,6 +184,20 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		http.Error(w, "could not load dimension values", http.StatusInternalServerError)
 		return
 	}
+	checkins, err := s.svc.ListCheckins(r.Context(), id)
+	if err != nil {
+		http.Error(w, "could not load check-ins", http.StatusInternalServerError)
+		return
+	}
+	latest, ok, err := s.svc.LatestCheckin(r.Context(), id)
+	if err != nil {
+		http.Error(w, "could not load latest check-in", http.StatusInternalServerError)
+		return
+	}
+	var latestPtr *domain.Checkin
+	if ok {
+		latestPtr = &latest
+	}
 
 	render(w, r, http.StatusOK, goalPage(&current, goalView{
 		Goal:          g,
@@ -196,6 +210,8 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		Revisions:     revisions,
 		Dimensions:    dimensions,
 		Values:        values,
+		Checkins:      checkins,
+		LatestCheckin: latestPtr,
 		SuggestedDate: domain.SuggestDeliveryDate(s.svc.Now()).Format(dateLayout),
 	}))
 }
@@ -215,8 +231,13 @@ type goalView struct {
 	// Dimensions are all defined Dimensions, for the value-assignment selects and
 	// the defaults offered when creating a child Goal. Values are the values this
 	// Goal currently carries, retired ones included so they stay readable.
-	Dimensions    []domain.Dimension
-	Values        []domain.DimensionValue
+	Dimensions []domain.Dimension
+	Values     []domain.DimensionValue
+	// Checkins is the Goal's Check-in history (newest first) and LatestCheckin is
+	// the most recent one, carrying the Goal's current Health, status, and Path to
+	// Green. LatestCheckin is nil when the Goal has no Check-ins yet.
+	Checkins      []domain.Checkin
+	LatestCheckin *domain.Checkin
 	SuggestedDate string
 }
 
