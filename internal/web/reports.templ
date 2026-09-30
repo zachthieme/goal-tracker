@@ -132,23 +132,69 @@ templ reportDraftPage(current *domain.Account, r domain.Report, pubs []domain.Pu
 }
 
 // publicationPage shows a published Report exactly as it was frozen: who
-// published it and when, and what it read its changes against.
+// published it and when, and what it read its changes against. It links the
+// ways to read it outside the tool: Markdown, and a page to print to PDF.
 templ publicationPage(current *domain.Account, p domain.Publication) {
 	@layout(p.Report.Definition.Name, current) {
 		<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
-		<p data-testid="report-published">
-			Published { fmtPublished(p.PublishedAt) } by { p.PublishedBy.Email }.
-			if p.Report.Previous.ID != 0 {
-				Changes since the previous publication, { fmtPublished(p.Report.Previous.PublishedAt) }.
-			} else {
-				Changes since { fmtDate(p.Report.Baseline) }.
-			}
+		@publishedLine(p)
+		<p data-testid="report-export">
+			<a data-testid="export-markdown" href={ templ.SafeURL(publicationPath(p) + "/markdown") }>Download as Markdown</a>
+			{ " · " }
+			<a data-testid="export-print" href={ templ.SafeURL(publicationPath(p) + "/print") }>Print</a>
 		</p>
 		<section data-testid="report-snapshot">
 			@reportBody(p.Report)
 		</section>
 		<p><a href={ templ.SafeURL(fmt.Sprintf("/reports/%d", p.DefinitionID)) }>Back to { p.Report.Definition.Name }</a></p>
 	}
+}
+
+// publicationPrintPage is a published Report on its own, without the app's
+// navigation, styled to print to PDF from the browser.
+templ publicationPrintPage(p domain.Publication) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ p.Report.Definition.Name } · { fmtPublished(p.PublishedAt) }</title>
+			<style>
+				body { font-family: Georgia, serif; max-width: 48rem; margin: 2rem auto; line-height: 1.4; }
+				a { color: inherit; text-decoration: none; }
+				article { break-inside: avoid; border-top: 1px solid #ccc; }
+				@media print {
+					body { margin: 0; max-width: none; }
+					.no-print { display: none; }
+				}
+			</style>
+		</head>
+		<body>
+			<p class="no-print">
+				<button type="button" onclick="window.print()">Print</button>
+				{ " " }
+				<a href={ templ.SafeURL(publicationPath(p)) }>Back to the publication</a>
+			</p>
+			<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
+			@publishedLine(p)
+			<section data-testid="report-snapshot">
+				@reportBody(p.Report)
+			</section>
+		</body>
+	</html>
+}
+
+// publishedLine says who published a Report and when, and what it read its
+// changes against.
+templ publishedLine(p domain.Publication) {
+	<p data-testid="report-published">
+		Published { fmtPublished(p.PublishedAt) } by { p.PublishedBy.Email }.
+		if p.Report.Previous.ID != 0 {
+			Changes since the previous publication, { fmtPublished(p.Report.Previous.PublishedAt) }.
+		} else {
+			Changes since { fmtDate(p.Report.Baseline) }.
+		}
+	</p>
 }
 
 // reportBody is a Report's content, drafted or published: the introduction,
