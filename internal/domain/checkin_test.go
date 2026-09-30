@@ -213,6 +213,77 @@ func TestCheckinsAreImmutableHistoryWithLatestCurrent(t *testing.T) {
 	}
 }
 
+// A Check-in records the current value of each Metric on the Goal, and a
+// Metric's readings come back over time earliest-first for its trend against
+// target (CONTEXT.md: Metric - its current value is recorded at each Check-in).
+func TestSubmitCheckinRecordsMetricReadings(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Cut latency", "Faster checkout lifts conversion.")
+
+	latency, err := h.Service.AddMetric(context.Background(), validMetric(goal.ID))
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: sam.ID,
+		Health:   domain.HealthGreen,
+		Status:   "Started measuring.",
+		Readings: []domain.MetricReadingInput{{MetricID: latency.ID, Value: 900}},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin with reading: %v", err)
+	}
+	h.Clock.Advance(7 * 24 * time.Hour)
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: sam.ID,
+		Health:   domain.HealthGreen,
+		Status:   "Improving.",
+		Readings: []domain.MetricReadingInput{{MetricID: latency.ID, Value: 700}},
+	}); err != nil {
+		t.Fatalf("second SubmitCheckin with reading: %v", err)
+	}
+
+	readings, err := h.Service.ListMetricReadings(context.Background(), latency.ID)
+	if err != nil {
+		t.Fatalf("ListMetricReadings: %v", err)
+	}
+	if len(readings) != 2 {
+		t.Fatalf("readings = %d, want 2 recorded over two Check-ins", len(readings))
+	}
+	if readings[0].Value != 900 || readings[1].Value != 700 {
+		t.Errorf("trend = [%v, %v], want earliest-first [900, 700]", readings[0].Value, readings[1].Value)
+	}
+}
+
+// A reading for a Metric that is not on the Goal being checked in on is rejected,
+// and the whole Check-in is refused (nothing is recorded).
+func TestSubmitCheckinRejectsReadingForForeignMetric(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Cut latency", "Faster checkout lifts conversion.")
+	other := h.ActiveGoal(sam, "Grow signups", "More signups, more revenue.")
+	foreign, err := h.Service.AddMetric(context.Background(), validMetric(other.ID))
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: sam.ID,
+		Health:   domain.HealthGreen,
+		Status:   "Mislabelled reading.",
+		Readings: []domain.MetricReadingInput{{MetricID: foreign.ID, Value: 1}},
+	}); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
+		t.Errorf("a Check-in was recorded despite the foreign-metric reading: %d", len(history))
+	}
+}
+
 // One-click "no change" records a Check-in that repeats the previous values,
 // author and Owner it is written for aside.
 func TestNoChangeCheckinRepeatsPreviousValues(t *testing.T) {

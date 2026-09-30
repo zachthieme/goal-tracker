@@ -55,6 +55,72 @@ func (q *Queries) CreateCheckin(ctx context.Context, arg CreateCheckinParams) (C
 	return i, err
 }
 
+const createHighlight = `-- name: CreateHighlight :one
+INSERT INTO highlights (checkin_id, kind, note, created_at)
+VALUES (?, ?, ?, ?)
+RETURNING id, checkin_id, kind, note, created_at
+`
+
+type CreateHighlightParams struct {
+	CheckinID int64
+	Kind      string
+	Note      string
+	CreatedAt string
+}
+
+// Record a Check-in's optional Highlight (CONTEXT.md: Highlight). At most one per
+// Check-in (enforced by the schema).
+func (q *Queries) CreateHighlight(ctx context.Context, arg CreateHighlightParams) (Highlight, error) {
+	row := q.db.QueryRowContext(ctx, createHighlight,
+		arg.CheckinID,
+		arg.Kind,
+		arg.Note,
+		arg.CreatedAt,
+	)
+	var i Highlight
+	err := row.Scan(
+		&i.ID,
+		&i.CheckinID,
+		&i.Kind,
+		&i.Note,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createMetricReading = `-- name: CreateMetricReading :one
+INSERT INTO metric_readings (checkin_id, metric_id, value, created_at)
+VALUES (?, ?, ?, ?)
+RETURNING id, checkin_id, metric_id, value, created_at
+`
+
+type CreateMetricReadingParams struct {
+	CheckinID int64
+	MetricID  int64
+	Value     float64
+	CreatedAt string
+}
+
+// Record a Metric's current value against the Check-in that read it (CONTEXT.md:
+// Metric - its current value is recorded at each Check-in).
+func (q *Queries) CreateMetricReading(ctx context.Context, arg CreateMetricReadingParams) (MetricReading, error) {
+	row := q.db.QueryRowContext(ctx, createMetricReading,
+		arg.CheckinID,
+		arg.MetricID,
+		arg.Value,
+		arg.CreatedAt,
+	)
+	var i MetricReading
+	err := row.Scan(
+		&i.ID,
+		&i.CheckinID,
+		&i.MetricID,
+		&i.Value,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getLatestCheckin = `-- name: GetLatestCheckin :one
 SELECT id, goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at, explanation FROM checkins WHERE goal_id = ? ORDER BY created_at DESC, id DESC LIMIT 1
 `
@@ -127,6 +193,149 @@ func (q *Queries) ListCheckins(ctx context.Context, goalID int64) ([]ListCheckin
 			&i.Account_2.IsAdmin,
 			&i.Account_2.CreatedAt,
 			&i.Account_2.Departed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listHighlightsByGoal = `-- name: ListHighlightsByGoal :many
+SELECT highlights.id, highlights.checkin_id, highlights.kind, highlights.note, highlights.created_at, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed
+FROM highlights
+JOIN checkins ON checkins.id = highlights.checkin_id
+JOIN accounts owner ON owner.id = checkins.owner_id
+WHERE checkins.goal_id = ?1
+ORDER BY checkins.created_at DESC, highlights.id DESC
+`
+
+type ListHighlightsByGoalRow struct {
+	Highlight Highlight
+	Account   Account
+}
+
+// A Goal's Highlights, newest first, each crediting the Owner the Check-in was
+// written for. Report curation queries Highlights by Goal (CONTEXT.md:
+// Highlight; the Goal's Owner is credited).
+func (q *Queries) ListHighlightsByGoal(ctx context.Context, goalID int64) ([]ListHighlightsByGoalRow, error) {
+	rows, err := q.db.QueryContext(ctx, listHighlightsByGoal, goalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListHighlightsByGoalRow
+	for rows.Next() {
+		var i ListHighlightsByGoalRow
+		if err := rows.Scan(
+			&i.Highlight.ID,
+			&i.Highlight.CheckinID,
+			&i.Highlight.Kind,
+			&i.Highlight.Note,
+			&i.Highlight.CreatedAt,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listHighlightsByGoalInRange = `-- name: ListHighlightsByGoalInRange :many
+SELECT highlights.id, highlights.checkin_id, highlights.kind, highlights.note, highlights.created_at, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed
+FROM highlights
+JOIN checkins ON checkins.id = highlights.checkin_id
+JOIN accounts owner ON owner.id = checkins.owner_id
+WHERE checkins.goal_id = ?1
+  AND checkins.created_at >= ?2
+  AND checkins.created_at <= ?3
+ORDER BY checkins.created_at DESC, highlights.id DESC
+`
+
+type ListHighlightsByGoalInRangeParams struct {
+	GoalID int64
+	From   string
+	To     string
+}
+
+type ListHighlightsByGoalInRangeRow struct {
+	Highlight Highlight
+	Account   Account
+}
+
+// A Goal's Highlights whose Check-in falls within [from, to] inclusive, newest
+// first. Report curation queries Highlights by Goal and by time range.
+func (q *Queries) ListHighlightsByGoalInRange(ctx context.Context, arg ListHighlightsByGoalInRangeParams) ([]ListHighlightsByGoalInRangeRow, error) {
+	rows, err := q.db.QueryContext(ctx, listHighlightsByGoalInRange, arg.GoalID, arg.From, arg.To)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListHighlightsByGoalInRangeRow
+	for rows.Next() {
+		var i ListHighlightsByGoalInRangeRow
+		if err := rows.Scan(
+			&i.Highlight.ID,
+			&i.Highlight.CheckinID,
+			&i.Highlight.Kind,
+			&i.Highlight.Note,
+			&i.Highlight.CreatedAt,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMetricReadings = `-- name: ListMetricReadings :many
+SELECT id, checkin_id, metric_id, value, created_at FROM metric_readings WHERE metric_id = ? ORDER BY created_at, id
+`
+
+// A Metric's readings over time, earliest first, for its trend against target.
+func (q *Queries) ListMetricReadings(ctx context.Context, metricID int64) ([]MetricReading, error) {
+	rows, err := q.db.QueryContext(ctx, listMetricReadings, metricID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []MetricReading
+	for rows.Next() {
+		var i MetricReading
+		if err := rows.Scan(
+			&i.ID,
+			&i.CheckinID,
+			&i.MetricID,
+			&i.Value,
+			&i.CreatedAt,
 		); err != nil {
 			return nil, err
 		}

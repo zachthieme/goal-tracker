@@ -48,3 +48,21 @@ func (h *Harness) Checkin(author domain.Account, goalID int64, health, status st
 	}
 	return c
 }
+
+// CheckinWithHighlight submits a Green Check-in on goal as author carrying a
+// Highlight of the given kind and note, failing the test on error. It is a
+// scenario builder for arranging a Goal's Highlights.
+func (h *Harness) CheckinWithHighlight(author domain.Account, goalID int64, kind, note string) domain.Checkin {
+	h.T.Helper()
+	c, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:    goalID,
+		AuthorID:  author.ID,
+		Health:    domain.HealthGreen,
+		Status:    "Check-in with a Highlight.",
+		Highlight: &domain.HighlightInput{Kind: kind, Note: note},
+	})
+	if err != nil {
+		h.T.Fatalf("SubmitCheckin with highlight: %v", err)
+	}
+	return c
+}

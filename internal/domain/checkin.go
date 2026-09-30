@@ -64,6 +64,13 @@ type SubmitCheckinInput struct {
 	// Explanation is required only when the Health differs from the Goal's
 	// Rolled-up Health (ADR-0003).
 	Explanation string
+	// Readings records the current value of Metrics on the Goal (CONTEXT.md: a
+	// Metric's current value is recorded at each Check-in). Each must name a
+	// Metric on this Goal; a reading for a Metric on another Goal is rejected.
+	Readings []MetricReadingInput
+	// Highlight is the Check-in's optional Highlight (CONTEXT.md: Highlight). Nil
+	// when the Owner flags nothing.
+	Highlight *HighlightInput
 }
 
 // SubmitCheckin records a Check-in on a Goal. The Goal must be Active — a
@@ -107,6 +114,17 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 		return Checkin{}, err
 	}
 
+	// A reading may only name a Metric on this Goal (CONTEXT.md: a Check-in
+	// records the current value of the Goal's Metrics).
+	if err := s.validateReadings(ctx, goal.Goal.ID, in.Readings); err != nil {
+		return Checkin{}, err
+	}
+	if in.Highlight != nil {
+		if err := validateHighlight(*in.Highlight); err != nil {
+			return Checkin{}, err
+		}
+	}
+
 	pathTargetDate := ""
 	if needsPathToGreen(in.Health) {
 		pathTargetDate = in.PathTargetDate.Format(dateFormat)
@@ -115,7 +133,64 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 		path = ""
 	}
 
-	return s.createCheckin(ctx, goal.Goal.ID, in.AuthorID, goal.Goal.OwnerID, in.Health, status, path, pathTargetDate, explanation)
+	// The Check-in and the Metric readings it records are one immutable update,
+	// so they are written together or not at all.
+	var out Checkin
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		c, err := tx.createCheckin(ctx, goal.Goal.ID, in.AuthorID, goal.Goal.OwnerID, in.Health, status, path, pathTargetDate, explanation)
+		if err != nil {
+			return err
+		}
+		if err := tx.recordReadings(ctx, c.ID, in.Readings); err != nil {
+			return err
+		}
+		if in.Highlight != nil {
+			if err := tx.recordHighlight(ctx, c.ID, *in.Highlight); err != nil {
+				return err
+			}
+		}
+		out = c
+		return nil
+	})
+	if err != nil {
+		return Checkin{}, err
+	}
+	return out, nil
+}
+
+// validateReadings checks that each reading names a Metric on goalID; a reading
+// for a Metric that does not exist or belongs to another Goal is rejected.
+func (s *Service) validateReadings(ctx context.Context, goalID int64, readings []MetricReadingInput) error {
+	for _, rd := range readings {
+		m, err := s.queries.GetMetric(ctx, rd.MetricID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: metric %d does not exist", ErrValidation, rd.MetricID)
+			}
+			return fmt.Errorf("look up metric: %w", err)
+		}
+		if m.GoalID != goalID {
+			return fmt.Errorf("%w: metric %d is not on this Goal", ErrValidation, rd.MetricID)
+		}
+	}
+	return nil
+}
+
+// recordReadings inserts a Check-in's Metric readings, each stamped with the
+// Service's clock so they order over time for the trend display.
+func (s *Service) recordReadings(ctx context.Context, checkinID int64, readings []MetricReadingInput) error {
+	now := s.clock.Now().Format(timeFormat)
+	for _, rd := range readings {
+		if _, err := s.queries.CreateMetricReading(ctx, db.CreateMetricReadingParams{
+			CheckinID: checkinID,
+			MetricID:  rd.MetricID,
+			Value:     rd.Value,
+			CreatedAt: now,
+		}); err != nil {
+			return fmt.Errorf("create metric reading: %w", err)
+		}
+	}
+	return nil
 }
 
 // SubmitNoChangeCheckin records a Check-in that repeats the Goal's previous

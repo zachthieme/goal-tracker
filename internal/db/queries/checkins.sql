@@ -18,3 +18,44 @@ JOIN accounts author ON author.id = checkins.author_id
 JOIN accounts owner ON owner.id = checkins.owner_id
 WHERE checkins.goal_id = @goal_id
 ORDER BY checkins.created_at DESC, checkins.id DESC;
+
+-- name: CreateMetricReading :one
+-- Record a Metric's current value against the Check-in that read it (CONTEXT.md:
+-- Metric - its current value is recorded at each Check-in).
+INSERT INTO metric_readings (checkin_id, metric_id, value, created_at)
+VALUES (?, ?, ?, ?)
+RETURNING *;
+
+-- name: ListMetricReadings :many
+-- A Metric's readings over time, earliest first, for its trend against target.
+SELECT * FROM metric_readings WHERE metric_id = ? ORDER BY created_at, id;
+
+-- name: CreateHighlight :one
+-- Record a Check-in's optional Highlight (CONTEXT.md: Highlight). At most one per
+-- Check-in (enforced by the schema).
+INSERT INTO highlights (checkin_id, kind, note, created_at)
+VALUES (?, ?, ?, ?)
+RETURNING *;
+
+-- name: ListHighlightsByGoal :many
+-- A Goal's Highlights, newest first, each crediting the Owner the Check-in was
+-- written for. Report curation queries Highlights by Goal (CONTEXT.md:
+-- Highlight; the Goal's Owner is credited).
+SELECT sqlc.embed(highlights), sqlc.embed(owner)
+FROM highlights
+JOIN checkins ON checkins.id = highlights.checkin_id
+JOIN accounts owner ON owner.id = checkins.owner_id
+WHERE checkins.goal_id = @goal_id
+ORDER BY checkins.created_at DESC, highlights.id DESC;
+
+-- name: ListHighlightsByGoalInRange :many
+-- A Goal's Highlights whose Check-in falls within [from, to] inclusive, newest
+-- first. Report curation queries Highlights by Goal and by time range.
+SELECT sqlc.embed(highlights), sqlc.embed(owner)
+FROM highlights
+JOIN checkins ON checkins.id = highlights.checkin_id
+JOIN accounts owner ON owner.id = checkins.owner_id
+WHERE checkins.goal_id = @goal_id
+  AND checkins.created_at >= @from
+  AND checkins.created_at <= @to
+ORDER BY checkins.created_at DESC, highlights.id DESC;
