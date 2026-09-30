@@ -18,6 +18,13 @@ type Freshness struct {
 	// DaysSince is how many days of the org's calendar have passed since
 	// LastUpdate.
 	DaysSince int
+	// PathToGreenOverdue is true when the Goal is Active, isn't Green, and the
+	// target date of its Path to Green (PathTargetDate) has passed: a stalled
+	// recovery (CONTEXT.md: Path to Green).
+	PathToGreenOverdue bool
+	// PathTargetDate is the date the latest Path to Green aims to be back at
+	// Green by, the zero time when the Goal is Green or has no Check-in.
+	PathTargetDate time.Time
 }
 
 // Freshness reads goalID's freshness signals.
@@ -26,34 +33,37 @@ func (s *Service) Freshness(ctx context.Context, goalID int64) (Freshness, error
 	if err != nil {
 		return Freshness{}, err
 	}
-	latest, ok, err := s.LatestCheckin(ctx, goalID)
+	// With no Check-in yet, latest is the zero Checkin.
+	latest, _, err := s.LatestCheckin(ctx, goalID)
 	if err != nil {
 		return Freshness{}, err
 	}
-	var last time.Time
-	if ok {
-		last = latest.CreatedAt
-	}
-	return s.judgeFreshness(g, last), nil
+	return s.judgeFreshness(g, latest), nil
 }
 
-// judgeFreshness applies the Stale rule to g, whose last Check-in was at
-// lastCheckin (the zero time when it has none). Cadence is counted in whole
-// days of the org's calendar, so a Check-in late on Monday and one early on
-// Monday both count from Monday.
-func (s *Service) judgeFreshness(g Goal, lastCheckin time.Time) Freshness {
-	last := lastCheckin
+// judgeFreshness applies the Stale and overdue-Path-to-Green rules to g, whose
+// latest Check-in is latest (the zero Checkin when it has none). Days are
+// counted on the org's calendar, so a Check-in late on Monday and one early on
+// Monday both count from Monday, and a Path to Green is overdue from the day
+// after its target date.
+func (s *Service) judgeFreshness(g Goal, latest Checkin) Freshness {
+	last := latest.CreatedAt
 	if last.IsZero() {
 		last = g.ActivatedAt
 	}
 	if last.IsZero() {
 		return Freshness{}
 	}
-	days := s.daysBetween(last, s.clock.Now())
+	now := s.clock.Now()
+	active := g.Lifecycle == LifecycleActive
+	days := s.daysBetween(last, now)
+	target := latest.PathTargetDate
 	return Freshness{
-		Stale:      g.Lifecycle == LifecycleActive && days > g.CadenceDays,
-		LastUpdate: last,
-		DaysSince:  days,
+		Stale:              active && days > g.CadenceDays,
+		LastUpdate:         last,
+		DaysSince:          days,
+		PathToGreenOverdue: active && needsPathToGreen(latest.Health) && !target.IsZero() && orgDate(now, s.loc).After(target),
+		PathTargetDate:     target,
 	}
 }
 

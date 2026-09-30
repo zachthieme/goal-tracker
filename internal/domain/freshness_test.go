@@ -113,3 +113,29 @@ func TestCadenceIsCountedInTheOrgTimezone(t *testing.T) {
 		t.Errorf("Goal is Stale in UTC after 7 UTC days; want the default timezone to be UTC")
 	}
 }
+
+// A Goal is flagged once its Path to Green's target date has passed and it
+// still isn't Green (CONTEXT.md: Path to Green). The target date itself is not
+// yet overdue, and a Check-in back at Green clears the flag.
+func TestPathToGreenIsOverdueOnceItsTargetDatePassesWithoutGreen(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	target := time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC)
+	h.Checkin(sam, g.ID, domain.HealthRed, "Blocked.", "Escalate to the vendor.", target)
+
+	h.Clock.Set(time.Date(2026, 1, 20, 23, 0, 0, 0, time.UTC))
+	if f := h.Freshness(g.ID); f.PathToGreenOverdue {
+		t.Errorf("Path to Green is overdue on its own target date")
+	}
+	h.Clock.Set(time.Date(2026, 1, 21, 1, 0, 0, 0, time.UTC))
+	h.Checkin(sam, g.ID, domain.HealthYellow, "Improving.", "Escalate to the vendor.", target)
+	f := h.Freshness(g.ID)
+	if !f.PathToGreenOverdue || !f.PathTargetDate.Equal(target) {
+		t.Errorf("PathToGreenOverdue, PathTargetDate = %v, %v the day after the target while Yellow; want overdue, %v", f.PathToGreenOverdue, f.PathTargetDate, target)
+	}
+	h.Checkin(sam, g.ID, domain.HealthGreen, "Recovered.", "", time.Time{})
+	if f := h.Freshness(g.ID); f.PathToGreenOverdue {
+		t.Errorf("Goal back at Green is still flagged with an overdue Path to Green")
+	}
+}
