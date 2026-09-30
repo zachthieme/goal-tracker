@@ -88,3 +88,59 @@ func TestNonAdminCannotManageDimensions(t *testing.T) {
 		t.Errorf("non-Admin create dimension: status %d, want 403", resp.StatusCode)
 	}
 }
+
+// Each Dimension is a card with its values as tags, a retired one struck
+// through. An Admin's rename, retire, and add-value controls sit behind the
+// card's Edit toggle, and Retire asks for confirmation; a non-Admin gets no
+// toggle.
+func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	dim := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, dim.Values[1].ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/dimensions")
+	card := page[strings.Index(page, `<li data-testid="dimension"`):]
+	if !strings.Contains(openTag(card), `class="card`) {
+		t.Errorf("the Dimension isn't a card: %s", openTag(card))
+	}
+	if !strings.Contains(card, `class="tag">Growth<`) {
+		t.Errorf("the value Growth isn't a tag:\n%s", card)
+	}
+	if !strings.Contains(card, `<del class="tag`) || !strings.Contains(card, ">Reliability</del>") {
+		t.Errorf("the retired value Reliability isn't a struck tag:\n%s", card)
+	}
+	at := strings.Index(card, "<details")
+	if at < 0 {
+		t.Fatalf("the Admin's Dimension card has no Edit toggle:\n%s", card)
+	}
+	edit := card[at:]
+	edit = edit[:strings.Index(edit, "</details>")]
+	if !strings.Contains(edit, ">Edit</summary>") {
+		t.Errorf("the Edit toggle isn't labelled Edit:\n%s", edit)
+	}
+	for _, action := range []string{
+		fmt.Sprintf("/dimension-values/%d/rename", dim.Values[0].ID),
+		fmt.Sprintf("/dimension-values/%d/retire", dim.Values[0].ID),
+		fmt.Sprintf("/dimensions/%d/values", dim.ID),
+	} {
+		if !strings.Contains(edit, `action="`+action+`"`) {
+			t.Errorf("the Edit toggle lacks the %s form:\n%s", action, edit)
+		}
+	}
+	if strings.Contains(card[:at], "<form") {
+		t.Errorf("an Admin control sits outside the Edit toggle:\n%s", card)
+	}
+	retire := edit[strings.Index(edit, fmt.Sprintf(`action="/dimension-values/%d/retire"`, dim.Values[0].ID)):]
+	if !strings.Contains(openTag(retire), `onsubmit="return confirm(`) {
+		t.Errorf("Retire doesn't ask for confirmation: %s", openTag(retire))
+	}
+
+	page = getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/dimensions")
+	if strings.Contains(page, "<details") {
+		t.Errorf("a non-Admin gets the Edit toggle:\n%s", page)
+	}
+}
