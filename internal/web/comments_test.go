@@ -131,8 +131,14 @@ func TestSmokeActionItemCarriesUntilClosedOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.String() != secondURL {
 		t.Fatalf("close: status %d at %s, want back on %s", resp.StatusCode, resp.Request.URL, secondURL)
 	}
-	if page := readBody(t, resp); strings.Contains(page, `data-testid="close-action-item"`) {
+	page = readBody(t, resp)
+	if strings.Contains(page, `data-testid="close-action-item"`) {
 		t.Errorf("a closed Action Item still offers the close form")
+	}
+	// The publication stays as frozen, but says the item has closed since.
+	if item := pageElement(t, page, "li", "open-action-item"); !strings.Contains(item, "Get a second vendor quote.") ||
+		!strings.Contains(item, `data-testid="action-item-closed-since"`) {
+		t.Errorf("a frozen Action Item closed since publication is not marked so; item:\n%s", item)
 	}
 	if item := pageElement(t, getBody(t, ownerClient, firstURL), "li", "raised-action-item"); !strings.Contains(item, "Quote is in: 20% cheaper.") {
 		t.Errorf("the publication it was raised on does not show the closing note; item:\n%s", item)
@@ -141,5 +147,35 @@ func TestSmokeActionItemCarriesUntilClosedOverHTTP(t *testing.T) {
 	resp = postForm(t, authorClient, reportURL+"/publications", url.Values{"baseline": {""}})
 	if page := readBody(t, resp); strings.Contains(page, `data-testid="open-action-item"`) {
 		t.Errorf("publication after closing still carries the Action Item")
+	}
+}
+
+// Closing an Action Item comes back only to a page on this site: a return
+// address that a browser would read as another site is ignored.
+func TestCloseActionItemNeverRedirectsOffSite(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(owner, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(owner, def)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "owner@example.com")
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
+	for _, back := range []string{"//evil.example", "/\t/evil.example", "/\\evil.example", "https://evil.example/", "/\n/evil.example"} {
+		item, err := h.Service.RaiseActionItem(context.Background(), owner.ID, domain.RaiseActionItemInput{
+			PublicationID: pub.ID, Text: "Follow up.", OwnerID: owner.ID, DueDate: h.Clock.Now(),
+		})
+		if err != nil {
+			t.Fatalf("RaiseActionItem: %v", err)
+		}
+		resp := postForm(t, client, fmt.Sprintf("%s/action-items/%d/close", ts.URL, item.ID), url.Values{
+			"note": {"Done."}, "return": {back},
+		})
+		_ = readBody(t, resp)
+		want := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
+		if got := resp.Header.Get("Location"); got != want {
+			t.Errorf("return %q: redirected to %q, want %q", back, got, want)
+		}
 	}
 }

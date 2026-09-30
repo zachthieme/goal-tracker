@@ -36,7 +36,8 @@ type Thread struct {
 // pubID, starting a thread. Anyone signed in may comment; actorID records who
 // did. The Goal must be one the publication covers, and the comment cannot be
 // blank. The Goal's current Owner — the one accountable for it now — is
-// emailed the comment unless they wrote it or have left the org.
+// emailed the comment unless they wrote it or have left the org. A comment
+// whose alert can't be sent is not kept.
 func (s *Service) AddComment(ctx context.Context, actorID, pubID, goalID int64, body string) (Comment, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
@@ -49,28 +50,22 @@ func (s *Service) AddComment(ctx context.Context, actorID, pubID, goalID int64, 
 	if !pub.Report.covers(goalID) {
 		return Comment{}, fmt.Errorf("%w: goal %d is not in this publication", ErrValidation, goalID)
 	}
-	c, err := s.createComment(ctx, actorID, pubID, goalID, 0, body)
-	if err != nil {
-		return Comment{}, err
-	}
-	goal, err := s.queries.GetGoal(ctx, goalID)
-	if err != nil {
-		return Comment{}, fmt.Errorf("look up goal: %w", err)
-	}
-	subject := fmt.Sprintf("Question on %s in %s", goal.Goal.Title, pub.Report.Definition.Name)
-	text := fmt.Sprintf("%s commented on your Goal %q in the Report %s, published %s:\n\n%s\n\nReply at %s\n",
-		c.Author.Email, goal.Goal.Title, pub.Report.Definition.Name,
-		pub.PublishedAt.UTC().Format("2006-01-02"), body, s.commentURL(pub, goalID))
-	if err := s.alert(ctx, actorID, []Account{accountFromRow(goal.Account)}, subject, text); err != nil {
-		return Comment{}, err
-	}
-	return c, nil
+	var c Comment
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		var err error
+		if c, err = tx.createComment(ctx, actorID, pubID, goalID, 0, body); err != nil {
+			return err
+		}
+		return tx.alert(ctx, c, pub, nil)
+	})
+	return c, err
 }
 
 // ReplyToComment replies in the thread commentID belongs to; replying to a
 // reply answers in the same thread. Anyone signed in may reply. The Goal's
 // current Owner and everyone else who has written in the thread are emailed
-// the reply, except its author and anyone who has left the org.
+// the reply, except its author and anyone who has left the org. A reply whose
+// alert can't be sent is not kept.
 func (s *Service) ReplyToComment(ctx context.Context, actorID, commentID int64, body string) (Comment, error) {
 	body = strings.TrimSpace(body)
 	if body == "" {
@@ -84,34 +79,27 @@ func (s *Service) ReplyToComment(ctx context.Context, actorID, commentID int64, 
 	if parent.ThreadID != 0 {
 		threadID = parent.ThreadID
 	}
-	c, err := s.createComment(ctx, actorID, parent.PublicationID, parent.GoalID, threadID, body)
-	if err != nil {
-		return Comment{}, err
-	}
 	pub, err := s.GetPublication(ctx, parent.PublicationID)
 	if err != nil {
 		return Comment{}, err
 	}
-	goal, err := s.queries.GetGoal(ctx, parent.GoalID)
-	if err != nil {
-		return Comment{}, fmt.Errorf("look up goal: %w", err)
-	}
-	authors, err := s.queries.ListThreadAuthors(ctx, threadID)
-	if err != nil {
-		return Comment{}, fmt.Errorf("list thread authors: %w", err)
-	}
-	to := []Account{accountFromRow(goal.Account)}
-	for _, a := range authors {
-		to = append(to, accountFromRow(a))
-	}
-	subject := fmt.Sprintf("Reply on %s in %s", goal.Goal.Title, pub.Report.Definition.Name)
-	text := fmt.Sprintf("%s replied about the Goal %q in the Report %s, published %s:\n\n%s\n\nRead the thread at %s\n",
-		c.Author.Email, goal.Goal.Title, pub.Report.Definition.Name,
-		pub.PublishedAt.UTC().Format("2006-01-02"), body, s.commentURL(pub, parent.GoalID))
-	if err := s.alert(ctx, actorID, to, subject, text); err != nil {
-		return Comment{}, err
-	}
-	return c, nil
+	var c Comment
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		var err error
+		if c, err = tx.createComment(ctx, actorID, parent.PublicationID, parent.GoalID, threadID, body); err != nil {
+			return err
+		}
+		authors, err := tx.queries.ListThreadAuthors(ctx, threadID)
+		if err != nil {
+			return fmt.Errorf("list thread authors: %w", err)
+		}
+		thread := make([]Account, 0, len(authors))
+		for _, a := range authors {
+			thread = append(thread, accountFromRow(a))
+		}
+		return tx.alert(ctx, c, pub, thread)
+	})
+	return c, err
 }
 
 // GetComment returns the Comment with the given id, or ErrNotFound if none
@@ -172,11 +160,26 @@ func (s *Service) createComment(ctx context.Context, actorID, pubID, goalID, thr
 	return commentFromRow(row, author), nil
 }
 
-// alert emails a comment to each of to, once each, skipping its author
-// (actorID) and anyone who has left the org.
-func (s *Service) alert(ctx context.Context, actorID int64, to []Account, subject, body string) error {
-	sent := map[int64]bool{actorID: true}
-	for _, a := range to {
+// alert emails the new Comment c to the Goal's current Owner and to others
+// (everyone in its thread, for a reply), once each, skipping its author and
+// anyone who has left the org.
+func (s *Service) alert(ctx context.Context, c Comment, pub Publication, others []Account) error {
+	goal, err := s.queries.GetGoal(ctx, c.GoalID)
+	if err != nil {
+		return fmt.Errorf("look up goal: %w", err)
+	}
+	kind, verb := "Comment", "commented on"
+	if c.ThreadID != 0 {
+		kind, verb = "Reply", "replied about"
+	}
+	report := pub.Report.Definition.Name
+	subject := fmt.Sprintf("%s on %s in %s", kind, goal.Goal.Title, report)
+	body := fmt.Sprintf("%s %s the Goal %q in the Report %s, published %s:\n\n%s\n\nRead and reply at %s\n",
+		c.Author.Email, verb, goal.Goal.Title, report,
+		orgDate(pub.PublishedAt, s.loc).Format(dateFormat), c.Body, s.commentURL(pub, c.GoalID))
+
+	sent := map[int64]bool{c.Author.ID: true}
+	for _, a := range append([]Account{accountFromRow(goal.Account)}, others...) {
 		if sent[a.ID] || a.Departed {
 			continue
 		}
@@ -192,22 +195,6 @@ func (s *Service) alert(ctx context.Context, actorID int64, to []Account, subjec
 // replied to, for the link in an alert.
 func (s *Service) commentURL(pub Publication, goalID int64) string {
 	return fmt.Sprintf("%s/reports/%d/publications/%d#goal-%d", s.baseURL, pub.DefinitionID, pub.ID, goalID)
-}
-
-// covers reports whether the Report includes the Goal, as an exception block
-// or one line.
-func (r Report) covers(goalID int64) bool {
-	for _, b := range r.Exceptions {
-		if b.Goal.ID == goalID {
-			return true
-		}
-	}
-	for _, sg := range r.Lines {
-		if sg.Goal.ID == goalID {
-			return true
-		}
-	}
-	return false
 }
 
 func commentFromRow(c db.Comment, author db.Account) Comment {

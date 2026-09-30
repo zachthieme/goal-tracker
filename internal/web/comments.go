@@ -39,6 +39,12 @@ func (d discussion) canClose(item domain.ActionItem) bool {
 	return d.Current != nil && d.Current.ID == item.Owner.ID && d.Open[item.ID]
 }
 
+// closedSince reports whether an Action Item a frozen Report lists as open has
+// been closed since. The read-only view (no reader) doesn't know.
+func (d discussion) closedSince(item domain.ActionItem) bool {
+	return d.Current != nil && !d.Open[item.ID]
+}
+
 // publicationDiscussion gathers the discussion of the published Report pub
 // for the reader current.
 func (s *Server) publicationDiscussion(r *http.Request, current domain.Account, pub domain.Publication) (discussion, error) {
@@ -194,12 +200,17 @@ func (s *Server) handleCloseActionItem(w http.ResponseWriter, r *http.Request, c
 }
 
 // localPath reports whether p is a path on this site, safe to redirect to.
+// Browsers drop tabs and newlines and read a backslash as a slash, so any of
+// them could turn "/…" into "//other-site"; such a path is refused outright.
 func localPath(p string) bool {
-	return strings.HasPrefix(p, "/") && !strings.HasPrefix(p, "//") && !strings.Contains(p, `\`)
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") {
+		return false
+	}
+	return !strings.ContainsFunc(p, func(r rune) bool { return r <= ' ' || r == 0x7f || r == '\\' })
 }
 
-// writeCommentError maps a domain comment or Action Item error to an HTTP
-// status.
+// writeCommentError maps a domain error from a Report's discussion — a
+// comment or an Action Item — to an HTTP status.
 func writeCommentError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrValidation):
@@ -209,6 +220,6 @@ func writeCommentError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrNotFound):
 		http.Error(w, "not found", http.StatusNotFound)
 	default:
-		http.Error(w, "comment action failed", http.StatusInternalServerError)
+		http.Error(w, "discussion action failed", http.StatusInternalServerError)
 	}
 }

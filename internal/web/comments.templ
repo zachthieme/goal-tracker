@@ -7,8 +7,10 @@ import (
 )
 
 // reportActionItems lists a Report's open Action Items at its top, soonest due
-// first, each with its owner and due date (CONTEXT.md: Action Item). An owner
-// reading it while the item is still open gets the form to close it.
+// first, each with its owner and due date (CONTEXT.md: Action Item). A
+// publication lists them as they stood when it was published, marking any
+// closed since; an owner reading it while the item is still open gets the
+// form to close it.
 templ reportActionItems(items []domain.ActionItem, d discussion) {
 	if len(items) > 0 {
 		<section data-testid="report-action-items">
@@ -16,8 +18,10 @@ templ reportActionItems(items []domain.ActionItem, d discussion) {
 			<ul>
 				for _, item := range items {
 					<li data-testid="open-action-item">
-						{ item.Text }
-						<span>— { item.Owner.Email }, due { fmtDate(item.DueDate) }</span>
+						@actionItemSummary(item)
+						if d.closedSince(item) {
+							{ " " }<strong data-testid="action-item-closed-since">[Closed since]</strong>
+						}
 						if d.canClose(item) {
 							@closeActionItemForm(item, d)
 						}
@@ -90,8 +94,7 @@ templ publicationActionItems(d discussion) {
 			}
 			for _, item := range d.Raised {
 				<li data-testid="raised-action-item">
-					{ item.Text }
-					<span>— { item.Owner.Email }, due { fmtDate(item.DueDate) }</span>
+					@actionItemSummary(item)
 					if item.Closed {
 						{ " " }<strong>[Closed { fmtDate(item.ClosedAt) }]</strong>
 						<span data-testid="action-item-note">— { item.ClosingNote }</span>
@@ -131,6 +134,13 @@ templ actionItemFields(textRequired bool) {
 		Due
 		<input type="date" name="due" required/>
 	</label>
+}
+
+// actionItemSummary is an Action Item on one line: what, who owns it, and when
+// it is due.
+templ actionItemSummary(item domain.ActionItem) {
+	{ item.Text }
+	<span>— { item.Owner.Email }, due { fmtDate(item.DueDate) }</span>
 }
 
 // closeActionItemForm lets an Action Item's owner close it with a note.

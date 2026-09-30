@@ -25,6 +25,22 @@ type Report struct {
 	Lines       []SelectedGoal
 }
 
+// covers reports whether the Report includes the Goal, as an exception block
+// or one line.
+func (r Report) covers(goalID int64) bool {
+	for _, b := range r.Exceptions {
+		if b.Goal.ID == goalID {
+			return true
+		}
+	}
+	for _, sg := range r.Lines {
+		if sg.Goal.ID == goalID {
+			return true
+		}
+	}
+	return false
+}
+
 // ReportBlock is one exception Goal's full MBR block.
 type ReportBlock struct {
 	Goal   Goal

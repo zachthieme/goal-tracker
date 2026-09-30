@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
+	"github.com/zachthieme/goal-tracker/internal/email"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
@@ -126,5 +127,41 @@ func TestCommentRejectsBlankOrUncoveredGoal(t *testing.T) {
 	}
 	if len(h.Email.Sent()) != 0 {
 		t.Errorf("sent %v, want nothing (the Owner's own comments never alert them)", h.Email.Sent())
+	}
+}
+
+// failingSender is an email sender whose every send fails.
+type failingSender struct{}
+
+func (failingSender) Send(context.Context, email.Message) error { return errors.New("mail is down") }
+
+// A comment whose alert can't be sent is not kept, so posting it again doesn't
+// leave it twice in the thread.
+func TestCommentIsNotKeptWhenItsAlertFails(t *testing.T) {
+	h := testsupport.New(t)
+	ctx := context.Background()
+	owner := h.SignIn("owner@example.com")
+	reader := h.SignIn("reader@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(reader, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(reader, def)
+	down := domain.NewService(h.DB, h.Clock, failingSender{}, nil)
+
+	if _, err := down.AddComment(ctx, reader.ID, pub.ID, g.ID, "Why?"); err == nil {
+		t.Fatal("AddComment succeeded though its alert could not be sent")
+	}
+	question, err := h.Service.AddComment(ctx, reader.ID, pub.ID, g.ID, "Why?")
+	if err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+	if _, err := down.ReplyToComment(ctx, owner.ID, question.ID, "Because."); err == nil {
+		t.Fatal("ReplyToComment succeeded though its alert could not be sent")
+	}
+	threads, err := h.Service.ListThreads(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("ListThreads: %v", err)
+	}
+	if len(threads) != 1 || len(threads[0].Replies) != 0 {
+		t.Errorf("threads %+v, want only the comment whose alert was sent", threads)
 	}
 }

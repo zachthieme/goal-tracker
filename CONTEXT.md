@@ -119,6 +119,10 @@ _Avoid_: MBR (a Report may be used as one), review, rollup
 A saved, reusable selection of Goals for a Report. Each publication freezes a snapshot, and the next publication marks what changed since the previous one.
 _Avoid_: template, saved view, dashboard
 
+**Comment**:
+A question or answer about one Goal in a published Report. A Comment starts a thread that is routed to the Goal's Owner, and anyone may reply in it.
+_Avoid_: feedback, note, annotation
+
 **Action Item**:
 A follow-up raised while a Report is discussed. It has an owner and a due date, belongs to a Report Definition, and carries into each new publication until closed.
 _Avoid_: todo, follow-up, task
