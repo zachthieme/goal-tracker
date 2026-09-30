@@ -32,6 +32,13 @@ type Contributor struct {
 	CreatedAt string
 }
 
+type Delegate struct {
+	ID        int64
+	GoalID    int64
+	AccountID int64
+	CreatedAt string
+}
+
 type Dimension struct {
 	ID        int64
 	Name      string

@@ -147,7 +147,7 @@ templ goalPage(current *domain.Account, v goalView) {
 		if owner && g.Lifecycle == domain.LifecycleProposed {
 			@defineGoal(v)
 		}
-		@checkinSection(v, owner)
+		@checkinSection(v, v.CanCheckin)
 		<section data-testid="goal-milestones">
 			<h2>Milestones</h2>
 			@milestoneList(v.Milestones, owner)
@@ -167,6 +167,7 @@ templ goalPage(current *domain.Account, v goalView) {
 				}
 			</ul>
 		</section>
+		@delegatesSection(v, owner)
 		<section data-testid="goal-dimensions">
 			<h2>Dimensions</h2>
 			@goalDimensions(v, owner)
