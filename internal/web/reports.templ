@@ -9,8 +9,9 @@ import (
 )
 
 // reportsPage lists every saved Report Definition as a card, and behind a New
-// report button the form to build a new one (CONTEXT.md: Report Definition). A definition selects Goals by root Goals plus a
-// depth, by Dimension or Owner filters, or by filters alone.
+// report button the form to build a new one (CONTEXT.md: Report Definition). A
+// definition selects Goals by root Goals plus a depth, by Dimension or Owner
+// filters, or by filters alone.
 templ reportsPage(current *domain.Account, data reportsListData) {
 	@layout("Reports", current) {
 		@reportStyles()
@@ -297,10 +298,7 @@ templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 						for _, sg := range r.Lines {
 							<tr data-testid="selected-goal" id={ fmt.Sprintf("goal-%d", sg.Goal.ID) }>
 								<td>
-									<span data-testid="selected-health" class={ "badge", healthClass(sg.Health) }>
-										@healthMark(sg.Health)
-										{ reportHealth(sg.Health) }
-									</span>
+									@healthBadge("selected-health", sg.Health)
 								</td>
 								<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a></td>
 								<td data-testid="selected-owner">{ sg.Goal.Owner.Email }</td>
@@ -370,8 +368,8 @@ templ narrativeCuration(r domain.Report) {
 }
 
 // reportNarrative is a Report's Insights, Accomplishments, and Misses, in the
-// serif face under label headings: the author's text and the Highlights they picked, each crediting the Goal's
-// Owner. Sections with neither are left out.
+// serif face under label headings: the author's text and the Highlights they
+// picked, each crediting the Goal's Owner. Sections with neither are left out.
 templ reportNarrative(narrative []domain.NarrativeSection) {
 	if len(narrative) > 0 {
 		<section data-testid="report-narrative" class="card rp-narrative">
@@ -426,10 +424,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 				</p>
 			</div>
 			<div class="rp-badges">
-				<span data-testid="report-health" class={ "badge", healthClass(b.Health) }>
-					@healthMark(b.Health)
-					{ reportHealth(b.Health) }
-				</span>
+				@healthBadge("report-health", b.Health)
 				for _, badge := range b.Badges {
 					<span data-testid="report-badge" class={ "badge", badgeClass(badge) }>{ badge }</span>
 				}
@@ -500,10 +495,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 			<p data-testid="report-rollup">
 				if b.RolledUp.Present {
 					<strong>Rolled-up Health:</strong>
-					<span class={ "badge", healthClass(b.RolledUp.Health) }>
-						@healthMark(b.RolledUp.Health)
-						{ b.RolledUp.Health }
-					</span>
+					@healthBadge("rollup-health", b.RolledUp.Health)
 				}
 				@rolledUpStale(b.RolledUp)
 				if b.Explanation != "" {
@@ -514,6 +506,15 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 		}
 		@goalDiscussion(b.Goal.ID, d)
 	</article>
+}
+
+// healthBadge is a Health as a coloured badge, marked for print, or a dash
+// when there is none yet.
+templ healthBadge(testID, health string) {
+	<span data-testid={ testID } class={ "badge", healthClass(health) }>
+		@healthMark(health)
+		{ reportHealth(health) }
+	</span>
 }
 
 // healthMark marks a Health on a badge: the design system's coloured dot on
