@@ -153,7 +153,7 @@ func goalDiscussion(goalID int64, d discussion) templ.Component {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<details data-testid=\"reply-toggle\" class=\"rp-reply\"><summary class=\"small\">Reply</summary><form data-testid=\"reply-form\" class=\"rp-inline-form\" method=\"post\" action=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<details data-testid=\"reply-toggle\"><summary class=\"small\">Reply</summary><form data-testid=\"reply-form\" class=\"rp-inline-form\" method=\"post\" action=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

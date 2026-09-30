@@ -49,7 +49,7 @@ templ goalDiscussion(goalID int64, d discussion) {
 							for _, reply := range t.Replies {
 								@comment(reply, d, true)
 							}
-							<details data-testid="reply-toggle" class="rp-reply">
+							<details data-testid="reply-toggle">
 								<summary class="small">Reply</summary>
 								<form data-testid="reply-form" class="rp-inline-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/comments/%d/replies", t.Comment.ID)) }>
 									<label>
