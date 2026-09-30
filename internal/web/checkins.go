@@ -53,22 +53,27 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 
 	lifecycle := lifecycleFromForm(r, goal)
 
-	formData := func(msg string) checkinFormData {
+	// An error from reading the form already names its field; the domain's are
+	// placed by checkinErrorField.
+	formData := func(err error) checkinFormData {
+		var e checkinError
+		if !errors.As(err, &e) {
+			e = checkinError{Field: checkinErrorField(err.Error(), dates, metrics), Message: err.Error()}
+		}
 		return checkinFormData{
 			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, Explanation: explanation,
-			Metrics: metrics, Readings: rawReadings, Highlight: highlight, Dates: dates, Lifecycle: lifecycle,
-			Error: checkinError{Field: checkinErrorField(msg, dates), Message: msg},
+			Metrics: metrics, Readings: rawReadings, Highlight: highlight, Dates: dates, Lifecycle: lifecycle, Error: e,
 		}
 	}
 
 	date, err := parseDate(rawDate)
 	if err != nil {
-		s.renderCheckinFormError(w, r, goalID, formData("invalid target date"))
+		s.renderCheckinFormError(w, r, goalID, formData(checkinError{Field: "path_to_green", Message: "invalid target date"}))
 		return
 	}
 	readings, err := readingsFromForm(metrics, rawReadings)
 	if err != nil {
-		s.renderCheckinFormError(w, r, goalID, formData(err.Error()))
+		s.renderCheckinFormError(w, r, goalID, formData(err))
 		return
 	}
 
@@ -88,7 +93,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		Outcome:         lifecycle.Outcome,
 	}
 	if err := dates.applyTo(&in); err != nil {
-		s.renderCheckinFormError(w, r, goalID, formData(err.Error()))
+		s.renderCheckinFormError(w, r, goalID, formData(err))
 		return
 	}
 	if highlight.Kind != "" {
@@ -97,7 +102,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 
 	if _, err = s.svc.SubmitCheckin(r.Context(), in); err != nil {
 		if errors.Is(err, domain.ErrValidation) {
-			s.renderCheckinFormError(w, r, goalID, formData(err.Error()))
+			s.renderCheckinFormError(w, r, goalID, formData(err))
 			return
 		}
 		writeCheckinError(w, err)
@@ -108,9 +113,9 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 
 // checkinErrorField names the form field a Check-in validation message is
 // about. The domain reports a Check-in's validation errors as messages, so the
-// field is read from the message's wording; a Milestone's field is found by the
-// Milestone the message names among the form's rows.
-func checkinErrorField(msg string, dates checkinDatesFormData) string {
+// field is read from the message's wording; a Milestone's or Metric's field is
+// found by the name the message quotes among the form's rows.
+func checkinErrorField(msg string, dates checkinDatesFormData, metrics []domain.Metric) string {
 	if id, ok := dates.milestoneNamedIn(msg); ok {
 		switch {
 		case strings.Contains(msg, "changing the date of Milestone"):
@@ -124,6 +129,13 @@ func checkinErrorField(msg string, dates checkinDatesFormData) string {
 	if i, ok := dates.newMilestoneIn(msg); ok {
 		return fmt.Sprintf("new_milestone_%d", i)
 	}
+	if strings.Contains(msg, "needs a final value for every Metric") {
+		for _, m := range metrics {
+			if strings.Contains(msg, fmt.Sprintf("%q has none", m.Name)) {
+				return readingField(m.ID)
+			}
+		}
+	}
 	switch {
 	case strings.Contains(msg, "differs from the Rolled-up Health"):
 		return "explanation"
@@ -133,7 +145,7 @@ func checkinErrorField(msg string, dates checkinDatesFormData) string {
 		return "lifecycle"
 	case strings.Contains(msg, "needs an outcome"), strings.Contains(msg, "outcome is one line"):
 		return "outcome"
-	case strings.Contains(msg, "moves the delivery date later"), msg == "invalid delivery date":
+	case strings.Contains(msg, "moves the delivery date later"):
 		return "delivery_date"
 	case strings.Contains(msg, "changing the delivery date needs a reason"):
 		return "delivery_date_reason"
@@ -167,13 +179,21 @@ func (d checkinDatesFormData) newMilestoneIn(msg string) (int, bool) {
 	return 0, false
 }
 
+// Error returns the message, so a form-reading error can carry its field.
+func (e checkinError) Error() string { return e.Message }
+
+// readingField names a Metric's reading input.
+func readingField(metricID int64) string {
+	return "reading_" + strconv.FormatInt(metricID, 10)
+}
+
 // rawReadingsFromForm reads the reading_<metricID> field for each of the Goal's
 // Metrics, keyed by Metric ID, keeping the raw text so an error re-render can
 // show what the reader typed. A blank field means no reading for that Metric.
 func rawReadingsFromForm(r *http.Request, metrics []domain.Metric) map[int64]string {
 	out := make(map[int64]string, len(metrics))
 	for _, m := range metrics {
-		out[m.ID] = strings.TrimSpace(r.FormValue("reading_" + strconv.FormatInt(m.ID, 10)))
+		out[m.ID] = strings.TrimSpace(r.FormValue(readingField(m.ID)))
 	}
 	return out
 }
@@ -189,7 +209,7 @@ func readingsFromForm(metrics []domain.Metric, raw map[int64]string) ([]domain.M
 		}
 		value, err := strconv.ParseFloat(text, 64)
 		if err != nil {
-			return nil, fmt.Errorf("%q needs a number", m.Name)
+			return nil, checkinError{Field: readingField(m.ID), Message: fmt.Sprintf("%q needs a number", m.Name)}
 		}
 		out = append(out, domain.MetricReadingInput{MetricID: m.ID, Value: value})
 	}
@@ -235,18 +255,21 @@ func datesFromForm(r *http.Request, goal domain.Goal, milestones []domain.Milest
 }
 
 // applyTo parses the typed dates into the Check-in's date and Milestone
-// changes. A date that isn't a date is rejected with a message naming the field.
+// changes. A date that isn't a date is rejected, next to its field.
 func (d checkinDatesFormData) applyTo(in *domain.SubmitCheckinInput) error {
 	delivery, err := parseDate(d.DeliveryDate)
 	if err != nil {
-		return errors.New("invalid delivery date")
+		return checkinError{Field: "delivery_date", Message: "invalid delivery date"}
 	}
 	in.DeliveryDate = delivery
 	in.DeliveryDateReason = d.DeliveryDateReason
 	for _, row := range d.Milestones {
 		date, err := parseDate(row.Date)
 		if err != nil {
-			return fmt.Errorf("invalid date for Milestone %q", row.Milestone.Name)
+			return checkinError{
+				Field:   fmt.Sprintf("milestone_date_%d", row.Milestone.ID),
+				Message: fmt.Sprintf("invalid date for Milestone %q", row.Milestone.Name),
+			}
 		}
 		in.Milestones = append(in.Milestones, domain.MilestoneChangeInput{
 			MilestoneID:   row.Milestone.ID,
@@ -256,10 +279,13 @@ func (d checkinDatesFormData) applyTo(in *domain.SubmitCheckinInput) error {
 			RemovedReason: row.RemovedReason,
 		})
 	}
-	for _, row := range d.NewMilestones {
+	for i, row := range d.NewMilestones {
 		date, err := parseDate(row.Date)
 		if err != nil {
-			return fmt.Errorf("invalid date for new Milestone %q", row.Name)
+			return checkinError{
+				Field:   fmt.Sprintf("new_milestone_%d", i),
+				Message: fmt.Sprintf("invalid date for new Milestone %q", row.Name),
+			}
 		}
 		in.NewMilestones = append(in.NewMilestones, domain.NewMilestoneInput{Name: row.Name, TargetDate: date})
 	}

@@ -422,8 +422,8 @@ func TestSmokeCheckinMarksGoalDone(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("htmx validation response status = %d, want 200", status)
 	}
-	if !strings.Contains(body, `data-testid="checkin-error"`) || !strings.Contains(body, "final value") {
-		t.Errorf("response missing the inline final-value error; body:\n%s", body)
+	if msg := fieldError(t, body, fmt.Sprintf(`name="reading_%d"`, metric.ID)); !strings.Contains(msg, "final value") {
+		t.Errorf("reading field's error = %q, want the final-value one", msg)
 	}
 	if !strings.Contains(body, "p95 latency down to 380ms.") {
 		t.Errorf("re-rendered form lost the typed outcome; body:\n%s", body)
@@ -471,7 +471,8 @@ func TestCheckinCancelWithoutReasonErrorReadsNaturally(t *testing.T) {
 }
 
 // A reading that isn't a number is rejected with a message naming the Metric,
-// not its database id, and the typed text stays in the input (ticket #29).
+// not its database id, shown next to that reading, and the typed text stays in
+// the input (ticket #29).
 func TestCheckinNonNumericReadingNamesTheMetric(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
@@ -500,7 +501,7 @@ func TestCheckinNonNumericReadingNamesTheMetric(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("htmx validation response status = %d, want 200", status)
 	}
-	msg := pageElement(t, body, "p", "checkin-error")
+	msg := fieldError(t, body, fmt.Sprintf(`name="reading_%d"`, metric.ID))
 	if !strings.Contains(msg, `&#34;Signups&#34; needs a number`) {
 		t.Errorf("error = %q, want it to say \"Signups\" needs a number", msg)
 	}
@@ -827,5 +828,27 @@ func TestCheckinOverdueNewMilestoneErrorShownNextToNewMilestone(t *testing.T) {
 	})
 	if msg := fieldError(t, body, `name="new_milestone_date"`); !strings.Contains(msg, "is overdue") {
 		t.Errorf("new Milestone's error = %q, want the overdue one", msg)
+	}
+}
+
+// A Milestone date that isn't a date gets its error next to that Milestone's
+// date.
+func TestCheckinInvalidMilestoneDateErrorShownNextToMilestoneDate(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	beta := onlyMilestone(t, h, goal)
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"All good."},
+		fmt.Sprintf("milestone_date_%d", beta.ID): {"next spring"},
+	})
+	marker := fmt.Sprintf(`name="milestone_date_%d"`, beta.ID)
+	if msg := fieldError(t, body, marker); !strings.Contains(msg, "invalid date") {
+		t.Errorf("Milestone date field's error = %q, want the invalid date one", msg)
 	}
 }

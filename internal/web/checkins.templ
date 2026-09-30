@@ -299,10 +299,11 @@ templ checkinForm(d checkinFormData) {
 						<input
 							type="number"
 							step="any"
-							name={ fmt.Sprintf("reading_%d", m.ID) }
+							name={ readingField(m.ID) }
 							value={ d.reading(m.ID) }
 						/>
 					</label>
+					@checkinFieldError(d.Error, readingField(m.ID))
 				}
 			</fieldset>
 		}
