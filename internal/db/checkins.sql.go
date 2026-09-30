@@ -27,21 +27,26 @@ func (q *Queries) CountMilestoneChurn(ctx context.Context, goalID int64) (int64,
 }
 
 const createCheckin = `-- name: CreateCheckin :one
-INSERT INTO checkins (goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, explanation, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at, explanation
+INSERT INTO checkins (goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, explanation,
+                      lifecycle_from, lifecycle_to, lifecycle_reason, outcome, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at, explanation, lifecycle_from, lifecycle_to, lifecycle_reason, outcome
 `
 
 type CreateCheckinParams struct {
-	GoalID         int64
-	AuthorID       int64
-	OwnerID        int64
-	Health         string
-	Status         string
-	PathToGreen    string
-	PathTargetDate string
-	Explanation    string
-	CreatedAt      string
+	GoalID          int64
+	AuthorID        int64
+	OwnerID         int64
+	Health          string
+	Status          string
+	PathToGreen     string
+	PathTargetDate  string
+	Explanation     string
+	LifecycleFrom   string
+	LifecycleTo     string
+	LifecycleReason string
+	Outcome         string
+	CreatedAt       string
 }
 
 func (q *Queries) CreateCheckin(ctx context.Context, arg CreateCheckinParams) (Checkin, error) {
@@ -54,6 +59,10 @@ func (q *Queries) CreateCheckin(ctx context.Context, arg CreateCheckinParams) (C
 		arg.PathToGreen,
 		arg.PathTargetDate,
 		arg.Explanation,
+		arg.LifecycleFrom,
+		arg.LifecycleTo,
+		arg.LifecycleReason,
+		arg.Outcome,
 		arg.CreatedAt,
 	)
 	var i Checkin
@@ -68,6 +77,10 @@ func (q *Queries) CreateCheckin(ctx context.Context, arg CreateCheckinParams) (C
 		&i.PathTargetDate,
 		&i.CreatedAt,
 		&i.Explanation,
+		&i.LifecycleFrom,
+		&i.LifecycleTo,
+		&i.LifecycleReason,
+		&i.Outcome,
 	)
 	return i, err
 }
@@ -181,7 +194,7 @@ func (q *Queries) CreateMetricReading(ctx context.Context, arg CreateMetricReadi
 }
 
 const getLatestCheckin = `-- name: GetLatestCheckin :one
-SELECT id, goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at, explanation FROM checkins WHERE goal_id = ? ORDER BY created_at DESC, id DESC LIMIT 1
+SELECT id, goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at, explanation, lifecycle_from, lifecycle_to, lifecycle_reason, outcome FROM checkins WHERE goal_id = ? ORDER BY created_at DESC, id DESC LIMIT 1
 `
 
 // The most recent Check-in on a Goal, which carries the Goal's current Health,
@@ -201,12 +214,16 @@ func (q *Queries) GetLatestCheckin(ctx context.Context, goalID int64) (Checkin, 
 		&i.PathTargetDate,
 		&i.CreatedAt,
 		&i.Explanation,
+		&i.LifecycleFrom,
+		&i.LifecycleTo,
+		&i.LifecycleReason,
+		&i.Outcome,
 	)
 	return i, err
 }
 
 const listCheckins = `-- name: ListCheckins :many
-SELECT checkins.id, checkins.goal_id, checkins.author_id, checkins.owner_id, checkins.health, checkins.status, checkins.path_to_green, checkins.path_target_date, checkins.created_at, checkins.explanation, author.id, author.email, author.is_admin, author.created_at, author.departed, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed
+SELECT checkins.id, checkins.goal_id, checkins.author_id, checkins.owner_id, checkins.health, checkins.status, checkins.path_to_green, checkins.path_target_date, checkins.created_at, checkins.explanation, checkins.lifecycle_from, checkins.lifecycle_to, checkins.lifecycle_reason, checkins.outcome, author.id, author.email, author.is_admin, author.created_at, author.departed, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed
 FROM checkins
 JOIN accounts author ON author.id = checkins.author_id
 JOIN accounts owner ON owner.id = checkins.owner_id
@@ -242,6 +259,10 @@ func (q *Queries) ListCheckins(ctx context.Context, goalID int64) ([]ListCheckin
 			&i.Checkin.PathTargetDate,
 			&i.Checkin.CreatedAt,
 			&i.Checkin.Explanation,
+			&i.Checkin.LifecycleFrom,
+			&i.Checkin.LifecycleTo,
+			&i.Checkin.LifecycleReason,
+			&i.Checkin.Outcome,
 			&i.Account.ID,
 			&i.Account.Email,
 			&i.Account.IsAdmin,

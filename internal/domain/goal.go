@@ -32,10 +32,15 @@ type Goal struct {
 	Ownerless bool
 }
 
-// Lifecycle values a Goal can be in (CONTEXT.md: Lifecycle).
+// Lifecycle values a Goal can be in (CONTEXT.md: Lifecycle). A Goal starts
+// Proposed and is activated through the activation gate; after that its
+// Lifecycle changes only in a Check-in (see lifecycle.go).
 const (
-	LifecycleProposed = "Proposed"
-	LifecycleActive   = "Active"
+	LifecycleProposed  = "Proposed"
+	LifecycleActive    = "Active"
+	LifecycleOnHold    = "On Hold"
+	LifecycleDone      = "Done"
+	LifecycleCancelled = "Cancelled"
 )
 
 // Goal kinds. A Dated Goal has a delivery date; an Ongoing Goal has none and is
