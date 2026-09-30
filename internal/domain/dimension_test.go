@@ -111,7 +111,7 @@ func TestAssignDimensionValueReplacesWithinDimension(t *testing.T) {
 	quarter := h.CreateDimension(boss, "Quarter", "Q1")
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 
-	if err := h.Service.AssignGoalValue(ctx, goal.ID, pillar.Values[0].ID); err != nil {
+	if err := h.Service.AssignGoalValue(ctx, sam.ID, goal.ID, pillar.Values[0].ID); err != nil {
 		t.Fatalf("AssignGoalValue Growth: %v", err)
 	}
 	values, err := h.Service.GoalValues(ctx, goal.ID)
@@ -123,11 +123,11 @@ func TestAssignDimensionValueReplacesWithinDimension(t *testing.T) {
 	}
 
 	// Assigning Reliability in the same Dimension replaces Growth.
-	if err := h.Service.AssignGoalValue(ctx, goal.ID, pillar.Values[1].ID); err != nil {
+	if err := h.Service.AssignGoalValue(ctx, sam.ID, goal.ID, pillar.Values[1].ID); err != nil {
 		t.Fatalf("AssignGoalValue Reliability: %v", err)
 	}
 	// A value in another Dimension coexists.
-	if err := h.Service.AssignGoalValue(ctx, goal.ID, quarter.Values[0].ID); err != nil {
+	if err := h.Service.AssignGoalValue(ctx, sam.ID, goal.ID, quarter.Values[0].ID); err != nil {
 		t.Fatalf("AssignGoalValue Q1: %v", err)
 	}
 	values, err = h.Service.GoalValues(ctx, goal.ID)
@@ -143,6 +143,43 @@ func TestAssignDimensionValueReplacesWithinDimension(t *testing.T) {
 	}
 	if !got["Reliability"] || !got["Q1"] {
 		t.Errorf("values = %+v, want Reliability and Q1", values)
+	}
+}
+
+// Only the Goal's Owner or an Admin may assign its Dimension values; anyone else
+// is refused and the Goal's value is left as it was (CONTEXT.md: Owners assign
+// Dimension values to their Goals).
+func TestOnlyOwnerOrAdminAssignsDimensionValue(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	other := h.SignIn("other@example.com")
+	ctx := context.Background()
+
+	quarter := h.CreateDimension(boss, "Quarter", "Q2", "Q3", "Q4")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, quarter.Values[2])
+
+	if err := h.Service.AssignGoalValue(ctx, other.ID, goal.ID, quarter.Values[1].ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("non-Owner AssignGoalValue err = %v, want ErrNotAuthorized", err)
+	}
+	values, err := h.Service.GoalValues(ctx, goal.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	if len(values) != 1 || values[0].Value != "Q4" {
+		t.Errorf("after refused assign, values = %+v, want Q4 unchanged", values)
+	}
+
+	if err := h.Service.AssignGoalValue(ctx, boss.ID, goal.ID, quarter.Values[0].ID); err != nil {
+		t.Fatalf("Admin AssignGoalValue: %v", err)
+	}
+	values, err = h.Service.GoalValues(ctx, goal.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	if len(values) != 1 || values[0].Value != "Q2" {
+		t.Errorf("after Admin assign, values = %+v, want Q2", values)
 	}
 }
 
@@ -174,7 +211,7 @@ func TestRetiredValueStaysReadableButNotAssignable(t *testing.T) {
 	}
 
 	// Not offered for a new assignment.
-	if err := h.Service.AssignGoalValue(ctx, fresh.ID, growth.ID); !errors.Is(err, domain.ErrValidation) {
+	if err := h.Service.AssignGoalValue(ctx, sam.ID, fresh.ID, growth.ID); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("assigning a retired value err = %v, want ErrValidation", err)
 	}
 }

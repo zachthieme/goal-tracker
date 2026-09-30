@@ -233,6 +233,35 @@ func TestOwnerAssignsDimensionValueOverHTTP(t *testing.T) {
 	}
 }
 
+// Only the Owner (or an Admin) sets a Goal's Dimension values: another signed-in
+// person posting to the endpoint is refused with 403 and the value is unchanged.
+func TestNonOwnerCannotAssignDimensionValueOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	owner := h.SignIn("owner@example.com")
+	h.SignIn("other@example.com")
+	quarter := h.CreateDimension(boss, "Quarter", "Q3", "Q4")
+	goal := h.CreateGoal(owner, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, quarter.Values[1])
+	ts := newServer(t, h)
+
+	otherClient := signInClient(t, ts.URL, "other@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+	resp := postForm(t, otherClient, goalURL+"/dimensions", url.Values{"value_id": {fmt.Sprintf("%d", quarter.Values[0].ID)}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-Owner assign status = %d, want 403", resp.StatusCode)
+	}
+
+	values, err := h.Service.GoalValues(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	if len(values) != 1 || values[0].Value != "Q4" {
+		t.Errorf("values = %+v, want Q4 unchanged", values)
+	}
+}
+
 // The Goal list filters to the Goals carrying a chosen value and groups the list
 // under each value of a chosen Dimension (CONTEXT.md: filter and group Goals).
 func TestGoalListFiltersAndGroupsByDimension(t *testing.T) {

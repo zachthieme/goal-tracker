@@ -18,10 +18,11 @@ func (h *Harness) CreateDimension(admin domain.Account, name string, values ...s
 	return dim
 }
 
-// AssignGoalValue assigns a Dimension value to a Goal, failing the test on error.
+// AssignGoalValue assigns a Dimension value to a Goal on behalf of its Owner,
+// failing the test on error.
 func (h *Harness) AssignGoalValue(goal domain.Goal, value domain.DimensionValue) {
 	h.T.Helper()
-	if err := h.Service.AssignGoalValue(context.Background(), goal.ID, value.ID); err != nil {
+	if err := h.Service.AssignGoalValue(context.Background(), goal.Owner.ID, goal.ID, value.ID); err != nil {
 		h.T.Fatalf("AssignGoalValue: %v", err)
 	}
 }
