@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -318,5 +319,86 @@ func TestSmokePrintPublicationOverHTTP(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("print page under another definition: status %d, want 404", resp.StatusCode)
+	}
+}
+
+// While preparing a publication the author sees each Highlight in scope on the
+// draft page, picks which go into Insights, Accomplishments, and Misses, and
+// adds their own text. The draft and then the publication show the narrative,
+// each Highlight crediting the Goal's Owner. The narrative's content is
+// asserted on its view model in the domain tests; this checks the pages wire
+// it through.
+func TestSmokeCurateNarrativeOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	alice := h.SignIn("alice@example.com")
+	g := h.ActiveGoal(alice, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlight(alice, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	h.Clock.Advance(time.Hour)
+	h.CheckinWithHighlight(alice, g.ID, domain.HighlightMiss, "Lost the second customer.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	draft, err := h.Service.DraftReport(context.Background(), def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	var signed, lost int64
+	for _, nh := range draft.Highlights {
+		switch nh.Highlight.Note {
+		case "Signed the first EU customer.":
+			signed = nh.Highlight.ID
+		case "Lost the second customer.":
+			lost = nh.Highlight.ID
+		}
+	}
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+
+	page := getBody(t, client, reportURL)
+	form := pageElement(t, page, "form", "narrative-curation")
+	for _, want := range []string{"Signed the first EU customer.", "Lost the second customer.", "alice@example.com", "Launch in EU"} {
+		if !strings.Contains(form, want) {
+			t.Errorf("curation form missing %q; form:\n%s", want, form)
+		}
+	}
+
+	resp := postForm(t, client, reportURL+"/narrative", url.Values{
+		"pick-" + strconv.FormatInt(signed, 10):  {domain.HighlightAccomplishment},
+		"pick-" + strconv.FormatInt(lost, 10):    {""},
+		"text-" + domain.HighlightAccomplishment: {"EU is open for business."},
+	})
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/reports/"+strconv.FormatInt(def.ID, 10) {
+		t.Fatalf("curate: status %d at %s, want the draft page", resp.StatusCode, resp.Request.URL)
+	}
+	page = readBody(t, resp)
+	narrative := pageElement(t, page, "section", "report-narrative")
+	for _, want := range []string{"Accomplishments", "EU is open for business.", "Signed the first EU customer.", "alice@example.com"} {
+		if !strings.Contains(narrative, want) {
+			t.Errorf("draft narrative missing %q; narrative:\n%s", want, narrative)
+		}
+	}
+	if strings.Contains(narrative, "Lost the second customer.") {
+		t.Errorf("draft narrative shows a Highlight the author left out; narrative:\n%s", narrative)
+	}
+	if form := pageElement(t, page, "form", "narrative-curation"); !strings.Contains(form, "EU is open for business.") {
+		t.Errorf("curation form does not keep the author's text; form:\n%s", form)
+	}
+
+	resp = postForm(t, client, reportURL+"/publications", url.Values{"baseline": {""}})
+	published := readBody(t, resp)
+	narrative = pageElement(t, published, "section", "report-narrative")
+	for _, want := range []string{"EU is open for business.", "Signed the first EU customer.", "alice@example.com"} {
+		if !strings.Contains(narrative, want) {
+			t.Errorf("published narrative missing %q; narrative:\n%s", want, narrative)
+		}
+	}
+	if strings.Contains(published, `data-testid="narrative-curation"`) {
+		t.Errorf("publication offers to curate its frozen narrative; body:\n%s", published)
+	}
+
+	resp = postForm(t, client, reportURL+"/narrative", url.Values{"pick-9999": {domain.HighlightInsight}})
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("picking an unknown Highlight: status %d, want 422", resp.StatusCode)
 	}
 }
