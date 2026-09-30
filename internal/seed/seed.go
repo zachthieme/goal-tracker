@@ -51,7 +51,8 @@ type Options struct {
 
 // Summary counts what a seed run built.
 type Summary struct {
-	Goals int
+	Goals    int
+	Checkins int
 }
 
 // Run builds the fake org through svc. The history ends at clk's current time:
@@ -85,7 +86,16 @@ func Run(ctx context.Context, svc *domain.Service, clk *clock.Fixed, opts Option
 	if !rep.Committed {
 		return Summary{}, fmt.Errorf("import the org: %s", rowErrors(rep))
 	}
-	return Summary{Goals: len(plan.goals)}, nil
+	for i, row := range rep.Rows {
+		plan.goals[i].id = row.GoalID
+	}
+
+	hist := &history{svc: svc, clk: clk, rng: rng, end: end}
+	checkins, err := hist.run(ctx, plan)
+	if err != nil {
+		return Summary{}, err
+	}
+	return Summary{Goals: len(plan.goals), Checkins: checkins}, nil
 }
 
 // plannedGoal is one Goal of the org with everything the random seed decided
@@ -97,7 +107,16 @@ type plannedGoal struct {
 	parents    []string // titles of the Goals it contributes to
 	delivery   time.Time
 	milestones []plannedMilestone
-	metric     string // import-format Metric with its target date, or ""
+	metric     string  // import-format Metric with its target date, or ""
+	level      int     // 1 for an org outcome, 2 for a team Goal, 3 for a project
+	profile    profile // how a project's weeks play out
+	turn       int     // the week a troubled project turns Yellow
+	recover    int     // the week a troubled project recovers to Yellow, or 0
+
+	// Set once the Goal exists.
+	id      int64
+	ownerID int64
+	metrics []domain.Metric
 }
 
 type plannedMilestone struct {
@@ -117,8 +136,8 @@ var milestoneNames = []string{"Design review", "Prototype", "Beta", "Rollout to 
 
 func newPlan(rng *rand.Rand, day0 time.Time) *plan {
 	p := &plan{}
-	add := func(e entry, teamName, owner string, parents []string, deliveryWeeks int) {
-		g := &plannedGoal{entry: e, team: teamName, owner: owner, parents: parents}
+	add := func(level int, e entry, teamName, owner string, parents []string, deliveryWeeks int) *plannedGoal {
+		g := &plannedGoal{entry: e, team: teamName, owner: owner, parents: parents, level: level}
 		if e.ongoing {
 			g.metric = e.metric + " | " + day0.AddDate(0, 0, 7*40).Format(dateFormat)
 		} else {
@@ -129,25 +148,43 @@ func newPlan(rng *rand.Rand, day0 time.Time) *plan {
 			}
 		}
 		p.goals = append(p.goals, g)
+		return g
 	}
 
 	for _, o := range outcomes {
-		add(o.entry, "", o.owner, nil, 0)
+		add(1, o.entry, "", o.owner, nil, 0)
 	}
 	for _, t := range teams {
 		for _, e := range t.goals {
-			add(e, t.name, t.lead, titlesOf(e.parents, outcomeEntries()), 14+rng.IntN(9))
+			add(2, e, t.name, t.lead, titlesOf(e.parents, outcomeEntries()), 14+rng.IntN(9))
 		}
 	}
+	var projects []*plannedGoal
 	for _, t := range teams {
 		for _, e := range t.projects {
-			add(e, t.name, t.people[rng.IntN(len(t.people))], titlesOf(e.parents, t.goals), 14+rng.IntN(11))
+			projects = append(projects, add(3, e, t.name, t.people[rng.IntN(len(t.people))], titlesOf(e.parents, t.goals), 14+rng.IntN(11)))
 		}
 		for _, e := range t.unaligned {
-			add(e, t.name, t.people[rng.IntN(len(t.people))], nil, 14+rng.IntN(11))
+			projects = append(projects, add(3, e, t.name, t.people[rng.IntN(len(t.people))], nil, 14+rng.IntN(11)))
+		}
+	}
+	for i, j := range rng.Perm(len(projects)) {
+		if i < len(profileDeck) {
+			dealProfile(rng, projects[j], profileDeck[i])
 		}
 	}
 	return p
+}
+
+// dealProfile gives a project its profile and decides when its turns come.
+func dealProfile(rng *rand.Rand, g *plannedGoal, pr profile) {
+	g.profile = pr
+	if pr == troubled {
+		g.turn = 3 + rng.IntN(5)
+		if rng.IntN(2) == 0 {
+			g.recover = g.turn + 4 + rng.IntN(3)
+		}
+	}
 }
 
 // planMilestones spreads two to four Milestones evenly between a week after

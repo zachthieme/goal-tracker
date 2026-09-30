@@ -3,6 +3,7 @@ package seed_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/seed"
@@ -45,10 +46,18 @@ func depth(t *testing.T, h *testsupport.Harness, goalID int64) int {
 	return deepest + 1
 }
 
+// TestSeededOrg seeds one org and checks it from each angle a demo needs. The
+// subtests share the org because seeding writes weeks of Check-ins and takes a
+// few seconds.
+func TestSeededOrg(t *testing.T) {
+	h := seeded(t)
+	t.Run("about 50 Goals across teams and three levels", func(t *testing.T) { orgAcrossTeamsAndThreeLevels(t, h) })
+	t.Run("Check-in history with mixed Health", func(t *testing.T) { checkinHistoryWithMixedHealth(t, h) })
+}
+
 // The seed builds a realistic org: about 50 Goals spread across several teams
 // through a Team Dimension, arranged three levels deep in the goal graph.
-func TestSeedBuildsAnOrgAcrossTeamsAndThreeLevels(t *testing.T) {
-	h := seeded(t)
+func orgAcrossTeamsAndThreeLevels(t *testing.T, h *testsupport.Harness) {
 	ctx := context.Background()
 
 	goals := listGoals(t, h)
@@ -89,5 +98,49 @@ func TestSeedBuildsAnOrgAcrossTeamsAndThreeLevels(t *testing.T) {
 	}
 	if levels[1] == 0 || levels[2] == 0 || levels[3] == 0 || len(levels) != 3 {
 		t.Errorf("want Goals on exactly three levels of the graph, got %v", levels)
+	}
+}
+
+// Owners have been checking in for weeks: most Goals are Active with a history
+// of Check-ins spanning the seeded weeks, and their current Health is a mix of
+// Green, Yellow, and Red.
+func checkinHistoryWithMixedHealth(t *testing.T, h *testsupport.Harness) {
+	ctx := context.Background()
+	end := h.Clock.Now()
+
+	health := map[string]int{}
+	var active, longHistory int
+	for _, g := range listGoals(t, h) {
+		if g.Lifecycle != domain.LifecycleActive {
+			continue
+		}
+		active++
+		checkins, err := h.Service.ListCheckins(ctx, g.ID)
+		if err != nil {
+			t.Fatalf("ListCheckins: %v", err)
+		}
+		if len(checkins) == 0 {
+			t.Errorf("Active Goal %q has no Check-ins", g.Title)
+			continue
+		}
+		health[checkins[0].Health]++
+		oldest := checkins[len(checkins)-1].CreatedAt
+		if end.Sub(oldest) >= 8*7*24*time.Hour && len(checkins) >= 4 {
+			longHistory++
+		}
+		if checkins[0].CreatedAt.After(end) {
+			t.Errorf("Goal %q has a Check-in after the seed's end %v", g.Title, end)
+		}
+	}
+	if active < 35 {
+		t.Errorf("want most Goals Active, got %d", active)
+	}
+	if longHistory < active/2 {
+		t.Errorf("want most Active Goals to have weeks of Check-in history, got %d of %d", longHistory, active)
+	}
+	for _, want := range []string{domain.HealthGreen, domain.HealthYellow, domain.HealthRed} {
+		if health[want] == 0 {
+			t.Errorf("want some Goals currently %s, got %v", want, health)
+		}
 	}
 }
