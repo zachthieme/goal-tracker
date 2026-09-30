@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -104,5 +105,54 @@ func TestListGoalsShowsCreatedGoals(t *testing.T) {
 	}
 	if !titles["First goal"] || !titles["Second goal"] {
 		t.Errorf("missing goals in list: %v", titles)
+	}
+}
+
+func TestMarkGoalDatedSetsKindAndDeliveryDate(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
+
+	date := time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
+	got, err := h.Service.MarkGoalDated(context.Background(), g.ID, date)
+	if err != nil {
+		t.Fatalf("MarkGoalDated: %v", err)
+	}
+	if got.Kind != domain.GoalDated {
+		t.Errorf("Kind = %q, want %q", got.Kind, domain.GoalDated)
+	}
+	if !got.DeliveryDate.Equal(date) {
+		t.Errorf("DeliveryDate = %v, want %v", got.DeliveryDate, date)
+	}
+}
+
+func TestMarkGoalDatedRequiresADate(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
+
+	if _, err := h.Service.MarkGoalDated(context.Background(), g.ID, time.Time{}); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("err = %v, want ErrValidation", err)
+	}
+}
+
+func TestMarkGoalOngoingSetsKindAndClearsDate(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Keep the lights on", "Uptime keeps customers.")
+
+	// Mark Dated first, then Ongoing, to prove the delivery date is cleared.
+	if _, err := h.Service.MarkGoalDated(context.Background(), g.ID, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("MarkGoalDated: %v", err)
+	}
+	got, err := h.Service.MarkGoalOngoing(context.Background(), g.ID)
+	if err != nil {
+		t.Fatalf("MarkGoalOngoing: %v", err)
+	}
+	if got.Kind != domain.GoalOngoing {
+		t.Errorf("Kind = %q, want %q", got.Kind, domain.GoalOngoing)
+	}
+	if !got.DeliveryDate.IsZero() {
+		t.Errorf("DeliveryDate = %v, want zero", got.DeliveryDate)
 	}
 }

@@ -9,10 +9,34 @@ import (
 	"context"
 )
 
+const addContributor = `-- name: AddContributor :one
+INSERT INTO contributors (goal_id, account_id, created_at)
+VALUES (?, ?, ?)
+RETURNING id, goal_id, account_id, created_at
+`
+
+type AddContributorParams struct {
+	GoalID    int64
+	AccountID int64
+	CreatedAt string
+}
+
+func (q *Queries) AddContributor(ctx context.Context, arg AddContributorParams) (Contributor, error) {
+	row := q.db.QueryRowContext(ctx, addContributor, arg.GoalID, arg.AccountID, arg.CreatedAt)
+	var i Contributor
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.AccountID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createGoal = `-- name: CreateGoal :one
 INSERT INTO goals (title, so_what, owner_id, lifecycle, created_at)
 VALUES (?, ?, ?, ?, ?)
-RETURNING id, title, so_what, owner_id, lifecycle, created_at
+RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days
 `
 
 type CreateGoalParams struct {
@@ -39,12 +63,142 @@ func (q *Queries) CreateGoal(ctx context.Context, arg CreateGoalParams) (Goal, e
 		&i.OwnerID,
 		&i.Lifecycle,
 		&i.CreatedAt,
+		&i.Kind,
+		&i.DeliveryDate,
+		&i.CadenceDays,
+	)
+	return i, err
+}
+
+const createMetric = `-- name: CreateMetric :one
+INSERT INTO metrics (goal_id, name, unit, direction, baseline, target, target_date, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, goal_id, name, unit, direction, baseline, target, target_date, created_at
+`
+
+type CreateMetricParams struct {
+	GoalID     int64
+	Name       string
+	Unit       string
+	Direction  string
+	Baseline   float64
+	Target     float64
+	TargetDate string
+	CreatedAt  string
+}
+
+func (q *Queries) CreateMetric(ctx context.Context, arg CreateMetricParams) (Metric, error) {
+	row := q.db.QueryRowContext(ctx, createMetric,
+		arg.GoalID,
+		arg.Name,
+		arg.Unit,
+		arg.Direction,
+		arg.Baseline,
+		arg.Target,
+		arg.TargetDate,
+		arg.CreatedAt,
+	)
+	var i Metric
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.Name,
+		&i.Unit,
+		&i.Direction,
+		&i.Baseline,
+		&i.Target,
+		&i.TargetDate,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createMilestone = `-- name: CreateMilestone :one
+INSERT INTO milestones (goal_id, name, target_date, created_at)
+VALUES (?, ?, ?, ?)
+RETURNING id, goal_id, name, target_date, created_at
+`
+
+type CreateMilestoneParams struct {
+	GoalID     int64
+	Name       string
+	TargetDate string
+	CreatedAt  string
+}
+
+func (q *Queries) CreateMilestone(ctx context.Context, arg CreateMilestoneParams) (Milestone, error) {
+	row := q.db.QueryRowContext(ctx, createMilestone,
+		arg.GoalID,
+		arg.Name,
+		arg.TargetDate,
+		arg.CreatedAt,
+	)
+	var i Milestone
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.Name,
+		&i.TargetDate,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createSoWhatRevision = `-- name: CreateSoWhatRevision :one
+INSERT INTO so_what_revisions (goal_id, so_what, author_id, created_at)
+VALUES (?, ?, ?, ?)
+RETURNING id, goal_id, so_what, author_id, created_at
+`
+
+type CreateSoWhatRevisionParams struct {
+	GoalID    int64
+	SoWhat    string
+	AuthorID  int64
+	CreatedAt string
+}
+
+func (q *Queries) CreateSoWhatRevision(ctx context.Context, arg CreateSoWhatRevisionParams) (SoWhatRevision, error) {
+	row := q.db.QueryRowContext(ctx, createSoWhatRevision,
+		arg.GoalID,
+		arg.SoWhat,
+		arg.AuthorID,
+		arg.CreatedAt,
+	)
+	var i SoWhatRevision
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.SoWhat,
+		&i.AuthorID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getContributor = `-- name: GetContributor :one
+SELECT id, goal_id, account_id, created_at FROM contributors
+WHERE goal_id = ? AND account_id = ? LIMIT 1
+`
+
+type GetContributorParams struct {
+	GoalID    int64
+	AccountID int64
+}
+
+func (q *Queries) GetContributor(ctx context.Context, arg GetContributorParams) (Contributor, error) {
+	row := q.db.QueryRowContext(ctx, getContributor, arg.GoalID, arg.AccountID)
+	var i Contributor
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.AccountID,
+		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const getGoal = `-- name: GetGoal :one
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at
+SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, accounts.id, accounts.email, accounts.is_admin, accounts.created_at
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 WHERE goals.id = ? LIMIT 1
@@ -65,6 +219,9 @@ func (q *Queries) GetGoal(ctx context.Context, id int64) (GetGoalRow, error) {
 		&i.Goal.OwnerID,
 		&i.Goal.Lifecycle,
 		&i.Goal.CreatedAt,
+		&i.Goal.Kind,
+		&i.Goal.DeliveryDate,
+		&i.Goal.CadenceDays,
 		&i.Account.ID,
 		&i.Account.Email,
 		&i.Account.IsAdmin,
@@ -73,8 +230,86 @@ func (q *Queries) GetGoal(ctx context.Context, id int64) (GetGoalRow, error) {
 	return i, err
 }
 
+const getMetric = `-- name: GetMetric :one
+SELECT id, goal_id, name, unit, direction, baseline, target, target_date, created_at FROM metrics WHERE id = ? LIMIT 1
+`
+
+func (q *Queries) GetMetric(ctx context.Context, id int64) (Metric, error) {
+	row := q.db.QueryRowContext(ctx, getMetric, id)
+	var i Metric
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.Name,
+		&i.Unit,
+		&i.Direction,
+		&i.Baseline,
+		&i.Target,
+		&i.TargetDate,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getMilestone = `-- name: GetMilestone :one
+SELECT id, goal_id, name, target_date, created_at FROM milestones WHERE id = ? LIMIT 1
+`
+
+func (q *Queries) GetMilestone(ctx context.Context, id int64) (Milestone, error) {
+	row := q.db.QueryRowContext(ctx, getMilestone, id)
+	var i Milestone
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.Name,
+		&i.TargetDate,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const listContributors = `-- name: ListContributors :many
+SELECT accounts.id, accounts.email, accounts.is_admin, accounts.created_at
+FROM contributors
+JOIN accounts ON accounts.id = contributors.account_id
+WHERE contributors.goal_id = ?
+ORDER BY accounts.email
+`
+
+type ListContributorsRow struct {
+	Account Account
+}
+
+func (q *Queries) ListContributors(ctx context.Context, goalID int64) ([]ListContributorsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listContributors, goalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListContributorsRow
+	for rows.Next() {
+		var i ListContributorsRow
+		if err := rows.Scan(
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGoals = `-- name: ListGoals :many
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at
+SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, accounts.id, accounts.email, accounts.is_admin, accounts.created_at
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 ORDER BY goals.created_at DESC, goals.id DESC
@@ -101,6 +336,9 @@ func (q *Queries) ListGoals(ctx context.Context) ([]ListGoalsRow, error) {
 			&i.Goal.OwnerID,
 			&i.Goal.Lifecycle,
 			&i.Goal.CreatedAt,
+			&i.Goal.Kind,
+			&i.Goal.DeliveryDate,
+			&i.Goal.CadenceDays,
 			&i.Account.ID,
 			&i.Account.Email,
 			&i.Account.IsAdmin,
@@ -117,4 +355,294 @@ func (q *Queries) ListGoals(ctx context.Context) ([]ListGoalsRow, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const listMetrics = `-- name: ListMetrics :many
+SELECT id, goal_id, name, unit, direction, baseline, target, target_date, created_at FROM metrics WHERE goal_id = ? ORDER BY target_date, id
+`
+
+func (q *Queries) ListMetrics(ctx context.Context, goalID int64) ([]Metric, error) {
+	rows, err := q.db.QueryContext(ctx, listMetrics, goalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Metric
+	for rows.Next() {
+		var i Metric
+		if err := rows.Scan(
+			&i.ID,
+			&i.GoalID,
+			&i.Name,
+			&i.Unit,
+			&i.Direction,
+			&i.Baseline,
+			&i.Target,
+			&i.TargetDate,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMilestones = `-- name: ListMilestones :many
+SELECT id, goal_id, name, target_date, created_at FROM milestones WHERE goal_id = ? ORDER BY target_date, id
+`
+
+func (q *Queries) ListMilestones(ctx context.Context, goalID int64) ([]Milestone, error) {
+	rows, err := q.db.QueryContext(ctx, listMilestones, goalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Milestone
+	for rows.Next() {
+		var i Milestone
+		if err := rows.Scan(
+			&i.ID,
+			&i.GoalID,
+			&i.Name,
+			&i.TargetDate,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSoWhatRevisions = `-- name: ListSoWhatRevisions :many
+SELECT so_what_revisions.id, so_what_revisions.goal_id, so_what_revisions.so_what, so_what_revisions.author_id, so_what_revisions.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at
+FROM so_what_revisions
+JOIN accounts ON accounts.id = so_what_revisions.author_id
+WHERE so_what_revisions.goal_id = ?
+ORDER BY so_what_revisions.created_at DESC, so_what_revisions.id DESC
+`
+
+type ListSoWhatRevisionsRow struct {
+	SoWhatRevision SoWhatRevision
+	Account        Account
+}
+
+func (q *Queries) ListSoWhatRevisions(ctx context.Context, goalID int64) ([]ListSoWhatRevisionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listSoWhatRevisions, goalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListSoWhatRevisionsRow
+	for rows.Next() {
+		var i ListSoWhatRevisionsRow
+		if err := rows.Scan(
+			&i.SoWhatRevision.ID,
+			&i.SoWhatRevision.GoalID,
+			&i.SoWhatRevision.SoWhat,
+			&i.SoWhatRevision.AuthorID,
+			&i.SoWhatRevision.CreatedAt,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setGoalCadence = `-- name: SetGoalCadence :one
+UPDATE goals SET cadence_days = ? WHERE id = ?
+RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days
+`
+
+type SetGoalCadenceParams struct {
+	CadenceDays int64
+	ID          int64
+}
+
+func (q *Queries) SetGoalCadence(ctx context.Context, arg SetGoalCadenceParams) (Goal, error) {
+	row := q.db.QueryRowContext(ctx, setGoalCadence, arg.CadenceDays, arg.ID)
+	var i Goal
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.SoWhat,
+		&i.OwnerID,
+		&i.Lifecycle,
+		&i.CreatedAt,
+		&i.Kind,
+		&i.DeliveryDate,
+		&i.CadenceDays,
+	)
+	return i, err
+}
+
+const setGoalKind = `-- name: SetGoalKind :one
+UPDATE goals SET kind = ?, delivery_date = ? WHERE id = ?
+RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days
+`
+
+type SetGoalKindParams struct {
+	Kind         string
+	DeliveryDate string
+	ID           int64
+}
+
+func (q *Queries) SetGoalKind(ctx context.Context, arg SetGoalKindParams) (Goal, error) {
+	row := q.db.QueryRowContext(ctx, setGoalKind, arg.Kind, arg.DeliveryDate, arg.ID)
+	var i Goal
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.SoWhat,
+		&i.OwnerID,
+		&i.Lifecycle,
+		&i.CreatedAt,
+		&i.Kind,
+		&i.DeliveryDate,
+		&i.CadenceDays,
+	)
+	return i, err
+}
+
+const setGoalLifecycle = `-- name: SetGoalLifecycle :one
+UPDATE goals SET lifecycle = ? WHERE id = ?
+RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days
+`
+
+type SetGoalLifecycleParams struct {
+	Lifecycle string
+	ID        int64
+}
+
+func (q *Queries) SetGoalLifecycle(ctx context.Context, arg SetGoalLifecycleParams) (Goal, error) {
+	row := q.db.QueryRowContext(ctx, setGoalLifecycle, arg.Lifecycle, arg.ID)
+	var i Goal
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.SoWhat,
+		&i.OwnerID,
+		&i.Lifecycle,
+		&i.CreatedAt,
+		&i.Kind,
+		&i.DeliveryDate,
+		&i.CadenceDays,
+	)
+	return i, err
+}
+
+const setGoalSoWhat = `-- name: SetGoalSoWhat :one
+UPDATE goals SET so_what = ? WHERE id = ?
+RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days
+`
+
+type SetGoalSoWhatParams struct {
+	SoWhat string
+	ID     int64
+}
+
+func (q *Queries) SetGoalSoWhat(ctx context.Context, arg SetGoalSoWhatParams) (Goal, error) {
+	row := q.db.QueryRowContext(ctx, setGoalSoWhat, arg.SoWhat, arg.ID)
+	var i Goal
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.SoWhat,
+		&i.OwnerID,
+		&i.Lifecycle,
+		&i.CreatedAt,
+		&i.Kind,
+		&i.DeliveryDate,
+		&i.CadenceDays,
+	)
+	return i, err
+}
+
+const updateMetric = `-- name: UpdateMetric :one
+UPDATE metrics SET name = ?, unit = ?, direction = ?, baseline = ?, target = ?, target_date = ?
+WHERE id = ?
+RETURNING id, goal_id, name, unit, direction, baseline, target, target_date, created_at
+`
+
+type UpdateMetricParams struct {
+	Name       string
+	Unit       string
+	Direction  string
+	Baseline   float64
+	Target     float64
+	TargetDate string
+	ID         int64
+}
+
+func (q *Queries) UpdateMetric(ctx context.Context, arg UpdateMetricParams) (Metric, error) {
+	row := q.db.QueryRowContext(ctx, updateMetric,
+		arg.Name,
+		arg.Unit,
+		arg.Direction,
+		arg.Baseline,
+		arg.Target,
+		arg.TargetDate,
+		arg.ID,
+	)
+	var i Metric
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.Name,
+		&i.Unit,
+		&i.Direction,
+		&i.Baseline,
+		&i.Target,
+		&i.TargetDate,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const updateMilestone = `-- name: UpdateMilestone :one
+UPDATE milestones SET name = ?, target_date = ? WHERE id = ?
+RETURNING id, goal_id, name, target_date, created_at
+`
+
+type UpdateMilestoneParams struct {
+	Name       string
+	TargetDate string
+	ID         int64
+}
+
+func (q *Queries) UpdateMilestone(ctx context.Context, arg UpdateMilestoneParams) (Milestone, error) {
+	row := q.db.QueryRowContext(ctx, updateMilestone, arg.Name, arg.TargetDate, arg.ID)
+	var i Milestone
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.Name,
+		&i.TargetDate,
+		&i.CreatedAt,
+	)
+	return i, err
 }
