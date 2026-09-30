@@ -185,3 +185,39 @@ No Goals selected.
 		t.Errorf("Markdown:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+// The narrative follows the introduction: each section's heading, the
+// author's text, and the Highlights they picked, each crediting the Goal's
+// Owner.
+func TestMarkdownCarriesTheNarrative(t *testing.T) {
+	alice := domain.Account{ID: 2, Email: "alice@example.com"}
+	pub := publication(nil, nil)
+	pub.Report.Narrative = []domain.NarrativeSection{
+		{Kind: domain.HighlightInsight, Text: "Pricing drives churn."},
+		{Kind: domain.HighlightAccomplishment, Highlights: []domain.NarrativeHighlight{{
+			Highlight: domain.Highlight{Kind: domain.HighlightAccomplishment, Note: "Signed the *first* EU customer.", Owner: alice},
+			GoalID:    5,
+			GoalTitle: "Launch in EU",
+		}}},
+	}
+
+	want := `# EU MBR
+
+Published 2026-02-21 09:30 UTC by boss@example.com. Changes since 2026-01-12.
+
+Quarterly business review.
+
+## Insights
+
+Pricing drives churn.
+
+## Accomplishments
+
+- Signed the \*first\* EU customer. — alice@example.com, Launch in EU
+
+No Goals selected.
+`
+	if got := export.Markdown(pub); got != want {
+		t.Errorf("Markdown:\n%s\nwant:\n%s", got, want)
+	}
+}

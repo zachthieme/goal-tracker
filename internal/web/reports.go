@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/export"
@@ -96,6 +98,52 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 		return
 	}
 	render(w, r, http.StatusOK, reportDraftPage(&current, report, pubs, d))
+}
+
+// handleCurateNarrative sets the narrative of a Report Definition's next
+// publication from the draft page's form: each in-scope Highlight's section
+// (pick-{highlight}, empty to leave it out) and the author's text for each
+// section (text-{section}). It redirects back to the draft, against the
+// baseline the reader picked (the baseline form field), if any.
+func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "could not read the form", http.StatusBadRequest)
+		return
+	}
+	in := domain.CurateNarrativeInput{Text: map[string]string{}}
+	for key, values := range r.Form {
+		raw, ok := strings.CutPrefix(key, "pick-")
+		if !ok || len(values) == 0 || values[0] == "" {
+			continue
+		}
+		hlID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			http.Error(w, "unknown Highlight", http.StatusBadRequest)
+			return
+		}
+		in.Picks = append(in.Picks, domain.NarrativePick{HighlightID: hlID, Section: values[0]})
+	}
+	for _, section := range narrativeSections {
+		in.Text[section] = r.FormValue("text-" + section)
+	}
+	if err := s.svc.CurateNarrative(r.Context(), id, in); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		writeReportError(w, err)
+		return
+	}
+	target := "/reports/" + strconv.FormatInt(id, 10)
+	if baseline := r.FormValue("baseline"); baseline != "" {
+		target += "?baseline=" + url.QueryEscape(baseline)
+	}
+	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 // handlePublishReport publishes a Report Definition, freezing its Report

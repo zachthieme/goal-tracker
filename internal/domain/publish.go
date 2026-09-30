@@ -34,8 +34,9 @@ type PreviousPublication struct {
 
 // PublishReport publishes the Report Definition defID: it drafts the Report
 // against baseline, as DraftReport does — so by default against the previous
-// publication — and freezes the result. Anyone signed in may publish; actorID
-// records who did.
+// publication — and freezes the result, its curated narrative included. The
+// next publication's narrative then starts empty. Anyone signed in may
+// publish; actorID records who did.
 func (s *Service) PublishReport(ctx context.Context, actorID, defID int64, baseline time.Time) (Publication, error) {
 	def, err := s.GetReportDefinition(ctx, defID)
 	if err != nil {
@@ -49,14 +50,20 @@ func (s *Service) PublishReport(ctx context.Context, actorID, defID int64, basel
 	if err != nil {
 		return Publication{}, fmt.Errorf("freeze report: %w", err)
 	}
-	row, err := s.queries.CreateReportPublication(ctx, db.CreateReportPublicationParams{
-		ReportDefinitionID: def.ID,
-		PublishedBy:        actorID,
-		PublishedAt:        s.clock.Now().Format(timeFormat),
-		Snapshot:           string(snapshot),
-	})
-	if err != nil {
-		return Publication{}, fmt.Errorf("create publication: %w", err)
+	var row db.ReportPublication
+	if err := s.WithinTx(ctx, func(tx *Service) error {
+		if row, err = tx.queries.CreateReportPublication(ctx, db.CreateReportPublicationParams{
+			ReportDefinitionID: def.ID,
+			PublishedBy:        actorID,
+			PublishedAt:        s.clock.Now().Format(timeFormat),
+			Snapshot:           string(snapshot),
+		}); err != nil {
+			return fmt.Errorf("create publication: %w", err)
+		}
+		// The narrative is frozen now; the next publication's starts empty.
+		return tx.clearNarrative(ctx, def.ID)
+	}); err != nil {
+		return Publication{}, err
 	}
 	return s.publicationFromRow(ctx, row)
 }

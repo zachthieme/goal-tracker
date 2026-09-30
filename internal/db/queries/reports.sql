@@ -50,3 +50,30 @@ SELECT id, published_at FROM report_publications
 WHERE report_definition_id = ?
 ORDER BY id DESC
 LIMIT 1;
+
+-- name: ClearNarrativePicks :exec
+-- Drop a Report Definition's draft narrative picks, to replace them or once
+-- they are frozen into a publication.
+DELETE FROM narrative_picks WHERE report_definition_id = ?;
+
+-- name: AddNarrativePick :exec
+INSERT INTO narrative_picks (report_definition_id, highlight_id, section)
+VALUES (?, ?, ?);
+
+-- name: ListNarrativePicks :many
+-- The Highlights picked into a Report Definition's draft narrative.
+SELECT * FROM narrative_picks
+WHERE report_definition_id = ?
+ORDER BY id;
+
+-- name: ClearNarrativeTexts :exec
+-- Drop the author's text from a Report Definition's draft narrative.
+DELETE FROM narrative_texts WHERE report_definition_id = ?;
+
+-- name: SetNarrativeText :exec
+INSERT INTO narrative_texts (report_definition_id, section, text)
+VALUES (?, ?, ?);
+
+-- name: ListNarrativeTexts :many
+-- The author's text for each section of a Report Definition's draft narrative.
+SELECT * FROM narrative_texts WHERE report_definition_id = ?;

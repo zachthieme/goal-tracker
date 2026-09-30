@@ -13,8 +13,9 @@ import (
 
 // Markdown renders a published Report as Markdown with the same content as its
 // snapshot page: who published it and when, what it read its changes against,
-// its open Action Items, the introduction, each exception's full MBR block, and every other selected
-// Goal one line (CONTEXT.md: Report).
+// its open Action Items, the introduction, the narrative curated from
+// Highlights, each exception's full MBR block, and every other selected Goal
+// one line (CONTEXT.md: Report).
 func Markdown(p domain.Publication) string {
 	var b strings.Builder
 	r := p.Report
@@ -33,6 +34,18 @@ func Markdown(p domain.Publication) string {
 	}
 	if r.Definition.Introduction != "" {
 		fmt.Fprintf(&b, "\n%s\n", text(r.Definition.Introduction))
+	}
+	for _, sec := range r.Narrative {
+		fmt.Fprintf(&b, "\n## %s\n", sec.Heading())
+		if sec.Text != "" {
+			fmt.Fprintf(&b, "\n%s\n", text(sec.Text))
+		}
+		if len(sec.Highlights) > 0 {
+			b.WriteString("\n")
+			for _, nh := range sec.Highlights {
+				fmt.Fprintf(&b, "- %s — %s, %s\n", text(nh.Highlight.Note), text(nh.Highlight.Owner.Email), text(nh.GoalTitle))
+			}
+		}
 	}
 	if len(r.Exceptions) == 0 && len(r.Lines) == 0 {
 		b.WriteString("\nNo Goals selected.\n")

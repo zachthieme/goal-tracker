@@ -86,8 +86,9 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 
 // reportDraftPage shows a saved Report Definition and its draft Report read
 // against a baseline the reader can change — by default the previous
-// publication — with the button that publishes it and the list of its
-// publications (CONTEXT.md: Report, Report Definition).
+// publication — with the button that publishes it, the form to curate its
+// narrative from Highlights, and the list of its publications (CONTEXT.md:
+// Report, Report Definition).
 templ reportDraftPage(current *domain.Account, r domain.Report, pubs []domain.Publication, d discussion) {
 	@layout(r.Definition.Name, current) {
 		<h1 data-testid="report-name">{ r.Definition.Name }</h1>
@@ -109,6 +110,7 @@ templ reportDraftPage(current *domain.Account, r domain.Report, pubs []domain.Pu
 			}
 			<button type="submit">Publish</button>
 		</form>
+		@narrativeCuration(r)
 		<section data-testid="report-draft">
 			<h2>Draft</h2>
 			@reportBody(r, d)
@@ -201,14 +203,15 @@ templ publishedLine(p domain.Publication) {
 }
 
 // reportBody is a Report's content, drafted or published: its open Action
-// Items, the introduction, then exceptions with the full MBR block and every
-// other selected Goal one line with title, Owner, Health, and due date
-// (CONTEXT.md: Report). On a publication, each Goal carries its discussion.
+// Items, the introduction, the narrative curated from Highlights, then
+// exceptions with the full MBR block and every other selected Goal one line
+// with title, Owner, Health, and due date (CONTEXT.md: Report). On a publication, each Goal carries its discussion.
 templ reportBody(r domain.Report, d discussion) {
 	@reportActionItems(r.ActionItems, d)
 	if r.Definition.Introduction != "" {
 		<p data-testid="report-introduction">{ r.Definition.Introduction }</p>
 	}
+	@reportNarrative(r.Narrative)
 	if len(r.Exceptions) == 0 && len(r.Lines) == 0 {
 		<p data-testid="no-selected-goals">No Goals selected.</p>
 	}
@@ -230,6 +233,81 @@ templ reportBody(r domain.Report, d discussion) {
 			}
 		</ul>
 	}
+}
+
+// narrativeCuration is the draft page's form for curating the narrative of the
+// next publication: every Highlight in scope since the baseline, each with the
+// section the author picks it into, and the author's own text for each
+// section (CONTEXT.md: Highlight).
+templ narrativeCuration(r domain.Report) {
+	<section data-testid="report-curation">
+		<h2>Narrative</h2>
+		<form data-testid="narrative-curation" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/narrative", r.Definition.ID)) }>
+			// A date the reader picked is kept when the draft reloads.
+			if r.Previous.ID == 0 {
+				<input type="hidden" name="baseline" value={ fmtDate(r.Baseline) }/>
+			}
+			if len(r.Highlights) == 0 {
+				<p data-testid="no-highlights">No Highlights since { fmtDate(r.Baseline) }.</p>
+			} else {
+				<ul>
+					for _, nh := range r.Highlights {
+						<li data-testid="curation-highlight">
+							<select name={ fmt.Sprintf("pick-%d", nh.Highlight.ID) }>
+								<option value="" selected?={ nh.Section == "" }>Leave out</option>
+								for _, section := range narrativeSections {
+									<option value={ section } selected?={ nh.Section == section }>{ sectionHeading(section) }</option>
+								}
+							</select>
+							{ " " }<strong>[{ nh.Highlight.Kind }]</strong>
+							{ " " }{ nh.Highlight.Note }
+							@highlightCredit(nh)
+						</li>
+					}
+				</ul>
+			}
+			for _, section := range narrativeSections {
+				<label>
+					{ sectionHeading(section) }
+					<textarea name={ "text-" + section }>{ narrativeText(r, section) }</textarea>
+				</label>
+			}
+			<button type="submit">Save narrative</button>
+		</form>
+	</section>
+}
+
+// reportNarrative is a Report's Insights, Accomplishments, and Misses: the
+// author's text and the Highlights they picked, each crediting the Goal's
+// Owner. Sections with neither are left out.
+templ reportNarrative(narrative []domain.NarrativeSection) {
+	if len(narrative) > 0 {
+		<section data-testid="report-narrative">
+			for _, sec := range narrative {
+				<h3 data-testid="narrative-section">{ sec.Heading() }</h3>
+				if sec.Text != "" {
+					<p data-testid="narrative-text">{ sec.Text }</p>
+				}
+				if len(sec.Highlights) > 0 {
+					<ul>
+						for _, nh := range sec.Highlights {
+							<li data-testid="narrative-highlight">
+								{ nh.Highlight.Note }
+								@highlightCredit(nh)
+							</li>
+						}
+					</ul>
+				}
+			}
+		</section>
+	}
+}
+
+// highlightCredit credits a Highlight to the Goal's Owner, naming the Goal.
+templ highlightCredit(nh domain.NarrativeHighlight) {
+	<span data-testid="highlight-credit">
+		— { nh.Highlight.Owner.Email }, <a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", nh.GoalID)) }>{ nh.GoalTitle }</a>
+	</span>
 }
 
 // reportBlock is an exception Goal's full MBR block: title, due date with its
@@ -332,4 +410,23 @@ func reportHealth(health string) string {
 // fmtPublished renders the instant a Report was published, to the minute.
 func fmtPublished(t time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04 UTC")
+}
+
+// narrativeSections are a Report narrative's sections in the order it shows
+// them.
+var narrativeSections = []string{domain.HighlightInsight, domain.HighlightAccomplishment, domain.HighlightMiss}
+
+// sectionHeading is a narrative section's title, e.g. "Insights".
+func sectionHeading(section string) string {
+	return domain.NarrativeSection{Kind: section}.Heading()
+}
+
+// narrativeText is the author's text for one section of a Report's narrative.
+func narrativeText(r domain.Report, section string) string {
+	for _, sec := range r.Narrative {
+		if sec.Kind == section {
+			return sec.Text
+		}
+	}
+	return ""
 }

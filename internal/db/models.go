@@ -172,6 +172,19 @@ type Milestone struct {
 	AddedWhileActive int64
 }
 
+type NarrativePick struct {
+	ID                 int64
+	ReportDefinitionID int64
+	HighlightID        int64
+	Section            string
+}
+
+type NarrativeText struct {
+	ReportDefinitionID int64
+	Section            string
+	Text               string
+}
+
 type ReportDefinition struct {
 	ID            int64
 	Name          string
