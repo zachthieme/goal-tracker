@@ -101,16 +101,9 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	// Health — the worst among the Goal's Active children (ADR-0003). When there
 	// is nothing to roll up, or the two match, no explanation is required and any
 	// stray one is dropped.
-	rollup, err := s.RolledUpHealth(ctx, goal.Goal.ID)
+	explanation, err = s.resolveRollupExplanation(ctx, goal.Goal.ID, in.Health, explanation)
 	if err != nil {
 		return Checkin{}, err
-	}
-	if rollup.Present && rollup.Health != in.Health {
-		if explanation == "" {
-			return Checkin{}, fmt.Errorf("%w: this Health differs from the Rolled-up Health (%s); explain why", ErrValidation, rollup.Health)
-		}
-	} else {
-		explanation = ""
 	}
 
 	pathTargetDate := ""
@@ -150,7 +143,33 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 		}
 		return Checkin{}, fmt.Errorf("look up previous checkin: %w", err)
 	}
-	return s.createCheckin(ctx, goalID, authorID, goal.Goal.OwnerID, prev.Health, prev.Status, prev.PathToGreen, prev.PathTargetDate, prev.Explanation)
+	// A no-change repeat still cannot violate the Rolled-up Health rule: if the
+	// roll-up has since changed so the repeated Health would differ from it and
+	// the previous Check-in carried no explanation, refuse it so the Owner uses
+	// the full form to explain (ADR-0003).
+	explanation, err := s.resolveRollupExplanation(ctx, goalID, prev.Health, prev.Explanation)
+	if err != nil {
+		return Checkin{}, fmt.Errorf("%w — submit a Check-in to explain", err)
+	}
+	return s.createCheckin(ctx, goalID, authorID, goal.Goal.OwnerID, prev.Health, prev.Status, prev.PathToGreen, prev.PathTargetDate, explanation)
+}
+
+// resolveRollupExplanation enforces ADR-0003's explanation rule for a Check-in
+// setting health on goalID: when the Goal's Rolled-up Health is present and
+// differs from health, a non-empty explanation is required; otherwise none is,
+// and any stray explanation is dropped. It returns the explanation to store.
+func (s *Service) resolveRollupExplanation(ctx context.Context, goalID int64, health, explanation string) (string, error) {
+	rollup, err := s.RolledUpHealth(ctx, goalID)
+	if err != nil {
+		return "", err
+	}
+	if rollup.Present && rollup.Health != health {
+		if explanation == "" {
+			return "", fmt.Errorf("%w: this Health differs from the Rolled-up Health (%s); explain why", ErrValidation, rollup.Health)
+		}
+		return explanation, nil
+	}
+	return "", nil
 }
 
 // validateCheckin enforces the rules shared by every Check-in: a valid Health, a

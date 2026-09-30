@@ -161,3 +161,24 @@ func TestCheckinNeedsNoExplanationWithoutRollup(t *testing.T) {
 		t.Fatalf("SubmitCheckin on a Goal with no roll-up: %v", err)
 	}
 }
+
+// A one-click "no change" Check-in cannot silently violate the explanation rule:
+// when repeating the previous Health would differ from a now-changed Rolled-up
+// Health and the previous Check-in carried no explanation, it is refused so the
+// Owner uses the full form to explain (ADR-0003).
+func TestNoChangeCheckinRefusedWhenItWouldDifferFromRollup(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	parent := h.ActiveGoal(sam, "Parent", "It matters.")
+
+	// The parent checks in Green while it has no children with a Health.
+	h.Checkin(sam, parent.ID, domain.HealthGreen, "On track.", "", pathDate)
+
+	// Now a Red child appears, making the Rolled-up Health Red.
+	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red so what.")
+	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
+
+	if _, err := h.Service.SubmitNoChangeCheckin(context.Background(), parent.ID, sam.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation (no-change would differ from the Rolled-up Health)", err)
+	}
+}
