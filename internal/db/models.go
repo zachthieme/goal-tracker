@@ -12,6 +12,18 @@ type Account struct {
 	Departed  int64
 }
 
+type Checkin struct {
+	ID             int64
+	GoalID         int64
+	AuthorID       int64
+	OwnerID        int64
+	Health         string
+	Status         string
+	PathToGreen    string
+	PathTargetDate string
+	CreatedAt      string
+}
+
 type Contributor struct {
 	ID        int64
 	GoalID    int64
