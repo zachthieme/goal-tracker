@@ -716,3 +716,56 @@ func TestGoalListFoldsDimensionFiltersAndGroupsIntoSections(t *testing.T) {
 		t.Errorf("a filtered-out list does not say nothing matches: %s", none)
 	}
 }
+
+// The Goal list's header names the page and offers New goal, which opens the
+// propose form; the form still swaps the list in place under htmx. The Risks
+// page has replaced the links to the signal pages.
+func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals")
+	head := pageElement(t, page, "header", "goals-head")
+	for _, want := range []string{"<h1>Goals</h1>", "Every goal in the org. Problems sort to the top."} {
+		if !strings.Contains(head, want) {
+			t.Errorf("header lacks %q: %s", want, head)
+		}
+	}
+	propose := pageElement(t, page, "details", "propose-goal")
+	if summary := pageElement(t, propose, "summary", "new-goal"); !strings.Contains(openTag(summary), `class="btn primary"`) || !strings.Contains(summary, "New goal") {
+		t.Errorf("New goal is not a primary button: %s", summary)
+	}
+	for _, want := range []string{`hx-post="/goals"`, `hx-target="#goal-list"`, `method="post"`, `action="/goals"`, `name="title"`, `name="so_what"`} {
+		if !strings.Contains(propose, want) {
+			t.Errorf("propose form lacks %s: %s", want, propose)
+		}
+	}
+	for _, gone := range []string{`href="/signals"`, `href="/freshness"`} {
+		if strings.Contains(page, gone) {
+			t.Errorf("Goal list still links %s", gone)
+		}
+	}
+
+	req, err := http.NewRequest(http.MethodPost, ts.URL+"/goals", strings.NewReader(url.Values{
+		"title":   {"Cut checkout latency"},
+		"so_what": {"Shoppers abandon slow carts."},
+	}.Encode()))
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST /goals: %v", err)
+	}
+	swap := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(swap, `<div id="goal-list"`) {
+		t.Fatalf("htmx create should answer with the list alone; status %d, body:\n%s", resp.StatusCode, swap)
+	}
+	if rows := goalRows(t, swap); len(rows) != 1 || !strings.Contains(rows[0], "Cut checkout latency") {
+		t.Errorf("swapped list lacks the new Goal's row:\n%s", swap)
+	}
+}

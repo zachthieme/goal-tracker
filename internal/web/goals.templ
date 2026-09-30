@@ -7,28 +7,33 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// goalsPage lists every Goal, offers the create-Goal form, and lets the reader
-// filter and group the list by Dimension values (CONTEXT.md: filter and group
-// Goals).
+// goalsPage is the Goal list an exec scans in seconds: a header offering New
+// goal, the filter bar, and the Goals as a table led by Health, problems first
+// (CONTEXT.md: filter and group Goals).
 templ goalsPage(current *domain.Account, view goalsListData) {
 	@layout("Goals", current) {
-		<h1>Goals</h1>
-		<p><a href="/signals" data-testid="goals-graph-signals">Graph signals</a> — Unaligned Goals, schedule conflicts, and Goals under an On Hold or Cancelled parent</p>
-		<p><a href="/freshness" data-testid="goals-freshness-signals">Freshness signals</a> — Stale Goals and overdue Paths to Green</p>
-		<section>
-			<h2>Propose a Goal</h2>
-			<form hx-post="/goals" hx-target="#goal-list" hx-swap="outerHTML" method="post" action="/goals">
-				<label>
-					Title
-					<input type="text" name="title" required/>
-				</label>
-				<label>
-					So What
-					<textarea name="so_what" required></textarea>
-				</label>
-				<button type="submit">Create Goal</button>
-			</form>
-		</section>
+		@goalsStyles()
+		<header data-testid="goals-head" class="page-head">
+			<div>
+				<h1>Goals</h1>
+				<p class="muted">Every goal in the org. Problems sort to the top.</p>
+			</div>
+			<details data-testid="propose-goal" class="gl-propose">
+				<summary data-testid="new-goal" class="btn primary">New goal</summary>
+				<form class="card" hx-post="/goals" hx-target="#goal-list" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful){this.reset();this.closest('details').open=false}" method="post" action="/goals">
+					<h2>Propose a Goal</h2>
+					<label class="field">
+						<span>Title</span>
+						<input type="text" name="title" required/>
+					</label>
+					<label class="field">
+						<span>So What</span>
+						<textarea name="so_what" required></textarea>
+					</label>
+					<button type="submit" class="btn primary">Create Goal</button>
+				</form>
+			</details>
+		</header>
 		@goalFilters(view)
 		@goalList(view)
 	}
@@ -187,6 +192,26 @@ templ goalListRow(row goalRow) {
 			}
 		</td>
 	</tr>
+}
+
+// goalsStyles are the Goal list's own rules on top of app.css: the propose
+// form's popover, the one-row filter bar, and the table's group headers and
+// marks.
+templ goalsStyles() {
+	<style>
+		.gl-propose{position:relative}
+		.gl-propose>form{position:absolute;right:0;top:48px;z-index:10;width:360px;max-width:calc(100vw - 32px);padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 24px rgba(27,30,35,.12);box-sizing:border-box}
+		.gl-filters{display:flex;flex-direction:column;gap:8px}
+		.gl-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+		.gl-bar input[type=search]{flex:1;min-width:200px}
+		.gl-mine{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+		.gl-filters details{padding:0 4px}
+		.gl-filters details>summary{justify-content:flex-start;color:#24519E;font-weight:600}
+		.gl-filters fieldset{display:inline-flex;flex-wrap:wrap;gap:4px 12px;border:1px solid #E2E3DE;border-radius:6px;margin:0 8px 8px 0;padding:8px 12px}
+		.gl-group th{background:#F2F2EF;color:#1B1E23;font-size:13px}
+		.gl-marks{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+		#goal-list td .tag{margin:2px 4px 2px 0}
+	</style>
 }
 
 // goalPage shows a single Goal on its own page, with its parents and children
