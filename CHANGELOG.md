@@ -79,6 +79,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The top bar leads with Home, counting what needs you; it replaces the Pending links, Pending handoffs, and Delegated to me items, whose pages stay (#34).
 - [user] One Risks page at `/risks` answers "what's going wrong?": summary tiles count the Stale, Path to Green overdue, Ownerless, Unaligned, Schedule conflict and Parent On Hold or Cancelled Goals and link to a section for each, which lists every flagged Goal with its Owner and why it's flagged. Ownerless Active Goals are listed here for the first time. `/freshness` and `/signals` still work (#35).
 - [user] The top bar has a Risks item counting the flagged Goals, each counted once however many sections list it (#35).
+- [user] The Goal list's filter bar searches by title or Owner email and filters by Health (including no Health yet), Lifecycle, and Mine only (Goals you Own or are a Delegate on); every filter lives in the URL (`?q=`, `?health=`, `?lifecycle=`, `?mine=1`), so a filtered list can be shared and reloaded (#36).
+- [user] An Admin page at `/admin`, for Admins only, gathers the Admin tools: cards linking to Dimensions and Import goals, and the open Ownerless Goals waiting for reassignment, each linking to its Goal. Admins get an Admin item at the end of the top bar; Dimensions leaves the top bar, and `/dimensions` still opens for everyone (#40).
 
 **Improvements:**
 - [user] Once a Goal is Active its dates move only in a Check-in, so every change is explained: the Milestone edit form and the Dated/Ongoing controls apply only while a Goal is Proposed (#5).
@@ -91,6 +93,11 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Reports page lists saved definitions as cards and keeps the form behind a New report button; its Root Goals picker is a scrolling list with Top-level Goals first, and Depth explains its numbers (#39).
 - [user] The print page is set in Source Serif 4 (falling back to Georgia) and marks Health with a shape as well as its name — ■ Red, ▲ Yellow, ● Green — so it survives black-and-white printing (#39).
 - [user] A Goal's page shows Stale and Path to Green overdue as Stale-colored alert banners, and each graph signal as its own banner. The Goal list marks rows with "Stale · N days" and "Path to Green overdue" chips, and Mark or Unmark Top-level is a regular button (#35).
+- [user] The Goal list is a table led by Health — Health (or the Lifecycle for Goals without one), Goal with its Ownerless and freshness chips, Owner, Due with slipped dates struck through, Last check-in ("3 days ago"), and Dimension tags — sorted Red, then Ownerless, then Stale or Path to Green overdue, then Yellow, Green, and no Health, alphabetical within each. Grouping by a Dimension gives each value its own table section, and the Dimension filters and Group by fold under More filters (#36).
+- [user] The Goal list's header offers a primary New goal button that opens the propose form, which still updates the list in place; the links to Graph signals and Freshness signals are gone, replaced by the Risks page (#36).
+- [user] Dimensions shows each Dimension as a card of value tags, retired values struck through; an Admin's rename, retire, and add-value controls sit behind the card's Edit toggle, and Retire asks for confirmation (#40).
+- [user] Import goals puts the upload in a card with Dry run as the primary action, and the report opens with a summary alert followed by a table of rows and their errors (#40).
+- [user] Pending links and Pending handoffs show each request as a card with Accept and a Reject that asks for confirmation; Sign in is a single centred card with the brand, the development sign-in note, and the email field (#40).
 
 **Bug fixes:**
 - [internal] The build compiles again after the reports (#39) and Check-in (#37) redesigns merged together: each had added an identical `healthClass` helper to the `web` package; the Check-in copy is removed and both pages use the one in `reports.templ`.
@@ -109,4 +116,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Code quality:**
 - [internal] Split the skeleton's shared files by feature area (one sqlc query file, handler file, templ file, and domain file per area, with route registration in one place), so tickets can land without all editing the same files and campaigns can run tickets in parallel (#24).
 - [internal] Remove a Go test binary (`seed.test`, 15 MB) committed by accident with the seed command, and ignore `*.test` (#23).
+
+**Documentation:**
+- [internal] Add `DESIGN.md`, a light and dark design system adapted from designmd.ai's "d3kn Warm Teal". Its tokens are mapped onto the existing `app.css` components. It fixes the source's contrast failures and keeps Goal Health colours separate from the primary teal. `app.css` is not restyled yet.
 For usage details, see [README](README.md).
