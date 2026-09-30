@@ -156,3 +156,125 @@ func TestMarkGoalOngoingSetsKindAndClearsDate(t *testing.T) {
 		t.Errorf("DeliveryDate = %v, want zero", got.DeliveryDate)
 	}
 }
+
+func TestCadenceDefaultsToSevenDays(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+
+	if g.CadenceDays != 7 {
+		t.Errorf("CadenceDays = %d, want the 7-day default", g.CadenceDays)
+	}
+}
+
+func TestSetCadenceChangesTheCheckInInterval(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+
+	got, err := h.Service.SetCadence(context.Background(), g.ID, 14)
+	if err != nil {
+		t.Fatalf("SetCadence: %v", err)
+	}
+	if got.CadenceDays != 14 {
+		t.Errorf("CadenceDays = %d, want 14", got.CadenceDays)
+	}
+}
+
+func TestSetCadenceRejectsNonPositive(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+
+	if _, err := h.Service.SetCadence(context.Background(), g.ID, 0); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("err = %v, want ErrValidation", err)
+	}
+}
+
+func TestAddContributorListsThem(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+	dana := h.SignIn("dana@example.com")
+
+	if err := h.Service.AddContributor(context.Background(), g.ID, dana.ID); err != nil {
+		t.Fatalf("AddContributor: %v", err)
+	}
+	list, err := h.Service.ListContributors(context.Background(), g.ID)
+	if err != nil {
+		t.Fatalf("ListContributors: %v", err)
+	}
+	if len(list) != 1 || list[0].Email != "dana@example.com" {
+		t.Errorf("ListContributors = %+v", list)
+	}
+}
+
+func TestAddContributorRejectsDuplicate(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+	dana := h.SignIn("dana@example.com")
+
+	if err := h.Service.AddContributor(context.Background(), g.ID, dana.ID); err != nil {
+		t.Fatalf("AddContributor: %v", err)
+	}
+	if err := h.Service.AddContributor(context.Background(), g.ID, dana.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("err = %v, want ErrValidation on duplicate", err)
+	}
+}
+
+func TestCreateGoalRecordsFirstSoWhatRevision(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
+
+	revs, err := h.Service.ListSoWhatRevisions(context.Background(), g.ID)
+	if err != nil {
+		t.Fatalf("ListSoWhatRevisions: %v", err)
+	}
+	if len(revs) != 1 {
+		t.Fatalf("len(revs) = %d, want 1 at creation", len(revs))
+	}
+	if revs[0].SoWhat != "Customers wait too long for v2." {
+		t.Errorf("first revision = %q", revs[0].SoWhat)
+	}
+	if revs[0].Author.Email != "sam@example.com" {
+		t.Errorf("author = %q, want the Owner", revs[0].Author.Email)
+	}
+}
+
+func TestEditSoWhatKeepsEveryRevision(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "First why.")
+
+	got, err := h.Service.EditSoWhat(context.Background(), g.ID, "Second why.", owner.ID)
+	if err != nil {
+		t.Fatalf("EditSoWhat: %v", err)
+	}
+	if got.SoWhat != "Second why." {
+		t.Errorf("current So What = %q, want the edit", got.SoWhat)
+	}
+
+	revs, err := h.Service.ListSoWhatRevisions(context.Background(), g.ID)
+	if err != nil {
+		t.Fatalf("ListSoWhatRevisions: %v", err)
+	}
+	if len(revs) != 2 {
+		t.Fatalf("len(revs) = %d, want 2 after one edit", len(revs))
+	}
+	// Newest first: the edit, then the original.
+	if revs[0].SoWhat != "Second why." || revs[1].SoWhat != "First why." {
+		t.Errorf("revisions = %q, %q", revs[0].SoWhat, revs[1].SoWhat)
+	}
+}
+
+func TestEditSoWhatRejectsEmpty(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "First why.")
+
+	if _, err := h.Service.EditSoWhat(context.Background(), g.ID, "   ", owner.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("err = %v, want ErrValidation", err)
+	}
+}

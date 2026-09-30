@@ -89,14 +89,168 @@ func (s *Service) CreateGoal(ctx context.Context, in CreateGoalInput) (Goal, err
 		return Goal{}, fmt.Errorf("create goal: %w", err)
 	}
 
-	return Goal{
-		ID:        row.ID,
-		Title:     row.Title,
-		SoWhat:    row.SoWhat,
-		Owner:     accountFromRow(owner),
-		Lifecycle: row.Lifecycle,
-		CreatedAt: now,
-	}, nil
+	// Keep the So What as its first revision so later edits are auditable
+	// (CONTEXT.md: So What edits are tracked).
+	if _, err := s.queries.CreateSoWhatRevision(ctx, db.CreateSoWhatRevisionParams{
+		GoalID:    row.ID,
+		SoWhat:    soWhat,
+		AuthorID:  in.OwnerID,
+		CreatedAt: now.Format(timeFormat),
+	}); err != nil {
+		return Goal{}, fmt.Errorf("record so what revision: %w", err)
+	}
+
+	return goalFromRow(row, owner), nil
+}
+
+// SoWhatRevision is one version of a Goal's So What, kept so edits are auditable
+// and viewable (CONTEXT.md: So What edits are tracked).
+type SoWhatRevision struct {
+	ID        int64
+	GoalID    int64
+	SoWhat    string
+	Author    Account
+	CreatedAt time.Time
+}
+
+// EditSoWhat replaces a Goal's So What, keeping the previous text as a revision.
+// The new So What is required (CONTEXT.md: So What). authorID records who made
+// the edit.
+func (s *Service) EditSoWhat(ctx context.Context, goalID int64, soWhat string, authorID int64) (Goal, error) {
+	soWhat = strings.TrimSpace(soWhat)
+	if soWhat == "" {
+		return Goal{}, fmt.Errorf("%w: a Goal needs a So What", ErrValidation)
+	}
+	if _, err := s.queries.GetGoal(ctx, goalID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Goal{}, fmt.Errorf("%w: goal %d", ErrNotFound, goalID)
+		}
+		return Goal{}, fmt.Errorf("look up goal: %w", err)
+	}
+
+	if _, err := s.queries.SetGoalSoWhat(ctx, db.SetGoalSoWhatParams{
+		SoWhat: soWhat,
+		ID:     goalID,
+	}); err != nil {
+		return Goal{}, fmt.Errorf("set so what: %w", err)
+	}
+	if _, err := s.queries.CreateSoWhatRevision(ctx, db.CreateSoWhatRevisionParams{
+		GoalID:    goalID,
+		SoWhat:    soWhat,
+		AuthorID:  authorID,
+		CreatedAt: s.clock.Now().Format(timeFormat),
+	}); err != nil {
+		return Goal{}, fmt.Errorf("record so what revision: %w", err)
+	}
+	return s.loadGoal(ctx, goalID)
+}
+
+// ListSoWhatRevisions returns a Goal's So What history, newest first, each with
+// its author resolved.
+func (s *Service) ListSoWhatRevisions(ctx context.Context, goalID int64) ([]SoWhatRevision, error) {
+	rows, err := s.queries.ListSoWhatRevisions(ctx, goalID)
+	if err != nil {
+		return nil, fmt.Errorf("list so what revisions: %w", err)
+	}
+	out := make([]SoWhatRevision, 0, len(rows))
+	for _, r := range rows {
+		createdAt, _ := time.Parse(timeFormat, r.SoWhatRevision.CreatedAt)
+		out = append(out, SoWhatRevision{
+			ID:        r.SoWhatRevision.ID,
+			GoalID:    r.SoWhatRevision.GoalID,
+			SoWhat:    r.SoWhatRevision.SoWhat,
+			Author:    accountFromRow(r.Account),
+			CreatedAt: createdAt,
+		})
+	}
+	return out, nil
+}
+
+// ActivateGoal moves a Proposed Goal to Active once it meets the minimum
+// standard (CONTEXT.md: Lifecycle). The Goal must have a So What, an Owner, and
+// either a delivery date plus at least one Milestone or Metric (Dated) or at
+// least one Metric (Ongoing). Every unmet requirement comes back as its own
+// validation error, joined together, so the Owner sees the whole list at once;
+// use ActivationReasons to enumerate them. The Goal stays Proposed on rejection.
+func (s *Service) ActivateGoal(ctx context.Context, goalID int64) (Goal, error) {
+	g, err := s.loadGoal(ctx, goalID)
+	if err != nil {
+		return Goal{}, err
+	}
+
+	var reasons []error
+	// So What and Owner are guaranteed by CreateGoal/EditSoWhat and the schema,
+	// but the gate states the full minimum standard so it still holds if those
+	// invariants ever change.
+	if strings.TrimSpace(g.SoWhat) == "" {
+		reasons = append(reasons, fmt.Errorf("%w: a Goal needs a So What to become Active", ErrValidation))
+	}
+	if g.Owner.ID == 0 {
+		reasons = append(reasons, fmt.Errorf("%w: a Goal needs an Owner to become Active", ErrValidation))
+	}
+
+	switch g.Kind {
+	case GoalDated:
+		if g.DeliveryDate.IsZero() {
+			reasons = append(reasons, fmt.Errorf("%w: a Dated Goal needs a delivery date", ErrValidation))
+		}
+		milestones, metrics, err := s.countMilestonesAndMetrics(ctx, goalID)
+		if err != nil {
+			return Goal{}, err
+		}
+		if milestones == 0 && metrics == 0 {
+			reasons = append(reasons, fmt.Errorf("%w: a Dated Goal needs at least one Milestone or Metric", ErrValidation))
+		}
+	case GoalOngoing:
+		_, metrics, err := s.countMilestonesAndMetrics(ctx, goalID)
+		if err != nil {
+			return Goal{}, err
+		}
+		if metrics == 0 {
+			reasons = append(reasons, fmt.Errorf("%w: an Ongoing Goal needs at least one Metric", ErrValidation))
+		}
+	default:
+		reasons = append(reasons, fmt.Errorf("%w: a Goal must be marked Dated or Ongoing to become Active", ErrValidation))
+	}
+
+	if len(reasons) > 0 {
+		return Goal{}, errors.Join(reasons...)
+	}
+
+	if _, err := s.queries.SetGoalLifecycle(ctx, db.SetGoalLifecycleParams{
+		Lifecycle: LifecycleActive,
+		ID:        goalID,
+	}); err != nil {
+		return Goal{}, fmt.Errorf("activate goal: %w", err)
+	}
+	return s.loadGoal(ctx, goalID)
+}
+
+// countMilestonesAndMetrics returns how many Milestones and Metrics a Goal has.
+func (s *Service) countMilestonesAndMetrics(ctx context.Context, goalID int64) (milestones, metrics int, err error) {
+	ms, err := s.queries.ListMilestones(ctx, goalID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("list milestones: %w", err)
+	}
+	mt, err := s.queries.ListMetrics(ctx, goalID)
+	if err != nil {
+		return 0, 0, fmt.Errorf("list metrics: %w", err)
+	}
+	return len(ms), len(mt), nil
+}
+
+// ActivationReasons splits an error from ActivateGoal into the individual
+// validation reasons it joins together, so a caller can show each missing item
+// separately. A non-activation error is returned as a single-element slice.
+func ActivationReasons(err error) []error {
+	if err == nil {
+		return nil
+	}
+	var joined interface{ Unwrap() []error }
+	if errors.As(err, &joined) {
+		return joined.Unwrap()
+	}
+	return []error{err}
 }
 
 // ViewGoal returns the Goal with the given id, with its Owner resolved. This is
@@ -172,6 +326,70 @@ func (s *Service) MarkGoalDated(ctx context.Context, goalID int64, deliveryDate 
 		return Goal{}, fmt.Errorf("mark goal dated: %w", err)
 	}
 	return s.loadGoal(ctx, goalID)
+}
+
+// SetCadence sets how often a Check-in is expected on the Goal, in days. It
+// must be positive (CONTEXT.md: Check-in cadence, 7 days by default).
+func (s *Service) SetCadence(ctx context.Context, goalID int64, days int) (Goal, error) {
+	if days <= 0 {
+		return Goal{}, fmt.Errorf("%w: the Check-in cadence must be a positive number of days", ErrValidation)
+	}
+	if _, err := s.queries.SetGoalCadence(ctx, db.SetGoalCadenceParams{
+		CadenceDays: int64(days),
+		ID:          goalID,
+	}); err != nil {
+		return Goal{}, fmt.Errorf("set cadence: %w", err)
+	}
+	return s.loadGoal(ctx, goalID)
+}
+
+// AddContributor lists an Account on the Goal as a Contributor: named for
+// information only, with no update duty (CONTEXT.md: Contributor). Adding the
+// same Account twice is rejected.
+func (s *Service) AddContributor(ctx context.Context, goalID, accountID int64) error {
+	if _, err := s.queries.GetGoal(ctx, goalID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: goal does not exist", ErrValidation)
+		}
+		return fmt.Errorf("look up goal: %w", err)
+	}
+	if _, err := s.queries.GetAccount(ctx, accountID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: account does not exist", ErrValidation)
+		}
+		return fmt.Errorf("look up account: %w", err)
+	}
+	if _, err := s.queries.GetContributor(ctx, db.GetContributorParams{
+		GoalID:    goalID,
+		AccountID: accountID,
+	}); err == nil {
+		return fmt.Errorf("%w: already a Contributor", ErrValidation)
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("look up contributor: %w", err)
+	}
+
+	if _, err := s.queries.AddContributor(ctx, db.AddContributorParams{
+		GoalID:    goalID,
+		AccountID: accountID,
+		CreatedAt: s.clock.Now().Format(timeFormat),
+	}); err != nil {
+		return fmt.Errorf("add contributor: %w", err)
+	}
+	return nil
+}
+
+// ListContributors returns the Accounts listed as Contributors on the Goal,
+// ordered by email.
+func (s *Service) ListContributors(ctx context.Context, goalID int64) ([]Account, error) {
+	rows, err := s.queries.ListContributors(ctx, goalID)
+	if err != nil {
+		return nil, fmt.Errorf("list contributors: %w", err)
+	}
+	out := make([]Account, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, accountFromRow(r.Account))
+	}
+	return out, nil
 }
 
 // MarkGoalOngoing marks the Goal as Ongoing, clearing any delivery date; its
