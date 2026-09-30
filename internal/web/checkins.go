@@ -21,11 +21,12 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	health := r.FormValue("health")
 	status := r.FormValue("status")
 	path := r.FormValue("path_to_green")
+	explanation := r.FormValue("explanation")
 	rawDate := r.FormValue("path_target_date")
 	date, err := parseDate(rawDate)
 	if err != nil {
-		s.renderCheckinFormError(w, r, checkinFormData{
-			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate,
+		s.renderCheckinFormError(w, r, goalID, checkinFormData{
+			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, Explanation: explanation,
 			Error: "invalid target date",
 		})
 		return
@@ -38,11 +39,12 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		Status:         status,
 		PathToGreen:    path,
 		PathTargetDate: date,
+		Explanation:    explanation,
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrValidation) {
-			s.renderCheckinFormError(w, r, checkinFormData{
-				GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate,
+			s.renderCheckinFormError(w, r, goalID, checkinFormData{
+				GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, Explanation: explanation,
 				Error: err.Error(),
 			})
 			return
@@ -69,8 +71,13 @@ func (s *Server) handleNoChangeCheckin(w http.ResponseWriter, r *http.Request, c
 
 // renderCheckinFormError re-renders the Check-in form with a validation message.
 // For an htmx request it returns 200 so htmx swaps the form in place (htmx does
-// not swap error statuses by default); a plain post gets 422.
-func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, data checkinFormData) {
+// not swap error statuses by default); a plain post gets 422. It reloads the
+// Goal's Rolled-up Health so the re-rendered form still shows it beside the
+// Owner's Health (ADR-0003).
+func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, goalID int64, data checkinFormData) {
+	if rollup, err := s.svc.RolledUpHealth(r.Context(), goalID); err == nil {
+		data.RolledUp = rollup
+	}
 	status := http.StatusUnprocessableEntity
 	if r.Header.Get("HX-Request") == "true" {
 		status = http.StatusOK

@@ -27,7 +27,11 @@ type Checkin struct {
 	// PathTargetDate is the target date for being back to Green; the zero time
 	// when there is no Path to Green (CONTEXT.md: Path to Green).
 	PathTargetDate time.Time
-	CreatedAt      time.Time
+	// Explanation is the Owner's reason their Health differs from the Rolled-up
+	// Health (ADR-0003). Empty when the two match, or when there is nothing to
+	// roll up.
+	Explanation string
+	CreatedAt   time.Time
 }
 
 // Health values a Check-in can set (CONTEXT.md: Health). Green needs no Path to
@@ -57,6 +61,9 @@ type SubmitCheckinInput struct {
 	Status         string
 	PathToGreen    string
 	PathTargetDate time.Time
+	// Explanation is required only when the Health differs from the Goal's
+	// Rolled-up Health (ADR-0003).
+	Explanation string
 }
 
 // SubmitCheckin records a Check-in on a Goal. The Goal must be Active — a
@@ -85,7 +92,17 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 
 	status := strings.TrimSpace(in.Status)
 	path := strings.TrimSpace(in.PathToGreen)
+	explanation := strings.TrimSpace(in.Explanation)
 	if err := validateCheckin(in.Health, status, path, in.PathTargetDate); err != nil {
+		return Checkin{}, err
+	}
+
+	// The Owner has to explain why their Health differs from the Rolled-up
+	// Health — the worst among the Goal's Active children (ADR-0003). When there
+	// is nothing to roll up, or the two match, no explanation is required and any
+	// stray one is dropped.
+	explanation, err = s.resolveRollupExplanation(ctx, goal.Goal.ID, in.Health, explanation)
+	if err != nil {
 		return Checkin{}, err
 	}
 
@@ -97,7 +114,7 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 		path = ""
 	}
 
-	return s.createCheckin(ctx, goal.Goal.ID, in.AuthorID, goal.Goal.OwnerID, in.Health, status, path, pathTargetDate)
+	return s.createCheckin(ctx, goal.Goal.ID, in.AuthorID, goal.Goal.OwnerID, in.Health, status, path, pathTargetDate, explanation)
 }
 
 // SubmitNoChangeCheckin records a Check-in that repeats the Goal's previous
@@ -126,7 +143,33 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 		}
 		return Checkin{}, fmt.Errorf("look up previous checkin: %w", err)
 	}
-	return s.createCheckin(ctx, goalID, authorID, goal.Goal.OwnerID, prev.Health, prev.Status, prev.PathToGreen, prev.PathTargetDate)
+	// A no-change repeat still cannot violate the Rolled-up Health rule: if the
+	// roll-up has since changed so the repeated Health would differ from it and
+	// the previous Check-in carried no explanation, refuse it so the Owner uses
+	// the full form to explain (ADR-0003).
+	explanation, err := s.resolveRollupExplanation(ctx, goalID, prev.Health, prev.Explanation)
+	if err != nil {
+		return Checkin{}, fmt.Errorf("%w — submit a Check-in to explain", err)
+	}
+	return s.createCheckin(ctx, goalID, authorID, goal.Goal.OwnerID, prev.Health, prev.Status, prev.PathToGreen, prev.PathTargetDate, explanation)
+}
+
+// resolveRollupExplanation enforces ADR-0003's explanation rule for a Check-in
+// setting health on goalID: when the Goal's Rolled-up Health is present and
+// differs from health, a non-empty explanation is required; otherwise none is,
+// and any stray explanation is dropped. It returns the explanation to store.
+func (s *Service) resolveRollupExplanation(ctx context.Context, goalID int64, health, explanation string) (string, error) {
+	rollup, err := s.RolledUpHealth(ctx, goalID)
+	if err != nil {
+		return "", err
+	}
+	if rollup.Present && rollup.Health != health {
+		if explanation == "" {
+			return "", fmt.Errorf("%w: this Health differs from the Rolled-up Health (%s); explain why", ErrValidation, rollup.Health)
+		}
+		return explanation, nil
+	}
+	return "", nil
 }
 
 // validateCheckin enforces the rules shared by every Check-in: a valid Health, a
@@ -150,7 +193,7 @@ func validateCheckin(health, status, path string, pathTargetDate time.Time) erro
 }
 
 // createCheckin inserts an immutable Check-in row and returns it resolved.
-func (s *Service) createCheckin(ctx context.Context, goalID, authorID, ownerID int64, health, status, path, pathTargetDate string) (Checkin, error) {
+func (s *Service) createCheckin(ctx context.Context, goalID, authorID, ownerID int64, health, status, path, pathTargetDate, explanation string) (Checkin, error) {
 	row, err := s.queries.CreateCheckin(ctx, db.CreateCheckinParams{
 		GoalID:         goalID,
 		AuthorID:       authorID,
@@ -159,6 +202,7 @@ func (s *Service) createCheckin(ctx context.Context, goalID, authorID, ownerID i
 		Status:         status,
 		PathToGreen:    path,
 		PathTargetDate: pathTargetDate,
+		Explanation:    explanation,
 		CreatedAt:      s.clock.Now().Format(timeFormat),
 	})
 	if err != nil {
@@ -225,6 +269,7 @@ func checkinFromRow(c db.Checkin, author, owner db.Account) Checkin {
 		Status:         c.Status,
 		PathToGreen:    c.PathToGreen,
 		PathTargetDate: pathTargetDate,
+		Explanation:    c.Explanation,
 		CreatedAt:      createdAt,
 	}
 }

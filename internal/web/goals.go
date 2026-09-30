@@ -198,6 +198,11 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 	if ok {
 		latestPtr = &latest
 	}
+	rollup, err := s.svc.RolledUpHealth(r.Context(), id)
+	if err != nil {
+		http.Error(w, "could not compute rolled-up health", http.StatusInternalServerError)
+		return
+	}
 
 	render(w, r, http.StatusOK, goalPage(&current, goalView{
 		Goal:          g,
@@ -212,6 +217,7 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		Values:        values,
 		Checkins:      checkins,
 		LatestCheckin: latestPtr,
+		RolledUp:      rollup,
 		SuggestedDate: domain.SuggestDeliveryDate(s.svc.Now()).Format(dateLayout),
 	}))
 }
@@ -238,6 +244,10 @@ type goalView struct {
 	// Green. LatestCheckin is nil when the Goal has no Check-ins yet.
 	Checkins      []domain.Checkin
 	LatestCheckin *domain.Checkin
+	// RolledUp is the Goal's Rolled-up Health — the worst Owner-set Health among
+	// its Active children — shown next to the Owner-set Health (ADR-0003). Its
+	// Present is false when there is nothing to roll up.
+	RolledUp      domain.RolledUpHealth
 	SuggestedDate string
 }
 
