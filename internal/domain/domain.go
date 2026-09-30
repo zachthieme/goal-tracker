@@ -6,7 +6,9 @@
 package domain
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/clock"
@@ -16,6 +18,7 @@ import (
 
 // Service is the domain boundary. Construct it with NewService.
 type Service struct {
+	db      *sql.DB
 	queries *db.Queries
 	clock   clock.Clock
 	email   email.Sender
@@ -30,11 +33,40 @@ func NewService(sqlDB *sql.DB, clk clock.Clock, sender email.Sender, adminEmails
 		admins[e] = true
 	}
 	return &Service{
+		db:      sqlDB,
 		queries: db.New(sqlDB),
 		clock:   clk,
 		email:   sender,
 		admins:  admins,
 	}
+}
+
+// WithinTx runs fn against a Service bound to a single database transaction, so a
+// multi-step command is all-or-nothing (ticket #22: a spreadsheet import commits
+// in one transaction). The transaction commits when fn returns nil and rolls
+// back when it returns an error, which WithinTx then returns unchanged — so a
+// caller can force a rollback (e.g. a dry run, or an import that found row
+// errors) by returning a sentinel error and recognising it on the way out.
+func (s *Service) WithinTx(ctx context.Context, fn func(tx *Service) error) error {
+	sqlTx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	txSvc := &Service{
+		db:      s.db,
+		queries: s.queries.WithTx(sqlTx),
+		clock:   s.clock,
+		email:   s.email,
+		admins:  s.admins,
+	}
+	if err := fn(txSvc); err != nil {
+		_ = sqlTx.Rollback()
+		return err
+	}
+	if err := sqlTx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+	return nil
 }
 
 // Now returns the current time from the Service's clock, so callers that need

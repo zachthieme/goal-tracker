@@ -118,6 +118,66 @@ func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, e
 	}, nil
 }
 
+// ImportLink creates an already-Accepted "contributes to" link from childID to
+// parentID, without waiting for the parent's Owner to accept it. It is used by
+// the spreadsheet import an Admin runs, where links between imported Goals are
+// accepted automatically (ticket #22). It still refuses a self-link, a duplicate,
+// and any link that would close a cycle (ADR-0001). The request is attributed to
+// the child's Owner, who is the person a normal request would come from.
+func (s *Service) ImportLink(ctx context.Context, childID, parentID int64) (Link, error) {
+	if childID == parentID {
+		return Link{}, fmt.Errorf("%w: a Goal cannot contribute to itself", ErrValidation)
+	}
+	child, err := s.queries.GetGoal(ctx, childID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Link{}, fmt.Errorf("%w: child goal does not exist", ErrValidation)
+		}
+		return Link{}, fmt.Errorf("look up child goal: %w", err)
+	}
+	parent, err := s.queries.GetGoal(ctx, parentID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Link{}, fmt.Errorf("%w: parent goal does not exist", ErrValidation)
+		}
+		return Link{}, fmt.Errorf("look up parent goal: %w", err)
+	}
+
+	if _, err := s.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
+		ChildID:  childID,
+		ParentID: parentID,
+	}); err == nil {
+		return Link{}, fmt.Errorf("%w: a link between these Goals already exists", ErrValidation)
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return Link{}, fmt.Errorf("look up existing link: %w", err)
+	}
+
+	if err := s.ensureNoCycle(ctx, childID, parentID); err != nil {
+		return Link{}, err
+	}
+
+	now := s.clock.Now()
+	row, err := s.queries.CreateLink(ctx, db.CreateLinkParams{
+		ChildID:     childID,
+		ParentID:    parentID,
+		Status:      LinkAccepted,
+		Note:        "",
+		RequestedBy: child.Goal.OwnerID,
+		CreatedAt:   now.Format(timeFormat),
+	})
+	if err != nil {
+		return Link{}, fmt.Errorf("create link: %w", err)
+	}
+	return Link{
+		ID:        row.ID,
+		Child:     goalFromRow(child.Goal, child.Account),
+		Parent:    goalFromRow(parent.Goal, parent.Account),
+		Status:    row.Status,
+		Note:      row.Note,
+		CreatedAt: now,
+	}, nil
+}
+
 // AcceptLink accepts a pending request. The actor must own the parent Goal. The
 // cycle check is repeated because another accepted link may have appeared since
 // the request was made (ADR-0001).
