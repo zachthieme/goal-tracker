@@ -30,6 +30,9 @@ type Goal struct {
 	// been reassigned; it is surfaced as prominently as Red (CONTEXT.md:
 	// Ownerless). It is derived from the Owner, not stored on the Goal.
 	Ownerless bool
+	// TopLevel is true when an Admin has marked the Goal as one of the org's
+	// root outcomes, so it is never Unaligned (CONTEXT.md: Top-level Goal).
+	TopLevel bool
 }
 
 // Lifecycle values a Goal can be in (CONTEXT.md: Lifecycle). A Goal starts
@@ -354,6 +357,7 @@ func goalFromRow(g db.Goal, owner db.Account) Goal {
 		CadenceDays:  int(g.CadenceDays),
 		CreatedAt:    createdAt,
 		Ownerless:    acc.Departed,
+		TopLevel:     g.TopLevel != 0,
 	}
 }
 

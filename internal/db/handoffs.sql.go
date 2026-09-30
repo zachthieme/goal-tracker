@@ -94,7 +94,7 @@ func (q *Queries) GetPendingHandoffForGoal(ctx context.Context, goalID int64) (H
 }
 
 const listPendingHandoffsForNewOwner = `-- name: ListPendingHandoffsForNewOwner :many
-SELECT handoffs.id, handoffs.goal_id, handoffs.from_owner, handoffs.to_owner, handoffs.status, handoffs.initiated_by, handoffs.created_at, goal.id, goal.title, goal.so_what, goal.owner_id, goal.lifecycle, goal.created_at, goal.kind, goal.delivery_date, goal.cadence_days, from_acct.id, from_acct.email, from_acct.is_admin, from_acct.created_at, from_acct.departed, to_acct.id, to_acct.email, to_acct.is_admin, to_acct.created_at, to_acct.departed
+SELECT handoffs.id, handoffs.goal_id, handoffs.from_owner, handoffs.to_owner, handoffs.status, handoffs.initiated_by, handoffs.created_at, goal.id, goal.title, goal.so_what, goal.owner_id, goal.lifecycle, goal.created_at, goal.kind, goal.delivery_date, goal.cadence_days, goal.top_level, from_acct.id, from_acct.email, from_acct.is_admin, from_acct.created_at, from_acct.departed, to_acct.id, to_acct.email, to_acct.is_admin, to_acct.created_at, to_acct.departed
 FROM handoffs
 JOIN goals goal ON goal.id = handoffs.goal_id
 JOIN accounts from_acct ON from_acct.id = handoffs.from_owner
@@ -138,6 +138,7 @@ func (q *Queries) ListPendingHandoffsForNewOwner(ctx context.Context, toOwner in
 			&i.Goal.Kind,
 			&i.Goal.DeliveryDate,
 			&i.Goal.CadenceDays,
+			&i.Goal.TopLevel,
 			&i.Account.ID,
 			&i.Account.Email,
 			&i.Account.IsAdmin,

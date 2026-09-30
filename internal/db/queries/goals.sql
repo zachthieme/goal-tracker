@@ -89,3 +89,20 @@ FROM so_what_revisions
 JOIN accounts ON accounts.id = so_what_revisions.author_id
 WHERE so_what_revisions.goal_id = ?
 ORDER BY so_what_revisions.created_at DESC, so_what_revisions.id DESC;
+
+-- name: SetGoalTopLevel :exec
+UPDATE goals SET top_level = ? WHERE id = ?;
+
+-- name: ListUnalignedGoals :many
+-- Active Goals that contribute to no other Goal through an accepted link and
+-- aren't Top-level (CONTEXT.md: Unaligned), newest first.
+SELECT sqlc.embed(goals), sqlc.embed(accounts)
+FROM goals
+JOIN accounts ON accounts.id = goals.owner_id
+WHERE goals.lifecycle = 'Active'
+  AND goals.top_level = 0
+  AND NOT EXISTS (
+    SELECT 1 FROM links
+    WHERE links.child_id = goals.id AND links.status = 'accepted'
+  )
+ORDER BY goals.created_at DESC, goals.id DESC;

@@ -78,6 +78,7 @@ type Goal struct {
 	Kind         string
 	DeliveryDate string
 	CadenceDays  int64
+	TopLevel     int64
 }
 
 type GoalDimensionValue struct {
