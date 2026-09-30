@@ -2,6 +2,7 @@ package testsupport
 
 import (
 	"context"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -16,4 +17,15 @@ func (h *Harness) SaveReportDefinition(actor domain.Account, in domain.SaveRepor
 		h.T.Fatalf("SaveReportDefinition: %v", err)
 	}
 	return def
+}
+
+// PublishReport publishes the Report Definition def on behalf of actor against
+// its default baseline, failing the test on error.
+func (h *Harness) PublishReport(actor domain.Account, def domain.ReportDefinition) domain.Publication {
+	h.T.Helper()
+	pub, err := h.Service.PublishReport(context.Background(), actor.ID, def.ID, time.Time{})
+	if err != nil {
+		h.T.Fatalf("PublishReport: %v", err)
+	}
+	return pub
 }

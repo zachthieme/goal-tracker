@@ -144,6 +144,9 @@ templ publicationPage(current *domain.Account, p domain.Publication) {
 				Changes since { fmtDate(p.Report.Baseline) }.
 			}
 		</p>
+		<p data-testid="report-export">
+			<a data-testid="export-markdown" href={ templ.SafeURL(publicationPath(p) + "/markdown") }>Download as Markdown</a>
+		</p>
 		<section data-testid="report-snapshot">
 			@reportBody(p.Report)
 		</section>

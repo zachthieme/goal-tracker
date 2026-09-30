@@ -209,3 +209,64 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 		t.Errorf("publication under another definition: status %d, want 404", resp.StatusCode)
 	}
 }
+
+// A published Report downloads as Markdown from its publication page, with the
+// same content as the snapshot, and a later Check-in never changes it. The
+// Markdown itself is asserted in the export package's tests; this checks the
+// page wires it through.
+func TestSmokeExportPublicationAsMarkdownOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, g.ID, domain.HealthRed, "Vendor is late.", "Chase the vendor.", h.Clock.Now().AddDate(0, 0, 14))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", RootIDs: []int64{g.ID}})
+	other := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "WBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	h.Checkin(boss, g.ID, domain.HealthRed, "Vendor is gone.", "Find a new vendor.", h.Clock.Now().AddDate(0, 0, 14))
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	pubPath := "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10)
+
+	page := getBody(t, client, ts.URL+pubPath)
+	if link := pageElement(t, page, "a", "export-markdown"); !strings.Contains(link, pubPath+"/markdown") {
+		t.Errorf("publication page does not link its Markdown export; link:\n%s", link)
+	}
+
+	resp, err := client.Get(ts.URL + pubPath + "/markdown")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("markdown export: status %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/markdown") {
+		t.Errorf("Content-Type %q, want text/markdown", ct)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, "attachment") || !strings.Contains(cd, ".md") {
+		t.Errorf("Content-Disposition %q, want a .md attachment", cd)
+	}
+	md := readBody(t, resp)
+	if !strings.HasPrefix(md, "# EU MBR\n") {
+		t.Errorf("export does not open with the Report's name:\n%s", md)
+	}
+	for _, want := range []string{"### Launch in EU", "Health: **Red**", "Vendor is late."} {
+		if !strings.Contains(md, want) {
+			t.Errorf("export missing %q:\n%s", want, md)
+		}
+	}
+	if strings.Contains(md, "Vendor is gone.") {
+		t.Errorf("export shows a Check-in made after publishing:\n%s", md)
+	}
+
+	// A publication exports only under its own definition.
+	resp, err = client.Get(ts.URL + "/reports/" + strconv.FormatInt(other.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10) + "/markdown")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("export under another definition: status %d, want 404", resp.StatusCode)
+	}
+}
