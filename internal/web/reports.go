@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -97,7 +98,7 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 		http.Error(w, "could not load Action Items", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, reportDraftPage(&current, report, pubs, d))
+	render(w, r, http.StatusOK, reportDraftPage(&current, report, s.svc.Now(), pubs, d))
 }
 
 // handleCurateNarrative sets the narrative of a Report Definition's next
@@ -261,7 +262,23 @@ func (s *Server) reportsList(r *http.Request) (reportsListData, error) {
 	if err != nil {
 		return reportsListData{}, err
 	}
-	return reportsListData{Defs: defs, Goals: goals, Owners: distinctOwners(goals), Dims: dims}, nil
+	return reportsListData{Defs: defs, Goals: topLevelFirst(goals), Owners: distinctOwners(goals), Dims: dims}, nil
+}
+
+// topLevelFirst orders Goals for the root picker: the org's Top-level Goals
+// first, each group keeping its order.
+func topLevelFirst(goals []domain.Goal) []domain.Goal {
+	out := slices.Clone(goals)
+	slices.SortStableFunc(out, func(a, b domain.Goal) int {
+		switch {
+		case a.TopLevel == b.TopLevel:
+			return 0
+		case a.TopLevel:
+			return -1
+		}
+		return 1
+	})
+	return out
 }
 
 // distinctOwners returns the Goals' Owners, one each, in first-seen order — the

@@ -2,56 +2,71 @@ package web
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// reportsPage lists every saved Report Definition and the form to build a new one
-// (CONTEXT.md: Report Definition). A definition selects Goals by root Goals plus a
-// depth, by Dimension or Owner filters, or by filters alone.
+// reportsPage lists every saved Report Definition as a card, and behind a New
+// report button the form to build a new one (CONTEXT.md: Report Definition). A
+// definition selects Goals by root Goals plus a depth, by Dimension or Owner
+// filters, or by filters alone.
 templ reportsPage(current *domain.Account, data reportsListData) {
 	@layout("Reports", current) {
-		<h1>Reports</h1>
-		<section data-testid="report-definitions">
+		@reportStyles()
+		<div class="page-head">
+			<h1>Reports</h1>
+		</div>
+		<section data-testid="report-definitions" class="rp-body">
 			<h2>Saved Report Definitions</h2>
-			<ul>
+			<ul class="rp-cards">
 				if len(data.Defs) == 0 {
-					<li data-testid="no-reports">No Report Definitions yet.</li>
+					<li data-testid="no-reports" class="muted">No Report Definitions yet.</li>
 				}
 				for _, d := range data.Defs {
-					<li data-testid="report-definition">
-						<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d", d.ID)) }>{ d.Name }</a>
+					<li data-testid="report-definition" class="card rp-card">
+						<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d", d.ID)) }><strong>{ d.Name }</strong></a>
+						if d.Introduction != "" {
+							<span class="small muted">{ d.Introduction }</span>
+						}
 					</li>
 				}
 			</ul>
 		</section>
-		<section data-testid="create-report">
-			<h2>New Report Definition</h2>
-			<form method="post" action="/reports">
-				<label>
-					Name
+		<details data-testid="create-report">
+			<summary class="btn primary">New report</summary>
+			<form class="card rp-card rp-form" style="margin-top:12px" method="post" action="/reports">
+				<h2>New Report Definition</h2>
+				<label class="field">
+					<span>Name</span>
 					<input type="text" name="name" required/>
 				</label>
-				<label>
-					Introduction
+				<label class="field">
+					<span>Introduction</span>
 					<textarea name="introduction"></textarea>
 				</label>
-				<fieldset data-testid="report-roots">
-					<legend>Root Goals</legend>
-					for _, g := range data.Goals {
-						<label>
-							<input type="checkbox" name="root" value={ fmt.Sprintf("%d", g.ID) }/>
-							{ g.Title }
-						</label>
-					}
-				</fieldset>
-				<label>
-					Depth
+				<div class="field">
+					<fieldset data-testid="report-roots" class="rp-picker">
+						<legend>Root Goals <span class="hint">— Top-level Goals first</span></legend>
+						for _, g := range data.Goals {
+							<label>
+								<input type="checkbox" name="root" value={ fmt.Sprintf("%d", g.ID) }/>
+								{ g.Title }
+								if g.TopLevel {
+									{ " " }<span class="tag">Top-level</span>
+								}
+							</label>
+						}
+					</fieldset>
+				</div>
+				<label class="field">
+					<span>Depth</span>
 					<input type="number" name="depth" min="0" value="1"/>
+					<span class="hint">0 = just the roots, 1 = roots and their direct contributors, …</span>
 				</label>
-				<label data-testid="report-owner-filter">
-					Owner filter
+				<label data-testid="report-owner-filter" class="field">
+					<span>Owner filter</span>
 					<select name="owner">
 						<option value="">Any Owner</option>
 						for _, o := range data.Owners {
@@ -62,7 +77,7 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 				<fieldset data-testid="report-dimension-filters">
 					<legend>Dimension filters</legend>
 					if len(data.Dims) == 0 {
-						<p data-testid="no-dimensions-defined">No Dimensions defined yet.</p>
+						<p data-testid="no-dimensions-defined" class="muted">No Dimensions defined yet.</p>
 					}
 					for _, d := range data.Dims {
 						<fieldset>
@@ -78,58 +93,72 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 						</fieldset>
 					}
 				</fieldset>
-				<button type="submit">Save Report Definition</button>
+				<div><button type="submit" class="btn primary">Save Report Definition</button></div>
 			</form>
-		</section>
+		</details>
 	}
 }
 
 // reportDraftPage shows a saved Report Definition and its draft Report read
 // against a baseline the reader can change — by default the previous
-// publication — with the button that publishes it, the form to curate its
-// narrative from Highlights, and the list of its publications (CONTEXT.md:
-// Report, Report Definition).
-templ reportDraftPage(current *domain.Account, r domain.Report, pubs []domain.Publication, d discussion) {
+// publication. It reads top to bottom as the author works: the baseline, the
+// form to curate its narrative from Highlights, the draft preview, and only
+// then the button that publishes it. Its publications are listed in a sidebar
+// (CONTEXT.md: Report, Report Definition). Paths to Green are judged overdue as
+// of asOf, today.
+templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion) {
 	@layout(r.Definition.Name, current) {
-		<h1 data-testid="report-name">{ r.Definition.Name }</h1>
-		<form method="get" data-testid="report-baseline">
-			<label>
-				Changes since
-				<input type="date" name="baseline" value={ fmtDate(r.Baseline) }/>
-			</label>
-			<button type="submit">Update</button>
-		</form>
-		if r.Previous.ID != 0 {
-			<p data-testid="report-since-publication">Showing what changed since the previous publication, { fmtPublished(r.Previous.PublishedAt) }.</p>
-		}
-		<form data-testid="report-publish" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications", r.Definition.ID)) }>
-			// A date the reader picked is carried through; otherwise publishing
-			// reads against the previous publication, as the draft does.
-			if r.Previous.ID == 0 {
-				<input type="hidden" name="baseline" value={ fmtDate(r.Baseline) }/>
-			}
-			<button type="submit">Publish</button>
-		</form>
-		@narrativeCuration(r)
-		<section data-testid="report-draft">
-			<h2>Draft</h2>
-			@reportBody(r, d)
-		</section>
-		<section data-testid="report-publications">
-			<h2>Publications</h2>
-			<ul>
-				if len(pubs) == 0 {
-					<li data-testid="no-publications">Not published yet.</li>
+		@reportStyles()
+		<div class="page-head">
+			<div>
+				<p class="small muted"><a href="/reports">Reports</a>{ " / " }Draft</p>
+				<h1 data-testid="report-name">{ r.Definition.Name }</h1>
+			</div>
+		</div>
+		<div class="grid-main-aside">
+			<div class="rp-body">
+				<form data-testid="report-baseline" class="rp-inline-form" method="get">
+					<label>
+						Changes since
+						<input type="date" name="baseline" value={ fmtDate(r.Baseline) }/>
+					</label>
+					<button type="submit" class="btn">Update</button>
+				</form>
+				if r.Previous.ID != 0 {
+					<p data-testid="report-since-publication" class="muted">Showing what changed since the previous publication, { fmtPublished(r.Previous.PublishedAt) }.</p>
 				}
-				for _, p := range pubs {
-					<li data-testid="report-publication">
-						<a href={ templ.SafeURL(publicationPath(p)) }>{ fmtPublished(p.PublishedAt) }</a>
-						{ " by " }{ p.PublishedBy.Email }
-					</li>
-				}
-			</ul>
-		</section>
-		<p><a href="/reports">Back to Reports</a></p>
+				@narrativeCuration(r)
+				<section data-testid="report-draft" class="rp-body">
+					<h2>Draft preview</h2>
+					@reportBody(r, asOf, d)
+				</section>
+				<form data-testid="report-publish" class="card rp-publish" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications", r.Definition.ID)) }>
+					// A date the reader picked is carried through; otherwise publishing
+					// reads against the previous publication, as the draft does.
+					if r.Previous.ID == 0 {
+						<input type="hidden" name="baseline" value={ fmtDate(r.Baseline) }/>
+					}
+					<p class="muted">Publishes a frozen copy readers can comment on.</p>
+					<button type="submit" class="btn primary">Publish</button>
+				</form>
+			</div>
+			<aside data-testid="report-publications" class="rp-body">
+				<h2>Publications</h2>
+				<ul class="card rp-list">
+					if len(pubs) == 0 {
+						<li data-testid="no-publications" class="muted">Not published yet.</li>
+					}
+					for _, p := range pubs {
+						<li data-testid="report-publication">
+							<a href={ templ.SafeURL(publicationPath(p)) }>{ fmtPublished(p.PublishedAt) }</a>
+							<br/>
+							<span class="small muted">by { p.PublishedBy.Email }</span>
+						</li>
+					}
+				</ul>
+				<p><a href="/reports">Back to Reports</a></p>
+			</aside>
+		</div>
 	}
 }
 
@@ -140,18 +169,27 @@ templ reportDraftPage(current *domain.Account, r domain.Report, pubs []domain.Pu
 // Items raised on it (ticket #19).
 templ publicationPage(current *domain.Account, p domain.Publication, d discussion) {
 	@layout(p.Report.Definition.Name, current) {
-		<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
-		@publishedLine(p)
-		<p data-testid="report-export">
-			<a data-testid="export-markdown" href={ templ.SafeURL(publicationPath(p) + "/markdown") }>Download as Markdown</a>
-			{ " · " }
-			<a data-testid="export-print" href={ templ.SafeURL(publicationPath(p) + "/print") }>Print</a>
-		</p>
-		<section data-testid="report-snapshot">
-			@reportBody(p.Report, d)
-		</section>
-		@publicationActionItems(d)
-		<p><a href={ templ.SafeURL(fmt.Sprintf("/reports/%d", p.DefinitionID)) }>Back to { p.Report.Definition.Name }</a></p>
+		@reportStyles()
+		<div class="rp-read">
+			<header class="rp-head">
+				<div>
+					<p class="small muted" data-testid="report-breadcrumb">
+						<a href="/reports">Reports</a>{ " / " }<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d", p.DefinitionID)) }>{ p.Report.Definition.Name }</a>
+					</p>
+					<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
+					@publishedLine(p)
+				</div>
+				<div class="rp-actions" data-testid="report-export">
+					<a data-testid="export-markdown" class="btn sm" href={ templ.SafeURL(publicationPath(p) + "/markdown") }>Markdown</a>
+					<a data-testid="export-print" class="btn sm" href={ templ.SafeURL(publicationPath(p) + "/print") }>Print / PDF</a>
+				</div>
+			</header>
+			@healthSummary(p.Report)
+			<section data-testid="report-snapshot" class="rp-body">
+				@reportBody(p.Report, p.PublishedAt, d)
+			</section>
+			@publicationActionItems(d)
+		</div>
 	}
 }
 
@@ -164,10 +202,19 @@ templ publicationPrintPage(p domain.Publication) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ p.Report.Definition.Name } · { fmtPublished(p.PublishedAt) }</title>
+			<link rel="preconnect" href="https://fonts.googleapis.com"/>
+			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+			<link rel="stylesheet" href={ reportFontsURL }/>
 			<style>
-				body { font-family: Georgia, serif; max-width: 48rem; margin: 2rem auto; line-height: 1.4; }
+				body { font-family: 'Source Serif 4', Georgia, serif; max-width: 48rem; margin: 2rem auto; line-height: 1.4; }
 				a { color: inherit; text-decoration: none; }
 				article { break-inside: avoid; border-top: 1px solid #ccc; }
+				table { border-collapse: collapse; width: 100%; }
+				th, td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid #ccc; }
+				tr { break-inside: avoid; }
+				.dot { display: none; }
+				.badge { font-weight: 600; white-space: nowrap; }
+				.label { font-variant: small-caps; letter-spacing: 0.05em; }
 				@media print {
 					body { margin: 0; max-width: none; }
 					.no-print { display: none; }
@@ -183,30 +230,46 @@ templ publicationPrintPage(p domain.Publication) {
 			<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
 			@publishedLine(p)
 			<section data-testid="report-snapshot">
-				@reportBody(p.Report, discussion{})
+				@reportBody(p.Report, p.PublishedAt, discussion{})
 			</section>
 		</body>
 	</html>
 }
 
+// healthSummary counts the Report's selected Goals by Health — Red, Yellow,
+// Green — and how many are Stale, so a reader sees the shape of the org before
+// reading a block.
+templ healthSummary(r domain.Report) {
+	<section data-testid="health-summary" class="rp-tiles">
+		for _, t := range healthTiles(r) {
+			<div class="card rp-tile">
+				<span class={ "badge", t.class }><span class="dot"></span>{ t.label }</span>
+				<span data-testid={ "health-count-" + t.key } class="num rp-count">{ fmt.Sprintf("%d", t.count) }</span>
+			</div>
+		}
+	</section>
+}
+
 // publishedLine says who published a Report and when, and what it read its
 // changes against.
 templ publishedLine(p domain.Publication) {
-	<p data-testid="report-published">
-		Published { fmtPublished(p.PublishedAt) } by { p.PublishedBy.Email }.
+	<p data-testid="report-published" class="muted">
+		Published { fmtPublished(p.PublishedAt) } by { p.PublishedBy.Email }
 		if p.Report.Previous.ID != 0 {
-			Changes since the previous publication, { fmtPublished(p.Report.Previous.PublishedAt) }.
+			{ " · changes since the previous publication, " }{ fmtPublished(p.Report.Previous.PublishedAt) }
 		} else {
-			Changes since { fmtDate(p.Report.Baseline) }.
+			{ " · changes since " }{ fmtDate(p.Report.Baseline) }
 		}
 	</p>
 }
 
 // reportBody is a Report's content, drafted or published: its open Action
-// Items, the introduction, the narrative curated from Highlights, then
-// exceptions with the full MBR block and every other selected Goal one line
-// with title, Owner, Health, and due date (CONTEXT.md: Report). On a publication, each Goal carries its discussion.
-templ reportBody(r domain.Report, d discussion) {
+// Items, the introduction, the narrative curated from Highlights, then the
+// exceptions that need attention, each a card with the full MBR block, and
+// every other selected Goal on track, one table row with its Health, title,
+// Owner, and due date (CONTEXT.md: Report). A Path to Green is judged overdue
+// as of asOf. On a publication, each Goal carries its discussion.
+templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 	@reportActionItems(r.ActionItems, d)
 	if r.Definition.Introduction != "" {
 		<p data-testid="report-introduction">{ r.Definition.Introduction }</p>
@@ -215,23 +278,50 @@ templ reportBody(r domain.Report, d discussion) {
 	if len(r.Exceptions) == 0 && len(r.Lines) == 0 {
 		<p data-testid="no-selected-goals">No Goals selected.</p>
 	}
-	for _, b := range r.Exceptions {
-		@reportBlock(b, d)
+	if len(r.Exceptions) > 0 {
+		<section data-testid="needs-attention">
+			<h2>Needs attention</h2>
+			for _, b := range r.Exceptions {
+				@reportBlock(b, asOf, d)
+			}
+		</section>
 	}
 	if len(r.Lines) > 0 {
-		<ul>
-			for _, sg := range r.Lines {
-				<li data-testid="selected-goal" id={ fmt.Sprintf("goal-%d", sg.Goal.ID) }>
-					<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a>
-					<span data-testid="selected-owner">— { sg.Goal.Owner.Email }</span>
-					<span data-testid="selected-health">— { reportHealth(sg.Health) }</span>
-					if !sg.Goal.DeliveryDate.IsZero() {
-						<span data-testid="selected-due">— due { fmtDate(sg.Goal.DeliveryDate) }</span>
-					}
-					@goalDiscussion(sg.Goal.ID, d)
-				</li>
-			}
-		</ul>
+		<section data-testid="on-track-section">
+			<h2>On track</h2>
+			<div class="card">
+				<table data-testid="on-track">
+					<thead>
+						<tr><th>Health</th><th>Goal</th><th>Owner</th><th>Due</th></tr>
+					</thead>
+					<tbody>
+						for _, sg := range r.Lines {
+							<tr data-testid="selected-goal" id={ fmt.Sprintf("goal-%d", sg.Goal.ID) }>
+								<td>
+									@healthBadge("selected-health", sg.Health)
+								</td>
+								<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a></td>
+								<td data-testid="selected-owner">{ sg.Goal.Owner.Email }</td>
+								<td>
+									if !sg.Goal.DeliveryDate.IsZero() {
+										<span data-testid="selected-due" class="num">{ fmtDate(sg.Goal.DeliveryDate) }</span>
+									} else {
+										<span class="muted">—</span>
+									}
+								</td>
+							</tr>
+							if d.Pub != nil {
+								<tr>
+									<td colspan="4">
+										@goalDiscussion(sg.Goal.ID, d)
+									</td>
+								</tr>
+							}
+						}
+					</tbody>
+				</table>
+			</div>
+		</section>
 	}
 }
 
@@ -240,9 +330,9 @@ templ reportBody(r domain.Report, d discussion) {
 // section the author picks it into, and the author's own text for each
 // section (CONTEXT.md: Highlight).
 templ narrativeCuration(r domain.Report) {
-	<section data-testid="report-curation">
+	<section data-testid="report-curation" class="rp-body">
 		<h2>Narrative</h2>
-		<form data-testid="narrative-curation" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/narrative", r.Definition.ID)) }>
+		<form data-testid="narrative-curation" class="card rp-form rp-card" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/narrative", r.Definition.ID)) }>
 			// A date the reader picked is kept when the draft reloads.
 			if r.Previous.ID == 0 {
 				<input type="hidden" name="baseline" value={ fmtDate(r.Baseline) }/>
@@ -250,7 +340,7 @@ templ narrativeCuration(r domain.Report) {
 			if len(r.Highlights) == 0 {
 				<p data-testid="no-highlights">No Highlights since { fmtDate(r.Baseline) }.</p>
 			} else {
-				<ul>
+				<ul class="rp-list">
 					for _, nh := range r.Highlights {
 						<li data-testid="curation-highlight">
 							<select name={ fmt.Sprintf("pick-%d", nh.Highlight.ID) }>
@@ -267,24 +357,24 @@ templ narrativeCuration(r domain.Report) {
 				</ul>
 			}
 			for _, section := range narrativeSections {
-				<label>
-					{ sectionHeading(section) }
+				<label class="field">
+					<span>{ sectionHeading(section) }</span>
 					<textarea name={ "text-" + section }>{ narrativeText(r, section) }</textarea>
 				</label>
 			}
-			<button type="submit">Save narrative</button>
+			<div><button type="submit" class="btn">Save narrative</button></div>
 		</form>
 	</section>
 }
 
-// reportNarrative is a Report's Insights, Accomplishments, and Misses: the
-// author's text and the Highlights they picked, each crediting the Goal's
-// Owner. Sections with neither are left out.
+// reportNarrative is a Report's Insights, Accomplishments, and Misses, in the
+// serif face under label headings: the author's text and the Highlights they
+// picked, each crediting the Goal's Owner. Sections with neither are left out.
 templ reportNarrative(narrative []domain.NarrativeSection) {
 	if len(narrative) > 0 {
-		<section data-testid="report-narrative">
+		<section data-testid="report-narrative" class="card rp-narrative">
 			for _, sec := range narrative {
-				<h3 data-testid="narrative-section">{ sec.Heading() }</h3>
+				<h3 data-testid="narrative-section" class="label">{ sec.Heading() }</h3>
 				if sec.Text != "" {
 					<p data-testid="narrative-text">{ sec.Text }</p>
 				}
@@ -305,87 +395,107 @@ templ reportNarrative(narrative []domain.NarrativeSection) {
 
 // highlightCredit credits a Highlight to the Goal's Owner, naming the Goal.
 templ highlightCredit(nh domain.NarrativeHighlight) {
-	<span data-testid="highlight-credit">
-		— { nh.Highlight.Owner.Email }, <a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", nh.GoalID)) }>{ nh.GoalTitle }</a>
+	<span data-testid="highlight-credit" class="rp-credit">
+		{ " — " }{ nh.Highlight.Owner.Email }, <a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", nh.GoalID)) }>{ nh.GoalTitle }</a>
 	</span>
 }
 
-// reportBlock is an exception Goal's full MBR block: title, due date with its
-// history struck through, Health, badges, So What, latest status, Path to
-// Green, Milestones, Metrics against target, and the Rolled-up Health with the
-// Owner's explanation. On a publication it ends with the Goal's discussion.
-templ reportBlock(b domain.ReportBlock, d discussion) {
-	<article data-testid="report-exception" id={ fmt.Sprintf("goal-%d", b.Goal.ID) }>
-		<h3>
-			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", b.Goal.ID)) }>{ b.Goal.Title }</a>
-			for _, badge := range b.Badges {
-				{ " " }<strong data-testid="report-badge">[{ badge }]</strong>
-			}
-		</h3>
-		<p>
-			<span data-testid="report-owner">{ b.Goal.Owner.Email }</span>
-			{ " · " }{ b.Goal.Lifecycle }
-			{ " · Health: " }<strong data-testid="report-health">{ reportHealth(b.Health) }</strong>
-			if !b.Goal.DeliveryDate.IsZero() {
-				{ " · due " }
-				<span data-testid="report-due">
-					@struckDates(b.PriorDueDates)
-					{ fmtDate(b.Goal.DeliveryDate) }
-				</span>
-			}
-		</p>
-		<p data-testid="report-so-what"><strong>So What:</strong> { b.Goal.SoWhat }</p>
-		if b.Status != "" {
-			<p data-testid="report-status"><strong>Status:</strong> { b.Status }</p>
-		}
-		if b.PathToGreen != "" {
-			<p data-testid="report-path-to-green"><strong>Path to Green:</strong> { b.PathToGreen } (back to Green by { fmtDate(b.PathTargetDate) })</p>
-		}
-		if len(b.Milestones) > 0 {
-			<ul data-testid="report-milestones">
-				for _, m := range b.Milestones {
-					<li data-testid="report-milestone">
-						if m.Milestone.Status == domain.MilestoneRemoved {
-							<del>{ m.Milestone.Name }</del>
-						} else {
-							{ m.Milestone.Name }
-						}
-						{ " — " }
-						@struckDates(m.PriorDates)
-						{ fmtDate(m.Milestone.TargetDate) }
-						if m.New {
-							{ " " }<strong>[New]</strong>
-						}
-						if m.Milestone.Status != domain.MilestonePlanned {
-							{ " " }<strong>[{ m.Milestone.Status }]</strong>
-						}
-						if m.Milestone.RemovedReason != "" {
-							<span>— { m.Milestone.RemovedReason }</span>
-						}
-					</li>
+// reportBlock is an exception Goal's full MBR block, as a card: title, Owner,
+// Lifecycle, and due date with its history struck through; Health and badges
+// top right; So What, latest status, and Path to Green in a tinted box, marked
+// Overdue when its target date passed before asOf; Milestones, Metrics against
+// target, and the Rolled-up Health with the Owner's explanation. On a
+// publication it ends with the Goal's discussion.
+templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
+	<article data-testid="report-exception" class="card rp-card" id={ fmt.Sprintf("goal-%d", b.Goal.ID) }>
+		<div class="rp-card-head">
+			<div>
+				<h3><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", b.Goal.ID)) }>{ b.Goal.Title }</a></h3>
+				<p class="small muted">
+					<span data-testid="report-owner">{ b.Goal.Owner.Email }</span>
+					{ " · " }{ b.Goal.Lifecycle }
+					if !b.Goal.DeliveryDate.IsZero() {
+						{ " · due " }
+						<span data-testid="report-due">
+							@struckDates(b.PriorDueDates)
+							{ fmtDate(b.Goal.DeliveryDate) }
+						</span>
+					}
+				</p>
+			</div>
+			<div class="rp-badges">
+				@healthBadge("report-health", b.Health)
+				for _, badge := range b.Badges {
+					<span data-testid="report-badge" class={ "badge", badgeClass(badge) }>{ badge }</span>
 				}
-			</ul>
+			</div>
+		</div>
+		<div data-testid="report-status-box" class={ "rp-tint", templ.KV("overdue", pathOverdueAt(b, asOf)) }>
+			<p data-testid="report-so-what"><strong>So What:</strong> { b.Goal.SoWhat }</p>
+			if b.Status != "" {
+				<p data-testid="report-status"><strong>Status:</strong> { b.Status }</p>
+			}
+			if b.PathToGreen != "" {
+				<p data-testid="report-path-to-green">
+					<strong>Path to Green:</strong> { b.PathToGreen } (back to Green by { fmtDate(b.PathTargetDate) })
+					if pathOverdueAt(b, asOf) {
+						{ " " }<strong data-testid="path-overdue" class="badge r">Overdue</strong>
+					}
+				</p>
+			}
+		</div>
+		if len(b.Milestones) > 0 {
+			<div>
+				<p class="label">Milestones</p>
+				<ul data-testid="report-milestones">
+					for _, m := range b.Milestones {
+						<li data-testid="report-milestone">
+							if m.Milestone.Status == domain.MilestoneRemoved {
+								<del>{ m.Milestone.Name }</del>
+							} else {
+								{ m.Milestone.Name }
+							}
+							{ " — " }
+							@struckDates(m.PriorDates)
+							{ fmtDate(m.Milestone.TargetDate) }
+							if m.New {
+								{ " " }<span class="badge lc">New</span>
+							}
+							if m.Milestone.Status != domain.MilestonePlanned {
+								{ " " }<span class="badge lc">{ m.Milestone.Status }</span>
+							}
+							if m.Milestone.RemovedReason != "" {
+								<span>— { m.Milestone.RemovedReason }</span>
+							}
+						</li>
+					}
+				</ul>
+			</div>
 		}
 		if len(b.Metrics) > 0 {
-			<ul data-testid="report-metrics">
-				for _, m := range b.Metrics {
-					<li data-testid="report-metric">
-						{ m.Metric.Name }:
-						if m.Read {
-							{ fmtNum(m.Current) }
-						} else {
-							no reading yet
-						}
-						{ " against a target of " }{ fmtNum(m.Metric.Target) } { m.Metric.Unit } by { fmtDate(m.Metric.TargetDate) }
-						{ " (baseline " }{ fmtNum(m.Metric.Baseline) }, { m.Metric.Direction })
-					</li>
-				}
-			</ul>
+			<div>
+				<p class="label">Metrics</p>
+				<ul data-testid="report-metrics">
+					for _, m := range b.Metrics {
+						<li data-testid="report-metric">
+							{ m.Metric.Name }:
+							if m.Read {
+								{ fmtNum(m.Current) }
+							} else {
+								no reading yet
+							}
+							{ " against a target of " }{ fmtNum(m.Metric.Target) } { m.Metric.Unit } by { fmtDate(m.Metric.TargetDate) }
+							{ " (baseline " }{ fmtNum(m.Metric.Baseline) }, { m.Metric.Direction })
+						</li>
+					}
+				</ul>
+			</div>
 		}
 		if b.RolledUp.Present || b.RolledUp.StaleChildren > 0 {
 			<p data-testid="report-rollup">
 				if b.RolledUp.Present {
-					<strong>Rolled-up Health:</strong> { b.RolledUp.Health }
+					<strong>Rolled-up Health:</strong>
+					@healthBadge("rollup-health", b.RolledUp.Health)
 				}
 				@rolledUpStale(b.RolledUp)
 				if b.Explanation != "" {
@@ -396,6 +506,110 @@ templ reportBlock(b domain.ReportBlock, d discussion) {
 		}
 		@goalDiscussion(b.Goal.ID, d)
 	</article>
+}
+
+// healthBadge is a Health as a coloured badge, marked for print, or a dash
+// when there is none yet.
+templ healthBadge(testID, health string) {
+	<span data-testid={ testID } class={ "badge", healthClass(health) }>
+		@healthMark(health)
+		{ reportHealth(health) }
+	</span>
+}
+
+// healthMark marks a Health on a badge: the design system's coloured dot on
+// screen, and on the print page, which hides the dot, a shape that survives
+// black-and-white printing — ■ Red, ▲ Yellow, ● Green.
+templ healthMark(health string) {
+	<span class="dot"></span>
+	if shape := healthShape(health); shape != "" {
+		<span class="shape" aria-hidden="true">{ shape }</span>
+	}
+}
+
+// healthShape is the shape the print page marks a Health with.
+func healthShape(health string) string {
+	switch health {
+	case domain.HealthRed:
+		return "■"
+	case domain.HealthYellow:
+		return "▲"
+	case domain.HealthGreen:
+		return "●"
+	}
+	return ""
+}
+
+// reportFontsURL loads the serif a Report's narrative and print page read in,
+// at body weight as well as the display weight the layout loads.
+const reportFontsURL = "https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap"
+
+// healthClass is the badge colour for a Health; no Health yet is neutral.
+func healthClass(health string) string {
+	switch health {
+	case domain.HealthRed:
+		return "r"
+	case domain.HealthYellow:
+		return "y"
+	case domain.HealthGreen:
+		return "g"
+	}
+	return "lc"
+}
+
+// badgeClass is a report badge's colour: Stale in its own colour, Ownerless as
+// prominent as Red, a New Date as a warning, and the rest neutral.
+func badgeClass(badge string) string {
+	switch badge {
+	case domain.BadgeStale:
+		return "st"
+	case domain.BadgeOwnerless:
+		return "r"
+	case domain.BadgeNewDate:
+		return "y"
+	}
+	return "lc"
+}
+
+// pathOverdueAt reports whether an Active exception's Path to Green had missed
+// its target date as of asOf — the day it was published, or today on the
+// draft (CONTEXT.md: Path to Green).
+func pathOverdueAt(b domain.ReportBlock, asOf time.Time) bool {
+	if b.Goal.Lifecycle != domain.LifecycleActive || b.PathTargetDate.IsZero() {
+		return false
+	}
+	if b.Health != domain.HealthRed && b.Health != domain.HealthYellow {
+		return false
+	}
+	return fmtDate(asOf.UTC()) > fmtDate(b.PathTargetDate)
+}
+
+// healthTile is one count on a Report's Health summary.
+type healthTile struct {
+	key, label, class string
+	count             int
+}
+
+// healthTiles counts a Report's selected Goals by Health, and its Stale ones —
+// only an exception block can be Stale, since a Stale Goal is an exception.
+func healthTiles(r domain.Report) []healthTile {
+	byHealth := map[string]int{}
+	stale := 0
+	for _, b := range r.Exceptions {
+		byHealth[b.Health]++
+		if slices.Contains(b.Badges, domain.BadgeStale) {
+			stale++
+		}
+	}
+	for _, sg := range r.Lines {
+		byHealth[sg.Health]++
+	}
+	return []healthTile{
+		{"red", domain.HealthRed, "r", byHealth[domain.HealthRed]},
+		{"yellow", domain.HealthYellow, "y", byHealth[domain.HealthYellow]},
+		{"green", domain.HealthGreen, "g", byHealth[domain.HealthGreen]},
+		{"stale", domain.BadgeStale, "st", stale},
+	}
 }
 
 // reportHealth renders a selected Goal's Health, or a dash when it has no Check-in
@@ -429,4 +643,54 @@ func narrativeText(r domain.Report, section string) string {
 		}
 	}
 	return ""
+}
+
+// reportStyles are the Report pages' own rules on top of app.css: the reading
+// column a publication is centred in, the Health tiles, the exception cards and
+// their tinted status box, the discussion footer, and the scrolling root-Goal
+// picker.
+templ reportStyles() {
+	<link rel="stylesheet" href={ reportFontsURL }/>
+	<style>
+		.shape{display:none}
+		.page>.rp-read{width:100%;max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
+		.rp-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+		.rp-head h1{margin:4px 0}
+		.rp-actions{display:flex;gap:8px}
+		.rp-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+		.rp-tile{padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+		.rp-count{font-size:24px}
+		.rp-body{display:flex;flex-direction:column;gap:24px}
+		.rp-body section{display:flex;flex-direction:column;gap:12px}
+		.rp-list{list-style:none;margin:0;padding:0}
+		.rp-list>li{padding:12px 16px;border-bottom:1px solid #EEEFEA}
+		.rp-list>li:last-child{border-bottom:none}
+		.rp-narrative{font-family:'Source Serif 4',Georgia,serif;font-size:16px;line-height:1.6;padding:20px 24px}
+		.rp-narrative .label{font-family:'IBM Plex Sans',system-ui,sans-serif;margin-top:12px}
+		.rp-narrative .label:first-child{margin-top:0}
+		.rp-narrative ul{margin:4px 0 0;padding-left:20px}
+		.rp-credit{color:#5A606B;font-size:14px}
+		.rp-card{padding:20px 24px;display:flex;flex-direction:column;gap:12px}
+		.rp-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+		.rp-card-head h3{font-size:16px}
+		.rp-badges{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+		.rp-tint{background:#F6F6F3;border-radius:6px;padding:12px 16px;display:flex;flex-direction:column;gap:6px}
+		.rp-tint.overdue{background:#FBEDEB}
+		.rp-card ul{margin:0;padding-left:20px}
+		.rp-discussion{border-top:1px solid #EEEFEA;padding-top:8px;display:flex;flex-wrap:wrap;gap:4px 16px;align-items:flex-start}
+		.rp-discussion>details{flex:1 1 auto}
+		.rp-discussion details>summary{min-height:32px;justify-content:flex-start;color:#24519E;font-weight:500}
+		.rp-thread{border-left:2px solid #E2E3DE;padding-left:12px;margin:8px 0;display:flex;flex-direction:column;gap:8px}
+		.rp-reply{margin-left:24px}
+		.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
+		.rp-cards{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+		.rp-cards>.rp-card{padding:14px 20px;gap:4px}
+		.rp-picker{max-height:280px;overflow-y:auto;border:1px solid #C9CCC4;border-radius:6px;background:#fff;padding:8px 12px;display:flex;flex-direction:column;gap:4px}
+		.rp-form{display:flex;flex-direction:column;gap:16px}
+		.rp-form fieldset:not(.rp-picker){border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
+		.rp-form legend{font-weight:600;font-size:13px;padding:0 0 6px}
+		.rp-publish{padding:20px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+		@media (max-width:900px){.rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+	</style>
 }

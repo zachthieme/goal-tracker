@@ -113,7 +113,7 @@ func TestSmokeReportDraftShowsExceptionBlocksAgainstBaseline(t *testing.T) {
 	if got := strings.Count(page, `data-testid="report-exception"`); got != 1 {
 		t.Errorf("%d exception blocks, want 1; body:\n%s", got, page)
 	}
-	if line := pageElement(t, page, "li", "selected-goal"); !strings.Contains(line, "Cut churn") {
+	if line := pageElement(t, page, "tr", "selected-goal"); !strings.Contains(line, "Cut churn") {
 		t.Errorf("unchanged Green is not one line; line:\n%s", line)
 	}
 
@@ -195,7 +195,7 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 		t.Errorf("publish form does not carry the chosen baseline; form:\n%s", form)
 	}
 	resp = postForm(t, client, reportURL+"/publications", url.Values{"baseline": {"2026-01-01"}})
-	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "Changes since 2026-01-01") {
+	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "changes since 2026-01-01") {
 		t.Errorf("publication does not read against the chosen baseline; line:\n%s", line)
 	}
 
@@ -400,5 +400,197 @@ func TestSmokeCurateNarrativeOverHTTP(t *testing.T) {
 	resp = postForm(t, client, reportURL+"/narrative", url.Values{"pick-9999": {domain.HighlightInsight}})
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("picking an unknown Highlight: status %d, want 422", resp.StatusCode)
+	}
+}
+
+// The publication opens with a Health summary: how many of the Report's
+// selected Goals are Red, Yellow, Green, and Stale, so an exec sees the shape
+// of the org before reading a block.
+func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	yellow := h.ActiveGoal(boss, "Hire a CFO", "We need one.")
+	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	stale := h.ActiveGoal(boss, "Open Tokyo", "Expand east.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(boss, yellow.ID, domain.HealthYellow, "Slow.", "Use a recruiter.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{red.ID, yellow.ID, green.ID, stale.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
+
+	summary := pageElement(t, page, "section", "health-summary")
+	for tile, want := range map[string]string{"red": "1", "yellow": "1", "green": "1", "stale": "1"} {
+		if count := pageElement(t, summary, "span", "health-count-"+tile); !strings.HasSuffix(count, ">"+want) {
+			t.Errorf("%s tile: %q, want a count of %s", tile, count, want)
+		}
+	}
+}
+
+// The publication splits the selected Goals in two: exceptions as cards under
+// Needs attention, each with its Health badge and its So What, Status, and
+// Path to Green — marked Overdue once its target date has passed — and the
+// rest as a table of Health, Goal, Owner, and Due under On track.
+func TestPublicationSplitsNeedsAttentionFromOnTrackOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 0, 1))
+	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(3 * 24 * time.Hour)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{red.ID, green.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
+
+	attention := pageElement(t, page, "section", "needs-attention")
+	card := pageElement(t, attention, "article", "report-exception")
+	if !strings.Contains(card, `class="card`) || !strings.Contains(card, `class="badge r"`) {
+		t.Errorf("exception is not a card with a Red badge; card:\n%s", card)
+	}
+	if status := pageElement(t, card, "div", "report-status-box"); !strings.Contains(status, "Hire counsel.") ||
+		!strings.Contains(status, `data-testid="path-overdue"`) {
+		t.Errorf("status box does not mark the missed Path to Green Overdue; box:\n%s", status)
+	}
+
+	onTrack := pageElement(t, page, "table", "on-track")
+	row := pageElement(t, onTrack, "tr", "selected-goal")
+	for _, want := range []string{"Cut churn", "boss@example.com", domain.HealthGreen} {
+		if !strings.Contains(row, want) {
+			t.Errorf("On track row missing %q; row:\n%s", want, row)
+		}
+	}
+}
+
+// A publication's narrative reads in the serif face, each section under a
+// label heading and each Highlight credited "— owner, Goal".
+func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	alice := h.SignIn("alice@example.com")
+	g := h.ActiveGoal(alice, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlight(alice, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	draft, err := h.Service.DraftReport(context.Background(), def, time.Time{})
+	if err != nil || len(draft.Highlights) != 1 {
+		t.Fatalf("DraftReport: %d Highlights, %v", len(draft.Highlights), err)
+	}
+	if err := h.Service.CurateNarrative(context.Background(), def.ID, domain.CurateNarrativeInput{
+		Picks: []domain.NarrativePick{{HighlightID: draft.Highlights[0].Highlight.ID, Section: domain.HighlightAccomplishment}},
+	}); err != nil {
+		t.Fatalf("CurateNarrative: %v", err)
+	}
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
+
+	narrative := pageElement(t, page, "section", "report-narrative")
+	if !strings.Contains(narrative, `class="card rp-narrative"`) {
+		t.Errorf("narrative is not set in the serif face; narrative:\n%s", narrative)
+	}
+	if heading := pageElement(t, narrative, "h3", "narrative-section"); !strings.Contains(heading, `class="label"`) || !strings.HasSuffix(heading, ">Accomplishments") {
+		t.Errorf("narrative section heading %q, want an Accomplishments label", heading)
+	}
+	if credit := pageElement(t, narrative, "span", "highlight-credit"); !strings.Contains(credit, "— alice@example.com, ") || !strings.Contains(credit, "Launch in EU") {
+		t.Errorf("Highlight credit %q, want — owner, Goal", credit)
+	}
+}
+
+// The draft page reads top to bottom as the author works: pick the baseline,
+// curate the narrative, check the preview, and only then Publish — the primary
+// button, at the bottom, saying what it does. Publications sit in a sidebar.
+func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+
+	last := -1
+	for _, part := range []string{`data-testid="report-baseline"`, `data-testid="report-curation"`, `data-testid="report-draft"`, `data-testid="report-publish"`} {
+		at := strings.Index(page, part)
+		if at <= last {
+			t.Errorf("%s is out of order (at %d, after %d); body:\n%s", part, at, last, page)
+		}
+		last = at
+	}
+	publish := pageElement(t, page, "form", "report-publish")
+	if !strings.Contains(publish, `class="btn primary"`) || !strings.Contains(publish, "Publishes a frozen copy readers can comment on.") {
+		t.Errorf("Publish is not the primary button with its summary; form:\n%s", publish)
+	}
+	if !strings.Contains(page, `<aside data-testid="report-publications"`) {
+		t.Errorf("publications are not in a sidebar; body:\n%s", page)
+	}
+}
+
+// The reports page lists saved definitions as cards and keeps the form behind
+// a New report button. Its Root Goals picker is a scrolling list with the
+// top-level Goals first, and Depth says what its numbers mean.
+func TestReportsListFormOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	child := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	root := h.MarkTopLevel(boss, h.ActiveGoal(boss, "Grow revenue", "The org needs to grow."))
+	h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{root.ID}})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports")
+
+	if def := pageElement(t, page, "li", "report-definition"); !strings.Contains(def, `class="card`) || !strings.Contains(def, "MBR") {
+		t.Errorf("saved definition is not a card; item:\n%s", def)
+	}
+	create := pageElement(t, page, "details", "create-report")
+	if !strings.Contains(create, ">New report</summary>") || strings.HasPrefix(create, `<details data-testid="create-report" open`) {
+		t.Errorf("the definition form is not behind a collapsed New report button; details:\n%s", create)
+	}
+	roots := pageElement(t, create, "fieldset", "report-roots")
+	if !strings.Contains(roots, `class="rp-picker"`) {
+		t.Errorf("root picker does not scroll; fieldset:\n%s", roots)
+	}
+	if strings.Index(roots, root.Title) > strings.Index(roots, child.Title) {
+		t.Errorf("top-level Goal is not listed first; fieldset:\n%s", roots)
+	}
+	if !strings.Contains(create, "0 = just the roots, 1 = roots and their direct contributors, …") {
+		t.Errorf("Depth is not explained; details:\n%s", create)
+	}
+}
+
+// The print page sets the Report in the design system's serif, falling back to
+// Georgia, and marks Health with a shape as well as its name so it survives
+// black-and-white printing: ■ Red, ▲ Yellow, ● Green.
+func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{red.ID, green.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	printed := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
+
+	if !strings.Contains(printed, "font-family: 'Source Serif 4', Georgia, serif") {
+		t.Errorf("print page is not set in Source Serif 4 with a Georgia fallback; body:\n%s", printed)
+	}
+	if block := pageElement(t, printed, "article", "report-exception"); !strings.Contains(block, "■</span>Red") {
+		t.Errorf("Red is not marked ■; block:\n%s", block)
+	}
+	if row := pageElement(t, printed, "tr", "selected-goal"); !strings.Contains(row, "●</span>Green") {
+		t.Errorf("Green is not marked ●; row:\n%s", row)
 	}
 }
