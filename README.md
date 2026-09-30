@@ -19,12 +19,32 @@ The server is configured from the environment:
 | `GOAL_TRACKER_DB` | `goal-tracker.db` | SQLite database file; migrations run on start. |
 | `GOAL_TRACKER_ADMINS` | _(none)_ | Comma-separated emails that get the Admin flag when their account is first created. |
 | `GOAL_TRACKER_TIMEZONE` | `UTC` | The org's IANA timezone (e.g. `America/Los_Angeles`). Check-in cadences are counted in its days, so a Goal turns Stale and a Path to Green goes overdue at its midnight. |
+| `GOAL_TRACKER_REMINDER_DAY` | `Monday` | Day of the week the weekly emails go out (see [Weekly emails](#weekly-emails)). |
+| `GOAL_TRACKER_REMINDER_TIME` | `09:00` | 24-hour time of day, in the org's timezone, the weekly emails go out. |
+| `GOAL_TRACKER_BASE_URL` | from `GOAL_TRACKER_ADDR`, e.g. `http://localhost:8080` | Where people reach the app. Links in emails point here. |
 
 Sign-in is a development sign-in by email: any address works, and an account is
 created on first sign-in.
 
 Other targets: `make test`, `make lint`, `make generate` (templ and sqlc), and
 `make generate-check`.
+
+## Weekly emails
+
+The server sends two emails once a week, at the configured day and time:
+
+- **Check-in reminder**, to each Owner and Delegate. It lists their Active
+  Goals that are Stale, or that will go Stale before next week's reminder
+  unless someone checks in. Each Goal links to its pre-filled Check-in form.
+- **Parent digest**, to each parent Owner. It lists the link requests waiting
+  on them. It also lists problems with the Goals that contribute to theirs: a
+  child whose Health went Yellow or Red, that recorded a Date Slip, or that went
+  Stale in the past week. A child that is Ownerless or has a parent On Hold or
+  Cancelled is listed every week until that's resolved.
+
+People with nothing to report get no email, and people marked departed get
+none. The prototype has no mail transport, so it logs each email's recipient
+and subject instead of sending it.
 
 ## Seed a fake org
 
