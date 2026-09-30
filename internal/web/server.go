@@ -51,13 +51,19 @@ func (s *Server) currentAccount(r *http.Request) *domain.Account {
 }
 
 // requireAuth wraps a handler so it runs only for a signed-in Account, which it
-// passes along via the request context.
+// passes along. It counts what needs the Account into the request context, so
+// the top bar's Home item can show it on every page.
 func (s *Server) requireAuth(h func(http.ResponseWriter, *http.Request, domain.Account)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		acc := s.currentAccount(r)
 		if acc == nil {
 			http.Redirect(w, r, "/signin", http.StatusSeeOther)
 			return
+		}
+		// A count that can't be read leaves Home uncounted rather than
+		// failing the page.
+		if v, err := s.loadHome(r.Context(), acc.ID); err == nil {
+			r = r.WithContext(withNeedsYou(r.Context(), v.NeedsYou()))
 		}
 		h(w, r, *acc)
 	}

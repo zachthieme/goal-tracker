@@ -8,6 +8,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /signin", s.handleSignInForm)
 	s.mux.HandleFunc("POST /signin", s.handleSignIn)
 	s.mux.HandleFunc("POST /signout", s.handleSignOut)
+	s.mux.HandleFunc("GET /home", s.requireAuth(s.handleHome))
 	s.mux.HandleFunc("GET /goals", s.requireAuth(s.handleGoals))
 	s.mux.HandleFunc("POST /goals", s.requireAuth(s.handleCreateGoal))
 	s.mux.HandleFunc("GET /goals/{id}", s.requireAuth(s.handleViewGoal))

@@ -11,7 +11,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.currentAccount(r) != nil {
-		http.Redirect(w, r, "/goals", http.StatusSeeOther)
+		http.Redirect(w, r, "/home", http.StatusSeeOther)
 		return
 	}
 	http.Redirect(w, r, "/signin", http.StatusSeeOther)
@@ -19,7 +19,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSignInForm(w http.ResponseWriter, r *http.Request) {
 	if s.currentAccount(r) != nil {
-		http.Redirect(w, r, "/goals", http.StatusSeeOther)
+		http.Redirect(w, r, "/home", http.StatusSeeOther)
 		return
 	}
 	render(w, r, http.StatusOK, signInPage())
@@ -43,7 +43,7 @@ func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
-	http.Redirect(w, r, "/goals", http.StatusSeeOther)
+	http.Redirect(w, r, "/home", http.StatusSeeOther)
 }
 
 func (s *Server) handleSignOut(w http.ResponseWriter, r *http.Request) {
