@@ -76,6 +76,37 @@ func (q *Queries) CreateReportDefinition(ctx context.Context, arg CreateReportDe
 	return i, err
 }
 
+const createReportPublication = `-- name: CreateReportPublication :one
+INSERT INTO report_publications (report_definition_id, published_by, published_at, snapshot)
+VALUES (?, ?, ?, ?)
+RETURNING id, report_definition_id, published_by, published_at, snapshot
+`
+
+type CreateReportPublicationParams struct {
+	ReportDefinitionID int64
+	PublishedBy        int64
+	PublishedAt        string
+	Snapshot           string
+}
+
+func (q *Queries) CreateReportPublication(ctx context.Context, arg CreateReportPublicationParams) (ReportPublication, error) {
+	row := q.db.QueryRowContext(ctx, createReportPublication,
+		arg.ReportDefinitionID,
+		arg.PublishedBy,
+		arg.PublishedAt,
+		arg.Snapshot,
+	)
+	var i ReportPublication
+	err := row.Scan(
+		&i.ID,
+		&i.ReportDefinitionID,
+		&i.PublishedBy,
+		&i.PublishedAt,
+		&i.Snapshot,
+	)
+	return i, err
+}
+
 const getReportDefinition = `-- name: GetReportDefinition :one
 SELECT id, name, introduction, depth, owner_filter_id, created_by, created_at FROM report_definitions WHERE id = ? LIMIT 1
 `
@@ -92,6 +123,44 @@ func (q *Queries) GetReportDefinition(ctx context.Context, id int64) (ReportDefi
 		&i.CreatedBy,
 		&i.CreatedAt,
 	)
+	return i, err
+}
+
+const getReportPublication = `-- name: GetReportPublication :one
+SELECT id, report_definition_id, published_by, published_at, snapshot FROM report_publications WHERE id = ? LIMIT 1
+`
+
+func (q *Queries) GetReportPublication(ctx context.Context, id int64) (ReportPublication, error) {
+	row := q.db.QueryRowContext(ctx, getReportPublication, id)
+	var i ReportPublication
+	err := row.Scan(
+		&i.ID,
+		&i.ReportDefinitionID,
+		&i.PublishedBy,
+		&i.PublishedAt,
+		&i.Snapshot,
+	)
+	return i, err
+}
+
+const latestReportPublication = `-- name: LatestReportPublication :one
+SELECT id, published_at FROM report_publications
+WHERE report_definition_id = ?
+ORDER BY id DESC
+LIMIT 1
+`
+
+type LatestReportPublicationRow struct {
+	ID          int64
+	PublishedAt string
+}
+
+// A Report Definition's latest publication, without its snapshot: what the
+// next publication reads its changes against.
+func (q *Queries) LatestReportPublication(ctx context.Context, reportDefinitionID int64) (LatestReportPublicationRow, error) {
+	row := q.db.QueryRowContext(ctx, latestReportPublication, reportDefinitionID)
+	var i LatestReportPublicationRow
+	err := row.Scan(&i.ID, &i.PublishedAt)
 	return i, err
 }
 
@@ -176,6 +245,42 @@ func (q *Queries) ListReportDefinitions(ctx context.Context) ([]ReportDefinition
 			&i.OwnerFilterID,
 			&i.CreatedBy,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReportPublications = `-- name: ListReportPublications :many
+SELECT id, report_definition_id, published_by, published_at, snapshot FROM report_publications
+WHERE report_definition_id = ?
+ORDER BY id DESC
+`
+
+// A Report Definition's publications, newest first.
+func (q *Queries) ListReportPublications(ctx context.Context, reportDefinitionID int64) ([]ReportPublication, error) {
+	rows, err := q.db.QueryContext(ctx, listReportPublications, reportDefinitionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReportPublication
+	for rows.Next() {
+		var i ReportPublication
+		if err := rows.Scan(
+			&i.ID,
+			&i.ReportDefinitionID,
+			&i.PublishedBy,
+			&i.PublishedAt,
+			&i.Snapshot,
 		); err != nil {
 			return nil, err
 		}

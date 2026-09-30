@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -53,9 +54,10 @@ func (s *Server) handleSaveReport(w http.ResponseWriter, r *http.Request, curren
 	http.Redirect(w, r, "/reports/"+strconv.FormatInt(def.ID, 10), http.StatusSeeOther)
 }
 
-// handleViewReport shows a saved Report Definition and its draft Report,
-// recomputed on each view against the baseline the reader picks (the baseline
-// query parameter, a date) or 30 days ago by default.
+// handleViewReport shows a saved Report Definition, its draft Report, and its
+// publications. The draft is recomputed on each view against the baseline the
+// reader picks (the baseline query parameter, a date) or by default the
+// previous publication, or 30 days ago when there is none.
 func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -81,7 +83,76 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 		http.Error(w, "could not build the draft", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, reportDraftPage(&current, report))
+	pubs, err := s.svc.ListPublications(r.Context(), def.ID)
+	if err != nil {
+		http.Error(w, "could not load publications", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, reportDraftPage(&current, report, pubs))
+}
+
+// handlePublishReport publishes a Report Definition, freezing its Report
+// against the baseline the reader picked (the baseline form field, a date) or
+// by default the previous publication, and redirects to the publication.
+func (s *Server) handlePublishReport(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "could not read the form", http.StatusBadRequest)
+		return
+	}
+	baseline, err := parseDate(r.FormValue("baseline"))
+	if err != nil {
+		http.Error(w, "the baseline must be a date", http.StatusBadRequest)
+		return
+	}
+	pub, err := s.svc.PublishReport(r.Context(), current.ID, id, baseline)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		writeReportError(w, err)
+		return
+	}
+	http.Redirect(w, r, publicationPath(pub), http.StatusSeeOther)
+}
+
+// handleViewPublication shows a published Report exactly as it was frozen. A
+// publication is found only under its own Report Definition.
+func (s *Server) handleViewPublication(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	defID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	pubID, err := strconv.ParseInt(r.PathValue("pub"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	pub, err := s.svc.GetPublication(r.Context(), pubID)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "could not load the publication", http.StatusInternalServerError)
+		return
+	}
+	if pub.DefinitionID != defID {
+		http.NotFound(w, r)
+		return
+	}
+	render(w, r, http.StatusOK, publicationPage(&current, pub))
+}
+
+// publicationPath is where a published Report is viewed.
+func publicationPath(p domain.Publication) string {
+	return fmt.Sprintf("/reports/%d/publications/%d", p.DefinitionID, p.ID)
 }
 
 // reportsList gathers the saved definitions and the choices a new one picks from.

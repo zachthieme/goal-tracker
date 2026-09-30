@@ -170,6 +170,14 @@ type ReportDefinitionRoot struct {
 	GoalID             int64
 }
 
+type ReportPublication struct {
+	ID                 int64
+	ReportDefinitionID int64
+	PublishedBy        int64
+	PublishedAt        string
+	Snapshot           string
+}
+
 type SoWhatRevision struct {
 	ID        int64
 	GoalID    int64
