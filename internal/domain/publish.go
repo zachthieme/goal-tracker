@@ -72,6 +72,24 @@ func (s *Service) GetPublication(ctx context.Context, id int64) (Publication, er
 	return s.publicationFromRow(ctx, row)
 }
 
+// ListPublications returns the Report Definition defID's publications, newest
+// first.
+func (s *Service) ListPublications(ctx context.Context, defID int64) ([]Publication, error) {
+	rows, err := s.queries.ListReportPublications(ctx, defID)
+	if err != nil {
+		return nil, fmt.Errorf("list publications: %w", err)
+	}
+	out := make([]Publication, 0, len(rows))
+	for _, row := range rows {
+		p, err := s.publicationFromRow(ctx, row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
 func (s *Service) publicationFromRow(ctx context.Context, row db.ReportPublication) (Publication, error) {
 	var report Report
 	if err := json.Unmarshal([]byte(row.Snapshot), &report); err != nil {

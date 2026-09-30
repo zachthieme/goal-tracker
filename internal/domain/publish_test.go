@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -124,4 +125,40 @@ func publish(t *testing.T, h *testsupport.Harness, actor domain.Account, def dom
 		t.Fatalf("PublishReport: %v", err)
 	}
 	return p
+}
+
+// A Report Definition's publications are listed newest first, and only its
+// own.
+func TestListPublicationsPerDefinition(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	mbr := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	wbr := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "WBR", RootIDs: []int64{g.ID}})
+
+	first := publish(t, h, boss, mbr, time.Time{})
+	h.Clock.Advance(day)
+	other := publish(t, h, boss, wbr, time.Time{})
+	h.Clock.Advance(day)
+	second := publish(t, h, boss, mbr, time.Time{})
+
+	for _, tc := range []struct {
+		def  domain.ReportDefinition
+		want []int64
+	}{
+		{mbr, []int64{second.ID, first.ID}},
+		{wbr, []int64{other.ID}},
+	} {
+		pubs, err := h.Service.ListPublications(context.Background(), tc.def.ID)
+		if err != nil {
+			t.Fatalf("ListPublications: %v", err)
+		}
+		var got []int64
+		for _, p := range pubs {
+			got = append(got, p.ID)
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("%s publications %v, want %v", tc.def.Name, got, tc.want)
+		}
+	}
 }
