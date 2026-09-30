@@ -137,15 +137,15 @@ Bad goal,owner@example.com,,Sideways,
 		t.Fatalf("want 3 row results, got %d (%+v)", len(rep.Rows), rep.Rows)
 	}
 
-	// Row 1 is clean; rows 2 and 3 each carry errors.
+	// Row 2 (the first under the header) is clean; rows 3 and 4 each carry errors.
 	if len(rep.Rows[0].Errors) != 0 {
-		t.Errorf("row 1 should be clean, got errors: %v", rep.Rows[0].Errors)
+		t.Errorf("row 2 should be clean, got errors: %v", rep.Rows[0].Errors)
 	}
 	if joined := strings.Join(rep.Rows[1].Errors, "; "); !strings.Contains(joined, "So What") || !strings.Contains(joined, "Kind") {
-		t.Errorf("row 2 errors = %v, want mention of So What and Kind", rep.Rows[1].Errors)
+		t.Errorf("row 3 errors = %v, want mention of So What and Kind", rep.Rows[1].Errors)
 	}
 	if joined := strings.Join(rep.Rows[2].Errors, "; "); !strings.Contains(joined, "Title") {
-		t.Errorf("row 3 errors = %v, want mention of Title", rep.Rows[2].Errors)
+		t.Errorf("row 4 errors = %v, want mention of Title", rep.Rows[2].Errors)
 	}
 	if rep.ErrorCount() != 2 {
 		t.Errorf("ErrorCount = %d, want 2", rep.ErrorCount())
@@ -452,5 +452,43 @@ func TestXLSXCustomFormatDateCells(t *testing.T) {
 	}
 	if joined := strings.Join(rep.Rows[1].Errors, "; "); !strings.Contains(joined, `"2026-05-01"`) {
 		t.Errorf("Milestones date cell errors = %v, want it read as \"2026-05-01\"", rep.Rows[1].Errors)
+	}
+}
+
+// Rows are numbered as the spreadsheet numbers them: the header is row 1, so the
+// first data row is row 2. A blank row still takes a number, and a cell spanning
+// several lines is still one row (#30).
+func TestRowsAreNumberedAsInTheSpreadsheet(t *testing.T) {
+	const csv = "Title,Owner,So What,Kind\n" +
+		"First,owner@example.com,,Ongoing\n" +
+		"Second,owner@example.com,\"Spans\ntwo lines.\",Ongoing\n" +
+		"\n" +
+		"Fifth,owner@example.com,,Ongoing\n"
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+
+	rep, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	lines := map[string]int{}
+	for _, row := range rep.Rows {
+		lines[row.Title] = row.Line
+	}
+	for title, want := range map[string]int{"First": 2, "Second": 3, "Fifth": 5} {
+		if lines[title] != want {
+			t.Errorf("%s is row %d, want %d (rows: %+v)", title, lines[title], want, rep.Rows)
+		}
+	}
+
+	xlsxRep, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.xlsx", xlsxOf(t,
+		[]any{"Title", "Owner", "So What", "Kind"},
+		[]any{"First", "owner@example.com", "", "Ongoing"},
+	))
+	if err != nil {
+		t.Fatalf("DryRun xlsx: %v", err)
+	}
+	if len(xlsxRep.Rows) != 1 || xlsxRep.Rows[0].Line != 2 {
+		t.Errorf("xlsx rows = %+v, want First as row 2", xlsxRep.Rows)
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -50,8 +51,8 @@ type Report struct {
 	Committed bool
 }
 
-// RowResult is what happened to one data row: its 1-based line number (the
-// header is line 0), the Goal title it named, the id of the Goal created from it
+// RowResult is what happened to one data row: its row number as the
+// spreadsheet numbers it (the header is row 1), the Goal title it named, the id of the Goal created from it
 // (0 when nothing was saved), and any errors found on it.
 type RowResult struct {
 	Line   int
@@ -111,7 +112,7 @@ func (im *Importer) run(ctx context.Context, adminID int64, filename string, dat
 		dimByName[normalize(d.Name)] = d
 	}
 
-	lay, err := parseHeader(grid[0], dimByName)
+	lay, err := parseHeader(grid[0].cells, dimByName)
 	if err != nil {
 		return Report{}, err
 	}
@@ -237,10 +238,10 @@ type dimensionValue struct {
 	value     string
 }
 
-func parseRows(rows [][]string, lay layout) []rowSpec {
+func parseRows(rows []sheetRow, lay layout) []rowSpec {
 	specs := make([]rowSpec, 0, len(rows))
-	for i, row := range rows {
-		specs = append(specs, parseRow(i+1, row, lay))
+	for _, row := range rows {
+		specs = append(specs, parseRow(row.number, row.cells, lay))
 	}
 	return specs
 }
@@ -517,12 +518,19 @@ func normalize(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
+// sheetRow is one row of the spreadsheet: its number as the spreadsheet numbers
+// it (the header is row 1) and its cells.
+type sheetRow struct {
+	number int
+	cells  []string
+}
+
 // parseGrid reads the spreadsheet into rows of cells, choosing the CSV or XLSX
 // reader by the filename extension and content. It errors if the file has no
 // header row.
-func parseGrid(filename string, data []byte) ([][]string, error) {
+func parseGrid(filename string, data []byte) ([]sheetRow, error) {
 	var (
-		grid [][]string
+		grid []sheetRow
 		err  error
 	)
 	if isXLSX(filename, data) {
@@ -539,14 +547,33 @@ func parseGrid(filename string, data []byte) ([][]string, error) {
 	return grid, nil
 }
 
-func parseCSV(data []byte) ([][]string, error) {
+// parseCSV reads CSV records, numbering them as a spreadsheet opening the file
+// would: the CSV reader skips blank lines, but each is still a row, and a quoted
+// cell spanning several lines is still one row.
+func parseCSV(data []byte) ([]sheetRow, error) {
 	r := csv.NewReader(strings.NewReader(string(data)))
 	r.FieldsPerRecord = -1 // rows may omit trailing empty columns
-	rows, err := r.ReadAll()
-	if err != nil {
-		return nil, fmt.Errorf("%w: could not read CSV: %v", domain.ErrValidation, err)
+	var (
+		rows     []sheetRow
+		number   int
+		nextLine = 1 // the file line the next row starts on, if none is blank
+	)
+	for {
+		record, err := r.Read()
+		if errors.Is(err, io.EOF) {
+			return rows, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%w: could not read CSV: %v", domain.ErrValidation, err)
+		}
+		line, _ := r.FieldPos(0)
+		number += line - nextLine + 1
+		nextLine = line + 1
+		for _, field := range record {
+			nextLine += strings.Count(field, "\n")
+		}
+		rows = append(rows, sheetRow{number: number, cells: record})
 	}
-	return rows, nil
 }
 
 func isXLSX(filename string, data []byte) bool {
@@ -558,7 +585,7 @@ func isXLSX(filename string, data []byte) bool {
 }
 
 // parseXLSX reads the first worksheet of an XLSX workbook into rows of cells.
-func parseXLSX(data []byte) ([][]string, error) {
+func parseXLSX(data []byte) ([]sheetRow, error) {
 	f, err := excelize.OpenReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("%w: could not read XLSX: %v", domain.ErrValidation, err)
@@ -598,7 +625,11 @@ func parseXLSX(data []byte) ([][]string, error) {
 			}
 		}
 	}
-	return rows, nil
+	grid := make([]sheetRow, len(rows))
+	for i, row := range rows {
+		grid[i] = sheetRow{number: i + 1, cells: row}
+	}
+	return grid, nil
 }
 
 // dateCell reports the date held by the cell at (col, row), whose raw value is
