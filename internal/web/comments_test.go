@@ -222,3 +222,31 @@ func TestPublicationDiscussionIsCollapsedOverHTTP(t *testing.T) {
 		t.Errorf("the reply is not indented under the comment; footer:\n%s", footer)
 	}
 }
+
+// A publication lists its open Action Items as text · owner · due date; the
+// owner's close form sits behind a small Close button until they open it.
+func TestOpenActionItemCloseFormIsCollapsedOverHTTP(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(owner, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	first := h.PublishReport(owner, def)
+	if _, err := h.Service.RaiseActionItem(context.Background(), owner.ID, domain.RaiseActionItemInput{
+		PublicationID: first.ID, Text: "Get a second vendor quote.", OwnerID: owner.ID, DueDate: h.Clock.Now(),
+	}); err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+	second := h.PublishReport(owner, def)
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "owner@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, second.ID))
+
+	item := pageElement(t, page, "li", "open-action-item")
+	if want := "Get a second vendor quote. · owner@example.com · due " + h.Clock.Now().Format("2006-01-02"); !strings.Contains(item, want) {
+		t.Errorf("open Action Item does not read %q; item:\n%s", want, item)
+	}
+	toggle := pageElement(t, item, "details", "close-toggle")
+	if strings.HasPrefix(toggle, "<details data-testid=\"close-toggle\" open") || !strings.Contains(toggle, `data-testid="close-action-item"`) {
+		t.Errorf("the close form is not behind a collapsed toggle; toggle:\n%s", toggle)
+	}
+}

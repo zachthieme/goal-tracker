@@ -15,7 +15,7 @@ templ reportActionItems(items []domain.ActionItem, d discussion) {
 	if len(items) > 0 {
 		<section data-testid="report-action-items">
 			<h2>Open Action Items</h2>
-			<ul>
+			<ul class="card rp-list">
 				for _, item := range items {
 					<li data-testid="open-action-item">
 						@actionItemSummary(item)
@@ -125,7 +125,7 @@ func plural(n int, noun string) string {
 templ publicationActionItems(d discussion) {
 	<section id="action-items" data-testid="publication-action-items">
 		<h2>Action Items raised here</h2>
-		<ul>
+		<ul class="card rp-list">
 			if len(d.Raised) == 0 {
 				<li data-testid="no-action-items">None yet.</li>
 			}
@@ -143,10 +143,13 @@ templ publicationActionItems(d discussion) {
 			}
 		</ul>
 		if d.Author {
-			<form data-testid="action-item-form" method="post" action={ templ.SafeURL(publicationPath(*d.Pub) + "/action-items") }>
-				@actionItemFields(true)
-				<button type="submit">Add Action Item</button>
-			</form>
+			<details>
+				<summary class="btn sm">Add Action Item</summary>
+				<form data-testid="action-item-form" class="rp-inline-form" method="post" action={ templ.SafeURL(publicationPath(*d.Pub) + "/action-items") }>
+					@actionItemFields(true)
+					<button type="submit" class="btn primary sm">Add Action Item</button>
+				</form>
+			</details>
 		}
 	</section>
 }
@@ -173,21 +176,24 @@ templ actionItemFields(textRequired bool) {
 	</label>
 }
 
-// actionItemSummary is an Action Item on one line: what, who owns it, and when
+// actionItemSummary is an Action Item on one line: what · who owns it · when
 // it is due.
 templ actionItemSummary(item domain.ActionItem) {
-	{ item.Text }
-	<span>— { item.Owner.Email }, due { fmtDate(item.DueDate) }</span>
+	{ item.Text }{ " · " }{ item.Owner.Email }{ " · due " }{ fmtDate(item.DueDate) }
 }
 
-// closeActionItemForm lets an Action Item's owner close it with a note.
+// closeActionItemForm lets an Action Item's owner close it with a note, behind
+// a small Close button.
 templ closeActionItemForm(item domain.ActionItem, d discussion) {
-	<form data-testid="close-action-item" method="post" action={ templ.SafeURL(fmt.Sprintf("/action-items/%d/close", item.ID)) }>
-		<input type="hidden" name="return" value={ d.Return }/>
-		<label>
-			Closing note
-			<input type="text" name="note" required/>
-		</label>
-		<button type="submit">Close</button>
-	</form>
+	<details data-testid="close-toggle">
+		<summary class="btn sm">Close</summary>
+		<form data-testid="close-action-item" class="rp-inline-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/action-items/%d/close", item.ID)) }>
+			<input type="hidden" name="return" value={ d.Return }/>
+			<label>
+				Closing note
+				<input type="text" name="note" required/>
+			</label>
+			<button type="submit" class="btn primary sm">Close</button>
+		</form>
+	</details>
 }
