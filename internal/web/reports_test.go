@@ -470,3 +470,38 @@ func TestPublicationSplitsNeedsAttentionFromOnTrackOverHTTP(t *testing.T) {
 		}
 	}
 }
+
+// A publication's narrative reads in the serif face, each section under a
+// label heading and each Highlight credited "— owner, Goal".
+func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	alice := h.SignIn("alice@example.com")
+	g := h.ActiveGoal(alice, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlight(alice, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	draft, err := h.Service.DraftReport(context.Background(), def, time.Time{})
+	if err != nil || len(draft.Highlights) != 1 {
+		t.Fatalf("DraftReport: %d Highlights, %v", len(draft.Highlights), err)
+	}
+	if err := h.Service.CurateNarrative(context.Background(), def.ID, domain.CurateNarrativeInput{
+		Picks: []domain.NarrativePick{{HighlightID: draft.Highlights[0].Highlight.ID, Section: domain.HighlightAccomplishment}},
+	}); err != nil {
+		t.Fatalf("CurateNarrative: %v", err)
+	}
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
+
+	narrative := pageElement(t, page, "section", "report-narrative")
+	if !strings.Contains(narrative, `class="card rp-narrative"`) {
+		t.Errorf("narrative is not set in the serif face; narrative:\n%s", narrative)
+	}
+	if heading := pageElement(t, narrative, "h3", "narrative-section"); !strings.Contains(heading, `class="label"`) || !strings.HasSuffix(heading, ">Accomplishments") {
+		t.Errorf("narrative section heading %q, want an Accomplishments label", heading)
+	}
+	if credit := pageElement(t, narrative, "span", "highlight-credit"); !strings.Contains(credit, "— alice@example.com, ") || !strings.Contains(credit, "Launch in EU") {
+		t.Errorf("Highlight credit %q, want — owner, Goal", credit)
+	}
+}

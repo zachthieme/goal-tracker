@@ -328,14 +328,14 @@ templ narrativeCuration(r domain.Report) {
 	</section>
 }
 
-// reportNarrative is a Report's Insights, Accomplishments, and Misses: the
-// author's text and the Highlights they picked, each crediting the Goal's
+// reportNarrative is a Report's Insights, Accomplishments, and Misses, in the
+// serif face under label headings: the author's text and the Highlights they picked, each crediting the Goal's
 // Owner. Sections with neither are left out.
 templ reportNarrative(narrative []domain.NarrativeSection) {
 	if len(narrative) > 0 {
-		<section data-testid="report-narrative">
+		<section data-testid="report-narrative" class="card rp-narrative">
 			for _, sec := range narrative {
-				<h3 data-testid="narrative-section">{ sec.Heading() }</h3>
+				<h3 data-testid="narrative-section" class="label">{ sec.Heading() }</h3>
 				if sec.Text != "" {
 					<p data-testid="narrative-text">{ sec.Text }</p>
 				}
@@ -356,8 +356,8 @@ templ reportNarrative(narrative []domain.NarrativeSection) {
 
 // highlightCredit credits a Highlight to the Goal's Owner, naming the Goal.
 templ highlightCredit(nh domain.NarrativeHighlight) {
-	<span data-testid="highlight-credit">
-		— { nh.Highlight.Owner.Email }, <a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", nh.GoalID)) }>{ nh.GoalTitle }</a>
+	<span data-testid="highlight-credit" class="rp-credit">
+		{ " — " }{ nh.Highlight.Owner.Email }, <a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", nh.GoalID)) }>{ nh.GoalTitle }</a>
 	</span>
 }
 
