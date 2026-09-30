@@ -19,7 +19,9 @@ type Publication struct {
 	DefinitionID int64
 	PublishedBy  Account
 	PublishedAt  time.Time
-	// Report is the Report as it read when published, exactly as rendered.
+	// Report is the Report as it read when published, exactly as rendered. It
+	// is stored as JSON of the Report view model, so renaming a field of
+	// Report (or of a type it holds) drops that field from earlier snapshots.
 	Report Report
 }
 
