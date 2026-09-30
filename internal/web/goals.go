@@ -14,12 +14,12 @@ import (
 const dateLayout = "2006-01-02"
 
 func (s *Server) handleGoals(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	goals, err := s.svc.ListGoals(r.Context())
+	view, err := s.goalsListView(r)
 	if err != nil {
 		http.Error(w, "could not list goals", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, goalsPage(&current, goals))
+	render(w, r, http.StatusOK, goalsPage(&current, view))
 }
 
 func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
@@ -37,17 +37,81 @@ func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, curren
 		return
 	}
 
-	// htmx swaps the Goal list in place; a plain form post reloads the page.
+	// htmx swaps the Goal list in place; a plain form post reloads the page. The
+	// swap re-renders the default flat list — the propose form carries no
+	// filter or grouping to preserve.
 	if r.Header.Get("HX-Request") == "true" {
-		goals, err := s.svc.ListGoals(r.Context())
+		goals, err := s.svc.ListGoalsWithValues(r.Context())
 		if err != nil {
 			http.Error(w, "could not list goals", http.StatusInternalServerError)
 			return
 		}
-		render(w, r, http.StatusOK, goalList(goals))
+		render(w, r, http.StatusOK, goalList(goalsListData{Goals: goals}))
 		return
 	}
 	http.Redirect(w, r, "/goals", http.StatusSeeOther)
+}
+
+// goalsListData is everything the Goal list renders: the Goals (filtered), the
+// Dimensions offered for filtering and grouping, which values are currently
+// selected, and — when grouping — the Goals bucketed by a Dimension's values.
+type goalsListData struct {
+	Goals      []domain.GoalWithValues
+	Dimensions []domain.Dimension
+	Selected   map[int64]bool
+	GroupID    int64
+	Groups     []domain.GoalGroup
+}
+
+// goalsListView reads the Goal list's filter (?value=) and grouping (?group=)
+// from the request, then loads, filters, and (optionally) groups the Goals.
+func (s *Server) goalsListView(r *http.Request) (goalsListData, error) {
+	dims, err := s.svc.ListDimensions(r.Context())
+	if err != nil {
+		return goalsListData{}, err
+	}
+	goals, err := s.svc.ListGoalsWithValues(r.Context())
+	if err != nil {
+		return goalsListData{}, err
+	}
+
+	// Resolve each ?value= to its Dimension, so filtering ORs within a Dimension
+	// and ANDs across them.
+	dimOfValue := map[int64]int64{}
+	for _, d := range dims {
+		for _, v := range d.Values {
+			dimOfValue[v.ID] = d.ID
+		}
+	}
+	selected := map[int64]bool{}
+	byDimension := map[int64][]int64{}
+	for _, raw := range r.URL.Query()["value"] {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			continue
+		}
+		if dimID, ok := dimOfValue[id]; ok {
+			selected[id] = true
+			byDimension[dimID] = append(byDimension[dimID], id)
+		}
+	}
+
+	view := goalsListData{
+		Goals:      domain.FilterGoals(goals, byDimension),
+		Dimensions: dims,
+		Selected:   selected,
+	}
+	if raw := r.URL.Query().Get("group"); raw != "" {
+		if groupID, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			for _, d := range dims {
+				if d.ID == groupID {
+					view.GroupID = groupID
+					view.Groups = domain.GroupGoalsByDimension(view.Goals, d)
+				}
+			}
+		}
+	}
+	return view, nil
 }
 
 func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
@@ -110,6 +174,16 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		http.Error(w, "could not load So What history", http.StatusInternalServerError)
 		return
 	}
+	dimensions, err := s.svc.ListDimensions(r.Context())
+	if err != nil {
+		http.Error(w, "could not load dimensions", http.StatusInternalServerError)
+		return
+	}
+	values, err := s.svc.GoalValues(r.Context(), id)
+	if err != nil {
+		http.Error(w, "could not load dimension values", http.StatusInternalServerError)
+		return
+	}
 
 	render(w, r, http.StatusOK, goalPage(&current, goalView{
 		Goal:          g,
@@ -120,6 +194,8 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		Metrics:       metrics,
 		Contributors:  contributors,
 		Revisions:     revisions,
+		Dimensions:    dimensions,
+		Values:        values,
 		SuggestedDate: domain.SuggestDeliveryDate(s.svc.Now()).Format(dateLayout),
 	}))
 }
@@ -128,15 +204,32 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 // graph links, and the Milestones, Metrics, Contributors, and So What history an
 // Owner fills in before activating it.
 type goalView struct {
-	Goal          domain.Goal
-	Parents       []domain.GoalLink
-	Children      []domain.GoalLink
-	Candidates    []domain.Goal
-	Milestones    []domain.Milestone
-	Metrics       []domain.Metric
-	Contributors  []domain.Account
-	Revisions     []domain.SoWhatRevision
+	Goal         domain.Goal
+	Parents      []domain.GoalLink
+	Children     []domain.GoalLink
+	Candidates   []domain.Goal
+	Milestones   []domain.Milestone
+	Metrics      []domain.Metric
+	Contributors []domain.Account
+	Revisions    []domain.SoWhatRevision
+	// Dimensions are all defined Dimensions, for the value-assignment selects and
+	// the defaults offered when creating a child Goal. Values are the values this
+	// Goal currently carries, retired ones included so they stay readable.
+	Dimensions    []domain.Dimension
+	Values        []domain.DimensionValue
 	SuggestedDate string
+}
+
+// assignedValue returns the value this Goal carries in the given Dimension, or
+// nil if it carries none — used to show the current assignment and preselect the
+// assignment control.
+func (v goalView) assignedValue(dimensionID int64) *domain.DimensionValue {
+	for i := range v.Values {
+		if v.Values[i].DimensionID == dimensionID {
+			return &v.Values[i]
+		}
+	}
+	return nil
 }
 
 // goalIDFromPath parses the {id} path value, writing a 404 and returning ok
@@ -354,4 +447,74 @@ func (s *Server) handleActivateGoal(w http.ResponseWriter, r *http.Request, _ do
 	}
 	_, err := s.svc.ActivateGoal(r.Context(), id)
 	writeCommandResult(w, r, id, err)
+}
+
+// handleAssignGoalValue assigns a Dimension value to the Goal, replacing any
+// value it already carries in the same Dimension (CONTEXT.md: Owners assign
+// Dimension values to their Goals). An empty selection is a no-op.
+func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+	id, ok := goalIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	raw := r.FormValue("value_id")
+	if raw == "" {
+		writeCommandResult(w, r, id, nil)
+		return
+	}
+	valueID, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid value", http.StatusUnprocessableEntity)
+		return
+	}
+	writeCommandResult(w, r, id, s.svc.AssignGoalValue(r.Context(), id, valueID))
+}
+
+// handleCreateChildGoal creates a Goal under the parent in the path: it is owned
+// by the current Account, carries whichever of the parent's values were kept as
+// defaults, and requests a "contributes to" link to the parent. The parent's
+// values are offered as defaults but not inherited — only the kept ones are
+// assigned (CONTEXT.md: Contributes to; the parent's values are offered as
+// defaults).
+func (s *Server) handleCreateChildGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	parentID, ok := goalIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	child, err := s.svc.CreateGoal(r.Context(), domain.CreateGoalInput{
+		Title:   r.FormValue("title"),
+		SoWhat:  r.FormValue("so_what"),
+		OwnerID: current.ID,
+	})
+	if err != nil {
+		if errors.Is(err, domain.ErrValidation) {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+		http.Error(w, "could not create child goal", http.StatusInternalServerError)
+		return
+	}
+	for _, raw := range r.Form["value_id"] {
+		valueID, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			continue
+		}
+		if err := s.svc.AssignGoalValue(r.Context(), child.ID, valueID); err != nil {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+	}
+	if _, err := s.svc.RequestLink(r.Context(), domain.RequestLinkInput{
+		ChildID:     child.ID,
+		ParentID:    parentID,
+		RequesterID: current.ID,
+	}); err != nil {
+		if errors.Is(err, domain.ErrValidation) {
+			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			return
+		}
+		http.Error(w, "could not link child goal", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/goals/"+strconv.FormatInt(child.ID, 10), http.StatusSeeOther)
 }

@@ -31,4 +31,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /handoffs/{id}/accept", s.requireAuth(s.handleAcceptHandoff))
 	s.mux.HandleFunc("POST /handoffs/{id}/reject", s.requireAuth(s.handleRejectHandoff))
 	s.mux.HandleFunc("POST /accounts/{id}/depart", s.requireAuth(s.handleDepartAccount))
+	s.mux.HandleFunc("GET /dimensions", s.requireAuth(s.handleDimensions))
+	s.mux.HandleFunc("POST /dimensions", s.requireAuth(s.handleCreateDimension))
+	s.mux.HandleFunc("POST /dimensions/{id}/values", s.requireAuth(s.handleAddDimensionValue))
+	s.mux.HandleFunc("POST /dimension-values/{id}/rename", s.requireAuth(s.handleRenameDimensionValue))
+	s.mux.HandleFunc("POST /dimension-values/{id}/retire", s.requireAuth(s.handleRetireDimensionValue))
+	s.mux.HandleFunc("POST /goals/{id}/dimensions", s.requireAuth(s.handleAssignGoalValue))
+	s.mux.HandleFunc("POST /goals/{id}/children", s.requireAuth(s.handleCreateChildGoal))
 }

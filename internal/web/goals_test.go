@@ -1,6 +1,8 @@
 package web_test
 
 import (
+	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -189,5 +191,127 @@ func TestActivateProposedGoalReportsGateFailures(t *testing.T) {
 	}
 	if body := readBody(t, resp); !strings.Contains(body, "Dated") {
 		t.Errorf("rejection should explain the missing Dated/Ongoing choice; body:\n%s", body)
+	}
+}
+
+// An Owner assigns a Dimension value to their Goal from the Goal page; after the
+// value is retired by an Admin it stays readable on the Goal (CONTEXT.md: Owners
+// assign Dimension values; retired values stay readable).
+func TestOwnerAssignsDimensionValueOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	// Assign Growth, then replace it with Reliability.
+	postForm(t, samClient, goalURL+"/dimensions", url.Values{"value_id": {fmt.Sprintf("%d", pillar.Values[0].ID)}})
+	page := getBody(t, samClient, goalURL)
+	if !strings.Contains(page, `data-testid="goal-dimension-value">Growth`) {
+		t.Fatalf("Goal page missing assigned Growth; body:\n%s", page)
+	}
+	postForm(t, samClient, goalURL+"/dimensions", url.Values{"value_id": {fmt.Sprintf("%d", pillar.Values[1].ID)}})
+	page = getBody(t, samClient, goalURL)
+	if !strings.Contains(page, `data-testid="goal-dimension-value">Reliability`) {
+		t.Errorf("Goal page should show Reliability after reassignment; body:\n%s", page)
+	}
+	if strings.Contains(page, `data-testid="goal-dimension-value">Growth`) {
+		t.Errorf("Growth should be replaced, not kept; body:\n%s", page)
+	}
+
+	// Admin retires Reliability; it stays readable on the Goal that carries it.
+	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, pillar.Values[1].ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	page = getBody(t, samClient, goalURL)
+	if !strings.Contains(page, `data-testid="goal-dimension-value">Reliability`) {
+		t.Errorf("retired value should stay readable on the Goal; body:\n%s", page)
+	}
+}
+
+// The Goal list filters to the Goals carrying a chosen value and groups the list
+// under each value of a chosen Dimension (CONTEXT.md: filter and group Goals).
+func TestGoalListFiltersAndGroupsByDimension(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	growth, reliability := pillar.Values[0], pillar.Values[1]
+	alpha := h.CreateGoal(sam, "Alpha", "A matters.")
+	bravo := h.CreateGoal(sam, "Bravo", "B matters.")
+	h.AssignGoalValue(alpha, growth)
+	h.AssignGoalValue(bravo, reliability)
+	ts := newServer(t, h)
+
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	// Filter to Growth: Alpha shows, Bravo does not.
+	filtered := getBody(t, client, fmt.Sprintf("%s/goals?value=%d", ts.URL, growth.ID))
+	if !strings.Contains(filtered, "Alpha") || strings.Contains(filtered, ">Bravo<") {
+		t.Errorf("filter by Growth should show only Alpha; body:\n%s", filtered)
+	}
+
+	// Group by Pillar: value-labelled groups appear.
+	grouped := getBody(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, pillar.ID))
+	if !strings.Contains(grouped, `data-testid="goal-group"`) {
+		t.Fatalf("grouped list missing groups; body:\n%s", grouped)
+	}
+	if !strings.Contains(grouped, "Growth") || !strings.Contains(grouped, "Reliability") {
+		t.Errorf("grouped list missing value labels; body:\n%s", grouped)
+	}
+}
+
+// Creating a Goal under a parent offers the parent's values as defaults: a kept
+// default is assigned to the child and the child contributes to the parent, but
+// the values are not inherited — a child created without them carries none
+// (CONTEXT.md: the parent's values are offered as defaults, not inherited).
+func TestCreateChildGoalOffersParentDefaults(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	growth := pillar.Values[0]
+	parent := h.CreateGoal(sam, "Parent", "Parent matters.")
+	h.AssignGoalValue(parent, growth)
+	ts := newServer(t, h)
+
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	parentURL := fmt.Sprintf("%s/goals/%d", ts.URL, parent.ID)
+
+	// The parent page offers Growth as a checked default.
+	page := getBody(t, samClient, parentURL)
+	if !strings.Contains(page, `data-testid="child-defaults"`) {
+		t.Fatalf("parent page missing child defaults; body:\n%s", page)
+	}
+	if !strings.Contains(page, fmt.Sprintf(`value="%d" checked`, growth.ID)) {
+		t.Errorf("parent value not offered as a checked default; body:\n%s", page)
+	}
+
+	// Keeping the default assigns Growth to the child and links it to the parent.
+	resp := postForm(t, samClient, parentURL+"/children", url.Values{
+		"title":    {"Kept child"},
+		"so_what":  {"Child matters."},
+		"value_id": {fmt.Sprintf("%d", growth.ID)},
+	})
+	childPage := readBody(t, resp)
+	if !strings.Contains(childPage, `data-testid="goal-dimension-value">Growth`) {
+		t.Errorf("kept default not assigned to the child; body:\n%s", childPage)
+	}
+	if !strings.Contains(childPage, "Parent") {
+		t.Errorf("child does not contribute to the parent; body:\n%s", childPage)
+	}
+
+	// Creating a child without the default leaves it unassigned (not inherited).
+	resp = postForm(t, samClient, parentURL+"/children", url.Values{
+		"title":   {"Bare child"},
+		"so_what": {"Child matters."},
+	})
+	barePage := readBody(t, resp)
+	if !strings.Contains(barePage, `data-testid="goal-dimension-unassigned"`) {
+		t.Errorf("child without the default should be unassigned; body:\n%s", barePage)
 	}
 }

@@ -6,8 +6,10 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// goalsPage lists every Goal and offers the create-Goal form.
-templ goalsPage(current *domain.Account, goals []domain.Goal) {
+// goalsPage lists every Goal, offers the create-Goal form, and lets the reader
+// filter and group the list by Dimension values (CONTEXT.md: filter and group
+// Goals).
+templ goalsPage(current *domain.Account, view goalsListData) {
 	@layout("Goals", current) {
 		<h1>Goals</h1>
 		<section>
@@ -24,22 +26,86 @@ templ goalsPage(current *domain.Account, goals []domain.Goal) {
 				<button type="submit">Create Goal</button>
 			</form>
 		</section>
-		@goalList(goals)
+		@goalFilters(view)
+		@goalList(view)
 	}
 }
 
-// goalList is the htmx swap target: the Goal list on its own.
-templ goalList(goals []domain.Goal) {
-	<ul id="goal-list" data-testid="goal-list">
+// goalFilters offers the filter checkboxes and the group-by selector, submitted
+// as a GET so the chosen slice lives in the URL.
+templ goalFilters(view goalsListData) {
+	if len(view.Dimensions) > 0 {
+		<form method="get" action="/goals" data-testid="goal-filters">
+			for _, d := range view.Dimensions {
+				<fieldset>
+					<legend>{ d.Name }</legend>
+					for _, v := range d.Values {
+						<label>
+							<input type="checkbox" name="value" value={ fmt.Sprintf("%d", v.ID) } checked?={ view.Selected[v.ID] }/>
+							{ v.Value }
+							if v.Retired {
+								<span> (retired)</span>
+							}
+						</label>
+					}
+				</fieldset>
+			}
+			<label>
+				Group by
+				<select name="group">
+					<option value="" selected?={ view.GroupID == 0 }>— none —</option>
+					for _, d := range view.Dimensions {
+						<option value={ fmt.Sprintf("%d", d.ID) } selected?={ view.GroupID == d.ID }>{ d.Name }</option>
+					}
+				</select>
+			</label>
+			<button type="submit">Apply</button>
+			<a href="/goals">Clear</a>
+		</form>
+	}
+}
+
+// goalList is the htmx swap target: the Goal list, flat or grouped by a
+// Dimension's values.
+templ goalList(view goalsListData) {
+	<div id="goal-list" data-testid="goal-list">
+		if view.GroupID != 0 {
+			if len(view.Groups) == 0 {
+				<p data-testid="no-goals">No Goals match.</p>
+			}
+			for _, grp := range view.Groups {
+				<section data-testid="goal-group">
+					<h3 data-testid="goal-group-label">
+						if grp.Value != nil {
+							{ grp.Value.Value }
+						} else {
+							Unassigned
+						}
+					</h3>
+					@goalItems(grp.Goals)
+				</section>
+			}
+		} else {
+			@goalItems(view.Goals)
+		}
+	</div>
+}
+
+// goalItems renders a flat list of Goals with their assigned Dimension values.
+templ goalItems(goals []domain.GoalWithValues) {
+	<ul>
 		if len(goals) == 0 {
 			<li data-testid="no-goals">No Goals yet.</li>
 		}
-		for _, g := range goals {
+		for _, gv := range goals {
 			<li>
-				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
-				<span> — { g.Lifecycle } — Owner { g.Owner.Email }</span>
-				if g.Ownerless {
+				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", gv.Goal.ID)) }>{ gv.Goal.Title }</a>
+				<span> — { gv.Goal.Lifecycle } — Owner { gv.Goal.Owner.Email }</span>
+				if gv.Goal.Ownerless {
 					<strong data-testid="ownerless"> — Ownerless</strong>
+				}
+				for _, val := range gv.Values {
+					<span data-testid="goal-value-tag"> [{ val.Value }]</span>
 				}
 			</li>
 		}
@@ -100,6 +166,10 @@ templ goalPage(current *domain.Account, v goalView) {
 				}
 			</ul>
 		</section>
+		<section data-testid="goal-dimensions">
+			<h2>Dimensions</h2>
+			@goalDimensions(v, owner)
+		</section>
 		<section data-testid="goal-so-what-history">
 			<h2>So What history</h2>
 			<ul>
@@ -140,8 +210,83 @@ templ goalPage(current *domain.Account, v goalView) {
 				</form>
 			</section>
 		}
+		@addChildGoal(v)
 		<p><a href="/goals">Back to Goals</a></p>
 	}
+}
+
+// goalDimensions shows the Goal's value in each Dimension — retired values stay
+// readable — and, for its Owner, a per-Dimension control to assign a value
+// (CONTEXT.md: Owners assign Dimension values; retired values stay readable).
+templ goalDimensions(v goalView, owner bool) {
+	{{ g := v.Goal }}
+	if len(v.Dimensions) == 0 {
+		<p data-testid="no-dimensions-defined">No Dimensions defined yet.</p>
+	}
+	<ul>
+		for _, d := range v.Dimensions {
+			{{ current := v.assignedValue(d.ID) }}
+			<li data-testid="goal-dimension">
+				<span>{ d.Name }: </span>
+				if current != nil {
+					<span data-testid="goal-dimension-value">{ current.Value }</span>
+					if current.Retired {
+						<strong data-testid="retired"> (retired)</strong>
+					}
+				} else {
+					<span data-testid="goal-dimension-unassigned">unassigned</span>
+				}
+				if owner {
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/dimensions", g.ID)) } style="display:inline">
+						<select name="value_id">
+							<option value="">— choose —</option>
+							for _, val := range d.Values {
+								if !val.Retired {
+									<option value={ fmt.Sprintf("%d", val.ID) } selected?={ current != nil && current.ID == val.ID }>{ val.Value }</option>
+								}
+							}
+						</select>
+						<button type="submit">Assign</button>
+					</form>
+				}
+			</li>
+		}
+	</ul>
+}
+
+// addChildGoal creates a Goal under this one: it offers this Goal's values as
+// defaults (pre-checked, but not inherited — only the kept ones are assigned) and
+// requests a "contributes to" link to this Goal (CONTEXT.md: Contributes to; the
+// parent's values are offered as defaults).
+templ addChildGoal(v goalView) {
+	{{ g := v.Goal }}
+	<section data-testid="add-child-goal">
+		<h2>Add a child Goal</h2>
+		<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/children", g.ID)) }>
+			<label>
+				Title
+				<input type="text" name="title" required/>
+			</label>
+			<label>
+				So What
+				<textarea name="so_what" required></textarea>
+			</label>
+			if len(v.Values) > 0 {
+				<fieldset data-testid="child-defaults">
+					<legend>Defaults from { g.Title }</legend>
+					for _, val := range v.Values {
+						if !val.Retired {
+							<label>
+								<input type="checkbox" name="value_id" value={ fmt.Sprintf("%d", val.ID) } checked/>
+								{ val.Value }
+							</label>
+						}
+					}
+				</fieldset>
+			}
+			<button type="submit">Create child Goal</button>
+		</form>
+	</section>
 }
 
 // ownership renders the ownership-change controls for a Goal: an Owner or Admin
