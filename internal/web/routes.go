@@ -62,5 +62,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /action-items/{id}/close", s.requireAuth(s.handleCloseActionItem))
 	s.mux.HandleFunc("GET /signals", s.requireAuth(s.handleGraphSignals))
 	s.mux.HandleFunc("GET /freshness", s.requireAuth(s.handleFreshnessSignals))
+	s.mux.HandleFunc("GET /risks", s.requireAuth(s.handleRisks))
 	s.mux.HandleFunc("POST /goals/{id}/top-level", s.requireAuth(s.handleSetTopLevel))
 }

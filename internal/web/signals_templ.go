@@ -55,12 +55,12 @@ func topLevelControl(g domain.Goal) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if g.TopLevel {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<input type=\"hidden\" name=\"top_level\" value=\"false\"> <button type=\"submit\">Unmark Top-level</button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<input type=\"hidden\" name=\"top_level\" value=\"false\"> <button type=\"submit\" class=\"btn\">Unmark Top-level</button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<input type=\"hidden\" name=\"top_level\" value=\"true\"> <button type=\"submit\">Mark Top-level</button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<input type=\"hidden\" name=\"top_level\" value=\"true\"> <button type=\"submit\" class=\"btn\">Mark Top-level</button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -388,7 +388,7 @@ func haltedParent(hp domain.HaltedParent) templ.Component {
 }
 
 // goalSignals flags, at the top of a Goal's page, the graph signals that touch
-// it. It renders nothing when the graph flags nothing.
+// it, one banner each. It renders nothing when the graph flags nothing.
 func goalSignals(signals domain.GoalSignals) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -411,18 +411,18 @@ func goalSignals(signals domain.GoalSignals) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if signals.Unaligned || len(signals.ScheduleConflicts) > 0 || len(signals.HaltedParents) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<section data-testid=\"goal-signals\" role=\"alert\"><h2>Graph signals</h2><ul>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<section data-testid=\"goal-signals\" aria-label=\"Graph signals\" style=\"display:flex;flex-direction:column;gap:8px\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if signals.Unaligned {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<li data-testid=\"goal-unaligned\"><strong>Unaligned</strong> — this Active Goal contributes to no other Goal and isn't Top-level.</li>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<p data-testid=\"goal-unaligned\" class=\"alert lc\" role=\"alert\"><strong>Unaligned</strong><span>this Active Goal contributes to no other Goal and isn't Top-level.</span></p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			for _, c := range signals.ScheduleConflicts {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<li data-testid=\"goal-schedule-conflict\"><strong>Schedule conflict</strong> —")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<p data-testid=\"goal-schedule-conflict\" class=\"alert lc\" role=\"alert\"><strong>Schedule conflict</strong> <span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -430,26 +430,26 @@ func goalSignals(signals domain.GoalSignals) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</li>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</span></p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			for _, hp := range signals.HaltedParents {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<li data-testid=\"goal-halted-parent\"><strong>Parent ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<p data-testid=\"goal-halted-parent\" class=\"alert lc\" role=\"alert\"><strong>Parent ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var15 string
 				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(hp.Parent.Lifecycle)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 119, Col: 42}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 119, Col: 41}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</strong> —")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</strong> <span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -457,12 +457,12 @@ func goalSignals(signals domain.GoalSignals) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</li>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</span></p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</ul></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

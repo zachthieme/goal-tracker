@@ -14,10 +14,10 @@ templ topLevelControl(g domain.Goal) {
 		<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/top-level", g.ID)) }>
 			if g.TopLevel {
 				<input type="hidden" name="top_level" value="false"/>
-				<button type="submit">Unmark Top-level</button>
+				<button type="submit" class="btn">Unmark Top-level</button>
 			} else {
 				<input type="hidden" name="top_level" value="true"/>
-				<button type="submit">Mark Top-level</button>
+				<button type="submit" class="btn">Mark Top-level</button>
 			}
 		</form>
 	</section>
@@ -99,28 +99,29 @@ templ haltedParent(hp domain.HaltedParent) {
 }
 
 // goalSignals flags, at the top of a Goal's page, the graph signals that touch
-// it. It renders nothing when the graph flags nothing.
+// it, one banner each. It renders nothing when the graph flags nothing.
 templ goalSignals(signals domain.GoalSignals) {
 	if signals.Unaligned || len(signals.ScheduleConflicts) > 0 || len(signals.HaltedParents) > 0 {
-		<section data-testid="goal-signals" role="alert">
-			<h2>Graph signals</h2>
-			<ul>
-				if signals.Unaligned {
-					<li data-testid="goal-unaligned"><strong>Unaligned</strong> — this Active Goal contributes to no other Goal and isn't Top-level.</li>
-				}
-				for _, c := range signals.ScheduleConflicts {
-					<li data-testid="goal-schedule-conflict">
-						<strong>Schedule conflict</strong> —
+		<section data-testid="goal-signals" aria-label="Graph signals" style="display:flex;flex-direction:column;gap:8px">
+			if signals.Unaligned {
+				<p data-testid="goal-unaligned" class="alert lc" role="alert"><strong>Unaligned</strong><span>this Active Goal contributes to no other Goal and isn't Top-level.</span></p>
+			}
+			for _, c := range signals.ScheduleConflicts {
+				<p data-testid="goal-schedule-conflict" class="alert lc" role="alert">
+					<strong>Schedule conflict</strong>
+					<span>
 						@scheduleConflict(c)
-					</li>
-				}
-				for _, hp := range signals.HaltedParents {
-					<li data-testid="goal-halted-parent">
-						<strong>Parent { hp.Parent.Lifecycle }</strong> —
+					</span>
+				</p>
+			}
+			for _, hp := range signals.HaltedParents {
+				<p data-testid="goal-halted-parent" class="alert lc" role="alert">
+					<strong>Parent { hp.Parent.Lifecycle }</strong>
+					<span>
 						@haltedParent(hp)
-					</li>
-				}
-			</ul>
+					</span>
+				</p>
+			}
 		</section>
 	}
 }
