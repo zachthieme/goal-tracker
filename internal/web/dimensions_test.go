@@ -103,7 +103,7 @@ func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
 	ts := newServer(t, h)
 
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/dimensions")
-	card := page[strings.Index(page, `<li data-testid="dimension"`):]
+	card := between(t, page, `<li data-testid="dimension"`, "")
 	if !strings.Contains(openTag(card), `class="card`) {
 		t.Errorf("the Dimension isn't a card: %s", openTag(card))
 	}
@@ -117,8 +117,7 @@ func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
 	if at < 0 {
 		t.Fatalf("the Admin's Dimension card has no Edit toggle:\n%s", card)
 	}
-	edit := card[at:]
-	edit = edit[:strings.Index(edit, "</details>")]
+	edit := between(t, card, "<details", "</details>")
 	if !strings.Contains(edit, ">Edit</summary>") {
 		t.Errorf("the Edit toggle isn't labelled Edit:\n%s", edit)
 	}
@@ -134,7 +133,7 @@ func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
 	if strings.Contains(card[:at], "<form") {
 		t.Errorf("an Admin control sits outside the Edit toggle:\n%s", card)
 	}
-	retire := edit[strings.Index(edit, fmt.Sprintf(`action="/dimension-values/%d/retire"`, dim.Values[0].ID)):]
+	retire := between(t, edit, fmt.Sprintf(`action="/dimension-values/%d/retire"`, dim.Values[0].ID), "")
 	if !strings.Contains(openTag(retire), `onsubmit="return confirm(`) {
 		t.Errorf("Retire doesn't ask for confirmation: %s", openTag(retire))
 	}

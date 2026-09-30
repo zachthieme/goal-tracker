@@ -135,7 +135,7 @@ func TestPendingHandoffRowsConfirmReject(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/handoffs")
 
-	row := page[strings.Index(page, `data-testid="pending-handoff"`):]
+	row := between(t, page, `data-testid="pending-handoff"`, "")
 	if !strings.Contains(openTag(row), `class="card`) {
 		t.Errorf("the pending Handoff isn't a card: %s", openTag(row))
 	}

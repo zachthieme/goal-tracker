@@ -157,7 +157,7 @@ Fine,owner@example.com,It matters.,Ongoing,
 	}
 
 	body := postImport(t, admin, ts.URL+"/imports", "goals.csv", badCSV, "dry-run")
-	report := body[strings.Index(body, `data-testid="import-report"`):]
+	report := between(t, body, `data-testid="import-report"`, "")
 	summary := pageElement(t, report, "p", "import-summary")
 	if !strings.Contains(openTag(summary), `class="alert r"`) {
 		t.Errorf("a report with errors doesn't open with a red alert: %s", summary)
