@@ -420,7 +420,7 @@ templ goalPageStyles() {
 		.gp-link-meta form{margin:0 0 0 auto}
 		.gp-metric-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
 		.gp-current .num{font-size:28px;line-height:1.1}
-		.gp-spark{width:100%;height:56px;display:block;overflow:visible}
+		.gp-spark{max-width:100%;height:auto;display:block;overflow:visible}
 		.gp-edit form{flex-direction:column}
 		.gp-define>section{display:flex;flex-direction:column;gap:4px;padding-top:12px;border-top:1px solid #EEEFEA}
 		.gp-define textarea{flex:1;min-width:240px}
@@ -529,9 +529,9 @@ templ goalMore(v goalView, owner, admin bool) {
 const confirmDepart = "Mark this Owner departed? Every Goal they own becomes Ownerless until an Admin reassigns it."
 
 // openSection opens the collapsed section a More menu item links to, so
-// following the link shows its form.
+// following the link shows its form, and closes the menu over it.
 func openSection(id string) templ.ComponentScript {
-	return templ.ComponentScript{Call: "document.getElementById('" + id + "').open=true"}
+	return templ.ComponentScript{Call: "document.getElementById('" + id + "').open=true;this.closest('details').open=false"}
 }
 
 // goalDimensions shows the Goal's value in each Dimension as a tag — retired
@@ -844,9 +844,9 @@ templ metricList(trends []metricTrend, owner bool) {
 // over a dashed line at its target, each point naming its reading on hover.
 templ metricSparkline(t metricTrend) {
 	{{ s := t.sparkline() }}
-	<svg class="gp-spark" role="img" aria-label={ t.trendLabel() } viewBox={ fmt.Sprintf("0 0 %g %g", sparkW, sparkH) } preserveAspectRatio="none">
-		<line x1="0" x2={ fmt.Sprintf("%g", sparkW) } y1={ fmt.Sprintf("%.1f", s.TargetY) } y2={ fmt.Sprintf("%.1f", s.TargetY) } stroke="#5A606B" stroke-width="1" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"></line>
-		<polyline points={ s.polyline() } fill="none" stroke="#8A9099" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></polyline>
+	<svg class="gp-spark" role="img" aria-label={ t.trendLabel() } viewBox={ fmt.Sprintf("0 0 %g %g", sparkW, sparkH) } width={ fmt.Sprintf("%g", sparkW) } height={ fmt.Sprintf("%g", sparkH) }>
+		<line x1="0" x2={ fmt.Sprintf("%g", sparkW) } y1={ fmt.Sprintf("%.1f", s.TargetY) } y2={ fmt.Sprintf("%.1f", s.TargetY) } stroke="#5A606B" stroke-width="1" stroke-dasharray="4 3"></line>
+		<polyline points={ s.polyline() } fill="none" stroke="#8A9099" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
 		for _, p := range s.Points {
 			<circle cx={ fmt.Sprintf("%.1f", p.X) } cy={ fmt.Sprintf("%.1f", p.Y) } r="6" fill="transparent"><title>{ p.Title }</title></circle>
 		}
