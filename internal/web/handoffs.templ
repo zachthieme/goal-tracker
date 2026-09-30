@@ -19,7 +19,7 @@ templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) {
 			for _, ho := range pending {
 				<li data-testid="pending-handoff">
 					<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)) }>{ ho.Goal.Title }</a>
-					<span>— { ho.From.Email } wants to hand this Goal to you</span>
+					<span> — { ho.From.Email } wants to hand this Goal to you</span>
 					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/accept", ho.ID)) } style="display:inline">
 						<button type="submit">Accept</button>
 					</form>

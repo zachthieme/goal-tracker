@@ -19,7 +19,7 @@ templ pendingLinksPage(current *domain.Account, pending []domain.Link) {
 			for _, l := range pending {
 				<li data-testid="pending-link">
 					<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)) }>{ l.Child.Title }</a>
-					<span>(Owner { l.Child.Owner.Email }) wants to contribute to </span>
+					<span> (Owner { l.Child.Owner.Email }) wants to contribute to </span>
 					<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
 					if l.Note != "" {
 						<blockquote data-testid="pending-link-note">{ l.Note }</blockquote>
