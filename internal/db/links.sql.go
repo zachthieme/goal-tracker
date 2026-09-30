@@ -99,7 +99,7 @@ func (q *Queries) GetLinkByChildParent(ctx context.Context, arg GetLinkByChildPa
 }
 
 const listChildGoals = `-- name: ListChildGoals :many
-SELECT links.id AS link_id, goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
+SELECT links.id AS link_id, goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
 FROM links
 JOIN goals ON goals.id = links.child_id
 JOIN accounts ON accounts.id = goals.owner_id
@@ -135,6 +135,7 @@ func (q *Queries) ListChildGoals(ctx context.Context, parentID int64) ([]ListChi
 			&i.Goal.Kind,
 			&i.Goal.DeliveryDate,
 			&i.Goal.CadenceDays,
+			&i.Goal.TopLevel,
 			&i.Account.ID,
 			&i.Account.Email,
 			&i.Account.IsAdmin,
@@ -155,7 +156,7 @@ func (q *Queries) ListChildGoals(ctx context.Context, parentID int64) ([]ListChi
 }
 
 const listParentGoals = `-- name: ListParentGoals :many
-SELECT links.id AS link_id, goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
+SELECT links.id AS link_id, goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
 FROM links
 JOIN goals ON goals.id = links.parent_id
 JOIN accounts ON accounts.id = goals.owner_id
@@ -191,6 +192,7 @@ func (q *Queries) ListParentGoals(ctx context.Context, childID int64) ([]ListPar
 			&i.Goal.Kind,
 			&i.Goal.DeliveryDate,
 			&i.Goal.CadenceDays,
+			&i.Goal.TopLevel,
 			&i.Account.ID,
 			&i.Account.Email,
 			&i.Account.IsAdmin,
@@ -211,7 +213,7 @@ func (q *Queries) ListParentGoals(ctx context.Context, childID int64) ([]ListPar
 }
 
 const listPendingLinksForOwner = `-- name: ListPendingLinksForOwner :many
-SELECT links.id, links.child_id, links.parent_id, links.status, links.note, links.requested_by, links.created_at, child.id, child.title, child.so_what, child.owner_id, child.lifecycle, child.created_at, child.kind, child.delivery_date, child.cadence_days, child_owner.id, child_owner.email, child_owner.is_admin, child_owner.created_at, child_owner.departed, parent.id, parent.title, parent.so_what, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed
+SELECT links.id, links.child_id, links.parent_id, links.status, links.note, links.requested_by, links.created_at, child.id, child.title, child.so_what, child.owner_id, child.lifecycle, child.created_at, child.kind, child.delivery_date, child.cadence_days, child.top_level, child_owner.id, child_owner.email, child_owner.is_admin, child_owner.created_at, child_owner.departed, parent.id, parent.title, parent.so_what, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent.top_level, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed
 FROM links
 JOIN goals child ON child.id = links.child_id
 JOIN accounts child_owner ON child_owner.id = child.owner_id
@@ -257,6 +259,7 @@ func (q *Queries) ListPendingLinksForOwner(ctx context.Context, ownerID int64) (
 			&i.Goal.Kind,
 			&i.Goal.DeliveryDate,
 			&i.Goal.CadenceDays,
+			&i.Goal.TopLevel,
 			&i.Account.ID,
 			&i.Account.Email,
 			&i.Account.IsAdmin,
@@ -271,6 +274,7 @@ func (q *Queries) ListPendingLinksForOwner(ctx context.Context, ownerID int64) (
 			&i.Goal_2.Kind,
 			&i.Goal_2.DeliveryDate,
 			&i.Goal_2.CadenceDays,
+			&i.Goal_2.TopLevel,
 			&i.Account_2.ID,
 			&i.Account_2.Email,
 			&i.Account_2.IsAdmin,

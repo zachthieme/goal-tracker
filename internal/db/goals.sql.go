@@ -36,7 +36,7 @@ func (q *Queries) AddContributor(ctx context.Context, arg AddContributorParams) 
 const createGoal = `-- name: CreateGoal :one
 INSERT INTO goals (title, so_what, owner_id, lifecycle, created_at)
 VALUES (?, ?, ?, ?, ?)
-RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days
+RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level
 `
 
 type CreateGoalParams struct {
@@ -66,6 +66,7 @@ func (q *Queries) CreateGoal(ctx context.Context, arg CreateGoalParams) (Goal, e
 		&i.Kind,
 		&i.DeliveryDate,
 		&i.CadenceDays,
+		&i.TopLevel,
 	)
 	return i, err
 }
@@ -203,7 +204,7 @@ func (q *Queries) GetContributor(ctx context.Context, arg GetContributorParams) 
 }
 
 const getGoal = `-- name: GetGoal :one
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
+SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 WHERE goals.id = ? LIMIT 1
@@ -227,6 +228,7 @@ func (q *Queries) GetGoal(ctx context.Context, id int64) (GetGoalRow, error) {
 		&i.Goal.Kind,
 		&i.Goal.DeliveryDate,
 		&i.Goal.CadenceDays,
+		&i.Goal.TopLevel,
 		&i.Account.ID,
 		&i.Account.Email,
 		&i.Account.IsAdmin,
@@ -277,6 +279,80 @@ func (q *Queries) GetMilestone(ctx context.Context, id int64) (Milestone, error)
 	return i, err
 }
 
+const listAcceptedLinkGoals = `-- name: ListAcceptedLinkGoals :many
+SELECT child.id, child.title, child.so_what, child.owner_id, child.lifecycle, child.created_at, child.kind, child.delivery_date, child.cadence_days, child.top_level, child_owner.id, child_owner.email, child_owner.is_admin, child_owner.created_at, child_owner.departed, parent.id, parent.title, parent.so_what, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent.top_level, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed
+FROM links
+JOIN goals child ON child.id = links.child_id
+JOIN accounts child_owner ON child_owner.id = child.owner_id
+JOIN goals parent ON parent.id = links.parent_id
+JOIN accounts parent_owner ON parent_owner.id = parent.owner_id
+WHERE links.status = 'accepted'
+ORDER BY links.created_at, links.id
+`
+
+type ListAcceptedLinkGoalsRow struct {
+	Goal      Goal
+	Account   Account
+	Goal_2    Goal
+	Account_2 Account
+}
+
+// Every accepted "contributes to" link with its child and parent Goals and their
+// Owners resolved, for reading risks off the graph (ticket #11).
+func (q *Queries) ListAcceptedLinkGoals(ctx context.Context) ([]ListAcceptedLinkGoalsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listAcceptedLinkGoals)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAcceptedLinkGoalsRow
+	for rows.Next() {
+		var i ListAcceptedLinkGoalsRow
+		if err := rows.Scan(
+			&i.Goal.ID,
+			&i.Goal.Title,
+			&i.Goal.SoWhat,
+			&i.Goal.OwnerID,
+			&i.Goal.Lifecycle,
+			&i.Goal.CreatedAt,
+			&i.Goal.Kind,
+			&i.Goal.DeliveryDate,
+			&i.Goal.CadenceDays,
+			&i.Goal.TopLevel,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Goal_2.ID,
+			&i.Goal_2.Title,
+			&i.Goal_2.SoWhat,
+			&i.Goal_2.OwnerID,
+			&i.Goal_2.Lifecycle,
+			&i.Goal_2.CreatedAt,
+			&i.Goal_2.Kind,
+			&i.Goal_2.DeliveryDate,
+			&i.Goal_2.CadenceDays,
+			&i.Goal_2.TopLevel,
+			&i.Account_2.ID,
+			&i.Account_2.Email,
+			&i.Account_2.IsAdmin,
+			&i.Account_2.CreatedAt,
+			&i.Account_2.Departed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listContributors = `-- name: ListContributors :many
 SELECT accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
 FROM contributors
@@ -319,7 +395,7 @@ func (q *Queries) ListContributors(ctx context.Context, goalID int64) ([]ListCon
 }
 
 const listGoals = `-- name: ListGoals :many
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
+SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 ORDER BY goals.created_at DESC, goals.id DESC
@@ -349,6 +425,7 @@ func (q *Queries) ListGoals(ctx context.Context) ([]ListGoalsRow, error) {
 			&i.Goal.Kind,
 			&i.Goal.DeliveryDate,
 			&i.Goal.CadenceDays,
+			&i.Goal.TopLevel,
 			&i.Account.ID,
 			&i.Account.Email,
 			&i.Account.IsAdmin,
@@ -488,9 +565,68 @@ func (q *Queries) ListSoWhatRevisions(ctx context.Context, goalID int64) ([]List
 	return items, nil
 }
 
+const listUnalignedGoals = `-- name: ListUnalignedGoals :many
+SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
+FROM goals
+JOIN accounts ON accounts.id = goals.owner_id
+WHERE goals.lifecycle = 'Active'
+  AND goals.top_level = 0
+  AND NOT EXISTS (
+    SELECT 1 FROM links
+    WHERE links.child_id = goals.id AND links.status = 'accepted'
+  )
+ORDER BY goals.created_at DESC, goals.id DESC
+`
+
+type ListUnalignedGoalsRow struct {
+	Goal    Goal
+	Account Account
+}
+
+// Active Goals that contribute to no other Goal through an accepted link and
+// aren't Top-level (CONTEXT.md: Unaligned), newest first.
+func (q *Queries) ListUnalignedGoals(ctx context.Context) ([]ListUnalignedGoalsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUnalignedGoals)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListUnalignedGoalsRow
+	for rows.Next() {
+		var i ListUnalignedGoalsRow
+		if err := rows.Scan(
+			&i.Goal.ID,
+			&i.Goal.Title,
+			&i.Goal.SoWhat,
+			&i.Goal.OwnerID,
+			&i.Goal.Lifecycle,
+			&i.Goal.CreatedAt,
+			&i.Goal.Kind,
+			&i.Goal.DeliveryDate,
+			&i.Goal.CadenceDays,
+			&i.Goal.TopLevel,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setGoalCadence = `-- name: SetGoalCadence :one
 UPDATE goals SET cadence_days = ? WHERE id = ?
-RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days
+RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level
 `
 
 type SetGoalCadenceParams struct {
@@ -511,13 +647,14 @@ func (q *Queries) SetGoalCadence(ctx context.Context, arg SetGoalCadenceParams) 
 		&i.Kind,
 		&i.DeliveryDate,
 		&i.CadenceDays,
+		&i.TopLevel,
 	)
 	return i, err
 }
 
 const setGoalKind = `-- name: SetGoalKind :one
 UPDATE goals SET kind = ?, delivery_date = ? WHERE id = ?
-RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days
+RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level
 `
 
 type SetGoalKindParams struct {
@@ -539,13 +676,14 @@ func (q *Queries) SetGoalKind(ctx context.Context, arg SetGoalKindParams) (Goal,
 		&i.Kind,
 		&i.DeliveryDate,
 		&i.CadenceDays,
+		&i.TopLevel,
 	)
 	return i, err
 }
 
 const setGoalLifecycle = `-- name: SetGoalLifecycle :one
 UPDATE goals SET lifecycle = ? WHERE id = ?
-RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days
+RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level
 `
 
 type SetGoalLifecycleParams struct {
@@ -566,13 +704,14 @@ func (q *Queries) SetGoalLifecycle(ctx context.Context, arg SetGoalLifecyclePara
 		&i.Kind,
 		&i.DeliveryDate,
 		&i.CadenceDays,
+		&i.TopLevel,
 	)
 	return i, err
 }
 
 const setGoalSoWhat = `-- name: SetGoalSoWhat :one
 UPDATE goals SET so_what = ? WHERE id = ?
-RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days
+RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level
 `
 
 type SetGoalSoWhatParams struct {
@@ -593,8 +732,23 @@ func (q *Queries) SetGoalSoWhat(ctx context.Context, arg SetGoalSoWhatParams) (G
 		&i.Kind,
 		&i.DeliveryDate,
 		&i.CadenceDays,
+		&i.TopLevel,
 	)
 	return i, err
+}
+
+const setGoalTopLevel = `-- name: SetGoalTopLevel :exec
+UPDATE goals SET top_level = ? WHERE id = ?
+`
+
+type SetGoalTopLevelParams struct {
+	TopLevel int64
+	ID       int64
+}
+
+func (q *Queries) SetGoalTopLevel(ctx context.Context, arg SetGoalTopLevelParams) error {
+	_, err := q.db.ExecContext(ctx, setGoalTopLevel, arg.TopLevel, arg.ID)
+	return err
 }
 
 const updateMetric = `-- name: UpdateMetric :one
