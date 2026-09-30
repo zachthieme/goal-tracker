@@ -22,8 +22,9 @@ type checkinFormData struct {
 	RolledUp    domain.RolledUpHealth
 	Explanation string
 	// Metrics are the Goal's Metrics, one reading input each (CONTEXT.md: a
-	// Metric's current value is recorded at each Check-in). Readings holds what
-	// the reader typed, keyed by Metric ID, so an error re-render keeps it.
+	// Metric's current value is recorded at each Check-in). Readings holds each
+	// input's value, keyed by Metric ID: the Metric's latest reading on a fresh
+	// form, or what the reader typed so an error re-render keeps it.
 	Metrics  []domain.Metric
 	Readings map[int64]string
 	// Highlight is the optional Highlight the reader flagged (CONTEXT.md:
@@ -85,8 +86,7 @@ type highlightFormData struct {
 	Note string
 }
 
-// reading returns what the reader typed for a Metric's reading, for prefilling
-// the input on an error re-render.
+// reading returns the value to prefill a Metric's reading input with.
 func (d checkinFormData) reading(metricID int64) string {
 	if d.Readings == nil {
 		return ""
@@ -96,7 +96,8 @@ func (d checkinFormData) reading(metricID int64) string {
 
 // checkinFormFromLatest prefills the Check-in form from a Goal's latest Check-in,
 // or with a fresh Green form when there is none (CONTEXT.md: the form is
-// pre-filled from the latest Check-in). It also carries the Rolled-up Health so
+// pre-filled from the latest Check-in), and each Metric's reading with its latest
+// value, blank for a Metric not yet read. It also carries the Rolled-up Health so
 // the form can show it beside the Owner's Health, and the Goal's current
 // delivery date and Planned Milestones so the Owner can move or close them.
 func checkinFormFromLatest(v goalView) checkinFormData {
@@ -108,6 +109,12 @@ func checkinFormFromLatest(v goalView) checkinFormData {
 		d.PathToGreen = latest.PathToGreen
 		d.PathTargetDate = fmtDate(latest.PathTargetDate)
 		d.Explanation = latest.Explanation
+	}
+	d.Readings = make(map[int64]string, len(v.Trends))
+	for _, t := range v.Trends {
+		if n := len(t.Readings); n > 0 {
+			d.Readings[t.Metric.ID] = fmtNum(t.Readings[n-1].Value)
+		}
 	}
 	d.Lifecycle.Current = g.Lifecycle
 	if g.Lifecycle == domain.LifecycleOnHold {
