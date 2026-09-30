@@ -9,6 +9,22 @@ import (
 	"context"
 )
 
+const addNarrativePick = `-- name: AddNarrativePick :exec
+INSERT INTO narrative_picks (report_definition_id, highlight_id, section)
+VALUES (?, ?, ?)
+`
+
+type AddNarrativePickParams struct {
+	ReportDefinitionID int64
+	HighlightID        int64
+	Section            string
+}
+
+func (q *Queries) AddNarrativePick(ctx context.Context, arg AddNarrativePickParams) error {
+	_, err := q.db.ExecContext(ctx, addNarrativePick, arg.ReportDefinitionID, arg.HighlightID, arg.Section)
+	return err
+}
+
 const addReportDefinitionFilter = `-- name: AddReportDefinitionFilter :exec
 INSERT INTO report_definition_filters (report_definition_id, dimension_value_id)
 VALUES (?, ?)
@@ -36,6 +52,27 @@ type AddReportDefinitionRootParams struct {
 
 func (q *Queries) AddReportDefinitionRoot(ctx context.Context, arg AddReportDefinitionRootParams) error {
 	_, err := q.db.ExecContext(ctx, addReportDefinitionRoot, arg.ReportDefinitionID, arg.GoalID)
+	return err
+}
+
+const clearNarrativePicks = `-- name: ClearNarrativePicks :exec
+DELETE FROM narrative_picks WHERE report_definition_id = ?
+`
+
+// Drop a Report Definition's draft narrative picks, to replace them or once
+// they are frozen into a publication.
+func (q *Queries) ClearNarrativePicks(ctx context.Context, reportDefinitionID int64) error {
+	_, err := q.db.ExecContext(ctx, clearNarrativePicks, reportDefinitionID)
+	return err
+}
+
+const clearNarrativeTexts = `-- name: ClearNarrativeTexts :exec
+DELETE FROM narrative_texts WHERE report_definition_id = ?
+`
+
+// Drop the author's text from a Report Definition's draft narrative.
+func (q *Queries) ClearNarrativeTexts(ctx context.Context, reportDefinitionID int64) error {
+	_, err := q.db.ExecContext(ctx, clearNarrativeTexts, reportDefinitionID)
 	return err
 }
 
@@ -162,6 +199,69 @@ func (q *Queries) LatestReportPublication(ctx context.Context, reportDefinitionI
 	var i LatestReportPublicationRow
 	err := row.Scan(&i.ID, &i.PublishedAt)
 	return i, err
+}
+
+const listNarrativePicks = `-- name: ListNarrativePicks :many
+SELECT id, report_definition_id, highlight_id, section FROM narrative_picks
+WHERE report_definition_id = ?
+ORDER BY id
+`
+
+// The Highlights picked into a Report Definition's draft narrative.
+func (q *Queries) ListNarrativePicks(ctx context.Context, reportDefinitionID int64) ([]NarrativePick, error) {
+	rows, err := q.db.QueryContext(ctx, listNarrativePicks, reportDefinitionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []NarrativePick
+	for rows.Next() {
+		var i NarrativePick
+		if err := rows.Scan(
+			&i.ID,
+			&i.ReportDefinitionID,
+			&i.HighlightID,
+			&i.Section,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listNarrativeTexts = `-- name: ListNarrativeTexts :many
+SELECT report_definition_id, section, text FROM narrative_texts WHERE report_definition_id = ?
+`
+
+// The author's text for each section of a Report Definition's draft narrative.
+func (q *Queries) ListNarrativeTexts(ctx context.Context, reportDefinitionID int64) ([]NarrativeText, error) {
+	rows, err := q.db.QueryContext(ctx, listNarrativeTexts, reportDefinitionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []NarrativeText
+	for rows.Next() {
+		var i NarrativeText
+		if err := rows.Scan(&i.ReportDefinitionID, &i.Section, &i.Text); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listReportDefinitionFilters = `-- name: ListReportDefinitionFilters :many
@@ -293,4 +393,20 @@ func (q *Queries) ListReportPublications(ctx context.Context, reportDefinitionID
 		return nil, err
 	}
 	return items, nil
+}
+
+const setNarrativeText = `-- name: SetNarrativeText :exec
+INSERT INTO narrative_texts (report_definition_id, section, text)
+VALUES (?, ?, ?)
+`
+
+type SetNarrativeTextParams struct {
+	ReportDefinitionID int64
+	Section            string
+	Text               string
+}
+
+func (q *Queries) SetNarrativeText(ctx context.Context, arg SetNarrativeTextParams) error {
+	_, err := q.db.ExecContext(ctx, setNarrativeText, arg.ReportDefinitionID, arg.Section, arg.Text)
+	return err
 }

@@ -27,6 +27,10 @@ type Report struct {
 	// author to curate while preparing a publication. They are not frozen
 	// with the snapshot; only the narrative the author curates from them is.
 	Highlights []NarrativeHighlight `json:"-"`
+	// Narrative is the Report's Insights, Accomplishments, and Misses, curated
+	// by its author from Highlights, with their own text. It is frozen with
+	// the snapshot.
+	Narrative []NarrativeSection
 }
 
 // covers reports whether the Report includes the Goal, as an exception block
@@ -154,6 +158,9 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 			return Report{}, err
 		}
 		r.Exceptions = append(r.Exceptions, b)
+	}
+	if err := s.draftNarrative(ctx, &r); err != nil {
+		return Report{}, err
 	}
 	return r, nil
 }
