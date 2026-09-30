@@ -1,0 +1,38 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// pendingLinksPage lists the link requests awaiting the current Account's
+// decision as the Owner of each request's parent Goal, with accept and reject
+// actions.
+templ pendingLinksPage(current *domain.Account, pending []domain.Link) {
+	@layout("Pending links", current) {
+		<h1>Pending link requests</h1>
+		<ul data-testid="pending-links">
+			if len(pending) == 0 {
+				<li data-testid="no-pending-links">No pending requests.</li>
+			}
+			for _, l := range pending {
+				<li data-testid="pending-link">
+					<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)) }>{ l.Child.Title }</a>
+					<span> (Owner { l.Child.Owner.Email }) wants to contribute to </span>
+					<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
+					if l.Note != "" {
+						<blockquote data-testid="pending-link-note">{ l.Note }</blockquote>
+					}
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/accept", l.ID)) } style="display:inline">
+						<button type="submit">Accept</button>
+					</form>
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/reject", l.ID)) } style="display:inline">
+						<button type="submit">Reject</button>
+					</form>
+				</li>
+			}
+		</ul>
+		<p><a href="/goals">Back to Goals</a></p>
+	}
+}

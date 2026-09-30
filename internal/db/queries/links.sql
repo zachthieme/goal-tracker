@@ -16,8 +16,9 @@ UPDATE links SET status = ? WHERE id = ?;
 DELETE FROM links WHERE id = ?;
 
 -- name: ListParentGoals :many
--- The Goals a Goal contributes to (its accepted parents), for navigation.
-SELECT sqlc.embed(goals), sqlc.embed(accounts)
+-- The Goals a Goal contributes to (its accepted parents), for navigation, each
+-- with the id of the link that can remove it.
+SELECT links.id AS link_id, sqlc.embed(goals), sqlc.embed(accounts)
 FROM links
 JOIN goals ON goals.id = links.parent_id
 JOIN accounts ON accounts.id = goals.owner_id
@@ -25,8 +26,9 @@ WHERE links.child_id = @child_id AND links.status = 'accepted'
 ORDER BY goals.created_at DESC, goals.id DESC;
 
 -- name: ListChildGoals :many
--- The Goals that contribute to a Goal (its accepted children), for navigation.
-SELECT sqlc.embed(goals), sqlc.embed(accounts)
+-- The Goals that contribute to a Goal (its accepted children), for navigation,
+-- each with the id of the link that can remove it.
+SELECT links.id AS link_id, sqlc.embed(goals), sqlc.embed(accounts)
 FROM links
 JOIN goals ON goals.id = links.child_id
 JOIN accounts ON accounts.id = goals.owner_id

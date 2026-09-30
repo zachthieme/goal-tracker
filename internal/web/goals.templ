@@ -43,8 +43,10 @@ templ goalList(goals []domain.Goal) {
 	</ul>
 }
 
-// goalPage shows a single Goal on its own page.
-templ goalPage(current *domain.Account, g domain.Goal) {
+// goalPage shows a single Goal on its own page, with its parents and children
+// for navigation and, for its Owner, a form to request a new "contributes to"
+// link.
+templ goalPage(current *domain.Account, g domain.Goal, parents, children []domain.GoalLink, candidates []domain.Goal) {
 	@layout(g.Title, current) {
 		<article data-testid="goal">
 			<h1 data-testid="goal-title">{ g.Title }</h1>
@@ -53,6 +55,54 @@ templ goalPage(current *domain.Account, g domain.Goal) {
 			<h2>So What</h2>
 			<p data-testid="goal-so-what">{ g.SoWhat }</p>
 		</article>
+		<section data-testid="goal-parents">
+			<h2>Contributes to</h2>
+			@linkList(parents, "no-parents", "This Goal contributes to nothing yet.")
+		</section>
+		<section data-testid="goal-children">
+			<h2>Contributed to by</h2>
+			@linkList(children, "no-children", "Nothing contributes to this Goal yet.")
+		</section>
+		if current != nil && current.ID == g.Owner.ID {
+			<section data-testid="request-link">
+				<h2>Contribute this Goal to another</h2>
+				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/links", g.ID)) }>
+					<label>
+						Parent Goal
+						<select name="parent_id" required>
+							for _, c := range candidates {
+								<option value={ fmt.Sprintf("%d", c.ID) }>{ c.Title }</option>
+							}
+						</select>
+					</label>
+					<label>
+						Note (optional)
+						<textarea name="note"></textarea>
+					</label>
+					<button type="submit">Request link</button>
+				</form>
+			</section>
+		}
 		<p><a href="/goals">Back to Goals</a></p>
 	}
+}
+
+// linkList renders a Goal's parents or children as navigable links, each with a
+// button to remove the connecting link. emptyTestID/emptyText render when there
+// are none.
+templ linkList(links []domain.GoalLink, emptyTestID, emptyText string) {
+	<ul>
+		if len(links) == 0 {
+			<li data-testid={ emptyTestID }>{ emptyText }</li>
+		}
+		for _, l := range links {
+			<li>
+				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Goal.ID)) }>{ l.Goal.Title }</a>
+				<span> — Owner { l.Goal.Owner.Email }</span>
+				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/remove", l.LinkID)) } style="display:inline">
+					<button type="submit">Remove</button>
+				</form>
+			</li>
+		}
+	</ul>
 }

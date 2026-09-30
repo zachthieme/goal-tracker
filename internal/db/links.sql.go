@@ -99,7 +99,7 @@ func (q *Queries) GetLinkByChildParent(ctx context.Context, arg GetLinkByChildPa
 }
 
 const listChildGoals = `-- name: ListChildGoals :many
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at
+SELECT links.id AS link_id, goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at
 FROM links
 JOIN goals ON goals.id = links.child_id
 JOIN accounts ON accounts.id = goals.owner_id
@@ -108,11 +108,13 @@ ORDER BY goals.created_at DESC, goals.id DESC
 `
 
 type ListChildGoalsRow struct {
+	LinkID  int64
 	Goal    Goal
 	Account Account
 }
 
-// The Goals that contribute to a Goal (its accepted children), for navigation.
+// The Goals that contribute to a Goal (its accepted children), for navigation,
+// each with the id of the link that can remove it.
 func (q *Queries) ListChildGoals(ctx context.Context, parentID int64) ([]ListChildGoalsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listChildGoals, parentID)
 	if err != nil {
@@ -123,6 +125,7 @@ func (q *Queries) ListChildGoals(ctx context.Context, parentID int64) ([]ListChi
 	for rows.Next() {
 		var i ListChildGoalsRow
 		if err := rows.Scan(
+			&i.LinkID,
 			&i.Goal.ID,
 			&i.Goal.Title,
 			&i.Goal.SoWhat,
@@ -148,7 +151,7 @@ func (q *Queries) ListChildGoals(ctx context.Context, parentID int64) ([]ListChi
 }
 
 const listParentGoals = `-- name: ListParentGoals :many
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at
+SELECT links.id AS link_id, goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at
 FROM links
 JOIN goals ON goals.id = links.parent_id
 JOIN accounts ON accounts.id = goals.owner_id
@@ -157,11 +160,13 @@ ORDER BY goals.created_at DESC, goals.id DESC
 `
 
 type ListParentGoalsRow struct {
+	LinkID  int64
 	Goal    Goal
 	Account Account
 }
 
-// The Goals a Goal contributes to (its accepted parents), for navigation.
+// The Goals a Goal contributes to (its accepted parents), for navigation, each
+// with the id of the link that can remove it.
 func (q *Queries) ListParentGoals(ctx context.Context, childID int64) ([]ListParentGoalsRow, error) {
 	rows, err := q.db.QueryContext(ctx, listParentGoals, childID)
 	if err != nil {
@@ -172,6 +177,7 @@ func (q *Queries) ListParentGoals(ctx context.Context, childID int64) ([]ListPar
 	for rows.Next() {
 		var i ListParentGoalsRow
 		if err := rows.Scan(
+			&i.LinkID,
 			&i.Goal.ID,
 			&i.Goal.Title,
 			&i.Goal.SoWhat,

@@ -217,6 +217,41 @@ func (s *Service) PendingLinkRequests(ctx context.Context, ownerID int64) ([]Lin
 	return links, nil
 }
 
+// GoalLink pairs a linked Goal with the accepted link that connects it, so a
+// caller can both navigate to the Goal and remove the link.
+type GoalLink struct {
+	LinkID int64
+	Goal   Goal
+}
+
+// ParentLinks returns goalID's accepted parents paired with their link ids, for
+// navigation and removal.
+func (s *Service) ParentLinks(ctx context.Context, goalID int64) ([]GoalLink, error) {
+	rows, err := s.queries.ListParentGoals(ctx, goalID)
+	if err != nil {
+		return nil, fmt.Errorf("list parent goals: %w", err)
+	}
+	links := make([]GoalLink, 0, len(rows))
+	for _, r := range rows {
+		links = append(links, GoalLink{LinkID: r.LinkID, Goal: goalFromRow(r.Goal, r.Account)})
+	}
+	return links, nil
+}
+
+// ChildLinks returns goalID's accepted children paired with their link ids, for
+// navigation and removal.
+func (s *Service) ChildLinks(ctx context.Context, goalID int64) ([]GoalLink, error) {
+	rows, err := s.queries.ListChildGoals(ctx, goalID)
+	if err != nil {
+		return nil, fmt.Errorf("list child goals: %w", err)
+	}
+	links := make([]GoalLink, 0, len(rows))
+	for _, r := range rows {
+		links = append(links, GoalLink{LinkID: r.LinkID, Goal: goalFromRow(r.Goal, r.Account)})
+	}
+	return links, nil
+}
+
 // ParentsOf returns the Goals goalID contributes to through accepted links.
 func (s *Service) ParentsOf(ctx context.Context, goalID int64) ([]Goal, error) {
 	rows, err := s.queries.ListParentGoals(ctx, goalID)

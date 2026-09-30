@@ -60,5 +60,30 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		http.Error(w, "could not load goal", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, goalPage(&current, g))
+
+	parents, err := s.svc.ParentLinks(r.Context(), id)
+	if err != nil {
+		http.Error(w, "could not load parents", http.StatusInternalServerError)
+		return
+	}
+	children, err := s.svc.ChildLinks(r.Context(), id)
+	if err != nil {
+		http.Error(w, "could not load children", http.StatusInternalServerError)
+		return
+	}
+	// Candidate parents to contribute to: every other Goal. The domain rejects
+	// self-links, duplicates, and cycles when the request is actually made.
+	all, err := s.svc.ListGoals(r.Context())
+	if err != nil {
+		http.Error(w, "could not load goals", http.StatusInternalServerError)
+		return
+	}
+	candidates := make([]domain.Goal, 0, len(all))
+	for _, c := range all {
+		if c.ID != g.ID {
+			candidates = append(candidates, c)
+		}
+	}
+
+	render(w, r, http.StatusOK, goalPage(&current, g, parents, children, candidates))
 }
