@@ -9,6 +9,23 @@ import (
 	"context"
 )
 
+const countMilestoneChurn = `-- name: CountMilestoneChurn :one
+SELECT CAST(
+    (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = ?1 AND m.added_while_active = 1)
+  + (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = ?1 AND m.status = 'Removed')
+AS INTEGER) AS churn
+`
+
+// Milestone Churn: Milestones added since the Goal became Active plus those
+// removed (CONTEXT.md: Milestone Churn). Removal only happens in a Check-in, so
+// only ever on an Active Goal.
+func (q *Queries) CountMilestoneChurn(ctx context.Context, goalID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countMilestoneChurn, goalID)
+	var churn int64
+	err := row.Scan(&churn)
+	return churn, err
+}
+
 const createCheckin = `-- name: CreateCheckin :one
 INSERT INTO checkins (goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, explanation, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -51,6 +68,48 @@ func (q *Queries) CreateCheckin(ctx context.Context, arg CreateCheckinParams) (C
 		&i.PathTargetDate,
 		&i.CreatedAt,
 		&i.Explanation,
+	)
+	return i, err
+}
+
+const createDateSlip = `-- name: CreateDateSlip :one
+INSERT INTO date_slips (goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id, goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at
+`
+
+type CreateDateSlipParams struct {
+	GoalID      int64
+	CheckinID   int64
+	MilestoneID *int64
+	OldDate     string
+	NewDate     string
+	Reason      string
+	CreatedAt   string
+}
+
+// Record a change to a Goal's delivery date (milestone_id NULL) or a Milestone's
+// date, keeping the old and new dates and the reason (CONTEXT.md: Date Slip).
+func (q *Queries) CreateDateSlip(ctx context.Context, arg CreateDateSlipParams) (DateSlip, error) {
+	row := q.db.QueryRowContext(ctx, createDateSlip,
+		arg.GoalID,
+		arg.CheckinID,
+		arg.MilestoneID,
+		arg.OldDate,
+		arg.NewDate,
+		arg.Reason,
+		arg.CreatedAt,
+	)
+	var i DateSlip
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.CheckinID,
+		&i.MilestoneID,
+		&i.OldDate,
+		&i.NewDate,
+		&i.Reason,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -207,6 +266,43 @@ func (q *Queries) ListCheckins(ctx context.Context, goalID int64) ([]ListCheckin
 	return items, nil
 }
 
+const listDateSlips = `-- name: ListDateSlips :many
+SELECT id, goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at FROM date_slips WHERE goal_id = ? ORDER BY created_at, id
+`
+
+// A Goal's Date Slips, earliest first, so a date's history reads in order.
+func (q *Queries) ListDateSlips(ctx context.Context, goalID int64) ([]DateSlip, error) {
+	rows, err := q.db.QueryContext(ctx, listDateSlips, goalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []DateSlip
+	for rows.Next() {
+		var i DateSlip
+		if err := rows.Scan(
+			&i.ID,
+			&i.GoalID,
+			&i.CheckinID,
+			&i.MilestoneID,
+			&i.OldDate,
+			&i.NewDate,
+			&i.Reason,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listHighlightsByGoal = `-- name: ListHighlightsByGoal :many
 SELECT highlights.id, highlights.checkin_id, highlights.kind, highlights.note, highlights.created_at, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed
 FROM highlights
@@ -348,4 +444,48 @@ func (q *Queries) ListMetricReadings(ctx context.Context, metricID int64) ([]Met
 		return nil, err
 	}
 	return items, nil
+}
+
+const setGoalDeliveryDate = `-- name: SetGoalDeliveryDate :exec
+UPDATE goals SET delivery_date = ? WHERE id = ?
+`
+
+type SetGoalDeliveryDateParams struct {
+	DeliveryDate string
+	ID           int64
+}
+
+func (q *Queries) SetGoalDeliveryDate(ctx context.Context, arg SetGoalDeliveryDateParams) error {
+	_, err := q.db.ExecContext(ctx, setGoalDeliveryDate, arg.DeliveryDate, arg.ID)
+	return err
+}
+
+const setMilestoneStatus = `-- name: SetMilestoneStatus :exec
+UPDATE milestones SET status = ?, removed_reason = ? WHERE id = ?
+`
+
+type SetMilestoneStatusParams struct {
+	Status        string
+	RemovedReason string
+	ID            int64
+}
+
+// Mark a Milestone Done or Removed in a Check-in; Removed carries its reason.
+func (q *Queries) SetMilestoneStatus(ctx context.Context, arg SetMilestoneStatusParams) error {
+	_, err := q.db.ExecContext(ctx, setMilestoneStatus, arg.Status, arg.RemovedReason, arg.ID)
+	return err
+}
+
+const setMilestoneTargetDate = `-- name: SetMilestoneTargetDate :exec
+UPDATE milestones SET target_date = ? WHERE id = ?
+`
+
+type SetMilestoneTargetDateParams struct {
+	TargetDate string
+	ID         int64
+}
+
+func (q *Queries) SetMilestoneTargetDate(ctx context.Context, arg SetMilestoneTargetDateParams) error {
+	_, err := q.db.ExecContext(ctx, setMilestoneTargetDate, arg.TargetDate, arg.ID)
+	return err
 }

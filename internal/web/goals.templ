@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -137,10 +138,19 @@ templ goalPage(current *domain.Account, v goalView) {
 					}
 				</span>
 				if !g.DeliveryDate.IsZero() {
-					<span data-testid="goal-delivery-date"> — delivers { fmtDate(g.DeliveryDate) }</span>
+					<span data-testid="goal-delivery-date">
+						{ " — delivers " }
+						@struckDates(v.priorDates(0))
+						{ fmtDate(g.DeliveryDate) }
+					</span>
 				}
 			</p>
 			<p><strong>Check-in cadence:</strong> <span data-testid="goal-cadence">every { fmt.Sprintf("%d", g.CadenceDays) } days</span></p>
+			<p>
+				<strong>Date Slips:</strong> <span data-testid="goal-slip-count">{ fmt.Sprintf("%d", len(v.DateSlips)) }</span>
+				· <strong>Milestone Churn:</strong> <span data-testid="goal-milestone-churn">{ fmt.Sprintf("%d", v.MilestoneChurn) }</span>
+				<span>(Milestones added or removed since Active)</span>
+			</p>
 			<h2>So What</h2>
 			<p data-testid="goal-so-what">{ g.SoWhat }</p>
 		</article>
@@ -150,7 +160,11 @@ templ goalPage(current *domain.Account, v goalView) {
 		@checkinSection(v, v.CanCheckin)
 		<section data-testid="goal-milestones">
 			<h2>Milestones</h2>
-			@milestoneList(v.Milestones, owner)
+			@milestoneList(v, owner && g.Lifecycle == domain.LifecycleProposed)
+		</section>
+		<section data-testid="goal-date-slips">
+			<h2>Date Slips</h2>
+			@dateSlipList(v)
 		</section>
 		<section data-testid="goal-metrics">
 			<h2>Metrics</h2>
@@ -407,23 +421,67 @@ templ defineGoal(v goalView) {
 	</section>
 }
 
-// milestoneList lists a Goal's Milestones; the Owner gets an inline edit form on
-// each.
-templ milestoneList(milestones []domain.Milestone, owner bool) {
+// milestoneList lists a Goal's Milestones with their status and date history
+// struck through (CONTEXT.md: Date Slip). editable gives the Owner of a Proposed
+// Goal an inline edit form on each; once Active, Milestones change in a Check-in.
+templ milestoneList(v goalView, editable bool) {
 	<ul>
-		if len(milestones) == 0 {
+		if len(v.Milestones) == 0 {
 			<li data-testid="no-milestones">No Milestones yet.</li>
 		}
-		for _, m := range milestones {
-			<li>
-				<span>{ m.Name } — { fmtDate(m.TargetDate) }</span>
-				if owner {
+		for _, m := range v.Milestones {
+			<li data-testid="goal-milestone">
+				<span>
+					if m.Status == domain.MilestoneRemoved {
+						<del>{ m.Name }</del>
+					} else {
+						{ m.Name }
+					}
+					{ " — " }
+					@struckDates(v.priorDates(m.ID))
+					{ fmtDate(m.TargetDate) }
+				</span>
+				<span data-testid="milestone-status"> ({ m.Status })</span>
+				if m.RemovedReason != "" {
+					<span> — removed: { m.RemovedReason }</span>
+				}
+				if editable {
 					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/milestones/%d", m.ID)) } style="display:inline">
 						<input type="text" name="name" value={ m.Name } required/>
 						<input type="date" name="target_date" value={ fmtDate(m.TargetDate) } required/>
 						<button type="submit">Save</button>
 					</form>
 				}
+			</li>
+		}
+	</ul>
+}
+
+// struckDates renders the dates a date held before its Date Slips, each struck
+// through ahead of the current date: ~~10/15~~ 11/03 (CONTEXT.md: Date Slip).
+templ struckDates(dates []time.Time) {
+	for _, d := range dates {
+		<del>{ fmtDate(d) }</del>{ " " }
+	}
+}
+
+// dateSlipList shows a Goal's Date Slips, earliest first: what moved, from and
+// to, and the reason (CONTEXT.md: Date Slip — the full history is kept).
+templ dateSlipList(v goalView) {
+	<ul>
+		if len(v.DateSlips) == 0 {
+			<li data-testid="no-date-slips">No Date Slips.</li>
+		}
+		for _, s := range v.DateSlips {
+			<li data-testid="date-slip">
+				if s.MilestoneID == 0 {
+					<strong>Delivery date</strong>
+				} else {
+					<strong>Milestone { v.milestoneName(s.MilestoneID) }</strong>
+				}
+				: <del>{ fmtDate(s.OldDate) }</del> { fmtDate(s.NewDate) }
+				<span>— { s.Reason }</span>
+				<span>— at { s.CreatedAt.Format("2006-01-02 15:04") }</span>
 			</li>
 		}
 	</ul>

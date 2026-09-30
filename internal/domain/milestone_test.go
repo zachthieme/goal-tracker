@@ -84,3 +84,197 @@ func TestEditMilestoneChangesNameAndDate(t *testing.T) {
 		t.Errorf("EditMilestone = %+v", got)
 	}
 }
+
+// A Check-in marks a Milestone Done; a Done Milestone is no longer overdue, so
+// the Check-in may be Green even past its date.
+func TestCheckinMarksMilestoneDone(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	beta := onlyMilestone(t, h, goal.ID)
+	if beta.Status != domain.MilestonePlanned {
+		t.Fatalf("new Milestone status = %q, want %q", beta.Status, domain.MilestonePlanned)
+	}
+	h.Clock.Set(beta.TargetDate.AddDate(0, 0, 1))
+
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:     goal.ID,
+		AuthorID:   sam.ID,
+		Health:     domain.HealthGreen,
+		Status:     "Beta shipped.",
+		Milestones: []domain.MilestoneChangeInput{{MilestoneID: beta.ID, Status: domain.MilestoneDone}},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin marking the Milestone Done: %v", err)
+	}
+	if got := onlyMilestone(t, h, goal.ID); got.Status != domain.MilestoneDone {
+		t.Errorf("Status = %q, want %q", got.Status, domain.MilestoneDone)
+	}
+}
+
+// Removing a Milestone in a Check-in requires a reason, which is kept.
+func TestCheckinRemovesMilestoneWithReason(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	beta := onlyMilestone(t, h, goal.ID)
+
+	in := domain.SubmitCheckinInput{
+		GoalID:     goal.ID,
+		AuthorID:   sam.ID,
+		Health:     domain.HealthGreen,
+		Status:     "Dropping the beta.",
+		Milestones: []domain.MilestoneChangeInput{{MilestoneID: beta.ID, Status: domain.MilestoneRemoved, RemovedReason: " "}},
+	}
+	if _, err := h.Service.SubmitCheckin(context.Background(), in); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("Removed without a reason: err = %v, want ErrValidation", err)
+	}
+	if got := onlyMilestone(t, h, goal.ID); got.Status != domain.MilestonePlanned {
+		t.Errorf("Status = %q after the rejection, want %q", got.Status, domain.MilestonePlanned)
+	}
+
+	in.Milestones[0].RemovedReason = "Customers asked to skip straight to GA."
+	if _, err := h.Service.SubmitCheckin(context.Background(), in); err != nil {
+		t.Fatalf("Removed with a reason: %v", err)
+	}
+	got := onlyMilestone(t, h, goal.ID)
+	if got.Status != domain.MilestoneRemoved || got.RemovedReason != "Customers asked to skip straight to GA." {
+		t.Errorf("Milestone = %+v, want Removed with the reason", got)
+	}
+}
+
+// Only a Planned Milestone can be marked Done or Removed, and a status must be
+// one of the known ones.
+func TestCheckinMilestoneStatusMustMoveFromPlanned(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	beta := onlyMilestone(t, h, goal.ID)
+	submit := func(status string) error {
+		_, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+			GoalID:     goal.ID,
+			AuthorID:   sam.ID,
+			Health:     domain.HealthGreen,
+			Status:     "Update.",
+			Milestones: []domain.MilestoneChangeInput{{MilestoneID: beta.ID, Status: status, RemovedReason: "Scope cut."}},
+		})
+		return err
+	}
+
+	if err := submit("Skipped"); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("unknown status: err = %v, want ErrValidation", err)
+	}
+	if err := submit(domain.MilestoneDone); err != nil {
+		t.Fatalf("mark Done: %v", err)
+	}
+	if err := submit(domain.MilestoneRemoved); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("remove a Done Milestone: err = %v, want ErrValidation", err)
+	}
+}
+
+// A Check-in adds new Milestones to the Goal, each Planned; each needs a name
+// and a date.
+func TestCheckinAddsMilestones(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	gaDate := goal.DeliveryDate.AddDate(0, 0, -7)
+
+	bad := domain.SubmitCheckinInput{
+		GoalID:        goal.ID,
+		AuthorID:      sam.ID,
+		Health:        domain.HealthGreen,
+		Status:        "Adding a GA gate.",
+		NewMilestones: []domain.NewMilestoneInput{{Name: " ", TargetDate: gaDate}},
+	}
+	if _, err := h.Service.SubmitCheckin(context.Background(), bad); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("new Milestone without a name: err = %v, want ErrValidation", err)
+	}
+	bad.NewMilestones = []domain.NewMilestoneInput{{Name: "GA"}}
+	if _, err := h.Service.SubmitCheckin(context.Background(), bad); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("new Milestone without a date: err = %v, want ErrValidation", err)
+	}
+
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:        goal.ID,
+		AuthorID:      sam.ID,
+		Health:        domain.HealthGreen,
+		Status:        "Adding a GA gate.",
+		NewMilestones: []domain.NewMilestoneInput{{Name: "GA", TargetDate: gaDate}},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin adding a Milestone: %v", err)
+	}
+	ms, err := h.Service.ListMilestones(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ListMilestones: %v", err)
+	}
+	if len(ms) != 2 {
+		t.Fatalf("got %d Milestones, want 2", len(ms))
+	}
+	ga := ms[1]
+	if ga.Name != "GA" || !ga.TargetDate.Equal(gaDate) || ga.Status != domain.MilestonePlanned {
+		t.Errorf("added Milestone = %+v, want Planned GA on %s", ga, gaDate)
+	}
+}
+
+// Milestone Churn counts Milestones added or removed since the Goal became
+// Active; the Milestones planned before activation don't count, and marking one
+// Done is not churn (CONTEXT.md: Milestone Churn).
+func TestMilestoneChurnCountsAddedAndRemovedSinceActive(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	beta := onlyMilestone(t, h, goal.ID)
+
+	churn := func() int {
+		t.Helper()
+		n, err := h.Service.MilestoneChurn(context.Background(), goal.ID)
+		if err != nil {
+			t.Fatalf("MilestoneChurn: %v", err)
+		}
+		return n
+	}
+	if got := churn(); got != 0 {
+		t.Fatalf("churn right after activation = %d, want 0", got)
+	}
+
+	later := goal.DeliveryDate.AddDate(0, 0, -7)
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: sam.ID,
+		Health:   domain.HealthGreen,
+		Status:   "Re-planned.",
+		NewMilestones: []domain.NewMilestoneInput{
+			{Name: "GA", TargetDate: later},
+			{Name: "Docs", TargetDate: later},
+		},
+		Milestones: []domain.MilestoneChangeInput{
+			{MilestoneID: beta.ID, Status: domain.MilestoneRemoved, RemovedReason: "Skipping the beta."},
+		},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	if got := churn(); got != 3 {
+		t.Errorf("churn = %d, want 3 (two added, one removed)", got)
+	}
+
+	ms, _ := h.Service.ListMilestones(context.Background(), goal.ID)
+	var docs domain.Milestone
+	for _, m := range ms {
+		if m.Name == "Docs" {
+			docs = m
+		}
+	}
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:     goal.ID,
+		AuthorID:   sam.ID,
+		Health:     domain.HealthGreen,
+		Status:     "Docs landed.",
+		Milestones: []domain.MilestoneChangeInput{{MilestoneID: docs.ID, Status: domain.MilestoneDone}},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin marking Done: %v", err)
+	}
+	if got := churn(); got != 3 {
+		t.Errorf("churn after marking Done = %d, want still 3", got)
+	}
+}

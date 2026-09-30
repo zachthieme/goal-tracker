@@ -37,10 +37,24 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	// Values the reader typed, kept so an error re-render shows them again.
 	rawReadings := rawReadingsFromForm(r, metrics)
 
+	// The delivery date and Milestone fields are keyed to the Goal's current
+	// state: whether it is Dated, and which Milestones are still Planned.
+	goal, err := s.svc.ViewGoal(r.Context(), goalID)
+	if err != nil {
+		writeCheckinError(w, err)
+		return
+	}
+	milestones, err := s.svc.ListMilestones(r.Context(), goalID)
+	if err != nil {
+		http.Error(w, "could not load milestones", http.StatusInternalServerError)
+		return
+	}
+	dates := datesFromForm(r, goal, milestones)
+
 	formData := func(msg string) checkinFormData {
 		return checkinFormData{
 			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, Explanation: explanation,
-			Metrics: metrics, Readings: rawReadings, Highlight: highlight, Error: msg,
+			Metrics: metrics, Readings: rawReadings, Highlight: highlight, Dates: dates, Error: msg,
 		}
 	}
 
@@ -64,6 +78,10 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		PathTargetDate: date,
 		Explanation:    explanation,
 		Readings:       readings,
+	}
+	if err := dates.applyTo(&in); err != nil {
+		s.renderCheckinFormError(w, r, goalID, formData(err.Error()))
+		return
 	}
 	if highlight.Kind != "" {
 		in.Highlight = &domain.HighlightInput{Kind: highlight.Kind, Note: highlight.Note}
@@ -106,6 +124,76 @@ func readingsFromForm(raw map[int64]string) ([]domain.MetricReadingInput, error)
 		out = append(out, domain.MetricReadingInput{MetricID: metricID, Value: value})
 	}
 	return out, nil
+}
+
+// datesFromForm reads the Check-in's date and Milestone fields as typed: the
+// delivery date (for a Dated Goal) and its reason, a row per Planned Milestone
+// (milestone_*_<id>), and the new-Milestone rows (new_milestone_name and
+// new_milestone_date, paired by position).
+func datesFromForm(r *http.Request, goal domain.Goal, milestones []domain.Milestone) checkinDatesFormData {
+	d := checkinDatesFormData{Dated: goal.Kind == domain.GoalDated}
+	if d.Dated {
+		d.DeliveryDate = strings.TrimSpace(r.FormValue("delivery_date"))
+		d.DeliveryDateReason = r.FormValue("delivery_date_reason")
+	}
+	for _, m := range milestones {
+		if m.Status != domain.MilestonePlanned {
+			continue
+		}
+		id := strconv.FormatInt(m.ID, 10)
+		d.Milestones = append(d.Milestones, milestoneFormRow{
+			Milestone:     m,
+			Date:          strings.TrimSpace(r.FormValue("milestone_date_" + id)),
+			DateReason:    r.FormValue("milestone_date_reason_" + id),
+			Status:        r.FormValue("milestone_status_" + id),
+			RemovedReason: r.FormValue("milestone_removed_reason_" + id),
+		})
+	}
+	names := r.Form["new_milestone_name"]
+	newDates := r.Form["new_milestone_date"]
+	for i, name := range names {
+		row := newMilestoneFormRow{Name: name}
+		if i < len(newDates) {
+			row.Date = strings.TrimSpace(newDates[i])
+		}
+		if strings.TrimSpace(row.Name) == "" && row.Date == "" {
+			continue
+		}
+		d.NewMilestones = append(d.NewMilestones, row)
+	}
+	return d
+}
+
+// applyTo parses the typed dates into the Check-in's date and Milestone
+// changes. A date that isn't a date is rejected with a message naming the field.
+func (d checkinDatesFormData) applyTo(in *domain.SubmitCheckinInput) error {
+	delivery, err := parseDate(d.DeliveryDate)
+	if err != nil {
+		return errors.New("invalid delivery date")
+	}
+	in.DeliveryDate = delivery
+	in.DeliveryDateReason = d.DeliveryDateReason
+	for _, row := range d.Milestones {
+		date, err := parseDate(row.Date)
+		if err != nil {
+			return fmt.Errorf("invalid date for Milestone %q", row.Milestone.Name)
+		}
+		in.Milestones = append(in.Milestones, domain.MilestoneChangeInput{
+			MilestoneID:   row.Milestone.ID,
+			TargetDate:    date,
+			DateReason:    row.DateReason,
+			Status:        row.Status,
+			RemovedReason: row.RemovedReason,
+		})
+	}
+	for _, row := range d.NewMilestones {
+		date, err := parseDate(row.Date)
+		if err != nil {
+			return fmt.Errorf("invalid date for new Milestone %q", row.Name)
+		}
+		in.NewMilestones = append(in.NewMilestones, domain.NewMilestoneInput{Name: row.Name, TargetDate: date})
+	}
+	return nil
 }
 
 // highlightFromForm reads the optional Highlight fields; an empty kind means the

@@ -29,7 +29,39 @@ type checkinFormData struct {
 	// Highlight is the optional Highlight the reader flagged (CONTEXT.md:
 	// Highlight). Its Kind is empty when nothing was flagged.
 	Highlight highlightFormData
-	Error     string
+	// Dates are the delivery date and Milestone changes the reader is making
+	// (CONTEXT.md: a Check-in carries Date Slips and Milestone changes).
+	Dates checkinDatesFormData
+	Error string
+}
+
+// checkinDatesFormData is the Check-in form's date and Milestone fields as
+// typed. Dated is true for a Dated Goal, whose delivery date the form can move;
+// Milestones holds a row per Planned Milestone, and NewMilestones the rows the
+// reader is adding.
+type checkinDatesFormData struct {
+	Dated              bool
+	DeliveryDate       string
+	DeliveryDateReason string
+	Milestones         []milestoneFormRow
+	NewMilestones      []newMilestoneFormRow
+}
+
+// milestoneFormRow is one Planned Milestone's fields in the Check-in form: its
+// date (a change records a Date Slip needing DateReason) and its status (Removed
+// needs RemovedReason).
+type milestoneFormRow struct {
+	Milestone     domain.Milestone
+	Date          string
+	DateReason    string
+	Status        string
+	RemovedReason string
+}
+
+// newMilestoneFormRow is a Milestone the reader is adding in the Check-in.
+type newMilestoneFormRow struct {
+	Name string
+	Date string
 }
 
 // highlightFormData is the Check-in form's optional Highlight: its kind (empty
@@ -51,15 +83,28 @@ func (d checkinFormData) reading(metricID int64) string {
 // checkinFormFromLatest prefills the Check-in form from a Goal's latest Check-in,
 // or with a fresh Green form when there is none (CONTEXT.md: the form is
 // pre-filled from the latest Check-in). It also carries the Rolled-up Health so
-// the form can show it beside the Owner's Health.
-func checkinFormFromLatest(goalID int64, latest *domain.Checkin, rollup domain.RolledUpHealth, metrics []domain.Metric) checkinFormData {
-	d := checkinFormData{GoalID: goalID, Health: domain.HealthGreen, RolledUp: rollup, Metrics: metrics}
-	if latest != nil {
+// the form can show it beside the Owner's Health, and the Goal's current
+// delivery date and Planned Milestones so the Owner can move or close them.
+func checkinFormFromLatest(v goalView) checkinFormData {
+	g := v.Goal
+	d := checkinFormData{GoalID: g.ID, Health: domain.HealthGreen, RolledUp: v.RolledUp, Metrics: v.Metrics}
+	if latest := v.LatestCheckin; latest != nil {
 		d.Health = latest.Health
 		d.Status = latest.Status
 		d.PathToGreen = latest.PathToGreen
 		d.PathTargetDate = fmtDate(latest.PathTargetDate)
 		d.Explanation = latest.Explanation
+	}
+	d.Dates.Dated = g.Kind == domain.GoalDated
+	d.Dates.DeliveryDate = fmtDate(g.DeliveryDate)
+	for _, m := range v.Milestones {
+		if m.Status == domain.MilestonePlanned {
+			d.Dates.Milestones = append(d.Dates.Milestones, milestoneFormRow{
+				Milestone: m,
+				Date:      fmtDate(m.TargetDate),
+				Status:    domain.MilestonePlanned,
+			})
+		}
 	}
 	return d
 }
@@ -106,7 +151,7 @@ templ checkinSection(v goalView, canCheckin bool) {
 			}
 		}
 		if canCheckin && g.Lifecycle == domain.LifecycleActive {
-			@checkinForm(checkinFormFromLatest(g.ID, v.LatestCheckin, v.RolledUp, v.Metrics))
+			@checkinForm(checkinFormFromLatest(v))
 			if v.LatestCheckin != nil {
 				<form
 					data-testid="no-change-checkin"
@@ -186,6 +231,7 @@ templ checkinForm(d checkinFormData) {
 				<p data-testid="checkin-error" role="alert">{ d.Error }</p>
 			}
 		</fieldset>
+		@checkinDateFields(d.Dates)
 		if len(d.Metrics) > 0 {
 			<fieldset data-testid="checkin-readings">
 				<legend>Metric readings</legend>
@@ -220,4 +266,63 @@ templ checkinForm(d checkinFormData) {
 		</fieldset>
 		<button type="submit">Submit Check-in</button>
 	</form>
+}
+
+// checkinDateFields lets the Owner move the delivery date, move, finish, or
+// remove Planned Milestones, and add new ones. Every date change needs a reason
+// and is kept as a Date Slip; moving the delivery date later rules out Green
+// (CONTEXT.md: Date Slip, Milestone).
+templ checkinDateFields(d checkinDatesFormData) {
+	<fieldset data-testid="checkin-dates">
+		<legend>Dates and Milestones</legend>
+		if d.Dated {
+			<label>
+				Delivery date
+				<input type="date" name="delivery_date" value={ d.DeliveryDate }/>
+			</label>
+			<label>
+				Reason (required if the delivery date changes)
+				<textarea name="delivery_date_reason">{ d.DeliveryDateReason }</textarea>
+			</label>
+		}
+		for _, row := range d.Milestones {
+			{{ id := row.Milestone.ID }}
+			<fieldset data-testid="checkin-milestone">
+				<legend>Milestone: { row.Milestone.Name }</legend>
+				<label>
+					Date
+					<input type="date" name={ fmt.Sprintf("milestone_date_%d", id) } value={ row.Date }/>
+				</label>
+				<label>
+					Reason (required if the date changes)
+					<textarea name={ fmt.Sprintf("milestone_date_reason_%d", id) }>{ row.DateReason }</textarea>
+				</label>
+				<label>
+					Status
+					<select name={ fmt.Sprintf("milestone_status_%d", id) }>
+						<option value={ domain.MilestonePlanned } selected?={ row.Status == "" || row.Status == domain.MilestonePlanned }>Planned</option>
+						<option value={ domain.MilestoneDone } selected?={ row.Status == domain.MilestoneDone }>Done</option>
+						<option value={ domain.MilestoneRemoved } selected?={ row.Status == domain.MilestoneRemoved }>Removed</option>
+					</select>
+				</label>
+				<label>
+					Reason for removing (required if Removed)
+					<textarea name={ fmt.Sprintf("milestone_removed_reason_%d", id) }>{ row.RemovedReason }</textarea>
+				</label>
+			</fieldset>
+		}
+		for _, row := range append(d.NewMilestones, newMilestoneFormRow{}) {
+			<fieldset data-testid="checkin-new-milestone">
+				<legend>Add a Milestone</legend>
+				<label>
+					Name
+					<input type="text" name="new_milestone_name" value={ row.Name }/>
+				</label>
+				<label>
+					Date
+					<input type="date" name="new_milestone_date" value={ row.Date }/>
+				</label>
+			</fieldset>
+		}
+	</fieldset>
 }

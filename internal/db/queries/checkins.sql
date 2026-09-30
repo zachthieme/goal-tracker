@@ -59,3 +59,33 @@ WHERE checkins.goal_id = @goal_id
   AND checkins.created_at >= @from
   AND checkins.created_at <= @to
 ORDER BY checkins.created_at DESC, highlights.id DESC;
+
+-- name: CreateDateSlip :one
+-- Record a change to a Goal's delivery date (milestone_id NULL) or a Milestone's
+-- date, keeping the old and new dates and the reason (CONTEXT.md: Date Slip).
+INSERT INTO date_slips (goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: ListDateSlips :many
+-- A Goal's Date Slips, earliest first, so a date's history reads in order.
+SELECT * FROM date_slips WHERE goal_id = ? ORDER BY created_at, id;
+
+-- name: SetGoalDeliveryDate :exec
+UPDATE goals SET delivery_date = ? WHERE id = ?;
+
+-- name: SetMilestoneTargetDate :exec
+UPDATE milestones SET target_date = ? WHERE id = ?;
+
+-- name: SetMilestoneStatus :exec
+-- Mark a Milestone Done or Removed in a Check-in; Removed carries its reason.
+UPDATE milestones SET status = ?, removed_reason = ? WHERE id = ?;
+
+-- name: CountMilestoneChurn :one
+-- Milestone Churn: Milestones added since the Goal became Active plus those
+-- removed (CONTEXT.md: Milestone Churn). Removal only happens in a Check-in, so
+-- only ever on an Active Goal.
+SELECT CAST(
+    (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = @goal_id AND m.added_while_active = 1)
+  + (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = @goal_id AND m.status = 'Removed')
+AS INTEGER) AS churn;
