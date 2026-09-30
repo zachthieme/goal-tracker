@@ -1,3 +1,9 @@
 .vetinari.local/
 bin/
 /node_modules/
+
+# Local SQLite database (default GOAL_TRACKER_DB)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
