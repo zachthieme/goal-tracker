@@ -12,6 +12,10 @@ export default defineConfig({
   image: "vetinari-goal-tracker",
   baseBranch: "main",
 
+  // Pin the agent model: vetinari's built-in claude default (claude-opus-4-8) lags
+  // the current Opus. Per-invocation --model still overrides this.
+  agent: { provider: "claude", model: "claude-opus-5-5", effort: "high" },
+
   stateDir: ".vetinari.local",
 
   // The gate — what "done" means. Each exits non-zero on failure. The
