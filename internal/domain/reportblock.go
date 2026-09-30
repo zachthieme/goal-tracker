@@ -23,6 +23,10 @@ type Report struct {
 	ActionItems []ActionItem
 	Exceptions  []ReportBlock
 	Lines       []SelectedGoal
+	// Highlights are every Highlight in scope since the baseline, for the
+	// author to curate while preparing a publication. They are not frozen
+	// with the snapshot; only the narrative the author curates from them is.
+	Highlights []NarrativeHighlight `json:"-"`
 }
 
 // covers reports whether the Report includes the Goal, as an exception block
@@ -135,6 +139,11 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 		if err != nil {
 			return Report{}, err
 		}
+		hs, err := s.scopedHighlights(ctx, sg.Goal, since)
+		if err != nil {
+			return Report{}, err
+		}
+		r.Highlights = append(r.Highlights, hs...)
 		fresh := s.judgeFreshness(sg.Goal, h.last())
 		if !h.exception(since, fresh) {
 			r.Lines = append(r.Lines, sg)
