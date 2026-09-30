@@ -426,6 +426,21 @@ func (s *Service) AddContributor(ctx context.Context, goalID, accountID int64) e
 	return nil
 }
 
+// AddContributorByEmail lists the Account with the given email as a Contributor
+// on the Goal. It is the web-facing convenience over AddContributor, since the
+// tool identifies people by email (CONTEXT.md: development sign-in by email). An
+// email with no account is rejected.
+func (s *Service) AddContributorByEmail(ctx context.Context, goalID int64, email string) error {
+	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: no account with email %q", ErrValidation, email)
+		}
+		return fmt.Errorf("look up account: %w", err)
+	}
+	return s.AddContributor(ctx, goalID, acc.ID)
+}
+
 // ListContributors returns the Accounts listed as Contributors on the Goal,
 // ordered by email.
 func (s *Service) ListContributors(ctx context.Context, goalID int64) ([]Account, error) {

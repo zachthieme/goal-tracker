@@ -306,3 +306,31 @@ func TestSuggestDeliveryDatePicksNearestUpcomingCheckpointMonday(t *testing.T) {
 		})
 	}
 }
+
+func TestAddContributorByEmailResolvesTheAccount(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+	h.SignIn("dana@example.com")
+
+	if err := h.Service.AddContributorByEmail(context.Background(), g.ID, "dana@example.com"); err != nil {
+		t.Fatalf("AddContributorByEmail: %v", err)
+	}
+	list, err := h.Service.ListContributors(context.Background(), g.ID)
+	if err != nil {
+		t.Fatalf("ListContributors: %v", err)
+	}
+	if len(list) != 1 || list[0].Email != "dana@example.com" {
+		t.Errorf("ListContributors = %+v", list)
+	}
+}
+
+func TestAddContributorByEmailRejectsUnknownEmail(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+
+	if err := h.Service.AddContributorByEmail(context.Background(), g.ID, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("err = %v, want ErrValidation for an unknown email", err)
+	}
+}

@@ -7,6 +7,7 @@ package domain
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/clock"
 	"github.com/zachthieme/goal-tracker/internal/db"
@@ -34,4 +35,11 @@ func NewService(sqlDB *sql.DB, clk clock.Clock, sender email.Sender, adminEmails
 		email:   sender,
 		admins:  admins,
 	}
+}
+
+// Now returns the current time from the Service's clock, so callers that need
+// "today" (such as seeding a date picker) share the same clock the tests
+// control.
+func (s *Service) Now() time.Time {
+	return s.clock.Now()
 }

@@ -46,31 +46,80 @@ templ goalList(goals []domain.Goal) {
 // goalPage shows a single Goal on its own page, with its parents and children
 // for navigation and, for its Owner, a form to request a new "contributes to"
 // link.
-templ goalPage(current *domain.Account, g domain.Goal, parents, children []domain.GoalLink, candidates []domain.Goal) {
+templ goalPage(current *domain.Account, v goalView) {
+	{{ g := v.Goal }}
+	{{ owner := current != nil && current.ID == g.Owner.ID }}
 	@layout(g.Title, current) {
 		<article data-testid="goal">
 			<h1 data-testid="goal-title">{ g.Title }</h1>
 			<p><strong>Lifecycle:</strong> <span data-testid="goal-lifecycle">{ g.Lifecycle }</span></p>
 			<p><strong>Owner:</strong> <span data-testid="goal-owner">{ g.Owner.Email }</span></p>
+			<p>
+				<strong>Kind:</strong>
+				<span data-testid="goal-kind">
+					if g.Kind == "" {
+						Not yet Dated or Ongoing
+					} else {
+						{ g.Kind }
+					}
+				</span>
+				if !g.DeliveryDate.IsZero() {
+					<span data-testid="goal-delivery-date"> — delivers { fmtDate(g.DeliveryDate) }</span>
+				}
+			</p>
+			<p><strong>Check-in cadence:</strong> <span data-testid="goal-cadence">every { fmt.Sprintf("%d", g.CadenceDays) } days</span></p>
 			<h2>So What</h2>
 			<p data-testid="goal-so-what">{ g.SoWhat }</p>
 		</article>
+		if owner && g.Lifecycle == domain.LifecycleProposed {
+			@defineGoal(v)
+		}
+		<section data-testid="goal-milestones">
+			<h2>Milestones</h2>
+			@milestoneList(v.Milestones, owner)
+		</section>
+		<section data-testid="goal-metrics">
+			<h2>Metrics</h2>
+			@metricList(v.Metrics, owner)
+		</section>
+		<section data-testid="goal-contributors">
+			<h2>Contributors</h2>
+			<ul>
+				if len(v.Contributors) == 0 {
+					<li data-testid="no-contributors">No Contributors yet.</li>
+				}
+				for _, c := range v.Contributors {
+					<li>{ c.Email }</li>
+				}
+			</ul>
+		</section>
+		<section data-testid="goal-so-what-history">
+			<h2>So What history</h2>
+			<ul>
+				for _, rev := range v.Revisions {
+					<li>
+						<span>{ rev.SoWhat }</span>
+						<span> — { rev.Author.Email } at { rev.CreatedAt.Format("2006-01-02 15:04") }</span>
+					</li>
+				}
+			</ul>
+		</section>
 		<section data-testid="goal-parents">
 			<h2>Contributes to</h2>
-			@linkList(parents, "no-parents", "This Goal contributes to nothing yet.")
+			@linkList(v.Parents, "no-parents", "This Goal contributes to nothing yet.")
 		</section>
 		<section data-testid="goal-children">
 			<h2>Contributed to by</h2>
-			@linkList(children, "no-children", "Nothing contributes to this Goal yet.")
+			@linkList(v.Children, "no-children", "Nothing contributes to this Goal yet.")
 		</section>
-		if current != nil && current.ID == g.Owner.ID {
+		if owner {
 			<section data-testid="request-link">
 				<h2>Contribute this Goal to another</h2>
 				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/links", g.ID)) }>
 					<label>
 						Parent Goal
 						<select name="parent_id" required>
-							for _, c := range candidates {
+							for _, c := range v.Candidates {
 								<option value={ fmt.Sprintf("%d", c.ID) }>{ c.Title }</option>
 							}
 						</select>
@@ -85,6 +134,152 @@ templ goalPage(current *domain.Account, g domain.Goal, parents, children []domai
 		}
 		<p><a href="/goals">Back to Goals</a></p>
 	}
+}
+
+// defineGoal is the Owner's toolkit for a Proposed Goal: mark it Dated or
+// Ongoing, set the cadence, revise the So What, add Contributors, Milestones and
+// Metrics, and — once it meets the minimum standard — activate it.
+templ defineGoal(v goalView) {
+	{{ g := v.Goal }}
+	<section data-testid="define-goal">
+		<section data-testid="mark-kind">
+			<h2>Delivery</h2>
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/dated", g.ID)) }>
+				<label>
+					Delivery date
+					<input type="date" name="delivery_date" value={ v.SuggestedDate } required/>
+				</label>
+				<button type="submit">Mark Dated</button>
+			</form>
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/ongoing", g.ID)) }>
+				<button type="submit">Mark Ongoing</button>
+			</form>
+		</section>
+		<section data-testid="set-cadence">
+			<h2>Check-in cadence</h2>
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/cadence", g.ID)) }>
+				<label>
+					Days between Check-ins
+					<input type="number" name="cadence_days" min="1" value={ fmt.Sprintf("%d", g.CadenceDays) } required/>
+				</label>
+				<button type="submit">Set cadence</button>
+			</form>
+		</section>
+		<section data-testid="edit-so-what">
+			<h2>Revise the So What</h2>
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/so-what", g.ID)) }>
+				<textarea name="so_what" required>{ g.SoWhat }</textarea>
+				<button type="submit">Save So What</button>
+			</form>
+		</section>
+		<section data-testid="add-contributor">
+			<h2>Add a Contributor</h2>
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/contributors", g.ID)) }>
+				<label>
+					Email
+					<input type="email" name="email" required/>
+				</label>
+				<button type="submit">Add Contributor</button>
+			</form>
+		</section>
+		<section data-testid="add-milestone">
+			<h2>Add a Milestone</h2>
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/milestones", g.ID)) }>
+				<label>
+					Name
+					<input type="text" name="name" required/>
+				</label>
+				<label>
+					Date
+					<input type="date" name="target_date" required/>
+				</label>
+				<button type="submit">Add Milestone</button>
+			</form>
+		</section>
+		<section data-testid="add-metric">
+			<h2>Add a Metric</h2>
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/metrics", g.ID)) }>
+				@metricFields(domain.Metric{Direction: domain.MetricUp})
+				<button type="submit">Add Metric</button>
+			</form>
+		</section>
+		<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/activate", g.ID)) } data-testid="activate-goal">
+			<button type="submit">Activate Goal</button>
+		</form>
+	</section>
+}
+
+// milestoneList lists a Goal's Milestones; the Owner gets an inline edit form on
+// each.
+templ milestoneList(milestones []domain.Milestone, owner bool) {
+	<ul>
+		if len(milestones) == 0 {
+			<li data-testid="no-milestones">No Milestones yet.</li>
+		}
+		for _, m := range milestones {
+			<li>
+				<span>{ m.Name } — { fmtDate(m.TargetDate) }</span>
+				if owner {
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/milestones/%d", m.ID)) } style="display:inline">
+						<input type="text" name="name" value={ m.Name } required/>
+						<input type="date" name="target_date" value={ fmtDate(m.TargetDate) } required/>
+						<button type="submit">Save</button>
+					</form>
+				}
+			</li>
+		}
+	</ul>
+}
+
+// metricList lists a Goal's Metrics; the Owner gets an inline edit form on each.
+templ metricList(metrics []domain.Metric, owner bool) {
+	<ul>
+		if len(metrics) == 0 {
+			<li data-testid="no-metrics">No Metrics yet.</li>
+		}
+		for _, m := range metrics {
+			<li>
+				<span>{ m.Name }: { fmtNum(m.Baseline) } → { fmtNum(m.Target) } { m.Unit } ({ m.Direction }) by { fmtDate(m.TargetDate) }</span>
+				if owner {
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/metrics/%d", m.ID)) } style="display:inline">
+						@metricFields(m)
+						<button type="submit">Save</button>
+					</form>
+				}
+			</li>
+		}
+	</ul>
+}
+
+// metricFields is the shared set of Metric inputs, prefilled from m for editing.
+templ metricFields(m domain.Metric) {
+	<label>
+		Name
+		<input type="text" name="name" value={ m.Name } required/>
+	</label>
+	<label>
+		Unit
+		<input type="text" name="unit" value={ m.Unit } required/>
+	</label>
+	<label>
+		Direction
+		<select name="direction">
+			<option value={ domain.MetricUp } selected?={ m.Direction == domain.MetricUp }>up</option>
+			<option value={ domain.MetricDown } selected?={ m.Direction == domain.MetricDown }>down</option>
+		</select>
+	</label>
+	<label>
+		Baseline
+		<input type="number" step="any" name="baseline" value={ fmtNum(m.Baseline) } required/>
+	</label>
+	<label>
+		Target
+		<input type="number" step="any" name="target" value={ fmtNum(m.Target) } required/>
+	</label>
+	<label>
+		Target date
+		<input type="date" name="target_date" value={ fmtDate(m.TargetDate) } required/>
+	</label>
 }
 
 // linkList renders a Goal's parents or children as navigable links, each with a
