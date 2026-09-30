@@ -10,9 +10,9 @@ import (
 )
 
 const createCheckin = `-- name: CreateCheckin :one
-INSERT INTO checkins (goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at
+INSERT INTO checkins (goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, explanation, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at, explanation
 `
 
 type CreateCheckinParams struct {
@@ -23,6 +23,7 @@ type CreateCheckinParams struct {
 	Status         string
 	PathToGreen    string
 	PathTargetDate string
+	Explanation    string
 	CreatedAt      string
 }
 
@@ -35,6 +36,7 @@ func (q *Queries) CreateCheckin(ctx context.Context, arg CreateCheckinParams) (C
 		arg.Status,
 		arg.PathToGreen,
 		arg.PathTargetDate,
+		arg.Explanation,
 		arg.CreatedAt,
 	)
 	var i Checkin
@@ -48,12 +50,13 @@ func (q *Queries) CreateCheckin(ctx context.Context, arg CreateCheckinParams) (C
 		&i.PathToGreen,
 		&i.PathTargetDate,
 		&i.CreatedAt,
+		&i.Explanation,
 	)
 	return i, err
 }
 
 const getLatestCheckin = `-- name: GetLatestCheckin :one
-SELECT id, goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at FROM checkins WHERE goal_id = ? ORDER BY created_at DESC, id DESC LIMIT 1
+SELECT id, goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at, explanation FROM checkins WHERE goal_id = ? ORDER BY created_at DESC, id DESC LIMIT 1
 `
 
 // The most recent Check-in on a Goal, which carries the Goal's current Health,
@@ -72,12 +75,13 @@ func (q *Queries) GetLatestCheckin(ctx context.Context, goalID int64) (Checkin, 
 		&i.PathToGreen,
 		&i.PathTargetDate,
 		&i.CreatedAt,
+		&i.Explanation,
 	)
 	return i, err
 }
 
 const listCheckins = `-- name: ListCheckins :many
-SELECT checkins.id, checkins.goal_id, checkins.author_id, checkins.owner_id, checkins.health, checkins.status, checkins.path_to_green, checkins.path_target_date, checkins.created_at, author.id, author.email, author.is_admin, author.created_at, author.departed, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed
+SELECT checkins.id, checkins.goal_id, checkins.author_id, checkins.owner_id, checkins.health, checkins.status, checkins.path_to_green, checkins.path_target_date, checkins.created_at, checkins.explanation, author.id, author.email, author.is_admin, author.created_at, author.departed, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed
 FROM checkins
 JOIN accounts author ON author.id = checkins.author_id
 JOIN accounts owner ON owner.id = checkins.owner_id
@@ -112,6 +116,7 @@ func (q *Queries) ListCheckins(ctx context.Context, goalID int64) ([]ListCheckin
 			&i.Checkin.PathToGreen,
 			&i.Checkin.PathTargetDate,
 			&i.Checkin.CreatedAt,
+			&i.Checkin.Explanation,
 			&i.Account.ID,
 			&i.Account.Email,
 			&i.Account.IsAdmin,

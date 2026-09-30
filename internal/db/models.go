@@ -22,6 +22,7 @@ type Checkin struct {
 	PathToGreen    string
 	PathTargetDate string
 	CreatedAt      string
+	Explanation    string
 }
 
 type Contributor struct {
