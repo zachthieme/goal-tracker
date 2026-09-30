@@ -47,44 +47,45 @@ templ delegatePage(current *domain.Account, goals []delegatedGoal) {
 	}
 }
 
-// delegatesSection lists a Goal's Delegates and, for its Owner, the controls to
-// authorize or revoke one by email (CONTEXT.md: an Owner authorizes a Delegate).
+// delegatesSection lists a Goal's Delegates and, for its Owner, a collapsed
+// Manage people section to authorize or revoke one by email (CONTEXT.md: an
+// Owner authorizes a Delegate).
 templ delegatesSection(v goalView, owner bool) {
 	{{ g := v.Goal }}
 	<section data-testid="goal-delegates">
-		<h2>Delegates</h2>
-		<ul data-testid="delegate-list">
+		<h3 class="label">Delegates</h3>
+		<ul data-testid="delegate-list" class="gp-list">
 			if len(v.Delegates) == 0 {
-				<li data-testid="no-delegates">No Delegates yet.</li>
+				<li data-testid="no-delegates" class="muted">No Delegates yet.</li>
 			}
 			for _, d := range v.Delegates {
-				<li data-testid="delegate">
-					<span>{ d.Email }</span>
-					if owner {
-						<form
-							method="post"
-							style="display:inline"
-							action={ templ.SafeURL(fmt.Sprintf("/goals/%d/delegates/remove", g.ID)) }
-						>
-							<input type="hidden" name="email" value={ d.Email }/>
-							<button type="submit">Remove</button>
-						</form>
-					}
-				</li>
+				<li data-testid="delegate">{ d.Email }</li>
 			}
 		</ul>
 		if owner {
-			<form
-				data-testid="add-delegate"
-				method="post"
-				action={ templ.SafeURL(fmt.Sprintf("/goals/%d/delegates", g.ID)) }
-			>
-				<label>
-					Delegate email
-					<input type="email" name="email" required/>
-				</label>
-				<button type="submit">Add Delegate</button>
-			</form>
+			<details id="manage-people">
+				<summary class="small">Manage people</summary>
+				for _, d := range v.Delegates {
+					<form
+						method="post"
+						class="gp-inline"
+						action={ templ.SafeURL(fmt.Sprintf("/goals/%d/delegates/remove", g.ID)) }
+					>
+						<input type="hidden" name="email" value={ d.Email }/>
+						<span>{ d.Email }</span>
+						<button type="submit" class="btn quiet sm">Remove</button>
+					</form>
+				}
+				<form
+					data-testid="add-delegate"
+					method="post"
+					class="gp-inline"
+					action={ templ.SafeURL(fmt.Sprintf("/goals/%d/delegates", g.ID)) }
+				>
+					<input type="email" name="email" aria-label="Delegate email" placeholder="Delegate email" required/>
+					<button type="submit" class="btn sm">Add Delegate</button>
+				</form>
+			</details>
 		}
 	</section>
 }

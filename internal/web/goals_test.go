@@ -862,3 +862,116 @@ func TestGoalPageMilestonesTable(t *testing.T) {
 		}
 	}
 }
+
+// moreMenu returns the Goal page's More menu: from its <details> to the end of
+// the header, where it sits last.
+func moreMenu(t *testing.T, page string) string {
+	t.Helper()
+	return between(t, page, `data-testid="goal-more"`, "</header>")
+}
+
+// assertMenuReaches checks the More menu offers label and that it opens a form
+// posting to action — inline in the menu, or in the collapsed section the item
+// links to lower on the page.
+func assertMenuReaches(t *testing.T, page, label, action string) {
+	t.Helper()
+	menu := moreMenu(t, page)
+	at := strings.Index(menu, ">"+label+"<")
+	if at < 0 {
+		t.Errorf("More menu lacks %q:\n%s", label, menu)
+		return
+	}
+	item := between(t, menu[strings.LastIndex(menu[:at], "<li"):], "", "</li>")
+	if i := strings.Index(item, `href="#`); i >= 0 {
+		id := item[i+len(`href="#`):]
+		id = id[:strings.IndexByte(id, '"')]
+		section := between(t, page, `<details id="`+id+`"`, "</details>")
+		if !strings.Contains(section, `action="`+action+`"`) {
+			t.Errorf("%q links to #%s, which has no form posting to %s:\n%s", label, id, action, section)
+		}
+		return
+	}
+	if !strings.Contains(item, `action="`+action+`"`) {
+		t.Errorf("%q does not open a form posting to %s:\n%s", label, action, item)
+	}
+}
+
+// Every action an Owner takes on their Goal sits in the header's More menu,
+// either inline or as a link to its collapsed form lower on the page.
+func TestGoalPageMoreMenuHoldsOwnerActions(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.CreateDimension(ada, "Pillar", "Growth")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	if summary := between(t, moreMenu(t, page), "<summary", "</summary>"); !strings.Contains(summary, "More ▾") {
+		t.Errorf("the menu is not headed More ▾: %s", summary)
+	}
+	base := fmt.Sprintf("/goals/%d", goal.ID)
+	assertMenuReaches(t, page, "Hand off", base+"/handoff")
+	assertMenuReaches(t, page, "Add a delegate", base+"/delegates")
+	assertMenuReaches(t, page, "Link to a parent goal", base+"/links")
+	assertMenuReaches(t, page, "Add a child goal", base+"/children")
+	assertMenuReaches(t, page, "Edit Dimension values", base+"/dimensions")
+	for _, adminOnly := range []string{"Mark Top-level", "Mark owner departed…", "Reassign"} {
+		if strings.Contains(moreMenu(t, page), adminOnly) {
+			t.Errorf("an Owner who isn't an Admin is offered %q", adminOnly)
+		}
+	}
+}
+
+// An Admin's More menu adds Mark Top-level and Mark owner departed…, which asks
+// for confirmation; on an Ownerless Goal it offers Reassign instead of Hand off.
+func TestGoalPageMoreMenuHoldsAdminActions(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	orphan := h.ActiveGoal(kim, "Orphaned", "It matters.")
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	ts := newServer(t, h)
+	adaClient := signInClient(t, ts.URL, "ada@example.com")
+
+	page := getBody(t, adaClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	base := fmt.Sprintf("/goals/%d", goal.ID)
+	assertMenuReaches(t, page, "Hand off", base+"/handoff")
+	assertMenuReaches(t, page, "Mark Top-level", base+"/top-level")
+	assertMenuReaches(t, page, "Mark owner departed…", fmt.Sprintf("/accounts/%d/depart", sam.ID))
+	if depart := openTag(between(t, moreMenu(t, page), fmt.Sprintf(`action="/accounts/%d/depart"`, sam.ID), "")); !strings.Contains(depart, `onsubmit="return confirm(`) {
+		t.Errorf("Mark departed doesn't ask for confirmation: %s", depart)
+	}
+
+	page = getBody(t, adaClient, fmt.Sprintf("%s/goals/%d", ts.URL, orphan.ID))
+	assertMenuReaches(t, page, "Reassign", fmt.Sprintf("/goals/%d/reassign", orphan.ID))
+	if strings.Contains(moreMenu(t, page), "Hand off") {
+		t.Errorf("an Ownerless Goal offers Hand off")
+	}
+}
+
+// Someone who neither Owns the Goal nor is an Admin can only add a child Goal
+// from the More menu.
+func TestGoalPageMoreMenuForOthersOffersOnlyAChildGoal(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("mel@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "mel@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	assertMenuReaches(t, page, "Add a child goal", fmt.Sprintf("/goals/%d/children", goal.ID))
+	for _, other := range []string{"Hand off", "Add a delegate", "Link to a parent goal", "Edit Dimension values", "Mark Top-level"} {
+		if strings.Contains(moreMenu(t, page), other) {
+			t.Errorf("a non-Owner is offered %q", other)
+		}
+	}
+	if strings.Contains(page, `data-testid="checkin-link"`) {
+		t.Errorf("a non-Owner is offered Check in")
+	}
+}
