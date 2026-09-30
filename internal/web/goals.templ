@@ -53,6 +53,12 @@ templ goalFilters(view goalsListData) {
 					</option>
 				}
 			</select>
+			<select data-testid="goal-lifecycle-filter" name="lifecycle" aria-label="Lifecycle">
+				<option value="" selected?={ view.Filter.Lifecycle == "" }>Any Lifecycle</option>
+				for _, lc := range lifecycleFilters {
+					<option value={ lc } selected?={ view.Filter.Lifecycle == lc }>{ lc }</option>
+				}
+			</select>
 			<button type="submit" class="btn">Apply</button>
 			<a href="/goals" class="btn quiet">Clear</a>
 		</div>

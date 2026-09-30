@@ -80,6 +80,19 @@ type goalFilter struct {
 	// Health keeps the Goals at one Health: "green", "yellow", "red", or "none"
 	// for those with no Health yet (?health=). "" keeps every Health.
 	Health string
+	// Lifecycle keeps the Goals in one Lifecycle (?lifecycle=). "" keeps every
+	// Lifecycle.
+	Lifecycle string
+}
+
+// lifecycleFilters are the Lifecycle filter's choices, in the order a Goal
+// moves through them.
+var lifecycleFilters = []string{
+	domain.LifecycleProposed,
+	domain.LifecycleActive,
+	domain.LifecycleOnHold,
+	domain.LifecycleDone,
+	domain.LifecycleCancelled,
 }
 
 // healthFilters are the Health filter's choices, each keyed by its URL value to
@@ -94,8 +107,9 @@ var healthFilters = []struct{ Value, Health string }{
 // readGoalFilter reads the filter bar's fields from the query string.
 func readGoalFilter(q url.Values) goalFilter {
 	return goalFilter{
-		Query:  strings.TrimSpace(q.Get("q")),
-		Health: q.Get("health"),
+		Query:     strings.TrimSpace(q.Get("q")),
+		Health:    q.Get("health"),
+		Lifecycle: q.Get("lifecycle"),
 	}
 }
 
@@ -106,6 +120,9 @@ func (f goalFilter) keeps(row goalRow) bool {
 		if !strings.Contains(strings.ToLower(row.Goal.Title), q) && !strings.Contains(strings.ToLower(row.Goal.Owner.Email), q) {
 			return false
 		}
+	}
+	if f.Lifecycle != "" && row.Goal.Lifecycle != f.Lifecycle {
+		return false
 	}
 	for _, hf := range healthFilters {
 		if f.Health == hf.Value && row.health() != hf.Health {

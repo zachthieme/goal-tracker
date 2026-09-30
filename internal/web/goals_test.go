@@ -605,3 +605,33 @@ func TestGoalListFiltersByHealth(t *testing.T) {
 		}
 	}
 }
+
+// The Lifecycle filter keeps the Goals in the chosen Lifecycle and, left at its
+// default, keeps every Lifecycle; its select keeps the choice.
+func TestGoalListFiltersByLifecycle(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	active := h.ActiveGoal(sam, "Active one", "It matters.")
+	paused := h.OnHoldGoal(sam, "Paused one", "It matters.", "Budget freeze.")
+	proposed := h.CreateGoal(sam, "Proposed one", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	all := getBody(t, client, ts.URL+"/goals")
+	if got := rowTitles(goalRows(t, all), active, paused, proposed); len(got) != 3 {
+		t.Errorf("default Lifecycle filter should keep every Goal; rows = %q", got)
+	}
+	for lifecycle, want := range map[string]string{
+		domain.LifecycleActive:   "Active one",
+		domain.LifecycleOnHold:   "Paused one",
+		domain.LifecycleProposed: "Proposed one",
+	} {
+		page := getBody(t, client, ts.URL+"/goals?lifecycle="+url.QueryEscape(lifecycle))
+		if got := rowTitles(goalRows(t, page), active, paused, proposed); !slices.Equal(got, []string{want}) {
+			t.Errorf("lifecycle=%s: rows = %q, want [%q]", lifecycle, got, want)
+		}
+		if sel := pageElement(t, page, "select", "goal-lifecycle-filter"); !strings.Contains(sel, `value="`+lifecycle+`" selected`) {
+			t.Errorf("lifecycle=%s: select lost the choice: %s", lifecycle, sel)
+		}
+	}
+}
