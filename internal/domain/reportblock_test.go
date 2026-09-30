@@ -126,8 +126,10 @@ func TestReportExceptionTriggers(t *testing.T) {
 		{
 			// The delivery date slipped since the baseline; the Goal is Green
 			// again by now.
-			name:    "slipped",
-			arrange: func(h *testsupport.Harness, boss domain.Account) domain.Goal { return h.ActiveGoal(boss, "Slipped", "why") },
+			name: "slipped",
+			arrange: func(h *testsupport.Harness, boss domain.Account) domain.Goal {
+				return h.ActiveGoal(boss, "Slipped", "why")
+			},
 			since: func(h *testsupport.Harness, boss domain.Account, g domain.Goal) domain.Goal {
 				slipDelivery(h, boss, g, g.DeliveryDate.AddDate(0, 0, 14))
 				h.Checkin(boss, g.ID, domain.HealthGreen, "Back on track.", "", time.Time{})
@@ -137,8 +139,10 @@ func TestReportExceptionTriggers(t *testing.T) {
 		{
 			// Put On Hold since the baseline: On Hold is never Stale and has no
 			// Health.
-			name:    "put On Hold",
-			arrange: func(h *testsupport.Harness, boss domain.Account) domain.Goal { return h.ActiveGoal(boss, "On Hold", "why") },
+			name: "put On Hold",
+			arrange: func(h *testsupport.Harness, boss domain.Account) domain.Goal {
+				return h.ActiveGoal(boss, "On Hold", "why")
+			},
 			since: func(h *testsupport.Harness, boss domain.Account, g domain.Goal) domain.Goal {
 				if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
 					GoalID:          g.ID,
