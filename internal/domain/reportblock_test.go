@@ -2,6 +2,7 @@ package domain_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 
@@ -81,6 +82,8 @@ func TestReportExceptionTriggers(t *testing.T) {
 		// since runs once the clock has settled 40 days on, after the baseline,
 		// and returns the Goal under test.
 		since func(h *testsupport.Harness, boss domain.Account, g domain.Goal) domain.Goal
+		// badges are the block's badges.
+		badges []string
 	}{
 		{
 			name: "Yellow",
@@ -91,6 +94,7 @@ func TestReportExceptionTriggers(t *testing.T) {
 				h.Checkin(boss, g.ID, domain.HealthYellow, "Slipping.", "Add staff.", h.Clock.Now().AddDate(0, 1, 0))
 				return g
 			},
+			badges: nil,
 		},
 		{
 			// Checked in Green at Epoch, then nothing for 40 days.
@@ -100,7 +104,8 @@ func TestReportExceptionTriggers(t *testing.T) {
 				h.Checkin(boss, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
 				return g
 			},
-			since: func(_ *testsupport.Harness, _ domain.Account, g domain.Goal) domain.Goal { return g },
+			since:  func(_ *testsupport.Harness, _ domain.Account, g domain.Goal) domain.Goal { return g },
+			badges: []string{domain.BadgeStale},
 		},
 		{
 			// Checked in Green, then its Owner leaves the org.
@@ -115,6 +120,7 @@ func TestReportExceptionTriggers(t *testing.T) {
 				}
 				return g
 			},
+			badges: []string{domain.BadgeOwnerless},
 		},
 		{
 			// Proposed since the baseline: no Health yet.
@@ -122,6 +128,7 @@ func TestReportExceptionTriggers(t *testing.T) {
 			since: func(h *testsupport.Harness, boss domain.Account, _ domain.Goal) domain.Goal {
 				return h.CreateGoal(boss, "Created", "why")
 			},
+			badges: []string{domain.BadgeNew},
 		},
 		{
 			// The delivery date slipped since the baseline; the Goal is Green
@@ -135,6 +142,7 @@ func TestReportExceptionTriggers(t *testing.T) {
 				h.Checkin(boss, g.ID, domain.HealthGreen, "Back on track.", "", time.Time{})
 				return g
 			},
+			badges: []string{domain.BadgeNewDate},
 		},
 		{
 			// Put On Hold since the baseline: On Hold is never Stale and has no
@@ -155,6 +163,7 @@ func TestReportExceptionTriggers(t *testing.T) {
 				}
 				return g
 			},
+			badges: []string{domain.BadgeOnHold},
 		},
 		{
 			// Proposed at Epoch, activated since the baseline.
@@ -178,6 +187,7 @@ func TestReportExceptionTriggers(t *testing.T) {
 				}
 				return g
 			},
+			badges: nil,
 		},
 	}
 	for _, tc := range cases {
@@ -200,6 +210,9 @@ func TestReportExceptionTriggers(t *testing.T) {
 			}
 			if got, want := lineIDs(r), []int64{control.ID}; !sameSet(got, want) {
 				t.Errorf("one-line Goals %v, want %v", got, want)
+			}
+			if len(r.Exceptions) == 1 && !slices.Equal(r.Exceptions[0].Badges, tc.badges) {
+				t.Errorf("badges %v, want %v", r.Exceptions[0].Badges, tc.badges)
 			}
 		})
 	}
@@ -264,4 +277,150 @@ func TestReportReadsChangesAgainstBaseline(t *testing.T) {
 	if got, want := blockIDs(r), []int64{g.ID}; !sameSet(got, want) {
 		t.Errorf("with an earlier baseline, exception blocks %v, want %v", got, want)
 	}
+}
+
+// An exception block carries the whole MBR treatment: the due date with its
+// struck-through history, Health, badges, So What, latest status, Path to
+// Green, the Milestones marked New/Done/Removed with their struck dates, the
+// Metrics against target, and the Rolled-up Health with the Owner's
+// explanation (CONTEXT.md: Report, Date Slip, Rolled-up Health).
+func TestReportBlockShowsTheMBRTreatment(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	date := func(y int, m time.Month, d int) time.Time { return time.Date(y, m, d, 0, 0, 0, 0, time.UTC) }
+
+	// Due 2026-07-02 with Milestone Beta on 2026-04-02 (ActiveGoal's defaults).
+	g := h.ActiveGoal(boss, "Launch in EU", "EU shoppers can't pay in euros.")
+	child := h.ActiveChildOf(boss, g, "Localize checkout", "why")
+	revenue, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
+		GoalID: g.ID, Name: "EU revenue", Unit: "$M", Direction: domain.MetricUp,
+		Baseline: 10, Target: 20, TargetDate: date(2026, 12, 31),
+	})
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	alpha := addDatedMilestone(h, g, "Alpha", date(2026, 3, 1))
+	docs := addDatedMilestone(h, g, "Docs", date(2026, 3, 15))
+	beta := milestoneNamed(h, g, "Beta")
+
+	// Before the baseline the delivery date slipped once.
+	h.Clock.Advance(day)
+	slipDelivery(h, boss, g, date(2026, 7, 16))
+
+	settle(h)
+	h.Checkin(boss, child.ID, domain.HealthRed, "Payments vendor down.", "Switch vendor.", date(2026, 3, 30))
+	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+		GoalID:             g.ID,
+		AuthorID:           boss.ID,
+		Health:             domain.HealthYellow,
+		Status:             "Vendor is late again.",
+		PathToGreen:        "Second vendor in parallel.",
+		PathTargetDate:     date(2026, 4, 1),
+		Explanation:        "Checkout's Red is contained to one market.",
+		DeliveryDate:       date(2026, 8, 3),
+		DeliveryDateReason: "Vendor slipped again.",
+		Readings:           []domain.MetricReadingInput{{MetricID: revenue.ID, Value: 14}},
+		Milestones: []domain.MilestoneChangeInput{
+			{MilestoneID: alpha.ID, Status: domain.MilestoneDone},
+			{MilestoneID: docs.ID, Status: domain.MilestoneRemoved, RemovedReason: "Folded into Beta."},
+			{MilestoneID: beta.ID, TargetDate: date(2026, 5, 4), DateReason: "Waiting on vendor."},
+		},
+		NewMilestones: []domain.NewMilestoneInput{{Name: "GA", TargetDate: date(2026, 7, 20)}},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+
+	r := draftReport(t, h, boss, time.Time{}, g)
+	if len(r.Exceptions) != 1 {
+		t.Fatalf("exception blocks %v, want [%d]", blockIDs(r), g.ID)
+	}
+	b := r.Exceptions[0]
+
+	if b.Goal.Title != "Launch in EU" || b.Goal.SoWhat != "EU shoppers can't pay in euros." {
+		t.Errorf("title and So What %q / %q", b.Goal.Title, b.Goal.SoWhat)
+	}
+	if !b.Goal.DeliveryDate.Equal(date(2026, 8, 3)) {
+		t.Errorf("due date %v, want 2026-08-03", b.Goal.DeliveryDate)
+	}
+	if want := []time.Time{date(2026, 7, 2), date(2026, 7, 16)}; !slices.EqualFunc(b.PriorDueDates, want, time.Time.Equal) {
+		t.Errorf("struck-through due dates %v, want %v", b.PriorDueDates, want)
+	}
+	if b.Health != domain.HealthYellow {
+		t.Errorf("Health %q, want Yellow", b.Health)
+	}
+	if want := []string{domain.BadgeNewDate}; !slices.Equal(b.Badges, want) {
+		t.Errorf("badges %v, want %v", b.Badges, want)
+	}
+	if b.Status != "Vendor is late again." {
+		t.Errorf("latest status %q", b.Status)
+	}
+	if b.PathToGreen != "Second vendor in parallel." || !b.PathTargetDate.Equal(date(2026, 4, 1)) {
+		t.Errorf("Path to Green %q by %v", b.PathToGreen, b.PathTargetDate)
+	}
+
+	type ms struct {
+		name   string
+		date   time.Time
+		prior  []time.Time
+		status string
+		new    bool
+	}
+	var got []ms
+	for _, m := range b.Milestones {
+		got = append(got, ms{m.Milestone.Name, m.Milestone.TargetDate, m.PriorDates, m.Milestone.Status, m.New})
+	}
+	want := []ms{
+		{"Alpha", date(2026, 3, 1), nil, domain.MilestoneDone, false},
+		{"Docs", date(2026, 3, 15), nil, domain.MilestoneRemoved, false},
+		{"Beta", date(2026, 5, 4), []time.Time{date(2026, 4, 2)}, domain.MilestonePlanned, false},
+		{"GA", date(2026, 7, 20), nil, domain.MilestonePlanned, true},
+	}
+	if !slices.EqualFunc(got, want, func(a, b ms) bool {
+		return a.name == b.name && a.date.Equal(b.date) && slices.EqualFunc(a.prior, b.prior, time.Time.Equal) &&
+			a.status == b.status && a.new == b.new
+	}) {
+		t.Errorf("Milestones\n got %+v\nwant %+v", got, want)
+	}
+
+	if len(b.Metrics) != 1 {
+		t.Fatalf("Metrics %+v, want EU revenue", b.Metrics)
+	}
+	if m := b.Metrics[0]; m.Metric.Name != "EU revenue" || !m.Read || m.Current != 14 || m.Metric.Target != 20 {
+		t.Errorf("Metric against target %+v, want EU revenue at 14 of 20", m)
+	}
+
+	if !b.RolledUp.Present || b.RolledUp.Health != domain.HealthRed {
+		t.Errorf("Rolled-up Health %+v, want Red", b.RolledUp)
+	}
+	if b.Explanation != "Checkout's Red is contained to one market." {
+		t.Errorf("Rolled-up Health explanation %q", b.Explanation)
+	}
+}
+
+// addDatedMilestone adds a Milestone to g, failing the test on error.
+func addDatedMilestone(h *testsupport.Harness, g domain.Goal, name string, date time.Time) domain.Milestone {
+	h.T.Helper()
+	m, err := h.Service.AddMilestone(context.Background(), domain.AddMilestoneInput{GoalID: g.ID, Name: name, TargetDate: date})
+	if err != nil {
+		h.T.Fatalf("AddMilestone: %v", err)
+	}
+	return m
+}
+
+// milestoneNamed returns g's Milestone with the given name, failing the test
+// when there is none.
+func milestoneNamed(h *testsupport.Harness, g domain.Goal, name string) domain.Milestone {
+	h.T.Helper()
+	ms, err := h.Service.ListMilestones(context.Background(), g.ID)
+	if err != nil {
+		h.T.Fatalf("ListMilestones: %v", err)
+	}
+	for _, m := range ms {
+		if m.Name == name {
+			return m
+		}
+	}
+	h.T.Fatalf("no Milestone %q", name)
+	return domain.Milestone{}
 }

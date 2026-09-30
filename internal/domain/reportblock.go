@@ -22,7 +22,52 @@ type Report struct {
 type ReportBlock struct {
 	Goal   Goal
 	Health string
+	// Badges flag what the reader must not miss, in the order BadgeNew,
+	// BadgeNewDate, BadgeStale, BadgeOwnerless, BadgeOnHold.
+	Badges []string
+	// PriorDueDates are the delivery dates the Goal held before each of its
+	// Date Slips, earliest first, shown struck through ahead of its current
+	// date (~~10/15~~ 11/03).
+	PriorDueDates []time.Time
+	// Status, PathToGreen, PathTargetDate, and Explanation are the latest
+	// Check-in's: its short status, the plan back to Green with its target
+	// date, and why the Owner's Health differs from the Rolled-up Health.
+	Status         string
+	PathToGreen    string
+	PathTargetDate time.Time
+	Explanation    string
+	Milestones     []ReportMilestone
+	Metrics        []ReportMetric
+	RolledUp       RolledUpHealth
 }
+
+// ReportMilestone is a Milestone as an exception block shows it: marked New
+// when added since the baseline, Done or Removed by its Status, and with the
+// dates it held before its Date Slips to strike through.
+type ReportMilestone struct {
+	Milestone  Milestone
+	New        bool
+	PriorDates []time.Time
+}
+
+// ReportMetric is a Metric against its target: Current is its latest reading,
+// and Read is false when it has none yet.
+type ReportMetric struct {
+	Metric  Metric
+	Current float64
+	Read    bool
+}
+
+// Badges a ReportBlock can carry. New marks a Goal created since the baseline
+// and New Date one whose delivery date slipped since it; the rest mirror the
+// Goal's current state (CONTEXT.md: Stale, Ownerless, Lifecycle).
+const (
+	BadgeNew       = "New"
+	BadgeNewDate   = "New Date"
+	BadgeStale     = "Stale"
+	BadgeOwnerless = "Ownerless"
+	BadgeOnHold    = LifecycleOnHold
+)
 
 // defaultBaselineDays is how far back a Report reads changes when the reader
 // picks no baseline.
@@ -50,11 +95,16 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 		if err != nil {
 			return Report{}, err
 		}
-		if !h.exception(since, s.judgeFreshness(sg.Goal, h.last())) {
+		fresh := s.judgeFreshness(sg.Goal, h.last())
+		if !h.exception(since, fresh) {
 			r.Lines = append(r.Lines, sg)
 			continue
 		}
-		r.Exceptions = append(r.Exceptions, ReportBlock{Goal: sg.Goal, Health: sg.Health})
+		b, err := s.reportBlock(ctx, h, since, fresh)
+		if err != nil {
+			return Report{}, err
+		}
+		r.Exceptions = append(r.Exceptions, b)
 	}
 	return r, nil
 }
@@ -114,4 +164,82 @@ func (h goalHistory) lifecycleChanged(since func(time.Time) bool) bool {
 	return slices.ContainsFunc(h.checkins, func(c Checkin) bool {
 		return c.LifecycleChange.Changed() && since(c.CreatedAt)
 	})
+}
+
+// badges lists the block's badges in their fixed order.
+func (h goalHistory) badges(since func(time.Time) bool, fresh Freshness) []string {
+	var out []string
+	if since(h.goal.CreatedAt) {
+		out = append(out, BadgeNew)
+	}
+	if slices.ContainsFunc(h.slips, func(d DateSlip) bool { return d.MilestoneID == 0 && since(d.CreatedAt) }) {
+		out = append(out, BadgeNewDate)
+	}
+	if fresh.Stale {
+		out = append(out, BadgeStale)
+	}
+	if h.goal.Ownerless {
+		out = append(out, BadgeOwnerless)
+	}
+	if h.goal.Lifecycle == LifecycleOnHold {
+		out = append(out, BadgeOnHold)
+	}
+	return out
+}
+
+// reportBlock builds the full MBR block for an exception Goal.
+func (s *Service) reportBlock(ctx context.Context, h goalHistory, since func(time.Time) bool, fresh Freshness) (ReportBlock, error) {
+	latest := h.latest()
+	b := ReportBlock{
+		Goal:           h.goal,
+		Health:         latest.Health,
+		Badges:         h.badges(since, fresh),
+		PriorDueDates:  h.priorDates(0),
+		Status:         latest.Status,
+		PathToGreen:    latest.PathToGreen,
+		PathTargetDate: latest.PathTargetDate,
+		Explanation:    latest.Explanation,
+	}
+	milestones, err := s.ListMilestones(ctx, h.goal.ID)
+	if err != nil {
+		return ReportBlock{}, err
+	}
+	for _, m := range milestones {
+		b.Milestones = append(b.Milestones, ReportMilestone{
+			Milestone:  m,
+			New:        since(m.CreatedAt),
+			PriorDates: h.priorDates(m.ID),
+		})
+	}
+	metrics, err := s.ListMetrics(ctx, h.goal.ID)
+	if err != nil {
+		return ReportBlock{}, err
+	}
+	for _, m := range metrics {
+		readings, err := s.ListMetricReadings(ctx, m.ID)
+		if err != nil {
+			return ReportBlock{}, err
+		}
+		rm := ReportMetric{Metric: m}
+		if len(readings) > 0 {
+			rm.Current, rm.Read = readings[len(readings)-1].Value, true
+		}
+		b.Metrics = append(b.Metrics, rm)
+	}
+	if b.RolledUp, err = s.RolledUpHealth(ctx, h.goal.ID); err != nil {
+		return ReportBlock{}, err
+	}
+	return b, nil
+}
+
+// priorDates returns the dates the delivery date (milestoneID 0) or a
+// Milestone held before each of its Date Slips, earliest first.
+func (h goalHistory) priorDates(milestoneID int64) []time.Time {
+	var out []time.Time
+	for _, d := range h.slips {
+		if d.MilestoneID == milestoneID {
+			out = append(out, d.OldDate)
+		}
+	}
+	return out
 }
