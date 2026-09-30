@@ -79,6 +79,9 @@ type SubmitCheckinInput struct {
 	// Milestones are changes to the Goal's Milestones; each must name a
 	// Milestone on this Goal.
 	Milestones []MilestoneChangeInput
+	// NewMilestones are Milestones added to the Goal in this Check-in; they
+	// count toward its Milestone Churn.
+	NewMilestones []NewMilestoneInput
 }
 
 // SubmitCheckin records a Check-in on a Goal. The Goal must be Active — a
@@ -144,7 +147,7 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	}
 	// A Milestone slip that doesn't move the delivery date doesn't affect Health
 	// (CONTEXT.md: Milestone), so it is recorded but never gates the Health.
-	milestones, err := s.planMilestoneChanges(ctx, goal.Goal.ID, in.Milestones)
+	milestones, err := s.planMilestoneChanges(ctx, goal.Goal.ID, in.Milestones, in.NewMilestones)
 	if err != nil {
 		return Checkin{}, err
 	}
@@ -178,6 +181,16 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 		}
 		for _, slip := range milestones.slips {
 			if err := tx.recordSlip(ctx, goal.Goal.ID, c.ID, slip); err != nil {
+				return err
+			}
+		}
+		for _, change := range milestones.statuses {
+			if err := tx.recordMilestoneStatus(ctx, change); err != nil {
+				return err
+			}
+		}
+		for _, a := range milestones.added {
+			if _, err := tx.createMilestone(ctx, goal.Goal.ID, a.Name, a.TargetDate, true); err != nil {
 				return err
 			}
 		}

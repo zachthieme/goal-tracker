@@ -114,16 +114,17 @@ func (q *Queries) CreateMetric(ctx context.Context, arg CreateMetricParams) (Met
 }
 
 const createMilestone = `-- name: CreateMilestone :one
-INSERT INTO milestones (goal_id, name, target_date, created_at)
-VALUES (?, ?, ?, ?)
+INSERT INTO milestones (goal_id, name, target_date, created_at, added_while_active)
+VALUES (?, ?, ?, ?, ?)
 RETURNING id, goal_id, name, target_date, created_at, status, removed_reason, added_while_active
 `
 
 type CreateMilestoneParams struct {
-	GoalID     int64
-	Name       string
-	TargetDate string
-	CreatedAt  string
+	GoalID           int64
+	Name             string
+	TargetDate       string
+	CreatedAt        string
+	AddedWhileActive int64
 }
 
 func (q *Queries) CreateMilestone(ctx context.Context, arg CreateMilestoneParams) (Milestone, error) {
@@ -132,6 +133,7 @@ func (q *Queries) CreateMilestone(ctx context.Context, arg CreateMilestoneParams
 		arg.Name,
 		arg.TargetDate,
 		arg.CreatedAt,
+		arg.AddedWhileActive,
 	)
 	var i Milestone
 	err := row.Scan(

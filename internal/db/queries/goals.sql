@@ -32,8 +32,8 @@ UPDATE goals SET lifecycle = ? WHERE id = ?
 RETURNING *;
 
 -- name: CreateMilestone :one
-INSERT INTO milestones (goal_id, name, target_date, created_at)
-VALUES (?, ?, ?, ?)
+INSERT INTO milestones (goal_id, name, target_date, created_at, added_while_active)
+VALUES (?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: GetMilestone :one

@@ -9,6 +9,23 @@ import (
 	"context"
 )
 
+const countMilestoneChurn = `-- name: CountMilestoneChurn :one
+SELECT CAST(
+    (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = ?1 AND m.added_while_active = 1)
+  + (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = ?1 AND m.status = 'Removed')
+AS INTEGER) AS churn
+`
+
+// Milestone Churn: Milestones added since the Goal became Active plus those
+// removed (CONTEXT.md: Milestone Churn). Removal only happens in a Check-in, so
+// only ever on an Active Goal.
+func (q *Queries) CountMilestoneChurn(ctx context.Context, goalID int64) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countMilestoneChurn, goalID)
+	var churn int64
+	err := row.Scan(&churn)
+	return churn, err
+}
+
 const createCheckin = `-- name: CreateCheckin :one
 INSERT INTO checkins (goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, explanation, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -440,6 +457,22 @@ type SetGoalDeliveryDateParams struct {
 
 func (q *Queries) SetGoalDeliveryDate(ctx context.Context, arg SetGoalDeliveryDateParams) error {
 	_, err := q.db.ExecContext(ctx, setGoalDeliveryDate, arg.DeliveryDate, arg.ID)
+	return err
+}
+
+const setMilestoneStatus = `-- name: SetMilestoneStatus :exec
+UPDATE milestones SET status = ?, removed_reason = ? WHERE id = ?
+`
+
+type SetMilestoneStatusParams struct {
+	Status        string
+	RemovedReason string
+	ID            int64
+}
+
+// Mark a Milestone Done or Removed in a Check-in; Removed carries its reason.
+func (q *Queries) SetMilestoneStatus(ctx context.Context, arg SetMilestoneStatusParams) error {
+	_, err := q.db.ExecContext(ctx, setMilestoneStatus, arg.Status, arg.RemovedReason, arg.ID)
 	return err
 }
 
