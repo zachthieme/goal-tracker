@@ -10,7 +10,7 @@ import "context"
 //
 // StaleChildren counts how many of the ActiveChildren are Stale ("3 of 12
 // Stale"). It is shown beside the color and never changes it: Health stays
-// Owner-set, and a missing update is its own signal (CONTEXT.md: Stale).
+// Owner-set, and being Stale is its own signal (CONTEXT.md: Stale).
 type RolledUpHealth struct {
 	Health         string
 	Present        bool
@@ -57,7 +57,11 @@ func (s *Service) RolledUpHealth(ctx context.Context, goalID int64) (RolledUpHea
 			return RolledUpHealth{}, err
 		}
 		out.ActiveChildren++
-		if s.judgeFreshness(child, latest).Stale {
+		var last lastCheckin
+		if ok {
+			last.at = latest.CreatedAt
+		}
+		if s.judgeFreshness(child, last).Stale {
 			out.StaleChildren++
 		}
 		if !ok {

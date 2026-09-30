@@ -1,0 +1,82 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// freshnessSignalsPage is the Stale list, with the Goals whose Path to Green is
+// overdue beside it, so both surface as prominently as Red (CONTEXT.md: Stale,
+// Path to Green).
+templ freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSignals) {
+	@layout("Freshness signals", current) {
+		<h1>Freshness signals</h1>
+		<p>Stale Goals, and Goals still not Green past their Path to Green's target date.</p>
+		<section data-testid="stale-section">
+			<h2>Stale Goals</h2>
+			<p>Active Goals whose last Check-in, or activation if they have none, is older than their cadence.</p>
+			<ul data-testid="stale-goals">
+				if len(signals.Stale) == 0 {
+					<li data-testid="no-stale">No Stale Goals.</li>
+				}
+				for _, gf := range signals.Stale {
+					<li data-testid="stale-goal">
+						@freshnessItem(gf.Goal, staleSince(gf.Freshness))
+					</li>
+				}
+			</ul>
+		</section>
+		<section data-testid="overdue-paths-section">
+			<h2>Path to Green overdue</h2>
+			<p>Active Goals past their Path to Green's target date that still aren't Green.</p>
+			<ul data-testid="overdue-paths">
+				if len(signals.OverduePaths) == 0 {
+					<li data-testid="no-overdue-paths">No overdue Paths to Green.</li>
+				}
+				for _, gf := range signals.OverduePaths {
+					<li data-testid="overdue-path">
+						@freshnessItem(gf.Goal, pathOverdue(gf.Freshness))
+					</li>
+				}
+			</ul>
+		</section>
+		<p><a href="/goals">Back to Goals</a></p>
+	}
+}
+
+// freshnessItem names a flagged Goal, its Owner, and why it is flagged.
+templ freshnessItem(g domain.Goal, why string) {
+	@goalRef(g)
+	<span>— Owner { g.Owner.Email } — { why }</span>
+}
+
+// goalFreshness flags, at the top of a Goal's page, a Goal that is Stale or
+// whose Path to Green is overdue. It renders nothing for a fresh Goal.
+templ goalFreshness(f domain.Freshness) {
+	if f.Stale {
+		<p data-testid="goal-stale" role="alert"><strong>Stale</strong> — { staleSince(f) }</p>
+	}
+	if f.PathToGreenOverdue {
+		<p data-testid="goal-path-overdue" role="alert"><strong>Path to Green overdue</strong> — { pathOverdue(f) }</p>
+	}
+}
+
+// rolledUpStale says, beside the Rolled-up Health, how many Active children are
+// Stale. It never changes the color, and renders nothing when none are.
+templ rolledUpStale(r domain.RolledUpHealth) {
+	if r.StaleChildren > 0 {
+		· <span data-testid="goal-rollup-stale">{ fmt.Sprintf("%d of %d Stale", r.StaleChildren, r.ActiveChildren) }</span>
+	}
+}
+
+// staleSince says how long a Stale Goal has gone without a Check-in, against its
+// cadence.
+func staleSince(f domain.Freshness) string {
+	return fmt.Sprintf("no Check-in for %d days on a %d-day cadence", f.DaysSince, f.CadenceDays)
+}
+
+// pathOverdue names the target date a Path to Green has missed.
+func pathOverdue(f domain.Freshness) string {
+	return fmt.Sprintf("meant to be back to Green by %s", fmtDate(f.PathTargetDate))
+}
