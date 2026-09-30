@@ -150,6 +150,7 @@ templ checkinSection(v goalView, canCheckin bool) {
 					· <strong>Rolled-up Health:</strong> <span data-testid="goal-rollup-health">{ v.RolledUp.Health }</span>
 					<span>(worst among Active children)</span>
 				}
+				@rolledUpStale(v.RolledUp)
 			</p>
 			<p data-testid="goal-status">{ v.LatestCheckin.Status }</p>
 			if v.LatestCheckin.PathToGreen != "" {
@@ -168,10 +169,13 @@ templ checkinSection(v goalView, canCheckin bool) {
 			} else {
 				<p data-testid="goal-no-health">No Check-ins yet.</p>
 			}
-			if v.RolledUp.Present {
+			if v.RolledUp.Present || v.RolledUp.StaleChildren > 0 {
 				<p>
-					<strong>Rolled-up Health:</strong> <span data-testid="goal-rollup-health">{ v.RolledUp.Health }</span>
-					<span>(worst among Active children)</span>
+					if v.RolledUp.Present {
+						<strong>Rolled-up Health:</strong> <span data-testid="goal-rollup-health">{ v.RolledUp.Health }</span>
+						<span>(worst among Active children)</span>
+					}
+					@rolledUpStale(v.RolledUp)
 				</p>
 			}
 		}

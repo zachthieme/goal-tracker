@@ -81,7 +81,7 @@ The worst Health among a Goal's active children, shown next to the Owner-set Hea
 _Avoid_: computed status, aggregate health
 
 **Stale**:
-A Goal whose last Check-in is older than its expected cadence (weekly by default). Surfaced as prominently as Red.
+An Active Goal whose last Check-in (or its activation, if it has none) is older than its expected cadence (weekly by default), counted in days of the org's timezone. On Hold Goals are never Stale. Surfaced as prominently as Red; a Rolled-up Health says how many children are Stale ("3 of 12 Stale") without changing its color.
 _Avoid_: overdue, missing update
 
 **Lifecycle**:
@@ -98,7 +98,7 @@ _Avoid_: scope change, replan count
 
 **Path to Green**:
 The owner's stated plan, or request for help, to return a Yellow or Red Goal to Green.
-It carries a target date for being back to Green.
+It carries a target date for being back to Green. Once that date has passed and the Goal still isn't Green, the Goal is flagged as prominently as Red.
 _Avoid_: mitigation, recovery plan, get-well plan
 
 ## Updates

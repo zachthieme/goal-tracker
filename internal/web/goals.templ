@@ -14,6 +14,7 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 	@layout("Goals", current) {
 		<h1>Goals</h1>
 		<p><a href="/signals" data-testid="goals-graph-signals">Graph signals</a> — Unaligned Goals, schedule conflicts, and Goals under an On Hold or Cancelled parent</p>
+		<p><a href="/freshness" data-testid="goals-freshness-signals">Freshness signals</a> — Stale Goals and overdue Paths to Green</p>
 		<section>
 			<h2>Propose a Goal</h2>
 			<form hx-post="/goals" hx-target="#goal-list" hx-swap="outerHTML" method="post" action="/goals">
@@ -84,17 +85,18 @@ templ goalList(view goalsListData) {
 							Unassigned
 						}
 					</h3>
-					@goalItems(grp.Goals)
+					@goalItems(grp.Goals, view.Freshness)
 				</section>
 			}
 		} else {
-			@goalItems(view.Goals)
+			@goalItems(view.Goals, view.Freshness)
 		}
 	</div>
 }
 
-// goalItems renders a flat list of Goals with their assigned Dimension values.
-templ goalItems(goals []domain.GoalWithValues) {
+// goalItems renders a flat list of Goals with their assigned Dimension values,
+// marking those that are Stale or whose Path to Green is overdue.
+templ goalItems(goals []domain.GoalWithValues, freshness map[int64]domain.Freshness) {
 	<ul>
 		if len(goals) == 0 {
 			<li data-testid="no-goals">No Goals yet.</li>
@@ -106,6 +108,7 @@ templ goalItems(goals []domain.GoalWithValues) {
 				if gv.Goal.Ownerless {
 					<strong data-testid="ownerless">— Ownerless</strong>
 				}
+				@goalRowFreshness(freshness[gv.Goal.ID])
 				for _, val := range gv.Values {
 					<span data-testid="goal-value-tag">[{ val.Value }]</span>
 				}
@@ -125,6 +128,7 @@ templ goalPage(current *domain.Account, v goalView) {
 		if g.Ownerless {
 			<p data-testid="goal-ownerless" role="alert"><strong>Ownerless</strong> — this Goal's Owner has left the org and it needs an Admin to reassign it.</p>
 		}
+		@goalFreshness(v.Freshness)
 		@goalSignals(v.Signals)
 		<article data-testid="goal">
 			<h1 data-testid="goal-title">{ g.Title }</h1>

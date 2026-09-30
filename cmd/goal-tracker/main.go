@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	_ "time/tzdata" // the org's timezone resolves without the host's zoneinfo
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (ADR 0004)
 
@@ -31,6 +32,10 @@ func main() {
 
 func run(logger *slog.Logger) error {
 	cfg := loadConfig()
+	loc, err := time.LoadLocation(cfg.timezone)
+	if err != nil {
+		return fmt.Errorf("GOAL_TRACKER_TIMEZONE: %w", err)
+	}
 
 	sqlDB, err := sql.Open("sqlite", "file:"+cfg.dbPath)
 	if err != nil {
@@ -42,7 +47,7 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("run migrations: %w", err)
 	}
 
-	svc := domain.NewService(sqlDB, clock.Real{}, email.LogSender{Logger: logger}, cfg.adminEmails)
+	svc := domain.NewService(sqlDB, clock.Real{}, email.LogSender{Logger: logger}, cfg.adminEmails, domain.WithTimezone(loc))
 	srv := web.NewServer(svc)
 
 	httpServer := &http.Server{
@@ -50,7 +55,7 @@ func run(logger *slog.Logger) error {
 		Handler:           srv,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	logger.Info("goal-tracker listening", "addr", cfg.addr, "db", cfg.dbPath)
+	logger.Info("goal-tracker listening", "addr", cfg.addr, "db", cfg.dbPath, "timezone", loc.String())
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("serve: %w", err)
 	}
@@ -61,12 +66,16 @@ type config struct {
 	addr        string
 	dbPath      string
 	adminEmails []string
+	// timezone is the org's IANA timezone, the calendar Check-in cadences are
+	// counted in.
+	timezone string
 }
 
 func loadConfig() config {
 	cfg := config{
-		addr:   envOr("GOAL_TRACKER_ADDR", ":8080"),
-		dbPath: envOr("GOAL_TRACKER_DB", "goal-tracker.db"),
+		addr:     envOr("GOAL_TRACKER_ADDR", ":8080"),
+		dbPath:   envOr("GOAL_TRACKER_DB", "goal-tracker.db"),
+		timezone: envOr("GOAL_TRACKER_TIMEZONE", "UTC"),
 	}
 	for _, e := range strings.Split(os.Getenv("GOAL_TRACKER_ADMINS"), ",") {
 		if e = strings.TrimSpace(e); e != "" {

@@ -18,6 +18,7 @@ The server is configured from the environment:
 | `GOAL_TRACKER_ADDR` | `:8080` | Address to listen on. |
 | `GOAL_TRACKER_DB` | `goal-tracker.db` | SQLite database file; migrations run on start. |
 | `GOAL_TRACKER_ADMINS` | _(none)_ | Comma-separated emails that get the Admin flag when their account is first created. |
+| `GOAL_TRACKER_TIMEZONE` | `UTC` | The org's IANA timezone (e.g. `America/Los_Angeles`). Check-in cadences are counted in its days, so a Goal turns Stale and a Path to Green goes overdue at its midnight. |
 
 Sign-in is a development sign-in by email: any address works, and an account is
 created on first sign-in.

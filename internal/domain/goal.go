@@ -26,6 +26,9 @@ type Goal struct {
 	// CadenceDays is how often a Check-in is expected (7 by default).
 	CadenceDays int
 	CreatedAt   time.Time
+	// ActivatedAt is when the Goal became Active, the zero time until then. A
+	// Goal activated before this was recorded reads its creation time instead.
+	ActivatedAt time.Time
 	// Ownerless is true when the Owner has departed the org and the Goal has not
 	// been reassigned; it is surfaced as prominently as Red (CONTEXT.md:
 	// Ownerless). It is derived from the Owner, not stored on the Goal.
@@ -277,9 +280,9 @@ func (s *Service) ActivateGoal(ctx context.Context, goalID int64) (Goal, error) 
 		return Goal{}, errors.Join(reasons...)
 	}
 
-	if _, err := s.queries.SetGoalLifecycle(ctx, db.SetGoalLifecycleParams{
-		Lifecycle: LifecycleActive,
-		ID:        goalID,
+	if err := s.queries.ActivateGoal(ctx, db.ActivateGoalParams{
+		ActivatedAt: s.clock.Now().Format(timeFormat),
+		ID:          goalID,
 	}); err != nil {
 		return Goal{}, fmt.Errorf("activate goal: %w", err)
 	}
@@ -345,6 +348,13 @@ func goalFromRow(g db.Goal, owner db.Account) Goal {
 	if g.DeliveryDate != "" {
 		deliveryDate, _ = time.Parse(dateFormat, g.DeliveryDate)
 	}
+	var activatedAt time.Time
+	switch {
+	case g.ActivatedAt != "":
+		activatedAt, _ = time.Parse(timeFormat, g.ActivatedAt)
+	case g.Lifecycle != LifecycleProposed:
+		activatedAt = createdAt
+	}
 	acc := accountFromRow(owner)
 	return Goal{
 		ID:           g.ID,
@@ -356,6 +366,7 @@ func goalFromRow(g db.Goal, owner db.Account) Goal {
 		DeliveryDate: deliveryDate,
 		CadenceDays:  int(g.CadenceDays),
 		CreatedAt:    createdAt,
+		ActivatedAt:  activatedAt,
 		Ownerless:    acc.Departed,
 		TopLevel:     g.TopLevel != 0,
 	}

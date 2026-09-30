@@ -49,5 +49,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /reports", s.requireAuth(s.handleSaveReport))
 	s.mux.HandleFunc("GET /reports/{id}", s.requireAuth(s.handleViewReport))
 	s.mux.HandleFunc("GET /signals", s.requireAuth(s.handleGraphSignals))
+	s.mux.HandleFunc("GET /freshness", s.requireAuth(s.handleFreshnessSignals))
 	s.mux.HandleFunc("POST /goals/{id}/top-level", s.requireAuth(s.handleSetTopLevel))
 }
