@@ -83,6 +83,15 @@ func (s *Service) requireAdmin(ctx context.Context, actorID int64) error {
 // SignIn resolves the development sign-in for emailAddr: it returns the existing
 // Account, or creates one on first sign-in with the Admin flag set from config.
 func (s *Service) SignIn(ctx context.Context, emailAddr string) (Account, error) {
+	return s.EnsureAccount(ctx, emailAddr)
+}
+
+// EnsureAccount returns the Account with the given email, creating one if none
+// exists yet (with the Admin flag set from config). It is the get-or-create the
+// development sign-in performs, exposed on its own so the spreadsheet import can
+// give an account to every person it names (ticket #22: people named in the file
+// get accounts).
+func (s *Service) EnsureAccount(ctx context.Context, emailAddr string) (Account, error) {
 	existing, err := s.queries.GetAccountByEmail(ctx, emailAddr)
 	if err == nil {
 		return accountFromRow(existing), nil

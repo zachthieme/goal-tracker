@@ -1,0 +1,65 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+	"github.com/zachthieme/goal-tracker/internal/importer"
+)
+
+// importsPage is the spreadsheet-import page. An Admin uploads a CSV or XLSX and
+// runs a dry run or a commit; the row-by-row report renders below the form
+// (ticket #22). A non-Admin sees only a note that imports are Admin-only.
+templ importsPage(current *domain.Account, report *importer.Report, flash string) {
+	{{ admin := current != nil && current.IsAdmin }}
+	@layout("Import Goals", current) {
+		<h1>Import Goals</h1>
+		<p>Load the pilot's Goals from a spreadsheet (CSV or XLSX), one Goal per row. The column format is documented in <code>docs/import-format.md</code>.</p>
+		if !admin {
+			<p data-testid="import-forbidden">Only an Admin may import Goals.</p>
+		} else {
+			if flash != "" {
+				<p data-testid="import-flash">{ flash }</p>
+			}
+			<form method="post" action="/imports" enctype="multipart/form-data" data-testid="import-form">
+				<label>
+					Spreadsheet
+					<input type="file" name="file" accept=".csv,.xlsx" required/>
+				</label>
+				<button type="submit" name="action" value="dry-run">Dry run</button>
+				<button type="submit" name="action" value="commit">Commit</button>
+			</form>
+			if report != nil {
+				@importReport(report)
+			}
+		}
+	}
+}
+
+// importReport renders the outcome of an import: a summary line and, per row, its
+// line number, the Goal it named, and any errors.
+templ importReport(report *importer.Report) {
+	<section data-testid="import-report">
+		if report.Committed {
+			<p data-testid="import-summary">Imported { fmt.Sprint(len(report.Rows)) } Goals.</p>
+		} else if report.HasErrors() {
+			<p data-testid="import-summary">Found { fmt.Sprint(report.ErrorCount()) } row(s) with errors; nothing was saved.</p>
+		} else {
+			<p data-testid="import-summary">Dry run: { fmt.Sprint(len(report.Rows)) } row(s) look good; nothing saved. Commit to save.</p>
+		}
+		<ol data-testid="import-rows">
+			for _, row := range report.Rows {
+				<li data-testid="import-row">
+					<strong>Row { fmt.Sprint(row.Line) }</strong>: { importRowLabel(row) }
+					if len(row.Errors) > 0 {
+						<ul data-testid="import-row-errors">
+							for _, e := range row.Errors {
+								<li>{ e }</li>
+							}
+						</ul>
+					}
+				</li>
+			}
+		</ol>
+	</section>
+}

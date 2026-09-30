@@ -1,0 +1,4 @@
+Title,Owner,So What,Kind,Delivery Date,Milestones,Metrics,Parents,Pillar
+Grow enterprise revenue,cfo@example.com,Enterprise revenue has plateaued and we need a durable growth engine.,Ongoing,,,ARR | USD | up | 4200000 | 6000000 | 2026-12-31,,Growth
+Launch self-serve onboarding,pm@example.com,New users stall before first value; guided onboarding should lift activation.,Dated,2026-06-30,Design complete @ 2026-03-15; Beta @ 2026-05-01; GA @ 2026-06-15,Activation rate | percent | up | 32 | 55 | 2026-06-30,Grow enterprise revenue,Growth
+Harden billing platform,eng@example.com,Billing incidents erode customer trust and cost support hours.,Dated,2026-09-30,Audit @ 2026-04-01; Migration @ 2026-08-01,,Grow enterprise revenue,Reliability
