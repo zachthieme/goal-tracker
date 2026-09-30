@@ -79,6 +79,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Improvements:**
 - [user] Once a Goal is Active its dates move only in a Check-in, so every change is explained: the Milestone edit form and the Dated/Ongoing controls apply only while a Goal is Proposed (#5).
 - [user] A Check-in that takes a Goal out of Active records no Health, so it needs no Path to Green; a Goal that is On Hold, Done, or Cancelled shows no Health, and an On Hold Goal's Check-in can only resume or Cancel it (#7).
+- [user] Every page now wears the new design: a shared stylesheet, IBM Plex and Source Serif type (falling back to system fonts), and a dark top bar that marks the page you're on and shows who is signed in, with Sign out on the right. It fits a phone-width screen without scrolling sideways (#33).
 
 **Bug fixes:**
 - [user] Creating a child Goal from a parent's page is all-or-nothing. If a kept default fails to assign (a value retired after the form loaded, say) or the link can't be requested, no Goal is left behind, and the parent's page comes back with the error and the title, So What, and checked defaults as typed (#26).
@@ -89,6 +90,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Spreadsheet import reports every error on a row in one dry run — an unknown Dimension value no longer hides an unknown parent title or a bad Milestone (#30).
 - [user] The seeded demo org marks its three org outcomes Top-level Goals, so the Unaligned list on the signals page shows only the five side projects (#31).
 - [user] A Check-in validation error is shown next to the field it is about instead of always under the Path to Green: "this Health differs from the Rolled-up Health (Red); explain why" sits by the explanation, a Date Slip's missing reason by that date's reason, an overdue Milestone by its date, a Lifecycle's missing reason or outcome by that field, and a reading error by its Metric. An error about the Check-in as a whole is shown at the top of the form (#28).
+
+**Security:**
+- [user] Only a Goal's Owner or an Admin can set its Dimension values. Anyone else who posts to a Goal's dimensions endpoint gets a 403 and the value stays as it was. Hiding the form wasn't enough, because the endpoint accepted the change (#25).
 
 **Code quality:**
 - [internal] Split the skeleton's shared files by feature area (one sqlc query file, handler file, templ file, and domain file per area, with route registration in one place), so tickets can land without all editing the same files and campaigns can run tickets in parallel (#24).
