@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -230,12 +232,13 @@ func milestoneChurn(t *testing.T, h *testsupport.Harness) {
 }
 
 // Among the Active Goals, a few are Stale — their last Check-in is older than
-// their cadence — while most are up to date, and a few are Unaligned: they
-// contribute to no other Goal, and aren't org outcomes that other Goals drive.
+// their cadence — while most are up to date. The org outcomes are Top-level
+// Goals, so the Unaligned list the signals page shows is exactly the five side
+// projects.
 func staleAndUnaligned(t *testing.T, h *testsupport.Harness) {
 	ctx := context.Background()
 	end := h.Clock.Now()
-	var active, stale, unaligned int
+	var active, stale int
 	for _, g := range listGoals(t, h) {
 		if g.Lifecycle != domain.LifecycleActive {
 			continue
@@ -248,24 +251,48 @@ func staleAndUnaligned(t *testing.T, h *testsupport.Harness) {
 		if ok && end.Sub(latest.CreatedAt) > time.Duration(g.CadenceDays)*24*time.Hour {
 			stale++
 		}
-		parents, err := h.Service.ParentsOf(ctx, g.ID)
-		if err != nil {
-			t.Fatalf("ParentsOf: %v", err)
-		}
-		children, err := h.Service.ChildrenOf(ctx, g.ID)
-		if err != nil {
-			t.Fatalf("ChildrenOf: %v", err)
-		}
-		if len(parents) == 0 && len(children) == 0 {
-			unaligned++
-		}
 	}
 	if stale < 3 || stale > active/4 {
 		t.Errorf("want a few Stale Goals among %d Active, got %d", active, stale)
 	}
-	if unaligned < 3 {
-		t.Errorf("want a few Unaligned Goals, got %d", unaligned)
+
+	topLevel := map[string]bool{}
+	for _, g := range listGoals(t, h) {
+		if g.TopLevel {
+			topLevel[g.Title] = true
+		}
 	}
+	wantTopLevel := []string{
+		"Be trustworthy at scale",
+		"Delight customers in their first week",
+		"Grow net revenue retention",
+	}
+	if got := sortedKeys(topLevel); !slices.Equal(got, wantTopLevel) {
+		t.Errorf("Top-level Goals = %q, want the org outcomes %q", got, wantTopLevel)
+	}
+
+	signals, err := h.Service.GraphSignals(ctx)
+	if err != nil {
+		t.Fatalf("GraphSignals: %v", err)
+	}
+	unaligned := map[string]bool{}
+	for _, g := range signals.Unaligned {
+		unaligned[g.Title] = true
+	}
+	wantUnaligned := []string{
+		"Evaluate ARM build agents",
+		"Prototype a natural-language query assistant",
+		"Refresh brand illustrations",
+		"Spike: instant payouts",
+		"Tablet layout exploration",
+	}
+	if got := sortedKeys(unaligned); len(signals.Unaligned) != len(got) || !slices.Equal(got, wantUnaligned) {
+		t.Errorf("Unaligned Goals = %q, want exactly the side projects %q", got, wantUnaligned)
+	}
+}
+
+func sortedKeys(set map[string]bool) []string {
+	return slices.Sorted(maps.Keys(set))
 }
 
 // Not every Goal is Active: some were finished Done with an outcome, some put
@@ -322,14 +349,14 @@ func deterministic(t *testing.T, h *testsupport.Harness) {
 	}
 }
 
-// fingerprint renders every Goal with its Lifecycle, dates, parents, and full
-// Check-in, Date Slip, and Milestone history.
+// fingerprint renders every Goal with its Lifecycle, dates, Top-level mark,
+// parents, and full Check-in, Date Slip, and Milestone history.
 func fingerprint(t *testing.T, h *testsupport.Harness) string {
 	t.Helper()
 	ctx := context.Background()
 	var b strings.Builder
 	for _, g := range listGoals(t, h) {
-		fmt.Fprintf(&b, "%d %q owner=%s %s %s due=%s cadence=%d\n", g.ID, g.Title, g.Owner.Email, g.Lifecycle, g.Kind, g.DeliveryDate.Format(time.DateOnly), g.CadenceDays)
+		fmt.Fprintf(&b, "%d %q owner=%s %s %s due=%s cadence=%d top=%t\n", g.ID, g.Title, g.Owner.Email, g.Lifecycle, g.Kind, g.DeliveryDate.Format(time.DateOnly), g.CadenceDays, g.TopLevel)
 		parents, _ := h.Service.ParentsOf(ctx, g.ID)
 		for _, p := range parents {
 			fmt.Fprintf(&b, "  parent %d\n", p.ID)

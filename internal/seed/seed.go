@@ -1,9 +1,10 @@
 // Package seed builds a fake but realistic org so a developer can demo the
 // prototype without real data (ticket #23). It fills a fresh database the way
-// the org itself would: an Admin defines a Team Dimension and imports the Goals
-// through the spreadsheet import (internal/importer), then the Owners activate
-// them and write weeks of Check-ins through the domain commands — Health, Paths
-// to Green, Metric readings, Date Slips, Milestone Churn, and Lifecycle changes.
+// the org itself would: an Admin defines a Team Dimension, imports the Goals
+// through the spreadsheet import (internal/importer), and marks the org
+// outcomes Top-level Goals, then the Owners activate them and write weeks of
+// Check-ins through the domain commands — Health, Paths to Green, Metric
+// readings, Date Slips, Milestone Churn, and Lifecycle changes.
 // Nothing is written to the database directly.
 //
 // The org is deterministic: the same random seed and the same end date build
@@ -96,6 +97,14 @@ func Run(ctx context.Context, svc *domain.Service, clk *clock.Fixed, opts Option
 	}
 	for i, row := range rep.Rows {
 		plan.goals[i].id = row.GoalID
+	}
+	for _, g := range plan.goals {
+		if g.level != 1 {
+			continue
+		}
+		if _, err := svc.MarkTopLevel(ctx, admin.ID, g.id); err != nil {
+			return Summary{}, fmt.Errorf("mark %q Top-level: %w", g.title, err)
+		}
 	}
 
 	hist := &history{svc: svc, clk: clk, rng: rng, end: end}
