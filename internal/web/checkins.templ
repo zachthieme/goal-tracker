@@ -8,7 +8,7 @@ import (
 
 // checkinFormData is the state the Check-in form renders from: the Goal it posts
 // to, the prefilled Health, status, and Path to Green, and an optional
-// validation message shown next to the Path to Green field.
+// validation error shown next to the field it is about.
 type checkinFormData struct {
 	GoalID         int64
 	Health         string
@@ -36,7 +36,15 @@ type checkinFormData struct {
 	// Lifecycle is the Lifecycle change the reader is making, if any
 	// (CONTEXT.md: Lifecycle).
 	Lifecycle lifecycleFormData
-	Error     string
+	Error     checkinError
+}
+
+// checkinError is a Check-in validation message and the field it is about,
+// named as the form names the field's input (e.g. "explanation"), so the form
+// shows the message next to that field.
+type checkinError struct {
+	Field   string
+	Message string
 }
 
 // lifecycleFormData is the Check-in form's Lifecycle fields as typed. Current is
@@ -235,8 +243,7 @@ templ checkinSection(v goalView, canCheckin bool) {
 
 // checkinForm is the Owner's Check-in form. It posts with htmx and targets
 // itself, so a validation error re-renders it in place with the message next to
-// the Path to Green field (CONTEXT.md: Path to Green is required when Yellow or
-// Red).
+// the field it is about.
 templ checkinForm(d checkinFormData) {
 	<form
 		id="checkin-form"
@@ -263,6 +270,7 @@ templ checkinForm(d checkinFormData) {
 				Explanation (required if your Health differs from the Rolled-up Health)
 				<textarea name="explanation" data-testid="checkin-explanation">{ d.Explanation }</textarea>
 			</label>
+			@checkinFieldError(d.Error, "explanation")
 		}
 		<label>
 			Status
@@ -278,9 +286,7 @@ templ checkinForm(d checkinFormData) {
 				Back to Green by
 				<input type="date" name="path_target_date" value={ d.PathTargetDate }/>
 			</label>
-			if d.Error != "" {
-				<p data-testid="checkin-error" role="alert">{ d.Error }</p>
-			}
+			@checkinFieldError(d.Error, "path_to_green")
 		</fieldset>
 		@checkinLifecycleFields(d.Lifecycle)
 		@checkinDateFields(d.Dates)
@@ -410,4 +416,12 @@ templ checkinLifecycleFields(d lifecycleFormData) {
 			</label>
 		}
 	</fieldset>
+}
+
+// checkinFieldError shows the form's validation message when it is about the
+// named field.
+templ checkinFieldError(e checkinError, field string) {
+	if e.Message != "" && e.Field == field {
+		<p data-testid="checkin-error" role="alert">{ e.Message }</p>
+	}
 }

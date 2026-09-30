@@ -561,3 +561,48 @@ func TestCheckinFormPrefillsLatestReadings(t *testing.T) {
 		t.Errorf("Referrals has no readings, so its input should be blank (want %s); form:\n%s", want, form)
 	}
 }
+
+// A Green Check-in on a Goal whose Rolled-up Health is Red, sent without an
+// explanation, gets its error next to the explanation field — not under the
+// Path to Green.
+func TestCheckinExplanationErrorShownNextToExplanationField(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	parent := h.ActiveGoal(sam, "Parent", "It matters.")
+	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red so what.")
+	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
+
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, parent.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"Looks fine."},
+	})
+	msg := fieldError(t, body, `name="explanation"`)
+	if !strings.Contains(msg, "differs from the Rolled-up Health") {
+		t.Errorf("explanation field's error = %q, want the Rolled-up Health one", msg)
+	}
+}
+
+// fieldError returns the form's one validation error, failing unless it sits
+// right after the field matched by fieldMarker — after that field and before
+// the next field's label — so it is shown next to the field it is about.
+func fieldError(t *testing.T, body, fieldMarker string) string {
+	t.Helper()
+	if n := strings.Count(body, `data-testid="checkin-error"`); n != 1 {
+		t.Fatalf("form shows %d validation errors, want 1; body:\n%s", n, body)
+	}
+	field := strings.Index(body, fieldMarker)
+	if field < 0 {
+		t.Fatalf("form has no field %s; body:\n%s", fieldMarker, body)
+	}
+	after := body[field:]
+	if next := strings.Index(after[1:], "<label"); next >= 0 {
+		after = after[:next+1]
+	}
+	if !strings.Contains(after, `data-testid="checkin-error"`) {
+		t.Fatalf("the error is not next to %s; body:\n%s", fieldMarker, body)
+	}
+	return pageElement(t, after, "p", "checkin-error")
+}

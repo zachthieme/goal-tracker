@@ -12,7 +12,7 @@ import (
 
 // handleSubmitCheckin records a Check-in on the Goal in the path, written by the
 // current Account. The form is htmx-driven: on a validation error the form is
-// re-rendered in place with the message next to the Path to Green field; on
+// re-rendered in place with the message next to the field it is about; on
 // success htmx is told to reload the Goal page so the new history and current
 // Health show.
 func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, current domain.Account) {
@@ -56,7 +56,8 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	formData := func(msg string) checkinFormData {
 		return checkinFormData{
 			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, Explanation: explanation,
-			Metrics: metrics, Readings: rawReadings, Highlight: highlight, Dates: dates, Lifecycle: lifecycle, Error: msg,
+			Metrics: metrics, Readings: rawReadings, Highlight: highlight, Dates: dates, Lifecycle: lifecycle,
+			Error: checkinError{Field: checkinErrorField(msg), Message: msg},
 		}
 	}
 
@@ -103,6 +104,18 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	s.checkinRedirect(w, r, goalID)
+}
+
+// checkinErrorField names the form field a Check-in validation message is
+// about. The domain reports a Check-in's validation errors as messages, so the
+// field is read from the message's wording.
+func checkinErrorField(msg string) string {
+	switch {
+	case strings.Contains(msg, "differs from the Rolled-up Health"):
+		return "explanation"
+	default:
+		return "path_to_green"
+	}
 }
 
 // rawReadingsFromForm reads the reading_<metricID> field for each of the Goal's
