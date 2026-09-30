@@ -19,6 +19,20 @@ type Contributor struct {
 	CreatedAt string
 }
 
+type Dimension struct {
+	ID        int64
+	Name      string
+	CreatedAt string
+}
+
+type DimensionValue struct {
+	ID          int64
+	DimensionID int64
+	Value       string
+	Retired     int64
+	CreatedAt   string
+}
+
 type Goal struct {
 	ID           int64
 	Title        string
@@ -29,6 +43,13 @@ type Goal struct {
 	Kind         string
 	DeliveryDate string
 	CadenceDays  int64
+}
+
+type GoalDimensionValue struct {
+	ID               int64
+	GoalID           int64
+	DimensionValueID int64
+	CreatedAt        string
 }
 
 type Handoff struct {
