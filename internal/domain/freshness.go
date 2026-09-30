@@ -2,6 +2,8 @@ package domain
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"time"
 )
 
@@ -39,6 +41,52 @@ func (s *Service) Freshness(ctx context.Context, goalID int64) (Freshness, error
 		return Freshness{}, err
 	}
 	return s.judgeFreshness(g, latest), nil
+}
+
+// GoalFreshness is a Goal with its freshness signals.
+type GoalFreshness struct {
+	Goal      Goal
+	Freshness Freshness
+}
+
+// FreshnessSignals are the org-wide freshness signals: every Stale Goal,
+// longest-silent first, and every Goal whose Path to Green is overdue, longest
+// overdue first. Missing updates and stalled recoveries surface as prominently
+// as Red.
+type FreshnessSignals struct {
+	Stale        []GoalFreshness
+	OverduePaths []GoalFreshness
+}
+
+// FreshnessSignals reads the freshness signals of every Active Goal.
+func (s *Service) FreshnessSignals(ctx context.Context) (FreshnessSignals, error) {
+	rows, err := s.queries.ListActiveGoalsWithLatestCheckin(ctx)
+	if err != nil {
+		return FreshnessSignals{}, fmt.Errorf("list active goals: %w", err)
+	}
+	var out FreshnessSignals
+	for _, r := range rows {
+		g := goalFromRow(r.Goal, r.Account)
+		// Only the parts of the latest Check-in that judge freshness are read.
+		var latest Checkin
+		latest.CreatedAt, _ = time.Parse(timeFormat, r.CheckinCreatedAt)
+		latest.Health = r.CheckinHealth
+		latest.PathTargetDate, _ = time.Parse(dateFormat, r.CheckinPathTargetDate)
+		gf := GoalFreshness{Goal: g, Freshness: s.judgeFreshness(g, latest)}
+		if gf.Freshness.Stale {
+			out.Stale = append(out.Stale, gf)
+		}
+		if gf.Freshness.PathToGreenOverdue {
+			out.OverduePaths = append(out.OverduePaths, gf)
+		}
+	}
+	slices.SortStableFunc(out.Stale, func(a, b GoalFreshness) int {
+		return a.Freshness.LastUpdate.Compare(b.Freshness.LastUpdate)
+	})
+	slices.SortStableFunc(out.OverduePaths, func(a, b GoalFreshness) int {
+		return a.Freshness.PathTargetDate.Compare(b.Freshness.PathTargetDate)
+	})
+	return out, nil
 }
 
 // judgeFreshness applies the Stale and overdue-Path-to-Green rules to g, whose

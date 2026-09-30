@@ -169,3 +169,40 @@ func TestRolledUpHealthCountsStaleChildrenWithoutChangingTheColor(t *testing.T) 
 		t.Errorf("Stale children = %d of %d, want 2 of 3", got.StaleChildren, got.ActiveChildren)
 	}
 }
+
+// The org-wide freshness signals list every Stale Goal, longest-silent first,
+// and every Goal whose Path to Green is overdue. Fresh Goals, On Hold Goals, and
+// Proposed Goals aren't listed.
+func TestFreshnessSignalsListStaleGoalsAndOverduePaths(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	silent := h.ActiveGoal(sam, "Silent since activation", "It matters.")
+	h.OnHoldGoal(sam, "Paused work", "It mattered.", "Budget freeze.")
+	h.CreateGoal(sam, "Still an idea", "Maybe.")
+	h.Clock.Advance(3 * day)
+	lapsed := h.ActiveGoal(sam, "Lapsed", "It matters.")
+	h.Checkin(sam, lapsed.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(9 * day)
+	fresh := h.ActiveGoal(sam, "Fresh", "It matters.")
+	h.Checkin(sam, fresh.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	stalled := h.ActiveGoal(sam, "Stalled recovery", "It matters.")
+	h.Checkin(sam, stalled.ID, domain.HealthRed, "Blocked.", "Escalate.", time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC))
+
+	got, err := h.Service.FreshnessSignals(context.Background())
+	if err != nil {
+		t.Fatalf("FreshnessSignals: %v", err)
+	}
+	var stale []string
+	for _, gf := range got.Stale {
+		stale = append(stale, gf.Goal.Title)
+	}
+	if want := []string{"Silent since activation", "Lapsed"}; !equalStrings(stale, want) {
+		t.Errorf("Stale Goals = %q, want %q (longest-silent first)", stale, want)
+	}
+	if len(got.OverduePaths) != 1 || got.OverduePaths[0].Goal.ID != stalled.ID {
+		t.Errorf("overdue Paths to Green = %+v, want only %q", got.OverduePaths, stalled.Title)
+	}
+	if !got.Stale[0].Freshness.LastUpdate.Equal(silent.ActivatedAt) || got.Stale[0].Freshness.DaysSince != 12 {
+		t.Errorf("Silent Goal's last update, days since = %v, %d; want its activation %v, 12 days", got.Stale[0].Freshness.LastUpdate, got.Stale[0].Freshness.DaysSince, silent.ActivatedAt)
+	}
+}
