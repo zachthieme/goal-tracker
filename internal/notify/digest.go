@@ -74,6 +74,9 @@ func (n *Notifier) SendReminders(ctx context.Context) error {
 	return out.send(ctx, n.sender, "Your Check-ins this week", n.reminderBody)
 }
 
+// dateFormat is how calendar dates read in emails.
+const dateFormat = "2006-01-02"
+
 // daysPerWeek is how far apart the weekly emails are, in days of the org's
 // calendar.
 const daysPerWeek = 7
@@ -172,7 +175,7 @@ func (n *Notifier) SendDigests(ctx context.Context) error {
 
 // childProblems says what went wrong this week with child, a Goal that
 // contributes to one of the recipient's: whether its Health got worse, to
-// Yellow or to Red, since weekStart.
+// Yellow or to Red, and each Date Slip it recorded since weekStart.
 func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekStart time.Time) ([]string, error) {
 	if child.Lifecycle != domain.LifecycleActive {
 		return nil, nil
@@ -184,6 +187,21 @@ func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekSta
 	var reasons []string
 	if now, before := healthAt(checkins, time.Time{}), healthAt(checkins, weekStart); worsened(before, now) {
 		reasons = append(reasons, "went "+now)
+	}
+	slips, err := n.svc.ListDateSlips(ctx, child.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, sl := range slips {
+		if !sl.CreatedAt.After(weekStart) {
+			continue
+		}
+		what := "its delivery date"
+		if sl.MilestoneID != 0 {
+			what = "a Milestone"
+		}
+		reasons = append(reasons, fmt.Sprintf("slipped %s from %s to %s (%s)",
+			what, sl.OldDate.Format(dateFormat), sl.NewDate.Format(dateFormat), sl.Reason))
 	}
 	return reasons, nil
 }

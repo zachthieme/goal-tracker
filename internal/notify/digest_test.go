@@ -254,3 +254,49 @@ func TestDigestListsChildrenThatWentYellowOrRedThisWeek(t *testing.T) {
 		}
 	}
 }
+
+// slip moves goal's delivery date a month later in a Yellow Check-in, recording
+// a Date Slip.
+func slip(h *testsupport.Harness, author domain.Account, goal domain.Goal) {
+	h.T.Helper()
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:             goal.ID,
+		AuthorID:           author.ID,
+		Health:             domain.HealthYellow,
+		Status:             "Vendor is late.",
+		PathToGreen:        "Chase the vendor.",
+		PathTargetDate:     h.Clock.Now().AddDate(0, 1, 0),
+		DeliveryDate:       goal.DeliveryDate.AddDate(0, 1, 0),
+		DeliveryDateReason: "Vendor is late.",
+	}); err != nil {
+		h.T.Fatalf("SubmitCheckin with a Date Slip: %v", err)
+	}
+}
+
+// The digest names a child that recorded a Date Slip this week, but not one
+// whose only slip was the week before.
+func TestDigestListsChildrenThatSlippedThisWeek(t *testing.T) {
+	h := testsupport.New(t)
+	pat := h.SignIn("pat@example.com")
+	kim := h.SignIn("kim@example.com")
+	parent := h.ActiveGoal(pat, "Grow revenue", "It pays for everything.")
+	slippedLastWeek := childOf(h, kim, parent, "Cut churn")
+	slippedThisWeek := childOf(h, kim, parent, "Launch pricing page")
+	slip(h, kim, slippedLastWeek)
+	h.Clock.Advance(8 * day)
+	checkinHealth(h, kim, slippedLastWeek.ID, domain.HealthYellow)
+	slip(h, kim, slippedThisWeek)
+	h.Clock.Advance(1 * day)
+
+	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
+		t.Fatalf("SendDigests: %v", err)
+	}
+
+	body := digestTo(t, h.Email, "pat@example.com")
+	if !strings.Contains(body, "Launch pricing page") || !strings.Contains(body, "slipped") {
+		t.Errorf("digest does not say Launch pricing page slipped:\n%s", body)
+	}
+	if strings.Contains(body, "Cut churn") {
+		t.Errorf("digest mentions Cut churn, which slipped the week before:\n%s", body)
+	}
+}
