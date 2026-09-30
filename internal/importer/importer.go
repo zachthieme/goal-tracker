@@ -569,9 +569,106 @@ func parseXLSX(data []byte) ([][]string, error) {
 	if len(sheets) == 0 {
 		return nil, fmt.Errorf("%w: the workbook has no worksheets", domain.ErrValidation)
 	}
-	rows, err := f.GetRows(sheets[0])
+	sheet := sheets[0]
+	rows, err := f.GetRows(sheet)
 	if err != nil {
-		return nil, fmt.Errorf("%w: could not read worksheet %q: %v", domain.ErrValidation, sheets[0], err)
+		return nil, fmt.Errorf("%w: could not read worksheet %q: %v", domain.ErrValidation, sheet, err)
+	}
+	raw, err := f.GetRows(sheet, excelize.Options{RawCellValue: true})
+	if err != nil {
+		return nil, fmt.Errorf("%w: could not read worksheet %q: %v", domain.ErrValidation, sheet, err)
+	}
+	props, err := f.GetWorkbookProps()
+	if err != nil {
+		return nil, fmt.Errorf("%w: could not read XLSX: %v", domain.ErrValidation, err)
+	}
+	date1904 := props.Date1904 != nil && *props.Date1904
+
+	// A date cell holds a number that its format displays as a date — as
+	// 06-30-26, or as Jul-26 for the first of a month — so its displayed text is
+	// no use to the importer. Read every date cell as YYYY-MM-DD instead, in
+	// whichever column it sits.
+	for r, row := range rows {
+		for c, shown := range row {
+			if r >= len(raw) || c >= len(raw[r]) || raw[r][c] == shown {
+				continue
+			}
+			if d, ok := dateCell(f, sheet, c+1, r+1, raw[r][c], date1904); ok {
+				row[c] = d.Format(dateFormat)
+			}
+		}
 	}
 	return rows, nil
+}
+
+// dateCell reports the date held by the cell at (col, row), whose raw value is
+// raw, and whether the cell is a date cell at all: a date-typed cell, or a number
+// whose format shows a date.
+func dateCell(f *excelize.File, sheet string, col, row int, raw string, date1904 bool) (time.Time, bool) {
+	ref, err := excelize.CoordinatesToCellName(col, row)
+	if err != nil {
+		return time.Time{}, false
+	}
+	if typ, err := f.GetCellType(sheet, ref); err == nil && typ == excelize.CellTypeDate {
+		// A date-typed cell stores an ISO 8601 date-time.
+		if len(raw) >= len(dateFormat) {
+			if d, err := parseDate(raw[:len(dateFormat)]); err == nil {
+				return d, true
+			}
+		}
+		return time.Time{}, false
+	}
+	serial, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+	styleID, err := f.GetCellStyle(sheet, ref)
+	if err != nil {
+		return time.Time{}, false
+	}
+	style, err := f.GetStyle(styleID)
+	if err != nil || !isDateFormat(style) {
+		return time.Time{}, false
+	}
+	t, err := excelize.ExcelDateToTime(serial, date1904)
+	if err != nil {
+		return time.Time{}, false
+	}
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC), true
+}
+
+// builtInDateFormats are the built-in number formats that show a date: 14–17
+// (m/d/yy, d-mmm-yy, d-mmm, mmm-yy) and 22 (m/d/yy h:mm). 18–21 and 45–47 show
+// only a time.
+var builtInDateFormats = map[int]bool{14: true, 15: true, 16: true, 17: true, 22: true}
+
+// isDateFormat reports whether a cell style's number format shows a date. A
+// custom format shows one when, outside its quoted text, bracketed locale and
+// colour codes, and escaped characters, it has a year or day token.
+func isDateFormat(style *excelize.Style) bool {
+	if style.CustomNumFmt == nil {
+		return builtInDateFormats[style.NumFmt]
+	}
+	code := strings.ToLower(*style.CustomNumFmt)
+	var inQuote, inBracket, escaped bool
+	for _, ch := range code {
+		switch {
+		case escaped:
+			escaped = false
+		case inQuote:
+			inQuote = ch != '"'
+		case inBracket:
+			inBracket = ch != ']'
+		case ch == '"':
+			inQuote = true
+		case ch == '[':
+			inBracket = true
+		case ch == '\\', ch == '_', ch == '*':
+			escaped = true
+		case ch == 'y', ch == 'd':
+			return true
+		}
+	}
+	return false
 }

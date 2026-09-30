@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/xuri/excelize/v2"
 
@@ -333,5 +335,122 @@ func TestExampleFileDryRunsClean(t *testing.T) {
 	}
 	if len(rep.Rows) != 3 {
 		t.Errorf("example has %d rows, want 3", len(rep.Rows))
+	}
+}
+
+// xlsxOf builds a one-sheet XLSX workbook whose rows are written with excelize's
+// SetSheetRow, so a time.Time cell becomes a real date cell (a number with a date
+// format) the way Excel and Sheets store a typed date.
+func xlsxOf(t *testing.T, rows ...[]any) []byte {
+	t.Helper()
+	f := excelize.NewFile()
+	defer func() { _ = f.Close() }()
+	sheet := f.GetSheetName(0)
+	for r, row := range rows {
+		cellRef, err := excelize.CoordinatesToCellName(1, r+1)
+		if err != nil {
+			t.Fatalf("cell name: %v", err)
+		}
+		if err := f.SetSheetRow(sheet, cellRef, &row); err != nil {
+			t.Fatalf("set row: %v", err)
+		}
+	}
+	var buf bytes.Buffer
+	if _, err := f.WriteTo(&buf); err != nil {
+		t.Fatalf("write xlsx: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func date(y int, m time.Month, d int) time.Time {
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+// A date-typed Delivery Date cell — what Excel and Sheets make of a typed
+// 2026-06-30 — imports as its date, not as the displayed text (#30). The first
+// of a month is included because spreadsheets display it without the day.
+func TestXLSXDateCellsImportAsTheirDate(t *testing.T) {
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+
+	data := xlsxOf(t,
+		[]any{"Title", "Owner", "So What", "Kind", "Delivery Date"},
+		[]any{"Mid-month goal", "owner@example.com", "It matters.", "Dated", date(2026, time.June, 30)},
+		[]any{"First-of-month goal", "owner@example.com", "It matters.", "Dated", date(2026, time.July, 1)},
+		[]any{"Text-date goal", "owner@example.com", "It matters.", "Dated", "2026-08-15"},
+	)
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "goals.xlsx", data)
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if !rep.Committed || rep.HasErrors() {
+		t.Fatalf("xlsx with date cells not clean: committed=%v rows=%+v", rep.Committed, rep.Rows)
+	}
+	goals, err := h.Service.ListGoals(context.Background())
+	if err != nil {
+		t.Fatalf("ListGoals: %v", err)
+	}
+	got := map[string]string{}
+	for _, g := range goals {
+		got[g.Title] = g.DeliveryDate.Format("2006-01-02")
+	}
+	want := map[string]string{
+		"Mid-month goal":      "2026-06-30",
+		"First-of-month goal": "2026-07-01",
+		"Text-date goal":      "2026-08-15",
+	}
+	for title, w := range want {
+		if got[title] != w {
+			t.Errorf("%s DeliveryDate = %q, want %q", title, got[title], w)
+		}
+	}
+}
+
+// A date cell with a custom format — a UK sheet's d/m/yyyy — also imports as
+// its date, and a date cell in any column is read as YYYY-MM-DD: one in the
+// Milestones column shows up as such in the report (#30).
+func TestXLSXCustomFormatDateCells(t *testing.T) {
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+
+	f := excelize.NewFile()
+	defer func() { _ = f.Close() }()
+	sheet := f.GetSheetName(0)
+	for r, row := range [][]any{
+		{"Title", "Owner", "So What", "Kind", "Delivery Date", "Milestones"},
+		{"UK goal", "owner@example.com", "It matters.", "Dated", date(2026, time.June, 30), ""},
+		{"Nameless milestone", "owner@example.com", "It matters.", "Ongoing", "", date(2026, time.May, 1)},
+	} {
+		if err := f.SetSheetRow(sheet, fmt.Sprintf("A%d", r+1), &row); err != nil {
+			t.Fatalf("set row: %v", err)
+		}
+	}
+	ukDate := "d/m/yyyy"
+	style, err := f.NewStyle(&excelize.Style{CustomNumFmt: &ukDate})
+	if err != nil {
+		t.Fatalf("new style: %v", err)
+	}
+	for _, ref := range []string{"E2", "F3"} {
+		if err := f.SetCellStyle(sheet, ref, ref, style); err != nil {
+			t.Fatalf("set style: %v", err)
+		}
+	}
+	var buf bytes.Buffer
+	if _, err := f.WriteTo(&buf); err != nil {
+		t.Fatalf("write xlsx: %v", err)
+	}
+
+	rep, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.xlsx", buf.Bytes())
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	if len(rep.Rows) != 2 {
+		t.Fatalf("want 2 row results, got %+v", rep.Rows)
+	}
+	if len(rep.Rows[0].Errors) != 0 {
+		t.Errorf("UK-format Delivery Date rejected: %v", rep.Rows[0].Errors)
+	}
+	if joined := strings.Join(rep.Rows[1].Errors, "; "); !strings.Contains(joined, `"2026-05-01"`) {
+		t.Errorf("Milestones date cell errors = %v, want it read as \"2026-05-01\"", rep.Rows[1].Errors)
 	}
 }
