@@ -31,10 +31,9 @@ func (s *Server) handleRemoveDelegate(w http.ResponseWriter, r *http.Request, cu
 	writeDelegateResult(w, r, id, err)
 }
 
-// handleDelegatePage lists every Goal the current Account is a Delegate for and
-// lets them check in on each without sharing the Owner's login (CONTEXT.md:
-// Delegate). Each Goal carries a Check-in form prefilled from its latest
-// Check-in and its Rolled-up Health.
+// handleDelegatePage lists every Goal the current Account is a Delegate for,
+// each with its latest Check-in and how long ago that was, and links each to
+// the Check-in page (CONTEXT.md: Delegate).
 func (s *Server) handleDelegatePage(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	goals, err := s.svc.DelegatedGoals(r.Context(), current.ID)
 	if err != nil {
@@ -43,47 +42,34 @@ func (s *Server) handleDelegatePage(w http.ResponseWriter, r *http.Request, curr
 	}
 	items := make([]delegatedGoal, 0, len(goals))
 	for _, g := range goals {
+		item := delegatedGoal{Goal: g}
 		latest, ok, err := s.svc.LatestCheckin(r.Context(), g.ID)
 		if err != nil {
 			http.Error(w, "could not load latest check-in", http.StatusInternalServerError)
 			return
 		}
-		var latestPtr *domain.Checkin
 		if ok {
-			latestPtr = &latest
+			item.Latest = &latest
+			// With a Check-in, the Goal's last update is that Check-in, so its
+			// freshness has already counted the days since.
+			freshness, err := s.svc.Freshness(r.Context(), g.ID)
+			if err != nil {
+				http.Error(w, "could not read freshness", http.StatusInternalServerError)
+				return
+			}
+			item.DaysSince = freshness.DaysSince
 		}
-		rollup, err := s.svc.RolledUpHealth(r.Context(), g.ID)
-		if err != nil {
-			http.Error(w, "could not compute rolled-up health", http.StatusInternalServerError)
-			return
-		}
-		metrics, err := s.svc.ListMetrics(r.Context(), g.ID)
-		if err != nil {
-			http.Error(w, "could not load metrics", http.StatusInternalServerError)
-			return
-		}
-		milestones, err := s.svc.ListMilestones(r.Context(), g.ID)
-		if err != nil {
-			http.Error(w, "could not load milestones", http.StatusInternalServerError)
-			return
-		}
-		items = append(items, delegatedGoal{
-			Goal:   g,
-			Latest: latestPtr,
-			Form: checkinFormFromLatest(goalView{
-				Goal: g, LatestCheckin: latestPtr, RolledUp: rollup, Metrics: metrics, Milestones: milestones,
-			}),
-		})
+		items = append(items, item)
 	}
 	render(w, r, http.StatusOK, delegatePage(&current, items))
 }
 
-// delegatedGoal is one row of the Delegate's page: a Goal they may check in on,
-// its latest Check-in (nil when none yet), and the prefilled Check-in form.
+// delegatedGoal is one card on the Delegate's page: a Goal they may check in
+// on, its latest Check-in (nil when none yet), and how many days ago that was.
 type delegatedGoal struct {
-	Goal   domain.Goal
-	Latest *domain.Checkin
-	Form   checkinFormData
+	Goal      domain.Goal
+	Latest    *domain.Checkin
+	DaysSince int
 }
 
 // writeDelegateResult redirects back to the Goal on success and maps a domain

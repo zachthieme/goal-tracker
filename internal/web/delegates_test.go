@@ -44,8 +44,8 @@ func TestSmokeDelegateChecksInOnOwnersGoal(t *testing.T) {
 	if !strings.Contains(delegateBody, "Reduce outages") {
 		t.Errorf("delegate page does not list the delegated Goal; body:\n%s", delegateBody)
 	}
-	if !strings.Contains(delegateBody, `data-testid="checkin-form"`) {
-		t.Errorf("delegate page does not offer a Check-in form; body:\n%s", delegateBody)
+	if !strings.Contains(delegateBody, fmt.Sprintf(`href="/goals/%d/checkin"`, goal.ID)) {
+		t.Errorf("delegate page does not link to the Check-in page; body:\n%s", delegateBody)
 	}
 
 	// The Delegate checks in on the Goal.
@@ -116,4 +116,65 @@ func TestSmokeNonOwnerCannotAddDelegate(t *testing.T) {
 	if delegates, _ := h.Service.ListDelegates(context.Background(), goal.ID); len(delegates) != 0 {
 		t.Errorf("a Delegate was added by a non-Owner: %+v", delegates)
 	}
+}
+
+// The Delegate's page shows each delegated Goal as a card with its Health, its
+// Owner, when it was last checked in on, and a Check in link to the Check-in
+// page, rather than embedding the whole form.
+func TestDelegatePageShowsGoalCards(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	tpm := h.SignIn("tpm@example.com")
+	checked := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, tpm, checked.ID)
+	h.Checkin(tpm, checked.ID, domain.HealthYellow, "Wobbling.", "Add a second on-call.", testsupport.Epoch.AddDate(0, 2, 0))
+	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	h.AddDelegate(sam, tpm, proposed.ID)
+	h.Clock.Advance(3 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "tpm@example.com"), ts.URL+"/delegates")
+	if strings.Contains(page, `data-testid="checkin-form"`) {
+		t.Errorf("the Delegate page still embeds the Check-in form")
+	}
+	card := delegatedCard(t, page, checked)
+	if !strings.Contains(openTag(card), "card") {
+		t.Errorf("a delegated Goal is not a card: %s", openTag(card))
+	}
+	for _, want := range []string{
+		"Reduce outages",
+		`class="badge y"`,
+		`data-testid="delegated-goal-health">Yellow<`,
+		`data-testid="delegated-goal-owner">sam@example.com<`,
+		"3 days ago",
+		fmt.Sprintf(`href="/goals/%d/checkin"`, checked.ID),
+	} {
+		if !strings.Contains(card, want) {
+			t.Errorf("card lacks %s:\n%s", want, card)
+		}
+	}
+
+	rest := delegatedCard(t, page, proposed)
+	if strings.Contains(rest, fmt.Sprintf(`href="/goals/%d/checkin"`, proposed.ID)) {
+		t.Errorf("a Proposed Goal offers Check in: %s", rest)
+	}
+	if !strings.Contains(rest, `data-testid="delegated-goal-no-health"`) || !strings.Contains(rest, `data-testid="delegated-goal-not-active"`) {
+		t.Errorf("a Proposed Goal's card doesn't say it has no Check-ins and can't be checked in on: %s", rest)
+	}
+}
+
+// delegatedCard returns the Delegate page's card for g, from its opening <li>
+// to its close.
+func delegatedCard(t *testing.T, page string, g domain.Goal) string {
+	t.Helper()
+	at := strings.Index(page, navTo(g.ID))
+	if at < 0 {
+		t.Fatalf("the Delegate page doesn't list %s:\n%s", g.Title, page)
+	}
+	start := strings.LastIndex(page[:at], `<li data-testid="delegated-goal"`)
+	if start < 0 {
+		t.Fatalf("%s isn't in a delegated-goal card", g.Title)
+	}
+	return between(t, page[start:], "", "</li>")
 }
