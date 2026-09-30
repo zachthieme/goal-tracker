@@ -1,0 +1,6 @@
+# Keep machine-local state (including the agent credential in .env) out of the
+# docker build context.
+.vetinari.local/
+.git/
+bin/
+node_modules/
