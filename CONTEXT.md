@@ -57,8 +57,12 @@ The relationship from a child Goal to a parent Goal it helps achieve. A Goal may
 _Avoid_: rolls up to, parent/child hierarchy, alignment
 
 **Unaligned**:
-An Active Goal that contributes to no other Goal. Allowed, but listed where leadership can see it.
-_Avoid_: orphan, top-level, root
+An Active Goal that contributes to no other Goal and is not a Top-level Goal. Allowed, but listed where leadership can see it.
+_Avoid_: orphan, root
+
+**Top-level Goal**:
+A Goal an Admin has marked as one of the org's root outcomes. It isn't expected to contribute to anything, so it's never Unaligned.
+_Avoid_: root, north star, company goal
 
 **Dimension**:
 An admin-defined attribute with a fixed list of values (e.g. pillar, quarter, goal kind), used to filter and group Goals.
