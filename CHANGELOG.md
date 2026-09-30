@@ -88,6 +88,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The print page is set in Source Serif 4 (falling back to Georgia) and marks Health with a shape as well as its name — ■ Red, ▲ Yellow, ● Green — so it survives black-and-white printing (#39).
 
 **Bug fixes:**
+- [internal] The build compiles again after the reports (#39) and Check-in (#37) redesigns merged together: each had added an identical `healthClass` helper to the `web` package; the Check-in copy is removed and both pages use the one in `reports.templ`.
 - [user] Creating a child Goal from a parent's page is all-or-nothing. If a kept default fails to assign (a value retired after the form loaded, say) or the link can't be requested, no Goal is left behind, and the parent's page comes back with the error and the title, So What, and checked defaults as typed (#26).
 - [user] The Check-in form's errors read naturally: cancelling a Goal without a reason says "cancelling a Goal needs a reason", and a Metric reading that isn't a number names the Metric (`"Signups" needs a number`) instead of its database id (#29).
 - [user] The Check-in form pre-fills each Metric's reading with its latest value, like the rest of the form, so a "same as last week" Check-in stays one click (#29).

@@ -400,21 +400,6 @@ templ noChangeCheckinButton(goalID int64, label string) {
 	</form>
 }
 
-// healthClass is the badge class for a Health: each has its own colour and
-// shape, so it reads without colour too.
-func healthClass(health string) string {
-	switch health {
-	case domain.HealthGreen:
-		return "g"
-	case domain.HealthYellow:
-		return "y"
-	case domain.HealthRed:
-		return "r"
-	default:
-		return "lc"
-	}
-}
-
 // checkinPage is the Check-in on its own page, reached from the Goal page by
 // the Owner or a Delegate: a breadcrumb back to the Goal, then the one-click
 // "no change" card when there is a previous Check-in to repeat, then the form,
