@@ -90,7 +90,12 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 		http.Error(w, "could not load publications", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, reportDraftPage(&current, report, pubs))
+	d, err := s.draftDiscussion(r, current, def.ID)
+	if err != nil {
+		http.Error(w, "could not load Action Items", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, reportDraftPage(&current, report, pubs, d))
 }
 
 // handlePublishReport publishes a Report Definition, freezing its Report
@@ -123,13 +128,19 @@ func (s *Server) handlePublishReport(w http.ResponseWriter, r *http.Request, cur
 	http.Redirect(w, r, publicationPath(pub), http.StatusSeeOther)
 }
 
-// handleViewPublication shows a published Report exactly as it was frozen.
+// handleViewPublication shows a published Report exactly as it was frozen,
+// with its discussion: comments and Action Items raised since.
 func (s *Server) handleViewPublication(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	pub, ok := s.publication(w, r)
 	if !ok {
 		return
 	}
-	render(w, r, http.StatusOK, publicationPage(&current, pub))
+	d, err := s.publicationDiscussion(r, current, pub)
+	if err != nil {
+		http.Error(w, "could not load the discussion", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, publicationPage(&current, pub, d))
 }
 
 // handlePrintPublication shows a published Report on a print-friendly page, to

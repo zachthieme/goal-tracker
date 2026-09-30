@@ -13,7 +13,7 @@ import (
 
 // Markdown renders a published Report as Markdown with the same content as its
 // snapshot page: who published it and when, what it read its changes against,
-// the introduction, each exception's full MBR block, and every other selected
+// its open Action Items, the introduction, each exception's full MBR block, and every other selected
 // Goal one line (CONTEXT.md: Report).
 func Markdown(p domain.Publication) string {
 	var b strings.Builder
@@ -24,6 +24,12 @@ func Markdown(p domain.Publication) string {
 		fmt.Fprintf(&b, "Changes since the previous publication, %s.\n", fmtPublished(r.Previous.PublishedAt))
 	} else {
 		fmt.Fprintf(&b, "Changes since %s.\n", fmtDate(r.Baseline))
+	}
+	if len(r.ActionItems) > 0 {
+		b.WriteString("\n## Open Action Items\n\n")
+		for _, item := range r.ActionItems {
+			fmt.Fprintf(&b, "- %s — %s — due %s\n", text(item.Text), text(item.Owner.Email), fmtDate(item.DueDate))
+		}
 	}
 	if r.Definition.Introduction != "" {
 		fmt.Fprintf(&b, "\n%s\n", text(r.Definition.Introduction))

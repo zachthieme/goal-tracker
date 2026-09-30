@@ -52,11 +52,11 @@ func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseAc
 	if err != nil {
 		return ActionItem{}, err
 	}
-	def, err := s.queries.GetReportDefinition(ctx, pub.DefinitionID)
+	author, err := s.isReportAuthor(ctx, actorID, pub)
 	if err != nil {
-		return ActionItem{}, fmt.Errorf("get report definition: %w", err)
+		return ActionItem{}, err
 	}
-	if actorID != def.CreatedBy && actorID != pub.PublishedBy.ID {
+	if !author {
 		return ActionItem{}, fmt.Errorf("%w: only the Report's author raises Action Items", ErrNotAuthorized)
 	}
 	text := strings.TrimSpace(in.Text)
@@ -89,7 +89,7 @@ func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseAc
 		return ActionItem{}, fmt.Errorf("%w: %s has left the org", ErrValidation, owner.Email)
 	}
 	row, err := s.queries.CreateActionItem(ctx, db.CreateActionItemParams{
-		ReportDefinitionID: def.ID,
+		ReportDefinitionID: pub.DefinitionID,
 		PublicationID:      pub.ID,
 		CommentID:          in.CommentID,
 		Text:               text,
@@ -102,6 +102,28 @@ func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseAc
 		return ActionItem{}, fmt.Errorf("create action item: %w", err)
 	}
 	return s.actionItemFromRow(ctx, row)
+}
+
+// IsReportAuthor reports whether actorID is the author of the published Report
+// pubID — who saved its Definition, or who published it — and so may raise
+// Action Items on it.
+func (s *Service) IsReportAuthor(ctx context.Context, actorID, pubID int64) (bool, error) {
+	pub, err := s.GetPublication(ctx, pubID)
+	if err != nil {
+		return false, err
+	}
+	return s.isReportAuthor(ctx, actorID, pub)
+}
+
+func (s *Service) isReportAuthor(ctx context.Context, actorID int64, pub Publication) (bool, error) {
+	if actorID == pub.PublishedBy.ID {
+		return true, nil
+	}
+	def, err := s.queries.GetReportDefinition(ctx, pub.DefinitionID)
+	if err != nil {
+		return false, fmt.Errorf("get report definition: %w", err)
+	}
+	return actorID == def.CreatedBy, nil
 }
 
 // RaiseActionItemByEmail raises an Action Item owned by the Account with the

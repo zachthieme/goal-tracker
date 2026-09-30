@@ -1,0 +1,146 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// reportActionItems lists a Report's open Action Items at its top, soonest due
+// first, each with its owner and due date (CONTEXT.md: Action Item). An owner
+// reading it while the item is still open gets the form to close it.
+templ reportActionItems(items []domain.ActionItem, d discussion) {
+	if len(items) > 0 {
+		<section data-testid="report-action-items">
+			<h2>Open Action Items</h2>
+			<ul>
+				for _, item := range items {
+					<li data-testid="open-action-item">
+						{ item.Text }
+						<span>— { item.Owner.Email }, due { fmtDate(item.DueDate) }</span>
+						if d.canClose(item) {
+							@closeActionItemForm(item, d)
+						}
+					</li>
+				}
+			</ul>
+		</section>
+	}
+}
+
+// goalDiscussion is the discussion under one Goal's block in a published
+// Report: its comment threads, each with a reply form, and the form to start
+// a new one. The Report's author may turn any comment into an Action Item.
+templ goalDiscussion(goalID int64, d discussion) {
+	if d.Pub != nil {
+		<section data-testid="goal-discussion">
+			for _, t := range d.Threads[goalID] {
+				<div data-testid="comment-thread">
+					@comment(t.Comment, d)
+					for _, reply := range t.Replies {
+						@comment(reply, d)
+					}
+					<form data-testid="reply-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/comments/%d/replies", t.Comment.ID)) }>
+						<label>
+							Reply
+							<input type="text" name="body" required/>
+						</label>
+						<button type="submit">Reply</button>
+					</form>
+				</div>
+			}
+			<form data-testid="comment-form" method="post" action={ templ.SafeURL(publicationPath(*d.Pub) + "/comments") }>
+				<input type="hidden" name="goal" value={ fmt.Sprintf("%d", goalID) }/>
+				<label>
+					Comment
+					<input type="text" name="body" required/>
+				</label>
+				<button type="submit">Comment</button>
+			</form>
+		</section>
+	}
+}
+
+// comment is one comment in a thread: who wrote it, when, and what it says.
+// The Report's author gets the form to turn it into an Action Item.
+templ comment(c domain.Comment, d discussion) {
+	<p data-testid="comment">
+		<strong>{ c.Author.Email }</strong>{ " · " }{ fmtPublished(c.CreatedAt) }
+		<br/>
+		{ c.Body }
+	</p>
+	if d.Author {
+		<form data-testid="comment-action-item-form" method="post" action={ templ.SafeURL(publicationPath(*d.Pub) + "/action-items") }>
+			<input type="hidden" name="comment" value={ fmt.Sprintf("%d", c.ID) }/>
+			@actionItemFields(false)
+			<button type="submit">Make Action Item</button>
+		</form>
+	}
+}
+
+// publicationActionItems lists the Action Items raised on a publication, open
+// or closed with the owner's note, and gives the Report's author the form to
+// create one directly.
+templ publicationActionItems(d discussion) {
+	<section id="action-items" data-testid="publication-action-items">
+		<h2>Action Items raised here</h2>
+		<ul>
+			if len(d.Raised) == 0 {
+				<li data-testid="no-action-items">None yet.</li>
+			}
+			for _, item := range d.Raised {
+				<li data-testid="raised-action-item">
+					{ item.Text }
+					<span>— { item.Owner.Email }, due { fmtDate(item.DueDate) }</span>
+					if item.Closed {
+						{ " " }<strong>[Closed { fmtDate(item.ClosedAt) }]</strong>
+						<span data-testid="action-item-note">— { item.ClosingNote }</span>
+					}
+					if d.canClose(item) {
+						@closeActionItemForm(item, d)
+					}
+				</li>
+			}
+		</ul>
+		if d.Author {
+			<form data-testid="action-item-form" method="post" action={ templ.SafeURL(publicationPath(*d.Pub) + "/action-items") }>
+				@actionItemFields(true)
+				<button type="submit">Add Action Item</button>
+			</form>
+		}
+	</section>
+}
+
+// actionItemFields are the fields an Action Item is raised with: its owner by
+// email and its due date, and its description — required when it is created
+// directly, and otherwise defaulting to the comment's.
+templ actionItemFields(textRequired bool) {
+	<label>
+		Action Item
+		if textRequired {
+			<input type="text" name="text" required/>
+		} else {
+			<input type="text" name="text" placeholder="Defaults to the comment"/>
+		}
+	</label>
+	<label>
+		Owner
+		<input type="email" name="owner" required/>
+	</label>
+	<label>
+		Due
+		<input type="date" name="due" required/>
+	</label>
+}
+
+// closeActionItemForm lets an Action Item's owner close it with a note.
+templ closeActionItemForm(item domain.ActionItem, d discussion) {
+	<form data-testid="close-action-item" method="post" action={ templ.SafeURL(fmt.Sprintf("/action-items/%d/close", item.ID)) }>
+		<input type="hidden" name="return" value={ d.Return }/>
+		<label>
+			Closing note
+			<input type="text" name="note" required/>
+		</label>
+		<button type="submit">Close</button>
+	</form>
+}
