@@ -84,10 +84,11 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	if goal.Goal.Lifecycle != LifecycleActive {
 		return Checkin{}, fmt.Errorf("%w: only an Active Goal can be checked in on", ErrValidation)
 	}
-	// Only the Owner writes a Goal's Check-ins (CONTEXT.md: Owner). A Delegate is
-	// a later concept; until then the author is always the Owner.
-	if in.AuthorID != goal.Goal.OwnerID {
-		return Checkin{}, fmt.Errorf("%w: only the Owner may submit a Check-in", ErrNotAuthorized)
+	// The Owner writes a Goal's Check-ins, as may any Delegate the Owner has
+	// authorized; the Check-in records its author and still credits the Owner it
+	// speaks for (CONTEXT.md: Delegate).
+	if err := s.authorizeCheckinAuthor(ctx, goal.Goal.ID, goal.Goal.OwnerID, in.AuthorID); err != nil {
+		return Checkin{}, err
 	}
 
 	status := strings.TrimSpace(in.Status)
@@ -132,8 +133,8 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 	if goal.Goal.Lifecycle != LifecycleActive {
 		return Checkin{}, fmt.Errorf("%w: only an Active Goal can be checked in on", ErrValidation)
 	}
-	if authorID != goal.Goal.OwnerID {
-		return Checkin{}, fmt.Errorf("%w: only the Owner may submit a Check-in", ErrNotAuthorized)
+	if err := s.authorizeCheckinAuthor(ctx, goal.Goal.ID, goal.Goal.OwnerID, authorID); err != nil {
+		return Checkin{}, err
 	}
 
 	prev, err := s.queries.GetLatestCheckin(ctx, goalID)
@@ -152,6 +153,23 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 		return Checkin{}, fmt.Errorf("%w — submit a Check-in to explain", err)
 	}
 	return s.createCheckin(ctx, goalID, authorID, goal.Goal.OwnerID, prev.Health, prev.Status, prev.PathToGreen, prev.PathTargetDate, explanation)
+}
+
+// authorizeCheckinAuthor allows a Check-in to be written only by the Goal's
+// Owner or a Delegate the Owner has authorized; anyone else is refused
+// (CONTEXT.md: Delegate; acceptance: Non-Delegates can't submit Check-ins).
+func (s *Service) authorizeCheckinAuthor(ctx context.Context, goalID, ownerID, authorID int64) error {
+	if authorID == ownerID {
+		return nil
+	}
+	ok, err := s.isDelegate(ctx, goalID, authorID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("%w: only the Owner or a Delegate may submit a Check-in", ErrNotAuthorized)
+	}
+	return nil
 }
 
 // resolveRollupExplanation enforces ADR-0003's explanation rule for a Check-in
