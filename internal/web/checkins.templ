@@ -374,7 +374,7 @@ templ checkinDateFields(d checkinDatesFormData, e checkinError) {
 				@checkinFieldError(e, fmt.Sprintf("milestone_removed_reason_%d", id))
 			</fieldset>
 		}
-		for _, row := range append(d.NewMilestones, newMilestoneFormRow{}) {
+		for i, row := range append(d.NewMilestones, newMilestoneFormRow{}) {
 			<fieldset data-testid="checkin-new-milestone">
 				<legend>Add a Milestone</legend>
 				<label>
@@ -385,6 +385,7 @@ templ checkinDateFields(d checkinDatesFormData, e checkinError) {
 					Date
 					<input type="date" name="new_milestone_date" value={ row.Date }/>
 				</label>
+				@checkinFieldError(e, fmt.Sprintf("new_milestone_%d", i))
 			</fieldset>
 		}
 	</fieldset>

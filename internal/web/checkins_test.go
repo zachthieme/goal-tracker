@@ -785,3 +785,47 @@ func TestCheckinOverdueMilestoneErrorShownNextToMilestoneDate(t *testing.T) {
 		t.Errorf("Milestone date field's error = %q, want the overdue one", msg)
 	}
 }
+
+// A Check-in adding a Milestone without a date gets its error next to that new
+// Milestone's date.
+func TestCheckinNewMilestoneErrorShownNextToNewMilestone(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":             {domain.HealthGreen},
+		"status":             {"Adding docs."},
+		"new_milestone_name": {"Launch party", "Docs"},
+		"new_milestone_date": {"2026-05-01", ""},
+	})
+	// The Docs row is the second new Milestone; the error follows its date.
+	docs := body[strings.Index(body, `value="Docs"`):]
+	if msg := fieldError(t, docs, `name="new_milestone_date"`); !strings.Contains(msg, "needs a date") {
+		t.Errorf("new Milestone's error = %q, want the missing date one", msg)
+	}
+}
+
+// A Green Check-in adding a Milestone that is already overdue gets its error
+// next to that new Milestone.
+func TestCheckinOverdueNewMilestoneErrorShownNextToNewMilestone(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":             {domain.HealthGreen},
+		"status":             {"Adding docs."},
+		"new_milestone_name": {"Docs"},
+		"new_milestone_date": {h.Clock.Now().AddDate(0, 0, -1).Format("2006-01-02")},
+	})
+	if msg := fieldError(t, body, `name="new_milestone_date"`); !strings.Contains(msg, "is overdue") {
+		t.Errorf("new Milestone's error = %q, want the overdue one", msg)
+	}
+}

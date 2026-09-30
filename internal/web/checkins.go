@@ -121,6 +121,9 @@ func checkinErrorField(msg string, dates checkinDatesFormData) string {
 			return fmt.Sprintf("milestone_date_%d", id)
 		}
 	}
+	if i, ok := dates.newMilestoneIn(msg); ok {
+		return fmt.Sprintf("new_milestone_%d", i)
+	}
 	switch {
 	case strings.Contains(msg, "differs from the Rolled-up Health"):
 		return "explanation"
@@ -145,6 +148,20 @@ func (d checkinDatesFormData) milestoneNamedIn(msg string) (int64, bool) {
 	for _, row := range d.Milestones {
 		if strings.Contains(msg, fmt.Sprintf("Milestone %q", row.Milestone.Name)) {
 			return row.Milestone.ID, true
+		}
+	}
+	return 0, false
+}
+
+// newMilestoneIn returns the index of the new-Milestone row a message is about:
+// the row it names, as the domain quotes it (the domain trims the name), or the
+// unnamed row when a new Milestone needs a name.
+func (d checkinDatesFormData) newMilestoneIn(msg string) (int, bool) {
+	for i, row := range d.NewMilestones {
+		name := strings.TrimSpace(row.Name)
+		if (name != "" && strings.Contains(msg, fmt.Sprintf("Milestone %q", name))) ||
+			(name == "" && strings.Contains(msg, "a new Milestone needs a name")) {
+			return i, true
 		}
 	}
 	return 0, false
