@@ -278,3 +278,31 @@ func TestEditSoWhatRejectsEmpty(t *testing.T) {
 		t.Errorf("err = %v, want ErrValidation", err)
 	}
 }
+
+func TestSuggestDeliveryDatePicksNearestUpcomingCheckpointMonday(t *testing.T) {
+	// The suggestion is the nearest upcoming Monday that sits at a mid-month
+	// (the Monday nearest the 15th) or end-of-month (the last Monday) checkpoint.
+	cases := []struct {
+		from string
+		want string
+	}{
+		{"2026-01-05", "2026-01-12"}, // mid-January Monday, just ahead
+		{"2026-01-20", "2026-01-26"}, // past mid-month, so the last Monday of January
+		{"2026-01-27", "2026-02-16"}, // past both January checkpoints, so mid-February
+	}
+	for _, c := range cases {
+		t.Run(c.from, func(t *testing.T) {
+			from, _ := time.Parse("2006-01-02", c.from)
+			got := domain.SuggestDeliveryDate(from)
+			if got.Format("2006-01-02") != c.want {
+				t.Errorf("SuggestDeliveryDate(%s) = %s, want %s", c.from, got.Format("2006-01-02"), c.want)
+			}
+			if got.Weekday() != time.Monday {
+				t.Errorf("suggestion %s is not a Monday", got.Format("2006-01-02"))
+			}
+			if got.Before(from) {
+				t.Errorf("suggestion %s is before %s", got.Format("2006-01-02"), c.from)
+			}
+		})
+	}
+}

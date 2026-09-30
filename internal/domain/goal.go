@@ -46,6 +46,54 @@ const (
 // as distinct from the timestamp format used for instants.
 const dateFormat = "2006-01-02"
 
+// SuggestDeliveryDate suggests a delivery date for the date picker: the nearest
+// Monday on or after `from` that sits at a natural monthly checkpoint — either
+// mid-month (the Monday nearest the 15th) or end-of-month (the last Monday of
+// the month). Teams tend to deliver on those cadence points, so the picker
+// prefills the closest one rather than an arbitrary day.
+func SuggestDeliveryDate(from time.Time) time.Time {
+	from = time.Date(from.Year(), from.Month(), from.Day(), 0, 0, 0, 0, from.Location())
+	var best time.Time
+	// Look across this month and the next two so there is always a candidate on
+	// or after `from`, even late in a month.
+	for offset := 0; offset < 3; offset++ {
+		month := from.AddDate(0, offset, 0)
+		for _, cand := range []time.Time{midMonthMonday(month), lastMondayOfMonth(month)} {
+			if cand.Before(from) {
+				continue
+			}
+			if best.IsZero() || cand.Before(best) {
+				best = cand
+			}
+		}
+	}
+	return best
+}
+
+// midMonthMonday returns the Monday nearest the 15th of the given month.
+func midMonthMonday(t time.Time) time.Time {
+	fifteenth := time.Date(t.Year(), t.Month(), 15, 0, 0, 0, 0, t.Location())
+	return nearestMonday(fifteenth)
+}
+
+// lastMondayOfMonth returns the last Monday of the given month.
+func lastMondayOfMonth(t time.Time) time.Time {
+	firstOfNext := time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, t.Location()).AddDate(0, 1, 0)
+	lastDay := firstOfNext.AddDate(0, 0, -1)
+	offsetBack := (int(lastDay.Weekday()) - int(time.Monday) + 7) % 7
+	return lastDay.AddDate(0, 0, -offsetBack)
+}
+
+// nearestMonday returns the Monday closest to d, preferring the earlier Monday
+// on a tie.
+func nearestMonday(d time.Time) time.Time {
+	offsetBack := (int(d.Weekday()) - int(time.Monday) + 7) % 7
+	if offsetBack <= 3 {
+		return d.AddDate(0, 0, -offsetBack)
+	}
+	return d.AddDate(0, 0, 7-offsetBack)
+}
+
 // ErrValidation is returned when a command's input is not acceptable, e.g. a
 // Goal created without a title or a So What.
 var ErrValidation = errors.New("validation failed")
