@@ -126,6 +126,7 @@ templ goalPage(current *domain.Account, v goalView) {
 		if g.Ownerless {
 			<p data-testid="goal-ownerless" role="alert"><strong>Ownerless</strong> — this Goal's Owner has left the org and it needs an Admin to reassign it.</p>
 		}
+		@goalFreshness(v.Goal, v.Freshness)
 		@goalSignals(v.Signals)
 		<article data-testid="goal">
 			<h1 data-testid="goal-title">{ g.Title }</h1>

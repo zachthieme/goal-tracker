@@ -240,6 +240,11 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		http.Error(w, "could not read graph signals", http.StatusInternalServerError)
 		return
 	}
+	freshness, err := s.svc.Freshness(r.Context(), id)
+	if err != nil {
+		http.Error(w, "could not read freshness signals", http.StatusInternalServerError)
+		return
+	}
 
 	// A Delegate may write Check-ins too, so the Goal page shows the Check-in
 	// form to the Owner or any authorized Delegate (CONTEXT.md: Delegate).
@@ -271,6 +276,7 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		DateSlips:      slips,
 		MilestoneChurn: churn,
 		Signals:        signals,
+		Freshness:      freshness,
 		SuggestedDate:  domain.SuggestDeliveryDate(s.svc.Now()).Format(dateLayout),
 	}))
 }
@@ -320,7 +326,10 @@ type goalView struct {
 	// Signals are the risks the graph flags on this Goal that nobody reported:
 	// Unaligned, schedule conflicts it is either side of, and parents that are On
 	// Hold or Cancelled.
-	Signals       domain.GoalSignals
+	Signals domain.GoalSignals
+	// Freshness says whether the Goal is Stale or its Path to Green is overdue,
+	// flagged as prominently as Red (CONTEXT.md: Stale, Path to Green).
+	Freshness     domain.Freshness
 	SuggestedDate string
 }
 

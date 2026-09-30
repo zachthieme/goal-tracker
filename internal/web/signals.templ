@@ -180,3 +180,26 @@ templ goalSignals(signals domain.GoalSignals) {
 		</section>
 	}
 }
+
+// goalFreshness flags, at the top of a Goal's page, a Goal that is Stale or
+// whose Path to Green is overdue. It renders nothing for a fresh Goal.
+templ goalFreshness(g domain.Goal, f domain.Freshness) {
+	if f.Stale {
+		<p data-testid="goal-stale" role="alert">
+			<strong>Stale</strong> — { fmt.Sprintf("no Check-in for %d days on a %d-day cadence.", f.DaysSince, g.CadenceDays) }
+		</p>
+	}
+	if f.PathToGreenOverdue {
+		<p data-testid="goal-path-overdue" role="alert">
+			<strong>Path to Green overdue</strong> — { fmt.Sprintf("this Goal was meant to be back to Green by %s.", fmtDate(f.PathTargetDate)) }
+		</p>
+	}
+}
+
+// rolledUpStale says, beside the Rolled-up Health, how many Active children are
+// Stale. It never changes the color, and renders nothing when none are.
+templ rolledUpStale(r domain.RolledUpHealth) {
+	if r.StaleChildren > 0 {
+		· <span data-testid="goal-rollup-stale">{ fmt.Sprintf("%d of %d Stale", r.StaleChildren, r.ActiveChildren) }</span>
+	}
+}

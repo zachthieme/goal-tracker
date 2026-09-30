@@ -208,3 +208,45 @@ func TestFreshnessPageListsStaleGoalsAndOverduePaths(t *testing.T) {
 		t.Errorf("overdue Paths to Green list a Goal with no Path to Green; section:\n%s", overdue)
 	}
 }
+
+// A Goal's page flags it when it is Stale or its Path to Green is overdue, and
+// beside the Rolled-up Health says how many Active children are Stale without
+// changing the color. A fresh Goal shows no freshness flag.
+func TestGoalPageFlagsFreshness(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	parent := h.ActiveGoal(sam, "Org outcome", "It matters.")
+	h.ActiveChildOf(sam, parent, "Silent child", "It matters.")
+	h.Clock.Advance(10 * 24 * time.Hour)
+	fresh := h.ActiveChildOf(sam, parent, "Fresh child", "It matters.")
+	h.Checkin(sam, fresh.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	stalled := h.ActiveGoal(sam, "Stalled recovery", "It matters.")
+	h.Checkin(sam, stalled.ID, domain.HealthYellow, "Slipping.", "Cut scope.", time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC))
+
+	client := signInClient(t, ts.URL, "sam@example.com")
+	pageOf := func(g domain.Goal) string {
+		return getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, g.ID))
+	}
+
+	parentPage := pageOf(parent)
+	if !strings.Contains(parentPage, `data-testid="goal-stale"`) {
+		t.Errorf("Stale Goal's page does not flag it; body:\n%s", parentPage)
+	}
+	if !strings.Contains(parentPage, `data-testid="goal-rollup-health">Green`) {
+		t.Errorf("Stale children changed the Rolled-up Health color; body:\n%s", parentPage)
+	}
+	if !strings.Contains(parentPage, `data-testid="goal-rollup-stale">1 of 2 Stale`) {
+		t.Errorf("Rolled-up Health does not say 1 of 2 children are Stale; body:\n%s", parentPage)
+	}
+
+	stalledPage := pageOf(stalled)
+	if !strings.Contains(stalledPage, `data-testid="goal-path-overdue"`) || !strings.Contains(stalledPage, "2026-01-05") {
+		t.Errorf("page of a Goal past its Path to Green target does not flag it; body:\n%s", stalledPage)
+	}
+
+	freshPage := pageOf(fresh)
+	if strings.Contains(freshPage, `data-testid="goal-stale"`) || strings.Contains(freshPage, `data-testid="goal-path-overdue"`) {
+		t.Errorf("fresh Green Goal's page carries a freshness flag")
+	}
+}
