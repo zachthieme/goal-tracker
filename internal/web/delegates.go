@@ -62,10 +62,17 @@ func (s *Server) handleDelegatePage(w http.ResponseWriter, r *http.Request, curr
 			http.Error(w, "could not load metrics", http.StatusInternalServerError)
 			return
 		}
+		milestones, err := s.svc.ListMilestones(r.Context(), g.ID)
+		if err != nil {
+			http.Error(w, "could not load milestones", http.StatusInternalServerError)
+			return
+		}
 		items = append(items, delegatedGoal{
 			Goal:   g,
 			Latest: latestPtr,
-			Form:   checkinFormFromLatest(g.ID, latestPtr, rollup, metrics),
+			Form: checkinFormFromLatest(goalView{
+				Goal: g, LatestCheckin: latestPtr, RolledUp: rollup, Metrics: metrics, Milestones: milestones,
+			}),
 		})
 	}
 	render(w, r, http.StatusOK, delegatePage(&current, items))

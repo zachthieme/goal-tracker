@@ -4,16 +4,10 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
-
-// day is a calendar date at midnight UTC, the form the domain stores dates in.
-func day(y int, m time.Month, d int) time.Time {
-	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
-}
 
 // Moving the delivery date in a Check-in records a Date Slip keeping the old and
 // new dates and the reason, and the Goal takes the new date (CONTEXT.md: Date

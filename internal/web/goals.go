@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -224,6 +225,16 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		http.Error(w, "could not compute rolled-up health", http.StatusInternalServerError)
 		return
 	}
+	slips, err := s.svc.ListDateSlips(r.Context(), id)
+	if err != nil {
+		http.Error(w, "could not load date slips", http.StatusInternalServerError)
+		return
+	}
+	churn, err := s.svc.MilestoneChurn(r.Context(), id)
+	if err != nil {
+		http.Error(w, "could not count milestone churn", http.StatusInternalServerError)
+		return
+	}
 
 	// A Delegate may write Check-ins too, so the Goal page shows the Check-in
 	// form to the Owner or any authorized Delegate (CONTEXT.md: Delegate).
@@ -235,24 +246,26 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 	}
 
 	render(w, r, http.StatusOK, goalPage(&current, goalView{
-		Goal:          g,
-		Parents:       parents,
-		Children:      children,
-		Candidates:    candidates,
-		Milestones:    milestones,
-		Metrics:       metrics,
-		Trends:        trends,
-		Highlights:    highlights,
-		Contributors:  contributors,
-		Delegates:     delegates,
-		CanCheckin:    canCheckin,
-		Revisions:     revisions,
-		Dimensions:    dimensions,
-		Values:        values,
-		Checkins:      checkins,
-		LatestCheckin: latestPtr,
-		RolledUp:      rollup,
-		SuggestedDate: domain.SuggestDeliveryDate(s.svc.Now()).Format(dateLayout),
+		Goal:           g,
+		Parents:        parents,
+		Children:       children,
+		Candidates:     candidates,
+		Milestones:     milestones,
+		Metrics:        metrics,
+		Trends:         trends,
+		Highlights:     highlights,
+		Contributors:   contributors,
+		Delegates:      delegates,
+		CanCheckin:     canCheckin,
+		Revisions:      revisions,
+		Dimensions:     dimensions,
+		Values:         values,
+		Checkins:       checkins,
+		LatestCheckin:  latestPtr,
+		RolledUp:       rollup,
+		DateSlips:      slips,
+		MilestoneChurn: churn,
+		SuggestedDate:  domain.SuggestDeliveryDate(s.svc.Now()).Format(dateLayout),
 	}))
 }
 
@@ -291,8 +304,37 @@ type goalView struct {
 	// RolledUp is the Goal's Rolled-up Health — the worst Owner-set Health among
 	// its Active children — shown next to the Owner-set Health (ADR-0003). Its
 	// Present is false when there is nothing to roll up.
-	RolledUp      domain.RolledUpHealth
-	SuggestedDate string
+	RolledUp domain.RolledUpHealth
+	// DateSlips is the Goal's Date Slip history, earliest first, covering its
+	// delivery date and its Milestones' dates; its length is the slip count.
+	// MilestoneChurn counts Milestones added or removed since the Goal became
+	// Active (CONTEXT.md: Date Slip, Milestone Churn).
+	DateSlips      []domain.DateSlip
+	MilestoneChurn int
+	SuggestedDate  string
+}
+
+// priorDates returns the dates a Goal's delivery date (milestoneID 0) or one of
+// its Milestones held before each of its Date Slips, earliest first, for
+// showing struck through ahead of the current date (CONTEXT.md: Date Slip).
+func (v goalView) priorDates(milestoneID int64) []time.Time {
+	var out []time.Time
+	for _, s := range v.DateSlips {
+		if s.MilestoneID == milestoneID {
+			out = append(out, s.OldDate)
+		}
+	}
+	return out
+}
+
+// milestoneName names the Milestone a Date Slip moved, for the slip history.
+func (v goalView) milestoneName(id int64) string {
+	for _, m := range v.Milestones {
+		if m.ID == id {
+			return m.Name
+		}
+	}
+	return fmt.Sprintf("Milestone %d", id)
 }
 
 // metricTrend pairs a Metric with its readings over time, so the Goal page can
