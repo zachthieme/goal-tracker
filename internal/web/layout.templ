@@ -1,6 +1,29 @@
 package web
 
-import "github.com/zachthieme/goal-tracker/internal/domain"
+import (
+	"context"
+	"strings"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+type pathKey struct{}
+
+// withPath records the request path so the top bar can mark the current page
+// without every page passing it along.
+func withPath(ctx context.Context, path string) context.Context {
+	return context.WithValue(ctx, pathKey{}, path)
+}
+
+// onSection reports whether the request is at href or a page below it.
+func onSection(ctx context.Context, href string) bool {
+	path, _ := ctx.Value(pathKey{}).(string)
+	return path == href || strings.HasPrefix(path, href+"/")
+}
+
+// fontsURL loads the design system's faces; the font stacks in app.css fall
+// back to system fonts when it can't be reached.
+const fontsURL = "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:wght@600&display=swap"
 
 // layout is the shared page chrome. htmx drives the in-place create-Goal swap.
 templ layout(title string, current *domain.Account) {
@@ -10,31 +33,46 @@ templ layout(title string, current *domain.Account) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ title } · Goal Tracker</title>
+			<link rel="preconnect" href="https://fonts.googleapis.com"/>
+			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+			<link rel="stylesheet" href={ fontsURL }/>
+			<link rel="stylesheet" href={ stylesheetURL }/>
 			<script src="https://unpkg.com/htmx.org@2.0.3" crossorigin="anonymous"></script>
 		</head>
 		<body>
-			<header>
-				<a href="/goals"><strong>Goal Tracker</strong></a>
+			<nav class="nav">
+				<a class="brand" href="/goals">Goal Tracker</a>
 				if current != nil {
-					<a href="/links" data-testid="nav-pending-links">Pending links</a>
-					<a href="/handoffs" data-testid="nav-pending-handoffs">Pending handoffs</a>
-					<a href="/delegates" data-testid="nav-delegated-goals">Delegated to me</a>
-					<a href="/dimensions" data-testid="nav-dimensions">Dimensions</a>
-					<a href="/reports" data-testid="nav-reports">Reports</a>
-					<span data-testid="current-user">
-						Signed in as { current.Email }
-						if current.IsAdmin {
-							(Admin)
-						}
-					</span>
-					<form method="post" action="/signout" style="display:inline">
-						<button type="submit">Sign out</button>
-					</form>
+					@navItem("/links", "nav-pending-links", "Pending links")
+					@navItem("/handoffs", "nav-pending-handoffs", "Pending handoffs")
+					@navItem("/delegates", "nav-delegated-goals", "Delegated to me")
+					@navItem("/dimensions", "nav-dimensions", "Dimensions")
+					@navItem("/reports", "nav-reports", "Reports")
+					<div class="me">
+						<span data-testid="current-user">
+							Signed in as { current.Email }
+							if current.IsAdmin {
+								(Admin)
+							}
+						</span>
+						<form method="post" action="/signout">
+							<button type="submit" class="btn quiet sm">Sign out</button>
+						</form>
+					</div>
 				}
-			</header>
-			<main>
+			</nav>
+			<main class="page">
 				{ children... }
 			</main>
 		</body>
 	</html>
+}
+
+// navItem is a top-bar link, marked current when the request is in its section.
+templ navItem(href, testID, label string) {
+	if onSection(ctx, href) {
+		<a data-testid={ testID } class="navitem on" aria-current="page" href={ templ.SafeURL(href) }>{ label }</a>
+	} else {
+		<a data-testid={ testID } class="navitem" href={ templ.SafeURL(href) }>{ label }</a>
+	}
 }
