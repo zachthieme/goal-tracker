@@ -80,8 +80,16 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Once a Goal is Active its dates move only in a Check-in, so every change is explained: the Milestone edit form and the Dated/Ongoing controls apply only while a Goal is Proposed (#5).
 - [user] A Check-in that takes a Goal out of Active records no Health, so it needs no Path to Green; a Goal that is On Hold, Done, or Cancelled shows no Health, and an On Hold Goal's Check-in can only resume or Cancel it (#7).
 
+**Bug fixes:**
+- [user] Creating a child Goal from a parent's page is all-or-nothing. If a kept default fails to assign (a value retired after the form loaded, say) or the link can't be requested, no Goal is left behind, and the parent's page comes back with the error and the title, So What, and checked defaults as typed (#26).
+- [user] The Check-in form's errors read naturally: cancelling a Goal without a reason says "cancelling a Goal needs a reason", and a Metric reading that isn't a number names the Metric (`"Signups" needs a number`) instead of its database id (#29).
+- [user] The Check-in form pre-fills each Metric's reading with its latest value, like the rest of the form, so a "same as last week" Check-in stays one click (#29).
+- [user] Spreadsheet import reads an XLSX date cell — what Excel and Google Sheets make of a typed `2026-06-30` — as its date, whatever its display format, instead of rejecting its displayed text (`06-30-26`) as a bad date (#30).
+- [user] Spreadsheet import numbers rows as the spreadsheet does: the header is row 1, so the first Goal is row 2, not "Row 1" (#30).
+- [user] Spreadsheet import reports every error on a row in one dry run — an unknown Dimension value no longer hides an unknown parent title or a bad Milestone (#30).
+- [user] The seeded demo org marks its three org outcomes Top-level Goals, so the Unaligned list on the signals page shows only the five side projects (#31).
+
 **Code quality:**
 - [internal] Split the skeleton's shared files by feature area (one sqlc query file, handler file, templ file, and domain file per area, with route registration in one place), so tickets can land without all editing the same files and campaigns can run tickets in parallel (#24).
 - [internal] Remove a Go test binary (`seed.test`, 15 MB) committed by accident with the seed command, and ignore `*.test` (#23).
-
 For usage details, see [README](README.md).
