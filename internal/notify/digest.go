@@ -33,6 +33,12 @@ func New(svc *domain.Service, sender email.Sender, baseURL string, loc *time.Loc
 	return &Notifier{svc: svc, sender: sender, baseURL: strings.TrimRight(baseURL, "/"), loc: loc}
 }
 
+// SendWeekly sends the week's emails: the Check-in reminders, then the parent
+// digests. A failure in one doesn't stop the other; both are returned.
+func (n *Notifier) SendWeekly(ctx context.Context) error {
+	return errors.Join(n.SendReminders(ctx), n.SendDigests(ctx))
+}
+
 // reminderItem is one Goal on a person's reminder. asDelegate is set when the
 // person is reminded as the Goal's Delegate rather than its Owner.
 type reminderItem struct {
