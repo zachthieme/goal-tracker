@@ -27,13 +27,22 @@ columns (see below).
 | `Owner`         | yes      | The Owner's email address. If no account exists for it yet, one is created (people named in the file get accounts). |
 | `So What`       | yes      | The customer problem the Goal addresses (CONTEXT.md: So What). |
 | `Kind`          | yes      | `Dated` or `Ongoing`. |
-| `Delivery Date` | for Dated | `YYYY-MM-DD`. Required when `Kind` is `Dated`; must be empty when `Kind` is `Ongoing`. |
+| `Delivery Date` | for Dated | `YYYY-MM-DD`, or in XLSX a date cell (see below). Required when `Kind` is `Dated`; must be empty when `Kind` is `Ongoing`. |
 | `Milestones`    | no       | Zero or more Milestones (see below). |
 | `Metrics`       | no       | Zero or more Metrics (see below). |
 | `Parents`       | no       | Zero or more parent Goal titles this Goal contributes to (see below). |
 | _Dimension name_ | no      | Any column whose header matches a defined Dimension. The cell holds the value to assign in that Dimension. |
 
 Imported Goals are created **Proposed**; they are not activated by the import.
+
+### Dates in XLSX
+
+Excel and Google Sheets usually turn a typed `2026-06-30` into a date cell,
+which they then display in their own format (`06-30-26`, `30/06/2026`,
+`Jul-26`, …). The import reads a date cell as its date, whatever its display
+format, in any column — so a date-cell `Delivery Date` works as well as the text
+`2026-06-30`. Milestones and Metrics are written as text entries (below), so
+their dates are always `YYYY-MM-DD` text.
 
 ### Milestones
 
@@ -72,7 +81,12 @@ and an unknown value is reported on that row. A blank cell assigns nothing.
 
 ## What is reported
 
-The dry run and a rolled-back commit report, per row: the line number, the Goal
-title, and each error found — a missing required field, a bad `Kind` or date, a
-malformed Milestone or Metric, a `Parents` title that is not in the file, an
-unknown Dimension value, or a cycle.
+The dry run and a rolled-back commit report, per row: the row number, the Goal
+title, and every error found on the row — a missing required field, a bad `Kind`
+or date, a malformed Milestone or Metric, a `Parents` title that is not in the
+file, an unknown Dimension value, or a cycle. A row with several problems lists
+them all in one dry run.
+
+Rows are numbered as the spreadsheet numbers them: the header is row 1, so the
+first Goal is row 2. In a CSV file a blank line still counts as a row, and a
+quoted cell that spans several lines is still one row.

@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/xuri/excelize/v2"
 
@@ -135,15 +137,15 @@ Bad goal,owner@example.com,,Sideways,
 		t.Fatalf("want 3 row results, got %d (%+v)", len(rep.Rows), rep.Rows)
 	}
 
-	// Row 1 is clean; rows 2 and 3 each carry errors.
+	// Row 2 (the first under the header) is clean; rows 3 and 4 each carry errors.
 	if len(rep.Rows[0].Errors) != 0 {
-		t.Errorf("row 1 should be clean, got errors: %v", rep.Rows[0].Errors)
+		t.Errorf("row 2 should be clean, got errors: %v", rep.Rows[0].Errors)
 	}
 	if joined := strings.Join(rep.Rows[1].Errors, "; "); !strings.Contains(joined, "So What") || !strings.Contains(joined, "Kind") {
-		t.Errorf("row 2 errors = %v, want mention of So What and Kind", rep.Rows[1].Errors)
+		t.Errorf("row 3 errors = %v, want mention of So What and Kind", rep.Rows[1].Errors)
 	}
 	if joined := strings.Join(rep.Rows[2].Errors, "; "); !strings.Contains(joined, "Title") {
-		t.Errorf("row 3 errors = %v, want mention of Title", rep.Rows[2].Errors)
+		t.Errorf("row 4 errors = %v, want mention of Title", rep.Rows[2].Errors)
 	}
 	if rep.ErrorCount() != 2 {
 		t.Errorf("ErrorCount = %d, want 2", rep.ErrorCount())
@@ -333,5 +335,195 @@ func TestExampleFileDryRunsClean(t *testing.T) {
 	}
 	if len(rep.Rows) != 3 {
 		t.Errorf("example has %d rows, want 3", len(rep.Rows))
+	}
+}
+
+// xlsxOf builds a one-sheet XLSX workbook whose rows are written with excelize's
+// SetSheetRow, so a time.Time cell becomes a real date cell (a number with a date
+// format) the way Excel and Sheets store a typed date.
+func xlsxOf(t *testing.T, rows ...[]any) []byte {
+	t.Helper()
+	f := excelize.NewFile()
+	defer func() { _ = f.Close() }()
+	sheet := f.GetSheetName(0)
+	for r, row := range rows {
+		cellRef, err := excelize.CoordinatesToCellName(1, r+1)
+		if err != nil {
+			t.Fatalf("cell name: %v", err)
+		}
+		if err := f.SetSheetRow(sheet, cellRef, &row); err != nil {
+			t.Fatalf("set row: %v", err)
+		}
+	}
+	var buf bytes.Buffer
+	if _, err := f.WriteTo(&buf); err != nil {
+		t.Fatalf("write xlsx: %v", err)
+	}
+	return buf.Bytes()
+}
+
+func date(y int, m time.Month, d int) time.Time {
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+// A date-typed Delivery Date cell — what Excel and Sheets make of a typed
+// 2026-06-30 — imports as its date, not as the displayed text (#30). The first
+// of a month is included because spreadsheets display it without the day.
+func TestXLSXDateCellsImportAsTheirDate(t *testing.T) {
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+
+	data := xlsxOf(t,
+		[]any{"Title", "Owner", "So What", "Kind", "Delivery Date"},
+		[]any{"Mid-month goal", "owner@example.com", "It matters.", "Dated", date(2026, time.June, 30)},
+		[]any{"First-of-month goal", "owner@example.com", "It matters.", "Dated", date(2026, time.July, 1)},
+		[]any{"Text-date goal", "owner@example.com", "It matters.", "Dated", "2026-08-15"},
+	)
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "goals.xlsx", data)
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if !rep.Committed || rep.HasErrors() {
+		t.Fatalf("xlsx with date cells not clean: committed=%v rows=%+v", rep.Committed, rep.Rows)
+	}
+	goals, err := h.Service.ListGoals(context.Background())
+	if err != nil {
+		t.Fatalf("ListGoals: %v", err)
+	}
+	got := map[string]string{}
+	for _, g := range goals {
+		got[g.Title] = g.DeliveryDate.Format("2006-01-02")
+	}
+	want := map[string]string{
+		"Mid-month goal":      "2026-06-30",
+		"First-of-month goal": "2026-07-01",
+		"Text-date goal":      "2026-08-15",
+	}
+	for title, w := range want {
+		if got[title] != w {
+			t.Errorf("%s DeliveryDate = %q, want %q", title, got[title], w)
+		}
+	}
+}
+
+// A date cell with a custom format — a UK sheet's d/m/yyyy — also imports as
+// its date, and a date cell in any column is read as YYYY-MM-DD: one in the
+// Milestones column shows up as such in the report (#30).
+func TestXLSXCustomFormatDateCells(t *testing.T) {
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+
+	f := excelize.NewFile()
+	defer func() { _ = f.Close() }()
+	sheet := f.GetSheetName(0)
+	for r, row := range [][]any{
+		{"Title", "Owner", "So What", "Kind", "Delivery Date", "Milestones"},
+		{"UK goal", "owner@example.com", "It matters.", "Dated", date(2026, time.June, 30), ""},
+		{"Nameless milestone", "owner@example.com", "It matters.", "Ongoing", "", date(2026, time.May, 1)},
+	} {
+		if err := f.SetSheetRow(sheet, fmt.Sprintf("A%d", r+1), &row); err != nil {
+			t.Fatalf("set row: %v", err)
+		}
+	}
+	ukDate := "d/m/yyyy"
+	style, err := f.NewStyle(&excelize.Style{CustomNumFmt: &ukDate})
+	if err != nil {
+		t.Fatalf("new style: %v", err)
+	}
+	for _, ref := range []string{"E2", "F3"} {
+		if err := f.SetCellStyle(sheet, ref, ref, style); err != nil {
+			t.Fatalf("set style: %v", err)
+		}
+	}
+	var buf bytes.Buffer
+	if _, err := f.WriteTo(&buf); err != nil {
+		t.Fatalf("write xlsx: %v", err)
+	}
+
+	rep, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.xlsx", buf.Bytes())
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	if len(rep.Rows) != 2 {
+		t.Fatalf("want 2 row results, got %+v", rep.Rows)
+	}
+	if len(rep.Rows[0].Errors) != 0 {
+		t.Errorf("UK-format Delivery Date rejected: %v", rep.Rows[0].Errors)
+	}
+	if joined := strings.Join(rep.Rows[1].Errors, "; "); !strings.Contains(joined, `"2026-05-01"`) {
+		t.Errorf("Milestones date cell errors = %v, want it read as \"2026-05-01\"", rep.Rows[1].Errors)
+	}
+}
+
+// Rows are numbered as the spreadsheet numbers them: the header is row 1, so the
+// first data row is row 2. A blank row still takes a number, and a cell spanning
+// several lines is still one row (#30).
+func TestRowsAreNumberedAsInTheSpreadsheet(t *testing.T) {
+	const csv = "Title,Owner,So What,Kind\n" +
+		"First,owner@example.com,,Ongoing\n" +
+		"Second,owner@example.com,\"Spans\ntwo lines.\",Ongoing\n" +
+		"\n" +
+		"Fifth,owner@example.com,,Ongoing\n"
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+
+	rep, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	lines := map[string]int{}
+	for _, row := range rep.Rows {
+		lines[row.Title] = row.Line
+	}
+	for title, want := range map[string]int{"First": 2, "Second": 3, "Fifth": 5} {
+		if lines[title] != want {
+			t.Errorf("%s is row %d, want %d (rows: %+v)", title, lines[title], want, rep.Rows)
+		}
+	}
+
+	xlsxRep, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.xlsx", xlsxOf(t,
+		[]any{"Title", "Owner", "So What", "Kind"},
+		[]any{"First", "owner@example.com", "", "Ongoing"},
+	))
+	if err != nil {
+		t.Fatalf("DryRun xlsx: %v", err)
+	}
+	if len(xlsxRep.Rows) != 1 || xlsxRep.Rows[0].Line != 2 {
+		t.Errorf("xlsx rows = %+v, want First as row 2", xlsxRep.Rows)
+	}
+}
+
+// A row with several problems reports all of them in one dry run, not just the
+// first found (#30; docs/import-format.md: "each error found").
+func TestDryRunReportsEveryErrorOnARow(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Milestones,Parents,Pillar
+Otherwise fine,owner@example.com,It matters.,Ongoing,,No such parent,Sideways
+Missing so what,owner@example.com,,Ongoing,Beta @ someday,Also missing,Upwards
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateDimension(admin, "Pillar", "Growth", "Reliability")
+
+	rep, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	if len(rep.Rows) != 2 {
+		t.Fatalf("want 2 row results, got %+v", rep.Rows)
+	}
+	for i, wants := range [][]string{
+		{`"Sideways" is not a value of Dimension "Pillar"`, `parent Goal "No such parent"`},
+		{"So What is required", `bad Milestone date in "Beta @ someday"`, `parent Goal "Also missing"`, `"Upwards" is not a value of Dimension "Pillar"`},
+	} {
+		row := rep.Rows[i]
+		joined := strings.Join(row.Errors, "; ")
+		for _, want := range wants {
+			if !strings.Contains(joined, want) {
+				t.Errorf("row %d (%s) errors = %v, want one mentioning %s", row.Line, row.Title, row.Errors, want)
+			}
+		}
+		if len(row.Errors) != len(wants) {
+			t.Errorf("row %d (%s) has %d errors, want %d: %v", row.Line, row.Title, len(row.Errors), len(wants), row.Errors)
+		}
 	}
 }

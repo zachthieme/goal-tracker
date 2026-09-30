@@ -19,6 +19,7 @@ import (
 	"encoding/csv"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"time"
@@ -50,8 +51,8 @@ type Report struct {
 	Committed bool
 }
 
-// RowResult is what happened to one data row: its 1-based line number (the
-// header is line 0), the Goal title it named, the id of the Goal created from it
+// RowResult is what happened to one data row: its row number as the
+// spreadsheet numbers it (the header is row 1), the Goal title it named, the id of the Goal created from it
 // (0 when nothing was saved), and any errors found on it.
 type RowResult struct {
 	Line   int
@@ -111,7 +112,7 @@ func (im *Importer) run(ctx context.Context, adminID int64, filename string, dat
 		dimByName[normalize(d.Name)] = d
 	}
 
-	lay, err := parseHeader(grid[0], dimByName)
+	lay, err := parseHeader(grid[0].cells, dimByName)
 	if err != nil {
 		return Report{}, err
 	}
@@ -123,7 +124,7 @@ func (im *Importer) run(ctx context.Context, adminID int64, filename string, dat
 	stopImport := errors.New("import rolled back")
 	var report Report
 	txErr := im.svc.WithinTx(ctx, func(tx *domain.Service) error {
-		report = applyRows(ctx, tx, specs, dimByName)
+		report = applyRows(ctx, tx, specs)
 		if !commit || report.HasErrors() {
 			return stopImport
 		}
@@ -154,7 +155,7 @@ type layout struct {
 // dimensionColumn is a spreadsheet column whose header names a Dimension; each
 // cell holds the value to assign in that Dimension.
 type dimensionColumn struct {
-	dimension string
+	dimension domain.Dimension
 	index     int
 }
 
@@ -181,10 +182,11 @@ func parseHeader(header []string, dimByName map[string]domain.Dimension) (layout
 		case "":
 			// A blank header names no column; ignore it.
 		default:
-			if _, ok := dimByName[normalize(raw)]; !ok {
+			dim, ok := dimByName[normalize(raw)]
+			if !ok {
 				return layout{}, fmt.Errorf("%w: column %q is neither a known field nor a defined Dimension", domain.ErrValidation, strings.TrimSpace(raw))
 			}
-			lay.dimensions = append(lay.dimensions, dimensionColumn{dimension: strings.TrimSpace(raw), index: i})
+			lay.dimensions = append(lay.dimensions, dimensionColumn{dimension: dim, index: i})
 		}
 	}
 	var missing []string
@@ -203,7 +205,9 @@ func parseHeader(header []string, dimByName map[string]domain.Dimension) (layout
 }
 
 // rowSpec is one parsed data row: the Goal to create, plus any errors found while
-// parsing it. A row with parse errors creates nothing.
+// parsing it. A row whose Title, Owner, So What, Kind or Delivery Date is missing
+// or bad is incomplete and creates nothing; a bad Milestone, Metric or Dimension
+// value is reported but does not stop the rest of the row being checked.
 type rowSpec struct {
 	line       int
 	title      string
@@ -216,6 +220,7 @@ type rowSpec struct {
 	parents    []string
 	dimensions []dimensionValue
 	errs       []string
+	incomplete bool
 }
 
 type milestoneSpec struct {
@@ -233,14 +238,13 @@ type metricSpec struct {
 }
 
 type dimensionValue struct {
-	dimension string
-	value     string
+	valueID int64
 }
 
-func parseRows(rows [][]string, lay layout) []rowSpec {
+func parseRows(rows []sheetRow, lay layout) []rowSpec {
 	specs := make([]rowSpec, 0, len(rows))
-	for i, row := range rows {
-		specs = append(specs, parseRow(i+1, row, lay))
+	for _, row := range rows {
+		specs = append(specs, parseRow(row.number, row.cells, lay))
 	}
 	return specs
 }
@@ -284,6 +288,8 @@ func parseRow(line int, row []string, lay layout) rowSpec {
 	default:
 		s.errs = append(s.errs, fmt.Sprintf("Kind %q must be \"Dated\" or \"Ongoing\"", kindCell))
 	}
+	// Every error so far is in a field the Goal cannot be created without.
+	s.incomplete = len(s.errs) > 0
 
 	for _, entry := range splitEntries(cell(row, lay.milestones)) {
 		m, err := parseMilestone(entry)
@@ -303,9 +309,16 @@ func parseRow(line int, row []string, lay layout) rowSpec {
 	}
 	s.parents = splitEntries(cell(row, lay.parents))
 	for _, dc := range lay.dimensions {
-		if v := cell(row, dc.index); v != "" {
-			s.dimensions = append(s.dimensions, dimensionValue{dimension: dc.dimension, value: v})
+		v := cell(row, dc.index)
+		if v == "" {
+			continue
 		}
+		valueID, ok := valueIDOf(dc.dimension, v)
+		if !ok {
+			s.errs = append(s.errs, fmt.Sprintf("%q is not a value of Dimension %q", v, dc.dimension.Name))
+			continue
+		}
+		s.dimensions = append(s.dimensions, dimensionValue{valueID: valueID})
 	}
 	return s
 }
@@ -354,10 +367,11 @@ func parseMetric(entry string) (metricSpec, error) {
 	return m, nil
 }
 
-// applyRows creates a Goal for every row that parsed cleanly, then links the
-// Goals to their parents. It runs inside the caller's transaction, so a caller
-// that rolls back (a dry run, or a commit that found errors) saves nothing.
-func applyRows(ctx context.Context, tx *domain.Service, specs []rowSpec, dimByName map[string]domain.Dimension) Report {
+// applyRows creates a Goal for every complete row, then links the Goals to their
+// parents, collecting every error found on each row rather than stopping at the
+// first. It runs inside the caller's transaction, so a caller that rolls back (a
+// dry run, or a commit that found errors) saves nothing.
+func applyRows(ctx context.Context, tx *domain.Service, specs []rowSpec) Report {
 	results := make([]RowResult, len(specs))
 	titleCount := map[string]int{}
 	for _, s := range specs {
@@ -372,39 +386,52 @@ func applyRows(ctx context.Context, tx *domain.Service, specs []rowSpec, dimByNa
 		}
 	}
 
+	// goalIDs holds the Goal created from each row, or 0; titleToGoal maps a
+	// created Goal's title to it, for linking.
+	goalIDs := make([]int64, len(specs))
 	titleToGoal := map[string]int64{}
 	for i, s := range specs {
-		if len(results[i].Errors) > 0 {
+		if s.incomplete || titleCount[s.title] > 1 {
 			continue
 		}
-		goalID, errs := createGoal(ctx, tx, s, dimByName)
-		if len(errs) > 0 {
-			results[i].Errors = append(results[i].Errors, errs...)
-			continue
+		goalID, errs := createGoal(ctx, tx, s)
+		results[i].Errors = append(results[i].Errors, errs...)
+		if goalID != 0 {
+			goalIDs[i] = goalID
+			titleToGoal[s.title] = goalID
 		}
-		results[i].GoalID = goalID
-		titleToGoal[s.title] = goalID
 	}
 
 	for i, s := range specs {
-		if results[i].GoalID == 0 {
-			continue
-		}
 		for _, parentTitle := range s.parents {
-			parentID, ok := titleToGoal[parentTitle]
-			if !ok {
+			if titleCount[parentTitle] == 0 {
 				results[i].Errors = append(results[i].Errors, fmt.Sprintf("parent Goal %q is not one of the imported Goals", parentTitle))
 				continue
 			}
-			if _, err := tx.ImportLink(ctx, results[i].GoalID, parentID); err != nil {
+			// A parent's own row reports why it was not created; the link just
+			// cannot be tried.
+			parentID, ok := titleToGoal[parentTitle]
+			if !ok || goalIDs[i] == 0 {
+				continue
+			}
+			if _, err := tx.ImportLink(ctx, goalIDs[i], parentID); err != nil {
 				results[i].Errors = append(results[i].Errors, linkMessage(err, parentTitle))
 			}
+		}
+	}
+
+	for i := range results {
+		if len(results[i].Errors) == 0 {
+			results[i].GoalID = goalIDs[i]
 		}
 	}
 	return Report{Rows: results}
 }
 
-func createGoal(ctx context.Context, tx *domain.Service, s rowSpec, dimByName map[string]domain.Dimension) (int64, []string) {
+// createGoal creates the row's Goal with its Kind, Milestones, Metrics and
+// Dimension values. It returns the Goal's id (0 if the Goal itself could not be
+// created) and every error found adding the rest.
+func createGoal(ctx context.Context, tx *domain.Service, s rowSpec) (int64, []string) {
 	owner, err := tx.EnsureAccount(ctx, s.owner)
 	if err != nil {
 		return 0, []string{fmt.Sprintf("could not create Owner account: %v", err)}
@@ -443,24 +470,11 @@ func createGoal(ctx context.Context, tx *domain.Service, s rowSpec, dimByName ma
 		}
 	}
 	for _, dv := range s.dimensions {
-		dim, ok := dimByName[normalize(dv.dimension)]
-		if !ok {
-			errs = append(errs, fmt.Sprintf("unknown Dimension %q", dv.dimension))
-			continue
-		}
-		valueID, ok := valueIDOf(dim, dv.value)
-		if !ok {
-			errs = append(errs, fmt.Sprintf("%q is not a value of Dimension %q", dv.value, dim.Name))
-			continue
-		}
-		if err := tx.AssignGoalValue(ctx, g.ID, valueID); err != nil {
+		if err := tx.AssignGoalValue(ctx, g.ID, dv.valueID); err != nil {
 			errs = append(errs, message(err))
 		}
 	}
-	if len(errs) > 0 {
-		return 0, errs
-	}
-	return g.ID, nil
+	return g.ID, errs
 }
 
 func valueIDOf(dim domain.Dimension, value string) (int64, bool) {
@@ -517,12 +531,19 @@ func normalize(s string) string {
 	return strings.ToLower(strings.TrimSpace(s))
 }
 
+// sheetRow is one row of the spreadsheet: its number as the spreadsheet numbers
+// it (the header is row 1) and its cells.
+type sheetRow struct {
+	number int
+	cells  []string
+}
+
 // parseGrid reads the spreadsheet into rows of cells, choosing the CSV or XLSX
 // reader by the filename extension and content. It errors if the file has no
 // header row.
-func parseGrid(filename string, data []byte) ([][]string, error) {
+func parseGrid(filename string, data []byte) ([]sheetRow, error) {
 	var (
-		grid [][]string
+		grid []sheetRow
 		err  error
 	)
 	if isXLSX(filename, data) {
@@ -539,14 +560,33 @@ func parseGrid(filename string, data []byte) ([][]string, error) {
 	return grid, nil
 }
 
-func parseCSV(data []byte) ([][]string, error) {
+// parseCSV reads CSV records, numbering them as a spreadsheet opening the file
+// would: the CSV reader skips blank lines, but each is still a row, and a quoted
+// cell spanning several lines is still one row.
+func parseCSV(data []byte) ([]sheetRow, error) {
 	r := csv.NewReader(strings.NewReader(string(data)))
 	r.FieldsPerRecord = -1 // rows may omit trailing empty columns
-	rows, err := r.ReadAll()
-	if err != nil {
-		return nil, fmt.Errorf("%w: could not read CSV: %v", domain.ErrValidation, err)
+	var (
+		rows     []sheetRow
+		number   int
+		nextLine = 1 // the file line the next row starts on, if none is blank
+	)
+	for {
+		record, err := r.Read()
+		if errors.Is(err, io.EOF) {
+			return rows, nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("%w: could not read CSV: %v", domain.ErrValidation, err)
+		}
+		line, _ := r.FieldPos(0)
+		number += line - nextLine + 1
+		nextLine = line + 1
+		for _, field := range record {
+			nextLine += strings.Count(field, "\n")
+		}
+		rows = append(rows, sheetRow{number: number, cells: record})
 	}
-	return rows, nil
 }
 
 func isXLSX(filename string, data []byte) bool {
@@ -558,7 +598,7 @@ func isXLSX(filename string, data []byte) bool {
 }
 
 // parseXLSX reads the first worksheet of an XLSX workbook into rows of cells.
-func parseXLSX(data []byte) ([][]string, error) {
+func parseXLSX(data []byte) ([]sheetRow, error) {
 	f, err := excelize.OpenReader(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("%w: could not read XLSX: %v", domain.ErrValidation, err)
@@ -569,9 +609,110 @@ func parseXLSX(data []byte) ([][]string, error) {
 	if len(sheets) == 0 {
 		return nil, fmt.Errorf("%w: the workbook has no worksheets", domain.ErrValidation)
 	}
-	rows, err := f.GetRows(sheets[0])
+	sheet := sheets[0]
+	rows, err := f.GetRows(sheet)
 	if err != nil {
-		return nil, fmt.Errorf("%w: could not read worksheet %q: %v", domain.ErrValidation, sheets[0], err)
+		return nil, fmt.Errorf("%w: could not read worksheet %q: %v", domain.ErrValidation, sheet, err)
 	}
-	return rows, nil
+	raw, err := f.GetRows(sheet, excelize.Options{RawCellValue: true})
+	if err != nil {
+		return nil, fmt.Errorf("%w: could not read worksheet %q: %v", domain.ErrValidation, sheet, err)
+	}
+	props, err := f.GetWorkbookProps()
+	if err != nil {
+		return nil, fmt.Errorf("%w: could not read XLSX: %v", domain.ErrValidation, err)
+	}
+	date1904 := props.Date1904 != nil && *props.Date1904
+
+	// A date cell holds a number that its format displays as a date — as
+	// 06-30-26, or as Jul-26 for the first of a month — so its displayed text is
+	// no use to the importer. Read every date cell as YYYY-MM-DD instead, in
+	// whichever column it sits.
+	for r, row := range rows {
+		for c, shown := range row {
+			if r >= len(raw) || c >= len(raw[r]) || raw[r][c] == shown {
+				continue
+			}
+			if d, ok := dateCell(f, sheet, c+1, r+1, raw[r][c], date1904); ok {
+				row[c] = d.Format(dateFormat)
+			}
+		}
+	}
+	grid := make([]sheetRow, len(rows))
+	for i, row := range rows {
+		grid[i] = sheetRow{number: i + 1, cells: row}
+	}
+	return grid, nil
+}
+
+// dateCell reports the date held by the cell at (col, row), whose raw value is
+// raw, and whether the cell is a date cell at all: a date-typed cell, or a number
+// whose format shows a date.
+func dateCell(f *excelize.File, sheet string, col, row int, raw string, date1904 bool) (time.Time, bool) {
+	ref, err := excelize.CoordinatesToCellName(col, row)
+	if err != nil {
+		return time.Time{}, false
+	}
+	if typ, err := f.GetCellType(sheet, ref); err == nil && typ == excelize.CellTypeDate {
+		// A date-typed cell stores an ISO 8601 date-time.
+		if len(raw) >= len(dateFormat) {
+			if d, err := parseDate(raw[:len(dateFormat)]); err == nil {
+				return d, true
+			}
+		}
+		return time.Time{}, false
+	}
+	serial, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+	styleID, err := f.GetCellStyle(sheet, ref)
+	if err != nil {
+		return time.Time{}, false
+	}
+	style, err := f.GetStyle(styleID)
+	if err != nil || !isDateFormat(style) {
+		return time.Time{}, false
+	}
+	t, err := excelize.ExcelDateToTime(serial, date1904)
+	if err != nil {
+		return time.Time{}, false
+	}
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC), true
+}
+
+// builtInDateFormats are the built-in number formats that show a date: 14–17
+// (m/d/yy, d-mmm-yy, d-mmm, mmm-yy) and 22 (m/d/yy h:mm). 18–21 and 45–47 show
+// only a time.
+var builtInDateFormats = map[int]bool{14: true, 15: true, 16: true, 17: true, 22: true}
+
+// isDateFormat reports whether a cell style's number format shows a date. A
+// custom format shows one when, outside its quoted text, bracketed locale and
+// colour codes, and escaped characters, it has a year or day token.
+func isDateFormat(style *excelize.Style) bool {
+	if style.CustomNumFmt == nil {
+		return builtInDateFormats[style.NumFmt]
+	}
+	code := strings.ToLower(*style.CustomNumFmt)
+	var inQuote, inBracket, escaped bool
+	for _, ch := range code {
+		switch {
+		case escaped:
+			escaped = false
+		case inQuote:
+			inQuote = ch != '"'
+		case inBracket:
+			inBracket = ch != ']'
+		case ch == '"':
+			inQuote = true
+		case ch == '[':
+			inBracket = true
+		case ch == '\\', ch == '_', ch == '*':
+			escaped = true
+		case ch == 'y', ch == 'd':
+			return true
+		}
+	}
+	return false
 }
