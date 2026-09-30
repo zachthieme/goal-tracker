@@ -7,6 +7,7 @@ package email
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 )
 
@@ -20,6 +21,21 @@ type Message struct {
 // Sender delivers outbound email.
 type Sender interface {
 	Send(ctx context.Context, msg Message) error
+}
+
+// LogSender logs each message instead of delivering it. It is the development
+// sender: no real mail transport exists yet, but sends are observable.
+type LogSender struct{ Logger *slog.Logger }
+
+// Send logs msg at info level.
+func (l LogSender) Send(_ context.Context, msg Message) error {
+	logger := l.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
+	logger.Info("email send (development, not delivered)",
+		"to", msg.To, "subject", msg.Subject)
+	return nil
 }
 
 // Recorder is a Sender that records messages instead of delivering them, so a

@@ -14,10 +14,11 @@ export default defineConfig({
 
   stateDir: ".vetinari.local",
 
-  // The gate — what "done" means. Each exits non-zero on failure. When the
-  // walking-skeleton ticket adds templ/sqlc, add a generated-code drift gate
-  // (regenerate, then `git diff --exit-code`) so stale generated files park.
+  // The gate — what "done" means. Each exits non-zero on failure. The
+  // generate gate regenerates the templ/sqlc code and fails on any diff, so
+  // stale generated files park instead of merging.
   gates: [
+    { cmd: "make generate-check", label: "generate" },
     { cmd: "make test", label: "test" },
     { cmd: "make lint", label: "lint" },
   ],
