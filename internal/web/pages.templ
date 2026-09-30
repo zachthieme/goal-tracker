@@ -1,0 +1,105 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// layout is the shared page chrome. htmx drives the in-place create-Goal swap.
+templ layout(title string, current *domain.Account) {
+	<!DOCTYPE html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ title } · Goal Tracker</title>
+			<script src="https://unpkg.com/htmx.org@2.0.3" crossorigin="anonymous"></script>
+		</head>
+		<body>
+			<header>
+				<a href="/goals"><strong>Goal Tracker</strong></a>
+				if current != nil {
+					<span data-testid="current-user">
+						Signed in as { current.Email }
+						if current.IsAdmin {
+							(Admin)
+						}
+					</span>
+					<form method="post" action="/signout" style="display:inline">
+						<button type="submit">Sign out</button>
+					</form>
+				}
+			</header>
+			<main>
+				{ children... }
+			</main>
+		</body>
+	</html>
+}
+
+// signInPage is the development sign-in form.
+templ signInPage() {
+	@layout("Sign in", nil) {
+		<h1>Sign in</h1>
+		<p>Development sign-in: enter an email to sign in. Your account is created on first sign-in.</p>
+		<form method="post" action="/signin">
+			<label>
+				Email
+				<input type="email" name="email" required autofocus/>
+			</label>
+			<button type="submit">Sign in</button>
+		</form>
+	}
+}
+
+// goalsPage lists every Goal and offers the create-Goal form.
+templ goalsPage(current *domain.Account, goals []domain.Goal) {
+	@layout("Goals", current) {
+		<h1>Goals</h1>
+		<section>
+			<h2>Propose a Goal</h2>
+			<form hx-post="/goals" hx-target="#goal-list" hx-swap="outerHTML" method="post" action="/goals">
+				<label>
+					Title
+					<input type="text" name="title" required/>
+				</label>
+				<label>
+					So What
+					<textarea name="so_what" required></textarea>
+				</label>
+				<button type="submit">Create Goal</button>
+			</form>
+		</section>
+		@goalList(goals)
+	}
+}
+
+// goalList is the htmx swap target: the Goal list on its own.
+templ goalList(goals []domain.Goal) {
+	<ul id="goal-list" data-testid="goal-list">
+		if len(goals) == 0 {
+			<li data-testid="no-goals">No Goals yet.</li>
+		}
+		for _, g := range goals {
+			<li>
+				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
+				<span> — { g.Lifecycle } — Owner { g.Owner.Email }</span>
+			</li>
+		}
+	</ul>
+}
+
+// goalPage shows a single Goal on its own page.
+templ goalPage(current *domain.Account, g domain.Goal) {
+	@layout(g.Title, current) {
+		<article data-testid="goal">
+			<h1 data-testid="goal-title">{ g.Title }</h1>
+			<p><strong>Lifecycle:</strong> <span data-testid="goal-lifecycle">{ g.Lifecycle }</span></p>
+			<p><strong>Owner:</strong> <span data-testid="goal-owner">{ g.Owner.Email }</span></p>
+			<h2>So What</h2>
+			<p data-testid="goal-so-what">{ g.SoWhat }</p>
+		</article>
+		<p><a href="/goals">Back to Goals</a></p>
+	}
+}
