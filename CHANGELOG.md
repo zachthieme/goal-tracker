@@ -77,6 +77,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Seed a fake org for demos: `make seed` (or `go run ./cmd/seed`) fills a fresh database with about 50 Goals across six teams (a Team Dimension) and three levels of the graph, with 12 weeks of Check-in history, Date Slips, Milestone Churn, and a mix of Health including Stale and Unaligned Goals. It builds everything through the spreadsheet import and the domain commands. It is deterministic (`-seed`, `-end`) and refuses a database that already has Goals. Documented in the new README (#23).
 - [user] A Home page shows your week: the Goals you Own or are a Delegate on that are Stale or due a Check-in before next week's reminder, each with No change and Check in; the link requests and Handoffs waiting on you, with Accept and Reject; your Active Goals by Health; and the Goals delegated to you. Signing in now lands on Home (#34).
 - [user] The top bar leads with Home, counting what needs you; it replaces the Pending links, Pending handoffs, and Delegated to me items, whose pages stay (#34).
+- [user] One Risks page at `/risks` answers "what's going wrong?": summary tiles count the Stale, Path to Green overdue, Ownerless, Unaligned, Schedule conflict and Parent On Hold or Cancelled Goals and link to a section for each, which lists every flagged Goal with its Owner and why it's flagged. Ownerless Active Goals are listed here for the first time. `/freshness` and `/signals` still work (#35).
+- [user] The top bar has a Risks item counting the flagged Goals, each counted once however many sections list it (#35).
 
 **Improvements:**
 - [user] Once a Goal is Active its dates move only in a Check-in, so every change is explained: the Milestone edit form and the Dated/Ongoing controls apply only while a Goal is Proposed (#5).
@@ -88,6 +90,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The draft Report page reads baseline → narrative → draft preview, with Publish at the bottom as the primary button ("Publishes a frozen copy readers can comment on.") and publications in a sidebar (#39).
 - [user] The Reports page lists saved definitions as cards and keeps the form behind a New report button; its Root Goals picker is a scrolling list with Top-level Goals first, and Depth explains its numbers (#39).
 - [user] The print page is set in Source Serif 4 (falling back to Georgia) and marks Health with a shape as well as its name — ■ Red, ▲ Yellow, ● Green — so it survives black-and-white printing (#39).
+- [user] A Goal's page shows Stale and Path to Green overdue as Stale-colored alert banners, and each graph signal as its own banner. The Goal list marks rows with "Stale · N days" and "Path to Green overdue" chips, and Mark or Unmark Top-level is a regular button (#35).
 
 **Bug fixes:**
 - [internal] The build compiles again after the reports (#39) and Check-in (#37) redesigns merged together: each had added an identical `healthClass` helper to the `web` package; the Check-in copy is removed and both pages use the one in `reports.templ`.
