@@ -9,6 +9,7 @@ type Account struct {
 	Email     string
 	IsAdmin   int64
 	CreatedAt string
+	Departed  int64
 }
 
 type Contributor struct {
@@ -28,6 +29,16 @@ type Goal struct {
 	Kind         string
 	DeliveryDate string
 	CadenceDays  int64
+}
+
+type Handoff struct {
+	ID          int64
+	GoalID      int64
+	FromOwner   int64
+	ToOwner     int64
+	Status      string
+	InitiatedBy int64
+	CreatedAt   string
 }
 
 type Link struct {

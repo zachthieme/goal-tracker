@@ -1,0 +1,34 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// pendingHandoffsPage lists the Handoffs awaiting the current Account's decision
+// as the proposed new Owner, with accept and reject actions. A Handoff takes
+// effect only once accepted (CONTEXT.md: Handoff).
+templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) {
+	@layout("Pending handoffs", current) {
+		<h1>Pending handoffs</h1>
+		<ul data-testid="pending-handoffs">
+			if len(pending) == 0 {
+				<li data-testid="no-pending-handoffs">No pending handoffs.</li>
+			}
+			for _, ho := range pending {
+				<li data-testid="pending-handoff">
+					<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)) }>{ ho.Goal.Title }</a>
+					<span> — { ho.From.Email } wants to hand this Goal to you</span>
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/accept", ho.ID)) } style="display:inline">
+						<button type="submit">Accept</button>
+					</form>
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/reject", ho.ID)) } style="display:inline">
+						<button type="submit">Reject</button>
+					</form>
+				</li>
+			}
+		</ul>
+		<p><a href="/goals">Back to Goals</a></p>
+	}
+}

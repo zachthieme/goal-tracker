@@ -38,6 +38,9 @@ templ goalList(goals []domain.Goal) {
 			<li>
 				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
 				<span> — { g.Lifecycle } — Owner { g.Owner.Email }</span>
+				if g.Ownerless {
+					<strong data-testid="ownerless"> — Ownerless</strong>
+				}
 			</li>
 		}
 	</ul>
@@ -49,7 +52,11 @@ templ goalList(goals []domain.Goal) {
 templ goalPage(current *domain.Account, v goalView) {
 	{{ g := v.Goal }}
 	{{ owner := current != nil && current.ID == g.Owner.ID }}
+	{{ admin := current != nil && current.IsAdmin }}
 	@layout(g.Title, current) {
+		if g.Ownerless {
+			<p data-testid="goal-ownerless" role="alert"><strong>Ownerless</strong> — this Goal's Owner has left the org and it needs an Admin to reassign it.</p>
+		}
 		<article data-testid="goal">
 			<h1 data-testid="goal-title">{ g.Title }</h1>
 			<p><strong>Lifecycle:</strong> <span data-testid="goal-lifecycle">{ g.Lifecycle }</span></p>
@@ -112,6 +119,7 @@ templ goalPage(current *domain.Account, v goalView) {
 			<h2>Contributed to by</h2>
 			@linkList(v.Children, "no-children", "Nothing contributes to this Goal yet.")
 		</section>
+		@ownership(&g, owner, admin)
 		if owner {
 			<section data-testid="request-link">
 				<h2>Contribute this Goal to another</h2>
@@ -133,6 +141,45 @@ templ goalPage(current *domain.Account, v goalView) {
 			</section>
 		}
 		<p><a href="/goals">Back to Goals</a></p>
+	}
+}
+
+// ownership renders the ownership-change controls for a Goal: an Owner or Admin
+// can hand a present-Owner Goal to a new Owner (who must accept), an Admin can
+// mark the current Owner departed, and an Admin can reassign an Ownerless Goal
+// (CONTEXT.md: Handoff, Ownerless, Admin).
+templ ownership(g *domain.Goal, owner, admin bool) {
+	if (owner || admin) && !g.Ownerless {
+		<section data-testid="handoff-goal">
+			<h2>Hand off this Goal</h2>
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/handoff", g.ID)) }>
+				<label>
+					New Owner's email
+					<input type="email" name="to_email" required/>
+				</label>
+				<button type="submit">Start handoff</button>
+			</form>
+		</section>
+	}
+	if admin && !g.Owner.Departed {
+		<section data-testid="depart-owner">
+			<h2>Owner has left the org</h2>
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/depart", g.Owner.ID)) }>
+				<button type="submit">Mark { g.Owner.Email } departed</button>
+			</form>
+		</section>
+	}
+	if admin && g.Ownerless {
+		<section data-testid="reassign-goal">
+			<h2>Reassign this Ownerless Goal</h2>
+			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/reassign", g.ID)) }>
+				<label>
+					New Owner's email
+					<input type="email" name="email" required/>
+				</label>
+				<button type="submit">Reassign</button>
+			</form>
+		</section>
 	}
 }
 
@@ -294,6 +341,9 @@ templ linkList(links []domain.GoalLink, emptyTestID, emptyText string) {
 			<li>
 				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Goal.ID)) }>{ l.Goal.Title }</a>
 				<span> — Owner { l.Goal.Owner.Email }</span>
+				if l.Goal.Ownerless {
+					<strong data-testid="ownerless"> — Ownerless</strong>
+				}
 				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/remove", l.LinkID)) } style="display:inline">
 					<button type="submit">Remove</button>
 				</form>

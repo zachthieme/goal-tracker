@@ -26,6 +26,10 @@ type Goal struct {
 	// CadenceDays is how often a Check-in is expected (7 by default).
 	CadenceDays int
 	CreatedAt   time.Time
+	// Ownerless is true when the Owner has departed the org and the Goal has not
+	// been reassigned; it is surfaced as prominently as Red (CONTEXT.md:
+	// Ownerless). It is derived from the Owner, not stored on the Goal.
+	Ownerless bool
 }
 
 // Lifecycle values a Goal can be in (CONTEXT.md: Lifecycle).
@@ -333,16 +337,18 @@ func goalFromRow(g db.Goal, owner db.Account) Goal {
 	if g.DeliveryDate != "" {
 		deliveryDate, _ = time.Parse(dateFormat, g.DeliveryDate)
 	}
+	acc := accountFromRow(owner)
 	return Goal{
 		ID:           g.ID,
 		Title:        g.Title,
 		SoWhat:       g.SoWhat,
-		Owner:        accountFromRow(owner),
+		Owner:        acc,
 		Lifecycle:    g.Lifecycle,
 		Kind:         g.Kind,
 		DeliveryDate: deliveryDate,
 		CadenceDays:  int(g.CadenceDays),
 		CreatedAt:    createdAt,
+		Ownerless:    acc.Departed,
 	}
 }
 
