@@ -34,12 +34,3 @@ UPDATE goals SET owner_id = ? WHERE id = ?;
 -- name: SetAccountDeparted :exec
 -- Record that a person has left the org, so their Goals become Ownerless.
 UPDATE accounts SET departed = ? WHERE id = ?;
-
--- name: ListOwnerlessGoals :many
--- Every Goal whose Owner has departed the org (CONTEXT.md: Ownerless), newest
--- first, so an Admin can find and reassign them.
-SELECT sqlc.embed(goals), sqlc.embed(accounts)
-FROM goals
-JOIN accounts ON accounts.id = goals.owner_id
-WHERE accounts.departed = 1
-ORDER BY goals.created_at DESC, goals.id DESC;

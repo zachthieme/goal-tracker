@@ -93,59 +93,6 @@ func (q *Queries) GetPendingHandoffForGoal(ctx context.Context, goalID int64) (H
 	return i, err
 }
 
-const listOwnerlessGoals = `-- name: ListOwnerlessGoals :many
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
-FROM goals
-JOIN accounts ON accounts.id = goals.owner_id
-WHERE accounts.departed = 1
-ORDER BY goals.created_at DESC, goals.id DESC
-`
-
-type ListOwnerlessGoalsRow struct {
-	Goal    Goal
-	Account Account
-}
-
-// Every Goal whose Owner has departed the org (CONTEXT.md: Ownerless), newest
-// first, so an Admin can find and reassign them.
-func (q *Queries) ListOwnerlessGoals(ctx context.Context) ([]ListOwnerlessGoalsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listOwnerlessGoals)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListOwnerlessGoalsRow
-	for rows.Next() {
-		var i ListOwnerlessGoalsRow
-		if err := rows.Scan(
-			&i.Goal.ID,
-			&i.Goal.Title,
-			&i.Goal.SoWhat,
-			&i.Goal.OwnerID,
-			&i.Goal.Lifecycle,
-			&i.Goal.CreatedAt,
-			&i.Goal.Kind,
-			&i.Goal.DeliveryDate,
-			&i.Goal.CadenceDays,
-			&i.Account.ID,
-			&i.Account.Email,
-			&i.Account.IsAdmin,
-			&i.Account.CreatedAt,
-			&i.Account.Departed,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listPendingHandoffsForNewOwner = `-- name: ListPendingHandoffsForNewOwner :many
 SELECT handoffs.id, handoffs.goal_id, handoffs.from_owner, handoffs.to_owner, handoffs.status, handoffs.initiated_by, handoffs.created_at, goal.id, goal.title, goal.so_what, goal.owner_id, goal.lifecycle, goal.created_at, goal.kind, goal.delivery_date, goal.cadence_days, from_acct.id, from_acct.email, from_acct.is_admin, from_acct.created_at, from_acct.departed, to_acct.id, to_acct.email, to_acct.is_admin, to_acct.created_at, to_acct.departed
 FROM handoffs
