@@ -195,7 +195,7 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 		t.Errorf("publish form does not carry the chosen baseline; form:\n%s", form)
 	}
 	resp = postForm(t, client, reportURL+"/publications", url.Values{"baseline": {"2026-01-01"}})
-	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "Changes since 2026-01-01") {
+	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "changes since 2026-01-01") {
 		t.Errorf("publication does not read against the chosen baseline; line:\n%s", line)
 	}
 
@@ -400,5 +400,34 @@ func TestSmokeCurateNarrativeOverHTTP(t *testing.T) {
 	resp = postForm(t, client, reportURL+"/narrative", url.Values{"pick-9999": {domain.HighlightInsight}})
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("picking an unknown Highlight: status %d, want 422", resp.StatusCode)
+	}
+}
+
+// The publication opens with a Health summary: how many of the Report's
+// selected Goals are Red, Yellow, Green, and Stale, so an exec sees the shape
+// of the org before reading a block.
+func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	yellow := h.ActiveGoal(boss, "Hire a CFO", "We need one.")
+	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	stale := h.ActiveGoal(boss, "Open Tokyo", "Expand east.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(boss, yellow.ID, domain.HealthYellow, "Slow.", "Use a recruiter.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{red.ID, yellow.ID, green.ID, stale.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
+
+	summary := pageElement(t, page, "section", "health-summary")
+	for tile, want := range map[string]string{"red": "1", "yellow": "1", "green": "1", "stale": "1"} {
+		if count := pageElement(t, summary, "span", "health-count-"+tile); !strings.HasSuffix(count, ">"+want) {
+			t.Errorf("%s tile: %q, want a count of %s", tile, count, want)
+		}
 	}
 }
