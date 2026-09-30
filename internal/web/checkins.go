@@ -57,7 +57,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		return checkinFormData{
 			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, Explanation: explanation,
 			Metrics: metrics, Readings: rawReadings, Highlight: highlight, Dates: dates, Lifecycle: lifecycle,
-			Error: checkinError{Field: checkinErrorField(msg), Message: msg},
+			Error: checkinError{Field: checkinErrorField(msg, dates), Message: msg},
 		}
 	}
 
@@ -108,8 +108,19 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 
 // checkinErrorField names the form field a Check-in validation message is
 // about. The domain reports a Check-in's validation errors as messages, so the
-// field is read from the message's wording.
-func checkinErrorField(msg string) string {
+// field is read from the message's wording; a Milestone's field is found by the
+// Milestone the message names among the form's rows.
+func checkinErrorField(msg string, dates checkinDatesFormData) string {
+	if id, ok := dates.milestoneNamedIn(msg); ok {
+		switch {
+		case strings.Contains(msg, "changing the date of Milestone"):
+			return fmt.Sprintf("milestone_date_reason_%d", id)
+		case strings.Contains(msg, "removing Milestone"):
+			return fmt.Sprintf("milestone_removed_reason_%d", id)
+		case strings.Contains(msg, "is overdue"):
+			return fmt.Sprintf("milestone_date_%d", id)
+		}
+	}
 	switch {
 	case strings.Contains(msg, "differs from the Rolled-up Health"):
 		return "explanation"
@@ -119,9 +130,24 @@ func checkinErrorField(msg string) string {
 		return "lifecycle"
 	case strings.Contains(msg, "needs an outcome"), strings.Contains(msg, "outcome is one line"):
 		return "outcome"
+	case strings.Contains(msg, "moves the delivery date later"), msg == "invalid delivery date":
+		return "delivery_date"
+	case strings.Contains(msg, "changing the delivery date needs a reason"):
+		return "delivery_date_reason"
 	default:
 		return "path_to_green"
 	}
+}
+
+// milestoneNamedIn returns the ID of the Planned Milestone row a message names,
+// as the domain quotes it (Milestone "Beta").
+func (d checkinDatesFormData) milestoneNamedIn(msg string) (int64, bool) {
+	for _, row := range d.Milestones {
+		if strings.Contains(msg, fmt.Sprintf("Milestone %q", row.Milestone.Name)) {
+			return row.Milestone.ID, true
+		}
+	}
+	return 0, false
 }
 
 // rawReadingsFromForm reads the reading_<metricID> field for each of the Goal's

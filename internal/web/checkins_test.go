@@ -213,7 +213,7 @@ func TestSmokeCheckinDeliveryDateSlipShownStruckThrough(t *testing.T) {
 }
 
 // A Green Check-in that moves the delivery date later comes back as the form
-// with the error inline, and nothing is recorded.
+// with the error next to the delivery date, and nothing is recorded.
 func TestSmokeGreenWithLaterDeliveryDateRejectedInForm(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
@@ -231,8 +231,8 @@ func TestSmokeGreenWithLaterDeliveryDateRejectedInForm(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("htmx validation response status = %d, want 200", status)
 	}
-	if !strings.Contains(body, `data-testid="checkin-error"`) || !strings.Contains(body, "moves the delivery date later") {
-		t.Errorf("response missing the inline Green error; body:\n%s", body)
+	if msg := fieldError(t, body, `name="delivery_date"`); !strings.Contains(msg, "moves the delivery date later") {
+		t.Errorf("delivery date field's error = %q, want the Green one", msg)
 	}
 	if !strings.Contains(body, "Vendor slipped.") {
 		t.Errorf("re-rendered form lost the typed reason; body:\n%s", body)
@@ -683,5 +683,105 @@ func TestCheckinLifecycleChangeErrorShownNextToLifecycleField(t *testing.T) {
 	})
 	if msg := fieldError(t, body, `name="lifecycle"`); !strings.Contains(msg, "Active Goal to") {
 		t.Errorf("Lifecycle field's error = %q, want the Lifecycle change one", msg)
+	}
+}
+
+// A Check-in that moves the delivery date without a reason gets its error next
+// to the delivery date's reason field.
+func TestCheckinDeliveryDateReasonErrorShownNextToReasonField(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":           {domain.HealthYellow},
+		"status":           {"Vendor is late."},
+		"path_to_green":    {"Swap vendors."},
+		"path_target_date": {"2026-06-15"},
+		"delivery_date":    {goal.DeliveryDate.AddDate(0, 0, 14).Format("2006-01-02")},
+	})
+	if msg := fieldError(t, body, `name="delivery_date_reason"`); !strings.Contains(msg, "delivery date needs a reason") {
+		t.Errorf("delivery date reason field's error = %q, want the Date Slip one", msg)
+	}
+}
+
+// A Check-in that moves a Milestone's date without a reason gets its error next
+// to that Milestone's reason field.
+func TestCheckinMilestoneDateReasonErrorShownNextToReasonField(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	beta := onlyMilestone(t, h, goal)
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"Beta moves."},
+		fmt.Sprintf("milestone_date_%d", beta.ID): {beta.TargetDate.AddDate(0, 0, 10).Format("2006-01-02")},
+	})
+	marker := fmt.Sprintf(`name="milestone_date_reason_%d"`, beta.ID)
+	if msg := fieldError(t, body, marker); !strings.Contains(msg, "needs a reason") {
+		t.Errorf("Milestone reason field's error = %q, want the Date Slip one", msg)
+	}
+}
+
+// onlyMilestone returns the one Milestone an ActiveGoal starts with.
+func onlyMilestone(t *testing.T, h *testsupport.Harness, goal domain.Goal) domain.Milestone {
+	t.Helper()
+	ms, err := h.Service.ListMilestones(context.Background(), goal.ID)
+	if err != nil || len(ms) != 1 {
+		t.Fatalf("ListMilestones = %v, %v", ms, err)
+	}
+	return ms[0]
+}
+
+// A Check-in that removes a Milestone without a reason gets its error next to
+// that Milestone's reason-for-removing field.
+func TestCheckinMilestoneRemovedReasonErrorShownNextToReasonField(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	beta := onlyMilestone(t, h, goal)
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"Dropping the beta."},
+		fmt.Sprintf("milestone_status_%d", beta.ID): {domain.MilestoneRemoved},
+	})
+	marker := fmt.Sprintf(`name="milestone_removed_reason_%d"`, beta.ID)
+	if msg := fieldError(t, body, marker); !strings.Contains(msg, "removing Milestone") {
+		t.Errorf("Milestone removal field's error = %q, want the removal one", msg)
+	}
+}
+
+// A Green Check-in that leaves a Milestone overdue gets its error next to that
+// Milestone's date.
+func TestCheckinOverdueMilestoneErrorShownNextToMilestoneDate(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	beta := onlyMilestone(t, h, goal)
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	// Pulling Beta's date into the past leaves it overdue, which rules out Green.
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"All good."},
+		fmt.Sprintf("milestone_date_%d", beta.ID):        {h.Clock.Now().AddDate(0, 0, -1).Format("2006-01-02")},
+		fmt.Sprintf("milestone_date_reason_%d", beta.ID): {"It was really due yesterday."},
+	})
+	marker := fmt.Sprintf(`name="milestone_date_%d"`, beta.ID)
+	if msg := fieldError(t, body, marker); !strings.Contains(msg, "is overdue") {
+		t.Errorf("Milestone date field's error = %q, want the overdue one", msg)
 	}
 }

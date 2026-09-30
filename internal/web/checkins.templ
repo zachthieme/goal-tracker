@@ -289,7 +289,7 @@ templ checkinForm(d checkinFormData) {
 			@checkinFieldError(d.Error, "path_to_green")
 		</fieldset>
 		@checkinLifecycleFields(d.Lifecycle, d.Error)
-		@checkinDateFields(d.Dates)
+		@checkinDateFields(d.Dates, d.Error)
 		if len(d.Metrics) > 0 {
 			<fieldset data-testid="checkin-readings">
 				<legend>Metric readings</legend>
@@ -330,7 +330,7 @@ templ checkinForm(d checkinFormData) {
 // remove Planned Milestones, and add new ones. Every date change needs a reason
 // and is kept as a Date Slip; moving the delivery date later rules out Green
 // (CONTEXT.md: Date Slip, Milestone).
-templ checkinDateFields(d checkinDatesFormData) {
+templ checkinDateFields(d checkinDatesFormData, e checkinError) {
 	<fieldset data-testid="checkin-dates">
 		<legend>Dates and Milestones</legend>
 		if d.Dated {
@@ -338,10 +338,12 @@ templ checkinDateFields(d checkinDatesFormData) {
 				Delivery date
 				<input type="date" name="delivery_date" value={ d.DeliveryDate }/>
 			</label>
+			@checkinFieldError(e, "delivery_date")
 			<label>
 				Reason (required if the delivery date changes)
 				<textarea name="delivery_date_reason">{ d.DeliveryDateReason }</textarea>
 			</label>
+			@checkinFieldError(e, "delivery_date_reason")
 		}
 		for _, row := range d.Milestones {
 			{{ id := row.Milestone.ID }}
@@ -351,10 +353,12 @@ templ checkinDateFields(d checkinDatesFormData) {
 					Date
 					<input type="date" name={ fmt.Sprintf("milestone_date_%d", id) } value={ row.Date }/>
 				</label>
+				@checkinFieldError(e, fmt.Sprintf("milestone_date_%d", id))
 				<label>
 					Reason (required if the date changes)
 					<textarea name={ fmt.Sprintf("milestone_date_reason_%d", id) }>{ row.DateReason }</textarea>
 				</label>
+				@checkinFieldError(e, fmt.Sprintf("milestone_date_reason_%d", id))
 				<label>
 					Status
 					<select name={ fmt.Sprintf("milestone_status_%d", id) }>
@@ -367,6 +371,7 @@ templ checkinDateFields(d checkinDatesFormData) {
 					Reason for removing (required if Removed)
 					<textarea name={ fmt.Sprintf("milestone_removed_reason_%d", id) }>{ row.RemovedReason }</textarea>
 				</label>
+				@checkinFieldError(e, fmt.Sprintf("milestone_removed_reason_%d", id))
 			</fieldset>
 		}
 		for _, row := range append(d.NewMilestones, newMilestoneFormRow{}) {
