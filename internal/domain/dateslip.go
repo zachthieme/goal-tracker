@@ -40,38 +40,34 @@ func (p slipPlan) later() bool { return p.newDate.After(p.oldDate) }
 // current one. A zero or unchanged date is no slip (nil). A change needs a
 // reason, and only a Dated Goal has a delivery date to move.
 func planDeliverySlip(goal db.Goal, newDate time.Time, reason string) (*slipPlan, error) {
-	if newDate.IsZero() || newDate.Format(dateFormat) == goal.DeliveryDate {
-		return nil, nil
-	}
-	if goal.Kind != GoalDated {
+	if !newDate.IsZero() && newDate.Format(dateFormat) != goal.DeliveryDate && goal.Kind != GoalDated {
 		return nil, fmt.Errorf("%w: only a Dated Goal has a delivery date to change", ErrValidation)
 	}
-	oldDate, err := time.Parse(dateFormat, goal.DeliveryDate)
-	if err != nil {
-		return nil, fmt.Errorf("parse delivery date: %w", err)
-	}
-	reason = strings.TrimSpace(reason)
-	if reason == "" {
-		return nil, fmt.Errorf("%w: changing the delivery date needs a reason", ErrValidation)
-	}
-	return &slipPlan{oldDate: oldDate, newDate: newDate, reason: reason}, nil
+	return planSlip(0, "the delivery date", goal.DeliveryDate, newDate, reason)
 }
 
 // planMilestoneSlip validates a Check-in's new date for a Milestone. A zero or
 // unchanged date is no slip (nil); a change needs a reason.
 func planMilestoneSlip(m db.Milestone, newDate time.Time, reason string) (*slipPlan, error) {
-	if newDate.IsZero() || newDate.Format(dateFormat) == m.TargetDate {
+	return planSlip(m.ID, fmt.Sprintf("the date of Milestone %q", m.Name), m.TargetDate, newDate, reason)
+}
+
+// planSlip validates moving a stored date (oldDate, in dateFormat) to newDate.
+// A zero or unchanged newDate is no slip (nil); a change needs a reason. what
+// names the date for the error message.
+func planSlip(milestoneID int64, what, oldDate string, newDate time.Time, reason string) (*slipPlan, error) {
+	if newDate.IsZero() || newDate.Format(dateFormat) == oldDate {
 		return nil, nil
 	}
-	oldDate, err := time.Parse(dateFormat, m.TargetDate)
+	old, err := time.Parse(dateFormat, oldDate)
 	if err != nil {
-		return nil, fmt.Errorf("parse milestone date: %w", err)
+		return nil, fmt.Errorf("parse %s: %w", what, err)
 	}
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
-		return nil, fmt.Errorf("%w: changing the date of Milestone %q needs a reason", ErrValidation, m.Name)
+		return nil, fmt.Errorf("%w: changing %s needs a reason", ErrValidation, what)
 	}
-	return &slipPlan{milestoneID: m.ID, oldDate: oldDate, newDate: newDate, reason: reason}, nil
+	return &slipPlan{milestoneID: milestoneID, oldDate: old, newDate: newDate, reason: reason}, nil
 }
 
 // recordSlip writes a Date Slip for checkinID and moves the date it changes.

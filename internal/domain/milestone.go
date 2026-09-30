@@ -203,10 +203,10 @@ func planMilestoneStatus(m db.Milestone, status, removedReason string) (*milesto
 // they make, the Milestones they mark Done or Removed, the Milestones they add,
 // and the Goal's Milestones as they will stand once applied.
 type milestonePlan struct {
-	slips    []slipPlan
-	statuses []milestoneStatusChange
-	added    []NewMilestoneInput
-	after    []db.Milestone
+	slips     []slipPlan
+	statuses  []milestoneStatusChange
+	added     []NewMilestoneInput
+	resulting []db.Milestone
 }
 
 // planMilestoneChanges validates a Check-in's Milestone changes against the
@@ -222,13 +222,13 @@ func (s *Service) planMilestoneChanges(ctx context.Context, goalID int64, change
 		index[r.ID] = i
 	}
 	seen := make(map[int64]bool, len(changes))
-	plan := milestonePlan{after: rows}
+	plan := milestonePlan{resulting: rows}
 	for _, ch := range changes {
 		i, ok := index[ch.MilestoneID]
 		if !ok {
 			return milestonePlan{}, fmt.Errorf("%w: milestone %d is not on this Goal", ErrValidation, ch.MilestoneID)
 		}
-		m := &plan.after[i]
+		m := &plan.resulting[i]
 		if seen[m.ID] {
 			return milestonePlan{}, fmt.Errorf("%w: Milestone %q is changed twice", ErrValidation, m.Name)
 		}
@@ -262,9 +262,31 @@ func (s *Service) planMilestoneChanges(ctx context.Context, goalID int64, change
 			return milestonePlan{}, fmt.Errorf("%w: new Milestone %q needs a date", ErrValidation, name)
 		}
 		plan.added = append(plan.added, NewMilestoneInput{Name: name, TargetDate: a.TargetDate})
-		plan.after = append(plan.after, db.Milestone{Name: name, TargetDate: a.TargetDate.Format(dateFormat), Status: MilestonePlanned})
+		plan.resulting = append(plan.resulting, db.Milestone{Name: name, TargetDate: a.TargetDate.Format(dateFormat), Status: MilestonePlanned})
 	}
 	return plan, nil
+}
+
+// apply writes the plan's Date Slips, Done and Removed markings, and added
+// Milestones against checkinID. Milestones added in a Check-in are added while
+// the Goal is Active, so they count toward its Milestone Churn.
+func (p milestonePlan) apply(ctx context.Context, tx *Service, goalID, checkinID int64) error {
+	for _, slip := range p.slips {
+		if err := tx.recordSlip(ctx, goalID, checkinID, slip); err != nil {
+			return err
+		}
+	}
+	for _, change := range p.statuses {
+		if err := tx.recordMilestoneStatus(ctx, change); err != nil {
+			return err
+		}
+	}
+	for _, a := range p.added {
+		if _, err := tx.createMilestone(ctx, goalID, a.Name, a.TargetDate, true); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // recordMilestoneStatus writes a Check-in's Done or Removed marking.

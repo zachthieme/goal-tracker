@@ -429,3 +429,22 @@ func TestNoChangeGreenRejectedWhileMilestoneOverdue(t *testing.T) {
 		t.Fatalf("no-change Green with an overdue Milestone: err = %v, want ErrValidation", err)
 	}
 }
+
+// A Milestone added in the Check-in with a date already past is overdue at once,
+// so the same Check-in can't be Green.
+func TestGreenRejectedWhenAddedMilestoneIsAlreadyPast(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+
+	_, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:        goal.ID,
+		AuthorID:      sam.ID,
+		Health:        domain.HealthGreen,
+		Status:        "Backfilling a gate.",
+		NewMilestones: []domain.NewMilestoneInput{{Name: "Kickoff", TargetDate: h.Clock.Now().AddDate(0, 0, -3)}},
+	})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
+	}
+}

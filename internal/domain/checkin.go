@@ -151,7 +151,7 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	if err != nil {
 		return Checkin{}, err
 	}
-	if err := s.rejectGreenWhileOverdue(in.Health, milestones.after); err != nil {
+	if err := s.rejectGreenWhileOverdue(in.Health, milestones.resulting); err != nil {
 		return Checkin{}, err
 	}
 
@@ -179,20 +179,8 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 				return err
 			}
 		}
-		for _, slip := range milestones.slips {
-			if err := tx.recordSlip(ctx, goal.Goal.ID, c.ID, slip); err != nil {
-				return err
-			}
-		}
-		for _, change := range milestones.statuses {
-			if err := tx.recordMilestoneStatus(ctx, change); err != nil {
-				return err
-			}
-		}
-		for _, a := range milestones.added {
-			if _, err := tx.createMilestone(ctx, goal.Goal.ID, a.Name, a.TargetDate, true); err != nil {
-				return err
-			}
+		if err := milestones.apply(ctx, tx, goal.Goal.ID, c.ID); err != nil {
+			return err
 		}
 		if in.Highlight != nil {
 			if err := tx.recordHighlight(ctx, c.ID, *in.Highlight); err != nil {
