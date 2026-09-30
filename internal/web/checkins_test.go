@@ -939,3 +939,39 @@ func TestCheckinErrorAboutNoOneFieldShownAtTopOfForm(t *testing.T) {
 		t.Errorf("the form's top error = %q, want the Active Goal one", msg)
 	}
 }
+
+// The Check-in has its own page, for the Owner or a Delegate: titled "Check in",
+// with a breadcrumb back to the Goal and the form. Anyone else gets 403.
+func TestCheckinPageForOwnerAndDelegatesOnly(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	tpm := h.SignIn("tpm@example.com")
+	h.SignIn("eve@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, tpm, goal.ID)
+	checkinURL := fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)
+
+	for _, who := range []string{"sam@example.com", "tpm@example.com"} {
+		page := getBody(t, signInClient(t, ts.URL, who), checkinURL)
+		if !strings.Contains(page, ">Check in</h1>") {
+			t.Errorf("%s: page is not titled Check in; body:\n%s", who, page)
+		}
+		if !strings.Contains(page, fmt.Sprintf(`href="/goals/%d"`, goal.ID)) || !strings.Contains(page, "Reduce outages") {
+			t.Errorf("%s: page has no breadcrumb back to the Goal; body:\n%s", who, page)
+		}
+		if !strings.Contains(page, `data-testid="checkin-form"`) {
+			t.Errorf("%s: page has no Check-in form; body:\n%s", who, page)
+		}
+	}
+
+	resp, err := signInClient(t, ts.URL, "eve@example.com").Get(checkinURL)
+	if err != nil {
+		t.Fatalf("GET %s: %v", checkinURL, err)
+	}
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("someone neither Owner nor Delegate got status %d, want 403", resp.StatusCode)
+	}
+}

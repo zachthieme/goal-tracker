@@ -242,6 +242,26 @@ templ checkinSection(v goalView, canCheckin bool) {
 	</section>
 }
 
+// checkinPage is the Check-in on its own page, reached from the Goal page by
+// the Owner or a Delegate: a breadcrumb back to the Goal and the form,
+// prefilled from the latest Check-in.
+templ checkinPage(current *domain.Account, v goalView) {
+	{{ g := v.Goal }}
+	@layout("Check in · "+g.Title, current) {
+		<div class="checkin-page">
+			<nav class="small muted" aria-label="Breadcrumb">
+				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a> › Check in
+			</nav>
+			<h1>Check in</h1>
+			if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold {
+				@checkinForm(checkinFormFromLatest(v))
+			} else {
+				<p data-testid="goal-no-health">{ fmt.Sprintf("A %s Goal takes no Check-ins.", g.Lifecycle) }</p>
+			}
+		</div>
+	}
+}
+
 // checkinForm is the Owner's Check-in form. It posts with htmx and targets
 // itself, so a validation error re-renders it in place with the message next to
 // the field it is about.

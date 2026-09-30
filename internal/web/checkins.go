@@ -10,6 +10,30 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
+// handleCheckinPage shows the Check-in form on its own page, prefilled from the
+// Goal's latest Check-in. Only whoever may write a Check-in — the Owner or a
+// Delegate — may open it (CONTEXT.md: Check-in, Delegate).
+func (s *Server) handleCheckinPage(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	goalID, ok := goalIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	view, err := s.goalPageView(r.Context(), goalID, current)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		return
+	}
+	if !view.CanCheckin {
+		http.Error(w, "only the Owner or a Delegate may check in", http.StatusForbidden)
+		return
+	}
+	render(w, r, http.StatusOK, checkinPage(&current, view))
+}
+
 // handleSubmitCheckin records a Check-in on the Goal in the path, written by the
 // current Account. The form is htmx-driven: on a validation error the form is
 // re-rendered in place with the message next to the field it is about; on
