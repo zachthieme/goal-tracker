@@ -467,6 +467,21 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		return goalView{}, fmt.Errorf("read freshness signals: %w", err)
 	}
 
+	// Each linked Goal's Health, shown beside it in the sidebar.
+	linkHealth := map[int64]string{}
+	for _, l := range slices.Concat(parents, children) {
+		if l.Goal.Lifecycle != domain.LifecycleActive {
+			continue
+		}
+		c, ok, err := s.svc.LatestCheckin(ctx, l.Goal.ID)
+		if err != nil {
+			return goalView{}, fmt.Errorf("load linked goal's check-in: %w", err)
+		}
+		if ok {
+			linkHealth[l.Goal.ID] = c.Health
+		}
+	}
+
 	// A Delegate may write Check-ins too, so the Goal page shows the Check-in
 	// form to the Owner or any authorized Delegate (CONTEXT.md: Delegate).
 	canCheckin := current.ID == g.Owner.ID
@@ -480,6 +495,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Goal:           g,
 		Parents:        parents,
 		Children:       children,
+		LinkHealth:     linkHealth,
 		Candidates:     candidates,
 		Milestones:     milestones,
 		Metrics:        metrics,
@@ -506,9 +522,12 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 // graph links, and the Milestones, Metrics, Contributors, and So What history an
 // Owner fills in before activating it.
 type goalView struct {
-	Goal       domain.Goal
-	Parents    []domain.GoalLink
-	Children   []domain.GoalLink
+	Goal     domain.Goal
+	Parents  []domain.GoalLink
+	Children []domain.GoalLink
+	// LinkHealth is the Health of each Active parent and child with a
+	// Check-in, keyed by Goal ID.
+	LinkHealth map[int64]string
 	Candidates []domain.Goal
 	Milestones []domain.Milestone
 	Metrics    []domain.Metric

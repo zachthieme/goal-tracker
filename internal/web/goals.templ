@@ -227,6 +227,15 @@ templ goalPage(current *domain.Account, v goalView) {
 		if g.Ownerless {
 			<p data-testid="goal-ownerless" class="alert ol" role="alert"><strong>Ownerless</strong><span>this Goal's Owner has left the org and it needs an Admin to reassign it.</span></p>
 		}
+		<nav data-testid="goal-breadcrumb" class="small muted" aria-label="Breadcrumb">
+			<a href="/goals">Goals</a>
+			{ " / " }
+			if len(v.Parents) > 0 {
+				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", v.Parents[0].Goal.ID)) }>{ v.Parents[0].Goal.Title }</a>
+				{ " / " }
+			}
+			<span aria-current="page">{ g.Title }</span>
+		</nav>
 		@goalFreshness(v.Freshness)
 		@goalSignals(v.Signals)
 		@goalHead(v, owner, admin)
@@ -273,13 +282,13 @@ templ goalPage(current *domain.Account, v goalView) {
 				<div class="card gp-card">
 					<section data-testid="goal-parents">
 						<h2>Contributes to</h2>
-						@linkList(v.Parents, "no-parents", "This Goal contributes to nothing yet.")
+						@linkList(v.Parents, v.LinkHealth, "no-parents", "This Goal contributes to nothing yet.")
 					</section>
 				</div>
 				<div class="card gp-card">
 					<section data-testid="goal-children">
 						<h2>Contributed to by</h2>
-						@linkList(v.Children, "no-children", "Nothing contributes to this Goal yet.")
+						@linkList(v.Children, v.LinkHealth, "no-children", "Nothing contributes to this Goal yet.")
 					</section>
 				</div>
 				<div data-testid="goal-people" class="card gp-card">
@@ -393,6 +402,9 @@ templ goalPageStyles() {
 		.gp-form{display:flex;flex-direction:column;gap:12px}
 		.gp-edit form{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 		details.gp-card>summary h2{margin:0}
+		.gp-link{display:flex;flex-direction:column;gap:4px}
+		.gp-link-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+		.gp-link-meta form{margin:0 0 0 auto}
 		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 	</style>
 }
@@ -840,25 +852,36 @@ templ metricFields(m domain.Metric) {
 	</label>
 }
 
-// linkList renders a Goal's parents or children as navigable links, each with a
-// button to remove the connecting link. emptyTestID/emptyText render when there
-// are none.
-templ linkList(links []domain.GoalLink, emptyTestID, emptyText string) {
-	<ul>
+// linkList renders a Goal's parents or children as navigable links, each with
+// its Health and a button to remove the connecting link that asks for
+// confirmation first. emptyTestID/emptyText render when there are none.
+templ linkList(links []domain.GoalLink, health map[int64]string, emptyTestID, emptyText string) {
+	<ul class="gp-list">
 		if len(links) == 0 {
-			<li data-testid={ emptyTestID }>{ emptyText }</li>
+			<li data-testid={ emptyTestID } class="muted">{ emptyText }</li>
 		}
 		for _, l := range links {
-			<li>
+			<li class="gp-link">
 				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Goal.ID)) }>{ l.Goal.Title }</a>
-				<span>— Owner { l.Goal.Owner.Email }</span>
-				if l.Goal.Ownerless {
-					<strong data-testid="ownerless">— Ownerless</strong>
-				}
-				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/remove", l.LinkID)) } style="display:inline">
-					<button type="submit">Remove</button>
-				</form>
+				<span class="gp-link-meta">
+					if h := health[l.Goal.ID]; h != "" {
+						<span class={ "badge", healthClass(h) }><span class="dot"></span>{ h }</span>
+					} else {
+						<span class="badge lc">{ l.Goal.Lifecycle }</span>
+					}
+					if l.Goal.Ownerless {
+						<span data-testid="ownerless" class="badge ol">Ownerless</span>
+					}
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/remove", l.LinkID)) } onsubmit={ confirmScript(confirmRemoveLink) }>
+						<button type="submit" class="btn quiet sm">Remove</button>
+					</form>
+				</span>
+				<span class="muted small">Owner { l.Goal.Owner.Email }</span>
 			</li>
 		}
 	</ul>
 }
+
+// confirmRemoveLink is what someone confirms before removing a "contributes to"
+// link.
+const confirmRemoveLink = "Remove this link? The child Goal will no longer contribute to the parent."

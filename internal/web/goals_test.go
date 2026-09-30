@@ -975,3 +975,43 @@ func TestGoalPageMoreMenuForOthersOffersOnlyAChildGoal(t *testing.T) {
 		t.Errorf("a non-Owner is offered Check in")
 	}
 }
+
+// The sidebar lists the Goals this one contributes to and those contributing to
+// it, each with its Health, and removing a link asks for confirmation first. A
+// breadcrumb leads back through Goals and the first parent.
+func TestGoalPageSidebarLinksCarryHealthAndConfirmRemove(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	parent := h.ActiveGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	h.Checkin(sam, parent.ID, domain.HealthRed, "On fire.", "Put it out.", testsupport.Epoch.AddDate(0, 2, 0))
+	goal := h.ActiveChildOf(sam, parent, "Reduce outages", "Outages cost trust.")
+	child := h.ActiveChildOf(sam, goal, "Migrate displays", "Displays fail often.")
+	h.Checkin(sam, child.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	crumbs := strings.Join(strings.Fields(pageElement(t, page, "nav", "goal-breadcrumb")), " ")
+	for _, want := range []string{`<a href="/goals">Goals</a>`, navTo(parent.ID) + `>Grow revenue</a>`, `<span aria-current="page">Reduce outages</span>`} {
+		if !strings.Contains(crumbs, want) {
+			t.Errorf("breadcrumb lacks %s: %s", want, crumbs)
+		}
+	}
+
+	for _, tc := range []struct {
+		section string
+		linked  domain.Goal
+		class   string
+	}{
+		{"goal-parents", parent, "r"},
+		{"goal-children", child, "g"},
+	} {
+		section := pageElement(t, page, "section", tc.section)
+		entry := between(t, section, navTo(tc.linked.ID), "</li>")
+		if !strings.Contains(entry, `class="badge `+tc.class+`"`) {
+			t.Errorf("%s: %s has no .%s Health badge: %s", tc.section, tc.linked.Title, tc.class, entry)
+		}
+		if remove := openTag(between(t, section, `/remove"`, "")); !strings.Contains(remove, `onsubmit="return confirm(`) {
+			t.Errorf("%s: Remove doesn't ask for confirmation: %s", tc.section, remove)
+		}
+	}
+}
