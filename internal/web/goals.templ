@@ -14,6 +14,7 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 	@layout("Goals", current) {
 		<h1>Goals</h1>
 		<p><a href="/signals" data-testid="goals-graph-signals">Graph signals</a> — Unaligned Goals, schedule conflicts, and Goals under an On Hold or Cancelled parent</p>
+		<p><a href="/freshness" data-testid="goals-freshness-signals">Freshness signals</a> — Stale Goals and overdue Paths to Green</p>
 		<section>
 			<h2>Propose a Goal</h2>
 			<form hx-post="/goals" hx-target="#goal-list" hx-swap="outerHTML" method="post" action="/goals">

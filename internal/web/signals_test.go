@@ -169,3 +169,42 @@ func TestGoalPageFlagsItsGraphSignals(t *testing.T) {
 		t.Errorf("a Goal with no signals still shows a signals section")
 	}
 }
+
+// The Freshness signals page is the Stale list: every Stale Goal with how long
+// since its last update, and every Goal whose Path to Green is overdue. The
+// Goal list links to it, and fresh Goals aren't listed.
+func TestFreshnessPageListsStaleGoalsAndOverduePaths(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.")
+	h.Clock.Advance(10 * 24 * time.Hour)
+	fresh := h.ActiveGoal(sam, "Fresh work", "It matters.")
+	h.Checkin(sam, fresh.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	stalled := h.ActiveGoal(sam, "Stalled recovery", "It matters.")
+	h.Checkin(sam, stalled.ID, domain.HealthRed, "Blocked.", "Escalate.", time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC))
+
+	client := signInClient(t, ts.URL, "sam@example.com")
+	if list := getBody(t, client, ts.URL+"/goals"); !strings.Contains(list, `href="/freshness"`) {
+		t.Errorf("Goal list does not link to the Freshness signals page; body:\n%s", list)
+	}
+	page := getBody(t, client, ts.URL+"/freshness")
+
+	stale := pageElement(t, page, "ul", "stale-goals")
+	if !strings.Contains(stale, navTo(silent.ID)) || !strings.Contains(stale, "10 days") {
+		t.Errorf("Stale list does not show %q silent for 10 days; section:\n%s", silent.Title, stale)
+	}
+	for _, g := range []domain.Goal{fresh, stalled} {
+		if strings.Contains(stale, navTo(g.ID)) {
+			t.Errorf("Stale list includes %q, which checked in today", g.Title)
+		}
+	}
+
+	overdue := pageElement(t, page, "ul", "overdue-paths")
+	if !strings.Contains(overdue, navTo(stalled.ID)) || !strings.Contains(overdue, "2026-01-05") {
+		t.Errorf("overdue Paths to Green do not show %q due back at Green by 2026-01-05; section:\n%s", stalled.Title, overdue)
+	}
+	if strings.Contains(overdue, navTo(silent.ID)) || strings.Contains(overdue, navTo(fresh.ID)) {
+		t.Errorf("overdue Paths to Green list a Goal with no Path to Green; section:\n%s", overdue)
+	}
+}

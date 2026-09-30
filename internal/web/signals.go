@@ -20,6 +20,17 @@ func (s *Server) handleGraphSignals(w http.ResponseWriter, r *http.Request, curr
 	render(w, r, http.StatusOK, graphSignalsPage(&current, signals))
 }
 
+// handleFreshnessSignals shows the Stale list and the overdue Paths to Green:
+// missing updates and stalled recoveries, surfaced as prominently as Red.
+func (s *Server) handleFreshnessSignals(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	signals, err := s.svc.FreshnessSignals(r.Context())
+	if err != nil {
+		http.Error(w, "could not read freshness signals", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, freshnessSignalsPage(&current, signals))
+}
+
 // handleSetTopLevel marks the Goal in the path a Top-level Goal when top_level
 // is true, and unmarks it when false. Only an Admin may (CONTEXT.md: Top-level
 // Goal).

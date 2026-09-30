@@ -76,6 +76,62 @@ templ graphSignalsPage(current *domain.Account, signals domain.GraphSignals) {
 	}
 }
 
+// freshnessSignalsPage is the Stale list, with the Goals whose Path to Green is
+// overdue beside it: missing updates and stalled recoveries surface as
+// prominently as Red (CONTEXT.md: Stale, Path to Green).
+templ freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSignals) {
+	@layout("Freshness signals", current) {
+		<h1>Freshness signals</h1>
+		<p>Missing updates and stalled recoveries.</p>
+		<section data-testid="stale-section">
+			<h2>Stale Goals</h2>
+			<p>Active Goals whose last Check-in, or activation if they have none, is older than their cadence.</p>
+			<ul data-testid="stale-goals">
+				if len(signals.Stale) == 0 {
+					<li data-testid="no-stale">No Stale Goals.</li>
+				}
+				for _, gf := range signals.Stale {
+					<li data-testid="stale-goal">
+						@goalRef(gf.Goal)
+						<span>— Owner { gf.Goal.Owner.Email } — </span>
+						@staleSince(gf)
+					</li>
+				}
+			</ul>
+		</section>
+		<section data-testid="overdue-paths-section">
+			<h2>Path to Green overdue</h2>
+			<p>Active Goals past their Path to Green's target date that still aren't Green.</p>
+			<ul data-testid="overdue-paths">
+				if len(signals.OverduePaths) == 0 {
+					<li data-testid="no-overdue-paths">No overdue Paths to Green.</li>
+				}
+				for _, gf := range signals.OverduePaths {
+					<li data-testid="overdue-path">
+						@goalRef(gf.Goal)
+						<span>— Owner { gf.Goal.Owner.Email } — </span>
+						@pathOverdue(gf.Freshness)
+					</li>
+				}
+			</ul>
+		</section>
+		<p><a href="/goals">Back to Goals</a></p>
+	}
+}
+
+// staleSince says how long a Stale Goal has gone without an update, against its
+// cadence.
+templ staleSince(gf domain.GoalFreshness) {
+	<span>
+		{ fmt.Sprintf("last updated %d days ago (cadence every %d days)", gf.Freshness.DaysSince, gf.Goal.CadenceDays) }
+	</span>
+}
+
+// pathOverdue names the target date a Path to Green has missed.
+templ pathOverdue(f domain.Freshness) {
+	<span>{ fmt.Sprintf("meant to be back to Green by %s", fmtDate(f.PathTargetDate)) }</span>
+}
+
 // goalRef links to a Goal by its title.
 templ goalRef(g domain.Goal) {
 	<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
