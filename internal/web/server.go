@@ -63,9 +63,10 @@ func (s *Server) requireAuth(h func(http.ResponseWriter, *http.Request, domain.A
 	}
 }
 
-// render writes a templ component with the given status.
+// render writes a templ component with the given status. It puts the request
+// path in the context so the layout can mark the current page.
 func render(w http.ResponseWriter, r *http.Request, status int, c templ.Component) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_ = c.Render(r.Context(), w)
+	_ = c.Render(withPath(r.Context(), r.URL.Path), w)
 }
