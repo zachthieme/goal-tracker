@@ -173,28 +173,25 @@ func (n *Notifier) SendDigests(ctx context.Context) error {
 	return out.send(ctx, n.sender, "Your weekly digest", n.digestBody)
 }
 
-// childProblems says what went wrong this week with child, a Goal that
-// contributes to one of the recipient's: whether its Health got worse, to
-// Yellow or to Red; each Date Slip it recorded; and whether it went Stale — all
-// since weekStart, a week ago.
+// childProblems says what's wrong with child, a Goal that contributes to one
+// of the recipient's. Some are changes since weekStart, a week ago: its Health
+// got worse, to Yellow or to Red; it recorded a Date Slip; it went Stale. Others
+// hold for as long as they last, so the digest names them every week: the child
+// is Ownerless (no record says when its Owner left), or one of its parents is
+// On Hold or Cancelled. A Done or Cancelled child has nothing left at risk.
 func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekStart time.Time) ([]string, error) {
-	if child.Lifecycle != domain.LifecycleActive {
+	if child.Lifecycle == domain.LifecycleDone || child.Lifecycle == domain.LifecycleCancelled {
 		return nil, nil
 	}
-	checkins, err := n.svc.ListCheckins(ctx, child.ID)
-	if err != nil {
-		return nil, err
-	}
 	var reasons []string
-	if now, before := healthAt(checkins, time.Time{}), healthAt(checkins, weekStart); worsened(before, now) {
-		reasons = append(reasons, "went "+now)
-	}
-	f, err := n.svc.Freshness(ctx, child.ID)
-	if err != nil {
-		return nil, err
-	}
-	if wentStaleThisWeek(f) {
-		reasons = append(reasons, fmt.Sprintf("went Stale, %d days without a Check-in", f.DaysSince))
+	if child.Lifecycle == domain.LifecycleActive {
+		checkins, err := n.svc.ListCheckins(ctx, child.ID)
+		if err != nil {
+			return nil, err
+		}
+		if now, before := healthAt(checkins, time.Time{}), healthAt(checkins, weekStart); worsened(before, now) {
+			reasons = append(reasons, "went "+now)
+		}
 	}
 	slips, err := n.svc.ListDateSlips(ctx, child.ID)
 	if err != nil {
@@ -210,6 +207,23 @@ func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekSta
 		}
 		reasons = append(reasons, fmt.Sprintf("slipped %s from %s to %s (%s)",
 			what, sl.OldDate.Format(dateFormat), sl.NewDate.Format(dateFormat), sl.Reason))
+	}
+	f, err := n.svc.Freshness(ctx, child.ID)
+	if err != nil {
+		return nil, err
+	}
+	if wentStaleThisWeek(f) {
+		reasons = append(reasons, fmt.Sprintf("went Stale, %d days without a Check-in", f.DaysSince))
+	}
+	if child.Ownerless {
+		reasons = append(reasons, "is Ownerless: "+child.Owner.Email+" has left the org")
+	}
+	signals, err := n.svc.GoalSignals(ctx, child.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, hp := range signals.HaltedParents {
+		reasons = append(reasons, fmt.Sprintf("contributes to %s, which is %s", hp.Parent.Title, hp.Parent.Lifecycle))
 	}
 	return reasons, nil
 }

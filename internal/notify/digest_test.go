@@ -332,3 +332,64 @@ func TestDigestListsChildrenThatWentStaleThisWeek(t *testing.T) {
 		}
 	}
 }
+
+// The digest names a child that is Ownerless — its Owner left the org — so the
+// parent's Owner can get it reassigned.
+func TestDigestListsOwnerlessChildren(t *testing.T) {
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	pat := h.SignIn("pat@example.com")
+	kim := h.SignIn("kim@example.com")
+	parent := h.ActiveGoal(pat, "Grow revenue", "It pays for everything.")
+	childOf(h, kim, parent, "Launch pricing page")
+	checkinHealth(h, pat, parent.ID, domain.HealthGreen)
+	if err := h.Service.MarkDeparted(context.Background(), admin.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
+		t.Fatalf("SendDigests: %v", err)
+	}
+
+	body := digestTo(t, h.Email, "pat@example.com")
+	if !strings.Contains(body, "Launch pricing page") || !strings.Contains(body, "Ownerless") {
+		t.Errorf("digest does not say Launch pricing page is Ownerless:\n%s", body)
+	}
+}
+
+// A child that also contributes to a Goal put On Hold is named in the digest of
+// its other parent's Owner, who learns the work may no longer be needed.
+func TestDigestListsChildrenWithAParentOnHoldOrCancelled(t *testing.T) {
+	h := testsupport.New(t)
+	pat := h.SignIn("pat@example.com")
+	lee := h.SignIn("lee@example.com")
+	kim := h.SignIn("kim@example.com")
+	parent := h.ActiveGoal(pat, "Grow revenue", "It pays for everything.")
+	halted := h.ActiveGoal(lee, "Enter Japan", "Japan is our next market.")
+	child := childOf(h, kim, parent, "Launch pricing page")
+	link := h.RequestLink(kim, child, halted, "")
+	if _, err := h.Service.AcceptLink(context.Background(), link.ID, lee.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+	checkinHealth(h, kim, child.ID, domain.HealthGreen)
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:          halted.ID,
+		AuthorID:        lee.ID,
+		Status:          "Pausing the Japan launch.",
+		Lifecycle:       domain.LifecycleOnHold,
+		LifecycleReason: "Budget freeze.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin On Hold: %v", err)
+	}
+
+	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
+		t.Fatalf("SendDigests: %v", err)
+	}
+
+	body := digestTo(t, h.Email, "pat@example.com")
+	for _, want := range []string{"Launch pricing page", "Enter Japan", "On Hold"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("digest does not mention %q:\n%s", want, body)
+		}
+	}
+}
