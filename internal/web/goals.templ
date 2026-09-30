@@ -405,6 +405,10 @@ templ goalPageStyles() {
 		.gp-link{display:flex;flex-direction:column;gap:4px}
 		.gp-link-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 		.gp-link-meta form{margin:0 0 0 auto}
+		.gp-metric-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+		.gp-current .num{font-size:28px;line-height:1.1}
+		.gp-spark{width:100%;height:56px;display:block;overflow:visible}
+		.gp-edit form{flex-direction:column}
 		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 	</style>
 }
@@ -763,46 +767,80 @@ templ dateSlipList(v goalView) {
 	</ul>
 }
 
-// metricList lists a Goal's Metrics with each Metric's trend over time against
-// its target (CONTEXT.md: the Goal page shows each Metric's trend); the Owner
-// gets an inline edit form on each.
+// metricList shows each of a Goal's Metrics as a card: its current value, its
+// baseline and target, and its trend over time against the target (CONTEXT.md:
+// the Goal page shows each Metric's trend); the Owner edits one in a collapsed
+// section.
 templ metricList(trends []metricTrend, owner bool) {
-	<ul>
-		if len(trends) == 0 {
-			<li data-testid="no-metrics">No Metrics yet.</li>
-		}
-		for _, t := range trends {
-			{{ m := t.Metric }}
-			<li data-testid="goal-metric">
-				<span>{ m.Name }: { fmtNum(m.Baseline) } → { fmtNum(m.Target) } { m.Unit } ({ m.Direction }) by { fmtDate(m.TargetDate) }</span>
-				@metricTrendReadings(t)
-				if owner {
-					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/metrics/%d", m.ID)) } style="display:inline">
+	if len(trends) == 0 {
+		<p data-testid="no-metrics" class="muted">No Metrics yet.</p>
+	}
+	for _, t := range trends {
+		{{ m := t.Metric }}
+		<div data-testid="goal-metric" class="card gp-card gp-metric">
+			<div class="gp-metric-head">
+				<div>
+					<h3>{ m.Name }</h3>
+					<p class="muted small">{ fmtNum(m.Baseline) } → { fmtNum(m.Target) } { m.Unit } by { fmtDate(m.TargetDate) }</p>
+				</div>
+				<p class="gp-current">
+					if v, ok := t.current(); ok {
+						<span class="num" data-testid="metric-current">{ fmtNum(v) }</span> <span class="muted">{ m.Unit }</span>
+					} else {
+						<span class="num muted" data-testid="metric-current">—</span>
+					}
+				</p>
+			</div>
+			if len(t.Readings) > 0 {
+				@metricSparkline(t)
+			}
+			@metricTrendReadings(t)
+			if owner {
+				<details data-testid="metric-edit" class="gp-edit">
+					<summary class="small">Edit Metric</summary>
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/metrics/%d", m.ID)) }>
 						@metricFields(m)
-						<button type="submit">Save</button>
+						<button type="submit" class="btn sm">Save</button>
 					</form>
-				}
-			</li>
-		}
-	</ul>
+				</details>
+			}
+		</div>
+	}
 }
 
-// metricTrendReadings shows a Metric's readings over time against its target, so
-// the reader can see the trend (CONTEXT.md: Metric - its current value is
-// recorded at each Check-in).
+// metricSparkline draws a Metric's readings as a line, the latest point marked,
+// over a dashed line at its target, each point naming its reading on hover.
+templ metricSparkline(t metricTrend) {
+	{{ s := t.sparkline() }}
+	<svg class="gp-spark" role="img" aria-label={ t.trendLabel() } viewBox={ fmt.Sprintf("0 0 %g %g", sparkW, sparkH) } preserveAspectRatio="none">
+		<line x1="0" x2={ fmt.Sprintf("%g", sparkW) } y1={ fmt.Sprintf("%.1f", s.TargetY) } y2={ fmt.Sprintf("%.1f", s.TargetY) } stroke="#5A606B" stroke-width="1" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"></line>
+		<polyline points={ s.polyline() } fill="none" stroke="#8A9099" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"></polyline>
+		for _, p := range s.Points {
+			<circle cx={ fmt.Sprintf("%.1f", p.X) } cy={ fmt.Sprintf("%.1f", p.Y) } r="6" fill="transparent"><title>{ p.Title }</title></circle>
+		}
+		<circle cx={ fmt.Sprintf("%.1f", s.last().X) } cy={ fmt.Sprintf("%.1f", s.last().Y) } r="4" fill="#24519E" stroke="#fff" stroke-width="2"><title>{ s.last().Title }</title></circle>
+	</svg>
+}
+
+// metricTrendReadings lists a Metric's readings over time against its target —
+// the sparkline as a table a reader can scan — collapsed under a count
+// (CONTEXT.md: Metric - its current value is recorded at each Check-in).
 templ metricTrendReadings(t metricTrend) {
 	{{ m := t.Metric }}
-	<ol data-testid="metric-trend">
-		if len(t.Readings) == 0 {
-			<li data-testid="no-readings">No readings yet.</li>
-		}
-		for _, rd := range t.Readings {
-			<li data-testid="metric-reading">
-				<span>{ rd.CreatedAt.Format("2006-01-02") }: { fmtNum(rd.Value) } { m.Unit }</span>
-				<span>(target { fmtNum(m.Target) })</span>
-			</li>
-		}
-	</ol>
+	<details>
+		<summary class="small muted">{ fmt.Sprintf("Readings (%d)", len(t.Readings)) }</summary>
+		<ol data-testid="metric-trend" class="gp-list small">
+			if len(t.Readings) == 0 {
+				<li data-testid="no-readings">No readings yet.</li>
+			}
+			for _, rd := range t.Readings {
+				<li data-testid="metric-reading">
+					<span class="num">{ rd.CreatedAt.Format("2006-01-02") }: { fmtNum(rd.Value) } { m.Unit }</span>
+					<span class="muted">(target { fmtNum(m.Target) })</span>
+				</li>
+			}
+		</ol>
+	</details>
 }
 
 // highlightList shows a Goal's Highlights, newest first, each with its kind,

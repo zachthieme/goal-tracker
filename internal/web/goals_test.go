@@ -1015,3 +1015,71 @@ func TestGoalPageSidebarLinksCarryHealthAndConfirmRemove(t *testing.T) {
 		}
 	}
 }
+
+// Each Metric is a card: its current value large, "baseline → target by date",
+// and a sparkline of its readings with a dashed target line, labelled for a
+// screen reader with the trend. The Owner edits it in a collapsed section.
+func TestGoalPageMetricCardsShowASparkline(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("mel@example.com")
+	ctx := t.Context()
+	goal := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	if _, err := h.Service.MarkGoalDated(ctx, goal.ID, testsupport.Epoch.AddDate(0, 6, 0)); err != nil {
+		t.Fatalf("MarkGoalDated: %v", err)
+	}
+	metric, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
+		GoalID: goal.ID, Name: "p95 latency", Unit: "ms", Direction: domain.MetricDown,
+		Baseline: 1200, Target: 400, TargetDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	if _, err := h.Service.ActivateGoal(ctx, goal.ID); err != nil {
+		t.Fatalf("ActivateGoal: %v", err)
+	}
+	for _, v := range []float64{1000, 800} {
+		if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+			GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Faster.",
+			Readings: []domain.MetricReadingInput{{MetricID: metric.ID, Value: v}},
+		}); err != nil {
+			t.Fatalf("SubmitCheckin: %v", err)
+		}
+	}
+	ts := newServer(t, h)
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalURL)
+	card := between(t, page, `data-testid="goal-metric"`, `data-testid="goal-milestones"`)
+	if !strings.Contains(openTag(card), "card") {
+		t.Errorf("the Metric is not a card: %s", openTag(card))
+	}
+	if current := between(t, card, `data-testid="metric-current"`, "</"); !strings.Contains(current, ">800") {
+		t.Errorf("current value is not the latest reading: %s", current)
+	}
+	if !strings.Contains(between(t, card, "<", `data-testid="metric-current"`), "num") {
+		t.Errorf("current value is not set as a number")
+	}
+	if !strings.Contains(card, "1200 → 400 ms by 2026-06-15") {
+		t.Errorf("card lacks baseline → target by date:\n%s", card)
+	}
+	svg := between(t, card, "<svg", "</svg>")
+	for _, want := range []string{
+		`role="img"`,
+		`aria-label="p95 latency: 2 readings, falling from 1000 to 800 ms, toward the target of 400 ms"`,
+		"<polyline",
+		`stroke-dasharray`,
+	} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("sparkline lacks %s:\n%s", want, svg)
+		}
+	}
+	edit := between(t, card, `<details data-testid="metric-edit"`, "</details>")
+	if strings.Contains(openTag(edit), "open") || !strings.Contains(edit, fmt.Sprintf(`action="/metrics/%d"`, metric.ID)) {
+		t.Errorf("the Owner's edit form is not in a collapsed section: %s", edit)
+	}
+
+	if other := getBody(t, signInClient(t, ts.URL, "mel@example.com"), goalURL); strings.Contains(other, fmt.Sprintf(`action="/metrics/%d"`, metric.ID)) {
+		t.Errorf("a non-Owner is offered the Metric edit form")
+	}
+}
