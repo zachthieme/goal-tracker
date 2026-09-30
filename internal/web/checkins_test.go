@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -332,7 +333,8 @@ func pageElement(t *testing.T, page, tag, testID string) string {
 
 // Through the Check-in form an Owner puts a Goal On Hold with a reason, then
 // resumes it. The Goal page shows the Lifecycle and why, the Check-in history
-// shows each change, and while On Hold the form offers only to resume or Cancel.
+// shows each change, and while On Hold the Check-in page offers only to resume
+// or Cancel.
 func TestSmokeCheckinPutsGoalOnHoldAndResumes(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
@@ -362,7 +364,7 @@ func TestSmokeCheckinPutsGoalOnHoldAndResumes(t *testing.T) {
 	if entry := pageElement(t, page, "span", "checkin-lifecycle"); !strings.Contains(entry, "Active → On Hold") || !strings.Contains(entry, "Team moved to the payments incident.") {
 		t.Errorf("Check-in history missing the Lifecycle change; element:\n%s", entry)
 	}
-	form := pageElement(t, page, "fieldset", "checkin-lifecycle-fields")
+	form := pageElement(t, getBody(t, samClient, goalURL+"/checkin"), "fieldset", "checkin-lifecycle-fields")
 	if !strings.Contains(form, `value="Active"`) || strings.Contains(form, `value="Done"`) {
 		t.Errorf("On Hold form should offer resume and Cancel only; form:\n%s", form)
 	}
@@ -554,7 +556,7 @@ func TestCheckinFormPrefillsLatestReadings(t *testing.T) {
 		}
 	}
 
-	form := pageElement(t, getBody(t, samClient, goalURL), "fieldset", "checkin-readings")
+	form := pageElement(t, getBody(t, samClient, goalURL+"/checkin"), "fieldset", "checkin-readings")
 	if want := fmt.Sprintf(`name="reading_%d" value="135.5"`, signups.ID); !strings.Contains(form, want) {
 		t.Errorf("Signups reading not pre-filled with its latest value (want %s); form:\n%s", want, form)
 	}
@@ -682,7 +684,8 @@ func TestCheckinLifecycleChangeErrorShownNextToLifecycleField(t *testing.T) {
 		"status":    {"Back to the drawing board."},
 		"lifecycle": {domain.LifecycleProposed},
 	})
-	if msg := fieldError(t, body, `name="lifecycle"`); !strings.Contains(msg, "Active Goal to") {
+	// The Lifecycle is a radio group; its error follows the last radio.
+	if msg := fieldError(t, body, `name="lifecycle" value="Cancelled"`); !strings.Contains(msg, "Active Goal to") {
 		t.Errorf("Lifecycle field's error = %q, want the Lifecycle change one", msg)
 	}
 }
@@ -907,7 +910,8 @@ func TestCheckinHealthErrorShownNextToHealthField(t *testing.T) {
 		"health": {"Purple"},
 		"status": {"On track."},
 	})
-	if msg := fieldError(t, body, `name="health"`); !strings.Contains(msg, "Health must be") {
+	// Health is a radio group; its error follows the last radio.
+	if msg := fieldError(t, body, `name="health" value="Red"`); !strings.Contains(msg, "Health must be") {
 		t.Errorf("Health field's error = %q, want the Health one", msg)
 	}
 }
@@ -938,4 +942,243 @@ func TestCheckinErrorAboutNoOneFieldShownAtTopOfForm(t *testing.T) {
 	if msg := fieldError(t, body, `data-testid="checkin-form"`); !strings.Contains(msg, "only an Active Goal") {
 		t.Errorf("the form's top error = %q, want the Active Goal one", msg)
 	}
+}
+
+// The Check-in has its own page, for the Owner or a Delegate: titled "Check in",
+// with a breadcrumb back to the Goal and the form. Anyone else gets 403.
+func TestCheckinPageForOwnerAndDelegatesOnly(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	tpm := h.SignIn("tpm@example.com")
+	h.SignIn("eve@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, tpm, goal.ID)
+	checkinURL := fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)
+
+	for _, who := range []string{"sam@example.com", "tpm@example.com"} {
+		page := getBody(t, signInClient(t, ts.URL, who), checkinURL)
+		if !strings.Contains(page, ">Check in</h1>") {
+			t.Errorf("%s: page is not titled Check in; body:\n%s", who, page)
+		}
+		if !strings.Contains(page, fmt.Sprintf(`href="/goals/%d"`, goal.ID)) || !strings.Contains(page, "Reduce outages") {
+			t.Errorf("%s: page has no breadcrumb back to the Goal; body:\n%s", who, page)
+		}
+		if !strings.Contains(page, `data-testid="checkin-form"`) {
+			t.Errorf("%s: page has no Check-in form; body:\n%s", who, page)
+		}
+	}
+
+	resp, err := signInClient(t, ts.URL, "eve@example.com").Get(checkinURL)
+	if err != nil {
+		t.Fatalf("GET %s: %v", checkinURL, err)
+	}
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("someone neither Owner nor Delegate got status %d, want 403", resp.StatusCode)
+	}
+}
+
+// The Goal page no longer embeds the Check-in form: it links the Owner to the
+// Check-in page and keeps the one-click no-change button beside it.
+func TestGoalPageLinksToCheckinPage(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	section := pageElement(t, page, "section", "goal-checkins")
+	if !strings.Contains(section, fmt.Sprintf(`href="/goals/%d/checkin"`, goal.ID)) {
+		t.Errorf("Goal page does not link to the Check-in page; section:\n%s", section)
+	}
+	if strings.Contains(page, `data-testid="checkin-form"`) {
+		t.Errorf("Goal page still embeds the Check-in form")
+	}
+	if !strings.Contains(section, `data-testid="no-change-checkin"`) {
+		t.Errorf("Goal page lost the no-change button; section:\n%s", section)
+	}
+}
+
+// Health is picked from a radio group, not a select, prefilled from the latest
+// Check-in. The Path to Green fieldset stays in the form, hidden by CSS alone
+// while Green is picked.
+func TestCheckinPageHealthIsRadioGroup(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Slipping.", "Add a second on-call.", pathDate)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	if strings.Contains(page, `<select name="health"`) {
+		t.Errorf("Health is still a select")
+	}
+	for _, want := range []string{
+		`type="radio" name="health" value="Green"`,
+		`type="radio" name="health" value="Yellow" checked`,
+		`type="radio" name="health" value="Red"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("Health radio group missing %s; body:\n%s", want, page)
+		}
+	}
+	if !strings.Contains(page, `data-testid="path-to-green-field"`) {
+		t.Errorf("Path to Green fieldset left the form")
+	}
+	if !strings.Contains(page, `:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error)`) {
+		t.Errorf("no CSS rule hides the Path to Green while Green is picked; body:\n%s", page)
+	}
+}
+
+// A Path to Green error keeps the fieldset shown whatever Health is picked.
+func TestCheckinPathToGreenFieldShownOnError(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":           {domain.HealthGreen},
+		"status":           {"Fine."},
+		"path_target_date": {"not a date"},
+	})
+	field := pageElement(t, body, "fieldset", "path-to-green-field")
+	if !strings.Contains(field, "has-error") {
+		t.Errorf("Path to Green fieldset holding an error is not marked to stay shown; fieldset:\n%s", field)
+	}
+}
+
+// The Highlight, the dates and Milestones, and the Lifecycle each sit in a
+// section collapsed by default, its summary line showing the current value.
+func TestCheckinPageOptionalSectionsCollapsedByDefault(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	for testID, summary := range map[string]string{
+		"checkin-highlight-section": "Flag a highlight",
+		"checkin-dates-section":     "Change dates or milestones · delivers Jul 2 · 1 planned milestone",
+		"checkin-lifecycle-section": "Pause, finish, or cancel this goal · stays Active",
+	} {
+		section := pageElement(t, page, "details", testID)
+		if strings.Contains(openTag(section), " open") {
+			t.Errorf("%s is open on a fresh Check-in", testID)
+		}
+		if !strings.Contains(section, summary) {
+			t.Errorf("%s summary missing %q; section:\n%s", testID, summary, section)
+		}
+	}
+}
+
+// A collapsed section opens on a re-render when it holds the error or a value
+// the reader typed, so the field at fault is never hidden.
+func TestCheckinSectionOpensOnErrorOrSubmittedValue(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		form    url.Values
+		section string
+	}{
+		{"highlight error", url.Values{"highlight_kind": {domain.HighlightInsight}}, "checkin-highlight-section"},
+		{"highlight typed", url.Values{"status": {""}, "highlight_note": {"Found a cheaper vendor."}}, "checkin-highlight-section"},
+		{"delivery date error", url.Values{"delivery_date": {"2026-08-01"}}, "checkin-dates-section"},
+		{"new milestone typed", url.Values{"status": {""}, "new_milestone_name": {"GA"}, "new_milestone_date": {"2026-05-01"}}, "checkin-dates-section"},
+		{"lifecycle error", url.Values{"lifecycle": {domain.LifecycleOnHold}}, "checkin-lifecycle-section"},
+		{"lifecycle picked", url.Values{"status": {""}, "lifecycle": {domain.LifecycleDone}, "outcome": {"Shipped."}}, "checkin-lifecycle-section"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t)
+			ts := newServer(t, h)
+
+			sam := h.SignIn("sam@example.com")
+			goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+			form := url.Values{"health": {domain.HealthGreen}, "status": {"On track."}}
+			for k, v := range tc.form {
+				form[k] = v
+			}
+
+			body, _ := postFormHX(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), form)
+			if !strings.Contains(body, `data-testid="checkin-error"`) {
+				t.Fatalf("expected a validation error; body:\n%s", body)
+			}
+			section := pageElement(t, body, "details", tc.section)
+			if !strings.Contains(openTag(section), " open") {
+				t.Errorf("%s stays collapsed; section:\n%s", tc.section, section)
+			}
+		})
+	}
+}
+
+// When the Goal is Active and has a previous Check-in, the Check-in page opens
+// with the one-click no-change card, dated from that Check-in, above the form.
+// With no previous Check-in there is nothing to repeat, so there is no card.
+func TestCheckinPageOffersNoChangeFirst(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	checkinURL := fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)
+
+	if page := getBody(t, samClient, checkinURL); strings.Contains(page, `data-testid="no-change-checkin"`) {
+		t.Errorf("a Goal with no Check-in offers the no-change card")
+	}
+
+	latest := h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	page := getBody(t, samClient, checkinURL)
+	card := strings.Index(page, `data-testid="no-change-card"`)
+	if card < 0 {
+		t.Fatalf("Check-in page has no no-change card; body:\n%s", page)
+	}
+	if form := strings.Index(page, `data-testid="checkin-form"`); form < card {
+		t.Errorf("the no-change card does not come before the form")
+	}
+	for _, want := range []string{
+		"Nothing changed since " + latest.CreatedAt.Format("Jan 2") + "?",
+		"Records the same Health and status with today's date.",
+		`data-testid="no-change-checkin"`,
+	} {
+		if !strings.Contains(page[card:], want) {
+			t.Errorf("no-change card missing %q; body:\n%s", want, page)
+		}
+	}
+}
+
+// Cancelling a Goal through the Lifecycle section asks for confirmation
+// before the Check-in is sent.
+func TestCheckinFormConfirmsCancellingTheGoal(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	_, form, ok := strings.Cut(page, `data-testid="checkin-form"`)
+	if !ok {
+		t.Fatalf("Check-in page has no form; body:\n%s", page)
+	}
+	form = openTag(form)
+	if !strings.Contains(form, "hx-on:htmx:confirm=") || !strings.Contains(form, "value=Cancelled]:checked") || !strings.Contains(form, "confirm(") {
+		t.Errorf("the form does not confirm a Cancel before sending; form tag:\n%s", form)
+	}
+}
+
+// openTag returns element up to the end of its opening tag, so an assertion
+// about the tag's attributes can't match its content.
+func openTag(element string) string {
+	if end := strings.Index(element, ">"); end >= 0 {
+		return element[:end]
+	}
+	return element
 }
