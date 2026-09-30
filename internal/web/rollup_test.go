@@ -26,13 +26,15 @@ func TestSmokeGoalPageShowsRolledUpHealth(t *testing.T) {
 	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red so what.")
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 	// The parent Owner checks in Green, explaining the difference.
-	h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
+	if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
 		GoalID:      parent.ID,
 		AuthorID:    sam.ID,
 		Health:      domain.HealthGreen,
 		Status:      "Fine at this level.",
 		Explanation: "The Red child is a stretch item.",
-	})
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
 
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 	page := getBody(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, parent.ID))
@@ -72,7 +74,7 @@ func TestSmokeCheckinDifferingFromRollupNeedsExplanation(t *testing.T) {
 	}
 
 	// With the explanation, it is accepted.
-	body, status = postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, parent.ID), url.Values{
+	_, status = postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, parent.ID), url.Values{
 		"health":      {domain.HealthGreen},
 		"status":      {"Looks fine."},
 		"explanation": {"Stretch child, does not gate delivery."},
