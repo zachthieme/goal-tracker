@@ -59,6 +59,10 @@ templ goalFilters(view goalsListData) {
 					<option value={ lc } selected?={ view.Filter.Lifecycle == lc }>{ lc }</option>
 				}
 			</select>
+			<label class="gl-mine">
+				<input data-testid="goal-mine-filter" type="checkbox" name="mine" value="1" checked?={ view.Filter.Mine }/>
+				Mine only
+			</label>
 			<button type="submit" class="btn">Apply</button>
 			<a href="/goals" class="btn quiet">Clear</a>
 		</div>

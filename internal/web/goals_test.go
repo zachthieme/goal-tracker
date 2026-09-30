@@ -635,3 +635,34 @@ func TestGoalListFiltersByLifecycle(t *testing.T) {
 		}
 	}
 }
+
+// Mine only keeps the Goals the viewer Owns or is a Delegate on, and its
+// checkbox stays checked.
+func TestGoalListFiltersToMine(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	owned := h.CreateGoal(sam, "Sam's own", "It matters.")
+	delegated := h.CreateGoal(kim, "Kim's, delegated to Sam", "It matters.")
+	h.AddDelegate(kim, sam, delegated.ID)
+	others := h.CreateGoal(kim, "Kim's alone", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals?mine=1")
+	got := rowTitles(goalRows(t, page), owned, delegated, others)
+	if want := []string{"Kim's, delegated to Sam", "Sam's own"}; !slices.Equal(got, want) {
+		t.Errorf("mine=1: rows = %q, want %q", got, want)
+	}
+	if box := pageTag(t, page, "input", "goal-mine-filter"); !strings.Contains(box, "checked") {
+		t.Errorf("Mine only checkbox lost its check: %s", box)
+	}
+
+	page = getBody(t, client, ts.URL+"/goals")
+	if got := rowTitles(goalRows(t, page), owned, delegated, others); len(got) != 3 {
+		t.Errorf("without Mine only every Goal shows; rows = %q", got)
+	}
+	if box := pageTag(t, page, "input", "goal-mine-filter"); strings.Contains(box, "checked") {
+		t.Errorf("Mine only is checked without ?mine=1: %s", box)
+	}
+}

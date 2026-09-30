@@ -20,7 +20,7 @@ import (
 const dateLayout = "2006-01-02"
 
 func (s *Server) handleGoals(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	view, err := s.goalsListView(r)
+	view, err := s.goalsListView(r, current)
 	if err != nil {
 		http.Error(w, "could not list goals", http.StatusInternalServerError)
 		return
@@ -47,7 +47,7 @@ func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, curren
 	// swap re-renders the default unfiltered list — the propose form posts to
 	// /goals with no query, so there is no filter or grouping to preserve.
 	if r.Header.Get("HX-Request") == "true" {
-		view, err := s.goalsListView(r)
+		view, err := s.goalsListView(r, current)
 		if err != nil {
 			http.Error(w, "could not list goals", http.StatusInternalServerError)
 			return
@@ -83,6 +83,8 @@ type goalFilter struct {
 	// Lifecycle keeps the Goals in one Lifecycle (?lifecycle=). "" keeps every
 	// Lifecycle.
 	Lifecycle string
+	// Mine keeps the Goals the viewer Owns or is a Delegate on (?mine=1).
+	Mine bool
 }
 
 // lifecycleFilters are the Lifecycle filter's choices, in the order a Goal
@@ -110,11 +112,16 @@ func readGoalFilter(q url.Values) goalFilter {
 		Query:     strings.TrimSpace(q.Get("q")),
 		Health:    q.Get("health"),
 		Lifecycle: q.Get("lifecycle"),
+		Mine:      q.Get("mine") == "1",
 	}
 }
 
-// keeps reports whether row passes the filter.
-func (f goalFilter) keeps(row goalRow) bool {
+// keeps reports whether row passes the filter. mine reports whether the viewer
+// Owns the row's Goal or is a Delegate on it.
+func (f goalFilter) keeps(row goalRow, mine func(domain.Goal) bool) bool {
+	if f.Mine && !mine(row.Goal) {
+		return false
+	}
 	if f.Query != "" {
 		q := strings.ToLower(f.Query)
 		if !strings.Contains(strings.ToLower(row.Goal.Title), q) && !strings.Contains(strings.ToLower(row.Goal.Owner.Email), q) {
@@ -204,7 +211,7 @@ func sortGoalRows(rows []goalRow) {
 // goalsListView reads the Goal list's filters (the filter bar's fields and
 // ?value=) and grouping (?group=) from the request, then loads, filters, sorts,
 // and (optionally) groups the Goals.
-func (s *Server) goalsListView(r *http.Request) (goalsListData, error) {
+func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsListData, error) {
 	ctx := r.Context()
 	dims, err := s.svc.ListDimensions(ctx)
 	if err != nil {
@@ -237,6 +244,17 @@ func (s *Server) goalsListView(r *http.Request) (goalsListData, error) {
 	}
 	goals = domain.FilterGoals(goals, byDimension)
 	filter := readGoalFilter(r.URL.Query())
+	delegatedIDs := map[int64]bool{}
+	if filter.Mine {
+		delegated, err := s.svc.DelegatedGoals(ctx, current.ID)
+		if err != nil {
+			return goalsListData{}, err
+		}
+		for _, g := range delegated {
+			delegatedIDs[g.ID] = true
+		}
+	}
+	mine := func(g domain.Goal) bool { return g.Owner.ID == current.ID || delegatedIDs[g.ID] }
 
 	rows := make([]goalRow, 0, len(goals))
 	for _, gv := range goals {
@@ -244,7 +262,7 @@ func (s *Server) goalsListView(r *http.Request) (goalsListData, error) {
 		if err != nil {
 			return goalsListData{}, err
 		}
-		if filter.keeps(row) {
+		if filter.keeps(row, mine) {
 			rows = append(rows, row)
 		}
 	}
