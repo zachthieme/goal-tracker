@@ -109,6 +109,55 @@ func (n *Notifier) checkinURL(goalID int64) string {
 	return fmt.Sprintf("%s/goals/%d#checkin-form", n.baseURL, goalID)
 }
 
+// digestEntry is one item on a parent Owner's digest: a link request waiting
+// on them, or a problem with a Goal that contributes to one of theirs.
+type digestEntry struct {
+	pendingLink *domain.Link
+}
+
+// SendDigests emails each parent Owner a digest of what needs their attention:
+// the link requests waiting on them, and problems among the Goals that
+// contribute to theirs. Someone with nothing to report gets no email.
+func (n *Notifier) SendDigests(ctx context.Context) error {
+	goals, err := n.svc.ListGoals(ctx)
+	if err != nil {
+		return err
+	}
+	var out outbox[digestEntry]
+	seen := map[int64]bool{}
+	for _, g := range goals {
+		if seen[g.Owner.ID] {
+			continue
+		}
+		seen[g.Owner.ID] = true
+		links, err := n.svc.PendingLinkRequests(ctx, g.Owner.ID)
+		if err != nil {
+			return err
+		}
+		for i := range links {
+			out.add(g.Owner, digestEntry{pendingLink: &links[i]})
+		}
+	}
+	return out.send(ctx, n.sender, "Your weekly digest", n.digestBody)
+}
+
+func (n *Notifier) digestBody(entries []digestEntry) string {
+	var b strings.Builder
+	var pending []*domain.Link
+	for _, e := range entries {
+		if e.pendingLink != nil {
+			pending = append(pending, e.pendingLink)
+		}
+	}
+	if len(pending) > 0 {
+		fmt.Fprintf(&b, "Link requests waiting on you (%s/links):\n\n", n.baseURL)
+		for _, l := range pending {
+			fmt.Fprintf(&b, "- %s (%s) asks to contribute to %s\n", l.Child.Title, l.Child.Owner.Email, l.Parent.Title)
+		}
+	}
+	return b.String()
+}
+
 // outbox collects the items bound for each recipient, in the order recipients
 // were first seen, so each person gets one email however many items they have.
 // It never collects for someone who has left the org.

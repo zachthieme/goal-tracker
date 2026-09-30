@@ -154,3 +154,39 @@ func TestReminderSkipsADepartedOwner(t *testing.T) {
 		t.Errorf("reminders to the Delegate = %d, want 1", len(got))
 	}
 }
+
+// digestTo returns the one digest sent to addr, failing the test when there
+// isn't exactly one.
+func digestTo(t *testing.T, rec *email.Recorder, addr string) string {
+	t.Helper()
+	msgs := sentTo(rec, addr)
+	if len(msgs) != 1 {
+		t.Fatalf("digests to %s = %d, want 1: %+v", addr, len(msgs), rec.Sent())
+	}
+	return msgs[0].Body
+}
+
+// A parent Owner's digest lists the link requests waiting on them, linking to
+// where they decide.
+func TestDigestListsPendingLinkRequests(t *testing.T) {
+	h := testsupport.New(t)
+	pat := h.SignIn("pat@example.com")
+	kim := h.SignIn("kim@example.com")
+	parent := h.ActiveGoal(pat, "Grow revenue", "It pays for everything.")
+	child := h.ActiveGoal(kim, "Launch pricing page", "Buyers can't see prices.")
+	h.RequestLink(kim, child, parent, "")
+
+	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
+		t.Fatalf("SendDigests: %v", err)
+	}
+
+	body := digestTo(t, h.Email, "pat@example.com")
+	for _, want := range []string{"Launch pricing page", "Grow revenue", "kim@example.com", "http://goals.test/links"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("digest does not mention %q:\n%s", want, body)
+		}
+	}
+	if got := sentTo(h.Email, "kim@example.com"); len(got) != 0 {
+		t.Errorf("kim owns no parent Goal but was sent %d digests", len(got))
+	}
+}
