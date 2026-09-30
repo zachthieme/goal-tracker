@@ -1,0 +1,124 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// reportsPage lists every saved Report Definition and the form to build a new one
+// (CONTEXT.md: Report Definition). A definition selects Goals by root Goals plus a
+// depth, by Dimension or Owner filters, or by filters alone.
+templ reportsPage(current *domain.Account, data reportsListData) {
+	@layout("Reports", current) {
+		<h1>Reports</h1>
+		<section data-testid="report-definitions">
+			<h2>Saved Report Definitions</h2>
+			<ul>
+				if len(data.Defs) == 0 {
+					<li data-testid="no-reports">No Report Definitions yet.</li>
+				}
+				for _, d := range data.Defs {
+					<li data-testid="report-definition">
+						<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d", d.ID)) }>{ d.Name }</a>
+					</li>
+				}
+			</ul>
+		</section>
+		<section data-testid="create-report">
+			<h2>New Report Definition</h2>
+			<form method="post" action="/reports">
+				<label>
+					Name
+					<input type="text" name="name" required/>
+				</label>
+				<label>
+					Introduction
+					<textarea name="introduction"></textarea>
+				</label>
+				<fieldset data-testid="report-roots">
+					<legend>Root Goals</legend>
+					for _, g := range data.Goals {
+						<label>
+							<input type="checkbox" name="root" value={ fmt.Sprintf("%d", g.ID) }/>
+							{ g.Title }
+						</label>
+					}
+				</fieldset>
+				<label>
+					Depth
+					<input type="number" name="depth" min="0" value="1"/>
+				</label>
+				<label data-testid="report-owner-filter">
+					Owner filter
+					<select name="owner">
+						<option value="">Any Owner</option>
+						for _, o := range data.Owners {
+							<option value={ fmt.Sprintf("%d", o.ID) }>{ o.Email }</option>
+						}
+					</select>
+				</label>
+				<fieldset data-testid="report-dimension-filters">
+					<legend>Dimension filters</legend>
+					if len(data.Dims) == 0 {
+						<p data-testid="no-dimensions-defined">No Dimensions defined yet.</p>
+					}
+					for _, d := range data.Dims {
+						<fieldset>
+							<legend>{ d.Name }</legend>
+							for _, v := range d.Values {
+								if !v.Retired {
+									<label>
+										<input type="checkbox" name="filter" value={ fmt.Sprintf("%d", v.ID) }/>
+										{ v.Value }
+									</label>
+								}
+							}
+						</fieldset>
+					}
+				</fieldset>
+				<button type="submit">Save Report Definition</button>
+			</form>
+		</section>
+	}
+}
+
+// reportDraftPage shows a saved Report Definition and the live draft of the Goals
+// it selects, one line each with title, Owner, Health, and due date (CONTEXT.md:
+// the live draft lists the selected Goals one line each).
+templ reportDraftPage(current *domain.Account, data reportDraftData) {
+	@layout(data.Def.Name, current) {
+		<h1 data-testid="report-name">{ data.Def.Name }</h1>
+		if data.Def.Introduction != "" {
+			<p data-testid="report-introduction">{ data.Def.Introduction }</p>
+		}
+		<section data-testid="report-draft">
+			<h2>Draft</h2>
+			<ul>
+				if len(data.Selected) == 0 {
+					<li data-testid="no-selected-goals">No Goals selected.</li>
+				}
+				for _, sg := range data.Selected {
+					<li data-testid="selected-goal">
+						<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a>
+						<span data-testid="selected-owner"> — { sg.Goal.Owner.Email }</span>
+						<span data-testid="selected-health"> — { reportHealth(sg.Health) }</span>
+						if !sg.Goal.DeliveryDate.IsZero() {
+							<span data-testid="selected-due"> — due { fmtDate(sg.Goal.DeliveryDate) }</span>
+						}
+					</li>
+				}
+			</ul>
+		</section>
+		<p><a href="/reports">Back to Reports</a></p>
+	}
+}
+
+// reportHealth renders a selected Goal's Health, or a dash when it has no Check-in
+// yet (a Proposed Goal, or an Active one not yet checked in on).
+func reportHealth(health string) string {
+	if health == "" {
+		return "—"
+	}
+	return health
+}
