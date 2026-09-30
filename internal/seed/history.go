@@ -24,6 +24,9 @@ const (
 	// churning projects stay on track but their scope moves: partway through
 	// they add a Milestone, and two weeks later drop a planned one.
 	churning
+	// stale projects start well and then their Owner stops checking in, so
+	// their last Check-in ends up older than their cadence.
+	stale
 )
 
 // profileDeck is dealt, shuffled, to the projects; any project beyond the deck
@@ -31,6 +34,7 @@ const (
 var profileDeck = []profile{
 	troubled, troubled, troubled, troubled, troubled, troubled,
 	churning, churning, churning, churning, churning,
+	stale, stale, stale, stale,
 }
 
 // history writes the org's weeks of Check-ins through the domain commands,
@@ -77,6 +81,9 @@ func (h *history) run(ctx context.Context, p *plan) (int, error) {
 			g := p.goals[i]
 			h.clk.Set(afternoon.Add(time.Duration(len(p.goals)-1-i) * time.Minute))
 			if g.team == "" && (weeks-w)%2 != 0 {
+				continue
+			}
+			if g.profile == stale && w >= g.turn {
 				continue
 			}
 			if err := h.checkIn(ctx, g, w); err != nil {

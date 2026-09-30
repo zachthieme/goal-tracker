@@ -55,6 +55,7 @@ func TestSeededOrg(t *testing.T) {
 	t.Run("Check-in history with mixed Health", func(t *testing.T) { checkinHistoryWithMixedHealth(t, h) })
 	t.Run("Date Slips", func(t *testing.T) { dateSlips(t, h) })
 	t.Run("Milestone Churn", func(t *testing.T) { milestoneChurn(t, h) })
+	t.Run("Stale and Unaligned Goals", func(t *testing.T) { staleAndUnaligned(t, h) })
 }
 
 // The seed builds a realistic org: about 50 Goals spread across several teams
@@ -219,5 +220,44 @@ func milestoneChurn(t *testing.T, h *testsupport.Harness) {
 	}
 	if removed == 0 {
 		t.Errorf("want some Milestones removed, got none")
+	}
+}
+
+// Among the Active Goals, a few are Stale — their last Check-in is older than
+// their cadence — while most are up to date, and a few are Unaligned: they
+// contribute to no other Goal, and aren't org outcomes that other Goals drive.
+func staleAndUnaligned(t *testing.T, h *testsupport.Harness) {
+	ctx := context.Background()
+	end := h.Clock.Now()
+	var active, stale, unaligned int
+	for _, g := range listGoals(t, h) {
+		if g.Lifecycle != domain.LifecycleActive {
+			continue
+		}
+		active++
+		latest, ok, err := h.Service.LatestCheckin(ctx, g.ID)
+		if err != nil {
+			t.Fatalf("LatestCheckin: %v", err)
+		}
+		if ok && end.Sub(latest.CreatedAt) > time.Duration(g.CadenceDays)*24*time.Hour {
+			stale++
+		}
+		parents, err := h.Service.ParentsOf(ctx, g.ID)
+		if err != nil {
+			t.Fatalf("ParentsOf: %v", err)
+		}
+		children, err := h.Service.ChildrenOf(ctx, g.ID)
+		if err != nil {
+			t.Fatalf("ChildrenOf: %v", err)
+		}
+		if len(parents) == 0 && len(children) == 0 {
+			unaligned++
+		}
+	}
+	if stale < 3 || stale > active/4 {
+		t.Errorf("want a few Stale Goals among %d Active, got %d", active, stale)
+	}
+	if unaligned < 3 {
+		t.Errorf("want a few Unaligned Goals, got %d", unaligned)
 	}
 }

@@ -181,6 +181,9 @@ func newPlan(rng *rand.Rand, day0 time.Time) *plan {
 func dealProfile(rng *rand.Rand, g *plannedGoal, pr profile) {
 	g.profile = pr
 	g.turn = 3 + rng.IntN(5)
+	if pr == stale {
+		g.turn = weeks - 1 - rng.IntN(5)
+	}
 	if pr == troubled {
 		if rng.IntN(2) == 0 {
 			g.recover = g.turn + 4 + rng.IntN(3)
