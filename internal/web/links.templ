@@ -7,32 +7,51 @@ import (
 )
 
 // pendingLinksPage lists the link requests awaiting the current Account's
-// decision as the Owner of each request's parent Goal, with accept and reject
-// actions.
+// decision as the Owner of each request's parent Goal, a card each with accept
+// and reject actions; Reject asks for confirmation.
 templ pendingLinksPage(current *domain.Account, pending []domain.Link) {
 	@layout("Pending links", current) {
-		<h1>Pending link requests</h1>
-		<ul data-testid="pending-links">
+		@pendingStyles()
+		<header class="page-head">
+			<div>
+				<h1>Pending link requests</h1>
+				<p class="muted">Goals asking to contribute to yours. Accept one to link it into the graph.</p>
+			</div>
+		</header>
+		<ul data-testid="pending-links" class="pd-list">
 			if len(pending) == 0 {
-				<li data-testid="no-pending-links">No pending requests.</li>
+				<li data-testid="no-pending-links" class="card pd-row muted">No pending requests.</li>
 			}
 			for _, l := range pending {
-				<li data-testid="pending-link">
-					<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)) }>{ l.Child.Title }</a>
-					<span>(Owner { l.Child.Owner.Email }) wants to contribute to </span>
-					<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
-					if l.Note != "" {
-						<blockquote data-testid="pending-link-note">{ l.Note }</blockquote>
-					}
-					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/accept", l.ID)) } style="display:inline">
-						<button type="submit">Accept</button>
-					</form>
-					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/reject", l.ID)) } style="display:inline">
-						<button type="submit">Reject</button>
-					</form>
+				<li data-testid="pending-link" class="card pd-row">
+					<div class="pd-what">
+						<p>
+							<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)) }>{ l.Child.Title }</a>
+							<span class="muted">(Owner { l.Child.Owner.Email }) wants to contribute to</span>
+							<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
+						</p>
+						if l.Note != "" {
+							<blockquote data-testid="pending-link-note" class="pd-note">{ l.Note }</blockquote>
+						}
+					</div>
+					<div class="pd-actions">
+						@acceptReject(fmt.Sprintf("/links/%d", l.ID), "Reject this link request?")
+					</div>
 				</li>
 			}
 		</ul>
-		<p><a href="/goals">Back to Goals</a></p>
 	}
+}
+
+// pendingStyles are the rules the Pending links and Pending handoffs pages share
+// on top of app.css: a list of card rows, the decision buttons at the right.
+templ pendingStyles() {
+	<style>
+		.pd-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+		.pd-row{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+		.pd-what{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}
+		.pd-note{margin:0;padding-left:12px;border-left:3px solid #E2E3DE;color:#5A606B}
+		.pd-actions{display:flex;gap:8px;flex:none}
+		.pd-actions form{margin:0}
+	</style>
 }

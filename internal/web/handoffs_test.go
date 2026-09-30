@@ -119,3 +119,25 @@ func TestDepartedGoalOwnerlessSurfacedAndReassigned(t *testing.T) {
 	}
 	_ = pat
 }
+
+// Each pending Handoff is a card with Accept as the primary action and a Reject
+// that asks for confirmation first.
+func TestPendingHandoffRowsConfirmReject(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ho, err := h.Service.StartHandoffByEmail(context.Background(), goal.ID, pat.Email, sam.ID)
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+
+	page := getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/handoffs")
+
+	row := page[strings.Index(page, `data-testid="pending-handoff"`):]
+	if !strings.Contains(openTag(row), `class="card`) {
+		t.Errorf("the pending Handoff isn't a card: %s", openTag(row))
+	}
+	assertAcceptReject(t, row, fmt.Sprintf("/handoffs/%d", ho.ID))
+}

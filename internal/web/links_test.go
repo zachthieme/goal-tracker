@@ -156,3 +156,38 @@ func newServer(t *testing.T, h *testsupport.Harness) *httptest.Server {
 	t.Cleanup(ts.Close)
 	return ts
 }
+
+// Each pending link request is a card with Accept as the primary action and a
+// Reject that asks for confirmation first.
+func TestPendingLinkRowsConfirmReject(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	pat := h.SignIn("pat@example.com")
+	sam := h.SignIn("sam@example.com")
+	link := h.RequestLink(sam, h.CreateGoal(sam, "Migrate displays", "Displays fail often."), h.CreateGoal(pat, "Reduce outages", "Outages cost trust."), "")
+
+	page := getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/links")
+
+	row := page[strings.Index(page, `data-testid="pending-link"`):]
+	if !strings.Contains(openTag(row), `class="card`) {
+		t.Errorf("the pending link isn't a card: %s", openTag(row))
+	}
+	assertAcceptReject(t, row, fmt.Sprintf("/links/%d", link.ID))
+}
+
+// assertAcceptReject checks a pending request's row decides it at base with
+// Accept as the primary button and a Reject that asks for confirmation.
+func assertAcceptReject(t *testing.T, row, base string) {
+	t.Helper()
+	accept := strings.Index(row, `action="`+base+`/accept"`)
+	reject := strings.Index(row, `action="`+base+`/reject"`)
+	if accept < 0 || reject < 0 {
+		t.Fatalf("the row lacks Accept or Reject for %s:\n%s", base, row)
+	}
+	if button := row[accept:]; !strings.Contains(button[:strings.Index(button, "</form>")], `class="btn primary`) {
+		t.Errorf("Accept isn't the primary button:\n%s", button)
+	}
+	if !strings.Contains(openTag(row[reject:]), `onsubmit="return confirm(`) {
+		t.Errorf("Reject doesn't ask for confirmation: %s", openTag(row[reject:]))
+	}
+}
