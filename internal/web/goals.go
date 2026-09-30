@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -134,7 +135,7 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		http.NotFound(w, r)
 		return
 	}
-	g, err := s.svc.ViewGoal(r.Context(), id)
+	view, err := s.goalPageView(r.Context(), id, current)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
 			http.NotFound(w, r)
@@ -143,23 +144,30 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		http.Error(w, "could not load goal", http.StatusInternalServerError)
 		return
 	}
+	render(w, r, http.StatusOK, goalPage(&current, view))
+}
 
-	parents, err := s.svc.ParentLinks(r.Context(), id)
+// goalPageView loads everything the single-Goal page renders for the viewer. A
+// missing Goal comes back as domain.ErrNotFound.
+func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Account) (goalView, error) {
+	g, err := s.svc.ViewGoal(ctx, id)
 	if err != nil {
-		http.Error(w, "could not load parents", http.StatusInternalServerError)
-		return
+		return goalView{}, err
 	}
-	children, err := s.svc.ChildLinks(r.Context(), id)
+
+	parents, err := s.svc.ParentLinks(ctx, id)
 	if err != nil {
-		http.Error(w, "could not load children", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("load parents: %w", err)
+	}
+	children, err := s.svc.ChildLinks(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("load children: %w", err)
 	}
 	// Candidate parents to contribute to: every other Goal. The domain rejects
 	// self-links, duplicates, and cycles when the request is actually made.
-	all, err := s.svc.ListGoals(r.Context())
+	all, err := s.svc.ListGoals(ctx)
 	if err != nil {
-		http.Error(w, "could not load goals", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("load goals: %w", err)
 	}
 	candidates := make([]domain.Goal, 0, len(all))
 	for _, c := range all {
@@ -168,95 +176,79 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		}
 	}
 
-	milestones, err := s.svc.ListMilestones(r.Context(), id)
+	milestones, err := s.svc.ListMilestones(ctx, id)
 	if err != nil {
-		http.Error(w, "could not load milestones", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("load milestones: %w", err)
 	}
-	metrics, err := s.svc.ListMetrics(r.Context(), id)
+	metrics, err := s.svc.ListMetrics(ctx, id)
 	if err != nil {
-		http.Error(w, "could not load metrics", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("load metrics: %w", err)
 	}
 	// Each Metric's readings over time, for its trend against target (CONTEXT.md:
 	// the Goal page shows each Metric's trend over time against its target).
 	trends := make([]metricTrend, 0, len(metrics))
 	for _, m := range metrics {
-		readings, err := s.svc.ListMetricReadings(r.Context(), m.ID)
+		readings, err := s.svc.ListMetricReadings(ctx, m.ID)
 		if err != nil {
-			http.Error(w, "could not load metric readings", http.StatusInternalServerError)
-			return
+			return goalView{}, fmt.Errorf("load metric readings: %w", err)
 		}
 		trends = append(trends, metricTrend{Metric: m, Readings: readings})
 	}
-	highlights, err := s.svc.ListHighlightsByGoal(r.Context(), id)
+	highlights, err := s.svc.ListHighlightsByGoal(ctx, id)
 	if err != nil {
-		http.Error(w, "could not load highlights", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("load highlights: %w", err)
 	}
-	contributors, err := s.svc.ListContributors(r.Context(), id)
+	contributors, err := s.svc.ListContributors(ctx, id)
 	if err != nil {
-		http.Error(w, "could not load contributors", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("load contributors: %w", err)
 	}
-	delegates, err := s.svc.ListDelegates(r.Context(), id)
+	delegates, err := s.svc.ListDelegates(ctx, id)
 	if err != nil {
-		http.Error(w, "could not load delegates", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("load delegates: %w", err)
 	}
-	revisions, err := s.svc.ListSoWhatRevisions(r.Context(), id)
+	revisions, err := s.svc.ListSoWhatRevisions(ctx, id)
 	if err != nil {
-		http.Error(w, "could not load So What history", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("load So What history: %w", err)
 	}
-	dimensions, err := s.svc.ListDimensions(r.Context())
+	dimensions, err := s.svc.ListDimensions(ctx)
 	if err != nil {
-		http.Error(w, "could not load dimensions", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("load dimensions: %w", err)
 	}
-	values, err := s.svc.GoalValues(r.Context(), id)
+	values, err := s.svc.GoalValues(ctx, id)
 	if err != nil {
-		http.Error(w, "could not load dimension values", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("load dimension values: %w", err)
 	}
-	checkins, err := s.svc.ListCheckins(r.Context(), id)
+	checkins, err := s.svc.ListCheckins(ctx, id)
 	if err != nil {
-		http.Error(w, "could not load check-ins", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("load check-ins: %w", err)
 	}
-	latest, ok, err := s.svc.LatestCheckin(r.Context(), id)
+	latest, ok, err := s.svc.LatestCheckin(ctx, id)
 	if err != nil {
-		http.Error(w, "could not load latest check-in", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("load latest check-in: %w", err)
 	}
 	var latestPtr *domain.Checkin
 	if ok {
 		latestPtr = &latest
 	}
-	rollup, err := s.svc.RolledUpHealth(r.Context(), id)
+	rollup, err := s.svc.RolledUpHealth(ctx, id)
 	if err != nil {
-		http.Error(w, "could not compute rolled-up health", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("compute rolled-up health: %w", err)
 	}
-	slips, err := s.svc.ListDateSlips(r.Context(), id)
+	slips, err := s.svc.ListDateSlips(ctx, id)
 	if err != nil {
-		http.Error(w, "could not load date slips", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("load date slips: %w", err)
 	}
-	churn, err := s.svc.MilestoneChurn(r.Context(), id)
+	churn, err := s.svc.MilestoneChurn(ctx, id)
 	if err != nil {
-		http.Error(w, "could not count milestone churn", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("count milestone churn: %w", err)
 	}
-	signals, err := s.svc.GoalSignals(r.Context(), id)
+	signals, err := s.svc.GoalSignals(ctx, id)
 	if err != nil {
-		http.Error(w, "could not read graph signals", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("read graph signals: %w", err)
 	}
-	freshness, err := s.svc.Freshness(r.Context(), id)
+	freshness, err := s.svc.Freshness(ctx, id)
 	if err != nil {
-		http.Error(w, "could not read freshness signals", http.StatusInternalServerError)
-		return
+		return goalView{}, fmt.Errorf("read freshness signals: %w", err)
 	}
 
 	// A Delegate may write Check-ins too, so the Goal page shows the Check-in
@@ -268,7 +260,7 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		}
 	}
 
-	render(w, r, http.StatusOK, goalPage(&current, goalView{
+	return goalView{
 		Goal:           g,
 		Parents:        parents,
 		Children:       children,
@@ -291,7 +283,7 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		Signals:        signals,
 		Freshness:      freshness,
 		SuggestedDate:  domain.SuggestDeliveryDate(s.svc.Now()).Format(dateLayout),
-	}))
+	}, nil
 }
 
 // goalView is everything the single-Goal page renders: the Goal itself, its
@@ -344,6 +336,9 @@ type goalView struct {
 	// flagged as prominently as Red (CONTEXT.md: Stale, Path to Green).
 	Freshness     domain.Freshness
 	SuggestedDate string
+	// ChildForm is the add-child-Goal form's input, filled in when a failed
+	// create sends the page back.
+	ChildForm childGoalForm
 }
 
 // priorDates returns the dates a Goal's delivery date (milestoneID 0) or one of
@@ -661,40 +656,84 @@ func (s *Server) handleCreateChildGoal(w http.ResponseWriter, r *http.Request, c
 	if !ok {
 		return
 	}
-	child, err := s.svc.CreateGoal(r.Context(), domain.CreateGoalInput{
-		Title:   r.FormValue("title"),
-		SoWhat:  r.FormValue("so_what"),
-		OwnerID: current.ID,
+	form := childGoalForm{
+		Title:  r.FormValue("title"),
+		SoWhat: r.FormValue("so_what"),
+		Kept:   map[int64]bool{},
+	}
+	var valueIDs []int64
+	for _, raw := range r.Form["value_id"] {
+		if valueID, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			valueIDs = append(valueIDs, valueID)
+			form.Kept[valueID] = true
+		}
+	}
+
+	// Creating the Goal, assigning its kept defaults, and requesting its link
+	// are one transaction: a failure at any step (say, a default retired after
+	// the form loaded) leaves no Goal behind.
+	var child domain.Goal
+	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
+		var err error
+		child, err = tx.CreateGoal(r.Context(), domain.CreateGoalInput{
+			Title:   form.Title,
+			SoWhat:  form.SoWhat,
+			OwnerID: current.ID,
+		})
+		if err != nil {
+			return err
+		}
+		for _, valueID := range valueIDs {
+			if err := tx.AssignGoalValue(r.Context(), child.ID, valueID); err != nil {
+				return err
+			}
+		}
+		_, err = tx.RequestLink(r.Context(), domain.RequestLinkInput{
+			ChildID:     child.ID,
+			ParentID:    parentID,
+			RequesterID: current.ID,
+		})
+		return err
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrValidation) {
-			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			form.Error = err.Error()
+			s.renderChildGoalFormError(w, r, parentID, current, form)
 			return
 		}
 		http.Error(w, "could not create child goal", http.StatusInternalServerError)
 		return
 	}
-	for _, raw := range r.Form["value_id"] {
-		valueID, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil {
-			continue
-		}
-		if err := s.svc.AssignGoalValue(r.Context(), child.ID, valueID); err != nil {
-			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+	http.Redirect(w, r, "/goals/"+strconv.FormatInt(child.ID, 10), http.StatusSeeOther)
+}
+
+// childGoalForm is what a person typed into the add-child-Goal form, kept so a
+// failed create re-renders the form as they left it. Kept holds the defaults
+// they left checked; nil means the form is fresh and every default is checked.
+type childGoalForm struct {
+	Title  string
+	SoWhat string
+	Kept   map[int64]bool
+	Error  string
+}
+
+// keeps reports whether the default value is checked in the form.
+func (f childGoalForm) keeps(valueID int64) bool {
+	return f.Kept == nil || f.Kept[valueID]
+}
+
+// renderChildGoalFormError re-renders the parent's page with 422, its
+// add-child-Goal form carrying the error and the person's input.
+func (s *Server) renderChildGoalFormError(w http.ResponseWriter, r *http.Request, parentID int64, current domain.Account, form childGoalForm) {
+	view, err := s.goalPageView(r.Context(), parentID, current)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			http.NotFound(w, r)
 			return
 		}
-	}
-	if _, err := s.svc.RequestLink(r.Context(), domain.RequestLinkInput{
-		ChildID:     child.ID,
-		ParentID:    parentID,
-		RequesterID: current.ID,
-	}); err != nil {
-		if errors.Is(err, domain.ErrValidation) {
-			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
-			return
-		}
-		http.Error(w, "could not link child goal", http.StatusInternalServerError)
+		http.Error(w, "could not load goal", http.StatusInternalServerError)
 		return
 	}
-	http.Redirect(w, r, "/goals/"+strconv.FormatInt(child.ID, 10), http.StatusSeeOther)
+	view.ChildForm = form
+	render(w, r, http.StatusUnprocessableEntity, goalPage(&current, view))
 }
