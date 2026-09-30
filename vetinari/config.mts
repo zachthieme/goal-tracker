@@ -53,5 +53,11 @@ export default defineConfig({
   // Sandcastle needs a writable global git config host-side; this machine's
   // real one is a read-only nix store symlink. Host-side only — never the
   // container, where GIT_CONFIG_GLOBAL would override the agent's HOME.
+  //
+  // That file MUST `[include] path = ~/.config/git/config`. Pointing
+  // GIT_CONFIG_GLOBAL at a missing or bare file drops the real config's
+  // `gh auth git-credential` helper, so the host-side `git fetch origin` before
+  // worktree creation prompts for a GitHub password on a terminal and times the
+  // worktree out after 30s (#6 failed this way).
   hostEnv: { GIT_CONFIG_GLOBAL: resolve(".vetinari.local/gitconfig") },
 });
