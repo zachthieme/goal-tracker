@@ -1,0 +1,126 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// topLevelControl lets an Admin mark a Goal as one of the org's root outcomes,
+// or unmark it (CONTEXT.md: Top-level Goal).
+templ topLevelControl(g domain.Goal) {
+	<section data-testid="mark-top-level">
+		<h2>Top-level Goal</h2>
+		<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/top-level", g.ID)) }>
+			if g.TopLevel {
+				<input type="hidden" name="top_level" value="false"/>
+				<button type="submit">Unmark Top-level</button>
+			} else {
+				<input type="hidden" name="top_level" value="true"/>
+				<button type="submit">Mark Top-level</button>
+			}
+		</form>
+	</section>
+}
+
+// graphSignalsPage lists the risks the Goal graph flags on its own, so
+// leadership sees them without anyone reporting them (CONTEXT.md: Unaligned).
+templ graphSignalsPage(current *domain.Account, signals domain.GraphSignals) {
+	@layout("Graph signals", current) {
+		<h1>Graph signals</h1>
+		<p>Risks the Goal graph flags that nobody reported.</p>
+		<section data-testid="unaligned-section">
+			<h2>Unaligned Goals</h2>
+			<p>Active Goals that contribute to no other Goal and aren't Top-level.</p>
+			<ul data-testid="unaligned-goals">
+				if len(signals.Unaligned) == 0 {
+					<li data-testid="no-unaligned">No Unaligned Goals.</li>
+				}
+				for _, g := range signals.Unaligned {
+					<li data-testid="unaligned-goal">
+						@goalRef(g)
+						<span>— Owner { g.Owner.Email }</span>
+					</li>
+				}
+			</ul>
+		</section>
+		<section data-testid="schedule-conflicts-section">
+			<h2>Schedule conflicts</h2>
+			<p>Goals due later than a Goal they contribute to.</p>
+			<ul data-testid="schedule-conflicts">
+				if len(signals.ScheduleConflicts) == 0 {
+					<li data-testid="no-schedule-conflicts">No schedule conflicts.</li>
+				}
+				for _, c := range signals.ScheduleConflicts {
+					<li data-testid="schedule-conflict">
+						@scheduleConflict(c)
+					</li>
+				}
+			</ul>
+		</section>
+		<section data-testid="halted-parents-section">
+			<h2>Parent On Hold or Cancelled</h2>
+			<p>Goals contributing to a Goal that is On Hold or Cancelled.</p>
+			<ul data-testid="halted-parents">
+				if len(signals.HaltedParents) == 0 {
+					<li data-testid="no-halted-parents">No Goals under an On Hold or Cancelled parent.</li>
+				}
+				for _, hp := range signals.HaltedParents {
+					<li data-testid="halted-parent">
+						@haltedParent(hp)
+					</li>
+				}
+			</ul>
+		</section>
+		<p><a href="/goals">Back to Goals</a></p>
+	}
+}
+
+// goalRef links to a Goal by its title.
+templ goalRef(g domain.Goal) {
+	<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
+}
+
+// scheduleConflict names a child due later than the parent it contributes to,
+// with both delivery dates.
+templ scheduleConflict(c domain.ScheduleConflict) {
+	@goalRef(c.Child)
+	<span>(due { fmtDate(c.Child.DeliveryDate) }) contributes to </span>
+	@goalRef(c.Parent)
+	<span>(due { fmtDate(c.Parent.DeliveryDate) })</span>
+}
+
+// haltedParent names a child whose parent is On Hold or Cancelled.
+templ haltedParent(hp domain.HaltedParent) {
+	@goalRef(hp.Child)
+	<span>contributes to </span>
+	@goalRef(hp.Parent)
+	<span>, which is { hp.Parent.Lifecycle }</span>
+}
+
+// goalSignals flags, at the top of a Goal's page, the graph signals that touch
+// it. It renders nothing when the graph flags nothing.
+templ goalSignals(signals domain.GoalSignals) {
+	if signals.Unaligned || len(signals.ScheduleConflicts) > 0 || len(signals.HaltedParents) > 0 {
+		<section data-testid="goal-signals" role="alert">
+			<h2>Graph signals</h2>
+			<ul>
+				if signals.Unaligned {
+					<li data-testid="goal-unaligned"><strong>Unaligned</strong> — this Active Goal contributes to no other Goal and isn't Top-level.</li>
+				}
+				for _, c := range signals.ScheduleConflicts {
+					<li data-testid="goal-schedule-conflict">
+						<strong>Schedule conflict</strong> —
+						@scheduleConflict(c)
+					</li>
+				}
+				for _, hp := range signals.HaltedParents {
+					<li data-testid="goal-halted-parent">
+						<strong>Parent { hp.Parent.Lifecycle }</strong> —
+						@haltedParent(hp)
+					</li>
+				}
+			</ul>
+		</section>
+	}
+}

@@ -13,6 +13,7 @@ import (
 templ goalsPage(current *domain.Account, view goalsListData) {
 	@layout("Goals", current) {
 		<h1>Goals</h1>
+		<p><a href="/signals" data-testid="goals-graph-signals">Graph signals</a> — Unaligned Goals, schedule conflicts, and Goals under an On Hold or Cancelled parent</p>
 		<section>
 			<h2>Propose a Goal</h2>
 			<form hx-post="/goals" hx-target="#goal-list" hx-swap="outerHTML" method="post" action="/goals">
@@ -124,8 +125,12 @@ templ goalPage(current *domain.Account, v goalView) {
 		if g.Ownerless {
 			<p data-testid="goal-ownerless" role="alert"><strong>Ownerless</strong> — this Goal's Owner has left the org and it needs an Admin to reassign it.</p>
 		}
+		@goalSignals(v.Signals)
 		<article data-testid="goal">
 			<h1 data-testid="goal-title">{ g.Title }</h1>
+			if g.TopLevel {
+				<p data-testid="goal-top-level"><strong>Top-level Goal</strong> — one of the org's root outcomes</p>
+			}
 			<p><strong>Lifecycle:</strong> <span data-testid="goal-lifecycle">{ g.Lifecycle }</span></p>
 			if note := v.lifecycleNote(); note != "" {
 				<p data-testid="goal-lifecycle-note">{ note }</p>
@@ -213,6 +218,9 @@ templ goalPage(current *domain.Account, v goalView) {
 			@linkList(v.Children, "no-children", "Nothing contributes to this Goal yet.")
 		</section>
 		@ownership(&g, owner, admin)
+		if admin {
+			@topLevelControl(g)
+		}
 		if owner {
 			<section data-testid="request-link">
 				<h2>Contribute this Goal to another</h2>

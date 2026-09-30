@@ -235,6 +235,11 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		http.Error(w, "could not count milestone churn", http.StatusInternalServerError)
 		return
 	}
+	signals, err := s.svc.GoalSignals(r.Context(), id)
+	if err != nil {
+		http.Error(w, "could not read graph signals", http.StatusInternalServerError)
+		return
+	}
 
 	// A Delegate may write Check-ins too, so the Goal page shows the Check-in
 	// form to the Owner or any authorized Delegate (CONTEXT.md: Delegate).
@@ -265,6 +270,7 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		RolledUp:       rollup,
 		DateSlips:      slips,
 		MilestoneChurn: churn,
+		Signals:        signals,
 		SuggestedDate:  domain.SuggestDeliveryDate(s.svc.Now()).Format(dateLayout),
 	}))
 }
@@ -311,7 +317,11 @@ type goalView struct {
 	// Active (CONTEXT.md: Date Slip, Milestone Churn).
 	DateSlips      []domain.DateSlip
 	MilestoneChurn int
-	SuggestedDate  string
+	// Signals are the risks the graph flags on this Goal that nobody reported:
+	// Unaligned, schedule conflicts it is either side of, and parents that are On
+	// Hold or Cancelled.
+	Signals       domain.GoalSignals
+	SuggestedDate string
 }
 
 // priorDates returns the dates a Goal's delivery date (milestoneID 0) or one of
