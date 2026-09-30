@@ -804,7 +804,10 @@ func TestCheckinNewMilestoneErrorShownNextToNewMilestone(t *testing.T) {
 		"new_milestone_date": {"2026-05-01", ""},
 	})
 	// The Docs row is the second new Milestone; the error follows its date.
-	docs := body[strings.Index(body, `value="Docs"`):]
+	_, docs, ok := strings.Cut(body, `value="Docs"`)
+	if !ok {
+		t.Fatalf("form lost the Docs row; body:\n%s", body)
+	}
 	if msg := fieldError(t, docs, `name="new_milestone_date"`); !strings.Contains(msg, "needs a date") {
 		t.Errorf("new Milestone's error = %q, want the missing date one", msg)
 	}
