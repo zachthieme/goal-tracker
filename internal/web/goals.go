@@ -77,12 +77,25 @@ type goalFilter struct {
 	// Query keeps the Goals whose title or Owner's email holds it, ignoring
 	// case (?q=).
 	Query string
+	// Health keeps the Goals at one Health: "green", "yellow", "red", or "none"
+	// for those with no Health yet (?health=). "" keeps every Health.
+	Health string
+}
+
+// healthFilters are the Health filter's choices, each keyed by its URL value to
+// the Health it keeps; "none" keeps the Goals with no Health.
+var healthFilters = []struct{ Value, Health string }{
+	{"red", domain.HealthRed},
+	{"yellow", domain.HealthYellow},
+	{"green", domain.HealthGreen},
+	{"none", ""},
 }
 
 // readGoalFilter reads the filter bar's fields from the query string.
 func readGoalFilter(q url.Values) goalFilter {
 	return goalFilter{
-		Query: strings.TrimSpace(q.Get("q")),
+		Query:  strings.TrimSpace(q.Get("q")),
+		Health: q.Get("health"),
 	}
 }
 
@@ -91,6 +104,11 @@ func (f goalFilter) keeps(row goalRow) bool {
 	if f.Query != "" {
 		q := strings.ToLower(f.Query)
 		if !strings.Contains(strings.ToLower(row.Goal.Title), q) && !strings.Contains(strings.ToLower(row.Goal.Owner.Email), q) {
+			return false
+		}
+	}
+	for _, hf := range healthFilters {
+		if f.Health == hf.Value && row.health() != hf.Health {
 			return false
 		}
 	}

@@ -573,3 +573,35 @@ func TestGoalListSearchesTitleAndOwner(t *testing.T) {
 		}
 	}
 }
+
+// The Health filter keeps the Goals at the chosen Health, or those with none,
+// and its select keeps the choice.
+func TestGoalListFiltersByHealth(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	later := testsupport.Epoch.AddDate(0, 2, 0)
+	green := h.ActiveGoal(sam, "Green one", "It matters.")
+	h.Checkin(sam, green.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	yellow := h.ActiveGoal(sam, "Yellow one", "It matters.")
+	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Wobbling.", "Fix it.", later)
+	red := h.ActiveGoal(sam, "Red one", "It matters.")
+	h.Checkin(sam, red.ID, domain.HealthRed, "On fire.", "Put it out.", later)
+	proposed := h.CreateGoal(sam, "Proposed one", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for health, want := range map[string]string{
+		"green":  "Green one",
+		"yellow": "Yellow one",
+		"red":    "Red one",
+		"none":   "Proposed one",
+	} {
+		page := getBody(t, client, ts.URL+"/goals?health="+health)
+		if got := rowTitles(goalRows(t, page), green, yellow, red, proposed); !slices.Equal(got, []string{want}) {
+			t.Errorf("health=%s: rows = %q, want [%q]", health, got, want)
+		}
+		if sel := pageElement(t, page, "select", "goal-health-filter"); !strings.Contains(sel, `value="`+health+`" selected`) {
+			t.Errorf("health=%s: select lost the choice: %s", health, sel)
+		}
+	}
+}

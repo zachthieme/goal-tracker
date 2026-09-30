@@ -41,6 +41,18 @@ templ goalFilters(view goalsListData) {
 	<form method="get" action="/goals" data-testid="goal-filters" class="gl-filters">
 		<div class="gl-bar">
 			<input data-testid="goal-search" type="search" name="q" value={ view.Filter.Query } placeholder="Search title or Owner email" aria-label="Search Goals by title or Owner email"/>
+			<select data-testid="goal-health-filter" name="health" aria-label="Health">
+				<option value="" selected?={ view.Filter.Health == "" }>Any Health</option>
+				for _, hf := range healthFilters {
+					<option value={ hf.Value } selected?={ view.Filter.Health == hf.Value }>
+						if hf.Health == "" {
+							No Health
+						} else {
+							{ hf.Health }
+						}
+					</option>
+				}
+			</select>
 			<button type="submit" class="btn">Apply</button>
 			<a href="/goals" class="btn quiet">Clear</a>
 		</div>
