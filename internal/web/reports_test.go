@@ -505,3 +505,32 @@ func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
 		t.Errorf("Highlight credit %q, want — owner, Goal", credit)
 	}
 }
+
+// The draft page reads top to bottom as the author works: pick the baseline,
+// curate the narrative, check the preview, and only then Publish — the primary
+// button, at the bottom, saying what it does. Publications sit in a sidebar.
+func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+
+	last := -1
+	for _, part := range []string{`data-testid="report-baseline"`, `data-testid="report-curation"`, `data-testid="report-draft"`, `data-testid="report-publish"`} {
+		at := strings.Index(page, part)
+		if at <= last {
+			t.Errorf("%s is out of order (at %d, after %d); body:\n%s", part, at, last, page)
+		}
+		last = at
+	}
+	publish := pageElement(t, page, "form", "report-publish")
+	if !strings.Contains(publish, `class="btn primary"`) || !strings.Contains(publish, "Publishes a frozen copy readers can comment on.") {
+		t.Errorf("Publish is not the primary button with its summary; form:\n%s", publish)
+	}
+	if !strings.Contains(page, `<aside data-testid="report-publications"`) {
+		t.Errorf("publications are not in a sidebar; body:\n%s", page)
+	}
+}

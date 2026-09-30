@@ -87,50 +87,64 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 
 // reportDraftPage shows a saved Report Definition and its draft Report read
 // against a baseline the reader can change — by default the previous
-// publication — with the button that publishes it, the form to curate its
-// narrative from Highlights, and the list of its publications (CONTEXT.md:
-// Report, Report Definition).
+// publication. It reads top to bottom as the author works: the baseline, the
+// form to curate its narrative from Highlights, the draft preview, and only
+// then the button that publishes it. Its publications are listed in a sidebar
+// (CONTEXT.md: Report, Report Definition). Paths to Green are judged overdue as
+// of asOf, today.
 templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion) {
 	@layout(r.Definition.Name, current) {
-		<h1 data-testid="report-name">{ r.Definition.Name }</h1>
-		<form method="get" data-testid="report-baseline">
-			<label>
-				Changes since
-				<input type="date" name="baseline" value={ fmtDate(r.Baseline) }/>
-			</label>
-			<button type="submit">Update</button>
-		</form>
-		if r.Previous.ID != 0 {
-			<p data-testid="report-since-publication">Showing what changed since the previous publication, { fmtPublished(r.Previous.PublishedAt) }.</p>
-		}
-		<form data-testid="report-publish" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications", r.Definition.ID)) }>
-			// A date the reader picked is carried through; otherwise publishing
-			// reads against the previous publication, as the draft does.
-			if r.Previous.ID == 0 {
-				<input type="hidden" name="baseline" value={ fmtDate(r.Baseline) }/>
-			}
-			<button type="submit">Publish</button>
-		</form>
-		@narrativeCuration(r)
-		<section data-testid="report-draft">
-			<h2>Draft</h2>
-			@reportBody(r, asOf, d)
-		</section>
-		<section data-testid="report-publications">
-			<h2>Publications</h2>
-			<ul>
-				if len(pubs) == 0 {
-					<li data-testid="no-publications">Not published yet.</li>
+		@reportStyles()
+		<div class="page-head">
+			<div>
+				<p class="small muted"><a href="/reports">Reports</a>{ " / " }Draft</p>
+				<h1 data-testid="report-name">{ r.Definition.Name }</h1>
+			</div>
+		</div>
+		<div class="grid-main-aside">
+			<div class="rp-body">
+				<form data-testid="report-baseline" class="rp-inline-form" method="get">
+					<label>
+						Changes since
+						<input type="date" name="baseline" value={ fmtDate(r.Baseline) }/>
+					</label>
+					<button type="submit" class="btn">Update</button>
+				</form>
+				if r.Previous.ID != 0 {
+					<p data-testid="report-since-publication" class="muted">Showing what changed since the previous publication, { fmtPublished(r.Previous.PublishedAt) }.</p>
 				}
-				for _, p := range pubs {
-					<li data-testid="report-publication">
-						<a href={ templ.SafeURL(publicationPath(p)) }>{ fmtPublished(p.PublishedAt) }</a>
-						{ " by " }{ p.PublishedBy.Email }
-					</li>
-				}
-			</ul>
-		</section>
-		<p><a href="/reports">Back to Reports</a></p>
+				@narrativeCuration(r)
+				<section data-testid="report-draft" class="rp-body">
+					<h2>Draft preview</h2>
+					@reportBody(r, asOf, d)
+				</section>
+				<form data-testid="report-publish" class="card rp-publish" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications", r.Definition.ID)) }>
+					// A date the reader picked is carried through; otherwise publishing
+					// reads against the previous publication, as the draft does.
+					if r.Previous.ID == 0 {
+						<input type="hidden" name="baseline" value={ fmtDate(r.Baseline) }/>
+					}
+					<p class="muted">Publishes a frozen copy readers can comment on.</p>
+					<button type="submit" class="btn primary">Publish</button>
+				</form>
+			</div>
+			<aside data-testid="report-publications" class="rp-body">
+				<h2>Publications</h2>
+				<ul class="card rp-list">
+					if len(pubs) == 0 {
+						<li data-testid="no-publications" class="muted">Not published yet.</li>
+					}
+					for _, p := range pubs {
+						<li data-testid="report-publication">
+							<a href={ templ.SafeURL(publicationPath(p)) }>{ fmtPublished(p.PublishedAt) }</a>
+							<br/>
+							<span class="small muted">by { p.PublishedBy.Email }</span>
+						</li>
+					}
+				</ul>
+				<p><a href="/reports">Back to Reports</a></p>
+			</aside>
+		</div>
 	}
 }
 
@@ -291,9 +305,9 @@ templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 // section the author picks it into, and the author's own text for each
 // section (CONTEXT.md: Highlight).
 templ narrativeCuration(r domain.Report) {
-	<section data-testid="report-curation">
+	<section data-testid="report-curation" class="rp-body">
 		<h2>Narrative</h2>
-		<form data-testid="narrative-curation" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/narrative", r.Definition.ID)) }>
+		<form data-testid="narrative-curation" class="card rp-form rp-card" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/narrative", r.Definition.ID)) }>
 			// A date the reader picked is kept when the draft reloads.
 			if r.Previous.ID == 0 {
 				<input type="hidden" name="baseline" value={ fmtDate(r.Baseline) }/>
@@ -301,7 +315,7 @@ templ narrativeCuration(r domain.Report) {
 			if len(r.Highlights) == 0 {
 				<p data-testid="no-highlights">No Highlights since { fmtDate(r.Baseline) }.</p>
 			} else {
-				<ul>
+				<ul class="rp-list">
 					for _, nh := range r.Highlights {
 						<li data-testid="curation-highlight">
 							<select name={ fmt.Sprintf("pick-%d", nh.Highlight.ID) }>
@@ -318,12 +332,12 @@ templ narrativeCuration(r domain.Report) {
 				</ul>
 			}
 			for _, section := range narrativeSections {
-				<label>
-					{ sectionHeading(section) }
+				<label class="field">
+					<span>{ sectionHeading(section) }</span>
 					<textarea name={ "text-" + section }>{ narrativeText(r, section) }</textarea>
 				</label>
 			}
-			<button type="submit">Save narrative</button>
+			<div><button type="submit" class="btn">Save narrative</button></div>
 		</form>
 	</section>
 }
