@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"strconv"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -10,9 +11,13 @@ import (
 // else is waiting on them.
 templ homePage(current *domain.Account, v homeView) {
 	@layout("Home", current) {
-		<div class="page-head">
-			<h1>Your week</h1>
-		</div>
+		<header data-testid="home-head" class="page-head">
+			<div>
+				<h1>Your week</h1>
+				<p data-testid="home-summary" class="muted">{ thingsNeedYou(v.NeedsYou()) }</p>
+			</div>
+			<a class="btn primary" href="/goals">New goal</a>
+		</header>
 		<div class="grid-main-aside">
 			<div>
 				<section data-testid="home-checkins" class="card">
@@ -26,8 +31,52 @@ templ homePage(current *domain.Account, v homeView) {
 						}
 					</ul>
 				</section>
+				<section data-testid="home-waiting-on-you" class="card">
+					<h2>Waiting on you</h2>
+					if len(v.PendingLinks) == 0 && len(v.PendingHandoffs) == 0 {
+						<p data-testid="home-waiting-empty" class="muted">Nothing is waiting on you.</p>
+					}
+					<ul data-testid="home-waiting">
+						for _, l := range v.PendingLinks {
+							<li data-testid="home-pending-link">
+								<span class="badge lc">Link request</span>
+								<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)) }>{ l.Child.Title }</a>
+								<span class="muted">({ l.Child.Owner.Email }) wants to contribute to</span>
+								<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
+								@acceptReject(fmt.Sprintf("/links/%d", l.ID), "Reject this link request?")
+							</li>
+						}
+						for _, ho := range v.PendingHandoffs {
+							<li data-testid="home-pending-handoff">
+								<span class="badge lc">Handoff</span>
+								<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)) }>{ ho.Goal.Title }</a>
+								<span class="muted">{ ho.From.Email } wants to hand this Goal to you</span>
+								@acceptReject(fmt.Sprintf("/handoffs/%d", ho.ID), "Reject this Handoff?")
+							</li>
+						}
+					</ul>
+				</section>
 			</div>
 			<aside>
+				<section data-testid="home-your-goals" class="card">
+					<h2>Your goals</h2>
+					<p>
+						@healthCountTile("home-count-green", domain.HealthGreen, v.Green)
+						@healthCountTile("home-count-yellow", domain.HealthYellow, v.Yellow)
+						@healthCountTile("home-count-red", domain.HealthRed, v.Red)
+					</p>
+					if len(v.AtRisk) > 0 {
+						<ul>
+							for _, g := range v.AtRisk {
+								<li>
+									<span class={ "badge", healthClass(g.Health) }><span class="dot"></span>{ g.Health }</span>
+									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
+								</li>
+							}
+						</ul>
+					}
+					<a href="/goals">All your goals →</a>
+				</section>
 				if len(v.Delegated) > 0 {
 					<section data-testid="home-delegated" class="card">
 						<h2>Delegated to you</h2>
@@ -48,7 +97,7 @@ templ homePage(current *domain.Account, v homeView) {
 }
 
 // dueRow is one Goal to check in on: its Health, why it's listed, and the
-// one-click No change beside the Check in link.
+// one-click No change beside the Check in link to the Goal page.
 templ dueRow(g domain.PersonalGoal) {
 	<li data-testid="home-due-goal">
 		<span data-testid="home-due-health" class={ "badge", healthClass(g.Health) }>
@@ -69,6 +118,26 @@ templ dueRow(g domain.PersonalGoal) {
 				<button type="submit" class="btn sm">No change</button>
 			</form>
 		}
-		<a data-testid="home-due-checkin" class="btn primary sm" href={ templ.SafeURL(fmt.Sprintf("/goals/%d#checkin-form", g.Goal.ID)) }>Check in</a>
+		<a data-testid="home-due-checkin" class="btn primary sm" href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>Check in</a>
 	</li>
+}
+
+// acceptReject is the pair of buttons deciding a pending request at base, the
+// Reject asking for confirmation first.
+templ acceptReject(base, confirmReject string) {
+	<form method="post" action={ templ.SafeURL(base + "/accept") } style="display:inline">
+		<button type="submit" class="btn primary sm">Accept</button>
+	</form>
+	<form method="post" action={ templ.SafeURL(base + "/reject") } style="display:inline" onsubmit={ confirmScript(confirmReject) }>
+		<button type="submit" class="btn danger sm">Reject</button>
+	</form>
+}
+
+// healthCountTile counts the person's Active Goals at one Health.
+templ healthCountTile(testID, health string, count int) {
+	<span class={ "badge", healthClass(health) }>
+		<span class="dot"></span>
+		{ health }
+		<span data-testid={ testID } class="num">{ strconv.Itoa(count) }</span>
+	</span>
 }

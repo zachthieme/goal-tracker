@@ -153,3 +153,154 @@ func TestHomeListsDelegatedGoals(t *testing.T) {
 		t.Errorf("sam has nothing delegated but sees a Delegated to you section")
 	}
 }
+
+// A link request waiting on the viewer as the parent's Owner, and a Handoff
+// waiting on them as the proposed new Owner, are listed under "Waiting on
+// you", each with Accept and a Reject that asks for confirmation. Someone with
+// nothing waiting and nothing due sees each section's empty state.
+func TestHomeListsWhatIsWaitingOnYou(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	parent := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	child := h.ActiveGoal(kim, "Ship search", "People can't find things.")
+	link := h.RequestLink(kim, child, parent, "")
+	handed := h.ActiveGoal(kim, "Cut churn", "Customers leave.")
+	handoff, err := h.Service.StartHandoffByEmail(context.Background(), handed.ID, "sam@example.com", kim.ID)
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+
+	waiting := pageElement(t, page, "ul", "home-waiting")
+	for _, tc := range []struct {
+		what   string
+		row    string
+		action string
+	}{
+		{"link request", homeRow(t, waiting, child), fmt.Sprintf("/links/%d", link.ID)},
+		{"Handoff", homeRow(t, waiting, handed), fmt.Sprintf("/handoffs/%d", handoff.ID)},
+	} {
+		if !strings.Contains(tc.row, `action="`+tc.action+`/accept"`) {
+			t.Errorf("%s has no Accept:\n%s", tc.what, tc.row)
+		}
+		reject := `action="` + tc.action + `/reject"`
+		at := strings.Index(tc.row, reject)
+		if at < 0 {
+			t.Fatalf("%s has no Reject:\n%s", tc.what, tc.row)
+		}
+		if form := tc.row[strings.LastIndex(tc.row[:at], "<form"):]; !strings.Contains(openTag(form), `onsubmit="return confirm(`) {
+			t.Errorf("%s's Reject doesn't ask for confirmation:\n%s", tc.what, tc.row)
+		}
+	}
+
+	kimPage := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home")
+	if !strings.Contains(kimPage, `data-testid="home-waiting-empty"`) {
+		t.Errorf("kim has nothing waiting but sees no empty state:\n%s", kimPage)
+	}
+	// kim's Goals were activated today, so none is due yet.
+	if empty := pageElement(t, kimPage, "p", "home-due-empty"); !strings.Contains(empty, "You're all caught up.") {
+		t.Errorf("kim has nothing to check in on but sees %s", empty)
+	}
+}
+
+// The sidebar counts the viewer's own Active Goals by Health and lists the Red
+// and Yellow ones; Goals they're only a Delegate on aren't theirs to count.
+// The heading says how many things need them, beside a New goal link.
+func TestHomeSummarizesYourGoals(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	target := testsupport.Epoch.AddDate(0, 1, 0)
+	green := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	yellow := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Slipping.", "Cut scope.", target)
+	red := h.ActiveGoal(sam, "Cut churn", "Customers leave.")
+	h.Checkin(sam, red.ID, domain.HealthRed, "Blocked.", "Escalate.", target)
+	notMine := h.ActiveGoal(kim, "Hire", "We need people.")
+	h.Checkin(kim, notMine.ID, domain.HealthRed, "Blocked.", "Escalate.", target)
+	h.AddDelegate(kim, sam, notMine.ID)
+	h.Clock.Advance(2 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+
+	for testID, want := range map[string]string{
+		"home-count-green":  "1",
+		"home-count-yellow": "1",
+		"home-count-red":    "1",
+	} {
+		if got := pageElement(t, page, "span", testID); !strings.HasSuffix(got, ">"+want) {
+			t.Errorf("%s = %s, want %s", testID, got, want)
+		}
+	}
+	yours := pageElement(t, page, "section", "home-your-goals")
+	for _, g := range []domain.Goal{yellow, red} {
+		if !strings.Contains(yours, navTo(g.ID)) {
+			t.Errorf("Your goals does not list %q:\n%s", g.Title, yours)
+		}
+	}
+	for _, g := range []domain.Goal{green, notMine} {
+		if strings.Contains(yours, navTo(g.ID)) {
+			t.Errorf("Your goals lists %q, which isn't one of sam's Red or Yellow Goals:\n%s", g.Title, yours)
+		}
+	}
+	if !strings.Contains(yours, `href="/goals"`) {
+		t.Errorf("Your goals does not link to all of sam's Goals:\n%s", yours)
+	}
+
+	// All four Goals were last checked in 2 days ago on a weekly cadence, so
+	// each is due before next week's reminder.
+	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "4 things need you") {
+		t.Errorf("summary = %s, want 4 things need you", got)
+	}
+	if head := pageElement(t, page, "header", "home-head"); !strings.Contains(head, `href="/goals"`) || !strings.Contains(head, "New goal") {
+		t.Errorf("heading has no New goal link:\n%s", head)
+	}
+}
+
+// Every page's top bar leads with Home, counting what needs the viewer — the
+// Goals to check in on plus what's waiting on them — and showing no count when
+// nothing does. Home replaces the pending-links, pending-handoffs, and
+// delegated nav items, whose pages stay.
+func TestNavCountsWhatNeedsYou(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	parent := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	h.Checkin(sam, parent.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	child := h.ActiveGoal(kim, "Ship search", "People can't find things.")
+	h.Checkin(kim, child.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.RequestLink(kim, child, parent, "")
+	h.ActiveGoal(sam, "Cut churn", "Customers leave.")
+	h.Clock.Advance(10 * day)
+	h.Checkin(kim, child.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	for _, path := range []string{"/goals", "/home", "/reports"} {
+		page := getBody(t, samClient, ts.URL+path)
+		nav := page[strings.Index(page, "<nav"):strings.Index(page, "</nav>")]
+		home := pageElement(t, page, "a", "nav-home")
+		if !strings.Contains(home, `href="/home"`) || !strings.Contains(home, `<span class="count">3</span>`) {
+			t.Errorf("on %s, Home does not count sam's 2 Goals to check in on and 1 link request: %s", path, home)
+		}
+		if first := strings.Index(nav, `data-testid="nav-`); first != strings.Index(nav, `data-testid="nav-home"`) {
+			t.Errorf("on %s, Home is not the first nav item:\n%s", path, nav)
+		}
+		for _, gone := range []string{"nav-pending-links", "nav-pending-handoffs", "nav-delegated-goals"} {
+			if strings.Contains(nav, gone) {
+				t.Errorf("on %s, the top bar still has %s", path, gone)
+			}
+		}
+	}
+
+	// kim checked in today and nothing is waiting on them.
+	kimPage := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/goals")
+	if home := pageElement(t, kimPage, "a", "nav-home"); strings.Contains(home, "count") {
+		t.Errorf("Home shows a count with nothing needing kim: %s", home)
+	}
+}

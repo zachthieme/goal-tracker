@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -19,6 +20,20 @@ func withPath(ctx context.Context, path string) context.Context {
 func onSection(ctx context.Context, href string) bool {
 	path, _ := ctx.Value(pathKey{}).(string)
 	return path == href || strings.HasPrefix(path, href+"/")
+}
+
+type needsYouKey struct{}
+
+// withNeedsYou records how many things need the signed-in person, so the top
+// bar's Home item can count them without every page passing it along.
+func withNeedsYou(ctx context.Context, n int) context.Context {
+	return context.WithValue(ctx, needsYouKey{}, n)
+}
+
+// needsYou is how many things need the signed-in person, 0 when uncounted.
+func needsYou(ctx context.Context) int {
+	n, _ := ctx.Value(needsYouKey{}).(int)
+	return n
 }
 
 // fontsURL loads the design system's faces; the font stacks in app.css fall
@@ -43,11 +58,9 @@ templ layout(title string, current *domain.Account) {
 			<nav class="nav">
 				<a class="brand" href="/goals">Goal Tracker</a>
 				if current != nil {
-					@navItem("/links", "nav-pending-links", "Pending links")
-					@navItem("/handoffs", "nav-pending-handoffs", "Pending handoffs")
-					@navItem("/delegates", "nav-delegated-goals", "Delegated to me")
-					@navItem("/dimensions", "nav-dimensions", "Dimensions")
-					@navItem("/reports", "nav-reports", "Reports")
+					@navItem("/home", "nav-home", "Home", needsYou(ctx))
+					@navItem("/dimensions", "nav-dimensions", "Dimensions", 0)
+					@navItem("/reports", "nav-reports", "Reports", 0)
 					<div class="me">
 						<span data-testid="current-user">
 							Signed in as { current.Email }
@@ -68,11 +81,24 @@ templ layout(title string, current *domain.Account) {
 	</html>
 }
 
-// navItem is a top-bar link, marked current when the request is in its section.
-templ navItem(href, testID, label string) {
+// navItem is a top-bar link, marked current when the request is in its section,
+// with a count of what's there for the reader when it's above zero.
+templ navItem(href, testID, label string, count int) {
 	if onSection(ctx, href) {
-		<a data-testid={ testID } class="navitem on" aria-current="page" href={ templ.SafeURL(href) }>{ label }</a>
+		<a data-testid={ testID } class="navitem on" aria-current="page" href={ templ.SafeURL(href) }>
+			{ label }
+			@navCount(count)
+		</a>
 	} else {
-		<a data-testid={ testID } class="navitem" href={ templ.SafeURL(href) }>{ label }</a>
+		<a data-testid={ testID } class="navitem" href={ templ.SafeURL(href) }>
+			{ label }
+			@navCount(count)
+		</a>
+	}
+}
+
+templ navCount(count int) {
+	if count > 0 {
+		<span class="count">{ strconv.Itoa(count) }</span>
 	}
 }
