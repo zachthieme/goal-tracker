@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"fmt"
+	"html"
 	"io"
 	"maps"
 	"net/http"
@@ -1015,6 +1016,9 @@ func TestGoalPageMoreMenuHoldsAdminActions(t *testing.T) {
 	if depart := openTag(between(t, moreMenu(t, page), fmt.Sprintf(`action="/accounts/%d/depart"`, sam.ID), "")); !strings.Contains(depart, `onsubmit="return confirm(`) {
 		t.Errorf("Mark departed doesn't ask for confirmation: %s", depart)
 	}
+	if nested := nestedControls(page); len(nested) > 0 {
+		t.Errorf("the Admin's Goal page nests a control inside another: %q", nested)
+	}
 
 	if strings.Contains(moreMenu(t, page), "Mark returned…") {
 		t.Errorf("a present Owner's Goal offers Mark returned…")
@@ -1025,6 +1029,9 @@ func TestGoalPageMoreMenuHoldsAdminActions(t *testing.T) {
 	assertMenuReaches(t, page, "Mark returned…", fmt.Sprintf("/accounts/%d/return", kim.ID))
 	if ret := openTag(between(t, moreMenu(t, page), fmt.Sprintf(`action="/accounts/%d/return"`, kim.ID), "")); !strings.Contains(ret, `onsubmit="return confirm(`) {
 		t.Errorf("Mark returned doesn't ask for confirmation: %s", ret)
+	}
+	if nested := nestedControls(page); len(nested) > 0 {
+		t.Errorf("an Ownerless Goal's page nests a control inside another: %q", nested)
 	}
 	if strings.Contains(moreMenu(t, page), "Hand off") {
 		t.Errorf("an Ownerless Goal offers Hand off")
@@ -1357,7 +1364,7 @@ func visibleEmails(page string) []string {
 }
 
 // The Goal list and a Goal page show each Owner by Name, or by their email's
-// local part until they have one, with the email on hover.
+// local part until they have one, with the email a click away.
 func TestGoalPagesShowPeopleByName(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
@@ -1375,7 +1382,7 @@ func TestGoalPagesShowPeopleByName(t *testing.T) {
 	}
 	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, named.ID))
 	if owner := pageElement(t, page, "strong", "goal-owner"); !strings.Contains(owner, shownAs("ada.okafor@example.com", "Ada Okafor")) {
-		t.Errorf("Goal page Owner reads %s, want Ada Okafor with her email on hover", owner)
+		t.Errorf("Goal page Owner reads %s, want Ada Okafor with their email a click away", owner)
 	}
 	for name, p := range map[string]string{"Goal list": list, "Goal page": page} {
 		if shown := visibleEmails(p); len(shown) > 0 {
@@ -1409,6 +1416,29 @@ func TestPersonExpandsTheirEmailOnActivation(t *testing.T) {
 	}
 }
 
+// interactiveTag matches the open and close tags of the elements a control
+// can't nest inside.
+var interactiveTag = regexp.MustCompile(`<(/?)(a|button|label|summary)[\s>]`)
+
+// nestedControls returns every interactive element a page opens inside
+// another one, which HTML forbids.
+func nestedControls(page string) []string {
+	var nested []string
+	depth := 0
+	for _, at := range interactiveTag.FindAllStringSubmatchIndex(page, -1) {
+		if at[3] > at[2] {
+			depth = max(depth-1, 0)
+			continue
+		}
+		if depth > 0 {
+			tag, _, _ := strings.Cut(page[at[0]:], ">")
+			nested = append(nested, tag+">")
+		}
+		depth++
+	}
+	return nested
+}
+
 // disclosureScript returns the page's script that opens and closes every
 // .disclose control's expansion.
 func disclosureScript(t *testing.T, page string) string {
@@ -1420,6 +1450,38 @@ func disclosureScript(t *testing.T, page string) string {
 	}
 	t.Fatalf("page has no disclosure script")
 	return ""
+}
+
+// The Goal page's So What definition and Top-level explanation each sit
+// collapsed behind a button that opens them in place on a click, tap, Enter or
+// Space, and reports whether they are open, so neither needs hover. The
+// wording is the one the hover title always carried.
+func TestGoalPageExplainsSoWhatAndTopLevelOnActivation(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	g := h.MarkTopLevel(ada, h.ActiveGoal(ada, "Grow revenue", "It pays for everything."))
+	page := getBody(t, signInClient(t, ts.URL, ada.Email), fmt.Sprintf("%s/goals/%d", ts.URL, g.ID))
+
+	for _, tc := range []struct{ label, control, text string }{
+		{"So What", `<h3><button type="button" class="disclose help"`, "The customer problem this Goal addresses and what is expected to change when it succeeds."},
+		{"Top-level", `<button type="button" class="badge lc disclose help" data-testid="goal-top-level"`, "One of the org's root outcomes"},
+	} {
+		at := strings.Index(page, tc.control)
+		if at < 0 {
+			t.Errorf("%s is not a disclosure button %s", tc.label, tc.control)
+			continue
+		}
+		button, _, _ := strings.Cut(page[at+strings.Index(tc.control, "<button"):], "</button>")
+		if !strings.HasSuffix(button, ">"+tc.label) || !strings.Contains(openTag(button), `aria-expanded="false"`) {
+			t.Errorf("%s button does not start collapsed: %s", tc.label, button)
+		}
+		id := strings.TrimPrefix(between(t, openTag(button), `aria-controls="`, `" `), `aria-controls="`)
+		if want := `id="` + id + `" class="explain" hidden>` + html.EscapeString(tc.text) + `<`; id == "" || !strings.Contains(page, want) {
+			t.Errorf("%s button controls %q, want the collapsed explanation %s", tc.label, id, want)
+		}
+	}
+	disclosureScript(t, page)
 }
 
 // With a seeded org, every page that shows people shows them by Name with
@@ -1511,6 +1573,9 @@ func TestSeededPagesShowPeopleByName(t *testing.T) {
 		page := getBody(t, client(p.as), ts.URL+p.path)
 		if shown := visibleEmails(page); len(shown) > 0 {
 			t.Errorf("%s as %s shows emails as text: %q", p.path, p.as, shown)
+		}
+		if nested := nestedControls(page); len(nested) > 0 {
+			t.Errorf("%s as %s nests a control inside another: %q", p.path, p.as, nested)
 		}
 		if !regexp.MustCompile(`<button type="button" class="disclose" aria-expanded="false" title="([^"]+@example\.com)">[A-Z][a-z]+ [A-Z][a-z]+</button><span class="person-email" hidden>[^<]+@example\.com</span>`).MatchString(page) {
 			t.Errorf("%s as %s shows nobody by Name with their email a click away", p.path, p.as)

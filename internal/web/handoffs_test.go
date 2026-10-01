@@ -358,6 +358,9 @@ func TestAcceptHandoffFormChoosesDelegatesToKeep(t *testing.T) {
 			t.Errorf("accept form doesn't name Delegate %s:\n%s", d.Email, form)
 		}
 	}
+	if nested := nestedControls(form); len(nested) > 0 {
+		t.Errorf("accept form nests a control inside another: %q", nested)
+	}
 	if strings.Contains(form, fmt.Sprintf(`value="%d"`, dee.ID)) || strings.Contains(form, "dee@example.com") {
 		t.Errorf("accept form offers the Departed Delegate:\n%s", form)
 	}
