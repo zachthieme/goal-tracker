@@ -208,6 +208,40 @@ Load the fonts with this URL:
 - Nothing loops. Under `prefers-reduced-motion`, drop the transforms and keep
   opacity changes of 150ms or less.
 
+## Print variant
+
+The Report Print view (`publicationPrintPage` in `internal/web/reports.templ`)
+is a document for paper and PDF, so it doesn't use the screen system. It is
+black and white, set in a serif, and declares its own tokens in its own style
+block. It doesn't load `app.css`.
+
+```css
+:root {
+  --print-font:  'Source Serif 4', Georgia, serif; /* weights 400 and 600 */
+  --print-ink:   #000; /* text and heavy rules; true black prints cleanest */
+  --print-ink-2: #444; /* bylines, meta lines, small-caps labels */
+  --print-rule:  #999; /* hairlines between Goals and table rows */
+}
+```
+
+| Role | Size / line-height | Weight |
+| --- | --- | --- |
+| Report name (`h1`) | 24pt / 1.15 | 600 |
+| Section (`h2`) | 13pt, under a 1.5pt ink rule | 600 |
+| Goal title (`h3`) | 13pt / 1.25 | 600 |
+| Body | 11pt / 1.45 | 400 |
+| Meta (`.small`) and tables | 9.5pt and 10pt | 400 |
+| Labels and table heads | small caps, 0.05em tracking | 400 and 600 |
+
+- Sizes are in points and spacing in rem, because the page is measured in
+  paper units. The 4px grid doesn't apply.
+- Page margins are 18mm top and bottom and 16mm at the sides.
+- A Goal's Health sits to the right of its title. Health shows its shape (■ Red,
+  ▲ Yellow, ● Green) and its name, never colour.
+- A Goal block and a table row never split across pages.
+- Load the font with this URL:
+  `https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap`
+
 ## Deviations from the source
 
 1. **Filled-button and link colour.** The source puts white text on `#14B8A6`,

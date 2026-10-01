@@ -585,7 +585,7 @@ func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	printed := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
 
-	if !strings.Contains(printed, "font-family: 'Source Serif 4', Georgia, serif") {
+	if !strings.Contains(printed, "--print-font: 'Source Serif 4', Georgia, serif") || !strings.Contains(printed, "font-family: var(--print-font)") {
 		t.Errorf("print page is not set in Source Serif 4 with a Georgia fallback; body:\n%s", printed)
 	}
 	if block := pageElement(t, printed, "article", "report-exception"); !strings.Contains(block, "■</span>Red") {

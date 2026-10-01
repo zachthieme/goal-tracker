@@ -209,17 +209,38 @@ templ publicationPrintPage(p domain.Publication) {
 			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 			<link rel="stylesheet" href={ reportFontsURL }/>
 			<style>
-				body { font-family: 'Source Serif 4', Georgia, serif; max-width: 48rem; margin: 2rem auto; line-height: 1.4; }
+				/* Goal Tracker · design-system: DESIGN.md § Print variant */
+				:root {
+					--print-font: 'Source Serif 4', Georgia, serif;
+					--print-ink: #000;
+					--print-ink-2: #444;
+					--print-rule: #999;
+				}
+				@page { margin: 18mm 16mm; }
+				body { font-family: var(--print-font); color: var(--print-ink); font-size: 11pt; line-height: 1.45; max-width: 44rem; margin: 2rem auto; padding: 0 1rem; }
+				h1 { font-size: 24pt; font-weight: 600; line-height: 1.15; margin: 0 0 0.25rem; }
+				h2 { font-size: 13pt; font-weight: 600; margin: 2rem 0 0; padding-top: 0.5rem; border-top: 1.5pt solid var(--print-ink); break-after: avoid; }
+				h3 { font-size: 13pt; font-weight: 600; line-height: 1.25; margin: 0; }
+				p { margin: 0.4rem 0; }
+				strong { font-weight: 600; }
 				a { color: inherit; text-decoration: none; }
-				article { break-inside: avoid; border-top: 1px solid #ccc; }
-				table { border-collapse: collapse; width: 100%; }
-				th, td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid #ccc; }
+				ul { margin: 0.2rem 0 0.4rem; padding-left: 1.1rem; }
+				article { break-inside: avoid; border-top: 0.5pt solid var(--print-rule); padding: 0.9rem 0 0.6rem; }
+				h2 + article { border-top: none; }
+				.rp-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+				.rp-card-head p { margin: 0.1rem 0 0; }
+				table { border-collapse: collapse; width: 100%; font-size: 10pt; }
+				th, td { text-align: left; vertical-align: top; padding: 0.3rem 0.75rem 0.3rem 0; border-bottom: 0.5pt solid var(--print-rule); }
+				th { font-weight: 600; font-variant: small-caps; letter-spacing: 0.05em; border-bottom: 1pt solid var(--print-ink); }
 				tr { break-inside: avoid; }
 				.dot { display: none; }
 				.badge { font-weight: 600; white-space: nowrap; }
-				.label { font-variant: small-caps; letter-spacing: 0.05em; }
+				.shape { margin-right: 0.25em; }
+				.muted { color: var(--print-ink-2); }
+				.small { font-size: 9.5pt; }
+				.label { font-variant: small-caps; letter-spacing: 0.05em; color: var(--print-ink-2); margin: 0.6rem 0 0; }
 				@media print {
-					body { margin: 0; max-width: none; }
+					body { margin: 0; max-width: none; padding: 0; }
 					.no-print { display: none; }
 				}
 			</style>
