@@ -13,6 +13,16 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 1, 2026
+
+**New features:**
+- [user] The Goal page has a collapsed "Ownership history (N)" section listing every Handoff and Admin Reassign oldest first, with from, to, who started it, when, and the outcome: pending, accepted, rejected, cancelled, or reassigned by an Admin (#46).
+
+**Bug fixes:**
+- [user] The report draft page no longer scrolls sideways on a phone: the baseline line and the Narrative card fit the screen, and the On track table scrolls within its card (#43).
+- [user] Rejecting a Handoff no longer erases it: the Handoff is kept with the outcome rejected, and the Goal can be handed off again (#46).
+- [user] Marking someone Departed cancels the pending Handoffs to them, so they can no longer be accepted; a Handoff the departing Owner started stays pending, and accepting it ends the Goal's Ownerless state (#46).
+
 ### Goal Tracker v1 pilot build — September 30, 2026
 
 **New features:**
