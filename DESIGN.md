@@ -93,11 +93,10 @@ deliberately; don't override it on one page.
   --shadow-card:       0 10px 25px -5px rgba(19,78,74,.09), 0 8px 10px -6px rgba(19,78,74,.04);
   --shadow-card-hover: 0 20px 30px -10px rgba(19,78,74,.17), 0 10px 15px -5px rgba(19,78,74,.08);
   --shadow-pop:        0 25px 50px -12px rgba(19,78,74,.25);
-  --shadow-glow:       0 4px 14px 0 rgba(20,184,166,.38); /* primary button hover */
 
-  /* Primary button hover fill. Light keeps the resting fill: --color-primary-hover
-   * under white text is only 3.74:1 */
-  --btn-primary-hover: var(--color-primary-strong);
+  /* Primary button hover fill. Light darkens to Teal 800: white text on it is
+   * 7.58:1, where --color-primary-hover under white text is only 3.74:1 */
+  --btn-primary-hover: #115E59;
 
   /* Motion */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -149,9 +148,8 @@ deliberately; don't override it on one page.
   --shadow-card:       0 10px 25px -5px rgba(0,0,0,.45), 0 8px 10px -6px rgba(0,0,0,.30);
   --shadow-card-hover: 0 20px 30px -10px rgba(0,0,0,.55), 0 10px 15px -5px rgba(0,0,0,.35);
   --shadow-pop:        0 25px 50px -12px rgba(0,0,0,.65);
-  --shadow-glow:       none; /* a coloured halo on a dark surface reads as decoration */
 
-  /* Dark hover goes lighter instead: --color-ink-inverse on it is 7.77:1 */
+  /* Dark hover goes lighter: --color-ink-inverse on it is 7.77:1 */
   --btn-primary-hover: var(--color-primary-hover);
 }
 ```
@@ -191,14 +189,15 @@ Load the fonts with this URL:
 - **Primary button (`.btn.primary`):**
   - Resting: `--color-primary-strong` fill, `--color-ink-inverse` text,
     `--radius-md`, 14px, weight 600.
-  - Hover: `translateY(-1px)`, `--shadow-glow`, and a `--btn-primary-hover`
-    fill.
-    - Light: the fill stays `--color-primary-strong` (white text, 5.47:1),
-      lifted by the teal `--shadow-glow`. Light `--color-primary-hover` is
-      only 3.74:1 under white text, so it can't be the fill.
-    - Dark: `--shadow-glow` is `none`, because dark themes show elevation by
-      lightness. The fill lightens to `--color-primary-hover` (`#2DD4BF`), and
-      `--color-ink-inverse` text on it is 7.77:1.
+  - Hover: the fill changes to `--btn-primary-hover`, and nothing else does:
+    no lift, no shadow. The border follows the fill, so the button still
+    reads as one surface.
+    - Light: the fill darkens to Teal 800 (`#115E59`), and white text on it is
+      7.58:1. Light `--color-primary-hover` is only 3.74:1 under white text,
+      so it can't be the fill.
+    - Dark: the fill lightens to `--color-primary-hover` (`#2DD4BF`), because
+      dark themes show elevation by lightness. `--color-ink-inverse` text on
+      it is 7.77:1.
   - Active: `scale(0.98)`.
 - **Secondary button (`.btn`):** `--color-surface` fill, 1px `--color-border`,
   `--color-ink` text. On hover, the fill becomes `--color-surface-hover` and
@@ -206,8 +205,9 @@ Load the fonts with this URL:
 - **Quiet button (`.btn.quiet`):** no fill, `--color-primary-strong` text. On
   hover it takes a `--color-primary-subtle` fill.
 - **Card (`.card`):** `--color-surface`, 1px `--color-border`,
-  `--radius-lg`, 24px padding, `--shadow-card`. Clickable cards lift on hover
-  with `--shadow-card-hover` and `translateY(-2px)`, over `--dur-base`.
+  `--radius-lg`, 24px padding, `--shadow-card`. On hover a clickable card's
+  shadow deepens to `--shadow-card-hover` over `--dur-base`, and nothing else
+  changes: it doesn't move.
   A card's own heading is an `h3` (card title); `h2` is for page sections
   that sit outside cards.
 - **Inputs:** `--color-surface`, 1px `--color-border-strong`, `--radius-md`,

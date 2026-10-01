@@ -54,11 +54,10 @@
   --shadow-card:       0 10px 25px -5px rgba(19,78,74,.09), 0 8px 10px -6px rgba(19,78,74,.04);
   --shadow-card-hover: 0 20px 30px -10px rgba(19,78,74,.17), 0 10px 15px -5px rgba(19,78,74,.08);
   --shadow-pop:        0 25px 50px -12px rgba(19,78,74,.25);
-  --shadow-glow:       0 4px 14px 0 rgba(20,184,166,.38);
 
   /* Primary button hover fill: --color-primary-hover is only 3.74:1 under white
-   * text in light, so light keeps the resting fill (DESIGN.md § Components) */
-  --btn-primary-hover: var(--color-primary-strong);
+   * text in light, so light darkens to Teal 800, 7.58:1 (DESIGN.md § Components) */
+  --btn-primary-hover: #115E59;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-fast: 150ms;
@@ -101,7 +100,6 @@
     --shadow-card:       0 10px 25px -5px rgba(0,0,0,.45), 0 8px 10px -6px rgba(0,0,0,.30);
     --shadow-card-hover: 0 20px 30px -10px rgba(0,0,0,.55), 0 10px 15px -5px rgba(0,0,0,.35);
     --shadow-pop:        0 25px 50px -12px rgba(0,0,0,.65);
-    --shadow-glow:       none;
     --btn-primary-hover: var(--color-primary-hover);
   }
 }
@@ -138,7 +136,6 @@
   --shadow-card:       0 10px 25px -5px rgba(0,0,0,.45), 0 8px 10px -6px rgba(0,0,0,.30);
   --shadow-card-hover: 0 20px 30px -10px rgba(0,0,0,.55), 0 10px 15px -5px rgba(0,0,0,.35);
   --shadow-pop:        0 25px 50px -12px rgba(0,0,0,.65);
-  --shadow-glow:       none;
   --btn-primary-hover: var(--color-primary-hover);
 }
 
@@ -179,18 +176,17 @@ strong{color:var(--color-ink)}
 .lc{background:var(--color-surface-alt);color:var(--color-ink-2);border:1px solid var(--color-border)}
 .tag{display:inline-flex;align-items:center;padding:0 12px;border-radius:var(--radius-full);color:var(--color-ink);font-size:13px;line-height:22px;background:var(--color-primary-light)}
 .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:24px;box-shadow:var(--shadow-card)}
-a.card{color:var(--color-ink-2);transition:transform var(--dur-base) var(--ease-out),box-shadow var(--dur-base) var(--ease-out)}
-a.card:hover{text-decoration:none;color:var(--color-ink-2);transform:translateY(-2px);box-shadow:var(--shadow-card-hover)}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:600;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-ink);cursor:pointer;box-sizing:border-box;white-space:nowrap;transition:background var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),box-shadow var(--dur-fast) var(--ease-out),transform var(--dur-fast) var(--ease-out)}
+a.card{color:var(--color-ink-2);transition:box-shadow var(--dur-base) var(--ease-out)}
+a.card:hover{text-decoration:none;color:var(--color-ink-2);box-shadow:var(--shadow-card-hover)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 16px;border-radius:var(--radius-md);font:inherit;font-size:14px;font-weight:600;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-ink);cursor:pointer;box-sizing:border-box;white-space:nowrap;transition:background var(--dur-fast) var(--ease-out),border-color var(--dur-fast) var(--ease-out),transform var(--dur-fast) var(--ease-out)}
 .btn:hover{background:var(--color-surface-hover);border-color:var(--color-primary);text-decoration:none;color:var(--color-ink)}
 .btn:active{transform:scale(0.98)}
 .btn.primary{background:var(--color-primary-strong);border-color:var(--color-primary-strong);color:var(--color-ink-inverse)}
-.btn.primary:hover{background:var(--btn-primary-hover);color:var(--color-ink-inverse);transform:translateY(-1px);box-shadow:var(--shadow-glow)}
-.btn.primary:active{transform:scale(0.98);box-shadow:none}
+.btn.primary:hover{background:var(--btn-primary-hover);border-color:var(--btn-primary-hover);color:var(--color-ink-inverse)}
 .btn.quiet{border-color:transparent;background:transparent;color:var(--color-primary-strong)}.btn.quiet:hover{background:var(--color-primary-subtle);border-color:transparent}
 .btn.danger{color:var(--color-danger-ink)}
 .btn.sm{height:32px;padding:0 12px;font-size:13px}
-.btn[disabled]{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
+.btn[disabled]{opacity:.5;cursor:not-allowed;transform:none}
 .muted{color:var(--color-ink-muted)}
 .small{font-size:13px;line-height:1.5}
 .label,th{font-size:11px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--color-ink-muted)}
@@ -230,5 +226,5 @@ pre{overflow-x:auto}
 fieldset{min-width:0}
 @media (max-width:900px){.nav{flex-wrap:wrap;height:auto;min-height:56px;padding:0 16px;column-gap:12px}.brand{margin-right:0}.me{flex:1 1 0;justify-content:flex-end;min-width:0;min-height:56px}.who{display:flex;min-width:0;font-size:0}.who .person{display:flex;flex-direction:column;align-items:flex-start;min-width:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.who .person>.disclose{max-width:100%;overflow:hidden;text-overflow:ellipsis}.who .person-email{margin-left:0;white-space:normal}.navitems{order:1;flex:1 0 100%;margin:0 -8px 8px}.navitems .navitem{padding:0 8px}.card:has(table){overflow-x:auto}}
 @media (max-width:360px){.navitems .navitem{padding:0 4px}.navitems .count{margin-left:8px}}
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0s!important}.btn:hover,.btn:active,a.card:hover{transform:none!important}}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0s!important}.btn:active{transform:none!important}}
 @media (pointer:coarse){.btn,.btn.sm,input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],select{min-height:44px}}
