@@ -5,16 +5,17 @@ import (
 	"math"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
-// In the dark theme a hovered primary button shows it by a lighter fill, not a
-// teal halo: dark themes show elevation by lightness. That holds whether the
-// theme comes from the OS or from data-theme="dark".
-func TestDarkPrimaryButtonHoverLightensWithoutAGlow(t *testing.T) {
+// In the dark theme a hovered primary button's fill goes lighter: dark themes
+// show elevation by lightness. That holds whether the theme comes from the OS
+// or from data-theme="dark".
+func TestDarkPrimaryButtonHoverLightens(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -23,9 +24,6 @@ func TestDarkPrimaryButtonHoverLightensWithoutAGlow(t *testing.T) {
 	for name, theme := range darkThemes(t, css) {
 		if fill := resolve(t, theme, declValue(t, hover, "background")); fill != "#2DD4BF" {
 			t.Errorf("%s: a hovered primary button's fill is %s, want the lighter --color-primary-hover #2DD4BF", name, fill)
-		}
-		if glow := resolve(t, theme, declValue(t, hover, "box-shadow")); glow != "none" {
-			t.Errorf("%s: a hovered primary button still has a halo: %s", name, glow)
 		}
 	}
 }
@@ -49,25 +47,90 @@ func TestPrimaryButtonHoverTextReachesAA(t *testing.T) {
 	}
 }
 
-// The light theme's primary button hover is as it was: the resting
-// --color-primary-strong fill, white text and the teal glow.
-func TestLightPrimaryButtonHoverIsUnchanged(t *testing.T) {
+// A hovered primary button shows it by its fill alone, in every theme: no lift,
+// no halo, and the border keeps matching the fill so it reads as one surface.
+func TestPrimaryButtonHoverChangesFillOnly(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
-	hover := cssRule(t, css, "\n.btn.primary:hover")
-	light := tokens(tokenBlock(t, css, ":root"))
 
-	for property, want := range map[string]string{
-		"background": "#0F766E",
-		"color":      "#FFFFFF",
-		"box-shadow": "0 4px 14px 0 rgba(20,184,166,.38)",
-		"transform":  "translateY(-1px)",
-	} {
-		if got := resolve(t, light, declValue(t, hover, property)); got != want {
-			t.Errorf("light: a hovered primary button's %s is %s, want %s", property, got, want)
+	themes := darkThemes(t, css)
+	themes["light"] = tokens(tokenBlock(t, css, ":root"))
+	for name, theme := range themes {
+		rest := computed(t, css, theme, ".btn", ".btn.primary")
+		hover := computed(t, css, theme, ".btn", ".btn.primary", ".btn:hover", ".btn.primary:hover")
+		if got := changed(rest, hover); fmt.Sprint(got) != "[background border-color]" {
+			t.Errorf("%s: a hovered primary button changes %v, want only its fill", name, got)
+		}
+		for state, style := range map[string]map[string]string{"resting": rest, "hovered": hover} {
+			if style["border-color"] != style["background"] {
+				t.Errorf("%s: a %s primary button's border %s doesn't match its fill %s", name, state, style["border-color"], style["background"])
+			}
 		}
 	}
+	if fill := resolve(t, themes["light"], "var(--btn-primary-hover)"); fill != "#115E59" {
+		t.Errorf("light: a hovered primary button's fill is %s, want the darker Teal 800 #115E59", fill)
+	}
+}
+
+// A hovered clickable card shows it by a deeper shadow alone, in every theme.
+func TestClickableCardHoverChangesShadowOnly(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	themes := darkThemes(t, css)
+	themes["light"] = tokens(tokenBlock(t, css, ":root"))
+	for name, theme := range themes {
+		rest := computed(t, css, theme, ".card", "a.card")
+		hover := computed(t, css, theme, ".card", "a.card", "a.card:hover")
+		if got := changed(rest, hover); fmt.Sprint(got) != "[box-shadow]" {
+			t.Errorf("%s: a hovered clickable card changes %v, want only its shadow", name, got)
+		}
+		if want := resolve(t, theme, "var(--shadow-card-hover)"); hover["box-shadow"] != want {
+			t.Errorf("%s: a hovered clickable card's shadow is %s, want --shadow-card-hover %s", name, hover["box-shadow"], want)
+		}
+	}
+}
+
+// computed cascades the top-level rules for selectors, in order, and resolves
+// each value against theme. Properties none of them set are absent.
+func computed(t *testing.T, css string, theme map[string]string, selectors ...string) map[string]string {
+	t.Helper()
+	style := map[string]string{}
+	for _, sel := range selectors {
+		for _, d := range strings.Split(cssRule(t, css, "\n"+sel), ";") {
+			if p, v, ok := strings.Cut(d, ":"); ok {
+				style[strings.TrimSpace(p)] = resolve(t, theme, strings.TrimSpace(v))
+			}
+		}
+	}
+	return style
+}
+
+// changed lists, sorted, the properties whose value differs between before and
+// after. A property one side leaves unset counts as its initial value.
+func changed(before, after map[string]string) []string {
+	initial := map[string]string{"transform": "none", "box-shadow": "none", "text-decoration": "none"}
+	value := func(style map[string]string, p string) string {
+		if v, ok := style[p]; ok {
+			return v
+		}
+		return initial[p]
+	}
+	var diff []string
+	for p := range after {
+		if value(before, p) != value(after, p) {
+			diff = append(diff, p)
+		}
+	}
+	for p := range before {
+		if _, ok := after[p]; !ok && value(before, p) != value(after, p) {
+			diff = append(diff, p)
+		}
+	}
+	sort.Strings(diff)
+	return diff
 }
 
 // The OS dark block and the data-theme="dark" block set the same tokens to the
