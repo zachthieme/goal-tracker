@@ -69,8 +69,9 @@ func TestSignedInPersonLandsOnHome(t *testing.T) {
 	}
 }
 
-// The sign-in page is a single narrow card: the brand, the development sign-in
-// note, and the email field with its button.
+// The sign-in page is a single narrow card: the "Sign in" heading, the
+// development sign-in note, and the email field with its button. The top bar
+// already shows the brand, so the card doesn't repeat it.
 func TestSignInPageIsACentredCard(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
@@ -85,7 +86,14 @@ func TestSignInPageIsACentredCard(t *testing.T) {
 	if !strings.Contains(openTag(card), `class="card`) {
 		t.Errorf("the sign-in form isn't a card: %s", openTag(card))
 	}
-	for _, want := range []string{"Goal Tracker", "Development sign-in", `type="email" name="email"`, `<button type="submit" class="btn primary`} {
+	body := strings.TrimSpace(card[len(openTag(card))+1:])
+	if !strings.HasPrefix(body, "<h1>Sign in</h1>") {
+		t.Errorf("the sign-in card doesn't start with the Sign in heading:\n%s", card)
+	}
+	if strings.Contains(card, "Goal Tracker") {
+		t.Errorf("the sign-in card repeats the brand:\n%s", card)
+	}
+	for _, want := range []string{"Development sign-in", `type="email" name="email"`, `<button type="submit" class="btn primary`} {
 		if !strings.Contains(card, want) {
 			t.Errorf("the sign-in card lacks %s:\n%s", want, card)
 		}
