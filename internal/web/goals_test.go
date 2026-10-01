@@ -919,7 +919,7 @@ func TestGoalPageMoreMenuHoldsOwnerActions(t *testing.T) {
 	assertMenuReaches(t, page, "Link to a parent goal", base+"/links")
 	assertMenuReaches(t, page, "Add a child goal", base+"/children")
 	assertMenuReaches(t, page, "Edit Dimension values", base+"/dimensions")
-	for _, adminOnly := range []string{"Mark Top-level", "Mark owner departed…", "Reassign"} {
+	for _, adminOnly := range []string{"Mark Top-level", "Mark owner departed…", "Mark returned…", "Reassign"} {
 		if strings.Contains(moreMenu(t, page), adminOnly) {
 			t.Errorf("an Owner who isn't an Admin is offered %q", adminOnly)
 		}
@@ -927,7 +927,8 @@ func TestGoalPageMoreMenuHoldsOwnerActions(t *testing.T) {
 }
 
 // An Admin's More menu adds Mark Top-level and Mark owner departed…, which asks
-// for confirmation; on an Ownerless Goal it offers Reassign instead of Hand off.
+// for confirmation; on an Ownerless Goal it offers Reassign instead of Hand off,
+// and Mark returned…, which also asks for confirmation.
 func TestGoalPageMoreMenuHoldsAdminActions(t *testing.T) {
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
@@ -950,8 +951,16 @@ func TestGoalPageMoreMenuHoldsAdminActions(t *testing.T) {
 		t.Errorf("Mark departed doesn't ask for confirmation: %s", depart)
 	}
 
+	if strings.Contains(moreMenu(t, page), "Mark returned…") {
+		t.Errorf("a present Owner's Goal offers Mark returned…")
+	}
+
 	page = getBody(t, adaClient, fmt.Sprintf("%s/goals/%d", ts.URL, orphan.ID))
 	assertMenuReaches(t, page, "Reassign", fmt.Sprintf("/goals/%d/reassign", orphan.ID))
+	assertMenuReaches(t, page, "Mark returned…", fmt.Sprintf("/accounts/%d/return", kim.ID))
+	if ret := openTag(between(t, moreMenu(t, page), fmt.Sprintf(`action="/accounts/%d/return"`, kim.ID), "")); !strings.Contains(ret, `onsubmit="return confirm(`) {
+		t.Errorf("Mark returned doesn't ask for confirmation: %s", ret)
+	}
 	if strings.Contains(moreMenu(t, page), "Hand off") {
 		t.Errorf("an Ownerless Goal offers Hand off")
 	}
