@@ -44,8 +44,10 @@ func (s *Service) Account(ctx context.Context, id int64) (Account, error) {
 }
 
 // MarkDeparted records that the person behind accountID has left the org, so the
-// Goals they still own become Ownerless (CONTEXT.md: Ownerless). Only an Admin
-// may do this; actorID identifies the acting Account.
+// Goals they still own become Ownerless (CONTEXT.md: Ownerless), and cancels
+// every pending Handoff to them in the same transaction. Pending Handoffs they
+// started as Owner stay pending, so the new Owner can still accept them. Only an
+// Admin may do this; actorID identifies the acting Account.
 func (s *Service) MarkDeparted(ctx context.Context, actorID, accountID int64) error {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return err
@@ -56,13 +58,18 @@ func (s *Service) MarkDeparted(ctx context.Context, actorID, accountID int64) er
 		}
 		return fmt.Errorf("look up account: %w", err)
 	}
-	if err := s.queries.SetAccountDeparted(ctx, db.SetAccountDepartedParams{
-		Departed: 1,
-		ID:       accountID,
-	}); err != nil {
-		return fmt.Errorf("mark departed: %w", err)
-	}
-	return nil
+	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.queries.SetAccountDeparted(ctx, db.SetAccountDepartedParams{
+			Departed: 1,
+			ID:       accountID,
+		}); err != nil {
+			return fmt.Errorf("mark departed: %w", err)
+		}
+		if err := tx.queries.CancelPendingHandoffsTo(ctx, accountID); err != nil {
+			return fmt.Errorf("cancel handoffs: %w", err)
+		}
+		return nil
+	})
 }
 
 // requireAdmin returns ErrNotAuthorized unless actorID is an Admin.

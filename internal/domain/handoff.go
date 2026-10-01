@@ -15,19 +15,26 @@ import (
 // started by the current Owner or an Admin, but takes effect only when the new
 // Owner accepts it: until then it is Pending and ownership does not move.
 type Handoff struct {
-	ID        int64
-	Goal      Goal
-	From      Account
-	To        Account
-	Status    string
-	CreatedAt time.Time
+	ID          int64
+	Goal        Goal
+	From        Account
+	To          Account
+	InitiatedBy Account
+	Status      string
+	CreatedAt   time.Time
 }
 
-// Handoff status values. A rejected Handoff is deleted, so it has no status of
-// its own.
+// Handoff status values: a Handoff's outcome. Every Handoff is kept with its
+// outcome (CONTEXT.md: Handoff), so a Goal can have many past Handoffs but only
+// one pending.
 const (
-	HandoffPending  = "pending"
-	HandoffAccepted = "accepted"
+	HandoffPending   = "pending"
+	HandoffAccepted  = "accepted"
+	HandoffRejected  = "rejected"
+	HandoffCancelled = "cancelled"
+	// HandoffReassigned records an Admin Reassign of an Ownerless Goal: an
+	// ownership change kept in the same history, which no one accepts.
+	HandoffReassigned = "reassigned"
 )
 
 // StartHandoffInput is the start-a-Handoff command's input: transfer GoalID to
@@ -93,12 +100,13 @@ func (s *Service) StartHandoff(ctx context.Context, in StartHandoffInput) (Hando
 		return Handoff{}, fmt.Errorf("create handoff: %w", err)
 	}
 	return Handoff{
-		ID:        row.ID,
-		Goal:      goalFromRow(goal.Goal, goal.Account),
-		From:      accountFromRow(goal.Account),
-		To:        accountFromRow(newOwner),
-		Status:    row.Status,
-		CreatedAt: now,
+		ID:          row.ID,
+		Goal:        goalFromRow(goal.Goal, goal.Account),
+		From:        accountFromRow(goal.Account),
+		To:          accountFromRow(newOwner),
+		InitiatedBy: accountFromRow(actor),
+		Status:      row.Status,
+		CreatedAt:   now,
 	}, nil
 }
 
@@ -157,8 +165,8 @@ func (s *Service) AcceptHandoff(ctx context.Context, handoffID, actorID int64) (
 	return s.loadHandoff(ctx, handoffID)
 }
 
-// RejectHandoff declines a pending Handoff, deleting it; ownership stays put.
-// Only the proposed new Owner may reject it.
+// RejectHandoff declines a pending Handoff, keeping it with the outcome
+// rejected; ownership stays put. Only the proposed new Owner may reject it.
 func (s *Service) RejectHandoff(ctx context.Context, handoffID, actorID int64) error {
 	row, err := s.getPendingHandoff(ctx, handoffID)
 	if err != nil {
@@ -167,7 +175,10 @@ func (s *Service) RejectHandoff(ctx context.Context, handoffID, actorID int64) e
 	if row.ToOwner != actorID {
 		return fmt.Errorf("%w: only the new Owner may reject a Handoff", ErrNotAuthorized)
 	}
-	if err := s.queries.DeleteHandoff(ctx, handoffID); err != nil {
+	if err := s.queries.SetHandoffStatus(ctx, db.SetHandoffStatusParams{
+		Status: HandoffRejected,
+		ID:     handoffID,
+	}); err != nil {
 		return fmt.Errorf("reject handoff: %w", err)
 	}
 	return nil
@@ -195,10 +206,34 @@ func (s *Service) PendingHandoffs(ctx context.Context, toOwnerID int64) ([]Hando
 	return out, nil
 }
 
+// OwnershipHistory returns every ownership change of a Goal, oldest first: each
+// Handoff with its outcome, and each Admin Reassign. The Goal itself is left
+// unresolved on each entry.
+func (s *Service) OwnershipHistory(ctx context.Context, goalID int64) ([]Handoff, error) {
+	rows, err := s.queries.ListHandoffsForGoal(ctx, goalID)
+	if err != nil {
+		return nil, fmt.Errorf("list ownership history: %w", err)
+	}
+	out := make([]Handoff, 0, len(rows))
+	for _, r := range rows {
+		createdAt, _ := time.Parse(timeFormat, r.Handoff.CreatedAt)
+		out = append(out, Handoff{
+			ID:          r.Handoff.ID,
+			From:        accountFromRow(r.Account),   // from_acct
+			To:          accountFromRow(r.Account_2), // to_acct
+			InitiatedBy: accountFromRow(r.Account_3), // initiator
+			Status:      r.Handoff.Status,
+			CreatedAt:   createdAt,
+		})
+	}
+	return out, nil
+}
+
 // ReassignGoal moves an Ownerless Goal to a present Owner (CONTEXT.md: an Admin
 // reassigns an Ownerless Goal). Only an Admin may do this, and only for a Goal
 // that is Ownerless — a Goal with a present Owner changes hands through a Handoff
-// the new Owner accepts, not by fiat.
+// the new Owner accepts, not by fiat. The Reassign is kept in the Goal's
+// ownership history with the outcome reassigned.
 func (s *Service) ReassignGoal(ctx context.Context, actorID, goalID, newOwnerID int64) (Goal, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return Goal{}, err
@@ -223,11 +258,27 @@ func (s *Service) ReassignGoal(ctx context.Context, actorID, goalID, newOwnerID 
 	if newOwner.Departed != 0 {
 		return Goal{}, fmt.Errorf("%w: the new Owner has left the org", ErrValidation)
 	}
-	if err := s.queries.SetGoalOwner(ctx, db.SetGoalOwnerParams{
-		OwnerID: newOwnerID,
-		ID:      goalID,
-	}); err != nil {
-		return Goal{}, fmt.Errorf("reassign goal: %w", err)
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.queries.SetGoalOwner(ctx, db.SetGoalOwnerParams{
+			OwnerID: newOwnerID,
+			ID:      goalID,
+		}); err != nil {
+			return fmt.Errorf("reassign goal: %w", err)
+		}
+		if _, err := tx.queries.CreateHandoff(ctx, db.CreateHandoffParams{
+			GoalID:      goalID,
+			FromOwner:   goal.Goal.OwnerID,
+			ToOwner:     newOwnerID,
+			Status:      HandoffReassigned,
+			InitiatedBy: actorID,
+			CreatedAt:   tx.clock.Now().Format(timeFormat),
+		}); err != nil {
+			return fmt.Errorf("record reassign: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return Goal{}, err
 	}
 	return s.loadGoal(ctx, goalID)
 }
@@ -247,7 +298,8 @@ func (s *Service) getPendingHandoff(ctx context.Context, handoffID int64) (db.Ha
 	return row, nil
 }
 
-// loadHandoff loads a Handoff with its Goal and both Owners resolved.
+// loadHandoff loads a Handoff with its Goal, both Owners, and its initiator
+// resolved.
 func (s *Service) loadHandoff(ctx context.Context, handoffID int64) (Handoff, error) {
 	row, err := s.queries.GetHandoff(ctx, handoffID)
 	if err != nil {
@@ -265,13 +317,18 @@ func (s *Service) loadHandoff(ctx context.Context, handoffID int64) (Handoff, er
 	if err != nil {
 		return Handoff{}, fmt.Errorf("look up to owner: %w", err)
 	}
+	initiator, err := s.queries.GetAccount(ctx, row.InitiatedBy)
+	if err != nil {
+		return Handoff{}, fmt.Errorf("look up initiator: %w", err)
+	}
 	createdAt, _ := time.Parse(timeFormat, row.CreatedAt)
 	return Handoff{
-		ID:        row.ID,
-		Goal:      goalFromRow(goal.Goal, goal.Account),
-		From:      accountFromRow(from),
-		To:        accountFromRow(to),
-		Status:    row.Status,
-		CreatedAt: createdAt,
+		ID:          row.ID,
+		Goal:        goalFromRow(goal.Goal, goal.Account),
+		From:        accountFromRow(from),
+		To:          accountFromRow(to),
+		InitiatedBy: accountFromRow(initiator),
+		Status:      row.Status,
+		CreatedAt:   createdAt,
 	}, nil
 }

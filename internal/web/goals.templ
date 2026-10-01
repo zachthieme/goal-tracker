@@ -288,6 +288,12 @@ templ goalPage(current *domain.Account, v goalView) {
 							</ul>
 						</details>
 					</section>
+					<section data-testid="goal-ownership-history">
+						<details>
+							<summary>{ fmt.Sprintf("Ownership history (%d)", len(v.Ownership)) }</summary>
+							@ownershipHistory(v.Ownership)
+						</details>
+					</section>
 				</div>
 				@addChildGoal(v)
 			</div>
@@ -794,6 +800,24 @@ templ dateSlipList(v goalView) {
 				: <del>{ fmtDate(s.OldDate) }</del> { fmtDate(s.NewDate) }
 				<span>— { s.Reason }</span>
 				<span>— at { s.CreatedAt.Format("2006-01-02 15:04") }</span>
+			</li>
+		}
+	</ul>
+}
+
+// ownershipHistory lists every Handoff and Admin Reassign of a Goal, oldest
+// first, each with who it went from and to, who started it and when, and its
+// outcome (CONTEXT.md: Handoff — every Handoff is kept with its outcome).
+templ ownershipHistory(changes []domain.Handoff) {
+	<ul class="gp-list">
+		if len(changes) == 0 {
+			<li data-testid="no-ownership-changes" class="muted">No ownership changes yet.</li>
+		}
+		for _, c := range changes {
+			<li data-testid="ownership-change">
+				<span>{ c.From.Email } → { c.To.Email }</span>
+				<span>— { ownershipOutcome(c.Status) }</span>
+				<span class="muted small">— started by { c.InitiatedBy.Email } at { c.CreatedAt.Format("2006-01-02 15:04") }</span>
 			</li>
 		}
 	</ul>

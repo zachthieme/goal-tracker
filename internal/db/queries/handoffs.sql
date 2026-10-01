@@ -12,8 +12,16 @@ SELECT * FROM handoffs WHERE goal_id = ? AND status = 'pending' LIMIT 1;
 -- name: SetHandoffStatus :exec
 UPDATE handoffs SET status = ? WHERE id = ?;
 
--- name: DeleteHandoff :exec
-DELETE FROM handoffs WHERE id = ?;
+-- name: ListHandoffsForGoal :many
+-- A Goal's ownership history: every Handoff and Admin Reassign, oldest first,
+-- with the from, to, and initiating Accounts resolved for display.
+SELECT sqlc.embed(handoffs), sqlc.embed(from_acct), sqlc.embed(to_acct), sqlc.embed(initiator)
+FROM handoffs
+JOIN accounts from_acct ON from_acct.id = handoffs.from_owner
+JOIN accounts to_acct ON to_acct.id = handoffs.to_owner
+JOIN accounts initiator ON initiator.id = handoffs.initiated_by
+WHERE handoffs.goal_id = @goal_id
+ORDER BY handoffs.created_at, handoffs.id;
 
 -- name: ListPendingHandoffsForNewOwner :many
 -- Pending Handoffs awaiting a decision from the proposed new Owner, with the
@@ -30,6 +38,10 @@ ORDER BY handoffs.created_at, handoffs.id;
 -- Move a Goal to a new Owner: used when a Handoff is accepted and when an Admin
 -- reassigns an Ownerless Goal.
 UPDATE goals SET owner_id = ? WHERE id = ?;
+
+-- name: CancelPendingHandoffsTo :exec
+-- Cancel every pending Handoff to a person who has left the org.
+UPDATE handoffs SET status = 'cancelled' WHERE to_owner = ? AND status = 'pending';
 
 -- name: SetAccountDeparted :exec
 -- Record that a person has left the org, so their Goals become Ownerless.
