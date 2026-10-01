@@ -2,6 +2,16 @@
 
 A single mechanism for an org to state its goals, update them on a regular cadence, and produce MBR-caliber reports at any cadence. It combines the rigor of an Amazon MBR, the ease of a 5-15, and the org-wide view of OKRs.
 
+## People
+
+**Account**:
+A person's identity in the tool, identified by their email address. Owners, Delegates, Contributors and Admins are all Accounts.
+_Avoid_: user, member
+
+**Name**:
+What the tool calls a person. It comes from the org's sign-in and is never typed into the tool. A person without one is shown by the part of their email before the `@`.
+_Avoid_: display name, full name, username
+
 ## Goals and structure
 
 **Goal**:
