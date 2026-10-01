@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -590,4 +591,73 @@ func TestReassignCancelsTheDepartedOwnersPendingHandoff(t *testing.T) {
 			}
 		}
 	}
+}
+
+// A pending Handoff's accept and reject forms sit inline, and the accept form's
+// keep-Delegates fieldset stacks its boxes, through classes rather than style
+// attributes.
+func TestPendingHandoffLayoutComesFromClasses(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	ann := h.SignIn("ann@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, ann, goal.ID)
+	ho, err := h.Service.StartHandoffByEmail(context.Background(), goal.ID, pat.Email, sam.ID)
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+	client := signInClient(t, ts.URL, pat.Email)
+	css := getBody(t, client, ts.URL+"/static/app.css")
+
+	for _, path := range []string{"/handoffs", "/home"} {
+		page := getBody(t, client, ts.URL+path)
+		for _, action := range []string{"accept", "reject"} {
+			form := tagAround(t, page, fmt.Sprintf(`action="/handoffs/%d/%s"`, ho.ID, action))
+			assertStyledBy(t, form, css, "inline-form", "display:inline")
+		}
+		keep := tagAround(t, page, `data-testid="handoff-keep-delegates"`)
+		assertStyledBy(t, keep, page, "handoff-keep", "border:0;padding:0;margin:0 0 8px;display:flex;flex-direction:column;gap:4px")
+	}
+}
+
+// assertStyledBy checks the element's opening tag carries no style attribute
+// but the class, and that rules declare exactly want for that class.
+func assertStyledBy(t *testing.T, tag, rules, class, want string) {
+	t.Helper()
+	if strings.Contains(tag, " style=") {
+		t.Errorf("element carries a style attribute: %s", tag)
+	}
+	if !slices.Contains(strings.Fields(attr(tag, "class")), class) {
+		t.Errorf("element lacks class %s: %s", class, tag)
+	}
+	if got := cssRule(t, rules, "."+class); got != want {
+		t.Errorf(".%s declares %q, want %q", class, got, want)
+	}
+}
+
+// tagAround returns the whole opening tag holding marker, its attributes in
+// whatever order they render.
+func tagAround(t *testing.T, page, marker string) string {
+	t.Helper()
+	at := strings.Index(page, marker)
+	if at < 0 {
+		t.Fatalf("page has no %s", marker)
+	}
+	start := strings.LastIndex(page[:at], "<")
+	end := strings.Index(page[at:], ">")
+	if start < 0 || end < 0 {
+		t.Fatalf("%s is not inside a tag", marker)
+	}
+	return page[start : at+end+1]
+}
+
+// attr returns the value of the named attribute in an opening tag, or "".
+func attr(tag, name string) string {
+	m := regexp.MustCompile(`\s` + regexp.QuoteMeta(name) + `="([^"]*)"`).FindStringSubmatch(tag)
+	if m == nil {
+		return ""
+	}
+	return m[1]
 }
