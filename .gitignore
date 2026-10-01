@@ -10,3 +10,7 @@ bin/
 
 # Go test binaries (go test -c)
 *.test
+
+# Binaries from a plain `go build ./cmd/...` at the repo root (`make build` writes to bin/)
+/goal-tracker
+/seed
