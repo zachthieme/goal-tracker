@@ -216,7 +216,7 @@ func pendingStyles() templ.Component {
 			templ_7745c5c3_Var10 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<style>\n\t\t.pd-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}\n\t\t.pd-row{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}\n\t\t.pd-what{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}\n\t\t.pd-note{margin:0;padding-left:12px;border-left:3px solid var(--color-primary-light);color:var(--color-ink-muted)}\n\t\t.pd-actions{display:flex;gap:8px;flex:none}\n\t\t.pd-actions form{margin:0}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<style>\n\t\t.pd-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}\n\t\t.pd-row{padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}\n\t\t.pd-what{display:flex;flex-direction:column;gap:8px;min-width:0;flex:1}\n\t\t.pd-note{margin:0;padding-left:12px;border-left:1px solid var(--color-border);color:var(--color-ink-muted)}\n\t\t.pd-actions{display:flex;gap:8px;flex:none}\n\t\t.pd-actions form{margin:0}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

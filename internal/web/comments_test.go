@@ -223,6 +223,26 @@ func TestPublicationDiscussionIsCollapsedOverHTTP(t *testing.T) {
 	}
 }
 
+// A comment thread is set apart by its indent and a 1px neutral rule, not a
+// coloured side stripe (#67).
+func TestCommentThreadIsSetApartByANeutralRuleOverHTTP(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	author := h.SignIn("author@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+	if _, err := h.Service.AddComment(context.Background(), author.ID, pub.ID, g.ID, "Why did the vendor slip?"); err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "author@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID))
+
+	pageElement(t, page, "div", "comment-thread")
+	assertNeutralRule(t, cssRule(t, page, ".rp-thread"))
+}
+
 // A publication lists its open Action Items as text · owner · due date; the
 // owner's close form sits behind a small Close button until they open it.
 func TestOpenActionItemCloseFormIsCollapsedOverHTTP(t *testing.T) {
