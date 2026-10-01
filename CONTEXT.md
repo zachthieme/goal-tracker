@@ -9,7 +9,7 @@ A person's identity in the tool, identified by their email address, matched what
 _Avoid_: user, member
 
 **Name**:
-What the tool calls a person. It comes from the org's sign-in and is never typed into the tool. A person without one is shown by the part of their email before the `@`.
+What the tool calls a person. It comes from the org's sign-in and is never typed into the tool. A person without one is shown by the part of their email before the `@`. Two people can share a Name, so wherever the web pages show a person, the Name can be clicked, tapped or activated from the keyboard to show their email beside it, and activated again to hide it. Documents without controls, the Markdown export and the Print view, introduce each person as Name (email) on first mention instead.
 _Avoid_: display name, full name, username
 
 **Departed**:

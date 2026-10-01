@@ -246,7 +246,8 @@ templ goalPage(current *domain.Account, v goalView) {
 				}
 				@checkinSection(v)
 				<article data-testid="goal" class="card gp-card">
-					<h3><span class="help" title="The customer problem this Goal addresses and what is expected to change when it succeeds.">So What</span></h3>
+					<h3><button type="button" class="disclose help" aria-expanded="false" aria-controls="so-what-help" title={ soWhatHelp }>So What</button></h3>
+					<p id="so-what-help" class="explain" hidden>{ soWhatHelp }</p>
 					<p data-testid="goal-so-what">{ g.SoWhat }</p>
 				</article>
 				<section data-testid="goal-metrics" class="gp-block">
@@ -360,7 +361,8 @@ templ goalHead(v goalView, owner, admin bool) {
 					}
 				</span>
 				if g.TopLevel {
-					<span class="badge lc" data-testid="goal-top-level" title="One of the org's root outcomes">Top-level</span>
+					<button type="button" class="badge lc disclose help" data-testid="goal-top-level" aria-expanded="false" aria-controls="top-level-help" title={ topLevelHelp }>Top-level</button>
+					<span id="top-level-help" class="explain" hidden>{ topLevelHelp }</span>
 				}
 				for _, val := range v.Values {
 					<span class="tag">{ val.Value }</span>
@@ -512,7 +514,7 @@ templ goalMore(v goalView, owner, admin bool) {
 									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/depart", g.Owner.ID)) } onsubmit={ confirmScript(confirmDepart) }>
 										<button type="submit" class="btn danger">
 											{ "Mark " }
-											@person(g.Owner)
+											@personPlain(g.Owner)
 											{ " departed" }
 										</button>
 									</form>
@@ -529,7 +531,7 @@ templ goalMore(v goalView, owner, admin bool) {
 									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/return", g.Owner.ID)) } onsubmit={ confirmScript(confirmReturn) }>
 										<button type="submit" class="btn">
 											{ "Mark " }
-											@person(g.Owner)
+											@personPlain(g.Owner)
 											{ " returned" }
 										</button>
 									</form>
@@ -558,6 +560,12 @@ templ goalMore(v goalView, owner, admin bool) {
 		</div>
 	</details>
 }
+
+// soWhatHelp defines So What on the Goal page, opened from its heading.
+const soWhatHelp = "The customer problem this Goal addresses and what is expected to change when it succeeds."
+
+// topLevelHelp says what Top-level means, opened from the Goal page's badge.
+const topLevelHelp = "One of the org's root outcomes"
 
 // confirmDepart is what an Admin confirms before marking a Goal's Owner departed.
 const confirmDepart = "Mark this Owner departed? Every Goal they own becomes Ownerless until an Admin reassigns it."

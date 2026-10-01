@@ -120,7 +120,7 @@ func TestAdminNavItemIsForAdminsOnly(t *testing.T) {
 	}
 }
 
-// The Admin page lists every Departed person by Label, email on hover, each
+// The Admin page lists every Departed person by Label, email a click away, each
 // with a Mark returned… button that asks for confirmation — including a
 // Delegate who owns no Goals and an Owner whose Goals were all reassigned, who
 // have no Goal page to be returned from. A present person isn't listed, and
@@ -156,7 +156,7 @@ func TestAdminPageListsDepartedPeople(t *testing.T) {
 	}
 	kimAt, samAt := strings.Index(list, shownAs("kim@example.com", "Kim Abara")), strings.Index(list, shownAs("sam@example.com", "sam"))
 	if kimAt < 0 || samAt < 0 || kimAt > samAt {
-		t.Errorf("Departed list doesn't show Kim Abara then sam by Label with email on hover:\n%s", list)
+		t.Errorf("Departed list doesn't show Kim Abara then sam by Label with email a click away:\n%s", list)
 	}
 	if strings.Contains(list, "pat@example.com") || strings.Contains(list, "ada@example.com") {
 		t.Errorf("Departed list shows a present person:\n%s", list)

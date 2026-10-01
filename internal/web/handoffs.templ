@@ -58,7 +58,7 @@ templ handoffAcceptReject(ho domain.Handoff) {
 					<label>
 						<input type="checkbox" name="keep" value={ fmt.Sprint(d.ID) } checked/>
 						{ " " }
-						@person(d)
+						@personPlain(d)
 					</label>
 				}
 			</fieldset>

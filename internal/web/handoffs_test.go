@@ -354,9 +354,12 @@ func TestAcceptHandoffFormChoosesDelegatesToKeep(t *testing.T) {
 		if box := fmt.Sprintf(`<input type="checkbox" name="keep" value="%d" checked>`, d.ID); !strings.Contains(form, box) {
 			t.Errorf("Delegate %s lacks a keep checkbox checked by default (%s):\n%s", d.Email, box, form)
 		}
-		if !strings.Contains(form, shownAs(d.Email, strings.TrimSuffix(d.Email, "@example.com"))) {
+		if !strings.Contains(form, shownPlainAs(d.Email, strings.TrimSuffix(d.Email, "@example.com"))) {
 			t.Errorf("accept form doesn't name Delegate %s:\n%s", d.Email, form)
 		}
+	}
+	if nested := nestedControls(form); len(nested) > 0 {
+		t.Errorf("accept form nests a control inside another: %q", nested)
 	}
 	if strings.Contains(form, fmt.Sprintf(`value="%d"`, dee.ID)) || strings.Contains(form, "dee@example.com") {
 		t.Errorf("accept form offers the Departed Delegate:\n%s", form)
