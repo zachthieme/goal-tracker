@@ -175,6 +175,32 @@ func TestPendingLinkRowsConfirmReject(t *testing.T) {
 	assertAcceptReject(t, row, fmt.Sprintf("/links/%d", link.ID))
 }
 
+// A pending link's note is set apart by its indent and a 1px neutral rule, not
+// a coloured side stripe (#67).
+func TestPendingLinkNoteIsSetApartByANeutralRule(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	pat := h.SignIn("pat@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.RequestLink(sam, h.CreateGoal(sam, "Migrate displays", "Displays fail often."), h.CreateGoal(pat, "Reduce outages", "Outages cost trust."), "Displays drive most outages.")
+
+	page := getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/links")
+
+	pageElement(t, page, "blockquote", "pending-link-note")
+	assertNeutralRule(t, cssRule(t, page, ".pd-note"))
+}
+
+// assertNeutralRule checks a rule indents its element 12px from a 1px left
+// rule in --color-border, the neutral alternative to a coloured side stripe.
+func assertNeutralRule(t *testing.T, rule string) {
+	t.Helper()
+	for _, want := range []string{"padding-left:12px", "border-left:1px solid var(--color-border)"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf("rule lacks %s; rule: %s", want, rule)
+		}
+	}
+}
+
 // assertAcceptReject checks a pending request's row decides it at base with
 // Accept as the primary button and a Reject that asks for confirmation.
 func assertAcceptReject(t *testing.T, row, base string) {
