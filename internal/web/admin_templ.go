@@ -70,7 +70,7 @@ func adminPage(current *domain.Account, ownerless []domain.Goal) templ.Component
 				return templ_7745c5c3_Err
 			}
 			if len(ownerless) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<p data-testid=\"admin-ownerless-empty\" class=\"muted ad-empty\">No Goals are waiting for reassignment.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<p data-testid=\"admin-ownerless-empty\" class=\"muted\">No Goals are waiting for reassignment.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -255,7 +255,7 @@ func adminStyles() templ.Component {
 			templ_7745c5c3_Var11 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<style>\n\t\t.ad-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}\n\t\t.ad-tool{padding:24px;display:flex;flex-direction:column;gap:6px}\n\t\t.ad-tool:hover{border-color:var(--color-primary)}\n\t\t.ad-section{display:flex;flex-direction:column;gap:12px}\n\t\t.ad-empty{padding:16px}\n\t\t@media (max-width:900px){.ad-tools{grid-template-columns:1fr}}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<style>\n\t\t.ad-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}\n\t\t.ad-tool{padding:24px;display:flex;flex-direction:column;gap:6px}\n\t\t.ad-tool:hover{border-color:var(--color-primary)}\n\t\t.ad-section{display:flex;flex-direction:column;gap:12px}\n\t\t@media (max-width:900px){.ad-tools{grid-template-columns:1fr}}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

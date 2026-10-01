@@ -94,7 +94,7 @@ templ riskSection(anchor, heading, explain, empty string, count int) {
 		</div>
 		<div class="card">
 			if count == 0 {
-				<p data-testid={ "risks-" + anchor + "-empty" } class="muted rk-empty">{ empty }</p>
+				<p data-testid={ "risks-" + anchor + "-empty" } class="muted">{ empty }</p>
 			} else {
 				<table>
 					<thead>
@@ -129,7 +129,6 @@ templ risksStyles() {
 		.rk-tile:hover{border-color:var(--color-primary)}
 		.rk-tile .num{font-size:24px}
 		.rk-section{display:flex;flex-direction:column;gap:12px;scroll-margin-top:16px}
-		.rk-empty{padding:16px}
 		@media (max-width:900px){.rk-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 	</style>
 }

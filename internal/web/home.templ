@@ -11,6 +11,7 @@ import (
 // else is waiting on them.
 templ homePage(current *domain.Account, v homeView) {
 	@layout("Home", current) {
+		@homeStyles()
 		<header data-testid="home-head" class="page-head">
 			<div>
 				<h1>Your week</h1>
@@ -19,61 +20,69 @@ templ homePage(current *domain.Account, v homeView) {
 			<a class="btn primary" href="/goals">New goal</a>
 		</header>
 		<div class="grid-main-aside">
-			<div>
-				<section data-testid="home-checkins" class="card">
+			<div class="hm-col">
+				<section data-testid="home-checkins" class="card hm-card">
 					<h3>Check in on these</h3>
 					if len(v.Due) == 0 {
 						<p data-testid="home-due-empty" class="muted">You're all caught up.</p>
 					}
-					<ul data-testid="home-due">
+					<ul data-testid="home-due" class="hm-list">
 						for _, g := range v.Due {
 							@dueRow(g)
 						}
 					</ul>
 				</section>
-				<section data-testid="home-waiting-on-you" class="card">
+				<section data-testid="home-waiting-on-you" class="card hm-card">
 					<h3>Waiting on you</h3>
 					if len(v.PendingLinks) == 0 && len(v.PendingHandoffs) == 0 {
 						<p data-testid="home-waiting-empty" class="muted">Nothing is waiting on you.</p>
 					}
-					<ul data-testid="home-waiting">
+					<ul data-testid="home-waiting" class="hm-list">
 						for _, l := range v.PendingLinks {
 							<li data-testid="home-pending-link">
-								<span class="badge lc">Link request</span>
-								<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)) }>{ l.Child.Title }</a>
-								<span class="muted">
-									{ "(" }
-									@person(l.Child.Owner)
-									{ ") wants to contribute to" }
-								</span>
-								<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
-								@acceptReject(fmt.Sprintf("/links/%d", l.ID), "Reject this link request?")
+								<div class="hm-what">
+									<span class="badge lc">Link request</span>
+									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)) }>{ l.Child.Title }</a>
+									<span class="muted">
+										{ "(" }
+										@person(l.Child.Owner)
+										{ ") wants to contribute to" }
+									</span>
+									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
+								</div>
+								<div class="hm-actions">
+									@acceptReject(fmt.Sprintf("/links/%d", l.ID), "Reject this link request?")
+								</div>
 							</li>
 						}
 						for _, ho := range v.PendingHandoffs {
 							<li data-testid="home-pending-handoff">
-								<span class="badge lc">Handoff</span>
-								<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)) }>{ ho.Goal.Title }</a>
-								<span class="muted">
-									@person(ho.From)
-									{ " wants to hand this Goal to you" }
-								</span>
-								@handoffAcceptReject(ho)
+								<div class="hm-what">
+									<span class="badge lc">Handoff</span>
+									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)) }>{ ho.Goal.Title }</a>
+									<span class="muted">
+										@person(ho.From)
+										{ " wants to hand this Goal to you" }
+									</span>
+								</div>
+								<div class="hm-actions">
+									@handoffAcceptReject(ho)
+								</div>
 							</li>
 						}
 					</ul>
 				</section>
 			</div>
-			<aside>
-				<section data-testid="home-your-goals" class="card">
+			<aside class="hm-col">
+				<section data-testid="home-your-goals" class="card hm-card">
 					<h3>Your goals</h3>
-					<p>
+					<p class="hm-counts">
 						@healthCountTile("home-count-green", domain.HealthGreen, v.Green)
 						@healthCountTile("home-count-yellow", domain.HealthYellow, v.Yellow)
 						@healthCountTile("home-count-red", domain.HealthRed, v.Red)
 					</p>
 					if len(v.AtRisk) > 0 {
-						<ul>
+						<ul class="hm-list hm-compact">
 							for _, g := range v.AtRisk {
 								<li>
 									<span class={ "badge", healthClass(g.Health) }><span class="dot"></span>{ g.Health }</span>
@@ -85,9 +94,9 @@ templ homePage(current *domain.Account, v homeView) {
 					<a href="/goals">All your goals →</a>
 				</section>
 				if len(v.Delegated) > 0 {
-					<section data-testid="home-delegated" class="card">
+					<section data-testid="home-delegated" class="card hm-card">
 						<h3>Delegated to you</h3>
-						<ul>
+						<ul class="hm-list hm-compact">
 							for _, g := range v.Delegated {
 								<li>
 									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
@@ -107,32 +116,36 @@ templ homePage(current *domain.Account, v homeView) {
 // one-click No change beside the Check in link to the Goal page.
 templ dueRow(g domain.PersonalGoal) {
 	<li data-testid="home-due-goal">
-		<span data-testid="home-due-health" class={ "badge", healthClass(g.Health) }>
-			<span class="dot"></span>
-			if g.Health == "" {
-				No Health yet
-			} else {
-				{ g.Health }
+		<div class="hm-what">
+			<span data-testid="home-due-health" class={ "badge", healthClass(g.Health) }>
+				<span class="dot"></span>
+				if g.Health == "" {
+					No Health yet
+				} else {
+					{ g.Health }
+				}
+			</span>
+			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
+			if g.Freshness.Stale {
+				<span data-testid="home-due-stale" class="badge st">Stale</span>
 			}
-		</span>
-		<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
-		if g.Freshness.Stale {
-			<span data-testid="home-due-stale" class="badge st">Stale</span>
-		}
-		<p class="muted small">
-			if g.AsDelegate {
-				{ "Delegated to you by " }
-				@person(g.Goal.Owner)
-			} else {
-				{ dueReason(g) }
+			<p class="muted small">
+				if g.AsDelegate {
+					{ "Delegated to you by " }
+					@person(g.Goal.Owner)
+				} else {
+					{ dueReason(g) }
+				}
+			</p>
+		</div>
+		<div class="hm-actions">
+			if g.CheckedIn {
+				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins/no-change", g.Goal.ID)) } style="display:inline">
+					<button type="submit" class="btn sm">No change</button>
+				</form>
 			}
-		</p>
-		if g.CheckedIn {
-			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins/no-change", g.Goal.ID)) } style="display:inline">
-				<button type="submit" class="btn sm">No change</button>
-			</form>
-		}
-		<a data-testid="home-due-checkin" class="btn primary sm" href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>Check in</a>
+			<a data-testid="home-due-checkin" class="btn primary sm" href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>Check in</a>
+		</div>
 	</li>
 }
 
@@ -154,4 +167,26 @@ templ healthCountTile(testID, health string, count int) {
 		{ health }
 		<span data-testid={ testID } class="num">{ strconv.Itoa(count) }</span>
 	</span>
+}
+
+// homeStyles are Home's own rules on top of app.css: each card stacks its title
+// over a list of ruled rows, and a row puts what it's about on the left and its
+// actions on the right, wrapping the actions underneath when the card is narrow.
+templ homeStyles() {
+	<style>
+		.hm-col{display:flex;flex-direction:column;gap:20px;min-width:0}
+		.hm-card{display:flex;flex-direction:column;gap:12px}
+		.hm-list{list-style:none;margin:0;padding:0}
+		.hm-list:empty{display:none}
+		.hm-list>li{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding:12px 0;border-top:1px solid var(--color-border)}
+		.hm-list>li:first-child{border-top:none;padding-top:0}
+		.hm-list>li:last-child{padding-bottom:0}
+		.hm-compact>li{gap:4px 8px;padding:8px 0}
+		.hm-what{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 240px;min-width:0}
+		.hm-what>p{flex-basis:100%}
+		.hm-what>a,.hm-compact a{font-weight:500}
+		.hm-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}
+		.hm-actions form{margin:0}
+		.hm-counts{display:flex;flex-wrap:wrap;gap:8px}
+	</style>
 }
