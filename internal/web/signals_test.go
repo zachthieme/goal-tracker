@@ -185,3 +185,15 @@ func TestTopLevelControlHeadingIsALabel(t *testing.T) {
 		t.Errorf("Top-level control's heading is not an h3 label: %s", control)
 	}
 }
+
+// The Goal page's signals section stacks its banners through a class rather
+// than a style attribute.
+func TestGoalSignalsLayoutComesFromAClass(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	loner := h.ActiveGoal(sam, "Side project", "Nobody asked.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, loner.ID))
+	assertStyledBy(t, tagAround(t, page, `data-testid="goal-signals"`), page, "gp-signals", "display:flex;flex-direction:column;gap:8px")
+}
