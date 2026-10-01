@@ -536,3 +536,117 @@ func TestPendingHandoffOffersTheDelegatesToKeep(t *testing.T) {
 		t.Errorf("KeepableDelegates = %+v, want only Ann (%d)", offered, ann.ID)
 	}
 }
+
+// An Ownerless Goal is replaced by whichever comes first, the Admin's Reassign
+// or the acceptance of the Handoff the Owner started before leaving: a Reassign
+// cancels that Handoff, which keeps its place in the Ownership history, so its
+// recipient can no longer take the Goal from the Owner the Admin chose, and the
+// new Owner may start a Handoff of their own.
+func TestReassignCancelsThePendingHandoff(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com") // departing Owner
+	pat := h.SignIn("pat@example.com") // offered the Goal by Sam
+	cal := h.SignIn("cal@example.com") // chosen by the Admin
+	mel := h.SignIn("mel@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+	if err := h.Service.MarkDeparted(context.Background(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	if _, err := h.Service.ReassignGoal(context.Background(), boss.ID, goal.ID, cal.ID); err != nil {
+		t.Fatalf("ReassignGoal: %v", err)
+	}
+
+	history, err := h.Service.OwnershipHistory(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("OwnershipHistory: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("history = %+v, want Sam's Handoff then the Reassign", history)
+	}
+	if got := history[0]; got.ID != ho.ID || got.Status != domain.HandoffCancelled || got.From.ID != sam.ID || got.To.ID != pat.ID {
+		t.Errorf("history[0] = %+v, want Sam's Handoff to Pat cancelled", got)
+	}
+	if got := history[1]; got.Status != domain.HandoffReassigned || got.From.ID != sam.ID || got.To.ID != cal.ID {
+		t.Errorf("history[1] = %+v, want the Reassign from Sam to Cal", got)
+	}
+	if pending, _ := h.Service.PendingHandoffs(context.Background(), pat.ID); len(pending) != 0 {
+		t.Errorf("pending for Pat after the Reassign = %+v, want none", pending)
+	}
+	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID, nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("Pat accepting the old Handoff err = %v, want ErrNotFound", err)
+	}
+	if g, _ := h.Service.ViewGoal(context.Background(), goal.ID); g.Owner.ID != cal.ID {
+		t.Errorf("Owner = %d, want Cal (%d)", g.Owner.ID, cal.ID)
+	}
+
+	startHandoff(t, h, goal.ID, mel.ID, cal.ID)
+}
+
+// Reassigning the Goal to the very person the pending Handoff was offered to
+// still cancels that Handoff: they own the Goal by the Reassign, not by
+// accepting.
+func TestReassignToTheHandoffRecipientCancelsTheHandoff(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+	if err := h.Service.MarkDeparted(context.Background(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	if _, err := h.Service.ReassignGoal(context.Background(), boss.ID, goal.ID, pat.ID); err != nil {
+		t.Fatalf("ReassignGoal: %v", err)
+	}
+
+	history, err := h.Service.OwnershipHistory(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("OwnershipHistory: %v", err)
+	}
+	if len(history) != 2 || history[0].ID != ho.ID || history[0].Status != domain.HandoffCancelled ||
+		history[1].Status != domain.HandoffReassigned || history[1].To.ID != pat.ID {
+		t.Fatalf("history = %+v, want Sam's Handoff cancelled then the Reassign to Pat", history)
+	}
+	if pending, _ := h.Service.PendingHandoffs(context.Background(), pat.ID); len(pending) != 0 {
+		t.Errorf("pending for Pat after the Reassign = %+v, want none", pending)
+	}
+	if g, _ := h.Service.ViewGoal(context.Background(), goal.ID); g.Owner.ID != pat.ID || g.Ownerless {
+		t.Errorf("Owner = %d, Ownerless = %v; want Pat (%d) and not Ownerless", g.Owner.ID, g.Ownerless, pat.ID)
+	}
+}
+
+// A pending Handoff whose from-Owner no longer owns the Goal is stale: accepting
+// it is refused and nothing changes. The Service can't reach this state (a
+// Reassign cancels the pending Handoff), so the test moves the Goal directly in
+// the database.
+func TestAcceptStaleHandoffIsRefused(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	cal := h.SignIn("cal@example.com")
+	ann := h.SignIn("ann@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, ann, goal.ID)
+	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+	if _, err := h.DB.Exec(`UPDATE goals SET owner_id = ? WHERE id = ?`, cal.ID, goal.ID); err != nil {
+		t.Fatalf("move the Goal to Cal: %v", err)
+	}
+
+	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID, nil); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("accept stale Handoff err = %v, want ErrValidation", err)
+	}
+
+	if g, _ := h.Service.ViewGoal(context.Background(), goal.ID); g.Owner.ID != cal.ID {
+		t.Errorf("Owner after a refused accept = %d, want Cal (%d)", g.Owner.ID, cal.ID)
+	}
+	if got := delegateIDs(t, h, goal.ID); !slices.Equal(got, []int64{ann.ID}) {
+		t.Errorf("Delegates after a refused accept = %v, want Ann (%d) still there", got, ann.ID)
+	}
+	if pending, _ := h.Service.PendingHandoffs(context.Background(), pat.ID); len(pending) != 1 || pending[0].ID != ho.ID {
+		t.Errorf("pending after a refused accept = %+v, want the Handoff still pending", pending)
+	}
+}
