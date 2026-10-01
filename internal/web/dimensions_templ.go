@@ -64,7 +64,7 @@ func dimensionsPage(current *domain.Account, dims []domain.Dimension) templ.Comp
 				return templ_7745c5c3_Err
 			}
 			if admin {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<details data-testid=\"create-dimension\"><summary class=\"btn primary\">Define a Dimension</summary><form class=\"card dm-card\" style=\"margin-top:12px\" method=\"post\" action=\"/dimensions\"><h3>Define a Dimension</h3><label class=\"field\"><span>Name</span> <input type=\"text\" name=\"name\" required></label> <label class=\"field\"><span>Values <span class=\"hint\">— comma-separated</span></span> <input type=\"text\" name=\"values\" required></label><div><button type=\"submit\" class=\"btn primary\">Create Dimension</button></div></form></details>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<details data-testid=\"create-dimension\"><summary class=\"btn primary\">Define a Dimension</summary><form class=\"card dm-card dm-new\" method=\"post\" action=\"/dimensions\"><h3>Define a Dimension</h3><label class=\"field\"><span>Name</span> <input type=\"text\" name=\"name\" required></label> <label class=\"field\"><span>Values <span class=\"hint\">— comma-separated</span></span> <input type=\"text\" name=\"values\" required></label><div><button type=\"submit\" class=\"btn primary\">Create Dimension</button></div></form></details>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -356,7 +356,7 @@ func dimensionsStyles() templ.Component {
 			templ_7745c5c3_Var14 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<style>\n\t\t.dm-list,.dm-values,.dm-rows{list-style:none;margin:0;padding:0}\n\t\t.dm-list{display:flex;flex-direction:column;gap:16px}\n\t\t.dm-card{padding:20px;display:flex;flex-direction:column;gap:12px}\n\t\t.dm-values{display:flex;flex-wrap:wrap;gap:8px;align-items:center}\n\t\t.dm-values li{display:inline-flex;align-items:center;gap:6px}\n\t\tdel.tag{border-style:dashed}\n\t\t.dm-edit summary{align-self:flex-start;width:max-content}\n\t\t.dm-rows{display:flex;flex-direction:column;gap:8px;margin:12px 0}\n\t\t.dm-rows li{display:flex;gap:8px;align-items:center;flex-wrap:wrap}\n\t\t.dm-rows form{margin:0}\n\t\t.dm-row{display:flex;gap:8px;align-items:center;margin:0}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<style>\n\t\t.dm-list,.dm-values,.dm-rows{list-style:none;margin:0;padding:0}\n\t\t.dm-list{display:flex;flex-direction:column;gap:16px}\n\t\t.dm-card{padding:20px;display:flex;flex-direction:column;gap:12px}\n\t\t.dm-new{margin-top:12px}\n\t\t.dm-values{display:flex;flex-wrap:wrap;gap:8px;align-items:center}\n\t\t.dm-values li{display:inline-flex;align-items:center;gap:6px}\n\t\tdel.tag{border-style:dashed}\n\t\t.dm-edit summary{align-self:flex-start;width:max-content}\n\t\t.dm-rows{display:flex;flex-direction:column;gap:8px;margin:12px 0}\n\t\t.dm-rows li{display:flex;gap:8px;align-items:center;flex-wrap:wrap}\n\t\t.dm-rows form{margin:0}\n\t\t.dm-row{display:flex;gap:8px;align-items:center;margin:0}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

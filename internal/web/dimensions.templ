@@ -26,7 +26,7 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension) {
 		if admin {
 			<details data-testid="create-dimension">
 				<summary class="btn primary">Define a Dimension</summary>
-				<form class="card dm-card" style="margin-top:12px" method="post" action="/dimensions">
+				<form class="card dm-card dm-new" method="post" action="/dimensions">
 					<h3>Define a Dimension</h3>
 					<label class="field">
 						<span>Name</span>
@@ -110,6 +110,7 @@ templ dimensionsStyles() {
 		.dm-list,.dm-values,.dm-rows{list-style:none;margin:0;padding:0}
 		.dm-list{display:flex;flex-direction:column;gap:16px}
 		.dm-card{padding:20px;display:flex;flex-direction:column;gap:12px}
+		.dm-new{margin-top:12px}
 		.dm-values{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 		.dm-values li{display:inline-flex;align-items:center;gap:6px}
 		del.tag{border-style:dashed}
