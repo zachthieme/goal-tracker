@@ -354,7 +354,7 @@ func TestAcceptHandoffFormChoosesDelegatesToKeep(t *testing.T) {
 		if box := fmt.Sprintf(`<input type="checkbox" name="keep" value="%d" checked>`, d.ID); !strings.Contains(form, box) {
 			t.Errorf("Delegate %s lacks a keep checkbox checked by default (%s):\n%s", d.Email, box, form)
 		}
-		if !strings.Contains(form, shownAs(d.Email, strings.TrimSuffix(d.Email, "@example.com"))) {
+		if !strings.Contains(form, shownPlainAs(d.Email, strings.TrimSuffix(d.Email, "@example.com"))) {
 			t.Errorf("accept form doesn't name Delegate %s:\n%s", d.Email, form)
 		}
 	}

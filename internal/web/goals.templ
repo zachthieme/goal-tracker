@@ -512,7 +512,7 @@ templ goalMore(v goalView, owner, admin bool) {
 									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/depart", g.Owner.ID)) } onsubmit={ confirmScript(confirmDepart) }>
 										<button type="submit" class="btn danger">
 											{ "Mark " }
-											@person(g.Owner)
+											@personPlain(g.Owner)
 											{ " departed" }
 										</button>
 									</form>
@@ -529,7 +529,7 @@ templ goalMore(v goalView, owner, admin bool) {
 									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/return", g.Owner.ID)) } onsubmit={ confirmScript(confirmReturn) }>
 										<button type="submit" class="btn">
 											{ "Mark " }
-											@person(g.Owner)
+											@personPlain(g.Owner)
 											{ " returned" }
 										</button>
 									</form>

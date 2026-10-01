@@ -83,6 +83,7 @@ templ layout(title string, current *domain.Account) {
 			<link rel="stylesheet" href={ fontsURL }/>
 			<link rel="stylesheet" href={ stylesheetURL }/>
 			<script src="https://unpkg.com/htmx.org@2.0.3" crossorigin="anonymous"></script>
+			@disclosure()
 		</head>
 		<body>
 			<nav class="nav">
@@ -140,13 +141,42 @@ templ navCount(count int) {
 }
 
 // person shows someone by their Name, or their email's local part until they
-// have one, with their email on hover so people who share a Name can be told
-// apart (CONTEXT.md: Name). Every page shows people through it; a page without
-// hover (withoutHover) introduces them as Name (email) instead.
+// have one, so people who share a Name can be told apart (CONTEXT.md: Name):
+// the Name is a button that expands their email inline beside it on a click,
+// tap, Enter or Space, and collapses it again, with the email on hover too.
+// Every page shows people through it; a page without hover (withoutHover)
+// introduces them as Name (email) instead.
 templ person(a domain.Account) {
 	if m := mentions(ctx); m != nil {
 		<span class="person" title={ a.Email }>{ m.Of(a) }</span>
 	} else {
-		<span class="person" title={ a.Email }>{ a.Label() }</span>
+		<span class="person"><button type="button" class="disclose" aria-expanded="false" title={ a.Email }>{ a.Label() }</button><span class="person-email" hidden>{ a.Email }</span></span>
 	}
+}
+
+// personPlain shows someone by Name with their email on hover only. It is for
+// the few places a person sits inside another control (a button, a label),
+// where person's own button can't nest; each such place shows the same person
+// through person nearby.
+templ personPlain(a domain.Account) {
+	<span class="person" title={ a.Email }>{ a.Label() }</span>
+}
+
+// disclosure opens and closes every .disclose button's expansion: the element
+// its aria-controls names, or else the element right after it. A button
+// already answers Enter, Space, a click and a tap, so one click handler covers
+// them all, and listening on the document reaches content htmx swaps in.
+templ disclosure() {
+	<script>
+		document.addEventListener("click", function (e) {
+			var b = e.target.closest && e.target.closest("button.disclose");
+			if (!b) return;
+			var id = b.getAttribute("aria-controls");
+			var target = id ? document.getElementById(id) : b.nextElementSibling;
+			if (!target) return;
+			var open = b.getAttribute("aria-expanded") !== "true";
+			b.setAttribute("aria-expanded", open ? "true" : "false");
+			target.hidden = !open;
+		});
+	</script>
 }

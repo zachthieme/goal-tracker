@@ -1333,15 +1333,26 @@ func TestOngoingGoalChecklistNeedsAMetric(t *testing.T) {
 	}
 }
 
-// shownAs is how a page shows a person: by label, with their email on hover
-// (CONTEXT.md: Name).
+// shownAs is how a page shows a person: by label, on a control that expands
+// their email inline beside it, with the email on hover too (CONTEXT.md: Name).
 func shownAs(emailAddr, label string) string {
+	return `<span class="person"><button type="button" class="disclose" aria-expanded="false" title="` + emailAddr + `">` + label +
+		`</button><span class="person-email" hidden>` + emailAddr + `</span></span>`
+}
+
+// shownPlainAs is how a page shows a person inside another control, where a
+// second control can't nest: by label, with their email on hover only.
+func shownPlainAs(emailAddr, label string) string {
 	return `<span class="person" title="` + emailAddr + `">` + label + `</span>`
 }
 
-// visibleEmails returns every email a page shows as text rather than on hover
-// or in a form field.
+// collapsedEmail is a person's email waiting, hidden, in its expansion.
+var collapsedEmail = regexp.MustCompile(`<span class="person-email" hidden>[^<]*</span>`)
+
+// visibleEmails returns every email a page shows as text rather than on hover,
+// in a collapsed expansion, or in a form field.
 func visibleEmails(page string) []string {
+	page = collapsedEmail.ReplaceAllString(page, "")
 	return regexp.MustCompile(`>[^<>]*@example\.com[^<>]*<`).FindAllString(page, -1)
 }
 
@@ -1373,9 +1384,48 @@ func TestGoalPagesShowPeopleByName(t *testing.T) {
 	}
 }
 
+// A person's Name is a button that reports whether their email is expanded:
+// the email sits hidden right after it, and the page's script shows or hides
+// it on each click, tap, Enter or Space, so people who share a Name can be
+// told apart without hover (CONTEXT.md: Name).
+func TestPersonExpandsTheirEmailOnActivation(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
+	goal := h.CreateGoal(ada, "Cut checkout latency", "Shoppers abandon slow carts.")
+	page := getBody(t, signInClient(t, ts.URL, ada.Email), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+
+	owner := pageElement(t, page, "strong", "goal-owner")
+	want := `<button type="button" class="disclose" aria-expanded="false" title="ada.okafor@example.com">Ada Okafor</button>` +
+		`<span class="person-email" hidden>ada.okafor@example.com</span>`
+	if !strings.Contains(owner, want) {
+		t.Errorf("Goal page Owner reads %s, want %s", owner, want)
+	}
+	script := disclosureScript(t, page)
+	for _, want := range []string{`.disclose`, `aria-expanded`, `hidden`} {
+		if !strings.Contains(script, want) {
+			t.Errorf("the page's disclosure script does not handle %s:\n%s", want, script)
+		}
+	}
+}
+
+// disclosureScript returns the page's script that opens and closes every
+// .disclose control's expansion.
+func disclosureScript(t *testing.T, page string) string {
+	t.Helper()
+	for _, s := range strings.Split(page, "<script>")[1:] {
+		if body, _, ok := strings.Cut(s, "</script>"); ok && strings.Contains(body, "disclose") {
+			return body
+		}
+	}
+	t.Fatalf("page has no disclosure script")
+	return ""
+}
+
 // With a seeded org, every page that shows people shows them by Name with
-// their email on hover, never an email as text; the Print view, with no hover,
-// introduces them as Name (email) (CONTEXT.md: Name).
+// their email a click, tap or keypress away, never an email as text until
+// asked for; the Print view, with no hover or controls, introduces them as
+// Name (email) (CONTEXT.md: Name).
 func TestSeededPagesShowPeopleByName(t *testing.T) {
 	const adminEmail = "admin@example.com"
 	h := testsupport.New(t, adminEmail)
@@ -1462,8 +1512,8 @@ func TestSeededPagesShowPeopleByName(t *testing.T) {
 		if shown := visibleEmails(page); len(shown) > 0 {
 			t.Errorf("%s as %s shows emails as text: %q", p.path, p.as, shown)
 		}
-		if !regexp.MustCompile(`<span class="person" title="[^"]+@example\.com">[A-Z][a-z]+ [A-Z][a-z]+</span>`).MatchString(page) {
-			t.Errorf("%s as %s shows nobody by Name with their email on hover", p.path, p.as)
+		if !regexp.MustCompile(`<button type="button" class="disclose" aria-expanded="false" title="([^"]+@example\.com)">[A-Z][a-z]+ [A-Z][a-z]+</button><span class="person-email" hidden>[^<]+@example\.com</span>`).MatchString(page) {
+			t.Errorf("%s as %s shows nobody by Name with their email a click away", p.path, p.as)
 		}
 	}
 	if page := getBody(t, client(owner.Email), fmt.Sprintf("%s/goals/%d", ts.URL, g.ID)); !strings.Contains(page, shownAs(owner.Email, owner.Name)) {
@@ -1472,5 +1522,8 @@ func TestSeededPagesShowPeopleByName(t *testing.T) {
 	printed := getBody(t, client(adminEmail), ts.URL+pubPath+"/print")
 	if want := ">" + owner.Name + " (" + owner.Email + ")<"; !strings.Contains(printed, want) {
 		t.Errorf("print page does not introduce the Owner as %s", want)
+	}
+	if strings.Contains(printed, `class="disclose"`) {
+		t.Errorf("print page puts people behind a control")
 	}
 }
