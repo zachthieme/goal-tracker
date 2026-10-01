@@ -547,8 +547,8 @@ func healthShape(health string) string {
 	return ""
 }
 
-// reportFontsURL loads the serif a Report's narrative and print page read in,
-// at body weight as well as the display weight the layout loads.
+// reportFontsURL loads the serif the print page reads in. Print sits outside
+// DESIGN.md on purpose: it is set for black-and-white paper, not the screen.
 const reportFontsURL = "https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap"
 
 // healthClass is the badge colour for a Health; no Health yet is neutral.
@@ -658,7 +658,6 @@ func narrativeText(r domain.Report, section string) string {
 // picker, and draft columns that shrink to a phone's width rather than to the
 // On track table's.
 templ reportStyles() {
-	<link rel="stylesheet" href={ reportFontsURL }/>
 	<style>
 		.shape{display:none}
 		.grid-main-aside>*{min-width:0}
@@ -672,34 +671,34 @@ templ reportStyles() {
 		.rp-body{display:flex;flex-direction:column;gap:24px}
 		.rp-body section{display:flex;flex-direction:column;gap:12px}
 		.rp-list{list-style:none;margin:0;padding:0}
-		.rp-list>li{padding:12px 16px;border-bottom:1px solid #EEEFEA}
+		.rp-list>li{padding:12px 24px;border-bottom:1px solid var(--color-border)}
 		.rp-list>li:last-child{border-bottom:none}
-		.rp-narrative{font-family:'Source Serif 4',Georgia,serif;font-size:16px;line-height:1.6;padding:20px 24px}
-		.rp-narrative .label{font-family:'IBM Plex Sans',system-ui,sans-serif;margin-top:12px}
+		.rp-narrative{font-size:16px;line-height:1.7;padding:24px;color:var(--color-ink)}
+		.rp-narrative .label{margin-top:12px}
 		.rp-narrative .label:first-child{margin-top:0}
 		.rp-narrative ul{margin:4px 0 0;padding-left:20px}
-		.rp-credit{color:#5A606B;font-size:14px}
-		.rp-card{padding:20px 24px;display:flex;flex-direction:column;gap:12px}
+		.rp-credit{color:var(--color-ink-muted);font-size:13px}
+		.rp-card{padding:24px;display:flex;flex-direction:column;gap:12px}
 		.rp-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
-		.rp-card-head h3{font-size:16px}
+		.rp-card-head h3{font-size:19px}
 		.rp-badges{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-		.rp-tint{background:#F6F6F3;border-radius:6px;padding:12px 16px;display:flex;flex-direction:column;gap:6px}
-		.rp-tint.overdue{background:#FBEDEB}
+		.rp-tint{background:var(--color-surface-alt);border-radius:var(--radius-md);padding:12px 16px;display:flex;flex-direction:column;gap:6px}
+		.rp-tint.overdue{background:var(--health-r-bg)}
 		.rp-card ul{margin:0;padding-left:20px}
-		.rp-discussion{border-top:1px solid #EEEFEA;padding-top:8px;display:flex;flex-wrap:wrap;gap:4px 16px;align-items:flex-start}
+		.rp-discussion{border-top:1px solid var(--color-border);padding-top:8px;display:flex;flex-wrap:wrap;gap:4px 16px;align-items:flex-start}
 		.rp-discussion>details{flex:1 1 auto}
-		.rp-discussion details>summary{min-height:32px;justify-content:flex-start;color:#24519E;font-weight:500}
-		.rp-thread{border-left:2px solid #E2E3DE;padding-left:12px;margin:8px 0;display:flex;flex-direction:column;gap:8px}
+		.rp-discussion details>summary{min-height:32px;justify-content:flex-start;color:var(--color-primary-strong);font-weight:500}
+		.rp-thread{border-left:2px solid var(--color-primary-light);padding-left:12px;margin:8px 0;display:flex;flex-direction:column;gap:8px}
 		.rp-reply{margin-left:24px}
 		.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
 		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
 		.rp-cards{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-		.rp-cards>.rp-card{padding:14px 20px;gap:4px}
-		.rp-picker{max-height:280px;overflow-y:auto;border:1px solid #C9CCC4;border-radius:6px;background:#fff;padding:8px 12px;display:flex;flex-direction:column;gap:4px}
+		.rp-cards>.rp-card{padding:16px 24px;gap:4px}
+		.rp-picker{max-height:280px;overflow-y:auto;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background:var(--color-surface);padding:8px 12px;display:flex;flex-direction:column;gap:4px}
 		.rp-form{display:flex;flex-direction:column;gap:16px}
 		.rp-form fieldset:not(.rp-picker){border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
 		.rp-form legend{font-weight:600;font-size:13px;padding:0 0 6px}
-		.rp-publish{padding:20px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+		.rp-publish{padding:24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 		@media (max-width:900px){.rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 	</style>
 }

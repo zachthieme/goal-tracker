@@ -66,9 +66,9 @@ func mentions(ctx context.Context) *domain.Mentions {
 	return m
 }
 
-// fontsURL loads the design system's faces; the font stacks in app.css fall
-// back to system fonts when it can't be reached.
-const fontsURL = "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:wght@600&display=swap"
+// fontsURL loads DESIGN.md's faces (Plus Jakarta Sans, Inter, JetBrains Mono);
+// the font stacks in app.css fall back to system fonts when it can't be reached.
+const fontsURL = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&family=Plus+Jakarta+Sans:wght@600;700&display=swap"
 
 // layout is the shared page chrome. htmx drives the in-place create-Goal swap.
 templ layout(title string, current *domain.Account) {

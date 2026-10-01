@@ -292,7 +292,7 @@ func importsStyles() templ.Component {
 			templ_7745c5c3_Var11 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<style>\n\t\t.im-form{padding:20px;display:flex;flex-direction:column;gap:16px;max-width:560px}\n\t\t.im-actions{display:flex;gap:8px}\n\t\t.im-report{display:flex;flex-direction:column;gap:12px}\n\t\t.im-errors{margin:0;padding-left:18px;color:#9A231B}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<style>\n\t\t.im-form{padding:20px;display:flex;flex-direction:column;gap:16px;max-width:560px}\n\t\t.im-actions{display:flex;gap:8px}\n\t\t.im-report{display:flex;flex-direction:column;gap:12px}\n\t\t.im-errors{margin:0;padding-left:18px;color:var(--color-danger-ink)}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

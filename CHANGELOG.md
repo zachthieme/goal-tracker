@@ -22,6 +22,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Accepting a Handoff now lets the new Owner choose which of the Goal's Delegates to keep. The accept form, on the pending Handoffs page and on Home, lists each Delegate who hasn't left the org with a keep box checked by default. Unchecked Delegates are removed in the same step as the ownership change, and if accepting fails nothing changes. A new Owner who was a Delegate on the Goal stops being one. Departed Delegates aren't offered and stay on the Goal. Rejecting a Handoff and an Admin Reassign leave every Delegate in place (#47).
 
 **Improvements:**
+- [user] Every page now uses the Warm Teal design system from `DESIGN.md`: an ivory canvas with deep-teal ink, Plus Jakarta Sans headings, Inter body text, and JetBrains Mono numbers. Cards and filled buttons are teal, and cards lift with soft shadows. Pages follow your OS dark mode. Goal Health badges keep their green, yellow, and red, plus their shapes. The Print view keeps its black-and-white serif.
 - [api] Database schema: migration `0019_account_names` adds a nullable `name` column to `accounts`. It's additive and runs on startup; existing Accounts have no Name until a sign-in integration supplies one (#41).
 
 **Bug fixes:**

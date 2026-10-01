@@ -200,15 +200,15 @@ templ goalListRow(row goalRow) {
 templ goalsStyles() {
 	<style>
 		.gl-propose{position:relative}
-		.gl-propose>form{position:absolute;right:0;top:48px;z-index:10;width:360px;max-width:calc(100vw - 32px);padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 24px rgba(27,30,35,.12);box-sizing:border-box}
+		.gl-propose>form{position:absolute;right:0;top:48px;z-index:10;width:360px;max-width:calc(100vw - 32px);padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow-pop);box-sizing:border-box}
 		.gl-filters{display:flex;flex-direction:column;gap:8px}
 		.gl-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 		.gl-bar input[type=search]{flex:1;min-width:200px}
 		.gl-mine{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 		.gl-filters details{padding:0 4px}
-		.gl-filters details>summary{justify-content:flex-start;color:#24519E;font-weight:600}
-		.gl-filters fieldset{display:inline-flex;flex-wrap:wrap;gap:4px 12px;border:1px solid #E2E3DE;border-radius:6px;margin:0 8px 8px 0;padding:8px 12px}
-		.gl-group th{background:#F2F2EF;color:#1B1E23;font-size:13px}
+		.gl-filters details>summary{justify-content:flex-start;color:var(--color-primary-strong);font-weight:600}
+		.gl-filters fieldset{display:inline-flex;flex-wrap:wrap;gap:4px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);margin:0 8px 8px 0;padding:8px 12px}
+		.gl-group th{background:var(--color-primary-subtle);color:var(--color-ink);font-size:13px;font-weight:600;letter-spacing:0;text-transform:none}
 		.gl-marks{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
 		#goal-list td .tag{margin:2px 4px 2px 0}
 	</style>
@@ -404,21 +404,21 @@ templ goalPageStyles() {
 		.gp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap}
 		.gp-summary{display:flex;flex-direction:column;gap:10px;min-width:0;flex:1 1 320px}
 		.gp-badges{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-		.gp-meta{display:flex;flex-wrap:wrap;gap:4px 20px;color:#5A606B}
-		.gp-meta strong{color:#1B1E23}
+		.gp-meta{display:flex;flex-wrap:wrap;gap:4px 20px;color:var(--color-ink-muted)}
+		.gp-meta strong{color:var(--color-ink)}
 		.gp-actions{display:flex;gap:8px;align-items:flex-start;margin-left:auto}
 		.gp-actions form{margin:0}
 		.gp-more{position:relative}
 		.gp-more>summary{justify-content:center}
-		.gp-menu{position:absolute;right:0;top:48px;z-index:10;width:340px;max-width:calc(100vw - 32px);padding:8px;box-shadow:0 8px 24px rgba(27,30,35,.12);box-sizing:border-box}
+		.gp-menu{position:absolute;right:0;top:48px;z-index:10;width:340px;max-width:calc(100vw - 32px);padding:8px;box-shadow:var(--shadow-pop);box-sizing:border-box}
 		.gp-menu ul{list-style:none;margin:0;padding:0}
-		.gp-menu li>a,.gp-menu li>details>summary{display:flex;min-height:36px;padding:0 12px;border-radius:6px;align-items:center;color:#1B1E23;font-weight:500}
-		.gp-menu li>a:hover,.gp-menu li>details>summary:hover{background:#F2F2EF;text-decoration:none}
+		.gp-menu li>a,.gp-menu li>details>summary{display:flex;min-height:36px;padding:0 12px;border-radius:var(--radius-md);align-items:center;color:var(--color-ink);font-weight:500}
+		.gp-menu li>a:hover,.gp-menu li>details>summary:hover{background:var(--color-primary-subtle);text-decoration:none}
 		.gp-menu section{padding:8px 12px 12px;display:flex;flex-direction:column;gap:8px}
 		.gp-menu form{display:flex;flex-direction:column;gap:8px}
-		.gp-menu h2{font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#5A606B}
+		.gp-menu h2{font-family:var(--font-body);font-size:11px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--color-ink-muted)}
 		.gp-col{display:flex;flex-direction:column;gap:20px;min-width:0}
-		.gp-card{padding:20px 24px;display:flex;flex-direction:column;gap:12px}
+		.gp-card{padding:24px;display:flex;flex-direction:column;gap:12px}
 		.gp-block{display:flex;flex-direction:column;gap:12px}
 		.gp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 		.gp-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
@@ -431,13 +431,15 @@ templ goalPageStyles() {
 		.gp-metric-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
 		.gp-current .num{font-size:28px;line-height:1.1}
 		.gp-spark{max-width:100%;height:auto;display:block;overflow:visible}
+		.gp-spark-target{stroke:var(--color-ink-muted)}
+		.gp-spark-line{stroke:var(--color-primary)}
+		.gp-spark-last{fill:var(--color-primary-strong);stroke:var(--color-surface)}
 		.gp-edit form{flex-direction:column}
-		.gp-define>section{display:flex;flex-direction:column;gap:4px;padding-top:12px;border-top:1px solid #EEEFEA}
+		.gp-define>section{display:flex;flex-direction:column;gap:4px;padding-top:12px;border-top:1px solid var(--color-border)}
 		.gp-define textarea{flex:1;min-width:240px}
 		.gp-check{display:flex;gap:8px;align-items:baseline}
-		.gp-check>span:first-child{width:16px;font-weight:600;color:#9A231B}
-		.gp-check.done>span:first-child{color:#17593A}
-		.btn[disabled]{opacity:.5;cursor:not-allowed}
+		.gp-check>span:first-child{width:16px;font-weight:600;color:var(--health-r-ink)}
+		.gp-check.done>span:first-child{color:var(--health-g-ink)}
 		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 	</style>
 }
@@ -909,12 +911,12 @@ templ metricList(trends []metricTrend, owner bool) {
 templ metricSparkline(t metricTrend) {
 	{{ s := t.sparkline() }}
 	<svg class="gp-spark" role="img" aria-label={ t.trendLabel() } viewBox={ fmt.Sprintf("0 0 %g %g", sparkW, sparkH) } width={ fmt.Sprintf("%g", sparkW) } height={ fmt.Sprintf("%g", sparkH) }>
-		<line x1="0" x2={ fmt.Sprintf("%g", sparkW) } y1={ fmt.Sprintf("%.1f", s.TargetY) } y2={ fmt.Sprintf("%.1f", s.TargetY) } stroke="#5A606B" stroke-width="1" stroke-dasharray="4 3"></line>
-		<polyline points={ s.polyline() } fill="none" stroke="#8A9099" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
+		<line x1="0" x2={ fmt.Sprintf("%g", sparkW) } y1={ fmt.Sprintf("%.1f", s.TargetY) } y2={ fmt.Sprintf("%.1f", s.TargetY) } class="gp-spark-target" stroke-width="1" stroke-dasharray="4 3"></line>
+		<polyline points={ s.polyline() } class="gp-spark-line" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
 		for _, p := range s.Points {
 			<circle cx={ fmt.Sprintf("%.1f", p.X) } cy={ fmt.Sprintf("%.1f", p.Y) } r="6" fill="transparent"><title>{ p.Title }</title></circle>
 		}
-		<circle cx={ fmt.Sprintf("%.1f", s.last().X) } cy={ fmt.Sprintf("%.1f", s.last().Y) } r="4" fill="#24519E" stroke="#fff" stroke-width="2"><title>{ s.last().Title }</title></circle>
+		<circle cx={ fmt.Sprintf("%.1f", s.last().X) } cy={ fmt.Sprintf("%.1f", s.last().Y) } r="4" class="gp-spark-last" stroke-width="2"><title>{ s.last().Title }</title></circle>
 	</svg>
 }
 

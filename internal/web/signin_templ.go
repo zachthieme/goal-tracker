@@ -107,7 +107,7 @@ func signInStyles() templ.Component {
 			templ_7745c5c3_Var4 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<style>\n\t\t.si-card{width:100%;max-width:400px;margin:48px auto 0;padding:32px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box}\n\t\t.si-error{color:#9A231B;margin:0}\n\t\t.si-brand{font-family:'Source Serif 4',Georgia,serif;font-weight:600;font-size:19px}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<style>\n\t\t.si-card{width:100%;max-width:400px;margin:48px auto 0;padding:32px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box}\n\t\t.si-error{color:var(--color-danger-ink);margin:0}\n\t\t.si-brand{font-family:var(--font-display);font-weight:700;font-size:19px;color:var(--color-ink)}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
