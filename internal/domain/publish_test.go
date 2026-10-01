@@ -2,6 +2,8 @@ package domain_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"reflect"
 	"slices"
 	"testing"
@@ -251,4 +253,175 @@ func publishedOwners(r domain.Report) []domain.Account {
 		out = append(out, sg.Goal.Owner)
 	}
 	return out
+}
+
+// A Publication freezes its publisher alongside its Owners: renaming the
+// publisher later leaves the byline as it read when published, from either
+// GetPublication or ListPublications.
+func TestPublicationFreezesThePublishersName(t *testing.T) {
+	h := testsupport.New(t, "ceo@example.com")
+	ctx := context.Background()
+	ceo := h.SignInNamed("ceo@example.com", "Dana Whitfield")
+	g := h.ActiveGoal(ceo, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(ceo, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(ceo, def)
+
+	if err := h.Service.SetName(ctx, ceo.ID, "Dana Renamed"); err != nil {
+		t.Fatalf("SetName: %v", err)
+	}
+
+	for name, got := range readPublication(t, h, def, pub.ID) {
+		if got.PublishedBy.ID != ceo.ID || got.PublishedBy.LongLabel() != "Dana Whitfield (ceo@example.com)" {
+			t.Errorf("%s: published by %+v, want Dana Whitfield as published", name, got.PublishedBy)
+		}
+	}
+}
+
+// readPublication reads the publication id of def back both ways a Publication
+// is read, keyed by how it was read.
+func readPublication(t *testing.T, h *testsupport.Harness, def domain.ReportDefinition, id int64) map[string]domain.Publication {
+	t.Helper()
+	ctx := context.Background()
+	got, err := h.Service.GetPublication(ctx, id)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	out := map[string]domain.Publication{"GetPublication": got}
+	pubs, err := h.Service.ListPublications(ctx, def.ID)
+	if err != nil {
+		t.Fatalf("ListPublications: %v", err)
+	}
+	for _, p := range pubs {
+		if p.ID == id {
+			out["ListPublications"] = p
+		}
+	}
+	if _, ok := out["ListPublications"]; !ok {
+		t.Fatalf("ListPublications has no publication %d", id)
+	}
+	return out
+}
+
+// A publisher with no Name when publishing is frozen as they were shown then,
+// by their email's local part, even if they are named later.
+func TestPublicationFreezesAnUnnamedPublisherAsShown(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
+	g := h.ActiveGoal(ada, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+
+	if err := h.Service.SetName(context.Background(), boss.ID, "Bo Sterling"); err != nil {
+		t.Fatalf("SetName: %v", err)
+	}
+
+	for name, got := range readPublication(t, h, def, pub.ID) {
+		if got.PublishedBy.Label() != "boss" || got.PublishedBy.LongLabel() != "boss (boss@example.com)" {
+			t.Errorf("%s: published by %+v, want boss as published", name, got.PublishedBy)
+		}
+	}
+}
+
+// A Publication from before publishers were frozen shows a publisher who
+// appears in its snapshot exactly as the snapshot froze them, even after a
+// rename.
+func TestUnfrozenPublisherShowsAsFrozenInTheSnapshot(t *testing.T) {
+	h := testsupport.New(t, "ceo@example.com")
+	ceo := h.SignInNamed("ceo@example.com", "Dana Whitfield")
+	g := h.ActiveGoal(ceo, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(ceo, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(ceo, def)
+	unfreezePublisher(t, h, pub)
+
+	if err := h.Service.SetName(context.Background(), ceo.ID, "Dana Renamed"); err != nil {
+		t.Fatalf("SetName: %v", err)
+	}
+
+	for name, got := range readPublication(t, h, def, pub.ID) {
+		if got.PublishedBy.ID != ceo.ID || got.PublishedBy.LongLabel() != "Dana Whitfield (ceo@example.com)" {
+			t.Errorf("%s: published by %+v, want Dana Whitfield as the snapshot froze them", name, got.PublishedBy)
+		}
+	}
+}
+
+// unfreezePublisher rewrites pub's stored snapshot as it was before publishers
+// were frozen: the Report alone.
+func unfreezePublisher(t *testing.T, h *testsupport.Harness, pub domain.Publication) {
+	t.Helper()
+	var stored string
+	if err := h.DB.QueryRow(`SELECT snapshot FROM report_publications WHERE id = ?`, pub.ID).Scan(&stored); err != nil {
+		t.Fatalf("read the snapshot: %v", err)
+	}
+	var snap map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(stored), &snap); err != nil {
+		t.Fatalf("decode the snapshot: %v", err)
+	}
+	if _, ok := snap["PublishedBy"]; !ok {
+		t.Fatalf("snapshot %s has no frozen publisher to remove", stored)
+	}
+	delete(snap, "PublishedBy")
+	before, err := json.Marshal(snap)
+	if err != nil {
+		t.Fatalf("encode the snapshot: %v", err)
+	}
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, string(before), pub.ID); err != nil {
+		t.Fatalf("write the snapshot: %v", err)
+	}
+}
+
+// A snapshot published before Accounts had Names shows its publisher by email,
+// as it shows its other people, whether or not the publisher appears in it.
+func TestSnapshotFromBeforeNamesShowsThePublisherByEmail(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		owner string
+	}{
+		{"publisher owns a Goal", "boss@example.com"},
+		{"publisher owns nothing", "ada.okafor@example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t, "boss@example.com")
+			boss := h.SignInNamed("boss@example.com", "Bo Sterling")
+			owner := h.SignInNamed(tc.owner, "Someone Named")
+			g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+			def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+			pub := h.PublishReport(boss, def)
+			before := fmt.Sprintf(`{"Definition":{"ID":%d,"Name":"MBR"},"Lines":[{"Goal":{"ID":%d,"Title":"Launch in EU",`+
+				`"Owner":{"ID":%d,"Email":%q,"IsAdmin":false,"Departed":false}},"Health":""}]}`, def.ID, g.ID, owner.ID, owner.Email)
+			if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+				t.Fatalf("write a pre-Names snapshot: %v", err)
+			}
+
+			for name, got := range readPublication(t, h, def, pub.ID) {
+				if got.PublishedBy.ID != boss.ID || got.PublishedBy.Label() != "boss@example.com" ||
+					got.PublishedBy.LongLabel() != "boss@example.com" {
+					t.Errorf("%s: published by %+v, want boss@example.com", name, got.PublishedBy)
+				}
+			}
+		})
+	}
+}
+
+// A Publication from before publishers were frozen, published after Names,
+// whose publisher appears nowhere in its snapshot, shows the publisher as
+// their Account reads now: there is nothing frozen to show instead.
+func TestUnfrozenPublisherNotInTheSnapshotShowsTheirAccount(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignInNamed("boss@example.com", "Bo Sterling")
+	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
+	g := h.ActiveGoal(ada, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	unfreezePublisher(t, h, pub)
+
+	if err := h.Service.SetName(context.Background(), boss.ID, "Bo Renamed"); err != nil {
+		t.Fatalf("SetName: %v", err)
+	}
+
+	for name, got := range readPublication(t, h, def, pub.ID) {
+		if got.PublishedBy.ID != boss.ID || got.PublishedBy.LongLabel() != "Bo Renamed (boss@example.com)" {
+			t.Errorf("%s: published by %+v, want Bo Renamed from their Account", name, got.PublishedBy)
+		}
+	}
 }
