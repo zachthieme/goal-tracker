@@ -1,8 +1,11 @@
 package web
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -22,7 +25,7 @@ func (s *Server) handleSignInForm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/home", http.StatusSeeOther)
 		return
 	}
-	render(w, r, http.StatusOK, signInPage())
+	render(w, r, http.StatusOK, signInPage(""))
 }
 
 func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
@@ -32,6 +35,10 @@ func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	acc, err := s.svc.SignIn(r.Context(), emailAddr)
+	if errors.Is(err, domain.ErrDeparted) {
+		render(w, r, http.StatusForbidden, signInPage(emailAddr+" has been marked departed and can't sign in. Ask an Admin if this is a mistake."))
+		return
+	}
 	if err != nil {
 		http.Error(w, "sign-in failed", http.StatusInternalServerError)
 		return

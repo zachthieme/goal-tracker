@@ -89,3 +89,29 @@ func TestSignInPageIsACentredCard(t *testing.T) {
 		}
 	}
 }
+
+// Signing in as a Departed person fails with a visible reason, and no session
+// cookie is issued (CONTEXT.md: Departed).
+func TestDepartedPersonCannotSignIn(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	resp := postForm(t, http.DefaultClient, ts.URL+"/signin", url.Values{"email": {"sam@example.com"}})
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("sign-in as Departed: status %d, want 403", resp.StatusCode)
+	}
+	for _, c := range resp.Cookies() {
+		if c.Name == "gt_session" && c.Value != "" {
+			t.Errorf("sign-in as Departed issued a session cookie: %v", c)
+		}
+	}
+	if msg := pageElement(t, body, "p", "signin-error"); !strings.Contains(msg, "sam@example.com has been marked departed") {
+		t.Errorf("sign-in page doesn't say why: %s", msg)
+	}
+}

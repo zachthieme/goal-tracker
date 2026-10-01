@@ -23,6 +23,10 @@ type Account struct {
 // ErrNotFound is returned when a requested record does not exist.
 var ErrNotFound = errors.New("not found")
 
+// ErrDeparted is returned when a Departed person tries to sign in: they have
+// left the org and can't sign in or act (CONTEXT.md: Departed).
+var ErrDeparted = errors.New("account has departed")
+
 // timeFormat is how timestamps are stored in SQLite TEXT columns.
 const timeFormat = time.RFC3339Nano
 
@@ -89,8 +93,16 @@ func (s *Service) requireAdmin(ctx context.Context, actorID int64) error {
 
 // SignIn resolves the development sign-in for emailAddr: it returns the existing
 // Account, or creates one on first sign-in with the Admin flag set from config.
+// A Departed Account is refused with ErrDeparted (CONTEXT.md: Departed).
 func (s *Service) SignIn(ctx context.Context, emailAddr string) (Account, error) {
-	return s.EnsureAccount(ctx, emailAddr)
+	acc, err := s.EnsureAccount(ctx, emailAddr)
+	if err != nil {
+		return Account{}, err
+	}
+	if acc.Departed {
+		return Account{}, fmt.Errorf("%w: %s has left the org", ErrDeparted, emailAddr)
+	}
+	return acc, nil
 }
 
 // EnsureAccount returns the Account with the given email, creating one if none

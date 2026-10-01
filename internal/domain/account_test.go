@@ -2,8 +2,10 @@ package domain_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
@@ -47,5 +49,19 @@ func TestSignInSetsAdminFromConfig(t *testing.T) {
 	regular := h.SignIn("sam@example.com")
 	if regular.IsAdmin {
 		t.Error("email not in the admin list should not get the Admin flag")
+	}
+}
+
+// A Departed person can't sign in (CONTEXT.md: Departed).
+func TestSignInRefusesADepartedAccount(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	if err := h.Service.MarkDeparted(context.Background(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	if _, err := h.Service.SignIn(context.Background(), "sam@example.com"); !errors.Is(err, domain.ErrDeparted) {
+		t.Errorf("SignIn as a Departed Account: err = %v, want ErrDeparted", err)
 	}
 }
