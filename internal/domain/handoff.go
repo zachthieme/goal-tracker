@@ -150,7 +150,8 @@ func (s *Service) ReassignGoalByEmail(ctx context.Context, actorID, goalID int64
 // Delegates to keep (CONTEXT.md: Delegate): every Delegate not in keep is
 // removed, except a Departed one, who was never offered and stays. The new Owner
 // is never kept as their own Delegate, since the Owner already writes the Goal's
-// Check-ins. The ownership change, the removals and the outcome are one transaction.
+// Check-ins. A Handoff whose from-Owner no longer owns the Goal is refused. The
+// ownership change, the removals and the outcome are one transaction.
 func (s *Service) AcceptHandoff(ctx context.Context, handoffID, actorID int64, keep []int64) (Handoff, error) {
 	row, err := s.getPendingHandoff(ctx, handoffID)
 	if err != nil {
@@ -160,6 +161,13 @@ func (s *Service) AcceptHandoff(ctx context.Context, handoffID, actorID int64, k
 		return Handoff{}, fmt.Errorf("%w: only the new Owner may accept a Handoff", ErrNotAuthorized)
 	}
 	err = s.WithinTx(ctx, func(tx *Service) error {
+		goal, err := tx.queries.GetGoal(ctx, row.GoalID)
+		if err != nil {
+			return fmt.Errorf("look up goal: %w", err)
+		}
+		if goal.Goal.OwnerID != row.FromOwner {
+			return fmt.Errorf("%w: the Goal has changed hands since this Handoff was started", ErrValidation)
+		}
 		if err := tx.queries.SetGoalOwner(ctx, db.SetGoalOwnerParams{
 			OwnerID: row.ToOwner,
 			ID:      row.GoalID,
@@ -276,7 +284,9 @@ func (s *Service) OwnershipHistory(ctx context.Context, goalID int64) ([]Handoff
 // reassigns an Ownerless Goal). Only an Admin may do this, and only for a Goal
 // that is Ownerless — a Goal with a present Owner changes hands through a Handoff
 // the new Owner accepts, not by fiat. The Reassign is kept in the Goal's
-// ownership history with the outcome reassigned.
+// ownership history with the outcome reassigned. A Handoff still pending on the
+// Goal, one its Owner started before leaving, is cancelled in the same
+// transaction: whichever of the two comes first replaces the Ownerless Owner.
 func (s *Service) ReassignGoal(ctx context.Context, actorID, goalID, newOwnerID int64) (Goal, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return Goal{}, err
@@ -302,6 +312,18 @@ func (s *Service) ReassignGoal(ctx context.Context, actorID, goalID, newOwnerID 
 		return Goal{}, fmt.Errorf("%w: the new Owner has left the org", ErrValidation)
 	}
 	err = s.WithinTx(ctx, func(tx *Service) error {
+		pending, err := tx.queries.GetPendingHandoffForGoal(ctx, goalID)
+		switch {
+		case err == nil:
+			if err := tx.queries.SetHandoffStatus(ctx, db.SetHandoffStatusParams{
+				Status: HandoffCancelled,
+				ID:     pending.ID,
+			}); err != nil {
+				return fmt.Errorf("cancel pending handoff: %w", err)
+			}
+		case !errors.Is(err, sql.ErrNoRows):
+			return fmt.Errorf("look up pending handoff: %w", err)
+		}
 		if err := tx.queries.SetGoalOwner(ctx, db.SetGoalOwnerParams{
 			OwnerID: newOwnerID,
 			ID:      goalID,

@@ -533,3 +533,61 @@ func TestFailedAcceptChangesNothing(t *testing.T) {
 		t.Errorf("the Handoff isn't still pending after a failed accept:\n%s", inbox)
 	}
 }
+
+// A Handoff the Owner started before departing is cancelled when an Admin
+// reassigns the Goal: its recipient's inbox no longer offers it, accepting it is
+// refused, the Goal stays with the Owner the Admin chose, and the Ownership
+// history shows the Handoff cancelled before the Reassign.
+func TestReassignCancelsTheDepartedOwnersPendingHandoff(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	h.SignIn("cal@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+	ho, err := h.Service.StartHandoffByEmail(context.Background(), goal.ID, pat.Email, sam.ID)
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+	if err := h.Service.MarkDeparted(context.Background(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	bossClient := signInClient(t, ts.URL, boss.Email)
+	patClient := signInClient(t, ts.URL, pat.Email)
+
+	if resp := postForm(t, bossClient, goalURL+"/reassign", url.Values{"email": {"cal@example.com"}}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("reassign: status %d", resp.StatusCode)
+	}
+
+	if inbox := getBody(t, patClient, ts.URL+"/handoffs"); !strings.Contains(inbox, "No pending handoffs") {
+		t.Errorf("Pat's inbox still offers the cancelled Handoff:\n%s", inbox)
+	}
+	resp := postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/accept", ts.URL, ho.ID), url.Values{})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("accept the cancelled Handoff: status %d, want 404", resp.StatusCode)
+	}
+
+	page := getBody(t, bossClient, goalURL)
+	if !strings.Contains(page, `data-testid="goal-owner">`+shownAs("cal@example.com", "cal")) {
+		t.Errorf("Goal page should show Cal as Owner after Pat's refused accept")
+	}
+	section := pageElement(t, page, "section", "goal-ownership-history")
+	entries := strings.Split(section, `data-testid="ownership-change"`)[1:]
+	want := []struct{ to, outcome string }{
+		{shownAs("pat@example.com", "pat"), "cancelled"},
+		{shownAs("cal@example.com", "cal"), "reassigned by an Admin"},
+	}
+	if len(entries) != len(want) {
+		t.Fatalf("Ownership history has %d entries, want %d:\n%s", len(entries), len(want), section)
+	}
+	for i, w := range want {
+		for _, part := range []string{shownAs("sam@example.com", "sam"), w.to, w.outcome} {
+			if !strings.Contains(entries[i], part) {
+				t.Errorf("entry %d lacks %q:\n%s", i, part, entries[i])
+			}
+		}
+	}
+}
