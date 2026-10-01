@@ -92,6 +92,8 @@ Nothing is written to the database directly.
 Sign in as `admin@example.com` (an Admin), or as any Owner in the org: the
 leads (`platform-lead@example.com` and so on), the org outcome owners
 (`ceo@example.com`, `cto@example.com`, `cpo@example.com`), or a project Owner.
+Everyone the seed creates has a Name, which the pages show in place of their
+email; you still sign in with the email.
 
 The seed is deterministic. The same seed and end date build the same org,
 Check-in for Check-in. It only seeds a fresh database: it refuses one that
