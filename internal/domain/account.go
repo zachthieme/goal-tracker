@@ -76,6 +76,31 @@ func (s *Service) MarkDeparted(ctx context.Context, actorID, accountID int64) er
 	})
 }
 
+// MarkReturned reverses a departure: the person behind accountID can sign in and
+// act again, the Goals they still own stop being Ownerless, and their Delegate
+// rights come back as they were. Nothing else is undone — a Goal reassigned
+// while they were away stays with its new Owner, and a cancelled Handoff stays
+// cancelled (CONTEXT.md: Departed). Only an Admin may do this; actorID
+// identifies the acting Account.
+func (s *Service) MarkReturned(ctx context.Context, actorID, accountID int64) error {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return err
+	}
+	if _, err := s.queries.GetAccount(ctx, accountID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: account does not exist", ErrValidation)
+		}
+		return fmt.Errorf("look up account: %w", err)
+	}
+	if err := s.queries.SetAccountDeparted(ctx, db.SetAccountDepartedParams{
+		Departed: 0,
+		ID:       accountID,
+	}); err != nil {
+		return fmt.Errorf("mark returned: %w", err)
+	}
+	return nil
+}
+
 // requireAdmin returns ErrNotAuthorized unless actorID is an Admin.
 func (s *Service) requireAdmin(ctx context.Context, actorID int64) error {
 	actor, err := s.queries.GetAccount(ctx, actorID)
