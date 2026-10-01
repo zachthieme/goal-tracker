@@ -426,6 +426,10 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("load So What history: %w", err)
 	}
+	ownership, err := s.svc.OwnershipHistory(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("load ownership history: %w", err)
+	}
 	dimensions, err := s.svc.ListDimensions(ctx)
 	if err != nil {
 		return goalView{}, fmt.Errorf("load dimensions: %w", err)
@@ -505,6 +509,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Delegates:      delegates,
 		CanCheckin:     canCheckin,
 		Revisions:      revisions,
+		Ownership:      ownership,
 		Dimensions:     dimensions,
 		Values:         values,
 		Checkins:       checkins,
@@ -543,6 +548,9 @@ type goalView struct {
 	Delegates  []domain.Account
 	CanCheckin bool
 	Revisions  []domain.SoWhatRevision
+	// Ownership is the Goal's ownership history, oldest first: every Handoff
+	// with its outcome and every Admin Reassign (CONTEXT.md: Handoff).
+	Ownership []domain.Handoff
 	// Dimensions are all defined Dimensions, for the value-assignment selects and
 	// the defaults offered when creating a child Goal. Values are the values this
 	// Goal currently carries, retired ones included so they stay readable.
@@ -1121,4 +1129,13 @@ func (v goalView) readyToActivate() bool {
 		}
 	}
 	return true
+}
+
+// ownershipOutcome names an ownership change's outcome for the Goal page's
+// Ownership history: a Handoff's status, or that an Admin reassigned the Goal.
+func ownershipOutcome(status string) string {
+	if status == domain.HandoffReassigned {
+		return "reassigned by an Admin"
+	}
+	return status
 }

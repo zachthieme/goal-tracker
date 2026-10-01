@@ -1086,8 +1086,9 @@ func TestGoalPageMetricCardsShowASparkline(t *testing.T) {
 	}
 }
 
-// The Goal page's history — Check-ins, Date Slips and So What revisions — sits
-// under History, each collapsed with its count in the summary.
+// The Goal page's history — Check-ins, Date Slips, So What revisions and
+// ownership changes — sits under History, each collapsed with its count in the
+// summary.
 func TestGoalPageHistoryIsCollapsedWithCounts(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
@@ -1105,6 +1106,7 @@ func TestGoalPageHistoryIsCollapsedWithCounts(t *testing.T) {
 		{"goal-checkin-history", "Check-in history (2)"},
 		{"goal-date-slips", "Date Slips (0)"},
 		{"goal-so-what-history", "So What history (2)"}, // the original and the edit
+		{"goal-ownership-history", "Ownership history (0)"},
 	} {
 		section := pageElement(t, history, "section", tc.testID)
 		details := between(t, section, "<details", "</summary>")
