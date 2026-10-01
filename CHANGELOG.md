@@ -18,6 +18,10 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **New features:**
 - [user] The Goal page has a collapsed "Ownership history (N)" section listing every Handoff and Admin Reassign oldest first, with from, to, who started it, when, and the outcome: pending, accepted, rejected, cancelled, or reassigned by an Admin (#46).
 - [user] An Admin can reverse a departure: a Goal page whose Owner has departed offers "Mark returned…", which asks for confirmation. The person can sign in again and the Goals they still own stop being Ownerless; a Goal reassigned while they were away stays with its new Owner, and a cancelled Handoff stays cancelled (#45).
+- [user] Pages show people by their Name instead of their email address, with the email on hover; someone without a Name yet is shown by the part of their email before the `@`. The Markdown export, the Print view, and the reminder, digest, and comment emails introduce each person as `Name (email)` at their first mention. Publications keep the Names people had when published, and ones published earlier still show emails. Forms and the spreadsheet import still take emails, and the seed gives every person a Name (#41).
+
+**Improvements:**
+- [api] Database schema: migration `0019_account_names` adds a nullable `name` column to `accounts`. It's additive and runs on startup; existing Accounts have no Name until a sign-in integration supplies one (#41).
 
 **Bug fixes:**
 - [user] The report draft page no longer scrolls sideways on a phone: the baseline line and the Narrative card fit the screen, and the On track table scrolls within its card (#43).
