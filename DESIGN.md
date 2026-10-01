@@ -58,7 +58,6 @@ deliberately; don't override it on one page.
   --color-border:        #E8E6D5; /* cards, dividers */
   --color-border-strong: #D5D2BD; /* inputs */
   --color-focus:         #0D9488; /* Teal 600. See Deviations */
-  --color-focus-halo:    rgba(13,148,136,.25); /* input focus outline */
 
   /* Feedback */
   --color-success: #2DD4BF;
@@ -125,7 +124,6 @@ deliberately; don't override it on one page.
   --color-border:        #0A3F39; /* (chosen) */
   --color-border-strong: #0A5C53; /* scale step 2 */
   --color-focus:         #2DD4BF;
-  --color-focus-halo:    rgba(45,212,191,.30); /* (chosen) */
 
   --color-success: #2DD4BF;
   --color-warning: #EAB308;
@@ -191,8 +189,10 @@ Load the fonts with this URL:
   A card's own heading is an `h3` (card title); `h2` is for page sections
   that sit outside cards.
 - **Inputs:** `--color-surface`, 1px `--color-border-strong`, `--radius-md`,
-  12px × 16px padding. On focus, the border becomes `--color-focus` with an
-  outline of `2px solid var(--color-focus-halo)`.
+  12px × 16px padding. On focus, the border becomes `--color-focus` and the
+  field takes the same ring as everything else, `2px solid var(--color-focus)`,
+  offset 1px. The ring shows on mouse focus too and never transitions. See
+  Deviations.
 - **Tables:** headers on `--color-surface-alt` with `.label` type. Rows are
   divided by `--color-border`. Selected rows use `--color-primary-light`.
 - **Tags and counts:** `--radius-full`, with a `--color-primary-light` fill
@@ -272,3 +272,7 @@ block. It doesn't load `app.css`.
    3.74:1 on white, 3.44:1 on `--color-surface-alt`). On the dark-teal top
    bar that drops to 2.53:1, so nav items ring in `--nav-focus: #2DD4BF`
    (5.09:1). Dark mode keeps `#2DD4BF` everywhere.
+
+   The source also rings a focused input in a 25%-alpha halo of the primary,
+   which reaches only 1.36:1 on white. Inputs take the solid ring instead, and
+   the halo token is dropped.
