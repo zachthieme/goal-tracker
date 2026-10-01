@@ -26,6 +26,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A Departed person can no longer sign in or act: signing in shows why it was refused, a session they already had ends on their next request, and they can't submit Check-ins as Owner or Delegate. Everything they did stays attributed to them, and a Departed Delegate stays listed on the Goal page, marked "departed" (#45).
 
 **Infrastructure:**
+- [ops] `make serve` builds the app and serves it on the tailnet at `https://<machine>.<tailnet>.ts.net:8090` through `tailscale serve`, listening on localhost only and with emailed links pointing at the tailnet URL; `SERVE_PORT`, `SERVE_DB`, and `SERVE_ADMINS` override the defaults.
 - [internal] Ignore the `goal-tracker` and `seed` binaries that a plain `go build ./cmd/...` writes to the repo root, so they can't be committed by accident.
 
 ### Goal Tracker v1 pilot build — September 30, 2026
