@@ -26,7 +26,8 @@ deliberately; don't override it on one page.
 ## System
 
 - **Mood:** warm, editorial and calm. Ivory canvas, deep-teal ink, vivid teal
-  for interaction. No cold whites or neon.
+  for interaction. No neon, and no cold white on the canvas: the warmth lives
+  there. Cards sit on it in plain white (see § Accepted audit findings).
 - **Density:** generous. Cards use 24px padding, sections sit 20–32px apart,
   and everything aligns to a 4px grid.
 - **Depth:** layered, teal-tinted shadows lift cards off the canvas.
@@ -288,3 +289,19 @@ block. It doesn't load `app.css`.
    - On the Check-in form, an unselected Health choice is an outline (surface
      fill, `--color-border-strong` edge, Health ink) and the selected one is
      the filled Health badge with an edge in its ink. Nothing is dimmed.
+
+## Accepted audit findings
+
+Places where the app follows the source on purpose, though a design audit has
+flagged them. They aren't deviations, and later audits shouldn't raise them
+again.
+
+1. **White card surface.** The 2026-10-01 audit called the light theme's
+   `--color-surface` (`#FFFFFF`) flat beside the ivory canvas. It stays white.
+   The light-theme contrast ratios in § Deviations are quoted against it, and
+   two of them have little room to lose: the input border at 3.38:1 and the
+   focus ring at 3.74:1, against WCAG's 3:1. Tinting the surface would mean
+   recomputing every one.
+2. **Hex and rgba tokens.** The same audit asked for tokens in OKLCH. They
+   stay in hex and rgba, the source's notation, so they can be checked against
+   it line by line. Converting them would change nothing a reader sees.
