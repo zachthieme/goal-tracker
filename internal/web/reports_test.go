@@ -678,3 +678,40 @@ func TestPublicationShowsNamesAsPublishedOverHTTP(t *testing.T) {
 		t.Errorf("pre-Names print page does not show Ada by email alone; body:\n%s", printed)
 	}
 }
+
+// A publication's byline shows the publisher by the Name they had when it was
+// published, on the publication, its print page, and its Markdown export, so
+// the byline and the Goals they own read the same Name.
+func TestPublicationBylineKeepsThePublishersNameOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "ceo@example.com")
+	ceo := h.SignInNamed("ceo@example.com", "Dana Whitfield")
+	g := h.ActiveGoal(ceo, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(ceo, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(ceo, def)
+	if _, err := h.DB.Exec(`UPDATE accounts SET name = 'Dana Renamed' WHERE id = ?`, ceo.ID); err != nil {
+		t.Fatalf("rename the publisher: %v", err)
+	}
+
+	ts := newServer(t, h)
+	// Read by someone else, so the signed-in header doesn't show the live Name.
+	client := signInClient(t, ts.URL, "ada.okafor@example.com")
+	pubURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10)
+
+	page := getBody(t, client, pubURL)
+	if line := pageElement(t, page, "p", "report-published"); !strings.Contains(line, shownAs("ceo@example.com", "Dana Whitfield")) {
+		t.Errorf("publication byline does not show Dana Whitfield as published; line:\n%s", line)
+	}
+	printed := getBody(t, client, pubURL+"/print")
+	if line := pageElement(t, printed, "p", "report-published"); !strings.Contains(line, ">Dana Whitfield (ceo@example.com)<") {
+		t.Errorf("print byline does not introduce Dana Whitfield as published; line:\n%s", line)
+	}
+	md := getBody(t, client, pubURL+"/markdown")
+	if !strings.Contains(md, " by Dana Whitfield (ceo@example.com). ") {
+		t.Errorf("Markdown byline does not introduce Dana Whitfield as published; body:\n%s", md)
+	}
+	for name, body := range map[string]string{"publication": page, "print page": printed, "Markdown": md} {
+		if strings.Contains(body, "Dana Renamed") {
+			t.Errorf("%s shows the Name given after publishing; body:\n%s", name, body)
+		}
+	}
+}

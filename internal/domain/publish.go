@@ -17,12 +17,22 @@ import (
 type Publication struct {
 	ID           int64
 	DefinitionID int64
-	PublishedBy  Account
-	PublishedAt  time.Time
+	// PublishedBy is who published it, frozen as they were shown then, the
+	// same way the snapshot freezes its Owners.
+	PublishedBy Account
+	PublishedAt time.Time
 	// Report is the Report as it read when published, exactly as rendered. It
 	// is stored as JSON of the Report view model, so renaming a field of
 	// Report (or of a type it holds) drops that field from earlier snapshots.
 	Report Report
+}
+
+// snapshot is a Publication as stored: the Report as it read when published
+// and, beside it, the publisher as they were shown then. A snapshot frozen
+// before publishers were has no PublishedBy.
+type snapshot struct {
+	Report
+	PublishedBy *Account `json:",omitempty"`
 }
 
 // PreviousPublication identifies the publication a Report reads its changes
@@ -46,7 +56,11 @@ func (s *Service) PublishReport(ctx context.Context, actorID, defID int64, basel
 	if err != nil {
 		return Publication{}, err
 	}
-	snapshot, err := json.Marshal(report)
+	publisher, err := s.Account(ctx, actorID)
+	if err != nil {
+		return Publication{}, err
+	}
+	frozen, err := json.Marshal(snapshot{Report: report, PublishedBy: &publisher})
 	if err != nil {
 		return Publication{}, fmt.Errorf("freeze report: %w", err)
 	}
@@ -56,7 +70,7 @@ func (s *Service) PublishReport(ctx context.Context, actorID, defID int64, basel
 			ReportDefinitionID: def.ID,
 			PublishedBy:        actorID,
 			PublishedAt:        s.clock.Now().Format(timeFormat),
-			Snapshot:           string(snapshot),
+			Snapshot:           string(frozen),
 		}); err != nil {
 			return fmt.Errorf("create publication: %w", err)
 		}
@@ -100,22 +114,71 @@ func (s *Service) ListPublications(ctx context.Context, defID int64) ([]Publicat
 }
 
 func (s *Service) publicationFromRow(ctx context.Context, row db.ReportPublication) (Publication, error) {
-	var report Report
-	if err := json.Unmarshal([]byte(row.Snapshot), &report); err != nil {
+	var snap snapshot
+	if err := json.Unmarshal([]byte(row.Snapshot), &snap); err != nil {
 		return Publication{}, fmt.Errorf("read publication %d: %w", row.ID, err)
 	}
-	by, err := s.queries.GetAccount(ctx, row.PublishedBy)
+	by, err := s.publisher(ctx, row.PublishedBy, snap)
 	if err != nil {
-		return Publication{}, fmt.Errorf("look up publisher: %w", err)
+		return Publication{}, err
 	}
 	publishedAt, _ := time.Parse(timeFormat, row.PublishedAt)
 	return Publication{
 		ID:           row.ID,
 		DefinitionID: row.ReportDefinitionID,
-		PublishedBy:  accountFromRow(by),
+		PublishedBy:  by,
 		PublishedAt:  publishedAt,
-		Report:       report,
+		Report:       snap.Report,
 	}, nil
+}
+
+// publisher is who published snap, as they were shown when it was published.
+func (s *Service) publisher(ctx context.Context, id int64, snap snapshot) (Account, error) {
+	if snap.PublishedBy != nil {
+		return *snap.PublishedBy, nil
+	}
+	// Frozen before publishers were: show them as the snapshot shows its
+	// people, as frozen there if they are among them.
+	people := snap.people()
+	for _, p := range people {
+		if p.ID == id {
+			return p, nil
+		}
+	}
+	row, err := s.queries.GetAccount(ctx, id)
+	if err != nil {
+		return Account{}, fmt.Errorf("look up publisher: %w", err)
+	}
+	by := accountFromRow(row)
+	// A snapshot from before Names shows its people by email, its Name set to
+	// it (see Account.UnmarshalJSON); show the publisher the same way.
+	for _, p := range people {
+		if p.Email != "" && p.Name == p.Email {
+			by.Name = by.Email
+			break
+		}
+	}
+	return by, nil
+}
+
+// people is every person the Report shows, as it shows them.
+func (r Report) people() []Account {
+	var out []Account
+	for _, a := range r.ActionItems {
+		out = append(out, a.Owner, a.CreatedBy)
+	}
+	for _, b := range r.Exceptions {
+		out = append(out, b.Goal.Owner)
+	}
+	for _, sg := range r.Lines {
+		out = append(out, sg.Goal.Owner)
+	}
+	for _, n := range r.Narrative {
+		for _, h := range n.Highlights {
+			out = append(out, h.Highlight.Owner)
+		}
+	}
+	return out
 }
 
 // previousPublication returns the latest publication of the Report Definition

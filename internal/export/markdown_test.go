@@ -1,12 +1,14 @@
 package export_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/export"
+	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
 func date(y int, m time.Month, d int) time.Time {
@@ -245,5 +247,32 @@ Quarterly business review.
 `
 	if got := export.Markdown(pub); !strings.HasSuffix(got, want) {
 		t.Errorf("Markdown:\n%s\nwant it to end:\n%s", got, want)
+	}
+}
+
+// A publisher renamed after publishing is introduced by the Name they had when
+// they published, the same Name the Goals they own read by, so the export
+// never shows one person under two Names.
+func TestMarkdownBylineKeepsThePublishersNameAfterARename(t *testing.T) {
+	h := testsupport.New(t, "ceo@example.com")
+	ctx := context.Background()
+	ceo := h.SignInNamed("ceo@example.com", "Dana Whitfield")
+	g := h.ActiveGoal(ceo, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(ceo, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(ceo, def)
+	if err := h.Service.SetName(ctx, ceo.ID, "Dana Renamed"); err != nil {
+		t.Fatalf("SetName: %v", err)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	md := export.Markdown(got)
+	if !strings.Contains(md, " by Dana Whitfield (ceo@example.com). ") {
+		t.Errorf("Markdown:\n%s\nwant the byline to introduce Dana Whitfield (ceo@example.com)", md)
+	}
+	if strings.Contains(md, "Dana Renamed") {
+		t.Errorf("Markdown:\n%s\nshows the Name given after publishing", md)
 	}
 }
