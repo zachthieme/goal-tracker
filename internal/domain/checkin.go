@@ -335,8 +335,20 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 
 // authorizeCheckinAuthor allows a Check-in to be written only by the Goal's
 // Owner or a Delegate the Owner has authorized; anyone else is refused
-// (CONTEXT.md: Delegate; acceptance: Non-Delegates can't submit Check-ins).
+// (CONTEXT.md: Delegate; acceptance: Non-Delegates can't submit Check-ins). A
+// Departed person can't act, so is refused whichever they are (CONTEXT.md:
+// Departed).
 func (s *Service) authorizeCheckinAuthor(ctx context.Context, goalID, ownerID, authorID int64) error {
+	author, err := s.queries.GetAccount(ctx, authorID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: the author does not exist", ErrNotAuthorized)
+		}
+		return fmt.Errorf("look up author: %w", err)
+	}
+	if author.Departed != 0 {
+		return fmt.Errorf("%w: a Departed person can't submit a Check-in", ErrNotAuthorized)
+	}
 	if authorID == ownerID {
 		return nil
 	}

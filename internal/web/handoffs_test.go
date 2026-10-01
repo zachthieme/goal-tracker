@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
@@ -197,8 +198,8 @@ func TestOwnershipHistoryKeepsEveryHandoffOutcome(t *testing.T) {
 	if resp := postForm(t, bossClient, fmt.Sprintf("%s/accounts/%d/depart", ts.URL, pat.ID), url.Values{}); resp.StatusCode != http.StatusOK {
 		t.Fatalf("depart Pat: status %d", resp.StatusCode)
 	}
-	resp := postForm(t, signInClient(t, ts.URL, pat.Email), fmt.Sprintf("%s/handoffs/%d/accept", ts.URL, cancelled), url.Values{})
-	if resp.StatusCode == http.StatusOK {
+	// Pat can no longer sign in to accept it, and the Handoff stays cancelled.
+	if _, err := h.Service.AcceptHandoff(context.Background(), cancelled, pat.ID); err == nil {
 		t.Errorf("a cancelled Handoff was accepted")
 	}
 
@@ -245,5 +246,76 @@ func TestOwnershipHistoryKeepsEveryHandoffOutcome(t *testing.T) {
 				t.Errorf("entry %d lacks %q:\n%s", i, part, entries[i])
 			}
 		}
+	}
+}
+
+// An Admin marks a Departed Owner returned: their remaining Goal is no longer
+// Ownerless, they can sign in again and check in as a Delegate, and a Goal
+// reassigned while they were away stays with its new Owner (CONTEXT.md:
+// Departed).
+func TestAdminMarksDepartedOwnerReturned(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	kept := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	moved := h.ActiveGoal(sam, "Migrate displays", "Displays fail often.")
+	delegated := h.ActiveGoal(pat, "Grow revenue", "Revenue funds the rest.")
+	h.AddDelegate(pat, sam, delegated.ID)
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	if _, err := h.Service.ReassignGoal(t.Context(), boss.ID, moved.ID, pat.ID); err != nil {
+		t.Fatalf("ReassignGoal: %v", err)
+	}
+	bossClient := signInClient(t, ts.URL, "boss@example.com")
+
+	if resp := postForm(t, bossClient, fmt.Sprintf("%s/accounts/%d/return", ts.URL, sam.ID), url.Values{}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("mark returned: status %d", resp.StatusCode)
+	}
+
+	page := getBody(t, bossClient, fmt.Sprintf("%s/goals/%d", ts.URL, kept.ID))
+	if strings.Contains(page, `data-testid="goal-ownerless"`) {
+		t.Errorf("Sam's Goal is still Ownerless after Sam returned")
+	}
+	page = getBody(t, bossClient, fmt.Sprintf("%s/goals/%d", ts.URL, moved.ID))
+	if !strings.Contains(page, `data-testid="goal-owner">pat@example.com`) {
+		t.Errorf("the Goal reassigned to Pat while Sam was away no longer shows Pat as Owner")
+	}
+
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	resp := postForm(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, delegated.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"Checked in for Pat."},
+	})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("returned Delegate's Check-in: status %d", resp.StatusCode)
+	}
+	if latest, ok, err := h.Service.LatestCheckin(t.Context(), delegated.ID); err != nil || !ok || latest.Author.ID != sam.ID {
+		t.Errorf("LatestCheckin = %+v, %v, %v; want Sam's Check-in as Delegate", latest, ok, err)
+	}
+}
+
+// Only an Admin may mark someone returned: anyone else is refused with 403 and
+// the person stays Departed.
+func TestNonAdminCannotMarkReturned(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("pat@example.com")
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	resp := postForm(t, signInClient(t, ts.URL, "pat@example.com"), fmt.Sprintf("%s/accounts/%d/return", ts.URL, sam.ID), url.Values{})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-Admin mark returned: status %d, want 403", resp.StatusCode)
+	}
+	if acc, err := h.Service.Account(t.Context(), sam.ID); err != nil || !acc.Departed {
+		t.Errorf("Sam after a refused return = %+v, %v; want still Departed", acc, err)
 	}
 }

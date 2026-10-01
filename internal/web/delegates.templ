@@ -55,9 +55,9 @@ templ delegatePage(current *domain.Account, goals []delegatedGoal) {
 	}
 }
 
-// delegatesSection lists a Goal's Delegates and, for its Owner, a collapsed
-// Manage people section to authorize or revoke one by email (CONTEXT.md: an
-// Owner authorizes a Delegate).
+// delegatesSection lists a Goal's Delegates, marking a Departed one (CONTEXT.md:
+// Departed), and, for its Owner, a collapsed Manage people section to authorize
+// or revoke one by email (CONTEXT.md: an Owner authorizes a Delegate).
 templ delegatesSection(v goalView, owner bool) {
 	{{ g := v.Goal }}
 	<section data-testid="goal-delegates">
@@ -67,7 +67,12 @@ templ delegatesSection(v goalView, owner bool) {
 				<li data-testid="no-delegates" class="muted">No Delegates yet.</li>
 			}
 			for _, d := range v.Delegates {
-				<li data-testid="delegate">{ d.Email }</li>
+				<li data-testid="delegate">
+					{ d.Email }
+					if d.Departed {
+						{ " " }<span data-testid="delegate-departed" class="badge lc">departed</span>
+					}
+				</li>
 			}
 		</ul>
 		if owner {

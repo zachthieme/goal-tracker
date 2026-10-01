@@ -129,3 +129,39 @@ func TestOnlyOwnerAddsDelegate(t *testing.T) {
 		t.Fatalf("a Delegate was added by a non-Owner: %+v", delegates)
 	}
 }
+
+// A Departed Delegate can't act, so can no longer submit a Check-in on the
+// Owner's Goal — but they stay listed among its Delegates, marked Departed
+// (CONTEXT.md: Departed).
+func TestDepartedDelegateCannotSubmitCheckin(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	tpm := h.SignIn("tpm@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, tpm, goal.ID)
+	if err := h.Service.MarkDeparted(ctx, boss.ID, tpm.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: tpm.ID,
+		Health:   domain.HealthGreen,
+		Status:   "Checked in for Sam.",
+	}); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("Departed Delegate SubmitCheckin err = %v, want ErrNotAuthorized", err)
+	}
+	if _, err := h.Service.SubmitNoChangeCheckin(ctx, goal.ID, tpm.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("Departed Delegate SubmitNoChangeCheckin err = %v, want ErrNotAuthorized", err)
+	}
+
+	delegates, err := h.Service.ListDelegates(ctx, goal.ID)
+	if err != nil {
+		t.Fatalf("ListDelegates: %v", err)
+	}
+	if len(delegates) != 1 || delegates[0].ID != tpm.ID || !delegates[0].Departed {
+		t.Errorf("Delegates = %+v, want the Departed Delegate still listed", delegates)
+	}
+}

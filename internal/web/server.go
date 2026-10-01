@@ -33,7 +33,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // currentAccount resolves the signed-in Account from the session cookie, or nil
-// if there is none.
+// if there is none. A Departed person's session ends with their departure, so
+// their Account resolves to nil too (CONTEXT.md: Departed).
 func (s *Server) currentAccount(r *http.Request) *domain.Account {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil {
@@ -44,7 +45,7 @@ func (s *Server) currentAccount(r *http.Request) *domain.Account {
 		return nil
 	}
 	acc, err := s.svc.Account(r.Context(), id)
-	if err != nil {
+	if err != nil || acc.Departed {
 		return nil
 	}
 	return &acc

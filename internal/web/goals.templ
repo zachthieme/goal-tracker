@@ -508,6 +508,18 @@ templ goalMore(v goalView, owner, admin bool) {
 								</section>
 							</details>
 						</li>
+					} else {
+						<li>
+							<details>
+								<summary>Mark returned…</summary>
+								<section data-testid="return-owner">
+									<p class="small muted">{ g.Owner.Email } is back in the org.</p>
+									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/return", g.Owner.ID)) } onsubmit={ confirmScript(confirmReturn) }>
+										<button type="submit" class="btn">Mark { g.Owner.Email } returned</button>
+									</form>
+								</section>
+							</details>
+						</li>
 					}
 					if g.Ownerless {
 						<li>
@@ -533,6 +545,10 @@ templ goalMore(v goalView, owner, admin bool) {
 
 // confirmDepart is what an Admin confirms before marking a Goal's Owner departed.
 const confirmDepart = "Mark this Owner departed? Every Goal they own becomes Ownerless until an Admin reassigns it."
+
+// confirmReturn is what an Admin confirms before reversing a Goal's Owner's
+// departure.
+const confirmReturn = "Mark this Owner returned? They can sign in again, and the Goals they still own stop being Ownerless. Goals reassigned while they were away stay with their new Owners."
 
 // openSection opens the collapsed section a More menu item links to, so
 // following the link shows its form, and closes the menu over it.

@@ -72,12 +72,23 @@ func (s *Server) handleDepartAccount(w http.ResponseWriter, r *http.Request, cur
 		writeHandoffError(w, err)
 		return
 	}
-	// Return to wherever the action was triggered, usually a Goal page.
-	if ref := r.Header.Get("Referer"); ref != "" {
-		http.Redirect(w, r, ref, http.StatusSeeOther)
+	redirectBack(w, r)
+}
+
+// handleReturnAccount reverses the departure of the Account in the path, so the
+// Goals they still own stop being Ownerless and they can sign in again. Only an
+// Admin may.
+func (s *Server) handleReturnAccount(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
 		return
 	}
-	http.Redirect(w, r, "/goals", http.StatusSeeOther)
+	if err := s.svc.MarkReturned(r.Context(), current.ID, id); err != nil {
+		writeHandoffError(w, err)
+		return
+	}
+	redirectBack(w, r)
 }
 
 // handleReassignGoal reassigns an Ownerless Goal to the Account named by email.
@@ -92,6 +103,15 @@ func (s *Server) handleReassignGoal(w http.ResponseWriter, r *http.Request, curr
 		return
 	}
 	http.Redirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10), http.StatusSeeOther)
+}
+
+// redirectBack returns to wherever an action was triggered, usually a Goal page.
+func redirectBack(w http.ResponseWriter, r *http.Request) {
+	if ref := r.Header.Get("Referer"); ref != "" {
+		http.Redirect(w, r, ref, http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/goals", http.StatusSeeOther)
 }
 
 func handoffIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {
