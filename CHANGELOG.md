@@ -46,6 +46,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Goal page header fits a phone screen: the title and meta line use the full width instead of wrapping a few letters per line, and Check in, No change and More wrap onto their own line, kept to the right so the More menu opens on-screen (#42).
 - [user] Reassigning an Ownerless Goal now cancels the Handoff its departed Owner left pending, so the Handoff shows as cancelled in the Ownership history, its recipient can no longer accept it and take the Goal from the Owner the Admin chose, and the new Owner can start a Handoff of their own. Accepting a Handoff whose Owner no longer owns the Goal is refused (#48).
 - [user] A published Report's "Published … by" line keeps the Name its publisher had when they published it, on the page, the print view and the Markdown export, instead of changing when they are renamed; one published before Names shows its publisher by email, like its Owners (#50).
+- [user] Emails are matched whatever their letter case. A Departed person can no longer sign in again by changing the case of their email (for example `Freya.Nilsen@Example.com`); they see the "marked departed" page and no new Account is made. Signing in with a different case of an existing email signs in to that Account, adding a Delegate or Contributor, starting a Handoff, reassigning a Goal and naming an Action Item owner find the Account whatever case is typed, and an address in `GOAL_TRACKER_ADMINS` makes its person an Admin in any case (#49).
+- [ops] Migration `0020_lowercase_account_emails` trims and lowercases the emails already stored. It merges nothing: if two Accounts differ only by case, the migration fails on the `UNIQUE` email constraint and the server won't start until an operator resolves the duplicate by hand (#49).
 
 **Infrastructure:**
 - [ops] `make serve` builds the app and serves it on the tailnet at `https://<machine>.<tailnet>.ts.net:8090` through `tailscale serve`, listening on localhost only and with emailed links pointing at the tailnet URL; `SERVE_PORT`, `SERVE_DB`, and `SERVE_ADMINS` override the defaults.
@@ -54,6 +56,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Code quality:**
 - [internal] Declare the label type style once: table heads share the `.label` rule, the Milestone grid heads in the Check-in form use the `.label` class, and the Top-level control in the Goal page's More menu is headed by an `h3` label instead of an `h2` restyled to match (#66).
+- [internal] Move the last nine inline `style=` attributes in the page templates into classes: a shared `.inline-form` in `app.css` for the one-button forms, and page classes for the rest. Pages render the same (#65).
 
 **Documentation:**
 - [internal] Record in `DESIGN.md` § Accepted audit findings that the white card surface and the hex/rgba tokens stay as the source has them, so later design audits stop flagging them (#62).
