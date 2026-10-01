@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -189,6 +190,25 @@ func (s *Service) MarkReturned(ctx context.Context, actorID, accountID int64) er
 		return fmt.Errorf("mark returned: %w", err)
 	}
 	return nil
+}
+
+// DepartedAccounts lists every Departed person, whether or not they still own
+// a Goal, in the order they are shown: by Label, ignoring case, then by email.
+// It is where an Admin finds someone to mark returned who has no Goal page to
+// do it from.
+func (s *Service) DepartedAccounts(ctx context.Context) ([]Account, error) {
+	rows, err := s.queries.ListDepartedAccounts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list departed accounts: %w", err)
+	}
+	out := make([]Account, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, accountFromRow(r))
+	}
+	slices.SortStableFunc(out, func(a, b Account) int {
+		return strings.Compare(strings.ToLower(a.Label()), strings.ToLower(b.Label()))
+	})
+	return out, nil
 }
 
 // requireAdmin returns ErrNotAuthorized unless actorID is an Admin.

@@ -11,3 +11,6 @@ SELECT * FROM accounts WHERE id = ? LIMIT 1;
 
 -- name: SetAccountName :exec
 UPDATE accounts SET name = ? WHERE id = ?;
+
+-- name: ListDepartedAccounts :many
+SELECT * FROM accounts WHERE departed = 1 ORDER BY email;
