@@ -16,6 +16,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 ### Collected changes — October 1, 2026
 
 **New features:**
+- [ops] `make restart` rebuilds the server and restarts the tailnet instance in the background. It stops whatever listens on `127.0.0.1:$SERVE_PORT` and runs `make serve` detached, logging to `serve.log`. It waits until the new server is listening and fails, showing the log, if it doesn't come up.
 - [user] The Goal page has a collapsed "Ownership history (N)" section listing every Handoff and Admin Reassign oldest first, with from, to, who started it, when, and the outcome: pending, accepted, rejected, cancelled, or reassigned by an Admin (#46).
 - [user] An Admin can reverse a departure: a Goal page whose Owner has departed offers "Mark returned…", which asks for confirmation. The person can sign in again and the Goals they still own stop being Ownerless; a Goal reassigned while they were away stays with its new Owner, and a cancelled Handoff stays cancelled (#45).
 - [user] Pages show people by their Name instead of their email address, with the email on hover; someone without a Name yet is shown by the part of their email before the `@`. The Markdown export, the Print view, and the reminder, digest, and comment emails introduce each person as `Name (email)` at their first mention. Publications keep the Names people had when published, and ones published earlier still show emails. Forms and the spreadsheet import still take emails, and the seed gives every person a Name (#41).

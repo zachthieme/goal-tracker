@@ -14,3 +14,6 @@ bin/
 # Binaries from a plain `go build ./cmd/...` at the repo root (`make build` writes to bin/)
 /goal-tracker
 /seed
+
+# `make restart` server log
+/serve.log

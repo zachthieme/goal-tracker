@@ -10,6 +10,7 @@ regular cadence with Check-ins, and produces Reports. The domain language is in
 | ------- | ----------- | ------------ |
 | `go run ./cmd/goal-tracker` | `make build` (builds `bin/goal-tracker`) | Serves the web app. |
 | | `make serve` | Builds and serves the web app on your tailnet at `https://<machine>.<tailnet>.ts.net:8090` via `tailscale serve`, with `admin@example.com` as Admin. Override with `SERVE_PORT`, `SERVE_DB`, and `SERVE_ADMINS`. |
+| | `make restart` | Rebuilds, stops the server listening on `127.0.0.1:$SERVE_PORT`, and starts `make serve` again in the background, logging to `serve.log` (`SERVE_LOG`). Takes the same overrides. |
 | `go run ./cmd/seed` | `make seed` | Fills a fresh database with a fake org for demos (see [Seed a fake org](#seed-a-fake-org)). |
 
 The server is configured from the environment:
