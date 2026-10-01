@@ -25,10 +25,12 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Marking someone Departed cancels the pending Handoffs to them, so they can no longer be accepted; a Handoff the departing Owner started stays pending, and accepting it ends the Goal's Ownerless state (#46).
 - [user] A Departed person can no longer sign in or act: signing in shows why it was refused, a session they already had ends on their next request, and they can't submit Check-ins as Owner or Delegate. Everything they did stays attributed to them, and a Departed Delegate stays listed on the Goal page, marked "departed" (#45).
 - [user] A Goal page's Dimensions section links to the Dimensions page ("All Dimensions →") for everyone who can see the Goal, even before any Dimension is defined, so non-Admins can reach it again now that it's out of the main nav (#44).
+- [user] The Goal page header fits a phone screen: the title and meta line use the full width instead of wrapping a few letters per line, and Check in, No change and More wrap onto their own line, kept to the right so the More menu opens on-screen (#42).
 
 **Infrastructure:**
 - [ops] `make serve` builds the app and serves it on the tailnet at `https://<machine>.<tailnet>.ts.net:8090` through `tailscale serve`, listening on localhost only and with emailed links pointing at the tailnet URL; `SERVE_PORT`, `SERVE_DB`, and `SERVE_ADMINS` override the defaults.
 - [internal] Ignore the `goal-tracker` and `seed` binaries that a plain `go build ./cmd/...` writes to the repo root, so they can't be committed by accident.
+- [internal] Campaign agents run the gates in the foreground and commit before their turn ends: the agent image disables Claude Code's background tasks and raises its Bash timeout to 10 minutes, and CLAUDE.md says so. Agents that backgrounded `make test` and waited ended their single turn with nothing committed, parking #25, #28, #37, and #44 as "stalled, no-commit".
 
 ### Goal Tracker v1 pilot build — September 30, 2026
 
