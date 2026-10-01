@@ -154,11 +154,11 @@ strong{color:var(--color-ink)}
 .navitem{display:inline-flex;align-items:center;height:36px;color:var(--nav-ink-2);padding:0 12px;border-radius:var(--radius-md);font-weight:500;white-space:nowrap;transition:background var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out)}
 .navitem:hover{color:var(--nav-ink);background:var(--nav-hover);text-decoration:none}
 .navitem.on{color:var(--nav-ink);box-shadow:inset 0 -2px 0 var(--color-primary);border-radius:var(--radius-md) var(--radius-md) 0 0}
-.count{display:inline-block;min-width:18px;padding:0 6px;margin-left:8px;border-radius:var(--radius-full);background:var(--color-primary-light);color:var(--color-ink);font-size:11px;font-weight:600;text-align:center;line-height:18px;box-sizing:border-box}
+.count{display:inline-block;min-width:18px;padding:0 8px;margin-left:8px;border-radius:var(--radius-full);background:var(--color-primary-light);color:var(--color-ink);font-size:11px;font-weight:600;text-align:center;line-height:18px;box-sizing:border-box}
 .me{margin-left:auto;display:flex;align-items:center;gap:12px;color:var(--nav-ink-2)}
 .me strong,.me .person{color:var(--nav-ink)}
 .avatar{width:32px;height:32px;border-radius:var(--radius-full);background:var(--color-primary-strong);color:var(--color-ink-inverse);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600}
-.badge{display:inline-flex;align-items:center;gap:6px;padding:1px 8px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;line-height:20px;white-space:nowrap;box-sizing:border-box}
+.badge{display:inline-flex;align-items:center;gap:8px;padding:1px 8px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;line-height:20px;white-space:nowrap;box-sizing:border-box}
 .dot{width:8px;height:8px;display:inline-block;background:currentColor;flex:none}
 .g{background:var(--health-g-bg);color:var(--health-g-ink)}.g .dot{border-radius:50%}
 .y{background:var(--health-y-bg);color:var(--health-y-ink)}.y .dot{clip-path:polygon(50% 0,100% 100%,0 100%);width:10px;height:9px}
@@ -166,7 +166,7 @@ strong{color:var(--color-ink)}
 .st{background:var(--color-primary-light);color:var(--color-ink)}
 .ol{background:var(--color-surface);color:var(--color-ink);border:1px dashed var(--color-ink-muted)}
 .lc{background:var(--color-surface-alt);color:var(--color-ink-2);border:1px solid var(--color-border)}
-.tag{display:inline-flex;align-items:center;padding:0 10px;border-radius:var(--radius-full);color:var(--color-ink);font-size:13px;line-height:22px;background:var(--color-primary-light)}
+.tag{display:inline-flex;align-items:center;padding:0 12px;border-radius:var(--radius-full);color:var(--color-ink);font-size:13px;line-height:22px;background:var(--color-primary-light)}
 .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:24px;box-shadow:var(--shadow-card)}
 a.card{color:var(--color-ink-2);transition:transform var(--dur-base) var(--ease-out),box-shadow var(--dur-base) var(--ease-out)}
 a.card:hover{text-decoration:none;color:var(--color-ink-2);transform:translateY(-2px);box-shadow:var(--shadow-card-hover)}
@@ -185,13 +185,13 @@ a.card:hover{text-decoration:none;color:var(--color-ink-2);transform:translateY(
 .label,th{font-size:11px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--color-ink-muted)}
 .num{font-family:var(--font-mono);font-weight:500}
 table{border-collapse:collapse;width:100%}
-th{text-align:left;padding:10px 16px;border-bottom:1px solid var(--color-border);background:var(--color-surface-alt);white-space:nowrap}
+th{text-align:left;padding:12px 16px;border-bottom:1px solid var(--color-border);background:var(--color-surface-alt);white-space:nowrap}
 .card:has(table){overflow:clip}
 .card:has(>table:only-child){padding:0}
 td{padding:12px 16px;border-bottom:1px solid var(--color-border);vertical-align:middle}
 tr:last-child td{border-bottom:none}
 tr[aria-selected=true] td{background:var(--color-primary-light)}
-.field{display:flex;flex-direction:column;gap:6px}
+.field{display:flex;flex-direction:column;gap:8px}
 .field>span{font-weight:600;font-size:13px;color:var(--color-ink)}
 .hint{font-size:13px;color:var(--color-ink-muted);font-weight:400}
 .inline-form{display:inline}
@@ -218,6 +218,6 @@ input,textarea,select,img{max-width:100%}
 pre{overflow-x:auto}
 fieldset{min-width:0}
 @media (max-width:900px){.nav{flex-wrap:wrap;height:auto;min-height:56px;padding:0 16px;column-gap:12px}.brand{margin-right:0}.me{flex:1 1 0;justify-content:flex-end;min-width:0;height:56px}.who{display:flex;min-width:0;font-size:0}.who .person{min-width:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.navitems{order:1;flex:1 0 100%;margin:0 -8px 8px}.navitems .navitem{padding:0 8px}.card:has(table){overflow-x:auto}}
-@media (max-width:360px){.navitems .navitem{padding:0 5px}.navitems .count{margin-left:6px}}
+@media (max-width:360px){.navitems .navitem{padding:0 4px}.navitems .count{margin-left:8px}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0s!important}.btn:hover,.btn:active,a.card:hover{transform:none!important}}
 @media (pointer:coarse){.btn,.btn.sm,input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],select{min-height:44px}}

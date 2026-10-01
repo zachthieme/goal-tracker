@@ -51,7 +51,7 @@ func delegatePage(current *domain.Account, goals []delegatedGoal) templ.Componen
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<style>\n\t\t\t.dg-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}\n\t\t\t.dg-card{padding:20px 24px;display:flex;flex-direction:column;gap:10px}\n\t\t\t.dg-card .btn{align-self:flex-start}\n\t\t</style> <header class=\"page-head\"><div><h1>Goals delegated to me</h1><p class=\"muted\">Goals whose Owner has authorized you to write Check-ins on their behalf.</p></div></header>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<style>\n\t\t\t.dg-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}\n\t\t\t.dg-card{padding:20px 24px;display:flex;flex-direction:column;gap:12px}\n\t\t\t.dg-card .btn{align-self:flex-start}\n\t\t</style> <header class=\"page-head\"><div><h1>Goals delegated to me</h1><p class=\"muted\">Goals whose Owner has authorized you to write Check-ins on their behalf.</p></div></header>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
