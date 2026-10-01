@@ -95,6 +95,10 @@ deliberately; don't override it on one page.
   --shadow-pop:        0 25px 50px -12px rgba(19,78,74,.25);
   --shadow-glow:       0 4px 14px 0 rgba(20,184,166,.38); /* primary button hover */
 
+  /* Primary button hover fill. Light keeps the resting fill: --color-primary-hover
+   * under white text is only 3.74:1 */
+  --btn-primary-hover: var(--color-primary-strong);
+
   /* Motion */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-fast: 150ms;
@@ -145,7 +149,10 @@ deliberately; don't override it on one page.
   --shadow-card:       0 10px 25px -5px rgba(0,0,0,.45), 0 8px 10px -6px rgba(0,0,0,.30);
   --shadow-card-hover: 0 20px 30px -10px rgba(0,0,0,.55), 0 10px 15px -5px rgba(0,0,0,.35);
   --shadow-pop:        0 25px 50px -12px rgba(0,0,0,.65);
-  --shadow-glow:       0 4px 14px 0 rgba(20,184,166,.30);
+  --shadow-glow:       none; /* a coloured halo on a dark surface reads as decoration */
+
+  /* Dark hover goes lighter instead: --color-ink-inverse on it is 7.77:1 */
+  --btn-primary-hover: var(--color-primary-hover);
 }
 ```
 
@@ -184,7 +191,14 @@ Load the fonts with this URL:
 - **Primary button (`.btn.primary`):**
   - Resting: `--color-primary-strong` fill, `--color-ink-inverse` text,
     `--radius-md`, 14px, weight 600.
-  - Hover: `translateY(-1px)` and `--shadow-glow`.
+  - Hover: `translateY(-1px)`, `--shadow-glow`, and a `--btn-primary-hover`
+    fill.
+    - Light: the fill stays `--color-primary-strong` (white text, 5.47:1),
+      lifted by the teal `--shadow-glow`. Light `--color-primary-hover` is
+      only 3.74:1 under white text, so it can't be the fill.
+    - Dark: `--shadow-glow` is `none`, because dark themes show elevation by
+      lightness. The fill lightens to `--color-primary-hover` (`#2DD4BF`), and
+      `--color-ink-inverse` text on it is 7.77:1.
   - Active: `scale(0.98)`.
 - **Secondary button (`.btn`):** `--color-surface` fill, 1px `--color-border`,
   `--color-ink` text. On hover, the fill becomes `--color-surface-hover` and
