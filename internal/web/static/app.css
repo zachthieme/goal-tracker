@@ -217,3 +217,4 @@ pre{overflow-x:auto}
 fieldset{min-width:0}
 @media (max-width:900px){.nav{padding:0 16px}.brand{margin-right:12px}.card:has(table){overflow-x:auto}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0s!important}.btn:hover,.btn:active,a.card:hover{transform:none!important}}
+@media (pointer:coarse){.btn,.btn.sm,input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],select{min-height:44px}}
