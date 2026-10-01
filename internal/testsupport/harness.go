@@ -70,3 +70,15 @@ func (h *Harness) SignIn(emailAddr string) domain.Account {
 	}
 	return acc
 }
+
+// SignInNamed signs the email in and gives the Account the Name the org's
+// sign-in would supply (CONTEXT.md: Name), failing the test on error.
+func (h *Harness) SignInNamed(emailAddr, name string) domain.Account {
+	h.T.Helper()
+	acc := h.SignIn(emailAddr)
+	if err := h.Service.SetName(context.Background(), acc.ID, name); err != nil {
+		h.T.Fatalf("SetName(%q): %v", emailAddr, err)
+	}
+	acc.Name = name
+	return acc
+}

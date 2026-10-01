@@ -411,3 +411,62 @@ func TestReminderSkipsGoalsThatArentActive(t *testing.T) {
 		t.Errorf("sent %d reminders for Goals that aren't Active, want none: %+v", len(got), got)
 	}
 }
+
+// An email has no hover, so the reminder introduces the Owner a Delegate
+// writes for as Name (email) once, and by Name after that (CONTEXT.md: Name).
+func TestReminderIntroducesTheOwnerOnce(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignInNamed("sam.berg@example.com", "Sam Berg")
+	dee := h.SignIn("dee@example.com")
+	for _, title := range []string{"Ship search", "Ship filters"} {
+		g := h.ActiveGoal(sam, title, "People can't find things.")
+		h.AddDelegate(sam, dee, g.ID)
+	}
+	h.Clock.Advance(10 * day)
+
+	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
+		t.Fatalf("SendReminders: %v", err)
+	}
+
+	msgs := sentTo(h.Email, "dee@example.com")
+	if len(msgs) != 1 {
+		t.Fatalf("reminders to the Delegate = %d, want 1", len(msgs))
+	}
+	body := msgs[0].Body
+	if n := strings.Count(body, "as Delegate for Sam Berg (sam.berg@example.com)"); n != 1 {
+		t.Errorf("reminder introduces the Owner %d times, want once:\n%s", n, body)
+	}
+	if n := strings.Count(body, "as Delegate for Sam Berg"); n != 2 {
+		t.Errorf("reminder names the Owner %d times, want twice:\n%s", n, body)
+	}
+}
+
+// The digest introduces each child's Owner as Name (email) at their first
+// mention and by Name after that; someone without a Name reads as their
+// email's local part.
+func TestDigestIntroducesEachOwnerOnce(t *testing.T) {
+	h := testsupport.New(t)
+	pat := h.SignIn("pat@example.com")
+	kim := h.SignInNamed("kim.lee@example.com", "Kim Lee")
+	lou := h.SignIn("lou@example.com")
+	parent := h.ActiveGoal(pat, "Grow revenue", "It pays for everything.")
+	for _, title := range []string{"Launch pricing page", "Launch trials"} {
+		h.RequestLink(kim, h.ActiveGoal(kim, title, "Buyers can't see prices."), parent, "")
+	}
+	h.RequestLink(lou, h.ActiveGoal(lou, "Win back churned", "They left."), parent, "")
+
+	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
+		t.Fatalf("SendDigests: %v", err)
+	}
+
+	body := digestTo(t, h.Email, "pat@example.com")
+	for _, want := range []string{
+		"- Launch pricing page, owned by Kim Lee (kim.lee@example.com), asks to contribute to Grow revenue\n",
+		"- Launch trials, owned by Kim Lee, asks to contribute to Grow revenue\n",
+		"- Win back churned, owned by lou (lou@example.com), asks to contribute to Grow revenue\n",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("digest does not read %q:\n%s", want, body)
+		}
+	}
+}
