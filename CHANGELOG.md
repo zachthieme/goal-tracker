@@ -59,6 +59,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Code quality:**
 - [internal] Declare the label type style once: table heads share the `.label` rule, the Milestone grid heads in the Check-in form use the `.label` class, and the Top-level control in the Goal page's More menu is headed by an `h3` label instead of an `h2` restyled to match (#66).
 - [internal] Move the last nine inline `style=` attributes in the page templates into classes: a shared `.inline-form` in `app.css` for the one-button forms, and page classes for the rest. Pages render the same (#65).
+- [internal] Move every gap, padding and margin in the shared stylesheet and the pages' screen style blocks onto the 4px grid `DESIGN.md` requires, rounding ties up, and add a test that keeps them there; the Report Print view and the badges' 1px optical padding are exempt (#61).
 
 **Documentation:**
 - [internal] Record in `DESIGN.md` § Accepted audit findings that the white card surface and the hex/rgba tokens stay as the source has them, so later design audits stop flagging them (#62).
