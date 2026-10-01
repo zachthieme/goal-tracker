@@ -267,6 +267,37 @@ func TestNonOwnerCannotAssignDimensionValueOverHTTP(t *testing.T) {
 	}
 }
 
+// With Dimensions out of the main nav, a non-Admin who doesn't own the Goal
+// reaches the Dimensions page from the Goal page's Dimensions section — before
+// any Dimension is defined as well as after.
+func TestGoalPageDimensionsSectionLinksToDimensionsForNonOwner(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	owner := h.SignIn("owner@example.com")
+	h.SignIn("other@example.com")
+	goal := h.CreateGoal(owner, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+	otherClient := signInClient(t, ts.URL, "other@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	empty := pageElement(t, getBody(t, otherClient, goalURL), "section", "goal-dimensions")
+	if !strings.Contains(empty, "No Dimensions defined yet.") {
+		t.Fatalf("Dimensions section isn't empty:\n%s", empty)
+	}
+	if !strings.Contains(empty, `href="/dimensions"`) {
+		t.Errorf("empty Dimensions section has no link to /dimensions:\n%s", empty)
+	}
+
+	h.CreateDimension(boss, "Quarter", "Q3", "Q4")
+	defined := pageElement(t, getBody(t, otherClient, goalURL), "section", "goal-dimensions")
+	if !strings.Contains(defined, "Quarter") {
+		t.Fatalf("Dimensions section doesn't list Quarter:\n%s", defined)
+	}
+	if !strings.Contains(defined, `href="/dimensions"`) {
+		t.Errorf("Dimensions section has no link to /dimensions:\n%s", defined)
+	}
+}
+
 // The Goal list filters to the Goals carrying a chosen value and groups the list
 // under each value of a chosen Dimension (CONTEXT.md: filter and group Goals).
 func TestGoalListFiltersAndGroupsByDimension(t *testing.T) {

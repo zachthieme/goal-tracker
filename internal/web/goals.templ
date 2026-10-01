@@ -559,7 +559,8 @@ func openSection(id string) templ.ComponentScript {
 // goalDimensions shows the Goal's value in each Dimension as a tag — retired
 // values stay readable — and, for its Owner, a collapsed section to assign a
 // value per Dimension (CONTEXT.md: Owners assign Dimension values; retired
-// values stay readable).
+// values stay readable). It links everyone to the Dimensions page, which isn't
+// in the main nav.
 templ goalDimensions(v goalView, owner bool) {
 	{{ g := v.Goal }}
 	if len(v.Dimensions) == 0 {
@@ -601,6 +602,7 @@ templ goalDimensions(v goalView, owner bool) {
 			}
 		</details>
 	}
+	<p class="small"><a href="/dimensions">All Dimensions →</a></p>
 }
 
 // addChildGoal creates a Goal under this one, collapsed until the More menu
