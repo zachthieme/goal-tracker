@@ -575,12 +575,12 @@ func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
 	}
 }
 
-// Searching the Goal list keeps the Goals whose title or Owner's email holds the
-// text, ignoring case, and the search box keeps what was typed.
+// Searching the Goal list keeps the Goals whose title or Owner's email or Name
+// holds the text, ignoring case, and the search box keeps what was typed.
 func TestGoalListSearchesTitleAndOwner(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
-	kim := h.SignIn("kim@example.com")
+	kim := h.SignInNamed("kim@example.com", "Kim Lee")
 	latency := h.CreateGoal(sam, "Cut checkout latency", "It matters.")
 	hiring := h.CreateGoal(kim, "Hire two engineers", "It matters.")
 	ts := newServer(t, h)
@@ -592,6 +592,7 @@ func TestGoalListSearchesTitleAndOwner(t *testing.T) {
 	}{
 		{"LATENCY", []string{"Cut checkout latency"}},
 		{"kim@", []string{"Hire two engineers"}},
+		{"kim lee", []string{"Hire two engineers"}},
 		{"example.com", []string{"Cut checkout latency", "Hire two engineers"}},
 		{"nothing like it", nil},
 	} {

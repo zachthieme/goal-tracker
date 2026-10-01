@@ -118,7 +118,7 @@ func goalFilters(view goalsListData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" placeholder=\"Search title or Owner email\" aria-label=\"Search Goals by title or Owner email\"> <select data-testid=\"goal-health-filter\" name=\"health\" aria-label=\"Health\"><option value=\"\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" placeholder=\"Search title or Owner\" aria-label=\"Search Goals by title or Owner\"> <select data-testid=\"goal-health-filter\" name=\"health\" aria-label=\"Health\"><option value=\"\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

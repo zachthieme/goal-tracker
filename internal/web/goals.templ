@@ -45,7 +45,7 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 templ goalFilters(view goalsListData) {
 	<form method="get" action="/goals" data-testid="goal-filters" class="gl-filters">
 		<div class="gl-bar">
-			<input data-testid="goal-search" type="search" name="q" value={ view.Filter.Query } placeholder="Search title or Owner email" aria-label="Search Goals by title or Owner email"/>
+			<input data-testid="goal-search" type="search" name="q" value={ view.Filter.Query } placeholder="Search title or Owner" aria-label="Search Goals by title or Owner"/>
 			<select data-testid="goal-health-filter" name="health" aria-label="Health">
 				<option value="" selected?={ view.Filter.Health == "" }>Any Health</option>
 				for _, hf := range healthFilters {

@@ -86,7 +86,7 @@ func (v goalsListData) filtered() bool {
 // goalFilter is the Goal list's filter bar, read from the URL so a filtered
 // list can be shared and reloaded.
 type goalFilter struct {
-	// Query keeps the Goals whose title or Owner's email holds it, ignoring
+	// Query keeps the Goals whose title or Owner's email or Name holds it, ignoring
 	// case (?q=).
 	Query string
 	// Health keeps the Goals at one Health: "green", "yellow", "red", or "none"
@@ -136,7 +136,9 @@ func (f goalFilter) keeps(row goalRow, mine func(domain.Goal) bool) bool {
 	}
 	if f.Query != "" {
 		q := strings.ToLower(f.Query)
-		if !strings.Contains(strings.ToLower(row.Goal.Title), q) && !strings.Contains(strings.ToLower(row.Goal.Owner.Email), q) {
+		owner := row.Goal.Owner
+		if !strings.Contains(strings.ToLower(row.Goal.Title), q) && !strings.Contains(strings.ToLower(owner.Email), q) &&
+			!strings.Contains(strings.ToLower(owner.Name), q) {
 			return false
 		}
 	}
