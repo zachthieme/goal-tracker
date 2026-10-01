@@ -155,7 +155,7 @@ strong{color:var(--color-ink)}
 .nav :focus-visible{outline-color:var(--nav-focus)}
 .disclose{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;text-align:inherit;cursor:pointer}
 .person>.disclose{text-decoration:underline dotted var(--color-ink-muted);text-underline-offset:3px}
-.person-email{margin-left:.35em;color:var(--color-ink-muted);font-size:.9em;font-weight:400;overflow-wrap:anywhere}
+.person-email{margin-left:4px;color:var(--color-ink-muted);font-size:13px;font-weight:400;overflow-wrap:anywhere}
 .explain{color:var(--color-ink-muted);font-size:13px;font-weight:400;line-height:1.5}
 .nav{display:flex;align-items:center;gap:4px;height:56px;padding:0 32px;background:var(--nav-bg);color:var(--nav-ink);box-sizing:border-box;border-bottom:1px solid var(--color-border)}
 .brand{font-family:var(--font-display);font-weight:700;font-size:19px;letter-spacing:-0.01em;color:var(--nav-ink);margin-right:28px}
@@ -228,7 +228,7 @@ details>summary::-webkit-details-marker{display:none}
 input,textarea,select,img{max-width:100%}
 pre{overflow-x:auto}
 fieldset{min-width:0}
-@media (max-width:900px){.nav{flex-wrap:wrap;height:auto;min-height:56px;padding:0 16px;column-gap:12px}.brand{margin-right:0}.me{flex:1 1 0;justify-content:flex-end;min-width:0;min-height:56px}.who{display:flex;min-width:0;font-size:0}.who .person{display:flex;flex-direction:column;align-items:flex-start;min-width:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.who .person>.disclose{max-width:100%;overflow:hidden;text-overflow:ellipsis}.who .person-email{margin-left:0;font-size:13px;white-space:normal}.navitems{order:1;flex:1 0 100%;margin:0 -8px 8px}.navitems .navitem{padding:0 8px}.card:has(table){overflow-x:auto}}
+@media (max-width:900px){.nav{flex-wrap:wrap;height:auto;min-height:56px;padding:0 16px;column-gap:12px}.brand{margin-right:0}.me{flex:1 1 0;justify-content:flex-end;min-width:0;min-height:56px}.who{display:flex;min-width:0;font-size:0}.who .person{display:flex;flex-direction:column;align-items:flex-start;min-width:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.who .person>.disclose{max-width:100%;overflow:hidden;text-overflow:ellipsis}.who .person-email{margin-left:0;white-space:normal}.navitems{order:1;flex:1 0 100%;margin:0 -8px 8px}.navitems .navitem{padding:0 8px}.card:has(table){overflow-x:auto}}
 @media (max-width:360px){.navitems .navitem{padding:0 4px}.navitems .count{margin-left:8px}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0s!important}.btn:hover,.btn:active,a.card:hover{transform:none!important}}
 @media (pointer:coarse){.btn,.btn.sm,input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],select{min-height:44px}}
