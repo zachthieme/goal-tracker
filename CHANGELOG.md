@@ -126,5 +126,6 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Documentation:**
 - [internal] Add `DESIGN.md`, a light and dark design system adapted from designmd.ai's "d3kn Warm Teal". Its tokens are mapped onto the existing `app.css` components. It fixes the source's contrast failures and keeps Goal Health colours separate from the primary teal. `app.css` is not restyled yet.
 - [internal] Define **Account** and **Name** in `CONTEXT.md`: a person is identified by their email, and a Name comes from the org's sign-in and is never typed into the tool (#41).
+- [internal] Define **Departed** in `CONTEXT.md` and settle what departure and Handoffs mean for sign-in, pending Handoffs, ownership history and Delegates (#27).
 
 For usage details, see [README](README.md).

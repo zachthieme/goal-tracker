@@ -12,6 +12,10 @@ _Avoid_: user, member
 What the tool calls a person. It comes from the org's sign-in and is never typed into the tool. A person without one is shown by the part of their email before the `@`.
 _Avoid_: display name, full name, username
 
+**Departed**:
+An Account whose person has left the org, as recorded by an Admin. A departed person can't sign in or act, but everything they did stays attributed to them. An Admin can reverse it.
+_Avoid_: deactivated, deleted, offboarded
+
 ## Goals and structure
 
 **Goal**:
@@ -27,15 +31,15 @@ The one person accountable for a Goal, who writes its Check-ins and answers for 
 _Avoid_: co-owner, DRI, lead
 
 **Delegate**:
-A person an Owner authorizes to write and submit Check-ins for a Goal. Accountability stays with the Owner, and each Check-in records who wrote it.
+A person an Owner authorizes to write and submit Check-ins for a Goal. Accountability stays with the Owner, and each Check-in records who wrote it. When a Goal changes hands through a Handoff, the new Owner chooses which Delegates to keep.
 _Avoid_: proxy, editor, TPM (as a role in the tool)
 
 **Handoff**:
-The transfer of a Goal to a new Owner, which takes effect only when the new Owner accepts.
+The transfer of a Goal to a new Owner, which takes effect only when the new Owner accepts. Every Handoff is kept in the Goal's history with its outcome: accepted, rejected, or cancelled.
 _Avoid_: reassignment, transfer
 
 **Ownerless**:
-A Goal whose Owner has left the org and hasn't been replaced. Surfaced as prominently as Red and Stale, and reported to the Owners of its parents.
+A Goal whose Owner is Departed and hasn't been replaced, either by an Admin reassigning it or by accepting a Handoff the Owner started before leaving. Surfaced as prominently as Red and Stale, and reported to the Owners of its parents.
 _Avoid_: orphaned, unassigned
 
 **Admin**:
