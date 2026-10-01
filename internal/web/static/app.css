@@ -23,8 +23,8 @@
 
   --color-border:        #E8E6D5;
   --color-border-strong: #D5D2BD;
-  --color-focus:         #14B8A6;
-  --color-focus-halo:    rgba(20,184,166,.25);
+  --color-focus:         #0D9488; /* Teal 600: 3.6:1 on the canvas (DESIGN.md Deviation 5) */
+  --color-focus-halo:    rgba(13,148,136,.25);
 
   --color-success: #2DD4BF;
   --color-warning: #EAB308;
@@ -36,6 +36,7 @@
   --nav-ink:      #FFFFFF;
   --nav-ink-2:    rgba(255,255,255,.78);
   --nav-hover:    rgba(255,255,255,.10);
+  --nav-focus:    #2DD4BF; /* 5.1:1 on the teal top bar */
 
   /* Goal Health (DESIGN.md § Deviations 3) */
   --health-g-bg: #DDEFE3; --health-g-ink: #17593A;
@@ -91,6 +92,7 @@
     --nav-ink:   var(--color-ink);
     --nav-ink-2: var(--color-ink-2);
     --nav-hover: rgba(255,255,255,.06);
+    --nav-focus: var(--color-focus);
     --health-g-bg: rgba(34,160,95,.20);  --health-g-ink: #8EDDAF;
     --health-y-bg: rgba(234,179,8,.20);  --health-y-ink: #F5D06B;
     --health-r-bg: rgba(239,68,68,.20);  --health-r-ink: #F8A39B;
@@ -127,6 +129,7 @@
   --nav-ink:   var(--color-ink);
   --nav-ink-2: var(--color-ink-2);
   --nav-hover: rgba(255,255,255,.06);
+  --nav-focus: var(--color-focus);
   --health-g-bg: rgba(34,160,95,.20);  --health-g-ink: #8EDDAF;
   --health-y-bg: rgba(234,179,8,.20);  --health-y-ink: #F5D06B;
   --health-r-bg: rgba(239,68,68,.20);  --health-r-ink: #F8A39B;
@@ -145,6 +148,7 @@ h3{font-size:19px;font-weight:600;line-height:1.4}
 p{margin:0}
 strong{color:var(--color-ink)}
 :focus-visible{outline:2px solid var(--color-focus);outline-offset:2px}
+.nav :focus-visible{outline-color:var(--nav-focus)}
 .nav{display:flex;align-items:center;gap:4px;height:56px;padding:0 32px;background:var(--nav-bg);color:var(--nav-ink);box-sizing:border-box;border-bottom:1px solid var(--color-border)}
 .brand{font-family:var(--font-display);font-weight:700;font-size:19px;letter-spacing:-0.01em;color:var(--nav-ink);margin-right:28px}
 .brand:hover{color:var(--nav-ink);text-decoration:none}

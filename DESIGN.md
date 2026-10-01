@@ -36,7 +36,7 @@ deliberately; don't override it on one page.
 ```css
 :root {
   /* Brand */
-  --color-primary:        #14B8A6; /* Teal 500: focus rings, active pills, accents */
+  --color-primary:        #14B8A6; /* Teal 500: active pills, accents */
   --color-primary-hover:  #0D9488; /* Teal 600 */
   --color-primary-strong: #0F766E; /* Teal 700: filled buttons, links. See Deviations */
   --color-primary-light:  #CCFBF1; /* Teal 100: badge fills, selected rows */
@@ -57,8 +57,8 @@ deliberately; don't override it on one page.
   /* Lines */
   --color-border:        #E8E6D5; /* cards, dividers */
   --color-border-strong: #D5D2BD; /* inputs */
-  --color-focus:         #14B8A6;
-  --color-focus-halo:    rgba(20,184,166,.25); /* input focus outline */
+  --color-focus:         #0D9488; /* Teal 600. See Deviations */
+  --color-focus-halo:    rgba(13,148,136,.25); /* input focus outline */
 
   /* Feedback */
   --color-success: #2DD4BF;
@@ -71,6 +71,7 @@ deliberately; don't override it on one page.
   --nav-ink:   #FFFFFF;
   --nav-ink-2: rgba(255,255,255,.78); /* resting nav items */
   --nav-hover: rgba(255,255,255,.10); /* translucent-white hover */
+  --nav-focus: #2DD4BF; /* focus ring on the top bar. See Deviations */
 
   /* Goal Health. See Deviations */
   --health-g-bg: #DDEFE3; --health-g-ink: #17593A;
@@ -135,6 +136,7 @@ deliberately; don't override it on one page.
   --nav-ink:   var(--color-ink);
   --nav-ink-2: var(--color-ink-2);
   --nav-hover: rgba(255,255,255,.06); /* (chosen) */
+  --nav-focus: var(--color-focus);
 
   /* (chosen) Health hues on 20%-alpha fills with light text */
   --health-g-bg: rgba(34,160,95,.20); --health-g-ink: #8EDDAF;
@@ -209,7 +211,7 @@ Load the fonts with this URL:
 1. **Filled-button and link colour.** The source puts white text on `#14B8A6`,
    which has a contrast ratio of 2.49:1 and fails WCAG AA. Light mode adds
    `--color-primary-strong: #0F766E` for text-bearing fills and links, which
-   reaches 5.47:1. `#14B8A6` stays in use for rings, borders and accents. In
+   reaches 5.47:1. `#14B8A6` stays in use for borders and accents. In
    dark mode, buttons keep `#14B8A6` with `#042F2E` text, which reaches 5.81:1.
 2. **Muted ink.** The source's `#688E8B` reaches 3.6:1 on white, which is too
    low for the 12–13px labels this app uses heavily. It is darkened to
@@ -228,3 +230,9 @@ Load the fonts with this URL:
    too low for 13–15px text. Destructive buttons and inline errors use
    `--color-danger-ink` (`#9A231B`, the Red Health ink) in light mode instead;
    `--color-error` stays for borders and icons.
+5. **Focus ring.** The source rings focus in `#14B8A6`, which reaches only
+   2.41:1 on the canvas, below WCAG's 3:1 for focus indicators. Light mode
+   rings focus in `--color-focus: #0D9488` instead (3.62:1 on the canvas,
+   3.74:1 on white, 3.44:1 on `--color-surface-alt`). On the dark-teal top
+   bar that drops to 2.53:1, so nav items ring in `--nav-focus: #2DD4BF`
+   (5.09:1). Dark mode keeps `#2DD4BF` everywhere.
