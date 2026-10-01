@@ -1690,7 +1690,7 @@ func checkinStyles() templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "<style>\n\t\t\t.checkin-page{max-width:760px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px}\n\t\t\t.checkin-page .card{padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}\n\t\t\t.checkin-page .card form{margin:0}\n\t\t\t.checkin-form{display:flex;flex-direction:column;gap:16px}\n\t\t\t.checkin-form fieldset{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;margin:0;display:flex;flex-direction:column;gap:8px;background:var(--color-surface)}\n\t\t\t.checkin-form legend{font-weight:600;font-size:13px;padding:0 4px}\n\t\t\t.checkin-form label{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:13px}\n\t\t\t.health-toggle{flex-direction:row!important;flex-wrap:wrap;gap:12px!important;border:none!important;padding:0!important;background:none!important}\n\t\t\t.health-toggle legend{padding:0;margin-bottom:6px}\n\t\t\t.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:15px;height:48px;padding:0 20px;border:2px solid currentColor;cursor:pointer}\n\t\t\t.health-toggle label.badge .dot{width:12px;height:12px}\n\t\t\t.health-toggle input{position:absolute;opacity:0;pointer-events:none}\n\t\t\t.health-toggle label.badge:not(:has(input:checked)){background:var(--color-surface);border-color:var(--color-border-strong)}\n\t\t\t.health-toggle label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}\n\t\t\t.checkin-form:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error){display:none}\n\t\t\t.checkin-form:has(input[name=health][value=Yellow]:checked) .path-to-green{background:var(--health-y-bg)}\n\t\t\t.checkin-form:has(input[name=health][value=Red]:checked) .path-to-green{background:var(--health-r-bg)}\n\t\t\t.checkin-readings label{flex-direction:row;align-items:center;justify-content:space-between;gap:12px}\n\t\t\t.checkin-readings input{width:160px}\n\t\t\t.checkin-more{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:0 24px;box-shadow:var(--shadow-card)}\n\t\t\t.checkin-more>summary{font-weight:600}\n\t\t\t.checkin-more>summary::after{content:\"▸\";color:var(--color-ink-muted)}\n\t\t\t.checkin-more[open]>summary::after{content:\"▾\"}\n\t\t\t.checkin-more[open]{padding-bottom:16px}\n\t\t\t.checkin-more fieldset{border:none;padding:0;background:none}\n\t\t\t.checkin-more fieldset>legend{display:none}\n\t\t\t.ms-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1fr);gap:8px 12px;align-items:start}\n\t\t\t.ms-grid>.ms-head{font-size:11px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--color-ink-muted)}\n\t\t\t.ms-row{display:contents}\n\t\t\t.ms-name{font-weight:600;align-self:center}\n\t\t\t.ms-reasons{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;padding-bottom:8px;border-bottom:1px solid var(--color-border)}\n\t\t\t.ms-reasons textarea,.checkin-more textarea[name=delivery_date_reason]{min-height:40px}\n\t\t\t.lifecycle-choices{display:flex;flex-wrap:wrap;gap:8px 16px}\n\t\t\t.lifecycle-choices label{flex-direction:row;align-items:center;font-weight:500}\n\t\t\t.checkin-submit{display:flex;justify-content:flex-end;gap:12px}\n\t\t\t.checkin-history{list-style:none;padding:0;margin:0}\n\t\t\t.checkin-history li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--color-border)}\n\t\t</style>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "<style>\n\t\t\t.checkin-page{max-width:760px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px}\n\t\t\t.checkin-page .card{padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}\n\t\t\t.checkin-page .card form{margin:0}\n\t\t\t.checkin-form{display:flex;flex-direction:column;gap:16px}\n\t\t\t.checkin-form fieldset{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;margin:0;display:flex;flex-direction:column;gap:8px;background:var(--color-surface)}\n\t\t\t.checkin-form legend{font-weight:600;font-size:13px;padding:0 4px}\n\t\t\t.checkin-form label{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:13px}\n\t\t\t.health-toggle{flex-direction:row!important;flex-wrap:wrap;gap:12px!important;border:none!important;padding:0!important;background:none!important}\n\t\t\t.health-toggle legend{padding:0;margin-bottom:6px}\n\t\t\t.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:15px;height:48px;padding:0 20px;border:2px solid currentColor;cursor:pointer}\n\t\t\t.health-toggle label.badge .dot{width:12px;height:12px}\n\t\t\t.health-toggle input{position:absolute;opacity:0;pointer-events:none}\n\t\t\t.health-toggle label.badge:not(:has(input:checked)){background:var(--color-surface);border-color:var(--color-border-strong)}\n\t\t\t.health-toggle label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}\n\t\t\t.checkin-form:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error){display:none}\n\t\t\t.checkin-form:has(input[name=health][value=Yellow]:checked) .path-to-green{background:var(--health-y-bg)}\n\t\t\t.checkin-form:has(input[name=health][value=Red]:checked) .path-to-green{background:var(--health-r-bg)}\n\t\t\t.checkin-readings label{flex-direction:row;align-items:center;justify-content:space-between;gap:12px}\n\t\t\t.checkin-readings input{width:160px}\n\t\t\t.checkin-more{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:0 24px;box-shadow:var(--shadow-card)}\n\t\t\t.checkin-more>summary{font-weight:600}\n\t\t\t.checkin-more>summary::after{content:\"▸\";color:var(--color-ink-muted)}\n\t\t\t.checkin-more[open]>summary::after{content:\"▾\"}\n\t\t\t.checkin-more[open]{padding-bottom:16px}\n\t\t\t.checkin-more fieldset{border:none;padding:0;background:none}\n\t\t\t.checkin-more fieldset>legend{display:none}\n\t\t\t.ms-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1fr);gap:8px 12px;align-items:start}\n\t\t\t.ms-row{display:contents}\n\t\t\t.ms-name{font-weight:600;align-self:center}\n\t\t\t.ms-reasons{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;padding-bottom:8px;border-bottom:1px solid var(--color-border)}\n\t\t\t.ms-reasons textarea,.checkin-more textarea[name=delivery_date_reason]{min-height:40px}\n\t\t\t.lifecycle-choices{display:flex;flex-wrap:wrap;gap:8px 16px}\n\t\t\t.lifecycle-choices label{flex-direction:row;align-items:center;font-weight:500}\n\t\t\t.checkin-submit{display:flex;justify-content:flex-end;gap:12px}\n\t\t\t.checkin-history{list-style:none;padding:0;margin:0}\n\t\t\t.checkin-history li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--color-border)}\n\t\t</style>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1742,7 +1742,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var70 string
 			templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.DeliveryDate)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 628, Col: 66}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 627, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var70)
 			if templ_7745c5c3_Err != nil {
@@ -1763,7 +1763,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var71 string
 			templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.JoinStringErrs(d.DeliveryDateReason)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 633, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 632, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var71))
 			if templ_7745c5c3_Err != nil {
@@ -1778,7 +1778,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 127, "<div class=\"ms-grid\"><span class=\"ms-head\">Milestone</span> <span class=\"ms-head\">Date</span> <span class=\"ms-head\">Status</span> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 127, "<div class=\"ms-grid\"><span class=\"label\">Milestone</span> <span class=\"label\">Date</span> <span class=\"label\">Status</span> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1791,7 +1791,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var72 string
 			templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinStringErrs(row.Milestone.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 644, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 643, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var72))
 			if templ_7745c5c3_Err != nil {
@@ -1804,7 +1804,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var73 string
 			templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("milestone_date_%d", id))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 647, Col: 69}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 646, Col: 69}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var73)
 			if templ_7745c5c3_Err != nil {
@@ -1817,7 +1817,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var74 string
 			templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.ResolveAttributeValue(row.Date)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 647, Col: 88}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 646, Col: 88}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var74)
 			if templ_7745c5c3_Err != nil {
@@ -1830,7 +1830,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var75 string
 			templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.ResolveAttributeValue("Date of " + row.Milestone.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 647, Col: 135}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 646, Col: 135}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var75)
 			if templ_7745c5c3_Err != nil {
@@ -1851,7 +1851,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var76 string
 			templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("milestone_status_%d", id))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 653, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 652, Col: 60}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var76)
 			if templ_7745c5c3_Err != nil {
@@ -1864,7 +1864,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var77 string
 			templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.ResolveAttributeValue("Status of " + row.Milestone.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 653, Col: 109}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 652, Col: 109}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var77)
 			if templ_7745c5c3_Err != nil {
@@ -1877,7 +1877,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var78 string
 			templ_7745c5c3_Var78, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.MilestonePlanned)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 654, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 653, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var78)
 			if templ_7745c5c3_Err != nil {
@@ -1900,7 +1900,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var79 string
 			templ_7745c5c3_Var79, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.MilestoneDone)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 655, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 654, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var79)
 			if templ_7745c5c3_Err != nil {
@@ -1923,7 +1923,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var80 string
 			templ_7745c5c3_Var80, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.MilestoneRemoved)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 656, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 655, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var80)
 			if templ_7745c5c3_Err != nil {
@@ -1946,7 +1946,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var81 string
 			templ_7745c5c3_Var81, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("milestone_date_reason_%d", id))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 664, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 663, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var81)
 			if templ_7745c5c3_Err != nil {
@@ -1959,7 +1959,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var82 string
 			templ_7745c5c3_Var82, templ_7745c5c3_Err = templ.JoinStringErrs(row.DateReason)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 664, Col: 87}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 663, Col: 87}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var82))
 			if templ_7745c5c3_Err != nil {
@@ -1980,7 +1980,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var83 string
 			templ_7745c5c3_Var83, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("milestone_removed_reason_%d", id))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 671, Col: 71}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 670, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var83)
 			if templ_7745c5c3_Err != nil {
@@ -1993,7 +1993,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var84 string
 			templ_7745c5c3_Var84, templ_7745c5c3_Err = templ.JoinStringErrs(row.RemovedReason)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 671, Col: 93}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 670, Col: 93}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var84))
 			if templ_7745c5c3_Err != nil {
@@ -2020,7 +2020,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var85 string
 			templ_7745c5c3_Var85, templ_7745c5c3_Err = templ.ResolveAttributeValue(row.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 681, Col: 67}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 680, Col: 67}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var85)
 			if templ_7745c5c3_Err != nil {
@@ -2033,7 +2033,7 @@ func checkinDateFields(d checkinDatesFormData, e checkinError) templ.Component {
 			var templ_7745c5c3_Var86 string
 			templ_7745c5c3_Var86, templ_7745c5c3_Err = templ.ResolveAttributeValue(row.Date)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 685, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 684, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var86)
 			if templ_7745c5c3_Err != nil {
@@ -2097,7 +2097,7 @@ func checkinLifecycleFields(d lifecycleFormData, e checkinError) templ.Component
 			var templ_7745c5c3_Var88 string
 			templ_7745c5c3_Var88, templ_7745c5c3_Err = templ.ResolveAttributeValue(c.To)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 706, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 705, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var88)
 			if templ_7745c5c3_Err != nil {
@@ -2120,7 +2120,7 @@ func checkinLifecycleFields(d lifecycleFormData, e checkinError) templ.Component
 			var templ_7745c5c3_Var89 string
 			templ_7745c5c3_Var89, templ_7745c5c3_Err = templ.JoinStringErrs(c.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 707, Col: 14}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 706, Col: 14}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var89))
 			if templ_7745c5c3_Err != nil {
@@ -2146,7 +2146,7 @@ func checkinLifecycleFields(d lifecycleFormData, e checkinError) templ.Component
 		var templ_7745c5c3_Var90 string
 		templ_7745c5c3_Var90, templ_7745c5c3_Err = templ.JoinStringErrs(d.Reason)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 714, Col: 47}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 713, Col: 47}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var90))
 		if templ_7745c5c3_Err != nil {
@@ -2168,7 +2168,7 @@ func checkinLifecycleFields(d lifecycleFormData, e checkinError) templ.Component
 			var templ_7745c5c3_Var91 string
 			templ_7745c5c3_Var91, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.Outcome)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 720, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 719, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var91)
 			if templ_7745c5c3_Err != nil {
@@ -2222,7 +2222,7 @@ func checkinFieldError(e checkinError, field string) templ.Component {
 			var templ_7745c5c3_Var93 string
 			templ_7745c5c3_Var93, templ_7745c5c3_Err = templ.JoinStringErrs(e.Message)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 731, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 730, Col: 57}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var93))
 			if templ_7745c5c3_Err != nil {

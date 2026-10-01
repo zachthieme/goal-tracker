@@ -37,7 +37,7 @@ func topLevelControl(g domain.Goal) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section data-testid=\"mark-top-level\"><h2>Top-level Goal</h2><form method=\"post\" action=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section data-testid=\"mark-top-level\"><h3 class=\"label\">Top-level Goal</h3><form method=\"post\" action=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

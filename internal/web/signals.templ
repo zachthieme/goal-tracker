@@ -10,7 +10,7 @@ import (
 // or unmark it (CONTEXT.md: Top-level Goal).
 templ topLevelControl(g domain.Goal) {
 	<section data-testid="mark-top-level">
-		<h2>Top-level Goal</h2>
+		<h3 class="label">Top-level Goal</h3>
 		<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/top-level", g.ID)) }>
 			if g.TopLevel {
 				<input type="hidden" name="top_level" value="false"/>

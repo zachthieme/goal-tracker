@@ -180,10 +180,10 @@ a.card:hover{text-decoration:none;color:var(--color-ink-2);transform:translateY(
 .btn[disabled]{opacity:.5;cursor:not-allowed;transform:none;box-shadow:none}
 .muted{color:var(--color-ink-muted)}
 .small{font-size:13px;line-height:1.5}
-.label{font-size:11px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--color-ink-muted)}
+.label,th{font-size:11px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--color-ink-muted)}
 .num{font-family:var(--font-mono);font-weight:500}
 table{border-collapse:collapse;width:100%}
-th{text-align:left;font-size:11px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--color-ink-muted);padding:10px 16px;border-bottom:1px solid var(--color-border);background:var(--color-surface-alt);white-space:nowrap}
+th{text-align:left;padding:10px 16px;border-bottom:1px solid var(--color-border);background:var(--color-surface-alt);white-space:nowrap}
 .card:has(table){overflow:clip}
 .card:has(>table:only-child){padding:0}
 td{padding:12px 16px;border-bottom:1px solid var(--color-border);vertical-align:middle}

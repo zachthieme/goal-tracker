@@ -166,3 +166,22 @@ func TestGoalPageFlagsItsGraphSignals(t *testing.T) {
 		t.Errorf("a Goal with no signals still shows a signals section")
 	}
 }
+
+// The Top-level control sits in the Goal page's More menu, inside a card, where
+// DESIGN.md has no place for a page-section h2: its heading is an h3 label.
+func TestTopLevelControlHeadingIsALabel(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+
+	adaClient := signInClient(t, ts.URL, "ada@example.com")
+	menu := moreMenu(t, getBody(t, adaClient, fmt.Sprintf("%s/goals/%d", ts.URL, g.ID)))
+	if strings.Contains(menu, "<h2") {
+		t.Errorf("More menu renders an h2:\n%s", menu)
+	}
+	if control := pageElement(t, menu, "section", "mark-top-level"); !strings.Contains(control, `<h3 class="label">Top-level Goal</h3>`) {
+		t.Errorf("Top-level control's heading is not an h3 label: %s", control)
+	}
+}
