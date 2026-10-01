@@ -143,3 +143,14 @@ func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
 		t.Errorf("a non-Admin gets the Edit toggle:\n%s", page)
 	}
 }
+
+// The new Dimension form sits a gap below its button through the page's own
+// class rather than a style attribute.
+func TestNewDimensionFormSpacingComesFromAClass(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	h.SignIn("boss@example.com")
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/dimensions")
+	assertStyledBy(t, tagAround(t, page, `action="/dimensions"`), page, "dm-new", "margin-top:12px")
+}

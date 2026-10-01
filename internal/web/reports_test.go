@@ -715,3 +715,14 @@ func TestPublicationBylineKeepsThePublishersNameOverHTTP(t *testing.T) {
 		}
 	}
 }
+
+// The New Report Definition form sits a gap below its button through the
+// page's own class rather than a style attribute.
+func TestNewReportFormSpacingComesFromAClassOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	h.SignIn("boss@example.com")
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports")
+	assertStyledBy(t, tagAround(t, page, `action="/reports"`), page, "rp-new", "margin-top:12px")
+}

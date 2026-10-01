@@ -101,11 +101,20 @@ templ haltedParent(hp domain.HaltedParent) {
 	<span>, which is { hp.Parent.Lifecycle }</span>
 }
 
+// goalSignalsStyles stacks the Goal page's signal banners. It lives beside the
+// banners rather than in goalPageStyles, rendered only when they are.
+templ goalSignalsStyles() {
+	<style>
+		.gp-signals{display:flex;flex-direction:column;gap:8px}
+	</style>
+}
+
 // goalSignals flags, at the top of a Goal's page, the graph signals that touch
 // it, one banner each. It renders nothing when the graph flags nothing.
 templ goalSignals(signals domain.GoalSignals) {
 	if signals.Unaligned || len(signals.ScheduleConflicts) > 0 || len(signals.HaltedParents) > 0 {
-		<section data-testid="goal-signals" aria-label="Graph signals" style="display:flex;flex-direction:column;gap:8px">
+		@goalSignalsStyles()
+		<section data-testid="goal-signals" aria-label="Graph signals" class="gp-signals">
 			if signals.Unaligned {
 				<p data-testid="goal-unaligned" class="alert lc" role="alert"><strong>Unaligned</strong><span>this Active Goal contributes to no other Goal and isn't Top-level.</span></p>
 			}

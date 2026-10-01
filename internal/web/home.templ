@@ -140,7 +140,7 @@ templ dueRow(g domain.PersonalGoal) {
 		</div>
 		<div class="hm-actions">
 			if g.CheckedIn {
-				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins/no-change", g.Goal.ID)) } style="display:inline">
+				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins/no-change", g.Goal.ID)) } class="inline-form">
 					<button type="submit" class="btn sm">No change</button>
 				</form>
 			}
@@ -152,10 +152,10 @@ templ dueRow(g domain.PersonalGoal) {
 // acceptReject is the pair of buttons deciding a pending request at base, the
 // Reject asking for confirmation first.
 templ acceptReject(base, confirmReject string) {
-	<form method="post" action={ templ.SafeURL(base + "/accept") } style="display:inline">
+	<form method="post" action={ templ.SafeURL(base + "/accept") } class="inline-form">
 		<button type="submit" class="btn primary sm">Accept</button>
 	</form>
-	<form method="post" action={ templ.SafeURL(base + "/reject") } style="display:inline" onsubmit={ confirmScript(confirmReject) }>
+	<form method="post" action={ templ.SafeURL(base + "/reject") } class="inline-form" onsubmit={ confirmScript(confirmReject) }>
 		<button type="submit" class="btn danger sm">Reject</button>
 	</form>
 }

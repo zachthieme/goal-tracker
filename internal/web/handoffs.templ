@@ -49,9 +49,10 @@ templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) {
 // default, so the new Owner chooses which to keep (CONTEXT.md: Delegate); it is a
 // plain form POST. Reject asks for confirmation and leaves the Delegates alone.
 templ handoffAcceptReject(ho domain.Handoff) {
-	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/accept", ho.ID)) } style="display:inline">
+	@handoffStyles()
+	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/accept", ho.ID)) } class="inline-form">
 		if len(ho.KeepableDelegates) > 0 {
-			<fieldset data-testid="handoff-keep-delegates" style="border:0;padding:0;margin:0 0 8px;display:flex;flex-direction:column;gap:4px">
+			<fieldset data-testid="handoff-keep-delegates" class="handoff-keep">
 				<legend class="muted small">Delegates to keep</legend>
 				for _, d := range ho.KeepableDelegates {
 					<label>
@@ -64,7 +65,20 @@ templ handoffAcceptReject(ho domain.Handoff) {
 		}
 		<button type="submit" class="btn primary sm">Accept</button>
 	</form>
-	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/reject", ho.ID)) } style="display:inline" onsubmit={ confirmScript("Reject this Handoff?") }>
+	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/reject", ho.ID)) } class="inline-form" onsubmit={ confirmScript("Reject this Handoff?") }>
 		<button type="submit" class="btn danger sm">Reject</button>
 	</form>
+}
+
+// handoffStylesOnce renders the Handoff decision's styles once per page, however
+// many pending Handoffs the page lists (Home and Pending handoffs both carry it).
+var handoffStylesOnce = templ.NewOnceHandle()
+
+// handoffStyles stacks the accept form's keep-Delegates boxes above its button.
+templ handoffStyles() {
+	@handoffStylesOnce.Once() {
+		<style>
+			.handoff-keep{border:0;padding:0;margin:0 0 8px;display:flex;flex-direction:column;gap:4px}
+		</style>
+	}
 }

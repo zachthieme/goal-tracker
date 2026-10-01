@@ -192,6 +192,7 @@ tr[aria-selected=true] td{background:var(--color-primary-light)}
 .field{display:flex;flex-direction:column;gap:6px}
 .field>span{font-weight:600;font-size:13px;color:var(--color-ink)}
 .hint{font-size:13px;color:var(--color-ink-muted);font-weight:400}
+.inline-form{display:inline}
 input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],textarea,select{font:inherit;color:var(--color-ink);background:var(--color-surface);border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:0 16px;height:40px;box-sizing:border-box}
 input::placeholder,textarea::placeholder{color:var(--color-ink-muted)}
 textarea{padding:12px 16px;height:auto;min-height:88px;resize:vertical;line-height:1.5}
