@@ -63,7 +63,7 @@ func homePage(current *domain.Account, v homeView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</p></div><a class=\"btn primary\" href=\"/goals\">New goal</a></header><div class=\"grid-main-aside\"><div><section data-testid=\"home-checkins\" class=\"card\"><h2>Check in on these</h2>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</p></div><a class=\"btn primary\" href=\"/goals\">New goal</a></header><div class=\"grid-main-aside\"><div><section data-testid=\"home-checkins\" class=\"card\"><h3>Check in on these</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -83,7 +83,7 @@ func homePage(current *domain.Account, v homeView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</ul></section><section data-testid=\"home-waiting-on-you\" class=\"card\"><h2>Waiting on you</h2>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</ul></section><section data-testid=\"home-waiting-on-you\" class=\"card\"><h3>Waiting on you</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -246,7 +246,7 @@ func homePage(current *domain.Account, v homeView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</ul></section></div><aside><section data-testid=\"home-your-goals\" class=\"card\"><h2>Your goals</h2><p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</ul></section></div><aside><section data-testid=\"home-your-goals\" class=\"card\"><h3>Your goals</h3><p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -348,7 +348,7 @@ func homePage(current *domain.Account, v homeView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if len(v.Delegated) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<section data-testid=\"home-delegated\" class=\"card\"><h2>Delegated to you</h2><ul>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<section data-testid=\"home-delegated\" class=\"card\"><h3>Delegated to you</h3><ul>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

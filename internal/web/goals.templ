@@ -21,7 +21,7 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 			<details data-testid="propose-goal" class="gl-propose">
 				<summary data-testid="new-goal" class="btn primary">New goal</summary>
 				<form class="card" hx-post="/goals" hx-target="#goal-list" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful){this.reset();this.closest('details').open=false}" method="post" action="/goals">
-					<h2>Propose a Goal</h2>
+					<h3>Propose a Goal</h3>
 					<label class="field">
 						<span>Title</span>
 						<input type="text" name="title" required/>
@@ -246,7 +246,7 @@ templ goalPage(current *domain.Account, v goalView) {
 				}
 				@checkinSection(v)
 				<article data-testid="goal" class="card gp-card">
-					<h2><span class="help" title="The customer problem this Goal addresses and what is expected to change when it succeeds.">So What</span></h2>
+					<h3><span class="help" title="The customer problem this Goal addresses and what is expected to change when it succeeds.">So What</span></h3>
 					<p data-testid="goal-so-what">{ g.SoWhat }</p>
 				</article>
 				<section data-testid="goal-metrics" class="gp-block">
@@ -254,15 +254,15 @@ templ goalPage(current *domain.Account, v goalView) {
 					@metricList(v.Trends, owner)
 				</section>
 				<section data-testid="goal-milestones" class="card gp-card">
-					<h2>Milestones</h2>
+					<h3>Milestones</h3>
 					@milestoneList(v, owner && g.Lifecycle == domain.LifecycleProposed)
 				</section>
 				<section data-testid="goal-highlights" class="card gp-card">
-					<h2>Highlights</h2>
+					<h3>Highlights</h3>
 					@highlightList(v.Highlights)
 				</section>
 				<div data-testid="goal-history" class="card gp-card">
-					<h2>History</h2>
+					<h3>History</h3>
 					<section data-testid="goal-checkin-history">
 						<details>
 							<summary>{ fmt.Sprintf("Check-in history (%d)", len(v.Checkins)) }</summary>
@@ -304,18 +304,18 @@ templ goalPage(current *domain.Account, v goalView) {
 			<aside data-testid="goal-sidebar" class="gp-col">
 				<div class="card gp-card">
 					<section data-testid="goal-parents">
-						<h2>Contributes to</h2>
+						<h3>Contributes to</h3>
 						@linkList(v.Parents, v.LinkHealth, "no-parents", "This Goal contributes to nothing yet.")
 					</section>
 				</div>
 				<div class="card gp-card">
 					<section data-testid="goal-children">
-						<h2>Contributed to by</h2>
+						<h3>Contributed to by</h3>
 						@linkList(v.Children, v.LinkHealth, "no-children", "Nothing contributes to this Goal yet.")
 					</section>
 				</div>
 				<div data-testid="goal-people" class="card gp-card">
-					<h2>People</h2>
+					<h3>People</h3>
 					<p><span class="label">Owner</span><br/>@person(g.Owner)</p>
 					@delegatesSection(v, owner)
 					<section data-testid="goal-contributors">
@@ -331,7 +331,7 @@ templ goalPage(current *domain.Account, v goalView) {
 					</section>
 				</div>
 				<section data-testid="goal-dimensions" class="card gp-card">
-					<h2>Dimensions</h2>
+					<h3>Dimensions</h3>
 					@goalDimensions(v, owner)
 				</section>
 			</aside>
@@ -424,7 +424,7 @@ templ goalPageStyles() {
 		.gp-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
 		.gp-form{display:flex;flex-direction:column;gap:12px}
 		.gp-edit form{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-		details.gp-card>summary h2{margin:0}
+		details.gp-card>summary h3{margin:0}
 		.gp-link{display:flex;flex-direction:column;gap:4px}
 		.gp-link-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 		.gp-link-meta form{margin:0 0 0 auto}
@@ -629,7 +629,7 @@ templ goalDimensions(v goalView, owner bool) {
 templ addChildGoal(v goalView) {
 	{{ g := v.Goal }}
 	<details id="add-child" class="card gp-card" open?={ v.ChildForm.Error != "" }>
-		<summary><h2>Add a child Goal</h2></summary>
+		<summary><h3>Add a child Goal</h3></summary>
 		<section data-testid="add-child-goal">
 			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/children", g.ID)) } class="gp-form">
 				if v.ChildForm.Error != "" {
@@ -668,7 +668,7 @@ templ addChildGoal(v goalView) {
 templ defineGoal(v goalView) {
 	{{ g := v.Goal }}
 	<section data-testid="define-goal" class="card gp-card gp-define">
-		<h2>Define this Goal</h2>
+		<h3>Define this Goal</h3>
 		<section data-testid="mark-kind">
 			<h3>Delivery</h3>
 			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/dated", g.ID)) }>

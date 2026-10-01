@@ -188,6 +188,8 @@ Load the fonts with this URL:
 - **Card (`.card`):** `--color-surface`, 1px `--color-border`,
   `--radius-lg`, 24px padding, `--shadow-card`. Clickable cards lift on hover
   with `--shadow-card-hover` and `translateY(-2px)`, over `--dur-base`.
+  A card's own heading is an `h3` (card title); `h2` is for page sections
+  that sit outside cards.
 - **Inputs:** `--color-surface`, 1px `--color-border-strong`, `--radius-md`,
   12px × 16px padding. On focus, the border becomes `--color-focus` with an
   outline of `2px solid var(--color-focus-halo)`.

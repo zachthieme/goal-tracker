@@ -122,7 +122,7 @@ func reportsPage(current *domain.Account, data reportsListData) templ.Component 
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</ul></section><details data-testid=\"create-report\"><summary class=\"btn primary\">New report</summary><form class=\"card rp-card rp-form\" style=\"margin-top:12px\" method=\"post\" action=\"/reports\"><h2>New Report Definition</h2><label class=\"field\"><span>Name</span> <input type=\"text\" name=\"name\" required></label> <label class=\"field\"><span>Introduction</span> <textarea name=\"introduction\"></textarea></label><div class=\"field\"><fieldset data-testid=\"report-roots\" class=\"rp-picker\"><legend>Root Goals <span class=\"hint\">— Top-level Goals first</span></legend> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</ul></section><details data-testid=\"create-report\"><summary class=\"btn primary\">New report</summary><form class=\"card rp-card rp-form\" style=\"margin-top:12px\" method=\"post\" action=\"/reports\"><h3>New Report Definition</h3><label class=\"field\"><span>Name</span> <input type=\"text\" name=\"name\" required></label> <label class=\"field\"><span>Introduction</span> <textarea name=\"introduction\"></textarea></label><div class=\"field\"><fieldset data-testid=\"report-roots\" class=\"rp-picker\"><legend>Root Goals <span class=\"hint\">— Top-level Goals first</span></legend> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -336,7 +336,7 @@ func checkinSection(v goalView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<h2>Latest status</h2>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<h3>Latest status</h3>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1018,7 +1018,7 @@ func checkinPage(current *domain.Account, v goalView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<div data-testid=\"no-change-card\" class=\"card\"><div><h2>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<div data-testid=\"no-change-card\" class=\"card\"><div><h3>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1031,7 +1031,7 @@ func checkinPage(current *domain.Account, v goalView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "</h2><p class=\"muted\">Records the same Health and status with today's date.</p></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "</h3><p class=\"muted\">Records the same Health and status with today's date.</p></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

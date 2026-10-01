@@ -55,7 +55,7 @@ func goalsPage(current *domain.Account, view goalsListData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <header data-testid=\"goals-head\" class=\"page-head\"><div><h1>Goals</h1><p class=\"muted\">Every goal in the org. Problems sort to the top.</p></div><details data-testid=\"propose-goal\" class=\"gl-propose\"><summary data-testid=\"new-goal\" class=\"btn primary\">New goal</summary><form class=\"card\" hx-post=\"/goals\" hx-target=\"#goal-list\" hx-swap=\"outerHTML\" hx-on::after-request=\"if(event.detail.successful){this.reset();this.closest('details').open=false}\" method=\"post\" action=\"/goals\"><h2>Propose a Goal</h2><label class=\"field\"><span>Title</span> <input type=\"text\" name=\"title\" required></label> <label class=\"field\"><span>So What</span> <textarea name=\"so_what\" required></textarea></label> <button type=\"submit\" class=\"btn primary\">Create Goal</button></form></details></header>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <header data-testid=\"goals-head\" class=\"page-head\"><div><h1>Goals</h1><p class=\"muted\">Every goal in the org. Problems sort to the top.</p></div><details data-testid=\"propose-goal\" class=\"gl-propose\"><summary data-testid=\"new-goal\" class=\"btn primary\">New goal</summary><form class=\"card\" hx-post=\"/goals\" hx-target=\"#goal-list\" hx-swap=\"outerHTML\" hx-on::after-request=\"if(event.detail.successful){this.reset();this.closest('details').open=false}\" method=\"post\" action=\"/goals\"><h3>Propose a Goal</h3><label class=\"field\"><span>Title</span> <input type=\"text\" name=\"title\" required></label> <label class=\"field\"><span>So What</span> <textarea name=\"so_what\" required></textarea></label> <button type=\"submit\" class=\"btn primary\">Create Goal</button></form></details></header>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -978,7 +978,7 @@ func goalPage(current *domain.Account, v goalView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "<article data-testid=\"goal\" class=\"card gp-card\"><h2><span class=\"help\" title=\"The customer problem this Goal addresses and what is expected to change when it succeeds.\">So What</span></h2><p data-testid=\"goal-so-what\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "<article data-testid=\"goal\" class=\"card gp-card\"><h3><span class=\"help\" title=\"The customer problem this Goal addresses and what is expected to change when it succeeds.\">So What</span></h3><p data-testid=\"goal-so-what\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -999,7 +999,7 @@ func goalPage(current *domain.Account, v goalView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "</section><section data-testid=\"goal-milestones\" class=\"card gp-card\"><h2>Milestones</h2>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "</section><section data-testid=\"goal-milestones\" class=\"card gp-card\"><h3>Milestones</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1007,7 +1007,7 @@ func goalPage(current *domain.Account, v goalView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "</section><section data-testid=\"goal-highlights\" class=\"card gp-card\"><h2>Highlights</h2>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "</section><section data-testid=\"goal-highlights\" class=\"card gp-card\"><h3>Highlights</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1015,7 +1015,7 @@ func goalPage(current *domain.Account, v goalView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, "</section><div data-testid=\"goal-history\" class=\"card gp-card\"><h2>History</h2><section data-testid=\"goal-checkin-history\"><details><summary>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, "</section><div data-testid=\"goal-history\" class=\"card gp-card\"><h3>History</h3><section data-testid=\"goal-checkin-history\"><details><summary>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1148,7 +1148,7 @@ func goalPage(current *domain.Account, v goalView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, "</div><aside data-testid=\"goal-sidebar\" class=\"gp-col\"><div class=\"card gp-card\"><section data-testid=\"goal-parents\"><h2>Contributes to</h2>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, "</div><aside data-testid=\"goal-sidebar\" class=\"gp-col\"><div class=\"card gp-card\"><section data-testid=\"goal-parents\"><h3>Contributes to</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1156,7 +1156,7 @@ func goalPage(current *domain.Account, v goalView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, "</section></div><div class=\"card gp-card\"><section data-testid=\"goal-children\"><h2>Contributed to by</h2>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, "</section></div><div class=\"card gp-card\"><section data-testid=\"goal-children\"><h3>Contributed to by</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1164,7 +1164,7 @@ func goalPage(current *domain.Account, v goalView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, "</section></div><div data-testid=\"goal-people\" class=\"card gp-card\"><h2>People</h2><p><span class=\"label\">Owner</span><br>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, "</section></div><div data-testid=\"goal-people\" class=\"card gp-card\"><h3>People</h3><p><span class=\"label\">Owner</span><br>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1204,7 +1204,7 @@ func goalPage(current *domain.Account, v goalView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "</ul></section></div><section data-testid=\"goal-dimensions\" class=\"card gp-card\"><h2>Dimensions</h2>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "</ul></section></div><section data-testid=\"goal-dimensions\" class=\"card gp-card\"><h3>Dimensions</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1508,7 +1508,7 @@ func goalPageStyles() templ.Component {
 			templ_7745c5c3_Var56 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 145, "<style>\n\t\t.gp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap}\n\t\t.gp-summary{display:flex;flex-direction:column;gap:10px;min-width:0;flex:1 1 320px}\n\t\t.gp-badges{display:flex;flex-wrap:wrap;gap:6px;align-items:center}\n\t\t.gp-meta{display:flex;flex-wrap:wrap;gap:4px 20px;color:var(--color-ink-muted)}\n\t\t.gp-meta strong{color:var(--color-ink)}\n\t\t.gp-actions{display:flex;gap:8px;align-items:flex-start;margin-left:auto}\n\t\t.gp-actions form{margin:0}\n\t\t.gp-more{position:relative}\n\t\t.gp-more>summary{justify-content:center}\n\t\t.gp-menu{position:absolute;right:0;top:48px;z-index:10;width:340px;max-width:calc(100vw - 32px);padding:8px;box-shadow:var(--shadow-pop);box-sizing:border-box}\n\t\t.gp-menu ul{list-style:none;margin:0;padding:0}\n\t\t.gp-menu li>a,.gp-menu li>details>summary{display:flex;min-height:36px;padding:0 12px;border-radius:var(--radius-md);align-items:center;color:var(--color-ink);font-weight:500}\n\t\t.gp-menu li>a:hover,.gp-menu li>details>summary:hover{background:var(--color-primary-subtle);text-decoration:none}\n\t\t.gp-menu section{padding:8px 12px 12px;display:flex;flex-direction:column;gap:8px}\n\t\t.gp-menu form{display:flex;flex-direction:column;gap:8px}\n\t\t.gp-menu h2{font-family:var(--font-body);font-size:11px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--color-ink-muted)}\n\t\t.gp-col{display:flex;flex-direction:column;gap:20px;min-width:0}\n\t\t.gp-card{padding:24px;display:flex;flex-direction:column;gap:12px}\n\t\t.gp-block{display:flex;flex-direction:column;gap:12px}\n\t\t.gp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}\n\t\t.gp-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}\n\t\t.gp-form{display:flex;flex-direction:column;gap:12px}\n\t\t.gp-edit form{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}\n\t\tdetails.gp-card>summary h2{margin:0}\n\t\t.gp-link{display:flex;flex-direction:column;gap:4px}\n\t\t.gp-link-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}\n\t\t.gp-link-meta form{margin:0 0 0 auto}\n\t\t.gp-metric-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}\n\t\t.gp-current .num{font-size:28px;line-height:1.1}\n\t\t.gp-spark{max-width:100%;height:auto;display:block;overflow:visible}\n\t\t.gp-spark-target{stroke:var(--color-ink-muted)}\n\t\t.gp-spark-line{stroke:var(--color-primary)}\n\t\t.gp-spark-last{fill:var(--color-primary-strong);stroke:var(--color-surface)}\n\t\t.gp-edit form{flex-direction:column}\n\t\t.gp-define>section{display:flex;flex-direction:column;gap:4px;padding-top:12px;border-top:1px solid var(--color-border)}\n\t\t.gp-define textarea{flex:1;min-width:240px}\n\t\t.gp-check{display:flex;gap:8px;align-items:baseline}\n\t\t.gp-check>span:first-child{width:16px;font-weight:600;color:var(--health-r-ink)}\n\t\t.gp-check.done>span:first-child{color:var(--health-g-ink)}\n\t\t.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 145, "<style>\n\t\t.gp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap}\n\t\t.gp-summary{display:flex;flex-direction:column;gap:10px;min-width:0;flex:1 1 320px}\n\t\t.gp-badges{display:flex;flex-wrap:wrap;gap:6px;align-items:center}\n\t\t.gp-meta{display:flex;flex-wrap:wrap;gap:4px 20px;color:var(--color-ink-muted)}\n\t\t.gp-meta strong{color:var(--color-ink)}\n\t\t.gp-actions{display:flex;gap:8px;align-items:flex-start;margin-left:auto}\n\t\t.gp-actions form{margin:0}\n\t\t.gp-more{position:relative}\n\t\t.gp-more>summary{justify-content:center}\n\t\t.gp-menu{position:absolute;right:0;top:48px;z-index:10;width:340px;max-width:calc(100vw - 32px);padding:8px;box-shadow:var(--shadow-pop);box-sizing:border-box}\n\t\t.gp-menu ul{list-style:none;margin:0;padding:0}\n\t\t.gp-menu li>a,.gp-menu li>details>summary{display:flex;min-height:36px;padding:0 12px;border-radius:var(--radius-md);align-items:center;color:var(--color-ink);font-weight:500}\n\t\t.gp-menu li>a:hover,.gp-menu li>details>summary:hover{background:var(--color-primary-subtle);text-decoration:none}\n\t\t.gp-menu section{padding:8px 12px 12px;display:flex;flex-direction:column;gap:8px}\n\t\t.gp-menu form{display:flex;flex-direction:column;gap:8px}\n\t\t.gp-menu h2{font-family:var(--font-body);font-size:11px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--color-ink-muted)}\n\t\t.gp-col{display:flex;flex-direction:column;gap:20px;min-width:0}\n\t\t.gp-card{padding:24px;display:flex;flex-direction:column;gap:12px}\n\t\t.gp-block{display:flex;flex-direction:column;gap:12px}\n\t\t.gp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}\n\t\t.gp-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}\n\t\t.gp-form{display:flex;flex-direction:column;gap:12px}\n\t\t.gp-edit form{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}\n\t\tdetails.gp-card>summary h3{margin:0}\n\t\t.gp-link{display:flex;flex-direction:column;gap:4px}\n\t\t.gp-link-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}\n\t\t.gp-link-meta form{margin:0 0 0 auto}\n\t\t.gp-metric-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}\n\t\t.gp-current .num{font-size:28px;line-height:1.1}\n\t\t.gp-spark{max-width:100%;height:auto;display:block;overflow:visible}\n\t\t.gp-spark-target{stroke:var(--color-ink-muted)}\n\t\t.gp-spark-line{stroke:var(--color-primary)}\n\t\t.gp-spark-last{fill:var(--color-primary-strong);stroke:var(--color-surface)}\n\t\t.gp-edit form{flex-direction:column}\n\t\t.gp-define>section{display:flex;flex-direction:column;gap:4px;padding-top:12px;border-top:1px solid var(--color-border)}\n\t\t.gp-define textarea{flex:1;min-width:240px}\n\t\t.gp-check{display:flex;gap:8px;align-items:baseline}\n\t\t.gp-check>span:first-child{width:16px;font-weight:600;color:var(--health-r-ink)}\n\t\t.gp-check.done>span:first-child{color:var(--health-g-ink)}\n\t\t.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2139,7 +2139,7 @@ func addChildGoal(v goalView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 206, "><summary><h2>Add a child Goal</h2></summary><section data-testid=\"add-child-goal\"><form method=\"post\" action=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 206, "><summary><h3>Add a child Goal</h3></summary><section data-testid=\"add-child-goal\"><form method=\"post\" action=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2305,7 +2305,7 @@ func defineGoal(v goalView) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		g := v.Goal
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 222, "<section data-testid=\"define-goal\" class=\"card gp-card gp-define\"><h2>Define this Goal</h2><section data-testid=\"mark-kind\"><h3>Delivery</h3><form class=\"gp-inline\" method=\"post\" action=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 222, "<section data-testid=\"define-goal\" class=\"card gp-card gp-define\"><h3>Define this Goal</h3><section data-testid=\"mark-kind\"><h3>Delivery</h3><form class=\"gp-inline\" method=\"post\" action=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -21,7 +21,7 @@ templ homePage(current *domain.Account, v homeView) {
 		<div class="grid-main-aside">
 			<div>
 				<section data-testid="home-checkins" class="card">
-					<h2>Check in on these</h2>
+					<h3>Check in on these</h3>
 					if len(v.Due) == 0 {
 						<p data-testid="home-due-empty" class="muted">You're all caught up.</p>
 					}
@@ -32,7 +32,7 @@ templ homePage(current *domain.Account, v homeView) {
 					</ul>
 				</section>
 				<section data-testid="home-waiting-on-you" class="card">
-					<h2>Waiting on you</h2>
+					<h3>Waiting on you</h3>
 					if len(v.PendingLinks) == 0 && len(v.PendingHandoffs) == 0 {
 						<p data-testid="home-waiting-empty" class="muted">Nothing is waiting on you.</p>
 					}
@@ -66,7 +66,7 @@ templ homePage(current *domain.Account, v homeView) {
 			</div>
 			<aside>
 				<section data-testid="home-your-goals" class="card">
-					<h2>Your goals</h2>
+					<h3>Your goals</h3>
 					<p>
 						@healthCountTile("home-count-green", domain.HealthGreen, v.Green)
 						@healthCountTile("home-count-yellow", domain.HealthYellow, v.Yellow)
@@ -86,7 +86,7 @@ templ homePage(current *domain.Account, v homeView) {
 				</section>
 				if len(v.Delegated) > 0 {
 					<section data-testid="home-delegated" class="card">
-						<h2>Delegated to you</h2>
+						<h3>Delegated to you</h3>
 						<ul>
 							for _, g := range v.Delegated {
 								<li>

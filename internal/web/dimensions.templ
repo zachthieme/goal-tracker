@@ -27,7 +27,7 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension) {
 			<details data-testid="create-dimension">
 				<summary class="btn primary">Define a Dimension</summary>
 				<form class="card dm-card" style="margin-top:12px" method="post" action="/dimensions">
-					<h2>Define a Dimension</h2>
+					<h3>Define a Dimension</h3>
 					<label class="field">
 						<span>Name</span>
 						<input type="text" name="name" required/>
@@ -48,7 +48,7 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension) {
 			}
 			for _, d := range dims {
 				<li data-testid="dimension" class="card dm-card">
-					<h2>{ d.Name }</h2>
+					<h3>{ d.Name }</h3>
 					@dimensionValues(d)
 					if admin {
 						@dimensionEdit(d)

@@ -64,7 +64,7 @@ func dimensionsPage(current *domain.Account, dims []domain.Dimension) templ.Comp
 				return templ_7745c5c3_Err
 			}
 			if admin {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<details data-testid=\"create-dimension\"><summary class=\"btn primary\">Define a Dimension</summary><form class=\"card dm-card\" style=\"margin-top:12px\" method=\"post\" action=\"/dimensions\"><h2>Define a Dimension</h2><label class=\"field\"><span>Name</span> <input type=\"text\" name=\"name\" required></label> <label class=\"field\"><span>Values <span class=\"hint\">— comma-separated</span></span> <input type=\"text\" name=\"values\" required></label><div><button type=\"submit\" class=\"btn primary\">Create Dimension</button></div></form></details>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<details data-testid=\"create-dimension\"><summary class=\"btn primary\">Define a Dimension</summary><form class=\"card dm-card\" style=\"margin-top:12px\" method=\"post\" action=\"/dimensions\"><h3>Define a Dimension</h3><label class=\"field\"><span>Name</span> <input type=\"text\" name=\"name\" required></label> <label class=\"field\"><span>Values <span class=\"hint\">— comma-separated</span></span> <input type=\"text\" name=\"values\" required></label><div><button type=\"submit\" class=\"btn primary\">Create Dimension</button></div></form></details>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -80,7 +80,7 @@ func dimensionsPage(current *domain.Account, dims []domain.Dimension) templ.Comp
 				}
 			}
 			for _, d := range dims {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<li data-testid=\"dimension\" class=\"card dm-card\"><h2>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<li data-testid=\"dimension\" class=\"card dm-card\"><h3>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -93,7 +93,7 @@ func dimensionsPage(current *domain.Account, dims []domain.Dimension) templ.Comp
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</h2>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</h3>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

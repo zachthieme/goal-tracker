@@ -302,7 +302,7 @@ templ checkinSection(v goalView) {
 	{{ g := v.Goal }}
 	<section data-testid="goal-checkins" class="card gp-card">
 		@checkinStyles()
-		<h2>Latest status</h2>
+		<h3>Latest status</h3>
 		if g.Lifecycle != domain.LifecycleActive && g.Lifecycle != domain.LifecycleProposed {
 			<p data-testid="goal-no-health" class="muted">{ fmt.Sprintf("A %s Goal has no Health.", g.Lifecycle) }</p>
 			if v.LatestCheckin != nil {
@@ -432,7 +432,7 @@ templ checkinPage(current *domain.Account, v goalView) {
 			if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
 				<div data-testid="no-change-card" class="card">
 					<div>
-						<h2>{ "Nothing changed since " + v.LatestCheckin.CreatedAt.Format("Jan 2") + "?" }</h2>
+						<h3>{ "Nothing changed since " + v.LatestCheckin.CreatedAt.Format("Jan 2") + "?" }</h3>
 						<p class="muted">Records the same Health and status with today's date.</p>
 					</div>
 					@noChangeCheckinButton(g.ID, "No change")

@@ -53,7 +53,7 @@ templ adminPage(current *domain.Account, ownerless []domain.Goal) {
 // adminTool is a card linking to one Admin tool, saying what it's for.
 templ adminTool(testID, href, label, blurb string) {
 	<a data-testid={ testID } class="card ad-tool" href={ templ.SafeURL(href) }>
-		<h2>{ label }</h2>
+		<h3>{ label }</h3>
 		<p class="muted">{ blurb }</p>
 	</a>
 }

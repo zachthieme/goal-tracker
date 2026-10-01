@@ -37,7 +37,7 @@ templ delegatePage(current *domain.Account, goals []delegatedGoal) {
 							<span class="badge lc">{ g.Lifecycle }</span>
 						}
 					</div>
-					<h2><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></h2>
+					<h3><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></h3>
 					<p class="muted">Owner <strong data-testid="delegated-goal-owner">@person(g.Owner)</strong></p>
 					if item.Latest != nil {
 						<p class="muted small">
