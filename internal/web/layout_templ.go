@@ -144,7 +144,7 @@ func layout(title string, current *domain.Account) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if current != nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div data-testid=\"nav-items\" class=\"navitems\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div class=\"navitems\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

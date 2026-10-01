@@ -166,8 +166,11 @@ func TestNarrowTopBarPutsNavItemsOnASecondRow(t *testing.T) {
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
 
-	nav := page[strings.Index(page, `<nav class="nav">`):strings.Index(page, `</nav>`)]
-	items := pageElement(t, nav, "div", "nav-items")
+	start := strings.Index(page, `<div class="navitems">`)
+	if start < 0 {
+		t.Fatalf("the top bar does not group its nav items:\n%s", page)
+	}
+	items := page[start : start+strings.Index(page[start:], "</div>")]
 	for _, item := range []string{"nav-home", "nav-risks", "nav-reports"} {
 		if !strings.Contains(items, `data-testid="`+item+`"`) {
 			t.Errorf("%s is not in the nav items' row: %s", item, items)

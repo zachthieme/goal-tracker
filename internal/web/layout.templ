@@ -88,7 +88,7 @@ templ layout(title string, current *domain.Account) {
 			<nav class="nav">
 				<a class="brand" href="/goals">Goal Tracker</a>
 				if current != nil {
-					<div data-testid="nav-items" class="navitems">
+					<div class="navitems">
 						@navItem("/home", "nav-home", "Home", needsYou(ctx))
 						@navItem("/risks", "nav-risks", "Risks", risks(ctx))
 						@navItem("/reports", "nav-reports", "Reports", 0)
