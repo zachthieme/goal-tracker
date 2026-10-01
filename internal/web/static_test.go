@@ -98,3 +98,82 @@ func TestTopBarMarksTheSectionOfANestedPage(t *testing.T) {
 		t.Errorf("a Report page does not mark Reports current: %s", link)
 	}
 }
+
+// On a touch screen every button and text-like field is at least a 44px
+// target, and all of them grow to the same floor so a button beside an input
+// still lines up. A mouse keeps the 40px and 32px sizes.
+func TestTouchTargetsAreAtLeast44px(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	coarse := mediaBlock(t, css, "@media (pointer:coarse)")
+	floor := ""
+	for _, sel := range []string{
+		".btn", ".btn.sm",
+		"input[type=text]", "input[type=email]", "input[type=date]",
+		"input[type=number]", "input[type=search]", "select",
+	} {
+		decls, ok := ruleFor(coarse, sel)
+		if !ok {
+			t.Errorf("on a coarse pointer nothing sizes %s", sel)
+			continue
+		}
+		if !strings.Contains(decls, "min-height:44px") {
+			t.Errorf("on a coarse pointer %s is not raised to 44px: %s", sel, decls)
+		}
+		if floor != "" && decls != floor {
+			t.Errorf("on a coarse pointer %s declares %q, others %q, so a row no longer shares a height", sel, decls, floor)
+		}
+		floor = decls
+	}
+	if _, ok := ruleFor(coarse, "textarea"); ok {
+		t.Errorf("the coarse-pointer floor reaches textareas, which are already taller: %s", coarse)
+	}
+
+	for sel, want := range map[string]string{".btn": "height:40px", ".btn.sm": "height:32px"} {
+		if decls := cssRule(t, css, "\n"+sel); !strings.Contains(decls, want) {
+			t.Errorf("desktop %s lost %s: %s", sel, want, decls)
+		}
+	}
+}
+
+// mediaBlock returns the body of the stylesheet's media block opened by query.
+func mediaBlock(t *testing.T, css, query string) string {
+	t.Helper()
+	at := strings.Index(css, query+"{")
+	if at < 0 {
+		t.Fatalf("stylesheet has no %s block", query)
+	}
+	start := at + len(query) + 1
+	depth := 1
+	for i := start; i < len(css); i++ {
+		switch css[i] {
+		case '{':
+			depth++
+		case '}':
+			if depth--; depth == 0 {
+				return css[start:i]
+			}
+		}
+	}
+	t.Fatalf("%s block is never closed", query)
+	return ""
+}
+
+// ruleFor returns the declarations of the rule in block whose selector list
+// names sel.
+func ruleFor(block, sel string) (string, bool) {
+	for _, rule := range strings.Split(block, "}") {
+		selectors, decls, ok := strings.Cut(rule, "{")
+		if !ok {
+			continue
+		}
+		for _, s := range strings.Split(selectors, ",") {
+			if strings.TrimSpace(s) == sel {
+				return decls, true
+			}
+		}
+	}
+	return "", false
+}

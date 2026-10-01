@@ -194,6 +194,12 @@ Load the fonts with this URL:
   field takes the same ring as everything else, `2px solid var(--color-focus)`,
   offset 1px. The ring shows on mouse focus too and never transitions. See
   Deviations.
+- **Sizes and touch targets:** buttons and text, email, date, number and search
+  inputs and selects are 40px tall, and `.btn.sm` is 32px. On a coarse pointer
+  (`@media (pointer:coarse)`) all of them get a 44px `min-height`, so every
+  touch target is at least 44px and a button beside an input still shares its
+  height. A small button keeps its smaller type and padding. Textareas,
+  checkboxes and radios are left alone.
 - **Tables:** headers on `--color-surface-alt` with `.label` type. Rows are
   divided by `--color-border`. Selected rows use `--color-primary-light`.
 - **Tags and counts:** `--radius-full`, with a `--color-primary-light` fill
