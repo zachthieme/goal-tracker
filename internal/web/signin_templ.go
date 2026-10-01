@@ -9,7 +9,7 @@ import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
 // signInPage is the development sign-in form: one narrow card in the middle of
-// the page with the brand, a note on how development sign-in works, and the
+// the page with the heading, a note on how development sign-in works, and the
 // email field. A failed sign-in shows its reason above the field.
 func signInPage(failure string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -48,7 +48,7 @@ func signInPage(failure string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <form data-testid=\"signin-card\" class=\"card si-card\" method=\"post\" action=\"/signin\"><p class=\"si-brand\">Goal Tracker</p><h1>Sign in</h1><p class=\"muted\">Development sign-in: enter an email to sign in. Your account is created on first sign-in.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <form data-testid=\"signin-card\" class=\"card si-card\" method=\"post\" action=\"/signin\"><h1>Sign in</h1><p class=\"muted\">Development sign-in: enter an email to sign in. Your account is created on first sign-in.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -60,7 +60,7 @@ func signInPage(failure string) templ.Component {
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(failure)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signin.templ`, Line: 14, Col: 73}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signin.templ`, Line: 13, Col: 73}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -107,7 +107,7 @@ func signInStyles() templ.Component {
 			templ_7745c5c3_Var4 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<style>\n\t\t.si-card{width:100%;max-width:400px;margin:48px auto 0;padding:32px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box}\n\t\t.si-error{color:var(--color-danger-ink);margin:0}\n\t\t.si-brand{font-family:var(--font-display);font-weight:700;font-size:19px;color:var(--color-ink)}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<style>\n\t\t.si-card{width:100%;max-width:400px;margin:48px auto 0;padding:32px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box}\n\t\t.si-error{color:var(--color-danger-ink);margin:0}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

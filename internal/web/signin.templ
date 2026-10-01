@@ -1,13 +1,12 @@
 package web
 
 // signInPage is the development sign-in form: one narrow card in the middle of
-// the page with the brand, a note on how development sign-in works, and the
+// the page with the heading, a note on how development sign-in works, and the
 // email field. A failed sign-in shows its reason above the field.
 templ signInPage(failure string) {
 	@layout("Sign in", nil) {
 		@signInStyles()
 		<form data-testid="signin-card" class="card si-card" method="post" action="/signin">
-			<p class="si-brand">Goal Tracker</p>
 			<h1>Sign in</h1>
 			<p class="muted">Development sign-in: enter an email to sign in. Your account is created on first sign-in.</p>
 			if failure != "" {
@@ -27,6 +26,5 @@ templ signInStyles() {
 	<style>
 		.si-card{width:100%;max-width:400px;margin:48px auto 0;padding:32px;display:flex;flex-direction:column;gap:16px;box-sizing:border-box}
 		.si-error{color:var(--color-danger-ink);margin:0}
-		.si-brand{font-family:var(--font-display);font-weight:700;font-size:19px;color:var(--color-ink)}
 	</style>
 }
