@@ -304,3 +304,28 @@ func TestNavCountsWhatNeedsYou(t *testing.T) {
 		t.Errorf("Home shows a count with nothing needing kim: %s", home)
 	}
 }
+
+// Home's one-button forms — a due Goal's No change, a link request's Accept and
+// Reject — sit inline through the shared class rather than a style attribute.
+func TestHomeInlineFormsComeFromTheSharedClass(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	stale := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	setCadence(t, h, stale, 14)
+	h.Checkin(sam, stale.ID, domain.HealthYellow, "Slipping.", "Cut scope.", testsupport.Epoch.AddDate(0, 1, 0))
+	h.Clock.Advance(16 * day)
+	link := h.RequestLink(kim, h.ActiveGoal(kim, "Cut churn", "Customers leave."), stale, "")
+	client := signInClient(t, ts.URL, "sam@example.com")
+	css := getBody(t, client, ts.URL+"/static/app.css")
+
+	page := getBody(t, client, ts.URL+"/home")
+	for _, action := range []string{
+		fmt.Sprintf("/goals/%d/checkins/no-change", stale.ID),
+		fmt.Sprintf("/links/%d/accept", link.ID),
+		fmt.Sprintf("/links/%d/reject", link.ID),
+	} {
+		assertStyledBy(t, tagAround(t, page, `action="`+action+`"`), css, "inline-form", "display:inline")
+	}
+}
