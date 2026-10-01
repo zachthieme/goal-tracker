@@ -11,7 +11,7 @@ import (
 
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO accounts (email, is_admin, created_at)
-VALUES (?, ?, ?)
+VALUES (lower(trim(?1)), ?2, ?3)
 RETURNING id, email, is_admin, created_at, departed, name
 `
 
@@ -54,9 +54,12 @@ func (q *Queries) GetAccount(ctx context.Context, id int64) (Account, error) {
 }
 
 const getAccountByEmail = `-- name: GetAccountByEmail :one
-SELECT id, email, is_admin, created_at, departed, name FROM accounts WHERE email = ? LIMIT 1
+SELECT id, email, is_admin, created_at, departed, name FROM accounts WHERE email = lower(trim(?1)) LIMIT 1
 `
 
+// An email names one Account whatever its case or surrounding spaces
+// (CONTEXT.md: Account): CreateAccount stores it trimmed and lowercased, and
+// this lookup folds its argument the same way, so no caller has to.
 func (q *Queries) GetAccountByEmail(ctx context.Context, email string) (Account, error) {
 	row := q.db.QueryRowContext(ctx, getAccountByEmail, email)
 	var i Account

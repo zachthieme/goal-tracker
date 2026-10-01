@@ -5,7 +5,7 @@ A single mechanism for an org to state its goals, update them on a regular caden
 ## People
 
 **Account**:
-A person's identity in the tool, identified by their email address. Owners, Delegates, Contributors and Admins are all Accounts.
+A person's identity in the tool, identified by their email address, matched whatever its letter case or surrounding spaces: `Sam@Example.com` and `sam@example.com` are the same Account. Owners, Delegates, Contributors and Admins are all Accounts.
 _Avoid_: user, member
 
 **Name**:

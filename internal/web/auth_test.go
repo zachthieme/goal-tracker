@@ -126,6 +126,33 @@ func TestDepartedPersonCannotSignIn(t *testing.T) {
 	}
 }
 
+// A Departed person can't sign in again by changing the case of their email:
+// the form shows the same "marked departed" page and issues no session
+// (CONTEXT.md: Account, Departed).
+func TestDepartedPersonCannotSignInUnderADifferentCase(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	freya := h.SignIn("freya.nilsen@example.com")
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, freya.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	resp := postForm(t, http.DefaultClient, ts.URL+"/signin", url.Values{"email": {"Freya.Nilsen@Example.com"}})
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("sign-in as a different case of a Departed email: status %d, want 403", resp.StatusCode)
+	}
+	for _, c := range resp.Cookies() {
+		if c.Name == "gt_session" && c.Value != "" {
+			t.Errorf("sign-in as a different case of a Departed email issued a session cookie: %v", c)
+		}
+	}
+	if msg := pageElement(t, body, "p", "signin-error"); !strings.Contains(msg, "has been marked departed") {
+		t.Errorf("sign-in page doesn't say why: %s", msg)
+	}
+}
+
 // A session that was valid before its person departed stops working: the next
 // request is treated as signed out, so a Check-in POST is sent to sign-in rather
 // than accepted (CONTEXT.md: Departed).
