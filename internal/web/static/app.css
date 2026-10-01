@@ -22,7 +22,7 @@
   --color-ink-inverse: #FFFFFF;
 
   --color-border:        #E8E6D5;
-  --color-border-strong: #D5D2BD;
+  --color-border-strong: #7B908C; /* 3.4:1 on white, so an input's edge is visible (DESIGN.md Deviation 6) */
   --color-focus:         #0D9488; /* Teal 600: 3.6:1 on the canvas (DESIGN.md Deviation 5) */
 
   --color-success: #2DD4BF;
@@ -80,7 +80,7 @@
     --color-ink-muted:   #8FAFAB;
     --color-ink-inverse: #042F2E;
     --color-border:        #0A3F39;
-    --color-border-strong: #0A5C53;
+    --color-border-strong: #2F8479;
     --color-focus:         #2DD4BF;
     --color-success: #2DD4BF;
     --color-warning: #EAB308;
@@ -116,7 +116,7 @@
   --color-ink-muted:   #8FAFAB;
   --color-ink-inverse: #042F2E;
   --color-border:        #0A3F39;
-  --color-border-strong: #0A5C53;
+  --color-border-strong: #2F8479;
   --color-focus:         #2DD4BF;
   --color-success: #2DD4BF;
   --color-warning: #EAB308;

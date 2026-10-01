@@ -582,10 +582,10 @@ templ checkinStyles() {
 			.checkin-form label{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:13px}
 			.health-toggle{flex-direction:row!important;flex-wrap:wrap;gap:12px!important;border:none!important;padding:0!important;background:none!important}
 			.health-toggle legend{padding:0;margin-bottom:6px}
-			.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:15px;height:48px;padding:0 20px;border:2px solid transparent;cursor:pointer;opacity:.7}
+			.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:15px;height:48px;padding:0 20px;border:2px solid currentColor;cursor:pointer}
 			.health-toggle label.badge .dot{width:12px;height:12px}
 			.health-toggle input{position:absolute;opacity:0;pointer-events:none}
-			.health-toggle label:has(input:checked){border-color:currentColor;opacity:1}
+			.health-toggle label.badge:not(:has(input:checked)){background:var(--color-surface);border-color:var(--color-border-strong)}
 			.health-toggle label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}
 			.checkin-form:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error){display:none}
 			.checkin-form:has(input[name=health][value=Yellow]:checked) .path-to-green{background:var(--health-y-bg)}

@@ -56,7 +56,7 @@ deliberately; don't override it on one page.
 
   /* Lines */
   --color-border:        #E8E6D5; /* cards, dividers */
-  --color-border-strong: #D5D2BD; /* inputs */
+  --color-border-strong: #7B908C; /* inputs. See Deviations */
   --color-focus:         #0D9488; /* Teal 600. See Deviations */
 
   /* Feedback */
@@ -122,7 +122,7 @@ deliberately; don't override it on one page.
   --color-ink-inverse: #042F2E; /* (chosen) Teal 950 on teal */
 
   --color-border:        #0A3F39; /* (chosen) */
-  --color-border-strong: #0A5C53; /* scale step 2 */
+  --color-border-strong: #2F8479; /* (chosen) 3.3:1 on the surface */
   --color-focus:         #2DD4BF;
 
   --color-success: #2DD4BF;
@@ -276,3 +276,15 @@ block. It doesn't load `app.css`.
    The source also rings a focused input in a 25%-alpha halo of the primary,
    which reaches only 1.36:1 on white. Inputs take the solid ring instead, and
    the halo token is dropped.
+
+6. **Input borders and other non-text marks.** The source's input border
+   (`#D5D2BD`) reaches 1.52:1 on white, and the dark preview's scale step 2
+   (`#0A5C53`) reaches 1.87:1 on the dark surface. WCAG asks 3:1 of the edge
+   that identifies a control. `--color-border-strong` is `#7B908C` in light
+   mode (3.38:1 on white, 3.27:1 on the canvas) and `#2F8479` in dark mode
+   (3.29:1 on the surface). Two more marks follow the same rule:
+   - A Metric's sparkline strokes in `--color-primary-strong`, not
+     `--color-primary`, which reaches only 2.49:1 on white.
+   - On the Check-in form, an unselected Health choice is an outline (surface
+     fill, `--color-border-strong` edge, Health ink) and the selected one is
+     the filled Health badge with an edge in its ink. Nothing is dimmed.
