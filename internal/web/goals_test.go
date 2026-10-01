@@ -869,6 +869,38 @@ func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
 	}
 }
 
+// At phone width the Goal page header wraps its actions onto their own line
+// rather than squeezing the title and meta into a column a few letters wide:
+// the summary claims a real width before the row's leftover space is shared,
+// so it no longer fits beside Check in, No change and More (#42).
+func TestGoalPageHeaderWrapsActionsAtPhoneWidthOverHTTP(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "A to-ce the API tier", "Callers need one front door.")
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	pageElement(t, page, "header", "goal-head")
+	if rule := cssRule(t, page, ".gp-summary"); !strings.Contains(rule, "flex:1 1 320px") {
+		t.Errorf("header summary has no flex-basis, so it shrinks beside the actions instead of wrapping them; rule: %s", rule)
+	}
+	// Wrapped, the actions stay flush right: the More menu opens leftward from
+	// its button's right edge, and a left-aligned button would push it off-screen.
+	if rule := cssRule(t, page, ".gp-actions"); !strings.Contains(rule, "margin-left:auto") {
+		t.Errorf("header actions fall to the left when wrapped, so the More menu opens off the left edge; rule: %s", rule)
+	}
+}
+
+// cssRule returns the declarations of the page's style rule for selector.
+func cssRule(t *testing.T, page, selector string) string {
+	t.Helper()
+	m := regexp.MustCompile(regexp.QuoteMeta(selector) + `\{([^}]*)\}`).FindStringSubmatch(page)
+	if m == nil {
+		t.Fatalf("page has no %s rule", selector)
+	}
+	return m[1]
+}
+
 // The Goal page's Milestones are a table of status badge, name and date, the
 // date's slips struck, headed by the Goal's slip count and Milestone Churn.
 func TestGoalPageMilestonesTable(t *testing.T) {
