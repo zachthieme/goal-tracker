@@ -501,7 +501,7 @@ func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
 	if heading := pageElement(t, narrative, "h3", "narrative-section"); !strings.Contains(heading, `class="label"`) || !strings.HasSuffix(heading, ">Accomplishments") {
 		t.Errorf("narrative section heading %q, want an Accomplishments label", heading)
 	}
-	if credit := pageElement(t, narrative, "span", "highlight-credit"); !strings.Contains(credit, "— alice@example.com, ") || !strings.Contains(credit, "Launch in EU") {
+	if credit := between(t, narrative, `data-testid="highlight-credit"`, "</a>"); !strings.Contains(credit, "— "+shownAs("alice@example.com", "alice")+", ") || !strings.Contains(credit, "Launch in EU") {
 		t.Errorf("Highlight credit %q, want — owner, Goal", credit)
 	}
 }

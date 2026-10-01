@@ -85,7 +85,7 @@ templ goalDiscussion(goalID int64, d discussion) {
 // into an Action Item, behind its own toggle.
 templ comment(c domain.Comment, d discussion, reply bool) {
 	<p data-testid="comment" class={ templ.KV("rp-reply", reply) }>
-		<strong>{ c.Author.Email }</strong>
+		<strong>@person(c.Author)</strong>
 		<span class="small muted">{ " · " }{ fmtPublished(c.CreatedAt) }</span>
 		<br/>
 		{ c.Body }
@@ -179,7 +179,9 @@ templ actionItemFields(textRequired bool) {
 // actionItemSummary is an Action Item on one line: what · who owns it · when
 // it is due.
 templ actionItemSummary(item domain.ActionItem) {
-	{ item.Text }{ " · " }{ item.Owner.Email }{ " · due " }{ fmtDate(item.DueDate) }
+	{ item.Text }{ " · " }
+	@person(item.Owner)
+	{ " · due " }{ fmtDate(item.DueDate) }
 }
 
 // closeActionItemForm lets an Action Item's owner close it with a note, behind

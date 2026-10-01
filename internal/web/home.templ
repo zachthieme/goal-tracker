@@ -41,7 +41,11 @@ templ homePage(current *domain.Account, v homeView) {
 							<li data-testid="home-pending-link">
 								<span class="badge lc">Link request</span>
 								<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)) }>{ l.Child.Title }</a>
-								<span class="muted">({ l.Child.Owner.Email }) wants to contribute to</span>
+								<span class="muted">
+									{ "(" }
+									@person(l.Child.Owner)
+									{ ") wants to contribute to" }
+								</span>
 								<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
 								@acceptReject(fmt.Sprintf("/links/%d", l.ID), "Reject this link request?")
 							</li>
@@ -50,7 +54,10 @@ templ homePage(current *domain.Account, v homeView) {
 							<li data-testid="home-pending-handoff">
 								<span class="badge lc">Handoff</span>
 								<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)) }>{ ho.Goal.Title }</a>
-								<span class="muted">{ ho.From.Email } wants to hand this Goal to you</span>
+								<span class="muted">
+									@person(ho.From)
+									{ " wants to hand this Goal to you" }
+								</span>
 								@acceptReject(fmt.Sprintf("/handoffs/%d", ho.ID), "Reject this Handoff?")
 							</li>
 						}
@@ -84,7 +91,7 @@ templ homePage(current *domain.Account, v homeView) {
 							for _, g := range v.Delegated {
 								<li>
 									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
-									<span class="muted small">{ g.Owner.Email }</span>
+									<span class="muted small">@person(g.Owner)</span>
 								</li>
 							}
 						</ul>
@@ -112,7 +119,14 @@ templ dueRow(g domain.PersonalGoal) {
 		if g.Freshness.Stale {
 			<span data-testid="home-due-stale" class="badge st">Stale</span>
 		}
-		<p class="muted small">{ dueReason(g) }</p>
+		<p class="muted small">
+			if g.AsDelegate {
+				{ "Delegated to you by " }
+				@person(g.Goal.Owner)
+			} else {
+				{ dueReason(g) }
+			}
+		</p>
 		if g.CheckedIn {
 			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins/no-change", g.Goal.ID)) } style="display:inline">
 				<button type="submit" class="btn sm">No change</button>

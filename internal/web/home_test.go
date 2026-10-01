@@ -140,7 +140,7 @@ func TestHomeListsDelegatedGoals(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "dee@example.com"), ts.URL+"/home")
 
 	row := homeRow(t, pageElement(t, page, "ul", "home-due"), g)
-	if !strings.Contains(row, "Delegated to you by sam@example.com") {
+	if !strings.Contains(row, "Delegated to you by "+shownAs("sam@example.com", "sam")) {
 		t.Errorf("delegated Goal's row does not say whose it is:\n%s", row)
 	}
 	delegated := pageElement(t, page, "section", "home-delegated")

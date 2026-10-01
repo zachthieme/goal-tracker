@@ -39,7 +39,7 @@ func TestSmokeSignInCreateAndViewGoal(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("after sign-in: status %d", resp.StatusCode)
 	}
-	if body := readBody(t, resp); !strings.Contains(body, "boss@example.com") {
+	if body := readBody(t, resp); !strings.Contains(body, "Signed in as "+shownAs("boss@example.com", "boss")) {
 		t.Errorf("goals page does not show the signed-in user; body:\n%s", body)
 	}
 
@@ -849,7 +849,7 @@ func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
 	}
 	meta := strings.Join(strings.Fields(pageElement(t, head, "p", "goal-meta")), " ")
 	for _, want := range []string{
-		`Owner <strong data-testid="goal-owner">sam@example.com</strong>`,
+		`Owner <strong data-testid="goal-owner">` + shownAs("sam@example.com", "sam") + `</strong>`,
 		`Delivers <span data-testid="goal-delivery-date"><del>2026-07-02</del> <strong>2026-07-16</strong></span>`,
 		`Checks in <span data-testid="goal-cadence">every 7 days</span>`,
 	} {
@@ -1328,5 +1328,45 @@ func TestOngoingGoalChecklistNeedsAMetric(t *testing.T) {
 	}
 	if button := between(t, pageElement(t, page, "form", "activate-goal"), "<button", ">"); !strings.Contains(button, "disabled") {
 		t.Errorf("Activate is enabled for an Ongoing Goal with no Metric: %s", button)
+	}
+}
+
+// shownAs is how a page shows a person: by label, with their email on hover
+// (CONTEXT.md: Name).
+func shownAs(emailAddr, label string) string {
+	return `<span class="person" title="` + emailAddr + `">` + label + `</span>`
+}
+
+// visibleEmails returns every email a page shows as text rather than on hover
+// or in a form field.
+func visibleEmails(page string) []string {
+	return regexp.MustCompile(`>[^<>]*@example\.com[^<>]*<`).FindAllString(page, -1)
+}
+
+// The Goal list and a Goal page show each Owner by Name, or by their email's
+// local part until they have one, with the email on hover.
+func TestGoalPagesShowPeopleByName(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
+	sam := h.SignIn("sam@example.com")
+	named := h.CreateGoal(ada, "Cut checkout latency", "Shoppers abandon slow carts.")
+	h.CreateGoal(sam, "Hire a PM", "Nobody owns the roadmap.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	list := getBody(t, client, ts.URL+"/goals")
+	for _, want := range []string{shownAs("ada.okafor@example.com", "Ada Okafor"), shownAs("sam@example.com", "sam")} {
+		if !strings.Contains(list, want) {
+			t.Errorf("Goal list does not show %s", want)
+		}
+	}
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, named.ID))
+	if owner := pageElement(t, page, "strong", "goal-owner"); !strings.Contains(owner, shownAs("ada.okafor@example.com", "Ada Okafor")) {
+		t.Errorf("Goal page Owner reads %s, want Ada Okafor with her email on hover", owner)
+	}
+	for name, p := range map[string]string{"Goal list": list, "Goal page": page} {
+		if shown := visibleEmails(p); len(shown) > 0 {
+			t.Errorf("%s shows emails as text: %q", name, shown)
+		}
 	}
 }

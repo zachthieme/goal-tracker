@@ -48,7 +48,11 @@ templ freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSign
 // freshnessItem names a flagged Goal, its Owner, and why it is flagged.
 templ freshnessItem(g domain.Goal, why string) {
 	@goalRef(g)
-	<span>— Owner { g.Owner.Email } — { why }</span>
+	<span>
+		{ "— Owner " }
+		@person(g.Owner)
+		{ " — " + why }
+	</span>
 }
 
 // goalFreshness flags, at the top of a Goal's page, a Goal that is Stale or

@@ -700,12 +700,7 @@ func riskRow(g domain.Goal) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var35 string
-		templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(g.Owner.Email)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 116, Col: 21}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
+		templ_7745c5c3_Err = person(g.Owner).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -743,9 +738,9 @@ func risksStyles() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var36 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var36 == nil {
-			templ_7745c5c3_Var36 = templ.NopComponent
+		templ_7745c5c3_Var35 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var35 == nil {
+			templ_7745c5c3_Var35 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<style>\n\t\t.rk-tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}\n\t\t.rk-tile{padding:14px 16px;display:flex;flex-direction:column;gap:4px;color:#1B1E23}\n\t\t.rk-tile:hover{text-decoration:none;border-color:#C9CCC4;color:#1B1E23}\n\t\t.rk-tile .num{font-size:24px}\n\t\t.rk-section{display:flex;flex-direction:column;gap:12px;scroll-margin-top:16px}\n\t\t.rk-empty{padding:16px}\n\t\t@media (max-width:900px){.rk-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}\n\t</style>")

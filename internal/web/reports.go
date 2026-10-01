@@ -199,7 +199,7 @@ func (s *Server) handlePrintPublication(w http.ResponseWriter, r *http.Request, 
 	if !ok {
 		return
 	}
-	render(w, r, http.StatusOK, publicationPrintPage(pub))
+	render(w, r.WithContext(withoutHover(r.Context())), http.StatusOK, publicationPrintPage(pub))
 }
 
 // handleExportMarkdown downloads a published Report as Markdown, with the same

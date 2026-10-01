@@ -113,7 +113,7 @@ templ riskSection(anchor, heading, explain, empty string, count int) {
 templ riskRow(g domain.Goal) {
 	<tr data-testid="risk-row">
 		<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></td>
-		<td>{ g.Owner.Email }</td>
+		<td>@person(g.Owner)</td>
 		<td>
 			{ children... }
 		</td>

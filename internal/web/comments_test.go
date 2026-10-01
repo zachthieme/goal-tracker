@@ -242,7 +242,7 @@ func TestOpenActionItemCloseFormIsCollapsedOverHTTP(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "owner@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, second.ID))
 
 	item := pageElement(t, page, "li", "open-action-item")
-	if want := "Get a second vendor quote. · owner@example.com · due " + h.Clock.Now().Format("2006-01-02"); !strings.Contains(item, want) {
+	if want := "Get a second vendor quote. · " + shownAs("owner@example.com", "owner") + " · due " + h.Clock.Now().Format("2006-01-02"); !strings.Contains(item, want) {
 		t.Errorf("open Action Item does not read %q; item:\n%s", want, item)
 	}
 	toggle := pageElement(t, item, "details", "close-toggle")

@@ -27,7 +27,11 @@ templ pendingLinksPage(current *domain.Account, pending []domain.Link) {
 					<div class="pd-what">
 						<p>
 							<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)) }>{ l.Child.Title }</a>
-							<span class="muted">(Owner { l.Child.Owner.Email }) wants to contribute to</span>
+							<span class="muted">
+								{ "(Owner " }
+								@person(l.Child.Owner)
+								{ ") wants to contribute to" }
+							</span>
 							<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
 						</p>
 						if l.Note != "" {

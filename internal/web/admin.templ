@@ -38,7 +38,7 @@ templ adminPage(current *domain.Account, ownerless []domain.Goal) {
 							for _, g := range ownerless {
 								<tr data-testid="admin-ownerless-goal">
 									<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></td>
-									<td>{ g.Owner.Email }</td>
+									<td>@person(g.Owner)</td>
 									<td><span class="badge lc">{ g.Lifecycle }</span></td>
 								</tr>
 							}

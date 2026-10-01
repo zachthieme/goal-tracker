@@ -28,7 +28,11 @@ templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) {
 					<p class="pd-what">
 						<span>
 							<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)) }>{ ho.Goal.Title }</a>
-							<span class="muted">— { ho.From.Email } wants to hand this Goal to you</span>
+							<span class="muted">
+								{ "— " }
+								@person(ho.From)
+								{ " wants to hand this Goal to you" }
+							</span>
 						</span>
 					</p>
 					<div class="pd-actions">

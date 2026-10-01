@@ -176,7 +176,7 @@ templ goalListRow(row goalRow) {
 				</div>
 			}
 		</td>
-		<td>{ g.Owner.Email }</td>
+		<td>@person(g.Owner)</td>
 		<td data-testid="goal-row-due" class="num">
 			if g.DeliveryDate.IsZero() {
 				<span class="muted">—</span>
@@ -282,7 +282,11 @@ templ goalPage(current *domain.Account, v goalView) {
 								for _, rev := range v.Revisions {
 									<li>
 										<span>{ rev.SoWhat }</span>
-										<span class="muted small">— { rev.Author.Email } at { rev.CreatedAt.Format("2006-01-02 15:04") }</span>
+										<span class="muted small">
+											{ "— " }
+											@person(rev.Author)
+											{ " at " + rev.CreatedAt.Format("2006-01-02 15:04") }
+										</span>
 									</li>
 								}
 							</ul>
@@ -312,7 +316,7 @@ templ goalPage(current *domain.Account, v goalView) {
 				</div>
 				<div data-testid="goal-people" class="card gp-card">
 					<h2>People</h2>
-					<p><span class="label">Owner</span><br/>{ g.Owner.Email }</p>
+					<p><span class="label">Owner</span><br/>@person(g.Owner)</p>
 					@delegatesSection(v, owner)
 					<section data-testid="goal-contributors">
 						<h3 class="label">Contributors</h3>
@@ -321,7 +325,7 @@ templ goalPage(current *domain.Account, v goalView) {
 								<li data-testid="no-contributors" class="muted">No Contributors yet.</li>
 							}
 							for _, c := range v.Contributors {
-								<li>{ c.Email }</li>
+								<li>@person(c)</li>
 							}
 						</ul>
 					</section>
@@ -364,7 +368,7 @@ templ goalHead(v goalView, owner, admin bool) {
 			</div>
 			<h1 data-testid="goal-title">{ g.Title }</h1>
 			<p data-testid="goal-meta" class="gp-meta">
-				<span>Owner <strong data-testid="goal-owner">{ g.Owner.Email }</strong></span>
+				<span>Owner <strong data-testid="goal-owner">@person(g.Owner)</strong></span>
 				if !g.DeliveryDate.IsZero() {
 					<span>
 						Delivers 
@@ -501,9 +505,14 @@ templ goalMore(v goalView, owner, admin bool) {
 							<details>
 								<summary>Mark owner departed…</summary>
 								<section data-testid="depart-owner">
-									<p class="small muted">{ g.Owner.Email } has left the org.</p>
+									<p class="small muted">@person(g.Owner)
+									{ " has left the org." }</p>
 									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/depart", g.Owner.ID)) } onsubmit={ confirmScript(confirmDepart) }>
-										<button type="submit" class="btn danger">Mark { g.Owner.Email } departed</button>
+										<button type="submit" class="btn danger">
+											{ "Mark " }
+											@person(g.Owner)
+											{ " departed" }
+										</button>
 									</form>
 								</section>
 							</details>
@@ -513,9 +522,14 @@ templ goalMore(v goalView, owner, admin bool) {
 							<details>
 								<summary>Mark returned…</summary>
 								<section data-testid="return-owner">
-									<p class="small muted">{ g.Owner.Email } is back in the org.</p>
+									<p class="small muted">@person(g.Owner)
+									{ " is back in the org." }</p>
 									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/return", g.Owner.ID)) } onsubmit={ confirmScript(confirmReturn) }>
-										<button type="submit" class="btn">Mark { g.Owner.Email } returned</button>
+										<button type="submit" class="btn">
+											{ "Mark " }
+											@person(g.Owner)
+											{ " returned" }
+										</button>
 									</form>
 								</section>
 							</details>
@@ -833,9 +847,17 @@ templ ownershipHistory(changes []domain.Handoff) {
 		}
 		for _, c := range changes {
 			<li data-testid="ownership-change">
-				<span>{ c.From.Email } → { c.To.Email }</span>
+				<span>
+					@person(c.From)
+					{ " → " }
+					@person(c.To)
+				</span>
 				<span>— { ownershipOutcome(c.Status) }</span>
-				<span class="muted small">— started by { c.InitiatedBy.Email } at { c.CreatedAt.Format("2006-01-02 15:04") }</span>
+				<span class="muted small">
+					{ "— started by " }
+					@person(c.InitiatedBy)
+					{ " at " + c.CreatedAt.Format("2006-01-02 15:04") }
+				</span>
 			</li>
 		}
 	</ul>
@@ -927,7 +949,11 @@ templ highlightList(highlights []domain.Highlight) {
 		for _, hl := range highlights {
 			<li data-testid="highlight">
 				<strong>{ hl.Kind }</strong>: { hl.Note }
-				<span>— { hl.Owner.Email } at { hl.CreatedAt.Format("2006-01-02 15:04") }</span>
+				<span>
+					{ "— " }
+					@person(hl.Owner)
+					{ " at " + hl.CreatedAt.Format("2006-01-02 15:04") }
+				</span>
 			</li>
 		}
 	</ul>
@@ -988,7 +1014,10 @@ templ linkList(links []domain.GoalLink, health map[int64]string, emptyTestID, em
 						<button type="submit" class="btn quiet sm">Remove</button>
 					</form>
 				</span>
-				<span class="muted small">Owner { l.Goal.Owner.Email }</span>
+				<span class="muted small">
+					{ "Owner " }
+					@person(l.Goal.Owner)
+				</span>
 			</li>
 		}
 	</ul>

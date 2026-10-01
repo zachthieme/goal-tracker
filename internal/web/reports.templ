@@ -70,7 +70,7 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 					<select name="owner">
 						<option value="">Any Owner</option>
 						for _, o := range data.Owners {
-							<option value={ fmt.Sprintf("%d", o.ID) }>{ o.Email }</option>
+							<option value={ fmt.Sprintf("%d", o.ID) } title={ o.Email }>{ o.Label() }</option>
 						}
 					</select>
 				</label>
@@ -152,7 +152,10 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 						<li data-testid="report-publication">
 							<a href={ templ.SafeURL(publicationPath(p)) }>{ fmtPublished(p.PublishedAt) }</a>
 							<br/>
-							<span class="small muted">by { p.PublishedBy.Email }</span>
+							<span class="small muted">
+								{ "by " }
+								@person(p.PublishedBy)
+							</span>
 						</li>
 					}
 				</ul>
@@ -254,7 +257,8 @@ templ healthSummary(r domain.Report) {
 // changes against.
 templ publishedLine(p domain.Publication) {
 	<p data-testid="report-published" class="muted">
-		Published { fmtPublished(p.PublishedAt) } by { p.PublishedBy.Email }
+		{ "Published " + fmtPublished(p.PublishedAt) + " by " }
+		@person(p.PublishedBy)
 		if p.Report.Previous.ID != 0 {
 			{ " · changes since the previous publication, " }{ fmtPublished(p.Report.Previous.PublishedAt) }
 		} else {
@@ -301,7 +305,7 @@ templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 									@healthBadge("selected-health", sg.Health)
 								</td>
 								<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a></td>
-								<td data-testid="selected-owner">{ sg.Goal.Owner.Email }</td>
+								<td data-testid="selected-owner">@person(sg.Goal.Owner)</td>
 								<td>
 									if !sg.Goal.DeliveryDate.IsZero() {
 										<span data-testid="selected-due" class="num">{ fmtDate(sg.Goal.DeliveryDate) }</span>
@@ -396,7 +400,10 @@ templ reportNarrative(narrative []domain.NarrativeSection) {
 // highlightCredit credits a Highlight to the Goal's Owner, naming the Goal.
 templ highlightCredit(nh domain.NarrativeHighlight) {
 	<span data-testid="highlight-credit" class="rp-credit">
-		{ " — " }{ nh.Highlight.Owner.Email }, <a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", nh.GoalID)) }>{ nh.GoalTitle }</a>
+		{ " — " }
+		@person(nh.Highlight.Owner)
+		{ ", " }
+		<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", nh.GoalID)) }>{ nh.GoalTitle }</a>
 	</span>
 }
 
@@ -412,7 +419,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 			<div>
 				<h3><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", b.Goal.ID)) }>{ b.Goal.Title }</a></h3>
 				<p class="small muted">
-					<span data-testid="report-owner">{ b.Goal.Owner.Email }</span>
+					<span data-testid="report-owner">@person(b.Goal.Owner)</span>
 					{ " · " }{ b.Goal.Lifecycle }
 					if !b.Goal.DeliveryDate.IsZero() {
 						{ " · due " }
