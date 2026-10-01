@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 	"github.com/zachthieme/goal-tracker/internal/web"
 )
@@ -113,5 +115,34 @@ func TestDepartedPersonCannotSignIn(t *testing.T) {
 	}
 	if msg := pageElement(t, body, "p", "signin-error"); !strings.Contains(msg, "sam@example.com has been marked departed") {
 		t.Errorf("sign-in page doesn't say why: %s", msg)
+	}
+}
+
+// A session that was valid before its person departed stops working: the next
+// request is treated as signed out, so a Check-in POST is sent to sign-in rather
+// than accepted (CONTEXT.md: Departed).
+func TestDepartureEndsAnExistingSession(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	samClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp := postForm(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"All good."},
+	})
+	_ = readBody(t, resp)
+	if loc := resp.Header.Get("Location"); resp.StatusCode != http.StatusSeeOther || loc != "/signin" {
+		t.Errorf("Check-in POST on a departed session: status %d to %q, want 303 to /signin", resp.StatusCode, loc)
+	}
+	if _, ok, err := h.Service.LatestCheckin(t.Context(), goal.ID); err != nil || ok {
+		t.Errorf("the departed session's Check-in was recorded (ok=%v, err=%v)", ok, err)
 	}
 }

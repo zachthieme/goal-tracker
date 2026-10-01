@@ -197,8 +197,8 @@ func TestOwnershipHistoryKeepsEveryHandoffOutcome(t *testing.T) {
 	if resp := postForm(t, bossClient, fmt.Sprintf("%s/accounts/%d/depart", ts.URL, pat.ID), url.Values{}); resp.StatusCode != http.StatusOK {
 		t.Fatalf("depart Pat: status %d", resp.StatusCode)
 	}
-	resp := postForm(t, signInClient(t, ts.URL, pat.Email), fmt.Sprintf("%s/handoffs/%d/accept", ts.URL, cancelled), url.Values{})
-	if resp.StatusCode == http.StatusOK {
+	// Pat can no longer sign in to accept it, and the Handoff stays cancelled.
+	if _, err := h.Service.AcceptHandoff(context.Background(), cancelled, pat.ID); err == nil {
 		t.Errorf("a cancelled Handoff was accepted")
 	}
 
