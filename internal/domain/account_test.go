@@ -158,7 +158,7 @@ func TestMarkReturnedLeavesACancelledHandoffCancelled(t *testing.T) {
 	if len(history) != 1 || history[0].Status != domain.HandoffCancelled {
 		t.Errorf("history = %+v, want the one Handoff still cancelled", history)
 	}
-	if _, err := h.Service.AcceptHandoff(ctx, ho.ID, pat.ID); err == nil {
+	if _, err := h.Service.AcceptHandoff(ctx, ho.ID, pat.ID, nil); err == nil {
 		t.Error("the returned person accepted a Handoff cancelled at their departure")
 	}
 }

@@ -199,7 +199,7 @@ func TestOwnershipHistoryKeepsEveryHandoffOutcome(t *testing.T) {
 		t.Fatalf("depart Pat: status %d", resp.StatusCode)
 	}
 	// Pat can no longer sign in to accept it, and the Handoff stays cancelled.
-	if _, err := h.Service.AcceptHandoff(context.Background(), cancelled, pat.ID); err == nil {
+	if _, err := h.Service.AcceptHandoff(context.Background(), cancelled, pat.ID, nil); err == nil {
 		t.Errorf("a cancelled Handoff was accepted")
 	}
 
@@ -317,5 +317,68 @@ func TestNonAdminCannotMarkReturned(t *testing.T) {
 	}
 	if acc, err := h.Service.Account(t.Context(), sam.ID); err != nil || !acc.Departed {
 		t.Errorf("Sam after a refused return = %+v, %v; want still Departed", acc, err)
+	}
+}
+
+// The accept form on the pending Handoffs page lists the Goal's Delegates who
+// aren't Departed, each with a keep checkbox checked by default; accepting with
+// one unchecked removes exactly that Delegate, as a plain form POST, and the
+// Departed Delegate stays (CONTEXT.md: Delegate).
+func TestAcceptHandoffFormChoosesDelegatesToKeep(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	ann := h.SignIn("ann@example.com") // kept
+	bob := h.SignIn("bob@example.com") // unchecked
+	dee := h.SignIn("dee@example.com") // Departed
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	for _, d := range []domain.Account{ann, bob, dee} {
+		h.AddDelegate(sam, d, goal.ID)
+	}
+	if err := h.Service.MarkDeparted(context.Background(), boss.ID, dee.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	ho, err := h.Service.StartHandoffByEmail(context.Background(), goal.ID, pat.Email, sam.ID)
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+	patClient := signInClient(t, ts.URL, pat.Email)
+
+	page := getBody(t, patClient, ts.URL+"/handoffs")
+	form := between(t, page, fmt.Sprintf(`action="/handoffs/%d/accept"`, ho.ID), "</form>")
+	for _, d := range []domain.Account{ann, bob} {
+		if box := fmt.Sprintf(`<input type="checkbox" name="keep" value="%d" checked>`, d.ID); !strings.Contains(form, box) {
+			t.Errorf("Delegate %s lacks a keep checkbox checked by default (%s):\n%s", d.Email, box, form)
+		}
+		if !strings.Contains(form, shownAs(d.Email, strings.TrimSuffix(d.Email, "@example.com"))) {
+			t.Errorf("accept form doesn't name Delegate %s:\n%s", d.Email, form)
+		}
+	}
+	if strings.Contains(form, fmt.Sprintf(`value="%d"`, dee.ID)) || strings.Contains(form, "dee@example.com") {
+		t.Errorf("accept form offers the Departed Delegate:\n%s", form)
+	}
+
+	resp := postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/accept", ts.URL, ho.ID), url.Values{
+		"keep": {fmt.Sprint(ann.ID)},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("accept handoff: status %d", resp.StatusCode)
+	}
+
+	goalPage := getBody(t, patClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	if !strings.Contains(goalPage, `data-testid="goal-owner">`+shownAs("pat@example.com", "pat")) {
+		t.Errorf("Goal page should show Pat as Owner after acceptance")
+	}
+	delegates := pageElement(t, goalPage, "ul", "delegate-list")
+	if !strings.Contains(delegates, shownAs("ann@example.com", "ann")) {
+		t.Errorf("kept Delegate Ann is gone: %s", delegates)
+	}
+	if strings.Contains(delegates, "bob@example.com") {
+		t.Errorf("unchecked Delegate Bob is still a Delegate: %s", delegates)
+	}
+	if !strings.Contains(delegates, shownAs("dee@example.com", "dee")) || !strings.Contains(delegates, `data-testid="delegate-departed"`) {
+		t.Errorf("Departed Delegate Dee isn't still shown as departed: %s", delegates)
 	}
 }

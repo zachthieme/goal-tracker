@@ -7,9 +7,9 @@ import (
 )
 
 // pendingHandoffsPage lists the Handoffs awaiting the current Account's decision
-// as the proposed new Owner, a card each with accept and reject actions; Reject
-// asks for confirmation. A Handoff takes effect only once accepted (CONTEXT.md:
-// Handoff).
+// as the proposed new Owner, a card each with accept and reject actions; Accept
+// lists the Delegates to keep and Reject asks for confirmation. A Handoff takes
+// effect only once accepted (CONTEXT.md: Handoff).
 templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) {
 	@layout("Pending handoffs", current) {
 		@pendingStyles()
@@ -36,10 +36,35 @@ templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) {
 						</span>
 					</p>
 					<div class="pd-actions">
-						@acceptReject(fmt.Sprintf("/handoffs/%d", ho.ID), "Reject this Handoff?")
+						@handoffAcceptReject(ho)
 					</div>
 				</li>
 			}
 		</ul>
 	}
+}
+
+// handoffAcceptReject is a pending Handoff's Accept and Reject. The accept form
+// lists the Goal's Delegates who aren't Departed, each with a keep box checked by
+// default, so the new Owner chooses which to keep (CONTEXT.md: Delegate); it is a
+// plain form POST. Reject asks for confirmation and leaves the Delegates alone.
+templ handoffAcceptReject(ho domain.Handoff) {
+	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/accept", ho.ID)) } style="display:inline">
+		if len(ho.KeepableDelegates) > 0 {
+			<fieldset data-testid="handoff-keep-delegates" style="border:0;padding:0;margin:0 0 8px;display:flex;flex-direction:column;gap:4px">
+				<legend class="muted small">Delegates to keep</legend>
+				for _, d := range ho.KeepableDelegates {
+					<label>
+						<input type="checkbox" name="keep" value={ fmt.Sprint(d.ID) } checked/>
+						{ " " }
+						@person(d)
+					</label>
+				}
+			</fieldset>
+		}
+		<button type="submit" class="btn primary sm">Accept</button>
+	</form>
+	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/reject", ho.ID)) } style="display:inline" onsubmit={ confirmScript("Reject this Handoff?") }>
+		<button type="submit" class="btn danger sm">Reject</button>
+	</form>
 }

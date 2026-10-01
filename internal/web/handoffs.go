@@ -34,13 +34,28 @@ func (s *Server) handlePendingHandoffs(w http.ResponseWriter, r *http.Request, c
 	render(w, r, http.StatusOK, pendingHandoffsPage(&current, pending))
 }
 
-// handleAcceptHandoff accepts a pending Handoff; only the new Owner may.
+// handleAcceptHandoff accepts a pending Handoff; only the new Owner may. Each
+// checked keep box names a Delegate to keep; the Goal's other Delegates who
+// aren't Departed are removed (CONTEXT.md: Delegate).
 func (s *Server) handleAcceptHandoff(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := handoffIDFromPath(w, r)
 	if !ok {
 		return
 	}
-	if _, err := s.svc.AcceptHandoff(r.Context(), id, current.ID); err != nil {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	keep := make([]int64, 0, len(r.PostForm["keep"]))
+	for _, v := range r.PostForm["keep"] {
+		delegateID, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			http.Error(w, "bad Delegate to keep", http.StatusBadRequest)
+			return
+		}
+		keep = append(keep, delegateID)
+	}
+	if _, err := s.svc.AcceptHandoff(r.Context(), id, current.ID, keep); err != nil {
 		writeHandoffError(w, err)
 		return
 	}
