@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -380,5 +381,155 @@ func TestAcceptHandoffFormChoosesDelegatesToKeep(t *testing.T) {
 	}
 	if !strings.Contains(delegates, shownAs("dee@example.com", "dee")) || !strings.Contains(delegates, `data-testid="delegate-departed"`) {
 		t.Errorf("Departed Delegate Dee isn't still shown as departed: %s", delegates)
+	}
+}
+
+// delegateEmails returns the emails of the Goal's Delegates, failing the test on
+// error.
+func delegateEmails(t *testing.T, h *testsupport.Harness, goalID int64) []string {
+	t.Helper()
+	ds, err := h.Service.ListDelegates(context.Background(), goalID)
+	if err != nil {
+		t.Fatalf("ListDelegates: %v", err)
+	}
+	out := make([]string, 0, len(ds))
+	for _, d := range ds {
+		out = append(out, d.Email)
+	}
+	return out
+}
+
+// Posting the accept form with every box still checked keeps every Delegate; a
+// Reject touches none of them.
+func TestAcceptHandoffKeepingEveryBoxAndRejectLeaveDelegates(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	ann := h.SignIn("ann@example.com")
+	bob := h.SignIn("bob@example.com")
+	kept := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	rejected := h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
+	for _, g := range []int64{kept.ID, rejected.ID} {
+		h.AddDelegate(sam, ann, g)
+		h.AddDelegate(sam, bob, g)
+	}
+	patClient := signInClient(t, ts.URL, pat.Email)
+	want := []string{"ann@example.com", "bob@example.com"}
+
+	ho, err := h.Service.StartHandoffByEmail(context.Background(), kept.ID, pat.Email, sam.ID)
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+	if resp := postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/accept", ts.URL, ho.ID), url.Values{
+		"keep": {fmt.Sprint(ann.ID), fmt.Sprint(bob.ID)},
+	}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("accept handoff: status %d", resp.StatusCode)
+	}
+	if got := delegateEmails(t, h, kept.ID); !slices.Equal(got, want) {
+		t.Errorf("Delegates after accepting with every box checked = %v, want %v", got, want)
+	}
+
+	ho, err = h.Service.StartHandoffByEmail(context.Background(), rejected.ID, pat.Email, sam.ID)
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+	if resp := postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/reject", ts.URL, ho.ID), url.Values{}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("reject handoff: status %d", resp.StatusCode)
+	}
+	if got := delegateEmails(t, h, rejected.ID); !slices.Equal(got, want) {
+		t.Errorf("Delegates after reject = %v, want %v", got, want)
+	}
+}
+
+// Home's Waiting on you offers the same choice: a Handoff's accept form there
+// lists the Delegates to keep, each checked by default.
+func TestHomeHandoffAcceptListsDelegatesToKeep(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	ann := h.SignIn("ann@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, ann, goal.ID)
+	ho, err := h.Service.StartHandoffByEmail(context.Background(), goal.ID, pat.Email, sam.ID)
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+
+	home := getBody(t, signInClient(t, ts.URL, pat.Email), ts.URL+"/")
+	row := between(t, home, `data-testid="home-pending-handoff"`, "</li>")
+	form := between(t, row, fmt.Sprintf(`action="/handoffs/%d/accept"`, ho.ID), "</form>")
+	if box := fmt.Sprintf(`<input type="checkbox" name="keep" value="%d" checked>`, ann.ID); !strings.Contains(form, box) {
+		t.Errorf("Home's accept form lacks Ann's keep checkbox (%s):\n%s", box, form)
+	}
+}
+
+// An Admin Reassign keeps every Delegate, present or Departed.
+func TestReassignKeepsDelegates(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("pat@example.com")
+	ann := h.SignIn("ann@example.com")
+	dee := h.SignIn("dee@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, ann, goal.ID)
+	h.AddDelegate(sam, dee, goal.ID)
+	for _, gone := range []int64{sam.ID, dee.ID} {
+		if err := h.Service.MarkDeparted(context.Background(), boss.ID, gone); err != nil {
+			t.Fatalf("MarkDeparted: %v", err)
+		}
+	}
+
+	if resp := postForm(t, signInClient(t, ts.URL, boss.Email), fmt.Sprintf("%s/goals/%d/reassign", ts.URL, goal.ID), url.Values{
+		"email": {"pat@example.com"},
+	}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("reassign: status %d", resp.StatusCode)
+	}
+
+	want := []string{"ann@example.com", "dee@example.com"}
+	if got := delegateEmails(t, h, goal.ID); !slices.Equal(got, want) {
+		t.Errorf("Delegates after reassign = %v, want %v", got, want)
+	}
+}
+
+// When accepting fails part-way, the request fails and nothing changes: the
+// Owner, the Delegates and the pending Handoff all stay as they were.
+func TestFailedAcceptChangesNothing(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	ann := h.SignIn("ann@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, ann, goal.ID)
+	ho, err := h.Service.StartHandoffByEmail(context.Background(), goal.ID, pat.Email, sam.ID)
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+	// Fail the last step, after ownership has moved and Ann has been removed.
+	if _, err := h.DB.Exec(`CREATE TRIGGER fail_accept BEFORE UPDATE OF status ON handoffs
+		WHEN NEW.status = 'accepted' BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+	patClient := signInClient(t, ts.URL, pat.Email)
+
+	resp := postForm(t, patClient, fmt.Sprintf("%s/handoffs/%d/accept", ts.URL, ho.ID), url.Values{})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("failed accept: status %d, want 500", resp.StatusCode)
+	}
+
+	page := getBody(t, patClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	if !strings.Contains(page, `data-testid="goal-owner">`+shownAs("sam@example.com", "sam")) {
+		t.Errorf("Goal page should still show Sam as Owner after a failed accept")
+	}
+	if got := delegateEmails(t, h, goal.ID); !slices.Equal(got, []string{"ann@example.com"}) {
+		t.Errorf("Delegates after a failed accept = %v, want Ann still there", got)
+	}
+	if inbox := getBody(t, patClient, ts.URL+"/handoffs"); !strings.Contains(inbox, fmt.Sprintf(`action="/handoffs/%d/accept"`, ho.ID)) {
+		t.Errorf("the Handoff isn't still pending after a failed accept:\n%s", inbox)
 	}
 }
