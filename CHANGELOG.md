@@ -34,6 +34,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [api] Database schema: migration `0019_account_names` adds a nullable `name` column to `accounts`. It's additive and runs on startup; existing Accounts have no Name until a sign-in integration supplies one (#41).
 
 **Bug fixes:**
+- [user] On screens narrower than 900px, tables fill the width of their card again instead of shrinking to their content. A table too wide for the screen scrolls sideways inside its card.
 - [user] The report draft page no longer scrolls sideways on a phone: the baseline line and the Narrative card fit the screen, and the On track table scrolls within its card (#43).
 - [user] Rejecting a Handoff no longer erases it: the Handoff is kept with the outcome rejected, and the Goal can be handed off again (#46).
 - [user] Marking someone Departed cancels the pending Handoffs to them, so they can no longer be accepted; a Handoff the departing Owner started stays pending, and accepting it ends the Goal's Ownerless state (#46).

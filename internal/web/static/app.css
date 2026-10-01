@@ -214,5 +214,5 @@ details>summary::-webkit-details-marker{display:none}
 input,textarea,select,img{max-width:100%}
 pre{overflow-x:auto}
 fieldset{min-width:0}
-@media (max-width:900px){.nav{padding:0 16px}.brand{margin-right:12px}.page table{display:block;overflow-x:auto}}
+@media (max-width:900px){.nav{padding:0 16px}.brand{margin-right:12px}.card:has(table){overflow-x:auto}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0s!important}.btn:hover,.btn:active,a.card:hover{transform:none!important}}
