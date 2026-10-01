@@ -58,11 +58,24 @@ deliberately; don't override it on one page.
   --color-border:        #E8E6D5; /* cards, dividers */
   --color-border-strong: #D5D2BD; /* inputs */
   --color-focus:         #14B8A6;
+  --color-focus-halo:    rgba(20,184,166,.25); /* input focus outline */
 
   /* Feedback */
   --color-success: #2DD4BF;
   --color-warning: #EAB308;
   --color-error:   #EF4444;
+  --color-danger-ink: #9A231B; /* destructive text (.btn.danger, form errors). See Deviations */
+
+  /* Top bar */
+  --nav-bg:    var(--color-ink);
+  --nav-ink:   #FFFFFF;
+  --nav-ink-2: rgba(255,255,255,.78); /* resting nav items */
+  --nav-hover: rgba(255,255,255,.10); /* translucent-white hover */
+
+  /* Goal Health. See Deviations */
+  --health-g-bg: #DDEFE3; --health-g-ink: #17593A;
+  --health-y-bg: #FAEBC4; --health-y-ink: #6B4800;
+  --health-r-bg: #F9DEDB; --health-r-ink: #9A231B;
 
   /* Type */
   --font-display: "Plus Jakarta Sans", system-ui, sans-serif;
@@ -111,10 +124,22 @@ deliberately; don't override it on one page.
   --color-border:        #0A3F39; /* (chosen) */
   --color-border-strong: #0A5C53; /* scale step 2 */
   --color-focus:         #2DD4BF;
+  --color-focus-halo:    rgba(45,212,191,.30); /* (chosen) */
 
   --color-success: #2DD4BF;
   --color-warning: #EAB308;
   --color-error:   #F87171; /* (chosen) Red 400 reads better on dark */
+  --color-danger-ink: #F87171; /* (chosen) same as --color-error */
+
+  --nav-bg:    var(--color-surface-alt);
+  --nav-ink:   var(--color-ink);
+  --nav-ink-2: var(--color-ink-2);
+  --nav-hover: rgba(255,255,255,.06); /* (chosen) */
+
+  /* (chosen) Health hues on 20%-alpha fills with light text */
+  --health-g-bg: rgba(34,160,95,.20); --health-g-ink: #8EDDAF;
+  --health-y-bg: rgba(234,179,8,.20); --health-y-ink: #F5D06B;
+  --health-r-bg: rgba(239,68,68,.20); --health-r-ink: #F8A39B;
 
   --shadow-card:       0 10px 25px -5px rgba(0,0,0,.45), 0 8px 10px -6px rgba(0,0,0,.30);
   --shadow-card-hover: 0 20px 30px -10px rgba(0,0,0,.55), 0 10px 15px -5px rgba(0,0,0,.35);
@@ -144,8 +169,9 @@ Load the fonts with this URL:
 
 ## Components (mapped to `internal/web/static/app.css`)
 
-- **Top bar (`.nav`):** `--color-ink` background in light mode and
-  `--color-surface-alt` in dark mode. Nav items use a translucent-white hover.
+- **Top bar (`.nav`):** `--nav-bg`, which is `--color-ink` in light mode and
+  `--color-surface-alt` in dark mode, with `--nav-ink` text. Resting items use
+  `--nav-ink-2`; hover is the translucent-white `--nav-hover`.
   The current item (`.on`) gets a `--color-primary` underline or pill.
 - **Primary button (`.btn.primary`):**
   - Resting: `--color-primary-strong` fill, `--color-ink-inverse` text,
@@ -162,12 +188,13 @@ Load the fonts with this URL:
   with `--shadow-card-hover` and `translateY(-2px)`, over `--dur-base`.
 - **Inputs:** `--color-surface`, 1px `--color-border-strong`, `--radius-md`,
   12px × 16px padding. On focus, the border becomes `--color-focus` with an
-  outline of `2px solid rgba(20,184,166,.25)`.
+  outline of `2px solid var(--color-focus-halo)`.
 - **Tables:** headers on `--color-surface-alt` with `.label` type. Rows are
   divided by `--color-border`. Selected rows use `--color-primary-light`.
 - **Tags and counts:** `--radius-full`, with a `--color-primary-light` fill
   and `--color-ink` text.
-- **Health badges (`.g` / `.y` / `.r`):** see Deviations. They keep their dot
+- **Health badges (`.g` / `.y` / `.r`):** `--health-*-bg` fill with
+  `--health-*-ink` text; see Deviations. They keep their dot
   shapes (circle, triangle, square) so color is never the only signal.
 
 ## Motion
@@ -194,6 +221,10 @@ Load the fonts with this URL:
    - Yellow: `#FAEBC4` / `#6B4800`
    - Red: `#F9DEDB` / `#9A231B`
 
-   In dark mode, the same hues sit on 20%-alpha fills with light text. The
-   `--color-success`/`warning`/`error` tokens are for alerts and form
-   validation, not for Health.
+   In dark mode, the same hues sit on 20%-alpha fills with light text
+   (`--health-*` in the dark block). The `--color-success`/`warning`/`error`
+   tokens are for alerts and form validation, not for Health.
+4. **Danger text.** `--color-error` (`#EF4444`) reaches only 3.76:1 on white,
+   too low for 13–15px text. Destructive buttons and inline errors use
+   `--color-danger-ink` (`#9A231B`, the Red Health ink) in light mode instead;
+   `--color-error` stays for borders and icons.
