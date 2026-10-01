@@ -24,6 +24,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Rejecting a Handoff no longer erases it: the Handoff is kept with the outcome rejected, and the Goal can be handed off again (#46).
 - [user] Marking someone Departed cancels the pending Handoffs to them, so they can no longer be accepted; a Handoff the departing Owner started stays pending, and accepting it ends the Goal's Ownerless state (#46).
 - [user] A Departed person can no longer sign in or act: signing in shows why it was refused, a session they already had ends on their next request, and they can't submit Check-ins as Owner or Delegate. Everything they did stays attributed to them, and a Departed Delegate stays listed on the Goal page, marked "departed" (#45).
+- [user] A Goal page's Dimensions section links to the Dimensions page ("All Dimensions →") for everyone who can see the Goal, even before any Dimension is defined, so non-Admins can reach it again now that it's out of the main nav (#44).
 
 **Infrastructure:**
 - [ops] `make serve` builds the app and serves it on the tailnet at `https://<machine>.<tailnet>.ts.net:8090` through `tailscale serve`, listening on localhost only and with emailed links pointing at the tailnet URL; `SERVE_PORT`, `SERVE_DB`, and `SERVE_ADMINS` override the defaults.
