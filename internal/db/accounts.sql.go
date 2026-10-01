@@ -71,6 +71,40 @@ func (q *Queries) GetAccountByEmail(ctx context.Context, email string) (Account,
 	return i, err
 }
 
+const listDepartedAccounts = `-- name: ListDepartedAccounts :many
+SELECT id, email, is_admin, created_at, departed, name FROM accounts WHERE departed = 1 ORDER BY email
+`
+
+func (q *Queries) ListDepartedAccounts(ctx context.Context) ([]Account, error) {
+	rows, err := q.db.QueryContext(ctx, listDepartedAccounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Account
+	for rows.Next() {
+		var i Account
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.IsAdmin,
+			&i.CreatedAt,
+			&i.Departed,
+			&i.Name,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setAccountName = `-- name: SetAccountName :exec
 UPDATE accounts SET name = ? WHERE id = ?
 `

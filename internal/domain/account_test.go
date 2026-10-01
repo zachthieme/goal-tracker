@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -127,6 +128,55 @@ func TestMarkReturnedOnlyByAdmin(t *testing.T) {
 	}
 	if _, err := h.Service.SignIn(ctx, "sam@example.com"); !errors.Is(err, domain.ErrDeparted) {
 		t.Errorf("Sam can sign in after a refused MarkReturned: err = %v", err)
+	}
+}
+
+// DepartedAccounts lists every Departed person, whether or not they own a Goal,
+// in the order they are shown: by Label. A present person isn't listed, nor is
+// one who has returned.
+func TestDepartedAccountsListsEveryDepartedPersonByLabel(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	zed := h.SignInNamed("aaron@example.com", "Zed Okafor")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	pat := h.SignIn("pat@example.com")
+	ann := h.SignIn("ann@example.com")
+	h.SignIn("lee@example.com")
+	delegated := h.ActiveGoal(pat, "Grow revenue", "Revenue funds the rest.")
+	h.AddDelegate(pat, kim, delegated.ID)
+	moved := h.ActiveGoal(sam, "Migrate displays", "Displays fail often.")
+
+	if got, err := h.Service.DepartedAccounts(ctx); err != nil || len(got) != 0 {
+		t.Errorf("DepartedAccounts with nobody Departed = %+v, %v; want none", got, err)
+	}
+
+	for _, acc := range []domain.Account{zed, sam, kim, ann} {
+		if err := h.Service.MarkDeparted(ctx, boss.ID, acc.ID); err != nil {
+			t.Fatalf("MarkDeparted(%s): %v", acc.Email, err)
+		}
+	}
+	if _, err := h.Service.ReassignGoal(ctx, boss.ID, moved.ID, pat.ID); err != nil {
+		t.Fatalf("ReassignGoal: %v", err)
+	}
+	if err := h.Service.MarkReturned(ctx, boss.ID, ann.ID); err != nil {
+		t.Fatalf("MarkReturned: %v", err)
+	}
+
+	got, err := h.Service.DepartedAccounts(ctx)
+	if err != nil {
+		t.Fatalf("DepartedAccounts: %v", err)
+	}
+	var labels []string
+	for _, acc := range got {
+		if !acc.Departed {
+			t.Errorf("DepartedAccounts lists %s as present", acc.Email)
+		}
+		labels = append(labels, acc.Label())
+	}
+	if want := []string{"kim", "sam", "Zed Okafor"}; !slices.Equal(labels, want) {
+		t.Errorf("DepartedAccounts = %q, want %q", labels, want)
 	}
 }
 
