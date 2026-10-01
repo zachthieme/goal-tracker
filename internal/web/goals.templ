@@ -204,13 +204,13 @@ templ goalsStyles() {
 		.gl-filters{display:flex;flex-direction:column;gap:8px}
 		.gl-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 		.gl-bar input[type=search]{flex:1;min-width:200px}
-		.gl-mine{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+		.gl-mine{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
 		.gl-filters details{padding:0 4px}
 		.gl-filters details>summary{justify-content:flex-start;color:var(--color-primary-strong);font-weight:600}
 		.gl-filters fieldset{display:inline-flex;flex-wrap:wrap;gap:4px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);margin:0 8px 8px 0;padding:8px 12px}
 		.gl-group th{background:var(--color-primary-subtle);color:var(--color-ink);font-size:13px;font-weight:600;letter-spacing:0;text-transform:none}
-		.gl-marks{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
-		#goal-list td .tag{margin:2px 4px 2px 0}
+		.gl-marks{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+		#goal-list td .tag{margin:4px 4px 4px 0}
 	</style>
 }
 
@@ -402,8 +402,8 @@ templ goalHead(v goalView, owner, admin bool) {
 templ goalPageStyles() {
 	<style>
 		.gp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap}
-		.gp-summary{display:flex;flex-direction:column;gap:10px;min-width:0;flex:1 1 320px}
-		.gp-badges{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+		.gp-summary{display:flex;flex-direction:column;gap:12px;min-width:0;flex:1 1 320px}
+		.gp-badges{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 		.gp-meta{display:flex;flex-wrap:wrap;gap:4px 20px;color:var(--color-ink-muted)}
 		.gp-meta strong{color:var(--color-ink)}
 		.gp-actions{display:flex;gap:8px;align-items:flex-start;margin-left:auto}
@@ -426,7 +426,7 @@ templ goalPageStyles() {
 		.gp-edit form{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 		details.gp-card>summary h3{margin:0}
 		.gp-link{display:flex;flex-direction:column;gap:4px}
-		.gp-link-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+		.gp-link-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 		.gp-link-meta form{margin:0 0 0 auto}
 		.gp-metric-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
 		.gp-current .num{font-size:28px;line-height:1.1}
