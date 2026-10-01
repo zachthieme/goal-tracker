@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -116,5 +117,109 @@ func TestAdminNavItemIsForAdminsOnly(t *testing.T) {
 		if strings.Contains(page, `data-testid="nav-admin"`) != (who == "Admin") {
 			t.Errorf("the %s's top bar has the Admin item: %v", who, who != "Admin")
 		}
+	}
+}
+
+// The Admin page lists every Departed person by Label, email on hover, each
+// with a Mark returned… button that asks for confirmation — including a
+// Delegate who owns no Goals and an Owner whose Goals were all reassigned, who
+// have no Goal page to be returned from. A present person isn't listed, and
+// with nobody Departed the list says so. Only an Admin sees it.
+func TestAdminPageListsDepartedPeople(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignInNamed("kim@example.com", "Kim Abara")
+	pat := h.SignIn("pat@example.com")
+	delegated := h.ActiveGoal(pat, "Grow revenue", "Revenue funds the rest.")
+	h.AddDelegate(pat, kim, delegated.ID)
+	moved := h.ActiveGoal(sam, "Migrate displays", "Displays fail often.")
+	client := signInClient(t, ts.URL, "ada@example.com")
+
+	if list := pageElement(t, getBody(t, client, ts.URL+"/admin"), "section", "admin-departed"); !strings.Contains(list, `data-testid="admin-departed-empty"`) {
+		t.Errorf("with nobody Departed, the list doesn't say so:\n%s", list)
+	}
+
+	for _, acc := range []domain.Account{sam, kim} {
+		if err := h.Service.MarkDeparted(t.Context(), ada.ID, acc.ID); err != nil {
+			t.Fatalf("MarkDeparted(%s): %v", acc.Email, err)
+		}
+	}
+	if _, err := h.Service.ReassignGoal(t.Context(), ada.ID, moved.ID, pat.ID); err != nil {
+		t.Fatalf("ReassignGoal: %v", err)
+	}
+
+	list := pageElement(t, getBody(t, client, ts.URL+"/admin"), "section", "admin-departed")
+	if strings.Contains(list, "admin-departed-empty") {
+		t.Errorf("Departed list shows its empty state beside people:\n%s", list)
+	}
+	kimAt, samAt := strings.Index(list, shownAs("kim@example.com", "Kim Abara")), strings.Index(list, shownAs("sam@example.com", "sam"))
+	if kimAt < 0 || samAt < 0 || kimAt > samAt {
+		t.Errorf("Departed list doesn't show Kim Abara then sam by Label with email on hover:\n%s", list)
+	}
+	if strings.Contains(list, "pat@example.com") || strings.Contains(list, "ada@example.com") {
+		t.Errorf("Departed list shows a present person:\n%s", list)
+	}
+	for _, acc := range []domain.Account{sam, kim} {
+		row := openTag(between(t, list, fmt.Sprintf(`action="/accounts/%d/return"`, acc.ID), ""))
+		if !strings.Contains(row, `onsubmit="return confirm(`) {
+			t.Errorf("Mark returned for %s doesn't ask for confirmation: %s", acc.Email, row)
+		}
+	}
+	if !strings.Contains(list, "Mark returned…") {
+		t.Errorf("Departed list lacks Mark returned…:\n%s", list)
+	}
+	if strings.Contains(list, "this Owner") {
+		t.Errorf("Departed list's confirmation speaks of an Owner, but not everyone listed owns a Goal:\n%s", list)
+	}
+
+	resp, err := signInClient(t, ts.URL, "pat@example.com").Get(ts.URL + "/admin")
+	if err != nil {
+		t.Fatalf("GET /admin: %v", err)
+	}
+	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden || strings.Contains(body, "admin-departed") {
+		t.Errorf("non-Admin GET /admin: status %d, want 403 without the list", resp.StatusCode)
+	}
+}
+
+// Marking someone returned from the Admin page brings the Admin back to it,
+// with that person no longer listed, and returns them: they can sign in again.
+func TestAdminMarksDepartedPersonReturnedFromAdminPage(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	kim := h.SignIn("kim@example.com")
+	sam := h.SignIn("sam@example.com")
+	for _, acc := range []domain.Account{kim, sam} {
+		if err := h.Service.MarkDeparted(t.Context(), ada.ID, acc.ID); err != nil {
+			t.Fatalf("MarkDeparted(%s): %v", acc.Email, err)
+		}
+	}
+	client := signInClient(t, ts.URL, "ada@example.com")
+
+	req, err := http.NewRequest(http.MethodPost, fmt.Sprintf("%s/accounts/%d/return", ts.URL, kim.ID), nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Referer", ts.URL+"/admin")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST return: %v", err)
+	}
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/admin" {
+		t.Fatalf("after Mark returned: status %d at %s, want 200 at /admin", resp.StatusCode, resp.Request.URL.Path)
+	}
+
+	list := pageElement(t, page, "section", "admin-departed")
+	if strings.Contains(list, "kim@example.com") {
+		t.Errorf("Kim is still listed as Departed after returning:\n%s", list)
+	}
+	if !strings.Contains(list, shownAs("sam@example.com", "sam")) {
+		t.Errorf("Sam, still Departed, left the list:\n%s", list)
+	}
+	if acc, err := h.Service.SignIn(t.Context(), "kim@example.com"); err != nil || acc.Departed {
+		t.Errorf("SignIn after return = %+v, %v; want a present Account", acc, err)
 	}
 }

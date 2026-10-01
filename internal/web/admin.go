@@ -6,9 +6,9 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// handleAdmin is the home of the Admin tools: Dimensions, Import goals, and
-// the Ownerless Goals waiting for an Admin to reassign them. Only an Admin may
-// open it.
+// handleAdmin is the home of the Admin tools: Dimensions, Import goals, the
+// Ownerless Goals waiting for an Admin to reassign them, and the Departed
+// people an Admin can mark returned. Only an Admin may open it.
 func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if !current.IsAdmin {
 		http.Error(w, "only an Admin may open the Admin page", http.StatusForbidden)
@@ -19,7 +19,12 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, current dom
 		http.Error(w, "could not read goals", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, adminPage(&current, awaitingReassignment(goals)))
+	departed, err := s.svc.DepartedAccounts(r.Context())
+	if err != nil {
+		http.Error(w, "could not read departed people", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, adminPage(&current, awaitingReassignment(goals), departed))
 }
 
 // awaitingReassignment are the Ownerless Goals still open: a Done or Cancelled

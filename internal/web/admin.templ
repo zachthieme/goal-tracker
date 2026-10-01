@@ -7,8 +7,9 @@ import (
 )
 
 // adminPage gathers the Admin tools: a card per tool, then the Ownerless Goals
-// waiting for an Admin to reassign them (CONTEXT.md: Ownerless).
-templ adminPage(current *domain.Account, ownerless []domain.Goal) {
+// waiting for an Admin to reassign them (CONTEXT.md: Ownerless), then the
+// Departed people an Admin can mark returned (CONTEXT.md: Departed).
+templ adminPage(current *domain.Account, ownerless []domain.Goal, departed []domain.Account) {
 	@layout("Admin", current) {
 		@adminStyles()
 		<header class="page-head">
@@ -38,8 +39,39 @@ templ adminPage(current *domain.Account, ownerless []domain.Goal) {
 							for _, g := range ownerless {
 								<tr data-testid="admin-ownerless-goal">
 									<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></td>
-									<td>@person(g.Owner)</td>
+									<td>@person(g.Owner)
+</td>
 									<td><span class="badge lc">{ g.Lifecycle }</span></td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				}
+			</div>
+		</section>
+		<section data-testid="admin-departed" class="ad-section">
+			<div>
+				<h2>Departed people</h2>
+				<p class="muted">People who have left the org. Mark someone returned to let them sign in and act again.</p>
+			</div>
+			<div class="card">
+				if len(departed) == 0 {
+					<p data-testid="admin-departed-empty" class="muted">Nobody has left the org.</p>
+				} else {
+					<table>
+						<thead>
+							<tr><th>Person</th><th><span class="sr-only">Action</span></th></tr>
+						</thead>
+						<tbody>
+							for _, a := range departed {
+								<tr data-testid="admin-departed-person">
+									<td>@person(a)
+</td>
+									<td class="ad-action">
+										<form method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/return", a.ID)) } onsubmit={ confirmScript(confirmReturnPerson) }>
+											<button type="submit" class="btn sm">Mark returned…</button>
+										</form>
+									</td>
 								</tr>
 							}
 						</tbody>
@@ -49,6 +81,10 @@ templ adminPage(current *domain.Account, ownerless []domain.Goal) {
 		</section>
 	}
 }
+
+// confirmReturnPerson is what an Admin confirms before marking a Departed
+// person returned from the Admin page, where they may own no Goals at all.
+const confirmReturnPerson = "Mark this person returned? They can sign in and act again, and any Goals they still own stop being Ownerless. Goals reassigned while they were away stay with their new Owners."
 
 // adminTool is a card linking to one Admin tool, saying what it's for.
 templ adminTool(testID, href, label, blurb string) {
@@ -65,6 +101,8 @@ templ adminStyles() {
 		.ad-tool{padding:24px;display:flex;flex-direction:column;gap:6px}
 		.ad-tool:hover{border-color:var(--color-primary)}
 		.ad-section{display:flex;flex-direction:column;gap:12px}
+		.ad-action{text-align:right}
+		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 		@media (max-width:900px){.ad-tools{grid-template-columns:1fr}}
 	</style>
 }
