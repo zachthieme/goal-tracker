@@ -24,6 +24,14 @@ another area's file.
   harness (fresh database, clock, email recorder, sign-in). Scenario builders
   live one file per area (e.g. `goals.go`).
 
+## Gates and commits
+
+Run the gates (`make generate-check`, `make test`, `make lint`) in the
+foreground and read each to the end; `make test` takes up to ~5 minutes. Never
+background a gate and wait for it. **Commit before you end your turn.** A
+campaign run is a single turn, so a turn that ends waiting on a background job,
+or with work uncommitted, parks the issue as "stalled, no-commit".
+
 ## Changelog
 
 **Log every change, and tag who it reaches.** Every change, internal work
