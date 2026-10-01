@@ -182,3 +182,147 @@ func TestReassignGoalGuards(t *testing.T) {
 		t.Errorf("non-Admin reassign err = %v, want ErrNotAuthorized", err)
 	}
 }
+
+// startHandoff starts a Handoff of goalID to toID on behalf of actorID, failing
+// the test on error.
+func startHandoff(t *testing.T, h *testsupport.Harness, goalID, toID, actorID int64) domain.Handoff {
+	t.Helper()
+	ho, err := h.Service.StartHandoff(context.Background(), domain.StartHandoffInput{
+		GoalID: goalID, ToOwnerID: toID, ActorID: actorID,
+	})
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+	return ho
+}
+
+// Rejecting a Handoff keeps it in the Goal's ownership history with the outcome
+// rejected; the Owner is unchanged and a new Handoff may be started
+// (CONTEXT.md: every Handoff is kept with its outcome).
+func TestRejectedHandoffIsKeptInHistory(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	mel := h.SignIn("mel@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+	if err := h.Service.RejectHandoff(context.Background(), ho.ID, pat.ID); err != nil {
+		t.Fatalf("RejectHandoff: %v", err)
+	}
+
+	g, _ := h.Service.ViewGoal(context.Background(), goal.ID)
+	if g.Owner.ID != sam.ID {
+		t.Errorf("Owner after reject = %d, want %d", g.Owner.ID, sam.ID)
+	}
+	history, err := h.Service.OwnershipHistory(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("OwnershipHistory: %v", err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("history = %+v, want the one rejected Handoff", history)
+	}
+	got := history[0]
+	if got.Status != domain.HandoffRejected || got.From.ID != sam.ID || got.To.ID != pat.ID || got.InitiatedBy.ID != sam.ID {
+		t.Errorf("history[0] = %+v, want rejected Handoff from Sam to Pat started by Sam", got)
+	}
+
+	// Only a pending Handoff blocks another: Sam may now hand the Goal to Mel.
+	startHandoff(t, h, goal.ID, mel.ID, sam.ID)
+}
+
+// Marking someone Departed cancels the pending Handoffs to them: each is kept
+// with the outcome cancelled and can no longer be accepted.
+func TestMarkDepartedCancelsHandoffsToThePerson(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+
+	if err := h.Service.MarkDeparted(context.Background(), boss.ID, pat.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	history, err := h.Service.OwnershipHistory(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("OwnershipHistory: %v", err)
+	}
+	if len(history) != 1 || history[0].Status != domain.HandoffCancelled {
+		t.Fatalf("history = %+v, want the one cancelled Handoff", history)
+	}
+	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("accept cancelled Handoff err = %v, want ErrNotFound", err)
+	}
+	if g, _ := h.Service.ViewGoal(context.Background(), goal.ID); g.Owner.ID != sam.ID {
+		t.Errorf("Owner = %d, want %d", g.Owner.ID, sam.ID)
+	}
+}
+
+// A Handoff the Owner started before leaving stays pending when they depart; the
+// new Owner accepts it, which ends the Goal's Ownerless state (CONTEXT.md:
+// Ownerless).
+func TestHandoffFromDepartedOwnerStillAccepted(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+
+	if err := h.Service.MarkDeparted(context.Background(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	if g, _ := h.Service.ViewGoal(context.Background(), goal.ID); !g.Ownerless {
+		t.Fatal("Goal not Ownerless after its Owner departed")
+	}
+	if pending, _ := h.Service.PendingHandoffs(context.Background(), pat.ID); len(pending) != 1 {
+		t.Fatalf("pending for Pat = %+v, want the Handoff from Sam", pending)
+	}
+
+	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID); err != nil {
+		t.Fatalf("AcceptHandoff: %v", err)
+	}
+	g, _ := h.Service.ViewGoal(context.Background(), goal.ID)
+	if g.Owner.ID != pat.ID || g.Ownerless {
+		t.Errorf("after accept: Owner = %d, Ownerless = %v; want Pat and not Ownerless", g.Owner.ID, g.Ownerless)
+	}
+}
+
+// An Admin Reassign is recorded in the Goal's ownership history after the
+// Handoffs before it: who did it, from whom, to whom, and the outcome
+// reassigned.
+func TestReassignAppearsInOwnershipHistory(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	mel := h.SignIn("mel@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ho := startHandoff(t, h, goal.ID, mel.ID, sam.ID)
+	if err := h.Service.RejectHandoff(context.Background(), ho.ID, mel.ID); err != nil {
+		t.Fatalf("RejectHandoff: %v", err)
+	}
+	if err := h.Service.MarkDeparted(context.Background(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	if _, err := h.Service.ReassignGoal(context.Background(), boss.ID, goal.ID, pat.ID); err != nil {
+		t.Fatalf("ReassignGoal: %v", err)
+	}
+
+	history, err := h.Service.OwnershipHistory(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("OwnershipHistory: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("history = %+v, want the rejected Handoff then the Reassign", history)
+	}
+	if history[0].Status != domain.HandoffRejected {
+		t.Errorf("history[0].Status = %q, want %q", history[0].Status, domain.HandoffRejected)
+	}
+	got := history[1]
+	if got.Status != domain.HandoffReassigned || got.From.ID != sam.ID || got.To.ID != pat.ID || got.InitiatedBy.ID != boss.ID {
+		t.Errorf("history[1] = %+v, want Reassign from Sam to Pat by the Admin", got)
+	}
+}
