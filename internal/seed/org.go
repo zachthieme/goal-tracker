@@ -1,5 +1,7 @@
 package seed
 
+import "strings"
+
 // The fake org's shape: three org-wide outcomes, and six teams (a Team
 // Dimension, since teams are not built in — ADR 0002), each with two team Goals
 // contributing to those outcomes and a handful of projects contributing to the
@@ -9,6 +11,39 @@ package seed
 
 // teamDimension is the name of the Dimension the seed defines for teams.
 const teamDimension = "Team"
+
+// roleNames are the Names of the people the org reaches by a role address —
+// the Admin, the leadership team, and the team leads — whose emails don't
+// spell out a name.
+var roleNames = map[string]string{
+	"admin@example.com":         "Robin Ellis",
+	"ceo@example.com":           "Dana Whitfield",
+	"cto@example.com":           "Priya Raman",
+	"cpo@example.com":           "Marcus Bell",
+	"platform-lead@example.com": "Jonas Lindqvist",
+	"payments-lead@example.com": "Amara Nwosu",
+	"growth-lead@example.com":   "Elena Petrova",
+	"mobile-lead@example.com":   "Kenji Watanabe",
+	"data-lead@example.com":     "Sofia Marquez",
+	"support-lead@example.com":  "Rahul Iyer",
+}
+
+// nameOf is the Name the org's sign-in would supply for addr (CONTEXT.md:
+// Name): a role address's from roleNames, otherwise the name the address spells
+// out, ada.okafor@example.com being Ada Okafor.
+func nameOf(addr string) string {
+	if name, ok := roleNames[addr]; ok {
+		return name
+	}
+	local, _, _ := strings.Cut(addr, "@")
+	parts := strings.Split(local, ".")
+	for i, p := range parts {
+		if p != "" {
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+	return strings.Join(parts, " ")
+}
 
 // entry is one Goal in the plan. metric, when set, is an import-format Metric
 // without its target date ("Name | unit | up|down | baseline | target"); an
