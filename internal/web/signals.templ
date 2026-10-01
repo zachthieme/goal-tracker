@@ -39,7 +39,10 @@ templ graphSignalsPage(current *domain.Account, signals domain.GraphSignals) {
 				for _, g := range signals.Unaligned {
 					<li data-testid="unaligned-goal">
 						@goalRef(g)
-						<span>— Owner { g.Owner.Email }</span>
+						<span>
+							{ "— Owner " }
+							@person(g.Owner)
+						</span>
 					</li>
 				}
 			</ul>

@@ -162,3 +162,93 @@ func TestListPublicationsPerDefinition(t *testing.T) {
 		}
 	}
 }
+
+// A Publication freezes each person's Name as it read when published: a later
+// change to the Name leaves the snapshot as it was (CONTEXT.md: Name).
+func TestPublicationFreezesTheOwnersName(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	ada := h.SignIn("ada.okafor@example.com")
+	if err := h.Service.SetName(ctx, ada.ID, "Ada Okafor"); err != nil {
+		t.Fatalf("SetName: %v", err)
+	}
+	g := h.ActiveGoal(ada, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+
+	if err := h.Service.SetName(ctx, ada.ID, "Ada Mensah"); err != nil {
+		t.Fatalf("SetName: %v", err)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	owners := publishedOwners(got.Report)
+	if len(owners) != 1 || owners[0].Label() != "Ada Okafor" {
+		t.Errorf("published Owners %+v, want Ada Okafor as published", owners)
+	}
+}
+
+// A person published without a Name is frozen as they were shown then, by
+// their email's local part, even if they are named later.
+func TestPublicationFreezesAnUnnamedOwnerAsShown(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(sam, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+
+	if err := h.Service.SetName(ctx, sam.ID, "Sam Berg"); err != nil {
+		t.Fatalf("SetName: %v", err)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	owners := publishedOwners(got.Report)
+	if len(owners) != 1 || owners[0].Label() != "sam" || owners[0].LongLabel() != "sam (sam@example.com)" {
+		t.Errorf("published Owners %+v, want sam as published", owners)
+	}
+}
+
+// A snapshot published before Accounts had Names still renders, showing each
+// person by email as it always did.
+func TestSnapshotFromBeforeNamesShowsEmails(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Lines":[{"Goal":{"ID":1,"Title":"Launch in EU",` +
+		`"Owner":{"ID":1,"Email":"boss@example.com","IsAdmin":true,"Departed":false}},"Health":""}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+		t.Fatalf("write a pre-Names snapshot: %v", err)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	owners := publishedOwners(got.Report)
+	if len(owners) != 1 || owners[0].Label() != "boss@example.com" || owners[0].LongLabel() != "boss@example.com" {
+		t.Errorf("pre-Names snapshot Owners %+v, want boss@example.com", owners)
+	}
+}
+
+// publishedOwners is every selected Goal's Owner in a Report, exceptions first.
+func publishedOwners(r domain.Report) []domain.Account {
+	var out []domain.Account
+	for _, b := range r.Exceptions {
+		out = append(out, b.Goal.Owner)
+	}
+	for _, sg := range r.Lines {
+		out = append(out, sg.Goal.Owner)
+	}
+	return out
+}

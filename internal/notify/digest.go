@@ -87,13 +87,17 @@ const dateFormat = "2006-01-02"
 // calendar.
 const daysPerWeek = 7
 
+// reminderBody lists the Goals needing a Check-in. With no hover in an email,
+// the Owner a Delegate writes for reads Name (email) at their first mention and
+// by Name after that (CONTEXT.md: Name).
 func (n *Notifier) reminderBody(items []reminderItem) string {
 	var b strings.Builder
+	var people domain.Mentions
 	b.WriteString("These Goals need a Check-in:\n\n")
 	for _, it := range items {
 		title := it.goal.Title
 		if it.asDelegate {
-			title += " (as Delegate for " + it.goal.Owner.Email + ")"
+			title += ", as Delegate for " + people.Of(it.goal.Owner)
 		}
 		state := "Check-in due"
 		if it.freshness.Stale {
@@ -215,7 +219,8 @@ func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekSta
 		reasons = append(reasons, fmt.Sprintf("went Stale, %d days without a Check-in", f.DaysSince))
 	}
 	if child.Ownerless {
-		reasons = append(reasons, "is Ownerless: "+child.Owner.Email+" has left the org")
+		// The digest has already introduced the Owner on the child's line.
+		reasons = append(reasons, "is Ownerless: "+child.Owner.Label()+" has left the org")
 	}
 	signals, err := n.svc.GoalSignals(ctx, child.ID)
 	if err != nil {
@@ -252,8 +257,12 @@ func worsened(before, now string) bool {
 	return (now == domain.HealthYellow || now == domain.HealthRed) && rank[now] > rank[before]
 }
 
+// digestBody lists the link requests and problems awaiting the parent Owner,
+// each child's Owner reading Name (email) at their first mention and by Name
+// after that (CONTEXT.md: Name).
 func (n *Notifier) digestBody(entries []digestEntry) string {
 	var b strings.Builder
+	var people domain.Mentions
 	var pending []*domain.Link
 	var problems []*childProblem
 	for _, e := range entries {
@@ -267,15 +276,15 @@ func (n *Notifier) digestBody(entries []digestEntry) string {
 	if len(pending) > 0 {
 		fmt.Fprintf(&b, "Link requests waiting on you (%s/links):\n\n", n.baseURL)
 		for _, l := range pending {
-			fmt.Fprintf(&b, "- %s (%s) asks to contribute to %s\n", l.Child.Title, l.Child.Owner.Email, l.Parent.Title)
+			fmt.Fprintf(&b, "- %s, owned by %s, asks to contribute to %s\n", l.Child.Title, people.Of(l.Child.Owner), l.Parent.Title)
 		}
 		b.WriteString("\n")
 	}
 	if len(problems) > 0 {
 		b.WriteString("Goals contributing to yours that need your attention:\n\n")
 		for _, p := range problems {
-			fmt.Fprintf(&b, "- %s (%s), contributing to %s: %s\n  %s\n",
-				p.child.Title, p.child.Owner.Email, p.parent.Title, strings.Join(p.reasons, "; "), n.goalURL(p.child.ID))
+			fmt.Fprintf(&b, "- %s, owned by %s, contributing to %s: %s\n  %s\n",
+				p.child.Title, people.Of(p.child.Owner), p.parent.Title, strings.Join(p.reasons, "; "), n.goalURL(p.child.ID))
 		}
 	}
 	return b.String()

@@ -62,6 +62,7 @@ func TestSeededOrg(t *testing.T) {
 	t.Run("Milestone Churn", func(t *testing.T) { milestoneChurn(t, h) })
 	t.Run("Stale and Unaligned Goals", func(t *testing.T) { staleAndUnaligned(t, h) })
 	t.Run("Lifecycle changes", func(t *testing.T) { lifecycleChanges(t, h) })
+	t.Run("every person has a Name", func(t *testing.T) { everyPersonNamed(t, h) })
 	t.Run("only into a fresh database", func(t *testing.T) { onlyIntoAFreshDatabase(t, h) })
 	t.Run("deterministic", func(t *testing.T) { deterministic(t, h) })
 }
@@ -327,6 +328,29 @@ func lifecycleChanges(t *testing.T, h *testsupport.Harness) {
 	}
 }
 
+// Every seeded person has a realistic Name (CONTEXT.md: Name); one whose email
+// spells out a name has that name, ada.okafor@example.com being Ada Okafor.
+func everyPersonNamed(t *testing.T, h *testsupport.Harness) {
+	people := map[string]domain.Account{}
+	for _, g := range listGoals(t, h) {
+		people[g.Owner.Email] = g.Owner
+	}
+	people[admin] = h.SignIn(admin)
+	if ada, ok := people["ada.okafor@example.com"]; !ok || ada.Name != "Ada Okafor" {
+		t.Errorf("ada.okafor@example.com is named %q, want Ada Okafor", ada.Name)
+	}
+	for addr, p := range people {
+		if p.Name == "" {
+			t.Errorf("%s has no Name", addr)
+			continue
+		}
+		local, _, _ := strings.Cut(addr, "@")
+		if spelled := strings.ToLower(strings.ReplaceAll(p.Name, " ", ".")); strings.Contains(local, ".") && spelled != local {
+			t.Errorf("%s is named %q, which doesn't match the email", addr, p.Name)
+		}
+	}
+}
+
 // Seeding a database that already has Goals is refused, and leaves it as it
 // was: the seed builds an org into a fresh database only.
 func onlyIntoAFreshDatabase(t *testing.T, h *testsupport.Harness) {
@@ -356,7 +380,7 @@ func fingerprint(t *testing.T, h *testsupport.Harness) string {
 	ctx := context.Background()
 	var b strings.Builder
 	for _, g := range listGoals(t, h) {
-		fmt.Fprintf(&b, "%d %q owner=%s %s %s due=%s cadence=%d top=%t\n", g.ID, g.Title, g.Owner.Email, g.Lifecycle, g.Kind, g.DeliveryDate.Format(time.DateOnly), g.CadenceDays, g.TopLevel)
+		fmt.Fprintf(&b, "%d %q owner=%s (%s) %s %s due=%s cadence=%d top=%t\n", g.ID, g.Title, g.Owner.Email, g.Owner.Name, g.Lifecycle, g.Kind, g.DeliveryDate.Format(time.DateOnly), g.CadenceDays, g.TopLevel)
 		parents, _ := h.Service.ParentsOf(ctx, g.ID)
 		for _, p := range parents {
 			fmt.Fprintf(&b, "  parent %d\n", p.ID)

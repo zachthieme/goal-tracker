@@ -15,12 +15,14 @@ import (
 // snapshot page: who published it and when, what it read its changes against,
 // its open Action Items, the introduction, the narrative curated from
 // Highlights, each exception's full MBR block, and every other selected Goal
-// one line (CONTEXT.md: Report).
+// one line (CONTEXT.md: Report). With no hover to show an email, a person's
+// first mention reads Name (email) and later ones their Name (CONTEXT.md: Name).
 func Markdown(p domain.Publication) string {
 	var b strings.Builder
+	var people domain.Mentions
 	r := p.Report
 	fmt.Fprintf(&b, "# %s\n\n", text(r.Definition.Name))
-	fmt.Fprintf(&b, "Published %s by %s. ", fmtPublished(p.PublishedAt), text(p.PublishedBy.Email))
+	fmt.Fprintf(&b, "Published %s by %s. ", fmtPublished(p.PublishedAt), text(people.Of(p.PublishedBy)))
 	if r.Previous.ID != 0 {
 		fmt.Fprintf(&b, "Changes since the previous publication, %s.\n", fmtPublished(r.Previous.PublishedAt))
 	} else {
@@ -29,7 +31,7 @@ func Markdown(p domain.Publication) string {
 	if len(r.ActionItems) > 0 {
 		b.WriteString("\n## Open Action Items\n\n")
 		for _, item := range r.ActionItems {
-			fmt.Fprintf(&b, "- %s — %s — due %s\n", text(item.Text), text(item.Owner.Email), fmtDate(item.DueDate))
+			fmt.Fprintf(&b, "- %s — %s — due %s\n", text(item.Text), text(people.Of(item.Owner)), fmtDate(item.DueDate))
 		}
 	}
 	if r.Definition.Introduction != "" {
@@ -43,7 +45,7 @@ func Markdown(p domain.Publication) string {
 		if len(sec.Highlights) > 0 {
 			b.WriteString("\n")
 			for _, nh := range sec.Highlights {
-				fmt.Fprintf(&b, "- %s — %s, %s\n", text(nh.Highlight.Note), text(nh.Highlight.Owner.Email), text(nh.GoalTitle))
+				fmt.Fprintf(&b, "- %s — %s, %s\n", text(nh.Highlight.Note), text(people.Of(nh.Highlight.Owner)), text(nh.GoalTitle))
 			}
 		}
 	}
@@ -53,13 +55,13 @@ func Markdown(p domain.Publication) string {
 	if len(r.Exceptions) > 0 {
 		b.WriteString("\n## Exceptions\n")
 		for _, blk := range r.Exceptions {
-			writeBlock(&b, blk)
+			writeBlock(&b, &people, blk)
 		}
 	}
 	if len(r.Lines) > 0 {
 		b.WriteString("\n## Other Goals\n\n")
 		for _, sg := range r.Lines {
-			fmt.Fprintf(&b, "- %s — %s — %s", text(sg.Goal.Title), text(sg.Goal.Owner.Email), health(sg.Health))
+			fmt.Fprintf(&b, "- %s — %s — %s", text(sg.Goal.Title), text(people.Of(sg.Goal.Owner)), health(sg.Health))
 			if !sg.Goal.DeliveryDate.IsZero() {
 				fmt.Fprintf(&b, " — due %s", fmtDate(sg.Goal.DeliveryDate))
 			}
@@ -73,13 +75,13 @@ func Markdown(p domain.Publication) string {
 // date with its history struck through, Health, So What, latest status, Path
 // to Green, Milestones, Metrics against target, and the Rolled-up Health with
 // the Owner's explanation.
-func writeBlock(b *strings.Builder, blk domain.ReportBlock) {
+func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBlock) {
 	g := blk.Goal
 	fmt.Fprintf(b, "\n### %s", text(g.Title))
 	for _, badge := range blk.Badges {
 		fmt.Fprintf(b, " **[%s]**", badge)
 	}
-	fmt.Fprintf(b, "\n\n%s · %s · Health: **%s**", text(g.Owner.Email), g.Lifecycle, health(blk.Health))
+	fmt.Fprintf(b, "\n\n%s · %s · Health: **%s**", text(people.Of(g.Owner)), g.Lifecycle, health(blk.Health))
 	if !g.DeliveryDate.IsZero() {
 		fmt.Fprintf(b, " · due %s%s", struck(blk.PriorDueDates), fmtDate(g.DeliveryDate))
 	}

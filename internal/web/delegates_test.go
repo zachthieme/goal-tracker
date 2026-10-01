@@ -146,7 +146,7 @@ func TestDelegatePageShowsGoalCards(t *testing.T) {
 		"Reduce outages",
 		`class="badge y"`,
 		`data-testid="delegated-goal-health">Yellow<`,
-		`data-testid="delegated-goal-owner">sam@example.com<`,
+		`data-testid="delegated-goal-owner">` + shownAs("sam@example.com", "sam"),
 		"3 days ago",
 		fmt.Sprintf(`href="/goals/%d/checkin"`, checked.ID),
 	} {

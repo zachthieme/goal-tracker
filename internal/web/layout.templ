@@ -50,6 +50,22 @@ func risks(ctx context.Context) int {
 	return n
 }
 
+type mentionsKey struct{}
+
+// withoutHover renders a page that has no hover to show an email on — the Print
+// view — so each person it shows is introduced as Name (email) at their first
+// mention and shown by Name after that (CONTEXT.md: Name).
+func withoutHover(ctx context.Context) context.Context {
+	return context.WithValue(ctx, mentionsKey{}, &domain.Mentions{})
+}
+
+// mentions is the page's record of whom it has introduced, nil on a page with
+// hover.
+func mentions(ctx context.Context) *domain.Mentions {
+	m, _ := ctx.Value(mentionsKey{}).(*domain.Mentions)
+	return m
+}
+
 // fontsURL loads the design system's faces; the font stacks in app.css fall
 // back to system fonts when it can't be reached.
 const fontsURL = "https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500&family=IBM+Plex+Sans:wght@400;500;600&family=Source+Serif+4:wght@600&display=swap"
@@ -80,7 +96,8 @@ templ layout(title string, current *domain.Account) {
 					}
 					<div class="me">
 						<span data-testid="current-user">
-							Signed in as { current.Email }
+							{ "Signed in as " }
+							@person(*current)
 							if current.IsAdmin {
 								(Admin)
 							}
@@ -117,5 +134,17 @@ templ navItem(href, testID, label string, count int) {
 templ navCount(count int) {
 	if count > 0 {
 		<span class="count">{ strconv.Itoa(count) }</span>
+	}
+}
+
+// person shows someone by their Name, or their email's local part until they
+// have one, with their email on hover so people who share a Name can be told
+// apart (CONTEXT.md: Name). Every page shows people through it; a page without
+// hover (withoutHover) introduces them as Name (email) instead.
+templ person(a domain.Account) {
+	if m := mentions(ctx); m != nil {
+		<span class="person" title={ a.Email }>{ m.Of(a) }</span>
+	} else {
+		<span class="person" title={ a.Email }>{ a.Label() }</span>
 	}
 }

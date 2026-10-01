@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -501,7 +502,7 @@ func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
 	if heading := pageElement(t, narrative, "h3", "narrative-section"); !strings.Contains(heading, `class="label"`) || !strings.HasSuffix(heading, ">Accomplishments") {
 		t.Errorf("narrative section heading %q, want an Accomplishments label", heading)
 	}
-	if credit := pageElement(t, narrative, "span", "highlight-credit"); !strings.Contains(credit, "— alice@example.com, ") || !strings.Contains(credit, "Launch in EU") {
+	if credit := between(t, narrative, `data-testid="highlight-credit"`, "</a>"); !strings.Contains(credit, "— "+shownAs("alice@example.com", "alice")+", ") || !strings.Contains(credit, "Launch in EU") {
 		t.Errorf("Highlight credit %q, want — owner, Goal", credit)
 	}
 }
@@ -613,5 +614,67 @@ func TestDraftPageColumnsShrinkToPhoneWidthOverHTTP(t *testing.T) {
 	}
 	if !strings.Contains(page, ".grid-main-aside>*{min-width:0}") {
 		t.Errorf("draft page columns keep their content's minimum width, so a wide table scrolls the page sideways; body:\n%s", page)
+	}
+}
+
+// The Print view has no hover, so it introduces each person as Name (email) at
+// their first mention and by Name after that (CONTEXT.md: Name).
+func TestPrintPageIntroducesEachPersonOnceOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
+	first := h.ActiveGoal(ada, "Launch in EU", "Expand the market.")
+	second := h.ActiveGoal(ada, "Cut churn", "Keep customers.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{first.ID, second.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	printed := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
+
+	if line := pageElement(t, printed, "p", "report-published"); !strings.Contains(line, ">boss (boss@example.com)<") {
+		t.Errorf("print page does not introduce the publisher; line:\n%s", line)
+	}
+	if n := strings.Count(printed, ">Ada Okafor (ada.okafor@example.com)<"); n != 1 {
+		t.Errorf("print page introduces Ada %d times, want once; body:\n%s", n, printed)
+	}
+	if n := strings.Count(printed, ">Ada Okafor<"); n != 1 {
+		t.Errorf("print page names Ada alone %d times, want once after her introduction; body:\n%s", n, printed)
+	}
+}
+
+// A publication shows each Owner by the Name they had when it was published,
+// whatever their Name is now; one published before Accounts had Names still
+// shows its people by email.
+func TestPublicationShowsNamesAsPublishedOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
+	g := h.ActiveGoal(ada, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	renamed := h.PublishReport(boss, def)
+	old := h.PublishReport(boss, def)
+	if _, err := h.DB.Exec(`UPDATE accounts SET name = 'Ada Mensah' WHERE id = ?`, ada.ID); err != nil {
+		t.Fatalf("rename Ada: %v", err)
+	}
+	before := fmt.Sprintf(`{"Definition":{"ID":%d,"Name":"MBR"},"Lines":[{"Goal":{"ID":%d,"Title":"Launch in EU",`+
+		`"Owner":{"ID":%d,"Email":"ada.okafor@example.com","IsAdmin":false,"Departed":false}},"Health":""}]}`, def.ID, g.ID, ada.ID)
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, old.ID); err != nil {
+		t.Fatalf("write a pre-Names snapshot: %v", err)
+	}
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	pubURL := func(p domain.Publication) string {
+		return ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(p.ID, 10)
+	}
+
+	if page := getBody(t, client, pubURL(renamed)); !strings.Contains(page, shownAs("ada.okafor@example.com", "Ada Okafor")) || strings.Contains(page, "Ada Mensah") {
+		t.Errorf("publication does not show Ada as published; body:\n%s", page)
+	}
+	if row := pageElement(t, getBody(t, client, pubURL(old)), "td", "selected-owner"); !strings.Contains(row, shownAs("ada.okafor@example.com", "ada.okafor@example.com")) {
+		t.Errorf("pre-Names Owner reads %s, want the email", row)
+	}
+	if printed := getBody(t, client, pubURL(old)+"/print"); !strings.Contains(printed, ">ada.okafor@example.com<") || strings.Contains(printed, "(ada.okafor@example.com)") {
+		t.Errorf("pre-Names print page does not show Ada by email alone; body:\n%s", printed)
 	}
 }

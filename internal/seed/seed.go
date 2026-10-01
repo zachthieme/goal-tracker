@@ -98,6 +98,9 @@ func Run(ctx context.Context, svc *domain.Service, clk *clock.Fixed, opts Option
 	for i, row := range rep.Rows {
 		plan.goals[i].id = row.GoalID
 	}
+	if err := nameEveryone(ctx, svc, admin, plan); err != nil {
+		return Summary{}, err
+	}
 	for _, g := range plan.goals {
 		if g.level != 1 {
 			continue
@@ -113,6 +116,29 @@ func Run(ctx context.Context, svc *domain.Service, clk *clock.Fixed, opts Option
 		return Summary{}, err
 	}
 	return Summary{Goals: len(plan.goals), Checkins: checkins}, nil
+}
+
+// nameEveryone gives the Admin and every Owner the import created the Name the
+// org's sign-in would supply (CONTEXT.md: Name).
+func nameEveryone(ctx context.Context, svc *domain.Service, admin domain.Account, p *plan) error {
+	if err := svc.SetName(ctx, admin.ID, nameOf(admin.Email)); err != nil {
+		return fmt.Errorf("name %s: %w", admin.Email, err)
+	}
+	named := map[string]bool{admin.Email: true}
+	for _, g := range p.goals {
+		if named[g.owner] {
+			continue
+		}
+		named[g.owner] = true
+		owner, err := svc.EnsureAccount(ctx, g.owner)
+		if err != nil {
+			return fmt.Errorf("look up %s: %w", g.owner, err)
+		}
+		if err := svc.SetName(ctx, owner.ID, nameOf(g.owner)); err != nil {
+			return fmt.Errorf("name %s: %w", g.owner, err)
+		}
+	}
+	return nil
 }
 
 // plannedGoal is one Goal of the org with everything the random seed decided

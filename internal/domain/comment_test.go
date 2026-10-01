@@ -46,7 +46,7 @@ func TestCommentOnGoalBlockEmailsTheOwner(t *testing.T) {
 	if m.To != "owner@example.com" {
 		t.Errorf("alert to %q, want the Goal's Owner", m.To)
 	}
-	for _, want := range []string{"Launch in EU", "MBR", "reader@example.com", "Why did the vendor slip?"} {
+	for _, want := range []string{"Launch in EU", "MBR", "reader (reader@example.com) commented on", "Why did the vendor slip?"} {
 		if !strings.Contains(m.Subject+"\n"+m.Body, want) {
 			t.Errorf("alert %+v does not mention %q", m, want)
 		}

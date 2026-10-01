@@ -43,14 +43,14 @@ func TestMarkdownHeaderAndOneLineGoals(t *testing.T) {
 
 	want := `# EU MBR
 
-Published 2026-02-21 09:30 UTC by boss@example.com. Changes since 2026-01-12.
+Published 2026-02-21 09:30 UTC by boss (boss@example.com). Changes since 2026-01-12.
 
 Quarterly business review.
 
 ## Other Goals
 
-- Cut churn — boss@example.com — Green — due 2026-06-30
-- Hire a PM — boss@example.com — —
+- Cut churn — boss — Green — due 2026-06-30
+- Hire a PM — boss — —
 `
 	if got := export.Markdown(pub); got != want {
 		t.Errorf("Markdown:\n%s\nwant:\n%s", got, want)
@@ -63,7 +63,7 @@ func TestMarkdownNamesThePreviousPublication(t *testing.T) {
 	pub := publication(nil, nil)
 	pub.Report.Previous = domain.PreviousPublication{ID: 6, PublishedAt: time.Date(2026, 1, 20, 14, 5, 0, 0, time.UTC)}
 
-	want := "Published 2026-02-21 09:30 UTC by boss@example.com. Changes since the previous publication, 2026-01-20 14:05 UTC.\n"
+	want := "Published 2026-02-21 09:30 UTC by boss (boss@example.com). Changes since the previous publication, 2026-01-20 14:05 UTC.\n"
 	if got := export.Markdown(pub); !strings.Contains(got, want) {
 		t.Errorf("Markdown does not name the previous publication:\n%s\nwant a line:\n%s", got, want)
 	}
@@ -105,7 +105,7 @@ func TestMarkdownExceptionBlockKeepsStrikethroughsAndBadges(t *testing.T) {
 
 ### Launch in EU **[New]** **[New Date]** **[Stale]**
 
-boss@example.com · Active · Health: **Red** · due ~~2026-03-01~~ ~~2026-04-01~~ 2026-05-01
+boss · Active · Health: **Red** · due ~~2026-03-01~~ ~~2026-04-01~~ 2026-05-01
 
 **So What:** Expand the market.
 
@@ -152,8 +152,8 @@ func TestMarkdownEscapesWhatPeopleType(t *testing.T) {
 		"### Ship \\*fast\\* \\~\\~now\\~\\~\n",
 		"**So What:** See \\[docs\\](http://x).\n",
 		"**Status:** Line one. # not a heading \\<b>\n",
-		"- 1\\. Hire — boss@example.com — Green\n",
-		"- \\- Retain \\`all\\` — boss@example.com — Green\n",
+		"- 1\\. Hire — boss — Green\n",
+		"- \\- Retain \\`all\\` — boss — Green\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("Markdown missing %q:\n%s", want, got)
@@ -171,11 +171,11 @@ func TestMarkdownOpensWithActionItems(t *testing.T) {
 
 	want := `# EU MBR
 
-Published 2026-02-21 09:30 UTC by boss@example.com. Changes since 2026-01-12.
+Published 2026-02-21 09:30 UTC by boss (boss@example.com). Changes since 2026-01-12.
 
 ## Open Action Items
 
-- Get a \*second\* vendor quote. — boss@example.com — due 2026-03-01
+- Get a \*second\* vendor quote. — boss — due 2026-03-01
 
 Quarterly business review.
 
@@ -203,7 +203,7 @@ func TestMarkdownCarriesTheNarrative(t *testing.T) {
 
 	want := `# EU MBR
 
-Published 2026-02-21 09:30 UTC by boss@example.com. Changes since 2026-01-12.
+Published 2026-02-21 09:30 UTC by boss (boss@example.com). Changes since 2026-01-12.
 
 Quarterly business review.
 
@@ -213,11 +213,37 @@ Pricing drives churn.
 
 ## Accomplishments
 
-- Signed the \*first\* EU customer. — alice@example.com, Launch in EU
+- Signed the \*first\* EU customer. — alice (alice@example.com), Launch in EU
 
 No Goals selected.
 `
 	if got := export.Markdown(pub); got != want {
 		t.Errorf("Markdown:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// The export has no hover, so a person's first mention reads Name (email) and
+// every later one their Name alone; someone without a Name reads as their
+// email's local part (CONTEXT.md: Name).
+func TestMarkdownIntroducesEachPersonAtFirstMention(t *testing.T) {
+	ada := domain.Account{ID: 2, Email: "ada.okafor@example.com", Name: "Ada Okafor"}
+	pub := publication(nil, []domain.SelectedGoal{
+		{Goal: domain.Goal{Title: "Cut churn", Owner: ada}, Health: domain.HealthGreen},
+		{Goal: domain.Goal{Title: "Hire a PM", Owner: ada}, Health: domain.HealthGreen},
+		{Goal: domain.Goal{Title: "Close the books", Owner: boss}, Health: domain.HealthGreen},
+	})
+
+	want := `Published 2026-02-21 09:30 UTC by boss (boss@example.com). Changes since 2026-01-12.
+
+Quarterly business review.
+
+## Other Goals
+
+- Cut churn — Ada Okafor (ada.okafor@example.com) — Green
+- Hire a PM — Ada Okafor — Green
+- Close the books — boss — Green
+`
+	if got := export.Markdown(pub); !strings.HasSuffix(got, want) {
+		t.Errorf("Markdown:\n%s\nwant it to end:\n%s", got, want)
 	}
 }

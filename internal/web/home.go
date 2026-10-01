@@ -85,11 +85,9 @@ func (s *Server) loadHome(ctx context.Context, accountID int64) (homeView, error
 	return v, nil
 }
 
-// dueReason says why a Goal is listed to check in on.
+// dueReason says why a Goal of the person's own is listed to check in on; the
+// page says who delegated one to them.
 func dueReason(g domain.PersonalGoal) string {
-	if g.AsDelegate {
-		return "Delegated to you by " + g.Goal.Owner.Email
-	}
 	f := g.Freshness
 	if !g.CheckedIn {
 		return fmt.Sprintf("No check-in since activation %s on a %d-day cadence", daysAgo(f.DaysSince), f.CadenceDays)

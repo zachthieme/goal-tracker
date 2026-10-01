@@ -223,7 +223,7 @@ func (q *Queries) GetLatestCheckin(ctx context.Context, goalID int64) (Checkin, 
 }
 
 const listCheckins = `-- name: ListCheckins :many
-SELECT checkins.id, checkins.goal_id, checkins.author_id, checkins.owner_id, checkins.health, checkins.status, checkins.path_to_green, checkins.path_target_date, checkins.created_at, checkins.explanation, checkins.lifecycle_from, checkins.lifecycle_to, checkins.lifecycle_reason, checkins.outcome, author.id, author.email, author.is_admin, author.created_at, author.departed, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed
+SELECT checkins.id, checkins.goal_id, checkins.author_id, checkins.owner_id, checkins.health, checkins.status, checkins.path_to_green, checkins.path_target_date, checkins.created_at, checkins.explanation, checkins.lifecycle_from, checkins.lifecycle_to, checkins.lifecycle_reason, checkins.outcome, author.id, author.email, author.is_admin, author.created_at, author.departed, author.name, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed, owner.name
 FROM checkins
 JOIN accounts author ON author.id = checkins.author_id
 JOIN accounts owner ON owner.id = checkins.owner_id
@@ -268,11 +268,13 @@ func (q *Queries) ListCheckins(ctx context.Context, goalID int64) ([]ListCheckin
 			&i.Account.IsAdmin,
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
+			&i.Account.Name,
 			&i.Account_2.ID,
 			&i.Account_2.Email,
 			&i.Account_2.IsAdmin,
 			&i.Account_2.CreatedAt,
 			&i.Account_2.Departed,
+			&i.Account_2.Name,
 		); err != nil {
 			return nil, err
 		}
@@ -325,7 +327,7 @@ func (q *Queries) ListDateSlips(ctx context.Context, goalID int64) ([]DateSlip, 
 }
 
 const listHighlightsByGoal = `-- name: ListHighlightsByGoal :many
-SELECT highlights.id, highlights.checkin_id, highlights.kind, highlights.note, highlights.created_at, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed
+SELECT highlights.id, highlights.checkin_id, highlights.kind, highlights.note, highlights.created_at, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed, owner.name
 FROM highlights
 JOIN checkins ON checkins.id = highlights.checkin_id
 JOIN accounts owner ON owner.id = checkins.owner_id
@@ -361,6 +363,7 @@ func (q *Queries) ListHighlightsByGoal(ctx context.Context, goalID int64) ([]Lis
 			&i.Account.IsAdmin,
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
+			&i.Account.Name,
 		); err != nil {
 			return nil, err
 		}
@@ -376,7 +379,7 @@ func (q *Queries) ListHighlightsByGoal(ctx context.Context, goalID int64) ([]Lis
 }
 
 const listHighlightsByGoalInRange = `-- name: ListHighlightsByGoalInRange :many
-SELECT highlights.id, highlights.checkin_id, highlights.kind, highlights.note, highlights.created_at, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed
+SELECT highlights.id, highlights.checkin_id, highlights.kind, highlights.note, highlights.created_at, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed, owner.name
 FROM highlights
 JOIN checkins ON checkins.id = highlights.checkin_id
 JOIN accounts owner ON owner.id = checkins.owner_id
@@ -419,6 +422,7 @@ func (q *Queries) ListHighlightsByGoalInRange(ctx context.Context, arg ListHighl
 			&i.Account.IsAdmin,
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
+			&i.Account.Name,
 		); err != nil {
 			return nil, err
 		}

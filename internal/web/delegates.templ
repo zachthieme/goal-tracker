@@ -38,9 +38,12 @@ templ delegatePage(current *domain.Account, goals []delegatedGoal) {
 						}
 					</div>
 					<h2><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></h2>
-					<p class="muted">Owner <strong data-testid="delegated-goal-owner">{ g.Owner.Email }</strong></p>
+					<p class="muted">Owner <strong data-testid="delegated-goal-owner">@person(g.Owner)</strong></p>
 					if item.Latest != nil {
-						<p class="muted small">Last check-in { daysAgo(item.DaysSince) } by { item.Latest.Author.Email }</p>
+						<p class="muted small">
+							{ "Last check-in " + daysAgo(item.DaysSince) + " by " }
+							@person(item.Latest.Author)
+						</p>
 					} else {
 						<p data-testid="delegated-goal-no-health" class="muted small">No Check-ins yet.</p>
 					}
@@ -68,7 +71,7 @@ templ delegatesSection(v goalView, owner bool) {
 			}
 			for _, d := range v.Delegates {
 				<li data-testid="delegate">
-					{ d.Email }
+					@person(d)
 					if d.Departed {
 						{ " " }<span data-testid="delegate-departed" class="badge lc">departed</span>
 					}
@@ -85,7 +88,7 @@ templ delegatesSection(v goalView, owner bool) {
 						action={ templ.SafeURL(fmt.Sprintf("/goals/%d/delegates/remove", g.ID)) }
 					>
 						<input type="hidden" name="email" value={ d.Email }/>
-						<span>{ d.Email }</span>
+						@person(d)
 						<button type="submit" class="btn quiet sm">Remove</button>
 					</form>
 				}

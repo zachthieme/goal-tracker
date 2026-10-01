@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
+	"github.com/zachthieme/goal-tracker/internal/seed"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 	"github.com/zachthieme/goal-tracker/internal/web"
 )
@@ -39,7 +40,7 @@ func TestSmokeSignInCreateAndViewGoal(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("after sign-in: status %d", resp.StatusCode)
 	}
-	if body := readBody(t, resp); !strings.Contains(body, "boss@example.com") {
+	if body := readBody(t, resp); !strings.Contains(body, "Signed in as "+shownAs("boss@example.com", "boss")) {
 		t.Errorf("goals page does not show the signed-in user; body:\n%s", body)
 	}
 
@@ -574,12 +575,12 @@ func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
 	}
 }
 
-// Searching the Goal list keeps the Goals whose title or Owner's email holds the
-// text, ignoring case, and the search box keeps what was typed.
+// Searching the Goal list keeps the Goals whose title or Owner's email or Name
+// holds the text, ignoring case, and the search box keeps what was typed.
 func TestGoalListSearchesTitleAndOwner(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
-	kim := h.SignIn("kim@example.com")
+	kim := h.SignInNamed("kim@example.com", "Kim Lee")
 	latency := h.CreateGoal(sam, "Cut checkout latency", "It matters.")
 	hiring := h.CreateGoal(kim, "Hire two engineers", "It matters.")
 	ts := newServer(t, h)
@@ -591,6 +592,7 @@ func TestGoalListSearchesTitleAndOwner(t *testing.T) {
 	}{
 		{"LATENCY", []string{"Cut checkout latency"}},
 		{"kim@", []string{"Hire two engineers"}},
+		{"kim lee", []string{"Hire two engineers"}},
 		{"example.com", []string{"Cut checkout latency", "Hire two engineers"}},
 		{"nothing like it", nil},
 	} {
@@ -849,7 +851,7 @@ func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
 	}
 	meta := strings.Join(strings.Fields(pageElement(t, head, "p", "goal-meta")), " ")
 	for _, want := range []string{
-		`Owner <strong data-testid="goal-owner">sam@example.com</strong>`,
+		`Owner <strong data-testid="goal-owner">` + shownAs("sam@example.com", "sam") + `</strong>`,
 		`Delivers <span data-testid="goal-delivery-date"><del>2026-07-02</del> <strong>2026-07-16</strong></span>`,
 		`Checks in <span data-testid="goal-cadence">every 7 days</span>`,
 	} {
@@ -1328,5 +1330,147 @@ func TestOngoingGoalChecklistNeedsAMetric(t *testing.T) {
 	}
 	if button := between(t, pageElement(t, page, "form", "activate-goal"), "<button", ">"); !strings.Contains(button, "disabled") {
 		t.Errorf("Activate is enabled for an Ongoing Goal with no Metric: %s", button)
+	}
+}
+
+// shownAs is how a page shows a person: by label, with their email on hover
+// (CONTEXT.md: Name).
+func shownAs(emailAddr, label string) string {
+	return `<span class="person" title="` + emailAddr + `">` + label + `</span>`
+}
+
+// visibleEmails returns every email a page shows as text rather than on hover
+// or in a form field.
+func visibleEmails(page string) []string {
+	return regexp.MustCompile(`>[^<>]*@example\.com[^<>]*<`).FindAllString(page, -1)
+}
+
+// The Goal list and a Goal page show each Owner by Name, or by their email's
+// local part until they have one, with the email on hover.
+func TestGoalPagesShowPeopleByName(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
+	sam := h.SignIn("sam@example.com")
+	named := h.CreateGoal(ada, "Cut checkout latency", "Shoppers abandon slow carts.")
+	h.CreateGoal(sam, "Hire a PM", "Nobody owns the roadmap.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	list := getBody(t, client, ts.URL+"/goals")
+	for _, want := range []string{shownAs("ada.okafor@example.com", "Ada Okafor"), shownAs("sam@example.com", "sam")} {
+		if !strings.Contains(list, want) {
+			t.Errorf("Goal list does not show %s", want)
+		}
+	}
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, named.ID))
+	if owner := pageElement(t, page, "strong", "goal-owner"); !strings.Contains(owner, shownAs("ada.okafor@example.com", "Ada Okafor")) {
+		t.Errorf("Goal page Owner reads %s, want Ada Okafor with her email on hover", owner)
+	}
+	for name, p := range map[string]string{"Goal list": list, "Goal page": page} {
+		if shown := visibleEmails(p); len(shown) > 0 {
+			t.Errorf("%s shows emails as text: %q", name, shown)
+		}
+	}
+}
+
+// With a seeded org, every page that shows people shows them by Name with
+// their email on hover, never an email as text; the Print view, with no hover,
+// introduces them as Name (email) (CONTEXT.md: Name).
+func TestSeededPagesShowPeopleByName(t *testing.T) {
+	const adminEmail = "admin@example.com"
+	h := testsupport.New(t, adminEmail)
+	ctx := context.Background()
+	if _, err := seed.Run(ctx, h.Service, h.Clock, seed.Options{Seed: seed.DefaultSeed, Admin: adminEmail}); err != nil {
+		t.Fatalf("seed.Run: %v", err)
+	}
+	admin := h.SignIn(adminEmail)
+	goals, err := h.Service.ListGoals(ctx)
+	if err != nil {
+		t.Fatalf("ListGoals: %v", err)
+	}
+
+	// An Active Goal owned by someone whose email spells out their Name, and
+	// another person to delegate to, hand off to, and leave the org.
+	var g domain.Goal
+	for _, c := range goals {
+		if c.Lifecycle == domain.LifecycleActive && strings.Contains(c.Owner.Email, ".") && c.Owner.Name != "" {
+			g = c
+			break
+		}
+	}
+	if g.ID == 0 {
+		t.Fatal("seeded org has no Active Goal owned by a named person")
+	}
+	owner := g.Owner
+	var other, departed domain.Account
+	for _, c := range goals {
+		switch {
+		case c.Owner.ID == owner.ID:
+		case other.ID == 0:
+			other = c.Owner
+		case c.Owner.ID != other.ID && departed.ID == 0:
+			departed = c.Owner
+		}
+	}
+	h.AddDelegate(owner, other, g.ID)
+	if _, err := h.Service.StartHandoffByEmail(ctx, g.ID, other.Email, owner.ID); err != nil {
+		t.Fatalf("StartHandoffByEmail: %v", err)
+	}
+	h.RequestLink(other, h.CreateGoal(other, "Try a side project", "It might help."), g, "")
+	if err := h.Service.MarkDeparted(ctx, admin.ID, departed.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	def := h.SaveReportDefinition(admin, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(admin, def)
+	comment, err := h.Service.AddComment(ctx, other.ID, pub.ID, g.ID, "Why the slip?")
+	if err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+	if _, err := h.Service.RaiseActionItem(ctx, admin.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, CommentID: comment.ID, Text: "Explain the slip.", OwnerID: owner.ID, DueDate: h.Clock.Now().AddDate(0, 0, 7),
+	}); err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+
+	ts := newServer(t, h)
+	clients := map[string]*http.Client{}
+	client := func(addr string) *http.Client {
+		if clients[addr] == nil {
+			clients[addr] = signInClient(t, ts.URL, addr)
+		}
+		return clients[addr]
+	}
+	reportPath := fmt.Sprintf("/reports/%d", def.ID)
+	pubPath := fmt.Sprintf("%s/publications/%d", reportPath, pub.ID)
+	pages := []struct{ as, path string }{
+		{owner.Email, "/goals"},
+		{owner.Email, fmt.Sprintf("/goals/%d", g.ID)},
+		{owner.Email, "/home"},
+		{owner.Email, "/links"},
+		{owner.Email, "/risks"},
+		{owner.Email, "/signals"},
+		{owner.Email, "/freshness"},
+		{other.Email, "/home"},
+		{other.Email, "/handoffs"},
+		{other.Email, "/delegates"},
+		{adminEmail, "/admin"},
+		{adminEmail, reportPath},
+		{adminEmail, pubPath},
+	}
+	for _, p := range pages {
+		page := getBody(t, client(p.as), ts.URL+p.path)
+		if shown := visibleEmails(page); len(shown) > 0 {
+			t.Errorf("%s as %s shows emails as text: %q", p.path, p.as, shown)
+		}
+		if !regexp.MustCompile(`<span class="person" title="[^"]+@example\.com">[A-Z][a-z]+ [A-Z][a-z]+</span>`).MatchString(page) {
+			t.Errorf("%s as %s shows nobody by Name with their email on hover", p.path, p.as)
+		}
+	}
+	if page := getBody(t, client(owner.Email), fmt.Sprintf("%s/goals/%d", ts.URL, g.ID)); !strings.Contains(page, shownAs(owner.Email, owner.Name)) {
+		t.Errorf("Goal page does not show its Owner as %s", shownAs(owner.Email, owner.Name))
+	}
+	printed := getBody(t, client(adminEmail), ts.URL+pubPath+"/print")
+	if want := ">" + owner.Name + " (" + owner.Email + ")<"; !strings.Contains(printed, want) {
+		t.Errorf("print page does not introduce the Owner as %s", want)
 	}
 }

@@ -353,11 +353,12 @@ templ checkinSection(v goalView) {
 // it for (CONTEXT.md: each Check-in records who wrote it).
 templ checkinByline(c domain.Checkin) {
 	<p class="muted small">
+		@person(c.Author)
 		if c.Author.ID != c.Owner.ID {
-			{ fmt.Sprintf("%s for %s · %s", c.Author.Email, c.Owner.Email, c.CreatedAt.Format("2006-01-02")) }
-		} else {
-			{ fmt.Sprintf("%s · %s", c.Author.Email, c.CreatedAt.Format("2006-01-02")) }
+			{ " for " }
+			@person(c.Owner)
 		}
+		{ " · " + c.CreatedAt.Format("2006-01-02") }
 	</p>
 }
 
@@ -390,7 +391,12 @@ templ checkinHistory(checkins []domain.Checkin) {
 				if c.PathToGreen != "" {
 					<span>— Path to Green: { c.PathToGreen } (by { fmtDate(c.PathTargetDate) })</span>
 				}
-				<span class="muted small">— by { c.Author.Email }, owner { c.Owner.Email }</span>
+				<span class="muted small">
+					{ "— by " }
+					@person(c.Author)
+					{ ", owner " }
+					@person(c.Owner)
+				</span>
 			</li>
 		}
 	</ul>

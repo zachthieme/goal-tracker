@@ -59,7 +59,7 @@ func TestHandoffStartAcceptFlow(t *testing.T) {
 
 	// Now the Goal page shows Pat as Owner, and Pat's inbox is empty.
 	page = getBody(t, patClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	if !strings.Contains(page, `data-testid="goal-owner">pat@example.com`) {
+	if !strings.Contains(page, `data-testid="goal-owner">`+shownAs("pat@example.com", "pat")) {
 		t.Errorf("Goal page should show Pat as Owner after acceptance; body:\n%s", page)
 	}
 	if inbox := getBody(t, patClient, ts.URL+"/handoffs"); !strings.Contains(inbox, "No pending handoffs") {
@@ -117,7 +117,7 @@ func TestDepartedGoalOwnerlessSurfacedAndReassigned(t *testing.T) {
 	if strings.Contains(childPage, `data-testid="goal-ownerless"`) {
 		t.Errorf("Goal still shows Ownerless after reassignment; body:\n%s", childPage)
 	}
-	if !strings.Contains(childPage, `data-testid="goal-owner">pat@example.com`) {
+	if !strings.Contains(childPage, `data-testid="goal-owner">`+shownAs("pat@example.com", "pat")) {
 		t.Errorf("Goal page should show Pat as Owner after reassignment; body:\n%s", childPage)
 	}
 
@@ -127,7 +127,7 @@ func TestDepartedGoalOwnerlessSurfacedAndReassigned(t *testing.T) {
 		t.Errorf("Ownership history should count the Reassign: %s", ownership)
 	}
 	entry := between(t, ownership, `data-testid="ownership-change"`, "</li>")
-	for _, part := range []string{"sam@example.com", "pat@example.com", "reassigned by an Admin", "started by boss@example.com"} {
+	for _, part := range []string{shownAs("sam@example.com", "sam"), shownAs("pat@example.com", "pat"), "reassigned by an Admin", "started by " + shownAs("boss@example.com", "boss")} {
 		if !strings.Contains(entry, part) {
 			t.Errorf("Reassign entry lacks %q: %s", part, entry)
 		}
@@ -219,7 +219,7 @@ func TestOwnershipHistoryKeepsEveryHandoffOutcome(t *testing.T) {
 	if strings.Contains(page, `data-testid="goal-ownerless"`) {
 		t.Errorf("Goal still Ownerless after Lee accepted the Handoff")
 	}
-	if !strings.Contains(page, `data-testid="goal-owner">lee@example.com`) {
+	if !strings.Contains(page, `data-testid="goal-owner">`+shownAs("lee@example.com", "lee")) {
 		t.Errorf("Goal page should show Lee as Owner")
 	}
 
@@ -233,15 +233,15 @@ func TestOwnershipHistoryKeepsEveryHandoffOutcome(t *testing.T) {
 	}
 	entries := strings.Split(section, `data-testid="ownership-change"`)[1:]
 	want := []struct{ to, outcome, at string }{
-		{"mel@example.com", "rejected", "2026-01-02 15:04"},
-		{"pat@example.com", "cancelled", "2026-01-02 16:04"},
-		{"lee@example.com", "accepted", "2026-01-02 17:04"},
+		{shownAs("mel@example.com", "mel"), "rejected", "2026-01-02 15:04"},
+		{shownAs("pat@example.com", "pat"), "cancelled", "2026-01-02 16:04"},
+		{shownAs("lee@example.com", "lee"), "accepted", "2026-01-02 17:04"},
 	}
 	if len(entries) != len(want) {
 		t.Fatalf("Ownership history has %d entries, want %d:\n%s", len(entries), len(want), section)
 	}
 	for i, w := range want {
-		for _, part := range []string{"sam@example.com", w.to, w.outcome, w.at, "started by sam@example.com"} {
+		for _, part := range []string{shownAs("sam@example.com", "sam"), w.to, w.outcome, w.at, "started by " + shownAs("sam@example.com", "sam")} {
 			if !strings.Contains(entries[i], part) {
 				t.Errorf("entry %d lacks %q:\n%s", i, part, entries[i])
 			}
@@ -280,7 +280,7 @@ func TestAdminMarksDepartedOwnerReturned(t *testing.T) {
 		t.Errorf("Sam's Goal is still Ownerless after Sam returned")
 	}
 	page = getBody(t, bossClient, fmt.Sprintf("%s/goals/%d", ts.URL, moved.ID))
-	if !strings.Contains(page, `data-testid="goal-owner">pat@example.com`) {
+	if !strings.Contains(page, `data-testid="goal-owner">`+shownAs("pat@example.com", "pat")) {
 		t.Errorf("the Goal reassigned to Pat while Sam was away no longer shows Pat as Owner")
 	}
 

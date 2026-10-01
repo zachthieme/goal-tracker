@@ -175,7 +175,7 @@ func (s *Service) alert(ctx context.Context, c Comment, pub Publication, others 
 	report := pub.Report.Definition.Name
 	subject := fmt.Sprintf("%s on %s in %s", kind, goal.Goal.Title, report)
 	body := fmt.Sprintf("%s %s the Goal %q in the Report %s, published %s:\n\n%s\n\nRead and reply at %s\n",
-		c.Author.Email, verb, goal.Goal.Title, report,
+		c.Author.LongLabel(), verb, goal.Goal.Title, report,
 		orgDate(pub.PublishedAt, s.loc).Format(dateFormat), c.Body, s.commentURL(pub, c.GoalID))
 
 	sent := map[int64]bool{c.Author.ID: true}
