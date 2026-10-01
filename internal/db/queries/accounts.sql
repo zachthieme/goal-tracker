@@ -8,3 +8,6 @@ RETURNING *;
 
 -- name: GetAccount :one
 SELECT * FROM accounts WHERE id = ? LIMIT 1;
+
+-- name: SetAccountName :exec
+UPDATE accounts SET name = ? WHERE id = ?;

@@ -3,8 +3,10 @@ package domain
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
@@ -12,8 +14,12 @@ import (
 
 // Account is a person who can sign in and own Goals.
 type Account struct {
-	ID      int64
-	Email   string
+	ID    int64
+	Email string
+	// Name is what the tool calls the person, from the org's sign-in; empty
+	// until they have one (CONTEXT.md: Name). Show a person with Label, not
+	// Name or Email.
+	Name    string
 	IsAdmin bool
 	// Departed is set once an Admin records that the person has left the org; the
 	// Goals they still own are then Ownerless (CONTEXT.md: Ownerless).
@@ -31,7 +37,76 @@ var ErrDeparted = errors.New("account has departed")
 const timeFormat = time.RFC3339Nano
 
 func accountFromRow(a db.Account) Account {
-	return Account{ID: a.ID, Email: a.Email, IsAdmin: a.IsAdmin != 0, Departed: a.Departed != 0}
+	acc := Account{ID: a.ID, Email: a.Email, IsAdmin: a.IsAdmin != 0, Departed: a.Departed != 0}
+	if a.Name != nil {
+		acc.Name = *a.Name
+	}
+	return acc
+}
+
+// Label is how the tool shows the person: their Name, or the part of their
+// email before the @ until they have one (CONTEXT.md: Name). It is the one
+// display rule every page, export, and email uses; a page puts the email on
+// hover.
+func (a Account) Label() string {
+	if a.Name != "" {
+		return a.Name
+	}
+	local, _, _ := strings.Cut(a.Email, "@")
+	return local
+}
+
+// LongLabel is the person as introduced where there is no hover — an export or
+// an email body: their Label with their email, "Ada Okafor
+// (ada.okafor@example.com)". A person a snapshot from before Names shows by
+// email (see Account.UnmarshalJSON) reads as the email alone.
+func (a Account) LongLabel() string {
+	if label := a.Label(); label != a.Email {
+		return label + " (" + a.Email + ")"
+	}
+	return a.Email
+}
+
+// UnmarshalJSON reads an Account frozen in a Publication's snapshot, which
+// records each person's Name as it was when published. A snapshot from before
+// Accounts had Names has no Name at all; its people are shown by email, as they
+// were then.
+func (a *Account) UnmarshalJSON(data []byte) error {
+	type frozen Account // without this method, so decoding doesn't recurse
+	var f struct {
+		frozen
+		Name *string
+	}
+	if err := json.Unmarshal(data, &f); err != nil {
+		return err
+	}
+	*a = Account(f.frozen)
+	a.Name = a.Email
+	if f.Name != nil {
+		a.Name = *f.Name
+	}
+	return nil
+}
+
+// Mentions shows people in a document without hover: the first mention of each
+// person reads as their LongLabel, every later one as their Label, so duplicate
+// Names are told apart once and then read short. The zero value is ready to
+// use; use one per document.
+type Mentions struct {
+	seen map[string]bool
+}
+
+// Of returns how the document mentions a here: introduced the first time, by
+// Label after that.
+func (m *Mentions) Of(a Account) string {
+	if m.seen[a.Email] {
+		return a.Label()
+	}
+	if m.seen == nil {
+		m.seen = map[string]bool{}
+	}
+	m.seen[a.Email] = true
+	return a.LongLabel()
 }
 
 // Account returns the Account with the given id, resolving the current session.
@@ -45,6 +120,21 @@ func (s *Service) Account(ctx context.Context, id int64) (Account, error) {
 		return Account{}, fmt.Errorf("get account: %w", err)
 	}
 	return accountFromRow(a), nil
+}
+
+// SetName records the Name the org's sign-in supplies for the person behind
+// accountID (CONTEXT.md: Name); a blank name clears it. Nothing in the tool lets
+// anyone type a Name: this is the seam a sign-in integration, or the seed,
+// supplies it through.
+func (s *Service) SetName(ctx context.Context, accountID int64, name string) error {
+	var stored *string
+	if name = strings.TrimSpace(name); name != "" {
+		stored = &name
+	}
+	if err := s.queries.SetAccountName(ctx, db.SetAccountNameParams{Name: stored, ID: accountID}); err != nil {
+		return fmt.Errorf("set name: %w", err)
+	}
+	return nil
 }
 
 // MarkDeparted records that the person behind accountID has left the org, so the

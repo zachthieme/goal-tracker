@@ -162,3 +162,65 @@ func TestMarkReturnedLeavesACancelledHandoffCancelled(t *testing.T) {
 		t.Error("the returned person accepted a Handoff cancelled at their departure")
 	}
 }
+
+// A person is shown by their Name, or by the part of their email before the @
+// until they have one (CONTEXT.md: Name).
+func TestAccountLabelIsTheNameOrTheEmailLocalPart(t *testing.T) {
+	named := domain.Account{Email: "ada.okafor@example.com", Name: "Ada Okafor"}
+	unnamed := domain.Account{Email: "ada.okafor@example.com"}
+
+	if got := named.Label(); got != "Ada Okafor" {
+		t.Errorf("named Label() = %q, want Ada Okafor", got)
+	}
+	if got := unnamed.Label(); got != "ada.okafor" {
+		t.Errorf("unnamed Label() = %q, want ada.okafor", got)
+	}
+	if got := named.LongLabel(); got != "Ada Okafor (ada.okafor@example.com)" {
+		t.Errorf("named LongLabel() = %q, want Ada Okafor (ada.okafor@example.com)", got)
+	}
+	if got := unnamed.LongLabel(); got != "ada.okafor (ada.okafor@example.com)" {
+		t.Errorf("unnamed LongLabel() = %q, want ada.okafor (ada.okafor@example.com)", got)
+	}
+}
+
+// Where there is no hover — an export or an email body — a person's first
+// mention reads Name (email), and later mentions use the Name alone.
+func TestMentionsIntroduceEachPersonOnce(t *testing.T) {
+	ada := domain.Account{Email: "ada.okafor@example.com", Name: "Ada Okafor"}
+	sam := domain.Account{Email: "sam@example.com"}
+	var m domain.Mentions
+
+	got := []string{m.Of(ada), m.Of(sam), m.Of(ada), m.Of(sam)}
+	want := []string{"Ada Okafor (ada.okafor@example.com)", "sam (sam@example.com)", "Ada Okafor", "sam"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("mention %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// A Name, once set, is what the Account carries wherever it is read; a new
+// Account has none.
+func TestSetNameGivesAnAccountItsName(t *testing.T) {
+	h := testsupport.New(t)
+	ctx := context.Background()
+	ada := h.SignIn("ada.okafor@example.com")
+	if ada.Name != "" {
+		t.Fatalf("new Account Name = %q, want none", ada.Name)
+	}
+
+	if err := h.Service.SetName(ctx, ada.ID, "Ada Okafor"); err != nil {
+		t.Fatalf("SetName: %v", err)
+	}
+
+	got, err := h.Service.Account(ctx, ada.ID)
+	if err != nil {
+		t.Fatalf("Account: %v", err)
+	}
+	if got.Name != "Ada Okafor" {
+		t.Errorf("Name = %q, want Ada Okafor", got.Name)
+	}
+	if again := h.SignIn("ada.okafor@example.com"); again.Name != "Ada Okafor" {
+		t.Errorf("signed-in Name = %q, want Ada Okafor", again.Name)
+	}
+}

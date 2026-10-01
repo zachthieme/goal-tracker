@@ -10,6 +10,7 @@ type Account struct {
 	IsAdmin   int64
 	CreatedAt string
 	Departed  int64
+	Name      *string
 }
 
 type ActionItem struct {

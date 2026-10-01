@@ -12,7 +12,7 @@ import (
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO accounts (email, is_admin, created_at)
 VALUES (?, ?, ?)
-RETURNING id, email, is_admin, created_at, departed
+RETURNING id, email, is_admin, created_at, departed, name
 `
 
 type CreateAccountParams struct {
@@ -30,12 +30,13 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.Departed,
+		&i.Name,
 	)
 	return i, err
 }
 
 const getAccount = `-- name: GetAccount :one
-SELECT id, email, is_admin, created_at, departed FROM accounts WHERE id = ? LIMIT 1
+SELECT id, email, is_admin, created_at, departed, name FROM accounts WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetAccount(ctx context.Context, id int64) (Account, error) {
@@ -47,12 +48,13 @@ func (q *Queries) GetAccount(ctx context.Context, id int64) (Account, error) {
 		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.Departed,
+		&i.Name,
 	)
 	return i, err
 }
 
 const getAccountByEmail = `-- name: GetAccountByEmail :one
-SELECT id, email, is_admin, created_at, departed FROM accounts WHERE email = ? LIMIT 1
+SELECT id, email, is_admin, created_at, departed, name FROM accounts WHERE email = ? LIMIT 1
 `
 
 func (q *Queries) GetAccountByEmail(ctx context.Context, email string) (Account, error) {
@@ -64,6 +66,21 @@ func (q *Queries) GetAccountByEmail(ctx context.Context, email string) (Account,
 		&i.IsAdmin,
 		&i.CreatedAt,
 		&i.Departed,
+		&i.Name,
 	)
 	return i, err
+}
+
+const setAccountName = `-- name: SetAccountName :exec
+UPDATE accounts SET name = ? WHERE id = ?
+`
+
+type SetAccountNameParams struct {
+	Name *string
+	ID   int64
+}
+
+func (q *Queries) SetAccountName(ctx context.Context, arg SetAccountNameParams) error {
+	_, err := q.db.ExecContext(ctx, setAccountName, arg.Name, arg.ID)
+	return err
 }

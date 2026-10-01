@@ -221,7 +221,7 @@ func (q *Queries) GetContributor(ctx context.Context, arg GetContributorParams) 
 }
 
 const getGoal = `-- name: GetGoal :one
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
+SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 WHERE goals.id = ? LIMIT 1
@@ -252,6 +252,7 @@ func (q *Queries) GetGoal(ctx context.Context, id int64) (GetGoalRow, error) {
 		&i.Account.IsAdmin,
 		&i.Account.CreatedAt,
 		&i.Account.Departed,
+		&i.Account.Name,
 	)
 	return i, err
 }
@@ -298,7 +299,7 @@ func (q *Queries) GetMilestone(ctx context.Context, id int64) (Milestone, error)
 }
 
 const listAcceptedLinkGoals = `-- name: ListAcceptedLinkGoals :many
-SELECT child.id, child.title, child.so_what, child.owner_id, child.lifecycle, child.created_at, child.kind, child.delivery_date, child.cadence_days, child.top_level, child.activated_at, child_owner.id, child_owner.email, child_owner.is_admin, child_owner.created_at, child_owner.departed, parent.id, parent.title, parent.so_what, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent.top_level, parent.activated_at, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed
+SELECT child.id, child.title, child.so_what, child.owner_id, child.lifecycle, child.created_at, child.kind, child.delivery_date, child.cadence_days, child.top_level, child.activated_at, child_owner.id, child_owner.email, child_owner.is_admin, child_owner.created_at, child_owner.departed, child_owner.name, parent.id, parent.title, parent.so_what, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent.top_level, parent.activated_at, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed, parent_owner.name
 FROM links
 JOIN goals child ON child.id = links.child_id
 JOIN accounts child_owner ON child_owner.id = child.owner_id
@@ -343,6 +344,7 @@ func (q *Queries) ListAcceptedLinkGoals(ctx context.Context) ([]ListAcceptedLink
 			&i.Account.IsAdmin,
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
+			&i.Account.Name,
 			&i.Goal_2.ID,
 			&i.Goal_2.Title,
 			&i.Goal_2.SoWhat,
@@ -359,6 +361,7 @@ func (q *Queries) ListAcceptedLinkGoals(ctx context.Context) ([]ListAcceptedLink
 			&i.Account_2.IsAdmin,
 			&i.Account_2.CreatedAt,
 			&i.Account_2.Departed,
+			&i.Account_2.Name,
 		); err != nil {
 			return nil, err
 		}
@@ -374,7 +377,7 @@ func (q *Queries) ListAcceptedLinkGoals(ctx context.Context) ([]ListAcceptedLink
 }
 
 const listContributors = `-- name: ListContributors :many
-SELECT accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
+SELECT accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
 FROM contributors
 JOIN accounts ON accounts.id = contributors.account_id
 WHERE contributors.goal_id = ?
@@ -400,6 +403,7 @@ func (q *Queries) ListContributors(ctx context.Context, goalID int64) ([]ListCon
 			&i.Account.IsAdmin,
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
+			&i.Account.Name,
 		); err != nil {
 			return nil, err
 		}
@@ -415,7 +419,7 @@ func (q *Queries) ListContributors(ctx context.Context, goalID int64) ([]ListCon
 }
 
 const listGoals = `-- name: ListGoals :many
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
+SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 ORDER BY goals.created_at DESC, goals.id DESC
@@ -452,6 +456,7 @@ func (q *Queries) ListGoals(ctx context.Context) ([]ListGoalsRow, error) {
 			&i.Account.IsAdmin,
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
+			&i.Account.Name,
 		); err != nil {
 			return nil, err
 		}
@@ -540,7 +545,7 @@ func (q *Queries) ListMilestones(ctx context.Context, goalID int64) ([]Milestone
 }
 
 const listSoWhatRevisions = `-- name: ListSoWhatRevisions :many
-SELECT so_what_revisions.id, so_what_revisions.goal_id, so_what_revisions.so_what, so_what_revisions.author_id, so_what_revisions.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
+SELECT so_what_revisions.id, so_what_revisions.goal_id, so_what_revisions.so_what, so_what_revisions.author_id, so_what_revisions.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
 FROM so_what_revisions
 JOIN accounts ON accounts.id = so_what_revisions.author_id
 WHERE so_what_revisions.goal_id = ?
@@ -572,6 +577,7 @@ func (q *Queries) ListSoWhatRevisions(ctx context.Context, goalID int64) ([]List
 			&i.Account.IsAdmin,
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
+			&i.Account.Name,
 		); err != nil {
 			return nil, err
 		}
@@ -587,7 +593,7 @@ func (q *Queries) ListSoWhatRevisions(ctx context.Context, goalID int64) ([]List
 }
 
 const listUnalignedGoals = `-- name: ListUnalignedGoals :many
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed
+SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 WHERE goals.lifecycle = 'Active'
@@ -632,6 +638,7 @@ func (q *Queries) ListUnalignedGoals(ctx context.Context) ([]ListUnalignedGoalsR
 			&i.Account.IsAdmin,
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
+			&i.Account.Name,
 		); err != nil {
 			return nil, err
 		}
