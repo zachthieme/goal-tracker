@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -45,7 +46,7 @@ func TestHandoffTakesEffectOnlyWhenNewOwnerAccepts(t *testing.T) {
 		t.Fatalf("PendingHandoffs = %+v, want the one Handoff for the Goal", pending)
 	}
 
-	accepted, err := h.Service.AcceptHandoff(context.Background(), handoff.ID, pat.ID)
+	accepted, err := h.Service.AcceptHandoff(context.Background(), handoff.ID, pat.ID, nil)
 	if err != nil {
 		t.Fatalf("AcceptHandoff: %v", err)
 	}
@@ -79,7 +80,7 @@ func TestAcceptHandoffOnlyByNewOwner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartHandoff: %v", err)
 	}
-	if _, err := h.Service.AcceptHandoff(context.Background(), handoff.ID, mel.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+	if _, err := h.Service.AcceptHandoff(context.Background(), handoff.ID, mel.ID, nil); !errors.Is(err, domain.ErrNotAuthorized) {
 		t.Errorf("err = %v, want ErrNotAuthorized", err)
 	}
 }
@@ -252,7 +253,7 @@ func TestMarkDepartedCancelsHandoffsToThePerson(t *testing.T) {
 	if len(history) != 1 || history[0].Status != domain.HandoffCancelled {
 		t.Fatalf("history = %+v, want the one cancelled Handoff", history)
 	}
-	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID, nil); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("accept cancelled Handoff err = %v, want ErrNotFound", err)
 	}
 	if g, _ := h.Service.ViewGoal(context.Background(), goal.ID); g.Owner.ID != sam.ID {
@@ -281,7 +282,7 @@ func TestHandoffFromDepartedOwnerStillAccepted(t *testing.T) {
 		t.Fatalf("pending for Pat = %+v, want the Handoff from Sam", pending)
 	}
 
-	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID); err != nil {
+	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID, nil); err != nil {
 		t.Fatalf("AcceptHandoff: %v", err)
 	}
 	g, _ := h.Service.ViewGoal(context.Background(), goal.ID)
@@ -324,5 +325,214 @@ func TestReassignAppearsInOwnershipHistory(t *testing.T) {
 	got := history[1]
 	if got.Status != domain.HandoffReassigned || got.From.ID != sam.ID || got.To.ID != pat.ID || got.InitiatedBy.ID != boss.ID {
 		t.Errorf("history[1] = %+v, want Reassign from Sam to Pat by the Admin", got)
+	}
+}
+
+// delegateIDs returns the IDs of the Goal's Delegates, failing the test on error.
+func delegateIDs(t *testing.T, h *testsupport.Harness, goalID int64) []int64 {
+	t.Helper()
+	ds, err := h.Service.ListDelegates(context.Background(), goalID)
+	if err != nil {
+		t.Fatalf("ListDelegates: %v", err)
+	}
+	ids := make([]int64, 0, len(ds))
+	for _, d := range ds {
+		ids = append(ids, d.ID)
+	}
+	return ids
+}
+
+// Accepting a Handoff keeps the Delegates the new Owner chose and removes the
+// rest, while the Goal moves to the new Owner (CONTEXT.md: Delegate — the new
+// Owner chooses which Delegates to keep).
+func TestAcceptHandoffRemovesTheDelegatesNotKept(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com") // current Owner
+	pat := h.SignIn("pat@example.com") // new Owner
+	ann := h.SignIn("ann@example.com") // Delegate Pat keeps
+	bob := h.SignIn("bob@example.com") // Delegate Pat drops
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, ann, goal.ID)
+	h.AddDelegate(sam, bob, goal.ID)
+	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+
+	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID, []int64{ann.ID}); err != nil {
+		t.Fatalf("AcceptHandoff: %v", err)
+	}
+
+	if got := delegateIDs(t, h, goal.ID); !slices.Equal(got, []int64{ann.ID}) {
+		t.Errorf("Delegates after accept = %v, want only Ann (%d)", got, ann.ID)
+	}
+	if g, _ := h.Service.ViewGoal(context.Background(), goal.ID); g.Owner.ID != pat.ID {
+		t.Errorf("Owner after accept = %d, want Pat (%d)", g.Owner.ID, pat.ID)
+	}
+}
+
+// Accepting with every Delegate kept leaves them all on the Goal.
+func TestAcceptHandoffKeepingEveryDelegate(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	ann := h.SignIn("ann@example.com")
+	bob := h.SignIn("bob@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, ann, goal.ID)
+	h.AddDelegate(sam, bob, goal.ID)
+	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+
+	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID, []int64{ann.ID, bob.ID}); err != nil {
+		t.Fatalf("AcceptHandoff: %v", err)
+	}
+
+	if got := delegateIDs(t, h, goal.ID); !slices.Equal(got, []int64{ann.ID, bob.ID}) {
+		t.Errorf("Delegates after accept = %v, want Ann and Bob (%d, %d)", got, ann.ID, bob.ID)
+	}
+}
+
+// A Departed Delegate isn't offered to the new Owner, so accepting leaves them on
+// the Goal, still Departed, whatever the new Owner kept.
+func TestAcceptHandoffLeavesDepartedDelegates(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	ann := h.SignIn("ann@example.com") // Departed Delegate
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, ann, goal.ID)
+	if err := h.Service.MarkDeparted(context.Background(), boss.ID, ann.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+
+	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID, nil); err != nil {
+		t.Fatalf("AcceptHandoff: %v", err)
+	}
+
+	if got := delegateIDs(t, h, goal.ID); !slices.Equal(got, []int64{ann.ID}) {
+		t.Errorf("Delegates after accept = %v, want the Departed Ann (%d) still there", got, ann.ID)
+	}
+}
+
+// The Owner already writes a Goal's Check-ins, so a Delegate who accepts a
+// Handoff of that Goal stops being its Delegate on becoming its Owner.
+func TestAcceptHandoffByADelegateEndsTheirDelegation(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com") // Delegate, then new Owner
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, pat, goal.ID)
+	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+
+	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID, []int64{pat.ID}); err != nil {
+		t.Fatalf("AcceptHandoff: %v", err)
+	}
+
+	if got := delegateIDs(t, h, goal.ID); len(got) != 0 {
+		t.Errorf("Delegates after accept = %v, want none: Pat is now the Owner", got)
+	}
+}
+
+// Accepting is all-or-nothing: if recording the outcome fails, the Owner, the
+// Delegates and the Handoff all stay as they were.
+func TestAcceptHandoffChangesNothingWhenAStepFails(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	ann := h.SignIn("ann@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, ann, goal.ID)
+	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+	// Fail the last step, after ownership has moved and Ann has been removed.
+	if _, err := h.DB.Exec(`CREATE TRIGGER fail_accept BEFORE UPDATE OF status ON handoffs
+		WHEN NEW.status = 'accepted' BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+
+	if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, pat.ID, nil); err == nil {
+		t.Fatal("AcceptHandoff succeeded despite the failing step")
+	}
+
+	if g, _ := h.Service.ViewGoal(context.Background(), goal.ID); g.Owner.ID != sam.ID {
+		t.Errorf("Owner after a failed accept = %d, want Sam (%d)", g.Owner.ID, sam.ID)
+	}
+	if got := delegateIDs(t, h, goal.ID); !slices.Equal(got, []int64{ann.ID}) {
+		t.Errorf("Delegates after a failed accept = %v, want Ann (%d) still there", got, ann.ID)
+	}
+	if pending, _ := h.Service.PendingHandoffs(context.Background(), pat.ID); len(pending) != 1 || pending[0].ID != ho.ID {
+		t.Errorf("pending after a failed accept = %+v, want the Handoff still pending", pending)
+	}
+}
+
+// Rejecting a Handoff leaves the Goal's Delegates alone.
+func TestRejectHandoffLeavesDelegates(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	ann := h.SignIn("ann@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, ann, goal.ID)
+	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+
+	if err := h.Service.RejectHandoff(context.Background(), ho.ID, pat.ID); err != nil {
+		t.Fatalf("RejectHandoff: %v", err)
+	}
+
+	if got := delegateIDs(t, h, goal.ID); !slices.Equal(got, []int64{ann.ID}) {
+		t.Errorf("Delegates after reject = %v, want Ann (%d)", got, ann.ID)
+	}
+}
+
+// An Admin Reassign of an Ownerless Goal keeps every Delegate, present or
+// Departed.
+func TestReassignKeepsEveryDelegate(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	ann := h.SignIn("ann@example.com")
+	bob := h.SignIn("bob@example.com") // Departed Delegate
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, ann, goal.ID)
+	h.AddDelegate(sam, bob, goal.ID)
+	for _, gone := range []int64{sam.ID, bob.ID} {
+		if err := h.Service.MarkDeparted(context.Background(), boss.ID, gone); err != nil {
+			t.Fatalf("MarkDeparted: %v", err)
+		}
+	}
+
+	if _, err := h.Service.ReassignGoal(context.Background(), boss.ID, goal.ID, pat.ID); err != nil {
+		t.Fatalf("ReassignGoal: %v", err)
+	}
+
+	if got := delegateIDs(t, h, goal.ID); !slices.Equal(got, []int64{ann.ID, bob.ID}) {
+		t.Errorf("Delegates after reassign = %v, want Ann and Bob (%d, %d)", got, ann.ID, bob.ID)
+	}
+}
+
+// Each pending Handoff offers the new Owner the Goal's Delegates to keep: every
+// Delegate who isn't Departed, other than the new Owner themselves.
+func TestPendingHandoffOffersTheDelegatesToKeep(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com") // new Owner, also a Delegate
+	ann := h.SignIn("ann@example.com") // offered
+	bob := h.SignIn("bob@example.com") // Departed, not offered
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, ann, goal.ID)
+	h.AddDelegate(sam, bob, goal.ID)
+	h.AddDelegate(sam, pat, goal.ID)
+	if err := h.Service.MarkDeparted(context.Background(), boss.ID, bob.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+
+	pending, err := h.Service.PendingHandoffs(context.Background(), pat.ID)
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("PendingHandoffs = %+v, %v; want the one Handoff", pending, err)
+	}
+	offered := pending[0].KeepableDelegates
+	if len(offered) != 1 || offered[0].ID != ann.ID {
+		t.Errorf("KeepableDelegates = %+v, want only Ann (%d)", offered, ann.ID)
 	}
 }

@@ -58,7 +58,7 @@ templ homePage(current *domain.Account, v homeView) {
 									@person(ho.From)
 									{ " wants to hand this Goal to you" }
 								</span>
-								@acceptReject(fmt.Sprintf("/handoffs/%d", ho.ID), "Reject this Handoff?")
+								@handoffAcceptReject(ho)
 							</li>
 						}
 					</ul>

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -22,6 +23,10 @@ type Handoff struct {
 	InitiatedBy Account
 	Status      string
 	CreatedAt   time.Time
+	// KeepableDelegates are the Goal's Delegates the new Owner chooses whether to
+	// keep on accepting (CONTEXT.md: Delegate): those who aren't Departed, other
+	// than the new Owner. Only PendingHandoffs resolves them.
+	KeepableDelegates []Account
 }
 
 // Handoff status values: a Handoff's outcome. Every Handoff is kept with its
@@ -141,8 +146,12 @@ func (s *Service) ReassignGoalByEmail(ctx context.Context, actorID, goalID int64
 
 // AcceptHandoff accepts a pending Handoff, moving the Goal to the new Owner. Only
 // the proposed new Owner may accept it (CONTEXT.md: ownership changes are always
-// accepted by the new Owner).
-func (s *Service) AcceptHandoff(ctx context.Context, handoffID, actorID int64) (Handoff, error) {
+// accepted by the new Owner). The new Owner chooses which of the Goal's
+// Delegates to keep (CONTEXT.md: Delegate): every Delegate not in keep is
+// removed, except a Departed one, who was never offered and stays. The new Owner
+// is never kept as their own Delegate, since the Owner already writes the Goal's
+// Check-ins. The ownership change, the removals and the outcome are one transaction.
+func (s *Service) AcceptHandoff(ctx context.Context, handoffID, actorID int64, keep []int64) (Handoff, error) {
 	row, err := s.getPendingHandoff(ctx, handoffID)
 	if err != nil {
 		return Handoff{}, err
@@ -150,17 +159,39 @@ func (s *Service) AcceptHandoff(ctx context.Context, handoffID, actorID int64) (
 	if row.ToOwner != actorID {
 		return Handoff{}, fmt.Errorf("%w: only the new Owner may accept a Handoff", ErrNotAuthorized)
 	}
-	if err := s.queries.SetGoalOwner(ctx, db.SetGoalOwnerParams{
-		OwnerID: row.ToOwner,
-		ID:      row.GoalID,
-	}); err != nil {
-		return Handoff{}, fmt.Errorf("transfer ownership: %w", err)
-	}
-	if err := s.queries.SetHandoffStatus(ctx, db.SetHandoffStatusParams{
-		Status: HandoffAccepted,
-		ID:     handoffID,
-	}); err != nil {
-		return Handoff{}, fmt.Errorf("accept handoff: %w", err)
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.queries.SetGoalOwner(ctx, db.SetGoalOwnerParams{
+			OwnerID: row.ToOwner,
+			ID:      row.GoalID,
+		}); err != nil {
+			return fmt.Errorf("transfer ownership: %w", err)
+		}
+		delegates, err := tx.ListDelegates(ctx, row.GoalID)
+		if err != nil {
+			return err
+		}
+		for _, d := range delegates {
+			kept := slices.Contains(keep, d.ID) && d.ID != row.ToOwner
+			if d.Departed || kept {
+				continue
+			}
+			if err := tx.queries.RemoveDelegate(ctx, db.RemoveDelegateParams{
+				GoalID:    row.GoalID,
+				AccountID: d.ID,
+			}); err != nil {
+				return fmt.Errorf("remove delegate: %w", err)
+			}
+		}
+		if err := tx.queries.SetHandoffStatus(ctx, db.SetHandoffStatusParams{
+			Status: HandoffAccepted,
+			ID:     handoffID,
+		}); err != nil {
+			return fmt.Errorf("accept handoff: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return Handoff{}, err
 	}
 	return s.loadHandoff(ctx, handoffID)
 }
@@ -185,7 +216,8 @@ func (s *Service) RejectHandoff(ctx context.Context, handoffID, actorID int64) e
 }
 
 // PendingHandoffs returns the Handoffs awaiting a decision from toOwnerID, the
-// proposed new Owner, each with its Goal and both Owners resolved.
+// proposed new Owner, each with its Goal, both Owners, and the Delegates offered
+// to keep resolved.
 func (s *Service) PendingHandoffs(ctx context.Context, toOwnerID int64) ([]Handoff, error) {
 	rows, err := s.queries.ListPendingHandoffsForNewOwner(ctx, toOwnerID)
 	if err != nil {
@@ -194,13 +226,24 @@ func (s *Service) PendingHandoffs(ctx context.Context, toOwnerID int64) ([]Hando
 	out := make([]Handoff, 0, len(rows))
 	for _, r := range rows {
 		createdAt, _ := time.Parse(timeFormat, r.Handoff.CreatedAt)
+		delegates, err := s.ListDelegates(ctx, r.Goal.ID)
+		if err != nil {
+			return nil, err
+		}
+		keepable := make([]Account, 0, len(delegates))
+		for _, d := range delegates {
+			if !d.Departed && d.ID != toOwnerID {
+				keepable = append(keepable, d)
+			}
+		}
 		out = append(out, Handoff{
-			ID:        r.Handoff.ID,
-			Goal:      goalFromRow(r.Goal, r.Account), // Goal with its current (from) Owner
-			From:      accountFromRow(r.Account),      // from_acct
-			To:        accountFromRow(r.Account_2),    // to_acct
-			Status:    r.Handoff.Status,
-			CreatedAt: createdAt,
+			ID:                r.Handoff.ID,
+			Goal:              goalFromRow(r.Goal, r.Account), // Goal with its current (from) Owner
+			From:              accountFromRow(r.Account),      // from_acct
+			To:                accountFromRow(r.Account_2),    // to_acct
+			Status:            r.Handoff.Status,
+			CreatedAt:         createdAt,
+			KeepableDelegates: keepable,
 		})
 	}
 	return out, nil
