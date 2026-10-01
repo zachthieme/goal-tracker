@@ -957,6 +957,33 @@ func TestGoalPageMoreMenuHoldsAdminActions(t *testing.T) {
 	}
 }
 
+// A Departed Delegate stays listed among the Goal's Delegates, marked departed;
+// a present one isn't marked (CONTEXT.md: Departed).
+func TestGoalPageMarksADepartedDelegate(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	tpm := h.SignIn("tpm@example.com")
+	lee := h.SignIn("lee@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, tpm, goal.ID)
+	h.AddDelegate(sam, lee, goal.ID)
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, tpm.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	list := pageElement(t, page, "ul", "delegate-list")
+	departed := between(t, list, "tpm@example.com", "</li>")
+	if !strings.Contains(departed, `data-testid="delegate-departed"`) || !strings.Contains(departed, "departed") {
+		t.Errorf("the Departed Delegate isn't marked departed: %s", departed)
+	}
+	if present := between(t, list, "lee@example.com", "</li>"); strings.Contains(present, "departed") {
+		t.Errorf("a present Delegate is marked departed: %s", present)
+	}
+}
+
 // Someone who neither Owns the Goal nor is an Admin can only add a child Goal
 // from the More menu.
 func TestGoalPageMoreMenuForOthersOffersOnlyAChildGoal(t *testing.T) {

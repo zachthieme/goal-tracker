@@ -146,3 +146,33 @@ func TestDepartureEndsAnExistingSession(t *testing.T) {
 		t.Errorf("the departed session's Check-in was recorded (ok=%v, err=%v)", ok, err)
 	}
 }
+
+// A Delegate who departs can no longer check in on the Owner's Goal: their
+// session is treated as signed out, and the Check-in isn't recorded.
+func TestDepartedDelegateCannotCheckIn(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	tpm := h.SignIn("tpm@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, tpm, goal.ID)
+	tpmClient := signInClient(t, ts.URL, "tpm@example.com")
+
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, tpm.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	tpmClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp := postForm(t, tpmClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"Checked in for Sam."},
+	})
+	_ = readBody(t, resp)
+	if loc := resp.Header.Get("Location"); resp.StatusCode != http.StatusSeeOther || loc != "/signin" {
+		t.Errorf("Departed Delegate's Check-in POST: status %d to %q, want 303 to /signin", resp.StatusCode, loc)
+	}
+	if _, ok, err := h.Service.LatestCheckin(t.Context(), goal.ID); err != nil || ok {
+		t.Errorf("the Departed Delegate's Check-in was recorded (ok=%v, err=%v)", ok, err)
+	}
+}
