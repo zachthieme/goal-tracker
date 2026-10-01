@@ -647,12 +647,14 @@ func narrativeText(r domain.Report, section string) string {
 
 // reportStyles are the Report pages' own rules on top of app.css: the reading
 // column a publication is centred in, the Health tiles, the exception cards and
-// their tinted status box, the discussion footer, and the scrolling root-Goal
-// picker.
+// their tinted status box, the discussion footer, the scrolling root-Goal
+// picker, and draft columns that shrink to a phone's width rather than to the
+// On track table's.
 templ reportStyles() {
 	<link rel="stylesheet" href={ reportFontsURL }/>
 	<style>
 		.shape{display:none}
+		.grid-main-aside>*{min-width:0}
 		.page>.rp-read{width:100%;max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
 		.rp-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
 		.rp-head h1{margin:4px 0}

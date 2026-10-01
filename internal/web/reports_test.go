@@ -594,3 +594,24 @@ func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
 		t.Errorf("Green is not marked ●; row:\n%s", row)
 	}
 }
+
+// At phone width the draft page's columns stack into one grid track, and each
+// column shrinks to the viewport rather than to its widest content — the On
+// track table scrolls inside its card instead of pushing the baseline line and
+// the Narrative card off the right edge (#43).
+func TestDraftPageColumnsShrinkToPhoneWidthOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+
+	if !strings.Contains(page, `<div class="grid-main-aside">`) {
+		t.Fatalf("draft page has no main and aside columns; body:\n%s", page)
+	}
+	if !strings.Contains(page, ".grid-main-aside>*{min-width:0}") {
+		t.Errorf("draft page columns keep their content's minimum width, so a wide table scrolls the page sideways; body:\n%s", page)
+	}
+}
