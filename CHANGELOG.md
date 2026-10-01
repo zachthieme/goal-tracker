@@ -36,6 +36,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A link request's note and a Report's comment thread are set apart by their indent and a thin neutral rule instead of a coloured side stripe (#67).
 - [user] The sign-in card no longer repeats the Goal Tracker name shown in the top bar; it now opens with the "Sign in" heading (#68).
 - [user] On touch screens, buttons (small ones included), text-like inputs and selects are at least 44px tall, so they're easier to tap. Mouse sizes are unchanged (#64).
+- [user] In the dark theme, a hovered primary button lightens its fill instead of showing a teal glow (#58).
 
 **Bug fixes:**
 - [user] On screens narrower than 900px, tables fill the width of their card again instead of shrinking to their content. A table too wide for the screen scrolls sideways inside its card.
