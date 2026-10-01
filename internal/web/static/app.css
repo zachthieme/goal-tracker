@@ -56,6 +56,10 @@
   --shadow-pop:        0 25px 50px -12px rgba(19,78,74,.25);
   --shadow-glow:       0 4px 14px 0 rgba(20,184,166,.38);
 
+  /* Primary button hover fill: --color-primary-hover is only 3.74:1 under white
+   * text in light, so light keeps the resting fill (DESIGN.md § Components) */
+  --btn-primary-hover: var(--color-primary-strong);
+
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-fast: 150ms;
   --dur-base: 200ms;
@@ -97,7 +101,8 @@
     --shadow-card:       0 10px 25px -5px rgba(0,0,0,.45), 0 8px 10px -6px rgba(0,0,0,.30);
     --shadow-card-hover: 0 20px 30px -10px rgba(0,0,0,.55), 0 10px 15px -5px rgba(0,0,0,.35);
     --shadow-pop:        0 25px 50px -12px rgba(0,0,0,.65);
-    --shadow-glow:       0 4px 14px 0 rgba(20,184,166,.30);
+    --shadow-glow:       none;
+    --btn-primary-hover: var(--color-primary-hover);
   }
 }
 :root[data-theme="dark"] {
@@ -133,7 +138,8 @@
   --shadow-card:       0 10px 25px -5px rgba(0,0,0,.45), 0 8px 10px -6px rgba(0,0,0,.30);
   --shadow-card-hover: 0 20px 30px -10px rgba(0,0,0,.55), 0 10px 15px -5px rgba(0,0,0,.35);
   --shadow-pop:        0 25px 50px -12px rgba(0,0,0,.65);
-  --shadow-glow:       0 4px 14px 0 rgba(20,184,166,.30);
+  --shadow-glow:       none;
+  --btn-primary-hover: var(--color-primary-hover);
 }
 
 html{overflow-x:clip}
@@ -174,7 +180,7 @@ a.card:hover{text-decoration:none;color:var(--color-ink-2);transform:translateY(
 .btn:hover{background:var(--color-surface-hover);border-color:var(--color-primary);text-decoration:none;color:var(--color-ink)}
 .btn:active{transform:scale(0.98)}
 .btn.primary{background:var(--color-primary-strong);border-color:var(--color-primary-strong);color:var(--color-ink-inverse)}
-.btn.primary:hover{background:var(--color-primary-strong);color:var(--color-ink-inverse);transform:translateY(-1px);box-shadow:var(--shadow-glow)}
+.btn.primary:hover{background:var(--btn-primary-hover);color:var(--color-ink-inverse);transform:translateY(-1px);box-shadow:var(--shadow-glow)}
 .btn.primary:active{transform:scale(0.98);box-shadow:none}
 .btn.quiet{border-color:transparent;background:transparent;color:var(--color-primary-strong)}.btn.quiet:hover{background:var(--color-primary-subtle);border-color:transparent}
 .btn.danger{color:var(--color-danger-ink)}
