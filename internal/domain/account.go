@@ -240,11 +240,18 @@ func (s *Service) SignIn(ctx context.Context, emailAddr string) (Account, error)
 	return acc, nil
 }
 
-// EnsureAccount returns the Account with the given email, creating one if none
-// exists yet (with the Admin flag set from config). It is the get-or-create the
-// development sign-in performs, exposed on its own so the spreadsheet import can
-// give an account to every person it names (ticket #22: people named in the file
-// get accounts).
+// adminKey folds an email the way the accounts queries store and look it up —
+// trimmed and lowercased — so the configured Admins match an email whatever its
+// case (CONTEXT.md: Account).
+func adminKey(emailAddr string) string {
+	return strings.ToLower(strings.TrimSpace(emailAddr))
+}
+
+// EnsureAccount returns the Account with the given email, whatever its case,
+// creating one if none exists yet (stored trimmed and lowercased, with the Admin
+// flag set from config). It is the get-or-create the development sign-in
+// performs, exposed on its own so the spreadsheet import can give an account to
+// every person it names (ticket #22: people named in the file get accounts).
 func (s *Service) EnsureAccount(ctx context.Context, emailAddr string) (Account, error) {
 	existing, err := s.queries.GetAccountByEmail(ctx, emailAddr)
 	if err == nil {
@@ -255,7 +262,7 @@ func (s *Service) EnsureAccount(ctx context.Context, emailAddr string) (Account,
 	}
 
 	isAdmin := int64(0)
-	if s.admins[emailAddr] {
+	if s.admins[adminKey(emailAddr)] {
 		isAdmin = 1
 	}
 	created, err := s.queries.CreateAccount(ctx, db.CreateAccountParams{

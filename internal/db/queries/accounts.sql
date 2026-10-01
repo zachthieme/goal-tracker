@@ -1,9 +1,12 @@
 -- name: GetAccountByEmail :one
-SELECT * FROM accounts WHERE email = ? LIMIT 1;
+-- An email names one Account whatever its case or surrounding spaces
+-- (CONTEXT.md: Account): CreateAccount stores it trimmed and lowercased, and
+-- this lookup folds its argument the same way, so no caller has to.
+SELECT * FROM accounts WHERE email = lower(trim(sqlc.arg(email))) LIMIT 1;
 
 -- name: CreateAccount :one
 INSERT INTO accounts (email, is_admin, created_at)
-VALUES (?, ?, ?)
+VALUES (lower(trim(sqlc.arg(email))), sqlc.arg(is_admin), sqlc.arg(created_at))
 RETURNING *;
 
 -- name: GetAccount :one

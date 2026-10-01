@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -273,4 +274,141 @@ func TestSetNameGivesAnAccountItsName(t *testing.T) {
 	if again := h.SignIn("ada.okafor@example.com"); again.Name != "Ada Okafor" {
 		t.Errorf("signed-in Name = %q, want Ada Okafor", again.Name)
 	}
+}
+
+// An email names one Account whatever its case, so a Departed person can't sign
+// in again by changing the case of their email (CONTEXT.md: Account).
+func TestSignInRefusesADifferentCaseOfADepartedEmail(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	freya := h.SignIn("freya.nilsen@example.com")
+	if err := h.Service.MarkDeparted(ctx, boss.ID, freya.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	before := countAccounts(t, h)
+
+	if _, err := h.Service.SignIn(ctx, "Freya.Nilsen@Example.com"); !errors.Is(err, domain.ErrDeparted) {
+		t.Errorf("SignIn as a different case of a Departed email: err = %v, want ErrDeparted", err)
+	}
+	if after := countAccounts(t, h); after != before {
+		t.Errorf("accounts = %d after the refused sign-in, want %d", after, before)
+	}
+}
+
+func countAccounts(t *testing.T, h *testsupport.Harness) int {
+	t.Helper()
+	var n int
+	if err := h.DB.QueryRow(`SELECT COUNT(*) FROM accounts`).Scan(&n); err != nil {
+		t.Fatalf("count accounts: %v", err)
+	}
+	return n
+}
+
+func TestSignInWithADifferentCaseReturnsTheExistingAccount(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+
+	again := h.SignIn("  Sam@Example.COM ")
+	if again.ID != sam.ID {
+		t.Errorf("sign-in as a different case made a new account: %d != %d", again.ID, sam.ID)
+	}
+}
+
+func TestSignInStoresTheEmailTrimmedAndLowercased(t *testing.T) {
+	h := testsupport.New(t)
+
+	acc := h.SignIn("  Freya.Nilsen@Example.com ")
+	if acc.Email != "freya.nilsen@example.com" {
+		t.Errorf("Email = %q, want freya.nilsen@example.com", acc.Email)
+	}
+}
+
+// GOAL_TRACKER_ADMINS matches an email whatever its case, on either side.
+func TestSignInSetsAdminFromConfigIgnoringCase(t *testing.T) {
+	for _, tc := range []struct{ configured, signIn string }{
+		{"boss@example.com", "Boss@Example.com"},
+		{"Boss@Example.com", "boss@example.com"},
+	} {
+		t.Run(tc.configured+" signs in as "+tc.signIn, func(t *testing.T) {
+			h := testsupport.New(t, tc.configured)
+
+			if acc := h.SignIn(tc.signIn); !acc.IsAdmin {
+				t.Errorf("first sign-in as %q with %q configured: not an Admin", tc.signIn, tc.configured)
+			}
+		})
+	}
+}
+
+// Every lookup by email finds the Account whatever case the caller typed
+// (CONTEXT.md: Account).
+func TestLookupsByEmailIgnoreCase(t *testing.T) {
+	t.Run("adding a Delegate", func(t *testing.T) {
+		h := testsupport.New(t)
+		sam := h.SignIn("sam@example.com")
+		pat := h.SignIn("pat@example.com")
+		goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+
+		if err := h.Service.AddDelegateByEmail(context.Background(), sam.ID, goal.ID, "Pat@Example.com"); err != nil {
+			t.Fatalf("AddDelegateByEmail: %v", err)
+		}
+		delegates, err := h.Service.ListDelegates(context.Background(), goal.ID)
+		if err != nil || len(delegates) != 1 || delegates[0].ID != pat.ID {
+			t.Errorf("Delegates = %+v (err %v), want pat", delegates, err)
+		}
+	})
+
+	t.Run("starting a Handoff", func(t *testing.T) {
+		h := testsupport.New(t)
+		sam := h.SignIn("sam@example.com")
+		pat := h.SignIn("pat@example.com")
+		goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+
+		handoff, err := h.Service.StartHandoffByEmail(context.Background(), goal.ID, "PAT@example.com", sam.ID)
+		if err != nil {
+			t.Fatalf("StartHandoffByEmail: %v", err)
+		}
+		if handoff.To.ID != pat.ID {
+			t.Errorf("Handoff to %d, want %d", handoff.To.ID, pat.ID)
+		}
+	})
+
+	t.Run("reassigning an Ownerless Goal", func(t *testing.T) {
+		h := testsupport.New(t, "boss@example.com")
+		ctx := context.Background()
+		boss := h.SignIn("boss@example.com")
+		sam := h.SignIn("sam@example.com")
+		pat := h.SignIn("pat@example.com")
+		goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+		if err := h.Service.MarkDeparted(ctx, boss.ID, sam.ID); err != nil {
+			t.Fatalf("MarkDeparted: %v", err)
+		}
+
+		reassigned, err := h.Service.ReassignGoalByEmail(ctx, boss.ID, goal.ID, "Pat@Example.COM")
+		if err != nil {
+			t.Fatalf("ReassignGoalByEmail: %v", err)
+		}
+		if reassigned.Owner.ID != pat.ID {
+			t.Errorf("Owner = %d, want %d", reassigned.Owner.ID, pat.ID)
+		}
+	})
+
+	t.Run("naming an Action Item owner", func(t *testing.T) {
+		h := testsupport.New(t)
+		author := h.SignIn("author@example.com")
+		owner := h.SignIn("owner@example.com")
+		g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+		def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+		pub := h.PublishReport(author, def)
+
+		item, err := h.Service.RaiseActionItemByEmail(context.Background(), author.ID, domain.RaiseActionItemInput{
+			PublicationID: pub.ID, Text: "Chase the vendor.", DueDate: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC),
+		}, "Owner@Example.com")
+		if err != nil {
+			t.Fatalf("RaiseActionItemByEmail: %v", err)
+		}
+		if item.Owner.ID != owner.ID {
+			t.Errorf("Action Item owner = %d, want %d", item.Owner.ID, owner.ID)
+		}
+	})
 }

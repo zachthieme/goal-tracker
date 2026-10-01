@@ -47,11 +47,12 @@ func WithBaseURL(url string) Option {
 }
 
 // NewService builds a Service over sqlDB. adminEmails are the addresses that
-// receive the Admin flag when their account is first created on sign-in.
+// receive the Admin flag when their account is first created on sign-in,
+// matched whatever their case (CONTEXT.md: Account).
 func NewService(sqlDB *sql.DB, clk clock.Clock, sender email.Sender, adminEmails []string, opts ...Option) *Service {
 	admins := make(map[string]bool, len(adminEmails))
 	for _, e := range adminEmails {
-		admins[e] = true
+		admins[adminKey(e)] = true
 	}
 	s := &Service{
 		db:      sqlDB,
