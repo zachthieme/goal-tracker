@@ -174,6 +174,13 @@ Load the fonts with this URL:
   `--color-surface-alt` in dark mode, with `--nav-ink` text. Resting items use
   `--nav-ink-2`; hover is the translucent-white `--nav-hover`.
   The current item (`.on`) gets a `--color-primary` underline or pill.
+  Above 900px it is one 56px row. At 900px and below it takes two rows and
+  never scrolls sideways. The brand, the person and Sign out are on the first
+  row and the nav items (`.navitems`) are on the second, each label on one line.
+  The person shows by Name alone, and a long Name truncates with an ellipsis.
+  "Signed in as" and "(Admin)" are hidden visually with `font-size:0`, so screen
+  readers still read them. At 360px and below the nav items' padding tightens
+  so an Admin's four items fit at 320px with two-digit counts.
 - **Primary button (`.btn.primary`):**
   - Resting: `--color-primary-strong` fill, `--color-ink-inverse` text,
     `--radius-md`, 14px, weight 600.

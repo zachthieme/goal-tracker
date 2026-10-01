@@ -88,18 +88,20 @@ templ layout(title string, current *domain.Account) {
 			<nav class="nav">
 				<a class="brand" href="/goals">Goal Tracker</a>
 				if current != nil {
-					@navItem("/home", "nav-home", "Home", needsYou(ctx))
-					@navItem("/risks", "nav-risks", "Risks", risks(ctx))
-					@navItem("/reports", "nav-reports", "Reports", 0)
-					if current.IsAdmin {
-						@navItem("/admin", "nav-admin", "Admin", 0)
-					}
+					<div class="navitems">
+						@navItem("/home", "nav-home", "Home", needsYou(ctx))
+						@navItem("/risks", "nav-risks", "Risks", risks(ctx))
+						@navItem("/reports", "nav-reports", "Reports", 0)
+						if current.IsAdmin {
+							@navItem("/admin", "nav-admin", "Admin", 0)
+						}
+					</div>
 					<div class="me">
-						<span data-testid="current-user">
+						<span data-testid="current-user" class="who">
 							{ "Signed in as " }
 							@person(*current)
 							if current.IsAdmin {
-								(Admin)
+								{ " (Admin)" }
 							}
 						</span>
 						<form method="post" action="/signout">
