@@ -21,6 +21,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] An Admin can reverse a departure: a Goal page whose Owner has departed offers "Mark returned…", which asks for confirmation. The person can sign in again and the Goals they still own stop being Ownerless; a Goal reassigned while they were away stays with its new Owner, and a cancelled Handoff stays cancelled (#45).
 - [user] Pages show people by their Name instead of their email address, with the email on hover; someone without a Name yet is shown by the part of their email before the `@`. The Markdown export, the Print view, and the reminder, digest, and comment emails introduce each person as `Name (email)` at their first mention. Publications keep the Names people had when published, and ones published earlier still show emails. Forms and the spreadsheet import still take emails, and the seed gives every person a Name (#41).
 - [user] Accepting a Handoff now lets the new Owner choose which of the Goal's Delegates to keep. The accept form, on the pending Handoffs page and on Home, lists each Delegate who hasn't left the org with a keep box checked by default. Unchecked Delegates are removed in the same step as the ownership change, and if accepting fails nothing changes. A new Owner who was a Delegate on the Goal stops being one. Departed Delegates aren't offered and stay on the Goal. Rejecting a Handoff and an Admin Reassign leave every Delegate in place (#47).
+- [user] The Admin page lists every Departed person, with a "Mark returned…" button for each, so an Admin can return someone who owns no Goal — a Delegate, or an Owner whose Goals were all reassigned while they were away — without a Goal page to do it from (#51).
 
 **Improvements:**
 - [user] Three marks that were too faint now reach 3:1 contrast in both themes. Text fields, selects and the Report Goal picker have a darker border. A Metric's sparkline is drawn in the darker teal. On the Check-in form, the Health choices you haven't picked are outlined at full strength instead of dimmed, and the one you picked is the filled badge (#55).
@@ -32,6 +33,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] `DESIGN.md` now lists the tokens `app.css` uses for roles it named only in prose: top bar (`--nav-*`), Goal Health (`--health-*`), destructive text (`--color-danger-ink`), and the input focus halo. Dark-mode values chosen here are marked *(chosen)*.
 - [user] Every page now uses the Warm Teal design system from `DESIGN.md`: an ivory canvas with deep-teal ink, Plus Jakarta Sans headings, Inter body text, and JetBrains Mono numbers. Cards and filled buttons are teal, and cards lift with soft shadows. Pages follow your OS dark mode. Goal Health badges keep their green, yellow, and red, plus their shapes. The Print view keeps its black-and-white serif.
 - [api] Database schema: migration `0019_account_names` adds a nullable `name` column to `accounts`. It's additive and runs on startup; existing Accounts have no Name until a sign-in integration supplies one (#41).
+- [user] A link request's note and a Report's comment thread are set apart by their indent and a thin neutral rule instead of a coloured side stripe (#67).
+- [user] The sign-in card no longer repeats the Goal Tracker name shown in the top bar; it now opens with the "Sign in" heading (#68).
 
 **Bug fixes:**
 - [user] On screens narrower than 900px, tables fill the width of their card again instead of shrinking to their content. A table too wide for the screen scrolls sideways inside its card.
@@ -41,11 +44,19 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A Departed person can no longer sign in or act: signing in shows why it was refused, a session they already had ends on their next request, and they can't submit Check-ins as Owner or Delegate. Everything they did stays attributed to them, and a Departed Delegate stays listed on the Goal page, marked "departed" (#45).
 - [user] A Goal page's Dimensions section links to the Dimensions page ("All Dimensions →") for everyone who can see the Goal, even before any Dimension is defined, so non-Admins can reach it again now that it's out of the main nav (#44).
 - [user] The Goal page header fits a phone screen: the title and meta line use the full width instead of wrapping a few letters per line, and Check in, No change and More wrap onto their own line, kept to the right so the More menu opens on-screen (#42).
+- [user] Reassigning an Ownerless Goal now cancels the Handoff its departed Owner left pending, so the Handoff shows as cancelled in the Ownership history, its recipient can no longer accept it and take the Goal from the Owner the Admin chose, and the new Owner can start a Handoff of their own. Accepting a Handoff whose Owner no longer owns the Goal is refused (#48).
+- [user] A published Report's "Published … by" line keeps the Name its publisher had when they published it, on the page, the print view and the Markdown export, instead of changing when they are renamed; one published before Names shows its publisher by email, like its Owners (#50).
 
 **Infrastructure:**
 - [ops] `make serve` builds the app and serves it on the tailnet at `https://<machine>.<tailnet>.ts.net:8090` through `tailscale serve`, listening on localhost only and with emailed links pointing at the tailnet URL; `SERVE_PORT`, `SERVE_DB`, and `SERVE_ADMINS` override the defaults.
 - [internal] Ignore the `goal-tracker` and `seed` binaries that a plain `go build ./cmd/...` writes to the repo root, so they can't be committed by accident.
 - [internal] Campaign agents run the gates in the foreground and commit before their turn ends: the agent image disables Claude Code's background tasks and raises its Bash timeout to 10 minutes, and CLAUDE.md says so. Agents that backgrounded `make test` and waited ended their single turn with nothing committed, parking #25, #28, #37, and #44 as "stalled, no-commit".
+
+**Code quality:**
+- [internal] Declare the label type style once: table heads share the `.label` rule, the Milestone grid heads in the Check-in form use the `.label` class, and the Top-level control in the Goal page's More menu is headed by an `h3` label instead of an `h2` restyled to match (#66).
+
+**Documentation:**
+- [internal] Record in `DESIGN.md` § Accepted audit findings that the white card surface and the hex/rgba tokens stay as the source has them, so later design audits stop flagging them (#62).
 
 ### Goal Tracker v1 pilot build — September 30, 2026
 
