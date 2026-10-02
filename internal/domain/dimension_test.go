@@ -294,3 +294,139 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
+
+// A Dimension takes one value per Goal until an Admin switches it to several;
+// a non-Admin cannot switch it (CONTEXT.md: Dimension — the Admin decides
+// whether a Goal takes one value or several).
+func TestAdminSwitchesDimensionToSeveralValues(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	if pillar.Selection != domain.SelectionOne {
+		t.Fatalf("new Dimension Selection = %q, want %q", pillar.Selection, domain.SelectionOne)
+	}
+
+	if err := h.Service.SetDimensionSelection(ctx, sam.ID, pillar.ID, domain.SelectionSeveral); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("non-Admin SetDimensionSelection err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.SetDimensionSelection(ctx, boss.ID, pillar.ID, "many"); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("unknown selection err = %v, want ErrValidation", err)
+	}
+	if err := h.Service.SetDimensionSelection(ctx, boss.ID, pillar.ID, domain.SelectionSeveral); err != nil {
+		t.Fatalf("SetDimensionSelection several: %v", err)
+	}
+
+	dims, err := h.Service.ListDimensions(ctx)
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	if len(dims) != 1 || dims[0].Selection != domain.SelectionSeveral {
+		t.Errorf("ListDimensions = %+v, want Pillar taking several values", dims)
+	}
+}
+
+// In a several-values Dimension an Owner gives a Goal two values, and setting
+// the Goal's values again with one of them removes the other; a one-value
+// Dimension refuses two (CONTEXT.md: Dimension).
+func TestOwnerSetsSeveralValuesInDimension(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	other := h.SignIn("other@example.com")
+	ctx := context.Background()
+
+	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra", "Web")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	core, infra := teams.Values[0], teams.Values[1]
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	if err := h.Service.SetGoalValues(ctx, sam.ID, goal.ID, teams.ID, []int64{core.ID, infra.ID}); err != nil {
+		t.Fatalf("SetGoalValues Core+Infra: %v", err)
+	}
+	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Core", "Infra"}) {
+		t.Fatalf("values = %v, want [Core Infra]", got)
+	}
+
+	if err := h.Service.SetGoalValues(ctx, sam.ID, goal.ID, teams.ID, []int64{infra.ID}); err != nil {
+		t.Fatalf("SetGoalValues Infra: %v", err)
+	}
+	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Infra"}) {
+		t.Errorf("after removing Core, values = %v, want [Infra]", got)
+	}
+
+	// Assigning a single value adds it alongside the Goal's others.
+	if err := h.Service.AssignGoalValue(ctx, sam.ID, goal.ID, core.ID); err != nil {
+		t.Fatalf("AssignGoalValue Core: %v", err)
+	}
+	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Core", "Infra"}) {
+		t.Errorf("after assigning Core, values = %v, want [Core Infra]", got)
+	}
+
+	// Two values in a one-value Dimension are refused.
+	if err := h.Service.SetGoalValues(ctx, sam.ID, goal.ID, pillar.ID, []int64{pillar.Values[0].ID, pillar.Values[1].ID}); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("two values in a one-value Dimension err = %v, want ErrValidation", err)
+	}
+	// A value from another Dimension is refused.
+	if err := h.Service.SetGoalValues(ctx, sam.ID, goal.ID, teams.ID, []int64{pillar.Values[0].ID}); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("value from another Dimension err = %v, want ErrValidation", err)
+	}
+	// Only the Owner or an Admin may set them.
+	if err := h.Service.SetGoalValues(ctx, other.ID, goal.ID, teams.ID, nil); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("non-Owner SetGoalValues err = %v, want ErrNotAuthorized", err)
+	}
+	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Core", "Infra"}) {
+		t.Errorf("after refused sets, values = %v, want [Core Infra]", got)
+	}
+
+	// Setting none clears the Dimension.
+	if err := h.Service.SetGoalValues(ctx, sam.ID, goal.ID, teams.ID, nil); err != nil {
+		t.Fatalf("SetGoalValues none: %v", err)
+	}
+	if got := goalValueNames(t, h, goal.ID); len(got) != 0 {
+		t.Errorf("after clearing, values = %v, want none", got)
+	}
+}
+
+// A retired value the Goal already carries can be kept when its values are set
+// again, but can't be newly given to it (CONTEXT.md: Retired).
+func TestSetGoalValuesKeepsButNeverAddsRetiredValue(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra")
+	core, infra := teams.Values[0], teams.Values[1]
+	carrier := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	fresh := h.CreateGoal(sam, "Ship faster", "Slow ships lose deals.")
+	h.AssignGoalValue(carrier, core)
+	if err := h.Service.RetireDimensionValue(ctx, boss.ID, core.ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+
+	if err := h.Service.SetGoalValues(ctx, sam.ID, carrier.ID, teams.ID, []int64{core.ID, infra.ID}); err != nil {
+		t.Fatalf("keeping a carried retired value: %v", err)
+	}
+	if got := goalValueNames(t, h, carrier.ID); !equalStrings(got, []string{"Core", "Infra"}) {
+		t.Errorf("values = %v, want [Core Infra]", got)
+	}
+	if err := h.Service.SetGoalValues(ctx, sam.ID, fresh.ID, teams.ID, []int64{core.ID}); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("newly giving a retired value err = %v, want ErrValidation", err)
+	}
+}
+
+func goalValueNames(t *testing.T, h *testsupport.Harness, goalID int64) []string {
+	t.Helper()
+	values, err := h.Service.GoalValues(context.Background(), goalID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		out = append(out, v.Value)
+	}
+	return out
+}

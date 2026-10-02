@@ -9,6 +9,12 @@ SELECT * FROM dimensions WHERE id = ? LIMIT 1;
 -- name: ListDimensions :many
 SELECT * FROM dimensions ORDER BY name, id;
 
+-- name: SetDimensionSelection :one
+-- Whether a Goal takes one value ('one') or several ('several') in this
+-- Dimension.
+UPDATE dimensions SET selection = ? WHERE id = ?
+RETURNING *;
+
 -- name: CreateDimensionValue :one
 INSERT INTO dimension_values (dimension_id, value, retired, created_at)
 VALUES (?, ?, 0, ?)
@@ -35,17 +41,20 @@ RETURNING *;
 UPDATE dimension_values SET retired = ? WHERE id = ?
 RETURNING *;
 
--- name: AssignGoalValue :one
+-- name: AssignGoalValueIfAbsent :exec
+-- Give a Goal a value; a value it already carries is left as it is.
 INSERT INTO goal_dimension_values (goal_id, dimension_value_id, created_at)
 VALUES (?, ?, ?)
-RETURNING *;
+ON CONFLICT (goal_id, dimension_value_id) DO NOTHING;
 
 -- name: ClearGoalValuesInDimension :exec
--- Remove a Goal's assignment in one Dimension, so a fresh assignment replaces it
--- (a Goal carries at most one value per Dimension).
+-- Remove a Goal's values in one Dimension, so a fresh assignment replaces them.
 DELETE FROM goal_dimension_values
 WHERE goal_id = ?
   AND dimension_value_id IN (SELECT id FROM dimension_values WHERE dimension_id = ?);
+
+-- name: RemoveGoalValue :exec
+DELETE FROM goal_dimension_values WHERE goal_id = ? AND dimension_value_id = ?;
 
 -- name: ListGoalValues :many
 -- The values assigned to one Goal, each with its Dimension, retired ones

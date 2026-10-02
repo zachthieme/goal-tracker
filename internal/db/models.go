@@ -83,6 +83,7 @@ type Dimension struct {
 	ID        int64
 	Name      string
 	CreatedAt string
+	Selection string
 }
 
 type DimensionValue struct {
