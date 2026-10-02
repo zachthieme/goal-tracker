@@ -753,3 +753,54 @@ func dimensionValueNames(t *testing.T, h *testsupport.Harness, name string) []st
 	t.Fatalf("no Dimension %q", name)
 	return nil
 }
+
+// A file with any error creates no Goals and no values, and neither does a dry
+// run of a clean one: an Extendable Dimension's list gains nothing (#77).
+func TestImportThatSavesNothingAddsNoValues(t *testing.T) {
+	const clean = `Title,Owner,So What,Kind,Customer
+First,owner@example.com,It matters.,Ongoing,Newco
+`
+	const broken = clean + `Second,owner@example.com,It matters.,Sideways,Otherco
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateExtendableDimension(admin, "Customer", "Acme")
+	im := importer.New(h.Service)
+
+	if rep, err := im.DryRun(context.Background(), admin.ID, "goals.csv", []byte(clean)); err != nil || rep.HasErrors() {
+		t.Fatalf("DryRun = %+v, %v; want a clean report", rep, err)
+	}
+	if rep, err := im.Commit(context.Background(), admin.ID, "goals.csv", []byte(broken)); err != nil || rep.Committed {
+		t.Fatalf("Commit = %+v, %v; want an uncommitted report", rep, err)
+	}
+	if got := dimensionValueNames(t, h, "Customer"); strings.Join(got, ", ") != "Acme" {
+		t.Errorf("Customer list = %v, want [Acme]", got)
+	}
+	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 0 {
+		t.Errorf("import saved %d Goals, want 0", len(goals))
+	}
+}
+
+// A Retired Dimension or Field isn't matched, so its column is rejected like any
+// unknown column (#77; CONTEXT.md: Retired).
+func TestRetiredDimensionAndFieldColumnsAreRejected(t *testing.T) {
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	pillar := h.CreateDimension(admin, "Pillar", "Growth")
+	budget := h.CreateField(admin, "Budget", domain.FieldNumber, "$")
+	ctx := context.Background()
+	if err := h.Service.RetireDimension(ctx, admin.ID, pillar.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	if err := h.Service.RetireField(ctx, admin.ID, budget.ID); err != nil {
+		t.Fatalf("RetireField: %v", err)
+	}
+
+	for _, column := range []string{"Pillar", "Budget"} {
+		csv := "Title,Owner,So What,Kind," + column + "\nGrow,owner@example.com,It matters.,Ongoing,12\n"
+		_, err := importer.New(h.Service).DryRun(ctx, admin.ID, "goals.csv", []byte(csv))
+		if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), fmt.Sprintf("column %q", column)) {
+			t.Errorf("%s column: DryRun error = %v, want the column rejected", column, err)
+		}
+	}
+}
