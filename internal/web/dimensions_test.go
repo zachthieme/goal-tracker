@@ -590,3 +590,43 @@ func TestAdminRetiresAndRestoresDimensionOverHTTP(t *testing.T) {
 		t.Errorf("Pillar and Trust still flagged retired after Restore; card:\n%s", card)
 	}
 }
+
+// An Admin marks a Dimension required from its card's Edit toggle, and the card
+// says so, then unmarks it; a non-Admin is refused (CONTEXT.md: Incomplete).
+func TestAdminMarksDimensionRequiredOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	admin := h.SignIn("boss@example.com")
+	pillar := h.CreateDimension(admin, "Pillar", "Growth")
+	ts := newServer(t, h)
+	boss := signInClient(t, ts.URL, "boss@example.com")
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	requiredURL := fmt.Sprintf("%s/dimensions/%d/required", ts.URL, pillar.ID)
+
+	edit := getBody(t, boss, ts.URL+"/dimensions")
+	if !strings.Contains(edit, `action="/dimensions/`+fmt.Sprint(pillar.ID)+`/required"`) {
+		t.Fatalf("Edit toggle has no control to mark Pillar required:\n%s", edit)
+	}
+	if resp := postForm(t, sam, requiredURL, url.Values{"required": {"1"}}); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-Admin mark required: status %d, want 403", resp.StatusCode)
+	}
+	if resp := postForm(t, boss, requiredURL, url.Values{"required": {"1"}}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("mark required: status %d; body:\n%s", resp.StatusCode, readBody(t, resp))
+	}
+	card := pageElement(t, getBody(t, sam, ts.URL+"/dimensions"), "p", "dimension-rules")
+	if !strings.Contains(card, "Required") {
+		t.Errorf("card doesn't say Pillar is required:\n%s", card)
+	}
+
+	postForm(t, boss, requiredURL, url.Values{"required": {"0"}})
+	dims, err := h.Service.ListDimensions(context.Background())
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	if dims[0].Required {
+		t.Errorf("Pillar still required after unmarking")
+	}
+	card = pageElement(t, getBody(t, sam, ts.URL+"/dimensions"), "p", "dimension-rules")
+	if strings.Contains(card, "Required") {
+		t.Errorf("card still says Pillar is required:\n%s", card)
+	}
+}

@@ -303,3 +303,38 @@ func TestRetiredFieldOnTheGoalPage(t *testing.T) {
 		t.Errorf("the restored Budget isn't offered for entry:\n%s", edit)
 	}
 }
+
+// An Admin marks a Field required from its card, and the card says so, then
+// unmarks it; a non-Admin gets no control and is refused (CONTEXT.md:
+// Incomplete).
+func TestAdminMarksFieldRequiredOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	admin := h.SignIn("boss@example.com")
+	budget := h.CreateField(admin, "Budget", domain.FieldNumber, "$")
+	ts := newServer(t, h)
+	boss := signInClient(t, ts.URL, "boss@example.com")
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	requiredURL := fmt.Sprintf("%s/fields/%d/required", ts.URL, budget.ID)
+	action := fmt.Sprintf(`action="/fields/%d/required"`, budget.ID)
+
+	if page := getBody(t, boss, ts.URL+"/fields"); !strings.Contains(page, action) {
+		t.Fatalf("Admin's Field card has no control to mark Budget required:\n%s", page)
+	}
+	if page := getBody(t, sam, ts.URL+"/fields"); strings.Contains(page, action) {
+		t.Errorf("non-Admin gets the required control:\n%s", page)
+	}
+	if resp := postForm(t, sam, requiredURL, url.Values{"required": {"1"}}); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-Admin mark required: status %d, want 403", resp.StatusCode)
+	}
+	if resp := postForm(t, boss, requiredURL, url.Values{"required": {"1"}}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("mark required: status %d; body:\n%s", resp.StatusCode, readBody(t, resp))
+	}
+	if got := pageElement(t, getBody(t, sam, ts.URL+"/fields"), "p", "field-type"); !strings.Contains(got, "Required") {
+		t.Errorf("card doesn't say Budget is required: %s", got)
+	}
+
+	postForm(t, boss, requiredURL, url.Values{"required": {"0"}})
+	if got := pageElement(t, getBody(t, sam, ts.URL+"/fields"), "p", "field-type"); strings.Contains(got, "Required") {
+		t.Errorf("card still says Budget is required: %s", got)
+	}
+}
