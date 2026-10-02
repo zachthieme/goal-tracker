@@ -368,6 +368,41 @@ func TestGoalPageDimensionsSectionLinksToDimensionsForNonOwner(t *testing.T) {
 	}
 }
 
+// Grouped by a several-values Dimension, a Goal with two values appears in both
+// groups, and the list's total counts it once (ADR 0005).
+func TestGoalListGroupsSeveralValuesGoalUnderEachValue(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra")
+	shared := h.CreateGoal(sam, "Alpha", "A matters.")
+	h.CreateGoal(sam, "Bravo", "B matters.")
+	h.AssignGoalValue(shared, teams.Values[0])
+	h.AssignGoalValue(shared, teams.Values[1])
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	grouped := getBody(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, teams.ID))
+	groups := strings.Split(grouped, `<tbody data-testid="goal-group"`)[1:]
+	if len(groups) != 3 {
+		t.Fatalf("got %d groups, want Core, Infra and Unassigned; body:\n%s", len(groups), grouped)
+	}
+	for i, label := range []string{"Core", "Infra"} {
+		group := groups[i]
+		if !strings.Contains(group, label) || !strings.Contains(group, ">Alpha<") {
+			t.Errorf("group %d should be %s holding Alpha:\n%s", i, label, group)
+		}
+	}
+	if got := pageElement(t, grouped, "p", "goal-count"); !strings.Contains(got, ">2 Goals") {
+		t.Errorf("total = %q, want 2 Goals", got)
+	}
+
+	flat := getBody(t, client, ts.URL+"/goals")
+	if got := pageElement(t, flat, "p", "goal-count"); !strings.Contains(got, ">2 Goals") {
+		t.Errorf("flat total = %q, want 2 Goals", got)
+	}
+}
+
 // The Goal list filters to the Goals carrying a chosen value and groups the list
 // under each value of a chosen Dimension (CONTEXT.md: filter and group Goals).
 func TestGoalListFiltersAndGroupsByDimension(t *testing.T) {

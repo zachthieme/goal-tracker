@@ -77,6 +77,14 @@ func (v goalsListData) moreFiltersSet() bool {
 	return len(v.Selected) > 0 || v.GroupID != 0
 }
 
+// goalCount is the Goal list's total: "1 Goal", "3 Goals".
+func goalCount(n int) string {
+	if n == 1 {
+		return "1 Goal"
+	}
+	return fmt.Sprintf("%d Goals", n)
+}
+
 // filtered reports whether any filter is narrowing the list, so an empty list
 // says nothing matches rather than that there are no Goals.
 func (v goalsListData) filtered() bool {
