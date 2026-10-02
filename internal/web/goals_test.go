@@ -2816,6 +2816,13 @@ func TestGoalTableRefusedSeveralValuesCellIsAnnounced(t *testing.T) {
 func tableForm(t *testing.T, page string) (string, url.Values) {
 	t.Helper()
 	form := between(t, page, `<form data-testid="goal-table-form"`, "</form>")
+	return html.UnescapeString(attr(openTag(form), "action")), formValues(form)
+}
+
+// formValues is what a browser submits from form as it renders: every input,
+// the ticked checkboxes and radios, each textarea, and each select's chosen (or
+// else first) option.
+func formValues(form string) url.Values {
 	values := url.Values{}
 	for _, tag := range regexp.MustCompile(`<input[^>]*>`).FindAllString(form, -1) {
 		name, value := attr(tag, "name"), html.UnescapeString(attr(tag, "value"))
@@ -2841,7 +2848,7 @@ func tableForm(t *testing.T, page string) (string, url.Values) {
 		}
 		values.Add(attr(m[1], "name"), attr(chosen, "value"))
 	}
-	return html.UnescapeString(attr(openTag(form), "action")), values
+	return values
 }
 
 // controlName is the name of the form control on page labelled label.
@@ -3423,5 +3430,179 @@ func TestOneValueSelectKeepsACarriedRetiredValueOverHTTP(t *testing.T) {
 	sel := between(t, edit, `aria-label="Pillar"`, "</select>")
 	if !strings.Contains(sel, fmt.Sprintf(`<option value="%d" selected>Growth (retired)</option>`, pillar.Values[0].ID)) {
 		t.Errorf("Pillar's select doesn't keep the retired Growth selected:\n%s", sel)
+	}
+}
+
+// The Goal list's filter bar applies itself (#94): under htmx a filter change,
+// a pause in typing the search or Enter GETs the filtered view, swaps in only
+// the list (so the filter bar keeps its focus and an open More filters) and
+// pushes the filtered address, so it can be copied, shared and reached with
+// Back. The page opts out of htmx's history snapshot, so Back loads the earlier
+// address afresh and the filter bar shows its filters too.
+func TestGoalListFiltersApplyOnChange(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.CreateDimension(boss, "Pillar", "Growth")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	for _, layout := range []string{"/goals", "/goals?layout=table"} {
+		page := getBody(t, client, ts.URL+layout)
+		form := tagAround(t, page, `data-testid="goal-filters"`)
+		for name, want := range map[string]string{
+			"hx-get":      "/goals",
+			"hx-trigger":  "submit, change[target.type!='search'], input[target.type=='search'] delay:400ms",
+			"hx-target":   "#goal-list",
+			"hx-select":   "#goal-list",
+			"hx-swap":     "outerHTML",
+			"hx-push-url": "true",
+			"hx-sync":     "this:replace",
+		} {
+			if got := html.UnescapeString(attr(form, name)); got != want {
+				t.Errorf("%s: filter form %s = %q, want %q", layout, name, got, want)
+			}
+		}
+		if !strings.Contains(page, `hx-history="false"`) {
+			t.Errorf("%s: the page keeps htmx's history snapshot, so Back would show stale filters", layout)
+		}
+	}
+}
+
+// Without JavaScript the filter bar still works as a plain GET form, so its
+// Apply button stays, but only there: it sits in <noscript>, so a browser
+// running scripts, where the bar applies itself, doesn't show it (#94). The
+// table's Columns form isn't a filter and keeps its own button.
+func TestGoalListApplyButtonOnlyWithoutJavaScript(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	h.SignIn("boss@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	for _, layout := range []string{"/goals", "/goals?layout=table"} {
+		page := getBody(t, client, ts.URL+layout)
+		filters := between(t, page, `data-testid="goal-filters"`, "</form>")
+		noscript := between(t, filters, "<noscript>", "</noscript>")
+		if !strings.Contains(noscript, `<button type="submit" class="btn">Apply</button>`) {
+			t.Errorf("%s: the filter bar's <noscript> lacks Apply:\n%s", layout, filters)
+		}
+		if strings.Count(filters, "Apply") != 1 {
+			t.Errorf("%s: the filter bar shows Apply outside <noscript>:\n%s", layout, filters)
+		}
+	}
+	columns := between(t, getBody(t, client, ts.URL+"/goals?layout=table"), `<form data-testid="goal-columns"`, "</form>")
+	if !strings.Contains(columns, `<button type="submit" class="btn sm">Apply</button>`) || strings.Contains(columns, "<noscript>") {
+		t.Errorf("the Columns form lost its own Apply:\n%s", columns)
+	}
+}
+
+// htmxFilter changes the filter bar on page as a person would — set changes
+// one field — and GETs the view the way htmx does, answering the page htmx
+// selects from and the address it pushes.
+func htmxFilter(t *testing.T, client *http.Client, base, page string, set func(url.Values)) (string, string) {
+	t.Helper()
+	form := between(t, page, `data-testid="goal-filters"`, "</form>")
+	values := formValues(form)
+	set(values)
+	address := attr(tagAround(t, page, `data-testid="goal-filters"`), "hx-get") + "?" + values.Encode()
+	req, err := http.NewRequest(http.MethodGet, base+address, nil)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("HX-Target", "goal-list")
+	req.Header.Set("HX-Current-URL", base+"/goals")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", address, err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s: status %d:\n%s", address, resp.StatusCode, body)
+	}
+	return body, address
+}
+
+// swappedList is the part of page htmx swaps in for the list: from #goal-list
+// on, which the page ends with.
+func swappedList(t *testing.T, page string) string {
+	t.Helper()
+	return between(t, page, `<div id="goal-list"`, "")
+}
+
+// A filter changed under htmx answers the same Goals as its address loaded
+// directly, and keeps the layout, the sort and the grouping (#94).
+func TestGoalListFilterChangeUnderHTMXKeepsTheView(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	alpha := h.CreateGoal(sam, "Alpha launch", "A matters.")
+	bravo := h.CreateGoal(boss, "Bravo launch", "B matters.")
+	charlie := h.CreateGoal(sam, "Charlie launch", "C matters.")
+	audit := h.CreateGoal(sam, "Delta audit", "D matters.")
+	h.AssignGoalValue(alpha, pillar.Values[0])
+	h.AssignGoalValue(bravo, pillar.Values[0])
+	h.AssignGoalValue(charlie, pillar.Values[1])
+	h.AssignGoalValue(audit, pillar.Values[1])
+	goals := []domain.Goal{alpha, bravo, charlie, audit}
+	group := fmt.Sprint(pillar.ID)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	// The table, sorted by Title descending and carrying a grouping, searched.
+	table := getBody(t, client, ts.URL+"/goals?layout=table&sort=title&dir=desc&group="+group)
+	body, address := htmxFilter(t, client, ts.URL, table, func(v url.Values) { v.Set("q", "launch") })
+	swapped := swappedList(t, body)
+	if got, want := rowTitles(tableRows(t, swapped), goals...), []string{"Charlie launch", "Bravo launch", "Alpha launch"}; !slices.Equal(got, want) {
+		t.Errorf("table searched under htmx lists %q, want %q", got, want)
+	}
+	direct := swappedList(t, getBody(t, client, ts.URL+address))
+	if got, want := rowTitles(tableRows(t, swapped), goals...), rowTitles(tableRows(t, direct), goals...); !slices.Equal(got, want) {
+		t.Errorf("table under htmx lists %q, but %s loaded directly lists %q", got, address, want)
+	}
+	if !regexp.MustCompile(`aria-sort="descending"><a [^>]*>Title</a>`).MatchString(swapped) {
+		t.Errorf("the table under htmx lost its sort:\n%s", swapped)
+	}
+	if toList := linkQuery(t, swapped, "layout-list"); toList.Get("group") != group || toList.Get("q") != "launch" {
+		t.Errorf("the table under htmx lost its grouping or search: List links to %v", toList)
+	}
+
+	// The list, grouped by Pillar, narrowed to Mine only.
+	list := getBody(t, client, ts.URL+"/goals?group="+group)
+	body, address = htmxFilter(t, client, ts.URL, list, func(v url.Values) { v.Set("mine", "1") })
+	swapped = swappedList(t, body)
+	if got, want := cellTexts(swapped, "th"), []string{"Health", "Goal", "Owner", "Due", "Last check-in", "Dimension tags", "Growth", "Trust"}; !slices.Equal(got, want) {
+		t.Errorf("the list under htmx heads %q, want %q: grouping lost", got, want)
+	}
+	if got, want := rowTitles(goalRows(t, swapped), goals...), []string{"Alpha launch", "Charlie launch", "Delta audit"}; !slices.Equal(got, want) {
+		t.Errorf("Mine only under htmx lists %q, want %q", got, want)
+	}
+	direct = swappedList(t, getBody(t, client, ts.URL+address))
+	if got, want := rowTitles(goalRows(t, swapped), goals...), rowTitles(goalRows(t, direct), goals...); !slices.Equal(got, want) {
+		t.Errorf("the list under htmx lists %q, but %s loaded directly lists %q", got, address, want)
+	}
+}
+
+// In the table the propose form posts to the table's own view, so a filter
+// changed under htmx refreshes it too: proposing a Goal afterwards swaps back
+// the filtered table, not the one the page first loaded (#94).
+func TestGoalListFilterChangeUnderHTMXRefreshesTheProposeForm(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	h.SignIn("boss@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals?layout=table")
+	if got := attr(tagAround(t, page, `data-testid="goal-filters"`), "hx-select-oob"); got != "#propose-goal" {
+		t.Errorf("filter form hx-select-oob = %q, want #propose-goal", got)
+	}
+	body, _ := htmxFilter(t, client, ts.URL, page, func(v url.Values) { v.Set("q", "launch") })
+	propose := pageElement(t, body, "details", "propose-goal")
+	if attr(openTag(propose), "id") != "propose-goal" {
+		t.Errorf("the propose form's <details> has no id htmx can swap by: %s", propose)
+	}
+	post, err := url.Parse(html.UnescapeString(attr(tagAround(t, propose, "hx-post="), "hx-post")))
+	if err != nil || post.Query().Get("q") != "launch" || post.Query().Get("layout") != "table" {
+		t.Errorf("the refreshed propose form posts to %v, want the filtered table", post)
 	}
 }
