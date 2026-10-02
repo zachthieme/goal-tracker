@@ -2720,6 +2720,97 @@ func TestGoalTableEditModeHasInputsOnlyOnRowsThePersonMayEdit(t *testing.T) {
 	}
 }
 
+// emptyLinks are the links in the Goal table on page with no text to name them.
+func emptyLinks(t *testing.T, page string) []string {
+	t.Helper()
+	table := between(t, page, `<table data-testid="goal-table"`, "</table>")
+	var empty []string
+	for _, m := range regexp.MustCompile(`(?s)<a[\s>].*?</a>`).FindAllString(table, -1) {
+		if strings.TrimSpace(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(m, "")) == "" {
+			empty = append(empty, m)
+		}
+	}
+	return empty
+}
+
+// A Goal with no Health and no delivery date shows nothing in those cells, in
+// the Goal table and in its edit mode, rather than a link with no text that
+// the keyboard stops on and a screen reader announces unnamed (#100).
+func TestGoalTableHasNoEmptyLinks(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.CreateGoal(sam, "Alpha", "A matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for mode, page := range map[string]string{
+		"table":     getBody(t, client, ts.URL+"/goals?layout=table"),
+		"edit mode": editTable(t, client, ts.URL, "/goals?layout=table"),
+	} {
+		if empty := emptyLinks(t, page); len(empty) > 0 {
+			t.Errorf("the Goal table in %s has links with no text:\n%s", mode, strings.Join(empty, "\n"))
+		}
+	}
+}
+
+// The Owner cell in the Goal table's edit mode is the person control that
+// reveals the Owner's email, not a link: a link can't hold that control, and
+// the Title already links to the Goal (#100, withdrawing that part of #80).
+func TestGoalTableEditModeOwnerCellIsThePersonControl(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	alpha := h.CreateGoal(sam, "Alpha", "A matters.")
+	ts := newServer(t, h)
+
+	page := editTable(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL, "/goals?layout=table")
+
+	if cell := tableCellHTML(t, page, tableRowOf(t, page, alpha), "Owner"); cell != "<td>"+shownAs("sam@example.com", "sam")+"</td>" {
+		t.Errorf("Alpha's Owner cell isn't just the person control:\n%s", cell)
+	}
+}
+
+// A refused several-values cell in the Goal table's edit form is announced the
+// way a refused select or text input is: each of its checkboxes is marked
+// invalid, and their group points at the cell's error message (#100).
+func TestGoalTableRefusedSeveralValuesCellIsAnnounced(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	tags := h.CreateExtendableDimension(boss, "Tags", "infra", "ux")
+	h.SetDimensionSelection(boss, tags, domain.SelectionSeveral)
+	alpha := h.CreateGoal(sam, "Alpha", "A matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := editTable(t, client, ts.URL, "/goals?layout=table")
+	action, form := tableForm(t, page)
+	form.Set(controlName(t, page, "Add a Tags value to Alpha"), "mobile; web")
+	resp := postForm(t, client, ts.URL+action, form)
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422:\n%s", resp.StatusCode, body)
+	}
+
+	cell := tableCellHTML(t, body, tableRowOf(t, body, alpha), "Tags")
+	errorTag := regexp.MustCompile(`<p[^>]*data-testid="cell-error"[^>]*>`).FindString(cell)
+	if errorTag == "" || attr(errorTag, "id") == "" {
+		t.Fatalf("Alpha's Tags has no error message with an id:\n%s", cell)
+	}
+	group := regexp.MustCompile(`<fieldset[^>]*>`).FindString(cell)
+	if !slices.Contains(strings.Fields(attr(group, "aria-describedby")), attr(errorTag, "id")) {
+		t.Errorf("Alpha's Tags group doesn't point at its error message %q: %s", attr(errorTag, "id"), group)
+	}
+	boxes := regexp.MustCompile(`<input[^>]*type="checkbox"[^>]*>`).FindAllString(cell, -1)
+	if len(boxes) != 2 {
+		t.Fatalf("Alpha's Tags has %d checkboxes, want 2:\n%s", len(boxes), cell)
+	}
+	for _, box := range boxes {
+		if attr(box, "aria-invalid") != "true" {
+			t.Errorf("checkbox isn't marked invalid: %s", box)
+		}
+	}
+}
+
 // tableForm is what a browser would post from the Goal table's edit form as
 // page renders it, and where to.
 func tableForm(t *testing.T, page string) (string, url.Values) {
