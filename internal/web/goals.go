@@ -588,6 +588,10 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("read incomplete: %w", err)
 	}
+	strip, err := s.svc.HealthStrip(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("read health strip: %w", err)
+	}
 
 	// Each linked Goal's Health, shown beside it in the sidebar.
 	linkHealth := map[int64]string{}
@@ -648,6 +652,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Freshness:      freshness,
 		Required:       required,
 		Incomplete:     incomplete,
+		HealthStrip:    strip,
 		SuggestedDate:  domain.SuggestDeliveryDate(s.svc.Now()).Format(dateLayout),
 	}
 	view.History = newHistory(view, s.svc.Timezone(), s.svc.Now())
@@ -737,6 +742,9 @@ type goalView struct {
 	Required      []domain.RequiredValue
 	Incomplete    []string
 	SuggestedDate string
+	// HealthStrip is the Goal's Health over its last Check-in periods, shown
+	// above its History; it has no periods until the Goal has been Active.
+	HealthStrip domain.HealthStrip
 	// History is the Goal's History as one timeline, newest first, showing the
 	// filter and page count the page's address asks for.
 	History history
