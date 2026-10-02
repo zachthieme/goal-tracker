@@ -187,12 +187,12 @@ strong{color:var(--color-ink)}
 .y{background:var(--health-y-bg);color:var(--health-y-ink)}.y .dot{clip-path:polygon(50% 0,100% 100%,0 100%);width:10px;height:9px}
 .r{background:var(--health-r-bg);color:var(--health-r-ink)}.r .dot{border-radius:1px}
 .st{background:var(--stale-bg);color:var(--stale-ink);border-width:1px;border-style:dashed;border-color:var(--stale-edge)}
-.badge.st{padding:0 7px}
+.badge.st{padding:0 8px}
 .alert.st{background:var(--color-surface);color:var(--color-ink)}
 .alert.st a{margin-left:auto;font-weight:600;white-space:nowrap}
 .ol{background:var(--color-surface);color:var(--color-ink);border:1px dashed var(--color-ink-muted)}
 .lc{background:var(--color-surface-alt);color:var(--color-ink-2);border:1px solid var(--color-border)}
-.tag{display:inline-flex;align-items:center;padding:0 11px;border-radius:var(--radius-full);color:var(--color-ink);font-size:13px;line-height:20px;background:none;border-width:1px;border-style:solid;border-color:var(--color-border-strong)}
+.tag{display:inline-flex;align-items:center;padding:0 12px;border-radius:var(--radius-full);color:var(--color-ink);font-size:13px;line-height:20px;background:none;border-width:1px;border-style:solid;border-color:var(--color-border-strong)}
 .card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:24px}
 a.card{color:var(--color-ink-2);transition:border-color var(--dur-base) var(--ease-out)}
 a.card:hover{text-decoration:none;color:var(--color-ink-2);border-color:var(--color-border-strong)}
