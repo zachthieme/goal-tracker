@@ -124,12 +124,18 @@ func TestDepartedGoalOwnerlessSurfacedAndReassigned(t *testing.T) {
 		t.Errorf("Goal page should show Pat as Owner after reassignment; body:\n%s", childPage)
 	}
 
-	// The Reassign is recorded in the Goal's Ownership history.
-	ownership := pageElement(t, childPage, "section", "goal-ownership-history")
-	if !strings.Contains(ownership, "Ownership history (1)") {
-		t.Errorf("Ownership history should count the Reassign: %s", ownership)
+	// The Reassign is on the Goal's History timeline, under Ownership.
+	if chip := historyChips(t, historyBlock(t, childPage))["Ownership"]; chip.count != "1" {
+		t.Errorf("the Ownership chip counts %q, want the one Reassign", chip.count)
 	}
-	entry := between(t, ownership, `data-testid="ownership-change"`, "</li>")
+	entries := ownershipEntries(t, bossClient, fmt.Sprintf("%s/goals/%d", ts.URL, child.ID))
+	if len(entries) != 1 {
+		t.Fatalf("History lists %d ownership changes, want the one Reassign", len(entries))
+	}
+	entry := entries[0]
+	if !strings.Contains(entry, ">Reassign<") {
+		t.Errorf("the Reassign entry isn't labelled Reassign: %s", entry)
+	}
 	for _, part := range []string{shownAs("sam@example.com", "sam"), shownAs("pat@example.com", "pat"), "reassigned by an Admin", "started by " + shownAs("boss@example.com", "boss")} {
 		if !strings.Contains(entry, part) {
 			t.Errorf("Reassign entry lacks %q: %s", part, entry)
@@ -166,8 +172,8 @@ func TestPendingHandoffRowsRejectAtOnce(t *testing.T) {
 	}
 }
 
-// Every Handoff is kept with its outcome and listed oldest first under the Goal
-// page's collapsed Ownership history: one rejected by the new Owner, one
+// Every Handoff is kept with its outcome and listed newest first on the Goal
+// page's History timeline under the Ownership chip: one rejected by the new Owner, one
 // cancelled when its new Owner departed, and one the new Owner accepted after
 // the Owner who started it departed — which ends the Goal's Ownerless state.
 func TestOwnershipHistoryKeepsEveryHandoffOutcome(t *testing.T) {
@@ -232,22 +238,17 @@ func TestOwnershipHistoryKeepsEveryHandoffOutcome(t *testing.T) {
 		t.Errorf("Goal page should show Lee as Owner")
 	}
 
-	section := pageElement(t, between(t, page, `data-testid="goal-history"`, "</aside>"), "section", "goal-ownership-history")
-	details := between(t, section, "<details", "</summary>")
-	if strings.Contains(openTag(details), "open") {
-		t.Errorf("Ownership history is not collapsed: %s", openTag(details))
+	if chip := historyChips(t, historyBlock(t, page))["Ownership"]; chip.count != "3" {
+		t.Errorf("the Ownership chip counts %q, want 3", chip.count)
 	}
-	if !strings.Contains(details, "Ownership history (3)") {
-		t.Errorf("Ownership history summary lacks its count: %s", details)
-	}
-	entries := strings.Split(section, `data-testid="ownership-change"`)[1:]
+	entries := ownershipEntries(t, bossClient, goalURL)
 	want := []struct{ to, outcome, at string }{
-		{shownAs("mel@example.com", "mel"), "rejected", "2026-01-02 15:04"},
-		{shownAs("pat@example.com", "pat"), "cancelled", "2026-01-02 16:04"},
-		{shownAs("lee@example.com", "lee"), "accepted", "2026-01-02 17:04"},
+		{shownAs("lee@example.com", "lee"), "accepted", "Fri 2 Jan 17:04"},
+		{shownAs("pat@example.com", "pat"), "cancelled", "Fri 2 Jan 16:04"},
+		{shownAs("mel@example.com", "mel"), "rejected", "Fri 2 Jan 15:04"},
 	}
 	if len(entries) != len(want) {
-		t.Fatalf("Ownership history has %d entries, want %d:\n%s", len(entries), len(want), section)
+		t.Fatalf("History lists %d ownership changes, want %d:\n%s", len(entries), len(want), strings.Join(entries, "\n"))
 	}
 	for i, w := range want {
 		for _, part := range []string{shownAs("sam@example.com", "sam"), w.to, w.outcome, w.at, "started by " + shownAs("sam@example.com", "sam")} {
@@ -587,14 +588,13 @@ func TestReassignCancelsTheDepartedOwnersPendingHandoff(t *testing.T) {
 	if !strings.Contains(page, `data-testid="goal-owner">`+shownAs("cal@example.com", "cal")) {
 		t.Errorf("Goal page should show Cal as Owner after Pat's refused accept")
 	}
-	section := pageElement(t, page, "section", "goal-ownership-history")
-	entries := strings.Split(section, `data-testid="ownership-change"`)[1:]
+	entries := ownershipEntries(t, bossClient, goalURL)
 	want := []struct{ to, outcome string }{
-		{shownAs("pat@example.com", "pat"), "cancelled"},
 		{shownAs("cal@example.com", "cal"), "reassigned by an Admin"},
+		{shownAs("pat@example.com", "pat"), "cancelled"},
 	}
 	if len(entries) != len(want) {
-		t.Fatalf("Ownership history has %d entries, want %d:\n%s", len(entries), len(want), section)
+		t.Fatalf("History lists %d ownership changes, want %d:\n%s", len(entries), len(want), strings.Join(entries, "\n"))
 	}
 	for i, w := range want {
 		for _, part := range []string{shownAs("sam@example.com", "sam"), w.to, w.outcome} {

@@ -113,3 +113,9 @@ func (s *Service) WithinTx(ctx context.Context, fn func(tx *Service) error) erro
 func (s *Service) Now() time.Time {
 	return s.clock.Now()
 }
+
+// Timezone returns the org's timezone, the calendar the pages count days and
+// weeks in.
+func (s *Service) Timezone() *time.Location {
+	return s.loc
+}

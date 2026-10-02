@@ -319,6 +319,44 @@ Load the fonts with this URL:
   Green cell without a Path to Green. The cells wrap, 32px apart. The status
   text, the Path to Green and the "why this differs" explanation follow below.
   A Goal with no Health shows its message in place of the cells.
+- **History timeline (`goalHistory` in `timeline.templ`):** the Goal page's
+  History is one canvas block, open on load with no outer disclosure. It is
+  a single list, newest first, of every Check-in, So What revision, ownership
+  change (a Handoff with its outcome, or an Admin Reassign) and change to a
+  Dimension value or Field.
+  - **Weeks:** entries are grouped by week, Monday to Sunday in the org's
+    timezone. Each week is headed by a `.label` "Week of 28 Sep", with the
+    year added when it isn't this year. Each entry's time is written in that
+    timezone too ("Thu 8 Jan 15:04").
+  - **The rule and markers (`.tl-list`, `.tl-mark`):** the week's entries hang
+    off a 1px `--color-border` rule, each with a 12px marker on the rule.
+    A Check-in's marker is its Health's dot, in the Health's ink and shape:
+    ● Green, ▲ Yellow, ■ Red. It reads without colour, and its badge names the
+    Health beside it. Every other kind has a neutral `--color-ink-muted`
+    marker with its own shape: a hollow ring for So What, a hollow diamond for
+    an ownership change, a bar for a value change, and a hollow square for a
+    Check-in with no Health, such as one that put the Goal On Hold. Every
+    entry also opens with its kind as a bold text label (Check-in, So What,
+    Handoff, Reassign, Value), so the marker is never the only signal.
+  - **A Check-in entry** shows its Health badge and status, then any
+    Lifecycle change, Path to Green, and the Date Slips it recorded (the
+    delivery date or a Milestone, ~~old~~ new, and the reason). Last comes who
+    wrote it, by Name, "for" the Owner when a Delegate wrote it. Its Metric
+    readings and its explanation of a Health that differs from the Rolled-up
+    Health sit in a small "Readings and explanation" disclosure on the entry.
+  - **Filter chips (`.tl-chips`):** a row of `--radius-full` chips above the
+    list, wrapping on narrow screens: All, Check-ins, Date Slips, So What,
+    Ownership, Values. Each carries its count. Date Slips counts and lists the
+    Check-ins that carry one. A chip is a plain link to
+    `/goals/{id}?history=<filter>#history`, so the page reloads with the
+    filter in the address and the History block in view. The current chip is
+    `aria-current="page"`, with a `--color-primary-light` fill and a
+    `--color-primary` edge, and the rest sit on `--color-surface`. Chips are
+    32px tall, and 44px on a coarse pointer.
+  - **Paging:** the latest 20 entries show. When there are more, a quiet
+    **Show earlier** link (`?shown=40`) reloads the page with 20 more under
+    the same filter. Chips and paging are links, so History works without
+    script.
 - **Home's Needs you list (`homePage` in `home.templ`):** one card in the main
   column holding everything waiting on the person, in two subgroups, each a
   `.label` heading over ruled rows (`.hm-list`):

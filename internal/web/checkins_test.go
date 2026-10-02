@@ -208,8 +208,8 @@ func TestSmokeCheckinDeliveryDateSlipShownStruckThrough(t *testing.T) {
 	if delivery := pageElement(t, meta, "span", "goal-delivery-date"); !strings.Contains(delivery, fmt.Sprintf("<del>%s</del> <strong>%s</strong>", oldDate, newDate)) {
 		t.Errorf("metadata line does not show the delivery date struck through; element:\n%s", delivery)
 	}
-	if slips := pageElement(t, page, "section", "goal-date-slips"); !strings.Contains(slips, "Vendor API delayed two weeks.") {
-		t.Errorf("Date Slip history missing the reason; section:\n%s", slips)
+	if slips := between(t, historyBlock(t, page), `data-testid="entry-slips"`, "</ul>"); !strings.Contains(slips, "Vendor API delayed two weeks.") {
+		t.Errorf("the Check-in on the History timeline is missing the Date Slip's reason:\n%s", slips)
 	}
 	if !strings.Contains(page, `data-testid="goal-slip-count">1<`) {
 		t.Errorf("Goal page missing the slip count")
@@ -377,8 +377,8 @@ func TestSmokeCheckinChangesMilestones(t *testing.T) {
 			t.Errorf("Milestone list missing %q; section:\n%s", want, milestones)
 		}
 	}
-	if slips := pageElement(t, page, "section", "goal-date-slips"); !strings.Contains(slips, "Design review moved.") {
-		t.Errorf("Date Slip history missing the reason; section:\n%s", slips)
+	if slips := between(t, historyBlock(t, page), `data-testid="entry-slips"`, "</ul>"); !strings.Contains(slips, "Design review moved.") {
+		t.Errorf("the Check-in on the History timeline is missing the Date Slip's reason:\n%s", slips)
 	}
 	for _, want := range []string{`data-testid="goal-slip-count">1<`, `data-testid="goal-milestone-churn">2<`} {
 		if !strings.Contains(page, want) {
@@ -404,7 +404,7 @@ func pageElement(t *testing.T, page, tag, testID string) string {
 }
 
 // Through the Check-in form an Owner puts a Goal On Hold with a reason, then
-// resumes it. The Goal page shows the Lifecycle and why, the Check-in history
+// resumes it. The Goal page shows the Lifecycle and why, the History timeline
 // shows each change, and while On Hold the Check-in page offers only to resume
 // or Cancel.
 func TestSmokeCheckinPutsGoalOnHoldAndResumes(t *testing.T) {
@@ -434,7 +434,7 @@ func TestSmokeCheckinPutsGoalOnHoldAndResumes(t *testing.T) {
 		t.Errorf("Goal page missing why it is On Hold; element:\n%s", note)
 	}
 	if entry := pageElement(t, page, "span", "checkin-lifecycle"); !strings.Contains(entry, "Active → On Hold") || !strings.Contains(entry, "Team moved to the payments incident.") {
-		t.Errorf("Check-in history missing the Lifecycle change; element:\n%s", entry)
+		t.Errorf("History timeline missing the Lifecycle change; element:\n%s", entry)
 	}
 	form := pageElement(t, getBody(t, samClient, goalURL+"/checkin"), "fieldset", "checkin-lifecycle-fields")
 	if !strings.Contains(form, `value="Active"`) || strings.Contains(form, `value="Done"`) {
