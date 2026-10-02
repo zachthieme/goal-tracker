@@ -20,7 +20,7 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 			</div>
 			<details data-testid="propose-goal" class="gl-propose">
 				<summary data-testid="new-goal" class="btn primary">New goal</summary>
-				<form class="card" hx-post="/goals" hx-target="#goal-list" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful){this.reset();this.closest('details').open=false}" method="post" action="/goals">
+				<form class="card" hx-post={ view.proposeURL() } hx-target="#goal-list" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful){this.reset();this.closest('details').open=false}" method="post" action="/goals">
 					<h3>Propose a Goal</h3>
 					<label class="field">
 						<span>Title</span>

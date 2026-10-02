@@ -52,7 +52,9 @@ func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, curren
 
 	// htmx swaps the Goal list in place; a plain form post reloads the page. The
 	// swap re-renders the default unfiltered list — the propose form posts to
-	// /goals with no query, so there is no filter or grouping to preserve.
+	// /goals with no query, so there is no filter or grouping to preserve — save
+	// in the table layout, whose form posts its view's query so the table swaps
+	// back in.
 	if r.Header.Get("HX-Request") == "true" {
 		view, err := s.goalsListView(r, current)
 		if err != nil {
@@ -1263,6 +1265,15 @@ func (v goalsListData) queryURL(edit func(url.Values)) templ.SafeURL {
 		return "/goals"
 	}
 	return templ.SafeURL("/goals?" + q.Encode())
+}
+
+// proposeURL is where the propose form posts for its htmx swap: /goals, or in
+// the table layout the table's own view, so the swap keeps the table.
+func (v goalsListData) proposeURL() string {
+	if v.Table == nil {
+		return "/goals"
+	}
+	return string(v.queryURL(func(url.Values) {}))
 }
 
 // layoutURL links to this view in the list layout ("") or the table layout,

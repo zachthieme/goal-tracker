@@ -2478,3 +2478,23 @@ func TestGoalTableHasNoTotalsRowAndIsntGrouped(t *testing.T) {
 		t.Errorf("the table's container doesn't scroll sideways: %s", rule)
 	}
 }
+
+// Proposing a Goal from the table layout swaps the table back in, not the list
+// layout, with the new Goal in it.
+func TestProposeGoalFromTheTableKeepsTheTable(t *testing.T) {
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals?layout=table&sort=title")
+	form := between(t, page, `<details data-testid="propose-goal"`, "</details>")
+	target := html.UnescapeString(attr(openTag(form[strings.Index(form, "<form"):]), "hx-post"))
+	body, status := postFormHX(t, client, ts.URL+target, url.Values{"title": {"Cut latency"}, "so_what": {"Slow carts."}})
+	if status != http.StatusOK {
+		t.Fatalf("propose from the table: status %d", status)
+	}
+	if !strings.Contains(body, `<table data-testid="goal-table"`) || !strings.Contains(body, ">Cut latency<") {
+		t.Errorf("proposing from the table didn't swap in the table with the new Goal:\n%s", body)
+	}
+}
