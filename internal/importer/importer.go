@@ -3,9 +3,9 @@
 // Goal per row, and turns each row into the same domain commands a person would
 // run: it gives every named Owner an account, creates the Goal with its So What,
 // marks it Dated or Ongoing, adds its Milestones and Metrics, assigns its
-// Dimension values, and links it to its parent Goals — accepting those links
-// automatically, since only an Admin runs an import (CONTEXT.md: Admin can
-// override links).
+// Dimension values (adding new ones to an Extendable list), sets its Fields,
+// and links it to its parent Goals — accepting those links automatically, since
+// only an Admin runs an import (CONTEXT.md: Admin can override links).
 //
 // An import is validated row by row. A DryRun reports the errors and saves
 // nothing; a Commit is all-or-nothing: if any row has an error the whole import
