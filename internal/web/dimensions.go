@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -18,7 +19,30 @@ func (s *Server) handleDimensions(w http.ResponseWriter, r *http.Request, curren
 		http.Error(w, "could not list dimensions", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, dimensionsPage(&current, dims, nil))
+	toast := valueRetireToast(takeUndo(w, r), current, dims)
+	render(w, r, http.StatusOK, dimensionsPage(&current, dims, nil, toast))
+}
+
+// valueRetireToast is the toast the Dimensions page carries straight after an
+// Admin retired a value (offer), with the Undo that restores it — or nil when
+// the offer isn't for a value among dims that is still Retired and that
+// current may restore.
+func valueRetireToast(offer undoOffer, current domain.Account, dims []domain.Dimension) *toast {
+	id, ok := offer.of(undoValueRetire)
+	if !ok || !current.IsAdmin {
+		return nil
+	}
+	for _, d := range dims {
+		for _, v := range d.Values {
+			if v.ID == id && v.Retired {
+				return &toast{
+					Message: fmt.Sprintf("Retired %s from %s.", v.Value, d.Name),
+					Undo:    fmt.Sprintf("/dimension-values/%d/restore", v.ID),
+				}
+			}
+		}
+	}
+	return nil
 }
 
 // handleCreateDimension defines a Dimension from a name, a comma-separated
@@ -55,7 +79,7 @@ func (s *Server) handleSetDimensionSelection(w http.ResponseWriter, r *http.Requ
 			http.Error(w, "could not list dimensions", http.StatusInternalServerError)
 			return
 		}
-		render(w, r, http.StatusUnprocessableEntity, dimensionsPage(&current, dims, refusal))
+		render(w, r, http.StatusUnprocessableEntity, dimensionsPage(&current, dims, refusal, nil))
 		return
 	}
 	if err != nil {
@@ -122,7 +146,8 @@ func (s *Server) handleRenameDimensionValue(w http.ResponseWriter, r *http.Reque
 }
 
 // handleRetireDimensionValue retires the value in the path so it is no longer
-// offered for new assignments. Only an Admin may.
+// offered for new assignments, and has the Dimensions page offer Undo once in a
+// toast. Only an Admin may.
 func (s *Server) handleRetireDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := dimensionIDFromPath(w, r)
 	if !ok {
@@ -132,6 +157,7 @@ func (s *Server) handleRetireDimensionValue(w http.ResponseWriter, r *http.Reque
 		writeDimensionError(w, err)
 		return
 	}
+	offerUndo(w, "/dimensions", undoValueRetire, id)
 	s.redirectToDimensions(w, r)
 }
 
