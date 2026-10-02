@@ -451,6 +451,14 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("load dimension values: %w", err)
 	}
+	fields, err := s.svc.ListFields(ctx)
+	if err != nil {
+		return goalView{}, fmt.Errorf("load fields: %w", err)
+	}
+	fieldValues, err := s.svc.GoalFields(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("load field values: %w", err)
+	}
 	checkins, err := s.svc.ListCheckins(ctx, id)
 	if err != nil {
 		return goalView{}, fmt.Errorf("load check-ins: %w", err)
@@ -507,8 +515,8 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 			canCheckin = true
 		}
 	}
-	// The Owner's Delegates and Admins set a Goal's Dimension values too
-	// (CONTEXT.md: Delegate).
+	// The Owner's Delegates and Admins set a Goal's Dimension values and Fields
+	// too (CONTEXT.md: Delegate).
 	canSetValues := canCheckin || current.IsAdmin
 
 	return goalView{
@@ -529,6 +537,8 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Ownership:      ownership,
 		Dimensions:     dimensions,
 		Values:         values,
+		Fields:         fields,
+		FieldValues:    fieldValues,
 		Checkins:       checkins,
 		LatestCheckin:  latestPtr,
 		RolledUp:       rollup,
@@ -571,11 +581,14 @@ type goalView struct {
 	// Dimensions are all defined Dimensions, Retired ones included so the values
 	// the Goal carries in them stay readable; only the rest get value-assignment
 	// controls. Values are the values this Goal currently carries, retired ones
-	// included so they stay readable.
-	// CanSetValues is true when the viewer may set them — the Owner, a Delegate
-	// or an Admin.
+	// included so they stay readable. Fields are all defined Fields, Retired
+	// ones included, and FieldValues the values this Goal has in them.
+	// CanSetValues is true when the viewer may set them all — the Owner, a
+	// Delegate or an Admin.
 	Dimensions   []domain.Dimension
 	Values       []domain.DimensionValue
+	Fields       []domain.Field
+	FieldValues  []domain.FieldValue
 	CanSetValues bool
 	// Checkins is the Goal's Check-in history (newest first) and LatestCheckin is
 	// the most recent one, carrying the Goal's current Health, status, and Path to

@@ -97,6 +97,15 @@ type DimensionValue struct {
 	Position    int64
 }
 
+type Field struct {
+	ID        int64
+	Name      string
+	Type      string
+	Unit      string
+	Retired   int64
+	CreatedAt string
+}
+
 type Goal struct {
 	ID           int64
 	Title        string
@@ -116,6 +125,13 @@ type GoalDimensionValue struct {
 	GoalID           int64
 	DimensionValueID int64
 	CreatedAt        string
+}
+
+type GoalFieldValue struct {
+	GoalID    int64
+	FieldID   int64
+	Value     string
+	UpdatedAt string
 }
 
 type Handoff struct {

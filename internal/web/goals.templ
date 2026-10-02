@@ -225,8 +225,8 @@ templ goalsStyles() {
 
 // goalPage shows a single Goal: a header summarizing it with every action in
 // reach and its So What beneath, then its latest status, Metrics, Milestones,
-// Highlights and history in the main column, and its links, people and
-// Dimension values in the sidebar. Only the latest status, each Metric and
+// Highlights and history in the main column, and its links, people,
+// Dimension values and Fields in the sidebar. Only the latest status, each Metric and
 // Milestones are cards; the rest sit on the canvas under a rule.
 templ goalPage(current *domain.Account, v goalView) {
 	{{ g := v.Goal }}
@@ -342,6 +342,10 @@ templ goalPage(current *domain.Account, v goalView) {
 				<section data-testid="goal-dimensions" class="gp-block ruled">
 					<h3>Dimensions</h3>
 					@goalDimensions(v)
+				</section>
+				<section data-testid="goal-field-block" class="gp-block ruled">
+					<h3>Fields</h3>
+					@goalFields(v)
 				</section>
 			</aside>
 		</div>
@@ -511,6 +515,9 @@ templ goalMore(v goalView, owner, admin bool) {
 				<li><a href="#add-child" onclick={ openSection("add-child") }>Add a child goal</a></li>
 				if v.CanSetValues {
 					<li><a href="#edit-dimensions" onclick={ openSection("edit-dimensions") }>Edit Dimension values</a></li>
+					if len(domain.OfferedFields(v.Fields)) > 0 {
+						<li><a href="#edit-fields" onclick={ openSection("edit-fields") }>Edit Fields</a></li>
+					}
 				}
 				if admin {
 					<li>
