@@ -1865,3 +1865,117 @@ func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testi
 		t.Errorf("Customer list = %v, want [Acme Globex]", got)
 	}
 }
+
+// On the Goal page only what a person acts on or reads as a unit of status is
+// a raised card: the Check-in, each Metric and Milestones. So What, Highlights,
+// History and the sidebar's blocks sit on the canvas (DESIGN.md § Components:
+// Card).
+func TestGoalPageCardsOnlyWhatAPersonActsOn(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	if _, err := h.Service.AddMetric(t.Context(), domain.AddMetricInput{
+		GoalID: goal.ID, Name: "Incidents", Unit: "per month", Direction: domain.MetricDown,
+		Baseline: 9, Target: 2, TargetDate: testsupport.Epoch.AddDate(0, 6, 0),
+	}); err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+
+	for _, tc := range []struct {
+		tag, testID string
+		card        bool
+	}{
+		{"section", "goal-checkins", true},
+		{"div", "goal-metric", true},
+		{"section", "goal-milestones", true},
+		{"article", "goal", false},
+		{"section", "goal-highlights", false},
+		{"div", "goal-history", false},
+		{"section", "goal-parents", false},
+		{"section", "goal-children", false},
+		{"div", "goal-people", false},
+		{"section", "goal-dimensions", false},
+	} {
+		if got := inCard(t, page, tc.tag, tc.testID); got != tc.card {
+			t.Errorf("%s is a card = %v, want %v", tc.testID, got, tc.card)
+		}
+	}
+}
+
+// inCard reports whether the element with testID is a card or is wrapped
+// directly in one.
+func inCard(t *testing.T, page, tag, testID string) bool {
+	t.Helper()
+	el := openTag(pageElement(t, page, tag, testID))
+	if hasClass(el, "card") {
+		return true
+	}
+	before, _, _ := strings.Cut(page, el)
+	before = strings.TrimRight(before, " \t\n")
+	wrapper := before[strings.LastIndex(before, "<"):]
+	return !strings.HasPrefix(wrapper, "</") && hasClass(wrapper, "card")
+}
+
+// hasClass reports whether an open tag's class attribute holds class.
+func hasClass(openTag, class string) bool {
+	_, rest, ok := strings.Cut(openTag, `class="`)
+	if !ok {
+		return false
+	}
+	list, _, _ := strings.Cut(rest, `"`)
+	return slices.Contains(strings.Fields(list), class)
+}
+
+// Highlights and History are page sections on the canvas, so they take an h2;
+// the sidebar's canvas blocks keep the h3 size (DESIGN.md § Components: Card).
+func TestGoalPageCanvasBlockHeadings(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+
+	for _, tc := range []struct{ tag, testID, heading string }{
+		{"section", "goal-highlights", "<h2>Highlights</h2>"},
+		{"div", "goal-history", "<h2>History</h2>"},
+		{"section", "goal-parents", "<h3>Contributes to</h3>"},
+		{"section", "goal-children", "<h3>Contributed to by</h3>"},
+		{"div", "goal-people", "<h3>People</h3>"},
+		{"section", "goal-dimensions", "<h3>Dimensions</h3>"},
+	} {
+		block := pageElement(t, page, tc.tag, tc.testID)
+		if first := strings.TrimSpace(block[len(openTag(block))+1:]); !strings.HasPrefix(first, tc.heading) {
+			t.Errorf("%s does not open with %s: %.80s", tc.testID, tc.heading, first)
+		}
+	}
+}
+
+// A --color-border rule separates the Goal page's canvas blocks from the block
+// above them.
+func TestGoalPageCanvasBlocksSitUnderARule(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+
+	for _, tc := range []struct{ tag, testID string }{
+		{"section", "goal-highlights"},
+		{"div", "goal-history"},
+		{"section", "goal-children"},
+		{"div", "goal-people"},
+		{"section", "goal-dimensions"},
+	} {
+		if block := openTag(pageElement(t, page, tc.tag, tc.testID)); !hasClass(block, "ruled") {
+			t.Errorf("%s does not sit under a rule: %s", tc.testID, block)
+		}
+	}
+
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	if rule := cssRule(t, css, "\n.ruled"); !strings.Contains(rule, "border-top:1px solid var(--color-border)") {
+		t.Errorf(".ruled draws no --color-border rule: %s", rule)
+	}
+}
