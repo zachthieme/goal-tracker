@@ -310,7 +310,7 @@ Load the fonts with this URL:
 - **Health distribution bar (`.hm-bar`):** in Home's "Your goals", a 12px
   `--radius-full` bar of the person's own Active Goals by Health, one equal
   unit per Goal, Green then Yellow then Red. Units fill with the Health's
-  `--health-*-ink`, which keeps 3:1 on the card in both themes, and a 2px gap
+  `--health-*-ink`, which keeps 3:1 on the card in both themes, and a 4px gap
   of card shows where one Health's run gives way to the next. It counts Goals
   and never aggregates Metrics (ADR 0003). Goals with no Health yet aren't
   drawn, and with none to draw the bar is left out. The Health count badges

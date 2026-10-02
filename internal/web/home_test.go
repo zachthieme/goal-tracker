@@ -254,11 +254,11 @@ func TestHomeListsRequestsOldestFirst(t *testing.T) {
 		{"link request", homeRow(t, requests, child), fmt.Sprintf("/links/%d", link.ID)},
 		{"Handoff", homeRow(t, requests, handed), fmt.Sprintf("/handoffs/%d", handoff.ID)},
 	} {
-		accept := tc.row[strings.Index(tc.row, `action="`+tc.action+`/accept"`):]
+		accept := between(t, tc.row, `action="`+tc.action+`/accept"`, "</form>")
 		if !strings.Contains(accept, `<button type="submit" class="btn sm">Accept</button>`) {
 			t.Errorf("%s has no outlined Accept:\n%s", tc.what, tc.row)
 		}
-		reject := tc.row[strings.Index(tc.row, `action="`+tc.action+`/reject"`):]
+		reject := between(t, tc.row, `action="`+tc.action+`/reject"`, "</form>")
 		if !strings.Contains(reject, `<button type="submit" class="btn quiet sm">Reject</button>`) {
 			t.Errorf("%s has no Reject text button:\n%s", tc.what, tc.row)
 		}
