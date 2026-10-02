@@ -3480,6 +3480,9 @@ func TestGoalListApplyButtonOnlyWithoutJavaScript(t *testing.T) {
 
 	for _, layout := range []string{"/goals", "/goals?layout=table"} {
 		page := getBody(t, client, ts.URL+layout)
+		if form := tagAround(t, page, `data-testid="goal-filters"`); attr(form, "method") != "get" || attr(form, "action") != "/goals" {
+			t.Errorf("%s: without JavaScript the filter bar no longer GETs /goals: %s", layout, form)
+		}
 		filters := between(t, page, `data-testid="goal-filters"`, "</form>")
 		noscript := between(t, filters, "<noscript>", "</noscript>")
 		if !strings.Contains(noscript, `<button type="submit" class="btn">Apply</button>`) {
