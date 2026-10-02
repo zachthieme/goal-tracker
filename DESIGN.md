@@ -227,8 +227,9 @@ Load the fonts with this URL:
     on the server, so a forged or stale Undo is refused with a message.
   - **Announced politely:** an `<aside role="status">`, so a screen reader
     reads it without moving focus.
-  - **Where:** removing a link (Goal page) and retiring a Dimension value
-    (Dimensions page). The templ component is `toastNotice` in `layout.templ`;
+  - **Where:** removing a link (Goal page), retiring a Dimension value
+    (Dimensions page), and rejecting a link request or a Handoff (Home, or the
+    request's pending page, whichever the Reject came from). The templ component is `toastNotice` in `layout.templ`;
     a new Undo reuses it rather than making its own notice.
 - **Primary button (`.btn.primary`):**
   - Resting: `--color-primary-strong` fill, `--color-ink-inverse` text,
@@ -327,7 +328,8 @@ Load the fonts with this URL:
     carries a "for [Owner]" tag, and appears only here.
   - **Requests:** link requests and Handoffs waiting on the person, oldest
     first. **Reject** is a quiet text button (`.btn.quiet`) and **Accept** a
-    secondary, outlined one (`.btn`). Where accepting needs choices, as a
+    secondary, outlined one (`.btn`). Reject sends at once and returns to
+    Home, which offers Undo in the toast. Where accepting needs choices, as a
     Handoff of a Goal with Delegates does, the outlined button reads
     **Review** and leads to the Pending handoffs page, where those choices
     are made.
