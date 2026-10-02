@@ -19,7 +19,7 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 				<h1>Goals</h1>
 				<p class="muted">Every goal in the org. Problems sort to the top.</p>
 			</div>
-			<details data-testid="propose-goal" class="gl-propose">
+			<details data-testid="propose-goal" id="propose-goal" class="gl-propose">
 				<summary data-testid="new-goal" class="btn primary">New goal</summary>
 				<form class="card" hx-post={ view.proposeURL() } hx-target="#goal-list" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful){this.reset();this.closest('details').open=false}" method="post" action="/goals">
 					<h3>Propose a Goal</h3>
@@ -43,8 +43,29 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 // goalFilters is the filter bar — search, Health, Lifecycle, Mine only and
 // Incomplete — with the Dimension filters and Group by folded under More
 // filters, all submitted as a GET so the chosen slice lives in the URL.
+//
+// Under htmx the form applies itself (#94): a change, a pause in typing the
+// search, or Enter GETs the view and swaps in only the list, so the form keeps
+// its focus and an open More filters, and pushes the address. The swap also
+// refreshes the propose form, whose post in the table carries the view.
+// hx-history="false" keeps htmx from snapshotting the page, whose form controls
+// would come back unchosen: Back loads the earlier address afresh instead.
 templ goalFilters(view goalsListData) {
-	<form method="get" action="/goals" data-testid="goal-filters" class="gl-filters">
+	<form
+		method="get"
+		action="/goals"
+		data-testid="goal-filters"
+		class="gl-filters"
+		hx-get="/goals"
+		hx-trigger="submit, change[target.type!='search'], input[target.type=='search'] delay:400ms"
+		hx-target="#goal-list"
+		hx-select="#goal-list"
+		hx-select-oob="#propose-goal"
+		hx-swap="outerHTML"
+		hx-push-url="true"
+		hx-sync="this:replace"
+		hx-history="false"
+	>
 		<div class="gl-bar">
 			<input data-testid="goal-search" type="search" name="q" value={ view.Filter.Query } placeholder="Search title or Owner" aria-label="Search Goals by title or Owner"/>
 			<select data-testid="goal-health-filter" name="health" aria-label="Health">
@@ -73,7 +94,7 @@ templ goalFilters(view goalsListData) {
 				<input data-testid="goal-incomplete-filter" type="checkbox" name="incomplete" value="1" checked?={ view.Filter.Incomplete }/>
 				Incomplete
 			</label>
-			<button type="submit" class="btn">Apply</button>
+			<noscript><button type="submit" class="btn">Apply</button></noscript>
 			<a href="/goals" class="btn quiet">Clear</a>
 		</div>
 		if len(view.Dimensions) > 0 {
