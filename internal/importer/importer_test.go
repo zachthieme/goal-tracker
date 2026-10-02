@@ -584,3 +584,44 @@ func commitOneGoal(t *testing.T, h *testsupport.Harness, admin domain.Account, c
 	}
 	return goal
 }
+
+// A number or date Field cell that doesn't parse is reported against its row,
+// alongside the row's other errors, and the import saves nothing (#77).
+func TestDryRunReportsBadFieldValuesAgainstTheirRow(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Budget,Review date
+Fine,owner@example.com,It matters.,Ongoing,12,2026-11-30
+Bad budget,owner@example.com,It matters.,Ongoing,lots,
+Bad date,owner@example.com,,Ongoing,,next week
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateField(admin, "Budget", domain.FieldNumber, "$")
+	h.CreateField(admin, "Review date", domain.FieldDate, "")
+
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if rep.Committed {
+		t.Fatalf("import with bad Field values must not commit")
+	}
+	for i, wants := range [][]string{
+		nil,
+		{`Budget takes a number, and "lots" isn't one`},
+		{"So What is required", `Review date takes a date as YYYY-MM-DD, and "next week" isn't one`},
+	} {
+		row := rep.Rows[i]
+		joined := strings.Join(row.Errors, "; ")
+		for _, want := range wants {
+			if !strings.Contains(joined, want) {
+				t.Errorf("row %d (%s) errors = %v, want one mentioning %s", row.Line, row.Title, row.Errors, want)
+			}
+		}
+		if len(row.Errors) != len(wants) {
+			t.Errorf("row %d (%s) has %d errors, want %d: %v", row.Line, row.Title, len(row.Errors), len(wants), row.Errors)
+		}
+	}
+	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 0 {
+		t.Errorf("rolled-back import left %d Goals, want 0", len(goals))
+	}
+}

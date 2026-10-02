@@ -360,6 +360,10 @@ func parseRow(line int, row []string, lay layout) rowSpec {
 		if v == "" {
 			continue
 		}
+		if err := fc.field.Check(v); err != nil {
+			s.errs = append(s.errs, message(err))
+			continue
+		}
 		s.fields = append(s.fields, fieldValue{fieldID: fc.field.ID, value: v})
 	}
 	return s
