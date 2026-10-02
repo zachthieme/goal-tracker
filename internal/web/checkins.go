@@ -121,7 +121,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	if highlight.Kind != "" {
-		in.Highlight = &domain.HighlightInput{Kind: highlight.Kind, Note: highlight.Note}
+		in.Highlights = []domain.HighlightInput{{Kind: highlight.Kind, Note: highlight.Note}}
 	}
 
 	if _, err = s.svc.SubmitCheckin(r.Context(), in); err != nil {

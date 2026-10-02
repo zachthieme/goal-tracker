@@ -140,8 +140,8 @@ type CreateHighlightParams struct {
 	CreatedAt string
 }
 
-// Record a Check-in's optional Highlight (CONTEXT.md: Highlight). At most one per
-// Check-in (enforced by the schema).
+// Record one of a Check-in's Highlights (CONTEXT.md: Highlight). A Check-in may
+// carry several; they are inserted in the order entered.
 func (q *Queries) CreateHighlight(ctx context.Context, arg CreateHighlightParams) (Highlight, error) {
 	row := q.db.QueryRowContext(ctx, createHighlight,
 		arg.CheckinID,
@@ -332,7 +332,7 @@ FROM highlights
 JOIN checkins ON checkins.id = highlights.checkin_id
 JOIN accounts owner ON owner.id = checkins.owner_id
 WHERE checkins.goal_id = ?1
-ORDER BY checkins.created_at DESC, highlights.id DESC
+ORDER BY checkins.created_at DESC, checkins.id DESC, highlights.id
 `
 
 type ListHighlightsByGoalRow struct {
@@ -340,8 +340,8 @@ type ListHighlightsByGoalRow struct {
 	Account   Account
 }
 
-// A Goal's Highlights, newest first, each crediting the Owner the Check-in was
-// written for. Report curation queries Highlights by Goal (CONTEXT.md:
+// A Goal's Highlights, newest Check-in first and each Check-in's in the order
+// entered, each crediting the Owner the Check-in was written for. Report curation queries Highlights by Goal (CONTEXT.md:
 // Highlight; the Goal's Owner is credited).
 func (q *Queries) ListHighlightsByGoal(ctx context.Context, goalID int64) ([]ListHighlightsByGoalRow, error) {
 	rows, err := q.db.QueryContext(ctx, listHighlightsByGoal, goalID)
@@ -386,7 +386,7 @@ JOIN accounts owner ON owner.id = checkins.owner_id
 WHERE checkins.goal_id = ?1
   AND checkins.created_at >= ?2
   AND checkins.created_at <= ?3
-ORDER BY checkins.created_at DESC, highlights.id DESC
+ORDER BY checkins.created_at DESC, checkins.id DESC, highlights.id
 `
 
 type ListHighlightsByGoalInRangeParams struct {
@@ -401,7 +401,7 @@ type ListHighlightsByGoalInRangeRow struct {
 }
 
 // A Goal's Highlights whose Check-in falls within [from, to] inclusive, newest
-// first. Report curation queries Highlights by Goal and by time range.
+// Check-in first and each Check-in's in the order entered. Report curation queries Highlights by Goal and by time range.
 func (q *Queries) ListHighlightsByGoalInRange(ctx context.Context, arg ListHighlightsByGoalInRangeParams) ([]ListHighlightsByGoalInRangeRow, error) {
 	rows, err := q.db.QueryContext(ctx, listHighlightsByGoalInRange, arg.GoalID, arg.From, arg.To)
 	if err != nil {

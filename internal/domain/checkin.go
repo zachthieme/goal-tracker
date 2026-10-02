@@ -73,9 +73,10 @@ type SubmitCheckinInput struct {
 	// Metric's current value is recorded at each Check-in). Each must name a
 	// Metric on this Goal; a reading for a Metric on another Goal is rejected.
 	Readings []MetricReadingInput
-	// Highlight is the Check-in's optional Highlight (CONTEXT.md: Highlight). Nil
-	// when the Owner flags nothing.
-	Highlight *HighlightInput
+	// Highlights are the Check-in's Highlights, in the order entered
+	// (CONTEXT.md: Highlight). Any number, of any mix of kinds; one with a blank
+	// note is ignored.
+	Highlights []HighlightInput
 	// DeliveryDate moves a Dated Goal's delivery date, recording a Date Slip
 	// that needs DeliveryDateReason (CONTEXT.md: Date Slip). The zero time, or
 	// the Goal's current date, leaves it unchanged.
@@ -160,10 +161,9 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 			return Checkin{}, err
 		}
 	}
-	if in.Highlight != nil {
-		if err := validateHighlight(*in.Highlight); err != nil {
-			return Checkin{}, err
-		}
+	highlights, err := planHighlights(in.Highlights)
+	if err != nil {
+		return Checkin{}, err
 	}
 
 	deliverySlip, err := planDeliverySlip(goal.Goal, in.DeliveryDate, in.DeliveryDateReason)
@@ -230,10 +230,8 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 		if err := milestones.apply(ctx, tx, goal.Goal.ID, c.ID); err != nil {
 			return err
 		}
-		if in.Highlight != nil {
-			if err := tx.recordHighlight(ctx, c.ID, *in.Highlight); err != nil {
-				return err
-			}
+		if err := tx.recordHighlights(ctx, c.ID, highlights); err != nil {
+			return err
 		}
 		out = c
 		return nil
