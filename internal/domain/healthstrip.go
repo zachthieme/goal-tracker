@@ -28,9 +28,9 @@ type HealthPeriod struct {
 	// Health is the Health of the last Check-in made in the period that set
 	// one, "" when none did.
 	Health string
-	// Missed is true when the Goal was Active in the period and nobody checked
+	// NoCheckin is true when the Goal was Active in the period and nobody checked
 	// in on it.
-	Missed bool
+	NoCheckin bool
 	// Lifecycle is the Lifecycle the Goal was in at the end of the period, or
 	// now for the current one: Proposed for a period before it became Active.
 	Lifecycle string
@@ -82,7 +82,7 @@ func (s *Service) healthStrip(g Goal, checkins []Checkin) HealthStrip {
 		}
 		// It was Active in the period if it was as the period opened or was
 		// activated during it. Resuming from On Hold takes a Check-in, so a
-		// period it resumed in is never missed.
+		// period it resumed in always has one.
 		active := p.Lifecycle == LifecycleActive
 		if !activated.Before(p.First) && !activated.After(p.Last) {
 			active, p.Lifecycle = true, LifecycleActive
@@ -99,7 +99,7 @@ func (s *Service) healthStrip(g Goal, checkins []Checkin) HealthStrip {
 			}
 			p.Lifecycle = c.LifecycleChange.resultingLifecycle(p.Lifecycle)
 		}
-		p.Missed = active && !checkedIn
+		p.NoCheckin = active && !checkedIn
 		out.Periods = append(out.Periods, p)
 	}
 	return out

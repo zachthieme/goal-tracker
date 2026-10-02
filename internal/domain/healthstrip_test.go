@@ -26,7 +26,7 @@ func date(y int, m time.Month, d int) time.Time {
 
 // A weekly Goal's strip is its last 11 weeks, Monday to Sunday in the org's
 // calendar, oldest first and this week last. A week with a Check-in takes its
-// Health; a week the Goal was Active with no Check-in is missed.
+// Health; a week the Goal was Active with no Check-in shows no Check-in.
 func TestHealthStripShowsEachWeeksHealthAndTheWeeksWithNoCheckin(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
@@ -61,7 +61,7 @@ func TestHealthStripShowsEachWeeksHealthAndTheWeeksWithNoCheckin(t *testing.T) {
 		want := domain.HealthPeriod{First: p.First, Last: p.Last, Health: domain.HealthGreen, Lifecycle: domain.LifecycleActive}
 		switch i {
 		case 3, 7:
-			want.Health, want.Missed = "", true
+			want.Health, want.NoCheckin = "", true
 		case 5:
 			want.Health = domain.HealthYellow
 		}
@@ -93,9 +93,10 @@ func TestHealthStripPeriodTakesItsLastCheckinsHealth(t *testing.T) {
 	}
 }
 
-// The periods before a Goal became Active aren't missed: nobody owed a
-// Check-in on it yet. A Goal activated 3 periods ago, in the week before last,
-// has 8 blank weeks, then a missed week, then its Health.
+// The periods before a Goal became Active are blank rather than periods with no
+// Check-in: nobody owed one on it yet. A Goal activated 3 periods ago, in the
+// week before last, has 8 blank weeks, then a week with no Check-in, then its
+// Health.
 func TestHealthStripLeavesThePeriodsBeforeActivationBlank(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
@@ -108,23 +109,24 @@ func TestHealthStripLeavesThePeriodsBeforeActivationBlank(t *testing.T) {
 
 	strip := healthStrip(t, h, g.ID)
 	for i, p := range strip.Periods[:8] {
-		if p.Health != "" || p.Missed || p.Lifecycle != domain.LifecycleProposed {
+		if p.Health != "" || p.NoCheckin || p.Lifecycle != domain.LifecycleProposed {
 			t.Errorf("period %d before activation = %+v, want blank, the Goal not yet Active", i, p)
 		}
 	}
-	if p := strip.Periods[8]; !p.Missed || p.Lifecycle != domain.LifecycleActive {
-		t.Errorf("activation week = %+v, want missed: Active with no Check-in", p)
+	if p := strip.Periods[8]; !p.NoCheckin || p.Lifecycle != domain.LifecycleActive {
+		t.Errorf("activation week = %+v, want no Check-in: Active and none made", p)
 	}
 	for i := 9; i < 11; i++ {
-		if p := strip.Periods[i]; p.Health != domain.HealthGreen || p.Missed {
+		if p := strip.Periods[i]; p.Health != domain.HealthGreen || p.NoCheckin {
 			t.Errorf("period %d = %+v, want Green", i, p)
 		}
 	}
 }
 
-// The periods a Goal spends On Hold, and those after it is Done, are blank, not
-// missed: nobody owes a Check-in on paused or finished work. The Check-in that
-// puts it On Hold or marks it Done sets no Health, so its period is blank too.
+// The periods a Goal spends On Hold, and those after it is Done, are blank
+// rather than periods with no Check-in: nobody owes one on paused or finished
+// work. The Check-in that puts it On Hold or marks it Done sets no Health, so
+// its period is blank too.
 func TestHealthStripLeavesOnHoldAndDonePeriodsBlank(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
@@ -157,7 +159,7 @@ func TestHealthStripLeavesOnHoldAndDonePeriodsBlank(t *testing.T) {
 	strip := healthStrip(t, h, g.ID)
 	want := []struct {
 		health    string
-		missed    bool
+		noCheckin bool
 		lifecycle string
 	}{
 		{domain.HealthGreen, false, domain.LifecycleActive},
@@ -174,8 +176,8 @@ func TestHealthStripLeavesOnHoldAndDonePeriodsBlank(t *testing.T) {
 	}
 	for i, w := range want {
 		p := strip.Periods[i]
-		if p.Health != w.health || p.Missed != w.missed || p.Lifecycle != w.lifecycle {
-			t.Errorf("week %d = %+v, want Health %q, missed %v, %s", i, p, w.health, w.missed, w.lifecycle)
+		if p.Health != w.health || p.NoCheckin != w.noCheckin || p.Lifecycle != w.lifecycle {
+			t.Errorf("week %d = %+v, want Health %q, no Check-in %v, %s", i, p, w.health, w.noCheckin, w.lifecycle)
 		}
 	}
 }
@@ -208,18 +210,18 @@ func TestHealthStripPeriodsAreTheGoalsCadenceLong(t *testing.T) {
 		t.Errorf("oldest period starts %v, want 4 Aug 2025", p.First)
 	}
 	// Both Check-ins, a week apart, fall in the current period, so it takes the
-	// later one's Health and the period before it is missed.
+	// later one's Health and the period before it has no Check-in.
 	if p := strip.Periods[10]; p.Health != domain.HealthYellow {
 		t.Errorf("current period's Health = %q, want Yellow", p.Health)
 	}
-	if p := strip.Periods[9]; !p.Missed {
-		t.Errorf("period before = %+v, want missed", p)
+	if p := strip.Periods[9]; !p.NoCheckin {
+		t.Errorf("period before = %+v, want no Check-in", p)
 	}
 }
 
 // Periods are counted in days of the org's timezone. A Check-in at 22:00 on
 // Sunday 11 January in Los Angeles (Monday in UTC) falls in the week of 5
-// January there, leaving the week of 12 January missed.
+// January there, leaving the week of 12 January with no Check-in.
 func TestHealthStripPeriodsAreInTheOrgsTimezone(t *testing.T) {
 	la, err := time.LoadLocation("America/Los_Angeles")
 	if err != nil {
@@ -240,8 +242,8 @@ func TestHealthStripPeriodsAreInTheOrgsTimezone(t *testing.T) {
 	if p := strip.Periods[9]; !p.First.Equal(date(2026, time.January, 5)) || p.Health != domain.HealthGreen {
 		t.Errorf("week before = %+v, want the week of 5 January, Green", p)
 	}
-	if p := strip.Periods[10]; !p.Missed {
-		t.Errorf("this week = %+v, want missed", p)
+	if p := strip.Periods[10]; !p.NoCheckin {
+		t.Errorf("this week = %+v, want no Check-in", p)
 	}
 }
 

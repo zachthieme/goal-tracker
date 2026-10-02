@@ -280,7 +280,7 @@ func (h history) dayLabel(d time.Time) string {
 }
 
 // stripCell is one cell of the Health strip: its state (the Health's class,
-// "missed" for a period the Goal went without a Check-in it owed, or "blank"
+// "no-checkin" for a period the Goal went without a Check-in it owed, or "blank"
 // for one it owed none in) and its text equivalent.
 type stripCell struct {
 	State string
@@ -289,7 +289,7 @@ type stripCell struct {
 
 // health reports whether the cell shows a Health.
 func (c stripCell) health() bool {
-	return c.State != "missed" && c.State != "blank"
+	return c.State != "no-checkin" && c.State != "blank"
 }
 
 // stripCells are the Health strip's cells, oldest first.
@@ -298,8 +298,8 @@ func (h history) stripCells() []stripCell {
 	for _, p := range h.Strip.Periods {
 		c := stripCell{State: healthClass(p.Health), Text: h.periodLabel(p) + ": " + p.Health}
 		switch {
-		case p.Missed:
-			c.State, c.Text = "missed", h.periodLabel(p)+": no Check-in"
+		case p.NoCheckin:
+			c.State, c.Text = "no-checkin", h.periodLabel(p)+": no Check-in"
 		case p.Health == "" && p.Lifecycle == domain.LifecycleProposed:
 			c.State, c.Text = "blank", h.periodLabel(p)+": not yet Active"
 		case p.Health == "":
@@ -335,8 +335,8 @@ func (h history) stripSummary() string {
 	counts := map[string]int{}
 	for _, p := range h.Strip.Periods {
 		switch {
-		case p.Missed:
-			counts["missed"]++
+		case p.NoCheckin:
+			counts["no-checkin"]++
 		case p.Health == "":
 			counts["blank"]++
 		default:
@@ -348,7 +348,7 @@ func (h history) stripSummary() string {
 		{domain.HealthGreen, "Green"},
 		{domain.HealthYellow, "Yellow"},
 		{domain.HealthRed, "Red"},
-		{"missed", "with no Check-in"},
+		{"no-checkin", "with no Check-in"},
 		{"blank", "not Active"},
 	} {
 		if n := counts[k.key]; n > 0 {

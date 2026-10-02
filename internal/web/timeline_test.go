@@ -471,7 +471,7 @@ func TestGoalHistoryWorksWithoutJavaScript(t *testing.T) {
 }
 
 // healthCell is one cell of a Goal page's Health strip: its state (g, y, r,
-// missed or blank) and its text equivalent.
+// no-checkin or blank) and its text equivalent.
 type healthCell struct{ state, text string }
 
 // healthCells reads the Health strip on a Goal page, oldest cell first.
@@ -527,7 +527,7 @@ func TestGoalPageShowsHealthStripAboveHistory(t *testing.T) {
 		want := healthCell{"g", heading + ": Green"}
 		switch i {
 		case 3, 7:
-			want = healthCell{"missed", heading + ": no Check-in"}
+			want = healthCell{"no-checkin", heading + ": no Check-in"}
 		case 5:
 			want = healthCell{"y", heading + ": Yellow"}
 		}
@@ -570,7 +570,7 @@ func TestHealthStripCellsAreBlankWhereNoCheckinWasOwed(t *testing.T) {
 		}
 	}
 	for i, want := range []healthCell{
-		{"missed", "Week of 29 Dec 2025: no Check-in"},
+		{"no-checkin", "Week of 29 Dec 2025: no Check-in"},
 		{"blank", "Week of 5 Jan: On Hold"},
 		{"blank", "Week of 12 Jan: On Hold"},
 	} {
