@@ -25,6 +25,21 @@ func (q *Queries) AddNarrativePick(ctx context.Context, arg AddNarrativePickPara
 	return err
 }
 
+const addReportDefinitionField = `-- name: AddReportDefinitionField :exec
+INSERT INTO report_definition_fields (report_definition_id, field_id)
+VALUES (?, ?)
+`
+
+type AddReportDefinitionFieldParams struct {
+	ReportDefinitionID int64
+	FieldID            int64
+}
+
+func (q *Queries) AddReportDefinitionField(ctx context.Context, arg AddReportDefinitionFieldParams) error {
+	_, err := q.db.ExecContext(ctx, addReportDefinitionField, arg.ReportDefinitionID, arg.FieldID)
+	return err
+}
+
 const addReportDefinitionFilter = `-- name: AddReportDefinitionFilter :exec
 INSERT INTO report_definition_filters (report_definition_id, dimension_value_id)
 VALUES (?, ?)
@@ -254,6 +269,37 @@ func (q *Queries) ListNarrativeTexts(ctx context.Context, reportDefinitionID int
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReportDefinitionFields = `-- name: ListReportDefinitionFields :many
+SELECT field_id FROM report_definition_fields
+WHERE report_definition_id = ?
+ORDER BY id
+`
+
+// The ids of the Fields a Report Definition shows beside each Goal, in the
+// order saved.
+func (q *Queries) ListReportDefinitionFields(ctx context.Context, reportDefinitionID int64) ([]int64, error) {
+	rows, err := q.db.QueryContext(ctx, listReportDefinitionFields, reportDefinitionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []int64
+	for rows.Next() {
+		var field_id int64
+		if err := rows.Scan(&field_id); err != nil {
+			return nil, err
+		}
+		items = append(items, field_id)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err

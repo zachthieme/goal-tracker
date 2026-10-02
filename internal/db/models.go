@@ -240,6 +240,12 @@ type ReportDefinition struct {
 	CreatedAt     string
 }
 
+type ReportDefinitionField struct {
+	ID                 int64
+	ReportDefinitionID int64
+	FieldID            int64
+}
+
 type ReportDefinitionFilter struct {
 	ID                 int64
 	ReportDefinitionID int64

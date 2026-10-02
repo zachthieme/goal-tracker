@@ -11,7 +11,7 @@ import (
 // reportsPage lists every saved Report Definition as a card, and behind a New
 // report button the form to build a new one (CONTEXT.md: Report Definition). A
 // definition selects Goals by root Goals plus a depth, by Dimension or Owner
-// filters, or by filters alone.
+// filters, or by filters alone, and may choose Fields to show beside each Goal.
 templ reportsPage(current *domain.Account, data reportsListData) {
 	@layout("Reports", current) {
 		@reportStyles()
@@ -93,6 +93,17 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 						</fieldset>
 					}
 				</fieldset>
+				if len(data.Fields) > 0 {
+					<fieldset data-testid="report-field-choice">
+						<legend>Fields <span class="hint">— shown beside each Goal that has a value</span></legend>
+						for _, f := range data.Fields {
+							<label>
+								<input type="checkbox" name="field" value={ fmt.Sprintf("%d", f.ID) }/>
+								{ f.Name }
+							</label>
+						}
+					</fieldset>
+				}
 				<div><button type="submit" class="btn primary">Save Report Definition</button></div>
 			</form>
 		</details>
@@ -239,6 +250,12 @@ templ publicationPrintPage(p domain.Publication) {
 				.muted { color: var(--print-ink-2); }
 				.small { font-size: 9.5pt; }
 				.label { font-variant: small-caps; letter-spacing: 0.05em; color: var(--print-ink-2); margin: 0.6rem 0 0; }
+				.rp-fields { display: flex; flex-wrap: wrap; gap: 0.1rem 1rem; margin: 0.3rem 0; }
+				.rp-fields > div { display: flex; gap: 0.25rem; }
+				.rp-fields dt { font-weight: 600; }
+				.rp-fields dt::after { content: ":"; }
+				.rp-fields dd { margin: 0; }
+				.rp-field-long { white-space: pre-line; }
 				@media print {
 					body { margin: 0; max-width: none; padding: 0; }
 					.no-print { display: none; }
@@ -325,7 +342,10 @@ templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 								<td>
 									@healthBadge("selected-health", sg.Health)
 								</td>
-								<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a></td>
+								<td>
+									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a>
+									@reportFields(sg.Fields)
+								</td>
 								<td data-testid="selected-owner">@person(sg.Goal.Owner)
 </td>
 								<td>
@@ -433,8 +453,9 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 // Lifecycle, and due date with its history struck through; Health and badges
 // top right; So What, latest status, and Path to Green in a tinted box, marked
 // Overdue when its target date passed before asOf; Milestones, Metrics against
-// target, and the Rolled-up Health with the Owner's explanation. On a
-// publication it ends with the Goal's discussion.
+// target, and the Rolled-up Health with the Owner's explanation. The Fields the
+// definition chose sit under the head, beside the Goal rather than in the
+// status box. On a publication it ends with the Goal's discussion.
 templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 	<article data-testid="report-exception" class="card rp-card" id={ fmt.Sprintf("goal-%d", b.Goal.ID) }>
 		<div class="rp-card-head">
@@ -460,6 +481,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 				}
 			</div>
 		</div>
+		@reportFields(b.Fields)
 		<div data-testid="report-status-box" class={ "rp-tint", templ.KV("overdue", pathOverdueAt(b, asOf)) }>
 			<p data-testid="report-so-what"><strong>So What:</strong> { b.Goal.SoWhat }</p>
 			if b.Status != "" {
@@ -536,6 +558,31 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 		}
 		@goalDiscussion(b.Goal.ID, d)
 	</article>
+}
+
+// reportFields is a Goal's values in the Fields its Report chose, each a
+// labelled value: a number with its unit, a long text with its line breaks
+// kept. A Goal with no value in any of them shows nothing (ticket #78).
+templ reportFields(fields []domain.FieldValue) {
+	if len(fields) > 0 {
+		<dl data-testid="report-fields" class="rp-fields small">
+			for _, v := range fields {
+				<div data-testid="report-field">
+					<dt>{ v.Field.Name }</dt>
+					<dd class={ templ.KV("rp-field-long", v.Field.Type == domain.FieldLongText) }>
+						if v.Field.Type == domain.FieldNumber {
+							<span class="num">{ v.Value }</span>
+							if v.Field.Unit != "" {
+								{ " " + v.Field.Unit }
+							}
+						} else {
+							{ v.Value }
+						}
+					</dd>
+				</div>
+			}
+		</dl>
+	}
 }
 
 // healthBadge is a Health as a coloured badge, marked for print, or a dash
@@ -722,6 +769,12 @@ templ reportStyles() {
 		.rp-new{margin-top:12px}
 		.rp-form fieldset:not(.rp-picker){border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
 		.rp-form legend{font-weight:600;font-size:13px;padding:0 0 8px}
+		.rp-fields{display:flex;flex-wrap:wrap;gap:4px 16px;margin:0}
+		.rp-fields>div{display:flex;gap:4px;min-width:0}
+		.rp-fields dt{font-weight:600}
+		.rp-fields dt::after{content:":"}
+		.rp-fields dd{margin:0}
+		.rp-field-long{white-space:pre-line}
 		.rp-publish{padding:24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 		@media (max-width:900px){.rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
 	</style>

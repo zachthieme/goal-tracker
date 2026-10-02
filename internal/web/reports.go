@@ -16,13 +16,14 @@ import (
 
 // reportsListData is what the reports page needs: the saved definitions and the
 // building blocks a new definition picks from — Goals as roots, their Owners as
-// the Owner filter, and the Dimensions still offered (none Retired) as the
-// Dimension-value filter.
+// the Owner filter, the Dimensions still offered (none Retired) as the
+// Dimension-value filter, and the Fields still offered to show beside each Goal.
 type reportsListData struct {
 	Defs   []domain.ReportDefinition
 	Goals  []domain.Goal
 	Owners []domain.Account
 	Dims   []domain.Dimension
+	Fields []domain.Field
 }
 
 // handleReports shows every saved Report Definition and the form to build a new
@@ -52,6 +53,7 @@ func (s *Server) handleSaveReport(w http.ResponseWriter, r *http.Request, curren
 		Depth:             depth,
 		OwnerFilterID:     owner,
 		DimensionValueIDs: formInt64s(r, "filter"),
+		FieldIDs:          formInt64s(r, "field"),
 	})
 	if err != nil {
 		writeReportError(w, err)
@@ -263,7 +265,17 @@ func (s *Server) reportsList(r *http.Request) (reportsListData, error) {
 	if err != nil {
 		return reportsListData{}, err
 	}
-	return reportsListData{Defs: defs, Goals: topLevelFirst(goals), Owners: distinctOwners(goals), Dims: domain.OfferedDimensions(dims)}, nil
+	fields, err := s.svc.ListFields(r.Context())
+	if err != nil {
+		return reportsListData{}, err
+	}
+	return reportsListData{
+		Defs:   defs,
+		Goals:  topLevelFirst(goals),
+		Owners: distinctOwners(goals),
+		Dims:   domain.OfferedDimensions(dims),
+		Fields: domain.OfferedFields(fields),
+	}, nil
 }
 
 // topLevelFirst orders Goals for the root picker: the org's Top-level Goals

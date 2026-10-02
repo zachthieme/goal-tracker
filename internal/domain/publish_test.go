@@ -425,3 +425,37 @@ func TestUnfrozenPublisherNotInTheSnapshotShowsTheirAccount(t *testing.T) {
 		}
 	}
 }
+
+// A publication freezes the Field names, units and values it showed beside
+// each Goal: editing the value, renaming the Field, changing its unit or
+// retiring it later doesn't change the published Report (ticket #78).
+func TestPublicationFreezesChosenFields(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.SetGoalField(boss, g, budget, "120")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}, FieldIDs: []int64{budget.ID}})
+	pub := h.PublishReport(boss, def)
+
+	h.Clock.Advance(day)
+	h.SetGoalField(boss, g, budget, "300")
+	// The tool has no Field rename yet; rename it and change its unit in place,
+	// as one would.
+	if _, err := h.DB.ExecContext(ctx, `UPDATE fields SET name = 'Spend', unit = '€' WHERE id = ?`, budget.ID); err != nil {
+		t.Fatalf("rename field: %v", err)
+	}
+	if err := h.Service.RetireField(ctx, boss.ID, budget.ID); err != nil {
+		t.Fatalf("RetireField: %v", err)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	fields := got.Report.Exceptions[0].Fields
+	if len(fields) != 1 || fields[0].Field.Name != "Budget" || fields[0].Field.Unit != "$" || fields[0].Value != "120" || fields[0].Field.Retired {
+		t.Errorf("published Fields %+v, want Budget 120 $ as published", fields)
+	}
+}

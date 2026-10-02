@@ -276,3 +276,42 @@ func TestMarkdownBylineKeepsThePublishersNameAfterARename(t *testing.T) {
 		t.Errorf("Markdown:\n%s\nshows the Name given after publishing", md)
 	}
 }
+
+// The Fields a Report chose show beside each Goal that has a value in them, as
+// labelled values: under an exception's header line, and at the end of a
+// one-line Goal. A number reads with its unit, a long text on one line, and
+// numbers are never totalled (ADR 0005). A Goal with none shows none (ticket
+// #78).
+func TestMarkdownCarriesTheChosenFields(t *testing.T) {
+	budget := domain.Field{Name: "Budget", Type: domain.FieldNumber, Unit: "$"}
+	notes := domain.Field{Name: "Notes", Type: domain.FieldLongText}
+	pub := publication([]domain.ReportBlock{{
+		Goal:   domain.Goal{Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
+		Health: domain.HealthRed,
+		Fields: []domain.FieldValue{{Field: budget, Value: "120"}, {Field: notes, Value: "Counsel hired.\nLegal *unblocked*."}},
+	}}, []domain.SelectedGoal{
+		{Goal: domain.Goal{Title: "Cut churn", Owner: boss}, Health: domain.HealthGreen, Fields: []domain.FieldValue{{Field: budget, Value: "40"}}},
+		{Goal: domain.Goal{Title: "Hire a PM", Owner: boss}, Health: domain.HealthGreen},
+	})
+
+	want := `### Launch in EU
+
+boss · Active · Health: **Red**
+
+**Budget:** 120 $ · **Notes:** Counsel hired. Legal \*unblocked\*.
+
+**So What:** Expand the market.
+
+## Other Goals
+
+- Cut churn — boss — Green — Budget: 40 $
+- Hire a PM — boss — Green
+`
+	got := export.Markdown(pub)
+	if !strings.HasSuffix(got, want) {
+		t.Errorf("Markdown:\n%s\nwant it to end with:\n%s", got, want)
+	}
+	if strings.Contains(got, "160") {
+		t.Errorf("Markdown totals Budget across Goals:\n%s", got)
+	}
+}

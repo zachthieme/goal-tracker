@@ -29,6 +29,17 @@ SELECT dimension_value_id FROM report_definition_filters
 WHERE report_definition_id = ?
 ORDER BY id;
 
+-- name: AddReportDefinitionField :exec
+INSERT INTO report_definition_fields (report_definition_id, field_id)
+VALUES (?, ?);
+
+-- name: ListReportDefinitionFields :many
+-- The ids of the Fields a Report Definition shows beside each Goal, in the
+-- order saved.
+SELECT field_id FROM report_definition_fields
+WHERE report_definition_id = ?
+ORDER BY id;
+
 -- name: RemoveMergedReportFilterWhereTargetFiltered :exec
 -- Merging a Dimension value: drop its filter from the Report Definitions that
 -- already filter on the target, so none filters on the target twice.
