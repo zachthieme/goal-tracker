@@ -1913,7 +1913,8 @@ func inCard(t *testing.T, page, tag, testID string) bool {
 	if hasClass(el, "card") {
 		return true
 	}
-	before := strings.TrimRight(page[:strings.Index(page, el)], " \t\n")
+	before, _, _ := strings.Cut(page, el)
+	before = strings.TrimRight(before, " \t\n")
 	wrapper := before[strings.LastIndex(before, "<"):]
 	return !strings.HasPrefix(wrapper, "</") && hasClass(wrapper, "card")
 }
