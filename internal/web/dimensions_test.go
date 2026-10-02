@@ -538,3 +538,56 @@ func TestFailedMergeChangesNothingOverHTTP(t *testing.T) {
 		t.Errorf("the Goal lost Globex after a failed merge:\n%s", section)
 	}
 }
+
+// Behind a Dimension card's Edit toggle an Admin retires the whole Dimension,
+// after confirming, and its card is flagged retired with a Restore button that
+// brings it back. A Retired value gets a Restore button too. A non-Admin can
+// retire or restore neither (CONTEXT.md: Retired).
+func TestAdminRetiresAndRestoresDimensionOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	trust := pillar.Values[1]
+	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, trust.ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "boss@example.com")
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	retire := fmt.Sprintf("%s/dimensions/%d/retire", ts.URL, pillar.ID)
+	restore := fmt.Sprintf("%s/dimensions/%d/restore", ts.URL, pillar.ID)
+	restoreValue := fmt.Sprintf("%s/dimension-values/%d/restore", ts.URL, trust.ID)
+
+	card := between(t, getBody(t, admin, ts.URL+"/dimensions"), `<li data-testid="dimension"`, "")
+	if !strings.Contains(card, fmt.Sprintf(`action="/dimensions/%d/retire"`, pillar.ID)) || !strings.Contains(card, "confirm(") {
+		t.Errorf("Pillar's card has no confirmed Retire for the Dimension; card:\n%s", card)
+	}
+	if !strings.Contains(card, fmt.Sprintf(`action="/dimension-values/%d/restore"`, trust.ID)) {
+		t.Errorf("Retired Trust has no Restore; card:\n%s", card)
+	}
+
+	for _, path := range []string{retire, restore, restoreValue} {
+		if resp := postForm(t, sam, path, url.Values{}); resp.StatusCode != http.StatusForbidden {
+			t.Errorf("non-Admin POST %s: status %d, want 403", path, resp.StatusCode)
+		}
+	}
+
+	if resp := postForm(t, admin, retire, url.Values{}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("retire Pillar: status %d", resp.StatusCode)
+	}
+	card = between(t, getBody(t, admin, ts.URL+"/dimensions"), `<li data-testid="dimension"`, "")
+	if !strings.Contains(card, `data-testid="dimension-retired"`) {
+		t.Errorf("Retired Pillar's card not flagged retired; card:\n%s", card)
+	}
+	if !strings.Contains(card, fmt.Sprintf(`action="/dimensions/%d/restore"`, pillar.ID)) {
+		t.Errorf("Retired Pillar's card has no Restore; card:\n%s", card)
+	}
+
+	postForm(t, admin, restore, url.Values{})
+	postForm(t, admin, restoreValue, url.Values{})
+	card = between(t, getBody(t, admin, ts.URL+"/dimensions"), `<li data-testid="dimension"`, "")
+	if strings.Contains(card, `data-testid="dimension-retired"`) || strings.Contains(card, `data-testid="retired"`) {
+		t.Errorf("Pillar and Trust still flagged retired after Restore; card:\n%s", card)
+	}
+}
+

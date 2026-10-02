@@ -9,6 +9,9 @@ import (
 // confirmRetire is what Retire asks before retiring a Dimension value.
 const confirmRetire = "Retire this value? Goals that have it keep it, but it can no longer be assigned."
 
+// confirmRetireDimension is what Retire asks before retiring a whole Dimension.
+const confirmRetireDimension = "Retire this Dimension? Goals that have its values keep them, and saved Reports still filter on them, but it is no longer offered for setting, filtering or grouping Goals."
+
 // confirmMerge is what Merge asks before merging a Dimension value away.
 const confirmMerge = "Merge this value? Its Goals and Report filters move to the chosen value, and this value is removed. This can't be undone."
 
@@ -17,7 +20,8 @@ const confirmMerge = "Merge this value? Its Goals and Report filters move to the
 // and — for an Admin — the controls to define a Dimension and, behind each
 // card's Edit toggle, to switch between one value and several and between a
 // Fixed and an Extendable list, and to add, rename, and retire values
-// (CONTEXT.md: Admin defines Dimensions; Fixed; Extendable). Retired values stay listed, struck through. refusal, when
+// (CONTEXT.md: Admin defines Dimensions; Fixed; Extendable). Retired values stay listed, struck through, and a
+// Retired Dimension stays listed, flagged retired (CONTEXT.md: Retired). refusal, when
 // set, names the Goals that kept a Dimension from switching to one value.
 templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *domain.SeveralValuesError) {
 	{{ admin := current != nil && current.IsAdmin }}
@@ -67,7 +71,12 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *
 			}
 			for _, d := range dims {
 				<li data-testid="dimension" class="card dm-card">
-					<h3>{ d.Name }</h3>
+					<h3>
+						{ d.Name }
+						if d.Retired {
+							<span data-testid="dimension-retired" class="muted small">retired</span>
+						}
+					</h3>
 					<p class="muted small">
 						Each Goal takes <span data-testid="dimension-selection">{ selectionLabel(d) }</span>
 						{ " · " }
@@ -118,9 +127,10 @@ templ dimensionValues(d domain.Dimension) {
 // one value and several per Goal, a switch between a Fixed and an Extendable
 // list, then each value in the list's order with buttons to move it up or down,
 // — while it is still in use — a rename form and a Retire button, and a form
-// to merge it into another of the Dimension's values, then a
-// "sort alphabetically" action and a form to add a value. Retire and Merge ask
-// for confirmation first.
+// to merge it into another of the Dimension's values — or, once Retired, a
+// Restore button — then a "sort alphabetically" action, a form to add a value,
+// and a button to retire the whole Dimension, or restore it once Retired
+// (CONTEXT.md: Retired). Retire and Merge ask for confirmation first.
 templ dimensionEdit(d domain.Dimension) {
 	<details class="dm-edit">
 		<summary class="btn sm">Edit</summary>
@@ -149,6 +159,9 @@ templ dimensionEdit(d domain.Dimension) {
 					@moveValue(v, domain.MoveDown, "↓")
 					if v.Retired {
 						<del class="muted">{ v.Value }</del>
+						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/restore", v.ID)) }>
+							<button type="submit" class="btn sm">Restore</button>
+						</form>
 					} else {
 						<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/rename", v.ID)) }>
 							<input type="text" name="value" value={ v.Value } aria-label={ "Rename " + v.Value } required/>
@@ -171,6 +184,15 @@ templ dimensionEdit(d domain.Dimension) {
 			<input type="text" name="value" placeholder="New value" aria-label="Add a value" required/>
 			<button type="submit" class="btn sm">Add value</button>
 		</form>
+		if d.Retired {
+			<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/restore", d.ID)) }>
+				<button type="submit" class="btn sm">Restore this Dimension</button>
+			</form>
+		} else {
+			<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/retire", d.ID)) } onsubmit={ confirmScript(confirmRetireDimension) }>
+				<button type="submit" class="btn danger sm">Retire this Dimension</button>
+			</form>
+		}
 	</details>
 }
 
