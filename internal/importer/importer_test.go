@@ -527,3 +527,60 @@ Missing so what,owner@example.com,,Ongoing,Beta @ someday,Also missing,Upwards
 		}
 	}
 }
+
+// A column whose header names a Field sets that Field on the row's Goal, for
+// each of the four types (#77; CONTEXT.md: Field).
+func TestCommitSetsFieldColumns(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,budget,Sponsor note,Background,Review date
+Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,1250000.5,Board asked,"Long story,
+over two lines",2026-11-30
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateField(admin, "Budget", domain.FieldNumber, "$")
+	h.CreateField(admin, "Sponsor note", domain.FieldShortText, "")
+	h.CreateField(admin, "Background", domain.FieldLongText, "")
+	h.CreateField(admin, "Review Date", domain.FieldDate, "")
+
+	goal := commitOneGoal(t, h, admin, csv)
+	got := map[string]string{}
+	fields, err := h.Service.GoalFields(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("GoalFields: %v", err)
+	}
+	for _, f := range fields {
+		got[f.Field.Name] = f.Value
+	}
+	want := map[string]string{
+		"Budget":       "1250000.5",
+		"Sponsor note": "Board asked",
+		"Background":   "Long story,\nover two lines",
+		"Review Date":  "2026-11-30",
+	}
+	for name, v := range want {
+		if got[name] != v {
+			t.Errorf("Field %s = %q, want %q", name, got[name], v)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("Goal Fields = %v, want %v", got, want)
+	}
+}
+
+// commitOneGoal commits a one-row spreadsheet, failing the test unless it
+// imports cleanly, and returns the Goal it created.
+func commitOneGoal(t *testing.T, h *testsupport.Harness, admin domain.Account, csv string) domain.Goal {
+	t.Helper()
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if !rep.Committed || len(rep.Rows) != 1 {
+		t.Fatalf("import not committed; rows: %+v", rep.Rows)
+	}
+	goal, err := h.Service.ViewGoal(context.Background(), rep.Rows[0].GoalID)
+	if err != nil {
+		t.Fatalf("ViewGoal: %v", err)
+	}
+	return goal
+}
