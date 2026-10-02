@@ -2142,7 +2142,11 @@ func tableRows(t *testing.T, page string) []string {
 	tbody := between(t, page, `<table data-testid="goal-table"`, "</table>")
 	var rows []string
 	for _, part := range strings.Split(tbody, `<tr data-testid="goal-table-row"`)[1:] {
-		rows = append(rows, part[:strings.Index(part, "</tr>")])
+		row, _, ok := strings.Cut(part, "</tr>")
+		if !ok {
+			t.Fatalf("unterminated table row:\n%s", part)
+		}
+		rows = append(rows, row)
 	}
 	return rows
 }
@@ -2489,7 +2493,7 @@ func TestProposeGoalFromTheTableKeepsTheTable(t *testing.T) {
 
 	page := getBody(t, client, ts.URL+"/goals?layout=table&sort=title")
 	form := between(t, page, `<details data-testid="propose-goal"`, "</details>")
-	target := html.UnescapeString(attr(openTag(form[strings.Index(form, "<form"):]), "hx-post"))
+	target := html.UnescapeString(attr(openTag(between(t, form, "<form", "")), "hx-post"))
 	body, status := postFormHX(t, client, ts.URL+target, url.Values{"title": {"Cut latency"}, "so_what": {"Slow carts."}})
 	if status != http.StatusOK {
 		t.Fatalf("propose from the table: status %d", status)
