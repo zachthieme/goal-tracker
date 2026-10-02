@@ -1738,8 +1738,8 @@ func cellNameOf(goalID, dimensionID, fieldID int64) string {
 
 // newValueName is the name of the input typing a value into an Extendable
 // Dimension's cell on goal's row.
-func newValueName(dim domain.Dimension, goalID int64) string {
-	return fmt.Sprintf("n.%d.%d", goalID, dim.ID)
+func newValueName(goalID, dimensionID int64) string {
+	return fmt.Sprintf("n.%d.%d", goalID, dimensionID)
 }
 
 // editsCell reports whether col's cell on row gets an input: in edit mode, a
@@ -1787,7 +1787,7 @@ func (t goalTable) newValueTyped(col tableColumn, row goalTableRow) string {
 	if t.Typed == nil {
 		return ""
 	}
-	return t.Typed.Get(newValueName(*col.Dimension, row.Goal.ID))
+	return t.Typed.Get(newValueName(row.Goal.ID, col.Dimension.ID))
 }
 
 // offers reports whether col's Dimension input on row offers value: every
@@ -1930,7 +1930,7 @@ func tableEdits(form url.Values) ([]domain.ValueEdit, error) {
 			}
 			ids = append(ids, id)
 		}
-		newValue := form.Get(fmt.Sprintf("n.%d.%d", c.goalID, c.dimensionID))
+		newValue := form.Get(newValueName(c.goalID, c.dimensionID))
 		if shown && joinIDs(ids) == was[0] && strings.TrimSpace(newValue) == "" {
 			continue
 		}

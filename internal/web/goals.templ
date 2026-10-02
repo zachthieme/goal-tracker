@@ -343,13 +343,48 @@ templ goalTableEditCell(t *goalTable, col tableColumn, row goalTableRow) {
 		if col.Field != nil {
 			switch col.Field.Type {
 				case domain.FieldNumber:
-					<input type="number" step="any" name={ name } value={ t.fieldInputValue(col, row) } aria-label={ label } aria-invalid?={ bad != "" }/>
+					<input
+						type="number"
+						step="any"
+						name={ name }
+						value={ t.fieldInputValue(col, row) }
+						aria-label={ label }
+						if bad != "" {
+							aria-invalid="true"
+							aria-describedby={ name + "-error" }
+						}
+					/>
 				case domain.FieldLongText:
-					<textarea name={ name } aria-label={ label } aria-invalid?={ bad != "" }>{ t.fieldInputValue(col, row) }</textarea>
+					<textarea
+						name={ name }
+						aria-label={ label }
+						if bad != "" {
+							aria-invalid="true"
+							aria-describedby={ name + "-error" }
+						}
+					>{ t.fieldInputValue(col, row) }</textarea>
 				case domain.FieldDate:
-					<input type="date" name={ name } value={ t.fieldInputValue(col, row) } aria-label={ label } aria-invalid?={ bad != "" }/>
+					<input
+						type="date"
+						name={ name }
+						value={ t.fieldInputValue(col, row) }
+						aria-label={ label }
+						if bad != "" {
+							aria-invalid="true"
+							aria-describedby={ name + "-error" }
+						}
+					/>
 				default:
-					<input type="text" name={ name } value={ t.fieldInputValue(col, row) } aria-label={ label } aria-invalid?={ bad != "" }/>
+					<input
+						type="text"
+						name={ name }
+						value={ t.fieldInputValue(col, row) }
+						aria-label={ label }
+						if bad != "" {
+							aria-invalid="true"
+							aria-describedby={ name + "-error" }
+						}
+					/>
 			}
 		} else {
 			{{ d := *col.Dimension }}
@@ -368,7 +403,14 @@ templ goalTableEditCell(t *goalTable, col tableColumn, row goalTableRow) {
 					}
 				</fieldset>
 			} else {
-				<select name={ name } aria-label={ label } aria-invalid?={ bad != "" }>
+				<select
+					name={ name }
+					aria-label={ label }
+					if bad != "" {
+						aria-invalid="true"
+						aria-describedby={ name + "-error" }
+					}
+				>
 					<option value="">—</option>
 					for _, val := range d.Values {
 						if t.offers(col, row, val) {
@@ -383,11 +425,11 @@ templ goalTableEditCell(t *goalTable, col tableColumn, row goalTableRow) {
 				</select>
 			}
 			if d.Extendable() {
-				<input type="text" name={ newValueName(d, row.Goal.ID) } value={ t.newValueTyped(col, row) } placeholder="Add a value" aria-label={ "Add a " + col.Label + " value to " + row.Goal.Title }/>
+				<input type="text" name={ newValueName(row.Goal.ID, d.ID) } value={ t.newValueTyped(col, row) } placeholder="Add a value" aria-label={ "Add a " + col.Label + " value to " + row.Goal.Title }/>
 			}
 		}
 		if bad != "" {
-			<p data-testid="cell-error" class="gl-cell-error">{ bad }</p>
+			<p data-testid="cell-error" id={ name + "-error" } class="gl-cell-error">{ bad }</p>
 		}
 	</td>
 }
@@ -460,8 +502,9 @@ templ goalTableCell(col tableColumn, row goalTableRow, edit bool) {
 // goalLinkIf links its content to the Goal when link is true.
 templ goalLinkIf(link bool, g domain.Goal) {
 	if link {
-		<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ children... }
-</a>
+		<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>
+			{ children... }
+		</a>
 	} else {
 		{ children... }
 	}
@@ -469,7 +512,7 @@ templ goalLinkIf(link bool, g domain.Goal) {
 
 // goalsStyles are the Goal list's own rules on top of app.css: the propose
 // form's popover, the one-row filter bar, the table's group headers and marks,
-// and the table layout's toggle, Columns control and sort headers.
+// and the table layout's toggle, Columns control, sort headers and edit mode.
 templ goalsStyles() {
 	<style>
 		.gl-propose{position:relative}
@@ -498,6 +541,17 @@ templ goalsStyles() {
 		#goal-list th[aria-sort=descending] a::after{content:" ↓"}
 		.table-scroll td{white-space:nowrap}
 		.table-scroll td.gl-long{white-space:normal;min-width:240px}
+		.gl-edit-hint{margin:0;padding:0 12px 8px}
+		.gl-edit-errors{margin:0 12px 12px;color:var(--color-danger-ink)}
+		.gl-edit-actions{display:flex;gap:8px;padding:12px}
+		.gl-edit-cell{vertical-align:top}
+		.gl-edit-cell input[type=number]{width:128px}
+		.gl-edit-cell input[type=text]{min-width:160px}
+		.gl-edit-cell input[type=text]+input[type=text],.gl-edit-cell select+input[type=text],.gl-edit-cell fieldset+input[type=text]{margin-top:4px;display:block}
+		.gl-edit-cell textarea{min-width:240px}
+		.gl-values{display:flex;flex-direction:column;gap:4px;border:0;margin:0;padding:0}
+		.gl-values label{display:inline-flex;align-items:center;gap:8px}
+		.gl-cell-error{margin:4px 0 0;max-width:240px;white-space:normal;font-size:13px;color:var(--color-danger-ink)}
 	</style>
 }
 

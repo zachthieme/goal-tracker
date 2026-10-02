@@ -2844,3 +2844,188 @@ func historyText(c domain.ValueChange) string {
 	}
 	return c.Attribute + ": " + c.Before + " → " + c.After
 }
+
+// One invalid number in the Goal table's edit form saves nothing: the form
+// comes back in edit mode with what was typed in every cell, the bad cell
+// marked with why, and the Goals keep their values (#80).
+func TestGoalTableSaveWithAnInvalidNumberSavesNothingAndKeepsWhatWasTyped(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.CreateField(boss, "Approver", domain.FieldShortText, "")
+	alpha := h.CreateGoal(sam, "Alpha", "A matters.")
+	beta := h.CreateGoal(sam, "Beta", "B matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := editTable(t, client, ts.URL, "/goals?layout=table")
+	action, form := tableForm(t, page)
+	form.Set(controlName(t, page, "Pillar of Alpha"), valueID(pillar.Values[1]))
+	form.Set(controlName(t, page, "Approver of Alpha"), "Dana & Co")
+	form.Set(controlName(t, page, "Budget of Beta"), "lots")
+	resp := postForm(t, client, ts.URL+action, form)
+	body := readBody(t, resp)
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422:\n%s", resp.StatusCode, body)
+	}
+	if !strings.Contains(pageElement(t, body, "div", "goal-table-errors"), "Nothing was saved") {
+		t.Errorf("the refusal doesn't say nothing was saved")
+	}
+	if n := strings.Count(body, `data-testid="cell-error"`); n != 1 {
+		t.Fatalf("%d cells are marked bad, want 1", n)
+	}
+	betaBudget := tableCellHTML(t, body, tableRowOf(t, body, beta), "Budget")
+	if !strings.Contains(betaBudget, `data-testid="cell-error"`) || !strings.Contains(betaBudget, "Budget takes a number") ||
+		!strings.Contains(betaBudget, `value="lots"`) || !strings.Contains(betaBudget, `aria-invalid="true"`) {
+		t.Errorf("Beta's Budget isn't marked bad keeping lots:\n%s", betaBudget)
+	}
+	alphaRow := tableRowOf(t, body, alpha)
+	if cell := tableCellHTML(t, body, alphaRow, "Approver"); !strings.Contains(cell, `value="Dana &amp; Co"`) {
+		t.Errorf("Alpha's Approver lost what was typed:\n%s", cell)
+	}
+	if cell := tableCellHTML(t, body, alphaRow, "Pillar"); !regexp.MustCompile(`<option value="`+valueID(pillar.Values[1])+`" selected`).MatchString(cell) {
+		t.Errorf("Alpha's Pillar lost the value picked:\n%s", cell)
+	}
+
+	for _, g := range []domain.Goal{alpha, beta} {
+		if changes, err := h.Service.ValueHistory(context.Background(), g.ID); err != nil || len(changes) != 0 {
+			t.Errorf("%s's history = %+v (%v), want nothing saved", g.Title, changes, err)
+		}
+	}
+
+	// Fixing the bad cell and saving the form as it came back saves it all.
+	action, form = tableForm(t, body)
+	form.Set(controlName(t, body, "Budget of Beta"), "900")
+	if resp := postForm(t, client, ts.URL+action, form); resp.StatusCode != http.StatusOK || resp.Request.URL.Query().Has("edit") {
+		t.Fatalf("saving the fixed form: status %d at %s:\n%s", resp.StatusCode, resp.Request.URL, readBody(t, resp))
+	}
+	for g, want := range map[int64]int{alpha.ID: 2, beta.ID: 1} {
+		if changes, _ := h.Service.ValueHistory(context.Background(), g); len(changes) != want {
+			t.Errorf("Goal %d's history = %+v, want %d entries", g, changes, want)
+		}
+	}
+}
+
+// A crafted save of the Goal table touching a Goal the person may not set
+// values on — its row had no inputs — is refused with 403, and nothing in it is
+// saved, not even the cells of the person's own Goals (#80; CONTEXT.md:
+// Delegate).
+func TestGoalTableSaveForAGoalThePersonCantEditIsRefused(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	mine := h.CreateGoal(sam, "Mine", "M matters.")
+	theirs := h.CreateGoal(pat, "Theirs", "T matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := editTable(t, client, ts.URL, "/goals?layout=table")
+	action, form := tableForm(t, page)
+	form.Set(controlName(t, page, "Budget of Mine"), "10")
+	form.Set(fmt.Sprintf("d.%d.%d", theirs.ID, pillar.ID), valueID(pillar.Values[0]))
+	form.Set(fmt.Sprintf("f.%d.%d", theirs.ID, budget.ID), "99")
+	resp := postForm(t, client, ts.URL+action, form)
+	body := readBody(t, resp)
+
+	if resp.StatusCode != http.StatusForbidden || !strings.Contains(body, "Theirs") {
+		t.Errorf("status = %d, want 403 naming Theirs:\n%s", resp.StatusCode, body)
+	}
+	for _, g := range []domain.Goal{mine, theirs} {
+		if changes, err := h.Service.ValueHistory(context.Background(), g.ID); err != nil || len(changes) != 0 {
+			t.Errorf("%s's history = %+v (%v), want nothing saved", g.Title, changes, err)
+		}
+	}
+}
+
+// A Retired value a Goal carries stays offered, marked retired, in the Goal
+// table's edit form, so saving another cell keeps it, and Retired values the
+// Goal doesn't carry aren't offered, as on the Goal page (#80; CONTEXT.md:
+// Retired).
+func TestGoalTableEditKeepsRetiredValuesTheGoalCarries(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+	quarter := h.CreateDimension(boss, "Quarter", "Q1", "Q2")
+	tags := h.CreateSeveralValuesDimension(boss, "Tags", "infra", "legacy", "ux")
+	h.CreateField(boss, "Budget", domain.FieldNumber, "")
+	alpha := h.CreateGoal(sam, "Alpha", "A matters.")
+	beta := h.CreateGoal(sam, "Beta", "B matters.")
+	h.AssignGoalValue(alpha, quarter.Values[0])
+	h.AssignGoalValue(alpha, tags.Values[1])
+	for _, v := range []domain.DimensionValue{quarter.Values[0], tags.Values[1]} {
+		if err := h.Service.RetireDimensionValue(ctx, boss.ID, v.ID); err != nil {
+			t.Fatalf("RetireDimensionValue: %v", err)
+		}
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := editTable(t, client, ts.URL, "/goals?layout=table")
+	if cell := tableCell(t, page, tableRowOf(t, page, alpha), "Quarter"); cell != "— Q1 (retired) Q2" {
+		t.Errorf("Alpha's Quarter offers %q, want its Retired Q1 marked", cell)
+	}
+	if cell := tableCell(t, page, tableRowOf(t, page, beta), "Tags"); cell != "infra ux" {
+		t.Errorf("Beta's Tags offers %q, want no Retired value", cell)
+	}
+	action, form := tableForm(t, page)
+	form.Set(controlName(t, page, "Budget of Alpha"), "5")
+	resp := postForm(t, client, ts.URL+action, form)
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+		t.Fatalf("save status %d:\n%s", resp.StatusCode, body)
+	}
+
+	values, err := h.Service.GoalValues(ctx, alpha.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	var names []string
+	for _, v := range values {
+		names = append(names, v.Value)
+	}
+	if got := strings.Join(names, ", "); got != "Q1, legacy" {
+		t.Errorf("Alpha's values = %q, want its Retired Q1 and legacy kept", got)
+	}
+}
+
+// Saving the Goal table's edit form applies only the cells changed in it, so a
+// value someone else saved meanwhile in a cell left alone is kept, not put back
+// to what the form showed (#80: Save submits every changed row).
+func TestGoalTableSaveLeavesCellsItDidNotChange(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "")
+	approver := h.CreateField(boss, "Approver", domain.FieldShortText, "")
+	alpha := h.CreateGoal(sam, "Alpha", "A matters.")
+	h.SetGoalField(sam, alpha, budget, "100")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := editTable(t, client, ts.URL, "/goals?layout=table")
+	h.SetGoalField(boss, alpha, budget, "300")
+	action, form := tableForm(t, page)
+	form.Set(controlName(t, page, "Approver of Alpha"), "Dana")
+	resp := postForm(t, client, ts.URL+action, form)
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+		t.Fatalf("save status %d:\n%s", resp.StatusCode, body)
+	}
+
+	values, err := h.Service.GoalFields(context.Background(), alpha.ID)
+	if err != nil {
+		t.Fatalf("GoalFields: %v", err)
+	}
+	got := map[int64]string{}
+	for _, v := range values {
+		got[v.Field.ID] = v.Value
+	}
+	if got[budget.ID] != "300" || got[approver.ID] != "Dana" {
+		t.Errorf("Alpha's Budget, Approver = %q, %q, want 300 kept and Dana saved", got[budget.ID], got[approver.ID])
+	}
+}
