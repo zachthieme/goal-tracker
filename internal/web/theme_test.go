@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -186,5 +187,69 @@ func TestThemeChoiceOutlivesTheSession(t *testing.T) {
 	_ = readBody(t, postForm(t, client, ts.URL+"/signin", url.Values{"email": {"sam@example.com"}}))
 	if root := rootElement(t, getBody(t, client, ts.URL+"/home")); !strings.Contains(root, `data-theme="dark"`) {
 		t.Errorf("Home after signing in again: root %s", root)
+	}
+}
+
+// themeMenu is the top bar's Theme disclosure on page.
+func themeMenu(t *testing.T, page string) string {
+	t.Helper()
+	nav := page[strings.Index(page, `<nav class="nav">`):strings.Index(page, "</nav>")]
+	return pageElement(t, nav, "details", "theme-menu")
+}
+
+// The top bar has a Theme menu, signed in or not, that opens and closes
+// without script (a <details>) beside Sign out. It lists System, Light and
+// Dark in words, marks the current choice, and each choice is a plain form
+// post that comes back to the page it was made on.
+func TestThemeMenuOffersTheThreeChoices(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalPath := "/goals/" + strconv.FormatInt(g.ID, 10)
+
+	for _, tc := range []struct {
+		name    string
+		client  *http.Client
+		path    string
+		cookie  string
+		current string
+	}{
+		{"sign-in page, nothing chosen", http.DefaultClient, "/signin", "", "system"},
+		{"sign-in page, Dark chosen", http.DefaultClient, "/signin", "dark", "dark"},
+		{"Goal page, nothing chosen", client, goalPath, "", "system"},
+		{"Goal page, Light chosen", client, goalPath, "light", "light"},
+		{"Goal page, unrecognised choice", client, goalPath, "purple", "system"},
+	} {
+		page := getWithTheme(t, tc.client, ts.URL+tc.path, tc.cookie)
+		menu := themeMenu(t, page)
+		if !strings.Contains(menu, ">Theme</summary>") {
+			t.Errorf("%s: the menu is not labelled Theme: %s", tc.name, menu)
+		}
+		if !strings.Contains(menu, `method="post" action="/theme"`) {
+			t.Errorf("%s: the menu does not post to /theme: %s", tc.name, menu)
+		}
+		if want := `name="return" value="` + tc.path + `"`; !strings.Contains(menu, want) {
+			t.Errorf("%s: the menu does not return to %s: %s", tc.name, tc.path, menu)
+		}
+		if strings.Contains(menu, "onclick") || strings.Contains(menu, "<script") {
+			t.Errorf("%s: the menu relies on script: %s", tc.name, menu)
+		}
+		for _, choice := range []struct{ value, label string }{{"system", "System"}, {"light", "Light"}, {"dark", "Dark"}} {
+			button := pageElement(t, menu, "button", "theme-"+choice.value)
+			if !strings.Contains(button, `type="submit"`) || !strings.Contains(button, `name="theme" value="`+choice.value+`"`) || !strings.Contains(button, choice.label) {
+				t.Errorf("%s: the %s choice is not a submit of theme=%s labelled %s: %s", tc.name, choice.value, choice.value, choice.label, button)
+			}
+			if marked := strings.Contains(button, `aria-current="true"`); marked != (choice.value == tc.current) {
+				t.Errorf("%s: %s marked current = %v, want %v: %s", tc.name, choice.value, marked, choice.value == tc.current, button)
+			}
+		}
+	}
+
+	page := getBody(t, client, ts.URL+goalPath)
+	me := page[strings.Index(page, `<div class="me">`):strings.Index(page, "</nav>")]
+	if !strings.Contains(me, `data-testid="theme-menu"`) || !strings.Contains(me, "Sign out") {
+		t.Errorf("the Theme menu is not beside Sign out: %s", me)
 	}
 }

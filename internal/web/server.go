@@ -31,7 +31,7 @@ func NewServer(svc *domain.Service) *Server {
 // theme in the request context, so every page the request renders is pinned to
 // it.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.mux.ServeHTTP(w, r.WithContext(withTheme(r.Context(), themeFromCookie(r))))
+	s.mux.ServeHTTP(w, withTheme(r))
 }
 
 // currentAccount resolves the signed-in Account from the session cookie, or nil

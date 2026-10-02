@@ -141,7 +141,7 @@ func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
 	}
 
 	page = getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/dimensions")
-	if strings.Contains(page, "<details") {
+	if strings.Contains(page[strings.Index(page, "<main"):], "<details") {
 		t.Errorf("a non-Admin gets the Edit toggle:\n%s", page)
 	}
 }

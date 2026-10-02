@@ -12,27 +12,36 @@ import (
 // the choice holds before sign-in and after sign-out.
 const themeCookie = "gt_theme"
 
-// theme is the colour theme a person has pinned the site to. The zero value,
-// themeSystem, pins nothing and follows the operating system.
+// theme is the colour theme a person has pinned the site to, by the name the
+// menu posts and the cookie keeps. System pins nothing and follows the
+// operating system.
 type theme string
 
 const (
-	themeSystem theme = ""
+	themeSystem theme = "system"
 	themeLight  theme = "light"
 	themeDark   theme = "dark"
 )
 
+// themeChoices are the Theme menu's choices, in the order it lists them.
+var themeChoices = []struct {
+	theme theme
+	label string
+}{
+	{themeSystem, "System"},
+	{themeLight, "Light"},
+	{themeDark, "Dark"},
+}
+
 // themeCookieLife is how long a choice is remembered; each choice renews it.
 const themeCookieLife = 365 * 24 * time.Hour
 
-// parseTheme reads a theme by its name in a form or cookie, reporting false for
-// a name the server doesn't know.
+// parseTheme reads a theme by its name, reporting false for a name the server
+// doesn't know.
 func parseTheme(name string) (theme, bool) {
-	switch name {
-	case "system":
-		return themeSystem, true
-	case string(themeLight), string(themeDark):
-		return theme(name), true
+	switch t := theme(name); t {
+	case themeSystem, themeLight, themeDark:
+		return t, true
 	default:
 		return themeSystem, false
 	}
@@ -51,16 +60,37 @@ func themeFromCookie(r *http.Request) theme {
 
 type themeKey struct{}
 
-// withTheme records the chosen theme so the layout can pin it on every page
-// without every page passing it along.
-func withTheme(ctx context.Context, t theme) context.Context {
-	return context.WithValue(ctx, themeKey{}, t)
+// themeState is what the layout needs to pin the chosen theme and offer the
+// others: the choice, and the page to come back to after choosing again.
+type themeState struct {
+	chosen theme
+	back   string
+}
+
+// withTheme records the browser's chosen theme in r's context, so the layout
+// can pin it on every page without every page passing it along. The page to
+// come back to is the one requested; a page rendered by a post has no address
+// to come back to, so choosing from it lands on Home.
+func withTheme(r *http.Request) *http.Request {
+	st := themeState{chosen: themeFromCookie(r)}
+	if r.Method == http.MethodGet {
+		st.back = r.URL.RequestURI()
+	}
+	return r.WithContext(context.WithValue(r.Context(), themeKey{}, st))
 }
 
 // currentTheme is the chosen theme, System when none was recorded.
 func currentTheme(ctx context.Context) theme {
-	t, _ := ctx.Value(themeKey{}).(theme)
-	return t
+	if st, ok := ctx.Value(themeKey{}).(themeState); ok {
+		return st.chosen
+	}
+	return themeSystem
+}
+
+// themeReturn is the page the Theme menu comes back to after a choice.
+func themeReturn(ctx context.Context) string {
+	st, _ := ctx.Value(themeKey{}).(themeState)
+	return st.back
 }
 
 // handleSetTheme remembers the theme a person chose in the browser's cookie,
