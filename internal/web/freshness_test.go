@@ -124,3 +124,46 @@ func TestGoalListMarksStaleAndOverdueGoals(t *testing.T) {
 		t.Errorf("fresh Goal's row carries a freshness mark; row:\n%s", r)
 	}
 }
+
+// A Stale Goal's banner ends with a "Check in now" link to its Check-in form
+// for those who may check in on it, its Owner and its Delegates, and for no
+// one else, not even an Admin (#86).
+func TestStaleBannerOffersCheckInNowToOwnerAndDelegates(t *testing.T) {
+	h := testsupport.New(t, "admin@example.com")
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	h.SignIn("pat@example.com")
+	h.SignIn("admin@example.com")
+	goal := h.ActiveGoal(sam, "Silent work", "It matters.")
+	h.AddDelegate(sam, dee, goal.ID)
+	h.Clock.Advance(10 * 24 * time.Hour)
+
+	for _, viewer := range []struct {
+		email string
+		sees  bool
+	}{
+		{"sam@example.com", true},
+		{"dee@example.com", true},
+		{"pat@example.com", false},
+		{"admin@example.com", false},
+	} {
+		page := getBody(t, signInClient(t, ts.URL, viewer.email), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+		banner := pageElement(t, page, "p", "goal-stale")
+		has := strings.Contains(banner, `data-testid="stale-checkin-now"`)
+		if has != viewer.sees {
+			t.Errorf("%s sees Check in now in the Stale banner: %v, want %v; banner:\n%s", viewer.email, has, viewer.sees, banner)
+			continue
+		}
+		if !has {
+			continue
+		}
+		link := tagAround(t, banner, `data-testid="stale-checkin-now"`)
+		if got, want := attr(link, "href"), fmt.Sprintf("/goals/%d/checkin", goal.ID); got != want {
+			t.Errorf("%s's Check in now leads to %q, want %q", viewer.email, got, want)
+		}
+		if !strings.Contains(banner, ">Check in now</a>") {
+			t.Errorf("%s's Stale banner link does not read Check in now; banner:\n%s", viewer.email, banner)
+		}
+	}
+}
