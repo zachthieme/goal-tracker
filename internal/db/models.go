@@ -134,6 +134,19 @@ type GoalFieldValue struct {
 	UpdatedAt string
 }
 
+type GoalValueChange struct {
+	ID          int64
+	GoalID      int64
+	ActorID     int64
+	DimensionID *int64
+	FieldID     *int64
+	Attribute   string
+	Several     int64
+	BeforeValue string
+	AfterValue  string
+	CreatedAt   string
+}
+
 type Handoff struct {
 	ID          int64
 	GoalID      int64

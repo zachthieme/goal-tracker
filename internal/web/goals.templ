@@ -458,6 +458,12 @@ templ goalPage(current *domain.Account, v goalView) {
 							@ownershipHistory(v.Ownership)
 						</details>
 					</section>
+					<section data-testid="goal-value-history">
+						<details>
+							<summary>{ fmt.Sprintf("Value history (%d)", len(v.ValueHistory)) }</summary>
+							@valueHistory(v.ValueHistory)
+						</details>
+					</section>
 				</div>
 				@addChildGoal(v)
 			</div>
@@ -1080,6 +1086,26 @@ templ ownershipHistory(changes []domain.Handoff) {
 				<span class="muted small">
 					{ "— started by " }
 					@person(c.InitiatedBy)
+					{ " at " + c.CreatedAt.Format("2006-01-02 15:04") }
+				</span>
+			</li>
+		}
+	</ul>
+}
+
+// valueHistory lists every change to a Goal's Dimension values and Fields,
+// oldest first, with who made it and when (CONTEXT.md: Field).
+templ valueHistory(changes []domain.ValueChange) {
+	<ul class="gp-list">
+		if len(changes) == 0 {
+			<li data-testid="no-value-changes" class="muted">No value changes yet.</li>
+		}
+		for _, c := range changes {
+			<li data-testid="value-change">
+				<span>{ valueChangeText(c) }</span>
+				<span class="muted small">
+					{ "— " }
+					@person(c.Actor)
 					{ " at " + c.CreatedAt.Format("2006-01-02 15:04") }
 				</span>
 			</li>

@@ -116,10 +116,11 @@ func OfferedFields(fields []Field) []Field {
 }
 
 // SetGoalField sets a Goal's value in a Field, replacing the one it had; a
-// blank value clears it (CONTEXT.md: Field). A number Field's value must parse
-// as a number and a date Field's as a YYYY-MM-DD date, or it is refused naming
-// the Field. A Retired Field can't be set. Only the Goal's Owner, a Delegate
-// or an Admin may (CONTEXT.md: Delegate).
+// blank value clears it (CONTEXT.md: Field). A change is kept in the Goal's
+// Value history, and saving the value it already has changes nothing. A number
+// Field's value must parse as a number and a date Field's as a YYYY-MM-DD date,
+// or it is refused naming the Field. A Retired Field can't be set. Only the
+// Goal's Owner, a Delegate or an Admin may (CONTEXT.md: Delegate).
 func (s *Service) SetGoalField(ctx context.Context, actorID, goalID, fieldID int64, value string) error {
 	if err := s.requireGoalValueSetter(ctx, actorID, goalID); errors.Is(err, ErrNotAuthorized) {
 		return fmt.Errorf("%w: only the Owner, a Delegate or an Admin may set a Goal's Fields", ErrNotAuthorized)
@@ -135,11 +136,18 @@ func (s *Service) SetGoalField(ctx context.Context, actorID, goalID, fieldID int
 		return fmt.Errorf("%w: %s is retired, so it can't be set", ErrValidation, field.Name)
 	}
 	value = strings.TrimSpace(value)
+	before, err := s.goalFieldValue(ctx, goalID, fieldID)
+	if err != nil {
+		return err
+	}
+	if value == before {
+		return nil
+	}
 	if value == "" {
 		if err := s.queries.ClearGoalFieldValue(ctx, db.ClearGoalFieldValueParams{GoalID: goalID, FieldID: fieldID}); err != nil {
 			return fmt.Errorf("clear field value: %w", err)
 		}
-		return nil
+		return s.recordFieldChange(ctx, actorID, goalID, field, before, "")
 	}
 	if err := field.Check(value); err != nil {
 		return err
@@ -152,7 +160,21 @@ func (s *Service) SetGoalField(ctx context.Context, actorID, goalID, fieldID int
 	}); err != nil {
 		return fmt.Errorf("set field value: %w", err)
 	}
-	return nil
+	return s.recordFieldChange(ctx, actorID, goalID, field, before, value)
+}
+
+// goalFieldValue is a Goal's value in one Field, empty when it has none.
+func (s *Service) goalFieldValue(ctx context.Context, goalID, fieldID int64) (string, error) {
+	values, err := s.GoalFields(ctx, goalID)
+	if err != nil {
+		return "", err
+	}
+	for _, v := range values {
+		if v.Field.ID == fieldID {
+			return v.Value, nil
+		}
+	}
+	return "", nil
 }
 
 // GoalFields returns the values a Goal has, by Field name, Retired Fields

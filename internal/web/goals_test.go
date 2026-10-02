@@ -2502,3 +2502,77 @@ func TestProposeGoalFromTheTableKeepsTheTable(t *testing.T) {
 		t.Errorf("proposing from the table didn't swap in the table with the new Goal:\n%s", body)
 	}
 }
+
+// Every change to a Goal's Dimension values and Fields made through the Goal
+// page is listed oldest first under its collapsed Value history, each with who
+// made it by Name and when. A Delegate's change is attributed to the Delegate,
+// a value added or removed in a several-values Dimension reads as "added X" or
+// "removed X", a save that changes nothing adds no entry, and renaming a value
+// afterwards leaves the entries reading as they did.
+func TestGoalPageListsValueHistory(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pat := h.SignInNamed("pat@example.com", "Pat Owner")
+	dee := h.SignInNamed("dee@example.com", "Dee Delegate")
+	goal := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(pat, dee, goal.ID)
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	region := h.CreateSeveralValuesDimension(boss, "Region", "EMEA", "APAC")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	ts := newServer(t, h)
+	patClient := signInClient(t, ts.URL, pat.Email)
+	deeClient := signInClient(t, ts.URL, dee.Email)
+	post := func(client *http.Client, path string, form url.Values) {
+		t.Helper()
+		resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/%s", ts.URL, goal.ID, path), form)
+		if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+			t.Fatalf("POST %s %v: status %d; body:\n%s", path, form, resp.StatusCode, body)
+		}
+		h.Clock.Advance(time.Hour)
+	}
+	id := func(n int64) string { return fmt.Sprint(n) }
+
+	post(patClient, "fields", url.Values{"field_id": {id(budget.ID)}, "value": {"200"}})
+	post(deeClient, "fields", url.Values{"field_id": {id(budget.ID)}, "value": {"350"}})
+	post(deeClient, "fields", url.Values{"field_id": {id(budget.ID)}, "value": {"350"}})
+	post(patClient, "dimensions", url.Values{"value_id": {id(pillar.Values[0].ID)}})
+	post(patClient, "dimensions", url.Values{"value_id": {id(pillar.Values[0].ID)}})
+	post(patClient, "dimensions", url.Values{"dimension_id": {id(region.ID)}, "value_id": {id(region.Values[0].ID)}})
+	post(deeClient, "dimensions", url.Values{"dimension_id": {id(region.ID)}, "value_id": {id(region.Values[1].ID)}})
+	post(patClient, "fields", url.Values{"field_id": {id(budget.ID)}, "value": {"350"}, "clear": {"1"}})
+	if _, err := h.Service.RenameDimensionValue(context.Background(), boss.ID, pillar.Values[0].ID, "Expansion"); err != nil {
+		t.Fatalf("RenameDimensionValue: %v", err)
+	}
+
+	page := getBody(t, patClient, goalPageURL(ts.URL, goal))
+	section := pageElement(t, pageElement(t, page, "div", "goal-history"), "section", "goal-value-history")
+	details := between(t, section, "<details", "</summary>")
+	if strings.Contains(openTag(details), "open") {
+		t.Errorf("Value history is not collapsed: %s", openTag(details))
+	}
+	if !strings.Contains(details, "Value history (7)") {
+		t.Errorf("Value history summary lacks its count of 7: %s", details)
+	}
+	patShown, deeShown := shownAs(pat.Email, "Pat Owner"), shownAs(dee.Email, "Dee Delegate")
+	want := []struct{ change, by, at string }{
+		{"Budget: set to 200", patShown, "2026-01-02 15:04"},
+		{"Budget: 200 → 350", deeShown, "2026-01-02 16:04"},
+		{"Pillar: set to Growth", patShown, "2026-01-02 18:04"},
+		{"Region: added EMEA", patShown, "2026-01-02 20:04"},
+		{"Region: removed EMEA", deeShown, "2026-01-02 21:04"},
+		{"Region: added APAC", deeShown, "2026-01-02 21:04"},
+		{"Budget: cleared (was 350)", patShown, "2026-01-02 22:04"},
+	}
+	entries := strings.Split(section, `data-testid="value-change"`)[1:]
+	if len(entries) != len(want) {
+		t.Fatalf("Value history has %d entries, want %d:\n%s", len(entries), len(want), section)
+	}
+	for i, w := range want {
+		entry := html.UnescapeString(entries[i])
+		for _, part := range []string{w.change, w.by, w.at} {
+			if !strings.Contains(entry, html.UnescapeString(part)) {
+				t.Errorf("entry %d lacks %q:\n%s", i, part, entries[i])
+			}
+		}
+	}
+}

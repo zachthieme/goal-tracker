@@ -471,8 +471,9 @@ func OfferedDimensions(dims []Dimension) []Dimension {
 // AssignGoalValue gives a Goal a Dimension value (CONTEXT.md: Owners and their
 // Delegates set a Goal's Dimension values). In a Dimension that takes one value it
 // replaces any value the Goal already has there; in one that takes several it is
-// added alongside them. A retired value is not offered for a new assignment.
-// Only the Goal's Owner, a Delegate or an Admin may assign its values.
+// added alongside them. A change is kept in the Goal's Value history. A retired
+// value is not offered for a new assignment. Only the Goal's Owner, a Delegate
+// or an Admin may assign its values.
 func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID int64) error {
 	if err := s.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
 		return err
@@ -492,6 +493,10 @@ func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID 
 	if dim.Retired {
 		return retiredDimensionError(dim)
 	}
+	before, err := s.GoalValues(ctx, goalID)
+	if err != nil {
+		return err
+	}
 	if !dim.TakesSeveral() {
 		if err := s.queries.ClearGoalValuesInDimension(ctx, db.ClearGoalValuesInDimensionParams{
 			GoalID:      goalID,
@@ -507,7 +512,7 @@ func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID 
 	}); err != nil {
 		return fmt.Errorf("assign dimension value: %w", err)
 	}
-	return nil
+	return s.recordDimensionChanges(ctx, actorID, goalID, dim, before)
 }
 
 // AssignGoalValueByName gives a Goal the value named in a Dimension, adding it
@@ -566,7 +571,8 @@ func (s *Service) AssignGoalValueByName(ctx context.Context, actorID, goalID, di
 // SetGoalValues makes valueIDs exactly the values a Goal carries in one
 // Dimension, so a set of checkboxes saves together: values left out are
 // removed, and an empty set clears the Dimension (CONTEXT.md: Dimension). A
-// Dimension that takes one value accepts at most one. A retired value may be
+// change is kept in the Goal's Value history. A Dimension that takes one value
+// accepts at most one. A retired value may be
 // kept by a Goal that already carries it but not newly given (CONTEXT.md:
 // Retired). Only the Goal's Owner, a Delegate or an Admin may set its values.
 func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionID int64, valueIDs []int64) error {
@@ -626,7 +632,7 @@ func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionI
 			return fmt.Errorf("assign dimension value: %w", err)
 		}
 	}
-	return nil
+	return s.recordDimensionChanges(ctx, actorID, goalID, dim, carried)
 }
 
 // retiredDimensionError refuses newly giving a Goal a value in a Retired
