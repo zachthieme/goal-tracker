@@ -11,19 +11,19 @@
   --color-primary-light:  #CCFBF1;
   --color-primary-subtle: #F0FDFA;
 
-  --color-canvas:        #FEFCE8;
+  --color-canvas:        #F6F6F3; /* neutral off-white (DESIGN.md Deviation 7) */
   --color-surface:       #FFFFFF;
-  --color-surface-hover: #FDFCF7;
-  --color-surface-alt:   #F7F6E8;
+  --color-surface-hover: #FCFCFA;
+  --color-surface-alt:   #F2F2EE;
 
   --color-ink:         #18211F; /* neutral ink; teal is for actions (DESIGN.md Deviation 2) */
   --color-ink-2:       #3E4946;
   --color-ink-muted:   #66706D;
   --color-ink-inverse: #FFFFFF;
 
-  --color-border:        #E8E6D5;
+  --color-border:        #E1E1DC;
   --color-border-strong: #7B908C; /* 3.4:1 on white, so an input's edge is visible (DESIGN.md Deviation 6) */
-  --color-focus:         #0D9488; /* Teal 600: 3.6:1 on the canvas (DESIGN.md Deviation 5) */
+  --color-focus:         #0D9488; /* Teal 600: 3.5:1 on the canvas (DESIGN.md Deviation 5) */
 
   --color-success: #2DD4BF;
   --color-warning: #EAB308;
