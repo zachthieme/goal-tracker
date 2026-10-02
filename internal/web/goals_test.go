@@ -3905,3 +3905,77 @@ func TestDoneAndCancelledGoalsAreNeverIncompleteOverHTTP(t *testing.T) {
 		t.Errorf("incomplete=1: rows = %q, want %q", got, want)
 	}
 }
+
+// A date Field column sorts the Goal table by date, earliest first and then
+// latest first, with the Goals that have no date last both ways. The dates are
+// chosen so that neither their month names, the titles nor the order the Goals
+// were made in gives the same order (ticket #79).
+func TestGoalTableSortsADateFieldAsDatesWithUnsetLast(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	kickoff := h.CreateField(boss, "Kickoff", domain.FieldDate, "")
+	alpha := h.CreateGoal(sam, "Alpha", "It matters.")
+	bravo := h.CreateGoal(sam, "Bravo", "It matters.")
+	charlie := h.CreateGoal(sam, "Charlie", "It matters.")
+	unset := h.CreateGoal(sam, "Delta", "It matters.")
+	h.SetGoalField(sam, alpha, kickoff, "2026-10-05")
+	h.SetGoalField(sam, bravo, kickoff, "2027-01-20")
+	h.SetGoalField(sam, charlie, kickoff, "2026-02-01")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	order := func(page string) []string {
+		return rowTitles(tableRows(t, page), alpha, bravo, charlie, unset)
+	}
+
+	page := getBody(t, client, ts.URL+"/goals?layout=table")
+	page = getBody(t, client, ts.URL+sortLink(t, page, "Kickoff"))
+	if got, want := order(page), []string{"Charlie", "Alpha", "Bravo", "Delta"}; !slices.Equal(got, want) {
+		t.Errorf("sorted by Kickoff = %q, want %q", got, want)
+	}
+
+	page = getBody(t, client, ts.URL+sortLink(t, page, "Kickoff"))
+	if got, want := order(page), []string{"Bravo", "Alpha", "Charlie", "Delta"}; !slices.Equal(got, want) {
+		t.Errorf("reverse-sorted by Kickoff = %q, want %q", got, want)
+	}
+}
+
+// An Admin who neither Owns nor Delegates on any Goal gets an input in every
+// Dimension and Field cell of every row in the Goal table's edit mode, and the
+// Title, Health, Lifecycle and delivery date cells link to the Goal, since
+// changing them happens there (ticket #80).
+func TestGoalTableEditModeGivesAnAdminInputsOnEveryRowAndLinksToTheGoal(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	h.CreateSeveralValuesDimension(boss, "Tags", "infra", "ux")
+	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.CreateField(boss, "Notes", domain.FieldLongText, "")
+	alpha := h.ActiveGoal(sam, "Alpha", "A matters.")
+	h.Checkin(sam, alpha.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	beta := h.ActiveGoal(pat, "Beta", "B matters.")
+	h.Checkin(pat, beta.ID, domain.HealthYellow, "Slipping.", "Add staff.", testsupport.Epoch.AddDate(0, 1, 0))
+	gamma := h.CreateGoal(pat, "Gamma", "C matters.")
+	ts := newServer(t, h)
+
+	page := editTable(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL, "/goals?layout=table")
+
+	for _, g := range []domain.Goal{alpha, beta, gamma} {
+		row := tableRowOf(t, page, g)
+		for _, head := range []string{"Pillar", "Tags", "Budget", "Notes"} {
+			if cell := tableCellHTML(t, page, row, head); !hasInput(cell) {
+				t.Errorf("the Admin gets no input in %s's %s cell:\n%s", g.Title, head, cell)
+			}
+		}
+	}
+	for _, g := range []domain.Goal{alpha, beta} {
+		row := tableRowOf(t, page, g)
+		for _, head := range []string{"Title", "Health", "Lifecycle", "Delivery date"} {
+			if cell := tableCellHTML(t, page, row, head); !strings.Contains(cell, navTo(g.ID)) {
+				t.Errorf("%s's %s cell doesn't link to the Goal:\n%s", g.Title, head, cell)
+			}
+		}
+	}
+}

@@ -300,3 +300,25 @@ func TestThemeMenuFloatsWithoutWideningTheTopBar(t *testing.T) {
 		t.Errorf("the current theme is not marked to the eye")
 	}
 }
+
+// The theme cookie, whether choosing a theme or clearing it, is HttpOnly, so
+// no script reads it, and SameSite=Lax, so another site's form can't set it
+// (ticket #84).
+func TestThemeCookieIsHTTPOnlyAndSameSiteLax(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, choice := range []string{"dark", "light", "system"} {
+		c := themeCookieIn(chooseTheme(t, client, ts.URL, choice, "/home"))
+		if c == nil {
+			t.Fatalf("choosing %s sets no theme cookie", choice)
+		}
+		if !c.HttpOnly {
+			t.Errorf("choosing %s: the theme cookie isn't HttpOnly: %v", choice, c)
+		}
+		if c.SameSite != http.SameSiteLaxMode {
+			t.Errorf("choosing %s: the theme cookie's SameSite is %v, want Lax: %v", choice, c.SameSite, c)
+		}
+	}
+}

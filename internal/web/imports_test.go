@@ -297,3 +297,36 @@ Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,,
 		t.Errorf("the imported Goal isn't on the Goal list; body:\n%s", list)
 	}
 }
+
+// A value an import adds to an Extendable Dimension's list appears in the
+// Definition log as added by the Admin who ran the import, not the one who
+// defined the Dimension (ticket #77).
+func TestImportedExtendableValueIsLoggedAsTheImportersOverHTTP(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Customer
+Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,Newco
+`
+	h := testsupport.New(t, "boss@example.com", "ada@example.com")
+	boss := h.SignInNamed("boss@example.com", "Bo Boss")
+	h.SignInNamed("ada@example.com", "Ada Importer")
+	h.CreateExtendableDimension(boss, "Customer", "Acme")
+	ts := newServer(t, h)
+	ada := signInClient(t, ts.URL, "ada@example.com")
+
+	if body := postImport(t, ada, ts.URL+"/imports", "goals.csv", csv, "commit"); !strings.Contains(body, "Imported 1 Goals") {
+		t.Fatalf("commit summary missing; body:\n%s", body)
+	}
+
+	log := pageElement(t, getBody(t, ada, ts.URL+"/definition-log"), "ol", "definition-log")
+	var added string
+	for _, e := range strings.Split(log, `data-testid="definition-change"`)[1:] {
+		if strings.Contains(e, "Added Newco to Customer.") {
+			added = e
+		}
+	}
+	if added == "" {
+		t.Fatalf("the Definition log has no entry adding Newco to Customer:\n%s", log)
+	}
+	if !strings.Contains(added, "Ada Importer") || strings.Contains(added, "Bo Boss") {
+		t.Errorf("adding Newco isn't attributed to Ada, who ran the import:\n%s", added)
+	}
+}
