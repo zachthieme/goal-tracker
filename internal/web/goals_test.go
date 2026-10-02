@@ -308,8 +308,9 @@ func TestOwnerSetsSeveralDimensionValuesOverHTTP(t *testing.T) {
 	}
 }
 
-// Only the Owner (or an Admin) sets a Goal's Dimension values: another signed-in
-// person posting to the endpoint is refused with 403 and the value is unchanged.
+// Only the Owner, a Delegate or an Admin sets a Goal's Dimension values: another
+// signed-in person posting to the endpoint is refused with 403 and the value is
+// unchanged.
 func TestNonOwnerCannotAssignDimensionValueOverHTTP(t *testing.T) {
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
@@ -1693,5 +1694,174 @@ func TestSeededPagesShowPeopleByName(t *testing.T) {
 	}
 	if strings.Contains(printed, `class="disclose"`) {
 		t.Errorf("print page puts people behind a control")
+	}
+}
+
+// On the Goal page an Extendable Dimension, one-value or several-values, has an
+// "add a value" input beside its choices; a Fixed one has none. Submitting it
+// adds the value to the list and sets it on the Goal in one step (CONTEXT.md:
+// Extendable).
+func TestOwnerAddsValueToExtendableDimensionOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	customer := h.CreateExtendableDimension(boss, "Customer", "Acme")
+	partners := h.CreateExtendableDimension(boss, "Partner", "Initech")
+	h.SetDimensionSelection(boss, partners, domain.SelectionSeveral)
+	h.CreateDimension(boss, "Pillar", "Growth")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	edit := between(t, getBody(t, samClient, goalURL), `<details id="edit-dimensions"`, "</details>")
+	for _, name := range []string{"Customer", "Partner"} {
+		if !strings.Contains(edit, fmt.Sprintf(`name="new_value" aria-label="Add a %s value"`, name)) {
+			t.Errorf("Extendable %s has no add-a-value input:\n%s", name, edit)
+		}
+	}
+	if strings.Contains(edit, `aria-label="Add a Pillar value"`) {
+		t.Errorf("Fixed Pillar offers an add-a-value input:\n%s", edit)
+	}
+
+	for _, add := range []struct {
+		dim   domain.Dimension
+		value string
+	}{{customer, "Globex"}, {partners, "Umbrella"}, {partners, "Hooli"}} {
+		resp := postForm(t, samClient, goalURL+"/dimensions", url.Values{
+			"dimension_id": {fmt.Sprintf("%d", add.dim.ID)},
+			"new_value":    {add.value},
+		})
+		if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+			t.Fatalf("adding %s: status %d: %s", add.value, resp.StatusCode, body)
+		}
+	}
+	section := pageElement(t, getBody(t, samClient, goalURL), "section", "goal-dimensions")
+	for _, want := range []string{"Globex", "Umbrella", "Hooli"} {
+		if !strings.Contains(section, `data-testid="goal-dimension-value">`+want) {
+			t.Errorf("Goal page doesn't show the added %s:\n%s", want, section)
+		}
+	}
+	if got := dimensionValueNames(dimensionByName(t, h, "Partner")); !slices.Equal(got, []string{"Hooli", "Initech", "Umbrella"}) {
+		t.Errorf("Partner list = %v, want [Hooli Initech Umbrella]", got)
+	}
+}
+
+func dimensionValueNames(d domain.Dimension) []string {
+	out := make([]string, 0, len(d.Values))
+	for _, v := range d.Values {
+		out = append(out, v.Value)
+	}
+	return out
+}
+
+// Adding from the Goal page: on a Fixed Dimension an Owner's new value is
+// refused with 403 and nothing is added; "ACME " when Acme exists sets Acme and
+// adds nothing; a match on a Retired value is refused with a message saying so
+// (CONTEXT.md: Fixed, Extendable, Retired).
+func TestAddingValueFromGoalPageRefusalsAndMatchesOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	customer := h.CreateExtendableDimension(boss, "Customer", "Acme", "Hooli")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, customer.Values[1].ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+	add := func(dim domain.Dimension, value string) (int, string) {
+		resp := postForm(t, samClient, goalURL+"/dimensions", url.Values{
+			"dimension_id": {fmt.Sprintf("%d", dim.ID)},
+			"new_value":    {value},
+		})
+		body := readBody(t, resp)
+		return resp.StatusCode, body
+	}
+
+	if status, _ := add(pillar, "Reliability"); status != http.StatusForbidden {
+		t.Errorf("Owner adding to Fixed Pillar: status %d, want 403", status)
+	}
+	if got := dimensionValueNames(dimensionByName(t, h, "Pillar")); !slices.Equal(got, []string{"Growth"}) {
+		t.Errorf("Pillar list = %v, want [Growth] with nothing added", got)
+	}
+
+	if status, body := add(customer, "ACME "); status != http.StatusOK {
+		t.Fatalf("adding ACME: status %d: %s", status, body)
+	}
+	if got := dimensionValueNames(dimensionByName(t, h, "Customer")); !slices.Equal(got, []string{"Acme", "Hooli"}) {
+		t.Errorf("Customer list = %v, want [Acme Hooli] with nothing created", got)
+	}
+	values, err := h.Service.GoalValues(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	if len(values) != 1 || values[0].ID != customer.Values[0].ID {
+		t.Errorf("values = %+v, want the existing Acme", values)
+	}
+
+	status, body := add(customer, "hooli")
+	if status != http.StatusUnprocessableEntity || !strings.Contains(body, "Hooli is retired") {
+		t.Errorf("adding hooli: status %d body %q, want 422 saying Hooli is retired", status, body)
+	}
+}
+
+// A Delegate sees the Goal page's Dimension value controls and sets values and
+// adds to an Extendable list through them; a Contributor sees no controls and
+// is refused with 403 (CONTEXT.md: Delegate, Contributor).
+func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	h.SignIn("cory@example.com")
+	customer := h.CreateExtendableDimension(boss, "Customer", "Acme")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, dee, goal.ID)
+	if err := h.Service.AddContributorByEmail(context.Background(), goal.ID, "cory@example.com"); err != nil {
+		t.Fatalf("AddContributorByEmail: %v", err)
+	}
+	ts := newServer(t, h)
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+	deeClient := signInClient(t, ts.URL, "dee@example.com")
+	coryClient := signInClient(t, ts.URL, "cory@example.com")
+
+	if page := getBody(t, deeClient, goalURL); !strings.Contains(page, `<details id="edit-dimensions"`) || !strings.Contains(page, `href="#edit-dimensions"`) {
+		t.Fatalf("Delegate's Goal page lacks the Dimension value controls:\n%s", page)
+	}
+	for _, form := range []url.Values{
+		{"value_id": {fmt.Sprintf("%d", pillar.Values[1].ID)}},
+		{"dimension_id": {fmt.Sprintf("%d", customer.ID)}, "new_value": {"Globex"}},
+	} {
+		resp := postForm(t, deeClient, goalURL+"/dimensions", form)
+		if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+			t.Fatalf("Delegate posting %v: status %d: %s", form, resp.StatusCode, body)
+		}
+	}
+	section := pageElement(t, getBody(t, deeClient, goalURL), "section", "goal-dimensions")
+	for _, want := range []string{"Reliability", "Globex"} {
+		if !strings.Contains(section, `data-testid="goal-dimension-value">`+want) {
+			t.Errorf("Goal page doesn't show %s set by the Delegate:\n%s", want, section)
+		}
+	}
+
+	if page := getBody(t, coryClient, goalURL); strings.Contains(page, `<details id="edit-dimensions"`) {
+		t.Errorf("Contributor's Goal page offers Dimension value controls:\n%s", page)
+	}
+	for _, form := range []url.Values{
+		{"value_id": {fmt.Sprintf("%d", pillar.Values[0].ID)}},
+		{"dimension_id": {fmt.Sprintf("%d", customer.ID)}, "new_value": {"Initech"}},
+	} {
+		resp := postForm(t, coryClient, goalURL+"/dimensions", form)
+		_ = readBody(t, resp)
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("Contributor posting %v: status %d, want 403", form, resp.StatusCode)
+		}
+	}
+	if got := dimensionValueNames(dimensionByName(t, h, "Customer")); !slices.Equal(got, []string{"Acme", "Globex"}) {
+		t.Errorf("Customer list = %v, want [Acme Globex]", got)
 	}
 }

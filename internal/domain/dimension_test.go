@@ -147,9 +147,9 @@ func TestAssignDimensionValueReplacesWithinDimension(t *testing.T) {
 	}
 }
 
-// Only the Goal's Owner or an Admin may assign its Dimension values; anyone else
-// is refused and the Goal's value is left as it was (CONTEXT.md: Owners assign
-// Dimension values to their Goals).
+// Only the Goal's Owner, a Delegate or an Admin may assign its Dimension
+// values; anyone else is refused and the Goal's value is left as it was
+// (CONTEXT.md: Owners assign Dimension values to their Goals).
 func TestOnlyOwnerOrAdminAssignsDimensionValue(t *testing.T) {
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
@@ -374,7 +374,7 @@ func TestOwnerSetsSeveralValuesInDimension(t *testing.T) {
 	if err := h.Service.SetGoalValues(ctx, sam.ID, goal.ID, teams.ID, []int64{pillar.Values[0].ID}); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("value from another Dimension err = %v, want ErrValidation", err)
 	}
-	// Only the Owner or an Admin may set them.
+	// Only the Owner, a Delegate or an Admin may set them.
 	if err := h.Service.SetGoalValues(ctx, other.ID, goal.ID, teams.ID, nil); !errors.Is(err, domain.ErrNotAuthorized) {
 		t.Errorf("non-Owner SetGoalValues err = %v, want ErrNotAuthorized", err)
 	}
