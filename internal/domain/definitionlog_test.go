@@ -408,3 +408,22 @@ func TestTheLogNarrowsToOneDimensionOrField(t *testing.T) {
 		"Created the Field Budget, holding a number in $.",
 	})
 }
+
+// The Service offers no way to edit the log, and the database refuses to
+// change or remove an entry whoever asks.
+func TestTheLogCannotBeEdited(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	h.CreateDimension(h.SignIn("boss@example.com"), "Pillar", "Growth")
+
+	for _, stmt := range []string{
+		`UPDATE definition_changes SET summary = 'Nothing happened.'`,
+		`DELETE FROM definition_changes`,
+	} {
+		if _, err := h.DB.Exec(stmt); err == nil {
+			t.Errorf("%s was allowed", stmt)
+		}
+	}
+	assertSummaries(t, definitionLog(t, h), []string{
+		"Created the Dimension Pillar with Growth, taking one value from a Fixed list.",
+	})
+}
