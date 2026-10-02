@@ -13,6 +13,13 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 2, 2026
+
+**New features:**
+- [user] An Admin now chooses, per Dimension, whether a Goal takes one value or several: the define-a-Dimension form offers "one value" (the default) or "several values", and each Dimension card's Edit toggle switches it. Switching back to one value is refused while any Goal carries more than one value in that Dimension, and the refusal links each of those Goals. Existing Dimensions take one value (#69).
+- [user] On the Goal page a several-values Dimension shows a checkbox per value, saved together, so an Owner can give a Goal several values and remove one; a one-value Dimension keeps its select and still replaces the Goal's previous value. Grouped by a several-values Dimension, the Goal list shows a Goal under each of its values, and the list's new total counts each Goal once. Filters and Report Definitions still OR values within a Dimension, so a Goal carrying a value among several is still selected (#69).
+- [api] Database schema: migration `0021_dimension_selection` adds a `selection` column to `dimensions` (`'one'` or `'several'`, default `'one'`). It's additive and runs on startup; every existing Dimension keeps taking one value (#69).
+
 ### Collected changes — October 1, 2026
 
 **New features:**
