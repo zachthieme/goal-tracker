@@ -2040,3 +2040,59 @@ func TestRetiredDimensionLeavesGoalPageControlsOverHTTP(t *testing.T) {
 		t.Errorf("Growth isn't offered as a child default once Pillar is restored")
 	}
 }
+
+// A Retired Dimension drops out of the Goal list's filter and grouping, and a
+// stale link filtering or grouping by it is ignored rather than narrowing the
+// list with no control to undo it. A Goal's row still shows its value, marked
+// retired. Restoring the Dimension returns it to both (CONTEXT.md: Retired).
+func TestRetiredDimensionLeavesGoalListFilterAndGroupingOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	h.CreateDimension(boss, "Team", "Core")
+	growth, trust := pillar.Values[0], pillar.Values[1]
+	alpha := h.CreateGoal(sam, "Alpha", "A matters.")
+	bravo := h.CreateGoal(sam, "Bravo", "B matters.")
+	h.AssignGoalValue(alpha, growth)
+	h.AssignGoalValue(bravo, trust)
+	ctx := context.Background()
+	if err := h.Service.RetireDimension(ctx, boss.ID, pillar.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals")
+	more := between(t, page, `<details data-testid="more-filters"`, "</details>")
+	if strings.Contains(more, "Pillar") || strings.Contains(more, "Growth") {
+		t.Errorf("the Retired Pillar is offered to filter or group by:\n%s", more)
+	}
+	if !strings.Contains(more, "Team") {
+		t.Errorf("the live Team isn't offered to filter or group by:\n%s", more)
+	}
+	row := between(t, page, `<tr data-testid="goal-row"`, "</tr>")
+	if !strings.Contains(row, ">Alpha<") || !strings.Contains(row, `data-testid="goal-value-tag" class="tag">Growth`) || !strings.Contains(row, `data-testid="retired"`) {
+		t.Errorf("Alpha's row doesn't show Growth marked retired:\n%s", row)
+	}
+
+	stale := getBody(t, client, fmt.Sprintf("%s/goals?value=%d&group=%d", ts.URL, growth.ID, pillar.ID))
+	if got := rowTitles(goalRows(t, stale), alpha, bravo); !slices.Equal(got, []string{"Alpha", "Bravo"}) {
+		t.Errorf("a stale link on the Retired Pillar lists %q, want both Goals", got)
+	}
+	if strings.Contains(stale, `data-testid="goal-group"`) {
+		t.Errorf("a stale link groups by the Retired Pillar")
+	}
+
+	if err := h.Service.RestoreDimension(ctx, boss.ID, pillar.ID); err != nil {
+		t.Fatalf("RestoreDimension: %v", err)
+	}
+	more = between(t, getBody(t, client, ts.URL+"/goals"), `<details data-testid="more-filters"`, "</details>")
+	if !strings.Contains(more, "<legend>Pillar</legend>") || !strings.Contains(more, fmt.Sprintf(`<option value="%d"`, pillar.ID)) {
+		t.Errorf("the restored Pillar isn't offered to filter and group by:\n%s", more)
+	}
+	grouped := getBody(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, pillar.ID))
+	if !strings.Contains(grouped, `data-testid="goal-group"`) {
+		t.Errorf("the list doesn't group by the restored Pillar")
+	}
+}

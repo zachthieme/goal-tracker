@@ -232,13 +232,16 @@ func sortGoalRows(rows []goalRow) {
 
 // goalsListView reads the Goal list's filters (the filter bar's fields and
 // ?value=) and grouping (?group=) from the request, then loads, filters, sorts,
-// and (optionally) groups the Goals.
+// and (optionally) groups the Goals. Only the Dimensions still offered filter
+// and group: a ?value= or ?group= on a Retired one is ignored, since the list
+// has no control to undo it (CONTEXT.md: Retired).
 func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsListData, error) {
 	ctx := r.Context()
-	dims, err := s.svc.ListDimensions(ctx)
+	all, err := s.svc.ListDimensions(ctx)
 	if err != nil {
 		return goalsListData{}, err
 	}
+	dims := domain.OfferedDimensions(all)
 	goals, err := s.svc.ListGoalsWithValues(ctx)
 	if err != nil {
 		return goalsListData{}, err

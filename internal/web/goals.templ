@@ -157,7 +157,8 @@ templ noGoals(text string) {
 }
 
 // goalListRow is one Goal in the list: its Health, its title with the Ownerless
-// and freshness marks under it, its Owner, and its Dimension values.
+// and freshness marks under it, its Owner, and its Dimension values, a Retired
+// one or one in a Retired Dimension marked retired.
 templ goalListRow(row goalRow) {
 	{{ g := row.Goal }}
 	<tr data-testid="goal-row">
@@ -193,6 +194,9 @@ templ goalListRow(row goalRow) {
 		<td>
 			for _, val := range row.Values {
 				<span data-testid="goal-value-tag" class="tag">{ val.Value }</span>
+				if val.Retired || val.DimensionRetired {
+					<span class="muted small" data-testid="retired">(retired)</span>
+				}
 			}
 		</td>
 	</tr>
