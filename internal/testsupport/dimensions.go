@@ -38,3 +38,24 @@ func (h *Harness) CreateSeveralValuesDimension(admin domain.Account, name string
 	dim.Selection = domain.SelectionSeveral
 	return dim
 }
+
+// CreateExtendableDimension defines a Dimension whose list anyone setting a
+// Goal's value in it may add to, failing the test on error.
+func (h *Harness) CreateExtendableDimension(admin domain.Account, name string, values ...string) domain.Dimension {
+	h.T.Helper()
+	dim := h.CreateDimension(admin, name, values...)
+	if err := h.Service.SetDimensionList(context.Background(), admin.ID, dim.ID, domain.ListExtendable); err != nil {
+		h.T.Fatalf("SetDimensionList: %v", err)
+	}
+	dim.List = domain.ListExtendable
+	return dim
+}
+
+// SetDimensionSelection switches whether a Goal takes one of dim's values or
+// several, on behalf of admin, failing the test on error.
+func (h *Harness) SetDimensionSelection(admin domain.Account, dim domain.Dimension, selection string) {
+	h.T.Helper()
+	if err := h.Service.SetDimensionSelection(context.Background(), admin.ID, dim.ID, selection); err != nil {
+		h.T.Fatalf("SetDimensionSelection: %v", err)
+	}
+}

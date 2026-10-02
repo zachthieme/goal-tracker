@@ -15,6 +15,11 @@ SELECT * FROM dimensions ORDER BY name, id;
 UPDATE dimensions SET selection = ? WHERE id = ?
 RETURNING *;
 
+-- name: SetDimensionList :one
+-- Whether the Dimension's list is Fixed ('fixed') or Extendable ('extendable').
+UPDATE dimensions SET list = ? WHERE id = ?
+RETURNING *;
+
 -- name: ListGoalsWithSeveralValuesInDimension :many
 -- The Goals carrying more than one of a Dimension's values, which keep it from
 -- being switched to one value.

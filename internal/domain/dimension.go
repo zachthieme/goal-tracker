@@ -4,19 +4,22 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
 )
 
-// Dimension is an admin-defined attribute with a fixed list of values, used to
-// filter and group Goals (CONTEXT.md: Dimension). Selection says whether a Goal
-// takes one of its values or several. Values holds the Dimension's values in
-// display order, retired ones included.
+// Dimension is an admin-defined attribute whose values come from a list, used
+// to filter and group Goals (CONTEXT.md: Dimension). Selection says whether a
+// Goal takes one of its values or several, and List whether the list is Fixed
+// or Extendable. Values holds the Dimension's values in display order, retired
+// ones included.
 type Dimension struct {
 	ID        int64
 	Name      string
 	Selection string
+	List      string
 	Values    []DimensionValue
 }
 
@@ -33,6 +36,20 @@ func (d Dimension) TakesSeveral() bool {
 	return d.Selection == SelectionSeveral
 }
 
+// A Dimension's List: whether only an Admin adds values to it (Fixed) or anyone
+// setting a Goal's value in it may (Extendable) (CONTEXT.md: Fixed,
+// Extendable). A new Dimension is Fixed.
+const (
+	ListFixed      = "fixed"
+	ListExtendable = "extendable"
+)
+
+// Extendable reports whether anyone setting a Goal's value in the Dimension may
+// add a value to its list.
+func (d Dimension) Extendable() bool {
+	return d.List == ListExtendable
+}
+
 // DimensionValue is one value in a Dimension's fixed list. A retired value is no
 // longer offered for new assignments but stays readable on the Goals that
 // already carry it (CONTEXT.md: Dimension).
@@ -45,7 +62,8 @@ type DimensionValue struct {
 
 // CreateDimension defines a new Dimension with a fixed list of values. Only an
 // Admin may define Dimensions (CONTEXT.md: Admin). The name and at least one
-// value are required; blank values are dropped.
+// value are required; blank values are dropped, and so is a value matching an
+// earlier one whatever its case.
 func (s *Service) CreateDimension(ctx context.Context, actorID int64, name string, values []string) (Dimension, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return Dimension{}, err
@@ -56,7 +74,8 @@ func (s *Service) CreateDimension(ctx context.Context, actorID int64, name strin
 	}
 	cleaned := make([]string, 0, len(values))
 	for _, v := range values {
-		if v = strings.TrimSpace(v); v != "" {
+		v = strings.TrimSpace(v)
+		if v != "" && !slices.ContainsFunc(cleaned, func(c string) bool { return strings.EqualFold(c, v) }) {
 			cleaned = append(cleaned, v)
 		}
 	}
@@ -87,8 +106,10 @@ func (s *Service) CreateDimension(ctx context.Context, actorID int64, name strin
 	return dim, nil
 }
 
-// AddDimensionValue adds a value to an existing Dimension's fixed list. Only an
-// Admin may (CONTEXT.md: Admins add values). The value is required.
+// AddDimensionValue adds a value to an existing Dimension's list. Only an Admin
+// may (CONTEXT.md: Admins add values). The value is required. One matching an
+// existing value whatever its case or surrounding spaces adds nothing and
+// returns that value, and one matching a Retired value is refused.
 func (s *Service) AddDimensionValue(ctx context.Context, actorID, dimensionID int64, value string) (DimensionValue, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return DimensionValue{}, err
@@ -99,6 +120,9 @@ func (s *Service) AddDimensionValue(ctx context.Context, actorID, dimensionID in
 	}
 	if _, err := s.queries.GetDimension(ctx, dimensionID); err != nil {
 		return DimensionValue{}, fmt.Errorf("%w: dimension does not exist", ErrValidation)
+	}
+	if match, ok, err := s.matchingValue(ctx, dimensionID, value); err != nil || ok {
+		return match, err
 	}
 	row, err := s.queries.CreateDimensionValue(ctx, db.CreateDimensionValueParams{
 		DimensionID: dimensionID,
@@ -204,6 +228,29 @@ func (s *Service) SetDimensionSelection(ctx context.Context, actorID, dimensionI
 	return nil
 }
 
+// SetDimensionList makes the Dimension's list Fixed or Extendable (CONTEXT.md:
+// Fixed, Extendable). Either switch is always allowed: switching to Fixed only
+// stops further additions, and the values already added stay. Only an Admin
+// may.
+func (s *Service) SetDimensionList(ctx context.Context, actorID, dimensionID int64, list string) error {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return err
+	}
+	if list != ListFixed && list != ListExtendable {
+		return fmt.Errorf("%w: a Dimension's list is Fixed or Extendable", ErrValidation)
+	}
+	if _, err := s.queries.GetDimension(ctx, dimensionID); err != nil {
+		return fmt.Errorf("%w: dimension does not exist", ErrValidation)
+	}
+	if _, err := s.queries.SetDimensionList(ctx, db.SetDimensionListParams{
+		List: list,
+		ID:   dimensionID,
+	}); err != nil {
+		return fmt.Errorf("set dimension list: %w", err)
+	}
+	return nil
+}
+
 // ListDimensions returns every Dimension with its values in display order,
 // retired values included.
 func (s *Service) ListDimensions(ctx context.Context) ([]Dimension, error) {
@@ -228,11 +275,11 @@ func (s *Service) ListDimensions(ctx context.Context) ([]Dimension, error) {
 	return out, nil
 }
 
-// AssignGoalValue gives a Goal a Dimension value (CONTEXT.md: Owners assign
-// Dimension values to their Goals). In a Dimension that takes one value it
+// AssignGoalValue gives a Goal a Dimension value (CONTEXT.md: Owners and their
+// Delegates set a Goal's Dimension values). In a Dimension that takes one value it
 // replaces any value the Goal already has there; in one that takes several it is
 // added alongside them. A retired value is not offered for a new assignment.
-// Only the Goal's Owner or an Admin may assign its values.
+// Only the Goal's Owner, a Delegate or an Admin may assign its values.
 func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID int64) error {
 	if err := s.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
 		return err
@@ -266,12 +313,62 @@ func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID 
 	return nil
 }
 
+// AssignGoalValueByName gives a Goal the value named in a Dimension, adding it
+// to the Dimension's list first when it isn't there, all in one step
+// (CONTEXT.md: Extendable). A name matching an existing value whatever its case
+// or surrounding spaces sets that value rather than adding one, and one
+// matching a Retired value is refused. It is assigned as AssignGoalValue assigns, and the
+// value the Goal now carries is returned. Only the Goal's Owner, a Delegate or
+// an Admin may, and only an Admin may add to a Fixed list (CONTEXT.md: Fixed).
+func (s *Service) AssignGoalValueByName(ctx context.Context, actorID, goalID, dimensionID int64, name string) (DimensionValue, error) {
+	if err := s.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
+		return DimensionValue{}, err
+	}
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return DimensionValue{}, fmt.Errorf("%w: a value cannot be blank", ErrValidation)
+	}
+	dimRow, err := s.queries.GetDimension(ctx, dimensionID)
+	if err != nil {
+		return DimensionValue{}, fmt.Errorf("%w: dimension does not exist", ErrValidation)
+	}
+	if match, ok, err := s.matchingValue(ctx, dimensionID, name); err != nil {
+		return DimensionValue{}, err
+	} else if ok {
+		return match, s.AssignGoalValue(ctx, actorID, goalID, match.ID)
+	}
+	if dim := dimensionFromRow(dimRow); !dim.Extendable() {
+		if err := s.requireAdmin(ctx, actorID); errors.Is(err, ErrNotAuthorized) {
+			return DimensionValue{}, fmt.Errorf("%w: %s is a Fixed list, so only an Admin may add to it", ErrNotAuthorized, dim.Name)
+		} else if err != nil {
+			return DimensionValue{}, err
+		}
+	}
+	var val DimensionValue
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		row, err := tx.queries.CreateDimensionValue(ctx, db.CreateDimensionValueParams{
+			DimensionID: dimensionID,
+			Value:       name,
+			CreatedAt:   tx.clock.Now().Format(timeFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("add dimension value: %w", err)
+		}
+		val = dimensionValueFromRow(row)
+		return tx.AssignGoalValue(ctx, actorID, goalID, val.ID)
+	})
+	if err != nil {
+		return DimensionValue{}, err
+	}
+	return val, nil
+}
+
 // SetGoalValues makes valueIDs exactly the values a Goal carries in one
 // Dimension, so a set of checkboxes saves together: values left out are
 // removed, and an empty set clears the Dimension (CONTEXT.md: Dimension). A
 // Dimension that takes one value accepts at most one. A retired value may be
 // kept by a Goal that already carries it but not newly given (CONTEXT.md:
-// Retired). Only the Goal's Owner or an Admin may set its values.
+// Retired). Only the Goal's Owner, a Delegate or an Admin may set its values.
 func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionID int64, valueIDs []int64) error {
 	if err := s.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
 		return err
@@ -329,7 +426,31 @@ func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionI
 	return nil
 }
 
-// requireGoalValueSetter refuses anyone but the Goal's Owner or an Admin.
+// matchingValue finds the Dimension's value that name matches whatever its
+// letter case or surrounding spaces ("acme " is "Acme"), so no list gains a
+// near-duplicate. A match on a Retired value is refused, saying so (CONTEXT.md:
+// Retired). ok is false when nothing matches.
+func (s *Service) matchingValue(ctx context.Context, dimensionID int64, name string) (match DimensionValue, ok bool, err error) {
+	rows, err := s.queries.ListDimensionValues(ctx, dimensionID)
+	if err != nil {
+		return DimensionValue{}, false, fmt.Errorf("list dimension values: %w", err)
+	}
+	name = strings.TrimSpace(name)
+	for _, r := range rows {
+		if !strings.EqualFold(strings.TrimSpace(r.Value), name) {
+			continue
+		}
+		v := dimensionValueFromRow(r)
+		if v.Retired {
+			return DimensionValue{}, false, fmt.Errorf("%w: %s is retired, so it can't be added or newly assigned", ErrValidation, v.Value)
+		}
+		return v, true, nil
+	}
+	return DimensionValue{}, false, nil
+}
+
+// requireGoalValueSetter refuses anyone but the Goal's Owner, one of its
+// Delegates, or an Admin (CONTEXT.md: Delegate).
 func (s *Service) requireGoalValueSetter(ctx context.Context, actorID, goalID int64) error {
 	goal, err := s.queries.GetGoal(ctx, goalID)
 	if err != nil {
@@ -338,8 +459,13 @@ func (s *Service) requireGoalValueSetter(ctx context.Context, actorID, goalID in
 	if goal.Goal.OwnerID == actorID {
 		return nil
 	}
+	if delegate, err := s.isDelegate(ctx, goalID, actorID); err != nil {
+		return err
+	} else if delegate {
+		return nil
+	}
 	if err := s.requireAdmin(ctx, actorID); errors.Is(err, ErrNotAuthorized) {
-		return fmt.Errorf("%w: only the Owner or an Admin may set a Goal's Dimension values", ErrNotAuthorized)
+		return fmt.Errorf("%w: only the Owner, a Delegate or an Admin may set a Goal's Dimension values", ErrNotAuthorized)
 	} else if err != nil {
 		return err
 	}
@@ -469,7 +595,7 @@ func GroupGoalsByDimension(goals []GoalWithValues, dim Dimension) []GoalGroup {
 }
 
 func dimensionFromRow(d db.Dimension) Dimension {
-	return Dimension{ID: d.ID, Name: d.Name, Selection: d.Selection}
+	return Dimension{ID: d.ID, Name: d.Name, Selection: d.Selection, List: d.List}
 }
 
 func dimensionValueFromRow(v db.DimensionValue) DimensionValue {
