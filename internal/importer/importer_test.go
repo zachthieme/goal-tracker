@@ -804,3 +804,25 @@ func TestRetiredDimensionAndFieldColumnsAreRejected(t *testing.T) {
 		}
 	}
 }
+
+// Excel saves "CSV UTF-8" with a leading byte-order mark; the import ignores
+// it, in a dry run and a commit alike, so the first header still names its
+// column (#101).
+func TestCSVWithAByteOrderMarkImportsAsWithout(t *testing.T) {
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateDimension(admin, "Pillar", "Growth", "Reliability")
+	data := append([]byte{0xEF, 0xBB, 0xBF}, cleanCSV...)
+
+	dry, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.csv", data)
+	if err != nil || dry.HasErrors() {
+		t.Fatalf("DryRun = %+v, %v; want a clean dry run", dry, err)
+	}
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "goals.csv", data)
+	if err != nil || !rep.Committed {
+		t.Fatalf("Commit = %+v, %v; want it committed", rep, err)
+	}
+	if len(rep.Rows) != 2 || rep.Rows[0].Title != "Grow revenue" {
+		t.Errorf("rows = %+v, want the two Goals of the file", rep.Rows)
+	}
+}

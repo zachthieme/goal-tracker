@@ -858,9 +858,11 @@ func parseGrid(filename string, data []byte) ([]sheetRow, error) {
 
 // parseCSV reads CSV records, numbering them as a spreadsheet opening the file
 // would: the CSV reader skips blank lines, but each is still a row, and a quoted
-// cell spanning several lines is still one row.
+// cell spanning several lines is still one row. A leading UTF-8 byte-order
+// mark, which Excel writes when it saves "CSV UTF-8", is ignored (#101).
 func parseCSV(data []byte) ([]sheetRow, error) {
-	r := csv.NewReader(strings.NewReader(string(data)))
+	data = bytes.TrimPrefix(data, []byte("\uFEFF"))
+	r := csv.NewReader(bytes.NewReader(data))
 	r.FieldsPerRecord = -1 // rows may omit trailing empty columns
 	var (
 		rows     []sheetRow
