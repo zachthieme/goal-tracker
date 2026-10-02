@@ -32,7 +32,9 @@ deliberately; don't override it on one page.
   plain white (see § Accepted audit findings).
 - **Density:** generous. Cards use 24px padding, sections sit 20–32px apart,
   and everything aligns to a 4px grid.
-- **Depth:** layered, teal-tinted shadows lift cards off the canvas.
+- **Depth:** cards lie flat on the canvas, set off by their surface and a
+  1px border. Only menus and popovers float, on `--shadow-pop`, so an open
+  one reads as nearer than anything under it (see § Deviations 8).
 
 ## Tokens
 
@@ -94,9 +96,8 @@ deliberately; don't override it on one page.
   --radius-lg: 12px;   /* cards, dialogs */
   --radius-full: 9999px; /* pills, avatars, counts */
 
-  /* Elevation (teal-tinted) */
-  --shadow-card:       0 10px 25px -5px rgba(19,78,74,.09), 0 8px 10px -6px rgba(19,78,74,.04);
-  --shadow-card-hover: 0 20px 30px -10px rgba(19,78,74,.17), 0 10px 15px -5px rgba(19,78,74,.08);
+  /* Elevation (teal-tinted): menus and popovers only. Cards are flat.
+   * See Deviations */
   --shadow-pop:        0 25px 50px -12px rgba(19,78,74,.25);
 
   /* Primary button hover fill. Light darkens to Teal 800: white text on it is
@@ -152,8 +153,6 @@ deliberately; don't override it on one page.
   --health-y-bg: rgba(234,179,8,.20); --health-y-ink: #F5D06B;
   --health-r-bg: rgba(239,68,68,.20); --health-r-ink: #F8A39B;
 
-  --shadow-card:       0 10px 25px -5px rgba(0,0,0,.45), 0 8px 10px -6px rgba(0,0,0,.30);
-  --shadow-card-hover: 0 20px 30px -10px rgba(0,0,0,.55), 0 10px 15px -5px rgba(0,0,0,.35);
   --shadow-pop:        0 25px 50px -12px rgba(0,0,0,.65);
 
   /* Dark hover goes lighter: --color-ink-inverse on it is 7.77:1 */
@@ -250,9 +249,10 @@ Load the fonts with this URL:
 - **Quiet button (`.btn.quiet`):** no fill, `--color-primary-strong` text. On
   hover it takes a `--color-primary-subtle` fill.
 - **Card (`.card`):** `--color-surface`, 1px `--color-border`,
-  `--radius-lg`, 24px padding, `--shadow-card`. On hover a clickable card's
-  shadow deepens to `--shadow-card-hover` over `--dur-base`, and nothing else
-  changes: it doesn't move.
+  `--radius-lg`, 24px padding, and no shadow in either theme. On hover a
+  clickable card's border becomes `--color-border-strong` over `--dur-base`,
+  and nothing else changes: it doesn't move. That is darker in light and
+  lighter in dark, so either way the edge stands further out from the card.
   A card's own heading is an `h3` (card title); `h2` is for page sections
   that sit outside cards.
   A card is for something a person acts on or reads as a unit of status,
@@ -560,6 +560,15 @@ stays black on white whatever is chosen.
 
    `--color-surface-alt` is as dark as it can go: one step darker and the input
    edge on it falls under 3:1.
+8. **Flat cards.** The source lifts every card off the canvas on a large
+   teal-tinted shadow (`--shadow-card`, deepening to `--shadow-card-hover` on
+   hover), so nothing read as nearer than anything else (UX Review). Cards are
+   flat instead: a 1px `--color-border` edge and no shadow, in both themes. In
+   dark, the card's `--color-surface` against the darker `--color-canvas`
+   sets it apart. A clickable card's hover changes its border colour alone
+   (§ Components). Only menus and popovers keep the source's `--shadow-pop`:
+   the Theme menu, the Goal page's More menu, the Goal list's New goal form
+   and the toast. The two card shadow tokens are gone.
 
 ## Accepted audit findings
 

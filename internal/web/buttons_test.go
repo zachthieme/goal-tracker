@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -73,8 +75,11 @@ func TestPrimaryButtonHoverChangesFillOnly(t *testing.T) {
 	}
 }
 
-// A hovered clickable card shows it by a deeper shadow alone, in every theme.
-func TestClickableCardHoverChangesShadowOnly(t *testing.T) {
+// A hovered clickable card shows it by a darker border alone, in every theme:
+// cards are flat, so there is no shadow to deepen (#88). In the dark theme the
+// border goes lighter instead, since dark themes show elevation by lightness;
+// either way it stands further out from the card's surface.
+func TestClickableCardHoverChangesBorderOnly(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -84,13 +89,104 @@ func TestClickableCardHoverChangesShadowOnly(t *testing.T) {
 	for name, theme := range themes {
 		rest := computed(t, css, theme, ".card", "a.card")
 		hover := computed(t, css, theme, ".card", "a.card", "a.card:hover")
-		if got := changed(rest, hover); fmt.Sprint(got) != "[box-shadow]" {
-			t.Errorf("%s: a hovered clickable card changes %v, want only its shadow", name, got)
+		if got := changed(rest, hover); fmt.Sprint(got) != "[border-color]" {
+			t.Errorf("%s: a hovered clickable card changes %v, want only its border colour", name, got)
 		}
-		if want := resolve(t, theme, "var(--shadow-card-hover)"); hover["box-shadow"] != want {
-			t.Errorf("%s: a hovered clickable card's shadow is %s, want --shadow-card-hover %s", name, hover["box-shadow"], want)
+		resting := borderColour(t, theme, rest["border"])
+		surface := rest["background"]
+		if contrast(t, hover["border-color"], surface) <= contrast(t, resting, surface) {
+			t.Errorf("%s: a hovered clickable card's border %s stands out no more than its resting border %s on %s", name, hover["border-color"], resting, surface)
 		}
 	}
+	light := themes["light"]
+	if luminance(t, borderColour(t, light, computed(t, css, light, ".card")["border"])) <= luminance(t, computed(t, css, light, ".card", "a.card", "a.card:hover")["border-color"]) {
+		t.Errorf("light: a hovered clickable card's border doesn't darken")
+	}
+}
+
+// borderColour resolves the colour of a "1px solid <colour>" border.
+func borderColour(t *testing.T, theme map[string]string, border string) string {
+	t.Helper()
+	m := regexp.MustCompile(`^1px solid (\S+)$`).FindStringSubmatch(border)
+	if m == nil {
+		t.Fatalf("border %q is not 1px solid", border)
+	}
+	return resolve(t, theme, m[1])
+}
+
+// Cards are flat: only the menus and popovers float over the page, and they
+// float by --shadow-pop, so an open menu reads as nearer than any card (#88).
+func TestOnlyMenusAndPopoversCastAShadow(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	floats := map[string]bool{".theme-menu": true, ".toast": true, ".gp-menu": true, ".gl-propose>form": true}
+	comment := regexp.MustCompile(`(?s)/\*.*?\*/`)
+	shadow := regexp.MustCompile(`(?:^|;)box-shadow:([^;]*var\(--shadow-[^;]*)`)
+	for source, sheet := range styleSheets(t, css) {
+		sheet = comment.ReplaceAllString(sheet, "")
+		for _, rule := range regexp.MustCompile(`([^{}]+)\{([^{}]*)\}`).FindAllStringSubmatch(sheet, -1) {
+			selector := strings.TrimSpace(rule[1])
+			m := shadow.FindStringSubmatch(rule[2])
+			if m == nil {
+				continue
+			}
+			if !floats[selector] {
+				t.Errorf("%s: %s casts a shadow (%s), but only menus and popovers float", source, selector, m[1])
+				continue
+			}
+			if m[1] != "var(--shadow-pop)" {
+				t.Errorf("%s: %s floats by %s, want var(--shadow-pop)", source, selector, m[1])
+			}
+			delete(floats, selector)
+		}
+	}
+	for selector := range floats {
+		t.Errorf("%s no longer floats by --shadow-pop", selector)
+	}
+}
+
+// Every shadow token a theme sets is used somewhere, so none is left over
+// from the cards' old elevation (#88).
+func TestNoShadowTokenGoesUnused(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	used := map[string]bool{}
+	for _, sheet := range styleSheets(t, css) {
+		for _, m := range regexp.MustCompile(`var\((--shadow-[\w-]+)\)`).FindAllStringSubmatch(sheet, -1) {
+			used[m[1]] = true
+		}
+	}
+	themes := darkThemes(t, css)
+	themes["light"] = tokens(tokenBlock(t, css, ":root"))
+	for name, theme := range themes {
+		for token := range theme {
+			if strings.HasPrefix(token, "--shadow-") && !used[token] {
+				t.Errorf("%s: %s is set but nothing uses it", name, token)
+			}
+		}
+	}
+}
+
+// styleSheets returns app.css and, per template source, its style blocks.
+func styleSheets(t *testing.T, css string) map[string]string {
+	t.Helper()
+	sources, err := filepath.Glob("*.templ")
+	if err != nil || len(sources) == 0 {
+		t.Fatalf("no templates found: %v", err)
+	}
+	sheets := map[string]string{"app.css": css}
+	for _, source := range sources {
+		raw, err := os.ReadFile(source)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sheets[source] = strings.Join(screenStyleBlocks(string(raw)), "\n")
+	}
+	return sheets
 }
 
 // computed cascades the top-level rules for selectors, in order, and resolves
