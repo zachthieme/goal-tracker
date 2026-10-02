@@ -19,6 +19,12 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] An Admin now chooses, per Dimension, whether a Goal takes one value or several: the define-a-Dimension form offers "one value" (the default) or "several values", and each Dimension card's Edit toggle switches it. Switching back to one value is refused while any Goal carries more than one value in that Dimension, and the refusal links each of those Goals. Existing Dimensions take one value (#69).
 - [user] On the Goal page a several-values Dimension shows a checkbox per value, saved together, so an Owner can give a Goal several values and remove one; a one-value Dimension keeps its select and still replaces the Goal's previous value. Grouped by a several-values Dimension, the Goal list shows a Goal under each of its values, and the list's new total counts each Goal once. Filters and Report Definitions still OR values within a Dimension, so a Goal carrying a value among several is still selected (#69).
 - [api] Database schema: migration `0021_dimension_selection` adds a `selection` column to `dimensions` (`'one'` or `'several'`, default `'one'`). It's additive and runs on startup; every existing Dimension keeps taking one value (#69).
+- [user] An Admin now makes each Dimension's list Fixed (only Admins add values, the default and every existing Dimension) or Extendable, on the define-a-Dimension form or from each card's Edit toggle, and can switch either way at any time; switching back to Fixed only stops further additions. On the Goal page an Extendable Dimension, one-value or several-values, has an "add a value" input beside its choices that adds the value and sets it on the Goal in one step (#70).
+- [user] A Goal's Delegates can now set its Dimension values, and add to an Extendable list, as its Owner and Admins can; Contributors still can't. Renaming and retiring values stays with Admins (#70).
+- [api] Database schema: migration `0022_extendable_dimensions` adds a `list` column to `dimensions` (`'fixed'` or `'extendable'`, default `'fixed'`). It's additive and runs on startup; every existing Dimension stays Fixed (#70).
+
+**Improvements:**
+- [user] A new Dimension value matches an existing one whatever its letter case or surrounding spaces ("acme " is "Acme"), on the Goal page and the Dimensions page alike, so no list gains a near-duplicate: a match sets or keeps the existing value, and a match on a Retired value is refused with a message saying it's retired (#70).
 
 ### Collected changes — October 1, 2026
 
