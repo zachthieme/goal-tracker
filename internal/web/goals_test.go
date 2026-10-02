@@ -910,11 +910,11 @@ func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 	}
 }
 
-// The Goal page opens on a header a reader takes in at a glance: badges for
-// Health, Lifecycle, Kind, Top-level and the Goal's Dimension values, the title,
-// and a meta line naming the Owner, the delivery date with its slips struck,
-// and the cadence. Check in and No change sit top right for whoever may check
-// in.
+// The Goal page opens on its title, then its So What as a lead paragraph, then
+// one metadata line a reader takes in at a glance: the Health badge, then plain
+// Lifecycle, Kind, Owner, the delivery date with its slips struck, the cadence
+// and Top-level. Dimension values stay in the sidebar, out of the head. Check
+// in and No change sit top right for whoever may check in.
 func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
@@ -939,30 +939,42 @@ func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
 	head := pageElement(t, page, "header", "goal-head")
-	badges := pageElement(t, head, "div", "goal-badges")
-	for _, want := range []string{
-		`class="badge y"`, "Yellow",
-		`data-testid="goal-lifecycle">Active<`,
-		`data-testid="goal-kind">Dated<`,
-		`data-testid="goal-top-level"`,
-		`class="tag">Growth<`,
-	} {
-		if !strings.Contains(badges, want) {
-			t.Errorf("header badges lack %s: %s", want, badges)
-		}
+	title := strings.Index(head, `data-testid="goal-title"`)
+	soWhat := strings.Index(head, `data-testid="goal-so-what"`)
+	metaAt := strings.Index(head, `data-testid="goal-meta"`)
+	if title < 0 || soWhat < title || metaAt < soWhat {
+		t.Errorf("head should read title, So What, metadata line in that order; at %d, %d, %d", title, soWhat, metaAt)
 	}
 	if title := pageElement(t, head, "h1", "goal-title"); !strings.Contains(title, "Reduce outages") {
 		t.Errorf("header title: %s", title)
 	}
+	if lead := pageElement(t, head, "p", "goal-so-what"); !strings.Contains(lead, "Outages cost trust.") {
+		t.Errorf("header So What: %s", lead)
+	}
 	meta := strings.Join(strings.Fields(pageElement(t, head, "p", "goal-meta")), " ")
+	if !strings.HasPrefix(meta, `<p data-testid="goal-meta" class="gp-meta"><span class="badge y"><span class="dot"></span>Yellow</span>`) {
+		t.Errorf("metadata line should lead with the Health badge: %s", meta)
+	}
 	for _, want := range []string{
+		`<span data-testid="goal-lifecycle">Active</span>`,
+		`<span data-testid="goal-kind">Dated</span>`,
 		`Owner <strong data-testid="goal-owner">` + shownAs("sam@example.com", "sam") + `</strong>`,
 		`Delivers <span data-testid="goal-delivery-date"><del>2026-07-02</del> <strong>2026-07-16</strong></span>`,
 		`Checks in <span data-testid="goal-cadence">every 7 days</span>`,
+		`data-testid="goal-top-level"`,
 	} {
 		if !strings.Contains(meta, want) {
-			t.Errorf("meta line lacks %s: %s", want, meta)
+			t.Errorf("metadata line lacks %s: %s", want, meta)
 		}
+	}
+	if strings.Count(meta, `class="badge`) != 1 {
+		t.Errorf("only Health is a badge on the metadata line; the rest is plain text: %s", meta)
+	}
+	if strings.Contains(head, "Growth") {
+		t.Errorf("the head shows a Dimension value; those stay in the sidebar: %s", head)
+	}
+	if !strings.Contains(pageElement(t, page, "section", "goal-dimensions"), "Growth") {
+		t.Errorf("the sidebar lost the Goal's Dimension value")
 	}
 	actions := between(t, head, `data-testid="goal-actions"`, `data-testid="goal-more"`)
 	if !strings.Contains(actions, fmt.Sprintf(`href="/goals/%d/checkin"`, goal.ID)) || !strings.Contains(actions, `class="btn primary"`) {
@@ -973,6 +985,34 @@ func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
 	}
 	if strings.Count(page, `data-testid="checkin-link"`) != 1 {
 		t.Errorf("the Check in link should appear once, in the header")
+	}
+}
+
+// A Goal that has no Health, no delivery date and isn't Top-level says only
+// what it has on its metadata line: no Health badge, no Delivers, and no
+// Top-level.
+func TestGoalPageMetaLineShowsOnlyWhatTheGoalHas(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Tidy the backlog", "Nobody can find anything.")
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	meta := strings.Join(strings.Fields(pageElement(t, pageElement(t, page, "header", "goal-head"), "p", "goal-meta")), " ")
+	for _, want := range []string{
+		`<span data-testid="goal-lifecycle">Proposed</span>`,
+		`<span data-testid="goal-kind">Not yet Dated or Ongoing</span>`,
+		`data-testid="goal-owner"`,
+		`data-testid="goal-cadence"`,
+	} {
+		if !strings.Contains(meta, want) {
+			t.Errorf("metadata line lacks %s: %s", want, meta)
+		}
+	}
+	for _, absent := range []string{`class="badge`, "Delivers", `data-testid="goal-delivery-date"`, "Top-level"} {
+		if strings.Contains(meta, absent) {
+			t.Errorf("metadata line shows %s for a Proposed, undated, non-Top-level Goal: %s", absent, meta)
+		}
 	}
 }
 
@@ -1565,7 +1605,8 @@ func disclosureScript(t *testing.T, page string) string {
 // The Goal page's So What definition and Top-level explanation each sit
 // collapsed behind a button that opens them in place on a click, tap, Enter or
 // Space, and reports whether they are open, so neither needs hover. The
-// wording is the one the hover title always carried.
+// wording is the one the hover title always carried. The So What shows no
+// heading, but assistive technology still hears it labelled "So What".
 func TestGoalPageExplainsSoWhatAndTopLevelOnActivation(t *testing.T) {
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
@@ -1574,8 +1615,8 @@ func TestGoalPageExplainsSoWhatAndTopLevelOnActivation(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, ada.Email), fmt.Sprintf("%s/goals/%d", ts.URL, g.ID))
 
 	for _, tc := range []struct{ label, control, text string }{
-		{"So What", `<h3><button type="button" class="disclose help"`, "The customer problem this Goal addresses and what is expected to change when it succeeds."},
-		{"Top-level", `<button type="button" class="badge lc disclose help" data-testid="goal-top-level"`, "One of the org's root outcomes"},
+		{"What is a So What?", `<button type="button" class="disclose help explain gp-lead-help"`, "The customer problem this Goal addresses and what is expected to change when it succeeds."},
+		{"Top-level", `<button type="button" class="disclose help" data-testid="goal-top-level"`, "One of the org's root outcomes"},
 	} {
 		at := strings.Index(page, tc.control)
 		if at < 0 {
@@ -1590,6 +1631,12 @@ func TestGoalPageExplainsSoWhatAndTopLevelOnActivation(t *testing.T) {
 		if want := `id="` + id + `" class="explain" hidden>` + html.EscapeString(tc.text) + `<`; id == "" || !strings.Contains(page, want) {
 			t.Errorf("%s button controls %q, want the collapsed explanation %s", tc.label, id, want)
 		}
+	}
+	statement := openTag(pageElement(t, page, "article", "goal"))
+	_, label, _ := strings.Cut(statement, `aria-labelledby="`)
+	label, _, _ = strings.Cut(label, `"`)
+	if want := `id="` + label + `" class="sr-only">So What<`; label == "" || !strings.Contains(page, want) {
+		t.Errorf("the So What is not labelled for assistive technology by a visually hidden %s: %s", want, statement)
 	}
 	disclosureScript(t, page)
 }

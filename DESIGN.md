@@ -245,8 +245,30 @@ Load the fonts with this URL:
   `h2`. **Sidebar exception:** a canvas block in the sidebar keeps the `h3`
   size, so the narrow column reads as one quiet list rather than a stack of
   sections. At 900px and below, the sidebar stacks under the main column, and
-  its first block takes the rule too. The Goal's So What is a statement
-  directly under the page head. It sits on the canvas with no rule.
+  its first block takes the rule too. The Goal's So What is part of the page
+  head (below). It sits on the canvas with no rule.
+- **Goal page head (`.gp-head`):** read top to bottom, it is the title (H1),
+  then the So What, then one metadata line. The warning banners (Ownerless,
+  Stale, Path to Green overdue, Incomplete) stay above it, and the actions sit
+  top right.
+  - **So What lead (`.gp-lead`):** larger body text, 18 / 1.55 in
+    `--color-ink`, at most 720px wide. No "So What" heading shows; a visually
+    hidden one (`.sr-only`) labels it for assistive technology, and a small
+    "What is a So What?" help button under it opens the definition in place.
+  - **Metadata line (`.gp-meta`):** the Health badge leads, then plain
+    `--color-ink-muted` text separated by `·`: Lifecycle, Dated or Ongoing,
+    Owner (the usual person control), the delivery date with any slipped dates
+    struck through when Dated, the Check-in cadence, and Top-level when it
+    applies. Only Health is a badge. The line wraps on narrow screens.
+    Dimension values and Fields stay in the sidebar, never the head.
+- **Status cells (`.gp-cells`):** the Goal page's Latest status card opens with
+  a row of cells, each a `.label` over its value: "Owner's Health" (a Health
+  badge), "Rolled-up Health" (a Health badge, with the Stale-children count
+  beside it) and "Back to Green by" (a date). A cell shows only when it has
+  something to say: no Rolled-up cell without Active children and no Back to
+  Green cell without a Path to Green. The cells wrap, 32px apart. The status
+  text, the Path to Green and the "why this differs" explanation follow below.
+  A Goal with no Health shows its message in place of the cells.
 - **Inputs:** `--color-surface`, 1px `--color-border-strong`, `--radius-md`,
   12px × 16px padding. On focus, the border becomes `--color-focus` and the
   field takes the same ring as everything else, `2px solid var(--color-focus)`,

@@ -310,14 +310,7 @@ templ checkinSection(v goalView) {
 				@checkinByline(*v.LatestCheckin)
 			}
 		} else if v.LatestCheckin != nil {
-			<p>
-				<span class={ "badge", healthClass(v.LatestCheckin.Health) }><span class="dot"></span><span data-testid="goal-health">{ v.LatestCheckin.Health }</span></span>
-				if v.RolledUp.Present {
-					· <strong>Rolled-up Health:</strong> <span data-testid="goal-rollup-health">{ v.RolledUp.Health }</span>
-					<span class="muted">(worst among Active children)</span>
-				}
-				@rolledUpStale(v.RolledUp)
-			</p>
+			@statusCells(v)
 			<p data-testid="goal-status">{ v.LatestCheckin.Status }</p>
 			if v.LatestCheckin.PathToGreen != "" {
 				<p data-testid="goal-path-to-green">
@@ -347,6 +340,39 @@ templ checkinSection(v goalView) {
 			}
 		}
 	</section>
+}
+
+// statusCells open the Latest status card: a row of cells, each a small label
+// over a value. The Owner's Health is always there; the Rolled-up Health, with
+// its Stale-children count, only when the Goal has Active children; and the
+// Back to Green date only when there is a Path to Green.
+templ statusCells(v goalView) {
+	{{ c := v.LatestCheckin }}
+	<dl data-testid="goal-status-cells" class="gp-cells">
+		<div data-testid="goal-health-cell" class="gp-cell">
+			<dt class="label">Owner's Health</dt>
+			<dd><span class={ "badge", healthClass(c.Health) }><span class="dot"></span><span data-testid="goal-health">{ c.Health }</span></span></dd>
+		</div>
+		if v.RolledUp.Present || v.RolledUp.StaleChildren > 0 {
+			<div data-testid="goal-rollup-cell" class="gp-cell">
+				<dt class="label">Rolled-up Health</dt>
+				<dd>
+					if v.RolledUp.Present {
+						<span class={ "badge", healthClass(v.RolledUp.Health) } title="Worst among Active children"><span class="dot"></span><span data-testid="goal-rollup-health">{ v.RolledUp.Health }</span></span>
+					} else {
+						<span class="muted">—</span>
+					}
+					@rolledUpStale(v.RolledUp)
+				</dd>
+			</div>
+		}
+		if c.PathToGreen != "" {
+			<div data-testid="goal-back-to-green-cell" class="gp-cell">
+				<dt class="label">Back to Green by</dt>
+				<dd class="num">{ fmtDate(c.PathTargetDate) }</dd>
+			</div>
+		}
+	</dl>
 }
 
 // checkinByline says who wrote a Check-in and when, and whom a Delegate wrote
@@ -591,6 +617,9 @@ var checkinStylesOnce = templ.NewOnceHandle()
 templ checkinStyles() {
 	@checkinStylesOnce.Once() {
 		<style>
+			.gp-cells{display:flex;flex-wrap:wrap;gap:12px 32px;margin:0}
+			.gp-cell{display:flex;flex-direction:column;gap:4px}
+			.gp-cell dd{margin:0;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 			.checkin-page{max-width:760px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px}
 			.checkin-page .card{padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 			.checkin-page .card form{margin:0}
