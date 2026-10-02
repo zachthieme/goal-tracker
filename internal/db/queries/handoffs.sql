@@ -46,3 +46,8 @@ UPDATE handoffs SET status = 'cancelled' WHERE to_owner = ? AND status = 'pendin
 -- name: SetAccountDeparted :exec
 -- Record that a person has left the org, so their Goals become Ownerless.
 UPDATE accounts SET departed = ? WHERE id = ?;
+
+-- name: ReopenRejectedHandoff :execrows
+-- Puts a rejected Handoff back as pending, only if it is still rejected, so an
+-- Undo succeeds once.
+UPDATE handoffs SET status = 'pending' WHERE id = ? AND status = 'rejected';

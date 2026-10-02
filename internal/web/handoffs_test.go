@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"regexp"
 	"slices"
@@ -673,4 +674,201 @@ func attr(tag, name string) string {
 		return ""
 	}
 	return m[1]
+}
+
+// rejectHandoff arranges Sam handing his Goal to Pat and Pat rejecting the
+// Handoff from the page at from ("/handoffs" or "/home"), returning the page
+// Pat lands on.
+func rejectHandoff(t *testing.T, h *testsupport.Harness, ts *httptest.Server, from string) (goal domain.Goal, ho domain.Handoff, pat *http.Client, landed string) {
+	t.Helper()
+	sam := h.SignIn("sam@example.com")
+	patAcc := h.SignIn("pat@example.com")
+	goal = h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ho, err := h.Service.StartHandoffByEmail(context.Background(), goal.ID, patAcc.Email, sam.ID)
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+	pat = signInClient(t, ts.URL, "pat@example.com")
+	form := url.Values{}
+	if from == "/home" {
+		row := homeRow(t, pageElement(t, getBody(t, pat, ts.URL+"/home"), "ul", "home-requests"), goal)
+		reject := between(t, row, fmt.Sprintf(`action="/handoffs/%d/reject"`, ho.ID), "</form>")
+		if !strings.Contains(reject, `name="from" value="home"`) {
+			t.Fatalf("Home's Reject doesn't say it came from Home:\n%s", reject)
+		}
+		form.Set("from", "home")
+	}
+	resp := postForm(t, pat, fmt.Sprintf("%s/handoffs/%d/reject", ts.URL, ho.ID), form)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reject: status %d", resp.StatusCode)
+	}
+	if resp.Request.URL.Path != from {
+		t.Errorf("reject landed on %s, want %s, where it came from", resp.Request.URL.Path, from)
+	}
+	return goal, ho, pat, readBody(t, resp)
+}
+
+// toastFields are the hidden inputs a page's toast posts with its Undo.
+func toastFields(t *testing.T, page string) url.Values {
+	t.Helper()
+	fields := url.Values{}
+	toast := pageElement(t, page, "aside", "toast")
+	for _, m := range regexp.MustCompile(`name="([^"]+)" value="([^"]*)"`).FindAllStringSubmatch(toast, -1) {
+		fields.Set(m[1], m[2])
+	}
+	return fields
+}
+
+// After rejecting a Handoff, from the pending page or from Home, the page
+// shown next carries a toast saying so with an Undo button, a plain form post;
+// the toast isn't shown on a later visit, and Undo returns to the same page
+// with the Handoff pending again, shown so in the Goal's ownership history.
+func TestRejectingAHandoffOffersUndoOnce(t *testing.T) {
+	for _, from := range []string{"/handoffs", "/home"} {
+		t.Run(from, func(t *testing.T) {
+			h := testsupport.New(t)
+			ts := newServer(t, h)
+			goal, ho, pat, landed := rejectHandoff(t, h, ts, from)
+
+			toast := pageElement(t, landed, "aside", "toast")
+			for _, want := range []string{"Reduce outages", "sam", `method="post"`, "Undo"} {
+				if !strings.Contains(toast, want) {
+					t.Errorf("toast missing %q:\n%s", want, toast)
+				}
+			}
+			if strings.Contains(toast, "<script") {
+				t.Errorf("toast uses script:\n%s", toast)
+			}
+			action := undoAction(t, landed)
+
+			if later := getBody(t, pat, ts.URL+from); strings.Contains(later, `data-testid="toast"`) {
+				t.Errorf("toast shown again on a later visit:\n%s", later)
+			}
+
+			resp := postForm(t, pat, ts.URL+action, toastFields(t, landed))
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("undo: status %d", resp.StatusCode)
+			}
+			if resp.Request.URL.Path != from {
+				t.Errorf("undo landed on %s, want %s", resp.Request.URL.Path, from)
+			}
+			if page := readBody(t, resp); !strings.Contains(page, navTo(goal.ID)) {
+				t.Errorf("the page doesn't list the restored Handoff:\n%s", page)
+			}
+			history, _ := h.Service.OwnershipHistory(context.Background(), goal.ID)
+			if len(history) != 1 || history[0].ID != ho.ID || history[0].Status != domain.HandoffPending {
+				t.Errorf("history = %+v, want the one Handoff, pending", history)
+			}
+		})
+	}
+}
+
+// Undo for a rejected Handoff is refused for anyone but its rejecter, and
+// refused a second time; a crafted Undo of a Handoff that was never rejected
+// is refused too, and none of them changes the Handoff.
+func TestUndoingAHandoffRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	goal, _, pat, landed := rejectHandoff(t, h, ts, "/handoffs")
+	action := undoAction(t, landed)
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	status := func() string {
+		history, err := h.Service.OwnershipHistory(context.Background(), goal.ID)
+		if err != nil || len(history) != 1 {
+			t.Fatalf("OwnershipHistory = %+v, %v; want the one Handoff", history, err)
+		}
+		return history[0].Status
+	}
+
+	resp := postForm(t, sam, ts.URL+action, url.Values{})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("Undo by the Owner: status %d, want 403", resp.StatusCode)
+	}
+	if got := status(); got != domain.HandoffRejected {
+		t.Fatalf("status = %q after a refused Undo, want rejected", got)
+	}
+
+	other := h.CreateGoal(h.SignIn("sam@example.com"), "Migrate displays", "Displays fail often.")
+	pending, err := h.Service.StartHandoffByEmail(context.Background(), other.ID, "pat@example.com", h.SignIn("sam@example.com").ID)
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+	resp = postForm(t, pat, fmt.Sprintf("%s/handoffs/%d/restore", ts.URL, pending.ID), url.Values{})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "isn't rejected") {
+		t.Errorf("Undo of a Handoff never rejected: status %d %q, want 422 saying it isn't rejected", resp.StatusCode, body)
+	}
+	resp = postForm(t, pat, ts.URL+"/handoffs/4242/restore", url.Values{})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("Undo of no Handoff: status %d, want 404", resp.StatusCode)
+	}
+
+	if resp := postForm(t, pat, ts.URL+action, url.Values{}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("Undo by the rejecter: status %d", resp.StatusCode)
+	}
+	resp = postForm(t, pat, ts.URL+action, url.Values{})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "isn't rejected") {
+		t.Errorf("second Undo: status %d %q, want 422", resp.StatusCode, body)
+	}
+	if got := status(); got != domain.HandoffPending {
+		t.Errorf("status = %q, want pending after the one Undo", got)
+	}
+}
+
+// Undo is refused with a message, changing nothing, once the Goal has another
+// pending Handoff, its Owner has changed, or the proposed Owner has Departed.
+func TestUndoingAHandoffRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		since func(t *testing.T, h *testsupport.Harness, goal domain.Goal)
+		says  string
+	}{
+		{"another pending", func(t *testing.T, h *testsupport.Harness, goal domain.Goal) {
+			h.SignIn("mel@example.com")
+			if _, err := h.Service.StartHandoffByEmail(context.Background(), goal.ID, "mel@example.com", goal.Owner.ID); err != nil {
+				t.Fatalf("StartHandoff: %v", err)
+			}
+		}, "another Handoff"},
+		{"Owner changed", func(t *testing.T, h *testsupport.Harness, goal domain.Goal) {
+			mel := h.SignIn("mel@example.com")
+			ho, err := h.Service.StartHandoffByEmail(context.Background(), goal.ID, mel.Email, goal.Owner.ID)
+			if err != nil {
+				t.Fatalf("StartHandoff: %v", err)
+			}
+			if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, mel.ID, nil); err != nil {
+				t.Fatalf("AcceptHandoff: %v", err)
+			}
+		}, "changed hands"},
+		{"proposed Owner Departed", func(t *testing.T, h *testsupport.Harness, goal domain.Goal) {
+			boss := h.SignIn("boss@example.com")
+			if err := h.Service.MarkDeparted(context.Background(), boss.ID, h.SignIn("pat@example.com").ID); err != nil {
+				t.Fatalf("MarkDeparted: %v", err)
+			}
+		}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t, "boss@example.com")
+			ts := newServer(t, h)
+			goal, ho, pat, landed := rejectHandoff(t, h, ts, "/handoffs")
+			action := undoAction(t, landed)
+			tc.since(t, h, goal)
+
+			resp := postForm(t, pat, ts.URL+action, url.Values{})
+			body := readBody(t, resp)
+			if tc.says == "" {
+				// A Departed person's session ends with their departure, so
+				// their Undo is sent to sign in; the domain refuses it too.
+				if resp.Request.URL.Path != "/signin" {
+					t.Errorf("Undo by a Departed person landed on %s, want /signin", resp.Request.URL.Path)
+				}
+			} else if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, tc.says) {
+				t.Errorf("Undo: status %d %q, want 422 saying %q", resp.StatusCode, body, tc.says)
+			}
+			history, _ := h.Service.OwnershipHistory(context.Background(), goal.ID)
+			if history[0].ID != ho.ID || history[0].Status != domain.HandoffRejected {
+				t.Errorf("history = %+v, want the Handoff still rejected", history)
+			}
+		})
+	}
 }

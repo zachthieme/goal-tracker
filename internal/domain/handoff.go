@@ -205,7 +205,8 @@ func (s *Service) AcceptHandoff(ctx context.Context, handoffID, actorID int64, k
 }
 
 // RejectHandoff declines a pending Handoff, keeping it with the outcome
-// rejected; ownership stays put. Only the proposed new Owner may reject it.
+// rejected; ownership stays put. Only the proposed new Owner may reject it, and
+// they may Undo it (RestoreHandoff).
 func (s *Service) RejectHandoff(ctx context.Context, handoffID, actorID int64) error {
 	row, err := s.getPendingHandoff(ctx, handoffID)
 	if err != nil {
@@ -221,6 +222,76 @@ func (s *Service) RejectHandoff(ctx context.Context, handoffID, actorID int64) e
 		return fmt.Errorf("reject handoff: %w", err)
 	}
 	return nil
+}
+
+// RestoreHandoff undoes rejecting a Handoff, putting it back as pending with
+// the same proposed Owner, so the Goal's ownership history shows it pending
+// rather than a rejection followed by something else. Only the person who
+// rejected it, its proposed new Owner, may, and only while it is rejected: once
+// undone it is pending, so a second Undo is refused. It is refused, changing
+// nothing, when the Goal has another pending Handoff, its Owner has changed, or
+// the proposed Owner has since Departed. Rejecting tells no one, so neither
+// does the Undo.
+func (s *Service) RestoreHandoff(ctx context.Context, handoffID, actorID int64) (Handoff, error) {
+	row, err := s.queries.GetHandoff(ctx, handoffID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Handoff{}, fmt.Errorf("%w: handoff %d", ErrNotFound, handoffID)
+		}
+		return Handoff{}, fmt.Errorf("look up handoff: %w", err)
+	}
+	if row.ToOwner != actorID {
+		return Handoff{}, fmt.Errorf("%w: only the person who rejected a Handoff may undo it", ErrNotAuthorized)
+	}
+	notRejected := fmt.Errorf("%w: this Handoff isn't rejected, so there is nothing to undo", ErrValidation)
+	if row.Status != HandoffRejected {
+		return Handoff{}, notRejected
+	}
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		if _, err := tx.queries.GetPendingHandoffForGoal(ctx, row.GoalID); err == nil {
+			return fmt.Errorf("%w: another Handoff of this Goal is pending", ErrValidation)
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("look up pending handoff: %w", err)
+		}
+		goal, err := tx.queries.GetGoal(ctx, row.GoalID)
+		if err != nil {
+			return fmt.Errorf("look up goal: %w", err)
+		}
+		if goal.Goal.OwnerID != row.FromOwner {
+			return fmt.Errorf("%w: the Goal has changed hands since this Handoff was rejected", ErrValidation)
+		}
+		to, err := tx.queries.GetAccount(ctx, row.ToOwner)
+		if err != nil {
+			return fmt.Errorf("look up new owner: %w", err)
+		}
+		if to.Departed != 0 {
+			return fmt.Errorf("%w: the new Owner has left the org", ErrValidation)
+		}
+		n, err := tx.queries.ReopenRejectedHandoff(ctx, handoffID)
+		if err != nil {
+			return fmt.Errorf("restore handoff: %w", err)
+		}
+		if n == 0 {
+			return notRejected
+		}
+		return nil
+	})
+	if err != nil {
+		return Handoff{}, err
+	}
+	return s.loadHandoff(ctx, handoffID)
+}
+
+// Handoff returns a Handoff with its Goal, both Owners, and its initiator
+// resolved, so a page can say what was decided and offer its Undo.
+func (s *Service) Handoff(ctx context.Context, handoffID int64) (Handoff, error) {
+	if _, err := s.queries.GetHandoff(ctx, handoffID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Handoff{}, fmt.Errorf("%w: handoff %d", ErrNotFound, handoffID)
+		}
+		return Handoff{}, fmt.Errorf("look up handoff: %w", err)
+	}
+	return s.loadHandoff(ctx, handoffID)
 }
 
 // PendingHandoffs returns the Handoffs awaiting a decision from toOwnerID, the

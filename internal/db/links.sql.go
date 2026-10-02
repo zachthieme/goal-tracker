@@ -9,6 +9,26 @@ import (
 	"context"
 )
 
+const countLaterRejectedLinkRequests = `-- name: CountLaterRejectedLinkRequests :one
+SELECT COUNT(*) FROM rejected_link_requests
+WHERE child_id = ?1 AND parent_id = ?2 AND id > ?3
+`
+
+type CountLaterRejectedLinkRequestsParams struct {
+	ChildID  int64
+	ParentID int64
+	ID       int64
+}
+
+// How many requests between the same two Goals were rejected after this one:
+// any means the link was requested again since.
+func (q *Queries) CountLaterRejectedLinkRequests(ctx context.Context, arg CountLaterRejectedLinkRequestsParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, countLaterRejectedLinkRequests, arg.ChildID, arg.ParentID, arg.ID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createLink = `-- name: CreateLink :one
 INSERT INTO links (child_id, parent_id, status, note, requested_by, created_at)
 VALUES (?, ?, ?, ?, ?, ?)
@@ -88,6 +108,48 @@ func (q *Queries) CreateLinkRemoval(ctx context.Context, arg CreateLinkRemovalPa
 	return i, err
 }
 
+const createRejectedLinkRequest = `-- name: CreateRejectedLinkRequest :one
+INSERT INTO rejected_link_requests (child_id, parent_id, note, requested_by, request_created_at, rejected_by, rejected_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id, child_id, parent_id, note, requested_by, request_created_at, rejected_by, rejected_at, restored_at
+`
+
+type CreateRejectedLinkRequestParams struct {
+	ChildID          int64
+	ParentID         int64
+	Note             string
+	RequestedBy      int64
+	RequestCreatedAt string
+	RejectedBy       int64
+	RejectedAt       string
+}
+
+// Records a pending request as it was when rejected, so its rejecter can Undo it.
+func (q *Queries) CreateRejectedLinkRequest(ctx context.Context, arg CreateRejectedLinkRequestParams) (RejectedLinkRequest, error) {
+	row := q.db.QueryRowContext(ctx, createRejectedLinkRequest,
+		arg.ChildID,
+		arg.ParentID,
+		arg.Note,
+		arg.RequestedBy,
+		arg.RequestCreatedAt,
+		arg.RejectedBy,
+		arg.RejectedAt,
+	)
+	var i RejectedLinkRequest
+	err := row.Scan(
+		&i.ID,
+		&i.ChildID,
+		&i.ParentID,
+		&i.Note,
+		&i.RequestedBy,
+		&i.RequestCreatedAt,
+		&i.RejectedBy,
+		&i.RejectedAt,
+		&i.RestoredAt,
+	)
+	return i, err
+}
+
 const deleteLink = `-- name: DeleteLink :exec
 DELETE FROM links WHERE id = ?
 `
@@ -161,6 +223,27 @@ func (q *Queries) GetLinkRemoval(ctx context.Context, id int64) (LinkRemoval, er
 	return i, err
 }
 
+const getRejectedLinkRequest = `-- name: GetRejectedLinkRequest :one
+SELECT id, child_id, parent_id, note, requested_by, request_created_at, rejected_by, rejected_at, restored_at FROM rejected_link_requests WHERE id = ? LIMIT 1
+`
+
+func (q *Queries) GetRejectedLinkRequest(ctx context.Context, id int64) (RejectedLinkRequest, error) {
+	row := q.db.QueryRowContext(ctx, getRejectedLinkRequest, id)
+	var i RejectedLinkRequest
+	err := row.Scan(
+		&i.ID,
+		&i.ChildID,
+		&i.ParentID,
+		&i.Note,
+		&i.RequestedBy,
+		&i.RequestCreatedAt,
+		&i.RejectedBy,
+		&i.RejectedAt,
+		&i.RestoredAt,
+	)
+	return i, err
+}
+
 const listChildGoals = `-- name: ListChildGoals :many
 SELECT links.id AS link_id, goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
 FROM links
@@ -210,6 +293,39 @@ func (q *Queries) ListChildGoals(ctx context.Context, parentID int64) ([]ListChi
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listLinkRemovalTimes = `-- name: ListLinkRemovalTimes :many
+SELECT removed_at FROM link_removals WHERE child_id = ? AND parent_id = ?
+`
+
+type ListLinkRemovalTimesParams struct {
+	ChildID  int64
+	ParentID int64
+}
+
+// When each removal of the link between two Goals happened.
+func (q *Queries) ListLinkRemovalTimes(ctx context.Context, arg ListLinkRemovalTimesParams) ([]string, error) {
+	rows, err := q.db.QueryContext(ctx, listLinkRemovalTimes, arg.ChildID, arg.ParentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var removed_at string
+		if err := rows.Scan(&removed_at); err != nil {
+			return nil, err
+		}
+		items = append(items, removed_at)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -377,6 +493,24 @@ type MarkLinkRemovalRestoredParams struct {
 // Marks a removal undone, only if it isn't already, so an Undo succeeds once.
 func (q *Queries) MarkLinkRemovalRestored(ctx context.Context, arg MarkLinkRemovalRestoredParams) (int64, error) {
 	result, err := q.db.ExecContext(ctx, markLinkRemovalRestored, arg.RestoredAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+const markRejectedLinkRequestRestored = `-- name: MarkRejectedLinkRequestRestored :execrows
+UPDATE rejected_link_requests SET restored_at = ? WHERE id = ? AND restored_at IS NULL
+`
+
+type MarkRejectedLinkRequestRestoredParams struct {
+	RestoredAt *string
+	ID         int64
+}
+
+// Marks a rejection undone, only if it isn't already, so an Undo succeeds once.
+func (q *Queries) MarkRejectedLinkRequestRestored(ctx context.Context, arg MarkRejectedLinkRequestRestoredParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markRejectedLinkRequestRestored, arg.RestoredAt, arg.ID)
 	if err != nil {
 		return 0, err
 	}

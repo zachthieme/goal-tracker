@@ -84,6 +84,7 @@ templ homePage(current *domain.Account, v homeView) {
 				}
 			</aside>
 		</div>
+		@toastNotice(v.Toast)
 	}
 }
 
@@ -168,7 +169,7 @@ templ handoffRequestRow(ho domain.Handoff) {
 }
 
 // acceptReject is the pair of buttons deciding a pending request at base. Reject
-// sends at once: the requester can simply ask again.
+// sends at once; the page then offers Undo in a toast.
 templ acceptReject(base string) {
 	<form method="post" action={ templ.SafeURL(base + "/accept") } class="inline-form">
 		<button type="submit" class="btn primary sm">Accept</button>
@@ -179,8 +180,8 @@ templ acceptReject(base string) {
 }
 
 // rejectAccept is Home's pair of buttons deciding a pending request at base:
-// Reject as a text button, then Accept outlined. Reject sends at once: the
-// requester can simply ask again.
+// Reject as a text button, then Accept outlined. Reject sends at once; Home
+// then offers Undo in a toast.
 templ rejectAccept(base string) {
 	@rejectButton(base)
 	<form method="post" action={ templ.SafeURL(base + "/accept") } class="inline-form">
@@ -188,9 +189,10 @@ templ rejectAccept(base string) {
 	</form>
 }
 
-// rejectButton rejects the pending request at base at once.
+// rejectButton rejects the pending request at base at once, returning to Home.
 templ rejectButton(base string) {
 	<form method="post" action={ templ.SafeURL(base + "/reject") } class="inline-form">
+		<input type="hidden" name="from" value={ fromHome }/>
 		<button type="submit" class="btn quiet sm">Reject</button>
 	</form>
 }

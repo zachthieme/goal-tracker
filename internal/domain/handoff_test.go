@@ -650,3 +650,153 @@ func TestAcceptStaleHandoffIsRefused(t *testing.T) {
 		t.Errorf("pending after a refused accept = %+v, want the Handoff still pending", pending)
 	}
 }
+
+// rejectedHandoff is Sam's Goal with a Handoff to Pat that Pat rejected.
+func rejectedHandoff(t *testing.T, h *testsupport.Harness) (sam, pat domain.Account, goal domain.Goal, ho domain.Handoff) {
+	t.Helper()
+	sam = h.SignIn("sam@example.com")
+	pat = h.SignIn("pat@example.com")
+	goal = h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ho = startHandoff(t, h, goal.ID, pat.ID, sam.ID)
+	if err := h.Service.RejectHandoff(context.Background(), ho.ID, pat.ID); err != nil {
+		t.Fatalf("RejectHandoff: %v", err)
+	}
+	return sam, pat, goal, ho
+}
+
+// Undoing a rejection puts the Handoff back as pending with the same proposed
+// Owner, and the Goal's ownership history shows it pending, not as a rejection
+// followed by something else.
+func TestRestoreHandoffPutsTheRejectedHandoffBackAsPending(t *testing.T) {
+	h := testsupport.New(t)
+	sam, pat, goal, ho := rejectedHandoff(t, h)
+	ctx := context.Background()
+
+	restored, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID)
+	if err != nil {
+		t.Fatalf("RestoreHandoff: %v", err)
+	}
+	if restored.ID != ho.ID || restored.Status != domain.HandoffPending || restored.To.ID != pat.ID {
+		t.Errorf("restored = %+v, want Handoff %d pending to Pat", restored, ho.ID)
+	}
+	if pending, _ := h.Service.PendingHandoffs(ctx, pat.ID); len(pending) != 1 || pending[0].ID != ho.ID {
+		t.Errorf("pending = %+v, want the restored Handoff", pending)
+	}
+	history, err := h.Service.OwnershipHistory(ctx, goal.ID)
+	if err != nil {
+		t.Fatalf("OwnershipHistory: %v", err)
+	}
+	if len(history) != 1 || history[0].Status != domain.HandoffPending || history[0].From.ID != sam.ID {
+		t.Errorf("history = %+v, want just the one Handoff, pending", history)
+	}
+}
+
+// Only the person who rejected a Handoff may undo it: the Owner who started it
+// may not.
+func TestRestoreHandoffRefusesAnyoneButTheRejecter(t *testing.T) {
+	h := testsupport.New(t)
+	sam, pat, _, ho := rejectedHandoff(t, h)
+	ctx := context.Background()
+
+	if _, err := h.Service.RestoreHandoff(ctx, ho.ID, sam.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("RestoreHandoff by the Owner: err = %v, want ErrNotAuthorized", err)
+	}
+	if pending, _ := h.Service.PendingHandoffs(ctx, pat.ID); len(pending) != 0 {
+		t.Errorf("pending = %+v, want none after a refused Undo", pending)
+	}
+}
+
+// A rejection is undone once: a second Undo is refused and changes nothing.
+func TestRestoreHandoffRefusesASecondUndo(t *testing.T) {
+	h := testsupport.New(t)
+	_, pat, goal, ho := rejectedHandoff(t, h)
+	ctx := context.Background()
+
+	if _, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID); err != nil {
+		t.Fatalf("first RestoreHandoff: %v", err)
+	}
+	if _, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("second RestoreHandoff: err = %v, want ErrValidation", err)
+	}
+	if history, _ := h.Service.OwnershipHistory(ctx, goal.ID); len(history) != 1 || history[0].Status != domain.HandoffPending {
+		t.Errorf("history = %+v, want the one Handoff, pending", history)
+	}
+}
+
+// Undo works only for a Handoff that was rejected: one still pending, one
+// accepted, or an id that names none is refused and changes nothing.
+func TestRestoreHandoffRefusesAHandoffThatWasNeverRejected(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	pending := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	accepted := h.CreateGoal(sam, "Migrate displays", "Old displays fail often.")
+	stillPending := startHandoff(t, h, pending.ID, pat.ID, sam.ID)
+	taken := startHandoff(t, h, accepted.ID, pat.ID, sam.ID)
+	ctx := context.Background()
+	if _, err := h.Service.AcceptHandoff(ctx, taken.ID, pat.ID, nil); err != nil {
+		t.Fatalf("AcceptHandoff: %v", err)
+	}
+
+	if _, err := h.Service.RestoreHandoff(ctx, stillPending.ID, pat.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("RestoreHandoff of a pending Handoff: err = %v, want ErrValidation", err)
+	}
+	if _, err := h.Service.RestoreHandoff(ctx, taken.ID, pat.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("RestoreHandoff of an accepted Handoff: err = %v, want ErrValidation", err)
+	}
+	if _, err := h.Service.RestoreHandoff(ctx, 4242, pat.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("RestoreHandoff of no Handoff: err = %v, want ErrNotFound", err)
+	}
+	if history, _ := h.Service.OwnershipHistory(ctx, accepted.ID); len(history) != 1 || history[0].Status != domain.HandoffAccepted {
+		t.Errorf("history = %+v, want the one accepted Handoff", history)
+	}
+	if g, _ := h.Service.ViewGoal(ctx, accepted.ID); g.Owner.ID != pat.ID {
+		t.Errorf("Owner = %d, want Pat (%d) still", g.Owner.ID, pat.ID)
+	}
+}
+
+// Undo is refused, changing nothing, when it no longer fits: the Goal has
+// another pending Handoff, its Owner has changed, or the proposed Owner has
+// since Departed.
+func TestRestoreHandoffRefusesWhenItNoLongerFits(t *testing.T) {
+	cases := map[string]func(t *testing.T, h *testsupport.Harness, sam, pat domain.Account, goal domain.Goal){
+		"another pending": func(t *testing.T, h *testsupport.Harness, sam, pat domain.Account, goal domain.Goal) {
+			mel := h.SignIn("mel@example.com")
+			startHandoff(t, h, goal.ID, mel.ID, sam.ID)
+		},
+		"Owner changed": func(t *testing.T, h *testsupport.Harness, sam, pat domain.Account, goal domain.Goal) {
+			mel := h.SignIn("mel@example.com")
+			ho := startHandoff(t, h, goal.ID, mel.ID, sam.ID)
+			if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, mel.ID, nil); err != nil {
+				t.Fatalf("AcceptHandoff: %v", err)
+			}
+		},
+		"proposed Owner Departed": func(t *testing.T, h *testsupport.Harness, sam, pat domain.Account, goal domain.Goal) {
+			boss := h.SignIn("boss@example.com")
+			if err := h.Service.MarkDeparted(context.Background(), boss.ID, pat.ID); err != nil {
+				t.Fatalf("MarkDeparted: %v", err)
+			}
+		},
+	}
+	for name, since := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := testsupport.New(t, "boss@example.com")
+			sam, pat, goal, ho := rejectedHandoff(t, h)
+			ctx := context.Background()
+			since(t, h, sam, pat, goal)
+			before, _ := h.Service.OwnershipHistory(ctx, goal.ID)
+			owner, _ := h.Service.ViewGoal(ctx, goal.ID)
+
+			if _, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID); !errors.Is(err, domain.ErrValidation) {
+				t.Errorf("RestoreHandoff: err = %v, want ErrValidation", err)
+			}
+			after, _ := h.Service.OwnershipHistory(ctx, goal.ID)
+			if !slices.EqualFunc(before, after, func(a, b domain.Handoff) bool { return a.ID == b.ID && a.Status == b.Status }) {
+				t.Errorf("history = %+v, want unchanged %+v", after, before)
+			}
+			if g, _ := h.Service.ViewGoal(ctx, goal.ID); g.Owner.ID != owner.Owner.ID {
+				t.Errorf("Owner = %d, want unchanged %d", g.Owner.ID, owner.Owner.ID)
+			}
+		})
+	}
+}

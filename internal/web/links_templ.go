@@ -16,8 +16,9 @@ import (
 
 // pendingLinksPage lists the link requests awaiting the current Account's
 // decision as the Owner of each request's parent Goal, a card each with accept
-// and reject actions.
-func pendingLinksPage(current *domain.Account, pending []domain.Link) templ.Component {
+// and reject actions. toast, when set, offers Undo for the request just
+// rejected.
+func pendingLinksPage(current *domain.Account, pending []domain.Link, toast *toast) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -72,7 +73,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link) templ.Comp
 				var templ_7745c5c3_Var3 templ.SafeURL
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 29, Col: 68}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 30, Col: 68}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -85,7 +86,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link) templ.Comp
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(l.Child.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 29, Col: 86}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 30, Col: 86}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
@@ -98,7 +99,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link) templ.Comp
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs("(Owner ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 31, Col: 19}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 32, Col: 19}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 				if templ_7745c5c3_Err != nil {
@@ -111,7 +112,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link) templ.Comp
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(") wants to contribute to")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 33, Col: 36}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 34, Col: 36}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
@@ -124,7 +125,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link) templ.Comp
 				var templ_7745c5c3_Var7 templ.SafeURL
 				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 35, Col: 69}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 36, Col: 69}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 				if templ_7745c5c3_Err != nil {
@@ -137,7 +138,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link) templ.Comp
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(l.Parent.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 35, Col: 88}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 36, Col: 88}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -155,7 +156,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link) templ.Comp
 					var templ_7745c5c3_Var9 string
 					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(l.Note)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 38, Col: 75}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/links.templ`, Line: 39, Col: 75}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 					if templ_7745c5c3_Err != nil {
@@ -180,6 +181,10 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link) templ.Comp
 				}
 			}
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</ul>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = toastNotice(toast).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

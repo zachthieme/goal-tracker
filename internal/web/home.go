@@ -21,6 +21,11 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request, current doma
 		http.Error(w, "could not load your week", http.StatusInternalServerError)
 		return
 	}
+	offer := takeUndo(w, r)
+	v.Toast = cmp.Or(
+		s.linkRejectionToast(r.Context(), offer, current, fromHome),
+		s.handoffRejectionToast(r.Context(), offer, current, fromHome),
+	)
 	render(w, r, http.StatusOK, homePage(&current, v))
 }
 
@@ -40,6 +45,31 @@ type homeView struct {
 	AtRisk             []domain.PersonalGoal
 	// Delegated counts the Goals the person is a Delegate on.
 	Delegated int
+	// Toast, when set, offers Undo for the request just rejected from Home.
+	Toast *toast
+}
+
+// fromHome is the from a request's Reject and its Undo post when they come
+// from Home, so each returns there rather than to the request's pending page.
+const fromHome = "home"
+
+// requestPage is the page to return to after deciding a request: Home when
+// from says the decision came from there, the request's pending page
+// otherwise.
+func requestPage(from, pending string) string {
+	if from == fromHome {
+		return "/home"
+	}
+	return pending
+}
+
+// fromField is the hidden input that has an Undo return to the page from
+// names, or none for the request's pending page.
+func fromField(from string) []toastField {
+	if from == "" {
+		return nil
+	}
+	return []toastField{{Name: "from", Value: from}}
 }
 
 // NeedsYou counts what's waiting on the person: the Goals to check in on, and

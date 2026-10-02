@@ -235,6 +235,20 @@ func (q *Queries) ListPendingHandoffsForNewOwner(ctx context.Context, toOwner in
 	return items, nil
 }
 
+const reopenRejectedHandoff = `-- name: ReopenRejectedHandoff :execrows
+UPDATE handoffs SET status = 'pending' WHERE id = ? AND status = 'rejected'
+`
+
+// Puts a rejected Handoff back as pending, only if it is still rejected, so an
+// Undo succeeds once.
+func (q *Queries) ReopenRejectedHandoff(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.ExecContext(ctx, reopenRejectedHandoff, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
 const setAccountDeparted = `-- name: SetAccountDeparted :exec
 UPDATE accounts SET departed = ? WHERE id = ?
 `

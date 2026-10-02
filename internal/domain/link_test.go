@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -141,7 +142,7 @@ func TestRejectLinkRemovesTheRequest(t *testing.T) {
 	child := h.CreateGoal(sam, "Migrate displays", "Old displays fail often.")
 	link := h.RequestLink(sam, child, parent, "")
 
-	if err := h.Service.RejectLink(context.Background(), link.ID, pat.ID); err != nil {
+	if _, err := h.Service.RejectLink(context.Background(), link.ID, pat.ID); err != nil {
 		t.Fatalf("RejectLink: %v", err)
 	}
 	if got, _ := h.Service.PendingLinkRequests(context.Background(), pat.ID); len(got) != 0 {
@@ -507,5 +508,214 @@ func TestRestoreLinkRefusesARemoverWhoNoLongerOwnsEitherGoal(t *testing.T) {
 	}
 	if _, err := h.Service.RestoreLink(ctx, removal.ID, sam.ID); !errors.Is(err, domain.ErrNotAuthorized) {
 		t.Errorf("RestoreLink by a former Owner: err = %v, want ErrNotAuthorized", err)
+	}
+}
+
+// pendingAcrossOwners is a pending request from Sam's child Goal to Pat's
+// parent Goal, with a note.
+func pendingAcrossOwners(t *testing.T, h *testsupport.Harness) (pat, sam domain.Account, child, parent domain.Goal, link domain.Link) {
+	t.Helper()
+	pat = h.SignIn("pat@example.com")
+	sam = h.SignIn("sam@example.com")
+	parent = h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	child = h.CreateGoal(sam, "Migrate displays", "Old displays fail often.")
+	link = h.RequestLink(sam, child, parent, "displays cause outages")
+	return pat, sam, child, parent, link
+}
+
+// Undoing a rejection puts the request back as pending between the same two
+// Goals, with its original note and requester, for the parent's Owner to
+// decide again.
+func TestRestoreLinkRequestPutsTheRejectedRequestBackAsPending(t *testing.T) {
+	h := testsupport.New(t)
+	pat, sam, child, parent, link := pendingAcrossOwners(t, h)
+	ctx := context.Background()
+
+	rejection, err := h.Service.RejectLink(ctx, link.ID, pat.ID)
+	if err != nil {
+		t.Fatalf("RejectLink: %v", err)
+	}
+	restored, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID)
+	if err != nil {
+		t.Fatalf("RestoreLinkRequest: %v", err)
+	}
+	if restored.Status != domain.LinkPending || restored.Child.ID != child.ID || restored.Parent.ID != parent.ID {
+		t.Errorf("restored = %+v, want pending %d -> %d", restored, child.ID, parent.ID)
+	}
+	pending, _ := h.Service.PendingLinkRequests(ctx, pat.ID)
+	if len(pending) != 1 || pending[0].Note != "displays cause outages" || pending[0].Child.Owner.ID != sam.ID {
+		t.Errorf("pending = %+v, want Sam's request with its original note", pending)
+	}
+	if !pending[0].CreatedAt.Equal(link.CreatedAt) {
+		t.Errorf("pending made at %v, want the original %v", pending[0].CreatedAt, link.CreatedAt)
+	}
+	if got := h.ParentsOf(child); len(got) != 0 {
+		t.Errorf("ParentsOf(child) = %+v, want none: the request is only pending", got)
+	}
+}
+
+// Only the person who rejected a request may undo it: the requester may not.
+func TestRestoreLinkRequestRefusesAnyoneButTheRejecter(t *testing.T) {
+	h := testsupport.New(t)
+	pat, sam, _, _, link := pendingAcrossOwners(t, h)
+	ctx := context.Background()
+
+	rejection, err := h.Service.RejectLink(ctx, link.ID, pat.ID)
+	if err != nil {
+		t.Fatalf("RejectLink: %v", err)
+	}
+	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, sam.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("RestoreLinkRequest by the requester: err = %v, want ErrNotAuthorized", err)
+	}
+	if got, _ := h.Service.PendingLinkRequests(ctx, pat.ID); len(got) != 0 {
+		t.Errorf("pending = %+v, want none after a refused Undo", got)
+	}
+}
+
+// A rejection is undone once: after rejecting the restored request again, the
+// first Undo is spent and brings nothing back.
+func TestRestoreLinkRequestRefusesASecondUndo(t *testing.T) {
+	h := testsupport.New(t)
+	pat, _, _, _, link := pendingAcrossOwners(t, h)
+	ctx := context.Background()
+
+	rejection, err := h.Service.RejectLink(ctx, link.ID, pat.ID)
+	if err != nil {
+		t.Fatalf("RejectLink: %v", err)
+	}
+	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID); err != nil {
+		t.Fatalf("first RestoreLinkRequest: %v", err)
+	}
+	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("second RestoreLinkRequest while pending: err = %v, want ErrValidation", err)
+	}
+	pending, _ := h.Service.PendingLinkRequests(ctx, pat.ID)
+	if len(pending) != 1 {
+		t.Fatalf("pending = %+v, want just the one restored request", pending)
+	}
+	if _, err := h.Service.RejectLink(ctx, pending[0].ID, pat.ID); err != nil {
+		t.Fatalf("second RejectLink: %v", err)
+	}
+	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("replayed RestoreLinkRequest: err = %v, want ErrValidation", err)
+	}
+	if got, _ := h.Service.PendingLinkRequests(ctx, pat.ID); len(got) != 0 {
+		t.Errorf("pending = %+v, want none after a spent Undo", got)
+	}
+}
+
+// Undo works only against a recorded rejection: an id that names none is
+// refused and creates no request.
+func TestRestoreLinkRequestRefusesARejectionThatNeverHappened(t *testing.T) {
+	h := testsupport.New(t)
+	pat, _, _, _, _ := pendingAcrossOwners(t, h)
+	ctx := context.Background()
+
+	if _, err := h.Service.RestoreLinkRequest(ctx, 4242, pat.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("RestoreLinkRequest of no rejection: err = %v, want ErrNotFound", err)
+	}
+	if got, _ := h.Service.PendingLinkRequests(ctx, pat.ID); len(got) != 1 {
+		t.Errorf("pending = %+v, want just the untouched request", got)
+	}
+}
+
+// When the same link has been requested or accepted again since the rejection,
+// Undo is refused and changes nothing: whether the new request is still
+// pending, was accepted, was rejected in turn, or was accepted and removed.
+func TestRestoreLinkRequestRefusesWhenTheLinkWasRequestedAgain(t *testing.T) {
+	cases := map[string]func(t *testing.T, h *testsupport.Harness, pat, sam domain.Account, child, parent domain.Goal){
+		"pending again": func(t *testing.T, h *testsupport.Harness, pat, sam domain.Account, child, parent domain.Goal) {
+			h.RequestLink(sam, child, parent, "please")
+		},
+		"accepted again": func(t *testing.T, h *testsupport.Harness, pat, sam domain.Account, child, parent domain.Goal) {
+			again := h.RequestLink(sam, child, parent, "please")
+			if _, err := h.Service.AcceptLink(context.Background(), again.ID, pat.ID); err != nil {
+				t.Fatalf("AcceptLink: %v", err)
+			}
+		},
+		"rejected again": func(t *testing.T, h *testsupport.Harness, pat, sam domain.Account, child, parent domain.Goal) {
+			again := h.RequestLink(sam, child, parent, "please")
+			if _, err := h.Service.RejectLink(context.Background(), again.ID, pat.ID); err != nil {
+				t.Fatalf("RejectLink: %v", err)
+			}
+		},
+		"accepted then removed": func(t *testing.T, h *testsupport.Harness, pat, sam domain.Account, child, parent domain.Goal) {
+			again := h.RequestLink(sam, child, parent, "please")
+			if _, err := h.Service.AcceptLink(context.Background(), again.ID, pat.ID); err != nil {
+				t.Fatalf("AcceptLink: %v", err)
+			}
+			if _, err := h.Service.RemoveLink(context.Background(), again.ID, sam.ID); err != nil {
+				t.Fatalf("RemoveLink: %v", err)
+			}
+		},
+	}
+	for name, since := range cases {
+		t.Run(name, func(t *testing.T) {
+			h := testsupport.New(t)
+			pat, sam, child, parent, link := pendingAcrossOwners(t, h)
+			ctx := context.Background()
+
+			rejection, err := h.Service.RejectLink(ctx, link.ID, pat.ID)
+			if err != nil {
+				t.Fatalf("RejectLink: %v", err)
+			}
+			since(t, h, pat, sam, child, parent)
+			pendingBefore, _ := h.Service.PendingLinkRequests(ctx, pat.ID)
+			parentsBefore := h.ParentsOf(child)
+
+			if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID); !errors.Is(err, domain.ErrValidation) {
+				t.Errorf("RestoreLinkRequest: err = %v, want ErrValidation", err)
+			}
+			if got, _ := h.Service.PendingLinkRequests(ctx, pat.ID); len(got) != len(pendingBefore) {
+				t.Errorf("pending = %+v, want unchanged %+v", got, pendingBefore)
+			}
+			if got := h.ParentsOf(child); len(got) != len(parentsBefore) {
+				t.Errorf("ParentsOf(child) = %+v, want unchanged %+v", got, parentsBefore)
+			}
+		})
+	}
+}
+
+// A link removed before the request was made and rejected doesn't block the
+// Undo: it isn't a request since.
+func TestRestoreLinkRequestIgnoresARemovalBeforeTheRequest(t *testing.T) {
+	h := testsupport.New(t)
+	pat, sam, child, parent, link := acceptedAcrossOwners(t, h)
+	ctx := context.Background()
+
+	if _, err := h.Service.RemoveLink(ctx, link.ID, sam.ID); err != nil {
+		t.Fatalf("RemoveLink: %v", err)
+	}
+	h.Clock.Advance(time.Hour)
+	again := h.RequestLink(sam, child, parent, "once more")
+	rejection, err := h.Service.RejectLink(ctx, again.ID, pat.ID)
+	if err != nil {
+		t.Fatalf("RejectLink: %v", err)
+	}
+	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID); err != nil {
+		t.Errorf("RestoreLinkRequest: %v", err)
+	}
+}
+
+// When the request would now close a cycle, because the parent was linked
+// under the child since, Undo is refused and nothing changes (ADR-0001).
+func TestRestoreLinkRequestRefusesACycleThatAppearedSinceTheRejection(t *testing.T) {
+	h := testsupport.New(t)
+	pat, sam, child, parent, link := pendingAcrossOwners(t, h)
+	ctx := context.Background()
+
+	rejection, err := h.Service.RejectLink(ctx, link.ID, pat.ID)
+	if err != nil {
+		t.Fatalf("RejectLink: %v", err)
+	}
+	back := h.RequestLink(pat, parent, child, "") // now the parent contributes to the child
+	if _, err := h.Service.AcceptLink(ctx, back.ID, sam.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID); !errors.Is(err, domain.ErrCycle) {
+		t.Errorf("RestoreLinkRequest closing a cycle: err = %v, want ErrCycle", err)
+	}
+	if got, _ := h.Service.PendingLinkRequests(ctx, pat.ID); len(got) != 0 {
+		t.Errorf("pending = %+v, want none after a refused Undo", got)
 	}
 }

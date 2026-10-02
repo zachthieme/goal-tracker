@@ -24,7 +24,8 @@ type Link struct {
 }
 
 // Link status values. A rejected or removed link is deleted, so it has no
-// status of its own; a removal leaves a LinkRemoval its remover can undo.
+// status of its own; a rejection leaves a LinkRejection its rejecter can undo,
+// and a removal a LinkRemoval its remover can undo.
 const (
 	LinkPending  = "pending"
 	LinkAccepted = "accepted"
@@ -205,24 +206,198 @@ func (s *Service) AcceptLink(ctx context.Context, linkID, actorID int64) (Link, 
 	return s.loadLink(ctx, linkID)
 }
 
-// RejectLink rejects a pending request, deleting it. The actor must own the
-// parent Goal.
-func (s *Service) RejectLink(ctx context.Context, linkID, actorID int64) error {
+// LinkRejection is the record a rejected request leaves: the two Goals it
+// would have linked, who rejected it and when, and whether that rejection has
+// since been undone. It is what lets the rejecter Undo the rejection, putting
+// the request back as pending.
+type LinkRejection struct {
+	ID         int64
+	Child      Goal
+	Parent     Goal
+	RejectedBy int64
+	RejectedAt time.Time
+	Restored   bool
+}
+
+// RejectLink rejects a pending request, deleting it and recording the
+// rejection so the rejecter can Undo it (RestoreLinkRequest). The actor must
+// own the parent Goal.
+func (s *Service) RejectLink(ctx context.Context, linkID, actorID int64) (LinkRejection, error) {
 	row, err := s.getPendingLink(ctx, linkID)
 	if err != nil {
-		return err
+		return LinkRejection{}, err
+	}
+	child, err := s.queries.GetGoal(ctx, row.ChildID)
+	if err != nil {
+		return LinkRejection{}, fmt.Errorf("look up child goal: %w", err)
 	}
 	parent, err := s.queries.GetGoal(ctx, row.ParentID)
 	if err != nil {
-		return fmt.Errorf("look up parent goal: %w", err)
+		return LinkRejection{}, fmt.Errorf("look up parent goal: %w", err)
 	}
 	if parent.Goal.OwnerID != actorID {
-		return fmt.Errorf("%w: only the parent's Owner may reject a link", ErrNotAuthorized)
+		return LinkRejection{}, fmt.Errorf("%w: only the parent's Owner may reject a link", ErrNotAuthorized)
 	}
-	if err := s.queries.DeleteLink(ctx, linkID); err != nil {
-		return fmt.Errorf("reject link: %w", err)
+	now := s.clock.Now()
+	var rejection db.RejectedLinkRequest
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.queries.DeleteLink(ctx, linkID); err != nil {
+			return fmt.Errorf("reject link: %w", err)
+		}
+		rejection, err = tx.queries.CreateRejectedLinkRequest(ctx, db.CreateRejectedLinkRequestParams{
+			ChildID:          row.ChildID,
+			ParentID:         row.ParentID,
+			Note:             row.Note,
+			RequestedBy:      row.RequestedBy,
+			RequestCreatedAt: row.CreatedAt,
+			RejectedBy:       actorID,
+			RejectedAt:       now.Format(timeFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("record link rejection: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return LinkRejection{}, err
+	}
+	return LinkRejection{
+		ID:         rejection.ID,
+		Child:      goalFromRow(child.Goal, child.Account),
+		Parent:     goalFromRow(parent.Goal, parent.Account),
+		RejectedBy: actorID,
+		RejectedAt: now,
+	}, nil
+}
+
+// RestoreLinkRequest undoes a rejection, putting the request back as pending
+// between the same two Goals with its original note, requester and request
+// time, as if it had never been rejected. Only the person who rejected it may,
+// and only once. It is refused, changing nothing, when the same link has been
+// requested or accepted again since, or when it would now close a cycle
+// (ADR-0001). Rejecting tells no one, so neither does the Undo.
+func (s *Service) RestoreLinkRequest(ctx context.Context, rejectionID, actorID int64) (Link, error) {
+	rejection, err := s.queries.GetRejectedLinkRequest(ctx, rejectionID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Link{}, fmt.Errorf("%w: link rejection %d", ErrNotFound, rejectionID)
+		}
+		return Link{}, fmt.Errorf("look up link rejection: %w", err)
+	}
+	if rejection.RejectedBy != actorID {
+		return Link{}, fmt.Errorf("%w: only the person who rejected a request may undo it", ErrNotAuthorized)
+	}
+	if rejection.RestoredAt != nil {
+		return Link{}, fmt.Errorf("%w: this rejection has already been undone", ErrValidation)
+	}
+	var linkID int64
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.ensureNotRequestedSince(ctx, rejection); err != nil {
+			return err
+		}
+		if err := tx.ensureNoCycle(ctx, rejection.ChildID, rejection.ParentID); err != nil {
+			return err
+		}
+		restoredAt := tx.clock.Now().Format(timeFormat)
+		n, err := tx.queries.MarkRejectedLinkRequestRestored(ctx, db.MarkRejectedLinkRequestRestoredParams{
+			RestoredAt: &restoredAt,
+			ID:         rejectionID,
+		})
+		if err != nil {
+			return fmt.Errorf("mark link rejection restored: %w", err)
+		}
+		if n == 0 {
+			return fmt.Errorf("%w: this rejection has already been undone", ErrValidation)
+		}
+		row, err := tx.queries.CreateLink(ctx, db.CreateLinkParams{
+			ChildID:     rejection.ChildID,
+			ParentID:    rejection.ParentID,
+			Status:      LinkPending,
+			Note:        rejection.Note,
+			RequestedBy: rejection.RequestedBy,
+			CreatedAt:   rejection.RequestCreatedAt,
+		})
+		if err != nil {
+			return fmt.Errorf("restore link request: %w", err)
+		}
+		linkID = row.ID
+		return nil
+	})
+	if err != nil {
+		return Link{}, err
+	}
+	return s.loadLink(ctx, linkID)
+}
+
+// ensureNotRequestedSince refuses to restore rejection when the same link has
+// been requested or accepted again since: it exists now, a later request for
+// it was rejected too, or it was accepted and has since been removed.
+func (s *Service) ensureNotRequestedSince(ctx context.Context, rejection db.RejectedLinkRequest) error {
+	again := fmt.Errorf("%w: this link has been requested again since it was rejected", ErrValidation)
+	if _, err := s.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
+		ChildID:  rejection.ChildID,
+		ParentID: rejection.ParentID,
+	}); err == nil {
+		return again
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("look up existing link: %w", err)
+	}
+	later, err := s.queries.CountLaterRejectedLinkRequests(ctx, db.CountLaterRejectedLinkRequestsParams{
+		ChildID:  rejection.ChildID,
+		ParentID: rejection.ParentID,
+		ID:       rejection.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("look up later rejections: %w", err)
+	}
+	if later > 0 {
+		return again
+	}
+	removals, err := s.queries.ListLinkRemovalTimes(ctx, db.ListLinkRemovalTimesParams{
+		ChildID:  rejection.ChildID,
+		ParentID: rejection.ParentID,
+	})
+	if err != nil {
+		return fmt.Errorf("look up link removals: %w", err)
+	}
+	rejectedAt, _ := time.Parse(timeFormat, rejection.RejectedAt)
+	for _, raw := range removals {
+		// A removal no earlier than the rejection is of a link made since.
+		if removedAt, _ := time.Parse(timeFormat, raw); !removedAt.Before(rejectedAt) {
+			return again
+		}
 	}
 	return nil
+}
+
+// LinkRejection returns the record of a rejected request, with both Goals
+// resolved, so a page can say what was rejected and offer its rejecter the
+// Undo.
+func (s *Service) LinkRejection(ctx context.Context, rejectionID int64) (LinkRejection, error) {
+	row, err := s.queries.GetRejectedLinkRequest(ctx, rejectionID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return LinkRejection{}, fmt.Errorf("%w: link rejection %d", ErrNotFound, rejectionID)
+		}
+		return LinkRejection{}, fmt.Errorf("look up link rejection: %w", err)
+	}
+	child, err := s.queries.GetGoal(ctx, row.ChildID)
+	if err != nil {
+		return LinkRejection{}, fmt.Errorf("look up child goal: %w", err)
+	}
+	parent, err := s.queries.GetGoal(ctx, row.ParentID)
+	if err != nil {
+		return LinkRejection{}, fmt.Errorf("look up parent goal: %w", err)
+	}
+	rejectedAt, _ := time.Parse(timeFormat, row.RejectedAt)
+	return LinkRejection{
+		ID:         row.ID,
+		Child:      goalFromRow(child.Goal, child.Account),
+		Parent:     goalFromRow(parent.Goal, parent.Account),
+		RejectedBy: row.RejectedBy,
+		RejectedAt: rejectedAt,
+		Restored:   row.RestoredAt != nil,
+	}, nil
 }
 
 // LinkRemoval is the record a removed link leaves: the two Goals it connected,

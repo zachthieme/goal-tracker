@@ -17,8 +17,9 @@ import (
 // pendingHandoffsPage lists the Handoffs awaiting the current Account's decision
 // as the proposed new Owner, a card each with accept and reject actions; Accept
 // lists the Delegates to keep and Reject sends at once. A Handoff takes
-// effect only once accepted (CONTEXT.md: Handoff).
-func pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) templ.Component {
+// effect only once accepted (CONTEXT.md: Handoff). toast, when set, offers Undo
+// for the Handoff just rejected.
+func pendingHandoffsPage(current *domain.Account, pending []domain.Handoff, toast *toast) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -73,7 +74,7 @@ func pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) temp
 				var templ_7745c5c3_Var3 templ.SafeURL
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 30, Col: 68}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 31, Col: 68}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -86,7 +87,7 @@ func pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) temp
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(ho.Goal.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 30, Col: 86}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 31, Col: 86}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
@@ -99,7 +100,7 @@ func pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) temp
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs("— ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 32, Col: 16}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 33, Col: 16}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 				if templ_7745c5c3_Err != nil {
@@ -112,7 +113,7 @@ func pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) temp
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(" wants to hand this Goal to you")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 34, Col: 43}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 35, Col: 43}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
@@ -132,6 +133,10 @@ func pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) temp
 				}
 			}
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</ul>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = toastNotice(toast).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -181,7 +186,7 @@ func handoffAcceptReject(ho domain.Handoff) templ.Component {
 		var templ_7745c5c3_Var8 templ.SafeURL
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/handoffs/%d/accept", ho.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 53, Col: 86}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 55, Col: 86}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
@@ -204,7 +209,7 @@ func handoffAcceptReject(ho domain.Handoff) templ.Component {
 				var templ_7745c5c3_Var9 string
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(d.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 59, Col: 65}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 61, Col: 65}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 				if templ_7745c5c3_Err != nil {
@@ -217,7 +222,7 @@ func handoffAcceptReject(ho domain.Handoff) templ.Component {
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(" ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 60, Col: 11}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 62, Col: 11}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -244,7 +249,7 @@ func handoffAcceptReject(ho domain.Handoff) templ.Component {
 		var templ_7745c5c3_Var11 templ.SafeURL
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/handoffs/%d/reject", ho.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 68, Col: 86}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/handoffs.templ`, Line: 70, Col: 86}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {

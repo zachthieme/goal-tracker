@@ -8,8 +8,9 @@ import (
 
 // pendingLinksPage lists the link requests awaiting the current Account's
 // decision as the Owner of each request's parent Goal, a card each with accept
-// and reject actions.
-templ pendingLinksPage(current *domain.Account, pending []domain.Link) {
+// and reject actions. toast, when set, offers Undo for the request just
+// rejected.
+templ pendingLinksPage(current *domain.Account, pending []domain.Link, toast *toast) {
 	@layout("Pending links", current) {
 		@pendingStyles()
 		<header class="page-head">
@@ -44,6 +45,7 @@ templ pendingLinksPage(current *domain.Account, pending []domain.Link) {
 				</li>
 			}
 		</ul>
+		@toastNotice(toast)
 	}
 }
 

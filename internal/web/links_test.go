@@ -445,3 +445,167 @@ func TestTheLinkRemovalToastIsOnlyForTheRemover(t *testing.T) {
 		t.Errorf("someone else's removal offered as a toast:\n%s", body)
 	}
 }
+
+// rejectRequest arranges Sam's request, with a note, for his child Goal to
+// contribute to Pat's parent, and Pat rejecting it from the page at from
+// ("/links" or "/home"), returning the page Pat lands on.
+func rejectRequest(t *testing.T, h *testsupport.Harness, ts *httptest.Server, from string) (child, parent domain.Goal, pat *http.Client, landed string) {
+	t.Helper()
+	patAcc := h.SignIn("pat@example.com")
+	sam := h.SignIn("sam@example.com")
+	parent = h.CreateGoal(patAcc, "Reduce outages", "Outages cost trust.")
+	child = h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
+	link := h.RequestLink(sam, child, parent, "displays cause outages")
+	pat = signInClient(t, ts.URL, "pat@example.com")
+	form := url.Values{}
+	if from == "/home" {
+		row := homeRow(t, pageElement(t, getBody(t, pat, ts.URL+"/home"), "ul", "home-requests"), child)
+		reject := between(t, row, fmt.Sprintf(`action="/links/%d/reject"`, link.ID), "</form>")
+		if !strings.Contains(reject, `name="from" value="home"`) {
+			t.Fatalf("Home's Reject doesn't say it came from Home:\n%s", reject)
+		}
+		form.Set("from", "home")
+	}
+	resp := postForm(t, pat, fmt.Sprintf("%s/links/%d/reject", ts.URL, link.ID), form)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reject: status %d", resp.StatusCode)
+	}
+	if resp.Request.URL.Path != from {
+		t.Errorf("reject landed on %s, want %s, where it came from", resp.Request.URL.Path, from)
+	}
+	return child, parent, pat, readBody(t, resp)
+}
+
+// After rejecting a link request, from the pending page or from Home, the page
+// shown next carries a toast saying so with an Undo button, a plain form post;
+// the toast isn't shown on a later visit, and Undo returns to the same page
+// with the request pending again, note and all.
+func TestRejectingALinkRequestOffersUndoOnce(t *testing.T) {
+	for _, from := range []string{"/links", "/home"} {
+		t.Run(from, func(t *testing.T) {
+			h := testsupport.New(t)
+			ts := newServer(t, h)
+			child, parent, pat, landed := rejectRequest(t, h, ts, from)
+
+			toast := pageElement(t, landed, "aside", "toast")
+			for _, want := range []string{"Migrate displays", "Reduce outages", `method="post"`, "Undo"} {
+				if !strings.Contains(toast, want) {
+					t.Errorf("toast missing %q:\n%s", want, toast)
+				}
+			}
+			if strings.Contains(toast, "<script") {
+				t.Errorf("toast uses script:\n%s", toast)
+			}
+			action := undoAction(t, landed)
+
+			if later := getBody(t, pat, ts.URL+from); strings.Contains(later, `data-testid="toast"`) {
+				t.Errorf("toast shown again on a later visit:\n%s", later)
+			}
+
+			resp := postForm(t, pat, ts.URL+action, toastFields(t, landed))
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("undo: status %d", resp.StatusCode)
+			}
+			if resp.Request.URL.Path != from {
+				t.Errorf("undo landed on %s, want %s", resp.Request.URL.Path, from)
+			}
+			if page := readBody(t, resp); !strings.Contains(page, navTo(child.ID)) {
+				t.Errorf("the page doesn't list the restored request:\n%s", page)
+			}
+			patAcc := h.SignIn("pat@example.com")
+			pending, _ := h.Service.PendingLinkRequests(context.Background(), patAcc.ID)
+			if len(pending) != 1 || pending[0].Child.ID != child.ID || pending[0].Parent.ID != parent.ID || pending[0].Note != "displays cause outages" {
+				t.Errorf("pending = %+v, want the request back with its note", pending)
+			}
+		})
+	}
+}
+
+// Undo for a rejected request is refused for anyone but its rejecter, and
+// refused a second time; a crafted Undo of a rejection that never happened is
+// refused too, and none of them adds a request.
+func TestUndoingALinkRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	_, _, pat, landed := rejectRequest(t, h, ts, "/links")
+	action := undoAction(t, landed)
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	patAcc := h.SignIn("pat@example.com")
+	pendingCount := func() int {
+		pending, err := h.Service.PendingLinkRequests(context.Background(), patAcc.ID)
+		if err != nil {
+			t.Fatalf("PendingLinkRequests: %v", err)
+		}
+		return len(pending)
+	}
+
+	resp := postForm(t, sam, ts.URL+action, url.Values{})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("Undo by the requester: status %d, want 403", resp.StatusCode)
+	}
+	if n := pendingCount(); n != 0 {
+		t.Fatalf("pending = %d after a refused Undo, want 0", n)
+	}
+
+	resp = postForm(t, pat, ts.URL+"/link-rejections/4242/undo", url.Values{})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("Undo of a rejection that never happened: status %d, want 404", resp.StatusCode)
+	}
+	if n := pendingCount(); n != 0 {
+		t.Fatalf("pending = %d after a crafted Undo, want 0", n)
+	}
+
+	if resp := postForm(t, pat, ts.URL+action, url.Values{}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("Undo by the rejecter: status %d", resp.StatusCode)
+	}
+	resp = postForm(t, pat, ts.URL+action, url.Values{})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "already been undone") {
+		t.Errorf("second Undo: status %d %q, want 422 saying it was already undone", resp.StatusCode, body)
+	}
+	if n := pendingCount(); n != 1 {
+		t.Errorf("pending = %d, want just the one restored request", n)
+	}
+}
+
+// Undo is refused with a message, changing nothing, once the same link has
+// been requested again, or when it would now close a cycle.
+func TestUndoingALinkRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
+	t.Run("requested again", func(t *testing.T) {
+		h := testsupport.New(t)
+		ts := newServer(t, h)
+		child, parent, pat, landed := rejectRequest(t, h, ts, "/links")
+		action := undoAction(t, landed)
+		h.RequestLink(h.SignIn("sam@example.com"), child, parent, "second try")
+
+		resp := postForm(t, pat, ts.URL+action, url.Values{})
+		if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "requested again") {
+			t.Errorf("Undo: status %d %q, want 422 saying it was requested again", resp.StatusCode, body)
+		}
+		pending, _ := h.Service.PendingLinkRequests(context.Background(), h.SignIn("pat@example.com").ID)
+		if len(pending) != 1 || pending[0].Note != "second try" {
+			t.Errorf("pending = %+v, want just the new request", pending)
+		}
+	})
+	t.Run("cycle", func(t *testing.T) {
+		h := testsupport.New(t)
+		ts := newServer(t, h)
+		child, parent, pat, landed := rejectRequest(t, h, ts, "/links")
+		action := undoAction(t, landed)
+		patAcc, sam := h.SignIn("pat@example.com"), h.SignIn("sam@example.com")
+		// Pat links the other way round, and Sam accepts.
+		back := h.RequestLink(patAcc, parent, child, "")
+		if _, err := h.Service.AcceptLink(context.Background(), back.ID, sam.ID); err != nil {
+			t.Fatalf("AcceptLink: %v", err)
+		}
+
+		resp := postForm(t, pat, ts.URL+action, url.Values{})
+		if body := readBody(t, resp); resp.StatusCode != http.StatusConflict || !strings.Contains(body, "cycle") {
+			t.Errorf("Undo: status %d %q, want 409 naming the cycle", resp.StatusCode, body)
+		}
+		if pending, _ := h.Service.PendingLinkRequests(context.Background(), patAcc.ID); len(pending) != 0 {
+			t.Errorf("pending = %+v, want none after a refused Undo", pending)
+		}
+	})
+}
