@@ -156,7 +156,7 @@ func TestHomeListsDelegatedGoals(t *testing.T) {
 
 // A link request waiting on the viewer as the parent's Owner, and a Handoff
 // waiting on them as the proposed new Owner, are listed under "Waiting on
-// you", each with Accept and a Reject that asks for confirmation. Someone with
+// you", each with Accept and a Reject that submits at once. Someone with
 // nothing waiting and nothing due sees each section's empty state.
 func TestHomeListsWhatIsWaitingOnYou(t *testing.T) {
 	h := testsupport.New(t)
@@ -186,14 +186,7 @@ func TestHomeListsWhatIsWaitingOnYou(t *testing.T) {
 		if !strings.Contains(tc.row, `action="`+tc.action+`/accept"`) {
 			t.Errorf("%s has no Accept:\n%s", tc.what, tc.row)
 		}
-		reject := `action="` + tc.action + `/reject"`
-		at := strings.Index(tc.row, reject)
-		if at < 0 {
-			t.Fatalf("%s has no Reject:\n%s", tc.what, tc.row)
-		}
-		if form := tc.row[strings.LastIndex(tc.row[:at], "<form"):]; !strings.Contains(openTag(form), `onsubmit="return confirm(`) {
-			t.Errorf("%s's Reject doesn't ask for confirmation:\n%s", tc.what, tc.row)
-		}
+		assertSubmitsAtOnce(t, tc.what+"'s Reject", tagAround(t, tc.row, `action="`+tc.action+`/reject"`))
 	}
 
 	kimPage := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home")

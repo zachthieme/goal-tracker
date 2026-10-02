@@ -16,7 +16,7 @@ import (
 
 // pendingLinksPage lists the link requests awaiting the current Account's
 // decision as the Owner of each request's parent Goal, a card each with accept
-// and reject actions; Reject asks for confirmation.
+// and reject actions.
 func pendingLinksPage(current *domain.Account, pending []domain.Link) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -170,7 +170,7 @@ func pendingLinksPage(current *domain.Account, pending []domain.Link) templ.Comp
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = acceptReject(fmt.Sprintf("/links/%d", l.ID), "Reject this link request?").Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = acceptReject(fmt.Sprintf("/links/%d", l.ID)).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

@@ -8,7 +8,7 @@ import (
 
 // pendingLinksPage lists the link requests awaiting the current Account's
 // decision as the Owner of each request's parent Goal, a card each with accept
-// and reject actions; Reject asks for confirmation.
+// and reject actions.
 templ pendingLinksPage(current *domain.Account, pending []domain.Link) {
 	@layout("Pending links", current) {
 		@pendingStyles()
@@ -39,7 +39,7 @@ templ pendingLinksPage(current *domain.Account, pending []domain.Link) {
 						}
 					</div>
 					<div class="pd-actions">
-						@acceptReject(fmt.Sprintf("/links/%d", l.ID), "Reject this link request?")
+						@acceptReject(fmt.Sprintf("/links/%d", l.ID))
 					</div>
 				</li>
 			}

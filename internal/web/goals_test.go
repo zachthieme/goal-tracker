@@ -1117,9 +1117,7 @@ func TestGoalPageMoreMenuHoldsAdminActions(t *testing.T) {
 	assertMenuReaches(t, page, "Hand off", base+"/handoff")
 	assertMenuReaches(t, page, "Mark Top-level", base+"/top-level")
 	assertMenuReaches(t, page, "Mark owner departed…", fmt.Sprintf("/accounts/%d/depart", sam.ID))
-	if depart := openTag(between(t, moreMenu(t, page), fmt.Sprintf(`action="/accounts/%d/depart"`, sam.ID), "")); !strings.Contains(depart, `onsubmit="return confirm(`) {
-		t.Errorf("Mark departed doesn't ask for confirmation: %s", depart)
-	}
+	assertConfirms(t, "Mark departed", tagAround(t, moreMenu(t, page), fmt.Sprintf(`action="/accounts/%d/depart"`, sam.ID)))
 	if nested := nestedControls(page); len(nested) > 0 {
 		t.Errorf("the Admin's Goal page nests a control inside another: %q", nested)
 	}
@@ -1131,9 +1129,7 @@ func TestGoalPageMoreMenuHoldsAdminActions(t *testing.T) {
 	page = getBody(t, adaClient, fmt.Sprintf("%s/goals/%d", ts.URL, orphan.ID))
 	assertMenuReaches(t, page, "Reassign", fmt.Sprintf("/goals/%d/reassign", orphan.ID))
 	assertMenuReaches(t, page, "Mark returned…", fmt.Sprintf("/accounts/%d/return", kim.ID))
-	if ret := openTag(between(t, moreMenu(t, page), fmt.Sprintf(`action="/accounts/%d/return"`, kim.ID), "")); !strings.Contains(ret, `onsubmit="return confirm(`) {
-		t.Errorf("Mark returned doesn't ask for confirmation: %s", ret)
-	}
+	assertConfirms(t, "Mark returned", tagAround(t, moreMenu(t, page), fmt.Sprintf(`action="/accounts/%d/return"`, kim.ID)))
 	if nested := nestedControls(page); len(nested) > 0 {
 		t.Errorf("an Ownerless Goal's page nests a control inside another: %q", nested)
 	}
@@ -1191,9 +1187,10 @@ func TestGoalPageMoreMenuForOthersOffersOnlyAChildGoal(t *testing.T) {
 }
 
 // The sidebar lists the Goals this one contributes to and those contributing to
-// it, each with its Health, and removing a link asks for confirmation first. A
-// breadcrumb leads back through Goals and the first parent.
-func TestGoalPageSidebarLinksCarryHealthAndConfirmRemove(t *testing.T) {
+// it, each with its Health, and removing a link happens at once, with no
+// confirmation (#56). A breadcrumb leads back through Goals and the first
+// parent.
+func TestGoalPageSidebarLinksCarryHealthAndRemoveAtOnce(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Grow revenue", "Revenue funds the rest.")
@@ -1224,9 +1221,18 @@ func TestGoalPageSidebarLinksCarryHealthAndConfirmRemove(t *testing.T) {
 		if !strings.Contains(entry, `class="badge `+tc.class+`"`) {
 			t.Errorf("%s: %s has no .%s Health badge: %s", tc.section, tc.linked.Title, tc.class, entry)
 		}
-		if remove := openTag(between(t, section, `/remove"`, "")); !strings.Contains(remove, `onsubmit="return confirm(`) {
-			t.Errorf("%s: Remove doesn't ask for confirmation: %s", tc.section, remove)
-		}
+		assertSubmitsAtOnce(t, tc.section+": Remove", tagAround(t, section, `/remove"`))
+	}
+
+	// Removing the link to the parent from its form unlinks it.
+	client := signInClient(t, ts.URL, "sam@example.com")
+	remove := strings.TrimPrefix(between(t, pageElement(t, page, "section", "goal-parents"), `action="`, `/remove"`), `action="`)
+	if resp := postForm(t, client, ts.URL+remove+"/remove", url.Values{}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("remove link: status %d", resp.StatusCode)
+	}
+	page = getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	if parents := pageElement(t, page, "section", "goal-parents"); !strings.Contains(parents, `data-testid="no-parents"`) {
+		t.Errorf("the parent is still linked after Remove:\n%s", parents)
 	}
 }
 

@@ -93,8 +93,8 @@ func TestNonAdminCannotManageDimensions(t *testing.T) {
 
 // Each Dimension is a card with its values as tags, a retired one struck
 // through. An Admin's rename, retire, and add-value controls sit behind the
-// card's Edit toggle, and Retire asks for confirmation; a non-Admin gets no
-// toggle.
+// card's Edit toggle, and Retire retires a value at once, with no confirmation
+// (#56); a non-Admin gets no toggle.
 func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
@@ -135,9 +135,10 @@ func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
 	if strings.Contains(card[:at], "<form") {
 		t.Errorf("an Admin control sits outside the Edit toggle:\n%s", card)
 	}
-	retire := between(t, edit, fmt.Sprintf(`action="/dimension-values/%d/retire"`, dim.Values[0].ID), "")
-	if !strings.Contains(openTag(retire), `onsubmit="return confirm(`) {
-		t.Errorf("Retire doesn't ask for confirmation: %s", openTag(retire))
+	retire := fmt.Sprintf("/dimension-values/%d/retire", dim.Values[0].ID)
+	assertSubmitsAtOnce(t, "Retire", tagAround(t, edit, `action="`+retire+`"`))
+	if page := readBody(t, postForm(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+retire, url.Values{})); !strings.Contains(page, ">Growth</del>") {
+		t.Errorf("Growth isn't struck through as Retired after Retire:\n%s", page)
 	}
 
 	page = getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/dimensions")

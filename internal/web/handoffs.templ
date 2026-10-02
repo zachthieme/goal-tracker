@@ -8,7 +8,7 @@ import (
 
 // pendingHandoffsPage lists the Handoffs awaiting the current Account's decision
 // as the proposed new Owner, a card each with accept and reject actions; Accept
-// lists the Delegates to keep and Reject asks for confirmation. A Handoff takes
+// lists the Delegates to keep and Reject sends at once. A Handoff takes
 // effect only once accepted (CONTEXT.md: Handoff).
 templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) {
 	@layout("Pending handoffs", current) {
@@ -47,7 +47,7 @@ templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) {
 // handoffAcceptReject is a pending Handoff's Accept and Reject. The accept form
 // lists the Goal's Delegates who aren't Departed, each with a keep box checked by
 // default, so the new Owner chooses which to keep (CONTEXT.md: Delegate); it is a
-// plain form POST. Reject asks for confirmation and leaves the Delegates alone.
+// plain form POST. Reject sends at once and leaves the Delegates alone.
 templ handoffAcceptReject(ho domain.Handoff) {
 	@handoffStyles()
 	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/accept", ho.ID)) } class="inline-form">
@@ -65,7 +65,7 @@ templ handoffAcceptReject(ho domain.Handoff) {
 		}
 		<button type="submit" class="btn primary sm">Accept</button>
 	</form>
-	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/reject", ho.ID)) } class="inline-form" onsubmit={ confirmScript("Reject this Handoff?") }>
+	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/handoffs/%d/reject", ho.ID)) } class="inline-form">
 		<button type="submit" class="btn danger sm">Reject</button>
 	</form>
 }

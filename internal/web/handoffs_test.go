@@ -138,8 +138,8 @@ func TestDepartedGoalOwnerlessSurfacedAndReassigned(t *testing.T) {
 }
 
 // Each pending Handoff is a card with Accept as the primary action and a Reject
-// that asks for confirmation first.
-func TestPendingHandoffRowsConfirmReject(t *testing.T) {
+// that rejects it at once, with no confirmation (#56).
+func TestPendingHandoffRowsRejectAtOnce(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -156,7 +156,13 @@ func TestPendingHandoffRowsConfirmReject(t *testing.T) {
 	if !strings.Contains(openTag(row), `class="card`) {
 		t.Errorf("the pending Handoff isn't a card: %s", openTag(row))
 	}
-	assertAcceptReject(t, row, fmt.Sprintf("/handoffs/%d", ho.ID))
+	base := fmt.Sprintf("/handoffs/%d", ho.ID)
+	assertAcceptReject(t, row, base)
+
+	client := signInClient(t, ts.URL, "pat@example.com")
+	if page := readBody(t, postForm(t, client, ts.URL+base+"/reject", url.Values{})); !strings.Contains(page, `data-testid="no-pending-handoffs"`) {
+		t.Errorf("the Handoff is still pending after Reject:\n%s", page)
+	}
 }
 
 // Every Handoff is kept with its outcome and listed oldest first under the Goal

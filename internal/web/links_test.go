@@ -158,8 +158,8 @@ func newServer(t *testing.T, h *testsupport.Harness) *httptest.Server {
 }
 
 // Each pending link request is a card with Accept as the primary action and a
-// Reject that asks for confirmation first.
-func TestPendingLinkRowsConfirmReject(t *testing.T) {
+// Reject that rejects it at once, with no confirmation (#56).
+func TestPendingLinkRowsRejectAtOnce(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	pat := h.SignIn("pat@example.com")
@@ -172,7 +172,13 @@ func TestPendingLinkRowsConfirmReject(t *testing.T) {
 	if !strings.Contains(openTag(row), `class="card`) {
 		t.Errorf("the pending link isn't a card: %s", openTag(row))
 	}
-	assertAcceptReject(t, row, fmt.Sprintf("/links/%d", link.ID))
+	base := fmt.Sprintf("/links/%d", link.ID)
+	assertAcceptReject(t, row, base)
+
+	client := signInClient(t, ts.URL, "pat@example.com")
+	if page := readBody(t, postForm(t, client, ts.URL+base+"/reject", url.Values{})); !strings.Contains(page, `data-testid="no-pending-links"`) {
+		t.Errorf("the link request is still pending after Reject:\n%s", page)
+	}
 }
 
 // A pending link's note is set apart by its indent and a 1px neutral rule, not
@@ -202,14 +208,30 @@ func assertNeutralRule(t *testing.T, rule string) {
 }
 
 // assertAcceptReject checks a pending request's row decides it at base with
-// Accept as the primary button and a Reject that asks for confirmation.
+// Accept as the primary button and a Reject that submits at once.
 func assertAcceptReject(t *testing.T, row, base string) {
 	t.Helper()
 	if accept := between(t, row, `action="`+base+`/accept"`, "</form>"); !strings.Contains(accept, `class="btn primary`) {
 		t.Errorf("Accept isn't the primary button:\n%s", accept)
 	}
-	if reject := openTag(between(t, row, `action="`+base+`/reject"`, "")); !strings.Contains(reject, `onsubmit="return confirm(`) {
-		t.Errorf("Reject doesn't ask for confirmation: %s", reject)
+	assertSubmitsAtOnce(t, "Reject", tagAround(t, row, `action="`+base+`/reject"`))
+}
+
+// assertSubmitsAtOnce checks a form's opening tag sends it without a browser
+// dialog asking for confirmation first (#56).
+func assertSubmitsAtOnce(t *testing.T, what, form string) {
+	t.Helper()
+	if strings.Contains(form, "onsubmit=") || strings.Contains(form, "confirm(") {
+		t.Errorf("%s asks for confirmation: %s", what, form)
+	}
+}
+
+// assertConfirms checks a form's opening tag asks for confirmation in a browser
+// dialog before sending it.
+func assertConfirms(t *testing.T, what, form string) {
+	t.Helper()
+	if !strings.Contains(form, `onsubmit="return confirm(`) {
+		t.Errorf("%s doesn't ask for confirmation: %s", what, form)
 	}
 }
 
