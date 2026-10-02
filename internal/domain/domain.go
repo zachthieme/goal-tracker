@@ -29,6 +29,9 @@ type Service struct {
 	// baseURL is where people reach the web app, for the links in the emails
 	// the Service sends itself (a comment alert). Empty leaves links relative.
 	baseURL string
+	// inTx says the Service is bound to a transaction WithinTx opened, so a
+	// nested WithinTx joins it rather than opening another.
+	inTx bool
 }
 
 // Option configures a Service at construction.
@@ -74,7 +77,12 @@ func NewService(sqlDB *sql.DB, clk clock.Clock, sender email.Sender, adminEmails
 // back when it returns an error, which WithinTx then returns unchanged — so a
 // caller can force a rollback (e.g. a dry run, or an import that found row
 // errors) by returning a sentinel error and recognising it on the way out.
+// Called on a Service already bound to a transaction, it runs fn within that
+// one, so a command and the commands it is built from commit together.
 func (s *Service) WithinTx(ctx context.Context, fn func(tx *Service) error) error {
+	if s.inTx {
+		return fn(s)
+	}
 	sqlTx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin transaction: %w", err)
@@ -87,6 +95,7 @@ func (s *Service) WithinTx(ctx context.Context, fn func(tx *Service) error) erro
 		admins:  s.admins,
 		loc:     s.loc,
 		baseURL: s.baseURL,
+		inTx:    true,
 	}
 	if err := fn(txSvc); err != nil {
 		_ = sqlTx.Rollback()

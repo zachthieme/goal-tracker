@@ -1,0 +1,78 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// definitionLogPage is the Definition log: every change to what Dimensions and
+// Fields exist and how they're shaped, newest first, each with who made it and
+// when. A form narrows it to one Dimension or Field. It is read-only for
+// everyone; values set on Goals are in each Goal's Value history instead.
+templ definitionLogPage(current *domain.Account, dims []domain.Dimension, fields []domain.Field, scope logScope, changes []domain.DefinitionChange) {
+	@layout("Definition log", current) {
+		@definitionLogStyles()
+		<header class="page-head">
+			<div>
+				<h1>Definition log</h1>
+				<p class="muted">
+					if scope.Name != "" {
+						{ "Every change to " + scope.Name + ", newest first." }
+					} else {
+						Every change to the Dimensions and Fields, newest first. Values set on Goals are in each Goal's history.
+					}
+				</p>
+			</div>
+		</header>
+		<form data-testid="definition-log-scope" class="dl-scope" method="get" action="/definition-log">
+			<label class="field">
+				<span>Show changes to</span>
+				<select name="about">
+					<option value="" selected?={ scope.param() == "" }>All Dimensions and Fields</option>
+					if len(dims) > 0 {
+						<optgroup label="Dimensions">
+							for _, d := range dims {
+								{{ param := fmt.Sprintf("dimension:%d", d.ID) }}
+								<option value={ param } selected?={ scope.param() == param }>{ d.Name }</option>
+							}
+						</optgroup>
+					}
+					if len(fields) > 0 {
+						<optgroup label="Fields">
+							for _, f := range fields {
+								{{ param := fmt.Sprintf("field:%d", f.ID) }}
+								<option value={ param } selected?={ scope.param() == param }>{ f.Name }</option>
+							}
+						</optgroup>
+					}
+				</select>
+			</label>
+			<button type="submit" class="btn sm">Show</button>
+		</form>
+		<ol data-testid="definition-log" class="card dl-list">
+			if len(changes) == 0 {
+				<li data-testid="no-definition-changes" class="muted">No changes logged yet.</li>
+			}
+			for _, c := range changes {
+				<li data-testid="definition-change">
+					<span>{ c.Summary }</span>
+					<span class="muted small">
+						{ "— " }
+						@person(c.Actor)
+						{ " at " + c.CreatedAt.Format("2006-01-02 15:04") }
+					</span>
+				</li>
+			}
+		</ol>
+	}
+}
+
+// definitionLogStyles are the Definition log page's own rules on top of
+// app.css.
+templ definitionLogStyles() {
+	<style>
+		.dl-scope{display:flex;align-items:flex-end;gap:12px}
+		.dl-list{list-style:none;margin:0;padding:24px;display:flex;flex-direction:column;gap:12px}
+	</style>
+}

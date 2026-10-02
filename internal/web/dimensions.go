@@ -26,20 +26,11 @@ func (s *Server) handleDimensions(w http.ResponseWriter, r *http.Request, curren
 // form doesn't say), and whether its list is Fixed or Extendable (Fixed when
 // the form doesn't say). Only an Admin may.
 func (s *Server) handleCreateDimension(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
-		dim, err := tx.CreateDimension(r.Context(), current.ID, r.FormValue("name"), splitValues(r.FormValue("values")))
-		if err != nil {
-			return err
-		}
-		if selection := r.FormValue("selection"); selection != "" && selection != dim.Selection {
-			if err := tx.SetDimensionSelection(r.Context(), current.ID, dim.ID, selection); err != nil {
-				return err
-			}
-		}
-		if list := r.FormValue("list"); list != "" && list != dim.List {
-			return tx.SetDimensionList(r.Context(), current.ID, dim.ID, list)
-		}
-		return nil
+	_, err := s.svc.DefineDimension(r.Context(), current.ID, domain.DimensionDefinition{
+		Name:      r.FormValue("name"),
+		Values:    splitValues(r.FormValue("values")),
+		Selection: r.FormValue("selection"),
+		List:      r.FormValue("list"),
 	})
 	if err != nil {
 		writeDimensionError(w, err)

@@ -1,8 +1,8 @@
 package domain
 
 import (
+	"cmp"
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"slices"
@@ -69,20 +69,37 @@ type DimensionValue struct {
 	DimensionRetired bool
 }
 
-// CreateDimension defines a new Dimension with a fixed list of values. Only an
-// Admin may define Dimensions (CONTEXT.md: Admin). The name and at least one
-// value are required; blank values are dropped, and so is a value matching an
-// earlier one whatever its case.
+// CreateDimension defines a new Dimension with a fixed list of values, taking
+// one value from a Fixed list, as DefineDimension defines it.
 func (s *Service) CreateDimension(ctx context.Context, actorID int64, name string, values []string) (Dimension, error) {
+	return s.DefineDimension(ctx, actorID, DimensionDefinition{Name: name, Values: values})
+}
+
+// DimensionDefinition is a new Dimension's shape: its name, its values in
+// order, whether a Goal takes one of them or several (one when empty), and
+// whether its list is Fixed or Extendable (Fixed when empty).
+type DimensionDefinition struct {
+	Name      string
+	Values    []string
+	Selection string
+	List      string
+}
+
+// DefineDimension defines a new Dimension shaped as def says, and writes one
+// entry to the Definition log saying so. Only an Admin may define Dimensions
+// (CONTEXT.md: Admin). The name and at least one value are required; blank
+// values are dropped, and so is a value matching an earlier one whatever its
+// case.
+func (s *Service) DefineDimension(ctx context.Context, actorID int64, def DimensionDefinition) (Dimension, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return Dimension{}, err
 	}
-	name = strings.TrimSpace(name)
+	name := strings.TrimSpace(def.Name)
 	if name == "" {
 		return Dimension{}, fmt.Errorf("%w: a Dimension needs a name", ErrValidation)
 	}
-	cleaned := make([]string, 0, len(values))
-	for _, v := range values {
+	cleaned := make([]string, 0, len(def.Values))
+	for _, v := range def.Values {
 		v = strings.TrimSpace(v)
 		if v != "" && !slices.ContainsFunc(cleaned, func(c string) bool { return strings.EqualFold(c, v) }) {
 			cleaned = append(cleaned, v)
@@ -91,26 +108,47 @@ func (s *Service) CreateDimension(ctx context.Context, actorID int64, name strin
 	if len(cleaned) == 0 {
 		return Dimension{}, fmt.Errorf("%w: a Dimension needs at least one value", ErrValidation)
 	}
-
-	now := s.clock.Now().Format(timeFormat)
-	row, err := s.queries.CreateDimension(ctx, db.CreateDimensionParams{
-		Name:      name,
-		CreatedAt: now,
-	})
-	if err != nil {
-		return Dimension{}, fmt.Errorf("create dimension: %w", err)
+	selection, list := cmp.Or(def.Selection, SelectionOne), cmp.Or(def.List, ListFixed)
+	if selection != SelectionOne && selection != SelectionSeveral {
+		return Dimension{}, fmt.Errorf("%w: a Dimension takes one value or several", ErrValidation)
 	}
-	dim := dimensionFromRow(row)
-	for _, v := range cleaned {
-		val, err := s.queries.CreateDimensionValue(ctx, db.CreateDimensionValueParams{
-			DimensionID: row.ID,
-			Value:       v,
-			CreatedAt:   now,
+	if list != ListFixed && list != ListExtendable {
+		return Dimension{}, fmt.Errorf("%w: a Dimension's list is Fixed or Extendable", ErrValidation)
+	}
+
+	var dim Dimension
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		now := tx.clock.Now().Format(timeFormat)
+		row, err := tx.queries.CreateDimension(ctx, db.CreateDimensionParams{
+			Name:      name,
+			CreatedAt: now,
 		})
 		if err != nil {
-			return Dimension{}, fmt.Errorf("create dimension value: %w", err)
+			return fmt.Errorf("create dimension: %w", err)
 		}
-		dim.Values = append(dim.Values, dimensionValueFromRow(val))
+		if row, err = tx.queries.SetDimensionSelection(ctx, db.SetDimensionSelectionParams{Selection: selection, ID: row.ID}); err != nil {
+			return fmt.Errorf("set dimension selection: %w", err)
+		}
+		if row, err = tx.queries.SetDimensionList(ctx, db.SetDimensionListParams{List: list, ID: row.ID}); err != nil {
+			return fmt.Errorf("set dimension list: %w", err)
+		}
+		dim = dimensionFromRow(row)
+		for _, v := range cleaned {
+			val, err := tx.queries.CreateDimensionValue(ctx, db.CreateDimensionValueParams{
+				DimensionID: row.ID,
+				Value:       v,
+				CreatedAt:   now,
+			})
+			if err != nil {
+				return fmt.Errorf("create dimension value: %w", err)
+			}
+			dim.Values = append(dim.Values, dimensionValueFromRow(val))
+		}
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dim.ID, "Created the Dimension %s with %s, taking %s from %s.",
+			dim.Name, strings.Join(cleaned, ", "), selectionPhrase(dim), aList(dim))
+	})
+	if err != nil {
+		return Dimension{}, err
 	}
 	return dim, nil
 }
@@ -118,7 +156,8 @@ func (s *Service) CreateDimension(ctx context.Context, actorID int64, name strin
 // AddDimensionValue adds a value to an existing Dimension's list. Only an Admin
 // may (CONTEXT.md: Admins add values). The value is required. One matching an
 // existing value whatever its case or surrounding spaces adds nothing and
-// returns that value, and one matching a Retired value is refused.
+// returns that value, and one matching a Retired value is refused. A value
+// added is written to the Definition log.
 func (s *Service) AddDimensionValue(ctx context.Context, actorID, dimensionID int64, value string) (DimensionValue, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return DimensionValue{}, err
@@ -127,26 +166,55 @@ func (s *Service) AddDimensionValue(ctx context.Context, actorID, dimensionID in
 	if value == "" {
 		return DimensionValue{}, fmt.Errorf("%w: a value cannot be blank", ErrValidation)
 	}
-	if _, err := s.queries.GetDimension(ctx, dimensionID); err != nil {
+	dim, err := s.queries.GetDimension(ctx, dimensionID)
+	if err != nil {
 		return DimensionValue{}, fmt.Errorf("%w: dimension does not exist", ErrValidation)
 	}
 	if match, ok, err := s.matchingValue(ctx, dimensionID, value); err != nil || ok {
 		return match, err
 	}
-	row, err := s.queries.CreateDimensionValue(ctx, db.CreateDimensionValueParams{
-		DimensionID: dimensionID,
-		Value:       value,
-		CreatedAt:   s.clock.Now().Format(timeFormat),
+	return s.addDimensionValue(ctx, actorID, dim, value)
+}
+
+// addDimensionValue adds value to dim's list and writes it to the Definition
+// log, together. The caller has checked actorID may add it.
+func (s *Service) addDimensionValue(ctx context.Context, actorID int64, dim db.Dimension, value string) (DimensionValue, error) {
+	var val DimensionValue
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		row, err := tx.queries.CreateDimensionValue(ctx, db.CreateDimensionValueParams{
+			DimensionID: dim.ID,
+			Value:       value,
+			CreatedAt:   tx.clock.Now().Format(timeFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("add dimension value: %w", err)
+		}
+		val = dimensionValueFromRow(row)
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dim.ID, "Added %s to %s.", value, dim.Name)
 	})
 	if err != nil {
-		return DimensionValue{}, fmt.Errorf("add dimension value: %w", err)
+		return DimensionValue{}, err
 	}
-	return dimensionValueFromRow(row), nil
+	return val, nil
+}
+
+// valueInDimension loads a value with the Dimension it is in.
+func (s *Service) valueInDimension(ctx context.Context, valueID int64) (db.DimensionValue, db.Dimension, error) {
+	val, err := s.queries.GetDimensionValue(ctx, valueID)
+	if err != nil {
+		return db.DimensionValue{}, db.Dimension{}, fmt.Errorf("%w: dimension value does not exist", ErrValidation)
+	}
+	dim, err := s.queries.GetDimension(ctx, val.DimensionID)
+	if err != nil {
+		return db.DimensionValue{}, db.Dimension{}, fmt.Errorf("load dimension: %w", err)
+	}
+	return val, dim, nil
 }
 
 // RenameDimensionValue renames a value, keeping its identity so every Goal
 // assigned it follows the rename (CONTEXT.md: Admins rename values). Only an
-// Admin may. The new name is required.
+// Admin may. The new name is required. A rename is written to the Definition
+// log with the old and new name.
 func (s *Service) RenameDimensionValue(ctx context.Context, actorID, valueID int64, newValue string) (DimensionValue, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return DimensionValue{}, err
@@ -155,63 +223,86 @@ func (s *Service) RenameDimensionValue(ctx context.Context, actorID, valueID int
 	if newValue == "" {
 		return DimensionValue{}, fmt.Errorf("%w: a value cannot be blank", ErrValidation)
 	}
-	row, err := s.queries.SetDimensionValueName(ctx, db.SetDimensionValueNameParams{
-		Value: newValue,
-		ID:    valueID,
+	var renamed DimensionValue
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		before, dim, err := tx.valueInDimension(ctx, valueID)
+		if err != nil {
+			return err
+		}
+		renamed = dimensionValueFromRow(before)
+		if before.Value == newValue {
+			return nil
+		}
+		row, err := tx.queries.SetDimensionValueName(ctx, db.SetDimensionValueNameParams{
+			Value: newValue,
+			ID:    valueID,
+		})
+		if err != nil {
+			return fmt.Errorf("rename dimension value: %w", err)
+		}
+		renamed = dimensionValueFromRow(row)
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dim.ID, "Renamed %s to %s in %s.", before.Value, newValue, dim.Name)
 	})
 	if err != nil {
-		return DimensionValue{}, fmt.Errorf("rename dimension value: %w", err)
+		return DimensionValue{}, err
 	}
-	return dimensionValueFromRow(row), nil
+	return renamed, nil
 }
 
 // RetireDimensionValue retires a value so it is no longer offered for new
 // assignments, yet stays readable on the Goals that already carry it (CONTEXT.md:
-// Admins retire values; retired values stay readable). Only an Admin may.
+// Admins retire values; retired values stay readable). It is written to the
+// Definition log. Only an Admin may.
 func (s *Service) RetireDimensionValue(ctx context.Context, actorID, valueID int64) error {
-	if err := s.requireAdmin(ctx, actorID); err != nil {
-		return err
-	}
-	if _, err := s.queries.SetDimensionValueRetired(ctx, db.SetDimensionValueRetiredParams{
-		Retired: 1,
-		ID:      valueID,
-	}); err != nil {
-		return fmt.Errorf("retire dimension value: %w", err)
-	}
-	return nil
+	return s.setDimensionValueRetired(ctx, actorID, valueID, true)
 }
 
 // RestoreDimensionValue reverses a value's retirement, so it is offered for new
 // assignments again (CONTEXT.md: Retired — an Admin can reverse it). Only an
-// Admin may.
+// Admin may. It is written to the Definition log.
 func (s *Service) RestoreDimensionValue(ctx context.Context, actorID, valueID int64) error {
+	return s.setDimensionValueRetired(ctx, actorID, valueID, false)
+}
+
+func (s *Service) setDimensionValueRetired(ctx context.Context, actorID, valueID int64, retired bool) error {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return err
 	}
-	if _, err := s.queries.SetDimensionValueRetired(ctx, db.SetDimensionValueRetiredParams{
-		Retired: 0,
-		ID:      valueID,
-	}); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: dimension value does not exist", ErrValidation)
+	return s.WithinTx(ctx, func(tx *Service) error {
+		val, dim, err := tx.valueInDimension(ctx, valueID)
+		if err != nil {
+			return err
 		}
-		return fmt.Errorf("restore dimension value: %w", err)
-	}
-	return nil
+		if dimensionValueFromRow(val).Retired == retired {
+			return nil
+		}
+		if _, err := tx.queries.SetDimensionValueRetired(ctx, db.SetDimensionValueRetiredParams{
+			Retired: boolFlag(retired),
+			ID:      valueID,
+		}); err != nil {
+			return fmt.Errorf("set dimension value retired: %w", err)
+		}
+		verb := "Restored"
+		if retired {
+			verb = "Retired"
+		}
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dim.ID, "%s %s in %s.", verb, val.Value, dim.Name)
+	})
 }
 
 // RetireDimension withdraws a whole Dimension: it is no longer offered when
 // setting a Goal's values, nor in the Goal list's filter and grouping or the
 // Report Definition form, yet the Goals carrying its values still show them and
 // saved Report Definitions filtering on them keep working. Nothing is deleted
-// (CONTEXT.md: Retired; ADR 0005). Only an Admin may.
+// (CONTEXT.md: Retired; ADR 0005). It is written to the Definition log. Only an
+// Admin may.
 func (s *Service) RetireDimension(ctx context.Context, actorID, dimensionID int64) error {
 	return s.setDimensionRetired(ctx, actorID, dimensionID, true)
 }
 
 // RestoreDimension reverses a Dimension's retirement, returning it everywhere
-// it was withdrawn from (CONTEXT.md: Retired — an Admin can reverse it). Only
-// an Admin may.
+// it was withdrawn from (CONTEXT.md: Retired — an Admin can reverse it). It is
+// written to the Definition log. Only an Admin may.
 func (s *Service) RestoreDimension(ctx context.Context, actorID, dimensionID int64) error {
 	return s.setDimensionRetired(ctx, actorID, dimensionID, false)
 }
@@ -220,40 +311,53 @@ func (s *Service) setDimensionRetired(ctx context.Context, actorID, dimensionID 
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return err
 	}
-	var flag int64
-	if retired {
-		flag = 1
-	}
-	if _, err := s.queries.SetDimensionRetired(ctx, db.SetDimensionRetiredParams{
-		Retired: flag,
-		ID:      dimensionID,
-	}); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	return s.WithinTx(ctx, func(tx *Service) error {
+		before, err := tx.queries.GetDimension(ctx, dimensionID)
+		if err != nil {
 			return fmt.Errorf("%w: dimension does not exist", ErrValidation)
 		}
-		return fmt.Errorf("set dimension retired: %w", err)
-	}
-	return nil
+		if dimensionFromRow(before).Retired == retired {
+			return nil
+		}
+		if _, err := tx.queries.SetDimensionRetired(ctx, db.SetDimensionRetiredParams{
+			Retired: boolFlag(retired),
+			ID:      dimensionID,
+		}); err != nil {
+			return fmt.Errorf("set dimension retired: %w", err)
+		}
+		verb := "Restored"
+		if retired {
+			verb = "Retired"
+		}
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dimensionID, "%s the Dimension %s.", verb, before.Name)
+	})
 }
 
 // SetDimensionRequired marks a Dimension required, so a Proposed Goal can't
 // become Active without one of its values, or unmarks it (CONTEXT.md:
 // Incomplete). Marking is always allowed: Active Goals lacking a value stay
-// Active and become Incomplete. Only an Admin may.
+// Active and become Incomplete. It is written to the Definition log. Only an
+// Admin may.
 func (s *Service) SetDimensionRequired(ctx context.Context, actorID, dimensionID int64, required bool) error {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return err
 	}
-	if _, err := s.queries.SetDimensionRequired(ctx, db.SetDimensionRequiredParams{
-		Required: boolFlag(required),
-		ID:       dimensionID,
-	}); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	return s.WithinTx(ctx, func(tx *Service) error {
+		before, err := tx.queries.GetDimension(ctx, dimensionID)
+		if err != nil {
 			return fmt.Errorf("%w: dimension does not exist", ErrValidation)
 		}
-		return fmt.Errorf("set dimension required: %w", err)
-	}
-	return nil
+		if dimensionFromRow(before).Required == required {
+			return nil
+		}
+		if _, err := tx.queries.SetDimensionRequired(ctx, db.SetDimensionRequiredParams{
+			Required: boolFlag(required),
+			ID:       dimensionID,
+		}); err != nil {
+			return fmt.Errorf("set dimension required: %w", err)
+		}
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dimensionID, "Marked the Dimension %s %s.", before.Name, requiredWord(required))
+	})
 }
 
 // The directions MoveDimensionValue moves a value in its Dimension's list.
@@ -264,8 +368,8 @@ const (
 
 // MoveDimensionValue moves a value one place up or down its Dimension's list,
 // the order its values are listed in everywhere (CONTEXT.md: Dimension). The
-// first value moved up or the last moved down stays where it is. Only an Admin
-// may.
+// first value moved up or the last moved down stays where it is, and writes
+// nothing to the Definition log; a move does. Only an Admin may.
 func (s *Service) MoveDimensionValue(ctx context.Context, actorID, valueID int64, direction string) error {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return err
@@ -274,43 +378,59 @@ func (s *Service) MoveDimensionValue(ctx context.Context, actorID, valueID int64
 	if step == 0 {
 		return fmt.Errorf("%w: a value moves up or down", ErrValidation)
 	}
-	val, err := s.queries.GetDimensionValue(ctx, valueID)
-	if err != nil {
-		return fmt.Errorf("%w: dimension value does not exist", ErrValidation)
-	}
-	rows, err := s.queries.ListDimensionValues(ctx, val.DimensionID)
-	if err != nil {
-		return fmt.Errorf("list dimension values: %w", err)
-	}
-	at := slices.IndexFunc(rows, func(r db.DimensionValue) bool { return r.ID == valueID })
-	to := at + step
-	if to < 0 || to >= len(rows) {
-		return nil
-	}
-	rows[at], rows[to] = rows[to], rows[at]
-	return s.setValueOrder(ctx, rows)
+	return s.WithinTx(ctx, func(tx *Service) error {
+		val, dim, err := tx.valueInDimension(ctx, valueID)
+		if err != nil {
+			return err
+		}
+		rows, err := tx.queries.ListDimensionValues(ctx, val.DimensionID)
+		if err != nil {
+			return fmt.Errorf("list dimension values: %w", err)
+		}
+		at := slices.IndexFunc(rows, func(r db.DimensionValue) bool { return r.ID == valueID })
+		to := at + step
+		if to < 0 || to >= len(rows) {
+			return nil
+		}
+		rows[at], rows[to] = rows[to], rows[at]
+		if err := tx.setValueOrder(ctx, rows); err != nil {
+			return err
+		}
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dim.ID, "Moved %s %s in %s.", val.Value, direction, dim.Name)
+	})
 }
 
 // SortDimensionValues puts a Dimension's values in alphabetical order, whatever
-// their letter case. Only an Admin may.
+// their letter case, and writes one entry to the Definition log, or none when
+// they were in that order already. Only an Admin may.
 func (s *Service) SortDimensionValues(ctx context.Context, actorID, dimensionID int64) error {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return err
 	}
-	if _, err := s.queries.GetDimension(ctx, dimensionID); err != nil {
-		return fmt.Errorf("%w: dimension does not exist", ErrValidation)
-	}
-	rows, err := s.queries.ListDimensionValues(ctx, dimensionID)
-	if err != nil {
-		return fmt.Errorf("list dimension values: %w", err)
-	}
-	slices.SortStableFunc(rows, func(a, b db.DimensionValue) int {
-		if c := strings.Compare(strings.ToLower(a.Value), strings.ToLower(b.Value)); c != 0 {
-			return c
+	return s.WithinTx(ctx, func(tx *Service) error {
+		dim, err := tx.queries.GetDimension(ctx, dimensionID)
+		if err != nil {
+			return fmt.Errorf("%w: dimension does not exist", ErrValidation)
 		}
-		return strings.Compare(a.Value, b.Value)
+		rows, err := tx.queries.ListDimensionValues(ctx, dimensionID)
+		if err != nil {
+			return fmt.Errorf("list dimension values: %w", err)
+		}
+		sorted := slices.Clone(rows)
+		slices.SortStableFunc(sorted, func(a, b db.DimensionValue) int {
+			if c := strings.Compare(strings.ToLower(a.Value), strings.ToLower(b.Value)); c != 0 {
+				return c
+			}
+			return strings.Compare(a.Value, b.Value)
+		})
+		if slices.Equal(sorted, rows) {
+			return nil
+		}
+		if err := tx.setValueOrder(ctx, sorted); err != nil {
+			return err
+		}
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dimensionID, "Sorted %s's values alphabetically.", dim.Name)
 	})
-	return s.setValueOrder(ctx, rows)
 }
 
 // setValueOrder stores rows' order as their Dimension's list order, all or
@@ -334,7 +454,8 @@ func (s *Service) setValueOrder(ctx context.Context, rows []db.DimensionValue) e
 // both), every Report Definition filter on it points at the target, and the
 // merged value is gone from the list (CONTEXT.md: Extendable — merging values
 // stays with Admins). It is all or nothing. Merging across Dimensions or into
-// the value itself is refused. Only an Admin may.
+// the value itself is refused. A merge is written to the Definition log naming
+// both values. Only an Admin may.
 func (s *Service) MergeDimensionValue(ctx context.Context, actorID, mergedID, targetID int64) error {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return err
@@ -371,7 +492,11 @@ func (s *Service) MergeDimensionValue(ctx context.Context, actorID, mergedID, ta
 		if err := tx.queries.DeleteDimensionValue(ctx, mergedID); err != nil {
 			return fmt.Errorf("delete merged value: %w", err)
 		}
-		return nil
+		dim, err := tx.queries.GetDimension(ctx, merged.DimensionID)
+		if err != nil {
+			return fmt.Errorf("load dimension: %w", err)
+		}
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dim.ID, "Merged %s into %s in %s.", merged.Value, target.Value, dim.Name)
 	})
 }
 
@@ -397,7 +522,8 @@ func (e *SeveralValuesError) Unwrap() error { return ErrValidation }
 // SetDimensionSelection chooses whether a Goal takes one of the Dimension's
 // values or several (CONTEXT.md: Dimension). One to several is always allowed;
 // several to one is refused with a *SeveralValuesError while any Goal carries
-// more than one value in the Dimension. Only an Admin may.
+// more than one value in the Dimension. It is written to the Definition log.
+// Only an Admin may.
 func (s *Service) SetDimensionSelection(ctx context.Context, actorID, dimensionID int64, selection string) error {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return err
@@ -408,6 +534,9 @@ func (s *Service) SetDimensionSelection(ctx context.Context, actorID, dimensionI
 	dim, err := s.queries.GetDimension(ctx, dimensionID)
 	if err != nil {
 		return fmt.Errorf("%w: dimension does not exist", ErrValidation)
+	}
+	if dim.Selection == selection {
+		return nil
 	}
 	if selection == SelectionOne {
 		rows, err := s.queries.ListGoalsWithSeveralValuesInDimension(ctx, dimensionID)
@@ -422,19 +551,22 @@ func (s *Service) SetDimensionSelection(ctx context.Context, actorID, dimensionI
 			return refusal
 		}
 	}
-	if _, err := s.queries.SetDimensionSelection(ctx, db.SetDimensionSelectionParams{
-		Selection: selection,
-		ID:        dimensionID,
-	}); err != nil {
-		return fmt.Errorf("set dimension selection: %w", err)
-	}
-	return nil
+	return s.WithinTx(ctx, func(tx *Service) error {
+		row, err := tx.queries.SetDimensionSelection(ctx, db.SetDimensionSelectionParams{
+			Selection: selection,
+			ID:        dimensionID,
+		})
+		if err != nil {
+			return fmt.Errorf("set dimension selection: %w", err)
+		}
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dimensionID, "%s now takes %s.", dim.Name, selectionPhrase(dimensionFromRow(row)))
+	})
 }
 
 // SetDimensionList makes the Dimension's list Fixed or Extendable (CONTEXT.md:
 // Fixed, Extendable). Either switch is always allowed: switching to Fixed only
-// stops further additions, and the values already added stay. Only an Admin
-// may.
+// stops further additions, and the values already added stay. It is written to
+// the Definition log. Only an Admin may.
 func (s *Service) SetDimensionList(ctx context.Context, actorID, dimensionID int64, list string) error {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return err
@@ -442,16 +574,23 @@ func (s *Service) SetDimensionList(ctx context.Context, actorID, dimensionID int
 	if list != ListFixed && list != ListExtendable {
 		return fmt.Errorf("%w: a Dimension's list is Fixed or Extendable", ErrValidation)
 	}
-	if _, err := s.queries.GetDimension(ctx, dimensionID); err != nil {
-		return fmt.Errorf("%w: dimension does not exist", ErrValidation)
-	}
-	if _, err := s.queries.SetDimensionList(ctx, db.SetDimensionListParams{
-		List: list,
-		ID:   dimensionID,
-	}); err != nil {
-		return fmt.Errorf("set dimension list: %w", err)
-	}
-	return nil
+	return s.WithinTx(ctx, func(tx *Service) error {
+		before, err := tx.queries.GetDimension(ctx, dimensionID)
+		if err != nil {
+			return fmt.Errorf("%w: dimension does not exist", ErrValidation)
+		}
+		if before.List == list {
+			return nil
+		}
+		row, err := tx.queries.SetDimensionList(ctx, db.SetDimensionListParams{
+			List: list,
+			ID:   dimensionID,
+		})
+		if err != nil {
+			return fmt.Errorf("set dimension list: %w", err)
+		}
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dimensionID, "%s's list is now %s.", before.Name, listName(dimensionFromRow(row)))
+	})
 }
 
 // ListDimensions returns every Dimension with its values in display order,
@@ -542,8 +681,9 @@ func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID 
 // to the Dimension's list first when it isn't there, all in one step
 // (CONTEXT.md: Extendable). A name matching an existing value whatever its case
 // or surrounding spaces sets that value rather than adding one, and one
-// matching a Retired value is refused. It is assigned as AssignGoalValue assigns, and the
-// value the Goal now carries is returned. Only the Goal's Owner, a Delegate or
+// matching a Retired value is refused. A value added is written to the
+// Definition log with actorID. It is assigned as AssignGoalValue assigns, and
+// the value the Goal now carries is returned. Only the Goal's Owner, a Delegate or
 // an Admin may, and only an Admin may add to a Fixed list (CONTEXT.md: Fixed).
 func (s *Service) AssignGoalValueByName(ctx context.Context, actorID, goalID, dimensionID int64, name string) (DimensionValue, error) {
 	var val DimensionValue
@@ -588,15 +728,10 @@ func (s *Service) assignGoalValueByName(ctx context.Context, actorID, goalID, di
 			return DimensionValue{}, err
 		}
 	}
-	row, err := s.queries.CreateDimensionValue(ctx, db.CreateDimensionValueParams{
-		DimensionID: dimensionID,
-		Value:       name,
-		CreatedAt:   s.clock.Now().Format(timeFormat),
-	})
+	val, err := s.addDimensionValue(ctx, actorID, dimRow, name)
 	if err != nil {
-		return DimensionValue{}, fmt.Errorf("add dimension value: %w", err)
+		return DimensionValue{}, err
 	}
-	val := dimensionValueFromRow(row)
 	return val, s.AssignGoalValue(ctx, actorID, goalID, val.ID)
 }
 

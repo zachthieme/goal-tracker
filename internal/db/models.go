@@ -72,6 +72,15 @@ type DateSlip struct {
 	CreatedAt   string
 }
 
+type DefinitionChange struct {
+	ID          int64
+	ActorID     int64
+	DimensionID *int64
+	FieldID     *int64
+	Summary     string
+	CreatedAt   string
+}
+
 type Delegate struct {
 	ID        int64
 	GoalID    int64
