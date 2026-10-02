@@ -294,3 +294,44 @@ func TestNarrativeIsFrozenWithTheSnapshot(t *testing.T) {
 		t.Errorf("published narrative changed after re-curating\n got %+v\nwant %+v", got.Report.Narrative, pub.Report.Narrative)
 	}
 }
+
+// Each Highlight of a Check-in is its own entry in the author's pick list, so
+// the author can pull one into the narrative and leave the other; the
+// publication shows only the one pulled, crediting the Goal's Owner
+// (CONTEXT.md: Highlight).
+func TestAuthorPullsOneHighlightOfACheckinAndLeavesAnother(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	alice := h.SignIn("alice@example.com")
+	eu := h.ActiveGoal(alice, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlights(alice, eu.ID,
+		domain.HighlightInput{Kind: domain.HighlightAccomplishment, Note: "Signed the first EU customer."},
+		domain.HighlightInput{Kind: domain.HighlightMiss, Note: "Lost the second customer."},
+	)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{eu.ID}})
+	r, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	if got := highlightNotes(r.Highlights); !slices.Equal(got, []string{"Signed the first EU customer.", "Lost the second customer."}) {
+		t.Fatalf("pick list %q, want each Highlight of the Check-in separately", got)
+	}
+	if err := h.Service.CurateNarrative(ctx, def.ID, domain.CurateNarrativeInput{
+		Picks: []domain.NarrativePick{{HighlightID: highlightID(t, r, "Lost the second customer."), Section: domain.HighlightMiss}},
+	}); err != nil {
+		t.Fatalf("CurateNarrative: %v", err)
+	}
+
+	pub := publish(t, h, boss, def, time.Time{})
+	if len(pub.Report.Narrative) != 1 {
+		t.Fatalf("published narrative %+v, want only the Misses", pub.Report.Narrative)
+	}
+	misses, ok := section(pub.Report, domain.HighlightMiss)
+	if !ok || !slices.Equal(highlightNotes(misses.Highlights), []string{"Lost the second customer."}) {
+		t.Fatalf("published Misses %+v, want only the Highlight pulled", misses)
+	}
+	if got := misses.Highlights[0].Highlight.Owner.Email; got != alice.Email {
+		t.Errorf("published Highlight credits %s, want the Goal's Owner %s", got, alice.Email)
+	}
+}
