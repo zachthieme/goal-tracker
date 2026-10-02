@@ -20,6 +20,11 @@ RETURNING *;
 UPDATE dimensions SET list = ? WHERE id = ?
 RETURNING *;
 
+-- name: SetDimensionRetired :one
+-- Retire a Dimension (1) or restore it (0); nothing about it is deleted.
+UPDATE dimensions SET retired = ? WHERE id = ?
+RETURNING *;
+
 -- name: ListGoalsWithSeveralValuesInDimension :many
 -- The Goals carrying more than one of a Dimension's values, which keep it from
 -- being switched to one value.
