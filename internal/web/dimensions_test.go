@@ -676,3 +676,22 @@ func TestDimensionValueContainingASemicolonOverHTTP(t *testing.T) {
 		t.Errorf("Dimensions = %+v, want only Pillar with [Growth, R&D and Ops]", dims)
 	}
 }
+
+// Defining a Dimension named like a Field, in another case, is refused saying
+// the Field has the name, and defines nothing: Dimensions and Fields share one
+// namespace.
+func TestDimensionNamedLikeAFieldRefusedOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	resp := postForm(t, client, ts.URL+"/dimensions", url.Values{"name": {"budget"}, "values": {"Low, High"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(html.UnescapeString(body), "Budget is already a Field's name") {
+		t.Errorf("define budget: status %d, body %q; want 422 naming the Field", resp.StatusCode, body)
+	}
+	if dims, err := h.Service.ListDimensions(context.Background()); err != nil || len(dims) != 0 {
+		t.Errorf("Dimensions = %+v (%v), want none", dims, err)
+	}
+}

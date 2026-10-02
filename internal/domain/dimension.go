@@ -87,8 +87,9 @@ type DimensionDefinition struct {
 
 // DefineDimension defines a new Dimension shaped as def says, and writes one
 // entry to the Definition log saying so. Only an Admin may define Dimensions
-// (CONTEXT.md: Admin). The name and at least one value are required; blank
-// values are dropped, and so is a value matching an earlier one whatever its
+// (CONTEXT.md: Admin). The name and at least one value are required, and the
+// name can't be one a Dimension or a Field already has (see
+// requireFreeAttributeName); blank values are dropped, and so is a value matching an earlier one whatever its
 // case. A value containing a semicolon is refused (see checkValueName).
 func (s *Service) DefineDimension(ctx context.Context, actorID int64, def DimensionDefinition) (Dimension, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
@@ -97,6 +98,9 @@ func (s *Service) DefineDimension(ctx context.Context, actorID int64, def Dimens
 	name := strings.TrimSpace(def.Name)
 	if name == "" {
 		return Dimension{}, fmt.Errorf("%w: a Dimension needs a name", ErrValidation)
+	}
+	if err := s.requireFreeAttributeName(ctx, name); err != nil {
+		return Dimension{}, err
 	}
 	cleaned := make([]string, 0, len(def.Values))
 	for _, v := range def.Values {

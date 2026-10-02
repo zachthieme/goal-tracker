@@ -54,7 +54,7 @@ func (s *Service) CreateField(ctx context.Context, actorID int64, name, fieldTyp
 	default:
 		return Field{}, fmt.Errorf("%w: a Field holds a number, a short text, a long text or a date", ErrValidation)
 	}
-	if err := s.requireFreeFieldName(ctx, name); err != nil {
+	if err := s.requireFreeAttributeName(ctx, name); err != nil {
 		return Field{}, err
 	}
 	var field Field
@@ -262,10 +262,12 @@ func (s *Service) ListFields(ctx context.Context) ([]Field, error) {
 	return out, nil
 }
 
-// requireFreeFieldName refuses a name that a Dimension or another Field already
-// has, whatever its letter case, so a name on a Goal says which attribute it is
-// (ADR 0005).
-func (s *Service) requireFreeFieldName(ctx context.Context, name string) error {
+// requireFreeAttributeName refuses a name for a new Dimension or Field that a
+// Dimension or a Field already has, whatever its letter case or surrounding
+// spaces, saying which one has it: the two share one namespace, so a name on a
+// Goal, or a column in the spreadsheet import, says which attribute it is (ADR
+// 0005). Names that already collide are left as they are.
+func (s *Service) requireFreeAttributeName(ctx context.Context, name string) error {
 	dims, err := s.queries.ListDimensions(ctx)
 	if err != nil {
 		return fmt.Errorf("list dimensions: %w", err)
@@ -280,7 +282,7 @@ func (s *Service) requireFreeFieldName(ctx context.Context, name string) error {
 		return fmt.Errorf("list fields: %w", err)
 	}
 	for _, f := range fields {
-		if strings.EqualFold(f.Name, name) {
+		if strings.EqualFold(strings.TrimSpace(f.Name), name) {
 			return fmt.Errorf("%w: %s is already a Field's name", ErrValidation, f.Name)
 		}
 	}

@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -336,5 +337,24 @@ func TestAdminMarksFieldRequiredOverHTTP(t *testing.T) {
 	postForm(t, boss, requiredURL, url.Values{"required": {"0"}})
 	if got := pageElement(t, getBody(t, sam, ts.URL+"/fields"), "p", "field-type"); strings.Contains(got, "Required") {
 		t.Errorf("card still says Budget is required: %s", got)
+	}
+}
+
+// Defining a Field named like a Dimension, in another case, is refused saying
+// the Dimension has the name, and defines nothing: Dimensions and Fields share
+// one namespace.
+func TestFieldNamedLikeADimensionRefusedOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.CreateDimension(boss, "Pillar", "Growth")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	resp := postForm(t, client, ts.URL+"/fields", url.Values{"name": {"PILLAR"}, "type": {domain.FieldShortText}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(html.UnescapeString(body), "Pillar is already a Dimension's name") {
+		t.Errorf("define PILLAR: status %d, body %q; want 422 naming the Dimension", resp.StatusCode, body)
+	}
+	if fields, err := h.Service.ListFields(context.Background()); err != nil || len(fields) != 0 {
+		t.Errorf("Fields = %+v (%v), want none", fields, err)
 	}
 }
