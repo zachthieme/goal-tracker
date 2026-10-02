@@ -1979,3 +1979,64 @@ func TestGoalPageCanvasBlocksSitUnderARule(t *testing.T) {
 		t.Errorf(".ruled draws no --color-border rule: %s", rule)
 	}
 }
+
+// A Retired Dimension isn't offered on the Goal page: it has no control to set
+// a value and its values aren't child-Goal defaults. A Goal carrying a value in
+// it still shows the value, marked retired, and one carrying none doesn't list
+// it. Restoring the Dimension returns its control (CONTEXT.md: Retired).
+func TestRetiredDimensionLeavesGoalPageControlsOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	quarter := h.CreateSeveralValuesDimension(boss, "Quarter", "Q1", "Q2")
+	h.CreateDimension(boss, "Team", "Core")
+	growth := pillar.Values[0]
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, growth)
+	ctx := context.Background()
+	for _, d := range []domain.Dimension{pillar, quarter} {
+		if err := h.Service.RetireDimension(ctx, boss.ID, d.ID); err != nil {
+			t.Fatalf("RetireDimension %s: %v", d.Name, err)
+		}
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	page := getBody(t, client, goalURL)
+	shown := between(t, page, `<section data-testid="goal-dimensions"`, `id="edit-dimensions"`)
+	if !strings.Contains(shown, `data-testid="goal-dimension-value">Growth`) || !strings.Contains(shown, `data-testid="retired"`) {
+		t.Errorf("Growth isn't shown marked retired:\n%s", shown)
+	}
+	if strings.Contains(shown, "Quarter") {
+		t.Errorf("a Retired Dimension the Goal carries no value in is listed:\n%s", shown)
+	}
+	edit := between(t, page, `id="edit-dimensions"`, "</details>")
+	for _, d := range []domain.Dimension{pillar, quarter} {
+		if strings.Contains(edit, d.Name) {
+			t.Errorf("the Retired %s is offered for setting:\n%s", d.Name, edit)
+		}
+	}
+	if !strings.Contains(edit, "Team") {
+		t.Errorf("the live Team isn't offered for setting:\n%s", edit)
+	}
+	if strings.Contains(page, `data-testid="child-defaults"`) {
+		t.Errorf("a value of a Retired Dimension is offered as a child default:\n%s", pageElement(t, page, "fieldset", "child-defaults"))
+	}
+
+	if err := h.Service.RestoreDimension(ctx, boss.ID, pillar.ID); err != nil {
+		t.Fatalf("RestoreDimension: %v", err)
+	}
+	page = getBody(t, client, goalURL)
+	shown = between(t, page, `<section data-testid="goal-dimensions"`, `id="edit-dimensions"`)
+	if strings.Contains(shown, `data-testid="retired"`) {
+		t.Errorf("Growth is still marked retired after Pillar is restored:\n%s", shown)
+	}
+	if edit := between(t, page, `id="edit-dimensions"`, "</details>"); !strings.Contains(edit, `aria-label="Pillar"`) {
+		t.Errorf("the restored Pillar isn't offered for setting:\n%s", edit)
+	}
+	if !strings.Contains(page, `data-testid="child-defaults"`) {
+		t.Errorf("Growth isn't offered as a child default once Pillar is restored")
+	}
+}

@@ -455,6 +455,19 @@ func (s *Service) ListDimensions(ctx context.Context) ([]Dimension, error) {
 	return out, nil
 }
 
+// OfferedDimensions keeps the Dimensions still offered for setting, filtering
+// and grouping Goals and for defining Reports, dropping the Retired ones
+// (CONTEXT.md: Retired).
+func OfferedDimensions(dims []Dimension) []Dimension {
+	out := make([]Dimension, 0, len(dims))
+	for _, d := range dims {
+		if !d.Retired {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
 // AssignGoalValue gives a Goal a Dimension value (CONTEXT.md: Owners and their
 // Delegates set a Goal's Dimension values). In a Dimension that takes one value it
 // replaces any value the Goal already has there; in one that takes several it is
