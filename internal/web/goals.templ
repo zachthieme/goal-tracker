@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -578,6 +579,7 @@ templ goalPage(current *domain.Account, v goalView) {
 		</nav>
 		@goalFreshness(v.Freshness)
 		@goalSignals(v.Signals)
+		@goalIncomplete(v.Incomplete)
 		@goalHead(v, owner, admin)
 		<article data-testid="goal" class="gp-block gp-statement">
 			<h3><button type="button" class="disclose help" aria-expanded="false" aria-controls="so-what-help" title={ soWhatHelp }>So What</button></h3>
@@ -1155,6 +1157,16 @@ templ defineGoal(v goalView) {
 			<button type="submit" class="btn primary" disabled?={ !v.readyToActivate() }>Activate Goal</button>
 		</form>
 	</section>
+}
+
+// goalIncomplete flags an Incomplete Goal at the top of its page, naming the
+// required Dimensions and Fields it has no value in. It is a status, not an
+// alarm: quieter than Red and Stale (CONTEXT.md: Incomplete). It renders
+// nothing when the Goal lacks none.
+templ goalIncomplete(missing []string) {
+	if len(missing) > 0 {
+		<p data-testid="goal-incomplete" class="alert lc" role="status"><strong>Incomplete</strong><span>{ "no value yet in " + strings.Join(missing, ", ") }</span></p>
+	}
 }
 
 // milestoneList is a Goal's Milestones as a table of status, name, and date

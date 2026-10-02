@@ -5,13 +5,20 @@ import (
 	"fmt"
 )
 
-// MissingRequired names the Dimensions and Fields an Admin has marked required
-// that the Goal has no value in, Dimensions first, each by name. A Retired
+// RequiredValue is a Dimension or Field an Admin has marked required, by name,
+// and whether a Goal has a value in it (CONTEXT.md: Incomplete).
+type RequiredValue struct {
+	Name string
+	Set  bool
+}
+
+// RequiredValues lists the Dimensions and Fields a Goal needs a value in,
+// Dimensions first, each by name, saying whether it has one. A Retired
 // Dimension or Field is never required, and a Retired value the Goal still
 // carries counts as a value (CONTEXT.md: Incomplete, Retired). It holds
-// whatever the Goal's Lifecycle: the activation gate reads it on a Proposed
-// Goal, and Incomplete on an Active one.
-func (s *Service) MissingRequired(ctx context.Context, goalID int64) ([]string, error) {
+// whatever the Goal's Lifecycle: the activation checklist reads it on a
+// Proposed Goal.
+func (s *Service) RequiredValues(ctx context.Context, goalID int64) ([]RequiredValue, error) {
 	dims, err := s.queries.ListDimensions(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list dimensions: %w", err)
@@ -24,10 +31,10 @@ func (s *Service) MissingRequired(ctx context.Context, goalID int64) ([]string, 
 	for _, v := range values {
 		carried[v.DimensionID] = true
 	}
-	var missing []string
+	var out []RequiredValue
 	for _, row := range dims {
-		if d := dimensionFromRow(row); d.Required && !d.Retired && !carried[d.ID] {
-			missing = append(missing, d.Name)
+		if d := dimensionFromRow(row); d.Required && !d.Retired {
+			out = append(out, RequiredValue{Name: d.Name, Set: carried[d.ID]})
 		}
 	}
 
@@ -44,8 +51,25 @@ func (s *Service) MissingRequired(ctx context.Context, goalID int64) ([]string, 
 		set[v.Field.ID] = true
 	}
 	for _, f := range fields {
-		if f.Required && !f.Retired && !set[f.ID] {
-			missing = append(missing, f.Name)
+		if f.Required && !f.Retired {
+			out = append(out, RequiredValue{Name: f.Name, Set: set[f.ID]})
+		}
+	}
+	return out, nil
+}
+
+// MissingRequired names the required Dimensions and Fields a Goal has no value
+// in, in RequiredValues' order, whatever its Lifecycle. The activation gate
+// refuses a Proposed Goal that lacks any.
+func (s *Service) MissingRequired(ctx context.Context, goalID int64) ([]string, error) {
+	required, err := s.RequiredValues(ctx, goalID)
+	if err != nil {
+		return nil, err
+	}
+	var missing []string
+	for _, r := range required {
+		if !r.Set {
+			missing = append(missing, r.Name)
 		}
 	}
 	return missing, nil
