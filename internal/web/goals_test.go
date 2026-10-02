@@ -3112,3 +3112,54 @@ func TestGoalPageFlagsIncomplete(t *testing.T) {
 		t.Errorf("Goal with every required value is still flagged Incomplete")
 	}
 }
+
+// The Goal list marks each Incomplete Goal's row without moving it in the
+// problems-first order, and its Incomplete filter keeps exactly the Incomplete
+// Goals, in either layout (CONTEXT.md: Incomplete).
+func TestGoalListMarksAndFiltersIncomplete(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	complete := h.ActiveGoal(sam, "Zulu, complete", "It matters.")
+	lacking := h.ActiveGoal(sam, "Alpha, incomplete", "It matters.")
+	lackingToo := h.ActiveGoal(sam, "Mike, incomplete", "It matters.")
+	onHold := h.OnHoldGoal(sam, "Bravo, On Hold", "It matters.", "Waiting on legal.")
+	proposed := h.CreateGoal(sam, "Charlie, Proposed", "It matters.")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	h.AssignGoalValue(complete, pillar.Values[0])
+	h.SetDimensionRequired(boss, pillar, true)
+	goals := []domain.Goal{complete, lacking, lackingToo, onHold, proposed}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals")
+	rows := goalRows(t, page)
+	if got, want := rowTitles(rows, goals...), []string{"Alpha, incomplete", "Bravo, On Hold", "Charlie, Proposed", "Mike, incomplete", "Zulu, complete"}; !slices.Equal(got, want) {
+		t.Errorf("rows = %q, want %q: Incomplete changes no sort order", got, want)
+	}
+	for _, row := range rows {
+		marked := strings.Contains(row, `data-testid="incomplete"`)
+		want := strings.Contains(row, navTo(lacking.ID)) || strings.Contains(row, navTo(lackingToo.ID))
+		if marked != want {
+			t.Errorf("row marked Incomplete %v, want %v: %s", marked, want, row)
+		}
+	}
+	if box := pageTag(t, page, "input", "goal-incomplete-filter"); strings.Contains(box, "checked") {
+		t.Errorf("Incomplete filter is checked without ?incomplete=1: %s", box)
+	}
+
+	page = getBody(t, client, ts.URL+"/goals?incomplete=1")
+	if got, want := rowTitles(goalRows(t, page), goals...), []string{"Alpha, incomplete", "Mike, incomplete"}; !slices.Equal(got, want) {
+		t.Errorf("incomplete=1: rows = %q, want %q", got, want)
+	}
+	if box := pageTag(t, page, "input", "goal-incomplete-filter"); !strings.Contains(box, "checked") {
+		t.Errorf("Incomplete filter lost its check: %s", box)
+	}
+	table := getBody(t, client, ts.URL+"/goals?layout=table&incomplete=1")
+	for _, g := range goals {
+		listed := strings.Contains(table, navTo(g.ID))
+		if want := g.ID == lacking.ID || g.ID == lackingToo.ID; listed != want {
+			t.Errorf("table layout, incomplete=1: %s listed %v, want %v", g.Title, listed, want)
+		}
+	}
+}

@@ -40,9 +40,9 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 	}
 }
 
-// goalFilters is the filter bar — search, Health, Lifecycle, and Mine only —
-// with the Dimension filters and Group by folded under More filters, all
-// submitted as a GET so the chosen slice lives in the URL.
+// goalFilters is the filter bar — search, Health, Lifecycle, Mine only and
+// Incomplete — with the Dimension filters and Group by folded under More
+// filters, all submitted as a GET so the chosen slice lives in the URL.
 templ goalFilters(view goalsListData) {
 	<form method="get" action="/goals" data-testid="goal-filters" class="gl-filters">
 		<div class="gl-bar">
@@ -68,6 +68,10 @@ templ goalFilters(view goalsListData) {
 			<label class="gl-mine">
 				<input data-testid="goal-mine-filter" type="checkbox" name="mine" value="1" checked?={ view.Filter.Mine }/>
 				Mine only
+			</label>
+			<label class="gl-mine">
+				<input data-testid="goal-incomplete-filter" type="checkbox" name="incomplete" value="1" checked?={ view.Filter.Incomplete }/>
+				Incomplete
 			</label>
 			<button type="submit" class="btn">Apply</button>
 			<a href="/goals" class="btn quiet">Clear</a>
@@ -206,9 +210,10 @@ templ noGoals(text string) {
 	<tr><td data-testid="no-goals" colspan="6" class="muted">{ text }</td></tr>
 }
 
-// goalListRow is one Goal in the list: its Health, its title with the Ownerless
-// and freshness marks under it, its Owner, and its Dimension values, a Retired
-// one or one in a Retired Dimension marked retired.
+// goalListRow is one Goal in the list: its Health, its title with the
+// Ownerless, freshness and Incomplete marks under it (Incomplete the quietest),
+// its Owner, and its Dimension values, a Retired one or one in a Retired
+// Dimension marked retired.
 templ goalListRow(row goalRow) {
 	{{ g := row.Goal }}
 	<tr data-testid="goal-row">
@@ -221,12 +226,15 @@ templ goalListRow(row goalRow) {
 		</td>
 		<td>
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
-			if g.Ownerless || row.Freshness.Stale || row.Freshness.PathToGreenOverdue {
+			if g.Ownerless || row.Freshness.Stale || row.Freshness.PathToGreenOverdue || len(row.Incomplete) > 0 {
 				<div class="gl-marks">
 					if g.Ownerless {
 						<span data-testid="ownerless" class="badge ol">Ownerless</span>
 					}
 					@goalRowFreshness(row.Freshness)
+					if len(row.Incomplete) > 0 {
+						<span data-testid="incomplete" class="badge lc" title={ "No value yet in " + strings.Join(row.Incomplete, ", ") }>Incomplete</span>
+					}
 				</div>
 			}
 		</td>

@@ -151,6 +151,9 @@ type goalFilter struct {
 	Lifecycle string
 	// Mine keeps the Goals the viewer Owns or is a Delegate on (?mine=1).
 	Mine bool
+	// Incomplete keeps the Incomplete Goals (?incomplete=1; CONTEXT.md:
+	// Incomplete).
+	Incomplete bool
 }
 
 // lifecycleFilters are the Lifecycle filter's choices, in the order a Goal
@@ -178,7 +181,8 @@ func readGoalFilter(q url.Values) goalFilter {
 		Query:     strings.TrimSpace(q.Get("q")),
 		Health:    q.Get("health"),
 		Lifecycle: q.Get("lifecycle"),
-		Mine:      q.Get("mine") == "1",
+		Mine:       q.Get("mine") == "1",
+		Incomplete: q.Get("incomplete") == "1",
 	}
 }
 
@@ -196,6 +200,9 @@ func (f goalFilter) keeps(row goalRow, mine func(domain.Goal) bool) bool {
 			return false
 		}
 	}
+	if f.Incomplete && len(row.Incomplete) == 0 {
+		return false
+	}
 	if f.Lifecycle != "" && row.Goal.Lifecycle != f.Lifecycle {
 		return false
 	}
@@ -208,13 +215,17 @@ func (f goalFilter) keeps(row goalRow, mine func(domain.Goal) bool) bool {
 }
 
 // goalRow is one Goal in the Goal list with what its row shows beyond the Goal
-// and its Dimension values: its latest Check-in, which carries its Health, and
-// whether it is Stale or its Path to Green is overdue.
+// and its Dimension values: its latest Check-in, which carries its Health,
+// whether it is Stale or its Path to Green is overdue, and whether it is
+// Incomplete.
 type goalRow struct {
 	domain.GoalWithValues
 	// Latest is the Goal's most recent Check-in, nil when it has none.
 	Latest    *domain.Checkin
 	Freshness domain.Freshness
+	// Incomplete names the required Dimensions and Fields an Active Goal has
+	// no value in, empty when it isn't Incomplete (CONTEXT.md: Incomplete).
+	Incomplete []string
 	// PriorDates are the delivery dates the Goal's Date Slips moved it from,
 	// earliest first, shown struck through ahead of its current date.
 	PriorDates []time.Time
@@ -380,6 +391,9 @@ func (s *Server) loadGoalRow(ctx context.Context, gv domain.GoalWithValues) (goa
 	}
 	if row.Freshness, err = s.svc.Freshness(ctx, gv.Goal.ID); err != nil {
 		return goalRow{}, fmt.Errorf("read freshness: %w", err)
+	}
+	if row.Incomplete, err = s.svc.Incomplete(ctx, gv.Goal); err != nil {
+		return goalRow{}, fmt.Errorf("read incomplete: %w", err)
 	}
 	slips, err := s.svc.ListDateSlips(ctx, gv.Goal.ID)
 	if err != nil {
