@@ -103,9 +103,12 @@ templ goalFilters(view goalsListData) {
 }
 
 // goalList is the htmx swap target: the Goal list as a table led by Health,
-// flat or with a section per value of the grouping Dimension.
+// flat or with a section per value of the grouping Dimension, under a total of
+// the Goals it lists. Grouped by a several-values Dimension a Goal can appear in
+// more than one section, so the total counts each Goal once (ADR 0005).
 templ goalList(view goalsListData) {
 	<div id="goal-list" data-testid="goal-list" class="card">
+		<p data-testid="goal-count" class="muted small gl-count">{ goalCount(len(view.Rows)) }</p>
 		<table>
 			<thead>
 				<tr><th>Health</th><th>Goal</th><th>Owner</th><th>Due</th><th>Last check-in</th><th>Dimension tags</th></tr>
@@ -208,6 +211,7 @@ templ goalsStyles() {
 		.gl-filters details{padding:0 4px}
 		.gl-filters details>summary{justify-content:flex-start;color:var(--color-primary-strong);font-weight:600}
 		.gl-filters fieldset{display:inline-flex;flex-wrap:wrap;gap:4px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);margin:0 8px 8px 0;padding:8px 12px}
+		.gl-count{margin:0;padding:8px 12px}
 		.gl-group th{background:var(--color-primary-subtle);color:var(--color-ink);font-size:13px;font-weight:600;letter-spacing:0;text-transform:none}
 		.gl-marks{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
 		#goal-list td .tag{margin:4px 4px 4px 0}
@@ -424,6 +428,7 @@ templ goalPageStyles() {
 		.gp-block{display:flex;flex-direction:column;gap:12px}
 		.gp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 		.gp-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+		.gp-values{border:0;margin:0;padding:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 		.gp-form{display:flex;flex-direction:column;gap:12px}
 		.gp-edit form{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 		details.gp-card>summary h3{margin:0}
@@ -580,11 +585,13 @@ func openSection(id string) templ.ComponentScript {
 	return templ.ComponentScript{Call: "document.getElementById('" + id + "').open=true;this.closest('details').open=false"}
 }
 
-// goalDimensions shows the Goal's value in each Dimension as a tag — retired
-// values stay readable — and, for its Owner, a collapsed section to assign a
-// value per Dimension (CONTEXT.md: Owners assign Dimension values; retired
-// values stay readable). It links everyone to the Dimensions page, which isn't
-// in the main nav.
+// goalDimensions shows the Goal's values in each Dimension as tags — retired
+// values stay readable — and, for its Owner, a collapsed section to set them:
+// a select for a Dimension that takes one value, and a checkbox per value, saved
+// together, for one that takes several (CONTEXT.md: Owners assign Dimension
+// values; retired values stay readable). A retired value the Goal carries keeps
+// its checked box so saving doesn't silently drop it. It links everyone to the
+// Dimensions page, which isn't in the main nav.
 templ goalDimensions(v goalView, owner bool) {
 	{{ g := v.Goal }}
 	if len(v.Dimensions) == 0 {
@@ -592,16 +599,17 @@ templ goalDimensions(v goalView, owner bool) {
 	}
 	<ul class="gp-list">
 		for _, d := range v.Dimensions {
-			{{ current := v.assignedValue(d.ID) }}
+			{{ assigned := v.assignedValues(d.ID) }}
 			<li data-testid="goal-dimension">
 				<span class="label">{ d.Name }</span>
 				<br/>
-				if current != nil {
+				for _, current := range assigned {
 					<span class="tag" data-testid="goal-dimension-value">{ current.Value }</span>
 					if current.Retired {
 						<span class="muted small" data-testid="retired">(retired)</span>
 					}
-				} else {
+				}
+				if len(assigned) == 0 {
 					<span class="muted" data-testid="goal-dimension-unassigned">unassigned</span>
 				}
 			</li>
@@ -611,18 +619,38 @@ templ goalDimensions(v goalView, owner bool) {
 		<details id="edit-dimensions">
 			<summary class="small">Edit Dimension values</summary>
 			for _, d := range v.Dimensions {
-				{{ current := v.assignedValue(d.ID) }}
-				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/dimensions", g.ID)) } class="gp-inline">
-					<select name="value_id" aria-label={ d.Name }>
-						<option value="">{ d.Name }: choose</option>
-						for _, val := range d.Values {
-							if !val.Retired {
-								<option value={ fmt.Sprintf("%d", val.ID) } selected?={ current != nil && current.ID == val.ID }>{ val.Value }</option>
+				if d.TakesSeveral() {
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/dimensions", g.ID)) } class="gp-inline">
+						<input type="hidden" name="dimension_id" value={ fmt.Sprintf("%d", d.ID) }/>
+						<fieldset class="gp-values">
+							<legend>{ d.Name }</legend>
+							for _, val := range d.Values {
+								if !val.Retired || v.carries(val) {
+									<label>
+										<input type="checkbox" name="value_id" value={ fmt.Sprintf("%d", val.ID) } checked?={ v.carries(val) }/>
+										{ val.Value }
+										if val.Retired {
+											<span class="muted small">(retired)</span>
+										}
+									</label>
+								}
 							}
-						}
-					</select>
-					<button type="submit" class="btn sm">Assign</button>
-				</form>
+						</fieldset>
+						<button type="submit" class="btn sm">Save</button>
+					</form>
+				} else {
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/dimensions", g.ID)) } class="gp-inline">
+						<select name="value_id" aria-label={ d.Name }>
+							<option value="">{ d.Name }: choose</option>
+							for _, val := range d.Values {
+								if !val.Retired {
+									<option value={ fmt.Sprintf("%d", val.ID) } selected?={ v.carries(val) }>{ val.Value }</option>
+								}
+							}
+						</select>
+						<button type="submit" class="btn sm">Assign</button>
+					</form>
+				}
 			}
 		</details>
 	}

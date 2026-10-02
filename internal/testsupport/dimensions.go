@@ -26,3 +26,15 @@ func (h *Harness) AssignGoalValue(goal domain.Goal, value domain.DimensionValue)
 		h.T.Fatalf("AssignGoalValue: %v", err)
 	}
 }
+
+// CreateSeveralValuesDimension defines a Dimension in which a Goal takes
+// several values, failing the test on error.
+func (h *Harness) CreateSeveralValuesDimension(admin domain.Account, name string, values ...string) domain.Dimension {
+	h.T.Helper()
+	dim := h.CreateDimension(admin, name, values...)
+	if err := h.Service.SetDimensionSelection(context.Background(), admin.ID, dim.ID, domain.SelectionSeveral); err != nil {
+		h.T.Fatalf("SetDimensionSelection: %v", err)
+	}
+	dim.Selection = domain.SelectionSeveral
+	return dim
+}

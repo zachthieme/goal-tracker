@@ -240,6 +240,74 @@ func TestOwnerAssignsDimensionValueOverHTTP(t *testing.T) {
 	}
 }
 
+// On the Goal page a several-values Dimension offers a checkbox per non-retired
+// value, saved together: an Owner gives the Goal two values, then removes one,
+// then clears them. A one-value Dimension keeps its select.
+func TestOwnerSetsSeveralDimensionValuesOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra", "Legacy")
+	h.CreateDimension(boss, "Pillar", "Growth")
+	core, infra, legacy := teams.Values[0], teams.Values[1], teams.Values[2]
+	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, legacy.ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	edit := between(t, getBody(t, samClient, goalURL), `<details id="edit-dimensions"`, "</details>")
+	for _, v := range []domain.DimensionValue{core, infra} {
+		if !strings.Contains(edit, fmt.Sprintf(`type="checkbox" name="value_id" value="%d"`, v.ID)) {
+			t.Errorf("no checkbox for %s:\n%s", v.Value, edit)
+		}
+	}
+	if strings.Contains(edit, fmt.Sprintf(`value="%d"`, legacy.ID)) {
+		t.Errorf("retired Legacy is offered:\n%s", edit)
+	}
+	if !strings.Contains(edit, `<select name="value_id" aria-label="Pillar"`) {
+		t.Errorf("one-value Pillar lost its select:\n%s", edit)
+	}
+
+	dimID := fmt.Sprintf("%d", teams.ID)
+	postForm(t, samClient, goalURL+"/dimensions", url.Values{
+		"dimension_id": {dimID},
+		"value_id":     {fmt.Sprintf("%d", core.ID), fmt.Sprintf("%d", infra.ID)},
+	})
+	section := pageElement(t, getBody(t, samClient, goalURL), "section", "goal-dimensions")
+	for _, want := range []string{`data-testid="goal-dimension-value">Core`, `data-testid="goal-dimension-value">Infra`} {
+		if !strings.Contains(section, want) {
+			t.Errorf("Goal page missing %s after saving two values:\n%s", want, section)
+		}
+	}
+	if !strings.Contains(section, fmt.Sprintf(`value="%d" checked`, core.ID)) {
+		t.Errorf("Core's checkbox isn't checked:\n%s", section)
+	}
+
+	postForm(t, samClient, goalURL+"/dimensions", url.Values{
+		"dimension_id": {dimID},
+		"value_id":     {fmt.Sprintf("%d", infra.ID)},
+	})
+	section = pageElement(t, getBody(t, samClient, goalURL), "section", "goal-dimensions")
+	if strings.Contains(section, `data-testid="goal-dimension-value">Core`) {
+		t.Errorf("Core still shown after it was unchecked:\n%s", section)
+	}
+	if !strings.Contains(section, `data-testid="goal-dimension-value">Infra`) {
+		t.Errorf("Infra lost when Core was removed:\n%s", section)
+	}
+
+	postForm(t, samClient, goalURL+"/dimensions", url.Values{"dimension_id": {dimID}})
+	values, err := h.Service.GoalValues(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	if len(values) != 0 {
+		t.Errorf("after unchecking everything, values = %+v, want none", values)
+	}
+}
+
 // Only the Owner (or an Admin) sets a Goal's Dimension values: another signed-in
 // person posting to the endpoint is refused with 403 and the value is unchanged.
 func TestNonOwnerCannotAssignDimensionValueOverHTTP(t *testing.T) {
@@ -297,6 +365,41 @@ func TestGoalPageDimensionsSectionLinksToDimensionsForNonOwner(t *testing.T) {
 	}
 	if !strings.Contains(defined, `href="/dimensions"`) {
 		t.Errorf("Dimensions section has no link to /dimensions:\n%s", defined)
+	}
+}
+
+// Grouped by a several-values Dimension, a Goal with two values appears in both
+// groups, and the list's total counts it once (ADR 0005).
+func TestGoalListGroupsSeveralValuesGoalUnderEachValue(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra")
+	shared := h.CreateGoal(sam, "Alpha", "A matters.")
+	h.CreateGoal(sam, "Bravo", "B matters.")
+	h.AssignGoalValue(shared, teams.Values[0])
+	h.AssignGoalValue(shared, teams.Values[1])
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	grouped := getBody(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, teams.ID))
+	groups := strings.Split(grouped, `<tbody data-testid="goal-group"`)[1:]
+	if len(groups) != 3 {
+		t.Fatalf("got %d groups, want Core, Infra and Unassigned; body:\n%s", len(groups), grouped)
+	}
+	for i, label := range []string{"Core", "Infra"} {
+		group := groups[i]
+		if !strings.Contains(group, label) || !strings.Contains(group, ">Alpha<") {
+			t.Errorf("group %d should be %s holding Alpha:\n%s", i, label, group)
+		}
+	}
+	if got := pageElement(t, grouped, "p", "goal-count"); !strings.Contains(got, ">2 Goals") {
+		t.Errorf("total = %q, want 2 Goals", got)
+	}
+
+	flat := getBody(t, client, ts.URL+"/goals")
+	if got := pageElement(t, flat, "p", "goal-count"); !strings.Contains(got, ">2 Goals") {
+		t.Errorf("flat total = %q, want 2 Goals", got)
 	}
 }
 

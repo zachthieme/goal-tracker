@@ -77,6 +77,14 @@ func (v goalsListData) moreFiltersSet() bool {
 	return len(v.Selected) > 0 || v.GroupID != 0
 }
 
+// goalCount is the Goal list's total: "1 Goal", "3 Goals".
+func goalCount(n int) string {
+	if n == 1 {
+		return "1 Goal"
+	}
+	return fmt.Sprintf("%d Goals", n)
+}
+
 // filtered reports whether any filter is narrowing the list, so an empty list
 // says nothing matches rather than that there are no Goals.
 func (v goalsListData) filtered() bool {
@@ -640,16 +648,27 @@ type metricTrend struct {
 	Readings []domain.MetricReading
 }
 
-// assignedValue returns the value this Goal carries in the given Dimension, or
-// nil if it carries none — used to show the current assignment and preselect the
-// assignment control.
-func (v goalView) assignedValue(dimensionID int64) *domain.DimensionValue {
-	for i := range v.Values {
-		if v.Values[i].DimensionID == dimensionID {
-			return &v.Values[i]
+// assignedValues returns the values this Goal carries in the given Dimension —
+// at most one unless the Dimension takes several — used to show the current
+// assignment and preselect the assignment control.
+func (v goalView) assignedValues(dimensionID int64) []domain.DimensionValue {
+	var out []domain.DimensionValue
+	for _, val := range v.Values {
+		if val.DimensionID == dimensionID {
+			out = append(out, val)
 		}
 	}
-	return nil
+	return out
+}
+
+// carries reports whether the Goal carries the value in the given Dimension.
+func (v goalView) carries(value domain.DimensionValue) bool {
+	for _, val := range v.Values {
+		if val.ID == value.ID {
+			return true
+		}
+	}
+	return false
 }
 
 // goalIDFromPath parses the {id} path value, writing a 404 and returning ok
@@ -873,13 +892,33 @@ func (s *Server) handleActivateGoal(w http.ResponseWriter, r *http.Request, _ do
 	writeCommandResult(w, r, id, err)
 }
 
-// handleAssignGoalValue assigns a Dimension value to the Goal, replacing any
-// value it already carries in the same Dimension (CONTEXT.md: Owners assign
-// Dimension values to their Goals). An empty selection is a no-op. Anyone but
-// the Owner or an Admin is refused.
+// handleAssignGoalValue sets the Goal's Dimension values (CONTEXT.md: Owners
+// assign Dimension values to their Goals). A form naming a dimension_id, a
+// several-values Dimension's checkboxes, saves its checked value_ids together,
+// so an unchecked value is removed. A single value_id without one, a one-value
+// Dimension's select, replaces any value the Goal already carries there, and an
+// empty selection is a no-op. Anyone but the Owner or an Admin is refused.
 func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := goalIDFromPath(w, r)
 	if !ok {
+		return
+	}
+	if rawDim := r.FormValue("dimension_id"); rawDim != "" {
+		dimensionID, err := strconv.ParseInt(rawDim, 10, 64)
+		if err != nil {
+			http.Error(w, "invalid dimension", http.StatusUnprocessableEntity)
+			return
+		}
+		var valueIDs []int64
+		for _, raw := range r.Form["value_id"] {
+			valueID, err := strconv.ParseInt(raw, 10, 64)
+			if err != nil {
+				http.Error(w, "invalid value", http.StatusUnprocessableEntity)
+				return
+			}
+			valueIDs = append(valueIDs, valueID)
+		}
+		writeCommandResult(w, r, id, s.svc.SetGoalValues(r.Context(), current.ID, id, dimensionID, valueIDs))
 		return
 	}
 	raw := r.FormValue("value_id")

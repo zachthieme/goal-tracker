@@ -9,28 +9,22 @@ import (
 	"context"
 )
 
-const assignGoalValue = `-- name: AssignGoalValue :one
+const assignGoalValueIfAbsent = `-- name: AssignGoalValueIfAbsent :exec
 INSERT INTO goal_dimension_values (goal_id, dimension_value_id, created_at)
 VALUES (?, ?, ?)
-RETURNING id, goal_id, dimension_value_id, created_at
+ON CONFLICT (goal_id, dimension_value_id) DO NOTHING
 `
 
-type AssignGoalValueParams struct {
+type AssignGoalValueIfAbsentParams struct {
 	GoalID           int64
 	DimensionValueID int64
 	CreatedAt        string
 }
 
-func (q *Queries) AssignGoalValue(ctx context.Context, arg AssignGoalValueParams) (GoalDimensionValue, error) {
-	row := q.db.QueryRowContext(ctx, assignGoalValue, arg.GoalID, arg.DimensionValueID, arg.CreatedAt)
-	var i GoalDimensionValue
-	err := row.Scan(
-		&i.ID,
-		&i.GoalID,
-		&i.DimensionValueID,
-		&i.CreatedAt,
-	)
-	return i, err
+// Give a Goal a value; a value it already carries is left as it is.
+func (q *Queries) AssignGoalValueIfAbsent(ctx context.Context, arg AssignGoalValueIfAbsentParams) error {
+	_, err := q.db.ExecContext(ctx, assignGoalValueIfAbsent, arg.GoalID, arg.DimensionValueID, arg.CreatedAt)
+	return err
 }
 
 const clearGoalValuesInDimension = `-- name: ClearGoalValuesInDimension :exec
@@ -44,8 +38,7 @@ type ClearGoalValuesInDimensionParams struct {
 	DimensionID int64
 }
 
-// Remove a Goal's assignment in one Dimension, so a fresh assignment replaces it
-// (a Goal carries at most one value per Dimension).
+// Remove a Goal's values in one Dimension, so a fresh assignment replaces them.
 func (q *Queries) ClearGoalValuesInDimension(ctx context.Context, arg ClearGoalValuesInDimensionParams) error {
 	_, err := q.db.ExecContext(ctx, clearGoalValuesInDimension, arg.GoalID, arg.DimensionID)
 	return err
@@ -54,7 +47,7 @@ func (q *Queries) ClearGoalValuesInDimension(ctx context.Context, arg ClearGoalV
 const createDimension = `-- name: CreateDimension :one
 INSERT INTO dimensions (name, created_at)
 VALUES (?, ?)
-RETURNING id, name, created_at
+RETURNING id, name, created_at, selection
 `
 
 type CreateDimensionParams struct {
@@ -65,7 +58,12 @@ type CreateDimensionParams struct {
 func (q *Queries) CreateDimension(ctx context.Context, arg CreateDimensionParams) (Dimension, error) {
 	row := q.db.QueryRowContext(ctx, createDimension, arg.Name, arg.CreatedAt)
 	var i Dimension
-	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.Selection,
+	)
 	return i, err
 }
 
@@ -95,13 +93,18 @@ func (q *Queries) CreateDimensionValue(ctx context.Context, arg CreateDimensionV
 }
 
 const getDimension = `-- name: GetDimension :one
-SELECT id, name, created_at FROM dimensions WHERE id = ? LIMIT 1
+SELECT id, name, created_at, selection FROM dimensions WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetDimension(ctx context.Context, id int64) (Dimension, error) {
 	row := q.db.QueryRowContext(ctx, getDimension, id)
 	var i Dimension
-	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.Selection,
+	)
 	return i, err
 }
 
@@ -158,7 +161,7 @@ func (q *Queries) ListAllDimensionValues(ctx context.Context) ([]DimensionValue,
 }
 
 const listAllGoalValues = `-- name: ListAllGoalValues :many
-SELECT goal_dimension_values.goal_id, dimension_values.id, dimension_values.dimension_id, dimension_values.value, dimension_values.retired, dimension_values.created_at, dimensions.id, dimensions.name, dimensions.created_at
+SELECT goal_dimension_values.goal_id, dimension_values.id, dimension_values.dimension_id, dimension_values.value, dimension_values.retired, dimension_values.created_at, dimensions.id, dimensions.name, dimensions.created_at, dimensions.selection
 FROM goal_dimension_values
 JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
 JOIN dimensions ON dimensions.id = dimension_values.dimension_id
@@ -192,6 +195,7 @@ func (q *Queries) ListAllGoalValues(ctx context.Context) ([]ListAllGoalValuesRow
 			&i.Dimension.ID,
 			&i.Dimension.Name,
 			&i.Dimension.CreatedAt,
+			&i.Dimension.Selection,
 		); err != nil {
 			return nil, err
 		}
@@ -242,7 +246,7 @@ func (q *Queries) ListDimensionValues(ctx context.Context, dimensionID int64) ([
 }
 
 const listDimensions = `-- name: ListDimensions :many
-SELECT id, name, created_at FROM dimensions ORDER BY name, id
+SELECT id, name, created_at, selection FROM dimensions ORDER BY name, id
 `
 
 func (q *Queries) ListDimensions(ctx context.Context) ([]Dimension, error) {
@@ -254,7 +258,12 @@ func (q *Queries) ListDimensions(ctx context.Context) ([]Dimension, error) {
 	var items []Dimension
 	for rows.Next() {
 		var i Dimension
-		if err := rows.Scan(&i.ID, &i.Name, &i.CreatedAt); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.CreatedAt,
+			&i.Selection,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -269,7 +278,7 @@ func (q *Queries) ListDimensions(ctx context.Context) ([]Dimension, error) {
 }
 
 const listGoalValues = `-- name: ListGoalValues :many
-SELECT dimension_values.id, dimension_values.dimension_id, dimension_values.value, dimension_values.retired, dimension_values.created_at, dimensions.id, dimensions.name, dimensions.created_at
+SELECT dimension_values.id, dimension_values.dimension_id, dimension_values.value, dimension_values.retired, dimension_values.created_at, dimensions.id, dimensions.name, dimensions.created_at, dimensions.selection
 FROM goal_dimension_values
 JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
 JOIN dimensions ON dimensions.id = dimension_values.dimension_id
@@ -302,6 +311,7 @@ func (q *Queries) ListGoalValues(ctx context.Context, goalID int64) ([]ListGoalV
 			&i.Dimension.ID,
 			&i.Dimension.Name,
 			&i.Dimension.CreatedAt,
+			&i.Dimension.Selection,
 		); err != nil {
 			return nil, err
 		}
@@ -314,6 +324,107 @@ func (q *Queries) ListGoalValues(ctx context.Context, goalID int64) ([]ListGoalV
 		return nil, err
 	}
 	return items, nil
+}
+
+const listGoalsWithSeveralValuesInDimension = `-- name: ListGoalsWithSeveralValuesInDimension :many
+SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
+FROM goals
+JOIN accounts ON accounts.id = goals.owner_id
+WHERE goals.id IN (
+    SELECT goal_dimension_values.goal_id
+    FROM goal_dimension_values
+    JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
+    WHERE dimension_values.dimension_id = ?
+    GROUP BY goal_dimension_values.goal_id
+    HAVING COUNT(*) > 1
+)
+ORDER BY goals.title, goals.id
+`
+
+type ListGoalsWithSeveralValuesInDimensionRow struct {
+	Goal    Goal
+	Account Account
+}
+
+// The Goals carrying more than one of a Dimension's values, which keep it from
+// being switched to one value.
+func (q *Queries) ListGoalsWithSeveralValuesInDimension(ctx context.Context, dimensionID int64) ([]ListGoalsWithSeveralValuesInDimensionRow, error) {
+	rows, err := q.db.QueryContext(ctx, listGoalsWithSeveralValuesInDimension, dimensionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGoalsWithSeveralValuesInDimensionRow
+	for rows.Next() {
+		var i ListGoalsWithSeveralValuesInDimensionRow
+		if err := rows.Scan(
+			&i.Goal.ID,
+			&i.Goal.Title,
+			&i.Goal.SoWhat,
+			&i.Goal.OwnerID,
+			&i.Goal.Lifecycle,
+			&i.Goal.CreatedAt,
+			&i.Goal.Kind,
+			&i.Goal.DeliveryDate,
+			&i.Goal.CadenceDays,
+			&i.Goal.TopLevel,
+			&i.Goal.ActivatedAt,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const removeGoalValue = `-- name: RemoveGoalValue :exec
+DELETE FROM goal_dimension_values WHERE goal_id = ? AND dimension_value_id = ?
+`
+
+type RemoveGoalValueParams struct {
+	GoalID           int64
+	DimensionValueID int64
+}
+
+func (q *Queries) RemoveGoalValue(ctx context.Context, arg RemoveGoalValueParams) error {
+	_, err := q.db.ExecContext(ctx, removeGoalValue, arg.GoalID, arg.DimensionValueID)
+	return err
+}
+
+const setDimensionSelection = `-- name: SetDimensionSelection :one
+UPDATE dimensions SET selection = ? WHERE id = ?
+RETURNING id, name, created_at, selection
+`
+
+type SetDimensionSelectionParams struct {
+	Selection string
+	ID        int64
+}
+
+// Whether a Goal takes one value ('one') or several ('several') in this
+// Dimension.
+func (q *Queries) SetDimensionSelection(ctx context.Context, arg SetDimensionSelectionParams) (Dimension, error) {
+	row := q.db.QueryRowContext(ctx, setDimensionSelection, arg.Selection, arg.ID)
+	var i Dimension
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.Selection,
+	)
+	return i, err
 }
 
 const setDimensionValueName = `-- name: SetDimensionValueName :one
