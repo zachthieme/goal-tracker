@@ -2576,3 +2576,52 @@ func TestGoalPageListsValueHistory(t *testing.T) {
 		}
 	}
 }
+
+// The Goal table's Download CSV link returns exactly the Goals its filters
+// keep, one row each behind an ID column, with a column for every live
+// Dimension and Field, even one this browser hides, and the Owner as an email
+// (#81).
+func TestGoalTableDownloadsTheFilteredGoalsAsCSV(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignInNamed("sam@example.com", "Sam Lee")
+	pillar := h.CreateSeveralValuesDimension(boss, "Pillar", "Growth", "Trust")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	alpha := h.CreateGoal(sam, "Alpha launch", "A matters.")
+	h.AssignGoalValue(alpha, pillar.Values[0])
+	h.AssignGoalValue(alpha, pillar.Values[1])
+	h.SetGoalField(sam, alpha, budget, "1200")
+	h.CreateGoal(sam, "Bravo launch", "B matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := submitColumns(t, client, ts.URL, getBody(t, client, ts.URL+"/goals?layout=table&q=alpha"), "Budget")
+	tag := pageTag(t, page, "a", "goal-table-download")
+	u, err := url.Parse(html.UnescapeString(attr(tag, "href")))
+	if err != nil {
+		t.Fatalf("download href: %v", err)
+	}
+	if u.Path != "/goals/download" || u.Query().Get("q") != "alpha" {
+		t.Fatalf("Download CSV links to %s, want /goals/download keeping q=alpha", u)
+	}
+
+	resp, err := client.Get(ts.URL + u.String())
+	if err != nil {
+		t.Fatalf("GET download: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("download status %d: %s", resp.StatusCode, body)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/csv") {
+		t.Errorf("Content-Type = %q, want text/csv", ct)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, "attachment") || !strings.Contains(cd, ".csv") {
+		t.Errorf("Content-Disposition = %q, want an attached .csv", cd)
+	}
+	want := "ID,Title,Owner,So What,Kind,Delivery Date,Milestones,Metrics,Parents,Pillar,Budget\n" +
+		fmt.Sprintf("%d,Alpha launch,sam@example.com,A matters.,,,,,,Growth; Trust,1200\n", alpha.ID)
+	if body != want {
+		t.Errorf("download =\n%s\nwant\n%s", body, want)
+	}
+}

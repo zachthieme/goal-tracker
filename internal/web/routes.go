@@ -12,6 +12,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /home", s.requireAuth(s.handleHome))
 	s.mux.HandleFunc("GET /goals", s.requireAuth(s.handleGoals))
 	s.mux.HandleFunc("POST /goals", s.requireAuth(s.handleCreateGoal))
+	s.mux.HandleFunc("GET /goals/download", s.requireAuth(s.handleDownloadGoals))
 	s.mux.HandleFunc("GET /goals/{id}", s.requireAuth(s.handleViewGoal))
 	s.mux.HandleFunc("POST /goals/{id}/dated", s.requireAuth(s.handleMarkGoalDated))
 	s.mux.HandleFunc("POST /goals/{id}/ongoing", s.requireAuth(s.handleMarkGoalOngoing))

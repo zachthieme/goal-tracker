@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"cmp"
 	"context"
 	"errors"
@@ -16,6 +17,7 @@ import (
 	"github.com/a-h/templ"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
+	"github.com/zachthieme/goal-tracker/internal/importer"
 )
 
 // dateLayout is the format the HTML date input (<input type="date">) submits and
@@ -33,6 +35,36 @@ func (s *Server) handleGoals(w http.ResponseWriter, r *http.Request, current dom
 		return
 	}
 	render(w, r, http.StatusOK, goalsPage(&current, view))
+}
+
+// handleDownloadGoals downloads the Goals the list's filters keep, in the
+// table's order, as CSV in the import format, so the file can be edited and
+// imported again to update their Dimension values and Fields (#81). Hidden
+// columns are a view setting, so the file has every column regardless.
+func (s *Server) handleDownloadGoals(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	view, err := s.goalsListView(r, current)
+	if err != nil {
+		http.Error(w, "could not list goals", http.StatusInternalServerError)
+		return
+	}
+	goals := make([]domain.Goal, 0, len(view.Rows))
+	if view.Table != nil {
+		for _, row := range view.Table.Rows {
+			goals = append(goals, row.Goal)
+		}
+	} else {
+		for _, row := range view.Rows {
+			goals = append(goals, row.Goal)
+		}
+	}
+	var buf bytes.Buffer
+	if err := importer.New(s.svc).Download(r.Context(), &buf, goals); err != nil {
+		http.Error(w, "could not download goals", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="goals.csv"`)
+	_, _ = w.Write(buf.Bytes())
 }
 
 func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
@@ -1300,6 +1332,14 @@ func (v goalsListData) proposeURL() string {
 		return "/goals"
 	}
 	return string(v.queryURL(func(url.Values) {}))
+}
+
+// downloadURL downloads the Goals this view's filters keep as CSV.
+func (v goalsListData) downloadURL() templ.SafeURL {
+	if len(v.Query) == 0 {
+		return "/goals/download"
+	}
+	return templ.SafeURL("/goals/download?" + v.Query.Encode())
 }
 
 // layoutURL links to this view in the list layout ("") or the table layout,
