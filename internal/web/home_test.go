@@ -155,6 +155,32 @@ func TestHomeListsDelegatedGoals(t *testing.T) {
 	}
 }
 
+// Home's Check in goes straight to the Goal's Check-in page, whether the
+// viewer Owns the Goal or is a Delegate on it, and following it shows the
+// Check-in form (#102).
+func TestHomeCheckInOpensCheckinForm(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.AddDelegate(sam, dee, g.ID)
+	h.Clock.Advance(10 * day)
+
+	for _, who := range []string{"sam@example.com", "dee@example.com"} {
+		client := signInClient(t, ts.URL, who)
+		row := homeRow(t, pageElement(t, getBody(t, client, ts.URL+"/home"), "ul", "home-due"), g)
+		href := attr(tagAround(t, row, `data-testid="home-due-checkin"`), "href")
+		if want := fmt.Sprintf("/goals/%d/checkin", g.ID); href != want {
+			t.Errorf("%s: Home's Check in links to %q, want %q:\n%s", who, href, want, row)
+			continue
+		}
+		if page := getBody(t, client, ts.URL+href); !strings.Contains(page, `data-testid="checkin-form"`) {
+			t.Errorf("%s: following Check in shows no Check-in form:\n%s", who, page)
+		}
+	}
+}
+
 // A link request waiting on the viewer as the parent's Owner, and a Handoff
 // waiting on them as the proposed new Owner, are listed under "Waiting on
 // you", each with Accept and a Reject that submits at once. Someone with

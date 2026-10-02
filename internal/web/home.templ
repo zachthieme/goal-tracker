@@ -114,7 +114,7 @@ templ homePage(current *domain.Account, v homeView) {
 }
 
 // dueRow is one Goal to check in on: its Health, why it's listed, and the
-// one-click No change beside the Check in link to the Goal page.
+// one-click No change beside the Check in link to the Goal's Check-in page.
 templ dueRow(g domain.PersonalGoal) {
 	<li data-testid="home-due-goal">
 		<div class="hm-what">
@@ -145,7 +145,7 @@ templ dueRow(g domain.PersonalGoal) {
 					<button type="submit" class="btn sm">No change</button>
 				</form>
 			}
-			<a data-testid="home-due-checkin" class="btn primary sm" href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>Check in</a>
+			<a data-testid="home-due-checkin" class="btn primary sm" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", g.Goal.ID)) }>Check in</a>
 		</div>
 	</li>
 }
