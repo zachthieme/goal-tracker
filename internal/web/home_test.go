@@ -284,8 +284,9 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 
 // Every page's top bar leads with Home, counting what needs the viewer — the
 // Goals to check in on plus what's waiting on them — and showing no count when
-// nothing does. Home replaces the pending-links, pending-handoffs, and
-// delegated nav items, whose pages stay.
+// nothing does. Its count is a pill of its own, set apart from the top bar's
+// other counts, because it means something needs the person. Home replaces the
+// pending-links, pending-handoffs, and delegated nav items, whose pages stay.
 func TestNavCountsWhatNeedsYou(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
@@ -305,8 +306,8 @@ func TestNavCountsWhatNeedsYou(t *testing.T) {
 		page := getBody(t, samClient, ts.URL+path)
 		nav := page[strings.Index(page, "<nav"):strings.Index(page, "</nav>")]
 		home := pageElement(t, page, "a", "nav-home")
-		if !strings.Contains(home, `href="/home"`) || !strings.Contains(home, `<span class="count">3</span>`) {
-			t.Errorf("on %s, Home does not count sam's 2 Goals to check in on and 1 link request: %s", path, home)
+		if !strings.Contains(home, `href="/home"`) || !strings.Contains(home, `<span class="count needs-you">3</span>`) {
+			t.Errorf("on %s, Home does not count sam's 2 Goals to check in on and 1 link request in its needs-you pill: %s", path, home)
 		}
 		if first := strings.Index(nav, `data-testid="nav-`); first != strings.Index(nav, `data-testid="nav-home"`) {
 			t.Errorf("on %s, Home is not the first nav item:\n%s", path, nav)

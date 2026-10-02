@@ -25,8 +25,9 @@ deliberately; don't override it on one page.
 
 ## System
 
-- **Mood:** warm, editorial and calm. Ivory canvas, deep-teal ink, vivid teal
-  for interaction. No neon, and no cold white on the canvas: the warmth lives
+- **Mood:** warm, editorial and calm. Ivory canvas, neutral ink, and teal only
+  for what a person can act on: links, buttons, focus and the current top-bar
+  item. No neon, and no cold white on the canvas: the warmth lives
   there. Cards sit on it in plain white (see § Accepted audit findings).
 - **Density:** generous. Cards use 24px padding, sections sit 20–32px apart,
   and everything aligns to a 4px grid.
@@ -50,9 +51,9 @@ deliberately; don't override it on one page.
   --color-surface-alt:   #F7F6E8; /* secondary panels, table headers */
 
   /* Ink */
-  --color-ink:         #134E4A; /* Teal 900: headings, primary labels */
-  --color-ink-2:       #2D6A66; /* body text */
-  --color-ink-muted:   #527673; /* placeholders, timestamps. See Deviations */
+  --color-ink:         #18211F; /* headings, primary labels. See Deviations */
+  --color-ink-2:       #3E4946; /* body text. See Deviations */
+  --color-ink-muted:   #66706D; /* placeholders, timestamps. See Deviations */
   --color-ink-inverse: #FFFFFF; /* text on --color-primary-strong */
 
   /* Lines */
@@ -67,11 +68,14 @@ deliberately; don't override it on one page.
   --color-danger-ink: #9A231B; /* destructive text (.btn.danger, form errors). See Deviations */
 
   /* Top bar */
-  --nav-bg:    var(--color-ink);
+  --nav-bg:    #134E4A; /* Teal 900, its own value now --color-ink is neutral */
   --nav-ink:   #FFFFFF;
   --nav-ink-2: rgba(255,255,255,.78); /* resting nav items */
   --nav-hover: rgba(255,255,255,.10); /* translucent-white hover */
   --nav-focus: #2DD4BF; /* focus ring on the top bar. See Deviations */
+  --nav-count-bg:  #E3E6E5; /* neutral grey count pill. See Deviations */
+  --nav-count-ink: #18211F;
+  --nav-needs-bg:  #18211F; /* Home's count, both themes: a dark pill ringed in --nav-ink */
 
   /* Goal Health. See Deviations */
   --health-g-bg: #DDEFE3; --health-g-ink: #17593A;
@@ -121,8 +125,8 @@ deliberately; don't override it on one page.
   --color-surface-alt:   #031613; /* preview tile */
 
   --color-ink:         #E8E8E8; /* preview text */
-  --color-ink-2:       #B8CFCC; /* (chosen) */
-  --color-ink-muted:   #8FAFAB; /* (chosen) */
+  --color-ink-2:       #C2C2C2; /* (chosen) neutral grey. See Deviations */
+  --color-ink-muted:   #9E9E9E; /* (chosen) neutral grey. See Deviations */
   --color-ink-inverse: #042F2E; /* (chosen) Teal 950 on teal */
 
   --color-border:        #0A3F39; /* (chosen) */
@@ -139,6 +143,8 @@ deliberately; don't override it on one page.
   --nav-ink-2: var(--color-ink-2);
   --nav-hover: rgba(255,255,255,.06); /* (chosen) */
   --nav-focus: var(--color-focus);
+  --nav-count-bg:  #626766; /* (chosen) neutral grey count pill */
+  --nav-count-ink: #FFFFFF;
 
   /* (chosen) Health hues on 20%-alpha fills with light text */
   --health-g-bg: rgba(34,160,95,.20); --health-g-ink: #8EDDAF;
@@ -175,9 +181,11 @@ Load the fonts with this URL:
 
 ## Components (mapped to `internal/web/static/app.css`)
 
-- **Top bar (`.nav`):** `--nav-bg`, which is `--color-ink` in light mode and
-  `--color-surface-alt` in dark mode, with `--nav-ink` text. Resting items use
-  `--nav-ink-2`; hover is the translucent-white `--nav-hover`.
+- **Top bar (`.nav`):** `--nav-bg`, which is deep teal `#134E4A` in light
+  mode and `--color-surface-alt` in dark mode, with `--nav-ink` text. The light
+  value is the top bar's own, not `--color-ink`, so the bar stays teal while the
+  ink is neutral. Resting items use `--nav-ink-2`; hover is the
+  translucent-white `--nav-hover`.
   The current item (`.on`) gets a `--color-primary` underline or pill.
   Above 900px it is one 56px row. At 900px and below it takes two rows and
   never scrolls sideways. The brand, the person and Sign out are on the first
@@ -252,8 +260,18 @@ Load the fonts with this URL:
   checkboxes and radios are left alone.
 - **Tables:** headers on `--color-surface-alt` with `.label` type. Rows are
   divided by `--color-border`. Selected rows use `--color-primary-light`.
-- **Tags and counts:** `--radius-full`, with a `--color-primary-light` fill
-  and `--color-ink` text.
+- **Tags:** `--radius-full`, with a `--color-primary-light` fill and
+  `--color-ink` text.
+- **Nav counts (`.count`):** a `--radius-full` pill after a top-bar item's
+  label, shown only above zero. Two styles, so the one that needs the person
+  stands out:
+  - **Home's count (`.count.needs-you`)** counts what needs the person, so it is
+    a dark pill: `--nav-needs-bg` (`#18211F`) with `--nav-ink` numbers, ringed
+    1px in `--nav-ink` so it shows against the top bar.
+  - **Every other count (`.count`)**, such as Risks, is a neutral grey pill:
+    `--nav-count-bg` with `--nav-count-ink` numbers.
+
+  The ratios are in § Deviations 2.
 - **Health badges (`.g` / `.y` / `.r`):** `--health-*-bg` fill with
   `--health-*-ink` text; see Deviations. They keep their dot
   shapes (circle, triangle, square) so color is never the only signal.
@@ -307,9 +325,34 @@ stays black on white whatever is chosen.
    `--color-primary-strong: #0F766E` for text-bearing fills and links, which
    reaches 5.47:1. `#14B8A6` stays in use for borders and accents. In
    dark mode, buttons keep `#14B8A6` with `#042F2E` text, which reaches 5.81:1.
-2. **Muted ink.** The source's `#688E8B` reaches 3.6:1 on white, which is too
-   low for the 12–13px labels this app uses heavily. It is darkened to
-   `#527673` (5.0:1 on white, 4.84:1 on the canvas).
+2. **Neutral ink.** The source's ink is teal: `#134E4A`, `#2D6A66` and a muted
+   `#688E8B`, which reaches only 3.6:1 on white. With text, links and buttons
+   all teal, nothing separated what a person can act on from what they only
+   read (UX Review, mocks 1b and 1d). Text is neutral in both themes instead,
+   and teal is kept for links, buttons, focus and the current top-bar item.
+   The top bar keeps its teal through its own `--nav-bg`.
+
+   Each ink's contrast on every surface text sits on (`--color-primary-light`
+   is the selected-row and tag fill):
+
+   | Theme | Ink | Canvas | Surface | Surface hover | Surface alt | Primary light |
+   | --- | --- | --- | --- | --- | --- | --- |
+   | Light | `--color-ink` `#18211F` | 15.91 | 16.46 | 16.02 | 15.13 | 14.60 |
+   | Light | `--color-ink-2` `#3E4946` | 9.04 | 9.35 | 9.10 | 8.59 | 8.30 |
+   | Light | `--color-ink-muted` `#66706D` | 4.95 | 5.12 | 4.98 | 4.70 | 4.54 |
+   | Dark | `--color-ink` `#E8E8E8` | 16.01 | 11.99 | 10.99 | 15.19 | 10.99 |
+   | Dark | `--color-ink-2` `#C2C2C2` | 11.01 | 8.25 | 7.56 | 10.45 | 7.56 |
+   | Dark | `--color-ink-muted` `#9E9E9E` | 7.32 | 5.48 | 5.03 | 6.95 | 5.03 |
+
+   The nav counts' numbers reach 4.5:1 on their pills, and each pill's edge
+   reaches 3:1 against the top bar so the shape shows:
+
+   | Theme | Count | Number on pill | Edge on top bar |
+   | --- | --- | --- | --- |
+   | Light | Home, `#FFFFFF` on `#18211F` | 16.46 | 9.48 (`#FFFFFF` ring on `#134E4A`) |
+   | Light | Other, `#18211F` on `#E3E6E5` | 13.10 | 7.54 (fill on `#134E4A`) |
+   | Dark | Home, `#E8E8E8` on `#18211F` | 13.43 | 15.19 (`#E8E8E8` ring on `#031613`) |
+   | Dark | Other, `#FFFFFF` on `#626766` | 5.75 | 3.24 (fill on `#031613`) |
 3. **Goal Health.** The source's success teal (`#2DD4BF`) is almost the same
    as the primary colour, so a Green Health badge would read as a button.
    Health badges therefore keep their own hues, adjusted to the warm canvas:
