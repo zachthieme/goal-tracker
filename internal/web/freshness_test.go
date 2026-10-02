@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -164,6 +165,75 @@ func TestStaleBannerOffersCheckInNowToOwnerAndDelegates(t *testing.T) {
 		}
 		if !strings.Contains(banner, ">Check in now</a>") {
 			t.Errorf("%s's Stale banner link does not read Check in now; banner:\n%s", viewer.email, banner)
+		}
+	}
+}
+
+// Stale reads as a warning about freshness, never as a tag (#86). In every
+// theme the Stale chip is a grey fill in a dashed edge, and a tag is an
+// outline with no fill, so the two never share a fill. The chip's text reaches
+// 4.5:1 on its fill and its edge 3:1 on the cards it sits on. The Stale and Path
+// to Green overdue banners are a card surface in the same dashed edge, which
+// reaches 3:1 on the canvas around them and the surface inside. A tag's text
+// reaches 4.5:1 on the canvas and the cards it sits on.
+func TestStaleIsADashedGreyChipAndTagsAreOutlined(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	light := tokens(tokenBlock(t, css, ":root"))
+	chipLight := computed(t, css, light, ".badge", ".st")
+	for p, want := range map[string]string{"background": "#E9EAEC", "color": "#3B4048"} {
+		if chipLight[p] != want {
+			t.Errorf("light: the Stale chip's %s is %s, want %s", p, chipLight[p], want)
+		}
+	}
+
+	themes := darkThemes(t, css)
+	themes["light"] = light
+	for name, theme := range themes {
+		canvas := resolve(t, theme, "var(--color-canvas)")
+		cards := []string{resolve(t, theme, "var(--color-surface)"), resolve(t, theme, "var(--color-surface-hover)")}
+
+		chip := computed(t, css, theme, ".badge", ".st")
+		tag := computed(t, css, theme, ".tag")
+		if chip["border-style"] != "dashed" || chip["border-width"] != "1px" {
+			t.Errorf("%s: the Stale chip's edge is %s %s, want 1px dashed", name, chip["border-width"], chip["border-style"])
+		}
+		if bg := tag["background"]; bg != "none" && bg != "transparent" {
+			t.Errorf("%s: a tag is filled with %s, want an outline with no fill", name, bg)
+		}
+		if tag["border-style"] != "solid" {
+			t.Errorf("%s: a tag's edge is %q, want a solid outline unlike the Stale chip's dashes", name, tag["border-style"])
+		}
+		if ratio := contrast(t, chip["color"], chip["background"]); ratio < 4.5 {
+			t.Errorf("%s: the Stale chip's text %s on %s is %.2f:1, under 4.5:1", name, chip["color"], chip["background"], ratio)
+		}
+		for _, bg := range cards {
+			if ratio := contrast(t, chip["border-color"], bg); ratio < 3 {
+				t.Errorf("%s: the Stale chip's edge %s on the card %s is %.2f:1, under 3:1", name, chip["border-color"], bg, ratio)
+			}
+		}
+		for _, bg := range append([]string{canvas}, cards...) {
+			if ratio := contrast(t, tag["color"], bg); ratio < 4.5 {
+				t.Errorf("%s: a tag's text %s on %s is %.2f:1, under 4.5:1", name, tag["color"], bg, ratio)
+			}
+		}
+
+		banner := computed(t, css, theme, ".alert", ".st", ".alert.st")
+		if surface := resolve(t, theme, "var(--color-surface)"); banner["background"] != surface {
+			t.Errorf("%s: the Stale banner's fill is %s, want the card surface %s", name, banner["background"], surface)
+		}
+		if banner["border-style"] != "dashed" || banner["border-color"] != chip["border-color"] {
+			t.Errorf("%s: the Stale banner's edge is %s %s, want dashed %s like the chip's", name, banner["border-style"], banner["border-color"], chip["border-color"])
+		}
+		if ratio := contrast(t, banner["color"], banner["background"]); ratio < 4.5 {
+			t.Errorf("%s: the Stale banner's text %s on %s is %.2f:1, under 4.5:1", name, banner["color"], banner["background"], ratio)
+		}
+		for _, bg := range []string{canvas, banner["background"]} {
+			if ratio := contrast(t, banner["border-color"], bg); ratio < 3 {
+				t.Errorf("%s: the Stale banner's edge %s on %s is %.2f:1, under 3:1", name, banner["border-color"], bg, ratio)
+			}
 		}
 	}
 }

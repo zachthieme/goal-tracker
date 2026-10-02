@@ -44,7 +44,7 @@ deliberately; don't override it on one page.
   --color-primary:        #14B8A6; /* Teal 500: active pills, accents */
   --color-primary-hover:  #0D9488; /* Teal 600 */
   --color-primary-strong: #0F766E; /* Teal 700: filled buttons, links. See Deviations */
-  --color-primary-light:  #CCFBF1; /* Teal 100: badge fills, selected rows */
+  --color-primary-light:  #CCFBF1; /* Teal 100: selected rows, current choices */
   --color-primary-subtle: #F0FDFA; /* Teal 50: faint tints */
 
   /* Canvas & surfaces */
@@ -79,6 +79,11 @@ deliberately; don't override it on one page.
   --nav-count-bg:  #E3E6E5; /* neutral grey count pill. See Deviations */
   --nav-count-ink: #18211F;
   --nav-needs-bg:  #18211F; /* Home's count, both themes: a dark pill ringed in --nav-ink */
+
+  /* Stale and Path to Green overdue: chip and banner. See Components */
+  --stale-bg:   #E9EAEC; /* chip fill */
+  --stale-ink:  #3B4048; /* chip text */
+  --stale-edge: #888F97; /* dashed edge of chip and banner. See Deviations */
 
   /* Goal Health. See Deviations */
   --health-g-bg: #DDEFE3; --health-g-ink: #17593A;
@@ -147,6 +152,12 @@ deliberately; don't override it on one page.
   --nav-focus: var(--color-focus);
   --nav-count-bg:  #626766; /* (chosen) neutral grey count pill */
   --nav-count-ink: #FFFFFF;
+
+  /* (chosen) Stale: the light chip's ink becomes the fill, and the UX
+   * Review's grey the edge */
+  --stale-bg:   #3B4048;
+  --stale-ink:  #E8E8E8;
+  --stale-edge: #8C939C;
 
   /* (chosen) Health hues on 20%-alpha fills with light text */
   --health-g-bg: rgba(34,160,95,.20); --health-g-ink: #8EDDAF;
@@ -399,8 +410,25 @@ Load the fonts with this URL:
   checkboxes and radios are left alone.
 - **Tables:** headers on `--color-surface-alt` with `.label` type. Rows are
   divided by `--color-border`. Selected rows use `--color-primary-light`.
-- **Tags:** `--radius-full`, with a `--color-primary-light` fill and
-  `--color-ink` text.
+- **Tags (`.tag`):** `--radius-full`, outlined with no fill: a 1px solid
+  `--color-border-strong` edge and `--color-ink` text. A retired Dimension
+  value's tag takes a dashed edge instead, struck through and muted.
+- **Stale chip (`.badge.st`):** marks a Stale Goal wherever its Health shows
+  (the Goal list, Home, a Report), with its age ("Stale · 9 days" on the Goal
+  list). It is a warning about freshness, never a tag, so it can't share a
+  tag's look: a `--stale-bg` grey fill, `--stale-ink` text and a 1px dashed
+  `--stale-edge` border, at a Health badge's `--radius-sm`. The Goal list's
+  "Path to Green overdue" chip takes the same style.
+- **Stale banner (`.alert.st`):** at the top of a Stale Goal's page, a
+  `--color-surface` banner in a 1px dashed `--stale-edge` border, with
+  `--color-ink` text: **Stale**, then how long it has gone without a Check-in
+  against its cadence. For whoever may check in (the Owner or a Delegate) it
+  ends, at the right, with a **Check in now** link to the Goal's Check-in
+  page. Anyone else sees no link. The "Path to Green overdue" banner beside it
+  takes the same style with no link, because CONTEXT.md surfaces both the same
+  way.
+
+  The ratios are in § Deviations 9.
 - **Nav counts (`.count`):** a `--radius-full` pill after a top-bar item's
   label, shown only above zero. Two styles, so the one that needs the person
   stands out:
@@ -472,7 +500,7 @@ stays black on white whatever is chosen.
    The top bar keeps its teal through its own `--nav-bg`.
 
    Each ink's contrast on every surface text sits on (`--color-primary-light`
-   is the selected-row and tag fill):
+   is the selected-row fill):
 
    | Theme | Ink | Canvas | Surface | Surface hover | Surface alt | Primary light |
    | --- | --- | --- | --- | --- | --- | --- |
@@ -569,6 +597,34 @@ stays black on white whatever is chosen.
    (§ Components). Only menus and popovers keep the source's `--shadow-pop`:
    the Theme menu, the Goal page's More menu, the Goal list's New goal form
    and the toast. The two card shadow tokens are gone.
+9. **Stale, apart from tags.** Stale chips and banners, tags and nav counts
+   all shared the pale teal `--color-primary-light` fill, so "Stale" read like
+   a label such as "Platform" (UX Review). Stale is now a grey chip in a dashed
+   edge, its banners a surface in the same edge, and tags an outline with no
+   fill (§ Components). The UX Review gave the light edge as `#8C939C`, which
+   reaches only 2.87:1 on the canvas the banners sit on. The edge is one step
+   darker in the same hue, `#888F97`, which reaches 3:1 there.
+
+   Chip and banner text reaches 4.5:1 on its fill, and the dashed edge 3:1 on
+   the surfaces around and inside it. A chip sits on a card, plain or as a
+   hovered row. A banner sits on the canvas with a surface inside.
+
+   | Theme | Mark | On | Ratio |
+   | --- | --- | --- | --- |
+   | Light | Chip text `#3B4048` | chip fill `#E9EAEC` | 8.67 |
+   | Light | Chip edge `#888F97` | surface `#FFFFFF` / surface hover `#FCFCFA` | 3.27 / 3.18 |
+   | Light | Banner text `--color-ink` `#18211F` | surface `#FFFFFF` | 16.46 |
+   | Light | Banner link `--color-primary-strong` `#0F766E` | surface `#FFFFFF` | 5.47 |
+   | Light | Banner edge `#888F97` | canvas `#F6F6F3` / surface `#FFFFFF` | 3.02 / 3.27 |
+   | Light | Tag text `--color-ink` `#18211F` | canvas / surface / surface hover | 15.20 / 16.46 / 16.02 |
+   | Light | Tag edge `--color-border-strong` `#7B908C` | canvas / surface | 3.12 / 3.38 |
+   | Dark | Chip text `#E8E8E8` | chip fill `#3B4048` | 8.51 |
+   | Dark | Chip edge `#8C939C` | surface `#052E29` / surface hover `#063530` | 4.74 / 4.34 |
+   | Dark | Banner text `--color-ink` `#E8E8E8` | surface `#052E29` | 11.99 |
+   | Dark | Banner link `--color-primary-strong` `#14B8A6` | surface `#052E29` | 5.90 |
+   | Dark | Banner edge `#8C939C` | canvas `#020E0C` / surface `#052E29` | 6.32 / 4.74 |
+   | Dark | Tag text `--color-ink` `#E8E8E8` | canvas / surface / surface hover | 16.01 / 11.99 / 10.99 |
+   | Dark | Tag edge `--color-border-strong` `#2F8479` | canvas / surface | 4.39 / 3.29 |
 
 ## Accepted audit findings
 

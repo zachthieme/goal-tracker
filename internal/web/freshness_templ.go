@@ -262,8 +262,8 @@ func goalFreshness(goalID int64, f domain.Freshness, canCheckin bool) templ.Comp
 	})
 }
 
-// goalRowFreshness marks a Goal's row in the Goal list with a chip in Stale's
-// color when it is Stale, saying for how long, or its Path to Green is overdue.
+// goalRowFreshness marks a Goal's row in the Goal list with Stale's dashed grey
+// chip when it is Stale, saying for how long, or its Path to Green is overdue.
 func goalRowFreshness(f domain.Freshness) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
