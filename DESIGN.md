@@ -25,10 +25,11 @@ deliberately; don't override it on one page.
 
 ## System
 
-- **Mood:** warm, editorial and calm. Ivory canvas, neutral ink, and teal only
-  for what a person can act on: links, buttons, focus and the current top-bar
-  item. No neon, and no cold white on the canvas: the warmth lives
-  there. Cards sit on it in plain white (see § Accepted audit findings).
+- **Mood:** warm, editorial and calm. A neutral off-white canvas, neutral ink,
+  and teal only for what a person can act on: links, buttons, focus and the
+  current top-bar item. No neon, and no tint on the canvas, so Health's fills
+  stand out from the page (see § Deviations 7). Cards sit on the canvas in
+  plain white (see § Accepted audit findings).
 - **Density:** generous. Cards use 24px padding, sections sit 20–32px apart,
   and everything aligns to a 4px grid.
 - **Depth:** layered, teal-tinted shadows lift cards off the canvas.
@@ -45,10 +46,10 @@ deliberately; don't override it on one page.
   --color-primary-subtle: #F0FDFA; /* Teal 50: faint tints */
 
   /* Canvas & surfaces */
-  --color-canvas:        #FEFCE8; /* warm ivory body background */
+  --color-canvas:        #F6F6F3; /* neutral off-white body background. See Deviations */
   --color-surface:       #FFFFFF; /* cards, raised containers */
-  --color-surface-hover: #FDFCF7;
-  --color-surface-alt:   #F7F6E8; /* secondary panels, table headers */
+  --color-surface-hover: #FCFCFA; /* See Deviations */
+  --color-surface-alt:   #F2F2EE; /* secondary panels, table headers. See Deviations */
 
   /* Ink */
   --color-ink:         #18211F; /* headings, primary labels. See Deviations */
@@ -57,7 +58,7 @@ deliberately; don't override it on one page.
   --color-ink-inverse: #FFFFFF; /* text on --color-primary-strong */
 
   /* Lines */
-  --color-border:        #E8E6D5; /* cards, dividers */
+  --color-border:        #E1E1DC; /* cards, dividers. See Deviations */
   --color-border-strong: #7B908C; /* inputs. See Deviations */
   --color-focus:         #0D9488; /* Teal 600. See Deviations */
 
@@ -406,9 +407,9 @@ stays black on white whatever is chosen.
 
    | Theme | Ink | Canvas | Surface | Surface hover | Surface alt | Primary light |
    | --- | --- | --- | --- | --- | --- | --- |
-   | Light | `--color-ink` `#18211F` | 15.91 | 16.46 | 16.02 | 15.13 | 14.60 |
-   | Light | `--color-ink-2` `#3E4946` | 9.04 | 9.35 | 9.10 | 8.59 | 8.30 |
-   | Light | `--color-ink-muted` `#66706D` | 4.95 | 5.12 | 4.98 | 4.70 | 4.54 |
+   | Light | `--color-ink` `#18211F` | 15.20 | 16.46 | 16.02 | 14.66 | 14.60 |
+   | Light | `--color-ink-2` `#3E4946` | 8.63 | 9.35 | 9.10 | 8.33 | 8.30 |
+   | Light | `--color-ink-muted` `#66706D` | 4.73 | 5.12 | 4.98 | 4.56 | 4.54 |
    | Dark | `--color-ink` `#E8E8E8` | 16.01 | 11.99 | 10.99 | 15.19 | 10.99 |
    | Dark | `--color-ink-2` `#C2C2C2` | 11.01 | 8.25 | 7.56 | 10.45 | 7.56 |
    | Dark | `--color-ink-muted` `#9E9E9E` | 7.32 | 5.48 | 5.03 | 6.95 | 5.03 |
@@ -424,7 +425,7 @@ stays black on white whatever is chosen.
    | Dark | Other, `#FFFFFF` on `#626766` | 5.75 | 3.24 (fill on `#031613`) |
 3. **Goal Health.** The source's success teal (`#2DD4BF`) is almost the same
    as the primary colour, so a Green Health badge would read as a button.
-   Health badges therefore keep their own hues, adjusted to the warm canvas:
+   Health badges therefore keep their own hues:
    - Green: `#DDEFE3` / `#17593A`
    - Yellow: `#FAEBC4` / `#6B4800`
    - Red: `#F9DEDB` / `#9A231B`
@@ -438,8 +439,8 @@ stays black on white whatever is chosen.
    `--color-error` stays for borders and icons.
 5. **Focus ring.** The source rings focus in `#14B8A6`, which reaches only
    2.41:1 on the canvas, below WCAG's 3:1 for focus indicators. Light mode
-   rings focus in `--color-focus: #0D9488` instead (3.62:1 on the canvas,
-   3.74:1 on white, 3.44:1 on `--color-surface-alt`). On the dark-teal top
+   rings focus in `--color-focus: #0D9488` instead (3.46:1 on the canvas,
+   3.74:1 on white, 3.34:1 on `--color-surface-alt`). On the dark-teal top
    bar that drops to 2.53:1, so nav items ring in `--nav-focus: #2DD4BF`
    (5.09:1). Dark mode keeps `#2DD4BF` everywhere.
 
@@ -451,13 +452,45 @@ stays black on white whatever is chosen.
    (`#D5D2BD`) reaches 1.52:1 on white, and the dark preview's scale step 2
    (`#0A5C53`) reaches 1.87:1 on the dark surface. WCAG asks 3:1 of the edge
    that identifies a control. `--color-border-strong` is `#7B908C` in light
-   mode (3.38:1 on white, 3.27:1 on the canvas) and `#2F8479` in dark mode
+   mode (3.38:1 on white, 3.12:1 on the canvas, 3.01:1 on
+   `--color-surface-alt`) and `#2F8479` in dark mode
    (3.29:1 on the surface). Two more marks follow the same rule:
    - A Metric's sparkline strokes in `--color-primary-strong`, not
      `--color-primary`, which reaches only 2.49:1 on white.
    - On the Check-in form, an unselected Health choice is an outline (surface
      fill, `--color-border-strong` edge, Health ink) and the selected one is
      the filled Health badge with an edge in its ink. Nothing is dimmed.
+
+7. **Neutral canvas.** The source's light canvas is a pale yellow
+   (`#FEFCE8`), and its panel, hover and rule tokens carry the same ivory
+   tint. Beside it, Yellow Health's fill (`#FAEBC4`) lost its hue, and white
+   cards looked cut out of the page (UX Review). The light canvas is a neutral
+   off-white instead, and the tokens beside it lose their tint while keeping
+   their order: white cards, then a hovered row, the canvas, panels and table
+   heads, and rules, each a step darker. The dark theme is unchanged.
+
+   | Token | Source | Now |
+   | --- | --- | --- |
+   | `--color-canvas` | `#FEFCE8` | `#F6F6F3` |
+   | `--color-surface-hover` | `#FDFCF7` | `#FCFCFA` |
+   | `--color-surface-alt` | `#F7F6E8` | `#F2F2EE` |
+   | `--color-border` | `#E8E6D5` | `#E1E1DC` |
+
+   Each light-theme text colour reaches 4.5:1, and each control edge 3:1, on
+   the canvas and every surface beside it:
+
+   | Mark | Canvas | Surface | Surface hover | Surface alt |
+   | --- | --- | --- | --- | --- |
+   | `--color-ink` `#18211F` | 15.20 | 16.46 | 16.02 | 14.66 |
+   | `--color-ink-2` `#3E4946` | 8.63 | 9.35 | 9.10 | 8.33 |
+   | `--color-ink-muted` `#66706D` | 4.73 | 5.12 | 4.98 | 4.56 |
+   | Links, `--color-primary-strong` `#0F766E` | 5.05 | 5.47 | 5.33 | 4.88 |
+   | `--color-danger-ink` `#9A231B` | 7.37 | 7.98 | 7.77 | 7.11 |
+   | Input edge, `--color-border-strong` `#7B908C` | 3.12 | 3.38 | 3.29 | 3.01 |
+   | Focus ring, `--color-focus` `#0D9488` | 3.46 | 3.74 | 3.65 | 3.34 |
+
+   `--color-surface-alt` is as dark as it can go: one step darker and the input
+   edge on it falls under 3:1.
 
 ## Accepted audit findings
 
@@ -466,7 +499,8 @@ flagged them. They aren't deviations, and later audits shouldn't raise them
 again.
 
 1. **White card surface.** The 2026-10-01 audit called the light theme's
-   `--color-surface` (`#FFFFFF`) flat beside the ivory canvas. It stays white.
+   `--color-surface` (`#FFFFFF`) flat beside the canvas, then ivory. It stays
+   white.
    The light-theme contrast ratios in § Deviations are quoted against it, and
    two of them have little room to lose: the input border at 3.38:1 and the
    focus ring at 3.74:1, against WCAG's 3:1. Tinting the surface would mean

@@ -56,6 +56,63 @@ func TestInkIsNeutralAndReachesAAOnEverySurface(t *testing.T) {
 	}
 }
 
+// The light canvas is a neutral off-white, so Health's fills are the only
+// saturated hues on the page, and the surfaces and rules that sit beside it go
+// neutral with it (#87). Each still reads as its own step: a hovered row sits
+// between a card's white and the canvas, and panels, table heads and rules are
+// darker than the canvas, in that order.
+func TestLightCanvasAndItsSurfacesAreNeutral(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	light := tokens(tokenBlock(t, css, ":root"))
+
+	if got := resolve(t, light, "var(--color-canvas)"); got != "#F6F6F3" {
+		t.Errorf("light --color-canvas is %s, want #F6F6F3", got)
+	}
+	steps := []string{"--color-surface", "--color-surface-hover", "--color-canvas", "--color-surface-alt", "--color-border"}
+	for _, token := range steps[1:] {
+		hex := resolve(t, light, "var("+token+")")
+		if spread := channelSpread(t, hex); spread > 5 {
+			t.Errorf("light %s %s is tinted (its channels differ by %d), want a neutral off-white", token, hex, spread)
+		}
+	}
+	for i := 1; i < len(steps); i++ {
+		lighter, darker := resolve(t, light, "var("+steps[i-1]+")"), resolve(t, light, "var("+steps[i]+")")
+		if luminance(t, darker) >= luminance(t, lighter) {
+			t.Errorf("light %s %s is not darker than %s %s", steps[i], darker, steps[i-1], lighter)
+		}
+	}
+}
+
+// On the light canvas and every surface beside it, link and destructive text
+// still reach WCAG AA's 4.5:1, and an input's edge and the focus ring still
+// reach the 3:1 that marks a control (#87).
+func TestLightTextEdgesAndFocusHoldOnTheNeutralSurfaces(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	light := tokens(tokenBlock(t, css, ":root"))
+
+	for _, mark := range []struct {
+		token string
+		want  float64
+	}{
+		{"--color-primary-strong", 4.5},
+		{"--color-danger-ink", 4.5},
+		{"--color-border-strong", 3},
+		{"--color-focus", 3},
+	} {
+		fg := resolve(t, light, "var("+mark.token+")")
+		for _, surface := range []string{"--color-canvas", "--color-surface", "--color-surface-hover", "--color-surface-alt"} {
+			bg := resolve(t, light, "var("+surface+")")
+			if ratio := contrast(t, fg, bg); ratio < mark.want {
+				t.Errorf("light %s %s on %s %s is %.2f:1, under %.1f:1", mark.token, fg, surface, bg, ratio, mark.want)
+			}
+		}
+	}
+}
+
 // In every theme the top bar's counts come in two pills: Home's is dark,
 // because it means something needs the person, and every other count is a
 // neutral grey. Each number reaches 4.5:1 on its pill, and each pill's edge —
