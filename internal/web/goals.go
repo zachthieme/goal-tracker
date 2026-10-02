@@ -504,6 +504,9 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 			canCheckin = true
 		}
 	}
+	// The Owner's Delegates and Admins set a Goal's Dimension values too
+	// (CONTEXT.md: Delegate).
+	canSetValues := canCheckin || current.IsAdmin
 
 	return goalView{
 		Goal:           g,
@@ -518,6 +521,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Contributors:   contributors,
 		Delegates:      delegates,
 		CanCheckin:     canCheckin,
+		CanSetValues:   canSetValues,
 		Revisions:      revisions,
 		Ownership:      ownership,
 		Dimensions:     dimensions,
@@ -564,8 +568,11 @@ type goalView struct {
 	// Dimensions are all defined Dimensions, for the value-assignment selects and
 	// the defaults offered when creating a child Goal. Values are the values this
 	// Goal currently carries, retired ones included so they stay readable.
-	Dimensions []domain.Dimension
-	Values     []domain.DimensionValue
+	// CanSetValues is true when the viewer may set them — the Owner, a Delegate
+	// or an Admin.
+	Dimensions   []domain.Dimension
+	Values       []domain.DimensionValue
+	CanSetValues bool
 	// Checkins is the Goal's Check-in history (newest first) and LatestCheckin is
 	// the most recent one, carrying the Goal's current Health, status, and Path to
 	// Green. LatestCheckin is nil when the Goal has no Check-ins yet.
@@ -893,11 +900,14 @@ func (s *Server) handleActivateGoal(w http.ResponseWriter, r *http.Request, _ do
 }
 
 // handleAssignGoalValue sets the Goal's Dimension values (CONTEXT.md: Owners
-// assign Dimension values to their Goals). A form naming a dimension_id, a
-// several-values Dimension's checkboxes, saves its checked value_ids together,
-// so an unchecked value is removed. A single value_id without one, a one-value
-// Dimension's select, replaces any value the Goal already carries there, and an
-// empty selection is a no-op. Anyone but the Owner or an Admin is refused.
+// and their Delegates set a Goal's Dimension values). A form naming a
+// dimension_id and a new_value, an Extendable Dimension's add-a-value input,
+// sets the value so named, adding it to the list when it's new. One naming a
+// dimension_id without a new_value, a several-values Dimension's checkboxes,
+// saves its checked value_ids together, so an unchecked value is removed. A
+// single value_id without one, a one-value Dimension's select, replaces any
+// value the Goal already carries there, and an empty selection is a no-op.
+// Anyone but the Owner, a Delegate or an Admin is refused.
 func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := goalIDFromPath(w, r)
 	if !ok {
@@ -907,6 +917,11 @@ func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, c
 		dimensionID, err := strconv.ParseInt(rawDim, 10, 64)
 		if err != nil {
 			http.Error(w, "invalid dimension", http.StatusUnprocessableEntity)
+			return
+		}
+		if newValue, ok := r.Form["new_value"]; ok {
+			_, err := s.svc.AssignGoalValueByName(r.Context(), current.ID, id, dimensionID, newValue[0])
+			writeCommandResult(w, r, id, err)
 			return
 		}
 		var valueIDs []int64

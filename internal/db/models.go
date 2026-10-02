@@ -84,6 +84,7 @@ type Dimension struct {
 	Name      string
 	CreatedAt string
 	Selection string
+	List      string
 }
 
 type DimensionValue struct {

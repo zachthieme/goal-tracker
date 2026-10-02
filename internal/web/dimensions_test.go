@@ -259,3 +259,81 @@ func TestSwitchToOneValueRefusalNamesGoalsOverHTTP(t *testing.T) {
 		t.Errorf("Team Selection = %q, want one", dims[0].Selection)
 	}
 }
+
+// An Admin chooses on the create form whether a Dimension's list is Fixed or
+// Extendable, defaulting to Fixed, and switches it either way from its card;
+// each card says which it is. A non-Admin can't switch it (CONTEXT.md: Fixed,
+// Extendable).
+func TestAdminMarksDimensionExtendableAndFixedOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := signInClient(t, ts.URL, "boss@example.com")
+
+	form := pageElement(t, getBody(t, boss, ts.URL+"/dimensions"), "details", "create-dimension")
+	if !strings.Contains(form, `name="list" value="fixed" checked`) || !strings.Contains(form, `name="list" value="extendable"`) {
+		t.Fatalf("create form lacks a Fixed/Extendable choice defaulting to Fixed:\n%s", form)
+	}
+
+	postForm(t, boss, ts.URL+"/dimensions", url.Values{"name": {"Customer"}, "values": {"Acme"}, "list": {"extendable"}})
+	postForm(t, boss, ts.URL+"/dimensions", url.Values{"name": {"Pillar"}, "values": {"Growth"}})
+	lists := map[string]string{}
+	var pillarID int64
+	dims, err := h.Service.ListDimensions(context.Background())
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	for _, d := range dims {
+		lists[d.Name] = d.List
+		if d.Name == "Pillar" {
+			pillarID = d.ID
+		}
+	}
+	if lists["Customer"] != domain.ListExtendable || lists["Pillar"] != domain.ListFixed {
+		t.Fatalf("lists = %v, want Customer extendable and Pillar fixed", lists)
+	}
+
+	page := getBody(t, boss, ts.URL+"/dimensions")
+	if !strings.Contains(page, `data-testid="dimension-list">Extendable`) || !strings.Contains(page, `data-testid="dimension-list">Fixed`) {
+		t.Errorf("cards don't say Fixed / Extendable:\n%s", page)
+	}
+	listURL := fmt.Sprintf("%s/dimensions/%d/list", ts.URL, pillarID)
+	if !strings.Contains(page, fmt.Sprintf(`action="/dimensions/%d/list"`, pillarID)) {
+		t.Fatalf("Pillar card lacks a form posting to its list switch:\n%s", page)
+	}
+
+	for _, want := range []string{domain.ListExtendable, domain.ListFixed} {
+		resp := postForm(t, boss, listURL, url.Values{"list": {want}})
+		_ = readBody(t, resp)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("switch Pillar to %s: status %d", want, resp.StatusCode)
+		}
+		if d := dimensionByName(t, h, "Pillar"); d.List != want {
+			t.Errorf("Pillar List = %q, want %q", d.List, want)
+		}
+	}
+
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	resp := postForm(t, sam, listURL, url.Values{"list": {"extendable"}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-Admin switch: status %d, want 403", resp.StatusCode)
+	}
+	if d := dimensionByName(t, h, "Pillar"); d.Extendable() {
+		t.Errorf("Pillar became Extendable after a non-Admin's switch")
+	}
+}
+
+func dimensionByName(t *testing.T, h *testsupport.Harness, name string) domain.Dimension {
+	t.Helper()
+	dims, err := h.Service.ListDimensions(context.Background())
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	for _, d := range dims {
+		if d.Name == name {
+			return d
+		}
+	}
+	t.Fatalf("no Dimension named %q", name)
+	return domain.Dimension{}
+}

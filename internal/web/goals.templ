@@ -337,7 +337,7 @@ templ goalPage(current *domain.Account, v goalView) {
 				</div>
 				<section data-testid="goal-dimensions" class="card gp-card">
 					<h3>Dimensions</h3>
-					@goalDimensions(v, owner)
+					@goalDimensions(v)
 				</section>
 			</aside>
 		</div>
@@ -502,7 +502,7 @@ templ goalMore(v goalView, owner, admin bool) {
 					</li>
 				}
 				<li><a href="#add-child" onclick={ openSection("add-child") }>Add a child goal</a></li>
-				if owner {
+				if v.CanSetValues {
 					<li><a href="#edit-dimensions" onclick={ openSection("edit-dimensions") }>Edit Dimension values</a></li>
 				}
 				if admin {
@@ -586,13 +586,15 @@ func openSection(id string) templ.ComponentScript {
 }
 
 // goalDimensions shows the Goal's values in each Dimension as tags — retired
-// values stay readable — and, for its Owner, a collapsed section to set them:
+// values stay readable — and, for its Owner, a Delegate or an Admin, a
+// collapsed section to set them:
 // a select for a Dimension that takes one value, and a checkbox per value, saved
-// together, for one that takes several (CONTEXT.md: Owners assign Dimension
-// values; retired values stay readable). A retired value the Goal carries keeps
-// its checked box so saving doesn't silently drop it. It links everyone to the
+// together, for one that takes several (CONTEXT.md: Delegate; retired values
+// stay readable). An Extendable Dimension also has an
+// input to add a value. A retired value the Goal carries keeps its checked box
+// so saving doesn't silently drop it. It links everyone to the
 // Dimensions page, which isn't in the main nav.
-templ goalDimensions(v goalView, owner bool) {
+templ goalDimensions(v goalView) {
 	{{ g := v.Goal }}
 	if len(v.Dimensions) == 0 {
 		<p data-testid="no-dimensions-defined" class="muted">No Dimensions defined yet.</p>
@@ -615,7 +617,7 @@ templ goalDimensions(v goalView, owner bool) {
 			</li>
 		}
 	</ul>
-	if owner && len(v.Dimensions) > 0 {
+	if v.CanSetValues && len(v.Dimensions) > 0 {
 		<details id="edit-dimensions">
 			<summary class="small">Edit Dimension values</summary>
 			for _, d := range v.Dimensions {
@@ -651,10 +653,24 @@ templ goalDimensions(v goalView, owner bool) {
 						<button type="submit" class="btn sm">Assign</button>
 					</form>
 				}
+				if d.Extendable() {
+					@addGoalValue(g.ID, d)
+				}
 			}
 		</details>
 	}
 	<p class="small"><a href="/dimensions">All Dimensions →</a></p>
+}
+
+// addGoalValue is an Extendable Dimension's "add a value" input beside its
+// choices on the Goal page: the value typed is set on the Goal, and added to
+// the list first when it's new (CONTEXT.md: Extendable).
+templ addGoalValue(goalID int64, d domain.Dimension) {
+	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/dimensions", goalID)) } class="gp-inline">
+		<input type="hidden" name="dimension_id" value={ fmt.Sprintf("%d", d.ID) }/>
+		<input type="text" name="new_value" aria-label={ "Add a " + d.Name + " value" } placeholder={ "Add a " + d.Name + " value" } required/>
+		<button type="submit" class="btn sm">Add</button>
+	</form>
 }
 
 // addChildGoal creates a Goal under this one, collapsed until the More menu

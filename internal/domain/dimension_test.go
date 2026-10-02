@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -146,9 +147,9 @@ func TestAssignDimensionValueReplacesWithinDimension(t *testing.T) {
 	}
 }
 
-// Only the Goal's Owner or an Admin may assign its Dimension values; anyone else
-// is refused and the Goal's value is left as it was (CONTEXT.md: Owners assign
-// Dimension values to their Goals).
+// Only the Goal's Owner, a Delegate or an Admin may assign its Dimension
+// values; anyone else is refused and the Goal's value is left as it was
+// (CONTEXT.md: Owners assign Dimension values to their Goals).
 func TestOnlyOwnerOrAdminAssignsDimensionValue(t *testing.T) {
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
@@ -373,7 +374,7 @@ func TestOwnerSetsSeveralValuesInDimension(t *testing.T) {
 	if err := h.Service.SetGoalValues(ctx, sam.ID, goal.ID, teams.ID, []int64{pillar.Values[0].ID}); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("value from another Dimension err = %v, want ErrValidation", err)
 	}
-	// Only the Owner or an Admin may set them.
+	// Only the Owner, a Delegate or an Admin may set them.
 	if err := h.Service.SetGoalValues(ctx, other.ID, goal.ID, teams.ID, nil); !errors.Is(err, domain.ErrNotAuthorized) {
 		t.Errorf("non-Owner SetGoalValues err = %v, want ErrNotAuthorized", err)
 	}
@@ -550,5 +551,297 @@ func TestReportFilterSelectsGoalCarryingValueAmongSeveral(t *testing.T) {
 	}
 	if got, want := selectedIDs(selected), []int64{shared.ID}; !sameSet(got, want) {
 		t.Errorf("Infra filter selected %v, want %v", got, want)
+	}
+}
+
+// A new Dimension's list is Fixed; an Admin marks it Extendable and switches it
+// back, and a non-Admin can do neither (CONTEXT.md: Fixed, Extendable).
+func TestAdminSwitchesDimensionBetweenFixedAndExtendable(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	customer := h.CreateDimension(boss, "Customer", "Acme")
+	if customer.Extendable() {
+		t.Fatalf("a new Dimension is Extendable, want Fixed")
+	}
+
+	if err := h.Service.SetDimensionList(ctx, boss.ID, customer.ID, domain.ListExtendable); err != nil {
+		t.Fatalf("SetDimensionList Extendable: %v", err)
+	}
+	if got := dimensionNamed(t, h, "Customer"); !got.Extendable() {
+		t.Errorf("Customer List = %q after marking it Extendable", got.List)
+	}
+
+	if err := h.Service.SetDimensionList(ctx, sam.ID, customer.ID, domain.ListFixed); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("non-Admin SetDimensionList err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.SetDimensionList(ctx, boss.ID, customer.ID, "open"); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("unknown list kind err = %v, want ErrValidation", err)
+	}
+
+	if err := h.Service.SetDimensionList(ctx, boss.ID, customer.ID, domain.ListFixed); err != nil {
+		t.Fatalf("SetDimensionList Fixed: %v", err)
+	}
+	if got := dimensionNamed(t, h, "Customer"); got.Extendable() {
+		t.Errorf("Customer List = %q after switching back to Fixed", got.List)
+	}
+}
+
+func dimensionNamed(t *testing.T, h *testsupport.Harness, name string) domain.Dimension {
+	t.Helper()
+	dims, err := h.Service.ListDimensions(context.Background())
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	for _, d := range dims {
+		if d.Name == name {
+			return d
+		}
+	}
+	t.Fatalf("no Dimension named %q", name)
+	return domain.Dimension{}
+}
+
+// A Goal's Delegate sets its values like its Owner, in one-value and
+// several-values Dimensions alike; a Contributor can't (CONTEXT.md: Delegate,
+// Contributor).
+func TestDelegateSetsGoalValuesButContributorCannot(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	cory := h.SignIn("cory@example.com")
+	ctx := context.Background()
+
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, dee, goal.ID)
+	if err := h.Service.AddContributorByEmail(ctx, goal.ID, "cory@example.com"); err != nil {
+		t.Fatalf("AddContributorByEmail: %v", err)
+	}
+
+	if err := h.Service.AssignGoalValue(ctx, dee.ID, goal.ID, pillar.Values[1].ID); err != nil {
+		t.Fatalf("Delegate AssignGoalValue: %v", err)
+	}
+	if err := h.Service.SetGoalValues(ctx, dee.ID, goal.ID, teams.ID, []int64{teams.Values[0].ID, teams.Values[1].ID}); err != nil {
+		t.Fatalf("Delegate SetGoalValues: %v", err)
+	}
+	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Reliability", "Core", "Infra"}) {
+		t.Fatalf("values = %v, want [Reliability Core Infra]", got)
+	}
+
+	if err := h.Service.AssignGoalValue(ctx, cory.ID, goal.ID, pillar.Values[0].ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("Contributor AssignGoalValue err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.SetGoalValues(ctx, cory.ID, goal.ID, teams.ID, nil); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("Contributor SetGoalValues err = %v, want ErrNotAuthorized", err)
+	}
+	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Reliability", "Core", "Infra"}) {
+		t.Errorf("after the Contributor's refused sets, values = %v, want them unchanged", got)
+	}
+}
+
+// On an Extendable Dimension an Owner names a new value: it joins the list and
+// the Goal carries it in one step. In a one-value Dimension it replaces the
+// Goal's value; in a several-values one it joins the Goal's others (CONTEXT.md:
+// Extendable).
+func TestOwnerAddsNewValueToExtendableDimension(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	customer := h.CreateExtendableDimension(boss, "Customer", "Acme")
+	partners := h.CreateExtendableDimension(boss, "Partner", "Initech")
+	h.SetDimensionSelection(boss, partners, domain.SelectionSeveral)
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, customer.Values[0])
+
+	globex, err := h.Service.AssignGoalValueByName(ctx, sam.ID, goal.ID, customer.ID, "  Globex ")
+	if err != nil {
+		t.Fatalf("AssignGoalValueByName Globex: %v", err)
+	}
+	if globex.Value != "Globex" || globex.DimensionID != customer.ID {
+		t.Errorf("added value = %+v, want Globex in Customer", globex)
+	}
+	if _, err := h.Service.AssignGoalValueByName(ctx, sam.ID, goal.ID, partners.ID, "Umbrella"); err != nil {
+		t.Fatalf("AssignGoalValueByName Umbrella: %v", err)
+	}
+	h.AssignGoalValue(goal, partners.Values[0])
+
+	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Globex", "Initech", "Umbrella"}) {
+		t.Errorf("values = %v, want [Globex Initech Umbrella]", got)
+	}
+	if got := valueNames(dimensionNamed(t, h, "Customer").Values); !equalStrings(got, []string{"Acme", "Globex"}) {
+		t.Errorf("Customer list = %v, want [Acme Globex]", got)
+	}
+	if got := valueNames(dimensionNamed(t, h, "Partner").Values); !equalStrings(got, []string{"Initech", "Umbrella"}) {
+		t.Errorf("Partner list = %v, want [Initech Umbrella]", got)
+	}
+
+	if _, err := h.Service.AssignGoalValueByName(ctx, sam.ID, goal.ID, customer.ID, "  "); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("blank value err = %v, want ErrValidation", err)
+	}
+}
+
+func valueNames(values []domain.DimensionValue) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		out = append(out, v.Value)
+	}
+	return out
+}
+
+// On a Fixed Dimension only an Admin adds a value, so an Owner naming a new one
+// is refused and nothing changes; an Admin's goes through. Switching an
+// Extendable list back to Fixed stops further additions but keeps the values
+// already added (CONTEXT.md: Fixed).
+func TestNewValueOnFixedDimensionRefusedForNonAdmin(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	customer := h.CreateExtendableDimension(boss, "Customer", "Acme")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	if _, err := h.Service.AssignGoalValueByName(ctx, sam.ID, goal.ID, customer.ID, "Globex"); err != nil {
+		t.Fatalf("Owner adds Globex while Extendable: %v", err)
+	}
+	if err := h.Service.SetDimensionList(ctx, boss.ID, customer.ID, domain.ListFixed); err != nil {
+		t.Fatalf("SetDimensionList Fixed: %v", err)
+	}
+
+	if _, err := h.Service.AssignGoalValueByName(ctx, sam.ID, goal.ID, customer.ID, "Initech"); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("Owner adding to a Fixed list err = %v, want ErrNotAuthorized", err)
+	}
+	if got := valueNames(dimensionNamed(t, h, "Customer").Values); !equalStrings(got, []string{"Acme", "Globex"}) {
+		t.Errorf("Customer list = %v, want [Acme Globex] kept and nothing added", got)
+	}
+	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Globex"}) {
+		t.Errorf("values = %v, want [Globex] unchanged", got)
+	}
+
+	if _, err := h.Service.AssignGoalValueByName(ctx, boss.ID, goal.ID, customer.ID, "Initech"); err != nil {
+		t.Fatalf("Admin adding to a Fixed list: %v", err)
+	}
+	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Initech"}) {
+		t.Errorf("values = %v, want [Initech]", got)
+	}
+}
+
+// A named value matches an existing one whatever its case or surrounding
+// spaces, so "ACME " sets Acme and adds nothing — on a Fixed list too, where
+// choosing an existing value needs no Admin. A match on a Retired value is
+// refused, saying it is retired (CONTEXT.md: Extendable, Retired).
+func TestNamedValueMatchesExistingWhateverItsCase(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	customer := h.CreateExtendableDimension(boss, "Customer", "Acme", "Hooli")
+	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	got, err := h.Service.AssignGoalValueByName(ctx, sam.ID, goal.ID, customer.ID, "ACME ")
+	if err != nil {
+		t.Fatalf("AssignGoalValueByName ACME: %v", err)
+	}
+	if got.ID != customer.Values[0].ID {
+		t.Errorf("ACME set %+v, want the existing Acme", got)
+	}
+	if _, err := h.Service.AssignGoalValueByName(ctx, sam.ID, goal.ID, teams.ID, " core"); err != nil {
+		t.Fatalf("Owner naming an existing value on a Fixed list: %v", err)
+	}
+	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Acme", "Core"}) {
+		t.Errorf("values = %v, want [Acme Core]", got)
+	}
+	if got := valueNames(dimensionNamed(t, h, "Customer").Values); !equalStrings(got, []string{"Acme", "Hooli"}) {
+		t.Errorf("Customer list = %v, want [Acme Hooli] with nothing created", got)
+	}
+	if got := valueNames(dimensionNamed(t, h, "Team").Values); !equalStrings(got, []string{"Core", "Infra"}) {
+		t.Errorf("Team list = %v, want [Core Infra] with nothing created", got)
+	}
+
+	if err := h.Service.RetireDimensionValue(ctx, boss.ID, customer.Values[1].ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	_, err = h.Service.AssignGoalValueByName(ctx, sam.ID, goal.ID, customer.ID, "hooli")
+	if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "Hooli is retired") {
+		t.Errorf("naming a Retired value err = %v, want an ErrValidation saying Hooli is retired", err)
+	}
+	if got := valueNames(dimensionNamed(t, h, "Customer").Values); !equalStrings(got, []string{"Acme", "Hooli"}) {
+		t.Errorf("Customer list = %v, want [Acme Hooli] with nothing created", got)
+	}
+	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Acme", "Core"}) {
+		t.Errorf("values = %v, want [Acme Core] unchanged", got)
+	}
+}
+
+// An Admin adding a value on the Dimensions page that matches an existing one
+// whatever its case adds nothing, and one matching a Retired value is refused,
+// saying it is retired (CONTEXT.md: Retired).
+func TestAdminAddingNearDuplicateValueAddsNothing(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ctx := context.Background()
+
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Legacy")
+	if err := h.Service.RetireDimensionValue(ctx, boss.ID, pillar.Values[1].ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+
+	got, err := h.Service.AddDimensionValue(ctx, boss.ID, pillar.ID, " growth ")
+	if err != nil {
+		t.Fatalf("AddDimensionValue growth: %v", err)
+	}
+	if got.ID != pillar.Values[0].ID {
+		t.Errorf("adding growth returned %+v, want the existing Growth", got)
+	}
+	if _, err := h.Service.AddDimensionValue(ctx, boss.ID, pillar.ID, "LEGACY"); !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "Legacy is retired") {
+		t.Errorf("adding LEGACY err = %v, want an ErrValidation saying Legacy is retired", err)
+	}
+	if got := valueNames(dimensionNamed(t, h, "Pillar").Values); !equalStrings(got, []string{"Growth", "Legacy"}) {
+		t.Errorf("Pillar list = %v, want [Growth Legacy] with nothing added", got)
+	}
+
+	quarter := h.CreateDimension(boss, "Quarter", "Q1", " q1", "Q2")
+	if got := valueNames(quarter.Values); !equalStrings(got, []string{"Q1", "Q2"}) {
+		t.Errorf("Quarter defined with Q1 and q1 = %v, want [Q1 Q2]", got)
+	}
+}
+
+// A Delegate adds a new value to an Extendable list from the Goal, like its
+// Owner; a Contributor can't, and nothing is added (CONTEXT.md: Delegate,
+// Extendable).
+func TestDelegateAddsToExtendableListButContributorCannot(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	cory := h.SignIn("cory@example.com")
+	ctx := context.Background()
+
+	customer := h.CreateExtendableDimension(boss, "Customer", "Acme")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, dee, goal.ID)
+	if err := h.Service.AddContributorByEmail(ctx, goal.ID, "cory@example.com"); err != nil {
+		t.Fatalf("AddContributorByEmail: %v", err)
+	}
+
+	if _, err := h.Service.AssignGoalValueByName(ctx, dee.ID, goal.ID, customer.ID, "Globex"); err != nil {
+		t.Fatalf("Delegate AssignGoalValueByName: %v", err)
+	}
+	if _, err := h.Service.AssignGoalValueByName(ctx, cory.ID, goal.ID, customer.ID, "Initech"); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("Contributor AssignGoalValueByName err = %v, want ErrNotAuthorized", err)
+	}
+	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Globex"}) {
+		t.Errorf("values = %v, want [Globex]", got)
+	}
+	if got := valueNames(dimensionNamed(t, h, "Customer").Values); !equalStrings(got, []string{"Acme", "Globex"}) {
+		t.Errorf("Customer list = %v, want [Acme Globex]", got)
 	}
 }
