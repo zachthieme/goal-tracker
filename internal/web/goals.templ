@@ -637,6 +637,7 @@ templ goalPage(current *domain.Account, v goalView) {
 		@goalSignals(v.Signals)
 		@goalIncomplete(v.Incomplete)
 		@goalHead(v, owner, admin)
+		@toastNotice(v.Toast)
 		<div class="grid-main-aside">
 			<div data-testid="goal-main" class="gp-col">
 				if owner && g.Lifecycle == domain.LifecycleProposed {
@@ -704,11 +705,11 @@ templ goalPage(current *domain.Account, v goalView) {
 			<aside data-testid="goal-sidebar" class="gp-col gp-side">
 				<section data-testid="goal-parents" class="gp-block ruled">
 					<h3>Contributes to</h3>
-					@linkList(v.Parents, v.LinkHealth, "no-parents", "This Goal contributes to nothing yet.")
+					@linkList(g.ID, v.Parents, v.LinkHealth, "no-parents", "This Goal contributes to nothing yet.")
 				</section>
 				<section data-testid="goal-children" class="gp-block ruled">
 					<h3>Contributed to by</h3>
-					@linkList(v.Children, v.LinkHealth, "no-children", "Nothing contributes to this Goal yet.")
+					@linkList(g.ID, v.Children, v.LinkHealth, "no-children", "Nothing contributes to this Goal yet.")
 				</section>
 				<div data-testid="goal-people" class="gp-block ruled">
 					<h3>People</h3>
@@ -1495,10 +1496,11 @@ templ metricFields(m domain.Metric) {
 	</label>
 }
 
-// linkList renders a Goal's parents or children as navigable links, each with
-// its Health and a button that removes the connecting link at once: it can be
-// requested again. emptyTestID/emptyText render when there are none.
-templ linkList(links []domain.GoalLink, health map[int64]string, emptyTestID, emptyText string) {
+// linkList renders Goal goalID's parents or children as navigable links, each
+// with its Health and a button that removes the connecting link at once: the
+// page that follows offers Undo. emptyTestID/emptyText render when there are
+// none.
+templ linkList(goalID int64, links []domain.GoalLink, health map[int64]string, emptyTestID, emptyText string) {
 	<ul class="gp-list">
 		if len(links) == 0 {
 			<li data-testid={ emptyTestID } class="muted">{ emptyText }</li>
@@ -1516,6 +1518,7 @@ templ linkList(links []domain.GoalLink, health map[int64]string, emptyTestID, em
 						<span data-testid="ownerless" class="badge ol">Ownerless</span>
 					}
 					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/remove", l.LinkID)) }>
+						<input type="hidden" name="goal_id" value={ fmt.Sprint(goalID) }/>
 						<button type="submit" class="btn quiet sm">Remove</button>
 					</form>
 				</span>

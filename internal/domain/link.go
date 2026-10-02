@@ -295,6 +295,35 @@ func (s *Service) RemoveLink(ctx context.Context, linkID, actorID int64) (LinkRe
 	}, nil
 }
 
+// LinkRemoval returns the record of a removed link, with both Goals resolved,
+// so a page can say what was removed and offer its remover the Undo.
+func (s *Service) LinkRemoval(ctx context.Context, removalID int64) (LinkRemoval, error) {
+	row, err := s.queries.GetLinkRemoval(ctx, removalID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return LinkRemoval{}, fmt.Errorf("%w: link removal %d", ErrNotFound, removalID)
+		}
+		return LinkRemoval{}, fmt.Errorf("look up link removal: %w", err)
+	}
+	child, err := s.queries.GetGoal(ctx, row.ChildID)
+	if err != nil {
+		return LinkRemoval{}, fmt.Errorf("look up child goal: %w", err)
+	}
+	parent, err := s.queries.GetGoal(ctx, row.ParentID)
+	if err != nil {
+		return LinkRemoval{}, fmt.Errorf("look up parent goal: %w", err)
+	}
+	removedAt, _ := time.Parse(timeFormat, row.RemovedAt)
+	return LinkRemoval{
+		ID:        row.ID,
+		Child:     goalFromRow(child.Goal, child.Account),
+		Parent:    goalFromRow(parent.Goal, parent.Account),
+		RemovedBy: row.RemovedBy,
+		RemovedAt: removedAt,
+		Restored:  row.RestoredAt != nil,
+	}, nil
+}
+
 // RestoreLink undoes a removal, putting the link back as accepted between the
 // same two Goals with its original note, without asking the parent's Owner to
 // accept it again: they accepted it once. Because that skips acceptance, only
