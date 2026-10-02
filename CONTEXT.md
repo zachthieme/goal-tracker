@@ -31,7 +31,7 @@ The one person accountable for a Goal, who writes its Check-ins and answers for 
 _Avoid_: co-owner, DRI, lead
 
 **Delegate**:
-A person an Owner authorizes to write and submit Check-ins for a Goal. Accountability stays with the Owner, and each Check-in records who wrote it. When a Goal changes hands through a Handoff, the new Owner chooses which Delegates to keep.
+A person an Owner authorizes to write and submit Check-ins for a Goal and to set its Dimension values and Fields. Accountability stays with the Owner, and each Check-in records who wrote it. When a Goal changes hands through a Handoff, the new Owner chooses which Delegates to keep.
 _Avoid_: proxy, editor, TPM (as a role in the tool)
 
 **Handoff**:
@@ -43,7 +43,7 @@ A Goal whose Owner is Departed and hasn't been replaced, either by an Admin reas
 _Avoid_: orphaned, unassigned
 
 **Admin**:
-One of a small set of people who define Dimensions, reassign Ownerless Goals, and can override links and Lifecycle changes.
+One of a small set of people who define Dimensions and Fields, reassign Ownerless Goals, and can override links and Lifecycle changes.
 _Avoid_: moderator, superuser
 
 **Contributor**:
@@ -79,8 +79,28 @@ A Goal an Admin has marked as one of the org's root outcomes. It isn't expected 
 _Avoid_: root, north star, company goal
 
 **Dimension**:
-An admin-defined attribute with a fixed list of values (e.g. pillar, quarter, goal kind), used to filter and group Goals.
+An admin-defined attribute whose values come from a list (e.g. pillar, quarter, goal kind), used to filter and group Goals. The Admin decides whether a Goal takes one value or several, and whether the list is Fixed or Extendable. A Goal with several values appears under each of them when grouped.
 _Avoid_: tag, label, category
+
+**Fixed**:
+A Dimension whose list only an Admin can add to.
+_Avoid_: closed, locked
+
+**Extendable**:
+A Dimension whose list can be added to by anyone setting a Goal's value in it. Renaming, retiring and merging values stays with Admins.
+_Avoid_: open, free-form, user-defined
+
+**Field**:
+An admin-defined attribute whose value is entered directly on a Goal rather than chosen from a list (e.g. budget, notes). A Field holds a number, a short text, a long text, or a date. It describes a Goal and is never an update: status belongs in a Check-in. It is not used to filter or group, and numbers in a Field are never added up across Goals. Changes to a Goal's Fields and Dimension values are kept in the Goal's history.
+_Avoid_: custom field, property, typed Dimension
+
+**Retired**:
+A Dimension, a Dimension's value, or a Field that an Admin has withdrawn. It is no longer offered when setting a Goal's values, but stays readable on the Goals that already carry it. An Admin can reverse it.
+_Avoid_: deleted, archived, disabled
+
+**Incomplete**:
+An Active Goal missing a value in a Dimension or Field that an Admin has marked required. Flagged and listed, but less prominently than Red or Stale. A Proposed Goal can't become Active while it would be Incomplete.
+_Avoid_: invalid, missing data
 
 Teams are not a built-in concept; an org that wants them adds a Team Dimension. The structure of the goal graph comes only from what Goals drive.
 
