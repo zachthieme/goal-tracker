@@ -1193,3 +1193,84 @@ func TestReportFilterOnRetiredDimensionSelectsSameGoals(t *testing.T) {
 		t.Errorf("Growth filter on a Retired Pillar selected %v, want %v", got, want)
 	}
 }
+
+// A value can't contain a semicolon, since the import format separates values
+// with one: defining a Dimension, adding a value, renaming one and naming a new
+// one on a Goal are each refused, saying why, and nothing is added (#101).
+func TestValueContainingSemicolonIsRefused(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+	customer := h.CreateExtendableDimension(boss, "Customer", "Acme")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	refusals := map[string]error{}
+	_, refusals["DefineDimension"] = h.Service.CreateDimension(ctx, boss.ID, "Pillar", []string{"Growth", "R&D; Ops"})
+	_, refusals["AddDimensionValue"] = h.Service.AddDimensionValue(ctx, boss.ID, customer.ID, "Acme; Globex")
+	_, refusals["RenameDimensionValue"] = h.Service.RenameDimensionValue(ctx, boss.ID, customer.Values[0].ID, "Acme;")
+	_, refusals["AssignGoalValueByName"] = h.Service.AssignGoalValueByName(ctx, sam.ID, goal.ID, customer.ID, "Initech; Umbrella")
+	refusals["EditGoalValues"] = h.Service.EditGoalValues(ctx, sam.ID, []domain.ValueEdit{{GoalID: goal.ID, DimensionID: customer.ID, NewValue: "Hooli;"}})
+	for call, err := range refusals {
+		if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "can't contain a semicolon") {
+			t.Errorf("%s err = %v, want a refusal saying a value can't contain a semicolon", call, err)
+		}
+	}
+
+	dims, err := h.Service.ListDimensions(ctx)
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	if len(dims) != 1 || !equalStrings(valueNames(dims[0].Values), []string{"Acme"}) {
+		t.Errorf("Dimensions = %+v, want only Customer, still [Acme]", dims)
+	}
+	if got := goalValueNames(t, h, goal.ID); len(got) != 0 {
+		t.Errorf("Goal values = %v, want none", got)
+	}
+}
+
+// A value named with a semicolon before that was refused keeps working: it is
+// read off its Goal, filters and groups as any value does, and an Admin may
+// rename it to a name without one, though not to another with one (#101).
+func TestValueAlreadyContainingSemicolonKeepsWorking(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	rnd := h.NameValueWithSemicolon(pillar.Values[1], "R&D; Ops")
+	pillar.Values[1] = rnd
+	alpha := h.CreateGoal(sam, "Alpha", "A matters.")
+	bravo := h.CreateGoal(sam, "Bravo", "B matters.")
+	h.AssignGoalValue(alpha, pillar.Values[0])
+	h.AssignGoalValue(bravo, rnd)
+
+	if got := goalValueNames(t, h, bravo.ID); !equalStrings(got, []string{"R&D; Ops"}) {
+		t.Errorf("Bravo's values = %v, want [R&D; Ops]", got)
+	}
+	all, err := h.Service.ListGoalsWithValues(ctx)
+	if err != nil {
+		t.Fatalf("ListGoalsWithValues: %v", err)
+	}
+	if got := goalTitles(domain.FilterGoals(all, map[int64][]int64{pillar.ID: {rnd.ID}})); !equalStrings(got, []string{"Bravo"}) {
+		t.Errorf("filter on R&D; Ops = %v, want [Bravo]", got)
+	}
+	groups := domain.GroupGoalsByDimension(all, pillar)
+	if len(groups) < 2 || groups[1].Value == nil || groups[1].Value.Value != "R&D; Ops" || !equalStrings(goalTitles(groups[1].Goals), []string{"Bravo"}) {
+		t.Errorf("groups = %+v, want R&D; Ops -> [Bravo] second", groups)
+	}
+
+	if _, err := h.Service.RenameDimensionValue(ctx, boss.ID, rnd.ID, "R&D; Platform"); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("rename to another name with a semicolon err = %v, want ErrValidation", err)
+	}
+	renamed, err := h.Service.RenameDimensionValue(ctx, boss.ID, rnd.ID, "R&D and Ops")
+	if err != nil {
+		t.Fatalf("RenameDimensionValue: %v", err)
+	}
+	if renamed.ID != rnd.ID || renamed.Value != "R&D and Ops" {
+		t.Errorf("renamed = %+v, want value %d named R&D and Ops", renamed, rnd.ID)
+	}
+	if got := goalValueNames(t, h, bravo.ID); !equalStrings(got, []string{"R&D and Ops"}) {
+		t.Errorf("Bravo's values after rename = %v, want [R&D and Ops]", got)
+	}
+}
