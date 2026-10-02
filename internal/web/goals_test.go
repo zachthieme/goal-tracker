@@ -2750,16 +2750,15 @@ func tableForm(t *testing.T, page string) (string, url.Values) {
 // controlName is the name of the form control on page labelled label.
 func controlName(t *testing.T, page, label string) string {
 	t.Helper()
-	m := regexp.MustCompile(`<(input|select|textarea|fieldset)[^>]*\saria-label="` + regexp.QuoteMeta(html.EscapeString(label)) + `"[^>]*>`).FindString(page)
-	if m == "" {
+	at := regexp.MustCompile(`<(input|select|textarea|fieldset)[^>]*\saria-label="` + regexp.QuoteMeta(html.EscapeString(label)) + `"[^>]*>`).FindStringIndex(page)
+	if at == nil {
 		t.Fatalf("page has no control labelled %q", label)
 	}
-	if name := attr(m, "name"); name != "" {
+	if name := attr(page[at[0]:at[1]], "name"); name != "" {
 		return name
 	}
 	// A fieldset of checkboxes: the name its boxes share.
-	rest := page[strings.Index(page, m):]
-	return attr(regexp.MustCompile(`<input[^>]*type="checkbox"[^>]*>`).FindString(rest), "name")
+	return attr(regexp.MustCompile(`<input[^>]*type="checkbox"[^>]*>`).FindString(page[at[1]:]), "name")
 }
 
 // valueID is the form value picking value.
