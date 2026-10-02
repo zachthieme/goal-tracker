@@ -176,6 +176,38 @@ templ themeMenu() {
 	</details>
 }
 
+// toast is the one-time notice the page shown straight after an action
+// carries: what was done, and an Undo button that posts to Undo with Fields as
+// hidden inputs. The server renders it only on that page (takeUndo), so there
+// is no timer and no script; leaving or reloading drops it. Every Undo in the
+// app uses it (DESIGN.md: Toast).
+type toast struct {
+	Message string
+	Undo    string
+	Fields  []toastField
+}
+
+// toastField is a hidden input a toast's Undo form posts.
+type toastField struct {
+	Name, Value string
+}
+
+// toastNotice renders t fixed to the bottom of the window, above the page
+// content, announced politely to assistive technology; nothing when t is nil.
+templ toastNotice(t *toast) {
+	if t != nil {
+		<aside data-testid="toast" class="toast" role="status" aria-label="Notice">
+			<p>{ t.Message }</p>
+			<form method="post" action={ templ.SafeURL(t.Undo) }>
+				for _, f := range t.Fields {
+					<input type="hidden" name={ f.Name } value={ f.Value }/>
+				}
+				<button type="submit" class="btn sm">Undo</button>
+			</form>
+		</aside>
+	}
+}
+
 // person shows someone by their Name, or their email's local part until they
 // have one, so people who share a Name can be told apart (CONTEXT.md: Name):
 // the Name is a button that expands their email inline beside it on a click,

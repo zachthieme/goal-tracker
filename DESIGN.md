@@ -210,6 +210,25 @@ Load the fonts with this URL:
   the page has the right theme on first paint with no script. With no cookie,
   or a value it doesn't know, it pins nothing and the page follows the system.
   A Report's Print view and emails ignore the choice.
+- **Toast (`.toast`):** the one shared notice for an action that can be
+  undone. It says what was done, in `--color-ink` on `--color-surface`, with a
+  secondary **Undo** button beside it, inside a 1px `--color-border-strong`
+  edge, `--radius-lg` and `--shadow-pop`. It is fixed 24px above the bottom of
+  the window, centred, over the page content (`z-index` 30), and the page under
+  it gains bottom padding so nothing ends up hidden behind it. At 600px and
+  below it spans the window less 16px each side and its message wraps.
+  - **Once, with no script.** The server renders it only on the page shown
+    straight after the action. The post that made the change sets the
+    `gt_undo` cookie, scoped to that page's path, and the page clears it as it
+    reads it, so a reload or a later visit shows nothing. There is no timer:
+    it stays until the person leaves.
+  - **Undo is a plain form post** to the action's own reversal, checked again
+    on the server, so a forged or stale Undo is refused with a message.
+  - **Announced politely:** an `<aside role="status">`, so a screen reader
+    reads it without moving focus.
+  - **Where:** removing a link (Goal page) and retiring a Dimension value
+    (Dimensions page). The templ component is `toastNotice` in `layout.templ`;
+    a new Undo reuses it rather than making its own notice.
 - **Primary button (`.btn.primary`):**
   - Resting: `--color-primary-strong` fill, `--color-ink-inverse` text,
     `--radius-md`, 14px, weight 600.

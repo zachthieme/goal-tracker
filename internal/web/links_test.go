@@ -7,9 +7,11 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 	"github.com/zachthieme/goal-tracker/internal/web"
 )
@@ -252,4 +254,194 @@ func between(t *testing.T, s, start, end string) string {
 		t.Fatalf("no %s after %s in:\n%s", end, start, s)
 	}
 	return s[:upTo]
+}
+
+// undoAction pulls the Undo form's action out of a page's toast, failing when
+// the page carries no toast.
+func undoAction(t *testing.T, page string) string {
+	t.Helper()
+	toast := pageElement(t, page, "aside", "toast")
+	m := regexp.MustCompile(`<form[^>]*action="([^"]+)"`).FindStringSubmatch(toast)
+	if m == nil {
+		t.Fatalf("the toast has no Undo form:\n%s", toast)
+	}
+	return m[1]
+}
+
+// removeAcrossOwners arranges Sam's child Goal accepted under Pat's parent and
+// Sam removing that link from the child's Goal page, returning the page Sam
+// lands on.
+func removeAcrossOwners(t *testing.T, h *testsupport.Harness, ts *httptest.Server) (child, parent domain.Goal, sam *http.Client, landed string) {
+	t.Helper()
+	pat := h.SignIn("pat@example.com")
+	samAcc := h.SignIn("sam@example.com")
+	parent = h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	child = h.CreateGoal(samAcc, "Migrate displays", "Displays fail often.")
+	link := h.RequestLink(samAcc, child, parent, "")
+	if _, err := h.Service.AcceptLink(context.Background(), link.ID, pat.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+	sam = signInClient(t, ts.URL, "sam@example.com")
+	resp := postForm(t, sam, fmt.Sprintf("%s/links/%d/remove", ts.URL, link.ID), url.Values{
+		"goal_id": {fmt.Sprint(child.ID)},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("remove link: status %d", resp.StatusCode)
+	}
+	if resp.Request.URL.Path != fmt.Sprintf("/goals/%d", child.ID) {
+		t.Errorf("remove landed on %s, want the Goal page it came from", resp.Request.URL.Path)
+	}
+	return child, parent, sam, readBody(t, resp)
+}
+
+// After removing a link, the Goal page carries a toast saying so with an Undo
+// button, a plain form post; Undo puts the link back as accepted without
+// asking the parent's Owner, and the toast isn't shown on a later visit.
+func TestRemovingALinkOffersUndoOnce(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	child, parent, sam, landed := removeAcrossOwners(t, h, ts)
+
+	toast := pageElement(t, landed, "aside", "toast")
+	for _, want := range []string{"Reduce outages", `method="post"`, "Undo"} {
+		if !strings.Contains(toast, want) {
+			t.Errorf("toast missing %q:\n%s", want, toast)
+		}
+	}
+	if strings.Contains(toast, "<script") {
+		t.Errorf("toast uses script:\n%s", toast)
+	}
+	action := undoAction(t, landed)
+
+	later := getBody(t, sam, fmt.Sprintf("%s/goals/%d", ts.URL, child.ID))
+	if strings.Contains(later, `data-testid="toast"`) {
+		t.Errorf("toast shown again on a later visit:\n%s", later)
+	}
+
+	resp := postForm(t, sam, ts.URL+action, url.Values{"goal_id": {fmt.Sprint(child.ID)}})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("undo: status %d", resp.StatusCode)
+	}
+	if page := readBody(t, resp); !strings.Contains(page, navTo(parent.ID)) {
+		t.Errorf("the Goal page doesn't link the restored parent:\n%s", page)
+	}
+	if got := h.ParentsOf(child); len(got) != 1 || got[0].ID != parent.ID {
+		t.Errorf("ParentsOf(child) = %+v, want the restored parent", got)
+	}
+}
+
+// A Remove button says which Goal page it sits on, so removing a link from the
+// parent's page returns there, toast and all, not to the child's.
+func TestRemoveReturnsToTheGoalPageItCameFrom(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	owner := h.SignIn("sam@example.com")
+	parent := h.CreateGoal(owner, "Reduce outages", "Outages cost trust.")
+	child := h.CreateGoal(owner, "Migrate displays", "Displays fail often.")
+	link := h.RequestLink(owner, child, parent, "")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, parent.ID))
+	form := between(t, page, fmt.Sprintf(`action="/links/%d/remove"`, link.ID), "</form>")
+	if want := fmt.Sprintf(`name="goal_id" value="%d"`, parent.ID); !strings.Contains(form, want) {
+		t.Fatalf("the Remove form doesn't post %s:\n%s", want, form)
+	}
+
+	resp := postForm(t, client, fmt.Sprintf("%s/links/%d/remove", ts.URL, link.ID), url.Values{"goal_id": {fmt.Sprint(parent.ID)}})
+	if resp.Request.URL.Path != fmt.Sprintf("/goals/%d", parent.ID) {
+		t.Errorf("remove landed on %s, want the parent's Goal page", resp.Request.URL.Path)
+	}
+	pageElement(t, readBody(t, resp), "aside", "toast")
+}
+
+// Undo for a link is refused for anyone but its remover, and refused a second
+// time; a crafted Undo of a removal that never happened is refused too, and
+// none of them creates a link.
+func TestUndoingALinkRemovalIsRefusedWhenItCantBeForged(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	child, _, sam, landed := removeAcrossOwners(t, h, ts)
+	action := undoAction(t, landed)
+	pat := signInClient(t, ts.URL, "pat@example.com")
+
+	resp := postForm(t, pat, ts.URL+action, url.Values{})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("Undo by the parent's Owner: status %d, want 403", resp.StatusCode)
+	}
+	if got := h.ParentsOf(child); len(got) != 0 {
+		t.Fatalf("ParentsOf(child) = %+v after a refused Undo, want none", got)
+	}
+
+	if resp := postForm(t, sam, ts.URL+action, url.Values{}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("Undo by the remover: status %d", resp.StatusCode)
+	}
+	links, err := h.Service.ParentLinks(context.Background(), child.ID)
+	if err != nil || len(links) != 1 {
+		t.Fatalf("ParentLinks = %+v, %v", links, err)
+	}
+	if resp := postForm(t, sam, fmt.Sprintf("%s/links/%d/remove", ts.URL, links[0].LinkID), url.Values{}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("remove again: status %d", resp.StatusCode)
+	}
+	resp = postForm(t, sam, ts.URL+action, url.Values{})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "already been undone") {
+		t.Errorf("second Undo: status %d %q, want 422 saying it was already undone", resp.StatusCode, body)
+	}
+
+	resp = postForm(t, sam, ts.URL+"/link-removals/4242/undo", url.Values{})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("Undo of a removal that never happened: status %d, want 404", resp.StatusCode)
+	}
+	if got := h.ParentsOf(child); len(got) != 0 {
+		t.Errorf("ParentsOf(child) = %+v after refused Undos, want none", got)
+	}
+}
+
+// Undo that would now close a cycle is refused with a message, and nothing
+// changes.
+func TestUndoingALinkRemovalIsRefusedWhenItWouldCreateACycle(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	child, parent, sam, landed := removeAcrossOwners(t, h, ts)
+	action := undoAction(t, landed)
+	pat := h.SignIn("pat@example.com")
+	h.RequestLink(pat, parent, child, "") // Pat links the other way round...
+	samAcc := h.SignIn("sam@example.com")
+	pending, err := h.Service.PendingLinkRequests(context.Background(), samAcc.ID)
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("PendingLinkRequests = %+v, %v", pending, err)
+	}
+	if _, err := h.Service.AcceptLink(context.Background(), pending[0].ID, samAcc.ID); err != nil { // ...and Sam accepts
+		t.Fatalf("AcceptLink: %v", err)
+	}
+
+	resp := postForm(t, sam, ts.URL+action, url.Values{})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusConflict || !strings.Contains(body, "cycle") {
+		t.Errorf("Undo closing a cycle: status %d %q, want 409 naming the cycle", resp.StatusCode, body)
+	}
+	if got := h.ParentsOf(child); len(got) != 0 {
+		t.Errorf("ParentsOf(child) = %+v after a refused Undo, want none", got)
+	}
+}
+
+// Only the person who removed a link is offered its Undo: the same offer
+// carried to someone else's page shows no toast.
+func TestTheLinkRemovalToastIsOnlyForTheRemover(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	child, _, _, landed := removeAcrossOwners(t, h, ts)
+	action := undoAction(t, landed)
+	id := strings.TrimSuffix(strings.TrimPrefix(action, "/link-removals/"), "/undo")
+
+	pat := signInClient(t, ts.URL, "pat@example.com")
+	page := fmt.Sprintf("%s/goals/%d", ts.URL, child.ID)
+	u, err := url.Parse(page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pat.Jar.SetCookies(u, []*http.Cookie{{Name: "gt_undo", Value: "link-removal:" + id, Path: u.Path}})
+	if body := getBody(t, pat, page); strings.Contains(body, `data-testid="toast"`) {
+		t.Errorf("someone else's removal offered as a toast:\n%s", body)
+	}
 }

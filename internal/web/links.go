@@ -1,7 +1,9 @@
 package web
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -72,21 +74,69 @@ func (s *Server) handleRejectLink(w http.ResponseWriter, r *http.Request, curren
 }
 
 // handleRemoveLink removes an accepted link; either linked Goal's Owner may.
+// It returns to the Goal page the remove came from (goal_id, either end of the
+// link), which offers Undo once in a toast.
 func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	linkID, ok := linkIDFromPath(w, r)
 	if !ok {
 		return
 	}
-	if err := s.svc.RemoveLink(r.Context(), linkID, current.ID); err != nil {
+	removal, err := s.svc.RemoveLink(r.Context(), linkID, current.ID)
+	if err != nil {
 		writeLinkError(w, err)
 		return
 	}
-	// Return to wherever the remove was triggered, usually a Goal page.
-	if ref := r.Header.Get("Referer"); ref != "" {
-		http.Redirect(w, r, ref, http.StatusSeeOther)
+	back := linkPage(removal.Child.ID, removal.Parent.ID, r.FormValue("goal_id"))
+	offerUndo(w, back, undoLinkRemoval, removal.ID)
+	http.Redirect(w, r, back, http.StatusSeeOther)
+}
+
+// handleUndoLinkRemoval restores the removed link in the path as accepted; only
+// the person who removed it may, and only once. It returns to the Goal page
+// the Undo came from (goal_id), or refuses with a message and changes nothing.
+func (s *Server) handleUndoLinkRemoval(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	removalID, ok := linkIDFromPath(w, r)
+	if !ok {
 		return
 	}
-	http.Redirect(w, r, "/goals", http.StatusSeeOther)
+	link, err := s.svc.RestoreLink(r.Context(), removalID, current.ID)
+	if err != nil {
+		writeLinkError(w, err)
+		return
+	}
+	http.Redirect(w, r, linkPage(link.Child.ID, link.Parent.ID, r.FormValue("goal_id")), http.StatusSeeOther)
+}
+
+// linkPage is the Goal page to return to after acting on the link from childID
+// to parentID: the page named by from when it is either end, the child's
+// otherwise.
+func linkPage(childID, parentID int64, from string) string {
+	id, err := strconv.ParseInt(from, 10, 64)
+	if err != nil || (id != childID && id != parentID) {
+		id = childID
+	}
+	return "/goals/" + strconv.FormatInt(id, 10)
+}
+
+// linkRemovalToast is the toast the Goal page goalID carries straight after
+// current removed one of its links (offer), with the Undo that restores it —
+// or nil when the offer isn't for a removal of this Goal's link that current
+// can still undo.
+func (s *Server) linkRemovalToast(ctx context.Context, offer undoOffer, current domain.Account, goalID int64) *toast {
+	id, ok := offer.of(undoLinkRemoval)
+	if !ok {
+		return nil
+	}
+	removal, err := s.svc.LinkRemoval(ctx, id)
+	if err != nil || removal.Restored || removal.RemovedBy != current.ID ||
+		(removal.Child.ID != goalID && removal.Parent.ID != goalID) {
+		return nil
+	}
+	return &toast{
+		Message: fmt.Sprintf("Link removed: %s no longer contributes to %s.", removal.Child.Title, removal.Parent.Title),
+		Undo:    fmt.Sprintf("/link-removals/%d/undo", removal.ID),
+		Fields:  []toastField{{Name: "goal_id", Value: strconv.FormatInt(goalID, 10)}},
+	}
 }
 
 func linkIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {

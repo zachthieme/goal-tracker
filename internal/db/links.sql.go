@@ -46,6 +46,48 @@ func (q *Queries) CreateLink(ctx context.Context, arg CreateLinkParams) (Link, e
 	return i, err
 }
 
+const createLinkRemoval = `-- name: CreateLinkRemoval :one
+INSERT INTO link_removals (child_id, parent_id, note, requested_by, link_created_at, removed_by, removed_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING id, child_id, parent_id, note, requested_by, link_created_at, removed_by, removed_at, restored_at
+`
+
+type CreateLinkRemovalParams struct {
+	ChildID       int64
+	ParentID      int64
+	Note          string
+	RequestedBy   int64
+	LinkCreatedAt string
+	RemovedBy     int64
+	RemovedAt     string
+}
+
+// Records an accepted link as it was when removed, so its remover can Undo it.
+func (q *Queries) CreateLinkRemoval(ctx context.Context, arg CreateLinkRemovalParams) (LinkRemoval, error) {
+	row := q.db.QueryRowContext(ctx, createLinkRemoval,
+		arg.ChildID,
+		arg.ParentID,
+		arg.Note,
+		arg.RequestedBy,
+		arg.LinkCreatedAt,
+		arg.RemovedBy,
+		arg.RemovedAt,
+	)
+	var i LinkRemoval
+	err := row.Scan(
+		&i.ID,
+		&i.ChildID,
+		&i.ParentID,
+		&i.Note,
+		&i.RequestedBy,
+		&i.LinkCreatedAt,
+		&i.RemovedBy,
+		&i.RemovedAt,
+		&i.RestoredAt,
+	)
+	return i, err
+}
+
 const deleteLink = `-- name: DeleteLink :exec
 DELETE FROM links WHERE id = ?
 `
@@ -94,6 +136,27 @@ func (q *Queries) GetLinkByChildParent(ctx context.Context, arg GetLinkByChildPa
 		&i.Note,
 		&i.RequestedBy,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getLinkRemoval = `-- name: GetLinkRemoval :one
+SELECT id, child_id, parent_id, note, requested_by, link_created_at, removed_by, removed_at, restored_at FROM link_removals WHERE id = ? LIMIT 1
+`
+
+func (q *Queries) GetLinkRemoval(ctx context.Context, id int64) (LinkRemoval, error) {
+	row := q.db.QueryRowContext(ctx, getLinkRemoval, id)
+	var i LinkRemoval
+	err := row.Scan(
+		&i.ID,
+		&i.ChildID,
+		&i.ParentID,
+		&i.Note,
+		&i.RequestedBy,
+		&i.LinkCreatedAt,
+		&i.RemovedBy,
+		&i.RemovedAt,
+		&i.RestoredAt,
 	)
 	return i, err
 }
@@ -300,6 +363,24 @@ func (q *Queries) ListPendingLinksForOwner(ctx context.Context, ownerID int64) (
 		return nil, err
 	}
 	return items, nil
+}
+
+const markLinkRemovalRestored = `-- name: MarkLinkRemovalRestored :execrows
+UPDATE link_removals SET restored_at = ? WHERE id = ? AND restored_at IS NULL
+`
+
+type MarkLinkRemovalRestoredParams struct {
+	RestoredAt *string
+	ID         int64
+}
+
+// Marks a removal undone, only if it isn't already, so an Undo succeeds once.
+func (q *Queries) MarkLinkRemovalRestored(ctx context.Context, arg MarkLinkRemovalRestoredParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, markLinkRemovalRestored, arg.RestoredAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
 
 const setLinkStatus = `-- name: SetLinkStatus :exec

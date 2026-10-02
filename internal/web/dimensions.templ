@@ -20,8 +20,9 @@ const confirmMerge = "Merge this value? Its Goals and Report filters move to the
 // (CONTEXT.md: Admin defines Dimensions; Fixed; Extendable). Retired values stay listed, struck through, and a
 // Retired Dimension stays listed, flagged retired, without the Required mark
 // or its control (CONTEXT.md: Retired). refusal, when
-// set, names the Goals that kept a Dimension from switching to one value.
-templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *domain.SeveralValuesError) {
+// set, names the Goals that kept a Dimension from switching to one value;
+// toast, when set, offers Undo for the value just retired.
+templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *domain.SeveralValuesError, toast *toast) {
 	{{ admin := current != nil && current.IsAdmin }}
 	@layout("Dimensions", current) {
 		@dimensionsStyles()
@@ -34,6 +35,7 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *
 		if refusal != nil {
 			@selectionRefusal(refusal)
 		}
+		@toastNotice(toast)
 		if admin {
 			<details data-testid="create-dimension">
 				<summary class="btn primary">Define a Dimension</summary>
@@ -134,8 +136,9 @@ templ dimensionValues(d domain.Dimension) {
 // to merge it into another of the Dimension's values — or, once Retired, a
 // Restore button — then a "sort alphabetically" action, a form to add a value,
 // and a button to retire the whole Dimension, or restore it once Retired
-// (CONTEXT.md: Retired). Retiring a value happens at once, since Restore puts
-// it back; retiring the Dimension and Merge ask for confirmation first.
+// (CONTEXT.md: Retired). Retiring a value happens at once, and the page that
+// follows offers Undo; retiring the Dimension and Merge ask for confirmation
+// first.
 templ dimensionEdit(d domain.Dimension) {
 	<details class="dm-edit">
 		<summary class="btn sm">Edit</summary>

@@ -455,6 +455,7 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		http.Error(w, "could not load goal", http.StatusInternalServerError)
 		return
 	}
+	view.Toast = s.linkRemovalToast(r.Context(), takeUndo(w, r), current, id)
 	render(w, r, http.StatusOK, goalPage(&current, view))
 }
 
@@ -722,6 +723,9 @@ type goalView struct {
 	// ChildForm is the add-child-Goal form's input, filled in when a failed
 	// create sends the page back.
 	ChildForm childGoalForm
+	// Toast is the one-time notice the page carries straight after the viewer
+	// removed one of its links, with an Undo; nil on any other visit.
+	Toast *toast
 }
 
 // priorDates returns the dates a Goal's delivery date (milestoneID 0) or one of
