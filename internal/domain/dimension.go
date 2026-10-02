@@ -172,6 +172,125 @@ func (s *Service) RetireDimensionValue(ctx context.Context, actorID, valueID int
 	return nil
 }
 
+// The directions MoveDimensionValue moves a value in its Dimension's list.
+const (
+	MoveUp   = "up"
+	MoveDown = "down"
+)
+
+// MoveDimensionValue moves a value one place up or down its Dimension's list,
+// the order its values are listed in everywhere (CONTEXT.md: Dimension). The
+// first value moved up or the last moved down stays where it is. Only an Admin
+// may.
+func (s *Service) MoveDimensionValue(ctx context.Context, actorID, valueID int64, direction string) error {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return err
+	}
+	step := map[string]int{MoveUp: -1, MoveDown: 1}[direction]
+	if step == 0 {
+		return fmt.Errorf("%w: a value moves up or down", ErrValidation)
+	}
+	val, err := s.queries.GetDimensionValue(ctx, valueID)
+	if err != nil {
+		return fmt.Errorf("%w: dimension value does not exist", ErrValidation)
+	}
+	rows, err := s.queries.ListDimensionValues(ctx, val.DimensionID)
+	if err != nil {
+		return fmt.Errorf("list dimension values: %w", err)
+	}
+	at := slices.IndexFunc(rows, func(r db.DimensionValue) bool { return r.ID == valueID })
+	to := at + step
+	if to < 0 || to >= len(rows) {
+		return nil
+	}
+	rows[at], rows[to] = rows[to], rows[at]
+	return s.setValueOrder(ctx, rows)
+}
+
+// SortDimensionValues puts a Dimension's values in alphabetical order, whatever
+// their letter case. Only an Admin may.
+func (s *Service) SortDimensionValues(ctx context.Context, actorID, dimensionID int64) error {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return err
+	}
+	if _, err := s.queries.GetDimension(ctx, dimensionID); err != nil {
+		return fmt.Errorf("%w: dimension does not exist", ErrValidation)
+	}
+	rows, err := s.queries.ListDimensionValues(ctx, dimensionID)
+	if err != nil {
+		return fmt.Errorf("list dimension values: %w", err)
+	}
+	slices.SortStableFunc(rows, func(a, b db.DimensionValue) int {
+		if c := strings.Compare(strings.ToLower(a.Value), strings.ToLower(b.Value)); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Value, b.Value)
+	})
+	return s.setValueOrder(ctx, rows)
+}
+
+// setValueOrder stores rows' order as their Dimension's list order, all or
+// nothing.
+func (s *Service) setValueOrder(ctx context.Context, rows []db.DimensionValue) error {
+	return s.WithinTx(ctx, func(tx *Service) error {
+		for i, r := range rows {
+			if err := tx.queries.SetDimensionValuePosition(ctx, db.SetDimensionValuePositionParams{
+				Position: int64(i),
+				ID:       r.ID,
+			}); err != nil {
+				return fmt.Errorf("set dimension value position: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+// MergeDimensionValue merges one value into another in the same Dimension: every
+// Goal carrying the merged value carries the target instead (once, if it had
+// both), every Report Definition filter on it points at the target, and the
+// merged value is gone from the list (CONTEXT.md: Extendable — merging values
+// stays with Admins). It is all or nothing. Merging across Dimensions or into
+// the value itself is refused. Only an Admin may.
+func (s *Service) MergeDimensionValue(ctx context.Context, actorID, mergedID, targetID int64) error {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return err
+	}
+	merged, err := s.queries.GetDimensionValue(ctx, mergedID)
+	if err != nil {
+		return fmt.Errorf("%w: dimension value does not exist", ErrValidation)
+	}
+	target, err := s.queries.GetDimensionValue(ctx, targetID)
+	if err != nil {
+		return fmt.Errorf("%w: the value to merge into does not exist", ErrValidation)
+	}
+	if merged.DimensionID != target.DimensionID {
+		return fmt.Errorf("%w: %s and %s are in different Dimensions, so they can't be merged", ErrValidation, merged.Value, target.Value)
+	}
+	if merged.ID == target.ID {
+		return fmt.Errorf("%w: a value can't be merged into itself", ErrValidation)
+	}
+	return s.WithinTx(ctx, func(tx *Service) error {
+		goals := db.RemoveMergedGoalValueWhereTargetCarriedParams{MergedID: mergedID, TargetID: targetID}
+		if err := tx.queries.RemoveMergedGoalValueWhereTargetCarried(ctx, goals); err != nil {
+			return fmt.Errorf("drop merged value from goals carrying the target: %w", err)
+		}
+		if err := tx.queries.MoveGoalValuesToTarget(ctx, db.MoveGoalValuesToTargetParams{TargetID: targetID, MergedID: mergedID}); err != nil {
+			return fmt.Errorf("move goals to the target value: %w", err)
+		}
+		filters := db.RemoveMergedReportFilterWhereTargetFilteredParams{MergedID: mergedID, TargetID: targetID}
+		if err := tx.queries.RemoveMergedReportFilterWhereTargetFiltered(ctx, filters); err != nil {
+			return fmt.Errorf("drop merged report filters already on the target: %w", err)
+		}
+		if err := tx.queries.MoveReportFiltersToTarget(ctx, db.MoveReportFiltersToTargetParams{TargetID: targetID, MergedID: mergedID}); err != nil {
+			return fmt.Errorf("move report filters to the target value: %w", err)
+		}
+		if err := tx.queries.DeleteDimensionValue(ctx, mergedID); err != nil {
+			return fmt.Errorf("delete merged value: %w", err)
+		}
+		return nil
+	})
+}
+
 // SeveralValuesError refuses switching a Dimension to one value while Goals
 // still carry more than one of its values, naming those Goals so an Admin knows
 // which to fix first. It is an ErrValidation.

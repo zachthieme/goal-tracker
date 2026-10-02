@@ -129,6 +129,53 @@ func (s *Server) handleRetireDimensionValue(w http.ResponseWriter, r *http.Reque
 	s.redirectToDimensions(w, r)
 }
 
+// handleMoveDimensionValue moves the value in the path one place up or down its
+// Dimension's list. Only an Admin may.
+func (s *Server) handleMoveDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, ok := dimensionIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	if err := s.svc.MoveDimensionValue(r.Context(), current.ID, id, r.FormValue("direction")); err != nil {
+		writeDimensionError(w, err)
+		return
+	}
+	s.redirectToDimensions(w, r)
+}
+
+// handleSortDimensionValues puts the values of the Dimension in the path in
+// alphabetical order. Only an Admin may.
+func (s *Server) handleSortDimensionValues(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, ok := dimensionIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	if err := s.svc.SortDimensionValues(r.Context(), current.ID, id); err != nil {
+		writeDimensionError(w, err)
+		return
+	}
+	s.redirectToDimensions(w, r)
+}
+
+// handleMergeDimensionValue merges the value in the path into the value named
+// by the form's into, in the same Dimension. Only an Admin may.
+func (s *Server) handleMergeDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, ok := dimensionIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	into, err := strconv.ParseInt(r.FormValue("into"), 10, 64)
+	if err != nil {
+		http.Error(w, "choose a value to merge into", http.StatusUnprocessableEntity)
+		return
+	}
+	if err := s.svc.MergeDimensionValue(r.Context(), current.ID, id, into); err != nil {
+		writeDimensionError(w, err)
+		return
+	}
+	s.redirectToDimensions(w, r)
+}
+
 func (s *Server) redirectToDimensions(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/dimensions", http.StatusSeeOther)
 }

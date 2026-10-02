@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -336,4 +337,204 @@ func dimensionByName(t *testing.T, h *testsupport.Harness, name string) domain.D
 	}
 	t.Fatalf("no Dimension named %q", name)
 	return domain.Dimension{}
+}
+
+// Behind a Dimension card's Edit toggle an Admin moves each value up or down
+// and sorts the list alphabetically, and the card lists the values in that
+// order; a non-Admin's attempts are refused.
+func TestAdminReordersDimensionValuesOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	dim := h.CreateDimension(boss, "Pillar", "Reliability", "Growth", "Efficiency")
+	reliability, growth, efficiency := dim.Values[0], dim.Values[1], dim.Values[2]
+	ts := newServer(t, h)
+	bossClient := signInClient(t, ts.URL, "boss@example.com")
+	order := func() string {
+		card := between(t, getBody(t, bossClient, ts.URL+"/dimensions"), `<li data-testid="dimension"`, "<details")
+		return nameOrder(card, "Reliability", "Growth", "Efficiency")
+	}
+
+	edit := between(t, getBody(t, bossClient, ts.URL+"/dimensions"), `<details class="dm-edit"`, "</details>")
+	for _, v := range dim.Values {
+		move := fmt.Sprintf(`action="/dimension-values/%d/move"`, v.ID)
+		if !strings.Contains(edit, move) {
+			t.Errorf("the Edit toggle lacks %s's move forms:\n%s", v.Value, edit)
+		}
+	}
+	for _, label := range []string{`aria-label="Move Growth up"`, `aria-label="Move Growth down"`, ">Sort alphabetically<"} {
+		if !strings.Contains(edit, label) {
+			t.Errorf("the Edit toggle lacks %q:\n%s", label, edit)
+		}
+	}
+	if !strings.Contains(edit, fmt.Sprintf(`action="/dimensions/%d/sort"`, dim.ID)) {
+		t.Errorf("the Edit toggle lacks the sort form:\n%s", edit)
+	}
+
+	resp := postForm(t, bossClient, fmt.Sprintf("%s/dimension-values/%d/move", ts.URL, efficiency.ID), url.Values{"direction": {"up"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+		t.Fatalf("move up: status %d: %s", resp.StatusCode, body)
+	}
+	if got, want := order(), "Reliability Efficiency Growth"; got != want {
+		t.Errorf("after moving Efficiency up = %q, want %q", got, want)
+	}
+	postForm(t, bossClient, fmt.Sprintf("%s/dimension-values/%d/move", ts.URL, reliability.ID), url.Values{"direction": {"down"}})
+	if got, want := order(), "Efficiency Reliability Growth"; got != want {
+		t.Errorf("after moving Reliability down = %q, want %q", got, want)
+	}
+	postForm(t, bossClient, fmt.Sprintf("%s/dimensions/%d/sort", ts.URL, dim.ID), url.Values{})
+	if got, want := order(), "Efficiency Growth Reliability"; got != want {
+		t.Errorf("after sorting = %q, want %q", got, want)
+	}
+
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	if resp := postForm(t, sam, fmt.Sprintf("%s/dimension-values/%d/move", ts.URL, growth.ID), url.Values{"direction": {"up"}}); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-Admin move: status %d, want 403", resp.StatusCode)
+	}
+	if resp := postForm(t, sam, fmt.Sprintf("%s/dimensions/%d/sort", ts.URL, dim.ID), url.Values{}); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-Admin sort: status %d, want 403", resp.StatusCode)
+	}
+}
+
+// nameOrder returns which of names appear in page, in the order each first
+// appears, space-separated. The names must not contain one another.
+func nameOrder(page string, names ...string) string {
+	type seen struct {
+		at   int
+		name string
+	}
+	var found []seen
+	for _, n := range names {
+		if at := strings.Index(page, n); at >= 0 {
+			found = append(found, seen{at, n})
+		}
+	}
+	slices.SortFunc(found, func(a, b seen) int { return a.at - b.at })
+	out := make([]string, 0, len(found))
+	for _, f := range found {
+		out = append(out, f.name)
+	}
+	return strings.Join(out, " ")
+}
+
+// The Admin's order of a Dimension's values is the order they are listed in
+// on the Goal page, in the Goal list's filter, and as its groups.
+func TestValuesListInAdminsOrderEverywhere(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	dim := h.CreateSeveralValuesDimension(boss, "Pillar", "Reliability", "Growth", "Efficiency")
+	if err := h.Service.MoveDimensionValue(context.Background(), boss.ID, dim.Values[2].ID, domain.MoveUp); err != nil {
+		t.Fatalf("MoveDimensionValue: %v", err)
+	}
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	for _, v := range dim.Values {
+		h.AssignGoalValue(goal, v)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	const want = "Reliability Efficiency Growth"
+
+	goalPage := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	if got := nameOrder(pageElement(t, goalPage, "section", "goal-dimensions"), "Reliability", "Growth", "Efficiency"); got != want {
+		t.Errorf("Goal page values = %q, want %q", got, want)
+	}
+	filter := pageElement(t, getBody(t, client, ts.URL+"/goals"), "details", "more-filters")
+	if got := nameOrder(filter, "Reliability", "Growth", "Efficiency"); got != want {
+		t.Errorf("filter values = %q, want %q", got, want)
+	}
+	grouped := getBody(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, dim.ID))
+	var labels []string
+	for _, group := range strings.Split(grouped, `<tbody data-testid="goal-group"`)[1:] {
+		labels = append(labels, nameOrder(group[:strings.Index(group, "</th>")+5], "Reliability", "Growth", "Efficiency"))
+	}
+	if got := strings.Join(labels, " "); got != want {
+		t.Errorf("groups = %q, want %q", got, want)
+	}
+}
+
+// Behind a Dimension card's Edit toggle an Admin merges a value into another
+// of the same Dimension's values, after confirming: the merged value leaves
+// the list and the Goals carrying it show the target instead, once if they had
+// both. Merging across Dimensions is refused, and so is a non-Admin's merge.
+func TestAdminMergesDimensionValueOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	customer := h.CreateSeveralValuesDimension(boss, "Customer", "Acme", "ACME Corp", "Globex")
+	acme, acmeCorp, globex := customer.Values[0], customer.Values[1], customer.Values[2]
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, acme)
+	h.AssignGoalValue(goal, acmeCorp)
+	ts := newServer(t, h)
+	bossClient := signInClient(t, ts.URL, "boss@example.com")
+	mergeURL := fmt.Sprintf("%s/dimension-values/%d/merge", ts.URL, acmeCorp.ID)
+
+	edit := between(t, getBody(t, bossClient, ts.URL+"/dimensions"), `<details class="dm-edit"`, "</details>")
+	merge := between(t, edit, fmt.Sprintf(`action="/dimension-values/%d/merge"`, acmeCorp.ID), "</form>")
+	if !strings.Contains(openTag(merge), `onsubmit="return confirm(`) {
+		t.Errorf("Merge doesn't ask for confirmation: %s", openTag(merge))
+	}
+	for _, v := range []domain.DimensionValue{acme, globex} {
+		if !strings.Contains(merge, fmt.Sprintf(`<option value="%d">%s</option>`, v.ID, v.Value)) {
+			t.Errorf("ACME Corp's merge form doesn't offer %s:\n%s", v.Value, merge)
+		}
+	}
+	if strings.Contains(merge, fmt.Sprintf(`<option value="%d">`, acmeCorp.ID)) {
+		t.Errorf("ACME Corp's merge form offers merging it into itself:\n%s", merge)
+	}
+
+	sam2 := signInClient(t, ts.URL, "sam@example.com")
+	if resp := postForm(t, sam2, mergeURL, url.Values{"into": {fmt.Sprint(acme.ID)}}); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-Admin merge: status %d, want 403", resp.StatusCode)
+	}
+	if resp := postForm(t, bossClient, mergeURL, url.Values{"into": {fmt.Sprint(pillar.Values[0].ID)}}); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("merge across Dimensions: status %d, want 422", resp.StatusCode)
+	}
+
+	resp := postForm(t, bossClient, mergeURL, url.Values{"into": {fmt.Sprint(acme.ID)}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+		t.Fatalf("merge: status %d: %s", resp.StatusCode, body)
+	}
+	card := between(t, getBody(t, bossClient, ts.URL+"/dimensions"), `<li data-testid="dimension"`, "<details")
+	if strings.Contains(card, "ACME Corp") {
+		t.Errorf("the merged value is still listed:\n%s", card)
+	}
+	section := pageElement(t, getBody(t, sam2, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)), "section", "goal-dimensions")
+	if n := strings.Count(section, `data-testid="goal-dimension-value">Acme<`); n != 1 || strings.Contains(section, "ACME Corp") {
+		t.Errorf("Goal page shows Acme %d times (want once) or still ACME Corp:\n%s", n, section)
+	}
+}
+
+// When a merge fails part-way, the request fails and nothing changes: the
+// merged value stays listed and on its Goals.
+func TestFailedMergeChangesNothingOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	customer := h.CreateDimension(boss, "Customer", "Acme", "Globex")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, customer.Values[1])
+	if _, err := h.DB.Exec(`CREATE TRIGGER fail_merge BEFORE DELETE ON dimension_values
+		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+	ts := newServer(t, h)
+	bossClient := signInClient(t, ts.URL, "boss@example.com")
+
+	resp := postForm(t, bossClient, fmt.Sprintf("%s/dimension-values/%d/merge", ts.URL, customer.Values[1].ID),
+		url.Values{"into": {fmt.Sprint(customer.Values[0].ID)}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("failed merge: status %d, want 500", resp.StatusCode)
+	}
+
+	card := between(t, getBody(t, bossClient, ts.URL+"/dimensions"), `<li data-testid="dimension"`, "<details")
+	if got, want := nameOrder(card, "Acme", "Globex"), "Acme Globex"; got != want {
+		t.Errorf("list after a failed merge = %q, want %q", got, want)
+	}
+	section := pageElement(t, getBody(t, bossClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)), "section", "goal-dimensions")
+	if !strings.Contains(section, `data-testid="goal-dimension-value">Globex<`) {
+		t.Errorf("the Goal lost Globex after a failed merge:\n%s", section)
+	}
 }

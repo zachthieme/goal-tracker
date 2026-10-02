@@ -1699,8 +1699,8 @@ func TestSeededPagesShowPeopleByName(t *testing.T) {
 
 // On the Goal page an Extendable Dimension, one-value or several-values, has an
 // "add a value" input beside its choices; a Fixed one has none. Submitting it
-// adds the value to the list and sets it on the Goal in one step (CONTEXT.md:
-// Extendable).
+// adds the value to the end of the list, in the order added, and sets it on
+// the Goal in one step (CONTEXT.md: Extendable).
 func TestOwnerAddsValueToExtendableDimensionOverHTTP(t *testing.T) {
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
@@ -1742,8 +1742,8 @@ func TestOwnerAddsValueToExtendableDimensionOverHTTP(t *testing.T) {
 			t.Errorf("Goal page doesn't show the added %s:\n%s", want, section)
 		}
 	}
-	if got := dimensionValueNames(dimensionByName(t, h, "Partner")); !slices.Equal(got, []string{"Hooli", "Initech", "Umbrella"}) {
-		t.Errorf("Partner list = %v, want [Hooli Initech Umbrella]", got)
+	if got := dimensionValueNames(dimensionByName(t, h, "Partner")); !slices.Equal(got, []string{"Initech", "Umbrella", "Hooli"}) {
+		t.Errorf("Partner list = %v, want [Initech Umbrella Hooli]", got)
 	}
 }
 

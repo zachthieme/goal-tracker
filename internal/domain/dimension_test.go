@@ -845,3 +845,203 @@ func TestDelegateAddsToExtendableListButContributorCannot(t *testing.T) {
 		t.Errorf("Customer list = %v, want [Acme Globex]", got)
 	}
 }
+
+// A value added to a Dimension lands at the end of its list, in the order
+// added, whoever adds it: the Admin's own values keep the order they were
+// typed, and an Owner's addition to an Extendable list comes last.
+func TestNewValuesGoLastInOrderAdded(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	customer := h.CreateExtendableDimension(boss, "Customer", "Umbrella", "Initech")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	if _, err := h.Service.AddDimensionValue(ctx, boss.ID, customer.ID, "Globex"); err != nil {
+		t.Fatalf("AddDimensionValue: %v", err)
+	}
+	if _, err := h.Service.AssignGoalValueByName(ctx, sam.ID, goal.ID, customer.ID, "Acme"); err != nil {
+		t.Fatalf("AssignGoalValueByName: %v", err)
+	}
+
+	want := []string{"Umbrella", "Initech", "Globex", "Acme"}
+	if got := valueNames(dimensionNamed(t, h, "Customer").Values); !equalStrings(got, want) {
+		t.Errorf("Customer list = %v, want %v", got, want)
+	}
+}
+
+// An Admin moves a value up or down its Dimension's list, and sorts the list
+// alphabetically whatever the values' case; moving the first value up or the
+// last down leaves the list as it is. A non-Admin may do none of these.
+func TestAdminReordersDimensionValues(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	pillar := h.CreateDimension(boss, "Pillar", "Reliability", "growth", "Efficiency")
+	reliability, growth, efficiency := pillar.Values[0], pillar.Values[1], pillar.Values[2]
+	order := func() []string { return valueNames(dimensionNamed(t, h, "Pillar").Values) }
+
+	if err := h.Service.MoveDimensionValue(ctx, boss.ID, efficiency.ID, domain.MoveUp); err != nil {
+		t.Fatalf("MoveDimensionValue up: %v", err)
+	}
+	if got, want := order(), []string{"Reliability", "Efficiency", "growth"}; !equalStrings(got, want) {
+		t.Errorf("after moving Efficiency up = %v, want %v", got, want)
+	}
+	if err := h.Service.MoveDimensionValue(ctx, boss.ID, reliability.ID, domain.MoveDown); err != nil {
+		t.Fatalf("MoveDimensionValue down: %v", err)
+	}
+	if got, want := order(), []string{"Efficiency", "Reliability", "growth"}; !equalStrings(got, want) {
+		t.Errorf("after moving Reliability down = %v, want %v", got, want)
+	}
+	if err := h.Service.MoveDimensionValue(ctx, boss.ID, efficiency.ID, domain.MoveUp); err != nil {
+		t.Fatalf("MoveDimensionValue first up: %v", err)
+	}
+	if err := h.Service.MoveDimensionValue(ctx, boss.ID, growth.ID, domain.MoveDown); err != nil {
+		t.Fatalf("MoveDimensionValue last down: %v", err)
+	}
+	if got, want := order(), []string{"Efficiency", "Reliability", "growth"}; !equalStrings(got, want) {
+		t.Errorf("after moving past the ends = %v, want %v unchanged", got, want)
+	}
+	if err := h.Service.MoveDimensionValue(ctx, boss.ID, growth.ID, "sideways"); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("move sideways err = %v, want ErrValidation", err)
+	}
+
+	if err := h.Service.SortDimensionValues(ctx, boss.ID, pillar.ID); err != nil {
+		t.Fatalf("SortDimensionValues: %v", err)
+	}
+	if got, want := order(), []string{"Efficiency", "growth", "Reliability"}; !equalStrings(got, want) {
+		t.Errorf("after sorting = %v, want %v", got, want)
+	}
+
+	if err := h.Service.MoveDimensionValue(ctx, sam.ID, efficiency.ID, domain.MoveDown); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("non-Admin move err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.MoveDimensionValue(ctx, boss.ID, 9999, domain.MoveDown); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("move of a missing value err = %v, want ErrValidation", err)
+	}
+	if err := h.Service.SortDimensionValues(ctx, sam.ID, pillar.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("non-Admin sort err = %v, want ErrNotAuthorized", err)
+	}
+}
+
+// An Admin merges one value into another in the same Dimension: every Goal
+// carrying the merged value carries the target instead, once if it had both,
+// every Report Definition filter on it points at the target, and the merged
+// value is gone from the list.
+func TestAdminMergesDimensionValue(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	customer := h.CreateSeveralValuesDimension(boss, "Customer", "Acme", "ACME Corp", "Globex")
+	acme, acmeCorp, globex := customer.Values[0], customer.Values[1], customer.Values[2]
+	onlyMerged := h.CreateGoal(sam, "Alpha", "A matters.")
+	both := h.CreateGoal(sam, "Bravo", "B matters.")
+	h.AssignGoalValue(onlyMerged, acmeCorp)
+	h.AssignGoalValue(onlyMerged, globex)
+	h.AssignGoalValue(both, acme)
+	h.AssignGoalValue(both, acmeCorp)
+	onMerged := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Acme Corp", DimensionValueIDs: []int64{acmeCorp.ID}})
+	onBoth := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Acmes", DimensionValueIDs: []int64{acme.ID, acmeCorp.ID, globex.ID}})
+
+	if err := h.Service.MergeDimensionValue(ctx, boss.ID, acmeCorp.ID, acme.ID); err != nil {
+		t.Fatalf("MergeDimensionValue: %v", err)
+	}
+
+	if got := valueNames(dimensionNamed(t, h, "Customer").Values); !equalStrings(got, []string{"Acme", "Globex"}) {
+		t.Errorf("Customer list = %v, want [Acme Globex]", got)
+	}
+	if got := goalValueNames(t, h, onlyMerged.ID); !equalStrings(got, []string{"Acme", "Globex"}) {
+		t.Errorf("Alpha's values = %v, want [Acme Globex]", got)
+	}
+	if got := goalValueNames(t, h, both.ID); !equalStrings(got, []string{"Acme"}) {
+		t.Errorf("Bravo's values = %v, want [Acme] once", got)
+	}
+	for _, c := range []struct {
+		def  domain.ReportDefinition
+		want []int64
+	}{{onMerged, []int64{acme.ID}}, {onBoth, []int64{acme.ID, globex.ID}}} {
+		def, err := h.Service.GetReportDefinition(ctx, c.def.ID)
+		if err != nil {
+			t.Fatalf("GetReportDefinition: %v", err)
+		}
+		if !sameSet(def.DimensionValueIDs, c.want) || len(def.DimensionValueIDs) != len(c.want) {
+			t.Errorf("%s filters = %v, want %v", def.Name, def.DimensionValueIDs, c.want)
+		}
+	}
+}
+
+// Merging is refused across Dimensions, into the value itself, and for
+// anyone but an Admin; a refused merge changes nothing.
+func TestMergeDimensionValueRefusals(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	customer := h.CreateDimension(boss, "Customer", "Acme", "Globex")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	acme, globex, growth := customer.Values[0], customer.Values[1], pillar.Values[0]
+	goal := h.CreateGoal(sam, "Alpha", "A matters.")
+	h.AssignGoalValue(goal, acme)
+
+	if err := h.Service.MergeDimensionValue(ctx, boss.ID, acme.ID, growth.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("merge across Dimensions err = %v, want ErrValidation", err)
+	}
+	if err := h.Service.MergeDimensionValue(ctx, boss.ID, acme.ID, acme.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("merge into itself err = %v, want ErrValidation", err)
+	}
+	if err := h.Service.MergeDimensionValue(ctx, boss.ID, acme.ID, 9999); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("merge into a missing value err = %v, want ErrValidation", err)
+	}
+	if err := h.Service.MergeDimensionValue(ctx, sam.ID, acme.ID, globex.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("non-Admin merge err = %v, want ErrNotAuthorized", err)
+	}
+
+	if got := valueNames(dimensionNamed(t, h, "Customer").Values); !equalStrings(got, []string{"Acme", "Globex"}) {
+		t.Errorf("Customer list after refused merges = %v, want [Acme Globex]", got)
+	}
+	if got := valueNames(dimensionNamed(t, h, "Pillar").Values); !equalStrings(got, []string{"Growth"}) {
+		t.Errorf("Pillar list after refused merges = %v, want [Growth]", got)
+	}
+	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Acme"}) {
+		t.Errorf("Alpha's values after refused merges = %v, want [Acme]", got)
+	}
+}
+
+// A merge that fails part-way changes nothing: the Goals keep the merged
+// value, the Report Definition still filters on it, and it stays listed.
+func TestFailedMergeChangesNothing(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	customer := h.CreateDimension(boss, "Customer", "Acme", "ACME Corp")
+	acme, acmeCorp := customer.Values[0], customer.Values[1]
+	goal := h.CreateGoal(sam, "Alpha", "A matters.")
+	h.AssignGoalValue(goal, acmeCorp)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Acme Corp", DimensionValueIDs: []int64{acmeCorp.ID}})
+	// Fail the last step, after the Goals and filters have moved.
+	if _, err := h.DB.Exec(`CREATE TRIGGER fail_merge BEFORE DELETE ON dimension_values
+		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+
+	if err := h.Service.MergeDimensionValue(ctx, boss.ID, acmeCorp.ID, acme.ID); err == nil {
+		t.Fatal("MergeDimensionValue succeeded despite the injected failure")
+	}
+
+	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"ACME Corp"}) {
+		t.Errorf("Alpha's values after a failed merge = %v, want [ACME Corp]", got)
+	}
+	if got, err := h.Service.GetReportDefinition(ctx, def.ID); err != nil || !sameSet(got.DimensionValueIDs, []int64{acmeCorp.ID}) {
+		t.Errorf("filters after a failed merge = %v (%v), want [%d]", got.DimensionValueIDs, err, acmeCorp.ID)
+	}
+	if got := valueNames(dimensionNamed(t, h, "Customer").Values); !equalStrings(got, []string{"Acme", "ACME Corp"}) {
+		t.Errorf("Customer list after a failed merge = %v, want [Acme ACME Corp]", got)
+	}
+}

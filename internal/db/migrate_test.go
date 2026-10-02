@@ -3,6 +3,7 @@ package db_test
 import (
 	"database/sql"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (ADR 0004)
@@ -75,5 +76,46 @@ func TestMigrationFailsOnAccountsDifferingOnlyByCase(t *testing.T) {
 	}
 	if mixed != 1 {
 		t.Error("the failed migration changed the accounts")
+	}
+}
+
+// A Dimension's values stored before the Admin set their order keep the
+// alphabetical order they were listed in, as their starting order.
+func TestMigrationStartsValueOrderAlphabetically(t *testing.T) {
+	sqlDB := migratedExcept(t, "migrations/0023_dimension_value_order.sql")
+	if _, err := sqlDB.Exec(`ALTER TABLE dimension_values DROP COLUMN position`); err != nil {
+		t.Fatalf("undo 0023: %v", err)
+	}
+	if _, err := sqlDB.Exec(`
+		INSERT INTO dimensions (id, name, created_at) VALUES (1, 'Pillar', '2026-01-02T00:00:00Z'), (2, 'Quarter', '2026-01-02T00:00:00Z');
+		INSERT INTO dimension_values (dimension_id, value, created_at) VALUES
+			(1, 'Reliability', '2026-01-02T00:00:00Z'),
+			(2, 'Q2', '2026-01-02T00:00:00Z'),
+			(1, 'Growth', '2026-01-02T00:00:00Z'),
+			(1, 'Efficiency', '2026-01-02T00:00:00Z'),
+			(2, 'Q1', '2026-01-02T00:00:00Z')`); err != nil {
+		t.Fatalf("insert values: %v", err)
+	}
+
+	if err := db.Migrate(sqlDB); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	rows, err := sqlDB.Query(`SELECT value FROM dimension_values ORDER BY dimension_id, position`)
+	if err != nil {
+		t.Fatalf("read values: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var got []string
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, v)
+	}
+	want := []string{"Efficiency", "Growth", "Reliability", "Q1", "Q2"}
+	if !slices.Equal(got, want) {
+		t.Errorf("values in order = %v, want %v", got, want)
 	}
 }

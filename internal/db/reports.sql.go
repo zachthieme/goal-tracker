@@ -395,6 +395,43 @@ func (q *Queries) ListReportPublications(ctx context.Context, reportDefinitionID
 	return items, nil
 }
 
+const moveReportFiltersToTarget = `-- name: MoveReportFiltersToTarget :exec
+UPDATE report_definition_filters SET dimension_value_id = ?1
+WHERE dimension_value_id = ?2
+`
+
+type MoveReportFiltersToTargetParams struct {
+	TargetID int64
+	MergedID int64
+}
+
+// Merging a Dimension value: the filters on it point at the target instead.
+func (q *Queries) MoveReportFiltersToTarget(ctx context.Context, arg MoveReportFiltersToTargetParams) error {
+	_, err := q.db.ExecContext(ctx, moveReportFiltersToTarget, arg.TargetID, arg.MergedID)
+	return err
+}
+
+const removeMergedReportFilterWhereTargetFiltered = `-- name: RemoveMergedReportFilterWhereTargetFiltered :exec
+DELETE FROM report_definition_filters
+WHERE report_definition_filters.dimension_value_id = ?1
+  AND report_definition_id IN (
+    SELECT target.report_definition_id FROM report_definition_filters AS target
+    WHERE target.dimension_value_id = ?2
+  )
+`
+
+type RemoveMergedReportFilterWhereTargetFilteredParams struct {
+	MergedID int64
+	TargetID int64
+}
+
+// Merging a Dimension value: drop its filter from the Report Definitions that
+// already filter on the target, so none filters on the target twice.
+func (q *Queries) RemoveMergedReportFilterWhereTargetFiltered(ctx context.Context, arg RemoveMergedReportFilterWhereTargetFilteredParams) error {
+	_, err := q.db.ExecContext(ctx, removeMergedReportFilterWhereTargetFiltered, arg.MergedID, arg.TargetID)
+	return err
+}
+
 const setNarrativeText = `-- name: SetNarrativeText :exec
 INSERT INTO narrative_texts (report_definition_id, section, text)
 VALUES (?, ?, ?)

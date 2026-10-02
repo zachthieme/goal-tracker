@@ -93,6 +93,7 @@ type DimensionValue struct {
 	Value       string
 	Retired     int64
 	CreatedAt   string
+	Position    int64
 }
 
 type Goal struct {
