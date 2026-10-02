@@ -159,8 +159,9 @@ func (s *Service) DefineDimension(ctx context.Context, actorID int64, def Dimens
 // AddDimensionValue adds a value to an existing Dimension's list. Only an Admin
 // may (CONTEXT.md: Admins add values). The value is required. One matching an
 // existing value whatever its case or surrounding spaces adds nothing and
-// returns that value, and one matching a Retired value is refused. A value
-// added is written to the Definition log.
+// returns that value, and one matching a Retired value is refused, as is a new
+// value containing a semicolon (see checkValueName). A value added is written
+// to the Definition log.
 func (s *Service) AddDimensionValue(ctx context.Context, actorID, dimensionID int64, value string) (DimensionValue, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return DimensionValue{}, err
