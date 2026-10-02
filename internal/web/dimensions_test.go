@@ -695,3 +695,32 @@ func TestDimensionNamedLikeAFieldRefusedOverHTTP(t *testing.T) {
 		t.Errorf("Dimensions = %+v (%v), want none", dims, err)
 	}
 }
+
+// Renaming a value to another value's name in its list, in another case, is
+// refused saying to merge them, while changing a value's own capitalisation is
+// a rename.
+func TestRenamingAValueIntoAnotherRefusedOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Payments")
+	payments := pillar.Values[1]
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	rename := fmt.Sprintf("%s/dimension-values/%d/rename", ts.URL, payments.ID)
+
+	resp := postForm(t, client, rename, url.Values{"value": {"growth"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "merge Payments into Growth instead") {
+		t.Errorf("rename to growth: status %d, body %q; want 422 saying to merge", resp.StatusCode, body)
+	}
+	if got := dimensionValueNames(dimensionByName(t, h, "Pillar")); !slices.Equal(got, []string{"Growth", "Payments"}) {
+		t.Errorf("Pillar after a refused rename = %v, want [Growth Payments]", got)
+	}
+
+	resp = postForm(t, client, rename, url.Values{"value": {"payments"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+		t.Fatalf("rename to payments: status %d: %s", resp.StatusCode, body)
+	}
+	if got := dimensionValueNames(dimensionByName(t, h, "Pillar")); !slices.Equal(got, []string{"Growth", "payments"}) {
+		t.Errorf("Pillar after recasing Payments = %v, want [Growth payments]", got)
+	}
+}

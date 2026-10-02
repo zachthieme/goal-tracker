@@ -1310,3 +1310,29 @@ func dimensionList(t *testing.T, h *testsupport.Harness) []domain.Dimension {
 	}
 	return dims
 }
+
+// Renaming a value to match another in its Dimension, whatever its case or
+// spacing, is refused saying to merge the two instead, and renames nothing;
+// changing only the case or spacing of a value's own name is a rename.
+func TestRenamingAValueIntoAnotherIsRefused(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ctx := context.Background()
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Payments")
+	payments := pillar.Values[1]
+
+	for _, name := range []string{"growth", " GROWTH ", "Growth"} {
+		_, err := h.Service.RenameDimensionValue(ctx, boss.ID, payments.ID, name)
+		if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "merge") {
+			t.Errorf("rename Payments to %q err = %v, want ErrValidation saying to merge", name, err)
+		}
+	}
+	if got := valueNames(dimensionNamed(t, h, "Pillar").Values); !equalStrings(got, []string{"Growth", "Payments"}) {
+		t.Fatalf("Pillar after refused renames = %v, want [Growth Payments]", got)
+	}
+
+	renamed, err := h.Service.RenameDimensionValue(ctx, boss.ID, payments.ID, " PAYMENTS ")
+	if err != nil || renamed.Value != "PAYMENTS" {
+		t.Errorf("rename Payments to its own name in capitals = %+v, %v; want PAYMENTS", renamed, err)
+	}
+}

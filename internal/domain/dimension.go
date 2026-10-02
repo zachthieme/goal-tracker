@@ -237,8 +237,11 @@ func (s *Service) valueInDimension(ctx context.Context, valueID int64) (db.Dimen
 // assigned it follows the rename (CONTEXT.md: Admins rename values). Only an
 // Admin may. The new name is required and can't contain a semicolon (see
 // checkValueName), though a value named with one before that was refused may
-// be renamed to a name without. A rename is written to the Definition log
-// with the old and new name.
+// be renamed to a name without. A name matching another value in the
+// Dimension, whatever its case or surrounding spaces, is refused, saying to
+// merge the two instead; changing only the case or spacing of the value's own
+// name is a rename. A rename is written to the Definition log with the old and
+// new name.
 func (s *Service) RenameDimensionValue(ctx context.Context, actorID, valueID int64, newValue string) (DimensionValue, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return DimensionValue{}, err
@@ -260,6 +263,9 @@ func (s *Service) RenameDimensionValue(ctx context.Context, actorID, valueID int
 		if before.Value == newValue {
 			return nil
 		}
+		if err := tx.requireNoOtherValueNamed(ctx, before, dim, newValue); err != nil {
+			return err
+		}
 		row, err := tx.queries.SetDimensionValueName(ctx, db.SetDimensionValueNameParams{
 			Value: newValue,
 			ID:    valueID,
@@ -274,6 +280,23 @@ func (s *Service) RenameDimensionValue(ctx context.Context, actorID, valueID int
 		return DimensionValue{}, err
 	}
 	return renamed, nil
+}
+
+// requireNoOtherValueNamed refuses renaming val to name when another value in
+// its Dimension, Retired or not, has that name whatever its case or surrounding
+// spaces, so no list gains a near-duplicate: the two are one value, merged.
+func (s *Service) requireNoOtherValueNamed(ctx context.Context, val db.DimensionValue, dim db.Dimension, name string) error {
+	rows, err := s.queries.ListDimensionValues(ctx, dim.ID)
+	if err != nil {
+		return fmt.Errorf("list dimension values: %w", err)
+	}
+	for _, r := range rows {
+		if r.ID != val.ID && strings.EqualFold(strings.TrimSpace(r.Value), name) {
+			return fmt.Errorf("%w: %s already has %s, so %s can't be renamed to it; merge %s into %s instead",
+				ErrValidation, dim.Name, r.Value, val.Value, val.Value, r.Value)
+		}
+	}
+	return nil
 }
 
 // RetireDimensionValue retires a value so it is no longer offered for new
