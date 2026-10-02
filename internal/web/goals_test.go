@@ -3197,3 +3197,40 @@ func TestGoalTableDownloadRefusesAValueContainingASemicolon(t *testing.T) {
 		t.Errorf("refused download returned a file: Content-Disposition %q, body %q", cd, body)
 	}
 }
+
+// Naming a new value containing a semicolon is refused, saying why, from the
+// Goal page and from the table's edit mode, and nothing is added (#101).
+func TestNewValueContainingASemicolonIsRefusedFromTheGoalPageAndTable(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	customer := h.CreateExtendableDimension(boss, "Customer", "Acme")
+	goal := h.CreateGoal(sam, "Alpha", "A matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	const reason = "can't contain a semicolon, because the import format uses it to separate values"
+
+	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/dimensions", ts.URL, goal.ID), url.Values{
+		"dimension_id": {fmt.Sprintf("%d", customer.ID)},
+		"new_value":    {"Globex; Initech"},
+	})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, reason) {
+		t.Errorf("Goal page: status %d, body %q; want 422 saying why", resp.StatusCode, body)
+	}
+
+	page := editTable(t, client, ts.URL, "/goals?layout=table")
+	action, form := tableForm(t, page)
+	form.Set(controlName(t, page, "Add a Customer value to Alpha"), "Hooli;")
+	resp = postForm(t, client, ts.URL+action, form)
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("table edit: status = %d, want 422:\n%s", resp.StatusCode, body)
+	}
+	if cell := tableCellHTML(t, body, tableRowOf(t, body, goal), "Customer"); !strings.Contains(cell, `data-testid="cell-error"`) || !strings.Contains(html.UnescapeString(cell), reason) {
+		t.Errorf("table edit: Alpha's Customer isn't marked bad saying why:\n%s", cell)
+	}
+
+	if got := dimensionValueNames(dimensionByName(t, h, "Customer")); !slices.Equal(got, []string{"Acme"}) {
+		t.Errorf("Customer list = %v, want [Acme] with nothing added", got)
+	}
+}

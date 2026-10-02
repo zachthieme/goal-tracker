@@ -3,6 +3,7 @@ package web_test
 import (
 	"bytes"
 	"context"
+	"html"
 	"mime/multipart"
 	"net/http"
 	"strings"
@@ -249,5 +250,27 @@ func TestAdminReimportsADownloadOverHTTP(t *testing.T) {
 	fields, _ := h.Service.GoalFields(context.Background(), alpha.ID)
 	if len(fields) != 1 || fields[0].Value != "20" {
 		t.Errorf("Alpha Fields = %+v, want Budget 20", fields)
+	}
+}
+
+// A CSV saved by Excel, which starts with a UTF-8 byte-order mark, imports
+// over HTTP as one without; and a cell that would give a one-value Dimension a
+// value containing a semicolon is reported on its row, saying why (#101).
+func TestAdminImportsAnExcelCSVAndSeesSemicolonValuesRefusedOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateDimension(admin, "Pillar", "Growth", "Reliability")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "admin@example.com")
+
+	body := postImport(t, client, ts.URL+"/imports", "goals.csv", "\xEF\xBB\xBF"+webImportCSV, "commit")
+	if !strings.Contains(body, "Imported 2 Goals") {
+		t.Errorf("committing a CSV with a byte-order mark didn't import it; body:\n%s", body)
+	}
+
+	const semicolonCSV = "Title,Owner,So What,Kind,Pillar\nGrow,owner@example.com,It matters.,Ongoing,R&D; Ops\n"
+	body = postImport(t, client, ts.URL+"/imports", "goals.csv", semicolonCSV, "dry-run")
+	if errs := pageElement(t, body, "ul", "import-row-errors"); !strings.Contains(html.UnescapeString(errs), "a value can't contain a semicolon, because the import format uses it to separate values") {
+		t.Errorf("dry run doesn't say why R&D; Ops is refused; body:\n%s", body)
 	}
 }

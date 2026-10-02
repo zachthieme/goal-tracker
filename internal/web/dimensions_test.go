@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"slices"
@@ -629,5 +630,49 @@ func TestAdminMarksDimensionRequiredOverHTTP(t *testing.T) {
 	card = pageElement(t, getBody(t, sam, ts.URL+"/dimensions"), "p", "dimension-rules")
 	if strings.Contains(card, "Required") {
 		t.Errorf("card still says Pillar is required:\n%s", card)
+	}
+}
+
+// On the Dimensions page, defining a Dimension, adding a value or renaming one
+// to a name containing a semicolon is refused, saying why. A value named with
+// one before that was refused still shows, and an Admin renames it to a name
+// without (#101).
+func TestDimensionValueContainingASemicolonOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	rnd := h.NameValueWithSemicolon(pillar.Values[1], "R&D; Ops")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	const reason = "can't contain a semicolon, because the import format uses it to separate values"
+
+	if page := getBody(t, client, ts.URL+"/dimensions"); !strings.Contains(html.UnescapeString(page), "R&D; Ops") {
+		t.Errorf("Dimensions page doesn't show R&D; Ops:\n%s", page)
+	}
+
+	for what, post := range map[string]struct {
+		path string
+		form url.Values
+	}{
+		"define": {"/dimensions", url.Values{"name": {"Quarter"}, "values": {"Q1; Q2"}}},
+		"add":    {fmt.Sprintf("/dimensions/%d/values", pillar.ID), url.Values{"value": {"Ops; Infra"}}},
+		"rename": {fmt.Sprintf("/dimension-values/%d/rename", pillar.Values[0].ID), url.Values{"value": {"Growth; Expansion"}}},
+	} {
+		resp := postForm(t, client, ts.URL+post.path, post.form)
+		if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, reason) {
+			t.Errorf("%s: status %d, body %q; want 422 saying why", what, resp.StatusCode, body)
+		}
+	}
+
+	resp := postForm(t, client, fmt.Sprintf("%s/dimension-values/%d/rename", ts.URL, rnd.ID), url.Values{"value": {"R&D and Ops"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+		t.Fatalf("renaming R&D; Ops: status %d: %s", resp.StatusCode, body)
+	}
+	dims, err := h.Service.ListDimensions(context.Background())
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	if got := dimensionValueNames(dims[0]); len(dims) != 1 || !slices.Equal(got, []string{"Growth", "R&D and Ops"}) {
+		t.Errorf("Dimensions = %+v, want only Pillar with [Growth, R&D and Ops]", dims)
 	}
 }
