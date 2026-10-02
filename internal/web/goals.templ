@@ -229,8 +229,9 @@ templ goalListRow(row goalRow) {
 				</div>
 			}
 		</td>
-		<td>@person(g.Owner)
-</td>
+		<td>
+			@person(g.Owner)
+		</td>
 		<td data-testid="goal-row-due" class="num">
 			if g.DeliveryDate.IsZero() {
 				<span class="muted">—</span>
@@ -251,39 +252,144 @@ templ goalListRow(row goalRow) {
 	</tr>
 }
 
-// goalTableLayout is the Goal list's table layout: one read-only row per Goal,
-// a column per live Dimension and Field, and no totals row (ADR 0005). It
-// scrolls sideways inside its own container rather than widening the page, and
-// downloads as CSV in the import format (#81).
+// goalTableLayout is the Goal list's table layout: one row per Goal, a column
+// per live Dimension and Field, and no totals row (ADR 0005). It scrolls
+// sideways inside its own container rather than widening the page, and
+// downloads as CSV in the import format (#81). Edit values turns it into one
+// plain form, saved by one Save, that sets the Dimension values and Fields of
+// the Goals the person may (#80).
 templ goalTableLayout(view goalsListData) {
 	<div id="goal-list" data-testid="goal-list" class="card">
 		@goalListHead(view)
 		@goalTableColumns(view)
-		<p class="gl-download"><a data-testid="goal-table-download" class="btn quiet sm" href={ view.downloadURL() } download>Download CSV</a></p>
-		<div class="table-scroll">
-			<table data-testid="goal-table">
-				<thead data-testid="goal-table-head">
-					<tr>
+		<p class="gl-download">
+			<a data-testid="goal-table-download" class="btn quiet sm" href={ view.downloadURL() } download>Download CSV</a>
+			if !view.Table.Edit {
+				<a data-testid="goal-table-edit" class="btn quiet sm" href={ view.editURL() }>Edit values</a>
+			}
+		</p>
+		if view.Table.Edit {
+			<form data-testid="goal-table-form" method="post" action={ view.saveURL() } class="gl-edit">
+				@goalTableErrors(view.Table)
+				<p class="muted small gl-edit-hint">Title, Owner, Health, Lifecycle and delivery date change on each Goal's own page.</p>
+				@goalTableGrid(view)
+				<div class="gl-edit-actions">
+					<button data-testid="goal-table-save" type="submit" class="btn primary">Save</button>
+					<a data-testid="goal-table-cancel" class="btn quiet" href={ view.viewURL() }>Cancel</a>
+				</div>
+			</form>
+		} else {
+			@goalTableGrid(view)
+		}
+	</div>
+}
+
+// goalTableGrid is the Goal table itself, its sort headers and its rows.
+templ goalTableGrid(view goalsListData) {
+	<div class="table-scroll">
+		<table data-testid="goal-table">
+			<thead data-testid="goal-table-head">
+				<tr>
+					for _, col := range view.Table.Columns {
+						<th scope="col" aria-sort={ view.Table.ariaSort(col) }><a href={ view.sortURL(col.Key) }>{ col.Label }</a></th>
+					}
+				</tr>
+			</thead>
+			<tbody>
+				if len(view.Table.Rows) == 0 {
+					<tr><td data-testid="no-goals" colspan={ fmt.Sprintf("%d", len(view.Table.Columns)) } class="muted">No Goals match.</td></tr>
+				}
+				for _, row := range view.Table.Rows {
+					<tr data-testid="goal-table-row">
 						for _, col := range view.Table.Columns {
-							<th scope="col" aria-sort={ view.Table.ariaSort(col) }><a href={ view.sortURL(col.Key) }>{ col.Label }</a></th>
+							if view.Table.editsCell(col, row) {
+								@goalTableEditCell(view.Table, col, row)
+							} else {
+								@goalTableCell(col, row, view.Table.Edit)
+							}
 						}
 					</tr>
-				</thead>
-				<tbody>
-					if len(view.Table.Rows) == 0 {
-						<tr><td data-testid="no-goals" colspan={ fmt.Sprintf("%d", len(view.Table.Columns)) } class="muted">No Goals match.</td></tr>
-					}
-					for _, row := range view.Table.Rows {
-						<tr data-testid="goal-table-row">
-							for _, col := range view.Table.Columns {
-								@goalTableCell(col, row)
-							}
-						</tr>
-					}
-				</tbody>
-			</table>
-		</div>
+				}
+			</tbody>
+		</table>
 	</div>
+}
+
+// goalTableErrors heads a refused save: nothing was saved, and why.
+templ goalTableErrors(t *goalTable) {
+	if t.Refusal != "" || len(t.Bad) > 0 {
+		<div data-testid="goal-table-errors" class="alert gl-edit-errors" role="alert">
+			<strong>Nothing was saved.</strong>
+			if t.Refusal != "" {
+				<span>{ t.Refusal }</span>
+			} else if len(t.Bad) == 1 {
+				<span>Fix the marked cell and save again.</span>
+			} else {
+				<span>Fix the { fmt.Sprintf("%d", len(t.Bad)) } marked cells and save again.</span>
+			}
+		</div>
+	}
+}
+
+// goalTableEditCell is a Dimension's or Field's cell in edit mode: the Goal
+// page's inputs for it, holding what is saved or what a refused save posted,
+// and a refused cell's reason under them.
+templ goalTableEditCell(t *goalTable, col tableColumn, row goalTableRow) {
+	{{ name := cellName(col, row.Goal.ID) }}
+	{{ bad := t.bad(col, row) }}
+	{{ label := col.Label + " of " + row.Goal.Title }}
+	<td class={ "gl-edit-cell", templ.KV("gl-bad", bad != "") }>
+		<input type="hidden" name={ wasPrefix + name } value={ t.was(col, row) }/>
+		if col.Field != nil {
+			switch col.Field.Type {
+				case domain.FieldNumber:
+					<input type="number" step="any" name={ name } value={ t.fieldInputValue(col, row) } aria-label={ label } aria-invalid?={ bad != "" }/>
+				case domain.FieldLongText:
+					<textarea name={ name } aria-label={ label } aria-invalid?={ bad != "" }>{ t.fieldInputValue(col, row) }</textarea>
+				case domain.FieldDate:
+					<input type="date" name={ name } value={ t.fieldInputValue(col, row) } aria-label={ label } aria-invalid?={ bad != "" }/>
+				default:
+					<input type="text" name={ name } value={ t.fieldInputValue(col, row) } aria-label={ label } aria-invalid?={ bad != "" }/>
+			}
+		} else {
+			{{ d := *col.Dimension }}
+			if d.TakesSeveral() {
+				<fieldset class="gl-values" aria-label={ label }>
+					for _, val := range d.Values {
+						if t.offers(col, row, val) {
+							<label>
+								<input type="checkbox" name={ name } value={ fmt.Sprintf("%d", val.ID) } checked?={ t.picks(col, row, val) }/>
+								{ val.Value }
+								if val.Retired {
+									<span class="muted small">(retired)</span>
+								}
+							</label>
+						}
+					}
+				</fieldset>
+			} else {
+				<select name={ name } aria-label={ label } aria-invalid?={ bad != "" }>
+					<option value="">—</option>
+					for _, val := range d.Values {
+						if t.offers(col, row, val) {
+							<option value={ fmt.Sprintf("%d", val.ID) } selected?={ t.picks(col, row, val) }>
+								{ val.Value }
+								if val.Retired {
+									(retired)
+								}
+							</option>
+						}
+					}
+				</select>
+			}
+			if d.Extendable() {
+				<input type="text" name={ newValueName(d, row.Goal.ID) } value={ t.newValueTyped(col, row) } placeholder="Add a value" aria-label={ "Add a " + col.Label + " value to " + row.Goal.Title }/>
+			}
+		}
+		if bad != "" {
+			<p data-testid="cell-error" class="gl-cell-error">{ bad }</p>
+		}
+	</td>
 }
 
 // goalTableColumns is the Columns control: a tick per column but Title, which
@@ -306,28 +412,38 @@ templ goalTableColumns(view goalsListData) {
 	</details>
 }
 
-// goalTableCell is one row's cell in col.
-templ goalTableCell(col tableColumn, row goalTableRow) {
+// goalTableCell is one row's cell in col, read-only. In edit mode the Health,
+// Lifecycle and delivery date link to the Goal, whose page changes them.
+templ goalTableCell(col tableColumn, row goalTableRow, edit bool) {
 	{{ g := row.Goal }}
 	switch col.Key {
 		case "title":
 			<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></td>
 		case "owner":
-			<td>@person(g.Owner)
-</td>
+			<td>
+				@person(g.Owner)
+			</td>
 		case "health":
 			<td>
-				if health := row.health(); health != "" {
-					<span class={ "badge", healthClass(health) }><span class="dot"></span>{ health }</span>
+				@goalLinkIf(edit, g) {
+					if health := row.health(); health != "" {
+						<span class={ "badge", healthClass(health) }><span class="dot"></span>{ health }</span>
+					}
 				}
 			</td>
 		case "lifecycle":
-			<td>{ g.Lifecycle }</td>
+			<td>
+				@goalLinkIf(edit, g) {
+					{ g.Lifecycle }
+				}
+			</td>
 		case "due":
 			<td class="num">
-				if !g.DeliveryDate.IsZero() {
-					@struckDates(row.PriorDates)
-					{ fmtDate(g.DeliveryDate) }
+				@goalLinkIf(edit, g) {
+					if !g.DeliveryDate.IsZero() {
+						@struckDates(row.PriorDates)
+						{ fmtDate(g.DeliveryDate) }
+					}
 				}
 			</td>
 		case "checkin":
@@ -338,6 +454,16 @@ templ goalTableCell(col tableColumn, row goalTableRow) {
 			</td>
 		default:
 			<td class={ templ.KV("num", col.Field != nil && col.Field.Type == domain.FieldNumber), templ.KV("gl-long", col.Field != nil && col.Field.Type == domain.FieldLongText) }>{ col.text(row) }</td>
+	}
+}
+
+// goalLinkIf links its content to the Goal when link is true.
+templ goalLinkIf(link bool, g domain.Goal) {
+	if link {
+		<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ children... }
+</a>
+	} else {
+		{ children... }
 	}
 }
 
@@ -481,8 +607,11 @@ templ goalPage(current *domain.Account, v goalView) {
 				</section>
 				<div data-testid="goal-people" class="gp-block ruled">
 					<h3>People</h3>
-					<p><span class="label">Owner</span><br/>@person(g.Owner)
-</p>
+					<p>
+						<span class="label">Owner</span>
+						<br/>
+						@person(g.Owner)
+					</p>
 					@delegatesSection(v, owner)
 					<section data-testid="goal-contributors">
 						<h3 class="label">Contributors</h3>
@@ -491,8 +620,9 @@ templ goalPage(current *domain.Account, v goalView) {
 								<li data-testid="no-contributors" class="muted">No Contributors yet.</li>
 							}
 							for _, c := range v.Contributors {
-								<li>@person(c)
-</li>
+								<li>
+									@person(c)
+								</li>
 							}
 						</ul>
 					</section>
@@ -540,8 +670,12 @@ templ goalHead(v goalView, owner, admin bool) {
 			</div>
 			<h1 data-testid="goal-title">{ g.Title }</h1>
 			<p data-testid="goal-meta" class="gp-meta">
-				<span>Owner <strong data-testid="goal-owner">@person(g.Owner)
-</strong></span>
+				<span>
+					Owner 
+					<strong data-testid="goal-owner">
+						@person(g.Owner)
+					</strong>
+				</span>
 				if !g.DeliveryDate.IsZero() {
 					<span>
 						Delivers 
