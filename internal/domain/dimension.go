@@ -87,8 +87,9 @@ type DimensionDefinition struct {
 
 // DefineDimension defines a new Dimension shaped as def says, and writes one
 // entry to the Definition log saying so. Only an Admin may define Dimensions
-// (CONTEXT.md: Admin). The name and at least one value are required; blank
-// values are dropped, and so is a value matching an earlier one whatever its
+// (CONTEXT.md: Admin). The name and at least one value are required, and the
+// name can't be one a Dimension or a Field already has (see
+// requireFreeAttributeName); blank values are dropped, and so is a value matching an earlier one whatever its
 // case. A value containing a semicolon is refused (see checkValueName).
 func (s *Service) DefineDimension(ctx context.Context, actorID int64, def DimensionDefinition) (Dimension, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
@@ -97,6 +98,9 @@ func (s *Service) DefineDimension(ctx context.Context, actorID int64, def Dimens
 	name := strings.TrimSpace(def.Name)
 	if name == "" {
 		return Dimension{}, fmt.Errorf("%w: a Dimension needs a name", ErrValidation)
+	}
+	if err := s.requireFreeAttributeName(ctx, name); err != nil {
+		return Dimension{}, err
 	}
 	cleaned := make([]string, 0, len(def.Values))
 	for _, v := range def.Values {
@@ -233,8 +237,11 @@ func (s *Service) valueInDimension(ctx context.Context, valueID int64) (db.Dimen
 // assigned it follows the rename (CONTEXT.md: Admins rename values). Only an
 // Admin may. The new name is required and can't contain a semicolon (see
 // checkValueName), though a value named with one before that was refused may
-// be renamed to a name without. A rename is written to the Definition log
-// with the old and new name.
+// be renamed to a name without. A name matching another value in the
+// Dimension, whatever its case or surrounding spaces, is refused, saying to
+// merge the two instead; changing only the case or spacing of the value's own
+// name is a rename. A rename is written to the Definition log with the old and
+// new name.
 func (s *Service) RenameDimensionValue(ctx context.Context, actorID, valueID int64, newValue string) (DimensionValue, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return DimensionValue{}, err
@@ -256,6 +263,9 @@ func (s *Service) RenameDimensionValue(ctx context.Context, actorID, valueID int
 		if before.Value == newValue {
 			return nil
 		}
+		if err := tx.requireNoOtherValueNamed(ctx, before, dim, newValue); err != nil {
+			return err
+		}
 		row, err := tx.queries.SetDimensionValueName(ctx, db.SetDimensionValueNameParams{
 			Value: newValue,
 			ID:    valueID,
@@ -270,6 +280,23 @@ func (s *Service) RenameDimensionValue(ctx context.Context, actorID, valueID int
 		return DimensionValue{}, err
 	}
 	return renamed, nil
+}
+
+// requireNoOtherValueNamed refuses renaming val to name when another value in
+// its Dimension, Retired or not, has that name whatever its case or surrounding
+// spaces, so no list gains a near-duplicate: the two are one value, merged.
+func (s *Service) requireNoOtherValueNamed(ctx context.Context, val db.DimensionValue, dim db.Dimension, name string) error {
+	rows, err := s.queries.ListDimensionValues(ctx, dim.ID)
+	if err != nil {
+		return fmt.Errorf("list dimension values: %w", err)
+	}
+	for _, r := range rows {
+		if r.ID != val.ID && strings.EqualFold(strings.TrimSpace(r.Value), name) {
+			return fmt.Errorf("%w: %s already has %s, so %s can't be renamed to it; merge %s into %s instead",
+				ErrValidation, dim.Name, r.Value, val.Value, val.Value, r.Value)
+		}
+	}
+	return nil
 }
 
 // RetireDimensionValue retires a value so it is no longer offered for new
@@ -656,9 +683,9 @@ func OfferedDimensions(dims []Dimension) []Dimension {
 // AssignGoalValue gives a Goal a Dimension value (CONTEXT.md: Owners and their
 // Delegates set a Goal's Dimension values). In a Dimension that takes one value it
 // replaces any value the Goal already has there; in one that takes several it is
-// added alongside them. A change is kept in the Goal's Value history. A retired
-// value is not offered for a new assignment. Only the Goal's Owner, a Delegate
-// or an Admin may assign its values.
+// added alongside them. A change is kept in the Goal's Value history, written
+// together with it. A retired value is not offered for a new assignment. Only
+// the Goal's Owner, a Delegate or an Admin may assign its values.
 func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID int64) error {
 	if err := s.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
 		return err
@@ -678,26 +705,28 @@ func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID 
 	if dim.Retired {
 		return retiredDimensionError(dim)
 	}
-	before, err := s.GoalValues(ctx, goalID)
-	if err != nil {
-		return err
-	}
-	if !dim.TakesSeveral() {
-		if err := s.queries.ClearGoalValuesInDimension(ctx, db.ClearGoalValuesInDimensionParams{
-			GoalID:      goalID,
-			DimensionID: val.DimensionID,
-		}); err != nil {
-			return fmt.Errorf("clear existing value: %w", err)
+	return s.WithinTx(ctx, func(tx *Service) error {
+		before, err := tx.GoalValues(ctx, goalID)
+		if err != nil {
+			return err
 		}
-	}
-	if err := s.queries.AssignGoalValueIfAbsent(ctx, db.AssignGoalValueIfAbsentParams{
-		GoalID:           goalID,
-		DimensionValueID: valueID,
-		CreatedAt:        s.clock.Now().Format(timeFormat),
-	}); err != nil {
-		return fmt.Errorf("assign dimension value: %w", err)
-	}
-	return s.recordDimensionChanges(ctx, actorID, goalID, dim, before)
+		if !dim.TakesSeveral() {
+			if err := tx.queries.ClearGoalValuesInDimension(ctx, db.ClearGoalValuesInDimensionParams{
+				GoalID:      goalID,
+				DimensionID: val.DimensionID,
+			}); err != nil {
+				return fmt.Errorf("clear existing value: %w", err)
+			}
+		}
+		if err := tx.queries.AssignGoalValueIfAbsent(ctx, db.AssignGoalValueIfAbsentParams{
+			GoalID:           goalID,
+			DimensionValueID: valueID,
+			CreatedAt:        tx.clock.Now().Format(timeFormat),
+		}); err != nil {
+			return fmt.Errorf("assign dimension value: %w", err)
+		}
+		return tx.recordDimensionChanges(ctx, actorID, goalID, dim, before)
+	})
 }
 
 // AssignGoalValueByName gives a Goal the value named in a Dimension, adding it
@@ -761,8 +790,8 @@ func (s *Service) assignGoalValueByName(ctx context.Context, actorID, goalID, di
 // SetGoalValues makes valueIDs exactly the values a Goal carries in one
 // Dimension, so a set of checkboxes saves together: values left out are
 // removed, and an empty set clears the Dimension (CONTEXT.md: Dimension). A
-// change is kept in the Goal's Value history. A Dimension that takes one value
-// accepts at most one. A retired value may be
+// change is kept in the Goal's Value history, written together with it. A
+// Dimension that takes one value accepts at most one. A retired value may be
 // kept by a Goal that already carries it but not newly given (CONTEXT.md:
 // Retired). Only the Goal's Owner, a Delegate or an Admin may set its values.
 func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionID int64, valueIDs []int64) error {
@@ -801,28 +830,30 @@ func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionI
 		keep[id] = true
 	}
 
-	for _, v := range carried {
-		if v.DimensionID != dimensionID || keep[v.ID] {
-			continue
+	return s.WithinTx(ctx, func(tx *Service) error {
+		for _, v := range carried {
+			if v.DimensionID != dimensionID || keep[v.ID] {
+				continue
+			}
+			if err := tx.queries.RemoveGoalValue(ctx, db.RemoveGoalValueParams{
+				GoalID:           goalID,
+				DimensionValueID: v.ID,
+			}); err != nil {
+				return fmt.Errorf("remove dimension value: %w", err)
+			}
 		}
-		if err := s.queries.RemoveGoalValue(ctx, db.RemoveGoalValueParams{
-			GoalID:           goalID,
-			DimensionValueID: v.ID,
-		}); err != nil {
-			return fmt.Errorf("remove dimension value: %w", err)
+		now := tx.clock.Now().Format(timeFormat)
+		for _, id := range valueIDs {
+			if err := tx.queries.AssignGoalValueIfAbsent(ctx, db.AssignGoalValueIfAbsentParams{
+				GoalID:           goalID,
+				DimensionValueID: id,
+				CreatedAt:        now,
+			}); err != nil {
+				return fmt.Errorf("assign dimension value: %w", err)
+			}
 		}
-	}
-	now := s.clock.Now().Format(timeFormat)
-	for _, id := range valueIDs {
-		if err := s.queries.AssignGoalValueIfAbsent(ctx, db.AssignGoalValueIfAbsentParams{
-			GoalID:           goalID,
-			DimensionValueID: id,
-			CreatedAt:        now,
-		}); err != nil {
-			return fmt.Errorf("assign dimension value: %w", err)
-		}
-	}
-	return s.recordDimensionChanges(ctx, actorID, goalID, dim, carried)
+		return tx.recordDimensionChanges(ctx, actorID, goalID, dim, carried)
+	})
 }
 
 // retiredDimensionError refuses newly giving a Goal a value in a Retired

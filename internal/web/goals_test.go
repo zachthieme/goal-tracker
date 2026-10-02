@@ -3325,3 +3325,103 @@ func TestNewValueContainingASemicolonIsRefusedFromTheGoalPageAndTable(t *testing
 		t.Errorf("Customer list = %v, want [Acme] with nothing added", got)
 	}
 }
+
+// When the Goal's history can't be written, choosing another value on the Goal
+// page fails and the Goal keeps the value it had.
+func TestFailedHistoryLeavesTheDimensionValueOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, pillar.Values[0])
+	if _, err := h.DB.Exec(`CREATE TRIGGER fail_history BEFORE INSERT ON goal_value_changes
+		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	resp := postForm(t, client, goalURL+"/dimensions", url.Values{
+		"dimension_id": {fmt.Sprint(pillar.ID)},
+		"value_id":     {fmt.Sprint(pillar.Values[1].ID)},
+	})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("choosing Reliability: status %d, want 500; body:\n%s", resp.StatusCode, body)
+	}
+	section := pageElement(t, getBody(t, client, goalURL), "section", "goal-dimensions")
+	if !strings.Contains(section, `data-testid="goal-dimension-value">Growth<`) || strings.Contains(section, `data-testid="goal-dimension-value">Reliability<`) {
+		t.Errorf("the Goal doesn't keep Growth after a failed change:\n%s", section)
+	}
+}
+
+// A one-value Dimension's select on the Goal page offers "None", and choosing
+// it removes the Goal's value there, recording one "cleared" entry; a required
+// Dimension cleared leaves the Goal Incomplete. Choosing "None" again, with no
+// value left, records nothing.
+func TestChoosingNoneClearsAOneValueDimensionOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	h.SetDimensionRequired(boss, pillar, true)
+	h.AssignGoalValue(goal, pillar.Values[0])
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := goalPageURL(ts.URL, goal)
+
+	edit := between(t, getBody(t, client, goalURL), `<details id="edit-dimensions"`, "</details>")
+	form := between(t, edit, "<form", `aria-label="Pillar"`)
+	form = form[strings.LastIndex(form, "<form"):]
+	if !strings.Contains(form, fmt.Sprintf(`name="dimension_id" value="%d"`, pillar.ID)) {
+		t.Errorf("Pillar's select form doesn't name its Dimension:\n%s", form)
+	}
+	if sel := between(t, edit, `aria-label="Pillar"`, "</select>"); !strings.Contains(sel, `<option value="">None</option>`) {
+		t.Errorf("Pillar's select doesn't offer None:\n%s", sel)
+	}
+
+	none := url.Values{"dimension_id": {fmt.Sprint(pillar.ID)}, "value_id": {""}}
+	for range 2 {
+		resp := postForm(t, client, goalURL+"/dimensions", none)
+		if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+			t.Fatalf("choosing None: status %d; body:\n%s", resp.StatusCode, body)
+		}
+	}
+
+	page := getBody(t, client, goalURL)
+	if !strings.Contains(pageElement(t, page, "section", "goal-dimensions"), `data-testid="goal-dimension-unassigned"`) {
+		t.Errorf("Pillar still has a value after choosing None:\n%s", pageElement(t, page, "section", "goal-dimensions"))
+	}
+	section := pageElement(t, pageElement(t, page, "div", "goal-history"), "section", "goal-value-history")
+	entries := strings.Split(section, `data-testid="value-change"`)[1:]
+	if len(entries) != 2 || !strings.Contains(entries[1], "Pillar: cleared (was Growth)") {
+		t.Errorf("Value history = %d entries, want set then one cleared entry:\n%s", len(entries), section)
+	}
+	if flag := pageElement(t, page, "p", "goal-incomplete"); !strings.Contains(flag, "Pillar") {
+		t.Errorf("Incomplete flag doesn't name Pillar: %s", flag)
+	}
+}
+
+// A retired value the Goal carries stays selected in its one-value select, so
+// saving the select keeps it rather than clearing it to "None".
+func TestOneValueSelectKeepsACarriedRetiredValueOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	h.AssignGoalValue(goal, pillar.Values[0])
+	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, pillar.Values[0].ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	edit := between(t, getBody(t, client, goalPageURL(ts.URL, goal)), `<details id="edit-dimensions"`, "</details>")
+	sel := between(t, edit, `aria-label="Pillar"`, "</select>")
+	if !strings.Contains(sel, fmt.Sprintf(`<option value="%d" selected>Growth (retired)</option>`, pillar.Values[0].ID)) {
+		t.Errorf("Pillar's select doesn't keep the retired Growth selected:\n%s", sel)
+	}
+}

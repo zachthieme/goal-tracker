@@ -200,3 +200,84 @@ func TestRenamingOrMergingAValueLeavesEarlierEntriesAlone(t *testing.T) {
 		}
 	}
 }
+
+// When its history entry can't be written, setting or clearing a Goal's Field
+// or Dimension value fails and leaves the value as it was: the change and its
+// entry are written together.
+func TestAChangeWhoseHistoryFailsLeavesTheValueUnchanged(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pat := h.SignIn("pat@example.com")
+	ctx := context.Background()
+	goal := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	pillar := h.CreateExtendableDimension(boss, "Pillar", "Growth", "Trust")
+	region := h.CreateSeveralValuesDimension(boss, "Region", "EMEA", "APAC")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	notes := h.CreateField(boss, "Notes", domain.FieldLongText, "")
+	h.AssignGoalValue(goal, pillar.Values[0])
+	if err := h.Service.SetGoalValues(ctx, pat.ID, goal.ID, region.ID, []int64{region.Values[0].ID}); err != nil {
+		t.Fatalf("SetGoalValues Region: %v", err)
+	}
+	h.SetGoalField(pat, goal, budget, "200")
+	h.SetGoalField(pat, goal, notes, "Watch the pager.")
+	if _, err := h.DB.Exec(`CREATE TRIGGER fail_history BEFORE INSERT ON goal_value_changes
+		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+
+	for _, change := range []struct {
+		what string
+		do   func() error
+	}{
+		{"set a Field", func() error { return h.Service.SetGoalField(ctx, pat.ID, goal.ID, budget.ID, "350") }},
+		{"clear a Field", func() error { return h.Service.SetGoalField(ctx, pat.ID, goal.ID, notes.ID, "") }},
+		{"assign a value", func() error { return h.Service.AssignGoalValue(ctx, pat.ID, goal.ID, pillar.Values[1].ID) }},
+		{"assign a value by name", func() error {
+			_, err := h.Service.AssignGoalValueByName(ctx, pat.ID, goal.ID, pillar.ID, "trust")
+			return err
+		}},
+		{"set several values", func() error {
+			return h.Service.SetGoalValues(ctx, pat.ID, goal.ID, region.ID, []int64{region.Values[1].ID})
+		}},
+		{"clear a Dimension", func() error { return h.Service.SetGoalValues(ctx, pat.ID, goal.ID, pillar.ID, nil) }},
+	} {
+		if err := change.do(); err == nil {
+			t.Errorf("%s succeeded despite the injected failure", change.what)
+		}
+	}
+
+	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"Growth", "EMEA"}) {
+		t.Errorf("values after failed changes = %v, want [Growth EMEA]", got)
+	}
+	if got := goalFieldValues(t, h, goal.ID); got["Budget"] != "200" || got["Notes"] != "Watch the pager." {
+		t.Errorf("Fields after failed changes = %v, want Budget 200 and Notes kept", got)
+	}
+}
+
+// Clearing a required one-value Dimension on an Active Goal is allowed: it
+// records one "cleared" entry and leaves the Goal Incomplete. Clearing it again,
+// with no value left, records nothing.
+func TestClearingARequiredDimensionRecordsOneEntryAndLeavesTheGoalIncomplete(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pat := h.SignIn("pat@example.com")
+	ctx := context.Background()
+	goal := h.ActiveGoal(pat, "Reduce outages", "Outages cost trust.")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	h.SetDimensionRequired(boss, pillar, true)
+	h.AssignGoalValue(goal, pillar.Values[0])
+
+	for range 2 {
+		if err := h.Service.SetGoalValues(ctx, pat.ID, goal.ID, pillar.ID, nil); err != nil {
+			t.Fatalf("clear Pillar: %v", err)
+		}
+	}
+
+	changes := valueHistory(t, h, goal.ID)
+	if len(changes) != 2 || changes[1].Before != "Growth" || changes[1].After != "" {
+		t.Errorf("history = %+v, want Pillar set then cleared once", changes)
+	}
+	if missing, err := h.Service.Incomplete(ctx, goal); err != nil || !equalStrings(missing, []string{"Pillar"}) {
+		t.Errorf("Incomplete = %v (%v), want [Pillar]", missing, err)
+	}
+}

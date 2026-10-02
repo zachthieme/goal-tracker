@@ -1274,3 +1274,65 @@ func TestValueAlreadyContainingSemicolonKeepsWorking(t *testing.T) {
 		t.Errorf("Bravo's values after rename = %v, want [R&D and Ops]", got)
 	}
 }
+
+// A Dimension can't take a Field's name whatever its letter case or
+// surrounding spaces, nor another Dimension's, and the refusal says which one
+// has it: Dimensions and Fields share one namespace (ADR 0005).
+func TestDimensionNameCannotRepeatAFieldOrDimension(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ctx := context.Background()
+	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.CreateDimension(boss, "Pillar", "Growth")
+
+	for name, want := range map[string]string{
+		"budget":     "Budget is already a Field's name",
+		" BUDGET ":   "Budget is already a Field's name",
+		"pillar":     "Pillar is already a Dimension's name",
+		"  Pillar  ": "Pillar is already a Dimension's name",
+	} {
+		_, err := h.Service.CreateDimension(ctx, boss.ID, name, []string{"Q1"})
+		if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), want) {
+			t.Errorf("CreateDimension(%q) err = %v, want ErrValidation saying %q", name, err, want)
+		}
+	}
+	if got := len(dimensionList(t, h)); got != 1 {
+		t.Errorf("Dimensions after refused definitions = %d, want 1", got)
+	}
+}
+
+// dimensionList lists every Dimension, failing the test on error.
+func dimensionList(t *testing.T, h *testsupport.Harness) []domain.Dimension {
+	t.Helper()
+	dims, err := h.Service.ListDimensions(context.Background())
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	return dims
+}
+
+// Renaming a value to match another in its Dimension, whatever its case or
+// spacing, is refused saying to merge the two instead, and renames nothing;
+// changing only the case or spacing of a value's own name is a rename.
+func TestRenamingAValueIntoAnotherIsRefused(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ctx := context.Background()
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Payments")
+	payments := pillar.Values[1]
+
+	for _, name := range []string{"growth", " GROWTH ", "Growth"} {
+		_, err := h.Service.RenameDimensionValue(ctx, boss.ID, payments.ID, name)
+		if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "merge") {
+			t.Errorf("rename Payments to %q err = %v, want ErrValidation saying to merge", name, err)
+		}
+	}
+	if got := valueNames(dimensionNamed(t, h, "Pillar").Values); !equalStrings(got, []string{"Growth", "Payments"}) {
+		t.Fatalf("Pillar after refused renames = %v, want [Growth Payments]", got)
+	}
+
+	renamed, err := h.Service.RenameDimensionValue(ctx, boss.ID, payments.ID, " PAYMENTS ")
+	if err != nil || renamed.Value != "PAYMENTS" {
+		t.Errorf("rename Payments to its own name in capitals = %+v, %v; want PAYMENTS", renamed, err)
+	}
+}

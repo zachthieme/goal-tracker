@@ -676,3 +676,76 @@ func TestDimensionValueContainingASemicolonOverHTTP(t *testing.T) {
 		t.Errorf("Dimensions = %+v, want only Pillar with [Growth, R&D and Ops]", dims)
 	}
 }
+
+// Defining a Dimension named like a Field, in another case, is refused saying
+// the Field has the name, and defines nothing: Dimensions and Fields share one
+// namespace.
+func TestDimensionNamedLikeAFieldRefusedOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	resp := postForm(t, client, ts.URL+"/dimensions", url.Values{"name": {"budget"}, "values": {"Low, High"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(html.UnescapeString(body), "Budget is already a Field's name") {
+		t.Errorf("define budget: status %d, body %q; want 422 naming the Field", resp.StatusCode, body)
+	}
+	if dims, err := h.Service.ListDimensions(context.Background()); err != nil || len(dims) != 0 {
+		t.Errorf("Dimensions = %+v (%v), want none", dims, err)
+	}
+}
+
+// Renaming a value to another value's name in its list, in another case, is
+// refused saying to merge them, while changing a value's own capitalisation is
+// a rename.
+func TestRenamingAValueIntoAnotherRefusedOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Payments")
+	payments := pillar.Values[1]
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	rename := fmt.Sprintf("%s/dimension-values/%d/rename", ts.URL, payments.ID)
+
+	resp := postForm(t, client, rename, url.Values{"value": {"growth"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "merge Payments into Growth instead") {
+		t.Errorf("rename to growth: status %d, body %q; want 422 saying to merge", resp.StatusCode, body)
+	}
+	if got := dimensionValueNames(dimensionByName(t, h, "Pillar")); !slices.Equal(got, []string{"Growth", "Payments"}) {
+		t.Errorf("Pillar after a refused rename = %v, want [Growth Payments]", got)
+	}
+
+	resp = postForm(t, client, rename, url.Values{"value": {"payments"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+		t.Fatalf("rename to payments: status %d: %s", resp.StatusCode, body)
+	}
+	if got := dimensionValueNames(dimensionByName(t, h, "Pillar")); !slices.Equal(got, []string{"Growth", "payments"}) {
+		t.Errorf("Pillar after recasing Payments = %v, want [Growth payments]", got)
+	}
+}
+
+// A Retired Dimension's card shows neither the Required mark nor the control
+// to change it, since required means nothing on it; restoring the Dimension
+// shows both again with the setting it had.
+func TestRetiredDimensionCardHasNoRequiredControlOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	admin := h.SignIn("boss@example.com")
+	pillar := h.CreateDimension(admin, "Pillar", "Growth")
+	h.SetDimensionRequired(admin, pillar, true)
+	ts := newServer(t, h)
+	boss := signInClient(t, ts.URL, "boss@example.com")
+	action := fmt.Sprintf(`action="/dimensions/%d/required"`, pillar.ID)
+
+	postForm(t, boss, fmt.Sprintf("%s/dimensions/%d/retire", ts.URL, pillar.ID), url.Values{})
+	page := getBody(t, boss, ts.URL+"/dimensions")
+	if strings.Contains(page, `data-testid="dimension-required"`) || strings.Contains(page, action) {
+		t.Errorf("Retired Pillar's card shows the required mark or control:\n%s", page)
+	}
+
+	postForm(t, boss, fmt.Sprintf("%s/dimensions/%d/restore", ts.URL, pillar.ID), url.Values{})
+	page = getBody(t, boss, ts.URL+"/dimensions")
+	if !strings.Contains(page, `data-testid="dimension-required"`) || !strings.Contains(between(t, page, action, "</form>"), "Make it optional") {
+		t.Errorf("restored Pillar's card doesn't show it required, with a control to make it optional:\n%s", page)
+	}
+}

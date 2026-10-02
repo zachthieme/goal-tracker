@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -336,5 +337,74 @@ func TestAdminMarksFieldRequiredOverHTTP(t *testing.T) {
 	postForm(t, boss, requiredURL, url.Values{"required": {"0"}})
 	if got := pageElement(t, getBody(t, sam, ts.URL+"/fields"), "p", "field-type"); strings.Contains(got, "Required") {
 		t.Errorf("card still says Budget is required: %s", got)
+	}
+}
+
+// Defining a Field named like a Dimension, in another case, is refused saying
+// the Dimension has the name, and defines nothing: Dimensions and Fields share
+// one namespace.
+func TestFieldNamedLikeADimensionRefusedOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.CreateDimension(boss, "Pillar", "Growth")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	resp := postForm(t, client, ts.URL+"/fields", url.Values{"name": {"PILLAR"}, "type": {domain.FieldShortText}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(html.UnescapeString(body), "Pillar is already a Dimension's name") {
+		t.Errorf("define PILLAR: status %d, body %q; want 422 naming the Dimension", resp.StatusCode, body)
+	}
+	if fields, err := h.Service.ListFields(context.Background()); err != nil || len(fields) != 0 {
+		t.Errorf("Fields = %+v (%v), want none", fields, err)
+	}
+}
+
+// When the Goal's history can't be written, setting a Field on the Goal page
+// fails and the Goal keeps the value it had.
+func TestFailedHistoryLeavesTheFieldOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.SetGoalField(pat, goal, budget, "200")
+	if _, err := h.DB.Exec(`CREATE TRIGGER fail_history BEFORE INSERT ON goal_value_changes
+		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "pat@example.com")
+
+	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/fields", ts.URL, goal.ID), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"350"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("setting Budget: status %d, want 500; body:\n%s", resp.StatusCode, body)
+	}
+	if shown := pageElement(t, getBody(t, client, goalPageURL(ts.URL, goal)), "ul", "goal-fields"); !strings.Contains(shown, "200") || strings.Contains(shown, "350") {
+		t.Errorf("the Goal doesn't keep Budget 200 after a failed change:\n%s", shown)
+	}
+}
+
+// A Retired Field's card shows neither the Required mark nor the control to
+// change it, since required means nothing on it; restoring the Field shows
+// both again with the setting it had.
+func TestRetiredFieldCardHasNoRequiredControlOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	admin := h.SignIn("boss@example.com")
+	budget := h.CreateField(admin, "Budget", domain.FieldNumber, "$")
+	h.SetFieldRequired(admin, budget, true)
+	ts := newServer(t, h)
+	boss := signInClient(t, ts.URL, "boss@example.com")
+	action := fmt.Sprintf(`action="/fields/%d/required"`, budget.ID)
+
+	postForm(t, boss, fmt.Sprintf("%s/fields/%d/retire", ts.URL, budget.ID), url.Values{})
+	card := pageElement(t, getBody(t, boss, ts.URL+"/fields"), "li", "field")
+	if strings.Contains(card, `data-testid="field-required"`) || strings.Contains(card, action) || strings.Contains(card, "Make it") {
+		t.Errorf("Retired Budget's card shows the required mark or control:\n%s", card)
+	}
+
+	postForm(t, boss, fmt.Sprintf("%s/fields/%d/restore", ts.URL, budget.ID), url.Values{})
+	card = pageElement(t, getBody(t, boss, ts.URL+"/fields"), "li", "field")
+	if !strings.Contains(card, `data-testid="field-required"`) || !strings.Contains(between(t, card, action, "</form>"), "Make it optional") {
+		t.Errorf("restored Budget's card doesn't show it required, with a control to make it optional:\n%s", card)
 	}
 }
