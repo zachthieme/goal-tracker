@@ -96,7 +96,9 @@ templ historyMarker(e historyEntry) {
 // historyCheckin is a Check-in on the timeline: its Health and status, the
 // Lifecycle change, Path to Green and Date Slips it recorded, and who wrote it
 // for whom. Its Metric readings and the explanation of a Health that differs
-// from the Rolled-up Health sit behind a disclosure.
+// from the Rolled-up Health sit behind a disclosure. Its Milestone changes are
+// the Milestone Date Slips it recorded: marking a Milestone Done or Removed, or
+// adding one, isn't linked to the Check-in that did it, so it isn't shown here.
 templ historyCheckin(h history, e historyEntry) {
 	{{ c := e.Checkin }}
 	<p>
