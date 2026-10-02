@@ -968,11 +968,11 @@ func openSection(id string) templ.ComponentScript {
 // goalDimensions shows the Goal's values in each Dimension as tags — retired
 // values stay readable — and, for its Owner, a Delegate or an Admin, a
 // collapsed section to set them:
-// a select for a Dimension that takes one value, and a checkbox per value, saved
-// together, for one that takes several (CONTEXT.md: Delegate; retired values
-// stay readable). An Extendable Dimension also has an
-// input to add a value. A retired value the Goal carries keeps its checked box
-// so saving doesn't silently drop it. A Retired Dimension gets no control and is
+// a select for a Dimension that takes one value, whose "None" clears it, and a
+// checkbox per value, saved together, for one that takes several (CONTEXT.md:
+// Delegate; retired values stay readable). An Extendable Dimension also has an
+// input to add a value. A retired value the Goal carries stays selected, or
+// keeps its checked box, so saving doesn't silently drop it. A Retired Dimension gets no control and is
 // listed only when the Goal carries a value in it, marked retired (CONTEXT.md:
 // Retired). It links everyone to the Dimensions page, which isn't in the main
 // nav.
@@ -1027,15 +1027,19 @@ templ goalDimensions(v goalView) {
 					</form>
 				} else {
 					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/dimensions", g.ID)) } class="gp-inline">
-						<select name="value_id" aria-label={ d.Name }>
-							<option value="">{ d.Name }: choose</option>
-							for _, val := range d.Values {
-								if !val.Retired {
-									<option value={ fmt.Sprintf("%d", val.ID) } selected?={ v.carries(val) }>{ val.Value }</option>
+						<input type="hidden" name="dimension_id" value={ fmt.Sprintf("%d", d.ID) }/>
+						<label>
+							{ d.Name }
+							<select name="value_id" aria-label={ d.Name }>
+								<option value="">None</option>
+								for _, val := range d.Values {
+									if !val.Retired || v.carries(val) {
+										<option value={ fmt.Sprintf("%d", val.ID) } selected?={ v.carries(val) }>{ valueOptionLabel(val) }</option>
+									}
 								}
-							}
-						</select>
-						<button type="submit" class="btn sm">Assign</button>
+							</select>
+						</label>
+						<button type="submit" class="btn sm">Save</button>
 					</form>
 				}
 				if d.Extendable() {

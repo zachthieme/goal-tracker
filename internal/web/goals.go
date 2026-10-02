@@ -1031,10 +1031,11 @@ func (s *Server) handleActivateGoal(w http.ResponseWriter, r *http.Request, _ do
 // and their Delegates set a Goal's Dimension values). A form naming a
 // dimension_id and a new_value, an Extendable Dimension's add-a-value input,
 // sets the value so named, adding it to the list when it's new. One naming a
-// dimension_id without a new_value, a several-values Dimension's checkboxes,
-// saves its checked value_ids together, so an unchecked value is removed. A
-// single value_id without one, a one-value Dimension's select, replaces any
-// value the Goal already carries there, and an empty selection is a no-op.
+// dimension_id without a new_value, a several-values Dimension's checkboxes or
+// a one-value Dimension's select, saves its chosen value_ids together, so an
+// unchecked value is removed and the select's "None" clears the Dimension. A
+// single value_id without a dimension_id replaces any value the Goal already
+// carries in its Dimension, and an empty one is a no-op.
 // Anyone but the Owner, a Delegate or an Admin is refused.
 func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := goalIDFromPath(w, r)
@@ -1054,6 +1055,9 @@ func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, c
 		}
 		var valueIDs []int64
 		for _, raw := range r.Form["value_id"] {
+			if raw == "" {
+				continue
+			}
 			valueID, err := strconv.ParseInt(raw, 10, 64)
 			if err != nil {
 				http.Error(w, "invalid value", http.StatusUnprocessableEntity)
@@ -1346,6 +1350,14 @@ func valueChangeText(c domain.ValueChange) string {
 	default:
 		return c.Attribute + ": " + c.Before + " → " + c.After
 	}
+}
+
+// valueOptionLabel is a value as a select offers it, a retired one marked so.
+func valueOptionLabel(v domain.DimensionValue) string {
+	if v.Retired {
+		return v.Value + " (retired)"
+	}
+	return v.Value
 }
 
 // layoutTable is the ?layout= value that shows the Goal list as a flat table,

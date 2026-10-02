@@ -253,3 +253,31 @@ func TestAChangeWhoseHistoryFailsLeavesTheValueUnchanged(t *testing.T) {
 		t.Errorf("Fields after failed changes = %v, want Budget 200 and Notes kept", got)
 	}
 }
+
+// Clearing a required one-value Dimension on an Active Goal is allowed: it
+// records one "cleared" entry and leaves the Goal Incomplete. Clearing it again,
+// with no value left, records nothing.
+func TestClearingARequiredDimensionRecordsOneEntryAndLeavesTheGoalIncomplete(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pat := h.SignIn("pat@example.com")
+	ctx := context.Background()
+	goal := h.ActiveGoal(pat, "Reduce outages", "Outages cost trust.")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	h.SetDimensionRequired(boss, pillar, true)
+	h.AssignGoalValue(goal, pillar.Values[0])
+
+	for range 2 {
+		if err := h.Service.SetGoalValues(ctx, pat.ID, goal.ID, pillar.ID, nil); err != nil {
+			t.Fatalf("clear Pillar: %v", err)
+		}
+	}
+
+	changes := valueHistory(t, h, goal.ID)
+	if len(changes) != 2 || changes[1].Before != "Growth" || changes[1].After != "" {
+		t.Errorf("history = %+v, want Pillar set then cleared once", changes)
+	}
+	if missing, err := h.Service.Incomplete(ctx, goal); err != nil || !equalStrings(missing, []string{"Pillar"}) {
+		t.Errorf("Incomplete = %v (%v), want [Pillar]", missing, err)
+	}
+}
