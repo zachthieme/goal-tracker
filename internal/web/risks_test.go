@@ -11,8 +11,7 @@ import (
 )
 
 // riskSection returns the rows of the Risks page's section for one problem
-// type, checking that its summary tile counts want Goals and links down to it,
-// and that an empty section says so.
+// type, checking that its summary tile counts want Goals and links down to it.
 func riskSection(t *testing.T, page, anchor, tileID string, want int) string {
 	t.Helper()
 	tile := pageElement(t, page, "a", tileID)
@@ -28,10 +27,7 @@ func riskSection(t *testing.T, page, anchor, tileID string, want int) string {
 	}
 	rows := strings.Index(section, "<tbody")
 	if rows < 0 {
-		if want > 0 || !strings.Contains(section, `data-testid="risks-`+anchor+`-empty"`) {
-			t.Errorf("section risks-%s has neither rows nor its empty state:\n%s", anchor, section)
-		}
-		return ""
+		t.Fatalf("section risks-%s has no rows:\n%s", anchor, section)
 	}
 	return section[rows:]
 }
@@ -58,6 +54,68 @@ func TestRisksPageListsStaleGoals(t *testing.T) {
 	}
 	if strings.Contains(stale, navTo(fresh.ID)) {
 		t.Errorf("Stale section lists %q, which checked in today:\n%s", fresh.Title, stale)
+	}
+}
+
+// A Risks page section with Goals renders its heading, explanation and table;
+// one without renders none of them. A single "Nothing in" line, after the
+// sections, names the empty ones in the page's order, each carrying its
+// section's anchor so the summary tile still lands somewhere.
+func TestRisksPageCollapsesEmptySections(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	h.Clock.Advance(10 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	lastSection := 0
+	for heading, explain := range map[string]string{
+		"stale":     "Active Goals whose last Check-in",
+		"unaligned": "Active Goals that contribute to no other Goal",
+	} {
+		section := pageElement(t, page, "section", "risks-"+heading)
+		for _, want := range []string{"<h2>", explain, "<table>", "<tbody>"} {
+			if !strings.Contains(section, want) {
+				t.Errorf("section risks-%s lacks %s:\n%s", heading, want, section)
+			}
+		}
+		lastSection = max(lastSection, strings.Index(page, `data-testid="risks-`+heading+`"`))
+	}
+	empty := []struct{ anchor, name string }{
+		{"path-overdue", "Path to Green overdue"},
+		{"ownerless", "Ownerless"},
+		{"schedule-conflicts", "Schedule conflicts"},
+		{"halted-parents", "Parent On Hold or Cancelled"},
+	}
+	for _, e := range empty {
+		if strings.Contains(page, `data-testid="risks-`+e.anchor+`"`) {
+			t.Errorf("empty section %s still renders", e.anchor)
+		}
+	}
+	line := pageElement(t, page, "p", "risks-nothing-in")
+	if !strings.HasPrefix(line[strings.Index(line, ">")+1:], "Nothing in: ") {
+		t.Errorf("collapsed line does not open \"Nothing in: \": %s", line)
+	}
+	at := 0
+	for _, e := range empty {
+		i := strings.Index(line, `id="`+e.anchor+`"`)
+		if i < 0 || i < at || !strings.HasPrefix(line[i+strings.Index(line[i:], ">")+1:], e.name+"<") {
+			t.Errorf("Nothing in line lacks %s, anchored #%s, in order: %s", e.name, e.anchor, line)
+		}
+		at = i
+	}
+	for _, full := range []string{"stale", "unaligned"} {
+		if strings.Contains(line, `id="`+full+`"`) {
+			t.Errorf("Nothing in line names %s, which has Goals: %s", full, line)
+		}
+	}
+	if strings.Count(page, `data-testid="risks-nothing-in"`) != 1 || strings.Index(page, `data-testid="risks-nothing-in"`) < lastSection {
+		t.Errorf("the Nothing in line is not one line after the sections")
+	}
+	if strings.Contains(page, `data-testid="risks-all-clear"`) {
+		t.Errorf("page is all clear with Goals flagged")
 	}
 }
 
@@ -204,26 +262,44 @@ func TestRisksPageListsGoalsUnderHaltedParents(t *testing.T) {
 	}
 }
 
-// With nothing flagged, every section of the Risks page says so, and every
-// summary tile counts zero. The tiles and sections run in the same order.
-func TestRisksPageShowsEmptyStates(t *testing.T) {
+// With nothing flagged, the Risks page says so in one all-clear sentence
+// instead of six empty sections, and that sentence still carries every
+// section's anchor, in order, for the summary tiles, which each count zero.
+func TestRisksPageIsAllClearWithNothingFlagged(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	h.SignIn("sam@example.com")
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
-	lastTile, lastSection := -1, -1
+	if n := strings.Count(page, `data-testid="risks-all-clear"`); n != 1 {
+		t.Fatalf("page has %d all-clear sentences, want 1", n)
+	}
+	clear := pageElement(t, page, "p", "risks-all-clear")
+	if !strings.Contains(clear, "All clear") || strings.Count(clear, ".") != 1 {
+		t.Errorf("all-clear is not one sentence: %s", clear)
+	}
+	if strings.Contains(page, `data-testid="risks-nothing-in"`) {
+		t.Errorf("page has a Nothing in line as well as the all-clear sentence")
+	}
+	lastTile, lastAnchor := -1, -1
 	for _, anchor := range []string{"stale", "path-overdue", "ownerless", "unaligned", "schedule-conflicts", "halted-parents"} {
-		if rows := riskSection(t, page, anchor, "risks-tile-"+anchor, 0); rows != "" {
-			t.Errorf("empty section %s has rows:\n%s", anchor, rows)
+		tile := pageElement(t, page, "a", "risks-tile-"+anchor)
+		if !strings.Contains(tile, `href="#`+anchor+`"`) || !strings.Contains(tile, `<span class="num">0</span>`) {
+			t.Errorf("summary tile %s does not count 0 and link to #%s: %s", anchor, anchor, tile)
 		}
-		tile := strings.Index(page, `data-testid="risks-tile-`+anchor+`"`)
-		section := strings.Index(page, `data-testid="risks-`+anchor+`"`)
-		if tile < lastTile || section < lastSection {
-			t.Errorf("%s is out of order among the tiles or sections", anchor)
+		if strings.Contains(page, `data-testid="risks-`+anchor+`"`) {
+			t.Errorf("empty section %s still renders", anchor)
 		}
-		lastTile, lastSection = tile, section
+		tileAt := strings.Index(page, `data-testid="risks-tile-`+anchor+`"`)
+		anchorAt := strings.Index(clear, `id="`+anchor+`"`)
+		if anchorAt < 0 {
+			t.Errorf("all-clear sentence lacks the #%s anchor: %s", anchor, clear)
+		}
+		if tileAt < lastTile || anchorAt < lastAnchor {
+			t.Errorf("%s is out of order among the tiles or the all-clear sentence", anchor)
+		}
+		lastTile, lastAnchor = tileAt, anchorAt
 	}
 	if risks := pageElement(t, page, "a", "nav-risks"); strings.Contains(risks, "count") {
 		t.Errorf("Risks shows a count with nothing flagged: %s", risks)
