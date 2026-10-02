@@ -29,9 +29,9 @@ type checkinFormData struct {
 	// form, or what the reader typed so an error re-render keeps it.
 	Metrics  []domain.Metric
 	Readings map[int64]string
-	// Highlight is the optional Highlight the reader flagged (CONTEXT.md:
-	// Highlight). Its Kind is empty when nothing was flagged.
-	Highlight highlightFormData
+	// Highlights are the Highlight rows as typed, blank ones included
+	// (CONTEXT.md: Highlight). The form shows at least one row.
+	Highlights []highlightFormData
 	// Dates are the delivery date and Milestone changes the reader is making
 	// (CONTEXT.md: a Check-in carries Date Slips and Milestone changes).
 	Dates checkinDatesFormData
@@ -98,8 +98,8 @@ func (row milestoneFormRow) planned() bool {
 	return row.Status == "" || row.Status == domain.MilestonePlanned
 }
 
-// highlightFormData is the Check-in form's optional Highlight: its kind (empty
-// for none) and note.
+// highlightFormData is one Highlight row in the Check-in form: its kind (empty
+// for none) and note. A row with a blank note flags nothing.
 type highlightFormData struct {
 	Kind string
 	Note string
@@ -124,19 +124,42 @@ func (e checkinError) about(fields ...string) bool {
 	return false
 }
 
-// highlightOpen reports whether the Highlight section renders open: it holds
-// the error, or the reader flagged or wrote something.
-func (d checkinFormData) highlightOpen() bool {
-	return d.Error.about("highlight") || d.Highlight.Kind != "" || strings.TrimSpace(d.Highlight.Note) != ""
+// highlightRows are the Highlight rows the form shows: those typed, or one
+// empty row when there are none.
+func (d checkinFormData) highlightRows() []highlightFormData {
+	if len(d.Highlights) == 0 {
+		return []highlightFormData{{}}
+	}
+	return d.Highlights
 }
 
-// highlightSummary is the Highlight section's summary line, naming the kind
+// highlightOpen reports whether the Highlight section renders open: it holds
+// the error, the reader added a row, or flagged or wrote something.
+func (d checkinFormData) highlightOpen() bool {
+	if d.Error.about("highlight") || len(d.Highlights) > 1 {
+		return true
+	}
+	for _, row := range d.Highlights {
+		if row.Kind != "" || strings.TrimSpace(row.Note) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// highlightSummary is the Highlight section's summary line, naming the kinds
 // flagged, if any.
 func (d checkinFormData) highlightSummary() string {
-	if d.Highlight.Kind == "" {
+	var kinds []string
+	for _, row := range d.Highlights {
+		if row.Kind != "" {
+			kinds = append(kinds, row.Kind)
+		}
+	}
+	if len(kinds) == 0 {
 		return "Flag a highlight (optional)"
 	}
-	return "Flag a highlight · " + d.Highlight.Kind
+	return "Flag a highlight · " + strings.Join(kinds, ", ")
 }
 
 // datesOpen reports whether the dates and Milestones section renders open: it
@@ -447,10 +470,8 @@ templ noChangeCheckinButton(goalID int64, label string) {
 // "no change" card when there is a previous Check-in to repeat, then the form,
 // prefilled from the latest Check-in. Refusal, when not empty, is why a No
 // change couldn't be recorded, shown at the top of the form.
-templ checkinPage(current *domain.Account, v goalView, refusal string) {
+templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 	{{ g := v.Goal }}
-	{{ form := checkinFormFromLatest(v) }}
-	{{ form.Error = checkinError{Message: refusal} }}
 	@layout("Check in · "+g.Title, current) {
 		@checkinStyles()
 		<div class="checkin-page">
@@ -475,6 +496,14 @@ templ checkinPage(current *domain.Account, v goalView, refusal string) {
 			}
 		</div>
 	}
+}
+
+// checkinFormRefused is the Goal's Check-in form, pre-filled from its latest
+// Check-in, with a refusal shown at the top.
+func checkinFormRefused(v goalView, refusal string) checkinFormData {
+	d := checkinFormFromLatest(v)
+	d.Error = checkinError{Message: refusal}
+	return d
 }
 
 // checkinUnavailablePage says, inside the normal page, why the Check-in
@@ -566,24 +595,12 @@ templ checkinForm(d checkinFormData) {
 		}
 		<details data-testid="checkin-highlight-section" class="checkin-more" open?={ d.highlightOpen() }>
 			<summary>{ d.highlightSummary() }</summary>
-			<fieldset data-testid="checkin-highlight">
-				<legend>Highlight (optional)</legend>
-				<label>
-					Kind
-					<select name="highlight_kind">
-						<option value="" selected?={ d.Highlight.Kind == "" }>None</option>
-						<option value={ domain.HighlightInsight } selected?={ d.Highlight.Kind == domain.HighlightInsight }>Insight</option>
-						<option value={ domain.HighlightAccomplishment } selected?={ d.Highlight.Kind == domain.HighlightAccomplishment }>Accomplishment</option>
-						<option value={ domain.HighlightMiss } selected?={ d.Highlight.Kind == domain.HighlightMiss }>Miss</option>
-					</select>
-				</label>
-				@checkinFieldError(d.Error, "highlight_kind")
-				<label>
-					Note
-					<textarea name="highlight_note">{ d.Highlight.Note }</textarea>
-				</label>
-				@checkinFieldError(d.Error, "highlight_note")
-			</fieldset>
+			<div data-testid="checkin-highlights" class="checkin-highlights">
+				for i, row := range d.highlightRows() {
+					@checkinHighlightRow(i+1, row, d.Error)
+				}
+				<button type="submit" name="add_highlight" value="1" formnovalidate class="btn quiet">Add another</button>
+			</div>
 		</details>
 		<details data-testid="checkin-dates-section" class="checkin-more" open?={ d.datesOpen() }>
 			<summary>{ d.Dates.summary() }</summary>
@@ -598,6 +615,29 @@ templ checkinForm(d checkinFormData) {
 			<button type="submit" class="btn primary">Submit check-in</button>
 		</div>
 	</form>
+}
+
+// checkinHighlightRow is the nth Highlight row (counting from 1): a kind and
+// a note. A blank note flags nothing; a note needs a kind, and that error
+// shows in the row.
+templ checkinHighlightRow(n int, row highlightFormData, e checkinError) {
+	<fieldset data-testid="checkin-highlight-row">
+		<legend>{ fmt.Sprintf("Highlight %d", n) }</legend>
+		<label>
+			Kind
+			<select name="highlight_kind">
+				<option value="" selected?={ row.Kind == "" }>None</option>
+				<option value={ domain.HighlightInsight } selected?={ row.Kind == domain.HighlightInsight }>Insight</option>
+				<option value={ domain.HighlightAccomplishment } selected?={ row.Kind == domain.HighlightAccomplishment }>Accomplishment</option>
+				<option value={ domain.HighlightMiss } selected?={ row.Kind == domain.HighlightMiss }>Miss</option>
+			</select>
+		</label>
+		<label>
+			Note
+			<textarea name="highlight_note">{ row.Note }</textarea>
+		</label>
+		@checkinFieldError(e, fmt.Sprintf("highlight_%d", n))
+	</fieldset>
 }
 
 // confirmCancelScript asks the reader to confirm before a Check-in that
@@ -646,6 +686,9 @@ templ checkinStyles() {
 			.checkin-more[open]{padding-bottom:16px}
 			.checkin-more fieldset{border:none;padding:0;background:none}
 			.checkin-more fieldset>legend{display:none}
+			.checkin-highlights{display:flex;flex-direction:column;gap:16px}
+			.checkin-more .checkin-highlights fieldset>legend{display:block;padding:0;font-size:13px;color:var(--color-ink-muted)}
+			.checkin-highlights>button{align-self:flex-start}
 			.ms-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1fr);gap:8px 12px;align-items:start}
 			.ms-row{display:contents}
 			.ms-name{font-weight:600;align-self:center}

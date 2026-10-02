@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -930,8 +931,62 @@ func TestCheckinInvalidMilestoneDateErrorShownNextToMilestoneDate(t *testing.T) 
 	}
 }
 
-// A Highlight flagged without a note gets its error next to the Highlight note.
-func TestCheckinHighlightErrorShownNextToHighlightNote(t *testing.T) {
+// highlightRows splits a rendered Check-in form into its Highlight rows, in
+// order.
+func highlightRows(t *testing.T, body string) []string {
+	t.Helper()
+	section := pageElement(t, body, "details", "checkin-highlight-section")
+	parts := strings.Split(section, `data-testid="checkin-highlight-row"`)
+	return parts[1:]
+}
+
+// An Owner flags several Highlights in one Check-in, one per row of the form,
+// in any mix of kinds and with kinds repeating; each is recorded in the order
+// entered, and a row left blank is ignored (CONTEXT.md: Highlight).
+func TestCheckinFormRecordsSeveralHighlightsInOrder(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	_, status := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"Shipped the failover."},
+		"highlight_kind": {
+			domain.HighlightAccomplishment, domain.HighlightMiss, "", domain.HighlightInsight, domain.HighlightAccomplishment,
+		},
+		"highlight_note": {
+			"Zero downtime on the cutover.", "The runbook was a week late.", "", "Drills find what reviews miss.", "Retired the old pager.",
+		},
+	})
+	if status != http.StatusOK {
+		t.Fatalf("submit: status %d, want 200", status)
+	}
+
+	highlights, err := h.Service.ListHighlightsByGoal(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ListHighlightsByGoal: %v", err)
+	}
+	var got []string
+	for _, hl := range highlights {
+		got = append(got, hl.Kind+": "+hl.Note)
+	}
+	want := []string{
+		"Accomplishment: Zero downtime on the cutover.",
+		"Miss: The runbook was a week late.",
+		"Insight: Drills find what reviews miss.",
+		"Accomplishment: Retired the old pager.",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("highlights = %q, want %q", got, want)
+	}
+}
+
+// A Highlight row with a note but no kind is refused with the error in that
+// row, naming it, and nothing is recorded; the rows keep what was typed.
+func TestCheckinHighlightWithNoKindRefusedInItsRow(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -942,10 +997,109 @@ func TestCheckinHighlightErrorShownNextToHighlightNote(t *testing.T) {
 	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
 		"health":         {domain.HealthGreen},
 		"status":         {"On track."},
-		"highlight_kind": {domain.HighlightInsight},
+		"highlight_kind": {domain.HighlightInsight, ""},
+		"highlight_note": {"Retries masked the root cause.", "Found a cheaper vendor."},
 	})
-	if msg := fieldError(t, body, `name="highlight_note"`); !strings.Contains(msg, "Highlight needs a note") {
-		t.Errorf("Highlight note's error = %q, want the missing note one", msg)
+	rows := highlightRows(t, body)
+	if len(rows) != 2 {
+		t.Fatalf("form shows %d Highlight rows, want the 2 typed", len(rows))
+	}
+	if strings.Contains(rows[0], `data-testid="checkin-error"`) {
+		t.Errorf("Highlight 1 shows an error; row:\n%s", rows[0])
+	}
+	if !strings.Contains(rows[1], `data-testid="checkin-error"`) || !strings.Contains(rows[1], "Highlight 2 needs a kind") {
+		t.Errorf("Highlight 2 lacks its error naming it; row:\n%s", rows[1])
+	}
+	if !strings.Contains(rows[1], "Found a cheaper vendor.") {
+		t.Errorf("Highlight 2 lost its note; row:\n%s", rows[1])
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
+		t.Errorf("checkins = %d, want none recorded", len(history))
+	}
+}
+
+// A fresh Check-in form shows one empty Highlight row and an Add another
+// button.
+func TestCheckinFormShowsOneEmptyHighlightRow(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	rows := highlightRows(t, page)
+	if len(rows) != 1 {
+		t.Fatalf("form shows %d Highlight rows, want 1", len(rows))
+	}
+	if !strings.Contains(rows[0], `<textarea name="highlight_note"></textarea>`) {
+		t.Errorf("the Highlight row is not empty; row:\n%s", rows[0])
+	}
+	section := pageElement(t, page, "details", "checkin-highlight-section")
+	if !strings.Contains(section, `name="add_highlight"`) {
+		t.Errorf("no Add another button; section:\n%s", section)
+	}
+}
+
+// Add another re-renders the form with one more Highlight row, keeping
+// everything typed anywhere on the form, and records nothing — over htmx and
+// as a plain form post without JavaScript.
+func TestCheckinAddAnotherHighlightKeepsTypedAndRecordsNothing(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		post func(t *testing.T, client *http.Client, rawURL string, form url.Values) (string, int)
+	}{
+		{"htmx", postFormHX},
+		{"plain", func(t *testing.T, client *http.Client, rawURL string, form url.Values) (string, int) {
+			resp := postForm(t, client, rawURL, form)
+			return readBody(t, resp), resp.StatusCode
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t)
+			ts := newServer(t, h)
+
+			sam := h.SignIn("sam@example.com")
+			goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+			samClient := signInClient(t, ts.URL, "sam@example.com")
+
+			body, status := tc.post(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+				"health":         {domain.HealthYellow},
+				"status":         {"Failover slipped a week."},
+				"path_to_green":  {"Drill again on Friday."},
+				"highlight_kind": {domain.HighlightMiss},
+				"highlight_note": {"The runbook was a week late."},
+				"add_highlight":  {"1"},
+			})
+			if status != http.StatusOK {
+				t.Fatalf("add another: status %d, want 200", status)
+			}
+			if strings.Contains(body, `data-testid="checkin-error"`) {
+				t.Errorf("add another shows a validation error; body:\n%s", body)
+			}
+			rows := highlightRows(t, body)
+			if len(rows) != 2 {
+				t.Fatalf("form shows %d Highlight rows, want 2", len(rows))
+			}
+			if !strings.Contains(rows[0], "The runbook was a week late.") || !strings.Contains(rows[0], `value="Miss" selected`) {
+				t.Errorf("Highlight 1 lost what was typed; row:\n%s", rows[0])
+			}
+			if !strings.Contains(rows[1], `<textarea name="highlight_note"></textarea>`) {
+				t.Errorf("the added row is not empty; row:\n%s", rows[1])
+			}
+			section := pageElement(t, body, "details", "checkin-highlight-section")
+			if !strings.Contains(openTag(section), " open") {
+				t.Errorf("the Highlight section is collapsed after Add another")
+			}
+			for _, typed := range []string{"Failover slipped a week.", "Drill again on Friday.", `value="Yellow" checked`} {
+				if !strings.Contains(body, typed) {
+					t.Errorf("form lost %q", typed)
+				}
+			}
+			if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
+				t.Errorf("checkins = %d, want none recorded by Add another", len(history))
+			}
+		})
 	}
 }
 
@@ -1159,7 +1313,7 @@ func TestCheckinSectionOpensOnErrorOrSubmittedValue(t *testing.T) {
 		form    url.Values
 		section string
 	}{
-		{"highlight error", url.Values{"highlight_kind": {domain.HighlightInsight}}, "checkin-highlight-section"},
+		{"highlight error", url.Values{"highlight_note": {"Found a cheaper vendor."}}, "checkin-highlight-section"},
 		{"highlight typed", url.Values{"status": {""}, "highlight_note": {"Found a cheaper vendor."}}, "checkin-highlight-section"},
 		{"delivery date error", url.Values{"delivery_date": {"2026-08-01"}}, "checkin-dates-section"},
 		{"new milestone typed", url.Values{"status": {""}, "new_milestone_name": {"GA"}, "new_milestone_date": {"2026-05-01"}}, "checkin-dates-section"},

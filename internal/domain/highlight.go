@@ -56,6 +56,9 @@ func planHighlights(rows []HighlightInput) ([]HighlightInput, error) {
 		if note == "" {
 			continue
 		}
+		if row.Kind == "" {
+			return nil, fmt.Errorf("%w: Highlight %d needs a kind: %s, %s, or %s", ErrValidation, i+1, HighlightInsight, HighlightAccomplishment, HighlightMiss)
+		}
 		if !validHighlightKind(row.Kind) {
 			return nil, fmt.Errorf("%w: Highlight %d must be an %q, %q, or %q", ErrValidation, i+1, HighlightInsight, HighlightAccomplishment, HighlightMiss)
 		}
