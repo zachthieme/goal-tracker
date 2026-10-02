@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -624,4 +625,53 @@ Bad date,owner@example.com,,Ongoing,,next week
 	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 0 {
 		t.Errorf("rolled-back import left %d Goals, want 0", len(goals))
 	}
+}
+
+// In a several-values Dimension's column a cell lists values separated by
+// semicolons, spaces around each ignored, and the Goal takes them all (#77).
+func TestCommitSetsSeveralValuesFromOneCell(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Themes
+Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,  Growth ;Trust ;
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateSeveralValuesDimension(admin, "Themes", "Growth", "Reliability", "Trust")
+
+	goal := commitOneGoal(t, h, admin, csv)
+	if got := goalValueNames(t, h, goal); strings.Join(got, ", ") != "Growth, Trust" {
+		t.Errorf("Goal values = %v, want [Growth Trust]", got)
+	}
+}
+
+// More than one value in a one-value Dimension's column is a row error (#77).
+func TestDryRunRejectsSeveralValuesInAOneValueColumn(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Pillar
+Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,Growth; Reliability
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateDimension(admin, "Pillar", "Growth", "Reliability")
+
+	rep, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	if want := "Pillar takes one value per Goal"; len(rep.Rows) != 1 || strings.Join(rep.Rows[0].Errors, "; ") != want {
+		t.Errorf("rows = %+v, want one row with the error %q", rep.Rows, want)
+	}
+}
+
+// goalValueNames lists the Dimension values a Goal carries, sorted.
+func goalValueNames(t *testing.T, h *testsupport.Harness, goal domain.Goal) []string {
+	t.Helper()
+	values, err := h.Service.GoalValues(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	names := make([]string, 0, len(values))
+	for _, v := range values {
+		names = append(names, v.Value)
+	}
+	slices.Sort(names)
+	return names
 }

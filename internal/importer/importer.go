@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -344,16 +345,19 @@ func parseRow(line int, row []string, lay layout) rowSpec {
 	}
 	s.parents = splitEntries(cell(row, lay.parents))
 	for _, dc := range lay.dimensions {
-		v := cell(row, dc.index)
-		if v == "" {
+		values := splitValues(cell(row, dc.index))
+		if len(values) > 1 && !dc.dimension.TakesSeveral() {
+			s.errs = append(s.errs, fmt.Sprintf("%s takes one value per Goal", dc.dimension.Name))
 			continue
 		}
-		valueID, ok := valueIDOf(dc.dimension, v)
-		if !ok {
-			s.errs = append(s.errs, fmt.Sprintf("%q is not a value of Dimension %q", v, dc.dimension.Name))
-			continue
+		for _, v := range values {
+			valueID, ok := valueIDOf(dc.dimension, v)
+			if !ok {
+				s.errs = append(s.errs, fmt.Sprintf("%q is not a value of Dimension %q", v, dc.dimension.Name))
+				continue
+			}
+			s.dimensions = append(s.dimensions, dimensionValue{valueID: valueID})
 		}
-		s.dimensions = append(s.dimensions, dimensionValue{valueID: valueID})
 	}
 	for _, fc := range lay.fields {
 		v := cell(row, fc.index)
@@ -569,6 +573,18 @@ func splitEntries(raw string) []string {
 	for _, p := range parts {
 		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// splitValues splits a Dimension cell into its values, as splitEntries does,
+// dropping a value that repeats an earlier one whatever its letter case.
+func splitValues(raw string) []string {
+	var out []string
+	for _, v := range splitEntries(raw) {
+		if !slices.ContainsFunc(out, func(o string) bool { return strings.EqualFold(o, v) }) {
+			out = append(out, v)
 		}
 	}
 	return out
