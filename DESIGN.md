@@ -185,7 +185,23 @@ Load the fonts with this URL:
   The person shows by Name alone, and a long Name truncates with an ellipsis.
   "Signed in as" and "(Admin)" are hidden visually with `font-size:0`, so screen
   readers still read them. At 360px and below the nav items' padding tightens
-  so an Admin's four items fit at 320px with two-digit counts.
+  so an Admin's four items fit at 320px with two-digit counts, and so do the
+  gaps and padding beside Sign out, so the Theme menu fits beside it.
+- **Theme menu (`.theme`):** a quiet "Theme" disclosure in the top bar beside
+  Sign out, on every page including sign-in. Opened, it lists three choices in
+  words: **System** (the default: follow the operating system), **Light** and
+  **Dark**. The current choice is marked with a `--color-primary-light` fill
+  and a check, and `aria-current="true"`. It is a `<details>` and each choice is
+  a plain form post, so it works without script. Its panel
+  (`.theme-menu`) is a card that floats under the button, anchored right and
+  no wider than the screen, so it never widens the top bar.
+  The choice is kept per browser in the `gt_theme` cookie, not on the Account,
+  so it holds before sign-in and after sign-out. It lasts a year and each
+  choice renews it. Choosing System clears it. The server pins
+  `data-theme="light"` or `data-theme="dark"` on `<html>` from the cookie, so
+  the page has the right theme on first paint with no script. With no cookie,
+  or a value it doesn't know, it pins nothing and the page follows the system.
+  A Report's Print view and emails ignore the choice.
 - **Primary button (`.btn.primary`):**
   - Resting: `--color-primary-strong` fill, `--color-ink-inverse` text,
     `--radius-md`, 14px, weight 600.
@@ -254,7 +270,8 @@ Load the fonts with this URL:
 The Report Print view (`publicationPrintPage` in `internal/web/reports.templ`)
 is a document for paper and PDF, so it doesn't use the screen system. It is
 black and white, set in a serif, and declares its own tokens in its own style
-block. It doesn't load `app.css`.
+block. It doesn't load `app.css`, and it ignores the Theme menu's choice: it
+stays black on white whatever is chosen.
 
 ```css
 :root {
