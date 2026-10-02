@@ -9,11 +9,13 @@ import (
 // confirmRetire is what Retire asks before retiring a Dimension value.
 const confirmRetire = "Retire this value? Goals that have it keep it, but it can no longer be assigned."
 
-// dimensionsPage lists every Dimension as a card of its values, and — for an
-// Admin — the controls to define a Dimension and, behind each card's Edit
-// toggle, to add, rename, and retire values (CONTEXT.md: Admin defines
-// Dimensions). Retired values stay listed, struck through.
-templ dimensionsPage(current *domain.Account, dims []domain.Dimension) {
+// dimensionsPage lists every Dimension as a card of its values and whether a
+// Goal takes one of them or several, and — for an Admin — the controls to
+// define a Dimension and, behind each card's Edit toggle, to switch between one
+// value and several and to add, rename, and retire values (CONTEXT.md: Admin
+// defines Dimensions). Retired values stay listed, struck through. refusal, when
+// set, names the Goals that kept a Dimension from switching to one value.
+templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *domain.SeveralValuesError) {
 	{{ admin := current != nil && current.IsAdmin }}
 	@layout("Dimensions", current) {
 		@dimensionsStyles()
@@ -23,6 +25,9 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension) {
 				<p class="muted">The Dimensions Goals are tagged with, and their values.</p>
 			</div>
 		</header>
+		if refusal != nil {
+			@selectionRefusal(refusal)
+		}
 		if admin {
 			<details data-testid="create-dimension">
 				<summary class="btn primary">Define a Dimension</summary>
@@ -36,6 +41,11 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension) {
 						<span>Values <span class="hint">— comma-separated</span></span>
 						<input type="text" name="values" required/>
 					</label>
+					<fieldset class="dm-selection">
+						<legend>Each Goal takes</legend>
+						<label><input type="radio" name="selection" value={ domain.SelectionOne } checked/> one value</label>
+						<label><input type="radio" name="selection" value={ domain.SelectionSeveral }/> several values</label>
+					</fieldset>
 					<div>
 						<button type="submit" class="btn primary">Create Dimension</button>
 					</div>
@@ -49,6 +59,7 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension) {
 			for _, d := range dims {
 				<li data-testid="dimension" class="card dm-card">
 					<h3>{ d.Name }</h3>
+					<p class="muted small">Each Goal takes <span data-testid="dimension-selection">{ selectionLabel(d) }</span></p>
 					@dimensionValues(d)
 					if admin {
 						@dimensionEdit(d)
@@ -57,6 +68,20 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension) {
 			}
 		</ul>
 	}
+}
+
+// selectionRefusal says why a Dimension couldn't switch to one value, listing
+// the Goals that still carry several of its values so an Admin can fix them.
+templ selectionRefusal(refusal *domain.SeveralValuesError) {
+	<section data-testid="selection-refusal" class="card dm-card" role="alert">
+		<h3>{ refusal.Dimension } still takes several values</h3>
+		<p>These Goals carry more than one { refusal.Dimension } value. Leave each with one, then try again.</p>
+		<ul>
+			for _, g := range refusal.Goals {
+				<li><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></li>
+			}
+		</ul>
+	</section>
 }
 
 // dimensionValues shows a Dimension's values as tags, retired ones struck
@@ -76,12 +101,22 @@ templ dimensionValues(d domain.Dimension) {
 	</ul>
 }
 
-// dimensionEdit is an Admin's Edit toggle on a Dimension card: a rename form and
-// a Retire button on each value still in use, then a form to add a value.
+// dimensionEdit is an Admin's Edit toggle on a Dimension card: a switch between
+// one value and several per Goal, a rename form and a Retire button on each
+// value still in use, then a form to add a value.
 // Retire asks for confirmation first.
 templ dimensionEdit(d domain.Dimension) {
 	<details class="dm-edit">
 		<summary class="btn sm">Edit</summary>
+		<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/selection", d.ID)) }>
+			if d.TakesSeveral() {
+				<input type="hidden" name="selection" value={ domain.SelectionOne }/>
+				<button type="submit" class="btn sm">Take one value per Goal</button>
+			} else {
+				<input type="hidden" name="selection" value={ domain.SelectionSeveral }/>
+				<button type="submit" class="btn sm">Take several values per Goal</button>
+			}
+		</form>
 		<ul class="dm-rows">
 			for _, v := range d.Values {
 				if !v.Retired {
@@ -119,5 +154,7 @@ templ dimensionsStyles() {
 		.dm-rows li{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 		.dm-rows form{margin:0}
 		.dm-row{display:flex;gap:8px;align-items:center;margin:0}
+		.dm-selection{border:0;margin:0;padding:0;display:flex;gap:16px;flex-wrap:wrap}
+		.dm-selection legend{padding:0;margin-bottom:4px}
 	</style>
 }

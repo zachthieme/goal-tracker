@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
@@ -153,4 +154,108 @@ func TestNewDimensionFormSpacingComesFromAClass(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/dimensions")
 	assertStyledBy(t, tagAround(t, page, `action="/dimensions"`), page, "dm-new", "margin-top:12px")
+}
+
+// An Admin chooses on the create form whether a Goal takes one value or
+// several, defaulting to one, and switches a one-value Dimension to several
+// from its card; each card says which it takes.
+func TestAdminChoosesOneOrSeveralValuesOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := signInClient(t, ts.URL, "boss@example.com")
+
+	form := pageElement(t, getBody(t, boss, ts.URL+"/dimensions"), "details", "create-dimension")
+	if !strings.Contains(form, `name="selection" value="one" checked`) || !strings.Contains(form, `name="selection" value="several"`) {
+		t.Fatalf("create form lacks a one/several choice defaulting to one:\n%s", form)
+	}
+
+	postForm(t, boss, ts.URL+"/dimensions", url.Values{"name": {"Team"}, "values": {"Core, Infra"}, "selection": {"several"}})
+	postForm(t, boss, ts.URL+"/dimensions", url.Values{"name": {"Pillar"}, "values": {"Growth"}})
+	dims, err := h.Service.ListDimensions(context.Background())
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	selection := map[string]string{}
+	var pillarID int64
+	for _, d := range dims {
+		selection[d.Name] = d.Selection
+		if d.Name == "Pillar" {
+			pillarID = d.ID
+		}
+	}
+	if selection["Team"] != domain.SelectionSeveral || selection["Pillar"] != domain.SelectionOne {
+		t.Fatalf("selections = %v, want Team several and Pillar one", selection)
+	}
+
+	page := getBody(t, boss, ts.URL+"/dimensions")
+	if !strings.Contains(page, `data-testid="dimension-selection">several values`) || !strings.Contains(page, `data-testid="dimension-selection">one value`) {
+		t.Errorf("cards don't say one value / several values:\n%s", page)
+	}
+	action := fmt.Sprintf(`action="/dimensions/%d/selection"`, pillarID)
+	if !strings.Contains(page, action) {
+		t.Fatalf("Pillar card lacks a form posting to %s:\n%s", action, page)
+	}
+
+	resp := postForm(t, boss, fmt.Sprintf("%s/dimensions/%d/selection", ts.URL, pillarID), url.Values{"selection": {"several"}})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("switch to several: status %d", resp.StatusCode)
+	}
+	_ = readBody(t, resp)
+	dims, err = h.Service.ListDimensions(context.Background())
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	for _, d := range dims {
+		if d.Name == "Pillar" && d.Selection != domain.SelectionSeveral {
+			t.Errorf("Pillar Selection = %q after switch, want several", d.Selection)
+		}
+	}
+
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	resp = postForm(t, sam, fmt.Sprintf("%s/dimensions/%d/selection", ts.URL, pillarID), url.Values{"selection": {"one"}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-Admin switch: status %d, want 403", resp.StatusCode)
+	}
+}
+
+// Switching several to one is refused while a Goal carries more than one value,
+// and the refusal names those Goals; it succeeds once none does.
+func TestSwitchToOneValueRefusalNamesGoalsOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, teams.Values[0])
+	h.AssignGoalValue(goal, teams.Values[1])
+	ts := newServer(t, h)
+	bossClient := signInClient(t, ts.URL, "boss@example.com")
+	switchURL := fmt.Sprintf("%s/dimensions/%d/selection", ts.URL, teams.ID)
+
+	resp := postForm(t, bossClient, switchURL, url.Values{"selection": {"one"}})
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("refused switch: status %d, want 422", resp.StatusCode)
+	}
+	refusal := pageElement(t, body, "section", "selection-refusal")
+	if !strings.Contains(refusal, fmt.Sprintf(`href="/goals/%d"`, goal.ID)) || !strings.Contains(refusal, "Reduce outages") {
+		t.Errorf("refusal doesn't name the Goal:\n%s", refusal)
+	}
+
+	if err := h.Service.SetGoalValues(context.Background(), sam.ID, goal.ID, teams.ID, []int64{teams.Values[0].ID}); err != nil {
+		t.Fatalf("SetGoalValues: %v", err)
+	}
+	resp = postForm(t, bossClient, switchURL, url.Values{"selection": {"one"}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("switch once no Goal carries several: status %d, want 200", resp.StatusCode)
+	}
+	dims, err := h.Service.ListDimensions(context.Background())
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	if dims[0].Selection != domain.SelectionOne {
+		t.Errorf("Team Selection = %q, want one", dims[0].Selection)
+	}
 }

@@ -18,13 +18,50 @@ func (s *Server) handleDimensions(w http.ResponseWriter, r *http.Request, curren
 		http.Error(w, "could not list dimensions", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, dimensionsPage(&current, dims))
+	render(w, r, http.StatusOK, dimensionsPage(&current, dims, nil))
 }
 
-// handleCreateDimension defines a Dimension from a name and a comma-separated
-// value list. Only an Admin may.
+// handleCreateDimension defines a Dimension from a name, a comma-separated
+// value list, and whether a Goal takes one of its values or several (one when
+// the form doesn't say). Only an Admin may.
 func (s *Server) handleCreateDimension(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	if _, err := s.svc.CreateDimension(r.Context(), current.ID, r.FormValue("name"), splitValues(r.FormValue("values"))); err != nil {
+	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
+		dim, err := tx.CreateDimension(r.Context(), current.ID, r.FormValue("name"), splitValues(r.FormValue("values")))
+		if err != nil {
+			return err
+		}
+		if selection := r.FormValue("selection"); selection != "" && selection != dim.Selection {
+			return tx.SetDimensionSelection(r.Context(), current.ID, dim.ID, selection)
+		}
+		return nil
+	})
+	if err != nil {
+		writeDimensionError(w, err)
+		return
+	}
+	s.redirectToDimensions(w, r)
+}
+
+// handleSetDimensionSelection switches the Dimension in the path between a Goal
+// taking one of its values and several. Switching to one is refused while Goals
+// carry several, and the page comes back naming them. Only an Admin may.
+func (s *Server) handleSetDimensionSelection(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, ok := dimensionIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	err := s.svc.SetDimensionSelection(r.Context(), current.ID, id, r.FormValue("selection"))
+	var refusal *domain.SeveralValuesError
+	if errors.As(err, &refusal) {
+		dims, listErr := s.svc.ListDimensions(r.Context())
+		if listErr != nil {
+			http.Error(w, "could not list dimensions", http.StatusInternalServerError)
+			return
+		}
+		render(w, r, http.StatusUnprocessableEntity, dimensionsPage(&current, dims, refusal))
+		return
+	}
+	if err != nil {
 		writeDimensionError(w, err)
 		return
 	}
@@ -108,4 +145,12 @@ func writeDimensionError(w http.ResponseWriter, err error) {
 	default:
 		http.Error(w, "dimension action failed", http.StatusInternalServerError)
 	}
+}
+
+// selectionLabel says whether a Goal takes one of d's values or several.
+func selectionLabel(d domain.Dimension) string {
+	if d.TakesSeveral() {
+		return "several values"
+	}
+	return "one value"
 }
