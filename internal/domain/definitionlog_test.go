@@ -132,3 +132,74 @@ func assertSummaries(t *testing.T, log []domain.DefinitionChange, want []string)
 		t.Errorf("log, newest first =\n%q\nwant\n%q", got, want)
 	}
 }
+
+// Each change to a Dimension's values writes exactly one entry, about the
+// Dimension, naming the values as they were: a rename shows the old and new
+// name, a merge both values, and sorting the list alphabetically is one entry.
+func TestEachChangeToADimensionsValuesWritesOneEntry(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ctx := context.Background()
+	pillar := h.CreateDimension(boss, "Pillar", "Trust", "Growth", "Scale")
+	trust, growth, scale := pillar.Values[0], pillar.Values[1], pillar.Values[2]
+	for _, change := range []func() error{
+		func() error { _, err := h.Service.AddDimensionValue(ctx, boss.ID, pillar.ID, "Reach"); return err },
+		func() error { _, err := h.Service.RenameDimensionValue(ctx, boss.ID, growth.ID, "Expansion"); return err },
+		func() error { return h.Service.RetireDimensionValue(ctx, boss.ID, scale.ID) },
+		func() error { return h.Service.RestoreDimensionValue(ctx, boss.ID, scale.ID) },
+		func() error { return h.Service.MoveDimensionValue(ctx, boss.ID, scale.ID, domain.MoveUp) },
+		func() error { return h.Service.MoveDimensionValue(ctx, boss.ID, trust.ID, domain.MoveDown) },
+		func() error { return h.Service.SortDimensionValues(ctx, boss.ID, pillar.ID) },
+		func() error { return h.Service.MergeDimensionValue(ctx, boss.ID, scale.ID, growth.ID) },
+	} {
+		if err := change(); err != nil {
+			t.Fatalf("change: %v", err)
+		}
+	}
+
+	log := definitionLog(t, h)
+	assertSummaries(t, log, []string{
+		"Merged Scale into Expansion in Pillar.",
+		"Sorted Pillar's values alphabetically.",
+		"Moved Trust down in Pillar.",
+		"Moved Scale up in Pillar.",
+		"Restored Scale in Pillar.",
+		"Retired Scale in Pillar.",
+		"Renamed Growth to Expansion in Pillar.",
+		"Added Reach to Pillar.",
+		"Created the Dimension Pillar with Trust, Growth, Scale, taking one value from a Fixed list.",
+	})
+	for _, c := range log {
+		if c.Actor.ID != boss.ID || c.DimensionID != pillar.ID {
+			t.Errorf("entry %q = %+v, want boss's, about Pillar", c.Summary, c)
+		}
+	}
+}
+
+// A value an Owner adds to an Extendable list while setting their Goal's value
+// is logged with that Owner; setting a value already on the list logs nothing,
+// and neither does setting values on Goals, which is the Goal's history.
+func TestAValueAnOwnerAddsToAnExtendableListIsLoggedWithThatOwner(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pat := h.SignIn("pat@example.com")
+	ctx := context.Background()
+	goal := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	customer := h.CreateExtendableDimension(boss, "Customer", "Acme")
+	logged := len(definitionLog(t, h))
+
+	if _, err := h.Service.AssignGoalValueByName(ctx, pat.ID, goal.ID, customer.ID, "Globex"); err != nil {
+		t.Fatalf("add Globex: %v", err)
+	}
+	if _, err := h.Service.AssignGoalValueByName(ctx, pat.ID, goal.ID, customer.ID, "acme "); err != nil {
+		t.Fatalf("set Acme: %v", err)
+	}
+
+	log := definitionLog(t, h)
+	if len(log) != logged+1 {
+		t.Fatalf("log = %+v, want 1 more entry", log)
+	}
+	if got := log[0]; got.Actor.ID != pat.ID || got.DimensionID != customer.ID || got.Summary != "Added Globex to Customer." {
+		t.Errorf("newest entry = %+v, want pat adding Globex to Customer", got)
+	}
+}
