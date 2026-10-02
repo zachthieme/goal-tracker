@@ -89,3 +89,11 @@ func listName(d Dimension) string {
 	}
 	return "Fixed"
 }
+
+// requiredWord is how the log says a Dimension or Field was marked.
+func requiredWord(required bool) string {
+	if required {
+		return "required"
+	}
+	return "not required"
+}
