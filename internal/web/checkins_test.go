@@ -255,7 +255,7 @@ func TestLatestStatusOpensWithCells(t *testing.T) {
 			t.Errorf("%s cell lacks label %q over %s: %s", tc.testID, tc.label, tc.value, cell)
 		}
 	}
-	rest := card[strings.Index(card, `data-testid="goal-status-cells"`):]
+	_, rest, _ := strings.Cut(card, `data-testid="goal-status-cells"`)
 	for _, want := range []string{`data-testid="goal-status"`, `data-testid="goal-path-to-green"`, `data-testid="goal-rollup-explanation"`} {
 		if !strings.Contains(rest, want) {
 			t.Errorf("Latest status has no %s below its cells: %s", want, card)
