@@ -31,6 +31,36 @@ type risksView struct {
 	HaltedParents     []domain.HaltedParent
 }
 
+// riskType is one of the Risks page's sections: the anchor its summary tile
+// links to, its name, and how many Goals it lists.
+type riskType struct {
+	Anchor, Name string
+	Count        int
+}
+
+// Types are the Risks page's sections in the page's order.
+func (v risksView) Types() []riskType {
+	return []riskType{
+		{"stale", "Stale", len(v.Stale)},
+		{"path-overdue", "Path to Green overdue", len(v.OverduePaths)},
+		{"ownerless", "Ownerless", len(v.Ownerless)},
+		{"unaligned", "Unaligned", len(v.Unaligned)},
+		{"schedule-conflicts", "Schedule conflicts", len(v.ScheduleConflicts)},
+		{"halted-parents", "Parent On Hold or Cancelled", len(v.HaltedParents)},
+	}
+}
+
+// Empty are the sections with no Goals, in the page's order.
+func (v risksView) Empty() []riskType {
+	var empty []riskType
+	for _, rt := range v.Types() {
+		if rt.Count == 0 {
+			empty = append(empty, rt)
+		}
+	}
+	return empty
+}
+
 // Flagged counts the Goals the Risks page lists, each once however many
 // sections it is in.
 func (v risksView) Flagged() int {
