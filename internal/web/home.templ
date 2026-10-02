@@ -21,56 +21,28 @@ templ homePage(current *domain.Account, v homeView) {
 		</header>
 		<div class="grid-main-aside">
 			<div class="hm-col">
-				<section data-testid="home-checkins" class="card hm-card">
-					<h3>Check in on these</h3>
-					if len(v.Due) == 0 {
-						<p data-testid="home-due-empty" class="muted">You're all caught up.</p>
-					}
-					<ul data-testid="home-due" class="hm-list">
-						for _, g := range v.Due {
-							@dueRow(g)
-						}
-					</ul>
-				</section>
-				<section data-testid="home-waiting-on-you" class="card hm-card">
-					<h3>Waiting on you</h3>
-					if len(v.PendingLinks) == 0 && len(v.PendingHandoffs) == 0 {
-						<p data-testid="home-waiting-empty" class="muted">Nothing is waiting on you.</p>
-					}
-					<ul data-testid="home-waiting" class="hm-list">
-						for _, l := range v.PendingLinks {
-							<li data-testid="home-pending-link">
-								<div class="hm-what">
-									<span class="badge lc">Link request</span>
-									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)) }>{ l.Child.Title }</a>
-									<span class="muted">
-										{ "(" }
-										@person(l.Child.Owner)
-										{ ") wants to contribute to" }
-									</span>
-									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
-								</div>
-								<div class="hm-actions">
-									@acceptReject(fmt.Sprintf("/links/%d", l.ID))
-								</div>
-							</li>
-						}
-						for _, ho := range v.PendingHandoffs {
-							<li data-testid="home-pending-handoff">
-								<div class="hm-what">
-									<span class="badge lc">Handoff</span>
-									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)) }>{ ho.Goal.Title }</a>
-									<span class="muted">
-										@person(ho.From)
-										{ " wants to hand this Goal to you" }
-									</span>
-								</div>
-								<div class="hm-actions">
-									@handoffAcceptReject(ho)
-								</div>
-							</li>
-						}
-					</ul>
+				<section data-testid="home-needs-you" class="card hm-card">
+					<h3>Needs you</h3>
+					<div class="hm-group">
+						<h4 class="label">Check-ins due</h4>
+						<ul data-testid="home-due" class="hm-list">
+							for _, g := range v.Due {
+								@dueRow(g)
+							}
+						</ul>
+					</div>
+					<div class="hm-group">
+						<h4 class="label">Requests</h4>
+						<ul data-testid="home-requests" class="hm-list">
+							for _, req := range v.Requests {
+								if req.Link != nil {
+									@linkRequestRow(*req.Link)
+								} else {
+									@handoffRequestRow(*req.Handoff)
+								}
+							}
+						</ul>
+					</div>
 				</section>
 			</div>
 			<aside class="hm-col">
@@ -140,6 +112,50 @@ templ dueRow(g domain.PersonalGoal) {
 	</li>
 }
 
+// linkRequestRow is a link request waiting on the person as the parent's Owner.
+templ linkRequestRow(l domain.Link) {
+	<li data-testid="home-request">
+		<div class="hm-what">
+			<span class="badge lc">Link request</span>
+			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Child.ID)) }>{ l.Child.Title }</a>
+			<span class="muted">
+				{ "(" }
+				@person(l.Child.Owner)
+				{ ") wants to contribute to" }
+			</span>
+			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
+		</div>
+		<div class="hm-actions">
+			@rejectAccept(fmt.Sprintf("/links/%d", l.ID))
+		</div>
+	</li>
+}
+
+// handoffRequestRow is a Handoff waiting on the person as the proposed new
+// Owner. Accepting one whose Goal has Delegates means choosing which to keep,
+// so in place of Accept it offers Review, leading to the Pending handoffs page
+// where that choice is made.
+templ handoffRequestRow(ho domain.Handoff) {
+	<li data-testid="home-request">
+		<div class="hm-what">
+			<span class="badge lc">Handoff</span>
+			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)) }>{ ho.Goal.Title }</a>
+			<span class="muted">
+				@person(ho.From)
+				{ " wants to hand this Goal to you" }
+			</span>
+		</div>
+		<div class="hm-actions">
+			if len(ho.KeepableDelegates) > 0 {
+				@rejectButton(fmt.Sprintf("/handoffs/%d", ho.ID))
+				<a data-testid="home-request-review" class="btn sm" href="/handoffs">Review</a>
+			} else {
+				@rejectAccept(fmt.Sprintf("/handoffs/%d", ho.ID))
+			}
+		</div>
+	</li>
+}
+
 // acceptReject is the pair of buttons deciding a pending request at base. Reject
 // sends at once: the requester can simply ask again.
 templ acceptReject(base string) {
@@ -148,6 +164,23 @@ templ acceptReject(base string) {
 	</form>
 	<form method="post" action={ templ.SafeURL(base + "/reject") } class="inline-form">
 		<button type="submit" class="btn danger sm">Reject</button>
+	</form>
+}
+
+// rejectAccept is Home's pair of buttons deciding a pending request at base:
+// Reject as a text button, then Accept outlined. Reject sends at once: the
+// requester can simply ask again.
+templ rejectAccept(base string) {
+	@rejectButton(base)
+	<form method="post" action={ templ.SafeURL(base + "/accept") } class="inline-form">
+		<button type="submit" class="btn sm">Accept</button>
+	</form>
+}
+
+// rejectButton rejects the pending request at base at once.
+templ rejectButton(base string) {
+	<form method="post" action={ templ.SafeURL(base + "/reject") } class="inline-form">
+		<button type="submit" class="btn quiet sm">Reject</button>
 	</form>
 }
 
@@ -179,5 +212,7 @@ templ homeStyles() {
 		.hm-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}
 		.hm-actions form{margin:0}
 		.hm-counts{display:flex;flex-wrap:wrap;gap:8px}
+		.hm-group{display:flex;flex-direction:column;gap:8px}
+		.hm-group>h4{margin:0}
 	</style>
 }

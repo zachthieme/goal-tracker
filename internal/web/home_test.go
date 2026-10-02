@@ -216,48 +216,92 @@ func TestHomeCheckInOpensCheckinForm(t *testing.T) {
 	}
 }
 
-// A link request waiting on the viewer as the parent's Owner, and a Handoff
-// waiting on them as the proposed new Owner, are listed under "Waiting on
-// you", each with Accept and a Reject that submits at once. Someone with
-// nothing waiting and nothing due sees each section's empty state.
-func TestHomeListsWhatIsWaitingOnYou(t *testing.T) {
+// A Handoff waiting on the viewer as the proposed new Owner and a link request
+// waiting on them as the parent's Owner are listed under "Requests", oldest
+// first whatever their kind. Each offers Accept as an outlined button and
+// Reject as a text button that submits at once, and both do what they say.
+func TestHomeListsRequestsOldestFirst(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
 	kim := h.SignIn("kim@example.com")
-	parent := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
-	child := h.ActiveGoal(kim, "Ship search", "People can't find things.")
-	link := h.RequestLink(kim, child, parent, "")
 	handed := h.ActiveGoal(kim, "Cut churn", "Customers leave.")
 	handoff, err := h.Service.StartHandoffByEmail(context.Background(), handed.ID, "sam@example.com", kim.ID)
 	if err != nil {
 		t.Fatalf("StartHandoff: %v", err)
 	}
+	h.Clock.Advance(day)
+	parent := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	child := h.ActiveGoal(kim, "Ship search", "People can't find things.")
+	link := h.RequestLink(kim, child, parent, "")
+	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	requests := pageElement(t, getBody(t, client, ts.URL+"/home"), "ul", "home-requests")
 
-	waiting := pageElement(t, page, "ul", "home-waiting")
+	if older, newer := strings.Index(requests, navTo(handed.ID)), strings.Index(requests, navTo(child.ID)); older < 0 || newer < 0 || older > newer {
+		t.Errorf("Requests does not list the day-old Handoff before today's link request:\n%s", requests)
+	}
 	for _, tc := range []struct {
 		what   string
 		row    string
 		action string
 	}{
-		{"link request", homeRow(t, waiting, child), fmt.Sprintf("/links/%d", link.ID)},
-		{"Handoff", homeRow(t, waiting, handed), fmt.Sprintf("/handoffs/%d", handoff.ID)},
+		{"link request", homeRow(t, requests, child), fmt.Sprintf("/links/%d", link.ID)},
+		{"Handoff", homeRow(t, requests, handed), fmt.Sprintf("/handoffs/%d", handoff.ID)},
 	} {
-		if !strings.Contains(tc.row, `action="`+tc.action+`/accept"`) {
-			t.Errorf("%s has no Accept:\n%s", tc.what, tc.row)
+		accept := tc.row[strings.Index(tc.row, `action="`+tc.action+`/accept"`):]
+		if !strings.Contains(accept, `<button type="submit" class="btn sm">Accept</button>`) {
+			t.Errorf("%s has no outlined Accept:\n%s", tc.what, tc.row)
+		}
+		reject := tc.row[strings.Index(tc.row, `action="`+tc.action+`/reject"`):]
+		if !strings.Contains(reject, `<button type="submit" class="btn quiet sm">Reject</button>`) {
+			t.Errorf("%s has no Reject text button:\n%s", tc.what, tc.row)
 		}
 		assertSubmitsAtOnce(t, tc.what+"'s Reject", tagAround(t, tc.row, `action="`+tc.action+`/reject"`))
 	}
 
-	kimPage := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home")
-	if !strings.Contains(kimPage, `data-testid="home-waiting-empty"`) {
-		t.Errorf("kim has nothing waiting but sees no empty state:\n%s", kimPage)
+	postForm(t, client, ts.URL+fmt.Sprintf("/links/%d/accept", link.ID), nil)
+	if parents := h.ParentsOf(child); len(parents) != 1 || parents[0].ID != parent.ID {
+		t.Errorf("Home's Accept did not link %q under %q: parents = %v", child.Title, parent.Title, parents)
 	}
-	// kim's Goals were activated today, so none is due yet.
-	if empty := pageElement(t, kimPage, "p", "home-due-empty"); !strings.Contains(empty, "You're all caught up.") {
-		t.Errorf("kim has nothing to check in on but sees %s", empty)
+	postForm(t, client, ts.URL+fmt.Sprintf("/handoffs/%d/reject", handoff.ID), nil)
+	if pending, _ := h.Service.PendingHandoffs(context.Background(), sam.ID); len(pending) != 0 {
+		t.Errorf("Home's Reject left the Handoff pending")
+	}
+}
+
+// Accepting a Handoff of a Goal with Delegates means choosing which to keep, so
+// Home offers Review, leading to the Pending handoffs page where that choice is
+// made (TestHomeHandoffReviewListsDelegatesToKeep), in place of Accept. Reject
+// still decides it from Home.
+func TestHomeOffersReviewForHandoffWithDelegates(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	dee := h.SignIn("dee@example.com")
+	handed := h.ActiveGoal(kim, "Cut churn", "Customers leave.")
+	h.AddDelegate(kim, dee, handed.ID)
+	handoff, err := h.Service.StartHandoffByEmail(context.Background(), handed.ID, "sam@example.com", kim.ID)
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	row := homeRow(t, pageElement(t, getBody(t, client, ts.URL+"/home"), "ul", "home-requests"), handed)
+
+	if strings.Contains(row, "/accept") {
+		t.Errorf("Handoff with Delegates offers Accept on Home without the choice of whom to keep:\n%s", row)
+	}
+	review := tagAround(t, row, `data-testid="home-request-review"`)
+	if href := attr(review, "href"); href != "/handoffs" {
+		t.Fatalf("Review links to %q, want /handoffs:\n%s", href, row)
+	}
+	if !strings.Contains(row, ">Review</a>") {
+		t.Errorf("Review link does not read Review:\n%s", row)
+	}
+	if !strings.Contains(row, fmt.Sprintf(`action="/handoffs/%d/reject"`, handoff.ID)) {
+		t.Errorf("Handoff with Delegates offers no Reject:\n%s", row)
 	}
 }
 

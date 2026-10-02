@@ -452,9 +452,9 @@ func TestAcceptHandoffKeepingEveryBoxAndRejectLeaveDelegates(t *testing.T) {
 	}
 }
 
-// Home's Waiting on you offers the same choice: a Handoff's accept form there
-// lists the Delegates to keep, each checked by default.
-func TestHomeHandoffAcceptListsDelegatesToKeep(t *testing.T) {
+// Home's Requests leads to the same choice: a Handoff's Review goes to the
+// accept form listing the Delegates to keep, each checked by default.
+func TestHomeHandoffReviewListsDelegatesToKeep(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -466,12 +466,14 @@ func TestHomeHandoffAcceptListsDelegatesToKeep(t *testing.T) {
 	if err != nil {
 		t.Fatalf("StartHandoff: %v", err)
 	}
+	client := signInClient(t, ts.URL, pat.Email)
 
-	home := getBody(t, signInClient(t, ts.URL, pat.Email), ts.URL+"/")
-	row := between(t, home, `data-testid="home-pending-handoff"`, "</li>")
-	form := between(t, row, fmt.Sprintf(`action="/handoffs/%d/accept"`, ho.ID), "</form>")
+	home := getBody(t, client, ts.URL+"/")
+	row := between(t, home, `data-testid="home-request"`, "</li>")
+	review := attr(tagAround(t, row, `data-testid="home-request-review"`), "href")
+	form := between(t, getBody(t, client, ts.URL+review), fmt.Sprintf(`action="/handoffs/%d/accept"`, ho.ID), "</form>")
 	if box := fmt.Sprintf(`<input type="checkbox" name="keep" value="%d" checked>`, ann.ID); !strings.Contains(form, box) {
-		t.Errorf("Home's accept form lacks Ann's keep checkbox (%s):\n%s", box, form)
+		t.Errorf("the accept form Home's Review leads to lacks Ann's keep checkbox (%s):\n%s", box, form)
 	}
 }
 
@@ -604,7 +606,8 @@ func TestReassignCancelsTheDepartedOwnersPendingHandoff(t *testing.T) {
 
 // A pending Handoff's accept and reject forms sit inline, and the accept form's
 // keep-Delegates fieldset stacks its boxes, through classes rather than style
-// attributes.
+// attributes. Home offers only the Reject form for such a Handoff, beside
+// Review, and it sits inline the same way.
 func TestPendingHandoffLayoutComesFromClasses(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
@@ -620,15 +623,16 @@ func TestPendingHandoffLayoutComesFromClasses(t *testing.T) {
 	client := signInClient(t, ts.URL, pat.Email)
 	css := getBody(t, client, ts.URL+"/static/app.css")
 
-	for _, path := range []string{"/handoffs", "/home"} {
-		page := getBody(t, client, ts.URL+path)
-		for _, action := range []string{"accept", "reject"} {
-			form := tagAround(t, page, fmt.Sprintf(`action="/handoffs/%d/%s"`, ho.ID, action))
-			assertStyledBy(t, form, css, "inline-form", "display:inline")
-		}
-		keep := tagAround(t, page, `data-testid="handoff-keep-delegates"`)
-		assertStyledBy(t, keep, page, "handoff-keep", "border:0;padding:0;margin:0 0 8px;display:flex;flex-direction:column;gap:4px")
+	page := getBody(t, client, ts.URL+"/handoffs")
+	for _, action := range []string{"accept", "reject"} {
+		form := tagAround(t, page, fmt.Sprintf(`action="/handoffs/%d/%s"`, ho.ID, action))
+		assertStyledBy(t, form, css, "inline-form", "display:inline")
 	}
+	keep := tagAround(t, page, `data-testid="handoff-keep-delegates"`)
+	assertStyledBy(t, keep, page, "handoff-keep", "border:0;padding:0;margin:0 0 8px;display:flex;flex-direction:column;gap:4px")
+
+	home := getBody(t, client, ts.URL+"/home")
+	assertStyledBy(t, tagAround(t, home, fmt.Sprintf(`action="/handoffs/%d/reject"`, ho.ID)), css, "inline-form", "display:inline")
 }
 
 // assertStyledBy checks the element's opening tag carries no style attribute
