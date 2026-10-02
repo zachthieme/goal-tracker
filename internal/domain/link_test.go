@@ -160,7 +160,7 @@ func TestRemoveLinkUnlinksTheGoals(t *testing.T) {
 	child := h.CreateGoal(owner, "Migrate displays", "Old displays fail often.")
 	link := h.RequestLink(owner, child, parent, "") // auto-accepted
 
-	if err := h.Service.RemoveLink(context.Background(), link.ID, owner.ID); err != nil {
+	if _, err := h.Service.RemoveLink(context.Background(), link.ID, owner.ID); err != nil {
 		t.Fatalf("RemoveLink: %v", err)
 	}
 	if got := h.ParentsOf(child); len(got) != 0 {
@@ -324,5 +324,188 @@ func TestRequestLinkRejectsSelfLink(t *testing.T) {
 	})
 	if !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("err = %v, want ErrValidation", err)
+	}
+}
+
+// acceptedAcrossOwners arranges an accepted link from Sam's child Goal to Pat's
+// parent Goal, the case where undoing a removal must not ask Pat again.
+func acceptedAcrossOwners(t *testing.T, h *testsupport.Harness) (pat, sam domain.Account, child, parent domain.Goal, link domain.Link) {
+	t.Helper()
+	pat = h.SignIn("pat@example.com")
+	sam = h.SignIn("sam@example.com")
+	parent = h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	child = h.CreateGoal(sam, "Migrate displays", "Old displays fail often.")
+	link = h.RequestLink(sam, child, parent, "displays cause outages")
+	if _, err := h.Service.AcceptLink(context.Background(), link.ID, pat.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+	return pat, sam, child, parent, link
+}
+
+// Undoing a removal puts the link back as accepted between the same two Goals,
+// without asking the parent's Owner to accept it again.
+func TestRestoreLinkPutsTheRemovedLinkBackAsAccepted(t *testing.T) {
+	h := testsupport.New(t)
+	pat, sam, child, parent, link := acceptedAcrossOwners(t, h)
+	ctx := context.Background()
+
+	removal, err := h.Service.RemoveLink(ctx, link.ID, sam.ID)
+	if err != nil {
+		t.Fatalf("RemoveLink: %v", err)
+	}
+	restored, err := h.Service.RestoreLink(ctx, removal.ID, sam.ID)
+	if err != nil {
+		t.Fatalf("RestoreLink: %v", err)
+	}
+	if restored.Status != domain.LinkAccepted || restored.Child.ID != child.ID || restored.Parent.ID != parent.ID {
+		t.Errorf("restored = %+v, want accepted %d -> %d", restored, child.ID, parent.ID)
+	}
+	if restored.Note != "displays cause outages" {
+		t.Errorf("restored note = %q, want the original note", restored.Note)
+	}
+	if got := idsOf(h.ParentsOf(child)); !equalIDsUnordered(got, []int64{parent.ID}) {
+		t.Errorf("ParentsOf(child) = %v, want [%d]", got, parent.ID)
+	}
+	if got, _ := h.Service.PendingLinkRequests(ctx, pat.ID); len(got) != 0 {
+		t.Errorf("pending for the parent's Owner = %d, want 0", len(got))
+	}
+}
+
+// Only the person who removed a link may undo it: the other Goal's Owner may
+// not, even though they could have removed it themselves.
+func TestRestoreLinkRefusesAnyoneButTheRemover(t *testing.T) {
+	h := testsupport.New(t)
+	pat, sam, child, _, link := acceptedAcrossOwners(t, h)
+	ctx := context.Background()
+
+	removal, err := h.Service.RemoveLink(ctx, link.ID, sam.ID)
+	if err != nil {
+		t.Fatalf("RemoveLink: %v", err)
+	}
+	if _, err := h.Service.RestoreLink(ctx, removal.ID, pat.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("RestoreLink by the other Owner: err = %v, want ErrNotAuthorized", err)
+	}
+	if got := h.ParentsOf(child); len(got) != 0 {
+		t.Errorf("ParentsOf(child) = %+v, want none after a refused Undo", got)
+	}
+}
+
+// A removal is undone once; a second Undo is refused and adds nothing.
+func TestRestoreLinkRefusesASecondUndo(t *testing.T) {
+	h := testsupport.New(t)
+	_, sam, child, _, link := acceptedAcrossOwners(t, h)
+	ctx := context.Background()
+
+	removal, err := h.Service.RemoveLink(ctx, link.ID, sam.ID)
+	if err != nil {
+		t.Fatalf("RemoveLink: %v", err)
+	}
+	restored, err := h.Service.RestoreLink(ctx, removal.ID, sam.ID)
+	if err != nil {
+		t.Fatalf("first RestoreLink: %v", err)
+	}
+	// Remove the restored link again by its own removal, then replay the first
+	// Undo: it was spent, so it must not bring the link back.
+	if _, err := h.Service.RemoveLink(ctx, restored.ID, sam.ID); err != nil {
+		t.Fatalf("second RemoveLink: %v", err)
+	}
+	if _, err := h.Service.RestoreLink(ctx, removal.ID, sam.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("second RestoreLink: err = %v, want ErrValidation", err)
+	}
+	if got := h.ParentsOf(child); len(got) != 0 {
+		t.Errorf("ParentsOf(child) = %+v, want none after a spent Undo", got)
+	}
+}
+
+// Undo works only against a recorded removal: an id that names none is refused
+// and creates no link.
+func TestRestoreLinkRefusesARemovalThatNeverHappened(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	child := h.CreateGoal(sam, "Migrate displays", "Old displays fail often.")
+
+	if _, err := h.Service.RestoreLink(context.Background(), 4242, sam.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("RestoreLink of no removal: err = %v, want ErrNotFound", err)
+	}
+	if got := h.ParentsOf(child); len(got) != 0 {
+		t.Errorf("ParentsOf(child) = %+v, want none", got)
+	}
+}
+
+// When the link has been made again since it was removed, Undo is refused
+// rather than duplicating it.
+func TestRestoreLinkRefusesWhenTheLinkExistsAgain(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	parent := h.CreateGoal(owner, "Reduce outages", "Outages cost trust.")
+	child := h.CreateGoal(owner, "Migrate displays", "Old displays fail often.")
+	link := h.RequestLink(owner, child, parent, "")
+	ctx := context.Background()
+
+	removal, err := h.Service.RemoveLink(ctx, link.ID, owner.ID)
+	if err != nil {
+		t.Fatalf("RemoveLink: %v", err)
+	}
+	h.RequestLink(owner, child, parent, "") // linked again, auto-accepted
+	if _, err := h.Service.RestoreLink(ctx, removal.ID, owner.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("RestoreLink of a link that exists again: err = %v, want ErrValidation", err)
+	}
+	if got := h.ParentsOf(child); len(got) != 1 {
+		t.Errorf("ParentsOf(child) = %+v, want just the one link", got)
+	}
+}
+
+// When restoring the link would now close a cycle, because another link was
+// made since it was removed, Undo is refused and nothing changes (ADR-0001).
+// The refusal doesn't spend the Undo: it still stands once the cycle is gone.
+func TestRestoreLinkRefusesACycleThatAppearedSinceTheRemoval(t *testing.T) {
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	a := h.CreateGoal(owner, "A", "why a")
+	b := h.CreateGoal(owner, "B", "why b")
+	link := h.RequestLink(owner, a, b, "") // A contributes to B
+	ctx := context.Background()
+
+	removal, err := h.Service.RemoveLink(ctx, link.ID, owner.ID)
+	if err != nil {
+		t.Fatalf("RemoveLink: %v", err)
+	}
+	back := h.RequestLink(owner, b, a, "") // now B contributes to A
+	if _, err := h.Service.RestoreLink(ctx, removal.ID, owner.ID); !errors.Is(err, domain.ErrCycle) {
+		t.Errorf("RestoreLink closing a cycle: err = %v, want ErrCycle", err)
+	}
+	if got := h.ParentsOf(a); len(got) != 0 {
+		t.Errorf("ParentsOf(A) = %+v, want none after a refused Undo", got)
+	}
+
+	if _, err := h.Service.RemoveLink(ctx, back.ID, owner.ID); err != nil {
+		t.Fatalf("RemoveLink(B -> A): %v", err)
+	}
+	if _, err := h.Service.RestoreLink(ctx, removal.ID, owner.ID); err != nil {
+		t.Errorf("RestoreLink once the cycle is gone: %v", err)
+	}
+}
+
+// The remover must still own one of the Goals: after Handing off the Goal they
+// owned, their Undo is refused.
+func TestRestoreLinkRefusesARemoverWhoNoLongerOwnsEitherGoal(t *testing.T) {
+	h := testsupport.New(t)
+	_, sam, child, _, link := acceptedAcrossOwners(t, h)
+	ctx := context.Background()
+
+	removal, err := h.Service.RemoveLink(ctx, link.ID, sam.ID)
+	if err != nil {
+		t.Fatalf("RemoveLink: %v", err)
+	}
+	lee := h.SignIn("lee@example.com")
+	ho, err := h.Service.StartHandoff(ctx, domain.StartHandoffInput{GoalID: child.ID, ToOwnerID: lee.ID, ActorID: sam.ID})
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+	if _, err := h.Service.AcceptHandoff(ctx, ho.ID, lee.ID, nil); err != nil {
+		t.Fatalf("AcceptHandoff: %v", err)
+	}
+	if _, err := h.Service.RestoreLink(ctx, removal.ID, sam.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("RestoreLink by a former Owner: err = %v, want ErrNotAuthorized", err)
 	}
 }

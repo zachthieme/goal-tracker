@@ -77,7 +77,7 @@ func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request, curren
 	if !ok {
 		return
 	}
-	if err := s.svc.RemoveLink(r.Context(), linkID, current.ID); err != nil {
+	if _, err := s.svc.RemoveLink(r.Context(), linkID, current.ID); err != nil {
 		writeLinkError(w, err)
 		return
 	}

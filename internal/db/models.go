@@ -186,6 +186,18 @@ type Link struct {
 	CreatedAt   string
 }
 
+type LinkRemoval struct {
+	ID            int64
+	ChildID       int64
+	ParentID      int64
+	Note          string
+	RequestedBy   int64
+	LinkCreatedAt string
+	RemovedBy     int64
+	RemovedAt     string
+	RestoredAt    *string
+}
+
 type Metric struct {
 	ID         int64
 	GoalID     int64

@@ -46,3 +46,16 @@ JOIN goals parent ON parent.id = links.parent_id
 JOIN accounts parent_owner ON parent_owner.id = parent.owner_id
 WHERE parent.owner_id = @owner_id AND links.status = 'pending'
 ORDER BY links.created_at, links.id;
+
+-- name: CreateLinkRemoval :one
+-- Records an accepted link as it was when removed, so its remover can Undo it.
+INSERT INTO link_removals (child_id, parent_id, note, requested_by, link_created_at, removed_by, removed_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: GetLinkRemoval :one
+SELECT * FROM link_removals WHERE id = ? LIMIT 1;
+
+-- name: MarkLinkRemovalRestored :execrows
+-- Marks a removal undone, only if it isn't already, so an Undo succeeds once.
+UPDATE link_removals SET restored_at = ? WHERE id = ? AND restored_at IS NULL;

@@ -24,7 +24,7 @@ type Link struct {
 }
 
 // Link status values. A rejected or removed link is deleted, so it has no
-// status of its own.
+// status of its own; a removal leaves a LinkRemoval its remover can undo.
 const (
 	LinkPending  = "pending"
 	LinkAccepted = "accepted"
@@ -225,34 +225,149 @@ func (s *Service) RejectLink(ctx context.Context, linkID, actorID int64) error {
 	return nil
 }
 
-// RemoveLink removes an accepted link, deleting it. Either the child's Owner or
-// the parent's Owner may remove it.
-func (s *Service) RemoveLink(ctx context.Context, linkID, actorID int64) error {
+// LinkRemoval is the record a removed link leaves: the two Goals it connected,
+// who removed it and when, and whether that removal has since been undone. It
+// is what lets the remover Undo the removal without asking the parent's Owner
+// to accept the link again.
+type LinkRemoval struct {
+	ID        int64
+	Child     Goal
+	Parent    Goal
+	RemovedBy int64
+	RemovedAt time.Time
+	Restored  bool
+}
+
+// RemoveLink removes an accepted link, deleting it and recording the removal so
+// the remover can Undo it (RestoreLink). Either the child's Owner or the
+// parent's Owner may remove it.
+func (s *Service) RemoveLink(ctx context.Context, linkID, actorID int64) (LinkRemoval, error) {
 	row, err := s.queries.GetLink(ctx, linkID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: link %d", ErrNotFound, linkID)
+			return LinkRemoval{}, fmt.Errorf("%w: link %d", ErrNotFound, linkID)
 		}
-		return fmt.Errorf("look up link: %w", err)
+		return LinkRemoval{}, fmt.Errorf("look up link: %w", err)
 	}
 	if row.Status != LinkAccepted {
-		return fmt.Errorf("%w: link %d is not accepted", ErrNotFound, linkID)
+		return LinkRemoval{}, fmt.Errorf("%w: link %d is not accepted", ErrNotFound, linkID)
 	}
 	child, err := s.queries.GetGoal(ctx, row.ChildID)
 	if err != nil {
-		return fmt.Errorf("look up child goal: %w", err)
+		return LinkRemoval{}, fmt.Errorf("look up child goal: %w", err)
 	}
 	parent, err := s.queries.GetGoal(ctx, row.ParentID)
 	if err != nil {
-		return fmt.Errorf("look up parent goal: %w", err)
+		return LinkRemoval{}, fmt.Errorf("look up parent goal: %w", err)
 	}
 	if child.Goal.OwnerID != actorID && parent.Goal.OwnerID != actorID {
-		return fmt.Errorf("%w: only an Owner of the linked Goals may remove the link", ErrNotAuthorized)
+		return LinkRemoval{}, fmt.Errorf("%w: only an Owner of the linked Goals may remove the link", ErrNotAuthorized)
 	}
-	if err := s.queries.DeleteLink(ctx, linkID); err != nil {
-		return fmt.Errorf("remove link: %w", err)
+	now := s.clock.Now()
+	var removal db.LinkRemoval
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.queries.DeleteLink(ctx, linkID); err != nil {
+			return fmt.Errorf("remove link: %w", err)
+		}
+		removal, err = tx.queries.CreateLinkRemoval(ctx, db.CreateLinkRemovalParams{
+			ChildID:       row.ChildID,
+			ParentID:      row.ParentID,
+			Note:          row.Note,
+			RequestedBy:   row.RequestedBy,
+			LinkCreatedAt: row.CreatedAt,
+			RemovedBy:     actorID,
+			RemovedAt:     now.Format(timeFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("record link removal: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return LinkRemoval{}, err
 	}
-	return nil
+	return LinkRemoval{
+		ID:        removal.ID,
+		Child:     goalFromRow(child.Goal, child.Account),
+		Parent:    goalFromRow(parent.Goal, parent.Account),
+		RemovedBy: actorID,
+		RemovedAt: now,
+	}, nil
+}
+
+// RestoreLink undoes a removal, putting the link back as accepted between the
+// same two Goals with its original note, without asking the parent's Owner to
+// accept it again: they accepted it once. Because that skips acceptance, only
+// the person who removed the link may restore it, only while they still own
+// one of its Goals, and only once. It is refused, changing nothing, when the
+// same link exists again or restoring it would now close a cycle (ADR-0001).
+func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64) (Link, error) {
+	removal, err := s.queries.GetLinkRemoval(ctx, removalID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Link{}, fmt.Errorf("%w: link removal %d", ErrNotFound, removalID)
+		}
+		return Link{}, fmt.Errorf("look up link removal: %w", err)
+	}
+	if removal.RemovedBy != actorID {
+		return Link{}, fmt.Errorf("%w: only the person who removed a link may undo it", ErrNotAuthorized)
+	}
+	if removal.RestoredAt != nil {
+		return Link{}, fmt.Errorf("%w: this removal has already been undone", ErrValidation)
+	}
+	child, err := s.queries.GetGoal(ctx, removal.ChildID)
+	if err != nil {
+		return Link{}, fmt.Errorf("look up child goal: %w", err)
+	}
+	parent, err := s.queries.GetGoal(ctx, removal.ParentID)
+	if err != nil {
+		return Link{}, fmt.Errorf("look up parent goal: %w", err)
+	}
+	if child.Goal.OwnerID != actorID && parent.Goal.OwnerID != actorID {
+		return Link{}, fmt.Errorf("%w: only an Owner of the linked Goals may undo removing the link", ErrNotAuthorized)
+	}
+	var linkID int64
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		if _, err := tx.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
+			ChildID:  removal.ChildID,
+			ParentID: removal.ParentID,
+		}); err == nil {
+			return fmt.Errorf("%w: a link between these Goals already exists again", ErrValidation)
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("look up existing link: %w", err)
+		}
+		if err := tx.ensureNoCycle(ctx, removal.ChildID, removal.ParentID); err != nil {
+			return err
+		}
+		restoredAt := tx.clock.Now().Format(timeFormat)
+		n, err := tx.queries.MarkLinkRemovalRestored(ctx, db.MarkLinkRemovalRestoredParams{
+			RestoredAt: &restoredAt,
+			ID:         removalID,
+		})
+		if err != nil {
+			return fmt.Errorf("mark link removal restored: %w", err)
+		}
+		if n == 0 {
+			return fmt.Errorf("%w: this removal has already been undone", ErrValidation)
+		}
+		row, err := tx.queries.CreateLink(ctx, db.CreateLinkParams{
+			ChildID:     removal.ChildID,
+			ParentID:    removal.ParentID,
+			Status:      LinkAccepted,
+			Note:        removal.Note,
+			RequestedBy: removal.RequestedBy,
+			CreatedAt:   removal.LinkCreatedAt,
+		})
+		if err != nil {
+			return fmt.Errorf("restore link: %w", err)
+		}
+		linkID = row.ID
+		return nil
+	})
+	if err != nil {
+		return Link{}, err
+	}
+	return s.loadLink(ctx, linkID)
 }
 
 // PendingLinkRequests returns the requests awaiting a decision from ownerID, the
