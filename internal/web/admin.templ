@@ -20,6 +20,7 @@ templ adminPage(current *domain.Account, ownerless []domain.Goal, departed []dom
 		</header>
 		<nav class="ad-tools" aria-label="Admin tools">
 			@adminTool("admin-dimensions", "/dimensions", "Dimensions", "Define the Dimensions Goals are tagged with")
+			@adminTool("admin-fields", "/fields", "Fields", "Define the Fields typed on a Goal to describe it")
 			@adminTool("admin-imports", "/imports", "Import goals", "Load Goals from a CSV or XLSX spreadsheet")
 		</nav>
 		<section data-testid="admin-ownerless" class="ad-section">
