@@ -408,3 +408,29 @@ func TestRetiredFieldCardHasNoRequiredControlOverHTTP(t *testing.T) {
 		t.Errorf("restored Budget's card doesn't show it required, with a control to make it optional:\n%s", card)
 	}
 }
+
+// An Admin who is neither the Goal's Owner nor a Delegate gets the Field inputs
+// on the Goal page and can set a Field there (ticket #73).
+func TestAdminWhoIsNeitherOwnerNorDelegateSetsAFieldOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pat := h.SignIn("pat@example.com")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	goal := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "boss@example.com")
+
+	edit := pageElement(t, getBody(t, admin, goalPageURL(ts.URL, goal)), "details", "edit-fields")
+	if !strings.Contains(edit, fmt.Sprintf(`name="field_id" value="%d"`, budget.ID)) {
+		t.Fatalf("the Admin isn't offered the Budget input:\n%s", edit)
+	}
+
+	resp := postForm(t, admin, fmt.Sprintf("%s/goals/%d/fields", ts.URL, goal.ID), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"1200"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+		t.Fatalf("the Admin sets Budget: status %d; body:\n%s", resp.StatusCode, body)
+	}
+	shown := pageElement(t, getBody(t, admin, goalPageURL(ts.URL, goal)), "ul", "goal-fields")
+	if !strings.Contains(shown, "1200") {
+		t.Errorf("the Goal page doesn't show the Admin's Budget = 1200:\n%s", shown)
+	}
+}

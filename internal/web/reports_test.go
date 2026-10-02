@@ -963,3 +963,35 @@ func TestPullOneHighlightOfACheckinOverHTTP(t *testing.T) {
 		t.Errorf("Markdown export should show only the Highlight pulled:\n%s", md)
 	}
 }
+
+// A Report Definition saved from the form filtering on one value of a
+// several-values Dimension selects a Goal that carries that value among others,
+// and leaves out a Goal that carries only other values (ticket #69).
+func TestReportFilterSelectsAGoalCarryingTheValueAmongSeveralOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	customer := h.CreateSeveralValuesDimension(boss, "Customer", "Acme", "Globex", "Initech")
+	acme, globex, initech := customer.Values[0], customer.Values[1], customer.Values[2]
+	both := h.ActiveGoal(boss, "Renew contracts", "Revenue depends on renewals.")
+	h.AssignGoalValue(both, acme)
+	h.AssignGoalValue(both, globex)
+	other := h.ActiveGoal(boss, "Pilot Initech", "A new customer.")
+	h.AssignGoalValue(other, initech)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	resp := postForm(t, client, ts.URL+"/reports", url.Values{
+		"name":   {"Globex MBR"},
+		"filter": {strconv.FormatInt(globex.ID, 10)},
+	})
+	draft := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("save report: status %d: %s", resp.StatusCode, draft)
+	}
+	if !strings.Contains(draft, both.Title) {
+		t.Errorf("the Globex filter doesn't select %q, which carries Acme and Globex; body:\n%s", both.Title, draft)
+	}
+	if strings.Contains(draft, other.Title) {
+		t.Errorf("the Globex filter selects %q, which carries only Initech; body:\n%s", other.Title, draft)
+	}
+}

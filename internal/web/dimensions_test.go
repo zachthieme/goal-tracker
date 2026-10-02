@@ -792,3 +792,79 @@ func TestRetiringADimensionValueOffersUndoOnce(t *testing.T) {
 		t.Errorf("Trust is still Retired after Undo")
 	}
 }
+
+// After an Admin merges a value into another from the Dimensions page, a saved
+// Report Definition that filtered on the merged value still drafts the same
+// Goals: the Goal that carried it, and not the one carrying neither value
+// (ticket #71).
+func TestMergedValueKeepsASavedReportFilterSelectingTheSameGoalsOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	customer := h.CreateDimension(boss, "Customer", "Acme", "ACME Corp", "Globex")
+	acme, acmeCorp, globex := customer.Values[0], customer.Values[1], customer.Values[2]
+	carrier := h.ActiveGoal(boss, "Renew ACME", "Revenue depends on renewals.")
+	h.AssignGoalValue(carrier, acmeCorp)
+	other := h.ActiveGoal(boss, "Pilot Globex", "A new customer.")
+	h.AssignGoalValue(other, globex)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "ACME MBR", DimensionValueIDs: []int64{acmeCorp.ID}})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	draftURL := fmt.Sprintf("%s/reports/%d", ts.URL, def.ID)
+
+	before := getBody(t, client, draftURL)
+	if !strings.Contains(before, carrier.Title) || strings.Contains(before, other.Title) {
+		t.Fatalf("before the merge the draft doesn't select just %q; body:\n%s", carrier.Title, before)
+	}
+
+	resp := postForm(t, client, fmt.Sprintf("%s/dimension-values/%d/merge", ts.URL, acmeCorp.ID), url.Values{"into": {fmt.Sprint(acme.ID)}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+		t.Fatalf("merge: status %d: %s", resp.StatusCode, body)
+	}
+
+	after := getBody(t, client, draftURL)
+	if !strings.Contains(after, carrier.Title) {
+		t.Errorf("after the merge the saved filter no longer selects %q; body:\n%s", carrier.Title, after)
+	}
+	if strings.Contains(after, other.Title) {
+		t.Errorf("after the merge the saved filter selects %q; body:\n%s", other.Title, after)
+	}
+}
+
+// A Retired value isn't offered on the Goal page; once an Admin restores it
+// from the Dimensions page it is offered again, and the Owner can set it
+// (ticket #72).
+func TestRestoredValueIsOfferedAgainOnTheGoalPageOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	trust := pillar.Values[1]
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, trust.ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "boss@example.com")
+	owner := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+	trustOption := fmt.Sprintf(`<option value="%d">Trust</option>`, trust.ID)
+
+	edit := between(t, getBody(t, owner, goalURL), `id="edit-dimensions"`, "</details>")
+	if strings.Contains(edit, fmt.Sprintf(`value="%d"`, trust.ID)) {
+		t.Fatalf("the Retired Trust is offered on the Goal page:\n%s", edit)
+	}
+
+	if resp := postForm(t, admin, fmt.Sprintf("%s/dimension-values/%d/restore", ts.URL, trust.ID), url.Values{}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("restore Trust: status %d", resp.StatusCode)
+	}
+
+	edit = between(t, getBody(t, owner, goalURL), `id="edit-dimensions"`, "</details>")
+	if !strings.Contains(edit, trustOption) {
+		t.Fatalf("the restored Trust isn't offered on the Goal page:\n%s", edit)
+	}
+	postForm(t, owner, goalURL+"/dimensions", url.Values{"dimension_id": {fmt.Sprint(pillar.ID)}, "value_id": {fmt.Sprint(trust.ID)}})
+	shown := pageElement(t, getBody(t, owner, goalURL), "section", "goal-dimensions")
+	if !strings.Contains(shown, `data-testid="goal-dimension-value">Trust<`) {
+		t.Errorf("the Owner couldn't set the restored Trust:\n%s", shown)
+	}
+}
