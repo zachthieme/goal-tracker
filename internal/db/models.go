@@ -86,6 +86,7 @@ type Dimension struct {
 	Selection string
 	List      string
 	Retired   int64
+	Required  int64
 }
 
 type DimensionValue struct {
@@ -104,6 +105,7 @@ type Field struct {
 	Unit      string
 	Retired   int64
 	CreatedAt string
+	Required  int64
 }
 
 type Goal struct {

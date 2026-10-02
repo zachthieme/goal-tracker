@@ -17,13 +17,16 @@ import (
 // or Extendable. Values holds the Dimension's values in display order, retired
 // ones included. A Retired Dimension is no longer offered when setting a Goal's
 // values, filtering or grouping the Goal list, or defining a Report, but the
-// Goals carrying its values still show them (CONTEXT.md: Retired).
+// Goals carrying its values still show them (CONTEXT.md: Retired). Required
+// says every Active Goal should carry one of its values; one that doesn't is
+// Incomplete (CONTEXT.md: Incomplete).
 type Dimension struct {
 	ID        int64
 	Name      string
 	Selection string
 	List      string
 	Retired   bool
+	Required  bool
 	Values    []DimensionValue
 }
 
@@ -229,6 +232,26 @@ func (s *Service) setDimensionRetired(ctx context.Context, actorID, dimensionID 
 			return fmt.Errorf("%w: dimension does not exist", ErrValidation)
 		}
 		return fmt.Errorf("set dimension retired: %w", err)
+	}
+	return nil
+}
+
+// SetDimensionRequired marks a Dimension required, so a Proposed Goal can't
+// become Active without one of its values, or unmarks it (CONTEXT.md:
+// Incomplete). Marking is always allowed: Active Goals lacking a value stay
+// Active and become Incomplete. Only an Admin may.
+func (s *Service) SetDimensionRequired(ctx context.Context, actorID, dimensionID int64, required bool) error {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return err
+	}
+	if _, err := s.queries.SetDimensionRequired(ctx, db.SetDimensionRequiredParams{
+		Required: boolFlag(required),
+		ID:       dimensionID,
+	}); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: dimension does not exist", ErrValidation)
+		}
+		return fmt.Errorf("set dimension required: %w", err)
 	}
 	return nil
 }
@@ -819,7 +842,7 @@ func GroupGoalsByDimension(goals []GoalWithValues, dim Dimension) []GoalGroup {
 }
 
 func dimensionFromRow(d db.Dimension) Dimension {
-	return Dimension{ID: d.ID, Name: d.Name, Selection: d.Selection, List: d.List, Retired: d.Retired != 0}
+	return Dimension{ID: d.ID, Name: d.Name, Selection: d.Selection, List: d.List, Retired: d.Retired != 0, Required: d.Required != 0}
 }
 
 // goalValueFromRow is a value as read off a Goal, saying whether its Dimension

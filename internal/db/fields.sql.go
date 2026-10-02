@@ -26,7 +26,7 @@ func (q *Queries) ClearGoalFieldValue(ctx context.Context, arg ClearGoalFieldVal
 const createField = `-- name: CreateField :one
 INSERT INTO fields (name, type, unit, created_at)
 VALUES (?, ?, ?, ?)
-RETURNING id, name, type, unit, retired, created_at
+RETURNING id, name, type, unit, retired, created_at, required
 `
 
 type CreateFieldParams struct {
@@ -51,12 +51,13 @@ func (q *Queries) CreateField(ctx context.Context, arg CreateFieldParams) (Field
 		&i.Unit,
 		&i.Retired,
 		&i.CreatedAt,
+		&i.Required,
 	)
 	return i, err
 }
 
 const getField = `-- name: GetField :one
-SELECT id, name, type, unit, retired, created_at FROM fields WHERE id = ? LIMIT 1
+SELECT id, name, type, unit, retired, created_at, required FROM fields WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetField(ctx context.Context, id int64) (Field, error) {
@@ -69,12 +70,13 @@ func (q *Queries) GetField(ctx context.Context, id int64) (Field, error) {
 		&i.Unit,
 		&i.Retired,
 		&i.CreatedAt,
+		&i.Required,
 	)
 	return i, err
 }
 
 const listFields = `-- name: ListFields :many
-SELECT id, name, type, unit, retired, created_at FROM fields ORDER BY name, id
+SELECT id, name, type, unit, retired, created_at, required FROM fields ORDER BY name, id
 `
 
 func (q *Queries) ListFields(ctx context.Context) ([]Field, error) {
@@ -93,6 +95,7 @@ func (q *Queries) ListFields(ctx context.Context) ([]Field, error) {
 			&i.Unit,
 			&i.Retired,
 			&i.CreatedAt,
+			&i.Required,
 		); err != nil {
 			return nil, err
 		}
@@ -108,7 +111,7 @@ func (q *Queries) ListFields(ctx context.Context) ([]Field, error) {
 }
 
 const listGoalFieldValues = `-- name: ListGoalFieldValues :many
-SELECT goal_field_values.value, fields.id, fields.name, fields.type, fields.unit, fields.retired, fields.created_at
+SELECT goal_field_values.value, fields.id, fields.name, fields.type, fields.unit, fields.retired, fields.created_at, fields.required
 FROM goal_field_values
 JOIN fields ON fields.id = goal_field_values.field_id
 WHERE goal_field_values.goal_id = ?
@@ -139,6 +142,7 @@ func (q *Queries) ListGoalFieldValues(ctx context.Context, goalID int64) ([]List
 			&i.Field.Unit,
 			&i.Field.Retired,
 			&i.Field.CreatedAt,
+			&i.Field.Required,
 		); err != nil {
 			return nil, err
 		}
@@ -153,9 +157,36 @@ func (q *Queries) ListGoalFieldValues(ctx context.Context, goalID int64) ([]List
 	return items, nil
 }
 
+const setFieldRequired = `-- name: SetFieldRequired :one
+UPDATE fields SET required = ? WHERE id = ?
+RETURNING id, name, type, unit, retired, created_at, required
+`
+
+type SetFieldRequiredParams struct {
+	Required int64
+	ID       int64
+}
+
+// Mark a Field required (1), so every Active Goal should have a value in it, or
+// unmark it (0).
+func (q *Queries) SetFieldRequired(ctx context.Context, arg SetFieldRequiredParams) (Field, error) {
+	row := q.db.QueryRowContext(ctx, setFieldRequired, arg.Required, arg.ID)
+	var i Field
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Type,
+		&i.Unit,
+		&i.Retired,
+		&i.CreatedAt,
+		&i.Required,
+	)
+	return i, err
+}
+
 const setFieldRetired = `-- name: SetFieldRetired :one
 UPDATE fields SET retired = ? WHERE id = ?
-RETURNING id, name, type, unit, retired, created_at
+RETURNING id, name, type, unit, retired, created_at, required
 `
 
 type SetFieldRetiredParams struct {
@@ -174,6 +205,7 @@ func (q *Queries) SetFieldRetired(ctx context.Context, arg SetFieldRetiredParams
 		&i.Unit,
 		&i.Retired,
 		&i.CreatedAt,
+		&i.Required,
 	)
 	return i, err
 }

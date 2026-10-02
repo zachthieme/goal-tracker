@@ -17,12 +17,15 @@ import (
 // Goal rather than chosen from a list (CONTEXT.md: Field; ADR 0005). It
 // describes a Goal and never filters, groups or sums. Type is fixed at
 // creation, and Unit labels a number Field's values (e.g. "$", "FTE").
+// Required says every Active Goal should have a value in it; one that doesn't
+// is Incomplete (CONTEXT.md: Incomplete).
 type Field struct {
-	ID      int64
-	Name    string
-	Type    string
-	Unit    string
-	Retired bool
+	ID       int64
+	Name     string
+	Type     string
+	Unit     string
+	Retired  bool
+	Required bool
 }
 
 // A Field's Type: what its value holds (CONTEXT.md: Field).
@@ -99,6 +102,23 @@ func (s *Service) setFieldRetired(ctx context.Context, actorID, fieldID int64, r
 			return fmt.Errorf("%w: field does not exist", ErrValidation)
 		}
 		return fmt.Errorf("set field retired: %w", err)
+	}
+	return nil
+}
+
+// SetFieldRequired marks a Field required, so a Proposed Goal can't become
+// Active without a value in it, or unmarks it (CONTEXT.md: Incomplete). Marking
+// is always allowed: Active Goals lacking a value stay Active and become
+// Incomplete. Only an Admin may.
+func (s *Service) SetFieldRequired(ctx context.Context, actorID, fieldID int64, required bool) error {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return err
+	}
+	if _, err := s.queries.SetFieldRequired(ctx, db.SetFieldRequiredParams{Required: boolFlag(required), ID: fieldID}); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: field does not exist", ErrValidation)
+		}
+		return fmt.Errorf("set field required: %w", err)
 	}
 	return nil
 }
@@ -247,5 +267,5 @@ func (s *Service) requireFreeFieldName(ctx context.Context, name string) error {
 }
 
 func fieldFromRow(f db.Field) Field {
-	return Field{ID: f.ID, Name: f.Name, Type: f.Type, Unit: f.Unit, Retired: f.Retired != 0}
+	return Field{ID: f.ID, Name: f.Name, Type: f.Type, Unit: f.Unit, Retired: f.Retired != 0, Required: f.Required != 0}
 }

@@ -88,6 +88,21 @@ func (s *Server) handleSetDimensionList(w http.ResponseWriter, r *http.Request, 
 	s.redirectToDimensions(w, r)
 }
 
+// handleSetDimensionRequired marks the Dimension in the path required when the
+// form's required is 1, and unmarks it otherwise (CONTEXT.md: Incomplete). Only
+// an Admin may.
+func (s *Server) handleSetDimensionRequired(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, ok := dimensionIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	if err := s.svc.SetDimensionRequired(r.Context(), current.ID, id, r.FormValue("required") == "1"); err != nil {
+		writeDimensionError(w, err)
+		return
+	}
+	s.redirectToDimensions(w, r)
+}
+
 // handleAddDimensionValue adds a value to the Dimension in the path. Only an
 // Admin may.
 func (s *Server) handleAddDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {

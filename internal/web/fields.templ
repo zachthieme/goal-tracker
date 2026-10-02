@@ -12,8 +12,9 @@ const confirmRetireField = "Retire this Field? Goals that have a value in it kee
 // fieldsPage lists every Field as a card saying what it holds, and — for an
 // Admin — the form to define one: a name, one of the four types, and a number
 // Field's optional unit (CONTEXT.md: Admin defines Fields; Field). A Field's
-// type can't change once it is defined. An Admin retires a Field from its
-// card, and a Retired Field stays listed, flagged retired, with a button to
+// type can't change once it is defined. An Admin marks a Field required, or
+// optional again, from its card (CONTEXT.md: Incomplete), and retires it
+// there; a Retired Field stays listed, flagged retired, with a button to
 // restore it (CONTEXT.md: Retired).
 templ fieldsPage(current *domain.Account, fields []domain.Field) {
 	{{ admin := current != nil && current.IsAdmin }}
@@ -63,8 +64,23 @@ templ fieldsPage(current *domain.Account, fields []domain.Field) {
 							<span data-testid="field-retired" class="muted small">retired</span>
 						}
 					</h3>
-					<p class="muted small" data-testid="field-type">{ fieldTypeLabel(f) }</p>
+					<p data-testid="field-type" class="muted small">
+						{ fieldTypeLabel(f) }
+						if f.Required {
+							{ " · " }
+							<span data-testid="field-required">Required</span>
+						}
+					</p>
 					if admin {
+						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/fields/%d/required", f.ID)) }>
+							if f.Required {
+								<input type="hidden" name="required" value="0"/>
+								<button type="submit" class="btn sm">Make it optional</button>
+							} else {
+								<input type="hidden" name="required" value="1"/>
+								<button type="submit" class="btn sm">Make it required</button>
+							}
+						</form>
 						if f.Retired {
 							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/fields/%d/restore", f.ID)) }>
 								<button type="submit" class="btn sm">Restore this Field</button>

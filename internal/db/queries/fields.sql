@@ -31,3 +31,9 @@ ORDER BY fields.name, fields.id;
 -- Retire a Field (1) or restore it (0); nothing about it is deleted.
 UPDATE fields SET retired = ? WHERE id = ?
 RETURNING *;
+
+-- name: SetFieldRequired :one
+-- Mark a Field required (1), so every Active Goal should have a value in it, or
+-- unmark it (0).
+UPDATE fields SET required = ? WHERE id = ?
+RETURNING *;

@@ -25,3 +25,12 @@ func (h *Harness) SetGoalField(actor domain.Account, goal domain.Goal, field dom
 		h.T.Fatalf("SetGoalField: %v", err)
 	}
 }
+
+// SetFieldRequired marks field required, or unmarks it, on behalf of admin,
+// failing the test on error.
+func (h *Harness) SetFieldRequired(admin domain.Account, field domain.Field, required bool) {
+	h.T.Helper()
+	if err := h.Service.SetFieldRequired(context.Background(), admin.ID, field.ID, required); err != nil {
+		h.T.Fatalf("SetFieldRequired: %v", err)
+	}
+}

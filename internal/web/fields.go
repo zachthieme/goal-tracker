@@ -35,16 +35,27 @@ func (s *Server) handleCreateField(w http.ResponseWriter, r *http.Request, curre
 // handleRetireField retires the Field in the path, so it is no longer offered
 // for entry on a Goal. Only an Admin may.
 func (s *Server) handleRetireField(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	s.setFieldRetired(w, r, current, s.svc.RetireField)
+	s.fieldAction(w, r, current, s.svc.RetireField)
 }
 
 // handleRestoreField reverses the retirement of the Field in the path. Only an
 // Admin may.
 func (s *Server) handleRestoreField(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	s.setFieldRetired(w, r, current, s.svc.RestoreField)
+	s.fieldAction(w, r, current, s.svc.RestoreField)
 }
 
-func (s *Server) setFieldRetired(w http.ResponseWriter, r *http.Request, current domain.Account, set func(ctx context.Context, actorID, fieldID int64) error) {
+// handleSetFieldRequired marks the Field in the path required when the form's
+// required is 1, and unmarks it otherwise (CONTEXT.md: Incomplete). Only an
+// Admin may.
+func (s *Server) handleSetFieldRequired(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	s.fieldAction(w, r, current, func(ctx context.Context, actorID, fieldID int64) error {
+		return s.svc.SetFieldRequired(ctx, actorID, fieldID, r.FormValue("required") == "1")
+	})
+}
+
+// fieldAction runs set on the Field in the path for the signed-in Admin, then
+// goes back to the Fields page.
+func (s *Server) fieldAction(w http.ResponseWriter, r *http.Request, current domain.Account, set func(ctx context.Context, actorID, fieldID int64) error) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.NotFound(w, r)

@@ -127,3 +127,9 @@ WHERE dimension_value_id = sqlc.arg(merged_id);
 -- name: DeleteDimensionValue :exec
 -- Only a merge deletes a value, once nothing refers to it any more.
 DELETE FROM dimension_values WHERE id = ?;
+
+-- name: SetDimensionRequired :one
+-- Mark a Dimension required (1), so every Active Goal should carry one of its
+-- values, or unmark it (0).
+UPDATE dimensions SET required = ? WHERE id = ?
+RETURNING *;

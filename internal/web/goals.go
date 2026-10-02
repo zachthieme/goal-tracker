@@ -151,6 +151,9 @@ type goalFilter struct {
 	Lifecycle string
 	// Mine keeps the Goals the viewer Owns or is a Delegate on (?mine=1).
 	Mine bool
+	// Incomplete keeps the Incomplete Goals (?incomplete=1; CONTEXT.md:
+	// Incomplete).
+	Incomplete bool
 }
 
 // lifecycleFilters are the Lifecycle filter's choices, in the order a Goal
@@ -178,7 +181,8 @@ func readGoalFilter(q url.Values) goalFilter {
 		Query:     strings.TrimSpace(q.Get("q")),
 		Health:    q.Get("health"),
 		Lifecycle: q.Get("lifecycle"),
-		Mine:      q.Get("mine") == "1",
+		Mine:       q.Get("mine") == "1",
+		Incomplete: q.Get("incomplete") == "1",
 	}
 }
 
@@ -196,6 +200,9 @@ func (f goalFilter) keeps(row goalRow, mine func(domain.Goal) bool) bool {
 			return false
 		}
 	}
+	if f.Incomplete && len(row.Incomplete) == 0 {
+		return false
+	}
 	if f.Lifecycle != "" && row.Goal.Lifecycle != f.Lifecycle {
 		return false
 	}
@@ -208,13 +215,17 @@ func (f goalFilter) keeps(row goalRow, mine func(domain.Goal) bool) bool {
 }
 
 // goalRow is one Goal in the Goal list with what its row shows beyond the Goal
-// and its Dimension values: its latest Check-in, which carries its Health, and
-// whether it is Stale or its Path to Green is overdue.
+// and its Dimension values: its latest Check-in, which carries its Health,
+// whether it is Stale or its Path to Green is overdue, and whether it is
+// Incomplete.
 type goalRow struct {
 	domain.GoalWithValues
 	// Latest is the Goal's most recent Check-in, nil when it has none.
 	Latest    *domain.Checkin
 	Freshness domain.Freshness
+	// Incomplete names the required Dimensions and Fields an Active Goal has
+	// no value in, empty when it isn't Incomplete (CONTEXT.md: Incomplete).
+	Incomplete []string
 	// PriorDates are the delivery dates the Goal's Date Slips moved it from,
 	// earliest first, shown struck through ahead of its current date.
 	PriorDates []time.Time
@@ -380,6 +391,9 @@ func (s *Server) loadGoalRow(ctx context.Context, gv domain.GoalWithValues) (goa
 	}
 	if row.Freshness, err = s.svc.Freshness(ctx, gv.Goal.ID); err != nil {
 		return goalRow{}, fmt.Errorf("read freshness: %w", err)
+	}
+	if row.Incomplete, err = s.svc.Incomplete(ctx, gv.Goal); err != nil {
+		return goalRow{}, fmt.Errorf("read incomplete: %w", err)
 	}
 	slips, err := s.svc.ListDateSlips(ctx, gv.Goal.ID)
 	if err != nil {
@@ -550,6 +564,14 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("read freshness signals: %w", err)
 	}
+	required, err := s.svc.RequiredValues(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("read required values: %w", err)
+	}
+	incomplete, err := s.svc.Incomplete(ctx, g)
+	if err != nil {
+		return goalView{}, fmt.Errorf("read incomplete: %w", err)
+	}
 
 	// Each linked Goal's Health, shown beside it in the sidebar.
 	linkHealth := map[int64]string{}
@@ -606,6 +628,8 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		MilestoneChurn: churn,
 		Signals:        signals,
 		Freshness:      freshness,
+		Required:       required,
+		Incomplete:     incomplete,
 		SuggestedDate:  domain.SuggestDeliveryDate(s.svc.Now()).Format(dateLayout),
 	}, nil
 }
@@ -674,7 +698,13 @@ type goalView struct {
 	Signals domain.GoalSignals
 	// Freshness says whether the Goal is Stale or its Path to Green is overdue,
 	// flagged as prominently as Red (CONTEXT.md: Stale, Path to Green).
-	Freshness     domain.Freshness
+	Freshness domain.Freshness
+	// Required are the Dimensions and Fields an Admin has marked required, each
+	// saying whether the Goal has a value in it, for the activation checklist.
+	// Incomplete names those an Active Goal lacks, empty when it lacks none or
+	// isn't Active (CONTEXT.md: Incomplete).
+	Required      []domain.RequiredValue
+	Incomplete    []string
 	SuggestedDate string
 	// ChildForm is the add-child-Goal form's input, filled in when a failed
 	// create sends the page back.
@@ -1254,8 +1284,9 @@ type activationItem struct {
 
 // activationChecklist restates the minimum standard domain.ActivateGoal
 // enforces, so the Owner sees what's missing before they try: a So What, an
-// Owner, Dated with a delivery date or Ongoing, and a Milestone or Metric for a
-// Dated Goal or a Metric for an Ongoing one. The server still enforces the rules
+// Owner, Dated with a delivery date or Ongoing, a Milestone or Metric for a
+// Dated Goal or a Metric for an Ongoing one, and a value in each required
+// Dimension and Field (CONTEXT.md: Incomplete). The server still enforces the rules
 // on activation.
 func (v goalView) activationChecklist() []activationItem {
 	g := v.Goal
@@ -1265,9 +1296,14 @@ func (v goalView) activationChecklist() []activationItem {
 		{"Dated with a delivery date, or Ongoing", g.Kind == domain.GoalOngoing || (g.Kind == domain.GoalDated && !g.DeliveryDate.IsZero())},
 	}
 	if g.Kind == domain.GoalOngoing {
-		return append(items, activationItem{"A Metric", len(v.Metrics) > 0})
+		items = append(items, activationItem{"A Metric", len(v.Metrics) > 0})
+	} else {
+		items = append(items, activationItem{"A Milestone or Metric", len(v.Milestones)+len(v.Metrics) > 0})
 	}
-	return append(items, activationItem{"A Milestone or Metric", len(v.Milestones)+len(v.Metrics) > 0})
+	for _, r := range v.Required {
+		items = append(items, activationItem{"A value in " + r.Name, r.Set})
+	}
+	return items
 }
 
 // readyToActivate reports whether every activation checklist item is done.

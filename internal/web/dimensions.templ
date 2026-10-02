@@ -16,8 +16,8 @@ const confirmRetireDimension = "Retire this Dimension? Goals that have its value
 const confirmMerge = "Merge this value? Its Goals and Report filters move to the chosen value, and this value is removed. This can't be undone."
 
 // dimensionsPage lists every Dimension as a card of its values, whether a Goal
-// takes one of them or several, and whether its list is Fixed or Extendable,
-// and — for an Admin — the controls to define a Dimension and, behind each
+// takes one of them or several, whether its list is Fixed or Extendable, and
+// whether it is required, and — for an Admin — the controls to define a Dimension and, behind each
 // card's Edit toggle, to switch between one value and several and between a
 // Fixed and an Extendable list, and to add, rename, and retire values
 // (CONTEXT.md: Admin defines Dimensions; Fixed; Extendable). Retired values stay listed, struck through, and a
@@ -77,10 +77,14 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *
 							<span data-testid="dimension-retired" class="muted small">retired</span>
 						}
 					</h3>
-					<p class="muted small">
+					<p data-testid="dimension-rules" class="muted small">
 						Each Goal takes <span data-testid="dimension-selection">{ selectionLabel(d) }</span>
 						{ " · " }
 						<span data-testid="dimension-list">{ listLabel(d) }</span> list
+						if d.Required {
+							{ " · " }
+							<span data-testid="dimension-required">Required</span>
+						}
 					</p>
 					@dimensionValues(d)
 					if admin {
@@ -125,7 +129,8 @@ templ dimensionValues(d domain.Dimension) {
 
 // dimensionEdit is an Admin's Edit toggle on a Dimension card: a switch between
 // one value and several per Goal, a switch between a Fixed and an Extendable
-// list, then each value in the list's order with buttons to move it up or down,
+// list, a switch between required and optional (CONTEXT.md: Incomplete), then
+// each value in the list's order with buttons to move it up or down,
 // — while it is still in use — a rename form and a Retire button, and a form
 // to merge it into another of the Dimension's values — or, once Retired, a
 // Restore button — then a "sort alphabetically" action, a form to add a value,
@@ -150,6 +155,15 @@ templ dimensionEdit(d domain.Dimension) {
 			} else {
 				<input type="hidden" name="list" value={ domain.ListExtendable }/>
 				<button type="submit" class="btn sm">Make the list Extendable</button>
+			}
+		</form>
+		<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/required", d.ID)) }>
+			if d.Required {
+				<input type="hidden" name="required" value="0"/>
+				<button type="submit" class="btn sm">Make it optional</button>
+			} else {
+				<input type="hidden" name="required" value="1"/>
+				<button type="submit" class="btn sm">Make it required</button>
 			}
 		</form>
 		<ul class="dm-rows">

@@ -3028,3 +3028,138 @@ func TestGoalTableSaveLeavesCellsItDidNotChange(t *testing.T) {
 		t.Errorf("Alpha's Budget, Approver = %q, %q, want 300 kept and Dana saved", got[budget.ID], got[approver.ID])
 	}
 }
+
+// A required Dimension or Field joins the activation checklist, and activating
+// without its value is refused naming it (CONTEXT.md: Incomplete).
+func TestActivationNeedsRequiredValues(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	h.SetDimensionRequired(boss, pillar, true)
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.SetFieldRequired(boss, budget, true)
+	goal := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	if _, err := h.Service.MarkGoalOngoing(context.Background(), goal.ID); err != nil {
+		t.Fatalf("MarkGoalOngoing: %v", err)
+	}
+	if _, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+		GoalID: goal.ID, Name: "p95", Unit: "ms", Direction: domain.MetricDown, Baseline: 900, Target: 300,
+		TargetDate: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	items := activationItems(t, getBody(t, client, goalURL))
+	for _, label := range []string{"A value in Pillar", "A value in Budget"} {
+		if done, ok := items[label]; !ok || done {
+			t.Errorf("checklist item %q: listed %v, done %v; want listed and missing (items %v)", label, ok, done, items)
+		}
+	}
+	resp := postForm(t, client, goalURL+"/activate", nil)
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "Pillar") || !strings.Contains(body, "Budget") {
+		t.Errorf("activate without the values: status %d, body %q; want 422 naming Pillar and Budget", resp.StatusCode, body)
+	}
+
+	h.AssignGoalValue(goal, pillar.Values[0])
+	h.SetGoalField(sam, goal, budget, "100")
+	items = activationItems(t, getBody(t, client, goalURL))
+	if !items["A value in Pillar"] || !items["A value in Budget"] {
+		t.Errorf("checklist after setting the values: %v, want both done", items)
+	}
+	if resp := postForm(t, client, goalURL+"/activate", nil); resp.StatusCode != http.StatusOK {
+		t.Errorf("activate with the values: status %d; body:\n%s", resp.StatusCode, readBody(t, resp))
+	}
+}
+
+// An Active Goal lacking a required value shows an Incomplete flag naming what
+// it lacks, in a quieter style than Stale's; setting the value clears it, and
+// a Goal that isn't Active never shows it (CONTEXT.md: Incomplete).
+func TestGoalPageFlagsIncomplete(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	onHold := h.OnHoldGoal(sam, "Rebuild search", "Nobody finds anything.", "Waiting on legal.")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	h.SetDimensionRequired(boss, pillar, true)
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.SetFieldRequired(boss, budget, true)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	flag := pageElement(t, getBody(t, client, goalURL), "p", "goal-incomplete")
+	for _, want := range []string{"Incomplete", "Pillar", "Budget"} {
+		if !strings.Contains(flag, want) {
+			t.Errorf("Incomplete flag lacks %q: %s", want, flag)
+		}
+	}
+	if !strings.Contains(openTag(flag), "lc") || strings.Contains(openTag(flag), " st") {
+		t.Errorf("Incomplete flag should be quieter than Stale: %s", openTag(flag))
+	}
+	if page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, onHold.ID)); strings.Contains(page, `data-testid="goal-incomplete"`) {
+		t.Errorf("On Hold Goal is flagged Incomplete")
+	}
+
+	h.AssignGoalValue(goal, pillar.Values[0])
+	h.SetGoalField(sam, goal, budget, "100")
+	if page := getBody(t, client, goalURL); strings.Contains(page, `data-testid="goal-incomplete"`) {
+		t.Errorf("Goal with every required value is still flagged Incomplete")
+	}
+}
+
+// The Goal list marks each Incomplete Goal's row without moving it in the
+// problems-first order, and its Incomplete filter keeps exactly the Incomplete
+// Goals, in either layout (CONTEXT.md: Incomplete).
+func TestGoalListMarksAndFiltersIncomplete(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	complete := h.ActiveGoal(sam, "Zulu, complete", "It matters.")
+	lacking := h.ActiveGoal(sam, "Alpha, incomplete", "It matters.")
+	lackingToo := h.ActiveGoal(sam, "Mike, incomplete", "It matters.")
+	onHold := h.OnHoldGoal(sam, "Bravo, On Hold", "It matters.", "Waiting on legal.")
+	proposed := h.CreateGoal(sam, "Charlie, Proposed", "It matters.")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	h.AssignGoalValue(complete, pillar.Values[0])
+	h.SetDimensionRequired(boss, pillar, true)
+	goals := []domain.Goal{complete, lacking, lackingToo, onHold, proposed}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals")
+	rows := goalRows(t, page)
+	if got, want := rowTitles(rows, goals...), []string{"Alpha, incomplete", "Bravo, On Hold", "Charlie, Proposed", "Mike, incomplete", "Zulu, complete"}; !slices.Equal(got, want) {
+		t.Errorf("rows = %q, want %q: Incomplete changes no sort order", got, want)
+	}
+	for _, row := range rows {
+		marked := strings.Contains(row, `data-testid="incomplete"`)
+		want := strings.Contains(row, navTo(lacking.ID)) || strings.Contains(row, navTo(lackingToo.ID))
+		if marked != want {
+			t.Errorf("row marked Incomplete %v, want %v: %s", marked, want, row)
+		}
+	}
+	if box := pageTag(t, page, "input", "goal-incomplete-filter"); strings.Contains(box, "checked") {
+		t.Errorf("Incomplete filter is checked without ?incomplete=1: %s", box)
+	}
+
+	page = getBody(t, client, ts.URL+"/goals?incomplete=1")
+	if got, want := rowTitles(goalRows(t, page), goals...), []string{"Alpha, incomplete", "Mike, incomplete"}; !slices.Equal(got, want) {
+		t.Errorf("incomplete=1: rows = %q, want %q", got, want)
+	}
+	if box := pageTag(t, page, "input", "goal-incomplete-filter"); !strings.Contains(box, "checked") {
+		t.Errorf("Incomplete filter lost its check: %s", box)
+	}
+	table := getBody(t, client, ts.URL+"/goals?layout=table&incomplete=1")
+	for _, g := range goals {
+		listed := strings.Contains(table, navTo(g.ID))
+		if want := g.ID == lacking.ID || g.ID == lackingToo.ID; listed != want {
+			t.Errorf("table layout, incomplete=1: %s listed %v, want %v", g.Title, listed, want)
+		}
+	}
+}

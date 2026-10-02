@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -39,9 +40,9 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 	}
 }
 
-// goalFilters is the filter bar — search, Health, Lifecycle, and Mine only —
-// with the Dimension filters and Group by folded under More filters, all
-// submitted as a GET so the chosen slice lives in the URL.
+// goalFilters is the filter bar — search, Health, Lifecycle, Mine only and
+// Incomplete — with the Dimension filters and Group by folded under More
+// filters, all submitted as a GET so the chosen slice lives in the URL.
 templ goalFilters(view goalsListData) {
 	<form method="get" action="/goals" data-testid="goal-filters" class="gl-filters">
 		<div class="gl-bar">
@@ -67,6 +68,10 @@ templ goalFilters(view goalsListData) {
 			<label class="gl-mine">
 				<input data-testid="goal-mine-filter" type="checkbox" name="mine" value="1" checked?={ view.Filter.Mine }/>
 				Mine only
+			</label>
+			<label class="gl-mine">
+				<input data-testid="goal-incomplete-filter" type="checkbox" name="incomplete" value="1" checked?={ view.Filter.Incomplete }/>
+				Incomplete
 			</label>
 			<button type="submit" class="btn">Apply</button>
 			<a href="/goals" class="btn quiet">Clear</a>
@@ -205,9 +210,10 @@ templ noGoals(text string) {
 	<tr><td data-testid="no-goals" colspan="6" class="muted">{ text }</td></tr>
 }
 
-// goalListRow is one Goal in the list: its Health, its title with the Ownerless
-// and freshness marks under it, its Owner, and its Dimension values, a Retired
-// one or one in a Retired Dimension marked retired.
+// goalListRow is one Goal in the list: its Health, its title with the
+// Ownerless, freshness and Incomplete marks under it (Incomplete the quietest),
+// its Owner, and its Dimension values, a Retired one or one in a Retired
+// Dimension marked retired.
 templ goalListRow(row goalRow) {
 	{{ g := row.Goal }}
 	<tr data-testid="goal-row">
@@ -220,12 +226,15 @@ templ goalListRow(row goalRow) {
 		</td>
 		<td>
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
-			if g.Ownerless || row.Freshness.Stale || row.Freshness.PathToGreenOverdue {
+			if g.Ownerless || row.Freshness.Stale || row.Freshness.PathToGreenOverdue || len(row.Incomplete) > 0 {
 				<div class="gl-marks">
 					if g.Ownerless {
 						<span data-testid="ownerless" class="badge ol">Ownerless</span>
 					}
 					@goalRowFreshness(row.Freshness)
+					if len(row.Incomplete) > 0 {
+						<span data-testid="incomplete" class="badge lc" title={ "No value yet in " + strings.Join(row.Incomplete, ", ") }>Incomplete</span>
+					}
 				</div>
 			}
 		</td>
@@ -578,6 +587,7 @@ templ goalPage(current *domain.Account, v goalView) {
 		</nav>
 		@goalFreshness(v.Freshness)
 		@goalSignals(v.Signals)
+		@goalIncomplete(v.Incomplete)
 		@goalHead(v, owner, admin)
 		<article data-testid="goal" class="gp-block gp-statement">
 			<h3><button type="button" class="disclose help" aria-expanded="false" aria-controls="so-what-help" title={ soWhatHelp }>So What</button></h3>
@@ -1155,6 +1165,16 @@ templ defineGoal(v goalView) {
 			<button type="submit" class="btn primary" disabled?={ !v.readyToActivate() }>Activate Goal</button>
 		</form>
 	</section>
+}
+
+// goalIncomplete flags an Incomplete Goal at the top of its page, naming the
+// required Dimensions and Fields it has no value in. It is a status, not an
+// alarm: quieter than Red and Stale (CONTEXT.md: Incomplete). It renders
+// nothing when the Goal lacks none.
+templ goalIncomplete(missing []string) {
+	if len(missing) > 0 {
+		<p data-testid="goal-incomplete" class="alert lc" role="status"><strong>Incomplete</strong><span>{ "no value yet in " + strings.Join(missing, ", ") }</span></p>
+	}
 }
 
 // milestoneList is a Goal's Milestones as a table of status, name, and date
