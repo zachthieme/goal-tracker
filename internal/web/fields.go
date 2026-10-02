@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -65,6 +67,45 @@ func writeFieldError(w http.ResponseWriter, err error) {
 	default:
 		http.Error(w, "field action failed", http.StatusInternalServerError)
 	}
+}
+
+// handleSetGoalField sets the Goal's value in the form's field_id, or clears it
+// when the form's Clear button sent it or the value is blank (CONTEXT.md:
+// Field). A value that doesn't parse as the Field's type is refused naming the
+// Field. Anyone but the Owner, a Delegate or an Admin is refused.
+func (s *Server) handleSetGoalField(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, ok := goalIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	fieldID, err := strconv.ParseInt(r.FormValue("field_id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid field", http.StatusUnprocessableEntity)
+		return
+	}
+	value := r.FormValue("value")
+	if r.FormValue("clear") != "" {
+		value = ""
+	}
+	writeCommandResult(w, r, id, s.svc.SetGoalField(r.Context(), current.ID, id, fieldID, value))
+}
+
+// fieldValue returns the Goal's value in the given Field, and whether it has
+// one.
+func (v goalView) fieldValue(fieldID int64) (string, bool) {
+	for _, fv := range v.FieldValues {
+		if fv.Field.ID == fieldID {
+			return fv.Value, true
+		}
+	}
+	return "", false
+}
+
+// isWebURL reports whether a short text is an http(s) URL, which the Goal page
+// shows as a link.
+func isWebURL(text string) bool {
+	u, err := url.Parse(text)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && !strings.ContainsAny(text, " \t\n")
 }
 
 // fieldTypeLabel says what f holds, with a number Field's unit.

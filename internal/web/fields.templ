@@ -92,3 +92,94 @@ templ fieldsStyles() {
 		.fd-types legend{padding:0;margin-bottom:4px}
 	</style>
 }
+
+// goalFields lists the Goal's Fields under their names: every Field still in
+// use, set or not, and a Retired one only where the Goal has a value in it,
+// marked retired (CONTEXT.md: Retired). For its Owner, a Delegate or an Admin
+// a collapsed section holds an input of each in-use Field's type, each saved
+// or cleared on its own; everyone else reads the values only (CONTEXT.md:
+// Delegate). Fields are never an update, so they stay off the Check-in form
+// (ADR 0005).
+templ goalFields(v goalView) {
+	{{ offered := domain.OfferedFields(v.Fields) }}
+	if len(v.Fields) == 0 {
+		<p data-testid="no-fields-defined" class="muted">No Fields defined yet.</p>
+	}
+	<ul data-testid="goal-fields" class="gp-list">
+		for _, f := range v.Fields {
+			{{ value, set := v.fieldValue(f.ID) }}
+			if !f.Retired || set {
+				<li data-testid="goal-field">
+					<span class="label">{ f.Name }</span>
+					if f.Retired {
+						<span class="muted small" data-testid="retired">(retired)</span>
+					}
+					<br/>
+					if set {
+						@fieldValueView(f, value)
+					} else {
+						<span class="muted" data-testid="goal-field-unset">not set</span>
+					}
+				</li>
+			}
+		}
+	</ul>
+	if v.CanSetValues && len(offered) > 0 {
+		<details data-testid="edit-fields" id="edit-fields">
+			<summary class="small">Edit Fields</summary>
+			for _, f := range offered {
+				{{ value, set := v.fieldValue(f.ID) }}
+				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/fields", v.Goal.ID)) } class="gp-form gp-field-form">
+					<input type="hidden" name="field_id" value={ fmt.Sprintf("%d", f.ID) }/>
+					<label class="field">
+						<span>{ f.Name }</span>
+						@fieldInput(f, value)
+					</label>
+					<div class="gp-inline">
+						<button type="submit" class="btn sm">Save</button>
+						if set {
+							<button type="submit" name="clear" value="1" class="btn quiet sm" formnovalidate>Clear</button>
+						}
+					</div>
+				</form>
+			}
+		</details>
+	}
+	<p class="small"><a href="/fields">All Fields →</a></p>
+	<style>
+		.gp-field-long{white-space:pre-line}
+		.gp-field-form{margin-top:12px}
+	</style>
+}
+
+// fieldInput is the input for a Field's type, holding the Goal's value.
+templ fieldInput(f domain.Field, value string) {
+	switch f.Type {
+		case domain.FieldNumber:
+			<input type="number" step="any" name="value" value={ value }/>
+		case domain.FieldLongText:
+			<textarea name="value">{ value }</textarea>
+		case domain.FieldDate:
+			<input type="date" name="value" value={ value }/>
+		default:
+			<input type="text" name="value" value={ value }/>
+	}
+}
+
+// fieldValueView shows a Goal's value in a Field: a number with its unit, a
+// short text that is an http(s) URL as a link, and a long text with its line
+// breaks kept.
+templ fieldValueView(f domain.Field, value string) {
+	switch f.Type {
+		case domain.FieldNumber:
+			<span data-testid="goal-field-value"><span class="num">{ value }</span> { f.Unit }</span>
+		case domain.FieldLongText:
+			<p data-testid="goal-field-value" class="gp-field-long">{ value }</p>
+		default:
+			if f.Type == domain.FieldShortText && isWebURL(value) {
+				<a data-testid="goal-field-value" href={ templ.URL(value) } rel="noopener noreferrer">{ value }</a>
+			} else {
+				<span data-testid="goal-field-value">{ value }</span>
+			}
+	}
+}

@@ -2096,3 +2096,36 @@ func TestRetiredDimensionLeavesGoalListFilterAndGroupingOverHTTP(t *testing.T) {
 		t.Errorf("the list doesn't group by the restored Pillar")
 	}
 }
+
+// A Field describes a Goal and is never an update: it is offered in neither the
+// Goal list's filter nor its grouping, nor on the Check-in form (ADR 0005).
+func TestFieldsStayOffTheGoalListControlsAndCheckinForm(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.CreateDimension(boss, "Pillar", "Growth")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	notes := h.CreateField(boss, "Rationale", domain.FieldLongText, "")
+	h.SetGoalField(sam, goal, budget, "1200")
+	h.SetGoalField(sam, goal, notes, "Because outages")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	filters := between(t, getBody(t, client, ts.URL+"/goals"), `data-testid="goal-filters"`, "</form>")
+	if !strings.Contains(filters, "Pillar") {
+		t.Fatalf("the Goal list's controls don't offer the Pillar Dimension:\n%s", filters)
+	}
+	for _, name := range []string{"Budget", "Rationale"} {
+		if strings.Contains(filters, name) {
+			t.Errorf("the Goal list's filter or grouping offers the %s Field:\n%s", name, filters)
+		}
+	}
+
+	form := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	for _, text := range []string{"Budget", "Rationale", "Because outages"} {
+		if strings.Contains(form, text) {
+			t.Errorf("the Check-in form shows %q:\n%s", text, form)
+		}
+	}
+}
