@@ -38,7 +38,10 @@ type Harness struct {
 func New(t *testing.T, adminEmails ...string) *Harness {
 	t.Helper()
 
-	dsn := "file:" + filepath.Join(t.TempDir(), "test.db")
+	// The database is thrown away with the test, so it skips fsync: waiting on
+	// the disk made up most of each test's time, and nearly ran a package's
+	// tests past go test's 10-minute timeout.
+	dsn := "file:" + filepath.Join(t.TempDir(), "test.db") + "?_pragma=synchronous(off)"
 	sqlDB, err := sql.Open("sqlite", dsn)
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
