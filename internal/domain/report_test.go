@@ -3,7 +3,10 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -198,6 +201,97 @@ func TestReportFilterAppliesAfterTraversal(t *testing.T) {
 		t.Errorf("Health = %q, want %q", selected[0].Health, domain.HealthYellow)
 	}
 	_ = c
+}
+
+// A Report Definition shows the Fields its author chose beside each Goal that
+// has a value in them, in both treatments: the exception block and the
+// one-line Green Goal. A chosen Field a Goal has no value in is left out, not
+// shown blank, and a Field nobody chose isn't shown at all (ticket #78).
+func TestReportShowsChosenFieldsBesideEachGoal(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	sponsor := h.CreateField(boss, "Sponsor", domain.FieldShortText, "")
+	notes := h.CreateField(boss, "Notes", domain.FieldLongText, "")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	h.SetGoalField(boss, red, budget, "120")
+	h.SetGoalField(boss, red, sponsor, "Dana")
+	h.SetGoalField(boss, red, notes, "Not for the Report.")
+	h.SetGoalField(boss, green, budget, "40")
+	settle(h)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:     "MBR",
+		RootIDs:  []int64{red.ID, green.ID},
+		FieldIDs: []int64{budget.ID, sponsor.ID},
+	})
+	if got, want := def.FieldIDs, []int64{budget.ID, sponsor.ID}; !sameSet(got, want) {
+		t.Errorf("saved Fields %v, want %v", got, want)
+	}
+	r, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	if len(r.Exceptions) != 1 || len(r.Lines) != 1 {
+		t.Fatalf("got %d blocks and %d lines, want the Red block and the Green line", len(r.Exceptions), len(r.Lines))
+	}
+	if got, want := fieldReadings(r.Exceptions[0].Fields), []string{"Budget=120 $", "Sponsor=Dana"}; !slices.Equal(got, want) {
+		t.Errorf("exception block shows Fields %v, want %v", got, want)
+	}
+	if got, want := fieldReadings(r.Lines[0].Fields), []string{"Budget=40 $"}; !slices.Equal(got, want) {
+		t.Errorf("one-line Goal shows Fields %v, want %v (Sponsor unset, so left out)", got, want)
+	}
+}
+
+// A Report Definition can only be set to show Fields that exist and aren't
+// Retired, as a Retired Field is no longer offered (CONTEXT.md: Retired). A
+// Field retired after it was chosen keeps showing its values (ADR 0005: saved
+// Report Definitions that reference it keep working).
+func TestReportDefinitionChoosesOnlyOfferedFields(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	legacy := h.CreateField(boss, "Legacy code", domain.FieldShortText, "")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.SetGoalField(boss, g, budget, "120")
+	if err := h.Service.RetireField(ctx, boss.ID, legacy.ID); err != nil {
+		t.Fatalf("RetireField: %v", err)
+	}
+
+	for name, ids := range map[string][]int64{"retired": {legacy.ID}, "unknown": {9999}} {
+		if _, err := h.Service.SaveReportDefinition(ctx, boss.ID, domain.SaveReportDefinitionInput{
+			Name: "MBR", RootIDs: []int64{g.ID}, FieldIDs: ids,
+		}); !errors.Is(err, domain.ErrValidation) {
+			t.Errorf("choosing a %s Field: err = %v, want ErrValidation", name, err)
+		}
+	}
+
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}, FieldIDs: []int64{budget.ID}})
+	if err := h.Service.RetireField(ctx, boss.ID, budget.ID); err != nil {
+		t.Fatalf("RetireField: %v", err)
+	}
+	r, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	if got, want := fieldReadings(r.Exceptions[0].Fields), []string{"Budget=120 $"}; !slices.Equal(got, want) {
+		t.Errorf("after retiring Budget the Goal shows Fields %v, want %v", got, want)
+	}
+}
+
+// fieldReadings renders Field values as Name=Value Unit, for comparing what a
+// Report shows beside a Goal.
+func fieldReadings(values []domain.FieldValue) []string {
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		out = append(out, strings.TrimSpace(v.Field.Name+"="+v.Value+" "+v.Field.Unit))
+	}
+	return out
 }
 
 func selectedIDs(selected []domain.SelectedGoal) []int64 {

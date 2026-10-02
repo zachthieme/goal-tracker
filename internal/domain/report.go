@@ -34,7 +34,10 @@ type ReportDefinition struct {
 	// a Dimension they are OR'd, across Dimensions AND'd (the faceted filter of
 	// FilterGoals). Empty means no Dimension filter.
 	DimensionValueIDs []int64
-	CreatedAt         time.Time
+	// FieldIDs are the Fields the Report shows beside each Goal that has a
+	// value in them. Empty, the default, shows none.
+	FieldIDs  []int64
+	CreatedAt time.Time
 }
 
 // SaveReportDefinitionInput is the save-a-Report-Definition command's input.
@@ -45,15 +48,19 @@ type SaveReportDefinitionInput struct {
 	Depth             int
 	OwnerFilterID     int64
 	DimensionValueIDs []int64
+	FieldIDs          []int64
 }
 
 // SelectedGoal is one Goal chosen by a Report Definition, carrying the fields the
 // live draft shows one per line: the Goal (its title, Owner, and due date) and
 // its current Health. Health is empty when the Goal has no Check-in yet — a
 // Proposed Goal, or an Active one not yet checked in on (CONTEXT.md: Health).
+// Fields are its values in the Fields the definition chose, filled in when the
+// Report is drafted.
 type SelectedGoal struct {
 	Goal   Goal
 	Health string
+	Fields []FieldValue `json:",omitempty"`
 }
 
 // SaveReportDefinition saves a reusable Report Definition. Anyone signed in may
@@ -61,7 +68,8 @@ type SelectedGoal struct {
 // definition needs a name and must select something — root Goals, an Owner
 // filter, or Dimension-value filters — so a definition that selects the whole org
 // by accident is rejected. Depth cannot be negative. Every root Goal, the Owner
-// filter, and each Dimension value must exist.
+// filter, and each Dimension value must exist. Each chosen Field must exist and
+// not be Retired, as a Retired Field is no longer offered (CONTEXT.md: Retired).
 func (s *Service) SaveReportDefinition(ctx context.Context, actorID int64, in SaveReportDefinitionInput) (ReportDefinition, error) {
 	name := strings.TrimSpace(in.Name)
 	if name == "" {
@@ -101,6 +109,20 @@ func (s *Service) SaveReportDefinition(ctx context.Context, actorID int64, in Sa
 		}
 	}
 
+	fields := dedupeIDs(in.FieldIDs)
+	for _, id := range fields {
+		row, err := s.queries.GetField(ctx, id)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ReportDefinition{}, fmt.Errorf("%w: field %d does not exist", ErrValidation, id)
+			}
+			return ReportDefinition{}, fmt.Errorf("look up field: %w", err)
+		}
+		if f := fieldFromRow(row); f.Retired {
+			return ReportDefinition{}, fmt.Errorf("%w: %s is retired, so a Report can't be set to show it", ErrValidation, f.Name)
+		}
+	}
+
 	row, err := s.queries.CreateReportDefinition(ctx, db.CreateReportDefinitionParams{
 		Name:          name,
 		Introduction:  strings.TrimSpace(in.Introduction),
@@ -126,6 +148,14 @@ func (s *Service) SaveReportDefinition(ctx context.Context, actorID int64, in Sa
 			DimensionValueID:   id,
 		}); err != nil {
 			return ReportDefinition{}, fmt.Errorf("add report filter: %w", err)
+		}
+	}
+	for _, id := range fields {
+		if err := s.queries.AddReportDefinitionField(ctx, db.AddReportDefinitionFieldParams{
+			ReportDefinitionID: row.ID,
+			FieldID:            id,
+		}); err != nil {
+			return ReportDefinition{}, fmt.Errorf("add report field: %w", err)
 		}
 	}
 	return s.GetReportDefinition(ctx, row.ID)
@@ -171,6 +201,10 @@ func (s *Service) reportDefinitionFromRow(ctx context.Context, row db.ReportDefi
 	if err != nil {
 		return ReportDefinition{}, fmt.Errorf("list report filters: %w", err)
 	}
+	fields, err := s.queries.ListReportDefinitionFields(ctx, row.ID)
+	if err != nil {
+		return ReportDefinition{}, fmt.Errorf("list report fields: %w", err)
+	}
 	createdAt, _ := time.Parse(timeFormat, row.CreatedAt)
 	return ReportDefinition{
 		ID:                row.ID,
@@ -180,6 +214,7 @@ func (s *Service) reportDefinitionFromRow(ctx context.Context, row db.ReportDefi
 		Depth:             int(row.Depth),
 		OwnerFilterID:     row.OwnerFilterID,
 		DimensionValueIDs: filters,
+		FieldIDs:          fields,
 		CreatedAt:         createdAt,
 	}, nil
 }

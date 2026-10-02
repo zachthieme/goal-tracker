@@ -70,6 +70,9 @@ type ReportBlock struct {
 	Milestones     []ReportMilestone
 	Metrics        []ReportMetric
 	RolledUp       RolledUpHealth
+	// Fields are the Goal's values in the Fields the definition chose, shown
+	// as labelled values beside the Goal, never in the narrative (ADR 0005).
+	Fields []FieldValue `json:",omitempty"`
 }
 
 // ReportMilestone is a Milestone as an exception block shows it: marked New
@@ -139,6 +142,9 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 		since = func(t time.Time) bool { return !orgDate(t, s.loc).Before(r.Baseline) }
 	}
 	for _, sg := range selected {
+		if sg.Fields, err = s.reportFields(ctx, def, sg.Goal.ID); err != nil {
+			return Report{}, err
+		}
 		h, err := s.goalHistory(ctx, sg.Goal)
 		if err != nil {
 			return Report{}, err
@@ -157,12 +163,34 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 		if err != nil {
 			return Report{}, err
 		}
+		b.Fields = sg.Fields
 		r.Exceptions = append(r.Exceptions, b)
 	}
 	if err := s.draftNarrative(ctx, &r); err != nil {
 		return Report{}, err
 	}
 	return r, nil
+}
+
+// reportFields is a Goal's values in the Fields def chose, by Field name. A
+// chosen Field the Goal has no value in is left out, not shown blank; one
+// retired since it was chosen still shows, as Retired values stay readable
+// (CONTEXT.md: Retired).
+func (s *Service) reportFields(ctx context.Context, def ReportDefinition, goalID int64) ([]FieldValue, error) {
+	if len(def.FieldIDs) == 0 {
+		return nil, nil
+	}
+	values, err := s.GoalFields(ctx, goalID)
+	if err != nil {
+		return nil, err
+	}
+	var out []FieldValue
+	for _, v := range values {
+		if slices.Contains(def.FieldIDs, v.Field.ID) {
+			out = append(out, v)
+		}
+	}
+	return out, nil
 }
 
 // goalHistory is what a Report reads about one Goal to judge it against the
