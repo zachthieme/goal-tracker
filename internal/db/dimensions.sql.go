@@ -492,6 +492,21 @@ func (q *Queries) SetDimensionValueName(ctx context.Context, arg SetDimensionVal
 	return i, err
 }
 
+const setDimensionValuePosition = `-- name: SetDimensionValuePosition :exec
+UPDATE dimension_values SET position = ? WHERE id = ?
+`
+
+type SetDimensionValuePositionParams struct {
+	Position int64
+	ID       int64
+}
+
+// Where a value sits in its Dimension's list, lowest first.
+func (q *Queries) SetDimensionValuePosition(ctx context.Context, arg SetDimensionValuePositionParams) error {
+	_, err := q.db.ExecContext(ctx, setDimensionValuePosition, arg.Position, arg.ID)
+	return err
+}
+
 const setDimensionValueRetired = `-- name: SetDimensionValueRetired :one
 UPDATE dimension_values SET retired = ? WHERE id = ?
 RETURNING id, dimension_id, value, retired, created_at, position

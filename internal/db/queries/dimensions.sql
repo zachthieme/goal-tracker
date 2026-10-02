@@ -67,6 +67,10 @@ RETURNING *;
 UPDATE dimension_values SET retired = ? WHERE id = ?
 RETURNING *;
 
+-- name: SetDimensionValuePosition :exec
+-- Where a value sits in its Dimension's list, lowest first.
+UPDATE dimension_values SET position = ? WHERE id = ?;
+
 -- name: AssignGoalValueIfAbsent :exec
 -- Give a Goal a value; a value it already carries is left as it is.
 INSERT INTO goal_dimension_values (goal_id, dimension_value_id, created_at)

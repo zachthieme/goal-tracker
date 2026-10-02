@@ -869,3 +869,59 @@ func TestNewValuesGoLastInOrderAdded(t *testing.T) {
 		t.Errorf("Customer list = %v, want %v", got, want)
 	}
 }
+
+// An Admin moves a value up or down its Dimension's list, and sorts the list
+// alphabetically whatever the values' case; moving the first value up or the
+// last down leaves the list as it is. A non-Admin may do none of these.
+func TestAdminReordersDimensionValues(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	pillar := h.CreateDimension(boss, "Pillar", "Reliability", "growth", "Efficiency")
+	reliability, growth, efficiency := pillar.Values[0], pillar.Values[1], pillar.Values[2]
+	order := func() []string { return valueNames(dimensionNamed(t, h, "Pillar").Values) }
+
+	if err := h.Service.MoveDimensionValue(ctx, boss.ID, efficiency.ID, domain.MoveUp); err != nil {
+		t.Fatalf("MoveDimensionValue up: %v", err)
+	}
+	if got, want := order(), []string{"Reliability", "Efficiency", "growth"}; !equalStrings(got, want) {
+		t.Errorf("after moving Efficiency up = %v, want %v", got, want)
+	}
+	if err := h.Service.MoveDimensionValue(ctx, boss.ID, reliability.ID, domain.MoveDown); err != nil {
+		t.Fatalf("MoveDimensionValue down: %v", err)
+	}
+	if got, want := order(), []string{"Efficiency", "Reliability", "growth"}; !equalStrings(got, want) {
+		t.Errorf("after moving Reliability down = %v, want %v", got, want)
+	}
+	if err := h.Service.MoveDimensionValue(ctx, boss.ID, efficiency.ID, domain.MoveUp); err != nil {
+		t.Fatalf("MoveDimensionValue first up: %v", err)
+	}
+	if err := h.Service.MoveDimensionValue(ctx, boss.ID, growth.ID, domain.MoveDown); err != nil {
+		t.Fatalf("MoveDimensionValue last down: %v", err)
+	}
+	if got, want := order(), []string{"Efficiency", "Reliability", "growth"}; !equalStrings(got, want) {
+		t.Errorf("after moving past the ends = %v, want %v unchanged", got, want)
+	}
+	if err := h.Service.MoveDimensionValue(ctx, boss.ID, growth.ID, "sideways"); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("move sideways err = %v, want ErrValidation", err)
+	}
+
+	if err := h.Service.SortDimensionValues(ctx, boss.ID, pillar.ID); err != nil {
+		t.Fatalf("SortDimensionValues: %v", err)
+	}
+	if got, want := order(), []string{"Efficiency", "growth", "Reliability"}; !equalStrings(got, want) {
+		t.Errorf("after sorting = %v, want %v", got, want)
+	}
+
+	if err := h.Service.MoveDimensionValue(ctx, sam.ID, efficiency.ID, domain.MoveDown); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("non-Admin move err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.MoveDimensionValue(ctx, boss.ID, 9999, domain.MoveDown); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("move of a missing value err = %v, want ErrValidation", err)
+	}
+	if err := h.Service.SortDimensionValues(ctx, sam.ID, pillar.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("non-Admin sort err = %v, want ErrNotAuthorized", err)
+	}
+}

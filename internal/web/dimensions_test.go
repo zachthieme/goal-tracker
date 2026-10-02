@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -336,4 +337,117 @@ func dimensionByName(t *testing.T, h *testsupport.Harness, name string) domain.D
 	}
 	t.Fatalf("no Dimension named %q", name)
 	return domain.Dimension{}
+}
+
+// Behind a Dimension card's Edit toggle an Admin moves each value up or down
+// and sorts the list alphabetically, and the card lists the values in that
+// order; a non-Admin's attempts are refused.
+func TestAdminReordersDimensionValuesOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	dim := h.CreateDimension(boss, "Pillar", "Reliability", "Growth", "Efficiency")
+	reliability, growth, efficiency := dim.Values[0], dim.Values[1], dim.Values[2]
+	ts := newServer(t, h)
+	bossClient := signInClient(t, ts.URL, "boss@example.com")
+	order := func() string {
+		card := between(t, getBody(t, bossClient, ts.URL+"/dimensions"), `<li data-testid="dimension"`, "<details")
+		return nameOrder(card, "Reliability", "Growth", "Efficiency")
+	}
+
+	edit := between(t, getBody(t, bossClient, ts.URL+"/dimensions"), `<details class="dm-edit"`, "</details>")
+	for _, v := range dim.Values {
+		move := fmt.Sprintf(`action="/dimension-values/%d/move"`, v.ID)
+		if !strings.Contains(edit, move) {
+			t.Errorf("the Edit toggle lacks %s's move forms:\n%s", v.Value, edit)
+		}
+	}
+	for _, label := range []string{`aria-label="Move Growth up"`, `aria-label="Move Growth down"`, ">Sort alphabetically<"} {
+		if !strings.Contains(edit, label) {
+			t.Errorf("the Edit toggle lacks %q:\n%s", label, edit)
+		}
+	}
+	if !strings.Contains(edit, fmt.Sprintf(`action="/dimensions/%d/sort"`, dim.ID)) {
+		t.Errorf("the Edit toggle lacks the sort form:\n%s", edit)
+	}
+
+	resp := postForm(t, bossClient, fmt.Sprintf("%s/dimension-values/%d/move", ts.URL, efficiency.ID), url.Values{"direction": {"up"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+		t.Fatalf("move up: status %d: %s", resp.StatusCode, body)
+	}
+	if got, want := order(), "Reliability Efficiency Growth"; got != want {
+		t.Errorf("after moving Efficiency up = %q, want %q", got, want)
+	}
+	postForm(t, bossClient, fmt.Sprintf("%s/dimension-values/%d/move", ts.URL, reliability.ID), url.Values{"direction": {"down"}})
+	if got, want := order(), "Efficiency Reliability Growth"; got != want {
+		t.Errorf("after moving Reliability down = %q, want %q", got, want)
+	}
+	postForm(t, bossClient, fmt.Sprintf("%s/dimensions/%d/sort", ts.URL, dim.ID), url.Values{})
+	if got, want := order(), "Efficiency Growth Reliability"; got != want {
+		t.Errorf("after sorting = %q, want %q", got, want)
+	}
+
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	if resp := postForm(t, sam, fmt.Sprintf("%s/dimension-values/%d/move", ts.URL, growth.ID), url.Values{"direction": {"up"}}); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-Admin move: status %d, want 403", resp.StatusCode)
+	}
+	if resp := postForm(t, sam, fmt.Sprintf("%s/dimensions/%d/sort", ts.URL, dim.ID), url.Values{}); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-Admin sort: status %d, want 403", resp.StatusCode)
+	}
+}
+
+// nameOrder returns which of names appear in page, in the order each first
+// appears, space-separated. The names must not contain one another.
+func nameOrder(page string, names ...string) string {
+	type seen struct {
+		at   int
+		name string
+	}
+	var found []seen
+	for _, n := range names {
+		if at := strings.Index(page, n); at >= 0 {
+			found = append(found, seen{at, n})
+		}
+	}
+	slices.SortFunc(found, func(a, b seen) int { return a.at - b.at })
+	out := make([]string, 0, len(found))
+	for _, f := range found {
+		out = append(out, f.name)
+	}
+	return strings.Join(out, " ")
+}
+
+// The Admin's order of a Dimension's values is the order they are listed in
+// on the Goal page, in the Goal list's filter, and as its groups.
+func TestValuesListInAdminsOrderEverywhere(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	dim := h.CreateSeveralValuesDimension(boss, "Pillar", "Reliability", "Growth", "Efficiency")
+	if err := h.Service.MoveDimensionValue(context.Background(), boss.ID, dim.Values[2].ID, domain.MoveUp); err != nil {
+		t.Fatalf("MoveDimensionValue: %v", err)
+	}
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	for _, v := range dim.Values {
+		h.AssignGoalValue(goal, v)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	const want = "Reliability Efficiency Growth"
+
+	goalPage := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	if got := nameOrder(pageElement(t, goalPage, "section", "goal-dimensions"), "Reliability", "Growth", "Efficiency"); got != want {
+		t.Errorf("Goal page values = %q, want %q", got, want)
+	}
+	filter := pageElement(t, getBody(t, client, ts.URL+"/goals"), "details", "more-filters")
+	if got := nameOrder(filter, "Reliability", "Growth", "Efficiency"); got != want {
+		t.Errorf("filter values = %q, want %q", got, want)
+	}
+	grouped := getBody(t, client, fmt.Sprintf("%s/goals?group=%d", ts.URL, dim.ID))
+	var labels []string
+	for _, group := range strings.Split(grouped, `<tbody data-testid="goal-group"`)[1:] {
+		labels = append(labels, nameOrder(group[:strings.Index(group, "</th>")+5], "Reliability", "Growth", "Efficiency"))
+	}
+	if got := strings.Join(labels, " "); got != want {
+		t.Errorf("groups = %q, want %q", got, want)
+	}
 }

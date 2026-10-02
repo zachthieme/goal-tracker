@@ -113,9 +113,10 @@ templ dimensionValues(d domain.Dimension) {
 
 // dimensionEdit is an Admin's Edit toggle on a Dimension card: a switch between
 // one value and several per Goal, a switch between a Fixed and an Extendable
-// list, a rename form and a Retire button on each
-// value still in use, then a form to add a value.
-// Retire asks for confirmation first.
+// list, then each value in the list's order with buttons to move it up or down
+// and — while it is still in use — a rename form and a Retire button, a
+// "sort alphabetically" action, and a form to add a value. Retire asks for
+// confirmation first.
 templ dimensionEdit(d domain.Dimension) {
 	<details class="dm-edit">
 		<summary class="btn sm">Edit</summary>
@@ -139,8 +140,12 @@ templ dimensionEdit(d domain.Dimension) {
 		</form>
 		<ul class="dm-rows">
 			for _, v := range d.Values {
-				if !v.Retired {
-					<li>
+				<li>
+					@moveValue(v, domain.MoveUp, "↑")
+					@moveValue(v, domain.MoveDown, "↓")
+					if v.Retired {
+						<del class="muted">{ v.Value }</del>
+					} else {
 						<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/rename", v.ID)) }>
 							<input type="text" name="value" value={ v.Value } aria-label={ "Rename " + v.Value } required/>
 							<button type="submit" class="btn sm">Rename</button>
@@ -148,15 +153,27 @@ templ dimensionEdit(d domain.Dimension) {
 						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/retire", v.ID)) } onsubmit={ confirmScript(confirmRetire) }>
 							<button type="submit" class="btn danger sm">Retire</button>
 						</form>
-					</li>
-				}
+					}
+				</li>
 			}
 		</ul>
+		<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/sort", d.ID)) }>
+			<button type="submit" class="btn sm">Sort alphabetically</button>
+		</form>
 		<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/values", d.ID)) }>
 			<input type="text" name="value" placeholder="New value" aria-label="Add a value" required/>
 			<button type="submit" class="btn sm">Add value</button>
 		</form>
 	</details>
+}
+
+// moveValue is the button that moves v one place up or down its Dimension's
+// list, labelled by arrow.
+templ moveValue(v domain.DimensionValue, direction, arrow string) {
+	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/move", v.ID)) }>
+		<input type="hidden" name="direction" value={ direction }/>
+		<button type="submit" class="btn sm" aria-label={ "Move " + v.Value + " " + direction }>{ arrow }</button>
+	</form>
 }
 
 // dimensionsStyles are the Dimensions page's own rules on top of app.css.

@@ -172,6 +172,79 @@ func (s *Service) RetireDimensionValue(ctx context.Context, actorID, valueID int
 	return nil
 }
 
+// The directions MoveDimensionValue moves a value in its Dimension's list.
+const (
+	MoveUp   = "up"
+	MoveDown = "down"
+)
+
+// MoveDimensionValue moves a value one place up or down its Dimension's list,
+// the order its values are listed in everywhere (CONTEXT.md: Dimension). The
+// first value moved up or the last moved down stays where it is. Only an Admin
+// may.
+func (s *Service) MoveDimensionValue(ctx context.Context, actorID, valueID int64, direction string) error {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return err
+	}
+	step := map[string]int{MoveUp: -1, MoveDown: 1}[direction]
+	if step == 0 {
+		return fmt.Errorf("%w: a value moves up or down", ErrValidation)
+	}
+	val, err := s.queries.GetDimensionValue(ctx, valueID)
+	if err != nil {
+		return fmt.Errorf("%w: dimension value does not exist", ErrValidation)
+	}
+	rows, err := s.queries.ListDimensionValues(ctx, val.DimensionID)
+	if err != nil {
+		return fmt.Errorf("list dimension values: %w", err)
+	}
+	at := slices.IndexFunc(rows, func(r db.DimensionValue) bool { return r.ID == valueID })
+	to := at + step
+	if to < 0 || to >= len(rows) {
+		return nil
+	}
+	rows[at], rows[to] = rows[to], rows[at]
+	return s.setValueOrder(ctx, rows)
+}
+
+// SortDimensionValues puts a Dimension's values in alphabetical order, whatever
+// their letter case. Only an Admin may.
+func (s *Service) SortDimensionValues(ctx context.Context, actorID, dimensionID int64) error {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return err
+	}
+	if _, err := s.queries.GetDimension(ctx, dimensionID); err != nil {
+		return fmt.Errorf("%w: dimension does not exist", ErrValidation)
+	}
+	rows, err := s.queries.ListDimensionValues(ctx, dimensionID)
+	if err != nil {
+		return fmt.Errorf("list dimension values: %w", err)
+	}
+	slices.SortStableFunc(rows, func(a, b db.DimensionValue) int {
+		if c := strings.Compare(strings.ToLower(a.Value), strings.ToLower(b.Value)); c != 0 {
+			return c
+		}
+		return strings.Compare(a.Value, b.Value)
+	})
+	return s.setValueOrder(ctx, rows)
+}
+
+// setValueOrder stores rows' order as their Dimension's list order, all or
+// nothing.
+func (s *Service) setValueOrder(ctx context.Context, rows []db.DimensionValue) error {
+	return s.WithinTx(ctx, func(tx *Service) error {
+		for i, r := range rows {
+			if err := tx.queries.SetDimensionValuePosition(ctx, db.SetDimensionValuePositionParams{
+				Position: int64(i),
+				ID:       r.ID,
+			}); err != nil {
+				return fmt.Errorf("set dimension value position: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
 // SeveralValuesError refuses switching a Dimension to one value while Goals
 // still carry more than one of its values, naming those Goals so an Admin knows
 // which to fix first. It is an ErrValidation.
