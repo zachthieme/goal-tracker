@@ -15,6 +15,11 @@ An import runs in two steps:
 
 A worked example is in [`testdata/import-example.csv`](../testdata/import-example.csv).
 
+The Goal table's **Download CSV** link writes the Goals its filters keep in this
+same format, with a leading `ID` column, so the file can be edited and imported
+again to update those Goals' Dimension values and Fields (see
+[Updating Goals by ID](#updating-goals-by-id)).
+
 ## Columns
 
 The first row is a header. Columns are matched by name, case-insensitively, in
@@ -24,6 +29,7 @@ the whole file.
 
 | Column          | Required | Meaning |
 | --------------- | -------- | ------- |
+| `ID`            | no       | An existing Goal's id. A row with one updates that Goal instead of creating one (see [Updating Goals by ID](#updating-goals-by-id)); a row without one creates a Goal. |
 | `Title`         | yes      | The Goal's title. Titles must be unique within the file so that `Parents` can reference a Goal by title. |
 | `Owner`         | yes      | The Owner's email address. If no account exists for it yet, one is created (people named in the file get accounts). |
 | `So What`       | yes      | The customer problem the Goal addresses (CONTEXT.md: So What). |
@@ -119,13 +125,45 @@ or Retired Field is rejected for the whole file. A blank cell sets nothing.
 | date       | `YYYY-MM-DD`, or in XLSX a date cell. One that doesn't parse is reported on that row. |
 | short text, long text | Any text. A long text may span several lines in a quoted CSV cell. |
 
+## Updating Goals by ID
+
+A row whose `ID` cell holds a Goal's id updates that Goal rather than creating
+one. It sets the Goal's value in each Dimension and Field column the file has,
+exactly as the Goal page sets them, and every change is kept in the Goal's Value
+history, credited to the Admin running the import:
+
+- A Dimension cell becomes the Goal's whole set of values in that Dimension: a
+  value it carried but the cell leaves out is removed, and an **empty cell
+  clears** the Dimension. Values match, are added to an Extendable list, and are
+  refused in a Fixed one as when creating a Goal. A Retired value the Goal
+  already carries may stay, but can't be newly given.
+- A Field cell becomes the Goal's value in that Field; an **empty cell clears**
+  it.
+- A value the Goal already has changes nothing and writes no history, so
+  importing a download unchanged changes nothing.
+- A Dimension or Field the file has no column for is left alone.
+
+**Every other column on such a row is ignored**: `Title`, `Owner`, `So What`,
+`Kind`, `Delivery Date`, `Milestones`, `Metrics` and `Parents` are not changed
+by an import, and a row with an ID is never linked to a parent. When a row's cell
+in one of those columns differs from its Goal, the result says once, for the
+whole file, which columns were ignored.
+
+The header still needs the required columns, since a row without an ID creates a
+Goal as usual. A file may mix both kinds of row.
+
+An `ID` that is not a number, matches no Goal, or appears on more than one row
+is reported on that row. As with any row error, the whole file is still
+validated, and a commit then saves nothing.
+
 ## What is reported
 
 The dry run and a rolled-back commit report, per row: the row number, the Goal
 title, and every error found on the row — a missing required field, a bad `Kind`
 or date, a malformed Milestone or Metric, a `Parents` title that is not in the
 file, a value not in a Fixed Dimension's list, more than one value in a
-one-value Dimension, a Field number or date that doesn't parse, or a cycle. A row
+one-value Dimension, a Field number or date that doesn't parse, an `ID` that
+matches no Goal, or a cycle. A row
 with several problems lists them all in one dry run.
 
 Rows are numbered as the spreadsheet numbers them: the header is row 1, so the

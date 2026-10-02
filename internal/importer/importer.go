@@ -9,7 +9,11 @@
 //
 // An import is validated row by row. A DryRun reports the errors and saves
 // nothing; a Commit is all-or-nothing: if any row has an error the whole import
-// rolls back and nothing is saved. The column format is documented in
+// rolls back and nothing is saved.
+//
+// A row with an ID updates that existing Goal's Dimension values and Fields
+// instead (#81), so a file the Goal table downloads (see Download) can be
+// edited and imported again. The column format is documented in
 // docs/import-format.md, with an example in testdata/import-example.csv.
 package importer
 
@@ -46,20 +50,37 @@ func New(svc *domain.Service) *Importer {
 
 // Report is the outcome of an import: one RowResult per data row, and whether
 // the import was committed (a dry run, or a run that found errors, is never
-// committed).
+// committed). Ignored names, once for the whole file, the import format's own
+// columns that a row with an ID changed: such a row updates only its Goal's
+// Dimension values and Fields, so those changes were ignored (#81).
 type Report struct {
 	Rows      []RowResult
 	Committed bool
+	Ignored   []string
 }
 
 // RowResult is what happened to one data row: its row number as the
-// spreadsheet numbers it (the header is row 1), the Goal title it named, the id of the Goal created from it
-// (0 when nothing was saved), and any errors found on it.
+// spreadsheet numbers it (the header is row 1), the Goal title it named, the id
+// of the Goal created or updated from it (0 when nothing was saved), whether
+// it updated an existing Goal (a row with an ID) rather than creating one, and
+// any errors found on it.
 type RowResult struct {
-	Line   int
-	Title  string
-	GoalID int64
-	Errors []string
+	Line    int
+	Title   string
+	GoalID  int64
+	Updated bool
+	Errors  []string
+}
+
+// UpdatedCount returns how many rows updated an existing Goal.
+func (r Report) UpdatedCount() int {
+	n := 0
+	for _, row := range r.Rows {
+		if row.Updated {
+			n++
+		}
+	}
+	return n
 }
 
 // HasErrors reports whether any row failed.
@@ -161,6 +182,7 @@ type attributes struct {
 // carry an index; the optional ones are -1 when absent. Every column that is not
 // one of the known headers is a Dimension or a Field column.
 type layout struct {
+	id         int
 	title      int
 	owner      int
 	soWhat     int
@@ -187,10 +209,24 @@ type fieldColumn struct {
 	index int
 }
 
+// goalColumns maps each of the import format's own columns the spreadsheet
+// has to its index.
+func (lay layout) goalColumns() map[string]int {
+	cols := map[string]int{}
+	for i, idx := range []int{lay.title, lay.owner, lay.soWhat, lay.kind, lay.delivery, lay.milestones, lay.metrics, lay.parents} {
+		if idx >= 0 {
+			cols[goalColumns[i]] = idx
+		}
+	}
+	return cols
+}
+
 func parseHeader(header []string, attrs attributes) (layout, error) {
-	lay := layout{title: -1, owner: -1, soWhat: -1, kind: -1, delivery: -1, milestones: -1, metrics: -1, parents: -1}
+	lay := layout{id: -1, title: -1, owner: -1, soWhat: -1, kind: -1, delivery: -1, milestones: -1, metrics: -1, parents: -1}
 	for i, raw := range header {
 		switch normalize(raw) {
+		case "id":
+			lay.id = i
 		case "title":
 			lay.title = i
 		case "owner":
@@ -238,20 +274,30 @@ func parseHeader(header []string, attrs attributes) (layout, error) {
 // parsing it. A row whose Title, Owner, So What, Kind or Delivery Date is missing
 // or bad is incomplete and creates nothing; a bad Milestone, Metric or Dimension
 // value is reported but does not stop the rest of the row being checked.
+//
+// A row with an ID instead updates Goal goalID (#81): it sets the Goal's values
+// in each Dimension column to dimensionSets, a blank cell clearing them, and
+// its value in each Field column to fields, a blank value clearing it. Its
+// other columns are ignored; cells keeps them, by column name, so the report
+// can say which it changed.
 type rowSpec struct {
-	line       int
-	title      string
-	owner      string
-	soWhat     string
-	kind       string
-	delivery   time.Time
-	milestones []milestoneSpec
-	metrics    []metricSpec
-	parents    []string
-	dimensions []dimensionValue
-	fields     []fieldValue
-	errs       []string
-	incomplete bool
+	line          int
+	update        bool
+	goalID        int64
+	dimensionSets []dimensionSet
+	cells         map[string]string
+	title         string
+	owner         string
+	soWhat        string
+	kind          string
+	delivery      time.Time
+	milestones    []milestoneSpec
+	metrics       []metricSpec
+	parents       []string
+	dimensions    []dimensionValue
+	fields        []fieldValue
+	errs          []string
+	incomplete    bool
 }
 
 type milestoneSpec struct {
@@ -276,6 +322,13 @@ type dimensionValue struct {
 	newValue    string
 }
 
+// dimensionSet is every value a row with an ID gives its Goal in one
+// Dimension, none to clear it.
+type dimensionSet struct {
+	dimensionID int64
+	values      []dimensionValue
+}
+
 type fieldValue struct {
 	fieldID int64
 	value   string
@@ -290,6 +343,9 @@ func parseRows(rows []sheetRow, lay layout) []rowSpec {
 }
 
 func parseRow(line int, row []string, lay layout) rowSpec {
+	if raw := cell(row, lay.id); raw != "" {
+		return parseUpdateRow(line, raw, row, lay)
+	}
 	s := rowSpec{
 		line:   line,
 		title:  cell(row, lay.title),
@@ -349,25 +405,9 @@ func parseRow(line int, row []string, lay layout) rowSpec {
 	}
 	s.parents = splitEntries(cell(row, lay.parents))
 	for _, dc := range lay.dimensions {
-		values := splitValues(cell(row, dc.index))
-		if len(values) > 1 && !dc.dimension.TakesSeveral() {
-			s.errs = append(s.errs, fmt.Sprintf("%s takes one value per Goal", dc.dimension.Name))
-			continue
-		}
-		for _, v := range values {
-			if valueID, ok := valueIDOf(dc.dimension, v); ok {
-				s.dimensions = append(s.dimensions, dimensionValue{valueID: valueID})
-				continue
-			}
-			// An Extendable list gains the unknown value when the Goal is
-			// created; a Fixed one is added to only from the Dimensions page
-			// (CONTEXT.md: Fixed, Extendable).
-			if !dc.dimension.Extendable() {
-				s.errs = append(s.errs, fmt.Sprintf("%q is not a value of Dimension %q", v, dc.dimension.Name))
-				continue
-			}
-			s.dimensions = append(s.dimensions, dimensionValue{dimensionID: dc.dimension.ID, newValue: v})
-		}
+		values, errs := parseDimensionCell(dc.dimension, cell(row, dc.index))
+		s.dimensions = append(s.dimensions, values...)
+		s.errs = append(s.errs, errs...)
 	}
 	for _, fc := range lay.fields {
 		v := cell(row, fc.index)
@@ -381,6 +421,66 @@ func parseRow(line int, row []string, lay layout) rowSpec {
 		s.fields = append(s.fields, fieldValue{fieldID: fc.field.ID, value: v})
 	}
 	return s
+}
+
+// parseUpdateRow parses a row whose ID cell holds rawID: it reads only the
+// row's Dimension and Field columns, each one a value to set on the Goal, a
+// blank cell clearing it (#81).
+func parseUpdateRow(line int, rawID string, row []string, lay layout) rowSpec {
+	s := rowSpec{line: line, update: true, title: cell(row, lay.title), cells: map[string]string{}}
+	for col, idx := range lay.goalColumns() {
+		s.cells[col] = cell(row, idx)
+	}
+	id, err := strconv.ParseInt(rawID, 10, 64)
+	if err != nil || id <= 0 {
+		s.errs = append(s.errs, fmt.Sprintf("ID %q is not a Goal's id", rawID))
+	}
+	s.goalID = id
+	for _, dc := range lay.dimensions {
+		values, errs := parseDimensionCell(dc.dimension, cell(row, dc.index))
+		s.dimensionSets = append(s.dimensionSets, dimensionSet{dimensionID: dc.dimension.ID, values: values})
+		s.errs = append(s.errs, errs...)
+	}
+	for _, fc := range lay.fields {
+		v := cell(row, fc.index)
+		if v != "" {
+			if err := fc.field.Check(v); err != nil {
+				s.errs = append(s.errs, message(err))
+				continue
+			}
+		}
+		s.fields = append(s.fields, fieldValue{fieldID: fc.field.ID, value: v})
+	}
+	return s
+}
+
+// parseDimensionCell reads the values a Dimension cell gives a Goal, with an
+// error for each it can't: more than one in a Dimension that takes one, or a
+// value not in a Fixed Dimension's list.
+func parseDimensionCell(dim domain.Dimension, raw string) ([]dimensionValue, []string) {
+	values := splitValues(raw)
+	if len(values) > 1 && !dim.TakesSeveral() {
+		return nil, []string{fmt.Sprintf("%s takes one value per Goal", dim.Name)}
+	}
+	var (
+		out  []dimensionValue
+		errs []string
+	)
+	for _, v := range values {
+		if valueID, ok := valueIDOf(dim, v); ok {
+			out = append(out, dimensionValue{valueID: valueID})
+			continue
+		}
+		// An Extendable list gains the unknown value when the Goal is
+		// saved; a Fixed one is added to only from the Dimensions page
+		// (CONTEXT.md: Fixed, Extendable).
+		if !dim.Extendable() {
+			errs = append(errs, fmt.Sprintf("%q is not a value of Dimension %q", v, dim.Name))
+			continue
+		}
+		out = append(out, dimensionValue{dimensionID: dim.ID, newValue: v})
+	}
+	return out, errs
 }
 
 func parseMilestone(entry string) (milestoneSpec, error) {
@@ -433,24 +533,49 @@ func parseMetric(entry string) (metricSpec, error) {
 // dry run, or a commit that found errors) saves nothing.
 func applyRows(ctx context.Context, tx *domain.Service, adminID int64, specs []rowSpec) Report {
 	results := make([]RowResult, len(specs))
+	// Only the rows creating a Goal are linked by title; a row with an ID
+	// updates its Goal's values and nothing else.
 	titleCount := map[string]int{}
+	idCount := map[int64]int{}
 	for _, s := range specs {
-		if s.title != "" {
+		switch {
+		case s.update:
+			idCount[s.goalID]++
+		case s.title != "":
 			titleCount[s.title]++
 		}
 	}
 	for i, s := range specs {
-		results[i] = RowResult{Line: s.line, Title: s.title, Errors: append([]string(nil), s.errs...)}
-		if s.title != "" && titleCount[s.title] > 1 {
+		results[i] = RowResult{Line: s.line, Title: s.title, Updated: s.update, Errors: append([]string(nil), s.errs...)}
+		switch {
+		case s.update && s.goalID > 0 && idCount[s.goalID] > 1:
+			results[i].Errors = append(results[i].Errors, fmt.Sprintf("ID %d is on more than one row", s.goalID))
+		case !s.update && s.title != "" && titleCount[s.title] > 1:
 			results[i].Errors = append(results[i].Errors, "duplicate Title in file; titles must be unique to link Goals by title")
 		}
 	}
 
-	// goalIDs holds the Goal created from each row, or 0; titleToGoal maps a
-	// created Goal's title to it, for linking.
+	// goalIDs holds the Goal created or updated from each row, or 0;
+	// titleToGoal maps a created Goal's title to it, for linking.
 	goalIDs := make([]int64, len(specs))
 	titleToGoal := map[string]int64{}
+	ignored := map[string]bool{}
 	for i, s := range specs {
+		if s.update {
+			if len(results[i].Errors) > 0 {
+				continue
+			}
+			title, changed, errs := updateGoal(ctx, tx, adminID, s)
+			results[i].Errors = append(results[i].Errors, errs...)
+			for _, col := range changed {
+				ignored[col] = true
+			}
+			if title != "" {
+				results[i].Title = title
+				goalIDs[i] = s.goalID
+			}
+			continue
+		}
 		if s.incomplete || titleCount[s.title] > 1 {
 			continue
 		}
@@ -463,6 +588,9 @@ func applyRows(ctx context.Context, tx *domain.Service, adminID int64, specs []r
 	}
 
 	for i, s := range specs {
+		if s.update {
+			continue
+		}
 		for _, parentTitle := range s.parents {
 			if titleCount[parentTitle] == 0 {
 				results[i].Errors = append(results[i].Errors, fmt.Sprintf("parent Goal %q is not one of the imported Goals", parentTitle))
@@ -485,7 +613,13 @@ func applyRows(ctx context.Context, tx *domain.Service, adminID int64, specs []r
 			results[i].GoalID = goalIDs[i]
 		}
 	}
-	return Report{Rows: results}
+	report := Report{Rows: results}
+	for _, col := range goalColumns {
+		if ignored[col] {
+			report.Ignored = append(report.Ignored, col)
+		}
+	}
+	return report
 }
 
 // createGoal creates the row's Goal with its Kind, Milestones, Metrics and
@@ -530,16 +664,10 @@ func createGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpe
 		}
 	}
 	for _, dv := range s.dimensions {
-		valueID := dv.valueID
-		if valueID == 0 {
-			// The importing Admin adds the value, last in the list. An earlier
-			// row may already have added it, and then it is matched instead.
-			added, err := tx.AddDimensionValue(ctx, adminID, dv.dimensionID, dv.newValue)
-			if err != nil {
-				errs = append(errs, message(err))
-				continue
-			}
-			valueID = added.ID
+		valueID, err := ensureValue(ctx, tx, adminID, dv)
+		if err != nil {
+			errs = append(errs, message(err))
+			continue
 		}
 		if err := tx.AssignGoalValue(ctx, adminID, g.ID, valueID); err != nil {
 			errs = append(errs, message(err))
@@ -551,6 +679,86 @@ func createGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpe
 		}
 	}
 	return g.ID, errs
+}
+
+// updateGoal sets the values of Goal s.goalID from a row with an ID, as the
+// Goal page sets them: each Dimension column's values together, so a value left
+// out is removed, and each Field column's value, a blank one clearing it. Each
+// change is kept in the Goal's Value history, and a value it already has
+// changes nothing. It returns the Goal's title ("" when no Goal has the ID),
+// the import format's own columns whose cells differ from the Goal, which are
+// ignored, and every error found.
+func updateGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpec) (title string, ignored, errs []string) {
+	g, err := tx.ViewGoal(ctx, s.goalID)
+	if errors.Is(err, domain.ErrNotFound) {
+		return "", nil, []string{fmt.Sprintf("no Goal has ID %d", s.goalID)}
+	} else if err != nil {
+		return "", nil, []string{message(err)}
+	}
+	current, err := goalCells(ctx, tx, g)
+	if err != nil {
+		return "", nil, []string{message(err)}
+	}
+	for _, col := range goalColumns {
+		if cellText, ok := s.cells[col]; ok && canonical(col, cellText) != canonical(col, current[col]) {
+			ignored = append(ignored, col)
+		}
+	}
+	for _, set := range s.dimensionSets {
+		valueIDs := make([]int64, 0, len(set.values))
+		for _, dv := range set.values {
+			id, err := ensureValue(ctx, tx, adminID, dv)
+			if err != nil {
+				errs = append(errs, message(err))
+				continue
+			}
+			valueIDs = append(valueIDs, id)
+		}
+		if err := tx.SetGoalValues(ctx, adminID, g.ID, set.dimensionID, valueIDs); err != nil {
+			errs = append(errs, message(err))
+		}
+	}
+	for _, fv := range s.fields {
+		if err := tx.SetGoalField(ctx, adminID, g.ID, fv.fieldID, fv.value); err != nil {
+			errs = append(errs, message(err))
+		}
+	}
+	return g.Title, ignored, errs
+}
+
+// canonical is a cell in one of the import format's own columns as it compares
+// with the Goal's: an email and a Kind whatever their letter case, and
+// Milestones, Metrics and Parents whatever the spaces around their separators.
+func canonical(col, text string) string {
+	switch col {
+	case "Owner", "Kind":
+		return normalize(text)
+	case "Milestones", "Metrics", "Parents":
+		entries := splitEntries(text)
+		for i, e := range entries {
+			parts := strings.FieldsFunc(e, func(r rune) bool { return r == '|' || r == '@' })
+			for j := range parts {
+				parts[j] = strings.TrimSpace(parts[j])
+			}
+			entries[i] = strings.Join(parts, "|")
+		}
+		return strings.Join(entries, ";")
+	}
+	return strings.TrimSpace(text)
+}
+
+// ensureValue is dv's value id, adding a new value to its Extendable
+// Dimension's list first, by the importing Admin and last in the list. An
+// earlier row may already have added it, and then it is matched instead.
+func ensureValue(ctx context.Context, tx *domain.Service, adminID int64, dv dimensionValue) (int64, error) {
+	if dv.valueID != 0 {
+		return dv.valueID, nil
+	}
+	added, err := tx.AddDimensionValue(ctx, adminID, dv.dimensionID, dv.newValue)
+	if err != nil {
+		return 0, err
+	}
+	return added.ID, nil
 }
 
 func valueIDOf(dim domain.Dimension, value string) (int64, bool) {

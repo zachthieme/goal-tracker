@@ -210,3 +210,44 @@ Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,1200,acme; Newco
 		t.Errorf("Goal values = %+v, want Acme and Newco", values)
 	}
 }
+
+// An Admin downloads the Goal table, changes a Field cell and a Title, and
+// commits it: the Goal is updated rather than created, and the report says
+// once that the changed Title was ignored (#81).
+func TestAdminReimportsADownloadOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "admin@example.com")
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "admin@example.com")
+	adminAcct := h.SignIn("admin@example.com")
+	budget := h.CreateField(adminAcct, "Budget", domain.FieldNumber, "$")
+	alpha := h.CreateGoal(adminAcct, "Alpha", "It matters.")
+	bravo := h.CreateGoal(adminAcct, "Bravo", "It matters.")
+	h.SetGoalField(adminAcct, alpha, budget, "10")
+
+	csv := getBody(t, admin, ts.URL+"/goals/download?layout=table")
+	edited := strings.NewReplacer(",Alpha,", ",Alpha renamed,", ",10\n", ",20\n", ",Bravo,", ",Bravo renamed,").Replace(csv)
+	body := postImport(t, admin, ts.URL+"/imports", "goals.csv", edited, "commit")
+
+	if summary := pageElement(t, body, "p", "import-summary"); !strings.Contains(summary, "2 updated") {
+		t.Errorf("summary doesn't count the updates: %s", summary)
+	}
+	if n := strings.Count(body, `data-testid="import-ignored"`); n != 1 {
+		t.Fatalf("the ignored note shows %d times, want once; body:\n%s", n, body)
+	}
+	if note := pageElement(t, body, "p", "import-ignored"); !strings.Contains(note, "Title") {
+		t.Errorf("the ignored note doesn't name Title: %s", note)
+	}
+	goals, _ := h.Service.ListGoals(context.Background())
+	if len(goals) != 2 {
+		t.Fatalf("re-import left %d Goals, want 2", len(goals))
+	}
+	for _, g := range goals {
+		if g.ID == bravo.ID && g.Title != "Bravo" {
+			t.Errorf("Bravo was renamed to %q", g.Title)
+		}
+	}
+	fields, _ := h.Service.GoalFields(context.Background(), alpha.ID)
+	if len(fields) != 1 || fields[0].Value != "20" {
+		t.Errorf("Alpha Fields = %+v, want Budget 20", fields)
+	}
+}

@@ -253,11 +253,13 @@ templ goalListRow(row goalRow) {
 
 // goalTableLayout is the Goal list's table layout: one read-only row per Goal,
 // a column per live Dimension and Field, and no totals row (ADR 0005). It
-// scrolls sideways inside its own container rather than widening the page.
+// scrolls sideways inside its own container rather than widening the page, and
+// downloads as CSV in the import format (#81).
 templ goalTableLayout(view goalsListData) {
 	<div id="goal-list" data-testid="goal-list" class="card">
 		@goalListHead(view)
 		@goalTableColumns(view)
+		<p class="gl-download"><a data-testid="goal-table-download" class="btn quiet sm" href={ view.downloadURL() } download>Download CSV</a></p>
 		<div class="table-scroll">
 			<table data-testid="goal-table">
 				<thead data-testid="goal-table-head">
@@ -361,6 +363,7 @@ templ goalsStyles() {
 		.gl-layout{display:inline-flex;gap:4px}
 		.gl-layout a[aria-current=page]{background:var(--color-primary-subtle);color:var(--color-ink)}
 		.gl-columns{padding:0 12px}
+		.gl-download{margin:0;padding:0 12px 8px}
 		.gl-columns>summary{justify-content:flex-start;color:var(--color-primary-strong);font-weight:600}
 		.gl-columns form{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding-bottom:12px}
 		.gl-columns label{display:inline-flex;align-items:center;gap:8px}

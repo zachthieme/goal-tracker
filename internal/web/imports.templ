@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/importer"
@@ -36,6 +37,7 @@ templ importsPage(current *domain.Account, report *importer.Report, flash string
 					<button type="submit" class="btn" name="action" value="commit">Commit</button>
 				</div>
 				<p data-testid="import-columns" class="hint">Beside the Goal's own columns, a column named for a Dimension or a Field sets it. A cell may list several values of a Dimension that takes several, separated by semicolons. A value not yet in an Extendable Dimension's list is added to it; in a Fixed one it is an error.</p>
+				<p data-testid="import-id-column" class="hint">A row with an ID, as in the Goal table's Download CSV, updates that Goal's Dimension values and Fields instead of creating a Goal; an empty cell clears the value, and its other columns are ignored.</p>
 				<p class="hint">A dry run checks every row and saves nothing. Commit saves the Goals only if no row has errors.</p>
 			</form>
 			if report != nil {
@@ -45,16 +47,25 @@ templ importsPage(current *domain.Account, report *importer.Report, flash string
 	}
 }
 
-// importReport renders the outcome of an import: a summary alert and then a
-// table giving, per row, its line number, the Goal it named, and any errors.
+// importReport renders the outcome of an import: a summary alert, a note when
+// rows with an ID changed columns the import ignores (#81), and then a table
+// giving, per row, its line number, the Goal it named, and any errors.
 templ importReport(report *importer.Report) {
 	<section data-testid="import-report" class="im-report">
 		if report.Committed {
-			<p data-testid="import-summary" class="alert g" role="status">Imported { fmt.Sprint(len(report.Rows)) } Goals.</p>
+			<p data-testid="import-summary" class="alert g" role="status">
+				Imported { fmt.Sprint(len(report.Rows)) } Goals.
+				if n := report.UpdatedCount(); n > 0 {
+					{ fmt.Sprint(len(report.Rows) - n) } created, { fmt.Sprint(n) } updated.
+				}
+			</p>
 		} else if report.HasErrors() {
 			<p data-testid="import-summary" class="alert r" role="alert">Found { fmt.Sprint(report.ErrorCount()) } row(s) with errors; nothing was saved.</p>
 		} else {
 			<p data-testid="import-summary" class="alert lc" role="status">Dry run: { fmt.Sprint(len(report.Rows)) } row(s) look good; nothing saved. Commit to save.</p>
+		}
+		if len(report.Ignored) > 0 {
+			<p data-testid="import-ignored" class="alert lc" role="status">A row with an ID updates only its Goal's Dimension values and Fields, so its changes to { strings.Join(report.Ignored, ", ") } were ignored.</p>
 		}
 		<div class="card">
 			<table>
