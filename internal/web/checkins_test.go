@@ -1182,3 +1182,52 @@ func openTag(element string) string {
 	}
 	return element
 }
+
+// A No change that would repeat a Green after a Milestone went overdue is
+// refused, and the person lands on that Goal's Check-in page with the reason at
+// the top of the form, in plain words, and nothing recorded (#103).
+func TestNoChangeRefusedWhileOverdueLandsOnCheckinForm(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Blue-green deploys for the monolith", "Deploys take the site down.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(100 * day) // past the Beta Milestone's date
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), url.Values{})
+	page := readBody(t, resp)
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", resp.StatusCode)
+	}
+	assertNoChangeRefusalOnForm(t, page, `Milestone &#34;Beta&#34; is overdue`)
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
+		t.Errorf("a refused No change recorded a Check-in: history has %d, want 1", len(history))
+	}
+}
+
+// assertNoChangeRefusalOnForm checks a refused No change came back as the
+// Check-in page, inside the site's chrome, with the reason as the form's top
+// error and without the internal "validation failed:" prefix.
+func assertNoChangeRefusalOnForm(t *testing.T, page, reason string) {
+	t.Helper()
+	if !strings.Contains(page, `data-testid="nav-home"`) {
+		t.Errorf("refusal is not inside the normal page; body:\n%s", page)
+	}
+	start := strings.Index(page, `data-testid="checkin-form"`)
+	if start < 0 {
+		t.Fatalf("refusal does not show the Check-in form; body:\n%s", page)
+	}
+	form := page[start : start+strings.Index(page[start:], "</form>")]
+	errAt := strings.Index(form, `data-testid="checkin-error"`)
+	if errAt < 0 || errAt > strings.Index(form, `data-testid="checkin-health"`) {
+		t.Fatalf("the form has no error at its top; form:\n%s", form)
+	}
+	if !strings.Contains(form[errAt:], reason) {
+		t.Errorf("the form's error does not give the reason %q; form:\n%s", reason, form)
+	}
+	if strings.Contains(page, "validation failed") {
+		t.Errorf("the reason carries the internal prefix; body:\n%s", page)
+	}
+}
