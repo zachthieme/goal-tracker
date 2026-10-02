@@ -73,7 +73,12 @@ const fontsURL = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;60
 // layout is the shared page chrome. htmx drives the in-place create-Goal swap.
 templ layout(title string, current *domain.Account) {
 	<!DOCTYPE html>
-	<html lang="en">
+	<html
+		lang="en"
+		if t := currentTheme(ctx); t != themeSystem {
+			data-theme={ string(t) }
+		}
+	>
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
@@ -97,7 +102,9 @@ templ layout(title string, current *domain.Account) {
 							@navItem("/admin", "nav-admin", "Admin", 0)
 						}
 					</div>
-					<div class="me">
+				}
+				<div class="me">
+					if current != nil {
 						<span data-testid="current-user" class="who">
 							{ "Signed in as " }
 							@person(*current)
@@ -105,11 +112,14 @@ templ layout(title string, current *domain.Account) {
 								{ " (Admin)" }
 							}
 						</span>
+					}
+					@themeMenu()
+					if current != nil {
 						<form method="post" action="/signout">
 							<button type="submit" class="btn quiet sm">Sign out</button>
 						</form>
-					</div>
-				}
+					}
+				</div>
 			</nav>
 			<main class="page">
 				{ children... }
@@ -138,6 +148,31 @@ templ navCount(count int) {
 	if count > 0 {
 		<span class="count">{ strconv.Itoa(count) }</span>
 	}
+}
+
+// themeMenu is the top bar's Theme menu: System, Light and Dark, the current
+// choice marked. It opens and closes as a <details>, and each choice is a
+// plain form post, so it works without script. The choice comes back to this
+// page.
+templ themeMenu() {
+	<details data-testid="theme-menu" class="theme">
+		<summary class="btn quiet sm">Theme</summary>
+		<form class="card theme-menu" method="post" action="/theme">
+			<input type="hidden" name="return" value={ themeReturn(ctx) }/>
+			for _, c := range themeChoices {
+				<button
+					data-testid={ "theme-" + string(c.theme) }
+					type="submit"
+					class="theme-choice"
+					name="theme"
+					value={ string(c.theme) }
+					if c.theme == currentTheme(ctx) {
+						aria-current="true"
+					}
+				>{ c.label }</button>
+			}
+		</form>
+	</details>
 }
 
 // person shows someone by their Name, or their email's local part until they

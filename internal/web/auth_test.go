@@ -82,7 +82,7 @@ func TestSignInPageIsACentredCard(t *testing.T) {
 	if at < 0 {
 		t.Fatalf("the sign-in page has no card:\n%s", page)
 	}
-	card := page[at:strings.Index(page, "</form>")]
+	card := page[at : at+strings.Index(page[at:], "</form>")]
 	if !strings.Contains(openTag(card), `class="card`) {
 		t.Errorf("the sign-in form isn't a card: %s", openTag(card))
 	}
