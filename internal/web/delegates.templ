@@ -38,8 +38,12 @@ templ delegatePage(current *domain.Account, goals []delegatedGoal) {
 						}
 					</div>
 					<h3><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></h3>
-					<p class="muted">Owner <strong data-testid="delegated-goal-owner">@person(g.Owner)
-</strong></p>
+					<p class="muted">
+						Owner 
+						<strong data-testid="delegated-goal-owner">
+							@person(g.Owner)
+						</strong>
+					</p>
 					if item.Latest != nil {
 						<p class="muted small">
 							{ "Last check-in " + daysAgo(item.DaysSince) + " by " }

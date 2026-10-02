@@ -1,9 +1,12 @@
 package web
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
+	"time"
 
 	"github.com/a-h/templ"
 
@@ -25,25 +28,39 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request, current doma
 type homeView struct {
 	// Due are the Active Goals the person Owns or is a Delegate on whose
 	// Check-in is due before next week's reminder, the same rule the reminder
-	// email uses.
+	// email uses, most overdue first.
 	Due []domain.PersonalGoal
-	// PendingLinks are the link requests waiting on the person as the parent's
-	// Owner, and PendingHandoffs the Handoffs waiting on them as the proposed
-	// new Owner.
-	PendingLinks    []domain.Link
-	PendingHandoffs []domain.Handoff
+	// Requests are the link requests waiting on the person as the parent's
+	// Owner and the Handoffs waiting on them as the proposed new Owner, oldest
+	// first.
+	Requests []homeRequest
 	// Green, Yellow, and Red count the Active Goals the person Owns by Health,
 	// and AtRisk lists the Red ones, then the Yellow.
 	Green, Yellow, Red int
 	AtRisk             []domain.PersonalGoal
-	// Delegated are the Goals the person is a Delegate on.
-	Delegated []domain.Goal
+	// Delegated counts the Goals the person is a Delegate on.
+	Delegated int
 }
 
 // NeedsYou counts what's waiting on the person: the Goals to check in on, and
 // the link requests and Handoffs to decide.
 func (v homeView) NeedsYou() int {
-	return len(v.Due) + len(v.PendingLinks) + len(v.PendingHandoffs)
+	return len(v.Due) + len(v.Requests)
+}
+
+// homeRequest is one request waiting on the person's decision: a link request
+// or a Handoff, whichever is set.
+type homeRequest struct {
+	Link    *domain.Link
+	Handoff *domain.Handoff
+}
+
+// madeAt is when the request was made.
+func (r homeRequest) madeAt() time.Time {
+	if r.Link != nil {
+		return r.Link.CreatedAt
+	}
+	return r.Handoff.CreatedAt
 }
 
 // loadHome reads accountID's Home page.
@@ -53,15 +70,28 @@ func (s *Server) loadHome(ctx context.Context, accountID int64) (homeView, error
 		return homeView{}, err
 	}
 	var v homeView
-	if v.PendingLinks, err = s.svc.PendingLinkRequests(ctx, accountID); err != nil {
+	links, err := s.svc.PendingLinkRequests(ctx, accountID)
+	if err != nil {
 		return homeView{}, err
 	}
-	if v.PendingHandoffs, err = s.svc.PendingHandoffs(ctx, accountID); err != nil {
+	handoffs, err := s.svc.PendingHandoffs(ctx, accountID)
+	if err != nil {
 		return homeView{}, err
 	}
-	if v.Delegated, err = s.svc.DelegatedGoals(ctx, accountID); err != nil {
+	for i := range links {
+		v.Requests = append(v.Requests, homeRequest{Link: &links[i]})
+	}
+	for i := range handoffs {
+		v.Requests = append(v.Requests, homeRequest{Handoff: &handoffs[i]})
+	}
+	slices.SortStableFunc(v.Requests, func(a, b homeRequest) int {
+		return a.madeAt().Compare(b.madeAt())
+	})
+	delegated, err := s.svc.DelegatedGoals(ctx, accountID)
+	if err != nil {
 		return homeView{}, err
 	}
+	v.Delegated = len(delegated)
 	var yellow []domain.PersonalGoal
 	for _, g := range goals {
 		if g.Freshness.DueBeforeNextReminder() {
@@ -82,17 +112,30 @@ func (s *Server) loadHome(ctx context.Context, accountID int64) (homeView, error
 		}
 	}
 	v.AtRisk = append(v.AtRisk, yellow...)
+	slices.SortStableFunc(v.Due, func(a, b domain.PersonalGoal) int {
+		return cmp.Compare(overdueDays(b.Freshness), overdueDays(a.Freshness))
+	})
 	return v, nil
 }
 
-// dueReason says why a Goal of the person's own is listed to check in on; the
-// page says who delegated one to them.
+// overdueDays is how many days past its cadence a Goal's Check-in is, negative
+// while it still has days to spare.
+func overdueDays(f domain.Freshness) int {
+	return f.DaysSince - f.CadenceDays
+}
+
+// dueReason says why a Goal is listed to check in on.
 func dueReason(g domain.PersonalGoal) string {
 	f := g.Freshness
 	if !g.CheckedIn {
 		return fmt.Sprintf("No check-in since activation %s on a %d-day cadence", daysAgo(f.DaysSince), f.CadenceDays)
 	}
 	return fmt.Sprintf("Last check-in %s on a %d-day cadence", daysAgo(f.DaysSince), f.CadenceDays)
+}
+
+// healthBarLabel reads the Health distribution bar's counts.
+func healthBarLabel(v homeView) string {
+	return fmt.Sprintf("%d Green, %d Yellow, %d Red", v.Green, v.Yellow, v.Red)
 }
 
 // thingsNeedYou reads the count of what's waiting on the person.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -107,6 +108,28 @@ func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
 	}
 }
 
+// "Check-ins due" lists the most overdue Goal first: how far past its cadence
+// it is, not how long since its last update, so a long cadence doesn't push a
+// Goal ahead of one already further behind.
+func TestHomeListsMostOverdueFirst(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	monthly := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	setCadence(t, h, monthly, 28)
+	h.Clock.Advance(12 * day)
+	weekly := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Clock.Advance(12 * day)
+
+	due := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due")
+
+	// weekly is 5 days past its 7-day cadence; monthly is 24 days into 28.
+	first, second := strings.Index(due, navTo(weekly.ID)), strings.Index(due, navTo(monthly.ID))
+	if first < 0 || second < 0 || first > second {
+		t.Errorf("Check-ins due does not list %q, 5 days overdue, before %q, due in 4:\n%s", weekly.Title, monthly.Title, due)
+	}
+}
+
 // A Goal never checked in on has no previous Check-in to repeat, so its row
 // offers only Check in, not No change.
 func TestHomeOffersNoChangeOnlyWithAPreviousCheckin(t *testing.T) {
@@ -128,31 +151,43 @@ func TestHomeOffersNoChangeOnlyWithAPreviousCheckin(t *testing.T) {
 }
 
 // A Delegate checks in for the Owner, so a due Goal they're a Delegate on is
-// listed to check in on, saying whose it is, and the sidebar lists the Goals
-// delegated to them. Someone with none delegated sees no such section.
-func TestHomeListsDelegatedGoals(t *testing.T) {
+// listed once, under "Check-ins due", tagged with whose it is. The sidebar
+// links to the Delegate page with how many Goals they're a Delegate on, in
+// place of a card listing them again; someone with none sees no such link.
+func TestHomeListsDelegatedGoalsOnce(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
 	dee := h.SignIn("dee@example.com")
 	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	h.AddDelegate(sam, dee, g.ID)
+	other := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	h.AddDelegate(sam, dee, other.ID)
 	h.Clock.Advance(10 * day)
 
 	page := getBody(t, signInClient(t, ts.URL, "dee@example.com"), ts.URL+"/home")
 
 	row := homeRow(t, pageElement(t, page, "ul", "home-due"), g)
-	if !strings.Contains(row, "Delegated to you by "+shownAs("sam@example.com", "sam")) {
-		t.Errorf("delegated Goal's row does not say whose it is:\n%s", row)
+	if !strings.Contains(row, `data-testid="home-due-for" class="tag">for `+shownAs("sam@example.com", "sam")) {
+		t.Errorf("delegated Goal's row is not tagged with its Owner:\n%s", row)
 	}
-	delegated := pageElement(t, page, "section", "home-delegated")
-	if !strings.Contains(delegated, navTo(g.ID)) || !strings.Contains(delegated, `href="/delegates"`) {
-		t.Errorf("sidebar does not list the delegated Goal and link to /delegates:\n%s", delegated)
+	if n := strings.Count(page, navTo(g.ID)); n != 1 {
+		t.Errorf("delegated Goal shows %d times on Home, want once", n)
+	}
+	if strings.Contains(page, `data-testid="home-delegated"`) {
+		t.Errorf("Home still has a Delegated to you card")
+	}
+	link := pageElement(t, page, "a", "home-delegate-link")
+	if !strings.Contains(link, `href="/delegates"`) || !strings.Contains(link, `<span class="num">2</span>`) {
+		t.Errorf("Delegate link does not lead to /delegates counting dee's 2 Goals: %s", link)
 	}
 
 	samPage := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
-	if strings.Contains(samPage, `data-testid="home-delegated"`) {
-		t.Errorf("sam has nothing delegated but sees a Delegated to you section")
+	if strings.Contains(samPage, `data-testid="home-delegate-link"`) {
+		t.Errorf("sam is a Delegate on nothing but sees the Delegate link")
+	}
+	if strings.Contains(homeRow(t, pageElement(t, samPage, "ul", "home-due"), g), `data-testid="home-due-for"`) {
+		t.Errorf("sam's own Goal is tagged as someone else's")
 	}
 }
 
@@ -182,48 +217,144 @@ func TestHomeCheckInOpensCheckinForm(t *testing.T) {
 	}
 }
 
-// A link request waiting on the viewer as the parent's Owner, and a Handoff
-// waiting on them as the proposed new Owner, are listed under "Waiting on
-// you", each with Accept and a Reject that submits at once. Someone with
-// nothing waiting and nothing due sees each section's empty state.
-func TestHomeListsWhatIsWaitingOnYou(t *testing.T) {
+// A Handoff waiting on the viewer as the proposed new Owner and a link request
+// waiting on them as the parent's Owner are listed under "Requests", oldest
+// first whatever their kind. Each offers Accept as an outlined button and
+// Reject as a text button that submits at once, and both do what they say.
+func TestHomeListsRequestsOldestFirst(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
 	kim := h.SignIn("kim@example.com")
-	parent := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
-	child := h.ActiveGoal(kim, "Ship search", "People can't find things.")
-	link := h.RequestLink(kim, child, parent, "")
 	handed := h.ActiveGoal(kim, "Cut churn", "Customers leave.")
 	handoff, err := h.Service.StartHandoffByEmail(context.Background(), handed.ID, "sam@example.com", kim.ID)
 	if err != nil {
 		t.Fatalf("StartHandoff: %v", err)
 	}
+	h.Clock.Advance(day)
+	parent := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	child := h.ActiveGoal(kim, "Ship search", "People can't find things.")
+	link := h.RequestLink(kim, child, parent, "")
+	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	page := getBody(t, client, ts.URL+"/home")
+	requests := pageElement(t, page, "ul", "home-requests")
+	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "2 things need you") {
+		t.Errorf("summary = %s, want 2 things need you for the two Requests", got)
+	}
 
-	waiting := pageElement(t, page, "ul", "home-waiting")
+	if older, newer := strings.Index(requests, navTo(handed.ID)), strings.Index(requests, navTo(child.ID)); older < 0 || newer < 0 || older > newer {
+		t.Errorf("Requests does not list the day-old Handoff before today's link request:\n%s", requests)
+	}
 	for _, tc := range []struct {
 		what   string
 		row    string
 		action string
 	}{
-		{"link request", homeRow(t, waiting, child), fmt.Sprintf("/links/%d", link.ID)},
-		{"Handoff", homeRow(t, waiting, handed), fmt.Sprintf("/handoffs/%d", handoff.ID)},
+		{"link request", homeRow(t, requests, child), fmt.Sprintf("/links/%d", link.ID)},
+		{"Handoff", homeRow(t, requests, handed), fmt.Sprintf("/handoffs/%d", handoff.ID)},
 	} {
-		if !strings.Contains(tc.row, `action="`+tc.action+`/accept"`) {
-			t.Errorf("%s has no Accept:\n%s", tc.what, tc.row)
+		accept := between(t, tc.row, `action="`+tc.action+`/accept"`, "</form>")
+		if !strings.Contains(accept, `<button type="submit" class="btn sm">Accept</button>`) {
+			t.Errorf("%s has no outlined Accept:\n%s", tc.what, tc.row)
+		}
+		reject := between(t, tc.row, `action="`+tc.action+`/reject"`, "</form>")
+		if !strings.Contains(reject, `<button type="submit" class="btn quiet sm">Reject</button>`) {
+			t.Errorf("%s has no Reject text button:\n%s", tc.what, tc.row)
 		}
 		assertSubmitsAtOnce(t, tc.what+"'s Reject", tagAround(t, tc.row, `action="`+tc.action+`/reject"`))
 	}
 
-	kimPage := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home")
-	if !strings.Contains(kimPage, `data-testid="home-waiting-empty"`) {
-		t.Errorf("kim has nothing waiting but sees no empty state:\n%s", kimPage)
+	postForm(t, client, ts.URL+fmt.Sprintf("/links/%d/accept", link.ID), nil)
+	if parents := h.ParentsOf(child); len(parents) != 1 || parents[0].ID != parent.ID {
+		t.Errorf("Home's Accept did not link %q under %q: parents = %v", child.Title, parent.Title, parents)
 	}
-	// kim's Goals were activated today, so none is due yet.
-	if empty := pageElement(t, kimPage, "p", "home-due-empty"); !strings.Contains(empty, "You're all caught up.") {
-		t.Errorf("kim has nothing to check in on but sees %s", empty)
+	postForm(t, client, ts.URL+fmt.Sprintf("/handoffs/%d/reject", handoff.ID), nil)
+	if pending, _ := h.Service.PendingHandoffs(context.Background(), sam.ID); len(pending) != 0 {
+		t.Errorf("Home's Reject left the Handoff pending")
+	}
+}
+
+// A "Needs you" subgroup with nothing in it is left out, and with nothing at
+// all the list shows a single caught-up line.
+func TestHomeOmitsEmptySubgroups(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	pat := h.SignIn("pat@example.com")
+	due := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Clock.Advance(10 * day)
+	parent := h.ActiveGoal(kim, "Grow revenue", "It pays for everything.")
+	h.RequestLink(pat, h.ActiveGoal(pat, "Cut churn", "Customers leave."), parent, "")
+
+	for _, tc := range []struct {
+		who, has, lacks string
+	}{
+		{"sam@example.com", `data-testid="home-due"`, `data-testid="home-requests"`},
+		{"kim@example.com", `data-testid="home-requests"`, `data-testid="home-due"`},
+	} {
+		list := pageElement(t, getBody(t, signInClient(t, ts.URL, tc.who), ts.URL+"/home"), "section", "home-needs-you")
+		if !strings.Contains(list, tc.has) {
+			t.Errorf("%s: Needs you lacks %s:\n%s", tc.who, tc.has, list)
+		}
+		for _, gone := range []string{tc.lacks, `data-testid="home-caught-up"`} {
+			if strings.Contains(list, gone) {
+				t.Errorf("%s: Needs you shows %s:\n%s", tc.who, gone, list)
+			}
+		}
+	}
+	if !strings.Contains(pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-needs-you"), navTo(due.ID)) {
+		t.Errorf("sam's due Goal is missing from Needs you")
+	}
+
+	// pat's Goal was activated today, and nothing waits on them.
+	list := pageElement(t, getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/home"), "section", "home-needs-you")
+	if n := strings.Count(list, "<li"); n != 0 {
+		t.Errorf("pat has nothing needing them but Needs you lists %d rows:\n%s", n, list)
+	}
+	for _, gone := range []string{"Check-ins due", "Requests"} {
+		if strings.Contains(list, gone) {
+			t.Errorf("pat's Needs you heads an empty %s subgroup:\n%s", gone, list)
+		}
+	}
+	if strings.Count(list, "You're all caught up") != 1 || !strings.Contains(list, `data-testid="home-caught-up"`) {
+		t.Errorf("pat's Needs you does not show one caught-up line:\n%s", list)
+	}
+}
+
+// Accepting a Handoff of a Goal with Delegates means choosing which to keep, so
+// Home offers Review, leading to the Pending handoffs page where that choice is
+// made (TestHomeHandoffReviewListsDelegatesToKeep), in place of Accept. Reject
+// still decides it from Home.
+func TestHomeOffersReviewForHandoffWithDelegates(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	dee := h.SignIn("dee@example.com")
+	handed := h.ActiveGoal(kim, "Cut churn", "Customers leave.")
+	h.AddDelegate(kim, dee, handed.ID)
+	handoff, err := h.Service.StartHandoffByEmail(context.Background(), handed.ID, "sam@example.com", kim.ID)
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	row := homeRow(t, pageElement(t, getBody(t, client, ts.URL+"/home"), "ul", "home-requests"), handed)
+
+	if strings.Contains(row, "/accept") {
+		t.Errorf("Handoff with Delegates offers Accept on Home without the choice of whom to keep:\n%s", row)
+	}
+	review := tagAround(t, row, `data-testid="home-request-review"`)
+	if href := attr(review, "href"); href != "/handoffs" {
+		t.Fatalf("Review links to %q, want /handoffs:\n%s", href, row)
+	}
+	if !strings.Contains(row, ">Review</a>") {
+		t.Errorf("Review link does not read Review:\n%s", row)
+	}
+	if !strings.Contains(row, fmt.Sprintf(`action="/handoffs/%d/reject"`, handoff.ID)) {
+		t.Errorf("Handoff with Delegates offers no Reject:\n%s", row)
 	}
 }
 
@@ -280,6 +411,57 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 	}
 	if head := pageElement(t, page, "header", "home-head"); !strings.Contains(head, ">New goal</a>") {
 		t.Errorf("heading has no New goal link:\n%s", head)
+	}
+}
+
+// "Your goals" draws the viewer's own Active Goals by Health as a segmented
+// bar, one unit a Goal, Green then Yellow then Red, labelled with each count
+// so it reads without colour. It counts Goals, not Metrics (ADR 0003), and
+// leaves out Goals with no Health yet and those the viewer is only a Delegate
+// on. Someone with no Goal to count sees no bar.
+func TestHomeDrawsHealthDistributionBar(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	target := testsupport.Epoch.AddDate(0, 1, 0)
+	for _, title := range []string{"Ship search", "Grow revenue"} {
+		g := h.ActiveGoal(sam, title, "It matters.")
+		h.Checkin(sam, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	}
+	red := h.ActiveGoal(sam, "Cut churn", "Customers leave.")
+	h.Checkin(sam, red.ID, domain.HealthRed, "Blocked.", "Escalate.", target)
+	h.ActiveGoal(sam, "Hire", "We need people.")
+	notMine := h.ActiveGoal(kim, "Open an office", "Closer to customers.")
+	h.Checkin(kim, notMine.ID, domain.HealthYellow, "Slipping.", "Cut scope.", target)
+	h.AddDelegate(kim, sam, notMine.ID)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+
+	bar := pageElement(t, page, "div", "home-health-bar")
+	if got := strings.Join(regexp.MustCompile(`<span class="(g|y|r)"`).FindAllString(bar, -1), ""); got != `<span class="g"<span class="g"<span class="r"` {
+		t.Errorf("bar's units = %s, want two Green then one Red:\n%s", got, bar)
+	}
+	if label := attr(tagAround(t, bar, `data-testid="home-health-bar"`), "aria-label"); label != "2 Green, 0 Yellow, 1 Red" {
+		t.Errorf("bar's label = %q, want its counts", label)
+	}
+	for testID, want := range map[string]string{
+		"home-count-green":  "2",
+		"home-count-yellow": "0",
+		"home-count-red":    "1",
+	} {
+		if got := pageElement(t, page, "span", testID); !strings.HasSuffix(got, ">"+want) {
+			t.Errorf("%s = %s, want %s", testID, got, want)
+		}
+	}
+
+	kimPage := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home")
+	if !strings.Contains(kimPage, `data-testid="home-health-bar"`) {
+		t.Errorf("kim's Yellow Goal draws no bar")
+	}
+	pat := getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/home")
+	if strings.Contains(pat, `data-testid="home-health-bar"`) {
+		t.Errorf("pat has no Goals but sees a distribution bar")
 	}
 }
 
