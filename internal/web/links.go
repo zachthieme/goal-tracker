@@ -51,7 +51,8 @@ func (s *Server) handlePendingLinks(w http.ResponseWriter, r *http.Request, curr
 		http.Error(w, "could not list pending requests", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, pendingLinksPage(&current, pending))
+	toast := s.linkRejectionToast(r.Context(), takeUndo(w, r), current, "")
+	render(w, r, http.StatusOK, pendingLinksPage(&current, pending, toast))
 }
 
 // handleAcceptLink accepts a pending request; only the parent's Owner may.
@@ -67,17 +68,58 @@ func (s *Server) handleAcceptLink(w http.ResponseWriter, r *http.Request, curren
 	http.Redirect(w, r, "/links", http.StatusSeeOther)
 }
 
-// handleRejectLink rejects a pending request; only the parent's Owner may.
+// handleRejectLink rejects a pending request; only the parent's Owner may. It
+// returns to the page the reject came from (from: Home, or the pending page),
+// which offers Undo once in a toast.
 func (s *Server) handleRejectLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	linkID, ok := linkIDFromPath(w, r)
 	if !ok {
 		return
 	}
-	if _, err := s.svc.RejectLink(r.Context(), linkID, current.ID); err != nil {
+	rejection, err := s.svc.RejectLink(r.Context(), linkID, current.ID)
+	if err != nil {
 		writeLinkError(w, err)
 		return
 	}
-	http.Redirect(w, r, "/links", http.StatusSeeOther)
+	back := requestPage(r.FormValue("from"), "/links")
+	offerUndo(w, back, undoLinkRejection, rejection.ID)
+	http.Redirect(w, r, back, http.StatusSeeOther)
+}
+
+// handleUndoLinkRejection puts the rejected request in the path back as
+// pending; only the person who rejected it may, and only once. It returns to
+// the page the Undo came from (from), or refuses with a message and changes
+// nothing.
+func (s *Server) handleUndoLinkRejection(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	rejectionID, ok := linkIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	if _, err := s.svc.RestoreLinkRequest(r.Context(), rejectionID, current.ID); err != nil {
+		writeLinkError(w, err)
+		return
+	}
+	http.Redirect(w, r, requestPage(r.FormValue("from"), "/links"), http.StatusSeeOther)
+}
+
+// linkRejectionToast is the toast a page carries straight after current
+// rejected a link request (offer), with the Undo that puts it back — or nil
+// when the offer isn't for a rejection current can still undo. from names the
+// page for the Undo to return to, as the reject's own from did.
+func (s *Server) linkRejectionToast(ctx context.Context, offer undoOffer, current domain.Account, from string) *toast {
+	id, ok := offer.of(undoLinkRejection)
+	if !ok {
+		return nil
+	}
+	rejection, err := s.svc.LinkRejection(ctx, id)
+	if err != nil || rejection.Restored || rejection.RejectedBy != current.ID {
+		return nil
+	}
+	return &toast{
+		Message: fmt.Sprintf("Request rejected: %s won't contribute to %s.", rejection.Child.Title, rejection.Parent.Title),
+		Undo:    fmt.Sprintf("/link-rejections/%d/undo", rejection.ID),
+		Fields:  fromField(from),
+	}
 }
 
 // handleRemoveLink removes an accepted link; either linked Goal's Owner may.

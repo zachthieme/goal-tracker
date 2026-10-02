@@ -15,8 +15,10 @@ const undoCookie = "gt_undo"
 
 // Undo offers a toast can carry, each naming what the change was.
 const (
-	undoLinkRemoval = "link-removal"
-	undoValueRetire = "value-retire"
+	undoLinkRemoval      = "link-removal"
+	undoValueRetire      = "value-retire"
+	undoLinkRejection    = "link-rejection"
+	undoHandoffRejection = "handoff-rejection"
 )
 
 // offerUndo has the page at path offer Undo for kind's record id, once.
