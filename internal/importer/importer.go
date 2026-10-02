@@ -9,7 +9,11 @@
 //
 // An import is validated row by row. A DryRun reports the errors and saves
 // nothing; a Commit is all-or-nothing: if any row has an error the whole import
-// rolls back and nothing is saved. The column format is documented in
+// rolls back and nothing is saved.
+//
+// A row with an ID updates that existing Goal's Dimension values and Fields
+// instead (#81), so a file the Goal table downloads (see Download) can be
+// edited and imported again. The column format is documented in
 // docs/import-format.md, with an example in testdata/import-example.csv.
 package importer
 
