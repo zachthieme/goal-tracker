@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
@@ -69,20 +70,37 @@ type DimensionValue struct {
 	DimensionRetired bool
 }
 
-// CreateDimension defines a new Dimension with a fixed list of values. Only an
-// Admin may define Dimensions (CONTEXT.md: Admin). The name and at least one
-// value are required; blank values are dropped, and so is a value matching an
-// earlier one whatever its case.
+// CreateDimension defines a new Dimension with a fixed list of values, taking
+// one value from a Fixed list, as DefineDimension defines it.
 func (s *Service) CreateDimension(ctx context.Context, actorID int64, name string, values []string) (Dimension, error) {
+	return s.DefineDimension(ctx, actorID, DimensionDefinition{Name: name, Values: values})
+}
+
+// DimensionDefinition is a new Dimension's shape: its name, its values in
+// order, whether a Goal takes one of them or several (one when empty), and
+// whether its list is Fixed or Extendable (Fixed when empty).
+type DimensionDefinition struct {
+	Name      string
+	Values    []string
+	Selection string
+	List      string
+}
+
+// DefineDimension defines a new Dimension shaped as def says, and writes one
+// entry to the Definition log saying so. Only an Admin may define Dimensions
+// (CONTEXT.md: Admin). The name and at least one value are required; blank
+// values are dropped, and so is a value matching an earlier one whatever its
+// case.
+func (s *Service) DefineDimension(ctx context.Context, actorID int64, def DimensionDefinition) (Dimension, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return Dimension{}, err
 	}
-	name = strings.TrimSpace(name)
+	name := strings.TrimSpace(def.Name)
 	if name == "" {
 		return Dimension{}, fmt.Errorf("%w: a Dimension needs a name", ErrValidation)
 	}
-	cleaned := make([]string, 0, len(values))
-	for _, v := range values {
+	cleaned := make([]string, 0, len(def.Values))
+	for _, v := range def.Values {
 		v = strings.TrimSpace(v)
 		if v != "" && !slices.ContainsFunc(cleaned, func(c string) bool { return strings.EqualFold(c, v) }) {
 			cleaned = append(cleaned, v)
@@ -91,26 +109,47 @@ func (s *Service) CreateDimension(ctx context.Context, actorID int64, name strin
 	if len(cleaned) == 0 {
 		return Dimension{}, fmt.Errorf("%w: a Dimension needs at least one value", ErrValidation)
 	}
-
-	now := s.clock.Now().Format(timeFormat)
-	row, err := s.queries.CreateDimension(ctx, db.CreateDimensionParams{
-		Name:      name,
-		CreatedAt: now,
-	})
-	if err != nil {
-		return Dimension{}, fmt.Errorf("create dimension: %w", err)
+	selection, list := cmp.Or(def.Selection, SelectionOne), cmp.Or(def.List, ListFixed)
+	if selection != SelectionOne && selection != SelectionSeveral {
+		return Dimension{}, fmt.Errorf("%w: a Dimension takes one value or several", ErrValidation)
 	}
-	dim := dimensionFromRow(row)
-	for _, v := range cleaned {
-		val, err := s.queries.CreateDimensionValue(ctx, db.CreateDimensionValueParams{
-			DimensionID: row.ID,
-			Value:       v,
-			CreatedAt:   now,
+	if list != ListFixed && list != ListExtendable {
+		return Dimension{}, fmt.Errorf("%w: a Dimension's list is Fixed or Extendable", ErrValidation)
+	}
+
+	var dim Dimension
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		now := tx.clock.Now().Format(timeFormat)
+		row, err := tx.queries.CreateDimension(ctx, db.CreateDimensionParams{
+			Name:      name,
+			CreatedAt: now,
 		})
 		if err != nil {
-			return Dimension{}, fmt.Errorf("create dimension value: %w", err)
+			return fmt.Errorf("create dimension: %w", err)
 		}
-		dim.Values = append(dim.Values, dimensionValueFromRow(val))
+		if row, err = tx.queries.SetDimensionSelection(ctx, db.SetDimensionSelectionParams{Selection: selection, ID: row.ID}); err != nil {
+			return fmt.Errorf("set dimension selection: %w", err)
+		}
+		if row, err = tx.queries.SetDimensionList(ctx, db.SetDimensionListParams{List: list, ID: row.ID}); err != nil {
+			return fmt.Errorf("set dimension list: %w", err)
+		}
+		dim = dimensionFromRow(row)
+		for _, v := range cleaned {
+			val, err := tx.queries.CreateDimensionValue(ctx, db.CreateDimensionValueParams{
+				DimensionID: row.ID,
+				Value:       v,
+				CreatedAt:   now,
+			})
+			if err != nil {
+				return fmt.Errorf("create dimension value: %w", err)
+			}
+			dim.Values = append(dim.Values, dimensionValueFromRow(val))
+		}
+		return tx.recordDimensionChange(ctx, actorID, dim.ID, "Created the Dimension %s with %s, taking %s from a %s list.",
+			dim.Name, strings.Join(cleaned, ", "), selectionPhrase(dim), listName(dim))
+	})
+	if err != nil {
+		return Dimension{}, err
 	}
 	return dim, nil
 }
