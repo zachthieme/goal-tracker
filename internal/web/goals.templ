@@ -179,7 +179,8 @@ templ goalListRow(row goalRow) {
 				</div>
 			}
 		</td>
-		<td>@person(g.Owner)</td>
+		<td>@person(g.Owner)
+</td>
 		<td data-testid="goal-row-due" class="num">
 			if g.DeliveryDate.IsZero() {
 				<span class="muted">—</span>
@@ -219,9 +220,10 @@ templ goalsStyles() {
 }
 
 // goalPage shows a single Goal: a header summarizing it with every action in
-// reach, then its latest status, So What, Metrics, Milestones, Highlights and
-// history in the main column, and its links, people and Dimension values in the
-// sidebar.
+// reach and its So What beneath, then its latest status, Metrics, Milestones,
+// Highlights and history in the main column, and its links, people and
+// Dimension values in the sidebar. Only the latest status, each Metric and
+// Milestones are cards; the rest sit on the canvas under a rule.
 templ goalPage(current *domain.Account, v goalView) {
 	{{ g := v.Goal }}
 	{{ owner := current != nil && current.ID == g.Owner.ID }}
@@ -243,17 +245,17 @@ templ goalPage(current *domain.Account, v goalView) {
 		@goalFreshness(v.Freshness)
 		@goalSignals(v.Signals)
 		@goalHead(v, owner, admin)
+		<article data-testid="goal" class="gp-block gp-statement">
+			<h3><button type="button" class="disclose help" aria-expanded="false" aria-controls="so-what-help" title={ soWhatHelp }>So What</button></h3>
+			<p id="so-what-help" class="explain" hidden>{ soWhatHelp }</p>
+			<p data-testid="goal-so-what">{ g.SoWhat }</p>
+		</article>
 		<div class="grid-main-aside">
 			<div data-testid="goal-main" class="gp-col">
 				if owner && g.Lifecycle == domain.LifecycleProposed {
 					@defineGoal(v)
 				}
 				@checkinSection(v)
-				<article data-testid="goal" class="card gp-card">
-					<h3><button type="button" class="disclose help" aria-expanded="false" aria-controls="so-what-help" title={ soWhatHelp }>So What</button></h3>
-					<p id="so-what-help" class="explain" hidden>{ soWhatHelp }</p>
-					<p data-testid="goal-so-what">{ g.SoWhat }</p>
-				</article>
 				<section data-testid="goal-metrics" class="gp-block">
 					<h2>Metrics</h2>
 					@metricList(v.Trends, owner)
@@ -262,12 +264,12 @@ templ goalPage(current *domain.Account, v goalView) {
 					<h3>Milestones</h3>
 					@milestoneList(v, owner && g.Lifecycle == domain.LifecycleProposed)
 				</section>
-				<section data-testid="goal-highlights" class="card gp-card">
-					<h3>Highlights</h3>
+				<section data-testid="goal-highlights" class="gp-block ruled">
+					<h2>Highlights</h2>
 					@highlightList(v.Highlights)
 				</section>
-				<div data-testid="goal-history" class="card gp-card">
-					<h3>History</h3>
+				<div data-testid="goal-history" class="gp-block ruled">
+					<h2>History</h2>
 					<section data-testid="goal-checkin-history">
 						<details>
 							<summary>{ fmt.Sprintf("Check-in history (%d)", len(v.Checkins)) }</summary>
@@ -306,22 +308,19 @@ templ goalPage(current *domain.Account, v goalView) {
 				</div>
 				@addChildGoal(v)
 			</div>
-			<aside data-testid="goal-sidebar" class="gp-col">
-				<div class="card gp-card">
-					<section data-testid="goal-parents">
-						<h3>Contributes to</h3>
-						@linkList(v.Parents, v.LinkHealth, "no-parents", "This Goal contributes to nothing yet.")
-					</section>
-				</div>
-				<div class="card gp-card">
-					<section data-testid="goal-children">
-						<h3>Contributed to by</h3>
-						@linkList(v.Children, v.LinkHealth, "no-children", "Nothing contributes to this Goal yet.")
-					</section>
-				</div>
-				<div data-testid="goal-people" class="card gp-card">
+			<aside data-testid="goal-sidebar" class="gp-col gp-side">
+				<section data-testid="goal-parents" class="gp-block ruled">
+					<h3>Contributes to</h3>
+					@linkList(v.Parents, v.LinkHealth, "no-parents", "This Goal contributes to nothing yet.")
+				</section>
+				<section data-testid="goal-children" class="gp-block ruled">
+					<h3>Contributed to by</h3>
+					@linkList(v.Children, v.LinkHealth, "no-children", "Nothing contributes to this Goal yet.")
+				</section>
+				<div data-testid="goal-people" class="gp-block ruled">
 					<h3>People</h3>
-					<p><span class="label">Owner</span><br/>@person(g.Owner)</p>
+					<p><span class="label">Owner</span><br/>@person(g.Owner)
+</p>
 					@delegatesSection(v, owner)
 					<section data-testid="goal-contributors">
 						<h3 class="label">Contributors</h3>
@@ -330,12 +329,13 @@ templ goalPage(current *domain.Account, v goalView) {
 								<li data-testid="no-contributors" class="muted">No Contributors yet.</li>
 							}
 							for _, c := range v.Contributors {
-								<li>@person(c)</li>
+								<li>@person(c)
+</li>
 							}
 						</ul>
 					</section>
 				</div>
-				<section data-testid="goal-dimensions" class="card gp-card">
+				<section data-testid="goal-dimensions" class="gp-block ruled">
 					<h3>Dimensions</h3>
 					@goalDimensions(v)
 				</section>
@@ -374,7 +374,8 @@ templ goalHead(v goalView, owner, admin bool) {
 			</div>
 			<h1 data-testid="goal-title">{ g.Title }</h1>
 			<p data-testid="goal-meta" class="gp-meta">
-				<span>Owner <strong data-testid="goal-owner">@person(g.Owner)</strong></span>
+				<span>Owner <strong data-testid="goal-owner">@person(g.Owner)
+</strong></span>
 				if !g.DeliveryDate.IsZero() {
 					<span>
 						Delivers 
@@ -426,6 +427,8 @@ templ goalPageStyles() {
 		.gp-col{display:flex;flex-direction:column;gap:20px;min-width:0}
 		.gp-card{padding:24px;display:flex;flex-direction:column;gap:12px}
 		.gp-block{display:flex;flex-direction:column;gap:12px}
+		.gp-statement{max-width:720px}
+		@media (max-width:900px){.gp-side>.ruled:first-child{border-top:1px solid var(--color-border);padding-top:20px}}
 		.gp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 		.gp-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
 		.gp-values{border:0;margin:0;padding:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
@@ -514,8 +517,10 @@ templ goalMore(v goalView, owner, admin bool) {
 							<details>
 								<summary>Mark owner departed…</summary>
 								<section data-testid="depart-owner">
-									<p class="small muted">@person(g.Owner)
-									{ " has left the org." }</p>
+									<p class="small muted">
+										@person(g.Owner)
+										{ " has left the org." }
+									</p>
 									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/depart", g.Owner.ID)) } onsubmit={ confirmScript(confirmDepart) }>
 										<button type="submit" class="btn danger">
 											{ "Mark " }
@@ -531,8 +536,10 @@ templ goalMore(v goalView, owner, admin bool) {
 							<details>
 								<summary>Mark returned…</summary>
 								<section data-testid="return-owner">
-									<p class="small muted">@person(g.Owner)
-									{ " is back in the org." }</p>
+									<p class="small muted">
+										@person(g.Owner)
+										{ " is back in the org." }
+									</p>
 									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/return", g.Owner.ID)) } onsubmit={ confirmScript(confirmReturn) }>
 										<button type="submit" class="btn">
 											{ "Mark " }

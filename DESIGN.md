@@ -210,6 +210,19 @@ Load the fonts with this URL:
   changes: it doesn't move.
   A card's own heading is an `h3` (card title); `h2` is for page sections
   that sit outside cards.
+  A card is for something a person acts on or reads as a unit of status,
+  such as the Goal page's Check-in, each Metric and Milestones. Reference
+  blocks are not cards. On the Goal page these are Highlights, History and
+  the sidebar's blocks.
+- **Canvas block (`.ruled`):** a reference block sits on the canvas with no
+  surface, border or shadow. A 1px `--color-border` rule sits above it with
+  20px of padding below the rule. The first block in a column has no rule,
+  because nothing sits above it. A canvas block in the main column takes an
+  `h2`. **Sidebar exception:** a canvas block in the sidebar keeps the `h3`
+  size, so the narrow column reads as one quiet list rather than a stack of
+  sections. At 900px and below, the sidebar stacks under the main column, and
+  its first block takes the rule too. The Goal's So What is a statement
+  directly under the page head. It sits on the canvas with no rule.
 - **Inputs:** `--color-surface`, 1px `--color-border-strong`, `--radius-md`,
   12px × 16px padding. On focus, the border becomes `--color-focus` and the
   field takes the same ring as everything else, `2px solid var(--color-focus)`,
