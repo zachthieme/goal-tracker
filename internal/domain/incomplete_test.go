@@ -215,3 +215,27 @@ func TestOnlyActiveGoalsAreIncomplete(t *testing.T) {
 		}
 	}
 }
+
+// Clearing a required value on an Active Goal isn't refused; the Goal becomes
+// Incomplete instead (CONTEXT.md: Incomplete — nothing is blocked).
+func TestClearingARequiredValueFlagsRatherThanRefuses(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "")
+	g := h.ActiveGoal(sam, "Ship v2", "It matters.")
+	h.AssignGoalValue(g, pillar.Values[0])
+	h.SetGoalField(sam, g, budget, "10")
+	h.SetDimensionRequired(boss, pillar, true)
+	h.SetFieldRequired(boss, budget, true)
+
+	if err := h.Service.SetGoalValues(context.Background(), sam.ID, g.ID, pillar.ID, nil); err != nil {
+		t.Errorf("clearing Pillar: %v", err)
+	}
+	h.SetGoalField(sam, g, budget, "")
+
+	if got := incomplete(t, h, g.ID); strings.Join(got, ", ") != "Pillar, Budget" {
+		t.Errorf("Incomplete = %q, want Pillar, Budget", got)
+	}
+}
