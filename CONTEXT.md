@@ -142,7 +142,7 @@ An owner's routine update to one Goal: Health, a short status, Date Slips, and M
 _Avoid_: status update, 5-15, report
 
 **Highlight**:
-An optional note in a Check-in, marked as an Insight, Accomplishment, or Miss, that a Report author may pull into a Report's narrative. The Goal's Owner is credited.
+An optional note in a Check-in, marked as an Insight, Accomplishment, or Miss, that a Report author may pull into a Report's narrative. A Check-in may carry several, of any mix of kinds, and an author pulls each one separately. The Goal's Owner is credited.
 _Avoid_: win, callout, note
 
 **Report**:

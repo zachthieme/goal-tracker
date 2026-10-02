@@ -53,6 +53,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [api] Database schema: migration `0029_report_definition_fields` adds a `report_definition_fields` table (Report Definition, Field) holding the Fields each Report Definition shows. It's additive, runs on startup, and starts empty, so existing Report Definitions show no Fields. Published snapshots gain an optional `Fields` list on each Goal; earlier snapshots read as before (#78).
 
 **Improvements:**
+- [internal] `CONTEXT.md` says a Check-in may carry several Highlights, ahead of the work in #104.
 - [user] A new Dimension value matches an existing one whatever its letter case or surrounding spaces ("acme " is "Acme"), on the Goal page and the Dimensions page alike, so no list gains a near-duplicate: a match sets or keeps the existing value, and a match on a Retired value is refused with a message saying it's retired (#70).
 - [user] On the Goal page, only the Check-in, each Metric and Milestones are raised cards, so they stand out. The So What sits under the page head as the Goal's statement. Highlights, History and the sidebar's blocks sit on the page under a thin rule (#60).
 - [user] A new Dimension value, whether an Admin adds it or someone adds it to an Extendable list from the Goal page, now lands at the end of the list in the order added, rather than in alphabetical place; a new Dimension's values keep the order they were typed (#71).
