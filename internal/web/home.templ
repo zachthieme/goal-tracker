@@ -51,7 +51,7 @@ templ homePage(current *domain.Account, v homeView) {
 									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", l.Parent.ID)) }>{ l.Parent.Title }</a>
 								</div>
 								<div class="hm-actions">
-									@acceptReject(fmt.Sprintf("/links/%d", l.ID), "Reject this link request?")
+									@acceptReject(fmt.Sprintf("/links/%d", l.ID))
 								</div>
 							</li>
 						}
@@ -150,13 +150,13 @@ templ dueRow(g domain.PersonalGoal) {
 	</li>
 }
 
-// acceptReject is the pair of buttons deciding a pending request at base, the
-// Reject asking for confirmation first.
-templ acceptReject(base, confirmReject string) {
+// acceptReject is the pair of buttons deciding a pending request at base. Reject
+// sends at once: the requester can simply ask again.
+templ acceptReject(base string) {
 	<form method="post" action={ templ.SafeURL(base + "/accept") } class="inline-form">
 		<button type="submit" class="btn primary sm">Accept</button>
 	</form>
-	<form method="post" action={ templ.SafeURL(base + "/reject") } class="inline-form" onsubmit={ confirmScript(confirmReject) }>
+	<form method="post" action={ templ.SafeURL(base + "/reject") } class="inline-form">
 		<button type="submit" class="btn danger sm">Reject</button>
 	</form>
 }

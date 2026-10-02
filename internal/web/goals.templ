@@ -1442,8 +1442,8 @@ templ metricFields(m domain.Metric) {
 }
 
 // linkList renders a Goal's parents or children as navigable links, each with
-// its Health and a button to remove the connecting link that asks for
-// confirmation first. emptyTestID/emptyText render when there are none.
+// its Health and a button that removes the connecting link at once: it can be
+// requested again. emptyTestID/emptyText render when there are none.
 templ linkList(links []domain.GoalLink, health map[int64]string, emptyTestID, emptyText string) {
 	<ul class="gp-list">
 		if len(links) == 0 {
@@ -1461,7 +1461,7 @@ templ linkList(links []domain.GoalLink, health map[int64]string, emptyTestID, em
 					if l.Goal.Ownerless {
 						<span data-testid="ownerless" class="badge ol">Ownerless</span>
 					}
-					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/remove", l.LinkID)) } onsubmit={ confirmScript(confirmRemoveLink) }>
+					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/remove", l.LinkID)) }>
 						<button type="submit" class="btn quiet sm">Remove</button>
 					</form>
 				</span>
@@ -1473,7 +1473,3 @@ templ linkList(links []domain.GoalLink, health map[int64]string, emptyTestID, em
 		}
 	</ul>
 }
-
-// confirmRemoveLink is what someone confirms before removing a "contributes to"
-// link.
-const confirmRemoveLink = "Remove this link? The child Goal will no longer contribute to the parent."

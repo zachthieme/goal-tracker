@@ -6,9 +6,6 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// confirmRetire is what Retire asks before retiring a Dimension value.
-const confirmRetire = "Retire this value? Goals that have it keep it, but it can no longer be assigned."
-
 // confirmRetireDimension is what Retire asks before retiring a whole Dimension.
 const confirmRetireDimension = "Retire this Dimension? Goals that have its values keep them, and saved Reports still filter on them, but it is no longer offered for setting, filtering or grouping Goals."
 
@@ -135,7 +132,8 @@ templ dimensionValues(d domain.Dimension) {
 // to merge it into another of the Dimension's values — or, once Retired, a
 // Restore button — then a "sort alphabetically" action, a form to add a value,
 // and a button to retire the whole Dimension, or restore it once Retired
-// (CONTEXT.md: Retired). Retire and Merge ask for confirmation first.
+// (CONTEXT.md: Retired). Retiring a value happens at once, since Restore puts
+// it back; retiring the Dimension and Merge ask for confirmation first.
 templ dimensionEdit(d domain.Dimension) {
 	<details class="dm-edit">
 		<summary class="btn sm">Edit</summary>
@@ -181,7 +179,7 @@ templ dimensionEdit(d domain.Dimension) {
 							<input type="text" name="value" value={ v.Value } aria-label={ "Rename " + v.Value } required/>
 							<button type="submit" class="btn sm">Rename</button>
 						</form>
-						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/retire", v.ID)) } onsubmit={ confirmScript(confirmRetire) }>
+						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/retire", v.ID)) }>
 							<button type="submit" class="btn danger sm">Retire</button>
 						</form>
 					}
