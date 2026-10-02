@@ -288,6 +288,34 @@ Load the fonts with this URL:
   Green cell without a Path to Green. The cells wrap, 32px apart. The status
   text, the Path to Green and the "why this differs" explanation follow below.
   A Goal with no Health shows its message in place of the cells.
+- **Home's Needs you list (`homePage` in `home.templ`):** one card in the main
+  column holding everything waiting on the person, in two subgroups, each a
+  `.label` heading over ruled rows (`.hm-list`):
+  - **Check-ins due:** the Goals the person owes a Check-in on, most overdue
+    first. Each row keeps its Health badge, its Stale mark, a secondary
+    **No change** and a primary **Check in**. A Goal they are a Delegate on
+    carries a "for [Owner]" tag, and appears only here.
+  - **Requests:** link requests and Handoffs waiting on the person, oldest
+    first. **Reject** is a quiet text button (`.btn.quiet`) and **Accept** a
+    secondary, outlined one (`.btn`). Where accepting needs choices, as a
+    Handoff of a Goal with Delegates does, the outlined button reads
+    **Review** and leads to the Pending handoffs page, where those choices
+    are made.
+
+  A subgroup with nothing in it is left out, and with both empty the card
+  shows one muted "You're all caught up." line. The summary under the page
+  title and the top bar's Home count both count every row. Goals the person is
+  a Delegate on aren't listed again elsewhere: the sidebar has one link to the
+  Delegate page with their number, shown only above zero.
+- **Health distribution bar (`.hm-bar`):** in Home's "Your goals", a 12px
+  `--radius-full` bar of the person's own Active Goals by Health, one equal
+  unit per Goal, Green then Yellow then Red. Units fill with the Health's
+  `--health-*-ink`, which keeps 3:1 on the card in both themes, and a 2px gap
+  of card shows where one Health's run gives way to the next. It counts Goals
+  and never aggregates Metrics (ADR 0003). Goals with no Health yet aren't
+  drawn, and with none to draw the bar is left out. The Health count badges
+  beneath it are its labels, so it reads without colour, and its `aria-label`
+  ("2 Green, 0 Yellow, 1 Red") says the same to a screen reader.
 - **Inputs:** `--color-surface`, 1px `--color-border-strong`, `--radius-md`,
   12px × 16px padding. On focus, the border becomes `--color-focus` and the
   field takes the same ring as everything else, `2px solid var(--color-focus)`,

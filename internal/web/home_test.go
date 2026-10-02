@@ -237,7 +237,11 @@ func TestHomeListsRequestsOldestFirst(t *testing.T) {
 	link := h.RequestLink(kim, child, parent, "")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	requests := pageElement(t, getBody(t, client, ts.URL+"/home"), "ul", "home-requests")
+	page := getBody(t, client, ts.URL+"/home")
+	requests := pageElement(t, page, "ul", "home-requests")
+	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "2 things need you") {
+		t.Errorf("summary = %s, want 2 things need you for the two Requests", got)
+	}
 
 	if older, newer := strings.Index(requests, navTo(handed.ID)), strings.Index(requests, navTo(child.ID)); older < 0 || newer < 0 || older > newer {
 		t.Errorf("Requests does not list the day-old Handoff before today's link request:\n%s", requests)

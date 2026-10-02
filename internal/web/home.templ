@@ -76,9 +76,10 @@ templ homePage(current *domain.Account, v homeView) {
 					<a href="/goals">All your goals →</a>
 				</section>
 				if v.Delegated > 0 {
-					<a data-testid="home-delegate-link" class="hm-delegate" href="/delegates">
+					<a data-testid="home-delegate-link" href="/delegates">
 						Goals delegated to you
 						<span class="num">{ strconv.Itoa(v.Delegated) }</span>
+						{ " →" }
 					</a>
 				}
 			</aside>
