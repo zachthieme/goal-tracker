@@ -174,7 +174,8 @@ func postFormHX(t *testing.T, client *http.Client, rawURL string, form url.Value
 
 // An Owner moves the delivery date later in a Check-in through the web form,
 // with a reason and a Yellow Health. The Goal page then shows the date history
-// struck through (~~old~~ new), the reason, and the slip count. This is the Date
+// struck through (~~old~~ new) on the head's metadata line, the reason, and the
+// slip count. This is the Date
 // Slip smoke test (ticket #5).
 func TestSmokeCheckinDeliveryDateSlipShownStruckThrough(t *testing.T) {
 	h := testsupport.New(t)
@@ -202,14 +203,84 @@ func TestSmokeCheckinDeliveryDateSlipShownStruckThrough(t *testing.T) {
 	}
 
 	page := getBody(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	if delivery := pageElement(t, page, "span", "goal-delivery-date"); !strings.Contains(delivery, fmt.Sprintf("<del>%s</del> <strong>%s</strong>", oldDate, newDate)) {
-		t.Errorf("delivery date not shown struck through; element:\n%s", delivery)
+	meta := pageElement(t, page, "p", "goal-meta")
+	if delivery := pageElement(t, meta, "span", "goal-delivery-date"); !strings.Contains(delivery, fmt.Sprintf("<del>%s</del> <strong>%s</strong>", oldDate, newDate)) {
+		t.Errorf("metadata line does not show the delivery date struck through; element:\n%s", delivery)
 	}
 	if slips := pageElement(t, page, "section", "goal-date-slips"); !strings.Contains(slips, "Vendor API delayed two weeks.") {
 		t.Errorf("Date Slip history missing the reason; section:\n%s", slips)
 	}
 	if !strings.Contains(page, `data-testid="goal-slip-count">1<`) {
 		t.Errorf("Goal page missing the slip count")
+	}
+}
+
+// The Latest status card opens with a row of cells, each a small label over a
+// value: the Owner's Health, the Rolled-up Health with its Stale-children count
+// when the Goal has Active children, and the Back to Green date when there is a
+// Path to Green. The status, the Path to Green and the explanation follow.
+func TestLatestStatusOpensWithCells(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	parent := h.ActiveGoal(sam, "Parent", "It matters.")
+	h.ActiveChildOf(sam, parent, "Silent child", "It matters.")
+	h.Clock.Advance(10 * 24 * time.Hour)
+	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red so what.")
+	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
+	if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
+		GoalID:         parent.ID,
+		AuthorID:       sam.ID,
+		Health:         domain.HealthYellow,
+		Status:         "Slipping at this level.",
+		PathToGreen:    "Cut scope.",
+		PathTargetDate: pathDate,
+		Explanation:    "The Red child is a stretch item.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	card := pageElement(t, getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, parent.ID)), "section", "goal-checkins")
+	cells := pageElement(t, card, "dl", "goal-status-cells")
+	for _, tc := range []struct{ testID, label, value string }{
+		{"goal-health-cell", "Owner's Health", `data-testid="goal-health">Yellow<`},
+		{"goal-rollup-cell", "Rolled-up Health", `data-testid="goal-rollup-health">Red<`},
+		{"goal-rollup-cell", "Rolled-up Health", `data-testid="goal-rollup-stale">1 of 2 Stale<`},
+		{"goal-back-to-green-cell", "Back to Green by", "2026-06-15"},
+	} {
+		cell := between(t, cells, `data-testid="`+tc.testID+`"`, "")
+		cell, _, _ = strings.Cut(cell, "<div ")
+		if !strings.Contains(cell, `<dt class="label">`+tc.label+`</dt>`) || !strings.Contains(cell, tc.value) {
+			t.Errorf("%s cell lacks label %q over %s: %s", tc.testID, tc.label, tc.value, cell)
+		}
+	}
+	rest := card[strings.Index(card, `data-testid="goal-status-cells"`):]
+	for _, want := range []string{`data-testid="goal-status"`, `data-testid="goal-path-to-green"`, `data-testid="goal-rollup-explanation"`} {
+		if !strings.Contains(rest, want) {
+			t.Errorf("Latest status has no %s below its cells: %s", want, card)
+		}
+	}
+
+	// A childless Goal with no Path to Green shows only the Owner's Health cell.
+	lone := h.ActiveGoal(sam, "Lone", "It matters.")
+	h.Checkin(sam, lone.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	card = pageElement(t, getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, lone.ID)), "section", "goal-checkins")
+	cells = pageElement(t, card, "dl", "goal-status-cells")
+	if !strings.Contains(cells, `data-testid="goal-health">Green<`) {
+		t.Errorf("Latest status has no Owner's Health cell: %s", cells)
+	}
+	for _, absent := range []string{"goal-rollup-cell", "Rolled-up Health", "goal-back-to-green-cell", "Back to Green"} {
+		if strings.Contains(card, absent) {
+			t.Errorf("a childless Goal with no Path to Green shows %s: %s", absent, card)
+		}
+	}
+
+	// A Goal with no Health keeps its message in place of the cells.
+	proposed := h.CreateGoal(sam, "Proposed", "It matters.")
+	card = pageElement(t, getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, proposed.ID)), "section", "goal-checkins")
+	if strings.Contains(card, `data-testid="goal-status-cells"`) || !strings.Contains(card, "A Proposed Goal has no Health until it is Active.") {
+		t.Errorf("a Proposed Goal's Latest status should say it has no Health, with no cells: %s", card)
 	}
 }
 
