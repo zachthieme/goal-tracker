@@ -255,6 +255,7 @@ templ goalListRow(row goalRow) {
 templ goalTableLayout(view goalsListData) {
 	<div id="goal-list" data-testid="goal-list" class="card">
 		@goalListHead(view)
+		@goalTableColumns(view)
 		<div class="gl-scroll">
 			<table data-testid="goal-table">
 				<thead data-testid="goal-table-head">
@@ -279,6 +280,26 @@ templ goalTableLayout(view goalsListData) {
 			</table>
 		</div>
 	</div>
+}
+
+// goalTableColumns is the Columns control: a tick per column but Title, which
+// a plain GET form saves for this browser, so it works without JavaScript.
+templ goalTableColumns(view goalsListData) {
+	<details data-testid="goal-columns-control" class="gl-columns">
+		<summary>Columns</summary>
+		<form data-testid="goal-columns" method="get" action="/goals">
+			for _, kv := range view.carriedQuery() {
+				<input type="hidden" name={ kv[0] } value={ kv[1] }/>
+			}
+			<input type="hidden" name="columns" value="1"/>
+			for _, col := range view.Table.All {
+				if col.Key != "title" {
+					<label><input type="checkbox" name="show" value={ col.Key } checked?={ !view.Table.Hidden[col.Key] }/>{ col.Label }</label>
+				}
+			}
+			<button type="submit" class="btn sm">Apply</button>
+		</form>
+	</details>
 }
 
 // goalTableCell is one row's cell in col.

@@ -2358,3 +2358,78 @@ func TestGoalTableSortsByAColumnWithUnsetValuesLast(t *testing.T) {
 		t.Errorf("a third click on Budget links to %s, want ascending again %s", again, up)
 	}
 }
+
+// submitColumns submits the Goal table's Columns form as a browser would, with
+// the columns labelled hide unticked and every other column ticked, and returns
+// the page it lands on.
+func submitColumns(t *testing.T, client *http.Client, base, page string, hide ...string) string {
+	t.Helper()
+	form := between(t, page, `<form data-testid="goal-columns"`, "</form>")
+	if action := attr(openTag(form), "action"); action != "/goals" || attr(openTag(form), "method") != "get" {
+		t.Fatalf("the Columns form doesn't GET /goals:\n%s", form)
+	}
+	values := url.Values{}
+	for _, m := range regexp.MustCompile(`<input([^>]*)>([^<]*)`).FindAllStringSubmatch(form, -1) {
+		tag, label := "<input"+m[1], strings.TrimSpace(m[2])
+		switch attr(tag, "type") {
+		case "hidden":
+			values.Add(attr(tag, "name"), html.UnescapeString(attr(tag, "value")))
+		case "checkbox":
+			if !slices.Contains(hide, label) {
+				values.Add(attr(tag, "name"), attr(tag, "value"))
+			}
+		}
+	}
+	return getBody(t, client, base+"/goals?"+values.Encode())
+}
+
+// A Columns control hides any Goal table column but Title. It is a plain form,
+// so it works without JavaScript, and the choice is remembered in that browser:
+// the column stays hidden on the next visit, while another browser still shows
+// it. Hiding keeps the filters.
+func TestGoalTableHiddenColumnStaysHiddenOnTheNextVisit(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.CreateDimension(boss, "Pillar", "Growth")
+	h.CreateField(boss, "Budget", domain.FieldNumber, "")
+	h.CreateGoal(sam, "Alpha", "It matters.")
+	h.CreateGoal(sam, "Bravo", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	all := []string{"Title", "Owner", "Health", "Lifecycle", "Delivery date", "Last check-in", "Pillar", "Budget"}
+
+	page := getBody(t, client, ts.URL+"/goals?layout=table&q=alpha")
+	if got := tableHeads(t, page); !slices.Equal(got, all) {
+		t.Fatalf("columns = %q, want %q", got, all)
+	}
+	if form := between(t, page, `<form data-testid="goal-columns"`, "</form>"); strings.Contains(form, `value="title"`) {
+		t.Errorf("the Columns control offers to hide Title:\n%s", form)
+	}
+
+	page = submitColumns(t, client, ts.URL, page, "Owner", "Budget")
+	want := []string{"Title", "Health", "Lifecycle", "Delivery date", "Last check-in", "Pillar"}
+	if got := tableHeads(t, page); !slices.Equal(got, want) {
+		t.Errorf("after hiding Owner and Budget, columns = %q, want %q", got, want)
+	}
+	if strings.Contains(between(t, page, `<table data-testid="goal-table"`, "</table>"), "Bravo") {
+		t.Errorf("hiding columns dropped the search filter")
+	}
+
+	next := getBody(t, client, ts.URL+"/goals?layout=table")
+	if got := tableHeads(t, next); !slices.Equal(got, want) {
+		t.Errorf("on the next visit, columns = %q, want %q", got, want)
+	}
+	if got := tableHeads(t, getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/goals?layout=table")); !slices.Equal(got, all) {
+		t.Errorf("another browser's columns = %q, want all of %q", got, all)
+	}
+
+	everything := submitColumns(t, client, ts.URL, next, all...)
+	if got := tableHeads(t, everything); !slices.Equal(got, []string{"Title"}) {
+		t.Errorf("hiding every column leaves %q, want Title alone", got)
+	}
+	restored := submitColumns(t, client, ts.URL, everything)
+	if got := tableHeads(t, restored); !slices.Equal(got, all) {
+		t.Errorf("showing every column again leaves %q, want %q", got, all)
+	}
+}

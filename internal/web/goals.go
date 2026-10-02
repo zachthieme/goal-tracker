@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -22,6 +23,10 @@ import (
 const dateLayout = "2006-01-02"
 
 func (s *Server) handleGoals(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	if r.URL.Query().Has("columns") {
+		s.handleGoalTableColumns(w, r)
+		return
+	}
 	view, err := s.goalsListView(r, current)
 	if err != nil {
 		http.Error(w, "could not list goals", http.StatusInternalServerError)
@@ -308,7 +313,7 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 		Query:      r.URL.Query(),
 	}
 	if view.Query.Get("layout") == layoutTable {
-		table, err := s.goalTableView(ctx, rows, dims, view.Query)
+		table, err := s.goalTableView(ctx, rows, dims, view.Query, hiddenColumns(r))
 		if err != nil {
 			return goalsListData{}, err
 		}
@@ -1276,7 +1281,11 @@ func (v goalsListData) layoutURL(layout string) templ.SafeURL {
 // with the Field values its Field columns show. It is read-only, has no totals
 // row (ADR 0005), and isn't grouped.
 type goalTable struct {
+	// Columns are the columns shown; All adds the ones this browser hides, for
+	// the Columns control, and Hidden names those.
 	Columns []tableColumn
+	All     []tableColumn
+	Hidden  map[string]bool
 	Rows    []goalTableRow
 	// Sort is the Key of the column the rows are sorted by (?sort=), "" for the
 	// list's problem-first order; Desc reverses it (?dir=desc).
@@ -1300,28 +1309,19 @@ type goalTableRow struct {
 	Fields map[int64]string
 }
 
-// goalTableView builds the table layout over the list's filtered, sorted rows:
-// the fixed columns, then each live Dimension and each live Field in name
-// order (CONTEXT.md: Retired). It sorts by the ?sort= column, if there is one.
-func (s *Server) goalTableView(ctx context.Context, rows []goalRow, dims []domain.Dimension, q url.Values) (*goalTable, error) {
-	all, err := s.svc.ListFields(ctx)
+// goalTableView builds the table layout over the list's filtered, sorted rows,
+// leaving out the columns this browser hides. It sorts by the ?sort= column,
+// if there is one.
+func (s *Server) goalTableView(ctx context.Context, rows []goalRow, dims []domain.Dimension, q url.Values, hidden map[string]bool) (*goalTable, error) {
+	all, err := s.tableColumns(ctx, dims)
 	if err != nil {
 		return nil, err
 	}
-	fields := domain.OfferedFields(all)
-	table := &goalTable{Columns: []tableColumn{
-		{Key: "title", Label: "Title"},
-		{Key: "owner", Label: "Owner"},
-		{Key: "health", Label: "Health"},
-		{Key: "lifecycle", Label: "Lifecycle"},
-		{Key: "due", Label: "Delivery date"},
-		{Key: "checkin", Label: "Last check-in"},
-	}}
-	for i := range dims {
-		table.Columns = append(table.Columns, tableColumn{Key: fmt.Sprintf("d%d", dims[i].ID), Label: dims[i].Name, Dimension: &dims[i]})
-	}
-	for i := range fields {
-		table.Columns = append(table.Columns, tableColumn{Key: fmt.Sprintf("f%d", fields[i].ID), Label: fields[i].Name, Field: &fields[i]})
+	table := &goalTable{All: all, Hidden: hidden}
+	for _, col := range all {
+		if !hidden[col.Key] {
+			table.Columns = append(table.Columns, col)
+		}
 	}
 	for _, row := range rows {
 		values, err := s.svc.GoalFields(ctx, row.Goal.ID)
@@ -1334,13 +1334,102 @@ func (s *Server) goalTableView(ctx context.Context, rows []goalRow, dims []domai
 		}
 		table.Rows = append(table.Rows, tr)
 	}
-	for _, col := range table.Columns {
+	for _, col := range all {
 		if col.Key == q.Get("sort") {
 			table.Sort, table.Desc = col.Key, q.Get("dir") == "desc"
 			sortTableRows(table.Rows, col, table.Desc)
 		}
 	}
 	return table, nil
+}
+
+// tableColumns are the Goal table's columns: the fixed ones, then each live
+// Dimension and each live Field in name order (CONTEXT.md: Retired).
+func (s *Server) tableColumns(ctx context.Context, dims []domain.Dimension) ([]tableColumn, error) {
+	all, err := s.svc.ListFields(ctx)
+	if err != nil {
+		return nil, err
+	}
+	fields := domain.OfferedFields(all)
+	columns := []tableColumn{
+		{Key: "title", Label: "Title"},
+		{Key: "owner", Label: "Owner"},
+		{Key: "health", Label: "Health"},
+		{Key: "lifecycle", Label: "Lifecycle"},
+		{Key: "due", Label: "Delivery date"},
+		{Key: "checkin", Label: "Last check-in"},
+	}
+	for i := range dims {
+		columns = append(columns, tableColumn{Key: fmt.Sprintf("d%d", dims[i].ID), Label: dims[i].Name, Dimension: &dims[i]})
+	}
+	for i := range fields {
+		columns = append(columns, tableColumn{Key: fmt.Sprintf("f%d", fields[i].ID), Label: fields[i].Name, Field: &fields[i]})
+	}
+	return columns, nil
+}
+
+// hiddenColumnsCookie remembers, in this browser, the Goal table columns a
+// person hid: their keys, comma-separated.
+const hiddenColumnsCookie = "goal_table_hidden"
+
+// hiddenColumns reads the columns this browser hides. Title is never hidden.
+func hiddenColumns(r *http.Request) map[string]bool {
+	hidden := map[string]bool{}
+	if c, err := r.Cookie(hiddenColumnsCookie); err == nil {
+		for _, key := range strings.Split(c.Value, ",") {
+			if key != "" && key != "title" {
+				hidden[key] = true
+			}
+		}
+	}
+	return hidden
+}
+
+// handleGoalTableColumns saves the Columns control's choice: every column it
+// offers that isn't ticked (?show=) is hidden, remembered in a cookie so it
+// holds on the next visit. It then redirects to the same view, so the choice
+// stays out of a URL someone might share.
+func (s *Server) handleGoalTableColumns(w http.ResponseWriter, r *http.Request) {
+	dims, err := s.svc.ListDimensions(r.Context())
+	if err != nil {
+		http.Error(w, "could not list goals", http.StatusInternalServerError)
+		return
+	}
+	columns, err := s.tableColumns(r.Context(), domain.OfferedDimensions(dims))
+	if err != nil {
+		http.Error(w, "could not list goals", http.StatusInternalServerError)
+		return
+	}
+	q := r.URL.Query()
+	var hidden []string
+	for _, col := range columns {
+		if col.Key != "title" && !slices.Contains(q["show"], col.Key) {
+			hidden = append(hidden, col.Key)
+		}
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     hiddenColumnsCookie,
+		Value:    strings.Join(hidden, ","),
+		Path:     "/",
+		MaxAge:   400 * 24 * 60 * 60,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+	q.Del("columns")
+	q.Del("show")
+	http.Redirect(w, r, string(goalsListData{Query: q}.queryURL(func(url.Values) {})), http.StatusSeeOther)
+}
+
+// carriedQuery is the view's query string as name/value pairs, in a stable
+// order, for a form that must land back on the same view.
+func (v goalsListData) carriedQuery() [][2]string {
+	var pairs [][2]string
+	for _, k := range slices.Sorted(maps.Keys(v.Query)) {
+		for _, val := range v.Query[k] {
+			pairs = append(pairs, [2]string{k, val})
+		}
+	}
+	return pairs
 }
 
 // sortURL links to this view sorted by the column key: ascending, or
