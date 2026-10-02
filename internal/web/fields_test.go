@@ -358,3 +358,28 @@ func TestFieldNamedLikeADimensionRefusedOverHTTP(t *testing.T) {
 		t.Errorf("Fields = %+v (%v), want none", fields, err)
 	}
 }
+
+// When the Goal's history can't be written, setting a Field on the Goal page
+// fails and the Goal keeps the value it had.
+func TestFailedHistoryLeavesTheFieldOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.SetGoalField(pat, goal, budget, "200")
+	if _, err := h.DB.Exec(`CREATE TRIGGER fail_history BEFORE INSERT ON goal_value_changes
+		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "pat@example.com")
+
+	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/fields", ts.URL, goal.ID), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"350"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("setting Budget: status %d, want 500; body:\n%s", resp.StatusCode, body)
+	}
+	if shown := pageElement(t, getBody(t, client, goalPageURL(ts.URL, goal)), "ul", "goal-fields"); !strings.Contains(shown, "200") || strings.Contains(shown, "350") {
+		t.Errorf("the Goal doesn't keep Budget 200 after a failed change:\n%s", shown)
+	}
+}

@@ -683,9 +683,9 @@ func OfferedDimensions(dims []Dimension) []Dimension {
 // AssignGoalValue gives a Goal a Dimension value (CONTEXT.md: Owners and their
 // Delegates set a Goal's Dimension values). In a Dimension that takes one value it
 // replaces any value the Goal already has there; in one that takes several it is
-// added alongside them. A change is kept in the Goal's Value history. A retired
-// value is not offered for a new assignment. Only the Goal's Owner, a Delegate
-// or an Admin may assign its values.
+// added alongside them. A change is kept in the Goal's Value history, written
+// together with it. A retired value is not offered for a new assignment. Only
+// the Goal's Owner, a Delegate or an Admin may assign its values.
 func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID int64) error {
 	if err := s.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
 		return err
@@ -705,26 +705,28 @@ func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID 
 	if dim.Retired {
 		return retiredDimensionError(dim)
 	}
-	before, err := s.GoalValues(ctx, goalID)
-	if err != nil {
-		return err
-	}
-	if !dim.TakesSeveral() {
-		if err := s.queries.ClearGoalValuesInDimension(ctx, db.ClearGoalValuesInDimensionParams{
-			GoalID:      goalID,
-			DimensionID: val.DimensionID,
-		}); err != nil {
-			return fmt.Errorf("clear existing value: %w", err)
+	return s.WithinTx(ctx, func(tx *Service) error {
+		before, err := tx.GoalValues(ctx, goalID)
+		if err != nil {
+			return err
 		}
-	}
-	if err := s.queries.AssignGoalValueIfAbsent(ctx, db.AssignGoalValueIfAbsentParams{
-		GoalID:           goalID,
-		DimensionValueID: valueID,
-		CreatedAt:        s.clock.Now().Format(timeFormat),
-	}); err != nil {
-		return fmt.Errorf("assign dimension value: %w", err)
-	}
-	return s.recordDimensionChanges(ctx, actorID, goalID, dim, before)
+		if !dim.TakesSeveral() {
+			if err := tx.queries.ClearGoalValuesInDimension(ctx, db.ClearGoalValuesInDimensionParams{
+				GoalID:      goalID,
+				DimensionID: val.DimensionID,
+			}); err != nil {
+				return fmt.Errorf("clear existing value: %w", err)
+			}
+		}
+		if err := tx.queries.AssignGoalValueIfAbsent(ctx, db.AssignGoalValueIfAbsentParams{
+			GoalID:           goalID,
+			DimensionValueID: valueID,
+			CreatedAt:        tx.clock.Now().Format(timeFormat),
+		}); err != nil {
+			return fmt.Errorf("assign dimension value: %w", err)
+		}
+		return tx.recordDimensionChanges(ctx, actorID, goalID, dim, before)
+	})
 }
 
 // AssignGoalValueByName gives a Goal the value named in a Dimension, adding it
@@ -788,8 +790,8 @@ func (s *Service) assignGoalValueByName(ctx context.Context, actorID, goalID, di
 // SetGoalValues makes valueIDs exactly the values a Goal carries in one
 // Dimension, so a set of checkboxes saves together: values left out are
 // removed, and an empty set clears the Dimension (CONTEXT.md: Dimension). A
-// change is kept in the Goal's Value history. A Dimension that takes one value
-// accepts at most one. A retired value may be
+// change is kept in the Goal's Value history, written together with it. A
+// Dimension that takes one value accepts at most one. A retired value may be
 // kept by a Goal that already carries it but not newly given (CONTEXT.md:
 // Retired). Only the Goal's Owner, a Delegate or an Admin may set its values.
 func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionID int64, valueIDs []int64) error {
@@ -828,28 +830,30 @@ func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionI
 		keep[id] = true
 	}
 
-	for _, v := range carried {
-		if v.DimensionID != dimensionID || keep[v.ID] {
-			continue
+	return s.WithinTx(ctx, func(tx *Service) error {
+		for _, v := range carried {
+			if v.DimensionID != dimensionID || keep[v.ID] {
+				continue
+			}
+			if err := tx.queries.RemoveGoalValue(ctx, db.RemoveGoalValueParams{
+				GoalID:           goalID,
+				DimensionValueID: v.ID,
+			}); err != nil {
+				return fmt.Errorf("remove dimension value: %w", err)
+			}
 		}
-		if err := s.queries.RemoveGoalValue(ctx, db.RemoveGoalValueParams{
-			GoalID:           goalID,
-			DimensionValueID: v.ID,
-		}); err != nil {
-			return fmt.Errorf("remove dimension value: %w", err)
+		now := tx.clock.Now().Format(timeFormat)
+		for _, id := range valueIDs {
+			if err := tx.queries.AssignGoalValueIfAbsent(ctx, db.AssignGoalValueIfAbsentParams{
+				GoalID:           goalID,
+				DimensionValueID: id,
+				CreatedAt:        now,
+			}); err != nil {
+				return fmt.Errorf("assign dimension value: %w", err)
+			}
 		}
-	}
-	now := s.clock.Now().Format(timeFormat)
-	for _, id := range valueIDs {
-		if err := s.queries.AssignGoalValueIfAbsent(ctx, db.AssignGoalValueIfAbsentParams{
-			GoalID:           goalID,
-			DimensionValueID: id,
-			CreatedAt:        now,
-		}); err != nil {
-			return fmt.Errorf("assign dimension value: %w", err)
-		}
-	}
-	return s.recordDimensionChanges(ctx, actorID, goalID, dim, carried)
+		return tx.recordDimensionChanges(ctx, actorID, goalID, dim, carried)
+	})
 }
 
 // retiredDimensionError refuses newly giving a Goal a value in a Retired

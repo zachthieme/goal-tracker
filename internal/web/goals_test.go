@@ -3325,3 +3325,33 @@ func TestNewValueContainingASemicolonIsRefusedFromTheGoalPageAndTable(t *testing
 		t.Errorf("Customer list = %v, want [Acme] with nothing added", got)
 	}
 }
+
+// When the Goal's history can't be written, choosing another value on the Goal
+// page fails and the Goal keeps the value it had.
+func TestFailedHistoryLeavesTheDimensionValueOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, pillar.Values[0])
+	if _, err := h.DB.Exec(`CREATE TRIGGER fail_history BEFORE INSERT ON goal_value_changes
+		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	resp := postForm(t, client, goalURL+"/dimensions", url.Values{
+		"dimension_id": {fmt.Sprint(pillar.ID)},
+		"value_id":     {fmt.Sprint(pillar.Values[1].ID)},
+	})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("choosing Reliability: status %d, want 500; body:\n%s", resp.StatusCode, body)
+	}
+	section := pageElement(t, getBody(t, client, goalURL), "section", "goal-dimensions")
+	if !strings.Contains(section, `data-testid="goal-dimension-value">Growth<`) || strings.Contains(section, `data-testid="goal-dimension-value">Reliability<`) {
+		t.Errorf("the Goal doesn't keep Growth after a failed change:\n%s", section)
+	}
+}

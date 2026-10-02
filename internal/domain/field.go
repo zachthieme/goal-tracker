@@ -158,9 +158,9 @@ func OfferedFields(fields []Field) []Field {
 
 // SetGoalField sets a Goal's value in a Field, replacing the one it had; a
 // blank value clears it (CONTEXT.md: Field). A change is kept in the Goal's
-// Value history, and saving the value it already has changes nothing. A number
-// Field's value must parse as a number and a date Field's as a YYYY-MM-DD date,
-// or it is refused naming the Field. A Retired Field can't be set. Only the
+// Value history, written together with it, and saving the value it already
+// has changes nothing. A number Field's value must parse as a number and a
+// date Field's as a YYYY-MM-DD date, or it is refused naming the Field. A Retired Field can't be set. Only the
 // Goal's Owner, a Delegate or an Admin may (CONTEXT.md: Delegate).
 func (s *Service) SetGoalField(ctx context.Context, actorID, goalID, fieldID int64, value string) error {
 	if err := s.requireGoalValueSetter(ctx, actorID, goalID); errors.Is(err, ErrNotAuthorized) {
@@ -184,24 +184,26 @@ func (s *Service) SetGoalField(ctx context.Context, actorID, goalID, fieldID int
 	if value == before {
 		return nil
 	}
-	if value == "" {
-		if err := s.queries.ClearGoalFieldValue(ctx, db.ClearGoalFieldValueParams{GoalID: goalID, FieldID: fieldID}); err != nil {
-			return fmt.Errorf("clear field value: %w", err)
+	if value != "" {
+		if err := field.Check(value); err != nil {
+			return err
 		}
-		return s.recordFieldChange(ctx, actorID, goalID, field, before, "")
 	}
-	if err := field.Check(value); err != nil {
-		return err
-	}
-	if err := s.queries.SetGoalFieldValue(ctx, db.SetGoalFieldValueParams{
-		GoalID:    goalID,
-		FieldID:   fieldID,
-		Value:     value,
-		UpdatedAt: s.clock.Now().Format(timeFormat),
-	}); err != nil {
-		return fmt.Errorf("set field value: %w", err)
-	}
-	return s.recordFieldChange(ctx, actorID, goalID, field, before, value)
+	return s.WithinTx(ctx, func(tx *Service) error {
+		if value == "" {
+			if err := tx.queries.ClearGoalFieldValue(ctx, db.ClearGoalFieldValueParams{GoalID: goalID, FieldID: fieldID}); err != nil {
+				return fmt.Errorf("clear field value: %w", err)
+			}
+		} else if err := tx.queries.SetGoalFieldValue(ctx, db.SetGoalFieldValueParams{
+			GoalID:    goalID,
+			FieldID:   fieldID,
+			Value:     value,
+			UpdatedAt: tx.clock.Now().Format(timeFormat),
+		}); err != nil {
+			return fmt.Errorf("set field value: %w", err)
+		}
+		return tx.recordFieldChange(ctx, actorID, goalID, field, before, value)
+	})
 }
 
 // goalFieldValue is a Goal's value in one Field, empty when it has none.
