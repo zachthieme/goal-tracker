@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -10,7 +11,7 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
-// A Check-in may carry one optional Highlight, marked as an Insight,
+// A Check-in may carry an optional Highlight, marked as an Insight,
 // Accomplishment, or Miss; it is queryable by Goal and credits the Owner the
 // Check-in was written for (CONTEXT.md: Highlight).
 func TestSubmitCheckinRecordsOptionalHighlight(t *testing.T) {
@@ -19,11 +20,11 @@ func TestSubmitCheckinRecordsOptionalHighlight(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 
 	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
-		GoalID:    goal.ID,
-		AuthorID:  sam.ID,
-		Health:    domain.HealthGreen,
-		Status:    "Shipped the failover.",
-		Highlight: &domain.HighlightInput{Kind: domain.HighlightAccomplishment, Note: "Zero downtime on the cutover."},
+		GoalID:     goal.ID,
+		AuthorID:   sam.ID,
+		Health:     domain.HealthGreen,
+		Status:     "Shipped the failover.",
+		Highlights: []domain.HighlightInput{{Kind: domain.HighlightAccomplishment, Note: "Zero downtime on the cutover."}},
 	}); err != nil {
 		t.Fatalf("SubmitCheckin with highlight: %v", err)
 	}
@@ -41,6 +42,51 @@ func TestSubmitCheckinRecordsOptionalHighlight(t *testing.T) {
 	}
 	if got.Owner.ID != sam.ID {
 		t.Errorf("highlight credits Owner %d, want %d", got.Owner.ID, sam.ID)
+	}
+}
+
+// A Check-in carries any number of Highlights, of any mix of kinds; each is
+// recorded, and a Goal's Highlights from one Check-in list in the order they
+// were entered (CONTEXT.md: Highlight).
+func TestSubmitCheckinRecordsSeveralHighlightsInOrder(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: sam.ID,
+		Health:   domain.HealthGreen,
+		Status:   "Shipped the failover.",
+		Highlights: []domain.HighlightInput{
+			{Kind: domain.HighlightAccomplishment, Note: "Zero downtime on the cutover."},
+			{Kind: domain.HighlightMiss, Note: "The runbook was a week late."},
+			{Kind: domain.HighlightInsight, Note: "Drills find what reviews miss."},
+		},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin with highlights: %v", err)
+	}
+
+	highlights, err := h.Service.ListHighlightsByGoal(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ListHighlightsByGoal: %v", err)
+	}
+	want := []domain.HighlightInput{
+		{Kind: domain.HighlightAccomplishment, Note: "Zero downtime on the cutover."},
+		{Kind: domain.HighlightMiss, Note: "The runbook was a week late."},
+		{Kind: domain.HighlightInsight, Note: "Drills find what reviews miss."},
+	}
+	if len(highlights) != len(want) {
+		t.Fatalf("highlights = %d, want %d", len(highlights), len(want))
+	}
+	for i, w := range want {
+		got := highlights[i]
+		if got.Kind != w.Kind || got.Note != w.Note {
+			t.Errorf("highlight %d = %s %q, want %s %q", i+1, got.Kind, got.Note, w.Kind, w.Note)
+		}
+		if got.Owner.ID != sam.ID {
+			t.Errorf("highlight %d credits Owner %d, want %d", i+1, got.Owner.ID, sam.ID)
+		}
 	}
 }
 
@@ -67,33 +113,90 @@ func TestSubmitCheckinWithoutHighlightRecordsNone(t *testing.T) {
 	}
 }
 
-// A Highlight must be marked with a valid kind and carry a note; a bad kind or
-// an empty note is rejected, and the whole Check-in is refused.
-func TestHighlightRequiresValidKindAndNote(t *testing.T) {
+// A Highlight with a note must be marked with a valid kind: a note with no
+// kind, or a kind that isn't one, is refused with an error naming the row, and
+// the whole Check-in is refused.
+func TestHighlightWithNoteNeedsAKindNamingTheRow(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 
-	cases := map[string]domain.HighlightInput{
-		"bad kind":   {Kind: "Brag", Note: "We shipped it."},
-		"empty note": {Kind: domain.HighlightInsight, Note: "   "},
-	}
-	for name, hl := range cases {
+	cases := map[string]string{"no kind": "", "bad kind": "Brag"}
+	for name, kind := range cases {
 		t.Run(name, func(t *testing.T) {
-			hl := hl
-			if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
-				GoalID:    goal.ID,
-				AuthorID:  sam.ID,
-				Health:    domain.HealthGreen,
-				Status:    "Status.",
-				Highlight: &hl,
-			}); !errors.Is(err, domain.ErrValidation) {
+			_, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+				GoalID:   goal.ID,
+				AuthorID: sam.ID,
+				Health:   domain.HealthGreen,
+				Status:   "Status.",
+				Highlights: []domain.HighlightInput{
+					{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."},
+					{Kind: kind, Note: "We shipped it."},
+				},
+			})
+			if !errors.Is(err, domain.ErrValidation) {
 				t.Fatalf("err = %v, want ErrValidation", err)
+			}
+			if !strings.Contains(err.Error(), "Highlight 2") {
+				t.Errorf("err = %q, want it to name Highlight 2", err)
 			}
 		})
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
 		t.Errorf("a Check-in was recorded despite the invalid highlight: %d", len(history))
+	}
+	if highlights, _ := h.Service.ListHighlightsByGoal(context.Background(), goal.ID); len(highlights) != 0 {
+		t.Errorf("highlights = %d recorded despite the invalid one, want 0", len(highlights))
+	}
+}
+
+// A Highlight row with a blank note is ignored, whatever kind it is marked as;
+// the rest of the Check-in's Highlights are recorded.
+func TestHighlightWithBlankNoteIsIgnored(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: sam.ID,
+		Health:   domain.HealthGreen,
+		Status:   "Status.",
+		Highlights: []domain.HighlightInput{
+			{Kind: domain.HighlightMiss, Note: "   "},
+			{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."},
+			{},
+		},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	highlights, err := h.Service.ListHighlightsByGoal(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ListHighlightsByGoal: %v", err)
+	}
+	if len(highlights) != 1 || highlights[0].Note != "Retries masked the root cause." {
+		t.Errorf("highlights = %+v, want only the Insight with a note", highlights)
+	}
+}
+
+// Kinds can repeat: two Highlights of the same kind on one Check-in are both
+// recorded.
+func TestCheckinRecordsTwoHighlightsOfTheSameKind(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	h.CheckinWithHighlights(sam, goal.ID,
+		domain.HighlightInput{Kind: domain.HighlightAccomplishment, Note: "Cut MTTR in half."},
+		domain.HighlightInput{Kind: domain.HighlightAccomplishment, Note: "Retired the old pager."},
+	)
+
+	highlights, err := h.Service.ListHighlightsByGoal(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ListHighlightsByGoal: %v", err)
+	}
+	if len(highlights) != 2 || highlights[0].Note != "Cut MTTR in half." || highlights[1].Note != "Retired the old pager." {
+		t.Errorf("highlights = %+v, want both Accomplishments in order", highlights)
 	}
 }
 
@@ -138,5 +241,29 @@ func TestHighlightsQueriedByGoalAndTimeRange(t *testing.T) {
 	}
 	if len(full) != 3 {
 		t.Errorf("full range = %d, want 3", len(full))
+	}
+}
+
+// A "No change" Check-in repeats the previous Health and status but carries no
+// Highlights, even when the Check-in it repeats carried several.
+func TestNoChangeCheckinCarriesNoHighlights(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.CheckinWithHighlights(sam, goal.ID,
+		domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."},
+		domain.HighlightInput{Kind: domain.HighlightMiss, Note: "Missed the SLA."},
+	)
+	h.Clock.Advance(24 * time.Hour)
+
+	if _, err := h.Service.SubmitNoChangeCheckin(context.Background(), goal.ID, sam.ID); err != nil {
+		t.Fatalf("SubmitNoChangeCheckin: %v", err)
+	}
+	highlights, err := h.Service.ListHighlightsByGoal(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ListHighlightsByGoal: %v", err)
+	}
+	if len(highlights) != 2 {
+		t.Errorf("highlights = %d, want the 2 from the first Check-in only", len(highlights))
 	}
 }

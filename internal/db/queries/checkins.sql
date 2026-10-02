@@ -32,26 +32,26 @@ RETURNING *;
 SELECT * FROM metric_readings WHERE metric_id = ? ORDER BY created_at, id;
 
 -- name: CreateHighlight :one
--- Record a Check-in's optional Highlight (CONTEXT.md: Highlight). At most one per
--- Check-in (enforced by the schema).
+-- Record one of a Check-in's Highlights (CONTEXT.md: Highlight). A Check-in may
+-- carry several; they are inserted in the order entered.
 INSERT INTO highlights (checkin_id, kind, note, created_at)
 VALUES (?, ?, ?, ?)
 RETURNING *;
 
 -- name: ListHighlightsByGoal :many
--- A Goal's Highlights, newest first, each crediting the Owner the Check-in was
--- written for. Report curation queries Highlights by Goal (CONTEXT.md:
+-- A Goal's Highlights, newest Check-in first and each Check-in's in the order
+-- entered, each crediting the Owner the Check-in was written for. Report curation queries Highlights by Goal (CONTEXT.md:
 -- Highlight; the Goal's Owner is credited).
 SELECT sqlc.embed(highlights), sqlc.embed(owner)
 FROM highlights
 JOIN checkins ON checkins.id = highlights.checkin_id
 JOIN accounts owner ON owner.id = checkins.owner_id
 WHERE checkins.goal_id = @goal_id
-ORDER BY checkins.created_at DESC, highlights.id DESC;
+ORDER BY checkins.created_at DESC, checkins.id DESC, highlights.id;
 
 -- name: ListHighlightsByGoalInRange :many
 -- A Goal's Highlights whose Check-in falls within [from, to] inclusive, newest
--- first. Report curation queries Highlights by Goal and by time range.
+-- Check-in first and each Check-in's in the order entered. Report curation queries Highlights by Goal and by time range.
 SELECT sqlc.embed(highlights), sqlc.embed(owner)
 FROM highlights
 JOIN checkins ON checkins.id = highlights.checkin_id
@@ -59,7 +59,7 @@ JOIN accounts owner ON owner.id = checkins.owner_id
 WHERE checkins.goal_id = @goal_id
   AND checkins.created_at >= @from
   AND checkins.created_at <= @to
-ORDER BY checkins.created_at DESC, highlights.id DESC;
+ORDER BY checkins.created_at DESC, checkins.id DESC, highlights.id;
 
 -- name: CreateDateSlip :one
 -- Record a change to a Goal's delivery date (milestone_id NULL) or a Milestone's

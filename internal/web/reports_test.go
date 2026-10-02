@@ -905,3 +905,61 @@ func TestPublicationKeepsTheChosenFieldsAsPublishedOverHTTP(t *testing.T) {
 		t.Errorf("Markdown shows the Field as edited since:\n%s", md)
 	}
 }
+
+// An author pulls one of a Check-in's two Highlights into the narrative and
+// leaves the other: the draft's pick list shows each separately, and the
+// published Report and its Markdown export show only the one pulled
+// (CONTEXT.md: Highlight).
+func TestPullOneHighlightOfACheckinOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	alice := h.SignIn("alice@example.com")
+	g := h.ActiveGoal(alice, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlights(alice, g.ID,
+		domain.HighlightInput{Kind: domain.HighlightAccomplishment, Note: "Signed the first EU customer."},
+		domain.HighlightInput{Kind: domain.HighlightAccomplishment, Note: "Hired the EU lead."},
+	)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	draft, err := h.Service.DraftReport(context.Background(), def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	var signed, hired int64
+	for _, nh := range draft.Highlights {
+		switch nh.Highlight.Note {
+		case "Signed the first EU customer.":
+			signed = nh.Highlight.ID
+		case "Hired the EU lead.":
+			hired = nh.Highlight.ID
+		}
+	}
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+
+	form := pageElement(t, getBody(t, client, reportURL), "form", "narrative-curation")
+	if n := strings.Count(form, `data-testid="curation-highlight"`); n != 2 {
+		t.Errorf("pick list has %d entries, want one per Highlight; form:\n%s", n, form)
+	}
+
+	postForm(t, client, reportURL+"/narrative", url.Values{
+		"pick-" + strconv.FormatInt(signed, 10): {domain.HighlightAccomplishment},
+		"pick-" + strconv.FormatInt(hired, 10):  {""},
+	})
+	resp := postForm(t, client, reportURL+"/publications", url.Values{"baseline": {""}})
+	published := readBody(t, resp)
+	narrative := pageElement(t, published, "section", "report-narrative")
+	if !strings.Contains(narrative, "Signed the first EU customer.") || strings.Contains(narrative, "Hired the EU lead.") {
+		t.Errorf("published narrative should show only the Highlight pulled; narrative:\n%s", narrative)
+	}
+
+	mdResp, err := client.Get(ts.URL + resp.Request.URL.Path + "/markdown")
+	if err != nil {
+		t.Fatalf("GET markdown: %v", err)
+	}
+	md := readBody(t, mdResp)
+	if !strings.Contains(md, "Signed the first EU customer.") || strings.Contains(md, "Hired the EU lead.") {
+		t.Errorf("Markdown export should show only the Highlight pulled:\n%s", md)
+	}
+}

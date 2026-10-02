@@ -2,6 +2,7 @@ package db_test
 
 import (
 	"database/sql"
+	"fmt"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -117,5 +118,59 @@ func TestMigrationStartsValueOrderAlphabetically(t *testing.T) {
 	want := []string{"Efficiency", "Growth", "Reliability", "Q1", "Q2"}
 	if !slices.Equal(got, want) {
 		t.Errorf("values in order = %v, want %v", got, want)
+	}
+}
+
+// Highlights recorded while a Check-in could carry only one keep their id,
+// Check-in, kind, note and timestamp on upgrade, and their Check-in can then
+// take more (CONTEXT.md: Highlight).
+func TestMigrationKeepsHighlightsAndAllowsSeveralPerCheckin(t *testing.T) {
+	sqlDB := migratedExcept(t, "migrations/0031_several_highlights.sql")
+	// Put back the table as 0010 made it: one Highlight per Check-in.
+	if _, err := sqlDB.Exec(`
+		DROP TABLE highlights;
+		CREATE TABLE highlights (
+			id         INTEGER PRIMARY KEY,
+			checkin_id INTEGER NOT NULL UNIQUE REFERENCES checkins(id),
+			kind       TEXT    NOT NULL,
+			note       TEXT    NOT NULL,
+			created_at TEXT    NOT NULL
+		);
+		CREATE INDEX idx_highlights_checkin ON highlights (checkin_id);
+		INSERT INTO highlights (id, checkin_id, kind, note, created_at) VALUES
+			(4, 10, 'Insight', 'Retries masked the root cause.', '2026-01-02T00:00:00Z'),
+			(7, 11, 'Miss', 'Missed the SLA.', '2026-01-09T00:00:00Z')`); err != nil {
+		t.Fatalf("arrange 0010 highlights: %v", err)
+	}
+
+	if err := db.Migrate(sqlDB); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	rows, err := sqlDB.Query(`SELECT id, checkin_id, kind, note, created_at FROM highlights ORDER BY id`)
+	if err != nil {
+		t.Fatalf("read highlights: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var got []string
+	for rows.Next() {
+		var id, checkinID int64
+		var kind, note, createdAt string
+		if err := rows.Scan(&id, &checkinID, &kind, &note, &createdAt); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, fmt.Sprintf("%d %d %s %s %s", id, checkinID, kind, note, createdAt))
+	}
+	want := []string{
+		"4 10 Insight Retries masked the root cause. 2026-01-02T00:00:00Z",
+		"7 11 Miss Missed the SLA. 2026-01-09T00:00:00Z",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("highlights = %v, want %v", got, want)
+	}
+
+	if _, err := sqlDB.Exec(`INSERT INTO highlights (checkin_id, kind, note, created_at)
+		VALUES (10, 'Accomplishment', 'Cut MTTR in half.', '2026-01-02T00:00:00Z')`); err != nil {
+		t.Errorf("a second Highlight on the same Check-in: %v", err)
 	}
 }

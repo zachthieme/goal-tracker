@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -31,7 +32,7 @@ func (s *Server) handleCheckinPage(w http.ResponseWriter, r *http.Request, curre
 		http.Error(w, "only the Owner or a Delegate may check in", http.StatusForbidden)
 		return
 	}
-	render(w, r, http.StatusOK, checkinPage(&current, view, ""))
+	render(w, r, http.StatusOK, checkinPage(&current, view, checkinFormFromLatest(view)))
 }
 
 // handleSubmitCheckin records a Check-in on the Goal in the path, written by the
@@ -49,7 +50,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	path := r.FormValue("path_to_green")
 	explanation := r.FormValue("explanation")
 	rawDate := r.FormValue("path_target_date")
-	highlight := highlightFromForm(r)
+	highlights := highlightsFromForm(r)
 
 	// The reading inputs are named reading_<metricID>, one per Metric on the
 	// Goal, so parsing them needs the Goal's current Metrics.
@@ -81,13 +82,22 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	// placed by checkinErrorField.
 	formData := func(err error) checkinFormData {
 		var e checkinError
-		if !errors.As(err, &e) {
+		if err != nil && !errors.As(err, &e) {
 			e = checkinError{Field: checkinErrorField(err.Error(), dates, metrics), Message: err.Error()}
 		}
 		return checkinFormData{
 			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, Explanation: explanation,
-			Metrics: metrics, Readings: rawReadings, Highlight: highlight, Dates: dates, Lifecycle: lifecycle, Error: e,
+			Metrics: metrics, Readings: rawReadings, Highlights: highlights, Dates: dates, Lifecycle: lifecycle, Error: e,
 		}
+	}
+
+	// Add another records nothing: it re-renders the form, everything typed
+	// kept, with one more Highlight row.
+	if r.FormValue("add_highlight") != "" {
+		d := formData(nil)
+		d.Highlights = append(d.Highlights, highlightFormData{})
+		s.renderCheckinFormAgain(w, r, current, d)
+		return
 	}
 
 	date, err := parseDate(rawDate)
@@ -120,8 +130,8 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		s.renderCheckinFormError(w, r, goalID, formData(err))
 		return
 	}
-	if highlight.Kind != "" {
-		in.Highlight = &domain.HighlightInput{Kind: highlight.Kind, Note: highlight.Note}
+	for _, row := range highlights {
+		in.Highlights = append(in.Highlights, domain.HighlightInput{Kind: row.Kind, Note: row.Note})
 	}
 
 	if _, err = s.svc.SubmitCheckin(r.Context(), in); err != nil {
@@ -153,6 +163,9 @@ func checkinErrorField(msg string, dates checkinDatesFormData, metrics []domain.
 	if i, ok := dates.newMilestoneIn(msg); ok {
 		return fmt.Sprintf("new_milestone_%d", i)
 	}
+	if m := highlightRowError.FindStringSubmatch(msg); m != nil {
+		return "highlight_" + m[1]
+	}
 	if strings.Contains(msg, "needs a final value for every Metric") {
 		for _, m := range metrics {
 			if strings.Contains(msg, fmt.Sprintf("%q has none", m.Name)) {
@@ -177,10 +190,6 @@ func checkinErrorField(msg string, dates checkinDatesFormData, metrics []domain.
 		return "delivery_date"
 	case strings.Contains(msg, "changing the delivery date needs a reason"):
 		return "delivery_date_reason"
-	case strings.Contains(msg, "a Highlight must be"):
-		return "highlight_kind"
-	case strings.Contains(msg, "a Highlight needs a note"):
-		return "highlight_note"
 	case strings.Contains(msg, "needs a Path to Green"), strings.Contains(msg, "Path to Green needs a target date"):
 		return "path_to_green"
 	default:
@@ -188,6 +197,10 @@ func checkinErrorField(msg string, dates checkinDatesFormData, metrics []domain.
 		return ""
 	}
 }
+
+// highlightRowError matches a domain error about one Highlight row, which the
+// domain names by its position counting from 1 ("Highlight 2 needs a kind").
+var highlightRowError = regexp.MustCompile(`Highlight (\d+) (?:needs a kind|must be)`)
 
 // milestoneNamedIn returns the ID of the Planned Milestone row a message names,
 // as the domain quotes it (Milestone "Beta").
@@ -339,13 +352,22 @@ func lifecycleFromForm(r *http.Request, goal domain.Goal) lifecycleFormData {
 	}
 }
 
-// highlightFromForm reads the optional Highlight fields; an empty kind means the
-// reader flagged nothing.
-func highlightFromForm(r *http.Request) highlightFormData {
-	return highlightFormData{
-		Kind: r.FormValue("highlight_kind"),
-		Note: r.FormValue("highlight_note"),
+// highlightsFromForm reads the Highlight rows as typed (highlight_kind and
+// highlight_note, paired by position), blank rows included so a re-render
+// keeps every row and the domain's row numbers match the form's.
+func highlightsFromForm(r *http.Request) []highlightFormData {
+	kinds := r.Form["highlight_kind"]
+	notes := r.Form["highlight_note"]
+	out := make([]highlightFormData, max(len(kinds), len(notes)))
+	for i := range out {
+		if i < len(kinds) {
+			out[i].Kind = kinds[i]
+		}
+		if i < len(notes) {
+			out[i].Note = notes[i]
+		}
 	}
+	return out
 }
 
 // handleNoChangeCheckin records a Check-in repeating the Goal's previous values
@@ -386,7 +408,7 @@ func (s *Server) renderNoChangeRefusal(w http.ResponseWriter, r *http.Request, c
 			status = http.StatusOK
 			w.Header().Set("HX-Push-Url", "/goals/"+strconv.FormatInt(goalID, 10)+"/checkin")
 		}
-		render(w, r, status, checkinPage(&current, view, plainReason(err)))
+		render(w, r, status, checkinPage(&current, view, checkinFormRefused(view, plainReason(err))))
 	default:
 		render(w, r, http.StatusInternalServerError, checkinUnavailablePage(&current, "Check-in failed", "The No change couldn't be recorded. Try again."))
 	}
@@ -412,6 +434,25 @@ func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, 
 		status = http.StatusOK
 	}
 	render(w, r, status, checkinForm(data))
+}
+
+// renderCheckinFormAgain re-renders the Check-in form as typed, with no error
+// (Add another): htmx swaps in the form alone, a plain post gets the whole
+// Check-in page around it.
+func (s *Server) renderCheckinFormAgain(w http.ResponseWriter, r *http.Request, current domain.Account, data checkinFormData) {
+	if rollup, err := s.svc.RolledUpHealth(r.Context(), data.GoalID); err == nil {
+		data.RolledUp = rollup
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		render(w, r, http.StatusOK, checkinForm(data))
+		return
+	}
+	view, err := s.goalPageView(r.Context(), data.GoalID, current)
+	if err != nil {
+		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, checkinPage(&current, view, data))
 }
 
 // checkinRedirect returns the reader to the Goal page after a successful

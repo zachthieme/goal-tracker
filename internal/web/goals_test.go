@@ -3728,3 +3728,33 @@ func TestProposeGoalFromTheOpenedForm(t *testing.T) {
 		t.Errorf("under htmx the post didn't swap in the list with the new Goal (status %d):\n%s", status, body)
 	}
 }
+
+// The Goal page lists each Highlight on its own, so two flagged in one
+// Check-in are two entries, in the order entered, each crediting the Owner
+// (CONTEXT.md: Highlight).
+func TestGoalPageListsEachHighlightOfACheckinSeparately(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.CheckinWithHighlights(sam, goal.ID,
+		domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."},
+		domain.HighlightInput{Kind: domain.HighlightMiss, Note: "Missed the SLA."},
+	)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	block := pageElement(t, page, "section", "goal-highlights")
+	entries := strings.Split(block, `data-testid="highlight"`)[1:]
+	if len(entries) != 2 {
+		t.Fatalf("Highlights block lists %d entries, want 2; block:\n%s", len(entries), block)
+	}
+	for i, want := range []string{"Retries masked the root cause.", "Missed the SLA."} {
+		if !strings.Contains(entries[i], want) {
+			t.Errorf("entry %d = %s, want %q", i+1, entries[i], want)
+		}
+		if !strings.Contains(entries[i], `title="sam@example.com"`) {
+			t.Errorf("entry %d does not credit the Owner: %s", i+1, entries[i])
+		}
+	}
+}
