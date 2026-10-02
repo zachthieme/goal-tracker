@@ -3,6 +3,7 @@ package importer_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"slices"
 	"strconv"
 	"strings"
@@ -273,5 +274,34 @@ func TestChangedGoalColumnsOnARowWithAnIDAreIgnoredAndReported(t *testing.T) {
 		if got.Title != g.Title || got.SoWhat != g.SoWhat {
 			t.Errorf("Goal %d = %q / %q, want it unchanged as %q / %q", g.ID, got.Title, got.SoWhat, g.Title, g.SoWhat)
 		}
+	}
+}
+
+// A download that would write a value containing a semicolon, named so before
+// that was refused, is refused naming its Dimension and value, and writes
+// nothing: the file could not be imported again, since the semicolon would
+// split the value (#101).
+func TestDownloadRefusesAValueContainingASemicolon(t *testing.T) {
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	pillar := h.CreateDimension(admin, "Pillar", "Growth", "Reliability")
+	rnd := h.NameValueWithSemicolon(pillar.Values[1], "R&D; Ops")
+	alpha := h.CreateGoal(admin, "Alpha", "A matters.")
+	bravo := h.CreateGoal(admin, "Bravo", "B matters.")
+	h.AssignGoalValue(alpha, pillar.Values[0])
+	h.AssignGoalValue(bravo, rnd)
+
+	var buf bytes.Buffer
+	err := importer.New(h.Service).Download(context.Background(), &buf, []domain.Goal{alpha, bravo})
+	if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), `Pillar value "R&D; Ops"`) || !strings.Contains(err.Error(), "semicolon") {
+		t.Errorf("Download err = %v, want a refusal naming Pillar's value R&D; Ops and the semicolon", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("Download wrote %q, want nothing", buf.String())
+	}
+
+	// Goals not carrying it still download.
+	if got := downloadCSV(t, h, alpha); !strings.Contains(got, "Alpha") {
+		t.Errorf("download of Alpha = %q, want its row", got)
 	}
 }

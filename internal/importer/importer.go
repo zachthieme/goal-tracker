@@ -456,11 +456,12 @@ func parseUpdateRow(line int, rawID string, row []string, lay layout) rowSpec {
 
 // parseDimensionCell reads the values a Dimension cell gives a Goal, with an
 // error for each it can't: more than one in a Dimension that takes one, or a
-// value not in a Fixed Dimension's list.
+// value not in a Fixed Dimension's list. A semicolon always separates values,
+// so a value can't contain one (#101), and the error for one Dimension says so.
 func parseDimensionCell(dim domain.Dimension, raw string) ([]dimensionValue, []string) {
 	values := splitValues(raw)
 	if len(values) > 1 && !dim.TakesSeveral() {
-		return nil, []string{fmt.Sprintf("%s takes one value per Goal", dim.Name)}
+		return nil, []string{fmt.Sprintf("%s takes one value per Goal, and a value can't contain a semicolon, because the import format uses it to separate values", dim.Name)}
 	}
 	var (
 		out  []dimensionValue
