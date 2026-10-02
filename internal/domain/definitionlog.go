@@ -38,6 +38,33 @@ func (s *Service) DefinitionLog(ctx context.Context) ([]DefinitionChange, error)
 	return out, nil
 }
 
+// DimensionLog is the Definition log narrowed to one Dimension, changes to its
+// values included, newest first.
+func (s *Service) DimensionLog(ctx context.Context, dimensionID int64) ([]DefinitionChange, error) {
+	rows, err := s.queries.ListDefinitionChangesForDimension(ctx, &dimensionID)
+	if err != nil {
+		return nil, fmt.Errorf("list dimension's definition log: %w", err)
+	}
+	out := make([]DefinitionChange, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, definitionChangeFromRow(r.DefinitionChange, r.Account))
+	}
+	return out, nil
+}
+
+// FieldLog is the Definition log narrowed to one Field, newest first.
+func (s *Service) FieldLog(ctx context.Context, fieldID int64) ([]DefinitionChange, error) {
+	rows, err := s.queries.ListDefinitionChangesForField(ctx, &fieldID)
+	if err != nil {
+		return nil, fmt.Errorf("list field's definition log: %w", err)
+	}
+	out := make([]DefinitionChange, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, definitionChangeFromRow(r.DefinitionChange, r.Account))
+	}
+	return out, nil
+}
+
 // recordDimensionDefinitionChange writes one entry about a Dimension, or one of its
 // values, to the Definition log.
 func (s *Service) recordDimensionDefinitionChange(ctx context.Context, actorID, dimensionID int64, format string, args ...any) error {
@@ -98,6 +125,14 @@ func listName(d Dimension) string {
 		return "Extendable"
 	}
 	return "Fixed"
+}
+
+// aList is "a Fixed list" or "an Extendable list", as the log words d's list.
+func aList(d Dimension) string {
+	if d.Extendable() {
+		return "an Extendable list"
+	}
+	return "a Fixed list"
 }
 
 // requiredWord is how the log says a Dimension or Field was marked.

@@ -375,3 +375,36 @@ func TestAChangeThatChangesNothingWritesNothing(t *testing.T) {
 		t.Errorf("log grew from %d to %d entries: %+v", len(before), len(after), after[:len(after)-len(before)])
 	}
 }
+
+// The log narrows to one Dimension, its values' changes included, or to one
+// Field, newest first.
+func TestTheLogNarrowsToOneDimensionOrField(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ctx := context.Background()
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	h.CreateDimension(boss, "Quarter", "Q1")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.CreateField(boss, "Notes", domain.FieldLongText, "")
+	if _, err := h.Service.AddDimensionValue(ctx, boss.ID, pillar.ID, "Trust"); err != nil {
+		t.Fatalf("add Trust: %v", err)
+	}
+	h.SetFieldRequired(boss, budget, true)
+
+	pillarLog, err := h.Service.DimensionLog(ctx, pillar.ID)
+	if err != nil {
+		t.Fatalf("DimensionLog: %v", err)
+	}
+	assertSummaries(t, pillarLog, []string{
+		"Added Trust to Pillar.",
+		"Created the Dimension Pillar with Growth, taking one value from a Fixed list.",
+	})
+	budgetLog, err := h.Service.FieldLog(ctx, budget.ID)
+	if err != nil {
+		t.Fatalf("FieldLog: %v", err)
+	}
+	assertSummaries(t, budgetLog, []string{
+		"Marked the Field Budget required.",
+		"Created the Field Budget, holding a number in $.",
+	})
+}

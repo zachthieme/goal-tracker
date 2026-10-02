@@ -144,8 +144,8 @@ func (s *Service) DefineDimension(ctx context.Context, actorID int64, def Dimens
 			}
 			dim.Values = append(dim.Values, dimensionValueFromRow(val))
 		}
-		return tx.recordDimensionDefinitionChange(ctx, actorID, dim.ID, "Created the Dimension %s with %s, taking %s from a %s list.",
-			dim.Name, strings.Join(cleaned, ", "), selectionPhrase(dim), listName(dim))
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dim.ID, "Created the Dimension %s with %s, taking %s from %s.",
+			dim.Name, strings.Join(cleaned, ", "), selectionPhrase(dim), aList(dim))
 	})
 	if err != nil {
 		return Dimension{}, err

@@ -84,4 +84,5 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /risks", s.requireAuth(s.handleRisks))
 	s.mux.HandleFunc("POST /goals/{id}/top-level", s.requireAuth(s.handleSetTopLevel))
 	s.mux.HandleFunc("GET /admin", s.requireAuth(s.handleAdmin))
+	s.mux.HandleFunc("GET /definition-log", s.requireAuth(s.handleDefinitionLog))
 }

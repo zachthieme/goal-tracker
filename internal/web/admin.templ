@@ -22,6 +22,7 @@ templ adminPage(current *domain.Account, ownerless []domain.Goal, departed []dom
 			@adminTool("admin-dimensions", "/dimensions", "Dimensions", "Define the Dimensions Goals are tagged with")
 			@adminTool("admin-fields", "/fields", "Fields", "Define the Fields typed on a Goal to describe it")
 			@adminTool("admin-imports", "/imports", "Import goals", "Load Goals from a CSV or XLSX spreadsheet")
+			@adminTool("admin-definition-log", "/definition-log", "Definition log", "Every change to the Dimensions and Fields, with who made it and when")
 		</nav>
 		<section data-testid="admin-ownerless" class="ad-section">
 			<div>
