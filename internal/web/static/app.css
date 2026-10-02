@@ -16,9 +16,9 @@
   --color-surface-hover: #FDFCF7;
   --color-surface-alt:   #F7F6E8;
 
-  --color-ink:         #134E4A;
-  --color-ink-2:       #2D6A66;
-  --color-ink-muted:   #527673;
+  --color-ink:         #18211F; /* neutral ink; teal is for actions (DESIGN.md Deviation 2) */
+  --color-ink-2:       #3E4946;
+  --color-ink-muted:   #66706D;
   --color-ink-inverse: #FFFFFF;
 
   --color-border:        #E8E6D5;
@@ -30,12 +30,15 @@
   --color-error:   #EF4444;
   --color-danger-ink: #9A231B; /* destructive text; --color-error is too light for 13–15px text */
 
-  /* Top bar: --color-ink in light, --color-surface-alt in dark */
-  --nav-bg:       var(--color-ink);
+  /* Top bar: deep teal (Teal 900) in light, --color-surface-alt in dark */
+  --nav-bg:       #134E4A;
   --nav-ink:      #FFFFFF;
   --nav-ink-2:    rgba(255,255,255,.78);
   --nav-hover:    rgba(255,255,255,.10);
   --nav-focus:    #2DD4BF; /* 5.1:1 on the teal top bar */
+  --nav-count-bg:  #E3E6E5; /* neutral grey count pill */
+  --nav-count-ink: #18211F;
+  --nav-needs-bg:  #18211F; /* Home's count, both themes: a dark pill ringed in --nav-ink */
 
   /* Goal Health (DESIGN.md § Deviations 3) */
   --health-g-bg: #DDEFE3; --health-g-ink: #17593A;
@@ -79,8 +82,8 @@
     --color-surface-hover: #063530;
     --color-surface-alt:   #031613;
     --color-ink:         #E8E8E8;
-    --color-ink-2:       #B8CFCC;
-    --color-ink-muted:   #8FAFAB;
+    --color-ink-2:       #C2C2C2;
+    --color-ink-muted:   #9E9E9E;
     --color-ink-inverse: #042F2E;
     --color-border:        #0A3F39;
     --color-border-strong: #2F8479;
@@ -94,6 +97,8 @@
     --nav-ink-2: var(--color-ink-2);
     --nav-hover: rgba(255,255,255,.06);
     --nav-focus: var(--color-focus);
+    --nav-count-bg:  #626766;
+    --nav-count-ink: #FFFFFF;
     --health-g-bg: rgba(34,160,95,.20);  --health-g-ink: #8EDDAF;
     --health-y-bg: rgba(234,179,8,.20);  --health-y-ink: #F5D06B;
     --health-r-bg: rgba(239,68,68,.20);  --health-r-ink: #F8A39B;
@@ -115,8 +120,8 @@
   --color-surface-hover: #063530;
   --color-surface-alt:   #031613;
   --color-ink:         #E8E8E8;
-  --color-ink-2:       #B8CFCC;
-  --color-ink-muted:   #8FAFAB;
+  --color-ink-2:       #C2C2C2;
+  --color-ink-muted:   #9E9E9E;
   --color-ink-inverse: #042F2E;
   --color-border:        #0A3F39;
   --color-border-strong: #2F8479;
@@ -130,6 +135,8 @@
   --nav-ink-2: var(--color-ink-2);
   --nav-hover: rgba(255,255,255,.06);
   --nav-focus: var(--color-focus);
+  --nav-count-bg:  #626766;
+  --nav-count-ink: #FFFFFF;
   --health-g-bg: rgba(34,160,95,.20);  --health-g-ink: #8EDDAF;
   --health-y-bg: rgba(234,179,8,.20);  --health-y-ink: #F5D06B;
   --health-r-bg: rgba(239,68,68,.20);  --health-r-ink: #F8A39B;
@@ -161,7 +168,8 @@ strong{color:var(--color-ink)}
 .navitem{display:inline-flex;align-items:center;height:36px;color:var(--nav-ink-2);padding:0 12px;border-radius:var(--radius-md);font-weight:500;white-space:nowrap;transition:background var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out)}
 .navitem:hover{color:var(--nav-ink);background:var(--nav-hover);text-decoration:none}
 .navitem.on{color:var(--nav-ink);box-shadow:inset 0 -2px 0 var(--color-primary);border-radius:var(--radius-md) var(--radius-md) 0 0}
-.count{display:inline-block;min-width:18px;padding:0 8px;margin-left:8px;border-radius:var(--radius-full);background:var(--color-primary-light);color:var(--color-ink);font-size:11px;font-weight:600;text-align:center;line-height:18px;box-sizing:border-box}
+.count{display:inline-block;min-width:18px;padding:0 8px;margin-left:8px;border-radius:var(--radius-full);background:var(--nav-count-bg);color:var(--nav-count-ink);font-size:11px;font-weight:600;text-align:center;line-height:18px;box-sizing:border-box}
+.count.needs-you{background:var(--nav-needs-bg);color:var(--nav-ink);box-shadow:0 0 0 1px var(--nav-ink)}
 .me{margin-left:auto;display:flex;align-items:center;gap:12px;color:var(--nav-ink-2)}
 .me strong,.me .person{color:var(--nav-ink)}
 .me .person-email{color:var(--nav-ink-2)}

@@ -95,11 +95,11 @@ templ layout(title string, current *domain.Account) {
 				<a class="brand" href="/goals">Goal Tracker</a>
 				if current != nil {
 					<div class="navitems">
-						@navItem("/home", "nav-home", "Home", needsYou(ctx))
-						@navItem("/risks", "nav-risks", "Risks", risks(ctx))
-						@navItem("/reports", "nav-reports", "Reports", 0)
+						@navItem("/home", "nav-home", "Home", needsYou(ctx), "count needs-you")
+						@navItem("/risks", "nav-risks", "Risks", risks(ctx), "count")
+						@navItem("/reports", "nav-reports", "Reports", 0, "count")
 						if current.IsAdmin {
-							@navItem("/admin", "nav-admin", "Admin", 0)
+							@navItem("/admin", "nav-admin", "Admin", 0, "count")
 						}
 					</div>
 				}
@@ -129,24 +129,25 @@ templ layout(title string, current *domain.Account) {
 }
 
 // navItem is a top-bar link, marked current when the request is in its section,
-// with a count of what's there for the reader when it's above zero.
-templ navItem(href, testID, label string, count int) {
+// with a count of what's there for the reader when it's above zero. countClass
+// styles the count: Home's needs-you pill, or every other item's plain one.
+templ navItem(href, testID, label string, count int, countClass string) {
 	if onSection(ctx, href) {
 		<a data-testid={ testID } class="navitem on" aria-current="page" href={ templ.SafeURL(href) }>
 			{ label }
-			@navCount(count)
+			@navCount(count, countClass)
 		</a>
 	} else {
 		<a data-testid={ testID } class="navitem" href={ templ.SafeURL(href) }>
 			{ label }
-			@navCount(count)
+			@navCount(count, countClass)
 		</a>
 	}
 }
 
-templ navCount(count int) {
+templ navCount(count int, class string) {
 	if count > 0 {
-		<span class="count">{ strconv.Itoa(count) }</span>
+		<span class={ class }>{ strconv.Itoa(count) }</span>
 	}
 }
 
