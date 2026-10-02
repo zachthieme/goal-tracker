@@ -15,7 +15,8 @@ const confirmRetireField = "Retire this Field? Goals that have a value in it kee
 // type can't change once it is defined. An Admin marks a Field required, or
 // optional again, from its card (CONTEXT.md: Incomplete), and retires it
 // there; a Retired Field stays listed, flagged retired, with a button to
-// restore it (CONTEXT.md: Retired).
+// restore it and neither the Required mark nor its control, which come back
+// with the setting it had once it is restored (CONTEXT.md: Retired).
 templ fieldsPage(current *domain.Account, fields []domain.Field) {
 	{{ admin := current != nil && current.IsAdmin }}
 	@layout("Fields", current) {
@@ -66,21 +67,23 @@ templ fieldsPage(current *domain.Account, fields []domain.Field) {
 					</h3>
 					<p data-testid="field-type" class="muted small">
 						{ fieldTypeLabel(f) }
-						if f.Required {
+						if f.Required && !f.Retired {
 							{ " · " }
 							<span data-testid="field-required">Required</span>
 						}
 					</p>
 					if admin {
-						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/fields/%d/required", f.ID)) }>
-							if f.Required {
-								<input type="hidden" name="required" value="0"/>
-								<button type="submit" class="btn sm">Make it optional</button>
-							} else {
-								<input type="hidden" name="required" value="1"/>
-								<button type="submit" class="btn sm">Make it required</button>
-							}
-						</form>
+						if !f.Retired {
+							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/fields/%d/required", f.ID)) }>
+								if f.Required {
+									<input type="hidden" name="required" value="0"/>
+									<button type="submit" class="btn sm">Make it optional</button>
+								} else {
+									<input type="hidden" name="required" value="1"/>
+									<button type="submit" class="btn sm">Make it required</button>
+								}
+							</form>
+						}
 						if f.Retired {
 							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/fields/%d/restore", f.ID)) }>
 								<button type="submit" class="btn sm">Restore this Field</button>

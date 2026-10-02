@@ -383,3 +383,28 @@ func TestFailedHistoryLeavesTheFieldOverHTTP(t *testing.T) {
 		t.Errorf("the Goal doesn't keep Budget 200 after a failed change:\n%s", shown)
 	}
 }
+
+// A Retired Field's card shows neither the Required mark nor the control to
+// change it, since required means nothing on it; restoring the Field shows
+// both again with the setting it had.
+func TestRetiredFieldCardHasNoRequiredControlOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	admin := h.SignIn("boss@example.com")
+	budget := h.CreateField(admin, "Budget", domain.FieldNumber, "$")
+	h.SetFieldRequired(admin, budget, true)
+	ts := newServer(t, h)
+	boss := signInClient(t, ts.URL, "boss@example.com")
+	action := fmt.Sprintf(`action="/fields/%d/required"`, budget.ID)
+
+	postForm(t, boss, fmt.Sprintf("%s/fields/%d/retire", ts.URL, budget.ID), url.Values{})
+	card := pageElement(t, getBody(t, boss, ts.URL+"/fields"), "li", "field")
+	if strings.Contains(card, `data-testid="field-required"`) || strings.Contains(card, action) || strings.Contains(card, "Make it") {
+		t.Errorf("Retired Budget's card shows the required mark or control:\n%s", card)
+	}
+
+	postForm(t, boss, fmt.Sprintf("%s/fields/%d/restore", ts.URL, budget.ID), url.Values{})
+	card = pageElement(t, getBody(t, boss, ts.URL+"/fields"), "li", "field")
+	if !strings.Contains(card, `data-testid="field-required"`) || !strings.Contains(between(t, card, action, "</form>"), "Make it optional") {
+		t.Errorf("restored Budget's card doesn't show it required, with a control to make it optional:\n%s", card)
+	}
+}

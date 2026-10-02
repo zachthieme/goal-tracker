@@ -724,3 +724,28 @@ func TestRenamingAValueIntoAnotherRefusedOverHTTP(t *testing.T) {
 		t.Errorf("Pillar after recasing Payments = %v, want [Growth payments]", got)
 	}
 }
+
+// A Retired Dimension's card shows neither the Required mark nor the control
+// to change it, since required means nothing on it; restoring the Dimension
+// shows both again with the setting it had.
+func TestRetiredDimensionCardHasNoRequiredControlOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	admin := h.SignIn("boss@example.com")
+	pillar := h.CreateDimension(admin, "Pillar", "Growth")
+	h.SetDimensionRequired(admin, pillar, true)
+	ts := newServer(t, h)
+	boss := signInClient(t, ts.URL, "boss@example.com")
+	action := fmt.Sprintf(`action="/dimensions/%d/required"`, pillar.ID)
+
+	postForm(t, boss, fmt.Sprintf("%s/dimensions/%d/retire", ts.URL, pillar.ID), url.Values{})
+	page := getBody(t, boss, ts.URL+"/dimensions")
+	if strings.Contains(page, `data-testid="dimension-required"`) || strings.Contains(page, action) {
+		t.Errorf("Retired Pillar's card shows the required mark or control:\n%s", page)
+	}
+
+	postForm(t, boss, fmt.Sprintf("%s/dimensions/%d/restore", ts.URL, pillar.ID), url.Values{})
+	page = getBody(t, boss, ts.URL+"/dimensions")
+	if !strings.Contains(page, `data-testid="dimension-required"`) || !strings.Contains(between(t, page, action, "</form>"), "Make it optional") {
+		t.Errorf("restored Pillar's card doesn't show it required, with a control to make it optional:\n%s", page)
+	}
+}

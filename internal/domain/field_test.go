@@ -219,3 +219,34 @@ func TestAdminRetiresAndRestoresAField(t *testing.T) {
 		t.Errorf("RestoreField of no Field: err = %v, want ErrValidation", err)
 	}
 }
+
+// Retiring a required Dimension or Field and restoring it keeps the setting it
+// had, so it is required again once restored.
+func TestRestoringKeepsTheRequiredSetting(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ctx := context.Background()
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	h.SetDimensionRequired(boss, pillar, true)
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.SetFieldRequired(boss, budget, true)
+
+	for _, step := range []func() error{
+		func() error { return h.Service.RetireDimension(ctx, boss.ID, pillar.ID) },
+		func() error { return h.Service.RetireField(ctx, boss.ID, budget.ID) },
+		func() error { return h.Service.RestoreDimension(ctx, boss.ID, pillar.ID) },
+		func() error { return h.Service.RestoreField(ctx, boss.ID, budget.ID) },
+	} {
+		if err := step(); err != nil {
+			t.Fatalf("retire or restore: %v", err)
+		}
+	}
+
+	if !dimensionNamed(t, h, "Pillar").Required {
+		t.Errorf("Pillar isn't required after it is restored")
+	}
+	fields, err := h.Service.ListFields(ctx)
+	if err != nil || len(fields) != 1 || !fields[0].Required {
+		t.Errorf("Fields after restoring = %+v (%v), want Budget required", fields, err)
+	}
+}

@@ -18,7 +18,8 @@ const confirmMerge = "Merge this value? Its Goals and Report filters move to the
 // card's Edit toggle, to switch between one value and several and between a
 // Fixed and an Extendable list, and to add, rename, and retire values
 // (CONTEXT.md: Admin defines Dimensions; Fixed; Extendable). Retired values stay listed, struck through, and a
-// Retired Dimension stays listed, flagged retired (CONTEXT.md: Retired). refusal, when
+// Retired Dimension stays listed, flagged retired, without the Required mark
+// or its control (CONTEXT.md: Retired). refusal, when
 // set, names the Goals that kept a Dimension from switching to one value.
 templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *domain.SeveralValuesError) {
 	{{ admin := current != nil && current.IsAdmin }}
@@ -78,7 +79,7 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *
 						Each Goal takes <span data-testid="dimension-selection">{ selectionLabel(d) }</span>
 						{ " · " }
 						<span data-testid="dimension-list">{ listLabel(d) }</span> list
-						if d.Required {
+						if d.Required && !d.Retired {
 							{ " · " }
 							<span data-testid="dimension-required">Required</span>
 						}
@@ -126,7 +127,8 @@ templ dimensionValues(d domain.Dimension) {
 
 // dimensionEdit is an Admin's Edit toggle on a Dimension card: a switch between
 // one value and several per Goal, a switch between a Fixed and an Extendable
-// list, a switch between required and optional (CONTEXT.md: Incomplete), then
+// list, a switch between required and optional (CONTEXT.md: Incomplete) —
+// unless it is Retired, where required means nothing — then
 // each value in the list's order with buttons to move it up or down,
 // — while it is still in use — a rename form and a Retire button, and a form
 // to merge it into another of the Dimension's values — or, once Retired, a
@@ -155,15 +157,17 @@ templ dimensionEdit(d domain.Dimension) {
 				<button type="submit" class="btn sm">Make the list Extendable</button>
 			}
 		</form>
-		<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/required", d.ID)) }>
-			if d.Required {
-				<input type="hidden" name="required" value="0"/>
-				<button type="submit" class="btn sm">Make it optional</button>
-			} else {
-				<input type="hidden" name="required" value="1"/>
-				<button type="submit" class="btn sm">Make it required</button>
-			}
-		</form>
+		if !d.Retired {
+			<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/required", d.ID)) }>
+				if d.Required {
+					<input type="hidden" name="required" value="0"/>
+					<button type="submit" class="btn sm">Make it optional</button>
+				} else {
+					<input type="hidden" name="required" value="1"/>
+					<button type="submit" class="btn sm">Make it required</button>
+				}
+			</form>
+		}
 		<ul class="dm-rows">
 			for _, v := range d.Values {
 				<li>
