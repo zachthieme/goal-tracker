@@ -155,7 +155,7 @@ func TestOwnerAndDelegateSetAndClearFieldsOnTheGoalPage(t *testing.T) {
 
 	for _, email := range []string{"pat@example.com", "dee@example.com"} {
 		client := signInClient(t, ts.URL, email)
-		edit := pageElement(t, getBody(t, client, goalPageURL(ts.URL, goal)), "details", "edit-fields")
+		edit := openForm(t, getBody(t, client, goalPageURL(ts.URL, goal)+"?open=fields"), "fields")
 		for _, f := range fields {
 			form := between(t, edit, fmt.Sprintf(`name="field_id" value="%d"`, f.field.ID), "</form>")
 			if !strings.Contains(form, f.input) {
@@ -283,12 +283,12 @@ func TestRetiredFieldOnTheGoalPage(t *testing.T) {
 	client := signInClient(t, ts.URL, "pat@example.com")
 	offered := fmt.Sprintf(`name="field_id" value="%d"`, budget.ID)
 
-	page := getBody(t, client, goalPageURL(ts.URL, withValue))
+	page := getBody(t, client, goalPageURL(ts.URL, withValue)+"?open=fields")
 	shown := pageElement(t, page, "ul", "goal-fields")
 	if !strings.Contains(shown, "Budget") || !strings.Contains(shown, "1200") || !strings.Contains(shown, `data-testid="retired"`) {
 		t.Errorf("the Retired Budget isn't shown, marked retired, where it has a value:\n%s", shown)
 	}
-	if edit := pageElement(t, page, "details", "edit-fields"); strings.Contains(edit, offered) {
+	if edit := openForm(t, page, "fields"); strings.Contains(edit, offered) {
 		t.Errorf("the Retired Budget is offered for entry:\n%s", edit)
 	}
 	page = getBody(t, client, goalPageURL(ts.URL, without))
@@ -299,8 +299,8 @@ func TestRetiredFieldOnTheGoalPage(t *testing.T) {
 	if err := h.Service.RestoreField(context.Background(), boss.ID, budget.ID); err != nil {
 		t.Fatalf("RestoreField: %v", err)
 	}
-	page = getBody(t, client, goalPageURL(ts.URL, without))
-	if edit := pageElement(t, page, "details", "edit-fields"); !strings.Contains(edit, offered) {
+	page = getBody(t, client, goalPageURL(ts.URL, without)+"?open=fields")
+	if edit := openForm(t, page, "fields"); !strings.Contains(edit, offered) {
 		t.Errorf("the restored Budget isn't offered for entry:\n%s", edit)
 	}
 }
@@ -420,7 +420,7 @@ func TestAdminWhoIsNeitherOwnerNorDelegateSetsAFieldOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	admin := signInClient(t, ts.URL, "boss@example.com")
 
-	edit := pageElement(t, getBody(t, admin, goalPageURL(ts.URL, goal)), "details", "edit-fields")
+	edit := openForm(t, getBody(t, admin, goalPageURL(ts.URL, goal)+"?open=fields"), "fields")
 	if !strings.Contains(edit, fmt.Sprintf(`name="field_id" value="%d"`, budget.ID)) {
 		t.Fatalf("the Admin isn't offered the Budget input:\n%s", edit)
 	}

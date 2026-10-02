@@ -281,6 +281,35 @@ Load the fonts with this URL:
     struck through when Dated, the Check-in cadence, and Top-level when it
     applies. Only Health is a badge. The line wraps on narrow screens.
     Dimension values and Fields stay in the sidebar, never the head.
+  - **Header actions (`.gp-actions`):** top right, for whoever may check in
+    (the Owner or a Delegate), a primary **Check in** link to the Goal's
+    Check-in page and a quiet **No change** (`.btn.quiet`). Beside them sits
+    the action menu. Anyone else sees only the menu.
+  - **Action menu (`.gp-more`):** a secondary button reading "⋯", named "More
+    actions" for assistive technology. It is a `<details>`, so it opens without
+    script, and its panel (`.gp-menu`) is a card anchored right under the
+    button. It lists actions, never forms: each item is a plain link, and each
+    person sees only the actions they may take. When there would be none, the
+    menu is left out.
+- **Forms that open in place (`.gp-open`):** a Goal page action's form opens
+  in the part of the page it concerns, never in a modal, side panel or the
+  menu. A menu item or sidebar link leads to `/goals/{id}?open=<form>`, which
+  is the Goal page with that one form open and its first control focused. The
+  form sits under a `.label` heading with a quiet **Cancel** link back to the
+  plain page. A refused submit comes back as the same page with the same form
+  open, the reason in an alert at its top and what was typed still in it. It
+  is all links and plain form posts, so it works without script.
+  - **Where each opens:** Top-level opens in the head, under the metadata line.
+    Hand off, Reassign, Mark owner departed and Mark returned open in People,
+    under the Owner. Delegates and Contributors forms open in their groups.
+    Link to a parent Goal opens under Contributes to, Add a child Goal under
+    Contributed to by, and the Dimension and Field forms in their blocks.
+  - **Sidebar links (`.gp-group-head`):** a sidebar group whose form opens in
+    place has a small link beside its heading, shown only to those who may use
+    it and hidden while its form is open: **Manage** for Delegates and for
+    Contributors, **Edit** for Dimensions and for Fields, **+ Add** for
+    Contributes to. Each link's accessible name says what it acts on ("Edit
+    Fields"). The sidebar blocks stay separate canvas blocks under rules.
 - **Status cells (`.gp-cells`):** the Goal page's Latest status card opens with
   a row of cells, each a `.label` over its value: "Owner's Health" (a Health
   badge), "Rolled-up Health" (a Health badge, with the Stale-children count

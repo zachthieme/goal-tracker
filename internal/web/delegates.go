@@ -17,7 +17,7 @@ func (s *Server) handleAddDelegate(w http.ResponseWriter, r *http.Request, curre
 		return
 	}
 	err := s.svc.AddDelegateByEmail(r.Context(), current.ID, id, r.FormValue("email"))
-	writeDelegateResult(w, r, id, err)
+	s.writeDelegateResult(w, r, id, current, err)
 }
 
 // handleRemoveDelegate revokes the Delegate named by email on the Goal in the
@@ -28,7 +28,7 @@ func (s *Server) handleRemoveDelegate(w http.ResponseWriter, r *http.Request, cu
 		return
 	}
 	err := s.svc.RemoveDelegateByEmail(r.Context(), current.ID, id, r.FormValue("email"))
-	writeDelegateResult(w, r, id, err)
+	s.writeDelegateResult(w, r, id, current, err)
 }
 
 // handleDelegatePage lists every Goal the current Account is a Delegate for,
@@ -73,14 +73,15 @@ type delegatedGoal struct {
 }
 
 // writeDelegateResult redirects back to the Goal on success and maps a domain
-// Delegate error to a status: a non-Owner attempt is 403, a bad input 422.
-func writeDelegateResult(w http.ResponseWriter, r *http.Request, goalID int64, err error) {
+// Delegate error to a status: a non-Owner attempt is 403, and a bad input 422
+// with the Goal page's Delegates form open and the reason beside it.
+func (s *Server) writeDelegateResult(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, err error) {
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrNotAuthorized):
 			http.Error(w, err.Error(), http.StatusForbidden)
 		case errors.Is(err, domain.ErrValidation):
-			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			s.renderRefusedForm(w, r, goalID, current, formDelegates, http.StatusUnprocessableEntity, err)
 		default:
 			http.Error(w, "could not update delegates", http.StatusInternalServerError)
 		}

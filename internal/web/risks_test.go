@@ -398,8 +398,8 @@ func TestRiskFlagsUseAlertBannersAndChips(t *testing.T) {
 		t.Errorf("overdue row chip is not a Stale-colored badge: %s", chip)
 	}
 
-	adaPage := getBody(t, signInClient(t, ts.URL, "ada@example.com"), goalPageURL(ts.URL, silent))
-	if control := pageElement(t, adaPage, "section", "mark-top-level"); !strings.Contains(control, `<button type="submit" class="btn">`) {
+	adaPage := getBody(t, signInClient(t, ts.URL, "ada@example.com"), goalPageURL(ts.URL, silent)+"?open=top-level")
+	if control := pageElement(t, adaPage, "section", "mark-top-level"); !strings.Contains(control, `<button type="submit" class="btn" `) {
 		t.Errorf("Top-level control is not a plain button: %s", control)
 	}
 }

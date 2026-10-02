@@ -115,8 +115,8 @@ templ fieldsStyles() {
 // goalFields lists the Goal's Fields under their names: every Field still in
 // use, set or not, and a Retired one only where the Goal has a value in it,
 // marked retired (CONTEXT.md: Retired). For its Owner, a Delegate or an Admin
-// a collapsed section holds an input of each in-use Field's type, each saved
-// or cleared on its own; everyone else reads the values only (CONTEXT.md:
+// the block's Edit link opens in place an input of each in-use Field's type,
+// each saved or cleared on its own, and a refused value comes back as typed; everyone else reads the values only (CONTEXT.md:
 // Delegate). Fields are never an update, so they stay off the Check-in form
 // (ADR 0005).
 templ goalFields(v goalView) {
@@ -143,16 +143,15 @@ templ goalFields(v goalView) {
 			}
 		}
 	</ul>
-	if v.CanSetValues && len(offered) > 0 {
-		<details data-testid="edit-fields" id="edit-fields">
-			<summary class="small">Edit Fields</summary>
-			for _, f := range offered {
-				{{ value, set := v.fieldValue(f.ID) }}
+	if v.opens(formFields) {
+		@openGoalForm(v, formFields, "Edit Fields") {
+			for i, f := range offered {
+				{{ _, set := v.fieldValue(f.ID) }}
 				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/fields", v.Goal.ID)) } class="gp-form gp-field-form">
 					<input type="hidden" name="field_id" value={ fmt.Sprintf("%d", f.ID) }/>
 					<label class="field">
 						<span>{ f.Name }</span>
-						@fieldInput(f, value)
+						@fieldInput(f, v.fieldFormValue(f.ID), i == 0)
 					</label>
 					<div class="gp-inline">
 						<button type="submit" class="btn sm">Save</button>
@@ -162,7 +161,7 @@ templ goalFields(v goalView) {
 					</div>
 				</form>
 			}
-		</details>
+		}
 	}
 	<p class="small"><a href="/fields">All Fields →</a></p>
 	<style>
@@ -172,16 +171,16 @@ templ goalFields(v goalView) {
 }
 
 // fieldInput is the input for a Field's type, holding the Goal's value.
-templ fieldInput(f domain.Field, value string) {
+templ fieldInput(f domain.Field, value string, focus bool) {
 	switch f.Type {
 		case domain.FieldNumber:
-			<input type="number" step="any" name="value" value={ value }/>
+			<input type="number" step="any" name="value" value={ value } autofocus?={ focus }/>
 		case domain.FieldLongText:
-			<textarea name="value">{ value }</textarea>
+			<textarea name="value" autofocus?={ focus }>{ value }</textarea>
 		case domain.FieldDate:
-			<input type="date" name="value" value={ value }/>
+			<input type="date" name="value" value={ value } autofocus?={ focus }/>
 		default:
-			<input type="text" name="value" value={ value }/>
+			<input type="text" name="value" value={ value } autofocus?={ focus }/>
 	}
 }
 

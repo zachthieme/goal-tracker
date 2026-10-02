@@ -15,7 +15,8 @@ import (
 )
 
 // topLevelControl lets an Admin mark a Goal as one of the org's root outcomes,
-// or unmark it (CONTEXT.md: Top-level Goal).
+// or unmark it (CONTEXT.md: Top-level Goal). It opens in place on the Goal
+// page, so its button takes focus.
 func topLevelControl(g domain.Goal) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -44,7 +45,7 @@ func topLevelControl(g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var2 templ.SafeURL
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d/top-level", g.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 14, Col: 86}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 15, Col: 86}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
@@ -55,12 +56,12 @@ func topLevelControl(g domain.Goal) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if g.TopLevel {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<input type=\"hidden\" name=\"top_level\" value=\"false\"> <button type=\"submit\" class=\"btn\">Unmark Top-level</button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<input type=\"hidden\" name=\"top_level\" value=\"false\"> <button type=\"submit\" class=\"btn\" autofocus>Unmark Top-level</button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<input type=\"hidden\" name=\"top_level\" value=\"true\"> <button type=\"submit\" class=\"btn\">Mark Top-level</button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<input type=\"hidden\" name=\"top_level\" value=\"true\"> <button type=\"submit\" class=\"btn\" autofocus>Mark Top-level</button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -134,7 +135,7 @@ func graphSignalsPage(current *domain.Account, signals domain.GraphSignals) temp
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs("— Owner ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 43, Col: 21}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 44, Col: 21}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 				if templ_7745c5c3_Err != nil {
@@ -240,7 +241,7 @@ func goalRef(g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var7 templ.SafeURL
 		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 84, Col: 56}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 85, Col: 56}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 		if templ_7745c5c3_Err != nil {
@@ -253,7 +254,7 @@ func goalRef(g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var8 string
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 84, Col: 68}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 85, Col: 68}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
@@ -301,7 +302,7 @@ func scheduleConflict(c domain.ScheduleConflict) templ.Component {
 		var templ_7745c5c3_Var10 string
 		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(fmtDate(c.Child.DeliveryDate))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 91, Col: 43}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 92, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -322,7 +323,7 @@ func scheduleConflict(c domain.ScheduleConflict) templ.Component {
 		var templ_7745c5c3_Var11 string
 		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(fmtDate(c.Parent.DeliveryDate))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 93, Col: 44}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 94, Col: 44}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {
@@ -377,7 +378,7 @@ func haltedParent(hp domain.HaltedParent) templ.Component {
 		var templ_7745c5c3_Var13 string
 		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(hp.Parent.Lifecycle)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 101, Col: 39}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 102, Col: 39}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 		if templ_7745c5c3_Err != nil {
@@ -482,7 +483,7 @@ func goalSignals(signals domain.GoalSignals) templ.Component {
 				var templ_7745c5c3_Var16 string
 				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(hp.Parent.Lifecycle)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 131, Col: 41}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 132, Col: 41}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 				if templ_7745c5c3_Err != nil {

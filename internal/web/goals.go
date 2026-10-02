@@ -456,6 +456,7 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		return
 	}
 	view.Toast = s.linkRemovalToast(r.Context(), takeUndo(w, r), current, id)
+	view.Open = goalForm(r.URL.Query().Get("open"))
 	render(w, r, http.StatusOK, goalPage(&current, view))
 }
 
@@ -628,6 +629,8 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Delegates:      delegates,
 		CanCheckin:     canCheckin,
 		CanSetValues:   canSetValues,
+		Owns:           current.ID == g.Owner.ID,
+		Admin:          current.IsAdmin,
 		Revisions:      revisions,
 		Ownership:      ownership,
 		ValueHistory:   valueHistory,
@@ -691,6 +694,16 @@ type goalView struct {
 	Fields       []domain.Field
 	FieldValues  []domain.FieldValue
 	CanSetValues bool
+	// Owns and Admin say whether the viewer is the Goal's Owner or an Admin,
+	// which with CanCheckin and CanSetValues decides the actions offered them.
+	Owns  bool
+	Admin bool
+	// Open is the one form the page shows open in place, from its ?open=
+	// address, or "" for none. FormError is why that form's last submit was
+	// refused and FormInput what it sent, so it comes back as it was left.
+	Open      goalForm
+	FormError string
+	FormInput url.Values
 	// Checkins is the Goal's Check-in history (newest first) and LatestCheckin is
 	// the most recent one, carrying the Goal's current Health, status, and Path to
 	// Green. LatestCheckin is nil when the Goal has no Check-ins yet.
@@ -720,12 +733,112 @@ type goalView struct {
 	Required      []domain.RequiredValue
 	Incomplete    []string
 	SuggestedDate string
-	// ChildForm is the add-child-Goal form's input, filled in when a failed
-	// create sends the page back.
-	ChildForm childGoalForm
 	// Toast is the one-time notice the page carries straight after the viewer
 	// removed one of its links, with an Undo; nil on any other visit.
 	Toast *toast
+}
+
+// goalForm names a form on the Goal page that opens in place: following
+// /goals/{id}?open=<name> renders the page with that one form open, where it
+// belongs, with a Cancel back to the plain page. It works without script.
+type goalForm string
+
+const (
+	formHandoff      goalForm = "handoff"
+	formReassign     goalForm = "reassign"
+	formDepart       goalForm = "depart"
+	formReturn       goalForm = "return"
+	formTopLevel     goalForm = "top-level"
+	formParentLink   goalForm = "parent-link"
+	formChild        goalForm = "child"
+	formDelegates    goalForm = "delegates"
+	formContributors goalForm = "contributors"
+	formDimensions   goalForm = "dimensions"
+	formFields       goalForm = "fields"
+)
+
+// offers reports whether the viewer may use form on this Goal: the same people
+// each action has always been offered to.
+func (v goalView) offers(form goalForm) bool {
+	g := v.Goal
+	switch form {
+	case formHandoff:
+		return (v.Owns || v.Admin) && !g.Ownerless
+	case formReassign:
+		return v.Admin && g.Ownerless
+	case formDepart:
+		return v.Admin && !g.Owner.Departed
+	case formReturn:
+		return v.Admin && g.Owner.Departed
+	case formTopLevel:
+		return v.Admin
+	case formParentLink, formDelegates:
+		return v.Owns
+	case formContributors:
+		return v.Owns && g.Lifecycle == domain.LifecycleProposed
+	case formChild:
+		return true
+	case formDimensions:
+		return v.CanSetValues && len(domain.OfferedDimensions(v.Dimensions)) > 0
+	case formFields:
+		return v.CanSetValues && len(domain.OfferedFields(v.Fields)) > 0
+	}
+	return false
+}
+
+// opens reports whether form is the one the page shows open: the one asked
+// for, when the viewer may use it.
+func (v goalView) opens(form goalForm) bool {
+	return v.Open == form && v.offers(form)
+}
+
+// openURL is the Goal page with form open in place.
+func (v goalView) openURL(form goalForm) templ.SafeURL {
+	return templ.SafeURL(fmt.Sprintf("/goals/%d?open=%s", v.Goal.ID, url.QueryEscape(string(form))))
+}
+
+// typedFor is what the refused submit sent as name from the form whose key
+// field held id — one of several forms of a kind, such as each Field's — or ""
+// when that form wasn't the one sent.
+func (v goalView) typedFor(key string, id int64, name string) string {
+	if v.FormInput.Get(key) != strconv.FormatInt(id, 10) {
+		return ""
+	}
+	return v.FormInput.Get(name)
+}
+
+// goalAction is one item in the Goal page's action menu: its label and the
+// form it opens.
+type goalAction struct {
+	Label string
+	Form  goalForm
+}
+
+// actions lists the action menu's items the viewer may use, in menu order.
+// Empty, the page shows no menu.
+func (v goalView) actions() []goalAction {
+	topLevel := "Mark Top-level"
+	if v.Goal.TopLevel {
+		topLevel = "Unmark Top-level"
+	}
+	var out []goalAction
+	for _, a := range []goalAction{
+		{"Hand off", formHandoff},
+		{"Add a delegate", formDelegates},
+		{"Link to a parent Goal", formParentLink},
+		{"Add a child Goal", formChild},
+		{"Edit Dimension values", formDimensions},
+		{"Edit Fields", formFields},
+		{topLevel, formTopLevel},
+		{"Mark owner departed…", formDepart},
+		{"Mark returned…", formReturn},
+		{"Reassign", formReassign},
+	} {
+		if v.offers(a.Form) {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // priorDates returns the dates a Goal's delivery date (milestoneID 0) or one of
@@ -808,6 +921,18 @@ func (v goalView) childDefaults() []domain.DimensionValue {
 	return out
 }
 
+// choices are the values of d the Goal page's form offers: its live ones, and
+// any retired one the Goal carries, so saving doesn't silently drop it.
+func (v goalView) choices(d domain.Dimension) []domain.DimensionValue {
+	var out []domain.DimensionValue
+	for _, val := range d.Values {
+		if !val.Retired || v.carries(val) {
+			out = append(out, val)
+		}
+	}
+	return out
+}
+
 // carries reports whether the Goal carries the value in the given Dimension.
 func (v goalView) carries(value domain.DimensionValue) bool {
 	for _, val := range v.Values {
@@ -869,6 +994,33 @@ func writeCommandResult(w http.ResponseWriter, r *http.Request, goalID int64, er
 	http.Redirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10), http.StatusSeeOther)
 }
 
+// writeFormResult is writeCommandResult for a form the Goal page opens in
+// place: a refused value re-renders the page with that form open, the reason
+// beside it and what was sent still in it.
+func (s *Server) writeFormResult(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, err error) {
+	if errors.Is(err, domain.ErrValidation) {
+		s.renderRefusedForm(w, r, goalID, current, form, http.StatusUnprocessableEntity, err)
+		return
+	}
+	writeCommandResult(w, r, goalID, err)
+}
+
+// renderRefusedForm re-renders the Goal page with status and form open,
+// carrying why its submit was refused and what it sent.
+func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, status int, refused error) {
+	view, err := s.goalPageView(r.Context(), goalID, current)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		return
+	}
+	view.Open, view.FormError, view.FormInput = form, refused.Error(), r.PostForm
+	render(w, r, status, goalPage(&current, view))
+}
+
 func (s *Server) handleMarkGoalDated(w http.ResponseWriter, r *http.Request, _ domain.Account) {
 	id, ok := goalIDFromPath(w, r)
 	if !ok {
@@ -915,13 +1067,13 @@ func (s *Server) handleEditSoWhat(w http.ResponseWriter, r *http.Request, curren
 	writeCommandResult(w, r, id, err)
 }
 
-func (s *Server) handleAddContributor(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+func (s *Server) handleAddContributor(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
 	err := s.svc.AddContributorByEmail(r.Context(), id, r.FormValue("email"))
-	writeCommandResult(w, r, id, err)
+	s.writeFormResult(w, r, id, current, formContributors, err)
 }
 
 func (s *Server) handleAddMilestone(w http.ResponseWriter, r *http.Request, _ domain.Account) {
@@ -1062,7 +1214,7 @@ func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, c
 		}
 		if newValue, ok := r.Form["new_value"]; ok {
 			_, err := s.svc.AssignGoalValueByName(r.Context(), current.ID, id, dimensionID, newValue[0])
-			writeCommandResult(w, r, id, err)
+			s.writeFormResult(w, r, id, current, formDimensions, err)
 			return
 		}
 		var valueIDs []int64
@@ -1077,7 +1229,7 @@ func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, c
 			}
 			valueIDs = append(valueIDs, valueID)
 		}
-		writeCommandResult(w, r, id, s.svc.SetGoalValues(r.Context(), current.ID, id, dimensionID, valueIDs))
+		s.writeFormResult(w, r, id, current, formDimensions, s.svc.SetGoalValues(r.Context(), current.ID, id, dimensionID, valueIDs))
 		return
 	}
 	raw := r.FormValue("value_id")
@@ -1090,7 +1242,7 @@ func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, c
 		http.Error(w, "invalid value", http.StatusUnprocessableEntity)
 		return
 	}
-	writeCommandResult(w, r, id, s.svc.AssignGoalValue(r.Context(), current.ID, id, valueID))
+	s.writeFormResult(w, r, id, current, formDimensions, s.svc.AssignGoalValue(r.Context(), current.ID, id, valueID))
 }
 
 // handleCreateChildGoal creates a Goal under the parent in the path: it is owned
@@ -1104,16 +1256,14 @@ func (s *Server) handleCreateChildGoal(w http.ResponseWriter, r *http.Request, c
 	if !ok {
 		return
 	}
-	form := childGoalForm{
-		Title:  r.FormValue("title"),
-		SoWhat: r.FormValue("so_what"),
-		Kept:   map[int64]bool{},
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
 	}
 	var valueIDs []int64
 	for _, raw := range r.Form["value_id"] {
 		if valueID, err := strconv.ParseInt(raw, 10, 64); err == nil {
 			valueIDs = append(valueIDs, valueID)
-			form.Kept[valueID] = true
 		}
 	}
 
@@ -1124,8 +1274,8 @@ func (s *Server) handleCreateChildGoal(w http.ResponseWriter, r *http.Request, c
 	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
 		var err error
 		child, err = tx.CreateGoal(r.Context(), domain.CreateGoalInput{
-			Title:   form.Title,
-			SoWhat:  form.SoWhat,
+			Title:   r.FormValue("title"),
+			SoWhat:  r.FormValue("so_what"),
 			OwnerID: current.ID,
 		})
 		if err != nil {
@@ -1145,8 +1295,7 @@ func (s *Server) handleCreateChildGoal(w http.ResponseWriter, r *http.Request, c
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrValidation) {
-			form.Error = err.Error()
-			s.renderChildGoalFormError(w, r, parentID, current, form)
+			s.renderRefusedForm(w, r, parentID, current, formChild, http.StatusUnprocessableEntity, err)
 			return
 		}
 		http.Error(w, "could not create child goal", http.StatusInternalServerError)
@@ -1155,35 +1304,11 @@ func (s *Server) handleCreateChildGoal(w http.ResponseWriter, r *http.Request, c
 	http.Redirect(w, r, "/goals/"+strconv.FormatInt(child.ID, 10), http.StatusSeeOther)
 }
 
-// childGoalForm is what a person typed into the add-child-Goal form, kept so a
-// failed create re-renders the form as they left it. Kept holds the defaults
-// they left checked; nil means the form is fresh and every default is checked.
-type childGoalForm struct {
-	Title  string
-	SoWhat string
-	Kept   map[int64]bool
-	Error  string
-}
-
-// keeps reports whether the default value is checked in the form.
-func (f childGoalForm) keeps(valueID int64) bool {
-	return f.Kept == nil || f.Kept[valueID]
-}
-
-// renderChildGoalFormError re-renders the parent's page with 422, its
-// add-child-Goal form carrying the error and the person's input.
-func (s *Server) renderChildGoalFormError(w http.ResponseWriter, r *http.Request, parentID int64, current domain.Account, form childGoalForm) {
-	view, err := s.goalPageView(r.Context(), parentID, current)
-	if err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
-			http.NotFound(w, r)
-			return
-		}
-		http.Error(w, "could not load goal", http.StatusInternalServerError)
-		return
-	}
-	view.ChildForm = form
-	render(w, r, http.StatusUnprocessableEntity, goalPage(&current, view))
+// keepsDefault reports whether the add-child-Goal form checks the parent's
+// value as a default: every one on a fresh form, and those left checked when a
+// refused create sends it back.
+func (v goalView) keepsDefault(valueID int64) bool {
+	return v.FormInput == nil || slices.Contains(v.FormInput["value_id"], strconv.FormatInt(valueID, 10))
 }
 
 // health is the Goal's current Health — its latest Check-in's — while it is
