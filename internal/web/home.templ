@@ -23,26 +23,33 @@ templ homePage(current *domain.Account, v homeView) {
 			<div class="hm-col">
 				<section data-testid="home-needs-you" class="card hm-card">
 					<h3>Needs you</h3>
-					<div class="hm-group">
-						<h4 class="label">Check-ins due</h4>
-						<ul data-testid="home-due" class="hm-list">
-							for _, g := range v.Due {
-								@dueRow(g)
-							}
-						</ul>
-					</div>
-					<div class="hm-group">
-						<h4 class="label">Requests</h4>
-						<ul data-testid="home-requests" class="hm-list">
-							for _, req := range v.Requests {
-								if req.Link != nil {
-									@linkRequestRow(*req.Link)
-								} else {
-									@handoffRequestRow(*req.Handoff)
+					if v.NeedsYou() == 0 {
+						<p data-testid="home-caught-up" class="muted">You're all caught up.</p>
+					}
+					if len(v.Due) > 0 {
+						<div class="hm-group">
+							<h4 class="label">Check-ins due</h4>
+							<ul data-testid="home-due" class="hm-list">
+								for _, g := range v.Due {
+									@dueRow(g)
 								}
-							}
-						</ul>
-					</div>
+							</ul>
+						</div>
+					}
+					if len(v.Requests) > 0 {
+						<div class="hm-group">
+							<h4 class="label">Requests</h4>
+							<ul data-testid="home-requests" class="hm-list">
+								for _, req := range v.Requests {
+									if req.Link != nil {
+										@linkRequestRow(*req.Link)
+									} else {
+										@handoffRequestRow(*req.Handoff)
+									}
+								}
+							</ul>
+						</div>
+					}
 				</section>
 			</div>
 			<aside class="hm-col">

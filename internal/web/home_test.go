@@ -270,6 +270,54 @@ func TestHomeListsRequestsOldestFirst(t *testing.T) {
 	}
 }
 
+// A "Needs you" subgroup with nothing in it is left out, and with nothing at
+// all the list shows a single caught-up line.
+func TestHomeOmitsEmptySubgroups(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	pat := h.SignIn("pat@example.com")
+	due := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Clock.Advance(10 * day)
+	parent := h.ActiveGoal(kim, "Grow revenue", "It pays for everything.")
+	h.RequestLink(pat, h.ActiveGoal(pat, "Cut churn", "Customers leave."), parent, "")
+
+	for _, tc := range []struct {
+		who, has, lacks string
+	}{
+		{"sam@example.com", `data-testid="home-due"`, `data-testid="home-requests"`},
+		{"kim@example.com", `data-testid="home-requests"`, `data-testid="home-due"`},
+	} {
+		list := pageElement(t, getBody(t, signInClient(t, ts.URL, tc.who), ts.URL+"/home"), "section", "home-needs-you")
+		if !strings.Contains(list, tc.has) {
+			t.Errorf("%s: Needs you lacks %s:\n%s", tc.who, tc.has, list)
+		}
+		for _, gone := range []string{tc.lacks, `data-testid="home-caught-up"`} {
+			if strings.Contains(list, gone) {
+				t.Errorf("%s: Needs you shows %s:\n%s", tc.who, gone, list)
+			}
+		}
+	}
+	if !strings.Contains(pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-needs-you"), navTo(due.ID)) {
+		t.Errorf("sam's due Goal is missing from Needs you")
+	}
+
+	// pat's Goal was activated today, and nothing waits on them.
+	list := pageElement(t, getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/home"), "section", "home-needs-you")
+	if n := strings.Count(list, "<li"); n != 0 {
+		t.Errorf("pat has nothing needing them but Needs you lists %d rows:\n%s", n, list)
+	}
+	for _, gone := range []string{"Check-ins due", "Requests"} {
+		if strings.Contains(list, gone) {
+			t.Errorf("pat's Needs you heads an empty %s subgroup:\n%s", gone, list)
+		}
+	}
+	if strings.Count(list, "You're all caught up") != 1 || !strings.Contains(list, `data-testid="home-caught-up"`) {
+		t.Errorf("pat's Needs you does not show one caught-up line:\n%s", list)
+	}
+}
+
 // Accepting a Handoff of a Goal with Delegates means choosing which to keep, so
 // Home offers Review, leading to the Pending handoffs page where that choice is
 // made (TestHomeHandoffReviewListsDelegatesToKeep), in place of Accept. Reject
