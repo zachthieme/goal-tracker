@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"fmt"
+	"html"
 	"net/http"
 	"strings"
 	"testing"
@@ -277,7 +278,7 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "4 things need you") {
 		t.Errorf("summary = %s, want 4 things need you", got)
 	}
-	if head := pageElement(t, page, "header", "home-head"); !strings.Contains(head, `href="/goals"`) || !strings.Contains(head, "New goal") {
+	if head := pageElement(t, page, "header", "home-head"); !strings.Contains(head, ">New goal</a>") {
 		t.Errorf("heading has no New goal link:\n%s", head)
 	}
 }
@@ -380,5 +381,24 @@ func TestHomeNoChangeRefusedLandsOnCheckinForm(t *testing.T) {
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
 		t.Errorf("a refused No change recorded a Check-in: history has %d, want 1", len(history))
+	}
+}
+
+// Home's New goal goes straight to the Goal list with its propose form open and
+// the Title focused, by the address alone so it works without script (#93).
+func TestHomeNewGoalOpensProposeForm(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	h.SignIn("sam@example.com")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	head := pageElement(t, getBody(t, client, ts.URL+"/home"), "header", "home-head")
+	link := tagAround(t, head, ">New goal<")
+	href := html.UnescapeString(attr(link, "href"))
+	if !strings.HasPrefix(href, "/goals?") {
+		t.Fatalf("Home's New goal links to %q, want the Goal list with its form open:\n%s", href, head)
+	}
+	if !proposeFormOpen(t, getBody(t, client, ts.URL+href)) {
+		t.Errorf("following New goal shows the propose form closed")
 	}
 }

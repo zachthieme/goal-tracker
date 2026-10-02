@@ -3609,3 +3609,75 @@ func TestGoalListFilterChangeUnderHTMXRefreshesTheProposeForm(t *testing.T) {
 		t.Errorf("the refreshed propose form posts to %v, want the filtered table", post)
 	}
 }
+
+// proposeFormOpen reports whether the Goal list page renders its propose form
+// open with the Title focused, failing the test when only one of the two holds.
+func proposeFormOpen(t *testing.T, page string) bool {
+	t.Helper()
+	propose := pageElement(t, page, "details", "propose-goal")
+	open := regexp.MustCompile(`\sopen[\s>]`).MatchString(openTag(propose) + ">")
+	focused := strings.Contains(tagAround(t, propose, `name="title"`), " autofocus")
+	if open != focused {
+		t.Fatalf("propose form open = %t but Title focused = %t:\n%s", open, focused, propose)
+	}
+	return open
+}
+
+// The Goal list opens its propose form only when asked to by ?new=1, as Home's
+// New goal does (#93). Reached any other way — plainly, filtered, in the table
+// layout — the form is closed, and nothing on the opened list carries ?new=1
+// on, so filtering, switching layout or sorting doesn't open it again.
+func TestGoalListOpensProposeFormOnlyWhenAsked(t *testing.T) {
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, path := range []string{"/goals", "/goals?q=search", "/goals?health=red&mine=1", "/goals?layout=table", "/goals?new=0"} {
+		if proposeFormOpen(t, getBody(t, client, ts.URL+path)) {
+			t.Errorf("GET %s renders the propose form open", path)
+		}
+	}
+	for _, path := range []string{"/goals?new=1", "/goals?new=1&layout=table&sort=title&q=search"} {
+		page := getBody(t, client, ts.URL+path)
+		if !proposeFormOpen(t, page) {
+			t.Errorf("GET %s renders the propose form closed", path)
+		}
+		// The page chrome's Theme menu returns to the address as it is; the
+		// list's own links and forms start at its header.
+		list := html.UnescapeString(between(t, page, `<header data-testid="goals-head"`, "</main>"))
+		if strings.Contains(list, "new=1") {
+			t.Errorf("GET %s: the opened list links on with new=1:\n%s", path, list)
+		}
+	}
+}
+
+// Creating a Goal from the form Home's New goal opens works as it always has:
+// a plain post lands on the Goal list with the form closed and the new Goal
+// listed, and under htmx the post swaps the list in place (#93).
+func TestProposeGoalFromTheOpenedForm(t *testing.T) {
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals?new=1")
+	form := openTag(between(t, pageElement(t, page, "details", "propose-goal"), "<form", ""))
+
+	resp := postForm(t, client, ts.URL+attr(form, "action"), url.Values{"title": {"Cut latency"}, "so_what": {"Slow carts."}})
+	landed := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.RequestURI() != "/goals" {
+		t.Fatalf("a plain post landed on %s with status %d", resp.Request.URL, resp.StatusCode)
+	}
+	if !strings.Contains(landed, ">Cut latency<") {
+		t.Errorf("the Goal list doesn't list the new Goal:\n%s", landed)
+	}
+	if proposeFormOpen(t, landed) {
+		t.Errorf("after creating a Goal the propose form is still open")
+	}
+
+	body, status := postFormHX(t, client, ts.URL+html.UnescapeString(attr(form, "hx-post")), url.Values{"title": {"Grow revenue"}, "so_what": {"It pays."}})
+	if status != http.StatusOK || !strings.Contains(body, `id="goal-list"`) || !strings.Contains(body, ">Grow revenue<") {
+		t.Errorf("under htmx the post didn't swap in the list with the new Goal (status %d):\n%s", status, body)
+	}
+}

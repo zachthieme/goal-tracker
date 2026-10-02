@@ -120,6 +120,10 @@ type goalsListData struct {
 	Query url.Values
 	// Table is the table layout (?layout=table), nil in the list layout.
 	Table *goalTable
+	// ProposeOpen renders the propose form open with its Title focused, as
+	// Home's New goal asks for with ?new=1 (#93). It isn't part of Query, so no
+	// link or form on the list carries it on.
+	ProposeOpen bool
 }
 
 // moreFiltersSet reports whether a Dimension filter or grouping is chosen, so
@@ -355,12 +359,16 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 	}
 	sortGoalRows(rows)
 
+	query := r.URL.Query()
+	proposeOpen := query.Get("new") == "1"
+	query.Del("new")
 	view := goalsListData{
-		Rows:       rows,
-		Filter:     filter,
-		Dimensions: dims,
-		Selected:   selected,
-		Query:      r.URL.Query(),
+		Rows:        rows,
+		Filter:      filter,
+		Dimensions:  dims,
+		Selected:    selected,
+		Query:       query,
+		ProposeOpen: proposeOpen,
 	}
 	if view.Query.Get("layout") == layoutTable {
 		table, err := s.goalTableView(ctx, rows, dims, view.Query, hiddenColumns(r), current)

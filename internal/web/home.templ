@@ -17,7 +17,7 @@ templ homePage(current *domain.Account, v homeView) {
 				<h1>Your week</h1>
 				<p data-testid="home-summary" class="muted">{ thingsNeedYou(v.NeedsYou()) }</p>
 			</div>
-			<a class="btn primary" href="/goals">New goal</a>
+			<a class="btn primary" href="/goals?new=1">New goal</a>
 		</header>
 		<div class="grid-main-aside">
 			<div class="hm-col">
