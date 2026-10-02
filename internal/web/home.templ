@@ -55,6 +55,9 @@ templ homePage(current *domain.Account, v homeView) {
 			<aside class="hm-col">
 				<section data-testid="home-your-goals" class="card hm-card">
 					<h3>Your goals</h3>
+					if v.Green + v.Yellow + v.Red > 0 {
+						@healthBar(v)
+					}
 					<p class="hm-counts">
 						@healthCountTile("home-count-green", domain.HealthGreen, v.Green)
 						@healthCountTile("home-count-yellow", domain.HealthYellow, v.Yellow)
@@ -191,6 +194,24 @@ templ rejectButton(base string) {
 	</form>
 }
 
+// healthBar draws the person's Active Goals by Health as one segmented bar, a
+// unit for each Goal, Green then Yellow then Red. It counts Goals, not Metrics
+// (ADR 0003). The count tiles beneath it label each segment so the bar reads
+// without colour, and its label says the same to assistive technology.
+templ healthBar(v homeView) {
+	<div data-testid="home-health-bar" class="hm-bar" role="img" aria-label={ healthBarLabel(v) }>
+		for range v.Green {
+			<span class="g"></span>
+		}
+		for range v.Yellow {
+			<span class="y"></span>
+		}
+		for range v.Red {
+			<span class="r"></span>
+		}
+	</div>
+}
+
 // healthCountTile counts the person's Active Goals at one Health.
 templ healthCountTile(testID, health string, count int) {
 	<span class={ "badge", healthClass(health) }>
@@ -219,6 +240,12 @@ templ homeStyles() {
 		.hm-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}
 		.hm-actions form{margin:0}
 		.hm-counts{display:flex;flex-wrap:wrap;gap:8px}
+		.hm-bar{display:flex;height:12px;border-radius:var(--radius-full);overflow:hidden}
+		.hm-bar>span{flex:1 1 0;min-width:2px}
+		.hm-bar>.g{background:var(--health-g-ink)}
+		.hm-bar>.y{background:var(--health-y-ink)}
+		.hm-bar>.r{background:var(--health-r-ink)}
+		.hm-bar>.g+.y,.hm-bar>.g+.r,.hm-bar>.y+.r{margin-left:2px}
 		.hm-group{display:flex;flex-direction:column;gap:8px}
 		.hm-group>h4{margin:0}
 	</style>

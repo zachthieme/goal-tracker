@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -406,6 +407,57 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 	}
 	if head := pageElement(t, page, "header", "home-head"); !strings.Contains(head, ">New goal</a>") {
 		t.Errorf("heading has no New goal link:\n%s", head)
+	}
+}
+
+// "Your goals" draws the viewer's own Active Goals by Health as a segmented
+// bar, one unit a Goal, Green then Yellow then Red, labelled with each count
+// so it reads without colour. It counts Goals, not Metrics (ADR 0003), and
+// leaves out Goals with no Health yet and those the viewer is only a Delegate
+// on. Someone with no Goal to count sees no bar.
+func TestHomeDrawsHealthDistributionBar(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	target := testsupport.Epoch.AddDate(0, 1, 0)
+	for _, title := range []string{"Ship search", "Grow revenue"} {
+		g := h.ActiveGoal(sam, title, "It matters.")
+		h.Checkin(sam, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	}
+	red := h.ActiveGoal(sam, "Cut churn", "Customers leave.")
+	h.Checkin(sam, red.ID, domain.HealthRed, "Blocked.", "Escalate.", target)
+	h.ActiveGoal(sam, "Hire", "We need people.")
+	notMine := h.ActiveGoal(kim, "Open an office", "Closer to customers.")
+	h.Checkin(kim, notMine.ID, domain.HealthYellow, "Slipping.", "Cut scope.", target)
+	h.AddDelegate(kim, sam, notMine.ID)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+
+	bar := pageElement(t, page, "div", "home-health-bar")
+	if got := strings.Join(regexp.MustCompile(`<span class="(g|y|r)"`).FindAllString(bar, -1), ""); got != `<span class="g"<span class="g"<span class="r"` {
+		t.Errorf("bar's units = %s, want two Green then one Red:\n%s", got, bar)
+	}
+	if label := attr(tagAround(t, bar, `data-testid="home-health-bar"`), "aria-label"); label != "2 Green, 0 Yellow, 1 Red" {
+		t.Errorf("bar's label = %q, want its counts", label)
+	}
+	for testID, want := range map[string]string{
+		"home-count-green":  "2",
+		"home-count-yellow": "0",
+		"home-count-red":    "1",
+	} {
+		if got := pageElement(t, page, "span", testID); !strings.HasSuffix(got, ">"+want) {
+			t.Errorf("%s = %s, want %s", testID, got, want)
+		}
+	}
+
+	kimPage := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home")
+	if !strings.Contains(kimPage, `data-testid="home-health-bar"`) {
+		t.Errorf("kim's Yellow Goal draws no bar")
+	}
+	pat := getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/home")
+	if strings.Contains(pat, `data-testid="home-health-bar"`) {
+		t.Errorf("pat has no Goals but sees a distribution bar")
 	}
 }
 

@@ -133,6 +133,11 @@ func dueReason(g domain.PersonalGoal) string {
 	return fmt.Sprintf("Last check-in %s on a %d-day cadence", daysAgo(f.DaysSince), f.CadenceDays)
 }
 
+// healthBarLabel reads the Health distribution bar's counts.
+func healthBarLabel(v homeView) string {
+	return fmt.Sprintf("%d Green, %d Yellow, %d Red", v.Green, v.Yellow, v.Red)
+}
+
 // thingsNeedYou reads the count of what's waiting on the person.
 func thingsNeedYou(n int) string {
 	if n == 1 {
