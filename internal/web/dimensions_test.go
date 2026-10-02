@@ -590,4 +590,3 @@ func TestAdminRetiresAndRestoresDimensionOverHTTP(t *testing.T) {
 		t.Errorf("Pillar and Trust still flagged retired after Restore; card:\n%s", card)
 	}
 }
-
