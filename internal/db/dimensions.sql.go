@@ -99,6 +99,16 @@ func (q *Queries) CreateDimensionValue(ctx context.Context, arg CreateDimensionV
 	return i, err
 }
 
+const deleteDimensionValue = `-- name: DeleteDimensionValue :exec
+DELETE FROM dimension_values WHERE id = ?
+`
+
+// Only a merge deletes a value, once nothing refers to it any more.
+func (q *Queries) DeleteDimensionValue(ctx context.Context, id int64) error {
+	_, err := q.db.ExecContext(ctx, deleteDimensionValue, id)
+	return err
+}
+
 const getDimension = `-- name: GetDimension :one
 SELECT id, name, created_at, selection, list FROM dimensions WHERE id = ? LIMIT 1
 `
@@ -405,6 +415,22 @@ func (q *Queries) ListGoalsWithSeveralValuesInDimension(ctx context.Context, dim
 	return items, nil
 }
 
+const moveGoalValuesToTarget = `-- name: MoveGoalValuesToTarget :exec
+UPDATE goal_dimension_values SET dimension_value_id = ?1
+WHERE dimension_value_id = ?2
+`
+
+type MoveGoalValuesToTargetParams struct {
+	TargetID int64
+	MergedID int64
+}
+
+// Merging a value: the Goals carrying it carry the target instead.
+func (q *Queries) MoveGoalValuesToTarget(ctx context.Context, arg MoveGoalValuesToTargetParams) error {
+	_, err := q.db.ExecContext(ctx, moveGoalValuesToTarget, arg.TargetID, arg.MergedID)
+	return err
+}
+
 const removeGoalValue = `-- name: RemoveGoalValue :exec
 DELETE FROM goal_dimension_values WHERE goal_id = ? AND dimension_value_id = ?
 `
@@ -416,6 +442,26 @@ type RemoveGoalValueParams struct {
 
 func (q *Queries) RemoveGoalValue(ctx context.Context, arg RemoveGoalValueParams) error {
 	_, err := q.db.ExecContext(ctx, removeGoalValue, arg.GoalID, arg.DimensionValueID)
+	return err
+}
+
+const removeMergedGoalValueWhereTargetCarried = `-- name: RemoveMergedGoalValueWhereTargetCarried :exec
+DELETE FROM goal_dimension_values
+WHERE goal_dimension_values.dimension_value_id = ?1
+  AND goal_id IN (
+    SELECT target.goal_id FROM goal_dimension_values AS target WHERE target.dimension_value_id = ?2
+  )
+`
+
+type RemoveMergedGoalValueWhereTargetCarriedParams struct {
+	MergedID int64
+	TargetID int64
+}
+
+// Merging a value: drop it from the Goals already carrying the target, so
+// moving the rest leaves no Goal carrying the target twice.
+func (q *Queries) RemoveMergedGoalValueWhereTargetCarried(ctx context.Context, arg RemoveMergedGoalValueWhereTargetCarriedParams) error {
+	_, err := q.db.ExecContext(ctx, removeMergedGoalValueWhereTargetCarried, arg.MergedID, arg.TargetID)
 	return err
 }
 

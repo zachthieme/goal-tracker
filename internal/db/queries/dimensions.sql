@@ -104,3 +104,21 @@ FROM goal_dimension_values
 JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
 JOIN dimensions ON dimensions.id = dimension_values.dimension_id
 ORDER BY goal_dimension_values.goal_id, dimensions.name, dimension_values.position, dimension_values.id;
+
+-- name: RemoveMergedGoalValueWhereTargetCarried :exec
+-- Merging a value: drop it from the Goals already carrying the target, so
+-- moving the rest leaves no Goal carrying the target twice.
+DELETE FROM goal_dimension_values
+WHERE goal_dimension_values.dimension_value_id = sqlc.arg(merged_id)
+  AND goal_id IN (
+    SELECT target.goal_id FROM goal_dimension_values AS target WHERE target.dimension_value_id = sqlc.arg(target_id)
+  );
+
+-- name: MoveGoalValuesToTarget :exec
+-- Merging a value: the Goals carrying it carry the target instead.
+UPDATE goal_dimension_values SET dimension_value_id = sqlc.arg(target_id)
+WHERE dimension_value_id = sqlc.arg(merged_id);
+
+-- name: DeleteDimensionValue :exec
+-- Only a merge deletes a value, once nothing refers to it any more.
+DELETE FROM dimension_values WHERE id = ?;

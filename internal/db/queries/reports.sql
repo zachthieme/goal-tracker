@@ -29,6 +29,21 @@ SELECT dimension_value_id FROM report_definition_filters
 WHERE report_definition_id = ?
 ORDER BY id;
 
+-- name: RemoveMergedReportFilterWhereTargetFiltered :exec
+-- Merging a Dimension value: drop its filter from the Report Definitions that
+-- already filter on the target, so none filters on the target twice.
+DELETE FROM report_definition_filters
+WHERE report_definition_filters.dimension_value_id = sqlc.arg(merged_id)
+  AND report_definition_id IN (
+    SELECT target.report_definition_id FROM report_definition_filters AS target
+    WHERE target.dimension_value_id = sqlc.arg(target_id)
+  );
+
+-- name: MoveReportFiltersToTarget :exec
+-- Merging a Dimension value: the filters on it point at the target instead.
+UPDATE report_definition_filters SET dimension_value_id = sqlc.arg(target_id)
+WHERE dimension_value_id = sqlc.arg(merged_id);
+
 -- name: CreateReportPublication :one
 INSERT INTO report_publications (report_definition_id, published_by, published_at, snapshot)
 VALUES (?, ?, ?, ?)

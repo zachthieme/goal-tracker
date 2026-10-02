@@ -245,6 +245,52 @@ func (s *Service) setValueOrder(ctx context.Context, rows []db.DimensionValue) e
 	})
 }
 
+// MergeDimensionValue merges one value into another in the same Dimension: every
+// Goal carrying the merged value carries the target instead (once, if it had
+// both), every Report Definition filter on it points at the target, and the
+// merged value is gone from the list (CONTEXT.md: Extendable — merging values
+// stays with Admins). It is all or nothing. Merging across Dimensions or into
+// the value itself is refused. Only an Admin may.
+func (s *Service) MergeDimensionValue(ctx context.Context, actorID, mergedID, targetID int64) error {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return err
+	}
+	merged, err := s.queries.GetDimensionValue(ctx, mergedID)
+	if err != nil {
+		return fmt.Errorf("%w: dimension value does not exist", ErrValidation)
+	}
+	target, err := s.queries.GetDimensionValue(ctx, targetID)
+	if err != nil {
+		return fmt.Errorf("%w: the value to merge into does not exist", ErrValidation)
+	}
+	if merged.DimensionID != target.DimensionID {
+		return fmt.Errorf("%w: %s and %s are in different Dimensions, so they can't be merged", ErrValidation, merged.Value, target.Value)
+	}
+	if merged.ID == target.ID {
+		return fmt.Errorf("%w: a value can't be merged into itself", ErrValidation)
+	}
+	return s.WithinTx(ctx, func(tx *Service) error {
+		goals := db.RemoveMergedGoalValueWhereTargetCarriedParams{MergedID: mergedID, TargetID: targetID}
+		if err := tx.queries.RemoveMergedGoalValueWhereTargetCarried(ctx, goals); err != nil {
+			return fmt.Errorf("drop merged value from goals carrying the target: %w", err)
+		}
+		if err := tx.queries.MoveGoalValuesToTarget(ctx, db.MoveGoalValuesToTargetParams{TargetID: targetID, MergedID: mergedID}); err != nil {
+			return fmt.Errorf("move goals to the target value: %w", err)
+		}
+		filters := db.RemoveMergedReportFilterWhereTargetFilteredParams{MergedID: mergedID, TargetID: targetID}
+		if err := tx.queries.RemoveMergedReportFilterWhereTargetFiltered(ctx, filters); err != nil {
+			return fmt.Errorf("drop merged report filters already on the target: %w", err)
+		}
+		if err := tx.queries.MoveReportFiltersToTarget(ctx, db.MoveReportFiltersToTargetParams{TargetID: targetID, MergedID: mergedID}); err != nil {
+			return fmt.Errorf("move report filters to the target value: %w", err)
+		}
+		if err := tx.queries.DeleteDimensionValue(ctx, mergedID); err != nil {
+			return fmt.Errorf("delete merged value: %w", err)
+		}
+		return nil
+	})
+}
+
 // SeveralValuesError refuses switching a Dimension to one value while Goals
 // still carry more than one of its values, naming those Goals so an Admin knows
 // which to fix first. It is an ErrValidation.
