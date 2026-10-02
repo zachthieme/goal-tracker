@@ -103,6 +103,12 @@ templ goalFilters(view goalsListData) {
 		}
 		if view.Table != nil {
 			<input type="hidden" name="layout" value="table"/>
+			if view.Table.Sort != "" {
+				<input type="hidden" name="sort" value={ view.Table.Sort }/>
+			}
+			if view.Table.Desc {
+				<input type="hidden" name="dir" value="desc"/>
+			}
 			if group := view.Query.Get("group"); group != "" {
 				<input type="hidden" name="group" value={ group }/>
 			}
@@ -254,7 +260,7 @@ templ goalTableLayout(view goalsListData) {
 				<thead data-testid="goal-table-head">
 					<tr>
 						for _, col := range view.Table.Columns {
-							<th scope="col">{ col.Label }</th>
+							<th scope="col" aria-sort={ view.Table.ariaSort(col) }><a href={ view.sortURL(col.Key) }>{ col.Label }</a></th>
 						}
 					</tr>
 				</thead>

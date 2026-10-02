@@ -308,7 +308,7 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 		Query:      r.URL.Query(),
 	}
 	if view.Query.Get("layout") == layoutTable {
-		table, err := s.goalTableView(ctx, rows, dims)
+		table, err := s.goalTableView(ctx, rows, dims, view.Query)
 		if err != nil {
 			return goalsListData{}, err
 		}
@@ -1278,6 +1278,10 @@ func (v goalsListData) layoutURL(layout string) templ.SafeURL {
 type goalTable struct {
 	Columns []tableColumn
 	Rows    []goalTableRow
+	// Sort is the Key of the column the rows are sorted by (?sort=), "" for the
+	// list's problem-first order; Desc reverses it (?dir=desc).
+	Sort string
+	Desc bool
 }
 
 // tableColumn is one of the Goal table's columns, keyed for the URL. A
@@ -1298,8 +1302,8 @@ type goalTableRow struct {
 
 // goalTableView builds the table layout over the list's filtered, sorted rows:
 // the fixed columns, then each live Dimension and each live Field in name
-// order (CONTEXT.md: Retired).
-func (s *Server) goalTableView(ctx context.Context, rows []goalRow, dims []domain.Dimension) (*goalTable, error) {
+// order (CONTEXT.md: Retired). It sorts by the ?sort= column, if there is one.
+func (s *Server) goalTableView(ctx context.Context, rows []goalRow, dims []domain.Dimension, q url.Values) (*goalTable, error) {
 	all, err := s.svc.ListFields(ctx)
 	if err != nil {
 		return nil, err
@@ -1330,7 +1334,134 @@ func (s *Server) goalTableView(ctx context.Context, rows []goalRow, dims []domai
 		}
 		table.Rows = append(table.Rows, tr)
 	}
+	for _, col := range table.Columns {
+		if col.Key == q.Get("sort") {
+			table.Sort, table.Desc = col.Key, q.Get("dir") == "desc"
+			sortTableRows(table.Rows, col, table.Desc)
+		}
+	}
 	return table, nil
+}
+
+// sortURL links to this view sorted by the column key: ascending, or
+// descending when it is already sorted ascending by it.
+func (v goalsListData) sortURL(key string) templ.SafeURL {
+	return v.queryURL(func(q url.Values) {
+		desc := v.Table != nil && v.Table.Sort == key && !v.Table.Desc
+		q.Set("sort", key)
+		if desc {
+			q.Set("dir", "desc")
+		} else {
+			q.Del("dir")
+		}
+	})
+}
+
+// ariaSort says whether the table is sorted by col's column, and which way.
+func (t goalTable) ariaSort(col tableColumn) string {
+	switch {
+	case t.Sort != col.Key:
+		return "none"
+	case t.Desc:
+		return "descending"
+	}
+	return "ascending"
+}
+
+// sortTableRows sorts rows by col, reversed when desc, keeping the
+// problem-first order among equal values. The Goals with no value in col sort
+// last either way.
+func sortTableRows(rows []goalTableRow, col tableColumn, desc bool) {
+	slices.SortStableFunc(rows, func(a, b goalTableRow) int {
+		ka, aSet := col.sortKey(a)
+		kb, bSet := col.sortKey(b)
+		switch {
+		case !aSet || !bSet:
+			return cmp.Compare(boolRank(!aSet), boolRank(!bSet))
+		case desc:
+			return kb.compare(ka)
+		}
+		return ka.compare(kb)
+	})
+}
+
+func boolRank(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// cellKey is a cell's value as it sorts: by its numbers, then its text.
+type cellKey struct {
+	nums []float64
+	text string
+}
+
+func (k cellKey) compare(o cellKey) int {
+	if c := slices.Compare(k.nums, o.nums); c != 0 {
+		return c
+	}
+	return cmp.Compare(k.text, o.text)
+}
+
+// healthOrder sorts Health worst first, the way the list puts problems first.
+var healthOrder = []string{domain.HealthRed, domain.HealthYellow, domain.HealthGreen}
+
+// sortKey is row's value in col as it sorts, and false when it has none: dates
+// and numbers as numbers, Health worst first, Lifecycle and a Dimension's
+// values in their own order, and text ignoring case.
+func (c tableColumn) sortKey(row goalTableRow) (cellKey, bool) {
+	g := row.Goal
+	num := func(n float64) (cellKey, bool) { return cellKey{nums: []float64{n}}, true }
+	text := func(s string) (cellKey, bool) { return cellKey{text: strings.ToLower(s)}, s != "" }
+	switch {
+	case c.Key == "title":
+		return text(g.Title)
+	case c.Key == "owner":
+		return text(g.Owner.Label())
+	case c.Key == "health":
+		if i := slices.Index(healthOrder, row.health()); i >= 0 {
+			return num(float64(i))
+		}
+	case c.Key == "lifecycle":
+		return num(float64(slices.Index(lifecycleFilters, g.Lifecycle)))
+	case c.Key == "due":
+		if !g.DeliveryDate.IsZero() {
+			return num(float64(g.DeliveryDate.Unix()))
+		}
+	case c.Key == "checkin":
+		if row.Latest != nil {
+			return num(float64(row.Latest.CreatedAt.Unix()))
+		}
+	case c.Dimension != nil:
+		var key cellKey
+		for _, v := range row.Values {
+			if v.DimensionID == c.Dimension.ID {
+				i := slices.IndexFunc(c.Dimension.Values, func(dv domain.DimensionValue) bool { return dv.ID == v.ID })
+				key.nums = append(key.nums, float64(i))
+			}
+		}
+		return key, len(key.nums) > 0
+	case c.Field != nil:
+		value, ok := row.Fields[c.Field.ID]
+		if !ok {
+			break
+		}
+		switch c.Field.Type {
+		case domain.FieldNumber:
+			if n, err := strconv.ParseFloat(value, 64); err == nil {
+				return num(n)
+			}
+		case domain.FieldDate:
+			if d, err := time.Parse(dateLayout, value); err == nil {
+				return num(float64(d.Unix()))
+			}
+		default:
+			return text(value)
+		}
+	}
+	return cellKey{}, false
 }
 
 // text is row's value in a Dimension's or Field's column: a several-values

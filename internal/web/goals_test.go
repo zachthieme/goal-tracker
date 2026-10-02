@@ -2286,3 +2286,75 @@ func TestGoalTableLayoutKeepsFiltersAndIsShareable(t *testing.T) {
 		t.Errorf("the List toggle drops a filter or stays in the table: %v", toList)
 	}
 }
+
+// sortLink is the URL the Goal table's header for the column head links to.
+func sortLink(t *testing.T, page, head string) string {
+	t.Helper()
+	thead := between(t, page, `<thead data-testid="goal-table-head"`, "</thead>")
+	for _, th := range regexp.MustCompile(`(?s)<th[\s>].*?</th>`).FindAllString(thead, -1) {
+		if cellTexts(th, "th")[0] == head {
+			at := strings.Index(th, "<a ")
+			if at < 0 {
+				t.Fatalf("the %s header doesn't sort:\n%s", head, th)
+			}
+			href := attr(openTag(th[at:]), "href")
+			if href == "" {
+				t.Fatalf("the %s header doesn't sort:\n%s", head, th)
+			}
+			return html.UnescapeString(href)
+		}
+	}
+	t.Fatalf("the Goal table has no %s header:\n%s", head, thead)
+	return ""
+}
+
+// A column header sorts the Goal table by that column, and again reverses it.
+// A number Field sorts as numbers, so 9 comes before 10, and the Goals with no
+// value sort last both ways. Unsorted, the table keeps the list's problem-first
+// order. The sort keeps the filters.
+func TestGoalTableSortsByAColumnWithUnsetValuesLast(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "")
+	nine := h.CreateGoal(sam, "Nine", "It matters.")
+	ten := h.CreateGoal(sam, "Ten", "It matters.")
+	hundred := h.CreateGoal(sam, "Hundred", "It matters.")
+	unset := h.ActiveGoal(sam, "Unset", "It matters.")
+	h.Checkin(sam, unset.ID, domain.HealthRed, "On fire.", "Put it out.", testsupport.Epoch.AddDate(0, 2, 0))
+	h.CreateGoal(sam, "Excluded", "It matters.")
+	h.SetGoalField(sam, nine, budget, "9")
+	h.SetGoalField(sam, ten, budget, "10")
+	h.SetGoalField(sam, hundred, budget, "100")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	order := func(page string) []string {
+		return rowTitles(tableRows(t, page), nine, ten, hundred, unset)
+	}
+
+	page := getBody(t, client, ts.URL+"/goals?layout=table&q=n")
+	if got, want := order(page), []string{"Unset", "Hundred", "Nine", "Ten"}; !slices.Equal(got, want) {
+		t.Errorf("unsorted order = %q, want the problem-first %q", got, want)
+	}
+
+	up := sortLink(t, page, "Budget")
+	page = getBody(t, client, ts.URL+up)
+	if got, want := order(page), []string{"Nine", "Ten", "Hundred", "Unset"}; !slices.Equal(got, want) {
+		t.Errorf("sorted by Budget = %q, want %q", got, want)
+	}
+	if strings.Contains(page, "Excluded") {
+		t.Errorf("sorting dropped the search filter")
+	}
+
+	down := sortLink(t, page, "Budget")
+	if down == up {
+		t.Fatalf("sorting by Budget again doesn't reverse it: %s", down)
+	}
+	page = getBody(t, client, ts.URL+down)
+	if got, want := order(page), []string{"Hundred", "Ten", "Nine", "Unset"}; !slices.Equal(got, want) {
+		t.Errorf("reverse-sorted by Budget = %q, want %q", got, want)
+	}
+	if again := sortLink(t, page, "Budget"); again != up {
+		t.Errorf("a third click on Budget links to %s, want ascending again %s", again, up)
+	}
+}
