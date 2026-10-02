@@ -40,7 +40,9 @@ func (s *Server) handleGoals(w http.ResponseWriter, r *http.Request, current dom
 // handleDownloadGoals downloads the Goals the list's filters keep, in the
 // table's order, as CSV in the import format, so the file can be edited and
 // imported again to update their Dimension values and Fields (#81). Hidden
-// columns are a view setting, so the file has every column regardless.
+// columns are a view setting, so the file has every column regardless. A
+// download that would write a value the import can't read back is refused,
+// naming it, and returns no file (#101).
 func (s *Server) handleDownloadGoals(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	view, err := s.goalsListView(r, current)
 	if err != nil {
@@ -58,7 +60,10 @@ func (s *Server) handleDownloadGoals(w http.ResponseWriter, r *http.Request, cur
 		}
 	}
 	var buf bytes.Buffer
-	if err := importer.New(s.svc).Download(r.Context(), &buf, goals); err != nil {
+	if err := importer.New(s.svc).Download(r.Context(), &buf, goals); errors.Is(err, domain.ErrValidation) {
+		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+		return
+	} else if err != nil {
 		http.Error(w, "could not download goals", http.StatusInternalServerError)
 		return
 	}
@@ -178,9 +183,9 @@ var healthFilters = []struct{ Value, Health string }{
 // readGoalFilter reads the filter bar's fields from the query string.
 func readGoalFilter(q url.Values) goalFilter {
 	return goalFilter{
-		Query:     strings.TrimSpace(q.Get("q")),
-		Health:    q.Get("health"),
-		Lifecycle: q.Get("lifecycle"),
+		Query:      strings.TrimSpace(q.Get("q")),
+		Health:     q.Get("health"),
+		Lifecycle:  q.Get("lifecycle"),
 		Mine:       q.Get("mine") == "1",
 		Incomplete: q.Get("incomplete") == "1",
 	}

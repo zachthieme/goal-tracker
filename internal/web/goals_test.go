@@ -2891,7 +2891,7 @@ func TestGoalTableSaveWithAnInvalidNumberSavesNothingAndKeepsWhatWasTyped(t *tes
 	if cell := tableCellHTML(t, body, alphaRow, "Approver"); !strings.Contains(cell, `value="Dana &amp; Co"`) {
 		t.Errorf("Alpha's Approver lost what was typed:\n%s", cell)
 	}
-	if cell := tableCellHTML(t, body, alphaRow, "Pillar"); !regexp.MustCompile(`<option value="`+valueID(pillar.Values[1])+`" selected`).MatchString(cell) {
+	if cell := tableCellHTML(t, body, alphaRow, "Pillar"); !regexp.MustCompile(`<option value="` + valueID(pillar.Values[1]) + `" selected`).MatchString(cell) {
 		t.Errorf("Alpha's Pillar lost the value picked:\n%s", cell)
 	}
 
@@ -3167,5 +3167,33 @@ func TestGoalListMarksAndFiltersIncomplete(t *testing.T) {
 		if want := g.ID == lacking.ID || g.ID == lackingToo.ID; listed != want {
 			t.Errorf("table layout, incomplete=1: %s listed %v, want %v", g.Title, listed, want)
 		}
+	}
+}
+
+// A download that would include a value containing a semicolon, named so
+// before that was refused, is refused naming the Dimension and value so an
+// Admin can rename it, and returns no file (#101).
+func TestGoalTableDownloadRefusesAValueContainingASemicolon(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	rnd := h.NameValueWithSemicolon(pillar.Values[1], "R&D; Ops")
+	h.AssignGoalValue(h.CreateGoal(boss, "Alpha launch", "A matters."), rnd)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	resp, err := client.Get(ts.URL + "/goals/download?layout=table")
+	if err != nil {
+		t.Fatalf("GET download: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("download status = %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+	}
+	if !strings.Contains(body, `Pillar value "R&D; Ops"`) || !strings.Contains(body, "can't contain a semicolon") {
+		t.Errorf("download body = %q, want it to name Pillar's value R&D; Ops and the semicolon", body)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); cd != "" || strings.Contains(body, "ID,Title") {
+		t.Errorf("refused download returned a file: Content-Disposition %q, body %q", cd, body)
 	}
 }
