@@ -22,7 +22,8 @@ func (s *Server) handleDimensions(w http.ResponseWriter, r *http.Request, curren
 }
 
 // handleCreateDimension defines a Dimension from a name, a comma-separated
-// value list, and whether a Goal takes one of its values or several (one when
+// value list, whether a Goal takes one of its values or several (one when the
+// form doesn't say), and whether its list is Fixed or Extendable (Fixed when
 // the form doesn't say). Only an Admin may.
 func (s *Server) handleCreateDimension(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
@@ -31,7 +32,12 @@ func (s *Server) handleCreateDimension(w http.ResponseWriter, r *http.Request, c
 			return err
 		}
 		if selection := r.FormValue("selection"); selection != "" && selection != dim.Selection {
-			return tx.SetDimensionSelection(r.Context(), current.ID, dim.ID, selection)
+			if err := tx.SetDimensionSelection(r.Context(), current.ID, dim.ID, selection); err != nil {
+				return err
+			}
+		}
+		if list := r.FormValue("list"); list != "" && list != dim.List {
+			return tx.SetDimensionList(r.Context(), current.ID, dim.ID, list)
 		}
 		return nil
 	})
@@ -62,6 +68,20 @@ func (s *Server) handleSetDimensionSelection(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err != nil {
+		writeDimensionError(w, err)
+		return
+	}
+	s.redirectToDimensions(w, r)
+}
+
+// handleSetDimensionList makes the Dimension in the path Fixed or Extendable.
+// Only an Admin may.
+func (s *Server) handleSetDimensionList(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, ok := dimensionIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	if err := s.svc.SetDimensionList(r.Context(), current.ID, id, r.FormValue("list")); err != nil {
 		writeDimensionError(w, err)
 		return
 	}
@@ -153,4 +173,12 @@ func selectionLabel(d domain.Dimension) string {
 		return "several values"
 	}
 	return "one value"
+}
+
+// listLabel says whether d's list is Fixed or Extendable.
+func listLabel(d domain.Dimension) string {
+	if d.Extendable() {
+		return "Extendable"
+	}
+	return "Fixed"
 }

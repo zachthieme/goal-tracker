@@ -9,11 +9,12 @@ import (
 // confirmRetire is what Retire asks before retiring a Dimension value.
 const confirmRetire = "Retire this value? Goals that have it keep it, but it can no longer be assigned."
 
-// dimensionsPage lists every Dimension as a card of its values and whether a
-// Goal takes one of them or several, and — for an Admin — the controls to
-// define a Dimension and, behind each card's Edit toggle, to switch between one
-// value and several and to add, rename, and retire values (CONTEXT.md: Admin
-// defines Dimensions). Retired values stay listed, struck through. refusal, when
+// dimensionsPage lists every Dimension as a card of its values, whether a Goal
+// takes one of them or several, and whether its list is Fixed or Extendable,
+// and — for an Admin — the controls to define a Dimension and, behind each
+// card's Edit toggle, to switch between one value and several and between a
+// Fixed and an Extendable list, and to add, rename, and retire values
+// (CONTEXT.md: Admin defines Dimensions; Fixed; Extendable). Retired values stay listed, struck through. refusal, when
 // set, names the Goals that kept a Dimension from switching to one value.
 templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *domain.SeveralValuesError) {
 	{{ admin := current != nil && current.IsAdmin }}
@@ -46,6 +47,11 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *
 						<label><input type="radio" name="selection" value={ domain.SelectionOne } checked/> one value</label>
 						<label><input type="radio" name="selection" value={ domain.SelectionSeveral }/> several values</label>
 					</fieldset>
+					<fieldset class="dm-selection">
+						<legend>Its list is</legend>
+						<label><input type="radio" name="list" value={ domain.ListFixed } checked/> Fixed — only Admins add values</label>
+						<label><input type="radio" name="list" value={ domain.ListExtendable }/> Extendable — anyone setting a Goal's value can add one</label>
+					</fieldset>
 					<div>
 						<button type="submit" class="btn primary">Create Dimension</button>
 					</div>
@@ -59,7 +65,11 @@ templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *
 			for _, d := range dims {
 				<li data-testid="dimension" class="card dm-card">
 					<h3>{ d.Name }</h3>
-					<p class="muted small">Each Goal takes <span data-testid="dimension-selection">{ selectionLabel(d) }</span></p>
+					<p class="muted small">
+						Each Goal takes <span data-testid="dimension-selection">{ selectionLabel(d) }</span>
+						{ " · " }
+						<span data-testid="dimension-list">{ listLabel(d) }</span> list
+					</p>
 					@dimensionValues(d)
 					if admin {
 						@dimensionEdit(d)
@@ -102,7 +112,8 @@ templ dimensionValues(d domain.Dimension) {
 }
 
 // dimensionEdit is an Admin's Edit toggle on a Dimension card: a switch between
-// one value and several per Goal, a rename form and a Retire button on each
+// one value and several per Goal, a switch between a Fixed and an Extendable
+// list, a rename form and a Retire button on each
 // value still in use, then a form to add a value.
 // Retire asks for confirmation first.
 templ dimensionEdit(d domain.Dimension) {
@@ -115,6 +126,15 @@ templ dimensionEdit(d domain.Dimension) {
 			} else {
 				<input type="hidden" name="selection" value={ domain.SelectionSeveral }/>
 				<button type="submit" class="btn sm">Take several values per Goal</button>
+			}
+		</form>
+		<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimensions/%d/list", d.ID)) }>
+			if d.Extendable() {
+				<input type="hidden" name="list" value={ domain.ListFixed }/>
+				<button type="submit" class="btn sm">Make the list Fixed</button>
+			} else {
+				<input type="hidden" name="list" value={ domain.ListExtendable }/>
+				<button type="submit" class="btn sm">Make the list Extendable</button>
 			}
 		</form>
 		<ul class="dm-rows">
