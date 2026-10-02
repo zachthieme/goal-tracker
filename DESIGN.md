@@ -355,6 +355,27 @@ Load the fonts with this URL:
     wrote it, by Name, "for" the Owner when a Delegate wrote it. Its Metric
     readings and its explanation of a Health that differs from the Rolled-up
     Health sit in a small "Readings and explanation" disclosure on the entry.
+  - **Health strip (`healthStrip`, `.hs`):** under the History heading, above
+    the filter chips, the Goal's Health over its last 11 Check-in periods, one
+    cell for each, oldest on the left and the current period on the right. A
+    period is the Goal's cadence long (a week by default), counted in days of
+    the org's timezone as Stale is, and the current one ends on the Sunday
+    that closes this week, so a weekly Goal's cells are the weeks History is
+    grouped by. A cell takes the Health of the last Check-in made in its
+    period: the Health's `--health-*-bg` fill with its dot in the Health's ink
+    and shape (● Green, ▲ Yellow, ■ Red), so it reads without colour. A period
+    the Goal was Active with no Check-in is an empty cell in a 1px dashed
+    `--stale-edge` border, the edge Stale uses, so a skipped week shows at a
+    glance. A period before the Goal became Active, or one it spent On Hold,
+    Done or Cancelled, owed no Check-in and is blank, with no edge. Cells are
+    24px tall, share the row 4px apart up to 480px wide, and take
+    `--radius-sm`. Each cell's text equivalent is visually hidden inside it and
+    repeated as its tooltip: "Week of 28 Sep: Yellow", "Week of 21 Sep: no
+    Check-in", "Week of 7 Sep: On Hold", or "not yet Active". A Goal on another
+    cadence names a period by its first and last days ("14 Sep – 27 Sep"). A
+    muted line under the strip sums it up: "Last 11 weeks: 8 Green, 1 Yellow,
+    2 with no Check-in." The strip shows for any Goal that has been Active,
+    and it changes nothing: not Stale, not Health.
   - **Filter chips (`.tl-chips`):** a row of `--radius-full` chips above the
     list, wrapping on narrow screens: All, Check-ins, Date Slips, So What,
     Ownership, Values. Each carries its count. Date Slips counts and lists the

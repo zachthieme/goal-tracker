@@ -469,3 +469,165 @@ func TestGoalHistoryWorksWithoutJavaScript(t *testing.T) {
 		}
 	}
 }
+
+// healthCell is one cell of a Goal page's Health strip: its state (g, y, r,
+// no-checkin or blank) and its text equivalent.
+type healthCell struct{ state, text string }
+
+// healthCells reads the Health strip on a Goal page, oldest cell first.
+func healthCells(t *testing.T, page string) []healthCell {
+	t.Helper()
+	strip := between(t, page, `data-testid="health-strip"`, "</figure>")
+	var out []healthCell
+	for _, cell := range strings.Split(strip, `data-testid="health-cell"`)[1:] {
+		_, state, _ := strings.Cut(cell, `data-state="`)
+		state, _, _ = strings.Cut(state, `"`)
+		text := between(t, cell, `<span class="sr-only">`, "</span>")[len(`<span class="sr-only">`):]
+		out = append(out, healthCell{state, html.UnescapeString(text)})
+	}
+	return out
+}
+
+// Above its History, a weekly Goal's page shows its Health over the last 11
+// weeks, oldest first: each week's Health, and a dashed "no Check-in" cell for
+// a week it went without one. Each cell says in text what it shows, and the
+// strip sums itself up in one line.
+func TestGoalPageShowsHealthStripAboveHistory(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	for week := 0; week < 11; week++ {
+		if week > 0 {
+			h.Clock.Advance(7 * 24 * time.Hour)
+		}
+		switch week {
+		case 3, 7:
+		case 5:
+			h.Checkin(sam, goal.ID, domain.HealthYellow, "Slipping.", "Add a reviewer.", h.Clock.Now().AddDate(0, 0, 14))
+		default:
+			h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+		}
+	}
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
+	if strings.Index(page, `data-testid="health-strip"`) > strings.Index(page, `data-testid="history-chips"`) {
+		t.Errorf("the Health strip isn't above the History list")
+	}
+	cells := healthCells(t, page)
+	if len(cells) != 11 {
+		t.Fatalf("strip has %d cells, want 11: %v", len(cells), cells)
+	}
+	monday := time.Date(2025, time.December, 29, 0, 0, 0, 0, time.UTC)
+	for i, c := range cells {
+		heading := "Week of " + monday.AddDate(0, 0, 7*i).Format("2 Jan")
+		if i == 0 {
+			heading += " 2025"
+		}
+		want := healthCell{"g", heading + ": Green"}
+		switch i {
+		case 3, 7:
+			want = healthCell{"no-checkin", heading + ": no Check-in"}
+		case 5:
+			want = healthCell{"y", heading + ": Yellow"}
+		}
+		if c != want {
+			t.Errorf("cell %d = %+v, want %+v", i, c, want)
+		}
+	}
+	summary := html.UnescapeString(between(t, page, `data-testid="health-strip-summary"`, "</"))
+	if !strings.Contains(summary, "Last 11 weeks: 8 Green, 1 Yellow, 2 with no Check-in") {
+		t.Errorf("strip summary = %q", summary)
+	}
+}
+
+// The weeks before a Goal became Active and those it spent On Hold are blank,
+// not dashed: each says why in its text, and the summary counts them apart from
+// the weeks with no Check-in.
+func TestHealthStripCellsAreBlankWhereNoCheckinWasOwed(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	// Activated on Friday 2 Jan, in the week of 29 Dec: the 3rd period from the
+	// right once the clock reaches the week of 12 Jan.
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.Clock.Advance(7 * 24 * time.Hour)
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID: goal.ID, AuthorID: sam.ID, Status: "Pausing.", Lifecycle: domain.LifecycleOnHold, LifecycleReason: "Waiting on legal.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin On Hold: %v", err)
+	}
+	h.Clock.Advance(7 * 24 * time.Hour)
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
+	cells := healthCells(t, page)
+	if len(cells) != 11 {
+		t.Fatalf("strip has %d cells, want 11: %v", len(cells), cells)
+	}
+	for i, c := range cells[:8] {
+		if c.state != "blank" || !strings.HasSuffix(c.text, ": not yet Active") {
+			t.Errorf("cell %d before activation = %+v, want blank, not yet Active", i, c)
+		}
+	}
+	for i, want := range []healthCell{
+		{"no-checkin", "Week of 29 Dec 2025: no Check-in"},
+		{"blank", "Week of 5 Jan: On Hold"},
+		{"blank", "Week of 12 Jan: On Hold"},
+	} {
+		if c := cells[8+i]; c != want {
+			t.Errorf("cell %d = %+v, want %+v", 8+i, c, want)
+		}
+	}
+	for _, cell := range strings.Split(between(t, page, `data-testid="health-strip"`, "</figure>"), `data-testid="health-cell"`)[1:] {
+		if strings.Contains(cell, `class="dot"`) {
+			t.Errorf("a cell with no Health carries a Health's dot: %s", cell)
+		}
+	}
+	summary := html.UnescapeString(between(t, page, `data-testid="health-strip-summary"`, "</"))
+	if !strings.Contains(summary, "Last 11 weeks: 1 with no Check-in, 10 not Active.") {
+		t.Errorf("strip summary = %q", summary)
+	}
+}
+
+// A Goal on a 14-day cadence has 14-day periods, each named by its first and
+// last days.
+func TestHealthStripPeriodsFollowTheGoalsCadence(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	if _, err := h.Service.SetCadence(context.Background(), goal.ID, 14); err != nil {
+		t.Fatalf("SetCadence: %v", err)
+	}
+	h.Clock.Advance(7 * 24 * time.Hour)
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
+	cells := healthCells(t, page)
+	if len(cells) != 11 {
+		t.Fatalf("strip has %d cells, want 11: %v", len(cells), cells)
+	}
+	if want := (healthCell{"g", "29 Dec 2025 – 11 Jan: Green"}); cells[10] != want {
+		t.Errorf("current cell = %+v, want %+v", cells[10], want)
+	}
+	if want := (healthCell{"blank", "15 Dec 2025 – 28 Dec 2025: not yet Active"}); cells[9] != want {
+		t.Errorf("cell before = %+v, want %+v", cells[9], want)
+	}
+	summary := html.UnescapeString(between(t, page, `data-testid="health-strip-summary"`, "</"))
+	if !strings.Contains(summary, "Last 11 periods of 14 days: 1 Green, 10 not Active.") {
+		t.Errorf("strip summary = %q", summary)
+	}
+}
+
+// A Goal that has never been Active has no strip.
+func TestProposedGoalPageHasNoHealthStrip(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Ship v2", "Customers wait too long.")
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
+	if strings.Contains(page, `data-testid="health-strip"`) {
+		t.Errorf("a Proposed Goal's page shows a Health strip")
+	}
+}

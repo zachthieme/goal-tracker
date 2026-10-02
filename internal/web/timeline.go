@@ -121,6 +121,9 @@ type history struct {
 	Shown      int
 	Loc        *time.Location
 	Now        time.Time
+	// Strip is the Goal's Health over its last Check-in periods, shown above
+	// the timeline.
+	Strip domain.HealthStrip
 }
 
 // newHistory gathers a Goal's Check-ins, Date Slips, Metric readings, So What
@@ -162,7 +165,7 @@ func newHistory(v goalView, loc *time.Location, now time.Time) history {
 		}
 		return cmp.Compare(b.seq(), a.seq())
 	})
-	return history{GoalID: v.Goal.ID, Entries: entries, Milestones: v.Milestones, Shown: historyPage, Loc: loc, Now: now}
+	return history{GoalID: v.Goal.ID, Entries: entries, Milestones: v.Milestones, Shown: historyPage, Loc: loc, Now: now, Strip: v.HealthStrip}
 }
 
 // seq is the entry's record ID, which orders entries of one kind made at the
@@ -264,10 +267,95 @@ func (h history) weekHeading(t time.Time) string {
 	y, m, d := local.Date()
 	day := time.Date(y, m, d, 0, 0, 0, 0, h.Loc)
 	monday := day.AddDate(0, 0, -((int(day.Weekday()) + 6) % 7))
-	if monday.Year() != h.Now.In(h.Loc).Year() {
-		return "Week of " + monday.Format("2 Jan 2006")
+	return "Week of " + h.dayLabel(monday)
+}
+
+// dayLabel names a calendar date, "28 Sep", with the year when it isn't this
+// year.
+func (h history) dayLabel(d time.Time) string {
+	if d.Year() != h.Now.In(h.Loc).Year() {
+		return d.Format("2 Jan 2006")
 	}
-	return "Week of " + monday.Format("2 Jan")
+	return d.Format("2 Jan")
+}
+
+// stripCell is one cell of the Health strip: its state (the Health's class,
+// "no-checkin" for a period the Goal went without a Check-in it owed, or "blank"
+// for one it owed none in) and its text equivalent.
+type stripCell struct {
+	State string
+	Text  string
+}
+
+// health reports whether the cell shows a Health.
+func (c stripCell) health() bool {
+	return c.State != "no-checkin" && c.State != "blank"
+}
+
+// stripCells are the Health strip's cells, oldest first.
+func (h history) stripCells() []stripCell {
+	out := make([]stripCell, 0, len(h.Strip.Periods))
+	for _, p := range h.Strip.Periods {
+		c := stripCell{State: healthClass(p.Health), Text: h.periodLabel(p) + ": " + p.Health}
+		switch {
+		case p.NoCheckin:
+			c.State, c.Text = "no-checkin", h.periodLabel(p)+": no Check-in"
+		case p.Health == "" && p.Lifecycle == domain.LifecycleProposed:
+			c.State, c.Text = "blank", h.periodLabel(p)+": not yet Active"
+		case p.Health == "":
+			c.State, c.Text = "blank", h.periodLabel(p)+": "+p.Lifecycle
+		}
+		out = append(out, c)
+	}
+	return out
+}
+
+// periodLabel names a period on the strip: a weekly Goal's by its Monday,
+// "Week of 28 Sep", as History's headings do, and any other's by its first and
+// last days.
+func (h history) periodLabel(p domain.HealthPeriod) string {
+	if h.Strip.CadenceDays == 7 {
+		return "Week of " + h.dayLabel(p.First)
+	}
+	return h.dayLabel(p.First) + " – " + h.dayLabel(p.Last)
+}
+
+// stripSpan names the stretch the strip covers: "Last 11 weeks", or "Last 11
+// periods of 14 days".
+func (h history) stripSpan() string {
+	if h.Strip.CadenceDays == 7 {
+		return fmt.Sprintf("Last %d weeks", len(h.Strip.Periods))
+	}
+	return fmt.Sprintf("Last %d periods of %d days", len(h.Strip.Periods), h.Strip.CadenceDays)
+}
+
+// stripSummary sums the strip up in one line: "Last 11 weeks: 8 Green, 1
+// Yellow, 2 with no Check-in."
+func (h history) stripSummary() string {
+	counts := map[string]int{}
+	for _, p := range h.Strip.Periods {
+		switch {
+		case p.NoCheckin:
+			counts["no-checkin"]++
+		case p.Health == "":
+			counts["blank"]++
+		default:
+			counts[p.Health]++
+		}
+	}
+	var parts []string
+	for _, k := range []struct{ key, text string }{
+		{domain.HealthGreen, "Green"},
+		{domain.HealthYellow, "Yellow"},
+		{domain.HealthRed, "Red"},
+		{"no-checkin", "with no Check-in"},
+		{"blank", "not Active"},
+	} {
+		if n := counts[k.key]; n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", n, k.text))
+		}
+	}
+	return h.stripSpan() + ": " + strings.Join(parts, ", ") + "."
 }
 
 // slipWhat names what a Date Slip moved: the delivery date or a Milestone.

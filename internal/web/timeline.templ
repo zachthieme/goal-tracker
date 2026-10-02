@@ -13,6 +13,7 @@ import (
 templ goalHistory(h history) {
 	<div data-testid="goal-history" id="history" class="gp-block ruled">
 		<h2>History</h2>
+		@healthStrip(h)
 		<nav data-testid="history-chips" class="tl-chips" aria-label="Show in History">
 			for _, c := range h.chips() {
 				<a data-testid="history-chip" data-filter={ string(c.Filter) } class="tl-chip" href={ h.url(c.Filter, 0) } { h.chipAttrs(c)... }>
@@ -40,6 +41,29 @@ templ goalHistory(h history) {
 		}
 		@timelineStyles()
 	</div>
+}
+
+// healthStrip is the Goal's Health over its last Check-in periods, oldest on
+// the left: each period's Health in its colour and shape, a dashed empty cell
+// for a period the Goal went without a Check-in, and a blank one for a period
+// it owed none in. Each cell carries its text equivalent, and a line under the
+// strip sums it up. A Goal that has never been Active has none.
+templ healthStrip(h history) {
+	if cells := h.stripCells(); len(cells) > 0 {
+		<figure data-testid="health-strip" class="hs">
+			<ol class="hs-cells" aria-label={ h.stripSpan() + ", oldest first" }>
+				for _, c := range cells {
+					<li data-testid="health-cell" data-state={ c.State } class={ "hs-cell", c.State } title={ c.Text }>
+						if c.health() {
+							<span class="dot" aria-hidden="true"></span>
+						}
+						<span class="sr-only">{ c.Text }</span>
+					</li>
+				}
+			</ol>
+			<figcaption data-testid="health-strip-summary" class="muted small">{ h.stripSummary() }</figcaption>
+		</figure>
+	}
 }
 
 // historyItem is one entry on the timeline: its marker, its kind as a text
@@ -188,5 +212,10 @@ templ timelineStyles() {
 		.tl-detail summary{cursor:pointer;color:var(--color-primary-strong)}
 		.tl-readings{list-style:none;margin:4px 0;padding:0}
 		.tl-detail>p{margin:4px 0 0}
+		.hs{margin:0;display:flex;flex-direction:column;gap:8px}
+		.hs-cells{list-style:none;margin:0;padding:0;display:flex;gap:4px;max-width:480px}
+		.hs-cell{flex:1;min-width:0;height:24px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-sm)}
+		.hs-cell.no-checkin{border:1px dashed var(--stale-edge)}
+		.hs-cell.blank{background:none}
 	</style>
 }
