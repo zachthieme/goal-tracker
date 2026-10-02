@@ -675,3 +675,81 @@ func goalValueNames(t *testing.T, h *testsupport.Harness, goal domain.Goal) []st
 	slices.Sort(names)
 	return names
 }
+
+// In an Extendable Dimension an unknown value is added to the list, last in its
+// order, and a later row naming it in another letter case sets the same value;
+// a known value matches whatever its letter case or surrounding spaces (#77;
+// CONTEXT.md: Extendable).
+func TestCommitAddsUnknownValuesToAnExtendableDimension(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Customer
+First,owner@example.com,It matters.,Ongoing,  acme 
+Second,owner@example.com,It matters.,Ongoing,Newco
+Third,owner@example.com,It matters.,Ongoing,NEWCO
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateExtendableDimension(admin, "Customer", "Acme", "Zenith")
+
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if !rep.Committed {
+		t.Fatalf("import not committed; rows: %+v", rep.Rows)
+	}
+	for i, want := range []string{"Acme", "Newco", "Newco"} {
+		goal, err := h.Service.ViewGoal(context.Background(), rep.Rows[i].GoalID)
+		if err != nil {
+			t.Fatalf("ViewGoal: %v", err)
+		}
+		if got := goalValueNames(t, h, goal); strings.Join(got, ", ") != want {
+			t.Errorf("row %d values = %v, want [%s]", rep.Rows[i].Line, got, want)
+		}
+	}
+	if got := dimensionValueNames(t, h, "Customer"); strings.Join(got, ", ") != "Acme, Zenith, Newco" {
+		t.Errorf("Customer list = %v, want [Acme Zenith Newco]", got)
+	}
+}
+
+// In a Fixed Dimension an unknown value is a row error, and the list gains
+// nothing (#77; CONTEXT.md: Fixed).
+func TestDryRunRejectsUnknownValuesInAFixedDimension(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Pillar
+Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,Moonshots
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateDimension(admin, "Pillar", "Growth", "Reliability")
+
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if want := `"Moonshots" is not a value of Dimension "Pillar"`; rep.Committed || len(rep.Rows) != 1 || strings.Join(rep.Rows[0].Errors, "; ") != want {
+		t.Errorf("report = %+v, want an uncommitted row with the error %q", rep, want)
+	}
+	if got := dimensionValueNames(t, h, "Pillar"); strings.Join(got, ", ") != "Growth, Reliability" {
+		t.Errorf("Pillar list = %v, want [Growth Reliability]", got)
+	}
+}
+
+// dimensionValueNames lists the named Dimension's values in their order.
+func dimensionValueNames(t *testing.T, h *testsupport.Harness, name string) []string {
+	t.Helper()
+	dims, err := h.Service.ListDimensions(context.Background())
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	for _, d := range dims {
+		if d.Name != name {
+			continue
+		}
+		names := make([]string, 0, len(d.Values))
+		for _, v := range d.Values {
+			names = append(names, v.Value)
+		}
+		return names
+	}
+	t.Fatalf("no Dimension %q", name)
+	return nil
+}

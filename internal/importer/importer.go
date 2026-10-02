@@ -268,8 +268,12 @@ type metricSpec struct {
 	targetDate time.Time
 }
 
+// dimensionValue is a value to give the Goal: an existing value by its id, or
+// a value newValue to add to Extendable Dimension dimensionID's list.
 type dimensionValue struct {
-	valueID int64
+	valueID     int64
+	dimensionID int64
+	newValue    string
 }
 
 type fieldValue struct {
@@ -351,12 +355,18 @@ func parseRow(line int, row []string, lay layout) rowSpec {
 			continue
 		}
 		for _, v := range values {
-			valueID, ok := valueIDOf(dc.dimension, v)
-			if !ok {
+			if valueID, ok := valueIDOf(dc.dimension, v); ok {
+				s.dimensions = append(s.dimensions, dimensionValue{valueID: valueID})
+				continue
+			}
+			// An Extendable list gains the unknown value when the Goal is
+			// created; a Fixed one is added to only from the Dimensions page
+			// (CONTEXT.md: Fixed, Extendable).
+			if !dc.dimension.Extendable() {
 				s.errs = append(s.errs, fmt.Sprintf("%q is not a value of Dimension %q", v, dc.dimension.Name))
 				continue
 			}
-			s.dimensions = append(s.dimensions, dimensionValue{valueID: valueID})
+			s.dimensions = append(s.dimensions, dimensionValue{dimensionID: dc.dimension.ID, newValue: v})
 		}
 	}
 	for _, fc := range lay.fields {
@@ -520,7 +530,18 @@ func createGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpe
 		}
 	}
 	for _, dv := range s.dimensions {
-		if err := tx.AssignGoalValue(ctx, adminID, g.ID, dv.valueID); err != nil {
+		valueID := dv.valueID
+		if valueID == 0 {
+			// The importing Admin adds the value, last in the list. An earlier
+			// row may already have added it, and then it is matched instead.
+			added, err := tx.AddDimensionValue(ctx, adminID, dv.dimensionID, dv.newValue)
+			if err != nil {
+				errs = append(errs, message(err))
+				continue
+			}
+			valueID = added.ID
+		}
+		if err := tx.AssignGoalValue(ctx, adminID, g.ID, valueID); err != nil {
 			errs = append(errs, message(err))
 		}
 	}
