@@ -635,7 +635,7 @@ templ goalPage(current *domain.Account, v goalView) {
 			}
 			<span aria-current="page">{ g.Title }</span>
 		</nav>
-		@goalFreshness(v.Freshness)
+		@goalFreshness(g.ID, v.Freshness, v.CanCheckin)
 		@goalSignals(v.Signals)
 		@goalIncomplete(v.Incomplete)
 		@goalHead(v, owner, admin)
