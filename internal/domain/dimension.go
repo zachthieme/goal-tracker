@@ -523,6 +523,22 @@ func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID 
 // value the Goal now carries is returned. Only the Goal's Owner, a Delegate or
 // an Admin may, and only an Admin may add to a Fixed list (CONTEXT.md: Fixed).
 func (s *Service) AssignGoalValueByName(ctx context.Context, actorID, goalID, dimensionID int64, name string) (DimensionValue, error) {
+	var val DimensionValue
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		var err error
+		val, err = tx.assignGoalValueByName(ctx, actorID, goalID, dimensionID, name)
+		return err
+	})
+	if err != nil {
+		return DimensionValue{}, err
+	}
+	return val, nil
+}
+
+// assignGoalValueByName is AssignGoalValueByName within a transaction the
+// caller holds, so a value added to the list and its assignment stand or fall
+// together.
+func (s *Service) assignGoalValueByName(ctx context.Context, actorID, goalID, dimensionID int64, name string) (DimensionValue, error) {
 	if err := s.requireGoalValueSetter(ctx, actorID, goalID); err != nil {
 		return DimensionValue{}, err
 	}
@@ -549,23 +565,16 @@ func (s *Service) AssignGoalValueByName(ctx context.Context, actorID, goalID, di
 			return DimensionValue{}, err
 		}
 	}
-	var val DimensionValue
-	err = s.WithinTx(ctx, func(tx *Service) error {
-		row, err := tx.queries.CreateDimensionValue(ctx, db.CreateDimensionValueParams{
-			DimensionID: dimensionID,
-			Value:       name,
-			CreatedAt:   tx.clock.Now().Format(timeFormat),
-		})
-		if err != nil {
-			return fmt.Errorf("add dimension value: %w", err)
-		}
-		val = dimensionValueFromRow(row)
-		return tx.AssignGoalValue(ctx, actorID, goalID, val.ID)
+	row, err := s.queries.CreateDimensionValue(ctx, db.CreateDimensionValueParams{
+		DimensionID: dimensionID,
+		Value:       name,
+		CreatedAt:   s.clock.Now().Format(timeFormat),
 	})
 	if err != nil {
-		return DimensionValue{}, err
+		return DimensionValue{}, fmt.Errorf("add dimension value: %w", err)
 	}
-	return val, nil
+	val := dimensionValueFromRow(row)
+	return val, s.AssignGoalValue(ctx, actorID, goalID, val.ID)
 }
 
 // SetGoalValues makes valueIDs exactly the values a Goal carries in one
