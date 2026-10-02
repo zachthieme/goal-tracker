@@ -144,7 +144,10 @@ func TestEachChangeToADimensionsValuesWritesOneEntry(t *testing.T) {
 	trust, growth, scale := pillar.Values[0], pillar.Values[1], pillar.Values[2]
 	for _, change := range []func() error{
 		func() error { _, err := h.Service.AddDimensionValue(ctx, boss.ID, pillar.ID, "Reach"); return err },
-		func() error { _, err := h.Service.RenameDimensionValue(ctx, boss.ID, growth.ID, "Expansion"); return err },
+		func() error {
+			_, err := h.Service.RenameDimensionValue(ctx, boss.ID, growth.ID, "Expansion")
+			return err
+		},
 		func() error { return h.Service.RetireDimensionValue(ctx, boss.ID, scale.ID) },
 		func() error { return h.Service.RestoreDimensionValue(ctx, boss.ID, scale.ID) },
 		func() error { return h.Service.MoveDimensionValue(ctx, boss.ID, scale.ID, domain.MoveUp) },
@@ -201,5 +204,174 @@ func TestAValueAnOwnerAddsToAnExtendableListIsLoggedWithThatOwner(t *testing.T) 
 	}
 	if got := log[0]; got.Actor.ID != pat.ID || got.DimensionID != customer.ID || got.Summary != "Added Globex to Customer." {
 		t.Errorf("newest entry = %+v, want pat adding Globex to Customer", got)
+	}
+}
+
+// Each change to a Field's definition writes exactly one entry, by the Admin
+// who made it, about that Field.
+func TestEachChangeToAFieldWritesOneEntry(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ctx := context.Background()
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	notes := h.CreateField(boss, "Notes", domain.FieldLongText, "")
+	for _, change := range []func() error{
+		func() error { return h.Service.RetireField(ctx, boss.ID, budget.ID) },
+		func() error { return h.Service.RestoreField(ctx, boss.ID, budget.ID) },
+		func() error { return h.Service.SetFieldRequired(ctx, boss.ID, budget.ID, true) },
+		func() error { return h.Service.SetFieldRequired(ctx, boss.ID, budget.ID, false) },
+	} {
+		if err := change(); err != nil {
+			t.Fatalf("change: %v", err)
+		}
+	}
+
+	log := definitionLog(t, h)
+	assertSummaries(t, log, []string{
+		"Marked the Field Budget not required.",
+		"Marked the Field Budget required.",
+		"Restored the Field Budget.",
+		"Retired the Field Budget.",
+		"Created the Field Notes, holding a long text.",
+		"Created the Field Budget, holding a number in $.",
+	})
+	for i, c := range log {
+		want := budget.ID
+		if i == len(log)-2 {
+			want = notes.ID
+		}
+		if c.Actor.ID != boss.ID || c.FieldID != want || c.DimensionID != 0 {
+			t.Errorf("entry %q = %+v, want boss's, about Field %d", c.Summary, c, want)
+		}
+	}
+}
+
+// A refused change to a Dimension or Field writes nothing to the log.
+func TestARefusedChangeWritesNothing(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pat := h.SignIn("pat@example.com")
+	ctx := context.Background()
+	goal := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	pillar := h.CreateSeveralValuesDimension(boss, "Pillar", "Growth", "Trust")
+	quarter := h.CreateDimension(boss, "Quarter", "Q1")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	if err := h.Service.SetGoalValues(ctx, pat.ID, goal.ID, pillar.ID, []int64{pillar.Values[0].ID, pillar.Values[1].ID}); err != nil {
+		t.Fatalf("give the Goal both Pillars: %v", err)
+	}
+	before := definitionLog(t, h)
+
+	for name, refused := range map[string]func() error{
+		"a non-Admin defining a Dimension": func() error { _, err := h.Service.CreateDimension(ctx, pat.ID, "Team", []string{"Core"}); return err },
+		"a non-Admin adding a value":       func() error { _, err := h.Service.AddDimensionValue(ctx, pat.ID, pillar.ID, "Scale"); return err },
+		"a non-Admin renaming a value": func() error {
+			_, err := h.Service.RenameDimensionValue(ctx, pat.ID, pillar.Values[0].ID, "Expansion")
+			return err
+		},
+		"a non-Admin retiring a value":     func() error { return h.Service.RetireDimensionValue(ctx, pat.ID, pillar.Values[0].ID) },
+		"a non-Admin retiring a Dimension": func() error { return h.Service.RetireDimension(ctx, pat.ID, pillar.ID) },
+		"a non-Admin marking a Field required": func() error {
+			return h.Service.SetFieldRequired(ctx, pat.ID, budget.ID, true)
+		},
+		"a non-Admin defining a Field": func() error {
+			_, err := h.Service.CreateField(ctx, pat.ID, "Notes", domain.FieldLongText, "")
+			return err
+		},
+		"one value while a Goal carries several": func() error {
+			return h.Service.SetDimensionSelection(ctx, boss.ID, pillar.ID, domain.SelectionOne)
+		},
+		"a merge across Dimensions": func() error {
+			return h.Service.MergeDimensionValue(ctx, boss.ID, pillar.Values[0].ID, quarter.Values[0].ID)
+		},
+		"a Field named like a Dimension": func() error {
+			_, err := h.Service.CreateField(ctx, boss.ID, "pillar", domain.FieldShortText, "")
+			return err
+		},
+		"an Owner adding to a Fixed list": func() error {
+			_, err := h.Service.AssignGoalValueByName(ctx, pat.ID, goal.ID, quarter.ID, "Q2")
+			return err
+		},
+	} {
+		if err := refused(); err == nil {
+			t.Errorf("%s was allowed", name)
+		}
+	}
+
+	if after := definitionLog(t, h); len(after) != len(before) {
+		t.Errorf("log grew from %d to %d entries: %+v", len(before), len(after), after[:len(after)-len(before)])
+	}
+}
+
+// A value added to an Extendable list in a table edit that is refused as a
+// whole is gone from the log with the rest of the edit: the entry is written
+// in the same transaction as the change.
+func TestAValueAddedInARefusedTableEditIsNotLogged(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pat := h.SignIn("pat@example.com")
+	ctx := context.Background()
+	goal := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	customer := h.CreateExtendableDimension(boss, "Customer", "Acme")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	before := definitionLog(t, h)
+
+	err := h.Service.EditGoalValues(ctx, pat.ID, []domain.ValueEdit{
+		{GoalID: goal.ID, DimensionID: customer.ID, NewValue: "Globex"},
+		{GoalID: goal.ID, FieldID: budget.ID, Value: "lots"},
+	})
+	if err == nil {
+		t.Fatal("a table edit with a bad number was allowed")
+	}
+
+	if after := definitionLog(t, h); len(after) != len(before) {
+		t.Errorf("log grew from %d to %d entries: %+v", len(before), len(after), after[:len(after)-len(before)])
+	}
+	dims, err := h.Service.ListDimensions(ctx)
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	for _, d := range dims {
+		for _, v := range d.Values {
+			if v.Value == "Globex" {
+				t.Errorf("Globex was added to %s by a refused edit", d.Name)
+			}
+		}
+	}
+}
+
+// A change that changes nothing writes nothing: adding a value already on the
+// list, moving the first value up, sorting a sorted list, or marking a
+// Dimension or Field as it already is.
+func TestAChangeThatChangesNothingWritesNothing(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ctx := context.Background()
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	before := definitionLog(t, h)
+
+	for _, change := range []func() error{
+		func() error { _, err := h.Service.AddDimensionValue(ctx, boss.ID, pillar.ID, " growth"); return err },
+		func() error {
+			_, err := h.Service.RenameDimensionValue(ctx, boss.ID, pillar.Values[0].ID, "Growth")
+			return err
+		},
+		func() error { return h.Service.MoveDimensionValue(ctx, boss.ID, pillar.Values[0].ID, domain.MoveUp) },
+		func() error { return h.Service.SortDimensionValues(ctx, boss.ID, pillar.ID) },
+		func() error { return h.Service.RestoreDimensionValue(ctx, boss.ID, pillar.Values[0].ID) },
+		func() error { return h.Service.RestoreDimension(ctx, boss.ID, pillar.ID) },
+		func() error { return h.Service.SetDimensionSelection(ctx, boss.ID, pillar.ID, domain.SelectionOne) },
+		func() error { return h.Service.SetDimensionList(ctx, boss.ID, pillar.ID, domain.ListFixed) },
+		func() error { return h.Service.SetDimensionRequired(ctx, boss.ID, pillar.ID, false) },
+		func() error { return h.Service.RestoreField(ctx, boss.ID, budget.ID) },
+		func() error { return h.Service.SetFieldRequired(ctx, boss.ID, budget.ID, false) },
+	} {
+		if err := change(); err != nil {
+			t.Fatalf("change: %v", err)
+		}
+	}
+
+	if after := definitionLog(t, h); len(after) != len(before) {
+		t.Errorf("log grew from %d to %d entries: %+v", len(before), len(after), after[:len(after)-len(before)])
 	}
 }

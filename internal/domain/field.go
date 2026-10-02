@@ -2,7 +2,6 @@ package domain
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"math"
@@ -38,6 +37,7 @@ const (
 
 // CreateField defines a new Field of one of the four types. Only an Admin may
 // (CONTEXT.md: Admin). The name is required. Only a number Field keeps a unit.
+// It is written to the Definition log.
 func (s *Service) CreateField(ctx context.Context, actorID int64, name, fieldType, unit string) (Field, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return Field{}, err
@@ -57,16 +57,24 @@ func (s *Service) CreateField(ctx context.Context, actorID int64, name, fieldTyp
 	if err := s.requireFreeFieldName(ctx, name); err != nil {
 		return Field{}, err
 	}
-	row, err := s.queries.CreateField(ctx, db.CreateFieldParams{
-		Name:      name,
-		Type:      fieldType,
-		Unit:      unit,
-		CreatedAt: s.clock.Now().Format(timeFormat),
+	var field Field
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		row, err := tx.queries.CreateField(ctx, db.CreateFieldParams{
+			Name:      name,
+			Type:      fieldType,
+			Unit:      unit,
+			CreatedAt: tx.clock.Now().Format(timeFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("create field: %w", err)
+		}
+		field = fieldFromRow(row)
+		return tx.recordFieldDefinitionChange(ctx, actorID, field.ID, "Created the Field %s, holding %s.", field.Name, holdsPhrase(field))
 	})
 	if err != nil {
-		return Field{}, fmt.Errorf("create field: %w", err)
+		return Field{}, err
 	}
-	return fieldFromRow(row), nil
+	return field, nil
 }
 
 // FieldValue is a Goal's value in one Field, as typed: a number Field's parses
@@ -78,13 +86,14 @@ type FieldValue struct {
 
 // RetireField withdraws a Field: it is no longer offered for entry, yet the
 // Goals with a value in it still show it. Nothing is deleted (CONTEXT.md:
-// Retired; ADR 0005). Only an Admin may.
+// Retired; ADR 0005). It is written to the Definition log. Only an Admin may.
 func (s *Service) RetireField(ctx context.Context, actorID, fieldID int64) error {
 	return s.setFieldRetired(ctx, actorID, fieldID, true)
 }
 
 // RestoreField reverses a Field's retirement, so it is offered for entry again
-// (CONTEXT.md: Retired — an Admin can reverse it). Only an Admin may.
+// (CONTEXT.md: Retired — an Admin can reverse it). It is written to the
+// Definition log. Only an Admin may.
 func (s *Service) RestoreField(ctx context.Context, actorID, fieldID int64) error {
 	return s.setFieldRetired(ctx, actorID, fieldID, false)
 }
@@ -93,34 +102,46 @@ func (s *Service) setFieldRetired(ctx context.Context, actorID, fieldID int64, r
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return err
 	}
-	var flag int64
-	if retired {
-		flag = 1
-	}
-	if _, err := s.queries.SetFieldRetired(ctx, db.SetFieldRetiredParams{Retired: flag, ID: fieldID}); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	return s.WithinTx(ctx, func(tx *Service) error {
+		before, err := tx.queries.GetField(ctx, fieldID)
+		if err != nil {
 			return fmt.Errorf("%w: field does not exist", ErrValidation)
 		}
-		return fmt.Errorf("set field retired: %w", err)
-	}
-	return nil
+		if fieldFromRow(before).Retired == retired {
+			return nil
+		}
+		if _, err := tx.queries.SetFieldRetired(ctx, db.SetFieldRetiredParams{Retired: boolFlag(retired), ID: fieldID}); err != nil {
+			return fmt.Errorf("set field retired: %w", err)
+		}
+		verb := "Restored"
+		if retired {
+			verb = "Retired"
+		}
+		return tx.recordFieldDefinitionChange(ctx, actorID, fieldID, "%s the Field %s.", verb, before.Name)
+	})
 }
 
 // SetFieldRequired marks a Field required, so a Proposed Goal can't become
 // Active without a value in it, or unmarks it (CONTEXT.md: Incomplete). Marking
 // is always allowed: Active Goals lacking a value stay Active and become
-// Incomplete. Only an Admin may.
+// Incomplete. It is written to the Definition log. Only an Admin may.
 func (s *Service) SetFieldRequired(ctx context.Context, actorID, fieldID int64, required bool) error {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return err
 	}
-	if _, err := s.queries.SetFieldRequired(ctx, db.SetFieldRequiredParams{Required: boolFlag(required), ID: fieldID}); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
+	return s.WithinTx(ctx, func(tx *Service) error {
+		before, err := tx.queries.GetField(ctx, fieldID)
+		if err != nil {
 			return fmt.Errorf("%w: field does not exist", ErrValidation)
 		}
-		return fmt.Errorf("set field required: %w", err)
-	}
-	return nil
+		if fieldFromRow(before).Required == required {
+			return nil
+		}
+		if _, err := tx.queries.SetFieldRequired(ctx, db.SetFieldRequiredParams{Required: boolFlag(required), ID: fieldID}); err != nil {
+			return fmt.Errorf("set field required: %w", err)
+		}
+		return tx.recordFieldDefinitionChange(ctx, actorID, fieldID, "Marked the Field %s %s.", before.Name, requiredWord(required))
+	})
 }
 
 // OfferedFields keeps the Fields still offered for entry on a Goal, dropping

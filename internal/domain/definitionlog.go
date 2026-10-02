@@ -38,13 +38,23 @@ func (s *Service) DefinitionLog(ctx context.Context) ([]DefinitionChange, error)
 	return out, nil
 }
 
-// recordDimensionChange writes one entry about a Dimension, or one of its
+// recordDimensionDefinitionChange writes one entry about a Dimension, or one of its
 // values, to the Definition log.
-func (s *Service) recordDimensionChange(ctx context.Context, actorID, dimensionID int64, format string, args ...any) error {
+func (s *Service) recordDimensionDefinitionChange(ctx context.Context, actorID, dimensionID int64, format string, args ...any) error {
 	return s.recordDefinitionChange(ctx, db.RecordDefinitionChangeParams{
 		ActorID:     actorID,
 		DimensionID: &dimensionID,
 		Summary:     fmt.Sprintf(format, args...),
+	})
+}
+
+// recordFieldDefinitionChange writes one entry about a Field to the Definition
+// log.
+func (s *Service) recordFieldDefinitionChange(ctx context.Context, actorID, fieldID int64, format string, args ...any) error {
+	return s.recordDefinitionChange(ctx, db.RecordDefinitionChangeParams{
+		ActorID: actorID,
+		FieldID: &fieldID,
+		Summary: fmt.Sprintf(format, args...),
 	})
 }
 
@@ -96,4 +106,21 @@ func requiredWord(required bool) string {
 		return "required"
 	}
 	return "not required"
+}
+
+// holdsPhrase says what f's value holds, as the log words it: "a number in $".
+func holdsPhrase(f Field) string {
+	switch f.Type {
+	case FieldNumber:
+		if f.Unit != "" {
+			return "a number in " + f.Unit
+		}
+		return "a number"
+	case FieldShortText:
+		return "a short text"
+	case FieldLongText:
+		return "a long text"
+	default:
+		return "a date"
+	}
 }

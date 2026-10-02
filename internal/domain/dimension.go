@@ -144,7 +144,7 @@ func (s *Service) DefineDimension(ctx context.Context, actorID int64, def Dimens
 			}
 			dim.Values = append(dim.Values, dimensionValueFromRow(val))
 		}
-		return tx.recordDimensionChange(ctx, actorID, dim.ID, "Created the Dimension %s with %s, taking %s from a %s list.",
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dim.ID, "Created the Dimension %s with %s, taking %s from a %s list.",
 			dim.Name, strings.Join(cleaned, ", "), selectionPhrase(dim), listName(dim))
 	})
 	if err != nil {
@@ -190,7 +190,7 @@ func (s *Service) addDimensionValue(ctx context.Context, actorID int64, dim db.D
 			return fmt.Errorf("add dimension value: %w", err)
 		}
 		val = dimensionValueFromRow(row)
-		return tx.recordDimensionChange(ctx, actorID, dim.ID, "Added %s to %s.", value, dim.Name)
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dim.ID, "Added %s to %s.", value, dim.Name)
 	})
 	if err != nil {
 		return DimensionValue{}, err
@@ -241,7 +241,7 @@ func (s *Service) RenameDimensionValue(ctx context.Context, actorID, valueID int
 			return fmt.Errorf("rename dimension value: %w", err)
 		}
 		renamed = dimensionValueFromRow(row)
-		return tx.recordDimensionChange(ctx, actorID, dim.ID, "Renamed %s to %s in %s.", before.Value, newValue, dim.Name)
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dim.ID, "Renamed %s to %s in %s.", before.Value, newValue, dim.Name)
 	})
 	if err != nil {
 		return DimensionValue{}, err
@@ -286,7 +286,7 @@ func (s *Service) setDimensionValueRetired(ctx context.Context, actorID, valueID
 		if retired {
 			verb = "Retired"
 		}
-		return tx.recordDimensionChange(ctx, actorID, dim.ID, "%s %s in %s.", verb, val.Value, dim.Name)
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dim.ID, "%s %s in %s.", verb, val.Value, dim.Name)
 	})
 }
 
@@ -329,7 +329,7 @@ func (s *Service) setDimensionRetired(ctx context.Context, actorID, dimensionID 
 		if retired {
 			verb = "Retired"
 		}
-		return tx.recordDimensionChange(ctx, actorID, dimensionID, "%s the Dimension %s.", verb, before.Name)
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dimensionID, "%s the Dimension %s.", verb, before.Name)
 	})
 }
 
@@ -356,7 +356,7 @@ func (s *Service) SetDimensionRequired(ctx context.Context, actorID, dimensionID
 		}); err != nil {
 			return fmt.Errorf("set dimension required: %w", err)
 		}
-		return tx.recordDimensionChange(ctx, actorID, dimensionID, "Marked the Dimension %s %s.", before.Name, requiredWord(required))
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dimensionID, "Marked the Dimension %s %s.", before.Name, requiredWord(required))
 	})
 }
 
@@ -396,7 +396,7 @@ func (s *Service) MoveDimensionValue(ctx context.Context, actorID, valueID int64
 		if err := tx.setValueOrder(ctx, rows); err != nil {
 			return err
 		}
-		return tx.recordDimensionChange(ctx, actorID, dim.ID, "Moved %s %s in %s.", val.Value, direction, dim.Name)
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dim.ID, "Moved %s %s in %s.", val.Value, direction, dim.Name)
 	})
 }
 
@@ -429,7 +429,7 @@ func (s *Service) SortDimensionValues(ctx context.Context, actorID, dimensionID 
 		if err := tx.setValueOrder(ctx, sorted); err != nil {
 			return err
 		}
-		return tx.recordDimensionChange(ctx, actorID, dimensionID, "Sorted %s's values alphabetically.", dim.Name)
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dimensionID, "Sorted %s's values alphabetically.", dim.Name)
 	})
 }
 
@@ -496,7 +496,7 @@ func (s *Service) MergeDimensionValue(ctx context.Context, actorID, mergedID, ta
 		if err != nil {
 			return fmt.Errorf("load dimension: %w", err)
 		}
-		return tx.recordDimensionChange(ctx, actorID, dim.ID, "Merged %s into %s in %s.", merged.Value, target.Value, dim.Name)
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dim.ID, "Merged %s into %s in %s.", merged.Value, target.Value, dim.Name)
 	})
 }
 
@@ -559,7 +559,7 @@ func (s *Service) SetDimensionSelection(ctx context.Context, actorID, dimensionI
 		if err != nil {
 			return fmt.Errorf("set dimension selection: %w", err)
 		}
-		return tx.recordDimensionChange(ctx, actorID, dimensionID, "%s now takes %s.", dim.Name, selectionPhrase(dimensionFromRow(row)))
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dimensionID, "%s now takes %s.", dim.Name, selectionPhrase(dimensionFromRow(row)))
 	})
 }
 
@@ -589,7 +589,7 @@ func (s *Service) SetDimensionList(ctx context.Context, actorID, dimensionID int
 		if err != nil {
 			return fmt.Errorf("set dimension list: %w", err)
 		}
-		return tx.recordDimensionChange(ctx, actorID, dimensionID, "%s's list is now %s.", before.Name, listName(dimensionFromRow(row)))
+		return tx.recordDimensionDefinitionChange(ctx, actorID, dimensionID, "%s's list is now %s.", before.Name, listName(dimensionFromRow(row)))
 	})
 }
 
