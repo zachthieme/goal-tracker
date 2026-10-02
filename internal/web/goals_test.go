@@ -2625,3 +2625,406 @@ func TestGoalTableDownloadsTheFilteredGoalsAsCSV(t *testing.T) {
 		t.Errorf("download =\n%s\nwant\n%s", body, want)
 	}
 }
+
+// tableCellHTML is the markup of row's cell under the column headed head.
+func tableCellHTML(t *testing.T, page, row, head string) string {
+	t.Helper()
+	i := slices.Index(tableHeads(t, page), head)
+	if i < 0 {
+		t.Fatalf("the Goal table has no %s column", head)
+	}
+	cells := regexp.MustCompile(`(?s)<td[\s>].*?</td>`).FindAllString(row, -1)
+	if i >= len(cells) {
+		t.Fatalf("row has %d cells, no %s:\n%s", len(cells), head, row)
+	}
+	return cells[i]
+}
+
+// hasInput reports whether markup holds a form control a person types or picks
+// a value in.
+func hasInput(markup string) bool {
+	return regexp.MustCompile(`<(input|select|textarea)[\s>]`).MatchString(regexp.MustCompile(`<input[^>]*type="hidden"[^>]*>`).ReplaceAllString(markup, ""))
+}
+
+// editTable follows the Goal table's Edit values control from the table at
+// rawURL, returning the table in edit mode.
+func editTable(t *testing.T, client *http.Client, baseURL, rawURL string) string {
+	t.Helper()
+	tag := pageTag(t, getBody(t, client, baseURL+rawURL), "a", "goal-table-edit")
+	return getBody(t, client, baseURL+html.UnescapeString(attr(tag, "href")))
+}
+
+// tableRowOf is the Goal table's row for goal.
+func tableRowOf(t *testing.T, page string, goal domain.Goal) string {
+	t.Helper()
+	for _, row := range tableRows(t, page) {
+		if strings.Contains(row, navTo(goal.ID)) {
+			return row
+		}
+	}
+	t.Fatalf("the Goal table has no row for %s", goal.Title)
+	return ""
+}
+
+// In edit mode the Goal table is one form with one Save: the rows of the Goals
+// the person may set values on — as Owner, Delegate or Admin — get an input in
+// each Dimension and Field cell, and every other row stays read-only. Title,
+// Owner, Health, Lifecycle and delivery date never get one, since changing
+// them takes a Check-in, a Date Slip reason, a Handoff or a Lifecycle reason
+// (#80; CONTEXT.md: Delegate).
+func TestGoalTableEditModeHasInputsOnlyOnRowsThePersonMayEdit(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	h.CreateSeveralValuesDimension(boss, "Tags", "infra", "ux")
+	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.CreateField(boss, "Notes", domain.FieldLongText, "")
+	alpha := h.ActiveGoal(sam, "Alpha", "A matters.")
+	beta := h.CreateGoal(pat, "Beta", "B matters.")
+	gamma := h.CreateGoal(pat, "Gamma", "C matters.")
+	h.AddDelegate(pat, sam, gamma.ID)
+	ts := newServer(t, h)
+
+	page := editTable(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL, "/goals?layout=table")
+
+	form := pageTag(t, page, "form", "goal-table-form")
+	if attr(form, "method") != "post" || !strings.HasPrefix(attr(form, "action"), "/goals/values") {
+		t.Errorf("edit mode isn't a plain form POST to /goals/values: %s", form)
+	}
+	if n := strings.Count(page, `data-testid="goal-table-save"`); n != 1 {
+		t.Errorf("edit mode has %d Save buttons, want 1", n)
+	}
+	for _, tc := range []struct {
+		goal     domain.Goal
+		editable bool
+	}{{alpha, true}, {beta, false}, {gamma, true}} {
+		row := tableRowOf(t, page, tc.goal)
+		for _, head := range []string{"Pillar", "Tags", "Budget", "Notes"} {
+			if got := hasInput(tableCellHTML(t, page, row, head)); got != tc.editable {
+				t.Errorf("%s's %s cell has an input = %v, want %v", tc.goal.Title, head, got, tc.editable)
+			}
+		}
+		for _, head := range []string{"Title", "Owner", "Health", "Lifecycle", "Delivery date", "Last check-in"} {
+			if cell := tableCellHTML(t, page, row, head); hasInput(cell) {
+				t.Errorf("%s's %s cell has an input:\n%s", tc.goal.Title, head, cell)
+			}
+		}
+	}
+}
+
+// tableForm is what a browser would post from the Goal table's edit form as
+// page renders it, and where to.
+func tableForm(t *testing.T, page string) (string, url.Values) {
+	t.Helper()
+	form := between(t, page, `<form data-testid="goal-table-form"`, "</form>")
+	values := url.Values{}
+	for _, tag := range regexp.MustCompile(`<input[^>]*>`).FindAllString(form, -1) {
+		name, value := attr(tag, "name"), html.UnescapeString(attr(tag, "value"))
+		switch attr(tag, "type") {
+		case "checkbox", "radio":
+			if regexp.MustCompile(`\schecked[\s/>]`).MatchString(tag) {
+				values.Add(name, value)
+			}
+		default:
+			values.Add(name, value)
+		}
+	}
+	for _, m := range regexp.MustCompile(`(?s)(<textarea[^>]*>)(.*?)</textarea>`).FindAllStringSubmatch(form, -1) {
+		values.Add(attr(m[1], "name"), html.UnescapeString(m[2]))
+	}
+	for _, m := range regexp.MustCompile(`(?s)(<select[^>]*>)(.*?)</select>`).FindAllStringSubmatch(form, -1) {
+		options := regexp.MustCompile(`<option[^>]*>`).FindAllString(m[2], -1)
+		chosen := options[0]
+		for _, o := range options {
+			if regexp.MustCompile(`\sselected[\s/>]`).MatchString(o) {
+				chosen = o
+			}
+		}
+		values.Add(attr(m[1], "name"), attr(chosen, "value"))
+	}
+	return html.UnescapeString(attr(openTag(form), "action")), values
+}
+
+// controlName is the name of the form control on page labelled label.
+func controlName(t *testing.T, page, label string) string {
+	t.Helper()
+	at := regexp.MustCompile(`<(input|select|textarea|fieldset)[^>]*\saria-label="` + regexp.QuoteMeta(html.EscapeString(label)) + `"[^>]*>`).FindStringIndex(page)
+	if at == nil {
+		t.Fatalf("page has no control labelled %q", label)
+	}
+	if name := attr(page[at[0]:at[1]], "name"); name != "" {
+		return name
+	}
+	// A fieldset of checkboxes: the name its boxes share.
+	return attr(regexp.MustCompile(`<input[^>]*type="checkbox"[^>]*>`).FindString(page[at[1]:]), "name")
+}
+
+// valueID is the form value picking value.
+func valueID(v domain.DimensionValue) string {
+	return fmt.Sprintf("%d", v.ID)
+}
+
+// Saving the Goal table's edit form updates every Goal whose cells changed —
+// here three, one of them as a Delegate and one with a value typed into an
+// Extendable list — keeps each change in its Goal's history, and lands back on
+// the table out of edit mode with its filters (#80).
+func TestGoalTableSaveUpdatesEveryChangedGoalWithHistory(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	tags := h.CreateExtendableDimension(boss, "Tags", "infra", "ux")
+	h.SetDimensionSelection(boss, tags, domain.SelectionSeveral)
+	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.CreateField(boss, "Notes", domain.FieldLongText, "")
+	alpha := h.CreateGoal(sam, "Alpha", "A matters.")
+	beta := h.CreateGoal(sam, "Beta", "B matters.")
+	gamma := h.CreateGoal(pat, "Gamma", "C matters.")
+	h.AddDelegate(pat, sam, gamma.ID)
+	untouched := h.CreateGoal(sam, "Untouched", "U matters.")
+	h.AssignGoalValue(untouched, pillar.Values[1])
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := editTable(t, client, ts.URL, "/goals?layout=table&lifecycle=Proposed")
+	action, form := tableForm(t, page)
+	form.Set(controlName(t, page, "Pillar of Alpha"), valueID(pillar.Values[0]))
+	form.Add(controlName(t, page, "Tags of Beta"), valueID(tags.Values[1]))
+	form.Set(controlName(t, page, "Add a Tags value to Beta"), "mobile")
+	form.Set(controlName(t, page, "Budget of Gamma"), "1200")
+	form.Set(controlName(t, page, "Notes of Gamma"), "Line one\nLine two")
+	resp := postForm(t, client, ts.URL+action, form)
+	body := readBody(t, resp)
+
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/goals" {
+		t.Fatalf("save landed on %s with status %d, want the Goal list:\n%s", resp.Request.URL, resp.StatusCode, body)
+	}
+	if q := resp.Request.URL.Query(); q.Get("layout") != "table" || q.Get("lifecycle") != "Proposed" || q.Has("edit") {
+		t.Errorf("save landed on %s, want the table with its filter, out of edit mode", resp.Request.URL)
+	}
+	for goal, want := range map[string][]string{
+		"Alpha":     {"Pillar: set to Growth"},
+		"Beta":      {"Tags: added ux", "Tags: added mobile"},
+		"Gamma":     {"Budget: set to 1200", "Notes: set to Line one\nLine two"},
+		"Untouched": {"Pillar: set to Trust"},
+	} {
+		id := map[string]int64{"Alpha": alpha.ID, "Beta": beta.ID, "Gamma": gamma.ID, "Untouched": untouched.ID}[goal]
+		changes, err := h.Service.ValueHistory(context.Background(), id)
+		if err != nil {
+			t.Fatalf("ValueHistory: %v", err)
+		}
+		var got []string
+		for _, c := range changes {
+			got = append(got, historyText(c))
+		}
+		if !slices.Equal(got, want) {
+			t.Errorf("%s's history = %q, want %q", goal, got, want)
+		}
+	}
+	if row := tableRowOf(t, body, beta); tableCell(t, body, row, "Tags") != "ux, mobile" {
+		t.Errorf("Beta's Tags = %q, want ux, mobile", tableCell(t, body, row, "Tags"))
+	}
+}
+
+// historyText is a Value history entry as the Goal page words it.
+func historyText(c domain.ValueChange) string {
+	switch {
+	case c.Several && c.Before == "":
+		return c.Attribute + ": added " + c.After
+	case c.Several:
+		return c.Attribute + ": removed " + c.Before
+	case c.Before == "":
+		return c.Attribute + ": set to " + c.After
+	case c.After == "":
+		return c.Attribute + ": cleared"
+	}
+	return c.Attribute + ": " + c.Before + " → " + c.After
+}
+
+// One invalid number in the Goal table's edit form saves nothing: the form
+// comes back in edit mode with what was typed in every cell, the bad cell
+// marked with why, and the Goals keep their values (#80).
+func TestGoalTableSaveWithAnInvalidNumberSavesNothingAndKeepsWhatWasTyped(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.CreateField(boss, "Approver", domain.FieldShortText, "")
+	alpha := h.CreateGoal(sam, "Alpha", "A matters.")
+	beta := h.CreateGoal(sam, "Beta", "B matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := editTable(t, client, ts.URL, "/goals?layout=table")
+	action, form := tableForm(t, page)
+	form.Set(controlName(t, page, "Pillar of Alpha"), valueID(pillar.Values[1]))
+	form.Set(controlName(t, page, "Approver of Alpha"), "Dana & Co")
+	form.Set(controlName(t, page, "Budget of Beta"), "lots")
+	resp := postForm(t, client, ts.URL+action, form)
+	body := readBody(t, resp)
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422:\n%s", resp.StatusCode, body)
+	}
+	if !strings.Contains(pageElement(t, body, "div", "goal-table-errors"), "Nothing was saved") {
+		t.Errorf("the refusal doesn't say nothing was saved")
+	}
+	if n := strings.Count(body, `data-testid="cell-error"`); n != 1 {
+		t.Fatalf("%d cells are marked bad, want 1", n)
+	}
+	betaBudget := tableCellHTML(t, body, tableRowOf(t, body, beta), "Budget")
+	if !strings.Contains(betaBudget, `data-testid="cell-error"`) || !strings.Contains(betaBudget, "Budget takes a number") ||
+		!strings.Contains(betaBudget, `value="lots"`) || !strings.Contains(betaBudget, `aria-invalid="true"`) {
+		t.Errorf("Beta's Budget isn't marked bad keeping lots:\n%s", betaBudget)
+	}
+	alphaRow := tableRowOf(t, body, alpha)
+	if cell := tableCellHTML(t, body, alphaRow, "Approver"); !strings.Contains(cell, `value="Dana &amp; Co"`) {
+		t.Errorf("Alpha's Approver lost what was typed:\n%s", cell)
+	}
+	if cell := tableCellHTML(t, body, alphaRow, "Pillar"); !regexp.MustCompile(`<option value="`+valueID(pillar.Values[1])+`" selected`).MatchString(cell) {
+		t.Errorf("Alpha's Pillar lost the value picked:\n%s", cell)
+	}
+
+	for _, g := range []domain.Goal{alpha, beta} {
+		if changes, err := h.Service.ValueHistory(context.Background(), g.ID); err != nil || len(changes) != 0 {
+			t.Errorf("%s's history = %+v (%v), want nothing saved", g.Title, changes, err)
+		}
+	}
+
+	// Fixing the bad cell and saving the form as it came back saves it all.
+	action, form = tableForm(t, body)
+	form.Set(controlName(t, body, "Budget of Beta"), "900")
+	if resp := postForm(t, client, ts.URL+action, form); resp.StatusCode != http.StatusOK || resp.Request.URL.Query().Has("edit") {
+		t.Fatalf("saving the fixed form: status %d at %s:\n%s", resp.StatusCode, resp.Request.URL, readBody(t, resp))
+	}
+	for g, want := range map[int64]int{alpha.ID: 2, beta.ID: 1} {
+		if changes, _ := h.Service.ValueHistory(context.Background(), g); len(changes) != want {
+			t.Errorf("Goal %d's history = %+v, want %d entries", g, changes, want)
+		}
+	}
+}
+
+// A crafted save of the Goal table touching a Goal the person may not set
+// values on — its row had no inputs — is refused with 403, and nothing in it is
+// saved, not even the cells of the person's own Goals (#80; CONTEXT.md:
+// Delegate).
+func TestGoalTableSaveForAGoalThePersonCantEditIsRefused(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	mine := h.CreateGoal(sam, "Mine", "M matters.")
+	theirs := h.CreateGoal(pat, "Theirs", "T matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := editTable(t, client, ts.URL, "/goals?layout=table")
+	action, form := tableForm(t, page)
+	form.Set(controlName(t, page, "Budget of Mine"), "10")
+	form.Set(fmt.Sprintf("d.%d.%d", theirs.ID, pillar.ID), valueID(pillar.Values[0]))
+	form.Set(fmt.Sprintf("f.%d.%d", theirs.ID, budget.ID), "99")
+	resp := postForm(t, client, ts.URL+action, form)
+	body := readBody(t, resp)
+
+	if resp.StatusCode != http.StatusForbidden || !strings.Contains(body, "Theirs") {
+		t.Errorf("status = %d, want 403 naming Theirs:\n%s", resp.StatusCode, body)
+	}
+	for _, g := range []domain.Goal{mine, theirs} {
+		if changes, err := h.Service.ValueHistory(context.Background(), g.ID); err != nil || len(changes) != 0 {
+			t.Errorf("%s's history = %+v (%v), want nothing saved", g.Title, changes, err)
+		}
+	}
+}
+
+// A Retired value a Goal carries stays offered, marked retired, in the Goal
+// table's edit form, so saving another cell keeps it, and Retired values the
+// Goal doesn't carry aren't offered, as on the Goal page (#80; CONTEXT.md:
+// Retired).
+func TestGoalTableEditKeepsRetiredValuesTheGoalCarries(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+	quarter := h.CreateDimension(boss, "Quarter", "Q1", "Q2")
+	tags := h.CreateSeveralValuesDimension(boss, "Tags", "infra", "legacy", "ux")
+	h.CreateField(boss, "Budget", domain.FieldNumber, "")
+	alpha := h.CreateGoal(sam, "Alpha", "A matters.")
+	beta := h.CreateGoal(sam, "Beta", "B matters.")
+	h.AssignGoalValue(alpha, quarter.Values[0])
+	h.AssignGoalValue(alpha, tags.Values[1])
+	for _, v := range []domain.DimensionValue{quarter.Values[0], tags.Values[1]} {
+		if err := h.Service.RetireDimensionValue(ctx, boss.ID, v.ID); err != nil {
+			t.Fatalf("RetireDimensionValue: %v", err)
+		}
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := editTable(t, client, ts.URL, "/goals?layout=table")
+	if cell := tableCell(t, page, tableRowOf(t, page, alpha), "Quarter"); cell != "— Q1 (retired) Q2" {
+		t.Errorf("Alpha's Quarter offers %q, want its Retired Q1 marked", cell)
+	}
+	if cell := tableCell(t, page, tableRowOf(t, page, beta), "Tags"); cell != "infra ux" {
+		t.Errorf("Beta's Tags offers %q, want no Retired value", cell)
+	}
+	action, form := tableForm(t, page)
+	form.Set(controlName(t, page, "Budget of Alpha"), "5")
+	resp := postForm(t, client, ts.URL+action, form)
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+		t.Fatalf("save status %d:\n%s", resp.StatusCode, body)
+	}
+
+	values, err := h.Service.GoalValues(ctx, alpha.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	var names []string
+	for _, v := range values {
+		names = append(names, v.Value)
+	}
+	if got := strings.Join(names, ", "); got != "Q1, legacy" {
+		t.Errorf("Alpha's values = %q, want its Retired Q1 and legacy kept", got)
+	}
+}
+
+// Saving the Goal table's edit form applies only the cells changed in it, so a
+// value someone else saved meanwhile in a cell left alone is kept, not put back
+// to what the form showed (#80: Save submits every changed row).
+func TestGoalTableSaveLeavesCellsItDidNotChange(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "")
+	approver := h.CreateField(boss, "Approver", domain.FieldShortText, "")
+	alpha := h.CreateGoal(sam, "Alpha", "A matters.")
+	h.SetGoalField(sam, alpha, budget, "100")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := editTable(t, client, ts.URL, "/goals?layout=table")
+	h.SetGoalField(boss, alpha, budget, "300")
+	action, form := tableForm(t, page)
+	form.Set(controlName(t, page, "Approver of Alpha"), "Dana")
+	resp := postForm(t, client, ts.URL+action, form)
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+		t.Fatalf("save status %d:\n%s", resp.StatusCode, body)
+	}
+
+	values, err := h.Service.GoalFields(context.Background(), alpha.ID)
+	if err != nil {
+		t.Fatalf("GoalFields: %v", err)
+	}
+	got := map[int64]string{}
+	for _, v := range values {
+		got[v.Field.ID] = v.Value
+	}
+	if got[budget.ID] != "300" || got[approver.ID] != "Dana" {
+		t.Errorf("Alpha's Budget, Approver = %q, %q, want 300 kept and Dana saved", got[budget.ID], got[approver.ID])
+	}
+}
