@@ -68,3 +68,15 @@ func (h *Harness) SetDimensionRequired(admin domain.Account, dim domain.Dimensio
 		h.T.Fatalf("SetDimensionRequired: %v", err)
 	}
 }
+
+// NameValueWithSemicolon renames value to name directly in the database,
+// failing the test on error, so a test can arrange a value named with a
+// semicolon before the service refused one (#101).
+func (h *Harness) NameValueWithSemicolon(value domain.DimensionValue, name string) domain.DimensionValue {
+	h.T.Helper()
+	if _, err := h.DB.Exec(`UPDATE dimension_values SET value = ? WHERE id = ?`, name, value.ID); err != nil {
+		h.T.Fatalf("name value %q: %v", name, err)
+	}
+	value.Value = name
+	return value
+}

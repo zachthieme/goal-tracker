@@ -27,6 +27,9 @@ const entrySeparator = "; "
 // own columns, then one column per Dimension and per Field that isn't Retired.
 // Several values or entries in a cell are separated by semicolons, and the
 // Owner is written as an email, so the file can be edited and imported again.
+// A Goal carrying a value that contains a semicolon, named so before that was
+// refused, would split on import, so the download is refused naming the value,
+// and nothing is written (#101).
 func (im *Importer) Download(ctx context.Context, w io.Writer, goals []domain.Goal) error {
 	dims, err := im.svc.ListDimensions(ctx)
 	if err != nil {
@@ -38,7 +41,6 @@ func (im *Importer) Download(ctx context.Context, w io.Writer, goals []domain.Go
 	}
 	dims, fields = domain.OfferedDimensions(dims), domain.OfferedFields(fields)
 
-	out := csv.NewWriter(w)
 	header := append([]string{idColumn}, goalColumns...)
 	for _, d := range dims {
 		header = append(header, d.Name)
@@ -46,9 +48,7 @@ func (im *Importer) Download(ctx context.Context, w io.Writer, goals []domain.Go
 	for _, f := range fields {
 		header = append(header, f.Name)
 	}
-	if err := out.Write(header); err != nil {
-		return fmt.Errorf("write CSV: %w", err)
-	}
+	records := [][]string{header}
 	for _, g := range goals {
 		cells, err := goalCells(ctx, im.svc, g)
 		if err != nil {
@@ -65,9 +65,14 @@ func (im *Importer) Download(ctx context.Context, w io.Writer, goals []domain.Go
 		for _, d := range dims {
 			var names []string
 			for _, v := range values {
-				if v.DimensionID == d.ID {
-					names = append(names, v.Value)
+				if v.DimensionID != d.ID {
+					continue
 				}
+				if strings.Contains(v.Value, ";") {
+					return fmt.Errorf("%w: %s carries the %s value %q, and a value can't contain a semicolon, because the import format uses it to separate values; an Admin can rename it on the Dimensions page",
+						domain.ErrValidation, g.Title, d.Name, v.Value)
+				}
+				names = append(names, v.Value)
 			}
 			record = append(record, strings.Join(names, entrySeparator))
 		}
@@ -84,12 +89,9 @@ func (im *Importer) Download(ctx context.Context, w io.Writer, goals []domain.Go
 			}
 			record = append(record, value)
 		}
-		if err := out.Write(record); err != nil {
-			return fmt.Errorf("write CSV: %w", err)
-		}
+		records = append(records, record)
 	}
-	out.Flush()
-	if err := out.Error(); err != nil {
+	if err := csv.NewWriter(w).WriteAll(records); err != nil {
 		return fmt.Errorf("write CSV: %w", err)
 	}
 	return nil

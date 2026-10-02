@@ -3,7 +3,9 @@
 An Admin can load the pilot's real Goals from a spreadsheet instead of entering
 them by hand (ticket #22). The import reads **CSV** and **XLSX** (the first
 worksheet of a workbook), one Goal per row, and turns each row into the same
-actions a person would take in the UI.
+actions a person would take in the UI. A CSV file may start with a UTF-8
+byte-order mark, as Excel writes one when it saves "CSV UTF-8"; the import
+ignores it.
 
 An import runs in two steps:
 
@@ -18,7 +20,10 @@ A worked example is in [`testdata/import-example.csv`](../testdata/import-exampl
 The Goal table's **Download CSV** link writes the Goals its filters keep in this
 same format, with a leading `ID` column, so the file can be edited and imported
 again to update those Goals' Dimension values and Fields (see
-[Updating Goals by ID](#updating-goals-by-id)).
+[Updating Goals by ID](#updating-goals-by-id)). A Goal carrying a value whose
+name contains a semicolon, named so before that was refused, would not import
+again, so such a download is refused, naming the Dimension and the value, and
+no file is written; an Admin renames the value on the Dimensions page first.
 
 ## Columns
 
@@ -101,6 +106,12 @@ Growth; Trust
 In a Dimension that takes one value, a cell listing more than one is reported on
 that row.
 
+**No semicolons in values.** Because a semicolon always separates values, a
+value can't contain one. There is no escape for it. The app refuses a value
+containing a semicolon wherever one is added or renamed, so every value in a
+list can be written in a cell; a cell such as `R&D; Ops` is read as the two
+values `R&D` and `Ops`.
+
 **Unknown values.** What happens to a value that isn't in the list depends on the
 Dimension's list (CONTEXT.md: Fixed, Extendable):
 
@@ -162,7 +173,7 @@ The dry run and a rolled-back commit report, per row: the row number, the Goal
 title, and every error found on the row — a missing required field, a bad `Kind`
 or date, a malformed Milestone or Metric, a `Parents` title that is not in the
 file, a value not in a Fixed Dimension's list, more than one value in a
-one-value Dimension, a Field number or date that doesn't parse, an `ID` that
+one-value Dimension (which says a value can't contain a semicolon), a Field number or date that doesn't parse, an `ID` that
 matches no Goal, or a cycle. A row
 with several problems lists them all in one dry run.
 

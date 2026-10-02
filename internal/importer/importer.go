@@ -456,11 +456,12 @@ func parseUpdateRow(line int, rawID string, row []string, lay layout) rowSpec {
 
 // parseDimensionCell reads the values a Dimension cell gives a Goal, with an
 // error for each it can't: more than one in a Dimension that takes one, or a
-// value not in a Fixed Dimension's list.
+// value not in a Fixed Dimension's list. A semicolon always separates values,
+// so a value can't contain one (#101), and the error for one Dimension says so.
 func parseDimensionCell(dim domain.Dimension, raw string) ([]dimensionValue, []string) {
 	values := splitValues(raw)
 	if len(values) > 1 && !dim.TakesSeveral() {
-		return nil, []string{fmt.Sprintf("%s takes one value per Goal", dim.Name)}
+		return nil, []string{fmt.Sprintf("%s takes one value per Goal, and a value can't contain a semicolon, because the import format uses it to separate values", dim.Name)}
 	}
 	var (
 		out  []dimensionValue
@@ -858,9 +859,11 @@ func parseGrid(filename string, data []byte) ([]sheetRow, error) {
 
 // parseCSV reads CSV records, numbering them as a spreadsheet opening the file
 // would: the CSV reader skips blank lines, but each is still a row, and a quoted
-// cell spanning several lines is still one row.
+// cell spanning several lines is still one row. A leading UTF-8 byte-order
+// mark, which Excel writes when it saves "CSV UTF-8", is ignored (#101).
 func parseCSV(data []byte) ([]sheetRow, error) {
-	r := csv.NewReader(strings.NewReader(string(data)))
+	data = bytes.TrimPrefix(data, []byte("\uFEFF"))
+	r := csv.NewReader(bytes.NewReader(data))
 	r.FieldsPerRecord = -1 // rows may omit trailing empty columns
 	var (
 		rows     []sheetRow

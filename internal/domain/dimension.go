@@ -89,7 +89,7 @@ type DimensionDefinition struct {
 // entry to the Definition log saying so. Only an Admin may define Dimensions
 // (CONTEXT.md: Admin). The name and at least one value are required; blank
 // values are dropped, and so is a value matching an earlier one whatever its
-// case.
+// case. A value containing a semicolon is refused (see checkValueName).
 func (s *Service) DefineDimension(ctx context.Context, actorID int64, def DimensionDefinition) (Dimension, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return Dimension{}, err
@@ -101,6 +101,9 @@ func (s *Service) DefineDimension(ctx context.Context, actorID int64, def Dimens
 	cleaned := make([]string, 0, len(def.Values))
 	for _, v := range def.Values {
 		v = strings.TrimSpace(v)
+		if err := checkValueName(v); err != nil {
+			return Dimension{}, err
+		}
 		if v != "" && !slices.ContainsFunc(cleaned, func(c string) bool { return strings.EqualFold(c, v) }) {
 			cleaned = append(cleaned, v)
 		}
@@ -156,8 +159,9 @@ func (s *Service) DefineDimension(ctx context.Context, actorID int64, def Dimens
 // AddDimensionValue adds a value to an existing Dimension's list. Only an Admin
 // may (CONTEXT.md: Admins add values). The value is required. One matching an
 // existing value whatever its case or surrounding spaces adds nothing and
-// returns that value, and one matching a Retired value is refused. A value
-// added is written to the Definition log.
+// returns that value, and one matching a Retired value is refused, as is a new
+// value containing a semicolon (see checkValueName). A value added is written
+// to the Definition log.
 func (s *Service) AddDimensionValue(ctx context.Context, actorID, dimensionID int64, value string) (DimensionValue, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return DimensionValue{}, err
@@ -177,8 +181,12 @@ func (s *Service) AddDimensionValue(ctx context.Context, actorID, dimensionID in
 }
 
 // addDimensionValue adds value to dim's list and writes it to the Definition
-// log, together. The caller has checked actorID may add it.
+// log, together. The caller has checked actorID may add it. A value containing
+// a semicolon is refused (see checkValueName).
 func (s *Service) addDimensionValue(ctx context.Context, actorID int64, dim db.Dimension, value string) (DimensionValue, error) {
+	if err := checkValueName(value); err != nil {
+		return DimensionValue{}, err
+	}
 	var val DimensionValue
 	err := s.WithinTx(ctx, func(tx *Service) error {
 		row, err := tx.queries.CreateDimensionValue(ctx, db.CreateDimensionValueParams{
@@ -198,6 +206,16 @@ func (s *Service) addDimensionValue(ctx context.Context, actorID int64, dim db.D
 	return val, nil
 }
 
+// checkValueName refuses a value name containing a semicolon: the import
+// format separates several values in one cell with one, so such a value could
+// not be downloaded and imported again (#101).
+func checkValueName(name string) error {
+	if strings.Contains(name, ";") {
+		return fmt.Errorf("%w: %s: a value can't contain a semicolon, because the import format uses it to separate values", ErrValidation, name)
+	}
+	return nil
+}
+
 // valueInDimension loads a value with the Dimension it is in.
 func (s *Service) valueInDimension(ctx context.Context, valueID int64) (db.DimensionValue, db.Dimension, error) {
 	val, err := s.queries.GetDimensionValue(ctx, valueID)
@@ -213,8 +231,10 @@ func (s *Service) valueInDimension(ctx context.Context, valueID int64) (db.Dimen
 
 // RenameDimensionValue renames a value, keeping its identity so every Goal
 // assigned it follows the rename (CONTEXT.md: Admins rename values). Only an
-// Admin may. The new name is required. A rename is written to the Definition
-// log with the old and new name.
+// Admin may. The new name is required and can't contain a semicolon (see
+// checkValueName), though a value named with one before that was refused may
+// be renamed to a name without. A rename is written to the Definition log
+// with the old and new name.
 func (s *Service) RenameDimensionValue(ctx context.Context, actorID, valueID int64, newValue string) (DimensionValue, error) {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return DimensionValue{}, err
@@ -222,6 +242,9 @@ func (s *Service) RenameDimensionValue(ctx context.Context, actorID, valueID int
 	newValue = strings.TrimSpace(newValue)
 	if newValue == "" {
 		return DimensionValue{}, fmt.Errorf("%w: a value cannot be blank", ErrValidation)
+	}
+	if err := checkValueName(newValue); err != nil {
+		return DimensionValue{}, err
 	}
 	var renamed DimensionValue
 	err := s.WithinTx(ctx, func(tx *Service) error {

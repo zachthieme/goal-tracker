@@ -643,7 +643,8 @@ Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,  Growth ;Trust ;
 	}
 }
 
-// More than one value in a one-value Dimension's column is a row error (#77).
+// More than one value in a one-value Dimension's column is a row error, which
+// says a value can't contain the semicolon that separates them (#77, #101).
 func TestDryRunRejectsSeveralValuesInAOneValueColumn(t *testing.T) {
 	const csv = `Title,Owner,So What,Kind,Pillar
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,Growth; Reliability
@@ -656,7 +657,7 @@ Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,Growth; Reliability
 	if err != nil {
 		t.Fatalf("DryRun: %v", err)
 	}
-	if want := "Pillar takes one value per Goal"; len(rep.Rows) != 1 || strings.Join(rep.Rows[0].Errors, "; ") != want {
+	if want := "Pillar takes one value per Goal, and a value can't contain a semicolon, because the import format uses it to separate values"; len(rep.Rows) != 1 || strings.Join(rep.Rows[0].Errors, "; ") != want {
 		t.Errorf("rows = %+v, want one row with the error %q", rep.Rows, want)
 	}
 }
@@ -802,5 +803,27 @@ func TestRetiredDimensionAndFieldColumnsAreRejected(t *testing.T) {
 		if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), fmt.Sprintf("column %q", column)) {
 			t.Errorf("%s column: DryRun error = %v, want the column rejected", column, err)
 		}
+	}
+}
+
+// Excel saves "CSV UTF-8" with a leading byte-order mark; the import ignores
+// it, in a dry run and a commit alike, so the first header still names its
+// column (#101).
+func TestCSVWithAByteOrderMarkImportsAsWithout(t *testing.T) {
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateDimension(admin, "Pillar", "Growth", "Reliability")
+	data := append([]byte{0xEF, 0xBB, 0xBF}, cleanCSV...)
+
+	dry, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.csv", data)
+	if err != nil || dry.HasErrors() {
+		t.Fatalf("DryRun = %+v, %v; want a clean dry run", dry, err)
+	}
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "goals.csv", data)
+	if err != nil || !rep.Committed {
+		t.Fatalf("Commit = %+v, %v; want it committed", rep, err)
+	}
+	if len(rep.Rows) != 2 || rep.Rows[0].Title != "Grow revenue" {
+		t.Errorf("rows = %+v, want the two Goals of the file", rep.Rows)
 	}
 }
