@@ -20,7 +20,7 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 			</div>
 			<details data-testid="propose-goal" class="gl-propose">
 				<summary data-testid="new-goal" class="btn primary">New goal</summary>
-				<form class="card" hx-post="/goals" hx-target="#goal-list" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful){this.reset();this.closest('details').open=false}" method="post" action="/goals">
+				<form class="card" hx-post={ view.proposeURL() } hx-target="#goal-list" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful){this.reset();this.closest('details').open=false}" method="post" action="/goals">
 					<h3>Propose a Goal</h3>
 					<label class="field">
 						<span>Title</span>
@@ -88,16 +88,30 @@ templ goalFilters(view goalsListData) {
 						}
 					</fieldset>
 				}
-				<label>
-					Group by
-					<select name="group">
-						<option value="" selected?={ view.GroupID == 0 }>— none —</option>
-						for _, d := range view.Dimensions {
-							<option value={ fmt.Sprintf("%d", d.ID) } selected?={ view.GroupID == d.ID }>{ d.Name }</option>
-						}
-					</select>
-				</label>
+				if view.Table == nil {
+					<label>
+						Group by
+						<select name="group">
+							<option value="" selected?={ view.GroupID == 0 }>— none —</option>
+							for _, d := range view.Dimensions {
+								<option value={ fmt.Sprintf("%d", d.ID) } selected?={ view.GroupID == d.ID }>{ d.Name }</option>
+							}
+						</select>
+					</label>
+				}
 			</details>
+		}
+		if view.Table != nil {
+			<input type="hidden" name="layout" value="table"/>
+			if view.Table.Sort != "" {
+				<input type="hidden" name="sort" value={ view.Table.Sort }/>
+			}
+			if view.Table.Desc {
+				<input type="hidden" name="dir" value="desc"/>
+			}
+			if group := view.Query.Get("group"); group != "" {
+				<input type="hidden" name="group" value={ group }/>
+			}
 		}
 	</form>
 }
@@ -107,8 +121,17 @@ templ goalFilters(view goalsListData) {
 // the Goals it lists. Grouped by a several-values Dimension a Goal can appear in
 // more than one section, so the total counts each Goal once (ADR 0005).
 templ goalList(view goalsListData) {
+	if view.Table != nil {
+		@goalTableLayout(view)
+	} else {
+		@goalListLayout(view)
+	}
+}
+
+// goalListLayout is the Goal list's list layout, led by Health.
+templ goalListLayout(view goalsListData) {
 	<div id="goal-list" data-testid="goal-list" class="card">
-		<p data-testid="goal-count" class="muted small gl-count">{ goalCount(len(view.Rows)) }</p>
+		@goalListHead(view)
 		<table>
 			<thead>
 				<tr><th>Health</th><th>Goal</th><th>Owner</th><th>Due</th><th>Last check-in</th><th>Dimension tags</th></tr>
@@ -148,6 +171,32 @@ templ goalList(view goalsListData) {
 				</tbody>
 			}
 		</table>
+	</div>
+}
+
+// goalListHead tops the Goal list with its total and the List / Table toggle,
+// whose links keep every filter.
+templ goalListHead(view goalsListData) {
+	<div class="gl-head">
+		<p data-testid="goal-count" class="muted small gl-count">{ goalCount(len(view.Rows)) }</p>
+		<nav class="gl-layout" aria-label="Layout">
+			<a
+				data-testid="layout-list"
+				class="btn quiet sm"
+				href={ view.layoutURL("") }
+				if view.Table == nil {
+					aria-current="page"
+				}
+			>List</a>
+			<a
+				data-testid="layout-table"
+				class="btn quiet sm"
+				href={ view.layoutURL(layoutTable) }
+				if view.Table != nil {
+					aria-current="page"
+				}
+			>Table</a>
+		</nav>
 	</div>
 }
 
@@ -202,9 +251,97 @@ templ goalListRow(row goalRow) {
 	</tr>
 }
 
+// goalTableLayout is the Goal list's table layout: one read-only row per Goal,
+// a column per live Dimension and Field, and no totals row (ADR 0005). It
+// scrolls sideways inside its own container rather than widening the page.
+templ goalTableLayout(view goalsListData) {
+	<div id="goal-list" data-testid="goal-list" class="card">
+		@goalListHead(view)
+		@goalTableColumns(view)
+		<div class="table-scroll">
+			<table data-testid="goal-table">
+				<thead data-testid="goal-table-head">
+					<tr>
+						for _, col := range view.Table.Columns {
+							<th scope="col" aria-sort={ view.Table.ariaSort(col) }><a href={ view.sortURL(col.Key) }>{ col.Label }</a></th>
+						}
+					</tr>
+				</thead>
+				<tbody>
+					if len(view.Table.Rows) == 0 {
+						<tr><td data-testid="no-goals" colspan={ fmt.Sprintf("%d", len(view.Table.Columns)) } class="muted">No Goals match.</td></tr>
+					}
+					for _, row := range view.Table.Rows {
+						<tr data-testid="goal-table-row">
+							for _, col := range view.Table.Columns {
+								@goalTableCell(col, row)
+							}
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	</div>
+}
+
+// goalTableColumns is the Columns control: a tick per column but Title, which
+// a plain GET form saves for this browser, so it works without JavaScript.
+templ goalTableColumns(view goalsListData) {
+	<details data-testid="goal-columns-control" class="gl-columns">
+		<summary>Columns</summary>
+		<form data-testid="goal-columns" method="get" action="/goals">
+			for _, kv := range view.carriedQuery() {
+				<input type="hidden" name={ kv[0] } value={ kv[1] }/>
+			}
+			<input type="hidden" name="columns" value="1"/>
+			for _, col := range view.Table.All {
+				if col.Key != "title" {
+					<label><input type="checkbox" name="show" value={ col.Key } checked?={ !view.Table.Hidden[col.Key] }/>{ col.Label }</label>
+				}
+			}
+			<button type="submit" class="btn sm">Apply</button>
+		</form>
+	</details>
+}
+
+// goalTableCell is one row's cell in col.
+templ goalTableCell(col tableColumn, row goalTableRow) {
+	{{ g := row.Goal }}
+	switch col.Key {
+		case "title":
+			<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></td>
+		case "owner":
+			<td>@person(g.Owner)
+</td>
+		case "health":
+			<td>
+				if health := row.health(); health != "" {
+					<span class={ "badge", healthClass(health) }><span class="dot"></span>{ health }</span>
+				}
+			</td>
+		case "lifecycle":
+			<td>{ g.Lifecycle }</td>
+		case "due":
+			<td class="num">
+				if !g.DeliveryDate.IsZero() {
+					@struckDates(row.PriorDates)
+					{ fmtDate(g.DeliveryDate) }
+				}
+			</td>
+		case "checkin":
+			<td class="muted">
+				if row.Latest != nil {
+					{ row.lastCheckin() }
+				}
+			</td>
+		default:
+			<td class={ templ.KV("num", col.Field != nil && col.Field.Type == domain.FieldNumber), templ.KV("gl-long", col.Field != nil && col.Field.Type == domain.FieldLongText) }>{ col.text(row) }</td>
+	}
+}
+
 // goalsStyles are the Goal list's own rules on top of app.css: the propose
-// form's popover, the one-row filter bar, and the table's group headers and
-// marks.
+// form's popover, the one-row filter bar, the table's group headers and marks,
+// and the table layout's toggle, Columns control and sort headers.
 templ goalsStyles() {
 	<style>
 		.gl-propose{position:relative}
@@ -220,6 +357,18 @@ templ goalsStyles() {
 		.gl-group th{background:var(--color-primary-subtle);color:var(--color-ink);font-size:13px;font-weight:600;letter-spacing:0;text-transform:none}
 		.gl-marks{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
 		#goal-list td .tag{margin:4px 4px 4px 0}
+		.gl-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-right:12px}
+		.gl-layout{display:inline-flex;gap:4px}
+		.gl-layout a[aria-current=page]{background:var(--color-primary-subtle);color:var(--color-ink)}
+		.gl-columns{padding:0 12px}
+		.gl-columns>summary{justify-content:flex-start;color:var(--color-primary-strong);font-weight:600}
+		.gl-columns form{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding-bottom:12px}
+		.gl-columns label{display:inline-flex;align-items:center;gap:8px}
+		#goal-list th a{color:inherit;text-decoration:none}
+		#goal-list th[aria-sort=ascending] a::after{content:" ↑"}
+		#goal-list th[aria-sort=descending] a::after{content:" ↓"}
+		.table-scroll td{white-space:nowrap}
+		.table-scroll td.gl-long{white-space:normal;min-width:240px}
 	</style>
 }
 

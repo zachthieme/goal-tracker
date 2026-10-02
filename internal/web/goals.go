@@ -5,12 +5,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/a-h/templ"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -20,6 +23,10 @@ import (
 const dateLayout = "2006-01-02"
 
 func (s *Server) handleGoals(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	if r.URL.Query().Has("columns") {
+		s.handleGoalTableColumns(w, r)
+		return
+	}
 	view, err := s.goalsListView(r, current)
 	if err != nil {
 		http.Error(w, "could not list goals", http.StatusInternalServerError)
@@ -45,7 +52,9 @@ func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, curren
 
 	// htmx swaps the Goal list in place; a plain form post reloads the page. The
 	// swap re-renders the default unfiltered list — the propose form posts to
-	// /goals with no query, so there is no filter or grouping to preserve.
+	// /goals with no query, so there is no filter or grouping to preserve — save
+	// in the table layout, whose form posts its view's query so the table swaps
+	// back in.
 	if r.Header.Get("HX-Request") == "true" {
 		view, err := s.goalsListView(r, current)
 		if err != nil {
@@ -69,12 +78,17 @@ type goalsListData struct {
 	Selected   map[int64]bool
 	GroupID    int64
 	Groups     []goalRowGroup
+	// Query is the request's query string, so the layout toggle and the table's
+	// column headers link to the same view with one thing changed.
+	Query url.Values
+	// Table is the table layout (?layout=table), nil in the list layout.
+	Table *goalTable
 }
 
 // moreFiltersSet reports whether a Dimension filter or grouping is chosen, so
 // More filters, where they're folded away, opens to show it.
 func (v goalsListData) moreFiltersSet() bool {
-	return len(v.Selected) > 0 || v.GroupID != 0
+	return len(v.Selected) > 0 || (v.GroupID != 0 && v.Table == nil)
 }
 
 // goalCount is the Goal list's total: "1 Goal", "3 Goals".
@@ -298,6 +312,15 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 		Filter:     filter,
 		Dimensions: dims,
 		Selected:   selected,
+		Query:      r.URL.Query(),
+	}
+	if view.Query.Get("layout") == layoutTable {
+		table, err := s.goalTableView(ctx, rows, dims, view.Query, hiddenColumns(r))
+		if err != nil {
+			return goalsListData{}, err
+		}
+		view.Table = table
+		return view, nil
 	}
 	if raw := r.URL.Query().Get("group"); raw != "" {
 		if groupID, err := strconv.ParseInt(raw, 10, 64); err == nil {
@@ -1224,4 +1247,341 @@ func ownershipOutcome(status string) string {
 		return "reassigned by an Admin"
 	}
 	return status
+}
+
+// layoutTable is the ?layout= value that shows the Goal list as a flat table,
+// one row per Goal and a column per Dimension and Field.
+const layoutTable = "table"
+
+// queryURL links to the Goal list with this view's query string changed by
+// edit, so a link changes one thing and keeps every filter.
+func (v goalsListData) queryURL(edit func(url.Values)) templ.SafeURL {
+	q := url.Values{}
+	for k, vs := range v.Query {
+		q[k] = slices.Clone(vs)
+	}
+	edit(q)
+	if len(q) == 0 {
+		return "/goals"
+	}
+	return templ.SafeURL("/goals?" + q.Encode())
+}
+
+// proposeURL is where the propose form posts for its htmx swap: /goals, or in
+// the table layout the table's own view, so the swap keeps the table.
+func (v goalsListData) proposeURL() string {
+	if v.Table == nil {
+		return "/goals"
+	}
+	return string(v.queryURL(func(url.Values) {}))
+}
+
+// layoutURL links to this view in the list layout ("") or the table layout,
+// keeping every filter.
+func (v goalsListData) layoutURL(layout string) templ.SafeURL {
+	return v.queryURL(func(q url.Values) {
+		if layout == "" {
+			q.Del("layout")
+			return
+		}
+		q.Set("layout", layout)
+	})
+}
+
+// goalTable is the Goal list's table layout: its columns and its rows, each
+// with the Field values its Field columns show. It is read-only, has no totals
+// row (ADR 0005), and isn't grouped.
+type goalTable struct {
+	// Columns are the columns shown; All adds the ones this browser hides, for
+	// the Columns control, and Hidden names those.
+	Columns []tableColumn
+	All     []tableColumn
+	Hidden  map[string]bool
+	Rows    []goalTableRow
+	// Sort is the Key of the column the rows are sorted by (?sort=), "" for the
+	// list's problem-first order; Desc reverses it (?dir=desc).
+	Sort string
+	Desc bool
+}
+
+// tableColumn is one of the Goal table's columns, keyed for the URL. A
+// Dimension's or Field's column carries it.
+type tableColumn struct {
+	Key       string
+	Label     string
+	Dimension *domain.Dimension
+	Field     *domain.Field
+}
+
+// goalTableRow is one Goal in the table: its list row and its value in each
+// Field, by Field ID.
+type goalTableRow struct {
+	goalRow
+	Fields map[int64]string
+}
+
+// goalTableView builds the table layout over the list's filtered, sorted rows,
+// leaving out the columns this browser hides. It sorts by the ?sort= column,
+// if there is one.
+func (s *Server) goalTableView(ctx context.Context, rows []goalRow, dims []domain.Dimension, q url.Values, hidden map[string]bool) (*goalTable, error) {
+	all, err := s.tableColumns(ctx, dims)
+	if err != nil {
+		return nil, err
+	}
+	table := &goalTable{All: all, Hidden: hidden}
+	for _, col := range all {
+		if !hidden[col.Key] {
+			table.Columns = append(table.Columns, col)
+		}
+	}
+	for _, row := range rows {
+		values, err := s.svc.GoalFields(ctx, row.Goal.ID)
+		if err != nil {
+			return nil, err
+		}
+		tr := goalTableRow{goalRow: row, Fields: map[int64]string{}}
+		for _, fv := range values {
+			tr.Fields[fv.Field.ID] = fv.Value
+		}
+		table.Rows = append(table.Rows, tr)
+	}
+	for _, col := range all {
+		if col.Key == q.Get("sort") {
+			table.Sort, table.Desc = col.Key, q.Get("dir") == "desc"
+			sortTableRows(table.Rows, col, table.Desc)
+		}
+	}
+	return table, nil
+}
+
+// tableColumns are the Goal table's columns: the fixed ones, then each live
+// Dimension and each live Field in name order (CONTEXT.md: Retired).
+func (s *Server) tableColumns(ctx context.Context, dims []domain.Dimension) ([]tableColumn, error) {
+	all, err := s.svc.ListFields(ctx)
+	if err != nil {
+		return nil, err
+	}
+	fields := domain.OfferedFields(all)
+	columns := []tableColumn{
+		{Key: "title", Label: "Title"},
+		{Key: "owner", Label: "Owner"},
+		{Key: "health", Label: "Health"},
+		{Key: "lifecycle", Label: "Lifecycle"},
+		{Key: "due", Label: "Delivery date"},
+		{Key: "checkin", Label: "Last check-in"},
+	}
+	for i := range dims {
+		columns = append(columns, tableColumn{Key: fmt.Sprintf("d%d", dims[i].ID), Label: dims[i].Name, Dimension: &dims[i]})
+	}
+	for i := range fields {
+		columns = append(columns, tableColumn{Key: fmt.Sprintf("f%d", fields[i].ID), Label: fields[i].Name, Field: &fields[i]})
+	}
+	return columns, nil
+}
+
+// hiddenColumnsCookie remembers, in this browser, the Goal table columns a
+// person hid: their keys, comma-separated.
+const hiddenColumnsCookie = "goal_table_hidden"
+
+// hiddenColumns reads the columns this browser hides. Title is never hidden.
+func hiddenColumns(r *http.Request) map[string]bool {
+	hidden := map[string]bool{}
+	if c, err := r.Cookie(hiddenColumnsCookie); err == nil {
+		for _, key := range strings.Split(c.Value, ",") {
+			if key != "" && key != "title" {
+				hidden[key] = true
+			}
+		}
+	}
+	return hidden
+}
+
+// handleGoalTableColumns saves the Columns control's choice: every column it
+// offers that isn't ticked (?show=) is hidden, remembered in a cookie so it
+// holds on the next visit. It then redirects to the same view, so the choice
+// stays out of a URL someone might share.
+func (s *Server) handleGoalTableColumns(w http.ResponseWriter, r *http.Request) {
+	dims, err := s.svc.ListDimensions(r.Context())
+	if err != nil {
+		http.Error(w, "could not list goals", http.StatusInternalServerError)
+		return
+	}
+	columns, err := s.tableColumns(r.Context(), domain.OfferedDimensions(dims))
+	if err != nil {
+		http.Error(w, "could not list goals", http.StatusInternalServerError)
+		return
+	}
+	q := r.URL.Query()
+	var hidden []string
+	for _, col := range columns {
+		if col.Key != "title" && !slices.Contains(q["show"], col.Key) {
+			hidden = append(hidden, col.Key)
+		}
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     hiddenColumnsCookie,
+		Value:    strings.Join(hidden, ","),
+		Path:     "/",
+		MaxAge:   400 * 24 * 60 * 60,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+	q.Del("columns")
+	q.Del("show")
+	http.Redirect(w, r, string(goalsListData{Query: q}.queryURL(func(url.Values) {})), http.StatusSeeOther)
+}
+
+// carriedQuery is the view's query string as name/value pairs, in a stable
+// order, for a form that must land back on the same view.
+func (v goalsListData) carriedQuery() [][2]string {
+	var pairs [][2]string
+	for _, k := range slices.Sorted(maps.Keys(v.Query)) {
+		for _, val := range v.Query[k] {
+			pairs = append(pairs, [2]string{k, val})
+		}
+	}
+	return pairs
+}
+
+// sortURL links to this view sorted by the column key: ascending, or
+// descending when it is already sorted ascending by it.
+func (v goalsListData) sortURL(key string) templ.SafeURL {
+	return v.queryURL(func(q url.Values) {
+		desc := v.Table != nil && v.Table.Sort == key && !v.Table.Desc
+		q.Set("sort", key)
+		if desc {
+			q.Set("dir", "desc")
+		} else {
+			q.Del("dir")
+		}
+	})
+}
+
+// ariaSort says whether the table is sorted by col's column, and which way.
+func (t goalTable) ariaSort(col tableColumn) string {
+	switch {
+	case t.Sort != col.Key:
+		return "none"
+	case t.Desc:
+		return "descending"
+	}
+	return "ascending"
+}
+
+// sortTableRows sorts rows by col, reversed when desc, keeping the
+// problem-first order among equal values. The Goals with no value in col sort
+// last either way.
+func sortTableRows(rows []goalTableRow, col tableColumn, desc bool) {
+	slices.SortStableFunc(rows, func(a, b goalTableRow) int {
+		ka, aSet := col.sortKey(a)
+		kb, bSet := col.sortKey(b)
+		switch {
+		case !aSet || !bSet:
+			return cmp.Compare(boolRank(!aSet), boolRank(!bSet))
+		case desc:
+			return kb.compare(ka)
+		}
+		return ka.compare(kb)
+	})
+}
+
+func boolRank(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+// cellKey is a cell's value as it sorts: by its numbers, then its text.
+type cellKey struct {
+	nums []float64
+	text string
+}
+
+func (k cellKey) compare(o cellKey) int {
+	if c := slices.Compare(k.nums, o.nums); c != 0 {
+		return c
+	}
+	return cmp.Compare(k.text, o.text)
+}
+
+// healthOrder sorts Health worst first, the way the list puts problems first.
+var healthOrder = []string{domain.HealthRed, domain.HealthYellow, domain.HealthGreen}
+
+// sortKey is row's value in col as it sorts, and false when it has none: dates
+// and numbers as numbers, Health worst first, Lifecycle and a Dimension's
+// values in their own order, and text ignoring case.
+func (c tableColumn) sortKey(row goalTableRow) (cellKey, bool) {
+	g := row.Goal
+	num := func(n float64) (cellKey, bool) { return cellKey{nums: []float64{n}}, true }
+	text := func(s string) (cellKey, bool) { return cellKey{text: strings.ToLower(s)}, s != "" }
+	switch {
+	case c.Key == "title":
+		return text(g.Title)
+	case c.Key == "owner":
+		return text(g.Owner.Label())
+	case c.Key == "health":
+		if i := slices.Index(healthOrder, row.health()); i >= 0 {
+			return num(float64(i))
+		}
+	case c.Key == "lifecycle":
+		return num(float64(slices.Index(lifecycleFilters, g.Lifecycle)))
+	case c.Key == "due":
+		if !g.DeliveryDate.IsZero() {
+			return num(float64(g.DeliveryDate.Unix()))
+		}
+	case c.Key == "checkin":
+		if row.Latest != nil {
+			return num(float64(row.Latest.CreatedAt.Unix()))
+		}
+	case c.Dimension != nil:
+		var key cellKey
+		for _, v := range row.Values {
+			if v.DimensionID == c.Dimension.ID {
+				i := slices.IndexFunc(c.Dimension.Values, func(dv domain.DimensionValue) bool { return dv.ID == v.ID })
+				key.nums = append(key.nums, float64(i))
+			}
+		}
+		return key, len(key.nums) > 0
+	case c.Field != nil:
+		value, ok := row.Fields[c.Field.ID]
+		if !ok {
+			break
+		}
+		switch c.Field.Type {
+		case domain.FieldNumber:
+			if n, err := strconv.ParseFloat(value, 64); err == nil {
+				return num(n)
+			}
+		case domain.FieldDate:
+			if d, err := time.Parse(dateLayout, value); err == nil {
+				return num(float64(d.Unix()))
+			}
+		default:
+			return text(value)
+		}
+	}
+	return cellKey{}, false
+}
+
+// text is row's value in a Dimension's or Field's column: a several-values
+// Dimension's values joined by commas, a number Field's value with its unit.
+func (c tableColumn) text(row goalTableRow) string {
+	switch {
+	case c.Dimension != nil:
+		var values []string
+		for _, v := range row.Values {
+			if v.DimensionID == c.Dimension.ID {
+				values = append(values, v.Value)
+			}
+		}
+		return strings.Join(values, ", ")
+	case c.Field != nil:
+		value, ok := row.Fields[c.Field.ID]
+		if ok && c.Field.Unit != "" {
+			return value + " " + c.Field.Unit
+		}
+		return value
+	}
+	return ""
 }

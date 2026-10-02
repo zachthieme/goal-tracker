@@ -2129,3 +2129,376 @@ func TestFieldsStayOffTheGoalListControlsAndCheckinForm(t *testing.T) {
 		}
 	}
 }
+
+// tableHeads names the Goal table's columns, in order, by their header text.
+func tableHeads(t *testing.T, page string) []string {
+	t.Helper()
+	return cellTexts(between(t, page, `<thead data-testid="goal-table-head"`, "</thead>"), "th")
+}
+
+// tableRows returns the Goal table's rows in the order they render.
+func tableRows(t *testing.T, page string) []string {
+	t.Helper()
+	tbody := between(t, page, `<table data-testid="goal-table"`, "</table>")
+	var rows []string
+	for _, part := range strings.Split(tbody, `<tr data-testid="goal-table-row"`)[1:] {
+		row, _, ok := strings.Cut(part, "</tr>")
+		if !ok {
+			t.Fatalf("unterminated table row:\n%s", part)
+		}
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+// tableCell is the text of row's cell under the column headed head.
+func tableCell(t *testing.T, page, row, head string) string {
+	t.Helper()
+	i := slices.Index(tableHeads(t, page), head)
+	if i < 0 {
+		t.Fatalf("the Goal table has no %s column", head)
+	}
+	cells := cellTexts(row, "td")
+	if i >= len(cells) {
+		t.Fatalf("row has %d cells, no %s:\n%s", len(cells), head, row)
+	}
+	return cells[i]
+}
+
+// cellTexts is the visible text of each tag cell in html, whitespace collapsed.
+func cellTexts(html, tag string) []string {
+	var texts []string
+	for _, m := range regexp.MustCompile(`(?s)<`+tag+`[\s>].*?</`+tag+`>`).FindAllString(html, -1) {
+		text := regexp.MustCompile(`<[^>]*>`).ReplaceAllString(m, " ")
+		texts = append(texts, strings.Join(strings.Fields(text), " "))
+	}
+	return texts
+}
+
+// The Goal list's table layout has a column for the Goal's title, Owner, Health,
+// Lifecycle, delivery date and last Check-in, then one per live Dimension and
+// one per live Field, each in name order; a Retired one has none, nor do
+// Metrics and Milestones. A several-values cell lists its values with commas.
+func TestGoalTableHasAColumnPerLiveDimensionAndField(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignInNamed("sam@example.com", "Sam Ortiz")
+	pillar := h.CreateSeveralValuesDimension(boss, "Pillar", "Growth", "Trust")
+	quarter := h.CreateDimension(boss, "Quarter", "Q1")
+	h.CreateDimension(boss, "Area", "Payments")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.CreateField(boss, "Approver", domain.FieldShortText, "")
+	old := h.CreateField(boss, "Legacy code", domain.FieldShortText, "")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, pillar.Values[0])
+	h.AssignGoalValue(goal, pillar.Values[1])
+	h.AssignGoalValue(goal, quarter.Values[0])
+	h.SetGoalField(sam, goal, budget, "1200")
+	h.SetGoalField(sam, goal, old, "X-1")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	ctx := context.Background()
+	if err := h.Service.RetireDimension(ctx, boss.ID, quarter.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	if err := h.Service.RetireField(ctx, boss.ID, old.ID); err != nil {
+		t.Fatalf("RetireField: %v", err)
+	}
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals?layout=table")
+	want := []string{"Title", "Owner", "Health", "Lifecycle", "Delivery date", "Last check-in", "Area", "Pillar", "Approver", "Budget"}
+	if got := tableHeads(t, page); !slices.Equal(got, want) {
+		t.Fatalf("columns = %q, want %q", got, want)
+	}
+	rows := tableRows(t, page)
+	if len(rows) != 1 {
+		t.Fatalf("got %d table rows, want 1", len(rows))
+	}
+	row := rows[0]
+	if !strings.Contains(row, navTo(goal.ID)+">Reduce outages<") {
+		t.Errorf("the title doesn't link to the Goal:\n%s", row)
+	}
+	for head, cell := range map[string]string{
+		"Owner":     "Sam Ortiz sam@example.com", // the Name, its email disclosed on demand
+		"Health":    "Green",
+		"Lifecycle": "Active",
+		"Pillar":    "Growth, Trust",
+		"Budget":    "1200 $",
+		"Area":      "",
+		"Approver":  "",
+	} {
+		if got := tableCell(t, page, row, head); got != cell {
+			t.Errorf("%s cell = %q, want %q", head, got, cell)
+		}
+	}
+}
+
+// linkQuery is the query string of the <a> carrying data-testid on page.
+func linkQuery(t *testing.T, page, testID string) url.Values {
+	t.Helper()
+	tag := pageTag(t, page, "a", testID)
+	u, err := url.Parse(html.UnescapeString(attr(tag, "href")))
+	if err != nil {
+		t.Fatalf("%s href: %v", testID, err)
+	}
+	if u.Path != "/goals" {
+		t.Errorf("%s links to %s, want /goals", testID, u.Path)
+	}
+	return u.Query()
+}
+
+// Switching the Goal list between List and Table keeps every filter, and the
+// table's URL alone reproduces the same view, so a table link can be shared.
+// Applying the filter bar in the table stays in the table.
+func TestGoalTableLayoutKeepsFiltersAndIsShareable(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	growth := pillar.Values[0]
+	alpha := h.CreateGoal(sam, "Alpha launch", "A matters.")
+	alphaTrust := h.CreateGoal(sam, "Alpha audit", "A matters.")
+	bravo := h.CreateGoal(sam, "Bravo launch", "B matters.")
+	h.AssignGoalValue(alpha, growth)
+	h.AssignGoalValue(alphaTrust, pillar.Values[1])
+	h.AssignGoalValue(bravo, growth)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	list := getBody(t, client, fmt.Sprintf("%s/goals?q=alpha&value=%d", ts.URL, growth.ID))
+	toTable := linkQuery(t, list, "layout-table")
+	if toTable.Get("layout") != "table" || toTable.Get("q") != "alpha" || toTable.Get("value") != fmt.Sprint(growth.ID) {
+		t.Fatalf("the Table toggle drops a filter: %v", toTable)
+	}
+
+	// A fresh browser following the shared table link sees the same slice.
+	table := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/goals?"+toTable.Encode())
+	rows := tableRows(t, table)
+	if got := rowTitles(rows, alpha, alphaTrust, bravo); !slices.Equal(got, []string{"Alpha launch"}) {
+		t.Errorf("the shared table lists %q, want only Alpha launch", got)
+	}
+	filters := between(t, table, `data-testid="goal-filters"`, "</form>")
+	if !strings.Contains(filters, `name="layout" value="table"`) {
+		t.Errorf("applying the filter bar leaves the table:\n%s", filters)
+	}
+	if !strings.Contains(filters, `value="alpha"`) || !strings.Contains(filters, fmt.Sprintf(`value="%d" checked`, growth.ID)) {
+		t.Errorf("the table's filter bar doesn't show the active filters:\n%s", filters)
+	}
+
+	toList := linkQuery(t, table, "layout-list")
+	if toList.Has("layout") || toList.Get("q") != "alpha" || toList.Get("value") != fmt.Sprint(growth.ID) {
+		t.Errorf("the List toggle drops a filter or stays in the table: %v", toList)
+	}
+}
+
+// sortLink is the URL the Goal table's header for the column head links to.
+func sortLink(t *testing.T, page, head string) string {
+	t.Helper()
+	thead := between(t, page, `<thead data-testid="goal-table-head"`, "</thead>")
+	for _, th := range regexp.MustCompile(`(?s)<th[\s>].*?</th>`).FindAllString(thead, -1) {
+		if cellTexts(th, "th")[0] == head {
+			at := strings.Index(th, "<a ")
+			if at < 0 {
+				t.Fatalf("the %s header doesn't sort:\n%s", head, th)
+			}
+			href := attr(openTag(th[at:]), "href")
+			if href == "" {
+				t.Fatalf("the %s header doesn't sort:\n%s", head, th)
+			}
+			return html.UnescapeString(href)
+		}
+	}
+	t.Fatalf("the Goal table has no %s header:\n%s", head, thead)
+	return ""
+}
+
+// A column header sorts the Goal table by that column, and again reverses it.
+// A number Field sorts as numbers, so 9 comes before 10, and the Goals with no
+// value sort last both ways. Unsorted, the table keeps the list's problem-first
+// order. The sort keeps the filters.
+func TestGoalTableSortsByAColumnWithUnsetValuesLast(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "")
+	nine := h.CreateGoal(sam, "Nine", "It matters.")
+	ten := h.CreateGoal(sam, "Ten", "It matters.")
+	hundred := h.CreateGoal(sam, "Hundred", "It matters.")
+	unset := h.ActiveGoal(sam, "Unset", "It matters.")
+	h.Checkin(sam, unset.ID, domain.HealthRed, "On fire.", "Put it out.", testsupport.Epoch.AddDate(0, 2, 0))
+	h.CreateGoal(sam, "Excluded", "It matters.")
+	h.SetGoalField(sam, nine, budget, "9")
+	h.SetGoalField(sam, ten, budget, "10")
+	h.SetGoalField(sam, hundred, budget, "100")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	order := func(page string) []string {
+		return rowTitles(tableRows(t, page), nine, ten, hundred, unset)
+	}
+
+	page := getBody(t, client, ts.URL+"/goals?layout=table&q=n")
+	if got, want := order(page), []string{"Unset", "Hundred", "Nine", "Ten"}; !slices.Equal(got, want) {
+		t.Errorf("unsorted order = %q, want the problem-first %q", got, want)
+	}
+
+	up := sortLink(t, page, "Budget")
+	page = getBody(t, client, ts.URL+up)
+	if got, want := order(page), []string{"Nine", "Ten", "Hundred", "Unset"}; !slices.Equal(got, want) {
+		t.Errorf("sorted by Budget = %q, want %q", got, want)
+	}
+	if strings.Contains(page, "Excluded") {
+		t.Errorf("sorting dropped the search filter")
+	}
+
+	down := sortLink(t, page, "Budget")
+	if down == up {
+		t.Fatalf("sorting by Budget again doesn't reverse it: %s", down)
+	}
+	page = getBody(t, client, ts.URL+down)
+	if got, want := order(page), []string{"Hundred", "Ten", "Nine", "Unset"}; !slices.Equal(got, want) {
+		t.Errorf("reverse-sorted by Budget = %q, want %q", got, want)
+	}
+	if again := sortLink(t, page, "Budget"); again != up {
+		t.Errorf("a third click on Budget links to %s, want ascending again %s", again, up)
+	}
+}
+
+// submitColumns submits the Goal table's Columns form as a browser would, with
+// the columns labelled hide unticked and every other column ticked, and returns
+// the page it lands on.
+func submitColumns(t *testing.T, client *http.Client, base, page string, hide ...string) string {
+	t.Helper()
+	form := between(t, page, `<form data-testid="goal-columns"`, "</form>")
+	if action := attr(openTag(form), "action"); action != "/goals" || attr(openTag(form), "method") != "get" {
+		t.Fatalf("the Columns form doesn't GET /goals:\n%s", form)
+	}
+	values := url.Values{}
+	for _, m := range regexp.MustCompile(`<input([^>]*)>([^<]*)`).FindAllStringSubmatch(form, -1) {
+		tag, label := "<input"+m[1], strings.TrimSpace(m[2])
+		switch attr(tag, "type") {
+		case "hidden":
+			values.Add(attr(tag, "name"), html.UnescapeString(attr(tag, "value")))
+		case "checkbox":
+			if !slices.Contains(hide, label) {
+				values.Add(attr(tag, "name"), attr(tag, "value"))
+			}
+		}
+	}
+	return getBody(t, client, base+"/goals?"+values.Encode())
+}
+
+// A Columns control hides any Goal table column but Title. It is a plain form,
+// so it works without JavaScript, and the choice is remembered in that browser:
+// the column stays hidden on the next visit, while another browser still shows
+// it. Hiding keeps the filters.
+func TestGoalTableHiddenColumnStaysHiddenOnTheNextVisit(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.CreateDimension(boss, "Pillar", "Growth")
+	h.CreateField(boss, "Budget", domain.FieldNumber, "")
+	h.CreateGoal(sam, "Alpha", "It matters.")
+	h.CreateGoal(sam, "Bravo", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	all := []string{"Title", "Owner", "Health", "Lifecycle", "Delivery date", "Last check-in", "Pillar", "Budget"}
+
+	page := getBody(t, client, ts.URL+"/goals?layout=table&q=alpha")
+	if got := tableHeads(t, page); !slices.Equal(got, all) {
+		t.Fatalf("columns = %q, want %q", got, all)
+	}
+	if form := between(t, page, `<form data-testid="goal-columns"`, "</form>"); strings.Contains(form, `value="title"`) {
+		t.Errorf("the Columns control offers to hide Title:\n%s", form)
+	}
+
+	page = submitColumns(t, client, ts.URL, page, "Owner", "Budget")
+	want := []string{"Title", "Health", "Lifecycle", "Delivery date", "Last check-in", "Pillar"}
+	if got := tableHeads(t, page); !slices.Equal(got, want) {
+		t.Errorf("after hiding Owner and Budget, columns = %q, want %q", got, want)
+	}
+	if strings.Contains(between(t, page, `<table data-testid="goal-table"`, "</table>"), "Bravo") {
+		t.Errorf("hiding columns dropped the search filter")
+	}
+
+	next := getBody(t, client, ts.URL+"/goals?layout=table")
+	if got := tableHeads(t, next); !slices.Equal(got, want) {
+		t.Errorf("on the next visit, columns = %q, want %q", got, want)
+	}
+	if got := tableHeads(t, getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/goals?layout=table")); !slices.Equal(got, all) {
+		t.Errorf("another browser's columns = %q, want all of %q", got, all)
+	}
+
+	everything := submitColumns(t, client, ts.URL, next, all...)
+	if got := tableHeads(t, everything); !slices.Equal(got, []string{"Title"}) {
+		t.Errorf("hiding every column leaves %q, want Title alone", got)
+	}
+	restored := submitColumns(t, client, ts.URL, everything)
+	if got := tableHeads(t, restored); !slices.Equal(got, all) {
+		t.Errorf("showing every column again leaves %q, want %q", got, all)
+	}
+}
+
+// The Goal table has no totals row: no sum, count or average of a column,
+// since numbers in a Field are never added up across Goals (ADR 0005). Grouping
+// doesn't apply to it, and on a narrow screen it scrolls sideways inside its
+// own container rather than widening the page.
+func TestGoalTableHasNoTotalsRowAndIsntGrouped(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "")
+	alpha := h.CreateGoal(sam, "Alpha", "It matters.")
+	bravo := h.CreateGoal(sam, "Bravo", "It matters.")
+	h.AssignGoalValue(alpha, pillar.Values[0])
+	h.AssignGoalValue(bravo, pillar.Values[1])
+	h.SetGoalField(sam, alpha, budget, "10")
+	h.SetGoalField(sam, bravo, budget, "20")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals?layout=table&group=%d", ts.URL, pillar.ID))
+	table := between(t, page, `<table data-testid="goal-table"`, "</table>")
+	if strings.Contains(table, "<tfoot") || strings.Contains(table, `data-testid="goal-group"`) {
+		t.Errorf("the Goal table has a footer or a group:\n%s", table)
+	}
+	if rows, trs := len(tableRows(t, page)), strings.Count(table, "<tr"); rows != 2 || trs != 3 {
+		t.Errorf("the Goal table has %d Goal rows among %d rows, want the header and 2 Goals:\n%s", rows, trs, table)
+	}
+	for _, aggregate := range []string{">30<", ">15<", "Total", "Sum", "Average"} {
+		if strings.Contains(table, aggregate) {
+			t.Errorf("the Goal table shows an aggregate %q:\n%s", aggregate, table)
+		}
+	}
+	if more := between(t, page, `data-testid="goal-filters"`, "</form>"); strings.Contains(more, "Group by") {
+		t.Errorf("the table offers Group by, which doesn't apply to it:\n%s", more)
+	}
+
+	if !regexp.MustCompile(`<div class="table-scroll">\s*<table data-testid="goal-table"`).MatchString(page) {
+		t.Errorf("the Goal table isn't in its own scrolling container")
+	}
+	css := getBody(t, client, ts.URL+"/static/app.css")
+	if rule := cssRule(t, css, ".table-scroll"); !strings.Contains(rule, "overflow-x:auto") {
+		t.Errorf("the table's container doesn't scroll sideways: %s", rule)
+	}
+}
+
+// Proposing a Goal from the table layout swaps the table back in, not the list
+// layout, with the new Goal in it.
+func TestProposeGoalFromTheTableKeepsTheTable(t *testing.T) {
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals?layout=table&sort=title")
+	form := between(t, page, `<details data-testid="propose-goal"`, "</details>")
+	target := html.UnescapeString(attr(openTag(between(t, form, "<form", "")), "hx-post"))
+	body, status := postFormHX(t, client, ts.URL+target, url.Values{"title": {"Cut latency"}, "so_what": {"Slow carts."}})
+	if status != http.StatusOK {
+		t.Fatalf("propose from the table: status %d", status)
+	}
+	if !strings.Contains(body, `<table data-testid="goal-table"`) || !strings.Contains(body, ">Cut latency<") {
+		t.Errorf("proposing from the table didn't swap in the table with the new Goal:\n%s", body)
+	}
+}
