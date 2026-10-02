@@ -274,3 +274,59 @@ func TestAdminImportsAnExcelCSVAndSeesSemicolonValuesRefusedOverHTTP(t *testing.
 		t.Errorf("dry run doesn't say why R&D; Ops is refused; body:\n%s", body)
 	}
 }
+
+// Importing a row that leaves a required Dimension and a required Field empty
+// still creates the Goal: required values hold activation, not creation, and
+// the new Goal shows on the Goal list (ticket #75).
+func TestImportingARowWithoutARequiredValueCreatesTheGoalOverHTTP(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Pillar,Budget
+Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,,
+`
+	h := testsupport.New(t, "admin@example.com")
+	adminAcct := h.SignIn("admin@example.com")
+	h.SetDimensionRequired(adminAcct, h.CreateDimension(adminAcct, "Pillar", "Growth"), true)
+	h.SetFieldRequired(adminAcct, h.CreateField(adminAcct, "Budget", domain.FieldNumber, "$"), true)
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "admin@example.com")
+
+	body := postImport(t, admin, ts.URL+"/imports", "goals.csv", csv, "commit")
+	if !strings.Contains(body, "Imported 1 Goals") {
+		t.Fatalf("commit didn't import the row lacking Pillar and Budget; body:\n%s", body)
+	}
+	if list := getBody(t, admin, ts.URL+"/goals"); !strings.Contains(list, "Grow revenue") {
+		t.Errorf("the imported Goal isn't on the Goal list; body:\n%s", list)
+	}
+}
+
+// A value an import adds to an Extendable Dimension's list appears in the
+// Definition log as added by the Admin who ran the import, not the one who
+// defined the Dimension (ticket #77).
+func TestImportedExtendableValueIsLoggedAsTheImportersOverHTTP(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Customer
+Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,Newco
+`
+	h := testsupport.New(t, "boss@example.com", "ada@example.com")
+	boss := h.SignInNamed("boss@example.com", "Bo Boss")
+	h.SignInNamed("ada@example.com", "Ada Importer")
+	h.CreateExtendableDimension(boss, "Customer", "Acme")
+	ts := newServer(t, h)
+	ada := signInClient(t, ts.URL, "ada@example.com")
+
+	if body := postImport(t, ada, ts.URL+"/imports", "goals.csv", csv, "commit"); !strings.Contains(body, "Imported 1 Goals") {
+		t.Fatalf("commit summary missing; body:\n%s", body)
+	}
+
+	log := pageElement(t, getBody(t, ada, ts.URL+"/definition-log"), "ol", "definition-log")
+	var added string
+	for _, e := range strings.Split(log, `data-testid="definition-change"`)[1:] {
+		if strings.Contains(e, "Added Newco to Customer.") {
+			added = e
+		}
+	}
+	if added == "" {
+		t.Fatalf("the Definition log has no entry adding Newco to Customer:\n%s", log)
+	}
+	if !strings.Contains(added, "Ada Importer") || strings.Contains(added, "Bo Boss") {
+		t.Errorf("adding Newco isn't attributed to Ada, who ran the import:\n%s", added)
+	}
+}

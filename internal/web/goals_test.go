@@ -3758,3 +3758,224 @@ func TestGoalPageListsEachHighlightOfACheckinSeparately(t *testing.T) {
 		}
 	}
 }
+
+// Changing a one-value Dimension from one value to another on the Goal page
+// records one Value history entry, not a removal and an addition, and clearing
+// it with None records one more (ticket #74).
+func TestChangingThenClearingAOneValueDimensionRecordsOneEntryEachOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	growth, trust := pillar.Values[0], pillar.Values[1]
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := goalPageURL(ts.URL, goal)
+	choose := func(valueID string) {
+		t.Helper()
+		resp := postForm(t, client, goalURL+"/dimensions", url.Values{"dimension_id": {fmt.Sprint(pillar.ID)}, "value_id": {valueID}})
+		if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+			t.Fatalf("choose %q: status %d; body:\n%s", valueID, resp.StatusCode, body)
+		}
+	}
+	history := func() []string {
+		t.Helper()
+		section := pageElement(t, pageElement(t, getBody(t, client, goalURL), "div", "goal-history"), "section", "goal-value-history")
+		return strings.Split(html.UnescapeString(section), `data-testid="value-change"`)[1:]
+	}
+
+	choose(fmt.Sprint(growth.ID))
+	choose(fmt.Sprint(trust.ID))
+	entries := history()
+	if len(entries) != 2 || !strings.Contains(entries[1], "Pillar: Growth → Trust") {
+		t.Fatalf("after setting Growth then Trust, Value history = %d entries, want set then one change Growth → Trust:\n%s", len(entries), strings.Join(entries, "\n"))
+	}
+
+	choose("")
+	entries = history()
+	if len(entries) != 3 || !strings.Contains(entries[2], "Pillar: cleared (was Trust)") {
+		t.Errorf("after clearing, Value history = %d entries, want one more, cleared (was Trust):\n%s", len(entries), strings.Join(entries, "\n"))
+	}
+}
+
+// Once an Admin unmarks the required Dimension and Field a Goal lacks, the Goal
+// page drops its Incomplete flag and the Goal list its row's mark (ticket #75).
+func TestUnmarkingRequiredClearsTheIncompleteFlagOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	h.SetDimensionRequired(boss, pillar, true)
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.SetFieldRequired(boss, budget, true)
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "boss@example.com")
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := goalPageURL(ts.URL, goal)
+	listRow := func() string {
+		t.Helper()
+		for _, row := range goalRows(t, getBody(t, client, ts.URL+"/goals")) {
+			if strings.Contains(row, navTo(goal.ID)) {
+				return row
+			}
+		}
+		t.Fatalf("the Goal list has no row for %q", goal.Title)
+		return ""
+	}
+
+	if page := getBody(t, client, goalURL); !strings.Contains(page, `data-testid="goal-incomplete"`) {
+		t.Fatalf("the Goal lacking Pillar and Budget isn't flagged Incomplete")
+	}
+	if row := listRow(); !strings.Contains(row, `data-testid="incomplete"`) {
+		t.Fatalf("the Goal list doesn't mark the Goal Incomplete: %s", row)
+	}
+
+	for _, path := range []string{fmt.Sprintf("/dimensions/%d/required", pillar.ID), fmt.Sprintf("/fields/%d/required", budget.ID)} {
+		if resp := postForm(t, admin, ts.URL+path, url.Values{"required": {"0"}}); resp.StatusCode != http.StatusOK {
+			t.Fatalf("unmark %s: status %d", path, resp.StatusCode)
+		}
+	}
+
+	if page := getBody(t, client, goalURL); strings.Contains(page, `data-testid="goal-incomplete"`) {
+		t.Errorf("the Goal page still flags the Goal Incomplete: %s", pageElement(t, page, "p", "goal-incomplete"))
+	}
+	if row := listRow(); strings.Contains(row, `data-testid="incomplete"`) {
+		t.Errorf("the Goal list still marks the Goal Incomplete: %s", row)
+	}
+}
+
+// closeGoal ends an Active Goal in a Check-in by its Owner, moving it to Done
+// or Cancelled, failing the test on error.
+func closeGoal(t *testing.T, h *testsupport.Harness, owner domain.Account, g domain.Goal, lifecycle string) domain.Goal {
+	t.Helper()
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:          g.ID,
+		AuthorID:        owner.ID,
+		Status:          "Closing this out.",
+		Lifecycle:       lifecycle,
+		LifecycleReason: "No longer needed.",
+		Outcome:         "Shipped.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin %s: %v", lifecycle, err)
+	}
+	g.Lifecycle = lifecycle
+	return g
+}
+
+// A Done or Cancelled Goal that lacks a required value isn't flagged Incomplete
+// on its page or its Goal list row, and the Incomplete filter leaves it out,
+// keeping only the Active Goal that lacks one (ticket #75).
+func TestDoneAndCancelledGoalsAreNeverIncompleteOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	active := h.ActiveGoal(sam, "Alpha, Active", "It matters.")
+	done := closeGoal(t, h, sam, h.ActiveGoal(sam, "Bravo, Done", "It matters."), domain.LifecycleDone)
+	cancelled := closeGoal(t, h, sam, h.ActiveGoal(sam, "Charlie, Cancelled", "It matters."), domain.LifecycleCancelled)
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	h.SetDimensionRequired(boss, pillar, true)
+	goals := []domain.Goal{active, done, cancelled}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	if page := getBody(t, client, goalPageURL(ts.URL, active)); !strings.Contains(page, `data-testid="goal-incomplete"`) {
+		t.Fatalf("the Active Goal lacking Pillar isn't flagged Incomplete")
+	}
+	for _, g := range []domain.Goal{done, cancelled} {
+		if page := getBody(t, client, goalPageURL(ts.URL, g)); strings.Contains(page, `data-testid="goal-incomplete"`) {
+			t.Errorf("the %s Goal is flagged Incomplete: %s", g.Lifecycle, pageElement(t, page, "p", "goal-incomplete"))
+		}
+	}
+
+	rows := goalRows(t, getBody(t, client, ts.URL+"/goals"))
+	if got, want := rowTitles(rows, goals...), []string{"Alpha, Active", "Bravo, Done", "Charlie, Cancelled"}; !slices.Equal(got, want) {
+		t.Fatalf("Goal list rows = %q, want %q", got, want)
+	}
+	for _, row := range rows {
+		marked := strings.Contains(row, `data-testid="incomplete"`)
+		if want := strings.Contains(row, navTo(active.ID)); marked != want {
+			t.Errorf("row marked Incomplete %v, want %v: %s", marked, want, row)
+		}
+	}
+
+	filtered := getBody(t, client, ts.URL+"/goals?incomplete=1")
+	if got, want := rowTitles(goalRows(t, filtered), goals...), []string{"Alpha, Active"}; !slices.Equal(got, want) {
+		t.Errorf("incomplete=1: rows = %q, want %q", got, want)
+	}
+}
+
+// A date Field column sorts the Goal table by date, earliest first and then
+// latest first, with the Goals that have no date last both ways. The dates are
+// chosen so that neither their month names, the titles nor the order the Goals
+// were made in gives the same order (ticket #79).
+func TestGoalTableSortsADateFieldAsDatesWithUnsetLast(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	kickoff := h.CreateField(boss, "Kickoff", domain.FieldDate, "")
+	alpha := h.CreateGoal(sam, "Alpha", "It matters.")
+	bravo := h.CreateGoal(sam, "Bravo", "It matters.")
+	charlie := h.CreateGoal(sam, "Charlie", "It matters.")
+	unset := h.CreateGoal(sam, "Delta", "It matters.")
+	h.SetGoalField(sam, alpha, kickoff, "2026-10-05")
+	h.SetGoalField(sam, bravo, kickoff, "2027-01-20")
+	h.SetGoalField(sam, charlie, kickoff, "2026-02-01")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	order := func(page string) []string {
+		return rowTitles(tableRows(t, page), alpha, bravo, charlie, unset)
+	}
+
+	page := getBody(t, client, ts.URL+"/goals?layout=table")
+	page = getBody(t, client, ts.URL+sortLink(t, page, "Kickoff"))
+	if got, want := order(page), []string{"Charlie", "Alpha", "Bravo", "Delta"}; !slices.Equal(got, want) {
+		t.Errorf("sorted by Kickoff = %q, want %q", got, want)
+	}
+
+	page = getBody(t, client, ts.URL+sortLink(t, page, "Kickoff"))
+	if got, want := order(page), []string{"Bravo", "Alpha", "Charlie", "Delta"}; !slices.Equal(got, want) {
+		t.Errorf("reverse-sorted by Kickoff = %q, want %q", got, want)
+	}
+}
+
+// An Admin who neither Owns nor Delegates on any Goal gets an input in every
+// Dimension and Field cell of every row in the Goal table's edit mode, and the
+// Title, Health, Lifecycle and delivery date cells link to the Goal, since
+// changing them happens there (ticket #80).
+func TestGoalTableEditModeGivesAnAdminInputsOnEveryRowAndLinksToTheGoal(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	h.CreateSeveralValuesDimension(boss, "Tags", "infra", "ux")
+	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.CreateField(boss, "Notes", domain.FieldLongText, "")
+	alpha := h.ActiveGoal(sam, "Alpha", "A matters.")
+	h.Checkin(sam, alpha.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	beta := h.ActiveGoal(pat, "Beta", "B matters.")
+	h.Checkin(pat, beta.ID, domain.HealthYellow, "Slipping.", "Add staff.", testsupport.Epoch.AddDate(0, 1, 0))
+	gamma := h.CreateGoal(pat, "Gamma", "C matters.")
+	ts := newServer(t, h)
+
+	page := editTable(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL, "/goals?layout=table")
+
+	for _, g := range []domain.Goal{alpha, beta, gamma} {
+		row := tableRowOf(t, page, g)
+		for _, head := range []string{"Pillar", "Tags", "Budget", "Notes"} {
+			if cell := tableCellHTML(t, page, row, head); !hasInput(cell) {
+				t.Errorf("the Admin gets no input in %s's %s cell:\n%s", g.Title, head, cell)
+			}
+		}
+	}
+	for _, g := range []domain.Goal{alpha, beta} {
+		row := tableRowOf(t, page, g)
+		for _, head := range []string{"Title", "Health", "Lifecycle", "Delivery date"} {
+			if cell := tableCellHTML(t, page, row, head); !strings.Contains(cell, navTo(g.ID)) {
+				t.Errorf("%s's %s cell doesn't link to the Goal:\n%s", g.Title, head, cell)
+			}
+		}
+	}
+}
