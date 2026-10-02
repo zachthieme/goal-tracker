@@ -1,7 +1,9 @@
 package web
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -31,7 +33,8 @@ func (s *Server) handlePendingHandoffs(w http.ResponseWriter, r *http.Request, c
 		http.Error(w, "could not list pending handoffs", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, pendingHandoffsPage(&current, pending))
+	toast := s.handoffRejectionToast(r.Context(), takeUndo(w, r), current, "")
+	render(w, r, http.StatusOK, pendingHandoffsPage(&current, pending, toast))
 }
 
 // handleAcceptHandoff accepts a pending Handoff; only the new Owner may. Each
@@ -62,7 +65,9 @@ func (s *Server) handleAcceptHandoff(w http.ResponseWriter, r *http.Request, cur
 	http.Redirect(w, r, "/handoffs", http.StatusSeeOther)
 }
 
-// handleRejectHandoff rejects a pending Handoff; only the new Owner may.
+// handleRejectHandoff rejects a pending Handoff; only the new Owner may. It
+// returns to the page the reject came from (from: Home, or the pending page),
+// which offers Undo once in a toast.
 func (s *Server) handleRejectHandoff(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := handoffIDFromPath(w, r)
 	if !ok {
@@ -72,7 +77,44 @@ func (s *Server) handleRejectHandoff(w http.ResponseWriter, r *http.Request, cur
 		writeHandoffError(w, err)
 		return
 	}
-	http.Redirect(w, r, "/handoffs", http.StatusSeeOther)
+	back := requestPage(r.FormValue("from"), "/handoffs")
+	offerUndo(w, back, undoHandoffRejection, id)
+	http.Redirect(w, r, back, http.StatusSeeOther)
+}
+
+// handleRestoreHandoff puts the rejected Handoff in the path back as pending;
+// only the person who rejected it may, and only once. It returns to the page
+// the Undo came from (from), or refuses with a message and changes nothing.
+func (s *Server) handleRestoreHandoff(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, ok := handoffIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	if _, err := s.svc.RestoreHandoff(r.Context(), id, current.ID); err != nil {
+		writeHandoffError(w, err)
+		return
+	}
+	http.Redirect(w, r, requestPage(r.FormValue("from"), "/handoffs"), http.StatusSeeOther)
+}
+
+// handoffRejectionToast is the toast a page carries straight after current
+// rejected a Handoff (offer), with the Undo that puts it back — or nil when
+// the offer isn't for a Handoff current rejected and can still undo. from
+// names the page for the Undo to return to, as the reject's own from did.
+func (s *Server) handoffRejectionToast(ctx context.Context, offer undoOffer, current domain.Account, from string) *toast {
+	id, ok := offer.of(undoHandoffRejection)
+	if !ok {
+		return nil
+	}
+	ho, err := s.svc.Handoff(ctx, id)
+	if err != nil || ho.Status != domain.HandoffRejected || ho.To.ID != current.ID {
+		return nil
+	}
+	return &toast{
+		Message: fmt.Sprintf("Handoff rejected: %s stays with %s.", ho.Goal.Title, ho.From.Label()),
+		Undo:    fmt.Sprintf("/handoffs/%d/restore", ho.ID),
+		Fields:  fromField(from),
+	}
 }
 
 // handleDepartAccount marks the Account in the path as departed, making the Goals

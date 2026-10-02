@@ -9,8 +9,9 @@ import (
 // pendingHandoffsPage lists the Handoffs awaiting the current Account's decision
 // as the proposed new Owner, a card each with accept and reject actions; Accept
 // lists the Delegates to keep and Reject sends at once. A Handoff takes
-// effect only once accepted (CONTEXT.md: Handoff).
-templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) {
+// effect only once accepted (CONTEXT.md: Handoff). toast, when set, offers Undo
+// for the Handoff just rejected.
+templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff, toast *toast) {
 	@layout("Pending handoffs", current) {
 		@pendingStyles()
 		<header class="page-head">
@@ -41,6 +42,7 @@ templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff) {
 				</li>
 			}
 		</ul>
+		@toastNotice(toast)
 	}
 }
 

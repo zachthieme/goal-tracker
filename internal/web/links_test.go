@@ -497,16 +497,12 @@ func TestRejectingALinkRequestOffersUndoOnce(t *testing.T) {
 				t.Errorf("toast uses script:\n%s", toast)
 			}
 			action := undoAction(t, landed)
-			fields := url.Values{}
-			for _, m := range regexp.MustCompile(`name="([^"]+)" value="([^"]*)"`).FindAllStringSubmatch(toast, -1) {
-				fields.Set(m[1], m[2])
-			}
 
 			if later := getBody(t, pat, ts.URL+from); strings.Contains(later, `data-testid="toast"`) {
 				t.Errorf("toast shown again on a later visit:\n%s", later)
 			}
 
-			resp := postForm(t, pat, ts.URL+action, fields)
+			resp := postForm(t, pat, ts.URL+action, toastFields(t, landed))
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("undo: status %d", resp.StatusCode)
 			}
@@ -598,8 +594,9 @@ func TestUndoingALinkRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
 		child, parent, pat, landed := rejectRequest(t, h, ts, "/links")
 		action := undoAction(t, landed)
 		patAcc, sam := h.SignIn("pat@example.com"), h.SignIn("sam@example.com")
-		back := h.RequestLink(patAcc, parent, child, "")                                       // Pat links the other way round...
-		if _, err := h.Service.AcceptLink(context.Background(), back.ID, sam.ID); err != nil { // ...and Sam accepts
+		// Pat links the other way round, and Sam accepts.
+		back := h.RequestLink(patAcc, parent, child, "")
+		if _, err := h.Service.AcceptLink(context.Background(), back.ID, sam.ID); err != nil {
 			t.Fatalf("AcceptLink: %v", err)
 		}
 

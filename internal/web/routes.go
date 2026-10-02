@@ -40,6 +40,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /handoffs", s.requireAuth(s.handlePendingHandoffs))
 	s.mux.HandleFunc("POST /handoffs/{id}/accept", s.requireAuth(s.handleAcceptHandoff))
 	s.mux.HandleFunc("POST /handoffs/{id}/reject", s.requireAuth(s.handleRejectHandoff))
+	s.mux.HandleFunc("POST /handoffs/{id}/restore", s.requireAuth(s.handleRestoreHandoff))
 	s.mux.HandleFunc("POST /accounts/{id}/depart", s.requireAuth(s.handleDepartAccount))
 	s.mux.HandleFunc("POST /accounts/{id}/return", s.requireAuth(s.handleReturnAccount))
 	s.mux.HandleFunc("GET /dimensions", s.requireAuth(s.handleDimensions))

@@ -22,7 +22,10 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request, current doma
 		return
 	}
 	offer := takeUndo(w, r)
-	v.Toast = s.linkRejectionToast(r.Context(), offer, current, fromHome)
+	v.Toast = cmp.Or(
+		s.linkRejectionToast(r.Context(), offer, current, fromHome),
+		s.handoffRejectionToast(r.Context(), offer, current, fromHome),
+	)
 	render(w, r, http.StatusOK, homePage(&current, v))
 }
 
