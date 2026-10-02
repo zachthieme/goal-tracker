@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -320,5 +321,37 @@ func TestHomeInlineFormsComeFromTheSharedClass(t *testing.T) {
 		fmt.Sprintf("/links/%d/reject", link.ID),
 	} {
 		assertStyledBy(t, tagAround(t, page, `action="`+action+`"`), css, "inline-form", "display:inline")
+	}
+}
+
+// Home's No change on a Green Goal whose Milestone has gone overdue is refused;
+// the person lands on that Goal's Check-in form with the reason, whether the
+// button posted plainly or through htmx, and nothing is recorded (#103).
+func TestHomeNoChangeRefusedLandsOnCheckinForm(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := overdueGreenGoal(h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	row := homeRow(t, pageElement(t, getBody(t, client, ts.URL+"/home"), "ul", "home-due"), goal)
+	action := attr(tagAround(t, row, `action="/goals/`), "action")
+	if want := fmt.Sprintf("/goals/%d/checkins/no-change", goal.ID); action != want {
+		t.Fatalf("Home's No change posts to %q, want %q:\n%s", action, want, row)
+	}
+
+	for _, hx := range []bool{false, true} {
+		resp, page := postNoChange(t, client, ts.URL+action, hx)
+		want := http.StatusUnprocessableEntity
+		if hx {
+			want = http.StatusOK
+		}
+		if resp.StatusCode != want {
+			t.Errorf("hx=%v: status = %d, want %d", hx, resp.StatusCode, want)
+		}
+		assertNoChangeRefusalOnForm(t, page, `Milestone &#34;Beta&#34; is overdue`)
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
+		t.Errorf("a refused No change recorded a Check-in: history has %d, want 1", len(history))
 	}
 }

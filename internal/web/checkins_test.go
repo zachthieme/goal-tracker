@@ -1182,3 +1182,226 @@ func openTag(element string) string {
 	}
 	return element
 }
+
+// A No change that would repeat a Green after a Milestone went overdue is
+// refused, and the person lands on that Goal's Check-in page with the reason at
+// the top of the form, in plain words, and nothing recorded (#103).
+func TestNoChangeRefusedWhileOverdueLandsOnCheckinForm(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Blue-green deploys for the monolith", "Deploys take the site down.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(100 * day) // past the Beta Milestone's date
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), url.Values{})
+	page := readBody(t, resp)
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", resp.StatusCode)
+	}
+	assertNoChangeRefusalOnForm(t, page, `Milestone &#34;Beta&#34; is overdue`)
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
+		t.Errorf("a refused No change recorded a Check-in: history has %d, want 1", len(history))
+	}
+}
+
+// assertNoChangeRefusalOnForm checks a refused No change came back as the
+// Check-in page, inside the site's chrome, with the reason as the form's top
+// error and without the internal "validation failed:" prefix.
+func assertNoChangeRefusalOnForm(t *testing.T, page, reason string) {
+	t.Helper()
+	if !strings.Contains(page, `data-testid="nav-home"`) {
+		t.Errorf("refusal is not inside the normal page; body:\n%s", page)
+	}
+	start := strings.Index(page, `data-testid="checkin-form"`)
+	if start < 0 {
+		t.Fatalf("refusal does not show the Check-in form; body:\n%s", page)
+	}
+	form := page[start : start+strings.Index(page[start:], "</form>")]
+	errAt := strings.Index(form, `data-testid="checkin-error"`)
+	if errAt < 0 || errAt > strings.Index(form, `data-testid="checkin-health"`) {
+		t.Fatalf("the form has no error at its top; form:\n%s", form)
+	}
+	if !strings.Contains(form[errAt:], reason) {
+		t.Errorf("the form's error does not give the reason %q; form:\n%s", reason, form)
+	}
+	if strings.Contains(page, "validation failed") {
+		t.Errorf("the reason carries the internal prefix; body:\n%s", page)
+	}
+}
+
+// postNoChange clicks a No change button: it posts to the button's action, as
+// htmx does when hx is set, and returns the response with its body read.
+func postNoChange(t *testing.T, client *http.Client, rawURL string, hx bool) (*http.Response, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, rawURL, strings.NewReader(""))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if hx {
+		req.Header.Set("HX-Request", "true")
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST %s: %v", rawURL, err)
+	}
+	return resp, readBody(t, resp)
+}
+
+// overdueGreenGoal arranges a Goal whose latest Check-in is Green and whose
+// Beta Milestone has since gone overdue, so No change on it is refused.
+func overdueGreenGoal(h *testsupport.Harness, owner domain.Account) domain.Goal {
+	goal := h.ActiveGoal(owner, "Blue-green deploys for the monolith", "Deploys take the site down.")
+	h.Checkin(owner, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(100 * day) // past the Beta Milestone's date
+	return goal
+}
+
+// The Goal page's No change posts with htmx; a refusal comes back as the whole
+// Check-in page with 200, so htmx swaps it in, and the Check-in page's URL is
+// pushed so the address bar matches what the person sees (#103).
+func TestNoChangeRefusedOverHtmxSwapsInCheckinPage(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := overdueGreenGoal(h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	goalPage := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	button := tagAround(t, goalPage, `data-testid="no-change-checkin"`)
+	action := fmt.Sprintf("/goals/%d/checkins/no-change", goal.ID)
+	if !strings.Contains(button, `hx-post="`+action+`"`) {
+		t.Fatalf("the Goal page's No change does not post with htmx to %s: %s", action, button)
+	}
+
+	resp, page := postNoChange(t, client, ts.URL+action, true)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("htmx status = %d, want 200 so htmx swaps the page in", resp.StatusCode)
+	}
+	if got, want := resp.Header.Get("HX-Push-Url"), fmt.Sprintf("/goals/%d/checkin", goal.ID); got != want {
+		t.Errorf("HX-Push-Url = %q, want %q", got, want)
+	}
+	assertNoChangeRefusalOnForm(t, page, `Milestone &#34;Beta&#34; is overdue`)
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
+		t.Errorf("a refused No change recorded a Check-in: history has %d, want 1", len(history))
+	}
+}
+
+// A No change whose repeated Health now differs from the Rolled-up Health, with
+// no explanation to carry over, lands on the form to explain (#103).
+func TestNoChangeRefusedWhenRollupDiffersLandsOnCheckinForm(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	parent := h.ActiveGoal(sam, "Reliable platform", "Outages cost trust.")
+	child := h.ActiveChildOf(sam, parent, "Blue-green deploys", "Deploys take the site down.")
+	h.Checkin(sam, parent.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Checkin(sam, child.ID, domain.HealthRed, "Blocked.", "Unblock the pipeline.", h.Clock.Now().AddDate(0, 1, 0))
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, parent.ID), false)
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", resp.StatusCode)
+	}
+	assertNoChangeRefusalOnForm(t, page, "differs from the Rolled-up Health (Red)")
+	if history, _ := h.Service.ListCheckins(context.Background(), parent.ID); len(history) != 1 {
+		t.Errorf("a refused No change recorded a Check-in: history has %d, want 1", len(history))
+	}
+}
+
+// A No change on a Goal never checked in on has nothing to repeat, so it lands
+// on the form to write the first Check-in (#103).
+func TestNoChangeRefusedWithoutPreviousCheckinLandsOnCheckinForm(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, hx := range []bool{false, true} {
+		_, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), hx)
+		assertNoChangeRefusalOnForm(t, page, "there is no previous Check-in to repeat")
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
+		t.Errorf("a refused No change recorded a Check-in: history has %d, want 0", len(history))
+	}
+}
+
+// Someone who may not check in on a Goal gets a 403 that says so inside the
+// normal page, not bare text (#103).
+func TestNoChangeByNonDelegateIsForbiddenInsideThePage(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("kim@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	client := signInClient(t, ts.URL, "kim@example.com")
+
+	for _, hx := range []bool{false, true} {
+		resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), hx)
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("hx=%v: status = %d, want 403", hx, resp.StatusCode)
+		}
+		assertCheckinUnavailable(t, page, "Only the Goal&#39;s Owner or a Delegate may check in on Ship search.")
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
+		t.Errorf("a forbidden No change recorded a Check-in: history has %d, want 1", len(history))
+	}
+}
+
+// A No change on a Goal that doesn't exist gets a 404 that says so inside the
+// normal page (#103).
+func TestNoChangeOnMissingGoalIsNotFoundInsideThePage(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	h.SignIn("sam@example.com")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp, page := postNoChange(t, client, ts.URL+"/goals/9999/checkins/no-change", false)
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status = %d, want 404", resp.StatusCode)
+	}
+	assertCheckinUnavailable(t, page, "There is no such Goal")
+}
+
+// assertCheckinUnavailable checks a No change failure came back inside the
+// site's chrome with a sentence saying what happened.
+func assertCheckinUnavailable(t *testing.T, page, sentence string) {
+	t.Helper()
+	if !strings.Contains(page, `data-testid="nav-home"`) {
+		t.Errorf("failure is not inside the normal page; body:\n%s", page)
+	}
+	if !strings.Contains(pageElement(t, page, "p", "checkin-unavailable"), sentence) {
+		t.Errorf("failure does not say %q; body:\n%s", sentence, page)
+	}
+}
+
+// A successful No change over htmx still sends the person back to the Goal
+// page with HX-Redirect (#103).
+func TestNoChangeOverHtmxRedirectsToGoal(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp, _ := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), true)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
+	}
+	if got, want := resp.Header.Get("HX-Redirect"), fmt.Sprintf("/goals/%d", goal.ID); got != want {
+		t.Errorf("HX-Redirect = %q, want %q", got, want)
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 2 {
+		t.Errorf("history has %d, want 2 (the Check-in and its No change)", len(history))
+	}
+}

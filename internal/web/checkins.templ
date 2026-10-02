@@ -419,9 +419,12 @@ templ noChangeCheckinButton(goalID int64, label string) {
 // checkinPage is the Check-in on its own page, reached from the Goal page by
 // the Owner or a Delegate: a breadcrumb back to the Goal, then the one-click
 // "no change" card when there is a previous Check-in to repeat, then the form,
-// prefilled from the latest Check-in.
-templ checkinPage(current *domain.Account, v goalView) {
+// prefilled from the latest Check-in. Refusal, when not empty, is why a No
+// change couldn't be recorded, shown at the top of the form.
+templ checkinPage(current *domain.Account, v goalView, refusal string) {
 	{{ g := v.Goal }}
+	{{ form := checkinFormFromLatest(v) }}
+	{{ form.Error = checkinError{Message: refusal} }}
 	@layout("Check in · "+g.Title, current) {
 		@checkinStyles()
 		<div class="checkin-page">
@@ -439,10 +442,25 @@ templ checkinPage(current *domain.Account, v goalView) {
 				</div>
 			}
 			if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold {
-				@checkinForm(checkinFormFromLatest(v))
+				@checkinForm(form)
 			} else {
+				@checkinFieldError(form.Error, "")
 				<p data-testid="goal-no-health">{ fmt.Sprintf("A %s Goal takes no Check-ins.", g.Lifecycle) }</p>
 			}
+		</div>
+	}
+}
+
+// checkinUnavailablePage says, inside the normal page, why the Check-in
+// couldn't be reached: the Goal doesn't exist, or the reader may not check in
+// on it.
+templ checkinUnavailablePage(current *domain.Account, title, message string) {
+	@layout(title, current) {
+		@checkinStyles()
+		<div class="checkin-page">
+			<h1>{ title }</h1>
+			<p data-testid="checkin-unavailable">{ message }</p>
+			<p><a href="/home">Back to Home</a></p>
 		</div>
 	}
 }

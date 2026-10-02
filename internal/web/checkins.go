@@ -31,7 +31,7 @@ func (s *Server) handleCheckinPage(w http.ResponseWriter, r *http.Request, curre
 		http.Error(w, "only the Owner or a Delegate may check in", http.StatusForbidden)
 		return
 	}
-	render(w, r, http.StatusOK, checkinPage(&current, view))
+	render(w, r, http.StatusOK, checkinPage(&current, view, ""))
 }
 
 // handleSubmitCheckin records a Check-in on the Goal in the path, written by the
@@ -356,10 +356,46 @@ func (s *Server) handleNoChangeCheckin(w http.ResponseWriter, r *http.Request, c
 		return
 	}
 	if _, err := s.svc.SubmitNoChangeCheckin(r.Context(), goalID, current.ID); err != nil {
-		writeCheckinError(w, err)
+		s.renderNoChangeRefusal(w, r, current, goalID, err)
 		return
 	}
 	s.checkinRedirect(w, r, goalID)
+}
+
+// renderNoChangeRefusal shows why a No change couldn't be recorded. A refusal
+// that means "write a full Check-in" (no previous Check-in, a Goal that isn't
+// Active, a Health the roll-up or an overdue Milestone now rules out) lands the
+// reader on the Goal's Check-in page with the reason as the form's error. For
+// htmx it returns 200, so the page is swapped in, and pushes the Check-in
+// page's URL; a plain post gets 422. A Goal that doesn't exist, or one the
+// reader may not check in on, gets 404 or 403 with a page saying so.
+func (s *Server) renderNoChangeRefusal(w http.ResponseWriter, r *http.Request, current domain.Account, goalID int64, err error) {
+	// The Goal is loaded first: the domain checks the Lifecycle before who may
+	// check in, so a validation error alone doesn't mean the reader may.
+	view, viewErr := s.goalPageView(r.Context(), goalID, current)
+	switch {
+	case errors.Is(viewErr, domain.ErrNotFound):
+		render(w, r, http.StatusNotFound, checkinUnavailablePage(&current, "Goal not found", "There is no such Goal, so there is nothing to check in on."))
+	case viewErr != nil:
+		render(w, r, http.StatusInternalServerError, checkinUnavailablePage(&current, "Check-in failed", "The Goal couldn't be loaded, so nothing was recorded. Try again."))
+	case errors.Is(err, domain.ErrNotAuthorized), !view.CanCheckin:
+		render(w, r, http.StatusForbidden, checkinUnavailablePage(&current, "Can't check in", "Only the Goal's Owner or a Delegate may check in on "+view.Goal.Title+"."))
+	case errors.Is(err, domain.ErrValidation):
+		status := http.StatusUnprocessableEntity
+		if r.Header.Get("HX-Request") == "true" {
+			status = http.StatusOK
+			w.Header().Set("HX-Push-Url", "/goals/"+strconv.FormatInt(goalID, 10)+"/checkin")
+		}
+		render(w, r, status, checkinPage(&current, view, plainReason(err)))
+	default:
+		render(w, r, http.StatusInternalServerError, checkinUnavailablePage(&current, "Check-in failed", "The No change couldn't be recorded. Try again."))
+	}
+}
+
+// plainReason is a domain validation message without its internal
+// "validation failed:" prefix.
+func plainReason(err error) string {
+	return strings.TrimPrefix(err.Error(), domain.ErrValidation.Error()+": ")
 }
 
 // renderCheckinFormError re-renders the Check-in form with a validation message.
