@@ -451,3 +451,90 @@ func TestValuesListInAdminsOrderEverywhere(t *testing.T) {
 		t.Errorf("groups = %q, want %q", got, want)
 	}
 }
+
+// Behind a Dimension card's Edit toggle an Admin merges a value into another
+// of the same Dimension's values, after confirming: the merged value leaves
+// the list and the Goals carrying it show the target instead, once if they had
+// both. Merging across Dimensions is refused, and so is a non-Admin's merge.
+func TestAdminMergesDimensionValueOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	customer := h.CreateSeveralValuesDimension(boss, "Customer", "Acme", "ACME Corp", "Globex")
+	acme, acmeCorp, globex := customer.Values[0], customer.Values[1], customer.Values[2]
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, acme)
+	h.AssignGoalValue(goal, acmeCorp)
+	ts := newServer(t, h)
+	bossClient := signInClient(t, ts.URL, "boss@example.com")
+	mergeURL := fmt.Sprintf("%s/dimension-values/%d/merge", ts.URL, acmeCorp.ID)
+
+	edit := between(t, getBody(t, bossClient, ts.URL+"/dimensions"), `<details class="dm-edit"`, "</details>")
+	merge := between(t, edit, fmt.Sprintf(`action="/dimension-values/%d/merge"`, acmeCorp.ID), "</form>")
+	if !strings.Contains(openTag(merge), `onsubmit="return confirm(`) {
+		t.Errorf("Merge doesn't ask for confirmation: %s", openTag(merge))
+	}
+	for _, v := range []domain.DimensionValue{acme, globex} {
+		if !strings.Contains(merge, fmt.Sprintf(`<option value="%d">%s</option>`, v.ID, v.Value)) {
+			t.Errorf("ACME Corp's merge form doesn't offer %s:\n%s", v.Value, merge)
+		}
+	}
+	if strings.Contains(merge, fmt.Sprintf(`<option value="%d">`, acmeCorp.ID)) {
+		t.Errorf("ACME Corp's merge form offers merging it into itself:\n%s", merge)
+	}
+
+	sam2 := signInClient(t, ts.URL, "sam@example.com")
+	if resp := postForm(t, sam2, mergeURL, url.Values{"into": {fmt.Sprint(acme.ID)}}); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("non-Admin merge: status %d, want 403", resp.StatusCode)
+	}
+	if resp := postForm(t, bossClient, mergeURL, url.Values{"into": {fmt.Sprint(pillar.Values[0].ID)}}); resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("merge across Dimensions: status %d, want 422", resp.StatusCode)
+	}
+
+	resp := postForm(t, bossClient, mergeURL, url.Values{"into": {fmt.Sprint(acme.ID)}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK {
+		t.Fatalf("merge: status %d: %s", resp.StatusCode, body)
+	}
+	card := between(t, getBody(t, bossClient, ts.URL+"/dimensions"), `<li data-testid="dimension"`, "<details")
+	if strings.Contains(card, "ACME Corp") {
+		t.Errorf("the merged value is still listed:\n%s", card)
+	}
+	section := pageElement(t, getBody(t, sam2, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)), "section", "goal-dimensions")
+	if n := strings.Count(section, `data-testid="goal-dimension-value">Acme<`); n != 1 || strings.Contains(section, "ACME Corp") {
+		t.Errorf("Goal page shows Acme %d times (want once) or still ACME Corp:\n%s", n, section)
+	}
+}
+
+// When a merge fails part-way, the request fails and nothing changes: the
+// merged value stays listed and on its Goals.
+func TestFailedMergeChangesNothingOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	customer := h.CreateDimension(boss, "Customer", "Acme", "Globex")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, customer.Values[1])
+	if _, err := h.DB.Exec(`CREATE TRIGGER fail_merge BEFORE DELETE ON dimension_values
+		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+	ts := newServer(t, h)
+	bossClient := signInClient(t, ts.URL, "boss@example.com")
+
+	resp := postForm(t, bossClient, fmt.Sprintf("%s/dimension-values/%d/merge", ts.URL, customer.Values[1].ID),
+		url.Values{"into": {fmt.Sprint(customer.Values[0].ID)}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("failed merge: status %d, want 500", resp.StatusCode)
+	}
+
+	card := between(t, getBody(t, bossClient, ts.URL+"/dimensions"), `<li data-testid="dimension"`, "<details")
+	if got, want := nameOrder(card, "Acme", "Globex"), "Acme Globex"; got != want {
+		t.Errorf("list after a failed merge = %q, want %q", got, want)
+	}
+	section := pageElement(t, getBody(t, bossClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)), "section", "goal-dimensions")
+	if !strings.Contains(section, `data-testid="goal-dimension-value">Globex<`) {
+		t.Errorf("the Goal lost Globex after a failed merge:\n%s", section)
+	}
+}

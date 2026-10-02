@@ -9,6 +9,9 @@ import (
 // confirmRetire is what Retire asks before retiring a Dimension value.
 const confirmRetire = "Retire this value? Goals that have it keep it, but it can no longer be assigned."
 
+// confirmMerge is what Merge asks before merging a Dimension value away.
+const confirmMerge = "Merge this value? Its Goals and Report filters move to the chosen value, and this value is removed. This can't be undone."
+
 // dimensionsPage lists every Dimension as a card of its values, whether a Goal
 // takes one of them or several, and whether its list is Fixed or Extendable,
 // and — for an Admin — the controls to define a Dimension and, behind each
@@ -113,10 +116,11 @@ templ dimensionValues(d domain.Dimension) {
 
 // dimensionEdit is an Admin's Edit toggle on a Dimension card: a switch between
 // one value and several per Goal, a switch between a Fixed and an Extendable
-// list, then each value in the list's order with buttons to move it up or down
-// and — while it is still in use — a rename form and a Retire button, a
-// "sort alphabetically" action, and a form to add a value. Retire asks for
-// confirmation first.
+// list, then each value in the list's order with buttons to move it up or down,
+// — while it is still in use — a rename form and a Retire button, and a form
+// to merge it into another of the Dimension's values, then a
+// "sort alphabetically" action and a form to add a value. Retire and Merge ask
+// for confirmation first.
 templ dimensionEdit(d domain.Dimension) {
 	<details class="dm-edit">
 		<summary class="btn sm">Edit</summary>
@@ -154,6 +158,9 @@ templ dimensionEdit(d domain.Dimension) {
 							<button type="submit" class="btn danger sm">Retire</button>
 						</form>
 					}
+					if len(d.Values) > 1 {
+						@mergeValue(d, v)
+					}
 				</li>
 			}
 		</ul>
@@ -173,6 +180,21 @@ templ moveValue(v domain.DimensionValue, direction, arrow string) {
 	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/move", v.ID)) }>
 		<input type="hidden" name="direction" value={ direction }/>
 		<button type="submit" class="btn sm" aria-label={ "Move " + v.Value + " " + direction }>{ arrow }</button>
+	</form>
+}
+
+// mergeValue is the form that merges v into another of d's values, chosen from
+// a list of the rest (CONTEXT.md: Extendable — merging stays with Admins).
+templ mergeValue(d domain.Dimension, v domain.DimensionValue) {
+	<form class="dm-row" method="post" action={ templ.SafeURL(fmt.Sprintf("/dimension-values/%d/merge", v.ID)) } onsubmit={ confirmScript(confirmMerge) }>
+		<select name="into" aria-label={ "Merge " + v.Value + " into" } required>
+			for _, other := range d.Values {
+				if other.ID != v.ID {
+					<option value={ fmt.Sprintf("%d", other.ID) }>{ other.Value }</option>
+				}
+			}
+		</select>
+		<button type="submit" class="btn danger sm">Merge</button>
 	</form>
 }
 

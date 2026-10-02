@@ -45,6 +45,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /dimension-values/{id}/rename", s.requireAuth(s.handleRenameDimensionValue))
 	s.mux.HandleFunc("POST /dimension-values/{id}/retire", s.requireAuth(s.handleRetireDimensionValue))
 	s.mux.HandleFunc("POST /dimension-values/{id}/move", s.requireAuth(s.handleMoveDimensionValue))
+	s.mux.HandleFunc("POST /dimension-values/{id}/merge", s.requireAuth(s.handleMergeDimensionValue))
 	s.mux.HandleFunc("POST /dimensions/{id}/sort", s.requireAuth(s.handleSortDimensionValues))
 	s.mux.HandleFunc("POST /goals/{id}/dimensions", s.requireAuth(s.handleAssignGoalValue))
 	s.mux.HandleFunc("POST /goals/{id}/children", s.requireAuth(s.handleCreateChildGoal))
