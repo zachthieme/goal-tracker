@@ -88,16 +88,24 @@ templ goalFilters(view goalsListData) {
 						}
 					</fieldset>
 				}
-				<label>
-					Group by
-					<select name="group">
-						<option value="" selected?={ view.GroupID == 0 }>— none —</option>
-						for _, d := range view.Dimensions {
-							<option value={ fmt.Sprintf("%d", d.ID) } selected?={ view.GroupID == d.ID }>{ d.Name }</option>
-						}
-					</select>
-				</label>
+				if view.Table == nil {
+					<label>
+						Group by
+						<select name="group">
+							<option value="" selected?={ view.GroupID == 0 }>— none —</option>
+							for _, d := range view.Dimensions {
+								<option value={ fmt.Sprintf("%d", d.ID) } selected?={ view.GroupID == d.ID }>{ d.Name }</option>
+							}
+						</select>
+					</label>
+				}
 			</details>
+		}
+		if view.Table != nil {
+			<input type="hidden" name="layout" value="table"/>
+			if group := view.Query.Get("group"); group != "" {
+				<input type="hidden" name="group" value={ group }/>
+			}
 		}
 	</form>
 }
@@ -117,7 +125,7 @@ templ goalList(view goalsListData) {
 // goalListLayout is the Goal list's list layout, led by Health.
 templ goalListLayout(view goalsListData) {
 	<div id="goal-list" data-testid="goal-list" class="card">
-		<p data-testid="goal-count" class="muted small gl-count">{ goalCount(len(view.Rows)) }</p>
+		@goalListHead(view)
 		<table>
 			<thead>
 				<tr><th>Health</th><th>Goal</th><th>Owner</th><th>Due</th><th>Last check-in</th><th>Dimension tags</th></tr>
@@ -157,6 +165,30 @@ templ goalListLayout(view goalsListData) {
 				</tbody>
 			}
 		</table>
+	</div>
+}
+
+// goalListHead tops the Goal list with its total and the List / Table toggle,
+// whose links keep every filter.
+templ goalListHead(view goalsListData) {
+	<div class="gl-head">
+		<p data-testid="goal-count" class="muted small gl-count">{ goalCount(len(view.Rows)) }</p>
+		<nav class="gl-layout" aria-label="Layout">
+			<a
+				data-testid="layout-list"
+				href={ view.layoutURL("") }
+				if view.Table == nil {
+					aria-current="page"
+				}
+			>List</a>
+			<a
+				data-testid="layout-table"
+				href={ view.layoutURL(layoutTable) }
+				if view.Table != nil {
+					aria-current="page"
+				}
+			>Table</a>
+		</nav>
 	</div>
 }
 
@@ -216,7 +248,7 @@ templ goalListRow(row goalRow) {
 // scrolls sideways inside its own container rather than widening the page.
 templ goalTableLayout(view goalsListData) {
 	<div id="goal-list" data-testid="goal-list" class="card">
-		<p data-testid="goal-count" class="muted small gl-count">{ goalCount(len(view.Rows)) }</p>
+		@goalListHead(view)
 		<div class="gl-scroll">
 			<table data-testid="goal-table">
 				<thead data-testid="goal-table-head">

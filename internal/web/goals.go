@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a-h/templ"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
@@ -79,7 +81,7 @@ type goalsListData struct {
 // moreFiltersSet reports whether a Dimension filter or grouping is chosen, so
 // More filters, where they're folded away, opens to show it.
 func (v goalsListData) moreFiltersSet() bool {
-	return len(v.Selected) > 0 || v.GroupID != 0
+	return len(v.Selected) > 0 || (v.GroupID != 0 && v.Table == nil)
 }
 
 // goalCount is the Goal list's total: "1 Goal", "3 Goals".
@@ -1243,6 +1245,32 @@ func ownershipOutcome(status string) string {
 // layoutTable is the ?layout= value that shows the Goal list as a flat table,
 // one row per Goal and a column per Dimension and Field.
 const layoutTable = "table"
+
+// queryURL links to the Goal list with this view's query string changed by
+// edit, so a link changes one thing and keeps every filter.
+func (v goalsListData) queryURL(edit func(url.Values)) templ.SafeURL {
+	q := url.Values{}
+	for k, vs := range v.Query {
+		q[k] = slices.Clone(vs)
+	}
+	edit(q)
+	if len(q) == 0 {
+		return "/goals"
+	}
+	return templ.SafeURL("/goals?" + q.Encode())
+}
+
+// layoutURL links to this view in the list layout ("") or the table layout,
+// keeping every filter.
+func (v goalsListData) layoutURL(layout string) templ.SafeURL {
+	return v.queryURL(func(q url.Values) {
+		if layout == "" {
+			q.Del("layout")
+			return
+		}
+		q.Set("layout", layout)
+	})
+}
 
 // goalTable is the Goal list's table layout: its columns and its rows, each
 // with the Field values its Field columns show. It is read-only, has no totals

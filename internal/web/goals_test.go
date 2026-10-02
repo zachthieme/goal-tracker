@@ -2228,3 +2228,61 @@ func TestGoalTableHasAColumnPerLiveDimensionAndField(t *testing.T) {
 		}
 	}
 }
+
+// linkQuery is the query string of the <a> carrying data-testid on page.
+func linkQuery(t *testing.T, page, testID string) url.Values {
+	t.Helper()
+	tag := pageTag(t, page, "a", testID)
+	u, err := url.Parse(html.UnescapeString(attr(tag, "href")))
+	if err != nil {
+		t.Fatalf("%s href: %v", testID, err)
+	}
+	if u.Path != "/goals" {
+		t.Errorf("%s links to %s, want /goals", testID, u.Path)
+	}
+	return u.Query()
+}
+
+// Switching the Goal list between List and Table keeps every filter, and the
+// table's URL alone reproduces the same view, so a table link can be shared.
+// Applying the filter bar in the table stays in the table.
+func TestGoalTableLayoutKeepsFiltersAndIsShareable(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	growth := pillar.Values[0]
+	alpha := h.CreateGoal(sam, "Alpha launch", "A matters.")
+	alphaTrust := h.CreateGoal(sam, "Alpha audit", "A matters.")
+	bravo := h.CreateGoal(sam, "Bravo launch", "B matters.")
+	h.AssignGoalValue(alpha, growth)
+	h.AssignGoalValue(alphaTrust, pillar.Values[1])
+	h.AssignGoalValue(bravo, growth)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	list := getBody(t, client, fmt.Sprintf("%s/goals?q=alpha&value=%d", ts.URL, growth.ID))
+	toTable := linkQuery(t, list, "layout-table")
+	if toTable.Get("layout") != "table" || toTable.Get("q") != "alpha" || toTable.Get("value") != fmt.Sprint(growth.ID) {
+		t.Fatalf("the Table toggle drops a filter: %v", toTable)
+	}
+
+	// A fresh browser following the shared table link sees the same slice.
+	table := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/goals?"+toTable.Encode())
+	rows := tableRows(t, table)
+	if got := rowTitles(rows, alpha, alphaTrust, bravo); !slices.Equal(got, []string{"Alpha launch"}) {
+		t.Errorf("the shared table lists %q, want only Alpha launch", got)
+	}
+	filters := between(t, table, `data-testid="goal-filters"`, "</form>")
+	if !strings.Contains(filters, `name="layout" value="table"`) {
+		t.Errorf("applying the filter bar leaves the table:\n%s", filters)
+	}
+	if !strings.Contains(filters, `value="alpha"`) || !strings.Contains(filters, fmt.Sprintf(`value="%d" checked`, growth.ID)) {
+		t.Errorf("the table's filter bar doesn't show the active filters:\n%s", filters)
+	}
+
+	toList := linkQuery(t, table, "layout-list")
+	if toList.Has("layout") || toList.Get("q") != "alpha" || toList.Get("value") != fmt.Sprint(growth.ID) {
+		t.Errorf("the List toggle drops a filter or stays in the table: %v", toList)
+	}
+}
