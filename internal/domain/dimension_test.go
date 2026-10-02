@@ -845,3 +845,27 @@ func TestDelegateAddsToExtendableListButContributorCannot(t *testing.T) {
 		t.Errorf("Customer list = %v, want [Acme Globex]", got)
 	}
 }
+
+// A value added to a Dimension lands at the end of its list, in the order
+// added, whoever adds it: the Admin's own values keep the order they were
+// typed, and an Owner's addition to an Extendable list comes last.
+func TestNewValuesGoLastInOrderAdded(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	customer := h.CreateExtendableDimension(boss, "Customer", "Umbrella", "Initech")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	if _, err := h.Service.AddDimensionValue(ctx, boss.ID, customer.ID, "Globex"); err != nil {
+		t.Fatalf("AddDimensionValue: %v", err)
+	}
+	if _, err := h.Service.AssignGoalValueByName(ctx, sam.ID, goal.ID, customer.ID, "Acme"); err != nil {
+		t.Fatalf("AssignGoalValueByName: %v", err)
+	}
+
+	want := []string{"Umbrella", "Initech", "Globex", "Acme"}
+	if got := valueNames(dimensionNamed(t, h, "Customer").Values); !equalStrings(got, want) {
+		t.Errorf("Customer list = %v, want %v", got, want)
+	}
+}

@@ -69,9 +69,12 @@ func (q *Queries) CreateDimension(ctx context.Context, arg CreateDimensionParams
 }
 
 const createDimensionValue = `-- name: CreateDimensionValue :one
-INSERT INTO dimension_values (dimension_id, value, retired, created_at)
-VALUES (?, ?, 0, ?)
-RETURNING id, dimension_id, value, retired, created_at
+INSERT INTO dimension_values (dimension_id, value, retired, created_at, position)
+VALUES (
+    ?1, ?2, 0, ?3,
+    (SELECT COALESCE(MAX(position) + 1, 0) FROM dimension_values WHERE dimension_id = ?1)
+)
+RETURNING id, dimension_id, value, retired, created_at, position
 `
 
 type CreateDimensionValueParams struct {
@@ -80,6 +83,8 @@ type CreateDimensionValueParams struct {
 	CreatedAt   string
 }
 
+// A new value takes the position after the Dimension's last, so it lands at the
+// end of the list.
 func (q *Queries) CreateDimensionValue(ctx context.Context, arg CreateDimensionValueParams) (DimensionValue, error) {
 	row := q.db.QueryRowContext(ctx, createDimensionValue, arg.DimensionID, arg.Value, arg.CreatedAt)
 	var i DimensionValue
@@ -89,6 +94,7 @@ func (q *Queries) CreateDimensionValue(ctx context.Context, arg CreateDimensionV
 		&i.Value,
 		&i.Retired,
 		&i.CreatedAt,
+		&i.Position,
 	)
 	return i, err
 }
@@ -111,7 +117,7 @@ func (q *Queries) GetDimension(ctx context.Context, id int64) (Dimension, error)
 }
 
 const getDimensionValue = `-- name: GetDimensionValue :one
-SELECT id, dimension_id, value, retired, created_at FROM dimension_values WHERE id = ? LIMIT 1
+SELECT id, dimension_id, value, retired, created_at, position FROM dimension_values WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetDimensionValue(ctx context.Context, id int64) (DimensionValue, error) {
@@ -123,16 +129,17 @@ func (q *Queries) GetDimensionValue(ctx context.Context, id int64) (DimensionVal
 		&i.Value,
 		&i.Retired,
 		&i.CreatedAt,
+		&i.Position,
 	)
 	return i, err
 }
 
 const listAllDimensionValues = `-- name: ListAllDimensionValues :many
-SELECT id, dimension_id, value, retired, created_at FROM dimension_values ORDER BY dimension_id, value, id
+SELECT id, dimension_id, value, retired, created_at, position FROM dimension_values ORDER BY dimension_id, position, id
 `
 
 // Every value across every Dimension, for attaching values to their Dimensions
-// in one pass.
+// in one pass, each Dimension's in the Admin's order.
 func (q *Queries) ListAllDimensionValues(ctx context.Context) ([]DimensionValue, error) {
 	rows, err := q.db.QueryContext(ctx, listAllDimensionValues)
 	if err != nil {
@@ -148,6 +155,7 @@ func (q *Queries) ListAllDimensionValues(ctx context.Context) ([]DimensionValue,
 			&i.Value,
 			&i.Retired,
 			&i.CreatedAt,
+			&i.Position,
 		); err != nil {
 			return nil, err
 		}
@@ -163,11 +171,11 @@ func (q *Queries) ListAllDimensionValues(ctx context.Context) ([]DimensionValue,
 }
 
 const listAllGoalValues = `-- name: ListAllGoalValues :many
-SELECT goal_dimension_values.goal_id, dimension_values.id, dimension_values.dimension_id, dimension_values.value, dimension_values.retired, dimension_values.created_at, dimensions.id, dimensions.name, dimensions.created_at, dimensions.selection, dimensions.list
+SELECT goal_dimension_values.goal_id, dimension_values.id, dimension_values.dimension_id, dimension_values.value, dimension_values.retired, dimension_values.created_at, dimension_values.position, dimensions.id, dimensions.name, dimensions.created_at, dimensions.selection, dimensions.list
 FROM goal_dimension_values
 JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
 JOIN dimensions ON dimensions.id = dimension_values.dimension_id
-ORDER BY goal_dimension_values.goal_id, dimensions.name, dimension_values.value
+ORDER BY goal_dimension_values.goal_id, dimensions.name, dimension_values.position, dimension_values.id
 `
 
 type ListAllGoalValuesRow struct {
@@ -194,6 +202,7 @@ func (q *Queries) ListAllGoalValues(ctx context.Context) ([]ListAllGoalValuesRow
 			&i.DimensionValue.Value,
 			&i.DimensionValue.Retired,
 			&i.DimensionValue.CreatedAt,
+			&i.DimensionValue.Position,
 			&i.Dimension.ID,
 			&i.Dimension.Name,
 			&i.Dimension.CreatedAt,
@@ -214,11 +223,11 @@ func (q *Queries) ListAllGoalValues(ctx context.Context) ([]ListAllGoalValuesRow
 }
 
 const listDimensionValues = `-- name: ListDimensionValues :many
-SELECT id, dimension_id, value, retired, created_at FROM dimension_values WHERE dimension_id = ? ORDER BY value, id
+SELECT id, dimension_id, value, retired, created_at, position FROM dimension_values WHERE dimension_id = ? ORDER BY position, id
 `
 
-// Every value of a Dimension, retired ones included, so Admin management and
-// existing-Goal display both see the full list.
+// Every value of a Dimension in the Admin's order, retired ones included, so
+// Admin management and existing-Goal display both see the full list.
 func (q *Queries) ListDimensionValues(ctx context.Context, dimensionID int64) ([]DimensionValue, error) {
 	rows, err := q.db.QueryContext(ctx, listDimensionValues, dimensionID)
 	if err != nil {
@@ -234,6 +243,7 @@ func (q *Queries) ListDimensionValues(ctx context.Context, dimensionID int64) ([
 			&i.Value,
 			&i.Retired,
 			&i.CreatedAt,
+			&i.Position,
 		); err != nil {
 			return nil, err
 		}
@@ -282,12 +292,12 @@ func (q *Queries) ListDimensions(ctx context.Context) ([]Dimension, error) {
 }
 
 const listGoalValues = `-- name: ListGoalValues :many
-SELECT dimension_values.id, dimension_values.dimension_id, dimension_values.value, dimension_values.retired, dimension_values.created_at, dimensions.id, dimensions.name, dimensions.created_at, dimensions.selection, dimensions.list
+SELECT dimension_values.id, dimension_values.dimension_id, dimension_values.value, dimension_values.retired, dimension_values.created_at, dimension_values.position, dimensions.id, dimensions.name, dimensions.created_at, dimensions.selection, dimensions.list
 FROM goal_dimension_values
 JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
 JOIN dimensions ON dimensions.id = dimension_values.dimension_id
 WHERE goal_dimension_values.goal_id = ?
-ORDER BY dimensions.name, dimension_values.value
+ORDER BY dimensions.name, dimension_values.position, dimension_values.id
 `
 
 type ListGoalValuesRow struct {
@@ -312,6 +322,7 @@ func (q *Queries) ListGoalValues(ctx context.Context, goalID int64) ([]ListGoalV
 			&i.DimensionValue.Value,
 			&i.DimensionValue.Retired,
 			&i.DimensionValue.CreatedAt,
+			&i.DimensionValue.Position,
 			&i.Dimension.ID,
 			&i.Dimension.Name,
 			&i.Dimension.CreatedAt,
@@ -459,7 +470,7 @@ func (q *Queries) SetDimensionSelection(ctx context.Context, arg SetDimensionSel
 
 const setDimensionValueName = `-- name: SetDimensionValueName :one
 UPDATE dimension_values SET value = ? WHERE id = ?
-RETURNING id, dimension_id, value, retired, created_at
+RETURNING id, dimension_id, value, retired, created_at, position
 `
 
 type SetDimensionValueNameParams struct {
@@ -476,13 +487,14 @@ func (q *Queries) SetDimensionValueName(ctx context.Context, arg SetDimensionVal
 		&i.Value,
 		&i.Retired,
 		&i.CreatedAt,
+		&i.Position,
 	)
 	return i, err
 }
 
 const setDimensionValueRetired = `-- name: SetDimensionValueRetired :one
 UPDATE dimension_values SET retired = ? WHERE id = ?
-RETURNING id, dimension_id, value, retired, created_at
+RETURNING id, dimension_id, value, retired, created_at, position
 `
 
 type SetDimensionValueRetiredParams struct {
@@ -499,6 +511,7 @@ func (q *Queries) SetDimensionValueRetired(ctx context.Context, arg SetDimension
 		&i.Value,
 		&i.Retired,
 		&i.CreatedAt,
+		&i.Position,
 	)
 	return i, err
 }

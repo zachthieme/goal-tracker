@@ -37,22 +37,27 @@ WHERE goals.id IN (
 ORDER BY goals.title, goals.id;
 
 -- name: CreateDimensionValue :one
-INSERT INTO dimension_values (dimension_id, value, retired, created_at)
-VALUES (?, ?, 0, ?)
+-- A new value takes the position after the Dimension's last, so it lands at the
+-- end of the list.
+INSERT INTO dimension_values (dimension_id, value, retired, created_at, position)
+VALUES (
+    sqlc.arg(dimension_id), sqlc.arg(value), 0, sqlc.arg(created_at),
+    (SELECT COALESCE(MAX(position) + 1, 0) FROM dimension_values WHERE dimension_id = sqlc.arg(dimension_id))
+)
 RETURNING *;
 
 -- name: GetDimensionValue :one
 SELECT * FROM dimension_values WHERE id = ? LIMIT 1;
 
 -- name: ListDimensionValues :many
--- Every value of a Dimension, retired ones included, so Admin management and
--- existing-Goal display both see the full list.
-SELECT * FROM dimension_values WHERE dimension_id = ? ORDER BY value, id;
+-- Every value of a Dimension in the Admin's order, retired ones included, so
+-- Admin management and existing-Goal display both see the full list.
+SELECT * FROM dimension_values WHERE dimension_id = ? ORDER BY position, id;
 
 -- name: ListAllDimensionValues :many
 -- Every value across every Dimension, for attaching values to their Dimensions
--- in one pass.
-SELECT * FROM dimension_values ORDER BY dimension_id, value, id;
+-- in one pass, each Dimension's in the Admin's order.
+SELECT * FROM dimension_values ORDER BY dimension_id, position, id;
 
 -- name: SetDimensionValueName :one
 UPDATE dimension_values SET value = ? WHERE id = ?
@@ -85,7 +90,7 @@ FROM goal_dimension_values
 JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
 JOIN dimensions ON dimensions.id = dimension_values.dimension_id
 WHERE goal_dimension_values.goal_id = ?
-ORDER BY dimensions.name, dimension_values.value;
+ORDER BY dimensions.name, dimension_values.position, dimension_values.id;
 
 -- name: ListAllGoalValues :many
 -- Every Goal's assigned values with their Dimension, for building the Goal list's
@@ -94,4 +99,4 @@ SELECT goal_dimension_values.goal_id, sqlc.embed(dimension_values), sqlc.embed(d
 FROM goal_dimension_values
 JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
 JOIN dimensions ON dimensions.id = dimension_values.dimension_id
-ORDER BY goal_dimension_values.goal_id, dimensions.name, dimension_values.value;
+ORDER BY goal_dimension_values.goal_id, dimensions.name, dimension_values.position, dimension_values.id;
