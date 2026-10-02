@@ -73,7 +73,12 @@ const fontsURL = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;60
 // layout is the shared page chrome. htmx drives the in-place create-Goal swap.
 templ layout(title string, current *domain.Account) {
 	<!DOCTYPE html>
-	<html lang="en">
+	<html
+		lang="en"
+		if t := currentTheme(ctx); t != themeSystem {
+			data-theme={ string(t) }
+		}
+	>
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
