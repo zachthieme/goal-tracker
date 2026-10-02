@@ -3,9 +3,9 @@
 // Goal per row, and turns each row into the same domain commands a person would
 // run: it gives every named Owner an account, creates the Goal with its So What,
 // marks it Dated or Ongoing, adds its Milestones and Metrics, assigns its
-// Dimension values, and links it to its parent Goals — accepting those links
-// automatically, since only an Admin runs an import (CONTEXT.md: Admin can
-// override links).
+// Dimension values (adding new ones to an Extendable list), sets its Fields,
+// and links it to its parent Goals — accepting those links automatically, since
+// only an Admin runs an import (CONTEXT.md: Admin can override links).
 //
 // An import is validated row by row. A DryRun reports the errors and saves
 // nothing; a Commit is all-or-nothing: if any row has an error the whole import
@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -107,12 +108,24 @@ func (im *Importer) run(ctx context.Context, adminID int64, filename string, dat
 	if err != nil {
 		return Report{}, fmt.Errorf("list dimensions: %w", err)
 	}
-	dimByName := make(map[string]domain.Dimension, len(dims))
-	for _, d := range dims {
-		dimByName[normalize(d.Name)] = d
+	fields, err := im.svc.ListFields(ctx)
+	if err != nil {
+		return Report{}, fmt.Errorf("list fields: %w", err)
+	}
+	// A Retired Dimension or Field is no longer offered, so its column is
+	// rejected like any unknown one (CONTEXT.md: Retired).
+	attrs := attributes{
+		dimensions: map[string]domain.Dimension{},
+		fields:     map[string]domain.Field{},
+	}
+	for _, d := range domain.OfferedDimensions(dims) {
+		attrs.dimensions[normalize(d.Name)] = d
+	}
+	for _, f := range domain.OfferedFields(fields) {
+		attrs.fields[normalize(f.Name)] = f
 	}
 
-	lay, err := parseHeader(grid[0].cells, dimByName)
+	lay, err := parseHeader(grid[0].cells, attrs)
 	if err != nil {
 		return Report{}, err
 	}
@@ -137,9 +150,16 @@ func (im *Importer) run(ctx context.Context, adminID int64, filename string, dat
 	return report, nil
 }
 
+// attributes are the Dimensions and Fields a column header may name, by their
+// normalized names.
+type attributes struct {
+	dimensions map[string]domain.Dimension
+	fields     map[string]domain.Field
+}
+
 // layout maps the spreadsheet's columns to their indexes. The required columns
 // carry an index; the optional ones are -1 when absent. Every column that is not
-// one of the known headers is a Dimension column.
+// one of the known headers is a Dimension or a Field column.
 type layout struct {
 	title      int
 	owner      int
@@ -150,6 +170,7 @@ type layout struct {
 	metrics    int
 	parents    int
 	dimensions []dimensionColumn
+	fields     []fieldColumn
 }
 
 // dimensionColumn is a spreadsheet column whose header names a Dimension; each
@@ -159,7 +180,14 @@ type dimensionColumn struct {
 	index     int
 }
 
-func parseHeader(header []string, dimByName map[string]domain.Dimension) (layout, error) {
+// fieldColumn is a spreadsheet column whose header names a Field; each cell
+// holds the Field's value.
+type fieldColumn struct {
+	field domain.Field
+	index int
+}
+
+func parseHeader(header []string, attrs attributes) (layout, error) {
 	lay := layout{title: -1, owner: -1, soWhat: -1, kind: -1, delivery: -1, milestones: -1, metrics: -1, parents: -1}
 	for i, raw := range header {
 		switch normalize(raw) {
@@ -182,11 +210,13 @@ func parseHeader(header []string, dimByName map[string]domain.Dimension) (layout
 		case "":
 			// A blank header names no column; ignore it.
 		default:
-			dim, ok := dimByName[normalize(raw)]
-			if !ok {
-				return layout{}, fmt.Errorf("%w: column %q is neither a known field nor a defined Dimension", domain.ErrValidation, strings.TrimSpace(raw))
+			if dim, ok := attrs.dimensions[normalize(raw)]; ok {
+				lay.dimensions = append(lay.dimensions, dimensionColumn{dimension: dim, index: i})
+			} else if f, ok := attrs.fields[normalize(raw)]; ok {
+				lay.fields = append(lay.fields, fieldColumn{field: f, index: i})
+			} else {
+				return layout{}, fmt.Errorf("%w: column %q is not a known column, a Dimension or a Field", domain.ErrValidation, strings.TrimSpace(raw))
 			}
-			lay.dimensions = append(lay.dimensions, dimensionColumn{dimension: dim, index: i})
 		}
 	}
 	var missing []string
@@ -219,6 +249,7 @@ type rowSpec struct {
 	metrics    []metricSpec
 	parents    []string
 	dimensions []dimensionValue
+	fields     []fieldValue
 	errs       []string
 	incomplete bool
 }
@@ -237,8 +268,17 @@ type metricSpec struct {
 	targetDate time.Time
 }
 
+// dimensionValue is a value to give the Goal: an existing value by its id, or
+// a value newValue to add to Extendable Dimension dimensionID's list.
 type dimensionValue struct {
-	valueID int64
+	valueID     int64
+	dimensionID int64
+	newValue    string
+}
+
+type fieldValue struct {
+	fieldID int64
+	value   string
 }
 
 func parseRows(rows []sheetRow, lay layout) []rowSpec {
@@ -309,16 +349,36 @@ func parseRow(line int, row []string, lay layout) rowSpec {
 	}
 	s.parents = splitEntries(cell(row, lay.parents))
 	for _, dc := range lay.dimensions {
-		v := cell(row, dc.index)
+		values := splitValues(cell(row, dc.index))
+		if len(values) > 1 && !dc.dimension.TakesSeveral() {
+			s.errs = append(s.errs, fmt.Sprintf("%s takes one value per Goal", dc.dimension.Name))
+			continue
+		}
+		for _, v := range values {
+			if valueID, ok := valueIDOf(dc.dimension, v); ok {
+				s.dimensions = append(s.dimensions, dimensionValue{valueID: valueID})
+				continue
+			}
+			// An Extendable list gains the unknown value when the Goal is
+			// created; a Fixed one is added to only from the Dimensions page
+			// (CONTEXT.md: Fixed, Extendable).
+			if !dc.dimension.Extendable() {
+				s.errs = append(s.errs, fmt.Sprintf("%q is not a value of Dimension %q", v, dc.dimension.Name))
+				continue
+			}
+			s.dimensions = append(s.dimensions, dimensionValue{dimensionID: dc.dimension.ID, newValue: v})
+		}
+	}
+	for _, fc := range lay.fields {
+		v := cell(row, fc.index)
 		if v == "" {
 			continue
 		}
-		valueID, ok := valueIDOf(dc.dimension, v)
-		if !ok {
-			s.errs = append(s.errs, fmt.Sprintf("%q is not a value of Dimension %q", v, dc.dimension.Name))
+		if err := fc.field.Check(v); err != nil {
+			s.errs = append(s.errs, message(err))
 			continue
 		}
-		s.dimensions = append(s.dimensions, dimensionValue{valueID: valueID})
+		s.fields = append(s.fields, fieldValue{fieldID: fc.field.ID, value: v})
 	}
 	return s
 }
@@ -470,7 +530,23 @@ func createGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpe
 		}
 	}
 	for _, dv := range s.dimensions {
-		if err := tx.AssignGoalValue(ctx, adminID, g.ID, dv.valueID); err != nil {
+		valueID := dv.valueID
+		if valueID == 0 {
+			// The importing Admin adds the value, last in the list. An earlier
+			// row may already have added it, and then it is matched instead.
+			added, err := tx.AddDimensionValue(ctx, adminID, dv.dimensionID, dv.newValue)
+			if err != nil {
+				errs = append(errs, message(err))
+				continue
+			}
+			valueID = added.ID
+		}
+		if err := tx.AssignGoalValue(ctx, adminID, g.ID, valueID); err != nil {
+			errs = append(errs, message(err))
+		}
+	}
+	for _, fv := range s.fields {
+		if err := tx.SetGoalField(ctx, adminID, g.ID, fv.fieldID, fv.value); err != nil {
 			errs = append(errs, message(err))
 		}
 	}
@@ -518,6 +594,18 @@ func splitEntries(raw string) []string {
 	for _, p := range parts {
 		if p = strings.TrimSpace(p); p != "" {
 			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// splitValues splits a Dimension cell into its values, as splitEntries does,
+// dropping a value that repeats an earlier one whatever its letter case.
+func splitValues(raw string) []string {
+	var out []string
+	for _, v := range splitEntries(raw) {
+		if !slices.ContainsFunc(out, func(o string) bool { return strings.EqualFold(o, v) }) {
+			out = append(out, v)
 		}
 	}
 	return out

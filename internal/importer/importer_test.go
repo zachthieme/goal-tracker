@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -524,6 +525,282 @@ Missing so what,owner@example.com,,Ongoing,Beta @ someday,Also missing,Upwards
 		}
 		if len(row.Errors) != len(wants) {
 			t.Errorf("row %d (%s) has %d errors, want %d: %v", row.Line, row.Title, len(row.Errors), len(wants), row.Errors)
+		}
+	}
+}
+
+// A column whose header names a Field sets that Field on the row's Goal, for
+// each of the four types (#77; CONTEXT.md: Field).
+func TestCommitSetsFieldColumns(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,budget,Sponsor note,Background,Review date
+Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,1250000.5,Board asked,"Long story,
+over two lines",2026-11-30
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateField(admin, "Budget", domain.FieldNumber, "$")
+	h.CreateField(admin, "Sponsor note", domain.FieldShortText, "")
+	h.CreateField(admin, "Background", domain.FieldLongText, "")
+	h.CreateField(admin, "Review Date", domain.FieldDate, "")
+
+	goal := commitOneGoal(t, h, admin, csv)
+	got := map[string]string{}
+	fields, err := h.Service.GoalFields(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("GoalFields: %v", err)
+	}
+	for _, f := range fields {
+		got[f.Field.Name] = f.Value
+	}
+	want := map[string]string{
+		"Budget":       "1250000.5",
+		"Sponsor note": "Board asked",
+		"Background":   "Long story,\nover two lines",
+		"Review Date":  "2026-11-30",
+	}
+	for name, v := range want {
+		if got[name] != v {
+			t.Errorf("Field %s = %q, want %q", name, got[name], v)
+		}
+	}
+	if len(got) != len(want) {
+		t.Errorf("Goal Fields = %v, want %v", got, want)
+	}
+}
+
+// commitOneGoal commits a one-row spreadsheet, failing the test unless it
+// imports cleanly, and returns the Goal it created.
+func commitOneGoal(t *testing.T, h *testsupport.Harness, admin domain.Account, csv string) domain.Goal {
+	t.Helper()
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if !rep.Committed || len(rep.Rows) != 1 {
+		t.Fatalf("import not committed; rows: %+v", rep.Rows)
+	}
+	goal, err := h.Service.ViewGoal(context.Background(), rep.Rows[0].GoalID)
+	if err != nil {
+		t.Fatalf("ViewGoal: %v", err)
+	}
+	return goal
+}
+
+// A number or date Field cell that doesn't parse is reported against its row,
+// alongside the row's other errors, and the import saves nothing (#77).
+func TestDryRunReportsBadFieldValuesAgainstTheirRow(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Budget,Review date
+Fine,owner@example.com,It matters.,Ongoing,12,2026-11-30
+Bad budget,owner@example.com,It matters.,Ongoing,lots,
+Bad date,owner@example.com,,Ongoing,,next week
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateField(admin, "Budget", domain.FieldNumber, "$")
+	h.CreateField(admin, "Review date", domain.FieldDate, "")
+
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if rep.Committed {
+		t.Fatalf("import with bad Field values must not commit")
+	}
+	for i, wants := range [][]string{
+		nil,
+		{`Budget takes a number, and "lots" isn't one`},
+		{"So What is required", `Review date takes a date as YYYY-MM-DD, and "next week" isn't one`},
+	} {
+		row := rep.Rows[i]
+		joined := strings.Join(row.Errors, "; ")
+		for _, want := range wants {
+			if !strings.Contains(joined, want) {
+				t.Errorf("row %d (%s) errors = %v, want one mentioning %s", row.Line, row.Title, row.Errors, want)
+			}
+		}
+		if len(row.Errors) != len(wants) {
+			t.Errorf("row %d (%s) has %d errors, want %d: %v", row.Line, row.Title, len(row.Errors), len(wants), row.Errors)
+		}
+	}
+	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 0 {
+		t.Errorf("rolled-back import left %d Goals, want 0", len(goals))
+	}
+}
+
+// In a several-values Dimension's column a cell lists values separated by
+// semicolons, spaces around each ignored, and the Goal takes them all (#77).
+func TestCommitSetsSeveralValuesFromOneCell(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Themes
+Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,  Growth ;Trust ;
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateSeveralValuesDimension(admin, "Themes", "Growth", "Reliability", "Trust")
+
+	goal := commitOneGoal(t, h, admin, csv)
+	if got := goalValueNames(t, h, goal); strings.Join(got, ", ") != "Growth, Trust" {
+		t.Errorf("Goal values = %v, want [Growth Trust]", got)
+	}
+}
+
+// More than one value in a one-value Dimension's column is a row error (#77).
+func TestDryRunRejectsSeveralValuesInAOneValueColumn(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Pillar
+Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,Growth; Reliability
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateDimension(admin, "Pillar", "Growth", "Reliability")
+
+	rep, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("DryRun: %v", err)
+	}
+	if want := "Pillar takes one value per Goal"; len(rep.Rows) != 1 || strings.Join(rep.Rows[0].Errors, "; ") != want {
+		t.Errorf("rows = %+v, want one row with the error %q", rep.Rows, want)
+	}
+}
+
+// goalValueNames lists the Dimension values a Goal carries, sorted.
+func goalValueNames(t *testing.T, h *testsupport.Harness, goal domain.Goal) []string {
+	t.Helper()
+	values, err := h.Service.GoalValues(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	names := make([]string, 0, len(values))
+	for _, v := range values {
+		names = append(names, v.Value)
+	}
+	slices.Sort(names)
+	return names
+}
+
+// In an Extendable Dimension an unknown value is added to the list, last in its
+// order, and a later row naming it in another letter case sets the same value;
+// a known value matches whatever its letter case or surrounding spaces (#77;
+// CONTEXT.md: Extendable).
+func TestCommitAddsUnknownValuesToAnExtendableDimension(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Customer
+First,owner@example.com,It matters.,Ongoing,  acme 
+Second,owner@example.com,It matters.,Ongoing,Newco
+Third,owner@example.com,It matters.,Ongoing,NEWCO
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateExtendableDimension(admin, "Customer", "Acme", "Zenith")
+
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if !rep.Committed {
+		t.Fatalf("import not committed; rows: %+v", rep.Rows)
+	}
+	for i, want := range []string{"Acme", "Newco", "Newco"} {
+		goal, err := h.Service.ViewGoal(context.Background(), rep.Rows[i].GoalID)
+		if err != nil {
+			t.Fatalf("ViewGoal: %v", err)
+		}
+		if got := goalValueNames(t, h, goal); strings.Join(got, ", ") != want {
+			t.Errorf("row %d values = %v, want [%s]", rep.Rows[i].Line, got, want)
+		}
+	}
+	if got := dimensionValueNames(t, h, "Customer"); strings.Join(got, ", ") != "Acme, Zenith, Newco" {
+		t.Errorf("Customer list = %v, want [Acme Zenith Newco]", got)
+	}
+}
+
+// In a Fixed Dimension an unknown value is a row error, and the list gains
+// nothing (#77; CONTEXT.md: Fixed).
+func TestDryRunRejectsUnknownValuesInAFixedDimension(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Pillar
+Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,Moonshots
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateDimension(admin, "Pillar", "Growth", "Reliability")
+
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if want := `"Moonshots" is not a value of Dimension "Pillar"`; rep.Committed || len(rep.Rows) != 1 || strings.Join(rep.Rows[0].Errors, "; ") != want {
+		t.Errorf("report = %+v, want an uncommitted row with the error %q", rep, want)
+	}
+	if got := dimensionValueNames(t, h, "Pillar"); strings.Join(got, ", ") != "Growth, Reliability" {
+		t.Errorf("Pillar list = %v, want [Growth Reliability]", got)
+	}
+}
+
+// dimensionValueNames lists the named Dimension's values in their order.
+func dimensionValueNames(t *testing.T, h *testsupport.Harness, name string) []string {
+	t.Helper()
+	dims, err := h.Service.ListDimensions(context.Background())
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	for _, d := range dims {
+		if d.Name != name {
+			continue
+		}
+		names := make([]string, 0, len(d.Values))
+		for _, v := range d.Values {
+			names = append(names, v.Value)
+		}
+		return names
+	}
+	t.Fatalf("no Dimension %q", name)
+	return nil
+}
+
+// A file with any error creates no Goals and no values, and neither does a dry
+// run of a clean one: an Extendable Dimension's list gains nothing (#77).
+func TestImportThatSavesNothingAddsNoValues(t *testing.T) {
+	const clean = `Title,Owner,So What,Kind,Customer
+First,owner@example.com,It matters.,Ongoing,Newco
+`
+	const broken = clean + `Second,owner@example.com,It matters.,Sideways,Otherco
+`
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateExtendableDimension(admin, "Customer", "Acme")
+	im := importer.New(h.Service)
+
+	if rep, err := im.DryRun(context.Background(), admin.ID, "goals.csv", []byte(clean)); err != nil || rep.HasErrors() {
+		t.Fatalf("DryRun = %+v, %v; want a clean report", rep, err)
+	}
+	if rep, err := im.Commit(context.Background(), admin.ID, "goals.csv", []byte(broken)); err != nil || rep.Committed {
+		t.Fatalf("Commit = %+v, %v; want an uncommitted report", rep, err)
+	}
+	if got := dimensionValueNames(t, h, "Customer"); strings.Join(got, ", ") != "Acme" {
+		t.Errorf("Customer list = %v, want [Acme]", got)
+	}
+	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 0 {
+		t.Errorf("import saved %d Goals, want 0", len(goals))
+	}
+}
+
+// A Retired Dimension or Field isn't matched, so its column is rejected like any
+// unknown column (#77; CONTEXT.md: Retired).
+func TestRetiredDimensionAndFieldColumnsAreRejected(t *testing.T) {
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	pillar := h.CreateDimension(admin, "Pillar", "Growth")
+	budget := h.CreateField(admin, "Budget", domain.FieldNumber, "$")
+	ctx := context.Background()
+	if err := h.Service.RetireDimension(ctx, admin.ID, pillar.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	if err := h.Service.RetireField(ctx, admin.ID, budget.ID); err != nil {
+		t.Fatalf("RetireField: %v", err)
+	}
+
+	for _, column := range []string{"Pillar", "Budget"} {
+		csv := "Title,Owner,So What,Kind," + column + "\nGrow,owner@example.com,It matters.,Ongoing,12\n"
+		_, err := importer.New(h.Service).DryRun(ctx, admin.ID, "goals.csv", []byte(csv))
+		if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), fmt.Sprintf("column %q", column)) {
+			t.Errorf("%s column: DryRun error = %v, want the column rejected", column, err)
 		}
 	}
 }

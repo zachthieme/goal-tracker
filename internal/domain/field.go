@@ -141,7 +141,7 @@ func (s *Service) SetGoalField(ctx context.Context, actorID, goalID, fieldID int
 		}
 		return nil
 	}
-	if err := field.check(value); err != nil {
+	if err := field.Check(value); err != nil {
 		return err
 	}
 	if err := s.queries.SetGoalFieldValue(ctx, db.SetGoalFieldValueParams{
@@ -169,9 +169,9 @@ func (s *Service) GoalFields(ctx context.Context, goalID int64) ([]FieldValue, e
 	return out, nil
 }
 
-// check refuses a value that doesn't parse as the Field's type, naming the
-// Field.
-func (f Field) check(value string) error {
+// Check refuses a value that doesn't parse as the Field's type, naming the
+// Field, so the spreadsheet import reports it the way the Goal page does.
+func (f Field) Check(value string) error {
 	switch f.Type {
 	case FieldNumber:
 		n, err := strconv.ParseFloat(value, 64)

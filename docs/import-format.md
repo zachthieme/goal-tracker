@@ -18,8 +18,9 @@ A worked example is in [`testdata/import-example.csv`](../testdata/import-exampl
 ## Columns
 
 The first row is a header. Columns are matched by name, case-insensitively, in
-any order. Unrecognised columns are treated as [Dimension](../CONTEXT.md)
-columns (see below).
+any order. Any other column must name a [Dimension](../CONTEXT.md) or a
+[Field](../CONTEXT.md) (see below); a column that names neither is rejected for
+the whole file.
 
 | Column          | Required | Meaning |
 | --------------- | -------- | ------- |
@@ -31,7 +32,8 @@ columns (see below).
 | `Milestones`    | no       | Zero or more Milestones (see below). |
 | `Metrics`       | no       | Zero or more Metrics (see below). |
 | `Parents`       | no       | Zero or more parent Goal titles this Goal contributes to (see below). |
-| _Dimension name_ | no      | Any column whose header matches a defined Dimension. The cell holds the value to assign in that Dimension. |
+| _Dimension name_ | no      | Any column whose header matches a Dimension. The cell holds the value, or values, to give the Goal in that Dimension (see below). |
+| _Field name_    | no       | Any column whose header matches a Field. The cell holds the Goal's value in that Field (see below). |
 
 Imported Goals are created **Proposed**; they are not activated by the import.
 
@@ -74,18 +76,57 @@ because a commit is all-or-nothing the whole import is then rolled back.
 
 ### Dimensions
 
-A column whose header matches a defined Dimension's name assigns the cell's value
-to the Goal in that Dimension. The Dimension must already exist and the cell must
-be one of its values; an unknown Dimension column is rejected for the whole file,
-and an unknown value is reported on that row. A blank cell assigns nothing.
+A column whose header matches a Dimension's name gives the Goal the cell's value
+in that Dimension. The Dimension must already exist and must not be Retired; a
+column naming an unknown or Retired Dimension is rejected for the whole file. A
+blank cell assigns nothing.
+
+A value matches the Dimension's list whatever its letter case or surrounding
+spaces, so `acme` sets the existing `Acme`. A Retired value can't be newly
+given, and is reported on that row.
+
+**Several values.** In a Dimension that takes several values, a cell lists them
+separated by semicolons; spaces around each are ignored:
+
+```
+Growth; Trust
+```
+
+In a Dimension that takes one value, a cell listing more than one is reported on
+that row.
+
+**Unknown values.** What happens to a value that isn't in the list depends on the
+Dimension's list (CONTEXT.md: Fixed, Extendable):
+
+- In an **Extendable** Dimension the value is added to the list, by the Admin
+  running the import, and lands last in the list's order. A later row naming it,
+  in any letter case, sets the same value.
+- In a **Fixed** Dimension it is reported on that row; only an Admin adds to a
+  Fixed list, from the Dimensions page.
+
+Values are added only when the import commits: a dry run, or a commit rolled back
+by any row's error, adds none.
+
+### Fields
+
+A column whose header matches a Field's name sets the Goal's value in that Field.
+The Field must already exist and must not be Retired; a column naming an unknown
+or Retired Field is rejected for the whole file. A blank cell sets nothing.
+
+| Field type | Cell |
+| ---------- | ---- |
+| number     | A number, such as `1250000` or `2.5`, without its unit. One that doesn't parse is reported on that row. |
+| date       | `YYYY-MM-DD`, or in XLSX a date cell. One that doesn't parse is reported on that row. |
+| short text, long text | Any text. A long text may span several lines in a quoted CSV cell. |
 
 ## What is reported
 
 The dry run and a rolled-back commit report, per row: the row number, the Goal
 title, and every error found on the row — a missing required field, a bad `Kind`
 or date, a malformed Milestone or Metric, a `Parents` title that is not in the
-file, an unknown Dimension value, or a cycle. A row with several problems lists
-them all in one dry run.
+file, a value not in a Fixed Dimension's list, more than one value in a
+one-value Dimension, a Field number or date that doesn't parse, or a cycle. A row
+with several problems lists them all in one dry run.
 
 Rows are numbered as the spreadsheet numbers them: the header is row 1, so the
 first Goal is row 2. In a CSV file a blank line still counts as a row, and a

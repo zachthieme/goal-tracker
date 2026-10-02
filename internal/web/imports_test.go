@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
@@ -167,5 +168,45 @@ Fine,owner@example.com,It matters.,Ongoing,
 	}
 	if strings.Index(report, "import-summary") > strings.Index(report, "<table") {
 		t.Errorf("the summary doesn't come before the rows:\n%s", report)
+	}
+}
+
+// An Admin commits a spreadsheet whose columns name a Field and an Extendable
+// Dimension: the Field is set and the unknown value joins the list. The form
+// says how such columns are read (#77).
+func TestAdminImportsFieldAndExtendableColumnsOverHTTP(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Budget,Customer
+Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,1200,acme; Newco
+`
+	h := testsupport.New(t, "admin@example.com")
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "admin@example.com")
+	adminAcct := h.SignIn("admin@example.com")
+	h.CreateField(adminAcct, "Budget", domain.FieldNumber, "$")
+	customer := h.CreateExtendableDimension(adminAcct, "Customer", "Acme")
+	h.SetDimensionSelection(adminAcct, customer, domain.SelectionSeveral)
+
+	hint := pageElement(t, getBody(t, admin, ts.URL+"/imports"), "p", "import-columns")
+	for _, want := range []string{"Dimension", "Field", "semicolons", "Extendable"} {
+		if !strings.Contains(hint, want) {
+			t.Errorf("the column hint doesn't mention %s: %s", want, hint)
+		}
+	}
+
+	body := postImport(t, admin, ts.URL+"/imports", "goals.csv", csv, "commit")
+	if !strings.Contains(body, "Imported 1 Goals") {
+		t.Fatalf("commit summary missing; body:\n%s", body)
+	}
+	goals, err := h.Service.ListGoals(context.Background())
+	if err != nil || len(goals) != 1 {
+		t.Fatalf("ListGoals = %d Goals, %v; want 1", len(goals), err)
+	}
+	fields, _ := h.Service.GoalFields(context.Background(), goals[0].ID)
+	if len(fields) != 1 || fields[0].Value != "1200" {
+		t.Errorf("Goal Fields = %+v, want Budget 1200", fields)
+	}
+	values, _ := h.Service.GoalValues(context.Background(), goals[0].ID)
+	if len(values) != 2 || values[0].Value != "Acme" || values[1].Value != "Newco" {
+		t.Errorf("Goal values = %+v, want Acme and Newco", values)
 	}
 }

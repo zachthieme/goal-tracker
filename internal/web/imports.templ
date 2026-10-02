@@ -35,6 +35,7 @@ templ importsPage(current *domain.Account, report *importer.Report, flash string
 					<button type="submit" class="btn primary" name="action" value="dry-run">Dry run</button>
 					<button type="submit" class="btn" name="action" value="commit">Commit</button>
 				</div>
+				<p data-testid="import-columns" class="hint">Beside the Goal's own columns, a column named for a Dimension or a Field sets it. A cell may list several values of a Dimension that takes several, separated by semicolons. A value not yet in an Extendable Dimension's list is added to it; in a Fixed one it is an error.</p>
 				<p class="hint">A dry run checks every row and saves nothing. Commit saves the Goals only if no row has errors.</p>
 			</form>
 			if report != nil {
