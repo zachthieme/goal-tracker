@@ -205,6 +205,18 @@ type fieldColumn struct {
 	index int
 }
 
+// goalColumns maps each of the import format's own columns the spreadsheet
+// has to its index.
+func (lay layout) goalColumns() map[string]int {
+	cols := map[string]int{}
+	for i, idx := range []int{lay.title, lay.owner, lay.soWhat, lay.kind, lay.delivery, lay.milestones, lay.metrics, lay.parents} {
+		if idx >= 0 {
+			cols[goalColumns[i]] = idx
+		}
+	}
+	return cols
+}
+
 func parseHeader(header []string, attrs attributes) (layout, error) {
 	lay := layout{id: -1, title: -1, owner: -1, soWhat: -1, kind: -1, delivery: -1, milestones: -1, metrics: -1, parents: -1}
 	for i, raw := range header {
@@ -262,12 +274,14 @@ func parseHeader(header []string, attrs attributes) (layout, error) {
 // A row with an ID instead updates Goal goalID (#81): it sets the Goal's values
 // in each Dimension column to dimensionSets, a blank cell clearing them, and
 // its value in each Field column to fields, a blank value clearing it. Its
-// other columns are ignored.
+// other columns are ignored; cells keeps them, by column name, so the report
+// can say which it changed.
 type rowSpec struct {
 	line          int
 	update        bool
 	goalID        int64
 	dimensionSets []dimensionSet
+	cells         map[string]string
 	title         string
 	owner         string
 	soWhat        string
@@ -409,7 +423,10 @@ func parseRow(line int, row []string, lay layout) rowSpec {
 // row's Dimension and Field columns, each one a value to set on the Goal, a
 // blank cell clearing it (#81).
 func parseUpdateRow(line int, rawID string, row []string, lay layout) rowSpec {
-	s := rowSpec{line: line, update: true, title: cell(row, lay.title)}
+	s := rowSpec{line: line, update: true, title: cell(row, lay.title), cells: map[string]string{}}
+	for col, idx := range lay.goalColumns() {
+		s.cells[col] = cell(row, idx)
+	}
 	id, err := strconv.ParseInt(rawID, 10, 64)
 	if err != nil || id <= 0 {
 		s.errs = append(s.errs, fmt.Sprintf("ID %q is not a Goal's id", rawID))
@@ -538,13 +555,17 @@ func applyRows(ctx context.Context, tx *domain.Service, adminID int64, specs []r
 	// titleToGoal maps a created Goal's title to it, for linking.
 	goalIDs := make([]int64, len(specs))
 	titleToGoal := map[string]int64{}
+	ignored := map[string]bool{}
 	for i, s := range specs {
 		if s.update {
 			if len(results[i].Errors) > 0 {
 				continue
 			}
-			title, errs := updateGoal(ctx, tx, adminID, s)
+			title, changed, errs := updateGoal(ctx, tx, adminID, s)
 			results[i].Errors = append(results[i].Errors, errs...)
+			for _, col := range changed {
+				ignored[col] = true
+			}
 			if title != "" {
 				results[i].Title = title
 				goalIDs[i] = s.goalID
@@ -588,7 +609,13 @@ func applyRows(ctx context.Context, tx *domain.Service, adminID int64, specs []r
 			results[i].GoalID = goalIDs[i]
 		}
 	}
-	return Report{Rows: results}
+	report := Report{Rows: results}
+	for _, col := range goalColumns {
+		if ignored[col] {
+			report.Ignored = append(report.Ignored, col)
+		}
+	}
+	return report
 }
 
 // createGoal creates the row's Goal with its Kind, Milestones, Metrics and
@@ -654,16 +681,25 @@ func createGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpe
 // Goal page sets them: each Dimension column's values together, so a value left
 // out is removed, and each Field column's value, a blank one clearing it. Each
 // change is kept in the Goal's Value history, and a value it already has
-// changes nothing. It returns the Goal's title ("" when no Goal has the ID) and
-// every error found.
-func updateGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpec) (string, []string) {
+// changes nothing. It returns the Goal's title ("" when no Goal has the ID),
+// the import format's own columns whose cells differ from the Goal, which are
+// ignored, and every error found.
+func updateGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpec) (title string, ignored, errs []string) {
 	g, err := tx.ViewGoal(ctx, s.goalID)
 	if errors.Is(err, domain.ErrNotFound) {
-		return "", []string{fmt.Sprintf("no Goal has ID %d", s.goalID)}
+		return "", nil, []string{fmt.Sprintf("no Goal has ID %d", s.goalID)}
 	} else if err != nil {
-		return "", []string{message(err)}
+		return "", nil, []string{message(err)}
 	}
-	var errs []string
+	current, err := goalCells(ctx, tx, g)
+	if err != nil {
+		return "", nil, []string{message(err)}
+	}
+	for _, col := range goalColumns {
+		if cellText, ok := s.cells[col]; ok && canonical(col, cellText) != canonical(col, current[col]) {
+			ignored = append(ignored, col)
+		}
+	}
 	for _, set := range s.dimensionSets {
 		valueIDs := make([]int64, 0, len(set.values))
 		for _, dv := range set.values {
@@ -683,7 +719,28 @@ func updateGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpe
 			errs = append(errs, message(err))
 		}
 	}
-	return g.Title, errs
+	return g.Title, ignored, errs
+}
+
+// canonical is a cell in one of the import format's own columns as it compares
+// with the Goal's: an email and a Kind whatever their letter case, and
+// Milestones, Metrics and Parents whatever the spaces around their separators.
+func canonical(col, text string) string {
+	switch col {
+	case "Owner", "Kind":
+		return normalize(text)
+	case "Milestones", "Metrics", "Parents":
+		entries := splitEntries(text)
+		for i, e := range entries {
+			parts := strings.FieldsFunc(e, func(r rune) bool { return r == '|' || r == '@' })
+			for j := range parts {
+				parts[j] = strings.TrimSpace(parts[j])
+			}
+			entries[i] = strings.Join(parts, "|")
+		}
+		return strings.Join(entries, ";")
+	}
+	return strings.TrimSpace(text)
 }
 
 // ensureValue is dv's value id, adding a new value to its Extendable
