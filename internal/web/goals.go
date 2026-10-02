@@ -232,13 +232,16 @@ func sortGoalRows(rows []goalRow) {
 
 // goalsListView reads the Goal list's filters (the filter bar's fields and
 // ?value=) and grouping (?group=) from the request, then loads, filters, sorts,
-// and (optionally) groups the Goals.
+// and (optionally) groups the Goals. Only the Dimensions still offered filter
+// and group: a ?value= or ?group= on a Retired one is ignored, since the list
+// has no control to undo it (CONTEXT.md: Retired).
 func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsListData, error) {
 	ctx := r.Context()
-	dims, err := s.svc.ListDimensions(ctx)
+	all, err := s.svc.ListDimensions(ctx)
 	if err != nil {
 		return goalsListData{}, err
 	}
+	dims := domain.OfferedDimensions(all)
 	goals, err := s.svc.ListGoalsWithValues(ctx)
 	if err != nil {
 		return goalsListData{}, err
@@ -565,9 +568,10 @@ type goalView struct {
 	// Ownership is the Goal's ownership history, oldest first: every Handoff
 	// with its outcome and every Admin Reassign (CONTEXT.md: Handoff).
 	Ownership []domain.Handoff
-	// Dimensions are all defined Dimensions, for the value-assignment selects and
-	// the defaults offered when creating a child Goal. Values are the values this
-	// Goal currently carries, retired ones included so they stay readable.
+	// Dimensions are all defined Dimensions, Retired ones included so the values
+	// the Goal carries in them stay readable; only the rest get value-assignment
+	// controls. Values are the values this Goal currently carries, retired ones
+	// included so they stay readable.
 	// CanSetValues is true when the viewer may set them — the Owner, a Delegate
 	// or an Admin.
 	Dimensions   []domain.Dimension
@@ -662,6 +666,19 @@ func (v goalView) assignedValues(dimensionID int64) []domain.DimensionValue {
 	var out []domain.DimensionValue
 	for _, val := range v.Values {
 		if val.DimensionID == dimensionID {
+			out = append(out, val)
+		}
+	}
+	return out
+}
+
+// childDefaults are the Goal's values offered as defaults to a child Goal: the
+// ones that can still be newly assigned, so neither a Retired value nor one in a
+// Retired Dimension (CONTEXT.md: Retired).
+func (v goalView) childDefaults() []domain.DimensionValue {
+	var out []domain.DimensionValue
+	for _, val := range v.Values {
+		if !val.Retired && !val.DimensionRetired {
 			out = append(out, val)
 		}
 	}

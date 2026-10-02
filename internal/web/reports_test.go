@@ -726,3 +726,47 @@ func TestNewReportFormSpacingComesFromAClassOverHTTP(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports")
 	assertStyledBy(t, tagAround(t, page, `action="/reports"`), page, "rp-new", "margin-top:12px")
 }
+
+// A Retired Dimension drops out of the Report Definition form's filters, yet a
+// Report Definition saved with a filter on its value still drafts the same
+// Goals. Restoring the Dimension returns it to the form (CONTEXT.md: Retired;
+// ADR 0005).
+func TestRetiredDimensionLeavesReportFormButSavedFilterKeepsWorkingOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	h.CreateDimension(boss, "Team", "Core")
+	growth, trust := pillar.Values[0], pillar.Values[1]
+	grower := h.ActiveGoal(boss, "Grow revenue", "The org needs to grow.")
+	truster := h.ActiveGoal(boss, "Earn trust", "Customers need to trust us.")
+	h.AssignGoalValue(grower, growth)
+	h.AssignGoalValue(truster, trust)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Growth MBR", DimensionValueIDs: []int64{growth.ID}})
+	ctx := context.Background()
+	if err := h.Service.RetireDimension(ctx, boss.ID, pillar.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	filters := between(t, getBody(t, client, ts.URL+"/reports"), `<fieldset data-testid="report-dimension-filters"`, `<div><button type="submit"`)
+	if strings.Contains(filters, "Pillar") || strings.Contains(filters, "Growth") {
+		t.Errorf("the Retired Pillar is offered as a Report filter:\n%s", filters)
+	}
+	if !strings.Contains(filters, "Team") {
+		t.Errorf("the live Team isn't offered as a Report filter:\n%s", filters)
+	}
+
+	draft := getBody(t, client, fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
+	if !strings.Contains(draft, grower.Title) || strings.Contains(draft, truster.Title) {
+		t.Errorf("the saved Growth filter no longer drafts just %q; body:\n%s", grower.Title, draft)
+	}
+
+	if err := h.Service.RestoreDimension(ctx, boss.ID, pillar.ID); err != nil {
+		t.Fatalf("RestoreDimension: %v", err)
+	}
+	filters = between(t, getBody(t, client, ts.URL+"/reports"), `<fieldset data-testid="report-dimension-filters"`, `<div><button type="submit"`)
+	if !strings.Contains(filters, "<legend>Pillar</legend>") || !strings.Contains(filters, fmt.Sprintf(`value="%d"`, growth.ID)) {
+		t.Errorf("the restored Pillar isn't offered as a Report filter:\n%s", filters)
+	}
+}

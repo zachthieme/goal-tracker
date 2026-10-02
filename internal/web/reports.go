@@ -16,7 +16,8 @@ import (
 
 // reportsListData is what the reports page needs: the saved definitions and the
 // building blocks a new definition picks from — Goals as roots, their Owners as
-// the Owner filter, and Dimensions as the Dimension-value filter.
+// the Owner filter, and the Dimensions still offered (none Retired) as the
+// Dimension-value filter.
 type reportsListData struct {
 	Defs   []domain.ReportDefinition
 	Goals  []domain.Goal
@@ -262,7 +263,7 @@ func (s *Server) reportsList(r *http.Request) (reportsListData, error) {
 	if err != nil {
 		return reportsListData{}, err
 	}
-	return reportsListData{Defs: defs, Goals: topLevelFirst(goals), Owners: distinctOwners(goals), Dims: dims}, nil
+	return reportsListData{Defs: defs, Goals: topLevelFirst(goals), Owners: distinctOwners(goals), Dims: domain.OfferedDimensions(dims)}, nil
 }
 
 // topLevelFirst orders Goals for the root picker: the org's Top-level Goals

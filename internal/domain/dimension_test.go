@@ -1045,3 +1045,151 @@ func TestFailedMergeChangesNothing(t *testing.T) {
 		t.Errorf("Customer list after a failed merge = %v, want [Acme ACME Corp]", got)
 	}
 }
+
+// An Admin retires a Dimension: it stays listed, flagged Retired, a Goal that
+// carries a value in it still reads that value, marked as being in a Retired
+// Dimension, and none of its values can be newly given to a Goal. A non-Admin
+// can't retire one (CONTEXT.md: Retired).
+func TestAdminRetiresDimension(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra")
+	growth, trust := pillar.Values[0], pillar.Values[1]
+	core, infra := teams.Values[0], teams.Values[1]
+	carrier := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	fresh := h.CreateGoal(sam, "Ship faster", "Slow ships lose deals.")
+	h.AssignGoalValue(carrier, growth)
+	h.AssignGoalValue(carrier, core)
+
+	if err := h.Service.RetireDimension(ctx, sam.ID, pillar.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("non-Admin RetireDimension err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.RetireDimension(ctx, boss.ID, pillar.ID); err != nil {
+		t.Fatalf("RetireDimension Pillar: %v", err)
+	}
+	if err := h.Service.RetireDimension(ctx, boss.ID, teams.ID); err != nil {
+		t.Fatalf("RetireDimension Team: %v", err)
+	}
+
+	dims, err := h.Service.ListDimensions(ctx)
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	if len(dims) != 2 || !dims[0].Retired || !dims[1].Retired {
+		t.Errorf("dimensions = %+v, want Pillar and Team both listed, Retired", dims)
+	}
+
+	values, err := h.Service.GoalValues(ctx, carrier.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	if len(values) != 2 || !values[0].DimensionRetired || !values[1].DimensionRetired {
+		t.Errorf("values = %+v, want Growth and Core still read, each in a Retired Dimension", values)
+	}
+
+	if err := h.Service.AssignGoalValue(ctx, sam.ID, fresh.ID, trust.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("assigning a value of a Retired Dimension err = %v, want ErrValidation", err)
+	}
+	if _, err := h.Service.AssignGoalValueByName(ctx, boss.ID, fresh.ID, pillar.ID, "Speed"); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("adding a value to a Retired Dimension through a Goal err = %v, want ErrValidation", err)
+	}
+	if err := h.Service.SetGoalValues(ctx, sam.ID, fresh.ID, teams.ID, []int64{infra.ID}); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("setting values of a Retired Dimension err = %v, want ErrValidation", err)
+	}
+	// A Goal saving the values it already carries keeps them.
+	if err := h.Service.SetGoalValues(ctx, sam.ID, carrier.ID, teams.ID, []int64{core.ID}); err != nil {
+		t.Errorf("keeping a carried value of a Retired Dimension: %v", err)
+	}
+}
+
+// An Admin restores a Retired Dimension and a Retired value, and each can be
+// given to a Goal again; a non-Admin can restore neither (CONTEXT.md: Retired —
+// an Admin can reverse it).
+func TestAdminRestoresRetiredDimensionAndValue(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	quarter := h.CreateDimension(boss, "Quarter", "Q1")
+	growth, q1 := pillar.Values[0], quarter.Values[0]
+	goal := h.CreateGoal(sam, "Ship faster", "Slow ships lose deals.")
+	if err := h.Service.RetireDimension(ctx, boss.ID, pillar.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	if err := h.Service.RetireDimensionValue(ctx, boss.ID, q1.ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+
+	if err := h.Service.RestoreDimension(ctx, sam.ID, pillar.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("non-Admin RestoreDimension err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.RestoreDimensionValue(ctx, sam.ID, q1.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("non-Admin RestoreDimensionValue err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.RestoreDimension(ctx, boss.ID, pillar.ID); err != nil {
+		t.Fatalf("RestoreDimension: %v", err)
+	}
+	if err := h.Service.RestoreDimensionValue(ctx, boss.ID, q1.ID); err != nil {
+		t.Fatalf("RestoreDimensionValue: %v", err)
+	}
+
+	dims, err := h.Service.ListDimensions(ctx)
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	for _, d := range dims {
+		if d.Retired || d.Values[0].Retired {
+			t.Errorf("dimension = %+v, want it and its value restored", d)
+		}
+	}
+	if err := h.Service.AssignGoalValue(ctx, sam.ID, goal.ID, growth.ID); err != nil {
+		t.Errorf("assigning a value of a restored Dimension: %v", err)
+	}
+	if err := h.Service.AssignGoalValue(ctx, sam.ID, goal.ID, q1.ID); err != nil {
+		t.Errorf("assigning a restored value: %v", err)
+	}
+	if err := h.Service.RestoreDimension(ctx, boss.ID, 9999); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("restoring a missing Dimension err = %v, want ErrValidation", err)
+	}
+}
+
+// A Report Definition saved with a filter on a Dimension's value selects the
+// same Goals once the Dimension is Retired (ADR 0005: saved Report Definitions
+// keep working).
+func TestReportFilterOnRetiredDimensionSelectsSameGoals(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	growth, trust := pillar.Values[0], pillar.Values[1]
+	grower := h.CreateGoal(sam, "Alpha", "A matters.")
+	truster := h.CreateGoal(sam, "Bravo", "B matters.")
+	h.AssignGoalValue(grower, growth)
+	h.AssignGoalValue(truster, trust)
+	def, err := h.Service.SaveReportDefinition(ctx, boss.ID, domain.SaveReportDefinitionInput{
+		Name:              "Growth report",
+		DimensionValueIDs: []int64{growth.ID},
+	})
+	if err != nil {
+		t.Fatalf("SaveReportDefinition: %v", err)
+	}
+
+	if err := h.Service.RetireDimension(ctx, boss.ID, pillar.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	selected, err := h.Service.SelectGoals(ctx, def)
+	if err != nil {
+		t.Fatalf("SelectGoals: %v", err)
+	}
+	if got, want := selectedIDs(selected), []int64{grower.ID}; !sameSet(got, want) {
+		t.Errorf("Growth filter on a Retired Pillar selected %v, want %v", got, want)
+	}
+}

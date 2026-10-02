@@ -157,7 +157,8 @@ templ noGoals(text string) {
 }
 
 // goalListRow is one Goal in the list: its Health, its title with the Ownerless
-// and freshness marks under it, its Owner, and its Dimension values.
+// and freshness marks under it, its Owner, and its Dimension values, a Retired
+// one or one in a Retired Dimension marked retired.
 templ goalListRow(row goalRow) {
 	{{ g := row.Goal }}
 	<tr data-testid="goal-row">
@@ -193,6 +194,9 @@ templ goalListRow(row goalRow) {
 		<td>
 			for _, val := range row.Values {
 				<span data-testid="goal-value-tag" class="tag">{ val.Value }</span>
+				if val.Retired || val.DimensionRetired {
+					<span class="muted small" data-testid="retired">(retired)</span>
+				}
 			}
 		</td>
 	</tr>
@@ -599,8 +603,10 @@ func openSection(id string) templ.ComponentScript {
 // together, for one that takes several (CONTEXT.md: Delegate; retired values
 // stay readable). An Extendable Dimension also has an
 // input to add a value. A retired value the Goal carries keeps its checked box
-// so saving doesn't silently drop it. It links everyone to the
-// Dimensions page, which isn't in the main nav.
+// so saving doesn't silently drop it. A Retired Dimension gets no control and is
+// listed only when the Goal carries a value in it, marked retired (CONTEXT.md:
+// Retired). It links everyone to the Dimensions page, which isn't in the main
+// nav.
 templ goalDimensions(v goalView) {
 	{{ g := v.Goal }}
 	if len(v.Dimensions) == 0 {
@@ -609,25 +615,28 @@ templ goalDimensions(v goalView) {
 	<ul class="gp-list">
 		for _, d := range v.Dimensions {
 			{{ assigned := v.assignedValues(d.ID) }}
-			<li data-testid="goal-dimension">
-				<span class="label">{ d.Name }</span>
-				<br/>
-				for _, current := range assigned {
-					<span class="tag" data-testid="goal-dimension-value">{ current.Value }</span>
-					if current.Retired {
-						<span class="muted small" data-testid="retired">(retired)</span>
+			if !d.Retired || len(assigned) > 0 {
+				<li data-testid="goal-dimension">
+					<span class="label">{ d.Name }</span>
+					<br/>
+					for _, current := range assigned {
+						<span class="tag" data-testid="goal-dimension-value">{ current.Value }</span>
+						if current.Retired || d.Retired {
+							<span class="muted small" data-testid="retired">(retired)</span>
+						}
 					}
-				}
-				if len(assigned) == 0 {
-					<span class="muted" data-testid="goal-dimension-unassigned">unassigned</span>
-				}
-			</li>
+					if len(assigned) == 0 {
+						<span class="muted" data-testid="goal-dimension-unassigned">unassigned</span>
+					}
+				</li>
+			}
 		}
 	</ul>
-	if v.CanSetValues && len(v.Dimensions) > 0 {
+	{{ offered := domain.OfferedDimensions(v.Dimensions) }}
+	if v.CanSetValues && len(offered) > 0 {
 		<details id="edit-dimensions">
 			<summary class="small">Edit Dimension values</summary>
-			for _, d := range v.Dimensions {
+			for _, d := range offered {
 				if d.TakesSeveral() {
 					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/dimensions", g.ID)) } class="gp-inline">
 						<input type="hidden" name="dimension_id" value={ fmt.Sprintf("%d", d.ID) }/>
@@ -702,16 +711,14 @@ templ addChildGoal(v goalView) {
 					<span>So What</span>
 					<textarea name="so_what" required>{ v.ChildForm.SoWhat }</textarea>
 				</label>
-				if len(v.Values) > 0 {
+				if defaults := v.childDefaults(); len(defaults) > 0 {
 					<fieldset data-testid="child-defaults">
 						<legend>Defaults from { g.Title }</legend>
-						for _, val := range v.Values {
-							if !val.Retired {
-								<label>
-									<input type="checkbox" name="value_id" value={ fmt.Sprintf("%d", val.ID) } checked?={ v.ChildForm.keeps(val.ID) }/>
-									{ val.Value }
-								</label>
-							}
+						for _, val := range defaults {
+							<label>
+								<input type="checkbox" name="value_id" value={ fmt.Sprintf("%d", val.ID) } checked?={ v.ChildForm.keeps(val.ID) }/>
+								{ val.Value }
+							</label>
 						}
 					</fieldset>
 				}

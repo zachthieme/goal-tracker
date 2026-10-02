@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"slices"
@@ -14,12 +15,15 @@ import (
 // to filter and group Goals (CONTEXT.md: Dimension). Selection says whether a
 // Goal takes one of its values or several, and List whether the list is Fixed
 // or Extendable. Values holds the Dimension's values in display order, retired
-// ones included.
+// ones included. A Retired Dimension is no longer offered when setting a Goal's
+// values, filtering or grouping the Goal list, or defining a Report, but the
+// Goals carrying its values still show them (CONTEXT.md: Retired).
 type Dimension struct {
 	ID        int64
 	Name      string
 	Selection string
 	List      string
+	Retired   bool
 	Values    []DimensionValue
 }
 
@@ -52,12 +56,14 @@ func (d Dimension) Extendable() bool {
 
 // DimensionValue is one value in a Dimension's fixed list. A retired value is no
 // longer offered for new assignments but stays readable on the Goals that
-// already carry it (CONTEXT.md: Dimension).
+// already carry it (CONTEXT.md: Dimension). DimensionRetired says the value's
+// Dimension is Retired, and is filled in only where a value is read off a Goal.
 type DimensionValue struct {
-	ID          int64
-	DimensionID int64
-	Value       string
-	Retired     bool
+	ID               int64
+	DimensionID      int64
+	Value            string
+	Retired          bool
+	DimensionRetired bool
 }
 
 // CreateDimension defines a new Dimension with a fixed list of values. Only an
@@ -168,6 +174,61 @@ func (s *Service) RetireDimensionValue(ctx context.Context, actorID, valueID int
 		ID:      valueID,
 	}); err != nil {
 		return fmt.Errorf("retire dimension value: %w", err)
+	}
+	return nil
+}
+
+// RestoreDimensionValue reverses a value's retirement, so it is offered for new
+// assignments again (CONTEXT.md: Retired — an Admin can reverse it). Only an
+// Admin may.
+func (s *Service) RestoreDimensionValue(ctx context.Context, actorID, valueID int64) error {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return err
+	}
+	if _, err := s.queries.SetDimensionValueRetired(ctx, db.SetDimensionValueRetiredParams{
+		Retired: 0,
+		ID:      valueID,
+	}); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: dimension value does not exist", ErrValidation)
+		}
+		return fmt.Errorf("restore dimension value: %w", err)
+	}
+	return nil
+}
+
+// RetireDimension withdraws a whole Dimension: it is no longer offered when
+// setting a Goal's values, nor in the Goal list's filter and grouping or the
+// Report Definition form, yet the Goals carrying its values still show them and
+// saved Report Definitions filtering on them keep working. Nothing is deleted
+// (CONTEXT.md: Retired; ADR 0005). Only an Admin may.
+func (s *Service) RetireDimension(ctx context.Context, actorID, dimensionID int64) error {
+	return s.setDimensionRetired(ctx, actorID, dimensionID, true)
+}
+
+// RestoreDimension reverses a Dimension's retirement, returning it everywhere
+// it was withdrawn from (CONTEXT.md: Retired — an Admin can reverse it). Only
+// an Admin may.
+func (s *Service) RestoreDimension(ctx context.Context, actorID, dimensionID int64) error {
+	return s.setDimensionRetired(ctx, actorID, dimensionID, false)
+}
+
+func (s *Service) setDimensionRetired(ctx context.Context, actorID, dimensionID int64, retired bool) error {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return err
+	}
+	var flag int64
+	if retired {
+		flag = 1
+	}
+	if _, err := s.queries.SetDimensionRetired(ctx, db.SetDimensionRetiredParams{
+		Retired: flag,
+		ID:      dimensionID,
+	}); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: dimension does not exist", ErrValidation)
+		}
+		return fmt.Errorf("set dimension retired: %w", err)
 	}
 	return nil
 }
@@ -394,6 +455,19 @@ func (s *Service) ListDimensions(ctx context.Context) ([]Dimension, error) {
 	return out, nil
 }
 
+// OfferedDimensions keeps the Dimensions still offered for setting, filtering
+// and grouping Goals and for defining Reports, dropping the Retired ones
+// (CONTEXT.md: Retired).
+func OfferedDimensions(dims []Dimension) []Dimension {
+	out := make([]Dimension, 0, len(dims))
+	for _, d := range dims {
+		if !d.Retired {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
 // AssignGoalValue gives a Goal a Dimension value (CONTEXT.md: Owners and their
 // Delegates set a Goal's Dimension values). In a Dimension that takes one value it
 // replaces any value the Goal already has there; in one that takes several it is
@@ -410,11 +484,15 @@ func (s *Service) AssignGoalValue(ctx context.Context, actorID, goalID, valueID 
 	if val.Retired != 0 {
 		return fmt.Errorf("%w: that value is retired and cannot be newly assigned", ErrValidation)
 	}
-	dim, err := s.queries.GetDimension(ctx, val.DimensionID)
+	dimRow, err := s.queries.GetDimension(ctx, val.DimensionID)
 	if err != nil {
 		return fmt.Errorf("load dimension: %w", err)
 	}
-	if !dimensionFromRow(dim).TakesSeveral() {
+	dim := dimensionFromRow(dimRow)
+	if dim.Retired {
+		return retiredDimensionError(dim)
+	}
+	if !dim.TakesSeveral() {
 		if err := s.queries.ClearGoalValuesInDimension(ctx, db.ClearGoalValuesInDimensionParams{
 			GoalID:      goalID,
 			DimensionID: val.DimensionID,
@@ -450,6 +528,9 @@ func (s *Service) AssignGoalValueByName(ctx context.Context, actorID, goalID, di
 	dimRow, err := s.queries.GetDimension(ctx, dimensionID)
 	if err != nil {
 		return DimensionValue{}, fmt.Errorf("%w: dimension does not exist", ErrValidation)
+	}
+	if dim := dimensionFromRow(dimRow); dim.Retired {
+		return DimensionValue{}, retiredDimensionError(dim)
 	}
 	if match, ok, err := s.matchingValue(ctx, dimensionID, name); err != nil {
 		return DimensionValue{}, err
@@ -518,6 +599,9 @@ func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionI
 		if val.Retired != 0 && !carries[id] {
 			return fmt.Errorf("%w: %s is retired and cannot be newly assigned", ErrValidation, val.Value)
 		}
+		if dim.Retired && !carries[id] {
+			return retiredDimensionError(dim)
+		}
 		keep[id] = true
 	}
 
@@ -543,6 +627,12 @@ func (s *Service) SetGoalValues(ctx context.Context, actorID, goalID, dimensionI
 		}
 	}
 	return nil
+}
+
+// retiredDimensionError refuses newly giving a Goal a value in a Retired
+// Dimension (CONTEXT.md: Retired).
+func retiredDimensionError(dim Dimension) error {
+	return fmt.Errorf("%w: %s is retired, so its values can't be newly assigned", ErrValidation, dim.Name)
 }
 
 // matchingValue finds the Dimension's value that name matches whatever its
@@ -600,7 +690,7 @@ func (s *Service) GoalValues(ctx context.Context, goalID int64) ([]DimensionValu
 	}
 	out := make([]DimensionValue, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, dimensionValueFromRow(r.DimensionValue))
+		out = append(out, goalValueFromRow(r.DimensionValue, r.Dimension))
 	}
 	return out, nil
 }
@@ -632,7 +722,7 @@ func (s *Service) ListGoalsWithValues(ctx context.Context) ([]GoalWithValues, er
 	}
 	byGoal := make(map[int64][]DimensionValue, len(goalRows))
 	for _, r := range valRows {
-		byGoal[r.GoalID] = append(byGoal[r.GoalID], dimensionValueFromRow(r.DimensionValue))
+		byGoal[r.GoalID] = append(byGoal[r.GoalID], goalValueFromRow(r.DimensionValue, r.Dimension))
 	}
 	out := make([]GoalWithValues, 0, len(goalRows))
 	for _, r := range goalRows {
@@ -714,7 +804,15 @@ func GroupGoalsByDimension(goals []GoalWithValues, dim Dimension) []GoalGroup {
 }
 
 func dimensionFromRow(d db.Dimension) Dimension {
-	return Dimension{ID: d.ID, Name: d.Name, Selection: d.Selection, List: d.List}
+	return Dimension{ID: d.ID, Name: d.Name, Selection: d.Selection, List: d.List, Retired: d.Retired != 0}
+}
+
+// goalValueFromRow is a value as read off a Goal, saying whether its Dimension
+// is Retired.
+func goalValueFromRow(v db.DimensionValue, d db.Dimension) DimensionValue {
+	val := dimensionValueFromRow(v)
+	val.DimensionRetired = d.Retired != 0
+	return val
 }
 
 func dimensionValueFromRow(v db.DimensionValue) DimensionValue {

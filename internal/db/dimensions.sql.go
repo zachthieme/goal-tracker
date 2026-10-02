@@ -47,7 +47,7 @@ func (q *Queries) ClearGoalValuesInDimension(ctx context.Context, arg ClearGoalV
 const createDimension = `-- name: CreateDimension :one
 INSERT INTO dimensions (name, created_at)
 VALUES (?, ?)
-RETURNING id, name, created_at, selection, list
+RETURNING id, name, created_at, selection, list, retired
 `
 
 type CreateDimensionParams struct {
@@ -64,6 +64,7 @@ func (q *Queries) CreateDimension(ctx context.Context, arg CreateDimensionParams
 		&i.CreatedAt,
 		&i.Selection,
 		&i.List,
+		&i.Retired,
 	)
 	return i, err
 }
@@ -110,7 +111,7 @@ func (q *Queries) DeleteDimensionValue(ctx context.Context, id int64) error {
 }
 
 const getDimension = `-- name: GetDimension :one
-SELECT id, name, created_at, selection, list FROM dimensions WHERE id = ? LIMIT 1
+SELECT id, name, created_at, selection, list, retired FROM dimensions WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetDimension(ctx context.Context, id int64) (Dimension, error) {
@@ -122,6 +123,7 @@ func (q *Queries) GetDimension(ctx context.Context, id int64) (Dimension, error)
 		&i.CreatedAt,
 		&i.Selection,
 		&i.List,
+		&i.Retired,
 	)
 	return i, err
 }
@@ -181,7 +183,7 @@ func (q *Queries) ListAllDimensionValues(ctx context.Context) ([]DimensionValue,
 }
 
 const listAllGoalValues = `-- name: ListAllGoalValues :many
-SELECT goal_dimension_values.goal_id, dimension_values.id, dimension_values.dimension_id, dimension_values.value, dimension_values.retired, dimension_values.created_at, dimension_values.position, dimensions.id, dimensions.name, dimensions.created_at, dimensions.selection, dimensions.list
+SELECT goal_dimension_values.goal_id, dimension_values.id, dimension_values.dimension_id, dimension_values.value, dimension_values.retired, dimension_values.created_at, dimension_values.position, dimensions.id, dimensions.name, dimensions.created_at, dimensions.selection, dimensions.list, dimensions.retired
 FROM goal_dimension_values
 JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
 JOIN dimensions ON dimensions.id = dimension_values.dimension_id
@@ -218,6 +220,7 @@ func (q *Queries) ListAllGoalValues(ctx context.Context) ([]ListAllGoalValuesRow
 			&i.Dimension.CreatedAt,
 			&i.Dimension.Selection,
 			&i.Dimension.List,
+			&i.Dimension.Retired,
 		); err != nil {
 			return nil, err
 		}
@@ -269,7 +272,7 @@ func (q *Queries) ListDimensionValues(ctx context.Context, dimensionID int64) ([
 }
 
 const listDimensions = `-- name: ListDimensions :many
-SELECT id, name, created_at, selection, list FROM dimensions ORDER BY name, id
+SELECT id, name, created_at, selection, list, retired FROM dimensions ORDER BY name, id
 `
 
 func (q *Queries) ListDimensions(ctx context.Context) ([]Dimension, error) {
@@ -287,6 +290,7 @@ func (q *Queries) ListDimensions(ctx context.Context) ([]Dimension, error) {
 			&i.CreatedAt,
 			&i.Selection,
 			&i.List,
+			&i.Retired,
 		); err != nil {
 			return nil, err
 		}
@@ -302,7 +306,7 @@ func (q *Queries) ListDimensions(ctx context.Context) ([]Dimension, error) {
 }
 
 const listGoalValues = `-- name: ListGoalValues :many
-SELECT dimension_values.id, dimension_values.dimension_id, dimension_values.value, dimension_values.retired, dimension_values.created_at, dimension_values.position, dimensions.id, dimensions.name, dimensions.created_at, dimensions.selection, dimensions.list
+SELECT dimension_values.id, dimension_values.dimension_id, dimension_values.value, dimension_values.retired, dimension_values.created_at, dimension_values.position, dimensions.id, dimensions.name, dimensions.created_at, dimensions.selection, dimensions.list, dimensions.retired
 FROM goal_dimension_values
 JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
 JOIN dimensions ON dimensions.id = dimension_values.dimension_id
@@ -338,6 +342,7 @@ func (q *Queries) ListGoalValues(ctx context.Context, goalID int64) ([]ListGoalV
 			&i.Dimension.CreatedAt,
 			&i.Dimension.Selection,
 			&i.Dimension.List,
+			&i.Dimension.Retired,
 		); err != nil {
 			return nil, err
 		}
@@ -467,7 +472,7 @@ func (q *Queries) RemoveMergedGoalValueWhereTargetCarried(ctx context.Context, a
 
 const setDimensionList = `-- name: SetDimensionList :one
 UPDATE dimensions SET list = ? WHERE id = ?
-RETURNING id, name, created_at, selection, list
+RETURNING id, name, created_at, selection, list, retired
 `
 
 type SetDimensionListParams struct {
@@ -485,13 +490,39 @@ func (q *Queries) SetDimensionList(ctx context.Context, arg SetDimensionListPara
 		&i.CreatedAt,
 		&i.Selection,
 		&i.List,
+		&i.Retired,
+	)
+	return i, err
+}
+
+const setDimensionRetired = `-- name: SetDimensionRetired :one
+UPDATE dimensions SET retired = ? WHERE id = ?
+RETURNING id, name, created_at, selection, list, retired
+`
+
+type SetDimensionRetiredParams struct {
+	Retired int64
+	ID      int64
+}
+
+// Retire a Dimension (1) or restore it (0); nothing about it is deleted.
+func (q *Queries) SetDimensionRetired(ctx context.Context, arg SetDimensionRetiredParams) (Dimension, error) {
+	row := q.db.QueryRowContext(ctx, setDimensionRetired, arg.Retired, arg.ID)
+	var i Dimension
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.Selection,
+		&i.List,
+		&i.Retired,
 	)
 	return i, err
 }
 
 const setDimensionSelection = `-- name: SetDimensionSelection :one
 UPDATE dimensions SET selection = ? WHERE id = ?
-RETURNING id, name, created_at, selection, list
+RETURNING id, name, created_at, selection, list, retired
 `
 
 type SetDimensionSelectionParams struct {
@@ -510,6 +541,7 @@ func (q *Queries) SetDimensionSelection(ctx context.Context, arg SetDimensionSel
 		&i.CreatedAt,
 		&i.Selection,
 		&i.List,
+		&i.Retired,
 	)
 	return i, err
 }

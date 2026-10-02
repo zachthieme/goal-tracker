@@ -129,6 +129,49 @@ func (s *Server) handleRetireDimensionValue(w http.ResponseWriter, r *http.Reque
 	s.redirectToDimensions(w, r)
 }
 
+// handleRestoreDimensionValue reverses the retirement of the value in the path,
+// so it is offered for new assignments again. Only an Admin may.
+func (s *Server) handleRestoreDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, ok := dimensionIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	if err := s.svc.RestoreDimensionValue(r.Context(), current.ID, id); err != nil {
+		writeDimensionError(w, err)
+		return
+	}
+	s.redirectToDimensions(w, r)
+}
+
+// handleRetireDimension retires the Dimension in the path, withdrawing it from
+// setting Goals' values, the Goal list's filter and grouping, and the Report
+// Definition form. Only an Admin may.
+func (s *Server) handleRetireDimension(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, ok := dimensionIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	if err := s.svc.RetireDimension(r.Context(), current.ID, id); err != nil {
+		writeDimensionError(w, err)
+		return
+	}
+	s.redirectToDimensions(w, r)
+}
+
+// handleRestoreDimension reverses the retirement of the Dimension in the path,
+// returning it everywhere. Only an Admin may.
+func (s *Server) handleRestoreDimension(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, ok := dimensionIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	if err := s.svc.RestoreDimension(r.Context(), current.ID, id); err != nil {
+		writeDimensionError(w, err)
+		return
+	}
+	s.redirectToDimensions(w, r)
+}
+
 // handleMoveDimensionValue moves the value in the path one place up or down its
 // Dimension's list. Only an Admin may.
 func (s *Server) handleMoveDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {

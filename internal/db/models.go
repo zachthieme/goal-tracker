@@ -85,6 +85,7 @@ type Dimension struct {
 	CreatedAt string
 	Selection string
 	List      string
+	Retired   int64
 }
 
 type DimensionValue struct {
