@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
@@ -251,5 +252,51 @@ func TestThemeMenuOffersTheThreeChoices(t *testing.T) {
 	me := page[strings.Index(page, `<div class="me">`):strings.Index(page, "</nav>")]
 	if !strings.Contains(me, `data-testid="theme-menu"`) || !strings.Contains(me, "Sign out") {
 		t.Errorf("the Theme menu is not beside Sign out: %s", me)
+	}
+}
+
+// A Report's Print view is black on white whatever theme is chosen: it renders
+// the same with each choice as with none.
+func TestPrintViewIgnoresTheTheme(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", RootIDs: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	printPath := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10) + "/print"
+
+	unchosen := getBody(t, client, printPath)
+	if strings.Contains(unchosen, "data-theme") {
+		t.Errorf("the Print view is pinned to a theme: %s", rootElement(t, unchosen))
+	}
+	for _, choice := range []string{"light", "dark"} {
+		if page := getWithTheme(t, client, printPath, choice); page != unchosen {
+			t.Errorf("the Print view with %s chosen differs from the one with none:\n%s", choice, page)
+		}
+	}
+}
+
+// The open Theme menu floats over the page, anchored under its button and no
+// wider than the screen, so neither opening it nor a narrow screen widens the
+// top bar. The current choice is marked to the eye, not only to a screen
+// reader.
+func TestThemeMenuFloatsWithoutWideningTheTopBar(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	if decls := cssRule(t, css, "\n.theme"); !strings.Contains(decls, "position:relative") {
+		t.Errorf("the Theme menu does not anchor its panel: %s", decls)
+	}
+	decls := cssRule(t, css, "\n.theme-menu")
+	for _, want := range []string{"position:absolute", "right:0", "max-width:calc(100vw"} {
+		if !strings.Contains(decls, want) {
+			t.Errorf("the Theme menu's panel lacks %s: %s", want, decls)
+		}
+	}
+	if decls := cssRule(t, css, `.theme-choice[aria-current="true"]`); decls == "" {
+		t.Errorf("the current theme is not marked to the eye")
 	}
 }

@@ -222,12 +222,22 @@ details>summary::-webkit-details-marker{display:none}
 .nav>*{flex:none}
 .me form{margin:0}
 .me .btn.quiet{color:var(--nav-ink-2)}.me .btn.quiet:hover{color:var(--nav-ink);background:var(--nav-hover)}
+/* Theme menu: a disclosure beside Sign out whose panel floats over the page,
+ * so opening it never widens the top bar (DESIGN.md § Components) */
+.theme{position:relative}
+.theme>summary{min-height:0}
+.theme-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:20;display:flex;flex-direction:column;gap:4px;width:160px;max-width:calc(100vw - 32px);margin:0;padding:8px;box-shadow:var(--shadow-pop);box-sizing:border-box}
+.theme-menu :focus-visible{outline-color:var(--color-focus)}
+.theme-choice{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:36px;padding:0 12px;border:0;border-radius:var(--radius-md);background:none;font:inherit;font-weight:500;color:var(--color-ink);text-align:left;cursor:pointer}
+.theme-choice:hover{background:var(--color-primary-subtle)}
+.theme-choice[aria-current="true"]{background:var(--color-primary-light);font-weight:600}
+.theme-choice[aria-current="true"]::after{content:"✓";color:var(--color-primary-strong)}
 .page>*{min-width:0;max-width:100%}
 .page{overflow-wrap:break-word}
 input,textarea,select,img{max-width:100%}
 pre{overflow-x:auto}
 fieldset{min-width:0}
 @media (max-width:900px){.nav{flex-wrap:wrap;height:auto;min-height:56px;padding:0 16px;column-gap:12px}.brand{margin-right:0}.me{flex:1 1 0;justify-content:flex-end;min-width:0;min-height:56px}.who{display:flex;min-width:0;font-size:0}.who .person{display:flex;flex-direction:column;align-items:flex-start;min-width:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.who .person>.disclose{max-width:100%;overflow:hidden;text-overflow:ellipsis}.who .person-email{margin-left:0;white-space:normal}.navitems{order:1;flex:1 0 100%;margin:0 -8px 8px}.navitems .navitem{padding:0 8px}.card:has(table){overflow-x:auto}}
-@media (max-width:360px){.navitems .navitem{padding:0 4px}.navitems .count{margin-left:8px}}
+@media (max-width:360px){.navitems .navitem{padding:0 4px}.navitems .count{margin-left:8px}.me{gap:4px}.me .btn.sm{padding:0 8px}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0s!important}.btn:active{transform:none!important}}
 @media (pointer:coarse){.btn,.btn.sm,input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],select{min-height:44px}}
