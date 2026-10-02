@@ -274,3 +274,26 @@ func TestAdminImportsAnExcelCSVAndSeesSemicolonValuesRefusedOverHTTP(t *testing.
 		t.Errorf("dry run doesn't say why R&D; Ops is refused; body:\n%s", body)
 	}
 }
+
+// Importing a row that leaves a required Dimension and a required Field empty
+// still creates the Goal: required values hold activation, not creation, and
+// the new Goal shows on the Goal list (ticket #75).
+func TestImportingARowWithoutARequiredValueCreatesTheGoalOverHTTP(t *testing.T) {
+	const csv = `Title,Owner,So What,Kind,Pillar,Budget
+Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,,
+`
+	h := testsupport.New(t, "admin@example.com")
+	adminAcct := h.SignIn("admin@example.com")
+	h.SetDimensionRequired(adminAcct, h.CreateDimension(adminAcct, "Pillar", "Growth"), true)
+	h.SetFieldRequired(adminAcct, h.CreateField(adminAcct, "Budget", domain.FieldNumber, "$"), true)
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "admin@example.com")
+
+	body := postImport(t, admin, ts.URL+"/imports", "goals.csv", csv, "commit")
+	if !strings.Contains(body, "Imported 1 Goals") {
+		t.Fatalf("commit didn't import the row lacking Pillar and Budget; body:\n%s", body)
+	}
+	if list := getBody(t, admin, ts.URL+"/goals"); !strings.Contains(list, "Grow revenue") {
+		t.Errorf("the imported Goal isn't on the Goal list; body:\n%s", list)
+	}
+}
