@@ -466,6 +466,10 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("load ownership history: %w", err)
 	}
+	valueHistory, err := s.svc.ValueHistory(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("load value history: %w", err)
+	}
 	dimensions, err := s.svc.ListDimensions(ctx)
 	if err != nil {
 		return goalView{}, fmt.Errorf("load dimensions: %w", err)
@@ -558,6 +562,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		CanSetValues:   canSetValues,
 		Revisions:      revisions,
 		Ownership:      ownership,
+		ValueHistory:   valueHistory,
 		Dimensions:     dimensions,
 		Values:         values,
 		Fields:         fields,
@@ -601,6 +606,9 @@ type goalView struct {
 	// Ownership is the Goal's ownership history, oldest first: every Handoff
 	// with its outcome and every Admin Reassign (CONTEXT.md: Handoff).
 	Ownership []domain.Handoff
+	// ValueHistory is every change to the Goal's Dimension values and Fields,
+	// oldest first (CONTEXT.md: Field).
+	ValueHistory []domain.ValueChange
 	// Dimensions are all defined Dimensions, Retired ones included so the values
 	// the Goal carries in them stay readable; only the rest get value-assignment
 	// controls. Values are the values this Goal currently carries, retired ones
@@ -1247,6 +1255,24 @@ func ownershipOutcome(status string) string {
 		return "reassigned by an Admin"
 	}
 	return status
+}
+
+// valueChangeText says what a change in the Goal page's Value history did: a
+// value added or removed in a several-values Dimension, or a Dimension's or
+// Field's value set, changed or cleared.
+func valueChangeText(c domain.ValueChange) string {
+	switch {
+	case c.Several && c.Before == "":
+		return c.Attribute + ": added " + c.After
+	case c.Several:
+		return c.Attribute + ": removed " + c.Before
+	case c.Before == "":
+		return c.Attribute + ": set to " + c.After
+	case c.After == "":
+		return c.Attribute + ": cleared (was " + c.Before + ")"
+	default:
+		return c.Attribute + ": " + c.Before + " → " + c.After
+	}
 }
 
 // layoutTable is the ?layout= value that shows the Goal list as a flat table,
