@@ -15,7 +15,7 @@ import (
 // snapshot page: who published it and when, what it read its changes against,
 // its open Action Items, the introduction, the narrative curated from
 // Highlights, each exception's full MBR block, and every other selected Goal
-// one line (CONTEXT.md: Report). With no hover to show an email, a person's
+// one line (CONTEXT.md: Report), each Goal with the Fields the Report chose. With no hover to show an email, a person's
 // first mention reads Name (email) and later ones their Name (CONTEXT.md: Name).
 func Markdown(p domain.Publication) string {
 	var b strings.Builder
@@ -65,6 +65,9 @@ func Markdown(p domain.Publication) string {
 			if !sg.Goal.DeliveryDate.IsZero() {
 				fmt.Fprintf(&b, " — due %s", fmtDate(sg.Goal.DeliveryDate))
 			}
+			if len(sg.Fields) > 0 {
+				fmt.Fprintf(&b, " — %s", fields(sg.Fields, "%s: %s"))
+			}
 			b.WriteString("\n")
 		}
 	}
@@ -72,7 +75,7 @@ func Markdown(p domain.Publication) string {
 }
 
 // writeBlock writes an exception Goal's full MBR block: title and badges, due
-// date with its history struck through, Health, So What, latest status, Path
+// date with its history struck through, Health, the chosen Fields, So What, latest status, Path
 // to Green, Milestones, Metrics against target, and the Rolled-up Health with
 // the Owner's explanation.
 func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBlock) {
@@ -84,6 +87,9 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 	fmt.Fprintf(b, "\n\n%s · %s · Health: **%s**", text(people.Of(g.Owner)), g.Lifecycle, health(blk.Health))
 	if !g.DeliveryDate.IsZero() {
 		fmt.Fprintf(b, " · due %s%s", struck(blk.PriorDueDates), fmtDate(g.DeliveryDate))
+	}
+	if len(blk.Fields) > 0 {
+		fmt.Fprintf(b, "\n\n%s", fields(blk.Fields, "**%s:** %s"))
 	}
 	fmt.Fprintf(b, "\n\n**So What:** %s\n", text(g.SoWhat))
 	if blk.Status != "" {
@@ -137,6 +143,22 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 			fmt.Fprintf(b, "\n**Why the Health differs:** %s\n", text(blk.Explanation))
 		}
 	}
+}
+
+// fields renders a Goal's values in the Fields its Report chose on one line,
+// each through format with the Field's name and its value: a number with its
+// unit, and a long text with its line breaks read as spaces. Each stands alone;
+// nothing is totalled (ADR 0005).
+func fields(values []domain.FieldValue, format string) string {
+	parts := make([]string, 0, len(values))
+	for _, v := range values {
+		value := v.Value
+		if v.Field.Type == domain.FieldNumber && v.Field.Unit != "" {
+			value += " " + v.Field.Unit
+		}
+		parts = append(parts, fmt.Sprintf(format, text(v.Field.Name), text(value)))
+	}
+	return strings.Join(parts, " · ")
 }
 
 // inlineMarkup is the Markdown that would change how text people typed reads

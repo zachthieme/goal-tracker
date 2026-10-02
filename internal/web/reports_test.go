@@ -770,3 +770,138 @@ func TestRetiredDimensionLeavesReportFormButSavedFilterKeepsWorkingOverHTTP(t *t
 		t.Errorf("the restored Pillar isn't offered as a Report filter:\n%s", filters)
 	}
 }
+
+// The Report Definition form offers the Fields still offered (none Retired) to
+// show beside each Goal. The chosen ones then appear beside each Goal that has
+// a value, with its unit, on the exception card and the On track row alike; a
+// long text reads as a labelled value there, not in the narrative. A number
+// Field is never totalled across Goals (ADR 0005). A definition that chose no
+// Fields shows none (ticket #78).
+func TestReportDefinitionShowsChosenFieldsOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	notes := h.CreateField(boss, "Notes", domain.FieldLongText, "")
+	sponsor := h.CreateField(boss, "Sponsor", domain.FieldShortText, "")
+	legacy := h.CreateField(boss, "Legacy code", domain.FieldShortText, "")
+	if err := h.Service.RetireField(context.Background(), boss.ID, legacy.ID); err != nil {
+		t.Fatalf("RetireField: %v", err)
+	}
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	h.SetGoalField(boss, red, budget, "120")
+	h.SetGoalField(boss, red, notes, "Counsel hired in March.")
+	h.SetGoalField(boss, red, sponsor, "Dana")
+	h.SetGoalField(boss, green, budget, "40")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	choice := between(t, getBody(t, client, ts.URL+"/reports"), `<fieldset data-testid="report-field-choice"`, `</fieldset>`)
+	for _, f := range []domain.Field{budget, notes, sponsor} {
+		if !strings.Contains(choice, f.Name) || !strings.Contains(choice, fmt.Sprintf(`name="field" value="%d"`, f.ID)) {
+			t.Errorf("the form doesn't offer %s to show; fieldset:\n%s", f.Name, choice)
+		}
+	}
+	if strings.Contains(choice, legacy.Name) {
+		t.Errorf("the form offers the Retired %s; fieldset:\n%s", legacy.Name, choice)
+	}
+
+	resp := postForm(t, client, ts.URL+"/reports", url.Values{
+		"name":  {"EU MBR"},
+		"root":  {strconv.FormatInt(red.ID, 10), strconv.FormatInt(green.ID, 10)},
+		"depth": {"0"},
+		"field": {strconv.FormatInt(budget.ID, 10), strconv.FormatInt(notes.ID, 10)},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("save report: status %d", resp.StatusCode)
+	}
+	draft := readBody(t, resp)
+	card := pageElement(t, pageElement(t, draft, "article", "report-exception"), "dl", "report-fields")
+	for _, want := range []string{"Budget", "120", "$", "Notes", "Counsel hired in March."} {
+		if !strings.Contains(card, want) {
+			t.Errorf("exception card's Fields missing %q:\n%s", want, card)
+		}
+	}
+	if strings.Contains(card, "Dana") {
+		t.Errorf("exception card shows the unchosen Sponsor:\n%s", card)
+	}
+	row := pageElement(t, pageElement(t, draft, "table", "on-track"), "tr", "selected-goal")
+	fields := pageElement(t, row, "dl", "report-fields")
+	if !strings.Contains(fields, "Budget") || !strings.Contains(fields, "40") || !strings.Contains(fields, "$") {
+		t.Errorf("On track row doesn't show Budget 40 $:\n%s", row)
+	}
+	if strings.Contains(fields, "Notes") {
+		t.Errorf("On track row shows Notes, which the Goal has no value in:\n%s", row)
+	}
+	if strings.Contains(draft, "160") {
+		t.Errorf("the draft totals Budget across Goals; body:\n%s", draft)
+	}
+
+	plain := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Plain MBR", RootIDs: []int64{red.ID, green.ID}})
+	page := getBody(t, client, fmt.Sprintf("%s/reports/%d", ts.URL, plain.ID))
+	if strings.Contains(page, `data-testid="report-fields"`) || strings.Contains(page, "Counsel hired in March.") {
+		t.Errorf("a definition with no Fields chosen shows Fields; body:\n%s", page)
+	}
+}
+
+// A publication's page, its Print view and its Markdown all show the chosen
+// Fields as they were published: editing the value, renaming the Field or
+// retiring it afterwards changes none of them (ticket #78).
+func TestPublicationKeepsTheChosenFieldsAsPublishedOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ctx := context.Background()
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	h.SetGoalField(boss, red, budget, "120")
+	h.SetGoalField(boss, green, budget, "40")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", RootIDs: []int64{red.ID, green.ID}, FieldIDs: []int64{budget.ID}})
+	pub := h.PublishReport(boss, def)
+
+	h.SetGoalField(boss, red, budget, "8125")
+	h.SetGoalField(boss, green, budget, "")
+	// The tool has no Field rename yet; rename it in place, as one would.
+	if _, err := h.DB.ExecContext(ctx, `UPDATE fields SET name = 'Spend' WHERE id = ?`, budget.ID); err != nil {
+		t.Fatalf("rename field: %v", err)
+	}
+	if err := h.Service.RetireField(ctx, boss.ID, budget.ID); err != nil {
+		t.Fatalf("RetireField: %v", err)
+	}
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	pubPath := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(pub.ID, 10)
+	for name, page := range map[string]string{
+		"publication page": getBody(t, client, pubPath),
+		"Print view":       getBody(t, client, pubPath+"/print"),
+	} {
+		card := pageElement(t, pageElement(t, page, "article", "report-exception"), "dl", "report-fields")
+		if !strings.Contains(card, "Budget") || !strings.Contains(card, "120") || !strings.Contains(card, "$") {
+			t.Errorf("%s's exception card doesn't show Budget 120 $ as published:\n%s", name, card)
+		}
+		row := pageElement(t, pageElement(t, page, "table", "on-track"), "tr", "selected-goal")
+		if fields := pageElement(t, row, "dl", "report-fields"); !strings.Contains(fields, "Budget") || !strings.Contains(fields, "40") {
+			t.Errorf("%s's On track row doesn't show Budget 40 $ as published:\n%s", name, row)
+		}
+		if strings.Contains(page, "8125") || strings.Contains(page, "Spend") || strings.Contains(page, "160") {
+			t.Errorf("%s shows the Field as edited since, or a total; body:\n%s", name, page)
+		}
+	}
+	md := getBody(t, client, pubPath+"/markdown")
+	for _, want := range []string{"**Budget:** 120 $", "— Budget: 40 $\n"} {
+		if !strings.Contains(md, want) {
+			t.Errorf("Markdown missing %q:\n%s", want, md)
+		}
+	}
+	if strings.Contains(md, "8125") || strings.Contains(md, "Spend") {
+		t.Errorf("Markdown shows the Field as edited since:\n%s", md)
+	}
+}
