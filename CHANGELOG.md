@@ -62,6 +62,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Risks page shows only the sections that have Goals in them; the empty ones collapse into one "Nothing in: …" line after them, and with nothing flagged the page says "All clear" in a single sentence. A summary tile for an empty section still lands on its name in that line (#95).
 - [user] Text is now neutral ink in both themes, so teal marks only what you can act on: links, buttons, focus and the current top-bar item. The top bar stays teal, Home's count is a dark pill because something needs you, and the other counts are neutral grey (#85).
 - [user] The Goal list's filters apply as soon as one changes, and the search after a pause in typing or on Enter, without reloading the page: the address follows each change so the view can be shared and reached with Back, the layout, sort and grouping are kept, and Apply shows only in browsers without JavaScript (#94).
+- [user] Home's New goal opens the Goal list with the propose form already open and its Title focused, in one click and without JavaScript; the Goal list reached any other way still shows the form closed, and closing the form or creating a Goal keeps a reload from opening it again (#93).
 
 **Bug fixes:**
 - [user] A CSV saved by Excel as "CSV UTF-8" now imports: the byte-order mark Excel writes at the start of the file is ignored, where before the first column was reported as unknown (#101).
