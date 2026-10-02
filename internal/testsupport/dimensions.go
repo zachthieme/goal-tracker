@@ -59,3 +59,12 @@ func (h *Harness) SetDimensionSelection(admin domain.Account, dim domain.Dimensi
 		h.T.Fatalf("SetDimensionSelection: %v", err)
 	}
 }
+
+// SetDimensionRequired marks dim required, or unmarks it, on behalf of admin,
+// failing the test on error.
+func (h *Harness) SetDimensionRequired(admin domain.Account, dim domain.Dimension, required bool) {
+	h.T.Helper()
+	if err := h.Service.SetDimensionRequired(context.Background(), admin.ID, dim.ID, required); err != nil {
+		h.T.Fatalf("SetDimensionRequired: %v", err)
+	}
+}

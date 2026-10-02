@@ -232,7 +232,8 @@ func (s *Service) ListSoWhatRevisions(ctx context.Context, goalID int64) ([]SoWh
 // ActivateGoal moves a Proposed Goal to Active once it meets the minimum
 // standard (CONTEXT.md: Lifecycle). The Goal must have a So What, an Owner, and
 // either a delivery date plus at least one Milestone or Metric (Dated) or at
-// least one Metric (Ongoing). Every unmet requirement comes back as its own
+// least one Metric (Ongoing), and a value in every Dimension and Field an Admin
+// has marked required (CONTEXT.md: Incomplete). Every unmet requirement comes back as its own
 // validation error, joined together, so the Owner sees the whole list at once;
 // use ActivationReasons to enumerate them. The Goal stays Proposed on rejection.
 func (s *Service) ActivateGoal(ctx context.Context, goalID int64) (Goal, error) {
@@ -274,6 +275,13 @@ func (s *Service) ActivateGoal(ctx context.Context, goalID int64) (Goal, error) 
 		}
 	default:
 		reasons = append(reasons, fmt.Errorf("%w: a Goal must be marked Dated or Ongoing to become Active", ErrValidation))
+	}
+	missing, err := s.MissingRequired(ctx, goalID)
+	if err != nil {
+		return Goal{}, err
+	}
+	for _, name := range missing {
+		reasons = append(reasons, fmt.Errorf("%w: a Goal needs a value in %s to become Active", ErrValidation, name))
 	}
 
 	if len(reasons) > 0 {
