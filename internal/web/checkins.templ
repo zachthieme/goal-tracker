@@ -411,46 +411,6 @@ templ checkinByline(c domain.Checkin) {
 	</p>
 }
 
-// checkinHistory is a Goal's immutable Check-in history, newest first, each
-// with its Health, status, any Lifecycle change and Path to Green, and who wrote
-// it (CONTEXT.md: Check-in).
-templ checkinHistory(checkins []domain.Checkin) {
-	<ul class="checkin-history" data-testid="checkin-history">
-		if len(checkins) == 0 {
-			<li data-testid="no-checkins">No Check-ins yet.</li>
-		}
-		for _, c := range checkins {
-			<li data-testid="checkin">
-				<span class="muted small">{ c.CreatedAt.Format("2006-01-02 15:04") }</span>
-				if c.Health != "" {
-					<span class={ "badge", healthClass(c.Health) }><span class="dot"></span>{ c.Health }</span>
-				}
-				<span>{ c.Status }</span>
-				if c.LifecycleChange.Changed() {
-					<span data-testid="checkin-lifecycle">
-						{ fmt.Sprintf(" — Lifecycle: %s → %s", c.LifecycleChange.From, c.LifecycleChange.To) }
-						if c.LifecycleChange.Reason != "" {
-							{ ": " + c.LifecycleChange.Reason }
-						}
-						if c.LifecycleChange.Outcome != "" {
-							{ " — Outcome: " + c.LifecycleChange.Outcome }
-						}
-					</span>
-				}
-				if c.PathToGreen != "" {
-					<span>— Path to Green: { c.PathToGreen } (by { fmtDate(c.PathTargetDate) })</span>
-				}
-				<span class="muted small">
-					{ "— by " }
-					@person(c.Author)
-					{ ", owner " }
-					@person(c.Owner)
-				</span>
-			</li>
-		}
-	</ul>
-}
-
 // noChangeCheckinButton records a Check-in repeating the Goal's previous values
 // in one click (CONTEXT.md: Check-in). Its button takes class, so the Goal
 // page's header can show it quiet beside the primary Check in.

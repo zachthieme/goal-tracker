@@ -457,6 +457,7 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 	}
 	view.Toast = s.linkRemovalToast(r.Context(), takeUndo(w, r), current, id)
 	view.Open = goalForm(r.URL.Query().Get("open"))
+	view.History = view.History.narrowed(r.URL.Query())
 	render(w, r, http.StatusOK, goalPage(&current, view))
 }
 
@@ -615,7 +616,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	// too (CONTEXT.md: Delegate).
 	canSetValues := canCheckin || current.IsAdmin
 
-	return goalView{
+	view := goalView{
 		Goal:           g,
 		Parents:        parents,
 		Children:       children,
@@ -648,7 +649,9 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Required:       required,
 		Incomplete:     incomplete,
 		SuggestedDate:  domain.SuggestDeliveryDate(s.svc.Now()).Format(dateLayout),
-	}, nil
+	}
+	view.History = newHistory(view, s.svc.Timezone(), s.svc.Now())
+	return view, nil
 }
 
 // goalView is everything the single-Goal page renders: the Goal itself, its
@@ -677,7 +680,8 @@ type goalView struct {
 	CanCheckin bool
 	Revisions  []domain.SoWhatRevision
 	// Ownership is the Goal's ownership history, oldest first: every Handoff
-	// with its outcome and every Admin Reassign (CONTEXT.md: Handoff).
+	// with its outcome and every Admin Reassign (CONTEXT.md: Handoff). The page
+	// shows it, and the rest of the Goal's history, as History.
 	Ownership []domain.Handoff
 	// ValueHistory is every change to the Goal's Dimension values and Fields,
 	// oldest first (CONTEXT.md: Field).
@@ -733,6 +737,9 @@ type goalView struct {
 	Required      []domain.RequiredValue
 	Incomplete    []string
 	SuggestedDate string
+	// History is the Goal's History as one timeline, newest first, showing the
+	// filter and page count the page's address asks for.
+	History history
 	// Toast is the one-time notice the page carries straight after the viewer
 	// removed one of its links, with an Undo; nil on any other visit.
 	Toast *toast
@@ -876,16 +883,6 @@ func (v goalView) lifecycleNote() string {
 		return ""
 	}
 	return ""
-}
-
-// milestoneName names the Milestone a Date Slip moved, for the slip history.
-func (v goalView) milestoneName(id int64) string {
-	for _, m := range v.Milestones {
-		if m.ID == id {
-			return m.Name
-		}
-	}
-	return fmt.Sprintf("Milestone %d", id)
 }
 
 // metricTrend pairs a Metric with its readings over time, so the Goal page can

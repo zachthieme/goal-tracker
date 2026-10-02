@@ -1,0 +1,190 @@
+package web
+
+import (
+	"fmt"
+	"strconv"
+)
+
+// goalHistory is a Goal's History as one timeline, open on load and newest
+// first, grouped by week in the org's calendar. Filter chips above it and
+// "Show earlier" below are plain links that reload the page with the filter
+// and page count in the address and the block in view, so it works without
+// script.
+templ goalHistory(h history) {
+	<div data-testid="goal-history" id="history" class="gp-block ruled">
+		<h2>History</h2>
+		<nav data-testid="history-chips" class="tl-chips" aria-label="Show in History">
+			for _, c := range h.chips() {
+				<a data-testid="history-chip" data-filter={ string(c.Filter) } class="tl-chip" href={ h.url(c.Filter, 0) } { h.chipAttrs(c)... }>
+					{ c.Label }
+					<span class="tl-count">{ strconv.Itoa(c.Count) }</span>
+				</a>
+			}
+		</nav>
+		if weeks := h.weeks(); len(weeks) == 0 {
+			<p data-testid="no-history" class="muted">{ h.emptyText() }</p>
+		} else {
+			for _, w := range weeks {
+				<section data-testid="history-week" class="tl-week">
+					<h3 class="label">{ w.Heading }</h3>
+					<ol class="tl-list">
+						for _, e := range w.Entries {
+							@historyItem(h, e)
+						}
+					</ol>
+				</section>
+			}
+		}
+		if h.more() {
+			<p><a data-testid="history-earlier" class="btn quiet sm" href={ h.earlierURL() }>Show earlier</a></p>
+		}
+		@timelineStyles()
+	</div>
+}
+
+// historyItem is one entry on the timeline: its marker, its kind as a text
+// label and when it happened, then what it recorded, with people by Name.
+templ historyItem(h history, e historyEntry) {
+	<li data-testid="history-entry" data-kind={ e.kind() } class="tl-entry">
+		@historyMarker(e)
+		<p class="tl-head">
+			<span class="tl-kind">{ e.label() }</span>
+			<time class="muted small" datetime={ e.At.In(h.Loc).Format("2006-01-02T15:04:05Z07:00") }>{ h.when(e.At) }</time>
+		</p>
+		switch {
+			case e.Checkin != nil:
+				@historyCheckin(h, e)
+			case e.Revision != nil:
+				<p>{ e.Revision.SoWhat }</p>
+				<p class="muted small">
+					{ "by " }
+					@person(e.Revision.Author)
+				</p>
+			case e.Handoff != nil:
+				<p>
+					@person(e.Handoff.From)
+					{ " → " }
+					@person(e.Handoff.To)
+					<span>{ " — " + ownershipOutcome(e.Handoff.Status) }</span>
+				</p>
+				<p class="muted small">
+					{ "started by " }
+					@person(e.Handoff.InitiatedBy)
+				</p>
+			default:
+				<p>{ valueChangeText(*e.Value) }</p>
+				<p class="muted small">
+					{ "by " }
+					@person(e.Value.Actor)
+				</p>
+		}
+	</li>
+}
+
+// historyMarker marks an entry on the timeline. A Check-in's marker takes its
+// Health's colour and shape (circle, triangle, square), so it reads without
+// colour; every other kind, and a Check-in with no Health, has its own neutral
+// shape. The entry's text label says the same to everyone.
+templ historyMarker(e historyEntry) {
+	if e.Checkin != nil && e.Checkin.Health != "" {
+		<span class={ "tl-mark", healthClass(e.Checkin.Health) } aria-hidden="true"><span class="dot"></span></span>
+	} else {
+		<span class={ "tl-mark", "tl-" + e.kind() } aria-hidden="true"></span>
+	}
+}
+
+// historyCheckin is a Check-in on the timeline: its Health and status, the
+// Lifecycle change, Path to Green and Date Slips it recorded, and who wrote it
+// for whom. Its Metric readings and the explanation of a Health that differs
+// from the Rolled-up Health sit behind a disclosure.
+templ historyCheckin(h history, e historyEntry) {
+	{{ c := e.Checkin }}
+	<p>
+		if c.Health != "" {
+			<span class={ "badge", healthClass(c.Health) }><span class="dot"></span>{ c.Health }</span>
+			{ " " }
+		}
+		<span>{ c.Status }</span>
+	</p>
+	if c.LifecycleChange.Changed() {
+		<p>
+			<span data-testid="checkin-lifecycle">
+				{ fmt.Sprintf("Lifecycle: %s → %s", c.LifecycleChange.From, c.LifecycleChange.To) }
+				if c.LifecycleChange.Reason != "" {
+					{ ": " + c.LifecycleChange.Reason }
+				}
+				if c.LifecycleChange.Outcome != "" {
+					{ " — Outcome: " + c.LifecycleChange.Outcome }
+				}
+			</span>
+		</p>
+	}
+	if c.PathToGreen != "" {
+		<p>Path to Green: { c.PathToGreen } (by { fmtDate(c.PathTargetDate) })</p>
+	}
+	if len(e.Slips) > 0 {
+		<ul data-testid="entry-slips" class="tl-slips">
+			for _, s := range e.Slips {
+				<li data-testid="date-slip">
+					<strong>{ h.slipWhat(s) }</strong>: <del>{ fmtDate(s.OldDate) }</del> { fmtDate(s.NewDate) } <span>— { s.Reason }</span>
+				</li>
+			}
+		</ul>
+	}
+	<p class="muted small">
+		{ "by " }
+		@person(c.Author)
+		if c.Owner.ID != c.Author.ID {
+			{ " for " }
+			@person(c.Owner)
+		}
+	</p>
+	if len(e.Readings) > 0 || c.Explanation != "" {
+		<details data-testid="checkin-detail" class="tl-detail">
+			<summary class="small">Readings and explanation</summary>
+			if len(e.Readings) > 0 {
+				<ul class="tl-readings">
+					for _, r := range e.Readings {
+						<li><span class="muted">{ r.Metric + ": " }</span><span class="num">{ r.Value }</span></li>
+					}
+				</ul>
+			}
+			if c.Explanation != "" {
+				<p><span class="muted">Why it differs from the Rolled-up Health: </span>{ c.Explanation }</p>
+			}
+		</details>
+	}
+}
+
+// timelineStyles lays the History out as a timeline: chips that wrap, a week
+// heading over a list strung on a rule, and each entry's marker on the rule.
+templ timelineStyles() {
+	<style>
+		.tl-chips{display:flex;flex-wrap:wrap;gap:8px}
+		.tl-chip{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:0 12px;border:1px solid var(--color-border);border-radius:var(--radius-full);background:var(--color-surface);color:var(--color-ink-2);font-size:13px;font-weight:500}
+		.tl-chip:hover{text-decoration:none;background:var(--color-primary-subtle)}
+		.tl-chip[aria-current]{background:var(--color-primary-light);border-color:var(--color-primary);color:var(--color-ink);font-weight:600}
+		.tl-count{font-variant-numeric:tabular-nums;color:var(--color-ink-muted)}
+		.tl-chip[aria-current] .tl-count{color:var(--color-ink)}
+		@media (pointer:coarse){.tl-chip{min-height:44px}}
+		.tl-week{display:flex;flex-direction:column;gap:8px}
+		.tl-week>h3{margin:0}
+		.tl-list{list-style:none;margin:0;padding:0 0 0 24px;border-left:1px solid var(--color-border);margin-left:4px;display:flex;flex-direction:column;gap:16px}
+		.tl-entry{position:relative;display:flex;flex-direction:column;gap:4px}
+		.tl-entry>p{margin:0}
+		.tl-head{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+		.tl-kind{font-weight:600;color:var(--color-ink)}
+		.tl-mark{position:absolute;left:-31px;top:4px;width:12px;height:12px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;background:var(--color-canvas)}
+		.tl-mark .dot{width:10px;height:10px}
+		.tl-mark.y .dot{width:12px;height:11px}
+		.tl-mark.g,.tl-mark.y,.tl-mark.r{background:var(--color-canvas)}
+		.tl-checkin{border:2px solid var(--color-ink-muted);border-radius:2px}
+		.tl-so-what{border:2px solid var(--color-ink-muted);border-radius:50%}
+		.tl-ownership{width:10px;height:10px;border:2px solid var(--color-ink-muted);transform:rotate(45deg)}
+		.tl-value{height:4px;top:8px;background:var(--color-ink-muted);border-radius:2px}
+		.tl-slips{margin:0;padding-left:20px}
+		.tl-detail summary{cursor:pointer;color:var(--color-primary-strong)}
+		.tl-readings{list-style:none;margin:4px 0;padding:0}
+		.tl-detail>p{margin:4px 0 0}
+	</style>
+}

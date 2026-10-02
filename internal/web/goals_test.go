@@ -1220,10 +1220,10 @@ func TestGoalPageMetricCardsShowASparkline(t *testing.T) {
 	}
 }
 
-// The Goal page's history — Check-ins, Date Slips, So What revisions and
-// ownership changes — sits under History, each collapsed with its count in the
-// summary.
-func TestGoalPageHistoryIsCollapsedWithCounts(t *testing.T) {
+// The Goal page's History — Check-ins, Date Slips, So What revisions,
+// ownership changes and value changes — is one timeline under History, open on
+// load, with a filter chip per kind carrying its count.
+func TestGoalPageHistoryIsOpenWithCounts(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -1235,24 +1235,25 @@ func TestGoalPageHistoryIsCollapsedWithCounts(t *testing.T) {
 	ts := newServer(t, h)
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	history := between(t, page, `data-testid="goal-history"`, "</aside>")
-	for _, tc := range []struct{ testID, summary string }{
-		{"goal-checkin-history", "Check-in history (2)"},
-		{"goal-date-slips", "Date Slips (0)"},
-		{"goal-so-what-history", "So What history (2)"}, // the original and the edit
-		{"goal-ownership-history", "Ownership history (0)"},
+	history := historyBlock(t, page)
+	if strings.Contains(history, "<details") {
+		t.Errorf("History sits behind a disclosure:\n%s", history)
+	}
+	chips := historyChips(t, history)
+	for label, count := range map[string]string{
+		"All":        "4",
+		"Check-ins":  "2",
+		"Date Slips": "0",
+		"So What":    "2", // the original and the edit
+		"Ownership":  "0",
+		"Values":     "0",
 	} {
-		section := pageElement(t, history, "section", tc.testID)
-		details := between(t, section, "<details", "</summary>")
-		if strings.Contains(openTag(details), "open") {
-			t.Errorf("%s is not collapsed: %s", tc.testID, openTag(details))
-		}
-		if !strings.Contains(details, tc.summary) {
-			t.Errorf("%s summary lacks %q: %s", tc.testID, tc.summary, details)
+		if chips[label].count != count {
+			t.Errorf("%q chip counts %q, want %s", label, chips[label].count, count)
 		}
 	}
-	if !strings.Contains(pageElement(t, history, "section", "goal-checkin-history"), `data-testid="checkin-history"`) {
-		t.Errorf("Check-in history section lacks the history list")
+	if n := len(historyEntries(history)); n != 4 {
+		t.Errorf("History lists %d entries, want 4:\n%s", n, history)
 	}
 }
 
@@ -2436,11 +2437,11 @@ func TestProposeGoalFromTheTableKeepsTheTable(t *testing.T) {
 }
 
 // Every change to a Goal's Dimension values and Fields made through the Goal
-// page is listed oldest first under its collapsed Value history, each with who
-// made it by Name and when. A Delegate's change is attributed to the Delegate,
-// a value added or removed in a several-values Dimension reads as "added X" or
-// "removed X", a save that changes nothing adds no entry, and renaming a value
-// afterwards leaves the entries reading as they did.
+// page is on its History timeline, newest first under the Values chip, each
+// with who made it by Name and when. A Delegate's change is attributed to the
+// Delegate, a value added or removed in a several-values Dimension reads as
+// "added X" or "removed X", a save that changes nothing adds no entry, and
+// renaming a value afterwards leaves the entries reading as they did.
 func TestGoalPageListsValueHistory(t *testing.T) {
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
@@ -2476,33 +2477,27 @@ func TestGoalPageListsValueHistory(t *testing.T) {
 		t.Fatalf("RenameDimensionValue: %v", err)
 	}
 
-	page := getBody(t, patClient, goalPageURL(ts.URL, goal))
-	section := pageElement(t, pageElement(t, page, "div", "goal-history"), "section", "goal-value-history")
-	details := between(t, section, "<details", "</summary>")
-	if strings.Contains(openTag(details), "open") {
-		t.Errorf("Value history is not collapsed: %s", openTag(details))
-	}
-	if !strings.Contains(details, "Value history (7)") {
-		t.Errorf("Value history summary lacks its count of 7: %s", details)
+	chips := historyChips(t, historyBlock(t, getBody(t, patClient, goalPageURL(ts.URL, goal))))
+	if chips["Values"].count != "7" {
+		t.Errorf("the Values chip counts %q, want 7", chips["Values"].count)
 	}
 	patShown, deeShown := shownAs(pat.Email, "Pat Owner"), shownAs(dee.Email, "Dee Delegate")
 	want := []struct{ change, by, at string }{
-		{"Budget: set to 200", patShown, "2026-01-02 15:04"},
-		{"Budget: 200 → 350", deeShown, "2026-01-02 16:04"},
-		{"Pillar: set to Growth", patShown, "2026-01-02 18:04"},
-		{"Region: added EMEA", patShown, "2026-01-02 20:04"},
-		{"Region: removed EMEA", deeShown, "2026-01-02 21:04"},
-		{"Region: added APAC", deeShown, "2026-01-02 21:04"},
-		{"Budget: cleared (was 350)", patShown, "2026-01-02 22:04"},
+		{"Budget: cleared (was 350)", patShown, "Fri 2 Jan 22:04"},
+		{"Region: added APAC", deeShown, "Fri 2 Jan 21:04"},
+		{"Region: removed EMEA", deeShown, "Fri 2 Jan 21:04"},
+		{"Region: added EMEA", patShown, "Fri 2 Jan 20:04"},
+		{"Pillar: set to Growth", patShown, "Fri 2 Jan 18:04"},
+		{"Budget: 200 → 350", deeShown, "Fri 2 Jan 16:04"},
+		{"Budget: set to 200", patShown, "Fri 2 Jan 15:04"},
 	}
-	entries := strings.Split(section, `data-testid="value-change"`)[1:]
+	entries := valueEntries(t, patClient, goalPageURL(ts.URL, goal))
 	if len(entries) != len(want) {
-		t.Fatalf("Value history has %d entries, want %d:\n%s", len(entries), len(want), section)
+		t.Fatalf("History lists %d value changes, want %d:\n%s", len(entries), len(want), strings.Join(entries, "\n"))
 	}
 	for i, w := range want {
-		entry := html.UnescapeString(entries[i])
 		for _, part := range []string{w.change, w.by, w.at} {
-			if !strings.Contains(entry, html.UnescapeString(part)) {
+			if !strings.Contains(entries[i], html.UnescapeString(part)) {
 				t.Errorf("entry %d lacks %q:\n%s", i, part, entries[i])
 			}
 		}
@@ -3327,10 +3322,9 @@ func TestChoosingNoneClearsAOneValueDimensionOverHTTP(t *testing.T) {
 	if !strings.Contains(pageElement(t, page, "section", "goal-dimensions"), `data-testid="goal-dimension-unassigned"`) {
 		t.Errorf("Pillar still has a value after choosing None:\n%s", pageElement(t, page, "section", "goal-dimensions"))
 	}
-	section := pageElement(t, pageElement(t, page, "div", "goal-history"), "section", "goal-value-history")
-	entries := strings.Split(section, `data-testid="value-change"`)[1:]
-	if len(entries) != 2 || !strings.Contains(entries[1], "Pillar: cleared (was Growth)") {
-		t.Errorf("Value history = %d entries, want set then one cleared entry:\n%s", len(entries), section)
+	entries := valueEntries(t, client, goalURL)
+	if len(entries) != 2 || !strings.Contains(entries[0], "Pillar: cleared (was Growth)") {
+		t.Errorf("History lists %d value changes, want one cleared entry after the set:\n%s", len(entries), strings.Join(entries, "\n"))
 	}
 	if flag := pageElement(t, page, "p", "goal-incomplete"); !strings.Contains(flag, "Pillar") {
 		t.Errorf("Incomplete flag doesn't name Pillar: %s", flag)
@@ -3660,20 +3654,19 @@ func TestChangingThenClearingAOneValueDimensionRecordsOneEntryEachOverHTTP(t *te
 	}
 	history := func() []string {
 		t.Helper()
-		section := pageElement(t, pageElement(t, getBody(t, client, goalURL), "div", "goal-history"), "section", "goal-value-history")
-		return strings.Split(html.UnescapeString(section), `data-testid="value-change"`)[1:]
+		return valueEntries(t, client, goalURL)
 	}
 
 	choose(fmt.Sprint(growth.ID))
 	choose(fmt.Sprint(trust.ID))
 	entries := history()
-	if len(entries) != 2 || !strings.Contains(entries[1], "Pillar: Growth → Trust") {
+	if len(entries) != 2 || !strings.Contains(entries[0], "Pillar: Growth → Trust") {
 		t.Fatalf("after setting Growth then Trust, Value history = %d entries, want set then one change Growth → Trust:\n%s", len(entries), strings.Join(entries, "\n"))
 	}
 
 	choose("")
 	entries = history()
-	if len(entries) != 3 || !strings.Contains(entries[2], "Pillar: cleared (was Trust)") {
+	if len(entries) != 3 || !strings.Contains(entries[0], "Pillar: cleared (was Trust)") {
 		t.Errorf("after clearing, Value history = %d entries, want one more, cleared (was Trust):\n%s", len(entries), strings.Join(entries, "\n"))
 	}
 }

@@ -658,50 +658,7 @@ templ goalPage(current *domain.Account, v goalView) {
 					<h2>Highlights</h2>
 					@highlightList(v.Highlights)
 				</section>
-				<div data-testid="goal-history" class="gp-block ruled">
-					<h2>History</h2>
-					<section data-testid="goal-checkin-history">
-						<details>
-							<summary>{ fmt.Sprintf("Check-in history (%d)", len(v.Checkins)) }</summary>
-							@checkinHistory(v.Checkins)
-						</details>
-					</section>
-					<section data-testid="goal-date-slips">
-						<details>
-							<summary>{ fmt.Sprintf("Date Slips (%d)", len(v.DateSlips)) }</summary>
-							@dateSlipList(v)
-						</details>
-					</section>
-					<section data-testid="goal-so-what-history">
-						<details>
-							<summary>{ fmt.Sprintf("So What history (%d)", len(v.Revisions)) }</summary>
-							<ul class="gp-list">
-								for _, rev := range v.Revisions {
-									<li>
-										<span>{ rev.SoWhat }</span>
-										<span class="muted small">
-											{ "— " }
-											@person(rev.Author)
-											{ " at " + rev.CreatedAt.Format("2006-01-02 15:04") }
-										</span>
-									</li>
-								}
-							</ul>
-						</details>
-					</section>
-					<section data-testid="goal-ownership-history">
-						<details>
-							<summary>{ fmt.Sprintf("Ownership history (%d)", len(v.Ownership)) }</summary>
-							@ownershipHistory(v.Ownership)
-						</details>
-					</section>
-					<section data-testid="goal-value-history">
-						<details>
-							<summary>{ fmt.Sprintf("Value history (%d)", len(v.ValueHistory)) }</summary>
-							@valueHistory(v.ValueHistory)
-						</details>
-					</section>
-				</div>
+				@goalHistory(v.History)
 			</div>
 			<aside data-testid="goal-sidebar" class="gp-col gp-side">
 				<section data-testid="goal-parents" class="gp-block ruled">
@@ -1318,74 +1275,6 @@ templ struckDates(dates []time.Time) {
 	for _, d := range dates {
 		<del>{ fmtDate(d) }</del>{ " " }
 	}
-}
-
-// dateSlipList shows a Goal's Date Slips, earliest first: what moved, from and
-// to, and the reason (CONTEXT.md: Date Slip — the full history is kept).
-templ dateSlipList(v goalView) {
-	<ul>
-		if len(v.DateSlips) == 0 {
-			<li data-testid="no-date-slips">No Date Slips.</li>
-		}
-		for _, s := range v.DateSlips {
-			<li data-testid="date-slip">
-				if s.MilestoneID == 0 {
-					<strong>Delivery date</strong>
-				} else {
-					<strong>Milestone { v.milestoneName(s.MilestoneID) }</strong>
-				}
-				: <del>{ fmtDate(s.OldDate) }</del> { fmtDate(s.NewDate) }
-				<span>— { s.Reason }</span>
-				<span>— at { s.CreatedAt.Format("2006-01-02 15:04") }</span>
-			</li>
-		}
-	</ul>
-}
-
-// ownershipHistory lists every Handoff and Admin Reassign of a Goal, oldest
-// first, each with who it went from and to, who started it and when, and its
-// outcome (CONTEXT.md: Handoff — every Handoff is kept with its outcome).
-templ ownershipHistory(changes []domain.Handoff) {
-	<ul class="gp-list">
-		if len(changes) == 0 {
-			<li data-testid="no-ownership-changes" class="muted">No ownership changes yet.</li>
-		}
-		for _, c := range changes {
-			<li data-testid="ownership-change">
-				<span>
-					@person(c.From)
-					{ " → " }
-					@person(c.To)
-				</span>
-				<span>— { ownershipOutcome(c.Status) }</span>
-				<span class="muted small">
-					{ "— started by " }
-					@person(c.InitiatedBy)
-					{ " at " + c.CreatedAt.Format("2006-01-02 15:04") }
-				</span>
-			</li>
-		}
-	</ul>
-}
-
-// valueHistory lists every change to a Goal's Dimension values and Fields,
-// oldest first, with who made it and when (CONTEXT.md: Field).
-templ valueHistory(changes []domain.ValueChange) {
-	<ul class="gp-list">
-		if len(changes) == 0 {
-			<li data-testid="no-value-changes" class="muted">No value changes yet.</li>
-		}
-		for _, c := range changes {
-			<li data-testid="value-change">
-				<span>{ valueChangeText(c) }</span>
-				<span class="muted small">
-					{ "— " }
-					@person(c.Actor)
-					{ " at " + c.CreatedAt.Format("2006-01-02 15:04") }
-				</span>
-			</li>
-		}
-	</ul>
 }
 
 // metricList shows each of a Goal's Metrics as a card: its current value, its
