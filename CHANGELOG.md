@@ -71,6 +71,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Goal page opens with the title and the So What as a lead paragraph, then one metadata line: Health, Lifecycle, Dated or Ongoing, Owner, the delivery date with slipped dates struck through, the Check-in cadence, and Top-level when it applies. Dimension values stay in the sidebar. The Latest status card opens with labelled cells for the Owner's Health, the Rolled-up Health (only with Active children) and the Back to Green date (only with a Path to Green) (#89).
 - [user] Home shows one "Needs you" list in place of the "Check in on these", "Waiting on you" and "Delegated to you" cards. "Check-ins due" lists the Goals you owe a Check-in on, most overdue first, and a Goal you're a Delegate on now appears once, tagged "for" its Owner. "Requests" lists link requests and Handoffs waiting on you, oldest first, with Reject as a text button and Accept outlined; a Handoff of a Goal with Delegates offers Review, leading to the Pending handoffs page where you choose whom to keep. An empty subgroup is left out, and with nothing at all the list says you're all caught up. The sidebar links to the Delegate page with the number of Goals you're a Delegate on, and "Your goals" gains a bar of your Active Goals by Health, labelled with each count so it reads without colour (#92).
 - [internal] `DESIGN.md` § Components describes Home's Needs you list and the Health distribution bar (#92).
+- [user] The light theme's page background is a neutral off-white (`#F6F6F3`) instead of pale yellow, and table headers, hovered rows and rules lose their yellow tint with it, so a Yellow Health badge stands out from the page. Text, input borders and the focus ring keep their WCAG contrast; the dark theme is unchanged (#87).
 
 **Bug fixes:**
 - [user] A CSV saved by Excel as "CSV UTF-8" now imports: the byte-order mark Excel writes at the start of the file is ignored, where before the first column was reported as unknown (#101).
@@ -89,6 +90,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Architecture:**
 - [internal] `Service.WithinTx` called on a Service already bound to a transaction now joins it rather than opening a second one, so each Dimension and Field change and its Definition log entry commit together whether or not the caller holds a transaction (#76).
+
+**Testing:**
+- [internal] HTTP tests now cover behaviour shipped in #69 to #84 that was only tested at the domain level or by hand: a Report filter on one of a Goal's several values, a saved Report filter surviving a merge, a restored value offered again on the Goal page, an Admin setting a Field on someone else's Goal, one Value history entry for changing a one-value Dimension, the Incomplete flag after unmarking required and on Done and Cancelled Goals, importing a row that lacks a required value, an imported Extendable value logged as the importer's, a date Field column sorting as dates, an Admin's edit mode with inputs on every row and cells linking to the Goal, and the theme cookie being HttpOnly and SameSite=Lax (#99).
 
 ### Collected changes — October 1, 2026
 
