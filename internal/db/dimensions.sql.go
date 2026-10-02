@@ -326,6 +326,69 @@ func (q *Queries) ListGoalValues(ctx context.Context, goalID int64) ([]ListGoalV
 	return items, nil
 }
 
+const listGoalsWithSeveralValuesInDimension = `-- name: ListGoalsWithSeveralValuesInDimension :many
+SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
+FROM goals
+JOIN accounts ON accounts.id = goals.owner_id
+WHERE goals.id IN (
+    SELECT goal_dimension_values.goal_id
+    FROM goal_dimension_values
+    JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
+    WHERE dimension_values.dimension_id = ?
+    GROUP BY goal_dimension_values.goal_id
+    HAVING COUNT(*) > 1
+)
+ORDER BY goals.title, goals.id
+`
+
+type ListGoalsWithSeveralValuesInDimensionRow struct {
+	Goal    Goal
+	Account Account
+}
+
+// The Goals carrying more than one of a Dimension's values, which keep it from
+// being switched to one value.
+func (q *Queries) ListGoalsWithSeveralValuesInDimension(ctx context.Context, dimensionID int64) ([]ListGoalsWithSeveralValuesInDimensionRow, error) {
+	rows, err := q.db.QueryContext(ctx, listGoalsWithSeveralValuesInDimension, dimensionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGoalsWithSeveralValuesInDimensionRow
+	for rows.Next() {
+		var i ListGoalsWithSeveralValuesInDimensionRow
+		if err := rows.Scan(
+			&i.Goal.ID,
+			&i.Goal.Title,
+			&i.Goal.SoWhat,
+			&i.Goal.OwnerID,
+			&i.Goal.Lifecycle,
+			&i.Goal.CreatedAt,
+			&i.Goal.Kind,
+			&i.Goal.DeliveryDate,
+			&i.Goal.CadenceDays,
+			&i.Goal.TopLevel,
+			&i.Goal.ActivatedAt,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const removeGoalValue = `-- name: RemoveGoalValue :exec
 DELETE FROM goal_dimension_values WHERE goal_id = ? AND dimension_value_id = ?
 `

@@ -15,6 +15,22 @@ SELECT * FROM dimensions ORDER BY name, id;
 UPDATE dimensions SET selection = ? WHERE id = ?
 RETURNING *;
 
+-- name: ListGoalsWithSeveralValuesInDimension :many
+-- The Goals carrying more than one of a Dimension's values, which keep it from
+-- being switched to one value.
+SELECT sqlc.embed(goals), sqlc.embed(accounts)
+FROM goals
+JOIN accounts ON accounts.id = goals.owner_id
+WHERE goals.id IN (
+    SELECT goal_dimension_values.goal_id
+    FROM goal_dimension_values
+    JOIN dimension_values ON dimension_values.id = goal_dimension_values.dimension_value_id
+    WHERE dimension_values.dimension_id = ?
+    GROUP BY goal_dimension_values.goal_id
+    HAVING COUNT(*) > 1
+)
+ORDER BY goals.title, goals.id;
+
 -- name: CreateDimensionValue :one
 INSERT INTO dimension_values (dimension_id, value, retired, created_at)
 VALUES (?, ?, 0, ?)

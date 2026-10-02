@@ -430,3 +430,125 @@ func goalValueNames(t *testing.T, h *testsupport.Harness, goalID int64) []string
 	}
 	return out
 }
+
+// Grouped by a several-values Dimension, a Goal with two values appears under
+// each of them (ADR 0005: group counts can add up to more than the Goals).
+func TestGroupBySeveralValuesDimensionListsGoalUnderEachValue(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra")
+	core, infra := teams.Values[0], teams.Values[1]
+	shared := h.CreateGoal(sam, "Alpha", "A matters.")
+	solo := h.CreateGoal(sam, "Bravo", "B matters.")
+	h.AssignGoalValue(shared, core)
+	h.AssignGoalValue(shared, infra)
+	h.AssignGoalValue(solo, infra)
+
+	all, err := h.Service.ListGoalsWithValues(ctx)
+	if err != nil {
+		t.Fatalf("ListGoalsWithValues: %v", err)
+	}
+	groups := domain.GroupGoalsByDimension(all, teams)
+	if len(groups) != 2 {
+		t.Fatalf("groups = %+v, want Core and Infra", groups)
+	}
+	if groups[0].Value == nil || groups[0].Value.Value != "Core" || !equalStrings(goalTitles(groups[0].Goals), []string{"Alpha"}) {
+		t.Errorf("group[0] = %+v, want Core -> [Alpha]", groups[0])
+	}
+	if groups[1].Value == nil || groups[1].Value.Value != "Infra" || !equalStrings(goalTitles(groups[1].Goals), []string{"Bravo", "Alpha"}) {
+		t.Errorf("group[1] = %+v, want Infra -> [Bravo Alpha]", groups[1])
+	}
+}
+
+// Switching a Dimension from several values back to one is refused while any
+// Goal carries more than one value in it, and the refusal names those Goals; it
+// succeeds once none does.
+func TestSwitchingToOneValueRefusedWhileGoalsCarrySeveral(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra", "Web")
+	core, infra, web := teams.Values[0], teams.Values[1], teams.Values[2]
+	alpha := h.CreateGoal(sam, "Alpha", "A matters.")
+	bravo := h.CreateGoal(sam, "Bravo", "B matters.")
+	charlie := h.CreateGoal(sam, "Charlie", "C matters.")
+	h.AssignGoalValue(alpha, core)
+	h.AssignGoalValue(alpha, infra)
+	h.AssignGoalValue(bravo, infra)
+	h.AssignGoalValue(bravo, web)
+	h.AssignGoalValue(charlie, web)
+
+	err := h.Service.SetDimensionSelection(ctx, boss.ID, teams.ID, domain.SelectionOne)
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("switch to one err = %v, want ErrValidation", err)
+	}
+	var several *domain.SeveralValuesError
+	if !errors.As(err, &several) {
+		t.Fatalf("switch to one err = %T %v, want *SeveralValuesError", err, err)
+	}
+	var titles []string
+	for _, g := range several.Goals {
+		titles = append(titles, g.Title)
+	}
+	if !equalStrings(titles, []string{"Alpha", "Bravo"}) {
+		t.Errorf("refusal names %v, want [Alpha Bravo]", titles)
+	}
+	dims, err := h.Service.ListDimensions(ctx)
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	if dims[0].Selection != domain.SelectionSeveral {
+		t.Errorf("after refusal Selection = %q, want several", dims[0].Selection)
+	}
+
+	if err := h.Service.SetGoalValues(ctx, sam.ID, alpha.ID, teams.ID, []int64{core.ID}); err != nil {
+		t.Fatalf("SetGoalValues Alpha: %v", err)
+	}
+	if err := h.Service.SetGoalValues(ctx, sam.ID, bravo.ID, teams.ID, []int64{web.ID}); err != nil {
+		t.Fatalf("SetGoalValues Bravo: %v", err)
+	}
+	if err := h.Service.SetDimensionSelection(ctx, boss.ID, teams.ID, domain.SelectionOne); err != nil {
+		t.Fatalf("switch to one once no Goal carries several: %v", err)
+	}
+	if got := goalValueNames(t, h, charlie.ID); !equalStrings(got, []string{"Web"}) {
+		t.Errorf("Charlie values = %v, want [Web] kept", got)
+	}
+}
+
+// A Report Definition filtering on a value selects a Goal carrying that value
+// among several in the Dimension (filtering is unchanged: values OR'd within a
+// Dimension).
+func TestReportFilterSelectsGoalCarryingValueAmongSeveral(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra", "Web")
+	core, infra, web := teams.Values[0], teams.Values[1], teams.Values[2]
+	shared := h.CreateGoal(sam, "Alpha", "A matters.")
+	other := h.CreateGoal(sam, "Bravo", "B matters.")
+	h.AssignGoalValue(shared, core)
+	h.AssignGoalValue(shared, infra)
+	h.AssignGoalValue(other, web)
+
+	def, err := h.Service.SaveReportDefinition(ctx, boss.ID, domain.SaveReportDefinitionInput{
+		Name:              "Infra report",
+		DimensionValueIDs: []int64{infra.ID},
+	})
+	if err != nil {
+		t.Fatalf("SaveReportDefinition: %v", err)
+	}
+	selected, err := h.Service.SelectGoals(ctx, def)
+	if err != nil {
+		t.Fatalf("SelectGoals: %v", err)
+	}
+	if got, want := selectedIDs(selected), []int64{shared.ID}; !sameSet(got, want) {
+		t.Errorf("Infra filter selected %v, want %v", got, want)
+	}
+}

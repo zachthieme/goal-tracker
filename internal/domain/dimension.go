@@ -148,8 +148,29 @@ func (s *Service) RetireDimensionValue(ctx context.Context, actorID, valueID int
 	return nil
 }
 
+// SeveralValuesError refuses switching a Dimension to one value while Goals
+// still carry more than one of its values, naming those Goals so an Admin knows
+// which to fix first. It is an ErrValidation.
+type SeveralValuesError struct {
+	Dimension string
+	Goals     []Goal
+}
+
+func (e *SeveralValuesError) Error() string {
+	titles := make([]string, 0, len(e.Goals))
+	for _, g := range e.Goals {
+		titles = append(titles, g.Title)
+	}
+	return fmt.Sprintf("%v: %s can't take one value while these Goals carry several: %s",
+		ErrValidation, e.Dimension, strings.Join(titles, "; "))
+}
+
+func (e *SeveralValuesError) Unwrap() error { return ErrValidation }
+
 // SetDimensionSelection chooses whether a Goal takes one of the Dimension's
-// values or several (CONTEXT.md: Dimension). Only an Admin may.
+// values or several (CONTEXT.md: Dimension). One to several is always allowed;
+// several to one is refused with a *SeveralValuesError while any Goal carries
+// more than one value in the Dimension. Only an Admin may.
 func (s *Service) SetDimensionSelection(ctx context.Context, actorID, dimensionID int64, selection string) error {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return err
@@ -157,8 +178,22 @@ func (s *Service) SetDimensionSelection(ctx context.Context, actorID, dimensionI
 	if selection != SelectionOne && selection != SelectionSeveral {
 		return fmt.Errorf("%w: a Dimension takes one value or several", ErrValidation)
 	}
-	if _, err := s.queries.GetDimension(ctx, dimensionID); err != nil {
+	dim, err := s.queries.GetDimension(ctx, dimensionID)
+	if err != nil {
 		return fmt.Errorf("%w: dimension does not exist", ErrValidation)
+	}
+	if selection == SelectionOne {
+		rows, err := s.queries.ListGoalsWithSeveralValuesInDimension(ctx, dimensionID)
+		if err != nil {
+			return fmt.Errorf("list goals with several values: %w", err)
+		}
+		if len(rows) > 0 {
+			refusal := &SeveralValuesError{Dimension: dim.Name}
+			for _, r := range rows {
+				refusal.Goals = append(refusal.Goals, goalFromRow(r.Goal, r.Account))
+			}
+			return refusal
+		}
 	}
 	if _, err := s.queries.SetDimensionSelection(ctx, db.SetDimensionSelectionParams{
 		Selection: selection,
@@ -402,15 +437,21 @@ func goalMatchesFilter(g GoalWithValues, selected map[int64][]int64) bool {
 
 // GroupGoalsByDimension buckets goals under dim's values, in the Dimension's
 // value order, followed by an unassigned bucket (Value nil) for Goals with no
-// value in dim. Buckets with no Goals are omitted, so retired-but-unused values
-// don't clutter the list.
+// value in dim. A Goal with several values in dim appears in each of their
+// buckets (ADR 0005). Buckets with no Goals are omitted, so retired-but-unused
+// values don't clutter the list.
 func GroupGoalsByDimension(goals []GoalWithValues, dim Dimension) []GoalGroup {
 	byValue := make(map[int64][]GoalWithValues)
 	var unassigned []GoalWithValues
 	for _, g := range goals {
-		if v, ok := valueInDimension(g, dim.ID); ok {
-			byValue[v.ID] = append(byValue[v.ID], g)
-		} else {
+		assigned := false
+		for _, v := range g.Values {
+			if v.DimensionID == dim.ID {
+				byValue[v.ID] = append(byValue[v.ID], g)
+				assigned = true
+			}
+		}
+		if !assigned {
 			unassigned = append(unassigned, g)
 		}
 	}
@@ -425,15 +466,6 @@ func GroupGoalsByDimension(goals []GoalWithValues, dim Dimension) []GoalGroup {
 		groups = append(groups, GoalGroup{Value: nil, Goals: unassigned})
 	}
 	return groups
-}
-
-func valueInDimension(g GoalWithValues, dimensionID int64) (DimensionValue, bool) {
-	for _, v := range g.Values {
-		if v.DimensionID == dimensionID {
-			return v, true
-		}
-	}
-	return DimensionValue{}, false
 }
 
 func dimensionFromRow(d db.Dimension) Dimension {
