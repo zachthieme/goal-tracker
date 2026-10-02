@@ -107,6 +107,28 @@ func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
 	}
 }
 
+// "Check-ins due" lists the most overdue Goal first: how far past its cadence
+// it is, not how long since its last update, so a long cadence doesn't push a
+// Goal ahead of one already further behind.
+func TestHomeListsMostOverdueFirst(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	monthly := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	setCadence(t, h, monthly, 28)
+	h.Clock.Advance(12 * day)
+	weekly := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Clock.Advance(12 * day)
+
+	due := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due")
+
+	// weekly is 5 days past its 7-day cadence; monthly is 24 days into 28.
+	first, second := strings.Index(due, navTo(weekly.ID)), strings.Index(due, navTo(monthly.ID))
+	if first < 0 || second < 0 || first > second {
+		t.Errorf("Check-ins due does not list %q, 5 days overdue, before %q, due in 4:\n%s", weekly.Title, monthly.Title, due)
+	}
+}
+
 // A Goal never checked in on has no previous Check-in to repeat, so its row
 // offers only Check in, not No change.
 func TestHomeOffersNoChangeOnlyWithAPreviousCheckin(t *testing.T) {

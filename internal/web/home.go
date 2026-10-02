@@ -1,9 +1,11 @@
 package web
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 
 	"github.com/a-h/templ"
 
@@ -25,7 +27,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request, current doma
 type homeView struct {
 	// Due are the Active Goals the person Owns or is a Delegate on whose
 	// Check-in is due before next week's reminder, the same rule the reminder
-	// email uses.
+	// email uses, most overdue first.
 	Due []domain.PersonalGoal
 	// PendingLinks are the link requests waiting on the person as the parent's
 	// Owner, and PendingHandoffs the Handoffs waiting on them as the proposed
@@ -84,7 +86,16 @@ func (s *Server) loadHome(ctx context.Context, accountID int64) (homeView, error
 		}
 	}
 	v.AtRisk = append(v.AtRisk, yellow...)
+	slices.SortStableFunc(v.Due, func(a, b domain.PersonalGoal) int {
+		return cmp.Compare(overdueDays(b.Freshness), overdueDays(a.Freshness))
+	})
 	return v, nil
+}
+
+// overdueDays is how many days past its cadence a Goal's Check-in is, negative
+// while it still has days to spare.
+func overdueDays(f domain.Freshness) int {
+	return f.DaysSince - f.CadenceDays
 }
 
 // dueReason says why a Goal is listed to check in on.
