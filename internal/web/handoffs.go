@@ -17,7 +17,7 @@ func (s *Server) handleStartHandoff(w http.ResponseWriter, r *http.Request, curr
 		return
 	}
 	if _, err := s.svc.StartHandoffByEmail(r.Context(), goalID, r.FormValue("to_email"), current.ID); err != nil {
-		writeHandoffError(w, err)
+		s.writeRefusedHandoff(w, r, goalID, current, formHandoff, err)
 		return
 	}
 	http.Redirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10), http.StatusSeeOther)
@@ -114,10 +114,21 @@ func (s *Server) handleReassignGoal(w http.ResponseWriter, r *http.Request, curr
 		return
 	}
 	if _, err := s.svc.ReassignGoalByEmail(r.Context(), current.ID, goalID, r.FormValue("email")); err != nil {
-		writeHandoffError(w, err)
+		s.writeRefusedHandoff(w, r, goalID, current, formReassign, err)
 		return
 	}
 	http.Redirect(w, r, "/goals/"+strconv.FormatInt(goalID, 10), http.StatusSeeOther)
+}
+
+// writeRefusedHandoff answers a refused Hand off or Reassign from the Goal
+// page: a refused new Owner re-renders the page with the form open and the
+// reason beside it; anything else is writeHandoffError's.
+func (s *Server) writeRefusedHandoff(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, err error) {
+	if errors.Is(err, domain.ErrValidation) {
+		s.renderRefusedForm(w, r, goalID, current, form, http.StatusUnprocessableEntity, err)
+		return
+	}
+	writeHandoffError(w, err)
 }
 
 // redirectBack returns to wherever an action was triggered, usually a Goal page.

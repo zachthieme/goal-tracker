@@ -7,17 +7,18 @@ import (
 )
 
 // topLevelControl lets an Admin mark a Goal as one of the org's root outcomes,
-// or unmark it (CONTEXT.md: Top-level Goal).
+// or unmark it (CONTEXT.md: Top-level Goal). It opens in place on the Goal
+// page, so its button takes focus.
 templ topLevelControl(g domain.Goal) {
 	<section data-testid="mark-top-level">
 		<h3 class="label">Top-level Goal</h3>
 		<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/top-level", g.ID)) }>
 			if g.TopLevel {
 				<input type="hidden" name="top_level" value="false"/>
-				<button type="submit" class="btn">Unmark Top-level</button>
+				<button type="submit" class="btn" autofocus>Unmark Top-level</button>
 			} else {
 				<input type="hidden" name="top_level" value="true"/>
-				<button type="submit" class="btn">Mark Top-level</button>
+				<button type="submit" class="btn" autofocus>Mark Top-level</button>
 			}
 		</form>
 	</section>

@@ -452,8 +452,9 @@ templ checkinHistory(checkins []domain.Checkin) {
 }
 
 // noChangeCheckinButton records a Check-in repeating the Goal's previous values
-// in one click (CONTEXT.md: Check-in).
-templ noChangeCheckinButton(goalID int64, label string) {
+// in one click (CONTEXT.md: Check-in). Its button takes class, so the Goal
+// page's header can show it quiet beside the primary Check in.
+templ noChangeCheckinButton(goalID int64, label, class string) {
 	<form
 		data-testid="no-change-checkin"
 		hx-post={ fmt.Sprintf("/goals/%d/checkins/no-change", goalID) }
@@ -461,7 +462,7 @@ templ noChangeCheckinButton(goalID int64, label string) {
 		method="post"
 		action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins/no-change", goalID)) }
 	>
-		<button type="submit" class="btn">{ label }</button>
+		<button type="submit" class={ class }>{ label }</button>
 	</form>
 }
 
@@ -485,7 +486,7 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 						<h3>{ "Nothing changed since " + v.LatestCheckin.CreatedAt.Format("Jan 2") + "?" }</h3>
 						<p class="muted">Records the same Health and status with today's date.</p>
 					</div>
-					@noChangeCheckinButton(g.ID, "No change")
+					@noChangeCheckinButton(g.ID, "No change", "btn")
 				</div>
 			}
 			if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold {

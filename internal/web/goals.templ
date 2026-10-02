@@ -702,16 +702,19 @@ templ goalPage(current *domain.Account, v goalView) {
 						</details>
 					</section>
 				</div>
-				@addChildGoal(v)
 			</div>
 			<aside data-testid="goal-sidebar" class="gp-col gp-side">
 				<section data-testid="goal-parents" class="gp-block ruled">
-					<h3>Contributes to</h3>
+					@groupHead(v, formParentLink, "+ Add", "Add a parent Goal") {
+						<h3>Contributes to</h3>
+					}
 					@linkList(g.ID, v.Parents, v.LinkHealth, "no-parents", "This Goal contributes to nothing yet.")
+					@requestParentLink(v)
 				</section>
 				<section data-testid="goal-children" class="gp-block ruled">
 					<h3>Contributed to by</h3>
 					@linkList(g.ID, v.Children, v.LinkHealth, "no-children", "Nothing contributes to this Goal yet.")
+					@addChildGoal(v)
 				</section>
 				<div data-testid="goal-people" class="gp-block ruled">
 					<h3>People</h3>
@@ -720,9 +723,12 @@ templ goalPage(current *domain.Account, v goalView) {
 						<br/>
 						@person(g.Owner)
 					</p>
-					@delegatesSection(v, owner)
+					@ownerForms(v)
+					@delegatesSection(v)
 					<section data-testid="goal-contributors">
-						<h3 class="label">Contributors</h3>
+						@groupHead(v, formContributors, "Manage", "Manage Contributors") {
+							<h3 class="label">Contributors</h3>
+						}
 						<ul class="gp-list">
 							if len(v.Contributors) == 0 {
 								<li data-testid="no-contributors" class="muted">No Contributors yet.</li>
@@ -733,14 +739,26 @@ templ goalPage(current *domain.Account, v goalView) {
 								</li>
 							}
 						</ul>
+						if v.opens(formContributors) {
+							@openGoalForm(v, formContributors, "Add a Contributor") {
+								<form data-testid="add-contributor" class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/contributors", g.ID)) }>
+									<input type="email" name="email" value={ v.FormInput.Get("email") } aria-label="Contributor email" placeholder="Contributor email" required autofocus/>
+									<button type="submit" class="btn sm">Add Contributor</button>
+								</form>
+							}
+						}
 					</section>
 				</div>
 				<section data-testid="goal-dimensions" class="gp-block ruled">
-					<h3>Dimensions</h3>
+					@groupHead(v, formDimensions, "Edit", "Edit Dimensions") {
+						<h3>Dimensions</h3>
+					}
 					@goalDimensions(v)
 				</section>
 				<section data-testid="goal-field-block" class="gp-block ruled">
-					<h3>Fields</h3>
+					@groupHead(v, formFields, "Edit", "Edit Fields") {
+						<h3>Fields</h3>
+					}
 					@goalFields(v)
 				</section>
 			</aside>
@@ -802,15 +820,20 @@ templ goalHead(v goalView, owner, admin bool) {
 			if note := v.lifecycleNote(); note != "" {
 				<p data-testid="goal-lifecycle-note" class="muted">{ note }</p>
 			}
+			if v.opens(formTopLevel) {
+				@openGoalForm(v, formTopLevel, "") {
+					@topLevelControl(g)
+				}
+			}
 		</div>
 		<div data-testid="goal-actions" class="gp-actions">
 			if v.CanCheckin && (g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold) {
 				<a class="btn primary" data-testid="checkin-link" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", g.ID)) }>Check in</a>
 				if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
-					@noChangeCheckinButton(g.ID, "No change")
+					@noChangeCheckinButton(g.ID, "No change", "btn quiet")
 				}
 			}
-			@goalMore(v, owner, admin)
+			@goalMore(v)
 		</div>
 	</header>
 }
@@ -833,13 +856,14 @@ templ goalPageStyles() {
 		.gp-actions form{margin:0}
 		.gp-more{position:relative}
 		.gp-more>summary{justify-content:center}
-		.gp-menu{position:absolute;right:0;top:48px;z-index:10;width:340px;max-width:calc(100vw - 32px);padding:8px;box-shadow:var(--shadow-pop);box-sizing:border-box}
+		.gp-menu{position:absolute;right:0;top:48px;z-index:10;width:240px;max-width:calc(100vw - 32px);padding:8px;box-shadow:var(--shadow-pop);box-sizing:border-box}
 		.gp-menu ul{list-style:none;margin:0;padding:0}
-		.gp-menu li>a,.gp-menu li>details>summary{display:flex;min-height:36px;padding:0 12px;border-radius:var(--radius-md);align-items:center;color:var(--color-ink);font-weight:500}
-		.gp-menu li>a:hover,.gp-menu li>details>summary:hover{background:var(--color-primary-subtle);text-decoration:none}
-		.gp-menu section{padding:8px 12px 12px;display:flex;flex-direction:column;gap:8px}
-		.gp-menu form{display:flex;flex-direction:column;gap:8px}
-		.gp-menu h3{font-family:var(--font-body);line-height:1.3}
+		.gp-menu li>a{display:flex;min-height:36px;padding:0 12px;border-radius:var(--radius-md);align-items:center;color:var(--color-ink);font-weight:500}
+		.gp-menu li>a:hover{background:var(--color-primary-subtle);text-decoration:none}
+		.gp-group-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+		.gp-group-head>h3{margin:0}
+		.gp-open{display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+		.gp-open form{align-self:stretch}
 		.gp-col{display:flex;flex-direction:column;gap:20px;min-width:0}
 		.gp-card{padding:24px;display:flex;flex-direction:column;gap:12px}
 		.gp-block{display:flex;flex-direction:column;gap:12px}
@@ -849,7 +873,6 @@ templ goalPageStyles() {
 		.gp-values{border:0;margin:0;padding:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 		.gp-form{display:flex;flex-direction:column;gap:12px}
 		.gp-edit form{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-		details.gp-card>summary h3{margin:0}
 		.gp-link{display:flex;flex-direction:column;gap:4px}
 		.gp-link-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 		.gp-link-meta form{margin:0 0 0 auto}
@@ -869,126 +892,112 @@ templ goalPageStyles() {
 	</style>
 }
 
-// goalMore is the header's More menu: every action on the Goal the viewer may
-// take beyond checking in. Each item opens its form inline, or links to the
-// collapsed section lower on the page that holds it (openSection).
-templ goalMore(v goalView, owner, admin bool) {
+// goalMore is the header's action menu, a "⋯" disclosure: every action on the
+// Goal the viewer may take beyond checking in, each a plain link that reloads
+// the page with that action's form open where it belongs (goalView.openURL).
+// It holds no forms, and is left out when it would be empty.
+templ goalMore(v goalView) {
+	if actions := v.actions(); len(actions) > 0 {
+		<details data-testid="goal-more" class="gp-more">
+			<summary class="btn" aria-label="More actions" title="More actions">⋯</summary>
+			<div class="card gp-menu">
+				<ul>
+					for _, a := range actions {
+						<li><a href={ v.openURL(a.Form) }>{ a.Label }</a></li>
+					}
+				</ul>
+			</div>
+		</details>
+	}
+}
+
+// openGoalForm wraps the one form the Goal page shows open in place (goalForm):
+// a label naming it, why its last submit was refused, the form itself, and a
+// Cancel back to the plain page. The form's first control takes autofocus, so
+// the page lands on it.
+templ openGoalForm(v goalView, form goalForm, title string) {
+	<section class="gp-open" data-open-form={ string(form) } aria-label={ title }>
+		if title != "" {
+			<h3 class="label">{ title }</h3>
+		}
+		if v.FormError != "" {
+			<p data-testid="form-error" class="alert r" role="alert">{ v.FormError }</p>
+		}
+		{ children... }
+		<a data-testid="cancel-form" class="btn quiet sm" href={ templ.SafeURL(fmt.Sprintf("/goals/%d", v.Goal.ID)) }>Cancel</a>
+	</section>
+}
+
+// groupHead is a sidebar group's heading with, for whoever may use it, a small
+// link beside it that opens the group's form in place (goalForm), hidden while
+// that form is open. linkName is the link's accessible name, which holds its
+// visible text.
+templ groupHead(v goalView, form goalForm, link, linkName string) {
+	<div class="gp-group-head">
+		{ children... }
+		if v.offers(form) && !v.opens(form) {
+			<a data-testid={ "open-" + string(form) } class="small" href={ v.openURL(form) } aria-label={ linkName }>{ link }</a>
+		}
+	</div>
+}
+
+// ownerForms are the open-in-place forms about the Goal's Owner, under them in
+// the People block: Hand off, and for an Admin Reassign, Mark owner departed
+// and Mark returned, the last two asking for confirmation.
+templ ownerForms(v goalView) {
 	{{ g := v.Goal }}
-	<details data-testid="goal-more" class="gp-more">
-		<summary class="btn">More ▾</summary>
-		<div class="card gp-menu">
-			<ul>
-				if (owner || admin) && !g.Ownerless {
-					<li>
-						<details>
-							<summary>Hand off</summary>
-							<section data-testid="handoff-goal">
-								<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/handoff", g.ID)) }>
-									<label class="field">
-										<span>New Owner's email</span>
-										<input type="email" name="to_email" required/>
-									</label>
-									<button type="submit" class="btn">Start handoff</button>
-								</form>
-							</section>
-						</details>
-					</li>
-				}
-				if owner {
-					<li><a href="#manage-people" onclick={ openSection("manage-people") }>Add a delegate</a></li>
-					<li>
-						<details>
-							<summary>Link to a parent goal</summary>
-							<section data-testid="request-link">
-								<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/links", g.ID)) }>
-									<label class="field">
-										<span>Parent Goal</span>
-										<select name="parent_id" required>
-											for _, c := range v.Candidates {
-												<option value={ fmt.Sprintf("%d", c.ID) }>{ c.Title }</option>
-											}
-										</select>
-									</label>
-									<label class="field">
-										<span>Note (optional)</span>
-										<textarea name="note"></textarea>
-									</label>
-									<button type="submit" class="btn">Request link</button>
-								</form>
-							</section>
-						</details>
-					</li>
-				}
-				<li><a href="#add-child" onclick={ openSection("add-child") }>Add a child goal</a></li>
-				if v.CanSetValues {
-					<li><a href="#edit-dimensions" onclick={ openSection("edit-dimensions") }>Edit Dimension values</a></li>
-					if len(domain.OfferedFields(v.Fields)) > 0 {
-						<li><a href="#edit-fields" onclick={ openSection("edit-fields") }>Edit Fields</a></li>
-					}
-				}
-				if admin {
-					<li>
-						@topLevelControl(g)
-					</li>
-					if !g.Owner.Departed {
-						<li>
-							<details>
-								<summary>Mark owner departed…</summary>
-								<section data-testid="depart-owner">
-									<p class="small muted">
-										@person(g.Owner)
-										{ " has left the org." }
-									</p>
-									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/depart", g.Owner.ID)) } onsubmit={ confirmScript(confirmDepart) }>
-										<button type="submit" class="btn danger">
-											{ "Mark " }
-											@personPlain(g.Owner)
-											{ " departed" }
-										</button>
-									</form>
-								</section>
-							</details>
-						</li>
-					} else {
-						<li>
-							<details>
-								<summary>Mark returned…</summary>
-								<section data-testid="return-owner">
-									<p class="small muted">
-										@person(g.Owner)
-										{ " is back in the org." }
-									</p>
-									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/return", g.Owner.ID)) } onsubmit={ confirmScript(confirmReturn) }>
-										<button type="submit" class="btn">
-											{ "Mark " }
-											@personPlain(g.Owner)
-											{ " returned" }
-										</button>
-									</form>
-								</section>
-							</details>
-						</li>
-					}
-					if g.Ownerless {
-						<li>
-							<details>
-								<summary>Reassign</summary>
-								<section data-testid="reassign-goal">
-									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/reassign", g.ID)) }>
-										<label class="field">
-											<span>New Owner's email</span>
-											<input type="email" name="email" required/>
-										</label>
-										<button type="submit" class="btn">Reassign</button>
-									</form>
-								</section>
-							</details>
-						</li>
-					}
-				}
-			</ul>
-		</div>
-	</details>
+	if v.opens(formHandoff) {
+		@openGoalForm(v, formHandoff, "Hand off") {
+			<form data-testid="handoff-goal" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/handoff", g.ID)) } class="gp-form">
+				<label class="field">
+					<span>New Owner's email</span>
+					<input type="email" name="to_email" value={ v.FormInput.Get("to_email") } required autofocus/>
+				</label>
+				<button type="submit" class="btn">Start handoff</button>
+			</form>
+		}
+	}
+	if v.opens(formReassign) {
+		@openGoalForm(v, formReassign, "Reassign") {
+			<form data-testid="reassign-goal" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/reassign", g.ID)) } class="gp-form">
+				<label class="field">
+					<span>New Owner's email</span>
+					<input type="email" name="email" value={ v.FormInput.Get("email") } required autofocus/>
+				</label>
+				<button type="submit" class="btn">Reassign</button>
+			</form>
+		}
+	}
+	if v.opens(formDepart) {
+		@openGoalForm(v, formDepart, "Mark owner departed") {
+			<p class="small muted">
+				@person(g.Owner)
+				{ " has left the org." }
+			</p>
+			<form data-testid="depart-owner" method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/depart", g.Owner.ID)) } onsubmit={ confirmScript(confirmDepart) }>
+				<button type="submit" class="btn danger" autofocus>
+					{ "Mark " }
+					@personPlain(g.Owner)
+					{ " departed" }
+				</button>
+			</form>
+		}
+	}
+	if v.opens(formReturn) {
+		@openGoalForm(v, formReturn, "Mark returned") {
+			<p class="small muted">
+				@person(g.Owner)
+				{ " is back in the org." }
+			</p>
+			<form data-testid="return-owner" method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/return", g.Owner.ID)) } onsubmit={ confirmScript(confirmReturn) }>
+				<button type="submit" class="btn" autofocus>
+					{ "Mark " }
+					@personPlain(g.Owner)
+					{ " returned" }
+				</button>
+			</form>
+		}
+	}
 }
 
 // soWhatHelp defines So What on the Goal page, opened from its heading.
@@ -1004,15 +1013,9 @@ const confirmDepart = "Mark this Owner departed? Every Goal they own becomes Own
 // departure.
 const confirmReturn = "Mark this Owner returned? They can sign in again, and the Goals they still own stop being Ownerless. Goals reassigned while they were away stay with their new Owners."
 
-// openSection opens the collapsed section a More menu item links to, so
-// following the link shows its form, and closes the menu over it.
-func openSection(id string) templ.ComponentScript {
-	return templ.ComponentScript{Call: "document.getElementById('" + id + "').open=true;this.closest('details').open=false"}
-}
-
 // goalDimensions shows the Goal's values in each Dimension as tags — retired
-// values stay readable — and, for its Owner, a Delegate or an Admin, a
-// collapsed section to set them:
+// values stay readable — and, for its Owner, a Delegate or an Admin, a form
+// to set them that opens in place from the block's Edit link:
 // a select for a Dimension that takes one value, whose "None" clears it, and a
 // checkbox per value, saved together, for one that takes several (CONTEXT.md:
 // Delegate; retired values stay readable). An Extendable Dimension also has an
@@ -1046,26 +1049,22 @@ templ goalDimensions(v goalView) {
 			}
 		}
 	</ul>
-	{{ offered := domain.OfferedDimensions(v.Dimensions) }}
-	if v.CanSetValues && len(offered) > 0 {
-		<details id="edit-dimensions">
-			<summary class="small">Edit Dimension values</summary>
-			for _, d := range offered {
+	if v.opens(formDimensions) {
+		@openGoalForm(v, formDimensions, "Edit Dimension values") {
+			for i, d := range domain.OfferedDimensions(v.Dimensions) {
 				if d.TakesSeveral() {
 					<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/dimensions", g.ID)) } class="gp-inline">
 						<input type="hidden" name="dimension_id" value={ fmt.Sprintf("%d", d.ID) }/>
 						<fieldset class="gp-values">
 							<legend>{ d.Name }</legend>
-							for _, val := range d.Values {
-								if !val.Retired || v.carries(val) {
-									<label>
-										<input type="checkbox" name="value_id" value={ fmt.Sprintf("%d", val.ID) } checked?={ v.carries(val) }/>
-										{ val.Value }
-										if val.Retired {
-											<span class="muted small">(retired)</span>
-										}
-									</label>
-								}
+							for j, val := range v.choices(d) {
+								<label>
+									<input type="checkbox" name="value_id" value={ fmt.Sprintf("%d", val.ID) } checked?={ v.carries(val) } autofocus?={ i == 0 && j == 0 }/>
+									{ val.Value }
+									if val.Retired {
+										<span class="muted small">(retired)</span>
+									}
+								</label>
 							}
 						</fieldset>
 						<button type="submit" class="btn sm">Save</button>
@@ -1075,12 +1074,10 @@ templ goalDimensions(v goalView) {
 						<input type="hidden" name="dimension_id" value={ fmt.Sprintf("%d", d.ID) }/>
 						<label>
 							{ d.Name }
-							<select name="value_id" aria-label={ d.Name }>
+							<select name="value_id" aria-label={ d.Name } autofocus?={ i == 0 }>
 								<option value="">None</option>
-								for _, val := range d.Values {
-									if !val.Retired || v.carries(val) {
-										<option value={ fmt.Sprintf("%d", val.ID) } selected?={ v.carries(val) }>{ valueOptionLabel(val) }</option>
-									}
+								for _, val := range v.choices(d) {
+									<option value={ fmt.Sprintf("%d", val.ID) } selected?={ v.carries(val) }>{ valueOptionLabel(val) }</option>
 								}
 							</select>
 						</label>
@@ -1088,53 +1085,74 @@ templ goalDimensions(v goalView) {
 					</form>
 				}
 				if d.Extendable() {
-					@addGoalValue(g.ID, d)
+					@addGoalValue(v, d)
 				}
 			}
-		</details>
+		}
 	}
 	<p class="small"><a href="/dimensions">All Dimensions →</a></p>
 }
 
 // addGoalValue is an Extendable Dimension's "add a value" input beside its
 // choices on the Goal page: the value typed is set on the Goal, and added to
-// the list first when it's new (CONTEXT.md: Extendable).
-templ addGoalValue(goalID int64, d domain.Dimension) {
-	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/dimensions", goalID)) } class="gp-inline">
+// the list first when it's new (CONTEXT.md: Extendable). A refused value comes
+// back typed in.
+templ addGoalValue(v goalView, d domain.Dimension) {
+	<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/dimensions", v.Goal.ID)) } class="gp-inline">
 		<input type="hidden" name="dimension_id" value={ fmt.Sprintf("%d", d.ID) }/>
-		<input type="text" name="new_value" aria-label={ "Add a " + d.Name + " value" } placeholder={ "Add a " + d.Name + " value" } required/>
+		<input type="text" name="new_value" aria-label={ "Add a " + d.Name + " value" } placeholder={ "Add a " + d.Name + " value" } value={ v.typedFor("dimension_id", d.ID, "new_value") } required/>
 		<button type="submit" class="btn sm">Add</button>
 	</form>
 }
 
-// addChildGoal creates a Goal under this one, collapsed until the More menu
-// opens it or a failed create sends the page back: it offers this Goal's values
-// as defaults (pre-checked, but not inherited — only the kept ones are
-// assigned) and requests a "contributes to" link to this Goal (CONTEXT.md:
-// Contributes to; the parent's values are offered as defaults).
+// requestParentLink is the open-in-place form, under Contributes to, by which
+// the Owner asks that this Goal contribute to another, with an optional note.
+templ requestParentLink(v goalView) {
+	if v.opens(formParentLink) {
+		@openGoalForm(v, formParentLink, "Link to a parent Goal") {
+			<form data-testid="request-link" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/links", v.Goal.ID)) } class="gp-form">
+				<label class="field">
+					<span>Parent Goal</span>
+					<select name="parent_id" required autofocus>
+						for _, c := range v.Candidates {
+							<option value={ fmt.Sprintf("%d", c.ID) } selected?={ v.FormInput.Get("parent_id") == fmt.Sprintf("%d", c.ID) }>{ c.Title }</option>
+						}
+					</select>
+				</label>
+				<label class="field">
+					<span>Note (optional)</span>
+					<textarea name="note">{ v.FormInput.Get("note") }</textarea>
+				</label>
+				<button type="submit" class="btn">Request link</button>
+			</form>
+		}
+	}
+}
+
+// addChildGoal is the open-in-place form, under Contributed to by, that creates
+// a Goal under this one: it offers this Goal's values as defaults (pre-checked,
+// but not inherited — only the kept ones are assigned) and requests a
+// "contributes to" link to this Goal (CONTEXT.md: Contributes to; the parent's
+// values are offered as defaults). A failed create sends it back filled in.
 templ addChildGoal(v goalView) {
 	{{ g := v.Goal }}
-	<details id="add-child" class="card gp-card" open?={ v.ChildForm.Error != "" }>
-		<summary><h3>Add a child Goal</h3></summary>
-		<section data-testid="add-child-goal">
-			<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/children", g.ID)) } class="gp-form">
-				if v.ChildForm.Error != "" {
-					<p data-testid="child-goal-error" class="alert r" role="alert">{ v.ChildForm.Error }</p>
-				}
+	if v.opens(formChild) {
+		@openGoalForm(v, formChild, "Add a child Goal") {
+			<form data-testid="add-child-goal" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/children", g.ID)) } class="gp-form">
 				<label class="field">
 					<span>Title</span>
-					<input type="text" name="title" value={ v.ChildForm.Title } required/>
+					<input type="text" name="title" value={ v.FormInput.Get("title") } required autofocus/>
 				</label>
 				<label class="field">
 					<span>So What</span>
-					<textarea name="so_what" required>{ v.ChildForm.SoWhat }</textarea>
+					<textarea name="so_what" required>{ v.FormInput.Get("so_what") }</textarea>
 				</label>
 				if defaults := v.childDefaults(); len(defaults) > 0 {
 					<fieldset data-testid="child-defaults">
 						<legend>Defaults from { g.Title }</legend>
 						for _, val := range defaults {
 							<label>
-								<input type="checkbox" name="value_id" value={ fmt.Sprintf("%d", val.ID) } checked?={ v.ChildForm.keeps(val.ID) }/>
+								<input type="checkbox" name="value_id" value={ fmt.Sprintf("%d", val.ID) } checked?={ v.keepsDefault(val.ID) }/>
 								{ val.Value }
 							</label>
 						}
@@ -1142,13 +1160,14 @@ templ addChildGoal(v goalView) {
 				}
 				<button type="submit" class="btn primary">Create child Goal</button>
 			</form>
-		</section>
-	</details>
+		}
+	}
 }
 
 // defineGoal is the Owner's toolkit for a Proposed Goal: mark it Dated or
-// Ongoing, set the cadence, revise the So What, add Contributors, Milestones and
-// Metrics, and — once the activation checklist is done — activate it.
+// Ongoing, set the cadence, revise the So What, add Milestones and Metrics,
+// and — once the activation checklist is done — activate it. Contributors are
+// added from the sidebar's Contributors group.
 templ defineGoal(v goalView) {
 	{{ g := v.Goal }}
 	<section data-testid="define-goal" class="card gp-card gp-define">
@@ -1181,16 +1200,6 @@ templ defineGoal(v goalView) {
 			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/so-what", g.ID)) }>
 				<textarea name="so_what" required>{ g.SoWhat }</textarea>
 				<button type="submit" class="btn">Save So What</button>
-			</form>
-		</section>
-		<section data-testid="add-contributor">
-			<h3>Add a Contributor</h3>
-			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/contributors", g.ID)) }>
-				<label>
-					Email
-					<input type="email" name="email" required/>
-				</label>
-				<button type="submit" class="btn">Add Contributor</button>
 			</form>
 		</section>
 		<section data-testid="add-milestone">

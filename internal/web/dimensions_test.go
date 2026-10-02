@@ -849,7 +849,7 @@ func TestRestoredValueIsOfferedAgainOnTheGoalPageOverHTTP(t *testing.T) {
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 	trustOption := fmt.Sprintf(`<option value="%d">Trust</option>`, trust.ID)
 
-	edit := between(t, getBody(t, owner, goalURL), `id="edit-dimensions"`, "</details>")
+	edit := openForm(t, getBody(t, owner, goalURL+"?open=dimensions"), "dimensions")
 	if strings.Contains(edit, fmt.Sprintf(`value="%d"`, trust.ID)) {
 		t.Fatalf("the Retired Trust is offered on the Goal page:\n%s", edit)
 	}
@@ -858,7 +858,7 @@ func TestRestoredValueIsOfferedAgainOnTheGoalPageOverHTTP(t *testing.T) {
 		t.Fatalf("restore Trust: status %d", resp.StatusCode)
 	}
 
-	edit = between(t, getBody(t, owner, goalURL), `id="edit-dimensions"`, "</details>")
+	edit = openForm(t, getBody(t, owner, goalURL+"?open=dimensions"), "dimensions")
 	if !strings.Contains(edit, trustOption) {
 		t.Fatalf("the restored Trust isn't offered on the Goal page:\n%s", edit)
 	}

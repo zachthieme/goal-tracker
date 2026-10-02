@@ -25,10 +25,10 @@ func TestAdminMarksAndUnmarksTopLevelOverHTTP(t *testing.T) {
 	adaClient := signInClient(t, ts.URL, "ada@example.com")
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 
-	if page := getBody(t, adaClient, goalURL); !strings.Contains(page, `data-testid="mark-top-level"`) {
+	if page := getBody(t, adaClient, goalURL+"?open=top-level"); !strings.Contains(page, `data-testid="mark-top-level"`) {
 		t.Fatalf("Admin's Goal page offers no Top-level control; body:\n%s", page)
 	}
-	if page := getBody(t, samClient, goalURL); strings.Contains(page, `data-testid="mark-top-level"`) {
+	if page := getBody(t, samClient, goalURL+"?open=top-level"); strings.Contains(page, `data-testid="mark-top-level"`) {
 		t.Errorf("non-Admin's Goal page offers the Top-level control")
 	}
 
@@ -167,8 +167,8 @@ func TestGoalPageFlagsItsGraphSignals(t *testing.T) {
 	}
 }
 
-// The Top-level control sits in the Goal page's More menu, inside a card, where
-// DESIGN.md has no place for a page-section h2: its heading is an h3 label.
+// The Top-level control opens in place in the Goal page's head, where DESIGN.md
+// has no place for a page-section h2: its heading is an h3 label.
 func TestTopLevelControlHeadingIsALabel(t *testing.T) {
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
@@ -177,11 +177,11 @@ func TestTopLevelControlHeadingIsALabel(t *testing.T) {
 	g := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
 
 	adaClient := signInClient(t, ts.URL, "ada@example.com")
-	menu := moreMenu(t, getBody(t, adaClient, fmt.Sprintf("%s/goals/%d", ts.URL, g.ID)))
-	if strings.Contains(menu, "<h2") {
-		t.Errorf("More menu renders an h2:\n%s", menu)
+	open := openForm(t, getBody(t, adaClient, fmt.Sprintf("%s/goals/%d?open=top-level", ts.URL, g.ID)), "top-level")
+	if strings.Contains(open, "<h2") {
+		t.Errorf("the open Top-level control renders an h2:\n%s", open)
 	}
-	if control := pageElement(t, menu, "section", "mark-top-level"); !strings.Contains(control, `<h3 class="label">Top-level Goal</h3>`) {
+	if control := pageElement(t, open, "section", "mark-top-level"); !strings.Contains(control, `<h3 class="label">Top-level Goal</h3>`) {
 		t.Errorf("Top-level control's heading is not an h3 label: %s", control)
 	}
 }

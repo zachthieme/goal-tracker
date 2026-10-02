@@ -12,6 +12,8 @@ import (
 
 // handleRequestLink requests that the Goal in the path contribute to the Goal
 // named by parent_id, with an optional note. The requester must own the child.
+// A refused request, a cycle included, comes back as the Goal page with the
+// form open and the reason beside it.
 func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	childID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -20,7 +22,7 @@ func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, curre
 	}
 	parentID, err := strconv.ParseInt(r.FormValue("parent_id"), 10, 64)
 	if err != nil {
-		http.Error(w, "a parent Goal is required", http.StatusUnprocessableEntity)
+		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusUnprocessableEntity, errors.New("a parent Goal is required"))
 		return
 	}
 	_, err = s.svc.RequestLink(r.Context(), domain.RequestLinkInput{
@@ -29,11 +31,16 @@ func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, curre
 		Note:        r.FormValue("note"),
 		RequesterID: current.ID,
 	})
-	if err != nil {
+	switch {
+	case errors.Is(err, domain.ErrCycle):
+		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusConflict, err)
+	case errors.Is(err, domain.ErrValidation):
+		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusUnprocessableEntity, err)
+	case err != nil:
 		writeLinkError(w, err)
-		return
+	default:
+		http.Redirect(w, r, "/goals/"+strconv.FormatInt(childID, 10), http.StatusSeeOther)
 	}
-	http.Redirect(w, r, "/goals/"+strconv.FormatInt(childID, 10), http.StatusSeeOther)
 }
 
 // handlePendingLinks shows the current Account the link requests awaiting their

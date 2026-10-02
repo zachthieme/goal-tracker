@@ -258,7 +258,7 @@ func TestOwnerSetsSeveralDimensionValuesOverHTTP(t *testing.T) {
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 
-	edit := between(t, getBody(t, samClient, goalURL), `<details id="edit-dimensions"`, "</details>")
+	edit := openForm(t, getBody(t, samClient, goalURL+"?open=dimensions"), "dimensions")
 	for _, v := range []domain.DimensionValue{core, infra} {
 		if !strings.Contains(edit, fmt.Sprintf(`type="checkbox" name="value_id" value="%d"`, v.ID)) {
 			t.Errorf("no checkbox for %s:\n%s", v.Value, edit)
@@ -282,8 +282,8 @@ func TestOwnerSetsSeveralDimensionValuesOverHTTP(t *testing.T) {
 			t.Errorf("Goal page missing %s after saving two values:\n%s", want, section)
 		}
 	}
-	if !strings.Contains(section, fmt.Sprintf(`value="%d" checked`, core.ID)) {
-		t.Errorf("Core's checkbox isn't checked:\n%s", section)
+	if edit := openForm(t, getBody(t, samClient, goalURL+"?open=dimensions"), "dimensions"); !strings.Contains(edit, fmt.Sprintf(`value="%d" checked`, core.ID)) {
+		t.Errorf("Core's checkbox isn't checked:\n%s", edit)
 	}
 
 	postForm(t, samClient, goalURL+"/dimensions", url.Values{
@@ -454,7 +454,7 @@ func TestCreateChildGoalOffersParentDefaults(t *testing.T) {
 	parentURL := fmt.Sprintf("%s/goals/%d", ts.URL, parent.ID)
 
 	// The parent page offers Growth as a checked default.
-	page := getBody(t, samClient, parentURL)
+	page := getBody(t, samClient, parentURL+"?open=child")
 	if !strings.Contains(page, `data-testid="child-defaults"`) {
 		t.Fatalf("parent page missing child defaults; body:\n%s", page)
 	}
@@ -505,7 +505,7 @@ func TestCreateChildGoalWithRetiredValueLeavesNoGoal(t *testing.T) {
 	parentURL := fmt.Sprintf("%s/goals/%d", ts.URL, parent.ID)
 
 	// The form is loaded while Growth is still live, then Growth is retired.
-	if page := getBody(t, samClient, parentURL); !strings.Contains(page, fmt.Sprintf(`value="%d" checked`, growth.ID)) {
+	if page := getBody(t, samClient, parentURL+"?open=child"); !strings.Contains(page, fmt.Sprintf(`value="%d" checked`, growth.ID)) {
 		t.Fatalf("parent page does not offer Growth as a default; body:\n%s", page)
 	}
 	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, growth.ID); err != nil {
@@ -521,7 +521,7 @@ func TestCreateChildGoalWithRetiredValueLeavesNoGoal(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status %d, want 422; body:\n%s", resp.StatusCode, body)
 	}
-	form := pageElement(t, body, "section", "add-child-goal")
+	form := openForm(t, body, "child")
 	if !strings.Contains(form, "retired") {
 		t.Errorf("child form does not say the value is retired; form:\n%s", form)
 	}
@@ -1075,109 +1075,6 @@ func TestGoalPageMilestonesTable(t *testing.T) {
 	}
 }
 
-// moreMenu returns the Goal page's More menu: from its <details> to the end of
-// the header, where it sits last.
-func moreMenu(t *testing.T, page string) string {
-	t.Helper()
-	return between(t, page, `data-testid="goal-more"`, "</header>")
-}
-
-// assertMenuReaches checks the More menu offers label and that it opens a form
-// posting to action — inline in the menu, or in the collapsed section the item
-// links to lower on the page.
-func assertMenuReaches(t *testing.T, page, label, action string) {
-	t.Helper()
-	menu := moreMenu(t, page)
-	at := strings.Index(menu, ">"+label+"<")
-	if at < 0 {
-		t.Errorf("More menu lacks %q:\n%s", label, menu)
-		return
-	}
-	item := between(t, menu[strings.LastIndex(menu[:at], "<li"):], "", "</li>")
-	if i := strings.Index(item, `href="#`); i >= 0 {
-		id := item[i+len(`href="#`):]
-		id = id[:strings.IndexByte(id, '"')]
-		section := between(t, page, `<details id="`+id+`"`, "</details>")
-		if !strings.Contains(section, `action="`+action+`"`) {
-			t.Errorf("%q links to #%s, which has no form posting to %s:\n%s", label, id, action, section)
-		}
-		return
-	}
-	if !strings.Contains(item, `action="`+action+`"`) {
-		t.Errorf("%q does not open a form posting to %s:\n%s", label, action, item)
-	}
-}
-
-// Every action an Owner takes on their Goal sits in the header's More menu,
-// either inline or as a link to its collapsed form lower on the page.
-func TestGoalPageMoreMenuHoldsOwnerActions(t *testing.T) {
-	h := testsupport.New(t, "ada@example.com")
-	ada := h.SignIn("ada@example.com")
-	sam := h.SignIn("sam@example.com")
-	h.CreateDimension(ada, "Pillar", "Growth")
-	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
-	ts := newServer(t, h)
-
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	if summary := between(t, moreMenu(t, page), "<summary", "</summary>"); !strings.Contains(summary, "More ▾") {
-		t.Errorf("the menu is not headed More ▾: %s", summary)
-	}
-	base := fmt.Sprintf("/goals/%d", goal.ID)
-	assertMenuReaches(t, page, "Hand off", base+"/handoff")
-	assertMenuReaches(t, page, "Add a delegate", base+"/delegates")
-	assertMenuReaches(t, page, "Link to a parent goal", base+"/links")
-	assertMenuReaches(t, page, "Add a child goal", base+"/children")
-	assertMenuReaches(t, page, "Edit Dimension values", base+"/dimensions")
-	for _, adminOnly := range []string{"Mark Top-level", "Mark owner departed…", "Mark returned…", "Reassign"} {
-		if strings.Contains(moreMenu(t, page), adminOnly) {
-			t.Errorf("an Owner who isn't an Admin is offered %q", adminOnly)
-		}
-	}
-}
-
-// An Admin's More menu adds Mark Top-level and Mark owner departed…, which asks
-// for confirmation; on an Ownerless Goal it offers Reassign instead of Hand off,
-// and Mark returned…, which also asks for confirmation.
-func TestGoalPageMoreMenuHoldsAdminActions(t *testing.T) {
-	h := testsupport.New(t, "ada@example.com")
-	ada := h.SignIn("ada@example.com")
-	sam := h.SignIn("sam@example.com")
-	kim := h.SignIn("kim@example.com")
-	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	orphan := h.ActiveGoal(kim, "Orphaned", "It matters.")
-	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
-		t.Fatalf("MarkDeparted: %v", err)
-	}
-	ts := newServer(t, h)
-	adaClient := signInClient(t, ts.URL, "ada@example.com")
-
-	page := getBody(t, adaClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	base := fmt.Sprintf("/goals/%d", goal.ID)
-	assertMenuReaches(t, page, "Hand off", base+"/handoff")
-	assertMenuReaches(t, page, "Mark Top-level", base+"/top-level")
-	assertMenuReaches(t, page, "Mark owner departed…", fmt.Sprintf("/accounts/%d/depart", sam.ID))
-	assertConfirms(t, "Mark departed", tagAround(t, moreMenu(t, page), fmt.Sprintf(`action="/accounts/%d/depart"`, sam.ID)))
-	if nested := nestedControls(page); len(nested) > 0 {
-		t.Errorf("the Admin's Goal page nests a control inside another: %q", nested)
-	}
-
-	if strings.Contains(moreMenu(t, page), "Mark returned…") {
-		t.Errorf("a present Owner's Goal offers Mark returned…")
-	}
-
-	page = getBody(t, adaClient, fmt.Sprintf("%s/goals/%d", ts.URL, orphan.ID))
-	assertMenuReaches(t, page, "Reassign", fmt.Sprintf("/goals/%d/reassign", orphan.ID))
-	assertMenuReaches(t, page, "Mark returned…", fmt.Sprintf("/accounts/%d/return", kim.ID))
-	assertConfirms(t, "Mark returned", tagAround(t, moreMenu(t, page), fmt.Sprintf(`action="/accounts/%d/return"`, kim.ID)))
-	if nested := nestedControls(page); len(nested) > 0 {
-		t.Errorf("an Ownerless Goal's page nests a control inside another: %q", nested)
-	}
-	if strings.Contains(moreMenu(t, page), "Hand off") {
-		t.Errorf("an Ownerless Goal offers Hand off")
-	}
-}
-
 // A Departed Delegate stays listed among the Goal's Delegates, marked departed;
 // a present one isn't marked (CONTEXT.md: Departed).
 func TestGoalPageMarksADepartedDelegate(t *testing.T) {
@@ -1202,27 +1099,6 @@ func TestGoalPageMarksADepartedDelegate(t *testing.T) {
 	}
 	if present := between(t, list, "lee@example.com", "</li>"); strings.Contains(present, "departed") {
 		t.Errorf("a present Delegate is marked departed: %s", present)
-	}
-}
-
-// Someone who neither Owns the Goal nor is an Admin can only add a child Goal
-// from the More menu.
-func TestGoalPageMoreMenuForOthersOffersOnlyAChildGoal(t *testing.T) {
-	h := testsupport.New(t)
-	sam := h.SignIn("sam@example.com")
-	h.SignIn("mel@example.com")
-	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	ts := newServer(t, h)
-
-	page := getBody(t, signInClient(t, ts.URL, "mel@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	assertMenuReaches(t, page, "Add a child goal", fmt.Sprintf("/goals/%d/children", goal.ID))
-	for _, other := range []string{"Hand off", "Add a delegate", "Link to a parent goal", "Edit Dimension values", "Mark Top-level"} {
-		if strings.Contains(moreMenu(t, page), other) {
-			t.Errorf("a non-Owner is offered %q", other)
-		}
-	}
-	if strings.Contains(page, `data-testid="checkin-link"`) {
-		t.Errorf("a non-Owner is offered Check in")
 	}
 }
 
@@ -1767,7 +1643,7 @@ func TestOwnerAddsValueToExtendableDimensionOverHTTP(t *testing.T) {
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 
-	edit := between(t, getBody(t, samClient, goalURL), `<details id="edit-dimensions"`, "</details>")
+	edit := openForm(t, getBody(t, samClient, goalURL+"?open=dimensions"), "dimensions")
 	for _, name := range []string{"Customer", "Partner"} {
 		if !strings.Contains(edit, fmt.Sprintf(`name="new_value" aria-label="Add a %s value"`, name)) {
 			t.Errorf("Extendable %s has no add-a-value input:\n%s", name, edit)
@@ -1882,9 +1758,10 @@ func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testi
 	deeClient := signInClient(t, ts.URL, "dee@example.com")
 	coryClient := signInClient(t, ts.URL, "cory@example.com")
 
-	if page := getBody(t, deeClient, goalURL); !strings.Contains(page, `<details id="edit-dimensions"`) || !strings.Contains(page, `href="#edit-dimensions"`) {
-		t.Fatalf("Delegate's Goal page lacks the Dimension value controls:\n%s", page)
+	if page := getBody(t, deeClient, goalURL); menuItems(t, page)["Edit Dimension values"] == "" || !strings.Contains(page, `data-testid="open-dimensions"`) {
+		t.Fatalf("Delegate's Goal page doesn't offer to edit Dimension values:\n%s", page)
 	}
+	openForm(t, getBody(t, deeClient, goalURL+"?open=dimensions"), "dimensions")
 	for _, form := range []url.Values{
 		{"value_id": {fmt.Sprintf("%d", pillar.Values[1].ID)}},
 		{"dimension_id": {fmt.Sprintf("%d", customer.ID)}, "new_value": {"Globex"}},
@@ -1901,7 +1778,7 @@ func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testi
 		}
 	}
 
-	if page := getBody(t, coryClient, goalURL); strings.Contains(page, `<details id="edit-dimensions"`) {
+	if page := getBody(t, coryClient, goalURL+"?open=dimensions"); openForms(page) > 0 || strings.Contains(page, `data-testid="open-dimensions"`) {
 		t.Errorf("Contributor's Goal page offers Dimension value controls:\n%s", page)
 	}
 	for _, form := range []url.Values{
@@ -2000,7 +1877,9 @@ func TestGoalPageCanvasBlockHeadings(t *testing.T) {
 		{"section", "goal-dimensions", "<h3>Dimensions</h3>"},
 	} {
 		block := pageElement(t, page, tc.tag, tc.testID)
-		if first := strings.TrimSpace(block[len(openTag(block))+1:]); !strings.HasPrefix(first, tc.heading) {
+		// A group whose form opens in place heads it beside its heading.
+		first := strings.TrimPrefix(strings.TrimSpace(block[len(openTag(block))+1:]), `<div class="gp-group-head">`)
+		if !strings.HasPrefix(first, tc.heading) {
 			t.Errorf("%s does not open with %s: %.80s", tc.testID, tc.heading, first)
 		}
 	}
@@ -2057,15 +1936,15 @@ func TestRetiredDimensionLeavesGoalPageControlsOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 
-	page := getBody(t, client, goalURL)
-	shown := between(t, page, `<section data-testid="goal-dimensions"`, `id="edit-dimensions"`)
+	page := getBody(t, client, goalURL+"?open=dimensions")
+	shown := between(t, page, `<section data-testid="goal-dimensions"`, `data-open-form="dimensions"`)
 	if !strings.Contains(shown, `data-testid="goal-dimension-value">Growth`) || !strings.Contains(shown, `data-testid="retired"`) {
 		t.Errorf("Growth isn't shown marked retired:\n%s", shown)
 	}
 	if strings.Contains(shown, "Quarter") {
 		t.Errorf("a Retired Dimension the Goal carries no value in is listed:\n%s", shown)
 	}
-	edit := between(t, page, `id="edit-dimensions"`, "</details>")
+	edit := openForm(t, page, "dimensions")
 	for _, d := range []domain.Dimension{pillar, quarter} {
 		if strings.Contains(edit, d.Name) {
 			t.Errorf("the Retired %s is offered for setting:\n%s", d.Name, edit)
@@ -2074,22 +1953,22 @@ func TestRetiredDimensionLeavesGoalPageControlsOverHTTP(t *testing.T) {
 	if !strings.Contains(edit, "Team") {
 		t.Errorf("the live Team isn't offered for setting:\n%s", edit)
 	}
-	if strings.Contains(page, `data-testid="child-defaults"`) {
-		t.Errorf("a value of a Retired Dimension is offered as a child default:\n%s", pageElement(t, page, "fieldset", "child-defaults"))
+	if child := getBody(t, client, goalURL+"?open=child"); strings.Contains(child, `data-testid="child-defaults"`) {
+		t.Errorf("a value of a Retired Dimension is offered as a child default:\n%s", pageElement(t, child, "fieldset", "child-defaults"))
 	}
 
 	if err := h.Service.RestoreDimension(ctx, boss.ID, pillar.ID); err != nil {
 		t.Fatalf("RestoreDimension: %v", err)
 	}
-	page = getBody(t, client, goalURL)
-	shown = between(t, page, `<section data-testid="goal-dimensions"`, `id="edit-dimensions"`)
+	page = getBody(t, client, goalURL+"?open=dimensions")
+	shown = between(t, page, `<section data-testid="goal-dimensions"`, `data-open-form="dimensions"`)
 	if strings.Contains(shown, `data-testid="retired"`) {
 		t.Errorf("Growth is still marked retired after Pillar is restored:\n%s", shown)
 	}
-	if edit := between(t, page, `id="edit-dimensions"`, "</details>"); !strings.Contains(edit, `aria-label="Pillar"`) {
+	if edit := openForm(t, page, "dimensions"); !strings.Contains(edit, `aria-label="Pillar"`) {
 		t.Errorf("the restored Pillar isn't offered for setting:\n%s", edit)
 	}
-	if !strings.Contains(page, `data-testid="child-defaults"`) {
+	if !strings.Contains(getBody(t, client, goalURL+"?open=child"), `data-testid="child-defaults"`) {
 		t.Errorf("Growth isn't offered as a child default once Pillar is restored")
 	}
 }
@@ -3359,8 +3238,8 @@ func TestNewValueContainingASemicolonIsRefusedFromTheGoalPageAndTable(t *testing
 		"dimension_id": {fmt.Sprintf("%d", customer.ID)},
 		"new_value":    {"Globex; Initech"},
 	})
-	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, reason) {
-		t.Errorf("Goal page: status %d, body %q; want 422 saying why", resp.StatusCode, body)
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(html.UnescapeString(openForm(t, body, "dimensions")), reason) {
+		t.Errorf("Goal page: status %d, body %q; want 422 saying why beside the open form", resp.StatusCode, body)
 	}
 
 	page := editTable(t, client, ts.URL, "/goals?layout=table")
@@ -3426,7 +3305,7 @@ func TestChoosingNoneClearsAOneValueDimensionOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := goalPageURL(ts.URL, goal)
 
-	edit := between(t, getBody(t, client, goalURL), `<details id="edit-dimensions"`, "</details>")
+	edit := openForm(t, getBody(t, client, goalURL+"?open=dimensions"), "dimensions")
 	form := between(t, edit, "<form", `aria-label="Pillar"`)
 	form = form[strings.LastIndex(form, "<form"):]
 	if !strings.Contains(form, fmt.Sprintf(`name="dimension_id" value="%d"`, pillar.ID)) {
@@ -3473,7 +3352,7 @@ func TestOneValueSelectKeepsACarriedRetiredValueOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	edit := between(t, getBody(t, client, goalPageURL(ts.URL, goal)), `<details id="edit-dimensions"`, "</details>")
+	edit := openForm(t, getBody(t, client, goalPageURL(ts.URL, goal)+"?open=dimensions"), "dimensions")
 	sel := between(t, edit, `aria-label="Pillar"`, "</select>")
 	if !strings.Contains(sel, fmt.Sprintf(`<option value="%d" selected>Growth (retired)</option>`, pillar.Values[0].ID)) {
 		t.Errorf("Pillar's select doesn't keep the retired Growth selected:\n%s", sel)
@@ -3976,6 +3855,387 @@ func TestGoalTableEditModeGivesAnAdminInputsOnEveryRowAndLinksToTheGoal(t *testi
 			if cell := tableCellHTML(t, page, row, head); !strings.Contains(cell, navTo(g.ID)) {
 				t.Errorf("%s's %s cell doesn't link to the Goal:\n%s", g.Title, head, cell)
 			}
+		}
+	}
+}
+
+// actionMenu returns the Goal page header's action menu: from its <details> to
+// the end of the header, where it sits last.
+func actionMenu(t *testing.T, page string) string {
+	t.Helper()
+	return between(t, pageElement(t, page, "header", "goal-head"), `data-testid="goal-more"`, "")
+}
+
+// An Owner's header offers Check in as the primary action, No change as a quiet
+// one, and beside them a "⋯" menu named for assistive technology. A signed-in
+// person with no role on the Goal gets neither button, only the menu.
+func TestGoalPageHeaderActionsOverHTTP(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("mel@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
+	actions := pageElement(t, page, "div", "goal-actions")
+	if link := tagAround(t, actions, `data-testid="checkin-link"`); !hasClass(link, "primary") || attr(link, "href") != fmt.Sprintf("/goals/%d/checkin", goal.ID) {
+		t.Errorf("Check in is not a primary link to the Check-in page: %s", link)
+	}
+	noChange := between(t, pageElement(t, actions, "form", "no-change-checkin"), "<button", ">")
+	if !hasClass(noChange, "quiet") {
+		t.Errorf("No change is not a quiet button: %s", noChange)
+	}
+	summary := between(t, actionMenu(t, page), "<summary", "</summary>")
+	if !strings.Contains(summary, ">⋯") || attr(summary+">", "aria-label") == "" {
+		t.Errorf("the menu is not a ⋯ with an accessible name: %s", summary)
+	}
+
+	page = getBody(t, signInClient(t, ts.URL, "mel@example.com"), goalPageURL(ts.URL, goal))
+	actions = pageElement(t, page, "div", "goal-actions")
+	for _, button := range []string{`data-testid="checkin-link"`, `data-testid="no-change-checkin"`} {
+		if strings.Contains(actions, button) {
+			t.Errorf("someone with no role on the Goal is offered %s: %s", button, actions)
+		}
+	}
+	if !strings.Contains(actions, `data-testid="goal-more"`) {
+		t.Errorf("someone with no role on the Goal has no action menu: %s", actions)
+	}
+}
+
+// menuLink matches one of the action menu's items: a plain link and its label.
+var menuLink = regexp.MustCompile(`<a [^>]*href="([^"]*)"[^>]*>([^<]*)</a>`)
+
+// menuItems returns the action menu's items, label to link, failing when the
+// menu holds anything but links: no form, control or nested disclosure.
+func menuItems(t *testing.T, page string) map[string]string {
+	t.Helper()
+	list := between(t, actionMenu(t, page), "<ul", "</ul>")
+	for _, control := range []string{"<form", "<input", "<button", "<select", "<textarea", "<details"} {
+		if strings.Contains(list, control) {
+			t.Errorf("the action menu holds a %s>, not only links:\n%s", control, list)
+		}
+	}
+	items := map[string]string{}
+	for _, m := range menuLink.FindAllStringSubmatch(list, -1) {
+		items[html.UnescapeString(m[2])] = html.UnescapeString(m[1])
+	}
+	if strings.Count(list, "<li") != len(items) {
+		t.Errorf("an action menu item is not a plain link:\n%s", list)
+	}
+	return items
+}
+
+// The action menu lists the actions a person may take, each a plain link to the
+// Goal page with that action's form open: an Owner gets Hand off, Add a
+// delegate, Link to a parent Goal, Add a child Goal and, with Dimensions and
+// Fields defined, Edit Dimension values and Edit Fields; an Admin adds Mark
+// Top-level and Mark owner departed…, and on an Ownerless Goal Reassign and
+// Mark returned… in place of Hand off; anyone else only Add a child Goal.
+func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	h.SignIn("mel@example.com")
+	h.CreateDimension(ada, "Pillar", "Growth")
+	h.CreateField(ada, "Budget", domain.FieldNumber, "USD")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	orphan := h.ActiveGoal(kim, "Orphaned", "It matters.")
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	ts := newServer(t, h)
+	open := func(g domain.Goal, form string) string { return fmt.Sprintf("/goals/%d?open=%s", g.ID, form) }
+
+	for _, tc := range []struct {
+		who  string
+		goal domain.Goal
+		want map[string]string
+	}{
+		{"sam@example.com", goal, map[string]string{
+			"Hand off":              open(goal, "handoff"),
+			"Add a delegate":        open(goal, "delegates"),
+			"Link to a parent Goal": open(goal, "parent-link"),
+			"Add a child Goal":      open(goal, "child"),
+			"Edit Dimension values": open(goal, "dimensions"),
+			"Edit Fields":           open(goal, "fields"),
+		}},
+		{"ada@example.com", goal, map[string]string{
+			"Hand off":              open(goal, "handoff"),
+			"Add a child Goal":      open(goal, "child"),
+			"Edit Dimension values": open(goal, "dimensions"),
+			"Edit Fields":           open(goal, "fields"),
+			"Mark Top-level":        open(goal, "top-level"),
+			"Mark owner departed…":  open(goal, "depart"),
+		}},
+		{"ada@example.com", orphan, map[string]string{
+			"Add a child Goal":      open(orphan, "child"),
+			"Edit Dimension values": open(orphan, "dimensions"),
+			"Edit Fields":           open(orphan, "fields"),
+			"Mark Top-level":        open(orphan, "top-level"),
+			"Mark returned…":        open(orphan, "return"),
+			"Reassign":              open(orphan, "reassign"),
+		}},
+		{"mel@example.com", goal, map[string]string{
+			"Add a child Goal": open(goal, "child"),
+		}},
+	} {
+		page := getBody(t, signInClient(t, ts.URL, tc.who), goalPageURL(ts.URL, tc.goal))
+		if got := menuItems(t, page); !maps.Equal(got, tc.want) {
+			t.Errorf("%s on %q: menu is %v, want %v", tc.who, tc.goal.Title, got, tc.want)
+		}
+	}
+}
+
+// openForms counts the forms a Goal page shows open in place.
+func openForms(page string) int {
+	return strings.Count(page, `data-open-form="`)
+}
+
+// openForm returns the form the Goal page shows open in place, from its
+// wrapper to its Cancel link, failing unless exactly one named form is open.
+func openForm(t *testing.T, page, form string) string {
+	t.Helper()
+	if n := openForms(page); n != 1 {
+		t.Fatalf("page shows %d forms open, want only %q", n, form)
+	}
+	open := between(t, page, `data-open-form="`, `data-testid="cancel-form"`)
+	if !strings.HasPrefix(open, `data-open-form="`+form+`"`) {
+		t.Fatalf("page shows the wrong form open, want %q: %s", form, open)
+	}
+	return open + tagAround(t, page, `data-testid="cancel-form"`)
+}
+
+// assertOpenIn checks the open form sits in the page's block from the element
+// marked start up to the one marked next, the part of the page it concerns.
+func assertOpenIn(t *testing.T, page, form, start, next string) {
+	t.Helper()
+	at := strings.Index(page, `data-open-form="`+form+`"`)
+	from, to := strings.Index(page, start), strings.Index(page, next)
+	if from < 0 || to < 0 || at < from || at > to {
+		t.Errorf("%q does not open between %s and %s", form, start, next)
+	}
+}
+
+// Following an action menu item reloads the Goal page with exactly that form
+// open, focused and in the part of the page it concerns, with a Cancel back to
+// the plain page, which shows no form open. No script is involved: the menu
+// item is a link and the form a plain post.
+func TestGoalPageMenuItemOpensItsFormInPlaceOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	h.CreateDimension(ada, "Pillar", "Growth")
+	h.CreateField(ada, "Budget", domain.FieldNumber, "USD")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	orphan := h.ActiveGoal(kim, "Orphaned", "It matters.")
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	ts := newServer(t, h)
+	clients := map[string]*http.Client{
+		"sam": signInClient(t, ts.URL, "sam@example.com"),
+		"ada": signInClient(t, ts.URL, "ada@example.com"),
+	}
+	const (
+		head       = `data-testid="goal-head"`
+		actions    = `data-testid="goal-actions"`
+		parents    = `data-testid="goal-parents"`
+		children   = `data-testid="goal-children"`
+		people     = `data-testid="goal-people"`
+		dimensions = `data-testid="goal-dimensions"`
+		fields     = `data-testid="goal-field-block"`
+	)
+
+	for _, tc := range []struct {
+		who, label  string
+		goal        domain.Goal
+		form        string
+		action      string
+		start, next string
+	}{
+		{"sam", "Hand off", goal, "handoff", fmt.Sprintf("/goals/%d/handoff", goal.ID), people, dimensions},
+		{"sam", "Add a delegate", goal, "delegates", fmt.Sprintf("/goals/%d/delegates", goal.ID), people, dimensions},
+		{"sam", "Link to a parent Goal", goal, "parent-link", fmt.Sprintf("/goals/%d/links", goal.ID), parents, children},
+		{"sam", "Add a child Goal", goal, "child", fmt.Sprintf("/goals/%d/children", goal.ID), children, people},
+		{"sam", "Edit Dimension values", goal, "dimensions", fmt.Sprintf("/goals/%d/dimensions", goal.ID), dimensions, fields},
+		{"sam", "Edit Fields", goal, "fields", fmt.Sprintf("/goals/%d/fields", goal.ID), fields, "</aside>"},
+		{"ada", "Hand off", goal, "handoff", fmt.Sprintf("/goals/%d/handoff", goal.ID), people, dimensions},
+		{"ada", "Mark Top-level", goal, "top-level", fmt.Sprintf("/goals/%d/top-level", goal.ID), head, actions},
+		{"ada", "Mark owner departed…", goal, "depart", fmt.Sprintf("/accounts/%d/depart", sam.ID), people, dimensions},
+		{"ada", "Reassign", orphan, "reassign", fmt.Sprintf("/goals/%d/reassign", orphan.ID), people, dimensions},
+		{"ada", "Mark returned…", orphan, "return", fmt.Sprintf("/accounts/%d/return", kim.ID), people, dimensions},
+	} {
+		client := clients[tc.who]
+		plain := getBody(t, client, goalPageURL(ts.URL, tc.goal))
+		if n := openForms(plain); n != 0 {
+			t.Errorf("%s: the plain Goal page shows %d forms open", tc.label, n)
+		}
+		page := getBody(t, client, ts.URL+menuItems(t, plain)[tc.label])
+		open := openForm(t, page, tc.form)
+		if !strings.Contains(open, `action="`+tc.action+`"`) {
+			t.Errorf("%s opens no form posting to %s: %s", tc.label, tc.action, open)
+		}
+		if n := strings.Count(open, " autofocus"); n != 1 {
+			t.Errorf("%s: open form has %d focused controls, want 1: %s", tc.label, n, open)
+		}
+		assertOpenIn(t, page, tc.form, tc.start, tc.next)
+		cancel := attr(tagAround(t, open, `data-testid="cancel-form"`), "href")
+		if cancel != fmt.Sprintf("/goals/%d", tc.goal.ID) {
+			t.Errorf("%s: Cancel leads to %q, not the plain Goal page", tc.label, cancel)
+		}
+		if n := openForms(getBody(t, client, ts.URL+cancel)); n != 0 {
+			t.Errorf("%s: after Cancel the page shows %d forms open", tc.label, n)
+		}
+	}
+}
+
+// Each sidebar group's heading carries a small link, for whoever may use it,
+// that opens the group's form right there: Manage for Delegates and for
+// Contributors, Edit for Dimensions and for Fields, + Add for Contributes to.
+// Nothing on the page jumps to a collapsed section any more.
+func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("mel@example.com")
+	h.CreateDimension(ada, "Pillar", "Growth")
+	h.CreateField(ada, "Budget", domain.FieldNumber, "USD")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	ts := newServer(t, h)
+	sam2 := signInClient(t, ts.URL, "sam@example.com")
+	plain := getBody(t, sam2, goalPageURL(ts.URL, goal))
+
+	for _, tc := range []struct {
+		group, heading, link, form, action, next string
+	}{
+		{"goal-parents", "<h3>Contributes to</h3>", "+ Add", "parent-link", "/links", `data-testid="goal-children"`},
+		{"goal-delegates", `<h3 class="label">Delegates</h3>`, "Manage", "delegates", "/delegates", `data-testid="goal-contributors"`},
+		{"goal-contributors", `<h3 class="label">Contributors</h3>`, "Manage", "contributors", "/contributors", `data-testid="goal-dimensions"`},
+		{"goal-dimensions", "<h3>Dimensions</h3>", "Edit", "dimensions", "/dimensions", `data-testid="goal-field-block"`},
+		{"goal-field-block", "<h3>Fields</h3>", "Edit", "fields", "/fields", "</aside>"},
+	} {
+		head := between(t, plain, `data-testid="`+tc.group+`"`, "</div>")
+		if !strings.Contains(head, tc.heading) {
+			t.Errorf("%s's heading is not %s: %s", tc.group, tc.heading, head)
+			continue
+		}
+		link := tagAround(t, head, `data-testid="open-`+tc.form+`"`)
+		if text := between(t, head, link, "</a>")[len(link):]; text != html.EscapeString(tc.link) {
+			t.Errorf("%s's link reads %q, want %q", tc.group, text, tc.link)
+		}
+		if name := attr(link, "aria-label"); !strings.Contains(name, strings.TrimPrefix(tc.link, "+ ")) {
+			t.Errorf("%s's link is named %q, which lacks its text %q", tc.group, name, tc.link)
+		}
+		page := getBody(t, sam2, ts.URL+html.UnescapeString(attr(link, "href")))
+		open := openForm(t, page, tc.form)
+		if !strings.Contains(open, fmt.Sprintf(`action="/goals/%d%s"`, goal.ID, tc.action)) {
+			t.Errorf("%s's link opens no form posting to %s: %s", tc.group, tc.action, open)
+		}
+		assertOpenIn(t, page, tc.form, `data-testid="`+tc.group+`"`, tc.next)
+		if strings.Contains(between(t, page, `data-testid="`+tc.group+`"`, "</div>"), `data-testid="open-`+tc.form+`"`) {
+			t.Errorf("%s still offers its link with its form open", tc.group)
+		}
+	}
+	if strings.Contains(plain, `href="#`) {
+		t.Errorf("the Goal page still links to a section further down: %s", between(t, plain, `href="#`, ">"))
+	}
+	if strings.Contains(between(t, plain, `data-testid="goal-sidebar"`, "</aside>"), "<details") {
+		t.Errorf("the sidebar still folds a form into a collapsed section")
+	}
+
+	mel := getBody(t, signInClient(t, ts.URL, "mel@example.com"), goalPageURL(ts.URL, goal))
+	if strings.Contains(between(t, mel, `data-testid="goal-sidebar"`, "</aside>"), `data-testid="open-`) {
+		t.Errorf("someone with no role on the Goal is offered a sidebar form")
+	}
+}
+
+// A refused submit from a form opened in place comes back as the Goal page
+// with that same form open, the reason beside it, and what was typed still in
+// it, rather than a bare error page.
+func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	h.CreateExtendableDimension(ada, "Team", "Core")
+	budget := h.CreateField(ada, "Budget", domain.FieldNumber, "USD")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	orphan := h.ActiveGoal(kim, "Orphaned", "It matters.")
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	team := dimensionByName(t, h, "Team")
+	ts := newServer(t, h)
+	clients := map[string]*http.Client{
+		"sam": signInClient(t, ts.URL, "sam@example.com"),
+		"ada": signInClient(t, ts.URL, "ada@example.com"),
+	}
+	path := func(g domain.Goal, rest string) string { return fmt.Sprintf("/goals/%d%s", g.ID, rest) }
+
+	for _, tc := range []struct {
+		who, form, action string
+		sent              url.Values
+		reason, typed     string
+	}{
+		{"sam", "handoff", path(goal, "/handoff"), url.Values{"to_email": {"nobody@example.com"}}, "no account with email", `value="nobody@example.com"`},
+		{"ada", "reassign", path(orphan, "/reassign"), url.Values{"email": {"nobody@example.com"}}, "no account with email", `value="nobody@example.com"`},
+		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {fmt.Sprint(goal.ID)}, "note": {"Because."}}, "cannot contribute to itself", ">Because.</textarea>"},
+		{"sam", "delegates", path(goal, "/delegates"), url.Values{"email": {"nobody@example.com"}}, "nobody@example.com", `value="nobody@example.com"`},
+		{"sam", "contributors", path(proposed, "/contributors"), url.Values{"email": {"nobody@example.com"}}, "no account with email", `value="nobody@example.com"`},
+		{"sam", "dimensions", path(goal, "/dimensions"), url.Values{"dimension_id": {fmt.Sprint(team.ID)}, "new_value": {"  "}}, "cannot be blank", `value="  "`},
+		{"sam", "fields", path(goal, "/fields"), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"lots"}}, "Budget", `value="lots"`},
+		{"sam", "child", path(goal, "/children"), url.Values{"title": {""}, "so_what": {"Kept."}}, "", ">Kept.</textarea>"},
+	} {
+		resp := postForm(t, clients[tc.who], ts.URL+tc.action, tc.sent)
+		page := readBody(t, resp)
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("%s: refused submit is %d, want %d", tc.form, resp.StatusCode, http.StatusUnprocessableEntity)
+			continue
+		}
+		open := openForm(t, page, tc.form)
+		reason := pageElement(t, open, "p", "form-error")
+		if !strings.Contains(html.UnescapeString(reason), tc.reason) {
+			t.Errorf("%s: open form's error %q doesn't say %q", tc.form, reason, tc.reason)
+		}
+		if !strings.Contains(open, tc.typed) {
+			t.Errorf("%s: open form lost what was typed (%s): %s", tc.form, tc.typed, open)
+		}
+	}
+}
+
+// Opening an action in place changes nothing about which ones ask first: Mark
+// owner departed and Mark returned still confirm in a browser dialog, and Hand
+// off, Reassign and Top-level still submit at once.
+func TestGoalPageOpenFormsKeepTheirConfirmationsOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "ada@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	orphan := h.ActiveGoal(kim, "Orphaned", "It matters.")
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	ts := newServer(t, h)
+	adaClient := signInClient(t, ts.URL, "ada@example.com")
+	opened := func(g domain.Goal, form string) string {
+		return openForm(t, getBody(t, adaClient, fmt.Sprintf("%s/goals/%d?open=%s", ts.URL, g.ID, form)), form)
+	}
+
+	assertConfirms(t, "Mark departed", tagAround(t, opened(goal, "depart"), fmt.Sprintf(`action="/accounts/%d/depart"`, sam.ID)))
+	assertConfirms(t, "Mark returned", tagAround(t, opened(orphan, "return"), fmt.Sprintf(`action="/accounts/%d/return"`, kim.ID)))
+	assertSubmitsAtOnce(t, "Hand off", tagAround(t, opened(goal, "handoff"), "/handoff"))
+	assertSubmitsAtOnce(t, "Reassign", tagAround(t, opened(orphan, "reassign"), "/reassign"))
+	assertSubmitsAtOnce(t, "Top-level", tagAround(t, opened(goal, "top-level"), "/top-level"))
+	for _, form := range []string{"depart", "handoff"} {
+		if nested := nestedControls(getBody(t, adaClient, fmt.Sprintf("%s/goals/%d?open=%s", ts.URL, goal.ID, form))); len(nested) > 0 {
+			t.Errorf("the Goal page with %s open nests a control inside another: %q", form, nested)
 		}
 	}
 }

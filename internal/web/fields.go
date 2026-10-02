@@ -98,7 +98,7 @@ func (s *Server) handleSetGoalField(w http.ResponseWriter, r *http.Request, curr
 	if r.FormValue("clear") != "" {
 		value = ""
 	}
-	writeCommandResult(w, r, id, s.svc.SetGoalField(r.Context(), current.ID, id, fieldID, value))
+	s.writeFormResult(w, r, id, current, formFields, s.svc.SetGoalField(r.Context(), current.ID, id, fieldID, value))
 }
 
 // fieldValue returns the Goal's value in the given Field, and whether it has
@@ -110,6 +110,16 @@ func (v goalView) fieldValue(fieldID int64) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// fieldFormValue is what the Goal page's form for the Field shows: what was
+// typed when that form's save was just refused, else the Goal's value.
+func (v goalView) fieldFormValue(fieldID int64) string {
+	if v.FormInput.Get("field_id") == strconv.FormatInt(fieldID, 10) {
+		return v.FormInput.Get("value")
+	}
+	value, _ := v.fieldValue(fieldID)
+	return value
 }
 
 // isWebURL reports whether a short text is an http(s) URL, which the Goal page
