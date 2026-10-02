@@ -93,20 +93,11 @@ templ homePage(current *domain.Account, v homeView) {
 					}
 					<a href="/goals">All your goals →</a>
 				</section>
-				if len(v.Delegated) > 0 {
-					<section data-testid="home-delegated" class="card hm-card">
-						<h3>Delegated to you</h3>
-						<ul class="hm-list hm-compact">
-							for _, g := range v.Delegated {
-								<li>
-									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
-									<span class="muted small">@person(g.Owner)
-</span>
-								</li>
-							}
-						</ul>
-						<a href="/delegates">Check in as a Delegate →</a>
-					</section>
+				if v.Delegated > 0 {
+					<a data-testid="home-delegate-link" class="hm-delegate" href="/delegates">
+						Goals delegated to you
+						<span class="num">{ strconv.Itoa(v.Delegated) }</span>
+					</a>
 				}
 			</aside>
 		</div>
@@ -130,14 +121,13 @@ templ dueRow(g domain.PersonalGoal) {
 			if g.Freshness.Stale {
 				<span data-testid="home-due-stale" class="badge st">Stale</span>
 			}
-			<p class="muted small">
-				if g.AsDelegate {
-					{ "Delegated to you by " }
+			if g.AsDelegate {
+				<span data-testid="home-due-for" class="tag">
+					{ "for " }
 					@person(g.Goal.Owner)
-				} else {
-					{ dueReason(g) }
-				}
-			</p>
+				</span>
+			}
+			<p class="muted small">{ dueReason(g) }</p>
 		</div>
 		<div class="hm-actions">
 			if g.CheckedIn {

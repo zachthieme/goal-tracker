@@ -128,31 +128,43 @@ func TestHomeOffersNoChangeOnlyWithAPreviousCheckin(t *testing.T) {
 }
 
 // A Delegate checks in for the Owner, so a due Goal they're a Delegate on is
-// listed to check in on, saying whose it is, and the sidebar lists the Goals
-// delegated to them. Someone with none delegated sees no such section.
-func TestHomeListsDelegatedGoals(t *testing.T) {
+// listed once, under "Check-ins due", tagged with whose it is. The sidebar
+// links to the Delegate page with how many Goals they're a Delegate on, in
+// place of a card listing them again; someone with none sees no such link.
+func TestHomeListsDelegatedGoalsOnce(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
 	dee := h.SignIn("dee@example.com")
 	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	h.AddDelegate(sam, dee, g.ID)
+	other := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	h.AddDelegate(sam, dee, other.ID)
 	h.Clock.Advance(10 * day)
 
 	page := getBody(t, signInClient(t, ts.URL, "dee@example.com"), ts.URL+"/home")
 
 	row := homeRow(t, pageElement(t, page, "ul", "home-due"), g)
-	if !strings.Contains(row, "Delegated to you by "+shownAs("sam@example.com", "sam")) {
-		t.Errorf("delegated Goal's row does not say whose it is:\n%s", row)
+	if !strings.Contains(row, `data-testid="home-due-for" class="tag">for `+shownAs("sam@example.com", "sam")) {
+		t.Errorf("delegated Goal's row is not tagged with its Owner:\n%s", row)
 	}
-	delegated := pageElement(t, page, "section", "home-delegated")
-	if !strings.Contains(delegated, navTo(g.ID)) || !strings.Contains(delegated, `href="/delegates"`) {
-		t.Errorf("sidebar does not list the delegated Goal and link to /delegates:\n%s", delegated)
+	if n := strings.Count(page, navTo(g.ID)); n != 1 {
+		t.Errorf("delegated Goal shows %d times on Home, want once", n)
+	}
+	if strings.Contains(page, `data-testid="home-delegated"`) {
+		t.Errorf("Home still has a Delegated to you card")
+	}
+	link := pageElement(t, page, "a", "home-delegate-link")
+	if !strings.Contains(link, `href="/delegates"`) || !strings.Contains(link, `<span class="num">2</span>`) {
+		t.Errorf("Delegate link does not lead to /delegates counting dee's 2 Goals: %s", link)
 	}
 
 	samPage := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
-	if strings.Contains(samPage, `data-testid="home-delegated"`) {
-		t.Errorf("sam has nothing delegated but sees a Delegated to you section")
+	if strings.Contains(samPage, `data-testid="home-delegate-link"`) {
+		t.Errorf("sam is a Delegate on nothing but sees the Delegate link")
+	}
+	if strings.Contains(homeRow(t, pageElement(t, samPage, "ul", "home-due"), g), `data-testid="home-due-for"`) {
+		t.Errorf("sam's own Goal is tagged as someone else's")
 	}
 }
 

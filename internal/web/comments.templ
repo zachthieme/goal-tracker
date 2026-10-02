@@ -85,8 +85,9 @@ templ goalDiscussion(goalID int64, d discussion) {
 // into an Action Item, behind its own toggle.
 templ comment(c domain.Comment, d discussion, reply bool) {
 	<p data-testid="comment" class={ templ.KV("rp-reply", reply) }>
-		<strong>@person(c.Author)
-</strong>
+		<strong>
+			@person(c.Author)
+		</strong>
 		<span class="small muted">{ " · " }{ fmtPublished(c.CreatedAt) }</span>
 		<br/>
 		{ c.Body }

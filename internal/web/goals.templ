@@ -270,8 +270,9 @@ templ goalListRow(row goalRow) {
 				</div>
 			}
 		</td>
-		<td>@person(g.Owner)
-</td>
+		<td>
+			@person(g.Owner)
+		</td>
 		<td data-testid="goal-row-due" class="num">
 			if g.DeliveryDate.IsZero() {
 				<span class="muted">—</span>
@@ -518,8 +519,9 @@ templ goalTableCell(col tableColumn, row goalTableRow, edit bool) {
 		case "title":
 			<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></td>
 		case "owner":
-			<td>@person(g.Owner)
-</td>
+			<td>
+				@person(g.Owner)
+			</td>
 		case "health":
 			<td>
 				if health := row.health(); health != "" {
@@ -713,8 +715,11 @@ templ goalPage(current *domain.Account, v goalView) {
 				</section>
 				<div data-testid="goal-people" class="gp-block ruled">
 					<h3>People</h3>
-					<p><span class="label">Owner</span><br/>@person(g.Owner)
-</p>
+					<p>
+						<span class="label">Owner</span>
+						<br/>
+						@person(g.Owner)
+					</p>
 					@delegatesSection(v, owner)
 					<section data-testid="goal-contributors">
 						<h3 class="label">Contributors</h3>
@@ -723,8 +728,9 @@ templ goalPage(current *domain.Account, v goalView) {
 								<li data-testid="no-contributors" class="muted">No Contributors yet.</li>
 							}
 							for _, c := range v.Contributors {
-								<li>@person(c)
-</li>
+								<li>
+									@person(c)
+								</li>
 							}
 						</ul>
 					</section>
@@ -770,8 +776,12 @@ templ goalHead(v goalView, owner, admin bool) {
 						{ g.Kind }
 					}
 				</span>
-				<span>Owner <strong data-testid="goal-owner">@person(g.Owner)
-</strong></span>
+				<span>
+					Owner 
+					<strong data-testid="goal-owner">
+						@person(g.Owner)
+					</strong>
+				</span>
 				if !g.DeliveryDate.IsZero() {
 					<span>
 						Delivers 

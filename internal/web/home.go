@@ -36,8 +36,8 @@ type homeView struct {
 	// and AtRisk lists the Red ones, then the Yellow.
 	Green, Yellow, Red int
 	AtRisk             []domain.PersonalGoal
-	// Delegated are the Goals the person is a Delegate on.
-	Delegated []domain.Goal
+	// Delegated counts the Goals the person is a Delegate on.
+	Delegated int
 }
 
 // NeedsYou counts what's waiting on the person: the Goals to check in on, and
@@ -59,9 +59,11 @@ func (s *Server) loadHome(ctx context.Context, accountID int64) (homeView, error
 	if v.PendingHandoffs, err = s.svc.PendingHandoffs(ctx, accountID); err != nil {
 		return homeView{}, err
 	}
-	if v.Delegated, err = s.svc.DelegatedGoals(ctx, accountID); err != nil {
+	delegated, err := s.svc.DelegatedGoals(ctx, accountID)
+	if err != nil {
 		return homeView{}, err
 	}
+	v.Delegated = len(delegated)
 	var yellow []domain.PersonalGoal
 	for _, g := range goals {
 		if g.Freshness.DueBeforeNextReminder() {
@@ -85,8 +87,7 @@ func (s *Server) loadHome(ctx context.Context, accountID int64) (homeView, error
 	return v, nil
 }
 
-// dueReason says why a Goal of the person's own is listed to check in on; the
-// page says who delegated one to them.
+// dueReason says why a Goal is listed to check in on.
 func dueReason(g domain.PersonalGoal) string {
 	f := g.Freshness
 	if !g.CheckedIn {
