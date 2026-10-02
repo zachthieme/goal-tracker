@@ -397,11 +397,25 @@ templ goalTableEditCell(t *goalTable, col tableColumn, row goalTableRow) {
 		} else {
 			{{ d := *col.Dimension }}
 			if d.TakesSeveral() {
-				<fieldset class="gl-values" aria-label={ label }>
+				<fieldset
+					class="gl-values"
+					aria-label={ label }
+					if bad != "" {
+						aria-describedby={ name + "-error" }
+					}
+				>
 					for _, val := range d.Values {
 						if t.offers(col, row, val) {
 							<label>
-								<input type="checkbox" name={ name } value={ fmt.Sprintf("%d", val.ID) } checked?={ t.picks(col, row, val) }/>
+								<input
+									type="checkbox"
+									name={ name }
+									value={ fmt.Sprintf("%d", val.ID) }
+									checked?={ t.picks(col, row, val) }
+									if bad != "" {
+										aria-invalid="true"
+									}
+								/>
 								{ val.Value }
 								if val.Retired {
 									<span class="muted small">(retired)</span>
@@ -463,7 +477,9 @@ templ goalTableColumns(view goalsListData) {
 }
 
 // goalTableCell is one row's cell in col, read-only. In edit mode the Health,
-// Lifecycle and delivery date link to the Goal, whose page changes them.
+// Lifecycle and delivery date link to the Goal, whose page changes them; an
+// empty cell has no link. The Owner stays the person control, which a link
+// can't hold, and the Title already links to the Goal.
 templ goalTableCell(col tableColumn, row goalTableRow, edit bool) {
 	{{ g := row.Goal }}
 	switch col.Key {
@@ -474,8 +490,8 @@ templ goalTableCell(col tableColumn, row goalTableRow, edit bool) {
 </td>
 		case "health":
 			<td>
-				@goalLinkIf(edit, g) {
-					if health := row.health(); health != "" {
+				if health := row.health(); health != "" {
+					@goalLinkIf(edit, g) {
 						<span class={ "badge", healthClass(health) }><span class="dot"></span>{ health }</span>
 					}
 				}
@@ -488,8 +504,8 @@ templ goalTableCell(col tableColumn, row goalTableRow, edit bool) {
 			</td>
 		case "due":
 			<td class="num">
-				@goalLinkIf(edit, g) {
-					if !g.DeliveryDate.IsZero() {
+				if !g.DeliveryDate.IsZero() {
+					@goalLinkIf(edit, g) {
 						@struckDates(row.PriorDates)
 						{ fmtDate(g.DeliveryDate) }
 					}
