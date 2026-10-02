@@ -242,6 +242,18 @@ type NarrativeText struct {
 	Text               string
 }
 
+type RejectedLinkRequest struct {
+	ID               int64
+	ChildID          int64
+	ParentID         int64
+	Note             string
+	RequestedBy      int64
+	RequestCreatedAt string
+	RejectedBy       int64
+	RejectedAt       string
+	RestoredAt       *string
+}
+
 type ReportDefinition struct {
 	ID            int64
 	Name          string

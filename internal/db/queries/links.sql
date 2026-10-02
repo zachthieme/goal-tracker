@@ -59,3 +59,26 @@ SELECT * FROM link_removals WHERE id = ? LIMIT 1;
 -- name: MarkLinkRemovalRestored :execrows
 -- Marks a removal undone, only if it isn't already, so an Undo succeeds once.
 UPDATE link_removals SET restored_at = ? WHERE id = ? AND restored_at IS NULL;
+
+-- name: CreateRejectedLinkRequest :one
+-- Records a pending request as it was when rejected, so its rejecter can Undo it.
+INSERT INTO rejected_link_requests (child_id, parent_id, note, requested_by, request_created_at, rejected_by, rejected_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: GetRejectedLinkRequest :one
+SELECT * FROM rejected_link_requests WHERE id = ? LIMIT 1;
+
+-- name: MarkRejectedLinkRequestRestored :execrows
+-- Marks a rejection undone, only if it isn't already, so an Undo succeeds once.
+UPDATE rejected_link_requests SET restored_at = ? WHERE id = ? AND restored_at IS NULL;
+
+-- name: CountLaterRejectedLinkRequests :one
+-- How many requests between the same two Goals were rejected after this one:
+-- any means the link was requested again since.
+SELECT COUNT(*) FROM rejected_link_requests
+WHERE child_id = @child_id AND parent_id = @parent_id AND id > @id;
+
+-- name: ListLinkRemovalTimes :many
+-- When each removal of the link between two Goals happened.
+SELECT removed_at FROM link_removals WHERE child_id = ? AND parent_id = ?;

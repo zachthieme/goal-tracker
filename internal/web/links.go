@@ -73,7 +73,7 @@ func (s *Server) handleRejectLink(w http.ResponseWriter, r *http.Request, curren
 	if !ok {
 		return
 	}
-	if err := s.svc.RejectLink(r.Context(), linkID, current.ID); err != nil {
+	if _, err := s.svc.RejectLink(r.Context(), linkID, current.ID); err != nil {
 		writeLinkError(w, err)
 		return
 	}
