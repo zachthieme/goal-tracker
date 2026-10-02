@@ -107,6 +107,15 @@ templ goalFilters(view goalsListData) {
 // the Goals it lists. Grouped by a several-values Dimension a Goal can appear in
 // more than one section, so the total counts each Goal once (ADR 0005).
 templ goalList(view goalsListData) {
+	if view.Table != nil {
+		@goalTableLayout(view)
+	} else {
+		@goalListLayout(view)
+	}
+}
+
+// goalListLayout is the Goal list's list layout, led by Health.
+templ goalListLayout(view goalsListData) {
 	<div id="goal-list" data-testid="goal-list" class="card">
 		<p data-testid="goal-count" class="muted small gl-count">{ goalCount(len(view.Rows)) }</p>
 		<table>
@@ -200,6 +209,73 @@ templ goalListRow(row goalRow) {
 			}
 		</td>
 	</tr>
+}
+
+// goalTableLayout is the Goal list's table layout: one read-only row per Goal,
+// a column per live Dimension and Field, and no totals row (ADR 0005). It
+// scrolls sideways inside its own container rather than widening the page.
+templ goalTableLayout(view goalsListData) {
+	<div id="goal-list" data-testid="goal-list" class="card">
+		<p data-testid="goal-count" class="muted small gl-count">{ goalCount(len(view.Rows)) }</p>
+		<div class="gl-scroll">
+			<table data-testid="goal-table">
+				<thead data-testid="goal-table-head">
+					<tr>
+						for _, col := range view.Table.Columns {
+							<th scope="col">{ col.Label }</th>
+						}
+					</tr>
+				</thead>
+				<tbody>
+					if len(view.Table.Rows) == 0 {
+						<tr><td data-testid="no-goals" colspan={ fmt.Sprintf("%d", len(view.Table.Columns)) } class="muted">No Goals match.</td></tr>
+					}
+					for _, row := range view.Table.Rows {
+						<tr data-testid="goal-table-row">
+							for _, col := range view.Table.Columns {
+								@goalTableCell(col, row)
+							}
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	</div>
+}
+
+// goalTableCell is one row's cell in col.
+templ goalTableCell(col tableColumn, row goalTableRow) {
+	{{ g := row.Goal }}
+	switch col.Key {
+		case "title":
+			<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></td>
+		case "owner":
+			<td>@person(g.Owner)
+</td>
+		case "health":
+			<td>
+				if health := row.health(); health != "" {
+					<span class={ "badge", healthClass(health) }><span class="dot"></span>{ health }</span>
+				}
+			</td>
+		case "lifecycle":
+			<td>{ g.Lifecycle }</td>
+		case "due":
+			<td class="num">
+				if !g.DeliveryDate.IsZero() {
+					@struckDates(row.PriorDates)
+					{ fmtDate(g.DeliveryDate) }
+				}
+			</td>
+		case "checkin":
+			<td class="muted">
+				if row.Latest != nil {
+					{ row.lastCheckin() }
+				}
+			</td>
+		default:
+			<td class={ templ.KV("num", col.Field != nil && col.Field.Type == domain.FieldNumber) }>{ col.text(row) }</td>
+	}
 }
 
 // goalsStyles are the Goal list's own rules on top of app.css: the propose

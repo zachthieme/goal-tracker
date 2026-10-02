@@ -2129,3 +2129,102 @@ func TestFieldsStayOffTheGoalListControlsAndCheckinForm(t *testing.T) {
 		}
 	}
 }
+
+// tableHeads names the Goal table's columns, in order, by their header text.
+func tableHeads(t *testing.T, page string) []string {
+	t.Helper()
+	return cellTexts(between(t, page, `<thead data-testid="goal-table-head"`, "</thead>"), "th")
+}
+
+// tableRows returns the Goal table's rows in the order they render.
+func tableRows(t *testing.T, page string) []string {
+	t.Helper()
+	tbody := between(t, page, `<table data-testid="goal-table"`, "</table>")
+	var rows []string
+	for _, part := range strings.Split(tbody, `<tr data-testid="goal-table-row"`)[1:] {
+		rows = append(rows, part[:strings.Index(part, "</tr>")])
+	}
+	return rows
+}
+
+// tableCell is the text of row's cell under the column headed head.
+func tableCell(t *testing.T, page, row, head string) string {
+	t.Helper()
+	i := slices.Index(tableHeads(t, page), head)
+	if i < 0 {
+		t.Fatalf("the Goal table has no %s column", head)
+	}
+	cells := cellTexts(row, "td")
+	if i >= len(cells) {
+		t.Fatalf("row has %d cells, no %s:\n%s", len(cells), head, row)
+	}
+	return cells[i]
+}
+
+// cellTexts is the visible text of each tag cell in html, whitespace collapsed.
+func cellTexts(html, tag string) []string {
+	var texts []string
+	for _, m := range regexp.MustCompile(`(?s)<`+tag+`[\s>].*?</`+tag+`>`).FindAllString(html, -1) {
+		text := regexp.MustCompile(`<[^>]*>`).ReplaceAllString(m, " ")
+		texts = append(texts, strings.Join(strings.Fields(text), " "))
+	}
+	return texts
+}
+
+// The Goal list's table layout has a column for the Goal's title, Owner, Health,
+// Lifecycle, delivery date and last Check-in, then one per live Dimension and
+// one per live Field, each in name order; a Retired one has none, nor do
+// Metrics and Milestones. A several-values cell lists its values with commas.
+func TestGoalTableHasAColumnPerLiveDimensionAndField(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignInNamed("sam@example.com", "Sam Ortiz")
+	pillar := h.CreateSeveralValuesDimension(boss, "Pillar", "Growth", "Trust")
+	quarter := h.CreateDimension(boss, "Quarter", "Q1")
+	h.CreateDimension(boss, "Area", "Payments")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.CreateField(boss, "Approver", domain.FieldShortText, "")
+	old := h.CreateField(boss, "Legacy code", domain.FieldShortText, "")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AssignGoalValue(goal, pillar.Values[0])
+	h.AssignGoalValue(goal, pillar.Values[1])
+	h.AssignGoalValue(goal, quarter.Values[0])
+	h.SetGoalField(sam, goal, budget, "1200")
+	h.SetGoalField(sam, goal, old, "X-1")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	ctx := context.Background()
+	if err := h.Service.RetireDimension(ctx, boss.ID, quarter.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	if err := h.Service.RetireField(ctx, boss.ID, old.ID); err != nil {
+		t.Fatalf("RetireField: %v", err)
+	}
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals?layout=table")
+	want := []string{"Title", "Owner", "Health", "Lifecycle", "Delivery date", "Last check-in", "Area", "Pillar", "Approver", "Budget"}
+	if got := tableHeads(t, page); !slices.Equal(got, want) {
+		t.Fatalf("columns = %q, want %q", got, want)
+	}
+	rows := tableRows(t, page)
+	if len(rows) != 1 {
+		t.Fatalf("got %d table rows, want 1", len(rows))
+	}
+	row := rows[0]
+	if !strings.Contains(row, navTo(goal.ID)+">Reduce outages<") {
+		t.Errorf("the title doesn't link to the Goal:\n%s", row)
+	}
+	for head, cell := range map[string]string{
+		"Owner":     "Sam Ortiz sam@example.com", // the Name, its email disclosed on demand
+		"Health":    "Green",
+		"Lifecycle": "Active",
+		"Pillar":    "Growth, Trust",
+		"Budget":    "1200 $",
+		"Area":      "",
+		"Approver":  "",
+	} {
+		if got := tableCell(t, page, row, head); got != cell {
+			t.Errorf("%s cell = %q, want %q", head, got, cell)
+		}
+	}
+}

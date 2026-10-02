@@ -69,6 +69,11 @@ type goalsListData struct {
 	Selected   map[int64]bool
 	GroupID    int64
 	Groups     []goalRowGroup
+	// Query is the request's query string, so the layout toggle and the table's
+	// column headers link to the same view with one thing changed.
+	Query url.Values
+	// Table is the table layout (?layout=table), nil in the list layout.
+	Table *goalTable
 }
 
 // moreFiltersSet reports whether a Dimension filter or grouping is chosen, so
@@ -298,6 +303,15 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 		Filter:     filter,
 		Dimensions: dims,
 		Selected:   selected,
+		Query:      r.URL.Query(),
+	}
+	if view.Query.Get("layout") == layoutTable {
+		table, err := s.goalTableView(ctx, rows, dims)
+		if err != nil {
+			return goalsListData{}, err
+		}
+		view.Table = table
+		return view, nil
 	}
 	if raw := r.URL.Query().Get("group"); raw != "" {
 		if groupID, err := strconv.ParseInt(raw, 10, 64); err == nil {
@@ -1224,4 +1238,91 @@ func ownershipOutcome(status string) string {
 		return "reassigned by an Admin"
 	}
 	return status
+}
+
+// layoutTable is the ?layout= value that shows the Goal list as a flat table,
+// one row per Goal and a column per Dimension and Field.
+const layoutTable = "table"
+
+// goalTable is the Goal list's table layout: its columns and its rows, each
+// with the Field values its Field columns show. It is read-only, has no totals
+// row (ADR 0005), and isn't grouped.
+type goalTable struct {
+	Columns []tableColumn
+	Rows    []goalTableRow
+}
+
+// tableColumn is one of the Goal table's columns, keyed for the URL. A
+// Dimension's or Field's column carries it.
+type tableColumn struct {
+	Key       string
+	Label     string
+	Dimension *domain.Dimension
+	Field     *domain.Field
+}
+
+// goalTableRow is one Goal in the table: its list row and its value in each
+// Field, by Field ID.
+type goalTableRow struct {
+	goalRow
+	Fields map[int64]string
+}
+
+// goalTableView builds the table layout over the list's filtered, sorted rows:
+// the fixed columns, then each live Dimension and each live Field in name
+// order (CONTEXT.md: Retired).
+func (s *Server) goalTableView(ctx context.Context, rows []goalRow, dims []domain.Dimension) (*goalTable, error) {
+	all, err := s.svc.ListFields(ctx)
+	if err != nil {
+		return nil, err
+	}
+	fields := domain.OfferedFields(all)
+	table := &goalTable{Columns: []tableColumn{
+		{Key: "title", Label: "Title"},
+		{Key: "owner", Label: "Owner"},
+		{Key: "health", Label: "Health"},
+		{Key: "lifecycle", Label: "Lifecycle"},
+		{Key: "due", Label: "Delivery date"},
+		{Key: "checkin", Label: "Last check-in"},
+	}}
+	for i := range dims {
+		table.Columns = append(table.Columns, tableColumn{Key: fmt.Sprintf("d%d", dims[i].ID), Label: dims[i].Name, Dimension: &dims[i]})
+	}
+	for i := range fields {
+		table.Columns = append(table.Columns, tableColumn{Key: fmt.Sprintf("f%d", fields[i].ID), Label: fields[i].Name, Field: &fields[i]})
+	}
+	for _, row := range rows {
+		values, err := s.svc.GoalFields(ctx, row.Goal.ID)
+		if err != nil {
+			return nil, err
+		}
+		tr := goalTableRow{goalRow: row, Fields: map[int64]string{}}
+		for _, fv := range values {
+			tr.Fields[fv.Field.ID] = fv.Value
+		}
+		table.Rows = append(table.Rows, tr)
+	}
+	return table, nil
+}
+
+// text is row's value in a Dimension's or Field's column: a several-values
+// Dimension's values joined by commas, a number Field's value with its unit.
+func (c tableColumn) text(row goalTableRow) string {
+	switch {
+	case c.Dimension != nil:
+		var values []string
+		for _, v := range row.Values {
+			if v.DimensionID == c.Dimension.ID {
+				values = append(values, v.Value)
+			}
+		}
+		return strings.Join(values, ", ")
+	case c.Field != nil:
+		value, ok := row.Fields[c.Field.ID]
+		if ok && c.Field.Unit != "" {
+			return value + " " + c.Field.Unit
+		}
+		return value
+	}
+	return ""
 }
