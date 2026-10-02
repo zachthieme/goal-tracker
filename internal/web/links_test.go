@@ -598,7 +598,7 @@ func TestUndoingALinkRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
 		child, parent, pat, landed := rejectRequest(t, h, ts, "/links")
 		action := undoAction(t, landed)
 		patAcc, sam := h.SignIn("pat@example.com"), h.SignIn("sam@example.com")
-		back := h.RequestLink(patAcc, parent, child, "") // Pat links the other way round...
+		back := h.RequestLink(patAcc, parent, child, "")                                       // Pat links the other way round...
 		if _, err := h.Service.AcceptLink(context.Background(), back.ID, sam.ID); err != nil { // ...and Sam accepts
 			t.Fatalf("AcceptLink: %v", err)
 		}
