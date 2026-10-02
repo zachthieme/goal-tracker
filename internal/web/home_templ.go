@@ -67,7 +67,7 @@ func homePage(current *domain.Account, v homeView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</p></div><a class=\"btn primary\" href=\"/goals\">New goal</a></header><div class=\"grid-main-aside\"><div class=\"hm-col\"><section data-testid=\"home-checkins\" class=\"card hm-card\"><h3>Check in on these</h3>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</p></div><a class=\"btn primary\" href=\"/goals?new=1\">New goal</a></header><div class=\"grid-main-aside\"><div class=\"hm-col\"><section data-testid=\"home-checkins\" class=\"card hm-card\"><h3>Check in on these</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
