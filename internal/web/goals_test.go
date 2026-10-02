@@ -2433,3 +2433,48 @@ func TestGoalTableHiddenColumnStaysHiddenOnTheNextVisit(t *testing.T) {
 		t.Errorf("showing every column again leaves %q, want %q", got, all)
 	}
 }
+
+// The Goal table has no totals row: no sum, count or average of a column,
+// since numbers in a Field are never added up across Goals (ADR 0005). Grouping
+// doesn't apply to it, and on a narrow screen it scrolls sideways inside its
+// own container rather than widening the page.
+func TestGoalTableHasNoTotalsRowAndIsntGrouped(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "")
+	alpha := h.CreateGoal(sam, "Alpha", "It matters.")
+	bravo := h.CreateGoal(sam, "Bravo", "It matters.")
+	h.AssignGoalValue(alpha, pillar.Values[0])
+	h.AssignGoalValue(bravo, pillar.Values[1])
+	h.SetGoalField(sam, alpha, budget, "10")
+	h.SetGoalField(sam, bravo, budget, "20")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals?layout=table&group=%d", ts.URL, pillar.ID))
+	table := between(t, page, `<table data-testid="goal-table"`, "</table>")
+	if strings.Contains(table, "<tfoot") || strings.Contains(table, `data-testid="goal-group"`) {
+		t.Errorf("the Goal table has a footer or a group:\n%s", table)
+	}
+	if rows, trs := len(tableRows(t, page)), strings.Count(table, "<tr"); rows != 2 || trs != 3 {
+		t.Errorf("the Goal table has %d Goal rows among %d rows, want the header and 2 Goals:\n%s", rows, trs, table)
+	}
+	for _, aggregate := range []string{">30<", ">15<", "Total", "Sum", "Average"} {
+		if strings.Contains(table, aggregate) {
+			t.Errorf("the Goal table shows an aggregate %q:\n%s", aggregate, table)
+		}
+	}
+	if more := between(t, page, `data-testid="goal-filters"`, "</form>"); strings.Contains(more, "Group by") {
+		t.Errorf("the table offers Group by, which doesn't apply to it:\n%s", more)
+	}
+
+	if !regexp.MustCompile(`<div class="table-scroll">\s*<table data-testid="goal-table"`).MatchString(page) {
+		t.Errorf("the Goal table isn't in its own scrolling container")
+	}
+	css := getBody(t, client, ts.URL+"/static/app.css")
+	if rule := cssRule(t, css, ".table-scroll"); !strings.Contains(rule, "overflow-x:auto") {
+		t.Errorf("the table's container doesn't scroll sideways: %s", rule)
+	}
+}

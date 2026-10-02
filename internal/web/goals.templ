@@ -182,6 +182,7 @@ templ goalListHead(view goalsListData) {
 		<nav class="gl-layout" aria-label="Layout">
 			<a
 				data-testid="layout-list"
+				class="btn quiet sm"
 				href={ view.layoutURL("") }
 				if view.Table == nil {
 					aria-current="page"
@@ -189,6 +190,7 @@ templ goalListHead(view goalsListData) {
 			>List</a>
 			<a
 				data-testid="layout-table"
+				class="btn quiet sm"
 				href={ view.layoutURL(layoutTable) }
 				if view.Table != nil {
 					aria-current="page"
@@ -256,7 +258,7 @@ templ goalTableLayout(view goalsListData) {
 	<div id="goal-list" data-testid="goal-list" class="card">
 		@goalListHead(view)
 		@goalTableColumns(view)
-		<div class="gl-scroll">
+		<div class="table-scroll">
 			<table data-testid="goal-table">
 				<thead data-testid="goal-table-head">
 					<tr>
@@ -333,13 +335,13 @@ templ goalTableCell(col tableColumn, row goalTableRow) {
 				}
 			</td>
 		default:
-			<td class={ templ.KV("num", col.Field != nil && col.Field.Type == domain.FieldNumber) }>{ col.text(row) }</td>
+			<td class={ templ.KV("num", col.Field != nil && col.Field.Type == domain.FieldNumber), templ.KV("gl-long", col.Field != nil && col.Field.Type == domain.FieldLongText) }>{ col.text(row) }</td>
 	}
 }
 
 // goalsStyles are the Goal list's own rules on top of app.css: the propose
-// form's popover, the one-row filter bar, and the table's group headers and
-// marks.
+// form's popover, the one-row filter bar, the table's group headers and marks,
+// and the table layout's toggle, Columns control and sort headers.
 templ goalsStyles() {
 	<style>
 		.gl-propose{position:relative}
@@ -355,6 +357,18 @@ templ goalsStyles() {
 		.gl-group th{background:var(--color-primary-subtle);color:var(--color-ink);font-size:13px;font-weight:600;letter-spacing:0;text-transform:none}
 		.gl-marks{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
 		#goal-list td .tag{margin:4px 4px 4px 0}
+		.gl-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-right:12px}
+		.gl-layout{display:inline-flex;gap:4px}
+		.gl-layout a[aria-current=page]{background:var(--color-primary-subtle);color:var(--color-ink)}
+		.gl-columns{padding:0 12px}
+		.gl-columns>summary{justify-content:flex-start;color:var(--color-primary-strong);font-weight:600}
+		.gl-columns form{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;padding-bottom:12px}
+		.gl-columns label{display:inline-flex;align-items:center;gap:8px}
+		#goal-list th a{color:inherit;text-decoration:none}
+		#goal-list th[aria-sort=ascending] a::after{content:" ↑"}
+		#goal-list th[aria-sort=descending] a::after{content:" ↓"}
+		.table-scroll td{white-space:nowrap}
+		.table-scroll td.gl-long{white-space:normal;min-width:240px}
 	</style>
 }
 
