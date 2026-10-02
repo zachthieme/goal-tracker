@@ -245,6 +245,12 @@ func TestReportShowsChosenFieldsBesideEachGoal(t *testing.T) {
 	if got, want := fieldReadings(r.Lines[0].Fields), []string{"Budget=40 $"}; !slices.Equal(got, want) {
 		t.Errorf("one-line Goal shows Fields %v, want %v (Sponsor unset, so left out)", got, want)
 	}
+
+	// A Report shows no Fields unless its author chooses some.
+	plain := draftReport(t, h, boss, time.Time{}, red, green)
+	if len(plain.Exceptions[0].Fields) != 0 || len(plain.Lines[0].Fields) != 0 {
+		t.Errorf("a definition with no Fields chosen shows %v and %v", plain.Exceptions[0].Fields, plain.Lines[0].Fields)
+	}
 }
 
 // A Report Definition can only be set to show Fields that exist and aren't
