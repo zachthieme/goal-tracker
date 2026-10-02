@@ -637,11 +637,6 @@ templ goalPage(current *domain.Account, v goalView) {
 		@goalSignals(v.Signals)
 		@goalIncomplete(v.Incomplete)
 		@goalHead(v, owner, admin)
-		<article data-testid="goal" class="gp-block gp-statement">
-			<h3><button type="button" class="disclose help" aria-expanded="false" aria-controls="so-what-help" title={ soWhatHelp }>So What</button></h3>
-			<p id="so-what-help" class="explain" hidden>{ soWhatHelp }</p>
-			<p data-testid="goal-so-what">{ g.SoWhat }</p>
-		</article>
 		<div class="grid-main-aside">
 			<div data-testid="goal-main" class="gp-col">
 				if owner && g.Lifecycle == domain.LifecycleProposed {
@@ -746,36 +741,34 @@ templ goalPage(current *domain.Account, v goalView) {
 	}
 }
 
-// goalHead is the Goal's summary a reader takes in at a glance — badges for
-// its Health, Lifecycle, Kind, Top-level and Dimension values, its title, and a
-// meta line naming the Owner, the delivery date with its slips struck, and the
-// cadence — with Check in and No change top right for whoever may check in.
+// goalHead is the Goal's summary a reader takes in at a glance: its title, its
+// So What as a lead paragraph, and one metadata line — the Health badge, then
+// the Lifecycle, Kind, Owner, delivery date with its slips struck, cadence and
+// Top-level as plain text — with Check in and No change top right for whoever
+// may check in. Dimension values and Fields stay in the sidebar.
 templ goalHead(v goalView, owner, admin bool) {
 	{{ g := v.Goal }}
 	<header data-testid="goal-head" class="gp-head">
 		<div class="gp-summary">
-			<div data-testid="goal-badges" class="gp-badges">
+			<h1 data-testid="goal-title">{ g.Title }</h1>
+			<article data-testid="goal" class="gp-statement" aria-labelledby="so-what-label">
+				<h2 id="so-what-label" class="sr-only">So What</h2>
+				<p data-testid="goal-so-what" class="gp-lead">{ g.SoWhat }</p>
+				<button type="button" class="disclose help explain gp-lead-help" aria-expanded="false" aria-controls="so-what-help" title={ soWhatHelp }>What is a So What?</button>
+				<p id="so-what-help" class="explain" hidden>{ soWhatHelp }</p>
+			</article>
+			<p data-testid="goal-meta" class="gp-meta">
 				if health := v.health(); health != "" {
 					<span class={ "badge", healthClass(health) }><span class="dot"></span>{ health }</span>
 				}
-				<span class="badge lc" data-testid="goal-lifecycle">{ g.Lifecycle }</span>
-				<span class="badge lc" data-testid="goal-kind">
+				<span data-testid="goal-lifecycle">{ g.Lifecycle }</span>
+				<span data-testid="goal-kind">
 					if g.Kind == "" {
 						Not yet Dated or Ongoing
 					} else {
 						{ g.Kind }
 					}
 				</span>
-				if g.TopLevel {
-					<button type="button" class="badge lc disclose help" data-testid="goal-top-level" aria-expanded="false" aria-controls="top-level-help" title={ topLevelHelp }>Top-level</button>
-					<span id="top-level-help" class="explain" hidden>{ topLevelHelp }</span>
-				}
-				for _, val := range v.Values {
-					<span class="tag">{ val.Value }</span>
-				}
-			</div>
-			<h1 data-testid="goal-title">{ g.Title }</h1>
-			<p data-testid="goal-meta" class="gp-meta">
 				<span>Owner <strong data-testid="goal-owner">@person(g.Owner)
 </strong></span>
 				if !g.DeliveryDate.IsZero() {
@@ -788,7 +781,13 @@ templ goalHead(v goalView, owner, admin bool) {
 					</span>
 				}
 				<span>Checks in <span data-testid="goal-cadence">every { fmt.Sprintf("%d", g.CadenceDays) } days</span></span>
+				if g.TopLevel {
+					<span><button type="button" class="disclose help" data-testid="goal-top-level" aria-expanded="false" aria-controls="top-level-help" title={ topLevelHelp }>Top-level</button></span>
+				}
 			</p>
+			if g.TopLevel {
+				<p id="top-level-help" class="explain" hidden>{ topLevelHelp }</p>
+			}
 			if note := v.lifecycleNote(); note != "" {
 				<p data-testid="goal-lifecycle-note" class="muted">{ note }</p>
 			}
@@ -812,8 +811,12 @@ templ goalPageStyles() {
 	<style>
 		.gp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap}
 		.gp-summary{display:flex;flex-direction:column;gap:12px;min-width:0;flex:1 1 320px}
-		.gp-badges{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-		.gp-meta{display:flex;flex-wrap:wrap;gap:4px 20px;color:var(--color-ink-muted)}
+		.gp-summary h1{margin:0}
+		.gp-statement{display:flex;flex-direction:column;align-items:flex-start;gap:4px;max-width:720px}
+		.gp-lead{margin:0;font-size:18px;line-height:1.55;color:var(--color-ink)}
+		.gp-lead-help{font-size:13px}
+		.gp-meta{display:flex;flex-wrap:wrap;gap:4px 8px;align-items:center;margin:0;color:var(--color-ink-muted)}
+		.gp-meta>*+*::before{content:"·";margin-right:8px;color:var(--color-ink-muted)}
 		.gp-meta strong{color:var(--color-ink)}
 		.gp-actions{display:flex;gap:8px;align-items:flex-start;margin-left:auto}
 		.gp-actions form{margin:0}
@@ -829,7 +832,6 @@ templ goalPageStyles() {
 		.gp-col{display:flex;flex-direction:column;gap:20px;min-width:0}
 		.gp-card{padding:24px;display:flex;flex-direction:column;gap:12px}
 		.gp-block{display:flex;flex-direction:column;gap:12px}
-		.gp-statement{max-width:720px}
 		@media (max-width:900px){.gp-side>.ruled:first-child{border-top:1px solid var(--color-border);padding-top:20px}}
 		.gp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 		.gp-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
