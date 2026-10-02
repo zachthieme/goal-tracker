@@ -100,9 +100,8 @@ templ homePage(current *domain.Account, v homeView) {
 							for _, g := range v.Delegated {
 								<li>
 									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
-									<span class="muted small">
-										@person(g.Owner)
-									</span>
+									<span class="muted small">@person(g.Owner)
+</span>
 								</li>
 							}
 						</ul>
