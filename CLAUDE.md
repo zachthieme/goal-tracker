@@ -26,7 +26,7 @@ another area's file.
 
 ## Gates and commits
 
-Run the gates (`make generate-check`, `make test`, `make lint`) in the
+Run the gates (`make generate-check`, `make lint`, `make test`) in the
 foreground and read each to the end; `make test` takes up to ~5 minutes. Never
 background a gate and wait for it. **Commit before you end your turn.** A
 campaign run is a single turn, so a turn that ends waiting on a background job,
