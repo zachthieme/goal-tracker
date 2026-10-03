@@ -13,22 +13,32 @@
 //   pin     "light" or "dark": pin the Theme menu's choice (none)
 //   width   window width in CSS pixels (1280); height (800)
 //   full    false to capture only the window, not the whole page (true)
-//   action  JavaScript run in the page once it has loaded, e.g.
-//           "document.querySelector('form.x').requestSubmit()"; it may
-//           return a promise. The shot is taken once the page settles.
+//   action  JavaScript run in the page once it has loaded. A script, e.g.
+//           "document.querySelector('form.x').requestSubmit()", runs as it
+//           is and may end on a promise. One that uses return or await at
+//           its top level, e.g. "if (!x) return; await x.done", runs as the
+//           body of an async function. The shot is taken once the page
+//           settles.
 //   dialog  "dismiss" (default) or "accept" a native alert/confirm
+//   status  the HTTP status the page's final document should have, e.g. 404
 //   name    the PNG's name (default from the index, path, theme and width)
 //
-// For each shot it saves <out>/<name>.png and prints the
-// theme pin, horizontal overflow, the focused element, any toast, and any
-// dialog that opened. It drives the Chromium already on the machine over the
-// DevTools protocol, so nothing needs installing; set CHROME to its path if
-// it isn't found. Exits 1 if any shot failed to load or sign in.
+// For each shot it saves <out>/<name>.png and prints the page's status and
+// title, the theme pin, horizontal overflow, the focused element, any toast,
+// and any dialog that opened. It drives the Chromium already on the machine
+// over the DevTools protocol, so nothing needs installing; set CHROME to its
+// path if it isn't found. Exits 1 if any shot failed to load, sign in or run
+// its action, or ended on an HTTP status other than its status (without one,
+// on 400 or more; a status that can't be read never fails). Exits 2 if the
+// arguments or a shot are invalid. node --test scripts/*.test.mjs tests the
+// parts that don't need a browser.
 
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { Script } from "node:vm";
 
 const usage = "usage: node scripts/shots.mjs <base-url> <shots.json|-|JSON> [--out <dir>]";
 
@@ -49,18 +59,50 @@ function parseArgs(argv) {
   } catch (err) {
     fail(`shots aren't valid JSON: ${err.message}`);
   }
-  return { base: base.replace(/\/+$/, ""), shots: shots.map(normalise), out: resolve(out) };
+  try {
+    shots = shots.map(normalise);
+  } catch (err) {
+    fail(err.message);
+  }
+  return { base: base.replace(/\/+$/, ""), shots, out: resolve(out) };
 }
 
-function normalise(shot, i) {
-  if (typeof shot?.path !== "string" || !shot.path.startsWith("/")) fail(`shot ${i + 1}: path must start with /`);
+// normalise fills in a shot's defaults, and throws if a field is invalid.
+export function normalise(shot, i) {
+  const bad = (message) => {
+    throw new Error(`shot ${i + 1}: ${message}`);
+  };
+  if (typeof shot?.path !== "string" || !shot.path.startsWith("/")) bad("path must start with /");
   const s = { theme: "light", width: 1280, height: 800, full: true, dialog: "dismiss", ...shot };
-  if (!["light", "dark"].includes(s.theme)) fail(`shot ${i + 1}: theme must be light or dark`);
-  if (s.pin !== undefined && !["light", "dark"].includes(s.pin)) fail(`shot ${i + 1}: pin must be light or dark`);
-  if (!["accept", "dismiss"].includes(s.dialog)) fail(`shot ${i + 1}: dialog must be accept or dismiss`);
+  if (!["light", "dark"].includes(s.theme)) bad("theme must be light or dark");
+  if (s.pin !== undefined && !["light", "dark"].includes(s.pin)) bad("pin must be light or dark");
+  if (!["accept", "dismiss"].includes(s.dialog)) bad("dialog must be accept or dismiss");
+  if (s.status !== undefined && !Number.isInteger(s.status)) bad("status must be an integer");
   const slug = s.path.replace(/[^\w]+/g, "-").replace(/^-|-$/g, "") || "root";
   s.name ??= `${String(i + 1).padStart(2, "0")}-${slug}-${s.theme}-${s.width}`;
   return s;
+}
+
+// wrapAction is the script that runs a shot's action: the action itself if it
+// compiles as a script, so it keeps its completion value, else the action as
+// the body of an async function, so it can use return and await.
+export function wrapAction(action) {
+  try {
+    new Script(action);
+    return action;
+  } catch (err) {
+    if (!(err instanceof SyntaxError)) throw err;
+    return `(async () => {\n${action}\n})()`;
+  }
+}
+
+// statusProblem is why a page's final document status fails the shot, or null
+// if it doesn't: an HTTP error unless the shot expects a status, else any
+// status but the expected one. A status that couldn't be read never fails.
+export function statusProblem(shot, status) {
+  if (status == null) return null;
+  if (shot.status === undefined) return status >= 400 ? `the page gave HTTP ${status}` : null;
+  return status === shot.status ? null : `the page gave HTTP ${status}, not the expected ${shot.status}`;
 }
 
 function fail(message) {
@@ -312,7 +354,7 @@ async function shoot(cdp, base, out, shot) {
     if (shot.action) {
       const navigating = watchNavigation(cdp, s);
       const { exceptionDetails } = await cdp
-        .send("Runtime.evaluate", { expression: shot.action, awaitPromise: true, userGesture: true }, s)
+        .send("Runtime.evaluate", { expression: wrapAction(shot.action), awaitPromise: true, userGesture: true }, s)
         // A submit that navigates away destroys the context the action ran in.
         .catch(() => ({}));
       if (exceptionDetails) throw new Error(`action: ${exceptionDetails.exception?.description ?? exceptionDetails.text}`);
@@ -339,22 +381,23 @@ async function shoot(cdp, base, out, shot) {
   }
 }
 
-function report(shot, { file, facts: f, native }) {
+// formatReport is what's printed for a shot that was taken.
+export function formatReport(shot, { file, facts: f, native }) {
   const who = shot.as ? `as ${shot.as}` : "signed out";
   const pin = f.pin ? `pinned ${f.pin}` : `not pinned, follows the OS (${f.osDark ? "dark" : "light"})`;
   const overflow = [];
   if (f.scrollsBy > 0) overflow.push(`the page scrolls sideways by ${f.scrollsBy}px`);
   if (f.past.length) overflow.push(`past the ${f.width}px window: ${f.past.slice(0, 5).join(", ")}${f.past.length > 5 ? ` and ${f.past.length - 5} more` : ""}`);
   const dialogs = [...native, ...f.dialogs];
-  console.log(`${file}
+  return `${file}
   shot:     ${shot.path} ${who}, OS ${shot.theme}, ${shot.width}px${shot.action ? ", after the action" : ""}
-  page:     ${f.url} (HTTP ${f.status ?? "?"}) "${f.title}"
+  page:     ${f.url} (HTTP ${f.status ?? "?"}) ${f.title ? `"${f.title}"` : "(none)"}
   theme:    ${pin}; body background ${f.background}
   overflow: ${overflow.length ? overflow.join("; ") : "none"}
   focus:    ${f.focus ?? "nothing (body)"}
   toast:    ${f.toast ? `"${f.toast}"` : "none"}
   dialog:   ${dialogs.length ? dialogs.join("; ") : "none"}
-`);
+`;
 }
 
 async function main() {
@@ -366,7 +409,13 @@ async function main() {
     const cdp = await CDP.connect(chrome.ws);
     for (const shot of shots) {
       try {
-        report(shot, await shoot(cdp, base, out, shot));
+        const result = await shoot(cdp, base, out, shot);
+        console.log(formatReport(shot, result));
+        const problem = statusProblem(shot, result.facts.status);
+        if (problem) {
+          failed++;
+          console.log(`${shot.name}: FAILED: ${problem}\n`);
+        }
       } catch (err) {
         failed++;
         console.log(`${shot.name}: FAILED: ${err.message}\n`);
@@ -379,4 +428,5 @@ async function main() {
   process.exit(failed ? 1 : 0);
 }
 
-await main();
+// Run only when executed, not when imported by the tests.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();
