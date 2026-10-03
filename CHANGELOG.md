@@ -21,6 +21,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Bug fixes:**
 - [user] No change on a Goal's page or Check-in page now shows the page saying you can't check in, or that the Goal doesn't exist, instead of seeming to do nothing when you click it (#109).
+- [user] The Health strip shows how each period ended: a week whose last Check-in puts the Goal On Hold or marks it Done is blank, not the Health of an earlier Check-in. The week in progress is no longer shown as missed: with no Check-in yet it is "not yet due", a solid-edged cell counted apart in the summary ("Last 11 weeks: 5 Green, 4 with no Check-in, 2 not yet due") (#108).
 
 **Testing:**
 - [internal] Test that Home's Health distribution bar leaves out Proposed, Done and Cancelled Goals (#110).
