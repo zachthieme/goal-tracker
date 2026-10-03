@@ -10,7 +10,7 @@ import (
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	if s.currentAccount(r) != nil {

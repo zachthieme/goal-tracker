@@ -58,7 +58,7 @@ func (s *Server) handleSetFieldRequired(w http.ResponseWriter, r *http.Request, 
 func (s *Server) fieldAction(w http.ResponseWriter, r *http.Request, current domain.Account, set func(ctx context.Context, actorID, fieldID int64) error) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	if err := set(r.Context(), current.ID, id); err != nil {
@@ -85,7 +85,7 @@ func writeFieldError(w http.ResponseWriter, err error) {
 // Field). A value that doesn't parse as the Field's type is refused naming the
 // Field. Anyone but the Owner, a Delegate or an Admin is refused.
 func (s *Server) handleSetGoalField(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := goalIDFromPath(w, r)
+	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}

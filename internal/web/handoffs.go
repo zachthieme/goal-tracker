@@ -14,7 +14,7 @@ import (
 // named by to_email. Only the Goal's current Owner or an Admin may start it, and
 // it takes effect only once the new Owner accepts.
 func (s *Server) handleStartHandoff(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	goalID, ok := goalIDFromPath(w, r)
+	goalID, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -41,7 +41,7 @@ func (s *Server) handlePendingHandoffs(w http.ResponseWriter, r *http.Request, c
 // checked keep box names a Delegate to keep; the Goal's other Delegates who
 // aren't Departed are removed (CONTEXT.md: Delegate).
 func (s *Server) handleAcceptHandoff(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := handoffIDFromPath(w, r)
+	id, ok := s.handoffIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -69,7 +69,7 @@ func (s *Server) handleAcceptHandoff(w http.ResponseWriter, r *http.Request, cur
 // returns to the page the reject came from (from: Home, or the pending page),
 // which offers Undo once in a toast.
 func (s *Server) handleRejectHandoff(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := handoffIDFromPath(w, r)
+	id, ok := s.handoffIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -125,7 +125,7 @@ func (s *Server) handoffRejectionToast(ctx context.Context, offer undoOffer, cur
 func (s *Server) handleDepartAccount(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	if err := s.svc.MarkDeparted(r.Context(), current.ID, id); err != nil {
@@ -141,7 +141,7 @@ func (s *Server) handleDepartAccount(w http.ResponseWriter, r *http.Request, cur
 func (s *Server) handleReturnAccount(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	if err := s.svc.MarkReturned(r.Context(), current.ID, id); err != nil {
@@ -154,7 +154,7 @@ func (s *Server) handleReturnAccount(w http.ResponseWriter, r *http.Request, cur
 // handleReassignGoal reassigns an Ownerless Goal to the Account named by email.
 // Only an Admin may.
 func (s *Server) handleReassignGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	goalID, ok := goalIDFromPath(w, r)
+	goalID, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -185,10 +185,10 @@ func redirectBack(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/goals", http.StatusSeeOther)
 }
 
-func handoffIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {
+func (s *Server) handoffIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return 0, false
 	}
 	return id, true

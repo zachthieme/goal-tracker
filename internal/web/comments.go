@@ -126,7 +126,7 @@ func (s *Server) handleAddComment(w http.ResponseWriter, r *http.Request, curren
 func (s *Server) handleReplyToComment(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
@@ -180,7 +180,7 @@ func (s *Server) handleRaiseActionItem(w http.ResponseWriter, r *http.Request, c
 func (s *Server) handleCloseActionItem(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	if err := r.ParseForm(); err != nil {

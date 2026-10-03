@@ -24,7 +24,7 @@ func (s *Server) handleGraphSignals(w http.ResponseWriter, r *http.Request, curr
 // is true, and unmarks it when false. Only an Admin may (CONTEXT.md: Top-level
 // Goal).
 func (s *Server) handleSetTopLevel(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	goalID, ok := goalIDFromPath(w, r)
+	goalID, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -43,7 +43,7 @@ func (s *Server) handleSetTopLevel(w http.ResponseWriter, r *http.Request, curre
 		case errors.Is(err, domain.ErrNotAuthorized):
 			http.Error(w, err.Error(), http.StatusForbidden)
 		case errors.Is(err, domain.ErrNotFound):
-			http.NotFound(w, r)
+			s.notFound(w, r)
 		default:
 			http.Error(w, "could not set Top-level", http.StatusInternalServerError)
 		}

@@ -68,7 +68,7 @@ func (s *Server) handleCreateDimension(w http.ResponseWriter, r *http.Request, c
 // taking one of its values and several. Switching to one is refused while Goals
 // carry several, and the page comes back naming them. Only an Admin may.
 func (s *Server) handleSetDimensionSelection(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := dimensionIDFromPath(w, r)
+	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -93,7 +93,7 @@ func (s *Server) handleSetDimensionSelection(w http.ResponseWriter, r *http.Requ
 // handleSetDimensionList makes the Dimension in the path Fixed or Extendable.
 // Only an Admin may.
 func (s *Server) handleSetDimensionList(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := dimensionIDFromPath(w, r)
+	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -108,7 +108,7 @@ func (s *Server) handleSetDimensionList(w http.ResponseWriter, r *http.Request, 
 // form's required is 1, and unmarks it otherwise (CONTEXT.md: Incomplete). Only
 // an Admin may.
 func (s *Server) handleSetDimensionRequired(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := dimensionIDFromPath(w, r)
+	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -122,7 +122,7 @@ func (s *Server) handleSetDimensionRequired(w http.ResponseWriter, r *http.Reque
 // handleAddDimensionValue adds a value to the Dimension in the path. Only an
 // Admin may.
 func (s *Server) handleAddDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := dimensionIDFromPath(w, r)
+	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -135,7 +135,7 @@ func (s *Server) handleAddDimensionValue(w http.ResponseWriter, r *http.Request,
 
 // handleRenameDimensionValue renames the value in the path. Only an Admin may.
 func (s *Server) handleRenameDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := dimensionIDFromPath(w, r)
+	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -150,7 +150,7 @@ func (s *Server) handleRenameDimensionValue(w http.ResponseWriter, r *http.Reque
 // offered for new assignments, and has the Dimensions page offer Undo once in a
 // toast. Only an Admin may.
 func (s *Server) handleRetireDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := dimensionIDFromPath(w, r)
+	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -183,7 +183,7 @@ func (s *Server) handleUndoRetireDimensionValue(w http.ResponseWriter, r *http.R
 // handleRestoreDimensionValue reverses the retirement of the value in the path,
 // so it is offered for new assignments again. Only an Admin may.
 func (s *Server) handleRestoreDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := dimensionIDFromPath(w, r)
+	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -198,7 +198,7 @@ func (s *Server) handleRestoreDimensionValue(w http.ResponseWriter, r *http.Requ
 // setting Goals' values, the Goal list's filter and grouping, and the Report
 // Definition form. Only an Admin may.
 func (s *Server) handleRetireDimension(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := dimensionIDFromPath(w, r)
+	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -212,7 +212,7 @@ func (s *Server) handleRetireDimension(w http.ResponseWriter, r *http.Request, c
 // handleRestoreDimension reverses the retirement of the Dimension in the path,
 // returning it everywhere. Only an Admin may.
 func (s *Server) handleRestoreDimension(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := dimensionIDFromPath(w, r)
+	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -226,7 +226,7 @@ func (s *Server) handleRestoreDimension(w http.ResponseWriter, r *http.Request, 
 // handleMoveDimensionValue moves the value in the path one place up or down its
 // Dimension's list. Only an Admin may.
 func (s *Server) handleMoveDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := dimensionIDFromPath(w, r)
+	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -240,7 +240,7 @@ func (s *Server) handleMoveDimensionValue(w http.ResponseWriter, r *http.Request
 // handleSortDimensionValues puts the values of the Dimension in the path in
 // alphabetical order. Only an Admin may.
 func (s *Server) handleSortDimensionValues(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := dimensionIDFromPath(w, r)
+	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -254,7 +254,7 @@ func (s *Server) handleSortDimensionValues(w http.ResponseWriter, r *http.Reques
 // handleMergeDimensionValue merges the value in the path into the value named
 // by the form's into, in the same Dimension. Only an Admin may.
 func (s *Server) handleMergeDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := dimensionIDFromPath(w, r)
+	id, ok := s.dimensionIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -287,10 +287,10 @@ func splitValues(raw string) []string {
 	return out
 }
 
-func dimensionIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {
+func (s *Server) dimensionIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return 0, false
 	}
 	return id, true

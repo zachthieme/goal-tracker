@@ -15,14 +15,14 @@ import (
 // Goal's latest Check-in. Only whoever may write a Check-in — the Owner or a
 // Delegate — may open it (CONTEXT.md: Check-in, Delegate).
 func (s *Server) handleCheckinPage(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	goalID, ok := goalIDFromPath(w, r)
+	goalID, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
 	view, err := s.goalPageView(r.Context(), goalID, current)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			http.NotFound(w, r)
+			s.notFound(w, r)
 			return
 		}
 		http.Error(w, "could not load goal", http.StatusInternalServerError)
@@ -41,7 +41,7 @@ func (s *Server) handleCheckinPage(w http.ResponseWriter, r *http.Request, curre
 // success htmx is told to reload the Goal page so the new history and current
 // Health show.
 func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	goalID, ok := goalIDFromPath(w, r)
+	goalID, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -373,7 +373,7 @@ func highlightsFromForm(r *http.Request) []highlightFormData {
 // handleNoChangeCheckin records a Check-in repeating the Goal's previous values
 // in one click.
 func (s *Server) handleNoChangeCheckin(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	goalID, ok := goalIDFromPath(w, r)
+	goalID, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}

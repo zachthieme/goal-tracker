@@ -46,7 +46,7 @@ func (s *Server) handleDefinitionLog(w http.ResponseWriter, r *http.Request, cur
 	}
 	scope, ok := parseLogScope(r.URL.Query().Get("about"), dims, fields)
 	if !ok {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	var changes []domain.DefinitionChange

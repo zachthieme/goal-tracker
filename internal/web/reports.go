@@ -69,13 +69,13 @@ func (s *Server) handleSaveReport(w http.ResponseWriter, r *http.Request, curren
 func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	def, err := s.svc.GetReportDefinition(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			http.NotFound(w, r)
+			s.notFound(w, r)
 			return
 		}
 		http.Error(w, "could not load report", http.StatusInternalServerError)
@@ -112,7 +112,7 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, _ domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
@@ -137,7 +137,7 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, _
 	}
 	if err := s.svc.CurateNarrative(r.Context(), id, in); err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			http.NotFound(w, r)
+			s.notFound(w, r)
 			return
 		}
 		writeReportError(w, err)
@@ -156,7 +156,7 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, _
 func (s *Server) handlePublishReport(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	if err := r.ParseForm(); err != nil {
@@ -171,7 +171,7 @@ func (s *Server) handlePublishReport(w http.ResponseWriter, r *http.Request, cur
 	pub, err := s.svc.PublishReport(r.Context(), current.ID, id, baseline)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			http.NotFound(w, r)
+			s.notFound(w, r)
 			return
 		}
 		writeReportError(w, err)
@@ -217,30 +217,31 @@ func (s *Server) handleExportMarkdown(w http.ResponseWriter, r *http.Request, _ 
 	_, _ = io.WriteString(w, export.Markdown(pub))
 }
 
-// publication loads the published Report the path names, writing a 404 when
-// there is none. A publication is found only under its own Report Definition.
+// publication loads the published Report the path names, writing the Not found
+// page when there is none. A publication is found only under its own Report
+// Definition.
 func (s *Server) publication(w http.ResponseWriter, r *http.Request) (domain.Publication, bool) {
 	defID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return domain.Publication{}, false
 	}
 	pubID, err := strconv.ParseInt(r.PathValue("pub"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return domain.Publication{}, false
 	}
 	pub, err := s.svc.GetPublication(r.Context(), pubID)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			http.NotFound(w, r)
+			s.notFound(w, r)
 			return domain.Publication{}, false
 		}
 		http.Error(w, "could not load the publication", http.StatusInternalServerError)
 		return domain.Publication{}, false
 	}
 	if pub.DefinitionID != defID {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return domain.Publication{}, false
 	}
 	return pub, true
