@@ -23,15 +23,20 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] A `/verify-pending` skill and an `issue-verifier` subagent run the check on merged `pending-verify` issues: gates, parallel verifiers, browser checks with `scripts/`, then close the resolved ones and file follow-ups. An issue closes only when its acceptance criteria are met and its behaviour bullets hold on current `main` (#112).
 - [user] The Goal list's group headers sit on the neutral grey surface instead of a pale teal fill, since teal is kept for what a person can act on (#110).
 - [user] Marking a Retired Dimension or Field required, or not required, is refused, even when it would change nothing: required means nothing on something no longer offered, and its card already hides the control (#110).
+- [internal] `scripts/shots.mjs` fails a shot whose page ends on an HTTP error, unless the shot's new `status` field expects that status, so a 404 no longer passes unnoticed. An action that uses `return` or `await` now runs as the body of an async function, and a page with no title prints `(none)`. `node --test scripts/*.test.mjs` tests the parts that don't need a browser (#118).
 
 **Bug fixes:**
 - [user] No change on a Goal's page or Check-in page now shows the page saying you can't check in, or that the Goal doesn't exist, instead of seeming to do nothing when you click it (#109).
 - [user] The Health strip shows how each period ended: a week whose last Check-in puts the Goal On Hold or marks it Done is blank, not the Health of an earlier Check-in. The week in progress is no longer shown as missed: with no Check-in yet it is "not yet due", a solid-edged cell counted apart in the summary ("Last 11 weeks: 5 Green, 4 with no Check-in, 2 not yet due") (#108).
 - [user] An Undo now works only from the toast that offered it, once, and for 15 minutes. It is refused when something has happened since: a removed or rejected link was requested, accepted, removed or rejected again; a rejected Handoff's Goal has had any later Handoff; or a retired value was restored, renamed or merged. Before, an Undo stayed usable forever, so a link removed weeks ago could come back over someone else's later removal, and a rejected Handoff could be revived to take the Goal. Links removed and requests or Handoffs rejected before this release can no longer be undone. A Retired value's Restore button on the Dimensions page is unchanged and still works at any time (#106).
+- [user] A refused Undo now shows a "Can't undo" page inside the app, saying plainly why and with a Back link to where the Undo was offered, instead of a bare text page (#116).
+- [user] The No change button now shows its error page for any failure, a server error included, instead of seeming to do nothing on the Goal page (#116).
+- [user] A Check-in's entry on a Goal's History keeps naming the Milestones it added, marked Done or removed as they were named then, so renaming one later no longer rewrites the entry ("Marked GA Done" stays, not "Marked Launch Done"). Check-ins recorded before this release show the name each Milestone had when you upgraded. Date Slip lines still use the Milestone's current name (#117).
 
 **Infrastructure:**
 - [api] Database schema: migration `0033_undo_tokens` adds an `undo_tokens` table holding each Undo's one-time token, the action and person it belongs to, when it was issued and when it was used. It's additive and runs on startup (#106).
 - [api] Database schema: migration `0034_milestone_changes` adds a `milestone_changes` table recording each Milestone a Check-in added, marked Done or marked Removed: the Check-in, the Milestone, the kind of change and a removal's reason. It's additive and runs on startup (#107).
+- [api] Database schema: migration `0035_milestone_change_names` adds a `name` column to `milestone_changes` holding the Milestone's name when the Check-in made the change, and fills existing rows with the Milestone's current name. It's additive and runs on startup (#117).
 
 **Testing:**
 - [internal] Test that Home's Health distribution bar leaves out Proposed, Done and Cancelled Goals (#110).
