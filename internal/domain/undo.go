@@ -24,8 +24,8 @@ const (
 	undoValueRetirement  = "value-retire"      // a Dimension value
 )
 
-// undoNoLongerAvailable refuses a token that has expired or been used.
-var undoNoLongerAvailable = fmt.Errorf("%w: this Undo is no longer available", ErrValidation)
+// errUndoUnavailable refuses a token that has expired or been used.
+var errUndoUnavailable = fmt.Errorf("%w: this Undo is no longer available", ErrValidation)
 
 // issueUndo records a fresh one-time token that lets accountID undo the kind
 // of action done to subjectID, and returns it. detail is what the Undo must
@@ -80,14 +80,14 @@ func (s *Service) spendUndo(ctx context.Context, token, kind string, subjectID, 
 		return "", fmt.Errorf("spend undo token: %w", err)
 	}
 	if n == 0 {
-		return "", undoNoLongerAvailable
+		return "", errUndoUnavailable
 	}
 	issuedAt, err := time.Parse(timeFormat, row.IssuedAt)
 	if err != nil {
 		return "", fmt.Errorf("read undo token time: %w", err)
 	}
 	if now.Sub(issuedAt) > UndoWindow {
-		return "", undoNoLongerAvailable
+		return "", errUndoUnavailable
 	}
 	return row.Detail, nil
 }
