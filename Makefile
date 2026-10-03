@@ -6,11 +6,25 @@ generate:
 	go tool templ generate
 	go tool sqlc generate
 
-# Drift gate: regenerate, then fail if anything changed. Run in CI and as a
-# vetinari gate so stale generated code (a hand-edited *_templ.go, a query.sql
-# out of sync with query.sql.go) parks instead of merging.
+# What `generate` writes: templ's *_templ.go under internal/web, and sqlc's
+# output in internal/db (one <area>.sql.go per query file, plus models.go and
+# db.go, as sqlc.yaml configures).
+GENERATED := 'internal/web/*_templ.go' 'internal/db/*.sql.go' internal/db/models.go internal/db/db.go
+
+# Drift gate, run as a vetinari gate: regenerate, then fail if any generated
+# path is modified or untracked — a hand-edited *_templ.go, a query out of sync
+# with its .sql.go, or a new .templ or query file whose output was never
+# committed. Uncommitted changes outside the generated paths are ignored. Also
+# fails if go.mod or go.sum isn't tidy. --untracked-files=all so a personal
+# status.showUntrackedFiles setting can't hide a missing file.
 generate-check: generate
-	git diff --exit-code
+	@drift=$$(git status --porcelain --untracked-files=all -- $(GENERATED)); \
+	if [ -n "$$drift" ]; then \
+		echo "generated files are out of date or not committed:" >&2; \
+		echo "$$drift" >&2; \
+		exit 1; \
+	fi
+	go mod tidy -diff
 
 build:
 	go build -o bin/goal-tracker ./cmd/goal-tracker
