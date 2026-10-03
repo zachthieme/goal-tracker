@@ -30,6 +30,8 @@ func downloadCSV(t *testing.T, h *testsupport.Harness, goals ...domain.Goal) str
 // separated by semicolons and the Owner as an email. A Retired Dimension or
 // Field has no column (#81).
 func TestDownloadWritesTheImportFormatWithAnIDColumn(t *testing.T) {
+	t.Parallel()
+
 	const csv = `Title,Owner,So What,Kind,Delivery Date,Milestones,Metrics,Parents,Pillar,Theme,Budget,Notes
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,,,ARR | USD | up | 1000000 | 2000000 | 2026-12-31,,Growth,Trust; Speed,1250000,
 Ship checkout v2,eng@example.com,Checkout is slow.,Dated,2026-06-30,Beta @ 2026-05-01; GA @ 2026-06-15,,Grow revenue,Reliability,,,"Two
@@ -119,6 +121,8 @@ func historyLen(t *testing.T, h *testsupport.Harness, g domain.Goal) int {
 // Importing a download unchanged updates each Goal it names to what it already
 // is: no Goal is created, nothing changes, and no history is written (#81).
 func TestReimportingAnUnchangedDownloadChangesNothing(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 	parent, child := arrangeRoundTrip(t, h, admin)
@@ -158,6 +162,8 @@ func TestReimportingAnUnchangedDownloadChangesNothing(t *testing.T) {
 // updates that Goal, clearing a value whose cell was emptied, and records each
 // change in its history; the other Goal is untouched (#81).
 func TestReimportingAChangedDownloadUpdatesTheGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 	parent, child := arrangeRoundTrip(t, h, admin)
@@ -215,6 +221,8 @@ func TestReimportingAChangedDownloadUpdatesTheGoal(t *testing.T) {
 // validated first nothing is written: not another row's update, nor a new
 // Goal, nor a new value in an Extendable list (#81).
 func TestAnUnknownIDFailsTheFileAndWritesNothing(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 	parent, child := arrangeRoundTrip(t, h, admin)
@@ -252,6 +260,8 @@ func TestAnUnknownIDFailsTheFileAndWritesNothing(t *testing.T) {
 // changed Title or So What on it is ignored, and the report names each such
 // column once for the whole file (#81).
 func TestChangedGoalColumnsOnARowWithAnIDAreIgnoredAndReported(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 	parent, child := arrangeRoundTrip(t, h, admin)
@@ -282,6 +292,8 @@ func TestChangedGoalColumnsOnARowWithAnIDAreIgnoredAndReported(t *testing.T) {
 // nothing: the file could not be imported again, since the semicolon would
 // split the value (#101).
 func TestDownloadRefusesAValueContainingASemicolon(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 	pillar := h.CreateDimension(admin, "Pillar", "Growth", "Reliability")

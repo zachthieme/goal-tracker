@@ -13,6 +13,8 @@ import (
 // login: the Check-in records the Delegate as its author and the Owner it was
 // written for (CONTEXT.md: each Check-in records who wrote it).
 func TestDelegateSubmitsCheckin(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	sam := h.SignIn("sam@example.com")
@@ -42,6 +44,8 @@ func TestDelegateSubmitsCheckin(t *testing.T) {
 // A person who is neither the Owner nor a Delegate cannot submit a Check-in on
 // someone else's Goal (acceptance: Non-Delegates can't submit Check-ins).
 func TestNonDelegateCannotSubmitCheckin(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	sam := h.SignIn("sam@example.com")
@@ -61,6 +65,8 @@ func TestNonDelegateCannotSubmitCheckin(t *testing.T) {
 // A removed Delegate can no longer submit Check-ins: authorization ends when the
 // Owner revokes it (CONTEXT.md: a person an Owner authorizes).
 func TestRemovedDelegateCannotSubmitCheckin(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	sam := h.SignIn("sam@example.com")
@@ -89,6 +95,8 @@ func TestRemovedDelegateCannotSubmitCheckin(t *testing.T) {
 // An Owner authorizes a Delegate on their Goal, and the Goal then lists that
 // Delegate (CONTEXT.md: a person an Owner authorizes to write Check-ins).
 func TestOwnerAddsDelegate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	sam := h.SignIn("sam@example.com")
@@ -111,6 +119,8 @@ func TestOwnerAddsDelegate(t *testing.T) {
 // Only the Goal's Owner may authorize a Delegate; a stranger's attempt is
 // refused and adds nobody (CONTEXT.md: a person an Owner authorizes).
 func TestOnlyOwnerAddsDelegate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	sam := h.SignIn("sam@example.com")
@@ -134,6 +144,8 @@ func TestOnlyOwnerAddsDelegate(t *testing.T) {
 // Owner's Goal — but they stay listed among its Delegates, marked Departed
 // (CONTEXT.md: Departed).
 func TestDepartedDelegateCannotSubmitCheckin(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")

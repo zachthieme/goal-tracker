@@ -38,6 +38,8 @@ func sentTo(rec *email.Recorder, addr string) []email.Message {
 // An Owner whose Goal has gone Stale is reminded, and the reminder links
 // straight to the Goal's pre-filled Check-in form.
 func TestReminderListsStaleGoalWithLinkToItsCheckin(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
@@ -69,6 +71,8 @@ func TestReminderListsStaleGoalWithLinkToItsCheckin(t *testing.T) {
 // Goal on a 14-day cadence checked in 2 days ago is not, and an Owner with
 // nothing due gets no email.
 func TestReminderListsGoalsDueBeforeNextWeek(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	kim := h.SignIn("kim@example.com")
@@ -101,6 +105,8 @@ func TestReminderListsGoalsDueBeforeNextWeek(t *testing.T) {
 // A Delegate writes Check-ins for the Owner, so they are reminded of the Goals
 // they're a Delegate on, alongside the Owner, and told whose Goal it is.
 func TestReminderGoesToDelegatesToo(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	dee := h.SignIn("dee@example.com")
@@ -132,6 +138,8 @@ func TestReminderGoesToDelegatesToo(t *testing.T) {
 // Someone who has left the org isn't emailed: their Goal is Ownerless, but its
 // Delegate is still reminded.
 func TestReminderSkipsADepartedOwner(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -169,6 +177,8 @@ func digestTo(t *testing.T, rec *email.Recorder, addr string) string {
 // A parent Owner's digest lists the link requests waiting on them, linking to
 // where they decide.
 func TestDigestListsPendingLinkRequests(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat := h.SignIn("pat@example.com")
 	kim := h.SignIn("kim@example.com")
@@ -219,6 +229,8 @@ func checkinHealth(h *testsupport.Harness, author domain.Account, goalID int64, 
 // The digest names children whose Health got worse this week — to Yellow or to
 // Red — but not a child that was already Yellow a week ago and still is.
 func TestDigestListsChildrenThatWentYellowOrRedThisWeek(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat := h.SignIn("pat@example.com")
 	kim := h.SignIn("kim@example.com")
@@ -276,6 +288,8 @@ func slip(h *testsupport.Harness, author domain.Account, goal domain.Goal) {
 // The digest names a child that recorded a Date Slip this week, but not one
 // whose only slip was the week before.
 func TestDigestListsChildrenThatSlippedThisWeek(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat := h.SignIn("pat@example.com")
 	kim := h.SignIn("kim@example.com")
@@ -304,6 +318,8 @@ func TestDigestListsChildrenThatSlippedThisWeek(t *testing.T) {
 // The digest names a child that turned Stale this week, but not one that was
 // Stale already a week ago, nor one that's fresh.
 func TestDigestListsChildrenThatWentStaleThisWeek(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat := h.SignIn("pat@example.com")
 	kim := h.SignIn("kim@example.com")
@@ -336,6 +352,8 @@ func TestDigestListsChildrenThatWentStaleThisWeek(t *testing.T) {
 // The digest names a child that is Ownerless — its Owner left the org — so the
 // parent's Owner can get it reassigned.
 func TestDigestListsOwnerlessChildren(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -360,6 +378,8 @@ func TestDigestListsOwnerlessChildren(t *testing.T) {
 // A child that also contributes to a Goal put On Hold is named in the digest of
 // its other parent's Owner, who learns the work may no longer be needed.
 func TestDigestListsChildrenWithAParentOnHoldOrCancelled(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat := h.SignIn("pat@example.com")
 	lee := h.SignIn("lee@example.com")
@@ -397,6 +417,8 @@ func TestDigestListsChildrenWithAParentOnHoldOrCancelled(t *testing.T) {
 // Only Active Goals are checked in on routinely: a Proposed Goal or one On Hold
 // is never on a reminder.
 func TestReminderSkipsGoalsThatArentActive(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	h.CreateGoal(sam, "Explore voice search", "Typing is slow on phones.")
@@ -415,6 +437,8 @@ func TestReminderSkipsGoalsThatArentActive(t *testing.T) {
 // An email has no hover, so the reminder introduces the Owner a Delegate
 // writes for as Name (email) once, and by Name after that (CONTEXT.md: Name).
 func TestReminderIntroducesTheOwnerOnce(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignInNamed("sam.berg@example.com", "Sam Berg")
 	dee := h.SignIn("dee@example.com")
@@ -445,6 +469,8 @@ func TestReminderIntroducesTheOwnerOnce(t *testing.T) {
 // mention and by Name after that; someone without a Name reads as their
 // email's local part.
 func TestDigestIntroducesEachOwnerOnce(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat := h.SignIn("pat@example.com")
 	kim := h.SignInNamed("kim.lee@example.com", "Kim Lee")

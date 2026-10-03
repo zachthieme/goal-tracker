@@ -21,6 +21,8 @@ import (
 // in their inbox and accepts it, and only then does the Goal page show the new
 // Owner.
 func TestHandoffStartAcceptFlow(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -76,6 +78,8 @@ func TestHandoffStartAcceptFlow(t *testing.T) {
 // it to a present Owner, clearing Ownerless and recording the Reassign in the
 // Goal's Ownership history.
 func TestDepartedGoalOwnerlessSurfacedAndReassigned(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 
@@ -148,6 +152,8 @@ func TestDepartedGoalOwnerlessSurfacedAndReassigned(t *testing.T) {
 // Each pending Handoff is a card with Accept as the primary action and a Reject
 // that rejects it at once, with no confirmation (#56).
 func TestPendingHandoffRowsRejectAtOnce(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -178,6 +184,8 @@ func TestPendingHandoffRowsRejectAtOnce(t *testing.T) {
 // cancelled when its new Owner departed, and one the new Owner accepted after
 // the Owner who started it departed — which ends the Goal's Ownerless state.
 func TestOwnershipHistoryKeepsEveryHandoffOutcome(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	h.SignIn("boss@example.com")
@@ -265,6 +273,8 @@ func TestOwnershipHistoryKeepsEveryHandoffOutcome(t *testing.T) {
 // reassigned while they were away stays with its new Owner (CONTEXT.md:
 // Departed).
 func TestAdminMarksDepartedOwnerReturned(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := h.SignIn("boss@example.com")
@@ -312,6 +322,8 @@ func TestAdminMarksDepartedOwnerReturned(t *testing.T) {
 // Only an Admin may mark someone returned: anyone else is refused with 403 and
 // the person stays Departed.
 func TestNonAdminCannotMarkReturned(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := h.SignIn("boss@example.com")
@@ -336,6 +348,8 @@ func TestNonAdminCannotMarkReturned(t *testing.T) {
 // one unchecked removes exactly that Delegate, as a plain form POST, and the
 // Departed Delegate stays (CONTEXT.md: Delegate).
 func TestAcceptHandoffFormChoosesDelegatesToKeep(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := h.SignIn("boss@example.com")
@@ -415,6 +429,8 @@ func delegateEmails(t *testing.T, h *testsupport.Harness, goalID int64) []string
 // Posting the accept form with every box still checked keeps every Delegate; a
 // Reject touches none of them.
 func TestAcceptHandoffKeepingEveryBoxAndRejectLeaveDelegates(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -458,6 +474,8 @@ func TestAcceptHandoffKeepingEveryBoxAndRejectLeaveDelegates(t *testing.T) {
 // Home's Requests leads to the same choice: a Handoff's Review goes to the
 // accept form listing the Delegates to keep, each checked by default.
 func TestHomeHandoffReviewListsDelegatesToKeep(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -482,6 +500,8 @@ func TestHomeHandoffReviewListsDelegatesToKeep(t *testing.T) {
 
 // An Admin Reassign keeps every Delegate, present or Departed.
 func TestReassignKeepsDelegates(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := h.SignIn("boss@example.com")
@@ -513,6 +533,8 @@ func TestReassignKeepsDelegates(t *testing.T) {
 // When accepting fails part-way, the request fails and nothing changes: the
 // Owner, the Delegates and the pending Handoff all stay as they were.
 func TestFailedAcceptChangesNothing(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -554,6 +576,8 @@ func TestFailedAcceptChangesNothing(t *testing.T) {
 // refused, the Goal stays with the Owner the Admin chose, and the Ownership
 // history shows the Handoff cancelled before the Reassign.
 func TestReassignCancelsTheDepartedOwnersPendingHandoff(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := h.SignIn("boss@example.com")
@@ -611,6 +635,8 @@ func TestReassignCancelsTheDepartedOwnersPendingHandoff(t *testing.T) {
 // attributes. Home offers only the Reject form for such a Handoff, beside
 // Review, and it sits inline the same way.
 func TestPendingHandoffLayoutComesFromClasses(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -725,6 +751,8 @@ func toastFields(t *testing.T, page string) url.Values {
 // the toast isn't shown on a later visit, and Undo returns to the same page
 // with the Handoff pending again, shown so in the Goal's ownership history.
 func TestRejectingAHandoffOffersUndoOnce(t *testing.T) {
+	t.Parallel()
+
 	for _, from := range []string{"/handoffs", "/home"} {
 		t.Run(from, func(t *testing.T) {
 			h := testsupport.New(t)
@@ -768,6 +796,8 @@ func TestRejectingAHandoffOffersUndoOnce(t *testing.T) {
 // refused a second time; a crafted Undo of a Handoff that was never rejected
 // is refused too, and none of them changes the Handoff.
 func TestUndoingAHandoffRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	goal, _, pat, landed := rejectHandoff(t, h, ts, "/handoffs")
@@ -820,6 +850,8 @@ func TestUndoingAHandoffRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
 // Undo is refused with a message, changing nothing, once the Goal has another
 // pending Handoff, its Owner has changed, or the proposed Owner has Departed.
 func TestUndoingAHandoffRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name  string
 		since func(t *testing.T, h *testsupport.Harness, goal domain.Goal)
@@ -878,6 +910,8 @@ func TestUndoingAHandoffRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
 // and back to Sam. Pat's Undo from the toast is refused with a message, so the
 // old Handoff doesn't come back for Pat to take the Goal.
 func TestAHandoffRejectionUndoCantReviveItAfterLaterHandoffs(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	goal, ho, pat, landed := rejectHandoff(t, h, ts, "/handoffs")
@@ -911,6 +945,8 @@ func TestAHandoffRejectionUndoCantReviveItAfterLaterHandoffs(t *testing.T) {
 // A Handoff rejected before Undo tokens existed has none, so its Undo is
 // refused with 403 and it stays rejected.
 func TestAHandoffRejectedBeforeUndoTokensCantBeUndoneOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam, patAcc := h.SignIn("sam@example.com"), h.SignIn("pat@example.com")

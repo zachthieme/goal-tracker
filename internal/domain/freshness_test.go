@@ -16,6 +16,8 @@ const day = 24 * time.Hour
 // turns Stale only once more than its cadence (7 days by default) has passed
 // since activation (CONTEXT.md: Stale).
 func TestGoalWithNoCheckinIsStaleOnceItsCadencePassesSinceActivation(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	ctx := context.Background()
@@ -50,6 +52,8 @@ func TestGoalWithNoCheckinIsStaleOnceItsCadencePassesSinceActivation(t *testing.
 // cadence: on a 14-day cadence, a Goal last checked in 10 days ago is fresh and
 // one last checked in 15 days ago is Stale.
 func TestGoalIsStaleWhenItsLastCheckinIsOlderThanItsCadence(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	g := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
@@ -76,6 +80,8 @@ func TestGoalIsStaleWhenItsLastCheckinIsOlderThanItsCadence(t *testing.T) {
 // An On Hold Goal is never Stale, however long since its last Check-in: nobody
 // owes an update on paused work (CONTEXT.md: Stale, Lifecycle).
 func TestOnHoldGoalIsNeverStale(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	g := h.OnHoldGoal(sam, "Paused work", "It mattered.", "Budget freeze.")
@@ -90,6 +96,8 @@ func TestOnHoldGoalIsNeverStale(t *testing.T) {
 // 10:00 on Saturday 10 January there — Stale on a 7-day cadence — although only
 // 7 UTC days have passed.
 func TestCadenceIsCountedInTheOrgTimezone(t *testing.T) {
+	t.Parallel()
+
 	la, err := time.LoadLocation("America/Los_Angeles")
 	if err != nil {
 		t.Fatalf("LoadLocation: %v", err)
@@ -118,6 +126,8 @@ func TestCadenceIsCountedInTheOrgTimezone(t *testing.T) {
 // still isn't Green (CONTEXT.md: Path to Green). The target date itself is not
 // yet overdue, and a Check-in back at Green clears the flag.
 func TestPathToGreenIsOverdueOnceItsTargetDatePassesWithoutGreen(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
@@ -145,6 +155,8 @@ func TestPathToGreenIsOverdueOnceItsTargetDatePassesWithoutGreen(t *testing.T) {
 // children and a fresh Green one still roll up Green. An On Hold child is
 // neither Stale nor counted.
 func TestRolledUpHealthCountsStaleChildrenWithoutChangingTheColor(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Org outcome", "It matters.")
@@ -174,6 +186,8 @@ func TestRolledUpHealthCountsStaleChildrenWithoutChangingTheColor(t *testing.T) 
 // and every Goal whose Path to Green is overdue. Fresh Goals, On Hold Goals, and
 // Proposed Goals aren't listed.
 func TestFreshnessSignalsListStaleGoalsAndOverduePaths(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	silent := h.ActiveGoal(sam, "Silent since activation", "It matters.")
@@ -210,6 +224,8 @@ func TestFreshnessSignalsListStaleGoalsAndOverduePaths(t *testing.T) {
 // Resuming an On Hold Goal is a Check-in, so the count restarts from the resume,
 // not from the Check-in before the Goal was paused.
 func TestResumedGoalIsJudgedFromItsResume(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	g := h.OnHoldGoal(sam, "Paused work", "It mattered.", "Budget freeze.")
@@ -228,6 +244,8 @@ func TestResumedGoalIsJudgedFromItsResume(t *testing.T) {
 // A Done Goal owes no more updates, so it is never Stale, and a Red Path to Green
 // it left behind is never flagged.
 func TestDoneGoalIsNeitherStaleNorOverdue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
@@ -248,6 +266,8 @@ func TestDoneGoalIsNeitherStaleNorOverdue(t *testing.T) {
 // 8 March 2026, and a Check-in at 09:00 on 2 March is exactly 7 days old at 08:00
 // on 9 March — not yet Stale — though fewer than 7×24 hours have passed.
 func TestCadenceCountsCalendarDaysAcrossDaylightSaving(t *testing.T) {
+	t.Parallel()
+
 	la, err := time.LoadLocation("America/Los_Angeles")
 	if err != nil {
 		t.Fatalf("LoadLocation: %v", err)

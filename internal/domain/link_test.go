@@ -13,6 +13,8 @@ import (
 // When the requester owns the parent too, the link is accepted immediately
 // (CONTEXT.md: creating a child directly under a Goal you own).
 func TestRequestLinkAutoAcceptsWhenRequesterOwnsParent(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	parent := h.CreateGoal(owner, "Reduce outages", "Outages cost trust.")
@@ -42,6 +44,8 @@ func TestRequestLinkAutoAcceptsWhenRequesterOwnsParent(t *testing.T) {
 
 // The requester must own the child Goal they are offering up.
 func TestRequestLinkRequiresRequesterOwnsChild(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -61,6 +65,8 @@ func TestRequestLinkRequiresRequesterOwnsChild(t *testing.T) {
 // When the parent is owned by someone else, the request waits Pending for that
 // Owner, who sees it and can accept it into the graph.
 func TestRequestLinkPendsThenParentOwnerAccepts(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat := h.SignIn("pat@example.com") // owns the parent
 	sam := h.SignIn("sam@example.com") // owns the child
@@ -121,6 +127,8 @@ func TestRequestLinkPendsThenParentOwnerAccepts(t *testing.T) {
 
 // Only the parent's Owner may accept a pending request.
 func TestAcceptLinkRequiresParentOwner(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat := h.SignIn("pat@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -135,6 +143,8 @@ func TestAcceptLinkRequiresParentOwner(t *testing.T) {
 
 // The parent's Owner can reject a request, which removes it entirely.
 func TestRejectLinkRemovesTheRequest(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat := h.SignIn("pat@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -155,6 +165,8 @@ func TestRejectLinkRemovesTheRequest(t *testing.T) {
 
 // An accepted link can be removed, and then the Goals are no longer linked.
 func TestRemoveLinkUnlinksTheGoals(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	parent := h.CreateGoal(owner, "Reduce outages", "Outages cost trust.")
@@ -174,6 +186,8 @@ func TestRemoveLinkUnlinksTheGoals(t *testing.T) {
 
 // A link that would immediately close a cycle is rejected at request time.
 func TestRequestLinkRejectsAnImmediateCycle(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	a := h.CreateGoal(owner, "A", "why a")
@@ -194,6 +208,8 @@ func TestRequestLinkRejectsAnImmediateCycle(t *testing.T) {
 // A cycle that only appears after the request was made — because another link
 // was accepted in between — is caught again at accept time (ADR-0001).
 func TestAcceptLinkRejectsACycleThatAppearedSinceTheRequest(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	a1 := h.SignIn("a1@example.com")
 	b1 := h.SignIn("b1@example.com")
@@ -226,6 +242,8 @@ func TestAcceptLinkRejectsACycleThatAppearedSinceTheRequest(t *testing.T) {
 
 // A Goal may have many parents and many children.
 func TestGoalCanHaveManyParentsAndChildren(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	mid := h.CreateGoal(owner, "Displays migration", "cuts cost and outages")
@@ -249,6 +267,8 @@ func TestGoalCanHaveManyParentsAndChildren(t *testing.T) {
 
 // Ancestor and descendant traversal reaches through the graph out to a depth.
 func TestAncestorsAndDescendantsToDepth(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	// A -> B -> C -> D (each contributes to the next).
@@ -314,6 +334,8 @@ func equalIDsUnordered(got, want []int64) bool {
 
 // A Goal cannot contribute to itself.
 func TestRequestLinkRejectsSelfLink(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Reduce outages", "Outages cost trust.")
@@ -346,6 +368,8 @@ func acceptedAcrossOwners(t *testing.T, h *testsupport.Harness) (pat, sam domain
 // Undoing a removal puts the link back as accepted between the same two Goals,
 // without asking the parent's Owner to accept it again.
 func TestRestoreLinkPutsTheRemovedLinkBackAsAccepted(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat, sam, child, parent, link := acceptedAcrossOwners(t, h)
 	ctx := context.Background()
@@ -375,6 +399,8 @@ func TestRestoreLinkPutsTheRemovedLinkBackAsAccepted(t *testing.T) {
 // Only the person who removed a link may undo it: the other Goal's Owner may
 // not, even though they could have removed it themselves.
 func TestRestoreLinkRefusesAnyoneButTheRemover(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat, sam, child, _, link := acceptedAcrossOwners(t, h)
 	ctx := context.Background()
@@ -393,6 +419,8 @@ func TestRestoreLinkRefusesAnyoneButTheRemover(t *testing.T) {
 
 // A removal is undone once; a second Undo is refused and adds nothing.
 func TestRestoreLinkRefusesASecondUndo(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	_, sam, child, _, link := acceptedAcrossOwners(t, h)
 	ctx := context.Background()
@@ -421,6 +449,8 @@ func TestRestoreLinkRefusesASecondUndo(t *testing.T) {
 // Undo works only against a recorded removal: an id that names none is refused
 // and creates no link.
 func TestRestoreLinkRefusesARemovalThatNeverHappened(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	child := h.CreateGoal(sam, "Migrate displays", "Old displays fail often.")
@@ -436,6 +466,8 @@ func TestRestoreLinkRefusesARemovalThatNeverHappened(t *testing.T) {
 // When the link has been made again since it was removed, Undo is refused
 // rather than duplicating it.
 func TestRestoreLinkRefusesWhenTheLinkExistsAgain(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	parent := h.CreateGoal(owner, "Reduce outages", "Outages cost trust.")
@@ -459,6 +491,8 @@ func TestRestoreLinkRefusesWhenTheLinkExistsAgain(t *testing.T) {
 // When restoring the link would now close a cycle, because another link was
 // made since it was removed, Undo is refused and nothing changes (ADR-0001).
 func TestRestoreLinkRefusesACycleThatAppearedSinceTheRemoval(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	a := h.CreateGoal(owner, "A", "why a")
@@ -482,6 +516,8 @@ func TestRestoreLinkRefusesACycleThatAppearedSinceTheRemoval(t *testing.T) {
 // The remover must still own one of the Goals: after Handing off the Goal they
 // owned, their Undo is refused.
 func TestRestoreLinkRefusesARemoverWhoNoLongerOwnsEitherGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	_, sam, child, _, link := acceptedAcrossOwners(t, h)
 	ctx := context.Background()
@@ -519,6 +555,8 @@ func pendingAcrossOwners(t *testing.T, h *testsupport.Harness) (pat, sam domain.
 // Goals, with its original note and requester, for the parent's Owner to
 // decide again.
 func TestRestoreLinkRequestPutsTheRejectedRequestBackAsPending(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat, sam, child, parent, link := pendingAcrossOwners(t, h)
 	ctx := context.Background()
@@ -548,6 +586,8 @@ func TestRestoreLinkRequestPutsTheRejectedRequestBackAsPending(t *testing.T) {
 
 // Only the person who rejected a request may undo it: the requester may not.
 func TestRestoreLinkRequestRefusesAnyoneButTheRejecter(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat, sam, _, _, link := pendingAcrossOwners(t, h)
 	ctx := context.Background()
@@ -567,6 +607,8 @@ func TestRestoreLinkRequestRefusesAnyoneButTheRejecter(t *testing.T) {
 // A rejection is undone once: after rejecting the restored request again, the
 // first Undo is spent and brings nothing back.
 func TestRestoreLinkRequestRefusesASecondUndo(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat, _, _, _, link := pendingAcrossOwners(t, h)
 	ctx := context.Background()
@@ -599,6 +641,8 @@ func TestRestoreLinkRequestRefusesASecondUndo(t *testing.T) {
 // Undo works only against a recorded rejection: an id that names none is
 // refused and creates no request.
 func TestRestoreLinkRequestRefusesARejectionThatNeverHappened(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat, _, _, _, _ := pendingAcrossOwners(t, h)
 	ctx := context.Background()
@@ -615,6 +659,8 @@ func TestRestoreLinkRequestRefusesARejectionThatNeverHappened(t *testing.T) {
 // Undo is refused and changes nothing: whether the new request is still
 // pending, was accepted, was rejected in turn, or was accepted and removed.
 func TestRestoreLinkRequestRefusesWhenTheLinkWasRequestedAgain(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]func(t *testing.T, h *testsupport.Harness, pat, sam domain.Account, child, parent domain.Goal){
 		"pending again": func(t *testing.T, h *testsupport.Harness, pat, sam domain.Account, child, parent domain.Goal) {
 			h.RequestLink(sam, child, parent, "please")
@@ -671,6 +717,8 @@ func TestRestoreLinkRequestRefusesWhenTheLinkWasRequestedAgain(t *testing.T) {
 // A link removed before the request was made and rejected doesn't block the
 // Undo: it isn't a request since.
 func TestRestoreLinkRequestIgnoresARemovalBeforeTheRequest(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat, sam, child, parent, link := acceptedAcrossOwners(t, h)
 	ctx := context.Background()
@@ -692,6 +740,8 @@ func TestRestoreLinkRequestIgnoresARemovalBeforeTheRequest(t *testing.T) {
 // When the request would now close a cycle, because the parent was linked
 // under the child since, Undo is refused and nothing changes (ADR-0001).
 func TestRestoreLinkRequestRefusesACycleThatAppearedSinceTheRejection(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat, sam, child, parent, link := pendingAcrossOwners(t, h)
 	ctx := context.Background()

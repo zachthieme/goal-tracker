@@ -11,6 +11,8 @@ import (
 )
 
 func TestAddMilestoneListsUnderTheGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
@@ -41,6 +43,8 @@ func TestAddMilestoneListsUnderTheGoal(t *testing.T) {
 }
 
 func TestAddMilestoneRequiresNameAndDate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")
@@ -59,6 +63,8 @@ func TestAddMilestoneRequiresNameAndDate(t *testing.T) {
 }
 
 func TestEditMilestoneChangesNameAndDate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")
@@ -88,6 +94,8 @@ func TestEditMilestoneChangesNameAndDate(t *testing.T) {
 // A Check-in marks a Milestone Done; a Done Milestone is no longer overdue, so
 // the Check-in may be Green even past its date.
 func TestCheckinMarksMilestoneDone(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -113,6 +121,8 @@ func TestCheckinMarksMilestoneDone(t *testing.T) {
 
 // Removing a Milestone in a Check-in requires a reason, which is kept.
 func TestCheckinRemovesMilestoneWithReason(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -145,6 +155,8 @@ func TestCheckinRemovesMilestoneWithReason(t *testing.T) {
 // Only a Planned Milestone can be marked Done or Removed, and a status must be
 // one of the known ones.
 func TestCheckinMilestoneStatusMustMoveFromPlanned(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -174,6 +186,8 @@ func TestCheckinMilestoneStatusMustMoveFromPlanned(t *testing.T) {
 // A Check-in adds new Milestones to the Goal, each Planned; each needs a name
 // and a date.
 func TestCheckinAddsMilestones(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -220,6 +234,8 @@ func TestCheckinAddsMilestones(t *testing.T) {
 // Active; the Milestones planned before activation don't count, and marking one
 // Done is not churn (CONTEXT.md: Milestone Churn).
 func TestMilestoneChurnCountsAddedAndRemovedSinceActive(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -310,6 +326,8 @@ func replanned(t *testing.T, h *testsupport.Harness) (domain.Goal, domain.Submit
 // A Check-in records each Milestone it adds, marks Done or removes, with the
 // removal's reason, and its listing carries them.
 func TestCheckinRecordsItsMilestoneChanges(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	goal, in := replanned(t, h)
 	ms, err := h.Service.ListMilestones(context.Background(), goal.ID)
@@ -353,6 +371,8 @@ func TestCheckinRecordsItsMilestoneChanges(t *testing.T) {
 // A Check-in's Milestone changes keep each Milestone's name as it was: renaming
 // the added, Done and Removed Milestones afterwards leaves the entry as it read.
 func TestCheckinMilestoneChangesKeepTheNameAtTheTime(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	goal, in := replanned(t, h)
 	if _, err := h.Service.SubmitCheckin(context.Background(), in); err != nil {
@@ -394,6 +414,8 @@ func TestCheckinMilestoneChangesKeepTheNameAtTheTime(t *testing.T) {
 
 // A Check-in that fails validation records none of its Milestone changes.
 func TestRejectedCheckinRecordsNoMilestoneChange(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	goal, in := replanned(t, h)
 	in.Health = domain.HealthYellow // with no Path to Green
@@ -423,6 +445,8 @@ func TestRejectedCheckinRecordsNoMilestoneChange(t *testing.T) {
 // removed in a Check-in, is churn of 3, and it stays 3 for a Goal whose
 // Check-in has no recorded changes, as an older one doesn't.
 func TestMilestoneChurnIsUnchangedByRecordedChanges(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	goal, in := replanned(t, h)
 	if _, err := h.Service.SubmitCheckin(context.Background(), in); err != nil {

@@ -24,6 +24,8 @@ func wantNoLongerAvailable(t *testing.T, what string, err error) {
 // it, and is refused without it, with someone else's, or with one for another
 // action, restoring nothing.
 func TestUndoingALinkRemovalTakesItsToken(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	_, sam, child, parent, link := acceptedAcrossOwners(t, h)
 	ctx := context.Background()
@@ -66,6 +68,8 @@ func TestUndoingALinkRemovalTakesItsToken(t *testing.T) {
 // An Undo lasts 15 minutes by the Service's clock: at 15 minutes it still
 // works, a moment later it is no longer available.
 func TestALinkRemovalUndoExpiresAfter15Minutes(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	_, sam, child, _, link := acceptedAcrossOwners(t, h)
 	ctx := context.Background()
@@ -100,6 +104,8 @@ func TestALinkRemovalUndoExpiresAfter15Minutes(t *testing.T) {
 // parent's Owner, removes it. Sam's first Undo, still within its 15 minutes,
 // is refused: bringing the link back would override Pat's removal.
 func TestALinkRemovalUndoIsRefusedOnceThePairHasMovedOn(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat, sam, child, parent, link := acceptedAcrossOwners(t, h)
 	ctx := context.Background()
@@ -127,6 +133,8 @@ func TestALinkRemovalUndoIsRefusedOnceThePairHasMovedOn(t *testing.T) {
 // When the link was requested again since its removal and that request was
 // rejected, the removal's Undo is refused too.
 func TestALinkRemovalUndoIsRefusedOnceALaterRequestWasRejected(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	pat, sam, child, parent, link := acceptedAcrossOwners(t, h)
 	ctx := context.Background()
@@ -152,6 +160,8 @@ func TestALinkRemovalUndoIsRefusedOnceALaterRequestWasRejected(t *testing.T) {
 // A refused Undo spends its token: once the refusal's reason is gone, the same
 // token is no longer available.
 func TestARefusedLinkRemovalUndoSpendsItsToken(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	a := h.CreateGoal(owner, "A", "why a")
@@ -181,6 +191,8 @@ func TestARefusedLinkRemovalUndoSpendsItsToken(t *testing.T) {
 // succeeds with it once, is refused without it or with another person's, and
 // is no longer available after 15 minutes.
 func TestUndoingALinkRejectionTakesItsToken(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	t.Run("token", func(t *testing.T) {
 		h := testsupport.New(t)
@@ -254,6 +266,8 @@ func TestUndoingALinkRejectionTakesItsToken(t *testing.T) {
 // with it, is refused without it or with one for another action, and is no
 // longer available after 15 minutes or a second time.
 func TestUndoingAHandoffRejectionTakesItsToken(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	t.Run("token", func(t *testing.T) {
 		h := testsupport.New(t)
@@ -309,6 +323,8 @@ func TestUndoingAHandoffRejectionTakesItsToken(t *testing.T) {
 // and back to Sam. Pat's Undo, still within its 15 minutes, is refused: the
 // old Handoff must not come back pending for Pat to take the Goal.
 func TestAHandoffRejectionUndoIsRefusedOnceTheGoalHasMovedOn(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam, pat, goal, ho, token := rejectedHandoff(t, h)
 	ctx := context.Background()
@@ -333,6 +349,8 @@ func TestAHandoffRejectionUndoIsRefusedOnceTheGoalHasMovedOn(t *testing.T) {
 // A Handoff rejected before Undo tokens existed has none, so it can't be
 // undone.
 func TestAHandoffRejectedBeforeUndoTokensCantBeUndone(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -392,6 +410,8 @@ func valueRetired(t *testing.T, h *testsupport.Harness, valueID int64) bool {
 // value with it, and is refused without it, with another Admin's, or for
 // another value.
 func TestUndoingAValueRetirementTakesItsToken(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com", "ada@example.com")
 	ctx := context.Background()
 	boss, dim, trust, token := retiredValue(t, h)
@@ -421,6 +441,8 @@ func TestUndoingAValueRetirementTakesItsToken(t *testing.T) {
 
 // A value's Undo lasts 15 minutes and works once.
 func TestAValueRetirementUndoIsOneTimeAndExpires(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	t.Run("expired", func(t *testing.T) {
 		h := testsupport.New(t, "boss@example.com")
@@ -450,6 +472,8 @@ func TestAValueRetirementUndoIsOneTimeAndExpires(t *testing.T) {
 // A value's Undo is refused, changing nothing, unless the value still exists,
 // is still Retired, and still has the name it was retired under.
 func TestAValueRetirementUndoIsRefusedOnceTheValueHasChanged(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	t.Run("renamed", func(t *testing.T) {
 		h := testsupport.New(t, "boss@example.com")

@@ -19,6 +19,8 @@ func settle(h *testsupport.Harness) {
 // A Red Goal gets the full MBR block; an unchanged Green Goal gets one line
 // (CONTEXT.md: Report).
 func TestReportRedIsExceptionAndUnchangedGreenIsOneLine(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
@@ -74,6 +76,8 @@ func lineIDs(r domain.Report) []int64 {
 // Each exception trigger alone earns a Goal the full block, beside an unchanged
 // Green control that stays one line (CONTEXT.md: Report).
 func TestReportExceptionTriggers(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		name string
 		// arrange builds the Goal under test at Epoch, before the default
@@ -240,6 +244,8 @@ func slipDelivery(h *testsupport.Harness, owner domain.Account, g domain.Goal, n
 // and resumed before it is unchanged and takes one line, but a baseline the
 // reader sets earlier catches those changes and makes it an exception.
 func TestReportReadsChangesAgainstBaseline(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -285,6 +291,8 @@ func TestReportReadsChangesAgainstBaseline(t *testing.T) {
 // Metrics against target, and the Rolled-up Health with the Owner's
 // explanation (CONTEXT.md: Report, Date Slip, Rolled-up Health).
 func TestReportBlockShowsTheMBRTreatment(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")

@@ -15,6 +15,8 @@ import (
 // Accomplishment, or Miss; it is queryable by Goal and credits the Owner the
 // Check-in was written for (CONTEXT.md: Highlight).
 func TestSubmitCheckinRecordsOptionalHighlight(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -49,6 +51,8 @@ func TestSubmitCheckinRecordsOptionalHighlight(t *testing.T) {
 // recorded, and a Goal's Highlights from one Check-in list in the order they
 // were entered (CONTEXT.md: Highlight).
 func TestSubmitCheckinRecordsSeveralHighlightsInOrder(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -92,6 +96,8 @@ func TestSubmitCheckinRecordsSeveralHighlightsInOrder(t *testing.T) {
 
 // A Highlight is optional: a Check-in without one records none.
 func TestSubmitCheckinWithoutHighlightRecordsNone(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -117,6 +123,8 @@ func TestSubmitCheckinWithoutHighlightRecordsNone(t *testing.T) {
 // kind, or a kind that isn't one, is refused with an error naming the row, and
 // the whole Check-in is refused.
 func TestHighlightWithNoteNeedsAKindNamingTheRow(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -153,6 +161,8 @@ func TestHighlightWithNoteNeedsAKindNamingTheRow(t *testing.T) {
 // A Highlight row with a blank note is ignored, whatever kind it is marked as;
 // the rest of the Check-in's Highlights are recorded.
 func TestHighlightWithBlankNoteIsIgnored(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -182,6 +192,8 @@ func TestHighlightWithBlankNoteIsIgnored(t *testing.T) {
 // Kinds can repeat: two Highlights of the same kind on one Check-in are both
 // recorded.
 func TestCheckinRecordsTwoHighlightsOfTheSameKind(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -203,6 +215,8 @@ func TestCheckinRecordsTwoHighlightsOfTheSameKind(t *testing.T) {
 // Highlights can be queried by Goal and by time range, which Report curation
 // needs (CONTEXT.md: Report). The range is inclusive of its endpoints.
 func TestHighlightsQueriedByGoalAndTimeRange(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -247,6 +261,8 @@ func TestHighlightsQueriedByGoalAndTimeRange(t *testing.T) {
 // A "No change" Check-in repeats the previous Health and status but carries no
 // Highlights, even when the Check-in it repeats carried several.
 func TestNoChangeCheckinCarriesNoHighlights(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")

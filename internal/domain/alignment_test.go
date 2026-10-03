@@ -14,6 +14,8 @@ import (
 // An Admin marks a Goal as one of the org's root outcomes, and can unmark it
 // again (CONTEXT.md: Top-level Goal).
 func TestAdminMarksAndUnmarksTopLevelGoal(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
@@ -43,6 +45,8 @@ func TestAdminMarksAndUnmarksTopLevelGoal(t *testing.T) {
 // Only an Admin decides which Goals are the org's root outcomes; the Goal's own
 // Owner may not mark or unmark it.
 func TestOnlyAdminMarksTopLevelGoal(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
@@ -63,6 +67,8 @@ func TestOnlyAdminMarksTopLevelGoal(t *testing.T) {
 
 // Marking a Goal that does not exist is reported as not found.
 func TestMarkTopLevelUnknownGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
 
@@ -75,6 +81,8 @@ func TestMarkTopLevelUnknownGoal(t *testing.T) {
 // aren't Top-level (CONTEXT.md: Unaligned). A Goal whose only parent link is
 // still pending is Unaligned: the link exists only once accepted.
 func TestUnalignedListsActiveGoalsWithNoAcceptedParent(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -104,6 +112,8 @@ func TestUnalignedListsActiveGoalsWithNoAcceptedParent(t *testing.T) {
 // Unmarking a Top-level Goal that contributes to nothing makes it Unaligned
 // again; marking it takes it back off the list.
 func TestTopLevelMarkTakesGoalOffUnalignedList(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
@@ -130,6 +140,8 @@ func TestTopLevelMarkTakesGoalOffUnalignedList(t *testing.T) {
 // the parent are flagged on their own. An earlier or equal date is fine, as is
 // an Ongoing child with no delivery date.
 func TestChildDeliveringAfterParentFlagsBoth(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
@@ -165,6 +177,8 @@ func TestChildDeliveringAfterParentFlagsBoth(t *testing.T) {
 // A schedule conflict appears when a Date Slip moves the child past its parent,
 // since it is read from the graph's current dates rather than reported.
 func TestDateSlipPastParentRaisesScheduleConflict(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
@@ -197,6 +211,8 @@ func TestDateSlipPastParentRaisesScheduleConflict(t *testing.T) {
 // A Goal that is Cancelled no longer puts its partner's date at risk, so a
 // Cancelled late child raises no schedule conflict.
 func TestCancelledChildRaisesNoScheduleConflict(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
@@ -215,6 +231,8 @@ func TestCancelledChildRaisesNoScheduleConflict(t *testing.T) {
 // flagged: their work may no longer be needed. Children of an Active parent
 // aren't, nor is a child that is itself Cancelled.
 func TestChildrenFlaggedWhenParentOnHoldOrCancelled(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 

@@ -39,6 +39,8 @@ func assertNotFoundPage(t *testing.T, client *http.Client, rawURL, back string) 
 // A signed-in person following a link to a Goal that doesn't exist gets the
 // Not found page with a way back to Home.
 func TestMissingGoalShowsNotFoundPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	h.SignIn("pat@example.com")
@@ -49,6 +51,8 @@ func TestMissingGoalShowsNotFoundPage(t *testing.T) {
 
 // A Goal address that isn't a number names nothing either.
 func TestMalformedGoalAddressShowsNotFoundPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	h.SignIn("pat@example.com")
@@ -59,6 +63,8 @@ func TestMalformedGoalAddressShowsNotFoundPage(t *testing.T) {
 
 // The Check-in page of a Goal that doesn't exist is the Not found page.
 func TestCheckinOnMissingGoalShowsNotFoundPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	h.SignIn("pat@example.com")
@@ -69,6 +75,8 @@ func TestCheckinOnMissingGoalShowsNotFoundPage(t *testing.T) {
 
 // A Report Definition that doesn't exist is the Not found page.
 func TestMissingReportShowsNotFoundPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	h.SignIn("pat@example.com")
@@ -80,6 +88,8 @@ func TestMissingReportShowsNotFoundPage(t *testing.T) {
 // A publication that doesn't exist, or one asked for under a Report Definition
 // it wasn't published from, is the Not found page.
 func TestMissingPublicationShowsNotFoundPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	pat := h.SignIn("pat@example.com")
@@ -96,6 +106,8 @@ func TestMissingPublicationShowsNotFoundPage(t *testing.T) {
 // The Definition log about a Dimension or Field that doesn't exist is the Not
 // found page.
 func TestDefinitionLogAboutMissingThingShowsNotFoundPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	h.SignIn("pat@example.com")
@@ -108,6 +120,8 @@ func TestDefinitionLogAboutMissingThingShowsNotFoundPage(t *testing.T) {
 // An address no route matches is the Not found page: back to Home for someone
 // signed in, and to sign in for a visitor who isn't.
 func TestUnknownAddressShowsNotFoundPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	h.SignIn("pat@example.com")

@@ -45,6 +45,8 @@ func getWithTheme(t *testing.T, client *http.Client, rawURL, value string) strin
 // not. With no choice, or one the server doesn't recognise, it isn't pinned
 // and follows the system.
 func TestThemeCookiePinsEveryPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
@@ -104,6 +106,8 @@ func themeCookieIn(resp *http.Response) *http.Cookie {
 // each choice, and pins every page to it. Choosing System clears the cookie,
 // and the pages follow the system again.
 func TestChoosingAThemePinsItAndSystemClearsIt(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
@@ -137,6 +141,8 @@ func TestChoosingAThemePinsItAndSystemClearsIt(t *testing.T) {
 // After choosing, the person lands back on the page they chose from. A return
 // address that isn't a path on this site lands on Home instead.
 func TestChoosingAThemeReturnsToThePage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
@@ -163,6 +169,8 @@ func TestChoosingAThemeReturnsToThePage(t *testing.T) {
 // The choice belongs to the browser, not the session: it can be made before
 // signing in, and it survives signing out and in again.
 func TestThemeChoiceOutlivesTheSession(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	jar, err := cookiejar.New(nil)
@@ -203,6 +211,8 @@ func themeMenu(t *testing.T, page string) string {
 // Dark in words, marks the current choice, and each choice is a plain form
 // post that comes back to the page it was made on.
 func TestThemeMenuOffersTheThreeChoices(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	g := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -258,6 +268,8 @@ func TestThemeMenuOffersTheThreeChoices(t *testing.T) {
 // A Report's Print view is black on white whatever theme is chosen: it renders
 // the same with each choice as with none.
 func TestPrintViewIgnoresTheTheme(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
@@ -283,6 +295,8 @@ func TestPrintViewIgnoresTheTheme(t *testing.T) {
 // top bar. The current choice is marked to the eye, not only to a screen
 // reader.
 func TestThemeMenuFloatsWithoutWideningTheTopBar(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -305,6 +319,8 @@ func TestThemeMenuFloatsWithoutWideningTheTopBar(t *testing.T) {
 // no script reads it, and SameSite=Lax, so another site's form can't set it
 // (ticket #84).
 func TestThemeCookieIsHTTPOnlyAndSameSiteLax(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")

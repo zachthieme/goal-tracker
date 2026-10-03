@@ -14,6 +14,8 @@ import (
 // the new Owner accepts it (CONTEXT.md: Handoff takes effect only when the new
 // Owner accepts).
 func TestHandoffTakesEffectOnlyWhenNewOwnerAccepts(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com") // current Owner
 	pat := h.SignIn("pat@example.com") // proposed new Owner
@@ -66,6 +68,8 @@ func TestHandoffTakesEffectOnlyWhenNewOwnerAccepts(t *testing.T) {
 
 // Only the proposed new Owner may accept a Handoff.
 func TestAcceptHandoffOnlyByNewOwner(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -88,6 +92,8 @@ func TestAcceptHandoffOnlyByNewOwner(t *testing.T) {
 // An Admin may start a Handoff for a Goal they do not own; a non-Owner non-Admin
 // may not (CONTEXT.md: an Owner or an Admin starts a Handoff).
 func TestStartHandoffAuthorization(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com") // Admin
 	sam := h.SignIn("sam@example.com")   // Owner
@@ -111,6 +117,8 @@ func TestStartHandoffAuthorization(t *testing.T) {
 
 // An Admin marks a person departed; the Goals they still own become Ownerless.
 func TestMarkDepartedMakesGoalsOwnerless(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -130,6 +138,8 @@ func TestMarkDepartedMakesGoalsOwnerless(t *testing.T) {
 
 // Only an Admin may mark a person departed.
 func TestMarkDepartedOnlyByAdmin(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -140,6 +150,8 @@ func TestMarkDepartedOnlyByAdmin(t *testing.T) {
 
 // An Admin reassigns an Ownerless Goal to a present Owner, clearing Ownerless.
 func TestAdminReassignsOwnerlessGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -164,6 +176,8 @@ func TestAdminReassignsOwnerlessGoal(t *testing.T) {
 // Reassignment is an Admin power over Ownerless Goals: a non-Admin may not, and
 // a Goal whose Owner is present is handed off, not reassigned.
 func TestReassignGoalGuards(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -201,6 +215,8 @@ func startHandoff(t *testing.T, h *testsupport.Harness, goalID, toID, actorID in
 // rejected; the Owner is unchanged and a new Handoff may be started
 // (CONTEXT.md: every Handoff is kept with its outcome).
 func TestRejectedHandoffIsKeptInHistory(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -235,6 +251,8 @@ func TestRejectedHandoffIsKeptInHistory(t *testing.T) {
 // Marking someone Departed cancels the pending Handoffs to them: each is kept
 // with the outcome cancelled and can no longer be accepted.
 func TestMarkDepartedCancelsHandoffsToThePerson(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -265,6 +283,8 @@ func TestMarkDepartedCancelsHandoffsToThePerson(t *testing.T) {
 // new Owner accepts it, which ends the Goal's Ownerless state (CONTEXT.md:
 // Ownerless).
 func TestHandoffFromDepartedOwnerStillAccepted(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -295,6 +315,8 @@ func TestHandoffFromDepartedOwnerStillAccepted(t *testing.T) {
 // Handoffs before it: who did it, from whom, to whom, and the outcome
 // reassigned.
 func TestReassignAppearsInOwnershipHistory(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -346,6 +368,8 @@ func delegateIDs(t *testing.T, h *testsupport.Harness, goalID int64) []int64 {
 // rest, while the Goal moves to the new Owner (CONTEXT.md: Delegate — the new
 // Owner chooses which Delegates to keep).
 func TestAcceptHandoffRemovesTheDelegatesNotKept(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com") // current Owner
 	pat := h.SignIn("pat@example.com") // new Owner
@@ -370,6 +394,8 @@ func TestAcceptHandoffRemovesTheDelegatesNotKept(t *testing.T) {
 
 // Accepting with every Delegate kept leaves them all on the Goal.
 func TestAcceptHandoffKeepingEveryDelegate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -392,6 +418,8 @@ func TestAcceptHandoffKeepingEveryDelegate(t *testing.T) {
 // A Departed Delegate isn't offered to the new Owner, so accepting leaves them on
 // the Goal, still Departed, whatever the new Owner kept.
 func TestAcceptHandoffLeavesDepartedDelegates(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -416,6 +444,8 @@ func TestAcceptHandoffLeavesDepartedDelegates(t *testing.T) {
 // The Owner already writes a Goal's Check-ins, so a Delegate who accepts a
 // Handoff of that Goal stops being its Delegate on becoming its Owner.
 func TestAcceptHandoffByADelegateEndsTheirDelegation(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	pat := h.SignIn("pat@example.com") // Delegate, then new Owner
@@ -435,6 +465,8 @@ func TestAcceptHandoffByADelegateEndsTheirDelegation(t *testing.T) {
 // Accepting is all-or-nothing: if recording the outcome fails, the Owner, the
 // Delegates and the Handoff all stay as they were.
 func TestAcceptHandoffChangesNothingWhenAStepFails(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -465,6 +497,8 @@ func TestAcceptHandoffChangesNothingWhenAStepFails(t *testing.T) {
 
 // Rejecting a Handoff leaves the Goal's Delegates alone.
 func TestRejectHandoffLeavesDelegates(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -485,6 +519,8 @@ func TestRejectHandoffLeavesDelegates(t *testing.T) {
 // An Admin Reassign of an Ownerless Goal keeps every Delegate, present or
 // Departed.
 func TestReassignKeepsEveryDelegate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -512,6 +548,8 @@ func TestReassignKeepsEveryDelegate(t *testing.T) {
 // Each pending Handoff offers the new Owner the Goal's Delegates to keep: every
 // Delegate who isn't Departed, other than the new Owner themselves.
 func TestPendingHandoffOffersTheDelegatesToKeep(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -543,6 +581,8 @@ func TestPendingHandoffOffersTheDelegatesToKeep(t *testing.T) {
 // recipient can no longer take the Goal from the Owner the Admin chose, and the
 // new Owner may start a Handoff of their own.
 func TestReassignCancelsThePendingHandoff(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com") // departing Owner
@@ -589,6 +629,8 @@ func TestReassignCancelsThePendingHandoff(t *testing.T) {
 // still cancels that Handoff: they own the Goal by the Reassign, not by
 // accepting.
 func TestReassignToTheHandoffRecipientCancelsTheHandoff(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -624,6 +666,8 @@ func TestReassignToTheHandoffRecipientCancelsTheHandoff(t *testing.T) {
 // Reassign cancels the pending Handoff), so the test moves the Goal directly in
 // the database.
 func TestAcceptStaleHandoffIsRefused(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -670,6 +714,8 @@ func rejectedHandoff(t *testing.T, h *testsupport.Harness) (sam, pat domain.Acco
 // Owner, and the Goal's ownership history shows it pending, not as a rejection
 // followed by something else.
 func TestRestoreHandoffPutsTheRejectedHandoffBackAsPending(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam, pat, goal, ho, token := rejectedHandoff(t, h)
 	ctx := context.Background()
@@ -696,6 +742,8 @@ func TestRestoreHandoffPutsTheRejectedHandoffBackAsPending(t *testing.T) {
 // Only the person who rejected a Handoff may undo it: the Owner who started it
 // may not.
 func TestRestoreHandoffRefusesAnyoneButTheRejecter(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam, pat, _, ho, token := rejectedHandoff(t, h)
 	ctx := context.Background()
@@ -710,6 +758,8 @@ func TestRestoreHandoffRefusesAnyoneButTheRejecter(t *testing.T) {
 
 // A rejection is undone once: a second Undo is refused and changes nothing.
 func TestRestoreHandoffRefusesASecondUndo(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	_, pat, goal, ho, token := rejectedHandoff(t, h)
 	ctx := context.Background()
@@ -728,6 +778,8 @@ func TestRestoreHandoffRefusesASecondUndo(t *testing.T) {
 // Undo works only for a Handoff that was rejected: one still pending, one
 // accepted, or an id that names none is refused and changes nothing.
 func TestRestoreHandoffRefusesAHandoffThatWasNeverRejected(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -761,6 +813,8 @@ func TestRestoreHandoffRefusesAHandoffThatWasNeverRejected(t *testing.T) {
 // another pending Handoff, its Owner has changed, or the proposed Owner has
 // since Departed.
 func TestRestoreHandoffRefusesWhenItNoLongerFits(t *testing.T) {
+	t.Parallel()
+
 	cases := map[string]func(t *testing.T, h *testsupport.Harness, sam, pat domain.Account, goal domain.Goal){
 		"another pending": func(t *testing.T, h *testsupport.Harness, sam, pat domain.Account, goal domain.Goal) {
 			mel := h.SignIn("mel@example.com")

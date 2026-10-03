@@ -15,6 +15,8 @@ import (
 // since its last update, and every Goal whose Path to Green is overdue.
 // Fresh Goals aren't listed.
 func TestFreshnessPageListsStaleGoalsAndOverduePaths(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -51,6 +53,8 @@ func TestFreshnessPageListsStaleGoalsAndOverduePaths(t *testing.T) {
 // beside the Rolled-up Health says how many Active children are Stale without
 // changing the color. A fresh Goal shows no freshness flag.
 func TestGoalPageFlagsFreshness(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -93,6 +97,8 @@ func TestGoalPageFlagsFreshness(t *testing.T) {
 // its own row, as it marks an Ownerless one, so neither hides until someone
 // opens the Goal. A fresh Goal's row carries no mark.
 func TestGoalListMarksStaleAndOverdueGoals(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -130,6 +136,8 @@ func TestGoalListMarksStaleAndOverdueGoals(t *testing.T) {
 // for those who may check in on it, its Owner and its Delegates, and for no
 // one else, not even an Admin (#86).
 func TestStaleBannerOffersCheckInNowToOwnerAndDelegates(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -177,6 +185,8 @@ func TestStaleBannerOffersCheckInNowToOwnerAndDelegates(t *testing.T) {
 // reaches 3:1 on the canvas around them and the surface inside. A tag's text
 // reaches 4.5:1 on the canvas and the cards it sits on.
 func TestStaleIsADashedGreyChipAndTagsAreOutlined(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")

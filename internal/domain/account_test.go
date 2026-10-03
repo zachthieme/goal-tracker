@@ -12,6 +12,8 @@ import (
 )
 
 func TestSignInCreatesAccountOnFirstUse(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 
 	acc, err := h.Service.SignIn(context.Background(), "sam@example.com")
@@ -30,6 +32,8 @@ func TestSignInCreatesAccountOnFirstUse(t *testing.T) {
 }
 
 func TestSignInIsIdempotentForTheSameEmail(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 
 	first := h.SignIn("sam@example.com")
@@ -41,6 +45,8 @@ func TestSignInIsIdempotentForTheSameEmail(t *testing.T) {
 }
 
 func TestSignInSetsAdminFromConfig(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 
 	admin := h.SignIn("boss@example.com")
@@ -56,6 +62,8 @@ func TestSignInSetsAdminFromConfig(t *testing.T) {
 
 // A Departed person can't sign in (CONTEXT.md: Departed).
 func TestSignInRefusesADepartedAccount(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -73,6 +81,8 @@ func TestSignInRefusesADepartedAccount(t *testing.T) {
 // were. A Goal reassigned while they were away stays with its new Owner
 // (CONTEXT.md: Departed).
 func TestMarkReturnedReversesADeparture(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -115,6 +125,8 @@ func TestMarkReturnedReversesADeparture(t *testing.T) {
 // Only an Admin may mark a person returned; the refusal is enforced in the
 // domain, not just hidden in the UI.
 func TestMarkReturnedOnlyByAdmin(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -136,6 +148,8 @@ func TestMarkReturnedOnlyByAdmin(t *testing.T) {
 // in the order they are shown: by Label. A present person isn't listed, nor is
 // one who has returned.
 func TestDepartedAccountsListsEveryDepartedPersonByLabel(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -184,6 +198,8 @@ func TestDepartedAccountsListsEveryDepartedPersonByLabel(t *testing.T) {
 // A Handoff cancelled when its new Owner departed stays cancelled after they
 // return, so the Goal stays with the Owner who started it.
 func TestMarkReturnedLeavesACancelledHandoffCancelled(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -217,6 +233,8 @@ func TestMarkReturnedLeavesACancelledHandoffCancelled(t *testing.T) {
 // A person is shown by their Name, or by the part of their email before the @
 // until they have one (CONTEXT.md: Name).
 func TestAccountLabelIsTheNameOrTheEmailLocalPart(t *testing.T) {
+	t.Parallel()
+
 	named := domain.Account{Email: "ada.okafor@example.com", Name: "Ada Okafor"}
 	unnamed := domain.Account{Email: "ada.okafor@example.com"}
 
@@ -237,6 +255,8 @@ func TestAccountLabelIsTheNameOrTheEmailLocalPart(t *testing.T) {
 // Where there is no hover — an export or an email body — a person's first
 // mention reads Name (email), and later mentions use the Name alone.
 func TestMentionsIntroduceEachPersonOnce(t *testing.T) {
+	t.Parallel()
+
 	ada := domain.Account{Email: "ada.okafor@example.com", Name: "Ada Okafor"}
 	sam := domain.Account{Email: "sam@example.com"}
 	var m domain.Mentions
@@ -253,6 +273,8 @@ func TestMentionsIntroduceEachPersonOnce(t *testing.T) {
 // A Name, once set, is what the Account carries wherever it is read; a new
 // Account has none.
 func TestSetNameGivesAnAccountItsName(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	ada := h.SignIn("ada.okafor@example.com")
@@ -279,6 +301,8 @@ func TestSetNameGivesAnAccountItsName(t *testing.T) {
 // An email names one Account whatever its case, so a Departed person can't sign
 // in again by changing the case of their email (CONTEXT.md: Account).
 func TestSignInRefusesADifferentCaseOfADepartedEmail(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -306,6 +330,8 @@ func countAccounts(t *testing.T, h *testsupport.Harness) int {
 }
 
 func TestSignInWithADifferentCaseReturnsTheExistingAccount(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 
@@ -316,6 +342,8 @@ func TestSignInWithADifferentCaseReturnsTheExistingAccount(t *testing.T) {
 }
 
 func TestSignInStoresTheEmailTrimmedAndLowercased(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 
 	acc := h.SignIn("  Freya.Nilsen@Example.com ")
@@ -326,6 +354,8 @@ func TestSignInStoresTheEmailTrimmedAndLowercased(t *testing.T) {
 
 // GOAL_TRACKER_ADMINS matches an email whatever its case, on either side.
 func TestSignInSetsAdminFromConfigIgnoringCase(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct{ configured, signIn string }{
 		{"boss@example.com", "Boss@Example.com"},
 		{"Boss@Example.com", "boss@example.com"},
@@ -343,6 +373,8 @@ func TestSignInSetsAdminFromConfigIgnoringCase(t *testing.T) {
 // Every lookup by email finds the Account whatever case the caller typed
 // (CONTEXT.md: Account).
 func TestLookupsByEmailIgnoreCase(t *testing.T) {
+	t.Parallel()
+
 	t.Run("adding a Delegate", func(t *testing.T) {
 		h := testsupport.New(t)
 		sam := h.SignIn("sam@example.com")

@@ -109,6 +109,8 @@ func entryKind(t *testing.T, entry string) string {
 // week under a "Week of" heading in the org's calendar, and it is open on
 // load: nothing in it sits behind an outer disclosure.
 func TestGoalHistoryIsOneTimelineNewestFirstUnderWeekHeadings(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	goal := oneOfEachKind(t, h)
 	ts := newServer(t, h)
@@ -147,6 +149,8 @@ func TestGoalHistoryIsOneTimelineNewestFirstUnderWeekHeadings(t *testing.T) {
 // Jan at 03:00 UTC is Sunday evening in Los Angeles, so in an org there it
 // falls in the week of 29 Dec with the Goal's creation.
 func TestGoalHistoryWeeksAreInTheOrgsTimezone(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	la, err := time.LoadLocation("America/Los_Angeles")
 	if err != nil {
@@ -189,6 +193,8 @@ func historyChips(t *testing.T, history string) map[string]struct{ count, href s
 // listed; Date Slips lists the Check-ins that carry one, and All lists
 // everything again.
 func TestGoalHistoryChipsCountAndFilter(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	goal := oneOfEachKind(t, h)
 	h.Clock.Advance(time.Hour)
@@ -250,6 +256,8 @@ func filterOf(href string) string {
 // reloads the page with 20 more under the same filter, the History block in
 // view; once everything shows, it is gone.
 func TestGoalHistoryShowsTwentyAndShowEarlierAddsTwentyMoreKeepingTheFilter(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -316,6 +324,8 @@ func TestGoalHistoryShowsTwentyAndShowEarlierAddsTwentyMoreKeepingTheFilter(t *t
 // readings and explanation wait behind a disclosure on the entry. A Check-in
 // with no Health takes the neutral Check-in marker.
 func TestGoalHistoryCheckinShowsWhatItRecorded(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	sam := h.SignInNamed("sam@example.com", "Sam Owner")
@@ -415,6 +425,8 @@ func fmtDay(d time.Time) string { return d.Format("2006-01-02") }
 // outcome and who started it, a value change and who made it, a Check-in's
 // Health, status, Path to Green and author, and the Date Slip it carried.
 func TestGoalHistoryKeepsEveryFactOfTheOldSections(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	goal := oneOfEachKind(t, h)
 	ts := newServer(t, h)
@@ -442,6 +454,8 @@ func TestGoalHistoryKeepsEveryFactOfTheOldSections(t *testing.T) {
 // History needs no script: its chips and Show earlier are plain links to the
 // Goal page, and nothing in it waits on htmx or a script to show.
 func TestGoalHistoryWorksWithoutJavaScript(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -493,6 +507,8 @@ func healthCells(t *testing.T, page string) []healthCell {
 // a week it went without one. Each cell says in text what it shows, and the
 // strip sums itself up in one line.
 func TestGoalPageShowsHealthStripAboveHistory(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -545,6 +561,8 @@ func TestGoalPageShowsHealthStripAboveHistory(t *testing.T) {
 // not dashed: each says why in its text, and the summary counts them apart from
 // the weeks with no Check-in.
 func TestHealthStripCellsAreBlankWhereNoCheckinWasOwed(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	// Activated on Friday 2 Jan, in the week of 29 Dec: the 3rd period from the
@@ -593,6 +611,8 @@ func TestHealthStripCellsAreBlankWhereNoCheckinWasOwed(t *testing.T) {
 // Friday shows this week, on Monday, as not yet due: its own cell, not dashed,
 // and counted apart from the weeks with no Check-in.
 func TestHealthStripShowsTheWeekInProgressAsNotYetDue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	// Friday 2 Jan 2026, in the week of 29 Dec.
@@ -630,6 +650,8 @@ func TestHealthStripShowsTheWeekInProgressAsNotYetDue(t *testing.T) {
 // by one that puts it On Hold leaves the week blank, and the week in progress
 // is blank too, not "not yet due", since nobody owes a Check-in on paused work.
 func TestHealthStripWeekEndingOnHoldIsBlank(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -667,6 +689,8 @@ func TestHealthStripWeekEndingOnHoldIsBlank(t *testing.T) {
 // A Goal on a 14-day cadence has 14-day periods, each named by its first and
 // last days.
 func TestHealthStripPeriodsFollowTheGoalsCadence(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -696,6 +720,8 @@ func TestHealthStripPeriodsFollowTheGoalsCadence(t *testing.T) {
 
 // A Goal that has never been Active has no strip.
 func TestProposedGoalPageHasNoHealthStrip(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.CreateGoal(sam, "Ship v2", "Customers wait too long.")
@@ -744,6 +770,8 @@ func replanCheckin(t *testing.T, h *testsupport.Harness, sam domain.Account, tit
 // with the removal's reason, beside its Date Slips; the Date Slips chip still
 // counts only the Check-ins that slipped a date.
 func TestGoalHistoryCheckinShowsItsMilestoneChanges(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignInNamed("sam@example.com", "Sam Owner")
 	goal, gaDate := replanCheckin(t, h, sam, "Ship v2", true)
@@ -787,6 +815,8 @@ func milestoneChangeLines(t *testing.T, checkin string) []string {
 // Renaming the Milestones a Check-in added, marked Done and removed leaves its
 // entry naming them as they were then.
 func TestGoalHistoryCheckinKeepsMilestoneNamesThroughARename(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignInNamed("sam@example.com", "Sam Owner")
 	goal, gaDate := replanCheckin(t, h, sam, "Ship v2", true)
@@ -823,6 +853,8 @@ func TestGoalHistoryCheckinKeepsMilestoneNamesThroughARename(t *testing.T) {
 // renamed, still reads "Marked GA Done", while its Date Slip names the
 // Milestone as it is now.
 func TestGoalHistoryCheckinKeepsItsMilestoneNameBesideADateSlipThroughARename(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	sam := h.SignInNamed("sam@example.com", "Sam Owner")
@@ -881,6 +913,8 @@ func TestGoalHistoryCheckinKeepsItsMilestoneNameBesideADateSlipThroughARename(t 
 // its entry renders exactly as one that changed no Milestone: its twin, made at
 // the same moment with the same Health and status, on a Goal set up the same.
 func TestGoalHistoryCheckinWithoutRecordedChangesRendersAsBefore(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignInNamed("sam@example.com", "Sam Owner")
 	older, _ := replanCheckin(t, h, sam, "Ship v2", true)
@@ -914,6 +948,8 @@ func TestGoalHistoryCheckinWithoutRecordedChangesRendersAsBefore(t *testing.T) {
 // Goal's Milestone Churn counts the same either way, and the same again once
 // the recorded changes are gone, as for an older Check-in.
 func TestCheckinFormRecordsMilestoneChangesOnlyWhenValid(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	sam := h.SignIn("sam@example.com")

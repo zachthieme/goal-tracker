@@ -15,6 +15,8 @@ import (
 // An Admin marks a Goal Top-level from its page and unmarks it again; the Goal
 // page shows the mark. The Goal's Owner, not being an Admin, is refused.
 func TestAdminMarksAndUnmarksTopLevelOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	h.SignIn("ada@example.com")
@@ -61,6 +63,8 @@ func TestAdminMarksAndUnmarksTopLevelOverHTTP(t *testing.T) {
 // Goals, children due later than their parents, and children of a parent that
 // is On Hold or Cancelled.
 func TestGraphSignalsPageListsRisks(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	ada := h.SignIn("ada@example.com")
@@ -111,6 +115,8 @@ func TestGraphSignalsPageListsRisks(t *testing.T) {
 // shows on both the child and the parent, a halted parent shows on the child,
 // and an Unaligned Goal says so.
 func TestGoalPageFlagsItsGraphSignals(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	ada := h.SignIn("ada@example.com")
@@ -170,6 +176,8 @@ func TestGoalPageFlagsItsGraphSignals(t *testing.T) {
 // The Top-level control opens in place in the Goal page's head, where DESIGN.md
 // has no place for a page-section h2: its heading is an h3 label.
 func TestTopLevelControlHeadingIsALabel(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	h.SignIn("ada@example.com")
@@ -189,6 +197,8 @@ func TestTopLevelControlHeadingIsALabel(t *testing.T) {
 // The Goal page's signals section stacks its banners through a class rather
 // than a style attribute.
 func TestGoalSignalsLayoutComesFromAClass(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")

@@ -16,6 +16,8 @@ import (
 // one they are a Delegate on — and each change is in its Goal's history
 // (#80; CONTEXT.md: Delegate, Field).
 func TestEditGoalValuesSavesEveryGoalWithHistory(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -89,6 +91,8 @@ func TestEditGoalValuesSavesEveryGoalWithHistory(t *testing.T) {
 // and the refusal names every bad cell by its Goal and Field or Dimension, each
 // with the reason the Goal page would give (#80).
 func TestEditGoalValuesWithABadCellSavesNothing(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -136,6 +140,8 @@ func TestEditGoalValuesWithABadCellSavesNothing(t *testing.T) {
 // Owner, a Delegate or an Admin — is refused naming that Goal, and nothing in
 // it is saved, the other Goals' cells included (#80; CONTEXT.md: Delegate).
 func TestEditGoalValuesOnAGoalTheAuthorCantEditSavesNothing(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -164,6 +170,8 @@ func TestEditGoalValuesOnAGoalTheAuthorCantEditSavesNothing(t *testing.T) {
 // Dimension it replaces the value chosen, and in a several-values one it joins
 // the values ticked (#80; CONTEXT.md: Extendable).
 func TestEditGoalValuesAddsTypedValuesToExtendableLists(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -203,6 +211,8 @@ func TestEditGoalValuesAddsTypedValuesToExtendableLists(t *testing.T) {
 // Retired value, is a bad cell, as on the Goal page, so nothing is saved and
 // no list grows (#80; CONTEXT.md: Fixed, Retired).
 func TestEditGoalValuesRefusesTypedValuesTheGoalPageRefuses(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")

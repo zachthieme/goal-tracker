@@ -16,6 +16,8 @@ import (
 // The Admin page links to the Fields page, where an Admin defines a Field of
 // each type, a number one with its unit, and each is listed with its type.
 func TestAdminDefinesFieldsOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := signInClient(t, ts.URL, "boss@example.com")
@@ -56,6 +58,8 @@ func TestAdminDefinesFieldsOverHTTP(t *testing.T) {
 // A non-Admin sees the Fields but no form to define one, and defining one is
 // refused.
 func TestNonAdminCannotDefineFields(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
@@ -86,6 +90,8 @@ func TestNonAdminCannotDefineFields(t *testing.T) {
 // listed flagged retired with a Restore button that brings it back. A
 // non-Admin gets neither button and is refused.
 func TestAdminRetiresAndRestoresAFieldOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	budget := h.CreateField(h.SignIn("boss@example.com"), "Budget", domain.FieldNumber, "$")
 	ts := newServer(t, h)
@@ -129,6 +135,8 @@ func TestAdminRetiresAndRestoresAFieldOverHTTP(t *testing.T) {
 // and through it they set and clear each value; a Contributor sees the values
 // read-only and is refused.
 func TestOwnerAndDelegateSetAndClearFieldsOnTheGoalPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -210,6 +218,8 @@ func TestOwnerAndDelegateSetAndClearFieldsOnTheGoalPage(t *testing.T) {
 // "abc" in a number Field and "tomorrow" in a date Field are refused, the
 // refusal naming the Field.
 func TestGoalPageRefusesAFieldValueOfTheWrongType(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -236,6 +246,8 @@ func TestGoalPageRefusesAFieldValueOfTheWrongType(t *testing.T) {
 // URL as a link (and one that isn't as plain text), and a long text with its
 // line breaks kept.
 func TestGoalPageShowsFieldValuesByType(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -268,6 +280,8 @@ func TestGoalPageShowsFieldValuesByType(t *testing.T) {
 // value in it, and doesn't show on one that hasn't; restored, it is offered
 // again.
 func TestRetiredFieldOnTheGoalPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -309,6 +323,8 @@ func TestRetiredFieldOnTheGoalPage(t *testing.T) {
 // unmarks it; a non-Admin gets no control and is refused (CONTEXT.md:
 // Incomplete).
 func TestAdminMarksFieldRequiredOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	admin := h.SignIn("boss@example.com")
 	budget := h.CreateField(admin, "Budget", domain.FieldNumber, "$")
@@ -344,6 +360,8 @@ func TestAdminMarksFieldRequiredOverHTTP(t *testing.T) {
 // the Dimension has the name, and defines nothing: Dimensions and Fields share
 // one namespace.
 func TestFieldNamedLikeADimensionRefusedOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	h.CreateDimension(boss, "Pillar", "Growth")
@@ -362,6 +380,8 @@ func TestFieldNamedLikeADimensionRefusedOverHTTP(t *testing.T) {
 // When the Goal's history can't be written, setting a Field on the Goal page
 // fails and the Goal keeps the value it had.
 func TestFailedHistoryLeavesTheFieldOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -388,6 +408,8 @@ func TestFailedHistoryLeavesTheFieldOverHTTP(t *testing.T) {
 // change it, since required means nothing on it; restoring the Field shows
 // both again with the setting it had.
 func TestRetiredFieldCardHasNoRequiredControlOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	admin := h.SignIn("boss@example.com")
 	budget := h.CreateField(admin, "Budget", domain.FieldNumber, "$")
@@ -412,6 +434,8 @@ func TestRetiredFieldCardHasNoRequiredControlOverHTTP(t *testing.T) {
 // An Admin who is neither the Goal's Owner nor a Delegate gets the Field inputs
 // on the Goal page and can set a Field there (ticket #73).
 func TestAdminWhoIsNeitherOwnerNorDelegateSetsAFieldOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -438,6 +462,8 @@ func TestAdminWhoIsNeitherOwnerNorDelegateSetsAFieldOverHTTP(t *testing.T) {
 // Posting a Retired Field's required setting is refused with 422, even a post
 // that would change nothing, and leaves it required once restored.
 func TestRetiredFieldsRequiredSettingIsRefusedOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	admin := h.SignIn("boss@example.com")
 	budget := h.CreateField(admin, "Budget", domain.FieldNumber, "$")

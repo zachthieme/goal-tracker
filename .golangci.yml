@@ -7,3 +7,11 @@ linters:
     - unused
     - ineffassign
     - gocritic
+    # Every top-level test calls t.Parallel(), so a package's tests share the
+    # cores instead of queueing behind the race detector. A test that can't
+    # run in parallel says why with //nolint:paralleltest. Subtests may stay
+    # serial.
+    - paralleltest
+  settings:
+    paralleltest:
+      ignore-missing-subtests: true

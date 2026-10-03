@@ -20,6 +20,8 @@ import (
 // immediately and both Goal pages show the connection for navigation, and the
 // link can then be removed.
 func TestLinkGoalsAutoAcceptNavigateAndRemove(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -64,6 +66,8 @@ func TestLinkGoalsAutoAcceptNavigateAndRemove(t *testing.T) {
 // When the parent is owned by someone else, the request waits Pending; the
 // parent's Owner sees it in their inbox and accepts it into the graph.
 func TestLinkRequestPendsThenParentOwnerAcceptsAcrossOwners(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -162,6 +166,8 @@ func newServer(t *testing.T, h *testsupport.Harness) *httptest.Server {
 // Each pending link request is a card with Accept as the primary action and a
 // Reject that rejects it at once, with no confirmation (#56).
 func TestPendingLinkRowsRejectAtOnce(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	pat := h.SignIn("pat@example.com")
@@ -186,6 +192,8 @@ func TestPendingLinkRowsRejectAtOnce(t *testing.T) {
 // A pending link's note is set apart by its indent and a 1px neutral rule, not
 // a coloured side stripe (#67).
 func TestPendingLinkNoteIsSetApartByANeutralRule(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	pat := h.SignIn("pat@example.com")
@@ -298,6 +306,8 @@ func removeAcrossOwners(t *testing.T, h *testsupport.Harness, ts *httptest.Serve
 // button, a plain form post; Undo puts the link back as accepted without
 // asking the parent's Owner, and the toast isn't shown on a later visit.
 func TestRemovingALinkOffersUndoOnce(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	child, parent, sam, landed := removeAcrossOwners(t, h, ts)
@@ -333,6 +343,8 @@ func TestRemovingALinkOffersUndoOnce(t *testing.T) {
 // A Remove button says which Goal page it sits on, so removing a link from the
 // parent's page returns there, toast and all, not to the child's.
 func TestRemoveReturnsToTheGoalPageItCameFrom(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	owner := h.SignIn("sam@example.com")
@@ -358,6 +370,8 @@ func TestRemoveReturnsToTheGoalPageItCameFrom(t *testing.T) {
 // time; a crafted Undo of a removal that never happened is refused too, and
 // none of them creates a link.
 func TestUndoingALinkRemovalIsRefusedWhenItCantBeForged(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	child, _, sam, landed := removeAcrossOwners(t, h, ts)
@@ -401,6 +415,8 @@ func TestUndoingALinkRemovalIsRefusedWhenItCantBeForged(t *testing.T) {
 // Undo that would now close a cycle is refused with a message, and nothing
 // changes.
 func TestUndoingALinkRemovalIsRefusedWhenItWouldCreateACycle(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	child, parent, sam, landed := removeAcrossOwners(t, h, ts)
@@ -428,6 +444,8 @@ func TestUndoingALinkRemovalIsRefusedWhenItWouldCreateACycle(t *testing.T) {
 // Only the person who removed a link is offered its Undo: the same offer
 // carried to someone else's page shows no toast.
 func TestTheLinkRemovalToastIsOnlyForTheRemover(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	child, _, _, landed := removeAcrossOwners(t, h, ts)
@@ -482,6 +500,8 @@ func rejectRequest(t *testing.T, h *testsupport.Harness, ts *httptest.Server, fr
 // the toast isn't shown on a later visit, and Undo returns to the same page
 // with the request pending again, note and all.
 func TestRejectingALinkRequestOffersUndoOnce(t *testing.T) {
+	t.Parallel()
+
 	for _, from := range []string{"/links", "/home"} {
 		t.Run(from, func(t *testing.T) {
 			h := testsupport.New(t)
@@ -526,6 +546,8 @@ func TestRejectingALinkRequestOffersUndoOnce(t *testing.T) {
 // refused a second time; a crafted Undo of a rejection that never happened is
 // refused too, and none of them adds a request.
 func TestUndoingALinkRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	_, _, pat, landed := rejectRequest(t, h, ts, "/links")
@@ -573,6 +595,8 @@ func TestUndoingALinkRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
 // Undo is refused with a message, changing nothing, once the same link has
 // been requested again, or when it would now close a cycle.
 func TestUndoingALinkRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
+	t.Parallel()
+
 	t.Run("requested again", func(t *testing.T) {
 		h := testsupport.New(t)
 		ts := newServer(t, h)
@@ -615,6 +639,8 @@ func TestUndoingALinkRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
 // parent's Owner, removes it. Sam's Undo from the first toast is refused with
 // a message, and the link stays removed.
 func TestALinkRemovalUndoCantBeReplayedOverALaterRemoval(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	child, parent, sam, landed := removeAcrossOwners(t, h, ts)

@@ -18,6 +18,8 @@ import (
 // show elevation by lightness. That holds whether the theme comes from the OS
 // or from data-theme="dark".
 func TestDarkPrimaryButtonHoverLightens(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -33,6 +35,8 @@ func TestDarkPrimaryButtonHoverLightens(t *testing.T) {
 // A hovered primary button's text reaches WCAG AA's 4.5:1 on its fill in
 // every theme.
 func TestPrimaryButtonHoverTextReachesAA(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -52,6 +56,8 @@ func TestPrimaryButtonHoverTextReachesAA(t *testing.T) {
 // A hovered primary button shows it by its fill alone, in every theme: no lift,
 // no halo, and the border keeps matching the fill so it reads as one surface.
 func TestPrimaryButtonHoverChangesFillOnly(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -80,6 +86,8 @@ func TestPrimaryButtonHoverChangesFillOnly(t *testing.T) {
 // border goes lighter instead, since dark themes show elevation by lightness;
 // either way it stands further out from the card's surface.
 func TestClickableCardHoverChangesBorderOnly(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -107,6 +115,8 @@ func TestClickableCardHoverChangesBorderOnly(t *testing.T) {
 // Only a button's hover turns its border teal: a hovered card darkens its own
 // border, and teal is kept for what a person acts on (DESIGN.md § System Mood).
 func TestOnlyButtonsHoverToATealBorder(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -137,6 +147,8 @@ func borderColour(t *testing.T, theme map[string]string, border string) string {
 // Cards are flat: only the menus and popovers float over the page, and they
 // float by --shadow-pop, so an open menu reads as nearer than any card (#88).
 func TestOnlyMenusAndPopoversCastAShadow(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -170,6 +182,8 @@ func TestOnlyMenusAndPopoversCastAShadow(t *testing.T) {
 // Every shadow token a theme sets is used somewhere, so none is left over
 // from the cards' old elevation (#88).
 func TestNoShadowTokenGoesUnused(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -252,6 +266,8 @@ func changed(before, after map[string]string) []string {
 // The OS dark block and the data-theme="dark" block set the same tokens to the
 // same values, so the dark theme looks the same however it is chosen.
 func TestDarkThemeBlocksAreIdentical(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")

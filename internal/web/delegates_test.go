@@ -17,6 +17,8 @@ import (
 // "Delegated to me" page, and checks in on it — the Check-in recording the
 // Delegate as author and the Owner it was written for (CONTEXT.md: Delegate).
 func TestSmokeDelegateChecksInOnOwnersGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -75,6 +77,8 @@ func TestSmokeDelegateChecksInOnOwnersGoal(t *testing.T) {
 // A person who is neither the Owner nor a Delegate cannot submit a Check-in on
 // someone else's Goal through the web (acceptance: Non-Delegates can't submit).
 func TestSmokeNonDelegateCheckinForbidden(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -98,6 +102,8 @@ func TestSmokeNonDelegateCheckinForbidden(t *testing.T) {
 // Only the Owner may authorize a Delegate through the web; another user's attempt
 // is refused (CONTEXT.md: a person an Owner authorizes).
 func TestSmokeNonOwnerCannotAddDelegate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -122,6 +128,8 @@ func TestSmokeNonOwnerCannotAddDelegate(t *testing.T) {
 // Owner, when it was last checked in on, and a Check in link to the Check-in
 // page, rather than embedding the whole form.
 func TestDelegatePageShowsGoalCards(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 

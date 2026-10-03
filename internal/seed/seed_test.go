@@ -55,6 +55,8 @@ func depth(t *testing.T, h *testsupport.Harness, goalID int64) int {
 // subtests share the org because seeding writes weeks of Check-ins and takes a
 // few seconds.
 func TestSeededOrg(t *testing.T) {
+	t.Parallel()
+
 	h := seeded(t)
 	t.Run("about 50 Goals across teams and three levels", func(t *testing.T) { orgAcrossTeamsAndThreeLevels(t, h) })
 	t.Run("Check-in history with mixed Health", func(t *testing.T) { checkinHistoryWithMixedHealth(t, h) })

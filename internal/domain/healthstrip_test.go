@@ -28,6 +28,8 @@ func date(y int, m time.Month, d int) time.Time {
 // calendar, oldest first and this week last. A week with a Check-in takes its
 // Health; a week the Goal was Active with no Check-in shows no Check-in.
 func TestHealthStripShowsEachWeeksHealthAndTheWeeksWithNoCheckin(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	// The harness starts on Friday 2 Jan 2026, in the week of Monday 29 Dec.
@@ -74,6 +76,8 @@ func TestHealthStripShowsEachWeeksHealthAndTheWeeksWithNoCheckin(t *testing.T) {
 // A period with two Check-ins takes the later one's Health, even when both
 // were made at the same moment.
 func TestHealthStripPeriodTakesItsLastCheckinsHealth(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
@@ -98,6 +102,8 @@ func TestHealthStripPeriodTakesItsLastCheckinsHealth(t *testing.T) {
 // week before last, has 8 blank weeks, then a week with no Check-in, then its
 // Health.
 func TestHealthStripLeavesThePeriodsBeforeActivationBlank(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	h.Clock.Advance(-14 * day)
@@ -128,6 +134,8 @@ func TestHealthStripLeavesThePeriodsBeforeActivationBlank(t *testing.T) {
 // work. The Check-in that puts it On Hold or marks it Done sets no Health, so
 // its period is blank too.
 func TestHealthStripLeavesOnHoldAndDonePeriodsBlank(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
@@ -186,6 +194,8 @@ func TestHealthStripLeavesOnHoldAndDonePeriodsBlank(t *testing.T) {
 // week by one that puts the Goal On Hold, or marks it Done, leaves the week
 // blank, as any week spent in that state is.
 func TestHealthStripPeriodEndingOutOfActiveIsBlank(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name string
 		in   domain.SubmitCheckinInput
@@ -219,6 +229,8 @@ func TestHealthStripPeriodEndingOutOfActiveIsBlank(t *testing.T) {
 // Only a finished period can go without a Check-in. A weekly Goal checked in
 // last Friday hasn't missed this week by Monday: the week is not yet due.
 func TestHealthStripCurrentWeekWithNoCheckinIsNotYetDue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	// Friday 2 Jan 2026.
@@ -241,6 +253,8 @@ func TestHealthStripCurrentWeekWithNoCheckinIsNotYetDue(t *testing.T) {
 // due. The period of 31 Dec – 2 Jan it was activated in has ended with no
 // Check-in, so it was missed.
 func TestHealthStripPeriodsEndingTodayOrLaterAreNotYetDue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	// Friday 2 Jan 2026.
@@ -267,6 +281,8 @@ func TestHealthStripPeriodsEndingTodayOrLaterAreNotYetDue(t *testing.T) {
 // blank, not "not yet due", once the Goal is On Hold or Done: nobody owes a
 // Check-in on paused or finished work.
 func TestHealthStripCurrentPeriodFollowsItsCheckins(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name      string
 		in        domain.SubmitCheckinInput
@@ -308,6 +324,8 @@ func TestHealthStripCurrentPeriodFollowsItsCheckins(t *testing.T) {
 // A Goal on a 14-day cadence has 14-day periods, the current one ending on the
 // Sunday that closes this week.
 func TestHealthStripPeriodsAreTheGoalsCadenceLong(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	h.Clock.Advance(-30 * 7 * day)
@@ -348,6 +366,8 @@ func TestHealthStripPeriodsAreTheGoalsCadenceLong(t *testing.T) {
 // still in progress on Tuesday 13 January, so it is not yet due rather than
 // missed.
 func TestHealthStripPeriodsAreInTheOrgsTimezone(t *testing.T) {
+	t.Parallel()
+
 	la, err := time.LoadLocation("America/Los_Angeles")
 	if err != nil {
 		t.Fatalf("LoadLocation: %v", err)
@@ -374,6 +394,8 @@ func TestHealthStripPeriodsAreInTheOrgsTimezone(t *testing.T) {
 
 // A Goal that has never been Active has no strip.
 func TestProposedGoalHasNoHealthStrip(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	g := h.CreateGoal(sam, "Ship search", "People can't find things.")

@@ -28,8 +28,9 @@ The server is configured from the environment:
 Sign-in is a development sign-in by email: any address works, and an account is
 created on first sign-in.
 
-Other targets: `make test`, `make lint`, `make generate` (templ and sqlc), and
-`make generate-check`.
+Other targets: `make test`, `make test-quick` (the tests without the race
+detector, for a quick local loop), `make lint`, `make generate` (templ and
+sqlc), and `make generate-check`.
 
 ## Weekly emails
 

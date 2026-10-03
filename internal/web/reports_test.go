@@ -19,6 +19,8 @@ import (
 // Health, and due date (CONTEXT.md: Report Definition). Every Goal here was
 // created within the default baseline, so each gets an exception block.
 func TestSaveReportDefinitionAndSeeDraftOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 
@@ -72,6 +74,8 @@ func TestSaveReportDefinitionAndSeeDraftOverHTTP(t *testing.T) {
 
 // A Report Definition that selects nothing (no roots, no filters) is rejected.
 func TestSaveReportDefinitionRejectsEmptySelection(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	h.SignIn("boss@example.com")
 	ts := newServer(t, h)
@@ -88,6 +92,8 @@ func TestSaveReportDefinitionRejectsEmptySelection(t *testing.T) {
 // content is asserted on its view model in the domain tests; this checks the
 // page wires the baseline through and renders both kinds.
 func TestSmokeReportDraftShowsExceptionBlocksAgainstBaseline(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
@@ -141,6 +147,8 @@ func TestSmokeReportDraftShowsExceptionBlocksAgainstBaseline(t *testing.T) {
 // (CONTEXT.md: Report Definition). The snapshot's content is asserted on its
 // view model in the domain tests; this checks the pages wire it through.
 func TestSmokePublishReportOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
@@ -217,6 +225,8 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 // Markdown itself is asserted in the export package's tests; this checks the
 // page wires it through.
 func TestSmokeExportPublicationAsMarkdownOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
@@ -276,6 +286,8 @@ func TestSmokeExportPublicationAsMarkdownOverHTTP(t *testing.T) {
 // A published Report has a print-friendly page to print to PDF from the
 // browser: the snapshot's content without the app's navigation.
 func TestSmokePrintPublicationOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
@@ -330,6 +342,8 @@ func TestSmokePrintPublicationOverHTTP(t *testing.T) {
 // asserted on its view model in the domain tests; this checks the pages wire
 // it through.
 func TestSmokeCurateNarrativeOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	alice := h.SignIn("alice@example.com")
@@ -408,6 +422,8 @@ func TestSmokeCurateNarrativeOverHTTP(t *testing.T) {
 // selected Goals are Red, Yellow, Green, and Stale, so an exec sees the shape
 // of the org before reading a block.
 func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
@@ -438,6 +454,8 @@ func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 // Path to Green — marked Overdue once its target date has passed — and the
 // rest as a table of Health, Goal, Owner, and Due under On track.
 func TestPublicationSplitsNeedsAttentionFromOnTrackOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
@@ -475,6 +493,8 @@ func TestPublicationSplitsNeedsAttentionFromOnTrackOverHTTP(t *testing.T) {
 // A publication's narrative reads in the serif face, each section under a
 // label heading and each Highlight credited "— owner, Goal".
 func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	alice := h.SignIn("alice@example.com")
@@ -511,6 +531,8 @@ func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
 // curate the narrative, check the preview, and only then Publish — the primary
 // button, at the bottom, saying what it does. Publications sit in a sidebar.
 func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
@@ -540,6 +562,8 @@ func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
 // a New report button. Its Root Goals picker is a scrolling list with the
 // top-level Goals first, and Depth says what its numbers mean.
 func TestReportsListFormOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	child := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
@@ -572,6 +596,8 @@ func TestReportsListFormOverHTTP(t *testing.T) {
 // Georgia, and marks Health with a shape as well as its name so it survives
 // black-and-white printing: ■ Red, ▲ Yellow, ● Green.
 func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
@@ -601,6 +627,8 @@ func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
 // track table scrolls inside its card instead of pushing the baseline line and
 // the Narrative card off the right edge (#43).
 func TestDraftPageColumnsShrinkToPhoneWidthOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
@@ -620,6 +648,8 @@ func TestDraftPageColumnsShrinkToPhoneWidthOverHTTP(t *testing.T) {
 // The Print view has no hover, so it introduces each person as Name (email) at
 // their first mention and by Name after that (CONTEXT.md: Name).
 func TestPrintPageIntroducesEachPersonOnceOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
@@ -646,6 +676,8 @@ func TestPrintPageIntroducesEachPersonOnceOverHTTP(t *testing.T) {
 // whatever their Name is now; one published before Accounts had Names still
 // shows its people by email.
 func TestPublicationShowsNamesAsPublishedOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
@@ -683,6 +715,8 @@ func TestPublicationShowsNamesAsPublishedOverHTTP(t *testing.T) {
 // published, on the publication, its print page, and its Markdown export, so
 // the byline and the Goals they own read the same Name.
 func TestPublicationBylineKeepsThePublishersNameOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ceo@example.com")
 	ceo := h.SignInNamed("ceo@example.com", "Dana Whitfield")
 	g := h.ActiveGoal(ceo, "Launch in EU", "Expand the market.")
@@ -719,6 +753,8 @@ func TestPublicationBylineKeepsThePublishersNameOverHTTP(t *testing.T) {
 // The New Report Definition form sits a gap below its button through the
 // page's own class rather than a style attribute.
 func TestNewReportFormSpacingComesFromAClassOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	h.SignIn("boss@example.com")
 	ts := newServer(t, h)
@@ -732,6 +768,8 @@ func TestNewReportFormSpacingComesFromAClassOverHTTP(t *testing.T) {
 // Goals. Restoring the Dimension returns it to the form (CONTEXT.md: Retired;
 // ADR 0005).
 func TestRetiredDimensionLeavesReportFormButSavedFilterKeepsWorkingOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
@@ -778,6 +816,8 @@ func TestRetiredDimensionLeavesReportFormButSavedFilterKeepsWorkingOverHTTP(t *t
 // Field is never totalled across Goals (ADR 0005). A definition that chose no
 // Fields shows none (ticket #78).
 func TestReportDefinitionShowsChosenFieldsOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
@@ -852,6 +892,8 @@ func TestReportDefinitionShowsChosenFieldsOverHTTP(t *testing.T) {
 // Fields as they were published: editing the value, renaming the Field or
 // retiring it afterwards changes none of them (ticket #78).
 func TestPublicationKeepsTheChosenFieldsAsPublishedOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ctx := context.Background()
@@ -911,6 +953,8 @@ func TestPublicationKeepsTheChosenFieldsAsPublishedOverHTTP(t *testing.T) {
 // published Report and its Markdown export show only the one pulled
 // (CONTEXT.md: Highlight).
 func TestPullOneHighlightOfACheckinOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	alice := h.SignIn("alice@example.com")
@@ -968,6 +1012,8 @@ func TestPullOneHighlightOfACheckinOverHTTP(t *testing.T) {
 // several-values Dimension selects a Goal that carries that value among others,
 // and leaves out a Goal that carries only other values (ticket #69).
 func TestReportFilterSelectsAGoalCarryingTheValueAmongSeveralOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	customer := h.CreateSeveralValuesDimension(boss, "Customer", "Acme", "Globex", "Initech")

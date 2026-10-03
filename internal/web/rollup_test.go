@@ -18,6 +18,8 @@ var pathDate = time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 // Owner-set Health among the Goal's Active children — next to the Owner-set
 // Health (ADR-0003).
 func TestSmokeGoalPageShowsRolledUpHealth(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -50,6 +52,8 @@ func TestSmokeGoalPageShowsRolledUpHealth(t *testing.T) {
 // explanation comes back with the validation error rendered in the form (htmx),
 // and records nothing.
 func TestSmokeCheckinDifferingFromRollupNeedsExplanation(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 

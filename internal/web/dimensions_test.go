@@ -18,6 +18,8 @@ import (
 // An Admin defines a Dimension, adds a value, renames one, and retires one from
 // the Dimensions page; a retired value stays listed, flagged retired.
 func TestAdminManagesDimensionsOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := signInClient(t, ts.URL, "boss@example.com")
@@ -74,6 +76,8 @@ func TestAdminManagesDimensionsOverHTTP(t *testing.T) {
 // A non-Admin can see Dimensions but gets no management controls, and the API
 // refuses their attempt to create one.
 func TestNonAdminCannotManageDimensions(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	h.CreateDimension(boss, "Pillar", "Growth")
@@ -98,6 +102,8 @@ func TestNonAdminCannotManageDimensions(t *testing.T) {
 // card's Edit toggle, and Retire retires a value at once, with no confirmation
 // (#56); a non-Admin gets no toggle.
 func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	dim := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
@@ -152,6 +158,8 @@ func TestDimensionCardsHideAdminControlsBehindEdit(t *testing.T) {
 // The new Dimension form sits a gap below its button through the page's own
 // class rather than a style attribute.
 func TestNewDimensionFormSpacingComesFromAClass(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	h.SignIn("boss@example.com")
 	ts := newServer(t, h)
@@ -164,6 +172,8 @@ func TestNewDimensionFormSpacingComesFromAClass(t *testing.T) {
 // several, defaulting to one, and switches a one-value Dimension to several
 // from its card; each card says which it takes.
 func TestAdminChoosesOneOrSeveralValuesOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := signInClient(t, ts.URL, "boss@example.com")
@@ -226,6 +236,8 @@ func TestAdminChoosesOneOrSeveralValuesOverHTTP(t *testing.T) {
 // Switching several to one is refused while a Goal carries more than one value,
 // and the refusal names those Goals; it succeeds once none does.
 func TestSwitchToOneValueRefusalNamesGoalsOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -269,6 +281,8 @@ func TestSwitchToOneValueRefusalNamesGoalsOverHTTP(t *testing.T) {
 // each card says which it is. A non-Admin can't switch it (CONTEXT.md: Fixed,
 // Extendable).
 func TestAdminMarksDimensionExtendableAndFixedOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := signInClient(t, ts.URL, "boss@example.com")
@@ -346,6 +360,8 @@ func dimensionByName(t *testing.T, h *testsupport.Harness, name string) domain.D
 // and sorts the list alphabetically, and the card lists the values in that
 // order; a non-Admin's attempts are refused.
 func TestAdminReordersDimensionValuesOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	dim := h.CreateDimension(boss, "Pillar", "Reliability", "Growth", "Efficiency")
@@ -422,6 +438,8 @@ func nameOrder(page string, names ...string) string {
 // The Admin's order of a Dimension's values is the order they are listed in
 // on the Goal page, in the Goal list's filter, and as its groups.
 func TestValuesListInAdminsOrderEverywhere(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -460,6 +478,8 @@ func TestValuesListInAdminsOrderEverywhere(t *testing.T) {
 // the list and the Goals carrying it show the target instead, once if they had
 // both. Merging across Dimensions is refused, and so is a non-Admin's merge.
 func TestAdminMergesDimensionValueOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -512,6 +532,8 @@ func TestAdminMergesDimensionValueOverHTTP(t *testing.T) {
 // When a merge fails part-way, the request fails and nothing changes: the
 // merged value stays listed and on its Goals.
 func TestFailedMergeChangesNothingOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -547,6 +569,8 @@ func TestFailedMergeChangesNothingOverHTTP(t *testing.T) {
 // brings it back. A Retired value gets a Restore button too. A non-Admin can
 // retire or restore neither (CONTEXT.md: Retired).
 func TestAdminRetiresAndRestoresDimensionOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
@@ -597,6 +621,8 @@ func TestAdminRetiresAndRestoresDimensionOverHTTP(t *testing.T) {
 // An Admin marks a Dimension required from its card's Edit toggle, and the card
 // says so, then unmarks it; a non-Admin is refused (CONTEXT.md: Incomplete).
 func TestAdminMarksDimensionRequiredOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	admin := h.SignIn("boss@example.com")
 	pillar := h.CreateDimension(admin, "Pillar", "Growth")
@@ -639,6 +665,8 @@ func TestAdminMarksDimensionRequiredOverHTTP(t *testing.T) {
 // one before that was refused still shows, and an Admin renames it to a name
 // without (#101).
 func TestDimensionValueContainingASemicolonOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
@@ -682,6 +710,8 @@ func TestDimensionValueContainingASemicolonOverHTTP(t *testing.T) {
 // the Field has the name, and defines nothing: Dimensions and Fields share one
 // namespace.
 func TestDimensionNamedLikeAFieldRefusedOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
@@ -701,6 +731,8 @@ func TestDimensionNamedLikeAFieldRefusedOverHTTP(t *testing.T) {
 // refused saying to merge them, while changing a value's own capitalisation is
 // a rename.
 func TestRenamingAValueIntoAnotherRefusedOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Payments")
@@ -730,6 +762,8 @@ func TestRenamingAValueIntoAnotherRefusedOverHTTP(t *testing.T) {
 // to change it, since required means nothing on it; restoring the Dimension
 // shows both again with the setting it had.
 func TestRetiredDimensionCardHasNoRequiredControlOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	admin := h.SignIn("boss@example.com")
 	pillar := h.CreateDimension(admin, "Pillar", "Growth")
@@ -756,6 +790,8 @@ func TestRetiredDimensionCardHasNoRequiredControlOverHTTP(t *testing.T) {
 // button's route, that restores the value; the toast isn't shown on a later
 // visit.
 func TestRetiringADimensionValueOffersUndoOnce(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
@@ -800,6 +836,8 @@ func TestRetiringADimensionValueOffersUndoOnce(t *testing.T) {
 // Goals: the Goal that carried it, and not the one carrying neither value
 // (ticket #71).
 func TestMergedValueKeepsASavedReportFilterSelectingTheSameGoalsOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	customer := h.CreateDimension(boss, "Customer", "Acme", "ACME Corp", "Globex")
@@ -836,6 +874,8 @@ func TestMergedValueKeepsASavedReportFilterSelectingTheSameGoalsOverHTTP(t *test
 // from the Dimensions page it is offered again, and the Owner can set it
 // (ticket #72).
 func TestRestoredValueIsOfferedAgainOnTheGoalPageOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -874,6 +914,8 @@ func TestRestoredValueIsOfferedAgainOnTheGoalPageOverHTTP(t *testing.T) {
 // Posting a Retired Dimension's required setting is refused with 422, even a
 // post that would change nothing, and leaves it required once restored.
 func TestRetiredDimensionsRequiredSettingIsRefusedOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	admin := h.SignIn("boss@example.com")
 	pillar := h.CreateDimension(admin, "Pillar", "Growth")
@@ -898,6 +940,8 @@ func TestRetiredDimensionsRequiredSettingIsRefusedOverHTTP(t *testing.T) {
 // The Retired value's Restore button on the Dimensions page needs no token and
 // works at any time, long after the toast's Undo has expired.
 func TestTheRetiredValuesRestoreButtonNeedsNoToken(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")

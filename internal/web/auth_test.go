@@ -15,6 +15,8 @@ import (
 )
 
 func TestGoalsRequiresSignIn(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := httptest.NewServer(web.NewServer(h.Service))
 	t.Cleanup(ts.Close)
@@ -38,6 +40,8 @@ func TestGoalsRequiresSignIn(t *testing.T) {
 // Signing in lands on Home, and so does visiting / or the sign-in page while
 // signed in.
 func TestSignedInPersonLandsOnHome(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := httptest.NewServer(web.NewServer(h.Service))
 	t.Cleanup(ts.Close)
@@ -73,6 +77,8 @@ func TestSignedInPersonLandsOnHome(t *testing.T) {
 // development sign-in note, and the email field with its button. The top bar
 // already shows the brand, so the card doesn't repeat it.
 func TestSignInPageIsACentredCard(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -103,6 +109,8 @@ func TestSignInPageIsACentredCard(t *testing.T) {
 // Signing in as a Departed person fails with a visible reason, and no session
 // cookie is issued (CONTEXT.md: Departed).
 func TestDepartedPersonCannotSignIn(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := h.SignIn("boss@example.com")
@@ -130,6 +138,8 @@ func TestDepartedPersonCannotSignIn(t *testing.T) {
 // the form shows the same "marked departed" page and issues no session
 // (CONTEXT.md: Account, Departed).
 func TestDepartedPersonCannotSignInUnderADifferentCase(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := h.SignIn("boss@example.com")
@@ -157,6 +167,8 @@ func TestDepartedPersonCannotSignInUnderADifferentCase(t *testing.T) {
 // request is treated as signed out, so a Check-in POST is sent to sign-in rather
 // than accepted (CONTEXT.md: Departed).
 func TestDepartureEndsAnExistingSession(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := h.SignIn("boss@example.com")
@@ -185,6 +197,8 @@ func TestDepartureEndsAnExistingSession(t *testing.T) {
 // A Delegate who departs can no longer check in on the Owner's Goal: their
 // session is treated as signed out, and the Check-in isn't recorded.
 func TestDepartedDelegateCannotCheckIn(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := h.SignIn("boss@example.com")
