@@ -29,6 +29,7 @@ import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const usage = "usage: node scripts/shots.mjs <base-url> <shots.json|-|JSON> [--out <dir>]";
 
@@ -49,18 +50,37 @@ function parseArgs(argv) {
   } catch (err) {
     fail(`shots aren't valid JSON: ${err.message}`);
   }
-  return { base: base.replace(/\/+$/, ""), shots: shots.map(normalise), out: resolve(out) };
+  try {
+    shots = shots.map(normalise);
+  } catch (err) {
+    fail(err.message);
+  }
+  return { base: base.replace(/\/+$/, ""), shots, out: resolve(out) };
 }
 
-function normalise(shot, i) {
-  if (typeof shot?.path !== "string" || !shot.path.startsWith("/")) fail(`shot ${i + 1}: path must start with /`);
+// normalise fills in a shot's defaults, and throws if a field is invalid.
+export function normalise(shot, i) {
+  const bad = (message) => {
+    throw new Error(`shot ${i + 1}: ${message}`);
+  };
+  if (typeof shot?.path !== "string" || !shot.path.startsWith("/")) bad("path must start with /");
   const s = { theme: "light", width: 1280, height: 800, full: true, dialog: "dismiss", ...shot };
-  if (!["light", "dark"].includes(s.theme)) fail(`shot ${i + 1}: theme must be light or dark`);
-  if (s.pin !== undefined && !["light", "dark"].includes(s.pin)) fail(`shot ${i + 1}: pin must be light or dark`);
-  if (!["accept", "dismiss"].includes(s.dialog)) fail(`shot ${i + 1}: dialog must be accept or dismiss`);
+  if (!["light", "dark"].includes(s.theme)) bad("theme must be light or dark");
+  if (s.pin !== undefined && !["light", "dark"].includes(s.pin)) bad("pin must be light or dark");
+  if (!["accept", "dismiss"].includes(s.dialog)) bad("dialog must be accept or dismiss");
+  if (s.status !== undefined && !Number.isInteger(s.status)) bad("status must be an integer");
   const slug = s.path.replace(/[^\w]+/g, "-").replace(/^-|-$/g, "") || "root";
   s.name ??= `${String(i + 1).padStart(2, "0")}-${slug}-${s.theme}-${s.width}`;
   return s;
+}
+
+// statusProblem is why a page's final document status fails the shot, or null
+// if it doesn't: an HTTP error unless the shot expects a status, else any
+// status but the expected one. A status that couldn't be read never fails.
+export function statusProblem(shot, status) {
+  if (status == null) return null;
+  if (shot.status === undefined) return status >= 400 ? `the page gave HTTP ${status}` : null;
+  return status === shot.status ? null : `the page gave HTTP ${status}, not the expected ${shot.status}`;
 }
 
 function fail(message) {
@@ -366,7 +386,13 @@ async function main() {
     const cdp = await CDP.connect(chrome.ws);
     for (const shot of shots) {
       try {
-        report(shot, await shoot(cdp, base, out, shot));
+        const result = await shoot(cdp, base, out, shot);
+        report(shot, result);
+        const problem = statusProblem(shot, result.facts.status);
+        if (problem) {
+          failed++;
+          console.log(`${shot.name}: FAILED: ${problem}\n`);
+        }
       } catch (err) {
         failed++;
         console.log(`${shot.name}: FAILED: ${err.message}\n`);
@@ -379,4 +405,5 @@ async function main() {
   process.exit(failed ? 1 : 0);
 }
 
-await main();
+// Run only when executed, not when imported by the tests.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) await main();
