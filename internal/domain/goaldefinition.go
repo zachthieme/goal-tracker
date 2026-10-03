@@ -2,8 +2,11 @@ package domain
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -132,5 +135,77 @@ func (s *Service) writeDefinedGoal(ctx context.Context, in DefinedGoalInput) (Go
 			return Goal{}, err
 		}
 	}
+	if in.Activate {
+		return s.activateDefinedGoal(ctx, g.ID)
+	}
 	return s.loadGoal(ctx, g.ID)
+}
+
+// activateDefinedGoal runs the activation gate on the Goal just defined,
+// unchanged, and puts each rule it fails under the activate input.
+func (s *Service) activateDefinedGoal(ctx context.Context, goalID int64) (Goal, error) {
+	g, err := s.ActivateGoal(ctx, goalID)
+	if err == nil {
+		return g, nil
+	}
+	reasons := ActivationReasons(err)
+	problems := make([]error, 0, len(reasons))
+	for _, r := range reasons {
+		if !errors.Is(r, ErrValidation) {
+			return Goal{}, err
+		}
+		problems = append(problems, inputError(InputActivate, "%s", strings.TrimPrefix(r.Error(), ErrValidation.Error()+": ")))
+	}
+	return Goal{}, errors.Join(problems...)
+}
+
+// The inputs of a Goal's definition, by the names the domain's errors and the
+// New goal form share. A Milestone's, Metric's, value's, Field's or parent's
+// is made by its function below.
+const (
+	InputTitle        = "title"
+	InputSoWhat       = "so_what"
+	InputKind         = "kind"
+	InputDeliveryDate = "delivery_date"
+	InputCadence      = "cadence"
+	InputActivate     = "activate"
+)
+
+// InputError refuses one input of a Goal's definition, naming it as the New
+// goal form does, and saying why as the Goal page would. It is an
+// ErrValidation.
+type InputError struct {
+	Input   string
+	Message string
+}
+
+func (e *InputError) Error() string {
+	return fmt.Sprintf("%v: %s", ErrValidation, e.Message)
+}
+
+func (e *InputError) Unwrap() error { return ErrValidation }
+
+func inputError(input, format string, args ...any) *InputError {
+	return &InputError{Input: input, Message: fmt.Sprintf(format, args...)}
+}
+
+// InputErrors lists every input err refuses, in order, so a form can show
+// each beside its input. It is empty when err names no input.
+func InputErrors(err error) []*InputError {
+	var out []*InputError
+	var walk func(error)
+	walk = func(err error) {
+		switch e := err.(type) {
+		case *InputError:
+			out = append(out, e)
+		case interface{ Unwrap() []error }:
+			for _, inner := range e.Unwrap() {
+				walk(inner)
+			}
+		case interface{ Unwrap() error }:
+			walk(e.Unwrap())
+		}
+	}
+	walk(err)
+	return out
 }

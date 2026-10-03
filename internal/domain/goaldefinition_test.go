@@ -2,8 +2,11 @@ package domain_test
 
 import (
 	"context"
+	"errors"
 	"slices"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -165,4 +168,109 @@ func sorted(names []string) []string {
 	out := slices.Clone(names)
 	slices.Sort(out)
 	return out
+}
+
+func TestCreateDefinedGoalWithActivateMakesItActive(t *testing.T) {
+	t.Parallel()
+
+	s := newDefinedGoalSetup(t)
+	s.h.SetDimensionRequired(s.admin, s.team, true)
+	s.h.SetFieldRequired(s.admin, s.headcount, true)
+	in := s.fullDefinition()
+	in.Activate = true
+
+	g, err := s.h.Service.CreateDefinedGoal(context.Background(), in)
+	if err != nil {
+		t.Fatalf("CreateDefinedGoal: %v", err)
+	}
+
+	got, err := s.h.Service.ViewGoal(context.Background(), g.ID)
+	if err != nil {
+		t.Fatalf("ViewGoal: %v", err)
+	}
+	if got.Lifecycle != domain.LifecycleActive {
+		t.Errorf("Lifecycle = %q, want %q", got.Lifecycle, domain.LifecycleActive)
+	}
+	if !got.ActivatedAt.Equal(testsupport.Epoch) {
+		t.Errorf("ActivatedAt = %v, want %v", got.ActivatedAt, testsupport.Epoch)
+	}
+}
+
+// Activation refused after the writes rolls every one of them back, and each
+// unmet rule comes back as its own error under the activate input.
+func TestCreateDefinedGoalRefusedActivationSavesNothing(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		// define turns the full definition into one the gate refuses.
+		define func(s definedGoalSetup, in *domain.DefinedGoalInput)
+		want   []string
+	}{
+		{
+			name: "a Dated Goal with no Milestone or Metric",
+			define: func(_ definedGoalSetup, in *domain.DefinedGoalInput) {
+				in.Milestones, in.Metrics = nil, nil
+			},
+			want: []string{"at least one Milestone or Metric"},
+		},
+		{
+			name: "an Ongoing Goal with no Metric",
+			define: func(_ definedGoalSetup, in *domain.DefinedGoalInput) {
+				in.Kind, in.DeliveryDate, in.Metrics = domain.GoalOngoing, time.Time{}, nil
+			},
+			want: []string{"an Ongoing Goal needs at least one Metric"},
+		},
+		{
+			name: "Kind not chosen",
+			define: func(_ definedGoalSetup, in *domain.DefinedGoalInput) {
+				in.Kind, in.DeliveryDate = "", time.Time{}
+			},
+			want: []string{"marked Dated or Ongoing"},
+		},
+		{
+			name: "a required Dimension and a required Field with no value",
+			define: func(s definedGoalSetup, in *domain.DefinedGoalInput) {
+				s.h.SetDimensionRequired(s.admin, s.team, true)
+				s.h.SetFieldRequired(s.admin, s.headcount, true)
+				in.ValueIDs, in.FieldValues = nil, nil
+			},
+			want: []string{"a value in Team", "a value in Headcount"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := newDefinedGoalSetup(t)
+			ctx := context.Background()
+			parent := s.h.CreateGoal(s.owner, "Win enterprise", "Enterprise deals stall.")
+			in := s.fullDefinition()
+			in.ParentIDs = []int64{parent.ID}
+			in.Activate = true
+			tt.define(s, &in)
+
+			_, err := s.h.Service.CreateDefinedGoal(ctx, in)
+
+			if !errors.Is(err, domain.ErrValidation) {
+				t.Fatalf("err = %v, want ErrValidation", err)
+			}
+			problems := domain.InputErrors(err)
+			if len(problems) != len(tt.want) {
+				t.Fatalf("problems = %v, want %d under activate", problems, len(tt.want))
+			}
+			for i, p := range problems {
+				if p.Input != "activate" || !strings.Contains(p.Message, tt.want[i]) {
+					t.Errorf("problem %d = %s: %q, want activate: …%s…", i, p.Input, p.Message, tt.want[i])
+				}
+			}
+			goals, err := s.h.Service.ListGoals(ctx)
+			if err != nil {
+				t.Fatalf("ListGoals: %v", err)
+			}
+			if len(goals) != 1 || goals[0].ID != parent.ID {
+				t.Errorf("Goals = %+v, want only the parent", goals)
+			}
+		})
+	}
 }
