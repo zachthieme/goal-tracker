@@ -1336,3 +1336,26 @@ func TestRenamingAValueIntoAnotherIsRefused(t *testing.T) {
 		t.Errorf("rename Payments to its own name in capitals = %+v, %v; want PAYMENTS", renamed, err)
 	}
 }
+
+// Marking a Retired Dimension required, or not required, is refused, even when
+// it would change nothing, and leaves its setting as it was: required means
+// nothing on a Dimension no longer offered (CONTEXT.md: Retired).
+func TestRetiredDimensionsRequiredSettingCannotChange(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ctx := context.Background()
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	h.SetDimensionRequired(boss, pillar, true)
+	if err := h.Service.RetireDimension(ctx, boss.ID, pillar.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+
+	for _, required := range []bool{false, true} {
+		if err := h.Service.SetDimensionRequired(ctx, boss.ID, pillar.ID, required); !errors.Is(err, domain.ErrValidation) {
+			t.Errorf("mark Retired Pillar required=%v: err = %v, want ErrValidation", required, err)
+		}
+	}
+	if !dimensionNamed(t, h, "Pillar").Required {
+		t.Errorf("Retired Pillar lost its required setting")
+	}
+}

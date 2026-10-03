@@ -386,8 +386,9 @@ func (s *Service) setDimensionRetired(ctx context.Context, actorID, dimensionID 
 // SetDimensionRequired marks a Dimension required, so a Proposed Goal can't
 // become Active without one of its values, or unmarks it (CONTEXT.md:
 // Incomplete). Marking is always allowed: Active Goals lacking a value stay
-// Active and become Incomplete. It is written to the Definition log. Only an
-// Admin may.
+// Active and become Incomplete. A Retired Dimension's setting can't be changed,
+// even to what it already is (CONTEXT.md: Retired). It is written to the
+// Definition log. Only an Admin may.
 func (s *Service) SetDimensionRequired(ctx context.Context, actorID, dimensionID int64, required bool) error {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return err
@@ -397,7 +398,11 @@ func (s *Service) SetDimensionRequired(ctx context.Context, actorID, dimensionID
 		if err != nil {
 			return fmt.Errorf("%w: dimension does not exist", ErrValidation)
 		}
-		if dimensionFromRow(before).Required == required {
+		dim := dimensionFromRow(before)
+		if dim.Retired {
+			return fmt.Errorf("%w: %s is retired, so whether it is required can't be changed", ErrValidation, dim.Name)
+		}
+		if dim.Required == required {
 			return nil
 		}
 		if _, err := tx.queries.SetDimensionRequired(ctx, db.SetDimensionRequiredParams{

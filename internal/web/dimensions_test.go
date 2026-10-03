@@ -868,3 +868,27 @@ func TestRestoredValueIsOfferedAgainOnTheGoalPageOverHTTP(t *testing.T) {
 		t.Errorf("the Owner couldn't set the restored Trust:\n%s", shown)
 	}
 }
+
+// Posting a Retired Dimension's required setting is refused with 422, even a
+// post that would change nothing, and leaves it required once restored.
+func TestRetiredDimensionsRequiredSettingIsRefusedOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	admin := h.SignIn("boss@example.com")
+	pillar := h.CreateDimension(admin, "Pillar", "Growth")
+	h.SetDimensionRequired(admin, pillar, true)
+	ts := newServer(t, h)
+	boss := signInClient(t, ts.URL, "boss@example.com")
+	requiredURL := fmt.Sprintf("%s/dimensions/%d/required", ts.URL, pillar.ID)
+
+	postForm(t, boss, fmt.Sprintf("%s/dimensions/%d/retire", ts.URL, pillar.ID), url.Values{})
+	for _, required := range []string{"0", "1"} {
+		if resp := postForm(t, boss, requiredURL, url.Values{"required": {required}}); resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("required=%s on Retired Pillar: status %d, want 422", required, resp.StatusCode)
+		}
+	}
+
+	postForm(t, boss, fmt.Sprintf("%s/dimensions/%d/restore", ts.URL, pillar.ID), url.Values{})
+	if page := getBody(t, boss, ts.URL+"/dimensions"); !strings.Contains(page, `data-testid="dimension-required"`) {
+		t.Errorf("restored Pillar isn't required:\n%s", page)
+	}
+}

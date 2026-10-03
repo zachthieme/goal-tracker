@@ -434,3 +434,27 @@ func TestAdminWhoIsNeitherOwnerNorDelegateSetsAFieldOverHTTP(t *testing.T) {
 		t.Errorf("the Goal page doesn't show the Admin's Budget = 1200:\n%s", shown)
 	}
 }
+
+// Posting a Retired Field's required setting is refused with 422, even a post
+// that would change nothing, and leaves it required once restored.
+func TestRetiredFieldsRequiredSettingIsRefusedOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	admin := h.SignIn("boss@example.com")
+	budget := h.CreateField(admin, "Budget", domain.FieldNumber, "$")
+	h.SetFieldRequired(admin, budget, true)
+	ts := newServer(t, h)
+	boss := signInClient(t, ts.URL, "boss@example.com")
+	requiredURL := fmt.Sprintf("%s/fields/%d/required", ts.URL, budget.ID)
+
+	postForm(t, boss, fmt.Sprintf("%s/fields/%d/retire", ts.URL, budget.ID), url.Values{})
+	for _, required := range []string{"0", "1"} {
+		if resp := postForm(t, boss, requiredURL, url.Values{"required": {required}}); resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("required=%s on Retired Budget: status %d, want 422", required, resp.StatusCode)
+		}
+	}
+
+	postForm(t, boss, fmt.Sprintf("%s/fields/%d/restore", ts.URL, budget.ID), url.Values{})
+	if card := pageElement(t, getBody(t, boss, ts.URL+"/fields"), "li", "field"); !strings.Contains(card, `data-testid="field-required"`) {
+		t.Errorf("restored Budget isn't required:\n%s", card)
+	}
+}

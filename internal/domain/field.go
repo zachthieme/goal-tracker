@@ -124,7 +124,9 @@ func (s *Service) setFieldRetired(ctx context.Context, actorID, fieldID int64, r
 // SetFieldRequired marks a Field required, so a Proposed Goal can't become
 // Active without a value in it, or unmarks it (CONTEXT.md: Incomplete). Marking
 // is always allowed: Active Goals lacking a value stay Active and become
-// Incomplete. It is written to the Definition log. Only an Admin may.
+// Incomplete. A Retired Field's setting can't be changed, even to what it
+// already is (CONTEXT.md: Retired). It is written to the Definition log. Only
+// an Admin may.
 func (s *Service) SetFieldRequired(ctx context.Context, actorID, fieldID int64, required bool) error {
 	if err := s.requireAdmin(ctx, actorID); err != nil {
 		return err
@@ -134,7 +136,11 @@ func (s *Service) SetFieldRequired(ctx context.Context, actorID, fieldID int64, 
 		if err != nil {
 			return fmt.Errorf("%w: field does not exist", ErrValidation)
 		}
-		if fieldFromRow(before).Required == required {
+		field := fieldFromRow(before)
+		if field.Retired {
+			return fmt.Errorf("%w: %s is retired, so whether it is required can't be changed", ErrValidation, field.Name)
+		}
+		if field.Required == required {
 			return nil
 		}
 		if _, err := tx.queries.SetFieldRequired(ctx, db.SetFieldRequiredParams{Required: boolFlag(required), ID: fieldID}); err != nil {
