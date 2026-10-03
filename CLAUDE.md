@@ -63,3 +63,7 @@ Uses the five default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `
 ### Domain docs
 
 Single-context: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Verifying merged work
+
+`/verify-pending`, `/fileset` and `/triage-placement` come from vetinari (`scripts/install-skills.sh` in its checkout). How to check a change in the browser: `docs/agents/verifying.md`.
