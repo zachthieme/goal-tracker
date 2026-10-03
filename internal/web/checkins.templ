@@ -414,8 +414,8 @@ templ checkinByline(c domain.Checkin) {
 // noChangeCheckinButton records a Check-in repeating the Goal's previous values
 // in one click (CONTEXT.md: Check-in). Its button takes class, so the Goal
 // page's header can show it quiet beside the primary Check in. A refusal comes
-// back as a whole page; one that is a 403 or 404 htmx won't swap, so
-// swapErrorPageScript swaps it in.
+// back as a whole page; htmx won't swap one with an error status (a 403, 404
+// or 500), so swapErrorPageScript swaps it in.
 templ noChangeCheckinButton(goalID int64, label, class string) {
 	<form
 		data-testid="no-change-checkin"
@@ -611,9 +611,10 @@ var confirmCancelScript = templ.ComponentScript{Call: fmt.Sprintf(
 	domain.LifecycleCancelled,
 )}
 
-// swapErrorPageScript swaps a 403 or 404 page into the body, as htmx does
-// for the refusals it swaps itself; htmx 2 swaps no error status by default.
-var swapErrorPageScript = templ.ComponentScript{Call: "var s = event.detail.xhr.status; if (s === 403 || s === 404) htmx.swap('body', event.detail.xhr.responseText, {swapStyle: 'innerHTML'})"}
+// swapErrorPageScript swaps an error page into the body, whatever its status
+// (a refusal's 403 or 404, a failure's 500), as htmx does for the refusals it
+// swaps itself; htmx 2 swaps no error status by default.
+var swapErrorPageScript = templ.ComponentScript{Call: "htmx.swap('body', event.detail.xhr.responseText, {swapStyle: 'innerHTML'})"}
 
 // checkinStylesOnce renders the Check-in form's styles once per page, however
 // many forms the page carries (the Delegates page has one per Goal).
