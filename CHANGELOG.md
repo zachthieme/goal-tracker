@@ -40,6 +40,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [api] Database schema: migration `0033_undo_tokens` adds an `undo_tokens` table holding each Undo's one-time token, the action and person it belongs to, when it was issued and when it was used. It's additive and runs on startup (#106).
 - [api] Database schema: migration `0034_milestone_changes` adds a `milestone_changes` table recording each Milestone a Check-in added, marked Done or marked Removed: the Check-in, the Milestone, the kind of change and a removal's reason. It's additive and runs on startup (#107).
 - [api] Database schema: migration `0035_milestone_change_names` adds a `name` column to `milestone_changes` holding the Milestone's name when the Check-in made the change, and fills existing rows with the Milestone's current name. It's additive and runs on startup (#117).
+- [internal] The gates run generate, lint, test instead of generate, test, lint, in `vetinari/config.mts` and `CLAUDE.md`, so a lint failure (seconds to find) shows up before the test run (up to ~5 minutes) rather than after it (#124).
 
 **Testing:**
 - [internal] Test that Home's Health distribution bar leaves out Proposed, Done and Cancelled Goals (#110).
