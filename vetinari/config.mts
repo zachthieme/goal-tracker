@@ -19,9 +19,11 @@ export default defineConfig({
   stateDir: ".vetinari.local",
 
   // The gate — what "done" means. Each exits non-zero on failure. The
-  // generate gate regenerates the templ/sqlc code and fails on any diff, so
-  // stale generated files park instead of merging. Lint (seconds) runs before
-  // test (minutes), so a lint failure surfaces without waiting on the tests.
+  // generate gate regenerates the templ/sqlc code and fails if any generated
+  // file is modified or untracked, or if go.mod/go.sum isn't tidy, so stale
+  // or never-committed generated files park instead of merging. Lint (seconds)
+  // runs before test (minutes), so a lint failure surfaces without waiting on
+  // the tests.
   gates: [
     { cmd: "make generate-check", label: "generate" },
     { cmd: "make lint", label: "lint" },
