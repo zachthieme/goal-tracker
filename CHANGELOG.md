@@ -42,6 +42,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [api] Database schema: migration `0035_milestone_change_names` adds a `name` column to `milestone_changes` holding the Milestone's name when the Check-in made the change, and fills existing rows with the Milestone's current name. It's additive and runs on startup (#117).
 - [internal] The gates run generate, lint, test instead of generate, test, lint, in `vetinari/config.mts` and `CLAUDE.md`, so a lint failure (seconds to find) shows up before the test run (up to ~5 minutes) rather than after it (#124).
 - [internal] `make generate-check` now fails when a generated file (`*_templ.go`, or sqlc's `*.sql.go`, `models.go`, `db.go`) is modified or untracked after `generate`, so a new `.templ` or query file whose output was never committed parks instead of merging. It ignores uncommitted changes outside the generated paths, so work in progress no longer fails it locally. It also runs `go mod tidy -diff` to catch `go.mod`/`go.sum` drift (#123).
+- [internal] Add `make check` (every gate: `generate-check`, `lint`, then `test`, stopping at the first failure), `make test-scripts` (the `scripts/` tests and `contrast.py`'s doctest), `make clean` (removes `bin/` and `serve.log`) and `make help` (lists each target from its `## ` comment); a bare `make` still runs `generate` (#125).
 
 **Testing:**
 - [internal] Test that Home's Health distribution bar leaves out Proposed, Done and Cancelled Goals (#110).
