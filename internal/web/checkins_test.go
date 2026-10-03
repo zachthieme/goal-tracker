@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/url"
@@ -1557,6 +1558,53 @@ func TestNoChangeRefusedWithoutPreviousCheckinLandsOnCheckinForm(t *testing.T) {
 	}
 }
 
+// A No change on a Goal that isn't Active is refused, posted plainly or through
+// htmx: an On Hold Goal lands on its Check-in form with the reason, and a
+// Cancelled one on its Check-in page with the reason and no form (#109).
+func TestNoChangeRefusedOnGoalNotActive(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	onHold := h.OnHoldGoal(sam, "Ship search", "People can't find things.", "Waiting on budget.")
+	cancelled := closeGoal(t, h, sam, h.ActiveGoal(sam, "Cut churn", "Customers leave."), domain.LifecycleCancelled)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	const reason = "only an Active Goal can be checked in on"
+
+	for _, hx := range []bool{false, true} {
+		for _, goal := range []domain.Goal{onHold, cancelled} {
+			resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), hx)
+			want, push := http.StatusUnprocessableEntity, ""
+			if hx {
+				want, push = http.StatusOK, fmt.Sprintf("/goals/%d/checkin", goal.ID)
+			}
+			if resp.StatusCode != want {
+				t.Errorf("%s, hx=%v: status = %d, want %d", goal.Lifecycle, hx, resp.StatusCode, want)
+			}
+			if got := resp.Header.Get("HX-Push-Url"); got != push {
+				t.Errorf("%s, hx=%v: HX-Push-Url = %q, want %q", goal.Lifecycle, hx, got, push)
+			}
+			if goal.Lifecycle == domain.LifecycleOnHold {
+				assertNoChangeRefusalOnForm(t, page, reason)
+				continue
+			}
+			if !strings.Contains(page, `data-testid="nav-home"`) || strings.Contains(page, `data-testid="checkin-form"`) {
+				t.Errorf("Cancelled, hx=%v: want the Check-in page without a form; body:\n%s", hx, page)
+			}
+			if msg := pageElement(t, page, "p", "checkin-error"); !strings.Contains(msg, reason) {
+				t.Errorf("Cancelled, hx=%v: error = %q, want %q", hx, msg, reason)
+			}
+			if !strings.Contains(page, `data-testid="goal-no-health">A Cancelled Goal takes no Check-ins.<`) {
+				t.Errorf("Cancelled, hx=%v: page does not say the Goal takes no Check-ins; body:\n%s", hx, page)
+			}
+		}
+	}
+	for _, goal := range []domain.Goal{onHold, cancelled} {
+		if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
+			t.Errorf("%s: a refused No change recorded a Check-in: history has %d, want 1", goal.Lifecycle, len(history))
+		}
+	}
+}
+
 // Someone who may not check in on a Goal gets a 403 that says so inside the
 // normal page, not bare text (#103).
 func TestNoChangeByNonDelegateIsForbiddenInsideThePage(t *testing.T) {
@@ -1592,6 +1640,40 @@ func TestNoChangeOnMissingGoalIsNotFoundInsideThePage(t *testing.T) {
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", resp.StatusCode)
+	}
+	assertCheckinUnavailable(t, page, "There is no such Goal")
+}
+
+// htmx 2 leaves a 403 or 404 unswapped, so the No change button, on the Goal
+// page and on the Check-in page's card, swaps those pages in itself: the click
+// shows why it was refused instead of seeming to do nothing (#109).
+func TestNoChangeButtonSwapsInForbiddenAndNotFoundPages(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("kim@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, path := range []string{fmt.Sprintf("/goals/%d", goal.ID), fmt.Sprintf("/goals/%d/checkin", goal.ID)} {
+		form := html.UnescapeString(tagAround(t, getBody(t, samClient, ts.URL+path), `data-testid="no-change-checkin"`))
+		for _, want := range []string{"hx-on:htmx:response-error=", "403", "404", "htmx.swap('body', event.detail.xhr.responseText"} {
+			if !strings.Contains(form, want) {
+				t.Errorf("on %s, the No change form lacks %q; form tag:\n%s", path, want, form)
+			}
+		}
+	}
+
+	resp, page := postNoChange(t, signInClient(t, ts.URL, "kim@example.com"), fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), true)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("forbidden: status = %d, want 403", resp.StatusCode)
+	}
+	assertCheckinUnavailable(t, page, "Only the Goal&#39;s Owner or a Delegate may check in on Ship search.")
+
+	resp, page = postNoChange(t, samClient, ts.URL+"/goals/9999/checkins/no-change", true)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("missing: status = %d, want 404", resp.StatusCode)
 	}
 	assertCheckinUnavailable(t, page, "There is no such Goal")
 }
