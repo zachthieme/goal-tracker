@@ -13,6 +13,25 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 3, 2026
+
+**Improvements:**
+- [user] The Goal list's group headers sit on the neutral grey surface instead of a pale teal fill, since teal is kept for what a person can act on (#110).
+- [user] Marking a Retired Dimension or Field required, or not required, is refused, even when it would change nothing: required means nothing on something no longer offered, and its card already hides the control (#110).
+
+**Bug fixes:**
+- [user] No change on a Goal's page or Check-in page now shows the page saying you can't check in, or that the Goal doesn't exist, instead of seeming to do nothing when you click it (#109).
+
+**Testing:**
+- [internal] Test that Home's Health distribution bar leaves out Proposed, Done and Cancelled Goals (#110).
+- [internal] `scripts/` adds three tools for verifying changes by hand or from an agent session, which sessions had kept rewriting. `scratch-app start|stop|url` builds the working tree, seeds a fresh database, and serves it on a free port; `stop` stops only the copy it started. `shots.mjs` takes screenshots in the machine's own Chromium and reports each page's theme pin, overflow, focus, toast and dialogs. `contrast.py` checks the colour tokens' WCAG ratios and the ratios `DESIGN.md` states (#111).
+
+**Code quality:**
+- [internal] Drop the Risks and Admin cards' teal hover borders, which never applied because the shared card hover outranked them, and add a test that only buttons hover to a teal border (#110).
+
+**Documentation:**
+- [internal] `DESIGN.md` names the Metric sparkline as the one teal data accent, says the Stale chip's dashed edge reaches 3:1 on the surfaces around it (not its own fill), and lists what `--radius-sm` is for (#110).
+
 ### Collected changes — October 2, 2026
 
 **Breaking changes:**
