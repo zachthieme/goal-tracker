@@ -97,5 +97,5 @@ DESIGN.md: all 82 ratios its tables state match.
 It exits 1 if a ratio is under its minimum, if the two dark blocks differ, or
 if `DESIGN.md` states a ratio the stylesheet no longer gives. In that last
 case it prints the `DESIGN.md` line. Ratios stated in prose rather than
-tables aren't checked. `python3 -m doctest scripts/contrast.py` runs its
+tables aren't checked. `python3 -B -m doctest scripts/contrast.py` runs its
 self-test.

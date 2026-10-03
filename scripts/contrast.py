@@ -7,7 +7,7 @@ Then checks every ratio DESIGN.md's tables state against the stylesheet. Exits
 1 if anything is flagged, the two dark blocks differ, or DESIGN.md disagrees.
 
 Usage:     scripts/contrast.py
-Self-test: python3 -m doctest scripts/contrast.py
+Self-test: python3 -B -m doctest scripts/contrast.py
 """
 
 import re
