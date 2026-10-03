@@ -20,6 +20,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Improvements:**
 - [internal] `.out-of-scope/` records its first rejected request: a commit hook that enforces the changelog, with the history that argued against it (#115).
+- [internal] `.out-of-scope/` records hierarchical Dimension values (Org > Team) as rejected under ADR 0002, with the flat-Dimension and graph-scoped Report alternatives, so a future request finds the reason (#82).
 - [internal] A `/verify-pending` skill and an `issue-verifier` subagent run the check on merged `pending-verify` issues: gates, parallel verifiers, browser checks with `scripts/`, then close the resolved ones and file follow-ups. An issue closes only when its acceptance criteria are met and its behaviour bullets hold on current `main` (#112).
 - [user] The Goal list's group headers sit on the neutral grey surface instead of a pale teal fill, since teal is kept for what a person can act on (#110).
 - [user] Marking a Retired Dimension or Field required, or not required, is refused, even when it would change nothing: required means nothing on something no longer offered, and its card already hides the control (#110).
