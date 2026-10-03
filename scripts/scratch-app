@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# scratch-app: a throwaway copy of Goal Tracker to verify a change against.
+#
+#   scripts/scratch-app start   build the working tree, seed a fresh database,
+#                               serve it on a free port, and print how to use it
+#   scripts/scratch-app url     print the running copy's base URL
+#   scripts/scratch-app stop    stop the copy this script started
+#
+# Everything lives in one scratch directory per checkout (SCRATCH_DIR to
+# choose another): the binaries, app.db, server.log, and the pid and port of
+# the running copy. `stop` signals only that recorded pid, and only while it
+# is still this directory's binary, so it never touches another server, such
+# as `make serve` on port 8090. Set SCRATCH_PORT to pick the port.
+set -euo pipefail
+
+root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)
+dir=${SCRATCH_DIR:-${TMPDIR:-/tmp}/goal-tracker-scratch-$(printf %s "$root" | cksum | cut -d' ' -f1)}
+bin=$dir/goal-tracker
+admin=admin@example.com
+
+# running prints the recorded pid if that process is still the scratch app
+# this script started, and fails otherwise (never started, exited, or the pid
+# now belongs to something else).
+running() {
+	local pid
+	pid=$(cat "$dir/pid" 2>/dev/null) || return 1
+	[[ $pid =~ ^[0-9]+$ ]] || return 1
+	[[ $(ps -p "$pid" -o args= 2>/dev/null) == "$bin" ]] || return 1
+	echo "$pid"
+}
+
+# alive reports whether pid is still running. A zombie counts as gone: where
+# nothing reaps orphans (some containers), an exited server lingers as one.
+alive() {
+	local stat
+	stat=$(ps -p "$1" -o stat= 2>/dev/null) && [[ $stat != Z* ]]
+}
+
+url() {
+	running >/dev/null || return 1
+	echo "http://127.0.0.1:$(cat "$dir/port")"
+}
+
+free_port() {
+	python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1])'
+}
+
+stop() {
+	local pid
+	if ! pid=$(running); then
+		rm -f "$dir/pid" "$dir/port"
+		echo "No scratch app is running (from $dir)."
+		return 0
+	fi
+	kill "$pid"
+	for _ in $(seq 50); do alive "$pid" || break; sleep 0.1; done
+	if alive "$pid"; then kill -KILL "$pid"; fi
+	echo "Stopped the scratch app (pid $pid, port $(cat "$dir/port"))."
+	rm -f "$dir/pid" "$dir/port"
+}
+
+start() {
+	stop >/dev/null
+	local port=${SCRATCH_PORT:-$(free_port)} launch=()
+	local base=http://127.0.0.1:$port
+	# Something already listening there would answer the wait below for us.
+	if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+		echo "Port $port is already in use; choose another with SCRATCH_PORT." >&2
+		exit 1
+	fi
+
+	mkdir -p "$dir"
+	echo "Building $root into $dir"
+	(cd "$root" && go build -o "$bin" ./cmd/goal-tracker && go build -o "$dir/seed" ./cmd/seed)
+
+	echo "Seeding a fresh database"
+	rm -f "$dir"/app.db "$dir"/app.db-*
+	if ! "$dir/seed" -db "$dir/app.db" -admin "$admin" >"$dir/seed.log" 2>&1; then
+		tail -20 "$dir/seed.log" >&2
+		exit 1
+	fi
+
+	# Its own session, so it outlives this shell and nothing aimed at this
+	# shell's process group reaches it.
+	if command -v setsid >/dev/null; then launch=(setsid); fi
+	GOAL_TRACKER_ADDR=127.0.0.1:$port \
+		GOAL_TRACKER_DB=$dir/app.db \
+		GOAL_TRACKER_ADMINS=$admin \
+		GOAL_TRACKER_BASE_URL=$base \
+		${launch[@]+"${launch[@]}"} "$bin" >"$dir/server.log" 2>&1 </dev/null &
+	local pid=$!
+	echo "$pid" >"$dir/pid"
+	echo "$port" >"$dir/port"
+
+	for _ in $(seq 200); do
+		if ! alive "$pid"; then
+			echo "The scratch app exited; see $dir/server.log:" >&2
+			tail -20 "$dir/server.log" >&2
+			rm -f "$dir/pid" "$dir/port"
+			exit 1
+		fi
+		if curl -s -o /dev/null --max-time 1 "$base/signin"; then
+			cat <<-EOF
+				Goal Tracker is running at $base (pid $pid).
+				Sign in at $base/signin as $admin (an Admin), or as a seeded Owner
+				such as platform-lead@example.com; any email signs in.
+				Database: $dir/app.db
+				Log:      $dir/server.log
+				Stop it:  scripts/scratch-app stop
+			EOF
+			return 0
+		fi
+		sleep 0.1
+	done
+	echo "The scratch app didn't answer on $base within 20s; see $dir/server.log" >&2
+	stop >&2
+	exit 1
+}
+
+case ${1:-} in
+start) start ;;
+stop) stop ;;
+url) url || { echo "No scratch app is running (from $dir)." >&2; exit 1; } ;;
+*)
+	echo "usage: scripts/scratch-app start|stop|url" >&2
+	exit 2
+	;;
+esac
