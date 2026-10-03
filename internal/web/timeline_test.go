@@ -819,6 +819,64 @@ func TestGoalHistoryCheckinKeepsMilestoneNamesThroughARename(t *testing.T) {
 	}
 }
 
+// A Check-in that marked GA Done and moved Beta's date, after both are
+// renamed, still reads "Marked GA Done", while its Date Slip names the
+// Milestone as it is now.
+func TestGoalHistoryCheckinKeepsItsMilestoneNameBesideADateSlipThroughARename(t *testing.T) {
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignInNamed("sam@example.com", "Sam Owner")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	ms, err := h.Service.ListMilestones(ctx, goal.ID)
+	if err != nil || len(ms) != 1 || ms[0].Name != "Beta" {
+		t.Fatalf("ListMilestones: %v %v, want just Beta", ms, err)
+	}
+	beta := ms[0]
+	ga, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{
+		GoalID: goal.ID, Name: "GA", TargetDate: goal.DeliveryDate.AddDate(0, 0, -7),
+	})
+	if err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	moved := beta.TargetDate.AddDate(0, 0, 10)
+	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+		GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "GA is out; Beta slips.",
+		Milestones: []domain.MilestoneChangeInput{
+			{MilestoneID: ga.ID, Status: domain.MilestoneDone},
+			{MilestoneID: beta.ID, TargetDate: moved, DateReason: "Design review moved."},
+		},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	for _, rename := range []struct {
+		m    domain.Milestone
+		name string
+		date time.Time
+	}{{ga, "Launch", ga.TargetDate}, {beta, "Preview", moved}} {
+		if _, err := h.Service.EditMilestone(ctx, domain.EditMilestoneInput{
+			MilestoneID: rename.m.ID, Name: rename.name, TargetDate: rename.date,
+		}); err != nil {
+			t.Fatalf("EditMilestone %q: %v", rename.m.Name, err)
+		}
+	}
+	ts := newServer(t, h)
+
+	checkin := historyEntries(historyBlock(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))))[0]
+	if got := entryKind(t, checkin); got != "checkin" {
+		t.Fatalf("the newest entry is a %s, want the Check-in", got)
+	}
+	if got, want := milestoneChangeLines(t, checkin), []string{"Marked GA Done"}; !slices.Equal(got, want) {
+		t.Errorf("after the renames the Check-in's Milestone changes = %q, want %q", got, want)
+	}
+	slips := between(t, checkin, `data-testid="entry-slips"`, "</ul>")
+	if want := "<strong>Milestone Preview</strong>: <del>" + fmtDay(beta.TargetDate) + "</del> " + fmtDay(moved); !strings.Contains(slips, want) {
+		t.Errorf("the Check-in's Date Slip lacks %q:\n%s", want, slips)
+	}
+	if strings.Contains(slips, "Beta") {
+		t.Errorf("the Check-in's Date Slip names Beta by its old name:\n%s", slips)
+	}
+}
+
 // A Check-in from before Milestone changes were recorded has none to show, so
 // its entry renders exactly as one that changed no Milestone: its twin, made at
 // the same moment with the same Health and status, on a Goal set up the same.
