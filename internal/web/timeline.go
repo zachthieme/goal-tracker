@@ -280,8 +280,9 @@ func (h history) dayLabel(d time.Time) string {
 }
 
 // stripCell is one cell of the Health strip: its state (the Health's class,
-// "no-checkin" for a period the Goal went without a Check-in it owed, or "blank"
-// for one it owed none in) and its text equivalent.
+// "no-checkin" for a period the Goal went without a Check-in it owed,
+// "not-yet-due" for one in progress with none yet, or "blank" for one it owed
+// none in) and its text equivalent.
 type stripCell struct {
 	State string
 	Text  string
@@ -289,7 +290,7 @@ type stripCell struct {
 
 // health reports whether the cell shows a Health.
 func (c stripCell) health() bool {
-	return c.State != "no-checkin" && c.State != "blank"
+	return c.State != "no-checkin" && c.State != "not-yet-due" && c.State != "blank"
 }
 
 // stripCells are the Health strip's cells, oldest first.
@@ -300,6 +301,8 @@ func (h history) stripCells() []stripCell {
 		switch {
 		case p.NoCheckin:
 			c.State, c.Text = "no-checkin", h.periodLabel(p)+": no Check-in"
+		case p.NotYetDue:
+			c.State, c.Text = "not-yet-due", h.periodLabel(p)+": not yet due"
 		case p.Health == "" && p.Lifecycle == domain.LifecycleProposed:
 			c.State, c.Text = "blank", h.periodLabel(p)+": not yet Active"
 		case p.Health == "":
@@ -329,14 +332,16 @@ func (h history) stripSpan() string {
 	return fmt.Sprintf("Last %d periods of %d days", len(h.Strip.Periods), h.Strip.CadenceDays)
 }
 
-// stripSummary sums the strip up in one line: "Last 11 weeks: 8 Green, 1
-// Yellow, 2 with no Check-in."
+// stripSummary sums the strip up in one line: "Last 11 weeks: 7 Green, 1
+// Yellow, 2 with no Check-in, 1 not yet due."
 func (h history) stripSummary() string {
 	counts := map[string]int{}
 	for _, p := range h.Strip.Periods {
 		switch {
 		case p.NoCheckin:
 			counts["no-checkin"]++
+		case p.NotYetDue:
+			counts["not-yet-due"]++
 		case p.Health == "":
 			counts["blank"]++
 		default:
@@ -349,6 +354,7 @@ func (h history) stripSummary() string {
 		{domain.HealthYellow, "Yellow"},
 		{domain.HealthRed, "Red"},
 		{"no-checkin", "with no Check-in"},
+		{"not-yet-due", "not yet due"},
 		{"blank", "not Active"},
 	} {
 		if n := counts[k.key]; n > 0 {
