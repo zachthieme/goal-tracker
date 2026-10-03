@@ -25,12 +25,16 @@ type HealthPeriod struct {
 	// First and Last are the period's first and last days in the org's
 	// calendar, as calendar dates (midnight UTC).
 	First, Last time.Time
-	// Health is the Health of the last Check-in made in the period that set
-	// one, "" when none did.
+	// Health is the Health of the last Check-in made in the period, "" when
+	// there was none or it left the Goal out of Active.
 	Health string
-	// NoCheckin is true when the Goal was Active in the period and nobody checked
-	// in on it.
+	// NoCheckin is true when the Goal was Active in a finished period and nobody
+	// checked in on it.
 	NoCheckin bool
+	// NotYetDue is true when the Goal is Active in a period that hasn't ended,
+	// its last day today or later, and nobody has checked in on it yet: it can't
+	// have been missed.
+	NotYetDue bool
 	// Lifecycle is the Lifecycle the Goal was in at the end of the period, or
 	// now for the current one: Proposed for a period before it became Active.
 	Lifecycle string
@@ -93,13 +97,20 @@ func (s *Service) healthStrip(g Goal, checkins []Checkin) HealthStrip {
 			if on.Before(p.First) || on.After(p.Last) {
 				continue
 			}
+			// The last Check-in decides: one that leaves the Goal out of Active
+			// sets no Health, so the period is blank.
 			checkedIn = true
-			if c.Health != "" {
-				p.Health = c.Health
-			}
+			p.Health = c.Health
 			p.Lifecycle = c.LifecycleChange.resultingLifecycle(p.Lifecycle)
 		}
-		p.NoCheckin = active && !checkedIn
+		// Only a finished period can have gone without a Check-in.
+		if active && !checkedIn {
+			if p.Last.Before(today) {
+				p.NoCheckin = true
+			} else {
+				p.NotYetDue = true
+			}
+		}
 		out.Periods = append(out.Periods, p)
 	}
 	return out

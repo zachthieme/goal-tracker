@@ -589,6 +589,81 @@ func TestHealthStripCellsAreBlankWhereNoCheckinWasOwed(t *testing.T) {
 	}
 }
 
+// The week in progress can't have been missed. A weekly Goal checked in last
+// Friday shows this week, on Monday, as not yet due: its own cell, not dashed,
+// and counted apart from the weeks with no Check-in.
+func TestHealthStripShowsTheWeekInProgressAsNotYetDue(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	// Friday 2 Jan 2026, in the week of 29 Dec.
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(3 * 24 * time.Hour)
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
+	cells := healthCells(t, page)
+	if len(cells) != 11 {
+		t.Fatalf("strip has %d cells, want 11: %v", len(cells), cells)
+	}
+	if want := (healthCell{"g", "Week of 29 Dec 2025: Green"}); cells[9] != want {
+		t.Errorf("last week's cell = %+v, want %+v", cells[9], want)
+	}
+	if want := (healthCell{"not-yet-due", "Week of 5 Jan: not yet due"}); cells[10] != want {
+		t.Errorf("this week's cell = %+v, want %+v", cells[10], want)
+	}
+	if strings.Contains(between(t, page, `data-state="not-yet-due"`, "</li>"), `class="dot"`) {
+		t.Errorf("the not yet due cell carries a Health's dot")
+	}
+	// An open slot waiting to be filled: an input's solid edge with no fill,
+	// unlike a Health's fill or the dashed edge of a week with no Check-in.
+	if rule := cssRule(t, page, ".hs-cell.not-yet-due"); !strings.Contains(rule, "border:1px solid var(--color-border-strong)") || strings.Contains(rule, "dashed") {
+		t.Errorf("the not yet due cell's style is %q, want a 1px solid --color-border-strong edge", rule)
+	}
+	summary := html.UnescapeString(between(t, page, `data-testid="health-strip-summary"`, "</"))
+	if !strings.Contains(summary, "Last 11 weeks: 1 Green, 1 not yet due, 9 not Active.") {
+		t.Errorf("strip summary = %q", summary)
+	}
+}
+
+// A week ends how its last Check-in leaves the Goal: a Green Check-in followed
+// by one that puts it On Hold leaves the week blank, and the week in progress
+// is blank too, not "not yet due", since nobody owes a Check-in on paused work.
+func TestHealthStripWeekEndingOnHoldIsBlank(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.Clock.Advance(7 * 24 * time.Hour)
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(time.Hour)
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID: goal.ID, AuthorID: sam.ID, Status: "Pausing.", Lifecycle: domain.LifecycleOnHold, LifecycleReason: "Waiting on legal.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin On Hold: %v", err)
+	}
+	h.Clock.Advance(7 * 24 * time.Hour)
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
+	cells := healthCells(t, page)
+	if len(cells) != 11 {
+		t.Fatalf("strip has %d cells, want 11: %v", len(cells), cells)
+	}
+	for i, want := range []healthCell{
+		{"no-checkin", "Week of 29 Dec 2025: no Check-in"},
+		{"blank", "Week of 5 Jan: On Hold"},
+		{"blank", "Week of 12 Jan: On Hold"},
+	} {
+		if c := cells[8+i]; c != want {
+			t.Errorf("cell %d = %+v, want %+v", 8+i, c, want)
+		}
+	}
+	summary := html.UnescapeString(between(t, page, `data-testid="health-strip-summary"`, "</"))
+	if !strings.Contains(summary, "Last 11 weeks: 1 with no Check-in, 10 not Active.") {
+		t.Errorf("strip summary = %q", summary)
+	}
+}
+
 // A Goal on a 14-day cadence has 14-day periods, each named by its first and
 // last days.
 func TestHealthStripPeriodsFollowTheGoalsCadence(t *testing.T) {

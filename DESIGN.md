@@ -362,21 +362,28 @@ Load the fonts with this URL:
     period is the Goal's cadence long (a week by default), counted in days of
     the org's timezone as Stale is, and the current one ends on the Sunday
     that closes this week, so a weekly Goal's cells are the weeks History is
-    grouped by. A cell takes the Health of the last Check-in made in its
-    period: the Health's `--health-*-bg` fill with its dot in the Health's ink
-    and shape (● Green, ▲ Yellow, ■ Red), so it reads without colour. A period
+    grouped by. How a period ended decides its cell: the last Check-in made in
+    it. If that Check-in left the Goal Active, the cell takes its Health: the
+    Health's `--health-*-bg` fill with its dot in the Health's ink and shape
+    (● Green, ▲ Yellow, ■ Red), so it reads without colour. A finished period
     the Goal was Active with no Check-in is an empty cell in a 1px dashed
     `--stale-edge` border, the edge Stale uses, so a skipped week shows at a
-    glance. A period before the Goal became Active, or one it spent On Hold,
-    Done or Cancelled, owed no Check-in and is blank, with no edge. Cells are
-    24px tall, share the row 4px apart up to 480px wide, and take
-    `--radius-sm`. Each cell's text equivalent is visually hidden inside it and
-    repeated as its tooltip: "Week of 28 Sep: Yellow", "Week of 21 Sep: no
-    Check-in", "Week of 7 Sep: On Hold", or "not yet Active". A Goal on another
-    cadence names a period by its first and last days ("14 Sep – 27 Sep"). A
-    muted line under the strip sums it up: "Last 11 weeks: 8 Green, 1 Yellow,
-    2 with no Check-in." The strip shows for any Goal that has been Active,
-    and it changes nothing: not Stale, not Health.
+    glance. Only a finished period can be missed: one whose last day is today
+    or later (the one in progress, and any wholly ahead when the cadence is
+    shorter than a week) that the Goal is Active in with no Check-in yet is
+    "not yet due", an empty cell in a 1px solid `--color-border-strong` border,
+    the edge of an input, a slot waiting to be filled. A period before the Goal
+    became Active, or one it spent or ended On Hold, Done or Cancelled, owed no
+    Check-in and is blank, with no edge. Cells are 24px tall, share the row 4px
+    apart up to 480px wide, and take `--radius-sm`. Each cell's text equivalent
+    is visually hidden inside it and repeated as its tooltip: "Week of 28 Sep:
+    Yellow", "Week of 21 Sep: no Check-in", "Week of 5 Oct: not yet due",
+    "Week of 7 Sep: On Hold", or "not yet Active". A Goal on another cadence
+    names a period by its first and last days ("14 Sep – 27 Sep"). A muted line
+    under the strip sums it up, counting the periods not yet due apart from the
+    missed ones, and naming them only when there are any: "Last 11 weeks: 7
+    Green, 1 Yellow, 2 with no Check-in, 1 not yet due." The strip shows for any
+    Goal that has been Active, and it changes nothing: not Stale, not Health.
   - **Filter chips (`.tl-chips`):** a row of `--radius-full` chips above the
     list, wrapping on narrow screens: All, Check-ins, Date Slips, So What,
     Ownership, Values. Each carries its count. Date Slips counts and lists the

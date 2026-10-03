@@ -45,8 +45,9 @@ templ goalHistory(h history) {
 
 // healthStrip is the Goal's Health over its last Check-in periods, oldest on
 // the left: each period's Health in its colour and shape, a dashed empty cell
-// for a period the Goal went without a Check-in, and a blank one for a period
-// it owed none in. Each cell carries its text equivalent, and a line under the
+// for a period the Goal went without a Check-in, a solid-edged empty one for a
+// period in progress with none yet, and a blank one for a period it owed none
+// in. Each cell carries its text equivalent, and a line under the
 // strip sums it up. A Goal that has never been Active has none.
 templ healthStrip(h history) {
 	if cells := h.stripCells(); len(cells) > 0 {
@@ -216,6 +217,7 @@ templ timelineStyles() {
 		.hs-cells{list-style:none;margin:0;padding:0;display:flex;gap:4px;max-width:480px}
 		.hs-cell{flex:1;min-width:0;height:24px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-sm)}
 		.hs-cell.no-checkin{border:1px dashed var(--stale-edge)}
+		.hs-cell.not-yet-due{border:1px solid var(--color-border-strong)}
 		.hs-cell.blank{background:none}
 	</style>
 }
