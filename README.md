@@ -30,7 +30,10 @@ created on first sign-in.
 
 Other targets: `make test`, `make test-quick` (the tests without the race
 detector, for a quick local loop), `make lint`, `make generate` (templ and
-sqlc), and `make generate-check`.
+sqlc, and what a bare `make` runs), `make generate-check`, `make check` (every
+gate: `generate-check`, `lint`, then `test`), `make test-scripts` (the tests
+of the [verification scripts](scripts/README.md)), `make clean` (removes
+`bin/` and `serve.log`), and `make help` (lists every target).
 
 ## Weekly emails
 

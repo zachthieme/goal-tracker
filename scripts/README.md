@@ -93,7 +93,8 @@ facts. The script exits 2 if the arguments or a shot's fields are invalid.
 Where the OS gives Chromium no sandbox, as in some containers, it says so and
 runs Chromium without one.
 
-`node --test scripts/*.test.mjs` runs the tests of the parts that don't need
+`node --test scripts/*.test.mjs` (or `make test-scripts`, which also runs
+`contrast.py`'s self-test) runs the tests of the parts that don't need
 a browser: checking the shots, including the examples above, wrapping
 actions, the status check, and the printed facts.
 
@@ -124,4 +125,4 @@ It exits 1 if a ratio is under its minimum, if the two dark blocks differ, or
 if `DESIGN.md` states a ratio the stylesheet no longer gives. In that last
 case it prints the `DESIGN.md` line. Ratios stated in prose rather than
 tables aren't checked. `python3 -B -m doctest scripts/contrast.py` runs its
-self-test.
+self-test, as does `make test-scripts`.
