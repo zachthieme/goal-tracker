@@ -41,8 +41,9 @@ type MilestoneChange struct {
 	// MilestoneChangeRemoved; Reason explains a removal.
 	Kind   string
 	Reason string
-	// Name is the Milestone's name, and AddedDate the date it had when added,
-	// before any Date Slip moved it.
+	// Name is the Milestone's name when the Check-in made the change, kept
+	// through later renames, and AddedDate the date it had when added, before
+	// any Date Slip moved it.
 	Name      string
 	AddedDate time.Time
 }
@@ -195,9 +196,10 @@ type NewMilestoneInput struct {
 }
 
 // milestoneStatusChange is a validated Done or Removed marking waiting to be
-// written with its Check-in.
+// written with its Check-in, with the Milestone's name to record it under.
 type milestoneStatusChange struct {
 	milestoneID   int64
+	name          string
 	status        string
 	removedReason string
 }
@@ -209,13 +211,13 @@ func planMilestoneStatus(m db.Milestone, status, removedReason string) (*milesto
 	case "", MilestonePlanned:
 		return nil, nil
 	case MilestoneDone:
-		return &milestoneStatusChange{milestoneID: m.ID, status: MilestoneDone}, nil
+		return &milestoneStatusChange{milestoneID: m.ID, name: m.Name, status: MilestoneDone}, nil
 	case MilestoneRemoved:
 		reason := strings.TrimSpace(removedReason)
 		if reason == "" {
 			return nil, fmt.Errorf("%w: removing Milestone %q needs a reason", ErrValidation, m.Name)
 		}
-		return &milestoneStatusChange{milestoneID: m.ID, status: MilestoneRemoved, removedReason: reason}, nil
+		return &milestoneStatusChange{milestoneID: m.ID, name: m.Name, status: MilestoneRemoved, removedReason: reason}, nil
 	default:
 		return nil, fmt.Errorf("%w: a Milestone must be %q, %q, or %q", ErrValidation, MilestonePlanned, MilestoneDone, MilestoneRemoved)
 	}
@@ -304,7 +306,7 @@ func (p milestonePlan) apply(ctx context.Context, tx *Service, goalID, checkinID
 		if err != nil {
 			return err
 		}
-		if err := tx.recordMilestoneChange(ctx, checkinID, m.ID, MilestoneChangeAdded, ""); err != nil {
+		if err := tx.recordMilestoneChange(ctx, checkinID, m.ID, m.Name, MilestoneChangeAdded, ""); err != nil {
 			return err
 		}
 	}
@@ -326,17 +328,19 @@ func (s *Service) recordMilestoneStatus(ctx context.Context, checkinID int64, c 
 	}); err != nil {
 		return fmt.Errorf("set milestone status: %w", err)
 	}
-	return s.recordMilestoneChange(ctx, checkinID, c.milestoneID, c.status, c.removedReason)
+	return s.recordMilestoneChange(ctx, checkinID, c.milestoneID, c.name, c.status, c.removedReason)
 }
 
 // recordMilestoneChange records that checkinID made a Milestone change of kind
-// to milestoneID, stamped with the Service's clock.
-func (s *Service) recordMilestoneChange(ctx context.Context, checkinID, milestoneID int64, kind, reason string) error {
+// to milestoneID, under the name it has now so a later rename leaves the record
+// as it was, stamped with the Service's clock.
+func (s *Service) recordMilestoneChange(ctx context.Context, checkinID, milestoneID int64, name, kind, reason string) error {
 	if _, err := s.queries.CreateMilestoneChange(ctx, db.CreateMilestoneChangeParams{
 		CheckinID:   checkinID,
 		MilestoneID: milestoneID,
 		Kind:        kind,
 		Reason:      reason,
+		Name:        name,
 		CreatedAt:   s.clock.Now().Format(timeFormat),
 	}); err != nil {
 		return fmt.Errorf("record milestone change: %w", err)

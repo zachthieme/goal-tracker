@@ -754,12 +754,7 @@ func TestGoalHistoryCheckinShowsItsMilestoneChanges(t *testing.T) {
 	if got := entryKind(t, checkin); got != "checkin" {
 		t.Fatalf("the newest entry is a %s, want the Check-in", got)
 	}
-	changes := html.UnescapeString(between(t, checkin, `data-testid="entry-milestone-changes"`, "</ul>"))
-	var got []string
-	for _, li := range strings.Split(changes, `data-testid="milestone-change">`)[1:] {
-		text, _, _ := strings.Cut(li, "</li>")
-		got = append(got, text)
-	}
+	got := milestoneChangeLines(t, checkin)
 	want := []string{
 		"Added Milestone GA (" + fmtDay(gaDate) + ")",
 		"Marked Beta Done",
@@ -773,6 +768,54 @@ func TestGoalHistoryCheckinShowsItsMilestoneChanges(t *testing.T) {
 	}
 	if c := historyChips(t, history)["Date Slips"]; c.count != "0" {
 		t.Errorf("the Date Slips chip counts %s, want 0", c.count)
+	}
+}
+
+// milestoneChangeLines returns the text of each Milestone change a Check-in
+// entry lists, in order.
+func milestoneChangeLines(t *testing.T, checkin string) []string {
+	t.Helper()
+	changes := html.UnescapeString(between(t, checkin, `data-testid="entry-milestone-changes"`, "</ul>"))
+	var lines []string
+	for _, li := range strings.Split(changes, `data-testid="milestone-change">`)[1:] {
+		text, _, _ := strings.Cut(li, "</li>")
+		lines = append(lines, text)
+	}
+	return lines
+}
+
+// Renaming the Milestones a Check-in added, marked Done and removed leaves its
+// entry naming them as they were then.
+func TestGoalHistoryCheckinKeepsMilestoneNamesThroughARename(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignInNamed("sam@example.com", "Sam Owner")
+	goal, gaDate := replanCheckin(t, h, sam, "Ship v2", true)
+	ms, err := h.Service.ListMilestones(context.Background(), goal.ID)
+	if err != nil || len(ms) != 3 {
+		t.Fatalf("ListMilestones: %v %v", ms, err)
+	}
+	renames := map[string]string{"GA": "Launch", "Beta": "Preview", "Rollout to 50%": "Half rollout"}
+	for _, m := range ms {
+		if _, err := h.Service.EditMilestone(context.Background(), domain.EditMilestoneInput{
+			MilestoneID: m.ID, Name: renames[m.Name], TargetDate: m.TargetDate,
+		}); err != nil {
+			t.Fatalf("EditMilestone %q: %v", m.Name, err)
+		}
+	}
+	ts := newServer(t, h)
+
+	history := historyBlock(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal)))
+	checkin := historyEntries(history)[0]
+	if got := entryKind(t, checkin); got != "checkin" {
+		t.Fatalf("the newest entry is a %s, want the Check-in", got)
+	}
+	want := []string{
+		"Added Milestone GA (" + fmtDay(gaDate) + ")",
+		"Marked Beta Done",
+		"Removed Rollout to 50%: descoped",
+	}
+	if got := milestoneChangeLines(t, checkin); !slices.Equal(got, want) {
+		t.Errorf("after the renames the Check-in's Milestone changes = %q, want %q", got, want)
 	}
 }
 

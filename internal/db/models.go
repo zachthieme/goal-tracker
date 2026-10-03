@@ -236,6 +236,7 @@ type MilestoneChange struct {
 	Kind        string
 	Reason      string
 	CreatedAt   string
+	Name        string
 }
 
 type NarrativePick struct {

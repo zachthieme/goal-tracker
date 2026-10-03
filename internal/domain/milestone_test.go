@@ -350,6 +350,48 @@ func TestCheckinRecordsItsMilestoneChanges(t *testing.T) {
 	}
 }
 
+// A Check-in's Milestone changes keep each Milestone's name as it was: renaming
+// the added, Done and Removed Milestones afterwards leaves the entry as it read.
+func TestCheckinMilestoneChangesKeepTheNameAtTheTime(t *testing.T) {
+	h := testsupport.New(t)
+	goal, in := replanned(t, h)
+	if _, err := h.Service.SubmitCheckin(context.Background(), in); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	ms, err := h.Service.ListMilestones(context.Background(), goal.ID)
+	if err != nil || len(ms) != 3 {
+		t.Fatalf("ListMilestones: %v %v", ms, err)
+	}
+	for _, m := range ms {
+		if _, err := h.Service.EditMilestone(context.Background(), domain.EditMilestoneInput{
+			MilestoneID: m.ID,
+			Name:        m.Name + " (renamed)",
+			TargetDate:  m.TargetDate,
+		}); err != nil {
+			t.Fatalf("EditMilestone %q: %v", m.Name, err)
+		}
+	}
+
+	checkins, err := h.Service.ListCheckins(context.Background(), goal.ID)
+	if err != nil || len(checkins) != 1 {
+		t.Fatalf("ListCheckins: %+v %v", checkins, err)
+	}
+	got := checkins[0].MilestoneChanges
+	want := []struct{ kind, name string }{
+		{domain.MilestoneChangeAdded, "GA"},
+		{domain.MilestoneChangeDone, "Beta"},
+		{domain.MilestoneChangeRemoved, "Rollout to 50%"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("MilestoneChanges = %+v, want %d", got, len(want))
+	}
+	for i, w := range want {
+		if got[i].Kind != w.kind || got[i].Name != w.name {
+			t.Errorf("change %d = %s %q, want %s %q", i, got[i].Kind, got[i].Name, w.kind, w.name)
+		}
+	}
+}
+
 // A Check-in that fails validation records none of its Milestone changes.
 func TestRejectedCheckinRecordsNoMilestoneChange(t *testing.T) {
 	h := testsupport.New(t)
