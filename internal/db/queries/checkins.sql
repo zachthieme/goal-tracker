@@ -92,17 +92,17 @@ SELECT CAST(
 AS INTEGER) AS churn;
 
 -- name: CreateMilestoneChange :one
--- Record a Milestone a Check-in added, marked Done or marked Removed; Removed
--- carries its reason.
-INSERT INTO milestone_changes (checkin_id, milestone_id, kind, reason, created_at)
-VALUES (?, ?, ?, ?, ?)
+-- Record a Milestone a Check-in added, marked Done or marked Removed, under the
+-- name it had then; Removed carries its reason.
+INSERT INTO milestone_changes (checkin_id, milestone_id, kind, reason, name, created_at)
+VALUES (?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ListMilestoneChangesByGoal :many
 -- The Milestone changes a Goal's Check-ins recorded, each Check-in's in the
--- order made, with the Milestone's name and the date it had when added: its
--- first Date Slip's old date, or its date now if it never slipped.
-SELECT sqlc.embed(milestone_changes), milestones.name,
+-- order made, with the date the Milestone had when added: its first Date Slip's
+-- old date, or its date now if it never slipped.
+SELECT sqlc.embed(milestone_changes),
        CAST(COALESCE(
            (SELECT ds.old_date FROM date_slips ds WHERE ds.milestone_id = milestones.id ORDER BY ds.created_at, ds.id LIMIT 1),
            milestones.target_date

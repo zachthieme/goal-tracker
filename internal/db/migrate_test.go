@@ -174,3 +174,46 @@ func TestMigrationKeepsHighlightsAndAllowsSeveralPerCheckin(t *testing.T) {
 		t.Errorf("a second Highlight on the same Check-in: %v", err)
 	}
 }
+
+// Milestone changes recorded before they kept the Milestone's name take the
+// name it has on upgrade: nothing recorded an earlier one.
+func TestMigrationNamesExistingMilestoneChanges(t *testing.T) {
+	sqlDB := migratedExcept(t, "migrations/0035_milestone_change_names.sql")
+	// Put back the table as 0034 made it: no name.
+	if _, err := sqlDB.Exec(`ALTER TABLE milestone_changes DROP COLUMN name`); err != nil {
+		t.Fatalf("undo 0035: %v", err)
+	}
+	if _, err := sqlDB.Exec(`
+		INSERT INTO milestones (id, goal_id, name, target_date, created_at) VALUES
+			(1, 1, 'Beta', '2026-03-16', '2026-01-02T00:00:00Z'),
+			(2, 1, 'GA', '2026-04-20', '2026-01-02T00:00:00Z');
+		INSERT INTO milestone_changes (id, checkin_id, milestone_id, kind, reason, created_at) VALUES
+			(3, 10, 2, 'Added', '', '2026-01-09T00:00:00Z'),
+			(5, 11, 1, 'Done', '', '2026-01-16T00:00:00Z'),
+			(6, 11, 2, 'Removed', 'descoped', '2026-01-16T00:00:00Z')`); err != nil {
+		t.Fatalf("arrange 0034 milestone changes: %v", err)
+	}
+
+	if err := db.Migrate(sqlDB); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	rows, err := sqlDB.Query(`SELECT id, kind, name FROM milestone_changes ORDER BY id`)
+	if err != nil {
+		t.Fatalf("read milestone changes: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var got []string
+	for rows.Next() {
+		var id int64
+		var kind, name string
+		if err := rows.Scan(&id, &kind, &name); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, fmt.Sprintf("%d %s %s", id, kind, name))
+	}
+	want := []string{"3 Added GA", "5 Done Beta", "6 Removed GA"}
+	if !slices.Equal(got, want) {
+		t.Errorf("milestone changes = %v, want %v", got, want)
+	}
+}

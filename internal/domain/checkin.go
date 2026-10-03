@@ -461,7 +461,7 @@ func (s *Service) ListCheckins(ctx context.Context, goalID int64) ([]Checkin, er
 			MilestoneID: r.MilestoneChange.MilestoneID,
 			Kind:        r.MilestoneChange.Kind,
 			Reason:      r.MilestoneChange.Reason,
-			Name:        r.Name,
+			Name:        r.MilestoneChange.Name,
 			AddedDate:   addedDate,
 		})
 	}
