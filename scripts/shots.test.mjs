@@ -1,5 +1,5 @@
 // Tests for the parts of shots.mjs that don't need a browser:
-//   node --test scripts/
+//   node --test scripts/*.test.mjs
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
@@ -10,6 +10,12 @@ test("a shot's status must be an integer", () => {
   assert.throws(() => normalise({ path: "/goals", status: "404" }, 0), /shot 1: status must be an integer/);
   assert.throws(() => normalise({ path: "/goals", status: 404.5 }, 0), /status must be an integer/);
   assert.equal(normalise({ path: "/goals", status: 404 }, 0).status, 404);
+});
+
+test("a shot's name may end in .png without saving .png.png", () => {
+  assert.equal(normalise({ path: "/goals", name: "b.png" }, 0).file, "b.png");
+  assert.equal(normalise({ path: "/goals", name: "b" }, 0).file, "b.png");
+  assert.equal(normalise({ path: "/goals/3", theme: "dark", width: 390 }, 1).file, "02-goals-3-dark-390.png");
 });
 
 test("a shot with no status fails on an HTTP error", () => {
@@ -38,6 +44,13 @@ test("an action that uses return or await runs in an async function", () => {
   const action = "await fetch('/x');\nreturn document.title";
   assert.equal(wrapAction(action), `(async () => {\n${action}\n})()`);
   assert.equal(wrapAction("return 1"), "(async () => {\nreturn 1\n})()");
+});
+
+test("an action that awaits a parenthesised expression runs in an async function", () => {
+  // As a script, await (x) compiles as a call to a function named await.
+  for (const action of ["await (new Promise(r => setTimeout(r, 10)))", "await(sleep(10)); go()"]) {
+    assert.equal(wrapAction(action), `(async () => {\n${action}\n})()`);
+  }
 });
 
 const facts = {

@@ -15,13 +15,14 @@
 //   full    false to capture only the window, not the whole page (true)
 //   action  JavaScript run in the page once it has loaded. A script, e.g.
 //           "document.querySelector('form.x').requestSubmit()", runs as it
-//           is and may end on a promise. One that uses return or await at
-//           its top level, e.g. "if (!x) return; await x.done", runs as the
-//           body of an async function. The shot is taken once the page
-//           settles.
+//           is and may end on a promise. One that uses return at its top
+//           level or await in any form, e.g. "if (!x) return; await x.done"
+//           or "await (x.done)", runs as the body of an async function. The
+//           shot is taken once the page settles.
 //   dialog  "dismiss" (default) or "accept" a native alert/confirm
 //   status  the HTTP status the page's final document should have, e.g. 404
-//   name    the PNG's name (default from the index, path, theme and width)
+//   name    the PNG's name, with or without .png (default from the index,
+//           path, theme and width)
 //
 // For each shot it saves <out>/<name>.png and prints the page's status and
 // title, the theme pin, horizontal overflow, the focused element, any toast,
@@ -67,7 +68,8 @@ function parseArgs(argv) {
   return { base: base.replace(/\/+$/, ""), shots, out: resolve(out) };
 }
 
-// normalise fills in a shot's defaults, and throws if a field is invalid.
+// normalise fills in a shot's defaults and its PNG's file name, and throws if
+// a field is invalid.
 export function normalise(shot, i) {
   const bad = (message) => {
     throw new Error(`shot ${i + 1}: ${message}`);
@@ -80,19 +82,28 @@ export function normalise(shot, i) {
   if (s.status !== undefined && !Number.isInteger(s.status)) bad("status must be an integer");
   const slug = s.path.replace(/[^\w]+/g, "-").replace(/^-|-$/g, "") || "root";
   s.name ??= `${String(i + 1).padStart(2, "0")}-${slug}-${s.theme}-${s.width}`;
+  s.file = `${String(s.name).replace(/\.png$/, "")}.png`;
   return s;
 }
 
-// wrapAction is the script that runs a shot's action: the action itself if it
-// compiles as a script, so it keeps its completion value, else the action as
-// the body of an async function, so it can use return and await.
+// wrapAction is the script that runs a shot's action: the action as the body
+// of an async function, so it can use return and await, if it doesn't compile
+// as a script or if it says await and compiles as that body (as a script,
+// await (x) is a call to a function named await); else the action itself, so
+// it keeps its completion value.
 export function wrapAction(action) {
+  const wrapped = `(async () => {\n${action}\n})()`;
+  if (/(?<![\w$])await(?![\w$])/.test(action) && compiles(wrapped)) return wrapped;
+  return compiles(action) ? action : wrapped;
+}
+
+function compiles(script) {
   try {
-    new Script(action);
-    return action;
+    new Script(script);
+    return true;
   } catch (err) {
     if (!(err instanceof SyntaxError)) throw err;
-    return `(async () => {\n${action}\n})()`;
+    return false;
   }
 }
 
@@ -373,7 +384,7 @@ async function shoot(cdp, base, out, shot) {
       captureBeyondViewport: shot.full,
       clip: { x: 0, y: 0, width: shot.width, height, scale: 1 },
     }, s);
-    const file = join(out, `${shot.name}.png`);
+    const file = join(out, shot.file);
     writeFileSync(file, Buffer.from(data, "base64"));
     return { file, facts: { ...f, status }, native };
   } finally {
