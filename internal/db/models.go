@@ -229,6 +229,15 @@ type Milestone struct {
 	AddedWhileActive int64
 }
 
+type MilestoneChange struct {
+	ID          int64
+	CheckinID   int64
+	MilestoneID int64
+	Kind        string
+	Reason      string
+	CreatedAt   string
+}
+
 type NarrativePick struct {
 	ID                 int64
 	ReportDefinitionID int64

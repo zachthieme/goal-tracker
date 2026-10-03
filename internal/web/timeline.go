@@ -377,6 +377,19 @@ func (h history) slipWhat(s domain.DateSlip) string {
 	return fmt.Sprintf("Milestone %d", s.MilestoneID)
 }
 
+// milestoneChangeText says what a Check-in did to a Milestone: "Added
+// Milestone GA (2026-11-09)", "Marked Beta Done" or "Removed Rollout to 50%:
+// descoped".
+func milestoneChangeText(m domain.MilestoneChange) string {
+	switch m.Kind {
+	case domain.MilestoneChangeAdded:
+		return fmt.Sprintf("Added Milestone %s (%s)", m.Name, fmtDate(m.AddedDate))
+	case domain.MilestoneChangeDone:
+		return fmt.Sprintf("Marked %s Done", m.Name)
+	}
+	return fmt.Sprintf("Removed %s: %s", m.Name, m.Reason)
+}
+
 // when is t as an entry shows it, in the org's timezone: "Fri 2 Jan 15:04".
 func (h history) when(t time.Time) string {
 	return t.In(h.Loc).Format("Mon 2 Jan 15:04")

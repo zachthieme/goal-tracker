@@ -706,3 +706,174 @@ func TestProposedGoalPageHasNoHealthStrip(t *testing.T) {
 		t.Errorf("a Proposed Goal's page shows a Health strip")
 	}
 }
+
+// replanCheckin arranges an Active Goal titled title with Milestones Beta and
+// Rollout to 50% (added from the Goal page, so not in a Check-in), then a Green
+// Check-in on it that, with replan, adds GA on gaDate, marks Beta Done and
+// removes Rollout to 50% as descoped. Without replan it changes no Milestone.
+func replanCheckin(t *testing.T, h *testsupport.Harness, sam domain.Account, title string, replan bool) (goal domain.Goal, gaDate time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	goal = h.ActiveGoal(sam, title, "Customers wait too long.")
+	ms, err := h.Service.ListMilestones(ctx, goal.ID)
+	if err != nil || len(ms) != 1 {
+		t.Fatalf("ListMilestones: %v %v", ms, err)
+	}
+	rollout, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{
+		GoalID: goal.ID, Name: "Rollout to 50%", TargetDate: goal.DeliveryDate.AddDate(0, 0, -14),
+	})
+	if err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	gaDate = goal.DeliveryDate.AddDate(0, 0, -7)
+	in := domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "Re-planned."}
+	if replan {
+		in.Milestones = []domain.MilestoneChangeInput{
+			{MilestoneID: ms[0].ID, Status: domain.MilestoneDone},
+			{MilestoneID: rollout.ID, Status: domain.MilestoneRemoved, RemovedReason: "descoped"},
+		}
+		in.NewMilestones = []domain.NewMilestoneInput{{Name: "GA", TargetDate: gaDate}}
+	}
+	if _, err := h.Service.SubmitCheckin(ctx, in); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	return goal, gaDate
+}
+
+// A Check-in's entry lists the Milestones it added, marked Done or removed,
+// with the removal's reason, beside its Date Slips; the Date Slips chip still
+// counts only the Check-ins that slipped a date.
+func TestGoalHistoryCheckinShowsItsMilestoneChanges(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignInNamed("sam@example.com", "Sam Owner")
+	goal, gaDate := replanCheckin(t, h, sam, "Ship v2", true)
+	ts := newServer(t, h)
+
+	history := historyBlock(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal)))
+	checkin := historyEntries(history)[0]
+	if got := entryKind(t, checkin); got != "checkin" {
+		t.Fatalf("the newest entry is a %s, want the Check-in", got)
+	}
+	changes := html.UnescapeString(between(t, checkin, `data-testid="entry-milestone-changes"`, "</ul>"))
+	var got []string
+	for _, li := range strings.Split(changes, `data-testid="milestone-change">`)[1:] {
+		text, _, _ := strings.Cut(li, "</li>")
+		got = append(got, text)
+	}
+	want := []string{
+		"Added Milestone GA (" + fmtDay(gaDate) + ")",
+		"Marked Beta Done",
+		"Removed Rollout to 50%: descoped",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("the Check-in's Milestone changes = %q, want %q", got, want)
+	}
+	if strings.Contains(checkin, `data-testid="entry-slips"`) {
+		t.Errorf("a Check-in that slipped no date lists Date Slips:\n%s", checkin)
+	}
+	if c := historyChips(t, history)["Date Slips"]; c.count != "0" {
+		t.Errorf("the Date Slips chip counts %s, want 0", c.count)
+	}
+}
+
+// A Check-in from before Milestone changes were recorded has none to show, so
+// its entry renders exactly as one that changed no Milestone: its twin, made at
+// the same moment with the same Health and status, on a Goal set up the same.
+func TestGoalHistoryCheckinWithoutRecordedChangesRendersAsBefore(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignInNamed("sam@example.com", "Sam Owner")
+	older, _ := replanCheckin(t, h, sam, "Ship v2", true)
+	twin, _ := replanCheckin(t, h, sam, "Ship v3", false)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	checkinEntry := func(goal domain.Goal) string {
+		t.Helper()
+		for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)))) {
+			if entryKind(t, e) == "checkin" {
+				return e
+			}
+		}
+		t.Fatalf("no Check-in on %s's History", goal.Title)
+		return ""
+	}
+	if !strings.Contains(checkinEntry(older), `data-testid="entry-milestone-changes"`) {
+		t.Fatal("the replanning Check-in shows no Milestone changes before they are deleted")
+	}
+
+	if _, err := h.DB.Exec(`DELETE FROM milestone_changes WHERE checkin_id IN (SELECT id FROM checkins WHERE goal_id = ?)`, older.ID); err != nil {
+		t.Fatalf("delete milestone changes: %v", err)
+	}
+	if got, want := checkinEntry(older), checkinEntry(twin); got != want {
+		t.Errorf("a Check-in without recorded changes renders\n%s\nwant, as one that changed no Milestone,\n%s", got, want)
+	}
+}
+
+// Through the Check-in form, a Check-in that fails validation records none of
+// its Milestone changes; resubmitted valid, its entry shows all three. The
+// Goal's Milestone Churn counts the same either way, and the same again once
+// the recorded changes are gone, as for an older Check-in.
+func TestCheckinFormRecordsMilestoneChangesOnlyWhenValid(t *testing.T) {
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	ms, err := h.Service.ListMilestones(ctx, goal.ID)
+	if err != nil || len(ms) != 1 {
+		t.Fatalf("ListMilestones: %v %v", ms, err)
+	}
+	beta := ms[0]
+	rollout, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{
+		GoalID: goal.ID, Name: "Rollout to 50%", TargetDate: goal.DeliveryDate.AddDate(0, 0, -14),
+	})
+	if err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	form := url.Values{
+		"health":             {domain.HealthYellow}, // with no Path to Green
+		"status":             {"Re-planned."},
+		"new_milestone_name": {"GA"},
+		"new_milestone_date": {"2026-05-01"},
+		fmt.Sprintf("milestone_status_%d", beta.ID):            {domain.MilestoneDone},
+		fmt.Sprintf("milestone_status_%d", rollout.ID):         {domain.MilestoneRemoved},
+		fmt.Sprintf("milestone_removed_reason_%d", rollout.ID): {"descoped"},
+	}
+	checkinURL := fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID)
+	churn := func(page string) string {
+		t.Helper()
+		return between(t, page, `data-testid="goal-milestone-churn">`, "<")[len(`data-testid="goal-milestone-churn">`):]
+	}
+
+	postForm(t, client, checkinURL, form)
+	page := getBody(t, client, goalPageURL(ts.URL, goal))
+	if strings.Contains(historyBlock(t, page), `data-testid="milestone-change"`) {
+		t.Errorf("a rejected Check-in shows Milestone changes:\n%s", historyBlock(t, page))
+	}
+	if got := churn(page); got != "1" {
+		t.Errorf("churn after the rejection = %s, want 1 (Rollout to 50%% added while Active)", got)
+	}
+
+	form.Set("health", domain.HealthGreen)
+	if resp := postForm(t, client, checkinURL, form); resp.StatusCode != http.StatusOK {
+		t.Fatalf("valid Check-in: status %d", resp.StatusCode)
+	}
+	page = getBody(t, client, goalPageURL(ts.URL, goal))
+	entries := historyEntries(historyBlock(t, page))
+	changes := html.UnescapeString(between(t, entries[0], `data-testid="entry-milestone-changes"`, "</ul>"))
+	for _, want := range []string{"Added Milestone GA (2026-05-01)", "Marked Beta Done", "Removed Rollout to 50%: descoped"} {
+		if !strings.Contains(changes, want) {
+			t.Errorf("the Check-in's Milestone changes lack %q:\n%s", want, changes)
+		}
+	}
+	if got := churn(page); got != "3" {
+		t.Errorf("churn = %s, want 3 (Rollout to 50%% and GA added, Rollout to 50%% removed)", got)
+	}
+
+	if _, err := h.DB.Exec(`DELETE FROM milestone_changes`); err != nil {
+		t.Fatalf("delete milestone changes: %v", err)
+	}
+	if got := churn(getBody(t, client, goalPageURL(ts.URL, goal))); got != "3" {
+		t.Errorf("churn without recorded changes = %s, want still 3", got)
+	}
+}

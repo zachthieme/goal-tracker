@@ -76,7 +76,7 @@ templ historyItem(h history, e historyEntry) {
 			<span class="tl-kind">{ e.label() }</span>
 			<time class="muted small" datetime={ e.At.In(h.Loc).Format("2006-01-02T15:04:05Z07:00") }>{ h.when(e.At) }</time>
 		</p>
-		switch {
+		switch  {
 			case e.Checkin != nil:
 				@historyCheckin(h, e)
 			case e.Revision != nil:
@@ -122,8 +122,9 @@ templ historyMarker(e historyEntry) {
 // Lifecycle change, Path to Green and Date Slips it recorded, and who wrote it
 // for whom. Its Metric readings and the explanation of a Health that differs
 // from the Rolled-up Health sit behind a disclosure. Its Milestone changes are
-// the Milestone Date Slips it recorded: marking a Milestone Done or Removed, or
-// adding one, isn't linked to the Check-in that did it, so it isn't shown here.
+// the Milestone Date Slips it recorded and, beside them, the Milestones it
+// added, marked Done or marked Removed. A Check-in from before those were
+// recorded shows only its Date Slips.
 templ historyCheckin(h history, e historyEntry) {
 	{{ c := e.Checkin }}
 	<p>
@@ -155,6 +156,13 @@ templ historyCheckin(h history, e historyEntry) {
 				<li data-testid="date-slip">
 					<strong>{ h.slipWhat(s) }</strong>: <del>{ fmtDate(s.OldDate) }</del> { fmtDate(s.NewDate) } <span>— { s.Reason }</span>
 				</li>
+			}
+		</ul>
+	}
+	if len(c.MilestoneChanges) > 0 {
+		<ul data-testid="entry-milestone-changes" class="tl-slips">
+			for _, m := range c.MilestoneChanges {
+				<li data-testid="milestone-change">{ milestoneChangeText(m) }</li>
 			}
 		</ul>
 	}
