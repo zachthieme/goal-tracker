@@ -274,3 +274,106 @@ func TestCreateDefinedGoalRefusedActivationSavesNothing(t *testing.T) {
 		})
 	}
 }
+
+// A refused activation comes after every write, so it must roll back all of
+// them: the Goal, its Milestones, Metrics, values and Field values, a value it
+// added to an Extendable list, and its links, Accepted or Pending.
+func TestCreateDefinedGoalRefusedActivationLeavesNothingBehind(t *testing.T) {
+	t.Parallel()
+
+	s := newDefinedGoalSetup(t)
+	ctx := context.Background()
+	kim := s.h.SignIn("kim@example.com")
+	own := s.h.CreateGoal(s.owner, "Win enterprise", "Enterprise deals stall.")
+	theirs := s.h.CreateGoal(kim, "Grow revenue", "Revenue is flat.")
+	s.h.SetFieldRequired(s.admin, s.h.CreateField(s.admin, "Budget", domain.FieldNumber, "$"), true)
+	in := s.fullDefinition()
+	in.ParentIDs = []int64{own.ID, theirs.ID}
+	in.Activate = true
+
+	if _, err := s.h.Service.CreateDefinedGoal(ctx, in); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("err = %v, want the activation refused", err)
+	}
+
+	goals, err := s.h.Service.ListGoals(ctx)
+	if err != nil {
+		t.Fatalf("ListGoals: %v", err)
+	}
+	if len(goals) != 2 {
+		t.Errorf("Goals = %+v, want only the two parents", goals)
+	}
+	dims, err := s.h.Service.ListDimensions(ctx)
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	for _, d := range dims {
+		if d.ID == s.customer.ID && len(d.Values) != 1 {
+			t.Errorf("Customer values = %+v, want only Acme", d.Values)
+		}
+	}
+	pending, err := s.h.Service.PendingLinkRequests(ctx, kim.ID)
+	if err != nil {
+		t.Fatalf("PendingLinkRequests: %v", err)
+	}
+	if len(pending) != 0 {
+		t.Errorf("Kim's pending requests = %+v, want none", pending)
+	}
+	children, err := s.h.Service.ChildrenOf(ctx, own.ID)
+	if err != nil {
+		t.Fatalf("ChildrenOf: %v", err)
+	}
+	if len(children) != 0 {
+		t.Errorf("children of %s = %+v, want none", own.Title, children)
+	}
+	// With the Goal gone there is no Goal to list these by.
+	for _, table := range []string{"milestones", "metrics", "goal_dimension_values", "goal_field_values", "links"} {
+		var n int
+		if err := s.h.DB.QueryRow(`SELECT COUNT(*) FROM ` + table).Scan(&n); err != nil {
+			t.Fatalf("count %s: %v", table, err)
+		}
+		if n != 0 {
+			t.Errorf("%s rows = %d, want 0", table, n)
+		}
+	}
+}
+
+// One parent the Owner also owns links at once; the other waits Pending in its
+// Owner's pending requests, as RequestLink leaves it.
+func TestCreateDefinedGoalRequestsALinkToEachParent(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	own := h.CreateGoal(sam, "Win enterprise", "Enterprise deals stall.")
+	theirs := h.CreateGoal(kim, "Grow revenue", "Revenue is flat.")
+
+	g, err := h.Service.CreateDefinedGoal(ctx, domain.DefinedGoalInput{
+		Title:     "Ship v2",
+		SoWhat:    "Customers wait too long for v2.",
+		OwnerID:   sam.ID,
+		ParentIDs: []int64{own.ID, theirs.ID},
+	})
+	if err != nil {
+		t.Fatalf("CreateDefinedGoal: %v", err)
+	}
+
+	parents, err := h.Service.ParentsOf(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("ParentsOf: %v", err)
+	}
+	if len(parents) != 1 || parents[0].ID != own.ID {
+		t.Errorf("Accepted parents = %+v, want only %s", parents, own.Title)
+	}
+	pending, err := h.Service.PendingLinkRequests(ctx, kim.ID)
+	if err != nil {
+		t.Fatalf("PendingLinkRequests: %v", err)
+	}
+	if len(pending) != 1 || pending[0].Child.ID != g.ID || pending[0].Parent.ID != theirs.ID || pending[0].Status != domain.LinkPending {
+		t.Errorf("Kim's pending requests = %+v, want Ship v2 → Grow revenue", pending)
+	}
+	if sent := h.Email.Sent(); len(sent) != 0 {
+		t.Errorf("emails sent = %+v, want none", sent)
+	}
+}
