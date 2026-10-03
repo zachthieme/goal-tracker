@@ -12,7 +12,7 @@ import (
 // Goal in the path. Only the Goal's Owner may do so, so a non-Owner's attempt
 // comes back 403 (CONTEXT.md: a person an Owner authorizes).
 func (s *Server) handleAddDelegate(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := goalIDFromPath(w, r)
+	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -23,7 +23,7 @@ func (s *Server) handleAddDelegate(w http.ResponseWriter, r *http.Request, curre
 // handleRemoveDelegate revokes the Delegate named by email on the Goal in the
 // path. Only the Goal's Owner may do so.
 func (s *Server) handleRemoveDelegate(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := goalIDFromPath(w, r)
+	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}

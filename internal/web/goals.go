@@ -443,13 +443,13 @@ func groupGoalRows(rows []goalRow, dim domain.Dimension) []goalRowGroup {
 func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	view, err := s.goalPageView(r.Context(), id, current)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			http.NotFound(w, r)
+			s.notFound(w, r)
 			return
 		}
 		http.Error(w, "could not load goal", http.StatusInternalServerError)
@@ -948,12 +948,12 @@ func (v goalView) carries(value domain.DimensionValue) bool {
 	return false
 }
 
-// goalIDFromPath parses the {id} path value, writing a 404 and returning ok
-// false when it is not a number.
-func goalIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {
+// goalIDFromPath parses the {id} path value, writing the Not found page and
+// returning ok false when it is not a number.
+func (s *Server) goalIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return 0, false
 	}
 	return id, true
@@ -1016,7 +1016,7 @@ func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalI
 	view, err := s.goalPageView(r.Context(), goalID, current)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
-			http.NotFound(w, r)
+			s.notFound(w, r)
 			return
 		}
 		http.Error(w, "could not load goal", http.StatusInternalServerError)
@@ -1027,7 +1027,7 @@ func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalI
 }
 
 func (s *Server) handleMarkGoalDated(w http.ResponseWriter, r *http.Request, _ domain.Account) {
-	id, ok := goalIDFromPath(w, r)
+	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -1041,7 +1041,7 @@ func (s *Server) handleMarkGoalDated(w http.ResponseWriter, r *http.Request, _ d
 }
 
 func (s *Server) handleMarkGoalOngoing(w http.ResponseWriter, r *http.Request, _ domain.Account) {
-	id, ok := goalIDFromPath(w, r)
+	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -1050,7 +1050,7 @@ func (s *Server) handleMarkGoalOngoing(w http.ResponseWriter, r *http.Request, _
 }
 
 func (s *Server) handleSetCadence(w http.ResponseWriter, r *http.Request, _ domain.Account) {
-	id, ok := goalIDFromPath(w, r)
+	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -1064,7 +1064,7 @@ func (s *Server) handleSetCadence(w http.ResponseWriter, r *http.Request, _ doma
 }
 
 func (s *Server) handleEditSoWhat(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := goalIDFromPath(w, r)
+	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -1073,7 +1073,7 @@ func (s *Server) handleEditSoWhat(w http.ResponseWriter, r *http.Request, curren
 }
 
 func (s *Server) handleAddContributor(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := goalIDFromPath(w, r)
+	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -1082,7 +1082,7 @@ func (s *Server) handleAddContributor(w http.ResponseWriter, r *http.Request, cu
 }
 
 func (s *Server) handleAddMilestone(w http.ResponseWriter, r *http.Request, _ domain.Account) {
-	id, ok := goalIDFromPath(w, r)
+	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -1100,7 +1100,7 @@ func (s *Server) handleAddMilestone(w http.ResponseWriter, r *http.Request, _ do
 }
 
 func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, _ domain.Account) {
-	id, ok := goalIDFromPath(w, r)
+	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -1122,7 +1122,7 @@ func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, _ d
 }
 
 func (s *Server) handleAddMetric(w http.ResponseWriter, r *http.Request, _ domain.Account) {
-	id, ok := goalIDFromPath(w, r)
+	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -1137,7 +1137,7 @@ func (s *Server) handleAddMetric(w http.ResponseWriter, r *http.Request, _ domai
 }
 
 func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, _ domain.Account) {
-	id, ok := goalIDFromPath(w, r)
+	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -1188,7 +1188,7 @@ func metricInputFromForm(r *http.Request) (domain.AddMetricInput, error) {
 }
 
 func (s *Server) handleActivateGoal(w http.ResponseWriter, r *http.Request, _ domain.Account) {
-	id, ok := goalIDFromPath(w, r)
+	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -1207,7 +1207,7 @@ func (s *Server) handleActivateGoal(w http.ResponseWriter, r *http.Request, _ do
 // carries in its Dimension, and an empty one is a no-op.
 // Anyone but the Owner, a Delegate or an Admin is refused.
 func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := goalIDFromPath(w, r)
+	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -1257,7 +1257,7 @@ func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, c
 // assigned (CONTEXT.md: Contributes to; the parent's values are offered as
 // defaults).
 func (s *Server) handleCreateChildGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	parentID, ok := goalIDFromPath(w, r)
+	parentID, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}

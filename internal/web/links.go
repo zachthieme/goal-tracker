@@ -17,7 +17,7 @@ import (
 func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	childID, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return
 	}
 	parentID, err := strconv.ParseInt(r.FormValue("parent_id"), 10, 64)
@@ -57,7 +57,7 @@ func (s *Server) handlePendingLinks(w http.ResponseWriter, r *http.Request, curr
 
 // handleAcceptLink accepts a pending request; only the parent's Owner may.
 func (s *Server) handleAcceptLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	linkID, ok := linkIDFromPath(w, r)
+	linkID, ok := s.linkIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -72,7 +72,7 @@ func (s *Server) handleAcceptLink(w http.ResponseWriter, r *http.Request, curren
 // returns to the page the reject came from (from: Home, or the pending page),
 // which offers Undo once in a toast.
 func (s *Server) handleRejectLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	linkID, ok := linkIDFromPath(w, r)
+	linkID, ok := s.linkIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -127,7 +127,7 @@ func (s *Server) linkRejectionToast(ctx context.Context, offer undoOffer, curren
 // It returns to the Goal page the remove came from (goal_id, either end of the
 // link), which offers Undo once in a toast.
 func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	linkID, ok := linkIDFromPath(w, r)
+	linkID, ok := s.linkIDFromPath(w, r)
 	if !ok {
 		return
 	}
@@ -195,10 +195,10 @@ func (s *Server) linkRemovalToast(ctx context.Context, offer undoOffer, current 
 	}
 }
 
-func linkIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {
+func (s *Server) linkIDFromPath(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		http.NotFound(w, r)
+		s.notFound(w, r)
 		return 0, false
 	}
 	return id, true
