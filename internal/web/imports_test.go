@@ -21,6 +21,8 @@ Child goal,ic@example.com,Supports the parent.,Dated,2026-06-30,Parent goal
 // An Admin uploads a clean spreadsheet: a dry run shows the rows and saves
 // nothing, then a commit imports the Goals.
 func TestAdminDryRunsThenCommitsImportOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	ts := newServer(t, h)
 	admin := signInClient(t, ts.URL, "admin@example.com")
@@ -59,6 +61,8 @@ func TestAdminDryRunsThenCommitsImportOverHTTP(t *testing.T) {
 
 // A dry run over HTTP shows the offending row's errors and saves nothing.
 func TestAdminSeesRowErrorsOnDryRunOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	const badCSV = `Title,Owner,So What,Kind,Delivery Date
 Fine,owner@example.com,It matters.,Ongoing,
 ,owner@example.com,No title here.,Sideways,
@@ -82,6 +86,8 @@ Fine,owner@example.com,It matters.,Ongoing,
 // A non-Admin sees only a note that imports are Admin-only, and the API refuses
 // their upload.
 func TestNonAdminCannotImportOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	ts := newServer(t, h)
 	sam := signInClient(t, ts.URL, "sam@example.com")
@@ -142,6 +148,8 @@ func postImportRaw(t *testing.T, client *http.Client, rawURL, filename, content,
 // report opens with its summary as an alert — red when rows have errors — then
 // a table of the rows with their errors.
 func TestImportReportIsAnAlertThenATable(t *testing.T) {
+	t.Parallel()
+
 	const badCSV = `Title,Owner,So What,Kind,Delivery Date
 Fine,owner@example.com,It matters.,Ongoing,
 ,owner@example.com,No title here.,Sideways,
@@ -176,6 +184,8 @@ Fine,owner@example.com,It matters.,Ongoing,
 // Dimension: the Field is set and the unknown value joins the list. The form
 // says how such columns are read (#77).
 func TestAdminImportsFieldAndExtendableColumnsOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	const csv = `Title,Owner,So What,Kind,Budget,Customer
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,1200,acme; Newco
 `
@@ -216,6 +226,8 @@ Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,1200,acme; Newco
 // commits it: the Goal is updated rather than created, and the report says
 // once that the changed Title was ignored (#81).
 func TestAdminReimportsADownloadOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	ts := newServer(t, h)
 	admin := signInClient(t, ts.URL, "admin@example.com")
@@ -257,6 +269,8 @@ func TestAdminReimportsADownloadOverHTTP(t *testing.T) {
 // over HTTP as one without; and a cell that would give a one-value Dimension a
 // value containing a semicolon is reported on its row, saying why (#101).
 func TestAdminImportsAnExcelCSVAndSeesSemicolonValuesRefusedOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 	h.CreateDimension(admin, "Pillar", "Growth", "Reliability")
@@ -279,6 +293,8 @@ func TestAdminImportsAnExcelCSVAndSeesSemicolonValuesRefusedOverHTTP(t *testing.
 // still creates the Goal: required values hold activation, not creation, and
 // the new Goal shows on the Goal list (ticket #75).
 func TestImportingARowWithoutARequiredValueCreatesTheGoalOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	const csv = `Title,Owner,So What,Kind,Pillar,Budget
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,,
 `
@@ -302,6 +318,8 @@ Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,,
 // Definition log as added by the Admin who ran the import, not the one who
 // defined the Dimension (ticket #77).
 func TestImportedExtendableValueIsLoggedAsTheImportersOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	const csv = `Title,Owner,So What,Kind,Customer
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,Newco
 `

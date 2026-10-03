@@ -16,6 +16,8 @@ import (
 // A reader comments on a Goal's block from the publication page, the Owner is
 // emailed, and the Owner replies in the thread (ticket #19).
 func TestSmokeCommentAndReplyOnPublicationOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("owner@example.com")
 	author := h.SignIn("author@example.com")
@@ -73,6 +75,8 @@ func TestSmokeCommentAndReplyOnPublicationOverHTTP(t *testing.T) {
 // appears at the top of the next publication until its owner closes it there
 // with a note (CONTEXT.md: Action Item).
 func TestSmokeActionItemCarriesUntilClosedOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("owner@example.com")
 	author := h.SignIn("author@example.com")
@@ -153,6 +157,8 @@ func TestSmokeActionItemCarriesUntilClosedOverHTTP(t *testing.T) {
 // Closing an Action Item comes back only to a page on this site: a return
 // address that a browser would read as another site is ignored.
 func TestCloseActionItemNeverRedirectsOffSite(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("owner@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
@@ -185,6 +191,8 @@ func TestCloseActionItemNeverRedirectsOffSite(t *testing.T) {
 // comment an Action Item sits behind its own toggle — all collapsed until the
 // reader opens them, without JS. Replies are indented under the comment.
 func TestPublicationDiscussionIsCollapsedOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("owner@example.com")
 	author := h.SignIn("author@example.com")
@@ -226,6 +234,8 @@ func TestPublicationDiscussionIsCollapsedOverHTTP(t *testing.T) {
 // A comment thread is set apart by its indent and a 1px neutral rule, not a
 // coloured side stripe (#67).
 func TestCommentThreadIsSetApartByANeutralRuleOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("owner@example.com")
 	author := h.SignIn("author@example.com")
@@ -246,6 +256,8 @@ func TestCommentThreadIsSetApartByANeutralRuleOverHTTP(t *testing.T) {
 // A publication lists its open Action Items as text · owner · due date; the
 // owner's close form sits behind a small Close button until they open it.
 func TestOpenActionItemCloseFormIsCollapsedOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("owner@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")

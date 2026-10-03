@@ -12,6 +12,8 @@ import (
 
 // The shared stylesheet is served as CSS, cacheable, without signing in.
 func TestStylesheetIsServedAsCSS(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -37,6 +39,8 @@ func TestStylesheetIsServedAsCSS(t *testing.T) {
 // Every page links the stylesheet and wears the dark top bar, which marks the
 // page you are on — and only that one — as current.
 func TestTopBarMarksTheCurrentPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	h.SignIn("sam@example.com")
 	ts := newServer(t, h)
@@ -76,6 +80,8 @@ func TestTopBarMarksTheCurrentPage(t *testing.T) {
 
 // A page below a nav item's section — a Report — still marks that item.
 func TestTopBarMarksTheSectionOfANestedPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	boss := h.SignIn("boss@example.com")
 	root := h.ActiveGoal(boss, "Grow revenue", "The org needs to grow.")
@@ -103,6 +109,8 @@ func TestTopBarMarksTheSectionOfANestedPage(t *testing.T) {
 // target, and all of them grow to the same floor so a button beside an input
 // still lines up. A mouse keeps the 40px and 32px sizes.
 func TestTouchTargetsAreAtLeast44px(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -141,6 +149,8 @@ func TestTouchTargetsAreAtLeast44px(t *testing.T) {
 // On a narrow screen nothing scrolls sideways: not the top bar, which used to
 // scroll Sign out out of view, and not the page as a whole.
 func TestNarrowScreensDoNotScrollSideways(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -161,6 +171,8 @@ func TestNarrowScreensDoNotScrollSideways(t *testing.T) {
 // Sign out on the first, the nav items on a row of their own below. Each label
 // stays on one line. Above the breakpoint the bar is one 56px row.
 func TestNarrowTopBarPutsNavItemsOnASecondRow(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	h.SignIn("sam@example.com")
 	ts := newServer(t, h)
@@ -207,6 +219,8 @@ func TestNarrowTopBarPutsNavItemsOnASecondRow(t *testing.T) {
 // as" and "(Admin)" are hidden visually but stay on the page for screen readers,
 // and a long Name truncates rather than push Sign out off the row.
 func TestNarrowTopBarShowsThePersonByName(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	h.SignIn("ada@example.com")
 	ts := newServer(t, h)

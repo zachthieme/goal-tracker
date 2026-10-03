@@ -13,6 +13,8 @@ import (
 // leaves Active and the Check-in records the change and its reason (CONTEXT.md:
 // Lifecycle — leaving Active for any state other than Done requires a reason).
 func TestCheckinPutsGoalOnHoldWithReason(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -47,6 +49,8 @@ func TestCheckinPutsGoalOnHoldWithReason(t *testing.T) {
 
 // Putting a Goal On Hold without a reason is refused, and the Goal stays Active.
 func TestCheckinOnHoldRequiresReason(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -80,6 +84,8 @@ func assertLifecycle(t *testing.T, h *testsupport.Harness, goalID int64, want st
 // Metric — the Done Check-in's readings (CONTEXT.md: Lifecycle — reaching Done
 // requires an outcome).
 func TestCheckinMarksGoalDoneWithOutcomeAndFinalValues(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Cut checkout latency", "Faster checkout lifts conversion.")
@@ -117,6 +123,8 @@ func TestCheckinMarksGoalDoneWithOutcomeAndFinalValues(t *testing.T) {
 // Done is refused while any Metric lacks a final value, and the Goal stays
 // Active.
 func TestCheckinDoneRequiresFinalValueForEveryMetric(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Cut checkout latency", "Faster checkout lifts conversion.")
@@ -153,6 +161,8 @@ func addNamedMetric(t *testing.T, h *testsupport.Harness, goalID int64, name str
 // Cancelling a Goal needs a reason; with one, the Goal is Cancelled and the
 // reason is kept on the Check-in.
 func TestCheckinCancelRequiresReason(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -186,6 +196,8 @@ func TestCheckinCancelRequiresReason(t *testing.T) {
 
 // Done needs an outcome, and only one line of it.
 func TestCheckinDoneRequiresOneLineOutcome(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -213,6 +225,8 @@ func TestCheckinDoneRequiresOneLineOutcome(t *testing.T) {
 // A Check-in that takes the Goal out of Active records no Health — Health is how
 // an Active Goal is tracking — so it needs no Path to Green either.
 func TestCheckinLeavingActiveRecordsNoHealth(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -236,6 +250,8 @@ func TestCheckinLeavingActiveRecordsNoHealth(t *testing.T) {
 // An On Hold Goal can be resumed to Active in a Check-in, which is a full
 // Check-in with a Health; no reason is needed to come back.
 func TestCheckinResumesOnHoldGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.OnHoldGoal(sam, "Ship v2", "Customers wait too long.", "Waiting on legal review.")
@@ -262,6 +278,8 @@ func TestCheckinResumesOnHoldGoal(t *testing.T) {
 
 // Resuming is an Active Check-in, so it still needs a valid Health.
 func TestCheckinResumeNeedsHealth(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.OnHoldGoal(sam, "Ship v2", "Customers wait too long.", "Waiting on legal review.")
@@ -282,6 +300,8 @@ func TestCheckinResumeNeedsHealth(t *testing.T) {
 // Cancel it (with a reason); it can't simply report a Health, go straight to
 // Done, or skip the one-click no-change Check-in past the hold.
 func TestCheckinOnHoldGoalOnlyResumesOrCancels(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.OnHoldGoal(sam, "Ship v2", "Customers wait too long.", "Waiting on legal review.")
@@ -316,6 +336,8 @@ func TestCheckinOnHoldGoalOnlyResumesOrCancels(t *testing.T) {
 
 // Done and Cancelled are end states: no further Check-in can reopen them.
 func TestCheckinCantReopenEndedGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -337,6 +359,8 @@ func TestCheckinCantReopenEndedGoal(t *testing.T) {
 // Lifecycle changes appear in the Goal's Check-in history, newest first, each
 // with where the Goal moved from and to and its reason.
 func TestLifecycleChangesAppearInCheckinHistory(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.OnHoldGoal(sam, "Ship v2", "Customers wait too long.", "Waiting on legal review.")

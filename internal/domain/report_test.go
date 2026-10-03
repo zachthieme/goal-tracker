@@ -16,6 +16,8 @@ import (
 // following accepted links only (CONTEXT.md: Report Definition). depth 1 reaches
 // the root's direct children; depth 2 reaches their children too.
 func TestReportSelectsRootsToDepth(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -57,6 +59,8 @@ func TestReportSelectsRootsToDepth(t *testing.T) {
 // those matching its Owner and Dimension filters (CONTEXT.md: filters alone).
 // Filters apply after any traversal, so here they select across the whole org.
 func TestReportFilterOnlySelection(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -111,6 +115,8 @@ func TestReportFilterOnlySelection(t *testing.T) {
 // A Report Definition with no name, or with no roots and no filters, is rejected
 // (CONTEXT.md: a Report Definition selects Goals — root Goals, filters, or both).
 func TestReportDefinitionValidation(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -132,6 +138,8 @@ func TestReportDefinitionValidation(t *testing.T) {
 // once). Here a diamond A -> {B, C} -> D reaches D through both B and C, and D is
 // also its own overlapping root.
 func TestReportDeduplicatesAcrossPaths(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -167,6 +175,8 @@ func TestReportDeduplicatesAcrossPaths(t *testing.T) {
 // apply after traversal). The live draft carries each selected Goal's current
 // Health from its latest Check-in.
 func TestReportFilterAppliesAfterTraversal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -208,6 +218,8 @@ func TestReportFilterAppliesAfterTraversal(t *testing.T) {
 // one-line Green Goal. A chosen Field a Goal has no value in is left out, not
 // shown blank, and a Field nobody chose isn't shown at all (ticket #78).
 func TestReportShowsChosenFieldsBesideEachGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -258,6 +270,8 @@ func TestReportShowsChosenFieldsBesideEachGoal(t *testing.T) {
 // Field retired after it was chosen keeps showing its values (ADR 0005: saved
 // Report Definitions that reference it keep working).
 func TestReportDefinitionChoosesOnlyOfferedFields(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")

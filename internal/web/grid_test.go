@@ -16,6 +16,8 @@ import (
 // stylesheet's spacing — every gap, padding and margin — is a multiple of 4px,
 // bar the 1px optical padding on badges.
 func TestStylesheetSpacingSitsOnTheGrid(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -29,6 +31,8 @@ func TestStylesheetSpacingSitsOnTheGrid(t *testing.T) {
 // a paper document that DESIGN.md § Print variant exempts, so its block is
 // left out.
 func TestPageStyleSpacingSitsOnTheGrid(t *testing.T) {
+	t.Parallel()
+
 	sources, err := filepath.Glob("*.templ")
 	if err != nil || len(sources) == 0 {
 		t.Fatalf("no templates found: %v", err)

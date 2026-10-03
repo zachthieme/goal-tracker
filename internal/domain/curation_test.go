@@ -25,6 +25,8 @@ func highlightNotes(hs []domain.NarrativeHighlight) []string {
 // the baseline: those on the Goals the Report Definition selects, written since
 // the baseline, each crediting the Goal's Owner (CONTEXT.md: Highlight).
 func TestDraftListsHighlightsInScopeSinceTheBaseline(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -117,6 +119,8 @@ func highlightID(t *testing.T, r domain.Report, note string) int64 {
 // Misses — whatever each was flagged as — and adds their own text to each
 // section. Highlights left out stay out of the narrative.
 func TestAuthorCuratesTheNarrative(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -197,6 +201,8 @@ func TestAuthorCuratesTheNarrative(t *testing.T) {
 // Only Highlights on Goals the Report Definition selects can go into its
 // narrative, each into one of Insights, Accomplishments, or Misses.
 func TestCurateNarrativeRejectsHighlightsOutsideTheReport(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -234,6 +240,8 @@ func TestCurateNarrativeRejectsHighlightsOutsideTheReport(t *testing.T) {
 // changes the publication, and the next publication's narrative starts empty.
 // The Highlights the author left out are not part of the snapshot.
 func TestNarrativeIsFrozenWithTheSnapshot(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -300,6 +308,8 @@ func TestNarrativeIsFrozenWithTheSnapshot(t *testing.T) {
 // publication shows only the one pulled, crediting the Goal's Owner
 // (CONTEXT.md: Highlight).
 func TestAuthorPullsOneHighlightOfACheckinAndLeavesAnother(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")

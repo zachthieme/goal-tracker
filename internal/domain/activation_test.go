@@ -45,6 +45,8 @@ func addMetric(t *testing.T, h *testsupport.Harness, goalID int64) {
 }
 
 func TestActivateDatedGoalWithAMilestone(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
@@ -63,6 +65,8 @@ func TestActivateDatedGoalWithAMilestone(t *testing.T) {
 }
 
 func TestActivateDatedGoalWithAMetric(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
@@ -81,6 +85,8 @@ func TestActivateDatedGoalWithAMetric(t *testing.T) {
 }
 
 func TestActivateOngoingGoalWithAMetric(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Keep the lights on", "Uptime keeps customers.")
@@ -99,6 +105,8 @@ func TestActivateOngoingGoalWithAMetric(t *testing.T) {
 }
 
 func TestActivateRejectsGoalNotMarkedDatedOrOngoing(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
@@ -113,6 +121,8 @@ func TestActivateRejectsGoalNotMarkedDatedOrOngoing(t *testing.T) {
 }
 
 func TestActivateRejectsDatedGoalWithNoMilestoneOrMetric(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
@@ -130,6 +140,8 @@ func TestActivateRejectsDatedGoalWithNoMilestoneOrMetric(t *testing.T) {
 }
 
 func TestActivateRejectsOngoingGoalWithNoMetric(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Keep the lights on", "Uptime keeps customers.")
@@ -152,6 +164,8 @@ func TestActivateRejectsOngoingGoalWithNoMetric(t *testing.T) {
 // whose kind is Dated but which has neither a date nor any child — see the gate
 // contract on issue #3.)
 func TestActivateReportsEveryMissingItem(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
@@ -172,6 +186,8 @@ func TestActivateReportsEveryMissingItem(t *testing.T) {
 }
 
 func TestActivateLeavesGoalProposedWhenRejected(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")

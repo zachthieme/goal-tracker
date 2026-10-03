@@ -13,6 +13,8 @@ import (
 // light theme's headings, body and secondary text take the UX Review's values,
 // and the top bar keeps its deep teal though --color-ink no longer is (#85).
 func TestLightInkIsNeutralAndTheTopBarStaysTeal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -34,6 +36,8 @@ func TestLightInkIsNeutralAndTheTopBarStaysTeal(t *testing.T) {
 // WCAG AA's 4.5:1 on every surface text sits on: the canvas, cards, a hovered
 // card, panels and table heads, and the selected-row fill.
 func TestInkIsNeutralAndReachesAAOnEverySurface(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -62,6 +66,8 @@ func TestInkIsNeutralAndReachesAAOnEverySurface(t *testing.T) {
 // between a card's white and the canvas, and panels, table heads and rules are
 // darker than the canvas, in that order.
 func TestLightCanvasAndItsSurfacesAreNeutral(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -89,6 +95,8 @@ func TestLightCanvasAndItsSurfacesAreNeutral(t *testing.T) {
 // still reach WCAG AA's 4.5:1, and an input's edge and the focus ring still
 // reach the 3:1 that marks a control (#87).
 func TestLightTextEdgesAndFocusHoldOnTheNeutralSurfaces(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -119,6 +127,8 @@ func TestLightTextEdgesAndFocusHoldOnTheNeutralSurfaces(t *testing.T) {
 // its fill, or its ring where it has one — reaches WCAG's 3:1 for a visible
 // shape against the top bar.
 func TestNavCountPillsReadAndStandOutOnTheTopBar(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")

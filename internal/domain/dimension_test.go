@@ -13,6 +13,8 @@ import (
 // An Admin defines a Dimension with a fixed list of values; a non-Admin cannot
 // (CONTEXT.md: Admin defines Dimensions).
 func TestAdminCreatesDimensionWithValues(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -40,6 +42,8 @@ func TestAdminCreatesDimensionWithValues(t *testing.T) {
 // value (which stays listed, flagged retired); a non-Admin may do none of these
 // (CONTEXT.md: Admins add, rename, and retire values).
 func TestAdminManagesDimensionValues(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -103,6 +107,8 @@ func TestAdminManagesDimensionValues(t *testing.T) {
 // while a value in another Dimension coexists (CONTEXT.md: Owners assign
 // Dimension values to their Goals).
 func TestAssignDimensionValueReplacesWithinDimension(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -151,6 +157,8 @@ func TestAssignDimensionValueReplacesWithinDimension(t *testing.T) {
 // values; anyone else is refused and the Goal's value is left as it was
 // (CONTEXT.md: Owners assign Dimension values to their Goals).
 func TestOnlyOwnerOrAdminAssignsDimensionValue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -187,6 +195,8 @@ func TestOnlyOwnerOrAdminAssignsDimensionValue(t *testing.T) {
 // A retired value stays readable on a Goal that already carries it, but is not
 // offered for a new assignment (CONTEXT.md: retired values stay readable).
 func TestRetiredValueStaysReadableButNotAssignable(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -221,6 +231,8 @@ func TestRetiredValueStaysReadableButNotAssignable(t *testing.T) {
 // Dimensions and ORs within one, and grouping buckets each Goal under its value
 // (with an unassigned bucket) (CONTEXT.md: filter and group Goals).
 func TestFilterAndGroupGoalsByDimension(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -300,6 +312,8 @@ func equalStrings(a, b []string) bool {
 // a non-Admin cannot switch it (CONTEXT.md: Dimension — the Admin decides
 // whether a Goal takes one value or several).
 func TestAdminSwitchesDimensionToSeveralValues(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -333,6 +347,8 @@ func TestAdminSwitchesDimensionToSeveralValues(t *testing.T) {
 // the Goal's values again with one of them removes the other; a one-value
 // Dimension refuses two (CONTEXT.md: Dimension).
 func TestOwnerSetsSeveralValuesInDimension(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -394,6 +410,8 @@ func TestOwnerSetsSeveralValuesInDimension(t *testing.T) {
 // A retired value the Goal already carries can be kept when its values are set
 // again, but can't be newly given to it (CONTEXT.md: Retired).
 func TestSetGoalValuesKeepsButNeverAddsRetiredValue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -435,6 +453,8 @@ func goalValueNames(t *testing.T, h *testsupport.Harness, goalID int64) []string
 // Grouped by a several-values Dimension, a Goal with two values appears under
 // each of them (ADR 0005: group counts can add up to more than the Goals).
 func TestGroupBySeveralValuesDimensionListsGoalUnderEachValue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -468,6 +488,8 @@ func TestGroupBySeveralValuesDimensionListsGoalUnderEachValue(t *testing.T) {
 // Goal carries more than one value in it, and the refusal names those Goals; it
 // succeeds once none does.
 func TestSwitchingToOneValueRefusedWhileGoalsCarrySeveral(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -525,6 +547,8 @@ func TestSwitchingToOneValueRefusedWhileGoalsCarrySeveral(t *testing.T) {
 // among several in the Dimension (filtering is unchanged: values OR'd within a
 // Dimension).
 func TestReportFilterSelectsGoalCarryingValueAmongSeveral(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -557,6 +581,8 @@ func TestReportFilterSelectsGoalCarryingValueAmongSeveral(t *testing.T) {
 // A new Dimension's list is Fixed; an Admin marks it Extendable and switches it
 // back, and a non-Admin can do neither (CONTEXT.md: Fixed, Extendable).
 func TestAdminSwitchesDimensionBetweenFixedAndExtendable(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -608,6 +634,8 @@ func dimensionNamed(t *testing.T, h *testsupport.Harness, name string) domain.Di
 // several-values Dimensions alike; a Contributor can't (CONTEXT.md: Delegate,
 // Contributor).
 func TestDelegateSetsGoalValuesButContributorCannot(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -649,6 +677,8 @@ func TestDelegateSetsGoalValuesButContributorCannot(t *testing.T) {
 // Goal's value; in a several-values one it joins the Goal's others (CONTEXT.md:
 // Extendable).
 func TestOwnerAddsNewValueToExtendableDimension(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -700,6 +730,8 @@ func valueNames(values []domain.DimensionValue) []string {
 // Extendable list back to Fixed stops further additions but keeps the values
 // already added (CONTEXT.md: Fixed).
 func TestNewValueOnFixedDimensionRefusedForNonAdmin(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -737,6 +769,8 @@ func TestNewValueOnFixedDimensionRefusedForNonAdmin(t *testing.T) {
 // choosing an existing value needs no Admin. A match on a Retired value is
 // refused, saying it is retired (CONTEXT.md: Extendable, Retired).
 func TestNamedValueMatchesExistingWhateverItsCase(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -785,6 +819,8 @@ func TestNamedValueMatchesExistingWhateverItsCase(t *testing.T) {
 // whatever its case adds nothing, and one matching a Retired value is refused,
 // saying it is retired (CONTEXT.md: Retired).
 func TestAdminAddingNearDuplicateValueAddsNothing(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ctx := context.Background()
@@ -818,6 +854,8 @@ func TestAdminAddingNearDuplicateValueAddsNothing(t *testing.T) {
 // Owner; a Contributor can't, and nothing is added (CONTEXT.md: Delegate,
 // Extendable).
 func TestDelegateAddsToExtendableListButContributorCannot(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -850,6 +888,8 @@ func TestDelegateAddsToExtendableListButContributorCannot(t *testing.T) {
 // added, whoever adds it: the Admin's own values keep the order they were
 // typed, and an Owner's addition to an Extendable list comes last.
 func TestNewValuesGoLastInOrderAdded(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -874,6 +914,8 @@ func TestNewValuesGoLastInOrderAdded(t *testing.T) {
 // alphabetically whatever the values' case; moving the first value up or the
 // last down leaves the list as it is. A non-Admin may do none of these.
 func TestAdminReordersDimensionValues(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -931,6 +973,8 @@ func TestAdminReordersDimensionValues(t *testing.T) {
 // every Report Definition filter on it points at the target, and the merged
 // value is gone from the list.
 func TestAdminMergesDimensionValue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -977,6 +1021,8 @@ func TestAdminMergesDimensionValue(t *testing.T) {
 // Merging is refused across Dimensions, into the value itself, and for
 // anyone but an Admin; a refused merge changes nothing.
 func TestMergeDimensionValueRefusals(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -1015,6 +1061,8 @@ func TestMergeDimensionValueRefusals(t *testing.T) {
 // A merge that fails part-way changes nothing: the Goals keep the merged
 // value, the Report Definition still filters on it, and it stays listed.
 func TestFailedMergeChangesNothing(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -1051,6 +1099,8 @@ func TestFailedMergeChangesNothing(t *testing.T) {
 // Dimension, and none of its values can be newly given to a Goal. A non-Admin
 // can't retire one (CONTEXT.md: Retired).
 func TestAdminRetiresDimension(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -1110,6 +1160,8 @@ func TestAdminRetiresDimension(t *testing.T) {
 // given to a Goal again; a non-Admin can restore neither (CONTEXT.md: Retired —
 // an Admin can reverse it).
 func TestAdminRestoresRetiredDimensionAndValue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -1163,6 +1215,8 @@ func TestAdminRestoresRetiredDimensionAndValue(t *testing.T) {
 // same Goals once the Dimension is Retired (ADR 0005: saved Report Definitions
 // keep working).
 func TestReportFilterOnRetiredDimensionSelectsSameGoals(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -1198,6 +1252,8 @@ func TestReportFilterOnRetiredDimensionSelectsSameGoals(t *testing.T) {
 // with one: defining a Dimension, adding a value, renaming one and naming a new
 // one on a Goal are each refused, saying why, and nothing is added (#101).
 func TestValueContainingSemicolonIsRefused(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -1233,6 +1289,8 @@ func TestValueContainingSemicolonIsRefused(t *testing.T) {
 // read off its Goal, filters and groups as any value does, and an Admin may
 // rename it to a name without one, though not to another with one (#101).
 func TestValueAlreadyContainingSemicolonKeepsWorking(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -1279,6 +1337,8 @@ func TestValueAlreadyContainingSemicolonKeepsWorking(t *testing.T) {
 // surrounding spaces, nor another Dimension's, and the refusal says which one
 // has it: Dimensions and Fields share one namespace (ADR 0005).
 func TestDimensionNameCannotRepeatAFieldOrDimension(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ctx := context.Background()
@@ -1315,6 +1375,8 @@ func dimensionList(t *testing.T, h *testsupport.Harness) []domain.Dimension {
 // spacing, is refused saying to merge the two instead, and renames nothing;
 // changing only the case or spacing of a value's own name is a rename.
 func TestRenamingAValueIntoAnotherIsRefused(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ctx := context.Background()
@@ -1341,6 +1403,8 @@ func TestRenamingAValueIntoAnotherIsRefused(t *testing.T) {
 // it would change nothing, and leaves its setting as it was: required means
 // nothing on a Dimension no longer offered (CONTEXT.md: Retired).
 func TestRetiredDimensionsRequiredSettingCannotChange(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ctx := context.Background()

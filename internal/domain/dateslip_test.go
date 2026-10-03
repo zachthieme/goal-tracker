@@ -13,6 +13,8 @@ import (
 // new dates and the reason, and the Goal takes the new date (CONTEXT.md: Date
 // Slip).
 func TestCheckinDeliveryDateChangeRecordsDateSlip(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -65,6 +67,8 @@ func TestCheckinDeliveryDateChangeRecordsDateSlip(t *testing.T) {
 
 // A delivery-date change without a reason is rejected, and nothing is recorded.
 func TestCheckinDeliveryDateChangeRequiresReason(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -90,6 +94,8 @@ func TestCheckinDeliveryDateChangeRequiresReason(t *testing.T) {
 
 // Submitting the delivery date unchanged is not a slip and needs no reason.
 func TestCheckinUnchangedDeliveryDateIsNotASlip(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -126,6 +132,8 @@ func onlyMilestone(t *testing.T, h *testsupport.Harness, goalID int64) domain.Mi
 // date. A Milestone slip that doesn't move the delivery date doesn't affect
 // Health, so the Check-in may still be Green (CONTEXT.md: Milestone).
 func TestCheckinMilestoneDateChangeRecordsSlipAndStaysGreen(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -162,6 +170,8 @@ func TestCheckinMilestoneDateChangeRecordsSlipAndStaysGreen(t *testing.T) {
 
 // A Milestone date change without a reason is rejected.
 func TestCheckinMilestoneDateChangeRequiresReason(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -186,6 +196,8 @@ func TestCheckinMilestoneDateChangeRequiresReason(t *testing.T) {
 
 // A Check-in may only change Milestones on its own Goal.
 func TestCheckinRejectsMilestoneOnAnotherGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -210,6 +222,8 @@ func TestCheckinRejectsMilestoneOnAnotherGoal(t *testing.T) {
 // Milestone's date and the delivery date can't be moved (so no change skips its
 // Date Slip), though a Milestone can still be renamed.
 func TestActiveGoalDatesMoveOnlyInACheckin(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")

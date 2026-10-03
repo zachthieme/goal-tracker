@@ -14,6 +14,8 @@ import (
 // status, its author and the Owner it was written for, and becomes the Goal's
 // latest Check-in (CONTEXT.md: Check-in).
 func TestSubmitCheckinRecordsHealthAuthorAndOwner(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -57,6 +59,8 @@ var pathDate = time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 // A Proposed Goal has no Health and can't be checked in on (CONTEXT.md: Health
 // is how an Active Goal is tracking).
 func TestSubmitCheckinRejectedOnProposedGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.") // stays Proposed
@@ -78,6 +82,8 @@ func TestSubmitCheckinRejectedOnProposedGoal(t *testing.T) {
 // A Yellow or Red Check-in requires a Path to Green with both text and a target
 // date (CONTEXT.md: Path to Green).
 func TestSubmitCheckinYellowOrRedRequiresPathToGreen(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -127,6 +133,8 @@ func TestSubmitCheckinYellowOrRedRequiresPathToGreen(t *testing.T) {
 // A Green Check-in needs no Path to Green, and any Path text passed with it is
 // dropped since Green carries none.
 func TestSubmitCheckinGreenDropsPathToGreen(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -149,6 +157,8 @@ func TestSubmitCheckinGreenDropsPathToGreen(t *testing.T) {
 
 // A Check-in needs a status.
 func TestSubmitCheckinRequiresStatus(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -165,6 +175,8 @@ func TestSubmitCheckinRequiresStatus(t *testing.T) {
 
 // Only the Goal's Owner may submit a Check-in.
 func TestSubmitCheckinOnlyByOwner(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -185,6 +197,8 @@ func TestSubmitCheckinOnlyByOwner(t *testing.T) {
 // history newest first (CONTEXT.md: current values come from the latest
 // Check-in).
 func TestCheckinsAreImmutableHistoryWithLatestCurrent(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -217,6 +231,8 @@ func TestCheckinsAreImmutableHistoryWithLatestCurrent(t *testing.T) {
 // Metric's readings come back over time earliest-first for its trend against
 // target (CONTEXT.md: Metric - its current value is recorded at each Check-in).
 func TestSubmitCheckinRecordsMetricReadings(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Cut latency", "Faster checkout lifts conversion.")
@@ -261,6 +277,8 @@ func TestSubmitCheckinRecordsMetricReadings(t *testing.T) {
 // A reading for a Metric that is not on the Goal being checked in on is rejected,
 // and the whole Check-in is refused (nothing is recorded).
 func TestSubmitCheckinRejectsReadingForForeignMetric(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Cut latency", "Faster checkout lifts conversion.")
@@ -287,6 +305,8 @@ func TestSubmitCheckinRejectsReadingForForeignMetric(t *testing.T) {
 // One-click "no change" records a Check-in that repeats the previous values,
 // author and Owner it is written for aside.
 func TestNoChangeCheckinRepeatsPreviousValues(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -310,6 +330,8 @@ func TestNoChangeCheckinRepeatsPreviousValues(t *testing.T) {
 // "No change" needs a previous Check-in to repeat; on a Goal with none it is
 // rejected.
 func TestNoChangeCheckinRejectedWithoutPrevious(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -322,6 +344,8 @@ func TestNoChangeCheckinRejectedWithoutPrevious(t *testing.T) {
 // A slip is never hidden behind a Green: a Check-in that moves the delivery date
 // later can't be Green, while one that pulls it in can (CONTEXT.md: Date Slip).
 func TestGreenRejectedWhenDeliveryDateMovesLater(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -357,6 +381,8 @@ func TestGreenRejectedWhenDeliveryDateMovesLater(t *testing.T) {
 // judged by the Service's clock. On the Milestone's own date it is not yet
 // overdue.
 func TestGreenRejectedWhileMilestoneOverdue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -396,6 +422,8 @@ func TestGreenRejectedWhileMilestoneOverdue(t *testing.T) {
 // is no longer overdue, and a Milestone slip doesn't affect Health, so Green is
 // accepted.
 func TestGreenAcceptedWhenOverdueMilestoneSlipsInSameCheckin(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -418,6 +446,8 @@ func TestGreenAcceptedWhenOverdueMilestoneSlipsInSameCheckin(t *testing.T) {
 // The one-click no-change Check-in can't repeat a Green while a Milestone is
 // overdue.
 func TestNoChangeGreenRejectedWhileMilestoneOverdue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
@@ -433,6 +463,8 @@ func TestNoChangeGreenRejectedWhileMilestoneOverdue(t *testing.T) {
 // A Milestone added in the Check-in with a date already past is overdue at once,
 // so the same Check-in can't be Green.
 func TestGreenRejectedWhenAddedMilestoneIsAlreadyPast(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")

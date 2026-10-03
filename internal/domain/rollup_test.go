@@ -12,6 +12,8 @@ import (
 // A parent's Rolled-up Health is the worst Owner-set Health among its Active
 // children (ADR-0003). With a Yellow child and a Red child, the worst is Red.
 func TestRolledUpHealthIsWorstAmongActiveChildren(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Org outcome", "It matters.")
@@ -36,6 +38,8 @@ func TestRolledUpHealthIsWorstAmongActiveChildren(t *testing.T) {
 // independently (CONTEXT.md: a Goal may have many parents). Each parent's
 // Rolled-up Health reflects only its own children.
 func TestRolledUpHealthAcrossMultipleParents(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	parentA := h.ActiveGoal(sam, "Parent A", "A matters.")
@@ -65,6 +69,8 @@ func TestRolledUpHealthAcrossMultipleParents(t *testing.T) {
 // Active child with no Check-in yet, have no Health, so a parent with only those
 // has no Rolled-up Health (ADR-0003).
 func TestRolledUpHealthAbsentWithoutActiveHealthyChildren(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Parent", "It matters.")
@@ -88,6 +94,8 @@ func TestRolledUpHealthAbsentWithoutActiveHealthyChildren(t *testing.T) {
 // carry an explanation (ADR-0003: the Owner has to explain the difference). A
 // parent with a Red child, checked in Green, needs one.
 func TestCheckinDifferingFromRollupRequiresExplanation(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Parent", "It matters.")
@@ -123,6 +131,8 @@ func TestCheckinDifferingFromRollupRequiresExplanation(t *testing.T) {
 
 // When an Owner's Health matches the Rolled-up Health, no explanation is needed.
 func TestCheckinMatchingRollupNeedsNoExplanation(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Parent", "It matters.")
@@ -148,6 +158,8 @@ func TestCheckinMatchingRollupNeedsNoExplanation(t *testing.T) {
 // With no Active child that has a Health, there is no Rolled-up Health to differ
 // from, so a Check-in needs no explanation.
 func TestCheckinNeedsNoExplanationWithoutRollup(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Leaf", "It matters.")
@@ -167,6 +179,8 @@ func TestCheckinNeedsNoExplanationWithoutRollup(t *testing.T) {
 // Health and the previous Check-in carried no explanation, it is refused so the
 // Owner uses the full form to explain (ADR-0003).
 func TestNoChangeCheckinRefusedWhenItWouldDifferFromRollup(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Parent", "It matters.")

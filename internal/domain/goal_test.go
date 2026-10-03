@@ -11,6 +11,8 @@ import (
 )
 
 func TestCreateGoalIsProposedAndOwned(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 
@@ -43,6 +45,8 @@ func TestCreateGoalIsProposedAndOwned(t *testing.T) {
 }
 
 func TestCreateGoalRequiresTitleAndSoWhat(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 
@@ -60,6 +64,8 @@ func TestCreateGoalRequiresTitleAndSoWhat(t *testing.T) {
 }
 
 func TestViewGoalReturnsWhatWasCreated(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	created := h.CreateGoal(owner, "Cut checkout latency", "Faster checkout lifts conversion.")
@@ -77,6 +83,8 @@ func TestViewGoalReturnsWhatWasCreated(t *testing.T) {
 }
 
 func TestViewGoalNotFound(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	if _, err := h.Service.ViewGoal(context.Background(), 999); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("err = %v, want ErrNotFound", err)
@@ -84,6 +92,8 @@ func TestViewGoalNotFound(t *testing.T) {
 }
 
 func TestListGoalsShowsCreatedGoals(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	h.CreateGoal(owner, "First goal", "why one")
@@ -109,6 +119,8 @@ func TestListGoalsShowsCreatedGoals(t *testing.T) {
 }
 
 func TestMarkGoalDatedSetsKindAndDeliveryDate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
@@ -127,6 +139,8 @@ func TestMarkGoalDatedSetsKindAndDeliveryDate(t *testing.T) {
 }
 
 func TestMarkGoalDatedRequiresADate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
@@ -137,6 +151,8 @@ func TestMarkGoalDatedRequiresADate(t *testing.T) {
 }
 
 func TestMarkGoalOngoingSetsKindAndClearsDate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Keep the lights on", "Uptime keeps customers.")
@@ -158,6 +174,8 @@ func TestMarkGoalOngoingSetsKindAndClearsDate(t *testing.T) {
 }
 
 func TestCadenceDefaultsToSevenDays(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")
@@ -168,6 +186,8 @@ func TestCadenceDefaultsToSevenDays(t *testing.T) {
 }
 
 func TestSetCadenceChangesTheCheckInInterval(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")
@@ -182,6 +202,8 @@ func TestSetCadenceChangesTheCheckInInterval(t *testing.T) {
 }
 
 func TestSetCadenceRejectsNonPositive(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")
@@ -192,6 +214,8 @@ func TestSetCadenceRejectsNonPositive(t *testing.T) {
 }
 
 func TestAddContributorListsThem(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")
@@ -210,6 +234,8 @@ func TestAddContributorListsThem(t *testing.T) {
 }
 
 func TestAddContributorRejectsDuplicate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")
@@ -224,6 +250,8 @@ func TestAddContributorRejectsDuplicate(t *testing.T) {
 }
 
 func TestCreateGoalRecordsFirstSoWhatRevision(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
@@ -244,6 +272,8 @@ func TestCreateGoalRecordsFirstSoWhatRevision(t *testing.T) {
 }
 
 func TestEditSoWhatKeepsEveryRevision(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "First why.")
@@ -270,6 +300,8 @@ func TestEditSoWhatKeepsEveryRevision(t *testing.T) {
 }
 
 func TestEditSoWhatRejectsEmpty(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "First why.")
@@ -280,6 +312,8 @@ func TestEditSoWhatRejectsEmpty(t *testing.T) {
 }
 
 func TestSuggestDeliveryDatePicksNearestUpcomingCheckpointMonday(t *testing.T) {
+	t.Parallel()
+
 	// The suggestion is the nearest upcoming Monday that sits at a mid-month
 	// (the Monday nearest the 15th) or end-of-month (the last Monday) checkpoint.
 	cases := []struct {
@@ -308,6 +342,8 @@ func TestSuggestDeliveryDatePicksNearestUpcomingCheckpointMonday(t *testing.T) {
 }
 
 func TestAddContributorByEmailResolvesTheAccount(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")
@@ -326,6 +362,8 @@ func TestAddContributorByEmailResolvesTheAccount(t *testing.T) {
 }
 
 func TestAddContributorByEmailRejectsUnknownEmail(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")

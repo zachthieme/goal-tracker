@@ -13,6 +13,8 @@ import (
 // An Admin defines a Field of each type, a number one with its unit; a
 // non-Admin cannot (CONTEXT.md: Admin defines Fields; Field).
 func TestAdminDefinesFieldOfEachType(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -59,6 +61,8 @@ func TestAdminDefinesFieldOfEachType(t *testing.T) {
 // A Field can't take a Dimension's name whatever its letter case, nor another
 // Field's, so a name on a Goal says which attribute it is (ADR 0005).
 func TestFieldNameCannotRepeatADimensionOrField(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ctx := context.Background()
@@ -76,6 +80,8 @@ func TestFieldNameCannotRepeatADimensionOrField(t *testing.T) {
 // The Owner and a Delegate set and clear a value of each type on a Goal; a
 // Contributor can't (CONTEXT.md: Delegate; Contributor).
 func TestOwnerAndDelegateSetAndClearFields(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -140,6 +146,8 @@ func goalFieldValues(t *testing.T, h *testsupport.Harness, goalID int64) map[str
 // A number Field takes only a number and a date Field only a date; a bad value
 // is refused naming the Field, and the Goal keeps the value it had.
 func TestFieldRefusesAValueOfTheWrongType(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -172,6 +180,8 @@ func TestFieldRefusesAValueOfTheWrongType(t *testing.T) {
 // in it still has it; restoring it offers it again. A non-Admin may do neither
 // (CONTEXT.md: Retired).
 func TestAdminRetiresAndRestoresAField(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -223,6 +233,8 @@ func TestAdminRetiresAndRestoresAField(t *testing.T) {
 // Retiring a required Dimension or Field and restoring it keeps the setting it
 // had, so it is required again once restored.
 func TestRestoringKeepsTheRequiredSetting(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ctx := context.Background()
@@ -255,6 +267,8 @@ func TestRestoringKeepsTheRequiredSetting(t *testing.T) {
 // would change nothing, and leaves its setting as it was: required means
 // nothing on a Field no longer offered (CONTEXT.md: Retired).
 func TestRetiredFieldsRequiredSettingCannotChange(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ctx := context.Background()

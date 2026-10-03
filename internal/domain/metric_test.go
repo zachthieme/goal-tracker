@@ -23,6 +23,8 @@ func validMetric(goalID int64) domain.AddMetricInput {
 }
 
 func TestAddMetricListsUnderTheGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Cut checkout latency", "Faster checkout lifts conversion.")
@@ -51,6 +53,8 @@ func TestAddMetricListsUnderTheGoal(t *testing.T) {
 }
 
 func TestAddMetricValidatesInput(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Cut checkout latency", "why")
@@ -80,6 +84,8 @@ func TestAddMetricValidatesInput(t *testing.T) {
 }
 
 func TestEditMetricChangesFields(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Cut checkout latency", "why")

@@ -20,6 +20,8 @@ import (
 // validation error rendered in the form, next to the Path to Green field, so the
 // Owner can fix it in place (htmx). This is the validation-error smoke test.
 func TestSmokeCheckinValidationErrorReachesForm(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -54,6 +56,8 @@ func TestSmokeCheckinValidationErrorReachesForm(t *testing.T) {
 // The one-click "no change" button records a Check-in repeating the previous
 // values. This is the no-change smoke test.
 func TestSmokeNoChangeCheckinButton(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -99,6 +103,8 @@ func TestSmokeNoChangeCheckinButton(t *testing.T) {
 // value against its target and the Highlight. This is the readings/Highlight
 // smoke test (ticket #6).
 func TestSmokeCheckinRecordsReadingAndHighlight(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -180,6 +186,8 @@ func postFormHX(t *testing.T, client *http.Client, rawURL string, form url.Value
 // slip count. This is the Date
 // Slip smoke test (ticket #5).
 func TestSmokeCheckinDeliveryDateSlipShownStruckThrough(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -222,6 +230,8 @@ func TestSmokeCheckinDeliveryDateSlipShownStruckThrough(t *testing.T) {
 // when the Goal has Active children, and the Back to Green date when there is a
 // Path to Green. The status, the Path to Green and the explanation follow.
 func TestLatestStatusOpensWithCells(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -289,6 +299,8 @@ func TestLatestStatusOpensWithCells(t *testing.T) {
 // A Green Check-in that moves the delivery date later comes back as the form
 // with the error next to the delivery date, and nothing is recorded.
 func TestSmokeGreenWithLaterDeliveryDateRejectedInForm(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -322,6 +334,8 @@ func TestSmokeGreenWithLaterDeliveryDateRejectedInForm(t *testing.T) {
 // shows the Milestone's date struck through, the removal reason, the slip count,
 // and the Milestone Churn.
 func TestSmokeCheckinChangesMilestones(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -409,6 +423,8 @@ func pageElement(t *testing.T, page, tag, testID string) string {
 // shows each change, and while On Hold the Check-in page offers only to resume
 // or Cancel.
 func TestSmokeCheckinPutsGoalOnHoldAndResumes(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -467,6 +483,8 @@ func TestSmokeCheckinPutsGoalOnHoldAndResumes(t *testing.T) {
 // the final value it succeeds, and the Goal page shows the Goal Done with its
 // outcome and no Check-in form.
 func TestSmokeCheckinMarksGoalDone(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -525,6 +543,8 @@ func TestSmokeCheckinMarksGoalDone(t *testing.T) {
 // Cancelling a Goal through the form without a reason is rejected with a
 // message that reads naturally (ticket #29).
 func TestCheckinCancelWithoutReasonErrorReadsNaturally(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -549,6 +569,8 @@ func TestCheckinCancelWithoutReasonErrorReadsNaturally(t *testing.T) {
 // not its database id, shown next to that reading, and the typed text stays in
 // the input (ticket #29).
 func TestCheckinNonNumericReadingNamesTheMetric(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -592,6 +614,8 @@ func TestCheckinNonNumericReadingNamesTheMetric(t *testing.T) {
 // the rest of the form, so a "same as last week" Check-in stays one click; a
 // Metric with no readings yet stays blank (ticket #29).
 func TestCheckinFormPrefillsLatestReadings(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -642,6 +666,8 @@ func TestCheckinFormPrefillsLatestReadings(t *testing.T) {
 // explanation, gets its error next to the explanation field — not under the
 // Path to Green.
 func TestCheckinExplanationErrorShownNextToExplanationField(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -686,6 +712,8 @@ func fieldError(t *testing.T, body, fieldMarker string) string {
 // A Yellow Check-in without a Path to Green gets its error next to the Path to
 // Green fields.
 func TestCheckinPathToGreenErrorShownNextToPathToGreenField(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -705,6 +733,8 @@ func TestCheckinPathToGreenErrorShownNextToPathToGreenField(t *testing.T) {
 // A Check-in that puts the Goal On Hold without a reason gets its error next to
 // the Lifecycle reason field.
 func TestCheckinLifecycleReasonErrorShownNextToReasonField(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -725,6 +755,8 @@ func TestCheckinLifecycleReasonErrorShownNextToReasonField(t *testing.T) {
 // A Check-in that marks the Goal Done without an outcome gets its error next to
 // the outcome field.
 func TestCheckinOutcomeErrorShownNextToOutcomeField(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -745,6 +777,8 @@ func TestCheckinOutcomeErrorShownNextToOutcomeField(t *testing.T) {
 // A Check-in asking for a Lifecycle change it can't make gets its error next to
 // the Lifecycle choice.
 func TestCheckinLifecycleChangeErrorShownNextToLifecycleField(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -766,6 +800,8 @@ func TestCheckinLifecycleChangeErrorShownNextToLifecycleField(t *testing.T) {
 // A Check-in that moves the delivery date without a reason gets its error next
 // to the delivery date's reason field.
 func TestCheckinDeliveryDateReasonErrorShownNextToReasonField(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -788,6 +824,8 @@ func TestCheckinDeliveryDateReasonErrorShownNextToReasonField(t *testing.T) {
 // A Check-in that moves a Milestone's date without a reason gets its error next
 // to that Milestone's reason field.
 func TestCheckinMilestoneDateReasonErrorShownNextToReasonField(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -820,6 +858,8 @@ func onlyMilestone(t *testing.T, h *testsupport.Harness, goal domain.Goal) domai
 // A Check-in that removes a Milestone without a reason gets its error next to
 // that Milestone's reason-for-removing field.
 func TestCheckinMilestoneRemovedReasonErrorShownNextToReasonField(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -842,6 +882,8 @@ func TestCheckinMilestoneRemovedReasonErrorShownNextToReasonField(t *testing.T) 
 // A Green Check-in that leaves a Milestone overdue gets its error next to that
 // Milestone's date.
 func TestCheckinOverdueMilestoneErrorShownNextToMilestoneDate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -866,6 +908,8 @@ func TestCheckinOverdueMilestoneErrorShownNextToMilestoneDate(t *testing.T) {
 // A Check-in adding a Milestone without a date gets its error next to that new
 // Milestone's date.
 func TestCheckinNewMilestoneErrorShownNextToNewMilestone(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -892,6 +936,8 @@ func TestCheckinNewMilestoneErrorShownNextToNewMilestone(t *testing.T) {
 // A Green Check-in adding a Milestone that is already overdue gets its error
 // next to that new Milestone.
 func TestCheckinOverdueNewMilestoneErrorShownNextToNewMilestone(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -913,6 +959,8 @@ func TestCheckinOverdueNewMilestoneErrorShownNextToNewMilestone(t *testing.T) {
 // A Milestone date that isn't a date gets its error next to that Milestone's
 // date.
 func TestCheckinInvalidMilestoneDateErrorShownNextToMilestoneDate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -945,6 +993,8 @@ func highlightRows(t *testing.T, body string) []string {
 // in any mix of kinds and with kinds repeating; each is recorded in the order
 // entered, and a row left blank is ignored (CONTEXT.md: Highlight).
 func TestCheckinFormRecordsSeveralHighlightsInOrder(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -988,6 +1038,8 @@ func TestCheckinFormRecordsSeveralHighlightsInOrder(t *testing.T) {
 // A Highlight row with a note but no kind is refused with the error in that
 // row, naming it, and nothing is recorded; the rows keep what was typed.
 func TestCheckinHighlightWithNoKindRefusedInItsRow(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -1022,6 +1074,8 @@ func TestCheckinHighlightWithNoKindRefusedInItsRow(t *testing.T) {
 // A fresh Check-in form shows one empty Highlight row and an Add another
 // button.
 func TestCheckinFormShowsOneEmptyHighlightRow(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -1046,6 +1100,8 @@ func TestCheckinFormShowsOneEmptyHighlightRow(t *testing.T) {
 // everything typed anywhere on the form, and records nothing — over htmx and
 // as a plain form post without JavaScript.
 func TestCheckinAddAnotherHighlightKeepsTypedAndRecordsNothing(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name string
 		post func(t *testing.T, client *http.Client, rawURL string, form url.Values) (string, int)
@@ -1106,6 +1162,8 @@ func TestCheckinAddAnotherHighlightKeepsTypedAndRecordsNothing(t *testing.T) {
 
 // A Check-in without a status gets its error next to the status field.
 func TestCheckinStatusErrorShownNextToStatusField(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -1125,6 +1183,8 @@ func TestCheckinStatusErrorShownNextToStatusField(t *testing.T) {
 // A Check-in with a Health that isn't Green, Yellow, or Red gets its error next
 // to the Health field.
 func TestCheckinHealthErrorShownNextToHealthField(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -1145,6 +1205,8 @@ func TestCheckinHealthErrorShownNextToHealthField(t *testing.T) {
 // An error about the Check-in as a whole rather than one field — here, checking
 // in on a Cancelled Goal — is shown at the top of the form.
 func TestCheckinErrorAboutNoOneFieldShownAtTopOfForm(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -1173,6 +1235,8 @@ func TestCheckinErrorAboutNoOneFieldShownAtTopOfForm(t *testing.T) {
 // The Check-in has its own page, for the Owner or a Delegate: titled "Check in",
 // with a breadcrumb back to the Goal and the form. Anyone else gets 403.
 func TestCheckinPageForOwnerAndDelegatesOnly(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -1209,6 +1273,8 @@ func TestCheckinPageForOwnerAndDelegatesOnly(t *testing.T) {
 // The Goal page no longer embeds the Check-in form: its header links the Owner
 // to the Check-in page and keeps the one-click no-change button beside it.
 func TestGoalPageLinksToCheckinPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -1233,6 +1299,8 @@ func TestGoalPageLinksToCheckinPage(t *testing.T) {
 // Check-in. The Path to Green fieldset stays in the form, hidden by CSS alone
 // while Green is picked.
 func TestCheckinPageHealthIsRadioGroup(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -1263,6 +1331,8 @@ func TestCheckinPageHealthIsRadioGroup(t *testing.T) {
 
 // A Path to Green error keeps the fieldset shown whatever Health is picked.
 func TestCheckinPathToGreenFieldShownOnError(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -1284,6 +1354,8 @@ func TestCheckinPathToGreenFieldShownOnError(t *testing.T) {
 // The Highlight, the dates and Milestones, and the Lifecycle each sit in a
 // section collapsed by default, its summary line showing the current value.
 func TestCheckinPageOptionalSectionsCollapsedByDefault(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -1309,6 +1381,8 @@ func TestCheckinPageOptionalSectionsCollapsedByDefault(t *testing.T) {
 // A collapsed section opens on a re-render when it holds the error or a value
 // the reader typed, so the field at fault is never hidden.
 func TestCheckinSectionOpensOnErrorOrSubmittedValue(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name    string
 		form    url.Values
@@ -1348,6 +1422,8 @@ func TestCheckinSectionOpensOnErrorOrSubmittedValue(t *testing.T) {
 // with the one-click no-change card, dated from that Check-in, above the form.
 // With no previous Check-in there is nothing to repeat, so there is no card.
 func TestCheckinPageOffersNoChangeFirst(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -1383,6 +1459,8 @@ func TestCheckinPageOffersNoChangeFirst(t *testing.T) {
 // Cancelling a Goal through the Lifecycle section asks for confirmation
 // before the Check-in is sent.
 func TestCheckinFormConfirmsCancellingTheGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -1413,6 +1491,8 @@ func openTag(element string) string {
 // refused, and the person lands on that Goal's Check-in page with the reason at
 // the top of the form, in plain words, and nothing recorded (#103).
 func TestNoChangeRefusedWhileOverdueLandsOnCheckinForm(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -1490,6 +1570,8 @@ func overdueGreenGoal(h *testsupport.Harness, owner domain.Account) domain.Goal 
 // Check-in page with 200, so htmx swaps it in, and the Check-in page's URL is
 // pushed so the address bar matches what the person sees (#103).
 func TestNoChangeRefusedOverHtmxSwapsInCheckinPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -1520,6 +1602,8 @@ func TestNoChangeRefusedOverHtmxSwapsInCheckinPage(t *testing.T) {
 // A No change whose repeated Health now differs from the Rolled-up Health, with
 // no explanation to carry over, lands on the form to explain (#103).
 func TestNoChangeRefusedWhenRollupDiffersLandsOnCheckinForm(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -1543,6 +1627,8 @@ func TestNoChangeRefusedWhenRollupDiffersLandsOnCheckinForm(t *testing.T) {
 // A No change on a Goal never checked in on has nothing to repeat, so it lands
 // on the form to write the first Check-in (#103).
 func TestNoChangeRefusedWithoutPreviousCheckinLandsOnCheckinForm(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -1562,6 +1648,8 @@ func TestNoChangeRefusedWithoutPreviousCheckinLandsOnCheckinForm(t *testing.T) {
 // htmx: an On Hold Goal lands on its Check-in form with the reason, and a
 // Cancelled one on its Check-in page with the reason and no form (#109).
 func TestNoChangeRefusedOnGoalNotActive(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -1608,6 +1696,8 @@ func TestNoChangeRefusedOnGoalNotActive(t *testing.T) {
 // Someone who may not check in on a Goal gets a 403 that says so inside the
 // normal page, not bare text (#103).
 func TestNoChangeByNonDelegateIsForbiddenInsideThePage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -1631,6 +1721,8 @@ func TestNoChangeByNonDelegateIsForbiddenInsideThePage(t *testing.T) {
 // A No change on a Goal that doesn't exist gets a 404 that says so inside the
 // normal page (#103).
 func TestNoChangeOnMissingGoalIsNotFoundInsideThePage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	h.SignIn("sam@example.com")
@@ -1649,6 +1741,8 @@ func TestNoChangeOnMissingGoalIsNotFoundInsideThePage(t *testing.T) {
 // whatever its status: the click shows why it was refused instead of seeming
 // to do nothing (#109, #116).
 func TestNoChangeButtonSwapsInAnyErrorPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -1685,6 +1779,8 @@ func TestNoChangeButtonSwapsInAnyErrorPage(t *testing.T) {
 // A No change that fails for want of the database gets a 500 that says so
 // inside the normal page, which the button swaps in like any error (#116).
 func TestNoChangeThatFailsSaysSoInsideThePage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -1723,6 +1819,8 @@ func assertCheckinUnavailable(t *testing.T, page, sentence string) {
 // A successful No change over htmx still sends the person back to the Goal
 // page with HX-Redirect (#103).
 func TestNoChangeOverHtmxRedirectsToGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")

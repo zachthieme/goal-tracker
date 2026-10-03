@@ -26,6 +26,8 @@ import (
 // person signs in, creates a Proposed Goal, and sees it rendered on the Goal
 // list and on its own page.
 func TestSmokeSignInCreateAndViewGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := httptest.NewServer(web.NewServer(h.Service))
 	t.Cleanup(ts.Close)
@@ -115,6 +117,8 @@ func findGoalLink(t *testing.T, body string) string {
 // cadence, revises the So What, adds a Contributor, and activates it — then sees
 // it rendered Active with everything it filled in.
 func TestSmokeDefineAndActivateGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	// The Contributor's account must already exist to be added by email.
 	h.SignIn("dana@example.com")
@@ -178,6 +182,8 @@ func TestSmokeDefineAndActivateGoal(t *testing.T) {
 // activation gate's messages reach the user: activating a bare Proposed Goal is
 // rejected with a 422 that names what is missing.
 func TestActivateProposedGoalReportsGateFailures(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := httptest.NewServer(web.NewServer(h.Service))
 	t.Cleanup(ts.Close)
@@ -205,6 +211,8 @@ func TestActivateProposedGoalReportsGateFailures(t *testing.T) {
 // value is retired by an Admin it stays readable on the Goal (CONTEXT.md: Owners
 // assign Dimension values; retired values stay readable).
 func TestOwnerAssignsDimensionValueOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -244,6 +252,8 @@ func TestOwnerAssignsDimensionValueOverHTTP(t *testing.T) {
 // value, saved together: an Owner gives the Goal two values, then removes one,
 // then clears them. A one-value Dimension keeps its select.
 func TestOwnerSetsSeveralDimensionValuesOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -312,6 +322,8 @@ func TestOwnerSetsSeveralDimensionValuesOverHTTP(t *testing.T) {
 // signed-in person posting to the endpoint is refused with 403 and the value is
 // unchanged.
 func TestNonOwnerCannotAssignDimensionValueOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	owner := h.SignIn("owner@example.com")
@@ -342,6 +354,8 @@ func TestNonOwnerCannotAssignDimensionValueOverHTTP(t *testing.T) {
 // reaches the Dimensions page from the Goal page's Dimensions section — before
 // any Dimension is defined as well as after.
 func TestGoalPageDimensionsSectionLinksToDimensionsForNonOwner(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	owner := h.SignIn("owner@example.com")
@@ -372,6 +386,8 @@ func TestGoalPageDimensionsSectionLinksToDimensionsForNonOwner(t *testing.T) {
 // Grouped by a several-values Dimension, a Goal with two values appears in both
 // groups, and the list's total counts it once (ADR 0005).
 func TestGoalListGroupsSeveralValuesGoalUnderEachValue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -407,6 +423,8 @@ func TestGoalListGroupsSeveralValuesGoalUnderEachValue(t *testing.T) {
 // The Goal list filters to the Goals carrying a chosen value and groups the list
 // under each value of a chosen Dimension (CONTEXT.md: filter and group Goals).
 func TestGoalListFiltersAndGroupsByDimension(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -440,6 +458,8 @@ func TestGoalListFiltersAndGroupsByDimension(t *testing.T) {
 // a teal fill: a header row is nothing to act on, and teal is kept for what is
 // (DESIGN.md § System Mood).
 func TestGoalListGroupHeadersAreNeutralOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -461,6 +481,8 @@ func TestGoalListGroupHeadersAreNeutralOverHTTP(t *testing.T) {
 // the values are not inherited — a child created without them carries none
 // (CONTEXT.md: the parent's values are offered as defaults, not inherited).
 func TestCreateChildGoalOffersParentDefaults(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -511,6 +533,8 @@ func TestCreateChildGoalOffersParentDefaults(t *testing.T) {
 // was retired before the submit, the Goal is not created, no link is requested,
 // and the form comes back with the error and what the person typed (ticket #26).
 func TestCreateChildGoalWithRetiredValueLeavesNoGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -609,6 +633,8 @@ func rowTitles(rows []string, goals ...domain.Goal) []string {
 // top: Red, then Ownerless, then Stale or Path to Green overdue, then Yellow,
 // then Green, then Goals with no Health, alphabetical within each group.
 func TestGoalListSortsProblemsFirst(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -659,6 +685,8 @@ func TestGoalListSortsProblemsFirst(t *testing.T) {
 // from struck through, or a dash for an Ongoing Goal, and how long ago its last
 // Check-in was.
 func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	slipped := h.ActiveGoal(sam, "Slipped", "It matters.")
@@ -703,6 +731,8 @@ func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
 // Searching the Goal list keeps the Goals whose title or Owner's email or Name
 // holds the text, ignoring case, and the search box keeps what was typed.
 func TestGoalListSearchesTitleAndOwner(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	kim := h.SignInNamed("kim@example.com", "Kim Lee")
@@ -737,6 +767,8 @@ func TestGoalListSearchesTitleAndOwner(t *testing.T) {
 // The Health filter keeps the Goals at the chosen Health, or those with none,
 // and its select keeps the choice.
 func TestGoalListFiltersByHealth(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	later := testsupport.Epoch.AddDate(0, 2, 0)
@@ -769,6 +801,8 @@ func TestGoalListFiltersByHealth(t *testing.T) {
 // The Lifecycle filter keeps the Goals in the chosen Lifecycle and, left at its
 // default, keeps every Lifecycle; its select keeps the choice.
 func TestGoalListFiltersByLifecycle(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	active := h.ActiveGoal(sam, "Active one", "It matters.")
@@ -799,6 +833,8 @@ func TestGoalListFiltersByLifecycle(t *testing.T) {
 // Mine only keeps the Goals the viewer Owns or is a Delegate on, and its
 // checkbox stays checked.
 func TestGoalListFiltersToMine(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	kim := h.SignIn("kim@example.com")
@@ -831,6 +867,8 @@ func TestGoalListFiltersToMine(t *testing.T) {
 // either is set; grouping gives each value its own table section headed by a
 // row naming it, sorted problems first within.
 func TestGoalListFoldsDimensionFiltersAndGroupsIntoSections(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -881,6 +919,8 @@ func TestGoalListFoldsDimensionFiltersAndGroupsIntoSections(t *testing.T) {
 // propose form; the form still swaps the list in place under htmx. The Risks
 // page has replaced the links to the signal pages.
 func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	h.SignIn("sam@example.com")
 	ts := newServer(t, h)
@@ -936,6 +976,8 @@ func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 // and Top-level. Dimension values stay in the sidebar, out of the head. Check
 // in and No change sit top right for whoever may check in.
 func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -1012,6 +1054,8 @@ func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
 // what it has on its metadata line: no Health badge, no Delivers, and no
 // Top-level.
 func TestGoalPageMetaLineShowsOnlyWhatTheGoalHas(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.CreateGoal(sam, "Tidy the backlog", "Nobody can find anything.")
@@ -1041,6 +1085,8 @@ func TestGoalPageMetaLineShowsOnlyWhatTheGoalHas(t *testing.T) {
 // the summary claims a real width before the row's leftover space is shared,
 // so it no longer fits beside Check in, No change and More (#42).
 func TestGoalPageHeaderWrapsActionsAtPhoneWidthOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "A to-ce the API tier", "Callers need one front door.")
@@ -1071,6 +1117,8 @@ func cssRule(t *testing.T, page, selector string) string {
 // The Goal page's Milestones are a table of status badge, name and date, the
 // date's slips struck, headed by the Goal's slip count and Milestone Churn.
 func TestGoalPageMilestonesTable(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -1098,6 +1146,8 @@ func TestGoalPageMilestonesTable(t *testing.T) {
 // A Departed Delegate stays listed among the Goal's Delegates, marked departed;
 // a present one isn't marked (CONTEXT.md: Departed).
 func TestGoalPageMarksADepartedDelegate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -1127,6 +1177,8 @@ func TestGoalPageMarksADepartedDelegate(t *testing.T) {
 // confirmation (#56). A breadcrumb leads back through Goals and the first
 // parent.
 func TestGoalPageSidebarLinksCarryHealthAndRemoveAtOnce(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Grow revenue", "Revenue funds the rest.")
@@ -1176,6 +1228,8 @@ func TestGoalPageSidebarLinksCarryHealthAndRemoveAtOnce(t *testing.T) {
 // and a sparkline of its readings with a dashed target line, labelled for a
 // screen reader with the trend. The Owner edits it in a collapsed section.
 func TestGoalPageMetricCardsShowASparkline(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	h.SignIn("mel@example.com")
@@ -1244,6 +1298,8 @@ func TestGoalPageMetricCardsShowASparkline(t *testing.T) {
 // ownership changes and value changes — is one timeline under History, open on
 // load, with a filter chip per kind carrying its count.
 func TestGoalPageHistoryIsOpenWithCounts(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -1280,6 +1336,8 @@ func TestGoalPageHistoryIsOpenWithCounts(t *testing.T) {
 // The Latest status card leads the main column with the latest Check-in's
 // Health, status and Path to Green, and who wrote it and when.
 func TestGoalPageLatestStatusCard(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -1328,6 +1386,8 @@ var regexpTags = regexp.MustCompile(`<[^>]*>`)
 // activation enforces, each item done or missing, and Activate stays disabled
 // until every item is done.
 func TestProposedGoalShowsActivationChecklist(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
@@ -1369,6 +1429,8 @@ func TestProposedGoalShowsActivationChecklist(t *testing.T) {
 // An Ongoing Goal needs a Metric to activate, and a Milestone alone doesn't
 // satisfy its checklist.
 func TestOngoingGoalChecklistNeedsAMetric(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.CreateGoal(sam, "Keep the lights on", "Uptime is table stakes.")
@@ -1413,6 +1475,8 @@ func visibleEmails(page string) []string {
 // The Goal list and a Goal page show each Owner by Name, or by their email's
 // local part until they have one, with the email a click away.
 func TestGoalPagesShowPeopleByName(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
@@ -1443,6 +1507,8 @@ func TestGoalPagesShowPeopleByName(t *testing.T) {
 // it on each click, tap, Enter or Space, so people who share a Name can be
 // told apart without hover (CONTEXT.md: Name).
 func TestPersonExpandsTheirEmailOnActivation(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
@@ -1505,6 +1571,8 @@ func disclosureScript(t *testing.T, page string) string {
 // wording is the one the hover title always carried. The So What shows no
 // heading, but assistive technology still hears it labelled "So What".
 func TestGoalPageExplainsSoWhatAndTopLevelOnActivation(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	ada := h.SignIn("ada@example.com")
@@ -1543,6 +1611,8 @@ func TestGoalPageExplainsSoWhatAndTopLevelOnActivation(t *testing.T) {
 // asked for; the Print view, with no hover or controls, introduces them as
 // Name (email) (CONTEXT.md: Name).
 func TestSeededPagesShowPeopleByName(t *testing.T) {
+	t.Parallel()
+
 	const adminEmail = "admin@example.com"
 	h := testsupport.New(t, adminEmail)
 	ctx := context.Background()
@@ -1652,6 +1722,8 @@ func TestSeededPagesShowPeopleByName(t *testing.T) {
 // adds the value to the end of the list, in the order added, and sets it on
 // the Goal in one step (CONTEXT.md: Extendable).
 func TestOwnerAddsValueToExtendableDimensionOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -1710,6 +1782,8 @@ func dimensionValueNames(d domain.Dimension) []string {
 // adds nothing; a match on a Retired value is refused with a message saying so
 // (CONTEXT.md: Fixed, Extendable, Retired).
 func TestAddingValueFromGoalPageRefusalsAndMatchesOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -1762,6 +1836,8 @@ func TestAddingValueFromGoalPageRefusalsAndMatchesOverHTTP(t *testing.T) {
 // adds to an Extendable list through them; a Contributor sees no controls and
 // is refused with 403 (CONTEXT.md: Delegate, Contributor).
 func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -1822,6 +1898,8 @@ func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testi
 // History and the sidebar's blocks sit on the canvas (DESIGN.md § Components:
 // Card).
 func TestGoalPageCardsOnlyWhatAPersonActsOn(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -1883,6 +1961,8 @@ func hasClass(openTag, class string) bool {
 // Highlights and History are page sections on the canvas, so they take an h2;
 // the sidebar's canvas blocks keep the h3 size (DESIGN.md § Components: Card).
 func TestGoalPageCanvasBlockHeadings(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -1909,6 +1989,8 @@ func TestGoalPageCanvasBlockHeadings(t *testing.T) {
 // A --color-border rule separates the Goal page's canvas blocks from the block
 // above them.
 func TestGoalPageCanvasBlocksSitUnderARule(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
@@ -1938,6 +2020,8 @@ func TestGoalPageCanvasBlocksSitUnderARule(t *testing.T) {
 // it still shows the value, marked retired, and one carrying none doesn't list
 // it. Restoring the Dimension returns its control (CONTEXT.md: Retired).
 func TestRetiredDimensionLeavesGoalPageControlsOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -1999,6 +2083,8 @@ func TestRetiredDimensionLeavesGoalPageControlsOverHTTP(t *testing.T) {
 // list with no control to undo it. A Goal's row still shows its value, marked
 // retired. Restoring the Dimension returns it to both (CONTEXT.md: Retired).
 func TestRetiredDimensionLeavesGoalListFilterAndGroupingOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -2053,6 +2139,8 @@ func TestRetiredDimensionLeavesGoalListFilterAndGroupingOverHTTP(t *testing.T) {
 // A Field describes a Goal and is never an update: it is offered in neither the
 // Goal list's filter nor its grouping, nor on the Check-in form (ADR 0005).
 func TestFieldsStayOffTheGoalListControlsAndCheckinForm(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -2133,6 +2221,8 @@ func cellTexts(html, tag string) []string {
 // one per live Field, each in name order; a Retired one has none, nor do
 // Metrics and Milestones. A several-values cell lists its values with commas.
 func TestGoalTableHasAColumnPerLiveDimensionAndField(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignInNamed("sam@example.com", "Sam Ortiz")
@@ -2204,6 +2294,8 @@ func linkQuery(t *testing.T, page, testID string) url.Values {
 // table's URL alone reproduces the same view, so a table link can be shared.
 // Applying the filter bar in the table stays in the table.
 func TestGoalTableLayoutKeepsFiltersAndIsShareable(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -2270,6 +2362,8 @@ func sortLink(t *testing.T, page, head string) string {
 // value sort last both ways. Unsorted, the table keeps the list's problem-first
 // order. The sort keeps the filters.
 func TestGoalTableSortsByAColumnWithUnsetValuesLast(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -2345,6 +2439,8 @@ func submitColumns(t *testing.T, client *http.Client, base, page string, hide ..
 // the column stays hidden on the next visit, while another browser still shows
 // it. Hiding keeps the filters.
 func TestGoalTableHiddenColumnStaysHiddenOnTheNextVisit(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -2396,6 +2492,8 @@ func TestGoalTableHiddenColumnStaysHiddenOnTheNextVisit(t *testing.T) {
 // doesn't apply to it, and on a narrow screen it scrolls sideways inside its
 // own container rather than widening the page.
 func TestGoalTableHasNoTotalsRowAndIsntGrouped(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -2439,6 +2537,8 @@ func TestGoalTableHasNoTotalsRowAndIsntGrouped(t *testing.T) {
 // Proposing a Goal from the table layout swaps the table back in, not the list
 // layout, with the new Goal in it.
 func TestProposeGoalFromTheTableKeepsTheTable(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	h.SignIn("sam@example.com")
 	ts := newServer(t, h)
@@ -2463,6 +2563,8 @@ func TestProposeGoalFromTheTableKeepsTheTable(t *testing.T) {
 // "added X" or "removed X", a save that changes nothing adds no entry, and
 // renaming a value afterwards leaves the entries reading as they did.
 func TestGoalPageListsValueHistory(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignInNamed("pat@example.com", "Pat Owner")
@@ -2529,6 +2631,8 @@ func TestGoalPageListsValueHistory(t *testing.T) {
 // Dimension and Field, even one this browser hides, and the Owner as an email
 // (#81).
 func TestGoalTableDownloadsTheFilteredGoalsAsCSV(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignInNamed("sam@example.com", "Sam Lee")
@@ -2620,6 +2724,8 @@ func tableRowOf(t *testing.T, page string, goal domain.Goal) string {
 // them takes a Check-in, a Date Slip reason, a Handoff or a Lifecycle reason
 // (#80; CONTEXT.md: Delegate).
 func TestGoalTableEditModeHasInputsOnlyOnRowsThePersonMayEdit(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -2678,6 +2784,8 @@ func emptyLinks(t *testing.T, page string) []string {
 // the Goal table and in its edit mode, rather than a link with no text that
 // the keyboard stops on and a screen reader announces unnamed (#100).
 func TestGoalTableHasNoEmptyLinks(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	sam := h.SignIn("sam@example.com")
 	h.CreateGoal(sam, "Alpha", "A matters.")
@@ -2698,6 +2806,8 @@ func TestGoalTableHasNoEmptyLinks(t *testing.T) {
 // reveals the Owner's email, not a link: a link can't hold that control, and
 // the Title already links to the Goal (#100, withdrawing that part of #80).
 func TestGoalTableEditModeOwnerCellIsThePersonControl(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	sam := h.SignIn("sam@example.com")
 	alpha := h.CreateGoal(sam, "Alpha", "A matters.")
@@ -2714,6 +2824,8 @@ func TestGoalTableEditModeOwnerCellIsThePersonControl(t *testing.T) {
 // way a refused select or text input is: each of its checkboxes is marked
 // invalid, and their group points at the cell's error message (#100).
 func TestGoalTableRefusedSeveralValuesCellIsAnnounced(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -2816,6 +2928,8 @@ func valueID(v domain.DimensionValue) string {
 // Extendable list — keeps each change in its Goal's history, and lands back on
 // the table out of edit mode with its filters (#80).
 func TestGoalTableSaveUpdatesEveryChangedGoalWithHistory(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -2893,6 +3007,8 @@ func historyText(c domain.ValueChange) string {
 // comes back in edit mode with what was typed in every cell, the bad cell
 // marked with why, and the Goals keep their values (#80).
 func TestGoalTableSaveWithAnInvalidNumberSavesNothingAndKeepsWhatWasTyped(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -2958,6 +3074,8 @@ func TestGoalTableSaveWithAnInvalidNumberSavesNothingAndKeepsWhatWasTyped(t *tes
 // saved, not even the cells of the person's own Goals (#80; CONTEXT.md:
 // Delegate).
 func TestGoalTableSaveForAGoalThePersonCantEditIsRefused(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -2992,6 +3110,8 @@ func TestGoalTableSaveForAGoalThePersonCantEditIsRefused(t *testing.T) {
 // Goal doesn't carry aren't offered, as on the Goal page (#80; CONTEXT.md:
 // Retired).
 func TestGoalTableEditKeepsRetiredValuesTheGoalCarries(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -3042,6 +3162,8 @@ func TestGoalTableEditKeepsRetiredValuesTheGoalCarries(t *testing.T) {
 // value someone else saved meanwhile in a cell left alone is kept, not put back
 // to what the form showed (#80: Save submits every changed row).
 func TestGoalTableSaveLeavesCellsItDidNotChange(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -3077,6 +3199,8 @@ func TestGoalTableSaveLeavesCellsItDidNotChange(t *testing.T) {
 // A required Dimension or Field joins the activation checklist, and activating
 // without its value is refused naming it (CONTEXT.md: Incomplete).
 func TestActivationNeedsRequiredValues(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -3125,6 +3249,8 @@ func TestActivationNeedsRequiredValues(t *testing.T) {
 // it lacks, in a quieter style than Stale's; setting the value clears it, and
 // a Goal that isn't Active never shows it (CONTEXT.md: Incomplete).
 func TestGoalPageFlagsIncomplete(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -3162,6 +3288,8 @@ func TestGoalPageFlagsIncomplete(t *testing.T) {
 // problems-first order, and its Incomplete filter keeps exactly the Incomplete
 // Goals, in either layout (CONTEXT.md: Incomplete).
 func TestGoalListMarksAndFiltersIncomplete(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -3213,6 +3341,8 @@ func TestGoalListMarksAndFiltersIncomplete(t *testing.T) {
 // before that was refused, is refused naming the Dimension and value so an
 // Admin can rename it, and returns no file (#101).
 func TestGoalTableDownloadRefusesAValueContainingASemicolon(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
@@ -3240,6 +3370,8 @@ func TestGoalTableDownloadRefusesAValueContainingASemicolon(t *testing.T) {
 // Naming a new value containing a semicolon is refused, saying why, from the
 // Goal page and from the table's edit mode, and nothing is added (#101).
 func TestNewValueContainingASemicolonIsRefusedFromTheGoalPageAndTable(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -3277,6 +3409,8 @@ func TestNewValueContainingASemicolonIsRefusedFromTheGoalPageAndTable(t *testing
 // When the Goal's history can't be written, choosing another value on the Goal
 // page fails and the Goal keeps the value it had.
 func TestFailedHistoryLeavesTheDimensionValueOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -3309,6 +3443,8 @@ func TestFailedHistoryLeavesTheDimensionValueOverHTTP(t *testing.T) {
 // Dimension cleared leaves the Goal Incomplete. Choosing "None" again, with no
 // value left, records nothing.
 func TestChoosingNoneClearsAOneValueDimensionOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -3354,6 +3490,8 @@ func TestChoosingNoneClearsAOneValueDimensionOverHTTP(t *testing.T) {
 // A retired value the Goal carries stays selected in its one-value select, so
 // saving the select keeps it rather than clearing it to "None".
 func TestOneValueSelectKeepsACarriedRetiredValueOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -3380,6 +3518,8 @@ func TestOneValueSelectKeepsACarriedRetiredValueOverHTTP(t *testing.T) {
 // Back. The page opts out of htmx's history snapshot, so Back loads the earlier
 // address afresh and the filter bar shows its filters too.
 func TestGoalListFiltersApplyOnChange(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	h.CreateDimension(boss, "Pillar", "Growth")
@@ -3413,6 +3553,8 @@ func TestGoalListFiltersApplyOnChange(t *testing.T) {
 // running scripts, where the bar applies itself, doesn't show it (#94). The
 // table's Columns form isn't a filter and keeps its own button.
 func TestGoalListApplyButtonOnlyWithoutJavaScript(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	h.SignIn("boss@example.com")
 	ts := newServer(t, h)
@@ -3475,6 +3617,8 @@ func swappedList(t *testing.T, page string) string {
 // A filter changed under htmx answers the same Goals as its address loaded
 // directly, and keeps the layout, the sort and the grouping (#94).
 func TestGoalListFilterChangeUnderHTMXKeepsTheView(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -3530,6 +3674,8 @@ func TestGoalListFilterChangeUnderHTMXKeepsTheView(t *testing.T) {
 // changed under htmx refreshes it too: proposing a Goal afterwards swaps back
 // the filtered table, not the one the page first loaded (#94).
 func TestGoalListFilterChangeUnderHTMXRefreshesTheProposeForm(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	h.SignIn("boss@example.com")
 	ts := newServer(t, h)
@@ -3568,6 +3714,8 @@ func proposeFormOpen(t *testing.T, page string) bool {
 // layout — the form is closed, and nothing on the opened list carries ?new=1
 // on, so filtering, switching layout or sorting doesn't open it again.
 func TestGoalListOpensProposeFormOnlyWhenAsked(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	h.SignIn("sam@example.com")
 	ts := newServer(t, h)
@@ -3596,6 +3744,8 @@ func TestGoalListOpensProposeFormOnlyWhenAsked(t *testing.T) {
 // a plain post lands on the Goal list with the form closed and the new Goal
 // listed, and under htmx the post swaps the list in place (#93).
 func TestProposeGoalFromTheOpenedForm(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	h.SignIn("sam@example.com")
 	ts := newServer(t, h)
@@ -3626,6 +3776,8 @@ func TestProposeGoalFromTheOpenedForm(t *testing.T) {
 // Check-in are two entries, in the order entered, each crediting the Owner
 // (CONTEXT.md: Highlight).
 func TestGoalPageListsEachHighlightOfACheckinSeparately(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 
@@ -3656,6 +3808,8 @@ func TestGoalPageListsEachHighlightOfACheckinSeparately(t *testing.T) {
 // records one Value history entry, not a removal and an addition, and clearing
 // it with None records one more (ticket #74).
 func TestChangingThenClearingAOneValueDimensionRecordsOneEntryEachOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -3694,6 +3848,8 @@ func TestChangingThenClearingAOneValueDimensionRecordsOneEntryEachOverHTTP(t *te
 // Once an Admin unmarks the required Dimension and Field a Goal lacks, the Goal
 // page drops its Incomplete flag and the Goal list its row's mark (ticket #75).
 func TestUnmarkingRequiredClearsTheIncompleteFlagOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -3760,6 +3916,8 @@ func closeGoal(t *testing.T, h *testsupport.Harness, owner domain.Account, g dom
 // on its page or its Goal list row, and the Incomplete filter leaves it out,
 // keeping only the Active Goal that lacks one (ticket #75).
 func TestDoneAndCancelledGoalsAreNeverIncompleteOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -3803,6 +3961,8 @@ func TestDoneAndCancelledGoalsAreNeverIncompleteOverHTTP(t *testing.T) {
 // chosen so that neither their month names, the titles nor the order the Goals
 // were made in gives the same order (ticket #79).
 func TestGoalTableSortsADateFieldAsDatesWithUnsetLast(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -3837,6 +3997,8 @@ func TestGoalTableSortsADateFieldAsDatesWithUnsetLast(t *testing.T) {
 // Title, Health, Lifecycle and delivery date cells link to the Goal, since
 // changing them happens there (ticket #80).
 func TestGoalTableEditModeGivesAnAdminInputsOnEveryRowAndLinksToTheGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -3883,6 +4045,8 @@ func actionMenu(t *testing.T, page string) string {
 // one, and beside them a "⋯" menu named for assistive technology. A signed-in
 // person with no role on the Goal gets neither button, only the menu.
 func TestGoalPageHeaderActionsOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	h.SignIn("mel@example.com")
@@ -3946,6 +4110,8 @@ func menuItems(t *testing.T, page string) map[string]string {
 // Top-level and Mark owner departed…, and on an Ownerless Goal Reassign and
 // Mark returned… in place of Hand off; anyone else only Add a child Goal.
 func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -4036,6 +4202,8 @@ func assertOpenIn(t *testing.T, page, form, start, next string) {
 // the plain page, which shows no form open. No script is involved: the menu
 // item is a link and the form a plain post.
 func TestGoalPageMenuItemOpensItsFormInPlaceOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -4111,6 +4279,8 @@ func TestGoalPageMenuItemOpensItsFormInPlaceOverHTTP(t *testing.T) {
 // Contributors, Edit for Dimensions and for Fields, + Add for Contributes to.
 // Nothing on the page jumps to a collapsed section any more.
 func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -4171,6 +4341,8 @@ func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTP(t *testing.T) {
 // with that same form open, the reason beside it, and what was typed still in
 // it, rather than a bare error page.
 func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -4226,6 +4398,8 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 // owner departed and Mark returned still confirm in a browser dialog, and Hand
 // off, Reassign and Top-level still submit at once.
 func TestGoalPageOpenFormsKeepTheirConfirmationsOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ada := h.SignIn("ada@example.com")
 	sam := h.SignIn("sam@example.com")

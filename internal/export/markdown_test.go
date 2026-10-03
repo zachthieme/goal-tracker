@@ -38,6 +38,8 @@ func publication(exceptions []domain.ReportBlock, lines []domain.SelectedGoal) d
 // read its changes against, and the introduction; every Goal that is not an
 // exception takes one line with its title, Owner, Health, and due date.
 func TestMarkdownHeaderAndOneLineGoals(t *testing.T) {
+	t.Parallel()
+
 	pub := publication(nil, []domain.SelectedGoal{
 		{Goal: domain.Goal{Title: "Cut churn", Owner: boss, DeliveryDate: date(2026, 6, 30)}, Health: domain.HealthGreen},
 		{Goal: domain.Goal{Title: "Hire a PM", Owner: boss}},
@@ -62,6 +64,8 @@ Quarterly business review.
 // A publication that read its changes against the previous publication says
 // so, as its snapshot page does.
 func TestMarkdownNamesThePreviousPublication(t *testing.T) {
+	t.Parallel()
+
 	pub := publication(nil, nil)
 	pub.Report.Previous = domain.PreviousPublication{ID: 6, PublishedAt: time.Date(2026, 1, 20, 14, 5, 0, 0, time.UTC)}
 
@@ -79,6 +83,8 @@ func TestMarkdownNamesThePreviousPublication(t *testing.T) {
 // status, Path to Green, Milestones — a removed one struck through — Metrics
 // against target, and the Rolled-up Health with the Owner's explanation.
 func TestMarkdownExceptionBlockKeepsStrikethroughsAndBadges(t *testing.T) {
+	t.Parallel()
+
 	pub := publication([]domain.ReportBlock{{
 		Goal: domain.Goal{
 			Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss,
@@ -140,6 +146,8 @@ boss · Active · Health: **Red** · due ~~2026-03-01~~ ~~2026-04-01~~ 2026-05-0
 // escaped so it cannot strike through, embolden, link, or start a list, and a
 // line break reads as a space, as it does on the snapshot page.
 func TestMarkdownEscapesWhatPeopleType(t *testing.T) {
+	t.Parallel()
+
 	pub := publication([]domain.ReportBlock{{
 		Goal:   domain.Goal{Title: "Ship *fast* ~~now~~", SoWhat: "See [docs](http://x).", Owner: boss, Lifecycle: domain.LifecycleActive},
 		Health: domain.HealthYellow,
@@ -166,6 +174,8 @@ func TestMarkdownEscapesWhatPeopleType(t *testing.T) {
 // A publication's open Action Items open the export, ahead of the
 // introduction, each with its owner and due date (CONTEXT.md: Action Item).
 func TestMarkdownOpensWithActionItems(t *testing.T) {
+	t.Parallel()
+
 	pub := publication(nil, nil)
 	pub.Report.ActionItems = []domain.ActionItem{
 		{Text: "Get a *second* vendor quote.", Owner: boss, DueDate: date(2026, 3, 1)},
@@ -192,6 +202,8 @@ No Goals selected.
 // author's text, and the Highlights they picked, each crediting the Goal's
 // Owner.
 func TestMarkdownCarriesTheNarrative(t *testing.T) {
+	t.Parallel()
+
 	alice := domain.Account{ID: 2, Email: "alice@example.com"}
 	pub := publication(nil, nil)
 	pub.Report.Narrative = []domain.NarrativeSection{
@@ -228,6 +240,8 @@ No Goals selected.
 // every later one their Name alone; someone without a Name reads as their
 // email's local part (CONTEXT.md: Name).
 func TestMarkdownIntroducesEachPersonAtFirstMention(t *testing.T) {
+	t.Parallel()
+
 	ada := domain.Account{ID: 2, Email: "ada.okafor@example.com", Name: "Ada Okafor"}
 	pub := publication(nil, []domain.SelectedGoal{
 		{Goal: domain.Goal{Title: "Cut churn", Owner: ada}, Health: domain.HealthGreen},
@@ -254,6 +268,8 @@ Quarterly business review.
 // they published, the same Name the Goals they own read by, so the export
 // never shows one person under two Names.
 func TestMarkdownBylineKeepsThePublishersNameAfterARename(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ceo@example.com")
 	ctx := context.Background()
 	ceo := h.SignInNamed("ceo@example.com", "Dana Whitfield")
@@ -283,6 +299,8 @@ func TestMarkdownBylineKeepsThePublishersNameAfterARename(t *testing.T) {
 // numbers are never totalled (ADR 0005). A Goal with none shows none (ticket
 // #78).
 func TestMarkdownCarriesTheChosenFields(t *testing.T) {
+	t.Parallel()
+
 	budget := domain.Field{Name: "Budget", Type: domain.FieldNumber, Unit: "$"}
 	notes := domain.Field{Name: "Notes", Type: domain.FieldLongText}
 	pub := publication([]domain.ReportBlock{{

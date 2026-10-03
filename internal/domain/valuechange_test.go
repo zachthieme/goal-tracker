@@ -22,6 +22,8 @@ func valueHistory(t *testing.T, h *testsupport.Harness, goalID int64) []domain.V
 // Changing a number Field records who changed it, when, and the value before
 // and after (CONTEXT.md: Field — changes are kept in the Goal's history).
 func TestChangingAFieldRecordsBeforeAndAfter(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -46,6 +48,8 @@ func TestChangingAFieldRecordsBeforeAndAfter(t *testing.T) {
 // Setting, changing and clearing a Goal's value in a one-value Dimension each
 // record one entry, by the Dimension's name and values.
 func TestSettingChangingAndClearingADimensionValueEachRecordOneEntry(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -75,6 +79,8 @@ func TestSettingChangingAndClearingADimensionValueEachRecordOneEntry(t *testing.
 // Saving a Goal's Dimension values or Fields without changing anything records
 // nothing.
 func TestSavingWithoutAChangeRecordsNothing(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -114,6 +120,8 @@ func TestSavingWithoutAChangeRecordsNothing(t *testing.T) {
 // In a Dimension that takes several values, each value added or removed is its
 // own entry, read as "added X" or "removed X".
 func TestAddingAndRemovingSeveralValuesRecordsEachValue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -144,6 +152,8 @@ func TestAddingAndRemovingSeveralValuesRecordsEachValue(t *testing.T) {
 // A Delegate's change is attributed to the Delegate, not the Owner
 // (CONTEXT.md: Delegate).
 func TestADelegatesChangeIsAttributedToTheDelegate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -173,6 +183,8 @@ func TestADelegatesChangeIsAttributedToTheDelegate(t *testing.T) {
 // Renaming or merging a value afterwards leaves the earlier entries reading as
 // they did: the history keeps the values as they were at the time.
 func TestRenamingOrMergingAValueLeavesEarlierEntriesAlone(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -205,6 +217,8 @@ func TestRenamingOrMergingAValueLeavesEarlierEntriesAlone(t *testing.T) {
 // or Dimension value fails and leaves the value as it was: the change and its
 // entry are written together.
 func TestAChangeWhoseHistoryFailsLeavesTheValueUnchanged(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -258,6 +272,8 @@ func TestAChangeWhoseHistoryFailsLeavesTheValueUnchanged(t *testing.T) {
 // records one "cleared" entry and leaves the Goal Incomplete. Clearing it again,
 // with no value left, records nothing.
 func TestClearingARequiredDimensionRecordsOneEntryAndLeavesTheGoalIncomplete(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")

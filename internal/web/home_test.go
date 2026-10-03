@@ -43,6 +43,8 @@ func homeRow(t *testing.T, section string, g domain.Goal) string {
 // one-click No change and a Check in link. Fresh Goals and other people's
 // Stale Goals aren't listed.
 func TestHomeListsStaleGoalToCheckInOn(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -81,6 +83,8 @@ func TestHomeListsStaleGoalToCheckInOn(t *testing.T) {
 // to spare isn't listed, and a Goal with no Check-in to repeat offers no No
 // change.
 func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -112,6 +116,8 @@ func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
 // it is, not how long since its last update, so a long cadence doesn't push a
 // Goal ahead of one already further behind.
 func TestHomeListsMostOverdueFirst(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -133,6 +139,8 @@ func TestHomeListsMostOverdueFirst(t *testing.T) {
 // A Goal never checked in on has no previous Check-in to repeat, so its row
 // offers only Check in, not No change.
 func TestHomeOffersNoChangeOnlyWithAPreviousCheckin(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -155,6 +163,8 @@ func TestHomeOffersNoChangeOnlyWithAPreviousCheckin(t *testing.T) {
 // links to the Delegate page with how many Goals they're a Delegate on, in
 // place of a card listing them again; someone with none sees no such link.
 func TestHomeListsDelegatedGoalsOnce(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -195,6 +205,8 @@ func TestHomeListsDelegatedGoalsOnce(t *testing.T) {
 // viewer Owns the Goal or is a Delegate on it, and following it shows the
 // Check-in form (#102).
 func TestHomeCheckInOpensCheckinForm(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -222,6 +234,8 @@ func TestHomeCheckInOpensCheckinForm(t *testing.T) {
 // first whatever their kind. Each offers Accept as an outlined button and
 // Reject as a text button that submits at once, and both do what they say.
 func TestHomeListsRequestsOldestFirst(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -278,6 +292,8 @@ func TestHomeListsRequestsOldestFirst(t *testing.T) {
 // A "Needs you" subgroup with nothing in it is left out, and with nothing at
 // all the list shows a single caught-up line.
 func TestHomeOmitsEmptySubgroups(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -328,6 +344,8 @@ func TestHomeOmitsEmptySubgroups(t *testing.T) {
 // made (TestHomeHandoffReviewListsDelegatesToKeep), in place of Accept. Reject
 // still decides it from Home.
 func TestHomeOffersReviewForHandoffWithDelegates(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	h.SignIn("sam@example.com")
@@ -362,6 +380,8 @@ func TestHomeOffersReviewForHandoffWithDelegates(t *testing.T) {
 // and Yellow ones; Goals they're only a Delegate on aren't theirs to count.
 // The heading says how many things need them, beside a New goal link.
 func TestHomeSummarizesYourGoals(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -420,6 +440,8 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 // leaves out Goals with no Health yet and those the viewer is only a Delegate
 // on. Someone with no Goal to count sees no bar.
 func TestHomeDrawsHealthDistributionBar(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -469,6 +491,8 @@ func TestHomeDrawsHealthDistributionBar(t *testing.T) {
 // Done or Cancelled one whose last Health before closing was Yellow or Red,
 // leave it alone.
 func TestHomeHealthBarLeavesOutGoalsThatAreNotActive(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -500,6 +524,8 @@ func TestHomeHealthBarLeavesOutGoalsThatAreNotActive(t *testing.T) {
 // other counts, because it means something needs the person. Home replaces the
 // pending-links, pending-handoffs, and delegated nav items, whose pages stay.
 func TestNavCountsWhatNeedsYou(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -541,6 +567,8 @@ func TestNavCountsWhatNeedsYou(t *testing.T) {
 // Home's one-button forms — a due Goal's No change, a link request's Accept and
 // Reject — sit inline through the shared class rather than a style attribute.
 func TestHomeInlineFormsComeFromTheSharedClass(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -567,6 +595,8 @@ func TestHomeInlineFormsComeFromTheSharedClass(t *testing.T) {
 // the person lands on that Goal's Check-in form with the reason, whether the
 // button posted plainly or through htmx, and nothing is recorded (#103).
 func TestHomeNoChangeRefusedLandsOnCheckinForm(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -598,6 +628,8 @@ func TestHomeNoChangeRefusedLandsOnCheckinForm(t *testing.T) {
 // Home's New goal goes straight to the Goal list with its propose form open and
 // the Title focused, by the address alone so it works without script (#93).
 func TestHomeNewGoalOpensProposeForm(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	h.SignIn("sam@example.com")

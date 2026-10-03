@@ -15,6 +15,8 @@ import (
 // Defining a Dimension from the form, with several values from an Extendable
 // list, writes one entry to the Definition log, not one per choice.
 func TestDefiningADimensionOverHTTPWritesOneEntry(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := signInClient(t, ts.URL, "boss@example.com")
@@ -37,6 +39,8 @@ func TestDefiningADimensionOverHTTPWritesOneEntry(t *testing.T) {
 
 // The Admin page links to the Definition log.
 func TestAdminPageLinksToTheDefinitionLog(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := signInClient(t, ts.URL, "boss@example.com")
@@ -52,6 +56,8 @@ func TestAdminPageLinksToTheDefinitionLog(t *testing.T) {
 // Anyone signed in reads the log, newest first, each entry with who made the
 // change and when; a rename shows the old and new name and a merge both values.
 func TestANonAdminReadsTheLogNewestFirst(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	boss := signInClient(t, ts.URL, "boss@example.com")
@@ -93,6 +99,8 @@ func TestANonAdminReadsTheLogNewestFirst(t *testing.T) {
 // The log narrows to one Dimension or Field, its form showing which; anything
 // naming neither is not found.
 func TestTheLogNarrowsToOneDimensionOrFieldOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	admin := h.SignIn("boss@example.com")
@@ -137,6 +145,8 @@ func TestTheLogNarrowsToOneDimensionOrFieldOverHTTP(t *testing.T) {
 
 // Nobody, not even an Admin, can write to, change or clear the log.
 func TestNobodyCanEditTheLog(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	h.CreateDimension(h.SignIn("boss@example.com"), "Pillar", "Growth")
@@ -167,6 +177,8 @@ func TestNobodyCanEditTheLog(t *testing.T) {
 // with that Owner, and a non-Admin's refused change to a Dimension writes
 // nothing.
 func TestAnOwnersAdditionIsLoggedAndARefusedChangeIsNotOverHTTP(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
 	admin := h.SignIn("boss@example.com")

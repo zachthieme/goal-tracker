@@ -12,6 +12,8 @@ import (
 // The weekly emails go out once when the clock reaches the configured day and
 // time, and again a week later — not before, and not twice.
 func TestSchedulerSendsTheWeeklyEmailsAtTheConfiguredTime(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	h.ActiveGoal(sam, "Ship search", "People can't find things.")
@@ -48,6 +50,8 @@ func TestSchedulerSendsTheWeeklyEmailsAtTheConfiguredTime(t *testing.T) {
 // The day and time are on the org's calendar: Monday 09:00 in Los Angeles is
 // 17:00 UTC in winter.
 func TestSchedulerReadsTheTimeInTheOrgsTimezone(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	loc, err := time.LoadLocation("America/Los_Angeles")
 	if err != nil {
@@ -78,6 +82,8 @@ func TestSchedulerReadsTheTimeInTheOrgsTimezone(t *testing.T) {
 
 // A day or time that can't be read is refused rather than guessed at.
 func TestParseWeeklyRefusesAnUnreadableDayOrTime(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct{ day, at string }{
 		{"Mon", "09:00"},
 		{"Funday", "09:00"},

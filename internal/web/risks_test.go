@@ -36,6 +36,8 @@ func riskSection(t *testing.T, page, anchor, tileID string, want int) string {
 // how long it has gone without a Check-in; the summary tile counts it and links
 // down to the section. A fresh Goal isn't listed.
 func TestRisksPageListsStaleGoals(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -62,6 +64,8 @@ func TestRisksPageListsStaleGoals(t *testing.T) {
 // sections, names the empty ones in the page's order, each carrying its
 // section's anchor so the summary tile still lands somewhere.
 func TestRisksPageCollapsesEmptySections(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -122,6 +126,8 @@ func TestRisksPageCollapsesEmptySections(t *testing.T) {
 // The Risks page lists each Goal still not Green past its Path to Green's
 // target date, saying which date it missed.
 func TestRisksPageListsOverduePathsToGreen(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -148,6 +154,8 @@ func TestRisksPageListsOverduePathsToGreen(t *testing.T) {
 // Proposed Goal of the same departed Owner isn't listed, nor is an Active Goal
 // with a present Owner.
 func TestRisksPageListsOwnerlessGoals(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	ada := h.SignIn("ada@example.com")
@@ -178,6 +186,8 @@ func TestRisksPageListsOwnerlessGoals(t *testing.T) {
 // The Risks page lists each Unaligned Goal. A Top-level Goal and a Goal that
 // contributes to it aren't Unaligned.
 func TestRisksPageListsUnalignedGoals(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	ada := h.SignIn("ada@example.com")
@@ -204,6 +214,8 @@ func TestRisksPageListsUnalignedGoals(t *testing.T) {
 // The Risks page lists each Goal due later than a Goal it contributes to,
 // naming the parent and both delivery dates.
 func TestRisksPageListsScheduleConflicts(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	ada := h.SignIn("ada@example.com")
@@ -231,6 +243,8 @@ func TestRisksPageListsScheduleConflicts(t *testing.T) {
 // The Risks page lists each Goal contributing to a Goal that is On Hold or
 // Cancelled, naming the parent and its Lifecycle.
 func TestRisksPageListsGoalsUnderHaltedParents(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	ada := h.SignIn("ada@example.com")
@@ -266,6 +280,8 @@ func TestRisksPageListsGoalsUnderHaltedParents(t *testing.T) {
 // instead of six empty sections, and that sentence still carries every
 // section's anchor, in order, for the summary tiles, which each count zero.
 func TestRisksPageIsAllClearWithNothingFlagged(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	h.SignIn("sam@example.com")
@@ -310,6 +326,8 @@ func TestRisksPageIsAllClearWithNothingFlagged(t *testing.T) {
 // flags, each once however many sections list it, for everyone. The nav doesn't
 // link to the Graph or Freshness signals pages it replaces.
 func TestNavCountsFlaggedGoalsOnce(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	ada := h.SignIn("ada@example.com")
@@ -356,6 +374,8 @@ func TestNavCountsFlaggedGoalsOnce(t *testing.T) {
 // in the same color saying how long. The data-testids other tests find them by
 // don't change.
 func TestRiskFlagsUseAlertBannersAndChips(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	h.SignIn("ada@example.com")

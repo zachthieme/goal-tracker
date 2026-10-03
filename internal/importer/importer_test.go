@@ -32,6 +32,8 @@ Ship checkout v2,eng@example.com,Checkout is slow.,Dated,2026-06-30,Beta @ 2026-
 // and Dimension value land, and the child's contributes-to link to the parent is
 // accepted automatically (ticket #22).
 func TestCommitCleanImport(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 	h.CreateDimension(admin, "Pillar", "Growth", "Reliability")
@@ -119,6 +121,8 @@ func TestCommitCleanImport(t *testing.T) {
 // that are valid (ticket #22: a dry run shows errors row by row and saves
 // nothing).
 func TestDryRunReportsRowErrorsAndSavesNothing(t *testing.T) {
+	t.Parallel()
+
 	const csv = `Title,Owner,So What,Kind,Delivery Date
 Good goal,owner@example.com,It matters.,Ongoing,
 Bad goal,owner@example.com,,Sideways,
@@ -166,6 +170,8 @@ Bad goal,owner@example.com,,Sideways,
 // the valid rows are not saved (ticket #22: a commit is all-or-nothing in one
 // transaction).
 func TestCommitRollsBackOnAnyRowError(t *testing.T) {
+	t.Parallel()
+
 	const csv = `Title,Owner,So What,Kind,Delivery Date
 Valid one,owner@example.com,It matters.,Ongoing,
 Valid two,owner@example.com,Also matters.,Dated,2026-06-30
@@ -201,6 +207,8 @@ Broken,owner@example.com,Missing kind.,Nonsense,
 // Links between imported Goals are accepted automatically, but a cycle is
 // rejected and rolls the import back (ticket #22: cycles are rejected).
 func TestCommitRejectsCycleBetweenImportedGoals(t *testing.T) {
+	t.Parallel()
+
 	const csv = `Title,Owner,So What,Kind,Parents
 Chicken,owner@example.com,Needs the egg.,Ongoing,Egg
 Egg,owner@example.com,Needs the chicken.,Ongoing,Chicken
@@ -237,6 +245,8 @@ Egg,owner@example.com,Needs the chicken.,Ongoing,Chicken
 
 // Only an Admin may import Goals (CONTEXT.md: Admin can override links).
 func TestImportRequiresAdmin(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	nonAdmin := h.SignIn("someone@example.com")
 
@@ -257,6 +267,8 @@ func errorsIsNotAuthorized(err error) bool {
 // The same import works from an XLSX workbook, not just CSV (ticket #22: import
 // CSV and XLSX).
 func TestCommitCleanImportFromXLSX(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 
@@ -319,6 +331,8 @@ func TestCommitCleanImportFromXLSX(t *testing.T) {
 // uses defined, a dry run of it reports no errors (ticket #22: the column format
 // is documented, with an example file in the repo).
 func TestExampleFileDryRunsClean(t *testing.T) {
+	t.Parallel()
+
 	data, err := os.ReadFile(filepath.Join("..", "..", "testdata", "import-example.csv"))
 	if err != nil {
 		t.Fatalf("read example: %v", err)
@@ -371,6 +385,8 @@ func date(y int, m time.Month, d int) time.Time {
 // 2026-06-30 — imports as its date, not as the displayed text (#30). The first
 // of a month is included because spreadsheets display it without the day.
 func TestXLSXDateCellsImportAsTheirDate(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 
@@ -411,6 +427,8 @@ func TestXLSXDateCellsImportAsTheirDate(t *testing.T) {
 // its date, and a date cell in any column is read as YYYY-MM-DD: one in the
 // Milestones column shows up as such in the report (#30).
 func TestXLSXCustomFormatDateCells(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 
@@ -460,6 +478,8 @@ func TestXLSXCustomFormatDateCells(t *testing.T) {
 // first data row is row 2. A blank row still takes a number, and a cell spanning
 // several lines is still one row (#30).
 func TestRowsAreNumberedAsInTheSpreadsheet(t *testing.T) {
+	t.Parallel()
+
 	const csv = "Title,Owner,So What,Kind\n" +
 		"First,owner@example.com,,Ongoing\n" +
 		"Second,owner@example.com,\"Spans\ntwo lines.\",Ongoing\n" +
@@ -497,6 +517,8 @@ func TestRowsAreNumberedAsInTheSpreadsheet(t *testing.T) {
 // A row with several problems reports all of them in one dry run, not just the
 // first found (#30; docs/import-format.md: "each error found").
 func TestDryRunReportsEveryErrorOnARow(t *testing.T) {
+	t.Parallel()
+
 	const csv = `Title,Owner,So What,Kind,Milestones,Parents,Pillar
 Otherwise fine,owner@example.com,It matters.,Ongoing,,No such parent,Sideways
 Missing so what,owner@example.com,,Ongoing,Beta @ someday,Also missing,Upwards
@@ -532,6 +554,8 @@ Missing so what,owner@example.com,,Ongoing,Beta @ someday,Also missing,Upwards
 // A column whose header names a Field sets that Field on the row's Goal, for
 // each of the four types (#77; CONTEXT.md: Field).
 func TestCommitSetsFieldColumns(t *testing.T) {
+	t.Parallel()
+
 	const csv = `Title,Owner,So What,Kind,budget,Sponsor note,Background,Review date
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,1250000.5,Board asked,"Long story,
 over two lines",2026-11-30
@@ -589,6 +613,8 @@ func commitOneGoal(t *testing.T, h *testsupport.Harness, admin domain.Account, c
 // A number or date Field cell that doesn't parse is reported against its row,
 // alongside the row's other errors, and the import saves nothing (#77).
 func TestDryRunReportsBadFieldValuesAgainstTheirRow(t *testing.T) {
+	t.Parallel()
+
 	const csv = `Title,Owner,So What,Kind,Budget,Review date
 Fine,owner@example.com,It matters.,Ongoing,12,2026-11-30
 Bad budget,owner@example.com,It matters.,Ongoing,lots,
@@ -630,6 +656,8 @@ Bad date,owner@example.com,,Ongoing,,next week
 // In a several-values Dimension's column a cell lists values separated by
 // semicolons, spaces around each ignored, and the Goal takes them all (#77).
 func TestCommitSetsSeveralValuesFromOneCell(t *testing.T) {
+	t.Parallel()
+
 	const csv = `Title,Owner,So What,Kind,Themes
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,  Growth ;Trust ;
 `
@@ -646,6 +674,8 @@ Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,  Growth ;Trust ;
 // More than one value in a one-value Dimension's column is a row error, which
 // says a value can't contain the semicolon that separates them (#77, #101).
 func TestDryRunRejectsSeveralValuesInAOneValueColumn(t *testing.T) {
+	t.Parallel()
+
 	const csv = `Title,Owner,So What,Kind,Pillar
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,Growth; Reliability
 `
@@ -682,6 +712,8 @@ func goalValueNames(t *testing.T, h *testsupport.Harness, goal domain.Goal) []st
 // a known value matches whatever its letter case or surrounding spaces (#77;
 // CONTEXT.md: Extendable).
 func TestCommitAddsUnknownValuesToAnExtendableDimension(t *testing.T) {
+	t.Parallel()
+
 	const csv = `Title,Owner,So What,Kind,Customer
 First,owner@example.com,It matters.,Ongoing,  acme 
 Second,owner@example.com,It matters.,Ongoing,Newco
@@ -715,6 +747,8 @@ Third,owner@example.com,It matters.,Ongoing,NEWCO
 // In a Fixed Dimension an unknown value is a row error, and the list gains
 // nothing (#77; CONTEXT.md: Fixed).
 func TestDryRunRejectsUnknownValuesInAFixedDimension(t *testing.T) {
+	t.Parallel()
+
 	const csv = `Title,Owner,So What,Kind,Pillar
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,Moonshots
 `
@@ -758,6 +792,8 @@ func dimensionValueNames(t *testing.T, h *testsupport.Harness, name string) []st
 // A file with any error creates no Goals and no values, and neither does a dry
 // run of a clean one: an Extendable Dimension's list gains nothing (#77).
 func TestImportThatSavesNothingAddsNoValues(t *testing.T) {
+	t.Parallel()
+
 	const clean = `Title,Owner,So What,Kind,Customer
 First,owner@example.com,It matters.,Ongoing,Newco
 `
@@ -785,6 +821,8 @@ First,owner@example.com,It matters.,Ongoing,Newco
 // A Retired Dimension or Field isn't matched, so its column is rejected like any
 // unknown column (#77; CONTEXT.md: Retired).
 func TestRetiredDimensionAndFieldColumnsAreRejected(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 	pillar := h.CreateDimension(admin, "Pillar", "Growth")
@@ -810,6 +848,8 @@ func TestRetiredDimensionAndFieldColumnsAreRejected(t *testing.T) {
 // it, in a dry run and a commit alike, so the first header still names its
 // column (#101).
 func TestCSVWithAByteOrderMarkImportsAsWithout(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
 	h.CreateDimension(admin, "Pillar", "Growth", "Reliability")

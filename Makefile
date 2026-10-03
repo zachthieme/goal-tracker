@@ -1,4 +1,4 @@
-.PHONY: build test lint generate generate-check seed serve restart
+.PHONY: build test test-quick lint generate generate-check seed serve restart
 
 # templ and sqlc are pinned as `tool` deps in go.mod and run via `go tool`, so
 # the generator versions travel with the repo, not the developer's machine.
@@ -17,6 +17,11 @@ build:
 
 test:
 	go test -race -count=1 ./...
+
+# The tests without the race detector, for a quick local loop. `make test`
+# stays the gate.
+test-quick:
+	go test -count=1 ./...
 
 lint:
 	golangci-lint run

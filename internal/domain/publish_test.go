@@ -17,6 +17,8 @@ import (
 // a new Check-in, a revised So What, a slipped date — never change the
 // published snapshot (CONTEXT.md: Report Definition).
 func TestPublishedReportNeverChanges(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -63,6 +65,8 @@ func TestPublishedReportNeverChanges(t *testing.T) {
 // A baseline the reader picks still overrides it (CONTEXT.md: Report
 // Definition).
 func TestNextPublicationComparesAgainstThePrevious(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -132,6 +136,8 @@ func publish(t *testing.T, h *testsupport.Harness, actor domain.Account, def dom
 // A Report Definition's publications are listed newest first, and only its
 // own.
 func TestListPublicationsPerDefinition(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
@@ -168,6 +174,8 @@ func TestListPublicationsPerDefinition(t *testing.T) {
 // A Publication freezes each person's Name as it read when published: a later
 // change to the Name leaves the snapshot as it was (CONTEXT.md: Name).
 func TestPublicationFreezesTheOwnersName(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -196,6 +204,8 @@ func TestPublicationFreezesTheOwnersName(t *testing.T) {
 // A person published without a Name is frozen as they were shown then, by
 // their email's local part, even if they are named later.
 func TestPublicationFreezesAnUnnamedOwnerAsShown(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -221,6 +231,8 @@ func TestPublicationFreezesAnUnnamedOwnerAsShown(t *testing.T) {
 // A snapshot published before Accounts had Names still renders, showing each
 // person by email as it always did.
 func TestSnapshotFromBeforeNamesShowsEmails(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
@@ -259,6 +271,8 @@ func publishedOwners(r domain.Report) []domain.Account {
 // publisher later leaves the byline as it read when published, from either
 // GetPublication or ListPublications.
 func TestPublicationFreezesThePublishersName(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ceo@example.com")
 	ctx := context.Background()
 	ceo := h.SignInNamed("ceo@example.com", "Dana Whitfield")
@@ -305,6 +319,8 @@ func readPublication(t *testing.T, h *testsupport.Harness, def domain.ReportDefi
 // A publisher with no Name when publishing is frozen as they were shown then,
 // by their email's local part, even if they are named later.
 func TestPublicationFreezesAnUnnamedPublisherAsShown(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
@@ -327,6 +343,8 @@ func TestPublicationFreezesAnUnnamedPublisherAsShown(t *testing.T) {
 // appears in its snapshot exactly as the snapshot froze them, even after a
 // rename.
 func TestUnfrozenPublisherShowsAsFrozenInTheSnapshot(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ceo@example.com")
 	ceo := h.SignInNamed("ceo@example.com", "Dana Whitfield")
 	g := h.ActiveGoal(ceo, "Launch in EU", "Expand the market.")
@@ -373,6 +391,8 @@ func unfreezePublisher(t *testing.T, h *testsupport.Harness, pub domain.Publicat
 // A snapshot published before Accounts had Names shows its publisher by email,
 // as it shows its other people, whether or not the publisher appears in it.
 func TestSnapshotFromBeforeNamesShowsThePublisherByEmail(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name  string
 		owner string
@@ -407,6 +427,8 @@ func TestSnapshotFromBeforeNamesShowsThePublisherByEmail(t *testing.T) {
 // whose publisher appears nowhere in its snapshot, shows the publisher as
 // their Account reads now: there is nothing frozen to show instead.
 func TestUnfrozenPublisherNotInTheSnapshotShowsTheirAccount(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignInNamed("boss@example.com", "Bo Sterling")
 	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
@@ -430,6 +452,8 @@ func TestUnfrozenPublisherNotInTheSnapshotShowsTheirAccount(t *testing.T) {
 // each Goal: editing the value, renaming the Field, changing its unit or
 // retiring it later doesn't change the published Report (ticket #78).
 func TestPublicationFreezesChosenFields(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")

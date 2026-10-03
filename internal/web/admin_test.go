@@ -13,6 +13,8 @@ import (
 // The Admin page is the home of the Admin tools: an Admin sees cards linking to
 // Dimensions and to Import goals; anyone else is refused.
 func TestAdminPageIsForAdminsOnly(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	h.SignIn("ada@example.com")
@@ -44,6 +46,8 @@ func TestAdminPageIsForAdminsOnly(t *testing.T) {
 // linking to the Goal where an Admin reassigns it. A Goal with a present Owner
 // isn't listed, nor is a closed one (Cancelled) that waits on nobody.
 func TestAdminPageListsOwnerlessGoals(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	ada := h.SignIn("ada@example.com")
@@ -89,6 +93,8 @@ func TestAdminPageListsOwnerlessGoals(t *testing.T) {
 // and has no Admin item for anyone else. Dimensions has left the top bar for
 // the Admin page, but /dimensions still opens for everyone.
 func TestAdminNavItemIsForAdminsOnly(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	h.SignIn("ada@example.com")
@@ -126,6 +132,8 @@ func TestAdminNavItemIsForAdminsOnly(t *testing.T) {
 // have no Goal page to be returned from. A present person isn't listed, and
 // with nobody Departed the list says so. Only an Admin sees it.
 func TestAdminPageListsDepartedPeople(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	ada := h.SignIn("ada@example.com")
@@ -186,6 +194,8 @@ func TestAdminPageListsDepartedPeople(t *testing.T) {
 // Marking someone returned from the Admin page brings the Admin back to it,
 // with that person no longer listed, and returns them: they can sign in again.
 func TestAdminMarksDepartedPersonReturnedFromAdminPage(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "ada@example.com")
 	ts := newServer(t, h)
 	ada := h.SignIn("ada@example.com")

@@ -25,6 +25,8 @@ func readyGoal(t *testing.T, h *testsupport.Harness, owner domain.Account, title
 // A Proposed Goal can't become Active while it lacks a value in a required
 // Dimension, and the refusal names the Dimension (CONTEXT.md: Incomplete).
 func TestActivateRefusesGoalWithoutRequiredDimensionValue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -51,6 +53,8 @@ func TestActivateRefusesGoalWithoutRequiredDimensionValue(t *testing.T) {
 
 // A required Field holds activation the same way, and the refusal names it.
 func TestActivateRefusesGoalWithoutRequiredFieldValue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -71,6 +75,8 @@ func TestActivateRefusesGoalWithoutRequiredFieldValue(t *testing.T) {
 
 // A Retired Dimension or Field is never required, so it holds nothing up.
 func TestRetiredRequiredDimensionOrFieldHoldsNothing(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -94,6 +100,8 @@ func TestRetiredRequiredDimensionOrFieldHoldsNothing(t *testing.T) {
 
 // Only an Admin marks a Dimension or Field required.
 func TestOnlyAdminMarksRequired(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -138,6 +146,8 @@ func incomplete(t *testing.T, h *testsupport.Harness, goalID int64) []string {
 // without a value Incomplete, naming the Dimension (CONTEXT.md: Incomplete).
 // Setting the value clears the flag.
 func TestMarkingRequiredFlagsActiveGoalsWithoutAValue(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -170,6 +180,8 @@ func TestMarkingRequiredFlagsActiveGoalsWithoutAValue(t *testing.T) {
 
 // Unmarking required clears the flag for every Goal.
 func TestUnmarkingRequiredClearsIncomplete(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -193,6 +205,8 @@ func TestUnmarkingRequiredClearsIncomplete(t *testing.T) {
 // Only an Active Goal is ever Incomplete: On Hold, Done, Cancelled and Proposed
 // Goals lacking a required value are not.
 func TestOnlyActiveGoalsAreIncomplete(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
@@ -219,6 +233,8 @@ func TestOnlyActiveGoalsAreIncomplete(t *testing.T) {
 // Clearing a required value on an Active Goal isn't refused; the Goal becomes
 // Incomplete instead (CONTEXT.md: Incomplete — nothing is blocked).
 func TestClearingARequiredValueFlagsRatherThanRefuses(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")

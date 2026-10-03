@@ -37,6 +37,8 @@ func migratedExcept(t *testing.T, version string) *sql.DB {
 // An email stored before emails were matched whatever their case is folded
 // on upgrade, so it is found by the lookup (CONTEXT.md: Account).
 func TestMigrationLowercasesAndTrimsExistingEmails(t *testing.T) {
+	t.Parallel()
+
 	sqlDB := migratedExcept(t, "migrations/0020_lowercase_account_emails.sql")
 	if _, err := sqlDB.Exec(
 		`INSERT INTO accounts (email, created_at) VALUES (' Freya.Nilsen@Example.com ', '2026-01-02T00:00:00Z')`,
@@ -60,6 +62,8 @@ func TestMigrationLowercasesAndTrimsExistingEmails(t *testing.T) {
 // The migration merges nothing: two Accounts that differ only by case fail it,
 // and it changes no row, so an operator can resolve the duplicate by hand.
 func TestMigrationFailsOnAccountsDifferingOnlyByCase(t *testing.T) {
+	t.Parallel()
+
 	sqlDB := migratedExcept(t, "migrations/0020_lowercase_account_emails.sql")
 	if _, err := sqlDB.Exec(`INSERT INTO accounts (email, created_at) VALUES
 		('sam@example.com', '2026-01-02T00:00:00Z'),
@@ -83,6 +87,8 @@ func TestMigrationFailsOnAccountsDifferingOnlyByCase(t *testing.T) {
 // A Dimension's values stored before the Admin set their order keep the
 // alphabetical order they were listed in, as their starting order.
 func TestMigrationStartsValueOrderAlphabetically(t *testing.T) {
+	t.Parallel()
+
 	sqlDB := migratedExcept(t, "migrations/0023_dimension_value_order.sql")
 	if _, err := sqlDB.Exec(`ALTER TABLE dimension_values DROP COLUMN position`); err != nil {
 		t.Fatalf("undo 0023: %v", err)
@@ -125,6 +131,8 @@ func TestMigrationStartsValueOrderAlphabetically(t *testing.T) {
 // Check-in, kind, note and timestamp on upgrade, and their Check-in can then
 // take more (CONTEXT.md: Highlight).
 func TestMigrationKeepsHighlightsAndAllowsSeveralPerCheckin(t *testing.T) {
+	t.Parallel()
+
 	sqlDB := migratedExcept(t, "migrations/0031_several_highlights.sql")
 	// Put back the table as 0010 made it: one Highlight per Check-in.
 	if _, err := sqlDB.Exec(`
@@ -178,6 +186,8 @@ func TestMigrationKeepsHighlightsAndAllowsSeveralPerCheckin(t *testing.T) {
 // Milestone changes recorded before they kept the Milestone's name take the
 // name it has on upgrade: nothing recorded an earlier one.
 func TestMigrationNamesExistingMilestoneChanges(t *testing.T) {
+	t.Parallel()
+
 	sqlDB := migratedExcept(t, "migrations/0035_milestone_change_names.sql")
 	// Put back the table as 0034 made it: no name.
 	if _, err := sqlDB.Exec(`ALTER TABLE milestone_changes DROP COLUMN name`); err != nil {

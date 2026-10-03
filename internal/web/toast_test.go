@@ -19,6 +19,8 @@ import (
 // The toast is fixed to the bottom of the window, above the page content, and
 // its message reads at WCAG AA's 4.5:1 on its fill in every theme (#83).
 func TestToastSitsAtTheBottomAboveThePageInEveryTheme(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -43,6 +45,8 @@ func TestToastSitsAtTheBottomAboveThePageInEveryTheme(t *testing.T) {
 // At phone width the toast spans the window less a 16px margin each side, so
 // its message wraps rather than running off the screen.
 func TestToastFitsAPhoneWidth(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
@@ -213,6 +217,8 @@ func assertUndoRefused(t *testing.T, resp *http.Response, status int, reason, ba
 // Each Undo succeeds from its toast, once: the same Undo submitted a second
 // time is refused with 422, on a page saying why with a link back.
 func TestEachUndoWorksOnceFromItsToast(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range undoCases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := testsupport.New(t, tc.admins...)
@@ -236,6 +242,8 @@ func TestEachUndoWorksOnceFromItsToast(t *testing.T) {
 // with 422, on a page saying it is no longer available with a link back, and
 // restores nothing.
 func TestAnUndoIsNoLongerAvailableAfter15Minutes(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range undoCases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := testsupport.New(t, tc.admins...)
@@ -256,6 +264,8 @@ func TestAnUndoIsNoLongerAvailableAfter15Minutes(t *testing.T) {
 // 403, on a page saying why with a link back, and restores nothing; it doesn't
 // spend the real Undo.
 func TestAnUndoWithoutItsTokenIsRefused(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range undoCases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := testsupport.New(t, tc.admins...)
@@ -297,6 +307,8 @@ func TestAnUndoWithoutItsTokenIsRefused(t *testing.T) {
 // page for a link removal (Home without one), Home or the pending page for a
 // rejection.
 func TestAnUndoOfNothingSaysThereIsNothingToUndo(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	goal := h.CreateGoal(h.SignIn("sam@example.com"), "Migrate displays", "Displays fail often.")
@@ -325,6 +337,8 @@ func TestAnUndoOfNothingSaysThereIsNothingToUndo(t *testing.T) {
 // An Undo that would now close a cycle is refused with 409, on a page saying
 // so with a link back, and restores nothing.
 func TestAnUndoThatWouldMakeACycleSaysSo(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range undoCases[:2] {
 		t.Run(tc.name, func(t *testing.T) {
 			h := testsupport.New(t)
@@ -349,6 +363,8 @@ func TestAnUndoThatWouldMakeACycleSaysSo(t *testing.T) {
 // An Undo that fails part way is refused with 500, on a page saying nothing
 // changed and to try again, with a link back, and restores nothing.
 func TestAnUndoThatFailsSaysNothingChanged(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range undoCases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := testsupport.New(t, tc.admins...)
@@ -372,6 +388,8 @@ func TestAnUndoThatFailsSaysNothingChanged(t *testing.T) {
 // toast's own fields, is refused with 403, on a page saying whose Undo it is
 // with a link back, and restores nothing; it doesn't spend the real Undo.
 func TestSomeoneElsesUndoIsRefused(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range undoCases {
 		t.Run(tc.name, func(t *testing.T) {
 			h := testsupport.New(t, tc.admins...)
@@ -397,6 +415,8 @@ func TestSomeoneElsesUndoIsRefused(t *testing.T) {
 // a page saying what changed with a link back: the link has been requested
 // again, or the Goal has another pending Handoff or has changed hands.
 func TestAnUndoThatNoLongerFitsSaysWhatChanged(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name   string
 		undo   undoCase

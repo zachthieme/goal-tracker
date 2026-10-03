@@ -24,6 +24,8 @@ func definitionLog(t *testing.T, h *testsupport.Harness) []domain.DefinitionChan
 // Defining a Dimension writes one entry saying who created it, when, and with
 // which values.
 func TestDefiningADimensionWritesOneEntry(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	h.Clock.Advance(time.Hour)
@@ -47,6 +49,8 @@ func TestDefiningADimensionWritesOneEntry(t *testing.T) {
 // Each change to a Dimension's shape writes exactly one entry, by the Admin
 // who made it, about that Dimension.
 func TestEachChangeToADimensionsShapeWritesOneEntry(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	for _, tc := range []struct {
 		name   string
@@ -89,6 +93,8 @@ func TestEachChangeToADimensionsShapeWritesOneEntry(t *testing.T) {
 
 // Undoing each change to a Dimension's shape writes its own entry.
 func TestUndoingAChangeToADimensionsShapeWritesItsOwnEntry(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ctx := context.Background()
@@ -137,6 +143,8 @@ func assertSummaries(t *testing.T, log []domain.DefinitionChange, want []string)
 // Dimension, naming the values as they were: a rename shows the old and new
 // name, a merge both values, and sorting the list alphabetically is one entry.
 func TestEachChangeToADimensionsValuesWritesOneEntry(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ctx := context.Background()
@@ -183,6 +191,8 @@ func TestEachChangeToADimensionsValuesWritesOneEntry(t *testing.T) {
 // is logged with that Owner; setting a value already on the list logs nothing,
 // and neither does setting values on Goals, which is the Goal's history.
 func TestAValueAnOwnerAddsToAnExtendableListIsLoggedWithThatOwner(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -210,6 +220,8 @@ func TestAValueAnOwnerAddsToAnExtendableListIsLoggedWithThatOwner(t *testing.T) 
 // Each change to a Field's definition writes exactly one entry, by the Admin
 // who made it, about that Field.
 func TestEachChangeToAFieldWritesOneEntry(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ctx := context.Background()
@@ -248,6 +260,8 @@ func TestEachChangeToAFieldWritesOneEntry(t *testing.T) {
 
 // A refused change to a Dimension or Field writes nothing to the log.
 func TestARefusedChangeWritesNothing(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -306,6 +320,8 @@ func TestARefusedChangeWritesNothing(t *testing.T) {
 // whole is gone from the log with the rest of the edit: the entry is written
 // in the same transaction as the change.
 func TestAValueAddedInARefusedTableEditIsNotLogged(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	pat := h.SignIn("pat@example.com")
@@ -343,6 +359,8 @@ func TestAValueAddedInARefusedTableEditIsNotLogged(t *testing.T) {
 // list, moving the first value up, sorting a sorted list, or marking a
 // Dimension or Field as it already is.
 func TestAChangeThatChangesNothingWritesNothing(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ctx := context.Background()
@@ -379,6 +397,8 @@ func TestAChangeThatChangesNothingWritesNothing(t *testing.T) {
 // The log narrows to one Dimension, its values' changes included, or to one
 // Field, newest first.
 func TestTheLogNarrowsToOneDimensionOrField(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ctx := context.Background()
@@ -412,6 +432,8 @@ func TestTheLogNarrowsToOneDimensionOrField(t *testing.T) {
 // The Service offers no way to edit the log, and the database refuses to
 // change or remove an entry whoever asks.
 func TestTheLogCannotBeEdited(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t, "boss@example.com")
 	h.CreateDimension(h.SignIn("boss@example.com"), "Pillar", "Growth")
 

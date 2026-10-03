@@ -14,6 +14,8 @@ import (
 // A reader comments on a Goal's block in a published Report; the comment is
 // routed to that Goal's Owner, who gets an email (ticket #19).
 func TestCommentOnGoalBlockEmailsTheOwner(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	owner := h.SignIn("owner@example.com")
@@ -57,6 +59,8 @@ func TestCommentOnGoalBlockEmailsTheOwner(t *testing.T) {
 // the thread — the asker hears the Owner's answer — but never its own author
 // (ticket #19).
 func TestOwnersAndOthersReplyInTheThread(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	owner := h.SignIn("owner@example.com")
@@ -108,6 +112,8 @@ func TestOwnersAndOthersReplyInTheThread(t *testing.T) {
 
 // A comment must be on a Goal the publication covers, and cannot be blank.
 func TestCommentRejectsBlankOrUncoveredGoal(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	owner := h.SignIn("owner@example.com")
@@ -138,6 +144,8 @@ func (failingSender) Send(context.Context, email.Message) error { return errors.
 // A comment whose alert can't be sent is not kept, so posting it again doesn't
 // leave it twice in the thread.
 func TestCommentIsNotKeptWhenItsAlertFails(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	owner := h.SignIn("owner@example.com")

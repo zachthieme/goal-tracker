@@ -14,6 +14,8 @@ import (
 // It appears at the top of each new publication of the same Definition until
 // its owner closes it with a note (CONTEXT.md: Action Item).
 func TestActionItemCarriesIntoEachNewPublicationUntilClosed(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	author := h.SignIn("author@example.com")
@@ -78,6 +80,8 @@ func TestActionItemCarriesIntoEachNewPublicationUntilClosed(t *testing.T) {
 // Report's author raises one, and it needs a description, an owner, and a due
 // date (CONTEXT.md: Action Item).
 func TestAuthorCreatesActionItemDirectly(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	author := h.SignIn("author@example.com")
@@ -126,6 +130,8 @@ func TestAuthorCreatesActionItemDirectly(t *testing.T) {
 
 // Only the Action Item's owner closes it, with a note, and only once.
 func TestOnlyTheOwnerClosesAnActionItemWithANote(t *testing.T) {
+	t.Parallel()
+
 	h := testsupport.New(t)
 	ctx := context.Background()
 	author := h.SignIn("author@example.com")
