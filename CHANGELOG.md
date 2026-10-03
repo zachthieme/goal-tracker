@@ -25,6 +25,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Goal list's group headers sit on the neutral grey surface instead of a pale teal fill, since teal is kept for what a person can act on (#110).
 - [user] Marking a Retired Dimension or Field required, or not required, is refused, even when it would change nothing: required means nothing on something no longer offered, and its card already hides the control (#110).
 - [internal] `scripts/shots.mjs` fails a shot whose page ends on an HTTP error, unless the shot's new `status` field expects that status, so a 404 no longer passes unnoticed. An action that uses `return` or `await` now runs as the body of an async function, and a page with no title prints `(none)`. `node --test scripts/*.test.mjs` tests the parts that don't need a browser (#118).
+- [internal] `scripts/shots.mjs` runs an action that awaits a parenthesised expression, such as `await (x.done)` or `await(sleep(10)); go()`, as the body of an async function instead of failing with "await is not defined", and a shot's `name` may end in `.png` without the PNG being saved as `.png.png`. The tests' header names the run line that works, `node --test scripts/*.test.mjs` (#119).
 
 **Bug fixes:**
 - [user] No change on a Goal's page or Check-in page now shows the page saying you can't check in, or that the Goal doesn't exist, instead of seeming to do nothing when you click it (#109).
@@ -33,6 +34,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A refused Undo now shows a "Can't undo" page inside the app, saying plainly why and with a Back link to where the Undo was offered, instead of a bare text page (#116).
 - [user] The No change button now shows its error page for any failure, a server error included, instead of seeming to do nothing on the Goal page (#116).
 - [user] A Check-in's entry on a Goal's History keeps naming the Milestones it added, marked Done or removed as they were named then, so renaming one later no longer rewrites the entry ("Marked GA Done" stays, not "Marked Launch Done"). Check-ins recorded before this release show the name each Milestone had when you upgraded. Date Slip lines still use the Milestone's current name (#117).
+- [user] A page that doesn't exist (an unknown address, or a Goal, Report or publication that's gone) shows a "Not found" page inside the site, with a link back to Home (or to sign in when signed out), instead of the bare text "404 page not found" (#120).
 
 **Infrastructure:**
 - [api] Database schema: migration `0033_undo_tokens` adds an `undo_tokens` table holding each Undo's one-time token, the action and person it belongs to, when it was issued and when it was used. It's additive and runs on startup (#106).
@@ -42,6 +44,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Testing:**
 - [internal] Test that Home's Health distribution bar leaves out Proposed, Done and Cancelled Goals (#110).
 - [internal] `scripts/` adds three tools for verifying changes by hand or from an agent session, which sessions had kept rewriting. `scratch-app start|stop|url` builds the working tree, seeds a fresh database, and serves it on a free port; `stop` stops only the copy it started. `shots.mjs` takes screenshots in the machine's own Chromium and reports each page's theme pin, overflow, focus, toast and dialogs. `contrast.py` checks the colour tokens' WCAG ratios and the ratios `DESIGN.md` states (#111).
+- [internal] Web tests show what each Undo's refusal page looks like when the restore fails (500, "The Undo couldn't be done, so nothing changed. Try again."), when someone else posts the toast's own fields (403), and for the 422 cases where a link has been requested again, another Handoff is pending, or the Goal has changed hands. A History test shows that after a rename, a Check-in that marked GA Done still reads "Marked GA Done", while its Date Slip names the moved Milestone by its new name (#121).
 
 **Code quality:**
 - [internal] Drop the Risks and Admin cards' teal hover borders, which never applied because the shared card hover outranked them, and add a test that only buttons hover to a teal border (#110).
