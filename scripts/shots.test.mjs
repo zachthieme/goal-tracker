@@ -1,6 +1,7 @@
 // Tests for the parts of shots.mjs that don't need a browser:
 //   node --test scripts/
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
 import { formatReport, normalise, statusProblem, wrapAction } from "./shots.mjs";
@@ -72,4 +73,16 @@ test("an empty title is reported as (none)", () => {
   const shot = normalise({ path: "/plain" }, 0);
   const report = formatReport(shot, { file: "x.png", facts: { ...facts, url: "/plain", title: "", status: null }, native: [] });
   assert.match(report, /^  page:     \/plain \(HTTP \?\) \(none\)$/m);
+});
+
+test("the README's shots parse and normalise", () => {
+  // Each example is the single-quoted JSON after `node scripts/shots.mjs <base-url>`.
+  const readme = readFileSync(new URL("README.md", import.meta.url), "utf8");
+  const examples = [...readme.matchAll(/node scripts\/shots\.mjs [^'\n]*'([^']*)'/g)].map((m) => m[1]);
+  assert.ok(examples.length >= 2, `found ${examples.length} examples`);
+  const shots = examples.flatMap((json) => [JSON.parse(json)].flat()).map(normalise);
+  assert.ok(shots.some((s) => s.status !== undefined), "an example sets status");
+  const actions = shots.filter((s) => s.action).map((s) => s.action);
+  assert.ok(actions.some((a) => wrapAction(a) === a), "an example's action runs as a script");
+  assert.ok(actions.some((a) => wrapAction(a) !== a), "an example's action uses return or await");
 });

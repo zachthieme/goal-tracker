@@ -13,17 +13,25 @@
 //   pin     "light" or "dark": pin the Theme menu's choice (none)
 //   width   window width in CSS pixels (1280); height (800)
 //   full    false to capture only the window, not the whole page (true)
-//   action  JavaScript run in the page once it has loaded, e.g.
-//           "document.querySelector('form.x').requestSubmit()"; it may
-//           return a promise. The shot is taken once the page settles.
+//   action  JavaScript run in the page once it has loaded. A script, e.g.
+//           "document.querySelector('form.x').requestSubmit()", runs as it
+//           is and may end on a promise. One that uses return or await at
+//           its top level, e.g. "if (!x) return; await x.done", runs as the
+//           body of an async function. The shot is taken once the page
+//           settles.
 //   dialog  "dismiss" (default) or "accept" a native alert/confirm
+//   status  the HTTP status the page's final document should have, e.g. 404
 //   name    the PNG's name (default from the index, path, theme and width)
 //
-// For each shot it saves <out>/<name>.png and prints the
-// theme pin, horizontal overflow, the focused element, any toast, and any
-// dialog that opened. It drives the Chromium already on the machine over the
-// DevTools protocol, so nothing needs installing; set CHROME to its path if
-// it isn't found. Exits 1 if any shot failed to load or sign in.
+// For each shot it saves <out>/<name>.png and prints the page's status and
+// title, the theme pin, horizontal overflow, the focused element, any toast,
+// and any dialog that opened. It drives the Chromium already on the machine
+// over the DevTools protocol, so nothing needs installing; set CHROME to its
+// path if it isn't found. Exits 1 if any shot failed to load, sign in or run
+// its action, or ended on an HTTP status other than its status (without one,
+// on 400 or more; a status that can't be read never fails). Exits 2 if the
+// arguments or a shot are invalid. node --test scripts/*.test.mjs tests the
+// parts that don't need a browser.
 
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";

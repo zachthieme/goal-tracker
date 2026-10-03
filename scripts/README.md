@@ -61,15 +61,41 @@ A shot has a `path` and can also set:
 - `pin`: a Theme menu choice to pin.
 - `width` and `height`.
 - `full`: `false` captures only the window.
-- `action`: JavaScript to run in the page first.
+- `action`: JavaScript to run in the page first. See below.
 - `dialog`: `accept` or `dismiss` a native dialog. The default is `dismiss`.
+- `status`: the HTTP status the page should end on, such as `404`.
 - `name`: the PNG's file name.
+
+An `action` is usually a script, such as `a(); b()` or the `requestSubmit()`
+above, and the shot waits for any promise it ends on. An action that uses
+`return` or `await` at its top level runs as the body of an async function
+instead:
+
+```sh
+node scripts/shots.mjs "$(scripts/scratch-app url)" '[
+  {"path": "/goals/999999", "as": "admin@example.com", "status": 404},
+  {"path": "/home", "as": "admin@example.com",
+   "action": "const menu = document.querySelector(\"[data-testid=theme-menu]\"); if (!menu) return; menu.open = true; await new Promise(requestAnimationFrame)"}
+]'
+```
+
+After the action, the script checks the HTTP status of the page's final
+document. A shot without `status` fails if that is 400 or more, and a shot
+with `status` fails if it's anything else. The page's htmx requests don't
+count, and a status the script couldn't read, printed as `?`, never fails a
+shot. A page with no title prints its title as `(none)`.
 
 The list can be inline JSON, a file, or `-` for stdin. PNGs go to
 `$TMPDIR/goal-tracker-shots` unless you pass `--out <dir>`. The script exits 1
-if any shot fails to load, sign in, or run its action. Where the OS gives
-Chromium no sandbox, as in some containers, it says so and runs Chromium
-without one.
+if any shot fails to load, sign in, run its action, or end on the status it
+expects. A shot that fails on its status still saves its PNG and prints its
+facts. The script exits 2 if the arguments or a shot's fields are invalid.
+Where the OS gives Chromium no sandbox, as in some containers, it says so and
+runs Chromium without one.
+
+`node --test scripts/*.test.mjs` runs the tests of the parts that don't need
+a browser: checking the shots, including the examples above, wrapping
+actions, the status check, and the printed facts.
 
 ## `contrast.py`: WCAG contrast of the colour tokens
 
