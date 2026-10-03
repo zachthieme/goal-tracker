@@ -465,6 +465,35 @@ func TestHomeDrawsHealthDistributionBar(t *testing.T) {
 	}
 }
 
+// The Health distribution bar counts only Active Goals: a Proposed Goal, and a
+// Done or Cancelled one whose last Health before closing was Yellow or Red,
+// leave it alone.
+func TestHomeHealthBarLeavesOutGoalsThatAreNotActive(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	target := testsupport.Epoch.AddDate(0, 1, 0)
+	green := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.CreateGoal(sam, "Hire", "We need people.")
+	done := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	h.Checkin(sam, done.ID, domain.HealthYellow, "Slipping.", "Cut scope.", target)
+	closeGoal(t, h, sam, done, domain.LifecycleDone)
+	cancelled := h.ActiveGoal(sam, "Cut churn", "Customers leave.")
+	h.Checkin(sam, cancelled.ID, domain.HealthRed, "Blocked.", "Escalate.", target)
+	closeGoal(t, h, sam, cancelled, domain.LifecycleCancelled)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+
+	bar := pageElement(t, page, "div", "home-health-bar")
+	if got := strings.Join(regexp.MustCompile(`<span class="(g|y|r)"`).FindAllString(bar, -1), ""); got != `<span class="g"` {
+		t.Errorf("bar's units = %s, want only the one Green:\n%s", got, bar)
+	}
+	if label := attr(tagAround(t, bar, `data-testid="home-health-bar"`), "aria-label"); label != "1 Green, 0 Yellow, 0 Red" {
+		t.Errorf("bar's label = %q, want only the Active Goal counted", label)
+	}
+}
+
 // Every page's top bar leads with Home, counting what needs the viewer — the
 // Goals to check in on plus what's waiting on them — and showing no count when
 // nothing does. Its count is a pill of its own, set apart from the top bar's
