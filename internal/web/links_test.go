@@ -318,7 +318,7 @@ func TestRemovingALinkOffersUndoOnce(t *testing.T) {
 		t.Errorf("toast shown again on a later visit:\n%s", later)
 	}
 
-	resp := postForm(t, sam, ts.URL+action, url.Values{"goal_id": {fmt.Sprint(child.ID)}})
+	resp := postForm(t, sam, ts.URL+action, toastFields(t, landed))
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("undo: status %d", resp.StatusCode)
 	}
@@ -364,7 +364,7 @@ func TestUndoingALinkRemovalIsRefusedWhenItCantBeForged(t *testing.T) {
 	action := undoAction(t, landed)
 	pat := signInClient(t, ts.URL, "pat@example.com")
 
-	resp := postForm(t, pat, ts.URL+action, url.Values{})
+	resp := postForm(t, pat, ts.URL+action, toastFields(t, landed))
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("Undo by the parent's Owner: status %d, want 403", resp.StatusCode)
@@ -373,7 +373,7 @@ func TestUndoingALinkRemovalIsRefusedWhenItCantBeForged(t *testing.T) {
 		t.Fatalf("ParentsOf(child) = %+v after a refused Undo, want none", got)
 	}
 
-	if resp := postForm(t, sam, ts.URL+action, url.Values{}); resp.StatusCode != http.StatusOK {
+	if resp := postForm(t, sam, ts.URL+action, toastFields(t, landed)); resp.StatusCode != http.StatusOK {
 		t.Fatalf("Undo by the remover: status %d", resp.StatusCode)
 	}
 	links, err := h.Service.ParentLinks(context.Background(), child.ID)
@@ -383,7 +383,7 @@ func TestUndoingALinkRemovalIsRefusedWhenItCantBeForged(t *testing.T) {
 	if resp := postForm(t, sam, fmt.Sprintf("%s/links/%d/remove", ts.URL, links[0].LinkID), url.Values{}); resp.StatusCode != http.StatusOK {
 		t.Fatalf("remove again: status %d", resp.StatusCode)
 	}
-	resp = postForm(t, sam, ts.URL+action, url.Values{})
+	resp = postForm(t, sam, ts.URL+action, toastFields(t, landed))
 	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "already been undone") {
 		t.Errorf("second Undo: status %d %q, want 422 saying it was already undone", resp.StatusCode, body)
 	}
@@ -416,7 +416,7 @@ func TestUndoingALinkRemovalIsRefusedWhenItWouldCreateACycle(t *testing.T) {
 		t.Fatalf("AcceptLink: %v", err)
 	}
 
-	resp := postForm(t, sam, ts.URL+action, url.Values{})
+	resp := postForm(t, sam, ts.URL+action, toastFields(t, landed))
 	if body := readBody(t, resp); resp.StatusCode != http.StatusConflict || !strings.Contains(body, "cycle") {
 		t.Errorf("Undo closing a cycle: status %d %q, want 409 naming the cycle", resp.StatusCode, body)
 	}
@@ -433,6 +433,7 @@ func TestTheLinkRemovalToastIsOnlyForTheRemover(t *testing.T) {
 	child, _, _, landed := removeAcrossOwners(t, h, ts)
 	action := undoAction(t, landed)
 	id := strings.TrimSuffix(strings.TrimPrefix(action, "/link-removals/"), "/undo")
+	token := toastFields(t, landed).Get("undo")
 
 	pat := signInClient(t, ts.URL, "pat@example.com")
 	page := fmt.Sprintf("%s/goals/%d", ts.URL, child.ID)
@@ -440,7 +441,7 @@ func TestTheLinkRemovalToastIsOnlyForTheRemover(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pat.Jar.SetCookies(u, []*http.Cookie{{Name: "gt_undo", Value: "link-removal:" + id, Path: u.Path}})
+	pat.Jar.SetCookies(u, []*http.Cookie{{Name: "gt_undo", Value: "link-removal:" + id + ":" + token, Path: u.Path}})
 	if body := getBody(t, pat, page); strings.Contains(body, `data-testid="toast"`) {
 		t.Errorf("someone else's removal offered as a toast:\n%s", body)
 	}
@@ -539,7 +540,7 @@ func TestUndoingALinkRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
 		return len(pending)
 	}
 
-	resp := postForm(t, sam, ts.URL+action, url.Values{})
+	resp := postForm(t, sam, ts.URL+action, toastFields(t, landed))
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("Undo by the requester: status %d, want 403", resp.StatusCode)
@@ -557,10 +558,10 @@ func TestUndoingALinkRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
 		t.Fatalf("pending = %d after a crafted Undo, want 0", n)
 	}
 
-	if resp := postForm(t, pat, ts.URL+action, url.Values{}); resp.StatusCode != http.StatusOK {
+	if resp := postForm(t, pat, ts.URL+action, toastFields(t, landed)); resp.StatusCode != http.StatusOK {
 		t.Fatalf("Undo by the rejecter: status %d", resp.StatusCode)
 	}
-	resp = postForm(t, pat, ts.URL+action, url.Values{})
+	resp = postForm(t, pat, ts.URL+action, toastFields(t, landed))
 	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "already been undone") {
 		t.Errorf("second Undo: status %d %q, want 422 saying it was already undone", resp.StatusCode, body)
 	}
@@ -579,7 +580,7 @@ func TestUndoingALinkRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
 		action := undoAction(t, landed)
 		h.RequestLink(h.SignIn("sam@example.com"), child, parent, "second try")
 
-		resp := postForm(t, pat, ts.URL+action, url.Values{})
+		resp := postForm(t, pat, ts.URL+action, toastFields(t, landed))
 		if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "requested again") {
 			t.Errorf("Undo: status %d %q, want 422 saying it was requested again", resp.StatusCode, body)
 		}
@@ -600,7 +601,7 @@ func TestUndoingALinkRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
 			t.Fatalf("AcceptLink: %v", err)
 		}
 
-		resp := postForm(t, pat, ts.URL+action, url.Values{})
+		resp := postForm(t, pat, ts.URL+action, toastFields(t, landed))
 		if body := readBody(t, resp); resp.StatusCode != http.StatusConflict || !strings.Contains(body, "cycle") {
 			t.Errorf("Undo: status %d %q, want 409 naming the cycle", resp.StatusCode, body)
 		}
@@ -608,4 +609,29 @@ func TestUndoingALinkRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
 			t.Errorf("pending = %+v, want none after a refused Undo", pending)
 		}
 	})
+}
+
+// Sam removes a link; it is requested and accepted again, and Pat, the
+// parent's Owner, removes it. Sam's Undo from the first toast is refused with
+// a message, and the link stays removed.
+func TestALinkRemovalUndoCantBeReplayedOverALaterRemoval(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	child, parent, sam, landed := removeAcrossOwners(t, h, ts)
+	pat, samAcc := h.SignIn("pat@example.com"), h.SignIn("sam@example.com")
+	again := h.RequestLink(samAcc, child, parent, "")
+	if _, err := h.Service.AcceptLink(context.Background(), again.ID, pat.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+	if _, err := h.Service.RemoveLink(context.Background(), again.ID, pat.ID); err != nil {
+		t.Fatalf("RemoveLink by Pat: %v", err)
+	}
+
+	resp := postForm(t, sam, ts.URL+undoAction(t, landed), toastFields(t, landed))
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "requested again") {
+		t.Errorf("replayed Undo: status %d %q, want 422 saying the link was requested again", resp.StatusCode, body)
+	}
+	if got := h.ParentsOf(child); len(got) != 0 {
+		t.Errorf("ParentsOf(child) = %+v after a replayed Undo, want none", got)
+	}
 }

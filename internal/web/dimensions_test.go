@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -751,8 +752,9 @@ func TestRetiredDimensionCardHasNoRequiredControlOverHTTP(t *testing.T) {
 }
 
 // After retiring a value, the Dimensions page carries a toast saying so with an
-// Undo button, a plain form post that restores the value; the toast isn't shown
-// on a later visit.
+// Undo button, a plain form post to the value's own Undo, not its Restore
+// button's route, that restores the value; the toast isn't shown on a later
+// visit.
 func TestRetiringADimensionValueOffersUndoOnce(t *testing.T) {
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
@@ -773,15 +775,15 @@ func TestRetiringADimensionValueOffersUndoOnce(t *testing.T) {
 		}
 	}
 	action := undoAction(t, landed)
-	if want := fmt.Sprintf("/dimension-values/%d/restore", trust.ID); action != want {
-		t.Errorf("Undo posts to %s, want the value's Restore %s", action, want)
+	if want := fmt.Sprintf("/dimension-values/%d/undo-retire", trust.ID); action != want {
+		t.Errorf("Undo posts to %s, want the value's Undo %s", action, want)
 	}
 
 	if later := getBody(t, admin, ts.URL+"/dimensions"); strings.Contains(later, `data-testid="toast"`) {
 		t.Errorf("toast shown again on a later visit:\n%s", later)
 	}
 
-	if resp := postForm(t, admin, ts.URL+action, url.Values{}); resp.StatusCode != http.StatusOK {
+	if resp := postForm(t, admin, ts.URL+action, toastFields(t, landed)); resp.StatusCode != http.StatusOK {
 		t.Fatalf("undo: status %d", resp.StatusCode)
 	}
 	dims, err := h.Service.ListDimensions(context.Background())
@@ -890,5 +892,36 @@ func TestRetiredDimensionsRequiredSettingIsRefusedOverHTTP(t *testing.T) {
 	postForm(t, boss, fmt.Sprintf("%s/dimensions/%d/restore", ts.URL, pillar.ID), url.Values{})
 	if page := getBody(t, boss, ts.URL+"/dimensions"); !strings.Contains(page, `data-testid="dimension-required"`) {
 		t.Errorf("restored Pillar isn't required:\n%s", page)
+	}
+}
+
+// The Retired value's Restore button on the Dimensions page needs no token and
+// works at any time, long after the toast's Undo has expired.
+func TestTheRetiredValuesRestoreButtonNeedsNoToken(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	trust := pillar.Values[1]
+	ts := newServer(t, h)
+	admin := signInClient(t, ts.URL, "boss@example.com")
+	if resp := postForm(t, admin, fmt.Sprintf("%s/dimension-values/%d/retire", ts.URL, trust.ID), url.Values{}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("retire Trust: status %d", resp.StatusCode)
+	}
+	h.Clock.Advance(30 * 24 * time.Hour)
+
+	page := getBody(t, admin, ts.URL+"/dimensions")
+	restore := fmt.Sprintf(`action="/dimension-values/%d/restore"`, trust.ID)
+	if !strings.Contains(page, restore) {
+		t.Fatalf("the Dimensions page has no Restore button for Trust:\n%s", page)
+	}
+	if resp := postForm(t, admin, fmt.Sprintf("%s/dimension-values/%d/restore", ts.URL, trust.ID), url.Values{}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("restore Trust: status %d", resp.StatusCode)
+	}
+	dims, err := h.Service.ListDimensions(context.Background())
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	if dims[0].Values[1].Retired {
+		t.Error("Trust is still Retired after its Restore button")
 	}
 }

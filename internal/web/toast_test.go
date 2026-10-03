@@ -1,10 +1,15 @@
 package web_test
 
 import (
+	"context"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
@@ -48,5 +53,170 @@ func TestToastFitsAPhoneWidth(t *testing.T) {
 		if !strings.Contains(m[1], want) {
 			t.Errorf("phone-width .toast rule %q lacks %s", m[1], want)
 		}
+	}
+}
+
+// undoCase is one of the four actions that offer an Undo in a toast: act does
+// it over HTTP and returns the person's client and the page they land on, and
+// restored says whether the Undo has put things back.
+type undoCase struct {
+	name     string
+	admins   []string
+	act      func(t *testing.T, h *testsupport.Harness, ts *httptest.Server) (*http.Client, string)
+	restored func(t *testing.T, h *testsupport.Harness) bool
+}
+
+var undoCases = []undoCase{
+	{
+		name: "link removal",
+		act: func(t *testing.T, h *testsupport.Harness, ts *httptest.Server) (*http.Client, string) {
+			_, _, sam, landed := removeAcrossOwners(t, h, ts)
+			return sam, landed
+		},
+		restored: func(t *testing.T, h *testsupport.Harness) bool {
+			goals, err := h.Service.ListGoals(context.Background())
+			if err != nil {
+				t.Fatalf("ListGoals: %v", err)
+			}
+			for _, g := range goals {
+				if g.Title == "Migrate displays" {
+					return len(h.ParentsOf(g)) == 1
+				}
+			}
+			t.Fatal("no child Goal")
+			return false
+		},
+	},
+	{
+		name: "link rejection",
+		act: func(t *testing.T, h *testsupport.Harness, ts *httptest.Server) (*http.Client, string) {
+			_, _, pat, landed := rejectRequest(t, h, ts, "/links")
+			return pat, landed
+		},
+		restored: func(t *testing.T, h *testsupport.Harness) bool {
+			pending, err := h.Service.PendingLinkRequests(context.Background(), h.SignIn("pat@example.com").ID)
+			if err != nil {
+				t.Fatalf("PendingLinkRequests: %v", err)
+			}
+			return len(pending) == 1
+		},
+	},
+	{
+		name: "Handoff rejection",
+		act: func(t *testing.T, h *testsupport.Harness, ts *httptest.Server) (*http.Client, string) {
+			_, _, pat, landed := rejectHandoff(t, h, ts, "/handoffs")
+			return pat, landed
+		},
+		restored: func(t *testing.T, h *testsupport.Harness) bool {
+			pending, err := h.Service.PendingHandoffs(context.Background(), h.SignIn("pat@example.com").ID)
+			if err != nil {
+				t.Fatalf("PendingHandoffs: %v", err)
+			}
+			return len(pending) == 1
+		},
+	},
+	{
+		name:   "value retirement",
+		admins: []string{"boss@example.com"},
+		act: func(t *testing.T, h *testsupport.Harness, ts *httptest.Server) (*http.Client, string) {
+			pillar := h.CreateDimension(h.SignIn("boss@example.com"), "Pillar", "Growth", "Trust")
+			admin := signInClient(t, ts.URL, "boss@example.com")
+			resp := postForm(t, admin, fmt.Sprintf("%s/dimension-values/%d/retire", ts.URL, pillar.Values[1].ID), url.Values{})
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("retire Trust: status %d", resp.StatusCode)
+			}
+			return admin, readBody(t, resp)
+		},
+		restored: func(t *testing.T, h *testsupport.Harness) bool {
+			dims, err := h.Service.ListDimensions(context.Background())
+			if err != nil {
+				t.Fatalf("ListDimensions: %v", err)
+			}
+			return !dims[0].Values[1].Retired
+		},
+	},
+}
+
+// Each Undo succeeds from its toast, once: the same Undo submitted a second
+// time is refused with 422.
+func TestEachUndoWorksOnceFromItsToast(t *testing.T) {
+	for _, tc := range undoCases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t, tc.admins...)
+			ts := newServer(t, h)
+			client, landed := tc.act(t, h, ts)
+			action, fields := undoAction(t, landed), toastFields(t, landed)
+
+			if resp := postForm(t, client, ts.URL+action, fields); resp.StatusCode != http.StatusOK {
+				t.Fatalf("Undo: status %d %s", resp.StatusCode, readBody(t, resp))
+			}
+			if !tc.restored(t, h) {
+				t.Fatal("not restored by the Undo")
+			}
+			resp := postForm(t, client, ts.URL+action, fields)
+			if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity {
+				t.Errorf("second Undo: status %d %q, want 422", resp.StatusCode, body)
+			}
+		})
+	}
+}
+
+// An Undo lasts 15 minutes: posted from its toast any later, it is refused
+// with 422, saying it is no longer available, and restores nothing.
+func TestAnUndoIsNoLongerAvailableAfter15Minutes(t *testing.T) {
+	for _, tc := range undoCases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t, tc.admins...)
+			ts := newServer(t, h)
+			client, landed := tc.act(t, h, ts)
+			h.Clock.Advance(15*time.Minute + time.Second)
+
+			resp := postForm(t, client, ts.URL+undoAction(t, landed), toastFields(t, landed))
+			if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "no longer available") {
+				t.Errorf("late Undo: status %d %q, want 422 saying it's no longer available", resp.StatusCode, body)
+			}
+			if tc.restored(t, h) {
+				t.Error("restored by a late Undo")
+			}
+		})
+	}
+}
+
+// An Undo without its toast's token, or with a made-up one, is refused with
+// 403 and restores nothing; it doesn't spend the real Undo.
+func TestAnUndoWithoutItsTokenIsRefused(t *testing.T) {
+	for _, tc := range undoCases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t, tc.admins...)
+			ts := newServer(t, h)
+			client, landed := tc.act(t, h, ts)
+			action, fields := undoAction(t, landed), toastFields(t, landed)
+			if fields.Get("undo") == "" {
+				t.Fatalf("the toast carries no Undo token: %v", fields)
+			}
+
+			missing := url.Values{}
+			for k, v := range fields {
+				if k != "undo" {
+					missing[k] = v
+				}
+			}
+			forged := url.Values{"undo": {strings.Repeat("0", len(fields.Get("undo")))}}
+			for k, v := range missing {
+				forged[k] = v
+			}
+			for name, form := range map[string]url.Values{"missing": missing, "forged": forged} {
+				resp := postForm(t, client, ts.URL+action, form)
+				if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
+					t.Errorf("Undo with a %s token: status %d %q, want 403", name, resp.StatusCode, body)
+				}
+			}
+			if tc.restored(t, h) {
+				t.Fatal("restored by an Undo without its token")
+			}
+			if resp := postForm(t, client, ts.URL+action, fields); resp.StatusCode != http.StatusOK {
+				t.Errorf("Undo with its token after refused ones: status %d", resp.StatusCode)
+			}
+		})
 	}
 }

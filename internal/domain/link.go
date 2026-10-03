@@ -217,11 +217,14 @@ type LinkRejection struct {
 	RejectedBy int64
 	RejectedAt time.Time
 	Restored   bool
+	// UndoToken is the one-time token RestoreLinkRequest takes from the
+	// rejecter. Only RejectLink sets it.
+	UndoToken string
 }
 
 // RejectLink rejects a pending request, deleting it and recording the
-// rejection so the rejecter can Undo it (RestoreLinkRequest). The actor must
-// own the parent Goal.
+// rejection so the rejecter can Undo it (RestoreLinkRequest) with the token it
+// returns, for UndoWindow. The actor must own the parent Goal.
 func (s *Service) RejectLink(ctx context.Context, linkID, actorID int64) (LinkRejection, error) {
 	row, err := s.getPendingLink(ctx, linkID)
 	if err != nil {
@@ -240,6 +243,7 @@ func (s *Service) RejectLink(ctx context.Context, linkID, actorID int64) (LinkRe
 	}
 	now := s.clock.Now()
 	var rejection db.RejectedLinkRequest
+	var token string
 	err = s.WithinTx(ctx, func(tx *Service) error {
 		if err := tx.queries.DeleteLink(ctx, linkID); err != nil {
 			return fmt.Errorf("reject link: %w", err)
@@ -256,7 +260,8 @@ func (s *Service) RejectLink(ctx context.Context, linkID, actorID int64) (LinkRe
 		if err != nil {
 			return fmt.Errorf("record link rejection: %w", err)
 		}
-		return nil
+		token, err = tx.issueUndo(ctx, undoLinkRejection, rejection.ID, actorID, "")
+		return err
 	})
 	if err != nil {
 		return LinkRejection{}, err
@@ -267,16 +272,19 @@ func (s *Service) RejectLink(ctx context.Context, linkID, actorID int64) (LinkRe
 		Parent:     goalFromRow(parent.Goal, parent.Account),
 		RejectedBy: actorID,
 		RejectedAt: now,
+		UndoToken:  token,
 	}, nil
 }
 
 // RestoreLinkRequest undoes a rejection, putting the request back as pending
 // between the same two Goals with its original note, requester and request
 // time, as if it had never been rejected. Only the person who rejected it may,
-// and only once. It is refused, changing nothing, when the same link has been
-// requested or accepted again since, or when it would now close a cycle
+// with the token RejectLink gave them, within UndoWindow, and only once.
+// Presenting the token spends it, even when the Undo is then refused. It is
+// refused, changing nothing, when the same link has been requested, accepted,
+// removed or rejected again since, or when it would now close a cycle
 // (ADR-0001). Rejecting tells no one, so neither does the Undo.
-func (s *Service) RestoreLinkRequest(ctx context.Context, rejectionID, actorID int64) (Link, error) {
+func (s *Service) RestoreLinkRequest(ctx context.Context, rejectionID, actorID int64, token string) (Link, error) {
 	rejection, err := s.queries.GetRejectedLinkRequest(ctx, rejectionID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -289,6 +297,9 @@ func (s *Service) RestoreLinkRequest(ctx context.Context, rejectionID, actorID i
 	}
 	if rejection.RestoredAt != nil {
 		return Link{}, fmt.Errorf("%w: this rejection has already been undone", ErrValidation)
+	}
+	if _, err := s.spendUndo(ctx, token, undoLinkRejection, rejectionID, actorID); err != nil {
+		return Link{}, err
 	}
 	var linkID int64
 	err = s.WithinTx(ctx, func(tx *Service) error {
@@ -411,11 +422,14 @@ type LinkRemoval struct {
 	RemovedBy int64
 	RemovedAt time.Time
 	Restored  bool
+	// UndoToken is the one-time token RestoreLink takes from the remover. Only
+	// RemoveLink sets it.
+	UndoToken string
 }
 
 // RemoveLink removes an accepted link, deleting it and recording the removal so
-// the remover can Undo it (RestoreLink). Either the child's Owner or the
-// parent's Owner may remove it.
+// the remover can Undo it (RestoreLink) with the token it returns, for
+// UndoWindow. Either the child's Owner or the parent's Owner may remove it.
 func (s *Service) RemoveLink(ctx context.Context, linkID, actorID int64) (LinkRemoval, error) {
 	row, err := s.queries.GetLink(ctx, linkID)
 	if err != nil {
@@ -440,6 +454,7 @@ func (s *Service) RemoveLink(ctx context.Context, linkID, actorID int64) (LinkRe
 	}
 	now := s.clock.Now()
 	var removal db.LinkRemoval
+	var token string
 	err = s.WithinTx(ctx, func(tx *Service) error {
 		if err := tx.queries.DeleteLink(ctx, linkID); err != nil {
 			return fmt.Errorf("remove link: %w", err)
@@ -456,7 +471,8 @@ func (s *Service) RemoveLink(ctx context.Context, linkID, actorID int64) (LinkRe
 		if err != nil {
 			return fmt.Errorf("record link removal: %w", err)
 		}
-		return nil
+		token, err = tx.issueUndo(ctx, undoLinkRemoval, removal.ID, actorID, "")
+		return err
 	})
 	if err != nil {
 		return LinkRemoval{}, err
@@ -467,6 +483,7 @@ func (s *Service) RemoveLink(ctx context.Context, linkID, actorID int64) (LinkRe
 		Parent:    goalFromRow(parent.Goal, parent.Account),
 		RemovedBy: actorID,
 		RemovedAt: now,
+		UndoToken: token,
 	}, nil
 }
 
@@ -502,10 +519,13 @@ func (s *Service) LinkRemoval(ctx context.Context, removalID int64) (LinkRemoval
 // RestoreLink undoes a removal, putting the link back as accepted between the
 // same two Goals with its original note, without asking the parent's Owner to
 // accept it again: they accepted it once. Because that skips acceptance, only
-// the person who removed the link may restore it, only while they still own
-// one of its Goals, and only once. It is refused, changing nothing, when the
-// same link exists again or restoring it would now close a cycle (ADR-0001).
-func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64) (Link, error) {
+// the person who removed the link may restore it, with the token RemoveLink
+// gave them, within UndoWindow, only while they still own one of its Goals,
+// and only once. Presenting the token spends it, even when the Undo is then
+// refused. It is refused, changing nothing, when the same link has been
+// requested, accepted, removed or rejected again since, or restoring it would
+// now close a cycle (ADR-0001).
+func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64, token string) (Link, error) {
 	removal, err := s.queries.GetLinkRemoval(ctx, removalID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -530,6 +550,9 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64) (Li
 	if child.Goal.OwnerID != actorID && parent.Goal.OwnerID != actorID {
 		return Link{}, fmt.Errorf("%w: only an Owner of the linked Goals may undo removing the link", ErrNotAuthorized)
 	}
+	if _, err := s.spendUndo(ctx, token, undoLinkRemoval, removalID, actorID); err != nil {
+		return Link{}, err
+	}
 	var linkID int64
 	err = s.WithinTx(ctx, func(tx *Service) error {
 		if _, err := tx.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
@@ -539,6 +562,9 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64) (Li
 			return fmt.Errorf("%w: a link between these Goals already exists again", ErrValidation)
 		} else if !errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("look up existing link: %w", err)
+		}
+		if err := tx.ensureNotLinkedSince(ctx, removal); err != nil {
+			return err
 		}
 		if err := tx.ensureNoCycle(ctx, removal.ChildID, removal.ParentID); err != nil {
 			return err
@@ -572,6 +598,40 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64) (Li
 		return Link{}, err
 	}
 	return s.loadLink(ctx, linkID)
+}
+
+// ensureNotLinkedSince refuses to restore removal when the same link has been
+// made or asked for again since: a later removal of it, or a request for it
+// rejected no earlier than the removal. (A link that exists again is refused
+// on its own.)
+func (s *Service) ensureNotLinkedSince(ctx context.Context, removal db.LinkRemoval) error {
+	again := fmt.Errorf("%w: this link has been requested again since it was removed", ErrValidation)
+	later, err := s.queries.CountLaterLinkRemovals(ctx, db.CountLaterLinkRemovalsParams{
+		ChildID:  removal.ChildID,
+		ParentID: removal.ParentID,
+		ID:       removal.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("look up later removals: %w", err)
+	}
+	if later > 0 {
+		return again
+	}
+	rejections, err := s.queries.ListLinkRejectionTimes(ctx, db.ListLinkRejectionTimesParams{
+		ChildID:  removal.ChildID,
+		ParentID: removal.ParentID,
+	})
+	if err != nil {
+		return fmt.Errorf("look up link rejections: %w", err)
+	}
+	removedAt, _ := time.Parse(timeFormat, removal.RemovedAt)
+	for _, raw := range rejections {
+		// A rejection no earlier than the removal is of a request made since.
+		if rejectedAt, _ := time.Parse(timeFormat, raw); !rejectedAt.Before(removedAt) {
+			return again
+		}
+	}
+	return nil
 }
 
 // PendingLinkRequests returns the requests awaiting a decision from ownerID, the

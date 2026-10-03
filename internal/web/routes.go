@@ -57,6 +57,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /dimensions/{id}/retire", s.requireAuth(s.handleRetireDimension))
 	s.mux.HandleFunc("POST /dimensions/{id}/restore", s.requireAuth(s.handleRestoreDimension))
 	s.mux.HandleFunc("POST /dimension-values/{id}/restore", s.requireAuth(s.handleRestoreDimensionValue))
+	s.mux.HandleFunc("POST /dimension-values/{id}/undo-retire", s.requireAuth(s.handleUndoRetireDimensionValue))
 	s.mux.HandleFunc("GET /fields", s.requireAuth(s.handleFields))
 	s.mux.HandleFunc("POST /fields", s.requireAuth(s.handleCreateField))
 	s.mux.HandleFunc("POST /fields/{id}/retire", s.requireAuth(s.handleRetireField))

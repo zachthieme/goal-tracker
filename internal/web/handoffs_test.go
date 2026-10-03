@@ -804,10 +804,10 @@ func TestUndoingAHandoffRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
 		t.Errorf("Undo of no Handoff: status %d, want 404", resp.StatusCode)
 	}
 
-	if resp := postForm(t, pat, ts.URL+action, url.Values{}); resp.StatusCode != http.StatusOK {
+	if resp := postForm(t, pat, ts.URL+action, toastFields(t, landed)); resp.StatusCode != http.StatusOK {
 		t.Fatalf("Undo by the rejecter: status %d", resp.StatusCode)
 	}
-	resp = postForm(t, pat, ts.URL+action, url.Values{})
+	resp = postForm(t, pat, ts.URL+action, toastFields(t, landed))
 	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "isn't rejected") {
 		t.Errorf("second Undo: status %d %q, want 422", resp.StatusCode, body)
 	}
@@ -854,7 +854,7 @@ func TestUndoingAHandoffRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
 			action := undoAction(t, landed)
 			tc.since(t, h, goal)
 
-			resp := postForm(t, pat, ts.URL+action, url.Values{})
+			resp := postForm(t, pat, ts.URL+action, toastFields(t, landed))
 			body := readBody(t, resp)
 			if tc.says == "" {
 				// A Departed person's session ends with their departure, so
@@ -870,5 +870,65 @@ func TestUndoingAHandoffRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
 				t.Errorf("history = %+v, want the Handoff still rejected", history)
 			}
 		})
+	}
+}
+
+// A Handoff from Sam to Pat is rejected; the Goal then passes from Sam to Mel
+// and back to Sam. Pat's Undo from the toast is refused with a message, so the
+// old Handoff doesn't come back for Pat to take the Goal.
+func TestAHandoffRejectionUndoCantReviveItAfterLaterHandoffs(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	goal, ho, pat, landed := rejectHandoff(t, h, ts, "/handoffs")
+	ctx := context.Background()
+	sam, mel := h.SignIn("sam@example.com"), h.SignIn("mel@example.com")
+	toMel, err := h.Service.StartHandoff(ctx, domain.StartHandoffInput{GoalID: goal.ID, ToOwnerID: mel.ID, ActorID: sam.ID})
+	if err != nil {
+		t.Fatalf("StartHandoff to Mel: %v", err)
+	}
+	if _, err := h.Service.AcceptHandoff(ctx, toMel.ID, mel.ID, nil); err != nil {
+		t.Fatalf("AcceptHandoff to Mel: %v", err)
+	}
+	back, err := h.Service.StartHandoff(ctx, domain.StartHandoffInput{GoalID: goal.ID, ToOwnerID: sam.ID, ActorID: mel.ID})
+	if err != nil {
+		t.Fatalf("StartHandoff back to Sam: %v", err)
+	}
+	if _, err := h.Service.AcceptHandoff(ctx, back.ID, sam.ID, nil); err != nil {
+		t.Fatalf("AcceptHandoff back to Sam: %v", err)
+	}
+
+	resp := postForm(t, pat, ts.URL+undoAction(t, landed), toastFields(t, landed))
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "handed off again") {
+		t.Errorf("revived Undo: status %d %q, want 422 saying the Goal was handed off again", resp.StatusCode, body)
+	}
+	history, _ := h.Service.OwnershipHistory(ctx, goal.ID)
+	if history[0].ID != ho.ID || history[0].Status != domain.HandoffRejected {
+		t.Errorf("history = %+v, want the first Handoff still rejected", history)
+	}
+}
+
+// A Handoff rejected before Undo tokens existed has none, so its Undo is
+// refused with 403 and it stays rejected.
+func TestAHandoffRejectedBeforeUndoTokensCantBeUndoneOverHTTP(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam, patAcc := h.SignIn("sam@example.com"), h.SignIn("pat@example.com")
+	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	ho, err := h.Service.StartHandoff(context.Background(), domain.StartHandoffInput{GoalID: goal.ID, ToOwnerID: patAcc.ID, ActorID: sam.ID})
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+	// Rejected as it was before, leaving nothing but its status.
+	if _, err := h.DB.Exec(`UPDATE handoffs SET status = 'rejected' WHERE id = ?`, ho.ID); err != nil {
+		t.Fatalf("reject as before: %v", err)
+	}
+	pat := signInClient(t, ts.URL, "pat@example.com")
+
+	resp := postForm(t, pat, fmt.Sprintf("%s/handoffs/%d/restore", ts.URL, ho.ID), url.Values{})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("Undo of an old rejection: status %d %q, want 403", resp.StatusCode, body)
+	}
+	if pending, _ := h.Service.PendingHandoffs(context.Background(), patAcc.ID); len(pending) != 0 {
+		t.Errorf("pending = %+v, want none", pending)
 	}
 }

@@ -235,7 +235,20 @@ Load the fonts with this URL:
     reads it, so a reload or a later visit shows nothing. There is no timer:
     it stays until the person leaves.
   - **Undo is a plain form post** to the action's own reversal, checked again
-    on the server, so a forged or stale Undo is refused with a message.
+    on the server, so a forged or stale Undo is refused with a message. The
+    action records a random one-time token, which the `gt_undo` cookie carries
+    to the toast and the toast posts as a hidden `undo` field.
+  - **An Undo lasts 15 minutes and works once.** It is refused with 403 when
+    its token is missing, or is for another action or person; with 422,
+    saying the Undo is no longer available, when its token is more than 15
+    minutes old or was used before. Posting the token uses it up, even when the
+    Undo is then refused. It is also refused, with a message saying why, when
+    something has happened since: the same link was requested, accepted,
+    removed or rejected again; the Goal has had a later Handoff; or the retired
+    value is no longer Retired under the name it was retired with. Anything
+    done before tokens existed has none, so it can't be undone. A Retired
+    value's own Restore button on the Dimensions page is not an Undo: it takes
+    no token and works at any time.
   - **Announced politely:** an `<aside role="status">`, so a screen reader
     reads it without moving focus.
   - **Where:** removing a link (Goal page), retiring a Dimension value
