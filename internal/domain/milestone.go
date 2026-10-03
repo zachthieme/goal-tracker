@@ -32,6 +32,28 @@ const (
 	MilestoneRemoved = "Removed"
 )
 
+// MilestoneChange is a Milestone a Check-in added, marked Done or marked
+// Removed, recorded with that Check-in. A Check-in's Milestone date moves are
+// its Date Slips instead. Check-ins made before these were recorded have none.
+type MilestoneChange struct {
+	MilestoneID int64
+	// Kind is MilestoneChangeAdded, MilestoneChangeDone or
+	// MilestoneChangeRemoved; Reason explains a removal.
+	Kind   string
+	Reason string
+	// Name is the Milestone's name, and AddedDate the date it had when added,
+	// before any Date Slip moved it.
+	Name      string
+	AddedDate time.Time
+}
+
+// The kinds of MilestoneChange.
+const (
+	MilestoneChangeAdded   = "Added"
+	MilestoneChangeDone    = MilestoneDone
+	MilestoneChangeRemoved = MilestoneRemoved
+)
+
 // overdueMilestone returns the first of milestones that is overdue — Planned and
 // past its date — as of today (a dateFormat date), or ok false when none is.
 func overdueMilestone(milestones []db.Milestone, today string) (db.Milestone, bool) {
@@ -267,36 +289,57 @@ func (s *Service) planMilestoneChanges(ctx context.Context, goalID int64, change
 	return plan, nil
 }
 
-// apply writes the plan's Date Slips, Done and Removed markings, and added
-// Milestones against checkinID. Milestones added in a Check-in are added while
-// the Goal is Active, so they count toward its Milestone Churn.
+// apply writes the plan's Date Slips, added Milestones, and Done and Removed
+// markings against checkinID, recording each addition and marking as one of
+// the Check-in's Milestone changes. Milestones added in a Check-in are added
+// while the Goal is Active, so they count toward its Milestone Churn.
 func (p milestonePlan) apply(ctx context.Context, tx *Service, goalID, checkinID int64) error {
 	for _, slip := range p.slips {
 		if err := tx.recordSlip(ctx, goalID, checkinID, slip); err != nil {
 			return err
 		}
 	}
-	for _, change := range p.statuses {
-		if err := tx.recordMilestoneStatus(ctx, change); err != nil {
+	for _, a := range p.added {
+		m, err := tx.createMilestone(ctx, goalID, a.Name, a.TargetDate, true)
+		if err != nil {
+			return err
+		}
+		if err := tx.recordMilestoneChange(ctx, checkinID, m.ID, MilestoneChangeAdded, ""); err != nil {
 			return err
 		}
 	}
-	for _, a := range p.added {
-		if _, err := tx.createMilestone(ctx, goalID, a.Name, a.TargetDate, true); err != nil {
+	for _, change := range p.statuses {
+		if err := tx.recordMilestoneStatus(ctx, checkinID, change); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// recordMilestoneStatus writes a Check-in's Done or Removed marking.
-func (s *Service) recordMilestoneStatus(ctx context.Context, c milestoneStatusChange) error {
+// recordMilestoneStatus writes a Check-in's Done or Removed marking and
+// records it against checkinID.
+func (s *Service) recordMilestoneStatus(ctx context.Context, checkinID int64, c milestoneStatusChange) error {
 	if err := s.queries.SetMilestoneStatus(ctx, db.SetMilestoneStatusParams{
 		Status:        c.status,
 		RemovedReason: c.removedReason,
 		ID:            c.milestoneID,
 	}); err != nil {
 		return fmt.Errorf("set milestone status: %w", err)
+	}
+	return s.recordMilestoneChange(ctx, checkinID, c.milestoneID, c.status, c.removedReason)
+}
+
+// recordMilestoneChange records that checkinID made a Milestone change of kind
+// to milestoneID, stamped with the Service's clock.
+func (s *Service) recordMilestoneChange(ctx context.Context, checkinID, milestoneID int64, kind, reason string) error {
+	if _, err := s.queries.CreateMilestoneChange(ctx, db.CreateMilestoneChangeParams{
+		CheckinID:   checkinID,
+		MilestoneID: milestoneID,
+		Kind:        kind,
+		Reason:      reason,
+		CreatedAt:   s.clock.Now().Format(timeFormat),
+	}); err != nil {
+		return fmt.Errorf("record milestone change: %w", err)
 	}
 	return nil
 }

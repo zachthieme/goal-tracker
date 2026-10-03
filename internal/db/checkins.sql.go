@@ -193,6 +193,42 @@ func (q *Queries) CreateMetricReading(ctx context.Context, arg CreateMetricReadi
 	return i, err
 }
 
+const createMilestoneChange = `-- name: CreateMilestoneChange :one
+INSERT INTO milestone_changes (checkin_id, milestone_id, kind, reason, created_at)
+VALUES (?, ?, ?, ?, ?)
+RETURNING id, checkin_id, milestone_id, kind, reason, created_at
+`
+
+type CreateMilestoneChangeParams struct {
+	CheckinID   int64
+	MilestoneID int64
+	Kind        string
+	Reason      string
+	CreatedAt   string
+}
+
+// Record a Milestone a Check-in added, marked Done or marked Removed; Removed
+// carries its reason.
+func (q *Queries) CreateMilestoneChange(ctx context.Context, arg CreateMilestoneChangeParams) (MilestoneChange, error) {
+	row := q.db.QueryRowContext(ctx, createMilestoneChange,
+		arg.CheckinID,
+		arg.MilestoneID,
+		arg.Kind,
+		arg.Reason,
+		arg.CreatedAt,
+	)
+	var i MilestoneChange
+	err := row.Scan(
+		&i.ID,
+		&i.CheckinID,
+		&i.MilestoneID,
+		&i.Kind,
+		&i.Reason,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getLatestCheckin = `-- name: GetLatestCheckin :one
 SELECT id, goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at, explanation, lifecycle_from, lifecycle_to, lifecycle_reason, outcome FROM checkins WHERE goal_id = ? ORDER BY created_at DESC, id DESC LIMIT 1
 `
@@ -457,6 +493,60 @@ func (q *Queries) ListMetricReadings(ctx context.Context, metricID int64) ([]Met
 			&i.MetricID,
 			&i.Value,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listMilestoneChangesByGoal = `-- name: ListMilestoneChangesByGoal :many
+SELECT milestone_changes.id, milestone_changes.checkin_id, milestone_changes.milestone_id, milestone_changes.kind, milestone_changes.reason, milestone_changes.created_at, milestones.name,
+       CAST(COALESCE(
+           (SELECT ds.old_date FROM date_slips ds WHERE ds.milestone_id = milestones.id ORDER BY ds.created_at, ds.id LIMIT 1),
+           milestones.target_date
+       ) AS TEXT) AS added_date
+FROM milestone_changes
+JOIN checkins ON checkins.id = milestone_changes.checkin_id
+JOIN milestones ON milestones.id = milestone_changes.milestone_id
+WHERE checkins.goal_id = ?1
+ORDER BY milestone_changes.id
+`
+
+type ListMilestoneChangesByGoalRow struct {
+	MilestoneChange MilestoneChange
+	Name            string
+	AddedDate       string
+}
+
+// The Milestone changes a Goal's Check-ins recorded, each Check-in's in the
+// order made, with the Milestone's name and the date it had when added: its
+// first Date Slip's old date, or its date now if it never slipped.
+func (q *Queries) ListMilestoneChangesByGoal(ctx context.Context, goalID int64) ([]ListMilestoneChangesByGoalRow, error) {
+	rows, err := q.db.QueryContext(ctx, listMilestoneChangesByGoal, goalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMilestoneChangesByGoalRow
+	for rows.Next() {
+		var i ListMilestoneChangesByGoalRow
+		if err := rows.Scan(
+			&i.MilestoneChange.ID,
+			&i.MilestoneChange.CheckinID,
+			&i.MilestoneChange.MilestoneID,
+			&i.MilestoneChange.Kind,
+			&i.MilestoneChange.Reason,
+			&i.MilestoneChange.CreatedAt,
+			&i.Name,
+			&i.AddedDate,
 		); err != nil {
 			return nil, err
 		}

@@ -278,3 +278,129 @@ func TestMilestoneChurnCountsAddedAndRemovedSinceActive(t *testing.T) {
 		t.Errorf("churn after marking Done = %d, want still 3", got)
 	}
 }
+
+// replanned arranges an Active Goal with two Planned Milestones, Beta (from
+// activation) and Rollout to 50% (added from the Goal page, so not in a
+// Check-in), and the Check-in input that adds GA, marks Beta Done and removes
+// Rollout to 50% with a reason.
+func replanned(t *testing.T, h *testsupport.Harness) (domain.Goal, domain.SubmitCheckinInput) {
+	t.Helper()
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	beta := onlyMilestone(t, h, goal.ID)
+	rollout, err := h.Service.AddMilestone(context.Background(), domain.AddMilestoneInput{
+		GoalID: goal.ID, Name: "Rollout to 50%", TargetDate: goal.DeliveryDate.AddDate(0, 0, -14),
+	})
+	if err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	return goal, domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: sam.ID,
+		Health:   domain.HealthGreen,
+		Status:   "Re-planned.",
+		Milestones: []domain.MilestoneChangeInput{
+			{MilestoneID: beta.ID, Status: domain.MilestoneDone},
+			{MilestoneID: rollout.ID, Status: domain.MilestoneRemoved, RemovedReason: "descoped"},
+		},
+		NewMilestones: []domain.NewMilestoneInput{{Name: "GA", TargetDate: goal.DeliveryDate.AddDate(0, 0, -7)}},
+	}
+}
+
+// A Check-in records each Milestone it adds, marks Done or removes, with the
+// removal's reason, and its listing carries them.
+func TestCheckinRecordsItsMilestoneChanges(t *testing.T) {
+	h := testsupport.New(t)
+	goal, in := replanned(t, h)
+	ms, err := h.Service.ListMilestones(context.Background(), goal.ID)
+	if err != nil || len(ms) != 2 {
+		t.Fatalf("ListMilestones: %v %v", ms, err)
+	}
+	h.Clock.Advance(24 * time.Hour)
+	c, err := h.Service.SubmitCheckin(context.Background(), in)
+	if err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+
+	checkins, err := h.Service.ListCheckins(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ListCheckins: %v", err)
+	}
+	if len(checkins) != 1 || checkins[0].ID != c.ID {
+		t.Fatalf("ListCheckins = %+v, want the one Check-in", checkins)
+	}
+	got := checkins[0].MilestoneChanges
+	gaDate := goal.DeliveryDate.AddDate(0, 0, -7)
+	want := []struct {
+		kind, name, reason string
+		date               time.Time
+	}{
+		{domain.MilestoneChangeAdded, "GA", "", gaDate},
+		{domain.MilestoneChangeDone, "Beta", "", ms[0].TargetDate},
+		{domain.MilestoneChangeRemoved, "Rollout to 50%", "descoped", ms[1].TargetDate},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("MilestoneChanges = %+v, want %d", got, len(want))
+	}
+	for i, w := range want {
+		g := got[i]
+		if g.Kind != w.kind || g.Name != w.name || g.Reason != w.reason || !g.AddedDate.Equal(w.date) || g.MilestoneID == 0 {
+			t.Errorf("change %d = %+v, want %s %q (%s) %q", i, g, w.kind, w.name, w.date.Format("2006-01-02"), w.reason)
+		}
+	}
+}
+
+// A Check-in that fails validation records none of its Milestone changes.
+func TestRejectedCheckinRecordsNoMilestoneChange(t *testing.T) {
+	h := testsupport.New(t)
+	goal, in := replanned(t, h)
+	in.Health = domain.HealthYellow // with no Path to Green
+	if _, err := h.Service.SubmitCheckin(context.Background(), in); !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("Yellow without a Path to Green: err = %v, want ErrValidation", err)
+	}
+
+	h.Checkin(h.SignIn("sam@example.com"), goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	checkins, err := h.Service.ListCheckins(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ListCheckins: %v", err)
+	}
+	if len(checkins) != 1 || len(checkins[0].MilestoneChanges) != 0 {
+		t.Errorf("ListCheckins = %+v, want one Check-in with no Milestone changes", checkins)
+	}
+	ms, err := h.Service.ListMilestones(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ListMilestones: %v", err)
+	}
+	if len(ms) != 2 || ms[0].Status != domain.MilestonePlanned || ms[1].Status != domain.MilestonePlanned {
+		t.Errorf("Milestones = %+v after the rejection, want the two still Planned", ms)
+	}
+}
+
+// Milestone Churn counts from the Milestones, not from the changes a Check-in
+// records: Rollout to 50% added while Active, then GA added and Rollout to 50%
+// removed in a Check-in, is churn of 3, and it stays 3 for a Goal whose
+// Check-in has no recorded changes, as an older one doesn't.
+func TestMilestoneChurnIsUnchangedByRecordedChanges(t *testing.T) {
+	h := testsupport.New(t)
+	goal, in := replanned(t, h)
+	if _, err := h.Service.SubmitCheckin(context.Background(), in); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	churn := func() int {
+		t.Helper()
+		n, err := h.Service.MilestoneChurn(context.Background(), goal.ID)
+		if err != nil {
+			t.Fatalf("MilestoneChurn: %v", err)
+		}
+		return n
+	}
+	if got := churn(); got != 3 {
+		t.Errorf("churn = %d, want 3 (Rollout to 50%% and GA added, Rollout to 50%% removed)", got)
+	}
+	if _, err := h.DB.Exec(`DELETE FROM milestone_changes`); err != nil {
+		t.Fatalf("delete milestone changes: %v", err)
+	}
+	if got := churn(); got != 3 {
+		t.Errorf("churn without recorded changes = %d, want still 3", got)
+	}
+}

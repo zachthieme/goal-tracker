@@ -36,7 +36,11 @@ type Checkin struct {
 	// Active records no Health (CONTEXT.md: Health is how an Active Goal is
 	// tracking; Lifecycle is independent of it).
 	LifecycleChange LifecycleChange
-	CreatedAt       time.Time
+	// MilestoneChanges are the Milestones this Check-in added, marked Done or
+	// marked Removed, in the order made. Only ListCheckins loads them; a
+	// Check-in from before they were recorded has none.
+	MilestoneChanges []MilestoneChange
+	CreatedAt        time.Time
 }
 
 // Health values a Check-in can set (CONTEXT.md: Health). Green needs no Path to
@@ -439,15 +443,33 @@ func (s *Service) LatestCheckin(ctx context.Context, goalID int64) (Checkin, boo
 }
 
 // ListCheckins returns a Goal's Check-in history, newest first, each with its
-// author and the Owner it was written for resolved.
+// author and the Owner it was written for resolved, and the Milestone changes
+// it recorded.
 func (s *Service) ListCheckins(ctx context.Context, goalID int64) ([]Checkin, error) {
 	rows, err := s.queries.ListCheckins(ctx, goalID)
 	if err != nil {
 		return nil, fmt.Errorf("list checkins: %w", err)
 	}
+	changes, err := s.queries.ListMilestoneChangesByGoal(ctx, goalID)
+	if err != nil {
+		return nil, fmt.Errorf("list milestone changes: %w", err)
+	}
+	changesBy := make(map[int64][]MilestoneChange)
+	for _, r := range changes {
+		addedDate, _ := time.Parse(dateFormat, r.AddedDate)
+		changesBy[r.MilestoneChange.CheckinID] = append(changesBy[r.MilestoneChange.CheckinID], MilestoneChange{
+			MilestoneID: r.MilestoneChange.MilestoneID,
+			Kind:        r.MilestoneChange.Kind,
+			Reason:      r.MilestoneChange.Reason,
+			Name:        r.Name,
+			AddedDate:   addedDate,
+		})
+	}
 	out := make([]Checkin, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, checkinFromRow(r.Checkin, r.Account, r.Account_2))
+		c := checkinFromRow(r.Checkin, r.Account, r.Account_2)
+		c.MilestoneChanges = changesBy[c.ID]
+		out = append(out, c)
 	}
 	return out, nil
 }

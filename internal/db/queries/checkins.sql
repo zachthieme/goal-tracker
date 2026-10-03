@@ -90,3 +90,25 @@ SELECT CAST(
     (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = @goal_id AND m.added_while_active = 1)
   + (SELECT COUNT(*) FROM milestones m WHERE m.goal_id = @goal_id AND m.status = 'Removed')
 AS INTEGER) AS churn;
+
+-- name: CreateMilestoneChange :one
+-- Record a Milestone a Check-in added, marked Done or marked Removed; Removed
+-- carries its reason.
+INSERT INTO milestone_changes (checkin_id, milestone_id, kind, reason, created_at)
+VALUES (?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: ListMilestoneChangesByGoal :many
+-- The Milestone changes a Goal's Check-ins recorded, each Check-in's in the
+-- order made, with the Milestone's name and the date it had when added: its
+-- first Date Slip's old date, or its date now if it never slipped.
+SELECT sqlc.embed(milestone_changes), milestones.name,
+       CAST(COALESCE(
+           (SELECT ds.old_date FROM date_slips ds WHERE ds.milestone_id = milestones.id ORDER BY ds.created_at, ds.id LIMIT 1),
+           milestones.target_date
+       ) AS TEXT) AS added_date
+FROM milestone_changes
+JOIN checkins ON checkins.id = milestone_changes.checkin_id
+JOIN milestones ON milestones.id = milestone_changes.milestone_id
+WHERE checkins.goal_id = @goal_id
+ORDER BY milestone_changes.id;
