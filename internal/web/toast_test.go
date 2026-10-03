@@ -61,7 +61,9 @@ func TestToastFitsAPhoneWidth(t *testing.T) {
 // undoCase is one of the four actions that offer an Undo in a toast: act does
 // it over HTTP and returns the person's client and the page they land on, and
 // restored says whether the Undo has put things back. back is the page a
-// refused Undo links back to, and again what a second Undo is refused with.
+// refused Undo links back to, again what a second Undo is refused with, and
+// notYours what someone else posting the toast's fields is refused with.
+// writes is the change to a table the Undo makes, as a trigger's event.
 type undoCase struct {
 	name     string
 	admins   []string
@@ -69,6 +71,8 @@ type undoCase struct {
 	restored func(t *testing.T, h *testsupport.Harness) bool
 	back     func(t *testing.T, h *testsupport.Harness) string
 	again    string
+	notYours string
+	writes   string
 }
 
 var undoCases = []undoCase{
@@ -94,7 +98,9 @@ var undoCases = []undoCase{
 		back: func(t *testing.T, h *testsupport.Harness) string {
 			return fmt.Sprintf("/goals/%d", goalTitled(t, h, "Migrate displays").ID)
 		},
-		again: "This removal has already been undone.",
+		again:    "This removal has already been undone.",
+		notYours: "Only the person who removed a link may undo it.",
+		writes:   "INSERT ON links",
 	},
 	{
 		name: "link rejection",
@@ -109,8 +115,10 @@ var undoCases = []undoCase{
 			}
 			return len(pending) == 1
 		},
-		back:  func(*testing.T, *testsupport.Harness) string { return "/links" },
-		again: "This rejection has already been undone.",
+		back:     func(*testing.T, *testsupport.Harness) string { return "/links" },
+		again:    "This rejection has already been undone.",
+		notYours: "Only the person who rejected a request may undo it.",
+		writes:   "INSERT ON links",
 	},
 	{
 		name: "Handoff rejection",
@@ -125,8 +133,10 @@ var undoCases = []undoCase{
 			}
 			return len(pending) == 1
 		},
-		back:  func(*testing.T, *testsupport.Harness) string { return "/handoffs" },
-		again: "This Handoff isn't rejected, so there is nothing to undo.",
+		back:     func(*testing.T, *testsupport.Harness) string { return "/handoffs" },
+		again:    "This Handoff isn't rejected, so there is nothing to undo.",
+		notYours: "Only the person who rejected a Handoff may undo it.",
+		writes:   "UPDATE ON handoffs",
 	},
 	{
 		name:   "value retirement",
@@ -147,8 +157,10 @@ var undoCases = []undoCase{
 			}
 			return !dims[0].Values[1].Retired
 		},
-		back:  func(*testing.T, *testsupport.Harness) string { return "/dimensions" },
-		again: "This Undo is no longer available.",
+		back:     func(*testing.T, *testsupport.Harness) string { return "/dimensions" },
+		again:    "This Undo is no longer available.",
+		notYours: "This Undo isn't yours to use.",
+		writes:   "UPDATE ON dimension_values",
 	},
 }
 
@@ -330,6 +342,105 @@ func TestAnUndoThatWouldMakeACycleSaysSo(t *testing.T) {
 			if tc.restored(t, h) {
 				t.Error("restored by an Undo that would make a cycle")
 			}
+		})
+	}
+}
+
+// An Undo that fails part way is refused with 500, on a page saying nothing
+// changed and to try again, with a link back, and restores nothing.
+func TestAnUndoThatFailsSaysNothingChanged(t *testing.T) {
+	for _, tc := range undoCases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t, tc.admins...)
+			ts := newServer(t, h)
+			client, landed := tc.act(t, h, ts)
+			if _, err := h.DB.Exec(`CREATE TRIGGER fail_undo BEFORE ` + tc.writes + `
+				BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+				t.Fatalf("install failing trigger: %v", err)
+			}
+
+			resp := postForm(t, client, ts.URL+undoAction(t, landed), toastFields(t, landed))
+			assertUndoRefused(t, resp, http.StatusInternalServerError, "The Undo couldn't be done, so nothing changed. Try again.", tc.back(t, h))
+			if tc.restored(t, h) {
+				t.Error("restored by a failed Undo")
+			}
+		})
+	}
+}
+
+// An Undo posted by someone other than the person it was offered to, with the
+// toast's own fields, is refused with 403, on a page saying whose Undo it is
+// with a link back, and restores nothing; it doesn't spend the real Undo.
+func TestSomeoneElsesUndoIsRefused(t *testing.T) {
+	for _, tc := range undoCases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t, tc.admins...)
+			ts := newServer(t, h)
+			client, landed := tc.act(t, h, ts)
+			action, fields := undoAction(t, landed), toastFields(t, landed)
+			h.SignIn("lee@example.com")
+			lee := signInClient(t, ts.URL, "lee@example.com")
+
+			resp := postForm(t, lee, ts.URL+action, fields)
+			assertUndoRefused(t, resp, http.StatusForbidden, tc.notYours, tc.back(t, h))
+			if tc.restored(t, h) {
+				t.Fatal("restored by someone else's Undo")
+			}
+			if resp := postForm(t, client, ts.URL+action, fields); resp.StatusCode != http.StatusOK {
+				t.Errorf("Undo by its own person after someone else's: status %d", resp.StatusCode)
+			}
+		})
+	}
+}
+
+// An Undo that no longer fits what has happened since is refused with 422, on
+// a page saying what changed with a link back: the link has been requested
+// again, or the Goal has another pending Handoff or has changed hands.
+func TestAnUndoThatNoLongerFitsSaysWhatChanged(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		undo   undoCase
+		since  func(t *testing.T, h *testsupport.Harness)
+		reason string
+	}{
+		{"link removal requested again", undoCases[0], func(t *testing.T, h *testsupport.Harness) {
+			again := h.RequestLink(h.SignIn("sam@example.com"), goalTitled(t, h, "Migrate displays"), goalTitled(t, h, "Reduce outages"), "")
+			if _, err := h.Service.AcceptLink(context.Background(), again.ID, h.SignIn("pat@example.com").ID); err != nil {
+				t.Fatalf("AcceptLink: %v", err)
+			}
+			if _, err := h.Service.RemoveLink(context.Background(), again.ID, h.SignIn("pat@example.com").ID); err != nil {
+				t.Fatalf("RemoveLink: %v", err)
+			}
+		}, "This link has been requested again since it was removed."},
+		{"link rejection requested again", undoCases[1], func(t *testing.T, h *testsupport.Harness) {
+			h.RequestLink(h.SignIn("sam@example.com"), goalTitled(t, h, "Migrate displays"), goalTitled(t, h, "Reduce outages"), "second try")
+		}, "This link has been requested again since it was rejected."},
+		{"another Handoff pending", undoCases[2], func(t *testing.T, h *testsupport.Harness) {
+			goal := goalTitled(t, h, "Reduce outages")
+			h.SignIn("mel@example.com")
+			if _, err := h.Service.StartHandoffByEmail(context.Background(), goal.ID, "mel@example.com", goal.Owner.ID); err != nil {
+				t.Fatalf("StartHandoff: %v", err)
+			}
+		}, "Another Handoff of this Goal is pending."},
+		{"Goal changed hands", undoCases[2], func(t *testing.T, h *testsupport.Harness) {
+			goal, mel := goalTitled(t, h, "Reduce outages"), h.SignIn("mel@example.com")
+			ho, err := h.Service.StartHandoffByEmail(context.Background(), goal.ID, mel.Email, goal.Owner.ID)
+			if err != nil {
+				t.Fatalf("StartHandoff: %v", err)
+			}
+			if _, err := h.Service.AcceptHandoff(context.Background(), ho.ID, mel.ID, nil); err != nil {
+				t.Fatalf("AcceptHandoff: %v", err)
+			}
+		}, "The Goal has changed hands since this Handoff was rejected."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t, tc.undo.admins...)
+			ts := newServer(t, h)
+			client, landed := tc.undo.act(t, h, ts)
+			tc.since(t, h)
+
+			resp := postForm(t, client, ts.URL+undoAction(t, landed), toastFields(t, landed))
+			assertUndoRefused(t, resp, http.StatusUnprocessableEntity, tc.reason, tc.undo.back(t, h))
 		})
 	}
 }
