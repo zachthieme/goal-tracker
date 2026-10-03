@@ -20,11 +20,12 @@ export default defineConfig({
 
   // The gate — what "done" means. Each exits non-zero on failure. The
   // generate gate regenerates the templ/sqlc code and fails on any diff, so
-  // stale generated files park instead of merging.
+  // stale generated files park instead of merging. Lint (seconds) runs before
+  // test (minutes), so a lint failure surfaces without waiting on the tests.
   gates: [
     { cmd: "make generate-check", label: "generate" },
-    { cmd: "make test", label: "test" },
     { cmd: "make lint", label: "lint" },
+    { cmd: "make test", label: "test" },
   ],
 
   // Warm the module cache once per sandbox so the first gate isn't also the
