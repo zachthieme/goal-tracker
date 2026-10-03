@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { normalise, statusProblem } from "./shots.mjs";
+import { normalise, statusProblem, wrapAction } from "./shots.mjs";
 
 test("a shot's status must be an integer", () => {
   assert.throws(() => normalise({ path: "/goals", status: "404" }, 0), /shot 1: status must be an integer/);
@@ -25,4 +25,16 @@ test("a shot with a status fails when the page gives another", () => {
 test("a status that couldn't be read never fails a shot", () => {
   assert.equal(statusProblem({ path: "/goals" }, null), null);
   assert.equal(statusProblem({ path: "/goals", status: 200 }, null), null);
+});
+
+test("an action that runs as a script is left as it is", () => {
+  assert.equal(wrapAction("a(); b()"), "a(); b()");
+  assert.equal(wrapAction("document.title"), "document.title");
+  assert.equal(wrapAction("fetch('/x').then((r) => r.status)"), "fetch('/x').then((r) => r.status)");
+});
+
+test("an action that uses return or await runs in an async function", () => {
+  const action = "await fetch('/x');\nreturn document.title";
+  assert.equal(wrapAction(action), `(async () => {\n${action}\n})()`);
+  assert.equal(wrapAction("return 1"), "(async () => {\nreturn 1\n})()");
 });

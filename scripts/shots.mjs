@@ -30,6 +30,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { Script } from "node:vm";
 
 const usage = "usage: node scripts/shots.mjs <base-url> <shots.json|-|JSON> [--out <dir>]";
 
@@ -72,6 +73,19 @@ export function normalise(shot, i) {
   const slug = s.path.replace(/[^\w]+/g, "-").replace(/^-|-$/g, "") || "root";
   s.name ??= `${String(i + 1).padStart(2, "0")}-${slug}-${s.theme}-${s.width}`;
   return s;
+}
+
+// wrapAction is the script that runs a shot's action: the action itself if it
+// compiles as a script, so it keeps its completion value, else the action as
+// the body of an async function, so it can use return and await.
+export function wrapAction(action) {
+  try {
+    new Script(action);
+    return action;
+  } catch (err) {
+    if (!(err instanceof SyntaxError)) throw err;
+    return `(async () => {\n${action}\n})()`;
+  }
 }
 
 // statusProblem is why a page's final document status fails the shot, or null
@@ -332,7 +346,7 @@ async function shoot(cdp, base, out, shot) {
     if (shot.action) {
       const navigating = watchNavigation(cdp, s);
       const { exceptionDetails } = await cdp
-        .send("Runtime.evaluate", { expression: shot.action, awaitPromise: true, userGesture: true }, s)
+        .send("Runtime.evaluate", { expression: wrapAction(shot.action), awaitPromise: true, userGesture: true }, s)
         // A submit that navigates away destroys the context the action ran in.
         .catch(() => ({}));
       if (exceptionDetails) throw new Error(`action: ${exceptionDetails.exception?.description ?? exceptionDetails.text}`);
