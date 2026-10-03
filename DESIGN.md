@@ -249,6 +249,13 @@ Load the fonts with this URL:
     done before tokens existed has none, so it can't be undone. A Retired
     value's own Restore button on the Dimensions page is not an Undo: it takes
     no token and works at any time.
+  - **A refused Undo shows a page, not bare text.** It keeps its status and
+    renders a "Can't undo" page inside the normal chrome, with one plain
+    sentence saying why (no internal prefixes or IDs) and a **Back** link to
+    the page the Undo was offered on: the Goal page for a link removal (Home
+    when it names none), Home or the pending page for a rejection, and
+    Dimensions for a retired value. The page is `undoRefusedPage` in
+    `toast.templ`.
   - **Announced politely:** an `<aside role="status">`, so a screen reader
     reads it without moving focus.
   - **Where:** removing a link (Goal page), retiring a Dimension value

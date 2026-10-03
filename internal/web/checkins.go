@@ -414,10 +414,14 @@ func (s *Server) renderNoChangeRefusal(w http.ResponseWriter, r *http.Request, c
 	}
 }
 
-// plainReason is a domain validation message without its internal
-// "validation failed:" prefix.
+// plainReason is a domain validation or authorization message without its
+// internal "validation failed:" or "not authorized:" prefix.
 func plainReason(err error) string {
-	return strings.TrimPrefix(err.Error(), domain.ErrValidation.Error()+": ")
+	msg := err.Error()
+	for _, kind := range []error{domain.ErrValidation, domain.ErrNotAuthorized} {
+		msg = strings.TrimPrefix(msg, kind.Error()+": ")
+	}
+	return msg
 }
 
 // renderCheckinFormError re-renders the Check-in form with a validation message.

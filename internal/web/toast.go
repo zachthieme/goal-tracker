@@ -1,9 +1,12 @@
 package web
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
 // undoCookie carries an Undo offer from the post that made a change to the one
@@ -77,4 +80,47 @@ func takeUndo(w http.ResponseWriter, r *http.Request) undoOffer {
 		return undoOffer{}
 	}
 	return undoOffer{kind: parts[0], id: id, token: parts[2]}
+}
+
+// refuseUndo shows why an Undo was refused, inside the normal page, with a
+// link back to the page it was offered on, and the status the area's own
+// error writer would give: a cycle 409, a validation 422, someone else's Undo
+// 403, nothing to undo 404. The reason is the domain's, said plainly, without
+// its internal prefix.
+func refuseUndo(w http.ResponseWriter, r *http.Request, current domain.Account, back string, err error) {
+	status, reason := http.StatusInternalServerError, "The Undo couldn't be done, so nothing changed. Try again."
+	switch {
+	case errors.Is(err, domain.ErrCycle):
+		status, reason = http.StatusConflict, "Restoring it now would make a cycle."
+	case errors.Is(err, domain.ErrValidation):
+		status, reason = http.StatusUnprocessableEntity, sentence(plainReason(err))
+	case errors.Is(err, domain.ErrNotAuthorized):
+		status, reason = http.StatusForbidden, sentence(plainReason(err))
+	case errors.Is(err, domain.ErrNotFound):
+		status, reason = http.StatusNotFound, "There's nothing here to undo."
+	}
+	render(w, r, status, undoRefusedPage(&current, reason, back))
+}
+
+// sentence is msg capitalised and ending in a full stop.
+func sentence(msg string) string {
+	if msg == "" {
+		return msg
+	}
+	msg = strings.ToUpper(msg[:1]) + msg[1:]
+	if !strings.HasSuffix(msg, ".") {
+		msg += "."
+	}
+	return msg
+}
+
+// undoIDFromPath is the id in an Undo's path, or a refusal saying there's
+// nothing to undo, linking back.
+func undoIDFromPath(w http.ResponseWriter, r *http.Request, current domain.Account, back string) (int64, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		refuseUndo(w, r, current, back, domain.ErrNotFound)
+		return 0, false
+	}
+	return id, true
 }

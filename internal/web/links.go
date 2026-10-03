@@ -88,19 +88,19 @@ func (s *Server) handleRejectLink(w http.ResponseWriter, r *http.Request, curren
 
 // handleUndoLinkRejection puts the rejected request in the path back as
 // pending; only the person who rejected it may, with the toast's token, and
-// only once. It returns to
-// the page the Undo came from (from), or refuses with a message and changes
-// nothing.
+// only once. It returns to the page the Undo came from (from), or refuses
+// with a page saying why, linking back there, and changes nothing.
 func (s *Server) handleUndoLinkRejection(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	rejectionID, ok := linkIDFromPath(w, r)
+	back := requestPage(r.FormValue("from"), "/links")
+	rejectionID, ok := undoIDFromPath(w, r, current, back)
 	if !ok {
 		return
 	}
 	if _, err := s.svc.RestoreLinkRequest(r.Context(), rejectionID, current.ID, r.FormValue(undoField)); err != nil {
-		writeLinkError(w, err)
+		refuseUndo(w, r, current, back, err)
 		return
 	}
-	http.Redirect(w, r, requestPage(r.FormValue("from"), "/links"), http.StatusSeeOther)
+	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
 // linkRejectionToast is the toast a page carries straight after current
@@ -143,16 +143,21 @@ func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request, curren
 
 // handleUndoLinkRemoval restores the removed link in the path as accepted; only
 // the person who removed it may, with the toast's token, and only once. It
-// returns to the Goal page
-// the Undo came from (goal_id), or refuses with a message and changes nothing.
+// returns to the Goal page the Undo came from (goal_id), or refuses with a
+// page saying why, linking back to that Goal page (Home without one), and
+// changes nothing.
 func (s *Server) handleUndoLinkRemoval(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	removalID, ok := linkIDFromPath(w, r)
+	back := "/home"
+	if goalID, err := strconv.ParseInt(r.FormValue("goal_id"), 10, 64); err == nil {
+		back = "/goals/" + strconv.FormatInt(goalID, 10)
+	}
+	removalID, ok := undoIDFromPath(w, r, current, back)
 	if !ok {
 		return
 	}
 	link, err := s.svc.RestoreLink(r.Context(), removalID, current.ID, r.FormValue(undoField))
 	if err != nil {
-		writeLinkError(w, err)
+		refuseUndo(w, r, current, back, err)
 		return
 	}
 	http.Redirect(w, r, linkPage(link.Child.ID, link.Parent.ID, r.FormValue("goal_id")), http.StatusSeeOther)

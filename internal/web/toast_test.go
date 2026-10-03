@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"fmt"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
@@ -58,12 +60,15 @@ func TestToastFitsAPhoneWidth(t *testing.T) {
 
 // undoCase is one of the four actions that offer an Undo in a toast: act does
 // it over HTTP and returns the person's client and the page they land on, and
-// restored says whether the Undo has put things back.
+// restored says whether the Undo has put things back. back is the page a
+// refused Undo links back to, and again what a second Undo is refused with.
 type undoCase struct {
 	name     string
 	admins   []string
 	act      func(t *testing.T, h *testsupport.Harness, ts *httptest.Server) (*http.Client, string)
 	restored func(t *testing.T, h *testsupport.Harness) bool
+	back     func(t *testing.T, h *testsupport.Harness) string
+	again    string
 }
 
 var undoCases = []undoCase{
@@ -86,6 +91,10 @@ var undoCases = []undoCase{
 			t.Fatal("no child Goal")
 			return false
 		},
+		back: func(t *testing.T, h *testsupport.Harness) string {
+			return fmt.Sprintf("/goals/%d", goalTitled(t, h, "Migrate displays").ID)
+		},
+		again: "This removal has already been undone.",
 	},
 	{
 		name: "link rejection",
@@ -100,6 +109,8 @@ var undoCases = []undoCase{
 			}
 			return len(pending) == 1
 		},
+		back:  func(*testing.T, *testsupport.Harness) string { return "/links" },
+		again: "This rejection has already been undone.",
 	},
 	{
 		name: "Handoff rejection",
@@ -114,6 +125,8 @@ var undoCases = []undoCase{
 			}
 			return len(pending) == 1
 		},
+		back:  func(*testing.T, *testsupport.Harness) string { return "/handoffs" },
+		again: "This Handoff isn't rejected, so there is nothing to undo.",
 	},
 	{
 		name:   "value retirement",
@@ -134,11 +147,59 @@ var undoCases = []undoCase{
 			}
 			return !dims[0].Values[1].Retired
 		},
+		back:  func(*testing.T, *testsupport.Harness) string { return "/dimensions" },
+		again: "This Undo is no longer available.",
 	},
 }
 
+// goalTitled is the Goal called title.
+func goalTitled(t *testing.T, h *testsupport.Harness, title string) domain.Goal {
+	t.Helper()
+	goals, err := h.Service.ListGoals(context.Background())
+	if err != nil {
+		t.Fatalf("ListGoals: %v", err)
+	}
+	for _, g := range goals {
+		if g.Title == title {
+			return g
+		}
+	}
+	t.Fatalf("no Goal called %q", title)
+	return domain.Goal{}
+}
+
+// assertUndoRefused checks a refused Undo came back as status inside the
+// site's chrome: a "Can't undo" page whose one sentence says why, plainly,
+// containing reason, with a Back link to back.
+func assertUndoRefused(t *testing.T, resp *http.Response, status int, reason, back string) {
+	t.Helper()
+	page := readBody(t, resp)
+	if resp.StatusCode != status {
+		t.Errorf("status %d, want %d; body:\n%s", resp.StatusCode, status, page)
+	}
+	if !strings.Contains(page, `data-testid="nav-home"`) || !strings.Contains(page, "Can't undo") {
+		t.Fatalf("refusal is not a Can't undo page inside the site's chrome; body:\n%s", page)
+	}
+	element := pageElement(t, page, "p", "undo-refused")
+	sentence := html.UnescapeString(element[strings.Index(element, ">")+1:])
+	if !strings.Contains(sentence, reason) {
+		t.Errorf("refusal says %q, want it to say %q", sentence, reason)
+	}
+	for _, internal := range []string{"validation failed", "not authorized", "not found:"} {
+		if strings.Contains(sentence, internal) {
+			t.Errorf("refusal %q carries the internal %q", sentence, internal)
+		}
+	}
+	if regexp.MustCompile(`[0-9]`).MatchString(sentence) {
+		t.Errorf("refusal %q carries a raw ID", sentence)
+	}
+	if !strings.Contains(page, `<a href="`+back+`">Back</a>`) {
+		t.Errorf("refusal has no Back link to %s; body:\n%s", back, page)
+	}
+}
+
 // Each Undo succeeds from its toast, once: the same Undo submitted a second
-// time is refused with 422.
+// time is refused with 422, on a page saying why with a link back.
 func TestEachUndoWorksOnceFromItsToast(t *testing.T) {
 	for _, tc := range undoCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -154,15 +215,14 @@ func TestEachUndoWorksOnceFromItsToast(t *testing.T) {
 				t.Fatal("not restored by the Undo")
 			}
 			resp := postForm(t, client, ts.URL+action, fields)
-			if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity {
-				t.Errorf("second Undo: status %d %q, want 422", resp.StatusCode, body)
-			}
+			assertUndoRefused(t, resp, http.StatusUnprocessableEntity, tc.again, tc.back(t, h))
 		})
 	}
 }
 
 // An Undo lasts 15 minutes: posted from its toast any later, it is refused
-// with 422, saying it is no longer available, and restores nothing.
+// with 422, on a page saying it is no longer available with a link back, and
+// restores nothing.
 func TestAnUndoIsNoLongerAvailableAfter15Minutes(t *testing.T) {
 	for _, tc := range undoCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -172,9 +232,7 @@ func TestAnUndoIsNoLongerAvailableAfter15Minutes(t *testing.T) {
 			h.Clock.Advance(15*time.Minute + time.Second)
 
 			resp := postForm(t, client, ts.URL+undoAction(t, landed), toastFields(t, landed))
-			if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "no longer available") {
-				t.Errorf("late Undo: status %d %q, want 422 saying it's no longer available", resp.StatusCode, body)
-			}
+			assertUndoRefused(t, resp, http.StatusUnprocessableEntity, "This Undo is no longer available.", tc.back(t, h))
 			if tc.restored(t, h) {
 				t.Error("restored by a late Undo")
 			}
@@ -183,7 +241,8 @@ func TestAnUndoIsNoLongerAvailableAfter15Minutes(t *testing.T) {
 }
 
 // An Undo without its toast's token, or with a made-up one, is refused with
-// 403 and restores nothing; it doesn't spend the real Undo.
+// 403, on a page saying why with a link back, and restores nothing; it doesn't
+// spend the real Undo.
 func TestAnUndoWithoutItsTokenIsRefused(t *testing.T) {
 	for _, tc := range undoCases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -206,16 +265,70 @@ func TestAnUndoWithoutItsTokenIsRefused(t *testing.T) {
 				forged[k] = v
 			}
 			for name, form := range map[string]url.Values{"missing": missing, "forged": forged} {
-				resp := postForm(t, client, ts.URL+action, form)
-				if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
-					t.Errorf("Undo with a %s token: status %d %q, want 403", name, resp.StatusCode, body)
-				}
+				t.Run(name, func(t *testing.T) {
+					resp := postForm(t, client, ts.URL+action, form)
+					assertUndoRefused(t, resp, http.StatusForbidden, "This Undo isn't yours to use.", tc.back(t, h))
+				})
 			}
 			if tc.restored(t, h) {
 				t.Fatal("restored by an Undo without its token")
 			}
 			if resp := postForm(t, client, ts.URL+action, fields); resp.StatusCode != http.StatusOK {
 				t.Errorf("Undo with its token after refused ones: status %d", resp.StatusCode)
+			}
+		})
+	}
+}
+
+// An Undo of something that never happened is refused with 404, on a page
+// saying there's nothing to undo, linking back to the page it names: the Goal
+// page for a link removal (Home without one), Home or the pending page for a
+// rejection.
+func TestAnUndoOfNothingSaysThereIsNothingToUndo(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	goal := h.CreateGoal(h.SignIn("sam@example.com"), "Migrate displays", "Displays fail often.")
+	sam := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, tc := range []struct {
+		path string
+		form url.Values
+		back string
+	}{
+		{"/link-removals/4242/undo", url.Values{"goal_id": {fmt.Sprint(goal.ID)}}, fmt.Sprintf("/goals/%d", goal.ID)},
+		{"/link-removals/4242/undo", url.Values{}, "/home"},
+		{"/link-removals/nothing/undo", url.Values{"goal_id": {"nothing"}}, "/home"},
+		{"/link-rejections/4242/undo", url.Values{}, "/links"},
+		{"/link-rejections/4242/undo", url.Values{"from": {"home"}}, "/home"},
+		{"/handoffs/4242/restore", url.Values{}, "/handoffs"},
+		{"/handoffs/4242/restore", url.Values{"from": {"home"}}, "/home"},
+	} {
+		t.Run(tc.path+"?"+tc.form.Encode(), func(t *testing.T) {
+			resp := postForm(t, sam, ts.URL+tc.path, tc.form)
+			assertUndoRefused(t, resp, http.StatusNotFound, "There's nothing here to undo.", tc.back)
+		})
+	}
+}
+
+// An Undo that would now close a cycle is refused with 409, on a page saying
+// so with a link back, and restores nothing.
+func TestAnUndoThatWouldMakeACycleSaysSo(t *testing.T) {
+	for _, tc := range undoCases[:2] {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t)
+			ts := newServer(t, h)
+			client, landed := tc.act(t, h, ts)
+			// Pat links the Goals the other way round, and Sam accepts.
+			pat, sam := h.SignIn("pat@example.com"), h.SignIn("sam@example.com")
+			back := h.RequestLink(pat, goalTitled(t, h, "Reduce outages"), goalTitled(t, h, "Migrate displays"), "")
+			if _, err := h.Service.AcceptLink(context.Background(), back.ID, sam.ID); err != nil {
+				t.Fatalf("AcceptLink: %v", err)
+			}
+
+			resp := postForm(t, client, ts.URL+undoAction(t, landed), toastFields(t, landed))
+			assertUndoRefused(t, resp, http.StatusConflict, "Restoring it now would make a cycle.", tc.back(t, h))
+			if tc.restored(t, h) {
+				t.Error("restored by an Undo that would make a cycle")
 			}
 		})
 	}

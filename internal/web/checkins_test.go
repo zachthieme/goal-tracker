@@ -1644,10 +1644,11 @@ func TestNoChangeOnMissingGoalIsNotFoundInsideThePage(t *testing.T) {
 	assertCheckinUnavailable(t, page, "There is no such Goal")
 }
 
-// htmx 2 leaves a 403 or 404 unswapped, so the No change button, on the Goal
-// page and on the Check-in page's card, swaps those pages in itself: the click
-// shows why it was refused instead of seeming to do nothing (#109).
-func TestNoChangeButtonSwapsInForbiddenAndNotFoundPages(t *testing.T) {
+// htmx 2 leaves an error status unswapped, so the No change button, on the
+// Goal page and on the Check-in page's card, swaps any error page in itself,
+// whatever its status: the click shows why it was refused instead of seeming
+// to do nothing (#109, #116).
+func TestNoChangeButtonSwapsInAnyErrorPage(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
@@ -1658,10 +1659,13 @@ func TestNoChangeButtonSwapsInForbiddenAndNotFoundPages(t *testing.T) {
 
 	for _, path := range []string{fmt.Sprintf("/goals/%d", goal.ID), fmt.Sprintf("/goals/%d/checkin", goal.ID)} {
 		form := html.UnescapeString(tagAround(t, getBody(t, samClient, ts.URL+path), `data-testid="no-change-checkin"`))
-		for _, want := range []string{"hx-on:htmx:response-error=", "403", "404", "htmx.swap('body', event.detail.xhr.responseText"} {
+		for _, want := range []string{"hx-on:htmx:response-error=", "htmx.swap('body', event.detail.xhr.responseText"} {
 			if !strings.Contains(form, want) {
 				t.Errorf("on %s, the No change form lacks %q; form tag:\n%s", path, want, form)
 			}
+		}
+		if handler := between(t, form, "hx-on:htmx:response-error=", "htmx.swap"); strings.Contains(handler, "status") {
+			t.Errorf("on %s, the No change form swaps only some error statuses; form tag:\n%s", path, form)
 		}
 	}
 
@@ -1676,6 +1680,32 @@ func TestNoChangeButtonSwapsInForbiddenAndNotFoundPages(t *testing.T) {
 		t.Errorf("missing: status = %d, want 404", resp.StatusCode)
 	}
 	assertCheckinUnavailable(t, page, "There is no such Goal")
+}
+
+// A No change that fails for want of the database gets a 500 that says so
+// inside the normal page, which the button swaps in like any error (#116).
+func TestNoChangeThatFailsSaysSoInsideThePage(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	if _, err := h.DB.Exec(`CREATE TRIGGER fail_checkin BEFORE INSERT ON checkins
+		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, hx := range []bool{false, true} {
+		resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), hx)
+		if resp.StatusCode != http.StatusInternalServerError {
+			t.Errorf("hx=%v: status = %d, want 500", hx, resp.StatusCode)
+		}
+		assertCheckinUnavailable(t, page, "The No change couldn&#39;t be recorded. Try again.")
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
+		t.Errorf("a failed No change recorded a Check-in: history has %d, want 1", len(history))
+	}
 }
 
 // assertCheckinUnavailable checks a No change failure came back inside the

@@ -85,18 +85,19 @@ func (s *Server) handleRejectHandoff(w http.ResponseWriter, r *http.Request, cur
 
 // handleRestoreHandoff puts the rejected Handoff in the path back as pending;
 // only the person who rejected it may, with the toast's token, and only once.
-// It returns to the page
-// the Undo came from (from), or refuses with a message and changes nothing.
+// It returns to the page the Undo came from (from), or refuses with a page
+// saying why, linking back there, and changes nothing.
 func (s *Server) handleRestoreHandoff(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := handoffIDFromPath(w, r)
+	back := requestPage(r.FormValue("from"), "/handoffs")
+	id, ok := undoIDFromPath(w, r, current, back)
 	if !ok {
 		return
 	}
 	if _, err := s.svc.RestoreHandoff(r.Context(), id, current.ID, r.FormValue(undoField)); err != nil {
-		writeHandoffError(w, err)
+		refuseUndo(w, r, current, back, err)
 		return
 	}
-	http.Redirect(w, r, requestPage(r.FormValue("from"), "/handoffs"), http.StatusSeeOther)
+	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
 // handoffRejectionToast is the toast a page carries straight after current
