@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"fmt"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -795,7 +796,7 @@ func TestUndoingAHandoffRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
 		t.Fatalf("StartHandoff: %v", err)
 	}
 	resp = postForm(t, pat, fmt.Sprintf("%s/handoffs/%d/restore", ts.URL, pending.ID), url.Values{})
-	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "isn't rejected") {
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(html.UnescapeString(body), "isn't rejected") {
 		t.Errorf("Undo of a Handoff never rejected: status %d %q, want 422 saying it isn't rejected", resp.StatusCode, body)
 	}
 	resp = postForm(t, pat, ts.URL+"/handoffs/4242/restore", url.Values{})
@@ -808,7 +809,7 @@ func TestUndoingAHandoffRejectionIsRefusedWhenItCantBeForged(t *testing.T) {
 		t.Fatalf("Undo by the rejecter: status %d", resp.StatusCode)
 	}
 	resp = postForm(t, pat, ts.URL+action, toastFields(t, landed))
-	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "isn't rejected") {
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(html.UnescapeString(body), "isn't rejected") {
 		t.Errorf("second Undo: status %d %q, want 422", resp.StatusCode, body)
 	}
 	if got := status(); got != domain.HandoffPending {
@@ -829,7 +830,7 @@ func TestUndoingAHandoffRejectionIsRefusedWhenItNoLongerFits(t *testing.T) {
 			if _, err := h.Service.StartHandoffByEmail(context.Background(), goal.ID, "mel@example.com", goal.Owner.ID); err != nil {
 				t.Fatalf("StartHandoff: %v", err)
 			}
-		}, "another Handoff"},
+		}, "Another Handoff"},
 		{"Owner changed", func(t *testing.T, h *testsupport.Harness, goal domain.Goal) {
 			mel := h.SignIn("mel@example.com")
 			ho, err := h.Service.StartHandoffByEmail(context.Background(), goal.ID, mel.Email, goal.Owner.ID)

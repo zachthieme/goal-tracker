@@ -165,15 +165,16 @@ func (s *Server) handleRetireDimensionValue(w http.ResponseWriter, r *http.Reque
 
 // handleUndoRetireDimensionValue is the toast's Undo of retiring the value in
 // the path: only the Admin who retired it may, with the toast's token, once,
-// and only while the value is unchanged since. The Retired value's own Restore
+// and only while the value is unchanged since; refused, it shows a page saying
+// why, linking back to Dimensions. The Retired value's own Restore
 // button needs none of that (handleRestoreDimensionValue).
 func (s *Server) handleUndoRetireDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := dimensionIDFromPath(w, r)
+	id, ok := undoIDFromPath(w, r, current, "/dimensions")
 	if !ok {
 		return
 	}
 	if err := s.svc.UndoRetireDimensionValue(r.Context(), current.ID, id, r.FormValue(undoField)); err != nil {
-		writeDimensionError(w, err)
+		refuseUndo(w, r, current, "/dimensions", err)
 		return
 	}
 	s.redirectToDimensions(w, r)
