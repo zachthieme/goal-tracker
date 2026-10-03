@@ -206,33 +206,43 @@ func (s *Service) AcceptHandoff(ctx context.Context, handoffID, actorID int64, k
 
 // RejectHandoff declines a pending Handoff, keeping it with the outcome
 // rejected; ownership stays put. Only the proposed new Owner may reject it, and
-// they may Undo it (RestoreHandoff).
-func (s *Service) RejectHandoff(ctx context.Context, handoffID, actorID int64) error {
+// they may Undo it (RestoreHandoff) with the token it returns, for UndoWindow.
+func (s *Service) RejectHandoff(ctx context.Context, handoffID, actorID int64) (string, error) {
 	row, err := s.getPendingHandoff(ctx, handoffID)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if row.ToOwner != actorID {
-		return fmt.Errorf("%w: only the new Owner may reject a Handoff", ErrNotAuthorized)
+		return "", fmt.Errorf("%w: only the new Owner may reject a Handoff", ErrNotAuthorized)
 	}
-	if err := s.queries.SetHandoffStatus(ctx, db.SetHandoffStatusParams{
-		Status: HandoffRejected,
-		ID:     handoffID,
-	}); err != nil {
-		return fmt.Errorf("reject handoff: %w", err)
+	var token string
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.queries.SetHandoffStatus(ctx, db.SetHandoffStatusParams{
+			Status: HandoffRejected,
+			ID:     handoffID,
+		}); err != nil {
+			return fmt.Errorf("reject handoff: %w", err)
+		}
+		token, err = tx.issueUndo(ctx, undoHandoffRejection, handoffID, actorID, "")
+		return err
+	})
+	if err != nil {
+		return "", err
 	}
-	return nil
+	return token, nil
 }
 
 // RestoreHandoff undoes rejecting a Handoff, putting it back as pending with
 // the same proposed Owner, so the Goal's ownership history shows it pending
 // rather than a rejection followed by something else. Only the person who
-// rejected it, its proposed new Owner, may, and only while it is rejected: once
-// undone it is pending, so a second Undo is refused. It is refused, changing
-// nothing, when the Goal has another pending Handoff, its Owner has changed, or
-// the proposed Owner has since Departed. Rejecting tells no one, so neither
-// does the Undo.
-func (s *Service) RestoreHandoff(ctx context.Context, handoffID, actorID int64) (Handoff, error) {
+// rejected it, its proposed new Owner, may, with the token RejectHandoff gave
+// them, within UndoWindow, and only while it is rejected: once undone it is
+// pending, so a second Undo is refused. Presenting the token spends it, even
+// when the Undo is then refused. It is refused, changing nothing, when the
+// Goal has another pending Handoff, its Owner has changed, any later Handoff
+// of the Goal exists, or the proposed Owner has since Departed. Rejecting
+// tells no one, so neither does the Undo.
+func (s *Service) RestoreHandoff(ctx context.Context, handoffID, actorID int64, token string) (Handoff, error) {
 	row, err := s.queries.GetHandoff(ctx, handoffID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -247,6 +257,9 @@ func (s *Service) RestoreHandoff(ctx context.Context, handoffID, actorID int64) 
 	if row.Status != HandoffRejected {
 		return Handoff{}, notRejected
 	}
+	if _, err := s.spendUndo(ctx, token, undoHandoffRejection, handoffID, actorID); err != nil {
+		return Handoff{}, err
+	}
 	err = s.WithinTx(ctx, func(tx *Service) error {
 		if _, err := tx.queries.GetPendingHandoffForGoal(ctx, row.GoalID); err == nil {
 			return fmt.Errorf("%w: another Handoff of this Goal is pending", ErrValidation)
@@ -259,6 +272,13 @@ func (s *Service) RestoreHandoff(ctx context.Context, handoffID, actorID int64) 
 		}
 		if goal.Goal.OwnerID != row.FromOwner {
 			return fmt.Errorf("%w: the Goal has changed hands since this Handoff was rejected", ErrValidation)
+		}
+		later, err := tx.queries.CountLaterHandoffs(ctx, db.CountLaterHandoffsParams{GoalID: row.GoalID, ID: handoffID})
+		if err != nil {
+			return fmt.Errorf("look up later handoffs: %w", err)
+		}
+		if later > 0 {
+			return fmt.Errorf("%w: the Goal has been handed off again since this Handoff was rejected", ErrValidation)
 		}
 		to, err := tx.queries.GetAccount(ctx, row.ToOwner)
 		if err != nil {

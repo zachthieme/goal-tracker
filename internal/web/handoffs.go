@@ -73,24 +73,26 @@ func (s *Server) handleRejectHandoff(w http.ResponseWriter, r *http.Request, cur
 	if !ok {
 		return
 	}
-	if err := s.svc.RejectHandoff(r.Context(), id, current.ID); err != nil {
+	token, err := s.svc.RejectHandoff(r.Context(), id, current.ID)
+	if err != nil {
 		writeHandoffError(w, err)
 		return
 	}
 	back := requestPage(r.FormValue("from"), "/handoffs")
-	offerUndo(w, back, undoHandoffRejection, id)
+	offerUndo(w, back, undoHandoffRejection, id, token)
 	http.Redirect(w, r, back, http.StatusSeeOther)
 }
 
 // handleRestoreHandoff puts the rejected Handoff in the path back as pending;
-// only the person who rejected it may, and only once. It returns to the page
+// only the person who rejected it may, with the toast's token, and only once.
+// It returns to the page
 // the Undo came from (from), or refuses with a message and changes nothing.
 func (s *Server) handleRestoreHandoff(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := handoffIDFromPath(w, r)
 	if !ok {
 		return
 	}
-	if _, err := s.svc.RestoreHandoff(r.Context(), id, current.ID); err != nil {
+	if _, err := s.svc.RestoreHandoff(r.Context(), id, current.ID, r.FormValue(undoField)); err != nil {
 		writeHandoffError(w, err)
 		return
 	}
@@ -113,7 +115,7 @@ func (s *Server) handoffRejectionToast(ctx context.Context, offer undoOffer, cur
 	return &toast{
 		Message: fmt.Sprintf("Handoff rejected: %s stays with %s.", ho.Goal.Title, ho.From.Label()),
 		Undo:    fmt.Sprintf("/handoffs/%d/restore", ho.ID),
-		Fields:  fromField(from),
+		Fields:  offer.fields(fromField(from)...),
 	}
 }
 

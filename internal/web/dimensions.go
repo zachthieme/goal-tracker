@@ -37,7 +37,8 @@ func valueRetireToast(offer undoOffer, current domain.Account, dims []domain.Dim
 			if v.ID == id && v.Retired {
 				return &toast{
 					Message: fmt.Sprintf("Retired %s from %s.", v.Value, d.Name),
-					Undo:    fmt.Sprintf("/dimension-values/%d/restore", v.ID),
+					Undo:    fmt.Sprintf("/dimension-values/%d/undo-retire", v.ID),
+					Fields:  offer.fields(),
 				}
 			}
 		}
@@ -153,11 +154,28 @@ func (s *Server) handleRetireDimensionValue(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	if err := s.svc.RetireDimensionValue(r.Context(), current.ID, id); err != nil {
+	token, err := s.svc.RetireDimensionValueWithUndo(r.Context(), current.ID, id)
+	if err != nil {
 		writeDimensionError(w, err)
 		return
 	}
-	offerUndo(w, "/dimensions", undoValueRetire, id)
+	offerUndo(w, "/dimensions", undoValueRetire, id, token)
+	s.redirectToDimensions(w, r)
+}
+
+// handleUndoRetireDimensionValue is the toast's Undo of retiring the value in
+// the path: only the Admin who retired it may, with the toast's token, once,
+// and only while the value is unchanged since. The Retired value's own Restore
+// button needs none of that (handleRestoreDimensionValue).
+func (s *Server) handleUndoRetireDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, ok := dimensionIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	if err := s.svc.UndoRetireDimensionValue(r.Context(), current.ID, id, r.FormValue(undoField)); err != nil {
+		writeDimensionError(w, err)
+		return
+	}
 	s.redirectToDimensions(w, r)
 }
 

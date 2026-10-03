@@ -208,7 +208,7 @@ func TestRejectedHandoffIsKeptInHistory(t *testing.T) {
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 
 	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
-	if err := h.Service.RejectHandoff(context.Background(), ho.ID, pat.ID); err != nil {
+	if _, err := h.Service.RejectHandoff(context.Background(), ho.ID, pat.ID); err != nil {
 		t.Fatalf("RejectHandoff: %v", err)
 	}
 
@@ -302,7 +302,7 @@ func TestReassignAppearsInOwnershipHistory(t *testing.T) {
 	mel := h.SignIn("mel@example.com")
 	goal := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 	ho := startHandoff(t, h, goal.ID, mel.ID, sam.ID)
-	if err := h.Service.RejectHandoff(context.Background(), ho.ID, mel.ID); err != nil {
+	if _, err := h.Service.RejectHandoff(context.Background(), ho.ID, mel.ID); err != nil {
 		t.Fatalf("RejectHandoff: %v", err)
 	}
 	if err := h.Service.MarkDeparted(context.Background(), boss.ID, sam.ID); err != nil {
@@ -473,7 +473,7 @@ func TestRejectHandoffLeavesDelegates(t *testing.T) {
 	h.AddDelegate(sam, ann, goal.ID)
 	ho := startHandoff(t, h, goal.ID, pat.ID, sam.ID)
 
-	if err := h.Service.RejectHandoff(context.Background(), ho.ID, pat.ID); err != nil {
+	if _, err := h.Service.RejectHandoff(context.Background(), ho.ID, pat.ID); err != nil {
 		t.Fatalf("RejectHandoff: %v", err)
 	}
 
@@ -651,17 +651,19 @@ func TestAcceptStaleHandoffIsRefused(t *testing.T) {
 	}
 }
 
-// rejectedHandoff is Sam's Goal with a Handoff to Pat that Pat rejected.
-func rejectedHandoff(t *testing.T, h *testsupport.Harness) (sam, pat domain.Account, goal domain.Goal, ho domain.Handoff) {
+// rejectedHandoff is Sam's Goal with a Handoff to Pat that Pat rejected, and
+// the token for Pat's Undo.
+func rejectedHandoff(t *testing.T, h *testsupport.Harness) (sam, pat domain.Account, goal domain.Goal, ho domain.Handoff, token string) {
 	t.Helper()
 	sam = h.SignIn("sam@example.com")
 	pat = h.SignIn("pat@example.com")
 	goal = h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
 	ho = startHandoff(t, h, goal.ID, pat.ID, sam.ID)
-	if err := h.Service.RejectHandoff(context.Background(), ho.ID, pat.ID); err != nil {
+	token, err := h.Service.RejectHandoff(context.Background(), ho.ID, pat.ID)
+	if err != nil {
 		t.Fatalf("RejectHandoff: %v", err)
 	}
-	return sam, pat, goal, ho
+	return sam, pat, goal, ho, token
 }
 
 // Undoing a rejection puts the Handoff back as pending with the same proposed
@@ -669,10 +671,10 @@ func rejectedHandoff(t *testing.T, h *testsupport.Harness) (sam, pat domain.Acco
 // followed by something else.
 func TestRestoreHandoffPutsTheRejectedHandoffBackAsPending(t *testing.T) {
 	h := testsupport.New(t)
-	sam, pat, goal, ho := rejectedHandoff(t, h)
+	sam, pat, goal, ho, token := rejectedHandoff(t, h)
 	ctx := context.Background()
 
-	restored, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID)
+	restored, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID, token)
 	if err != nil {
 		t.Fatalf("RestoreHandoff: %v", err)
 	}
@@ -695,10 +697,10 @@ func TestRestoreHandoffPutsTheRejectedHandoffBackAsPending(t *testing.T) {
 // may not.
 func TestRestoreHandoffRefusesAnyoneButTheRejecter(t *testing.T) {
 	h := testsupport.New(t)
-	sam, pat, _, ho := rejectedHandoff(t, h)
+	sam, pat, _, ho, token := rejectedHandoff(t, h)
 	ctx := context.Background()
 
-	if _, err := h.Service.RestoreHandoff(ctx, ho.ID, sam.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+	if _, err := h.Service.RestoreHandoff(ctx, ho.ID, sam.ID, token); !errors.Is(err, domain.ErrNotAuthorized) {
 		t.Errorf("RestoreHandoff by the Owner: err = %v, want ErrNotAuthorized", err)
 	}
 	if pending, _ := h.Service.PendingHandoffs(ctx, pat.ID); len(pending) != 0 {
@@ -709,13 +711,13 @@ func TestRestoreHandoffRefusesAnyoneButTheRejecter(t *testing.T) {
 // A rejection is undone once: a second Undo is refused and changes nothing.
 func TestRestoreHandoffRefusesASecondUndo(t *testing.T) {
 	h := testsupport.New(t)
-	_, pat, goal, ho := rejectedHandoff(t, h)
+	_, pat, goal, ho, token := rejectedHandoff(t, h)
 	ctx := context.Background()
 
-	if _, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID); err != nil {
+	if _, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID, token); err != nil {
 		t.Fatalf("first RestoreHandoff: %v", err)
 	}
-	if _, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID); !errors.Is(err, domain.ErrValidation) {
+	if _, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID, token); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("second RestoreHandoff: err = %v, want ErrValidation", err)
 	}
 	if history, _ := h.Service.OwnershipHistory(ctx, goal.ID); len(history) != 1 || history[0].Status != domain.HandoffPending {
@@ -738,13 +740,13 @@ func TestRestoreHandoffRefusesAHandoffThatWasNeverRejected(t *testing.T) {
 		t.Fatalf("AcceptHandoff: %v", err)
 	}
 
-	if _, err := h.Service.RestoreHandoff(ctx, stillPending.ID, pat.ID); !errors.Is(err, domain.ErrValidation) {
+	if _, err := h.Service.RestoreHandoff(ctx, stillPending.ID, pat.ID, ""); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("RestoreHandoff of a pending Handoff: err = %v, want ErrValidation", err)
 	}
-	if _, err := h.Service.RestoreHandoff(ctx, taken.ID, pat.ID); !errors.Is(err, domain.ErrValidation) {
+	if _, err := h.Service.RestoreHandoff(ctx, taken.ID, pat.ID, ""); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("RestoreHandoff of an accepted Handoff: err = %v, want ErrValidation", err)
 	}
-	if _, err := h.Service.RestoreHandoff(ctx, 4242, pat.ID); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := h.Service.RestoreHandoff(ctx, 4242, pat.ID, ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("RestoreHandoff of no Handoff: err = %v, want ErrNotFound", err)
 	}
 	if history, _ := h.Service.OwnershipHistory(ctx, accepted.ID); len(history) != 1 || history[0].Status != domain.HandoffAccepted {
@@ -781,13 +783,13 @@ func TestRestoreHandoffRefusesWhenItNoLongerFits(t *testing.T) {
 	for name, since := range cases {
 		t.Run(name, func(t *testing.T) {
 			h := testsupport.New(t, "boss@example.com")
-			sam, pat, goal, ho := rejectedHandoff(t, h)
+			sam, pat, goal, ho, token := rejectedHandoff(t, h)
 			ctx := context.Background()
 			since(t, h, sam, pat, goal)
 			before, _ := h.Service.OwnershipHistory(ctx, goal.ID)
 			owner, _ := h.Service.ViewGoal(ctx, goal.ID)
 
-			if _, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID); !errors.Is(err, domain.ErrValidation) {
+			if _, err := h.Service.RestoreHandoff(ctx, ho.ID, pat.ID, token); !errors.Is(err, domain.ErrValidation) {
 				t.Errorf("RestoreHandoff: err = %v, want ErrValidation", err)
 			}
 			after, _ := h.Service.OwnershipHistory(ctx, goal.ID)

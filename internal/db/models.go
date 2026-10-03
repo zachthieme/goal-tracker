@@ -297,3 +297,14 @@ type SoWhatRevision struct {
 	AuthorID  int64
 	CreatedAt string
 }
+
+type UndoToken struct {
+	ID        int64
+	Token     string
+	Kind      string
+	SubjectID int64
+	AccountID int64
+	Detail    string
+	IssuedAt  string
+	UsedAt    *string
+}

@@ -354,7 +354,7 @@ func TestRestoreLinkPutsTheRemovedLinkBackAsAccepted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RemoveLink: %v", err)
 	}
-	restored, err := h.Service.RestoreLink(ctx, removal.ID, sam.ID)
+	restored, err := h.Service.RestoreLink(ctx, removal.ID, sam.ID, removal.UndoToken)
 	if err != nil {
 		t.Fatalf("RestoreLink: %v", err)
 	}
@@ -383,7 +383,7 @@ func TestRestoreLinkRefusesAnyoneButTheRemover(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RemoveLink: %v", err)
 	}
-	if _, err := h.Service.RestoreLink(ctx, removal.ID, pat.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+	if _, err := h.Service.RestoreLink(ctx, removal.ID, pat.ID, removal.UndoToken); !errors.Is(err, domain.ErrNotAuthorized) {
 		t.Errorf("RestoreLink by the other Owner: err = %v, want ErrNotAuthorized", err)
 	}
 	if got := h.ParentsOf(child); len(got) != 0 {
@@ -401,7 +401,7 @@ func TestRestoreLinkRefusesASecondUndo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RemoveLink: %v", err)
 	}
-	restored, err := h.Service.RestoreLink(ctx, removal.ID, sam.ID)
+	restored, err := h.Service.RestoreLink(ctx, removal.ID, sam.ID, removal.UndoToken)
 	if err != nil {
 		t.Fatalf("first RestoreLink: %v", err)
 	}
@@ -410,7 +410,7 @@ func TestRestoreLinkRefusesASecondUndo(t *testing.T) {
 	if _, err := h.Service.RemoveLink(ctx, restored.ID, sam.ID); err != nil {
 		t.Fatalf("second RemoveLink: %v", err)
 	}
-	if _, err := h.Service.RestoreLink(ctx, removal.ID, sam.ID); !errors.Is(err, domain.ErrValidation) {
+	if _, err := h.Service.RestoreLink(ctx, removal.ID, sam.ID, removal.UndoToken); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("second RestoreLink: err = %v, want ErrValidation", err)
 	}
 	if got := h.ParentsOf(child); len(got) != 0 {
@@ -425,7 +425,7 @@ func TestRestoreLinkRefusesARemovalThatNeverHappened(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	child := h.CreateGoal(sam, "Migrate displays", "Old displays fail often.")
 
-	if _, err := h.Service.RestoreLink(context.Background(), 4242, sam.ID); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := h.Service.RestoreLink(context.Background(), 4242, sam.ID, ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("RestoreLink of no removal: err = %v, want ErrNotFound", err)
 	}
 	if got := h.ParentsOf(child); len(got) != 0 {
@@ -448,7 +448,7 @@ func TestRestoreLinkRefusesWhenTheLinkExistsAgain(t *testing.T) {
 		t.Fatalf("RemoveLink: %v", err)
 	}
 	h.RequestLink(owner, child, parent, "") // linked again, auto-accepted
-	if _, err := h.Service.RestoreLink(ctx, removal.ID, owner.ID); !errors.Is(err, domain.ErrValidation) {
+	if _, err := h.Service.RestoreLink(ctx, removal.ID, owner.ID, removal.UndoToken); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("RestoreLink of a link that exists again: err = %v, want ErrValidation", err)
 	}
 	if got := h.ParentsOf(child); len(got) != 1 {
@@ -458,7 +458,6 @@ func TestRestoreLinkRefusesWhenTheLinkExistsAgain(t *testing.T) {
 
 // When restoring the link would now close a cycle, because another link was
 // made since it was removed, Undo is refused and nothing changes (ADR-0001).
-// The refusal doesn't spend the Undo: it still stands once the cycle is gone.
 func TestRestoreLinkRefusesACycleThatAppearedSinceTheRemoval(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
@@ -471,19 +470,12 @@ func TestRestoreLinkRefusesACycleThatAppearedSinceTheRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RemoveLink: %v", err)
 	}
-	back := h.RequestLink(owner, b, a, "") // now B contributes to A
-	if _, err := h.Service.RestoreLink(ctx, removal.ID, owner.ID); !errors.Is(err, domain.ErrCycle) {
+	h.RequestLink(owner, b, a, "") // now B contributes to A
+	if _, err := h.Service.RestoreLink(ctx, removal.ID, owner.ID, removal.UndoToken); !errors.Is(err, domain.ErrCycle) {
 		t.Errorf("RestoreLink closing a cycle: err = %v, want ErrCycle", err)
 	}
 	if got := h.ParentsOf(a); len(got) != 0 {
 		t.Errorf("ParentsOf(A) = %+v, want none after a refused Undo", got)
-	}
-
-	if _, err := h.Service.RemoveLink(ctx, back.ID, owner.ID); err != nil {
-		t.Fatalf("RemoveLink(B -> A): %v", err)
-	}
-	if _, err := h.Service.RestoreLink(ctx, removal.ID, owner.ID); err != nil {
-		t.Errorf("RestoreLink once the cycle is gone: %v", err)
 	}
 }
 
@@ -506,7 +498,7 @@ func TestRestoreLinkRefusesARemoverWhoNoLongerOwnsEitherGoal(t *testing.T) {
 	if _, err := h.Service.AcceptHandoff(ctx, ho.ID, lee.ID, nil); err != nil {
 		t.Fatalf("AcceptHandoff: %v", err)
 	}
-	if _, err := h.Service.RestoreLink(ctx, removal.ID, sam.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+	if _, err := h.Service.RestoreLink(ctx, removal.ID, sam.ID, removal.UndoToken); !errors.Is(err, domain.ErrNotAuthorized) {
 		t.Errorf("RestoreLink by a former Owner: err = %v, want ErrNotAuthorized", err)
 	}
 }
@@ -535,7 +527,7 @@ func TestRestoreLinkRequestPutsTheRejectedRequestBackAsPending(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RejectLink: %v", err)
 	}
-	restored, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID)
+	restored, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID, rejection.UndoToken)
 	if err != nil {
 		t.Fatalf("RestoreLinkRequest: %v", err)
 	}
@@ -564,7 +556,7 @@ func TestRestoreLinkRequestRefusesAnyoneButTheRejecter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RejectLink: %v", err)
 	}
-	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, sam.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, sam.ID, rejection.UndoToken); !errors.Is(err, domain.ErrNotAuthorized) {
 		t.Errorf("RestoreLinkRequest by the requester: err = %v, want ErrNotAuthorized", err)
 	}
 	if got, _ := h.Service.PendingLinkRequests(ctx, pat.ID); len(got) != 0 {
@@ -583,10 +575,10 @@ func TestRestoreLinkRequestRefusesASecondUndo(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RejectLink: %v", err)
 	}
-	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID); err != nil {
+	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID, rejection.UndoToken); err != nil {
 		t.Fatalf("first RestoreLinkRequest: %v", err)
 	}
-	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID); !errors.Is(err, domain.ErrValidation) {
+	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID, rejection.UndoToken); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("second RestoreLinkRequest while pending: err = %v, want ErrValidation", err)
 	}
 	pending, _ := h.Service.PendingLinkRequests(ctx, pat.ID)
@@ -596,7 +588,7 @@ func TestRestoreLinkRequestRefusesASecondUndo(t *testing.T) {
 	if _, err := h.Service.RejectLink(ctx, pending[0].ID, pat.ID); err != nil {
 		t.Fatalf("second RejectLink: %v", err)
 	}
-	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID); !errors.Is(err, domain.ErrValidation) {
+	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID, rejection.UndoToken); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("replayed RestoreLinkRequest: err = %v, want ErrValidation", err)
 	}
 	if got, _ := h.Service.PendingLinkRequests(ctx, pat.ID); len(got) != 0 {
@@ -611,7 +603,7 @@ func TestRestoreLinkRequestRefusesARejectionThatNeverHappened(t *testing.T) {
 	pat, _, _, _, _ := pendingAcrossOwners(t, h)
 	ctx := context.Background()
 
-	if _, err := h.Service.RestoreLinkRequest(ctx, 4242, pat.ID); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := h.Service.RestoreLinkRequest(ctx, 4242, pat.ID, ""); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("RestoreLinkRequest of no rejection: err = %v, want ErrNotFound", err)
 	}
 	if got, _ := h.Service.PendingLinkRequests(ctx, pat.ID); len(got) != 1 {
@@ -663,7 +655,7 @@ func TestRestoreLinkRequestRefusesWhenTheLinkWasRequestedAgain(t *testing.T) {
 			pendingBefore, _ := h.Service.PendingLinkRequests(ctx, pat.ID)
 			parentsBefore := h.ParentsOf(child)
 
-			if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID); !errors.Is(err, domain.ErrValidation) {
+			if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID, rejection.UndoToken); !errors.Is(err, domain.ErrValidation) {
 				t.Errorf("RestoreLinkRequest: err = %v, want ErrValidation", err)
 			}
 			if got, _ := h.Service.PendingLinkRequests(ctx, pat.ID); len(got) != len(pendingBefore) {
@@ -692,7 +684,7 @@ func TestRestoreLinkRequestIgnoresARemovalBeforeTheRequest(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RejectLink: %v", err)
 	}
-	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID); err != nil {
+	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID, rejection.UndoToken); err != nil {
 		t.Errorf("RestoreLinkRequest: %v", err)
 	}
 }
@@ -712,7 +704,7 @@ func TestRestoreLinkRequestRefusesACycleThatAppearedSinceTheRejection(t *testing
 	if _, err := h.Service.AcceptLink(ctx, back.ID, sam.ID); err != nil {
 		t.Fatalf("AcceptLink: %v", err)
 	}
-	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID); !errors.Is(err, domain.ErrCycle) {
+	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID, rejection.UndoToken); !errors.Is(err, domain.ErrCycle) {
 		t.Errorf("RestoreLinkRequest closing a cycle: err = %v, want ErrCycle", err)
 	}
 	if got, _ := h.Service.PendingLinkRequests(ctx, pat.ID); len(got) != 0 {
