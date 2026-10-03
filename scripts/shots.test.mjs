@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { normalise, statusProblem, wrapAction } from "./shots.mjs";
+import { formatReport, normalise, statusProblem, wrapAction } from "./shots.mjs";
 
 test("a shot's status must be an integer", () => {
   assert.throws(() => normalise({ path: "/goals", status: "404" }, 0), /shot 1: status must be an integer/);
@@ -37,4 +37,39 @@ test("an action that uses return or await runs in an async function", () => {
   const action = "await fetch('/x');\nreturn document.title";
   assert.equal(wrapAction(action), `(async () => {\n${action}\n})()`);
   assert.equal(wrapAction("return 1"), "(async () => {\nreturn 1\n})()");
+});
+
+const facts = {
+  url: "/dimensions",
+  title: "Dimensions · Goal Tracker",
+  pin: null,
+  osDark: false,
+  background: "rgb(246, 246, 243)",
+  scrollsBy: 0,
+  past: [],
+  width: 1280,
+  focus: null,
+  toast: "Retired Platform from Team. Undo",
+  dialogs: [],
+  status: 200,
+};
+
+test("the facts are reported as the README shows them", () => {
+  const shot = normalise({ path: "/dimensions", as: "admin@example.com", full: false, action: "x()" }, 1);
+  const file = "/tmp/goal-tracker-shots/02-dimensions-light-1280.png";
+  assert.equal(formatReport(shot, { file, facts, native: [] }), `/tmp/goal-tracker-shots/02-dimensions-light-1280.png
+  shot:     /dimensions as admin@example.com, OS light, 1280px, after the action
+  page:     /dimensions (HTTP 200) "Dimensions · Goal Tracker"
+  theme:    not pinned, follows the OS (light); body background rgb(246, 246, 243)
+  overflow: none
+  focus:    nothing (body)
+  toast:    "Retired Platform from Team. Undo"
+  dialog:   none
+`);
+});
+
+test("an empty title is reported as (none)", () => {
+  const shot = normalise({ path: "/plain" }, 0);
+  const report = formatReport(shot, { file: "x.png", facts: { ...facts, url: "/plain", title: "", status: null }, native: [] });
+  assert.match(report, /^  page:     \/plain \(HTTP \?\) \(none\)$/m);
 });

@@ -373,22 +373,23 @@ async function shoot(cdp, base, out, shot) {
   }
 }
 
-function report(shot, { file, facts: f, native }) {
+// formatReport is what's printed for a shot that was taken.
+export function formatReport(shot, { file, facts: f, native }) {
   const who = shot.as ? `as ${shot.as}` : "signed out";
   const pin = f.pin ? `pinned ${f.pin}` : `not pinned, follows the OS (${f.osDark ? "dark" : "light"})`;
   const overflow = [];
   if (f.scrollsBy > 0) overflow.push(`the page scrolls sideways by ${f.scrollsBy}px`);
   if (f.past.length) overflow.push(`past the ${f.width}px window: ${f.past.slice(0, 5).join(", ")}${f.past.length > 5 ? ` and ${f.past.length - 5} more` : ""}`);
   const dialogs = [...native, ...f.dialogs];
-  console.log(`${file}
+  return `${file}
   shot:     ${shot.path} ${who}, OS ${shot.theme}, ${shot.width}px${shot.action ? ", after the action" : ""}
-  page:     ${f.url} (HTTP ${f.status ?? "?"}) "${f.title}"
+  page:     ${f.url} (HTTP ${f.status ?? "?"}) ${f.title ? `"${f.title}"` : "(none)"}
   theme:    ${pin}; body background ${f.background}
   overflow: ${overflow.length ? overflow.join("; ") : "none"}
   focus:    ${f.focus ?? "nothing (body)"}
   toast:    ${f.toast ? `"${f.toast}"` : "none"}
   dialog:   ${dialogs.length ? dialogs.join("; ") : "none"}
-`);
+`;
 }
 
 async function main() {
@@ -401,7 +402,7 @@ async function main() {
     for (const shot of shots) {
       try {
         const result = await shoot(cdp, base, out, shot);
-        report(shot, result);
+        console.log(formatReport(shot, result));
         const problem = statusProblem(shot, result.facts.status);
         if (problem) {
           failed++;
