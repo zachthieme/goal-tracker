@@ -19,6 +19,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A Check-in's entry on a Goal's History now lists the Milestones it added, marked Done or removed, beside its Date Slips: "Added Milestone GA (2026-11-09)", "Marked Beta Done", "Removed Rollout to 50%: descoped". Check-ins made before this release, and Milestones added outside a Check-in, show nothing new; the Milestones block, Milestone Churn and the History chips are unchanged (#107).
 
 **Improvements:**
+- [internal] A `/verify-pending` skill and an `issue-verifier` subagent run the check on merged `pending-verify` issues: gates, parallel verifiers, browser checks with `scripts/`, then close the resolved ones and file follow-ups. An issue closes only when its acceptance criteria are met and its behaviour bullets hold on current `main` (#112).
 - [user] The Goal list's group headers sit on the neutral grey surface instead of a pale teal fill, since teal is kept for what a person can act on (#110).
 - [user] Marking a Retired Dimension or Field required, or not required, is refused, even when it would change nothing: required means nothing on something no longer offered, and its card already hides the control (#110).
 
