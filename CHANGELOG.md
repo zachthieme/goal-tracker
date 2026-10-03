@@ -15,6 +15,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 ### Collected changes — October 3, 2026
 
+**New features:**
+- [user] A Check-in's entry on a Goal's History now lists the Milestones it added, marked Done or removed, beside its Date Slips: "Added Milestone GA (2026-11-09)", "Marked Beta Done", "Removed Rollout to 50%: descoped". Check-ins made before this release, and Milestones added outside a Check-in, show nothing new; the Milestones block, Milestone Churn and the History chips are unchanged (#107).
+
 **Improvements:**
 - [user] The Goal list's group headers sit on the neutral grey surface instead of a pale teal fill, since teal is kept for what a person can act on (#110).
 - [user] Marking a Retired Dimension or Field required, or not required, is refused, even when it would change nothing: required means nothing on something no longer offered, and its card already hides the control (#110).
@@ -26,6 +29,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Infrastructure:**
 - [api] Database schema: migration `0033_undo_tokens` adds an `undo_tokens` table holding each Undo's one-time token, the action and person it belongs to, when it was issued and when it was used. It's additive and runs on startup (#106).
+- [api] Database schema: migration `0034_milestone_changes` adds a `milestone_changes` table recording each Milestone a Check-in added, marked Done or marked Removed: the Check-in, the Milestone, the kind of change and a removal's reason. It's additive and runs on startup (#107).
 
 **Testing:**
 - [internal] Test that Home's Health distribution bar leaves out Proposed, Done and Cancelled Goals (#110).
