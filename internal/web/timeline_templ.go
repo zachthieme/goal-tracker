@@ -649,8 +649,9 @@ func historyMarker(e historyEntry) templ.Component {
 // Lifecycle change, Path to Green and Date Slips it recorded, and who wrote it
 // for whom. Its Metric readings and the explanation of a Health that differs
 // from the Rolled-up Health sit behind a disclosure. Its Milestone changes are
-// the Milestone Date Slips it recorded: marking a Milestone Done or Removed, or
-// adding one, isn't linked to the Check-in that did it, so it isn't shown here.
+// the Milestone Date Slips it recorded and, beside them, the Milestones it
+// added, marked Done or marked Removed. A Check-in from before those were
+// recorded shows only its Date Slips.
 func historyCheckin(h history, e historyEntry) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -703,7 +704,7 @@ func historyCheckin(h history, e historyEntry) templ.Component {
 			var templ_7745c5c3_Var37 string
 			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(c.Health)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 131, Col: 85}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 132, Col: 85}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 			if templ_7745c5c3_Err != nil {
@@ -716,7 +717,7 @@ func historyCheckin(h history, e historyEntry) templ.Component {
 			var templ_7745c5c3_Var38 string
 			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(" ")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 132, Col: 8}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 133, Col: 8}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 			if templ_7745c5c3_Err != nil {
@@ -734,7 +735,7 @@ func historyCheckin(h history, e historyEntry) templ.Component {
 		var templ_7745c5c3_Var39 string
 		templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(c.Status)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 134, Col: 18}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 135, Col: 18}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 		if templ_7745c5c3_Err != nil {
@@ -752,7 +753,7 @@ func historyCheckin(h history, e historyEntry) templ.Component {
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("Lifecycle: %s → %s", c.LifecycleChange.From, c.LifecycleChange.To))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 139, Col: 87}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 140, Col: 87}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 			if templ_7745c5c3_Err != nil {
@@ -766,7 +767,7 @@ func historyCheckin(h history, e historyEntry) templ.Component {
 				var templ_7745c5c3_Var41 string
 				templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(": " + c.LifecycleChange.Reason)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 141, Col: 38}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 142, Col: 38}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 				if templ_7745c5c3_Err != nil {
@@ -781,7 +782,7 @@ func historyCheckin(h history, e historyEntry) templ.Component {
 				var templ_7745c5c3_Var42 string
 				templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(" — Outcome: " + c.LifecycleChange.Outcome)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 144, Col: 51}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 145, Col: 51}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 				if templ_7745c5c3_Err != nil {
@@ -801,7 +802,7 @@ func historyCheckin(h history, e historyEntry) templ.Component {
 			var templ_7745c5c3_Var43 string
 			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(c.PathToGreen)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 150, Col: 35}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 151, Col: 35}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 			if templ_7745c5c3_Err != nil {
@@ -814,7 +815,7 @@ func historyCheckin(h history, e historyEntry) templ.Component {
 			var templ_7745c5c3_Var44 string
 			templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(fmtDate(c.PathTargetDate))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 150, Col: 69}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 151, Col: 69}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 			if templ_7745c5c3_Err != nil {
@@ -838,7 +839,7 @@ func historyCheckin(h history, e historyEntry) templ.Component {
 				var templ_7745c5c3_Var45 string
 				templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(h.slipWhat(s))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 156, Col: 28}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 157, Col: 28}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 				if templ_7745c5c3_Err != nil {
@@ -851,7 +852,7 @@ func historyCheckin(h history, e historyEntry) templ.Component {
 				var templ_7745c5c3_Var46 string
 				templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(fmtDate(s.OldDate))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 156, Col: 66}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 157, Col: 66}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 				if templ_7745c5c3_Err != nil {
@@ -864,7 +865,7 @@ func historyCheckin(h history, e historyEntry) templ.Component {
 				var templ_7745c5c3_Var47 string
 				templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(fmtDate(s.NewDate))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 156, Col: 95}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 157, Col: 95}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 				if templ_7745c5c3_Err != nil {
@@ -877,7 +878,7 @@ func historyCheckin(h history, e historyEntry) templ.Component {
 				var templ_7745c5c3_Var48 string
 				templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(s.Reason)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 156, Col: 118}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 157, Col: 118}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 				if templ_7745c5c3_Err != nil {
@@ -893,16 +894,45 @@ func historyCheckin(h history, e historyEntry) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "<p class=\"muted small\">")
+		if len(c.MilestoneChanges) > 0 {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "<ul data-testid=\"entry-milestone-changes\" class=\"tl-slips\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			for _, m := range c.MilestoneChanges {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "<li data-testid=\"milestone-change\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var49 string
+				templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(milestoneChangeText(m))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 165, Col: 63}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "</li>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "</ul>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "<p class=\"muted small\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var49 string
-		templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs("by ")
+		var templ_7745c5c3_Var50 string
+		templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs("by ")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 162, Col: 9}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 170, Col: 9}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -911,12 +941,12 @@ func historyCheckin(h history, e historyEntry) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if c.Owner.ID != c.Author.ID {
-			var templ_7745c5c3_Var50 string
-			templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs(" for ")
+			var templ_7745c5c3_Var51 string
+			templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(" for ")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 165, Col: 12}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 173, Col: 12}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -925,77 +955,77 @@ func historyCheckin(h history, e historyEntry) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "</p>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "</p>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if len(e.Readings) > 0 || c.Explanation != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, "<details data-testid=\"checkin-detail\" class=\"tl-detail\"><summary class=\"small\">Readings and explanation</summary> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<details data-testid=\"checkin-detail\" class=\"tl-detail\"><summary class=\"small\">Readings and explanation</summary> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if len(e.Readings) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "<ul class=\"tl-readings\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "<ul class=\"tl-readings\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				for _, r := range e.Readings {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "<li><span class=\"muted\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var51 string
-					templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(r.Metric + ": ")
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 175, Col: 47}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "</span><span class=\"num\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "<li><span class=\"muted\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var52 string
-					templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(r.Value)
+					templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(r.Metric + ": ")
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 175, Col: 83}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 183, Col: 47}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "</span></li>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "</span><span class=\"num\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var53 string
+					templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(r.Value)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 183, Col: 83}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "</span></li>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "</ul>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "</ul>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			if c.Explanation != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 79, "<p><span class=\"muted\">Why it differs from the Rolled-up Health: </span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "<p><span class=\"muted\">Why it differs from the Rolled-up Health: </span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var53 string
-				templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(c.Explanation)
+				var templ_7745c5c3_Var54 string
+				templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(c.Explanation)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 180, Col: 91}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/timeline.templ`, Line: 188, Col: 91}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 81, "</details>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "</details>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1022,12 +1052,12 @@ func timelineStyles() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var54 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var54 == nil {
-			templ_7745c5c3_Var54 = templ.NopComponent
+		templ_7745c5c3_Var55 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var55 == nil {
+			templ_7745c5c3_Var55 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "<style>\n\t\t.tl-chips{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.tl-chip{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:0 12px;border:1px solid var(--color-border);border-radius:var(--radius-full);background:var(--color-surface);color:var(--color-ink-2);font-size:13px;font-weight:500}\n\t\t.tl-chip:hover{text-decoration:none;background:var(--color-primary-subtle)}\n\t\t.tl-chip[aria-current]{background:var(--color-primary-light);border-color:var(--color-primary);color:var(--color-ink);font-weight:600}\n\t\t.tl-count{font-variant-numeric:tabular-nums;color:var(--color-ink-muted)}\n\t\t.tl-chip[aria-current] .tl-count{color:var(--color-ink)}\n\t\t@media (pointer:coarse){.tl-chip{min-height:44px}}\n\t\t.tl-week{display:flex;flex-direction:column;gap:8px}\n\t\t.tl-week>h3{margin:0}\n\t\t.tl-list{list-style:none;margin:0;padding:0 0 0 24px;border-left:1px solid var(--color-border);margin-left:4px;display:flex;flex-direction:column;gap:16px}\n\t\t.tl-entry{position:relative;display:flex;flex-direction:column;gap:4px}\n\t\t.tl-entry>p{margin:0}\n\t\t.tl-head{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}\n\t\t.tl-kind{font-weight:600;color:var(--color-ink)}\n\t\t.tl-mark{position:absolute;left:-31px;top:4px;width:12px;height:12px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;background:var(--color-canvas)}\n\t\t.tl-mark .dot{width:10px;height:10px}\n\t\t.tl-mark.y .dot{width:12px;height:11px}\n\t\t.tl-mark.g,.tl-mark.y,.tl-mark.r{background:var(--color-canvas)}\n\t\t.tl-checkin{border:2px solid var(--color-ink-muted);border-radius:2px}\n\t\t.tl-so-what{border:2px solid var(--color-ink-muted);border-radius:50%}\n\t\t.tl-ownership{width:10px;height:10px;border:2px solid var(--color-ink-muted);transform:rotate(45deg)}\n\t\t.tl-value{height:4px;top:8px;background:var(--color-ink-muted);border-radius:2px}\n\t\t.tl-slips{margin:0;padding-left:20px}\n\t\t.tl-detail summary{cursor:pointer;color:var(--color-primary-strong)}\n\t\t.tl-readings{list-style:none;margin:4px 0;padding:0}\n\t\t.tl-detail>p{margin:4px 0 0}\n\t\t.hs{margin:0;display:flex;flex-direction:column;gap:8px}\n\t\t.hs-cells{list-style:none;margin:0;padding:0;display:flex;gap:4px;max-width:480px}\n\t\t.hs-cell{flex:1;min-width:0;height:24px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-sm)}\n\t\t.hs-cell.no-checkin{border:1px dashed var(--stale-edge)}\n\t\t.hs-cell.not-yet-due{border:1px solid var(--color-border-strong)}\n\t\t.hs-cell.blank{background:none}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "<style>\n\t\t.tl-chips{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.tl-chip{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:0 12px;border:1px solid var(--color-border);border-radius:var(--radius-full);background:var(--color-surface);color:var(--color-ink-2);font-size:13px;font-weight:500}\n\t\t.tl-chip:hover{text-decoration:none;background:var(--color-primary-subtle)}\n\t\t.tl-chip[aria-current]{background:var(--color-primary-light);border-color:var(--color-primary);color:var(--color-ink);font-weight:600}\n\t\t.tl-count{font-variant-numeric:tabular-nums;color:var(--color-ink-muted)}\n\t\t.tl-chip[aria-current] .tl-count{color:var(--color-ink)}\n\t\t@media (pointer:coarse){.tl-chip{min-height:44px}}\n\t\t.tl-week{display:flex;flex-direction:column;gap:8px}\n\t\t.tl-week>h3{margin:0}\n\t\t.tl-list{list-style:none;margin:0;padding:0 0 0 24px;border-left:1px solid var(--color-border);margin-left:4px;display:flex;flex-direction:column;gap:16px}\n\t\t.tl-entry{position:relative;display:flex;flex-direction:column;gap:4px}\n\t\t.tl-entry>p{margin:0}\n\t\t.tl-head{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}\n\t\t.tl-kind{font-weight:600;color:var(--color-ink)}\n\t\t.tl-mark{position:absolute;left:-31px;top:4px;width:12px;height:12px;display:flex;align-items:center;justify-content:center;box-sizing:border-box;background:var(--color-canvas)}\n\t\t.tl-mark .dot{width:10px;height:10px}\n\t\t.tl-mark.y .dot{width:12px;height:11px}\n\t\t.tl-mark.g,.tl-mark.y,.tl-mark.r{background:var(--color-canvas)}\n\t\t.tl-checkin{border:2px solid var(--color-ink-muted);border-radius:2px}\n\t\t.tl-so-what{border:2px solid var(--color-ink-muted);border-radius:50%}\n\t\t.tl-ownership{width:10px;height:10px;border:2px solid var(--color-ink-muted);transform:rotate(45deg)}\n\t\t.tl-value{height:4px;top:8px;background:var(--color-ink-muted);border-radius:2px}\n\t\t.tl-slips{margin:0;padding-left:20px}\n\t\t.tl-detail summary{cursor:pointer;color:var(--color-primary-strong)}\n\t\t.tl-readings{list-style:none;margin:4px 0;padding:0}\n\t\t.tl-detail>p{margin:4px 0 0}\n\t\t.hs{margin:0;display:flex;flex-direction:column;gap:8px}\n\t\t.hs-cells{list-style:none;margin:0;padding:0;display:flex;gap:4px;max-width:480px}\n\t\t.hs-cell{flex:1;min-width:0;height:24px;box-sizing:border-box;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-sm)}\n\t\t.hs-cell.no-checkin{border:1px dashed var(--stale-edge)}\n\t\t.hs-cell.not-yet-due{border:1px solid var(--color-border-strong)}\n\t\t.hs-cell.blank{background:none}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
