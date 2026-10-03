@@ -16,9 +16,10 @@
 //   action  JavaScript run in the page once it has loaded. A script, e.g.
 //           "document.querySelector('form.x').requestSubmit()", runs as it
 //           is and may end on a promise. One that uses return at its top
-//           level or await in any form, e.g. "if (!x) return; await x.done"
-//           or "await (x.done)", runs as the body of an async function. The
-//           shot is taken once the page settles.
+//           level or await in its code, e.g. "if (!x) return; await x.done"
+//           or "await (x.done)", runs as the body of an async function;
+//           await in a string or comment doesn't count. The shot is taken
+//           once the page settles.
 //   dialog  "dismiss" (default) or "accept" a native alert/confirm
 //   status  the HTTP status the page's final document should have, e.g. 404
 //   name    the PNG's name, with or without .png (default from the index,
@@ -82,19 +83,29 @@ export function normalise(shot, i) {
   if (s.status !== undefined && !Number.isInteger(s.status)) bad("status must be an integer");
   const slug = s.path.replace(/[^\w]+/g, "-").replace(/^-|-$/g, "") || "root";
   s.name ??= `${String(i + 1).padStart(2, "0")}-${slug}-${s.theme}-${s.width}`;
-  s.file = `${String(s.name).replace(/\.png$/, "")}.png`;
+  s.file = `${String(s.name).replace(/\.png$/i, "")}.png`;
   return s;
 }
 
 // wrapAction is the script that runs a shot's action: the action as the body
 // of an async function, so it can use return and await, if it doesn't compile
-// as a script or if it says await and compiles as that body (as a script,
-// await (x) is a call to a function named await); else the action itself, so
-// it keeps its completion value.
+// as a script (it uses return at its top level) or if it uses await in its
+// code and compiles as that body (as a script, await (x) is a call to a
+// function named await); else the action itself, so it keeps its completion
+// value. await in a string or comment doesn't count.
 export function wrapAction(action) {
   const wrapped = `(async () => {\n${action}\n})()`;
-  if (/(?<![\w$])await(?![\w$])/.test(action) && compiles(wrapped)) return wrapped;
-  return compiles(action) ? action : wrapped;
+  if (!compiles(action)) return wrapped;
+  return usesAwait(action) && compiles(wrapped) ? wrapped : action;
+}
+
+// usesAwait is whether an action that compiles as a script uses await in its
+// code. A class static block rejects await there, as an identifier, a call or
+// an operator, but not in a string, comment, regex or property name. A class
+// body is strict, so it's compared with the action as a strict script, lest
+// sloppy-only code such as with (…) count.
+function usesAwait(action) {
+  return compiles(`"use strict";\n${action}`) && !compiles(`(class { static {\n${action}\n} })`);
 }
 
 function compiles(script) {
