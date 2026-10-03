@@ -64,12 +64,12 @@ A shot has a `path` and can also set:
 - `action`: JavaScript to run in the page first. See below.
 - `dialog`: `accept` or `dismiss` a native dialog. The default is `dismiss`.
 - `status`: the HTTP status the page should end on, such as `404`.
-- `name`: the PNG's file name.
+- `name`: the PNG's file name, with or without `.png`.
 
 An `action` is usually a script, such as `a(); b()` or the `requestSubmit()`
 above, and the shot waits for any promise it ends on. An action that uses
-`return` or `await` at its top level runs as the body of an async function
-instead:
+`return` at its top level, or `await` in any form, including `await (x)`,
+runs as the body of an async function instead:
 
 ```sh
 node scripts/shots.mjs "$(scripts/scratch-app url)" '[
