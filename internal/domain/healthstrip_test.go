@@ -182,6 +182,129 @@ func TestHealthStripLeavesOnHoldAndDonePeriodsBlank(t *testing.T) {
 	}
 }
 
+// How a period ended decides its cell: a Green Check-in followed in the same
+// week by one that puts the Goal On Hold, or marks it Done, leaves the week
+// blank, as any week spent in that state is.
+func TestHealthStripPeriodEndingOutOfActiveIsBlank(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		in   domain.SubmitCheckinInput
+	}{
+		{domain.LifecycleOnHold, domain.SubmitCheckinInput{Status: "Pausing.", Lifecycle: domain.LifecycleOnHold, LifecycleReason: "Waiting on legal."}},
+		{domain.LifecycleDone, domain.SubmitCheckinInput{Status: "Shipped.", Lifecycle: domain.LifecycleDone, Outcome: "Search is live."}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t)
+			sam := h.SignIn("sam@example.com")
+			g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+			h.Clock.Advance(7 * day)
+			h.Checkin(sam, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+			h.Clock.Advance(time.Hour)
+			in := tc.in
+			in.GoalID, in.AuthorID = g.ID, sam.ID
+			if _, err := h.Service.SubmitCheckin(context.Background(), in); err != nil {
+				t.Fatalf("SubmitCheckin: %v", err)
+			}
+			h.Clock.Advance(7 * day)
+
+			strip := healthStrip(t, h, g.ID)
+			want := domain.HealthPeriod{First: date(2026, time.January, 5), Last: date(2026, time.January, 11), Lifecycle: tc.name}
+			if p := strip.Periods[9]; p != want {
+				t.Errorf("last week = %+v, want %+v: blank, the Goal %s", p, want, tc.name)
+			}
+		})
+	}
+}
+
+// Only a finished period can go without a Check-in. A weekly Goal checked in
+// last Friday hasn't missed this week by Monday: the week is not yet due.
+func TestHealthStripCurrentWeekWithNoCheckinIsNotYetDue(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	// Friday 2 Jan 2026.
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(3 * day)
+
+	strip := healthStrip(t, h, g.ID)
+	if p := strip.Periods[9]; p.Health != domain.HealthGreen || p.NoCheckin || p.NotYetDue {
+		t.Errorf("last week = %+v, want Green", p)
+	}
+	want := domain.HealthPeriod{First: date(2026, time.January, 5), Last: date(2026, time.January, 11), NotYetDue: true, Lifecycle: domain.LifecycleActive}
+	if p := strip.Periods[10]; p != want {
+		t.Errorf("this week = %+v, want %+v: not yet due", p, want)
+	}
+}
+
+// With a cadence shorter than a week, several periods end today or later: on
+// Monday 5 Jan a 3-day Goal's periods of 3–5, 6–8 and 9–11 Jan are all not yet
+// due. The period of 31 Dec – 2 Jan it was activated in has ended with no
+// Check-in, so it was missed.
+func TestHealthStripPeriodsEndingTodayOrLaterAreNotYetDue(t *testing.T) {
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	// Friday 2 Jan 2026.
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	if _, err := h.Service.SetCadence(context.Background(), g.ID, 3); err != nil {
+		t.Fatalf("SetCadence: %v", err)
+	}
+	h.Clock.Advance(3 * day)
+
+	strip := healthStrip(t, h, g.ID)
+	for i, first := range []time.Time{date(2026, time.January, 3), date(2026, time.January, 6), date(2026, time.January, 9)} {
+		want := domain.HealthPeriod{First: first, Last: first.AddDate(0, 0, 2), NotYetDue: true, Lifecycle: domain.LifecycleActive}
+		if p := strip.Periods[8+i]; p != want {
+			t.Errorf("period %d = %+v, want %+v: not yet due", 8+i, p, want)
+		}
+	}
+	want := domain.HealthPeriod{First: date(2025, time.December, 31), Last: date(2026, time.January, 2), NoCheckin: true, Lifecycle: domain.LifecycleActive}
+	if p := strip.Periods[7]; p != want {
+		t.Errorf("activation period = %+v, want %+v: no Check-in", p, want)
+	}
+}
+
+// The period in progress shows the Health of a Check-in made in it, and is
+// blank, not "not yet due", once the Goal is On Hold or Done: nobody owes a
+// Check-in on paused or finished work.
+func TestHealthStripCurrentPeriodFollowsItsCheckins(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		in        domain.SubmitCheckinInput
+		health    string
+		lifecycle string
+	}{
+		{"Green", domain.SubmitCheckinInput{Health: domain.HealthGreen, Status: "On track."}, domain.HealthGreen, domain.LifecycleActive},
+		{domain.LifecycleOnHold, domain.SubmitCheckinInput{Status: "Pausing.", Lifecycle: domain.LifecycleOnHold, LifecycleReason: "Waiting on legal."}, "", domain.LifecycleOnHold},
+		{domain.LifecycleDone, domain.SubmitCheckinInput{Status: "Shipped.", Lifecycle: domain.LifecycleDone, Outcome: "Search is live."}, "", domain.LifecycleDone},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t)
+			sam := h.SignIn("sam@example.com")
+			g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+			in := tc.in
+			in.GoalID, in.AuthorID = g.ID, sam.ID
+			if _, err := h.Service.SubmitCheckin(context.Background(), in); err != nil {
+				t.Fatalf("SubmitCheckin: %v", err)
+			}
+			// The next Monday: a week in progress with no Check-in yet.
+			h.Clock.Advance(3 * day)
+
+			strip := healthStrip(t, h, g.ID)
+			want := domain.HealthPeriod{First: date(2026, time.January, 5), Last: date(2026, time.January, 11), Lifecycle: tc.lifecycle}
+			want.NotYetDue = tc.lifecycle == domain.LifecycleActive
+			if p := strip.Periods[10]; p != want {
+				t.Errorf("this week = %+v, want %+v", p, want)
+			}
+			// Back in the week of the Check-in, it is the week in progress.
+			h.Clock.Advance(-3 * day)
+			want = domain.HealthPeriod{First: date(2025, time.December, 29), Last: date(2026, time.January, 4), Health: tc.health, Lifecycle: tc.lifecycle}
+			if p := healthStrip(t, h, g.ID).Periods[10]; p != want {
+				t.Errorf("the Check-in's week, in progress = %+v, want %+v", p, want)
+			}
+		})
+	}
+}
+
 // A Goal on a 14-day cadence has 14-day periods, the current one ending on the
 // Sunday that closes this week.
 func TestHealthStripPeriodsAreTheGoalsCadenceLong(t *testing.T) {
@@ -221,7 +344,9 @@ func TestHealthStripPeriodsAreTheGoalsCadenceLong(t *testing.T) {
 
 // Periods are counted in days of the org's timezone. A Check-in at 22:00 on
 // Sunday 11 January in Los Angeles (Monday in UTC) falls in the week of 5
-// January there, leaving the week of 12 January with no Check-in.
+// January there, leaving the week of 12 January with none yet. That week is
+// still in progress on Tuesday 13 January, so it is not yet due rather than
+// missed.
 func TestHealthStripPeriodsAreInTheOrgsTimezone(t *testing.T) {
 	la, err := time.LoadLocation("America/Los_Angeles")
 	if err != nil {
@@ -242,8 +367,8 @@ func TestHealthStripPeriodsAreInTheOrgsTimezone(t *testing.T) {
 	if p := strip.Periods[9]; !p.First.Equal(date(2026, time.January, 5)) || p.Health != domain.HealthGreen {
 		t.Errorf("week before = %+v, want the week of 5 January, Green", p)
 	}
-	if p := strip.Periods[10]; !p.NoCheckin {
-		t.Errorf("this week = %+v, want no Check-in", p)
+	if p := strip.Periods[10]; !p.First.Equal(date(2026, time.January, 12)) || !p.NotYetDue || p.NoCheckin {
+		t.Errorf("this week = %+v, want the week of 12 January, not yet due", p)
 	}
 }
 
