@@ -436,6 +436,26 @@ func TestGoalListFiltersAndGroupsByDimension(t *testing.T) {
 	}
 }
 
+// A grouped Goal list's group headers sit on the neutral alternate surface, not
+// a teal fill: a header row is nothing to act on, and teal is kept for what is
+// (DESIGN.md § System Mood).
+func TestGoalListGroupHeadersAreNeutralOverHTTP(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	h.AssignGoalValue(h.CreateGoal(sam, "Alpha", "A matters."), pillar.Values[0])
+	ts := newServer(t, h)
+
+	grouped := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals?group=%d", ts.URL, pillar.ID))
+	if !strings.Contains(grouped, `class="gl-group"`) {
+		t.Fatalf("grouped list has no group header row; body:\n%s", grouped)
+	}
+	if rule := cssRule(t, grouped, ".gl-group th"); !strings.Contains(rule, "background:var(--color-surface-alt)") {
+		t.Errorf("group header isn't on --color-surface-alt; rule: %s", rule)
+	}
+}
+
 // Creating a Goal under a parent offers the parent's values as defaults: a kept
 // default is assigned to the child and the child contributes to the parent, but
 // the values are not inherited — a child created without them carries none

@@ -250,3 +250,27 @@ func TestRestoringKeepsTheRequiredSetting(t *testing.T) {
 		t.Errorf("Fields after restoring = %+v (%v), want Budget required", fields, err)
 	}
 }
+
+// Marking a Retired Field required, or not required, is refused, even when it
+// would change nothing, and leaves its setting as it was: required means
+// nothing on a Field no longer offered (CONTEXT.md: Retired).
+func TestRetiredFieldsRequiredSettingCannotChange(t *testing.T) {
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ctx := context.Background()
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.SetFieldRequired(boss, budget, true)
+	if err := h.Service.RetireField(ctx, boss.ID, budget.ID); err != nil {
+		t.Fatalf("RetireField: %v", err)
+	}
+
+	for _, required := range []bool{false, true} {
+		if err := h.Service.SetFieldRequired(ctx, boss.ID, budget.ID, required); !errors.Is(err, domain.ErrValidation) {
+			t.Errorf("mark Retired Budget required=%v: err = %v, want ErrValidation", required, err)
+		}
+	}
+	fields, err := h.Service.ListFields(ctx)
+	if err != nil || len(fields) != 1 || !fields[0].Required {
+		t.Errorf("Fields after refused changes = %+v (%v), want Budget still required", fields, err)
+	}
+}

@@ -104,6 +104,26 @@ func TestClickableCardHoverChangesBorderOnly(t *testing.T) {
 	}
 }
 
+// Only a button's hover turns its border teal: a hovered card darkens its own
+// border, and teal is kept for what a person acts on (DESIGN.md § System Mood).
+func TestOnlyButtonsHoverToATealBorder(t *testing.T) {
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	comment := regexp.MustCompile(`(?s)/\*.*?\*/`)
+	teal := regexp.MustCompile(`(?:^|;)border(?:-color)?:[^;]*var\(--color-primary`)
+	for source, sheet := range styleSheets(t, css) {
+		sheet = comment.ReplaceAllString(sheet, "")
+		for _, rule := range regexp.MustCompile(`([^{}]+)\{([^{}]*)\}`).FindAllStringSubmatch(sheet, -1) {
+			selector := strings.TrimSpace(rule[1])
+			if strings.Contains(selector, ":hover") && !strings.HasPrefix(selector, ".btn") && teal.MatchString(rule[2]) {
+				t.Errorf("%s: %s turns a border teal on hover, but only buttons do", source, selector)
+			}
+		}
+	}
+}
+
 // borderColour resolves the colour of a "1px solid <colour>" border.
 func borderColour(t *testing.T, theme map[string]string, border string) string {
 	t.Helper()

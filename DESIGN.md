@@ -27,9 +27,10 @@ deliberately; don't override it on one page.
 
 - **Mood:** warm, editorial and calm. A neutral off-white canvas, neutral ink,
   and teal only for what a person can act on: links, buttons, focus and the
-  current top-bar item. No neon, and no tint on the canvas, so Health's fills
-  stand out from the page (see § Deviations 7). Cards sit on the canvas in
-  plain white (see § Accepted audit findings).
+  current top-bar item. The one data accent is a Metric's sparkline, stroked in
+  teal (see § Deviations 6). No neon, and no tint on the canvas, so Health's
+  fills stand out from the page (see § Deviations 7). Cards sit on the canvas
+  in plain white (see § Accepted audit findings).
 - **Density:** generous. Cards use 24px padding, sections sit 20–32px apart,
   and everything aligns to a 4px grid.
 - **Depth:** cards lie flat on the canvas, set off by their surface and a
@@ -96,7 +97,7 @@ deliberately; don't override it on one page.
   --font-mono:    "JetBrains Mono", ui-monospace, monospace;
 
   /* Shape */
-  --radius-sm: 4px;    /* tags, code */
+  --radius-sm: 4px;    /* badges, Health strip cells */
   --radius-md: 8px;    /* buttons, inputs, selects */
   --radius-lg: 12px;   /* cards, dialogs */
   --radius-full: 9999px; /* pills, avatars, counts */
@@ -573,8 +574,9 @@ stays black on white whatever is chosen.
    mode (3.38:1 on white, 3.12:1 on the canvas, 3.01:1 on
    `--color-surface-alt`) and `#2F8479` in dark mode
    (3.29:1 on the surface). Two more marks follow the same rule:
-   - A Metric's sparkline strokes in `--color-primary-strong`, not
-     `--color-primary`, which reaches only 2.49:1 on white.
+   - A Metric's sparkline, the one data accent allowed teal (§ System), strokes
+     in `--color-primary-strong`, not `--color-primary`, which reaches only
+     2.49:1 on white.
    - On the Check-in form, an unselected Health choice is an outline (surface
      fill, `--color-border-strong` edge, Health ink) and the selected one is
      the filled Health badge with an edge in its ink. Nothing is dimmed.
@@ -627,8 +629,8 @@ stays black on white whatever is chosen.
    darker in the same hue, `#888F97`, which reaches 3:1 there.
 
    Chip and banner text reaches 4.5:1 on its fill, and the dashed edge 3:1 on
-   the surfaces around and inside it. A chip sits on a card, plain or as a
-   hovered row. A banner sits on the canvas with a surface inside.
+   the surfaces around it. A chip sits on a card, plain or as a hovered row. A
+   banner sits on the canvas with a surface inside.
 
    | Theme | Mark | On | Ratio |
    | --- | --- | --- | --- |

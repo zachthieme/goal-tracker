@@ -787,7 +787,7 @@ func risksStyles() templ.Component {
 			templ_7745c5c3_Var37 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<style>\n\t\t.rk-tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}\n\t\t.rk-tile{padding:16px;display:flex;flex-direction:column;gap:4px}\n\t\t.rk-tile:hover{border-color:var(--color-primary)}\n\t\t.rk-tile .num{font-size:24px}\n\t\t.rk-section,.rk-empty{scroll-margin-top:16px}\n\t\t.rk-empty{color:var(--color-ink);font-weight:500}\n\t\t.rk-section{display:flex;flex-direction:column;gap:12px}\n\t\t@media (max-width:900px){.rk-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<style>\n\t\t.rk-tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}\n\t\t.rk-tile{padding:16px;display:flex;flex-direction:column;gap:4px}\n\t\t.rk-tile .num{font-size:24px}\n\t\t.rk-section,.rk-empty{scroll-margin-top:16px}\n\t\t.rk-empty{color:var(--color-ink);font-weight:500}\n\t\t.rk-section{display:flex;flex-direction:column;gap:12px}\n\t\t@media (max-width:900px){.rk-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
