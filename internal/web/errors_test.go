@@ -99,3 +99,35 @@ func TestARefusalIsNotLoggedAsAServerError(t *testing.T) {
 		t.Errorf("a 403 was logged:\n%s", buf)
 	}
 }
+
+// A nil logger is ignored, so the Server keeps logging to slog.Default()
+// rather than panicking on its first 500.
+//
+//nolint:paralleltest // sets the process-wide slog default
+func TestANilLoggerLogsToTheDefault(t *testing.T) {
+	var buf bytes.Buffer
+	old := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(old) })
+
+	h := testsupport.New(t)
+	ts := httptest.NewServer(web.NewServer(h.Service, web.WithLogger(nil)))
+	t.Cleanup(ts.Close)
+	if err := h.DB.Close(); err != nil {
+		t.Fatalf("close database: %v", err)
+	}
+	buf.Reset()
+
+	resp := postForm(t, http.DefaultClient, ts.URL+"/signin", url.Values{"email": {"sam@example.com"}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status %d, want 500", resp.StatusCode)
+	}
+	records := logRecords(t, &buf)
+	if len(records) != 1 {
+		t.Fatalf("logged %d records, want 1:\n%s", len(records), &buf)
+	}
+	if rec := records[0]; rec["level"] != "ERROR" || rec["method"] != http.MethodPost || rec["path"] != "/signin" {
+		t.Errorf("record %v, want an ERROR for POST /signin", rec)
+	}
+}
