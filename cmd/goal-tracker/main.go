@@ -56,7 +56,7 @@ func run(logger *slog.Logger) error {
 
 	sender := email.LogSender{Logger: logger}
 	svc := domain.NewService(sqlDB, clock.Real{}, sender, cfg.adminEmails, domain.WithTimezone(loc), domain.WithBaseURL(cfg.baseURL))
-	srv := web.NewServer(svc)
+	srv := web.NewServer(svc, web.WithLogger(logger))
 
 	notifier := notify.New(svc, sender, cfg.baseURL, loc)
 	scheduler := notify.NewScheduler(clock.Real{}, weekly, notifier.SendWeekly)

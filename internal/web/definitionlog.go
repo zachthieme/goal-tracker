@@ -36,12 +36,12 @@ func (sc logScope) param() string {
 func (s *Server) handleDefinitionLog(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	dims, err := s.svc.ListDimensions(r.Context())
 	if err != nil {
-		http.Error(w, "could not list dimensions", http.StatusInternalServerError)
+		s.serverError(w, r, "could not list dimensions", err)
 		return
 	}
 	fields, err := s.svc.ListFields(r.Context())
 	if err != nil {
-		http.Error(w, "could not list fields", http.StatusInternalServerError)
+		s.serverError(w, r, "could not list fields", err)
 		return
 	}
 	scope, ok := parseLogScope(r.URL.Query().Get("about"), dims, fields)
@@ -59,7 +59,7 @@ func (s *Server) handleDefinitionLog(w http.ResponseWriter, r *http.Request, cur
 		changes, err = s.svc.DefinitionLog(r.Context())
 	}
 	if err != nil {
-		http.Error(w, "could not read the definition log", http.StatusInternalServerError)
+		s.serverError(w, r, "could not read the definition log", err)
 		return
 	}
 	render(w, r, http.StatusOK, definitionLogPage(&current, dims, fields, scope, changes))

@@ -87,7 +87,7 @@ func takeUndo(w http.ResponseWriter, r *http.Request) undoOffer {
 // error writer would give: a cycle 409, a validation 422, someone else's Undo
 // 403, nothing to undo 404. The reason is the domain's, said plainly, without
 // its internal prefix.
-func refuseUndo(w http.ResponseWriter, r *http.Request, current domain.Account, back string, err error) {
+func (s *Server) refuseUndo(w http.ResponseWriter, r *http.Request, current domain.Account, back string, err error) {
 	status, reason := http.StatusInternalServerError, "The Undo couldn't be done, so nothing changed. Try again."
 	switch {
 	case errors.Is(err, domain.ErrCycle):
@@ -98,6 +98,8 @@ func refuseUndo(w http.ResponseWriter, r *http.Request, current domain.Account, 
 		status, reason = http.StatusForbidden, sentence(plainReason(err))
 	case errors.Is(err, domain.ErrNotFound):
 		status, reason = http.StatusNotFound, "There's nothing here to undo."
+	default:
+		s.logServerError(r, err)
 	}
 	render(w, r, status, undoRefusedPage(&current, reason, back))
 }
@@ -116,10 +118,10 @@ func sentence(msg string) string {
 
 // undoIDFromPath is the id in an Undo's path, or a refusal saying there's
 // nothing to undo, linking back.
-func undoIDFromPath(w http.ResponseWriter, r *http.Request, current domain.Account, back string) (int64, bool) {
+func (s *Server) undoIDFromPath(w http.ResponseWriter, r *http.Request, current domain.Account, back string) (int64, bool) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
-		refuseUndo(w, r, current, back, domain.ErrNotFound)
+		s.refuseUndo(w, r, current, back, domain.ErrNotFound)
 		return 0, false
 	}
 	return id, true

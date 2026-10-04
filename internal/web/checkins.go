@@ -25,7 +25,7 @@ func (s *Server) handleCheckinPage(w http.ResponseWriter, r *http.Request, curre
 			s.notFound(w, r)
 			return
 		}
-		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load goal", err)
 		return
 	}
 	if !view.CanCheckin {
@@ -56,7 +56,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	// Goal, so parsing them needs the Goal's current Metrics.
 	metrics, err := s.svc.ListMetrics(r.Context(), goalID)
 	if err != nil {
-		http.Error(w, "could not load metrics", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load metrics", err)
 		return
 	}
 	// Values the reader typed, kept so an error re-render shows them again.
@@ -66,12 +66,12 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	// state: whether it is Dated, and which Milestones are still Planned.
 	goal, err := s.svc.ViewGoal(r.Context(), goalID)
 	if err != nil {
-		writeCheckinError(w, err)
+		s.writeCheckinError(w, r, err)
 		return
 	}
 	milestones, err := s.svc.ListMilestones(r.Context(), goalID)
 	if err != nil {
-		http.Error(w, "could not load milestones", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load milestones", err)
 		return
 	}
 	dates := datesFromForm(r, goal, milestones)
@@ -139,7 +139,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 			s.renderCheckinFormError(w, r, goalID, formData(err))
 			return
 		}
-		writeCheckinError(w, err)
+		s.writeCheckinError(w, r, err)
 		return
 	}
 	s.checkinRedirect(w, r, goalID)
@@ -399,6 +399,7 @@ func (s *Server) renderNoChangeRefusal(w http.ResponseWriter, r *http.Request, c
 	case errors.Is(viewErr, domain.ErrNotFound):
 		render(w, r, http.StatusNotFound, checkinUnavailablePage(&current, "Goal not found", "There is no such Goal, so there is nothing to check in on."))
 	case viewErr != nil:
+		s.logServerError(r, viewErr)
 		render(w, r, http.StatusInternalServerError, checkinUnavailablePage(&current, "Check-in failed", "The Goal couldn't be loaded, so nothing was recorded. Try again."))
 	case errors.Is(err, domain.ErrNotAuthorized), !view.CanCheckin:
 		render(w, r, http.StatusForbidden, checkinUnavailablePage(&current, "Can't check in", "Only the Goal's Owner or a Delegate may check in on "+view.Goal.Title+"."))
@@ -410,6 +411,7 @@ func (s *Server) renderNoChangeRefusal(w http.ResponseWriter, r *http.Request, c
 		}
 		render(w, r, status, checkinPage(&current, view, checkinFormRefused(view, plainReason(err))))
 	default:
+		s.logServerError(r, err)
 		render(w, r, http.StatusInternalServerError, checkinUnavailablePage(&current, "Check-in failed", "The No change couldn't be recorded. Try again."))
 	}
 }
@@ -453,7 +455,7 @@ func (s *Server) renderCheckinFormAgain(w http.ResponseWriter, r *http.Request, 
 	}
 	view, err := s.goalPageView(r.Context(), data.GoalID, current)
 	if err != nil {
-		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load goal", err)
 		return
 	}
 	render(w, r, http.StatusOK, checkinPage(&current, view, data))
@@ -473,7 +475,7 @@ func (s *Server) checkinRedirect(w http.ResponseWriter, r *http.Request, goalID 
 }
 
 // writeCheckinError maps a domain Check-in error to an HTTP status.
-func writeCheckinError(w http.ResponseWriter, err error) {
+func (s *Server) writeCheckinError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrValidation):
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
@@ -482,6 +484,6 @@ func writeCheckinError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrNotFound):
 		http.Error(w, "not found", http.StatusNotFound)
 	default:
-		http.Error(w, "check-in failed", http.StatusInternalServerError)
+		s.serverError(w, r, "check-in failed", err)
 	}
 }

@@ -14,7 +14,7 @@ import (
 func (s *Server) handleGraphSignals(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	signals, err := s.svc.GraphSignals(r.Context())
 	if err != nil {
-		http.Error(w, "could not read graph signals", http.StatusInternalServerError)
+		s.serverError(w, r, "could not read graph signals", err)
 		return
 	}
 	render(w, r, http.StatusOK, graphSignalsPage(&current, signals))
@@ -45,7 +45,7 @@ func (s *Server) handleSetTopLevel(w http.ResponseWriter, r *http.Request, curre
 		case errors.Is(err, domain.ErrNotFound):
 			s.notFound(w, r)
 		default:
-			http.Error(w, "could not set Top-level", http.StatusInternalServerError)
+			s.serverError(w, r, "could not set Top-level", err)
 		}
 		return
 	}

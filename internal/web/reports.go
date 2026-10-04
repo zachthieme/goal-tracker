@@ -29,7 +29,7 @@ type reportsListData struct {
 func (s *Server) handleReports(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	data, err := s.reportsList(r)
 	if err != nil {
-		http.Error(w, "could not load reports", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load reports", err)
 		return
 	}
 	render(w, r, http.StatusOK, reportsPage(&current, data))
@@ -51,7 +51,7 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 			s.notFound(w, r)
 			return
 		}
-		http.Error(w, "could not load report", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load report", err)
 		return
 	}
 	baseline, err := parseDate(r.URL.Query().Get("baseline"))
@@ -61,24 +61,24 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 	}
 	report, err := s.svc.DraftReport(r.Context(), def, baseline)
 	if err != nil {
-		http.Error(w, "could not build the draft", http.StatusInternalServerError)
+		s.serverError(w, r, "could not build the draft", err)
 		return
 	}
 	pubs, err := s.svc.ListPublications(r.Context(), def.ID)
 	if err != nil {
-		http.Error(w, "could not load publications", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load publications", err)
 		return
 	}
 	d, err := s.draftDiscussion(r, current, def.ID)
 	if err != nil {
-		http.Error(w, "could not load Action Items", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load Action Items", err)
 		return
 	}
 	// Closing an Action Item comes back to this draft, baseline and all.
 	d.Return = r.URL.RequestURI()
 	panel, err := s.draftGoalsPanel(r, report)
 	if err != nil {
-		http.Error(w, "could not summarise the report", http.StatusInternalServerError)
+		s.serverError(w, r, "could not summarise the report", err)
 		return
 	}
 	if domain.CanEditReportDefinition(current, def) {
@@ -97,7 +97,7 @@ func (s *Server) handleEditReportForm(w http.ResponseWriter, r *http.Request, cu
 	}
 	v := builderFromDefinition(def)
 	if err := s.loadReportBuilder(r, &v); err != nil {
-		http.Error(w, "could not load the builder", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load the builder", err)
 		return
 	}
 	render(w, r, http.StatusOK, reportBuilderPage(&current, v))
@@ -131,7 +131,7 @@ func (s *Server) editableReport(w http.ResponseWriter, r *http.Request, current 
 			s.notFound(w, r)
 			return domain.ReportDefinition{}, false
 		}
-		http.Error(w, "could not load report", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load report", err)
 		return domain.ReportDefinition{}, false
 	}
 	if !domain.CanEditReportDefinition(current, def) {
@@ -296,7 +296,7 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 			w.Header().Set("HX-Reswap", "none")
 			render(w, r, http.StatusOK, saveStatus("Not saved: "+plainReason(err), true))
 		default:
-			writeReportError(w, err)
+			s.writeReportError(w, r, err)
 		}
 		return
 	}
@@ -318,7 +318,7 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 func (s *Server) renderNarrativeSaved(w http.ResponseWriter, r *http.Request, current domain.Account, id int64, draft string) {
 	def, err := s.svc.GetReportDefinition(r.Context(), id)
 	if err != nil {
-		http.Error(w, "could not load report", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load report", err)
 		return
 	}
 	baseline, err := parseDate(r.URL.Query().Get("baseline"))
@@ -328,18 +328,18 @@ func (s *Server) renderNarrativeSaved(w http.ResponseWriter, r *http.Request, cu
 	}
 	report, err := s.svc.DraftReport(r.Context(), def, baseline)
 	if err != nil {
-		http.Error(w, "could not build the draft", http.StatusInternalServerError)
+		s.serverError(w, r, "could not build the draft", err)
 		return
 	}
 	d, err := s.draftDiscussion(r, current, def.ID)
 	if err != nil {
-		http.Error(w, "could not load Action Items", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load Action Items", err)
 		return
 	}
 	d.Return = draft
 	pubs, err := s.svc.ListPublications(r.Context(), def.ID)
 	if err != nil {
-		http.Error(w, "could not load publications", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load publications", err)
 		return
 	}
 	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
@@ -367,7 +367,7 @@ func (s *Server) handlePublishReport(w http.ResponseWriter, r *http.Request, cur
 			s.notFound(w, r)
 			return
 		}
-		writeReportError(w, err)
+		s.writeReportError(w, r, err)
 		return
 	}
 	http.Redirect(w, r, publicationPath(pub), http.StatusSeeOther)
@@ -382,7 +382,7 @@ func (s *Server) handleViewPublication(w http.ResponseWriter, r *http.Request, c
 	}
 	d, err := s.publicationDiscussion(r, current, pub)
 	if err != nil {
-		http.Error(w, "could not load the discussion", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load the discussion", err)
 		return
 	}
 	render(w, r, http.StatusOK, publicationPage(&current, pub, d))
@@ -430,7 +430,7 @@ func (s *Server) publication(w http.ResponseWriter, r *http.Request) (domain.Pub
 			s.notFound(w, r)
 			return domain.Publication{}, false
 		}
-		http.Error(w, "could not load the publication", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load the publication", err)
 		return domain.Publication{}, false
 	}
 	if pub.DefinitionID != defID {
@@ -514,11 +514,11 @@ func formInt64s(r *http.Request, key string) []int64 {
 }
 
 // writeReportError maps a domain Report error to an HTTP status.
-func writeReportError(w http.ResponseWriter, err error) {
+func (s *Server) writeReportError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrValidation):
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 	default:
-		http.Error(w, "report action failed", http.StatusInternalServerError)
+		s.serverError(w, r, "report action failed", err)
 	}
 }

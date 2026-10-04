@@ -11,7 +11,7 @@ import (
 func (s *Server) handleFreshnessSignals(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	signals, err := s.svc.FreshnessSignals(r.Context())
 	if err != nil {
-		http.Error(w, "could not read freshness signals", http.StatusInternalServerError)
+		s.serverError(w, r, "could not read freshness signals", err)
 		return
 	}
 	render(w, r, http.StatusOK, freshnessSignalsPage(&current, signals))

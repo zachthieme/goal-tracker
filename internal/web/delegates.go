@@ -37,7 +37,7 @@ func (s *Server) handleRemoveDelegate(w http.ResponseWriter, r *http.Request, cu
 func (s *Server) handleDelegatePage(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	goals, err := s.svc.DelegatedGoals(r.Context(), current.ID)
 	if err != nil {
-		http.Error(w, "could not load delegated goals", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load delegated goals", err)
 		return
 	}
 	items := make([]delegatedGoal, 0, len(goals))
@@ -45,7 +45,7 @@ func (s *Server) handleDelegatePage(w http.ResponseWriter, r *http.Request, curr
 		item := delegatedGoal{Goal: g}
 		latest, ok, err := s.svc.LatestCheckin(r.Context(), g.ID)
 		if err != nil {
-			http.Error(w, "could not load latest check-in", http.StatusInternalServerError)
+			s.serverError(w, r, "could not load latest check-in", err)
 			return
 		}
 		if ok {
@@ -54,7 +54,7 @@ func (s *Server) handleDelegatePage(w http.ResponseWriter, r *http.Request, curr
 			// freshness has already counted the days since.
 			freshness, err := s.svc.Freshness(r.Context(), g.ID)
 			if err != nil {
-				http.Error(w, "could not read freshness", http.StatusInternalServerError)
+				s.serverError(w, r, "could not read freshness", err)
 				return
 			}
 			item.DaysSince = freshness.DaysSince
@@ -83,7 +83,7 @@ func (s *Server) writeDelegateResult(w http.ResponseWriter, r *http.Request, goa
 		case errors.Is(err, domain.ErrValidation):
 			s.renderRefusedForm(w, r, goalID, current, formDelegates, http.StatusUnprocessableEntity, err)
 		default:
-			http.Error(w, "could not update delegates", http.StatusInternalServerError)
+			s.serverError(w, r, "could not update delegates", err)
 		}
 		return
 	}

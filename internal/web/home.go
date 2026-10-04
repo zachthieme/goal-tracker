@@ -18,7 +18,7 @@ import (
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	v, err := s.loadHome(r.Context(), current.ID)
 	if err != nil {
-		http.Error(w, "could not load your week", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load your week", err)
 		return
 	}
 	offer := takeUndo(w, r)

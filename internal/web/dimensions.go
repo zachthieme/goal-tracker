@@ -16,7 +16,7 @@ import (
 func (s *Server) handleDimensions(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	dims, err := s.svc.ListDimensions(r.Context())
 	if err != nil {
-		http.Error(w, "could not list dimensions", http.StatusInternalServerError)
+		s.serverError(w, r, "could not list dimensions", err)
 		return
 	}
 	toast := valueRetireToast(takeUndo(w, r), current, dims)
@@ -58,7 +58,7 @@ func (s *Server) handleCreateDimension(w http.ResponseWriter, r *http.Request, c
 		List:      r.FormValue("list"),
 	})
 	if err != nil {
-		writeDimensionError(w, err)
+		s.writeDimensionError(w, r, err)
 		return
 	}
 	s.redirectToDimensions(w, r)
@@ -77,14 +77,14 @@ func (s *Server) handleSetDimensionSelection(w http.ResponseWriter, r *http.Requ
 	if errors.As(err, &refusal) {
 		dims, listErr := s.svc.ListDimensions(r.Context())
 		if listErr != nil {
-			http.Error(w, "could not list dimensions", http.StatusInternalServerError)
+			s.serverError(w, r, "could not list dimensions", listErr)
 			return
 		}
 		render(w, r, http.StatusUnprocessableEntity, dimensionsPage(&current, dims, refusal, nil))
 		return
 	}
 	if err != nil {
-		writeDimensionError(w, err)
+		s.writeDimensionError(w, r, err)
 		return
 	}
 	s.redirectToDimensions(w, r)
@@ -98,7 +98,7 @@ func (s *Server) handleSetDimensionList(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	if err := s.svc.SetDimensionList(r.Context(), current.ID, id, r.FormValue("list")); err != nil {
-		writeDimensionError(w, err)
+		s.writeDimensionError(w, r, err)
 		return
 	}
 	s.redirectToDimensions(w, r)
@@ -113,7 +113,7 @@ func (s *Server) handleSetDimensionRequired(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if err := s.svc.SetDimensionRequired(r.Context(), current.ID, id, r.FormValue("required") == "1"); err != nil {
-		writeDimensionError(w, err)
+		s.writeDimensionError(w, r, err)
 		return
 	}
 	s.redirectToDimensions(w, r)
@@ -127,7 +127,7 @@ func (s *Server) handleAddDimensionValue(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if _, err := s.svc.AddDimensionValue(r.Context(), current.ID, id, r.FormValue("value")); err != nil {
-		writeDimensionError(w, err)
+		s.writeDimensionError(w, r, err)
 		return
 	}
 	s.redirectToDimensions(w, r)
@@ -140,7 +140,7 @@ func (s *Server) handleRenameDimensionValue(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	if _, err := s.svc.RenameDimensionValue(r.Context(), current.ID, id, r.FormValue("value")); err != nil {
-		writeDimensionError(w, err)
+		s.writeDimensionError(w, r, err)
 		return
 	}
 	s.redirectToDimensions(w, r)
@@ -156,7 +156,7 @@ func (s *Server) handleRetireDimensionValue(w http.ResponseWriter, r *http.Reque
 	}
 	token, err := s.svc.RetireDimensionValueWithUndo(r.Context(), current.ID, id)
 	if err != nil {
-		writeDimensionError(w, err)
+		s.writeDimensionError(w, r, err)
 		return
 	}
 	offerUndo(w, "/dimensions", undoValueRetire, id, token)
@@ -169,12 +169,12 @@ func (s *Server) handleRetireDimensionValue(w http.ResponseWriter, r *http.Reque
 // why, linking back to Dimensions. The Retired value's own Restore
 // button needs none of that (handleRestoreDimensionValue).
 func (s *Server) handleUndoRetireDimensionValue(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	id, ok := undoIDFromPath(w, r, current, "/dimensions")
+	id, ok := s.undoIDFromPath(w, r, current, "/dimensions")
 	if !ok {
 		return
 	}
 	if err := s.svc.UndoRetireDimensionValue(r.Context(), current.ID, id, r.FormValue(undoField)); err != nil {
-		refuseUndo(w, r, current, "/dimensions", err)
+		s.refuseUndo(w, r, current, "/dimensions", err)
 		return
 	}
 	s.redirectToDimensions(w, r)
@@ -188,7 +188,7 @@ func (s *Server) handleRestoreDimensionValue(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	if err := s.svc.RestoreDimensionValue(r.Context(), current.ID, id); err != nil {
-		writeDimensionError(w, err)
+		s.writeDimensionError(w, r, err)
 		return
 	}
 	s.redirectToDimensions(w, r)
@@ -203,7 +203,7 @@ func (s *Server) handleRetireDimension(w http.ResponseWriter, r *http.Request, c
 		return
 	}
 	if err := s.svc.RetireDimension(r.Context(), current.ID, id); err != nil {
-		writeDimensionError(w, err)
+		s.writeDimensionError(w, r, err)
 		return
 	}
 	s.redirectToDimensions(w, r)
@@ -217,7 +217,7 @@ func (s *Server) handleRestoreDimension(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	if err := s.svc.RestoreDimension(r.Context(), current.ID, id); err != nil {
-		writeDimensionError(w, err)
+		s.writeDimensionError(w, r, err)
 		return
 	}
 	s.redirectToDimensions(w, r)
@@ -231,7 +231,7 @@ func (s *Server) handleMoveDimensionValue(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := s.svc.MoveDimensionValue(r.Context(), current.ID, id, r.FormValue("direction")); err != nil {
-		writeDimensionError(w, err)
+		s.writeDimensionError(w, r, err)
 		return
 	}
 	s.redirectToDimensions(w, r)
@@ -245,7 +245,7 @@ func (s *Server) handleSortDimensionValues(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := s.svc.SortDimensionValues(r.Context(), current.ID, id); err != nil {
-		writeDimensionError(w, err)
+		s.writeDimensionError(w, r, err)
 		return
 	}
 	s.redirectToDimensions(w, r)
@@ -264,7 +264,7 @@ func (s *Server) handleMergeDimensionValue(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := s.svc.MergeDimensionValue(r.Context(), current.ID, id, into); err != nil {
-		writeDimensionError(w, err)
+		s.writeDimensionError(w, r, err)
 		return
 	}
 	s.redirectToDimensions(w, r)
@@ -297,14 +297,14 @@ func (s *Server) dimensionIDFromPath(w http.ResponseWriter, r *http.Request) (in
 }
 
 // writeDimensionError maps a domain Dimension error to an HTTP status.
-func writeDimensionError(w http.ResponseWriter, err error) {
+func (s *Server) writeDimensionError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotAuthorized):
 		http.Error(w, err.Error(), http.StatusForbidden)
 	case errors.Is(err, domain.ErrValidation):
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 	default:
-		http.Error(w, "dimension action failed", http.StatusInternalServerError)
+		s.serverError(w, r, "dimension action failed", err)
 	}
 }
 

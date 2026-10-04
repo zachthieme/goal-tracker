@@ -40,7 +40,7 @@ func (s *Server) handleRunImport(w http.ResponseWriter, r *http.Request, current
 	defer func() { _ = file.Close() }()
 	data, err := io.ReadAll(io.LimitReader(file, maxImportBytes))
 	if err != nil {
-		http.Error(w, "could not read the upload", http.StatusInternalServerError)
+		s.serverError(w, r, "could not read the upload", err)
 		return
 	}
 
@@ -59,6 +59,8 @@ func (s *Server) handleRunImport(w http.ResponseWriter, r *http.Request, current
 			status, flash = http.StatusForbidden, "Only an Admin may import Goals."
 		case errors.Is(err, domain.ErrValidation):
 			status, flash = http.StatusUnprocessableEntity, importFlash(err)
+		default:
+			s.logServerError(r, err)
 		}
 		render(w, r, status, importsPage(&current, nil, flash))
 		return

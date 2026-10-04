@@ -43,7 +43,7 @@ func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "sign-in failed", http.StatusInternalServerError)
+		s.serverError(w, r, "sign-in failed", err)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{

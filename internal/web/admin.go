@@ -16,12 +16,12 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, current dom
 	}
 	goals, err := s.svc.ListGoals(r.Context())
 	if err != nil {
-		http.Error(w, "could not read goals", http.StatusInternalServerError)
+		s.serverError(w, r, "could not read goals", err)
 		return
 	}
 	departed, err := s.svc.DepartedAccounts(r.Context())
 	if err != nil {
-		http.Error(w, "could not read departed people", http.StatusInternalServerError)
+		s.serverError(w, r, "could not read departed people", err)
 		return
 	}
 	render(w, r, http.StatusOK, adminPage(&current, awaitingReassignment(goals), departed))
