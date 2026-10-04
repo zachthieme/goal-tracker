@@ -103,6 +103,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The test harness escapes its database path, so a test whose temp directory holds a '#' (an unnamed subtest is "#00") gets the migrated copy instead of an empty database (#136).
 - [internal] A web test covers the page shown when a Nudge's email can't be sent: a 502 "Nudge not emailed" page saying "The Nudge was recorded, but the email to … couldn't be sent." names the Owner, and the Goal keeps its Nudge. Until now only the domain side was tested (#170).
 - [internal] Each 500 that draws its own page (a failed Nudge, both No change failures, a failed import, a failed Undo) has a test that it logs its cause with the request's method and path, and an Undo answering 404 has one that it logs nothing (#184).
+- [internal] The web test helpers several areas share (`newServer`, `signInClient`, `getBody`, `postForm`, `readBody`, `pageElement`, `cssRule`, `attr`, `tagAround`, …) move unchanged into `internal/web/helpers_test.go`, and `CLAUDE.md` says a helper more than one area needs goes there (#185).
 
 **Documentation:**
 - [internal] `CONTEXT.md` defines a Nudge (a one-off request to a Goal's Owner and Delegates to check in on a Stale or Path-overdue Goal) and a Parent suggestion (someone other than the Owner proposes a parent; only the Owner decides), and ADR 0006 records why a Parent suggestion is its own record rather than a link status (#143, #144).
@@ -111,6 +112,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] `CONTEXT.md` defines a Report rule, with its Also include and Leave out lists, and revises Report Definition: rules or hand-picked, finished Goals leave after one report, and only the creator or an Admin may change it. ADR 0007 drops Fields from rule attributes, per ADR 0005 (#147, #151, #160).
 - [internal] `docs/mockups/reports/` holds the Reports redesign mockups (5a and 5b are the current list and draft, 5c and 5d the proposed ones), which the Reports tickets link to for layout and copy (#149, #153).
 - [internal] `CONTEXT.md`'s Report rule entry says Leave out can list Goals whether or not they match the rules (#149).
+- [internal] `docs/changelog-conventions.md` shows three real fragments from this repo's history (#51, #184, #181) after the placeholder, including one that spans two sections, so agents no longer dig past fragments out of git (#186).
 
 ### Collected changes — October 3, 2026
 
