@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -375,5 +376,217 @@ func TestCreateDefinedGoalRequestsALinkToEachParent(t *testing.T) {
 	}
 	if sent := h.Email.Sent(); len(sent) != 0 {
 		t.Errorf("emails sent = %+v, want none", sent)
+	}
+}
+
+// Every input is checked before anything is written, and every problem comes
+// back together, each under the name of the input it is in, so the form can
+// show them all at once.
+func TestCreateDefinedGoalNamesEveryBadInputAtOnce(t *testing.T) {
+	t.Parallel()
+
+	s := newDefinedGoalSetup(t)
+	ctx := context.Background()
+	retiredValue := s.h.CreateDimension(s.admin, "Region", "EMEA", "APAC").Values[0]
+	if err := s.h.Service.RetireDimensionValue(ctx, s.admin.ID, retiredValue.ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	retiredDim := s.h.CreateDimension(s.admin, "Legacy", "Old")
+	if err := s.h.Service.RetireDimension(ctx, s.admin.ID, retiredDim.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	parent := s.h.CreateGoal(s.owner, "Win enterprise", "Enterprise deals stall.")
+	const missing = 9999
+
+	_, err := s.h.Service.CreateDefinedGoal(ctx, domain.DefinedGoalInput{
+		Title:        " ",
+		SoWhat:       "",
+		OwnerID:      s.owner.ID,
+		Kind:         domain.GoalDated,
+		DeliveryDate: time.Time{},
+		CadenceDays:  -1,
+		Milestones:   []domain.MilestoneDefinition{{Name: "Beta cut", Date: futureDate}, {Name: " "}},
+		Metrics: []domain.MetricDefinition{
+			{Name: "p95 latency", Unit: "ms", Direction: domain.MetricDown, TargetDate: futureDate},
+			{Direction: "sideways"},
+		},
+		ValueIDs: []int64{
+			s.team.Values[0].ID, s.team.Values[1].ID, // two in a one-value Dimension
+			retiredValue.ID, retiredDim.Values[0].ID, missing,
+		},
+		NewValues:   map[int64]string{s.team.ID: "Ops", missing: "Initech"},
+		FieldValues: map[int64]string{s.headcount.ID: "three", missing: "1"},
+		ParentIDs:   []int64{parent.ID, missing, parent.ID},
+		Activate:    true,
+	})
+
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
+	}
+	var got []string
+	for _, p := range domain.InputErrors(err) {
+		if p.Message == "" {
+			t.Errorf("%s has no message", p.Input)
+		}
+		got = append(got, p.Input)
+	}
+	want := []string{
+		"title", "so_what", "delivery_date", "cadence",
+		"milestones[1].name", "milestones[1].date",
+		"metrics[1].name", "metrics[1].unit", "metrics[1].direction", "metrics[1].target_date",
+		id("value:", s.team.Values[0].ID), id("value:", s.team.Values[1].ID),
+		id("value:", retiredValue.ID), id("value:", retiredDim.Values[0].ID), id("value:", missing),
+		id("new_value:", s.team.ID), id("new_value:", missing),
+		id("field:", s.headcount.ID), id("field:", missing),
+		id("parent:", parent.ID), id("parent:", missing),
+	}
+	if !slices.Equal(sorted(got), sorted(want)) {
+		t.Errorf("inputs refused = %v\nwant %v", sorted(got), sorted(want))
+	}
+	goals, err := s.h.Service.ListGoals(ctx)
+	if err != nil {
+		t.Fatalf("ListGoals: %v", err)
+	}
+	if len(goals) != 1 {
+		t.Errorf("Goals = %+v, want only the parent", goals)
+	}
+}
+
+// id is an input name for the thing with the given ID, e.g. "value:12".
+func id(prefix string, n int64) string {
+	return prefix + strconv.FormatInt(n, 10)
+}
+
+// Each check not met by the test above, one input at a time; a blank new value
+// or Field value is no value rather than a problem.
+func TestCreateDefinedGoalChecksEachInput(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		define func(t *testing.T, s definedGoalSetup, in *domain.DefinedGoalInput)
+		// input is the input refused, or "" when the definition is accepted.
+		input func(s definedGoalSetup) string
+	}{
+		{
+			name:   "a Kind that is neither Dated nor Ongoing",
+			define: func(_ *testing.T, _ definedGoalSetup, in *domain.DefinedGoalInput) { in.Kind = "Weekly" },
+			input:  func(definedGoalSetup) string { return "kind" },
+		},
+		{
+			name: "a new value in a Retired Dimension",
+			define: func(t *testing.T, s definedGoalSetup, in *domain.DefinedGoalInput) {
+				if err := s.h.Service.RetireDimension(context.Background(), s.admin.ID, s.customer.ID); err != nil {
+					t.Fatalf("RetireDimension: %v", err)
+				}
+			},
+			input: func(s definedGoalSetup) string { return id("new_value:", s.customer.ID) },
+		},
+		{
+			name: "a new value matching a Retired value",
+			define: func(t *testing.T, s definedGoalSetup, in *domain.DefinedGoalInput) {
+				if err := s.h.Service.RetireDimensionValue(context.Background(), s.admin.ID, s.customer.Values[0].ID); err != nil {
+					t.Fatalf("RetireDimensionValue: %v", err)
+				}
+				in.NewValues[s.customer.ID] = "acme "
+			},
+			input: func(s definedGoalSetup) string { return id("new_value:", s.customer.ID) },
+		},
+		{
+			name: "a new value with a semicolon",
+			define: func(_ *testing.T, s definedGoalSetup, in *domain.DefinedGoalInput) {
+				in.NewValues[s.customer.ID] = "Globex; Initech"
+			},
+			input: func(s definedGoalSetup) string { return id("new_value:", s.customer.ID) },
+		},
+		{
+			name: "a value chosen and a new one typed in a one-value Dimension",
+			define: func(_ *testing.T, s definedGoalSetup, in *domain.DefinedGoalInput) {
+				in.ValueIDs = append(in.ValueIDs, s.customer.Values[0].ID)
+			},
+			input: func(s definedGoalSetup) string { return id("new_value:", s.customer.ID) },
+		},
+		{
+			name: "a value in a Retired Field",
+			define: func(t *testing.T, s definedGoalSetup, in *domain.DefinedGoalInput) {
+				if err := s.h.Service.RetireField(context.Background(), s.admin.ID, s.headcount.ID); err != nil {
+					t.Fatalf("RetireField: %v", err)
+				}
+			},
+			input: func(s definedGoalSetup) string { return id("field:", s.headcount.ID) },
+		},
+		{
+			name: "a blank new value and a blank Field value",
+			define: func(_ *testing.T, s definedGoalSetup, in *domain.DefinedGoalInput) {
+				in.NewValues = map[int64]string{s.customer.ID: " ", 9999: ""}
+				in.FieldValues = map[int64]string{s.headcount.ID: "", 9999: " "}
+			},
+			input: func(definedGoalSetup) string { return "" },
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s := newDefinedGoalSetup(t)
+			in := s.fullDefinition()
+			tt.define(t, s, &in)
+
+			_, err := s.h.Service.CreateDefinedGoal(context.Background(), in)
+
+			want := tt.input(s)
+			if want == "" {
+				if err != nil {
+					t.Fatalf("CreateDefinedGoal: %v", err)
+				}
+				return
+			}
+			if !errors.Is(err, domain.ErrValidation) {
+				t.Fatalf("err = %v, want ErrValidation", err)
+			}
+			var got []string
+			for _, p := range domain.InputErrors(err) {
+				got = append(got, p.Input)
+			}
+			if !slices.Contains(got, want) {
+				t.Errorf("inputs refused = %v, want %s among them", got, want)
+			}
+		})
+	}
+}
+
+// An Owner who is not an Admin adds a value to an Extendable Dimension's list
+// by typing it in, and the Goal carries it (CONTEXT.md: Extendable).
+func TestCreateDefinedGoalAddsANewValueToAnExtendableList(t *testing.T) {
+	t.Parallel()
+
+	s := newDefinedGoalSetup(t)
+	ctx := context.Background()
+
+	g, err := s.h.Service.CreateDefinedGoal(ctx, domain.DefinedGoalInput{
+		Title:     "Ship v2",
+		SoWhat:    "Customers wait too long for v2.",
+		OwnerID:   s.owner.ID,
+		NewValues: map[int64]string{s.customer.ID: "Globex"},
+	})
+	if err != nil {
+		t.Fatalf("CreateDefinedGoal: %v", err)
+	}
+
+	dims, err := s.h.Service.ListDimensions(ctx)
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	for _, d := range dims {
+		if d.ID == s.customer.ID && !slices.Equal(valueNames(d.Values), []string{"Acme", "Globex"}) {
+			t.Errorf("Customer's list = %v, want Acme and Globex", valueNames(d.Values))
+		}
+	}
+	values, err := s.h.Service.GoalValues(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	if !slices.Equal(valueNames(values), []string{"Globex"}) {
+		t.Errorf("values = %v, want Globex", valueNames(values))
 	}
 }
