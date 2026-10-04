@@ -1101,8 +1101,8 @@ func TestNewGoalFormListsWhereItFitsProblemsInPageOrder(t *testing.T) {
 
 	form := refusedNewGoal(t, client, ts.URL, url.Values{
 		"title": {""}, "so_what": {"Shoppers abandon slow carts."},
-		"parent_id": {"first"},
-		"value_id":  {fmt.Sprint(fits.pillar.Values[0].ID), fmt.Sprint(fits.pillar.Values[1].ID)},
+		"parent_id":                             {"first"},
+		"value_id":                              {fmt.Sprint(fits.pillar.Values[0].ID), fmt.Sprint(fits.pillar.Values[1].ID)},
 		fmt.Sprintf("field:%d", fits.budget.ID): {"lots"},
 	})
 	summary := pageElement(t, form, "div", "goal-form-errors")
