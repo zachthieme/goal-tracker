@@ -1062,8 +1062,8 @@ func TestGoalPageHeaderWrapsActionsAtPhoneWidthOverHTTP(t *testing.T) {
 	}
 }
 
-// The Goal page's Milestones are a table of status badge, name and date, the
-// date's slips struck, headed by the Goal's slip count and Milestone Churn.
+// The Goal page's Milestones are a table of mark, date and name, headed by the
+// Goal's slip count and Milestone Churn. A Milestone on track has no mark.
 func TestGoalPageMilestonesTable(t *testing.T) {
 	t.Parallel()
 
@@ -1083,10 +1083,74 @@ func TestGoalPageMilestonesTable(t *testing.T) {
 			t.Errorf("Milestones lack %s: %s", want, section)
 		}
 	}
-	row := pageElement(t, section, "tr", "goal-milestone")
-	for _, want := range []string{`class="badge lc" data-testid="milestone-status">Planned<`, "<td>Beta</td>", "2026-04-02"} {
-		if !strings.Contains(row, want) {
-			t.Errorf("Milestone row lacks %s: %s", want, row)
+	if got := elementTexts(section, "tr", "goal-milestone"); !slices.Equal(got, []string{"2026-04-02 Beta"}) {
+		t.Errorf("Milestone rows read %q, want Beta's date and name with no mark", got)
+	}
+	if strings.Contains(section, `data-testid="milestone-mark"`) {
+		t.Errorf("an on-track Milestone carries a mark: %s", section)
+	}
+}
+
+// goalMarkedMilestones is how the Goal page lists MilestoneMarksGoal's
+// Milestones, earliest date first: mark, then date, then name.
+var goalMarkedMilestones = []string{
+	"Red 2026-01-20 Security review",
+	"Done 2026-02-01 Pilot",
+	"New 2026-03-10 Docs",
+	"Yellow 2026-04-12 2026-04-02 Beta",
+	"Yellow 2026-04-20 2026-03-20 (3) Vendor sign-off",
+	"2026-05-01 Runbook",
+	"Removed 2026-05-20 Launch party Removed: Budget cut.",
+	"2026-06-15 GA launch",
+}
+
+// The Goal page's Milestones table reads Status, Date, Milestone. Each
+// Milestone's mark, judged as of today, is the first that applies: Done,
+// Removed, Red while overdue, Yellow once slipped, New when the latest
+// Check-in added it — not an earlier one — and none while on track. Its date
+// is the current one with the most recent it slipped from struck through, and
+// a count once it slipped more than once. The marks are not a Health: the
+// Goal keeps the Yellow its Owner set and its Rolled-up Health (ADR 0003).
+func TestGoalPageListsMilestonesAsMarkDateNameOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.MilestoneMarksGoal(sam)
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
+	section := pageElement(t, page, "section", "goal-milestones")
+	var headings []string
+	for _, th := range regexp.MustCompile(`<th>([^<]*)</th>`).FindAllStringSubmatch(section, -1) {
+		headings = append(headings, th[1])
+	}
+	if want := []string{"Status", "Date", "Milestone"}; !slices.Equal(headings, want) {
+		t.Errorf("Milestone columns %q, want %q", headings, want)
+	}
+	if got := elementTexts(section, "tr", "goal-milestone"); !slices.Equal(got, goalMarkedMilestones) {
+		t.Errorf("Milestones read\n %q\nwant\n %q", got, goalMarkedMilestones)
+	}
+	var vendor string
+	for _, tr := range strings.Split(section, `<tr data-testid="goal-milestone"`) {
+		if strings.Contains(tr, "Vendor sign-off") {
+			vendor = tr
+		}
+	}
+	if !strings.Contains(vendor, "<del>2026-03-20</del>") {
+		t.Errorf("Vendor sign-off does not strike through the date it last slipped from:\n%s", vendor)
+	}
+	for _, older := range []string{"2026-03-01", "2026-03-10"} {
+		if strings.Contains(vendor, older) {
+			t.Errorf("Vendor sign-off still lists the older date %s:\n%s", older, vendor)
+		}
+	}
+	if !strings.Contains(section, "<del>Launch party</del>") {
+		t.Errorf("the Removed Milestone's name is not struck through:\n%s", section)
+	}
+	for _, want := range []string{`<span data-testid="goal-health">Yellow</span>`, `<span data-testid="goal-rollup-health">Yellow</span>`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("Goal page lacks %s: the Owner's Yellow and the Rolled-up Health stand whatever the Milestones' marks", want)
 		}
 	}
 }

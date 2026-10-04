@@ -658,8 +658,9 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Suggested:      suggested,
 		Nudges:         nudges,
 		LinkEvents:     linkEvents,
+		Now:            s.svc.Now(),
 	}
-	view.History = newHistory(view, s.svc.Timezone(), s.svc.Now())
+	view.History = newHistory(view, s.svc.Timezone(), view.Now)
 	return view, nil
 }
 
@@ -766,6 +767,9 @@ type goalView struct {
 	// removed one of its links or declined one of its Parent suggestions, with
 	// an Undo; nil on any other visit.
 	Toast *toast
+	// Now is when the page was loaded, the day its Milestones are marked
+	// overdue as of.
+	Now time.Time
 }
 
 // goalForm names a form on the Goal page that opens in place: following
@@ -894,6 +898,27 @@ func (v goalView) priorDates(milestoneID int64) []time.Time {
 		}
 	}
 	return out
+}
+
+// milestoneMark is the mark a Milestone shows on the Goal page as of today
+// (CONTEXT.md: Milestone). It is New when the Goal's latest Check-in added it.
+func (v goalView) milestoneMark(m domain.Milestone) string {
+	return domain.MilestoneMarkOf(m, v.priorDates(m.ID), v.addedByLatestCheckin(m.ID), v.Now)
+}
+
+// addedByLatestCheckin reports whether the Goal's latest Check-in added the
+// Milestone. One added outside a Check-in, before the Goal was Active, never
+// was.
+func (v goalView) addedByLatestCheckin(milestoneID int64) bool {
+	if len(v.Checkins) == 0 {
+		return false
+	}
+	for _, ch := range v.Checkins[0].MilestoneChanges {
+		if ch.Kind == domain.MilestoneChangeAdded && ch.MilestoneID == milestoneID {
+			return true
+		}
+	}
+	return false
 }
 
 // lifecycleNote explains the Goal's current Lifecycle from the Check-in that
