@@ -67,6 +67,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Report draft fits a phone: below 600px the header scrolls away instead of sticking over a third of the screen, the name sits with its save status above the baseline chip and a row of History, Edit definition and Publish…, and the Publish… card stays on screen between the gutters. Dates in the draft's On track table and the Goal page's Milestones no longer break mid-date (#172).
 - [user] In the report builder, a rule row that comes back as Top-level (after Add rule, Show matches, a refused save, or editing a saved Report) can now be switched to a Dimension, Owner, Lifecycle or Health and offers its values, instead of offering none and refusing to save (#163).
 - [user] Autosaving a Report draft's narrative now also refreshes the "n of m in" Highlights count and Publish…'s summary, so ticking a Highlight no longer leaves Publish… saying "0 Highlights" until a reload (#166).
+- [user] Editing a saved Report no longer drops a Field it shows that has since been Retired: the edit page lists it, ticked, and saving keeps it. A different Retired Field still can't be added (#164).
 
 **Infrastructure:**
 - [api] Database schema: migration `0037_parent_suggestions` adds a `parent_suggestions` table holding each Parent suggestion: its Goal, suggested parent, suggester, note, outcome, and when it was made and closed. It's additive and runs on startup (#144).
