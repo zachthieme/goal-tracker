@@ -115,6 +115,18 @@ func newBaselineChip(r domain.Report, chosen, published bool, now time.Time, loc
 	return c
 }
 
+// publishSummary is what Publish… says the publication will freeze: the Goals
+// in the draft, those needing attention, the Highlights picked into its saved
+// narrative, and the baseline as the chip labels it.
+func publishSummary(r domain.Report, chip baselineChip) string {
+	highlights := 0
+	for _, s := range r.Narrative {
+		highlights += len(s.Highlights)
+	}
+	return fmt.Sprintf("%s · %d need attention · %s · changes since %s. Readers can comment on the frozen copy.",
+		plural(len(r.Exceptions)+len(r.Lines), "Goal"), len(r.Exceptions), plural(highlights, "Highlight"), chip.Label)
+}
+
 // fmtMonthDay renders a calendar date as "Sep 22". A Report's baseline is
 // already the org's calendar date at midnight UTC, so it is not converted.
 func fmtMonthDay(t time.Time) string {
