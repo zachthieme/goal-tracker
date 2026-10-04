@@ -176,7 +176,6 @@ func (s *Service) planDraftHighlightPicks(ctx context.Context, goalID int64, row
 		switch {
 		case !pending[id]:
 			out.rows = append(out.rows, HighlightInput{})
-			continue
 		case row.LeftOut || strings.TrimSpace(row.Note) == "":
 			out.rows = append(out.rows, HighlightInput{})
 			out.discarded = append(out.discarded, id)
