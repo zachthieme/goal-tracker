@@ -106,7 +106,8 @@ templ reportHealthBar(h domain.HealthCounts) {
 // author composes the narrative on the left beside a preview of exactly what
 // readers will see (CONTEXT.md: Report, Report Definition). Paths to Green are
 // judged overdue as of asOf, today.
-templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion, loc *time.Location, chip baselineChip, panel goalsPanel) {
+// The compose form shows form, and the save status says status.
+templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion, loc *time.Location, chip baselineChip, panel goalsPanel, form narrativeForm, status string) {
 	@layout(r.Definition.Name, current) {
 		@reportStyles()
 		<header data-testid="draft-header" class="rp-draft-head">
@@ -115,7 +116,7 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 					<p class="small muted"><a href="/reports">Reports</a>{ " / " }Draft</p>
 					<h1 data-testid="report-name">{ r.Definition.Name }</h1>
 				</div>
-				@saveStatus("", false)
+				@saveStatus(status, false)
 			</div>
 			@reportBaselineChip(r, chip)
 			<div class="rp-head-actions">
@@ -134,20 +135,28 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 						<p class="muted">No introduction.</p>
 					}
 				</section>
-				@narrativeCuration(r, chip)
+				@narrativeCuration(form)
 			</aside>
 			<div class="rp-body">
 				@reportGoalsPanel(panel)
-				@draftPreview(r, asOf, d)
+				@draftPreview(r, asOf, d, false)
 			</div>
 		</div>
 	}
 }
 
 // draftPreview is the draft's preview pane: exactly what readers will see.
-// Autosaving the narrative swaps it in place.
-templ draftPreview(r domain.Report, asOf time.Time, d discussion) {
-	<section id="draft-preview" data-testid="report-draft" class="rp-body">
+// Autosaving the narrative swaps it in place; Add another swaps it in out of
+// band (oob).
+templ draftPreview(r domain.Report, asOf time.Time, d discussion, oob bool) {
+	<section
+		id="draft-preview"
+		data-testid="report-draft"
+		class="rp-body"
+		if oob {
+			hx-swap-oob="true"
+		}
+	>
 		<p class="label">Preview: exactly what readers will see</p>
 		@reportContent(r, asOf, d)
 	</section>
@@ -174,12 +183,25 @@ templ saveStatus(text string, oob bool) {
 // and out of band the save status, the compose form's Highlights count (there
 // is none to swap when there are no Highlights) and Publish…'s summary.
 templ narrativeSaved(r domain.Report, asOf time.Time, d discussion, chip baselineChip) {
-	@draftPreview(r, asOf, d)
+	@draftPreview(r, asOf, d, false)
 	@saveStatus("Saved", true)
 	if len(r.Highlights) > 0 {
-		@curationCount(r, true)
+		@curationCount(pickedHighlights(r), len(r.Highlights), true)
 	}
 	@publishSummaryText(r, chip, true)
+}
+
+// narrativeFormAgain answers Add another over htmx: the compose form as
+// posted, with its added note box, and out of band the save status saying
+// status. When the narrative was saved, the preview and Publish…'s summary
+// come too, showing it; a refusal leaves them as they were.
+templ narrativeFormAgain(form narrativeForm, asOf time.Time, d discussion, status string, saved bool) {
+	@narrativeCuration(form)
+	@saveStatus(status, true)
+	if saved {
+		@draftPreview(form.Report, asOf, d, true)
+		@publishSummaryText(form.Report, form.Chip, true)
+	}
 }
 
 // reportBaselineChip is the draft header's "Changes since …" menu: back to the
@@ -555,9 +577,9 @@ templ membershipChanges(changes []domain.MembershipChange) {
 
 // narrativeCuration is the draft page's form for curating the narrative of the
 // next publication: every Highlight in scope since the baseline, each with a
-// box to include it and the section it goes into, and the section text for
-// each section (CONTEXT.md: Highlight).
-templ narrativeCuration(r domain.Report, chip baselineChip) {
+// box to include it and the section it goes into, and the author's note boxes
+// for each section (CONTEXT.md: Highlight).
+templ narrativeCuration(f narrativeForm) {
 	<section data-testid="report-curation" class="rp-body">
 		<h2>Narrative</h2>
 		// A date the reader picked rides on the action, so the draft reloads
@@ -566,10 +588,11 @@ templ narrativeCuration(r domain.Report, chip baselineChip) {
 		// fields; Save narrative is for readers without JavaScript.
 		<form
 			data-testid="narrative-curation"
+			id="narrative-curation"
 			class="card rp-form rp-card"
 			method="post"
-			action={ templ.SafeURL(narrativeAction(r, chip)) }
-			hx-post={ narrativeAction(r, chip) }
+			action={ templ.SafeURL(narrativeAction(f.Report, f.Chip)) }
+			hx-post={ narrativeAction(f.Report, f.Chip) }
 			hx-trigger="change, input delay:400ms"
 			hx-target="#draft-preview"
 			hx-swap="outerHTML"
@@ -578,31 +601,32 @@ templ narrativeCuration(r domain.Report, chip baselineChip) {
 			hx-on:htmx:response-error={ notSavedScript }
 			hx-on:htmx:send-error={ notSavedScript }
 		>
-			if len(r.Highlights) == 0 {
-				<p data-testid="no-highlights">No Highlights since { fmtDate(r.Baseline) }.</p>
+			if len(f.Choices) == 0 {
+				<p data-testid="no-highlights">No Highlights since { fmtDate(f.Report.Baseline) }.</p>
 			} else {
 				<div class="rp-curation-head">
-					<h3>Highlights since { fmtDate(r.Baseline) }</h3>
-					@curationCount(r, false)
+					<h3>Highlights since { fmtDate(f.Report.Baseline) }</h3>
+					@curationCount(f.included(), len(f.Choices), false)
 				</div>
 				<ul class="rp-list">
-					for _, nh := range r.Highlights {
-						@curationHighlight(nh)
+					for _, c := range f.Choices {
+						@curationHighlight(c)
 					}
 				</ul>
 			}
 			<h3>Your notes per section</h3>
 			for _, section := range narrativeSections {
-				@sectionText(section, append(narrativeNotes(r, section), ""))
+				@sectionText(section, f.Notes[section], narrativeAction(f.Report, f.Chip))
 			}
 			<noscript><button type="submit" class="btn">Save narrative</button></noscript>
 		</form>
 	</section>
 }
 
-// curationCount is how many of the Highlights the compose form offers are
-// picked into the narrative. An autosave's answer swaps it in out of band.
-templ curationCount(r domain.Report, oob bool) {
+// curationCount is how many (picked) of the Highlights the compose form offers
+// (offered) are picked into the narrative. An autosave's answer swaps it in out
+// of band.
+templ curationCount(picked, offered int, oob bool) {
 	<span
 		data-testid="curation-count"
 		id="curation-count"
@@ -610,7 +634,7 @@ templ curationCount(r domain.Report, oob bool) {
 		if oob {
 			hx-swap-oob="true"
 		}
-	>{ fmt.Sprintf("%d of %d in", pickedHighlights(r), len(r.Highlights)) }</span>
+	>{ fmt.Sprintf("%d of %d in", picked, offered) }</span>
 }
 
 // narrativeAction is where the curation form posts: the narrative, against the
@@ -625,9 +649,11 @@ var notSavedScript = templ.ComponentScript{Call: "document.getElementById('save-
 
 // sectionText is a section's own notes on the curation form, each in its own
 // box, folded under the section's heading: open when the author has written
-// some, closed and offering to add some when not.
-templ sectionText(section string, notes []string) {
-	<details data-testid={ "section-text-" + section } class="card rp-section-text" open?={ hasNotes(notes) }>
+// some or added a box, closed and offering to add some when not. Add another
+// posts the whole form to action and swaps the answer in for it, one more box
+// in this section; without JavaScript it is a plain submit.
+templ sectionText(section string, notes []string, action string) {
+	<details data-testid={ "section-text-" + section } class="card rp-section-text" open?={ hasNotes(notes) || len(notes) > 1 }>
 		<summary data-testid="section-text-summary">
 			<span>{ sectionHeading(section) }</span>
 			if !hasNotes(notes) {
@@ -640,17 +666,28 @@ templ sectionText(section string, notes []string) {
 				<textarea name={ "text-" + section }>{ note }</textarea>
 			</label>
 		}
+		<button
+			type="submit"
+			name="add_note"
+			value={ section }
+			formnovalidate
+			class="btn quiet"
+			hx-post={ action }
+			hx-target="#narrative-curation"
+			hx-swap="outerHTML"
+		>Add another</button>
 	</details>
 }
 
 // curationHighlight is one Highlight on the curation form: a box to include it
-// and, while ticked, the section it goes into — the one it was picked into, or
-// else its own kind. Unticked, it shows its kind instead. The section radios
-// stay in the form, hidden by CSS, so it always submits a section without JS.
-templ curationHighlight(nh domain.NarrativeHighlight) {
+// and, while ticked, the section it goes into. Unticked, it shows its kind
+// instead. The section radios stay in the form, hidden by CSS, so it always
+// submits a section without JS.
+templ curationHighlight(c curationChoice) {
+	{{ nh := c.Highlight }}
 	<li data-testid="curation-highlight" class="rp-curate">
 		<label class="rp-include">
-			<input type="checkbox" name={ fmt.Sprintf("include-%d", nh.Highlight.ID) } value="on" checked?={ nh.Section != "" }/>
+			<input type="checkbox" name={ fmt.Sprintf("include-%d", nh.Highlight.ID) } value="on" checked?={ c.Included }/>
 			<span>{ nh.Highlight.Note }</span>
 		</label>
 		<p class="small muted">
@@ -663,7 +700,7 @@ templ curationHighlight(nh domain.NarrativeHighlight) {
 			<legend class="sr-only">Section</legend>
 			for _, section := range narrativeSections {
 				<label>
-					<input type="radio" name={ fmt.Sprintf("pick-%d", nh.Highlight.ID) } value={ section } checked?={ curatedSection(nh) == section }/>
+					<input type="radio" name={ fmt.Sprintf("pick-%d", nh.Highlight.ID) } value={ section } checked?={ c.Section == section }/>
 					<span>{ section }</span>
 				</label>
 			}
