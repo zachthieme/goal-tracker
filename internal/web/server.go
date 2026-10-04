@@ -27,9 +27,13 @@ type Server struct {
 type Option func(*Server)
 
 // WithLogger sends the Server's log records, such as the cause of each 500, to
-// logger. Without it they go to slog.Default().
+// logger. Without it, or with a nil logger, they go to slog.Default().
 func WithLogger(logger *slog.Logger) Option {
-	return func(s *Server) { s.log = logger }
+	return func(s *Server) {
+		if logger != nil {
+			s.log = logger
+		}
+	}
 }
 
 // NewServer builds a Server whose routes call svc.
