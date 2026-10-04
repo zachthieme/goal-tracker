@@ -1285,6 +1285,11 @@ func TestDraftRulesWinTheCascadeOverHTTP(t *testing.T) {
 	if rule := cssRule(t, page, ".rp-menu.rp-chip>summary"); !strings.Contains(rule, "box-sizing:border-box") || !strings.Contains(rule, "min-height:40px") {
 		t.Errorf("the baseline chip is not 40px tall: .rp-menu.rp-chip>summary{%s}", rule)
 	}
+	// On a touch screen app.css raises those buttons to 44px; the chip
+	// follows them (#183).
+	if rule, ok := ruleFor(mediaBlock(t, page, "@media (pointer:coarse)"), ".rp-menu.rp-chip>summary"); !ok || !strings.Contains(rule, "min-height:44px") {
+		t.Errorf("on a coarse pointer the baseline chip is not 44px tall: .rp-menu.rp-chip>summary{%s}", rule)
+	}
 }
 
 // The Introduction belongs to the Report Definition, so the draft shows it
