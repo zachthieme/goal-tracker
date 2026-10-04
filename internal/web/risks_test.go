@@ -995,3 +995,75 @@ func TestRisksPageGroupsWithinScope(t *testing.T) {
 		t.Errorf("Everyone %q doesn't keep the group and value", everyone)
 	}
 }
+
+// The scope form applies itself under htmx as the Goal list's filter bar does:
+// a change GETs the page and swaps in only #risks-body, which holds the header
+// count, the scope toggle, the cards and the table but not the form, and
+// pushes the address, while the page opts out of htmx's history snapshot so
+// Back loads the earlier address afresh. The form carries the page's group and
+// Mine, so a value chosen while filtered keeps both, and without JavaScript it
+// is a plain GET with an Apply button in <noscript>.
+func TestRisksScopeFormAppliesItself(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	platform := h.CreateDimension(boss, "Team", "Platform").Values[0]
+	own := h.ActiveGoal(sam, "Own platform work", "It matters.")
+	h.AssignGoalValue(own, platform)
+	h.ActiveGoal(sam, "Own untagged", "It matters.")
+	kims := h.ActiveGoal(kim, "Kim's platform work", "It matters.")
+	h.AssignGoalValue(kims, platform)
+	h.Clock.Advance(10 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?group=owner&mine=1")
+
+	form := tagAround(t, page, `data-testid="risks-filters"`)
+	for name, want := range map[string]string{
+		"method":      "get",
+		"action":      "/risks",
+		"hx-get":      "/risks",
+		"hx-trigger":  "submit, change",
+		"hx-target":   "#risks-body",
+		"hx-select":   "#risks-body",
+		"hx-swap":     "outerHTML",
+		"hx-push-url": "true",
+		"hx-sync":     "this:replace",
+		"hx-history":  "false",
+	} {
+		if got := html.UnescapeString(attr(form, name)); got != want {
+			t.Errorf("scope form %s = %q, want %q", name, got, want)
+		}
+	}
+	filters := between(t, page, `data-testid="risks-filters"`, "</form>")
+	if noscript := between(t, filters, "<noscript>", "</noscript>"); !strings.Contains(noscript, `<button type="submit" class="btn">Apply</button>`) || strings.Count(filters, "Apply") != 1 {
+		t.Errorf("the scope form's Apply isn't only in <noscript>:\n%s", filters)
+	}
+	body := between(t, page, `<div id="risks-body"`, "</main>")
+	for _, in := range []string{`data-testid="risks-attention"`, `data-testid="risks-scope-mine"`, `data-testid="risks-groups"`, `data-testid="risks-table"`} {
+		if !strings.Contains(body, in) {
+			t.Errorf("#risks-body lacks %s", in)
+		}
+	}
+	if strings.Contains(body, `data-testid="risks-filters"`) {
+		t.Errorf("#risks-body holds the scope form, which a swap would reset")
+	}
+
+	values := formValues(filters)
+	values.Set("value", strconv.FormatInt(platform.ID, 10))
+	address := attr(form, "hx-get") + "?" + values.Encode()
+	if want := "/risks?group=owner&mine=1&value=" + strconv.FormatInt(platform.ID, 10); address != want {
+		t.Fatalf("choosing Platform GETs %s, want %s", address, want)
+	}
+
+	page = getBody(t, client, ts.URL+address)
+
+	riskRowOf(t, page, own)
+	if rows := riskRows(page); len(rows) != 1 {
+		t.Errorf("scoped to Mine and Platform and filtered to owner, the table has %d rows, want 1", len(rows))
+	}
+}
