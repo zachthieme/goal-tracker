@@ -488,3 +488,38 @@ func TestPublicationFreezesChosenFields(t *testing.T) {
 		t.Errorf("published Fields %+v, want Budget 120 $ as published", fields)
 	}
 }
+
+// A publication freezes its membership changes: editing the definition's Also
+// include and Leave out afterwards leaves them as published.
+func TestPublicationFreezesMembershipChanges(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(boss, "Stays in", "why")
+	included := h.ActiveGoal(sam, "Also included", "why")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{
+		ownerRule(domain.RuleIs, boss),
+	}})
+	h.PublishReport(boss, def)
+	h.Clock.Advance(day)
+	listGoal(t, h, def, "include", included)
+	pub := h.PublishReport(boss, def)
+	if got, want := byGoal(t, pub.Report.MembershipChanges), map[int64]string{included.ID: "Added: " + domain.MembershipPickedByHand}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("published membership changes %v, want %v", got, want)
+	}
+
+	unlistGoal(t, h, def, "include", included)
+	listGoal(t, h, def, "exclude", included)
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if !reflect.DeepEqual(got.Report.MembershipChanges, pub.Report.MembershipChanges) {
+		t.Errorf("membership changes after editing the definition %+v, want as published %+v",
+			got.Report.MembershipChanges, pub.Report.MembershipChanges)
+	}
+}
