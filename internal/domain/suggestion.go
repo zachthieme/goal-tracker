@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -308,6 +309,46 @@ func (s *Service) closeSuggestion(ctx context.Context, suggestionID int64, outco
 		return errSuggestionClosed
 	}
 	return nil
+}
+
+// SuggestableParents returns the Goals that may be suggested as goalID's
+// parent, as ListGoals orders them: the Active and Proposed Goals, less the
+// Goal itself, its parents and Pending parents, and the Goals below it, any
+// of which would make a cycle (ADR-0001).
+func (s *Service) SuggestableParents(ctx context.Context, goalID int64) ([]Goal, error) {
+	skip := map[int64]bool{goalID: true}
+	parents, err := s.ParentsOf(ctx, goalID)
+	if err != nil {
+		return nil, err
+	}
+	pending, err := s.PendingParentLinks(ctx, goalID)
+	if err != nil {
+		return nil, err
+	}
+	below, err := s.Descendants(ctx, goalID, math.MaxInt)
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range parents {
+		skip[g.ID] = true
+	}
+	for _, l := range pending {
+		skip[l.Goal.ID] = true
+	}
+	for _, g := range below {
+		skip[g.ID] = true
+	}
+	all, err := s.ListGoals(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []Goal
+	for _, g := range all {
+		if !skip[g.ID] && suggestable(g.Lifecycle) {
+			out = append(out, g)
+		}
+	}
+	return out, nil
 }
 
 // ParentSuggestion returns a suggestion with its Goal, parent and suggester.

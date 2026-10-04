@@ -4004,7 +4004,8 @@ func menuItems(t *testing.T, page string) map[string]string {
 // Dimensions and Fields defined, Edit Dimension values and Edit Fields; an
 // Admin adds Mark Top-level and Mark owner departed…, and on an Ownerless Goal
 // Reassign and Mark returned… in place of Hand off; anyone else only Add a
-// child Goal.
+// child Goal. Anyone but the Owner gets Suggest a parent, linking to its own
+// form.
 func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -4023,6 +4024,7 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	open := func(g domain.Goal, form string) string { return fmt.Sprintf("/goals/%d?open=%s", g.ID, form) }
 	child := func(g domain.Goal) string { return fmt.Sprintf("/goals/new?parent=%d", g.ID) }
+	suggest := func(g domain.Goal) string { return fmt.Sprintf("/goals/%d/suggest-parent", g.ID) }
 
 	for _, tc := range []struct {
 		who  string
@@ -4039,6 +4041,7 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 		}},
 		{"ada@example.com", goal, map[string]string{
 			"Hand off":              open(goal, "handoff"),
+			"Suggest a parent":      suggest(goal),
 			"Add a child Goal":      child(goal),
 			"Edit Dimension values": open(goal, "dimensions"),
 			"Edit Fields":           open(goal, "fields"),
@@ -4046,6 +4049,7 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 			"Mark owner departed…":  open(goal, "depart"),
 		}},
 		{"ada@example.com", orphan, map[string]string{
+			"Suggest a parent":      suggest(orphan),
 			"Add a child Goal":      child(orphan),
 			"Edit Dimension values": open(orphan, "dimensions"),
 			"Edit Fields":           open(orphan, "fields"),
@@ -4054,6 +4058,7 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 			"Reassign":              open(orphan, "reassign"),
 		}},
 		{"mel@example.com", goal, map[string]string{
+			"Suggest a parent": suggest(goal),
 			"Add a child Goal": child(goal),
 		}},
 	} {

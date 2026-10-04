@@ -1,0 +1,61 @@
+package web
+
+import (
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// suggestParentPage is the form by which someone other than a Goal's Owner
+// suggests a parent for it, with an optional note: the Owner decides it
+// (CONTEXT.md: Parent suggestion). A refused submit comes back with the
+// reason above the form and the form as it was sent.
+templ suggestParentPage(current *domain.Account, v suggestParentView) {
+	@layout("Suggest a parent", current) {
+		@suggestionStyles()
+		<header class="page-head">
+			<div>
+				<h1>Suggest a parent</h1>
+				<p class="muted">
+					{ "For " }
+					<a href={ templ.SafeURL(goalPath(v.Goal.ID)) }>{ v.Goal.Title }</a>
+					{ ", owned by " }
+					@person(v.Goal.Owner)
+					{ ", who decides whether to link it." }
+				</p>
+			</div>
+		</header>
+		<section class="card sg-card">
+			if v.Error != "" {
+				<p data-testid="form-error" class="alert r" role="alert">{ v.Error }</p>
+			}
+			<form data-testid="suggest-parent" method="post" action={ templ.SafeURL(goalPath(v.Goal.ID) + "/suggest-parent") } class="sg-form">
+				<label class="field">
+					<span>Parent Goal</span>
+					<select name="parent_id" required autofocus>
+						for _, c := range v.Candidates {
+							<option value={ fmt.Sprint(c.ID) } selected?={ v.Input.Get("parent_id") == fmt.Sprint(c.ID) }>{ c.Title }</option>
+						}
+					</select>
+				</label>
+				<label class="field">
+					<span>Note (optional)</span>
+					<textarea name="note">{ v.Input.Get("note") }</textarea>
+				</label>
+				<div class="sg-actions">
+					<button type="submit" class="btn primary">Suggest</button>
+					<a class="btn quiet" href={ templ.SafeURL(goalPath(v.Goal.ID)) }>Cancel</a>
+				</div>
+			</form>
+		</section>
+	}
+}
+
+// suggestionStyles are the Suggest a parent page's rules on top of app.css.
+templ suggestionStyles() {
+	<style>
+		.sg-card{display:flex;flex-direction:column;gap:12px;max-width:560px}
+		.sg-form{display:flex;flex-direction:column;gap:12px}
+		.sg-actions{display:flex;gap:8px;align-items:center}
+	</style>
+}
