@@ -302,8 +302,8 @@ func TestRisksPageListsEachFlaggedGoalOnce(t *testing.T) {
 	if n := strings.Count(page, `<table id="risks-table"`); n != 1 {
 		t.Fatalf("page has %d risks tables, want 1", n)
 	}
-	if card := page[strings.LastIndex(page[:strings.Index(page, `<table id="risks-table"`)], "<div"):]; !strings.HasPrefix(card, `<div class="card">`) {
-		t.Errorf("the risks table doesn't sit straight inside a card: %.80s", card)
+	if !strings.Contains(page, `<div class="card"><table id="risks-table"`) {
+		t.Errorf("the risks table doesn't sit straight inside a card")
 	}
 	if rows := riskRows(page); len(rows) != 1 {
 		t.Fatalf("the Risks table has %d rows, want 1", len(rows))
