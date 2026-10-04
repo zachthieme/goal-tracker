@@ -68,8 +68,9 @@ A shot has a `path` and can also set:
 
 An `action` is usually a script, such as `a(); b()` or the `requestSubmit()`
 above, and the shot waits for any promise it ends on. An action that uses
-`return` at its top level, or `await` in any form, including `await (x)`,
-runs as the body of an async function instead:
+`return` at its top level, or `await` in its code, including `await (x)`,
+runs as the body of an async function instead. `await` in a string or comment
+doesn't count:
 
 ```sh
 node scripts/shots.mjs "$(scripts/scratch-app url)" '[

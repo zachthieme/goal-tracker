@@ -15,6 +15,7 @@ test("a shot's status must be an integer", () => {
 test("a shot's name may end in .png without saving .png.png", () => {
   assert.equal(normalise({ path: "/goals", name: "b.png" }, 0).file, "b.png");
   assert.equal(normalise({ path: "/goals", name: "b" }, 0).file, "b.png");
+  assert.equal(normalise({ path: "/goals", name: "B.PNG" }, 0).file, "B.png");
   assert.equal(normalise({ path: "/goals/3", theme: "dark", width: 390 }, 1).file, "02-goals-3-dark-390.png");
 });
 
@@ -50,6 +51,39 @@ test("an action that awaits a parenthesised expression runs in an async function
   // As a script, await (x) compiles as a call to a function named await.
   for (const action of ["await (new Promise(r => setTimeout(r, 10)))", "await(sleep(10)); go()"]) {
     assert.equal(wrapAction(action), `(async () => {\n${action}\n})()`);
+  }
+});
+
+test("an action that awaits inside a template literal runs in an async function", () => {
+  const action = "`a ${await(x)} b`";
+  assert.equal(wrapAction(action), `(async () => {\n${action}\n})()`);
+});
+
+test("an action in sloppy-only code that doesn't await runs as a script", () => {
+  for (const action of ["with (document) { title = 'x' }", "x = 010", "delete x"]) {
+    assert.equal(wrapAction(action), action);
+  }
+});
+
+test("an action that awaits but can't run in an async function runs as a script", () => {
+  // Its wrapped form doesn't compile, or it's sloppy-only code, as before #119.
+  for (const action of ["var await = 1; await", "with (document) { await(x) }"]) {
+    assert.equal(wrapAction(action), action);
+  }
+});
+
+test("an action that mentions await only in a string, comment, regex or name runs as a script", () => {
+  for (const action of [
+    "console.log('await')",
+    "x = 'await'; 42",
+    "// await later\n7",
+    "fetch('/await').then((r) => r.text())",
+    "obj.await",
+    "foo(/await/)",
+    "({await: 1})",
+    "const awaitX = 1; awaitX",
+  ]) {
+    assert.equal(wrapAction(action), action);
   }
 });
 
