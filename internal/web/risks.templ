@@ -3,13 +3,14 @@ package web
 import (
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// risksPage answers "what's going wrong?": how many Goals need attention, a
-// card per group of signals by who acts, then a section per signal listing the
-// Goals it flags, their Owners, and why, narrowed to one group when the
+// risksPage answers "which Goals are in trouble, and how badly?": how many
+// Goals need attention, a card per group of signals by who acts, then one
+// table row per flagged Goal, worst first, narrowed to one group when the
 // address asks for it.
 templ risksPage(current *domain.Account, v risksPageView) {
 	@layout("Risks", current) {
@@ -28,75 +29,12 @@ templ risksPage(current *domain.Account, v risksPageView) {
 		if v.Group != "" {
 			<p><a data-testid="risks-show-all" href="/risks">Show all</a></p>
 		}
-		if v.Shows("stale") {
-			@riskSection("stale", "Stale", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence.", len(v.Stale)) {
-				for _, gf := range v.Stale {
-					@riskRow(gf.Goal) {
-						{ staleSince(gf.Freshness) }
-					}
-				}
-			}
-		}
-		if v.Shows("path-overdue") {
-			@riskSection("path-overdue", "Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green.", len(v.OverduePaths)) {
-				for _, gf := range v.OverduePaths {
-					@riskRow(gf.Goal) {
-						{ pathOverdue(gf.Freshness) }
-					}
-				}
-			}
-		}
-		if v.Shows("ownerless") {
-			@riskSection("ownerless", "Ownerless", "Active Goals whose Owner has left the org and hasn't been replaced.", len(v.Ownerless)) {
-				for _, g := range v.Ownerless {
-					@riskRow(g) {
-						<span class="badge ol">Ownerless</span> its Owner has left the org and hasn't been replaced
-					}
-				}
-			}
-		}
-		if v.Shows("unaligned") {
-			@riskSection("unaligned", "Unaligned", "Active Goals that contribute to no other Goal and aren't Top-level.", len(v.Unaligned)) {
-				for _, g := range v.Unaligned {
-					@riskRow(g) {
-						contributes to no other Goal and isn't Top-level
-					}
-				}
-			}
-		}
-		if v.Shows("schedule-conflicts") {
-			@riskSection("schedule-conflicts", "Schedule conflicts", "Goals due later than a Goal they contribute to.", len(v.ScheduleConflicts)) {
-				for _, c := range v.ScheduleConflicts {
-					@riskRow(c.Child) {
-						due { fmtDate(c.Child.DeliveryDate) }, later than
-						@goalRef(c.Parent)
-						(due { fmtDate(c.Parent.DeliveryDate) }), which it contributes to
-					}
-				}
-			}
-		}
-		if v.Shows("halted-parents") {
-			@riskSection("halted-parents", "Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled.", len(v.HaltedParents)) {
-				for _, hp := range v.HaltedParents {
-					@riskRow(hp.Child) {
-						contributes to
-						@goalRef(hp.Parent)
-						, which is <span class="badge lc">{ hp.Parent.Lifecycle }</span>
-					}
-				}
-			}
-		}
-		if empty := v.Empty(); len(empty) == len(v.Types()) {
-			<p data-testid="risks-all-clear" class="muted">
-				All clear: nothing in
-				@riskNames(empty)
-				.
-			</p>
-		} else if len(empty) > 0 {
-			<p data-testid="risks-nothing-in" class="muted">
-				Nothing in:
-				@riskNames(empty)
-			</p>
+		if len(v.Rows) == 0 {
+			<p data-testid="risks-all-clear" class="muted">All clear: nothing needs attention.</p>
+		} else if shown := v.Shown(); len(shown) == 0 {
+			<p data-testid="risks-group-blank" class="muted">{ v.Blank() }</p>
+		} else {
+			@risksTable(current, v.Today, shown)
 		}
 	}
 }
@@ -128,56 +66,72 @@ templ riskCardLink(c riskCard) {
 	</a>
 }
 
-// riskNames lists the empty problem types by name, each carrying its section's
-// anchor so a link to an empty section lands on its name.
-templ riskNames(types []riskType) {
-	for i, rt := range types {
-		if i > 0 {
-			{ ", " }
-		}
-		<span id={ rt.Anchor } class="rk-empty">{ rt.Name }</span>
-	}
+// risksTable is the flagged Goals, one row each, worst first.
+templ risksTable(current *domain.Account, today time.Time, rows []riskGoalRow) {
+	<div class="card">
+		<table id="risks-table" data-testid="risks-table">
+			<thead>
+				<tr><th>Health</th><th>Goal</th><th>Owner</th><th aria-label="Fix"></th></tr>
+			</thead>
+			<tbody>
+				for _, r := range rows {
+					@riskRow(current, today, r)
+				}
+			</tbody>
+		</table>
+	</div>
 }
 
-// riskSection is one problem type: its heading, a line explaining it, and a
-// table of the flagged Goals (its children, one riskRow each). A type with no
-// Goals renders nothing here; the page names it in its "Nothing in" line.
-templ riskSection(anchor, heading, explain string, count int) {
-	if count > 0 {
-		<section data-testid={ "risks-" + anchor } id={ anchor } class="rk-section">
-			<div>
-				<h2>{ heading }</h2>
-				<p class="muted">{ explain }</p>
-			</div>
-			<div class="card">
-				<table>
-					<thead>
-						<tr><th>Goal</th><th>Owner</th><th>Why it's flagged</th></tr>
-					</thead>
-					<tbody>
-						{ children... }
-					</tbody>
-				</table>
-			</div>
-		</section>
-	}
-}
-
-// riskRow is one flagged Goal: its title, its Owner, and why (its children).
-templ riskRow(g domain.Goal) {
+// riskRow is one flagged Goal: its Health, its title with a chip per signal
+// that flags it, its Owner ("You" for the viewer's own), and a cell for its
+// fix.
+templ riskRow(current *domain.Account, today time.Time, r riskGoalRow) {
 	<tr data-testid="risk-row">
-		<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a></td>
 		<td>
-			@person(g.Owner)
+			@healthBadge("risk-health", r.Health)
 		</td>
-		<td>
-			{ children... }
+		<td data-testid="risk-goal">
+			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", r.Goal.ID)) }>{ r.Goal.Title }</a>
+			<span class="rk-chips">
+				for _, sig := range r.Signals {
+					@riskChip(today, r.Goal, sig)
+				}
+			</span>
 		</td>
+		<td data-testid="risk-owner">
+			if r.Goal.Owner.ID == current.ID {
+				You
+			} else {
+				@person(r.Goal.Owner)
+			}
+		</td>
+		<td data-testid="risk-fix"></td>
 	</tr>
 }
 
+// riskChip says why a signal flags g.
+templ riskChip(today time.Time, g domain.Goal, sig riskSignal) {
+	switch sig.Kind {
+		case "stale":
+			<span data-testid="risk-signal" data-kind="stale" class="badge st">{ fmt.Sprintf("Stale · %dd on %dd", sig.Days, g.CadenceDays) }</span>
+		case "path-overdue":
+			<span data-testid="risk-signal" data-kind="path-overdue" class="badge st">{ fmt.Sprintf("Path to Green %dd overdue", sig.Days) }</span>
+		case "ownerless":
+			<span data-testid="risk-signal" data-kind="ownerless" class="badge ol">Ownerless</span>
+		case "unaligned":
+			<span data-testid="risk-signal" data-kind="unaligned" class="rk-tag">Unaligned · no parent Goal, not Top-level</span>
+		case "schedule-conflicts":
+			<span data-testid="risk-signal" data-kind="schedule-conflicts" class="rk-tag">{ fmt.Sprintf("Schedule conflict · due %s, %s after its parent ", riskDate(g.DeliveryDate, today), riskDays(sig.Days)) }@goalRef(*sig.Related)
+</span>
+		case "halted-parents":
+			<span data-testid="risk-signal" data-kind="halted-parents" class="rk-tag">{ "Parent " + sig.Related.Lifecycle + " · " }@goalRef(*sig.Related)
+</span>
+	}
+}
+
 // risksStyles are the Risks page's own rules on top of app.css: the summary
-// cards and the section layout.
+// cards, the chips under each Goal in the table, and the outlined neutral chip
+// the structural signals take: a .tag with the badges' small radius.
 templ risksStyles() {
 	<style>
 		.rk-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
@@ -185,9 +139,8 @@ templ risksStyles() {
 		.rk-card .num{font-size:24px}
 		.rk-chips{display:flex;flex-wrap:wrap;gap:8px}
 		.rk-zero{border:1px dashed var(--color-border-strong);color:var(--color-ink-muted)}
-		.rk-section,.rk-empty{scroll-margin-top:16px}
-		.rk-empty{color:var(--color-ink);font-weight:500}
-		.rk-section{display:flex;flex-direction:column;gap:12px}
+		td .rk-chips{margin-top:4px}
+		.rk-tag{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;padding:0 8px;border-radius:var(--radius-sm);color:var(--color-ink);font-size:13px;line-height:20px;border:1px solid var(--color-border-strong)}
 		@media (max-width:900px){.rk-cards{grid-template-columns:minmax(0,1fr)}}
 	</style>
 }
