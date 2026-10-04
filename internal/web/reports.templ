@@ -8,16 +8,14 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// reportsPage lists every saved Report Definition as a card, and behind a New
-// report button the form to build a new one (CONTEXT.md: Report Definition).
-// Until the builder (#149) the form still posts root Goals and Owner and
-// Dimension filters: roots save as the Goals picked, the filters alone as
-// Report rules. A definition may choose Fields to show beside each Goal.
+// reportsPage lists every saved Report Definition as a card, and links New
+// report to the builder (CONTEXT.md: Report Definition).
 templ reportsPage(current *domain.Account, data reportsListData) {
 	@layout("Reports", current) {
 		@reportStyles()
 		<div class="page-head">
 			<h1>Reports</h1>
+			<a data-testid="new-report" class="btn primary" href="/reports/new">New report</a>
 		</div>
 		<section data-testid="report-definitions" class="rp-body">
 			<h2>Saved Report Definitions</h2>
@@ -35,74 +33,6 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 				}
 			</ul>
 		</section>
-		<details data-testid="create-report">
-			<summary class="btn primary">New report</summary>
-			<form class="card rp-card rp-form rp-new" method="post" action="/reports">
-				<h3>New Report Definition</h3>
-				<label class="field">
-					<span>Name</span>
-					<input type="text" name="name" required/>
-				</label>
-				<label class="field">
-					<span>Introduction</span>
-					<textarea name="introduction"></textarea>
-				</label>
-				<div class="field">
-					<fieldset data-testid="report-roots" class="rp-picker">
-						<legend>Root Goals <span class="hint">— Top-level Goals first</span></legend>
-						for _, g := range data.Goals {
-							<label>
-								<input type="checkbox" name="root" value={ fmt.Sprintf("%d", g.ID) }/>
-								{ g.Title }
-								if g.TopLevel {
-									{ " " }<span class="tag">Top-level</span>
-								}
-							</label>
-						}
-					</fieldset>
-				</div>
-				<label data-testid="report-owner-filter" class="field">
-					<span>Owner filter</span>
-					<select name="owner">
-						<option value="">Any Owner</option>
-						for _, o := range data.Owners {
-							<option value={ fmt.Sprintf("%d", o.ID) } title={ o.Email }>{ o.Label() }</option>
-						}
-					</select>
-				</label>
-				<fieldset data-testid="report-dimension-filters">
-					<legend>Dimension filters</legend>
-					if len(data.Dims) == 0 {
-						<p data-testid="no-dimensions-defined" class="muted">No Dimensions defined yet.</p>
-					}
-					for _, d := range data.Dims {
-						<fieldset>
-							<legend>{ d.Name }</legend>
-							for _, v := range d.Values {
-								if !v.Retired {
-									<label>
-										<input type="checkbox" name="filter" value={ fmt.Sprintf("%d", v.ID) }/>
-										{ v.Value }
-									</label>
-								}
-							}
-						</fieldset>
-					}
-				</fieldset>
-				if len(data.Fields) > 0 {
-					<fieldset data-testid="report-field-choice">
-						<legend>Fields <span class="hint">— shown beside each Goal that has a value</span></legend>
-						for _, f := range data.Fields {
-							<label>
-								<input type="checkbox" name="field" value={ fmt.Sprintf("%d", f.ID) }/>
-								{ f.Name }
-							</label>
-						}
-					</fieldset>
-				}
-				<div><button type="submit" class="btn primary">Save Report Definition</button></div>
-			</form>
-		</details>
 	}
 }
 
@@ -983,10 +913,8 @@ templ reportStyles() {
 		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
 		.rp-cards{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 		.rp-cards>.rp-card{padding:16px 24px;gap:4px}
-		.rp-picker{max-height:280px;overflow-y:auto;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background:var(--color-surface);padding:8px 12px;display:flex;flex-direction:column;gap:4px}
 		.rp-form{display:flex;flex-direction:column;gap:16px}
-		.rp-new{margin-top:12px}
-		.rp-form fieldset:not(.rp-picker){border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
+		.rp-form fieldset{border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
 		.rp-form legend{font-weight:600;font-size:13px;padding:0 0 8px}
 		.rp-fields{display:flex;flex-wrap:wrap;gap:4px 16px;margin:0}
 		.rp-fields>div{display:flex;gap:4px;min-width:0}

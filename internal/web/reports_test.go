@@ -6,9 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -37,16 +35,17 @@ func TestSaveReportDefinitionAndSeeDraftOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 
-	// The create form offers the Goals as roots.
-	form := getBody(t, client, ts.URL+"/reports")
-	if !strings.Contains(form, "Grow revenue") {
-		t.Fatalf("reports page does not offer Goals as roots; body:\n%s", form)
+	// The builder offers the Goals to pick.
+	form := getBody(t, client, ts.URL+"/reports/new")
+	if !strings.Contains(pageElement(t, form, "select", "picked-select"), "Grow revenue") {
+		t.Fatalf("the builder does not offer Goals to pick; body:\n%s", form)
 	}
 
-	resp := postForm(t, client, ts.URL+"/reports", url.Values{
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
 		"name":         {"EU MBR"},
 		"introduction": {"Quarterly business review."},
-		"root":         {strconv.FormatInt(a.ID, 10), strconv.FormatInt(b.ID, 10), strconv.FormatInt(c.ID, 10)},
+		"mode":         {domain.ReportModePicked},
+		"picked":       {strconv.FormatInt(a.ID, 10), strconv.FormatInt(b.ID, 10), strconv.FormatInt(c.ID, 10)},
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("save report: status %d", resp.StatusCode)
@@ -75,7 +74,7 @@ func TestSaveReportDefinitionAndSeeDraftOverHTTP(t *testing.T) {
 	}
 }
 
-// A Report Definition that selects nothing (no roots, no filters) is rejected.
+// A Report Definition that selects nothing (no rules) is rejected.
 func TestSaveReportDefinitionRejectsEmptySelection(t *testing.T) {
 	t.Parallel()
 
@@ -84,59 +83,9 @@ func TestSaveReportDefinitionRejectsEmptySelection(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 
-	resp := postForm(t, client, ts.URL+"/reports", url.Values{"name": {"Selects nothing"}})
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{"name": {"Selects nothing"}, "mode": {domain.ReportModeRules}})
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("empty selection: status %d, want 422", resp.StatusCode)
-	}
-}
-
-// Until the builder (#149), the create form's roots save as a picked
-// definition of the roots that pass its Owner and Dimension filters as it is
-// saved; with no roots, its filters save as Report rules (ADR 0007).
-func TestCreateFormSavesRootsAsPickedAndFiltersAsRulesOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	sam := h.SignIn("sam@example.com")
-	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
-	growth, trust := pillar.Values[0], pillar.Values[1]
-	grower := h.ActiveGoal(boss, "Grow revenue", "The org needs to grow.")
-	truster := h.ActiveGoal(boss, "Earn trust", "Customers need to trust us.")
-	samsGrower := h.ActiveGoal(sam, "Grow EU revenue", "The EU needs to grow.")
-	h.AssignGoalValue(grower, growth)
-	h.AssignGoalValue(truster, trust)
-	h.AssignGoalValue(samsGrower, growth)
-	ts := newServer(t, h)
-	client := signInClient(t, ts.URL, "boss@example.com")
-	id := func(n int64) string { return strconv.FormatInt(n, 10) }
-
-	for _, form := range []url.Values{
-		{"name": {"Picked"}, "root": {id(grower.ID), id(truster.ID), id(samsGrower.ID)}, "owner": {id(boss.ID)}, "filter": {id(growth.ID)}},
-		{"name": {"Rules"}, "owner": {id(boss.ID)}, "filter": {id(growth.ID), id(trust.ID)}},
-	} {
-		if resp := postForm(t, client, ts.URL+"/reports", form); resp.StatusCode != http.StatusOK {
-			t.Fatalf("save %s: status %d: %s", form.Get("name"), resp.StatusCode, readBody(t, resp))
-		}
-	}
-
-	defs, err := h.Service.ListReportDefinitions(context.Background())
-	if err != nil {
-		t.Fatalf("ListReportDefinitions: %v", err)
-	}
-	if len(defs) != 2 {
-		t.Fatalf("saved %d definitions, want 2", len(defs))
-	}
-	picked, rules := defs[0], defs[1]
-	if picked.Mode != domain.ReportModePicked || !slices.Equal(picked.Picked, []int64{grower.ID}) || len(picked.Rules) != 0 {
-		t.Errorf("roots with filters saved %+v, want picked [%d] (the root owned by boss carrying Growth)", picked, grower.ID)
-	}
-	wantRules := []domain.ReportRule{
-		{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{id(boss.ID)}},
-		{Attribute: domain.RuleDimension, DimensionID: pillar.ID, Op: domain.RuleIsAnyOf, Values: []string{id(growth.ID), id(trust.ID)}},
-	}
-	if rules.Mode != domain.ReportModeRules || !reflect.DeepEqual(rules.Rules, wantRules) || len(rules.Picked) != 0 {
-		t.Errorf("filters alone saved %+v, want rules %+v", rules, wantRules)
 	}
 }
 
@@ -833,38 +782,32 @@ func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
 	}
 }
 
-// The reports page lists saved definitions as cards and keeps the form behind
-// a New report button. Its Root Goals picker is a scrolling list with the
-// top-level Goals first, and there is no Depth: a report never follows links
-// (ADR 0007).
-func TestReportsListFormOverHTTP(t *testing.T) {
+// The reports page lists saved definitions as cards, and New report links to
+// the builder in place of a form of its own: POST /reports is gone.
+func TestReportsListLinksToTheBuilderOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
-	child := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
 	root := h.MarkTopLevel(boss, h.ActiveGoal(boss, "Grow revenue", "The org needs to grow."))
 	h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{root.ID}})
 
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports")
+	client := signInClient(t, ts.URL, "boss@example.com")
+	page := getBody(t, client, ts.URL+"/reports")
 
 	if def := pageElement(t, page, "li", "report-definition"); !strings.Contains(def, `class="card`) || !strings.Contains(def, "MBR") {
 		t.Errorf("saved definition is not a card; item:\n%s", def)
 	}
-	create := pageElement(t, page, "details", "create-report")
-	if !strings.Contains(create, ">New report</summary>") || strings.HasPrefix(create, `<details data-testid="create-report" open`) {
-		t.Errorf("the definition form is not behind a collapsed New report button; details:\n%s", create)
+	if link := pageElement(t, page, "a", "new-report"); !strings.Contains(link, `href="/reports/new"`) || !strings.Contains(link, "New report") {
+		t.Errorf("New report doesn't link to the builder: %s", link)
 	}
-	roots := pageElement(t, create, "fieldset", "report-roots")
-	if !strings.Contains(roots, `class="rp-picker"`) {
-		t.Errorf("root picker does not scroll; fieldset:\n%s", roots)
+	if strings.Contains(page, "<form") && strings.Contains(page, `action="/reports"`) || strings.Contains(page, `data-testid="create-report"`) {
+		t.Errorf("the reports page still has its own create form; body:\n%s", page)
 	}
-	if strings.Index(roots, root.Title) > strings.Index(roots, child.Title) {
-		t.Errorf("top-level Goal is not listed first; fieldset:\n%s", roots)
-	}
-	if strings.Contains(create, `name="depth"`) {
-		t.Errorf("the form still asks for a Depth; details:\n%s", create)
+	resp := postForm(t, noRedirects(client), ts.URL+"/reports", url.Values{"name": {"Old way"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("POST /reports: status %d, want 405; body:\n%s", resp.StatusCode, body)
 	}
 }
 
@@ -1058,23 +1001,10 @@ func TestPublicationBylineKeepsThePublishersNameOverHTTP(t *testing.T) {
 	}
 }
 
-// The New Report Definition form sits a gap below its button through the
-// page's own class rather than a style attribute.
-func TestNewReportFormSpacingComesFromAClassOverHTTP(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	h.SignIn("boss@example.com")
-	ts := newServer(t, h)
-
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports")
-	assertStyledBy(t, tagAround(t, page, `action="/reports"`), page, "rp-new", "margin-top:12px")
-}
-
-// A Retired Dimension drops out of the Report Definition form's filters, yet a
-// Report Definition saved with a rule on its value still drafts the same
-// Goals. Restoring the Dimension returns it to the form (CONTEXT.md: Retired;
-// ADR 0005).
+// A Retired Dimension drops out of the builder's rules, yet a Report
+// Definition saved with a rule on its value still drafts the same Goals.
+// Restoring the Dimension returns it to the builder (CONTEXT.md: Retired; ADR
+// 0005).
 func TestRetiredDimensionLeavesReportFormButSavedFilterKeepsWorkingOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1097,12 +1027,12 @@ func TestRetiredDimensionLeavesReportFormButSavedFilterKeepsWorkingOverHTTP(t *t
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 
-	filters := between(t, getBody(t, client, ts.URL+"/reports"), `<fieldset data-testid="report-dimension-filters"`, `<div><button type="submit"`)
-	if strings.Contains(filters, "Pillar") || strings.Contains(filters, "Growth") {
-		t.Errorf("the Retired Pillar is offered as a Report filter:\n%s", filters)
+	rules := pageElement(t, getBody(t, client, ts.URL+"/reports/new"), "section", "report-rules")
+	if strings.Contains(rules, "Pillar") || strings.Contains(rules, "Growth") {
+		t.Errorf("the Retired Pillar is offered for a Report rule:\n%s", rules)
 	}
-	if !strings.Contains(filters, "Team") {
-		t.Errorf("the live Team isn't offered as a Report filter:\n%s", filters)
+	if !strings.Contains(rules, "Team") {
+		t.Errorf("the live Team isn't offered for a Report rule:\n%s", rules)
 	}
 
 	draft := getBody(t, client, fmt.Sprintf("%s/reports/%d", ts.URL, def.ID))
@@ -1113,9 +1043,10 @@ func TestRetiredDimensionLeavesReportFormButSavedFilterKeepsWorkingOverHTTP(t *t
 	if err := h.Service.RestoreDimension(ctx, boss.ID, pillar.ID); err != nil {
 		t.Fatalf("RestoreDimension: %v", err)
 	}
-	filters = between(t, getBody(t, client, ts.URL+"/reports"), `<fieldset data-testid="report-dimension-filters"`, `<div><button type="submit"`)
-	if !strings.Contains(filters, "<legend>Pillar</legend>") || !strings.Contains(filters, fmt.Sprintf(`value="%d"`, growth.ID)) {
-		t.Errorf("the restored Pillar isn't offered as a Report filter:\n%s", filters)
+	rules = pageElement(t, getBody(t, client, ts.URL+"/reports/new"), "section", "report-rules")
+	pillarKey := fmt.Sprintf("dimension:%d", pillar.ID)
+	if !strings.Contains(rules, `<option value="`+pillarKey+`">Pillar</option>`) || !strings.Contains(rules, fmt.Sprintf(`value="%s=%d"`, pillarKey, growth.ID)) {
+		t.Errorf("the restored Pillar isn't offered for a Report rule:\n%s", rules)
 	}
 }
 
@@ -1319,7 +1250,7 @@ func TestPullOneHighlightOfACheckinOverHTTP(t *testing.T) {
 	}
 }
 
-// A Report Definition saved from the form filtering on one value of a
+// A Report Definition saved from the builder with a rule on one value of a
 // several-values Dimension selects a Goal that carries that value among others,
 // and leaves out a Goal that carries only other values (ticket #69).
 func TestReportFilterSelectsAGoalCarryingTheValueAmongSeveralOverHTTP(t *testing.T) {
@@ -1337,9 +1268,13 @@ func TestReportFilterSelectsAGoalCarryingTheValueAmongSeveralOverHTTP(t *testing
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 
-	resp := postForm(t, client, ts.URL+"/reports", url.Values{
-		"name":   {"Globex MBR"},
-		"filter": {strconv.FormatInt(globex.ID, 10)},
+	dim := fmt.Sprintf("dimension:%d", customer.ID)
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"Globex MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {fmt.Sprintf("%s=%d", dim, globex.ID)},
 	})
 	draft := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
