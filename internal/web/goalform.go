@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a-h/templ"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
@@ -37,7 +39,18 @@ type goalFormView struct {
 	// other Goal, which the no-script select offers.
 	Parents    []parentChoice
 	Candidates []domain.Goal
-	Problems   []*domain.InputError
+	// Dimensions and Fields are those still offered, for Where it fits.
+	// Chosen are the values ticked or selected, NewValues the value typed to
+	// add to each Extendable Dimension, and FieldValues what's typed in each
+	// Field, each by ID. Suggested says Chosen came from the parents rather
+	// than a submit.
+	Dimensions  []domain.Dimension
+	Fields      []domain.Field
+	Chosen      map[int64]bool
+	NewValues   map[int64]string
+	FieldValues map[int64]string
+	Suggested   bool
+	Problems    []*domain.InputError
 }
 
 // parentChoice is a Goal offered or picked to contribute to: its Health, ""
@@ -77,6 +90,20 @@ type metricRow struct {
 	Target     string
 	Direction  string
 	TargetDate string
+}
+
+// summary is each problem the top of a refused form lists, under the input it
+// links to, once: values posted together in a Dimension that takes one are
+// each refused alike, at the one select.
+func (v goalFormView) summary() []*domain.InputError {
+	var out []*domain.InputError
+	for _, p := range v.Problems {
+		linked := &domain.InputError{Input: v.selectInput(p.Input), Message: p.Message}
+		if !slices.ContainsFunc(out, func(q *domain.InputError) bool { return *q == *linked }) {
+			out = append(out, linked)
+		}
+	}
+	return out
 }
 
 // bad is why the named input was refused, or "" when it wasn't.
@@ -134,7 +161,65 @@ func (s *Server) handleNewGoalForm(w http.ResponseWriter, r *http.Request, curre
 		http.Error(w, "could not load goals", http.StatusInternalServerError)
 		return
 	}
+	if err := s.loadWhereItFits(r.Context(), &v); err != nil {
+		http.Error(w, "could not load dimensions and fields", http.StatusInternalServerError)
+		return
+	}
+	if v.Chosen, err = s.suggestedValues(r.Context(), v.Parents, v.Dimensions); err != nil {
+		http.Error(w, "could not load parent goals' values", http.StatusInternalServerError)
+		return
+	}
+	v.Suggested = len(v.Chosen) > 0
 	render(w, r, http.StatusOK, goalFormPage(&current, v))
+}
+
+// loadWhereItFits gives v the Dimensions and Fields still offered for setting
+// (CONTEXT.md: Retired).
+func (s *Server) loadWhereItFits(ctx context.Context, v *goalFormView) error {
+	dims, err := s.svc.ListDimensions(ctx)
+	if err != nil {
+		return fmt.Errorf("load dimensions: %w", err)
+	}
+	fields, err := s.svc.ListFields(ctx)
+	if err != nil {
+		return fmt.Errorf("load fields: %w", err)
+	}
+	v.Dimensions, v.Fields = domain.OfferedDimensions(dims), domain.OfferedFields(fields)
+	return nil
+}
+
+// suggestedValues are the values a Goal contributing to parents is offered
+// ticked: every value the parents carry that can still be newly assigned, as
+// Add a child Goal offers a parent's (goalView.childDefaults), so neither a
+// Retired value nor one in a Retired Dimension. In a Dimension that takes one
+// value, parents carrying different ones suggest none there.
+func (s *Server) suggestedValues(ctx context.Context, parents []parentChoice, dims []domain.Dimension) (map[int64]bool, error) {
+	suggested := map[int64]bool{}
+	inDimension := map[int64]map[int64]bool{}
+	for _, p := range parents {
+		values, err := s.svc.GoalValues(ctx, p.Goal.ID)
+		if err != nil {
+			return nil, fmt.Errorf("load parent goal's values: %w", err)
+		}
+		for _, val := range values {
+			if val.Retired || val.DimensionRetired {
+				continue
+			}
+			suggested[val.ID] = true
+			if inDimension[val.DimensionID] == nil {
+				inDimension[val.DimensionID] = map[int64]bool{}
+			}
+			inDimension[val.DimensionID][val.ID] = true
+		}
+	}
+	for _, d := range dims {
+		if ids := inDimension[d.ID]; !d.TakesSeveral() && len(ids) > 1 {
+			for id := range ids {
+				delete(suggested, id)
+			}
+		}
+	}
+	return suggested, nil
 }
 
 // pickParents splits every Goal into the parents picked by ids, in that
@@ -353,6 +438,25 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 		in.ParentIDs = append(in.ParentIDs, id)
 	}
 
+	// Where it fits assigns only what is posted: a value suggested from the
+	// parents and unticked isn't.
+	v.Chosen = map[int64]bool{}
+	for _, value := range r.PostForm[inputValueID] {
+		if value = strings.TrimSpace(value); value == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			refuse("", "%q isn't a Dimension value", value)
+			continue
+		}
+		v.Chosen[id] = true
+		in.ValueIDs = append(in.ValueIDs, id)
+	}
+	v.NewValues = postedByID(r.PostForm, inputNewValue)
+	v.FieldValues = postedByID(r.PostForm, inputField)
+	in.NewValues, in.FieldValues = v.NewValues, v.FieldValues
+
 	// Rows are numbered afresh, all-blank ones dropped, so the domain's
 	// problems and the page shown again name the same inputs.
 	for i, row := range formRows(r.PostForm, "milestones") {
@@ -400,7 +504,89 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 		http.Error(w, "could not load goals", http.StatusInternalServerError)
 		return
 	}
+	if err := s.loadWhereItFits(r.Context(), &v); err != nil {
+		http.Error(w, "could not load dimensions and fields", http.StatusInternalServerError)
+		return
+	}
 	render(w, r, http.StatusUnprocessableEntity, goalFormPage(&current, v))
+}
+
+// Where it fits posts each value chosen as value_id, the value typed to add to
+// an Extendable Dimension as new_value:<dimension id> (domain.NewValueInput),
+// and each Field's as field:<field id> (domain.FieldInput).
+const (
+	inputValueID  = "value_id"
+	inputNewValue = "new_value:"
+	inputField    = "field:"
+)
+
+// postedByID gathers the inputs named prefix<id>, by id, leaving out any whose
+// id isn't a number.
+func postedByID(form url.Values, prefix string) map[int64]string {
+	byID := map[int64]string{}
+	for name, values := range form {
+		rest, ok := strings.CutPrefix(name, prefix)
+		if !ok {
+			continue
+		}
+		if id, err := strconv.ParseInt(rest, 10, 64); err == nil {
+			byID[id] = values[0]
+		}
+	}
+	return byID
+}
+
+// choices are the values of d Where it fits offers: its live ones, and any
+// Retired one chosen, so a refused submit shows what was posted.
+func (v goalFormView) choices(d domain.Dimension) []domain.DimensionValue {
+	var out []domain.DimensionValue
+	for _, val := range d.Values {
+		if !val.Retired || v.Chosen[val.ID] {
+			out = append(out, val)
+		}
+	}
+	return out
+}
+
+// dimensionInput names the select of a Dimension that takes one value. A
+// problem with the value chosen there names the value (domain.ValueInput), so
+// the select stands for each of its values' inputs.
+func dimensionInput(d domain.Dimension) string { return fmt.Sprintf("dimension:%d", d.ID) }
+
+// selectInput is the input a refused value of a one-value Dimension is shown
+// at: its Dimension's select, or input itself when it is no such value.
+func (v goalFormView) selectInput(input string) string {
+	for _, d := range v.Dimensions {
+		if d.TakesSeveral() {
+			continue
+		}
+		for _, val := range d.Values {
+			if domain.ValueInput(val.ID) == input {
+				return dimensionInput(d)
+			}
+		}
+	}
+	return input
+}
+
+// badSelect is why the value chosen in a one-value Dimension's select was
+// refused, or "" when it wasn't.
+func (v goalFormView) badSelect(d domain.Dimension) string {
+	for _, p := range v.Problems {
+		if p.Input != "" && v.selectInput(p.Input) == dimensionInput(d) {
+			return p.Message
+		}
+	}
+	return ""
+}
+
+// invalid marks an input refused, described by why, or nothing when it
+// wasn't.
+func invalid(bad, input string) templ.Attributes {
+	if bad == "" {
+		return templ.Attributes{}
+	}
+	return templ.Attributes{"aria-invalid": "true", "aria-describedby": input + "-error"}
 }
 
 // metricDirection is a Metric row's direction: down when the target is below
@@ -444,9 +630,9 @@ func goalFormProblems(err error, unparsed []*domain.InputError) []*domain.InputE
 }
 
 // goalFormPlace is where an input sits on the New goal page, to sort its
-// problems by: Title, So What, Kind, delivery date, cadence, then each
-// Milestone row's inputs and each Metric row's, in turn. Any other input sorts
-// after those.
+// problems by: Title, So What, Kind, delivery date, cadence, each Milestone
+// row's inputs and each Metric row's, in turn, then Contributes to, then Where
+// it fits' Dimension values and its Fields. Any other input sorts after those.
 func goalFormPlace(input string) []int {
 	single := []string{domain.InputTitle, domain.InputSoWhat, domain.InputKind, domain.InputDeliveryDate, domain.InputCadence}
 	if at := slices.Index(single, input); at >= 0 {
@@ -466,7 +652,19 @@ func goalFormPlace(input string) []int {
 			return []int{len(single) + s, i, slices.Index(section.parts, part)}
 		}
 	}
-	return []int{len(single) + len(sections)}
+	after := len(single) + len(sections)
+	for p, prefixes := range [][]string{
+		{inputParentID, "parent:"},
+		{"value:", inputNewValue},
+		{inputField},
+	} {
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(input, prefix) {
+				return []int{after + p}
+			}
+		}
+	}
+	return []int{after + 3}
 }
 
 // formRows gathers a repeatable section's rows, posted as section[i].part,

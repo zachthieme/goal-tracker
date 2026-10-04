@@ -584,7 +584,7 @@ func TestNewGoalFormRefusalKeepsParentsPicked(t *testing.T) {
 }
 
 // createdGoal posts the New goal form, wanting it to create one Goal, and
-// returns that Goal.
+// returns that Goal: the newest titled as posted.
 func createdGoal(t *testing.T, h *testsupport.Harness, client *http.Client, baseURL string, form url.Values) domain.Goal {
 	t.Helper()
 	resp := postForm(t, client, baseURL+"/goals/new", form)
@@ -592,10 +592,19 @@ func createdGoal(t *testing.T, h *testsupport.Harness, client *http.Client, base
 		t.Fatalf("posting %v answered %d at %s:\n%s", form, resp.StatusCode, resp.Request.URL, page)
 	}
 	goals, err := h.Service.ListGoals(context.Background())
-	if err != nil || len(goals) == 0 {
-		t.Fatalf("ListGoals: %d Goals, %v", len(goals), err)
+	if err != nil {
+		t.Fatalf("ListGoals: %v", err)
 	}
-	return goals[len(goals)-1]
+	var created domain.Goal
+	for _, g := range goals {
+		if g.Title == form.Get("title") && g.ID > created.ID {
+			created = g
+		}
+	}
+	if created.ID == 0 {
+		t.Fatalf("no Goal is titled %q among %+v", form.Get("title"), goals)
+	}
+	return created
 }
 
 // Delivery's Kind saves as chosen: Dated with its delivery date, Ongoing with
@@ -825,5 +834,286 @@ func TestNewGoalPageOffersWhatAndWhyAndDelivery(t *testing.T) {
 	}
 	if strings.Contains(style, "box-shadow") {
 		t.Errorf("the New goal page's styles cast a shadow")
+	}
+}
+
+// whereItFits arranges an Admin's Dimensions and Field for the Where it fits
+// section: Pillar, taking one value; Channel, taking several; Team,
+// Extendable; and a number Field, Budget.
+type whereItFits struct {
+	pillar, channel, team domain.Dimension
+	budget                domain.Field
+}
+
+func arrangeWhereItFits(h *testsupport.Harness) whereItFits {
+	boss := h.SignIn("boss@example.com")
+	return whereItFits{
+		pillar:  h.CreateDimension(boss, "Pillar", "Growth", "Trust"),
+		channel: h.CreateSeveralValuesDimension(boss, "Channel", "Web", "Mobile", "Retail"),
+		team:    h.CreateExtendableDimension(boss, "Team", "Payments"),
+		budget:  h.CreateField(boss, "Budget", domain.FieldNumber, "USD"),
+	}
+}
+
+// goalValueNames are the values g carries, by name, sorted.
+func goalValueNames(t *testing.T, h *testsupport.Harness, g domain.Goal) []string {
+	t.Helper()
+	values, err := h.Service.GoalValues(context.Background(), g.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	var names []string
+	for _, v := range values {
+		names = append(names, v.Value)
+	}
+	slices.Sort(names)
+	return names
+}
+
+// fitsSection is the New goal page's Where it fits section, which holds
+// fieldsets of its own.
+func fitsSection(t *testing.T, page string) string {
+	t.Helper()
+	return between(t, page, `data-testid="goal-form-fits"`, `class="gf-actions"`)
+}
+
+// The Where it fits section offers each Dimension as a Goal takes it — a
+// select of value_id for one value, value_id checkboxes for several, and an
+// "add a value" input for an Extendable one — and each Field as an input of
+// its type, and creating with them assigns them all.
+func TestNewGoalFormAssignsDimensionValuesAndFields(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	fits := arrangeWhereItFits(h)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals/new")
+	section := fitsSection(t, page)
+	growth, web, mobile := fits.pillar.Values[0], fits.channel.Values[0], fits.channel.Values[1]
+	if tag := tagAround(t, section, fmt.Sprintf(`value="%d"`, growth.ID)); !strings.HasPrefix(tag, "<option") {
+		t.Errorf("Pillar, taking one value, doesn't offer Growth as an option: %s", tag)
+	}
+	if sel := tagAround(t, section, fmt.Sprintf(`id="dimension:%d"`, fits.pillar.ID)); !strings.HasPrefix(sel, "<select") || attr(sel, "name") != "value_id" {
+		t.Errorf("Pillar isn't a select of value_id: %s", sel)
+	}
+	for _, v := range []domain.DimensionValue{web, mobile} {
+		box := tagAround(t, section, fmt.Sprintf(`id="value:%d"`, v.ID))
+		if attr(box, "type") != "checkbox" || attr(box, "name") != "value_id" || attr(box, "value") != fmt.Sprint(v.ID) {
+			t.Errorf("Channel, taking several, doesn't offer %s as a value_id checkbox: %s", v.Value, box)
+		}
+	}
+	if add := tagAround(t, section, fmt.Sprintf(`name="new_value:%d"`, fits.team.ID)); attr(add, "type") != "text" {
+		t.Errorf("Team, Extendable, has no text input to add a value: %s", add)
+	}
+	if strings.Contains(section, fmt.Sprintf(`name="new_value:%d"`, fits.pillar.ID)) {
+		t.Errorf("Pillar, a Fixed list, offers to add a value:\n%s", section)
+	}
+	if budget := tagAround(t, section, fmt.Sprintf(`name="field:%d"`, fits.budget.ID)); attr(budget, "type") != "number" {
+		t.Errorf("Budget, a number Field, isn't a number input: %s", budget)
+	}
+
+	form := newGoalForm(map[string]string{
+		fmt.Sprintf("new_value:%d", fits.team.ID): "Search",
+		fmt.Sprintf("field:%d", fits.budget.ID):   "25000",
+	})
+	form["value_id"] = []string{fmt.Sprint(growth.ID), fmt.Sprint(web.ID), fmt.Sprint(mobile.ID)}
+	g := createdGoal(t, h, client, ts.URL, form)
+	if got, want := goalValueNames(t, h, g), []string{"Growth", "Mobile", "Search", "Web"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("the new Goal carries %q, want %q", got, want)
+	}
+	fields, err := h.Service.GoalFields(context.Background(), g.ID)
+	if err != nil {
+		t.Fatalf("GoalFields: %v", err)
+	}
+	if len(fields) != 1 || fields[0].Field.ID != fits.budget.ID || fields[0].Value != "25000" {
+		t.Errorf("the new Goal's Fields are %+v, want Budget 25000", fields)
+	}
+}
+
+// chosen reports whether Where it fits shows the value ticked or selected.
+func chosen(t *testing.T, section string, v domain.DimensionValue) bool {
+	t.Helper()
+	tag := tagAround(t, section, fmt.Sprintf(`value="%d"`, v.ID))
+	return strings.Contains(tag, " checked") || strings.Contains(tag, " selected")
+}
+
+// Arriving at /goals/new?parent=<id>, Where it fits comes with the parent's
+// values ticked, less a Retired one; with two parents, their values together,
+// but none in a Dimension taking one value where they disagree.
+func TestNewGoalPageSuggestsTheParentsValues(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	fits := arrangeWhereItFits(h)
+	sam := h.SignIn("sam@example.com")
+	growth, trust := fits.pillar.Values[0], fits.pillar.Values[1]
+	web, mobile, retail := fits.channel.Values[0], fits.channel.Values[1], fits.channel.Values[2]
+	payments := fits.team.Values[0]
+	revenue := h.CreateGoal(sam, "Grow revenue", "The business needs it.")
+	for _, v := range []domain.DimensionValue{growth, web, mobile, payments} {
+		h.AssignGoalValue(revenue, v)
+	}
+	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, mobile.ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	trusted := h.CreateGoal(sam, "Earn trust", "Shoppers leave sites they doubt.")
+	for _, v := range []domain.DimensionValue{trust, retail} {
+		h.AssignGoalValue(trusted, v)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	section := fitsSection(t, getBody(t, client, ts.URL+"/goals/new"))
+	for _, v := range []domain.DimensionValue{growth, trust, web, retail, payments} {
+		if chosen(t, section, v) {
+			t.Errorf("with no parent, %s comes chosen", v.Value)
+		}
+	}
+
+	section = fitsSection(t, getBody(t, client, fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, revenue.ID)))
+	for _, v := range []domain.DimensionValue{growth, web, payments} {
+		if !chosen(t, section, v) {
+			t.Errorf("with %q as parent, its %s isn't suggested:\n%s", revenue.Title, v.Value, section)
+		}
+	}
+	if strings.Contains(section, fmt.Sprintf(`value="%d"`, mobile.ID)) {
+		t.Errorf("the parent's Retired %s is offered:\n%s", mobile.Value, section)
+	}
+
+	section = fitsSection(t, getBody(t, client, fmt.Sprintf("%s/goals/new?parent=%d&parent=%d", ts.URL, revenue.ID, trusted.ID)))
+	for _, v := range []domain.DimensionValue{web, retail, payments} {
+		if !chosen(t, section, v) {
+			t.Errorf("with both parents, %s isn't suggested:\n%s", v.Value, section)
+		}
+	}
+	for _, v := range []domain.DimensionValue{growth, trust} {
+		if chosen(t, section, v) {
+			t.Errorf("the parents disagree on Pillar, yet %s is selected:\n%s", v.Value, section)
+		}
+	}
+}
+
+// Only what is still ticked on submit is assigned: a value suggested from the
+// parent and unticked is left off the new Goal. With every Dimension and Field
+// left empty, the Goal still saves, Proposed.
+func TestNewGoalFormAssignsOnlyTheValuesStillTicked(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	fits := arrangeWhereItFits(h)
+	sam := h.SignIn("sam@example.com")
+	growth, web, mobile := fits.pillar.Values[0], fits.channel.Values[0], fits.channel.Values[1]
+	revenue := h.CreateGoal(sam, "Grow revenue", "The business needs it.")
+	for _, v := range []domain.DimensionValue{growth, web, mobile} {
+		h.AssignGoalValue(revenue, v)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	section := fitsSection(t, getBody(t, client, fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, revenue.ID)))
+	if !chosen(t, section, mobile) {
+		t.Fatalf("the parent's %s isn't suggested:\n%s", mobile.Value, section)
+	}
+	form := newGoalForm(nil)
+	form["parent_id"] = []string{fmt.Sprint(revenue.ID)}
+	form["value_id"] = []string{"", fmt.Sprint(web.ID)} // Pillar set to None, Mobile unticked
+	g := createdGoal(t, h, client, ts.URL, form)
+	if got, want := goalValueNames(t, h, g), []string{"Web"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("the new Goal carries %q, want only %q, still ticked", got, want)
+	}
+
+	empty := newGoalForm(nil)
+	empty.Set(fmt.Sprintf("new_value:%d", fits.team.ID), "")
+	empty.Set(fmt.Sprintf("field:%d", fits.budget.ID), "")
+	empty["value_id"] = []string{""}
+	g = createdGoal(t, h, client, ts.URL, empty)
+	if g.Lifecycle != domain.LifecycleProposed || len(goalValueNames(t, h, g)) != 0 {
+		t.Errorf("with Where it fits left empty, created %+v carrying %q, want a Proposed Goal with no values", g, goalValueNames(t, h, g))
+	}
+	if fields, err := h.Service.GoalFields(context.Background(), g.ID); err != nil || len(fields) != 0 {
+		t.Errorf("with Where it fits left empty, the Goal has Fields %+v (%v)", fields, err)
+	}
+}
+
+// A refused submit shows Where it fits exactly as posted, not the parents'
+// suggestions; a Field value that isn't its type, or two values in a
+// Dimension taking one, is refused at its input.
+func TestNewGoalFormRefusalShowsWhereItFitsAsPosted(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	fits := arrangeWhereItFits(h)
+	sam := h.SignIn("sam@example.com")
+	growth, web, retail := fits.pillar.Values[0], fits.channel.Values[0], fits.channel.Values[2]
+	revenue := h.CreateGoal(sam, "Grow revenue", "The business needs it.")
+	h.AssignGoalValue(revenue, growth)
+	h.AssignGoalValue(revenue, web)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	posted := url.Values{
+		"title": {""}, "so_what": {"Shoppers abandon slow carts."},
+		"parent_id": {fmt.Sprint(revenue.ID)},
+		"value_id":  {"", fmt.Sprint(retail.ID)},
+		fmt.Sprintf("new_value:%d", fits.team.ID): {"Search"},
+		fmt.Sprintf("field:%d", fits.budget.ID):   {"lots"},
+	}
+	form := refusedNewGoal(t, client, ts.URL, posted)
+	section := fitsSection(t, form)
+	if chosen(t, section, growth) || chosen(t, section, web) {
+		t.Errorf("the refused form shows the parent's suggestions, not what was posted:\n%s", section)
+	}
+	if !chosen(t, section, retail) {
+		t.Errorf("the refused form lost Retail, ticked:\n%s", section)
+	}
+	if add := tagAround(t, section, fmt.Sprintf(`name="new_value:%d"`, fits.team.ID)); attr(add, "value") != "Search" {
+		t.Errorf("the refused form lost the Team value typed: %s", add)
+	}
+	wantRefused(t, form, fmt.Sprintf("field:%d", fits.budget.ID), `Budget takes a number, and "lots" isn't one`)
+
+	trust := fits.pillar.Values[1]
+	posted = newGoalForm(nil)
+	posted["value_id"] = []string{fmt.Sprint(growth.ID), fmt.Sprint(trust.ID)}
+	form = refusedNewGoal(t, client, ts.URL, posted)
+	sel := tagAround(t, form, fmt.Sprintf(`id="dimension:%d"`, fits.pillar.ID))
+	if attr(sel, "aria-invalid") != "true" || !strings.Contains(between(t, form, `id="`+attr(sel, "aria-describedby")+`"`, "</"), "Pillar takes one value per Goal") {
+		t.Errorf("two Pillar values aren't refused at Pillar's select: %s\n%s", sel, form)
+	}
+	if !strings.Contains(pageElement(t, form, "div", "goal-form-errors"), fmt.Sprintf(`href="#dimension:%d"`, fits.pillar.ID)) {
+		t.Errorf("the problem summary doesn't link to Pillar's select:\n%s", form)
+	}
+}
+
+// The summary lists Where it fits' problems after Contributes to's, as the
+// page shows them: each Dimension's, then each Field's.
+func TestNewGoalFormListsWhereItFitsProblemsInPageOrder(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	fits := arrangeWhereItFits(h)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	form := refusedNewGoal(t, client, ts.URL, url.Values{
+		"title": {""}, "so_what": {"Shoppers abandon slow carts."},
+		"parent_id":                             {"first"},
+		"value_id":                              {fmt.Sprint(fits.pillar.Values[0].ID), fmt.Sprint(fits.pillar.Values[1].ID)},
+		fmt.Sprintf("field:%d", fits.budget.ID): {"lots"},
+	})
+	summary := pageElement(t, form, "div", "goal-form-errors")
+	var order []int
+	for _, href := range []string{"#title", "#parent_id", fmt.Sprintf("#dimension:%d", fits.pillar.ID), fmt.Sprintf("#field:%d", fits.budget.ID)} {
+		order = append(order, strings.Index(summary, `href="`+href+`"`))
+	}
+	if slices.Contains(order, -1) || !slices.IsSorted(order) {
+		t.Errorf("the summary doesn't list title, parent_id, Pillar, then Budget (at %v):\n%s", order, summary)
+	}
+	if n := strings.Count(summary, "Pillar takes one value per Goal"); n != 1 {
+		t.Errorf("the summary lists Pillar's problem %d times, want once:\n%s", n, summary)
 	}
 }

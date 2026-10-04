@@ -26,6 +26,7 @@ templ goalFormPage(current *domain.Account, v goalFormView) {
 			@goalFormDelivery(v)
 			@goalFormKnow(v)
 			@goalFormParents(v)
+			@goalFormFits(v)
 			<div class="gf-actions">
 				<button type="submit" class="btn primary">Create Goal</button>
 				<a class="btn" href="/goals">Cancel</a>
@@ -453,6 +454,117 @@ templ goalFormParentsScript() {
 	</script>
 }
 
+// goalFormFits is the "Where it fits" section: each Dimension still offered,
+// a select when a Goal takes one of its values and checkboxes when it takes
+// several, with an input to add a value when it's Extendable, then an input of
+// each Field's type. Nothing here is needed to save. Arriving with parents, the
+// values they suggest come ticked; only what is still ticked is assigned.
+templ goalFormFits(v goalFormView) {
+	if len(v.Dimensions) > 0 || len(v.Fields) > 0 {
+		<fieldset data-testid="goal-form-fits" class="gf-section">
+			<legend>Where it fits</legend>
+			<p class="muted small">
+				Optional: the Goal's Dimension values and Fields.
+				if v.Suggested {
+					Values from the Goals it contributes to come ticked; untick any that don't fit.
+				}
+			</p>
+			for _, d := range v.Dimensions {
+				@goalFormDimension(v, d)
+			}
+			for _, f := range v.Fields {
+				@goalFormField(v, f)
+			}
+		</fieldset>
+	}
+}
+
+// goalFormDimension is one Dimension of Where it fits, each value chosen
+// posting its value_id: a select, None at first, when a Goal takes one value,
+// and a checkbox each when it takes several. A Retired value shows only when
+// it was posted.
+templ goalFormDimension(v goalFormView, d domain.Dimension) {
+	if d.TakesSeveral() {
+		<fieldset id={ dimensionInput(d) } class="gf-group">
+			<legend>{ d.Name }</legend>
+			<div class="gf-picks">
+				for _, val := range v.choices(d) {
+					<label class="gf-pick">
+						<input
+							type="checkbox"
+							id={ domain.ValueInput(val.ID) }
+							name={ inputValueID }
+							value={ fmt.Sprint(val.ID) }
+							checked?={ v.Chosen[val.ID] }
+							{ invalid(v.bad(domain.ValueInput(val.ID)), domain.ValueInput(val.ID))... }
+						/>
+						<span>{ valueOptionLabel(val) }</span>
+					</label>
+				}
+			</div>
+			for _, val := range v.choices(d) {
+				@goalFormInputError(v, domain.ValueInput(val.ID))
+			}
+			@goalFormNewValue(v, d)
+		</fieldset>
+	} else {
+		<div class="gf-group">
+			<label class="field">
+				<span>{ d.Name }</span>
+				<select id={ dimensionInput(d) } name={ inputValueID } { invalid(v.badSelect(d), dimensionInput(d))... }>
+					<option value="">None</option>
+					for _, val := range v.choices(d) {
+						<option value={ fmt.Sprint(val.ID) } selected?={ v.Chosen[val.ID] }>{ valueOptionLabel(val) }</option>
+					}
+				</select>
+				if bad := v.badSelect(d); bad != "" {
+					<span data-testid="input-error" id={ dimensionInput(d) + "-error" } class="gf-input-error">{ bad }</span>
+				}
+			</label>
+			@goalFormNewValue(v, d)
+		</div>
+	}
+}
+
+// goalFormNewValue is an Extendable Dimension's "add a value" input: the value
+// typed is added to its list, when it's new, and given to the Goal
+// (CONTEXT.md: Extendable).
+templ goalFormNewValue(v goalFormView, d domain.Dimension) {
+	if d.Extendable() {
+		{{ input := domain.NewValueInput(d.ID) }}
+		<label class="field">
+			<span class="hint">Add a { d.Name } value</span>
+			<input type="text" id={ input } name={ input } value={ v.NewValues[d.ID] } { invalid(v.bad(input), input)... }/>
+			@goalFormInputError(v, input)
+		</label>
+	}
+}
+
+// goalFormField is one Field of Where it fits: an input of its type, as the
+// Goal page's fieldInput renders it, named for the Field.
+templ goalFormField(v goalFormView, f domain.Field) {
+	{{ input := domain.FieldInput(f.ID) }}
+	<label class="field">
+		<span>
+			{ f.Name }
+			if f.Type == domain.FieldNumber && f.Unit != "" {
+				<span class="hint">({ f.Unit })</span>
+			}
+		</span>
+		switch f.Type {
+			case domain.FieldNumber:
+				<input type="number" step="any" id={ input } name={ input } value={ v.FieldValues[f.ID] } { invalid(v.bad(input), input)... }/>
+			case domain.FieldLongText:
+				<textarea id={ input } name={ input } { invalid(v.bad(input), input)... }>{ v.FieldValues[f.ID] }</textarea>
+			case domain.FieldDate:
+				<input type="date" id={ input } name={ input } value={ v.FieldValues[f.ID] } { invalid(v.bad(input), input)... }/>
+			default:
+				<input type="text" id={ input } name={ input } value={ v.FieldValues[f.ID] } { invalid(v.bad(input), input)... }/>
+		}
+		@goalFormInputError(v, input)
+	</label>
+}
+
 // goalFormErrors heads a refused submit: nothing was created, and each
 // problem, linked to its input.
 templ goalFormErrors(v goalFormView) {
@@ -460,7 +572,7 @@ templ goalFormErrors(v goalFormView) {
 		<div data-testid="goal-form-errors" class="alert r gf-errors" role="alert">
 			<strong>The Goal wasn't created.</strong>
 			<ul>
-				for _, p := range v.Problems {
+				for _, p := range v.summary() {
 					<li>
 						if p.Input != "" {
 							<a href={ templ.SafeURL("#" + p.Input) }>{ p.Message }</a>
