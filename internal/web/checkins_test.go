@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1790,5 +1791,322 @@ func TestNoChangeOverHtmxRedirectsToGoal(t *testing.T) {
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 2 {
 		t.Errorf("history has %d, want 2 (the Check-in and its No change)", len(history))
+	}
+}
+
+// checkinHighlightLegends are the Check-in form's Highlight row legends, in
+// order.
+func checkinHighlightLegends(body string) []string {
+	return elementTexts(body, "legend", "checkin-highlight-legend")
+}
+
+// The Check-in form's Highlight section opens with one pre-filled row per
+// pending Draft Highlight, oldest first, each ticked to keep, posting its id
+// in a hidden field and as its Keep box's value, then the usual empty row;
+// every row is numbered (CONTEXT.md: Draft Highlight).
+func TestCheckinFormOffersEachPendingDraftHighlightAsATickedRow(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	first := h.LogDraftHighlight(sam, goal.ID, domain.HighlightAccomplishment, "Cut paging noise by half.")
+	h.Clock.Advance(time.Hour)
+	second := h.LogDraftHighlight(sam, goal.ID, "", "Vendor may raise prices.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	rows := highlightRows(t, page)
+	if len(rows) != 3 {
+		t.Fatalf("form shows %d Highlight rows, want 2 offered and 1 empty", len(rows))
+	}
+	for i, tc := range []struct {
+		draft domain.DraftHighlight
+		kind  string
+	}{{first, `value="Accomplishment" selected`}, {second, `value="" selected`}} {
+		id := strconv.FormatInt(tc.draft.ID, 10)
+		row := rows[i]
+		hidden := tagAround(t, row, `name="draft_highlight_id"`)
+		if attr(hidden, "type") != "hidden" || attr(hidden, "value") != id {
+			t.Errorf("row %d's hidden id = %s, want Draft Highlight %s", i+1, hidden, id)
+		}
+		keep := tagAround(t, row, `name="draft_highlight_keep"`)
+		if attr(keep, "type") != "checkbox" || attr(keep, "value") != id || !strings.Contains(keep, " checked") {
+			t.Errorf("row %d's Keep box = %s, want ticked with value %s", i+1, keep, id)
+		}
+		if !strings.Contains(row, `name="draft_highlight_kind_`+id+`"`) || !strings.Contains(row, tc.kind) {
+			t.Errorf("row %d lacks its kind select with %s; row:\n%s", i+1, tc.kind, row)
+		}
+		if !strings.Contains(row, `<textarea name="draft_highlight_note_`+id+`">`+tc.draft.Note+`</textarea>`) {
+			t.Errorf("row %d lacks its editable note; row:\n%s", i+1, row)
+		}
+	}
+	if !strings.Contains(rows[2], `<textarea name="highlight_note"></textarea>`) || strings.Contains(rows[2], "draft_highlight") {
+		t.Errorf("the third row isn't the usual empty row; row:\n%s", rows[2])
+	}
+	if got := checkinHighlightLegends(page); !slices.Equal(got, []string{"Highlight 1 · Draft", "Highlight 2 · Draft", "Highlight 3"}) {
+		t.Errorf("legends = %q, want every row numbered, the offered ones marked Draft", got)
+	}
+	if section := pageElement(t, page, "details", "checkin-highlight-section"); !strings.Contains(openTag(section), " open") {
+		t.Errorf("the Highlight section is collapsed while it offers Draft Highlights")
+	}
+}
+
+// Submitting the form with two offered rows kept, one edited, and one
+// unticked records the two kept as Highlights with the text as edited, ahead
+// of a typed row, and discards the unticked one with the Check-in; afterwards
+// none is pending.
+func TestCheckinFormKeepsEditsAndDiscardsDraftHighlights(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	a := h.LogDraftHighlight(sam, goal.ID, domain.HighlightAccomplishment, "Zero downtime on the cutover.")
+	b := h.LogDraftHighlight(sam, goal.ID, "", "Vendor may raise prices.")
+	c := h.LogDraftHighlight(sam, goal.ID, domain.HighlightInsight, "Drills find gaps.")
+	id := func(d domain.DraftHighlight) string { return strconv.FormatInt(d.ID, 10) }
+
+	_, status := postFormHX(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":                        {domain.HealthGreen},
+		"status":                        {"On track."},
+		"draft_highlight_id":            {id(a), id(b), id(c)},
+		"draft_highlight_keep":          {id(a), id(c)},
+		"draft_highlight_kind_" + id(a): {domain.HighlightAccomplishment},
+		"draft_highlight_note_" + id(a): {"Zero downtime on the cutover."},
+		"draft_highlight_kind_" + id(b): {""},
+		"draft_highlight_note_" + id(b): {"Vendor may raise prices."},
+		"draft_highlight_kind_" + id(c): {domain.HighlightMiss},
+		"draft_highlight_note_" + id(c): {"Drills found a gap reviews missed."},
+		"highlight_kind":                {domain.HighlightInsight},
+		"highlight_note":                {"Typed at the Check-in."},
+	})
+	if status != http.StatusOK {
+		t.Fatalf("submit: status %d, want 200", status)
+	}
+
+	highlights, err := h.Service.ListHighlightsByGoal(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ListHighlightsByGoal: %v", err)
+	}
+	var got []string
+	for _, hl := range highlights {
+		got = append(got, hl.Kind+": "+hl.Note)
+	}
+	want := []string{
+		"Accomplishment: Zero downtime on the cutover.",
+		"Miss: Drills found a gap reviews missed.",
+		"Insight: Typed at the Check-in.",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("highlights = %q, want %q", got, want)
+	}
+	checkins, err := h.Service.ListCheckins(context.Background(), goal.ID)
+	if err != nil || len(checkins) != 1 {
+		t.Fatalf("ListCheckins = %d, %v; want the one Check-in", len(checkins), err)
+	}
+	if d := checkins[0].DiscardedDraftHighlights; len(d) != 1 || d[0].ID != b.ID {
+		t.Errorf("discarded = %v, want only the unticked one", d)
+	}
+	if got := pendingDraftNotes(t, h, sam, goal.ID); len(got) != 0 {
+		t.Errorf("pending = %q, want none", got)
+	}
+}
+
+// A kept offered row with no kind is refused in its row, named by its
+// position among every row on the form; nothing is recorded, every Draft
+// Highlight stays pending, and each row keeps its Keep box, kind and note as
+// typed.
+func TestCheckinFormRefusesAKeptDraftHighlightWithNoKindInItsRow(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	a := h.LogDraftHighlight(sam, goal.ID, domain.HighlightInsight, "First.")
+	b := h.LogDraftHighlight(sam, goal.ID, "", "No kind yet.")
+	id := func(d domain.DraftHighlight) string { return strconv.FormatInt(d.ID, 10) }
+
+	body, _ := postFormHX(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":                        {domain.HealthGreen},
+		"status":                        {"On track."},
+		"draft_highlight_id":            {id(a), id(b)},
+		"draft_highlight_keep":          {id(b)},
+		"draft_highlight_kind_" + id(a): {domain.HighlightInsight},
+		"draft_highlight_note_" + id(a): {"First, edited."},
+		"draft_highlight_kind_" + id(b): {""},
+		"draft_highlight_note_" + id(b): {"No kind yet, edited."},
+		"highlight_kind":                {""},
+		"highlight_note":                {""},
+	})
+	rows := highlightRows(t, body)
+	if len(rows) != 3 {
+		t.Fatalf("form shows %d Highlight rows, want the 3 posted", len(rows))
+	}
+	if strings.Contains(rows[0], `data-testid="checkin-error"`) {
+		t.Errorf("Highlight 1 shows an error; row:\n%s", rows[0])
+	}
+	if !strings.Contains(rows[1], `data-testid="checkin-error"`) || !strings.Contains(rows[1], "Highlight 2 needs a kind") {
+		t.Errorf("Highlight 2 lacks its error naming it; row:\n%s", rows[1])
+	}
+	if keep := tagAround(t, rows[0], `name="draft_highlight_keep"`); strings.Contains(keep, " checked") {
+		t.Errorf("Highlight 1's Keep box came back ticked: %s", keep)
+	}
+	if keep := tagAround(t, rows[1], `name="draft_highlight_keep"`); !strings.Contains(keep, " checked") {
+		t.Errorf("Highlight 2's Keep box came back unticked: %s", keep)
+	}
+	if !strings.Contains(rows[0], "First, edited.") || !strings.Contains(rows[1], "No kind yet, edited.") {
+		t.Errorf("the offered rows lost their notes as typed:\n%s\n%s", rows[0], rows[1])
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
+		t.Errorf("checkins = %d, want none recorded", len(history))
+	}
+	if got := pendingDraftNotes(t, h, sam, goal.ID); !slices.Equal(got, []string{"First.", "No kind yet."}) {
+		t.Errorf("pending = %q, want both still pending as logged", got)
+	}
+}
+
+// Add another keeps every offered row's Keep box, kind and note as typed,
+// adds one empty row after the typed ones, and records nothing.
+func TestCheckinAddAnotherKeepsOfferedDraftHighlightsAsTyped(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	a := h.LogDraftHighlight(sam, goal.ID, domain.HighlightInsight, "First.")
+	b := h.LogDraftHighlight(sam, goal.ID, "", "Second.")
+	id := func(d domain.DraftHighlight) string { return strconv.FormatInt(d.ID, 10) }
+
+	body, status := postFormHX(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":                        {domain.HealthGreen},
+		"status":                        {"On track."},
+		"draft_highlight_id":            {id(a), id(b)},
+		"draft_highlight_keep":          {id(b)},
+		"draft_highlight_kind_" + id(a): {domain.HighlightMiss},
+		"draft_highlight_note_" + id(a): {"First, edited."},
+		"draft_highlight_kind_" + id(b): {domain.HighlightAccomplishment},
+		"draft_highlight_note_" + id(b): {"Second, edited."},
+		"highlight_kind":                {domain.HighlightInsight},
+		"highlight_note":                {"Typed."},
+		"add_highlight":                 {"1"},
+	})
+	if status != http.StatusOK {
+		t.Fatalf("add another: status %d, want 200", status)
+	}
+	rows := highlightRows(t, body)
+	if len(rows) != 4 {
+		t.Fatalf("form shows %d Highlight rows, want 2 offered, 1 typed and 1 added", len(rows))
+	}
+	if keep := tagAround(t, rows[0], `name="draft_highlight_keep"`); strings.Contains(keep, " checked") {
+		t.Errorf("Highlight 1's Keep box came back ticked: %s", keep)
+	}
+	if !strings.Contains(rows[0], `value="Miss" selected`) || !strings.Contains(rows[0], "First, edited.") {
+		t.Errorf("Highlight 1 lost its kind or note as typed; row:\n%s", rows[0])
+	}
+	if keep := tagAround(t, rows[1], `name="draft_highlight_keep"`); !strings.Contains(keep, " checked") {
+		t.Errorf("Highlight 2's Keep box came back unticked: %s", keep)
+	}
+	if !strings.Contains(rows[1], `value="Accomplishment" selected`) || !strings.Contains(rows[1], "Second, edited.") {
+		t.Errorf("Highlight 2 lost its kind or note as typed; row:\n%s", rows[1])
+	}
+	if !strings.Contains(rows[2], "Typed.") || !strings.Contains(rows[3], `<textarea name="highlight_note"></textarea>`) {
+		t.Errorf("the typed row or the added empty row is wrong:\n%s\n%s", rows[2], rows[3])
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
+		t.Errorf("checkins = %d, want none recorded by Add another", len(history))
+	}
+	if got := pendingDraftNotes(t, h, sam, goal.ID); len(got) != 2 {
+		t.Errorf("pending = %q, want both still pending", got)
+	}
+}
+
+// Two kept offered rows of the same kind both become Highlights, a kept row
+// whose note was blanked is discarded, and a Draft Highlight logged after the
+// form opened, so not among its rows, stays pending.
+func TestCheckinFormKeepsSameKindDiscardsBlankedAndLeavesUnofferedPending(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	a := h.LogDraftHighlight(sam, goal.ID, domain.HighlightAccomplishment, "Retired the old pager.")
+	b := h.LogDraftHighlight(sam, goal.ID, domain.HighlightAccomplishment, "Halved alert noise.")
+	c := h.LogDraftHighlight(sam, goal.ID, domain.HighlightMiss, "Runbook was late.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	form := getBody(t, samClient, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	if n := len(highlightRows(t, form)); n != 4 {
+		t.Fatalf("form shows %d Highlight rows, want 3 offered and 1 empty", n)
+	}
+	h.LogDraftHighlight(sam, goal.ID, domain.HighlightInsight, "Logged after the form opened.")
+	id := func(d domain.DraftHighlight) string { return strconv.FormatInt(d.ID, 10) }
+
+	_, status := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":                        {domain.HealthGreen},
+		"status":                        {"On track."},
+		"draft_highlight_id":            {id(a), id(b), id(c)},
+		"draft_highlight_keep":          {id(a), id(b), id(c)},
+		"draft_highlight_kind_" + id(a): {a.Kind},
+		"draft_highlight_note_" + id(a): {a.Note},
+		"draft_highlight_kind_" + id(b): {b.Kind},
+		"draft_highlight_note_" + id(b): {b.Note},
+		"draft_highlight_kind_" + id(c): {c.Kind},
+		"draft_highlight_note_" + id(c): {""},
+		"highlight_kind":                {""},
+		"highlight_note":                {""},
+	})
+	if status != http.StatusOK {
+		t.Fatalf("submit: status %d, want 200", status)
+	}
+
+	highlights, err := h.Service.ListHighlightsByGoal(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ListHighlightsByGoal: %v", err)
+	}
+	var got []string
+	for _, hl := range highlights {
+		got = append(got, hl.Kind+": "+hl.Note)
+	}
+	if want := []string{"Accomplishment: Retired the old pager.", "Accomplishment: Halved alert noise."}; !slices.Equal(got, want) {
+		t.Errorf("highlights = %q, want %q", got, want)
+	}
+	checkins, err := h.Service.ListCheckins(context.Background(), goal.ID)
+	if err != nil || len(checkins) != 1 {
+		t.Fatalf("ListCheckins = %d, %v; want the one Check-in", len(checkins), err)
+	}
+	if d := checkins[0].DiscardedDraftHighlights; len(d) != 1 || d[0].ID != c.ID {
+		t.Errorf("discarded = %v, want only the blanked one", d)
+	}
+	if got := pendingDraftNotes(t, h, sam, goal.ID); !slices.Equal(got, []string{"Logged after the form opened."}) {
+		t.Errorf("pending = %q, want only the one logged after the form opened", got)
+	}
+}
+
+// A No change Check-in records no Highlights and leaves pending Draft
+// Highlights untouched.
+func TestNoChangeCheckinLeavesDraftHighlightsPendingOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.LogDraftHighlight(sam, goal.ID, domain.HighlightInsight, "Waiting for a real Check-in.")
+
+	resp := postForm(t, noRedirects(signInClient(t, ts.URL, "sam@example.com")), fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), url.Values{})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("No change: status %d, want 303", resp.StatusCode)
+	}
+	if got := pendingDraftNotes(t, h, sam, goal.ID); !slices.Equal(got, []string{"Waiting for a real Check-in."}) {
+		t.Errorf("pending = %q, want the Draft Highlight untouched", got)
+	}
+	if highlights, _ := h.Service.ListHighlightsByGoal(context.Background(), goal.ID); len(highlights) != 0 {
+		t.Errorf("highlights = %d, want none recorded", len(highlights))
 	}
 }

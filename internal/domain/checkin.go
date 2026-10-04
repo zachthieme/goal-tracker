@@ -40,7 +40,11 @@ type Checkin struct {
 	// marked Removed, in the order made. Only ListCheckins loads them; a
 	// Check-in from before they were recorded has none.
 	MilestoneChanges []MilestoneChange
-	CreatedAt        time.Time
+	// DiscardedDraftHighlights are the Draft Highlights this Check-in offered
+	// and didn't keep, oldest first (CONTEXT.md: Draft Highlight). Only
+	// ListCheckins loads them.
+	DiscardedDraftHighlights []DraftHighlight
+	CreatedAt                time.Time
 }
 
 // Health values a Check-in can set (CONTEXT.md: Health). Green needs no Path to
@@ -79,7 +83,9 @@ type SubmitCheckinInput struct {
 	Readings []MetricReadingInput
 	// Highlights are the Check-in's Highlights, in the order entered
 	// (CONTEXT.md: Highlight). Any number, of any mix of kinds; one with a blank
-	// note is ignored.
+	// note is ignored. A row offered from a pending Draft Highlight names it:
+	// the Check-in keeps it as a Highlight or discards it (see
+	// planDraftHighlightPicks).
 	Highlights []HighlightInput
 	// DeliveryDate moves a Dated Goal's delivery date, recording a Date Slip
 	// that needs DeliveryDateReason (CONTEXT.md: Date Slip). The zero time, or
@@ -165,11 +171,6 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 			return Checkin{}, err
 		}
 	}
-	highlights, err := planHighlights(in.Highlights)
-	if err != nil {
-		return Checkin{}, err
-	}
-
 	deliverySlip, err := planDeliverySlip(goal.Goal, in.DeliveryDate, in.DeliveryDateReason)
 	if err != nil {
 		return Checkin{}, err
@@ -201,6 +202,18 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	// so they are written together or not at all.
 	var out Checkin
 	err = s.WithinTx(ctx, func(tx *Service) error {
+		// The Highlights are planned within the transaction: which Draft
+		// Highlights are still pending decides which offered rows count, and
+		// they are cleared in the same transaction, so two Check-ins can't both
+		// keep one.
+		picks, err := tx.planDraftHighlightPicks(ctx, goal.Goal.ID, in.Highlights)
+		if err != nil {
+			return err
+		}
+		highlights, err := planHighlights(picks.rows)
+		if err != nil {
+			return err
+		}
 		c, err := tx.createCheckin(ctx, db.CreateCheckinParams{
 			GoalID:          goal.Goal.ID,
 			AuthorID:        in.AuthorID,
@@ -240,6 +253,9 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 			return err
 		}
 		if err := tx.recordHighlights(ctx, c.ID, highlights); err != nil {
+			return err
+		}
+		if err := picks.apply(ctx, tx, c.ID); err != nil {
 			return err
 		}
 		out = c
@@ -448,8 +464,8 @@ func (s *Service) LatestCheckin(ctx context.Context, goalID int64) (Checkin, boo
 }
 
 // ListCheckins returns a Goal's Check-in history, newest first, each with its
-// author and the Owner it was written for resolved, and the Milestone changes
-// it recorded.
+// author and the Owner it was written for resolved, the Milestone changes it
+// recorded and the Draft Highlights it discarded.
 func (s *Service) ListCheckins(ctx context.Context, goalID int64) ([]Checkin, error) {
 	rows, err := s.queries.ListCheckins(ctx, goalID)
 	if err != nil {
@@ -470,10 +486,15 @@ func (s *Service) ListCheckins(ctx context.Context, goalID int64) ([]Checkin, er
 			AddedDate:   addedDate,
 		})
 	}
+	discardedBy, err := s.discardedDraftHighlightsByCheckin(ctx, goalID)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Checkin, 0, len(rows))
 	for _, r := range rows {
 		c := checkinFromRow(r.Checkin, r.Account, r.Account_2)
 		c.MilestoneChanges = changesBy[c.ID]
+		c.DiscardedDraftHighlights = discardedBy[c.ID]
 		out = append(out, c)
 	}
 	return out, nil

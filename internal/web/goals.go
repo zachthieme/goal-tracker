@@ -620,45 +620,56 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	// The Owner's Delegates and Admins set a Goal's Dimension values and Fields
 	// too (CONTEXT.md: Delegate).
 	canSetValues := canCheckin || current.IsAdmin
+	// Only the Owner and Delegates see the pending Draft Highlights; one who
+	// has since Departed is refused them, and sees none (CONTEXT.md: Draft
+	// Highlight).
+	var drafts []domain.DraftHighlight
+	if canCheckin {
+		drafts, err = s.svc.PendingDraftHighlights(ctx, current.ID, id)
+		if err != nil && !errors.Is(err, domain.ErrNotAuthorized) {
+			return goalView{}, fmt.Errorf("load draft highlights: %w", err)
+		}
+	}
 
 	view := goalView{
-		Goal:           g,
-		Parents:        parents,
-		Children:       children,
-		LinkHealth:     linkHealth,
-		Candidates:     candidates,
-		Milestones:     milestones,
-		Metrics:        metrics,
-		Trends:         trends,
-		Highlights:     highlights,
-		Contributors:   contributors,
-		Delegates:      delegates,
-		CanCheckin:     canCheckin,
-		CanSetValues:   canSetValues,
-		Owns:           current.ID == g.Owner.ID,
-		Admin:          current.IsAdmin,
-		Revisions:      revisions,
-		Ownership:      ownership,
-		ValueHistory:   valueHistory,
-		Dimensions:     dimensions,
-		Values:         values,
-		Fields:         fields,
-		FieldValues:    fieldValues,
-		Checkins:       checkins,
-		LatestCheckin:  latestPtr,
-		RolledUp:       rollup,
-		DateSlips:      slips,
-		MilestoneChurn: churn,
-		Signals:        signals,
-		Freshness:      freshness,
-		Required:       required,
-		Incomplete:     incomplete,
-		HealthStrip:    strip,
-		Suggestions:    suggestions,
-		Suggested:      suggested,
-		Nudges:         nudges,
-		LinkEvents:     linkEvents,
-		Now:            s.svc.Now(),
+		Goal:            g,
+		Parents:         parents,
+		Children:        children,
+		LinkHealth:      linkHealth,
+		Candidates:      candidates,
+		Milestones:      milestones,
+		Metrics:         metrics,
+		Trends:          trends,
+		Highlights:      highlights,
+		DraftHighlights: drafts,
+		Contributors:    contributors,
+		Delegates:       delegates,
+		CanCheckin:      canCheckin,
+		CanSetValues:    canSetValues,
+		Owns:            current.ID == g.Owner.ID,
+		Admin:           current.IsAdmin,
+		Revisions:       revisions,
+		Ownership:       ownership,
+		ValueHistory:    valueHistory,
+		Dimensions:      dimensions,
+		Values:          values,
+		Fields:          fields,
+		FieldValues:     fieldValues,
+		Checkins:        checkins,
+		LatestCheckin:   latestPtr,
+		RolledUp:        rollup,
+		DateSlips:       slips,
+		MilestoneChurn:  churn,
+		Signals:         signals,
+		Freshness:       freshness,
+		Required:        required,
+		Incomplete:      incomplete,
+		HealthStrip:     strip,
+		Suggestions:     suggestions,
+		Suggested:       suggested,
+		Nudges:          nudges,
+		LinkEvents:      linkEvents,
+		Now:             s.svc.Now(),
 	}
 	view.History = newHistory(view, s.svc.Timezone(), view.Now)
 	return view, nil
@@ -679,10 +690,13 @@ type goalView struct {
 	Metrics    []domain.Metric
 	// Trends pairs each Metric with its readings over time, for the trend against
 	// target shown on the Goal page. Highlights are the Goal's flagged notes,
-	// newest first (CONTEXT.md: Metric, Highlight).
-	Trends       []metricTrend
-	Highlights   []domain.Highlight
-	Contributors []domain.Account
+	// newest first (CONTEXT.md: Metric, Highlight). DraftHighlights are its
+	// pending Draft Highlights, oldest first, loaded only for its Owner and
+	// Delegates, who alone may see them (CONTEXT.md: Draft Highlight).
+	Trends          []metricTrend
+	Highlights      []domain.Highlight
+	DraftHighlights []domain.DraftHighlight
+	Contributors    []domain.Account
 	// Delegates are the Accounts the Owner has authorized to write Check-ins on
 	// this Goal, and CanCheckin is true when the viewer may write one — the Owner
 	// or one of those Delegates (CONTEXT.md: Delegate).
@@ -788,6 +802,10 @@ const (
 	formContributors goalForm = "contributors"
 	formDimensions   goalForm = "dimensions"
 	formFields       goalForm = "fields"
+	// formDraftHighlight is the Draft Highlights block's log form. It always
+	// shows for whoever may use it; naming it lets a refused log come back in
+	// it.
+	formDraftHighlight goalForm = "draft-highlight"
 )
 
 // offers reports whether the viewer may use form on this Goal: the same people
@@ -813,6 +831,8 @@ func (v goalView) offers(form goalForm) bool {
 		return v.CanSetValues && len(domain.OfferedDimensions(v.Dimensions)) > 0
 	case formFields:
 		return v.CanSetValues && len(domain.OfferedFields(v.Fields)) > 0
+	case formDraftHighlight:
+		return v.CanCheckin
 	}
 	return false
 }

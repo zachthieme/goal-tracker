@@ -51,6 +51,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	explanation := r.FormValue("explanation")
 	rawDate := r.FormValue("path_target_date")
 	highlights := highlightsFromForm(r)
+	drafts := draftHighlightsFromForm(r)
 
 	// The reading inputs are named reading_<metricID>, one per Metric on the
 	// Goal, so parsing them needs the Goal's current Metrics.
@@ -87,7 +88,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		}
 		return checkinFormData{
 			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, Explanation: explanation,
-			Metrics: metrics, Readings: rawReadings, Highlights: highlights, Dates: dates, Lifecycle: lifecycle, Error: e,
+			Metrics: metrics, Readings: rawReadings, DraftHighlights: drafts, Highlights: highlights, Dates: dates, Lifecycle: lifecycle, Error: e,
 		}
 	}
 
@@ -129,6 +130,11 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	if err := dates.applyTo(&in); err != nil {
 		s.renderCheckinFormError(w, r, goalID, formData(err))
 		return
+	}
+	// The offered rows come first, as on the form, so the domain numbers
+	// every row as the form's legends do.
+	for _, row := range drafts {
+		in.Highlights = append(in.Highlights, domain.HighlightInput{Kind: row.Kind, Note: row.Note, DraftHighlightID: row.DraftID, LeftOut: !row.Keep})
 	}
 	for _, row := range highlights {
 		in.Highlights = append(in.Highlights, domain.HighlightInput{Kind: row.Kind, Note: row.Note})
@@ -366,6 +372,38 @@ func highlightsFromForm(r *http.Request) []highlightFormData {
 		if i < len(notes) {
 			out[i].Note = notes[i]
 		}
+	}
+	return out
+}
+
+// draftHighlightsFromForm reads the rows offered from Draft Highlights as
+// typed, in the order the form showed them: each posts its Draft Highlight's
+// id in draft_highlight_id, and its Keep box (draft_highlight_keep, whose
+// value is that id, posting nothing when unticked), kind and note are paired
+// with it by id. An id that isn't one still holds its row, as -1, which names
+// no Draft Highlight, so the rows after it keep the numbers the form showed.
+func draftHighlightsFromForm(r *http.Request) []highlightFormData {
+	ids := r.Form["draft_highlight_id"]
+	if len(ids) == 0 {
+		return nil
+	}
+	kept := map[string]bool{}
+	for _, id := range r.Form["draft_highlight_keep"] {
+		kept[id] = true
+	}
+	var out []highlightFormData
+	for _, raw := range ids {
+		id, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || id <= 0 {
+			id = -1
+		}
+		row := highlightFormData{
+			DraftID: id,
+			Keep:    kept[raw],
+			Kind:    r.FormValue("draft_highlight_kind_" + raw),
+			Note:    r.FormValue("draft_highlight_note_" + raw),
+		}
+		out = append(out, row)
 	}
 	return out
 }

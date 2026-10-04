@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"io"
@@ -322,4 +323,19 @@ func noRedirects(client *http.Client) *http.Client {
 // goalPageURL is the address of g's page on the server at base.
 func goalPageURL(base string, g domain.Goal) string {
 	return base + "/goals/" + strconv.FormatInt(g.ID, 10)
+}
+
+// pendingDraftNotes are the Goal's pending Draft Highlights' notes, oldest
+// first, as its Owner sees them.
+func pendingDraftNotes(t *testing.T, h *testsupport.Harness, owner domain.Account, goalID int64) []string {
+	t.Helper()
+	pending, err := h.Service.PendingDraftHighlights(context.Background(), owner.ID, goalID)
+	if err != nil {
+		t.Fatalf("PendingDraftHighlights: %v", err)
+	}
+	var out []string
+	for _, d := range pending {
+		out = append(out, d.Note)
+	}
+	return out
 }

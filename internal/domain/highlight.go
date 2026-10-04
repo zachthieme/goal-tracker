@@ -43,6 +43,13 @@ func validHighlightKind(k string) bool {
 type HighlightInput struct {
 	Kind string
 	Note string
+	// DraftHighlightID names the pending Draft Highlight this row was offered
+	// from, or 0 for a row written at the Check-in (CONTEXT.md: Draft
+	// Highlight). LeftOut says the author didn't keep it: the row records
+	// nothing and the Check-in discards its Draft Highlight, as it does one
+	// kept with its note blanked.
+	DraftHighlightID int64
+	LeftOut          bool
 }
 
 // planHighlights returns the Highlights a Check-in records, in the order

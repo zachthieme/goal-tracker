@@ -1,0 +1,92 @@
+package web
+
+import (
+	"errors"
+	"fmt"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// draftHighlightSection is the Goal page's Draft Highlights block, shown only
+// to the Goal's Owner and Delegates (CONTEXT.md: Draft Highlight): the pending
+// ones, oldest first, each with its kind, note, who logged it and when and a
+// Delete, then a form to log another while the Goal still takes Check-ins. A
+// refused log comes back with the reason above the form and what was typed
+// still in it.
+templ draftHighlightSection(v goalView) {
+	if v.CanCheckin {
+		<section data-testid="goal-draft-highlights" class="gp-block ruled">
+			<h2>Draft Highlights</h2>
+			<p class="muted small">Log what's worth reporting as it happens. Your next Check-in offers each one to keep as a Highlight.</p>
+			<ul class="gp-list">
+				if len(v.DraftHighlights) == 0 {
+					<li data-testid="no-draft-highlights" class="muted">No Draft Highlights waiting.</li>
+				}
+				for _, d := range v.DraftHighlights {
+					<li data-testid="draft-highlight" class="dh-item">
+						<span>
+							<strong>{ draftHighlightKind(d.Kind) }</strong>
+							{ " " + d.Note }
+						</span>
+						<span class="muted small">
+							@person(d.LoggedBy)
+							{ " · " + v.History.when(d.CreatedAt) }
+						</span>
+						<form data-testid="delete-draft-highlight" method="post" action={ templ.SafeURL(fmt.Sprintf("/draft-highlights/%d/delete", d.ID)) }>
+							<button type="submit" class="btn quiet sm">Delete</button>
+						</form>
+					</li>
+				}
+			</ul>
+			if refusal := v.draftHighlightRefusal(); refusal != "" {
+				<p data-testid="form-error" class="alert r" role="alert">{ refusal }</p>
+			}
+			if draftHighlightsLoggable(v.Goal) {
+				<form data-testid="log-draft-highlight" class="dh-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/draft-highlights", v.Goal.ID)) }>
+					<label>
+						Kind
+						<select name="kind">
+							@highlightKindOptions(v.FormInput.Get("kind"))
+						</select>
+					</label>
+					<label>
+						Note
+						<textarea name="note" required>{ v.FormInput.Get("note") }</textarea>
+					</label>
+					<button type="submit" class="btn sm">Log Draft Highlight</button>
+				</form>
+			}
+			<style>
+				.dh-item{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
+				.dh-item form{margin:0 0 0 auto}
+				.dh-form{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+				.dh-form label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px;align-self:stretch}
+			</style>
+		</section>
+	}
+}
+
+// draftHighlightKind is a Draft Highlight's kind as the page shows it: "No
+// kind" for one logged without.
+func draftHighlightKind(kind string) string {
+	if kind == "" {
+		return "No kind"
+	}
+	return kind
+}
+
+// draftHighlightRefusal is why the last log was refused, as a sentence, or ""
+// when the page isn't coming back from one.
+func (v goalView) draftHighlightRefusal() string {
+	if !v.opens(formDraftHighlight) || v.FormError == "" {
+		return ""
+	}
+	return sentence(plainReason(errors.New(v.FormError)))
+}
+
+// draftHighlightsLoggable reports whether the Goal takes Draft Highlights: it
+// does while it still takes Check-ins to offer them at, so not once it is Done
+// or Cancelled.
+func draftHighlightsLoggable(g domain.Goal) bool {
+	return g.Lifecycle != domain.LifecycleDone && g.Lifecycle != domain.LifecycleCancelled
+}

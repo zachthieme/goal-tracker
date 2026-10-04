@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,9 +30,13 @@ type checkinFormData struct {
 	// form, or what the reader typed so an error re-render keeps it.
 	Metrics  []domain.Metric
 	Readings map[int64]string
-	// Highlights are the Highlight rows as typed, blank ones included
-	// (CONTEXT.md: Highlight). The form shows at least one row.
-	Highlights []highlightFormData
+	// DraftHighlights are the rows offered from the Goal's pending Draft
+	// Highlights, oldest first, as typed (CONTEXT.md: Draft Highlight); they
+	// come before the rest. Highlights are the Highlight rows as typed, blank
+	// ones included (CONTEXT.md: Highlight). The form shows at least one of
+	// these.
+	DraftHighlights []highlightFormData
+	Highlights      []highlightFormData
 	// Dates are the delivery date and Milestone changes the reader is making
 	// (CONTEXT.md: a Check-in carries Date Slips and Milestone changes).
 	Dates checkinDatesFormData
@@ -99,10 +104,24 @@ func (row milestoneFormRow) planned() bool {
 }
 
 // highlightFormData is one Highlight row in the Check-in form: its kind (empty
-// for none) and note. A row with a blank note flags nothing.
+// for none) and note. A row with a blank note flags nothing. A row offered
+// from a Draft Highlight names it by DraftID and says whether its Keep box is
+// ticked.
 type highlightFormData struct {
-	Kind string
-	Note string
+	Kind    string
+	Note    string
+	DraftID int64
+	Keep    bool
+}
+
+// draftHighlightRows are the rows offering each of drafts, oldest first, each
+// ticked to keep, with its kind and note as logged.
+func draftHighlightRows(drafts []domain.DraftHighlight) []highlightFormData {
+	out := make([]highlightFormData, 0, len(drafts))
+	for _, d := range drafts {
+		out = append(out, highlightFormData{Kind: d.Kind, Note: d.Note, DraftID: d.ID, Keep: true})
+	}
+	return out
 }
 
 // reading returns the value to prefill a Metric's reading input with.
@@ -134,9 +153,10 @@ func (d checkinFormData) highlightRows() []highlightFormData {
 }
 
 // highlightOpen reports whether the Highlight section renders open: it holds
-// the error, the reader added a row, or flagged or wrote something.
+// the error, offers Draft Highlights, the reader added a row, or flagged or
+// wrote something.
 func (d checkinFormData) highlightOpen() bool {
-	if d.Error.about("highlight") || len(d.Highlights) > 1 {
+	if d.Error.about("highlight") || len(d.DraftHighlights) > 0 || len(d.Highlights) > 1 {
 		return true
 	}
 	for _, row := range d.Highlights {
@@ -148,11 +168,11 @@ func (d checkinFormData) highlightOpen() bool {
 }
 
 // highlightSummary is the Highlight section's summary line, naming the kinds
-// flagged, if any.
+// flagged, if any, in the rows kept.
 func (d checkinFormData) highlightSummary() string {
 	var kinds []string
-	for _, row := range d.Highlights {
-		if row.Kind != "" {
+	for _, row := range append(slices.Clone(d.DraftHighlights), d.Highlights...) {
+		if row.Kind != "" && (row.DraftID == 0 || row.Keep) {
 			kinds = append(kinds, row.Kind)
 		}
 	}
@@ -296,6 +316,7 @@ func checkinFormFromLatest(v goalView) checkinFormData {
 			d.Readings[t.Metric.ID] = fmtNum(t.Readings[n-1].Value)
 		}
 	}
+	d.DraftHighlights = draftHighlightRows(v.DraftHighlights)
 	d.Lifecycle.Current = g.Lifecycle
 	if g.Lifecycle == domain.LifecycleOnHold {
 		// An On Hold Goal's Check-in resumes or Cancels it; resuming is the
@@ -559,8 +580,11 @@ templ checkinForm(d checkinFormData) {
 		<details data-testid="checkin-highlight-section" class="checkin-more" open?={ d.highlightOpen() }>
 			<summary>{ d.highlightSummary() }</summary>
 			<div data-testid="checkin-highlights" class="checkin-highlights">
+				for i, row := range d.DraftHighlights {
+					@checkinDraftHighlightRow(i+1, row, d.Error)
+				}
 				for i, row := range d.highlightRows() {
-					@checkinHighlightRow(i+1, row, d.Error)
+					@checkinHighlightRow(len(d.DraftHighlights)+i+1, row, d.Error)
 				}
 				<button type="submit" name="add_highlight" value="1" formnovalidate class="btn quiet">Add another</button>
 			</div>
@@ -585,14 +609,11 @@ templ checkinForm(d checkinFormData) {
 // shows in the row.
 templ checkinHighlightRow(n int, row highlightFormData, e checkinError) {
 	<fieldset data-testid="checkin-highlight-row">
-		<legend>{ fmt.Sprintf("Highlight %d", n) }</legend>
+		<legend data-testid="checkin-highlight-legend">{ fmt.Sprintf("Highlight %d", n) }</legend>
 		<label>
 			Kind
 			<select name="highlight_kind">
-				<option value="" selected?={ row.Kind == "" }>None</option>
-				<option value={ domain.HighlightInsight } selected?={ row.Kind == domain.HighlightInsight }>Insight</option>
-				<option value={ domain.HighlightAccomplishment } selected?={ row.Kind == domain.HighlightAccomplishment }>Accomplishment</option>
-				<option value={ domain.HighlightMiss } selected?={ row.Kind == domain.HighlightMiss }>Miss</option>
+				@highlightKindOptions(row.Kind)
 			</select>
 		</label>
 		<label>
@@ -601,6 +622,44 @@ templ checkinHighlightRow(n int, row highlightFormData, e checkinError) {
 		</label>
 		@checkinFieldError(e, fmt.Sprintf("highlight_%d", n))
 	</fieldset>
+}
+
+// checkinDraftHighlightRow is the nth Highlight row (counting from 1) offered
+// from a pending Draft Highlight: a Keep box, ticked by default, then its kind
+// and note to edit. Its fields carry the Draft Highlight's id — a hidden
+// field, the Keep box's value and the kind's and note's names — so the server
+// pairs them by id, an unticked box posting nothing (CONTEXT.md: Draft
+// Highlight).
+templ checkinDraftHighlightRow(n int, row highlightFormData, e checkinError) {
+	{{ id := fmt.Sprint(row.DraftID) }}
+	<fieldset data-testid="checkin-highlight-row" class="checkin-draft-row">
+		<legend data-testid="checkin-highlight-legend">{ fmt.Sprintf("Highlight %d · Draft", n) }</legend>
+		<input type="hidden" name="draft_highlight_id" value={ id }/>
+		<label class="checkin-keep">
+			<input type="checkbox" name="draft_highlight_keep" value={ id } checked?={ row.Keep }/>
+			Keep
+		</label>
+		<label>
+			Kind
+			<select name={ "draft_highlight_kind_" + id }>
+				@highlightKindOptions(row.Kind)
+			</select>
+		</label>
+		<label>
+			Note
+			<textarea name={ "draft_highlight_note_" + id }>{ row.Note }</textarea>
+		</label>
+		@checkinFieldError(e, fmt.Sprintf("highlight_%d", n))
+	</fieldset>
+}
+
+// highlightKindOptions are a Highlight kind select's options, None first, with
+// selected picked.
+templ highlightKindOptions(selected string) {
+	<option value="" selected?={ selected == "" }>None</option>
+	<option value={ domain.HighlightInsight } selected?={ selected == domain.HighlightInsight }>Insight</option>
+	<option value={ domain.HighlightAccomplishment } selected?={ selected == domain.HighlightAccomplishment }>Accomplishment</option>
+	<option value={ domain.HighlightMiss } selected?={ selected == domain.HighlightMiss }>Miss</option>
 }
 
 // confirmCancelScript asks the reader to confirm before a Check-in that
@@ -657,6 +716,7 @@ templ checkinStyles() {
 			.checkin-highlights{display:flex;flex-direction:column;gap:16px}
 			.checkin-more .checkin-highlights fieldset>legend{display:block;padding:0;font-size:13px;color:var(--color-ink-muted)}
 			.checkin-highlights>button{align-self:flex-start}
+			.checkin-form .checkin-keep{flex-direction:row;align-items:center}
 			.ms-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1fr);gap:8px 12px;align-items:start}
 			.ms-row{display:contents}
 			.ms-name{font-weight:600;align-self:center}

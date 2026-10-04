@@ -1328,3 +1328,54 @@ func TestGoalHistoryLinksChipListsLinkChangesAndParentSuggestions(t *testing.T) 
 		}
 	}
 }
+
+// A Check-in's History entry lists the Draft Highlights it discarded under
+// "Discarded Draft Highlights", each with its kind and note, for everyone who
+// can see the History; one that discarded none shows nothing extra, and one
+// deleted by hand appears nowhere (CONTEXT.md: Draft Highlight).
+func TestGoalHistoryCheckinListsTheDraftHighlightsItDiscarded(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("pat@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "Nothing to discard.", "", time.Time{})
+	h.Clock.Advance(time.Hour)
+	kept := h.LogDraftHighlight(sam, goal.ID, domain.HighlightAccomplishment, "Kept as a Highlight.")
+	vendor := h.LogDraftHighlight(sam, goal.ID, "", "Vendor may raise prices.")
+	runbook := h.LogDraftHighlight(sam, goal.ID, domain.HighlightMiss, "Runbook was late.")
+	deleted := h.LogDraftHighlight(sam, goal.ID, domain.HighlightInsight, "Deleted by hand.")
+	if _, err := h.Service.DeleteDraftHighlight(context.Background(), sam.ID, deleted.ID); err != nil {
+		t.Fatalf("DeleteDraftHighlight: %v", err)
+	}
+	h.CheckinWithHighlights(sam, goal.ID,
+		domain.HighlightInput{DraftHighlightID: kept.ID, Kind: kept.Kind, Note: kept.Note},
+		domain.HighlightInput{DraftHighlightID: vendor.ID, LeftOut: true},
+		domain.HighlightInput{DraftHighlightID: runbook.ID, Kind: runbook.Kind, Note: ""},
+	)
+
+	page := getBody(t, signInClient(t, ts.URL, "pat@example.com"), goalPageURL(ts.URL, goal))
+	entries := historyEntries(historyBlock(t, page))
+	discarding, earlier := entries[0], entries[1]
+	block := between(t, discarding, `data-testid="entry-discarded-drafts"`, "</ul>")
+	if !strings.Contains(block, "Discarded Draft Highlights") {
+		t.Errorf("the discarded Draft Highlights aren't headed as such:\n%s", block)
+	}
+	want := []string{"No kind: Vendor may raise prices.", "Miss: Runbook was late."}
+	if got := elementTexts(block, "li", "discarded-draft-highlight"); !slices.Equal(got, want) {
+		t.Errorf("discarded = %q, want %q", got, want)
+	}
+	for _, absent := range []string{"Kept as a Highlight.", "Deleted by hand."} {
+		if strings.Contains(block, absent) {
+			t.Errorf("the discarded list shows %q", absent)
+		}
+	}
+	if strings.Contains(earlier, "entry-discarded-drafts") || strings.Contains(earlier, "Discarded Draft Highlights") {
+		t.Errorf("a Check-in that discarded none shows a discarded list:\n%s", earlier)
+	}
+	if strings.Contains(page, "Deleted by hand.") {
+		t.Errorf("a Draft Highlight deleted by hand appears on the Goal page")
+	}
+}

@@ -82,6 +82,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /goals/{id}/checkin", s.requireAuth(s.handleCheckinPage))
 	s.mux.HandleFunc("POST /goals/{id}/checkins", s.requireAuth(s.handleSubmitCheckin))
 	s.mux.HandleFunc("POST /goals/{id}/checkins/no-change", s.requireAuth(s.handleNoChangeCheckin))
+	s.mux.HandleFunc("POST /goals/{id}/draft-highlights", s.requireAuth(s.handleLogDraftHighlight))
+	s.mux.HandleFunc("POST /draft-highlights/{id}/delete", s.requireAuth(s.handleDeleteDraftHighlight))
 	s.mux.HandleFunc("GET /imports", s.requireAuth(s.handleImportForm))
 	s.mux.HandleFunc("POST /imports", s.requireAuth(s.handleRunImport))
 	s.mux.HandleFunc("GET /reports", s.requireAuth(s.handleReports))
