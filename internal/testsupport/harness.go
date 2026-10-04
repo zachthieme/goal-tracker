@@ -8,6 +8,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -74,8 +75,11 @@ func New(t *testing.T, adminEmails ...string) *Harness {
 // Each test's database is copied from a template migrated once per test binary
 // rather than migrated itself: running every migration for each of the
 // hundreds of tests queued them all on modernc's process-wide allocator lock.
+// The path is escaped because it's a URI: a test's temp directory can hold a
+// '#' (an unnamed subtest is "#00"), which would otherwise end the path and
+// open a new, empty database in place of the copy.
 func dsn(path string) string {
-	return "file:" + path + "?_pragma=synchronous(off)"
+	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?_pragma=synchronous(off)"
 }
 
 // The migrated database every Harness copies, built on first use, or the error
