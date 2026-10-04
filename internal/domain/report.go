@@ -126,7 +126,7 @@ type SelectedGoal struct {
 // refuses each input it can't take with an *InputError naming it.
 func (s *Service) SaveReportDefinition(ctx context.Context, actorID int64, in SaveReportDefinitionInput) (ReportDefinition, error) {
 	in = normalizeReportDefinition(in)
-	if err := s.validateReportDefinition(ctx, in); err != nil {
+	if err := s.validateReportDefinition(ctx, in, nil); err != nil {
 		return ReportDefinition{}, err
 	}
 
@@ -169,7 +169,7 @@ func (s *Service) UpdateReportDefinition(ctx context.Context, actorID, id int64,
 		return ReportDefinition{}, fmt.Errorf("%w: only its creator or an Admin may edit %s", ErrNotAuthorized, def.Name)
 	}
 	in = normalizeReportDefinition(in)
-	if err := s.validateReportDefinition(ctx, in); err != nil {
+	if err := s.validateReportDefinition(ctx, in, def.FieldIDs); err != nil {
 		return ReportDefinition{}, err
 	}
 	if err := s.WithinTx(ctx, func(tx *Service) error {
@@ -266,8 +266,9 @@ func RuleInput(i int) string { return fmt.Sprintf("rules[%d]", i) }
 // validateReportDefinition returns every input of in that can't be saved, each
 // as an *InputError, joined. A rules definition needs rules and carries no
 // picked list; a picked definition needs Goals and carries no rules, Also
-// include or Leave out. Every Goal listed must exist.
-func (s *Service) validateReportDefinition(ctx context.Context, in SaveReportDefinitionInput) error {
+// include or Leave out. Every Goal listed must exist. shown are the Fields the
+// saved definition already shows, which may since have been Retired.
+func (s *Service) validateReportDefinition(ctx context.Context, in SaveReportDefinitionInput, shown []int64) error {
 	var problems []error
 	if in.Name == "" {
 		problems = append(problems, inputError(ReportInputName, "a Report Definition needs a name"))
@@ -316,7 +317,7 @@ func (s *Service) validateReportDefinition(ctx context.Context, in SaveReportDef
 			}
 		}
 	}
-	fieldProblem, err := s.validateReportFields(ctx, in.FieldIDs)
+	fieldProblem, err := s.validateReportFields(ctx, in.FieldIDs, shown)
 	if err != nil {
 		return err
 	}
@@ -410,8 +411,10 @@ func (s *Service) validateReportRule(ctx context.Context, rule ReportRule) (stri
 var lifecycles = []string{LifecycleProposed, LifecycleActive, LifecycleOnHold, LifecycleDone, LifecycleCancelled}
 
 // validateReportFields refuses a chosen Field that doesn't exist or is
-// Retired, as a Retired Field is no longer offered (CONTEXT.md: Retired).
-func (s *Service) validateReportFields(ctx context.Context, ids []int64) (*InputError, error) {
+// Retired, as a Retired Field is no longer offered (CONTEXT.md: Retired) —
+// unless it is among shown, the Fields the saved definition already shows,
+// which keep working once Retired (ADR 0005).
+func (s *Service) validateReportFields(ctx context.Context, ids, shown []int64) (*InputError, error) {
 	for _, id := range ids {
 		row, err := s.queries.GetField(ctx, id)
 		if err != nil {
@@ -420,7 +423,7 @@ func (s *Service) validateReportFields(ctx context.Context, ids []int64) (*Input
 			}
 			return nil, fmt.Errorf("look up field: %w", err)
 		}
-		if f := fieldFromRow(row); f.Retired {
+		if f := fieldFromRow(row); f.Retired && !slices.Contains(shown, id) {
 			return inputError(ReportInputFields, "%s is retired, so a Report can't be set to show it", f.Name), nil
 		}
 	}

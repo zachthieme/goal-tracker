@@ -2601,3 +2601,79 @@ func TestEditDefinitionKeepsARuleOnARetiredDimensionOverHTTP(t *testing.T) {
 		t.Errorf("the Retired Core is offered to a rule that doesn't test it:\n%s", rows[0])
 	}
 }
+
+// A definition showing a Field that is then Retired keeps it on edit: the
+// edit page lists it, ticked, and saving the page unchanged keeps showing it.
+// A refused save still lists it as ticked. A different Retired Field is
+// neither offered nor accepted (ticket #164).
+func TestEditDefinitionKeepsARetiredFieldOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	legacy := h.CreateField(boss, "Legacy code", domain.FieldShortText, "")
+	goal := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{goal.ID}, FieldIDs: []int64{legacy.ID},
+	})
+	sunset := h.CreateField(boss, "Sunset code", domain.FieldShortText, "")
+	ctx := context.Background()
+	for _, f := range []domain.Field{legacy, sunset} {
+		if err := h.Service.RetireField(ctx, boss.ID, f.ID); err != nil {
+			t.Fatalf("RetireField %s: %v", f.Name, err)
+		}
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	id := func(n int64) string { return strconv.FormatInt(n, 10) }
+	editURL := ts.URL + "/reports/" + id(def.ID) + "/edit"
+	ticked := `name="field" value="` + id(legacy.ID) + `" checked`
+
+	choice := between(t, getBody(t, client, editURL), `<fieldset data-testid="report-field-choice"`, `</fieldset>`)
+	if !strings.Contains(choice, legacy.Name) || !strings.Contains(choice, ticked) {
+		t.Errorf("the edit page doesn't list the Retired %s, ticked; fieldset:\n%s", legacy.Name, choice)
+	}
+	if !strings.Contains(choice, `name="field" value="`+id(budget.ID)+`"`) {
+		t.Errorf("the edit page doesn't offer %s; fieldset:\n%s", budget.Name, choice)
+	}
+	if strings.Contains(choice, sunset.Name) {
+		t.Errorf("the edit page offers the Retired %s, which the definition doesn't show; fieldset:\n%s", sunset.Name, choice)
+	}
+
+	form := url.Values{
+		"name":   {""},
+		"mode":   {domain.ReportModePicked},
+		"picked": {id(goal.ID)},
+		"field":  {id(legacy.ID)},
+	}
+	resp := postForm(t, noRedirects(client), editURL, form)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("save with no name: status %d, want 422", resp.StatusCode)
+	}
+	choice = between(t, readBody(t, resp), `<fieldset data-testid="report-field-choice"`, `</fieldset>`)
+	if !strings.Contains(choice, ticked) {
+		t.Errorf("the refused save doesn't list the Retired %s, ticked; fieldset:\n%s", legacy.Name, choice)
+	}
+
+	form.Set("name", "MBR renamed")
+	form["field"] = []string{id(legacy.ID), id(sunset.ID)}
+	resp = postForm(t, noRedirects(client), editURL, form)
+	if body := readBody(t, resp); resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, "Sunset code is retired") {
+		t.Errorf("adding the Retired %s: status %d, want 422 naming it", sunset.Name, resp.StatusCode)
+	}
+
+	form["field"] = []string{id(legacy.ID)}
+	resp = postForm(t, noRedirects(client), editURL, form)
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("save unchanged: status %d, want 303; body:\n%s", resp.StatusCode, readBody(t, resp))
+	}
+	_ = resp.Body.Close()
+	got, err := h.Service.GetReportDefinition(ctx, def.ID)
+	if err != nil {
+		t.Fatalf("GetReportDefinition: %v", err)
+	}
+	if !slices.Equal(got.FieldIDs, []int64{legacy.ID}) {
+		t.Errorf("saved FieldIDs = %v, want [%d]", got.FieldIDs, legacy.ID)
+	}
+}
