@@ -15,6 +15,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 ### Collected changes — October 4, 2026
 
+**New features:**
+- [user] New goal, on Home and the Goal list, opens its own page at `/goals/new` in place of the Goal list's pop-up form. Fill in the Title and So What and Create Goal lands on the new Proposed Goal's page. If a submit is refused, the form comes back with what you typed, a list of the problems at the top, and each problem marked on its field. The page is a plain form, so it works without JavaScript (#129).
+
 **Bug fixes:**
 - [internal] `scripts/shots.mjs` runs an action as an async function body only when it uses `await` in its code, not when the word appears in a string, comment, regex or property name, so such actions keep their completion value and awaited promise; a `name` ending in `.PNG` now saves `<name>.png` (#126).
 - [user] The Not found page for an unknown address shows the top bar's Home and Risks counts like every other page, and asking an unknown address with any method, not just GET, shows that page instead of a bare "Method Not Allowed" (#127).
