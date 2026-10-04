@@ -246,7 +246,7 @@ templ goalFormExisting(v goalFormView) {
 	if len(v.ExistingMilestones) > 0 || len(v.ExistingMetrics) > 0 {
 		<div data-testid="existing-measures" class="gf-existing">
 			<p class="muted small">Already defined; edit these on the Goal's page.</p>
-			<ul class="gp-list">
+			<ul class="gf-list">
 				for _, m := range v.ExistingMilestones {
 					<li>Milestone: <strong>{ m.Name }</strong> <span class="muted small">{ fmtDate(m.TargetDate) }</span></li>
 				}
@@ -391,7 +391,7 @@ templ goalFormParents(v goalFormView) {
 		<legend>Contributes to</legend>
 		<p class="muted small">Optional: the Goals this one contributes to. Yours link at once.</p>
 		if len(v.Linked) > 0 {
-			<ul data-testid="linked-parents" class="gp-list">
+			<ul data-testid="linked-parents" class="gf-list">
 				for _, p := range v.Linked {
 					<li>
 						<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", p.Goal.ID)) }>{ p.Goal.Title }</a>
@@ -731,6 +731,8 @@ templ goalFormStyles() {
 			.gf-pick:has(input:checked){border-color:var(--color-primary);background:var(--color-primary-subtle)}
 			label.gf-pick:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}
 		}
+		.gf-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+		.gf-existing{display:flex;flex-direction:column;gap:4px}
 		.gf-know{display:flex;flex-direction:column;gap:12px;border:0;padding:0;margin:0;min-width:0}
 		.gf-know legend{font-weight:600;padding:0;margin-bottom:4px}
 		.gf-know-head{font-size:14px;margin:4px 0 0}

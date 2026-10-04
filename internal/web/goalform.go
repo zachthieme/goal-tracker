@@ -66,7 +66,7 @@ type goalFormView struct {
 }
 
 // activationFacts are the form's, as typed, for its Ready to activate
-// checklist. Its Owner is the person creating it. Only a Dated Goal's
+// checklist. Its Owner is the person creating or finishing it. Only a Dated Goal's
 // delivery date counts, and only one that parses; a Milestone or Metric row
 // counts once anything is typed in it. A required Dimension is set by a value
 // chosen in it or, when it's Extendable, a value typed to add, and a required
