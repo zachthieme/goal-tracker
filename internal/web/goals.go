@@ -630,7 +630,6 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Required:       required,
 		Incomplete:     incomplete,
 		HealthStrip:    strip,
-		SuggestedDate:  domain.SuggestDeliveryDate(s.svc.Now()).Format(dateLayout),
 	}
 	view.History = newHistory(view, s.svc.Timezone(), s.svc.Now())
 	return view, nil
@@ -716,9 +715,8 @@ type goalView struct {
 	// saying whether the Goal has a value in it, for the activation checklist.
 	// Incomplete names those an Active Goal lacks, empty when it lacks none or
 	// isn't Active (CONTEXT.md: Incomplete).
-	Required      []domain.RequiredValue
-	Incomplete    []string
-	SuggestedDate string
+	Required   []domain.RequiredValue
+	Incomplete []string
 	// HealthStrip is the Goal's Health over its last Check-in periods, shown
 	// above its History; it has no periods until the Goal has been Active.
 	HealthStrip domain.HealthStrip
@@ -742,7 +740,6 @@ const (
 	formReturn       goalForm = "return"
 	formTopLevel     goalForm = "top-level"
 	formParentLink   goalForm = "parent-link"
-	formChild        goalForm = "child"
 	formDelegates    goalForm = "delegates"
 	formContributors goalForm = "contributors"
 	formDimensions   goalForm = "dimensions"
@@ -768,8 +765,6 @@ func (v goalView) offers(form goalForm) bool {
 		return v.Owns
 	case formContributors:
 		return v.Owns && g.Lifecycle == domain.LifecycleProposed
-	case formChild:
-		return true
 	case formDimensions:
 		return v.CanSetValues && len(domain.OfferedDimensions(v.Dimensions)) > 0
 	case formFields:
@@ -799,26 +794,30 @@ func (v goalView) typedFor(key string, id int64, name string) string {
 	return v.FormInput.Get(name)
 }
 
-// goalAction is one item in the Goal page's action menu: its label and the
-// form it opens.
+// goalAction is one item in the Goal page's action menu: its label and where
+// it leads.
 type goalAction struct {
 	Label string
-	Form  goalForm
+	URL   templ.SafeURL
 }
 
-// actions lists the action menu's items the viewer may use, in menu order.
-// Empty, the page shows no menu.
+// actions lists the action menu's items the viewer may use, in menu order:
+// each opens its form in place, but Add a child Goal, which anyone may use,
+// leads to the New goal form with this Goal picked as the parent.
 func (v goalView) actions() []goalAction {
 	topLevel := "Mark Top-level"
 	if v.Goal.TopLevel {
 		topLevel = "Unmark Top-level"
 	}
 	var out []goalAction
-	for _, a := range []goalAction{
+	for _, a := range []struct {
+		label string
+		form  goalForm
+	}{
 		{"Hand off", formHandoff},
 		{"Add a delegate", formDelegates},
 		{"Link to a parent Goal", formParentLink},
-		{"Add a child Goal", formChild},
+		{"Add a child Goal", ""},
 		{"Edit Dimension values", formDimensions},
 		{"Edit Fields", formFields},
 		{topLevel, formTopLevel},
@@ -826,8 +825,11 @@ func (v goalView) actions() []goalAction {
 		{"Mark returned…", formReturn},
 		{"Reassign", formReassign},
 	} {
-		if v.offers(a.Form) {
-			out = append(out, a)
+		switch {
+		case a.form == "":
+			out = append(out, goalAction{a.label, templ.SafeURL(fmt.Sprintf("/goals/new?parent=%d", v.Goal.ID))})
+		case v.offers(a.form):
+			out = append(out, goalAction{a.label, v.openURL(a.form)})
 		}
 	}
 	return out
@@ -884,19 +886,6 @@ func (v goalView) assignedValues(dimensionID int64) []domain.DimensionValue {
 	var out []domain.DimensionValue
 	for _, val := range v.Values {
 		if val.DimensionID == dimensionID {
-			out = append(out, val)
-		}
-	}
-	return out
-}
-
-// childDefaults are the Goal's values offered as defaults to a child Goal: the
-// ones that can still be newly assigned, so neither a Retired value nor one in a
-// Retired Dimension (CONTEXT.md: Retired).
-func (v goalView) childDefaults() []domain.DimensionValue {
-	var out []domain.DimensionValue
-	for _, val := range v.Values {
-		if !val.Retired && !val.DimensionRetired {
 			out = append(out, val)
 		}
 	}
@@ -1225,72 +1214,6 @@ func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, c
 		return
 	}
 	s.writeFormResult(w, r, id, current, formDimensions, s.svc.AssignGoalValue(r.Context(), current.ID, id, valueID))
-}
-
-// handleCreateChildGoal creates a Goal under the parent in the path: it is owned
-// by the current Account, carries whichever of the parent's values were kept as
-// defaults, and requests a "contributes to" link to the parent. The parent's
-// values are offered as defaults but not inherited — only the kept ones are
-// assigned (CONTEXT.md: Contributes to; the parent's values are offered as
-// defaults).
-func (s *Server) handleCreateChildGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	parentID, ok := s.goalIDFromPath(w, r)
-	if !ok {
-		return
-	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "bad form", http.StatusBadRequest)
-		return
-	}
-	var valueIDs []int64
-	for _, raw := range r.Form["value_id"] {
-		if valueID, err := strconv.ParseInt(raw, 10, 64); err == nil {
-			valueIDs = append(valueIDs, valueID)
-		}
-	}
-
-	// Creating the Goal, assigning its kept defaults, and requesting its link
-	// are one transaction: a failure at any step (say, a default retired after
-	// the form loaded) leaves no Goal behind.
-	var child domain.Goal
-	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
-		var err error
-		child, err = tx.CreateGoal(r.Context(), domain.CreateGoalInput{
-			Title:   r.FormValue("title"),
-			SoWhat:  r.FormValue("so_what"),
-			OwnerID: current.ID,
-		})
-		if err != nil {
-			return err
-		}
-		for _, valueID := range valueIDs {
-			if err := tx.AssignGoalValue(r.Context(), current.ID, child.ID, valueID); err != nil {
-				return err
-			}
-		}
-		_, err = tx.RequestLink(r.Context(), domain.RequestLinkInput{
-			ChildID:     child.ID,
-			ParentID:    parentID,
-			RequesterID: current.ID,
-		})
-		return err
-	})
-	if err != nil {
-		if errors.Is(err, domain.ErrValidation) {
-			s.renderRefusedForm(w, r, parentID, current, formChild, http.StatusUnprocessableEntity, err)
-			return
-		}
-		http.Error(w, "could not create child goal", http.StatusInternalServerError)
-		return
-	}
-	http.Redirect(w, r, "/goals/"+strconv.FormatInt(child.ID, 10), http.StatusSeeOther)
-}
-
-// keepsDefault reports whether the add-child-Goal form checks the parent's
-// value as a default: every one on a fresh form, and those left checked when a
-// refused create sends it back.
-func (v goalView) keepsDefault(valueID int64) bool {
-	return v.FormInput == nil || slices.Contains(v.FormInput["value_id"], strconv.FormatInt(valueID, 10))
 }
 
 // health is the Goal's current Health — its latest Check-in's — while it is

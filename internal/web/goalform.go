@@ -23,8 +23,16 @@ import (
 // — the name the domain's InputError carries — or none when it is the whole
 // submit's.
 type goalFormView struct {
-	Title  string
-	SoWhat string
+	// Goal is the Proposed Goal being finished on the form, nil on the New
+	// goal page. Its Milestones and Metrics, and the parents it has asked to
+	// contribute to, Accepted or Pending, show read-only; the rows and the
+	// picked parents only add to them.
+	Goal               *domain.Goal
+	ExistingMilestones []domain.Milestone
+	ExistingMetrics    []domain.Metric
+	Linked             []linkedParent
+	Title              string
+	SoWhat             string
 	// Kind is the Kind chosen, "" for not chosen, and DeliveryDate the date
 	// typed, which counts only for a Dated Goal.
 	Kind         string
@@ -58,7 +66,7 @@ type goalFormView struct {
 }
 
 // activationFacts are the form's, as typed, for its Ready to activate
-// checklist. Its Owner is the person creating it. Only a Dated Goal's
+// checklist. Its Owner is the person creating or finishing it. Only a Dated Goal's
 // delivery date counts, and only one that parses; a Milestone or Metric row
 // counts once anything is typed in it. A required Dimension is set by a value
 // chosen in it or, when it's Extendable, a value typed to add, and a required
@@ -68,8 +76,8 @@ func (v goalFormView) activationFacts() activationFacts {
 		SoWhat:     v.SoWhat,
 		Owned:      true,
 		Kind:       v.Kind,
-		Milestones: len(v.Milestones),
-		Metrics:    len(v.Metrics),
+		Milestones: len(v.ExistingMilestones) + len(v.Milestones),
+		Metrics:    len(v.ExistingMetrics) + len(v.Metrics),
 	}
 	if v.Kind == domain.GoalDated {
 		if d, err := parseDate(strings.TrimSpace(v.DeliveryDate)); err == nil {
@@ -216,7 +224,7 @@ func (s *Server) handleNewGoalForm(w http.ResponseWriter, r *http.Request, curre
 	}
 	var v goalFormView
 	var err error
-	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, ids); err != nil {
+	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, ids, 0); err != nil {
 		http.Error(w, "could not load goals", http.StatusInternalServerError)
 		return
 	}
@@ -248,9 +256,9 @@ func (s *Server) loadWhereItFits(ctx context.Context, v *goalFormView) error {
 }
 
 // suggestedValues are the values a Goal contributing to parents is offered
-// ticked: every value the parents carry that can still be newly assigned, as
-// Add a child Goal offers a parent's (goalView.childDefaults), so neither a
-// Retired value nor one in a Retired Dimension. In a Dimension that takes one
+// ticked: every value the parents carry that can still be newly assigned, so
+// neither a Retired value nor one in a Retired Dimension (CONTEXT.md: the
+// parent's values are offered as defaults, not inherited). In a Dimension that takes one
 // value, parents carrying different ones suggest none there.
 func (s *Server) suggestedValues(ctx context.Context, parents []parentChoice, dims []domain.Dimension) (map[int64]bool, error) {
 	suggested := map[int64]bool{}
@@ -281,12 +289,19 @@ func (s *Server) suggestedValues(ctx context.Context, parents []parentChoice, di
 	return suggested, nil
 }
 
-// pickParents splits every Goal into the parents picked by ids, in that
-// order, each once, and the candidates left over. An id that is no Goal picks
-// nothing. A brand-new Goal has no children, so no Goal is left out for
-// making a cycle.
-func (s *Server) pickParents(ctx context.Context, current domain.Account, ids []int64) ([]parentChoice, []domain.Goal, error) {
-	all, err := s.svc.ListGoals(ctx)
+// pickParents splits the Goals the Goal goalID could contribute to into the
+// parents picked by ids, in that order, each once, and the candidates left
+// over. An id that is no such Goal picks nothing. A brand-new Goal, goalID 0,
+// has no children or parents, so it could contribute to every Goal; a saved
+// one to its domain.ParentCandidates.
+func (s *Server) pickParents(ctx context.Context, current domain.Account, ids []int64, goalID int64) ([]parentChoice, []domain.Goal, error) {
+	var all []domain.Goal
+	var err error
+	if goalID == 0 {
+		all, err = s.svc.ListGoals(ctx)
+	} else {
+		all, err = s.svc.ParentCandidates(ctx, goalID)
+	}
 	if err != nil {
 		return nil, nil, fmt.Errorf("load goals: %w", err)
 	}
@@ -382,8 +397,9 @@ const (
 
 // handleSearchGoals answers the Contributes to search as it is typed: each
 // candidate whose title contains q, ignoring case, less the parents already
-// picked, which come along as parent_id. Each result carries the chip picking
-// it adds.
+// picked, which come along as parent_id. On the define page goal names the
+// Goal being finished, and the candidates are those it could contribute to.
+// Each result carries the chip picking it adds.
 func (s *Server) handleSearchGoals(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	var picked []int64
 	for _, value := range r.URL.Query()[inputParentID] {
@@ -391,7 +407,8 @@ func (s *Server) handleSearchGoals(w http.ResponseWriter, r *http.Request, curre
 			picked = append(picked, id)
 		}
 	}
-	_, candidates, err := s.pickParents(r.Context(), current, picked)
+	goalID, _ := strconv.ParseInt(r.URL.Query().Get(searchGoal), 10, 64)
+	_, candidates, err := s.pickParents(r.Context(), current, picked, goalID)
 	if err != nil {
 		http.Error(w, "could not search goals", http.StatusInternalServerError)
 		return
@@ -449,7 +466,7 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	v.Problems = goalFormProblems(err, unparsed)
-	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, in.ParentIDs); err != nil {
+	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, in.ParentIDs, 0); err != nil {
 		http.Error(w, "could not load goals", http.StatusInternalServerError)
 		return
 	}
@@ -458,6 +475,219 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	render(w, r, http.StatusUnprocessableEntity, goalFormPage(&current, v))
+}
+
+// searchGoal is the Contributes to search's parameter naming the Goal being
+// finished on the define page.
+const searchGoal = "goal"
+
+// heading names the page: New goal, or Finish defining.
+func (v goalFormView) heading() string {
+	if v.Goal == nil {
+		return "New goal"
+	}
+	return "Finish defining"
+}
+
+// action is where the form posts: /goals/new, or the define page's own
+// address.
+func (v goalFormView) action() string {
+	if v.Goal == nil {
+		return "/goals/new"
+	}
+	return fmt.Sprintf("/goals/%d/define", v.Goal.ID)
+}
+
+// checklistURL is where the form posts as it is typed for its live Ready to
+// activate card.
+func (v goalFormView) checklistURL() string {
+	return v.action() + "/checklist"
+}
+
+// searchURL is the Contributes to search's address.
+func (v goalFormView) searchURL() string {
+	if v.Goal == nil {
+		return "/goals/search"
+	}
+	return fmt.Sprintf("/goals/search?%s=%d", searchGoal, v.Goal.ID)
+}
+
+// cancelURL is where Cancel leaves the form for: the Goals list, or the Goal
+// being finished.
+func (v goalFormView) cancelURL() templ.SafeURL {
+	if v.Goal == nil {
+		return "/goals"
+	}
+	return templ.SafeURL(fmt.Sprintf("/goals/%d", v.Goal.ID))
+}
+
+// linkedParent is a Goal the Goal being finished already contributes to, or
+// has asked to and is waiting on: Pending.
+type linkedParent struct {
+	Goal    domain.Goal
+	Pending bool
+}
+
+// definableGoal is the Goal in the path, for its define page: one current
+// owns that is still Proposed. Otherwise it writes the answer — Not found,
+// 403 for anyone but the Owner, and a redirect to the Goal's page once it is
+// no longer Proposed — and ok is false.
+func (s *Server) definableGoal(w http.ResponseWriter, r *http.Request, current domain.Account) (g domain.Goal, ok bool) {
+	id, ok := s.goalIDFromPath(w, r)
+	if !ok {
+		return domain.Goal{}, false
+	}
+	g, err := s.svc.ViewGoal(r.Context(), id)
+	if errors.Is(err, domain.ErrNotFound) {
+		s.notFound(w, r)
+		return domain.Goal{}, false
+	} else if err != nil {
+		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		return domain.Goal{}, false
+	}
+	if g.Owner.ID != current.ID {
+		http.Error(w, "only the Goal's Owner may finish defining it", http.StatusForbidden)
+		return domain.Goal{}, false
+	}
+	if g.Lifecycle != domain.LifecycleProposed {
+		http.Redirect(w, r, fmt.Sprintf("/goals/%d", g.ID), http.StatusSeeOther)
+		return domain.Goal{}, false
+	}
+	return g, true
+}
+
+// handleDefineGoalForm renders the define page: the New goal form for a
+// Proposed Goal, prefilled from it.
+func (s *Server) handleDefineGoalForm(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	g, ok := s.definableGoal(w, r, current)
+	if !ok {
+		return
+	}
+	v, err := s.definitionForm(r.Context(), g)
+	if err != nil {
+		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		return
+	}
+	if err := s.loadDefinition(r.Context(), current, g, &v, nil); err != nil {
+		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, goalFormPage(&current, v))
+}
+
+// definitionForm is the form as the saved Goal g fills it: its Title, So
+// What, Kind and delivery date, cadence, Dimension values and Fields.
+func (s *Server) definitionForm(ctx context.Context, g domain.Goal) (goalFormView, error) {
+	v := goalFormView{
+		Title:        g.Title,
+		SoWhat:       g.SoWhat,
+		Kind:         g.Kind,
+		DeliveryDate: fmtDate(g.DeliveryDate),
+		Cadence:      strconv.Itoa(g.CadenceDays),
+		Chosen:       map[int64]bool{},
+		NewValues:    map[int64]string{},
+		FieldValues:  map[int64]string{},
+	}
+	values, err := s.svc.GoalValues(ctx, g.ID)
+	if err != nil {
+		return goalFormView{}, fmt.Errorf("load goal values: %w", err)
+	}
+	for _, val := range values {
+		v.Chosen[val.ID] = true
+	}
+	fields, err := s.svc.GoalFields(ctx, g.ID)
+	if err != nil {
+		return goalFormView{}, fmt.Errorf("load goal fields: %w", err)
+	}
+	for _, f := range fields {
+		v.FieldValues[f.Field.ID] = f.Value
+	}
+	return v, nil
+}
+
+// loadDefinition gives the define page's v the Goal g it finishes, what it
+// shows of g read-only — its Milestones, Metrics and parents, Accepted and
+// Pending — the parents picked by ids and the candidates left over, and Where
+// it fits. The Title is always g's, which can't change here.
+func (s *Server) loadDefinition(ctx context.Context, current domain.Account, g domain.Goal, v *goalFormView, ids []int64) error {
+	v.Goal, v.Title = &g, g.Title
+	var err error
+	if v.ExistingMilestones, err = s.svc.ListMilestones(ctx, g.ID); err != nil {
+		return fmt.Errorf("load milestones: %w", err)
+	}
+	if v.ExistingMetrics, err = s.svc.ListMetrics(ctx, g.ID); err != nil {
+		return fmt.Errorf("load metrics: %w", err)
+	}
+	accepted, err := s.svc.ParentLinks(ctx, g.ID)
+	if err != nil {
+		return fmt.Errorf("load parents: %w", err)
+	}
+	pending, err := s.svc.PendingParentLinks(ctx, g.ID)
+	if err != nil {
+		return fmt.Errorf("load pending parents: %w", err)
+	}
+	v.Linked = nil
+	for _, l := range accepted {
+		v.Linked = append(v.Linked, linkedParent{Goal: l.Goal})
+	}
+	for _, l := range pending {
+		v.Linked = append(v.Linked, linkedParent{Goal: l.Goal, Pending: true})
+	}
+	if v.Parents, v.Candidates, err = s.pickParents(ctx, current, ids, g.ID); err != nil {
+		return err
+	}
+	return s.loadWhereItFits(ctx, v)
+}
+
+// handleDefineGoal submits the define page: the Proposed Goal is changed as
+// the form now says, and activated too when Create and activate posts
+// activate=1, and the post lands on its page, as handleCreateDefinedGoal's
+// does. A refused submit comes back as the define page, 422, as typed, with
+// every problem, and nothing saved.
+func (s *Server) handleDefineGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	g, ok := s.definableGoal(w, r, current)
+	if !ok {
+		return
+	}
+	v, in, unparsed := readGoalForm(r, current)
+	in.Activate = r.PostFormValue(domain.InputActivate) == "1"
+	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
+		_, err := tx.DefineGoal(r.Context(), current.ID, g.ID, in)
+		if err == nil && len(unparsed) > 0 {
+			return errUnparsed
+		}
+		return err
+	})
+	if err == nil {
+		http.Redirect(w, r, fmt.Sprintf("/goals/%d", g.ID), http.StatusSeeOther)
+		return
+	}
+	if !errors.Is(err, domain.ErrValidation) && !errors.Is(err, errUnparsed) {
+		http.Error(w, "could not save goal", http.StatusInternalServerError)
+		return
+	}
+	v.Problems = goalFormProblems(err, unparsed)
+	if err := s.loadDefinition(r.Context(), current, g, &v, in.ParentIDs); err != nil {
+		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusUnprocessableEntity, goalFormPage(&current, v))
+}
+
+// handleDefineGoalChecklist is handleGoalFormChecklist for the define page,
+// whose checklist counts the Goal's Milestones and Metrics with the rows.
+func (s *Server) handleDefineGoalChecklist(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	g, ok := s.definableGoal(w, r, current)
+	if !ok {
+		return
+	}
+	v, _, _ := readGoalForm(r, current)
+	if err := s.loadDefinition(r.Context(), current, g, &v, nil); err != nil {
+		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		return
+	}
+	v.Live = true
+	render(w, r, http.StatusOK, goalFormReady(v))
 }
 
 // handleGoalFormChecklist answers the New goal form as it is typed with its

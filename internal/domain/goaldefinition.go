@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/zachthieme/goal-tracker/internal/db"
 )
 
 // DefinedGoalInput is the create-a-defined-Goal command's input: everything
@@ -72,7 +74,7 @@ type MetricDefinition struct {
 func (s *Service) CreateDefinedGoal(ctx context.Context, in DefinedGoalInput) (Goal, error) {
 	var g Goal
 	err := s.WithinTx(ctx, func(tx *Service) error {
-		problems, err := tx.checkDefinedGoal(ctx, in)
+		problems, err := tx.checkDefinedGoal(ctx, in, nil)
 		if err != nil {
 			return err
 		}
@@ -86,6 +88,231 @@ func (s *Service) CreateDefinedGoal(ctx context.Context, in DefinedGoalInput) (G
 		return Goal{}, err
 	}
 	return g, nil
+}
+
+// DefineGoal finishes defining a Proposed Goal, as the New goal form shows it
+// again, with CreateDefinedGoal's input, input names and rules for refusing
+// it: every input is checked before anything is written, every problem comes
+// back together, and any error leaves the Goal as it was. Only the Goal's
+// Owner may (ErrNotAuthorized), and only while it is Proposed (ErrValidation).
+// The actor is the Owner, whatever in.OwnerID says.
+//
+// The Goal is changed to match the input. A changed So What is kept as a
+// revision (EditSoWhat), a Kind chosen, its delivery date and a cadence given
+// replace the Goal's, and Milestones and Metrics are added to those it has. In
+// each Dimension still offered the Goal carries just the values given, plus a
+// new one typed for it, so a value left out is removed (SetGoalValues); a
+// Retired value it already carries may be kept. Each Field still offered takes
+// the value given, a blank one clearing it. A link is requested to each parent
+// the Goal has no link to yet, Accepted or Pending; one that would close a
+// cycle is refused. The Title can't be changed here.
+func (s *Service) DefineGoal(ctx context.Context, actorID, goalID int64, in DefinedGoalInput) (Goal, error) {
+	in.OwnerID = actorID
+	var g Goal
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		current, err := tx.loadGoal(ctx, goalID)
+		if err != nil {
+			return err
+		}
+		if current.Owner.ID != actorID {
+			return fmt.Errorf("%w: only the Goal's Owner may define it", ErrNotAuthorized)
+		}
+		if current.Lifecycle != LifecycleProposed {
+			return fmt.Errorf("%w: %s is %s, so it is no longer defined here", ErrValidation, current.Title, current.Lifecycle)
+		}
+		carried, err := tx.GoalValues(ctx, goalID)
+		if err != nil {
+			return err
+		}
+		carries := map[int64]bool{}
+		for _, v := range carried {
+			carries[v.ID] = true
+		}
+		if in.ParentIDs, err = tx.unlinkedParents(ctx, goalID, in.ParentIDs); err != nil {
+			return err
+		}
+		if in.FieldValues, err = tx.changedFields(ctx, goalID, in.FieldValues); err != nil {
+			return err
+		}
+		problems, err := tx.checkDefinedGoal(ctx, in, carries)
+		if err != nil {
+			return err
+		}
+		more, err := tx.checkRedefinedGoal(ctx, current, in)
+		if err != nil {
+			return err
+		}
+		if problems = append(problems, more...); len(problems) > 0 {
+			return errors.Join(problems...)
+		}
+		g, err = tx.writeRedefinedGoal(ctx, current, in)
+		return err
+	})
+	if err != nil {
+		return Goal{}, err
+	}
+	return g, nil
+}
+
+// ParentCandidates are the Goals goalID could be asked to contribute to, in
+// ListGoals' order: every Goal but itself, those it is already linked to,
+// Accepted or Pending, and those that contribute to it however indirectly,
+// which would close a cycle (ADR-0001).
+func (s *Service) ParentCandidates(ctx context.Context, goalID int64) ([]Goal, error) {
+	all, err := s.ListGoals(ctx)
+	if err != nil {
+		return nil, err
+	}
+	accepted, err := s.ParentLinks(ctx, goalID)
+	if err != nil {
+		return nil, err
+	}
+	pending, err := s.PendingParentLinks(ctx, goalID)
+	if err != nil {
+		return nil, err
+	}
+	linked := map[int64]bool{goalID: true}
+	for _, l := range append(accepted, pending...) {
+		linked[l.Goal.ID] = true
+	}
+	var out []Goal
+	for _, g := range all {
+		if linked[g.ID] {
+			continue
+		}
+		if err := s.ensureNoCycle(ctx, goalID, g.ID); errors.Is(err, ErrCycle) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		out = append(out, g)
+	}
+	return out, nil
+}
+
+// unlinkedParents are the parents of ids the Goal has no link to yet, in
+// order: a link already Accepted or Pending is kept as it is, not requested
+// again.
+func (s *Service) unlinkedParents(ctx context.Context, goalID int64, ids []int64) ([]int64, error) {
+	var out []int64
+	for _, parentID := range ids {
+		_, err := s.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{ChildID: goalID, ParentID: parentID})
+		if errors.Is(err, sql.ErrNoRows) {
+			out = append(out, parentID)
+		} else if err != nil {
+			return nil, fmt.Errorf("look up existing link: %w", err)
+		}
+	}
+	return out, nil
+}
+
+// changedFields are the Field values of values that differ from the Goal's,
+// so one it already has, even in a Field since Retired, is no change to
+// check.
+func (s *Service) changedFields(ctx context.Context, goalID int64, values map[int64]string) (map[int64]string, error) {
+	have, err := s.GoalFields(ctx, goalID)
+	if err != nil {
+		return nil, err
+	}
+	was := map[int64]string{}
+	for _, v := range have {
+		was[v.Field.ID] = v.Value
+	}
+	out := map[int64]string{}
+	for fieldID, value := range values {
+		if strings.TrimSpace(value) != was[fieldID] {
+			out[fieldID] = value
+		}
+	}
+	return out, nil
+}
+
+// checkRedefinedGoal checks what redefining a saved Goal adds to
+// checkDefinedGoal's rules: its Title stays as it is, and no parent is the
+// Goal itself or would close a cycle (ADR-0001).
+func (s *Service) checkRedefinedGoal(ctx context.Context, current Goal, in DefinedGoalInput) (problems []error, err error) {
+	if title := strings.TrimSpace(in.Title); title != "" && title != current.Title {
+		problems = append(problems, inputError(InputTitle, "a Goal's Title can't be changed here"))
+	}
+	for _, parentID := range dedupeIDs(in.ParentIDs) {
+		if parentID == current.ID {
+			problems = append(problems, inputError(ParentInput(parentID), "a Goal cannot contribute to itself"))
+			continue
+		}
+		if err := s.ensureNoCycle(ctx, current.ID, parentID); errors.Is(err, ErrCycle) {
+			problems = append(problems, inputError(ParentInput(parentID), "that Goal already contributes to this one, so this one can't contribute to it"))
+		} else if err != nil {
+			return nil, err
+		}
+	}
+	return problems, nil
+}
+
+// writeRedefinedGoal writes each part of a checked definition over the saved
+// Goal current, within the transaction the caller holds.
+func (s *Service) writeRedefinedGoal(ctx context.Context, current Goal, in DefinedGoalInput) (Goal, error) {
+	goalID := current.ID
+	if soWhat := strings.TrimSpace(in.SoWhat); soWhat != current.SoWhat {
+		if _, err := s.EditSoWhat(ctx, goalID, soWhat, in.OwnerID); err != nil {
+			return Goal{}, err
+		}
+	}
+	var err error
+	switch {
+	case in.Kind == GoalDated && (current.Kind != GoalDated || !current.DeliveryDate.Equal(in.DeliveryDate)):
+		_, err = s.MarkGoalDated(ctx, goalID, in.DeliveryDate)
+	case in.Kind == GoalOngoing && current.Kind != GoalOngoing:
+		_, err = s.MarkGoalOngoing(ctx, goalID)
+	}
+	if err != nil {
+		return Goal{}, err
+	}
+	if in.CadenceDays != 0 && in.CadenceDays != current.CadenceDays {
+		if _, err := s.SetCadence(ctx, goalID, in.CadenceDays); err != nil {
+			return Goal{}, err
+		}
+	}
+	if err := s.addDefinedMeasures(ctx, goalID, in); err != nil {
+		return Goal{}, err
+	}
+	dims, err := s.ListDimensions(ctx)
+	if err != nil {
+		return Goal{}, err
+	}
+	given := map[int64]bool{}
+	for _, id := range in.ValueIDs {
+		given[id] = true
+	}
+	for _, d := range OfferedDimensions(dims) {
+		var ids []int64
+		for _, val := range d.Values {
+			if given[val.ID] {
+				ids = append(ids, val.ID)
+			}
+		}
+		if err := s.SetGoalValues(ctx, in.OwnerID, goalID, d.ID, ids); err != nil {
+			return Goal{}, err
+		}
+		if name := strings.TrimSpace(in.NewValues[d.ID]); name != "" {
+			if _, err := s.assignGoalValueByName(ctx, in.OwnerID, goalID, d.ID, name); err != nil {
+				return Goal{}, err
+			}
+		}
+	}
+	fields, err := s.ListFields(ctx)
+	if err != nil {
+		return Goal{}, err
+	}
+	for _, f := range OfferedFields(fields) {
+		value, changed := in.FieldValues[f.ID]
+		if !changed {
+			continue
+		}
+		if err := s.SetGoalField(ctx, in.OwnerID, goalID, f.ID, value); err != nil {
+			return Goal{}, err
+		}
+	}
+	return s.linkAndActivate(ctx, goalID, in)
 }
 
 // writeDefinedGoal creates the Goal and writes each part of its definition,
@@ -109,23 +336,8 @@ func (s *Service) writeDefinedGoal(ctx context.Context, in DefinedGoalInput) (Go
 			return Goal{}, err
 		}
 	}
-	for _, m := range in.Milestones {
-		if _, err := s.AddMilestone(ctx, AddMilestoneInput{GoalID: g.ID, Name: m.Name, TargetDate: m.Date}); err != nil {
-			return Goal{}, err
-		}
-	}
-	for _, m := range in.Metrics {
-		if _, err := s.AddMetric(ctx, AddMetricInput{
-			GoalID:     g.ID,
-			Name:       m.Name,
-			Unit:       m.Unit,
-			Direction:  m.Direction,
-			Baseline:   m.Baseline,
-			Target:     m.Target,
-			TargetDate: m.TargetDate,
-		}); err != nil {
-			return Goal{}, err
-		}
+	if err := s.addDefinedMeasures(ctx, g.ID, in); err != nil {
+		return Goal{}, err
 	}
 	for _, id := range dedupeIDs(in.ValueIDs) {
 		if err := s.AssignGoalValue(ctx, in.OwnerID, g.ID, id); err != nil {
@@ -150,21 +362,54 @@ func (s *Service) writeDefinedGoal(ctx context.Context, in DefinedGoalInput) (Go
 			return Goal{}, err
 		}
 	}
+	return s.linkAndActivate(ctx, g.ID, in)
+}
+
+// addDefinedMeasures adds each Milestone and Metric of a definition to the
+// Goal, within the transaction the caller holds.
+func (s *Service) addDefinedMeasures(ctx context.Context, goalID int64, in DefinedGoalInput) error {
+	for _, m := range in.Milestones {
+		if _, err := s.AddMilestone(ctx, AddMilestoneInput{GoalID: goalID, Name: m.Name, TargetDate: m.Date}); err != nil {
+			return err
+		}
+	}
+	for _, m := range in.Metrics {
+		if _, err := s.AddMetric(ctx, AddMetricInput{
+			GoalID:     goalID,
+			Name:       m.Name,
+			Unit:       m.Unit,
+			Direction:  m.Direction,
+			Baseline:   m.Baseline,
+			Target:     m.Target,
+			TargetDate: m.TargetDate,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// linkAndActivate requests a link to each of a definition's parents and, with
+// Activate, runs the activation gate, the last steps of defining a Goal,
+// within the transaction the caller holds.
+func (s *Service) linkAndActivate(ctx context.Context, goalID int64, in DefinedGoalInput) (Goal, error) {
 	for _, parentID := range in.ParentIDs {
-		if _, err := s.RequestLink(ctx, RequestLinkInput{ChildID: g.ID, ParentID: parentID, RequesterID: in.OwnerID}); err != nil {
+		if _, err := s.RequestLink(ctx, RequestLinkInput{ChildID: goalID, ParentID: parentID, RequesterID: in.OwnerID}); err != nil {
 			return Goal{}, err
 		}
 	}
 	if in.Activate {
-		return s.activateDefinedGoal(ctx, g.ID)
+		return s.activateDefinedGoal(ctx, goalID)
 	}
-	return s.loadGoal(ctx, g.ID)
+	return s.loadGoal(ctx, goalID)
 }
 
 // checkDefinedGoal checks every input of a Goal's definition, writing nothing,
 // and returns each problem as an *InputError, in the order the inputs come.
-// err is a failure to check, not a problem with the input.
-func (s *Service) checkDefinedGoal(ctx context.Context, in DefinedGoalInput) (problems []error, err error) {
+// carried are the values the Goal already carries, which it may keep though
+// they are Retired (CONTEXT.md: Retired); a new Goal carries none. err is a
+// failure to check, not a problem with the input.
+func (s *Service) checkDefinedGoal(ctx context.Context, in DefinedGoalInput, carried map[int64]bool) (problems []error, err error) {
 	refuse := func(input, format string, args ...any) {
 		problems = append(problems, inputError(input, format, args...))
 	}
@@ -208,7 +453,7 @@ func (s *Service) checkDefinedGoal(ctx context.Context, in DefinedGoalInput) (pr
 			refuse(MetricInput(i, "target_date"), "a Metric needs a target date")
 		}
 	}
-	valueProblems, err := s.checkDefinedValues(ctx, in)
+	valueProblems, err := s.checkDefinedValues(ctx, in, carried)
 	if err != nil {
 		return nil, err
 	}
@@ -253,8 +498,9 @@ func (s *Service) checkDefinedGoal(ctx context.Context, in DefinedGoalInput) (pr
 // checkDefinedValues checks the Dimension values a Goal is to be given, both
 // those chosen and those typed in as new, by the rules AssignGoalValue and
 // AssignGoalValueByName follow, and refuses several in a Dimension that takes
-// one, naming each of them.
-func (s *Service) checkDefinedValues(ctx context.Context, in DefinedGoalInput) (problems []error, err error) {
+// one, naming each of them. A value in carried may be kept though it is
+// Retired, or in a Retired Dimension, as SetGoalValues keeps it.
+func (s *Service) checkDefinedValues(ctx context.Context, in DefinedGoalInput, carried map[int64]bool) (problems []error, err error) {
 	refuse := func(input, format string, args ...any) {
 		problems = append(problems, inputError(input, format, args...))
 	}
@@ -283,6 +529,8 @@ func (s *Service) checkDefinedValues(ctx context.Context, in DefinedGoalInput) (
 		}
 		dim := dimensionFromRow(dimRow)
 		switch {
+		case carried[valueID]:
+			given(dim, input)
 		case val.Retired != 0:
 			refuse(input, "%s is retired and cannot be newly assigned", val.Value)
 		case dim.Retired:

@@ -12,22 +12,28 @@ import (
 // the Ready to activate card holds the submit buttons; script posts the form
 // to /goals/new/checklist as it changes and swaps the card for the one that
 // comes back. A refused submit comes back with what was typed, a summary of
-// every problem first, and each bad input marked with why.
+// every problem first, and each bad input marked with why. Finishing a
+// Proposed Goal, it is the define page: the same form, filled in from the
+// Goal, posting to /goals/<id>/define.
 templ goalFormPage(current *domain.Account, v goalFormView) {
-	@layout("New goal", current) {
+	@layout(v.heading(), current) {
 		@goalFormStyles()
 		<header data-testid="goal-form-head" class="page-head">
 			<div>
-				<h1>New goal</h1>
-				<p class="muted">Say what the Goal is and why it matters.</p>
+				<h1>{ v.heading() }</h1>
+				if v.Goal == nil {
+					<p class="muted">Say what the Goal is and why it matters.</p>
+				} else {
+					<p class="muted">{ v.Goal.Title } is Proposed: finish defining it, then activate it.</p>
+				}
 			</div>
 		</header>
 		<form
 			data-testid="goal-form"
 			class="gf-form"
 			method="post"
-			action="/goals/new"
-			hx-post="/goals/new/checklist"
+			action={ templ.SafeURL(v.action()) }
+			hx-post={ v.checklistURL() }
 			hx-trigger="load, change, input delay:400ms"
 			hx-target={ "#" + goalFormReadyID }
 			hx-swap="outerHTML"
@@ -75,12 +81,13 @@ templ goalFormReady(v goalFormView) {
 			<button type="submit" class="btn">Save as Proposed</button>
 		</div>
 		<p class="muted small">Only Title and So What are needed to save.</p>
-		<a class="small gf-cancel" href="/goals">Cancel</a>
+		<a class="small gf-cancel" href={ v.cancelURL() }>Cancel</a>
 	</aside>
 }
 
 // goalFormWhat is the "What and why" section: the Goal's Title, focused, and
-// its So What.
+// its So What. Finishing a saved Goal, the Title is read-only and the So What
+// takes the focus.
 templ goalFormWhat(v goalFormView) {
 	<fieldset data-testid="goal-form-what" class="gf-section">
 		<legend>What and why</legend>
@@ -92,7 +99,11 @@ templ goalFormWhat(v goalFormView) {
 				name={ domain.InputTitle }
 				value={ v.Title }
 				required
-				autofocus
+				if v.Goal == nil {
+					autofocus
+				} else {
+					readonly
+				}
 				if v.bad(domain.InputTitle) != "" {
 					aria-invalid="true"
 					aria-describedby={ domain.InputTitle + "-error" }
@@ -106,6 +117,7 @@ templ goalFormWhat(v goalFormView) {
 				id={ domain.InputSoWhat }
 				name={ domain.InputSoWhat }
 				required
+				autofocus?={ v.Goal != nil }
 				if v.bad(domain.InputSoWhat) != "" {
 					aria-invalid="true"
 					aria-describedby={ domain.InputSoWhat + "-error" }
@@ -202,6 +214,7 @@ templ goalFormKnow(v goalFormView) {
 	<fieldset data-testid="goal-form-know" class="gf-know">
 		<legend>How you'll know</legend>
 		<p class="muted small">Milestones and Metrics are optional; a row left blank is ignored.</p>
+		@goalFormExisting(v)
 		<h2 class="gf-know-head">Milestones</h2>
 		<div data-testid="milestone-rows" class="gf-rows" data-rows="milestones">
 			for i, m := range v.milestoneRows() {
@@ -224,6 +237,25 @@ templ goalFormKnow(v goalFormView) {
 		<button type="button" class="btn quiet sm gf-js-only" data-add-row="metrics">+ Metric</button>
 	</fieldset>
 	@goalFormRowsScript()
+}
+
+// goalFormExisting lists the Milestones and Metrics the Goal being finished
+// already has, read-only: they're edited on the Goal page, and the rows below
+// only add to them.
+templ goalFormExisting(v goalFormView) {
+	if len(v.ExistingMilestones) > 0 || len(v.ExistingMetrics) > 0 {
+		<div data-testid="existing-measures" class="gf-existing">
+			<p class="muted small">Already defined; edit these on the Goal's page.</p>
+			<ul class="gf-list">
+				for _, m := range v.ExistingMilestones {
+					<li>Milestone: <strong>{ m.Name }</strong> <span class="muted small">{ fmtDate(m.TargetDate) }</span></li>
+				}
+				for _, m := range v.ExistingMetrics {
+					<li>Metric: <strong>{ m.Name }</strong> <span class="muted small">{ fmt.Sprintf("%s → %s %s by %s", fmtNum(m.Baseline), fmtNum(m.Target), m.Unit, fmtDate(m.TargetDate)) }</span></li>
+				}
+			</ul>
+		</div>
+	}
 }
 
 // milestoneRowFields is one Milestone row: Name and Date.
@@ -358,6 +390,19 @@ templ goalFormParents(v goalFormView) {
 	<fieldset data-testid="goal-form-parents" class="gf-parents">
 		<legend>Contributes to</legend>
 		<p class="muted small">Optional: the Goals this one contributes to. Yours link at once.</p>
+		if len(v.Linked) > 0 {
+			<ul data-testid="linked-parents" class="gf-list">
+				for _, p := range v.Linked {
+					<li>
+						<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", p.Goal.ID)) }>{ p.Goal.Title }</a>
+						if p.Pending {
+							<span class="badge lc">Pending</span>
+							<span class="muted small">{ "waiting on " + p.Goal.Owner.Label() }</span>
+						}
+					</li>
+				}
+			</ul>
+		}
 		<ul data-testid="parent-chips" id="parent-chips" class="gf-chips">
 			for _, p := range v.Parents {
 				@parentChip(p, v.bad(domain.ParentInput(p.Goal.ID)))
@@ -372,7 +417,7 @@ templ goalFormParents(v goalFormView) {
 				autocomplete="off"
 				aria-label="Search Goals to contribute to"
 				aria-controls="parent-results"
-				hx-get="/goals/search"
+				hx-get={ v.searchURL() }
 				hx-trigger="input changed delay:300ms, search"
 				hx-target="#parent-results"
 				hx-include="#parent-chips [name='parent_id']"
@@ -614,7 +659,11 @@ templ goalFormField(v goalFormView, f domain.Field) {
 templ goalFormErrors(v goalFormView) {
 	if len(v.Problems) > 0 {
 		<div data-testid="goal-form-errors" class="alert r gf-errors" role="alert">
-			<strong>The Goal wasn't created.</strong>
+			if v.Goal == nil {
+				<strong>The Goal wasn't created.</strong>
+			} else {
+				<strong>The Goal wasn't saved.</strong>
+			}
 			<ul>
 				for _, p := range v.summary() {
 					<li>
@@ -682,6 +731,8 @@ templ goalFormStyles() {
 			.gf-pick:has(input:checked){border-color:var(--color-primary);background:var(--color-primary-subtle)}
 			label.gf-pick:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}
 		}
+		.gf-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+		.gf-existing{display:flex;flex-direction:column;gap:4px}
 		.gf-know{display:flex;flex-direction:column;gap:12px;border:0;padding:0;margin:0;min-width:0}
 		.gf-know legend{font-weight:600;padding:0;margin-bottom:4px}
 		.gf-know-head{font-size:14px;margin:4px 0 0}
