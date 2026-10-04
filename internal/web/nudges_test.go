@@ -1,14 +1,20 @@
 package web_test
 
 import (
+	"context"
+	"errors"
 	"html"
+	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
+	"github.com/zachthieme/goal-tracker/internal/email"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
+	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
 // nudgeForm returns a Risks row's Nudge form, failing the test when its Fix
@@ -160,5 +166,40 @@ func TestARefusedNudgeSaysWhy(t *testing.T) {
 		if !strings.HasSuffix(reason, ">"+c.reason) {
 			t.Errorf("%s nudging %q: reason %s, want %q", c.viewer, c.goal.Title, reason, c.reason)
 		}
+	}
+}
+
+// failingSender is an email sender whose every send fails.
+type failingSender struct{}
+
+func (failingSender) Send(context.Context, email.Message) error { return errors.New("mail is down") }
+
+// A Nudge whose email can't go out still stands: the page says so with a 502,
+// naming the Owner it didn't reach, and the Goal keeps its Nudge.
+func TestANudgeNotEmailedSaysItWasRecorded(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("pat@example.com")
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.")
+	h.Clock.Advance(10 * day)
+	ts := httptest.NewServer(web.NewServer(domain.NewService(h.DB, h.Clock, failingSender{}, nil)))
+	t.Cleanup(ts.Close)
+
+	resp := postForm(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/goals/"+strconv.FormatInt(silent.ID, 10)+"/nudge", url.Values{"return": {"/risks"}})
+	body := html.UnescapeString(readBody(t, resp))
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Errorf("status %d, want 502", resp.StatusCode)
+	}
+	if !strings.Contains(body, "<title>Nudge not emailed · Goal Tracker</title>") || !strings.Contains(body, "<h1>Nudge not emailed</h1>") || !strings.Contains(body, `<a href="/risks">Back</a>`) {
+		t.Errorf("no Nudge not emailed page with a Back link:\n%s", body)
+	}
+	reason := pageElement(t, body, "p", "nudge-refused")
+	if want := "The Nudge was recorded, but the email to sam@example.com couldn't be sent."; !strings.HasSuffix(reason, ">"+want) {
+		t.Errorf("reason %s, want %q", reason, want)
+	}
+	if kept, err := h.Service.Nudges(t.Context(), silent.ID); err != nil || len(kept) != 1 {
+		t.Errorf("kept %d Nudges (err %v), want 1", len(kept), err)
 	}
 }
