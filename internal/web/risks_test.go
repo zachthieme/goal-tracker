@@ -681,3 +681,44 @@ func TestRiskFixOnAStaleGoalIsCheckInForWhoCanCheckIn(t *testing.T) {
 		}
 	}
 }
+
+// An Ownerless Goal's Fix for an Admin is Reassign, opening the Goal page's
+// reassign form; a Delegate on it, who can still check in, gets Check in while
+// it is Stale.
+func TestRiskFixOnAnOwnerlessGoalIsReassignForAnAdmin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	top := h.MarkTopLevel(ada, h.ActiveGoal(ada, "Grow revenue", "It pays for everything."))
+	orphaned := h.ActiveChildOf(sam, top, "Migrate displays", "Displays fail often.")
+	h.AddDelegate(sam, dee, orphaned.ID)
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	h.Clock.Advance(10 * day)
+
+	goal := "/goals/" + strconv.FormatInt(orphaned.ID, 10)
+	for _, c := range []struct {
+		viewer, label, href string
+	}{
+		{"ada@example.com", "Reassign", goal + "?open=reassign"},
+		{"dee@example.com", "Check in", goal + "/checkin"},
+	} {
+		client := signInClient(t, ts.URL, c.viewer)
+		page := getBody(t, client, ts.URL+"/risks")
+		row := riskRowOf(t, page, orphaned)
+		riskChip(t, row, "ownerless")
+		riskChip(t, row, "stale")
+		label, href, _ := riskFix(t, row)
+		if label != c.label || href != c.href {
+			t.Fatalf("%s sees Fix %q → %s, want %q → %s", c.viewer, label, href, c.label, c.href)
+		}
+		if label == "Reassign" && !strings.Contains(getBody(t, client, ts.URL+href), `data-testid="reassign-goal"`) {
+			t.Errorf("Reassign doesn't open the reassign form")
+		}
+	}
+}

@@ -286,11 +286,15 @@ func (s *Server) fixRiskRows(ctx context.Context, current domain.Account, rows [
 	return nil
 }
 
-// fix is the row's Fix for current, the first that applies of: Check in, for
-// a Stale or Path to Green overdue Goal current Owns or is a Delegate on (an
-// Admin has no Check-in right); else Open Goal.
+// fix is the row's Fix for current, the first that applies of: Reassign, for
+// an Ownerless Goal and an Admin; Check in, for a Stale or Path to Green
+// overdue Goal current Owns or is a Delegate on (an Admin has no Check-in
+// right); else Open Goal.
 func (r riskGoalRow) fix(current domain.Account, delegate bool) riskFix {
 	goal := fmt.Sprintf("/goals/%d", r.Goal.ID)
+	if _, ownerless := r.signal("ownerless"); ownerless && current.IsAdmin {
+		return riskFix{Label: "Reassign", Href: goal + "?open=reassign"}
+	}
 	_, stale := r.signal("stale")
 	_, overdue := r.signal("path-overdue")
 	if (stale || overdue) && (r.Goal.Owner.ID == current.ID || delegate) {
