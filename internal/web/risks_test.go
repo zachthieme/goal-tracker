@@ -378,6 +378,36 @@ func TestRisksPageIsAllClearWithNothingFlagged(t *testing.T) {
 	}
 }
 
+// The Risks page heads with how many Goals need attention, worst first, in the
+// singular for one Goal, and no longer says what's going wrong.
+func TestRisksPageHeadsWithHowManyGoalsNeedAttention(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Silent work", "It matters.")
+	h.Clock.Advance(10 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks")
+
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "><strong>1</strong> Goal needs attention. Worst first.") {
+		t.Errorf("header doesn't say 1 Goal needs attention, worst first: %s", head)
+	}
+	if strings.Contains(html.UnescapeString(page), "What's going wrong") {
+		t.Errorf("page still says what's going wrong")
+	}
+
+	h.ActiveGoal(sam, "More silent work", "It matters.")
+	h.Clock.Advance(10 * day)
+	page = getBody(t, client, ts.URL+"/risks")
+
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "><strong>2</strong> Goals need attention. Worst first.") {
+		t.Errorf("header doesn't say 2 Goals need attention, worst first: %s", head)
+	}
+}
+
 // The Risks page heads with how many Goals need attention, each once, then a
 // card per group of signals, by who acts: each counts the Goals it holds once,
 // chips each of its signals with how many Goals it flags, and links to the

@@ -205,9 +205,9 @@ func (p risksPageView) Blank() string {
 // attention is the header's words after its count of the Goals on the page.
 func (p risksPageView) attention() string {
 	if len(p.Rows) == 1 {
-		return "Goal needs attention."
+		return "Goal needs attention. Worst first."
 	}
-	return "Goals need attention."
+	return "Goals need attention. Worst first."
 }
 
 // riskChipClass is the badge style of a signal's chip: the Stale look for the
