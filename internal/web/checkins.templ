@@ -475,8 +475,7 @@ func checkinFormRefused(v goalView, refusal string) checkinFormData {
 // on it.
 templ checkinUnavailablePage(current *domain.Account, title, message string) {
 	@layout(title, current) {
-		@checkinStyles()
-		<div class="checkin-page">
+		<div class="message-page">
 			<h1>{ title }</h1>
 			<p data-testid="checkin-unavailable">{ message }</p>
 			<p><a href="/home">Back to Home</a></p>

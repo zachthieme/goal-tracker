@@ -6,8 +6,7 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 // a link back to the page it was offered on (refuseUndo).
 templ undoRefusedPage(current *domain.Account, reason, back string) {
 	@layout("Can't undo", current) {
-		@checkinStyles()
-		<div class="checkin-page">
+		<div class="message-page">
 			<h1>Can't undo</h1>
 			<p data-testid="undo-refused">{ reason }</p>
 			<p><a href={ templ.SafeURL(back) }>Back</a></p>

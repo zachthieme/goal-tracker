@@ -258,6 +258,7 @@ details>summary::-webkit-details-marker{display:none}
 .page:has(.toast){padding-bottom:128px}
 @media (max-width:600px){.toast{left:16px;right:16px;bottom:16px;transform:none;width:auto;max-width:none}}
 .page>*{min-width:0;max-width:100%}
+.message-page{max-width:760px;display:flex;flex-direction:column;gap:16px}
 .page{overflow-wrap:break-word}
 input,textarea,select,img{max-width:100%}
 pre{overflow-x:auto}

@@ -46,11 +46,7 @@ func notFoundPage(current *domain.Account) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = checkinStyles().Render(ctx, templ_7745c5c3_Buffer)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <div class=\"checkin-page\"><h1>Not found</h1><p data-testid=\"not-found\">There's nothing here. It may have been removed, or the link may be wrong.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"message-page\"><h1>Not found</h1><p data-testid=\"not-found\">There's nothing here. It may have been removed, or the link may be wrong.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

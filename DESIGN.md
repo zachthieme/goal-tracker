@@ -274,6 +274,11 @@ Load the fonts with this URL:
   refused as "not found" answers as before, with its area's plain-text
   error, and a known address asked with a method it doesn't take still
   answers 405.
+- **Message page (`.message-page`):** a page that only says one thing (Not
+  found, Can't undo, a refused Nudge, a Check-in that can't be reached) sets
+  its heading, sentence and way back in a 760px column with 16px gaps. The
+  column starts at the page's left edge, like every other page's content, and
+  isn't centred.
 - **Primary button (`.btn.primary`):**
   - Resting: `--color-primary-strong` fill, `--color-ink-inverse` text,
     `--radius-md`, 14px, weight 600.

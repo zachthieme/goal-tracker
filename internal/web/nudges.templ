@@ -6,8 +6,7 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 // didn't reach everyone, with a link back to the Risks page it was sent from.
 templ nudgeRefusedPage(current *domain.Account, heading, reason string) {
 	@layout(heading, current) {
-		@checkinStyles()
-		<div class="checkin-page">
+		<div class="message-page">
 			<h1>{ heading }</h1>
 			<p data-testid="nudge-refused">{ reason }</p>
 			<p><a href="/risks">Back</a></p>

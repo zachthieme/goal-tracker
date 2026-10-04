@@ -7,8 +7,7 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 // signed in (notFound).
 templ notFoundPage(current *domain.Account) {
 	@layout("Not found", current) {
-		@checkinStyles()
-		<div class="checkin-page">
+		<div class="message-page">
 			<h1>Not found</h1>
 			<p data-testid="not-found">There's nothing here. It may have been removed, or the link may be wrong.</p>
 			if current != nil {
