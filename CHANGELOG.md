@@ -26,6 +26,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Improvements:**
 - [user] The Define card on a Proposed Goal's page keeps only its checklist, Activate Goal and the Finish defining link, in place of its five separate forms; Add a child Goal in the action menu opens the New goal form with this Goal as the parent, replacing the old in-place child form (#135).
+- [user] The Report draft page is laid out for composing: a sticky header holds the baseline, a History (n) menu of past publications with their publisher and the time in the org's timezone, and Publish; below it the Introduction (read-only) and the narrative form sit beside the Goals the Report selects and a preview that is the publication itself, Health tiles included. The panes stack at phone width (#153).
+- [user] "Needs attention" on a Report, published, printed or previewed, shows how many Goals need it (#153).
 
 **Bug fixes:**
 - [internal] `scripts/shots.mjs` runs an action as an async function body only when it uses `await` in its code, not when the word appears in a string, comment, regex or property name, so such actions keep their completion value and awaited promise; a `name` ending in `.PNG` now saves `<name>.png` (#126).
@@ -34,6 +36,11 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Architecture:**
 - [internal] Add the domain command `CreateDefinedGoal`, which creates a Goal with its Kind, cadence, Milestones, Metrics, Dimension and Field values, parent links and, if asked, activation in one transaction. It checks every input before writing and returns every problem at once, each naming its input, ready for the single-page New goal form (#128).
 - [internal] The Goal page's activation checklist is now worked out from its inputs (So What, Owner, Kind and delivery date, Milestone and Metric counts, required values), so the New goal form's live checklist and the Goal page share one copy of the rules. The Goal page's output is unchanged (#134).
+- [internal] The Risks page gains a view model with one row per flagged Goal carrying all its signals (`riskRows`), worst first: Ownerless, then Red, Yellow, no Health, Green, then the longest-overdue Path to Green, then the furthest-past-cadence Stale Goal, then title. Each signal says how many days it has held and names the parent for a schedule conflict or halted parent, and `riskGroups` counts the Goals in the "Owner needs to update", "Plan doesn't fit" and "Needs an Admin" groups once each. Only the Risks page will read each flagged Goal's latest Check-in for these rows; the top bar's count still comes from `loadRisks` alone, and nothing renders differently yet (#137).
+
+**Testing:**
+- [internal] The test harness copies a database migrated once per test binary instead of running every migration for each test, so `make test` takes about 50 seconds instead of about 2½ minutes (#136).
+- [internal] The test harness escapes its database path, so a test whose temp directory holds a '#' (an unnamed subtest is "#00") gets the migrated copy instead of an empty database (#136).
 
 **Documentation:**
 - [internal] `CONTEXT.md` defines a Nudge (a one-off request to a Goal's Owner and Delegates to check in on a Stale or Path-overdue Goal) and a Parent suggestion (someone other than the Owner proposes a parent; only the Owner decides), and ADR 0006 records why a Parent suggestion is its own record rather than a link status (#143, #144).
