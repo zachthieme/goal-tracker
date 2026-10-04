@@ -1,8 +1,13 @@
 package web
 
 import (
+	"cmp"
 	"context"
+	"fmt"
 	"net/http"
+	"slices"
+	"strings"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -111,4 +116,173 @@ func (s *Server) loadRisks(ctx context.Context) (risksView, error) {
 		}
 	}
 	return v, nil
+}
+
+// riskGoalRow is one flagged Goal on the Risks page with every signal that
+// flags it, so a Goal flagged twice is one row, not two.
+type riskGoalRow struct {
+	Goal domain.Goal
+	// Health is the Goal's latest Check-in's Health, empty when it has none.
+	Health  string
+	Signals []riskSignal
+}
+
+// riskSignal is one reason a Goal is flagged. Kind is the anchor of the Risks
+// page section that lists it. Days is how long the signal has held: for
+// "stale" the days since the last update, for "path-overdue" the days past
+// the Path to Green's target date, for "schedule-conflicts" the days the
+// child's delivery date falls after the parent's, and 0 otherwise. Related is
+// the parent for "schedule-conflicts" and "halted-parents".
+type riskSignal struct {
+	Kind    string
+	Days    int
+	Related *domain.Goal
+}
+
+// riskRows merges v's lists into one row per flagged Goal. Unlike loadRisks,
+// which every signed-in page runs for the top bar's count, it reads each
+// flagged Goal's latest Check-in, so only the Risks page calls it.
+func (s *Server) riskRows(ctx context.Context, v risksView) ([]riskGoalRow, error) {
+	today := s.svc.Now().In(s.svc.Timezone())
+	var rows []riskGoalRow
+	at := map[int64]int{}
+	add := func(g domain.Goal, sig riskSignal) {
+		i, ok := at[g.ID]
+		if !ok {
+			i = len(rows)
+			at[g.ID] = i
+			rows = append(rows, riskGoalRow{Goal: g})
+		}
+		rows[i].Signals = append(rows[i].Signals, sig)
+	}
+	for _, gf := range v.Stale {
+		add(gf.Goal, riskSignal{Kind: "stale", Days: gf.Freshness.DaysSince})
+	}
+	for _, gf := range v.OverduePaths {
+		add(gf.Goal, riskSignal{Kind: "path-overdue", Days: calendarDays(gf.Freshness.PathTargetDate, today)})
+	}
+	for _, g := range v.Ownerless {
+		add(g, riskSignal{Kind: "ownerless"})
+	}
+	for _, g := range v.Unaligned {
+		add(g, riskSignal{Kind: "unaligned"})
+	}
+	for _, c := range v.ScheduleConflicts {
+		add(c.Child, riskSignal{Kind: "schedule-conflicts", Days: calendarDays(c.Parent.DeliveryDate, c.Child.DeliveryDate), Related: &c.Parent})
+	}
+	for _, hp := range v.HaltedParents {
+		add(hp.Child, riskSignal{Kind: "halted-parents", Related: &hp.Parent})
+	}
+	for i := range rows {
+		latest, ok, err := s.svc.LatestCheckin(ctx, rows[i].Goal.ID)
+		if err != nil {
+			return nil, fmt.Errorf("load flagged goal's check-in: %w", err)
+		}
+		if ok {
+			rows[i].Health = latest.Health
+		}
+	}
+	sortRiskRows(rows)
+	return rows, nil
+}
+
+// signal is the row's first signal of kind, and whether it has one.
+func (r riskGoalRow) signal(kind string) (riskSignal, bool) {
+	for _, sig := range r.Signals {
+		if sig.Kind == kind {
+			return sig, true
+		}
+	}
+	return riskSignal{}, false
+}
+
+// riskHealthRank orders Health worst first: Red, Yellow, none, then Green.
+func riskHealthRank(health string) int {
+	switch health {
+	case domain.HealthRed:
+		return 0
+	case domain.HealthYellow:
+		return 1
+	case domain.HealthGreen:
+		return 3
+	}
+	return 2
+}
+
+// sortRiskRows puts the worst-off Goals first, key by key: Ownerless first;
+// then by Health (riskHealthRank); then a Path to Green overdue first, longest
+// overdue first; then Stale first, furthest past its cadence first; then by
+// title, ignoring case. The structural signals don't move a row.
+func sortRiskRows(rows []riskGoalRow) {
+	slices.SortStableFunc(rows, func(a, b riskGoalRow) int {
+		_, aOwnerless := a.signal("ownerless")
+		_, bOwnerless := b.signal("ownerless")
+		if c := cmp.Compare(boolRank(!aOwnerless), boolRank(!bOwnerless)); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(riskHealthRank(a.Health), riskHealthRank(b.Health)); c != 0 {
+			return c
+		}
+		aPath, aOverdue := a.signal("path-overdue")
+		bPath, bOverdue := b.signal("path-overdue")
+		if c := cmp.Compare(boolRank(!aOverdue), boolRank(!bOverdue)); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(bPath.Days, aPath.Days); c != 0 {
+			return c
+		}
+		aStale, aIsStale := a.signal("stale")
+		bStale, bIsStale := b.signal("stale")
+		if c := cmp.Compare(boolRank(!aIsStale), boolRank(!bIsStale)); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(bStale.Days-b.Goal.CadenceDays, aStale.Days-a.Goal.CadenceDays); c != 0 {
+			return c
+		}
+		return cmp.Compare(strings.ToLower(a.Goal.Title), strings.ToLower(b.Goal.Title))
+	})
+}
+
+// calendarDays counts the calendar days from one date to a later one, each
+// read as the date it falls on in its own location.
+func calendarDays(from, to time.Time) int {
+	date := func(t time.Time) time.Time {
+		y, m, d := t.Date()
+		return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	}
+	return int(date(to).Sub(date(from)) / (24 * time.Hour))
+}
+
+// riskGroup is a set of signal kinds grouped by who acts on them: Key names
+// it, Name says it, and Count is how many Goals it flags, each once however
+// many of its signals flag the Goal.
+type riskGroup struct {
+	Key, Name string
+	Count     int
+}
+
+// riskGroupKinds are the Risks page's groups in the page's order, with the
+// signal kinds each holds.
+var riskGroupKinds = []struct {
+	Key, Name string
+	Kinds     []string
+}{
+	{"owner", "Owner needs to update", []string{"stale", "path-overdue"}},
+	{"plan", "Plan doesn't fit", []string{"unaligned", "schedule-conflicts"}},
+	{"admin", "Needs an Admin", []string{"ownerless", "halted-parents"}},
+}
+
+// riskGroups counts the rows in each group, in the page's order.
+func riskGroups(rows []riskGoalRow) []riskGroup {
+	groups := make([]riskGroup, 0, len(riskGroupKinds))
+	for _, gk := range riskGroupKinds {
+		g := riskGroup{Key: gk.Key, Name: gk.Name}
+		for _, r := range rows {
+			if slices.ContainsFunc(r.Signals, func(sig riskSignal) bool { return slices.Contains(gk.Kinds, sig.Kind) }) {
+				g.Count++
+			}
+		}
+		groups = append(groups, g)
+	}
+	return groups
 }
