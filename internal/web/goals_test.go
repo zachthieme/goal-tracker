@@ -470,10 +470,11 @@ func TestGoalListGroupHeadersAreNeutralOverHTTP(t *testing.T) {
 	}
 }
 
-// Creating a Goal under a parent offers the parent's values as defaults: a kept
-// default is assigned to the child and the child contributes to the parent, but
-// the values are not inherited — a child created without them carries none
-// (CONTEXT.md: the parent's values are offered as defaults, not inherited).
+// Creating a Goal under a parent, from /goals/new?parent=<id>, offers the
+// parent's values as defaults: a kept default is assigned to the child and the
+// child contributes to the parent, but the values are not inherited — a child
+// created without them carries none (CONTEXT.md: the parent's values are
+// offered as defaults, not inherited).
 func TestCreateChildGoalOffersParentDefaults(t *testing.T) {
 	t.Parallel()
 
@@ -487,22 +488,19 @@ func TestCreateChildGoalOffersParentDefaults(t *testing.T) {
 	ts := newServer(t, h)
 
 	samClient := signInClient(t, ts.URL, "sam@example.com")
-	parentURL := fmt.Sprintf("%s/goals/%d", ts.URL, parent.ID)
 
-	// The parent page offers Growth as a checked default.
-	page := getBody(t, samClient, parentURL+"?open=child")
-	if !strings.Contains(page, `data-testid="child-defaults"`) {
-		t.Fatalf("parent page missing child defaults; body:\n%s", page)
-	}
-	if !strings.Contains(page, fmt.Sprintf(`value="%d" checked`, growth.ID)) {
-		t.Errorf("parent value not offered as a checked default; body:\n%s", page)
+	// The New goal form, opened for the parent, offers Growth chosen.
+	page := getBody(t, samClient, fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, parent.ID))
+	if !chosen(t, fitsSection(t, page), growth) {
+		t.Errorf("parent value not offered as a chosen default; body:\n%s", page)
 	}
 
 	// Keeping the default assigns Growth to the child and links it to the parent.
-	resp := postForm(t, samClient, parentURL+"/children", url.Values{
-		"title":    {"Kept child"},
-		"so_what":  {"Child matters."},
-		"value_id": {fmt.Sprintf("%d", growth.ID)},
+	resp := postForm(t, samClient, ts.URL+"/goals/new", url.Values{
+		"title":     {"Kept child"},
+		"so_what":   {"Child matters."},
+		"parent_id": {fmt.Sprint(parent.ID)},
+		"value_id":  {fmt.Sprintf("%d", growth.ID)},
 	})
 	childPage := readBody(t, resp)
 	if !strings.Contains(childPage, `data-testid="goal-dimension-value">Growth`) {
@@ -513,9 +511,10 @@ func TestCreateChildGoalOffersParentDefaults(t *testing.T) {
 	}
 
 	// Creating a child without the default leaves it unassigned (not inherited).
-	resp = postForm(t, samClient, parentURL+"/children", url.Values{
-		"title":   {"Bare child"},
-		"so_what": {"Child matters."},
+	resp = postForm(t, samClient, ts.URL+"/goals/new", url.Values{
+		"title":     {"Bare child"},
+		"so_what":   {"Child matters."},
+		"parent_id": {fmt.Sprint(parent.ID)},
 	})
 	barePage := readBody(t, resp)
 	if !strings.Contains(barePage, `data-testid="goal-dimension-unassigned"`) {
@@ -540,35 +539,36 @@ func TestCreateChildGoalWithRetiredValueLeavesNoGoal(t *testing.T) {
 	ts := newServer(t, h)
 
 	samClient := signInClient(t, ts.URL, "sam@example.com")
-	parentURL := fmt.Sprintf("%s/goals/%d", ts.URL, parent.ID)
 
 	// The form is loaded while Growth is still live, then Growth is retired.
-	if page := getBody(t, samClient, parentURL+"?open=child"); !strings.Contains(page, fmt.Sprintf(`value="%d" checked`, growth.ID)) {
-		t.Fatalf("parent page does not offer Growth as a default; body:\n%s", page)
+	if page := getBody(t, samClient, fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, parent.ID)); !chosen(t, fitsSection(t, page), growth) {
+		t.Fatalf("the New goal form does not offer Growth as a default; body:\n%s", page)
 	}
 	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, growth.ID); err != nil {
 		t.Fatalf("RetireDimensionValue: %v", err)
 	}
 
-	resp := postForm(t, samClient, parentURL+"/children", url.Values{
-		"title":    {"GrandKid"},
-		"so_what":  {"Feeds the parent."},
-		"value_id": {fmt.Sprintf("%d", core.ID), fmt.Sprintf("%d", growth.ID)},
+	resp := postForm(t, samClient, ts.URL+"/goals/new", url.Values{
+		"title":     {"GrandKid"},
+		"so_what":   {"Feeds the parent."},
+		"parent_id": {fmt.Sprint(parent.ID)},
+		"value_id":  {fmt.Sprintf("%d", core.ID), fmt.Sprintf("%d", growth.ID)},
 	})
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("status %d, want 422; body:\n%s", resp.StatusCode, body)
 	}
-	form := openForm(t, body, "child")
+	form := pageElement(t, body, "form", "goal-form")
 	if !strings.Contains(form, "retired") {
-		t.Errorf("child form does not say the value is retired; form:\n%s", form)
+		t.Errorf("the form does not say the value is retired; form:\n%s", form)
 	}
 	if !strings.Contains(form, `value="GrandKid"`) || !strings.Contains(form, "Feeds the parent.") {
-		t.Errorf("child form lost the title or So What; form:\n%s", form)
+		t.Errorf("the form lost the title or So What; form:\n%s", form)
 	}
-	if !strings.Contains(form, fmt.Sprintf(`value="%d" checked`, core.ID)) {
-		t.Errorf("child form lost the kept Core default; form:\n%s", form)
+	if !chosen(t, fitsSection(t, body), core) {
+		t.Errorf("the form lost the kept Core default; form:\n%s", form)
 	}
+	tagAround(t, form, fmt.Sprintf(`id="parent:%d"`, parent.ID)) // the parent is still picked
 
 	if list := getBody(t, samClient, ts.URL+"/goals"); strings.Contains(list, "GrandKid") {
 		t.Errorf("a failed child create left a Goal behind; list:\n%s", list)
@@ -1394,6 +1394,55 @@ func TestProposedGoalShowsActivationChecklist(t *testing.T) {
 	}
 }
 
+// The Define card on a Proposed Goal's page holds no forms but Activate Goal:
+// the checklist, the Activate Goal button, and a Finish defining link to the
+// define page, where the Kind, cadence, So What, Milestones and Metrics are
+// set (#135).
+func TestDefineCardLinksToFinishDefining(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	card := pageElement(t, getBody(t, client, goalPageURL(ts.URL, goal)), "section", "define-goal")
+	for _, gone := range []string{"mark-kind", "set-cadence", "edit-so-what", "add-milestone", "add-metric"} {
+		if strings.Contains(card, `data-testid="`+gone+`"`) {
+			t.Errorf("the Define card still holds %s:\n%s", gone, card)
+		}
+	}
+	if n := strings.Count(card, "<form"); n != 1 || !strings.Contains(card, `data-testid="activate-goal"`) {
+		t.Errorf("the Define card holds %d forms, want only Activate Goal:\n%s", n, card)
+	}
+	activationItems(t, card)
+	link := tagAround(t, card, `data-testid="finish-defining"`)
+	if want := fmt.Sprintf("/goals/%d/define", goal.ID); attr(link, "href") != want || !strings.Contains(between(t, card, link, "</a>"), "Finish defining") {
+		t.Errorf("Finish defining doesn't link to %s: %s", want, link)
+	}
+}
+
+// Add a child Goal is the New goal form now, so its old route is gone.
+func TestCreateChildGoalRouteIsGone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/children", ts.URL, goal.ID), url.Values{"title": {"Child"}, "so_what": {"It matters."}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("POST /goals/%d/children answered %d, want it gone", goal.ID, resp.StatusCode)
+	}
+	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 1 {
+		t.Errorf("the post created a Goal: %d Goals", len(goals))
+	}
+}
+
 // An Ongoing Goal needs a Metric to activate, and a Milestone alone doesn't
 // satisfy its checklist.
 func TestOngoingGoalChecklistNeedsAMetric(t *testing.T) {
@@ -1984,7 +2033,7 @@ func TestGoalPageCanvasBlocksSitUnderARule(t *testing.T) {
 }
 
 // A Retired Dimension isn't offered on the Goal page: it has no control to set
-// a value and its values aren't child-Goal defaults. A Goal carrying a value in
+// a value and its values aren't child-Goal defaults on /goals/new?parent=. A Goal carrying a value in
 // it still shows the value, marked retired, and one carrying none doesn't list
 // it. Restoring the Dimension returns its control (CONTEXT.md: Retired).
 func TestRetiredDimensionLeavesGoalPageControlsOverHTTP(t *testing.T) {
@@ -2026,8 +2075,9 @@ func TestRetiredDimensionLeavesGoalPageControlsOverHTTP(t *testing.T) {
 	if !strings.Contains(edit, "Team") {
 		t.Errorf("the live Team isn't offered for setting:\n%s", edit)
 	}
-	if child := getBody(t, client, goalURL+"?open=child"); strings.Contains(child, `data-testid="child-defaults"`) {
-		t.Errorf("a value of a Retired Dimension is offered as a child default:\n%s", pageElement(t, child, "fieldset", "child-defaults"))
+	childURL := fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, goal.ID)
+	if fits := fitsSection(t, getBody(t, client, childURL)); strings.Contains(fits, fmt.Sprintf(`<option value="%d"`, growth.ID)) {
+		t.Errorf("a value of a Retired Dimension is offered as a child default:\n%s", fits)
 	}
 
 	if err := h.Service.RestoreDimension(ctx, boss.ID, pillar.ID); err != nil {
@@ -2041,7 +2091,7 @@ func TestRetiredDimensionLeavesGoalPageControlsOverHTTP(t *testing.T) {
 	if edit := openForm(t, page, "dimensions"); !strings.Contains(edit, `aria-label="Pillar"`) {
 		t.Errorf("the restored Pillar isn't offered for setting:\n%s", edit)
 	}
-	if !strings.Contains(getBody(t, client, goalURL+"?open=child"), `data-testid="child-defaults"`) {
+	if !chosen(t, fitsSection(t, getBody(t, client, childURL)), growth) {
 		t.Errorf("Growth isn't offered as a child default once Pillar is restored")
 	}
 }
@@ -3948,11 +3998,13 @@ func menuItems(t *testing.T, page string) map[string]string {
 }
 
 // The action menu lists the actions a person may take, each a plain link to the
-// Goal page with that action's form open: an Owner gets Hand off, Add a
-// delegate, Link to a parent Goal, Add a child Goal and, with Dimensions and
-// Fields defined, Edit Dimension values and Edit Fields; an Admin adds Mark
-// Top-level and Mark owner departed…, and on an Ownerless Goal Reassign and
-// Mark returned… in place of Hand off; anyone else only Add a child Goal.
+// Goal page with that action's form open, but Add a child Goal, which links to
+// the New goal form with this Goal picked as its parent: an Owner gets Hand
+// off, Add a delegate, Link to a parent Goal, Add a child Goal and, with
+// Dimensions and Fields defined, Edit Dimension values and Edit Fields; an
+// Admin adds Mark Top-level and Mark owner departed…, and on an Ownerless Goal
+// Reassign and Mark returned… in place of Hand off; anyone else only Add a
+// child Goal.
 func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -3970,6 +4022,7 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 	}
 	ts := newServer(t, h)
 	open := func(g domain.Goal, form string) string { return fmt.Sprintf("/goals/%d?open=%s", g.ID, form) }
+	child := func(g domain.Goal) string { return fmt.Sprintf("/goals/new?parent=%d", g.ID) }
 
 	for _, tc := range []struct {
 		who  string
@@ -3980,20 +4033,20 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 			"Hand off":              open(goal, "handoff"),
 			"Add a delegate":        open(goal, "delegates"),
 			"Link to a parent Goal": open(goal, "parent-link"),
-			"Add a child Goal":      open(goal, "child"),
+			"Add a child Goal":      child(goal),
 			"Edit Dimension values": open(goal, "dimensions"),
 			"Edit Fields":           open(goal, "fields"),
 		}},
 		{"ada@example.com", goal, map[string]string{
 			"Hand off":              open(goal, "handoff"),
-			"Add a child Goal":      open(goal, "child"),
+			"Add a child Goal":      child(goal),
 			"Edit Dimension values": open(goal, "dimensions"),
 			"Edit Fields":           open(goal, "fields"),
 			"Mark Top-level":        open(goal, "top-level"),
 			"Mark owner departed…":  open(goal, "depart"),
 		}},
 		{"ada@example.com", orphan, map[string]string{
-			"Add a child Goal":      open(orphan, "child"),
+			"Add a child Goal":      child(orphan),
 			"Edit Dimension values": open(orphan, "dimensions"),
 			"Edit Fields":           open(orphan, "fields"),
 			"Mark Top-level":        open(orphan, "top-level"),
@@ -4001,7 +4054,7 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 			"Reassign":              open(orphan, "reassign"),
 		}},
 		{"mel@example.com", goal, map[string]string{
-			"Add a child Goal": open(goal, "child"),
+			"Add a child Goal": child(goal),
 		}},
 	} {
 		page := getBody(t, signInClient(t, ts.URL, tc.who), goalPageURL(ts.URL, tc.goal))
@@ -4085,7 +4138,6 @@ func TestGoalPageMenuItemOpensItsFormInPlaceOverHTTP(t *testing.T) {
 		{"sam", "Hand off", goal, "handoff", fmt.Sprintf("/goals/%d/handoff", goal.ID), people, dimensions},
 		{"sam", "Add a delegate", goal, "delegates", fmt.Sprintf("/goals/%d/delegates", goal.ID), people, dimensions},
 		{"sam", "Link to a parent Goal", goal, "parent-link", fmt.Sprintf("/goals/%d/links", goal.ID), parents, children},
-		{"sam", "Add a child Goal", goal, "child", fmt.Sprintf("/goals/%d/children", goal.ID), children, people},
 		{"sam", "Edit Dimension values", goal, "dimensions", fmt.Sprintf("/goals/%d/dimensions", goal.ID), dimensions, fields},
 		{"sam", "Edit Fields", goal, "fields", fmt.Sprintf("/goals/%d/fields", goal.ID), fields, "</aside>"},
 		{"ada", "Hand off", goal, "handoff", fmt.Sprintf("/goals/%d/handoff", goal.ID), people, dimensions},
@@ -4219,7 +4271,6 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 		{"sam", "contributors", path(proposed, "/contributors"), url.Values{"email": {"nobody@example.com"}}, "no account with email", `value="nobody@example.com"`},
 		{"sam", "dimensions", path(goal, "/dimensions"), url.Values{"dimension_id": {fmt.Sprint(team.ID)}, "new_value": {"  "}}, "cannot be blank", `value="  "`},
 		{"sam", "fields", path(goal, "/fields"), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"lots"}}, "Budget", `value="lots"`},
-		{"sam", "child", path(goal, "/children"), url.Values{"title": {""}, "so_what": {"Kept."}}, "", ">Kept.</textarea>"},
 	} {
 		resp := postForm(t, clients[tc.who], ts.URL+tc.action, tc.sent)
 		page := readBody(t, resp)

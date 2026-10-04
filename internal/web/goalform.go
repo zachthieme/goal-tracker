@@ -256,9 +256,9 @@ func (s *Server) loadWhereItFits(ctx context.Context, v *goalFormView) error {
 }
 
 // suggestedValues are the values a Goal contributing to parents is offered
-// ticked: every value the parents carry that can still be newly assigned, as
-// Add a child Goal offers a parent's (goalView.childDefaults), so neither a
-// Retired value nor one in a Retired Dimension. In a Dimension that takes one
+// ticked: every value the parents carry that can still be newly assigned, so
+// neither a Retired value nor one in a Retired Dimension (CONTEXT.md: the
+// parent's values are offered as defaults, not inherited). In a Dimension that takes one
 // value, parents carrying different ones suggest none there.
 func (s *Server) suggestedValues(ctx context.Context, parents []parentChoice, dims []domain.Dimension) (map[int64]bool, error) {
 	suggested := map[int64]bool{}

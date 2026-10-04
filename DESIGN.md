@@ -347,8 +347,10 @@ Load the fonts with this URL:
   - **Where each opens:** Top-level opens in the head, under the metadata line.
     Hand off, Reassign, Mark owner departed and Mark returned open in People,
     under the Owner. Delegates and Contributors forms open in their groups.
-    Link to a parent Goal opens under Contributes to, Add a child Goal under
-    Contributed to by, and the Dimension and Field forms in their blocks.
+    Link to a parent Goal opens under Contributes to, and the Dimension and
+    Field forms in their blocks. Add a child Goal is the one menu item that
+    doesn't open in place: it leads to the New goal form with this Goal picked
+    as the parent (`/goals/new?parent=<id>`).
   - **Sidebar links (`.gp-group-head`):** a sidebar group whose form opens in
     place has a small link beside its heading, shown only to those who may use
     it and hidden while its form is open: **Manage** for Delegates and for

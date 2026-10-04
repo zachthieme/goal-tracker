@@ -642,7 +642,6 @@ templ goalPage(current *domain.Account, v goalView) {
 				<section data-testid="goal-children" class="gp-block ruled">
 					<h3>Contributed to by</h3>
 					@linkList(g.ID, v.Children, v.LinkHealth, "no-children", "Nothing contributes to this Goal yet.")
-					@addChildGoal(v)
 				</section>
 				<div data-testid="goal-people" class="gp-block ruled">
 					<h3>People</h3>
@@ -811,8 +810,7 @@ templ goalPageStyles() {
 		.gp-spark-line{stroke:var(--color-primary-strong)}
 		.gp-spark-last{fill:var(--color-primary-strong);stroke:var(--color-surface)}
 		.gp-edit form{flex-direction:column}
-		.gp-define>section{display:flex;flex-direction:column;gap:4px;padding-top:12px;border-top:1px solid var(--color-border)}
-		.gp-define textarea{flex:1;min-width:240px}
+		.gp-activation{display:flex;flex-direction:column;gap:4px;padding-top:12px;border-top:1px solid var(--color-border)}
 		.gp-check{display:flex;gap:8px;align-items:baseline}
 		.gp-check>span:first-child{width:16px;font-weight:600;color:var(--health-r-ink)}
 		.gp-check.done>span:first-child{color:var(--health-g-ink)}
@@ -831,7 +829,7 @@ templ goalMore(v goalView) {
 			<div class="card gp-menu">
 				<ul>
 					for _, a := range actions {
-						<li><a href={ v.openURL(a.Form) }>{ a.Label }</a></li>
+						<li><a href={ a.URL }>{ a.Label }</a></li>
 					}
 				</ul>
 			</div>
@@ -1057,101 +1055,17 @@ templ requestParentLink(v goalView) {
 	}
 }
 
-// addChildGoal is the open-in-place form, under Contributed to by, that creates
-// a Goal under this one: it offers this Goal's values as defaults (pre-checked,
-// but not inherited — only the kept ones are assigned) and requests a
-// "contributes to" link to this Goal (CONTEXT.md: Contributes to; the parent's
-// values are offered as defaults). A failed create sends it back filled in.
-templ addChildGoal(v goalView) {
-	{{ g := v.Goal }}
-	if v.opens(formChild) {
-		@openGoalForm(v, formChild, "Add a child Goal") {
-			<form data-testid="add-child-goal" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/children", g.ID)) } class="gp-form">
-				<label class="field">
-					<span>Title</span>
-					<input type="text" name="title" value={ v.FormInput.Get("title") } required autofocus/>
-				</label>
-				<label class="field">
-					<span>So What</span>
-					<textarea name="so_what" required>{ v.FormInput.Get("so_what") }</textarea>
-				</label>
-				if defaults := v.childDefaults(); len(defaults) > 0 {
-					<fieldset data-testid="child-defaults">
-						<legend>Defaults from { g.Title }</legend>
-						for _, val := range defaults {
-							<label>
-								<input type="checkbox" name="value_id" value={ fmt.Sprintf("%d", val.ID) } checked?={ v.keepsDefault(val.ID) }/>
-								{ val.Value }
-							</label>
-						}
-					</fieldset>
-				}
-				<button type="submit" class="btn primary">Create child Goal</button>
-			</form>
-		}
-	}
-}
-
-// defineGoal is the Owner's toolkit for a Proposed Goal: mark it Dated or
-// Ongoing, set the cadence, revise the So What, add Milestones and Metrics,
-// and — once the activation checklist is done — activate it. Contributors are
-// added from the sidebar's Contributors group.
+// defineGoal is the Owner's toolkit for a Proposed Goal: the activation
+// checklist, Activate Goal once it is done, and Finish defining, which opens
+// the define page to set the Kind, cadence, So What, Milestones, Metrics and
+// the rest on one form. Contributors are added from the sidebar's
+// Contributors group.
 templ defineGoal(v goalView) {
 	{{ g := v.Goal }}
 	<section data-testid="define-goal" class="card gp-card gp-define">
 		<h3>Define this Goal</h3>
-		<section data-testid="mark-kind">
-			<h3>Delivery</h3>
-			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/dated", g.ID)) }>
-				<label>
-					Delivery date
-					<input type="date" name="delivery_date" value={ v.SuggestedDate } required/>
-				</label>
-				<button type="submit" class="btn">Mark Dated</button>
-			</form>
-			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/ongoing", g.ID)) }>
-				<button type="submit" class="btn">Mark Ongoing</button>
-			</form>
-		</section>
-		<section data-testid="set-cadence">
-			<h3>Check-in cadence</h3>
-			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/cadence", g.ID)) }>
-				<label>
-					Days between Check-ins
-					<input type="number" name="cadence_days" min="1" value={ fmt.Sprintf("%d", g.CadenceDays) } required/>
-				</label>
-				<button type="submit" class="btn">Set cadence</button>
-			</form>
-		</section>
-		<section data-testid="edit-so-what">
-			<h3>Revise the So What</h3>
-			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/so-what", g.ID)) }>
-				<textarea name="so_what" required>{ g.SoWhat }</textarea>
-				<button type="submit" class="btn">Save So What</button>
-			</form>
-		</section>
-		<section data-testid="add-milestone">
-			<h3>Add a Milestone</h3>
-			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/milestones", g.ID)) }>
-				<label>
-					Name
-					<input type="text" name="name" required/>
-				</label>
-				<label>
-					Date
-					<input type="date" name="target_date" required/>
-				</label>
-				<button type="submit" class="btn">Add Milestone</button>
-			</form>
-		</section>
-		<section data-testid="add-metric">
-			<h3>Add a Metric</h3>
-			<form class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/metrics", g.ID)) }>
-				@metricFields(domain.Metric{Direction: domain.MetricUp})
-				<button type="submit" class="btn">Add Metric</button>
-			</form>
-		</section>
-		<section data-testid="activation" class="gp-activation">
+		<p><a data-testid="finish-defining" class="btn" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/define", g.ID)) }>Finish defining</a></p>
+		<div data-testid="activation" class="gp-activation">
 			<h3>Ready to activate?</h3>
 			<ul data-testid="activation-checklist" class="gp-list">
 				for _, item := range v.activationChecklist() {
@@ -1162,7 +1076,7 @@ templ defineGoal(v goalView) {
 					}
 				}
 			</ul>
-		</section>
+		</div>
 		<form data-testid="activate-goal" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/activate", g.ID)) }>
 			<button type="submit" class="btn primary" disabled?={ !v.readyToActivate() }>Activate Goal</button>
 		</form>

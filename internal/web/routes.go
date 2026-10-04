@@ -73,7 +73,6 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /fields/{id}/required", s.requireAuth(s.handleSetFieldRequired))
 	s.mux.HandleFunc("POST /goals/{id}/fields", s.requireAuth(s.handleSetGoalField))
 	s.mux.HandleFunc("POST /goals/{id}/dimensions", s.requireAuth(s.handleAssignGoalValue))
-	s.mux.HandleFunc("POST /goals/{id}/children", s.requireAuth(s.handleCreateChildGoal))
 	s.mux.HandleFunc("GET /goals/{id}/checkin", s.requireAuth(s.handleCheckinPage))
 	s.mux.HandleFunc("POST /goals/{id}/checkins", s.requireAuth(s.handleSubmitCheckin))
 	s.mux.HandleFunc("POST /goals/{id}/checkins/no-change", s.requireAuth(s.handleNoChangeCheckin))
