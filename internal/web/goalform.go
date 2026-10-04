@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -110,12 +111,12 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 	refuse := func(input, format string, args ...any) {
 		unparsed = append(unparsed, &domain.InputError{Input: input, Message: fmt.Sprintf(format, args...)})
 	}
-	date := func(input, value string) domain.MilestoneDefinition {
+	date := func(input, value string) time.Time {
 		d, err := parseDate(strings.TrimSpace(value))
 		if err != nil {
 			refuse(input, "%q isn't a date", value)
 		}
-		return domain.MilestoneDefinition{Date: d}
+		return d
 	}
 	number := func(input, what, value string) (float64, bool) {
 		value = strings.TrimSpace(value)
@@ -136,23 +137,20 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 	for i, row := range formRows(r.PostForm, "milestones") {
 		m := milestoneRow{Name: row["name"], Date: row["date"]}
 		v.Milestones = append(v.Milestones, m)
-		def := date(domain.MilestoneInput(i, "date"), m.Date)
-		def.Name = m.Name
-		in.Milestones = append(in.Milestones, def)
+		in.Milestones = append(in.Milestones, domain.MilestoneDefinition{Name: m.Name, Date: date(domain.MilestoneInput(i, "date"), m.Date)})
 	}
 	for i, row := range formRows(r.PostForm, "metrics") {
 		m := metricRow{Name: row["name"], Unit: row["unit"], Baseline: row["baseline"], Target: row["target"], Direction: row["direction"], TargetDate: row["target_date"]}
 		v.Metrics = append(v.Metrics, m)
 		baseline, baselineOK := number(domain.MetricInput(i, "baseline"), "baseline", m.Baseline)
 		target, targetOK := number(domain.MetricInput(i, "target"), "target", m.Target)
-		targetDate := date(domain.MetricInput(i, "target_date"), m.TargetDate).Date
 		in.Metrics = append(in.Metrics, domain.MetricDefinition{
 			Name:       m.Name,
 			Unit:       m.Unit,
 			Direction:  metricDirection(baseline, target, baselineOK && targetOK, m.Direction),
 			Baseline:   baseline,
 			Target:     target,
-			TargetDate: targetDate,
+			TargetDate: date(domain.MetricInput(i, "target_date"), m.TargetDate),
 		})
 	}
 
