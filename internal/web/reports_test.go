@@ -1019,6 +1019,46 @@ func TestDraftPanesStackAtPhoneWidthOverHTTP(t *testing.T) {
 	}
 }
 
+// The draft's own rules outrank the generic ones they sit inside (#173): a
+// Highlight's section picker is an inline segmented control, not the form's
+// column of fields, the Highlight list sits flush in its card, and the preview's
+// Health tiles stay a row of four. The baseline chip is a pill.
+func TestDraftRulesWinTheCascadeOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+
+	// .rp-form fieldset sets display:flex;flex-direction:column, so the
+	// segmented control needs a rule at least that specific.
+	if rule := cssRule(t, page, ".rp-form fieldset.rp-sections"); !strings.Contains(rule, "display:inline-flex") || !strings.Contains(rule, "flex-direction:row") {
+		t.Errorf("the section control is not an inline row: .rp-form fieldset.rp-sections{%s}", rule)
+	}
+	// .rp-card ul indents the exception cards' lists; the Highlight list sits
+	// in a card too and stays flush.
+	if rule := cssRule(t, page, ".rp-card .rp-list"); !strings.Contains(rule, "padding:0") {
+		t.Errorf("the Highlight list keeps the card's list indent: .rp-card .rp-list{%s}", rule)
+	}
+	// .rp-body section stacks every section in the preview as a column; the
+	// Health tiles stay four across, two at 900px.
+	if rule := cssRule(t, page, ".rp-body .rp-tiles"); !strings.Contains(rule, "display:grid") || !strings.Contains(rule, "grid-template-columns:repeat(4,minmax(0,1fr))") {
+		t.Errorf("the draft's Health tiles are not four across: .rp-body .rp-tiles{%s}", rule)
+	}
+	narrow := between(t, page, "@media (max-width:900px){", "}}") + "}"
+	if rule := cssRule(t, narrow, ".rp-body .rp-tiles"); !strings.Contains(rule, "grid-template-columns:repeat(2,minmax(0,1fr))") {
+		t.Errorf("at 900px the draft's Health tiles are not two across: .rp-body .rp-tiles{%s}", rule)
+	}
+	// The baseline chip is a bordered pill, as a .tag is.
+	if rule := cssRule(t, page, ".rp-menu.rp-chip>summary"); !strings.Contains(rule, "border:1px solid") || !strings.Contains(rule, "border-radius:var(--radius-full)") {
+		t.Errorf("the baseline chip is not a bordered pill: .rp-menu.rp-chip>summary{%s}", rule)
+	}
+}
+
 // The Introduction belongs to the Report Definition, so the draft shows it
 // read-only in the compose panel: there is nothing to type it into.
 func TestDraftShowsTheIntroductionReadOnlyOverHTTP(t *testing.T) {
@@ -2086,8 +2126,10 @@ func TestComposeFormAutosavesOverHTTP(t *testing.T) {
 	if !strings.Contains(pageElement(t, page, "span", "save-status"), "Saving…") {
 		t.Errorf("the save status has no Saving… indicator; page:\n%s", page)
 	}
-	if !strings.Contains(pageElement(t, page, "form", "narrative-curation"), `<button type="submit" class="btn">Save narrative</button>`) {
-		t.Errorf("the compose form lost its Save button for readers without JavaScript")
+	// Autosave covers readers with JavaScript, so only readers without it see
+	// Save narrative.
+	if !strings.Contains(pageElement(t, page, "form", "narrative-curation"), `<noscript><button type="submit" class="btn">Save narrative</button></noscript>`) {
+		t.Errorf("the compose form's Save button is not there for, and only for, readers without JavaScript")
 	}
 }
 
