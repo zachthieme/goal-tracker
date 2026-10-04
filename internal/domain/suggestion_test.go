@@ -360,8 +360,9 @@ func TestWithdrawParentSuggestion(t *testing.T) {
 }
 
 // An open suggestion closes as no longer applying when its Goal or its parent
-// becomes Done or Cancelled, or its link is requested directly, or restored by
-// an Undo of a rejection or a removal. Going On Hold leaves it open.
+// becomes Done or Cancelled, or its link is requested directly, made by an
+// import, or restored by an Undo of a rejection or a removal. Going On Hold
+// leaves it open.
 func TestParentSuggestionNoLongerApplies(t *testing.T) {
 	t.Parallel()
 
@@ -396,6 +397,13 @@ func TestParentSuggestionNoLongerApplies(t *testing.T) {
 		}, false},
 		{"the link requested directly", func(h *testsupport.Harness, sam, _ domain.Account, goal, parent domain.Goal) func() {
 			return func() { h.RequestLink(sam, goal, parent, "") }
+		}, true},
+		{"the link imported", func(h *testsupport.Harness, _, _ domain.Account, goal, parent domain.Goal) func() {
+			return func() {
+				if _, err := h.Service.ImportLink(ctx, goal.ID, parent.ID); err != nil {
+					t.Fatalf("ImportLink: %v", err)
+				}
+			}
 		}, true},
 		{"a rejected request restored", func(h *testsupport.Harness, sam, kim domain.Account, goal, parent domain.Goal) func() {
 			link := h.RequestLink(sam, goal, parent, "")
