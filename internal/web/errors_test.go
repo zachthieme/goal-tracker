@@ -2,14 +2,18 @@ package web_test
 
 import (
 	"bytes"
+	"fmt"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 	"github.com/zachthieme/goal-tracker/internal/web"
 )
@@ -130,4 +134,99 @@ func TestANilLoggerLogsToTheDefault(t *testing.T) {
 	if rec := records[0]; rec["level"] != "ERROR" || rec["method"] != http.MethodPost || rec["path"] != "/signin" {
 		t.Errorf("record %v, want an ERROR for POST /signin", rec)
 	}
+}
+
+// assertLoggedOnce checks that buf gained exactly one record since it held
+// before records: an ERROR for method and path whose err contains cause.
+func assertLoggedOnce(t *testing.T, buf *bytes.Buffer, before int, method, path, cause string) {
+	t.Helper()
+	records := logRecords(t, buf)
+	if len(records)-before != 1 {
+		t.Fatalf("logged %d new records, want 1:\n%s", len(records)-before, buf)
+	}
+	rec := records[before]
+	if rec["level"] != "ERROR" || rec["method"] != method || rec["path"] != path {
+		t.Errorf("record %v, want an ERROR for %s %s", rec, method, path)
+	}
+	if err, _ := rec["err"].(string); !strings.Contains(err, cause) {
+		t.Errorf("record err %q, want it to contain %q", err, cause)
+	}
+}
+
+// A Nudge that fails for no reason the app gives answers 500 on its refusal
+// page, and its cause reaches the server log.
+func TestAFailedNudgeIsLoggedWithItsCause(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts, buf := loggedServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("pat@example.com")
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.")
+	h.Clock.Advance(10 * day)
+	pat := signInClient(t, ts.URL, "pat@example.com")
+	if _, err := h.DB.Exec(`CREATE TRIGGER fail_nudge BEFORE INSERT ON nudges
+		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+	before := len(logRecords(t, buf))
+
+	path := "/goals/" + strconv.FormatInt(silent.ID, 10) + "/nudge"
+	resp := postForm(t, pat, ts.URL+path, url.Values{"return": {"/risks"}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status %d, want 500", resp.StatusCode)
+	}
+	assertLoggedOnce(t, buf, before, http.MethodPost, path, "injected failure")
+}
+
+// A No change whose Goal can't be loaded answers 500 inside the page, and the
+// load's failure, not the No change's, reaches the server log.
+func TestANoChangeWhoseGoalCantLoadIsLoggedWithItsCause(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts, buf := loggedServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	client := signInClient(t, ts.URL, "sam@example.com")
+	if _, err := h.DB.Exec(`ALTER TABLE milestones RENAME TO gone_milestones`); err != nil {
+		t.Fatalf("rename milestones: %v", err)
+	}
+	before := len(logRecords(t, buf))
+
+	path := fmt.Sprintf("/goals/%d/checkins/no-change", goal.ID)
+	resp, page := postNoChange(t, client, ts.URL+path, false)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status %d, want 500", resp.StatusCode)
+	}
+	assertCheckinUnavailable(t, page, "The Goal couldn&#39;t be loaded, so nothing was recorded. Try again.")
+	assertLoggedOnce(t, buf, before, http.MethodPost, path, "load milestones: list milestones: SQL logic error: no such table: milestones")
+}
+
+// A No change that fails to be recorded answers 500 inside the page, and its
+// cause reaches the server log.
+func TestANoChangeThatFailsIsLoggedWithItsCause(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts, buf := loggedServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	client := signInClient(t, ts.URL, "sam@example.com")
+	if _, err := h.DB.Exec(`CREATE TRIGGER fail_checkin BEFORE INSERT ON checkins
+		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+		t.Fatalf("install failing trigger: %v", err)
+	}
+	before := len(logRecords(t, buf))
+
+	path := fmt.Sprintf("/goals/%d/checkins/no-change", goal.ID)
+	resp, page := postNoChange(t, client, ts.URL+path, false)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status %d, want 500", resp.StatusCode)
+	}
+	assertCheckinUnavailable(t, page, "The No change couldn&#39;t be recorded. Try again.")
+	assertLoggedOnce(t, buf, before, http.MethodPost, path, "injected failure")
 }
