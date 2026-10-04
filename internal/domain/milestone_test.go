@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -519,5 +520,227 @@ func TestMilestoneMarkTakesTheFirstThatApplies(t *testing.T) {
 				t.Errorf("MilestoneMarkOf = %q, want %q", got, c.want)
 			}
 		})
+	}
+}
+
+// changesOutsideCheckins returns the Milestone changes recorded on goalID
+// outside any Check-in, failing the test on error.
+func changesOutsideCheckins(t *testing.T, h *testsupport.Harness, goalID int64) []domain.MilestoneChange {
+	t.Helper()
+	got, err := h.Service.MilestoneChangesOutsideCheckins(context.Background(), goalID)
+	if err != nil {
+		t.Fatalf("MilestoneChangesOutsideCheckins: %v", err)
+	}
+	return got
+}
+
+// The Owner can add a Milestone to an Active Goal outside a Check-in. It is
+// listed, recorded as added by the Owner at the time it was added with no
+// Check-in, and counts toward Milestone Churn (CONTEXT.md: Milestone,
+// Milestone Churn).
+func TestAddMilestoneAsAuthorRecordsAnAdditionToAnActiveGoal(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignInNamed("sam@example.com", "Sam Rivera")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(48 * time.Hour)
+	date := goal.DeliveryDate.AddDate(0, 0, -7)
+
+	m, err := h.Service.AddMilestoneAsAuthor(context.Background(), sam.ID, domain.AddMilestoneInput{
+		GoalID: goal.ID, Name: " GA ", TargetDate: date,
+	})
+	if err != nil {
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
+	}
+	if m.Name != "GA" || !m.TargetDate.Equal(date) || m.GoalID != goal.ID {
+		t.Errorf("Milestone = %+v", m)
+	}
+	if ms, _ := h.Service.ListMilestones(context.Background(), goal.ID); len(ms) != 2 {
+		t.Errorf("ListMilestones = %+v, want Beta and GA", ms)
+	}
+
+	got := changesOutsideCheckins(t, h, goal.ID)
+	if len(got) != 1 {
+		t.Fatalf("changes outside Check-ins = %+v, want the one addition", got)
+	}
+	c := got[0]
+	if c.Kind != domain.MilestoneChangeAdded || c.MilestoneID != m.ID || c.Name != "GA" ||
+		!c.AddedDate.Equal(date) || !c.CreatedAt.Equal(h.Clock.Now()) || c.Author.ID != sam.ID || c.Author.Name != "Sam Rivera" {
+		t.Errorf("change = %+v, want GA added by Sam now", c)
+	}
+	checkins, err := h.Service.ListCheckins(context.Background(), goal.ID)
+	if err != nil || len(checkins) != 1 || len(checkins[0].MilestoneChanges) != 0 {
+		t.Errorf("ListCheckins = %+v %v, want the Check-in without the addition", checkins, err)
+	}
+	if n, _ := h.Service.MilestoneChurn(context.Background(), goal.ID); n != 1 {
+		t.Errorf("churn = %d, want 1", n)
+	}
+}
+
+// A Delegate can add a Milestone to an On Hold Goal outside a Check-in. It is
+// recorded as theirs, but an On Hold Goal isn't Active, so it isn't Milestone
+// Churn.
+func TestAddMilestoneAsAuthorByADelegateWhileOnHold(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	dana := h.SignIn("dana@example.com")
+	goal := h.OnHoldGoal(sam, "Ship v2", "Customers wait too long.", "Waiting on the vendor.")
+	h.AddDelegate(sam, dana, goal.ID)
+
+	m, err := h.Service.AddMilestoneAsAuthor(context.Background(), dana.ID, domain.AddMilestoneInput{
+		GoalID: goal.ID, Name: "Vendor sign-off", TargetDate: goal.DeliveryDate.AddDate(0, 0, -30),
+	})
+	if err != nil {
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
+	}
+	got := changesOutsideCheckins(t, h, goal.ID)
+	if len(got) != 1 || got[0].MilestoneID != m.ID || got[0].Author.ID != dana.ID {
+		t.Errorf("changes outside Check-ins = %+v, want Vendor sign-off added by Dana", got)
+	}
+	if n, _ := h.Service.MilestoneChurn(context.Background(), goal.ID); n != 0 {
+		t.Errorf("churn = %d, want 0", n)
+	}
+}
+
+// A Milestone added to a Proposed Goal is part of planning it: it is listed
+// but recorded as no change, and isn't churn.
+func TestAddMilestoneAsAuthorWhileProposedRecordsNoChange(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Ship v2", "why")
+
+	if _, err := h.Service.AddMilestoneAsAuthor(context.Background(), sam.ID, domain.AddMilestoneInput{
+		GoalID: goal.ID, Name: "Beta", TargetDate: time.Date(2026, 12, 1, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("AddMilestoneAsAuthor: %v", err)
+	}
+	if ms, _ := h.Service.ListMilestones(context.Background(), goal.ID); len(ms) != 1 || ms[0].Name != "Beta" {
+		t.Errorf("ListMilestones = %+v, want Beta", ms)
+	}
+	if got := changesOutsideCheckins(t, h, goal.ID); len(got) != 0 {
+		t.Errorf("changes outside Check-ins = %+v, want none", got)
+	}
+	if n, _ := h.Service.MilestoneChurn(context.Background(), goal.ID); n != 0 {
+		t.Errorf("churn = %d, want 0", n)
+	}
+}
+
+// Only the Goal's Owner or a Delegate may add a Milestone outside a Check-in,
+// and a Departed Delegate no longer may; a refused addition changes nothing.
+func TestAddMilestoneAsAuthorRefusesAnyoneElse(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	dana := h.SignIn("dana@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "why")
+	h.AddDelegate(sam, dana, goal.ID)
+	if err := h.Service.MarkDeparted(context.Background(), admin.ID, dana.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	for name, actor := range map[string]domain.Account{
+		"a stranger":          h.SignIn("pat@example.com"),
+		"an Admin":            admin,
+		"a Departed Delegate": dana,
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := h.Service.AddMilestoneAsAuthor(context.Background(), actor.ID, domain.AddMilestoneInput{
+				GoalID: goal.ID, Name: "GA", TargetDate: goal.DeliveryDate,
+			})
+			if !errors.Is(err, domain.ErrNotAuthorized) || !strings.Contains(err.Error(), "only the Owner or a Delegate may change this Goal's Milestones") {
+				t.Errorf("err = %v, want the Milestone editor refusal", err)
+			}
+		})
+	}
+	if ms, _ := h.Service.ListMilestones(context.Background(), goal.ID); len(ms) != 1 {
+		t.Errorf("ListMilestones = %+v, want only Beta", ms)
+	}
+	if got := changesOutsideCheckins(t, h, goal.ID); len(got) != 0 {
+		t.Errorf("changes outside Check-ins = %+v, want none", got)
+	}
+}
+
+// A Done or Cancelled Goal takes no new Milestones.
+func TestAddMilestoneAsAuthorRefusesAnEndedGoal(t *testing.T) {
+	t.Parallel()
+
+	for _, lifecycle := range []string{domain.LifecycleDone, domain.LifecycleCancelled} {
+		t.Run(lifecycle, func(t *testing.T) {
+			t.Parallel()
+			h := testsupport.New(t)
+			sam := h.SignIn("sam@example.com")
+			goal := h.ActiveGoal(sam, "Ship v2", "why")
+			h.EndGoalInCheckin(sam, goal.ID, lifecycle)
+
+			_, err := h.Service.AddMilestoneAsAuthor(context.Background(), sam.ID, domain.AddMilestoneInput{
+				GoalID: goal.ID, Name: "GA", TargetDate: goal.DeliveryDate,
+			})
+			if !errors.Is(err, domain.ErrValidation) {
+				t.Errorf("err = %v, want ErrValidation", err)
+			}
+			if ms, _ := h.Service.ListMilestones(context.Background(), goal.ID); len(ms) != 1 {
+				t.Errorf("ListMilestones = %+v, want only Beta", ms)
+			}
+		})
+	}
+}
+
+// A Milestone added outside a Check-in needs a name and a date.
+func TestAddMilestoneAsAuthorRequiresNameAndDate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "why")
+
+	for name, in := range map[string]domain.AddMilestoneInput{
+		"no name": {GoalID: goal.ID, Name: "  ", TargetDate: goal.DeliveryDate},
+		"no date": {GoalID: goal.ID, Name: "GA"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := h.Service.AddMilestoneAsAuthor(context.Background(), sam.ID, in); !errors.Is(err, domain.ErrValidation) {
+				t.Errorf("err = %v, want ErrValidation", err)
+			}
+		})
+	}
+	if got := changesOutsideCheckins(t, h, goal.ID); len(got) != 0 {
+		t.Errorf("changes outside Check-ins = %+v, want none", got)
+	}
+}
+
+// RequireMilestoneEditor allows a Milestone's Goal's Owner and Delegates, and
+// refuses anyone else; a missing Milestone is not found.
+func TestRequireMilestoneEditor(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	dana := h.SignIn("dana@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "why")
+	h.AddDelegate(sam, dana, goal.ID)
+	beta := onlyMilestone(t, h, goal.ID)
+	ctx := context.Background()
+
+	if err := h.Service.RequireMilestoneEditor(ctx, sam.ID, beta.ID); err != nil {
+		t.Errorf("the Owner: %v", err)
+	}
+	if err := h.Service.RequireMilestoneEditor(ctx, dana.ID, beta.ID); err != nil {
+		t.Errorf("a Delegate: %v", err)
+	}
+	if err := h.Service.RequireMilestoneEditor(ctx, pat.ID, beta.ID); !errors.Is(err, domain.ErrNotAuthorized) ||
+		!strings.Contains(err.Error(), "only the Owner or a Delegate may change this Goal's Milestones") {
+		t.Errorf("anyone else: err = %v, want the Milestone editor refusal", err)
+	}
+	if err := h.Service.RequireMilestoneEditor(ctx, sam.ID, beta.ID+100); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("a missing Milestone: err = %v, want ErrNotFound", err)
 	}
 }

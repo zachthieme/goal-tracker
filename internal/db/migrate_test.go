@@ -236,6 +236,79 @@ func TestMigrationNamesExistingMilestoneChanges(t *testing.T) {
 	}
 }
 
+// Milestone changes recorded before a Milestone could be added outside a
+// Check-in keep every column on upgrade and take their author from their
+// Check-in; a change whose Check-in is missing keeps no author. Afterwards a
+// change needs no Check-in.
+func TestMigrationKeepsMilestoneChangesAndBackfillsTheirAuthor(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := migratedExcept(t, "migrations/0042_milestone_changes_outside_checkins.sql")
+	// Put back the table as 0034 and 0035 made it: every change in a Check-in,
+	// with no author of its own.
+	if _, err := sqlDB.Exec(`
+		DROP TABLE milestone_changes;
+		CREATE TABLE milestone_changes (
+			id           INTEGER PRIMARY KEY,
+			checkin_id   INTEGER NOT NULL REFERENCES checkins(id),
+			milestone_id INTEGER NOT NULL REFERENCES milestones(id),
+			kind         TEXT    NOT NULL,
+			reason       TEXT    NOT NULL DEFAULT '',
+			created_at   TEXT    NOT NULL,
+			name         TEXT    NOT NULL DEFAULT ''
+		);
+		CREATE INDEX idx_milestone_changes_checkin ON milestone_changes (checkin_id);
+		INSERT INTO checkins (id, goal_id, author_id, owner_id, health, status, created_at) VALUES
+			(10, 1, 7, 7, 'Green', 'On track.', '2026-01-09T00:00:00Z'),
+			(11, 1, 8, 7, 'Yellow', 'Slipping.', '2026-01-16T00:00:00Z');
+		INSERT INTO milestone_changes (id, checkin_id, milestone_id, kind, reason, created_at, name) VALUES
+			(3, 10, 2, 'Added', '', '2026-01-09T00:00:00Z', 'GA'),
+			(5, 11, 1, 'Done', '', '2026-01-16T00:00:00Z', 'Beta'),
+			(6, 11, 2, 'Removed', 'descoped', '2026-01-16T00:00:00Z', 'GA'),
+			(9, 99, 4, 'Done', '', '2026-01-23T00:00:00Z', 'Docs')`); err != nil {
+		t.Fatalf("arrange 0035 milestone changes: %v", err)
+	}
+
+	if err := db.Migrate(sqlDB); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	rows, err := sqlDB.Query(`SELECT id, checkin_id, milestone_id, kind, reason, created_at, name, author_id
+		FROM milestone_changes ORDER BY id`)
+	if err != nil {
+		t.Fatalf("read milestone changes: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var got []string
+	for rows.Next() {
+		var id, checkinID, milestoneID int64
+		var kind, reason, createdAt, name string
+		var authorID sql.NullInt64
+		if err := rows.Scan(&id, &checkinID, &milestoneID, &kind, &reason, &createdAt, &name, &authorID); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		author := "none"
+		if authorID.Valid {
+			author = strconv.FormatInt(authorID.Int64, 10)
+		}
+		got = append(got, fmt.Sprintf("%d %d %d %s %q %s %s by %s", id, checkinID, milestoneID, kind, reason, createdAt, name, author))
+	}
+	want := []string{
+		`3 10 2 Added "" 2026-01-09T00:00:00Z GA by 7`,
+		`5 11 1 Done "" 2026-01-16T00:00:00Z Beta by 8`,
+		`6 11 2 Removed "descoped" 2026-01-16T00:00:00Z GA by 8`,
+		`9 99 4 Done "" 2026-01-23T00:00:00Z Docs by none`,
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("milestone changes = %v, want %v", got, want)
+	}
+
+	if _, err := sqlDB.Exec(`INSERT INTO milestone_changes (milestone_id, kind, name, author_id, created_at)
+		VALUES (1, 'Added', 'Launch', 7, '2026-01-30T00:00:00Z')`); err != nil {
+		t.Errorf("a Milestone change with no Check-in: %v", err)
+	}
+}
+
 // Links, rejected requests and removals from before link changes were
 // logged are back-filled into the log once on upgrade, with the times and
 // people their rows recorded. A link stands for its request, or for being

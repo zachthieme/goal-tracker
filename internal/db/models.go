@@ -250,12 +250,13 @@ type Milestone struct {
 
 type MilestoneChange struct {
 	ID          int64
-	CheckinID   int64
+	CheckinID   *int64
 	MilestoneID int64
 	Kind        string
 	Reason      string
 	CreatedAt   string
 	Name        string
+	AuthorID    *int64
 }
 
 type NarrativePick struct {
