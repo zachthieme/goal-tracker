@@ -1205,3 +1205,109 @@ func TestNewGoalChecklistRunsOnTheFormAsTyped(t *testing.T) {
 		t.Errorf("checking the form created %d Goals", len(goals))
 	}
 }
+
+// The New goal page's Ready to activate card renders as of page load, with
+// Create and activate enabled though nothing is typed yet, since without
+// script the server decides. Script posts the form to /goals/new/checklist as
+// it changes and swaps the card for the one that comes back, while the two
+// buttons still submit the form plainly: Create and activate posting
+// activate=1 and Save as Proposed posting nothing more.
+func TestNewGoalPageRendersTheReadyCardEnabledWithoutScript(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals/new")
+	form := pageElement(t, page, "form", "goal-form")
+	card, activate := readyCard(t, form)
+	if got := activationItems(t, card); got["So What"] || !got["Owner"] {
+		t.Errorf("an empty form's checklist = %v, want So What missing and Owner done", got)
+	}
+	if !strings.Contains(card, "1 of 4") {
+		t.Errorf("an empty form's card doesn't say 1 of 4:\n%s", card)
+	}
+	if strings.Contains(activate, " disabled") || attr(activate, "type") != "submit" || attr(activate, "value") != "1" || !strings.Contains(between(t, card, `name="activate"`, "</button>"), "Create and activate") {
+		t.Errorf("Create and activate isn't an enabled submit posting activate=1: %s", activate)
+	}
+	save := between(t, card, "Create and activate", "Save as Proposed")
+	if save = save[strings.LastIndex(save, "<button"):]; attr(save, "type") != "submit" || attr(save, "name") != "" {
+		t.Errorf("Save as Proposed isn't a plain submit: %s", save)
+	}
+	if !strings.Contains(card, "Only Title and So What are needed to save.") {
+		t.Errorf("the card doesn't say what saving needs:\n%s", card)
+	}
+
+	tag := openTag(form)
+	for name, want := range map[string]string{
+		"method":     "post",
+		"action":     "/goals/new",
+		"hx-post":    "/goals/new/checklist",
+		"hx-trigger": "load, change, input delay:400ms",
+		"hx-target":  "#" + attr(openTag(card), "id"),
+		"hx-swap":    "outerHTML",
+	} {
+		if got := attr(tag, name); got != want {
+			t.Errorf("the form's %s = %q, want %q", name, got, want)
+		}
+	}
+	if attr(openTag(card), "id") == "" {
+		t.Errorf("the card has no id to swap: %s", openTag(card))
+	}
+}
+
+// Create and activate creates the Goal Active when the form meets every rule,
+// and lands on it. The server decides whatever the button showed: an
+// incomplete form posted with activate=1 directly comes back as the form, 422,
+// listing each rule it doesn't meet, and nothing is saved.
+func TestNewGoalFormCreateAndActivate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "USD")
+	h.SetFieldRequired(boss, budget, true)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	form := newGoalForm(map[string]string{"activate": "1", "kind": "Ongoing"})
+	page := refusedNewGoal(t, client, ts.URL, form)
+	summary := html.UnescapeString(pageElement(t, page, "div", "goal-form-errors"))
+	for _, rule := range []string{"an Ongoing Goal needs at least one Metric", "a Goal needs a value in Budget to become Active"} {
+		if !strings.Contains(summary, rule) {
+			t.Errorf("the refusal doesn't list %q:\n%s", rule, summary)
+		}
+	}
+	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 0 {
+		t.Errorf("a refused activation saved %d Goals", len(goals))
+	}
+
+	form = newGoalForm(map[string]string{
+		"activate": "1", "kind": "Ongoing",
+		"metrics[0].name": "p95", "metrics[0].unit": "ms", "metrics[0].baseline": "900", "metrics[0].target": "300", "metrics[0].target_date": "2027-06-01",
+		fmt.Sprintf("field:%d", budget.ID): "25000",
+	})
+	if g := createdGoal(t, h, client, ts.URL, form); g.Lifecycle != domain.LifecycleActive {
+		t.Errorf("Create and activate on a complete form made a %s Goal, want Active", g.Lifecycle)
+	}
+}
+
+// Save as Proposed, with only a Title and So What, creates a Proposed Goal
+// even where activation would need more.
+func TestNewGoalFormSaveAsProposedNeedsOnlyTitleAndSoWhat(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.SetFieldRequired(boss, h.CreateField(boss, "Budget", domain.FieldNumber, "USD"), true)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	if g := createdGoal(t, h, client, ts.URL, newGoalForm(nil)); g.Lifecycle != domain.LifecycleProposed {
+		t.Errorf("Save as Proposed made a %s Goal, want Proposed", g.Lifecycle)
+	}
+}
