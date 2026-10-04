@@ -24,6 +24,23 @@ templ risksPage(current *domain.Account, v risksPageView) {
 				<a data-testid="risks-scope-everyone" class="btn quiet sm" href={ v.ScopeURL(false) } { v.ScopeAttrs(false)... }>Everyone</a>
 				<a data-testid="risks-scope-mine" class="btn quiet sm" href={ v.ScopeURL(true) } { v.ScopeAttrs(true)... }>Mine</a>
 			</nav>
+			<form method="get" action="/risks" data-testid="risks-filters" class="rk-filters">
+				<select data-testid="risks-value" name="value" aria-label="Dimension value">
+					<option value="" selected?={ v.Value.ID == 0 }>Any value</option>
+					for _, d := range v.Dimensions {
+						<optgroup label={ d.Name }>
+							for _, dv := range d.Values {
+								<option value={ strconv.FormatInt(dv.ID, 10) } selected?={ v.Value.ID == dv.ID }>
+									{ dv.Value }
+									if dv.Retired {
+										(retired)
+									}
+								</option>
+							}
+						</optgroup>
+					}
+				</select>
+			</form>
 		</header>
 		<nav data-testid="risks-groups" class="rk-cards" aria-label="Risks by who acts">
 			for _, c := range v.Cards() {

@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"html"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -863,5 +864,81 @@ func TestRisksPageScopedToMine(t *testing.T) {
 	}
 	if attr(openTag(mine), "href") != "/risks?mine=1" {
 		t.Errorf("Mine doesn't link to the page scoped to Mine: %s", mine)
+	}
+}
+
+// Scoped to a Dimension value (?value=), the Risks page keeps only the Goals
+// that have it, counting those alone, and its value select offers Any value
+// then each offered Dimension's values, the chosen one selected. A value of a
+// Retired Dimension, or no value at all, scopes nothing.
+func TestRisksPageScopedToADimensionValue(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Growth")
+	region := h.CreateDimension(boss, "Region", "EMEA")
+	platform, growth, emea := team.Values[0], team.Values[1], region.Values[0]
+	onPlatform := h.ActiveGoal(sam, "Platform work", "It matters.")
+	h.AssignGoalValue(onPlatform, platform)
+	onGrowth := h.ActiveGoal(sam, "Growth work", "It matters.")
+	h.AssignGoalValue(onGrowth, growth)
+	h.AssignGoalValue(onGrowth, emea)
+	untagged := h.ActiveGoal(sam, "Untagged work", "It matters.")
+	if err := h.Service.RetireDimension(t.Context(), boss.ID, region.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	h.Clock.Advance(10 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	id := func(v domain.DimensionValue) string { return strconv.FormatInt(v.ID, 10) }
+
+	page := getBody(t, client, ts.URL+"/risks?value="+id(platform))
+
+	riskRowOf(t, page, onPlatform)
+	for _, g := range []domain.Goal{onGrowth, untagged} {
+		if hasRiskRow(page, g) {
+			t.Errorf("scoped to Platform, the page lists %q", g.Title)
+		}
+	}
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>1</strong> Goal needs attention.") {
+		t.Errorf("scoped to Platform, the header doesn't count its 1 Goal: %s", head)
+	}
+	if card := pageElement(t, page, "a", "risks-group-owner"); !strings.Contains(card, `<span class="num">1</span>`) {
+		t.Errorf("scoped to Platform, the owner card doesn't count its 1 Goal: %s", card)
+	}
+	if risks := pageElement(t, page, "a", "nav-risks"); !strings.Contains(risks, `<span class="count">3</span>`) {
+		t.Errorf("scoped to Platform, the top bar's Risks count follows scope: %s", risks)
+	}
+	sel := between(t, page, `<select data-testid="risks-value"`, "</select>")
+	if attr(sel, "name") != "value" {
+		t.Errorf("the value select isn't named value: %s", sel)
+	}
+	options := regexp.MustCompile(`<option[^>]*>[^<]*`).FindAllString(sel, -1)
+	if len(options) != 3 || !strings.HasSuffix(options[0], ">Any value") || attr(options[0], "value") != "" {
+		t.Fatalf("the value select doesn't offer Any value then Team's 2 values: %s", sel)
+	}
+	if !strings.Contains(sel, `<optgroup label="Team">`) || strings.Contains(sel, "Region") {
+		t.Errorf("the value select doesn't group the offered Dimension's values alone: %s", sel)
+	}
+	for i, v := range []domain.DimensionValue{platform, growth} {
+		o := options[i+1]
+		if attr(o, "value") != id(v) || !strings.HasSuffix(o, ">"+v.Value) {
+			t.Errorf("option %d isn't %s: %s", i+1, v.Value, o)
+		}
+		if selected := regexp.MustCompile(`\sselected[\s/>]`).MatchString(o); selected != (v.ID == platform.ID) {
+			t.Errorf("scoped to Platform, %s selected is %v", v.Value, selected)
+		}
+	}
+	if mine := pageElement(t, page, "a", "risks-scope-mine"); attr(openTag(mine), "href") != html.EscapeString("/risks?mine=1&value="+id(platform)) {
+		t.Errorf("Mine doesn't keep the value scope: %s", mine)
+	}
+
+	for _, ignored := range []string{id(emea), "bogus"} {
+		page = getBody(t, client, ts.URL+"/risks?value="+ignored)
+		for _, g := range []domain.Goal{onPlatform, onGrowth, untagged} {
+			riskRowOf(t, page, g)
+		}
 	}
 }
