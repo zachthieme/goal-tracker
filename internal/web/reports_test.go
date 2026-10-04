@@ -18,8 +18,8 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
-// A signed-in person saves a Report Definition of a root Goal to a depth and is
-// shown a live draft of the selected Goals, with each Goal's title, Owner,
+// A signed-in person saves a Report Definition of picked Goals and is shown a
+// live draft of the selected Goals, with each Goal's title, Owner,
 // Health, and due date (CONTEXT.md: Report Definition). Every Goal here was
 // created within the default baseline, so each gets an exception block.
 func TestSaveReportDefinitionAndSeeDraftOverHTTP(t *testing.T) {
@@ -961,7 +961,6 @@ func TestReportDefinitionShowsChosenFieldsOverHTTP(t *testing.T) {
 	resp := postForm(t, client, ts.URL+"/reports", url.Values{
 		"name":  {"EU MBR"},
 		"root":  {strconv.FormatInt(red.ID, 10), strconv.FormatInt(green.ID, 10)},
-		"depth": {"0"},
 		"field": {strconv.FormatInt(budget.ID, 10), strconv.FormatInt(notes.ID, 10)},
 	})
 	if resp.StatusCode != http.StatusOK {
