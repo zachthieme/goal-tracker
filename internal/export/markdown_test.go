@@ -123,9 +123,9 @@ boss · Active · Health: **Red** · due ~~2026-03-01~~ ~~2026-04-01~~ 2026-05-0
 
 **Milestones:**
 
-- Beta — ~~2026-02-01~~ 2026-02-15 **[New]**
-- Pilot — 2026-01-30 **[Done]**
-- ~~Launch party~~ — 2026-03-01 **[Removed]** — Budget cut.
+- **[Red]** 2026-02-15 ~~2026-02-01~~ Beta
+- **[Done]** 2026-01-30 Pilot
+- **[Removed]** 2026-03-01 ~~Launch party~~ — Budget cut.
 
 **Metrics:**
 
@@ -139,6 +139,76 @@ boss · Active · Health: **Red** · due ~~2026-03-01~~ ~~2026-04-01~~ 2026-05-0
 	got := export.Markdown(pub)
 	if !strings.HasSuffix(got, "\n\n"+want) {
 		t.Errorf("Markdown:\n%s\nwant it to end with the block:\n%s", got, want)
+	}
+}
+
+// Each Milestone reads mark, date, name: the mark as of the day the Report was
+// published, then the current date with the most recent date it slipped from
+// struck through, and how many times it slipped once that is more than one. A
+// Milestone on track has no mark.
+func TestMarkdownListsMilestonesAsMarkDateName(t *testing.T) {
+	t.Parallel()
+
+	pub := publication([]domain.ReportBlock{{
+		Goal:   domain.Goal{Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
+		Health: domain.HealthYellow,
+		Milestones: []domain.ReportMilestone{
+			{Milestone: domain.Milestone{Name: "Vendor sign-off", TargetDate: date(2026, 4, 20), Status: domain.MilestonePlanned},
+				New: true, PriorDates: []time.Time{date(2026, 3, 1), date(2026, 3, 15), date(2026, 4, 3)}},
+			{Milestone: domain.Milestone{Name: "Security review", TargetDate: date(2026, 4, 1), Status: domain.MilestonePlanned},
+				PriorDates: []time.Time{date(2026, 3, 20)}},
+			{Milestone: domain.Milestone{Name: "Docs", TargetDate: date(2026, 3, 10), Status: domain.MilestonePlanned}, New: true},
+			{Milestone: domain.Milestone{Name: "Due on the day", TargetDate: date(2026, 2, 21), Status: domain.MilestonePlanned}},
+			{Milestone: domain.Milestone{Name: "GA launch", TargetDate: date(2026, 6, 15), Status: domain.MilestonePlanned}},
+		},
+	}}, nil)
+
+	want := `**Milestones:**
+
+- **[Yellow]** 2026-04-20 ~~2026-04-03~~ (3) Vendor sign-off
+- **[Yellow]** 2026-04-01 ~~2026-03-20~~ Security review
+- **[New]** 2026-03-10 Docs
+- 2026-02-21 Due on the day
+- 2026-06-15 GA launch
+`
+	got := export.Markdown(pub)
+	if !strings.Contains(got, want) {
+		t.Errorf("Markdown:\n%s\nwant the Milestones to read:\n%s", got, want)
+	}
+	for _, older := range []string{"2026-03-01", "2026-03-15"} {
+		if strings.Contains(got, older) {
+			t.Errorf("Markdown lists the older prior date %s; only the most recent shows:\n%s", older, got)
+		}
+	}
+}
+
+// A publication frozen before Milestones read mark, date, name exports in that
+// form: its snapshot already holds all the mark needs.
+func TestMarkdownListsTheMilestonesOfAnOlderSnapshotAsMarkDateName(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","SoWhat":"Expand the market.",` +
+		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Milestones":[` +
+		`{"Milestone":{"ID":1,"Name":"Beta","TargetDate":"2025-12-20T00:00:00Z","Status":"Planned"},"New":false,"PriorDates":["2025-12-01T00:00:00Z"]},` +
+		`{"Milestone":{"ID":2,"Name":"GA","TargetDate":"2026-03-01T00:00:00Z","Status":"Planned"},"New":true,"PriorDates":null}]}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+		t.Fatalf("write an older snapshot: %v", err)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	md := export.Markdown(got)
+	want := "- **[Red]** 2025-12-20 ~~2025-12-01~~ Beta\n- **[New]** 2026-03-01 GA\n"
+	if !strings.Contains(md, want) {
+		t.Errorf("Markdown:\n%s\nwant the Milestones to read:\n%s", md, want)
 	}
 }
 

@@ -55,7 +55,7 @@ func Markdown(p domain.Publication) string {
 	if len(r.Exceptions) > 0 {
 		b.WriteString("\n## Exceptions\n")
 		for _, blk := range r.Exceptions {
-			writeBlock(&b, &people, blk)
+			writeBlock(&b, &people, blk, p.PublishedAt)
 		}
 	}
 	if len(r.Lines) > 0 {
@@ -77,8 +77,9 @@ func Markdown(p domain.Publication) string {
 // writeBlock writes an exception Goal's full MBR block: title and badges, due
 // date with its history struck through, Health, the chosen Fields, So What, latest status, Path
 // to Green, Milestones, Metrics against target, and the Rolled-up Health with
-// the Owner's explanation.
-func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBlock) {
+// the Owner's explanation. Each Milestone is marked as of asOf, the day the
+// Report was published.
+func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBlock, asOf time.Time) {
 	g := blk.Goal
 	fmt.Fprintf(b, "\n### %s", text(g.Title))
 	for _, badge := range blk.Badges {
@@ -101,17 +102,15 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 	if len(blk.Milestones) > 0 {
 		b.WriteString("\n**Milestones:**\n\n")
 		for _, m := range blk.Milestones {
+			b.WriteString("- ")
+			if mark := domain.MilestoneMarkOf(m.Milestone, m.PriorDates, m.New, asOf); mark != domain.MilestoneMarkNone {
+				fmt.Fprintf(b, "**[%s]** ", mark)
+			}
 			name := text(m.Milestone.Name)
 			if m.Milestone.Status == domain.MilestoneRemoved {
 				name = "~~" + name + "~~"
 			}
-			fmt.Fprintf(b, "- %s — %s%s", name, struck(m.PriorDates), fmtDate(m.Milestone.TargetDate))
-			if m.New {
-				b.WriteString(" **[New]**")
-			}
-			if m.Milestone.Status != domain.MilestonePlanned {
-				fmt.Fprintf(b, " **[%s]**", m.Milestone.Status)
-			}
+			fmt.Fprintf(b, "%s %s", milestoneDate(m.Milestone.TargetDate, m.PriorDates), name)
 			if m.Milestone.RemovedReason != "" {
 				fmt.Fprintf(b, " — %s", text(m.Milestone.RemovedReason))
 			}
@@ -190,6 +189,21 @@ func struck(dates []time.Time) string {
 		fmt.Fprintf(&b, "~~%s~~ ", fmtDate(d))
 	}
 	return b.String()
+}
+
+// milestoneDate renders a Milestone's date current first, then the most recent
+// date it slipped from struck through, and the number of times it slipped once
+// that is more than one: 11/20 ~~11/03~~ (3) (CONTEXT.md: Date Slip). Prior
+// dates come earliest first.
+func milestoneDate(current time.Time, prior []time.Time) string {
+	out := fmtDate(current)
+	if n := len(prior); n > 0 {
+		out += fmt.Sprintf(" ~~%s~~", fmtDate(prior[n-1]))
+		if n > 1 {
+			out += fmt.Sprintf(" (%d)", n)
+		}
+	}
+	return out
 }
 
 // health renders a Health, or a dash when the Goal has no Check-in yet.

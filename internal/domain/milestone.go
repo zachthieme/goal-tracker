@@ -32,6 +32,43 @@ const (
 	MilestoneRemoved = "Removed"
 )
 
+// Milestone marks: what the Goal page, a Report and its Markdown export show
+// ahead of each Milestone's date. They are display marks, not a Health: they
+// never feed the Goal's Health, which its Owner sets (CONTEXT.md: Milestone,
+// Health). A Planned Milestone with none of them has no mark (MilestoneMarkNone)
+// and reads as on track.
+const (
+	MilestoneMarkNone    = ""
+	MilestoneMarkDone    = MilestoneDone
+	MilestoneMarkRemoved = MilestoneRemoved
+	MilestoneMarkRed     = HealthRed
+	MilestoneMarkYellow  = HealthYellow
+	MilestoneMarkNew     = "New"
+)
+
+// MilestoneMarkOf is the one mark a Milestone shows, the first that applies:
+// Done or Removed by its Status; Red while Planned and past its date as of asOf,
+// compared as calendar dates in UTC; Yellow while Planned and slipped, having
+// prior dates; New while Planned and isNew, added within the window being
+// read. Risk outranks newness, so a new Milestone that slipped is Yellow. It
+// needs only what a frozen Report snapshot holds, so every surface marks a
+// Milestone the same way.
+func MilestoneMarkOf(m Milestone, priorDates []time.Time, isNew bool, asOf time.Time) string {
+	switch {
+	case m.Status == MilestoneDone:
+		return MilestoneMarkDone
+	case m.Status == MilestoneRemoved:
+		return MilestoneMarkRemoved
+	case m.TargetDate.Format(dateFormat) < asOf.UTC().Format(dateFormat):
+		return MilestoneMarkRed
+	case len(priorDates) > 0:
+		return MilestoneMarkYellow
+	case isNew:
+		return MilestoneMarkNew
+	}
+	return MilestoneMarkNone
+}
+
 // MilestoneChange is a Milestone a Check-in added, marked Done or marked
 // Removed, recorded with that Check-in. A Check-in's Milestone date moves are
 // its Date Slips instead. Check-ins made before these were recorded have none.
