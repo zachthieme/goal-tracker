@@ -53,7 +53,9 @@ type RequestLinkInput struct {
 // own the child. The request is accepted immediately when the requester also
 // owns the parent (CONTEXT.md: creating a child directly under a Goal you own);
 // otherwise it waits Pending for the parent's Owner. A request that would close
-// a cycle is rejected here and again at accept time (ADR-0001).
+// a cycle is rejected here and again at accept time (ADR-0001). Any open Parent
+// suggestion of the same parent for the child closes as no longer applying, as
+// it does when RestoreLinkRequest or RestoreLink brings the link back.
 func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, error) {
 	if in.ChildID == in.ParentID {
 		return Link{}, fmt.Errorf("%w: a Goal cannot contribute to itself", ErrValidation)
