@@ -150,17 +150,17 @@ func (s *Service) AddMilestone(ctx context.Context, in AddMilestoneInput) (Miles
 	return s.createMilestone(ctx, in.GoalID, name, in.TargetDate, goal.Goal.Lifecycle == LifecycleActive)
 }
 
-// errNotMilestoneEditor is the refusal of anyone but a Goal's Owner or a
-// Delegate who tries to change its Milestones.
-var errNotMilestoneEditor = fmt.Errorf("%w: only the Owner or a Delegate may change this Goal's Milestones", ErrNotAuthorized)
+// errMilestonesOwnerOrDelegateOnly is the refusal of anyone but a Goal's
+// Owner or a Delegate who tries to change its Milestones.
+var errMilestonesOwnerOrDelegateOnly = fmt.Errorf("%w: only the Owner or a Delegate may change this Goal's Milestones", ErrNotAuthorized)
 
-// authorizeMilestoneEditor allows the Goal's Owner or a Delegate to change its
+// authorizeMilestoneChange allows the Goal's Owner or a Delegate to change its
 // Milestones, by the rules for who may write its Check-ins: a Departed person
 // is refused whichever they are (CONTEXT.md: Delegate, Departed).
-func (s *Service) authorizeMilestoneEditor(ctx context.Context, goal db.Goal, actorID int64) error {
+func (s *Service) authorizeMilestoneChange(ctx context.Context, goal db.Goal, actorID int64) error {
 	err := s.authorizeCheckinAuthor(ctx, goal.ID, goal.OwnerID, actorID)
 	if errors.Is(err, ErrNotAuthorized) {
-		return errNotMilestoneEditor
+		return errMilestonesOwnerOrDelegateOnly
 	}
 	return err
 }
@@ -181,7 +181,7 @@ func (s *Service) RequireMilestoneEditor(ctx context.Context, actorID, milestone
 	if err != nil {
 		return fmt.Errorf("look up goal: %w", err)
 	}
-	return s.authorizeMilestoneEditor(ctx, goal.Goal, actorID)
+	return s.authorizeMilestoneChange(ctx, goal.Goal, actorID)
 }
 
 // AddMilestoneAsAuthor adds a Milestone to a Goal outside a Check-in, from the
@@ -191,33 +191,34 @@ func (s *Service) RequireMilestoneEditor(ctx context.Context, actorID, milestone
 // change with its author and no Check-in, for the Goal's history; one while it
 // is Proposed is part of its planning, and isn't. Only an addition while
 // Active counts toward Milestone Churn (CONTEXT.md: Milestone, Milestone
-// Churn).
+// Churn). The Goal is read in the same transaction as the addition, so a
+// Check-in that ends it meanwhile can't let one through.
 func (s *Service) AddMilestoneAsAuthor(ctx context.Context, authorID int64, in AddMilestoneInput) (Milestone, error) {
-	goal, err := s.queries.GetGoal(ctx, in.GoalID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Milestone{}, fmt.Errorf("%w: goal %d", ErrNotFound, in.GoalID)
-		}
-		return Milestone{}, fmt.Errorf("look up goal: %w", err)
-	}
-	if err := s.authorizeMilestoneEditor(ctx, goal.Goal, authorID); err != nil {
-		return Milestone{}, err
-	}
-	lifecycle := goal.Goal.Lifecycle
-	switch lifecycle {
-	case LifecycleProposed, LifecycleActive, LifecycleOnHold:
-	default:
-		return Milestone{}, fmt.Errorf("%w: a %s Goal's Milestones can't change", ErrValidation, lifecycle)
-	}
-	name := strings.TrimSpace(in.Name)
-	if name == "" {
-		return Milestone{}, fmt.Errorf("%w: a Milestone needs a name", ErrValidation)
-	}
-	if in.TargetDate.IsZero() {
-		return Milestone{}, fmt.Errorf("%w: a Milestone needs a date", ErrValidation)
-	}
 	var out Milestone
-	err = s.WithinTx(ctx, func(tx *Service) error {
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		goal, err := tx.queries.GetGoal(ctx, in.GoalID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: goal %d", ErrNotFound, in.GoalID)
+			}
+			return fmt.Errorf("look up goal: %w", err)
+		}
+		if err := tx.authorizeMilestoneChange(ctx, goal.Goal, authorID); err != nil {
+			return err
+		}
+		lifecycle := goal.Goal.Lifecycle
+		switch lifecycle {
+		case LifecycleProposed, LifecycleActive, LifecycleOnHold:
+		default:
+			return fmt.Errorf("%w: a %s Goal's Milestones can't change", ErrValidation, lifecycle)
+		}
+		name := strings.TrimSpace(in.Name)
+		if name == "" {
+			return fmt.Errorf("%w: a Milestone needs a name", ErrValidation)
+		}
+		if in.TargetDate.IsZero() {
+			return fmt.Errorf("%w: a Milestone needs a date", ErrValidation)
+		}
 		m, err := tx.createMilestone(ctx, goal.Goal.ID, name, in.TargetDate, lifecycle == LifecycleActive)
 		if err != nil {
 			return err

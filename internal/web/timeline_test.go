@@ -1439,3 +1439,48 @@ func TestGoalHistoryShowsAMilestoneAddedOutsideACheckin(t *testing.T) {
 		t.Errorf("a Proposed Goal's History lists %d Milestone additions, want none", n)
 	}
 }
+
+// Defining a Goal, new on the New goal page or Proposed on its define page,
+// adds its Milestones as part of planning it: they are listed, and its
+// History has no entry for them.
+func TestDefiningAGoalLeavesNoMilestoneHistoryOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp := postForm(t, client, ts.URL+"/goals/new", url.Values{
+		"title": {"Cut checkout latency"}, "so_what": {"Shoppers abandon slow carts."},
+		"milestones[0].name": {"Profile checkout"}, "milestones[0].date": {"2026-11-02"},
+	})
+	created := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("New goal answered %d", resp.StatusCode)
+	}
+	resp = definePost(t, client, ts.URL, proposed, func(f url.Values) {
+		f.Set("milestones[0].name", "Pricing page")
+		f.Set("milestones[0].date", "2026-04-01")
+	})
+	defined := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("define answered %d", resp.StatusCode)
+	}
+
+	for name, tc := range map[string]struct{ page, milestone string }{
+		"new":      {created, "Profile checkout"},
+		"proposed": {defined, "Pricing page"},
+	} {
+		rows := elementTexts(pageElement(t, tc.page, "section", "goal-milestones"), "tr", "goal-milestone")
+		if !slices.ContainsFunc(rows, func(r string) bool { return strings.Contains(r, tc.milestone) }) {
+			t.Errorf("%s Goal's Milestones read %q, want %s", name, rows, tc.milestone)
+		}
+		for _, e := range historyEntries(historyBlock(t, tc.page)) {
+			if entryKind(t, e) == "milestone" {
+				t.Errorf("%s Goal's History has a Milestone entry:\n%s", name, e)
+			}
+		}
+	}
+}

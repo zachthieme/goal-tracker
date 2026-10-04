@@ -656,7 +656,7 @@ func TestAddMilestoneAsAuthorRefusesAnyoneElse(t *testing.T) {
 				GoalID: goal.ID, Name: "GA", TargetDate: goal.DeliveryDate,
 			})
 			if !errors.Is(err, domain.ErrNotAuthorized) || !strings.Contains(err.Error(), "only the Owner or a Delegate may change this Goal's Milestones") {
-				t.Errorf("err = %v, want the Milestone editor refusal", err)
+				t.Errorf("err = %v, want the Owner or Delegate refusal", err)
 			}
 		})
 	}
@@ -738,7 +738,7 @@ func TestRequireMilestoneEditor(t *testing.T) {
 	}
 	if err := h.Service.RequireMilestoneEditor(ctx, pat.ID, beta.ID); !errors.Is(err, domain.ErrNotAuthorized) ||
 		!strings.Contains(err.Error(), "only the Owner or a Delegate may change this Goal's Milestones") {
-		t.Errorf("anyone else: err = %v, want the Milestone editor refusal", err)
+		t.Errorf("anyone else: err = %v, want the Owner or Delegate refusal", err)
 	}
 	if err := h.Service.RequireMilestoneEditor(ctx, sam.ID, beta.ID+100); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("a missing Milestone: err = %v, want ErrNotFound", err)

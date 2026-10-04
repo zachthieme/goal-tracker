@@ -1120,8 +1120,10 @@ func TestGoalPageAddsAMilestoneInPlaceOverHTTP(t *testing.T) {
 		churnBefore, churnAfter string
 	}{
 		{"sam@example.com", proposed, "0", "0"},
+		{"dana@example.com", proposed, "0", "0"},
 		{"sam@example.com", active, "0", "1"},
 		{"dana@example.com", active, "1", "2"},
+		{"sam@example.com", onHold, "0", "0"},
 		{"dana@example.com", onHold, "0", "0"},
 	} {
 		client := signInClient(t, ts.URL, tc.who)
@@ -1224,9 +1226,9 @@ func TestOnlyTheOwnerOrADelegateChangesMilestonesOverHTTP(t *testing.T) {
 		}
 		before := rows(g)
 		resp := postForm(t, sam2, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, g.ID), url.Values{"name": {"Late"}, "target_date": {"2026-05-01"}})
-		_ = readBody(t, resp)
-		if resp.StatusCode != http.StatusUnprocessableEntity {
-			t.Errorf("adding to a %s Goal answered %d, want 422", lifecycle, resp.StatusCode)
+		body := html.UnescapeString(readBody(t, resp))
+		if want := "a " + lifecycle + " Goal's Milestones can't change"; resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, want) {
+			t.Errorf("adding to a %s Goal answered %d %q, want 422 saying %q", lifecycle, resp.StatusCode, body, want)
 		}
 		if after := rows(g); !slices.Equal(after, before) {
 			t.Errorf("a %s Goal took a Milestone: %q", lifecycle, after)
