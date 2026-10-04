@@ -1119,8 +1119,8 @@ func TestRetiredDimensionLeavesReportFormButSavedFilterKeepsWorkingOverHTTP(t *t
 	}
 }
 
-// The Report Definition form offers the Fields still offered (none Retired) to
-// show beside each Goal. The chosen ones then appear beside each Goal that has
+// The builder offers the Fields still offered (none Retired) to show beside
+// each Goal. The chosen ones then appear beside each Goal that has
 // a value, with its unit, on the exception card and the On track row alike; a
 // long text reads as a labelled value there, not in the narrative. A number
 // Field is never totalled across Goals (ADR 0005). A definition that chose no
@@ -1150,7 +1150,7 @@ func TestReportDefinitionShowsChosenFieldsOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 
-	choice := between(t, getBody(t, client, ts.URL+"/reports"), `<fieldset data-testid="report-field-choice"`, `</fieldset>`)
+	choice := between(t, getBody(t, client, ts.URL+"/reports/new"), `<fieldset data-testid="report-field-choice"`, `</fieldset>`)
 	for _, f := range []domain.Field{budget, notes, sponsor} {
 		if !strings.Contains(choice, f.Name) || !strings.Contains(choice, fmt.Sprintf(`name="field" value="%d"`, f.ID)) {
 			t.Errorf("the form doesn't offer %s to show; fieldset:\n%s", f.Name, choice)
@@ -1160,10 +1160,11 @@ func TestReportDefinitionShowsChosenFieldsOverHTTP(t *testing.T) {
 		t.Errorf("the form offers the Retired %s; fieldset:\n%s", legacy.Name, choice)
 	}
 
-	resp := postForm(t, client, ts.URL+"/reports", url.Values{
-		"name":  {"EU MBR"},
-		"root":  {strconv.FormatInt(red.ID, 10), strconv.FormatInt(green.ID, 10)},
-		"field": {strconv.FormatInt(budget.ID, 10), strconv.FormatInt(notes.ID, 10)},
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+		"name":   {"EU MBR"},
+		"mode":   {domain.ReportModePicked},
+		"picked": {strconv.FormatInt(red.ID, 10), strconv.FormatInt(green.ID, 10)},
+		"field":  {strconv.FormatInt(budget.ID, 10), strconv.FormatInt(notes.ID, 10)},
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("save report: status %d", resp.StatusCode)

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -28,6 +29,8 @@ type reportBuilderView struct {
 	// and Exclude are those Goals.
 	PickedIDs, IncludeIDs, ExcludeIDs []int64
 	Picked, Include, Exclude          []domain.Goal
+	// FieldIDs are the Fields chosen to show beside each Goal.
+	FieldIDs []int64
 	// Problems are a refused save's problems, each naming its input.
 	Problems []*domain.InputError
 
@@ -35,6 +38,11 @@ type reportBuilderView struct {
 	Attributes []ruleAttribute
 	// Goals are every Goal, at any level, the pickers offer.
 	Goals []domain.Goal
+	// Fields are the Fields still offered to show.
+	Fields []domain.Field
+	// Matches are the Goals the definition would select, shown after Show
+	// matches, and nil before.
+	Matches []reportGoal
 }
 
 // reportRuleRow is one rule row as the form posts it: its attribute's key, its
@@ -68,6 +76,9 @@ const (
 	inputExclude = "exclude"
 )
 
+// inputShowField is a Field to show beside each Goal, posted once per Field.
+const inputShowField = "field"
+
 // dimensionAttribute is the key of a rule testing the Dimension dimID.
 func dimensionAttribute(dimID int64) string {
 	return "dimension:" + strconv.FormatInt(dimID, 10)
@@ -86,8 +97,9 @@ func (s *Server) handleNewReportForm(w http.ResponseWriter, r *http.Request, cur
 
 // handleNewReport saves the builder's Report Definition and lands on its
 // draft. A refused save comes back as the builder, 422, as typed, with each
-// problem beside its input. Add rule, and a rule row's ×, save nothing: the
-// builder comes back as typed with a blank row added, or without that row.
+// problem beside its input. Add rule, a rule row's × and Show matches save
+// nothing: the builder comes back as typed with a blank row added, without
+// that row, or listing the Goals its first draft would.
 func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "could not read the form", http.StatusBadRequest)
@@ -98,13 +110,20 @@ func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current
 		dropRuleRow(r.PostForm, r.PostForm.Get(inputRemoveRule))
 	}
 	v, in, unparsed := readReportBuilder(r)
-	if adding := r.PostFormValue("do") == "add-rule"; adding || removing {
-		if adding {
+	do := r.PostFormValue("do")
+	if do == "add-rule" || do == "show-matches" || removing {
+		if do == "add-rule" {
 			v.Rules = append(v.rows(), reportRuleRow{})
 		}
 		if err := s.loadReportBuilder(r, &v); err != nil {
 			http.Error(w, "could not load the builder", http.StatusInternalServerError)
 			return
+		}
+		if do == "show-matches" {
+			if err := s.showMatches(r, &v, in); err != nil {
+				http.Error(w, "could not find the matches", http.StatusInternalServerError)
+				return
+			}
 		}
 		render(w, r, http.StatusOK, reportBuilderPage(&current, v))
 		return
@@ -184,8 +203,9 @@ func readReportBuilder(r *http.Request) (v reportBuilderView, in domain.SaveRepo
 		PickedIDs:    dedupeInt64s(formInt64s(r, inputPicked)),
 		IncludeIDs:   dedupeInt64s(formInt64s(r, inputInclude)),
 		ExcludeIDs:   dedupeInt64s(formInt64s(r, inputExclude)),
+		FieldIDs:     formInt64s(r, inputShowField),
 	}
-	in = domain.SaveReportDefinitionInput{Name: v.Name, Introduction: v.Introduction, Mode: v.Mode, FieldIDs: formInt64s(r, "field")}
+	in = domain.SaveReportDefinitionInput{Name: v.Name, Introduction: v.Introduction, Mode: v.Mode, FieldIDs: v.FieldIDs}
 	switch v.Mode {
 	case domain.ReportModePicked:
 		in.Picked = v.PickedIDs
@@ -294,6 +314,11 @@ func (s *Server) loadReportBuilder(r *http.Request, v *reportBuilderView) error 
 	if err != nil {
 		return err
 	}
+	fields, err := s.svc.ListFields(r.Context())
+	if err != nil {
+		return err
+	}
+	v.Fields = domain.OfferedFields(fields)
 	v.Goals = goals
 	v.Picked = goalsByID(goals, v.PickedIDs)
 	v.Include = goalsByID(goals, v.IncludeIDs)
@@ -342,6 +367,35 @@ func ruleAttributes(dims []domain.Dimension, owners []domain.Account) []ruleAttr
 	return out
 }
 
+// showMatches lists the Goals the definition in would select on its first
+// draft, read against the default baseline. A Goal listed that doesn't exist
+// selects nothing.
+func (s *Server) showMatches(r *http.Request, v *reportBuilderView, in domain.SaveReportDefinitionInput) error {
+	ids := func(goals []domain.Goal) []int64 {
+		out := make([]int64, 0, len(goals))
+		for _, g := range goals {
+			out = append(out, g.ID)
+		}
+		return out
+	}
+	def := domain.ReportDefinition{Mode: in.Mode, Rules: in.Rules}
+	switch in.Mode {
+	case domain.ReportModePicked:
+		def.Picked = ids(v.Picked)
+	case domain.ReportModeRules:
+		def.Include, def.Exclude = ids(v.Include), ids(v.Exclude)
+	}
+	report, err := s.svc.DraftReport(r.Context(), def, time.Time{})
+	if err != nil {
+		return err
+	}
+	v.Matches = reportGoals(report)
+	if v.Matches == nil {
+		v.Matches = []reportGoal{}
+	}
+	return nil
+}
+
 // goalsByID are the Goals with the given ids, in the order given, leaving out
 // any id no Goal has.
 func goalsByID(goals []domain.Goal, ids []int64) []domain.Goal {
@@ -385,7 +439,10 @@ func (v reportBuilderView) bad(input string) string {
 // its top; every other shows beside its input.
 func (v reportBuilderView) unplaced() []*domain.InputError {
 	placed := []string{domain.ReportInputName, domain.ReportInputMode, domain.ReportInputRules, domain.ReportInputInclude,
-		domain.ReportInputExclude, domain.ReportInputPicked, domain.ReportInputFields}
+		domain.ReportInputExclude, domain.ReportInputPicked}
+	if len(v.Fields) > 0 {
+		placed = append(placed, domain.ReportInputFields)
+	}
 	for i := range v.rows() {
 		placed = append(placed, domain.RuleInput(i))
 	}

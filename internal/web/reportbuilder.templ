@@ -65,7 +65,38 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 			<section data-testid="report-picked" class="rb-picked">
 				@reportGoalPicker(v, inputPicked, "Goals I pick", v.Picked)
 			</section>
-			<div><button type="submit" class="btn primary">Save report</button></div>
+			if len(v.Fields) > 0 {
+				<details data-testid="report-fields-to-show" class="rb-fields" open?={ len(v.FieldIDs) > 0 || v.bad(domain.ReportInputFields) != "" }>
+					<summary class="btn quiet sm">+ Fields to show</summary>
+					<fieldset data-testid="report-field-choice">
+						<legend>Fields <span class="hint">— shown beside each Goal that has a value</span></legend>
+						for _, f := range v.Fields {
+							<label>
+								<input type="checkbox" name={ inputShowField } value={ fmt.Sprint(f.ID) } checked?={ slices.Contains(v.FieldIDs, f.ID) }/>
+								{ f.Name }
+							</label>
+						}
+					</fieldset>
+					@reportBuilderError(v, domain.ReportInputFields)
+				</details>
+			}
+			<div class="rb-actions">
+				<button type="submit" class="btn primary">Save report</button>
+				<button type="submit" name="do" value="show-matches" class="btn" formnovalidate>Show matches</button>
+			</div>
+			if v.Matches != nil {
+				<section data-testid="builder-matches" class="rb-matches">
+					<h2 class="label">{ "Matches " + plural(len(v.Matches), "Goal") }</h2>
+					<ul class="rp-goal-list">
+						for _, g := range v.Matches {
+							<li>
+								<span class={ "rp-goal-dot", healthClass(g.Health) } role="img" aria-label={ reportHealth(g.Health) }><span class="dot"></span></span>
+								{ g.Goal.Title }
+							</li>
+						}
+					</ul>
+				</section>
+			}
 		</form>
 		@reportBuilderScript()
 	}
@@ -256,6 +287,15 @@ templ reportBuilderStyles() {
 		.rb-form{padding:24px;display:flex;flex-direction:column;gap:16px;max-width:760px}
 		.rb-form fieldset{border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;min-width:0}
 		.rb-form legend{font-weight:600;padding:0 0 8px}
+		.rb-segments{display:inline-flex;align-self:flex-start;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);overflow:hidden}
+		.rb-segments label{position:relative;padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px}
+		@supports selector(:has(*)){
+			.rb-segments input{position:absolute;opacity:0;pointer-events:none}
+			.rb-segments label:has(input:checked){background:var(--color-ink);color:var(--color-surface)}
+			.rb-segments label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:-2px}
+			.rb-form:has(input[name=mode][value=picked]:checked) .rb-rules{display:none}
+			.rb-form:has(input[name=mode][value=rules]:checked) .rb-picked{display:none}
+		}
 		.rb-chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}
 		.rb-chips:empty{display:none}
 		.rb-chip{display:inline-flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border:1px solid var(--color-border);border-radius:999px}
@@ -266,6 +306,11 @@ templ reportBuilderStyles() {
 		.rb-input-error{display:block;flex-basis:100%;font-size:13px;color:var(--color-danger-ink)}
 		.rb-problems{border:1px solid var(--color-danger-ink);border-radius:var(--radius-md);padding:12px 16px;color:var(--color-danger-ink)}
 		.rb-problems p,.rb-problems ul{margin:0}
+		.rb-fields>summary{align-self:flex-start;border:1px dashed var(--color-border-strong)}
+		.rb-fields fieldset{margin-top:12px}
+		.rb-actions{display:flex;gap:8px;flex-wrap:wrap}
+		.rb-matches{border-top:1px solid var(--color-border);padding-top:16px;display:flex;flex-direction:column;gap:8px}
+		.rb-matches .rp-goal-dot{background:none;border:none;display:inline-flex}
 		.rb-form:not(.rb-js) .rb-js-only{display:none}
 		.rb-form.rb-js .rb-no-js{display:none}
 		.rb-picker input[type=search]{width:100%}

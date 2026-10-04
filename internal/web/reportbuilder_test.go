@@ -394,6 +394,43 @@ func TestBuilderGoalSearchFindsEveryGoalLessThoseListedOverHTTP(t *testing.T) {
 	}
 }
 
+// Show matches submits the builder and it comes back, 200, as typed, listing
+// the Goals the definition would select, and saves nothing.
+func TestBuilderShowMatchesListsTheGoalsAndSavesNothingOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	top := h.MarkTopLevel(boss, h.ActiveGoal(boss, "Grow revenue", "Matters."))
+	other := h.ActiveGoal(boss, "Cut churn", "Matters.")
+	left := h.MarkTopLevel(boss, h.ActiveGoal(boss, "Earn trust", "Matters."))
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"Exec weekly"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleTopLevel},
+		"rules[0].op":        {domain.RuleIs},
+		"exclude":            {strconv.FormatInt(left.ID, 10)},
+		"do":                 {"show-matches"},
+	})
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Show matches: status %d, want 200; body:\n%s", resp.StatusCode, page)
+	}
+	matches := pageElement(t, page, "section", "builder-matches")
+	if !strings.Contains(matches, "1 Goal") || !strings.Contains(matches, top.Title) || strings.Contains(matches, other.Title) || strings.Contains(matches, left.Title) {
+		t.Errorf("Show matches doesn't list just %q:\n%s", top.Title, matches)
+	}
+	if !strings.Contains(pageElement(t, page, "form", "report-builder"), `name="name" value="Exec weekly"`) {
+		t.Errorf("Show matches lost the name")
+	}
+	if defs, _ := h.Service.ListReportDefinitions(context.Background()); len(defs) != 0 {
+		t.Errorf("Show matches saved %d definitions", len(defs))
+	}
+}
+
 // assertSavedReport checks resp, a builder's save, answered 303 to a Report's
 // draft, and returns the draft as client sees it.
 func assertSavedReport(t *testing.T, client *http.Client, baseURL string, resp *http.Response) string {
