@@ -31,6 +31,10 @@ type Report struct {
 	// by its author from Highlights, with their own text. It is frozen with
 	// the snapshot.
 	Narrative []NarrativeSection
+	// MembershipChanges are the Goals that entered or left the Report since
+	// its Definition's latest publication, whatever the baseline. They are
+	// frozen with the snapshot.
+	MembershipChanges []MembershipChange `json:",omitempty"`
 }
 
 // covers reports whether the Report includes the Goal, as an exception block
@@ -149,6 +153,9 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 		r.Exceptions = append(r.Exceptions, b)
 	}
 	if err := s.draftNarrative(ctx, &r); err != nil {
+		return Report{}, err
+	}
+	if r.MembershipChanges, err = s.membershipChanges(ctx, r, since); err != nil {
 		return Report{}, err
 	}
 	return r, nil

@@ -1333,3 +1333,53 @@ func TestDraftGoalsPanelShowsSixThenTheRestOverHTTP(t *testing.T) {
 		t.Errorf("Show all 8 does not hold the other 2 Goals; details:\n%s", rest)
 	}
 }
+
+// Readers see the Goals that entered or left a Report since its latest
+// publication, each linking to the Goal, with Added or Left and why: on the
+// draft's preview and on the publication. With none, neither shows the list.
+func TestReportShowsTheGoalsThatEnteredOrLeftOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	stays := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	dropped := h.ActiveGoal(boss, "Hire a CFO", "We need one.")
+	picked := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{stays.ID, dropped.ID}})
+	first := h.PublishReport(boss, def)
+	h.Clock.Advance(24 * time.Hour)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	draftURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	pubURL := func(p domain.Publication) string { return draftURL + "/publications/" + strconv.FormatInt(p.ID, 10) }
+	for name, page := range map[string]string{"first publication": getBody(t, client, pubURL(first)), "unchanged draft": getBody(t, client, draftURL)} {
+		if strings.Contains(page, `data-testid="membership-changes"`) {
+			t.Errorf("%s with no Goal entering or leaving shows the list:\n%s", name, page)
+		}
+	}
+
+	// The definition's picked list changes; editing it arrives with #151.
+	if _, err := h.DB.Exec(`UPDATE report_definition_goals SET goal_id = ? WHERE report_definition_id = ? AND goal_id = ?`, picked.ID, def.ID, dropped.ID); err != nil {
+		t.Fatalf("change the picked list: %v", err)
+	}
+	draft := getBody(t, client, draftURL)
+	second := h.PublishReport(boss, def)
+	for name, page := range map[string]string{"draft preview": between(t, draft, `id="draft-preview"`, ""), "publication": getBody(t, client, pubURL(second))} {
+		list := pageElement(t, page, "section", "membership-changes")
+		if !strings.Contains(list, "Goals that entered or left this report") {
+			t.Errorf("%s list has no heading:\n%s", name, list)
+		}
+		for g, want := range map[domain.Goal][]string{picked: {"Added", "picked by hand"}, dropped: {"Left", "removed by hand"}} {
+			row := between(t, list, fmt.Sprintf(`<tr data-testid="membership-change" id="membership-%d"`, g.ID), "</tr>")
+			for _, w := range append(want, fmt.Sprintf(`href="/goals/%d"`, g.ID), g.Title) {
+				if !strings.Contains(row, w) {
+					t.Errorf("%s: %s's row missing %q:\n%s", name, g.Title, w, row)
+				}
+			}
+		}
+		if strings.Contains(list, stays.Title) {
+			t.Errorf("%s lists %s, which stayed in:\n%s", name, stays.Title, list)
+		}
+	}
+}

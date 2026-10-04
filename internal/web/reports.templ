@@ -374,8 +374,9 @@ templ publishedLine(p domain.Publication) {
 // Items, the introduction, the narrative curated from Highlights, then the
 // exceptions that need attention, counted, each a card with the full MBR block, and
 // every other selected Goal on track, one table row with its Health, title,
-// Owner, and due date (CONTEXT.md: Report). A Path to Green is judged overdue
-// as of asOf. On a publication, each Goal carries its discussion.
+// Owner, and due date (CONTEXT.md: Report), and last the Goals that entered or
+// left since the latest publication. A Path to Green is judged overdue as of
+// asOf. On a publication, each Goal carries its discussion.
 templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 	@reportActionItems(r.ActionItems, d)
 	if r.Definition.Introduction != "" {
@@ -429,6 +430,34 @@ templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 									</td>
 								</tr>
 							}
+						}
+					</tbody>
+				</table>
+			</div>
+		</section>
+	}
+	@membershipChanges(r.MembershipChanges)
+}
+
+// membershipChanges lists the Goals that entered or left the Report since its
+// Definition's latest publication, each linking to the Goal, with Added or
+// Left and why. It shows only when there are some.
+templ membershipChanges(changes []domain.MembershipChange) {
+	if len(changes) > 0 {
+		<section data-testid="membership-changes">
+			<h2>Goals that entered or left this report</h2>
+			<div class="card">
+				<table>
+					<thead>
+						<tr><th>Goal</th><th>Change</th><th>Why</th></tr>
+					</thead>
+					<tbody>
+						for _, c := range changes {
+							<tr data-testid="membership-change" id={ fmt.Sprintf("membership-%d", c.Goal.ID) }>
+								<td><a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", c.Goal.ID)) }>{ c.Goal.Title }</a></td>
+								<td data-testid="membership-direction">{ c.Direction }</td>
+								<td data-testid="membership-reason">{ c.Reason }</td>
+							</tr>
 						}
 					</tbody>
 				</table>
