@@ -21,8 +21,16 @@ import (
 // — the name the domain's InputError carries — or none when it is the whole
 // submit's.
 type goalFormView struct {
-	Title      string
-	SoWhat     string
+	Title  string
+	SoWhat string
+	// Kind is the Kind chosen, "" for not chosen, and DeliveryDate the date
+	// typed, which counts only for a Dated Goal.
+	Kind         string
+	DeliveryDate string
+	// Cadence is the cadence chip chosen, its days or cadenceCustom, and
+	// CadenceDays the days typed for Custom.
+	Cadence     string
+	CadenceDays string
 	Milestones []milestoneRow
 	Metrics    []metricRow
 	// Parents are the Goals picked to contribute to, and Candidates every
@@ -189,6 +197,45 @@ func (s *Server) parentChoice(ctx context.Context, current domain.Account, g dom
 // Goal picked.
 const inputParentID = "parent_id"
 
+// cadenceChips are the Check-in cadence's chips, each posting its days but
+// Custom, which posts cadenceCustom and the days typed beside it.
+var cadenceChips = []struct{ Value, Label string }{
+	{"7", "Weekly"},
+	{"14", "Every 2 weeks"},
+	{"30", "Monthly"},
+	{cadenceCustom, "Custom…"},
+}
+
+// cadenceChosen is the cadence chip to show chosen: Weekly at first, and
+// Custom for days posted that no other chip posts.
+func (v goalFormView) cadenceChosen() string {
+	if v.Cadence == "" {
+		return cadenceChips[0].Value
+	}
+	for _, c := range cadenceChips {
+		if v.Cadence == c.Value {
+			return c.Value
+		}
+	}
+	return cadenceCustom
+}
+
+// customDays are the days to show beside Custom: those typed there, or the
+// days posted that no other chip posts.
+func (v goalFormView) customDays() string {
+	if v.cadenceChosen() == cadenceCustom && v.Cadence != cadenceCustom {
+		return v.Cadence
+	}
+	return v.CadenceDays
+}
+
+// inputCadenceDays is the number of days the Custom cadence chip reveals.
+// cadenceCustom is that chip's value.
+const (
+	inputCadenceDays = "cadence_days"
+	cadenceCustom    = "custom"
+)
+
 // handleSearchGoals answers the Contributes to search as it is typed: each
 // candidate whose title contains q, ignoring case, less the parents already
 // picked, which come along as parent_id. Each result carries the chip picking
@@ -232,11 +279,19 @@ var errUnparsed = errors.New("the New goal form has values that don't parse")
 // handler can't parse is refused the same way, under its input's name, in the
 // same 422 as the domain's problems.
 func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	v := goalFormView{Title: r.FormValue("title"), SoWhat: r.FormValue("so_what")}
+	v := goalFormView{
+		Title:        r.FormValue(domain.InputTitle),
+		SoWhat:       r.FormValue(domain.InputSoWhat),
+		Kind:         r.FormValue(domain.InputKind),
+		DeliveryDate: r.FormValue(domain.InputDeliveryDate),
+		Cadence:      r.FormValue(domain.InputCadence),
+		CadenceDays:  r.FormValue(inputCadenceDays),
+	}
 	in := domain.DefinedGoalInput{
 		Title:   v.Title,
 		SoWhat:  v.SoWhat,
 		OwnerID: current.ID,
+		Kind:    v.Kind,
 	}
 	var unparsed []*domain.InputError
 	refuse := func(input, format string, args ...any) {
@@ -261,6 +316,29 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 			return 0, false
 		}
 		return n, true
+	}
+
+	// Only a Dated Goal has a delivery date; one posted with any other Kind is
+	// ignored, not refused.
+	if in.Kind == domain.GoalDated && strings.TrimSpace(v.DeliveryDate) != "" {
+		in.DeliveryDate = date(domain.InputDeliveryDate, v.DeliveryDate)
+	}
+
+	// A chip posts its days; Custom posts the days typed beside it. Either is a
+	// whole number above 0, so the domain is never sent 0 for a cadence chosen.
+	if cadence := strings.TrimSpace(v.Cadence); cadence != "" {
+		if cadence == cadenceCustom {
+			cadence = strings.TrimSpace(v.CadenceDays)
+		}
+		days, err := strconv.Atoi(cadence)
+		switch {
+		case cadence == "":
+			refuse(domain.InputCadence, "a Custom cadence needs a number of days")
+		case err != nil || days <= 0:
+			refuse(domain.InputCadence, "the Check-in cadence must be a whole number of days above 0, not %q", cadence)
+		default:
+			in.CadenceDays = days
+		}
 	}
 
 	for _, value := range r.PostForm[inputParentID] {
@@ -366,14 +444,13 @@ func goalFormProblems(err error, unparsed []*domain.InputError) []*domain.InputE
 }
 
 // goalFormPlace is where an input sits on the New goal page, to sort its
-// problems by: Title, So What, then each Milestone row's inputs and each
-// Metric row's, in turn. Any other input sorts after those.
+// problems by: Title, So What, Kind, delivery date, cadence, then each
+// Milestone row's inputs and each Metric row's, in turn. Any other input sorts
+// after those.
 func goalFormPlace(input string) []int {
-	switch input {
-	case domain.InputTitle:
-		return []int{0}
-	case domain.InputSoWhat:
-		return []int{1}
+	single := []string{domain.InputTitle, domain.InputSoWhat, domain.InputKind, domain.InputDeliveryDate, domain.InputCadence}
+	if at := slices.Index(single, input); at >= 0 {
+		return []int{at}
 	}
 	sections := []struct {
 		name  string
@@ -386,10 +463,10 @@ func goalFormPlace(input string) []int {
 		var i int
 		var part string
 		if _, err := fmt.Sscanf(input, section.name+"[%d].%s", &i, &part); err == nil {
-			return []int{2 + s, i, slices.Index(section.parts, part)}
+			return []int{len(single) + s, i, slices.Index(section.parts, part)}
 		}
 	}
-	return []int{2 + len(sections)}
+	return []int{len(single) + len(sections)}
 }
 
 // formRows gathers a repeatable section's rows, posted as section[i].part,

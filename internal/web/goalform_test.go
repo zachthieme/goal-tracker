@@ -582,3 +582,248 @@ func TestNewGoalFormRefusalKeepsParentsPicked(t *testing.T) {
 		t.Errorf("an unparsed parent_id isn't refused under the field:\n%s", form)
 	}
 }
+
+// createdGoal posts the New goal form, wanting it to create one Goal, and
+// returns that Goal.
+func createdGoal(t *testing.T, h *testsupport.Harness, client *http.Client, baseURL string, form url.Values) domain.Goal {
+	t.Helper()
+	resp := postForm(t, client, baseURL+"/goals/new", form)
+	if page := readBody(t, resp); resp.StatusCode != http.StatusOK || resp.Request.URL.Path == "/goals/new" {
+		t.Fatalf("posting %v answered %d at %s:\n%s", form, resp.StatusCode, resp.Request.URL, page)
+	}
+	goals, err := h.Service.ListGoals(context.Background())
+	if err != nil || len(goals) == 0 {
+		t.Fatalf("ListGoals: %d Goals, %v", len(goals), err)
+	}
+	return goals[len(goals)-1]
+}
+
+// Delivery's Kind saves as chosen: Dated with its delivery date, Ongoing with
+// none even when a date is posted, and neither leaves the Kind not chosen.
+func TestNewGoalFormSavesTheKindChosen(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, kind, date string
+		wantKind         string
+		wantDate         string
+	}{
+		{name: "dated", kind: "Dated", date: "2027-03-31", wantKind: domain.GoalDated, wantDate: "2027-03-31"},
+		{name: "ongoing", kind: "Ongoing", wantKind: domain.GoalOngoing},
+		{name: "ongoing ignores a date", kind: "Ongoing", date: "2027-03-31", wantKind: domain.GoalOngoing},
+		{name: "not chosen", kind: "", wantKind: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			h.SignIn("sam@example.com")
+			ts := newServer(t, h)
+			client := signInClient(t, ts.URL, "sam@example.com")
+
+			form := newGoalForm(map[string]string{"delivery_date": tc.date})
+			if tc.kind != "" {
+				form.Set("kind", tc.kind)
+			}
+			g := createdGoal(t, h, client, ts.URL, form)
+			var date string
+			if !g.DeliveryDate.IsZero() {
+				date = g.DeliveryDate.Format("2006-01-02")
+			}
+			if g.Kind != tc.wantKind || date != tc.wantDate {
+				t.Errorf("saved Kind %q delivered %q, want %q delivered %q", g.Kind, date, tc.wantKind, tc.wantDate)
+			}
+		})
+	}
+}
+
+// Delivery's cadence saves as chosen: each chip's days, or Custom's number
+// of days.
+func TestNewGoalFormSavesTheCadenceChosen(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		cadence, days string
+		want          int
+	}{
+		{cadence: "7", want: 7},
+		{cadence: "14", want: 14},
+		{cadence: "30", want: 30},
+		{cadence: "custom", days: "10", want: 10},
+		{cadence: "custom", days: " 90 ", want: 90},
+	} {
+		t.Run(tc.cadence+tc.days, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			h.SignIn("sam@example.com")
+			ts := newServer(t, h)
+			client := signInClient(t, ts.URL, "sam@example.com")
+
+			g := createdGoal(t, h, client, ts.URL, newGoalForm(map[string]string{"cadence": tc.cadence, "cadence_days": tc.days}))
+			if g.CadenceDays != tc.want {
+				t.Errorf("saved a cadence of %d days, want %d", g.CadenceDays, tc.want)
+			}
+		})
+	}
+}
+
+// A Custom cadence that isn't a whole number of days above 0 is refused under
+// cadence, beside the days typed, in the same 422 as the domain's problems,
+// and every other value comes back as chosen.
+func TestNewGoalFormRefusesACustomCadenceThatIsntWholeDaysKeepingTheRest(t *testing.T) {
+	t.Parallel()
+
+	for _, days := range []string{"0", "-3", "weekly", "1.5", ""} {
+		t.Run(days, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			h.SignIn("sam@example.com")
+			ts := newServer(t, h)
+			client := signInClient(t, ts.URL, "sam@example.com")
+
+			form := refusedNewGoal(t, client, ts.URL, url.Values{
+				"title": {"Cut checkout latency"}, "so_what": {""},
+				"kind": {"Dated"}, "delivery_date": {"2027-03-31"},
+				"cadence": {"custom"}, "cadence_days": {days},
+			})
+			wantRefused(t, form, "so_what", "a Goal needs a So What")
+			wantRefused(t, form, "cadence_days", "cadence")
+			if summary := pageElement(t, form, "div", "goal-form-errors"); !strings.Contains(summary, `href="#cadence"`) {
+				t.Errorf("the summary doesn't link the cadence problem to #cadence:\n%s", summary)
+			}
+			if got := tagAround(t, form, `id="cadence"`); attr(got, "name") != "cadence_days" || attr(got, "value") != days {
+				t.Errorf("#cadence isn't the Custom days as typed, %q: %s", days, got)
+			}
+			for _, id := range []string{"kind-dated", "cadence-custom"} {
+				if radio := tagAround(t, form, `id="`+id+`"`); !strings.Contains(radio, " checked") {
+					t.Errorf("%s isn't kept chosen: %s", id, radio)
+				}
+			}
+			for _, id := range []string{"kind-ongoing", "cadence-7", "cadence-14", "cadence-30"} {
+				if radio := tagAround(t, form, `id="`+id+`"`); strings.Contains(radio, " checked") {
+					t.Errorf("%s is chosen: %s", id, radio)
+				}
+			}
+			for name, value := range map[string]string{"title": "Cut checkout latency", "delivery_date": "2027-03-31"} {
+				if input := tagAround(t, form, `name="`+name+`"`); attr(input, "value") != value || attr(input, "aria-invalid") != "" {
+					t.Errorf("%s isn't kept as typed and valid: %s", name, input)
+				}
+			}
+			if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 0 {
+				t.Errorf("a refused post created %d Goals", len(goals))
+			}
+		})
+	}
+}
+
+// A Dated Goal's delivery date, missing or not a date, is refused under
+// delivery_date, and the summary lists each problem in the order the page
+// shows its inputs: What and why, then Delivery, then How you'll know.
+func TestNewGoalFormRefusesADatedGoalsDeliveryDateInPageOrder(t *testing.T) {
+	t.Parallel()
+
+	for date, want := range map[string]string{"": "a Dated Goal needs a delivery date", "someday": "isn't a date"} {
+		t.Run(date, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			h.SignIn("sam@example.com")
+			ts := newServer(t, h)
+			client := signInClient(t, ts.URL, "sam@example.com")
+
+			form := refusedNewGoal(t, client, ts.URL, url.Values{
+				"title": {"Cut checkout latency"}, "so_what": {""},
+				"kind": {"Dated"}, "delivery_date": {date},
+				"cadence": {"custom"}, "cadence_days": {"0"},
+				"milestones[0].name": {"Profile checkout"}, "milestones[0].date": {""},
+			})
+			wantRefused(t, form, "delivery_date", want)
+			if attr(tagAround(t, form, `name="delivery_date"`), "value") != date {
+				t.Errorf("delivery_date isn't kept as typed, %q:\n%s", date, form)
+			}
+			summary := pageElement(t, form, "div", "goal-form-errors")
+			var order []int
+			for _, href := range []string{"#so_what", "#delivery_date", "#cadence", "#milestones[0].date"} {
+				order = append(order, strings.Index(summary, `href="`+href+`"`))
+			}
+			if slices.Contains(order, -1) || !slices.IsSorted(order) {
+				t.Errorf("the summary doesn't list so_what, delivery_date, cadence, then the Milestone's date (at %v):\n%s", order, summary)
+			}
+		})
+	}
+}
+
+// The New goal page opens with What and why, its So What hinted, then
+// Delivery: Kind and cadence are each a native radio group sharing one name,
+// so arrow keys move within it. Neither Kind is chosen at first and Weekly
+// is. The delivery date shows once Dated is chosen and Custom's days once
+// Custom is, and chips that hide their radio still show focus.
+func TestNewGoalPageOffersWhatAndWhyAndDelivery(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals/new")
+	form := pageElement(t, page, "form", "goal-form")
+	what := pageElement(t, form, "fieldset", "goal-form-what")
+	if !strings.Contains(what, "<legend>What and why</legend>") || !strings.Contains(what, "The customer problem, and what changes when this succeeds.") {
+		t.Errorf("What and why isn't headed and hinted:\n%s", what)
+	}
+	delivery := between(t, form, `data-testid="goal-form-delivery"`, `data-testid="goal-form-know"`)
+	if !strings.Contains(delivery, "<legend>Delivery</legend>") {
+		t.Errorf("Delivery isn't headed:\n%s", delivery)
+	}
+	if strings.Index(form, `data-testid="goal-form-what"`) > strings.Index(form, `data-testid="goal-form-delivery"`) {
+		t.Errorf("Delivery comes before What and why")
+	}
+
+	for _, radio := range []struct{ id, name, value, label string }{
+		{"kind-dated", "kind", "Dated", "Dated"},
+		{"kind-ongoing", "kind", "Ongoing", "Ongoing"},
+		{"cadence-7", "cadence", "7", "Weekly"},
+		{"cadence-14", "cadence", "14", "Every 2 weeks"},
+		{"cadence-30", "cadence", "30", "Monthly"},
+		{"cadence-custom", "cadence", "custom", "Custom…"},
+	} {
+		tag := tagAround(t, delivery, `id="`+radio.id+`"`)
+		if attr(tag, "type") != "radio" || attr(tag, "name") != radio.name || attr(tag, "value") != radio.value {
+			t.Errorf("%s isn't a %s radio posting %q: %s", radio.id, radio.name, radio.value, tag)
+		}
+		if checked, want := strings.Contains(tag, " checked"), radio.id == "cadence-7"; checked != want {
+			t.Errorf("%s chosen = %v at first, want %v: %s", radio.id, checked, want, tag)
+		}
+		if label := between(t, delivery, `id="`+radio.id+`"`, "</label>"); !strings.Contains(label, radio.label) {
+			t.Errorf("%s isn't labelled %q: %s", radio.id, radio.label, label)
+		}
+	}
+	for kind, means := range map[string]string{"kind-dated": "delivery date", "kind-ongoing": "Metrics"} {
+		if label := between(t, delivery, `id="`+kind+`"`, "</label>"); !strings.Contains(label, means) {
+			t.Errorf("%s isn't explained: %s", kind, label)
+		}
+	}
+	if date := tagAround(t, delivery, `name="delivery_date"`); attr(date, "type") != "date" {
+		t.Errorf("the delivery date isn't a date input: %s", date)
+	}
+	if days := tagAround(t, delivery, `name="cadence_days"`); attr(days, "type") != "number" || attr(days, "min") != "1" {
+		t.Errorf("Custom's days aren't a number input from 1: %s", days)
+	}
+
+	style := between(t, page, ".gf-form{", "</style>")
+	for _, rule := range []string{
+		".gf-delivery:not(:has(#kind-dated:checked)) .gf-date{display:none}",
+		".gf-cadence:not(:has(#cadence-custom:checked)) .gf-custom{display:none}",
+		"label.gf-pick:has(input:focus-visible){outline:2px solid var(--color-focus)",
+	} {
+		if !strings.Contains(style, rule) {
+			t.Errorf("the style block has no %s", rule)
+		}
+	}
+	if strings.Contains(style, "box-shadow") {
+		t.Errorf("the New goal page's styles cast a shadow")
+	}
+}
