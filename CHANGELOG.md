@@ -30,6 +30,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Documentation:**
 - [internal] `CONTEXT.md` defines a Nudge (a one-off request to a Goal's Owner and Delegates to check in on a Stale or Path-overdue Goal) and a Parent suggestion (someone other than the Owner proposes a parent; only the Owner decides), and ADR 0006 records why a Parent suggestion is its own record rather than a link status (#143, #144).
+- [internal] ADR 0007 records that a report's scope comes from Goal attributes or a hand-picked list, with Also include and Leave out overrides, and never from walking contributes-to links, which replaces root + Depth selection (#147).
 
 ### Collected changes — October 3, 2026
 
