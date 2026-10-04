@@ -80,6 +80,85 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 	render(w, r, http.StatusOK, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel))
 }
 
+// handleEditReportForm shows the builder filled with the saved Report
+// Definition, to its creator or an Admin (CONTEXT.md: Report Definition).
+func (s *Server) handleEditReportForm(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	def, ok := s.editableReport(w, r, current)
+	if !ok {
+		return
+	}
+	v := builderFromDefinition(def)
+	if err := s.loadReportBuilder(r, &v); err != nil {
+		http.Error(w, "could not load the builder", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, reportBuilderPage(&current, v))
+}
+
+// handleEditReport saves the builder's changes to a Report Definition and
+// lands on its draft, as submitReportBuilder answers. Only the draft changes;
+// its publications stay as they were published.
+func (s *Server) handleEditReport(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	def, ok := s.editableReport(w, r, current)
+	if !ok {
+		return
+	}
+	s.submitReportBuilder(w, r, current, def.ID, func(tx *domain.Service, in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error) {
+		return tx.UpdateReportDefinition(r.Context(), current.ID, def.ID, in)
+	})
+}
+
+// editableReport loads the Report Definition the path names for current to
+// edit, writing Not found when there is none and 403 when current is neither
+// its creator nor an Admin.
+func (s *Server) editableReport(w http.ResponseWriter, r *http.Request, current domain.Account) (domain.ReportDefinition, bool) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		s.notFound(w, r)
+		return domain.ReportDefinition{}, false
+	}
+	def, err := s.svc.GetReportDefinition(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			s.notFound(w, r)
+			return domain.ReportDefinition{}, false
+		}
+		http.Error(w, "could not load report", http.StatusInternalServerError)
+		return domain.ReportDefinition{}, false
+	}
+	if !domain.CanEditReportDefinition(current, def) {
+		http.Error(w, "only its creator or an Admin may edit "+def.Name, http.StatusForbidden)
+		return domain.ReportDefinition{}, false
+	}
+	return def, true
+}
+
+// builderFromDefinition is the builder as the saved def fills it: its name,
+// introduction, mode, rule rows, listed Goals and Fields.
+func builderFromDefinition(def domain.ReportDefinition) reportBuilderView {
+	v := reportBuilderView{
+		ID:           def.ID,
+		Name:         def.Name,
+		Introduction: def.Introduction,
+		Mode:         def.Mode,
+		PickedIDs:    def.Picked,
+		IncludeIDs:   def.Include,
+		ExcludeIDs:   def.Exclude,
+		FieldIDs:     def.FieldIDs,
+	}
+	for _, rule := range def.Rules {
+		row := reportRuleRow{Attribute: rule.Attribute, Op: rule.Op}
+		if rule.Attribute == domain.RuleDimension {
+			row.Attribute = dimensionAttribute(rule.DimensionID)
+		}
+		for _, value := range rule.Values {
+			row.Values = append(row.Values, row.Attribute+"="+value)
+		}
+		v.Rules = append(v.Rules, row)
+	}
+	return v
+}
+
 // goalsPanel is the draft's Goals panel: the Goals the draft selects, and its
 // definition's scope in plain words.
 type goalsPanel struct {

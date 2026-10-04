@@ -15,10 +15,12 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// reportBuilderView is the builder page for a new Report Definition: what was
-// typed and picked, the problems a refused save found, and the choices it
-// offers (CONTEXT.md: Report Definition).
+// reportBuilderView is the builder page for a Report Definition, new or
+// saved: what was typed and picked, the problems a refused save found, and
+// the choices it offers (CONTEXT.md: Report Definition).
 type reportBuilderView struct {
+	// ID is the saved definition being edited, and 0 for a new one.
+	ID           int64
 	Name         string
 	Introduction string
 	// Mode is domain.ReportModeRules or domain.ReportModePicked.
@@ -130,12 +132,23 @@ func (s *Server) handleNewReportForm(w http.ResponseWriter, r *http.Request, cur
 	render(w, r, http.StatusOK, reportBuilderPage(&current, v))
 }
 
-// handleNewReport saves the builder's Report Definition and lands on its
-// draft. A refused save comes back as the builder, 422, as typed, with each
-// problem beside its input. Add rule, a rule row's × and Show matches save
-// nothing: the builder comes back as typed with a blank row added, without
-// that row, or as it is, its rail listing the Goals as typed.
+// handleNewReport saves the builder's new Report Definition and lands on its
+// draft, as submitReportBuilder answers.
 func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	s.submitReportBuilder(w, r, current, 0, func(tx *domain.Service, in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error) {
+		return tx.SaveReportDefinition(r.Context(), current.ID, in)
+	})
+}
+
+// submitReportBuilder answers the builder's form for the definition id, or a
+// new one when id is 0: save stores it as typed, and a stored definition lands
+// on its draft. A refused save comes back as the builder, 422, as typed, with
+// each problem beside its input. Add rule, a rule row's × and Show matches
+// save nothing: the builder comes back as typed with a blank row added,
+// without that row, or as it is, its rail listing the Goals as typed.
+func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, current domain.Account, id int64,
+	save func(tx *domain.Service, in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error),
+) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "could not read the form", http.StatusBadRequest)
 		return
@@ -145,6 +158,7 @@ func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current
 		dropRuleRow(r.PostForm, r.PostForm.Get(inputRemoveRule))
 	}
 	v, in, unparsed := readReportBuilder(r)
+	v.ID = id
 	do := r.PostFormValue("do")
 	if do == "add-rule" || do == "show-matches" || removing {
 		if do == "add-rule" {
@@ -163,7 +177,7 @@ func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current
 	var def domain.ReportDefinition
 	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
 		var err error
-		def, err = tx.SaveReportDefinition(r.Context(), current.ID, in)
+		def, err = save(tx, in)
 		if err == nil && len(unparsed) > 0 {
 			return errUnparsedReport
 		}
@@ -171,6 +185,10 @@ func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current
 	})
 	if err == nil {
 		http.Redirect(w, r, "/reports/"+strconv.FormatInt(def.ID, 10), http.StatusSeeOther)
+		return
+	}
+	if errors.Is(err, domain.ErrNotAuthorized) {
+		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
 	if !errors.Is(err, domain.ErrValidation) && !errors.Is(err, errUnparsedReport) {
@@ -391,7 +409,7 @@ func (s *Server) loadReportBuilder(r *http.Request, v *reportBuilderView) error 
 	v.Include = goalsByID(goals, v.IncludeIDs)
 	v.Exclude = goalsByID(goals, v.ExcludeIDs)
 	v.Attributes = ruleAttributes(domain.OfferedDimensions(dims), distinctOwners(goals))
-	v.Matches, err = s.matchReport(r, goals, *v, 0)
+	v.Matches, err = s.matchReport(r, goals, *v, v.ID)
 	return err
 }
 
@@ -520,6 +538,29 @@ func reportBuilderProblems(err error, unparsed []*domain.InputError) []*domain.I
 		problems = []*domain.InputError{{Message: strings.TrimPrefix(err.Error(), domain.ErrValidation.Error()+": ")}}
 	}
 	return problems
+}
+
+// title is the builder's heading: Edit report for a saved definition, New
+// report otherwise.
+func (v reportBuilderView) title() string {
+	if v.ID != 0 {
+		return "Edit report"
+	}
+	return "New report"
+}
+
+// draft is the saved definition's draft.
+func (v reportBuilderView) draft() string {
+	return "/reports/" + strconv.FormatInt(v.ID, 10)
+}
+
+// action is where the builder's form posts: the saved definition's edit, or
+// a new definition.
+func (v reportBuilderView) action() string {
+	if v.ID != 0 {
+		return v.draft() + "/edit"
+	}
+	return "/reports/new"
 }
 
 // bad is why input was refused, or "" when it wasn't.

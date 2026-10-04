@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -1962,4 +1963,125 @@ func postHX(t *testing.T, client *http.Client, rawURL string, form url.Values) (
 		t.Fatalf("POST %s: %v", rawURL, err)
 	}
 	return resp, readBody(t, resp)
+}
+
+// Editing a published definition's name and scope answers 303 to its draft,
+// which then shows the new name and exactly the new Goals; the publication
+// still shows the old name and the old Goals (ticket #151).
+func TestEditDefinitionChangesOnlyTheDraftOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Web")
+	platform, web := team.Values[0], team.Values[1]
+	reliability := h.ActiveGoal(boss, "Platform reliability", "Matters.")
+	redesign := h.ActiveGoal(boss, "Web redesign", "Matters.")
+	h.AssignGoalValue(reliability, platform)
+	h.AssignGoalValue(redesign, web)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:  "Platform MBR",
+		Mode:  domain.ReportModeRules,
+		Rules: []domain.ReportRule{{Attribute: domain.RuleDimension, DimensionID: team.ID, Op: domain.RuleIs, Values: []string{strconv.FormatInt(platform.ID, 10)}}},
+	})
+	pub := h.PublishReport(boss, def)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	draftPath := "/reports/" + strconv.FormatInt(def.ID, 10)
+	dim := "dimension:" + strconv.FormatInt(team.ID, 10)
+
+	resp := postForm(t, noRedirects(client), ts.URL+draftPath+"/edit", url.Values{
+		"name":               {"Web MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {dim + "=" + strconv.FormatInt(web.ID, 10)},
+	})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != draftPath {
+		t.Fatalf("edit: status %d to %q, want 303 to %s", resp.StatusCode, resp.Header.Get("Location"), draftPath)
+	}
+	draft := getBody(t, client, ts.URL+draftPath)
+	if name := pageElement(t, draft, "h1", "report-name"); !strings.Contains(name, "Web MBR") {
+		t.Errorf("the draft is named %s, want Web MBR", name)
+	}
+	if got, want := draftGoalTitles(t, draft), []string{redesign.Title}; !slices.Equal(got, want) {
+		t.Errorf("the edited draft selects %q, want %q", got, want)
+	}
+
+	published := getBody(t, client, ts.URL+draftPath+"/publications/"+strconv.FormatInt(pub.ID, 10))
+	if name := pageElement(t, published, "h1", "report-name"); !strings.Contains(name, "Platform MBR") {
+		t.Errorf("the publication is named %s, want the old Platform MBR", name)
+	}
+	if !strings.Contains(published, fmt.Sprintf(`id="goal-%d"`, reliability.ID)) || strings.Contains(published, fmt.Sprintf(`id="goal-%d"`, redesign.ID)) {
+		t.Errorf("the publication doesn't keep its old Goals; body:\n%s", published)
+	}
+}
+
+// The edit page is the builder filled with the saved definition: its name,
+// introduction, mode, rules, Also include, Leave out and Fields, posting back
+// to /reports/{id}/edit, its rail reading against the definition (ticket
+// #151). A picked definition comes back with its picked Goals.
+func TestEditDefinitionShowsTheSavedValuesOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Web")
+	platform := team.Values[0]
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "USD")
+	sdk := h.ActiveGoal(boss, "Mobile SDK auth update", "Matters.")
+	sso := h.ActiveGoal(boss, "Legacy SSO cleanup", "Matters.")
+	id := func(n int64) string { return strconv.FormatInt(n, 10) }
+	rules := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:         "Platform MBR",
+		Introduction: "Where Platform stands.",
+		Mode:         domain.ReportModeRules,
+		Rules: []domain.ReportRule{
+			{Attribute: domain.RuleDimension, DimensionID: team.ID, Op: domain.RuleIs, Values: []string{id(platform.ID)}},
+			{Attribute: domain.RuleLifecycle, Op: domain.RuleIsNot, Values: []string{domain.LifecycleOnHold}},
+		},
+		Include:  []int64{sdk.ID},
+		Exclude:  []int64{sso.ID},
+		FieldIDs: []int64{budget.ID},
+	})
+	picked := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Picked MBR", Mode: domain.ReportModePicked, Picked: []int64{sso.ID}})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	dim := "dimension:" + id(team.ID)
+
+	page := getBody(t, client, ts.URL+"/reports/"+id(rules.ID)+"/edit")
+	builder := pageElement(t, page, "form", "report-builder")
+	for _, want := range []string{
+		`action="/reports/` + id(rules.ID) + `/edit"`,
+		`<input type="hidden" name="id" value="` + id(rules.ID) + `">`,
+		`name="name" value="Platform MBR"`,
+		`name="introduction">Where Platform stands.</textarea>`,
+		`value="rules" checked`,
+		`<option value="` + dim + `" selected>Team</option>`,
+		`<option value="` + dim + "=" + id(platform.ID) + `" selected>Platform</option>`,
+		`<option value="lifecycle" selected>Lifecycle</option>`,
+		`<option value="is not" selected>is not</option>`,
+		`<option value="lifecycle=` + domain.LifecycleOnHold + `" selected>`,
+		`<input type="hidden" name="include" value="` + id(sdk.ID) + `">`,
+		`<input type="hidden" name="exclude" value="` + id(sso.ID) + `">`,
+		`name="field" value="` + id(budget.ID) + `" checked`,
+	} {
+		if !strings.Contains(builder, want) {
+			t.Errorf("the edit page lacks %s:\n%s", want, builder)
+		}
+	}
+	if !strings.Contains(page, "Edit report") {
+		t.Errorf("the edit page isn't titled Edit report; body:\n%s", page)
+	}
+
+	builder = pageElement(t, getBody(t, client, ts.URL+"/reports/"+id(picked.ID)+"/edit"), "form", "report-builder")
+	for _, want := range []string{
+		`value="picked" checked`,
+		`<input type="hidden" name="picked" value="` + id(sso.ID) + `">`,
+	} {
+		if !strings.Contains(builder, want) {
+			t.Errorf("the picked edit page lacks %s:\n%s", want, builder)
+		}
+	}
 }
