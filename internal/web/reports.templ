@@ -484,24 +484,24 @@ templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 		<section data-testid="on-track-section">
 			<h2>On track</h2>
 			<div class="card">
-				<table data-testid="on-track">
+				<table data-testid="on-track" class="rp-track">
 					<thead>
 						<tr><th>Health</th><th>Goal</th><th>Owner</th><th>Due</th></tr>
 					</thead>
 					<tbody>
 						for _, sg := range r.Lines {
 							<tr data-testid="selected-goal" id={ fmt.Sprintf("goal-%d", sg.Goal.ID) }>
-								<td>
+								<td class="rp-track-health">
 									@healthBadge("selected-health", sg.Health)
 								</td>
-								<td>
+								<td class="rp-track-goal">
 									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a>
 									@reportFields(sg.Fields)
 								</td>
-								<td data-testid="selected-owner">
+								<td data-testid="selected-owner" class="rp-track-owner">
 									@person(sg.Goal.Owner)
 								</td>
-								<td>
+								<td class="rp-track-due">
 									if !sg.Goal.DeliveryDate.IsZero() {
 										<span data-testid="selected-due" class="num rp-date">{ fmtDate(sg.Goal.DeliveryDate) }</span>
 									} else {
@@ -511,7 +511,7 @@ templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 							</tr>
 							if d.Pub != nil {
 								<tr>
-									<td colspan="4">
+									<td colspan="4" class="rp-track-talk">
 										@goalDiscussion(sg.Goal.ID, d)
 									</td>
 								</tr>
@@ -723,9 +723,9 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 					{ " · " }{ b.Goal.Lifecycle }
 					if !b.Goal.DeliveryDate.IsZero() {
 						{ " · due " }
-						<span data-testid="report-due">
+						<span data-testid="report-due" class="rp-dates">
 							@struckDates(b.PriorDueDates)
-							{ fmtDate(b.Goal.DeliveryDate) }
+							<span>{ fmtDate(b.Goal.DeliveryDate) }</span>
 						</span>
 					}
 				</p>
@@ -764,8 +764,10 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 								{ m.Milestone.Name }
 							}
 							{ " — " }
-							@struckDates(m.PriorDates)
-							{ fmtDate(m.Milestone.TargetDate) }
+							<span class="rp-dates">
+								@struckDates(m.PriorDates)
+								<span>{ fmtDate(m.Milestone.TargetDate) }</span>
+							</span>
 							if m.New {
 								{ " " }<span class="badge lc">New</span>
 							}
@@ -1074,6 +1076,7 @@ templ reportStyles() {
 		.rp-curation-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
 		.rp-curation-head h3{font-size:15px;margin:0}
 		.rp-curate{display:flex;flex-direction:column;gap:4px}
+		.rp-list>li.rp-curate{padding-left:0;padding-right:0}
 		.rp-include{display:flex;align-items:flex-start;gap:12px;cursor:pointer}
 		.rp-include input{margin-top:4px}
 		.rp-curate>p{margin-left:28px}
@@ -1109,6 +1112,7 @@ templ reportStyles() {
 		.rp-name>span,.rp-table td>.small{display:block}
 		.rp-draft{text-align:right}
 		.rp-date{white-space:nowrap}
+		.rp-dates>*{white-space:nowrap}
 		.rp-changes-hot{display:inline-block;padding:4px 12px;border-radius:var(--radius-full);background:var(--health-y-bg);color:var(--health-y-ink);font-weight:600;white-space:nowrap}
 		.rp-bar{display:flex;width:176px;max-width:100%;height:12px;margin-top:4px;border-radius:var(--radius-full);overflow:hidden}
 		.rp-bar>span{flex:1 1 0;min-width:2px}
@@ -1132,7 +1136,7 @@ templ reportStyles() {
 		.rp-publish .rp-actions{align-items:center}
 		.rp-draft-head{position:sticky;top:0;z-index:2;background:var(--color-canvas);border-bottom:1px solid var(--color-border);padding:12px 0;display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap}
 		.rp-draft-head h1{margin:0}
-		.rp-menu.rp-chip>summary{justify-content:flex-start;gap:4px;color:var(--color-ink);font-weight:400;padding:0 16px;border:1px solid var(--color-border-strong);border-radius:var(--radius-full)}
+		.rp-menu.rp-chip>summary{box-sizing:border-box;min-height:40px;justify-content:flex-start;gap:4px;color:var(--color-ink);font-weight:400;padding:0 16px;border:1px solid var(--color-border-strong);border-radius:var(--radius-full)}
 		.rp-menu.rp-chip>ul{left:0;right:auto}
 		.rp-chip>ul>li>details>summary{min-height:0;color:var(--color-primary-strong);font-weight:500}
 		.rp-chip form{margin-top:8px}
@@ -1156,7 +1160,7 @@ templ reportStyles() {
 		.rp-goals details>ul{margin-top:8px}
 		.rp-panes{display:grid;grid-template-columns:380px minmax(0,1fr);gap:24px;align-items:start}
 		.rp-panes>*{min-width:0}
-		@media (max-width:600px){.rp-table thead{display:none}.rp-table tr{display:block;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rp-table tbody tr:last-child{border-bottom:none}.rp-table td{display:block;padding:4px 0;border-bottom:none}.rp-table .rp-draft{text-align:left}.rp-publish{position:fixed;left:16px;right:16px;width:auto}.rp-draft-head{position:static}.rp-draft-title{display:flex;flex-basis:100%;align-items:flex-end;gap:8px 16px;min-width:0}.rp-draft-title>div{min-width:0}.rp-head-actions{flex-basis:100%;flex-wrap:nowrap;margin-left:0;gap:8px}.rp-head-actions .rp-menu>ul{left:0;right:auto}}
+		@media (max-width:600px){.rp-table thead{display:none}.rp-table tr{display:block;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rp-table tbody tr:last-child{border-bottom:none}.rp-table td{display:block;padding:4px 0;border-bottom:none}.rp-table .rp-draft{text-align:left}.rp-publish{position:fixed;left:16px;right:16px;width:auto}.rp-draft-head{position:static}.rp-draft-title{display:flex;flex-basis:100%;align-items:flex-end;gap:8px 16px;min-width:0}.rp-draft-title>div{min-width:0}.rp-head-actions{flex-basis:100%;flex-wrap:nowrap;margin-left:0;gap:8px}.rp-head-actions .rp-menu>ul{left:0;right:auto}.rp-track thead{display:none}.rp-track tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rp-track tbody tr:last-child{border-bottom:none}.rp-track td{display:block;padding:0;border-bottom:none}.rp-track .rp-track-goal{order:-1;grid-column:1/-1}.rp-track .rp-track-due,.rp-track .rp-track-talk{grid-column:1/-1}}
 		@media (max-width:900px){.rp-tiles,.rp-body .rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-panes{grid-template-columns:minmax(0,1fr)}.rp-goal-list{grid-template-columns:minmax(0,1fr)}}
 	</style>
 }

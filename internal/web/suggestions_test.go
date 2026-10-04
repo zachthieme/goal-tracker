@@ -90,6 +90,24 @@ func TestSuggestingAParentFromTheGoalMenu(t *testing.T) {
 	}
 }
 
+// The page names the Goal and its Owner as a sentence, with no stray space
+// before the comma: "For Migrate displays, owned by sam" (#180).
+func TestSuggestAParentPageNamesTheGoalAndOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("pat@example.com")
+	goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
+
+	page := getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+suggestPath(goal))
+	lead := between(t, page, "For <a ", "</p>")
+	if want := fmt.Sprintf(`For <a href="/goals/%d">Migrate displays</a>, owned by `, goal.ID); !strings.Contains(lead, want) {
+		t.Errorf("the lead doesn't read %q:\n%s", want, lead)
+	}
+}
+
 // A refused suggestion comes back as the form with the reason, as sent, and
 // records nothing more.
 func TestARefusedSuggestionReRendersTheForm(t *testing.T) {

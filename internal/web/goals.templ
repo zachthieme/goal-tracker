@@ -246,12 +246,12 @@ templ goalListRow(row goalRow) {
 		<td>
 			@person(g.Owner)
 		</td>
-		<td data-testid="goal-row-due" class="num">
+		<td data-testid="goal-row-due" class="num gl-dates">
 			if g.DeliveryDate.IsZero() {
 				<span class="muted">—</span>
 			} else {
 				@struckDates(row.PriorDates)
-				{ fmtDate(g.DeliveryDate) }
+				<span>{ fmtDate(g.DeliveryDate) }</span>
 			}
 		</td>
 		<td data-testid="goal-row-last-checkin" class="muted">{ row.lastCheckin() }</td>
@@ -554,6 +554,7 @@ templ goalsStyles() {
 		.gl-filters fieldset{display:inline-flex;flex-wrap:wrap;gap:4px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);margin:0 8px 8px 0;padding:8px 12px}
 		.gl-count{margin:0;padding:8px 12px}
 		.gl-group th{background:var(--color-surface-alt);color:var(--color-ink);font-size:13px;font-weight:600;letter-spacing:0;text-transform:none}
+		.gl-dates>*{white-space:nowrap}
 		.gl-marks{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
 		#goal-list td .tag{margin:4px 4px 4px 0}
 		.gl-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-right:12px}
@@ -731,7 +732,7 @@ templ goalHead(v goalView, owner, admin bool) {
 				if !g.DeliveryDate.IsZero() {
 					<span>
 						Delivers 
-						<span data-testid="goal-delivery-date">
+						<span data-testid="goal-delivery-date" class="gp-dates">
 							@struckDates(v.priorDates(0))
 							<strong>{ fmtDate(g.DeliveryDate) }</strong>
 						</span>
