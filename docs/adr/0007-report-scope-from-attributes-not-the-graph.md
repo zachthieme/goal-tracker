@@ -1,6 +1,6 @@
 # A report's scope comes from Goal attributes, not the Goal graph
 
-A Report definition today selects Goals by starting at root Goals and descending accepted contributes-to links to a Depth. That makes the Goal graph the main filter. In the builder it reads as "pick the c-suite Goals", and it treats a DAG (ADR 0001) as a tree. We decided that a report's scope comes either from rules on Goal attributes (Dimensions, Fields, Owner, Lifecycle, Health, Top-level) or from a hand-picked list. Explicit Also include and Leave out lists override the rules. Selection is (rule matches ∪ Also include) − Leave out, or the picked list, and selecting never walks links.
+A Report definition today selects Goals by starting at root Goals and descending accepted contributes-to links to a Depth. That makes the Goal graph the main filter. In the builder it reads as "pick the c-suite Goals", and it treats a DAG (ADR 0001) as a tree. We decided that a report's scope comes either from rules on Goal attributes (Dimensions, Fields, Owner, Lifecycle, Health, Top-level) or from a hand-picked list. Explicit Also include and Leave out lists override the rules. Selection is (rule matches ∪ Also include) − Leave out, or the picked list, and selecting never walks links. This supersedes ADR 0002's "a Report scoped to my org selects root Goals and everything that contributes to them": an org's Report is now a Dimension rule, such as Team is any of Platform, Identity.
 
 ## Consequences
 
