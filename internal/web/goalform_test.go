@@ -1311,3 +1311,317 @@ func TestNewGoalFormSaveAsProposedNeedsOnlyTitleAndSoWhat(t *testing.T) {
 		t.Errorf("Save as Proposed made a %s Goal, want Proposed", g.Lifecycle)
 	}
 }
+
+// GET /goals/<id>/define (#135) is the New goal form for a Proposed Goal,
+// prefilled from it, posting back to the same address: its Title, which
+// can't change here, So What, Kind and delivery date, cadence, Dimension
+// values and Fields. Its Milestones, Metrics and parents, Accepted and
+// Pending, are listed read-only, and the Milestone and Metric rows only add.
+func TestDefineGoalPageIsTheNewGoalFormPrefilled(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	fits := arrangeWhereItFits(h)
+	sam := h.SignIn("sam@example.com")
+	ana := h.SignInNamed("ana@example.com", "Ana Torres")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ctx := context.Background()
+	if _, err := h.Service.MarkGoalDated(ctx, g.ID, testsupport.Epoch.AddDate(0, 6, 0)); err != nil {
+		t.Fatalf("MarkGoalDated: %v", err)
+	}
+	if _, err := h.Service.SetCadence(ctx, g.ID, 14); err != nil {
+		t.Fatalf("SetCadence: %v", err)
+	}
+	if _, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta cut", TargetDate: testsupport.Epoch.AddDate(0, 3, 0)}); err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	if _, err := h.Service.AddMetric(ctx, domain.AddMetricInput{GoalID: g.ID, Name: "p95 latency", Unit: "ms", Direction: domain.MetricDown, Baseline: 900, Target: 300, TargetDate: testsupport.Epoch.AddDate(0, 6, 0)}); err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	web := fits.channel.Values[0]
+	h.AssignGoalValue(g, web)
+	h.SetGoalField(sam, g, fits.budget, "25000")
+	accepted := h.CreateGoal(sam, "Grow revenue", "The business needs it.")
+	pending := h.CreateGoal(ana, "Faster site", "Speed sells.")
+	child := h.CreateGoal(sam, "Index faster", "Search lags.")
+	free := h.CreateGoal(ana, "Earn trust", "Shoppers leave sites they doubt.")
+	h.RequestLink(sam, g, accepted, "")
+	h.RequestLink(sam, g, pending, "")
+	h.RequestLink(sam, child, g, "")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, g.ID))
+	form := pageElement(t, page, "form", "goal-form")
+	if tag := openTag(form); attr(tag, "action") != fmt.Sprintf("/goals/%d/define", g.ID) {
+		t.Errorf("the define form doesn't post to its own address: %s", tag)
+	}
+	if title := tagAround(t, form, `name="title"`); attr(title, "value") != g.Title || !strings.Contains(title, " readonly") {
+		t.Errorf("Title isn't the Goal's, read-only: %s", title)
+	}
+	if !strings.Contains(form, ">"+g.SoWhat+"</textarea>") {
+		t.Errorf("So What isn't prefilled:\n%s", form)
+	}
+	if kind := tagAround(t, form, `id="kind-dated"`); !strings.Contains(kind, " checked") {
+		t.Errorf("Dated isn't chosen: %s", kind)
+	}
+	if date := tagAround(t, form, `name="delivery_date"`); attr(date, "value") != "2026-07-02" {
+		t.Errorf("the delivery date isn't the Goal's: %s", date)
+	}
+	if chip := tagAround(t, form, `id="cadence-14"`); !strings.Contains(chip, " checked") {
+		t.Errorf("Every 2 weeks isn't chosen: %s", chip)
+	}
+	section := fitsSection(t, page)
+	if !chosen(t, section, web) || chosen(t, section, fits.channel.Values[1]) {
+		t.Errorf("Where it fits doesn't show just the Goal's Web ticked:\n%s", section)
+	}
+	if budget := tagAround(t, section, fmt.Sprintf(`name="field:%d"`, fits.budget.ID)); attr(budget, "value") != "25000" {
+		t.Errorf("Budget isn't the Goal's: %s", budget)
+	}
+
+	know := pageElement(t, page, "fieldset", "goal-form-know")
+	existing := between(t, know, `data-testid="existing-measures"`, `data-testid="milestone-rows"`)
+	for _, name := range []string{"Beta cut", "p95 latency"} {
+		if !strings.Contains(existing, name) {
+			t.Errorf("the existing %s isn't listed:\n%s", name, existing)
+		}
+	}
+	if strings.Contains(existing, "<input") {
+		t.Errorf("the existing Milestones and Metrics are editable here:\n%s", existing)
+	}
+	if rows := between(t, know, `data-testid="milestone-rows"`, "</div>"); strings.Contains(rows, "Beta cut") {
+		t.Errorf("the existing Milestone is a row:\n%s", rows)
+	}
+
+	parents := pageElement(t, page, "fieldset", "goal-form-parents")
+	linked := pageElement(t, parents, "ul", "linked-parents")
+	for _, want := range []struct {
+		goal domain.Goal
+		says string
+	}{{accepted, ""}, {pending, "Pending"}} {
+		if !strings.Contains(linked, want.goal.Title) || !strings.Contains(linked, want.says) {
+			t.Errorf("%s isn't listed as a parent (%s):\n%s", want.goal.Title, want.says, linked)
+		}
+	}
+	if strings.Contains(linked, "<input") {
+		t.Errorf("the existing parents post again:\n%s", linked)
+	}
+	options := pageElement(t, parents, "select", "parent-select")
+	if !strings.Contains(options, fmt.Sprintf(`value="%d"`, free.ID)) {
+		t.Errorf("%s isn't offered:\n%s", free.Title, options)
+	}
+	for _, left := range []domain.Goal{g, accepted, pending, child} {
+		if strings.Contains(options, fmt.Sprintf(`value="%d"`, left.ID)) {
+			t.Errorf("%s is offered as a parent:\n%s", left.Title, options)
+		}
+	}
+}
+
+// definePost is the define page's form for g as it loads, posted back
+// unchanged but for what change sets.
+func definePost(t *testing.T, client *http.Client, baseURL string, g domain.Goal, change func(url.Values)) *http.Response {
+	t.Helper()
+	form := url.Values{"title": {g.Title}, "so_what": {g.SoWhat}, "kind": {g.Kind}, "cadence": {fmt.Sprint(g.CadenceDays)}}
+	if !g.DeliveryDate.IsZero() {
+		form.Set("delivery_date", g.DeliveryDate.Format("2006-01-02"))
+	}
+	change(form)
+	return postForm(t, client, fmt.Sprintf("%s/goals/%d/define", baseURL, g.ID), form)
+}
+
+// The Owner changes the Kind, adds a Milestone, unticks one Dimension value
+// and ticks another, and saves it all in one submit, landing on the Goal.
+func TestDefineGoalFormSavesEveryChangeInOneSubmit(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	fits := arrangeWhereItFits(h)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	if _, err := h.Service.MarkGoalOngoing(context.Background(), g.ID); err != nil {
+		t.Fatalf("MarkGoalOngoing: %v", err)
+	}
+	g.Kind = domain.GoalOngoing
+	web, mobile := fits.channel.Values[0], fits.channel.Values[1]
+	h.AssignGoalValue(g, web)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp := definePost(t, client, ts.URL, g, func(form url.Values) {
+		form.Set("kind", domain.GoalDated)
+		form.Set("delivery_date", "2026-09-01")
+		form.Set("milestones[0].name", "Beta cut")
+		form.Set("milestones[0].date", "2026-06-01")
+		form["value_id"] = []string{fmt.Sprint(mobile.ID)}
+	})
+	page := readBody(t, resp)
+
+	if want := fmt.Sprintf("/goals/%d", g.ID); resp.StatusCode != http.StatusOK || resp.Request.URL.Path != want {
+		t.Fatalf("the post landed on %s with status %d, want %s:\n%s", resp.Request.URL, resp.StatusCode, want, page)
+	}
+	got, err := h.Service.ViewGoal(context.Background(), g.ID)
+	if err != nil {
+		t.Fatalf("ViewGoal: %v", err)
+	}
+	if got.Kind != domain.GoalDated || got.DeliveryDate.Format("2006-01-02") != "2026-09-01" || got.Lifecycle != domain.LifecycleProposed {
+		t.Errorf("the Goal is %s %s due %v, want Proposed, Dated, due 2026-09-01", got.Lifecycle, got.Kind, got.DeliveryDate)
+	}
+	if milestones, _ := h.Service.ListMilestones(context.Background(), g.ID); len(milestones) != 1 || milestones[0].Name != "Beta cut" {
+		t.Errorf("Milestones = %+v, want Beta cut", milestones)
+	}
+	if names := goalValueNames(t, h, g); !slices.Equal(names, []string{"Mobile"}) {
+		t.Errorf("the Goal carries %v, want Mobile alone", names)
+	}
+}
+
+// Only the Owner reaches either define route: anyone else gets 403. Once the
+// Goal isn't Proposed, both send the Owner to its page.
+func TestDefineGoalRoutesAnswerOnlyTheOwnerOfAProposedGoal(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("kim@example.com")
+	proposed := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	active := h.ActiveGoal(sam, "Grow revenue", "The business needs it.")
+	ts := newServer(t, h)
+	samClient := noRedirects(signInClient(t, ts.URL, "sam@example.com"))
+	kimClient := noRedirects(signInClient(t, ts.URL, "kim@example.com"))
+	answer := func(client *http.Client, method string, g domain.Goal) *http.Response {
+		t.Helper()
+		target := fmt.Sprintf("%s/goals/%d/define", ts.URL, g.ID)
+		var resp *http.Response
+		var err error
+		if method == http.MethodGet {
+			resp, err = client.Get(target)
+		} else {
+			resp, err = client.PostForm(target, url.Values{"title": {g.Title}, "so_what": {"Changed."}, "kind": {domain.GoalOngoing}})
+		}
+		if err != nil {
+			t.Fatalf("%s %s: %v", method, target, err)
+		}
+		_ = readBody(t, resp)
+		return resp
+	}
+
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		if resp := answer(kimClient, method, proposed); resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s by a non-Owner answered %d, want 403", method, resp.StatusCode)
+		}
+		resp := answer(samClient, method, active)
+		if want := fmt.Sprintf("/goals/%d", active.ID); resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != want {
+			t.Errorf("%s on an Active Goal answered %d to %q, want 303 to %s", method, resp.StatusCode, resp.Header.Get("Location"), want)
+		}
+	}
+	if got, _ := h.Service.ViewGoal(context.Background(), proposed.ID); got.SoWhat != proposed.SoWhat || got.Kind != "" {
+		t.Errorf("a refused post changed the Goal: %+v", got)
+	}
+}
+
+// A submit ticking a value Retired after the page loaded comes back as the
+// define page, 422, naming the value, and keeps nothing it changed.
+func TestDefineGoalFormRefusesAValueRetiredSinceTheLoad(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	fits := arrangeWhereItFits(h)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	web, mobile := fits.channel.Values[0], fits.channel.Values[1]
+	h.AssignGoalValue(g, web)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	_ = getBody(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, g.ID))
+	if err := h.Service.RetireDimensionValue(context.Background(), boss.ID, mobile.ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+
+	resp := definePost(t, client, ts.URL, g, func(form url.Values) {
+		form.Set("kind", domain.GoalOngoing)
+		form.Set("milestones[0].name", "Beta cut")
+		form.Set("milestones[0].date", "2026-06-01")
+		form["value_id"] = []string{fmt.Sprint(mobile.ID)}
+	})
+	page := readBody(t, resp)
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("the post answered %d, want 422:\n%s", resp.StatusCode, page)
+	}
+	summary := html.UnescapeString(pageElement(t, page, "div", "goal-form-errors"))
+	if !strings.Contains(summary, "Mobile is retired") || !strings.Contains(summary, "wasn't saved") {
+		t.Errorf("the refusal doesn't say the Goal wasn't saved for Mobile being retired:\n%s", summary)
+	}
+	if got, _ := h.Service.ViewGoal(context.Background(), g.ID); got.Kind != "" {
+		t.Errorf("Kind = %q, want still none chosen", got.Kind)
+	}
+	if milestones, _ := h.Service.ListMilestones(context.Background(), g.ID); len(milestones) != 0 {
+		t.Errorf("Milestones = %+v, want none", milestones)
+	}
+	if names := goalValueNames(t, h, g); !slices.Equal(names, []string{"Web"}) {
+		t.Errorf("the Goal carries %v, want Web still", names)
+	}
+}
+
+// Create and activate on the define page activates the Goal once the
+// checklist, the Goal's own Milestones counted, is complete; the live
+// checklist counts them too.
+func TestDefineGoalFormCreateAndActivate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	if _, err := h.Service.AddMilestone(context.Background(), domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta cut", TargetDate: testsupport.Epoch.AddDate(0, 3, 0)}); err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	form := url.Values{"title": {g.Title}, "so_what": {g.SoWhat}, "kind": {domain.GoalDated}, "delivery_date": {"2026-09-01"}}
+	card, status := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/define/checklist", ts.URL, g.ID), form)
+	if status != http.StatusOK || strings.Contains(tagAround(t, card, `name="activate"`), " disabled") {
+		t.Errorf("the live checklist answered %d with Create and activate disabled:\n%s", status, card)
+	}
+
+	resp := definePost(t, client, ts.URL, g, func(form url.Values) {
+		form.Set("kind", domain.GoalDated)
+		form.Set("delivery_date", "2026-09-01")
+		form.Set("activate", "1")
+	})
+	page := readBody(t, resp)
+	if resp.Request.URL.Path != fmt.Sprintf("/goals/%d", g.ID) {
+		t.Fatalf("the post landed on %s, want the Goal:\n%s", resp.Request.URL, page)
+	}
+	if got, _ := h.Service.ViewGoal(context.Background(), g.ID); got.Lifecycle != domain.LifecycleActive {
+		t.Errorf("Lifecycle = %q, want Active", got.Lifecycle)
+	}
+}
+
+// On the define page the Contributes to search asks for the Goal being
+// finished, and finds only the Goals it could contribute to: not itself, not
+// a parent it has, and not one contributing to it, which would close a cycle.
+func TestDefineGoalSearchOffersOnlyParentCandidates(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Site speed", "Shoppers abandon slow pages.")
+	child := h.CreateGoal(sam, "Site images", "Images are heavy.")
+	parent := h.CreateGoal(sam, "Site revenue", "The business needs it.")
+	free := h.CreateGoal(sam, "Site trust", "Shoppers doubt us.")
+	h.RequestLink(sam, child, g, "")
+	h.RequestLink(sam, g, parent, "")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, g.ID))
+	search := tagAround(t, page, `id="parent-search"`)
+	if want := fmt.Sprintf("/goals/search?goal=%d", g.ID); html.UnescapeString(attr(search, "hx-get")) != want {
+		t.Errorf("the search asks %q, want %q", attr(search, "hx-get"), want)
+	}
+	results := getBody(t, client, fmt.Sprintf("%s/goals/search?goal=%d&q=site", ts.URL, g.ID))
+	if n := strings.Count(results, `data-testid="parent-result"`); n != 1 || !strings.Contains(results, free.Title) {
+		t.Errorf("the search found %d results, want only %s:\n%s", n, free.Title, results)
+	}
+}
