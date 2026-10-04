@@ -7,8 +7,10 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// risksPage answers "what's going wrong?": a tile counting each problem type,
-// then a section per type listing the Goals it flags, their Owners, and why.
+// risksPage answers "what's going wrong?": how many Goals need attention, a
+// card per group of signals by who acts, then a section per signal listing the
+// Goals it flags, their Owners, and why, narrowed to one group when the
+// address asks for it.
 templ risksPage(current *domain.Account, v risksPageView) {
 	@layout("Risks", current) {
 		@risksStyles()
@@ -26,11 +28,6 @@ templ risksPage(current *domain.Account, v risksPageView) {
 		if v.Group != "" {
 			<p><a data-testid="risks-show-all" href="/risks">Show all</a></p>
 		}
-		<nav data-testid="risks-summary" class="rk-tiles" aria-label="Risks by type">
-			for _, rt := range v.Types() {
-				@riskTile(rt.Anchor, rt.Name, rt.Count)
-			}
-		</nav>
 		if v.Shows("stale") {
 			@riskSection("stale", "Stale", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence.", len(v.Stale)) {
 				for _, gf := range v.Stale {
@@ -106,8 +103,20 @@ templ risksPage(current *domain.Account, v risksPageView) {
 
 // riskCardView is one group's summary card: its name, how many Goals it
 // holds, and a chip per signal that flags one, linking to the page filtered to
-// the group.
+// the group. A group holding none is a muted card saying so, linking nowhere.
 templ riskCardView(c riskCard) {
+	if c.Count == 0 {
+		<div data-testid={ "risks-group-" + c.Key } class="card rk-card rk-zero">
+			<span class="label">{ c.Name }</span>
+			<span>{ c.Blank }</span>
+		</div>
+	} else {
+		@riskCardLink(c)
+	}
+}
+
+// riskCardLink is a group's card when it holds Goals.
+templ riskCardLink(c riskCard) {
 	<a data-testid={ "risks-group-" + c.Key } href={ templ.SafeURL("/risks?group=" + c.Key) } class="card rk-card" { c.Attrs()... }>
 		<span class="label">{ c.Name }</span>
 		<span class="num">{ strconv.Itoa(c.Count) }</span>
@@ -128,14 +137,6 @@ templ riskNames(types []riskType) {
 		}
 		<span id={ rt.Anchor } class="rk-empty">{ rt.Name }</span>
 	}
-}
-
-// riskTile counts one problem type and links down to its section.
-templ riskTile(anchor, label string, count int) {
-	<a data-testid={ "risks-tile-" + anchor } href={ templ.SafeURL("#" + anchor) } class="card rk-tile">
-		<span class="label">{ label }</span>
-		<span class="num">{ strconv.Itoa(count) }</span>
-	</a>
 }
 
 // riskSection is one problem type: its heading, a line explaining it, and a
@@ -176,19 +177,17 @@ templ riskRow(g domain.Goal) {
 }
 
 // risksStyles are the Risks page's own rules on top of app.css: the summary
-// tiles and the section layout.
+// cards and the section layout.
 templ risksStyles() {
 	<style>
-		.rk-tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
-		.rk-tile{padding:16px;display:flex;flex-direction:column;gap:4px}
-		.rk-tile .num{font-size:24px}
 		.rk-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 		.rk-card{padding:16px;display:flex;flex-direction:column;gap:8px}
 		.rk-card .num{font-size:24px}
 		.rk-chips{display:flex;flex-wrap:wrap;gap:8px}
+		.rk-zero{border:1px dashed var(--color-border-strong);color:var(--color-ink-muted)}
 		.rk-section,.rk-empty{scroll-margin-top:16px}
 		.rk-empty{color:var(--color-ink);font-weight:500}
 		.rk-section{display:flex;flex-direction:column;gap:12px}
-		@media (max-width:900px){.rk-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rk-cards{grid-template-columns:minmax(0,1fr)}}
+		@media (max-width:900px){.rk-cards{grid-template-columns:minmax(0,1fr)}}
 	</style>
 }

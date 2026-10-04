@@ -27,8 +27,7 @@ func riskSection(t *testing.T, page, anchor string) string {
 }
 
 // The Risks page lists each Stale Goal in its own section, with its Owner and
-// how long it has gone without a Check-in; the summary tile counts it and links
-// down to the section. A fresh Goal isn't listed.
+// how long it has gone without a Check-in. A fresh Goal isn't listed.
 func TestRisksPageListsStaleGoals(t *testing.T) {
 	t.Parallel()
 
@@ -56,7 +55,7 @@ func TestRisksPageListsStaleGoals(t *testing.T) {
 // A Risks page section with Goals renders its heading, explanation and table;
 // one without renders none of them. A single "Nothing in" line, after the
 // sections, names the empty ones in the page's order, each carrying its
-// section's anchor so the summary tile still lands somewhere.
+// section's anchor so a link to it still lands somewhere.
 func TestRisksPageCollapsesEmptySections(t *testing.T) {
 	t.Parallel()
 
@@ -272,7 +271,8 @@ func TestRisksPageListsGoalsUnderHaltedParents(t *testing.T) {
 
 // With nothing flagged, the Risks page says so in one all-clear sentence
 // instead of six empty sections, and that sentence still carries every
-// section's anchor, in order, for the summary tiles, which each count zero.
+// section's anchor, in order. Each group card is muted, links nowhere, and
+// says why it is empty.
 func TestRisksPageIsAllClearWithNothingFlagged(t *testing.T) {
 	t.Parallel()
 
@@ -292,24 +292,41 @@ func TestRisksPageIsAllClearWithNothingFlagged(t *testing.T) {
 	if strings.Contains(page, `data-testid="risks-nothing-in"`) {
 		t.Errorf("page has a Nothing in line as well as the all-clear sentence")
 	}
-	lastTile, lastAnchor := -1, -1
+	lastAnchor := -1
 	for _, anchor := range []string{"stale", "path-overdue", "ownerless", "unaligned", "schedule-conflicts", "halted-parents"} {
-		tile := pageElement(t, page, "a", "risks-tile-"+anchor)
-		if !strings.Contains(tile, `href="#`+anchor+`"`) || !strings.Contains(tile, `<span class="num">0</span>`) {
-			t.Errorf("summary tile %s does not count 0 and link to #%s: %s", anchor, anchor, tile)
-		}
 		if strings.Contains(page, `data-testid="risks-`+anchor+`"`) {
 			t.Errorf("empty section %s still renders", anchor)
 		}
-		tileAt := strings.Index(page, `data-testid="risks-tile-`+anchor+`"`)
 		anchorAt := strings.Index(clear, `id="`+anchor+`"`)
 		if anchorAt < 0 {
 			t.Errorf("all-clear sentence lacks the #%s anchor: %s", anchor, clear)
 		}
-		if tileAt < lastTile || anchorAt < lastAnchor {
-			t.Errorf("%s is out of order among the tiles or the all-clear sentence", anchor)
+		if anchorAt < lastAnchor {
+			t.Errorf("%s is out of order in the all-clear sentence", anchor)
 		}
-		lastTile, lastAnchor = tileAt, anchorAt
+		lastAnchor = anchorAt
+	}
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>0</strong> Goals need attention.") {
+		t.Errorf("header does not count 0 Goals: %s", head)
+	}
+	for key, line := range map[string]string{
+		"owner": "Every Owner is up to date.",
+		"plan":  "Every plan fits.",
+		"admin": "Nothing needs an Admin.",
+	} {
+		if strings.Contains(page, `<a data-testid="risks-group-`+key+`"`) {
+			t.Errorf("the empty %s card is a link", key)
+		}
+		card := pageElement(t, page, "div", "risks-group-"+key)
+		if !strings.Contains(openTag(card), "rk-zero") || !strings.Contains(card, line) || strings.Contains(card, "href") {
+			t.Errorf("the empty %s card isn't muted, saying %q, and linking nowhere: %s", key, line, card)
+		}
+	}
+	if !strings.Contains(page, ".rk-zero{border:1px dashed var(--color-border-strong);color:var(--color-ink-muted)}") {
+		t.Errorf("an empty card doesn't take a dashed edge and muted text")
+	}
+	if strings.Contains(page, "risks-tile-") {
+		t.Errorf("the page still has the per-signal summary tiles")
 	}
 	if risks := pageElement(t, page, "a", "nav-risks"); strings.Contains(risks, "count") {
 		t.Errorf("Risks shows a count with nothing flagged: %s", risks)

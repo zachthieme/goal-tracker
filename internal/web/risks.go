@@ -149,8 +149,8 @@ type risksView struct {
 	HaltedParents     []domain.HaltedParent
 }
 
-// riskType is one of the Risks page's sections: the anchor its summary tile
-// links to, its name, and how many Goals it lists.
+// riskType is one of the Risks page's sections, or a signal's chip on a group
+// card: its signal kind's anchor, its name, and how many Goals it lists.
 type riskType struct {
 	Anchor, Name string
 	Count        int
