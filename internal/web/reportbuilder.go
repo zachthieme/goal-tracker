@@ -91,19 +91,41 @@ type reportRuleRow struct {
 }
 
 // ruleAttribute is an attribute a rule can test: its key, as the attribute
-// select posts it, its label, and the values it offers.
+// select posts it, its label, and the values it offers. A Retired one is
+// offered only to a rule row that already tests it.
 type ruleAttribute struct {
-	Key    string
-	Label  string
-	Values []ruleValue
+	Key     string
+	Label   string
+	Values  []ruleValue
+	Retired bool
 }
 
 // ruleValue is a value a rule can test for: Value is what its option posts,
 // the attribute's key and the domain's value joined by "=", so a value
-// carries the attribute it belongs to.
+// carries the attribute it belongs to. A Retired one is offered only to a
+// rule row that already holds it.
 type ruleValue struct {
-	Value string
-	Label string
+	Value   string
+	Label   string
+	Retired bool
+}
+
+// offers reports whether the rule row offers attribute a: one not Retired, or
+// the one it tests.
+func (row reportRuleRow) offers(a ruleAttribute) bool {
+	return !a.Retired || a.Key == row.Attribute
+}
+
+// offeredValues are the values of a the rule row offers: those not Retired,
+// and those it holds.
+func (row reportRuleRow) offeredValues(a ruleAttribute) []ruleValue {
+	var out []ruleValue
+	for _, v := range a.Values {
+		if !v.Retired || slices.Contains(row.Values, v.Value) {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // The builder's Goal lists, each posted once per Goal in it.
@@ -408,15 +430,15 @@ func (s *Server) loadReportBuilder(r *http.Request, v *reportBuilderView) error 
 	v.Picked = goalsByID(goals, v.PickedIDs)
 	v.Include = goalsByID(goals, v.IncludeIDs)
 	v.Exclude = goalsByID(goals, v.ExcludeIDs)
-	v.Attributes = ruleAttributes(domain.OfferedDimensions(dims), distinctOwners(goals))
+	v.Attributes = ruleAttributes(dims, distinctOwners(goals))
 	v.Matches, err = s.matchReport(r, goals, *v, v.ID)
 	return err
 }
 
-// ruleAttributes are what a new rule can test: each Dimension given and its
-// values, but a Retired value, then Owner, Lifecycle, Health and Top-level.
-// Fields are not among them: they describe a Goal and never select it (ADR
-// 0005).
+// ruleAttributes are what a rule can test: each Dimension and its values,
+// then Owner, Lifecycle, Health and Top-level. A Retired Dimension or value is
+// marked, as only a saved rule that already tests it still offers it. Fields
+// are not among them: they describe a Goal and never select it (ADR 0005).
 func ruleAttributes(dims []domain.Dimension, owners []domain.Account) []ruleAttribute {
 	var out []ruleAttribute
 	attribute := func(key, label string, values [][2]string) {
@@ -429,11 +451,14 @@ func ruleAttributes(dims []domain.Dimension, owners []domain.Account) []ruleAttr
 	for _, d := range dims {
 		var values [][2]string
 		for _, v := range d.Values {
-			if !v.Retired {
-				values = append(values, [2]string{strconv.FormatInt(v.ID, 10), v.Value})
-			}
+			values = append(values, [2]string{strconv.FormatInt(v.ID, 10), v.Value})
 		}
 		attribute(dimensionAttribute(d.ID), d.Name, values)
+		a := &out[len(out)-1]
+		a.Retired = d.Retired
+		for i, v := range d.Values {
+			a.Values[i].Retired = d.Retired || v.Retired
+		}
 	}
 	var people [][2]string
 	for _, o := range owners {

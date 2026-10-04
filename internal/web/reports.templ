@@ -55,7 +55,7 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 			<div class="rp-head-actions">
 				@saveStatus("", false)
 				@reportHistory(pubs, loc)
-				// Edit definition: #151 fills this slot.
+				@editDefinitionLink(panel.Edit, "btn")
 				@reportPublish(r, chip)
 			</div>
 		</header>
@@ -199,7 +199,7 @@ templ reportGoalsPanel(panel goalsPanel) {
 		<div class="rp-goals-head">
 			<h2 data-testid="report-goal-count">{ plural(len(panel.Goals), "Goal") + " in this report" }</h2>
 			<span data-testid="scope-summary" class="small muted">{ panel.Scope }</span>
-			// Edit definition: #151 fills this slot.
+			@editDefinitionLink(panel.Edit, "btn quiet sm")
 		</div>
 		@reportGoalList(panel.Goals[:min(len(panel.Goals), reportGoalsShown)])
 		if len(panel.Goals) > reportGoalsShown {
@@ -209,6 +209,14 @@ templ reportGoalsPanel(panel goalsPanel) {
 			</details>
 		}
 	</section>
+}
+
+// editDefinitionLink is Edit definition, linking to edit, as class; there is
+// none for a reader who may not edit the definition (edit is "").
+templ editDefinitionLink(edit, class string) {
+	if edit != "" {
+		<a data-testid="edit-definition" class={ class } href={ templ.SafeURL(edit) }>Edit definition</a>
+	}
 }
 
 // reportGoalList lists Goals on the draft's Goals panel, each linking to its

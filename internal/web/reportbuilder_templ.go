@@ -690,45 +690,47 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 			return templ_7745c5c3_Err
 		}
 		for _, a := range v.Attributes {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<option value=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var30 string
-			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.ResolveAttributeValue(a.Key)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 163, Col: 25}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var30)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if a.Key == row.Attribute {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, " selected")
+			if row.offers(a) {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<option value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, ">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var31 string
-			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(a.Label)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 163, Col: 74}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "</option>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
+				var templ_7745c5c3_Var30 string
+				templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.ResolveAttributeValue(a.Key)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 164, Col: 26}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var30)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if a.Key == row.Attribute {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, " selected")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, ">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var31 string
+				templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(a.Label)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 164, Col: 75}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "</option>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
 		}
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "</select> <select data-testid=\"rule-op\" name=\"")
@@ -738,7 +740,7 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.ResolveAttributeValue(ruleRowInput(i, "op"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 166, Col: 60}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 168, Col: 60}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var32)
 		if templ_7745c5c3_Err != nil {
@@ -756,7 +758,7 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.ResolveAttributeValue(op[0])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 168, Col: 25}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 170, Col: 25}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
 			if templ_7745c5c3_Err != nil {
@@ -779,7 +781,7 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(op[1])
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 168, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 170, Col: 65}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
@@ -802,7 +804,7 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 			var templ_7745c5c3_Var35 string
 			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.ResolveAttributeValue(ruleRowInput(i, "value"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 172, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 174, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var35)
 			if templ_7745c5c3_Err != nil {
@@ -813,7 +815,7 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 				return templ_7745c5c3_Err
 			}
 			for _, a := range v.Attributes {
-				if len(a.Values) > 0 {
+				if values := row.offeredValues(a); len(values) > 0 && row.offers(a) {
 					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "<optgroup label=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
@@ -821,7 +823,7 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 					var templ_7745c5c3_Var36 string
 					templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.ResolveAttributeValue(a.Label)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 175, Col: 31}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 177, Col: 31}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var36)
 					if templ_7745c5c3_Err != nil {
@@ -834,7 +836,7 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 					var templ_7745c5c3_Var37 string
 					templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.ResolveAttributeValue(a.Key)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 175, Col: 56}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 177, Col: 56}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var37)
 					if templ_7745c5c3_Err != nil {
@@ -844,7 +846,7 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					for _, val := range a.Values {
+					for _, val := range values {
 						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "<option value=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
@@ -852,7 +854,7 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 						var templ_7745c5c3_Var38 string
 						templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.ResolveAttributeValue(val.Value)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 177, Col: 33}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 179, Col: 33}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var38)
 						if templ_7745c5c3_Err != nil {
@@ -875,7 +877,7 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 						var templ_7745c5c3_Var39 string
 						templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(val.Label)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 177, Col: 100}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 179, Col: 100}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 						if templ_7745c5c3_Err != nil {
@@ -904,7 +906,7 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 		var templ_7745c5c3_Var40 string
 		templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.ResolveAttributeValue(inputRemoveRule)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 184, Col: 46}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 186, Col: 46}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var40)
 		if templ_7745c5c3_Err != nil {
@@ -917,7 +919,7 @@ func reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) templ.Co
 		var templ_7745c5c3_Var41 string
 		templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(i))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 184, Col: 70}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 186, Col: 70}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var41)
 		if templ_7745c5c3_Err != nil {
@@ -969,7 +971,7 @@ func reportBuilderError(v reportBuilderView, input string) templ.Component {
 			var templ_7745c5c3_Var43 string
 			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.ResolveAttributeValue(input + "-error")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 192, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 194, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var43)
 			if templ_7745c5c3_Err != nil {
@@ -982,7 +984,7 @@ func reportBuilderError(v reportBuilderView, input string) templ.Component {
 			var templ_7745c5c3_Var44 string
 			templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(bad)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 192, Col: 86}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 194, Col: 86}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 			if templ_7745c5c3_Err != nil {
@@ -1030,7 +1032,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 		var templ_7745c5c3_Var46 string
 		templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-picker")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 202, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 204, Col: 41}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var46)
 		if templ_7745c5c3_Err != nil {
@@ -1043,7 +1045,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 		var templ_7745c5c3_Var47 string
 		templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.ResolveAttributeValue(list)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 202, Col: 85}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 204, Col: 85}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var47)
 		if templ_7745c5c3_Err != nil {
@@ -1056,7 +1058,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 		var templ_7745c5c3_Var48 string
 		templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(legend)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 203, Col: 18}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 205, Col: 18}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 		if templ_7745c5c3_Err != nil {
@@ -1069,7 +1071,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 		var templ_7745c5c3_Var49 string
 		templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-chips")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 204, Col: 35}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 206, Col: 35}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var49)
 		if templ_7745c5c3_Err != nil {
@@ -1082,7 +1084,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 		var templ_7745c5c3_Var50 string
 		templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-chips")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 204, Col: 58}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 206, Col: 58}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var50)
 		if templ_7745c5c3_Err != nil {
@@ -1105,7 +1107,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 		var templ_7745c5c3_Var51 string
 		templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.ResolveAttributeValue("Search Goals: " + legend)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 215, Col: 42}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 217, Col: 42}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var51)
 		if templ_7745c5c3_Err != nil {
@@ -1118,7 +1120,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 		var templ_7745c5c3_Var52 string
 		templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-results")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 216, Col: 37}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 218, Col: 37}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var52)
 		if templ_7745c5c3_Err != nil {
@@ -1131,7 +1133,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 		var templ_7745c5c3_Var53 string
 		templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.ResolveAttributeValue("/reports/goals/search?list=" + list)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 217, Col: 49}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 219, Col: 49}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var53)
 		if templ_7745c5c3_Err != nil {
@@ -1144,7 +1146,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 		var templ_7745c5c3_Var54 string
 		templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.ResolveAttributeValue("#" + list + "-results")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 219, Col: 39}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 221, Col: 39}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var54)
 		if templ_7745c5c3_Err != nil {
@@ -1157,7 +1159,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 		var templ_7745c5c3_Var55 string
 		templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.ResolveAttributeValue("#" + list + "-chips [name='" + list + "']")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 220, Col: 60}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 222, Col: 60}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var55)
 		if templ_7745c5c3_Err != nil {
@@ -1170,7 +1172,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 		var templ_7745c5c3_Var56 string
 		templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-results")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 223, Col: 38}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 225, Col: 38}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var56)
 		if templ_7745c5c3_Err != nil {
@@ -1183,7 +1185,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 		var templ_7745c5c3_Var57 string
 		templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-results")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 223, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 225, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var57)
 		if templ_7745c5c3_Err != nil {
@@ -1196,7 +1198,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 		var templ_7745c5c3_Var58 string
 		templ_7745c5c3_Var58, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-select")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 227, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 229, Col: 41}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var58)
 		if templ_7745c5c3_Err != nil {
@@ -1209,7 +1211,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 		var templ_7745c5c3_Var59 string
 		templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.ResolveAttributeValue(list)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 227, Col: 55}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 229, Col: 55}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var59)
 		if templ_7745c5c3_Err != nil {
@@ -1228,7 +1230,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 				var templ_7745c5c3_Var60 string
 				templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(g.ID))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 230, Col: 38}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 232, Col: 38}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var60)
 				if templ_7745c5c3_Err != nil {
@@ -1241,7 +1243,7 @@ func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.
 				var templ_7745c5c3_Var61 string
 				templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 230, Col: 50}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 232, Col: 50}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
 				if templ_7745c5c3_Err != nil {
@@ -1306,7 +1308,7 @@ func reportGoalSearchResults(list string, matches []domain.Goal) templ.Component
 			var templ_7745c5c3_Var63 string
 			templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 248, Col: 19}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 250, Col: 19}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var63))
 			if templ_7745c5c3_Err != nil {
@@ -1319,7 +1321,7 @@ func reportGoalSearchResults(list string, matches []domain.Goal) templ.Component
 			var templ_7745c5c3_Var64 string
 			templ_7745c5c3_Var64, templ_7745c5c3_Err = templ.JoinStringErrs(g.Owner.Label())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 249, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 251, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var64))
 			if templ_7745c5c3_Err != nil {
@@ -1405,7 +1407,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var67 string
 		templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-chip")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 327, Col: 33}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 329, Col: 33}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var67)
 		if templ_7745c5c3_Err != nil {
@@ -1418,7 +1420,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var68 string
 		templ_7745c5c3_Var68, templ_7745c5c3_Err = templ.ResolveAttributeValue(list)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 328, Col: 34}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 330, Col: 34}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var68)
 		if templ_7745c5c3_Err != nil {
@@ -1431,7 +1433,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var69 string
 		templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(g.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 328, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 330, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var69)
 		if templ_7745c5c3_Err != nil {
@@ -1444,7 +1446,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var70 string
 		templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 329, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 331, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var70))
 		if templ_7745c5c3_Err != nil {
@@ -1457,7 +1459,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var71 string
 		templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.ResolveAttributeValue("Remove " + g.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 330, Col: 105}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 332, Col: 105}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var71)
 		if templ_7745c5c3_Err != nil {
@@ -1470,7 +1472,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var72 string
 		templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.ResolveAttributeValue("Remove " + g.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 330, Col: 135}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 332, Col: 135}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var72)
 		if templ_7745c5c3_Err != nil {

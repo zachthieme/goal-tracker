@@ -76,6 +76,9 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 		http.Error(w, "could not summarise the report", http.StatusInternalServerError)
 		return
 	}
+	if domain.CanEditReportDefinition(current, def) {
+		panel.Edit = "/reports/" + strconv.FormatInt(def.ID, 10) + "/edit"
+	}
 	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
 	render(w, r, http.StatusOK, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel))
 }
@@ -160,10 +163,13 @@ func builderFromDefinition(def domain.ReportDefinition) reportBuilderView {
 }
 
 // goalsPanel is the draft's Goals panel: the Goals the draft selects, and its
-// definition's scope in plain words.
+// definition's scope in plain words. Edit is where the reader edits the
+// definition, which the panel and the draft's header link to, and "" for a
+// reader who may not.
 type goalsPanel struct {
 	Goals []reportGoal
 	Scope string
+	Edit  string
 }
 
 // draftGoalsPanel builds the Goals panel of the draft report, marking the

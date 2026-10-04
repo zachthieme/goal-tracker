@@ -2206,3 +2206,86 @@ func TestEditDefinitionOnlyByItsCreatorOrAnAdminOverHTTP(t *testing.T) {
 		}
 	}
 }
+
+// Edit definition links to the edit page from both the draft's header and its
+// Goals panel, for the definition's creator and an Admin; anyone else sees
+// neither (ticket #151).
+func TestDraftLinksToEditTheDefinitionForThoseWhoMayOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	h.SignIn("boss@example.com")
+	alice := h.SignIn("alice@example.com")
+	h.SignIn("sam@example.com")
+	g := h.ActiveGoal(alice, "Grow revenue", "Matters.")
+	def := h.SaveReportDefinition(alice, domain.SaveReportDefinitionInput{Name: "Alice's MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+	draftURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	link := `data-testid="edit-definition"`
+	href := `href="/reports/` + strconv.FormatInt(def.ID, 10) + `/edit"`
+
+	for _, who := range []string{"alice@example.com", "boss@example.com"} {
+		draft := getBody(t, signInClient(t, ts.URL, who), draftURL)
+		header := pageElement(t, draft, "header", "draft-header")
+		panel := pageElement(t, draft, "section", "report-goals")
+		for where, part := range map[string]string{"header": header, "Goals panel": panel} {
+			if at := strings.Index(part, link); at < 0 || !strings.Contains(part[at:], href) {
+				t.Errorf("%s's draft %s has no Edit definition linking to the edit page:\n%s", who, where, part)
+			}
+		}
+	}
+	if draft := getBody(t, signInClient(t, ts.URL, "sam@example.com"), draftURL); strings.Contains(draft, link) {
+		t.Errorf("Sam, who may not edit, is offered Edit definition; body:\n%s", draft)
+	}
+}
+
+// A saved rule on a Dimension or value since Retired still comes back on the
+// edit page, chosen, so saving the edit keeps it; a new rule still can't
+// choose them (CONTEXT.md: Retired; ticket #151).
+func TestEditDefinitionKeepsARuleOnARetiredDimensionOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	team := h.CreateDimension(boss, "Team", "Core", "Edge")
+	growth, core := pillar.Values[0], team.Values[0]
+	id := func(n int64) string { return strconv.FormatInt(n, 10) }
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{
+		{Attribute: domain.RuleDimension, DimensionID: pillar.ID, Op: domain.RuleIs, Values: []string{id(growth.ID)}},
+		{Attribute: domain.RuleDimension, DimensionID: team.ID, Op: domain.RuleIs, Values: []string{id(core.ID)}},
+	}})
+	ctx := context.Background()
+	if err := h.Service.RetireDimension(ctx, boss.ID, pillar.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	if err := h.Service.RetireDimensionValue(ctx, boss.ID, core.ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	pillarKey, teamKey := "dimension:"+id(pillar.ID), "dimension:"+id(team.ID)
+
+	builder := pageElement(t, getBody(t, client, ts.URL+"/reports/"+id(def.ID)+"/edit"), "form", "report-builder")
+	rows := strings.Split(builder, `data-testid="report-rule"`)[1:]
+	if len(rows) != 2 {
+		t.Fatalf("the edit page shows %d rule rows, want 2:\n%s", len(rows), builder)
+	}
+	for _, want := range []string{
+		`<option value="` + pillarKey + `" selected>Pillar</option>`,
+		`<option value="` + pillarKey + "=" + id(growth.ID) + `" selected>Growth</option>`,
+	} {
+		if !strings.Contains(rows[0], want) {
+			t.Errorf("the rule on the Retired Pillar lacks %s:\n%s", want, rows[0])
+		}
+	}
+	if want := `<option value="` + teamKey + "=" + id(core.ID) + `" selected>Core</option>`; !strings.Contains(rows[1], want) {
+		t.Errorf("the rule on the Retired Core lacks %s:\n%s", want, rows[1])
+	}
+	if strings.Contains(rows[1], `value="`+pillarKey+`"`) {
+		t.Errorf("the Retired Pillar is offered to a rule that doesn't test it:\n%s", rows[1])
+	}
+	if strings.Contains(rows[0], `value="`+teamKey+"="+id(core.ID)+`"`) {
+		t.Errorf("the Retired Core is offered to a rule that doesn't test it:\n%s", rows[0])
+	}
+}

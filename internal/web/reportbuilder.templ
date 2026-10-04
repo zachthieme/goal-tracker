@@ -160,7 +160,9 @@ templ reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) {
 		<select data-testid="rule-attribute" name={ ruleRowInput(i, "attribute") } aria-label="What the rule tests">
 			<option value="">Choose…</option>
 			for _, a := range v.Attributes {
-				<option value={ a.Key } selected?={ a.Key == row.Attribute }>{ a.Label }</option>
+				if row.offers(a) {
+					<option value={ a.Key } selected?={ a.Key == row.Attribute }>{ a.Label }</option>
+				}
 			}
 		</select>
 		<select data-testid="rule-op" name={ ruleRowInput(i, "op") } aria-label="Operator">
@@ -171,9 +173,9 @@ templ reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) {
 		if row.Attribute != domain.RuleTopLevel {
 			<select data-testid="rule-values" name={ ruleRowInput(i, "value") } multiple aria-label="Values">
 				for _, a := range v.Attributes {
-					if len(a.Values) > 0 {
+					if values := row.offeredValues(a); len(values) > 0 && row.offers(a) {
 						<optgroup label={ a.Label } data-attribute={ a.Key }>
-							for _, val := range a.Values {
+							for _, val := range values {
 								<option value={ val.Value } selected?={ slices.Contains(row.Values, val.Value) }>{ val.Label }</option>
 							}
 						</optgroup>
