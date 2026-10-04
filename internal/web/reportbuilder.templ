@@ -219,6 +219,8 @@ templ reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain
 				hx-get={ "/reports/goals/search?list=" + list }
 				hx-trigger="input changed delay:300ms, search"
 				hx-target={ "#" + list + "-results" }
+				hx-swap="innerHTML"
+				hx-sync="this:replace"
 				hx-include={ "#" + list + "-chips [name='" + list + "']" }
 				data-goal-search
 			/>
