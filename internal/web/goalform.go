@@ -92,6 +92,20 @@ type metricRow struct {
 	TargetDate string
 }
 
+// summary is each problem the top of a refused form lists, under the input it
+// links to, once: values posted together in a Dimension that takes one are
+// each refused alike, at the one select.
+func (v goalFormView) summary() []*domain.InputError {
+	var out []*domain.InputError
+	for _, p := range v.Problems {
+		linked := &domain.InputError{Input: v.selectInput(p.Input), Message: p.Message}
+		if !slices.ContainsFunc(out, func(q *domain.InputError) bool { return *q == *linked }) {
+			out = append(out, linked)
+		}
+	}
+	return out
+}
+
 // bad is why the named input was refused, or "" when it wasn't.
 func (v goalFormView) bad(input string) string {
 	for _, p := range v.Problems {
@@ -616,9 +630,9 @@ func goalFormProblems(err error, unparsed []*domain.InputError) []*domain.InputE
 }
 
 // goalFormPlace is where an input sits on the New goal page, to sort its
-// problems by: Title, So What, Kind, delivery date, cadence, then each
-// Milestone row's inputs and each Metric row's, in turn. Any other input sorts
-// after those.
+// problems by: Title, So What, Kind, delivery date, cadence, each Milestone
+// row's inputs and each Metric row's, in turn, then Contributes to, then Where
+// it fits' Dimension values and its Fields. Any other input sorts after those.
 func goalFormPlace(input string) []int {
 	single := []string{domain.InputTitle, domain.InputSoWhat, domain.InputKind, domain.InputDeliveryDate, domain.InputCadence}
 	if at := slices.Index(single, input); at >= 0 {
@@ -638,7 +652,19 @@ func goalFormPlace(input string) []int {
 			return []int{len(single) + s, i, slices.Index(section.parts, part)}
 		}
 	}
-	return []int{len(single) + len(sections)}
+	after := len(single) + len(sections)
+	for p, prefixes := range [][]string{
+		{inputParentID, "parent:"},
+		{"value:", inputNewValue},
+		{inputField},
+	} {
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(input, prefix) {
+				return []int{after + p}
+			}
+		}
+	}
+	return []int{after + 3}
 }
 
 // formRows gathers a repeatable section's rows, posted as section[i].part,

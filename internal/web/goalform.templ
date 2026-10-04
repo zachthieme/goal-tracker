@@ -572,10 +572,10 @@ templ goalFormErrors(v goalFormView) {
 		<div data-testid="goal-form-errors" class="alert r gf-errors" role="alert">
 			<strong>The Goal wasn't created.</strong>
 			<ul>
-				for _, p := range v.Problems {
+				for _, p := range v.summary() {
 					<li>
 						if p.Input != "" {
-							<a href={ templ.SafeURL("#" + v.selectInput(p.Input)) }>{ p.Message }</a>
+							<a href={ templ.SafeURL("#" + p.Input) }>{ p.Message }</a>
 						} else {
 							{ p.Message }
 						}
