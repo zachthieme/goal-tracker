@@ -101,6 +101,14 @@ func riskValue(raw string, dims []domain.Dimension) domain.DimensionValue {
 	return domain.DimensionValue{}
 }
 
+// riskValueLabel is how the value select names a value: a Retired one says so.
+func riskValueLabel(v domain.DimensionValue) string {
+	if v.Retired {
+		return v.Value + " (retired)"
+	}
+	return v.Value
+}
+
 // risksPageView is the Risks page: its lists, its rows in scope, the group its
 // address filters it to, "" for every group, whether it is scoped to the
 // viewer's own Goals, the offered Dimensions and the value of theirs it is

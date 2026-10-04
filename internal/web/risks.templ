@@ -30,12 +30,7 @@ templ risksPage(current *domain.Account, v risksPageView) {
 					for _, d := range v.Dimensions {
 						<optgroup label={ d.Name }>
 							for _, dv := range d.Values {
-								<option value={ strconv.FormatInt(dv.ID, 10) } selected?={ v.Value.ID == dv.ID }>
-									{ dv.Value }
-									if dv.Retired {
-										(retired)
-									}
-								</option>
+								<option value={ strconv.FormatInt(dv.ID, 10) } selected?={ v.Value.ID == dv.ID }>{ riskValueLabel(dv) }</option>
 							}
 						</optgroup>
 					}
