@@ -27,37 +27,63 @@ func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current dom
 		http.Error(w, "could not read risks", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, risksPage(&current, risksPageView{risksView: v, Rows: rows, Group: riskGroupKey(r.URL.Query().Get("group"))}))
+	page := risksPageView{
+		risksView: v,
+		Rows:      rows,
+		Group:     riskGroupKey(r.URL.Query().Get("group")),
+		Today:     s.svc.Now().In(s.svc.Timezone()),
+	}
+	render(w, r, http.StatusOK, risksPage(&current, page))
 }
 
-// risksPageView is the Risks page: its lists, its rows, and the group its
-// address filters it to, "" for every group.
+// risksPageView is the Risks page: its lists, its rows, the group its address
+// filters it to, "" for every group, and today, which its dates are read
+// against.
 type risksPageView struct {
 	risksView
 	Rows  []riskGoalRow
 	Group string
+	Today time.Time
 }
 
-// Shows reports whether the page shows the section for a signal kind: every
-// kind with no filter, else only the filtered group's.
-func (p risksPageView) Shows(kind string) bool {
+// Shown are the rows the table shows: every row with no filter, else each row
+// a signal of the filtered group flags, chipped with that group's signals
+// only.
+func (p risksPageView) Shown() []riskGoalRow {
+	var kinds []string
 	for _, gk := range riskGroupKinds {
 		if gk.Key == p.Group {
-			return slices.Contains(gk.Kinds, kind)
+			kinds = gk.Kinds
 		}
 	}
-	return true
+	if kinds == nil {
+		return p.Rows
+	}
+	var shown []riskGoalRow
+	for _, r := range p.Rows {
+		var signals []riskSignal
+		for _, sig := range r.Signals {
+			if slices.Contains(kinds, sig.Kind) {
+				signals = append(signals, sig)
+			}
+		}
+		if len(signals) > 0 {
+			r.Signals = signals
+			shown = append(shown, r)
+		}
+	}
+	return shown
 }
 
-// Empty are the shown sections with no Goals, in the page's order.
-func (p risksPageView) Empty() []riskType {
-	var empty []riskType
-	for _, rt := range p.risksView.Empty() {
-		if p.Shows(rt.Anchor) {
-			empty = append(empty, rt)
+// Blank is what the filtered group's card says when it holds no Goals, "" with
+// no filter.
+func (p risksPageView) Blank() string {
+	for _, gk := range riskGroupKinds {
+		if gk.Key == p.Group {
+			return gk.Blank
 		}
 	}
-	return empty
+	return ""
 }
 
 // attention is the header's words after its count of the Goals on the page.
@@ -149,14 +175,14 @@ type risksView struct {
 	HaltedParents     []domain.HaltedParent
 }
 
-// riskType is one of the Risks page's sections, or a signal's chip on a group
-// card: its signal kind's anchor, its name, and how many Goals it lists.
+// riskType is one of the Risks page's signals, or its chip on a group card:
+// its kind, its name, and how many Goals it flags.
 type riskType struct {
 	Anchor, Name string
 	Count        int
 }
 
-// Types are the Risks page's sections in the page's order.
+// Types are the Risks page's signals in the page's order.
 func (v risksView) Types() []riskType {
 	return []riskType{
 		{"stale", "Stale", len(v.Stale)},
@@ -168,19 +194,8 @@ func (v risksView) Types() []riskType {
 	}
 }
 
-// Empty are the sections with no Goals, in the page's order.
-func (v risksView) Empty() []riskType {
-	var empty []riskType
-	for _, rt := range v.Types() {
-		if rt.Count == 0 {
-			empty = append(empty, rt)
-		}
-	}
-	return empty
-}
-
 // Flagged counts the Goals the Risks page lists, each once however many
-// sections it is in.
+// signals flag it.
 func (v risksView) Flagged() int {
 	flagged := map[int64]bool{}
 	for _, list := range [][]domain.GoalFreshness{v.Stale, v.OverduePaths} {
@@ -240,8 +255,8 @@ type riskGoalRow struct {
 	Signals []riskSignal
 }
 
-// riskSignal is one reason a Goal is flagged. Kind is the anchor of the Risks
-// page section that lists it. Days is how long the signal has held: for
+// riskSignal is one reason a Goal is flagged. Kind names the signal, as the
+// chip's data-kind on the Risks page. Days is how long the signal has held: for
 // "stale" the days since the last update, for "path-overdue" the days past
 // the Path to Green's target date, for "schedule-conflicts" the days the
 // child's delivery date falls after the parent's, and 0 otherwise. Related is
@@ -354,6 +369,23 @@ func sortRiskRows(rows []riskGoalRow) {
 		}
 		return cmp.Compare(strings.ToLower(a.Goal.Title), strings.ToLower(b.Goal.Title))
 	})
+}
+
+// riskDate is a date as the Risks page says it, "Jan 2", with its year when
+// that isn't today's.
+func riskDate(t, today time.Time) string {
+	if t.Year() != today.Year() {
+		return t.Format("Jan 2, 2006")
+	}
+	return t.Format("Jan 2")
+}
+
+// riskDays says a count of days in words: "1 day", "22 days".
+func riskDays(n int) string {
+	if n == 1 {
+		return "1 day"
+	}
+	return fmt.Sprintf("%d days", n)
 }
 
 // calendarDays counts the calendar days from one date to a later one, each
