@@ -172,7 +172,8 @@ func TestSortRiskRowsPutsTheWorstFirst(t *testing.T) {
 		row("alpha conflict", 7, "", conflict),
 		row("Beta halted", 7, "", halted, unaligned),
 		row("Green stale", 7, domain.HealthGreen, stale(9)),
-		row("Green unaligned", 7, domain.HealthGreen, unaligned),
+		row("Alpha", 30, domain.HealthGreen, unaligned),
+		row("Beta", 7, domain.HealthGreen, unaligned),
 	}
 	rows := slices.Clone(want)
 	slices.Reverse(rows)
