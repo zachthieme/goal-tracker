@@ -13,6 +13,15 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 4, 2026
+
+**Bug fixes:**
+- [internal] `scripts/shots.mjs` runs an action as an async function body only when it uses `await` in its code, not when the word appears in a string, comment, regex or property name, so such actions keep their completion value and awaited promise; a `name` ending in `.PNG` now saves `<name>.png` (#126).
+- [user] The Not found page for an unknown address shows the top bar's Home and Risks counts like every other page, and asking an unknown address with any method, not just GET, shows that page instead of a bare "Method Not Allowed" (#127).
+
+**Architecture:**
+- [internal] Add the domain command `CreateDefinedGoal`, which creates a Goal with its Kind, cadence, Milestones, Metrics, Dimension and Field values, parent links and, if asked, activation in one transaction. It checks every input before writing and returns every problem at once, each naming its input, ready for the single-page New goal form (#128).
+
 ### Collected changes — October 3, 2026
 
 **New features:**
