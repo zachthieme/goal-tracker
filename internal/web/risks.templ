@@ -62,7 +62,8 @@ templ risksDefinitions() {
 		<summary>What each risk means</summary>
 		<dl>
 			for _, d := range riskDefinitions {
-				<dt>{ d.Name }</dt><dd>{ d.Means }</dd>
+				<dt>{ d.Name }</dt>
+				<dd>{ d.Means }</dd>
 			}
 		</dl>
 	</details>
@@ -150,7 +151,7 @@ templ riskCardLink(c riskCard) {
 // posts returns to here, the page's address.
 templ risksTable(current *domain.Account, today time.Time, here string, rows []riskGoalRow) {
 	<div class="card">
-		<table id="risks-table" data-testid="risks-table">
+		<table id="risks-table" class="rk-table" data-testid="risks-table">
 			<thead>
 				<tr><th>Health</th><th>Goal</th><th>Owner</th><th aria-label="Fix"></th></tr>
 			</thead>
@@ -169,10 +170,10 @@ templ risksTable(current *domain.Account, today time.Time, here string, rows []r
 // it can't be used.
 templ riskRow(current *domain.Account, today time.Time, here string, r riskGoalRow) {
 	<tr data-testid="risk-row">
-		<td>
+		<td class="rk-health">
 			@healthBadge("risk-health", r.Health)
 		</td>
-		<td data-testid="risk-goal">
+		<td data-testid="risk-goal" class="rk-goal">
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", r.Goal.ID)) }>{ r.Goal.Title }</a>
 			<span class="rk-chips">
 				for _, sig := range r.Signals {
@@ -180,14 +181,14 @@ templ riskRow(current *domain.Account, today time.Time, here string, r riskGoalR
 				}
 			</span>
 		</td>
-		<td data-testid="risk-owner">
+		<td data-testid="risk-owner" class="rk-owner">
 			if r.Goal.Owner.ID == current.ID {
 				You
 			} else {
 				@person(r.Goal.Owner)
 			}
 		</td>
-		<td data-testid="risk-fix">
+		<td data-testid="risk-fix" class="rk-fix">
 			if r.Fix.Disabled {
 				<button type="button" class="btn sm" disabled>{ r.Fix.Label }</button>
 			} else if r.Fix.Post {
@@ -216,11 +217,13 @@ templ riskChip(today time.Time, g domain.Goal, sig riskSignal) {
 		case "unaligned":
 			<span data-testid="risk-signal" data-kind="unaligned" class="rk-tag">Unaligned · no parent Goal, not Top-level</span>
 		case "schedule-conflicts":
-			<span data-testid="risk-signal" data-kind="schedule-conflicts" class="rk-tag">{ fmt.Sprintf("Schedule conflict · due %s, %s after its parent ", riskDate(g.DeliveryDate, today), riskDays(sig.Days)) }@goalRef(*sig.Related)
-</span>
+			<span data-testid="risk-signal" data-kind="schedule-conflicts" class="rk-tag">
+				{ fmt.Sprintf("Schedule conflict · due %s, %s after its parent ", riskDate(g.DeliveryDate, today), riskDays(sig.Days)) }@goalRef(*sig.Related)
+			</span>
 		case "halted-parents":
-			<span data-testid="risk-signal" data-kind="halted-parents" class="rk-tag">{ "Parent " + sig.Related.Lifecycle + " · " }@goalRef(*sig.Related)
-</span>
+			<span data-testid="risk-signal" data-kind="halted-parents" class="rk-tag">
+				{ "Parent " + sig.Related.Lifecycle + " · " }@goalRef(*sig.Related)
+			</span>
 	}
 }
 
@@ -228,9 +231,14 @@ templ riskChip(today time.Time, g domain.Goal, sig riskSignal) {
 // controls, the toggle styled as the Goal list's layout toggle, the summary
 // cards, the chips under each Goal in the table, the outlined neutral chip
 // the structural signals take: a .tag with the badges' small radius, and the
-// definitions' disclosure.
+// definitions' disclosure. The Health chips' print-only shapes stay hidden, as
+// on the report pages, and an Owner's name keeps to one line. Below 600px each
+// table row stacks as a card, as the Reports list's do: the Goal cell, ordered
+// first though it comes second in the HTML, then Health and Owner on one line,
+// then the Fix.
 templ risksStyles() {
 	<style>
+		.shape{display:none}
 		.rk-body{display:flex;flex-direction:column;gap:inherit}
 		.rk-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 		.rk-head p{margin:0}
@@ -243,6 +251,7 @@ templ risksStyles() {
 		.rk-chips{display:flex;flex-wrap:wrap;gap:8px}
 		.rk-zero{border:1px dashed var(--color-border-strong);color:var(--color-ink-muted)}
 		td .rk-chips{margin-top:4px}
+		.rk-table .rk-owner{white-space:nowrap}
 		.rk-defs{padding:12px 16px}
 		.rk-defs summary{cursor:pointer;font-weight:600}
 		.rk-defs dl{margin:8px 0 0;display:grid;grid-template-columns:max-content 1fr;gap:4px 16px}
@@ -250,5 +259,6 @@ templ risksStyles() {
 		.rk-defs dd{margin:0}
 		.rk-tag{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;padding:0 8px;border-radius:var(--radius-sm);color:var(--color-ink);font-size:13px;line-height:20px;border:1px solid var(--color-border-strong)}
 		@media (max-width:900px){.rk-cards{grid-template-columns:minmax(0,1fr)}}
+		@media (max-width:600px){.rk-table thead{display:none}.rk-table tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rk-table tbody tr:last-child{border-bottom:none}.rk-table td{display:block;padding:0;border-bottom:none}.rk-table .rk-goal{order:-1;grid-column:1/-1}.rk-table .rk-owner{white-space:normal}.rk-table .rk-fix{grid-column:1/-1;margin-top:4px}}
 	</style>
 }
