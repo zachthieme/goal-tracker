@@ -180,13 +180,11 @@ templ riskChip(today time.Time, g domain.Goal, sig riskSignal) {
 		case "unaligned":
 			<span data-testid="risk-signal" data-kind="unaligned" class="rk-tag">Unaligned · no parent Goal, not Top-level</span>
 		case "schedule-conflicts":
-			<span data-testid="risk-signal" data-kind="schedule-conflicts" class="rk-tag">
-				{ fmt.Sprintf("Schedule conflict · due %s, %s after its parent ", riskDate(g.DeliveryDate, today), riskDays(sig.Days)) }@goalRef(*sig.Related)
-			</span>
+			<span data-testid="risk-signal" data-kind="schedule-conflicts" class="rk-tag">{ fmt.Sprintf("Schedule conflict · due %s, %s after its parent ", riskDate(g.DeliveryDate, today), riskDays(sig.Days)) }@goalRef(*sig.Related)
+</span>
 		case "halted-parents":
-			<span data-testid="risk-signal" data-kind="halted-parents" class="rk-tag">
-				{ "Parent " + sig.Related.Lifecycle + " · " }@goalRef(*sig.Related)
-			</span>
+			<span data-testid="risk-signal" data-kind="halted-parents" class="rk-tag">{ "Parent " + sig.Related.Lifecycle + " · " }@goalRef(*sig.Related)
+</span>
 	}
 }
 
