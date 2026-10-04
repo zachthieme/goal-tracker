@@ -573,7 +573,7 @@ templ narrativeCuration(r domain.Report, chip baselineChip) {
 			for _, section := range narrativeSections {
 				@sectionText(section, narrativeText(r, section))
 			}
-			<div><button type="submit" class="btn">Save narrative</button></div>
+			<noscript><button type="submit" class="btn">Save narrative</button></noscript>
 		</form>
 	</section>
 }
@@ -1018,7 +1018,7 @@ templ reportStyles() {
 		.rp-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
 		.rp-head h1{margin:4px 0}
 		.rp-actions{display:flex;gap:8px}
-		.rp-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+		.rp-tiles,.rp-body .rp-tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 		.rp-tile{padding:16px;display:flex;align-items:center;justify-content:space-between;gap:8px}
 		.rp-count{font-size:24px}
 		.rp-body{display:flex;flex-direction:column;gap:24px}
@@ -1039,8 +1039,8 @@ templ reportStyles() {
 		.rp-curate{display:flex;flex-direction:column;gap:4px}
 		.rp-include{display:flex;align-items:flex-start;gap:12px;cursor:pointer}
 		.rp-include input{margin-top:4px}
-		.rp-curate>p,.rp-sections{margin-left:28px}
-		.rp-sections{display:inline-flex;align-self:flex-start;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:0;margin-top:4px;margin-bottom:0;margin-right:0;overflow:hidden}
+		.rp-curate>p{margin-left:28px}
+		.rp-form fieldset.rp-sections{display:inline-flex;flex-direction:row;gap:0;align-self:flex-start;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:0;margin:4px 0 0 28px;overflow:hidden}
 		.rp-sections label{position:relative;padding:4px 12px;cursor:pointer;font-size:13px}
 		.rp-curate:not(:has(input[name^=include-]:checked)) .rp-sections{display:none}
 		.rp-curate:has(input[name^=include-]:checked) .rp-kind{display:none}
@@ -1057,6 +1057,7 @@ templ reportStyles() {
 		.rp-tint{background:var(--color-surface-alt);border-radius:var(--radius-md);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
 		.rp-tint.overdue{background:var(--health-r-bg)}
 		.rp-card ul{margin:0;padding-left:20px}
+		.rp-card .rp-list{padding:0}
 		.rp-discussion{border-top:1px solid var(--color-border);padding-top:8px;display:flex;flex-wrap:wrap;gap:4px 16px;align-items:flex-start}
 		.rp-discussion>details{flex:1 1 auto}
 		.rp-discussion details>summary{min-height:32px;justify-content:flex-start;color:var(--color-primary-strong);font-weight:500}
@@ -1093,7 +1094,7 @@ templ reportStyles() {
 		.rp-publish .rp-actions{align-items:center}
 		.rp-draft-head{position:sticky;top:0;z-index:2;background:var(--color-canvas);border-bottom:1px solid var(--color-border);padding:12px 0;display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap}
 		.rp-draft-head h1{margin:0}
-		.rp-menu.rp-chip>summary{justify-content:flex-start;gap:4px;color:var(--color-ink);font-weight:400}
+		.rp-menu.rp-chip>summary{justify-content:flex-start;gap:4px;color:var(--color-ink);font-weight:400;padding:0 16px;border:1px solid var(--color-border-strong);border-radius:var(--radius-full)}
 		.rp-menu.rp-chip>ul{left:0;right:auto}
 		.rp-chip>ul>li>details>summary{min-height:0;color:var(--color-primary-strong);font-weight:500}
 		.rp-chip form{margin-top:8px}
@@ -1116,6 +1117,6 @@ templ reportStyles() {
 		.rp-panes{display:grid;grid-template-columns:380px minmax(0,1fr);gap:24px;align-items:start}
 		.rp-panes>*{min-width:0}
 		@media (max-width:600px){.rp-table thead{display:none}.rp-table tr{display:block;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rp-table tbody tr:last-child{border-bottom:none}.rp-table td{display:block;padding:4px 0;border-bottom:none}.rp-table .rp-draft{text-align:left}}
-		@media (max-width:900px){.rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-panes{grid-template-columns:minmax(0,1fr)}.rp-goal-list{grid-template-columns:minmax(0,1fr)}}
+		@media (max-width:900px){.rp-tiles,.rp-body .rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-panes{grid-template-columns:minmax(0,1fr)}.rp-goal-list{grid-template-columns:minmax(0,1fr)}}
 	</style>
 }
