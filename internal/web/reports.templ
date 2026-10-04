@@ -112,22 +112,21 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 
 // reportDraftPage shows a saved Report Definition and its draft Report read
 // against a baseline the reader can change — by default the previous
-// publication. It reads top to bottom as the author works: the baseline, the
-// form to curate its narrative from Highlights, the draft preview, and only
-// then the button that publishes it. Its publications are listed in a sidebar
-// (CONTEXT.md: Report, Report Definition). Paths to Green are judged overdue as
-// of asOf, today.
-templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion) {
+// publication. A sticky header carries the baseline, the History of its
+// publications (times in the org's timezone, loc) and Publish; below it the
+// author composes the narrative on the left beside a preview of exactly what
+// readers will see (CONTEXT.md: Report, Report Definition). Paths to Green are
+// judged overdue as of asOf, today.
+templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion, loc *time.Location) {
 	@layout(r.Definition.Name, current) {
 		@reportStyles()
-		<div class="page-head">
+		<header data-testid="draft-header" class="rp-draft-head">
 			<div>
 				<p class="small muted"><a href="/reports">Reports</a>{ " / " }Draft</p>
 				<h1 data-testid="report-name">{ r.Definition.Name }</h1>
 			</div>
-		</div>
-		<div class="grid-main-aside">
-			<div class="rp-body">
+			// The baseline chip (#154) replaces the form and line below.
+			<div data-testid="baseline-chip" class="rp-chip">
 				<form data-testid="report-baseline" class="rp-inline-form" method="get">
 					<label>
 						Changes since
@@ -136,44 +135,69 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 					<button type="submit" class="btn">Update</button>
 				</form>
 				if r.Previous.ID != 0 {
-					<p data-testid="report-since-publication" class="muted">Showing what changed since the previous publication, { fmtPublished(r.Previous.PublishedAt) }.</p>
+					<p data-testid="report-since-publication" class="small muted">Showing what changed since the previous publication, { fmtPublished(r.Previous.PublishedAt) }.</p>
 				}
-				@narrativeCuration(r)
-				<section data-testid="report-draft" class="rp-body">
-					<h2>Draft preview</h2>
-					@reportBody(r, asOf, d)
-				</section>
-				<form data-testid="report-publish" class="card rp-publish" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications", r.Definition.ID)) }>
+			</div>
+			<div class="rp-head-actions">
+				// Save status: #156 fills it.
+				<span data-testid="save-status" class="small muted"></span>
+				@reportHistory(pubs, loc)
+				// Edit definition: #151 fills this slot.
+				<form data-testid="report-publish" class="rp-publish" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications", r.Definition.ID)) }>
 					// A date the reader picked is carried through; otherwise publishing
 					// reads against the previous publication, as the draft does.
 					if r.Previous.ID == 0 {
 						<input type="hidden" name="baseline" value={ fmtDate(r.Baseline) }/>
 					}
-					<p class="muted">Publishes a frozen copy readers can comment on.</p>
+					<p class="small muted">Publishes a frozen copy readers can comment on.</p>
 					<button type="submit" class="btn primary">Publish</button>
 				</form>
 			</div>
-			<aside data-testid="report-publications" class="rp-body">
-				<h2>Publications</h2>
-				<ul class="card rp-list">
-					if len(pubs) == 0 {
-						<li data-testid="no-publications" class="muted">Not published yet.</li>
+		</header>
+		<div data-testid="draft-panes" class="rp-panes">
+			<aside data-testid="compose-panel" class="rp-body rp-compose">
+				<section data-testid="draft-introduction">
+					<h2>Introduction</h2>
+					if r.Definition.Introduction != "" {
+						<p>{ r.Definition.Introduction }</p>
+					} else {
+						<p class="muted">No introduction.</p>
 					}
-					for _, p := range pubs {
-						<li data-testid="report-publication">
-							<a href={ templ.SafeURL(publicationPath(p)) }>{ fmtPublished(p.PublishedAt) }</a>
-							<br/>
-							<span class="small muted">
-								{ "by " }
-								@person(p.PublishedBy)
-							</span>
-						</li>
-					}
-				</ul>
-				<p><a href="/reports">Back to Reports</a></p>
+				</section>
+				@narrativeCuration(r)
 			</aside>
+			<div class="rp-body">
+				<section id="draft-preview" data-testid="report-draft" class="rp-body">
+					<p class="label">Preview: exactly what readers will see</p>
+					@reportBody(r, asOf, d)
+				</section>
+			</div>
 		</div>
 	}
+}
+
+// reportHistory is the draft header's menu of a Report Definition's
+// publications, newest first, each with when it was published in the org's
+// timezone and who published it.
+templ reportHistory(pubs []domain.Publication, loc *time.Location) {
+	<details data-testid="report-history" class="rp-menu">
+		<summary>{ fmt.Sprintf("History (%d)", len(pubs)) }</summary>
+		<ul class="card rp-list">
+			if len(pubs) == 0 {
+				<li data-testid="no-publications" class="muted">Not published yet.</li>
+			}
+			for _, p := range pubs {
+				<li data-testid="report-publication">
+					<a href={ templ.SafeURL(publicationPath(p)) }>{ fmtPublishedIn(p.PublishedAt, loc) }</a>
+					<br/>
+					<span class="small muted">
+						{ "by " }
+						@person(p.PublishedBy)
+					</span>
+				</li>
+			}
+		</ul>
+	</details>
 }
 
 // publicationPage shows a published Report exactly as it was frozen: who
@@ -705,6 +729,12 @@ func fmtPublished(t time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04 UTC")
 }
 
+// fmtPublishedIn renders the instant a Report was published, to the minute, in
+// the org's timezone: "2 Mar 2026, 19:00 PST".
+func fmtPublishedIn(t time.Time, loc *time.Location) string {
+	return t.In(loc).Format("2 Jan 2006, 15:04 MST")
+}
+
 // narrativeSections are a Report narrative's sections in the order it shows
 // them.
 var narrativeSections = []string{domain.HighlightInsight, domain.HighlightAccomplishment, domain.HighlightMiss}
@@ -732,7 +762,6 @@ func narrativeText(r domain.Report, section string) string {
 templ reportStyles() {
 	<style>
 		.shape{display:none}
-		.grid-main-aside>*{min-width:0}
 		.page>.rp-read{width:100%;max-width:880px;margin:0 auto;display:flex;flex-direction:column;gap:24px}
 		.rp-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
 		.rp-head h1{margin:4px 0}
@@ -777,7 +806,16 @@ templ reportStyles() {
 		.rp-fields dt::after{content:":"}
 		.rp-fields dd{margin:0}
 		.rp-field-long{white-space:pre-line}
-		.rp-publish{padding:24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
-		@media (max-width:900px){.rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+		.rp-publish{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+		.rp-draft-head{position:sticky;top:0;z-index:2;background:var(--color-canvas);border-bottom:1px solid var(--color-border);padding:12px 0;display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap}
+		.rp-draft-head h1{margin:0}
+		.rp-chip{display:flex;flex-direction:column;gap:4px}
+		.rp-head-actions{margin-left:auto;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+		.rp-menu{position:relative}
+		.rp-menu>summary{color:var(--color-primary-strong);font-weight:600}
+		.rp-menu>ul{position:absolute;right:0;z-index:3;min-width:280px;max-height:360px;overflow-y:auto}
+		.rp-panes{display:grid;grid-template-columns:380px minmax(0,1fr);gap:24px;align-items:start}
+		.rp-panes>*{min-width:0}
+		@media (max-width:900px){.rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-panes{grid-template-columns:minmax(0,1fr)}}
 	</style>
 }
