@@ -834,6 +834,102 @@ func TestReportsListLinksToTheBuilderOverHTTP(t *testing.T) {
 	}
 }
 
+// A published definition's row dates its last publication in the org's
+// timezone, "Jan 1" for 03:00 UTC on 2 January in Los Angeles, with who
+// published it; counts its draft's changes since in an amber pill; and draws
+// its Goals that have a Health as a bar labelled for assistive technology,
+// leaving out the three new Goals that have none yet.
+func TestReportsListRowShowsTheLastPublicationAndChangesOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	la, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		t.Fatalf("load timezone: %v", err)
+	}
+	boss := h.SignIn("boss@example.com")
+	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
+	h.Clock.Set(time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC))
+	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:  "MBR",
+		Mode:  domain.ReportModeRules,
+		Rules: []domain.ReportRule{{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{strconv.FormatInt(boss.ID, 10)}}},
+	})
+	h.Clock.Set(time.Date(2026, 1, 2, 3, 0, 0, 0, time.UTC))
+	h.PublishReport(ada, def)
+	h.Clock.Advance(24 * time.Hour)
+	for _, title := range []string{"Hire", "Ship", "Sell"} {
+		h.ActiveGoal(boss, title, "why")
+	}
+
+	ts := httptest.NewServer(web.NewServer(domain.NewService(h.DB, h.Clock, h.Email, nil, domain.WithTimezone(la))))
+	t.Cleanup(ts.Close)
+	row := pageElement(t, getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports"), "tr", "report-row")
+	row = regexp.MustCompile(`>\s+<`).ReplaceAllString(row, "><")
+
+	for _, want := range []string{
+		`<span data-testid="report-scope" class="small muted">Owner: boss</span>`,
+		`<span data-testid="report-goals">5</span>`,
+		`<div data-testid="report-health-bar" class="rp-bar" role="img" aria-label="1 Green, 0 Yellow, 1 Red"><span class="g"></span><span class="r"></span></div>`,
+		`<span data-testid="report-published">Jan 1</span>`,
+		shownAs("ada.okafor@example.com", "Ada Okafor"),
+		`<span data-testid="report-draft" class="rp-changes-hot">3 changes</span>`,
+	} {
+		if !strings.Contains(row, want) {
+			t.Errorf("row lacks %s; row:\n%s", want, row)
+		}
+	}
+}
+
+// The status table lists never-published reports first, then those with
+// changes, most first, then the rest by when they were last published, oldest
+// first.
+func TestReportsListSortsWhatNeedsPublishingFirstOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	report := func(name string) (domain.Account, domain.ReportDefinition) {
+		owner := h.SignIn(strings.ToLower(name) + "@example.com")
+		h.ActiveGoal(owner, name+" goal", "why")
+		return owner, h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+			Name:  name,
+			Mode:  domain.ReportModeRules,
+			Rules: []domain.ReportRule{{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{strconv.FormatInt(owner.ID, 10)}}},
+		})
+	}
+	_, alpha := report("Alpha")
+	betaOwner, beta := report("Beta")
+	echoOwner, echo := report("Echo")
+	report("Yankee")
+	_, zulu := report("Zulu")
+	h.Clock.Advance(24 * time.Hour)
+	h.PublishReport(boss, zulu)
+	h.PublishReport(boss, beta)
+	h.PublishReport(boss, echo)
+	h.Clock.Advance(24 * time.Hour)
+	h.PublishReport(boss, alpha)
+	h.Clock.Advance(24 * time.Hour)
+	h.ActiveGoal(betaOwner, "Beta, new", "why")
+	for _, title := range []string{"Echo, new", "Echo, newer", "Echo, newest"} {
+		h.ActiveGoal(echoOwner, title, "why")
+	}
+
+	ts := newServer(t, h)
+	table := pageElement(t, getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports"), "table", "report-table")
+	var got []string
+	for _, m := range regexp.MustCompile(`<a href="/reports/\d+">([^<]+)</a>`).FindAllStringSubmatch(table, -1) {
+		got = append(got, m[1])
+	}
+	if want := []string{"Yankee", "Echo", "Beta", "Zulu", "Alpha"}; !slices.Equal(got, want) {
+		t.Errorf("reports listed %q, want %q", got, want)
+	}
+}
+
 // The print page sets the Report in the design system's serif, falling back to
 // Georgia, and marks Health with a shape as well as its name so it survives
 // black-and-white printing: ■ Red, ▲ Yellow, ● Green.

@@ -1,11 +1,13 @@
 package web
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -440,7 +442,37 @@ func (s *Server) reportsList(r *http.Request) (reportsListData, error) {
 	if err != nil {
 		return reportsListData{}, err
 	}
+	slices.SortFunc(sums, byPublishingNeed)
 	return reportsListData{Reports: sums, Loc: s.svc.Timezone()}, nil
+}
+
+// byPublishingNeed orders the status table: never-published reports first,
+// then those with changes, most first, then the rest by when they were last
+// published, oldest first. Ties go by name.
+func byPublishingNeed(a, b domain.ReportSummary) int {
+	rank := func(s domain.ReportSummary) int {
+		switch {
+		case s.LastPublication == nil:
+			return 0
+		case *s.Changes > 0:
+			return 1
+		}
+		return 2
+	}
+	if c := cmp.Compare(rank(a), rank(b)); c != 0 {
+		return c
+	}
+	switch rank(a) {
+	case 1:
+		if c := cmp.Compare(*b.Changes, *a.Changes); c != 0 {
+			return c
+		}
+	case 2:
+		if c := a.LastPublication.PublishedAt.Compare(b.LastPublication.PublishedAt); c != 0 {
+			return c
+		}
+	}
+	return cmp.Compare(a.Definition.Name, b.Definition.Name)
 }
 
 // distinctOwners returns the Goals' Owners, one each, in first-seen order — the
