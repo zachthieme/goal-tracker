@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
@@ -88,9 +89,10 @@ func TestTopBarMarksTheSectionOfANestedPage(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 
-	resp := postForm(t, client, ts.URL+"/reports", url.Values{
-		"name": {"EU MBR"},
-		"root": {strconv.FormatInt(root.ID, 10)},
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+		"name":   {"EU MBR"},
+		"mode":   {domain.ReportModePicked},
+		"picked": {strconv.FormatInt(root.ID, 10)},
 	})
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
