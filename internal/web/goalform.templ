@@ -46,12 +46,167 @@ templ goalFormPage(current *domain.Account, v goalFormView) {
 				>{ v.SoWhat }</textarea>
 				@goalFormInputError(v, domain.InputSoWhat)
 			</label>
+			@goalFormKnow(v)
 			<div class="gf-actions">
 				<button type="submit" class="btn primary">Create Goal</button>
 				<a class="btn" href="/goals">Cancel</a>
 			</div>
 		</form>
 	}
+}
+
+// goalFormKnow is the "How you'll know" section: the Goal's Milestones and
+// Metrics, a row each. Without script it shows the rows typed, or one blank
+// row of each; script adds a row from its <template> and removes one with ×,
+// and shows a Metric's Direction only while its target equals its baseline.
+templ goalFormKnow(v goalFormView) {
+	<fieldset data-testid="goal-form-know" class="gf-know">
+		<legend>How you'll know</legend>
+		<p class="muted small">Milestones and Metrics are optional; a row left blank is ignored.</p>
+		<h2 class="gf-know-head">Milestones</h2>
+		<div data-testid="milestone-rows" class="gf-rows" data-rows="milestones">
+			for i, m := range v.milestoneRows() {
+				@milestoneRowFields(v, rowNames(domain.MilestoneInput, i), m)
+			}
+		</div>
+		<template id="milestones-row">
+			@milestoneRowFields(goalFormView{}, templateRowNames("milestones"), milestoneRow{})
+		</template>
+		<button type="button" class="btn quiet sm gf-js-only" data-add-row="milestones">+ Milestone</button>
+		<h2 class="gf-know-head">Metrics</h2>
+		<div data-testid="metric-rows" class="gf-rows" data-rows="metrics">
+			for i, m := range v.metricRows() {
+				@metricRowFields(v, rowNames(domain.MetricInput, i), m)
+			}
+		</div>
+		<template id="metrics-row">
+			@metricRowFields(goalFormView{}, templateRowNames("metrics"), metricRow{})
+		</template>
+		<button type="button" class="btn quiet sm gf-js-only" data-add-row="metrics">+ Metric</button>
+	</fieldset>
+	@goalFormRowsScript()
+}
+
+// milestoneRowFields is one Milestone row: Name and Date.
+templ milestoneRowFields(v goalFormView, name func(part string) string, m milestoneRow) {
+	<div data-testid="milestone-row" class="gf-row">
+		@goalFormRowInput(v, "Name", "text", name("name"), m.Name)
+		@goalFormRowInput(v, "Date", "date", name("date"), m.Date)
+		@goalFormRemoveRow("Remove this Milestone")
+	</div>
+}
+
+// metricRowFields is one Metric row: Name, Unit, Baseline, Target, Target
+// date, and the Direction select that counts only when the target equals the
+// baseline.
+templ metricRowFields(v goalFormView, name func(part string) string, m metricRow) {
+	<div data-testid="metric-row" class="gf-row" data-metric-row>
+		@goalFormRowInput(v, "Name", "text", name("name"), m.Name)
+		@goalFormRowInput(v, "Unit", "text", name("unit"), m.Unit)
+		@goalFormRowInput(v, "Baseline", "number", name("baseline"), m.Baseline)
+		@goalFormRowInput(v, "Target", "number", name("target"), m.Target)
+		<label class="field" data-direction>
+			<span>Direction <span class="hint">— when target equals baseline</span></span>
+			<select
+				id={ name("direction") }
+				name={ name("direction") }
+				if v.bad(name("direction")) != "" {
+					aria-invalid="true"
+					aria-describedby={ name("direction") + "-error" }
+				}
+			>
+				<option value="" selected?={ m.Direction == "" }>Choose…</option>
+				<option value={ domain.MetricUp } selected?={ m.Direction == domain.MetricUp }>up</option>
+				<option value={ domain.MetricDown } selected?={ m.Direction == domain.MetricDown }>down</option>
+			</select>
+			@goalFormInputError(v, name("direction"))
+		</label>
+		@goalFormRowInput(v, "Target date", "date", name("target_date"), m.TargetDate)
+		@goalFormRemoveRow("Remove this Metric")
+	</div>
+}
+
+// goalFormRowInput is one input of a row, marked with why it was refused.
+templ goalFormRowInput(v goalFormView, label, kind, input, value string) {
+	<label class="field">
+		<span>{ label }</span>
+		<input
+			if kind == "number" {
+				type="number"
+				step="any"
+			} else {
+				type={ kind }
+			}
+			id={ input }
+			name={ input }
+			value={ value }
+			if v.bad(input) != "" {
+				aria-invalid="true"
+				aria-describedby={ input + "-error" }
+			}
+		/>
+		@goalFormInputError(v, input)
+	</label>
+}
+
+// goalFormRemoveRow is a row's ×, which only script can act on.
+templ goalFormRemoveRow(label string) {
+	<button type="button" class="btn quiet sm gf-js-only gf-remove" data-remove-row aria-label={ label } title={ label }>×</button>
+}
+
+// goalFormRowsScript adds a row by cloning its section's <template>, numbering
+// its inputs past the rows already there, removes the row whose × is pressed,
+// handing focus to its section's add button, and shows a Metric row's Direction only while its baseline and target are
+// equal, leaving it out of the post otherwise.
+templ goalFormRowsScript() {
+	<script>
+		(function () {
+			var form = document.querySelector('[data-testid="goal-form"]');
+			if (!form) return;
+			form.classList.add("gf-js");
+			var next = {};
+			form.querySelectorAll("[data-rows]").forEach(function (list) {
+				next[list.getAttribute("data-rows")] = list.children.length;
+			});
+			function steady(row) {
+				var b = row.querySelector('[name$=".baseline"]').value;
+				var t = row.querySelector('[name$=".target"]').value;
+				var equal = b !== "" && t !== "" && Number(b) === Number(t);
+				var direction = row.querySelector("[data-direction]");
+				direction.hidden = !equal;
+				direction.querySelector("select").disabled = !equal;
+			}
+			form.querySelectorAll("[data-metric-row]").forEach(steady);
+			form.addEventListener("input", function (e) {
+				var row = e.target.closest("[data-metric-row]");
+				if (row) steady(row);
+			});
+			form.addEventListener("click", function (e) {
+				var add = e.target.closest("[data-add-row]");
+				if (add) {
+					var section = add.getAttribute("data-add-row");
+					var row = document.getElementById(section + "-row").content.firstElementChild.cloneNode(true);
+					var i = String(next[section]++);
+					row.querySelectorAll("[name], [id]").forEach(function (el) {
+						["name", "id"].forEach(function (a) {
+							if (el.hasAttribute(a)) el.setAttribute(a, el.getAttribute(a).replace("__i__", i));
+						});
+					});
+					form.querySelector('[data-rows="' + section + '"]').appendChild(row);
+					if (row.hasAttribute("data-metric-row")) steady(row);
+					row.querySelector("input").focus();
+					return;
+				}
+				var remove = e.target.closest("[data-remove-row]");
+				if (remove) {
+					var gone = remove.closest(".gf-row");
+					var section = gone.parentElement.getAttribute("data-rows");
+					gone.remove();
+					form.querySelector('[data-add-row="' + section + '"]').focus();
+				}
+			});
+		})();
+	</script>
 }
 
 // goalFormErrors heads a refused submit: nothing was created, and each
@@ -91,5 +246,15 @@ templ goalFormStyles() {
 		.gf-errors a{color:inherit}
 		.gf-input-error{display:block;font-size:13px;color:var(--color-danger-ink)}
 		.gf-actions{display:flex;gap:8px}
+		.gf-know{display:flex;flex-direction:column;gap:12px;border:0;padding:0;margin:0;min-width:0}
+		.gf-know legend{font-weight:600;padding:0;margin-bottom:4px}
+		.gf-know-head{font-size:14px;margin:4px 0 0}
+		.gf-rows{display:flex;flex-direction:column;gap:12px}
+		.gf-row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 12px}
+		.gf-row .field{flex:1 1 140px;min-width:0}
+		.gf-row .field input,.gf-row .field select{width:100%}
+		.gf-remove{align-self:flex-end}
+		.gf-form:not(.gf-js) .gf-js-only{display:none}
+		.gf-know .gf-js-only[data-add-row]{align-self:flex-start}
 	</style>
 }
