@@ -784,25 +784,46 @@ func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
 	}
 }
 
-// The reports page lists saved definitions as cards, and New report links to
-// the builder in place of a form of its own: POST /reports is gone.
+// The reports page is headed Reports with a plain line on what a Report is,
+// and New report links to the builder in place of a form of its own: POST
+// /reports is gone. Each definition is a row of the status table: its name and
+// scope, its Goal count, and, never published, "Never" and "Not published". Its
+// one Goal has no Health yet, so the row draws no Health bar.
 func TestReportsListLinksToTheBuilderOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	root := h.MarkTopLevel(boss, h.ActiveGoal(boss, "Grow revenue", "The org needs to grow."))
-	h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{root.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{root.ID}})
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 	page := getBody(t, client, ts.URL+"/reports")
 
-	if def := pageElement(t, page, "li", "report-definition"); !strings.Contains(def, `class="card`) || !strings.Contains(def, "MBR") {
-		t.Errorf("saved definition is not a card; item:\n%s", def)
+	if !strings.Contains(page, "<h1>Reports</h1>") || strings.Contains(page, "Saved Report Definitions") {
+		t.Errorf("the page is not headed Reports alone; body:\n%s", page)
+	}
+	if desc := pageElement(t, page, "p", "reports-description"); !strings.Contains(desc, "Publish a frozen copy") {
+		t.Errorf("the page has no plain description: %s", desc)
 	}
 	if link := pageElement(t, page, "a", "new-report"); !strings.Contains(link, `href="/reports/new"`) || !strings.Contains(link, "New report") {
 		t.Errorf("New report doesn't link to the builder: %s", link)
+	}
+	row := pageElement(t, page, "tr", "report-row")
+	for _, want := range []string{
+		fmt.Sprintf(`href="/reports/%d"`, def.ID), ">MBR</a>",
+		`<span data-testid="report-scope" class="small muted">1 Goal picked by hand</span>`,
+		`<span data-testid="report-goals">1</span>`,
+		`<span data-testid="report-published" class="muted">Never</span>`,
+		`<span data-testid="report-draft" class="muted">Not published</span>`,
+	} {
+		if !strings.Contains(row, want) {
+			t.Errorf("row lacks %s; row:\n%s", want, row)
+		}
+	}
+	if strings.Contains(row, "rp-bar") {
+		t.Errorf("a report whose Goals have no Health draws a Health bar; row:\n%s", row)
 	}
 	if strings.Contains(page, "<form") && strings.Contains(page, `action="/reports"`) || strings.Contains(page, `data-testid="create-report"`) {
 		t.Errorf("the reports page still has its own create form; body:\n%s", page)

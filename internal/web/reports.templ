@@ -8,32 +8,93 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// reportsPage lists every saved Report Definition as a card, and links New
-// report to the builder (CONTEXT.md: Report Definition).
+// reportsPage lists every saved Report Definition as a row of a status table —
+// its scope, its Goals and their Health, when it was last published and by
+// whom, and how much its draft has changed since — and links New report to the
+// builder (CONTEXT.md: Report Definition). Dates are the org's (loc).
 templ reportsPage(current *domain.Account, data reportsListData) {
 	@layout("Reports", current) {
 		@reportStyles()
-		<div class="page-head">
-			<h1>Reports</h1>
+		<header class="page-head">
+			<div>
+				<h1>Reports</h1>
+				<p data-testid="reports-description" class="muted">Recurring write-ups of a set of Goals. Publish a frozen copy for readers to comment on.</p>
+			</div>
 			<a data-testid="new-report" class="btn primary" href="/reports/new">New report</a>
-		</div>
-		<section data-testid="report-definitions" class="rp-body">
-			<h2>Saved Report Definitions</h2>
-			<ul class="rp-cards">
-				if len(data.Defs) == 0 {
-					<li data-testid="no-reports" class="muted">No Report Definitions yet.</li>
-				}
-				for _, d := range data.Defs {
-					<li data-testid="report-definition" class="card rp-card">
-						<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d", d.ID)) }><strong>{ d.Name }</strong></a>
-						if d.Introduction != "" {
-							<span class="small muted">{ d.Introduction }</span>
+		</header>
+		if len(data.Reports) == 0 {
+			<p data-testid="no-reports" class="muted">No reports yet.</p>
+		} else {
+			<div class="card rp-table">
+				<table data-testid="report-table">
+					<thead>
+						<tr><th>Report</th><th>Goals</th><th>Last published</th><th class="rp-draft">Draft</th></tr>
+					</thead>
+					<tbody>
+						for _, sum := range data.Reports {
+							@reportRow(sum, data.Loc)
 						}
-					</li>
-				}
-			</ul>
-		</section>
+					</tbody>
+				</table>
+			</div>
+		}
 	}
+}
+
+// reportRow is one Report Definition in the status table: its name over its
+// scope, its Goal count over a bar of their Health, its last publication's
+// date in the org's timezone (loc) over its publisher, or Never, and its
+// draft's changes since, or Not published.
+templ reportRow(sum domain.ReportSummary, loc *time.Location) {
+	<tr data-testid="report-row">
+		<td class="rp-name">
+			<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d", sum.Definition.ID)) }>{ sum.Definition.Name }</a>
+			<span data-testid="report-scope" class="small muted">{ sum.Scope }</span>
+		</td>
+		<td>
+			<span data-testid="report-goals">{ fmt.Sprint(sum.Goals) }</span>
+			if h := sum.Health; h.Green+h.Yellow+h.Red > 0 {
+				@reportHealthBar(h)
+			}
+		</td>
+		<td>
+			if p := sum.LastPublication; p != nil {
+				<span data-testid="report-published">{ fmtPublishedDateIn(p.PublishedAt, loc) }</span>
+				<span class="small muted">
+					@person(p.PublishedBy)
+				</span>
+			} else {
+				<span data-testid="report-published" class="muted">Never</span>
+			}
+		</td>
+		<td class="rp-draft">
+			if sum.Changes == nil {
+				<span data-testid="report-draft" class="muted">Not published</span>
+			} else if *sum.Changes > 0 {
+				<span data-testid="report-draft" class="rp-changes-hot">{ plural(*sum.Changes, "change") }</span>
+			} else {
+				<span data-testid="report-draft" class="muted">{ plural(*sum.Changes, "change") }</span>
+			}
+		</td>
+	</tr>
+}
+
+// reportHealthBar draws a Report's Goals by Health as one segmented bar, a
+// unit for each Goal with a Health, Green then Yellow then Red, as Home's
+// does (DESIGN.md: Health distribution bar). Its label says the same to
+// assistive technology.
+templ reportHealthBar(h domain.HealthCounts) {
+	<div data-testid="report-health-bar" class="rp-bar" role="img" aria-label={ fmt.Sprintf("%d Green, %d Yellow, %d Red", h.Green, h.Yellow, h.Red) }>
+		for range h.Green {
+			<span class="g"></span>
+		}
+		for range h.Yellow {
+			<span class="y"></span>
+		}
+		for range h.Red {
+			<span class="r"></span>
+		}
+	</div>
 }
 
 // reportDraftPage shows a saved Report Definition and its draft Report read
@@ -897,6 +958,12 @@ func fmtPublishedIn(t time.Time, loc *time.Location) string {
 	return t.In(loc).Format("2 Jan 2006, 15:04 MST")
 }
 
+// fmtPublishedDateIn renders the day a Report was published in the org's
+// timezone: "Mar 2".
+func fmtPublishedDateIn(t time.Time, loc *time.Location) string {
+	return t.In(loc).Format("Jan 2")
+}
+
 // pickedHighlights counts the Highlights the author has picked into a section,
 // as last saved.
 func pickedHighlights(r domain.Report) int {
@@ -997,8 +1064,19 @@ templ reportStyles() {
 		.rp-reply{margin-left:24px}
 		.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
 		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
-		.rp-cards{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-		.rp-cards>.rp-card{padding:16px 24px;gap:4px}
+		.rp-table{overflow:hidden}
+		.rp-table td{vertical-align:top}
+		.rp-table tbody tr:last-child>td{border-bottom:none}
+		.rp-name>a{display:block;font-weight:600;color:var(--color-ink)}
+		.rp-name>span,.rp-table td>.small{display:block}
+		.rp-draft{text-align:right}
+		.rp-changes-hot{display:inline-block;padding:2px 12px;border-radius:var(--radius-full);background:var(--health-y-bg);color:var(--health-y-ink);font-weight:600;white-space:nowrap}
+		.rp-bar{display:flex;width:160px;max-width:100%;height:12px;margin-top:4px;border-radius:var(--radius-full);overflow:hidden}
+		.rp-bar>span{flex:1 1 0;min-width:2px}
+		.rp-bar>.g{background:var(--health-g-ink)}
+		.rp-bar>.y{background:var(--health-y-ink)}
+		.rp-bar>.r{background:var(--health-r-ink)}
+		.rp-bar>.g+.y,.rp-bar>.g+.r,.rp-bar>.y+.r{margin-left:4px}
 		.rp-form{display:flex;flex-direction:column;gap:16px}
 		.rp-form fieldset{border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
 		.rp-form legend{font-weight:600;font-size:13px;padding:0 0 8px}
@@ -1037,6 +1115,7 @@ templ reportStyles() {
 		.rp-goals details>ul{margin-top:8px}
 		.rp-panes{display:grid;grid-template-columns:380px minmax(0,1fr);gap:24px;align-items:start}
 		.rp-panes>*{min-width:0}
+		@media (max-width:600px){.rp-table thead{display:none}.rp-table tr{display:block;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rp-table tbody tr:last-child{border-bottom:none}.rp-table td{display:block;padding:4px 0;border-bottom:none}.rp-table .rp-draft{text-align:left}}
 		@media (max-width:900px){.rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-panes{grid-template-columns:minmax(0,1fr)}.rp-goal-list{grid-template-columns:minmax(0,1fr)}}
 	</style>
 }
