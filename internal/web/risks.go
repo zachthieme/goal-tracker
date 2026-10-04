@@ -430,7 +430,9 @@ func fixRiskRows(current domain.Account, rows []riskGoalRow, delegate map[int64]
 //  3. Link to a parent, for an Unaligned Goal current Owns;
 //  4. Compare dates, the Goal's own page, for a Schedule conflict;
 //  5. Open parent, for a Goal under a halted parent: the first by title;
-//  6. Open Goal, for anything else, someone else's Stale Goal among them.
+//  6. Suggest a parent, for an Unaligned Goal current doesn't Own, a Delegate
+//     on it included (CONTEXT.md: Parent suggestion);
+//  7. Open Goal, for anything else, someone else's Stale Goal among them.
 func (r riskGoalRow) fix(current domain.Account, delegate bool) riskFix {
 	goal := fmt.Sprintf("/goals/%d", r.Goal.ID)
 	if _, ownerless := r.signal("ownerless"); ownerless && current.IsAdmin {
@@ -455,6 +457,9 @@ func (r riskGoalRow) fix(current domain.Account, delegate bool) riskFix {
 	}
 	if parent != nil {
 		return riskFix{Label: "Open parent", Href: fmt.Sprintf("/goals/%d", parent.ID)}
+	}
+	if _, unaligned := r.signal("unaligned"); unaligned {
+		return riskFix{Label: "Suggest a parent", Href: goal + "/suggest-parent"}
 	}
 	return riskFix{Label: "Open Goal", Href: goal}
 }

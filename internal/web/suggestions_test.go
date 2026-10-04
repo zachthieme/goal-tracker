@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -119,5 +120,34 @@ func TestARefusedSuggestionReRendersTheForm(t *testing.T) {
 	}
 	if all, _ := h.Service.ParentSuggestions(context.Background(), goal.ID); len(all) != 1 {
 		t.Errorf("the Goal has %d suggestions, want 1", len(all))
+	}
+}
+
+// Someone else's Unaligned Goal on the Risks page has Suggest a parent as its
+// Fix, and following it suggests a parent the same way.
+func TestSuggestingAParentFromTheRisksFix(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	loner := h.ActiveGoal(sam, "Side project", "Nobody asked.")
+	parent := h.CreateGoal(kim, "Grow revenue", "It pays for everything.")
+
+	client := signInClient(t, ts.URL, "kim@example.com")
+	label, href, _ := riskFix(t, riskRowOf(t, getBody(t, client, ts.URL+"/risks"), loner))
+	if label != "Suggest a parent" {
+		t.Fatalf("Fix = %q, want Suggest a parent", label)
+	}
+	form := pageElement(t, getBody(t, client, ts.URL+href), "form", "suggest-parent")
+	action := html.UnescapeString(attr(openTag(form)+">", "action"))
+	resp := postForm(t, client, ts.URL+action, url.Values{"parent_id": {fmt.Sprint(parent.ID)}})
+	_ = readBody(t, resp)
+	if resp.Request.URL.Path != fmt.Sprintf("/goals/%d", loner.ID) {
+		t.Errorf("suggesting landed on %s, want the Goal page", resp.Request.URL.Path)
+	}
+	if open, _ := h.Service.OpenParentSuggestions(context.Background(), loner.ID); len(open) != 1 || open[0].Parent.ID != parent.ID {
+		t.Errorf("open suggestions = %+v, want kim's of the parent", open)
 	}
 }
