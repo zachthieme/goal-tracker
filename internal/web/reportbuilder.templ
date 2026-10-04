@@ -19,7 +19,18 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 			<p class="small muted"><a href="/reports">Reports</a>{ " / " }New</p>
 			<h1>New report</h1>
 		</div>
-		<form data-testid="report-builder" class="card rb-form" method="post" action="/reports/new">
+		<div class="rb-layout">
+		<form
+			data-testid="report-builder"
+			class="card rb-form"
+			method="post"
+			action="/reports/new"
+			hx-post="/reports/new/matches"
+			hx-trigger="change[target.type!='search'], input[target.type!='search'] delay:400ms"
+			hx-target={ "#" + reportMatchesID }
+			hx-swap="outerHTML"
+			hx-sync="this:replace"
+		>
 			// Enter presses a form's first submit, so it saves, not Add rule.
 			<button type="submit" class="sr-only" tabindex="-1" aria-hidden="true">Save report</button>
 			if problems := v.unplaced(); len(problems) > 0 {
@@ -82,24 +93,51 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 			}
 			<div class="rb-actions">
 				<button type="submit" class="btn primary">Save report</button>
-				<button type="submit" name="do" value="show-matches" class="btn" formnovalidate>Show matches</button>
+				<button type="submit" name="do" value="show-matches" class="btn rb-no-js" formnovalidate>Show matches</button>
 			</div>
-			if v.Matches != nil {
-				<section data-testid="builder-matches" class="rb-matches">
-					<h2 class="label">{ "Matches " + plural(len(v.Matches), "Goal") }</h2>
-					<ul class="rp-goal-list">
-						for _, g := range v.Matches {
-							<li>
-								<span class={ "rp-goal-dot", healthClass(g.Health) } role="img" aria-label={ reportHealth(g.Health) }><span class="dot"></span></span>
-								{ g.Goal.Title }
-							</li>
-						}
-					</ul>
-				</section>
-			}
 		</form>
+		@reportMatchesRail(v.Matches)
+		</div>
 		@reportBuilderScript()
 	}
+}
+
+// reportMatchesID is the rail's id, which the builder's form swaps as it is
+// typed.
+const reportMatchesID = "report-matches"
+
+// reportMatchesRail is the builder's rail: a flat list of the Goals the
+// definition as typed would select, by title, each with its Health or, with
+// none yet, its Lifecycle, and "added" beside one only Also include selects.
+// Past the first railLength, it counts the rest and those left out.
+templ reportMatchesRail(m reportMatches) {
+	<aside data-testid="report-matches" id={ reportMatchesID } class="card rb-rail" aria-live="polite">
+		if m.NeedsRule {
+			<h2 class="label">Matches</h2>
+			<p data-testid="matches-need-rule" class="muted">Add a rule to see matching Goals.</p>
+		} else {
+			<h2 data-testid="matches-count" class="label">{ "Matches " + plural(m.Count, "Goal") }</h2>
+			<ul class="rb-match-list">
+				for _, g := range m.Shown {
+					<li data-testid="match">
+						if g.Health != "" {
+							<span data-testid="match-badge" class={ "badge", healthClass(g.Health) }><span class="dot"></span>{ g.Health }</span>
+						} else {
+							<span data-testid="match-badge" class="badge lc">{ g.Goal.Lifecycle }</span>
+						}
+						<span class="rb-match-title">{ g.Goal.Title }</span>
+						if g.Added {
+							<span data-testid="match-added" class="muted small">added</span>
+						}
+					</li>
+				}
+			</ul>
+			if more := m.more(); more != "" {
+				<p data-testid="matches-more" class="muted small">{ more }</p>
+			}
+		}
+		<p class="muted small">A flat list, not a tree. Whether one Goal feeds another doesn't decide what's in the report.</p>
+	</aside>
 }
 
 // reportRuleRowInputs is the i-th rule row: what it tests, its operator, and
@@ -209,7 +247,7 @@ templ reportGoalSearchResults(list string, matches []domain.Goal) {
 // reportBuilderScript turns the builder to script: each rule row offers only
 // its attribute's values and operators, each picker searches in place of its
 // no-script select, adding a chip when a result is picked and removing one at
-// its ×.
+// its ×, and either refreshes the rail.
 templ reportBuilderScript() {
 	<script>
 		(function () {
@@ -258,12 +296,14 @@ templ reportBuilderScript() {
 					picker.querySelector(".rb-chips").appendChild(result.querySelector("template").content.firstElementChild.cloneNode(true));
 					result.remove();
 					picker.querySelector("[data-goal-search]").focus();
+					form.dispatchEvent(new Event("change"));
 					return;
 				}
 				var remove = e.target.closest("[data-remove-chip]");
 				if (remove) {
 					remove.closest("li").remove();
 					picker.querySelector("[data-goal-search]").focus();
+					form.dispatchEvent(new Event("change"));
 				}
 			});
 		})();
@@ -284,7 +324,17 @@ templ reportGoalChip(list string, g domain.Goal) {
 // Reports pages'.
 templ reportBuilderStyles() {
 	<style>
-		.rb-form{padding:24px;display:flex;flex-direction:column;gap:16px;max-width:760px}
+		.rb-layout{display:grid;grid-template-columns:minmax(0,760px) 320px;gap:24px;align-items:start}
+		.rb-form{padding:24px;display:flex;flex-direction:column;gap:16px}
+		.rb-rail{position:sticky;top:24px;padding:24px;display:flex;flex-direction:column;gap:12px}
+		.rb-rail p{margin:0}
+		.rb-match-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+		.rb-match-list>li{display:flex;align-items:center;gap:8px;min-width:0}
+		.rb-match-title{flex:1;min-width:0}
+		@media (max-width:1140px){
+			.rb-layout{grid-template-columns:minmax(0,1fr)}
+			.rb-rail{position:static}
+		}
 		.rb-form fieldset{border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;min-width:0}
 		.rb-form legend{font-weight:600;padding:0 0 8px}
 		.rb-segments{display:inline-flex;align-self:flex-start;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);overflow:hidden}
@@ -309,8 +359,6 @@ templ reportBuilderStyles() {
 		.rb-fields>summary{align-self:flex-start;border:1px dashed var(--color-border-strong)}
 		.rb-fields fieldset{margin-top:12px}
 		.rb-actions{display:flex;gap:8px;flex-wrap:wrap}
-		.rb-matches{border-top:1px solid var(--color-border);padding-top:16px;display:flex;flex-direction:column;gap:8px}
-		.rb-matches .rp-goal-dot{background:none;border:none;display:inline-flex}
 		.rb-form:not(.rb-js) .rb-js-only{display:none}
 		.rb-form.rb-js .rb-no-js{display:none}
 		.rb-picker input[type=search]{width:100%}

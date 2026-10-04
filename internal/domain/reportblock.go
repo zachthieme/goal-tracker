@@ -161,6 +161,17 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 	return r, nil
 }
 
+// SelectGoalsAgainst returns the Goals def selects on a draft read against
+// baseline, as DraftReport reads it: a date, or zero for def's default — its
+// previous publication, or 30 days before today when there is none.
+func (s *Service) SelectGoalsAgainst(ctx context.Context, def ReportDefinition, baseline time.Time) ([]SelectedGoal, error) {
+	since, err := s.readAgainst(ctx, &Report{Definition: def}, baseline)
+	if err != nil {
+		return nil, err
+	}
+	return s.SelectGoals(ctx, def, since)
+}
+
 // readAgainst sets the baseline r reads changes against — the previous
 // publication of its Definition when baseline is zero, or 30 days before today
 // when there is none, or else the date baseline — and returns since, which

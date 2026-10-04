@@ -394,8 +394,9 @@ func TestBuilderGoalSearchFindsEveryGoalLessThoseListedOverHTTP(t *testing.T) {
 	}
 }
 
-// Show matches submits the builder and it comes back, 200, as typed, listing
-// the Goals the definition would select, and saves nothing.
+// Without script, Show matches submits the builder and it comes back, 200, as
+// typed, its rail listing the Goals the definition would select, and saves
+// nothing.
 func TestBuilderShowMatchesListsTheGoalsAndSavesNothingOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -419,7 +420,7 @@ func TestBuilderShowMatchesListsTheGoalsAndSavesNothingOverHTTP(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Show matches: status %d, want 200; body:\n%s", resp.StatusCode, page)
 	}
-	matches := pageElement(t, page, "section", "builder-matches")
+	matches := pageElement(t, page, "aside", "report-matches")
 	if !strings.Contains(matches, "1 Goal") || !strings.Contains(matches, top.Title) || strings.Contains(matches, other.Title) || strings.Contains(matches, left.Title) {
 		t.Errorf("Show matches doesn't list just %q:\n%s", top.Title, matches)
 	}
@@ -456,4 +457,48 @@ func draftGoalTitles(t *testing.T, draft string) []string {
 	}
 	slices.Sort(titles)
 	return titles
+}
+
+// The builder's rail answers its form at /reports/new/matches with only the
+// rail: how many Goals the definition would select, the same count its saved
+// draft lists.
+func TestBuilderMatchesCountWhatTheSavedDraftSelectsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.MarkTopLevel(boss, h.ActiveGoal(boss, "Grow revenue", "Matters."))
+	h.MarkTopLevel(boss, h.ActiveGoal(boss, "Earn trust", "Matters."))
+	h.ActiveGoal(boss, "Cut churn", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	form := url.Values{
+		"name":               {"Exec weekly"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleTopLevel},
+		"rules[0].op":        {domain.RuleIs},
+	}
+
+	rail, status := postFormHX(t, client, ts.URL+"/reports/new/matches", form)
+	if status != http.StatusOK {
+		t.Fatalf("matches: status %d, want 200; body:\n%s", status, rail)
+	}
+	if strings.Contains(rail, "<html") || strings.Contains(rail, "<form") {
+		t.Errorf("matches answers more than the rail:\n%s", rail)
+	}
+	draft := assertSavedReport(t, client, ts.URL, postForm(t, noRedirects(client), ts.URL+"/reports/new", form))
+	if got, want := railCount(t, rail), len(draftGoalTitles(t, draft)); got != want {
+		t.Errorf("the rail matches %d Goals, the saved draft selects %d:\n%s", got, want, rail)
+	}
+}
+
+// railCount is the N of the rail's "Matches N Goals".
+func railCount(t *testing.T, rail string) int {
+	t.Helper()
+	m := regexp.MustCompile(`Matches (\d+) Goals?`).FindStringSubmatch(rail)
+	if m == nil {
+		t.Fatalf("the rail has no count:\n%s", rail)
+	}
+	n, _ := strconv.Atoi(m[1])
+	return n
 }
