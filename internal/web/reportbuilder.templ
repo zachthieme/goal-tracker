@@ -35,11 +35,66 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 					<label><input type="radio" name="mode" value={ domain.ReportModePicked } checked?={ v.Mode == domain.ReportModePicked }/>Goals I pick</label>
 				</div>
 			</fieldset>
+			<section data-testid="report-rules" class="rb-rules">
+				<h2 class="label">Rules <span class="hint">— a Goal must meet every rule, and any of a rule's values</span></h2>
+				for i, row := range v.rows() {
+					@reportRuleRowInputs(v, i, row)
+				}
+				@reportBuilderError(v, domain.ReportInputRules)
+				<div><button type="submit" name="do" value="add-rule" class="btn quiet sm rb-add" formnovalidate>+ Add rule</button></div>
+				<p data-testid="rules-hint" class="small muted">
+					Rules can test any Dimension, Owner, Lifecycle, Health or Top-level. An Admin can create a Dimension such as "In report" so Owners tag their own Goals in; you still decide what's in through Leave out.
+				</p>
+				@reportGoalPicker(v, inputInclude, "Also include", v.Include)
+				@reportGoalPicker(v, inputExclude, "Leave out", v.Exclude)
+			</section>
 			<section data-testid="report-picked" class="rb-picked">
 				@reportGoalPicker(v, inputPicked, "Goals I pick", v.Picked)
 			</section>
 			<div><button type="submit" class="btn primary">Save report</button></div>
 		</form>
+	}
+}
+
+// reportRuleRowInputs is the i-th rule row: what it tests, its operator, and
+// the values it tests for, one group per attribute, which script narrows to the
+// chosen attribute's. A Top-level row tests no values, so it offers only "is
+// Top-level" and "is not Top-level". The × submits the form without the row.
+templ reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) {
+	<div data-testid="report-rule" class="rb-rule" data-rule>
+		<select data-testid="rule-attribute" name={ ruleRowInput(i, "attribute") } aria-label="What the rule tests">
+			<option value="">Choose…</option>
+			for _, a := range v.Attributes {
+				<option value={ a.Key } selected?={ a.Key == row.Attribute }>{ a.Label }</option>
+			}
+		</select>
+		<select data-testid="rule-op" name={ ruleRowInput(i, "op") } aria-label="Operator">
+			for _, op := range ruleOps(row.Attribute) {
+				<option value={ op[0] } selected?={ op[0] == row.Op }>{ op[1] }</option>
+			}
+		</select>
+		if row.Attribute != domain.RuleTopLevel {
+			<select data-testid="rule-values" name={ ruleRowInput(i, "value") } multiple aria-label="Values">
+				for _, a := range v.Attributes {
+					if len(a.Values) > 0 {
+						<optgroup label={ a.Label } data-attribute={ a.Key }>
+							for _, val := range a.Values {
+								<option value={ val.Value } selected?={ slices.Contains(row.Values, val.Value) }>{ val.Label }</option>
+							}
+						</optgroup>
+					}
+				}
+			</select>
+		}
+		<button type="submit" name="remove-rule" value={ fmt.Sprint(i) } class="btn quiet sm" formnovalidate aria-label="Remove rule" title="Remove rule">×</button>
+		@reportBuilderError(v, domain.RuleInput(i))
+	</div>
+}
+
+// reportBuilderError is why input was refused, beside it, if it was.
+templ reportBuilderError(v reportBuilderView, input string) {
+	if bad := v.bad(input); bad != "" {
+		<span data-testid="input-error" id={ input + "-error" } class="rb-input-error">{ bad }</span>
 	}
 }
 
@@ -90,6 +145,10 @@ templ reportBuilderStyles() {
 		.rb-chips:empty{display:none}
 		.rb-chip{display:inline-flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border:1px solid var(--color-border);border-radius:999px}
 		.rb-form select[multiple]{width:100%;min-height:8em}
+		.rb-rules,.rb-picked{display:flex;flex-direction:column;gap:12px}
+		.rb-rule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
+		.rb-rule select[multiple]{flex:1 1 240px;width:auto}
+		.rb-input-error{display:block;flex-basis:100%;font-size:13px;color:var(--color-danger-ink)}
 		.rb-form:not(.rb-js) .rb-js-only{display:none}
 	</style>
 }

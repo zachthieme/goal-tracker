@@ -41,6 +41,53 @@ func TestBuilderSavesAPickedDefinitionOverHTTP(t *testing.T) {
 	}
 }
 
+// The builder saves a rules definition: the Goals meeting every rule, any
+// value of a rule, with Also include added and Leave out taken away. A Leave
+// out Goal that no rule matches is kept, and harmless (CONTEXT.md: Report
+// rule).
+func TestBuilderSavesARulesDefinitionWithAlsoIncludeAndLeaveOutOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Identity", "Mobile")
+	platform, identity, mobile := team.Values[0], team.Values[1], team.Values[2]
+	goal := func(owner domain.Account, title string, value domain.DimensionValue) domain.Goal {
+		g := h.ActiveGoal(owner, title, "Matters.")
+		h.AssignGoalValue(g, value)
+		return g
+	}
+	reliability := goal(boss, "Platform reliability", platform)
+	sso := goal(boss, "Legacy SSO cleanup", identity)
+	sdk := goal(boss, "Mobile SDK auth update", mobile)
+	goal(sam, "Edge cache rollout", platform)
+	app := goal(boss, "Mobile app redesign", mobile)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	id := func(n int64) string { return strconv.FormatInt(n, 10) }
+	dim := "dimension:" + id(team.ID)
+
+	resp := postForm(t, noRedirects(client), ts.URL+"/reports/new", url.Values{
+		"name":               {"Platform MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIsAnyOf},
+		"rules[0].value":     {dim + "=" + id(platform.ID), dim + "=" + id(identity.ID)},
+		"rules[1].attribute": {domain.RuleOwner},
+		"rules[1].op":        {domain.RuleIs},
+		"rules[1].value":     {domain.RuleOwner + "=" + id(boss.ID)},
+		"include":            {id(sdk.ID)},
+		"exclude":            {id(sso.ID), id(app.ID)},
+	})
+	draft := assertSavedReport(t, client, ts.URL, resp)
+	want := []string{sdk.Title, reliability.Title}
+	slices.Sort(want)
+	if got := draftGoalTitles(t, draft); !slices.Equal(got, want) {
+		t.Errorf("the rules draft selects %q, want %q", got, want)
+	}
+}
+
 // assertSavedReport checks resp, a builder's save, answered 303 to a Report's
 // draft, and returns the draft as client sees it.
 func assertSavedReport(t *testing.T, client *http.Client, baseURL string, resp *http.Response) string {
