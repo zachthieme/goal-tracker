@@ -432,7 +432,11 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		http.Error(w, "could not load goal", http.StatusInternalServerError)
 		return
 	}
-	view.Toast = s.linkRemovalToast(r.Context(), takeUndo(w, r), current, id)
+	offer := takeUndo(w, r)
+	view.Toast = cmp.Or(
+		s.linkRemovalToast(r.Context(), offer, current, id),
+		s.suggestionDeclineToast(r.Context(), offer, current, id, ""),
+	)
 	view.Open = goalForm(r.URL.Query().Get("open"))
 	view.History = view.History.narrowed(r.URL.Query())
 	render(w, r, http.StatusOK, goalPage(&current, view))
@@ -569,6 +573,18 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("read health strip: %w", err)
 	}
+	suggestions, err := s.svc.ParentSuggestions(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("load parent suggestions: %w", err)
+	}
+	// The Owner decides every open suggestion; anyone else sees only their
+	// own, to withdraw (CONTEXT.md: Parent suggestion).
+	var suggested []domain.ParentSuggestion
+	for _, p := range suggestions {
+		if p.Status == domain.SuggestionOpen && (current.ID == g.Owner.ID || current.ID == p.SuggestedBy.ID) {
+			suggested = append(suggested, p)
+		}
+	}
 
 	// Each linked Goal's Health, shown beside it in the sidebar.
 	linkHealth := map[int64]string{}
@@ -630,6 +646,8 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Required:       required,
 		Incomplete:     incomplete,
 		HealthStrip:    strip,
+		Suggestions:    suggestions,
+		Suggested:      suggested,
 	}
 	view.History = newHistory(view, s.svc.Timezone(), s.svc.Now())
 	return view, nil
@@ -720,11 +738,18 @@ type goalView struct {
 	// HealthStrip is the Goal's Health over its last Check-in periods, shown
 	// above its History; it has no periods until the Goal has been Active.
 	HealthStrip domain.HealthStrip
+	// Suggestions are every Parent suggestion made for the Goal with its
+	// outcome, oldest first, for its History. Suggested are the open ones the
+	// viewer is shown under Suggested parents: all of them for the Owner, who
+	// decides them, and their own for anyone else, to withdraw.
+	Suggestions []domain.ParentSuggestion
+	Suggested   []domain.ParentSuggestion
 	// History is the Goal's History as one timeline, newest first, showing the
 	// filter and page count the page's address asks for.
 	History history
 	// Toast is the one-time notice the page carries straight after the viewer
-	// removed one of its links, with an Undo; nil on any other visit.
+	// removed one of its links or declined one of its Parent suggestions, with
+	// an Undo; nil on any other visit.
 	Toast *toast
 }
 
@@ -802,33 +827,41 @@ type goalAction struct {
 }
 
 // actions lists the action menu's items the viewer may use, in menu order:
-// each opens its form in place, but Add a child Goal, which anyone may use,
-// leads to the New goal form with this Goal picked as the parent.
+// each opens its form in place, but two lead to pages of their own. Suggest a
+// parent, for anyone but the Owner of an Active or Proposed Goal, leads to its
+// form (CONTEXT.md: Parent suggestion); Add a child Goal, which anyone may
+// use, to the New goal form with this Goal picked as the parent.
 func (v goalView) actions() []goalAction {
 	topLevel := "Mark Top-level"
 	if v.Goal.TopLevel {
 		topLevel = "Unmark Top-level"
 	}
+	var suggest string
+	if !v.Owns && (v.Goal.Lifecycle == domain.LifecycleActive || v.Goal.Lifecycle == domain.LifecycleProposed) {
+		suggest = fmt.Sprintf("/goals/%d/suggest-parent", v.Goal.ID)
+	}
 	var out []goalAction
 	for _, a := range []struct {
 		label string
 		form  goalForm
+		href  string
 	}{
-		{"Hand off", formHandoff},
-		{"Add a delegate", formDelegates},
-		{"Link to a parent Goal", formParentLink},
-		{"Add a child Goal", ""},
-		{"Edit Dimension values", formDimensions},
-		{"Edit Fields", formFields},
-		{topLevel, formTopLevel},
-		{"Mark owner departed…", formDepart},
-		{"Mark returned…", formReturn},
-		{"Reassign", formReassign},
+		{"Hand off", formHandoff, ""},
+		{"Add a delegate", formDelegates, ""},
+		{"Link to a parent Goal", formParentLink, ""},
+		{"Suggest a parent", "", suggest},
+		{"Add a child Goal", "", fmt.Sprintf("/goals/new?parent=%d", v.Goal.ID)},
+		{"Edit Dimension values", formDimensions, ""},
+		{"Edit Fields", formFields, ""},
+		{topLevel, formTopLevel, ""},
+		{"Mark owner departed…", formDepart, ""},
+		{"Mark returned…", formReturn, ""},
+		{"Reassign", formReassign, ""},
 	} {
 		switch {
-		case a.form == "":
-			out = append(out, goalAction{a.label, templ.SafeURL(fmt.Sprintf("/goals/new?parent=%d", v.Goal.ID))})
-		case v.offers(a.form):
+		case a.href != "":
+			out = append(out, goalAction{a.label, templ.SafeURL(a.href)})
+		case a.form != "" && v.offers(a.form):
 			out = append(out, goalAction{a.label, v.openURL(a.form)})
 		}
 	}

@@ -46,16 +46,18 @@ const historyPage = 20
 
 // historyEntry is one event in a Goal's History: a Check-in with the Date
 // Slips and Metric readings recorded in it, a So What revision, an ownership
-// change (a Handoff or an Admin Reassign), or a change to a Dimension value or
-// Field. Exactly one of Checkin, Revision, Handoff and Value is set.
+// change (a Handoff or an Admin Reassign), a change to a Dimension value or
+// Field, or a Parent suggestion with its outcome. Exactly one of Checkin,
+// Revision, Handoff, Value and Suggestion is set.
 type historyEntry struct {
-	At       time.Time
-	Checkin  *domain.Checkin
-	Slips    []domain.DateSlip
-	Readings []historyReading
-	Revision *domain.SoWhatRevision
-	Handoff  *domain.Handoff
-	Value    *domain.ValueChange
+	At         time.Time
+	Checkin    *domain.Checkin
+	Slips      []domain.DateSlip
+	Readings   []historyReading
+	Revision   *domain.SoWhatRevision
+	Handoff    *domain.Handoff
+	Value      *domain.ValueChange
+	Suggestion *domain.ParentSuggestion
 }
 
 // historyReading is a Metric's reading as a Check-in recorded it.
@@ -73,6 +75,8 @@ func (e historyEntry) kind() string {
 		return "so-what"
 	case e.Handoff != nil:
 		return "ownership"
+	case e.Suggestion != nil:
+		return "parent-suggestion"
 	}
 	return "value"
 }
@@ -88,12 +92,14 @@ func (e historyEntry) label() string {
 		return "Reassign"
 	case e.Handoff != nil:
 		return "Handoff"
+	case e.Suggestion != nil:
+		return "Parent suggestion"
 	}
 	return "Value"
 }
 
 // in reports whether the entry is listed under filter. Date Slips lists the
-// Check-ins that carry one.
+// Check-ins that carry one; a Parent suggestion is listed under All only.
 func (e historyEntry) in(filter historyFilter) bool {
 	switch filter {
 	case historyCheckins:
@@ -127,8 +133,8 @@ type history struct {
 }
 
 // newHistory gathers a Goal's Check-ins, Date Slips, Metric readings, So What
-// revisions, ownership changes and value changes into one timeline, newest
-// first, showing everything and the first page.
+// revisions, ownership changes, value changes and Parent suggestions into one
+// timeline, newest first, showing everything and the first page.
 func newHistory(v goalView, loc *time.Location, now time.Time) history {
 	slipsBy := map[int64][]domain.DateSlip{}
 	for _, s := range v.DateSlips {
@@ -157,6 +163,9 @@ func newHistory(v goalView, loc *time.Location, now time.Time) history {
 	for _, c := range v.ValueHistory {
 		entries = append(entries, historyEntry{At: c.CreatedAt, Value: &c})
 	}
+	for _, p := range v.Suggestions {
+		entries = append(entries, historyEntry{At: p.CreatedAt, Suggestion: &p})
+	}
 	// Newest first; entries made at the same moment keep the order they were
 	// recorded in, latest first.
 	slices.SortStableFunc(entries, func(a, b historyEntry) int {
@@ -178,6 +187,8 @@ func (e historyEntry) seq() int64 {
 		return e.Revision.ID
 	case e.Handoff != nil:
 		return e.Handoff.ID
+	case e.Suggestion != nil:
+		return e.Suggestion.ID
 	}
 	return e.Value.ID
 }
@@ -393,6 +404,22 @@ func milestoneChangeText(m domain.MilestoneChange) string {
 // when is t as an entry shows it, in the org's timezone: "Fri 2 Jan 15:04".
 func (h history) when(t time.Time) string {
 	return t.In(h.Loc).Format("Mon 2 Jan 15:04")
+}
+
+// suggestionOutcome says how a Parent suggestion ended and when, or that it's
+// still open.
+func (h history) suggestionOutcome(p domain.ParentSuggestion) string {
+	switch p.Status {
+	case domain.SuggestionOpen:
+		return "Still open"
+	case domain.SuggestionAccepted:
+		return "Accepted " + h.when(p.ClosedAt)
+	case domain.SuggestionDeclined:
+		return "Declined " + h.when(p.ClosedAt)
+	case domain.SuggestionWithdrawn:
+		return "Withdrawn " + h.when(p.ClosedAt)
+	}
+	return "No longer applies, since " + h.when(p.ClosedAt)
 }
 
 // url is the Goal page listing filter with shown entries, scrolled to the

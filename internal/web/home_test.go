@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"testing"
@@ -642,5 +643,55 @@ func TestHomeNewGoalOpensProposeForm(t *testing.T) {
 	form := pageElement(t, getBody(t, client, ts.URL+attr(link, "href")), "form", "goal-form")
 	if title := tagAround(t, form, `name="title"`); !strings.Contains(title, " autofocus") {
 		t.Errorf("following New goal doesn't focus the Title: %s", title)
+	}
+}
+
+// A Parent suggestion on a Goal the person Owns is one of Home's Requests,
+// counted in what needs them: who suggested which parent, with the note, and
+// Decline and Accept, each returning to Home. Accepting requests the link.
+func TestHomeListsParentSuggestionsToDecide(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignInNamed("pat@example.com", "Pat Lee")
+	kim := h.SignIn("kim@example.com")
+	goal := h.CreateGoal(sam, "Migrate displays", "Old displays fail often.")
+	parent := h.CreateGoal(kim, "Reduce outages", "Outages cost trust.")
+	s, err := h.Service.SuggestParent(context.Background(), pat.ID, goal.ID, parent.ID, "displays cause outages")
+	if err != nil {
+		t.Fatalf("SuggestParent: %v", err)
+	}
+
+	client := signInClient(t, ts.URL, "sam@example.com")
+	page := getBody(t, client, ts.URL+"/home")
+	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "1 thing needs you") {
+		t.Errorf("summary = %s, want 1 thing needs you for the suggestion", got)
+	}
+	row := homeRow(t, pageElement(t, page, "ul", "home-requests"), goal)
+	for _, want := range []string{"Pat Lee", navTo(parent.ID), "displays cause outages"} {
+		if !strings.Contains(row, want) {
+			t.Errorf("the row lacks %q:\n%s", want, row)
+		}
+	}
+	base := fmt.Sprintf("/parent-suggestions/%d", s.ID)
+	for _, action := range []string{"/decline", "/accept"} {
+		form := between(t, row, `action="`+base+action+`"`, "</form>")
+		if !strings.Contains(form, `name="from" value="home"`) {
+			t.Errorf("Home's %s doesn't say it came from Home:\n%s", action, form)
+		}
+	}
+
+	resp := postForm(t, client, ts.URL+base+"/accept", url.Values{"from": {"home"}})
+	page = readBody(t, resp)
+	if resp.Request.URL.Path != "/home" {
+		t.Errorf("accepting landed on %s, want /home", resp.Request.URL.Path)
+	}
+	if strings.Contains(page, `data-testid="home-requests"`) {
+		t.Errorf("Home still lists the accepted suggestion:\n%s", page)
+	}
+	if pending, _ := h.Service.PendingLinkRequests(context.Background(), kim.ID); len(pending) != 1 || pending[0].Child.ID != goal.ID {
+		t.Errorf("kim's requests = %+v, want the Goal's link", pending)
 	}
 }

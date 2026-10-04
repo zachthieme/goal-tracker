@@ -53,7 +53,9 @@ type RequestLinkInput struct {
 // own the child. The request is accepted immediately when the requester also
 // owns the parent (CONTEXT.md: creating a child directly under a Goal you own);
 // otherwise it waits Pending for the parent's Owner. A request that would close
-// a cycle is rejected here and again at accept time (ADR-0001).
+// a cycle is rejected here and again at accept time (ADR-0001). Any open Parent
+// suggestion of the same parent for the child closes as no longer applying, as
+// it does when RestoreLinkRequest or RestoreLink brings the link back.
 func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, error) {
 	if in.ChildID == in.ParentID {
 		return Link{}, fmt.Errorf("%w: a Goal cannot contribute to itself", ErrValidation)
@@ -97,16 +99,23 @@ func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, e
 	}
 
 	now := s.clock.Now()
-	row, err := s.queries.CreateLink(ctx, db.CreateLinkParams{
-		ChildID:     in.ChildID,
-		ParentID:    in.ParentID,
-		Status:      status,
-		Note:        strings.TrimSpace(in.Note),
-		RequestedBy: in.RequesterID,
-		CreatedAt:   now.Format(timeFormat),
+	var row db.Link
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		row, err = tx.queries.CreateLink(ctx, db.CreateLinkParams{
+			ChildID:     in.ChildID,
+			ParentID:    in.ParentID,
+			Status:      status,
+			Note:        strings.TrimSpace(in.Note),
+			RequestedBy: in.RequesterID,
+			CreatedAt:   now.Format(timeFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("create link: %w", err)
+		}
+		return tx.closeSuggestionsForLink(ctx, in.ChildID, in.ParentID)
 	})
 	if err != nil {
-		return Link{}, fmt.Errorf("create link: %w", err)
+		return Link{}, err
 	}
 
 	return Link{
@@ -332,7 +341,7 @@ func (s *Service) RestoreLinkRequest(ctx context.Context, rejectionID, actorID i
 			return fmt.Errorf("restore link request: %w", err)
 		}
 		linkID = row.ID
-		return nil
+		return tx.closeSuggestionsForLink(ctx, row.ChildID, row.ParentID)
 	})
 	if err != nil {
 		return Link{}, err
@@ -592,7 +601,7 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64, tok
 			return fmt.Errorf("restore link: %w", err)
 		}
 		linkID = row.ID
-		return nil
+		return tx.closeSuggestionsForLink(ctx, row.ChildID, row.ParentID)
 	})
 	if err != nil {
 		return Link{}, err
