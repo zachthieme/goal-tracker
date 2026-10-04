@@ -561,15 +561,11 @@ func (s *Service) finishedBefore(ctx context.Context, g Goal, since func(time.Ti
 // selectedGoal is g as a Report lists it, with its Health: its latest
 // Check-in's, empty when it has none.
 func (s *Service) selectedGoal(ctx context.Context, g Goal) (SelectedGoal, error) {
-	latest, ok, err := s.LatestCheckin(ctx, g.ID)
-	if err != nil {
-		return SelectedGoal{}, err
+	latest, err := s.queries.GetLatestCheckin(ctx, g.ID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return SelectedGoal{}, fmt.Errorf("get latest checkin: %w", err)
 	}
-	sg := SelectedGoal{Goal: g}
-	if ok {
-		sg.Health = latest.Health
-	}
-	return sg, nil
+	return SelectedGoal{Goal: g, Health: latest.Health}, nil
 }
 
 // ruleSubject is what Report rules test a Goal on: the Goal, its Owner-set
