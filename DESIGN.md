@@ -368,8 +368,8 @@ Load the fonts with this URL:
 - **History timeline (`goalHistory` in `timeline.templ`):** the Goal page's
   History is one canvas block, open on load with no outer disclosure. It is
   a single list, newest first, of every Check-in, So What revision, ownership
-  change (a Handoff with its outcome, or an Admin Reassign) and change to a
-  Dimension value or Field.
+  change (a Handoff with its outcome, or an Admin Reassign), change to a
+  Dimension value or Field, and change to one of its "contributes to" links.
   - **Weeks:** entries are grouped by week, Monday to Sunday in the org's
     timezone. Each week is headed by a `.label` "Week of 28 Sep", with the
     year added when it isn't this year. Each entry's time is written in that
@@ -380,16 +380,22 @@ Load the fonts with this URL:
     ● Green, ▲ Yellow, ■ Red. It reads without colour, and its badge names the
     Health beside it. Every other kind has a neutral `--color-ink-muted`
     marker with its own shape: a hollow ring for So What, a hollow diamond for
-    an ownership change, a bar for a value change, and a hollow square for a
-    Check-in with no Health, such as one that put the Goal On Hold. Every
-    entry also opens with its kind as a bold text label (Check-in, So What,
-    Handoff, Reassign, Value), so the marker is never the only signal.
+    an ownership change, a bar for a value change, a hollow arch (round on
+    top, square below) for a link change, and a hollow square for a Check-in
+    with no Health, such as one that put the Goal On Hold. Every entry also
+    opens with its kind as a bold text label (Check-in, So What, Handoff,
+    Reassign, Value, Link), so the marker is never the only signal.
   - **A Check-in entry** shows its Health badge and status, then any
     Lifecycle change, Path to Green, and the Date Slips it recorded (the
     delivery date or a Milestone, ~~old~~ new, and the reason). Last comes who
     wrote it, by Name, "for" the Owner when a Delegate wrote it. Its Metric
     readings and its explanation of a Health that differs from the Rolled-up
     Health sit in a small "Readings and explanation" disclosure on the entry.
+  - **A link entry** is on both Goals' timelines, phrased for the Goal it's
+    on, with the other Goal's title as a link: "Requested to contribute to
+    *Reduce outages*" on the child is "*Migrate displays* asked to contribute
+    to this" on the parent. An Undo reads "Undid:" before the change it
+    undid. Who made the change follows, by Name.
   - **Health strip (`healthStrip`, `.hs`):** under the History heading, above
     the filter chips, the Goal's Health over its last 11 Check-in periods, one
     cell for each, oldest on the left and the current period on the right. A
@@ -420,8 +426,9 @@ Load the fonts with this URL:
     Goal that has been Active, and it changes nothing: not Stale, not Health.
   - **Filter chips (`.tl-chips`):** a row of `--radius-full` chips above the
     list, wrapping on narrow screens: All, Check-ins, Date Slips, So What,
-    Ownership, Values. Each carries its count. Date Slips counts and lists the
-    Check-ins that carry one. A chip is a plain link to
+    Ownership, Links, Values. Each carries its count. Date Slips counts and
+    lists the Check-ins that carry one, and Links the link changes and Parent
+    suggestions. A chip is a plain link to
     `/goals/{id}?history=<filter>#history`, so the page reloads with the
     filter in the address and the History block in view. The current chip is
     `aria-current="page"`, with a `--color-primary-light` fill and a

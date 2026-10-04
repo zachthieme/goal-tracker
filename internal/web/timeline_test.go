@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -473,8 +474,8 @@ func TestGoalHistoryWorksWithoutJavaScript(t *testing.T) {
 	}
 	links := strings.Split(between(t, history, `data-testid="history-chips"`, "</nav>"), "<a ")[1:]
 	links = append(links, between(t, history, `<a data-testid="history-earlier"`, "</a>"))
-	if len(links) != 7 {
-		t.Fatalf("History has %d chip and Show earlier links, want 7", len(links))
+	if len(links) != 8 {
+		t.Fatalf("History has %d chip and Show earlier links, want 8", len(links))
 	}
 	for _, link := range links {
 		_, href, _ := strings.Cut(link, `href="`)
@@ -1017,7 +1018,7 @@ func TestCheckinFormRecordsMilestoneChangesOnlyWhenValid(t *testing.T) {
 
 // Each Parent suggestion is a History entry saying who suggested which parent,
 // then its outcome and when, or that it's still open. They're listed under
-// All only.
+// All and Links only.
 func TestGoalHistoryShowsEachParentSuggestionAndItsOutcome(t *testing.T) {
 	t.Parallel()
 
@@ -1122,6 +1123,208 @@ func TestGoalHistoryShowsEachNudge(t *testing.T) {
 	for _, filter := range []string{"date-slips", "so-what", "ownership", "values"} {
 		if n := len(nudgesUnder(filter)); n != 0 {
 			t.Errorf("the %s chip lists %d Nudges", filter, n)
+		}
+	}
+}
+
+// entryText is an entry's text as it reads, spaces collapsed: a link's tags
+// are dropped, and every other tag is a space.
+func entryText(entry string) string {
+	text := regexp.MustCompile(`</?a\b[^>]*>`).ReplaceAllString(entry, "")
+	text = regexp.MustCompile(`<[^>]*>`).ReplaceAllString(text, " ")
+	return strings.Join(strings.Fields(html.UnescapeString(text)), " ")
+}
+
+// A link's request, acceptance, removal and the Undo of that removal are each
+// an entry in both Goals' History, newest first, saying who did it and phrased
+// for the Goal it's on, with the other Goal linked.
+func TestGoalHistoryShowsLinkChangesOnBothGoals(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	pat := h.SignInNamed("pat@example.com", "Pat Lee")
+	sam := h.SignInNamed("sam@example.com", "Sam Owner")
+	parent := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	child := h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
+	patClient := signInClient(t, ts.URL, "pat@example.com")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	h.Clock.Advance(time.Hour)
+	if resp := postForm(t, samClient, fmt.Sprintf("%s/goals/%d/links", ts.URL, child.ID), url.Values{
+		"parent_id": {fmt.Sprint(parent.ID)},
+	}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("request link: status %d", resp.StatusCode)
+	}
+	pending, err := h.Service.PendingLinkRequests(context.Background(), pat.ID)
+	if err != nil || len(pending) != 1 {
+		t.Fatalf("PendingLinkRequests = %+v, %v", pending, err)
+	}
+	h.Clock.Advance(time.Hour)
+	if resp := postForm(t, patClient, fmt.Sprintf("%s/links/%d/accept", ts.URL, pending[0].ID), url.Values{}); resp.StatusCode != http.StatusOK {
+		t.Fatalf("accept link: status %d", resp.StatusCode)
+	}
+	h.Clock.Advance(time.Hour)
+	resp := postForm(t, patClient, fmt.Sprintf("%s/links/%d/remove", ts.URL, pending[0].ID), url.Values{"goal_id": {fmt.Sprint(parent.ID)}})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("remove link: status %d", resp.StatusCode)
+	}
+	landed := readBody(t, resp)
+	h.Clock.Advance(time.Minute)
+	if resp := postForm(t, patClient, ts.URL+undoAction(t, landed), toastFields(t, landed)); resp.StatusCode != http.StatusOK {
+		t.Fatalf("undo removal: status %d", resp.StatusCode)
+	}
+
+	for _, side := range []struct {
+		goal, other domain.Goal
+		want        []string
+	}{
+		{child, parent, []string{
+			"Undid: No longer contributes to Reduce outages by Pat Lee",
+			"No longer contributes to Reduce outages by Pat Lee",
+			"Reduce outages accepted this as a contributor by Pat Lee",
+			"Requested to contribute to Reduce outages by Sam Owner",
+		}},
+		{parent, child, []string{
+			"Undid: Migrate displays no longer contributes to this by Pat Lee",
+			"Migrate displays no longer contributes to this by Pat Lee",
+			"Accepted Migrate displays as a contributor by Pat Lee",
+			"Migrate displays asked to contribute to this by Sam Owner",
+		}},
+	} {
+		var got []string
+		for _, e := range historyEntries(historyBlock(t, getBody(t, samClient, goalPageURL(ts.URL, side.goal)))) {
+			if entryKind(t, e) != "link" {
+				continue
+			}
+			if !strings.Contains(e, navTo(side.other.ID)) {
+				t.Errorf("on %s, an entry doesn't link to %s:\n%s", side.goal.Title, side.other.Title, e)
+			}
+			got = append(got, entryText(e))
+		}
+		if len(got) != len(side.want) {
+			t.Fatalf("on %s, link entries = %q, want %d", side.goal.Title, got, len(side.want))
+		}
+		for i, want := range side.want {
+			if !strings.Contains(got[i], want) {
+				t.Errorf("on %s, entry %d = %q, want it to say %q", side.goal.Title, i, got[i], want)
+			}
+		}
+	}
+}
+
+// linkEntries are the link changes on g's History, newest first, as they read.
+func linkEntries(t *testing.T, client *http.Client, base string, g domain.Goal) []string {
+	t.Helper()
+	var out []string
+	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalPageURL(base, g)))) {
+		if entryKind(t, e) == "link" {
+			out = append(out, entryText(e))
+		}
+	}
+	return out
+}
+
+// A rejected request, the Undo of the rejection and a link made without a
+// request read on each side too: the child's Owner linking it under their own
+// Goal shows as it contributing.
+func TestGoalHistoryPhrasesRejectionsAndLinksForEachSide(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	pat := h.SignInNamed("pat@example.com", "Pat Lee")
+	sam := h.SignInNamed("sam@example.com", "Sam Owner")
+	parent := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	child := h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
+	own := h.CreateGoal(sam, "Fix kiosks", "Kiosks fail often.")
+	h.RequestLink(sam, own, child, "")
+	link := h.RequestLink(sam, child, parent, "")
+	h.Clock.Advance(time.Hour)
+	rejection, err := h.Service.RejectLink(ctx, link.ID, pat.ID)
+	if err != nil {
+		t.Fatalf("RejectLink: %v", err)
+	}
+	h.Clock.Advance(time.Minute)
+	if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, pat.ID, rejection.UndoToken); err != nil {
+		t.Fatalf("RestoreLinkRequest: %v", err)
+	}
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, side := range []struct {
+		goal domain.Goal
+		want []string
+	}{
+		{child, []string{
+			"Undid: Reduce outages declined the request to contribute to it by Pat Lee",
+			"Reduce outages declined the request to contribute to it by Pat Lee",
+			"Requested to contribute to Reduce outages by Sam Owner",
+			"Fix kiosks contributes to this by Sam Owner",
+		}},
+		{parent, []string{
+			"Undid: Declined Migrate displays's request to contribute to this by Pat Lee",
+			"Declined Migrate displays's request to contribute to this by Pat Lee",
+			"Migrate displays asked to contribute to this by Sam Owner",
+		}},
+		{own, []string{"Contributes to Migrate displays by Sam Owner"}},
+	} {
+		got := linkEntries(t, client, ts.URL, side.goal)
+		if len(got) != len(side.want) {
+			t.Fatalf("on %s, link entries = %q, want %d", side.goal.Title, got, len(side.want))
+		}
+		for i, want := range side.want {
+			if !strings.Contains(got[i], want) {
+				t.Errorf("on %s, entry %d = %q, want it to say %q", side.goal.Title, i, got[i], want)
+			}
+		}
+	}
+}
+
+// The Links chip, after Ownership, lists a Goal's link changes and its Parent
+// suggestions and nothing else, and counts them; no other chip but All lists
+// either.
+func TestGoalHistoryLinksChipListsLinkChangesAndParentSuggestions(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	goal := oneOfEachKind(t, h)
+	pat := h.SignIn("pat@example.com")
+	h.Clock.Advance(time.Hour)
+	h.RequestLink(goal.Owner, goal, h.CreateGoal(goal.Owner, "Grow revenue", "It matters."), "")
+	h.Clock.Advance(time.Hour)
+	if _, err := h.Service.SuggestParent(context.Background(), pat.ID, goal.ID, h.CreateGoal(pat, "Cut costs", "It matters.").ID, ""); err != nil {
+		t.Fatalf("SuggestParent: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := goalPageURL(ts.URL, goal)
+
+	history := historyBlock(t, getBody(t, client, goalURL))
+	var labels []string
+	for _, chip := range strings.Split(between(t, history, `data-testid="history-chips"`, "</nav>"), `data-testid="history-chip"`)[1:] {
+		labels = append(labels, strings.TrimSpace(between(t, chip, ">", "<span")[1:]))
+	}
+	if want := []string{"All", "Check-ins", "Date Slips", "So What", "Ownership", "Links", "Values"}; !slices.Equal(labels, want) {
+		t.Errorf("chips = %v, want %v", labels, want)
+	}
+	if got := historyChips(t, history)["Links"]; got.count != "2" || filterOf(got.href) != "links" {
+		t.Errorf("Links chip = %+v, want 2 to ?history=links", got)
+	}
+
+	var kinds []string
+	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalURL+"?history=links"))) {
+		kinds = append(kinds, entryKind(t, e))
+	}
+	if want := []string{"parent-suggestion", "link"}; !slices.Equal(kinds, want) {
+		t.Errorf("?history=links lists %v, want %v", kinds, want)
+	}
+
+	for _, filter := range []string{"checkins", "date-slips", "so-what", "ownership", "values"} {
+		for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalURL+"?history="+filter))) {
+			if kind := entryKind(t, e); kind == "link" || kind == "parent-suggestion" {
+				t.Errorf("the %s chip lists a %s entry", filter, kind)
+			}
 		}
 	}
 }

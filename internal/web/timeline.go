@@ -24,6 +24,7 @@ const (
 	historySlips     historyFilter = "date-slips"
 	historySoWhat    historyFilter = "so-what"
 	historyOwnership historyFilter = "ownership"
+	historyLinks     historyFilter = "links"
 	historyValues    historyFilter = "values"
 )
 
@@ -37,6 +38,7 @@ var historyFilters = []struct {
 	{historySlips, "Date Slips"},
 	{historySoWhat, "So What"},
 	{historyOwnership, "Ownership"},
+	{historyLinks, "Links"},
 	{historyValues, "Values"},
 }
 
@@ -47,8 +49,9 @@ const historyPage = 20
 // historyEntry is one event in a Goal's History: a Check-in with the Date
 // Slips and Metric readings recorded in it, a So What revision, an ownership
 // change (a Handoff or an Admin Reassign), a change to a Dimension value or
-// Field, a Parent suggestion with its outcome, or a Nudge. Exactly one of
-// Checkin, Revision, Handoff, Value, Suggestion and Nudge is set.
+// Field, a Parent suggestion with its outcome, a Nudge, or a change to one of
+// its links. Exactly one of Checkin, Revision, Handoff, Value, Suggestion,
+// Nudge and Link is set.
 type historyEntry struct {
 	At         time.Time
 	Checkin    *domain.Checkin
@@ -59,6 +62,7 @@ type historyEntry struct {
 	Value      *domain.ValueChange
 	Suggestion *domain.ParentSuggestion
 	Nudge      *domain.Nudge
+	Link       *domain.LinkEvent
 }
 
 // historyReading is a Metric's reading as a Check-in recorded it.
@@ -80,6 +84,8 @@ func (e historyEntry) kind() string {
 		return "parent-suggestion"
 	case e.Nudge != nil:
 		return "nudge"
+	case e.Link != nil:
+		return "link"
 	}
 	return "value"
 }
@@ -99,13 +105,15 @@ func (e historyEntry) label() string {
 		return "Parent suggestion"
 	case e.Nudge != nil:
 		return "Nudge"
+	case e.Link != nil:
+		return "Link"
 	}
 	return "Value"
 }
 
 // in reports whether the entry is listed under filter. Date Slips lists the
-// Check-ins that carry one; Check-ins lists the Nudges asking for one too; a
-// Parent suggestion is listed under All only.
+// Check-ins that carry one; Check-ins lists the Nudges asking for one too;
+// Links lists the Goal's link changes and its Parent suggestions.
 func (e historyEntry) in(filter historyFilter) bool {
 	switch filter {
 	case historyCheckins:
@@ -116,6 +124,8 @@ func (e historyEntry) in(filter historyFilter) bool {
 		return e.Revision != nil
 	case historyOwnership:
 		return e.Handoff != nil
+	case historyLinks:
+		return e.Link != nil || e.Suggestion != nil
 	case historyValues:
 		return e.Value != nil
 	}
@@ -139,8 +149,8 @@ type history struct {
 }
 
 // newHistory gathers a Goal's Check-ins, Date Slips, Metric readings, So What
-// revisions, ownership changes, value changes, Parent suggestions and Nudges
-// into one timeline, newest first, showing everything and the first page.
+// revisions, ownership changes, value changes, Parent suggestions, Nudges and
+// link changes into one timeline, newest first, showing everything and the first page.
 func newHistory(v goalView, loc *time.Location, now time.Time) history {
 	slipsBy := map[int64][]domain.DateSlip{}
 	for _, s := range v.DateSlips {
@@ -175,6 +185,9 @@ func newHistory(v goalView, loc *time.Location, now time.Time) history {
 	for _, n := range v.Nudges {
 		entries = append(entries, historyEntry{At: n.CreatedAt, Nudge: &n})
 	}
+	for _, l := range v.LinkEvents {
+		entries = append(entries, historyEntry{At: l.CreatedAt, Link: &l})
+	}
 	// Newest first; entries made at the same moment keep the order they were
 	// recorded in, latest first.
 	slices.SortStableFunc(entries, func(a, b historyEntry) int {
@@ -200,6 +213,8 @@ func (e historyEntry) seq() int64 {
 		return e.Suggestion.ID
 	case e.Nudge != nil:
 		return e.Nudge.ID
+	case e.Link != nil:
+		return e.Link.ID
 	}
 	return e.Value.ID
 }
@@ -417,6 +432,50 @@ func (h history) when(t time.Time) string {
 	return t.In(h.Loc).Format("Mon 2 Jan 15:04")
 }
 
+// linkChange says what a link change did, phrased for the Goal whose History
+// it's on, as the words before and after the other Goal's title: "No longer
+// contributes to" Reduce outages on the child, Migrate displays "no longer
+// contributes to this" on the parent. An Undo says "Undid:" before the change
+// it undid.
+func linkChange(e domain.LinkEvent) (before, after string) {
+	kind := e.Kind
+	undid := ""
+	switch kind {
+	case domain.LinkEventRejectionUndone:
+		kind, undid = domain.LinkEventRejected, "Undid: "
+	case domain.LinkEventRemovalUndone:
+		kind, undid = domain.LinkEventRemoved, "Undid: "
+	}
+	if e.OnChild() {
+		switch kind {
+		case domain.LinkEventRequested:
+			before = "Requested to contribute to "
+		case domain.LinkEventAccepted:
+			after = " accepted this as a contributor"
+		case domain.LinkEventRejected:
+			after = " declined the request to contribute to it"
+		case domain.LinkEventRemoved:
+			before = "No longer contributes to "
+		default:
+			before = "Contributes to "
+		}
+	} else {
+		switch kind {
+		case domain.LinkEventRequested:
+			after = " asked to contribute to this"
+		case domain.LinkEventAccepted:
+			before, after = "Accepted ", " as a contributor"
+		case domain.LinkEventRejected:
+			before, after = "Declined ", "'s request to contribute to this"
+		case domain.LinkEventRemoved:
+			after = " no longer contributes to this"
+		default:
+			after = " contributes to this"
+		}
+	}
+	return undid + before, after
+}
+
 // suggestionOutcome says how a Parent suggestion ended and when, or that it's
 // still open.
 func (h history) suggestionOutcome(p domain.ParentSuggestion) string {
@@ -474,6 +533,8 @@ func (h history) emptyText() string {
 		return "No So What revisions."
 	case historyOwnership:
 		return "No ownership changes yet."
+	case historyLinks:
+		return "No link changes or Parent suggestions yet."
 	case historyValues:
 		return "No value changes yet."
 	}

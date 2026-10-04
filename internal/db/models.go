@@ -186,6 +186,15 @@ type Link struct {
 	CreatedAt   string
 }
 
+type LinkEvent struct {
+	ID        int64
+	ChildID   int64
+	ParentID  int64
+	Kind      string
+	ActorID   int64
+	CreatedAt string
+}
+
 type LinkRemoval struct {
 	ID            int64
 	ChildID       int64

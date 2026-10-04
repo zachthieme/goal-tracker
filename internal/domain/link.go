@@ -112,6 +112,13 @@ func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, e
 		if err != nil {
 			return fmt.Errorf("create link: %w", err)
 		}
+		kind := LinkEventRequested
+		if status == LinkAccepted {
+			kind = LinkEventLinked
+		}
+		if err := tx.recordLinkEvent(ctx, in.ChildID, in.ParentID, kind, in.RequesterID, now); err != nil {
+			return err
+		}
 		return tx.closeSuggestionsForLink(ctx, in.ChildID, in.ParentID)
 	})
 	if err != nil {
@@ -167,16 +174,23 @@ func (s *Service) ImportLink(ctx context.Context, childID, parentID int64) (Link
 	}
 
 	now := s.clock.Now()
-	row, err := s.queries.CreateLink(ctx, db.CreateLinkParams{
-		ChildID:     childID,
-		ParentID:    parentID,
-		Status:      LinkAccepted,
-		Note:        "",
-		RequestedBy: child.Goal.OwnerID,
-		CreatedAt:   now.Format(timeFormat),
+	var row db.Link
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		row, err = tx.queries.CreateLink(ctx, db.CreateLinkParams{
+			ChildID:     childID,
+			ParentID:    parentID,
+			Status:      LinkAccepted,
+			Note:        "",
+			RequestedBy: child.Goal.OwnerID,
+			CreatedAt:   now.Format(timeFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("create link: %w", err)
+		}
+		return tx.recordLinkEvent(ctx, childID, parentID, LinkEventLinked, child.Goal.OwnerID, now)
 	})
 	if err != nil {
-		return Link{}, fmt.Errorf("create link: %w", err)
+		return Link{}, err
 	}
 	return Link{
 		ID:        row.ID,
@@ -206,11 +220,17 @@ func (s *Service) AcceptLink(ctx context.Context, linkID, actorID int64) (Link, 
 	if err := s.ensureNoCycle(ctx, row.ChildID, row.ParentID); err != nil {
 		return Link{}, err
 	}
-	if err := s.queries.SetLinkStatus(ctx, db.SetLinkStatusParams{
-		Status: LinkAccepted,
-		ID:     linkID,
-	}); err != nil {
-		return Link{}, fmt.Errorf("accept link: %w", err)
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.queries.SetLinkStatus(ctx, db.SetLinkStatusParams{
+			Status: LinkAccepted,
+			ID:     linkID,
+		}); err != nil {
+			return fmt.Errorf("accept link: %w", err)
+		}
+		return tx.recordLinkEvent(ctx, row.ChildID, row.ParentID, LinkEventAccepted, actorID, tx.clock.Now())
+	})
+	if err != nil {
+		return Link{}, err
 	}
 	return s.loadLink(ctx, linkID)
 }
@@ -269,6 +289,9 @@ func (s *Service) RejectLink(ctx context.Context, linkID, actorID int64) (LinkRe
 		if err != nil {
 			return fmt.Errorf("record link rejection: %w", err)
 		}
+		if err := tx.recordLinkEvent(ctx, row.ChildID, row.ParentID, LinkEventRejected, actorID, now); err != nil {
+			return err
+		}
 		token, err = tx.issueUndo(ctx, undoLinkRejection, rejection.ID, actorID, "")
 		return err
 	})
@@ -318,7 +341,8 @@ func (s *Service) RestoreLinkRequest(ctx context.Context, rejectionID, actorID i
 		if err := tx.ensureNoCycle(ctx, rejection.ChildID, rejection.ParentID); err != nil {
 			return err
 		}
-		restoredAt := tx.clock.Now().Format(timeFormat)
+		now := tx.clock.Now()
+		restoredAt := now.Format(timeFormat)
 		n, err := tx.queries.MarkRejectedLinkRequestRestored(ctx, db.MarkRejectedLinkRequestRestoredParams{
 			RestoredAt: &restoredAt,
 			ID:         rejectionID,
@@ -341,6 +365,9 @@ func (s *Service) RestoreLinkRequest(ctx context.Context, rejectionID, actorID i
 			return fmt.Errorf("restore link request: %w", err)
 		}
 		linkID = row.ID
+		if err := tx.recordLinkEvent(ctx, row.ChildID, row.ParentID, LinkEventRejectionUndone, actorID, now); err != nil {
+			return err
+		}
 		return tx.closeSuggestionsForLink(ctx, row.ChildID, row.ParentID)
 	})
 	if err != nil {
@@ -480,6 +507,9 @@ func (s *Service) RemoveLink(ctx context.Context, linkID, actorID int64) (LinkRe
 		if err != nil {
 			return fmt.Errorf("record link removal: %w", err)
 		}
+		if err := tx.recordLinkEvent(ctx, row.ChildID, row.ParentID, LinkEventRemoved, actorID, now); err != nil {
+			return err
+		}
 		token, err = tx.issueUndo(ctx, undoLinkRemoval, removal.ID, actorID, "")
 		return err
 	})
@@ -578,7 +608,8 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64, tok
 		if err := tx.ensureNoCycle(ctx, removal.ChildID, removal.ParentID); err != nil {
 			return err
 		}
-		restoredAt := tx.clock.Now().Format(timeFormat)
+		now := tx.clock.Now()
+		restoredAt := now.Format(timeFormat)
 		n, err := tx.queries.MarkLinkRemovalRestored(ctx, db.MarkLinkRemovalRestoredParams{
 			RestoredAt: &restoredAt,
 			ID:         removalID,
@@ -601,6 +632,9 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64, tok
 			return fmt.Errorf("restore link: %w", err)
 		}
 		linkID = row.ID
+		if err := tx.recordLinkEvent(ctx, row.ChildID, row.ParentID, LinkEventRemovalUndone, actorID, now); err != nil {
+			return err
+		}
 		return tx.closeSuggestionsForLink(ctx, row.ChildID, row.ParentID)
 	})
 	if err != nil {
