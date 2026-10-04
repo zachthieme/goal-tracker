@@ -20,6 +20,10 @@ templ risksPage(current *domain.Account, v risksPageView) {
 				<h1>Risks</h1>
 				<p data-testid="risks-attention" class="muted"><strong>{ strconv.Itoa(len(v.Rows)) }</strong> { v.attention() }</p>
 			</div>
+			<nav class="rk-scope" aria-label="Scope">
+				<a data-testid="risks-scope-everyone" class="btn quiet sm" href={ v.ScopeURL(false) } { v.ScopeAttrs(false)... }>Everyone</a>
+				<a data-testid="risks-scope-mine" class="btn quiet sm" href={ v.ScopeURL(true) } { v.ScopeAttrs(true)... }>Mine</a>
+			</nav>
 		</header>
 		<nav data-testid="risks-groups" class="rk-cards" aria-label="Risks by who acts">
 			for _, c := range v.Cards() {
@@ -140,6 +144,8 @@ templ riskChip(today time.Time, g domain.Goal, sig riskSignal) {
 // the structural signals take: a .tag with the badges' small radius.
 templ risksStyles() {
 	<style>
+		.rk-scope{display:inline-flex;gap:4px}
+		.rk-scope a[aria-current=page]{background:var(--color-primary-subtle);color:var(--color-ink)}
 		.rk-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 		.rk-card{padding:16px;display:flex;flex-direction:column;gap:8px}
 		.rk-card .num{font-size:24px}

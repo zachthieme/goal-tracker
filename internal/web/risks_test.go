@@ -808,3 +808,60 @@ func TestRiskFixOnAStructuralSignal(t *testing.T) {
 		riskFix(t, row) // every row has exactly one Fix
 	}
 }
+
+// Scoped to Mine (?mine=1), the Risks page keeps only the Goals the viewer
+// Owns or is a Delegate on, and its header count and cards count those alone,
+// while the top bar still counts every flagged Goal. The Everyone | Mine
+// toggle marks the current scope.
+func TestRisksPageScopedToMine(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	own := h.ActiveGoal(sam, "Own work", "It matters.")
+	delegated := h.ActiveGoal(kim, "Delegated work", "It matters.")
+	h.AddDelegate(kim, sam, delegated.ID)
+	other := h.ActiveGoal(kim, "Other work", "It matters.")
+	h.Clock.Advance(10 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?mine=1")
+
+	riskRowOf(t, page, own)
+	riskRowOf(t, page, delegated)
+	if hasRiskRow(page, other) {
+		t.Errorf("scoped to Mine, the page lists %q, which sam neither Owns nor is a Delegate on", other.Title)
+	}
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>2</strong>") {
+		t.Errorf("scoped to Mine, the header doesn't count sam's 2 Goals: %s", head)
+	}
+	if card := pageElement(t, page, "a", "risks-group-owner"); !strings.Contains(card, `<span class="num">2</span>`) || !strings.Contains(card, "Stale · 2") {
+		t.Errorf("scoped to Mine, the owner card doesn't count sam's 2 Goals: %s", card)
+	}
+	if risks := pageElement(t, page, "a", "nav-risks"); !strings.Contains(risks, `<span class="count">3</span>`) {
+		t.Errorf("scoped to Mine, the top bar's Risks count follows scope: %s", risks)
+	}
+	everyone, mine := pageElement(t, page, "a", "risks-scope-everyone"), pageElement(t, page, "a", "risks-scope-mine")
+	if attr(openTag(everyone), "href") != "/risks" || strings.Contains(openTag(everyone), "aria-current") {
+		t.Errorf("scoped to Mine, Everyone isn't a link to every Goal: %s", everyone)
+	}
+	if !strings.Contains(openTag(mine), `aria-current="page"`) {
+		t.Errorf("scoped to Mine, Mine isn't current: %s", mine)
+	}
+
+	page = getBody(t, client, ts.URL+"/risks")
+
+	riskRowOf(t, page, other)
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>3</strong>") {
+		t.Errorf("for Everyone, the header doesn't count all 3 Goals: %s", head)
+	}
+	everyone, mine = pageElement(t, page, "a", "risks-scope-everyone"), pageElement(t, page, "a", "risks-scope-mine")
+	if !strings.Contains(openTag(everyone), `aria-current="page"`) || strings.Contains(openTag(mine), "aria-current") {
+		t.Errorf("unscoped, Everyone isn't the current choice: %s / %s", everyone, mine)
+	}
+	if attr(openTag(mine), "href") != "/risks?mine=1" {
+		t.Errorf("Mine doesn't link to the page scoped to Mine: %s", mine)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -15,39 +16,87 @@ import (
 )
 
 // handleRisks answers "what's going wrong?" for leadership: every Goal the
-// freshness and graph signals flag, by problem type.
+// freshness and graph signals flag, by problem type, scoped by its address to
+// the viewer's own Goals (?mine=1). The scope narrows the rows only after
+// they are built: loadRisks stays org-wide for the top bar's count.
 func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	v, err := s.loadRisks(r.Context())
+	ctx := r.Context()
+	v, err := s.loadRisks(ctx)
 	if err != nil {
 		http.Error(w, "could not read risks", http.StatusInternalServerError)
 		return
 	}
-	rows, err := s.riskRows(r.Context(), v)
+	rows, err := s.riskRows(ctx, v)
 	if err != nil {
 		http.Error(w, "could not read risks", http.StatusInternalServerError)
 		return
 	}
-	if err := s.fixRiskRows(r.Context(), current, rows); err != nil {
+	delegated, err := s.svc.DelegatedGoals(ctx, current.ID)
+	if err != nil {
 		http.Error(w, "could not read risks", http.StatusInternalServerError)
 		return
 	}
+	delegate := map[int64]bool{}
+	for _, g := range delegated {
+		delegate[g.ID] = true
+	}
+	fixRiskRows(current, rows, delegate)
+	q := r.URL.Query()
 	page := risksPageView{
 		risksView: v,
-		Rows:      rows,
-		Group:     riskGroupKey(r.URL.Query().Get("group")),
+		Group:     riskGroupKey(q.Get("group")),
+		Mine:      q.Get("mine") == "1",
 		Today:     s.svc.Now().In(s.svc.Timezone()),
+	}
+	for _, row := range rows {
+		if page.Mine && row.Goal.Owner.ID != current.ID && !delegate[row.Goal.ID] {
+			continue
+		}
+		page.Rows = append(page.Rows, row)
 	}
 	render(w, r, http.StatusOK, risksPage(&current, page))
 }
 
-// risksPageView is the Risks page: its lists, its rows, the group its address
-// filters it to, "" for every group, and today, which its dates are read
-// against.
+// risksPageView is the Risks page: its lists, its rows in scope, the group its
+// address filters it to, "" for every group, whether it is scoped to the
+// viewer's own Goals, and today, which its dates are read against.
 type risksPageView struct {
 	risksView
 	Rows  []riskGoalRow
 	Group string
+	Mine  bool
 	Today time.Time
+}
+
+// url is the Risks page's address filtered to group ("" for every group) and
+// scoped to mine.
+func (p risksPageView) url(group string, mine bool) string {
+	q := url.Values{}
+	if group != "" {
+		q.Set("group", group)
+	}
+	if mine {
+		q.Set("mine", "1")
+	}
+	if len(q) == 0 {
+		return "/risks"
+	}
+	return "/risks?" + q.Encode()
+}
+
+// ScopeURL is the page's address scoped to the viewer's own Goals or not,
+// keeping its group.
+func (p risksPageView) ScopeURL(mine bool) templ.SafeURL {
+	return templ.SafeURL(p.url(p.Group, mine))
+}
+
+// ScopeAttrs marks the Everyone | Mine choice the page is scoped to as the
+// current one.
+func (p risksPageView) ScopeAttrs(mine bool) templ.Attributes {
+	if p.Mine == mine {
+		return templ.Attributes{"aria-current": "page"}
+	}
+	return templ.Attributes{}
 }
 
 // Shown are the rows the table shows: every row with no filter, else each row
@@ -269,21 +318,12 @@ type riskFix struct {
 	Primary bool
 }
 
-// fixRiskRows sets each row's Fix for current, reading the Goals they are a
-// Delegate on once for the page.
-func (s *Server) fixRiskRows(ctx context.Context, current domain.Account, rows []riskGoalRow) error {
-	delegated, err := s.svc.DelegatedGoals(ctx, current.ID)
-	if err != nil {
-		return fmt.Errorf("load delegated goals: %w", err)
-	}
-	delegate := map[int64]bool{}
-	for _, g := range delegated {
-		delegate[g.ID] = true
-	}
+// fixRiskRows sets each row's Fix for current, who is a Delegate on the Goals
+// delegate holds.
+func fixRiskRows(current domain.Account, rows []riskGoalRow, delegate map[int64]bool) {
 	for i := range rows {
 		rows[i].Fix = rows[i].fix(current, delegate[rows[i].Goal.ID])
 	}
-	return nil
 }
 
 // fix is the row's Fix for current, the first that applies of:
