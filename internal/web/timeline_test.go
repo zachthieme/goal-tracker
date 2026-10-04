@@ -474,8 +474,8 @@ func TestGoalHistoryWorksWithoutJavaScript(t *testing.T) {
 	}
 	links := strings.Split(between(t, history, `data-testid="history-chips"`, "</nav>"), "<a ")[1:]
 	links = append(links, between(t, history, `<a data-testid="history-earlier"`, "</a>"))
-	if len(links) != 7 {
-		t.Fatalf("History has %d chip and Show earlier links, want 7", len(links))
+	if len(links) != 8 {
+		t.Fatalf("History has %d chip and Show earlier links, want 8", len(links))
 	}
 	for _, link := range links {
 		_, href, _ := strings.Cut(link, `href="`)
@@ -1018,7 +1018,7 @@ func TestCheckinFormRecordsMilestoneChangesOnlyWhenValid(t *testing.T) {
 
 // Each Parent suggestion is a History entry saying who suggested which parent,
 // then its outcome and when, or that it's still open. They're listed under
-// All only.
+// All and Links only.
 func TestGoalHistoryShowsEachParentSuggestionAndItsOutcome(t *testing.T) {
 	t.Parallel()
 
@@ -1276,6 +1276,54 @@ func TestGoalHistoryPhrasesRejectionsAndLinksForEachSide(t *testing.T) {
 		for i, want := range side.want {
 			if !strings.Contains(got[i], want) {
 				t.Errorf("on %s, entry %d = %q, want it to say %q", side.goal.Title, i, got[i], want)
+			}
+		}
+	}
+}
+
+// The Links chip, after Ownership, lists a Goal's link changes and its Parent
+// suggestions and nothing else, and counts them; no other chip but All lists
+// either.
+func TestGoalHistoryLinksChipListsLinkChangesAndParentSuggestions(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	goal := oneOfEachKind(t, h)
+	pat := h.SignIn("pat@example.com")
+	h.Clock.Advance(time.Hour)
+	h.RequestLink(goal.Owner, goal, h.CreateGoal(goal.Owner, "Grow revenue", "It matters."), "")
+	h.Clock.Advance(time.Hour)
+	if _, err := h.Service.SuggestParent(context.Background(), pat.ID, goal.ID, h.CreateGoal(pat, "Cut costs", "It matters.").ID, ""); err != nil {
+		t.Fatalf("SuggestParent: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := goalPageURL(ts.URL, goal)
+
+	history := historyBlock(t, getBody(t, client, goalURL))
+	var labels []string
+	for _, chip := range strings.Split(between(t, history, `data-testid="history-chips"`, "</nav>"), `data-testid="history-chip"`)[1:] {
+		labels = append(labels, strings.TrimSpace(between(t, chip, ">", "<span")[1:]))
+	}
+	if want := []string{"All", "Check-ins", "Date Slips", "So What", "Ownership", "Links", "Values"}; !slices.Equal(labels, want) {
+		t.Errorf("chips = %v, want %v", labels, want)
+	}
+	if got := historyChips(t, history)["Links"]; got.count != "2" || filterOf(got.href) != "links" {
+		t.Errorf("Links chip = %+v, want 2 to ?history=links", got)
+	}
+
+	var kinds []string
+	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalURL+"?history=links"))) {
+		kinds = append(kinds, entryKind(t, e))
+	}
+	if want := []string{"parent-suggestion", "link"}; !slices.Equal(kinds, want) {
+		t.Errorf("?history=links lists %v, want %v", kinds, want)
+	}
+
+	for _, filter := range []string{"checkins", "date-slips", "so-what", "ownership", "values"} {
+		for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalURL+"?history="+filter))) {
+			if kind := entryKind(t, e); kind == "link" || kind == "parent-suggestion" {
+				t.Errorf("the %s chip lists a %s entry", filter, kind)
 			}
 		}
 	}

@@ -24,6 +24,7 @@ const (
 	historySlips     historyFilter = "date-slips"
 	historySoWhat    historyFilter = "so-what"
 	historyOwnership historyFilter = "ownership"
+	historyLinks     historyFilter = "links"
 	historyValues    historyFilter = "values"
 )
 
@@ -37,6 +38,7 @@ var historyFilters = []struct {
 	{historySlips, "Date Slips"},
 	{historySoWhat, "So What"},
 	{historyOwnership, "Ownership"},
+	{historyLinks, "Links"},
 	{historyValues, "Values"},
 }
 
@@ -110,8 +112,8 @@ func (e historyEntry) label() string {
 }
 
 // in reports whether the entry is listed under filter. Date Slips lists the
-// Check-ins that carry one; Check-ins lists the Nudges asking for one too; a
-// Parent suggestion is listed under All only.
+// Check-ins that carry one; Check-ins lists the Nudges asking for one too;
+// Links lists the Goal's link changes and its Parent suggestions.
 func (e historyEntry) in(filter historyFilter) bool {
 	switch filter {
 	case historyCheckins:
@@ -122,6 +124,8 @@ func (e historyEntry) in(filter historyFilter) bool {
 		return e.Revision != nil
 	case historyOwnership:
 		return e.Handoff != nil
+	case historyLinks:
+		return e.Link != nil || e.Suggestion != nil
 	case historyValues:
 		return e.Value != nil
 	}
@@ -529,6 +533,8 @@ func (h history) emptyText() string {
 		return "No So What revisions."
 	case historyOwnership:
 		return "No ownership changes yet."
+	case historyLinks:
+		return "No link changes or Parent suggestions yet."
 	case historyValues:
 		return "No value changes yet."
 	}
