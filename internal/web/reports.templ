@@ -57,12 +57,7 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 				<span data-testid="save-status" class="small muted"></span>
 				@reportHistory(pubs, loc)
 				// Edit definition: #151 fills this slot.
-				// A date the reader picked is carried on the action; otherwise
-				// publishing reads against the previous publication, as the draft does.
-				<form data-testid="report-publish" class="card rp-publish" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications%s", r.Definition.ID, chip.Query)) }>
-					<p class="muted">Publishes a frozen copy readers can comment on.</p>
-					<button type="submit" class="btn primary">Publish</button>
-				</form>
+				@reportPublish(r, chip)
 			</div>
 		</header>
 		<div data-testid="draft-panes" class="rp-panes">
@@ -115,6 +110,29 @@ templ reportBaselineChip(r domain.Report, chip baselineChip) {
 				</details>
 			</li>
 		</ul>
+	</details>
+}
+
+// reportPublish is the draft header's Publish…: a disclosure confirming what
+// the publication will freeze, with Cancel, which reloads the draft as it
+// stands and so closes it, and the publish form. A date the reader picked is
+// carried on the action; otherwise publishing reads against the previous
+// publication, as the draft does.
+templ reportPublish(r domain.Report, chip baselineChip) {
+	<details data-testid="publish-confirm" class="rp-menu rp-confirm">
+		<summary class="btn primary">Publish…</summary>
+		<div class="card rp-publish">
+			<div>
+				<h2>{ "Publish " + r.Definition.Name + "?" }</h2>
+				<p data-testid="publish-summary" class="muted">{ publishSummary(r, chip) }</p>
+			</div>
+			<div class="rp-actions">
+				<a data-testid="publish-cancel" class="btn quiet" href={ templ.SafeURL(chip.Draft + chip.Query) }>Cancel</a>
+				<form data-testid="report-publish" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications%s", r.Definition.ID, chip.Query)) }>
+					<button type="submit" class="btn primary">Publish</button>
+				</form>
+			</div>
+		</div>
 	</details>
 }
 
@@ -922,7 +940,11 @@ templ reportStyles() {
 		.rp-fields dt::after{content:":"}
 		.rp-fields dd{margin:0}
 		.rp-field-long{white-space:pre-line}
-		.rp-publish{padding:8px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+		.rp-publish{position:absolute;right:0;z-index:3;width:min(560px,calc(100vw - 32px));padding:24px;display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap;box-shadow:0 12px 32px rgb(0 0 0 / 12%)}
+		.rp-publish>div:first-child{flex:1 1 280px}
+		.rp-publish h2{font-size:17px;margin:0 0 4px}
+		.rp-publish p{margin:0}
+		.rp-publish .rp-actions{align-items:center}
 		.rp-draft-head{position:sticky;top:0;z-index:2;background:var(--color-canvas);border-bottom:1px solid var(--color-border);padding:12px 0;display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap}
 		.rp-draft-head h1{margin:0}
 		.rp-menu.rp-chip>summary{justify-content:flex-start;gap:4px;color:var(--color-ink);font-weight:400}

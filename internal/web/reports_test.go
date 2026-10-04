@@ -750,7 +750,7 @@ func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
 
 	header := between(t, page, `<header data-testid="draft-header"`, "</header>")
 	last := -1
-	for _, part := range []string{`data-testid="report-name"`, `data-testid="baseline-chip"`, `data-testid="save-status"`, `data-testid="report-history"`, `data-testid="report-publish"`} {
+	for _, part := range []string{`data-testid="report-name"`, `data-testid="baseline-chip"`, `data-testid="save-status"`, `data-testid="report-history"`, `data-testid="publish-confirm"`} {
 		at := strings.Index(header, part)
 		if at <= last {
 			t.Errorf("%s is out of order in the header (at %d, after %d); header:\n%s", part, at, last, header)
@@ -760,9 +760,9 @@ func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
 	if chip := between(t, header, `data-testid="baseline-chip"`, `data-testid="save-status"`); !strings.Contains(chip, `data-testid="report-baseline"`) {
 		t.Errorf("the baseline chip does not hold the baseline form; chip:\n%s", chip)
 	}
-	publish := pageElement(t, header, "form", "report-publish")
-	if !strings.Contains(publish, `class="btn primary"`) || !strings.Contains(publish, "Publishes a frozen copy readers can comment on.") {
-		t.Errorf("Publish is not the primary button with its summary; form:\n%s", publish)
+	publish := pageElement(t, header, "details", "publish-confirm")
+	if !strings.Contains(publish, `<summary class="btn primary">Publish…</summary>`) || !strings.Contains(publish, "Readers can comment on the frozen copy.") {
+		t.Errorf("Publish… is not the primary button with its summary; disclosure:\n%s", publish)
 	}
 	history := pageElement(t, header, "details", "report-history")
 	if !strings.Contains(history, "History (0)") || !strings.Contains(pageElement(t, history, "li", "no-publications"), "Not published yet.") {
@@ -1680,4 +1680,89 @@ func chipLabel(t *testing.T, chip string) string {
 	t.Helper()
 	const start = `data-testid="baseline-label">`
 	return strings.TrimPrefix(between(t, chip, start, "</strong>"), start)
+}
+
+// Publish… opens a confirmation in the draft header: what is about to be
+// frozen, counted from the draft, and the publish form beside a Cancel that
+// reloads the draft as it stands, baseline and all.
+func TestPublishConfirmsWhatItWillFreezeOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.Clock.Set(time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC))
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	late := h.ActiveGoal(boss, "Open Tokyo", "Expand east.")
+	churn := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	hire := h.ActiveGoal(boss, "Hire a CFO", "We need one.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Platform MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, late.ID, churn.ID, hire.ID}})
+	h.Clock.Set(time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC))
+	h.PublishReport(boss, def)
+	h.Clock.Set(time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC))
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(boss, late.ID, domain.HealthRed, "Vendor is late.", "Chase the vendor.", h.Clock.Now().AddDate(0, 1, 0))
+	h.CheckinWithHighlights(boss, churn.ID,
+		domain.HighlightInput{Kind: domain.HighlightAccomplishment, Note: "Churn halved."},
+		domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Churn is seasonal."})
+	h.CheckinWithHighlight(boss, hire.ID, domain.HighlightMiss, "Top candidate declined.")
+	draft, err := h.Service.DraftReport(context.Background(), def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	if len(draft.Exceptions) != 2 || len(draft.Lines) != 2 || len(draft.Highlights) != 3 {
+		t.Fatalf("draft has %d exceptions, %d lines and %d Highlights, want 2, 2 and 3", len(draft.Exceptions), len(draft.Lines), len(draft.Highlights))
+	}
+	var halved int64
+	for _, nh := range draft.Highlights {
+		if nh.Highlight.Note == "Churn halved." {
+			halved = nh.Highlight.ID
+		}
+	}
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	path := "/reports/" + strconv.FormatInt(def.ID, 10)
+	_ = readBody(t, postForm(t, client, ts.URL+path+"/narrative", url.Values{
+		"include-" + strconv.FormatInt(halved, 10): {"on"},
+		"pick-" + strconv.FormatInt(halved, 10):    {domain.HighlightAccomplishment},
+	}))
+
+	page := getBody(t, client, ts.URL+path)
+	if n := strings.Count(page, `action="`+path+`/publications`); n != 1 {
+		t.Errorf("the draft has %d forms publishing, want 1; body:\n%s", n, page)
+	}
+	header := pageElement(t, page, "header", "draft-header")
+	confirm := pageElement(t, header, "details", "publish-confirm")
+	if summary := between(t, confirm, "<summary", "</summary>"); !strings.Contains(summary, "Publish…") {
+		t.Errorf("the disclosure does not open on Publish…; summary:\n%s", summary)
+	}
+	if !strings.Contains(confirm, "Publish Platform MBR?") {
+		t.Errorf("the confirmation does not name the Report; disclosure:\n%s", confirm)
+	}
+	const want = "4 Goals · 2 need attention · 1 Highlight · changes since last publication · Sep 22. Readers can comment on the frozen copy."
+	if got := pageElement(t, confirm, "p", "publish-summary"); !strings.HasSuffix(got, ">"+want) {
+		t.Errorf("publish summary %q, want %q", got, want)
+	}
+	form := pageElement(t, confirm, "form", "report-publish")
+	if !strings.Contains(form, `method="post"`) || !strings.Contains(form, `action="`+path+`/publications"`) || !strings.Contains(form, `class="btn primary"`) {
+		t.Errorf("the default publish form is not a POST to the publications with no baseline; form:\n%s", form)
+	}
+	if cancel := pageElement(t, confirm, "a", "publish-cancel"); !strings.Contains(cancel, `href="`+path+`"`) || !strings.HasSuffix(cancel, ">Cancel") {
+		t.Errorf("Cancel does not reload the draft; link:\n%s", cancel)
+	}
+
+	confirm = pageElement(t, getBody(t, client, ts.URL+path+"?baseline=2026-01-01"), "details", "publish-confirm")
+	if got := pageElement(t, confirm, "p", "publish-summary"); !strings.Contains(got, "· changes since Jan 1.") {
+		t.Errorf("publish summary %q does not read against the chosen date", got)
+	}
+	if form := pageElement(t, confirm, "form", "report-publish"); !strings.Contains(form, `action="`+path+`/publications?baseline=2026-01-01"`) {
+		t.Errorf("the publish form does not carry the chosen baseline; form:\n%s", form)
+	}
+	if cancel := pageElement(t, confirm, "a", "publish-cancel"); !strings.Contains(cancel, `href="`+path+`?baseline=2026-01-01"`) {
+		t.Errorf("Cancel does not keep the chosen baseline; link:\n%s", cancel)
+	}
+	resp := postForm(t, client, ts.URL+path+"/publications?baseline=2026-01-01", url.Values{})
+	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "changes since 2026-01-01") {
+		t.Errorf("publication does not read against the chosen baseline; line:\n%s", line)
+	}
 }
