@@ -145,15 +145,16 @@ func (s *Server) editableReport(w http.ResponseWriter, r *http.Request, current 
 // introduction, mode, rule rows, listed Goals and Fields.
 func builderFromDefinition(def domain.ReportDefinition) reportBuilderView {
 	v := reportBuilderView{
-		ID:           def.ID,
-		Saved:        def.Name,
-		Name:         def.Name,
-		Introduction: def.Introduction,
-		Mode:         def.Mode,
-		PickedIDs:    def.Picked,
-		IncludeIDs:   def.Include,
-		ExcludeIDs:   def.Exclude,
-		FieldIDs:     def.FieldIDs,
+		ID:            def.ID,
+		Saved:         def.Name,
+		Name:          def.Name,
+		Introduction:  def.Introduction,
+		Mode:          def.Mode,
+		PickedIDs:     def.Picked,
+		IncludeIDs:    def.Include,
+		ExcludeIDs:    def.Exclude,
+		FieldIDs:      def.FieldIDs,
+		SavedFieldIDs: def.FieldIDs,
 	}
 	for _, rule := range def.Rules {
 		row := reportRuleRow{Attribute: rule.Attribute, Op: rule.Op}

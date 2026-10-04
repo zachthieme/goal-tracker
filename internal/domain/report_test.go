@@ -690,3 +690,40 @@ func TestUpdateReportDefinitionRefusals(t *testing.T) {
 		t.Errorf("editing an unknown definition: err = %v, want ErrNotFound", err)
 	}
 }
+
+// Editing a Report Definition keeps a Field it already shows after that Field
+// is Retired (ADR 0005: saved Report Definitions that reference it keep
+// working), but still refuses adding a different Retired Field (ticket #164).
+func TestUpdateReportDefinitionKeepsARetiredFieldItShows(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	legacy := h.CreateField(boss, "Legacy code", domain.FieldShortText, "")
+	g := h.CreateGoal(boss, "Grow revenue", "why")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}, FieldIDs: []int64{budget.ID}})
+	for _, f := range []domain.Field{budget, legacy} {
+		if err := h.Service.RetireField(ctx, boss.ID, f.ID); err != nil {
+			t.Fatalf("RetireField %s: %v", f.Name, err)
+		}
+	}
+
+	_, err := h.Service.UpdateReportDefinition(ctx, boss.ID, def.ID, domain.SaveReportDefinitionInput{
+		Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}, FieldIDs: []int64{budget.ID, legacy.ID},
+	})
+	if got := inputNames(domain.InputErrors(err)); !errors.Is(err, domain.ErrValidation) || !sameStrings(got, []string{domain.ReportInputFields}) {
+		t.Errorf("adding the Retired Legacy code: err = %v (inputs %v), want an InputError naming fields", err, got)
+	}
+
+	updated, err := h.Service.UpdateReportDefinition(ctx, boss.ID, def.ID, domain.SaveReportDefinitionInput{
+		Name: "MBR renamed", Mode: domain.ReportModePicked, Picked: []int64{g.ID}, FieldIDs: []int64{budget.ID},
+	})
+	if err != nil {
+		t.Fatalf("keeping the Retired Budget: %v", err)
+	}
+	if !slices.Equal(updated.FieldIDs, []int64{budget.ID}) {
+		t.Errorf("after the edit FieldIDs = %v, want [%d]", updated.FieldIDs, budget.ID)
+	}
+}

@@ -34,8 +34,9 @@ type reportBuilderView struct {
 	// and Exclude are those Goals.
 	PickedIDs, IncludeIDs, ExcludeIDs []int64
 	Picked, Include, Exclude          []domain.Goal
-	// FieldIDs are the Fields chosen to show beside each Goal.
-	FieldIDs []int64
+	// FieldIDs are the Fields chosen to show beside each Goal; SavedFieldIDs
+	// are those the saved definition shows, which stay offered once Retired.
+	FieldIDs, SavedFieldIDs []int64
 	// Problems are a refused save's problems, each naming its input.
 	Problems []*domain.InputError
 
@@ -43,7 +44,8 @@ type reportBuilderView struct {
 	Attributes []ruleAttribute
 	// Goals are every Goal, at any level, the pickers offer.
 	Goals []domain.Goal
-	// Fields are the Fields still offered to show.
+	// Fields are the Fields still offered to show, and any Retired one the
+	// saved definition already shows.
 	Fields []domain.Field
 	// Matches is the rail: the Goals the definition as typed would select.
 	Matches reportMatches
@@ -182,7 +184,7 @@ func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, cur
 		dropRuleRow(r.PostForm, r.PostForm.Get(inputRemoveRule))
 	}
 	v, in, unparsed := readReportBuilder(r)
-	v.ID, v.Saved = saved.ID, saved.Name
+	v.ID, v.Saved, v.SavedFieldIDs = saved.ID, saved.Name, saved.FieldIDs
 	do := r.PostFormValue("do")
 	if do == "add-rule" || do == "show-matches" || removing {
 		if do == "add-rule" {
@@ -428,7 +430,8 @@ func dedupeInt64s(ids []int64) []int64 {
 }
 
 // loadReportBuilder fills in the choices the builder offers, the listed Goals
-// as chips from their ids, and the rail.
+// as chips from their ids, and the rail. A Retired Field is offered only when
+// the saved definition already shows it, as a Retired Dimension is to a rule.
 func (s *Server) loadReportBuilder(r *http.Request, v *reportBuilderView) error {
 	goals, err := s.svc.ListGoals(r.Context())
 	if err != nil {
@@ -442,7 +445,9 @@ func (s *Server) loadReportBuilder(r *http.Request, v *reportBuilderView) error 
 	if err != nil {
 		return err
 	}
-	v.Fields = domain.OfferedFields(fields)
+	v.Fields = slices.DeleteFunc(fields, func(f domain.Field) bool {
+		return f.Retired && !slices.Contains(v.SavedFieldIDs, f.ID)
+	})
 	v.Goals = goals
 	v.Picked = goalsByID(goals, v.PickedIDs)
 	v.Include = goalsByID(goals, v.IncludeIDs)
