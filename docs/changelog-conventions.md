@@ -21,6 +21,32 @@ section: New features
 - [user] <entry text> (#<issue>).
 ```
 
+Real fragments from this repo:
+
+#51, a single `[user]` bullet:
+
+```
+section: New features
+- [user] The Admin page lists every Departed person, with a "Mark returned…" button for each, so an Admin can return someone who owns no Goal — a Delegate, or an Owner whose Goals were all reassigned while they were away — without a Goal page to do it from (#51).
+```
+
+#184, a fragment that spans two sections:
+
+```
+section: Bug fixes
+- [internal] `web.WithLogger(nil)` keeps the server logging to `slog.Default()` instead of panicking on the first 500 (#184).
+
+section: Testing
+- [internal] Each 500 that draws its own page (a failed Nudge, both No change failures, a failed import, a failed Undo) has a test that it logs its cause with the request's method and path, and an Undo answering 404 has one that it logs nothing (#184).
+```
+
+#181, a single `[ops]` bullet:
+
+```
+section: Improvements
+- [ops] Every unexpected server error (a 500) now reaches the server log on stderr as an ERROR record with the request's `method`, `path` and `err`, its underlying cause. Until now a 500 left no trace there. What the browser is sent is unchanged (#181).
+```
+
 It uses the section labels and audience tags below. It can have more than one
 `section:` block when a change spans sections. When fragments are collected, their
 bullets go into the top milestone if it's already dated today, or into a new
