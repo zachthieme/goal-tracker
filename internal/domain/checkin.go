@@ -171,15 +171,6 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 			return Checkin{}, err
 		}
 	}
-	picks, err := s.planDraftHighlightPicks(ctx, goal.Goal.ID, in.Highlights)
-	if err != nil {
-		return Checkin{}, err
-	}
-	highlights, err := planHighlights(picks.rows)
-	if err != nil {
-		return Checkin{}, err
-	}
-
 	deliverySlip, err := planDeliverySlip(goal.Goal, in.DeliveryDate, in.DeliveryDateReason)
 	if err != nil {
 		return Checkin{}, err
@@ -211,6 +202,18 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	// so they are written together or not at all.
 	var out Checkin
 	err = s.WithinTx(ctx, func(tx *Service) error {
+		// The Highlights are planned within the transaction: which Draft
+		// Highlights are still pending decides which offered rows count, and
+		// they are cleared in the same transaction, so two Check-ins can't both
+		// keep one.
+		picks, err := tx.planDraftHighlightPicks(ctx, goal.Goal.ID, in.Highlights)
+		if err != nil {
+			return err
+		}
+		highlights, err := planHighlights(picks.rows)
+		if err != nil {
+			return err
+		}
 		c, err := tx.createCheckin(ctx, db.CreateCheckinParams{
 			GoalID:          goal.Goal.ID,
 			AuthorID:        in.AuthorID,

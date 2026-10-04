@@ -137,9 +137,9 @@ func TestLogDraftHighlightOnlyWhileTheGoalTakesCheckins(t *testing.T) {
 	proposed := h.CreateGoal(sam, "Proposed", "Why.")
 	onHold := h.OnHoldGoal(sam, "On Hold", "Why.", "Waiting on budget.")
 	done := h.ActiveGoal(sam, "Done", "Why.")
-	h.EndGoal(sam, done.ID, domain.LifecycleDone)
+	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
 	cancelled := h.ActiveGoal(sam, "Cancelled", "Why.")
-	h.EndGoal(sam, cancelled.ID, domain.LifecycleCancelled)
+	h.EndGoalInCheckin(sam, cancelled.ID, domain.LifecycleCancelled)
 
 	for _, g := range []domain.Goal{proposed, onHold} {
 		if _, err := h.Service.LogDraftHighlight(ctx, domain.LogDraftHighlightInput{GoalID: g.ID, AuthorID: sam.ID, Note: "Noted."}); err != nil {
@@ -188,9 +188,9 @@ func TestDeleteDraftHighlightLeavesNoTrace(t *testing.T) {
 	}
 }
 
-// highlightTexts are a Goal's Highlights as "Kind: note", newest Check-in first
+// goalHighlightTexts are a Goal's Highlights as "Kind: note", newest Check-in first
 // and each Check-in's in the order recorded.
-func highlightTexts(t *testing.T, h *testsupport.Harness, goalID int64) []string {
+func goalHighlightTexts(t *testing.T, h *testsupport.Harness, goalID int64) []string {
 	t.Helper()
 	highlights, err := h.Service.ListHighlightsByGoal(context.Background(), goalID)
 	if err != nil {
@@ -203,9 +203,9 @@ func highlightTexts(t *testing.T, h *testsupport.Harness, goalID int64) []string
 	return out
 }
 
-// latestCheckin is the Goal's newest Check-in as ListCheckins loads it, with
+// newestCheckinWithDrafts is the Goal's newest Check-in as ListCheckins loads it, with
 // the Draft Highlights it discarded.
-func latestCheckin(t *testing.T, h *testsupport.Harness, goalID int64) domain.Checkin {
+func newestCheckinWithDrafts(t *testing.T, h *testsupport.Harness, goalID int64) domain.Checkin {
 	t.Helper()
 	checkins, err := h.Service.ListCheckins(context.Background(), goalID)
 	if err != nil {
@@ -249,10 +249,10 @@ func TestCheckinKeepsAndDiscardsTheDraftHighlightsItOffered(t *testing.T) {
 		"Miss: Drills found a gap reviews missed.",
 		"Insight: Typed at the Check-in.",
 	}
-	if got := highlightTexts(t, h, goal.ID); !slices.Equal(got, want) {
+	if got := goalHighlightTexts(t, h, goal.ID); !slices.Equal(got, want) {
 		t.Errorf("highlights = %q, want %q", got, want)
 	}
-	latest := latestCheckin(t, h, goal.ID)
+	latest := newestCheckinWithDrafts(t, h, goal.ID)
 	if latest.ID != c.ID {
 		t.Fatalf("latest Check-in = %d, want %d", latest.ID, c.ID)
 	}
@@ -280,7 +280,7 @@ func TestCheckinKeepsTwoDraftHighlightsOfTheSameKind(t *testing.T) {
 	)
 
 	want := []string{"Accomplishment: Retired the old pager.", "Accomplishment: Halved alert noise."}
-	if got := highlightTexts(t, h, goal.ID); !slices.Equal(got, want) {
+	if got := goalHighlightTexts(t, h, goal.ID); !slices.Equal(got, want) {
 		t.Errorf("highlights = %q, want %q", got, want)
 	}
 }
@@ -297,10 +297,10 @@ func TestCheckinDiscardsAKeptDraftHighlightWithItsNoteBlanked(t *testing.T) {
 
 	h.CheckinWithHighlights(sam, goal.ID, domain.HighlightInput{DraftHighlightID: d.ID, Kind: domain.HighlightMiss, Note: "  "})
 
-	if got := highlightTexts(t, h, goal.ID); len(got) != 0 {
+	if got := goalHighlightTexts(t, h, goal.ID); len(got) != 0 {
 		t.Errorf("highlights = %q, want none", got)
 	}
-	if got := draftNotes(latestCheckin(t, h, goal.ID).DiscardedDraftHighlights); !slices.Equal(got, []string{"Runbook was late."}) {
+	if got := draftNotes(newestCheckinWithDrafts(t, h, goal.ID).DiscardedDraftHighlights); !slices.Equal(got, []string{"Runbook was late."}) {
 		t.Errorf("discarded = %q, want the blanked one", got)
 	}
 }
@@ -326,7 +326,7 @@ func TestCheckinLeavesADraftHighlightItDidNotOfferPending(t *testing.T) {
 	if got := draftNotes(pending); !slices.Equal(got, []string{"Logged after the form opened."}) {
 		t.Errorf("pending = %q, want only the one logged after the form opened", got)
 	}
-	if got := draftNotes(latestCheckin(t, h, goal.ID).DiscardedDraftHighlights); !slices.Equal(got, []string{"Offered."}) {
+	if got := draftNotes(newestCheckinWithDrafts(t, h, goal.ID).DiscardedDraftHighlights); !slices.Equal(got, []string{"Offered."}) {
 		t.Errorf("discarded = %q, want only the one offered", got)
 	}
 }
@@ -385,10 +385,10 @@ func TestCheckinIgnoresARowNamingNoPendingDraftHighlight(t *testing.T) {
 		domain.HighlightInput{DraftHighlightID: elsewhere.ID, LeftOut: true},
 	)
 
-	if got := highlightTexts(t, h, goal.ID); len(got) != 0 {
+	if got := goalHighlightTexts(t, h, goal.ID); len(got) != 0 {
 		t.Errorf("highlights = %q, want none", got)
 	}
-	if got := latestCheckin(t, h, goal.ID).DiscardedDraftHighlights; len(got) != 0 {
+	if got := newestCheckinWithDrafts(t, h, goal.ID).DiscardedDraftHighlights; len(got) != 0 {
 		t.Errorf("discarded = %q, want none", draftNotes(got))
 	}
 	if pending, _ := h.Service.PendingDraftHighlights(ctx, sam.ID, other.ID); len(pending) != 1 {
@@ -414,7 +414,7 @@ func TestNoChangeCheckinLeavesDraftHighlightsPending(t *testing.T) {
 	if pending, _ := h.Service.PendingDraftHighlights(ctx, sam.ID, goal.ID); !slices.Equal(draftNotes(pending), []string{"Waiting."}) {
 		t.Errorf("pending = %q, want the draft still pending", draftNotes(pending))
 	}
-	if got := latestCheckin(t, h, goal.ID).DiscardedDraftHighlights; len(got) != 0 {
+	if got := newestCheckinWithDrafts(t, h, goal.ID).DiscardedDraftHighlights; len(got) != 0 {
 		t.Errorf("discarded = %q, want none", draftNotes(got))
 	}
 }

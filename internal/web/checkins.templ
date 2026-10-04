@@ -106,14 +106,12 @@ func (row milestoneFormRow) planned() bool {
 // highlightFormData is one Highlight row in the Check-in form: its kind (empty
 // for none) and note. A row with a blank note flags nothing. A row offered
 // from a Draft Highlight names it by DraftID and says whether its Keep box is
-// ticked; Draft is the Draft Highlight it was offered from, for its byline,
-// or nil once it is no longer pending.
+// ticked.
 type highlightFormData struct {
 	Kind    string
 	Note    string
 	DraftID int64
 	Keep    bool
-	Draft   *domain.DraftHighlight
 }
 
 // draftHighlightRows are the rows offering each of drafts, oldest first, each
@@ -121,7 +119,7 @@ type highlightFormData struct {
 func draftHighlightRows(drafts []domain.DraftHighlight) []highlightFormData {
 	out := make([]highlightFormData, 0, len(drafts))
 	for _, d := range drafts {
-		out = append(out, highlightFormData{Kind: d.Kind, Note: d.Note, DraftID: d.ID, Keep: true, Draft: &d})
+		out = append(out, highlightFormData{Kind: d.Kind, Note: d.Note, DraftID: d.ID, Keep: true})
 	}
 	return out
 }
@@ -641,13 +639,6 @@ templ checkinDraftHighlightRow(n int, row highlightFormData, e checkinError) {
 			<input type="checkbox" name="draft_highlight_keep" value={ id } checked?={ row.Keep }/>
 			Keep
 		</label>
-		if row.Draft != nil {
-			<p class="muted small">
-				{ "Logged by " }
-				@person(row.Draft.LoggedBy)
-				{ " · " + row.Draft.CreatedAt.Format("Jan 2") }
-			</p>
-		}
 		<label>
 			Kind
 			<select name={ "draft_highlight_kind_" + id }>
@@ -660,6 +651,15 @@ templ checkinDraftHighlightRow(n int, row highlightFormData, e checkinError) {
 		</label>
 		@checkinFieldError(e, fmt.Sprintf("highlight_%d", n))
 	</fieldset>
+}
+
+// highlightKindOptions are a Highlight kind select's options, None first, with
+// selected picked.
+templ highlightKindOptions(selected string) {
+	<option value="" selected?={ selected == "" }>None</option>
+	<option value={ domain.HighlightInsight } selected?={ selected == domain.HighlightInsight }>Insight</option>
+	<option value={ domain.HighlightAccomplishment } selected?={ selected == domain.HighlightAccomplishment }>Accomplishment</option>
+	<option value={ domain.HighlightMiss } selected?={ selected == domain.HighlightMiss }>Miss</option>
 }
 
 // confirmCancelScript asks the reader to confirm before a Check-in that

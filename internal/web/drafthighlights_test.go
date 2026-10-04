@@ -1,7 +1,6 @@
 package web_test
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -13,21 +12,6 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
-
-// pendingDraftNotes are the Goal's pending Draft Highlights' notes, oldest
-// first, as its Owner sees them.
-func pendingDraftNotes(t *testing.T, h *testsupport.Harness, owner domain.Account, goalID int64) []string {
-	t.Helper()
-	pending, err := h.Service.PendingDraftHighlights(context.Background(), owner.ID, goalID)
-	if err != nil {
-		t.Fatalf("PendingDraftHighlights: %v", err)
-	}
-	var out []string
-	for _, d := range pending {
-		out = append(out, d.Note)
-	}
-	return out
-}
 
 // The Owner and a Delegate see the Goal's pending Draft Highlights on its
 // page, oldest first, each with its kind, note, who logged it and when;
@@ -153,7 +137,7 @@ func TestLogDraftHighlightRefusedOnAnEndedGoal(t *testing.T) {
 
 	for _, lifecycle := range []string{domain.LifecycleDone, domain.LifecycleCancelled} {
 		goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-		h.EndGoal(sam, goal.ID, lifecycle)
+		h.EndGoalInCheckin(sam, goal.ID, lifecycle)
 
 		if page := getBody(t, samClient, goalPageURL(ts.URL, goal)); strings.Contains(page, `data-testid="log-draft-highlight"`) {
 			t.Errorf("a %s Goal's page offers the form to log a Draft Highlight", lifecycle)

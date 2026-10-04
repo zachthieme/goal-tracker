@@ -51,7 +51,7 @@ func (s *Service) LogDraftHighlight(ctx context.Context, in LogDraftHighlightInp
 	if err := s.authorizeDraftHighlighter(ctx, goal, in.AuthorID); err != nil {
 		return DraftHighlight{}, err
 	}
-	if goal.Lifecycle == LifecycleDone || goal.Lifecycle == LifecycleCancelled {
+	if ended(goal) {
 		return DraftHighlight{}, fmt.Errorf("%w: a %s Goal takes no more Check-ins, so it takes no Draft Highlights", ErrValidation, goal.Lifecycle)
 	}
 	note := strings.TrimSpace(in.Note)
@@ -147,7 +147,8 @@ type draftHighlightPicks struct {
 }
 
 // planDraftHighlightPicks works out what a Check-in on goalID does with each
-// row offered from a Draft Highlight. A row naming one that is no longer
+// row offered from a Draft Highlight. Called within the Check-in's
+// transaction, so what it reads as pending is what the Check-in clears. A row naming one that is no longer
 // pending on this Goal — deleted, or cleared by another Check-in — is ignored.
 // A kept row with a note becomes a Highlight; one left out, or kept with its
 // note blanked, records nothing and discards its Draft Highlight. Ignored and

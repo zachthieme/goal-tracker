@@ -91,3 +91,19 @@ func (h *Harness) OnHoldGoal(owner domain.Account, title, soWhat, reason string)
 	g.Lifecycle = domain.LifecycleOnHold
 	return g
 }
+
+// EndGoalInCheckin takes goal, Active, to Done or Cancelled in a Check-in by owner,
+// failing the test on error.
+func (h *Harness) EndGoalInCheckin(owner domain.Account, goalID int64, lifecycle string) {
+	h.T.Helper()
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:          goalID,
+		AuthorID:        owner.ID,
+		Status:          "Wrapping this up.",
+		Lifecycle:       lifecycle,
+		LifecycleReason: "No longer needed.",
+		Outcome:         "It shipped.",
+	}); err != nil {
+		h.T.Fatalf("SubmitCheckin to %s: %v", lifecycle, err)
+	}
+}

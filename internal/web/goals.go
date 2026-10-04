@@ -620,10 +620,13 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	// The Owner's Delegates and Admins set a Goal's Dimension values and Fields
 	// too (CONTEXT.md: Delegate).
 	canSetValues := canCheckin || current.IsAdmin
+	// Only the Owner and Delegates see the pending Draft Highlights; one who
+	// has since Departed is refused them, and sees none (CONTEXT.md: Draft
+	// Highlight).
 	var drafts []domain.DraftHighlight
 	if canCheckin {
 		drafts, err = s.svc.PendingDraftHighlights(ctx, current.ID, id)
-		if err != nil {
+		if err != nil && !errors.Is(err, domain.ErrNotAuthorized) {
 			return goalView{}, fmt.Errorf("load draft highlights: %w", err)
 		}
 	}

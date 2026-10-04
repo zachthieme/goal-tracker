@@ -66,15 +66,6 @@ templ draftHighlightSection(v goalView) {
 	}
 }
 
-// highlightKindOptions are a Highlight kind select's options, None first, with
-// selected picked.
-templ highlightKindOptions(selected string) {
-	<option value="" selected?={ selected == "" }>None</option>
-	<option value={ domain.HighlightInsight } selected?={ selected == domain.HighlightInsight }>Insight</option>
-	<option value={ domain.HighlightAccomplishment } selected?={ selected == domain.HighlightAccomplishment }>Accomplishment</option>
-	<option value={ domain.HighlightMiss } selected?={ selected == domain.HighlightMiss }>Miss</option>
-}
-
 // draftHighlightKind is a Draft Highlight's kind as the page shows it: "No
 // kind" for one logged without.
 func draftHighlightKind(kind string) string {
