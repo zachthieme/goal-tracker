@@ -20,6 +20,8 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 			<h1>New report</h1>
 		</div>
 		<form data-testid="report-builder" class="card rb-form" method="post" action="/reports/new">
+			// Enter presses a form's first submit, so it saves, not Add rule.
+			<button type="submit" class="sr-only" tabindex="-1" aria-hidden="true">Save report</button>
 			if problems := v.unplaced(); len(problems) > 0 {
 				<div data-testid="builder-problems" class="rb-problems" role="alert">
 					<p><strong>The report wasn't saved.</strong></p>
@@ -98,7 +100,7 @@ templ reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) {
 				}
 			</select>
 		}
-		<button type="submit" name="remove-rule" value={ fmt.Sprint(i) } class="btn quiet sm" formnovalidate aria-label="Remove rule" title="Remove rule">×</button>
+		<button type="submit" name={ inputRemoveRule } value={ fmt.Sprint(i) } class="btn quiet sm" formnovalidate aria-label="Remove rule" title="Remove rule">×</button>
 		@reportBuilderError(v, domain.RuleInput(i))
 	</div>
 }

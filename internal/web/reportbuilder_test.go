@@ -176,6 +176,110 @@ func TestBuilderRefusesAnUnknownModeBesideTheModeOverHTTP(t *testing.T) {
 	}
 }
 
+// Without script, Add rule submits the builder and it comes back, 200, with
+// one more rule row and every value kept, having saved nothing. A Top-level
+// row comes back offering only "is Top-level" and "is not Top-level", and no
+// values.
+func TestBuilderAddRuleKeepsEveryValueAndSavesNothingOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sdk := h.ActiveGoal(boss, "Mobile SDK auth update", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	id := func(n int64) string { return strconv.FormatInt(n, 10) }
+
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"Exec weekly"},
+		"introduction":       {"Every Monday."},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleTopLevel},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[1].attribute": {domain.RuleHealth},
+		"rules[1].op":        {domain.RuleIsAnyOf},
+		"rules[1].value":     {"health=" + domain.HealthRed, "health=" + domain.HealthYellow},
+		"include":            {id(sdk.ID)},
+		"do":                 {"add-rule"},
+	})
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Add rule: status %d, want 200; body:\n%s", resp.StatusCode, page)
+	}
+	builder := pageElement(t, page, "form", "report-builder")
+	for _, want := range []string{
+		`name="name" value="Exec weekly"`,
+		`name="introduction">Every Monday.</textarea>`,
+		`<option value="health=Red" selected>Red</option>`,
+		`<option value="health=Yellow" selected>Yellow</option>`,
+		`<input type="hidden" name="include" value="` + id(sdk.ID) + `">`,
+	} {
+		if !strings.Contains(builder, want) {
+			t.Errorf("Add rule lost %s:\n%s", want, builder)
+		}
+	}
+	rows := strings.Split(builder, `data-testid="report-rule"`)[1:]
+	if len(rows) != 3 {
+		t.Fatalf("Add rule shows %d rule rows, want 3:\n%s", len(rows), builder)
+	}
+	topLevel := rows[0]
+	if !strings.Contains(topLevel, `<option value="top-level" selected>Top-level</option>`) {
+		t.Errorf("the Top-level row lost its attribute:\n%s", topLevel)
+	}
+	if ops := regexp.MustCompile(`<option value="(is|is not|is any of)"[^>]*>([^<]*)</option>`).FindAllStringSubmatch(topLevel, -1); len(ops) != 2 ||
+		ops[0][2] != "is Top-level" || ops[1][2] != "is not Top-level" {
+		t.Errorf("the Top-level row offers operators %q, want only is Top-level and is not Top-level", ops)
+	}
+	if strings.Contains(topLevel, `data-testid="rule-values"`) {
+		t.Errorf("the Top-level row offers values:\n%s", topLevel)
+	}
+	if strings.Contains(rows[2], " selected") {
+		t.Errorf("the added row isn't blank:\n%s", rows[2])
+	}
+	if defs, _ := h.Service.ListReportDefinitions(context.Background()); len(defs) != 0 {
+		t.Errorf("Add rule saved %d definitions", len(defs))
+	}
+}
+
+// A rule row's × submits the builder and it comes back without that row,
+// saving nothing; Enter in the name saves, as the builder's first button is
+// Save.
+func TestBuilderRemovesARuleRowOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	h.SignIn("boss@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"Exec weekly"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleTopLevel},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[1].attribute": {domain.RuleLifecycle},
+		"rules[1].op":        {domain.RuleIs},
+		"rules[1].value":     {"lifecycle=" + domain.LifecycleActive},
+		"remove-rule":        {"0"},
+	})
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("remove rule: status %d, want 200; body:\n%s", resp.StatusCode, page)
+	}
+	builder := pageElement(t, page, "form", "report-builder")
+	rows := strings.Split(builder, `data-testid="report-rule"`)[1:]
+	if len(rows) != 1 || !strings.Contains(rows[0], `<option value="lifecycle" selected>`) {
+		t.Errorf("removing the Top-level row left %d rows:\n%s", len(rows), builder)
+	}
+	first := regexp.MustCompile(`<button[^>]*type="submit"[^>]*>`).FindString(builder)
+	if strings.Contains(first, `name=`) {
+		t.Errorf("the builder's first submit, which Enter presses, isn't Save: %s", first)
+	}
+	if defs, _ := h.Service.ListReportDefinitions(context.Background()); len(defs) != 0 {
+		t.Errorf("removing a rule saved %d definitions", len(defs))
+	}
+}
+
 // assertSavedReport checks resp, a builder's save, answered 303 to a Report's
 // draft, and returns the draft as client sees it.
 func assertSavedReport(t *testing.T, client *http.Client, baseURL string, resp *http.Response) string {

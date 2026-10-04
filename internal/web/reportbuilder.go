@@ -86,13 +86,29 @@ func (s *Server) handleNewReportForm(w http.ResponseWriter, r *http.Request, cur
 
 // handleNewReport saves the builder's Report Definition and lands on its
 // draft. A refused save comes back as the builder, 422, as typed, with each
-// problem beside its input.
+// problem beside its input. Add rule, and a rule row's ×, save nothing: the
+// builder comes back as typed with a blank row added, or without that row.
 func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "could not read the form", http.StatusBadRequest)
 		return
 	}
+	removing := r.PostForm.Has(inputRemoveRule)
+	if removing {
+		dropRuleRow(r.PostForm, r.PostForm.Get(inputRemoveRule))
+	}
 	v, in, unparsed := readReportBuilder(r)
+	if adding := r.PostFormValue("do") == "add-rule"; adding || removing {
+		if adding {
+			v.Rules = append(v.rows(), reportRuleRow{})
+		}
+		if err := s.loadReportBuilder(r, &v); err != nil {
+			http.Error(w, "could not load the builder", http.StatusInternalServerError)
+			return
+		}
+		render(w, r, http.StatusOK, reportBuilderPage(&current, v))
+		return
+	}
 	// The domain checks what parsed even when something didn't, so every
 	// problem comes back together; with any unparsed, nothing it saved is
 	// kept.
@@ -153,6 +169,18 @@ func readReportBuilder(r *http.Request) (v reportBuilderView, in domain.SaveRepo
 		}
 	}
 	return v, in, unparsed
+}
+
+// inputRemoveRule is a rule row's ×, posting the row's i.
+const inputRemoveRule = "remove-rule"
+
+// dropRuleRow removes the rule row posted as rules[i] from form.
+func dropRuleRow(form url.Values, i string) {
+	for name := range form {
+		if strings.HasPrefix(name, "rules["+i+"].") {
+			delete(form, name)
+		}
+	}
 }
 
 // reportRuleRows gathers the rule rows, posted as rules[i].attribute,
