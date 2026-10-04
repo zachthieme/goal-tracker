@@ -287,6 +287,26 @@ templ parentChip(p parentChoice, bad string) {
 	</li>
 }
 
+// goalSearchResults are the Contributes to search's matches, each a button
+// that picks it beside the <template> of the chip picking it adds.
+templ goalSearchResults(matches []parentChoice) {
+	if len(matches) == 0 {
+		<li data-testid="parent-no-results" class="muted small">No Goals match.</li>
+	}
+	for _, p := range matches {
+		<li data-testid="parent-result">
+			<button type="button" class="gf-result" data-pick>
+				@parentBadge(p)
+				<span>{ p.Goal.Title }</span>
+				<span class="muted small">{ p.Goal.Owner.Label() }</span>
+			</button>
+			<template>
+				@parentChip(p, "")
+			</template>
+		</li>
+	}
+}
+
 // parentBadge is a parent's Health, as the Goal page's sidebar shows a linked
 // Goal's, or its Lifecycle when it has none.
 templ parentBadge(p parentChoice) {

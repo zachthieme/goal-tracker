@@ -189,6 +189,38 @@ func (s *Server) parentChoice(ctx context.Context, current domain.Account, g dom
 // Goal picked.
 const inputParentID = "parent_id"
 
+// handleSearchGoals answers the Contributes to search as it is typed: each
+// candidate whose title contains q, ignoring case, less the parents already
+// picked, which come along as parent_id. Each result carries the chip picking
+// it adds.
+func (s *Server) handleSearchGoals(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	var picked []int64
+	for _, value := range r.URL.Query()[inputParentID] {
+		if id, err := strconv.ParseInt(value, 10, 64); err == nil {
+			picked = append(picked, id)
+		}
+	}
+	_, candidates, err := s.pickParents(r.Context(), current, picked)
+	if err != nil {
+		http.Error(w, "could not search goals", http.StatusInternalServerError)
+		return
+	}
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	var matches []parentChoice
+	for _, g := range candidates {
+		if !strings.Contains(strings.ToLower(g.Title), q) {
+			continue
+		}
+		p, err := s.parentChoice(r.Context(), current, g)
+		if err != nil {
+			http.Error(w, "could not search goals", http.StatusInternalServerError)
+			return
+		}
+		matches = append(matches, p)
+	}
+	render(w, r, http.StatusOK, goalSearchResults(matches))
+}
+
 // errUnparsed rolls back a New goal submit the domain accepted when the
 // handler refused some of its values.
 var errUnparsed = errors.New("the New goal form has values that don't parse")
@@ -286,6 +318,10 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	v.Problems = goalFormProblems(err, unparsed)
+	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, in.ParentIDs); err != nil {
+		http.Error(w, "could not load goals", http.StatusInternalServerError)
+		return
+	}
 	render(w, r, http.StatusUnprocessableEntity, goalFormPage(&current, v))
 }
 

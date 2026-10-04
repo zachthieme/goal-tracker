@@ -6,6 +6,7 @@ import (
 	"html"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"testing"
 
@@ -432,5 +433,152 @@ func TestNewGoalPageArrivesWithParentsPicked(t *testing.T) {
 		if remove := tagAround(t, chip, "data-remove-chip"); !strings.Contains(remove, `type="button"`) {
 			t.Errorf("chip %d's × isn't a button: %s", i, remove)
 		}
+	}
+}
+
+// The Contributes to hint names each Owner a picked parent asks to accept:
+// with one parent the creator's own and one Ana's, only Ana. Each chip
+// carries its Owner's label for script to rebuild the hint from.
+func TestNewGoalPageHintNamesOnlyOtherOwners(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignInNamed("sam@example.com", "Sam Reyes")
+	ana := h.SignInNamed("ana@example.com", "Ana Torres")
+	own := h.CreateGoal(sam, "Grow revenue", "The business needs it.")
+	theirs := h.CreateGoal(ana, "Faster site", "Speed sells.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/new?parent=%d&parent=%d", ts.URL, own.ID, theirs.ID))
+	hint := pageElement(t, page, "p", "parent-hint")
+	if got := strings.TrimSpace(hint[strings.Index(hint, ">")+1:]); got != "Each Owner is asked to accept: Ana Torres." {
+		t.Errorf("the hint says %q, want only Ana named", got)
+	}
+	if strings.Contains(openTag(hint), "hidden") {
+		t.Errorf("the hint is hidden: %s", openTag(hint))
+	}
+	if chip := tagAround(t, page, fmt.Sprintf(`id="parent:%d"`, theirs.ID)); attr(chip, "data-asks") != "Ana Torres" {
+		t.Errorf("Ana's Goal's chip doesn't carry her label: %s", chip)
+	}
+	if chip := tagAround(t, page, fmt.Sprintf(`id="parent:%d"`, own.ID)); strings.Contains(chip, "data-asks") {
+		t.Errorf("sam's own Goal's chip asks someone: %s", chip)
+	}
+
+	page = getBody(t, client, fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, own.ID))
+	if hint := pageElement(t, page, "p", "parent-hint"); !strings.Contains(openTag(hint), " hidden") {
+		t.Errorf("with only sam's own parent, the hint isn't hidden: %s", hint)
+	}
+}
+
+// GET /goals/search?q= answers the Contributes to search: each Goal whose
+// title contains q, ignoring case, less the parents already picked, sent as
+// parent_id. Each result holds the chip picking it adds.
+func TestGoalSearchMatchesTitlesLessThosePicked(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	ana := h.SignInNamed("ana@example.com", "Ana Torres")
+	faster := h.CreateGoal(ana, "Faster SITE", "Speed sells.")
+	picked := h.CreateGoal(sam, "Site reliability", "Outages cost us.")
+	newSite := h.CreateGoal(sam, "A new website", "The old one is dated.")
+	h.CreateGoal(sam, "Grow revenue", "The business needs it.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	q := url.Values{"q": {"site"}, "parent_id": {fmt.Sprint(picked.ID)}}
+	page := getBody(t, client, ts.URL+"/goals/search?"+q.Encode())
+	results := strings.Split(page, `data-testid="parent-result"`)[1:]
+	var got []string
+	for _, result := range results {
+		button := between(t, result, "data-pick", "</button>")
+		chip := between(t, result, "<template>", "</template>")
+		input := tagAround(t, chip, `name="parent_id"`)
+		for _, g := range []domain.Goal{faster, picked, newSite} {
+			if strings.Contains(button, g.Title) {
+				got = append(got, g.Title)
+				if attr(input, "value") != fmt.Sprint(g.ID) {
+					t.Errorf("picking %q adds the chip %s", g.Title, chip)
+				}
+			}
+		}
+	}
+	if want := []string{faster.Title, newSite.Title}; fmt.Sprint(got) != fmt.Sprint(want) && fmt.Sprint(got) != fmt.Sprint([]string{newSite.Title, faster.Title}) {
+		t.Errorf("searching %q found %q, want %q", "site", got, want)
+	}
+}
+
+// Without script, Contributes to is a multiple select named parent_id offering
+// every Goal not already picked, and posting its values links the new Goal to
+// each, the way the chips' inputs do.
+func TestNewGoalPageNoScriptSelectPostsParentIDs(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	picked := h.CreateGoal(sam, "Grow revenue", "The business needs it.")
+	first := h.CreateGoal(sam, "Faster site", "Speed sells.")
+	second := h.CreateGoal(sam, "Fewer outages", "Outages cost us.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, picked.ID))
+	sel := pageElement(t, page, "select", "parent-select")
+	if tag := openTag(sel); attr(tag, "name") != "parent_id" || !strings.Contains(tag, " multiple") {
+		t.Fatalf("the no-script field isn't a multiple select of parent_id: %s", tag)
+	}
+	var offered []string
+	for _, option := range strings.Split(sel, "<option")[1:] {
+		offered = append(offered, attr("<option"+option, "value"))
+	}
+	slices.Sort(offered)
+	if want := []string{fmt.Sprint(first.ID), fmt.Sprint(second.ID)}; fmt.Sprint(offered) != fmt.Sprint(want) {
+		t.Fatalf("the select offers %q, want every Goal but the one picked, %q", offered, want)
+	}
+
+	form := newGoalForm(nil)
+	form["parent_id"] = append([]string{fmt.Sprint(picked.ID)}, offered...)
+	resp := postForm(t, client, ts.URL+"/goals/new", form)
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK || resp.Request.URL.Path == "/goals/new" {
+		t.Fatalf("the post answered %d at %s:\n%s", resp.StatusCode, resp.Request.URL, body)
+	}
+	var created domain.Goal
+	goals, _ := h.Service.ListGoals(context.Background())
+	for _, g := range goals {
+		if g.Title == "Cut checkout latency" {
+			created = g
+		}
+	}
+	if parents := h.ParentsOf(created); len(parents) != 3 {
+		t.Errorf("the new Goal contributes to %+v, want all three it was given", parents)
+	}
+}
+
+// A refused New goal submit comes back with its parents still picked, as
+// chips, and the hint naming whom they ask; a parent_id that isn't a Goal's
+// is refused under the field.
+func TestNewGoalFormRefusalKeepsParentsPicked(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ana := h.SignInNamed("ana@example.com", "Ana Torres")
+	theirs := h.CreateGoal(ana, "Faster site", "Speed sells.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	form := refusedNewGoal(t, client, ts.URL, url.Values{"title": {""}, "so_what": {"Shoppers abandon slow carts."}, "parent_id": {fmt.Sprint(theirs.ID)}})
+	chip := between(t, form, `data-testid="parent-chip"`, "</li>")
+	if attr(tagAround(t, chip, `name="parent_id"`), "value") != fmt.Sprint(theirs.ID) {
+		t.Errorf("the refused form lost its parent chip:\n%s", form)
+	}
+	if hint := pageElement(t, form, "p", "parent-hint"); !strings.Contains(hint, "Each Owner is asked to accept: Ana Torres.") {
+		t.Errorf("the refused form's hint doesn't name Ana: %s", hint)
+	}
+
+	form = refusedNewGoal(t, client, ts.URL, newGoalForm(map[string]string{"parent_id": "first"}))
+	if !strings.Contains(html.UnescapeString(between(t, form, `id="parent_id-error"`, "</")), `"first" isn't a Goal`) {
+		t.Errorf("an unparsed parent_id isn't refused under the field:\n%s", form)
 	}
 }

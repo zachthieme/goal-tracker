@@ -15,6 +15,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /goals", s.requireAuth(s.handleCreateGoal))
 	s.mux.HandleFunc("GET /goals/download", s.requireAuth(s.handleDownloadGoals))
 	s.mux.HandleFunc("GET /goals/new", s.requireAuth(s.handleNewGoalForm))
+	s.mux.HandleFunc("GET /goals/search", s.requireAuth(s.handleSearchGoals))
 	s.mux.HandleFunc("POST /goals/new", s.requireAuth(s.handleCreateDefinedGoal))
 	s.mux.HandleFunc("POST /goals/values", s.requireAuth(s.handleSaveGoalTable))
 	s.mux.HandleFunc("GET /goals/{id}", s.requireAuth(s.handleViewGoal))
