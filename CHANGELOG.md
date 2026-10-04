@@ -18,6 +18,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **New features:**
 - [user] New goal, on Home and the Goal list, opens its own page at `/goals/new` in place of the Goal list's pop-up form. Fill in the Title and So What and Create Goal lands on the new Proposed Goal's page. If a submit is refused, the form comes back with what you typed, a list of the problems at the top, and each problem marked on its field. The page is a plain form, so it works without JavaScript (#129).
 - [user] The New goal page has a "How you'll know" section for adding Milestones (Name, Date) and Metrics (Name, Unit, Baseline, Target, Target date) as the Goal is created. "+ Milestone" and "+ Metric" add a row and × removes one; without JavaScript there is one row of each. A Metric's direction comes from its numbers: a target below the baseline means down, above means up, and only a Metric holding steady, with target equal to baseline, asks for a Direction. A row left blank is ignored; a partly filled row has each missing value, unreadable date and non-numeric number marked on its field, and the rest of the form keeps what you typed (#133).
+- [user] The New goal page has a "Contributes to" field for picking any number of parent Goals as the Goal is created. Type to search Goals by title. Each Goal you pick becomes a chip showing its Health (or its Lifecycle when it has none) and its title, and × removes it. A hint names the Owners who'll be asked to accept; a parent you own links at once. Opening `/goals/new?parent=<id>` arrives with that parent already picked. Without JavaScript the field is a list where you can select several Goals. The field is optional (#131).
 
 **Bug fixes:**
 - [internal] `scripts/shots.mjs` runs an action as an async function body only when it uses `await` in its code, not when the word appears in a string, comment, regex or property name, so such actions keep their completion value and awaited promise; a `name` ending in `.PNG` now saves `<name>.png` (#126).
@@ -25,6 +26,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Architecture:**
 - [internal] Add the domain command `CreateDefinedGoal`, which creates a Goal with its Kind, cadence, Milestones, Metrics, Dimension and Field values, parent links and, if asked, activation in one transaction. It checks every input before writing and returns every problem at once, each naming its input, ready for the single-page New goal form (#128).
+
+**Documentation:**
+- [internal] `CONTEXT.md` defines a Nudge (a one-off request to a Goal's Owner and Delegates to check in on a Stale or Path-overdue Goal) and a Parent suggestion (someone other than the Owner proposes a parent; only the Owner decides), and ADR 0006 records why a Parent suggestion is its own record rather than a link status (#143, #144).
 
 ### Collected changes — October 3, 2026
 
