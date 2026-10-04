@@ -422,6 +422,8 @@ templ goalFormParents(v goalFormView) {
 				hx-get={ v.searchURL() }
 				hx-trigger="input changed delay:300ms, search"
 				hx-target="#parent-results"
+				hx-swap="innerHTML"
+				hx-sync="this:replace"
 				hx-include="#parent-chips [name='parent_id']"
 			/>
 			<ul data-testid="parent-results" id="parent-results" class="gf-results" aria-live="polite"></ul>
