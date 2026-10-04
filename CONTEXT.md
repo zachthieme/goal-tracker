@@ -158,8 +158,12 @@ A document generated from Check-ins for a chosen set of Goals, at whatever caden
 _Avoid_: MBR (a Report may be used as one), review, rollup
 
 **Report Definition**:
-A saved, reusable selection of Goals for a Report. Each publication freezes a snapshot, and the next publication marks what changed since the previous one.
+A saved, reusable selection of Goals for a Report, made either by Report rules or by hand-picking Goals, never by following Contributes to links. Each publication freezes a snapshot, and the next publication marks what changed since the previous one, including Goals that entered or left the Report. Only its creator or an Admin may change it.
 _Avoid_: template, saved view, dashboard
+
+**Report rule**:
+A condition on a Goal's Dimension values, Owner, Lifecycle, Health or whether it's Top-level, that decides which Goals a Report Definition selects. A Goal must meet every rule, and meets a rule by having any of its values. Health means the Owner-set Health, and a Goal with no Health meets only "is not" rules on it. A rule-based Definition can also list Goals to **Also include** by hand and matched Goals to **Leave out**.
+_Avoid_: filter, query, criteria
 
 **Comment**:
 A question or answer about one Goal in a published Report. A Comment starts a thread that is routed to the Goal's Owner, and anyone may reply in it.
