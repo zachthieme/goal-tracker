@@ -37,15 +37,14 @@ func TestLinkGoalsAutoAcceptNavigateAndRemove(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("request link: status %d", resp.StatusCode)
 	}
-	childBody := readBody(t, resp)
-	if !strings.Contains(childBody, navTo(parent.ID)) {
-		t.Errorf("child page does not link its parent for navigation; body:\n%s", childBody)
+	if parents := pageElement(t, readBody(t, resp), "section", "goal-parents"); !strings.Contains(parents, navTo(parent.ID)) {
+		t.Errorf("child page does not link its parent for navigation:\n%s", parents)
 	}
 
 	// The parent page shows the child.
 	parentBody := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, parent.ID))
-	if !strings.Contains(parentBody, navTo(child.ID)) {
-		t.Errorf("parent page does not link its child for navigation; body:\n%s", parentBody)
+	if children := pageElement(t, parentBody, "section", "goal-children"); !strings.Contains(children, navTo(child.ID)) {
+		t.Errorf("parent page does not link its child for navigation:\n%s", children)
 	}
 
 	// Remove the link; the parent no longer appears on the child page.
@@ -57,9 +56,10 @@ func TestLinkGoalsAutoAcceptNavigateAndRemove(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("remove link: status %d", resp.StatusCode)
 	}
-	childBody = getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, child.ID))
-	if strings.Contains(childBody, navTo(parent.ID)) {
-		t.Errorf("child page still links the removed parent; body:\n%s", childBody)
+	// (Its History still names the parent the link was removed from.)
+	childBody := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, child.ID))
+	if parents := pageElement(t, childBody, "section", "goal-parents"); strings.Contains(parents, navTo(parent.ID)) {
+		t.Errorf("child page still lists the removed parent:\n%s", parents)
 	}
 }
 
@@ -87,9 +87,9 @@ func TestLinkRequestPendsThenParentOwnerAcceptsAcrossOwners(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("request link: status %d", resp.StatusCode)
 	}
-	// Not yet linked on Sam's Goal page.
-	if body := readBody(t, resp); strings.Contains(body, navTo(parent.ID)) {
-		t.Errorf("parent linked before acceptance; body:\n%s", body)
+	// Not yet linked on Sam's Goal page, though its History names the request.
+	if parents := pageElement(t, readBody(t, resp), "section", "goal-parents"); strings.Contains(parents, navTo(parent.ID)) {
+		t.Errorf("parent linked before acceptance:\n%s", parents)
 	}
 
 	// Pat sees the pending request, with the note.
@@ -112,8 +112,8 @@ func TestLinkRequestPendsThenParentOwnerAcceptsAcrossOwners(t *testing.T) {
 
 	// Now Sam's Goal page shows the parent, and Pat's inbox is empty.
 	childBody := getBody(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, child.ID))
-	if !strings.Contains(childBody, navTo(parent.ID)) {
-		t.Errorf("child page does not link the accepted parent; body:\n%s", childBody)
+	if parents := pageElement(t, childBody, "section", "goal-parents"); !strings.Contains(parents, navTo(parent.ID)) {
+		t.Errorf("child page does not link the accepted parent:\n%s", parents)
 	}
 	if inbox := getBody(t, patClient, ts.URL+"/links"); !strings.Contains(inbox, "No pending requests") {
 		t.Errorf("inbox not empty after accept; body:\n%s", inbox)
