@@ -1232,8 +1232,7 @@ func TestNewGoalPageRendersTheReadyCardEnabledWithoutScript(t *testing.T) {
 	if strings.Contains(activate, " disabled") || attr(activate, "type") != "submit" || attr(activate, "value") != "1" || !strings.Contains(between(t, card, `name="activate"`, "</button>"), "Create and activate") {
 		t.Errorf("Create and activate isn't an enabled submit posting activate=1: %s", activate)
 	}
-	save := between(t, card, "Create and activate", "Save as Proposed")
-	if save = save[strings.LastIndex(save, "<button"):]; attr(save, "type") != "submit" || attr(save, "name") != "" {
+	if save := tagAround(t, card, ">Save as Proposed"); attr(save, "type") != "submit" || attr(save, "name") != "" {
 		t.Errorf("Save as Proposed isn't a plain submit: %s", save)
 	}
 	if !strings.Contains(card, "Only Title and So What are needed to save.") {
@@ -1255,6 +1254,30 @@ func TestNewGoalPageRendersTheReadyCardEnabledWithoutScript(t *testing.T) {
 	}
 	if attr(openTag(card), "id") == "" {
 		t.Errorf("the card has no id to swap: %s", openTag(card))
+	}
+}
+
+// Enter in a text field submits the form by its first submit button, so on
+// the New goal page and the define page that button is Save as Proposed,
+// posting nothing more, never Create and activate (#165).
+func TestGoalFormEnterSavesAsProposed(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, path := range []string{"/goals/new", fmt.Sprintf("/goals/%d/define", g.ID)} {
+		form := pageElement(t, getBody(t, client, ts.URL+path), "form", "goal-form")
+		first := tagAround(t, form, `type="submit"`)
+		if attr(first, "name") != "" || attr(first, "value") != "" {
+			t.Errorf("%s: the first submit posts %s=%s, want nothing more: %s", path, attr(first, "name"), attr(first, "value"), first)
+		}
+		if button := between(t, form, first, "</button>"); !strings.HasSuffix(button, ">Save as Proposed") {
+			t.Errorf("%s: the first submit isn't Save as Proposed: %s", path, button)
+		}
 	}
 }
 
