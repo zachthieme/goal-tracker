@@ -20,7 +20,7 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 			<p class="small muted">
 				<a href="/reports">Reports</a>{ " / " }
 				if v.ID != 0 {
-					<a href={ templ.SafeURL(v.draft()) }>{ v.Name }</a>{ " / " }Edit
+					<a href={ templ.SafeURL(v.draft()) }>{ v.Saved }</a>{ " / " }Edit
 				} else {
 					New
 				}
@@ -199,7 +199,7 @@ templ reportBuilderError(v reportBuilderView, input string) {
 // list naming it. Each Goal in the list is a chip holding its id; script
 // searches every Goal by title as it is typed, picking a result adds its chip
 // and × removes one. Without script a multiple select offers every Goal not
-// already in the list.
+// already in the list, and a chip's Remove checkbox takes its Goal out.
 templ reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.Goal) {
 	<fieldset data-testid={ list + "-picker" } class="rb-picker" data-goal-picker={ list }>
 		<legend>{ legend }</legend>
@@ -326,11 +326,13 @@ templ reportBuilderScript() {
 }
 
 // reportGoalChip is a Goal in one of the builder's lists: its hidden id, its
-// title, and the × that removes it.
+// title, and the × that removes it. Without script, its Remove checkbox takes
+// it out of the list on the builder's next submit.
 templ reportGoalChip(list string, g domain.Goal) {
 	<li data-testid={ list + "-chip" } class="rb-chip">
 		<input type="hidden" name={ list } value={ fmt.Sprint(g.ID) }/>
 		<span>{ g.Title }</span>
+		<label class="rb-no-js small"><input type="checkbox" name={ removeChip(list) } value={ fmt.Sprint(g.ID) }/> Remove</label>
 		<button type="button" class="btn quiet sm rb-js-only" data-remove-chip aria-label={ "Remove " + g.Title } title={ "Remove " + g.Title }>×</button>
 	</li>
 }

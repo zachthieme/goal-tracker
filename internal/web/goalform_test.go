@@ -7,6 +7,7 @@ import (
 	"maps"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -1646,5 +1647,90 @@ func TestDefineGoalSearchOffersOnlyParentCandidates(t *testing.T) {
 	results := getBody(t, client, fmt.Sprintf("%s/goals/search?goal=%d&q=site", ts.URL, g.ID))
 	if n := strings.Count(results, `data-testid="parent-result"`); n != 1 || !strings.Contains(results, free.Title) {
 		t.Errorf("the search found %d results, want only %s:\n%s", n, free.Title, results)
+	}
+}
+
+// Without script, a Contributes to chip's Remove checkbox leaves its parent
+// out: of the Goal saved, on the New goal and define pages alike, and of the
+// chips a refused save comes back with (ticket #168).
+func TestGoalFormParentChipRemoveLeavesItsParentOut(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	kept := h.ActiveGoal(sam, "Grow revenue", "The business needs it.")
+	gone := h.ActiveGoal(sam, "Earn trust", "Customers stay.")
+	proposed := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	pick := func(form url.Values) {
+		form["parent_id"] = []string{fmt.Sprint(kept.ID), fmt.Sprint(gone.ID)}
+		form["remove_parent"] = []string{fmt.Sprint(gone.ID)}
+	}
+	chips := func(page string) []string {
+		var ids []string
+		for _, m := range regexp.MustCompile(`name="parent_id" value="(\d+)"`).FindAllStringSubmatch(pageElement(t, page, "ul", "parent-chips"), -1) {
+			ids = append(ids, m[1])
+		}
+		return ids
+	}
+	wantParents := func(page string, g domain.Goal) {
+		t.Helper()
+		if parents := h.ParentsOf(g); len(parents) != 1 || parents[0].ID != kept.ID {
+			t.Errorf("%s: the Goal's parents are %+v, want only %q", page, parents, kept.Title)
+		}
+	}
+
+	form := newGoalForm(nil)
+	pick(form)
+	wantParents("/goals/new", createdGoal(t, h, client, ts.URL, form))
+
+	resp := definePost(t, client, ts.URL, proposed, pick)
+	if page := readBody(t, resp); resp.StatusCode != http.StatusOK || resp.Request.URL.Path != fmt.Sprintf("/goals/%d", proposed.ID) {
+		t.Fatalf("the define post answered %d at %s:\n%s", resp.StatusCode, resp.Request.URL, page)
+	}
+	wantParents("/goals/{id}/define", proposed)
+
+	refused := newGoalForm(map[string]string{"title": ""})
+	pick(refused)
+	if got, want := chips(refusedNewGoal(t, client, ts.URL, refused)), []string{fmt.Sprint(kept.ID)}; !slices.Equal(got, want) {
+		t.Errorf("a refused New goal comes back with parent chips %q, want %q", got, want)
+	}
+	again := h.CreateGoal(sam, "Ship the app", "Mobile matters.")
+	resp = definePost(t, client, ts.URL, again, func(form url.Values) {
+		form.Set("title", "")
+		pick(form)
+	})
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("a define post with no title answered %d, want 422:\n%s", resp.StatusCode, page)
+	}
+	if got, want := chips(page), []string{fmt.Sprint(kept.ID)}; !slices.Equal(got, want) {
+		t.Errorf("a refused define comes back with parent chips %q, want %q", got, want)
+	}
+}
+
+// A parent chip carries a Remove checkbox for its parent, which the form's
+// script hides, as its × removes the chip instead (ticket #168).
+func TestGoalFormParentChipHasARemoveCheckboxScriptHides(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	parent := h.ActiveGoal(sam, "Grow revenue", "The business needs it.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, parent.ID))
+	chip := between(t, page, `data-testid="parent-chip"`, "</li>")
+	box := regexp.MustCompile(`<label class="([^"]*)"><input type="checkbox" name="remove_parent" value="` + fmt.Sprint(parent.ID) + `"> Remove</label>`).FindStringSubmatch(chip)
+	if box == nil {
+		t.Fatalf("the parent chip has no Remove checkbox for its parent:\n%s", chip)
+	}
+	if !slices.Contains(strings.Fields(box[1]), "gf-no-js") {
+		t.Errorf("the parent chip's Remove is class %q, which script doesn't hide", box[1])
+	}
+	if !strings.Contains(page, ".gf-form.gf-js .gf-no-js{display:none}") {
+		t.Errorf("the form's styles don't hide .gf-no-js when script runs")
 	}
 }

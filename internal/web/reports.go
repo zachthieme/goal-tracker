@@ -111,7 +111,7 @@ func (s *Server) handleEditReport(w http.ResponseWriter, r *http.Request, curren
 	if !ok {
 		return
 	}
-	s.submitReportBuilder(w, r, current, def.ID, func(tx *domain.Service, in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error) {
+	s.submitReportBuilder(w, r, current, def, func(tx *domain.Service, in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error) {
 		return tx.UpdateReportDefinition(r.Context(), current.ID, def.ID, in)
 	})
 }
@@ -146,6 +146,7 @@ func (s *Server) editableReport(w http.ResponseWriter, r *http.Request, current 
 func builderFromDefinition(def domain.ReportDefinition) reportBuilderView {
 	v := reportBuilderView{
 		ID:           def.ID,
+		Saved:        def.Name,
 		Name:         def.Name,
 		Introduction: def.Introduction,
 		Mode:         def.Mode,

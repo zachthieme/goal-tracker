@@ -445,7 +445,8 @@ templ goalFormParents(v goalFormView) {
 }
 
 // parentChip is a picked parent: its hidden parent_id, its Health badge (its
-// Lifecycle when it has no Health), its title, and the × that removes it. It
+// Lifecycle when it has no Health), its title, and the × that removes it, or
+// without script its Remove checkbox, which leaves it out on submit. It
 // carries the label of the Owner picking it asks, for script to rebuild the
 // hint from.
 templ parentChip(p parentChoice, bad string) {
@@ -461,6 +462,7 @@ templ parentChip(p parentChoice, bad string) {
 		@parentBadge(p)
 		<span class="gf-chip-title">{ p.Goal.Title }</span>
 		<button type="button" class="btn quiet sm gf-js-only" data-remove-chip aria-label={ "Remove " + p.Goal.Title } title={ "Remove " + p.Goal.Title }>×</button>
+		<label class="gf-no-js small"><input type="checkbox" name={ inputRemoveParent } value={ fmt.Sprint(p.Goal.ID) }/> Remove</label>
 		if bad != "" {
 			<span data-testid="input-error" id={ domain.ParentInput(p.Goal.ID) + "-error" } class="gf-input-error">{ bad }</span>
 		}
