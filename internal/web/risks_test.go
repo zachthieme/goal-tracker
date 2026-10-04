@@ -722,3 +722,34 @@ func TestRiskFixOnAnOwnerlessGoalIsReassignForAnAdmin(t *testing.T) {
 		}
 	}
 }
+
+// An Unaligned Goal's Fix for its Owner is Link to a parent, opening the Goal
+// page's parent-link form; a Delegate, who can't link it, gets Open Goal.
+func TestRiskFixOnAnUnalignedGoalIsLinkToAParentForItsOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	loner := h.ActiveGoal(sam, "Side project", "Nobody asked.")
+	h.AddDelegate(sam, dee, loner.ID)
+
+	goal := "/goals/" + strconv.FormatInt(loner.ID, 10)
+	for _, c := range []struct {
+		viewer, label, href string
+	}{
+		{"sam@example.com", "Link to a parent", goal + "?open=parent-link"},
+		{"dee@example.com", "Open Goal", goal},
+	} {
+		client := signInClient(t, ts.URL, c.viewer)
+		page := getBody(t, client, ts.URL+"/risks")
+		label, href, _ := riskFix(t, riskRowOf(t, page, loner))
+		if label != c.label || href != c.href {
+			t.Fatalf("%s sees Fix %q → %s, want %q → %s", c.viewer, label, href, c.label, c.href)
+		}
+		if label == "Link to a parent" && !strings.Contains(getBody(t, client, ts.URL+href), `data-testid="request-link"`) {
+			t.Errorf("Link to a parent doesn't open the parent-link form")
+		}
+	}
+}
