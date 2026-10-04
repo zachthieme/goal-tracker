@@ -481,21 +481,41 @@ templ narrativeCuration(r domain.Report) {
 			if len(r.Highlights) == 0 {
 				<p data-testid="no-highlights">No Highlights since { fmtDate(r.Baseline) }.</p>
 			} else {
+				<div class="rp-curation-head">
+					<h3>Highlights since { fmtDate(r.Baseline) }</h3>
+					<span data-testid="curation-count" class="small muted">{ fmt.Sprintf("%d of %d in", pickedHighlights(r), len(r.Highlights)) }</span>
+				</div>
 				<ul class="rp-list">
 					for _, nh := range r.Highlights {
 						@curationHighlight(nh)
 					}
 				</ul>
 			}
+			<h3>Your notes per section</h3>
 			for _, section := range narrativeSections {
-				<label class="field">
-					<span>{ sectionHeading(section) }</span>
-					<textarea name={ "text-" + section }>{ narrativeText(r, section) }</textarea>
-				</label>
+				@sectionText(section, narrativeText(r, section))
 			}
 			<div><button type="submit" class="btn">Save narrative</button></div>
 		</form>
 	</section>
+}
+
+// sectionText is a section's own text on the curation form, folded under the
+// section's heading: open when the author has written some, closed and
+// offering to add some when not.
+templ sectionText(section, text string) {
+	<details data-testid={ "section-text-" + section } class="card rp-section-text" open?={ text != "" }>
+		<summary data-testid="section-text-summary">
+			<span>{ sectionHeading(section) }</span>
+			if text == "" {
+				<span class="rp-add">+ Add note</span>
+			}
+		</summary>
+		<label class="field">
+			<span class="sr-only">{ sectionHeading(section) }</span>
+			<textarea name={ "text-" + section }>{ text }</textarea>
+		</label>
+	</details>
 }
 
 // curationHighlight is one Highlight on the curation form: a box to include it
@@ -848,6 +868,18 @@ func fmtPublishedIn(t time.Time, loc *time.Location) string {
 	return t.In(loc).Format("2 Jan 2006, 15:04 MST")
 }
 
+// pickedHighlights counts the Highlights the author has picked into a section,
+// as last saved.
+func pickedHighlights(r domain.Report) int {
+	n := 0
+	for _, nh := range r.Highlights {
+		if nh.Section != "" {
+			n++
+		}
+	}
+	return n
+}
+
 // curatedSection is the section a Highlight's control selects: the one the
 // author picked it into, or else its own kind, since kinds and sections are
 // the same strings.
@@ -903,6 +935,11 @@ templ reportStyles() {
 		.rp-narrative .label:first-child{margin-top:0}
 		.rp-narrative ul{margin:4px 0 0;padding-left:20px}
 		.rp-credit{color:var(--color-ink-muted);font-size:13px}
+		.rp-section-text{padding:0 16px}
+		.rp-section-text[open]{padding-bottom:16px}
+		.rp-add{color:var(--color-primary-strong);font-weight:500}
+		.rp-curation-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+		.rp-curation-head h3{font-size:15px;margin:0}
 		.rp-curate{display:flex;flex-direction:column;gap:4px}
 		.rp-include{display:flex;align-items:flex-start;gap:12px;cursor:pointer}
 		.rp-include input{margin-top:4px}

@@ -518,7 +518,8 @@ func TestCurateNarrativeIncludesOnlyTickedHighlightsOverHTTP(t *testing.T) {
 
 // On a fresh draft no Highlight is included, and each one's section control
 // starts on its own kind. Once the author saves a Highlight as a Miss, its box
-// is ticked and Miss is selected (ticket #155).
+// is ticked and Miss is selected. The count says how many of the Highlights
+// are in (ticket #155).
 func TestCurationFormShowsWhatIsIncludedOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -536,7 +537,22 @@ func TestCurationFormShowsWhatIsIncludedOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
 
-	form := between(t, getBody(t, client, reportURL), `<form data-testid="narrative-curation"`, "</form>")
+	page := getBody(t, client, reportURL)
+	if count := pageElement(t, page, "span", "curation-count"); !strings.HasSuffix(count, ">0 of 2 in") {
+		t.Errorf("fresh draft's count %q, want 0 of 2 in", count)
+	}
+	// Without JS the radios stay in the form; CSS shows them only while the box
+	// is ticked, and shows the Highlight's kind as text while it isn't.
+	if rule := cssRule(t, page, ".rp-curate:not(:has(input[name^=include-]:checked)) .rp-sections"); !strings.Contains(rule, "display:none") {
+		t.Errorf("an unticked Highlight's section control is not hidden: {%s}", rule)
+	}
+	if rule := cssRule(t, page, ".rp-curate:has(input[name^=include-]:checked) .rp-kind"); !strings.Contains(rule, "display:none") {
+		t.Errorf("a ticked Highlight still shows its kind as text: {%s}", rule)
+	}
+	form := between(t, page, `<form data-testid="narrative-curation"`, "</form>")
+	if kind := between(t, form, `<span class="rp-kind">`, "</span>"); !strings.Contains(kind, domain.HighlightInsight) {
+		t.Errorf("unticked Highlight does not show its kind: %q", kind)
+	}
 	for id, kind := range map[string]string{signed: domain.HighlightAccomplishment, euros: domain.HighlightInsight} {
 		if box := formInput(t, form, "include-"+id, "on"); isChecked(box) {
 			t.Errorf("fresh draft includes Highlight %s: %s", id, box)
@@ -552,7 +568,11 @@ func TestCurationFormShowsWhatIsIncludedOverHTTP(t *testing.T) {
 		"include-" + signed: {"on"},
 		"pick-" + signed:    {domain.HighlightMiss},
 	})
-	form = between(t, readBody(t, resp), `<form data-testid="narrative-curation"`, "</form>")
+	page = readBody(t, resp)
+	if count := pageElement(t, page, "span", "curation-count"); !strings.HasSuffix(count, ">1 of 2 in") {
+		t.Errorf("count after saving one Highlight %q, want 1 of 2 in", count)
+	}
+	form = between(t, page, `<form data-testid="narrative-curation"`, "</form>")
 	if box := formInput(t, form, "include-"+signed, "on"); !isChecked(box) {
 		t.Errorf("saved Highlight's box is not ticked: %s", box)
 	}
@@ -563,6 +583,49 @@ func TestCurationFormShowsWhatIsIncludedOverHTTP(t *testing.T) {
 	}
 	if box := formInput(t, form, "include-"+euros, "on"); isChecked(box) {
 		t.Errorf("a Highlight left out is ticked: %s", box)
+	}
+}
+
+// Each section's text folds under the section's heading: open when the author
+// has written some, closed and offering "+ Add note" when not (ticket #155).
+func TestCurationFormFoldsEmptySectionTextOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	resp := postForm(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/narrative", url.Values{
+		"text-" + domain.HighlightAccomplishment: {"EU is open for business."},
+	})
+	form := between(t, readBody(t, resp), `<form data-testid="narrative-curation"`, "</form>")
+
+	written := pageElement(t, form, "details", "section-text-"+domain.HighlightAccomplishment)
+	if open := tagAround(t, written, `data-testid="section-text-`); !strings.Contains(open, " open") {
+		t.Errorf("section with text is folded: %s", open)
+	}
+	if summary := pageElement(t, written, "summary", "section-text-summary"); !strings.Contains(summary, "Accomplishments") || strings.Contains(summary, "+ Add note") {
+		t.Errorf("written section's summary %q, want its heading alone", summary)
+	}
+	if !strings.Contains(written, "EU is open for business.") || !strings.Contains(written, `name="text-`+domain.HighlightAccomplishment+`"`) {
+		t.Errorf("written section does not hold its text box; details:\n%s", written)
+	}
+
+	empty := pageElement(t, form, "details", "section-text-"+domain.HighlightMiss)
+	if open := tagAround(t, empty, `data-testid="section-text-`); strings.Contains(open, " open") {
+		t.Errorf("empty section is unfolded: %s", open)
+	}
+	if summary := pageElement(t, empty, "summary", "section-text-summary"); !strings.Contains(summary, "Misses") || !strings.Contains(summary, "+ Add note") {
+		t.Errorf("empty section's summary %q, want its heading and + Add note", summary)
+	}
+	if !strings.Contains(empty, `name="text-`+domain.HighlightMiss+`"`) {
+		t.Errorf("empty section has no text box; details:\n%s", empty)
+	}
+	if !strings.Contains(form, `<button type="submit" class="btn">Save`) {
+		t.Errorf("curation form has no Save button for a browser without JS; form:\n%s", form)
 	}
 }
 
