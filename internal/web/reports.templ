@@ -3,6 +3,7 @@ package web
 import (
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -592,7 +593,7 @@ templ narrativeCuration(r domain.Report, chip baselineChip) {
 			}
 			<h3>Your notes per section</h3>
 			for _, section := range narrativeSections {
-				@sectionText(section, narrativeText(r, section))
+				@sectionText(section, append(narrativeNotes(r, section), ""))
 			}
 			<noscript><button type="submit" class="btn">Save narrative</button></noscript>
 		</form>
@@ -622,21 +623,23 @@ func narrativeAction(r domain.Report, chip baselineChip) string {
 // gets an error status or no answer at all.
 var notSavedScript = templ.ComponentScript{Call: "document.getElementById('save-result').textContent = 'Not saved'"}
 
-// sectionText is a section's own text on the curation form, folded under the
-// section's heading: open when the author has written some, closed and
-// offering to add some when not.
-templ sectionText(section, text string) {
-	<details data-testid={ "section-text-" + section } class="card rp-section-text" open?={ text != "" }>
+// sectionText is a section's own notes on the curation form, each in its own
+// box, folded under the section's heading: open when the author has written
+// some, closed and offering to add some when not.
+templ sectionText(section string, notes []string) {
+	<details data-testid={ "section-text-" + section } class="card rp-section-text" open?={ hasNotes(notes) }>
 		<summary data-testid="section-text-summary">
 			<span>{ sectionHeading(section) }</span>
-			if text == "" {
+			if !hasNotes(notes) {
 				<span class="rp-add">+ Add note</span>
 			}
 		</summary>
-		<label class="field">
-			<span class="sr-only">{ sectionHeading(section) }</span>
-			<textarea name={ "text-" + section }>{ text }</textarea>
-		</label>
+		for i, note := range notes {
+			<label class="field">
+				<span class="sr-only">{ fmt.Sprintf("%s, note %d", sectionHeading(section), i+1) }</span>
+				<textarea name={ "text-" + section }>{ note }</textarea>
+			</label>
+		}
 	</details>
 }
 
@@ -669,15 +672,16 @@ templ curationHighlight(nh domain.NarrativeHighlight) {
 }
 
 // reportNarrative is a Report's Insights, Accomplishments, and Misses, in the
-// serif face under label headings: the author's text and the Highlights they
+// serif face under label headings: the author's notes, each its own paragraph,
+// and then the Highlights they
 // picked, each crediting the Goal's Owner. Sections with neither are left out.
 templ reportNarrative(narrative []domain.NarrativeSection) {
 	if len(narrative) > 0 {
 		<section data-testid="report-narrative" class="card rp-narrative">
 			for _, sec := range narrative {
 				<h3 data-testid="narrative-section" class="label">{ sec.Heading() }</h3>
-				if sec.Text != "" {
-					<p data-testid="narrative-text">{ sec.Text }</p>
+				for _, note := range sec.Notes {
+					<p data-testid="narrative-text">{ note }</p>
 				}
 				if len(sec.Highlights) > 0 {
 					<ul>
@@ -1031,14 +1035,19 @@ func sectionHeading(section string) string {
 	return domain.NarrativeSection{Kind: section}.Heading()
 }
 
-// narrativeText is the author's text for one section of a Report's narrative.
-func narrativeText(r domain.Report, section string) string {
+// narrativeNotes is the author's notes in one section of a Report's narrative.
+func narrativeNotes(r domain.Report, section string) []string {
 	for _, sec := range r.Narrative {
 		if sec.Kind == section {
-			return sec.Text
+			return slices.Clone(sec.Notes)
 		}
 	}
-	return ""
+	return nil
+}
+
+// hasNotes reports whether any of a section's note boxes holds a note.
+func hasNotes(notes []string) bool {
+	return slices.ContainsFunc(notes, func(n string) bool { return strings.TrimSpace(n) != "" })
 }
 
 // reportStyles are the Report pages' own rules on top of app.css: the reading

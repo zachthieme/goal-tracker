@@ -501,3 +501,73 @@ func draftGoals(t *testing.T, h *testsupport.Harness, def domain.ReportDefinitio
 func sameIDs(got, want []int64) bool {
 	return slices.Equal(slices.Sorted(slices.Values(got)), slices.Sorted(slices.Values(want)))
 }
+
+// Draft notes written while a narrative section held at most one become their
+// section's first note on upgrade, and the section can then take more
+// (CONTEXT.md: Report).
+func TestMigrationKeepsDraftNotesAndAllowsSeveralPerSection(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := migratedExcept(t, "migrations/0040_several_narrative_notes.sql")
+	// Put back the table as 0018 made it: one note per Definition and section.
+	if _, err := sqlDB.Exec(`
+		DROP TABLE narrative_texts;
+		CREATE TABLE narrative_texts (
+			report_definition_id INTEGER NOT NULL REFERENCES report_definitions(id),
+			section              TEXT    NOT NULL,
+			text                 TEXT    NOT NULL,
+			PRIMARY KEY (report_definition_id, section)
+		);`); err != nil {
+		t.Fatalf("undo 0040: %v", err)
+	}
+	h := &testsupport.Harness{T: t, DB: sqlDB, Clock: clock.NewFixed(testsupport.Epoch), Email: email.NewRecorder()}
+	h.Service = domain.NewService(sqlDB, h.Clock, h.Email, []string{"boss@example.com"})
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "why")
+	mbr := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	qbr := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "QBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	if _, err := sqlDB.Exec(`INSERT INTO narrative_texts (report_definition_id, section, text) VALUES
+		(?1, 'Miss', 'Slipped a week.'),
+		(?1, 'Insight', 'Pricing drives churn.'),
+		(?2, 'Accomplishment', 'EU is open for business.')`, mbr.ID, qbr.ID); err != nil {
+		t.Fatalf("arrange 0018 notes: %v", err)
+	}
+
+	if err := db.Migrate(sqlDB); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	for def, want := range map[*domain.ReportDefinition]map[string][]string{
+		&mbr: {domain.HighlightInsight: {"Pricing drives churn."}, domain.HighlightMiss: {"Slipped a week."}},
+		&qbr: {domain.HighlightAccomplishment: {"EU is open for business."}},
+	} {
+		if got := draftNotes(t, h, *def); !reflect.DeepEqual(got, want) {
+			t.Errorf("%s draft notes = %v, want %v", def.Name, got, want)
+		}
+	}
+
+	if err := h.Service.CurateNarrative(context.Background(), mbr.ID, domain.CurateNarrativeInput{
+		Notes: map[string][]string{domain.HighlightInsight: {"Pricing drives churn.", "Discounts don't save accounts."}},
+	}); err != nil {
+		t.Fatalf("a second note in the same section: %v", err)
+	}
+	want := map[string][]string{domain.HighlightInsight: {"Pricing drives churn.", "Discounts don't save accounts."}}
+	if got := draftNotes(t, h, mbr); !reflect.DeepEqual(got, want) {
+		t.Errorf("MBR draft notes after adding one = %v, want %v", got, want)
+	}
+}
+
+// draftNotes returns the author's notes in the Report Definition's draft
+// narrative, keyed by section.
+func draftNotes(t *testing.T, h *testsupport.Harness, def domain.ReportDefinition) map[string][]string {
+	t.Helper()
+	r, err := h.Service.DraftReport(context.Background(), def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	out := map[string][]string{}
+	for _, sec := range r.Narrative {
+		out[sec.Kind] = sec.Notes
+	}
+	return out
+}

@@ -256,6 +256,7 @@ type NarrativePick struct {
 }
 
 type NarrativeText struct {
+	ID                 int64
 	ReportDefinitionID int64
 	Section            string
 	Text               string

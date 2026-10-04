@@ -589,6 +589,76 @@ func TestCurationFormFoldsEmptySectionTextOverHTTP(t *testing.T) {
 	}
 }
 
+// The author writes several notes into one section, each in its own box: the
+// draft's form shows every saved note in its own box plus one empty box, and
+// the draft and then the publication show each note as its own paragraph in
+// the order entered. Notes in one section leave the others alone, and a blank
+// note is ignored (ticket #187).
+func TestSeveralNotesPerSectionOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	resp := postForm(t, client, reportURL+"/narrative", url.Values{
+		"text-" + domain.HighlightInsight:        {"Pricing drives churn.", "  ", "Discounts don't save accounts."},
+		"text-" + domain.HighlightAccomplishment: {"EU is open for business."},
+		"text-" + domain.HighlightMiss:           {""},
+	})
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/reports/"+strconv.FormatInt(def.ID, 10) {
+		t.Fatalf("curate: status %d at %s, want the draft page", resp.StatusCode, resp.Request.URL)
+	}
+	page := readBody(t, resp)
+
+	form := pageElement(t, page, "form", "narrative-curation")
+	for section, want := range map[string][]string{
+		domain.HighlightInsight:        {"Pricing drives churn.", "Discounts don't save accounts.", ""},
+		domain.HighlightAccomplishment: {"EU is open for business.", ""},
+		domain.HighlightMiss:           {""},
+	} {
+		if got := sectionNoteBoxes(t, form, section); !slices.Equal(got, want) {
+			t.Errorf("%s note boxes %q, want %q", section, got, want)
+		}
+	}
+
+	want := []string{"Pricing drives churn.", "Discounts don't save accounts.", "EU is open for business."}
+	if got := narrativeTexts(pageElement(t, page, "section", "report-narrative")); !slices.Equal(got, want) {
+		t.Errorf("draft narrative paragraphs %q, want %q", got, want)
+	}
+
+	published := readBody(t, postForm(t, client, reportURL+"/publications", url.Values{}))
+	if got := narrativeTexts(pageElement(t, published, "section", "report-narrative")); !slices.Equal(got, want) {
+		t.Errorf("published narrative paragraphs %q, want %q", got, want)
+	}
+}
+
+// sectionNoteBoxes is what each of a narrative section's note boxes on the
+// curation form holds, in order.
+func sectionNoteBoxes(t *testing.T, form, section string) []string {
+	t.Helper()
+	details := pageElement(t, form, "details", "section-text-"+section)
+	var out []string
+	for _, m := range regexp.MustCompile(`<textarea name="text-`+regexp.QuoteMeta(section)+`"[^>]*>([^<]*)</textarea>`).FindAllStringSubmatch(details, -1) {
+		out = append(out, html.UnescapeString(m[1]))
+	}
+	return out
+}
+
+// narrativeTexts is each of the author's notes a Report's narrative shows, as
+// its own paragraph, in order.
+func narrativeTexts(narrative string) []string {
+	var out []string
+	for _, m := range regexp.MustCompile(`<p data-testid="narrative-text">([^<]*)</p>`).FindAllStringSubmatch(narrative, -1) {
+		out = append(out, html.UnescapeString(m[1]))
+	}
+	return out
+}
+
 // formInput is the <input> in form with this name and value.
 func formInput(t *testing.T, form, name, value string) string {
 	t.Helper()

@@ -130,13 +130,18 @@ WHERE report_definition_id = ?
 ORDER BY id;
 
 -- name: ClearNarrativeTexts :exec
--- Drop the author's text from a Report Definition's draft narrative.
+-- Drop the author's notes from a Report Definition's draft narrative.
 DELETE FROM narrative_texts WHERE report_definition_id = ?;
 
--- name: SetNarrativeText :exec
+-- name: AddNarrativeText :exec
+-- Add one of the author's notes to a section of a Report Definition's draft
+-- narrative, after the section's earlier notes.
 INSERT INTO narrative_texts (report_definition_id, section, text)
 VALUES (?, ?, ?);
 
 -- name: ListNarrativeTexts :many
--- The author's text for each section of a Report Definition's draft narrative.
-SELECT * FROM narrative_texts WHERE report_definition_id = ?;
+-- The author's notes in a Report Definition's draft narrative, in the order
+-- they were entered.
+SELECT * FROM narrative_texts
+WHERE report_definition_id = ?
+ORDER BY id;

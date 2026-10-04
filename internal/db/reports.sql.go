@@ -25,6 +25,24 @@ func (q *Queries) AddNarrativePick(ctx context.Context, arg AddNarrativePickPara
 	return err
 }
 
+const addNarrativeText = `-- name: AddNarrativeText :exec
+INSERT INTO narrative_texts (report_definition_id, section, text)
+VALUES (?, ?, ?)
+`
+
+type AddNarrativeTextParams struct {
+	ReportDefinitionID int64
+	Section            string
+	Text               string
+}
+
+// Add one of the author's notes to a section of a Report Definition's draft
+// narrative, after the section's earlier notes.
+func (q *Queries) AddNarrativeText(ctx context.Context, arg AddNarrativeTextParams) error {
+	_, err := q.db.ExecContext(ctx, addNarrativeText, arg.ReportDefinitionID, arg.Section, arg.Text)
+	return err
+}
+
 const addReportDefinitionField = `-- name: AddReportDefinitionField :exec
 INSERT INTO report_definition_fields (report_definition_id, field_id)
 VALUES (?, ?)
@@ -113,7 +131,7 @@ const clearNarrativeTexts = `-- name: ClearNarrativeTexts :exec
 DELETE FROM narrative_texts WHERE report_definition_id = ?
 `
 
-// Drop the author's text from a Report Definition's draft narrative.
+// Drop the author's notes from a Report Definition's draft narrative.
 func (q *Queries) ClearNarrativeTexts(ctx context.Context, reportDefinitionID int64) error {
 	_, err := q.db.ExecContext(ctx, clearNarrativeTexts, reportDefinitionID)
 	return err
@@ -313,10 +331,13 @@ func (q *Queries) ListNarrativePicks(ctx context.Context, reportDefinitionID int
 }
 
 const listNarrativeTexts = `-- name: ListNarrativeTexts :many
-SELECT report_definition_id, section, text FROM narrative_texts WHERE report_definition_id = ?
+SELECT id, report_definition_id, section, text FROM narrative_texts
+WHERE report_definition_id = ?
+ORDER BY id
 `
 
-// The author's text for each section of a Report Definition's draft narrative.
+// The author's notes in a Report Definition's draft narrative, in the order
+// they were entered.
 func (q *Queries) ListNarrativeTexts(ctx context.Context, reportDefinitionID int64) ([]NarrativeText, error) {
 	rows, err := q.db.QueryContext(ctx, listNarrativeTexts, reportDefinitionID)
 	if err != nil {
@@ -326,7 +347,12 @@ func (q *Queries) ListNarrativeTexts(ctx context.Context, reportDefinitionID int
 	var items []NarrativeText
 	for rows.Next() {
 		var i NarrativeText
-		if err := rows.Scan(&i.ReportDefinitionID, &i.Section, &i.Text); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.ReportDefinitionID,
+			&i.Section,
+			&i.Text,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -586,22 +612,6 @@ type RemoveMergedRuleValueWhereTargetListedParams struct {
 // list the target, so no rule lists the target twice.
 func (q *Queries) RemoveMergedRuleValueWhereTargetListed(ctx context.Context, arg RemoveMergedRuleValueWhereTargetListedParams) error {
 	_, err := q.db.ExecContext(ctx, removeMergedRuleValueWhereTargetListed, arg.MergedValue, arg.TargetValue)
-	return err
-}
-
-const setNarrativeText = `-- name: SetNarrativeText :exec
-INSERT INTO narrative_texts (report_definition_id, section, text)
-VALUES (?, ?, ?)
-`
-
-type SetNarrativeTextParams struct {
-	ReportDefinitionID int64
-	Section            string
-	Text               string
-}
-
-func (q *Queries) SetNarrativeText(ctx context.Context, arg SetNarrativeTextParams) error {
-	_, err := q.db.ExecContext(ctx, setNarrativeText, arg.ReportDefinitionID, arg.Section, arg.Text)
 	return err
 }
 

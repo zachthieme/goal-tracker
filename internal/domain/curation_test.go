@@ -116,8 +116,9 @@ func highlightID(t *testing.T, r domain.Report, note string) int64 {
 }
 
 // The author picks which Highlights go into Insights, Accomplishments, and
-// Misses — whatever each was flagged as — and adds their own text to each
-// section. Highlights left out stay out of the narrative.
+// Misses — whatever each was flagged as — and adds any number of their own
+// notes to each section, kept in the order entered; a blank note is ignored.
+// Highlights left out stay out of the narrative.
 func TestAuthorCuratesTheNarrative(t *testing.T) {
 	t.Parallel()
 
@@ -144,9 +145,10 @@ func TestAuthorCuratesTheNarrative(t *testing.T) {
 			// The author reads the lost accounts as an Insight, not a Miss.
 			{HighlightID: lost, Section: domain.HighlightInsight},
 		},
-		Text: map[string]string{
-			domain.HighlightInsight:        "  Pricing drives churn.  ",
-			domain.HighlightAccomplishment: "EU is open for business.",
+		Notes: map[string][]string{
+			domain.HighlightInsight:        {"  Pricing drives churn.  ", "", "Discounts don't save accounts."},
+			domain.HighlightAccomplishment: {"EU is open for business."},
+			domain.HighlightMiss:           {"   "},
 		},
 	}); err != nil {
 		t.Fatalf("CurateNarrative: %v", err)
@@ -164,12 +166,13 @@ func TestAuthorCuratesTheNarrative(t *testing.T) {
 		t.Fatalf("narrative sections %q, want %q (an empty Misses section is left out)", kinds, want)
 	}
 	insights, _ := section(r, domain.HighlightInsight)
-	if insights.Text != "Pricing drives churn." || !slices.Equal(highlightNotes(insights.Highlights), []string{"Lost two big accounts."}) {
-		t.Errorf("Insights read %q with %q, want the author's text and the lost accounts", insights.Text, highlightNotes(insights.Highlights))
+	if want := []string{"Pricing drives churn.", "Discounts don't save accounts."}; !slices.Equal(insights.Notes, want) ||
+		!slices.Equal(highlightNotes(insights.Highlights), []string{"Lost two big accounts."}) {
+		t.Errorf("Insights read %q with %q, want the author's two notes in order and the lost accounts", insights.Notes, highlightNotes(insights.Highlights))
 	}
 	wins, _ := section(r, domain.HighlightAccomplishment)
-	if wins.Text != "EU is open for business." || !slices.Equal(highlightNotes(wins.Highlights), []string{"Signed the first EU customer."}) {
-		t.Errorf("Accomplishments read %q with %q, want the author's text and the EU customer", wins.Text, highlightNotes(wins.Highlights))
+	if !slices.Equal(wins.Notes, []string{"EU is open for business."}) || !slices.Equal(highlightNotes(wins.Highlights), []string{"Signed the first EU customer."}) {
+		t.Errorf("Accomplishments read %q with %q, want the author's note and the EU customer", wins.Notes, highlightNotes(wins.Highlights))
 	}
 	if got := wins.Highlights[0].Highlight.Owner; got.ID != alice.ID {
 		t.Errorf("included Highlight credits %s, want the Goal's Owner %s", got.Email, alice.Email)
@@ -182,7 +185,7 @@ func TestAuthorCuratesTheNarrative(t *testing.T) {
 	}
 
 	// Curating again replaces the narrative: the author takes the EU customer
-	// back out and clears the Insights text.
+	// back out and clears the Insights notes.
 	if err := h.Service.CurateNarrative(ctx, def.ID, domain.CurateNarrativeInput{
 		Picks: []domain.NarrativePick{{HighlightID: lost, Section: domain.HighlightMiss}},
 	}); err != nil {
@@ -192,7 +195,7 @@ func TestAuthorCuratesTheNarrative(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DraftReport: %v", err)
 	}
-	if len(r.Narrative) != 1 || r.Narrative[0].Kind != domain.HighlightMiss || r.Narrative[0].Text != "" ||
+	if len(r.Narrative) != 1 || r.Narrative[0].Kind != domain.HighlightMiss || len(r.Narrative[0].Notes) != 0 ||
 		!slices.Equal(highlightNotes(r.Narrative[0].Highlights), []string{"Lost two big accounts."}) {
 		t.Errorf("narrative after re-curating %+v, want only Misses with the lost accounts", r.Narrative)
 	}
@@ -225,7 +228,7 @@ func TestCurateNarrativeRejectsHighlightsOutsideTheReport(t *testing.T) {
 			{HighlightID: inside, Section: domain.HighlightInsight},
 			{HighlightID: inside, Section: domain.HighlightMiss},
 		}},
-		"text for a section that isn't one": {Text: map[string]string{"Wins": "We won."}},
+		"notes for a section that isn't one": {Notes: map[string][]string{"Wins": {"We won."}}},
 	} {
 		if err := h.Service.CurateNarrative(ctx, def.ID, in); !errors.Is(err, domain.ErrValidation) {
 			t.Errorf("%s: err %v, want ErrValidation", name, err)
@@ -284,14 +287,14 @@ func TestNarrativeIsFrozenWithTheSnapshot(t *testing.T) {
 	signed := highlightID(t, r, "Signed the first EU customer.")
 	if err := h.Service.CurateNarrative(ctx, def.ID, domain.CurateNarrativeInput{
 		Picks: []domain.NarrativePick{{HighlightID: signed, Section: domain.HighlightAccomplishment}},
-		Text:  map[string]string{domain.HighlightAccomplishment: "EU is open for business."},
+		Notes: map[string][]string{domain.HighlightAccomplishment: {"EU is open for business.", "Invoices come next."}},
 	}); err != nil {
 		t.Fatalf("CurateNarrative: %v", err)
 	}
 
 	pub := publish(t, h, boss, def, time.Time{})
 	wins, ok := section(pub.Report, domain.HighlightAccomplishment)
-	if !ok || len(pub.Report.Narrative) != 1 || wins.Text != "EU is open for business." ||
+	if !ok || len(pub.Report.Narrative) != 1 || !slices.Equal(wins.Notes, []string{"EU is open for business.", "Invoices come next."}) ||
 		!slices.Equal(highlightNotes(wins.Highlights), []string{"Signed the first EU customer."}) {
 		t.Fatalf("published narrative %+v, want the curated Accomplishments", pub.Report.Narrative)
 	}
@@ -317,7 +320,7 @@ func TestNarrativeIsFrozenWithTheSnapshot(t *testing.T) {
 	}
 	if err := h.Service.CurateNarrative(ctx, def.ID, domain.CurateNarrativeInput{
 		Picks: []domain.NarrativePick{{HighlightID: highlightID(t, next, "Lost the second customer."), Section: domain.HighlightMiss}},
-		Text:  map[string]string{domain.HighlightAccomplishment: "Rewritten."},
+		Notes: map[string][]string{domain.HighlightAccomplishment: {"Rewritten."}},
 	}); err != nil {
 		t.Fatalf("CurateNarrative: %v", err)
 	}

@@ -254,8 +254,8 @@ func fmtMonthDay(t time.Time) string {
 // handleCurateNarrative sets the narrative of a Report Definition's next
 // publication from the draft page's form: the in-scope Highlights the author
 // ticked (include-{highlight}), each with its section (pick-{highlight}, which
-// is ignored for a Highlight left unticked), and the section text for each
-// section (text-{section}). It redirects back to the draft, against the
+// is ignored for a Highlight left unticked), and the author's notes in each
+// section (text-{section}, once per note box, in order). It redirects back to the draft, against the
 // baseline the reader picked (the baseline query parameter), if any. An htmx
 // post is the compose form autosaving: it gets the preview and the save status
 // instead, and a refusal changes only the save status, so what the author typed
@@ -270,7 +270,7 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 		http.Error(w, "could not read the form", http.StatusBadRequest)
 		return
 	}
-	in := domain.CurateNarrativeInput{Text: map[string]string{}}
+	in := domain.CurateNarrativeInput{Notes: map[string][]string{}}
 	for key := range r.Form {
 		raw, ok := strings.CutPrefix(key, "include-")
 		if !ok {
@@ -285,7 +285,7 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 		in.Picks = append(in.Picks, domain.NarrativePick{HighlightID: hlID, Section: r.Form.Get("pick-" + raw)})
 	}
 	for _, section := range narrativeSections {
-		in.Text[section] = r.FormValue("text-" + section)
+		in.Notes[section] = r.Form["text-"+section]
 	}
 	hx := r.Header.Get("HX-Request") == "true"
 	if err := s.svc.CurateNarrative(r.Context(), id, in); err != nil {
