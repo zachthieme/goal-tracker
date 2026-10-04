@@ -322,6 +322,23 @@ func (v reportBuilderView) bad(input string) string {
 	return ""
 }
 
+// unplaced are the problems that name no input the builder shows, to list at
+// its top; every other shows beside its input.
+func (v reportBuilderView) unplaced() []*domain.InputError {
+	placed := []string{domain.ReportInputName, domain.ReportInputMode, domain.ReportInputRules, domain.ReportInputInclude,
+		domain.ReportInputExclude, domain.ReportInputPicked, domain.ReportInputFields}
+	for i := range v.rows() {
+		placed = append(placed, domain.RuleInput(i))
+	}
+	var out []*domain.InputError
+	for _, p := range v.Problems {
+		if !slices.Contains(placed, p.Input) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // rows are the rule rows to show: those typed, or one blank row when there
 // are none.
 func (v reportBuilderView) rows() []reportRuleRow {

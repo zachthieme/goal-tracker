@@ -20,9 +20,20 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 			<h1>New report</h1>
 		</div>
 		<form data-testid="report-builder" class="card rb-form" method="post" action="/reports/new">
+			if problems := v.unplaced(); len(problems) > 0 {
+				<div data-testid="builder-problems" class="rb-problems" role="alert">
+					<p><strong>The report wasn't saved.</strong></p>
+					<ul>
+						for _, p := range problems {
+							<li>{ p.Message }</li>
+						}
+					</ul>
+				</div>
+			}
 			<label class="field">
 				<span>Name</span>
 				<input type="text" name="name" value={ v.Name } required/>
+				@reportBuilderError(v, domain.ReportInputName)
 			</label>
 			<label class="field">
 				<span>Introduction</span>
@@ -34,6 +45,7 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 					<label><input type="radio" name="mode" value={ domain.ReportModeRules } checked?={ v.Mode != domain.ReportModePicked }/>Goals matching rules</label>
 					<label><input type="radio" name="mode" value={ domain.ReportModePicked } checked?={ v.Mode == domain.ReportModePicked }/>Goals I pick</label>
 				</div>
+				@reportBuilderError(v, domain.ReportInputMode)
 			</fieldset>
 			<section data-testid="report-rules" class="rb-rules">
 				<h2 class="label">Rules <span class="hint">— a Goal must meet every rule, and any of a rule's values</span></h2>
@@ -121,6 +133,7 @@ templ reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain
 				}
 			</select>
 		</label>
+		@reportBuilderError(v, list)
 	</fieldset>
 }
 
@@ -149,6 +162,8 @@ templ reportBuilderStyles() {
 		.rb-rule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}
 		.rb-rule select[multiple]{flex:1 1 240px;width:auto}
 		.rb-input-error{display:block;flex-basis:100%;font-size:13px;color:var(--color-danger-ink)}
+		.rb-problems{border:1px solid var(--color-danger-ink);border-radius:var(--radius-md);padding:12px 16px;color:var(--color-danger-ink)}
+		.rb-problems p,.rb-problems ul{margin:0}
 		.rb-form:not(.rb-js) .rb-js-only{display:none}
 	</style>
 }
