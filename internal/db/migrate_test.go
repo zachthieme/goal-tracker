@@ -236,6 +236,93 @@ func TestMigrationNamesExistingMilestoneChanges(t *testing.T) {
 	}
 }
 
+// Links, rejected requests and removals from before link changes were
+// logged are back-filled into the log once on upgrade, with the times and
+// people their rows recorded. A link stands for its request, or for being
+// linked if it is Accepted; an Undo is put down to whoever rejected or removed
+// the link, the only one who may undo it.
+func TestMigrationBackfillsLinkEvents(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := migratedExcept(t, "migrations/0038_link_events.sql")
+	if _, err := sqlDB.Exec(`DROP TABLE link_events`); err != nil {
+		t.Fatalf("undo 0038: %v", err)
+	}
+	h := &testsupport.Harness{T: t, DB: sqlDB, Clock: clock.NewFixed(testsupport.Epoch), Email: email.NewRecorder()}
+	h.Service = domain.NewService(sqlDB, h.Clock, h.Email, nil)
+	pat := h.SignIn("pat@example.com")
+	sam := h.SignIn("sam@example.com")
+	parent := h.CreateGoal(pat, "Reduce outages", "why")
+	accepted := h.CreateGoal(sam, "Accepted", "why")
+	pending := h.CreateGoal(sam, "Pending", "why")
+	rejected := h.CreateGoal(sam, "Rejected", "why")
+	unrejected := h.CreateGoal(sam, "Rejected, then undone", "why")
+	removed := h.CreateGoal(sam, "Removed", "why")
+	unremoved := h.CreateGoal(sam, "Removed, then undone", "why")
+	if _, err := sqlDB.Exec(`
+		INSERT INTO links (child_id, parent_id, status, note, requested_by, created_at) VALUES
+			(?3, ?1, 'accepted', '', ?9, '2026-01-02T09:00:00Z'),
+			(?4, ?1, 'pending', '', ?9, '2026-01-03T09:00:00Z'),
+			(?6, ?1, 'pending', '', ?9, '2026-01-05T09:00:00Z'),
+			(?8, ?1, 'accepted', '', ?9, '2026-01-07T09:00:00Z');
+		INSERT INTO rejected_link_requests (child_id, parent_id, requested_by, request_created_at, rejected_by, rejected_at, restored_at) VALUES
+			(?5, ?1, ?9, '2026-01-04T09:00:00Z', ?2, '2026-01-04T10:00:00Z', NULL),
+			(?6, ?1, ?9, '2026-01-05T09:00:00Z', ?2, '2026-01-05T10:00:00Z', '2026-01-05T10:01:00Z');
+		INSERT INTO link_removals (child_id, parent_id, requested_by, link_created_at, removed_by, removed_at, restored_at) VALUES
+			(?7, ?1, ?9, '2026-01-06T09:00:00Z', ?2, '2026-01-06T10:00:00Z', NULL),
+			(?8, ?1, ?9, '2026-01-07T09:00:00Z', ?9, '2026-01-07T10:00:00Z', '2026-01-07T10:01:00Z');`,
+		parent.ID, pat.ID, accepted.ID, pending.ID, rejected.ID, unrejected.ID, removed.ID, unremoved.ID, sam.ID,
+	); err != nil {
+		t.Fatalf("arrange links: %v", err)
+	}
+
+	if err := db.Migrate(sqlDB); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	for _, c := range []struct {
+		child domain.Goal
+		want  []string
+	}{
+		{accepted, []string{"linked by sam at 2026-01-02T09:00:00Z"}},
+		{pending, []string{"requested by sam at 2026-01-03T09:00:00Z"}},
+		{rejected, []string{
+			"requested by sam at 2026-01-04T09:00:00Z",
+			"rejected by pat at 2026-01-04T10:00:00Z",
+		}},
+		{unrejected, []string{
+			"requested by sam at 2026-01-05T09:00:00Z",
+			"rejected by pat at 2026-01-05T10:00:00Z",
+			"rejection-undone by pat at 2026-01-05T10:01:00Z",
+		}},
+		{removed, []string{
+			"linked by sam at 2026-01-06T09:00:00Z",
+			"removed by pat at 2026-01-06T10:00:00Z",
+		}},
+		{unremoved, []string{
+			"linked by sam at 2026-01-07T09:00:00Z",
+			"removed by sam at 2026-01-07T10:00:00Z",
+			"removal-undone by sam at 2026-01-07T10:01:00Z",
+		}},
+	} {
+		events, err := h.Service.LinkEvents(context.Background(), c.child.ID)
+		if err != nil {
+			t.Fatalf("LinkEvents: %v", err)
+		}
+		var got []string
+		for _, e := range events {
+			if e.ParentID != parent.ID {
+				t.Errorf("%s: event %+v isn't of its link to the parent", c.child.Title, e)
+			}
+			who := map[int64]string{pat.ID: "pat", sam.ID: "sam"}[e.Actor.ID]
+			got = append(got, fmt.Sprintf("%s by %s at %s", e.Kind, who, e.CreatedAt.UTC().Format(time.RFC3339)))
+		}
+		if !slices.Equal(got, c.want) {
+			t.Errorf("%s: link events = %v, want %v", c.child.Title, got, c.want)
+		}
+	}
+}
+
 // Report Definitions saved as roots, Depth and filters convert on upgrade to
 // select the same Goals, never by following links again (ADR 0007): filters
 // alone become Report rules, and roots become the Goals picked, frozen to the
