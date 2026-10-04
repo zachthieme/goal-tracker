@@ -1,0 +1,95 @@
+package web
+
+import "github.com/zachthieme/goal-tracker/internal/domain"
+
+// goalFormPage is the New goal page: a plain form that creates a Proposed Goal
+// and lands on it, so it works without script. A refused submit comes back
+// with what was typed, a summary of every problem first, and each bad input
+// marked with why.
+templ goalFormPage(current *domain.Account, v goalFormView) {
+	@layout("New goal", current) {
+		@goalFormStyles()
+		<header data-testid="goal-form-head" class="page-head">
+			<div>
+				<h1>New goal</h1>
+				<p class="muted">Say what the Goal is and why it matters.</p>
+			</div>
+		</header>
+		<form data-testid="goal-form" class="card gf-form" method="post" action="/goals/new">
+			@goalFormErrors(v)
+			<label class="field">
+				<span>Title</span>
+				<input
+					type="text"
+					id={ domain.InputTitle }
+					name={ domain.InputTitle }
+					value={ v.Title }
+					required
+					autofocus
+					if v.bad(domain.InputTitle) != "" {
+						aria-invalid="true"
+						aria-describedby={ domain.InputTitle + "-error" }
+					}
+				/>
+				@goalFormInputError(v, domain.InputTitle)
+			</label>
+			<label class="field">
+				<span>So What <span class="hint">— why it matters</span></span>
+				<textarea
+					id={ domain.InputSoWhat }
+					name={ domain.InputSoWhat }
+					required
+					if v.bad(domain.InputSoWhat) != "" {
+						aria-invalid="true"
+						aria-describedby={ domain.InputSoWhat + "-error" }
+					}
+				>{ v.SoWhat }</textarea>
+				@goalFormInputError(v, domain.InputSoWhat)
+			</label>
+			<div class="gf-actions">
+				<button type="submit" class="btn primary">Create Goal</button>
+				<a class="btn" href="/goals">Cancel</a>
+			</div>
+		</form>
+	}
+}
+
+// goalFormErrors heads a refused submit: nothing was created, and each
+// problem, linked to its input.
+templ goalFormErrors(v goalFormView) {
+	if len(v.Problems) > 0 {
+		<div data-testid="goal-form-errors" class="alert r gf-errors" role="alert">
+			<strong>The Goal wasn't created.</strong>
+			<ul>
+				for _, p := range v.Problems {
+					<li>
+						if p.Input != "" {
+							<a href={ templ.SafeURL("#" + p.Input) }>{ p.Message }</a>
+						} else {
+							{ p.Message }
+						}
+					</li>
+				}
+			</ul>
+		</div>
+	}
+}
+
+// goalFormInputError is why the named input was refused, beside it.
+templ goalFormInputError(v goalFormView, input string) {
+	if bad := v.bad(input); bad != "" {
+		<span data-testid="input-error" id={ input + "-error" } class="gf-input-error">{ bad }</span>
+	}
+}
+
+// goalFormStyles are the New goal page's own rules on top of app.css.
+templ goalFormStyles() {
+	<style>
+		.gf-form{display:flex;flex-direction:column;gap:16px;max-width:640px}
+		.gf-errors{flex-direction:column;align-items:flex-start;gap:4px}
+		.gf-errors ul{margin:0;padding-left:20px}
+		.gf-errors a{color:inherit}
+		.gf-input-error{display:block;font-size:13px;color:var(--color-danger-ink)}
+		.gf-actions{display:flex;gap:8px}
+	</style>
+}

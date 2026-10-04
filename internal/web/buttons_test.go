@@ -153,7 +153,7 @@ func TestOnlyMenusAndPopoversCastAShadow(t *testing.T) {
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
 
-	floats := map[string]bool{".theme-menu": true, ".toast": true, ".gp-menu": true, ".gl-propose>form": true}
+	floats := map[string]bool{".theme-menu": true, ".toast": true, ".gp-menu": true}
 	comment := regexp.MustCompile(`(?s)/\*.*?\*/`)
 	shadow := regexp.MustCompile(`(?:^|;)box-shadow:([^;]*var\(--shadow-[^;]*)`)
 	for source, sheet := range styleSheets(t, css) {

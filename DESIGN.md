@@ -657,8 +657,8 @@ stays black on white whatever is chosen.
    dark, the card's `--color-surface` against the darker `--color-canvas`
    sets it apart. A clickable card's hover changes its border colour alone
    (§ Components). Only menus and popovers keep the source's `--shadow-pop`:
-   the Theme menu, the Goal page's More menu, the Goal list's New goal form
-   and the toast. The two card shadow tokens are gone.
+   the Theme menu, the Goal page's More menu and the toast. The two card
+   shadow tokens are gone.
 9. **Stale, apart from tags.** Stale chips and banners, tags and nav counts
    all shared the pale teal `--color-primary-light` fill, so "Stale" read like
    a label such as "Platform" (UX Review). Stale is now a grey chip in a dashed

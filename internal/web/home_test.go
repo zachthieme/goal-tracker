@@ -3,7 +3,6 @@ package web_test
 import (
 	"context"
 	"fmt"
-	"html"
 	"net/http"
 	"regexp"
 	"strings"
@@ -625,8 +624,8 @@ func TestHomeNoChangeRefusedLandsOnCheckinForm(t *testing.T) {
 	}
 }
 
-// Home's New goal goes straight to the Goal list with its propose form open and
-// the Title focused, by the address alone so it works without script (#93).
+// Home's New goal links to the New goal page, which opens with the Title
+// focused, so it works without script.
 func TestHomeNewGoalOpensProposeForm(t *testing.T) {
 	t.Parallel()
 
@@ -637,11 +636,11 @@ func TestHomeNewGoalOpensProposeForm(t *testing.T) {
 
 	head := pageElement(t, getBody(t, client, ts.URL+"/home"), "header", "home-head")
 	link := tagAround(t, head, ">New goal<")
-	href := html.UnescapeString(attr(link, "href"))
-	if !strings.HasPrefix(href, "/goals?") {
-		t.Fatalf("Home's New goal links to %q, want the Goal list with its form open:\n%s", href, head)
+	if href := attr(link, "href"); href != "/goals/new" {
+		t.Fatalf("Home's New goal links to %q, want /goals/new:\n%s", href, head)
 	}
-	if !proposeFormOpen(t, getBody(t, client, ts.URL+href)) {
-		t.Errorf("following New goal shows the propose form closed")
+	form := pageElement(t, getBody(t, client, ts.URL+attr(link, "href")), "form", "goal-form")
+	if title := tagAround(t, form, `name="title"`); !strings.Contains(title, " autofocus") {
+		t.Errorf("following New goal doesn't focus the Title: %s", title)
 	}
 }
