@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -431,9 +432,10 @@ func TestSmokeCurateNarrativeOverHTTP(t *testing.T) {
 	}
 
 	resp := postForm(t, client, reportURL+"/narrative", url.Values{
-		"pick-" + strconv.FormatInt(signed, 10):  {domain.HighlightAccomplishment},
-		"pick-" + strconv.FormatInt(lost, 10):    {""},
-		"text-" + domain.HighlightAccomplishment: {"EU is open for business."},
+		"include-" + strconv.FormatInt(signed, 10): {"on"},
+		"pick-" + strconv.FormatInt(signed, 10):    {domain.HighlightAccomplishment},
+		"pick-" + strconv.FormatInt(lost, 10):      {domain.HighlightMiss},
+		"text-" + domain.HighlightAccomplishment:   {"EU is open for business."},
 	})
 	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/reports/"+strconv.FormatInt(def.ID, 10) {
 		t.Fatalf("curate: status %d at %s, want the draft page", resp.StatusCode, resp.Request.URL)
@@ -464,10 +466,138 @@ func TestSmokeCurateNarrativeOverHTTP(t *testing.T) {
 		t.Errorf("publication offers to curate its frozen narrative; body:\n%s", published)
 	}
 
-	resp = postForm(t, client, reportURL+"/narrative", url.Values{"pick-9999": {domain.HighlightInsight}})
+	resp = postForm(t, client, reportURL+"/narrative", url.Values{"include-9999": {"on"}, "pick-9999": {domain.HighlightInsight}})
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("picking an unknown Highlight: status %d, want 422", resp.StatusCode)
 	}
+}
+
+// The author includes a Highlight by ticking its box and picks its section
+// with a radio. A section radio without the box leaves the Highlight out; a
+// ticked box without a section is refused (ticket #155).
+func TestCurateNarrativeIncludesOnlyTickedHighlightsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlight(boss, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	h.Clock.Advance(time.Hour)
+	h.CheckinWithHighlight(boss, g.ID, domain.HighlightMiss, "Lost the second customer.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	signed, lost := draftHighlightID(t, h, def, "Signed the first EU customer."), draftHighlightID(t, h, def, "Lost the second customer.")
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+
+	resp := postForm(t, client, reportURL+"/narrative", url.Values{
+		"include-" + strconv.FormatInt(signed, 10): {"on"},
+		"pick-" + strconv.FormatInt(signed, 10):    {domain.HighlightMiss},
+		"pick-" + strconv.FormatInt(lost, 10):      {domain.HighlightMiss},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("curate: status %d, want the draft page", resp.StatusCode)
+	}
+	narrative := pageElement(t, readBody(t, resp), "section", "report-narrative")
+	if heading := pageElement(t, narrative, "h3", "narrative-section"); !strings.HasSuffix(heading, ">Misses") {
+		t.Errorf("narrative's only section %q, want Misses", heading)
+	}
+	if !strings.Contains(narrative, "Signed the first EU customer.") {
+		t.Errorf("narrative leaves out the ticked Highlight; narrative:\n%s", narrative)
+	}
+	if strings.Contains(narrative, "Lost the second customer.") || strings.Contains(narrative, "Accomplishments") {
+		t.Errorf("narrative includes a Highlight whose box wasn't ticked; narrative:\n%s", narrative)
+	}
+
+	resp = postForm(t, client, reportURL+"/narrative", url.Values{"include-" + strconv.FormatInt(lost, 10): {"on"}})
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("including a Highlight without a section: status %d, want 422", resp.StatusCode)
+	}
+}
+
+// On a fresh draft no Highlight is included, and each one's section control
+// starts on its own kind. Once the author saves a Highlight as a Miss, its box
+// is ticked and Miss is selected (ticket #155).
+func TestCurationFormShowsWhatIsIncludedOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlight(boss, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	h.Clock.Advance(time.Hour)
+	h.CheckinWithHighlight(boss, g.ID, domain.HighlightInsight, "Buyers want invoices in euros.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	signed := strconv.FormatInt(draftHighlightID(t, h, def, "Signed the first EU customer."), 10)
+	euros := strconv.FormatInt(draftHighlightID(t, h, def, "Buyers want invoices in euros."), 10)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+
+	form := between(t, getBody(t, client, reportURL), `<form data-testid="narrative-curation"`, "</form>")
+	for id, kind := range map[string]string{signed: domain.HighlightAccomplishment, euros: domain.HighlightInsight} {
+		if box := formInput(t, form, "include-"+id, "on"); isChecked(box) {
+			t.Errorf("fresh draft includes Highlight %s: %s", id, box)
+		}
+		for _, section := range []string{domain.HighlightInsight, domain.HighlightAccomplishment, domain.HighlightMiss} {
+			if radio := formInput(t, form, "pick-"+id, section); isChecked(radio) != (section == kind) {
+				t.Errorf("fresh draft, Highlight %s's %s radio: %s; want only its own kind, %s, selected", id, section, radio, kind)
+			}
+		}
+	}
+
+	resp := postForm(t, client, reportURL+"/narrative", url.Values{
+		"include-" + signed: {"on"},
+		"pick-" + signed:    {domain.HighlightMiss},
+	})
+	form = between(t, readBody(t, resp), `<form data-testid="narrative-curation"`, "</form>")
+	if box := formInput(t, form, "include-"+signed, "on"); !isChecked(box) {
+		t.Errorf("saved Highlight's box is not ticked: %s", box)
+	}
+	for _, section := range []string{domain.HighlightInsight, domain.HighlightAccomplishment, domain.HighlightMiss} {
+		if radio := formInput(t, form, "pick-"+signed, section); isChecked(radio) != (section == domain.HighlightMiss) {
+			t.Errorf("Highlight saved as a Miss, its %s radio: %s; want only Miss selected", section, radio)
+		}
+	}
+	if box := formInput(t, form, "include-"+euros, "on"); isChecked(box) {
+		t.Errorf("a Highlight left out is ticked: %s", box)
+	}
+}
+
+// formInput is the <input> in form with this name and value.
+func formInput(t *testing.T, form, name, value string) string {
+	t.Helper()
+	for _, tag := range regexp.MustCompile(`<input[^>]*>`).FindAllString(form, -1) {
+		if attr(tag, "name") == name && attr(tag, "value") == value {
+			return tag
+		}
+	}
+	t.Fatalf("form has no input %s=%s; form:\n%s", name, value, form)
+	return ""
+}
+
+// isChecked reports whether an <input> tag carries checked.
+func isChecked(tag string) bool {
+	return regexp.MustCompile(`\schecked[\s>/=]`).MatchString(tag)
+}
+
+// draftHighlightID is the ID of the Highlight with this note in the Report
+// Definition's draft.
+func draftHighlightID(t *testing.T, h *testsupport.Harness, def domain.ReportDefinition, note string) int64 {
+	t.Helper()
+	draft, err := h.Service.DraftReport(context.Background(), def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	for _, nh := range draft.Highlights {
+		if nh.Highlight.Note == note {
+			return nh.Highlight.ID
+		}
+	}
+	t.Fatalf("draft has no Highlight %q", note)
+	return 0
 }
 
 // The publication opens with a Health summary: how many of the Report's
@@ -1095,8 +1225,9 @@ func TestPullOneHighlightOfACheckinOverHTTP(t *testing.T) {
 	}
 
 	postForm(t, client, reportURL+"/narrative", url.Values{
-		"pick-" + strconv.FormatInt(signed, 10): {domain.HighlightAccomplishment},
-		"pick-" + strconv.FormatInt(hired, 10):  {""},
+		"include-" + strconv.FormatInt(signed, 10): {"on"},
+		"pick-" + strconv.FormatInt(signed, 10):    {domain.HighlightAccomplishment},
+		"pick-" + strconv.FormatInt(hired, 10):     {domain.HighlightAccomplishment},
 	})
 	resp := postForm(t, client, reportURL+"/publications", url.Values{"baseline": {""}})
 	published := readBody(t, resp)

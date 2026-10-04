@@ -467,9 +467,9 @@ templ membershipChanges(changes []domain.MembershipChange) {
 }
 
 // narrativeCuration is the draft page's form for curating the narrative of the
-// next publication: every Highlight in scope since the baseline, each with the
-// section the author picks it into, and the author's own text for each
-// section (CONTEXT.md: Highlight).
+// next publication: every Highlight in scope since the baseline, each with a
+// box to include it and the section it goes into, and the section text for
+// each section (CONTEXT.md: Highlight).
 templ narrativeCuration(r domain.Report) {
 	<section data-testid="report-curation" class="rp-body">
 		<h2>Narrative</h2>
@@ -483,17 +483,7 @@ templ narrativeCuration(r domain.Report) {
 			} else {
 				<ul class="rp-list">
 					for _, nh := range r.Highlights {
-						<li data-testid="curation-highlight">
-							<select name={ fmt.Sprintf("pick-%d", nh.Highlight.ID) }>
-								<option value="" selected?={ nh.Section == "" }>Leave out</option>
-								for _, section := range narrativeSections {
-									<option value={ section } selected?={ nh.Section == section }>{ sectionHeading(section) }</option>
-								}
-							</select>
-							{ " " }<strong>[{ nh.Highlight.Kind }]</strong>
-							{ " " }{ nh.Highlight.Note }
-							@highlightCredit(nh)
-						</li>
+						@curationHighlight(nh)
 					}
 				</ul>
 			}
@@ -506,6 +496,34 @@ templ narrativeCuration(r domain.Report) {
 			<div><button type="submit" class="btn">Save narrative</button></div>
 		</form>
 	</section>
+}
+
+// curationHighlight is one Highlight on the curation form: a box to include it
+// and, while ticked, the section it goes into — the one it was picked into, or
+// else its own kind. Unticked, it shows its kind instead. The section radios
+// stay in the form, hidden by CSS, so it always submits a section without JS.
+templ curationHighlight(nh domain.NarrativeHighlight) {
+	<li data-testid="curation-highlight" class="rp-curate">
+		<label class="rp-include">
+			<input type="checkbox" name={ fmt.Sprintf("include-%d", nh.Highlight.ID) } value="on" checked?={ nh.Section != "" }/>
+			<span>{ nh.Highlight.Note }</span>
+		</label>
+		<p class="small muted">
+			@person(nh.Highlight.Owner)
+			{ " · " }
+			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", nh.GoalID)) }>{ nh.GoalTitle }</a>
+			<span class="rp-kind">{ " · " + nh.Highlight.Kind }</span>
+		</p>
+		<fieldset class="rp-sections">
+			<legend class="sr-only">Section</legend>
+			for _, section := range narrativeSections {
+				<label>
+					<input type="radio" name={ fmt.Sprintf("pick-%d", nh.Highlight.ID) } value={ section } checked?={ curatedSection(nh) == section }/>
+					<span>{ section }</span>
+				</label>
+			}
+		</fieldset>
+	</li>
 }
 
 // reportNarrative is a Report's Insights, Accomplishments, and Misses, in the
@@ -830,6 +848,16 @@ func fmtPublishedIn(t time.Time, loc *time.Location) string {
 	return t.In(loc).Format("2 Jan 2006, 15:04 MST")
 }
 
+// curatedSection is the section a Highlight's control selects: the one the
+// author picked it into, or else its own kind, since kinds and sections are
+// the same strings.
+func curatedSection(nh domain.NarrativeHighlight) string {
+	if nh.Section != "" {
+		return nh.Section
+	}
+	return nh.Highlight.Kind
+}
+
 // narrativeSections are a Report narrative's sections in the order it shows
 // them.
 var narrativeSections = []string{domain.HighlightInsight, domain.HighlightAccomplishment, domain.HighlightMiss}
@@ -875,6 +903,20 @@ templ reportStyles() {
 		.rp-narrative .label:first-child{margin-top:0}
 		.rp-narrative ul{margin:4px 0 0;padding-left:20px}
 		.rp-credit{color:var(--color-ink-muted);font-size:13px}
+		.rp-curate{display:flex;flex-direction:column;gap:4px}
+		.rp-include{display:flex;align-items:flex-start;gap:12px;cursor:pointer}
+		.rp-include input{margin-top:4px}
+		.rp-curate>p,.rp-sections{margin-left:28px}
+		.rp-sections{display:inline-flex;align-self:flex-start;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:0;margin-top:4px;margin-bottom:0;margin-right:0;overflow:hidden}
+		.rp-sections label{position:relative;padding:4px 12px;cursor:pointer;font-size:13px}
+		.rp-curate:not(:has(input[name^=include-]:checked)) .rp-sections{display:none}
+		.rp-curate:has(input[name^=include-]:checked) .rp-kind{display:none}
+		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+		@supports selector(:has(*)){
+			.rp-sections input{position:absolute;opacity:0;pointer-events:none}
+			.rp-sections label:has(input:checked){background:var(--color-ink);color:var(--color-surface)}
+			.rp-sections label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:-2px}
+		}
 		.rp-card{padding:24px;display:flex;flex-direction:column;gap:12px}
 		.rp-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
 		.rp-card-head h3{font-size:19px}
