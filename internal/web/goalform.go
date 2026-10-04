@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -24,7 +25,32 @@ type goalFormView struct {
 	SoWhat     string
 	Milestones []milestoneRow
 	Metrics    []metricRow
+	// Parents are the Goals picked to contribute to, and Candidates every
+	// other Goal, which the no-script select offers.
+	Parents    []parentChoice
+	Candidates []domain.Goal
 	Problems   []*domain.InputError
+}
+
+// parentChoice is a Goal offered or picked to contribute to: its Health, ""
+// when it has none, and the label of its Owner when picking it asks that
+// Owner to accept, "" when the creator owns it and it links at once.
+type parentChoice struct {
+	Goal   domain.Goal
+	Health string
+	Asks   string
+}
+
+// asked names each Owner the picked parents ask to accept, once each, in the
+// order picked.
+func (v goalFormView) asked() []string {
+	var names []string
+	for _, p := range v.Parents {
+		if p.Asks != "" && !slices.Contains(names, p.Asks) {
+			names = append(names, p.Asks)
+		}
+	}
+	return names
 }
 
 // milestoneRow is one Milestone row of the New goal form, as typed.
@@ -85,10 +111,83 @@ func templateRowNames(section string) func(part string) string {
 	return func(part string) string { return section + "[__i__]." + part }
 }
 
-// handleNewGoalForm renders the New goal page, empty.
+// handleNewGoalForm renders the New goal page, empty but for the parents
+// ?parent=<id> picks, one each.
 func (s *Server) handleNewGoalForm(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	render(w, r, http.StatusOK, goalFormPage(&current, goalFormView{}))
+	var ids []int64
+	for _, value := range r.URL.Query()["parent"] {
+		if id, err := strconv.ParseInt(value, 10, 64); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	var v goalFormView
+	var err error
+	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, ids); err != nil {
+		http.Error(w, "could not load goals", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, goalFormPage(&current, v))
 }
+
+// pickParents splits every Goal into the parents picked by ids, in that
+// order, each once, and the candidates left over. An id that is no Goal picks
+// nothing. A brand-new Goal has no children, so no Goal is left out for
+// making a cycle.
+func (s *Server) pickParents(ctx context.Context, current domain.Account, ids []int64) ([]parentChoice, []domain.Goal, error) {
+	all, err := s.svc.ListGoals(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load goals: %w", err)
+	}
+	byID := map[int64]domain.Goal{}
+	for _, g := range all {
+		byID[g.ID] = g
+	}
+	var picked []parentChoice
+	for _, id := range ids {
+		g, ok := byID[id]
+		if !ok {
+			continue
+		}
+		delete(byID, id)
+		p, err := s.parentChoice(ctx, current, g)
+		if err != nil {
+			return nil, nil, err
+		}
+		picked = append(picked, p)
+	}
+	var candidates []domain.Goal
+	for _, g := range all {
+		if _, left := byID[g.ID]; left {
+			candidates = append(candidates, g)
+		}
+	}
+	return picked, candidates, nil
+}
+
+// parentChoice is g offered to current to contribute to: its Health, read as
+// the Goal page's sidebar reads a linked Goal's, from an Active Goal's latest
+// Check-in, and whom picking it asks.
+func (s *Server) parentChoice(ctx context.Context, current domain.Account, g domain.Goal) (parentChoice, error) {
+	p := parentChoice{Goal: g}
+	if g.Owner.ID != current.ID {
+		p.Asks = g.Owner.Label()
+	}
+	if g.Lifecycle != domain.LifecycleActive {
+		return p, nil
+	}
+	c, ok, err := s.svc.LatestCheckin(ctx, g.ID)
+	if err != nil {
+		return parentChoice{}, fmt.Errorf("load parent goal's check-in: %w", err)
+	}
+	if ok {
+		p.Health = c.Health
+	}
+	return p, nil
+}
+
+// inputParentID is the Contributes to field's name, posted once per parent
+// Goal picked.
+const inputParentID = "parent_id"
 
 // errUnparsed rolls back a New goal submit the domain accepted when the
 // handler refused some of its values.
@@ -130,6 +229,18 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 			return 0, false
 		}
 		return n, true
+	}
+
+	for _, value := range r.PostForm[inputParentID] {
+		if value = strings.TrimSpace(value); value == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			refuse(inputParentID, "%q isn't a Goal", value)
+			continue
+		}
+		in.ParentIDs = append(in.ParentIDs, id)
 	}
 
 	// Rows are numbered afresh, all-blank ones dropped, so the domain's

@@ -356,3 +356,81 @@ func TestNewGoalPageOffersMilestoneAndMetricRows(t *testing.T) {
 		}
 	}
 }
+
+// The New goal form's Contributes to field posts each parent as parent_id,
+// and the new Goal is linked to every one: at once to a parent the creator
+// owns, and as a request the parent's Owner is asked to accept otherwise.
+func TestNewGoalFormContributesToSeveralParents(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	ana := h.SignInNamed("ana@example.com", "Ana Torres")
+	own := h.CreateGoal(sam, "Grow revenue", "The business needs it.")
+	theirs := h.CreateGoal(ana, "Faster site", "Speed sells.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	form := newGoalForm(nil)
+	form["parent_id"] = []string{fmt.Sprint(own.ID), fmt.Sprint(theirs.ID)}
+	resp := postForm(t, client, ts.URL+"/goals/new", form)
+	if page := readBody(t, resp); resp.StatusCode != http.StatusOK || resp.Request.URL.Path == "/goals/new" {
+		t.Fatalf("the post answered %d at %s:\n%s", resp.StatusCode, resp.Request.URL, page)
+	}
+	var created domain.Goal
+	goals, _ := h.Service.ListGoals(context.Background())
+	for _, g := range goals {
+		if g.Title == "Cut checkout latency" {
+			created = g
+		}
+	}
+	if parents := h.ParentsOf(created); len(parents) != 1 || parents[0].ID != own.ID {
+		t.Errorf("the new Goal's accepted parents are %+v, want only sam's own %q", parents, own.Title)
+	}
+	pending, err := h.Service.PendingLinkRequests(context.Background(), ana.ID)
+	if err != nil {
+		t.Fatalf("PendingLinkRequests: %v", err)
+	}
+	if len(pending) != 1 || pending[0].Child.ID != created.ID || pending[0].Parent.ID != theirs.ID || pending[0].Status != domain.LinkPending {
+		t.Errorf("ana is asked to accept %+v, want one Pending link from the new Goal to %q", pending, theirs.Title)
+	}
+}
+
+// GET /goals/new?parent=<id> arrives with each parent picked: a chip holding
+// its hidden parent_id input, its Health badge (or its Lifecycle when it has
+// no Health), its title, and the × that removes it, all in the one element.
+func TestNewGoalPageArrivesWithParentsPicked(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	ana := h.SignInNamed("ana@example.com", "Ana Torres")
+	active := h.ActiveGoal(ana, "Faster site", "Speed sells.")
+	h.Checkin(ana, active.ID, domain.HealthRed, "Blocked on the CDN.", "Swap CDN vendors.", h.Clock.Now().AddDate(0, 1, 0))
+	proposed := h.CreateGoal(sam, "Grow revenue", "The business needs it.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/new?parent=%d&parent=%d", ts.URL, active.ID, proposed.ID))
+	form := pageElement(t, page, "form", "goal-form")
+	chips := strings.Split(between(t, form, `data-testid="parent-chips"`, "</ul>"), `data-testid="parent-chip"`)[1:]
+	if len(chips) != 2 {
+		t.Fatalf("the page shows %d parent chips, want 2:\n%s", len(chips), form)
+	}
+	for i, want := range []struct {
+		goal  domain.Goal
+		badge string
+	}{{active, domain.HealthRed}, {proposed, domain.LifecycleProposed}} {
+		chip := chips[i]
+		input := tagAround(t, chip, `name="parent_id"`)
+		if attr(input, "type") != "hidden" || attr(input, "value") != fmt.Sprint(want.goal.ID) {
+			t.Errorf("chip %d's input is %s, want a hidden parent_id of %d", i, input, want.goal.ID)
+		}
+		if !strings.Contains(chip, want.goal.Title) || !strings.Contains(chip, `class="badge`) || !strings.Contains(chip, ">"+want.badge+"</span>") {
+			t.Errorf("chip %d doesn't show %q with a %s badge:\n%s", i, want.goal.Title, want.badge, chip)
+		}
+		if remove := tagAround(t, chip, "data-remove-chip"); !strings.Contains(remove, `type="button"`) {
+			t.Errorf("chip %d's × isn't a button: %s", i, remove)
+		}
+	}
+}
