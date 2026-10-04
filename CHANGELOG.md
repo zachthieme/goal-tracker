@@ -17,6 +17,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **New features:**
 - [user] New goal, on Home and the Goal list, opens its own page at `/goals/new` in place of the Goal list's pop-up form. Fill in the Title and So What and Create Goal lands on the new Proposed Goal's page. If a submit is refused, the form comes back with what you typed, a list of the problems at the top, and each problem marked on its field. The page is a plain form, so it works without JavaScript (#129).
+- [user] The New goal page has a "How you'll know" section for adding Milestones (Name, Date) and Metrics (Name, Unit, Baseline, Target, Target date) as the Goal is created. "+ Milestone" and "+ Metric" add a row and × removes one; without JavaScript there is one row of each. A Metric's direction comes from its numbers: a target below the baseline means down, above means up, and only a Metric holding steady, with target equal to baseline, asks for a Direction. A row left blank is ignored; a partly filled row has each missing value, unreadable date and non-numeric number marked on its field, and the rest of the form keeps what you typed (#133).
 
 **Bug fixes:**
 - [internal] `scripts/shots.mjs` runs an action as an async function body only when it uses `await` in its code, not when the word appears in a string, comment, regex or property name, so such actions keep their completion value and awaited promise; a `name` ending in `.PNG` now saves `<name>.png` (#126).

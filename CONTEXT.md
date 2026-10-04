@@ -70,6 +70,10 @@ _Avoid_: KTLO, BAU, evergreen
 The relationship from a child Goal to a parent Goal it helps achieve. A Goal may have many parents and many children, and the resulting graph has no cycles. The link exists only once the parent's Owner accepts it.
 _Avoid_: rolls up to, parent/child hierarchy, alignment
 
+**Parent suggestion**:
+A proposal, from someone other than a Goal's Owner, that the Goal contribute to a particular parent. Only the Goal's Owner decides it: accepting it requests the link as if the Owner had, declining it ends it. Each is kept in the Goal's history with its outcome.
+_Avoid_: link suggestion, recommendation, proposed link
+
 **Unaligned**:
 An Active Goal that contributes to no other Goal and is not a Top-level Goal. Allowed, but listed where leadership can see it.
 _Avoid_: orphan, root
@@ -140,6 +144,10 @@ _Avoid_: mitigation, recovery plan, get-well plan
 **Check-in**:
 An owner's routine update to one Goal: Health, a short status, Date Slips, and Milestone changes. It should take minutes and be hard to get wrong.
 _Avoid_: status update, 5-15, report
+
+**Nudge**:
+A one-off request from someone else to a Goal's Owner and Delegates to check in on a Goal that is Stale or past its Path to Green. A Goal can be nudged at most once a day, and each Nudge is kept in the Goal's history.
+_Avoid_: reminder (that's the weekly email), ping, chase
 
 **Highlight**:
 An optional note in a Check-in, marked as an Insight, Accomplishment, or Miss, that a Report author may pull into a Report's narrative. A Check-in may carry several, of any mix of kinds, and an author pulls each one separately. The Goal's Owner is credited.
