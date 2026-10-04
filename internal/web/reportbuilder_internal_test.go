@@ -21,7 +21,10 @@ func TestBuilderListsARefusalNamingNoInputAtTheTop(t *testing.T) {
 	if err := reportBuilderPage(&domain.Account{}, v).Render(t.Context(), &page); err != nil {
 		t.Fatalf("render: %v", err)
 	}
-	form := page.String()[strings.Index(page.String(), `data-testid="report-builder"`):]
+	_, form, ok := strings.Cut(page.String(), `data-testid="report-builder"`)
+	if !ok {
+		t.Fatalf("no builder form:\n%s", page.String())
+	}
 	top, rest, ok := strings.Cut(form, "<span>Name</span>")
 	if !ok {
 		t.Fatalf("the builder has no Name input:\n%s", form)
