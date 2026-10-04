@@ -105,7 +105,13 @@ templ riskRow(current *domain.Account, today time.Time, r riskGoalRow) {
 				@person(r.Goal.Owner)
 			}
 		</td>
-		<td data-testid="risk-fix"></td>
+		<td data-testid="risk-fix">
+			if r.Fix.Primary {
+				<a class="btn primary sm" href={ templ.SafeURL(r.Fix.Href) }>{ r.Fix.Label }</a>
+			} else {
+				<a class="btn sm" href={ templ.SafeURL(r.Fix.Href) }>{ r.Fix.Label }</a>
+			}
+		</td>
 	</tr>
 }
 
