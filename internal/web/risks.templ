@@ -43,7 +43,7 @@ templ risksPage(current *domain.Account, v risksPageView) {
 			}
 		</nav>
 		if v.Group != "" {
-			<p><a data-testid="risks-show-all" href="/risks">Show all</a></p>
+			<p><a data-testid="risks-show-all" href={ v.ShowAllURL() }>Show all</a></p>
 		}
 		if len(v.Rows) == 0 {
 			<p data-testid="risks-all-clear" class="muted">All clear: nothing needs attention.</p>
@@ -71,7 +71,7 @@ templ riskCardView(c riskCard) {
 
 // riskCardLink is a group's card when it holds Goals.
 templ riskCardLink(c riskCard) {
-	<a data-testid={ "risks-group-" + c.Key } href={ templ.SafeURL("/risks?group=" + c.Key) } class="card rk-card" { c.Attrs()... }>
+	<a data-testid={ "risks-group-" + c.Key } href={ c.Href } class="card rk-card" { c.Attrs()... }>
 		<span class="label">{ c.Name }</span>
 		<span class="num">{ strconv.Itoa(c.Count) }</span>
 		<span class="rk-chips">

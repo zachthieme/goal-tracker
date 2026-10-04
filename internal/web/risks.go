@@ -142,6 +142,11 @@ func (p risksPageView) url(group string, mine bool) string {
 	return "/risks?" + q.Encode()
 }
 
+// ShowAllURL is the page's address unfiltered, keeping its scope.
+func (p risksPageView) ShowAllURL() templ.SafeURL {
+	return templ.SafeURL(p.url("", p.Mine))
+}
+
 // ScopeURL is the page's address scoped to the viewer's own Goals or not,
 // keeping its group.
 func (p risksPageView) ScopeURL(mine bool) templ.SafeURL {
@@ -230,13 +235,15 @@ func riskGroupKey(key string) string {
 }
 
 // riskCard is a group's summary card: its count, a count of each of its
-// signals that flags a Goal, the line it shows when it holds none, and
-// whether the page is filtered to it.
+// signals that flags a Goal, the line it shows when it holds none, whether the
+// page is filtered to it, and the page's address filtered to it, keeping the
+// page's scope.
 type riskCard struct {
 	riskGroup
 	Signals []riskType
 	Blank   string
 	Current bool
+	Href    templ.SafeURL
 }
 
 // Attrs marks the card of the group the page is filtered to as the current one.
@@ -256,7 +263,7 @@ func (p risksPageView) Cards() []riskCard {
 	groups := riskGroups(p.Rows)
 	cards := make([]riskCard, 0, len(groups))
 	for i, gk := range riskGroupKinds {
-		c := riskCard{riskGroup: groups[i], Blank: gk.Blank, Current: gk.Key == p.Group}
+		c := riskCard{riskGroup: groups[i], Blank: gk.Blank, Current: gk.Key == p.Group, Href: templ.SafeURL(p.url(gk.Key, p.Mine))}
 		for _, kind := range gk.Kinds {
 			n := 0
 			for _, r := range p.Rows {

@@ -942,3 +942,56 @@ func TestRisksPageScopedToADimensionValue(t *testing.T) {
 		}
 	}
 }
+
+// Scoped to Mine and a value, the group cards and Show all keep the scope, so
+// clicking a card narrows the scoped page to the group: the table lists only
+// the Goals the scope and the group both keep, while the cards count every
+// group within the scope.
+func TestRisksPageGroupsWithinScope(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	platform := h.CreateDimension(boss, "Team", "Platform").Values[0]
+	ownStale := h.MarkTopLevel(boss, h.ActiveGoal(sam, "Own stale", "It matters.")) // Stale only
+	h.AssignGoalValue(ownStale, platform)
+	ownUnaligned := h.ActiveGoal(sam, "Own unaligned", "It matters.") // Unaligned only
+	h.AssignGoalValue(ownUnaligned, platform)
+	ownUntagged := h.ActiveGoal(sam, "Own untagged", "It matters.")
+	kims := h.ActiveGoal(kim, "Kim's platform work", "It matters.")
+	h.AssignGoalValue(kims, platform)
+	h.Clock.Advance(10 * day)
+	h.Checkin(sam, ownUnaligned.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	client := signInClient(t, ts.URL, "sam@example.com")
+	scope := "mine=1&value=" + strconv.FormatInt(platform.ID, 10)
+
+	page := getBody(t, client, ts.URL+"/risks?"+scope)
+
+	href := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "risks-group-owner")), "href"))
+	if href != "/risks?group=owner&"+scope {
+		t.Fatalf("the owner card's link %q doesn't keep the scope", href)
+	}
+
+	page = getBody(t, client, ts.URL+href)
+
+	riskRowOf(t, page, ownStale)
+	for _, g := range []domain.Goal{ownUnaligned, ownUntagged, kims} {
+		if hasRiskRow(page, g) {
+			t.Errorf("scoped and filtered to owner, the page lists %q", g.Title)
+		}
+	}
+	for key, want := range map[string]string{"owner": "1", "plan": "1"} {
+		if card := pageElement(t, page, "a", "risks-group-"+key); !strings.Contains(card, `<span class="num">`+want+`</span>`) {
+			t.Errorf("scoped and filtered to owner, the %s card doesn't count %s: %s", key, want, card)
+		}
+	}
+	if all := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "risks-show-all")), "href")); all != "/risks?"+scope {
+		t.Errorf("Show all %q doesn't keep the scope", all)
+	}
+	if everyone := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "risks-scope-everyone")), "href")); everyone != "/risks?group=owner&value="+strconv.FormatInt(platform.ID, 10) {
+		t.Errorf("Everyone %q doesn't keep the group and value", everyone)
+	}
+}
