@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -37,6 +38,24 @@ type HealthCounts struct {
 	Green, Yellow, Red, None int
 }
 
+// ReportSummaries summarises every saved Report Definition, ordered by name,
+// each drafted for its counts.
+func (s *Service) ReportSummaries(ctx context.Context) ([]ReportSummary, error) {
+	defs, err := s.ListReportDefinitions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ReportSummary, 0, len(defs))
+	for _, def := range defs {
+		sum, err := s.ReportSummary(ctx, def)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, sum)
+	}
+	return out, nil
+}
+
 // ReportSummary summarises the Report Definition def from its draft against
 // the default baseline.
 func (s *Service) ReportSummary(ctx context.Context, def ReportDefinition) (ReportSummary, error) {
@@ -64,6 +83,11 @@ func (s *Service) ReportSummary(ctx context.Context, def ReportDefinition) (Repo
 			return ReportSummary{}, err
 		}
 		sum.LastPublication = &pub
+		changes, err := s.changedGoals(ctx, r)
+		if err != nil {
+			return ReportSummary{}, err
+		}
+		sum.Changes = &changes
 	}
 	if sum.Scope, err = s.reportScope(ctx, def); err != nil {
 		return ReportSummary{}, err
@@ -79,6 +103,32 @@ func (r Report) selected() []SelectedGoal {
 		out = append(out, SelectedGoal{Goal: b.Goal, Health: b.Health})
 	}
 	return append(out, r.Lines...)
+}
+
+// changedGoals counts the Goals r reads as changed since its baseline — those
+// it selects that were created, slipped a date, gained a Milestone or changed
+// Lifecycle since, and those that entered or left it — each once. A standing
+// condition, such as staying Red, is no change, and nor is a change of Health.
+func (s *Service) changedGoals(ctx context.Context, r Report) (int, error) {
+	since := s.since(r)
+	changed := map[int64]bool{}
+	for _, sg := range r.selected() {
+		h, err := s.goalHistory(ctx, sg.Goal)
+		if err != nil {
+			return 0, err
+		}
+		milestones, err := s.ListMilestones(ctx, sg.Goal.ID)
+		if err != nil {
+			return 0, err
+		}
+		if h.changed(since) || slices.ContainsFunc(milestones, func(m Milestone) bool { return since(m.CreatedAt) }) {
+			changed[sg.Goal.ID] = true
+		}
+	}
+	for _, c := range r.MembershipChanges {
+		changed[c.Goal.ID] = true
+	}
+	return len(changed), nil
 }
 
 // reportScope says what def selects in plain words, its parts joined with

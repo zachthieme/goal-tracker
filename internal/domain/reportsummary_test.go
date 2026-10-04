@@ -2,6 +2,8 @@ package domain_test
 
 import (
 	"context"
+	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -166,6 +168,89 @@ func TestReportSummaryOfAPublishedDefinitionHasItsLastPublication(t *testing.T) 
 	}
 	if got.PublishedBy.Label() != "Lee Chen" {
 		t.Errorf("published by %q, want Lee Chen", got.PublishedBy.Label())
+	}
+}
+
+// Since its last publication, a definition's summary counts each Goal that
+// changed — was created, slipped a date, gained a Milestone or changed
+// Lifecycle — or entered or left the Report, once however many of those it
+// did. A standing condition is no change: a Goal that stays Red adds nothing.
+func TestReportSummaryCountsEachGoalChangedSinceTheLastPublicationOnce(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	lee := h.SignIn("lee@example.com")
+	staysRed := h.ActiveGoal(boss, "Stays Red", "why")
+	slipped := h.ActiveGoal(boss, "Slipped", "why")
+	gainedMilestone := h.ActiveGoal(boss, "Gained a Milestone", "why")
+	paused := h.ActiveGoal(boss, "Paused", "why")
+	leftOut := h.ActiveGoal(boss, "Left out", "why")
+	entered := h.ActiveGoal(lee, "Also included", "why")
+	red := func(g domain.Goal) {
+		h.Checkin(boss, g.ID, domain.HealthRed, "Blocked.", "Unblock it.", h.Clock.Now().AddDate(0, 1, 0))
+	}
+	red(staysRed)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:  "MBR",
+		Mode:  domain.ReportModeRules,
+		Rules: []domain.ReportRule{ownerRule(domain.RuleIs, boss)},
+	})
+	h.PublishReport(boss, def)
+	h.Clock.Advance(day)
+	changes := func(step string, want int) {
+		t.Helper()
+		got := reportSummary(t, h, def).Changes
+		switch {
+		case got == nil:
+			t.Fatalf("%s: changes none, want %d", step, want)
+		case *got != want:
+			t.Errorf("%s: changes %d, want %d", step, *got, want)
+		}
+	}
+
+	red(staysRed)
+	changes("stayed Red", 0)
+	slipDelivery(h, boss, slipped, slipped.DeliveryDate.AddDate(0, 0, 14))
+	changes("slipped", 1)
+	listGoal(t, h, def, "include", entered)
+	changes("entered", 2)
+	h.ActiveGoal(boss, "New, and so entered", "why")
+	changes("created and entered", 3)
+	if _, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{GoalID: gainedMilestone.ID, Name: "GA", TargetDate: h.Clock.Now().AddDate(0, 2, 0)}); err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	changes("gained a Milestone", 4)
+	moveLifecycle(t, h, boss, paused, domain.LifecycleOnHold)
+	changes("changed Lifecycle", 5)
+	listGoal(t, h, def, "exclude", leftOut)
+	changes("left", 6)
+}
+
+// ReportSummaries summarises every saved definition, as ListReportDefinitions
+// orders them.
+func TestReportSummariesSummariseEveryDefinition(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	a := h.ActiveGoal(boss, "A", "why")
+	b := h.ActiveGoal(boss, "B", "why")
+	h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Weekly", Mode: domain.ReportModePicked, Picked: []int64{a.ID}})
+	monthly := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Monthly", Mode: domain.ReportModePicked, Picked: []int64{a.ID, b.ID}})
+	h.PublishReport(boss, monthly)
+
+	sums, err := h.Service.ReportSummaries(context.Background())
+	if err != nil {
+		t.Fatalf("ReportSummaries: %v", err)
+	}
+	var got []string
+	for _, s := range sums {
+		got = append(got, fmt.Sprintf("%s: %d, published %t", s.Definition.Name, s.Goals, s.LastPublication != nil))
+	}
+	if want := []string{"Monthly: 2, published true", "Weekly: 1, published false"}; !slices.Equal(got, want) {
+		t.Errorf("summaries %q, want %q", got, want)
 	}
 }
 

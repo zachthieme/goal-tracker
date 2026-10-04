@@ -187,17 +187,26 @@ func (s *Service) readAgainst(ctx context.Context, r *Report, baseline time.Time
 	}
 	switch {
 	case r.Previous.ID != 0:
-		at := r.Previous.PublishedAt
-		r.Baseline = orgDate(at, s.loc)
-		return func(t time.Time) bool { return t.After(at) }, nil
+		r.Baseline = orgDate(r.Previous.PublishedAt, s.loc)
 	case baseline.IsZero():
 		r.Baseline = orgDate(s.clock.Now(), s.loc).AddDate(0, 0, -defaultBaselineDays)
 	default:
 		y, m, d := baseline.Date()
 		r.Baseline = time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 	}
+	return s.since(*r), nil
+}
+
+// since reports whether an instant counts as a change on r, as readAgainst
+// set it to read: after its previous publication, or else on or after its
+// baseline date in the org's calendar.
+func (s *Service) since(r Report) func(time.Time) bool {
+	if r.Previous.ID != 0 {
+		at := r.Previous.PublishedAt
+		return func(t time.Time) bool { return t.After(at) }
+	}
 	date := r.Baseline
-	return func(t time.Time) bool { return !orgDate(t, s.loc).Before(date) }, nil
+	return func(t time.Time) bool { return !orgDate(t, s.loc).Before(date) }
 }
 
 // reportFields is a Goal's values in the Fields def chose, by Field name. A
@@ -262,7 +271,13 @@ func (h goalHistory) exception(since func(time.Time) bool, fresh Freshness) bool
 	return needsPathToGreen(h.latest().Health) ||
 		fresh.Stale ||
 		h.goal.Ownerless ||
-		since(h.goal.CreatedAt) ||
+		h.changed(since)
+}
+
+// changed reports whether, since the baseline, the Goal was created, slipped
+// a date, or changed Lifecycle.
+func (h goalHistory) changed(since func(time.Time) bool) bool {
+	return since(h.goal.CreatedAt) ||
 		slices.ContainsFunc(h.slips, func(d DateSlip) bool { return since(d.CreatedAt) }) ||
 		h.lifecycleChanged(since)
 }
