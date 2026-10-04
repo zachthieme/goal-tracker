@@ -311,8 +311,9 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 }
 
 // renderNarrativeSaved answers an autosave with the draft's preview, against
-// the baseline the reader picked, and the save status saying Saved. The
-// preview's forms come back to draft, the draft's path.
+// the baseline the reader picked, the save status saying Saved, and the
+// Highlights count and Publish…'s summary as saved. The preview's forms come
+// back to draft, the draft's path.
 func (s *Server) renderNarrativeSaved(w http.ResponseWriter, r *http.Request, current domain.Account, id int64, draft string) {
 	def, err := s.svc.GetReportDefinition(r.Context(), id)
 	if err != nil {
@@ -335,7 +336,13 @@ func (s *Server) renderNarrativeSaved(w http.ResponseWriter, r *http.Request, cu
 		return
 	}
 	d.Return = draft
-	render(w, r, http.StatusOK, narrativeSaved(report, s.svc.Now(), d))
+	pubs, err := s.svc.ListPublications(r.Context(), def.ID)
+	if err != nil {
+		http.Error(w, "could not load publications", http.StatusInternalServerError)
+		return
+	}
+	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
+	render(w, r, http.StatusOK, narrativeSaved(report, s.svc.Now(), d, chip))
 }
 
 // handlePublishReport publishes a Report Definition, freezing its Report

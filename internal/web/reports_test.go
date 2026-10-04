@@ -2112,10 +2112,11 @@ func TestPublishConfirmsWhatItWillFreezeOverHTTP(t *testing.T) {
 	}
 }
 
-// The compose form autosaves: htmx posts it and gets back only the preview,
-// showing the narrative as saved, and the header's save status saying so. The
+// The compose form autosaves: htmx posts it and gets back the preview, showing
+// the narrative as saved, and, out of band, the header's save status saying
+// so, the form's Highlights count and Publish…'s summary, all as saved. The
 // compose fields aren't in the answer, so what the author is typing stays put.
-// A plain post still reloads the draft (ticket #156).
+// A plain post still reloads the draft (tickets #156, #166).
 func TestAutosaveNarrativeRefreshesThePreviewOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -2156,6 +2157,18 @@ func TestAutosaveNarrativeRefreshesThePreviewOverHTTP(t *testing.T) {
 	if result := pageElement(t, body, "span", "save-result"); !strings.HasSuffix(result, ">Saved") {
 		t.Errorf("the save status does not say Saved; body:\n%s", body)
 	}
+	if count := tagAround(t, body, `data-testid="curation-count"`); !strings.Contains(count, `hx-swap-oob="true"`) {
+		t.Errorf("the Highlights count is not swapped out of band: %s", count)
+	}
+	if count := pageElement(t, body, "span", "curation-count"); !strings.HasSuffix(count, ">1 of 1 in") {
+		t.Errorf("the Highlights count %q, want 1 of 1 in", count)
+	}
+	if summary := tagAround(t, body, `data-testid="publish-summary"`); !strings.Contains(summary, `hx-swap-oob="true"`) {
+		t.Errorf("Publish…'s summary is not swapped out of band: %s", summary)
+	}
+	if summary := pageElement(t, body, "p", "publish-summary"); !strings.Contains(summary, "· 1 Highlight · changes since 30 days ago · ") {
+		t.Errorf("Publish…'s summary %q, want the saved Highlight against the default baseline", summary)
+	}
 
 	plain := postForm(t, client, reportURL+"/narrative", form)
 	if plain.StatusCode != http.StatusOK || plain.Request.URL.Path != "/reports/"+strconv.FormatInt(def.ID, 10) {
@@ -2193,7 +2206,7 @@ func TestAutosaveRefusalOnlyChangesTheSaveStatusOverHTTP(t *testing.T) {
 	if !strings.Contains(result, "is not on a Goal this Report selects") || strings.Contains(result, "validation failed") {
 		t.Errorf("the save status %q, want the domain's reason without its prefix", result)
 	}
-	for _, untouched := range []string{`data-testid="narrative-curation"`, `id="draft-preview"`, "<html"} {
+	for _, untouched := range []string{`data-testid="narrative-curation"`, `id="draft-preview"`, `data-testid="curation-count"`, `data-testid="publish-summary"`, "<html"} {
 		if strings.Contains(body, untouched) {
 			t.Errorf("refused autosave answers %s; body:\n%s", untouched, body)
 		}

@@ -170,10 +170,15 @@ templ saveStatus(text string, oob bool) {
 }
 
 // narrativeSaved answers an autosave of the narrative: the preview showing it,
-// and the save status.
-templ narrativeSaved(r domain.Report, asOf time.Time, d discussion) {
+// and out of band the save status, the compose form's Highlights count (there
+// is none to swap when there are no Highlights) and Publish…'s summary.
+templ narrativeSaved(r domain.Report, asOf time.Time, d discussion, chip baselineChip) {
 	@draftPreview(r, asOf, d)
 	@saveStatus("Saved", true)
+	if len(r.Highlights) > 0 {
+		@curationCount(r, true)
+	}
+	@publishSummaryText(r, chip, true)
 }
 
 // reportBaselineChip is the draft header's "Changes since …" menu: back to the
@@ -217,7 +222,7 @@ templ reportPublish(r domain.Report, chip baselineChip) {
 		<div class="card rp-publish">
 			<div>
 				<h2>{ "Publish " + r.Definition.Name + "?" }</h2>
-				<p data-testid="publish-summary" class="muted">{ publishSummary(r, chip) }</p>
+				@publishSummaryText(r, chip, false)
 			</div>
 			<div class="rp-actions">
 				<a data-testid="publish-cancel" class="btn quiet" href={ templ.SafeURL(chip.Draft + chip.Query) }>Cancel</a>
@@ -227,6 +232,19 @@ templ reportPublish(r domain.Report, chip baselineChip) {
 			</div>
 		</div>
 	</details>
+}
+
+// publishSummaryText is Publish…'s summary of what the publication will
+// freeze. An autosave's answer swaps it in out of band.
+templ publishSummaryText(r domain.Report, chip baselineChip, oob bool) {
+	<p
+		data-testid="publish-summary"
+		id="publish-summary"
+		class="muted"
+		if oob {
+			hx-swap-oob="true"
+		}
+	>{ publishSummary(r, chip) }</p>
 }
 
 // reportHistory is the draft header's menu of a Report Definition's
@@ -564,7 +582,7 @@ templ narrativeCuration(r domain.Report, chip baselineChip) {
 			} else {
 				<div class="rp-curation-head">
 					<h3>Highlights since { fmtDate(r.Baseline) }</h3>
-					<span data-testid="curation-count" class="small muted">{ fmt.Sprintf("%d of %d in", pickedHighlights(r), len(r.Highlights)) }</span>
+					@curationCount(r, false)
 				</div>
 				<ul class="rp-list">
 					for _, nh := range r.Highlights {
@@ -579,6 +597,19 @@ templ narrativeCuration(r domain.Report, chip baselineChip) {
 			<noscript><button type="submit" class="btn">Save narrative</button></noscript>
 		</form>
 	</section>
+}
+
+// curationCount is how many of the Highlights the compose form offers are
+// picked into the narrative. An autosave's answer swaps it in out of band.
+templ curationCount(r domain.Report, oob bool) {
+	<span
+		data-testid="curation-count"
+		id="curation-count"
+		class="small muted"
+		if oob {
+			hx-swap-oob="true"
+		}
+	>{ fmt.Sprintf("%d of %d in", pickedHighlights(r), len(r.Highlights)) }</span>
 }
 
 // narrativeAction is where the curation form posts: the narrative, against the
