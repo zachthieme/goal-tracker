@@ -523,3 +523,34 @@ func TestPublicationFreezesMembershipChanges(t *testing.T) {
 			got.Report.MembershipChanges, pub.Report.MembershipChanges)
 	}
 }
+
+// A snapshot frozen when a narrative section held at most one of the author's
+// notes, as Text, keeps it: it reads as that section's only note.
+func TestSnapshotFromBeforeSeveralNotesKeepsItsNote(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Narrative":[` +
+		`{"Kind":"Insight","Text":"Pricing drives churn.","Highlights":null},` +
+		`{"Kind":"Miss","Text":"","Highlights":[{"Highlight":{"ID":1,"Kind":"Miss","Note":"Lost two big accounts."},"GoalID":1,"GoalTitle":"Launch in EU","Section":"Miss"}]}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+		t.Fatalf("write a pre-several-notes snapshot: %v", err)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	n := got.Report.Narrative
+	if len(n) != 2 || n[0].Kind != domain.HighlightInsight || !slices.Equal(n[0].Notes, []string{"Pricing drives churn."}) {
+		t.Errorf("pre-several-notes snapshot narrative %+v, want Insights with its one note", n)
+	}
+	if len(n) == 2 && (len(n[1].Notes) != 0 || len(n[1].Highlights) != 1) {
+		t.Errorf("pre-several-notes Misses %+v, want no notes and its Highlight", n[1])
+	}
+}

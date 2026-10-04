@@ -85,7 +85,7 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 		panel.Edit = "/reports/" + strconv.FormatInt(def.ID, 10) + "/edit"
 	}
 	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
-	render(w, r, http.StatusOK, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel))
+	render(w, r, http.StatusOK, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel, savedNarrativeForm(report, chip), ""))
 }
 
 // handleEditReportForm shows the builder filled with the saved Report
@@ -254,12 +254,14 @@ func fmtMonthDay(t time.Time) string {
 // handleCurateNarrative sets the narrative of a Report Definition's next
 // publication from the draft page's form: the in-scope Highlights the author
 // ticked (include-{highlight}), each with its section (pick-{highlight}, which
-// is ignored for a Highlight left unticked), and the section text for each
-// section (text-{section}). It redirects back to the draft, against the
-// baseline the reader picked (the baseline query parameter), if any. An htmx
-// post is the compose form autosaving: it gets the preview and the save status
-// instead, and a refusal changes only the save status, so what the author typed
-// stays.
+// is ignored for a Highlight left unticked), and the author's notes in each
+// section (text-{section}, once per note box, in order). It redirects back to
+// the draft, against the baseline the reader picked (the baseline query
+// parameter), if any. An htmx post is the compose form autosaving: it gets the
+// preview and the save status instead, and a refusal changes only the save
+// status, so what the author typed stays. Add another (add_note={section})
+// saves too, then re-renders the form as posted with one more note box in that
+// section, saved or refused (see renderNarrativeFormAgain).
 func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -270,7 +272,7 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 		http.Error(w, "could not read the form", http.StatusBadRequest)
 		return
 	}
-	in := domain.CurateNarrativeInput{Text: map[string]string{}}
+	in := domain.CurateNarrativeInput{Notes: map[string][]string{}}
 	for key := range r.Form {
 		raw, ok := strings.CutPrefix(key, "include-")
 		if !ok {
@@ -285,13 +287,24 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 		in.Picks = append(in.Picks, domain.NarrativePick{HighlightID: hlID, Section: r.Form.Get("pick-" + raw)})
 	}
 	for _, section := range narrativeSections {
-		in.Text[section] = r.FormValue("text-" + section)
+		in.Notes[section] = r.Form["text-"+section]
+	}
+	addNote := r.Form.Get("add_note")
+	if addNote != "" && !slices.Contains(narrativeSections, addNote) {
+		http.Error(w, "unknown narrative section", http.StatusBadRequest)
+		return
 	}
 	hx := r.Header.Get("HX-Request") == "true"
+	target := "/reports/" + strconv.FormatInt(id, 10)
+	if baseline := r.URL.Query().Get("baseline"); baseline != "" {
+		target += "?baseline=" + url.QueryEscape(baseline)
+	}
 	if err := s.svc.CurateNarrative(r.Context(), id, in); err != nil {
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
 			s.notFound(w, r)
+		case addNote != "" && errors.Is(err, domain.ErrValidation):
+			s.renderNarrativeFormAgain(w, r, current, id, target, addNote, "Not saved: "+plainReason(err))
 		case hx && errors.Is(err, domain.ErrValidation):
 			w.Header().Set("HX-Reswap", "none")
 			render(w, r, http.StatusOK, saveStatus("Not saved: "+plainReason(err), true))
@@ -300,9 +313,9 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, c
 		}
 		return
 	}
-	target := "/reports/" + strconv.FormatInt(id, 10)
-	if baseline := r.URL.Query().Get("baseline"); baseline != "" {
-		target += "?baseline=" + url.QueryEscape(baseline)
+	if addNote != "" {
+		s.renderNarrativeFormAgain(w, r, current, id, target, addNote, "")
+		return
 	}
 	if hx {
 		s.renderNarrativeSaved(w, r, current, id, target)
@@ -344,6 +357,127 @@ func (s *Server) renderNarrativeSaved(w http.ResponseWriter, r *http.Request, cu
 	}
 	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
 	render(w, r, http.StatusOK, narrativeSaved(report, s.svc.Now(), d, chip))
+}
+
+// renderNarrativeFormAgain answers Add another: the compose form straight from
+// the posted form, one more note box in section addNote, with the save status
+// saying Saved or, when refused is not empty, why the narrative was not saved.
+// It never redirects: the draft rebuilt from what was saved would drop the
+// blank boxes, the new one among them. htmx swaps in the form alone, with the
+// preview and Publish…'s summary out of band once saved; a plain post gets the
+// whole draft page, as 422 when refused. Its forms come back to draft.
+func (s *Server) renderNarrativeFormAgain(w http.ResponseWriter, r *http.Request, current domain.Account, id int64, draft, addNote, refused string) {
+	def, err := s.svc.GetReportDefinition(r.Context(), id)
+	if err != nil {
+		s.serverError(w, r, "could not load report", err)
+		return
+	}
+	baseline, err := parseDate(r.URL.Query().Get("baseline"))
+	if err != nil {
+		http.Error(w, "the baseline must be a date", http.StatusBadRequest)
+		return
+	}
+	report, err := s.svc.DraftReport(r.Context(), def, baseline)
+	if err != nil {
+		s.serverError(w, r, "could not build the draft", err)
+		return
+	}
+	d, err := s.draftDiscussion(r, current, def.ID)
+	if err != nil {
+		s.serverError(w, r, "could not load Action Items", err)
+		return
+	}
+	d.Return = draft
+	pubs, err := s.svc.ListPublications(r.Context(), def.ID)
+	if err != nil {
+		s.serverError(w, r, "could not load publications", err)
+		return
+	}
+	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
+	form := postedNarrativeForm(report, chip, r.Form, addNote)
+	status, code := "Saved", http.StatusOK
+	if refused != "" {
+		status, code = refused, http.StatusUnprocessableEntity
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		// htmx swaps only a 2xx answer, so a refusal is 200 too.
+		render(w, r, http.StatusOK, narrativeFormAgain(form, s.svc.Now(), d, status, refused == ""))
+		return
+	}
+	panel, err := s.draftGoalsPanel(r, report)
+	if err != nil {
+		s.serverError(w, r, "could not summarise the report", err)
+		return
+	}
+	if domain.CanEditReportDefinition(current, def) {
+		panel.Edit = "/reports/" + strconv.FormatInt(def.ID, 10) + "/edit"
+	}
+	render(w, r, code, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel, form, status))
+}
+
+// narrativeForm is what the draft's compose form shows: each Highlight in the
+// Report's scope as a choice, and each narrative section's note boxes.
+type narrativeForm struct {
+	Report  domain.Report
+	Chip    baselineChip
+	Choices []curationChoice
+	// Notes holds each section's note boxes, keyed by section, in order; a
+	// box may be blank.
+	Notes map[string][]string
+}
+
+// curationChoice is one Highlight on the compose form: whether its box is
+// ticked, and the section its radios select (none when empty).
+type curationChoice struct {
+	Highlight domain.NarrativeHighlight
+	Included  bool
+	Section   string
+}
+
+// included counts the form's ticked Highlights.
+func (f narrativeForm) included() int {
+	n := 0
+	for _, c := range f.Choices {
+		if c.Included {
+			n++
+		}
+	}
+	return n
+}
+
+// savedNarrativeForm is the compose form for the narrative as saved: the
+// Highlights picked into it ticked, each selecting its section (or its own
+// kind when left out), and each section's notes with one empty box after them.
+func savedNarrativeForm(r domain.Report, chip baselineChip) narrativeForm {
+	f := narrativeForm{Report: r, Chip: chip, Notes: map[string][]string{}}
+	for _, nh := range r.Highlights {
+		f.Choices = append(f.Choices, curationChoice{Highlight: nh, Included: nh.Section != "", Section: curatedSection(nh)})
+	}
+	for _, section := range narrativeSections {
+		f.Notes[section] = append(narrativeNotes(r, section), "")
+	}
+	return f
+}
+
+// postedNarrativeForm is the compose form exactly as posted (form), whatever
+// was saved: each of the Report's Highlights ticked and selecting the section
+// it was posted with, and each section's boxes as posted, blank ones too —
+// with one more empty box in section addNote. A section posted with no box
+// gets one.
+func postedNarrativeForm(r domain.Report, chip baselineChip, form url.Values, addNote string) narrativeForm {
+	f := narrativeForm{Report: r, Chip: chip, Notes: map[string][]string{}}
+	for _, nh := range r.Highlights {
+		id := strconv.FormatInt(nh.Highlight.ID, 10)
+		f.Choices = append(f.Choices, curationChoice{Highlight: nh, Included: form.Has("include-" + id), Section: form.Get("pick-" + id)})
+	}
+	for _, section := range narrativeSections {
+		notes := slices.Clone(form["text-"+section])
+		if section == addNote || len(notes) == 0 {
+			notes = append(notes, "")
+		}
+		f.Notes[section] = notes
+	}
+	return f
 }
 
 // handlePublishReport publishes a Report Definition, freezing its Report

@@ -589,6 +589,314 @@ func TestCurationFormFoldsEmptySectionTextOverHTTP(t *testing.T) {
 	}
 }
 
+// The author writes several notes into one section, each in its own box: the
+// draft's form shows every saved note in its own box plus one empty box, and
+// the draft and then the publication show each note as its own paragraph in
+// the order entered. Notes in one section leave the others alone, and a blank
+// note is ignored (ticket #187).
+func TestSeveralNotesPerSectionOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	resp := postForm(t, client, reportURL+"/narrative", url.Values{
+		"text-" + domain.HighlightInsight:        {"Pricing drives churn.", "  ", "Discounts don't save accounts."},
+		"text-" + domain.HighlightAccomplishment: {"EU is open for business."},
+		"text-" + domain.HighlightMiss:           {""},
+	})
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/reports/"+strconv.FormatInt(def.ID, 10) {
+		t.Fatalf("curate: status %d at %s, want the draft page", resp.StatusCode, resp.Request.URL)
+	}
+	page := readBody(t, resp)
+
+	form := pageElement(t, page, "form", "narrative-curation")
+	for section, want := range map[string][]string{
+		domain.HighlightInsight:        {"Pricing drives churn.", "Discounts don't save accounts.", ""},
+		domain.HighlightAccomplishment: {"EU is open for business.", ""},
+		domain.HighlightMiss:           {""},
+	} {
+		if got := sectionNoteBoxes(t, form, section); !slices.Equal(got, want) {
+			t.Errorf("%s note boxes %q, want %q", section, got, want)
+		}
+	}
+
+	want := []string{"Pricing drives churn.", "Discounts don't save accounts.", "EU is open for business."}
+	if got := narrativeTexts(pageElement(t, page, "section", "report-narrative")); !slices.Equal(got, want) {
+		t.Errorf("draft narrative paragraphs %q, want %q", got, want)
+	}
+
+	published := readBody(t, postForm(t, client, reportURL+"/publications", url.Values{}))
+	if got := narrativeTexts(pageElement(t, published, "section", "report-narrative")); !slices.Equal(got, want) {
+		t.Errorf("published narrative paragraphs %q, want %q", got, want)
+	}
+}
+
+// Each section offers Add another, which posts the form to its own action
+// with add_note set to the section and swaps its answer in for the whole
+// curation form (ticket #187).
+func TestEachSectionOffersAddAnotherNoteOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"?baseline=2025-12-01")
+	form := pageElement(t, page, "form", "narrative-curation")
+	if id := attr(openTag(form), "id"); id != "narrative-curation" {
+		t.Fatalf("curation form id = %q, want narrative-curation", id)
+	}
+	action := html.UnescapeString(attr(openTag(form), "action"))
+	for _, section := range []string{domain.HighlightInsight, domain.HighlightAccomplishment, domain.HighlightMiss} {
+		details := pageElement(t, form, "details", "section-text-"+section)
+		button := regexp.MustCompile(`<button[^>]*name="add_note"[^>]*>Add another</button>`).FindString(details)
+		if button == "" {
+			t.Errorf("%s offers no Add another; details:\n%s", section, details)
+			continue
+		}
+		for name, want := range map[string]string{
+			"type":      "submit",
+			"value":     section,
+			"hx-post":   action,
+			"hx-target": "#narrative-curation",
+			"hx-swap":   "outerHTML",
+		} {
+			if got := html.UnescapeString(attr(button, name)); got != want {
+				t.Errorf("%s Add another %s = %q, want %q", section, name, got, want)
+			}
+		}
+	}
+}
+
+// Add another saves what was typed and re-renders the curation form as
+// posted, with one more empty box in that section only, everything typed or
+// ticked anywhere on the form kept — over htmx, where the form comes back
+// with the preview, save status and Publish…'s summary out of band, and as a
+// plain post, which gets the whole draft page rather than a redirect
+// (ticket #187).
+func TestAddAnotherNoteKeepsTheFormAsPostedOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		post func(t *testing.T, client *http.Client, rawURL string, form url.Values) (*http.Response, string)
+	}{
+		{"htmx", postHX},
+		{"plain", func(t *testing.T, client *http.Client, rawURL string, form url.Values) (*http.Response, string) {
+			resp := postForm(t, client, rawURL, form)
+			return resp, readBody(t, resp)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t, "boss@example.com")
+			boss := h.SignIn("boss@example.com")
+			g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+			h.CheckinWithHighlight(boss, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+			h.CheckinWithHighlight(boss, g.ID, domain.HighlightMiss, "Lost the second customer.")
+			def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+			signed := strconv.FormatInt(draftHighlightID(t, h, def, "Signed the first EU customer."), 10)
+			lost := strconv.FormatInt(draftHighlightID(t, h, def, "Lost the second customer."), 10)
+
+			ts := newServer(t, h)
+			client := signInClient(t, ts.URL, "boss@example.com")
+			draftPath := "/reports/" + strconv.FormatInt(def.ID, 10)
+			resp, body := tc.post(t, client, ts.URL+draftPath+"/narrative", url.Values{
+				"include-" + signed:                      {"on"},
+				"pick-" + signed:                         {domain.HighlightInsight},
+				"pick-" + lost:                           {domain.HighlightInsight},
+				"text-" + domain.HighlightInsight:        {"Pricing drives churn.", ""},
+				"text-" + domain.HighlightAccomplishment: {"EU is open for business."},
+				"text-" + domain.HighlightMiss:           {""},
+				"add_note":                               {domain.HighlightInsight},
+			})
+			if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != draftPath+"/narrative" {
+				t.Fatalf("add another: status %d at %s, want 200 with no redirect; body:\n%s", resp.StatusCode, resp.Request.URL, body)
+			}
+
+			form := between(t, body, `<form data-testid="narrative-curation"`, "</form>")
+			for section, want := range map[string][]string{
+				domain.HighlightInsight:        {"Pricing drives churn.", "", ""},
+				domain.HighlightAccomplishment: {"EU is open for business."},
+				domain.HighlightMiss:           {""},
+			} {
+				if got := sectionNoteBoxes(t, form, section); !slices.Equal(got, want) {
+					t.Errorf("%s note boxes %q, want %q", section, got, want)
+				}
+			}
+			if box := formInput(t, form, "include-"+signed, "on"); !isChecked(box) {
+				t.Errorf("the ticked Highlight lost its tick: %s", box)
+			}
+			if radio := formInput(t, form, "pick-"+signed, domain.HighlightInsight); !isChecked(radio) {
+				t.Errorf("the ticked Highlight lost its section: %s", radio)
+			}
+			if box := formInput(t, form, "include-"+lost, "on"); isChecked(box) {
+				t.Errorf("the unticked Highlight is ticked: %s", box)
+			}
+			if radio := formInput(t, form, "pick-"+lost, domain.HighlightInsight); !isChecked(radio) {
+				t.Errorf("the unticked Highlight lost the section picked for it: %s", radio)
+			}
+			if result := pageElement(t, body, "span", "save-result"); !strings.HasSuffix(result, ">Saved") {
+				t.Errorf("the save status does not say Saved; body:\n%s", body)
+			}
+
+			draft, err := h.Service.DraftReport(context.Background(), def, time.Time{})
+			if err != nil {
+				t.Fatalf("DraftReport: %v", err)
+			}
+			if len(draft.Narrative) != 2 || !slices.Equal(draft.Narrative[0].Notes, []string{"Pricing drives churn."}) ||
+				!slices.Equal(draft.Narrative[1].Notes, []string{"EU is open for business."}) {
+				t.Errorf("saved narrative %+v, want what was typed saved", draft.Narrative)
+			}
+
+			if tc.name == "plain" {
+				if !strings.Contains(body, "<html") || !strings.Contains(body, `id="draft-preview"`) {
+					t.Errorf("plain add another does not answer the whole draft page; body:\n%s", body)
+				}
+				return
+			}
+			if strings.Contains(body, "<html") {
+				t.Errorf("htmx add another answers the whole page; body:\n%s", body)
+			}
+			for _, oob := range []string{`id="draft-preview"`, `data-testid="save-status"`, `data-testid="publish-summary"`} {
+				if !strings.Contains(tagAround(t, body, oob), `hx-swap-oob="true"`) {
+					t.Errorf("%s is not swapped out of band; body:\n%s", oob, body)
+				}
+			}
+			preview := between(t, body, `id="draft-preview"`, "")
+			if got := narrativeTexts(preview); !slices.Equal(got, []string{"Pricing drives churn.", "EU is open for business."}) {
+				t.Errorf("preview's notes %q, want what was saved", got)
+			}
+			if count := pageElement(t, body, "span", "curation-count"); !strings.HasSuffix(count, ">1 of 2 in") {
+				t.Errorf("the Highlights count %q, want 1 of 2 in", count)
+			}
+		})
+	}
+}
+
+// Add another the domain refuses — a ticked Highlight with no section — still
+// re-renders the form as posted with its added box, and the save status says
+// why nothing was saved; the preview stays as it was. A plain post gets the
+// draft page as 422 (ticket #187).
+func TestAddAnotherNoteRefusedKeepsTheFormAsPostedOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		status int
+		post   func(t *testing.T, client *http.Client, rawURL string, form url.Values) (*http.Response, string)
+	}{
+		{"htmx", http.StatusOK, postHX},
+		{"plain", http.StatusUnprocessableEntity, func(t *testing.T, client *http.Client, rawURL string, form url.Values) (*http.Response, string) {
+			resp := postForm(t, client, rawURL, form)
+			return resp, readBody(t, resp)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t, "boss@example.com")
+			boss := h.SignIn("boss@example.com")
+			g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+			h.CheckinWithHighlight(boss, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+			def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+			signed := strconv.FormatInt(draftHighlightID(t, h, def, "Signed the first EU customer."), 10)
+
+			ts := newServer(t, h)
+			client := signInClient(t, ts.URL, "boss@example.com")
+			resp, body := tc.post(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/narrative", url.Values{
+				"include-" + signed:            {"on"},
+				"text-" + domain.HighlightMiss: {"Slipped a week."},
+				"add_note":                     {domain.HighlightMiss},
+			})
+			if resp.StatusCode != tc.status {
+				t.Fatalf("refused add another: status %d, want %d; body:\n%s", resp.StatusCode, tc.status, body)
+			}
+			form := between(t, body, `<form data-testid="narrative-curation"`, "</form>")
+			if got, want := sectionNoteBoxes(t, form, domain.HighlightMiss), []string{"Slipped a week.", ""}; !slices.Equal(got, want) {
+				t.Errorf("Misses note boxes %q, want %q", got, want)
+			}
+			if box := formInput(t, form, "include-"+signed, "on"); !isChecked(box) {
+				t.Errorf("the ticked Highlight lost its tick: %s", box)
+			}
+			result := pageElement(t, body, "span", "save-result")
+			if !strings.Contains(result, ">Not saved: ") || !strings.Contains(result, "section") {
+				t.Errorf("the save status %q, want Not saved and why", result)
+			}
+			if draft, err := h.Service.DraftReport(context.Background(), def, time.Time{}); err != nil || len(draft.Narrative) != 0 {
+				t.Errorf("narrative after a refusal %+v (err %v), want nothing saved", draft.Narrative, err)
+			}
+			if tc.name == "htmx" {
+				for _, untouched := range []string{`id="draft-preview"`, `data-testid="publish-summary"`, "<html"} {
+					if strings.Contains(body, untouched) {
+						t.Errorf("refused add another answers %s; body:\n%s", untouched, body)
+					}
+				}
+			}
+		})
+	}
+}
+
+// A publication frozen when a section held at most one of the author's notes
+// still shows it, as its own paragraph before the Highlights picked into the
+// section (ticket #187).
+func TestPublicationFromBeforeSeveralNotesShowsItsNoteOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Narrative":[{"Kind":"Accomplishment","Text":"EU is open for business.",` +
+		`"Highlights":[{"Highlight":{"ID":1,"Kind":"Accomplishment","Note":"Signed the first EU customer.",` +
+		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"}},"GoalID":1,"GoalTitle":"Launch in EU","Section":"Accomplishment"}]}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+		t.Fatalf("write a pre-several-notes snapshot: %v", err)
+	}
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID))
+	narrative := pageElement(t, page, "section", "report-narrative")
+	if got := narrativeTexts(narrative); !slices.Equal(got, []string{"EU is open for business."}) {
+		t.Errorf("published notes %q, want the one note frozen before; narrative:\n%s", got, narrative)
+	}
+	if note, hl := strings.Index(narrative, "EU is open for business."), strings.Index(narrative, "Signed the first EU customer."); note < 0 || hl < note {
+		t.Errorf("the note does not come before the picked Highlight; narrative:\n%s", narrative)
+	}
+}
+
+// sectionNoteBoxes is what each of a narrative section's note boxes on the
+// curation form holds, in order.
+func sectionNoteBoxes(t *testing.T, form, section string) []string {
+	t.Helper()
+	details := pageElement(t, form, "details", "section-text-"+section)
+	var out []string
+	for _, m := range regexp.MustCompile(`<textarea name="text-`+regexp.QuoteMeta(section)+`"[^>]*>([^<]*)</textarea>`).FindAllStringSubmatch(details, -1) {
+		out = append(out, html.UnescapeString(m[1]))
+	}
+	return out
+}
+
+// narrativeTexts is each of the author's notes a Report's narrative shows, as
+// its own paragraph, in order.
+func narrativeTexts(narrative string) []string {
+	var out []string
+	for _, m := range regexp.MustCompile(`<p data-testid="narrative-text">([^<]*)</p>`).FindAllStringSubmatch(narrative, -1) {
+		out = append(out, html.UnescapeString(m[1]))
+	}
+	return out
+}
+
 // formInput is the <input> in form with this name and value.
 func formInput(t *testing.T, form, name, value string) string {
 	t.Helper()

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -24,13 +25,33 @@ type NarrativeHighlight struct {
 
 // NarrativeSection is one section of a Report's narrative — its Insights,
 // Accomplishments, or Misses — built from the Highlights the author picked
-// into it and the author's own text.
+// into it and the author's own notes.
 type NarrativeSection struct {
 	// Kind is the section: HighlightInsight, HighlightAccomplishment, or
 	// HighlightMiss.
-	Kind       string
-	Text       string
+	Kind string
+	// Notes are the author's own notes in the section, in the order entered.
+	Notes      []string
 	Highlights []NarrativeHighlight
+}
+
+// UnmarshalJSON reads a NarrativeSection frozen in a Publication's snapshot. A
+// snapshot from before a section held several notes has at most one, as Text;
+// it reads as the section's only note, so the publication shows it as before.
+func (n *NarrativeSection) UnmarshalJSON(data []byte) error {
+	type frozen NarrativeSection // without this method, so decoding doesn't recurse
+	var f struct {
+		frozen
+		Text string
+	}
+	if err := json.Unmarshal(data, &f); err != nil {
+		return err
+	}
+	*n = NarrativeSection(f.frozen)
+	if f.Text != "" && n.Notes == nil {
+		n.Notes = []string{f.Text}
+	}
+	return nil
 }
 
 // Heading is the section's title as a Report shows it.
@@ -56,17 +77,18 @@ type NarrativePick struct {
 
 // CurateNarrativeInput is the curate-a-narrative command's input: the
 // Highlights the author picks and the section each goes into, and the author's
-// own text keyed by section (HighlightInsight, HighlightAccomplishment,
-// HighlightMiss).
+// own notes keyed by section (HighlightInsight, HighlightAccomplishment,
+// HighlightMiss), each section's in the order entered.
 type CurateNarrativeInput struct {
 	Picks []NarrativePick
-	Text  map[string]string
+	Notes map[string][]string
 }
 
 // CurateNarrative sets the narrative of the Report Definition defID's next
 // publication, replacing whatever was curated before. The author may put a
 // Highlight into any section, whatever it was flagged as; each picked
-// Highlight must be on a Goal the Definition selects, and picked once. Anyone
+// Highlight must be on a Goal the Definition selects, and picked once. A
+// section may hold any number of notes; a blank one is ignored. Anyone
 // signed in may curate, as anyone may publish. Publishing freezes the
 // narrative with the snapshot and starts the next one empty.
 func (s *Service) CurateNarrative(ctx context.Context, defID int64, in CurateNarrativeInput) error {
@@ -74,7 +96,7 @@ func (s *Service) CurateNarrative(ctx context.Context, defID int64, in CurateNar
 	if err != nil {
 		return err
 	}
-	for section := range in.Text {
+	for section := range in.Notes {
 		if !validHighlightKind(section) {
 			return fmt.Errorf("%w: %q is not a narrative section", ErrValidation, section)
 		}
@@ -110,16 +132,18 @@ func (s *Service) CurateNarrative(ctx context.Context, defID int64, in CurateNar
 			}
 		}
 		for _, section := range narrativeKinds {
-			text := strings.TrimSpace(in.Text[section])
-			if text == "" {
-				continue
-			}
-			if err := tx.queries.SetNarrativeText(ctx, db.SetNarrativeTextParams{
-				ReportDefinitionID: def.ID,
-				Section:            section,
-				Text:               text,
-			}); err != nil {
-				return fmt.Errorf("set narrative text: %w", err)
+			for _, note := range in.Notes[section] {
+				note = strings.TrimSpace(note)
+				if note == "" {
+					continue
+				}
+				if err := tx.queries.AddNarrativeText(ctx, db.AddNarrativeTextParams{
+					ReportDefinitionID: def.ID,
+					Section:            section,
+					Text:               note,
+				}); err != nil {
+					return fmt.Errorf("add narrative note: %w", err)
+				}
 			}
 		}
 		return nil
@@ -180,7 +204,7 @@ func (s *Service) scopedHighlights(ctx context.Context, g Goal, since func(time.
 
 // draftNarrative marks each of the Report's in-scope Highlights with the
 // section the author picked it into, and builds the Report's narrative from
-// them and the author's text: its sections in the order Insights,
+// them and the author's notes: its sections in the order Insights,
 // Accomplishments, Misses, leaving out any with neither. A pick of a Highlight
 // outside the Report's scope — written before its baseline — is not shown.
 func (s *Service) draftNarrative(ctx context.Context, r *Report) error {
@@ -196,21 +220,21 @@ func (s *Service) draftNarrative(ctx context.Context, r *Report) error {
 	for _, p := range picks {
 		sectionOf[p.HighlightID] = p.Section
 	}
-	textOf := make(map[string]string, len(texts))
+	notesOf := make(map[string][]string, len(narrativeKinds))
 	for _, t := range texts {
-		textOf[t.Section] = t.Text
+		notesOf[t.Section] = append(notesOf[t.Section], t.Text)
 	}
 	for i := range r.Highlights {
 		r.Highlights[i].Section = sectionOf[r.Highlights[i].Highlight.ID]
 	}
 	for _, kind := range narrativeKinds {
-		sec := NarrativeSection{Kind: kind, Text: textOf[kind]}
+		sec := NarrativeSection{Kind: kind, Notes: notesOf[kind]}
 		for _, nh := range r.Highlights {
 			if nh.Section == kind {
 				sec.Highlights = append(sec.Highlights, nh)
 			}
 		}
-		if sec.Text != "" || len(sec.Highlights) > 0 {
+		if len(sec.Notes) > 0 || len(sec.Highlights) > 0 {
 			r.Narrative = append(r.Narrative, sec)
 		}
 	}

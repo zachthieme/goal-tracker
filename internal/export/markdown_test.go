@@ -199,16 +199,16 @@ No Goals selected.
 }
 
 // The narrative follows the introduction: each section's heading, the
-// author's text, and the Highlights they picked, each crediting the Goal's
-// Owner.
+// author's notes, each its own paragraph in the order entered, and then the
+// Highlights they picked, each crediting the Goal's Owner.
 func TestMarkdownCarriesTheNarrative(t *testing.T) {
 	t.Parallel()
 
 	alice := domain.Account{ID: 2, Email: "alice@example.com"}
 	pub := publication(nil, nil)
 	pub.Report.Narrative = []domain.NarrativeSection{
-		{Kind: domain.HighlightInsight, Text: "Pricing drives churn."},
-		{Kind: domain.HighlightAccomplishment, Highlights: []domain.NarrativeHighlight{{
+		{Kind: domain.HighlightInsight, Notes: []string{"Pricing drives churn.", "Discounts don't save accounts."}},
+		{Kind: domain.HighlightAccomplishment, Notes: []string{"EU is open for business."}, Highlights: []domain.NarrativeHighlight{{
 			Highlight: domain.Highlight{Kind: domain.HighlightAccomplishment, Note: "Signed the *first* EU customer.", Owner: alice},
 			GoalID:    5,
 			GoalTitle: "Launch in EU",
@@ -225,7 +225,11 @@ Quarterly business review.
 
 Pricing drives churn.
 
+Discounts don't save accounts.
+
 ## Accomplishments
+
+EU is open for business.
 
 - Signed the \*first\* EU customer. — alice (alice@example.com), Launch in EU
 
@@ -233,6 +237,36 @@ No Goals selected.
 `
 	if got := export.Markdown(pub); got != want {
 		t.Errorf("Markdown:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// A publication frozen when a section held at most one of the author's notes
+// exports that note as before: its own paragraph under the section heading,
+// before the Highlights picked into it.
+func TestMarkdownKeepsTheNoteOfASnapshotFromBeforeSeveralNotes(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Narrative":[{"Kind":"Accomplishment","Text":"EU is open for business.",` +
+		`"Highlights":[{"Highlight":{"ID":1,"Kind":"Accomplishment","Note":"Signed the first EU customer.",` +
+		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"}},"GoalID":1,"GoalTitle":"Launch in EU","Section":"Accomplishment"}]}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+		t.Fatalf("write a pre-several-notes snapshot: %v", err)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	md := export.Markdown(got)
+	want := "\n## Accomplishments\n\nEU is open for business.\n\n- Signed the first EU customer. — boss, Launch in EU\n"
+	if !strings.Contains(md, want) {
+		t.Errorf("Markdown:\n%s\nwant the Accomplishments to read:\n%s", md, want)
 	}
 }
 

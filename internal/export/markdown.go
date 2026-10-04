@@ -39,8 +39,8 @@ func Markdown(p domain.Publication) string {
 	}
 	for _, sec := range r.Narrative {
 		fmt.Fprintf(&b, "\n## %s\n", sec.Heading())
-		if sec.Text != "" {
-			fmt.Fprintf(&b, "\n%s\n", text(sec.Text))
+		for _, note := range sec.Notes {
+			fmt.Fprintf(&b, "\n%s\n", text(note))
 		}
 		if len(sec.Highlights) > 0 {
 			b.WriteString("\n")
