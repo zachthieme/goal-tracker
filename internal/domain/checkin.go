@@ -83,7 +83,9 @@ type SubmitCheckinInput struct {
 	Readings []MetricReadingInput
 	// Highlights are the Check-in's Highlights, in the order entered
 	// (CONTEXT.md: Highlight). Any number, of any mix of kinds; one with a blank
-	// note is ignored.
+	// note is ignored. A row offered from a pending Draft Highlight names it:
+	// the Check-in keeps it as a Highlight or discards it (see
+	// planDraftHighlightPicks).
 	Highlights []HighlightInput
 	// DeliveryDate moves a Dated Goal's delivery date, recording a Date Slip
 	// that needs DeliveryDateReason (CONTEXT.md: Date Slip). The zero time, or
@@ -169,7 +171,11 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 			return Checkin{}, err
 		}
 	}
-	highlights, err := planHighlights(in.Highlights)
+	picks, err := s.planDraftHighlightPicks(ctx, goal.Goal.ID, in.Highlights)
+	if err != nil {
+		return Checkin{}, err
+	}
+	highlights, err := planHighlights(picks.rows)
 	if err != nil {
 		return Checkin{}, err
 	}
@@ -244,6 +250,9 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 			return err
 		}
 		if err := tx.recordHighlights(ctx, c.ID, highlights); err != nil {
+			return err
+		}
+		if err := picks.apply(ctx, tx, c.ID); err != nil {
 			return err
 		}
 		out = c

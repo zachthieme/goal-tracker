@@ -135,6 +135,76 @@ func (s *Service) DeleteDraftHighlight(ctx context.Context, actorID, id int64) e
 	return nil
 }
 
+// draftHighlightPicks is what a Check-in does with the Draft Highlights it
+// offered: rows are its Highlight rows as planHighlights should read them,
+// kept the IDs of the Draft Highlights that become Highlights, and discarded
+// those it discards.
+type draftHighlightPicks struct {
+	rows      []HighlightInput
+	kept      []int64
+	discarded []int64
+}
+
+// planDraftHighlightPicks works out what a Check-in on goalID does with each
+// row offered from a Draft Highlight. A row naming one that is no longer
+// pending on this Goal — deleted, or cleared by another Check-in — is ignored.
+// A kept row with a note becomes a Highlight; one left out, or kept with its
+// note blanked, records nothing and discards its Draft Highlight. Ignored and
+// left-out rows stay in rows, blanked, so planHighlights still names each row
+// by its position on the form. A Draft Highlight no row names, such as one
+// logged after the form opened, stays pending.
+func (s *Service) planDraftHighlightPicks(ctx context.Context, goalID int64, rows []HighlightInput) (draftHighlightPicks, error) {
+	var out draftHighlightPicks
+	var pending map[int64]bool
+	for _, row := range rows {
+		if row.DraftHighlightID == 0 {
+			out.rows = append(out.rows, row)
+			continue
+		}
+		if pending == nil {
+			drafts, err := s.pendingDraftHighlights(ctx, goalID)
+			if err != nil {
+				return draftHighlightPicks{}, err
+			}
+			pending = make(map[int64]bool, len(drafts))
+			for _, d := range drafts {
+				pending[d.ID] = true
+			}
+		}
+		id := row.DraftHighlightID
+		switch {
+		case !pending[id]:
+			out.rows = append(out.rows, HighlightInput{})
+			continue
+		case row.LeftOut || strings.TrimSpace(row.Note) == "":
+			out.rows = append(out.rows, HighlightInput{})
+			out.discarded = append(out.discarded, id)
+		default:
+			out.rows = append(out.rows, HighlightInput{Kind: row.Kind, Note: row.Note})
+			out.kept = append(out.kept, id)
+		}
+		// A form naming the same Draft Highlight twice offers it once.
+		delete(pending, id)
+	}
+	return out, nil
+}
+
+// apply clears every Draft Highlight the Check-in checkinID offered: those kept
+// are deleted, now its Highlights, and the rest are discarded with it.
+func (p draftHighlightPicks) apply(ctx context.Context, tx *Service, checkinID int64) error {
+	for _, id := range p.kept {
+		if _, err := tx.queries.DeletePendingDraftHighlight(ctx, id); err != nil {
+			return fmt.Errorf("clear kept draft highlight: %w", err)
+		}
+	}
+	for _, id := range p.discarded {
+		if _, err := tx.queries.DiscardDraftHighlight(ctx, db.DiscardDraftHighlightParams{DiscardedCheckinID: &checkinID, ID: id}); err != nil {
+			return fmt.Errorf("discard draft highlight: %w", err)
+		}
+	}
+	return nil
+}
+
 // discardedDraftHighlightsByCheckin returns the Draft Highlights a Goal's
 // Check-ins discarded, keyed by the Check-in, each Check-in's oldest first.
 func (s *Service) discardedDraftHighlightsByCheckin(ctx context.Context, goalID int64) (map[int64][]DraftHighlight, error) {
