@@ -191,23 +191,44 @@ func (p risksPageView) Shown() []riskGoalRow {
 	return shown
 }
 
-// Blank is what the filtered group's card says when it holds no Goals, "" with
-// no filter.
-func (p risksPageView) Blank() string {
-	for _, gk := range riskGroupKinds {
-		if gk.Key == p.Group {
-			return gk.Blank
+// Filtered reports whether the page is scoped to Mine or a value, or filtered
+// to a group.
+func (p risksPageView) Filtered() bool {
+	return p.Mine || p.Value.ID != 0 || p.Group != ""
+}
+
+// Empty is what the page says when no Goal is left to show: where nothing
+// needs attention, naming Mine, the value with its Dimension's name, and the
+// group's card's title, in that order.
+func (p risksPageView) Empty() string {
+	var parts []string
+	if p.Mine {
+		parts = append(parts, "Mine")
+	}
+	if p.Value.ID != 0 {
+		for _, d := range p.Dimensions {
+			if d.ID == p.Value.DimensionID {
+				parts = append(parts, d.Name+" "+p.Value.Value)
+			}
 		}
 	}
-	return ""
+	for _, gk := range riskGroupKinds {
+		if gk.Key == p.Group {
+			parts = append(parts, gk.Name)
+		}
+	}
+	if len(parts) == 0 {
+		return "No Goals need attention."
+	}
+	return "No Goals need attention in " + strings.Join(parts, ", ") + "."
 }
 
 // attention is the header's words after its count of the Goals on the page.
 func (p risksPageView) attention() string {
 	if len(p.Rows) == 1 {
-		return "Goal needs attention."
+		return "Goal needs attention. Worst first."
 	}
-	return "Goals need attention."
+	return "Goals need attention. Worst first."
 }
 
 // riskChipClass is the badge style of a signal's chip: the Stale look for the
@@ -310,6 +331,17 @@ func (v risksView) Types() []riskType {
 		{"schedule-conflicts", "Schedule conflicts", len(v.ScheduleConflicts)},
 		{"halted-parents", "Parent On Hold or Cancelled", len(v.HaltedParents)},
 	}
+}
+
+// riskDefinitions are the Risks page's signals in the page's order, each with
+// what it means, as the page's "What each risk means" says.
+var riskDefinitions = []struct{ Name, Means string }{
+	{"Stale", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
+	{"Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green."},
+	{"Ownerless", "Active Goals whose Owner has left the org and hasn't been replaced."},
+	{"Unaligned", "Active Goals that contribute to no other Goal and aren't Top-level."},
+	{"Schedule conflicts", "Goals due later than a Goal they contribute to."},
+	{"Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled."},
 }
 
 // Flagged counts the Goals the Risks page lists, each once however many

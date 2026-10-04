@@ -11,8 +11,10 @@ import (
 // risksPage answers "which Goals are in trouble, and how badly?": how many
 // Goals need attention, a card per group of signals by who acts, then one
 // table row per flagged Goal, worst first, narrowed to one group when the
-// address asks for it. The header's form and the Everyone | Mine toggle scope
-// it all to some Goals; #risks-body is what a change of scope swaps.
+// address asks for it, and at the bottom what each signal means. The header's
+// form and the Everyone | Mine toggle scope it all to some Goals; #risks-body
+// is what a change of scope swaps. With no Goal left to show, #risks-body says
+// so in one line in place of the count, the cards and the table.
 templ risksPage(current *domain.Account, v risksPageView) {
 	@layout("Risks", current) {
 		@risksStyles()
@@ -23,30 +25,55 @@ templ risksPage(current *domain.Account, v risksPageView) {
 			}
 		</header>
 		<div id="risks-body" class="rk-body">
-			<div class="rk-head">
-				<p data-testid="risks-attention" class="muted"><strong>{ strconv.Itoa(len(v.Rows)) }</strong> { v.attention() }</p>
-				<nav class="rk-scope" aria-label="Scope">
-					<a data-testid="risks-scope-everyone" class="btn quiet sm" href={ v.ScopeURL(false) } { v.ScopeAttrs(false)... }>Everyone</a>
-					<a data-testid="risks-scope-mine" class="btn quiet sm" href={ v.ScopeURL(true) } { v.ScopeAttrs(true)... }>Mine</a>
-				</nav>
-			</div>
-			<nav data-testid="risks-groups" class="rk-cards" aria-label="Risks by who acts">
-				for _, c := range v.Cards() {
-					@riskCardView(c)
-				}
-			</nav>
-			if v.Group != "" {
-				<p><a data-testid="risks-show-all" href={ v.ShowAllURL() }>Show all</a></p>
-			}
-			if len(v.Rows) == 0 {
-				<p data-testid="risks-all-clear" class="muted">All clear: nothing needs attention.</p>
-			} else if shown := v.Shown(); len(shown) == 0 {
-				<p data-testid="risks-group-blank" class="muted">{ v.Blank() }</p>
+			if shown := v.Shown(); len(shown) == 0 {
+				<div class="rk-head">
+					<p data-testid="risks-empty" class="muted">
+						{ v.Empty() }
+						if v.Filtered() {
+							<a href="/risks">Show everything</a>
+						}
+					</p>
+					@risksScope(v)
+				</div>
 			} else {
+				<div class="rk-head">
+					<p data-testid="risks-attention" class="muted"><strong>{ strconv.Itoa(len(v.Rows)) }</strong> { v.attention() }</p>
+					@risksScope(v)
+				</div>
+				<nav data-testid="risks-groups" class="rk-cards" aria-label="Risks by who acts">
+					for _, c := range v.Cards() {
+						@riskCardView(c)
+					}
+				</nav>
+				if v.Group != "" {
+					<p><a data-testid="risks-show-all" href={ v.ShowAllURL() }>Show all</a></p>
+				}
 				@risksTable(current, v.Today, shown)
 			}
 		</div>
+		@risksDefinitions()
 	}
+}
+
+// risksDefinitions says what each of the Risks page's signals means, folded
+// away at the page's bottom.
+templ risksDefinitions() {
+	<details data-testid="risks-definitions" class="card rk-defs">
+		<summary>What each risk means</summary>
+		<dl>
+			for _, d := range riskDefinitions {
+				<dt>{ d.Name }</dt><dd>{ d.Means }</dd>
+			}
+		</dl>
+	</details>
+}
+
+// risksScope is the page's Everyone | Mine toggle.
+templ risksScope(v risksPageView) {
+	<nav class="rk-scope" aria-label="Scope">
+		<a data-testid="risks-scope-everyone" class="btn quiet sm" href={ v.ScopeURL(false) } { v.ScopeAttrs(false)... }>Everyone</a>
+		<a data-testid="risks-scope-mine" class="btn quiet sm" href={ v.ScopeURL(true) } { v.ScopeAttrs(true)... }>Mine</a>
+	</nav>
 }
 
 // risksFilters scopes the Risks page to the Goals with a Dimension value,
@@ -190,8 +217,9 @@ templ riskChip(today time.Time, g domain.Goal, sig riskSignal) {
 
 // risksStyles are the Risks page's own rules on top of app.css: the scope
 // controls, the toggle styled as the Goal list's layout toggle, the summary
-// cards, the chips under each Goal in the table, and the outlined neutral chip
-// the structural signals take: a .tag with the badges' small radius.
+// cards, the chips under each Goal in the table, the outlined neutral chip
+// the structural signals take: a .tag with the badges' small radius, and the
+// definitions' disclosure.
 templ risksStyles() {
 	<style>
 		.rk-body{display:flex;flex-direction:column;gap:inherit}
@@ -206,6 +234,11 @@ templ risksStyles() {
 		.rk-chips{display:flex;flex-wrap:wrap;gap:8px}
 		.rk-zero{border:1px dashed var(--color-border-strong);color:var(--color-ink-muted)}
 		td .rk-chips{margin-top:4px}
+		.rk-defs{padding:12px 16px}
+		.rk-defs summary{cursor:pointer;font-weight:600}
+		.rk-defs dl{margin:8px 0 0;display:grid;grid-template-columns:max-content 1fr;gap:4px 16px}
+		.rk-defs dt{font-weight:600}
+		.rk-defs dd{margin:0}
 		.rk-tag{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;padding:0 8px;border-radius:var(--radius-sm);color:var(--color-ink);font-size:13px;line-height:20px;border:1px solid var(--color-border-strong)}
 		@media (max-width:900px){.rk-cards{grid-template-columns:minmax(0,1fr)}}
 	</style>

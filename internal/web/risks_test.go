@@ -330,10 +330,9 @@ func TestRisksPageListsEachFlaggedGoalOnce(t *testing.T) {
 	}
 }
 
-// With nothing flagged, the Risks page says so in one all-clear sentence
-// instead of an empty table. Each group card is muted, links nowhere, and
-// says why it is empty.
-func TestRisksPageIsAllClearWithNothingFlagged(t *testing.T) {
+// With nothing flagged, the Risks page heads with no count and says so in one
+// line, with no table, no group cards and nothing to clear.
+func TestRisksPageWithNothingFlaggedSaysSo(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -342,39 +341,109 @@ func TestRisksPageIsAllClearWithNothingFlagged(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
-	if n := strings.Count(page, `data-testid="risks-all-clear"`); n != 1 {
-		t.Fatalf("page has %d all-clear sentences, want 1", n)
+	if n := strings.Count(page, `data-testid="risks-empty"`); n != 1 {
+		t.Fatalf("page has %d empty lines, want 1", n)
 	}
-	if clear := pageElement(t, page, "p", "risks-all-clear"); !strings.HasSuffix(clear, ">All clear: nothing needs attention.") {
-		t.Errorf("all-clear doesn't say nothing needs attention: %s", clear)
+	if empty := strings.TrimSpace(pageElement(t, page, "p", "risks-empty")); !strings.HasSuffix(empty, ">No Goals need attention.") {
+		t.Errorf("the empty line doesn't say no Goals need attention: %s", empty)
 	}
-	if strings.Contains(page, "<table") {
-		t.Errorf("page renders a table with nothing flagged")
-	}
-	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>0</strong> Goals need attention.") {
-		t.Errorf("header does not count 0 Goals: %s", head)
-	}
-	for key, line := range map[string]string{
-		"owner": "Every Owner is up to date.",
-		"plan":  "Every plan fits.",
-		"admin": "Nothing needs an Admin.",
-	} {
-		if strings.Contains(page, `<a data-testid="risks-group-`+key+`"`) {
-			t.Errorf("the empty %s card is a link", key)
+	for _, gone := range []string{"<table", `data-testid="risks-attention"`, `data-testid="risks-groups"`, `data-testid="risks-group-`, "Show everything", "risks-all-clear", "risks-tile-"} {
+		if strings.Contains(page, gone) {
+			t.Errorf("with nothing flagged, the page has %s", gone)
 		}
-		card := pageElement(t, page, "div", "risks-group-"+key)
-		if !strings.Contains(openTag(card), "rk-zero") || !strings.Contains(card, line) || strings.Contains(card, "href") {
-			t.Errorf("the empty %s card isn't muted, saying %q, and linking nowhere: %s", key, line, card)
-		}
+	}
+	if risks := pageElement(t, page, "a", "nav-risks"); strings.Contains(risks, "count") {
+		t.Errorf("Risks shows a count with nothing flagged: %s", risks)
+	}
+}
+
+// A group card holding no Goals while another holds some is muted, links
+// nowhere, and says why it is empty.
+func TestRisksPageMutesAGroupWithNoGoals(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	h.Clock.Advance(10 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	if strings.Contains(page, `<a data-testid="risks-group-admin"`) {
+		t.Errorf("the empty admin card is a link")
+	}
+	card := pageElement(t, page, "div", "risks-group-admin")
+	if !strings.Contains(openTag(card), "rk-zero") || !strings.Contains(card, "Nothing needs an Admin.") || strings.Contains(card, "href") {
+		t.Errorf("the empty admin card isn't muted, saying nothing needs an Admin, and linking nowhere: %s", card)
 	}
 	if !strings.Contains(page, ".rk-zero{border:1px dashed var(--color-border-strong);color:var(--color-ink-muted)}") {
 		t.Errorf("an empty card doesn't take a dashed edge and muted text")
 	}
-	if strings.Contains(page, "risks-tile-") {
-		t.Errorf("the page still has the per-signal summary tiles")
+}
+
+// The Risks page heads with how many Goals need attention, worst first, in the
+// singular for one Goal, and no longer says what's going wrong.
+func TestRisksPageHeadsWithHowManyGoalsNeedAttention(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Silent work", "It matters.")
+	h.Clock.Advance(10 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks")
+
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "><strong>1</strong> Goal needs attention. Worst first.") {
+		t.Errorf("header doesn't say 1 Goal needs attention, worst first: %s", head)
 	}
-	if risks := pageElement(t, page, "a", "nav-risks"); strings.Contains(risks, "count") {
-		t.Errorf("Risks shows a count with nothing flagged: %s", risks)
+	if strings.Contains(html.UnescapeString(page), "What's going wrong") {
+		t.Errorf("page still says what's going wrong")
+	}
+
+	h.ActiveGoal(sam, "More silent work", "It matters.")
+	h.Clock.Advance(10 * day)
+	page = getBody(t, client, ts.URL+"/risks")
+
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "><strong>2</strong> Goals need attention. Worst first.") {
+		t.Errorf("header doesn't say 2 Goals need attention, worst first: %s", head)
+	}
+}
+
+// At its bottom, the Risks page has a "What each risk means" disclosure
+// defining each signal once.
+func TestRisksPageDefinesEachRisk(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	h.SignIn("sam@example.com")
+
+	page := html.UnescapeString(getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks"))
+
+	defs := between(t, page, `<details data-testid="risks-definitions"`, "</details>")
+	if !strings.Contains(defs, "<summary>What each risk means</summary>") {
+		t.Errorf("the definitions aren't titled What each risk means:\n%s", defs)
+	}
+	for name, means := range map[string]string{
+		"Stale":                       "Active Goals whose last Check-in, or activation if they have none, is older than their cadence.",
+		"Path to Green overdue":       "Active Goals past their Path to Green's target date that still aren't Green.",
+		"Ownerless":                   "Active Goals whose Owner has left the org and hasn't been replaced.",
+		"Unaligned":                   "Active Goals that contribute to no other Goal and aren't Top-level.",
+		"Schedule conflicts":          "Goals due later than a Goal they contribute to.",
+		"Parent On Hold or Cancelled": "Goals contributing to a Goal that is On Hold or Cancelled.",
+	} {
+		if n := strings.Count(defs, "<dt>"+name+"</dt><dd>"+means+"</dd>"); n != 1 {
+			t.Errorf("the definitions define %s %d times, want 1:\n%s", name, n, defs)
+		}
+		if n := strings.Count(page, means); n != 1 {
+			t.Errorf("the page defines %s %d times, want 1", name, n)
+		}
+	}
+	if rest := page[strings.Index(page, `data-testid="risks-definitions"`)+1:]; strings.Contains(rest, `data-testid="risks-`) {
+		t.Errorf("the definitions aren't at the bottom of the page:\n%s", rest)
 	}
 }
 
@@ -501,26 +570,42 @@ func TestRisksPageFiltersToAGroup(t *testing.T) {
 	}
 }
 
-// Filtered to a group with no Goals while others have some, the Risks page
-// says what the group's card says instead of an empty table, and isn't all
-// clear.
-func TestRisksPageFilteredToAnEmptyGroupSaysSo(t *testing.T) {
+// Scoped and filtered to nothing while other Goals are flagged, the Risks page
+// says where nothing needs attention, Mine then the value then the group, and
+// links to everything, with no count, table or cards.
+func TestRisksPageFilteredToNothingSaysWhere(t *testing.T) {
 	t.Parallel()
 
-	h := testsupport.New(t)
+	h := testsupport.New(t, "boss@example.com")
 	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
-	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	kim := h.SignIn("kim@example.com")
+	platform := h.CreateDimension(boss, "Team", "Platform").Values[0]
+	own := h.ActiveGoal(sam, "Own work", "It matters.") // Unaligned only
+	h.ActiveGoal(kim, "Kim's work", "It matters.")      // Stale and Unaligned
 	h.Clock.Advance(10 * day)
+	h.Checkin(sam, own.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks?group=admin")
+	for address, want := range map[string]string{
+		"/risks?mine=1&group=owner": "No Goals need attention in Mine, Owner needs to update.",
+		"/risks?group=admin&value=" + strconv.FormatInt(platform.ID, 10) + "&mine=1": "No Goals need attention in Mine, Team Platform, Needs an Admin.",
+		"/risks?value=" + strconv.FormatInt(platform.ID, 10):                         "No Goals need attention in Team Platform.",
+	} {
+		page := getBody(t, client, ts.URL+address)
 
-	if line := pageElement(t, page, "p", "risks-group-blank"); !strings.HasSuffix(line, ">Nothing needs an Admin.") {
-		t.Errorf("filtered to an empty group, the page doesn't say so: %s", line)
-	}
-	for _, gone := range []string{"<table", `data-testid="risks-all-clear"`} {
-		if strings.Contains(page, gone) {
-			t.Errorf("filtered to an empty group, the page has %s", gone)
+		empty := html.UnescapeString(pageElement(t, page, "p", "risks-empty"))
+		if !strings.Contains(empty, ">"+want+" ") {
+			t.Errorf("at %s, the empty line doesn't say %q: %s", address, want, empty)
+		}
+		if link := between(t, empty, "<a ", ""); attr(link, "href") != "/risks" || !strings.HasSuffix(link, ">Show everything</a>") {
+			t.Errorf("at %s, the empty line doesn't end linking to everything: %s", address, empty)
+		}
+		for _, gone := range []string{"<table", `data-testid="risks-attention"`, `data-testid="risks-groups"`, `data-testid="risks-group-`, "risks-show-all", "risks-group-blank"} {
+			if strings.Contains(page, gone) {
+				t.Errorf("at %s, the page has %s", address, gone)
+			}
 		}
 	}
 }
