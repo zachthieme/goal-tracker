@@ -312,6 +312,17 @@ func (v risksView) Types() []riskType {
 	}
 }
 
+// riskDefinitions are the Risks page's signals in the page's order, each with
+// what it means, as the page's "What each risk means" says.
+var riskDefinitions = []struct{ Name, Means string }{
+	{"Stale", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
+	{"Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green."},
+	{"Ownerless", "Active Goals whose Owner has left the org and hasn't been replaced."},
+	{"Unaligned", "Active Goals that contribute to no other Goal and aren't Top-level."},
+	{"Schedule conflicts", "Goals due later than a Goal they contribute to."},
+	{"Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled."},
+}
+
 // Flagged counts the Goals the Risks page lists, each once however many
 // signals flag it.
 func (v risksView) Flagged() int {

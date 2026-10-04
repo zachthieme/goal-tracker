@@ -408,6 +408,41 @@ func TestRisksPageHeadsWithHowManyGoalsNeedAttention(t *testing.T) {
 	}
 }
 
+// At its bottom, the Risks page has a "What each risk means" disclosure
+// defining each signal once.
+func TestRisksPageDefinesEachRisk(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	h.SignIn("sam@example.com")
+
+	page := html.UnescapeString(getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks"))
+
+	defs := between(t, page, `<details data-testid="risks-definitions"`, "</details>")
+	if !strings.Contains(defs, "<summary>What each risk means</summary>") {
+		t.Errorf("the definitions aren't titled What each risk means:\n%s", defs)
+	}
+	for name, means := range map[string]string{
+		"Stale":                       "Active Goals whose last Check-in, or activation if they have none, is older than their cadence.",
+		"Path to Green overdue":       "Active Goals past their Path to Green's target date that still aren't Green.",
+		"Ownerless":                   "Active Goals whose Owner has left the org and hasn't been replaced.",
+		"Unaligned":                   "Active Goals that contribute to no other Goal and aren't Top-level.",
+		"Schedule conflicts":          "Goals due later than a Goal they contribute to.",
+		"Parent On Hold or Cancelled": "Goals contributing to a Goal that is On Hold or Cancelled.",
+	} {
+		if n := strings.Count(defs, "<dt>"+name+"</dt><dd>"+means+"</dd>"); n != 1 {
+			t.Errorf("the definitions define %s %d times, want 1:\n%s", name, n, defs)
+		}
+		if n := strings.Count(page, means); n != 1 {
+			t.Errorf("the page defines %s %d times, want 1", name, n)
+		}
+	}
+	if rest := page[strings.Index(page, `data-testid="risks-definitions"`)+1:]; strings.Contains(rest, `data-testid="risks-`) {
+		t.Errorf("the definitions aren't at the bottom of the page:\n%s", rest)
+	}
+}
+
 // The Risks page heads with how many Goals need attention, each once, then a
 // card per group of signals, by who acts: each counts the Goals it holds once,
 // chips each of its signals with how many Goals it flags, and links to the

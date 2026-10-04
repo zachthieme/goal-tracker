@@ -46,7 +46,21 @@ templ risksPage(current *domain.Account, v risksPageView) {
 				@risksTable(current, v.Today, shown)
 			}
 		</div>
+		@risksDefinitions()
 	}
+}
+
+// risksDefinitions says what each of the Risks page's signals means, folded
+// away at the page's bottom.
+templ risksDefinitions() {
+	<details data-testid="risks-definitions" class="card rk-defs">
+		<summary>What each risk means</summary>
+		<dl>
+			for _, d := range riskDefinitions {
+				<dt>{ d.Name }</dt><dd>{ d.Means }</dd>
+			}
+		</dl>
+	</details>
 }
 
 // risksFilters scopes the Risks page to the Goals with a Dimension value,
@@ -206,6 +220,11 @@ templ risksStyles() {
 		.rk-chips{display:flex;flex-wrap:wrap;gap:8px}
 		.rk-zero{border:1px dashed var(--color-border-strong);color:var(--color-ink-muted)}
 		td .rk-chips{margin-top:4px}
+		.rk-defs{padding:12px 16px}
+		.rk-defs summary{cursor:pointer;font-weight:600}
+		.rk-defs dl{margin:8px 0 0;display:grid;grid-template-columns:max-content 1fr;gap:4px 16px}
+		.rk-defs dt{font-weight:600}
+		.rk-defs dd{margin:0}
 		.rk-tag{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;padding:0 8px;border-radius:var(--radius-sm);color:var(--color-ink);font-size:13px;line-height:20px;border:1px solid var(--color-border-strong)}
 		@media (max-width:900px){.rk-cards{grid-template-columns:minmax(0,1fr)}}
 	</style>
