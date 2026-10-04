@@ -397,6 +397,43 @@ func TestBuilderGoalSearchFindsEveryGoalLessThoseListedOverHTTP(t *testing.T) {
 	}
 }
 
+// Each picker's search swaps its matches into its results list rather than
+// inheriting the builder's outerHTML swap, which would replace the list and
+// lose the id the next search targets, and syncs only with itself, so a search
+// and the rail's refresh don't abort each other. The search answers bare
+// items, with no list of its own to nest or id to collide.
+func TestBuilderGoalSearchKeepsItsResultsListOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.ActiveGoal(boss, "Spike the auth flow", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	builder := getBody(t, client, ts.URL+"/reports/new")
+	for _, list := range []string{"picked", "include", "exclude"} {
+		picker := pageElement(t, builder, "fieldset", list+"-picker")
+		search := tagAround(t, picker, "data-goal-search")
+		for name, want := range map[string]string{
+			"hx-target": "#" + list + "-results",
+			"hx-swap":   "innerHTML",
+			"hx-sync":   "this:replace",
+		} {
+			if got := html.UnescapeString(attr(search, name)); got != want {
+				t.Errorf("the %s search's %s = %q, want %q", list, name, got, want)
+			}
+		}
+	}
+
+	for _, q := range []string{"spike", "nothing like it"} {
+		page := getBody(t, client, ts.URL+"/reports/goals/search?"+url.Values{"list": {"picked"}, "q": {q}}.Encode())
+		if body := strings.TrimSpace(page); !strings.HasPrefix(body, "<li") || strings.Contains(body, "<ul") || attr(body, "id") != "" {
+			t.Errorf("searching %q answers more than bare items:\n%s", q, page)
+		}
+	}
+}
+
 // Without script, Show matches submits the builder and it comes back, 200, as
 // typed, its rail listing the Goals the definition would select, and saves
 // nothing.
