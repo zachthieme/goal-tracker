@@ -1446,6 +1446,52 @@ func TestDraftListsTheGoalsInTheReportOverHTTP(t *testing.T) {
 	}
 }
 
+// The Goals panel says what the definition selects in plain words, and marks
+// "added" each Goal in it only because of Also include: not one listed there
+// that meets the rules anyway, and never one picked by hand.
+func TestDraftGoalsPanelShowsTheScopeAndMarksAlsoIncludeOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignInNamed("boss@example.com", "Dana Okafor")
+	lee := h.SignIn("lee@example.com")
+	matches := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	listedAndMatches := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	addedOnly := h.ActiveGoal(lee, "Open Tokyo", "Expand east.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:    "MBR",
+		Mode:    domain.ReportModeRules,
+		Rules:   []domain.ReportRule{{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{strconv.FormatInt(boss.ID, 10)}}},
+		Include: []int64{listedAndMatches.ID, addedOnly.ID},
+	})
+	picked := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Picked", Mode: domain.ReportModePicked, Picked: []int64{matches.ID, addedOnly.ID}})
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	panel := between(t, getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)), `<section data-testid="report-goals"`, `id="draft-preview"`)
+
+	if scope := pageElement(t, panel, "span", "scope-summary"); !strings.HasSuffix(scope, ">Owner: Dana Okafor · 2 added") {
+		t.Errorf("scope summary %q, want Owner: Dana Okafor · 2 added", scope)
+	}
+	for _, c := range []struct {
+		goal  domain.Goal
+		added bool
+	}{{matches, false}, {listedAndMatches, false}, {addedOnly, true}} {
+		item := between(t, panel, ">"+c.goal.Title+"<", "</li>")
+		if got := strings.Contains(item, `data-testid="report-goal-added"`) && strings.Contains(item, ">added<"); got != c.added {
+			t.Errorf("%q marked added %t, want %t: %s", c.goal.Title, got, c.added, item)
+		}
+	}
+
+	pickedPanel := between(t, getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(picked.ID, 10)), `<section data-testid="report-goals"`, `id="draft-preview"`)
+	if scope := pageElement(t, pickedPanel, "span", "scope-summary"); !strings.HasSuffix(scope, ">2 Goals picked by hand") {
+		t.Errorf("picked scope summary %q, want 2 Goals picked by hand", scope)
+	}
+	if strings.Contains(pickedPanel, `data-testid="report-goal-added"`) {
+		t.Errorf("a picked definition's panel marks a Goal added; panel:\n%s", pickedPanel)
+	}
+}
+
 // The Goals panel shows the first 6 Goals and keeps the rest behind Show all.
 func TestDraftGoalsPanelShowsSixThenTheRestOverHTTP(t *testing.T) {
 	t.Parallel()
