@@ -372,3 +372,30 @@ func TestAddContributorByEmailRejectsUnknownEmail(t *testing.T) {
 		t.Errorf("err = %v, want ErrValidation for an unknown email", err)
 	}
 }
+
+// Only a Goal's Owner passes RequireGoalOwner: another Account and a Delegate
+// are refused, and a missing Goal is not found.
+func TestRequireGoalOwnerAdmitsOnlyTheOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	other := h.SignIn("pat@example.com")
+	delegate := h.SignIn("tpm@example.com")
+	g := h.CreateGoal(owner, "Cut checkout latency", "Faster checkout lifts conversion.")
+	h.AddDelegate(owner, delegate, g.ID)
+	ctx := context.Background()
+
+	if err := h.Service.RequireGoalOwner(ctx, owner.ID, g.ID); err != nil {
+		t.Errorf("Owner: err = %v, want nil", err)
+	}
+	if err := h.Service.RequireGoalOwner(ctx, other.ID, g.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("another Account: err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.RequireGoalOwner(ctx, delegate.ID, g.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("Delegate: err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.RequireGoalOwner(ctx, owner.ID, 999); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("missing Goal: err = %v, want ErrNotFound", err)
+	}
+}

@@ -119,6 +119,19 @@ func (s *Service) EditMetric(ctx context.Context, in EditMetricInput) (Metric, e
 	return metricFromRow(row), nil
 }
 
+// RequireMetricOwner is RequireGoalOwner for the Metric's Goal. It returns
+// ErrNotFound if no such Metric exists.
+func (s *Service) RequireMetricOwner(ctx context.Context, actorID, metricID int64) error {
+	m, err := s.queries.GetMetric(ctx, metricID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: metric %d", ErrNotFound, metricID)
+		}
+		return fmt.Errorf("look up metric: %w", err)
+	}
+	return s.RequireGoalOwner(ctx, actorID, m.GoalID)
+}
+
 // ListMetrics returns a Goal's Metrics, earliest target date first.
 func (s *Service) ListMetrics(ctx context.Context, goalID int64) ([]Metric, error) {
 	rows, err := s.queries.ListMetrics(ctx, goalID)

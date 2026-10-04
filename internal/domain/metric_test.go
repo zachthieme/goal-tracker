@@ -110,3 +110,34 @@ func TestEditMetricChangesFields(t *testing.T) {
 		t.Errorf("EditMetric = %+v", got)
 	}
 }
+
+// RequireMetricOwner admits only the Owner of the Metric's Goal: another
+// Account and a Delegate are refused, and a missing Metric is not found.
+func TestRequireMetricOwnerAdmitsOnlyTheGoalsOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("sam@example.com")
+	other := h.SignIn("pat@example.com")
+	delegate := h.SignIn("tpm@example.com")
+	g := h.CreateGoal(owner, "Cut checkout latency", "Faster checkout lifts conversion.")
+	h.AddDelegate(owner, delegate, g.ID)
+	ctx := context.Background()
+	m, err := h.Service.AddMetric(ctx, validMetric(g.ID))
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+
+	if err := h.Service.RequireMetricOwner(ctx, owner.ID, m.ID); err != nil {
+		t.Errorf("Owner: err = %v, want nil", err)
+	}
+	if err := h.Service.RequireMetricOwner(ctx, other.ID, m.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("another Account: err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.RequireMetricOwner(ctx, delegate.ID, m.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("Delegate: err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.RequireMetricOwner(ctx, owner.ID, 999); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("missing Metric: err = %v, want ErrNotFound", err)
+	}
+}

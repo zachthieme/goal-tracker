@@ -997,7 +997,8 @@ func parseDate(value string) (time.Time, error) {
 
 // writeCommandResult redirects back to the Goal on success and surfaces a
 // validation error (e.g. an activation gate failure) as 422 and a refusal to act
-// on someone else's Goal as 403, each with its message.
+// on someone else's Goal as 403, each with its message, and a missing record as
+// the Not found page.
 func (s *Server) writeCommandResult(w http.ResponseWriter, r *http.Request, goalID int64, err error) {
 	if err != nil {
 		switch {
@@ -1005,6 +1006,8 @@ func (s *Server) writeCommandResult(w http.ResponseWriter, r *http.Request, goal
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		case errors.Is(err, domain.ErrNotAuthorized):
 			http.Error(w, err.Error(), http.StatusForbidden)
+		case errors.Is(err, domain.ErrNotFound):
+			s.notFound(w, r)
 		default:
 			s.serverError(w, r, "could not update goal", err)
 		}
@@ -1040,9 +1043,13 @@ func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalI
 	render(w, r, status, goalPage(&current, view))
 }
 
-func (s *Server) handleMarkGoalDated(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+func (s *Server) handleMarkGoalDated(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
+		return
+	}
+	if err := s.svc.RequireGoalOwner(r.Context(), current.ID, id); err != nil {
+		s.writeCommandResult(w, r, id, err)
 		return
 	}
 	date, err := parseDate(r.FormValue("delivery_date"))
@@ -1054,18 +1061,26 @@ func (s *Server) handleMarkGoalDated(w http.ResponseWriter, r *http.Request, _ d
 	s.writeCommandResult(w, r, id, err)
 }
 
-func (s *Server) handleMarkGoalOngoing(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+func (s *Server) handleMarkGoalOngoing(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
+		return
+	}
+	if err := s.svc.RequireGoalOwner(r.Context(), current.ID, id); err != nil {
+		s.writeCommandResult(w, r, id, err)
 		return
 	}
 	_, err := s.svc.MarkGoalOngoing(r.Context(), id)
 	s.writeCommandResult(w, r, id, err)
 }
 
-func (s *Server) handleSetCadence(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+func (s *Server) handleSetCadence(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
+		return
+	}
+	if err := s.svc.RequireGoalOwner(r.Context(), current.ID, id); err != nil {
+		s.writeCommandResult(w, r, id, err)
 		return
 	}
 	days, err := strconv.Atoi(r.FormValue("cadence_days"))
@@ -1082,6 +1097,10 @@ func (s *Server) handleEditSoWhat(w http.ResponseWriter, r *http.Request, curren
 	if !ok {
 		return
 	}
+	if err := s.svc.RequireGoalOwner(r.Context(), current.ID, id); err != nil {
+		s.writeCommandResult(w, r, id, err)
+		return
+	}
 	_, err := s.svc.EditSoWhat(r.Context(), id, r.FormValue("so_what"), current.ID)
 	s.writeCommandResult(w, r, id, err)
 }
@@ -1089,6 +1108,10 @@ func (s *Server) handleEditSoWhat(w http.ResponseWriter, r *http.Request, curren
 func (s *Server) handleAddContributor(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
+		return
+	}
+	if err := s.svc.RequireGoalOwner(r.Context(), current.ID, id); err != nil {
+		s.writeCommandResult(w, r, id, err)
 		return
 	}
 	err := s.svc.AddContributorByEmail(r.Context(), id, r.FormValue("email"))
@@ -1135,9 +1158,13 @@ func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, _ d
 	s.writeCommandResult(w, r, m.GoalID, nil)
 }
 
-func (s *Server) handleAddMetric(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+func (s *Server) handleAddMetric(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
+		return
+	}
+	if err := s.svc.RequireGoalOwner(r.Context(), current.ID, id); err != nil {
+		s.writeCommandResult(w, r, id, err)
 		return
 	}
 	in, err := metricInputFromForm(r)
@@ -1150,9 +1177,13 @@ func (s *Server) handleAddMetric(w http.ResponseWriter, r *http.Request, _ domai
 	s.writeCommandResult(w, r, id, err)
 }
 
-func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
+		return
+	}
+	if err := s.svc.RequireMetricOwner(r.Context(), current.ID, id); err != nil {
+		s.writeCommandResult(w, r, id, err)
 		return
 	}
 	in, err := metricInputFromForm(r)
@@ -1201,9 +1232,13 @@ func metricInputFromForm(r *http.Request) (domain.AddMetricInput, error) {
 	}, nil
 }
 
-func (s *Server) handleActivateGoal(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+func (s *Server) handleActivateGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
+		return
+	}
+	if err := s.svc.RequireGoalOwner(r.Context(), current.ID, id); err != nil {
+		s.writeCommandResult(w, r, id, err)
 		return
 	}
 	_, err := s.svc.ActivateGoal(r.Context(), id)
