@@ -1111,6 +1111,42 @@ func TestGoalPageMilestonesTable(t *testing.T) {
 	}
 }
 
+// Each Milestone date, the current one and each struck slip, wraps as a whole,
+// never mid-date ("2026-04-" over "02") at phone width, while the breaks between
+// the dates still wrap (#172).
+func TestGoalPageMilestoneDatesDoNotBreakOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	beta := onlyMilestone(t, h, goal)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	slipped := beta.TargetDate.AddDate(0, 0, 10)
+	postForm(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"Beta moves."},
+		fmt.Sprintf("milestone_date_%d", beta.ID):        {slipped.Format("2006-01-02")},
+		fmt.Sprintf("milestone_date_reason_%d", beta.ID): {"Vendor slipped."},
+	})
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	row := pageElement(t, pageElement(t, page, "section", "goal-milestones"), "tr", "goal-milestone")
+	cell := between(t, row, `<td class="num gp-dates">`, "</td>")
+	for _, want := range []string{"<del>" + beta.TargetDate.Format("2006-01-02") + "</del>", "<span>" + slipped.Format("2006-01-02") + "</span>"} {
+		if !strings.Contains(cell, want) {
+			t.Errorf("the Milestone's date cell lacks %s: %s", want, cell)
+		}
+	}
+	if rule := cssRule(t, page, ".gp-dates>*"); !strings.Contains(rule, "white-space:nowrap") {
+		t.Errorf("a Milestone date can break mid-date: .gp-dates>*{%s}", rule)
+	}
+	if rule, ok := ruleFor(page, ".gp-dates"); ok && strings.Contains(rule, "nowrap") {
+		t.Errorf("the whole date cell is kept on one line, so its slips can't wrap: .gp-dates{%s}", rule)
+	}
+}
+
 // A Departed Delegate stays listed among the Goal's Delegates, marked departed;
 // a present one isn't marked (CONTEXT.md: Departed).
 func TestGoalPageMarksADepartedDelegate(t *testing.T) {

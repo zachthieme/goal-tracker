@@ -767,11 +767,12 @@ templ goalHead(v goalView, owner, admin bool) {
 }
 
 // goalPageStyles are the Goal page's own rules on top of app.css: the header
-// with its actions and More menu, the main column and sidebar, and the Metric
-// cards.
+// with its actions and More menu, the main column and sidebar, the Milestone
+// dates, each kept whole on its line, and the Metric cards.
 templ goalPageStyles() {
 	<style>
 		.gp-head{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap}
+		.gp-dates>*{white-space:nowrap}
 		.gp-summary{display:flex;flex-direction:column;gap:12px;min-width:0;flex:1 1 320px}
 		.gp-summary h1{margin:0}
 		.gp-statement{display:flex;flex-direction:column;align-items:flex-start;gap:4px;max-width:720px}
@@ -1134,9 +1135,9 @@ templ milestoneList(v goalView, editable bool) {
 						} else {
 							<td>{ m.Name }</td>
 						}
-						<td class="num">
+						<td class="num gp-dates">
 							@struckDates(v.priorDates(m.ID))
-							{ fmtDate(m.TargetDate) }
+							<span>{ fmtDate(m.TargetDate) }</span>
 						</td>
 						if editable {
 							<td>

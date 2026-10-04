@@ -738,7 +738,10 @@ func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
 // The draft page keeps Publish in reach: a sticky header carries the name, the
 // baseline, the save status, the History of publications and Publish — the
 // primary button, saying what it does. Below it the author curates the
-// narrative in the compose panel, then checks the preview beside it.
+// narrative in the compose panel, then checks the preview beside it. The save
+// status sits in the name's block, so at phone width it can stay beside the
+// name (#172); above that the block lets its children into the header's row
+// and the save status is ordered after the chip, beside History.
 func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -752,14 +755,23 @@ func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
 
 	header := between(t, page, `<header data-testid="draft-header"`, "</header>")
 	last := -1
-	for _, part := range []string{`data-testid="report-name"`, `data-testid="baseline-chip"`, `data-testid="save-status"`, `data-testid="report-history"`, `data-testid="publish-confirm"`} {
+	for _, part := range []string{`data-testid="report-name"`, `data-testid="save-status"`, `data-testid="baseline-chip"`, `data-testid="report-history"`, `data-testid="publish-confirm"`} {
 		at := strings.Index(header, part)
 		if at <= last {
 			t.Errorf("%s is out of order in the header (at %d, after %d); header:\n%s", part, at, last, header)
 		}
 		last = at
 	}
-	if chip := between(t, header, `data-testid="baseline-chip"`, `data-testid="save-status"`); !strings.Contains(chip, `data-testid="report-baseline"`) {
+	for selector, want := range map[string]string{
+		".rp-draft-title":         "display:contents",
+		".rp-draft-head .rp-save": "order:1",
+		".rp-head-actions":        "order:1",
+	} {
+		if rule := cssRule(t, page, selector); !strings.Contains(rule, want) {
+			t.Errorf("the header does not show the save status after the chip: %s{%s} lacks %s", selector, rule, want)
+		}
+	}
+	if chip := between(t, header, `data-testid="baseline-chip"`, `data-testid="report-history"`); !strings.Contains(chip, `data-testid="report-baseline"`) {
 		t.Errorf("the baseline chip does not hold the baseline form; chip:\n%s", chip)
 	}
 	publish := pageElement(t, header, "details", "publish-confirm")
@@ -1016,6 +1028,108 @@ func TestDraftPanesStackAtPhoneWidthOverHTTP(t *testing.T) {
 	phone := between(t, page, "@media (max-width:900px){", "}}")
 	if rule := cssRule(t, phone+"}", ".rp-panes"); !strings.Contains(rule, "grid-template-columns:minmax(0,1fr)") {
 		t.Errorf("at 900px the draft panes are not one column: .rp-panes{%s}", rule)
+	}
+}
+
+// At phone width the Publish… card is pinned to the viewport's gutters rather
+// than hung off its button's right edge, where it ran off the left of a 390px
+// screen with Cancel beyond reach (#172).
+func TestDraftPublishCardFitsAPhoneOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+
+	rule, ok := ruleFor(mediaBlock(t, page, "@media (max-width:600px)"), ".rp-publish")
+	if !ok {
+		t.Fatalf("at 600px there is no .rp-publish rule")
+	}
+	for _, want := range []string{"position:fixed", "left:16px", "right:16px", "width:auto"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf("at 600px .rp-publish{%s} lacks %s", rule, want)
+		}
+	}
+}
+
+// At phone width the draft header scrolls away with the page instead of
+// sticking over a third of the screen. The name takes its own line with the
+// save status beside it, the baseline chip sits on its own row below, and
+// History, Edit definition and Publish… share the last row: five controls
+// don't fit one row at 390px (#172).
+func TestDraftHeaderStacksAtPhoneWidthOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+
+	header := pageElement(t, page, "header", "draft-header")
+	title := between(t, header, `<div class="rp-draft-title">`, `data-testid="baseline-chip"`)
+	for _, part := range []string{`data-testid="report-name"`, `data-testid="save-status"`} {
+		if !strings.Contains(title, part) {
+			t.Errorf("the name block lacks %s; block:\n%s", part, title)
+		}
+	}
+	actions := between(t, header, `<div class="rp-head-actions">`, "")
+	for _, part := range []string{`data-testid="report-history"`, `data-testid="edit-definition"`, `data-testid="publish-confirm"`} {
+		if !strings.Contains(actions, part) {
+			t.Errorf("the actions row lacks %s; row:\n%s", part, actions)
+		}
+	}
+	if strings.Contains(actions, `data-testid="save-status"`) {
+		t.Errorf("the save status is in the actions row, not beside the name; row:\n%s", actions)
+	}
+
+	phone := mediaBlock(t, page, "@media (max-width:600px)")
+	for selector, wants := range map[string][]string{
+		".rp-draft-head":   {"position:static"},
+		".rp-draft-title":  {"display:flex", "flex-basis:100%"},
+		".rp-head-actions": {"flex-basis:100%", "flex-wrap:nowrap", "margin-left:0"},
+	} {
+		rule, ok := ruleFor(phone, selector)
+		if !ok {
+			t.Errorf("at 600px there is no %s rule", selector)
+			continue
+		}
+		for _, want := range wants {
+			if !strings.Contains(rule, want) {
+				t.Errorf("at 600px %s{%s} lacks %s", selector, rule, want)
+			}
+		}
+	}
+}
+
+// A Due date in the draft's On track table wraps as a whole, never mid-date
+// ("2026-12-" over "14") in a narrow column (#172).
+func TestDraftOnTrackDueDatesDoNotBreakOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(3 * 24 * time.Hour)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+
+	due := tagAround(t, pageElement(t, page, "table", "on-track"), `data-testid="selected-due"`)
+	if !strings.Contains(due, "rp-date") {
+		t.Fatalf("the On track Due date is not marked rp-date: %s", due)
+	}
+	if rule := cssRule(t, page, ".rp-date"); !strings.Contains(rule, "white-space:nowrap") {
+		t.Errorf("a Due date can break mid-date: .rp-date{%s}", rule)
 	}
 }
 
