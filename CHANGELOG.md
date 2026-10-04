@@ -55,6 +55,12 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Bug fixes:**
 - [internal] `scripts/shots.mjs` runs an action as an async function body only when it uses `await` in its code, not when the word appears in a string, comment, regex or property name, so such actions keep their completion value and awaited promise; a `name` ending in `.PNG` now saves `<name>.png` (#126).
 - [user] The Not found page for an unknown address shows the top bar's Home and Risks counts like every other page, and asking an unknown address with any method, not just GET, shows that page instead of a bare "Method Not Allowed" (#127).
+- [user] On the Risks page, Goals that aren't Stale and otherwise tie now list in title order; before, the one with the shorter cadence came first whatever its title (#161).
+- [user] On the New goal page and a Proposed Goal's define page, pressing Enter in a text field such as Title now saves the Goal as Proposed. Before, Enter pressed Create and activate: without script the form came back listing the activation rules it didn't meet, and with script nothing happened while the checklist was incomplete. Create and activate still shows first in the Ready to activate card (#165).
+- [user] A spreadsheet import that links a Goal to a parent someone had suggested for it now closes that Parent suggestion as no longer applying, instead of leaving it open on Home and the Goal page with an Accept that failed (#167).
+- [user] In the report builder, searching for a Goal under Goals I pick, Also include or Leave out keeps working as you type. Before, the results showed once as an unstyled bulleted list and then stopped updating, so typing "Spike" still listed every Goal matching "S" (#171).
+- [user] The Report draft matches its design again: a Highlight's Insight / Accomplishment / Miss picker is one inline segmented control instead of a vertical stack, the Highlight list sits flush in its card, the preview's Health tiles sit four across (two below 900px) instead of one per row, the "Changes since" baseline chip is a bordered pill, and Save narrative shows only to readers without JavaScript, since autosave covers everyone else (#173).
+- [user] On the Risks page, each Health chip shows one marker again, not a dot plus a shape. Owner names stay on one line at desktop width. Below 600px each row stacks as a card (the Goal and its chips, then Health and Owner, then the Fix), so the Fix is no longer hidden off-screen (#174).
 
 **Infrastructure:**
 - [api] Database schema: migration `0037_parent_suggestions` adds a `parent_suggestions` table holding each Parent suggestion: its Goal, suggested parent, suggester, note, outcome, and when it was made and closed. It's additive and runs on startup (#144).
@@ -72,6 +78,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Testing:**
 - [internal] The test harness copies a database migrated once per test binary instead of running every migration for each test, so `make test` takes about 50 seconds instead of about 2½ minutes (#136).
 - [internal] The test harness escapes its database path, so a test whose temp directory holds a '#' (an unnamed subtest is "#00") gets the migrated copy instead of an empty database (#136).
+- [internal] A web test covers the page shown when a Nudge's email can't be sent: a 502 "Nudge not emailed" page saying "The Nudge was recorded, but the email to … couldn't be sent." names the Owner, and the Goal keeps its Nudge. Until now only the domain side was tested (#170).
 
 **Documentation:**
 - [internal] `CONTEXT.md` defines a Nudge (a one-off request to a Goal's Owner and Delegates to check in on a Stale or Path-overdue Goal) and a Parent suggestion (someone other than the Owner proposes a parent; only the Owner decides), and ADR 0006 records why a Parent suggestion is its own record rather than a link status (#143, #144).
