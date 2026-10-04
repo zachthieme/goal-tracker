@@ -119,6 +119,43 @@ func (q *Queries) ClearNarrativeTexts(ctx context.Context, reportDefinitionID in
 	return err
 }
 
+const clearReportDefinitionFields = `-- name: ClearReportDefinitionFields :exec
+DELETE FROM report_definition_fields WHERE report_definition_id = ?
+`
+
+func (q *Queries) ClearReportDefinitionFields(ctx context.Context, reportDefinitionID int64) error {
+	_, err := q.db.ExecContext(ctx, clearReportDefinitionFields, reportDefinitionID)
+	return err
+}
+
+const clearReportDefinitionGoals = `-- name: ClearReportDefinitionGoals :exec
+DELETE FROM report_definition_goals WHERE report_definition_id = ?
+`
+
+func (q *Queries) ClearReportDefinitionGoals(ctx context.Context, reportDefinitionID int64) error {
+	_, err := q.db.ExecContext(ctx, clearReportDefinitionGoals, reportDefinitionID)
+	return err
+}
+
+const clearReportRuleValues = `-- name: ClearReportRuleValues :exec
+DELETE FROM report_rule_values
+WHERE report_rule_id IN (SELECT id FROM report_rules WHERE report_definition_id = ?)
+`
+
+func (q *Queries) ClearReportRuleValues(ctx context.Context, reportDefinitionID int64) error {
+	_, err := q.db.ExecContext(ctx, clearReportRuleValues, reportDefinitionID)
+	return err
+}
+
+const clearReportRules = `-- name: ClearReportRules :exec
+DELETE FROM report_rules WHERE report_definition_id = ?
+`
+
+func (q *Queries) ClearReportRules(ctx context.Context, reportDefinitionID int64) error {
+	_, err := q.db.ExecContext(ctx, clearReportRules, reportDefinitionID)
+	return err
+}
+
 const createReportDefinition = `-- name: CreateReportDefinition :one
 INSERT INTO report_definitions (name, introduction, mode, created_by, created_at)
 VALUES (?, ?, ?, ?, ?)
@@ -565,5 +602,29 @@ type SetNarrativeTextParams struct {
 
 func (q *Queries) SetNarrativeText(ctx context.Context, arg SetNarrativeTextParams) error {
 	_, err := q.db.ExecContext(ctx, setNarrativeText, arg.ReportDefinitionID, arg.Section, arg.Text)
+	return err
+}
+
+const updateReportDefinition = `-- name: UpdateReportDefinition :exec
+UPDATE report_definitions SET name = ?, introduction = ?, mode = ?
+WHERE id = ?
+`
+
+type UpdateReportDefinitionParams struct {
+	Name         string
+	Introduction string
+	Mode         string
+	ID           int64
+}
+
+// Edit a Report Definition's name, introduction and mode; its rules, listed
+// Goals and Fields are cleared and saved again.
+func (q *Queries) UpdateReportDefinition(ctx context.Context, arg UpdateReportDefinitionParams) error {
+	_, err := q.db.ExecContext(ctx, updateReportDefinition,
+		arg.Name,
+		arg.Introduction,
+		arg.Mode,
+		arg.ID,
+	)
 	return err
 }

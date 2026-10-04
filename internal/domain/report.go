@@ -36,8 +36,17 @@ type ReportDefinition struct {
 	Picked []int64
 	// FieldIDs are the Fields the Report shows beside each Goal that has a
 	// value in them. Empty, the default, shows none.
-	FieldIDs  []int64
+	FieldIDs []int64
+	// CreatedBy is the id of the Account that saved it, who with an Admin may
+	// edit it.
+	CreatedBy int64
 	CreatedAt time.Time
+}
+
+// CanEditReportDefinition reports whether actor may edit def: its creator or
+// an Admin may. Anyone signed in may save and publish one.
+func CanEditReportDefinition(actor Account, def ReportDefinition) bool {
+	return actor.IsAdmin || actor.ID == def.CreatedBy
 }
 
 // The modes a Report Definition selects its Goals in.
@@ -116,9 +125,7 @@ type SelectedGoal struct {
 // save one (CONTEXT.md: Report Definition); actorID records who created it. It
 // refuses each input it can't take with an *InputError naming it.
 func (s *Service) SaveReportDefinition(ctx context.Context, actorID int64, in SaveReportDefinitionInput) (ReportDefinition, error) {
-	in.Name = strings.TrimSpace(in.Name)
-	in.Include, in.Exclude, in.Picked = dedupeIDs(in.Include), dedupeIDs(in.Exclude), dedupeIDs(in.Picked)
-	in.FieldIDs = dedupeIDs(in.FieldIDs)
+	in = normalizeReportDefinition(in)
 	if err := s.validateReportDefinition(ctx, in); err != nil {
 		return ReportDefinition{}, err
 	}
@@ -141,6 +148,63 @@ func (s *Service) SaveReportDefinition(ctx context.Context, actorID int64, in Sa
 		return ReportDefinition{}, err
 	}
 	return s.GetReportDefinition(ctx, id)
+}
+
+// UpdateReportDefinition edits the saved Report Definition id: its name,
+// introduction, scope and Fields are replaced by in. Only its draft changes;
+// its publications stay frozen as they were published. It refuses each input
+// it can't take with an *InputError naming it, as SaveReportDefinition does.
+// Only its creator or an Admin may edit it (ErrNotAuthorized); ErrNotFound
+// when there is no such definition.
+func (s *Service) UpdateReportDefinition(ctx context.Context, actorID, id int64, in SaveReportDefinitionInput) (ReportDefinition, error) {
+	def, err := s.GetReportDefinition(ctx, id)
+	if err != nil {
+		return ReportDefinition{}, err
+	}
+	actor, err := s.queries.GetAccount(ctx, actorID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return ReportDefinition{}, fmt.Errorf("look up actor: %w", err)
+	}
+	if err != nil || !CanEditReportDefinition(accountFromRow(actor), def) {
+		return ReportDefinition{}, fmt.Errorf("%w: only its creator or an Admin may edit %s", ErrNotAuthorized, def.Name)
+	}
+	in = normalizeReportDefinition(in)
+	if err := s.validateReportDefinition(ctx, in); err != nil {
+		return ReportDefinition{}, err
+	}
+	if err := s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.queries.UpdateReportDefinition(ctx, db.UpdateReportDefinitionParams{
+			Name:         in.Name,
+			Introduction: strings.TrimSpace(in.Introduction),
+			Mode:         in.Mode,
+			ID:           id,
+		}); err != nil {
+			return fmt.Errorf("update report definition: %w", err)
+		}
+		for _, clear := range []func(context.Context, int64) error{
+			tx.queries.ClearReportRuleValues,
+			tx.queries.ClearReportRules,
+			tx.queries.ClearReportDefinitionGoals,
+			tx.queries.ClearReportDefinitionFields,
+		} {
+			if err := clear(ctx, id); err != nil {
+				return fmt.Errorf("clear report selection: %w", err)
+			}
+		}
+		return tx.saveReportSelection(ctx, id, in)
+	}); err != nil {
+		return ReportDefinition{}, err
+	}
+	return s.GetReportDefinition(ctx, id)
+}
+
+// normalizeReportDefinition trims in's name and drops repeated ids from its
+// lists, as saving them would.
+func normalizeReportDefinition(in SaveReportDefinitionInput) SaveReportDefinitionInput {
+	in.Name = strings.TrimSpace(in.Name)
+	in.Include, in.Exclude, in.Picked = dedupeIDs(in.Include), dedupeIDs(in.Exclude), dedupeIDs(in.Picked)
+	in.FieldIDs = dedupeIDs(in.FieldIDs)
+	return in
 }
 
 // saveReportSelection stores what the definition defID selects by and shows:
@@ -401,6 +465,7 @@ func (s *Service) reportDefinitionFromRow(ctx context.Context, row db.ReportDefi
 		Name:         row.Name,
 		Introduction: row.Introduction,
 		Mode:         row.Mode,
+		CreatedBy:    row.CreatedBy,
 		CreatedAt:    createdAt,
 	}
 	rules, err := s.queries.ListReportRules(ctx, row.ID)

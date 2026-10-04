@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -1962,4 +1963,329 @@ func postHX(t *testing.T, client *http.Client, rawURL string, form url.Values) (
 		t.Fatalf("POST %s: %v", rawURL, err)
 	}
 	return resp, readBody(t, resp)
+}
+
+// Editing a published definition's name and scope answers 303 to its draft,
+// which then shows the new name and exactly the new Goals; the publication
+// still shows the old name and the old Goals (ticket #151).
+func TestEditDefinitionChangesOnlyTheDraftOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Web")
+	platform, web := team.Values[0], team.Values[1]
+	reliability := h.ActiveGoal(boss, "Platform reliability", "Matters.")
+	redesign := h.ActiveGoal(boss, "Web redesign", "Matters.")
+	h.AssignGoalValue(reliability, platform)
+	h.AssignGoalValue(redesign, web)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:  "Platform MBR",
+		Mode:  domain.ReportModeRules,
+		Rules: []domain.ReportRule{{Attribute: domain.RuleDimension, DimensionID: team.ID, Op: domain.RuleIs, Values: []string{strconv.FormatInt(platform.ID, 10)}}},
+	})
+	pub := h.PublishReport(boss, def)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	draftPath := "/reports/" + strconv.FormatInt(def.ID, 10)
+	dim := "dimension:" + strconv.FormatInt(team.ID, 10)
+
+	resp := postForm(t, noRedirects(client), ts.URL+draftPath+"/edit", url.Values{
+		"name":               {"Web MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {dim + "=" + strconv.FormatInt(web.ID, 10)},
+	})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != draftPath {
+		t.Fatalf("edit: status %d to %q, want 303 to %s", resp.StatusCode, resp.Header.Get("Location"), draftPath)
+	}
+	draft := getBody(t, client, ts.URL+draftPath)
+	if name := pageElement(t, draft, "h1", "report-name"); !strings.Contains(name, "Web MBR") {
+		t.Errorf("the draft is named %s, want Web MBR", name)
+	}
+	if got, want := draftGoalTitles(t, draft), []string{redesign.Title}; !slices.Equal(got, want) {
+		t.Errorf("the edited draft selects %q, want %q", got, want)
+	}
+
+	published := getBody(t, client, ts.URL+draftPath+"/publications/"+strconv.FormatInt(pub.ID, 10))
+	if name := pageElement(t, published, "h1", "report-name"); !strings.Contains(name, "Platform MBR") {
+		t.Errorf("the publication is named %s, want the old Platform MBR", name)
+	}
+	if !strings.Contains(published, fmt.Sprintf(`id="goal-%d"`, reliability.ID)) || strings.Contains(published, fmt.Sprintf(`id="goal-%d"`, redesign.ID)) {
+		t.Errorf("the publication doesn't keep its old Goals; body:\n%s", published)
+	}
+}
+
+// The edit page is the builder filled with the saved definition: its name,
+// introduction, mode, rules, Also include, Leave out and Fields, posting back
+// to /reports/{id}/edit, its rail reading against the definition (ticket
+// #151). A picked definition comes back with its picked Goals.
+func TestEditDefinitionShowsTheSavedValuesOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Web")
+	platform := team.Values[0]
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "USD")
+	sdk := h.ActiveGoal(boss, "Mobile SDK auth update", "Matters.")
+	sso := h.ActiveGoal(boss, "Legacy SSO cleanup", "Matters.")
+	id := func(n int64) string { return strconv.FormatInt(n, 10) }
+	rules := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:         "Platform MBR",
+		Introduction: "Where Platform stands.",
+		Mode:         domain.ReportModeRules,
+		Rules: []domain.ReportRule{
+			{Attribute: domain.RuleDimension, DimensionID: team.ID, Op: domain.RuleIs, Values: []string{id(platform.ID)}},
+			{Attribute: domain.RuleLifecycle, Op: domain.RuleIsNot, Values: []string{domain.LifecycleOnHold}},
+		},
+		Include:  []int64{sdk.ID},
+		Exclude:  []int64{sso.ID},
+		FieldIDs: []int64{budget.ID},
+	})
+	picked := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Picked MBR", Mode: domain.ReportModePicked, Picked: []int64{sso.ID}})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	dim := "dimension:" + id(team.ID)
+
+	page := getBody(t, client, ts.URL+"/reports/"+id(rules.ID)+"/edit")
+	builder := pageElement(t, page, "form", "report-builder")
+	for _, want := range []string{
+		`action="/reports/` + id(rules.ID) + `/edit"`,
+		`<input type="hidden" name="id" value="` + id(rules.ID) + `">`,
+		`name="name" value="Platform MBR"`,
+		`name="introduction">Where Platform stands.</textarea>`,
+		`value="rules" checked`,
+		`<option value="` + dim + `" selected>Team</option>`,
+		`<option value="` + dim + "=" + id(platform.ID) + `" selected>Platform</option>`,
+		`<option value="lifecycle" selected>Lifecycle</option>`,
+		`<option value="is not" selected>is not</option>`,
+		`<option value="lifecycle=` + domain.LifecycleOnHold + `" selected>`,
+		`<input type="hidden" name="include" value="` + id(sdk.ID) + `">`,
+		`<input type="hidden" name="exclude" value="` + id(sso.ID) + `">`,
+		`name="field" value="` + id(budget.ID) + `" checked`,
+	} {
+		if !strings.Contains(builder, want) {
+			t.Errorf("the edit page lacks %s:\n%s", want, builder)
+		}
+	}
+	if !strings.Contains(page, "Edit report") {
+		t.Errorf("the edit page isn't titled Edit report; body:\n%s", page)
+	}
+
+	builder = pageElement(t, getBody(t, client, ts.URL+"/reports/"+id(picked.ID)+"/edit"), "form", "report-builder")
+	for _, want := range []string{
+		`value="picked" checked`,
+		`<input type="hidden" name="picked" value="` + id(sso.ID) + `">`,
+	} {
+		if !strings.Contains(builder, want) {
+			t.Errorf("the picked edit page lacks %s:\n%s", want, builder)
+		}
+	}
+}
+
+// A refused edit answers 422 with the builder as typed, still posting to the
+// edit, each error beside its input, and the definition as it was. Add rule
+// on the edit page comes back to it, 200, having saved nothing (ticket #151).
+func TestEditDefinitionRefusalKeepsValuesOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Grow revenue", "Matters.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	editURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10) + "/edit"
+	typed := url.Values{
+		"name":               {"  "},
+		"introduction":       {"Now by rules."},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleLifecycle},
+		"rules[0].op":        {domain.RuleIs},
+	}
+
+	resp := postForm(t, client, editURL, typed)
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("refused edit: status %d, want 422; body:\n%s", resp.StatusCode, page)
+	}
+	builder := pageElement(t, page, "form", "report-builder")
+	for _, want := range []string{
+		`action="/reports/` + strconv.FormatInt(def.ID, 10) + `/edit"`,
+		`name="introduction">Now by rules.</textarea>`,
+		`value="rules" checked`,
+		`<option value="lifecycle" selected>Lifecycle</option>`,
+	} {
+		if !strings.Contains(builder, want) {
+			t.Errorf("the refused edit lost %s:\n%s", want, builder)
+		}
+	}
+	if nameField := between(t, builder, `<span>Name</span>`, `</label>`); !strings.Contains(nameField, `id="name-error"`) {
+		t.Errorf("the blank name's error isn't beside it:\n%s", nameField)
+	}
+	if row := between(t, builder, `data-testid="report-rule"`, `data-testid="rules-hint"`); !strings.Contains(row, `id="rules[0]-error"`) {
+		t.Errorf("the Lifecycle rule with no value isn't refused beside it:\n%s", row)
+	}
+	if got, _ := h.Service.GetReportDefinition(context.Background(), def.ID); got.Name != "MBR" || got.Mode != domain.ReportModePicked {
+		t.Errorf("a refused edit changed the definition to %q, %s", got.Name, got.Mode)
+	}
+
+	typed.Set("do", "add-rule")
+	resp = postForm(t, client, editURL, typed)
+	page = readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Add rule on the edit page: status %d, want 200; body:\n%s", resp.StatusCode, page)
+	}
+	builder = pageElement(t, page, "form", "report-builder")
+	if !strings.Contains(builder, `action="/reports/`+strconv.FormatInt(def.ID, 10)+`/edit"`) || strings.Count(builder, `data-testid="report-rule"`) != 2 {
+		t.Errorf("Add rule didn't come back to the edit page with two rule rows:\n%s", builder)
+	}
+	if got, _ := h.Service.GetReportDefinition(context.Background(), def.ID); got.Name != "MBR" {
+		t.Errorf("Add rule saved the edit: name %q", got.Name)
+	}
+}
+
+// Only the definition's creator or an Admin may edit it: anyone else signed in
+// gets 403 on both the page and the post, which changes nothing. An unknown
+// definition is Not found (ticket #151).
+func TestEditDefinitionOnlyByItsCreatorOrAnAdminOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	h.SignIn("boss@example.com")
+	alice := h.SignIn("alice@example.com")
+	h.SignIn("sam@example.com")
+	g := h.ActiveGoal(alice, "Grow revenue", "Matters.")
+	def := h.SaveReportDefinition(alice, domain.SaveReportDefinitionInput{Name: "Alice's MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+	editURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10) + "/edit"
+	edit := func(name string) url.Values {
+		return url.Values{"name": {name}, "mode": {domain.ReportModePicked}, "picked": {strconv.FormatInt(g.ID, 10)}}
+	}
+
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	resp, err := sam.Get(editURL)
+	if err != nil {
+		t.Fatalf("GET %s: %v", editURL, err)
+	}
+	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("Sam's GET of Alice's edit page: status %d, want 403; body:\n%s", resp.StatusCode, body)
+	}
+	resp = postForm(t, noRedirects(sam), editURL, edit("Sam's now"))
+	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("Sam's POST to Alice's edit: status %d, want 403; body:\n%s", resp.StatusCode, body)
+	}
+	if got, _ := h.Service.GetReportDefinition(context.Background(), def.ID); got.Name != "Alice's MBR" {
+		t.Errorf("Sam's refused edit renamed it %q", got.Name)
+	}
+
+	for _, who := range []string{"alice@example.com", "boss@example.com"} {
+		client := signInClient(t, ts.URL, who)
+		getBody(t, client, editURL)
+		resp := postForm(t, noRedirects(client), editURL, edit("Edited by "+who))
+		if body := readBody(t, resp); resp.StatusCode != http.StatusSeeOther {
+			t.Errorf("%s's edit: status %d, want 303; body:\n%s", who, resp.StatusCode, body)
+		}
+	}
+
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		req, err := http.NewRequest(method, ts.URL+"/reports/9999/edit", strings.NewReader(edit("Nobody's").Encode()))
+		if err != nil {
+			t.Fatalf("new request: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err := sam.Do(req)
+		if err != nil {
+			t.Fatalf("%s an unknown definition's edit: %v", method, err)
+		}
+		if body := readBody(t, resp); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s an unknown definition's edit: status %d, want 404; body:\n%s", method, resp.StatusCode, body)
+		}
+	}
+}
+
+// Edit definition links to the edit page from both the draft's header and its
+// Goals panel, for the definition's creator and an Admin; anyone else sees
+// neither (ticket #151).
+func TestDraftLinksToEditTheDefinitionForThoseWhoMayOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	h.SignIn("boss@example.com")
+	alice := h.SignIn("alice@example.com")
+	h.SignIn("sam@example.com")
+	g := h.ActiveGoal(alice, "Grow revenue", "Matters.")
+	def := h.SaveReportDefinition(alice, domain.SaveReportDefinitionInput{Name: "Alice's MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+	draftURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	link := `data-testid="edit-definition"`
+	href := `href="/reports/` + strconv.FormatInt(def.ID, 10) + `/edit"`
+
+	for _, who := range []string{"alice@example.com", "boss@example.com"} {
+		draft := getBody(t, signInClient(t, ts.URL, who), draftURL)
+		header := pageElement(t, draft, "header", "draft-header")
+		panel := pageElement(t, draft, "section", "report-goals")
+		for where, part := range map[string]string{"header": header, "Goals panel": panel} {
+			if at := strings.Index(part, link); at < 0 || !strings.Contains(part[at:], href) {
+				t.Errorf("%s's draft %s has no Edit definition linking to the edit page:\n%s", who, where, part)
+			}
+		}
+	}
+	if draft := getBody(t, signInClient(t, ts.URL, "sam@example.com"), draftURL); strings.Contains(draft, link) {
+		t.Errorf("Sam, who may not edit, is offered Edit definition; body:\n%s", draft)
+	}
+}
+
+// A saved rule on a Dimension or value since Retired still comes back on the
+// edit page, chosen, so saving the edit keeps it; a new rule still can't
+// choose them (CONTEXT.md: Retired; ticket #151).
+func TestEditDefinitionKeepsARuleOnARetiredDimensionOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	team := h.CreateDimension(boss, "Team", "Core", "Edge")
+	growth, core := pillar.Values[0], team.Values[0]
+	id := func(n int64) string { return strconv.FormatInt(n, 10) }
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{
+		{Attribute: domain.RuleDimension, DimensionID: pillar.ID, Op: domain.RuleIs, Values: []string{id(growth.ID)}},
+		{Attribute: domain.RuleDimension, DimensionID: team.ID, Op: domain.RuleIs, Values: []string{id(core.ID)}},
+	}})
+	ctx := context.Background()
+	if err := h.Service.RetireDimension(ctx, boss.ID, pillar.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	if err := h.Service.RetireDimensionValue(ctx, boss.ID, core.ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	pillarKey, teamKey := "dimension:"+id(pillar.ID), "dimension:"+id(team.ID)
+
+	builder := pageElement(t, getBody(t, client, ts.URL+"/reports/"+id(def.ID)+"/edit"), "form", "report-builder")
+	rows := strings.Split(builder, `data-testid="report-rule"`)[1:]
+	if len(rows) != 2 {
+		t.Fatalf("the edit page shows %d rule rows, want 2:\n%s", len(rows), builder)
+	}
+	for _, want := range []string{
+		`<option value="` + pillarKey + `" selected>Pillar</option>`,
+		`<option value="` + pillarKey + "=" + id(growth.ID) + `" selected>Growth</option>`,
+	} {
+		if !strings.Contains(rows[0], want) {
+			t.Errorf("the rule on the Retired Pillar lacks %s:\n%s", want, rows[0])
+		}
+	}
+	if want := `<option value="` + teamKey + "=" + id(core.ID) + `" selected>Core</option>`; !strings.Contains(rows[1], want) {
+		t.Errorf("the rule on the Retired Core lacks %s:\n%s", want, rows[1])
+	}
+	if strings.Contains(rows[1], `value="`+pillarKey+`"`) {
+		t.Errorf("the Retired Pillar is offered to a rule that doesn't test it:\n%s", rows[1])
+	}
+	if strings.Contains(rows[0], `value="`+teamKey+"="+id(core.ID)+`"`) {
+		t.Errorf("the Retired Core is offered to a rule that doesn't test it:\n%s", rows[0])
+	}
 }

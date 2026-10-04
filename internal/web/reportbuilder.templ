@@ -7,24 +7,32 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// reportBuilderPage builds a new Report Definition (CONTEXT.md: Report
-// Definition): its name and introduction, and what's in it, the Goals
+// reportBuilderPage builds a Report Definition, new or saved (CONTEXT.md:
+// Report Definition): its name and introduction, and what's in it, the Goals
 // matching rules or the Goals the author picks, never those linked to some
-// other Goal (ADR 0007).
+// other Goal (ADR 0007). A saved one's id goes with the form, so the rail
+// reads against its baseline.
 templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
-	@layout("New report", current) {
+	@layout(v.title(), current) {
 		@reportStyles()
 		@reportBuilderStyles()
 		<div class="page-head">
-			<p class="small muted"><a href="/reports">Reports</a>{ " / " }New</p>
-			<h1>New report</h1>
+			<p class="small muted">
+				<a href="/reports">Reports</a>{ " / " }
+				if v.ID != 0 {
+					<a href={ templ.SafeURL(v.draft()) }>{ v.Name }</a>{ " / " }Edit
+				} else {
+					New
+				}
+			</p>
+			<h1>{ v.title() }</h1>
 		</div>
 		<div class="rb-layout">
 			<form
 				data-testid="report-builder"
 				class="card rb-form"
 				method="post"
-				action="/reports/new"
+				action={ templ.SafeURL(v.action()) }
 				hx-post="/reports/new/matches"
 				hx-trigger="change[target.type!='search'], input[target.type!='search'] delay:400ms"
 				hx-target={ "#" + reportMatchesID }
@@ -33,6 +41,9 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 			>
 				// Enter presses a form's first submit, so it saves, not Add rule.
 				<button type="submit" class="sr-only" tabindex="-1" aria-hidden="true">Save report</button>
+				if v.ID != 0 {
+					<input type="hidden" name="id" value={ fmt.Sprint(v.ID) }/>
+				}
 				if problems := v.unplaced(); len(problems) > 0 {
 					<div data-testid="builder-problems" class="rb-problems" role="alert">
 						<p><strong>The report wasn't saved.</strong></p>
@@ -149,7 +160,9 @@ templ reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) {
 		<select data-testid="rule-attribute" name={ ruleRowInput(i, "attribute") } aria-label="What the rule tests">
 			<option value="">Choose…</option>
 			for _, a := range v.Attributes {
-				<option value={ a.Key } selected?={ a.Key == row.Attribute }>{ a.Label }</option>
+				if row.offers(a) {
+					<option value={ a.Key } selected?={ a.Key == row.Attribute }>{ a.Label }</option>
+				}
 			}
 		</select>
 		<select data-testid="rule-op" name={ ruleRowInput(i, "op") } aria-label="Operator">
@@ -160,9 +173,9 @@ templ reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) {
 		if row.Attribute != domain.RuleTopLevel {
 			<select data-testid="rule-values" name={ ruleRowInput(i, "value") } multiple aria-label="Values">
 				for _, a := range v.Attributes {
-					if len(a.Values) > 0 {
+					if values := row.offeredValues(a); len(values) > 0 && row.offers(a) {
 						<optgroup label={ a.Label } data-attribute={ a.Key }>
-							for _, val := range a.Values {
+							for _, val := range values {
 								<option value={ val.Value } selected?={ slices.Contains(row.Values, val.Value) }>{ val.Label }</option>
 							}
 						</optgroup>

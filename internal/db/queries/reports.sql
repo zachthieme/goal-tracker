@@ -9,6 +9,25 @@ SELECT * FROM report_definitions WHERE id = ? LIMIT 1;
 -- name: ListReportDefinitions :many
 SELECT * FROM report_definitions ORDER BY name, id;
 
+-- name: UpdateReportDefinition :exec
+-- Edit a Report Definition's name, introduction and mode; its rules, listed
+-- Goals and Fields are cleared and saved again.
+UPDATE report_definitions SET name = ?, introduction = ?, mode = ?
+WHERE id = ?;
+
+-- name: ClearReportRuleValues :exec
+DELETE FROM report_rule_values
+WHERE report_rule_id IN (SELECT id FROM report_rules WHERE report_definition_id = ?);
+
+-- name: ClearReportRules :exec
+DELETE FROM report_rules WHERE report_definition_id = ?;
+
+-- name: ClearReportDefinitionGoals :exec
+DELETE FROM report_definition_goals WHERE report_definition_id = ?;
+
+-- name: ClearReportDefinitionFields :exec
+DELETE FROM report_definition_fields WHERE report_definition_id = ?;
+
 -- name: AddReportRule :one
 INSERT INTO report_rules (report_definition_id, attribute, dimension_id, op)
 VALUES (?, ?, ?, ?)
