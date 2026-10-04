@@ -135,7 +135,7 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 					<button type="submit" class="btn">Update</button>
 				</form>
 				if r.Previous.ID != 0 {
-					<p data-testid="report-since-publication" class="small muted">Showing what changed since the previous publication, { fmtPublished(r.Previous.PublishedAt) }.</p>
+					<p data-testid="report-since-publication" class="muted">Showing what changed since the previous publication, { fmtPublished(r.Previous.PublishedAt) }.</p>
 				}
 			</div>
 			<div class="rp-head-actions">
@@ -143,13 +143,13 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 				<span data-testid="save-status" class="small muted"></span>
 				@reportHistory(pubs, loc)
 				// Edit definition: #151 fills this slot.
-				<form data-testid="report-publish" class="rp-publish" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications", r.Definition.ID)) }>
+				<form data-testid="report-publish" class="card rp-publish" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications", r.Definition.ID)) }>
 					// A date the reader picked is carried through; otherwise publishing
 					// reads against the previous publication, as the draft does.
 					if r.Previous.ID == 0 {
 						<input type="hidden" name="baseline" value={ fmtDate(r.Baseline) }/>
 					}
-					<p class="small muted">Publishes a frozen copy readers can comment on.</p>
+					<p class="muted">Publishes a frozen copy readers can comment on.</p>
 					<button type="submit" class="btn primary">Publish</button>
 				</form>
 			</div>
@@ -877,7 +877,7 @@ templ reportStyles() {
 		.rp-fields dt::after{content:":"}
 		.rp-fields dd{margin:0}
 		.rp-field-long{white-space:pre-line}
-		.rp-publish{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+		.rp-publish{padding:8px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 		.rp-draft-head{position:sticky;top:0;z-index:2;background:var(--color-canvas);border-bottom:1px solid var(--color-border);padding:12px 0;display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap}
 		.rp-draft-head h1{margin:0}
 		.rp-chip{display:flex;flex-direction:column;gap:4px}
