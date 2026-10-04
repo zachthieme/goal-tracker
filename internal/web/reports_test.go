@@ -2085,3 +2085,124 @@ func TestEditDefinitionShowsTheSavedValuesOverHTTP(t *testing.T) {
 		}
 	}
 }
+
+// A refused edit answers 422 with the builder as typed, still posting to the
+// edit, each error beside its input, and the definition as it was. Add rule
+// on the edit page comes back to it, 200, having saved nothing (ticket #151).
+func TestEditDefinitionRefusalKeepsValuesOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Grow revenue", "Matters.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	editURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10) + "/edit"
+	typed := url.Values{
+		"name":               {"  "},
+		"introduction":       {"Now by rules."},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleLifecycle},
+		"rules[0].op":        {domain.RuleIs},
+	}
+
+	resp := postForm(t, client, editURL, typed)
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("refused edit: status %d, want 422; body:\n%s", resp.StatusCode, page)
+	}
+	builder := pageElement(t, page, "form", "report-builder")
+	for _, want := range []string{
+		`action="/reports/` + strconv.FormatInt(def.ID, 10) + `/edit"`,
+		`name="introduction">Now by rules.</textarea>`,
+		`value="rules" checked`,
+		`<option value="lifecycle" selected>Lifecycle</option>`,
+	} {
+		if !strings.Contains(builder, want) {
+			t.Errorf("the refused edit lost %s:\n%s", want, builder)
+		}
+	}
+	if nameField := between(t, builder, `<span>Name</span>`, `</label>`); !strings.Contains(nameField, `id="name-error"`) {
+		t.Errorf("the blank name's error isn't beside it:\n%s", nameField)
+	}
+	if row := between(t, builder, `data-testid="report-rule"`, `data-testid="rules-hint"`); !strings.Contains(row, `id="rules[0]-error"`) {
+		t.Errorf("the Lifecycle rule with no value isn't refused beside it:\n%s", row)
+	}
+	if got, _ := h.Service.GetReportDefinition(context.Background(), def.ID); got.Name != "MBR" || got.Mode != domain.ReportModePicked {
+		t.Errorf("a refused edit changed the definition to %q, %s", got.Name, got.Mode)
+	}
+
+	typed.Set("do", "add-rule")
+	resp = postForm(t, client, editURL, typed)
+	page = readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Add rule on the edit page: status %d, want 200; body:\n%s", resp.StatusCode, page)
+	}
+	builder = pageElement(t, page, "form", "report-builder")
+	if !strings.Contains(builder, `action="/reports/`+strconv.FormatInt(def.ID, 10)+`/edit"`) || strings.Count(builder, `data-testid="report-rule"`) != 2 {
+		t.Errorf("Add rule didn't come back to the edit page with two rule rows:\n%s", builder)
+	}
+	if got, _ := h.Service.GetReportDefinition(context.Background(), def.ID); got.Name != "MBR" {
+		t.Errorf("Add rule saved the edit: name %q", got.Name)
+	}
+}
+
+// Only the definition's creator or an Admin may edit it: anyone else signed in
+// gets 403 on both the page and the post, which changes nothing. An unknown
+// definition is Not found (ticket #151).
+func TestEditDefinitionOnlyByItsCreatorOrAnAdminOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	h.SignIn("boss@example.com")
+	alice := h.SignIn("alice@example.com")
+	h.SignIn("sam@example.com")
+	g := h.ActiveGoal(alice, "Grow revenue", "Matters.")
+	def := h.SaveReportDefinition(alice, domain.SaveReportDefinitionInput{Name: "Alice's MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+	editURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10) + "/edit"
+	edit := func(name string) url.Values {
+		return url.Values{"name": {name}, "mode": {domain.ReportModePicked}, "picked": {strconv.FormatInt(g.ID, 10)}}
+	}
+
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	resp, err := sam.Get(editURL)
+	if err != nil {
+		t.Fatalf("GET %s: %v", editURL, err)
+	}
+	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("Sam's GET of Alice's edit page: status %d, want 403; body:\n%s", resp.StatusCode, body)
+	}
+	resp = postForm(t, noRedirects(sam), editURL, edit("Sam's now"))
+	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("Sam's POST to Alice's edit: status %d, want 403; body:\n%s", resp.StatusCode, body)
+	}
+	if got, _ := h.Service.GetReportDefinition(context.Background(), def.ID); got.Name != "Alice's MBR" {
+		t.Errorf("Sam's refused edit renamed it %q", got.Name)
+	}
+
+	for _, who := range []string{"alice@example.com", "boss@example.com"} {
+		client := signInClient(t, ts.URL, who)
+		getBody(t, client, editURL)
+		resp := postForm(t, noRedirects(client), editURL, edit("Edited by "+who))
+		if body := readBody(t, resp); resp.StatusCode != http.StatusSeeOther {
+			t.Errorf("%s's edit: status %d, want 303; body:\n%s", who, resp.StatusCode, body)
+		}
+	}
+
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		req, err := http.NewRequest(method, ts.URL+"/reports/9999/edit", strings.NewReader(edit("Nobody's").Encode()))
+		if err != nil {
+			t.Fatalf("new request: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		resp, err := sam.Do(req)
+		if err != nil {
+			t.Fatalf("%s an unknown definition's edit: %v", method, err)
+		}
+		if body := readBody(t, resp); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s an unknown definition's edit: status %d, want 404; body:\n%s", method, resp.StatusCode, body)
+		}
+	}
+}
