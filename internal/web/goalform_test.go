@@ -827,3 +827,99 @@ func TestNewGoalPageOffersWhatAndWhyAndDelivery(t *testing.T) {
 		t.Errorf("the New goal page's styles cast a shadow")
 	}
 }
+
+// whereItFits arranges an Admin's Dimensions and Field for the Where it fits
+// section: Pillar, taking one value; Channel, taking several; Team,
+// Extendable; and a number Field, Budget.
+type whereItFits struct {
+	pillar, channel, team domain.Dimension
+	budget                domain.Field
+}
+
+func arrangeWhereItFits(h *testsupport.Harness) whereItFits {
+	boss := h.SignIn("boss@example.com")
+	return whereItFits{
+		pillar:  h.CreateDimension(boss, "Pillar", "Growth", "Trust"),
+		channel: h.CreateSeveralValuesDimension(boss, "Channel", "Web", "Mobile", "Retail"),
+		team:    h.CreateExtendableDimension(boss, "Team", "Payments"),
+		budget:  h.CreateField(boss, "Budget", domain.FieldNumber, "USD"),
+	}
+}
+
+// goalValueNames are the values g carries, by name, sorted.
+func goalValueNames(t *testing.T, h *testsupport.Harness, g domain.Goal) []string {
+	t.Helper()
+	values, err := h.Service.GoalValues(context.Background(), g.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	var names []string
+	for _, v := range values {
+		names = append(names, v.Value)
+	}
+	slices.Sort(names)
+	return names
+}
+
+// fitsSection is the New goal page's Where it fits section, which holds
+// fieldsets of its own.
+func fitsSection(t *testing.T, page string) string {
+	t.Helper()
+	return between(t, pageElement(t, page, "form", "goal-form"), `data-testid="goal-form-fits"`, `class="gf-actions"`)
+}
+
+// The Where it fits section offers each Dimension as a Goal takes it — a
+// select of value_id for one value, value_id checkboxes for several, and an
+// "add a value" input for an Extendable one — and each Field as an input of
+// its type, and creating with them assigns them all.
+func TestNewGoalFormAssignsDimensionValuesAndFields(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	fits := arrangeWhereItFits(h)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals/new")
+	section := fitsSection(t, page)
+	growth, web, mobile := fits.pillar.Values[0], fits.channel.Values[0], fits.channel.Values[1]
+	if tag := tagAround(t, section, fmt.Sprintf(`value="%d"`, growth.ID)); !strings.HasPrefix(tag, "<option") {
+		t.Errorf("Pillar, taking one value, doesn't offer Growth as an option: %s", tag)
+	}
+	if sel := tagAround(t, section, fmt.Sprintf(`id="dimension:%d"`, fits.pillar.ID)); !strings.HasPrefix(sel, "<select") || attr(sel, "name") != "value_id" {
+		t.Errorf("Pillar isn't a select of value_id: %s", sel)
+	}
+	for _, v := range []domain.DimensionValue{web, mobile} {
+		box := tagAround(t, section, fmt.Sprintf(`id="value:%d"`, v.ID))
+		if attr(box, "type") != "checkbox" || attr(box, "name") != "value_id" || attr(box, "value") != fmt.Sprint(v.ID) {
+			t.Errorf("Channel, taking several, doesn't offer %s as a value_id checkbox: %s", v.Value, box)
+		}
+	}
+	if add := tagAround(t, section, fmt.Sprintf(`name="new_value:%d"`, fits.team.ID)); attr(add, "type") != "text" {
+		t.Errorf("Team, Extendable, has no text input to add a value: %s", add)
+	}
+	if strings.Contains(section, fmt.Sprintf(`name="new_value:%d"`, fits.pillar.ID)) {
+		t.Errorf("Pillar, a Fixed list, offers to add a value:\n%s", section)
+	}
+	if budget := tagAround(t, section, fmt.Sprintf(`name="field:%d"`, fits.budget.ID)); attr(budget, "type") != "number" {
+		t.Errorf("Budget, a number Field, isn't a number input: %s", budget)
+	}
+
+	form := newGoalForm(map[string]string{
+		fmt.Sprintf("new_value:%d", fits.team.ID): "Search",
+		fmt.Sprintf("field:%d", fits.budget.ID):   "25000",
+	})
+	form["value_id"] = []string{fmt.Sprint(growth.ID), fmt.Sprint(web.ID), fmt.Sprint(mobile.ID)}
+	g := createdGoal(t, h, client, ts.URL, form)
+	if got, want := goalValueNames(t, h, g), []string{"Growth", "Mobile", "Search", "Web"}; fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Errorf("the new Goal carries %q, want %q", got, want)
+	}
+	fields, err := h.Service.GoalFields(context.Background(), g.ID)
+	if err != nil {
+		t.Fatalf("GoalFields: %v", err)
+	}
+	if len(fields) != 1 || fields[0].Field.ID != fits.budget.ID || fields[0].Value != "25000" {
+		t.Errorf("the new Goal's Fields are %+v, want Budget 25000", fields)
+	}
+}
