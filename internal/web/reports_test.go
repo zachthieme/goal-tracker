@@ -1133,6 +1133,61 @@ func TestDraftOnTrackDueDatesDoNotBreakOverHTTP(t *testing.T) {
 	}
 }
 
+// At a phone's width each On track row stacks as a block rather than leaving
+// its Due off the side of the card (#180): the Goal first, then its Health and
+// Owner on one line, then its Due. The cells run Health, Goal, Owner, Due in
+// the HTML, so the Goal cell is ordered first. A publication's discussion row
+// spans the full width.
+func TestOnTrackRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(3 * 24 * time.Hour)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
+
+	onTrack := between(t, page, `<table data-testid="on-track"`, "</table>")
+	if !strings.HasPrefix(onTrack, `<table data-testid="on-track" class="rp-track">`) {
+		t.Errorf("the On track table has no rp-track class to style: %s", onTrack)
+	}
+	row := pageElement(t, onTrack, "tr", "selected-goal")
+	for _, class := range []string{"rp-track-health", "rp-track-goal", "rp-track-owner", "rp-track-due"} {
+		if !strings.Contains(row, `class="`+class+`"`) {
+			t.Errorf("the row has no %s cell to style:\n%s", class, row)
+		}
+	}
+	if !strings.Contains(onTrack, `<td colspan="4" class="rp-track-talk">`) {
+		t.Errorf("the discussion row has no rp-track-talk cell to style:\n%s", onTrack)
+	}
+	phone := mediaBlock(t, page, "@media (max-width:600px)")
+	for selector, wants := range map[string][]string{
+		".rp-track thead":          {"display:none"},
+		".rp-track tr":             {"display:grid", "grid-template-columns:auto minmax(0,1fr)"},
+		".rp-track td":             {"display:block"},
+		".rp-track .rp-track-goal": {"order:-1", "grid-column:1/-1"},
+		".rp-track .rp-track-due":  {"grid-column:1/-1"},
+		".rp-track .rp-track-talk": {"grid-column:1/-1"},
+	} {
+		rule, ok := ruleFor(phone, selector)
+		if !ok {
+			t.Errorf("at 600px there is no %s rule", selector)
+			continue
+		}
+		for _, want := range wants {
+			if !strings.Contains(rule, want) {
+				t.Errorf("at 600px %s{%s} lacks %s", selector, rule, want)
+			}
+		}
+	}
+}
+
 // An exception card's due date and its Milestones' dates wrap between their
 // struck slips but never mid-date ("2026-07-" over "16") on a phone (#180).
 func TestExceptionCardDatesDoNotBreakOverHTTP(t *testing.T) {
