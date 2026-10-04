@@ -43,7 +43,7 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 // author composes the narrative on the left beside a preview of exactly what
 // readers will see (CONTEXT.md: Report, Report Definition). Paths to Green are
 // judged overdue as of asOf, today.
-templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion, loc *time.Location, chip baselineChip) {
+templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion, loc *time.Location, chip baselineChip, panel goalsPanel) {
 	@layout(r.Definition.Name, current) {
 		@reportStyles()
 		<header data-testid="draft-header" class="rp-draft-head">
@@ -72,7 +72,7 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 				@narrativeCuration(r, chip)
 			</aside>
 			<div class="rp-body">
-				@reportGoalsPanel(reportGoals(r))
+				@reportGoalsPanel(panel)
 				@draftPreview(r, asOf, d)
 			</div>
 		</div>
@@ -190,21 +190,22 @@ templ reportHistory(pubs []domain.Publication, loc *time.Location) {
 }
 
 // reportGoalsPanel tells the author which Goals the draft selects, for them
-// alone and never published: each Goal once with its Health, the exceptions
-// marked for attention, the first few up front and the rest behind Show all.
-templ reportGoalsPanel(goals []reportGoal) {
+// alone and never published: what the definition selects in plain words, then
+// each Goal once with its Health, the exceptions marked for attention and
+// those only in by Also include marked added, the first few up front and the
+// rest behind Show all.
+templ reportGoalsPanel(panel goalsPanel) {
 	<section data-testid="report-goals" class="card rp-goals">
 		<div class="rp-goals-head">
-			<h2 data-testid="report-goal-count">{ plural(len(goals), "Goal") + " in this report" }</h2>
-			// The scope summary: #148 fills it.
-			<span data-testid="scope-summary" class="small muted"></span>
+			<h2 data-testid="report-goal-count">{ plural(len(panel.Goals), "Goal") + " in this report" }</h2>
+			<span data-testid="scope-summary" class="small muted">{ panel.Scope }</span>
 			// Edit definition: #151 fills this slot.
 		</div>
-		@reportGoalList(goals[:min(len(goals), reportGoalsShown)])
-		if len(goals) > reportGoalsShown {
+		@reportGoalList(panel.Goals[:min(len(panel.Goals), reportGoalsShown)])
+		if len(panel.Goals) > reportGoalsShown {
 			<details data-testid="report-goals-more">
-				<summary>{ fmt.Sprintf("Show all %d", len(goals)) }</summary>
-				@reportGoalList(goals[reportGoalsShown:])
+				<summary>{ fmt.Sprintf("Show all %d", len(panel.Goals)) }</summary>
+				@reportGoalList(panel.Goals[reportGoalsShown:])
 			</details>
 		}
 	</section>
@@ -218,6 +219,9 @@ templ reportGoalList(goals []reportGoal) {
 			<li data-testid="report-goal">
 				<span class={ "rp-goal-dot", healthClass(g.Health) } role="img" aria-label={ reportHealth(g.Health) }><span class="dot"></span></span>
 				<a href={ templ.SafeURL(fmt.Sprintf("#goal-%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
+				if g.Added {
+					<span data-testid="report-goal-added" class="small muted rp-attention">added</span>
+				}
 				if g.Attention {
 					<span data-testid="report-goal-attention" class="small muted rp-attention">attention</span>
 				}
@@ -814,23 +818,25 @@ func pathOverdueAt(b domain.ReportBlock, asOf time.Time) bool {
 // all.
 const reportGoalsShown = 6
 
-// reportGoal is one Goal on the draft's Goals panel: its Health, and whether it
-// is an exception, which gets a full block that needs the reader's attention.
+// reportGoal is one Goal on the draft's Goals panel: its Health, whether it
+// is an exception, which gets a full block that needs the reader's attention,
+// and whether it is Added: in the Report only because of Also include.
 type reportGoal struct {
 	Goal      domain.Goal
 	Health    string
 	Attention bool
+	Added     bool
 }
 
 // reportGoals lists the Goals a Report selects, the exceptions first and then
-// the rest, as the Report itself reads.
-func reportGoals(r domain.Report) []reportGoal {
+// the rest, as the Report itself reads, marking those in added.
+func reportGoals(r domain.Report, added map[int64]bool) []reportGoal {
 	out := make([]reportGoal, 0, len(r.Exceptions)+len(r.Lines))
 	for _, b := range r.Exceptions {
-		out = append(out, reportGoal{Goal: b.Goal, Health: b.Health, Attention: true})
+		out = append(out, reportGoal{Goal: b.Goal, Health: b.Health, Attention: true, Added: added[b.Goal.ID]})
 	}
 	for _, sg := range r.Lines {
-		out = append(out, reportGoal{Goal: sg.Goal, Health: sg.Health})
+		out = append(out, reportGoal{Goal: sg.Goal, Health: sg.Health, Added: added[sg.Goal.ID]})
 	}
 	return out
 }

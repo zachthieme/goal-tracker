@@ -71,8 +71,34 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 	}
 	// Closing an Action Item comes back to this draft, baseline and all.
 	d.Return = r.URL.RequestURI()
+	panel, err := s.draftGoalsPanel(r, report)
+	if err != nil {
+		http.Error(w, "could not summarise the report", http.StatusInternalServerError)
+		return
+	}
 	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
-	render(w, r, http.StatusOK, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip))
+	render(w, r, http.StatusOK, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip, panel))
+}
+
+// goalsPanel is the draft's Goals panel: the Goals the draft selects, and its
+// definition's scope in plain words.
+type goalsPanel struct {
+	Goals []reportGoal
+	Scope string
+}
+
+// draftGoalsPanel builds the Goals panel of the draft report, marking the
+// Goals it selects only because of Also include, at the draft's baseline.
+func (s *Server) draftGoalsPanel(r *http.Request, report domain.Report) (goalsPanel, error) {
+	sum, err := s.svc.ReportSummary(r.Context(), report.Definition)
+	if err != nil {
+		return goalsPanel{}, err
+	}
+	added, err := s.svc.AlsoIncludedOnly(r.Context(), report)
+	if err != nil {
+		return goalsPanel{}, err
+	}
+	return goalsPanel{Goals: reportGoals(report, added), Scope: sum.Scope}, nil
 }
 
 // baselineChip is the draft header's "Changes since …" menu, and the baseline
