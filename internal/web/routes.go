@@ -4,6 +4,7 @@ package web
 // a new feature area adds its handlers here and nowhere else.
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /", s.handleIndex)
+	s.mux.HandleFunc("/", s.handleUnknown)
 	s.mux.HandleFunc("GET /static/app.css", s.handleStylesheet)
 	s.mux.HandleFunc("GET /signin", s.handleSignInForm)
 	s.mux.HandleFunc("POST /signin", s.handleSignIn)

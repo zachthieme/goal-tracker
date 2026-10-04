@@ -263,13 +263,17 @@ Load the fonts with this URL:
     request's pending page, whichever the Reject came from). The templ component is `toastNotice` in `layout.templ`;
     a new Undo reuses it rather than making its own notice.
 - **Not found page:** like a refused Undo, a missing page shows a page, not
-  bare text. Any address that names nothing (an unknown URL, or a Goal,
-  Report, publication or other thing that doesn't exist or has been removed)
-  answers 404 with a "Not found" page inside the normal chrome: one plain
-  sentence, "There's nothing here. It may have been removed, or the link may
-  be wrong.", and a way back: **Back to Home** when signed in, **Sign in**
-  when not. The page is `notFoundPage` in `notfound.templ`, written by
-  `s.notFound`; a handler that 404s calls it rather than `http.NotFound`.
+  bare text. A page you open that doesn't exist (an unknown URL, asked with
+  any method, or a Goal, Report, publication or other thing that doesn't
+  exist or has been removed) answers 404 with a "Not found" page inside the
+  normal chrome, top-bar counts included: one plain sentence, "There's
+  nothing here. It may have been removed, or the link may be wrong.", and a
+  way back: **Back to Home** when signed in, **Sign in** when not. The page
+  is `notFoundPage` in `notfound.templ`, written by `s.notFound`; a handler
+  that 404s calls it rather than `http.NotFound`. An action (a form's POST)
+  refused as "not found" answers as before, with its area's plain-text
+  error, and a known address asked with a method it doesn't take still
+  answers 405.
 - **Primary button (`.btn.primary`):**
   - Resting: `--color-primary-strong` fill, `--color-ink-inverse` text,
     `--radius-md`, 14px, weight 600.

@@ -54,9 +54,7 @@ func (s *Server) currentAccount(r *http.Request) *domain.Account {
 }
 
 // requireAuth wraps a handler so it runs only for a signed-in Account, which it
-// passes along. It counts what needs the Account, and the Goals flagged as
-// risks, into the request context, so the top bar's Home and Risks items can
-// show them on every page.
+// passes along, with the top bar's counts in the request context.
 func (s *Server) requireAuth(h func(http.ResponseWriter, *http.Request, domain.Account)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		acc := s.currentAccount(r)
@@ -64,16 +62,22 @@ func (s *Server) requireAuth(h func(http.ResponseWriter, *http.Request, domain.A
 			http.Redirect(w, r, "/signin", http.StatusSeeOther)
 			return
 		}
-		// A count that can't be read leaves its item uncounted rather than
-		// failing the page.
-		if v, err := s.loadHome(r.Context(), acc.ID); err == nil {
-			r = r.WithContext(withNeedsYou(r.Context(), v.NeedsYou()))
-		}
-		if v, err := s.loadRisks(r.Context()); err == nil {
-			r = r.WithContext(withRisks(r.Context(), v.Flagged()))
-		}
-		h(w, r, *acc)
+		h(w, s.withTopBarCounts(r, *acc), *acc)
 	}
+}
+
+// withTopBarCounts returns r with what needs acc, and the Goals flagged as
+// risks, counted into its context, so the top bar's Home and Risks items can
+// show them. A count that can't be read leaves its item uncounted rather than
+// failing the page.
+func (s *Server) withTopBarCounts(r *http.Request, acc domain.Account) *http.Request {
+	if v, err := s.loadHome(r.Context(), acc.ID); err == nil {
+		r = r.WithContext(withNeedsYou(r.Context(), v.NeedsYou()))
+	}
+	if v, err := s.loadRisks(r.Context()); err == nil {
+		r = r.WithContext(withRisks(r.Context(), v.Flagged()))
+	}
+	return r
 }
 
 // render writes a templ component with the given status. It puts the request
