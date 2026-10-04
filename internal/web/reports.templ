@@ -53,8 +53,7 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 			</div>
 			@reportBaselineChip(r, chip)
 			<div class="rp-head-actions">
-				// Save status: #156 fills it.
-				<span data-testid="save-status" class="small muted"></span>
+				@saveStatus("", false)
 				@reportHistory(pubs, loc)
 				// Edit definition: #151 fills this slot.
 				@reportPublish(r, chip)
@@ -74,13 +73,43 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 			</aside>
 			<div class="rp-body">
 				@reportGoalsPanel(reportGoals(r))
-				<section id="draft-preview" data-testid="report-draft" class="rp-body">
-					<p class="label">Preview: exactly what readers will see</p>
-					@reportContent(r, asOf, d)
-				</section>
+				@draftPreview(r, asOf, d)
 			</div>
 		</div>
 	}
+}
+
+// draftPreview is the draft's preview pane: exactly what readers will see.
+// Autosaving the narrative swaps it in place.
+templ draftPreview(r domain.Report, asOf time.Time, d discussion) {
+	<section id="draft-preview" data-testid="report-draft" class="rp-body">
+		<p class="label">Preview: exactly what readers will see</p>
+		@reportContent(r, asOf, d)
+	</section>
+}
+
+// saveStatus is the draft header's save status: "Saving…" while the compose
+// form autosaves (it is the form's indicator), then the outcome, text. An
+// autosave's answer swaps it in out of band.
+templ saveStatus(text string, oob bool) {
+	<span
+		data-testid="save-status"
+		id="save-status"
+		class="small muted rp-save"
+		if oob {
+			hx-swap-oob="true"
+		}
+	>
+		<span class="rp-saving">Saving…</span>
+		<span data-testid="save-result" id="save-result">{ text }</span>
+	</span>
+}
+
+// narrativeSaved answers an autosave of the narrative: the preview showing it,
+// and the save status.
+templ narrativeSaved(r domain.Report, asOf time.Time, d discussion) {
+	@draftPreview(r, asOf, d)
+	@saveStatus("Saved", true)
 }
 
 // reportBaselineChip is the draft header's "Changes since …" menu: back to the
@@ -437,8 +466,23 @@ templ narrativeCuration(r domain.Report, chip baselineChip) {
 	<section data-testid="report-curation" class="rp-body">
 		<h2>Narrative</h2>
 		// A date the reader picked rides on the action, so the draft reloads
-		// against it.
-		<form data-testid="narrative-curation" class="card rp-form rp-card" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/narrative%s", r.Definition.ID, chip.Query)) }>
+		// against it. With htmx the form autosaves as the author types,
+		// swapping in the preview and the save status but never its own
+		// fields; Save narrative is for readers without JavaScript.
+		<form
+			data-testid="narrative-curation"
+			class="card rp-form rp-card"
+			method="post"
+			action={ templ.SafeURL(narrativeAction(r, chip)) }
+			hx-post={ narrativeAction(r, chip) }
+			hx-trigger="change, input delay:400ms"
+			hx-target="#draft-preview"
+			hx-swap="outerHTML"
+			hx-sync="this:replace"
+			hx-indicator="#save-status"
+			hx-on:htmx:response-error={ notSavedScript }
+			hx-on:htmx:send-error={ notSavedScript }
+		>
 			if len(r.Highlights) == 0 {
 				<p data-testid="no-highlights">No Highlights since { fmtDate(r.Baseline) }.</p>
 			} else {
@@ -460,6 +504,16 @@ templ narrativeCuration(r domain.Report, chip baselineChip) {
 		</form>
 	</section>
 }
+
+// narrativeAction is where the curation form posts: the narrative, against the
+// baseline the reader picked.
+func narrativeAction(r domain.Report, chip baselineChip) string {
+	return fmt.Sprintf("/reports/%d/narrative%s", r.Definition.ID, chip.Query)
+}
+
+// notSavedScript says Not saved in the draft's save status when an autosave
+// gets an error status or no answer at all.
+var notSavedScript = templ.ComponentScript{Call: "document.getElementById('save-result').textContent = 'Not saved'"}
 
 // sectionText is a section's own text on the curation form, folded under the
 // section's heading: open when the author has written some, closed and
@@ -952,6 +1006,9 @@ templ reportStyles() {
 		.rp-chip>ul>li>details>summary{min-height:0;color:var(--color-primary-strong);font-weight:500}
 		.rp-chip form{margin-top:8px}
 		.rp-head-actions{margin-left:auto;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+		.rp-saving{display:none}
+		.rp-save.htmx-request .rp-saving{display:inline}
+		.rp-save.htmx-request #save-result{display:none}
 		.rp-menu{position:relative}
 		.rp-menu>summary{color:var(--color-primary-strong);font-weight:600}
 		.rp-menu>ul{position:absolute;right:0;z-index:3;min-width:280px;max-height:360px;overflow-y:auto}

@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"fmt"
+	"html"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -1765,4 +1766,154 @@ func TestPublishConfirmsWhatItWillFreezeOverHTTP(t *testing.T) {
 	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "changes since 2026-01-01") {
 		t.Errorf("publication does not read against the chosen baseline; line:\n%s", line)
 	}
+}
+
+// The compose form autosaves: htmx posts it and gets back only the preview,
+// showing the narrative as saved, and the header's save status saying so. The
+// compose fields aren't in the answer, so what the author is typing stays put.
+// A plain post still reloads the draft (ticket #156).
+func TestAutosaveNarrativeRefreshesThePreviewOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlight(boss, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	signed := strconv.FormatInt(draftHighlightID(t, h, def, "Signed the first EU customer."), 10)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	form := url.Values{
+		"include-" + signed:                      {"on"},
+		"pick-" + signed:                         {domain.HighlightAccomplishment},
+		"text-" + domain.HighlightAccomplishment: {"EU is open for business."},
+	}
+
+	resp, body := postHX(t, client, reportURL+"/narrative", form)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("autosave: status %d, want 200; body:\n%s", resp.StatusCode, body)
+	}
+	if strings.Contains(body, "<html") || strings.Contains(body, `data-testid="narrative-curation"`) {
+		t.Errorf("autosave answers more than the preview; body:\n%s", body)
+	}
+	preview := between(t, body, `id="draft-preview"`, "")
+	narrative := pageElement(t, preview, "section", "report-narrative")
+	for _, want := range []string{"EU is open for business.", "Signed the first EU customer."} {
+		if !strings.Contains(narrative, want) {
+			t.Errorf("autosaved preview missing %q; preview:\n%s", want, preview)
+		}
+	}
+	status := tagAround(t, body, `data-testid="save-status"`)
+	if !strings.Contains(status, `hx-swap-oob="true"`) {
+		t.Errorf("the save status is not swapped out of band: %s", status)
+	}
+	if result := pageElement(t, body, "span", "save-result"); !strings.HasSuffix(result, ">Saved") {
+		t.Errorf("the save status does not say Saved; body:\n%s", body)
+	}
+
+	plain := postForm(t, client, reportURL+"/narrative", form)
+	if plain.StatusCode != http.StatusOK || plain.Request.URL.Path != "/reports/"+strconv.FormatInt(def.ID, 10) {
+		t.Errorf("plain post: status %d at %s, want a redirect to the draft", plain.StatusCode, plain.Request.URL)
+	}
+}
+
+// An autosave the domain refuses — a Highlight not on a Goal the Report
+// selects — changes only the save status, saying why, and tells htmx to swap
+// nothing else: the preview and what the author typed stay (ticket #156).
+func TestAutosaveRefusalOnlyChangesTheSaveStatusOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	resp, body := postHX(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/narrative", url.Values{
+		"include-9999": {"on"},
+		"pick-9999":    {domain.HighlightInsight},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("refused autosave: status %d, want 200 so htmx swaps the status; body:\n%s", resp.StatusCode, body)
+	}
+	if got := resp.Header.Get("HX-Reswap"); got != "none" {
+		t.Errorf("HX-Reswap = %q, want none", got)
+	}
+	if !strings.Contains(tagAround(t, body, `data-testid="save-status"`), `hx-swap-oob="true"`) {
+		t.Errorf("the save status is not swapped out of band; body:\n%s", body)
+	}
+	result := pageElement(t, body, "span", "save-result")
+	if !strings.Contains(result, "is not on a Goal this Report selects") || strings.Contains(result, "validation failed") {
+		t.Errorf("the save status %q, want the domain's reason without its prefix", result)
+	}
+	for _, untouched := range []string{`data-testid="narrative-curation"`, `id="draft-preview"`, "<html"} {
+		if strings.Contains(body, untouched) {
+			t.Errorf("refused autosave answers %s; body:\n%s", untouched, body)
+		}
+	}
+}
+
+// The compose form autosaves as the author types — debounced, the latest edit
+// replacing one in flight — to its own action, the reader's baseline and all,
+// swapping in the preview beside it. The save status says Saving… meanwhile
+// and Not saved when the answer is an error or never comes (ticket #156).
+func TestComposeFormAutosavesOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"?baseline=2025-12-01")
+	form := openTag(pageElement(t, page, "form", "narrative-curation"))
+	action := html.UnescapeString(attr(form, "action"))
+	if want := "/reports/" + strconv.FormatInt(def.ID, 10) + "/narrative?baseline=2025-12-01"; action != want {
+		t.Fatalf("the compose form posts to %q, want %q", action, want)
+	}
+	for name, want := range map[string]string{
+		"hx-post":      action,
+		"hx-trigger":   "change, input delay:400ms",
+		"hx-target":    "#draft-preview",
+		"hx-swap":      "outerHTML",
+		"hx-sync":      "this:replace",
+		"hx-indicator": "#save-status",
+	} {
+		if got := html.UnescapeString(attr(form, name)); got != want {
+			t.Errorf("compose form %s = %q, want %q", name, got, want)
+		}
+	}
+	for _, event := range []string{"hx-on:htmx:response-error", "hx-on:htmx:send-error"} {
+		handler := html.UnescapeString(attr(form, event))
+		if !strings.Contains(handler, "save-result") || !strings.Contains(handler, "Not saved") || strings.Contains(handler, "htmx.swap") {
+			t.Errorf("compose form %s = %q, want it to put Not saved in the save status", event, handler)
+		}
+	}
+	if !strings.Contains(pageElement(t, page, "span", "save-status"), "Saving…") {
+		t.Errorf("the save status has no Saving… indicator; page:\n%s", page)
+	}
+	if !strings.Contains(pageElement(t, page, "form", "narrative-curation"), `<button type="submit" class="btn">Save narrative</button>`) {
+		t.Errorf("the compose form lost its Save button for readers without JavaScript")
+	}
+}
+
+// postHX posts a form with the HX-Request header set, as htmx does, and
+// returns the response, its headers intact, and its body.
+func postHX(t *testing.T, client *http.Client, rawURL string, form url.Values) (*http.Response, string) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPost, rawURL, strings.NewReader(form.Encode()))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("HX-Request", "true")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("POST %s: %v", rawURL, err)
+	}
+	return resp, readBody(t, resp)
 }
