@@ -99,8 +99,9 @@ templ reportHealthBar(h domain.HealthCounts) {
 
 // reportDraftPage shows a saved Report Definition and its draft Report read
 // against a baseline the reader can change — by default the previous
-// publication. A sticky header carries the baseline chip, the History of its
-// publications (times in the org's timezone, loc) and Publish; below it the
+// publication. A header, sticky above a phone's width, carries the save status,
+// the baseline chip, the History of its publications (times in the org's
+// timezone, loc) and Publish; below it the
 // author composes the narrative on the left beside a preview of exactly what
 // readers will see (CONTEXT.md: Report, Report Definition). Paths to Green are
 // judged overdue as of asOf, today.
@@ -108,13 +109,15 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 	@layout(r.Definition.Name, current) {
 		@reportStyles()
 		<header data-testid="draft-header" class="rp-draft-head">
-			<div>
-				<p class="small muted"><a href="/reports">Reports</a>{ " / " }Draft</p>
-				<h1 data-testid="report-name">{ r.Definition.Name }</h1>
+			<div class="rp-draft-title">
+				<div>
+					<p class="small muted"><a href="/reports">Reports</a>{ " / " }Draft</p>
+					<h1 data-testid="report-name">{ r.Definition.Name }</h1>
+				</div>
+				@saveStatus("", false)
 			</div>
 			@reportBaselineChip(r, chip)
 			<div class="rp-head-actions">
-				@saveStatus("", false)
 				@reportHistory(pubs, loc)
 				@editDefinitionLink(panel.Edit, "btn")
 				@reportPublish(r, chip)
@@ -482,7 +485,7 @@ templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 								</td>
 								<td>
 									if !sg.Goal.DeliveryDate.IsZero() {
-										<span data-testid="selected-due" class="num">{ fmtDate(sg.Goal.DeliveryDate) }</span>
+										<span data-testid="selected-due" class="num rp-date">{ fmtDate(sg.Goal.DeliveryDate) }</span>
 									} else {
 										<span class="muted">—</span>
 									}
@@ -1008,9 +1011,12 @@ func narrativeText(r domain.Report, section string) string {
 // reportStyles are the Report pages' own rules on top of app.css: the reading
 // column a publication is centred in, the Health tiles, the exception cards and
 // their tinted status box, the discussion footer, the scrolling root-Goal
-// picker, and the draft's sticky header, its Goals panel, and its compose and
-// preview panes, which stack into one column at 900px and shrink to a phone's
-// width rather than to the On track table's.
+// picker, and the draft's header, its Goals panel, and its compose and preview
+// panes, which stack into one column at 900px and shrink to a phone's width
+// rather than to the On track table's. At a phone's width the header stops
+// sticking and stacks into rows — the name with its save status, the chip, then
+// History, Edit definition and Publish… — and the Publish… card spans the
+// screen between its gutters.
 templ reportStyles() {
 	<style>
 		.shape{display:none}
@@ -1071,6 +1077,7 @@ templ reportStyles() {
 		.rp-name>a{display:block;font-weight:600;color:var(--color-ink)}
 		.rp-name>span,.rp-table td>.small{display:block}
 		.rp-draft{text-align:right}
+		.rp-date{white-space:nowrap}
 		.rp-changes-hot{display:inline-block;padding:4px 12px;border-radius:var(--radius-full);background:var(--health-y-bg);color:var(--health-y-ink);font-weight:600;white-space:nowrap}
 		.rp-bar{display:flex;width:176px;max-width:100%;height:12px;margin-top:4px;border-radius:var(--radius-full);overflow:hidden}
 		.rp-bar>span{flex:1 1 0;min-width:2px}
@@ -1098,7 +1105,9 @@ templ reportStyles() {
 		.rp-menu.rp-chip>ul{left:0;right:auto}
 		.rp-chip>ul>li>details>summary{min-height:0;color:var(--color-primary-strong);font-weight:500}
 		.rp-chip form{margin-top:8px}
-		.rp-head-actions{margin-left:auto;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+		.rp-draft-title{display:contents}
+		.rp-draft-head .rp-save{order:1;flex:1 1 auto;text-align:right}
+		.rp-head-actions{order:1;margin-left:auto;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 		.rp-saving{display:none}
 		.rp-save.htmx-request .rp-saving{display:inline}
 		.rp-save.htmx-request #save-result{display:none}
@@ -1116,7 +1125,7 @@ templ reportStyles() {
 		.rp-goals details>ul{margin-top:8px}
 		.rp-panes{display:grid;grid-template-columns:380px minmax(0,1fr);gap:24px;align-items:start}
 		.rp-panes>*{min-width:0}
-		@media (max-width:600px){.rp-table thead{display:none}.rp-table tr{display:block;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rp-table tbody tr:last-child{border-bottom:none}.rp-table td{display:block;padding:4px 0;border-bottom:none}.rp-table .rp-draft{text-align:left}}
+		@media (max-width:600px){.rp-table thead{display:none}.rp-table tr{display:block;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rp-table tbody tr:last-child{border-bottom:none}.rp-table td{display:block;padding:4px 0;border-bottom:none}.rp-table .rp-draft{text-align:left}.rp-publish{position:fixed;left:16px;right:16px;width:auto}.rp-draft-head{position:static}.rp-draft-title{display:flex;flex-basis:100%;align-items:flex-end;gap:8px 16px;min-width:0}.rp-draft-title>div{min-width:0}.rp-head-actions{flex-basis:100%;flex-wrap:nowrap;margin-left:0;gap:8px}.rp-head-actions .rp-menu>ul{left:0;right:auto}}
 		@media (max-width:900px){.rp-tiles,.rp-body .rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-panes{grid-template-columns:minmax(0,1fr)}.rp-goal-list{grid-template-columns:minmax(0,1fr)}}
 	</style>
 }
