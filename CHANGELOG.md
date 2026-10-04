@@ -52,6 +52,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Risks page heads with "N Goals need attention. Worst first." and ends with a "What each risk means" disclosure that defines each signal. When nothing is left to show, it says so in one line ("No Goals need attention.", or "No Goals need attention in Mine, Owner needs to update." when scoped or filtered, with a Show everything link) instead of an empty table and cards (#142).
 - [user] The Reports page is a status table: each report shows its scope, how many Goals it has with a bar of their Health, when it was last published (in the org's timezone) and by whom, and how many changes its draft has since — or "Never" and "Not published". Reports never published come first, then those with the most changes, then the longest since published. "Saved Report Definitions" is gone (#150).
 - [ops] Every unexpected server error (a 500) now reaches the server log on stderr as an ERROR record with the request's `method`, `path` and `err`, its underlying cause. Until now a 500 left no trace there. What the browser is sent is unchanged (#181).
+- [ops] A page that fails to draw partway is now logged with its method, path and error instead of being cut short silently; one cut short because the client went away is logged at Warn rather than Error (#182).
 
 **Bug fixes:**
 - [user] Without JavaScript, a Top-level rule row in the Report builder offers only "is Top-level" and "is not Top-level", without a list of every attribute's values beside them (#149).
