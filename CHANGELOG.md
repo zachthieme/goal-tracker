@@ -41,6 +41,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] ADR 0002 and `.out-of-scope/hierarchical-dimension-values.md` now answer "my org's Goals" with a Dimension rule rather than root Goals and their contributors, which ADR 0007 supersedes. `.out-of-scope/report-publish-cadence.md` records why Reports have no publishing cadence or "Publish due" signal (#158).
 - [internal] `CONTEXT.md` defines a Report rule, with its Also include and Leave out lists, and revises Report Definition: rules or hand-picked, finished Goals leave after one report, and only the creator or an Admin may change it. ADR 0007 drops Fields from rule attributes, per ADR 0005 (#147, #151, #160).
 - [internal] `docs/mockups/reports/` holds the Reports redesign mockups (5a and 5b are the current list and draft, 5c and 5d the proposed ones), which the Reports tickets link to for layout and copy (#149, #153).
+- [internal] `CONTEXT.md`'s Report rule entry says Leave out can list Goals whether or not they match the rules (#149).
 
 ### Collected changes — October 3, 2026
 
