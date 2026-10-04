@@ -799,23 +799,21 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 				<ul data-testid="report-milestones">
 					for _, m := range b.Milestones {
 						<li data-testid="report-milestone">
+							if mark := domain.MilestoneMarkOf(m.Milestone, m.PriorDates, m.New, asOf); mark != domain.MilestoneMarkNone {
+								@milestoneMarkBadge(mark)
+								{ " " }
+							}
+							<span class="rp-dates">
+								@milestoneDates(m.Milestone.TargetDate, m.PriorDates)
+							</span>
+							{ " " }
 							if m.Milestone.Status == domain.MilestoneRemoved {
 								<del>{ m.Milestone.Name }</del>
 							} else {
 								{ m.Milestone.Name }
 							}
-							{ " — " }
-							<span class="rp-dates">
-								@struckDates(m.PriorDates)
-								<span>{ fmtDate(m.Milestone.TargetDate) }</span>
-							</span>
-							if m.New {
-								{ " " }<span class="badge lc">New</span>
-							}
-							if m.Milestone.Status != domain.MilestonePlanned {
-								{ " " }<span class="badge lc">{ m.Milestone.Status }</span>
-							}
 							if m.Milestone.RemovedReason != "" {
+								{ " " }
 								<span>— { m.Milestone.RemovedReason }</span>
 							}
 						</li>

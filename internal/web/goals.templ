@@ -1167,6 +1167,29 @@ templ struckDates(dates []time.Time) {
 	}
 }
 
+// milestoneMarkBadge is a Milestone's mark (domain.MilestoneMarkOf) as a
+// badge, Red and Yellow in their Health colours though they are not a Health,
+// or nothing when it has none and reads as on track (CONTEXT.md: Milestone).
+templ milestoneMarkBadge(mark string) {
+	if mark != domain.MilestoneMarkNone {
+		<span data-testid="milestone-mark" class={ "badge", healthClass(mark) }>{ mark }</span>
+	}
+}
+
+// milestoneDates renders a Milestone's date current first, then the most
+// recent date it slipped from struck through, and the number of times it
+// slipped once that is more than one: 11/20 ~~11/03~~ (3) (CONTEXT.md: Date
+// Slip). prior comes earliest first.
+templ milestoneDates(current time.Time, prior []time.Time) {
+	<span>{ fmtDate(current) }</span>
+	if n := len(prior); n > 0 {
+		<del>{ fmtDate(prior[n-1]) }</del>
+	}
+	if n := len(prior); n > 1 {
+		<span data-testid="milestone-slips">{ fmt.Sprintf("(%d)", n) }</span>
+	}
+}
+
 // metricList shows each of a Goal's Metrics as a card: its current value, its
 // baseline and target, and its trend over time against the target (CONTEXT.md:
 // the Goal page shows each Metric's trend); the Owner edits one in a collapsed
