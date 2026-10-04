@@ -1101,8 +1101,9 @@ templ goalIncomplete(missing []string) {
 // milestoneList is a Goal's Milestones as a table of mark, date with the date
 // it last slipped from struck through, and name (CONTEXT.md: Milestone, Date
 // Slip), headed by the Goal's slip count and Milestone Churn. A Milestone with
-// no mark leaves its Status blank, so those marked stand out. editable gives the Owner of a Proposed Goal an
-// edit form on each; once Active, Milestones change in a Check-in.
+// no mark leaves its Status blank, so those marked stand out. editable gives
+// the Owner of a Proposed Goal an edit form on each; once Active, Milestones
+// change in a Check-in.
 templ milestoneList(v goalView, editable bool) {
 	<p class="muted small">
 		<span data-testid="goal-slip-count">{ fmt.Sprintf("%d", len(v.DateSlips)) }</span> slips
