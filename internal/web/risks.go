@@ -27,6 +27,10 @@ func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current dom
 		http.Error(w, "could not read risks", http.StatusInternalServerError)
 		return
 	}
+	if err := s.fixRiskRows(r.Context(), current, rows); err != nil {
+		http.Error(w, "could not read risks", http.StatusInternalServerError)
+		return
+	}
 	page := risksPageView{
 		risksView: v,
 		Rows:      rows,
@@ -253,6 +257,69 @@ type riskGoalRow struct {
 	// Health is the Goal's latest Check-in's Health, empty when it has none.
 	Health  string
 	Signals []riskSignal
+	// Fix is the one action the row offers its viewer.
+	Fix riskFix
+}
+
+// riskFix is a row's one Fix button: what it says, where it goes, and whether
+// it is the page's primary kind of action.
+type riskFix struct {
+	Label   string
+	Href    string
+	Primary bool
+}
+
+// fixRiskRows sets each row's Fix for current, reading the Goals they are a
+// Delegate on once for the page.
+func (s *Server) fixRiskRows(ctx context.Context, current domain.Account, rows []riskGoalRow) error {
+	delegated, err := s.svc.DelegatedGoals(ctx, current.ID)
+	if err != nil {
+		return fmt.Errorf("load delegated goals: %w", err)
+	}
+	delegate := map[int64]bool{}
+	for _, g := range delegated {
+		delegate[g.ID] = true
+	}
+	for i := range rows {
+		rows[i].Fix = rows[i].fix(current, delegate[rows[i].Goal.ID])
+	}
+	return nil
+}
+
+// fix is the row's Fix for current, the first that applies of:
+//  1. Reassign, for an Ownerless Goal and an Admin;
+//  2. Check in, for a Stale or Path to Green overdue Goal current Owns or is a
+//     Delegate on (an Admin has no Check-in right);
+//  3. Link to a parent, for an Unaligned Goal current Owns;
+//  4. Compare dates, the Goal's own page, for a Schedule conflict;
+//  5. Open parent, for a Goal under a halted parent: the first by title;
+//  6. Open Goal, for anything else, someone else's Stale Goal among them.
+func (r riskGoalRow) fix(current domain.Account, delegate bool) riskFix {
+	goal := fmt.Sprintf("/goals/%d", r.Goal.ID)
+	if _, ownerless := r.signal("ownerless"); ownerless && current.IsAdmin {
+		return riskFix{Label: "Reassign", Href: goal + "?open=reassign"}
+	}
+	_, stale := r.signal("stale")
+	_, overdue := r.signal("path-overdue")
+	if (stale || overdue) && (r.Goal.Owner.ID == current.ID || delegate) {
+		return riskFix{Label: "Check in", Href: goal + "/checkin", Primary: true}
+	}
+	if _, unaligned := r.signal("unaligned"); unaligned && r.Goal.Owner.ID == current.ID {
+		return riskFix{Label: "Link to a parent", Href: goal + "?open=parent-link"}
+	}
+	if _, conflict := r.signal("schedule-conflicts"); conflict {
+		return riskFix{Label: "Compare dates", Href: goal}
+	}
+	var parent *domain.Goal
+	for _, sig := range r.Signals {
+		if sig.Kind == "halted-parents" && (parent == nil || strings.ToLower(sig.Related.Title) < strings.ToLower(parent.Title)) {
+			parent = sig.Related
+		}
+	}
+	if parent != nil {
+		return riskFix{Label: "Open parent", Href: fmt.Sprintf("/goals/%d", parent.ID)}
+	}
+	return riskFix{Label: "Open Goal", Href: goal}
 }
 
 // riskSignal is one reason a Goal is flagged. Kind names the signal, as the

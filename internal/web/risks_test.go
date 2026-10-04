@@ -287,7 +287,8 @@ func TestRisksPageListsGoalsUnderHaltedParents(t *testing.T) {
 
 // The Risks page lists a Goal flagged by two signals once, in one table
 // inside a card that scrolls sideways on a narrow screen: one row with both
-// chips, a neutral dash for no Health, and an empty cell for its fix.
+// chips, a neutral dash for no Health, and one Fix: Check in for its Owner,
+// though it is Unaligned too.
 func TestRisksPageListsEachFlaggedGoalOnce(t *testing.T) {
 	t.Parallel()
 
@@ -318,8 +319,8 @@ func TestRisksPageListsEachFlaggedGoalOnce(t *testing.T) {
 	if health := row[strings.Index(row, `data-testid="risk-health"`):strings.Index(row, `data-testid="risk-goal"`)]; !strings.Contains(health, `class="badge lc"`) || !strings.Contains(health, "—") {
 		t.Errorf("row doesn't show a neutral dash for no Health: %s", health)
 	}
-	if !strings.Contains(row, `<td data-testid="risk-fix"></td>`) {
-		t.Errorf("row has no empty fix cell:\n%s", row)
+	if label, href, _ := riskFix(t, row); label != "Check in" || href != "/goals/"+strconv.FormatInt(silent.ID, 10)+"/checkin" {
+		t.Errorf("the Owner's Stale and Unaligned Goal's Fix is %q → %s, want Check in", label, href)
 	}
 	for _, gone := range []string{"risks-nothing-in", `class="rk-empty"`, `data-testid="risks-stale"`, "Why it's flagged"} {
 		if strings.Contains(page, gone) {
@@ -628,4 +629,182 @@ func TestRiskFlagsUseAlertBannersAndChips(t *testing.T) {
 // goalPageURL is the address of g's page on the server at base.
 func goalPageURL(base string, g domain.Goal) string {
 	return base + "/goals/" + strconv.FormatInt(g.ID, 10)
+}
+
+// riskFix returns a row's one Fix: its label, its address, and whether it is
+// the primary button, failing the test unless the fix cell holds exactly one
+// link.
+func riskFix(t *testing.T, row string) (label, href string, primary bool) {
+	t.Helper()
+	cell := pageElement(t, row, "td", "risk-fix")
+	if n := strings.Count(cell, "<a "); n != 1 {
+		t.Fatalf("fix cell has %d links, want 1: %s", n, cell)
+	}
+	_, link, _ := strings.Cut(cell, "<a ")
+	link = "<a " + link
+	tag := openTag(link)
+	_, rest, _ := strings.Cut(tag, `href="`)
+	href, _, _ = strings.Cut(rest, `"`)
+	label, _, _ = strings.Cut(link[len(tag)+1:], "</a>")
+	return label, html.UnescapeString(href), strings.Contains(tag, "primary")
+}
+
+// A stale Goal's Fix is Check in, the primary button, for its Owner and its
+// Delegates, who can check in; anyone else gets Open Goal.
+func TestRiskFixOnAStaleGoalIsCheckInForWhoCanCheckIn(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	h.SignIn("kim@example.com")
+	top := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Grow revenue", "It pays for everything."))
+	silent := h.ActiveChildOf(sam, top, "Silent work", "It matters.")
+	h.AddDelegate(sam, dee, silent.ID)
+	h.Clock.Advance(10 * day)
+	h.Checkin(sam, top.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	for _, c := range []struct {
+		viewer, label, href string
+		primary             bool
+	}{
+		{"sam@example.com", "Check in", "/goals/" + strconv.FormatInt(silent.ID, 10) + "/checkin", true},
+		{"dee@example.com", "Check in", "/goals/" + strconv.FormatInt(silent.ID, 10) + "/checkin", true},
+		{"kim@example.com", "Open Goal", "/goals/" + strconv.FormatInt(silent.ID, 10), false},
+		{"ada@example.com", "Open Goal", "/goals/" + strconv.FormatInt(silent.ID, 10), false},
+	} {
+		page := getBody(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/risks")
+		label, href, primary := riskFix(t, riskRowOf(t, page, silent))
+		if label != c.label || href != c.href || primary != c.primary {
+			t.Errorf("%s sees Fix %q → %s (primary %v), want %q → %s (primary %v)", c.viewer, label, href, primary, c.label, c.href, c.primary)
+		}
+	}
+}
+
+// An Ownerless Goal's Fix for an Admin is Reassign, opening the Goal page's
+// reassign form; a Delegate on it, who can still check in, gets Check in while
+// it is Stale.
+func TestRiskFixOnAnOwnerlessGoalIsReassignForAnAdmin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	top := h.MarkTopLevel(ada, h.ActiveGoal(ada, "Grow revenue", "It pays for everything."))
+	orphaned := h.ActiveChildOf(sam, top, "Migrate displays", "Displays fail often.")
+	h.AddDelegate(sam, dee, orphaned.ID)
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	h.Clock.Advance(10 * day)
+
+	goal := "/goals/" + strconv.FormatInt(orphaned.ID, 10)
+	for _, c := range []struct {
+		viewer, label, href string
+	}{
+		{"ada@example.com", "Reassign", goal + "?open=reassign"},
+		{"dee@example.com", "Check in", goal + "/checkin"},
+	} {
+		client := signInClient(t, ts.URL, c.viewer)
+		page := getBody(t, client, ts.URL+"/risks")
+		row := riskRowOf(t, page, orphaned)
+		riskChip(t, row, "ownerless")
+		riskChip(t, row, "stale")
+		label, href, _ := riskFix(t, row)
+		if label != c.label || href != c.href {
+			t.Fatalf("%s sees Fix %q → %s, want %q → %s", c.viewer, label, href, c.label, c.href)
+		}
+		if label == "Reassign" && !strings.Contains(getBody(t, client, ts.URL+href), `data-testid="reassign-goal"`) {
+			t.Errorf("Reassign doesn't open the reassign form")
+		}
+	}
+}
+
+// An Unaligned Goal's Fix for its Owner is Link to a parent, opening the Goal
+// page's parent-link form; a Delegate, who can't link it, gets Open Goal.
+func TestRiskFixOnAnUnalignedGoalIsLinkToAParentForItsOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	loner := h.ActiveGoal(sam, "Side project", "Nobody asked.")
+	h.AddDelegate(sam, dee, loner.ID)
+
+	goal := "/goals/" + strconv.FormatInt(loner.ID, 10)
+	for _, c := range []struct {
+		viewer, label, href string
+	}{
+		{"sam@example.com", "Link to a parent", goal + "?open=parent-link"},
+		{"dee@example.com", "Open Goal", goal},
+	} {
+		client := signInClient(t, ts.URL, c.viewer)
+		page := getBody(t, client, ts.URL+"/risks")
+		label, href, _ := riskFix(t, riskRowOf(t, page, loner))
+		if label != c.label || href != c.href {
+			t.Fatalf("%s sees Fix %q → %s, want %q → %s", c.viewer, label, href, c.label, c.href)
+		}
+		if label == "Link to a parent" && !strings.Contains(getBody(t, client, ts.URL+href), `data-testid="request-link"`) {
+			t.Errorf("Link to a parent doesn't open the parent-link form")
+		}
+	}
+}
+
+// A Goal due after its parent gets Compare dates, its own page, even when that
+// parent is On Hold too; a Goal under halted parents only gets Open parent,
+// the halted parent first by title. Every row has exactly one Fix.
+func TestRiskFixOnAStructuralSignal(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
+	late := h.ActiveGoalDue(sam, "Late piece", june.AddDate(0, 1, 0))
+	h.RequestLink(sam, late, launch, "")
+	zeta := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Zeta outcome", "It mattered."))
+	alpha := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Alpha outcome", "It mattered."))
+	under := h.ActiveChildOf(sam, zeta, "Under both", "Feeds both.")
+	h.RequestLink(sam, under, alpha, "")
+	for _, parent := range []domain.Goal{launch, zeta, alpha} {
+		if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
+			GoalID:          parent.ID,
+			AuthorID:        sam.ID,
+			Status:          "Stopping.",
+			Lifecycle:       domain.LifecycleOnHold,
+			LifecycleReason: "Budget freeze.",
+		}); err != nil {
+			t.Fatalf("SubmitCheckin %q On Hold: %v", parent.Title, err)
+		}
+	}
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	for _, c := range []struct {
+		goal   domain.Goal
+		kinds  []string
+		label  string
+		goesTo domain.Goal
+	}{
+		{late, []string{"schedule-conflicts", "halted-parents"}, "Compare dates", late},
+		{under, []string{"halted-parents"}, "Open parent", alpha},
+	} {
+		row := riskRowOf(t, page, c.goal)
+		for _, kind := range c.kinds {
+			riskChip(t, row, kind)
+		}
+		if label, href, _ := riskFix(t, row); label != c.label || href != "/goals/"+strconv.FormatInt(c.goesTo.ID, 10) {
+			t.Errorf("%q's Fix is %q → %s, want %q → %q's page", c.goal.Title, label, href, c.label, c.goesTo.Title)
+		}
+	}
+	for _, row := range riskRows(page) {
+		riskFix(t, row) // every row has exactly one Fix
+	}
 }
