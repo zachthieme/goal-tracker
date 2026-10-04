@@ -97,7 +97,10 @@ runs Chromium without one.
 `node --test scripts/*.test.mjs` (or `make test-scripts`, which also runs
 `contrast.py`'s self-test) runs the tests of the parts that don't need
 a browser: checking the shots, including the examples above, wrapping
-actions, the status check, and the printed facts.
+actions, the status check, the part of the page captured, and the printed
+facts. Where Chromium is found, it also takes a `"full": false` shot after an
+action scrolls a page, and checks the shot shows where the window scrolled to;
+without Chromium that test is skipped.
 
 ## `contrast.py`: WCAG contrast of the colour tokens
 

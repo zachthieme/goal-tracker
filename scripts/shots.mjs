@@ -12,7 +12,8 @@
 //   theme   "light" or "dark": the colour scheme the OS asks for (light)
 //   pin     "light" or "dark": pin the Theme menu's choice (none)
 //   width   window width in CSS pixels (1280); height (800)
-//   full    false to capture only the window, not the whole page (true)
+//   full    false to capture only the window, where the page is scrolled to
+//           after the action, not the whole page (true)
 //   action  JavaScript run in the page once it has loaded. A script, e.g.
 //           "document.querySelector('form.x').requestSubmit()", runs as it
 //           is and may end on a promise. One that uses return at its top
@@ -33,7 +34,7 @@
 // its action, or ended on an HTTP status other than its status (without one,
 // on 400 or more; a status that can't be read never fails). Exits 2 if the
 // arguments or a shot are invalid. node --test scripts/*.test.mjs tests the
-// parts that don't need a browser.
+// parts that don't need a browser, and takes a shot where Chromium is found.
 
 import { spawn } from "node:child_process";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -388,19 +389,26 @@ async function shoot(cdp, base, out, shot) {
     const f = result.value;
     if (shot.as && f.url.startsWith("/signin")) throw new Error(`landed on ${f.url}: the sign-in as ${shot.as} didn't hold`);
 
-    const { cssContentSize } = await cdp.send("Page.getLayoutMetrics", {}, s);
-    const height = shot.full ? Math.max(shot.height, Math.ceil(cssContentSize.height)) : shot.height;
-    const { data } = await cdp.send("Page.captureScreenshot", {
-      format: "png",
-      captureBeyondViewport: shot.full,
-      clip: { x: 0, y: 0, width: shot.width, height, scale: 1 },
-    }, s);
+    const metrics = await cdp.send("Page.getLayoutMetrics", {}, s);
+    const { data } = await cdp.send("Page.captureScreenshot", { format: "png", ...captureParams(shot, metrics) }, s);
     const file = join(out, shot.file);
     writeFileSync(file, Buffer.from(data, "base64"));
     return { file, facts: { ...f, status }, native };
   } finally {
     await cdp.send("Target.disposeBrowserContext", { browserContextId }).catch(() => {});
   }
+}
+
+// captureParams is the part of the page a shot captures, given the page's
+// layout metrics: the whole page from its top, at least the window's height,
+// or only the window, wherever it is scrolled to.
+export function captureParams(shot, { cssContentSize, cssVisualViewport }) {
+  if (!shot.full) {
+    const { pageX, pageY } = cssVisualViewport;
+    return { captureBeyondViewport: false, clip: { x: pageX, y: pageY, width: shot.width, height: shot.height, scale: 1 } };
+  }
+  const height = Math.max(shot.height, Math.ceil(cssContentSize.height));
+  return { captureBeyondViewport: true, clip: { x: 0, y: 0, width: shot.width, height, scale: 1 } };
 }
 
 // formatReport is what's printed for a shot that was taken.
