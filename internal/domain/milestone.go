@@ -75,6 +75,7 @@ func MilestoneMarkOf(m Milestone, priorDates []time.Time, isNew bool, asOf time.
 // Check-in. A Check-in's Milestone date moves are its Date Slips instead.
 // Check-ins made before these were recorded have none.
 type MilestoneChange struct {
+	ID          int64
 	MilestoneID int64
 	// Kind is MilestoneChangeAdded, MilestoneChangeDone or
 	// MilestoneChangeRemoved; Reason explains a removal.
@@ -543,6 +544,7 @@ func milestoneChangeFromRow(r db.ListMilestoneChangesByGoalRow) MilestoneChange 
 	addedDate, _ := time.Parse(dateFormat, r.AddedDate)
 	createdAt, _ := time.Parse(timeFormat, r.MilestoneChange.CreatedAt)
 	return MilestoneChange{
+		ID:          r.MilestoneChange.ID,
 		MilestoneID: r.MilestoneChange.MilestoneID,
 		Kind:        r.MilestoneChange.Kind,
 		Reason:      r.MilestoneChange.Reason,

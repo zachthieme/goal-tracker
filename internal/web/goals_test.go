@@ -1109,17 +1109,26 @@ func TestGoalPageAddsAMilestoneInPlaceOverHTTP(t *testing.T) {
 	}
 	ts := newServer(t, h)
 
+	churn := func(card string) string {
+		return between(t, card, `<span data-testid="goal-milestone-churn">`, "</span>")
+	}
+	// Only an addition while Active is Milestone Churn (CONTEXT.md: Milestone
+	// Churn).
 	for _, tc := range []struct {
-		who  string
-		goal domain.Goal
+		who                     string
+		goal                    domain.Goal
+		churnBefore, churnAfter string
 	}{
-		{"sam@example.com", proposed},
-		{"sam@example.com", active},
-		{"dana@example.com", active},
-		{"dana@example.com", onHold},
+		{"sam@example.com", proposed, "0", "0"},
+		{"sam@example.com", active, "0", "1"},
+		{"dana@example.com", active, "1", "2"},
+		{"dana@example.com", onHold, "0", "0"},
 	} {
 		client := signInClient(t, ts.URL, tc.who)
 		card := pageElement(t, getBody(t, client, goalPageURL(ts.URL, tc.goal)), "section", "goal-milestones")
+		if got := churn(card); !strings.HasSuffix(got, ">"+tc.churnBefore) {
+			t.Errorf("%s on %s: churn before reads %q, want %s", tc.who, tc.goal.Lifecycle, got, tc.churnBefore)
+		}
 		link := tagAround(t, card, `data-testid="open-milestones"`)
 		page := getBody(t, client, ts.URL+html.UnescapeString(attr(link, "href")))
 		open := openForm(t, page, "milestones")
@@ -1139,6 +1148,9 @@ func TestGoalPageAddsAMilestoneInPlaceOverHTTP(t *testing.T) {
 		rows := elementTexts(pageElement(t, page, "section", "goal-milestones"), "tr", "goal-milestone")
 		if !slices.ContainsFunc(rows, func(r string) bool { return strings.Contains(r, "2026-05-01 "+name) }) {
 			t.Errorf("%s on %s: Milestones read %q, want %s listed", tc.who, tc.goal.Lifecycle, rows, name)
+		}
+		if got := churn(pageElement(t, page, "section", "goal-milestones")); !strings.HasSuffix(got, ">"+tc.churnAfter) {
+			t.Errorf("%s on %s: churn after reads %q, want %s", tc.who, tc.goal.Lifecycle, got, tc.churnAfter)
 		}
 	}
 }
@@ -1261,6 +1273,45 @@ func TestOwnerOrDelegateEditsAMilestoneOverHTTP(t *testing.T) {
 	_ = readBody(t, resp)
 	if got := onlyMilestone(t, h, active); resp.StatusCode != http.StatusUnprocessableEntity || !got.TargetDate.Equal(beta.TargetDate) {
 		t.Errorf("moving an Active Goal's Milestone date outside a Check-in answered %d and left %s", resp.StatusCode, got.TargetDate)
+	}
+}
+
+// A Milestone added from the Goal page after the Goal's latest Check-in is
+// New on the Goal page, as one that Check-in added would be; one added before
+// it isn't, and nothing is New on a Goal with no Check-in yet (CONTEXT.md:
+// Milestone).
+func TestGoalPageMarksAMilestoneAddedSinceTheLatestCheckinNewOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	unchecked := h.ActiveGoal(sam, "Migrate billing", "Billing is brittle.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	add := func(g domain.Goal, name string) {
+		t.Helper()
+		h.Clock.Advance(time.Hour)
+		resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, g.ID), url.Values{"name": {name}, "target_date": {"2026-05-01"}})
+		if _ = readBody(t, resp); resp.StatusCode != http.StatusOK {
+			t.Fatalf("adding %s answered %d", name, resp.StatusCode)
+		}
+	}
+	add(goal, "Runbook")
+	h.Clock.Advance(time.Hour)
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	add(goal, "GA")
+	add(unchecked, "Docs")
+
+	rows := func(g domain.Goal) []string {
+		t.Helper()
+		return elementTexts(pageElement(t, getBody(t, client, goalPageURL(ts.URL, g)), "section", "goal-milestones"), "tr", "goal-milestone")
+	}
+	if got, want := rows(goal), []string{"2026-04-02 Beta", "2026-05-01 Runbook", "New 2026-05-01 GA"}; !slices.Equal(got, want) {
+		t.Errorf("Milestones read %q, want %q", got, want)
+	}
+	if got, want := rows(unchecked), []string{"2026-04-02 Beta", "2026-05-01 Docs"}; !slices.Equal(got, want) {
+		t.Errorf("with no Check-in, Milestones read %q, want %q", got, want)
 	}
 }
 

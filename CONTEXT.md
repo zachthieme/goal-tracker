@@ -56,7 +56,8 @@ _Avoid_: KPI, key result, measure
 
 **Milestone**:
 A dated checkpoint within a Goal. A Milestone slip that doesn't move the Goal's delivery date does not affect Health.
-Wherever Milestones are listed (the Goal page, a Report, its Markdown export), each reads mark, date, name, with one mark, the first that applies: **Done**; **Removed**; **Red**, still Planned and past its date; **Yellow**, still Planned and slipped at least once; **New**, still Planned and added within the window (since the Report's baseline, or by the Goal's latest Check-in). A Planned Milestone with none of these has no mark and reads as on track. The marks are display marks, not a Health (see **Health**): they never feed the Goal's Health, which its Owner sets.
+The Goal's Owner or a Delegate can add a Milestone at any time while the Goal is Proposed, Active or On Hold, from the Goal page or in a Check-in; one added from the Goal page once the Goal is Active is kept in the Goal's history with who added it. Moving a Milestone's date (a Date Slip) and marking it Done or Removed still happen only in a Check-in.
+Wherever Milestones are listed (the Goal page, a Report, its Markdown export), each reads mark, date, name, with one mark, the first that applies: **Done**; **Removed**; **Red**, still Planned and past its date; **Yellow**, still Planned and slipped at least once; **New**, still Planned and added within the window (since the Report's baseline, or on the Goal page by the Goal's latest Check-in or since it). A Planned Milestone with none of these has no mark and reads as on track. The marks are display marks, not a Health (see **Health**): they never feed the Goal's Health, which its Owner sets.
 _Avoid_: task, deliverable, phase
 
 **Dated Goal**:
@@ -144,6 +145,7 @@ _Avoid_: mitigation, recovery plan, get-well plan
 
 **Check-in**:
 An owner's routine update to one Goal: Health, a short status, Date Slips, and Milestone changes. It should take minutes and be hard to get wrong.
+A Check-in is where a Milestone's date moves and where it is marked Done or Removed; it can add Milestones too, though a Milestone can also be added from the Goal page between Check-ins.
 _Avoid_: status update, 5-15, report
 
 **Nudge**:

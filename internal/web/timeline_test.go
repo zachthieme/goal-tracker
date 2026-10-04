@@ -1379,3 +1379,63 @@ func TestGoalHistoryCheckinListsTheDraftHighlightsItDiscarded(t *testing.T) {
 		t.Errorf("a Draft Highlight deleted by hand appears on the Goal page")
 	}
 }
+
+// A Milestone added from the Goal page while the Goal is Active is its own
+// History entry, saying who added which Milestone with its date, listed under
+// Check-ins and All and under no other chip. One added while the Goal is
+// Proposed is part of planning it, and has none.
+func TestGoalHistoryShowsAMilestoneAddedOutsideACheckin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	dana := h.SignInNamed("dana@example.com", "Dana Reyes")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	h.AddDelegate(sam, dana, goal.ID)
+	h.Clock.Advance(3 * 24 * time.Hour)
+	ts := newServer(t, h)
+	postForm(t, signInClient(t, ts.URL, "dana@example.com"), fmt.Sprintf("%s/goals/%d/milestones", ts.URL, goal.ID),
+		url.Values{"name": {"GA"}, "target_date": {"2026-05-01"}})
+	client := signInClient(t, ts.URL, "sam@example.com")
+	postForm(t, client, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, proposed.ID),
+		url.Values{"name": {"Pricing page"}, "target_date": {"2026-04-01"}})
+
+	milestonesUnder := func(g domain.Goal, filter string) []string {
+		t.Helper()
+		var out []string
+		for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalPageURL(ts.URL, g)+"?history="+filter))) {
+			if entryKind(t, e) == "milestone" {
+				out = append(out, e)
+			}
+		}
+		return out
+	}
+	for _, filter := range []string{"", "checkins"} {
+		added := milestonesUnder(goal, filter)
+		if len(added) != 1 {
+			t.Fatalf("History under %q lists %d Milestone additions, want 1", filter, len(added))
+		}
+		e := added[0]
+		text := entryText(e)
+		for _, fact := range []string{
+			"Milestone " + h.Clock.Now().Format("Mon 2 Jan 15:04"),
+			"Dana Reyes dana@example.com added Milestone GA (2026-05-01)",
+		} {
+			if !strings.Contains(text, fact) {
+				t.Errorf("the addition under %q lacks %q:\n%s", filter, fact, text)
+			}
+		}
+		if !strings.Contains(e, `class="tl-mark tl-milestone"`) {
+			t.Errorf("the addition under %q has no marker of its own:\n%s", filter, e)
+		}
+	}
+	for _, filter := range []string{"date-slips", "so-what", "ownership", "links", "values"} {
+		if n := len(milestonesUnder(goal, filter)); n != 0 {
+			t.Errorf("the %s chip lists %d Milestone additions", filter, n)
+		}
+	}
+	if n := len(milestonesUnder(proposed, "")); n != 0 {
+		t.Errorf("a Proposed Goal's History lists %d Milestone additions, want none", n)
+	}
+}

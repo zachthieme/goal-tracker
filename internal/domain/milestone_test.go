@@ -744,3 +744,37 @@ func TestRequireMilestoneEditor(t *testing.T) {
 		t.Errorf("a missing Milestone: err = %v, want ErrNotFound", err)
 	}
 }
+
+// Defining a Goal, new or already Proposed, adds its Milestones as part of
+// planning it, so none is recorded as a change for its history.
+func TestDefiningAGoalRecordsNoMilestoneChange(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+	date := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	created, err := h.Service.CreateDefinedGoal(ctx, domain.DefinedGoalInput{
+		Title: "Ship v2", SoWhat: "why", OwnerID: sam.ID,
+		Milestones: []domain.MilestoneDefinition{{Name: "Beta", Date: date}},
+	})
+	if err != nil {
+		t.Fatalf("CreateDefinedGoal: %v", err)
+	}
+	proposed := h.CreateGoal(sam, "Grow revenue", "why")
+	if _, err := h.Service.DefineGoal(ctx, sam.ID, proposed.ID, domain.DefinedGoalInput{
+		Title: "Grow revenue", SoWhat: "why", OwnerID: sam.ID,
+		Milestones: []domain.MilestoneDefinition{{Name: "Pricing page", Date: date}},
+	}); err != nil {
+		t.Fatalf("DefineGoal: %v", err)
+	}
+
+	for _, g := range []domain.Goal{created, proposed} {
+		if ms, _ := h.Service.ListMilestones(ctx, g.ID); len(ms) != 1 {
+			t.Errorf("%s's Milestones = %+v, want the one defined", g.Title, ms)
+		}
+		if got := changesOutsideCheckins(t, h, g.ID); len(got) != 0 {
+			t.Errorf("%s's changes outside Check-ins = %+v, want none", g.Title, got)
+		}
+	}
+}
