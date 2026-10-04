@@ -717,14 +717,25 @@ func goalPageURL(base string, g domain.Goal) string {
 	return base + "/goals/" + strconv.FormatInt(g.ID, 10)
 }
 
-// riskFix returns a row's one Fix: its label, its address, and whether it is
-// the primary button, failing the test unless the fix cell holds exactly one
-// link.
+// riskFix returns a row's one Fix: its label, its address (a form's action,
+// for a Fix that posts, and "" for a disabled one), and whether it is the
+// primary button, failing the test unless the fix cell holds exactly one link,
+// one form or one button.
 func riskFix(t *testing.T, row string) (label, href string, primary bool) {
 	t.Helper()
 	cell := pageElement(t, row, "td", "risk-fix")
-	if n := strings.Count(cell, "<a "); n != 1 {
-		t.Fatalf("fix cell has %d links, want 1: %s", n, cell)
+	links, forms, buttons := strings.Count(cell, "<a "), strings.Count(cell, "<form "), strings.Count(cell, "<button ")
+	if links+buttons != 1 || forms > buttons {
+		t.Fatalf("fix cell has %d links, %d forms and %d buttons, want one Fix: %s", links, forms, buttons, cell)
+	}
+	if buttons == 1 {
+		_, button, _ := strings.Cut(cell, "<button ")
+		tag := openTag("<button " + button)
+		label, _, _ = strings.Cut(button[len(tag)-len("<button ")+1:], "</button>")
+		if _, form, ok := strings.Cut(cell, "<form "); ok {
+			href = html.UnescapeString(attr(openTag("<form "+form)+">", "action"))
+		}
+		return label, href, strings.Contains(tag, "primary")
 	}
 	_, link, _ := strings.Cut(cell, "<a ")
 	link = "<a " + link
@@ -736,7 +747,7 @@ func riskFix(t *testing.T, row string) (label, href string, primary bool) {
 }
 
 // A stale Goal's Fix is Check in, the primary button, for its Owner and its
-// Delegates, who can check in; anyone else gets Open Goal.
+// Delegates, who can check in; anyone else, an Admin included, gets Nudge.
 func TestRiskFixOnAStaleGoalIsCheckInForWhoCanCheckIn(t *testing.T) {
 	t.Parallel()
 
@@ -758,8 +769,8 @@ func TestRiskFixOnAStaleGoalIsCheckInForWhoCanCheckIn(t *testing.T) {
 	}{
 		{"sam@example.com", "Check in", "/goals/" + strconv.FormatInt(silent.ID, 10) + "/checkin", true},
 		{"dee@example.com", "Check in", "/goals/" + strconv.FormatInt(silent.ID, 10) + "/checkin", true},
-		{"kim@example.com", "Open Goal", "/goals/" + strconv.FormatInt(silent.ID, 10), false},
-		{"ada@example.com", "Open Goal", "/goals/" + strconv.FormatInt(silent.ID, 10), false},
+		{"kim@example.com", "Nudge", "/goals/" + strconv.FormatInt(silent.ID, 10) + "/nudge", false},
+		{"ada@example.com", "Nudge", "/goals/" + strconv.FormatInt(silent.ID, 10) + "/nudge", false},
 	} {
 		page := getBody(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/risks")
 		label, href, primary := riskFix(t, riskRowOf(t, page, silent))

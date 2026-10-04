@@ -48,7 +48,7 @@ templ risksPage(current *domain.Account, v risksPageView) {
 				if v.Group != "" {
 					<p><a data-testid="risks-show-all" href={ v.ShowAllURL() }>Show all</a></p>
 				}
-				@risksTable(current, v.Today, shown)
+				@risksTable(current, v.Today, v.Here(), shown)
 			}
 		</div>
 		@risksDefinitions()
@@ -146,8 +146,9 @@ templ riskCardLink(c riskCard) {
 	</a>
 }
 
-// risksTable is the flagged Goals, one row each, worst first.
-templ risksTable(current *domain.Account, today time.Time, rows []riskGoalRow) {
+// risksTable is the flagged Goals, one row each, worst first. A Fix that
+// posts returns to here, the page's address.
+templ risksTable(current *domain.Account, today time.Time, here string, rows []riskGoalRow) {
 	<div class="card">
 		<table id="risks-table" data-testid="risks-table">
 			<thead>
@@ -155,7 +156,7 @@ templ risksTable(current *domain.Account, today time.Time, rows []riskGoalRow) {
 			</thead>
 			<tbody>
 				for _, r := range rows {
-					@riskRow(current, today, r)
+					@riskRow(current, today, here, r)
 				}
 			</tbody>
 		</table>
@@ -164,8 +165,9 @@ templ risksTable(current *domain.Account, today time.Time, rows []riskGoalRow) {
 
 // riskRow is one flagged Goal: its Health, its title with a chip per signal
 // that flags it, its Owner ("You" for the viewer's own), and a cell for its
-// fix.
-templ riskRow(current *domain.Account, today time.Time, r riskGoalRow) {
+// fix: a link, a form posting back to here, or a disabled button saying why
+// it can't be used.
+templ riskRow(current *domain.Account, today time.Time, here string, r riskGoalRow) {
 	<tr data-testid="risk-row">
 		<td>
 			@healthBadge("risk-health", r.Health)
@@ -186,7 +188,14 @@ templ riskRow(current *domain.Account, today time.Time, r riskGoalRow) {
 			}
 		</td>
 		<td data-testid="risk-fix">
-			if r.Fix.Primary {
+			if r.Fix.Disabled {
+				<button type="button" class="btn sm" disabled>{ r.Fix.Label }</button>
+			} else if r.Fix.Post {
+				<form data-testid="nudge" method="post" action={ templ.SafeURL(r.Fix.Href) } class="inline-form">
+					<input type="hidden" name="return" value={ here }/>
+					<button type="submit" class="btn sm">{ r.Fix.Label }</button>
+				</form>
+			} else if r.Fix.Primary {
 				<a class="btn primary sm" href={ templ.SafeURL(r.Fix.Href) }>{ r.Fix.Label }</a>
 			} else {
 				<a class="btn sm" href={ templ.SafeURL(r.Fix.Href) }>{ r.Fix.Label }</a>
