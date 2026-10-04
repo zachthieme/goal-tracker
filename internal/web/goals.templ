@@ -623,8 +623,19 @@ templ goalPage(current *domain.Account, v goalView) {
 					@metricList(v.Trends, owner)
 				</section>
 				<section data-testid="goal-milestones" class="card gp-card">
-					<h3>Milestones</h3>
+					@groupHead(v, formMilestones, "+ Add", "Add a Milestone") {
+						<h3>Milestones</h3>
+					}
 					@milestoneList(v, owner && g.Lifecycle == domain.LifecycleProposed)
+					if v.opens(formMilestones) {
+						@openGoalForm(v, formMilestones, "Add Milestone") {
+							<form data-testid="add-milestone" class="gp-inline" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/milestones", g.ID)) }>
+								<input type="text" name="name" value={ v.FormInput.Get("name") } aria-label="Milestone name" placeholder="Milestone name" required autofocus/>
+								<input type="date" name="target_date" value={ v.FormInput.Get("target_date") } aria-label="Milestone date" required/>
+								<button type="submit" class="btn sm">Add Milestone</button>
+							</form>
+						}
+					}
 				</section>
 				@draftHighlightSection(v)
 				<section data-testid="goal-highlights" class="gp-block ruled">

@@ -800,8 +800,10 @@ const (
 	formParentLink   goalForm = "parent-link"
 	formDelegates    goalForm = "delegates"
 	formContributors goalForm = "contributors"
-	formDimensions   goalForm = "dimensions"
-	formFields       goalForm = "fields"
+	// formMilestones is the Milestones card's Add Milestone form.
+	formMilestones goalForm = "milestones"
+	formDimensions goalForm = "dimensions"
+	formFields     goalForm = "fields"
 	// formDraftHighlight is the Draft Highlights block's log form. It always
 	// shows for whoever may use it; naming it lets a refused log come back in
 	// it.
@@ -827,6 +829,14 @@ func (v goalView) offers(form goalForm) bool {
 		return v.Owns
 	case formContributors:
 		return v.Owns && g.Lifecycle == domain.LifecycleProposed
+	case formMilestones:
+		// The Owner or a Delegate adds a Milestone at any time until the Goal
+		// is Done or Cancelled (CONTEXT.md: Milestone).
+		switch g.Lifecycle {
+		case domain.LifecycleProposed, domain.LifecycleActive, domain.LifecycleOnHold:
+			return v.CanCheckin
+		}
+		return false
 	case formDimensions:
 		return v.CanSetValues && len(domain.OfferedDimensions(v.Dimensions)) > 0
 	case formFields:
@@ -1163,27 +1173,30 @@ func (s *Server) handleAddContributor(w http.ResponseWriter, r *http.Request, cu
 	s.writeFormResult(w, r, id, current, formContributors, err)
 }
 
-func (s *Server) handleAddMilestone(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+// handleAddMilestone adds a Milestone from the Goal page's Add Milestone form,
+// as its Owner or a Delegate. A date that doesn't parse is sent on as no
+// date, so the domain refuses it beside the form like any other.
+func (s *Server) handleAddMilestone(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
-	date, err := parseDate(r.FormValue("target_date"))
-	if err != nil {
-		http.Error(w, "invalid milestone date", http.StatusUnprocessableEntity)
-		return
-	}
-	_, err = s.svc.AddMilestone(r.Context(), domain.AddMilestoneInput{
+	date, _ := parseDate(r.FormValue("target_date"))
+	_, err := s.svc.AddMilestoneAsAuthor(r.Context(), current.ID, domain.AddMilestoneInput{
 		GoalID:     id,
 		Name:       r.FormValue("name"),
 		TargetDate: date,
 	})
-	s.writeCommandResult(w, r, id, err)
+	s.writeFormResult(w, r, id, current, formMilestones, err)
 }
 
-func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
+		return
+	}
+	if err := s.svc.RequireMilestoneEditor(r.Context(), current.ID, id); err != nil {
+		s.writeCommandResult(w, r, id, err)
 		return
 	}
 	date, err := parseDate(r.FormValue("target_date"))

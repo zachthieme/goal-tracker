@@ -1091,6 +1091,179 @@ func TestGoalPageMilestonesTable(t *testing.T) {
 	}
 }
 
+// The Owner or a Delegate adds a Milestone from the Goal page's Milestones
+// card while the Goal is Proposed, Active or On Hold: + Add opens an Add
+// Milestone form in place, and posting it reloads the Goal page with the new
+// Milestone listed (CONTEXT.md: Milestone).
+func TestGoalPageAddsAMilestoneInPlaceOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	dana := h.SignIn("dana@example.com")
+	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	onHold := h.OnHoldGoal(sam, "Migrate billing", "Billing is brittle.", "Waiting on finance.")
+	for _, g := range []domain.Goal{proposed, active, onHold} {
+		h.AddDelegate(sam, dana, g.ID)
+	}
+	ts := newServer(t, h)
+
+	for _, tc := range []struct {
+		who  string
+		goal domain.Goal
+	}{
+		{"sam@example.com", proposed},
+		{"sam@example.com", active},
+		{"dana@example.com", active},
+		{"dana@example.com", onHold},
+	} {
+		client := signInClient(t, ts.URL, tc.who)
+		card := pageElement(t, getBody(t, client, goalPageURL(ts.URL, tc.goal)), "section", "goal-milestones")
+		link := tagAround(t, card, `data-testid="open-milestones"`)
+		page := getBody(t, client, ts.URL+html.UnescapeString(attr(link, "href")))
+		open := openForm(t, page, "milestones")
+		assertOpenIn(t, page, "milestones", `data-testid="goal-milestones"`, `data-testid="goal-highlights"`)
+		for _, want := range []string{fmt.Sprintf(`action="/goals/%d/milestones"`, tc.goal.ID), `name="name"`, `type="date" name="target_date"`} {
+			if !strings.Contains(open, want) {
+				t.Errorf("%s on %s: the Add Milestone form lacks %s: %s", tc.who, tc.goal.Lifecycle, want, open)
+			}
+		}
+
+		name := "Added by " + tc.who
+		resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, tc.goal.ID), url.Values{"name": {name}, "target_date": {"2026-05-01"}})
+		page = readBody(t, resp)
+		if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != fmt.Sprintf("/goals/%d", tc.goal.ID) {
+			t.Fatalf("%s on %s: add answered %d at %s, want the Goal page", tc.who, tc.goal.Lifecycle, resp.StatusCode, resp.Request.URL)
+		}
+		rows := elementTexts(pageElement(t, page, "section", "goal-milestones"), "tr", "goal-milestone")
+		if !slices.ContainsFunc(rows, func(r string) bool { return strings.Contains(r, "2026-05-01 "+name) }) {
+			t.Errorf("%s on %s: Milestones read %q, want %s listed", tc.who, tc.goal.Lifecycle, rows, name)
+		}
+	}
+}
+
+// Only the Goal's Owner or a Delegate may add or edit its Milestones: anyone
+// else is refused with 403 by both routes and nothing changes, and the Goal
+// page offers them no Add Milestone form. A Done or Cancelled Goal takes no
+// new Milestone, so even its Owner is offered no form and is refused.
+func TestOnlyTheOwnerOrADelegateChangesMilestonesOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("ada@example.com")
+	h.SignIn("pat@example.com")
+	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	if _, err := h.Service.AddMilestone(t.Context(), domain.AddMilestoneInput{
+		GoalID: proposed.ID, Name: "Pricing page", TargetDate: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+	rows := func(g domain.Goal) []string {
+		t.Helper()
+		ms, err := h.Service.ListMilestones(t.Context(), g.ID)
+		if err != nil {
+			t.Fatalf("ListMilestones: %v", err)
+		}
+		var out []string
+		for _, m := range ms {
+			out = append(out, m.Name+" "+m.TargetDate.Format("2006-01-02"))
+		}
+		return out
+	}
+
+	for _, who := range []string{"pat@example.com", "ada@example.com"} {
+		client := signInClient(t, ts.URL, who)
+		for _, g := range []domain.Goal{proposed, active} {
+			before := rows(g)
+			resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, g.ID), url.Values{"name": {"Sneaky"}, "target_date": {"2026-05-01"}})
+			body := readBody(t, resp)
+			if resp.StatusCode != http.StatusForbidden || !strings.Contains(html.UnescapeString(body), "only the Owner or a Delegate may change this Goal's Milestones") {
+				t.Errorf("%s adding to %s: %d %q, want 403 with the reason", who, g.Lifecycle, resp.StatusCode, body)
+			}
+			m := onlyMilestone(t, h, g)
+			resp = postForm(t, client, fmt.Sprintf("%s/milestones/%d", ts.URL, m.ID), url.Values{"name": {"Renamed"}, "target_date": {m.TargetDate.Format("2006-01-02")}})
+			_ = readBody(t, resp)
+			if resp.StatusCode != http.StatusForbidden {
+				t.Errorf("%s editing on %s: %d, want 403", who, g.Lifecycle, resp.StatusCode)
+			}
+			if after := rows(g); !slices.Equal(after, before) {
+				t.Errorf("%s changed %s's Milestones: %q, was %q", who, g.Lifecycle, after, before)
+			}
+			for _, u := range []string{goalPageURL(ts.URL, g), goalPageURL(ts.URL, g) + "?open=milestones"} {
+				if page := getBody(t, client, u); strings.Contains(page, `data-testid="open-milestones"`) || strings.Contains(page, `data-testid="add-milestone"`) {
+					t.Errorf("%s is offered the Add Milestone form at %s", who, u)
+				}
+			}
+		}
+	}
+
+	sam2 := signInClient(t, ts.URL, "sam@example.com")
+	for _, lifecycle := range []string{domain.LifecycleDone, domain.LifecycleCancelled} {
+		g := h.ActiveGoal(sam, "Ended "+lifecycle, "It mattered.")
+		h.EndGoalInCheckin(sam, g.ID, lifecycle)
+		for _, u := range []string{goalPageURL(ts.URL, g), goalPageURL(ts.URL, g) + "?open=milestones"} {
+			if page := getBody(t, sam2, u); strings.Contains(page, `data-testid="open-milestones"`) || strings.Contains(page, `data-testid="add-milestone"`) {
+				t.Errorf("the Owner of a %s Goal is offered the Add Milestone form at %s", lifecycle, u)
+			}
+		}
+		before := rows(g)
+		resp := postForm(t, sam2, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, g.ID), url.Values{"name": {"Late"}, "target_date": {"2026-05-01"}})
+		_ = readBody(t, resp)
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("adding to a %s Goal answered %d, want 422", lifecycle, resp.StatusCode)
+		}
+		if after := rows(g); !slices.Equal(after, before) {
+			t.Errorf("a %s Goal took a Milestone: %q", lifecycle, after)
+		}
+	}
+}
+
+// The Owner's Edit on a Proposed Goal's Milestone still changes its name and
+// date, and a Delegate may rename an Active Goal's Milestone; its date still
+// moves only in a Check-in (CONTEXT.md: Date Slip).
+func TestOwnerOrDelegateEditsAMilestoneOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	dana := h.SignIn("dana@example.com")
+	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	if _, err := h.Service.AddMilestone(t.Context(), domain.AddMilestoneInput{
+		GoalID: proposed.ID, Name: "Pricing page", TargetDate: time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, dana, active.ID)
+	ts := newServer(t, h)
+
+	pricing := onlyMilestone(t, h, proposed)
+	sam2 := signInClient(t, ts.URL, "sam@example.com")
+	edit := tagAround(t, pageElement(t, getBody(t, sam2, goalPageURL(ts.URL, proposed)), "section", "goal-milestones"), fmt.Sprintf(`action="/milestones/%d"`, pricing.ID))
+	resp := postForm(t, sam2, ts.URL+attr(edit, "action"), url.Values{"name": {"Pricing page live"}, "target_date": {"2026-04-15"}})
+	_ = readBody(t, resp)
+	if got := onlyMilestone(t, h, proposed); resp.StatusCode != http.StatusOK || got.Name != "Pricing page live" || got.TargetDate.Format("2006-01-02") != "2026-04-15" {
+		t.Errorf("the Owner's Edit answered %d and left %q %s", resp.StatusCode, got.Name, got.TargetDate.Format("2006-01-02"))
+	}
+
+	beta := onlyMilestone(t, h, active)
+	dana2 := signInClient(t, ts.URL, "dana@example.com")
+	resp = postForm(t, dana2, fmt.Sprintf("%s/milestones/%d", ts.URL, beta.ID), url.Values{"name": {"Public beta"}, "target_date": {beta.TargetDate.Format("2006-01-02")}})
+	_ = readBody(t, resp)
+	if got := onlyMilestone(t, h, active); resp.StatusCode != http.StatusOK || got.Name != "Public beta" {
+		t.Errorf("a Delegate's rename answered %d and left %q", resp.StatusCode, got.Name)
+	}
+	resp = postForm(t, dana2, fmt.Sprintf("%s/milestones/%d", ts.URL, beta.ID), url.Values{"name": {"Public beta"}, "target_date": {"2026-12-01"}})
+	_ = readBody(t, resp)
+	if got := onlyMilestone(t, h, active); resp.StatusCode != http.StatusUnprocessableEntity || !got.TargetDate.Equal(beta.TargetDate) {
+		t.Errorf("moving an Active Goal's Milestone date outside a Check-in answered %d and left %s", resp.StatusCode, got.TargetDate)
+	}
+}
+
 // goalMarkedMilestones is how the Goal page lists MilestoneMarksGoal's
 // Milestones, earliest date first: mark, then date, then name.
 var goalMarkedMilestones = []string{
@@ -4328,6 +4501,8 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {fmt.Sprint(goal.ID)}, "note": {"Because."}}, "cannot contribute to itself", ">Because.</textarea>"},
 		{"sam", "delegates", path(goal, "/delegates"), url.Values{"email": {"nobody@example.com"}}, "nobody@example.com", `value="nobody@example.com"`},
 		{"sam", "contributors", path(proposed, "/contributors"), url.Values{"email": {"nobody@example.com"}}, "no account with email", `value="nobody@example.com"`},
+		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"  "}, "target_date": {"2026-05-01"}}, "a Milestone needs a name", `value="2026-05-01"`},
+		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"GA"}, "target_date": {""}}, "a Milestone needs a date", `value="GA"`},
 		{"sam", "dimensions", path(goal, "/dimensions"), url.Values{"dimension_id": {fmt.Sprint(team.ID)}, "new_value": {"  "}}, "cannot be blank", `value="  "`},
 		{"sam", "fields", path(goal, "/fields"), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"lots"}}, "Budget", `value="lots"`},
 	} {
