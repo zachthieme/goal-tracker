@@ -663,46 +663,6 @@ func TestPendingHandoffLayoutComesFromClasses(t *testing.T) {
 	assertStyledBy(t, tagAround(t, home, fmt.Sprintf(`action="/handoffs/%d/reject"`, ho.ID)), css, "inline-form", "display:inline")
 }
 
-// assertStyledBy checks the element's opening tag carries no style attribute
-// but the class, and that rules declare exactly want for that class.
-func assertStyledBy(t *testing.T, tag, rules, class, want string) {
-	t.Helper()
-	if strings.Contains(tag, " style=") {
-		t.Errorf("element carries a style attribute: %s", tag)
-	}
-	if !slices.Contains(strings.Fields(attr(tag, "class")), class) {
-		t.Errorf("element lacks class %s: %s", class, tag)
-	}
-	if got := cssRule(t, rules, "."+class); got != want {
-		t.Errorf(".%s declares %q, want %q", class, got, want)
-	}
-}
-
-// tagAround returns the whole opening tag holding marker, its attributes in
-// whatever order they render.
-func tagAround(t *testing.T, page, marker string) string {
-	t.Helper()
-	at := strings.Index(page, marker)
-	if at < 0 {
-		t.Fatalf("page has no %s", marker)
-	}
-	start := strings.LastIndex(page[:at], "<")
-	end := strings.Index(page[at:], ">")
-	if start < 0 || end < 0 {
-		t.Fatalf("%s is not inside a tag", marker)
-	}
-	return page[start : at+end+1]
-}
-
-// attr returns the value of the named attribute in an opening tag, or "".
-func attr(tag, name string) string {
-	m := regexp.MustCompile(`\s` + regexp.QuoteMeta(name) + `="([^"]*)"`).FindStringSubmatch(tag)
-	if m == nil {
-		return ""
-	}
-	return m[1]
-}
-
 // rejectHandoff arranges Sam handing his Goal to Pat and Pat rejecting the
 // Handoff from the page at from ("/handoffs" or "/home"), returning the page
 // Pat lands on.

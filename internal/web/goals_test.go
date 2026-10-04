@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"html"
-	"io"
 	"maps"
 	"net/http"
 	"net/http/cookiejar"
@@ -75,25 +74,6 @@ func TestSmokeSignInCreateAndViewGoal(t *testing.T) {
 			t.Errorf("goal page missing %q; body:\n%s", want, goalBody)
 		}
 	}
-}
-
-func postForm(t *testing.T, client *http.Client, rawURL string, form url.Values) *http.Response {
-	t.Helper()
-	resp, err := client.PostForm(rawURL, form)
-	if err != nil {
-		t.Fatalf("POST %s: %v", rawURL, err)
-	}
-	return resp
-}
-
-func readBody(t *testing.T, resp *http.Response) string {
-	t.Helper()
-	defer func() { _ = resp.Body.Close() }()
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read body: %v", err)
-	}
-	return string(b)
 }
 
 // findGoalLink pulls the first /goals/<id> href out of the rendered list.
@@ -1082,16 +1062,6 @@ func TestGoalPageHeaderWrapsActionsAtPhoneWidthOverHTTP(t *testing.T) {
 	}
 }
 
-// cssRule returns the declarations of the page's style rule for selector.
-func cssRule(t *testing.T, page, selector string) string {
-	t.Helper()
-	m := regexp.MustCompile(regexp.QuoteMeta(selector) + `\{([^}]*)\}`).FindStringSubmatch(page)
-	if m == nil {
-		t.Fatalf("page has no %s rule", selector)
-	}
-	return m[1]
-}
-
 // The Goal page's Milestones are a table of status badge, name and date, the
 // date's slips struck, headed by the Goal's slip count and Milestone Churn.
 func TestGoalPageMilestonesTable(t *testing.T) {
@@ -1510,13 +1480,6 @@ func TestOngoingGoalChecklistNeedsAMetric(t *testing.T) {
 	if button := between(t, pageElement(t, page, "form", "activate-goal"), "<button", ">"); !strings.Contains(button, "disabled") {
 		t.Errorf("Activate is enabled for an Ongoing Goal with no Metric: %s", button)
 	}
-}
-
-// shownAs is how a page shows a person: by label, on a control that expands
-// their email inline beside it, with the email on hover too (CONTEXT.md: Name).
-func shownAs(emailAddr, label string) string {
-	return `<span class="person"><button type="button" class="disclose" aria-expanded="false" title="` + emailAddr + `">` + label +
-		`</button><span class="person-email" hidden>` + emailAddr + `</span></span>`
 }
 
 // shownPlainAs is how a page shows a person inside another control, where a
@@ -4113,25 +4076,6 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 			t.Errorf("%s on %q: menu is %v, want %v", tc.who, tc.goal.Title, got, tc.want)
 		}
 	}
-}
-
-// openForms counts the forms a Goal page shows open in place.
-func openForms(page string) int {
-	return strings.Count(page, `data-open-form="`)
-}
-
-// openForm returns the form the Goal page shows open in place, from its
-// wrapper to its Cancel link, failing unless exactly one named form is open.
-func openForm(t *testing.T, page, form string) string {
-	t.Helper()
-	if n := openForms(page); n != 1 {
-		t.Fatalf("page shows %d forms open, want only %q", n, form)
-	}
-	open := between(t, page, `data-open-form="`, `data-testid="cancel-form"`)
-	if !strings.HasPrefix(open, `data-open-form="`+form+`"`) {
-		t.Fatalf("page shows the wrong form open, want %q: %s", form, open)
-	}
-	return open + tagAround(t, page, `data-testid="cancel-form"`)
 }
 
 // assertOpenIn checks the open form sits in the page's block from the element

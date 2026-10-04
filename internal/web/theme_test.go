@@ -75,14 +75,6 @@ func TestThemeCookiePinsEveryPage(t *testing.T) {
 	}
 }
 
-// noRedirects stops client following redirects, so a test sees where a
-// response sends the person.
-func noRedirects(client *http.Client) *http.Client {
-	c := *client
-	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	return &c
-}
-
 // chooseTheme posts a theme choice from the page at back and returns the
 // response, unfollowed.
 func chooseTheme(t *testing.T, client *http.Client, baseURL, choice, back string) *http.Response {

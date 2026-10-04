@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"regexp"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
-	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
 // A Goal's Owner links it under another Goal they own; the link is accepted
@@ -120,49 +118,6 @@ func TestLinkRequestPendsThenParentOwnerAcceptsAcrossOwners(t *testing.T) {
 	}
 }
 
-// signInClient returns an HTTP client with its own cookie jar, signed in as
-// emailAddr.
-func signInClient(t *testing.T, baseURL, emailAddr string) *http.Client {
-	t.Helper()
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		t.Fatalf("cookiejar: %v", err)
-	}
-	client := &http.Client{Jar: jar}
-	resp := postForm(t, client, baseURL+"/signin", url.Values{"email": {emailAddr}})
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("sign in %q: status %d", emailAddr, resp.StatusCode)
-	}
-	_ = readBody(t, resp)
-	return client
-}
-
-// navTo is the anchor a parents/children navigation list renders for a Goal —
-// distinct from the request form's <option value="id">, so it tells a real link
-// apart from a mere candidate.
-func navTo(goalID int64) string {
-	return fmt.Sprintf(`href="/goals/%d"`, goalID)
-}
-
-func getBody(t *testing.T, client *http.Client, rawURL string) string {
-	t.Helper()
-	resp, err := client.Get(rawURL)
-	if err != nil {
-		t.Fatalf("GET %s: %v", rawURL, err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET %s: status %d", rawURL, resp.StatusCode)
-	}
-	return readBody(t, resp)
-}
-
-func newServer(t *testing.T, h *testsupport.Harness) *httptest.Server {
-	t.Helper()
-	ts := httptest.NewServer(web.NewServer(h.Service))
-	t.Cleanup(ts.Close)
-	return ts
-}
-
 // Each pending link request is a card with Accept as the primary action and a
 // Reject that rejects it at once, with no confirmation (#56).
 func TestPendingLinkRowsRejectAtOnce(t *testing.T) {
@@ -227,15 +182,6 @@ func assertAcceptReject(t *testing.T, row, base string) {
 	assertSubmitsAtOnce(t, "Reject", tagAround(t, row, `action="`+base+`/reject"`))
 }
 
-// assertSubmitsAtOnce checks a form's opening tag sends it without a browser
-// dialog asking for confirmation first (#56).
-func assertSubmitsAtOnce(t *testing.T, what, form string) {
-	t.Helper()
-	if strings.Contains(form, "onsubmit=") || strings.Contains(form, "confirm(") {
-		t.Errorf("%s asks for confirmation: %s", what, form)
-	}
-}
-
 // assertConfirms checks a form's opening tag asks for confirmation in a browser
 // dialog before sending it.
 func assertConfirms(t *testing.T, what, form string) {
@@ -243,25 +189,6 @@ func assertConfirms(t *testing.T, what, form string) {
 	if !strings.Contains(form, `onsubmit="return confirm(`) {
 		t.Errorf("%s doesn't ask for confirmation: %s", what, form)
 	}
-}
-
-// between returns s from the first start up to the first end after it, or to
-// the end of s when end is "", failing the test if either is missing.
-func between(t *testing.T, s, start, end string) string {
-	t.Helper()
-	at := strings.Index(s, start)
-	if at < 0 {
-		t.Fatalf("no %s in:\n%s", start, s)
-	}
-	s = s[at:]
-	if end == "" {
-		return s
-	}
-	upTo := strings.Index(s, end)
-	if upTo < 0 {
-		t.Fatalf("no %s after %s in:\n%s", end, start, s)
-	}
-	return s[:upTo]
 }
 
 // undoAction pulls the Undo form's action out of a page's toast, failing when
