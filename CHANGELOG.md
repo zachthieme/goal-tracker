@@ -79,6 +79,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] On a Report draft, the baseline chip is as tall as the buttons beside it, and the Highlights line up with the "Highlights since" heading instead of being indented (#180).
 - [user] In the report builder, picking a Goal from a search empties the search box, so the next search starts afresh instead of adding to the last one, and searching no longer logs an htmx warning while a list has no Goals in it (#180).
 - [user] The Suggest a parent page no longer has a stray space before ", owned by" (#180).
+- [user] Requests that overlap, such as saving a report while its matches rail is still loading, now wait their turn for the database instead of failing with a server error (#177).
+- [user] In the report builder, the Matches panel updates as you add rules and pick Goals even before the report has a Name. Before, it kept saying "Add a rule to see matching Goals" until a Name was typed. Save still asks for a Name (#179).
 
 **Infrastructure:**
 - [api] Database schema: migration `0037_parent_suggestions` adds a `parent_suggestions` table holding each Parent suggestion: its Goal, suggested parent, suggester, note, outcome, and when it was made and closed. It's additive and runs on startup (#144).
