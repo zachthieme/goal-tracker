@@ -17,9 +17,7 @@ templ suggestParentPage(current *domain.Account, v suggestParentView) {
 			<div>
 				<h1>Suggest a parent</h1>
 				<p class="muted">
-					{ "For " }
-					<a href={ templ.SafeURL(goalPath(v.Goal.ID)) }>{ v.Goal.Title }</a>
-					{ ", owned by " }
+					For <a href={ templ.SafeURL(goalPath(v.Goal.ID)) }>{ v.Goal.Title }</a>{ ", owned by " }
 					@person(v.Goal.Owner)
 					{ ", who decides whether to link it." }
 				</p>
