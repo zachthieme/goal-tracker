@@ -1133,10 +1133,56 @@ func TestDraftOnTrackDueDatesDoNotBreakOverHTTP(t *testing.T) {
 	}
 }
 
+// An exception card's due date and its Milestones' dates wrap between their
+// struck slips but never mid-date ("2026-07-" over "16") on a phone (#180).
+func TestExceptionCardDatesDoNotBreakOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	beta := onlyMilestone(t, h, g)
+	slippedBeta := beta.TargetDate.AddDate(0, 0, 10)
+	if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
+		GoalID:             g.ID,
+		AuthorID:           boss.ID,
+		Health:             domain.HealthYellow,
+		Status:             "Later than planned.",
+		PathToGreen:        "Swap vendors.",
+		PathTargetDate:     testsupport.Epoch.AddDate(0, 2, 0),
+		DeliveryDate:       time.Date(2026, 7, 16, 0, 0, 0, 0, time.UTC),
+		DeliveryDateReason: "Vendor slipped.",
+		Milestones:         []domain.MilestoneChangeInput{{MilestoneID: beta.ID, TargetDate: slippedBeta, DateReason: "Vendor slipped."}},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+
+	block := pageElement(t, page, "article", "report-exception")
+	due := strings.Join(strings.Fields(between(t, block, `<span data-testid="report-due"`, "</p>")), " ")
+	if want := `<span data-testid="report-due" class="rp-dates"><del>2026-07-02</del> <span>2026-07-16</span></span>`; due != want {
+		t.Errorf("the card's due date is not a wrapper of whole dates:\n got %s\nwant %s", due, want)
+	}
+	milestone := strings.Join(strings.Fields(pageElement(t, block, "li", "report-milestone")), " ")
+	if want := `<span class="rp-dates"><del>` + beta.TargetDate.Format("2006-01-02") + `</del> <span>` + slippedBeta.Format("2006-01-02") + `</span></span>`; !strings.Contains(milestone, want) {
+		t.Errorf("the Milestone's dates are not a wrapper of whole dates:\nwant %s\nin %s", want, milestone)
+	}
+	if rule := cssRule(t, page, ".rp-dates>*"); !strings.Contains(rule, "white-space:nowrap") {
+		t.Errorf("a card date can break mid-date: .rp-dates>*{%s}", rule)
+	}
+	if rule, ok := ruleFor(page, ".rp-dates"); ok && strings.Contains(rule, "nowrap") {
+		t.Errorf("the whole wrapper is kept on one line, so its slips can't wrap: .rp-dates{%s}", rule)
+	}
+}
+
 // The draft's own rules outrank the generic ones they sit inside (#173): a
 // Highlight's section picker is an inline segmented control, not the form's
-// column of fields, the Highlight list sits flush in its card, and the preview's
-// Health tiles stay a row of four. The baseline chip is a pill.
+// column of fields, the Highlight list and its items sit flush in its card, and
+// the preview's Health tiles stay a row of four. The baseline chip is a pill as
+// tall as the buttons beside it (#180).
 func TestDraftRulesWinTheCascadeOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1158,6 +1204,14 @@ func TestDraftRulesWinTheCascadeOverHTTP(t *testing.T) {
 	if rule := cssRule(t, page, ".rp-card .rp-list"); !strings.Contains(rule, "padding:0") {
 		t.Errorf("the Highlight list keeps the card's list indent: .rp-card .rp-list{%s}", rule)
 	}
+	// .rp-list>li pads every list item 24px a side; a Highlight lines up with
+	// the "Highlights since" heading above it instead (#180).
+	if rule := cssRule(t, page, ".rp-list>li.rp-curate"); !strings.Contains(rule, "padding-left:0") || !strings.Contains(rule, "padding-right:0") {
+		t.Errorf("a Highlight is indented from its heading: .rp-list>li.rp-curate{%s}", rule)
+	}
+	if rule := cssRule(t, page, ".rp-list>li"); !strings.Contains(rule, "padding:12px 24px") {
+		t.Errorf("other list items lost their padding: .rp-list>li{%s}", rule)
+	}
 	// .rp-body section stacks every section in the preview as a column; the
 	// Health tiles stay four across, two at 900px.
 	if rule := cssRule(t, page, ".rp-body .rp-tiles"); !strings.Contains(rule, "display:grid") || !strings.Contains(rule, "grid-template-columns:repeat(4,minmax(0,1fr))") {
@@ -1170,6 +1224,11 @@ func TestDraftRulesWinTheCascadeOverHTTP(t *testing.T) {
 	// The baseline chip is a bordered pill, as a .tag is.
 	if rule := cssRule(t, page, ".rp-menu.rp-chip>summary"); !strings.Contains(rule, "border:1px solid") || !strings.Contains(rule, "border-radius:var(--radius-full)") {
 		t.Errorf("the baseline chip is not a bordered pill: .rp-menu.rp-chip>summary{%s}", rule)
+	}
+	// app.css's details>summary is 44px tall; the chip matches the 40px
+	// buttons beside it, its border inside that height (#180).
+	if rule := cssRule(t, page, ".rp-menu.rp-chip>summary"); !strings.Contains(rule, "box-sizing:border-box") || !strings.Contains(rule, "min-height:40px") {
+		t.Errorf("the baseline chip is not 40px tall: .rp-menu.rp-chip>summary{%s}", rule)
 	}
 }
 

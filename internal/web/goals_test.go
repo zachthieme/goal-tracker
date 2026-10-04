@@ -676,8 +676,8 @@ func TestGoalListSortsProblemsFirst(t *testing.T) {
 }
 
 // Each row shows when the Goal is due, with the dates its Date Slips moved it
-// from struck through, or a dash for an Ongoing Goal, and how long ago its last
-// Check-in was.
+// from struck through (wrapping between dates, never mid-date: #180), or a dash
+// for an Ongoing Goal, and how long ago its last Check-in was.
 func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
 	t.Parallel()
 
@@ -703,13 +703,20 @@ func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
 	h.Clock.Advance(3 * day)
 	ts := newServer(t, h)
 
-	rows := goalRows(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals"))
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals")
+	rows := goalRows(t, page)
 	if got := rowTitles(rows, slipped, ongoing); !slices.Equal(got, []string{"Slipped", "Keep the lights on"}) {
 		t.Fatalf("rows = %q", got)
 	}
 
-	if due := strings.Join(strings.Fields(pageElement(t, rows[0], "td", "goal-row-due")), " "); !strings.Contains(due, "<del>2026-07-02</del> 2026-07-16") {
-		t.Errorf("slipped Goal's Due does not strike its prior date: %s", due)
+	if due := strings.Join(strings.Fields(pageElement(t, rows[0], "td", "goal-row-due")), " "); !strings.Contains(due, `<td data-testid="goal-row-due" class="num gl-dates"><del>2026-07-02</del> <span>2026-07-16</span>`) {
+		t.Errorf("slipped Goal's Due does not strike its prior date, each date whole: %s", due)
+	}
+	if rule := cssRule(t, page, ".gl-dates>*"); !strings.Contains(rule, "white-space:nowrap") {
+		t.Errorf("a Due date can break mid-date: .gl-dates>*{%s}", rule)
+	}
+	if rule, ok := ruleFor(page, ".gl-dates"); ok && strings.Contains(rule, "nowrap") {
+		t.Errorf("the whole Due cell is kept on one line, so its slips can't wrap: .gl-dates{%s}", rule)
 	}
 	if last := pageElement(t, rows[0], "td", "goal-row-last-checkin"); !strings.Contains(last, "3 days ago") {
 		t.Errorf("Last check-in is not relative: %s", last)
@@ -940,8 +947,8 @@ func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 
 // The Goal page opens on its title, then its So What as a lead paragraph, then
 // one metadata line a reader takes in at a glance: the Health badge, then plain
-// Lifecycle, Kind, Owner, the delivery date with its slips struck, the cadence
-// and Top-level. Dimension values stay in the sidebar, out of the head. Check
+// Lifecycle, Kind, Owner, the delivery date with its slips struck (wrapping
+// between dates, never mid-date: #180), the cadence and Top-level. Dimension values stay in the sidebar, out of the head. Check
 // in and No change sit top right for whoever may check in.
 func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
 	t.Parallel()
@@ -989,13 +996,16 @@ func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
 		`<span data-testid="goal-lifecycle">Active</span>`,
 		`<span data-testid="goal-kind">Dated</span>`,
 		`Owner <strong data-testid="goal-owner">` + shownAs("sam@example.com", "sam") + `</strong>`,
-		`Delivers <span data-testid="goal-delivery-date"><del>2026-07-02</del> <strong>2026-07-16</strong></span>`,
+		`Delivers <span data-testid="goal-delivery-date" class="gp-dates"><del>2026-07-02</del> <strong>2026-07-16</strong></span>`,
 		`Checks in <span data-testid="goal-cadence">every 7 days</span>`,
 		`data-testid="goal-top-level"`,
 	} {
 		if !strings.Contains(meta, want) {
 			t.Errorf("metadata line lacks %s: %s", want, meta)
 		}
+	}
+	if rule := cssRule(t, page, ".gp-dates>*"); !strings.Contains(rule, "white-space:nowrap") {
+		t.Errorf("the delivery date can break mid-date: .gp-dates>*{%s}", rule)
 	}
 	if strings.Count(meta, `class="badge`) != 1 {
 		t.Errorf("only Health is a badge on the metadata line; the rest is plain text: %s", meta)
