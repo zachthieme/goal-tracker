@@ -1014,3 +1014,68 @@ func TestCheckinFormRecordsMilestoneChangesOnlyWhenValid(t *testing.T) {
 		t.Errorf("churn without recorded changes = %s, want still 3", got)
 	}
 }
+
+// Each Parent suggestion is a History entry saying who suggested which parent,
+// then its outcome and when, or that it's still open. They're listed under
+// All only.
+func TestGoalHistoryShowsEachParentSuggestionAndItsOutcome(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignInNamed("pat@example.com", "Pat Lee")
+	goal := h.CreateGoal(sam, "Migrate displays", "Old displays fail often.")
+	suggest := func(title string) domain.ParentSuggestion {
+		t.Helper()
+		s, err := h.Service.SuggestParent(ctx, pat.ID, goal.ID, h.CreateGoal(pat, title, "It matters.").ID, "")
+		if err != nil {
+			t.Fatalf("SuggestParent: %v", err)
+		}
+		return s
+	}
+	declined := suggest("Reduce outages")
+	h.Clock.Advance(24 * time.Hour) // Sat 3 Jan
+	if _, err := h.Service.DeclineParentSuggestion(ctx, sam.ID, declined.ID); err != nil {
+		t.Fatalf("DeclineParentSuggestion: %v", err)
+	}
+	accepted := suggest("Cut costs")
+	h.Clock.Advance(24 * time.Hour) // Sun 4 Jan
+	if _, err := h.Service.AcceptParentSuggestion(ctx, sam.ID, accepted.ID); err != nil {
+		t.Fatalf("AcceptParentSuggestion: %v", err)
+	}
+	open := suggest("Grow revenue")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	var got []string
+	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)))) {
+		if entryKind(t, e) == "parent-suggestion" {
+			got = append(got, html.UnescapeString(e))
+		}
+	}
+	for i, want := range []struct {
+		parent  domain.ParentSuggestion
+		outcome string
+	}{
+		{open, "Still open"},
+		{accepted, "Accepted Sun 4 Jan 15:04"},
+		{declined, "Declined Sat 3 Jan 15:04"},
+	} {
+		if i >= len(got) {
+			t.Fatalf("History has %d suggestions, want 3", len(got))
+		}
+		for _, fact := range []string{"Parent suggestion", "Pat Lee", "suggested", navTo(want.parent.Parent.ID), want.outcome} {
+			if !strings.Contains(got[i], fact) {
+				t.Errorf("suggestion %d lacks %q:\n%s", i, fact, got[i])
+			}
+		}
+	}
+
+	for _, filter := range []string{"checkins", "date-slips", "so-what", "ownership", "values"} {
+		page := getBody(t, client, goalPageURL(ts.URL, goal)+"?history="+filter)
+		if strings.Contains(historyBlock(t, page), `data-kind="parent-suggestion"`) {
+			t.Errorf("the %s chip lists a suggestion", filter)
+		}
+	}
+}
