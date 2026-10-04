@@ -640,7 +640,8 @@ func riskFix(t *testing.T, row string) (label, href string, primary bool) {
 	if n := strings.Count(cell, "<a "); n != 1 {
 		t.Fatalf("fix cell has %d links, want 1: %s", n, cell)
 	}
-	link := cell[strings.Index(cell, "<a "):]
+	_, link, _ := strings.Cut(cell, "<a ")
+	link = "<a " + link
 	tag := openTag(link)
 	_, rest, _ := strings.Cut(tag, `href="`)
 	href, _, _ = strings.Cut(rest, `"`)
@@ -751,5 +752,59 @@ func TestRiskFixOnAnUnalignedGoalIsLinkToAParentForItsOwner(t *testing.T) {
 		if label == "Link to a parent" && !strings.Contains(getBody(t, client, ts.URL+href), `data-testid="request-link"`) {
 			t.Errorf("Link to a parent doesn't open the parent-link form")
 		}
+	}
+}
+
+// A Goal due after its parent gets Compare dates, its own page, even when that
+// parent is On Hold too; a Goal under halted parents only gets Open parent,
+// the halted parent first by title. Every row has exactly one Fix.
+func TestRiskFixOnAStructuralSignal(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
+	late := h.ActiveGoalDue(sam, "Late piece", june.AddDate(0, 1, 0))
+	h.RequestLink(sam, late, launch, "")
+	zeta := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Zeta outcome", "It mattered."))
+	alpha := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Alpha outcome", "It mattered."))
+	under := h.ActiveChildOf(sam, zeta, "Under both", "Feeds both.")
+	h.RequestLink(sam, under, alpha, "")
+	for _, parent := range []domain.Goal{launch, zeta, alpha} {
+		if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
+			GoalID:          parent.ID,
+			AuthorID:        sam.ID,
+			Status:          "Stopping.",
+			Lifecycle:       domain.LifecycleOnHold,
+			LifecycleReason: "Budget freeze.",
+		}); err != nil {
+			t.Fatalf("SubmitCheckin %q On Hold: %v", parent.Title, err)
+		}
+	}
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	for _, c := range []struct {
+		goal   domain.Goal
+		kinds  []string
+		label  string
+		goesTo domain.Goal
+	}{
+		{late, []string{"schedule-conflicts", "halted-parents"}, "Compare dates", late},
+		{under, []string{"halted-parents"}, "Open parent", alpha},
+	} {
+		row := riskRowOf(t, page, c.goal)
+		for _, kind := range c.kinds {
+			riskChip(t, row, kind)
+		}
+		if label, href, _ := riskFix(t, row); label != c.label || href != "/goals/"+strconv.FormatInt(c.goesTo.ID, 10) {
+			t.Errorf("%q's Fix is %q → %s, want %q → %q's page", c.goal.Title, label, href, c.label, c.goesTo.Title)
+		}
+	}
+	for _, row := range riskRows(page) {
+		riskFix(t, row) // every row has exactly one Fix
 	}
 }

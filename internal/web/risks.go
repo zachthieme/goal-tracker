@@ -286,11 +286,14 @@ func (s *Server) fixRiskRows(ctx context.Context, current domain.Account, rows [
 	return nil
 }
 
-// fix is the row's Fix for current, the first that applies of: Reassign, for
-// an Ownerless Goal and an Admin; Check in, for a Stale or Path to Green
-// overdue Goal current Owns or is a Delegate on (an Admin has no Check-in
-// right); Link to a parent, for an Unaligned Goal current Owns; else Open
-// Goal.
+// fix is the row's Fix for current, the first that applies of:
+//  1. Reassign, for an Ownerless Goal and an Admin;
+//  2. Check in, for a Stale or Path to Green overdue Goal current Owns or is a
+//     Delegate on (an Admin has no Check-in right);
+//  3. Link to a parent, for an Unaligned Goal current Owns;
+//  4. Compare dates, the Goal's own page, for a Schedule conflict;
+//  5. Open parent, for a Goal under a halted parent: the first by title;
+//  6. Open Goal, for anything else, someone else's Stale Goal among them.
 func (r riskGoalRow) fix(current domain.Account, delegate bool) riskFix {
 	goal := fmt.Sprintf("/goals/%d", r.Goal.ID)
 	if _, ownerless := r.signal("ownerless"); ownerless && current.IsAdmin {
@@ -303,6 +306,18 @@ func (r riskGoalRow) fix(current domain.Account, delegate bool) riskFix {
 	}
 	if _, unaligned := r.signal("unaligned"); unaligned && r.Goal.Owner.ID == current.ID {
 		return riskFix{Label: "Link to a parent", Href: goal + "?open=parent-link"}
+	}
+	if _, conflict := r.signal("schedule-conflicts"); conflict {
+		return riskFix{Label: "Compare dates", Href: goal}
+	}
+	var parent *domain.Goal
+	for _, sig := range r.Signals {
+		if sig.Kind == "halted-parents" && (parent == nil || strings.ToLower(sig.Related.Title) < strings.ToLower(parent.Title)) {
+			parent = sig.Related
+		}
+	}
+	if parent != nil {
+		return riskFix{Label: "Open parent", Href: fmt.Sprintf("/goals/%d", parent.ID)}
 	}
 	return riskFix{Label: "Open Goal", Href: goal}
 }
