@@ -55,7 +55,8 @@ type RequestLinkInput struct {
 // otherwise it waits Pending for the parent's Owner. A request that would close
 // a cycle is rejected here and again at accept time (ADR-0001). Any open Parent
 // suggestion of the same parent for the child closes as no longer applying, as
-// it does when RestoreLinkRequest or RestoreLink brings the link back.
+// it does when ImportLink makes the link or RestoreLinkRequest or RestoreLink
+// brings it back.
 func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, error) {
 	if in.ChildID == in.ParentID {
 		return Link{}, fmt.Errorf("%w: a Goal cannot contribute to itself", ErrValidation)
@@ -140,7 +141,9 @@ func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, e
 // the spreadsheet import an Admin runs, where links between imported Goals are
 // accepted automatically (ticket #22). It still refuses a self-link, a duplicate,
 // and any link that would close a cycle (ADR-0001). The request is attributed to
-// the child's Owner, who is the person a normal request would come from.
+// the child's Owner, who is the person a normal request would come from. Any
+// open Parent suggestion of the same parent for the child closes as no longer
+// applying (ADR-0006).
 func (s *Service) ImportLink(ctx context.Context, childID, parentID int64) (Link, error) {
 	if childID == parentID {
 		return Link{}, fmt.Errorf("%w: a Goal cannot contribute to itself", ErrValidation)
@@ -187,7 +190,10 @@ func (s *Service) ImportLink(ctx context.Context, childID, parentID int64) (Link
 		if err != nil {
 			return fmt.Errorf("create link: %w", err)
 		}
-		return tx.recordLinkEvent(ctx, childID, parentID, LinkEventLinked, child.Goal.OwnerID, now)
+		if err := tx.recordLinkEvent(ctx, childID, parentID, LinkEventLinked, child.Goal.OwnerID, now); err != nil {
+			return err
+		}
+		return tx.closeSuggestionsForLink(ctx, childID, parentID)
 	})
 	if err != nil {
 		return Link{}, err
