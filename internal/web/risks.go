@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,39 +17,149 @@ import (
 )
 
 // handleRisks answers "what's going wrong?" for leadership: every Goal the
-// freshness and graph signals flag, by problem type.
+// freshness and graph signals flag, by problem type, scoped by its address to
+// the viewer's own Goals (?mine=1) and to the Goals with an offered
+// Dimension's value (?value=). The scope narrows the rows only after they are
+// built: loadRisks stays org-wide for the top bar's count.
 func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	v, err := s.loadRisks(r.Context())
+	page, err := s.loadRisksPage(r.Context(), r.URL.Query(), current)
 	if err != nil {
 		http.Error(w, "could not read risks", http.StatusInternalServerError)
 		return
-	}
-	rows, err := s.riskRows(r.Context(), v)
-	if err != nil {
-		http.Error(w, "could not read risks", http.StatusInternalServerError)
-		return
-	}
-	if err := s.fixRiskRows(r.Context(), current, rows); err != nil {
-		http.Error(w, "could not read risks", http.StatusInternalServerError)
-		return
-	}
-	page := risksPageView{
-		risksView: v,
-		Rows:      rows,
-		Group:     riskGroupKey(r.URL.Query().Get("group")),
-		Today:     s.svc.Now().In(s.svc.Timezone()),
 	}
 	render(w, r, http.StatusOK, risksPage(&current, page))
 }
 
-// risksPageView is the Risks page: its lists, its rows, the group its address
-// filters it to, "" for every group, and today, which its dates are read
-// against.
+// loadRisksPage builds the Risks page current sees at an address with query q.
+func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain.Account) (risksPageView, error) {
+	v, err := s.loadRisks(ctx)
+	if err != nil {
+		return risksPageView{}, err
+	}
+	rows, err := s.riskRows(ctx, v)
+	if err != nil {
+		return risksPageView{}, err
+	}
+	delegated, err := s.svc.DelegatedGoals(ctx, current.ID)
+	if err != nil {
+		return risksPageView{}, fmt.Errorf("load delegated goals: %w", err)
+	}
+	delegate := map[int64]bool{}
+	for _, g := range delegated {
+		delegate[g.ID] = true
+	}
+	fixRiskRows(current, rows, delegate)
+	dims, err := s.svc.ListDimensions(ctx)
+	if err != nil {
+		return risksPageView{}, err
+	}
+	page := risksPageView{
+		risksView:  v,
+		Group:      riskGroupKey(q.Get("group")),
+		Mine:       q.Get("mine") == "1",
+		Dimensions: domain.OfferedDimensions(dims),
+		Today:      s.svc.Now().In(s.svc.Timezone()),
+	}
+	page.Value = riskValue(q.Get("value"), page.Dimensions)
+	var valued map[int64]bool
+	if page.Value.ID != 0 {
+		goals, err := s.svc.ListGoalsWithValues(ctx)
+		if err != nil {
+			return risksPageView{}, err
+		}
+		valued = map[int64]bool{}
+		for _, gv := range domain.FilterGoals(goals, map[int64][]int64{page.Value.DimensionID: {page.Value.ID}}) {
+			valued[gv.Goal.ID] = true
+		}
+	}
+	for _, row := range rows {
+		if page.Mine && row.Goal.Owner.ID != current.ID && !delegate[row.Goal.ID] {
+			continue
+		}
+		if valued != nil && !valued[row.Goal.ID] {
+			continue
+		}
+		page.Rows = append(page.Rows, row)
+	}
+	return page, nil
+}
+
+// riskValue is the offered Dimensions' value raw names by its ID, or the zero
+// value when it names none of them.
+func riskValue(raw string, dims []domain.Dimension) domain.DimensionValue {
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return domain.DimensionValue{}
+	}
+	for _, d := range dims {
+		for _, v := range d.Values {
+			if v.ID == id {
+				return v
+			}
+		}
+	}
+	return domain.DimensionValue{}
+}
+
+// riskValueLabel is how the value select names a value: a Retired one says so.
+func riskValueLabel(v domain.DimensionValue) string {
+	if v.Retired {
+		return v.Value + " (retired)"
+	}
+	return v.Value
+}
+
+// risksPageView is the Risks page: its lists, its rows in scope, the group its
+// address filters it to, "" for every group, whether it is scoped to the
+// viewer's own Goals, the offered Dimensions and the value of theirs it is
+// scoped to, if any, and today, which its dates are read against.
 type risksPageView struct {
 	risksView
-	Rows  []riskGoalRow
-	Group string
-	Today time.Time
+	Rows       []riskGoalRow
+	Group      string
+	Mine       bool
+	Dimensions []domain.Dimension
+	Value      domain.DimensionValue
+	Today      time.Time
+}
+
+// url is the Risks page's address filtered to group ("" for every group),
+// scoped to mine, and keeping the page's value scope.
+func (p risksPageView) url(group string, mine bool) string {
+	q := url.Values{}
+	if group != "" {
+		q.Set("group", group)
+	}
+	if mine {
+		q.Set("mine", "1")
+	}
+	if p.Value.ID != 0 {
+		q.Set("value", strconv.FormatInt(p.Value.ID, 10))
+	}
+	if len(q) == 0 {
+		return "/risks"
+	}
+	return "/risks?" + q.Encode()
+}
+
+// ShowAllURL is the page's address unfiltered, keeping its scope.
+func (p risksPageView) ShowAllURL() templ.SafeURL {
+	return templ.SafeURL(p.url("", p.Mine))
+}
+
+// ScopeURL is the page's address scoped to the viewer's own Goals or not,
+// keeping its group.
+func (p risksPageView) ScopeURL(mine bool) templ.SafeURL {
+	return templ.SafeURL(p.url(p.Group, mine))
+}
+
+// ScopeAttrs marks the Everyone | Mine choice the page is scoped to as the
+// current one.
+func (p risksPageView) ScopeAttrs(mine bool) templ.Attributes {
+	if p.Mine == mine {
+		return templ.Attributes{"aria-current": "page"}
+	}
+	return templ.Attributes{}
 }
 
 // Shown are the rows the table shows: every row with no filter, else each row
@@ -123,13 +235,15 @@ func riskGroupKey(key string) string {
 }
 
 // riskCard is a group's summary card: its count, a count of each of its
-// signals that flags a Goal, the line it shows when it holds none, and
-// whether the page is filtered to it.
+// signals that flags a Goal, the line it shows when it holds none, whether the
+// page is filtered to it, and the page's address filtered to it, keeping the
+// page's scope.
 type riskCard struct {
 	riskGroup
 	Signals []riskType
 	Blank   string
 	Current bool
+	Href    templ.SafeURL
 }
 
 // Attrs marks the card of the group the page is filtered to as the current one.
@@ -149,7 +263,7 @@ func (p risksPageView) Cards() []riskCard {
 	groups := riskGroups(p.Rows)
 	cards := make([]riskCard, 0, len(groups))
 	for i, gk := range riskGroupKinds {
-		c := riskCard{riskGroup: groups[i], Blank: gk.Blank, Current: gk.Key == p.Group}
+		c := riskCard{riskGroup: groups[i], Blank: gk.Blank, Current: gk.Key == p.Group, Href: templ.SafeURL(p.url(gk.Key, p.Mine))}
 		for _, kind := range gk.Kinds {
 			n := 0
 			for _, r := range p.Rows {
@@ -269,21 +383,12 @@ type riskFix struct {
 	Primary bool
 }
 
-// fixRiskRows sets each row's Fix for current, reading the Goals they are a
-// Delegate on once for the page.
-func (s *Server) fixRiskRows(ctx context.Context, current domain.Account, rows []riskGoalRow) error {
-	delegated, err := s.svc.DelegatedGoals(ctx, current.ID)
-	if err != nil {
-		return fmt.Errorf("load delegated goals: %w", err)
-	}
-	delegate := map[int64]bool{}
-	for _, g := range delegated {
-		delegate[g.ID] = true
-	}
+// fixRiskRows sets each row's Fix for current, who is a Delegate on the Goals
+// delegate holds.
+func fixRiskRows(current domain.Account, rows []riskGoalRow, delegate map[int64]bool) {
 	for i := range rows {
 		rows[i].Fix = rows[i].fix(current, delegate[rows[i].Goal.ID])
 	}
-	return nil
 }
 
 // fix is the row's Fix for current, the first that applies of:

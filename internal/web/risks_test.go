@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"html"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -806,5 +807,263 @@ func TestRiskFixOnAStructuralSignal(t *testing.T) {
 	}
 	for _, row := range riskRows(page) {
 		riskFix(t, row) // every row has exactly one Fix
+	}
+}
+
+// Scoped to Mine (?mine=1), the Risks page keeps only the Goals the viewer
+// Owns or is a Delegate on, and its header count and cards count those alone,
+// while the top bar still counts every flagged Goal. The Everyone | Mine
+// toggle marks the current scope.
+func TestRisksPageScopedToMine(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	own := h.ActiveGoal(sam, "Own work", "It matters.")
+	delegated := h.ActiveGoal(kim, "Delegated work", "It matters.")
+	h.AddDelegate(kim, sam, delegated.ID)
+	other := h.ActiveGoal(kim, "Other work", "It matters.")
+	h.Clock.Advance(10 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?mine=1")
+
+	riskRowOf(t, page, own)
+	riskRowOf(t, page, delegated)
+	if hasRiskRow(page, other) {
+		t.Errorf("scoped to Mine, the page lists %q, which sam neither Owns nor is a Delegate on", other.Title)
+	}
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>2</strong>") {
+		t.Errorf("scoped to Mine, the header doesn't count sam's 2 Goals: %s", head)
+	}
+	if card := pageElement(t, page, "a", "risks-group-owner"); !strings.Contains(card, `<span class="num">2</span>`) || !strings.Contains(card, "Stale · 2") {
+		t.Errorf("scoped to Mine, the owner card doesn't count sam's 2 Goals: %s", card)
+	}
+	if risks := pageElement(t, page, "a", "nav-risks"); !strings.Contains(risks, `<span class="count">3</span>`) {
+		t.Errorf("scoped to Mine, the top bar's Risks count follows scope: %s", risks)
+	}
+	everyone, mine := pageElement(t, page, "a", "risks-scope-everyone"), pageElement(t, page, "a", "risks-scope-mine")
+	if attr(openTag(everyone), "href") != "/risks" || strings.Contains(openTag(everyone), "aria-current") {
+		t.Errorf("scoped to Mine, Everyone isn't a link to every Goal: %s", everyone)
+	}
+	if !strings.Contains(openTag(mine), `aria-current="page"`) {
+		t.Errorf("scoped to Mine, Mine isn't current: %s", mine)
+	}
+
+	page = getBody(t, client, ts.URL+"/risks")
+
+	riskRowOf(t, page, other)
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>3</strong>") {
+		t.Errorf("for Everyone, the header doesn't count all 3 Goals: %s", head)
+	}
+	everyone, mine = pageElement(t, page, "a", "risks-scope-everyone"), pageElement(t, page, "a", "risks-scope-mine")
+	if !strings.Contains(openTag(everyone), `aria-current="page"`) || strings.Contains(openTag(mine), "aria-current") {
+		t.Errorf("unscoped, Everyone isn't the current choice: %s / %s", everyone, mine)
+	}
+	if attr(openTag(mine), "href") != "/risks?mine=1" {
+		t.Errorf("Mine doesn't link to the page scoped to Mine: %s", mine)
+	}
+}
+
+// Scoped to a Dimension value (?value=), the Risks page keeps only the Goals
+// that have it, counting those alone, and its value select offers Any value
+// then each offered Dimension's values, the chosen one selected. A value of a
+// Retired Dimension, or no value at all, scopes nothing.
+func TestRisksPageScopedToADimensionValue(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Growth")
+	region := h.CreateDimension(boss, "Region", "EMEA")
+	platform, growth, emea := team.Values[0], team.Values[1], region.Values[0]
+	onPlatform := h.ActiveGoal(sam, "Platform work", "It matters.")
+	h.AssignGoalValue(onPlatform, platform)
+	onGrowth := h.ActiveGoal(sam, "Growth work", "It matters.")
+	h.AssignGoalValue(onGrowth, growth)
+	h.AssignGoalValue(onGrowth, emea)
+	untagged := h.ActiveGoal(sam, "Untagged work", "It matters.")
+	if err := h.Service.RetireDimension(t.Context(), boss.ID, region.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	h.Clock.Advance(10 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	id := func(v domain.DimensionValue) string { return strconv.FormatInt(v.ID, 10) }
+
+	page := getBody(t, client, ts.URL+"/risks?value="+id(platform))
+
+	riskRowOf(t, page, onPlatform)
+	for _, g := range []domain.Goal{onGrowth, untagged} {
+		if hasRiskRow(page, g) {
+			t.Errorf("scoped to Platform, the page lists %q", g.Title)
+		}
+	}
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>1</strong> Goal needs attention.") {
+		t.Errorf("scoped to Platform, the header doesn't count its 1 Goal: %s", head)
+	}
+	if card := pageElement(t, page, "a", "risks-group-owner"); !strings.Contains(card, `<span class="num">1</span>`) {
+		t.Errorf("scoped to Platform, the owner card doesn't count its 1 Goal: %s", card)
+	}
+	if risks := pageElement(t, page, "a", "nav-risks"); !strings.Contains(risks, `<span class="count">3</span>`) {
+		t.Errorf("scoped to Platform, the top bar's Risks count follows scope: %s", risks)
+	}
+	sel := between(t, page, `<select data-testid="risks-value"`, "</select>")
+	if attr(sel, "name") != "value" {
+		t.Errorf("the value select isn't named value: %s", sel)
+	}
+	options := regexp.MustCompile(`<option[^>]*>[^<]*`).FindAllString(sel, -1)
+	if len(options) != 3 || !strings.HasSuffix(options[0], ">Any value") || attr(options[0], "value") != "" {
+		t.Fatalf("the value select doesn't offer Any value then Team's 2 values: %s", sel)
+	}
+	if !strings.Contains(sel, `<optgroup label="Team">`) || strings.Contains(sel, "Region") {
+		t.Errorf("the value select doesn't group the offered Dimension's values alone: %s", sel)
+	}
+	for i, v := range []domain.DimensionValue{platform, growth} {
+		o := options[i+1]
+		if attr(o, "value") != id(v) || !strings.HasSuffix(o, ">"+v.Value) {
+			t.Errorf("option %d isn't %s: %s", i+1, v.Value, o)
+		}
+		if selected := regexp.MustCompile(`\sselected[\s/>]`).MatchString(o); selected != (v.ID == platform.ID) {
+			t.Errorf("scoped to Platform, %s selected is %v", v.Value, selected)
+		}
+	}
+	if mine := pageElement(t, page, "a", "risks-scope-mine"); attr(openTag(mine), "href") != html.EscapeString("/risks?mine=1&value="+id(platform)) {
+		t.Errorf("Mine doesn't keep the value scope: %s", mine)
+	}
+
+	for _, ignored := range []string{id(emea), "bogus"} {
+		page = getBody(t, client, ts.URL+"/risks?value="+ignored)
+		for _, g := range []domain.Goal{onPlatform, onGrowth, untagged} {
+			riskRowOf(t, page, g)
+		}
+	}
+}
+
+// Scoped to Mine and a value, the group cards and Show all keep the scope, so
+// clicking a card narrows the scoped page to the group: the table lists only
+// the Goals the scope and the group both keep, while the cards count every
+// group within the scope.
+func TestRisksPageGroupsWithinScope(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	platform := h.CreateDimension(boss, "Team", "Platform").Values[0]
+	ownStale := h.MarkTopLevel(boss, h.ActiveGoal(sam, "Own stale", "It matters.")) // Stale only
+	h.AssignGoalValue(ownStale, platform)
+	ownUnaligned := h.ActiveGoal(sam, "Own unaligned", "It matters.") // Unaligned only
+	h.AssignGoalValue(ownUnaligned, platform)
+	ownUntagged := h.ActiveGoal(sam, "Own untagged", "It matters.")
+	kims := h.ActiveGoal(kim, "Kim's platform work", "It matters.")
+	h.AssignGoalValue(kims, platform)
+	h.Clock.Advance(10 * day)
+	h.Checkin(sam, ownUnaligned.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	client := signInClient(t, ts.URL, "sam@example.com")
+	scope := "mine=1&value=" + strconv.FormatInt(platform.ID, 10)
+
+	page := getBody(t, client, ts.URL+"/risks?"+scope)
+
+	href := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "risks-group-owner")), "href"))
+	if href != "/risks?group=owner&"+scope {
+		t.Fatalf("the owner card's link %q doesn't keep the scope", href)
+	}
+
+	page = getBody(t, client, ts.URL+href)
+
+	riskRowOf(t, page, ownStale)
+	for _, g := range []domain.Goal{ownUnaligned, ownUntagged, kims} {
+		if hasRiskRow(page, g) {
+			t.Errorf("scoped and filtered to owner, the page lists %q", g.Title)
+		}
+	}
+	for key, want := range map[string]string{"owner": "1", "plan": "1"} {
+		if card := pageElement(t, page, "a", "risks-group-"+key); !strings.Contains(card, `<span class="num">`+want+`</span>`) {
+			t.Errorf("scoped and filtered to owner, the %s card doesn't count %s: %s", key, want, card)
+		}
+	}
+	if all := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "risks-show-all")), "href")); all != "/risks?"+scope {
+		t.Errorf("Show all %q doesn't keep the scope", all)
+	}
+	if everyone := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "risks-scope-everyone")), "href")); everyone != "/risks?group=owner&value="+strconv.FormatInt(platform.ID, 10) {
+		t.Errorf("Everyone %q doesn't keep the group and value", everyone)
+	}
+}
+
+// The scope form applies itself under htmx as the Goal list's filter bar does:
+// a change GETs the page and swaps in only #risks-body, which holds the header
+// count, the scope toggle, the cards and the table but not the form, and
+// pushes the address, while the page opts out of htmx's history snapshot so
+// Back loads the earlier address afresh. The form carries the page's group and
+// Mine, so a value chosen while filtered keeps both, and without JavaScript it
+// is a plain GET with an Apply button in <noscript>.
+func TestRisksScopeFormAppliesItself(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	platform := h.CreateDimension(boss, "Team", "Platform").Values[0]
+	own := h.ActiveGoal(sam, "Own platform work", "It matters.")
+	h.AssignGoalValue(own, platform)
+	h.ActiveGoal(sam, "Own untagged", "It matters.")
+	kims := h.ActiveGoal(kim, "Kim's platform work", "It matters.")
+	h.AssignGoalValue(kims, platform)
+	h.Clock.Advance(10 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?group=owner&mine=1")
+
+	form := tagAround(t, page, `data-testid="risks-filters"`)
+	for name, want := range map[string]string{
+		"method":      "get",
+		"action":      "/risks",
+		"hx-get":      "/risks",
+		"hx-trigger":  "submit, change",
+		"hx-target":   "#risks-body",
+		"hx-select":   "#risks-body",
+		"hx-swap":     "outerHTML",
+		"hx-push-url": "true",
+		"hx-sync":     "this:replace",
+		"hx-history":  "false",
+	} {
+		if got := html.UnescapeString(attr(form, name)); got != want {
+			t.Errorf("scope form %s = %q, want %q", name, got, want)
+		}
+	}
+	filters := between(t, page, `data-testid="risks-filters"`, "</form>")
+	if noscript := between(t, filters, "<noscript>", "</noscript>"); !strings.Contains(noscript, `<button type="submit" class="btn">Apply</button>`) || strings.Count(filters, "Apply") != 1 {
+		t.Errorf("the scope form's Apply isn't only in <noscript>:\n%s", filters)
+	}
+	body := between(t, page, `<div id="risks-body"`, "</main>")
+	for _, in := range []string{`data-testid="risks-attention"`, `data-testid="risks-scope-mine"`, `data-testid="risks-groups"`, `data-testid="risks-table"`} {
+		if !strings.Contains(body, in) {
+			t.Errorf("#risks-body lacks %s", in)
+		}
+	}
+	if strings.Contains(body, `data-testid="risks-filters"`) {
+		t.Errorf("#risks-body holds the scope form, which a swap would reset")
+	}
+
+	values := formValues(filters)
+	values.Set("value", strconv.FormatInt(platform.ID, 10))
+	address := attr(form, "hx-get") + "?" + values.Encode()
+	if want := "/risks?group=owner&mine=1&value=" + strconv.FormatInt(platform.ID, 10); address != want {
+		t.Fatalf("choosing Platform GETs %s, want %s", address, want)
+	}
+
+	page = getBody(t, client, ts.URL+address)
+
+	riskRowOf(t, page, own)
+	if rows := riskRows(page); len(rows) != 1 {
+		t.Errorf("scoped to Mine and Platform and filtered to owner, the table has %d rows, want 1", len(rows))
 	}
 }
