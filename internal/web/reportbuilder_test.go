@@ -280,6 +280,83 @@ func TestBuilderRemovesARuleRowOverHTTP(t *testing.T) {
 	}
 }
 
+// A rule tests any live Dimension, Owner, Lifecycle, Health or Top-level,
+// never a Field, which only describes a Goal (ADR 0005). A Retired Dimension,
+// and a Retired value, isn't offered for a new rule (CONTEXT.md: Retired).
+func TestBuilderAttributeSelectOffersEveryLiveAttributeAndNoFieldOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignInNamed("sam@example.com", "Sam Rivera")
+	team := h.CreateDimension(boss, "Team", "Platform", "Legacy")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth")
+	h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.ActiveGoal(sam, "Edge cache rollout", "Matters.")
+	ctx := context.Background()
+	if err := h.Service.RetireDimension(ctx, boss.ID, pillar.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	if err := h.Service.RetireDimensionValue(ctx, boss.ID, team.Values[1].ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	ts := newServer(t, h)
+	builder := pageElement(t, getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/new"), "form", "report-builder")
+
+	attribute := pageElement(t, builder, "select", "rule-attribute")
+	var offered []string
+	for _, m := range regexp.MustCompile(`<option value="[^"]*">([^<]*)</option>`).FindAllStringSubmatch(attribute, -1) {
+		offered = append(offered, m[1])
+	}
+	if want := []string{"Choose…", "Team", "Owner", "Lifecycle", "Health", "Top-level"}; !slices.Equal(offered, want) {
+		t.Errorf("the attribute select offers %q, want %q", offered, want)
+	}
+	values := pageElement(t, builder, "select", "rule-values")
+	for _, want := range []string{">Platform<", ">Sam Rivera<", ">" + domain.LifecycleOnHold + "<", ">" + domain.HealthYellow + "<"} {
+		if !strings.Contains(values, want) {
+			t.Errorf("the values don't offer %s:\n%s", want, values)
+		}
+	}
+	for _, gone := range []string{"Legacy", "Growth", "Budget"} {
+		if strings.Contains(values, gone) {
+			t.Errorf("the values offer %s:\n%s", gone, values)
+		}
+	}
+}
+
+// A value posted for a rule that tests another attribute, such as a Health
+// for an Owner rule, is refused as that rule, and nothing is saved.
+func TestBuilderRefusesAValueFromAnotherAttributeAsItsRuleOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleLifecycle},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {"lifecycle=" + domain.LifecycleActive},
+		"rules[1].attribute": {domain.RuleOwner},
+		"rules[1].op":        {domain.RuleIsAnyOf},
+		"rules[1].value":     {"owner=" + strconv.FormatInt(boss.ID, 10), "health=" + domain.HealthRed},
+	})
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("a Health in an Owner rule: status %d, want 422; body:\n%s", resp.StatusCode, page)
+	}
+	rows := strings.Split(pageElement(t, page, "form", "report-builder"), `data-testid="report-rule"`)[1:]
+	if len(rows) != 2 || strings.Contains(rows[0], "input-error") || !strings.Contains(rows[1], `id="rules[1]-error"`) {
+		t.Errorf("the Owner rule with a Health isn't refused as rules[1]:\n%s", strings.Join(rows, "\n---\n"))
+	}
+	if defs, _ := h.Service.ListReportDefinitions(context.Background()); len(defs) != 0 {
+		t.Errorf("the refused save saved %d definitions", len(defs))
+	}
+}
+
 // assertSavedReport checks resp, a builder's save, answered 303 to a Report's
 // draft, and returns the draft as client sees it.
 func assertSavedReport(t *testing.T, client *http.Client, baseURL string, resp *http.Response) string {
