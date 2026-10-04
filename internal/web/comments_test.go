@@ -118,7 +118,7 @@ func TestSmokeActionItemCarriesUntilClosedOverHTTP(t *testing.T) {
 		t.Errorf("raised by someone who is not the author: status %d, want 403", resp.StatusCode)
 	}
 
-	resp = postForm(t, authorClient, reportURL+"/publications", url.Values{"baseline": {""}})
+	resp = postForm(t, authorClient, reportURL+"/publications", url.Values{})
 	secondURL := resp.Request.URL.String()
 	if item := pageElement(t, readBody(t, resp), "li", "open-action-item"); !strings.Contains(item, "Get a second vendor quote.") {
 		t.Errorf("next publication does not carry the open Action Item at its top; item:\n%s", item)
@@ -148,7 +148,7 @@ func TestSmokeActionItemCarriesUntilClosedOverHTTP(t *testing.T) {
 		t.Errorf("the publication it was raised on does not show the closing note; item:\n%s", item)
 	}
 
-	resp = postForm(t, authorClient, reportURL+"/publications", url.Values{"baseline": {""}})
+	resp = postForm(t, authorClient, reportURL+"/publications", url.Values{})
 	if page := readBody(t, resp); strings.Contains(page, `data-testid="open-action-item"`) {
 		t.Errorf("publication after closing still carries the Action Item")
 	}
