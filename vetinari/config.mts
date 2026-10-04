@@ -3,7 +3,14 @@
 // Machine-local state (logs, parked tasks, secrets) lives in .vetinari.local/,
 // which is gitignored and never committed. Modeled on pike's config (also Go).
 import { resolve } from "node:path";
-import { defineConfig, githubBlockedBy, githubFetchTask, githubIssuesByLabel, githubMarkPendingVerify } from "vetinari";
+import {
+  defineConfig,
+  githubBlockedBy,
+  githubFetchTask,
+  githubFindingReporter,
+  githubIssuesByLabel,
+  githubMarkPendingVerify,
+} from "vetinari";
 
 export default defineConfig({
   project: "goal-tracker",
@@ -56,6 +63,11 @@ export default defineConfig({
   // After a merged wave's base gate passes: add `pending-verify`, drop
   // `ready-for-agent`. Best-effort — a failed label write never fails the run.
   onIssueMerged: githubMarkPendingVerify("zachthieme/goal-tracker"),
+
+  // After a run, harvest defects the agent noticed but did not fix and file them
+  // as issues from the host. The container holds no GitHub credentials, so this
+  // is the only way a finding outlives it.
+  reportFinding: githubFindingReporter("zachthieme/goal-tracker", { labels: ["needs-triage"] }),
 
   // Sandcastle needs a writable global git config host-side; this machine's
   // real one is a read-only nix store symlink. Host-side only — never the
