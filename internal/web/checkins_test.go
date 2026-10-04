@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"html"
-	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -156,28 +155,6 @@ func TestSmokeCheckinRecordsReadingAndHighlight(t *testing.T) {
 			t.Errorf("Goal page missing %q; body:\n%s", want, page)
 		}
 	}
-}
-
-// postFormHX posts a form with the HX-Request header set, as htmx does, and
-// returns the body and status without following redirects or asserting 200.
-func postFormHX(t *testing.T, client *http.Client, rawURL string, form url.Values) (string, int) {
-	t.Helper()
-	req, err := http.NewRequest(http.MethodPost, rawURL, strings.NewReader(form.Encode()))
-	if err != nil {
-		t.Fatalf("new request: %v", err)
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("HX-Request", "true")
-	resp, err := client.Do(req)
-	if err != nil {
-		t.Fatalf("POST %s: %v", rawURL, err)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	b, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Fatalf("read body: %v", err)
-	}
-	return string(b), resp.StatusCode
 }
 
 // An Owner moves the delivery date later in a Check-in through the web form,
@@ -400,22 +377,6 @@ func TestSmokeCheckinChangesMilestones(t *testing.T) {
 			t.Errorf("Goal page missing %q", want)
 		}
 	}
-}
-
-// pageElement returns the tag element carrying data-testid, up to its first
-// closing tag, so an assertion can't be satisfied by the same text elsewhere on
-// the page. It suits elements that don't nest their own tag.
-func pageElement(t *testing.T, page, tag, testID string) string {
-	t.Helper()
-	start := strings.Index(page, "<"+tag+` data-testid="`+testID+`"`)
-	if start < 0 {
-		t.Fatalf("page has no <%s> %q", tag, testID)
-	}
-	end := strings.Index(page[start:], "</"+tag+">")
-	if end < 0 {
-		t.Fatalf("<%s> %q is not closed", tag, testID)
-	}
-	return page[start : start+end]
 }
 
 // Through the Check-in form an Owner puts a Goal On Hold with a reason, then
@@ -1476,15 +1437,6 @@ func TestCheckinFormConfirmsCancellingTheGoal(t *testing.T) {
 	if !strings.Contains(form, "hx-on:htmx:confirm=") || !strings.Contains(form, "value=Cancelled]:checked") || !strings.Contains(form, "confirm(") {
 		t.Errorf("the form does not confirm a Cancel before sending; form tag:\n%s", form)
 	}
-}
-
-// openTag returns element up to the end of its opening tag, so an assertion
-// about the tag's attributes can't match its content.
-func openTag(element string) string {
-	if end := strings.Index(element, ">"); end >= 0 {
-		return element[:end]
-	}
-	return element
 }
 
 // A No change that would repeat a Green after a Milestone went overdue is

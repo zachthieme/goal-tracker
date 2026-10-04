@@ -723,11 +723,6 @@ func TestRiskFlagsUseAlertBannersAndChips(t *testing.T) {
 	}
 }
 
-// goalPageURL is the address of g's page on the server at base.
-func goalPageURL(base string, g domain.Goal) string {
-	return base + "/goals/" + strconv.FormatInt(g.ID, 10)
-}
-
 // riskFix returns a row's one Fix: its label, its address (a form's action,
 // for a Fix that posts, and "" for a disabled one), and whether it is the
 // primary button, failing the test unless the fix cell holds exactly one link,

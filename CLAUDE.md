@@ -16,7 +16,9 @@ another area's file.
   `Server` type, `ServeHTTP`, rendering, and the auth middleware. Each area's
   handlers live in `<area>.go`, its pages in `<area>.templ` (plus the generated
   `<area>_templ.go`), and its HTTP tests in `<area>_test.go`. Shared page chrome
-  lives in `layout.templ`.
+  lives in `layout.templ`. Shared HTTP and page test helpers live in
+  `internal/web/helpers_test.go`; a helper more than one area needs goes there,
+  not in an area's `_test.go`.
 - **Domain** (`internal/domain/`): `domain.go` holds only the `Service` and its
   constructor. Each concept's types and `Service` methods live in their own file
   (`account.go`, `goal.go`, …) — a new concept is a new file.
