@@ -170,7 +170,56 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 		http.Error(w, "could not load Action Items", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone()))
+	// Closing an Action Item comes back to this draft, baseline and all.
+	d.Return = r.URL.RequestURI()
+	chip := newBaselineChip(report, r.URL.Query().Get("baseline") != "", len(pubs) > 0, s.svc.Now(), s.svc.Timezone())
+	render(w, r, http.StatusOK, reportDraftPage(&current, report, s.svc.Now(), pubs, d, s.svc.Timezone(), chip))
+}
+
+// baselineChip is the draft header's "Changes since …" menu, and the baseline
+// the draft's forms carry on their action so it stays in the URL.
+type baselineChip struct {
+	// Label is the chip's bold part: "last publication · Sep 22", "30 days
+	// ago · Sep 4" or, for a chosen date, "Sep 4".
+	Label string
+	// Draft is the draft's path with no baseline: the Last publication item.
+	Draft string
+	// Published offers the Last publication item; there is none to offer
+	// before the first publication.
+	Published bool
+	// ThirtyDaysAgo is today minus 30 days in the org's calendar, as a date.
+	ThirtyDaysAgo string
+	// Query is "?baseline=<date>" when the reader chose a date, and empty for
+	// the default, so the draft's forms read against the same baseline.
+	Query string
+}
+
+// newBaselineChip builds the chip for a draft read against a date the reader
+// chose (chosen) or the default, which is the previous publication when one
+// exists (published) and 30 days before now in loc otherwise.
+func newBaselineChip(r domain.Report, chosen, published bool, now time.Time, loc *time.Location) baselineChip {
+	y, m, d := now.In(loc).Date()
+	c := baselineChip{
+		Draft:         "/reports/" + strconv.FormatInt(r.Definition.ID, 10),
+		Published:     published,
+		ThirtyDaysAgo: time.Date(y, m, d-30, 0, 0, 0, 0, time.UTC).Format(dateLayout),
+	}
+	switch {
+	case chosen:
+		c.Label = fmtMonthDay(r.Baseline)
+		c.Query = "?baseline=" + url.QueryEscape(fmtDate(r.Baseline))
+	case published:
+		c.Label = "last publication · " + fmtMonthDay(r.Baseline)
+	default:
+		c.Label = "30 days ago · " + fmtMonthDay(r.Baseline)
+	}
+	return c
+}
+
+// fmtMonthDay renders a calendar date as "Sep 22". A Report's baseline is
+// already the org's calendar date at midnight UTC, so it is not converted.
+func fmtMonthDay(t time.Time) string {
+	return t.Format("Jan 2")
 }
 
 // handleCurateNarrative sets the narrative of a Report Definition's next
@@ -178,7 +227,7 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 // ticked (include-{highlight}), each with its section (pick-{highlight}, which
 // is ignored for a Highlight left unticked), and the section text for each
 // section (text-{section}). It redirects back to the draft, against the
-// baseline the reader picked (the baseline form field), if any.
+// baseline the reader picked (the baseline query parameter), if any.
 func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, _ domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -215,26 +264,23 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, _
 		return
 	}
 	target := "/reports/" + strconv.FormatInt(id, 10)
-	if baseline := r.FormValue("baseline"); baseline != "" {
+	if baseline := r.URL.Query().Get("baseline"); baseline != "" {
 		target += "?baseline=" + url.QueryEscape(baseline)
 	}
 	http.Redirect(w, r, target, http.StatusSeeOther)
 }
 
 // handlePublishReport publishes a Report Definition, freezing its Report
-// against the baseline the reader picked (the baseline form field, a date) or
-// by default the previous publication, and redirects to the publication.
+// against the baseline the reader picked (the baseline query parameter, a
+// date) or by default the previous publication, and redirects to the
+// publication.
 func (s *Server) handlePublishReport(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		s.notFound(w, r)
 		return
 	}
-	if err := r.ParseForm(); err != nil {
-		http.Error(w, "could not read the form", http.StatusBadRequest)
-		return
-	}
-	baseline, err := parseDate(r.FormValue("baseline"))
+	baseline, err := parseDate(r.URL.Query().Get("baseline"))
 	if err != nil {
 		http.Error(w, "the baseline must be a date", http.StatusBadRequest)
 		return

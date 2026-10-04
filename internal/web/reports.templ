@@ -108,12 +108,12 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 
 // reportDraftPage shows a saved Report Definition and its draft Report read
 // against a baseline the reader can change — by default the previous
-// publication. A sticky header carries the baseline, the History of its
+// publication. A sticky header carries the baseline chip, the History of its
 // publications (times in the org's timezone, loc) and Publish; below it the
 // author composes the narrative on the left beside a preview of exactly what
 // readers will see (CONTEXT.md: Report, Report Definition). Paths to Green are
 // judged overdue as of asOf, today.
-templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion, loc *time.Location) {
+templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion, loc *time.Location, chip baselineChip) {
 	@layout(r.Definition.Name, current) {
 		@reportStyles()
 		<header data-testid="draft-header" class="rp-draft-head">
@@ -121,30 +121,15 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 				<p class="small muted"><a href="/reports">Reports</a>{ " / " }Draft</p>
 				<h1 data-testid="report-name">{ r.Definition.Name }</h1>
 			</div>
-			// The baseline chip (#154) replaces the form and line below.
-			<div data-testid="baseline-chip" class="rp-chip">
-				<form data-testid="report-baseline" class="rp-inline-form" method="get">
-					<label>
-						Changes since
-						<input type="date" name="baseline" value={ fmtDate(r.Baseline) }/>
-					</label>
-					<button type="submit" class="btn">Update</button>
-				</form>
-				if r.Previous.ID != 0 {
-					<p data-testid="report-since-publication" class="muted">Showing what changed since the previous publication, { fmtPublished(r.Previous.PublishedAt) }.</p>
-				}
-			</div>
+			@reportBaselineChip(r, chip)
 			<div class="rp-head-actions">
 				// Save status: #156 fills it.
 				<span data-testid="save-status" class="small muted"></span>
 				@reportHistory(pubs, loc)
 				// Edit definition: #151 fills this slot.
-				<form data-testid="report-publish" class="card rp-publish" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications", r.Definition.ID)) }>
-					// A date the reader picked is carried through; otherwise publishing
-					// reads against the previous publication, as the draft does.
-					if r.Previous.ID == 0 {
-						<input type="hidden" name="baseline" value={ fmtDate(r.Baseline) }/>
-					}
+				// A date the reader picked is carried on the action; otherwise
+				// publishing reads against the previous publication, as the draft does.
+				<form data-testid="report-publish" class="card rp-publish" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications%s", r.Definition.ID, chip.Query)) }>
 					<p class="muted">Publishes a frozen copy readers can comment on.</p>
 					<button type="submit" class="btn primary">Publish</button>
 				</form>
@@ -160,7 +145,7 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 						<p class="muted">No introduction.</p>
 					}
 				</section>
-				@narrativeCuration(r)
+				@narrativeCuration(r, chip)
 			</aside>
 			<div class="rp-body">
 				@reportGoalsPanel(reportGoals(r))
@@ -171,6 +156,36 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 			</div>
 		</div>
 	}
+}
+
+// reportBaselineChip is the draft header's "Changes since …" menu: back to the
+// previous publication (once there is one), 30 days ago, or a date the reader
+// picks. Each is a plain link or GET form, so the baseline lives in the URL.
+templ reportBaselineChip(r domain.Report, chip baselineChip) {
+	<details data-testid="baseline-chip" class="rp-menu rp-chip">
+		<summary>
+			<span>Changes since <strong data-testid="baseline-label">{ chip.Label }</strong></span>
+			<span aria-hidden="true">▾</span>
+		</summary>
+		<ul class="card rp-list">
+			if chip.Published {
+				<li><a data-testid="baseline-last-publication" href={ templ.SafeURL(chip.Draft) }>Last publication</a></li>
+			}
+			<li><a data-testid="baseline-30-days" href={ templ.SafeURL(chip.Draft + "?baseline=" + chip.ThirtyDaysAgo) }>30 days ago</a></li>
+			<li>
+				<details data-testid="baseline-pick">
+					<summary>Pick a date…</summary>
+					<form data-testid="report-baseline" class="rp-inline-form" method="get" action={ templ.SafeURL(chip.Draft) }>
+						<label>
+							Changes since
+							<input type="date" name="baseline" value={ fmtDate(r.Baseline) }/>
+						</label>
+						<button type="submit" class="btn">Apply</button>
+					</form>
+				</details>
+			</li>
+		</ul>
+	</details>
 }
 
 // reportHistory is the draft header's menu of a Report Definition's
@@ -470,14 +485,12 @@ templ membershipChanges(changes []domain.MembershipChange) {
 // next publication: every Highlight in scope since the baseline, each with a
 // box to include it and the section it goes into, and the section text for
 // each section (CONTEXT.md: Highlight).
-templ narrativeCuration(r domain.Report) {
+templ narrativeCuration(r domain.Report, chip baselineChip) {
 	<section data-testid="report-curation" class="rp-body">
 		<h2>Narrative</h2>
-		<form data-testid="narrative-curation" class="card rp-form rp-card" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/narrative", r.Definition.ID)) }>
-			// A date the reader picked is kept when the draft reloads.
-			if r.Previous.ID == 0 {
-				<input type="hidden" name="baseline" value={ fmtDate(r.Baseline) }/>
-			}
+		// A date the reader picked rides on the action, so the draft reloads
+		// against it.
+		<form data-testid="narrative-curation" class="card rp-form rp-card" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/narrative%s", r.Definition.ID, chip.Query)) }>
 			if len(r.Highlights) == 0 {
 				<p data-testid="no-highlights">No Highlights since { fmtDate(r.Baseline) }.</p>
 			} else {
@@ -984,7 +997,10 @@ templ reportStyles() {
 		.rp-publish{padding:8px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 		.rp-draft-head{position:sticky;top:0;z-index:2;background:var(--color-canvas);border-bottom:1px solid var(--color-border);padding:12px 0;display:flex;align-items:center;gap:16px 24px;flex-wrap:wrap}
 		.rp-draft-head h1{margin:0}
-		.rp-chip{display:flex;flex-direction:column;gap:4px}
+		.rp-chip>summary{justify-content:flex-start;gap:4px;color:var(--color-ink);font-weight:400}
+		.rp-chip>ul{left:0;right:auto}
+		.rp-chip>ul>li>details>summary{min-height:0;color:var(--color-primary-strong);font-weight:500}
+		.rp-chip form{margin-top:8px}
 		.rp-head-actions{margin-left:auto;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 		.rp-menu{position:relative}
 		.rp-menu>summary{color:var(--color-primary-strong);font-weight:600}

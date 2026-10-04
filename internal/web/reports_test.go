@@ -218,7 +218,7 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 	if !strings.Contains(draft, `data-testid="no-publications"`) {
 		t.Errorf("an unpublished definition does not say so; body:\n%s", draft)
 	}
-	resp := postForm(t, client, reportURL+"/publications", url.Values{"baseline": {""}})
+	resp := postForm(t, client, reportURL+"/publications", url.Values{})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("publish: status %d", resp.StatusCode)
 	}
@@ -247,16 +247,25 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 	if item := pageElement(t, draft, "li", "report-publication"); !strings.Contains(item, strings.TrimPrefix(pubURL, ts.URL)) {
 		t.Errorf("definition page does not link its publication; item:\n%s", item)
 	}
-	if !strings.Contains(draft, `data-testid="report-since-publication"`) {
-		t.Errorf("the next draft does not say it reads against the previous publication; body:\n%s", draft)
+	// By default publishing reads against the previous publication, so the
+	// publish form carries no baseline.
+	form := pageElement(t, draft, "form", "report-publish")
+	if !strings.Contains(form, `action="/reports/`+strconv.FormatInt(def.ID, 10)+`/publications"`) || strings.Contains(form, `name="baseline"`) {
+		t.Errorf("the default publish form carries a baseline; form:\n%s", form)
+	}
+	resp = postForm(t, client, reportURL+"/publications", url.Values{})
+	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "changes since the previous publication, 2026-02-11") {
+		t.Errorf("publication does not read against the previous publication; line:\n%s", line)
 	}
 
-	// A date the reader picks is carried into the publication.
+	// A date the reader picks lives in the URL and is carried into the
+	// publication on the form's action, not in a hidden input.
 	draft = getBody(t, client, reportURL+"?baseline=2026-01-01")
-	if form := pageElement(t, draft, "form", "report-publish"); !strings.Contains(form, `value="2026-01-01"`) {
-		t.Errorf("publish form does not carry the chosen baseline; form:\n%s", form)
+	form = pageElement(t, draft, "form", "report-publish")
+	if !strings.Contains(form, `action="/reports/`+strconv.FormatInt(def.ID, 10)+`/publications?baseline=2026-01-01"`) || strings.Contains(form, `name="baseline"`) {
+		t.Errorf("publish form does not carry the chosen baseline on its action alone; form:\n%s", form)
 	}
-	resp = postForm(t, client, reportURL+"/publications", url.Values{"baseline": {"2026-01-01"}})
+	resp = postForm(t, client, reportURL+"/publications?baseline=2026-01-01", url.Values{})
 	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "changes since 2026-01-01") {
 		t.Errorf("publication does not read against the chosen baseline; line:\n%s", line)
 	}
@@ -454,7 +463,7 @@ func TestSmokeCurateNarrativeOverHTTP(t *testing.T) {
 		t.Errorf("curation form does not keep the author's text; form:\n%s", form)
 	}
 
-	resp = postForm(t, client, reportURL+"/publications", url.Values{"baseline": {""}})
+	resp = postForm(t, client, reportURL+"/publications", url.Values{})
 	published := readBody(t, resp)
 	narrative = pageElement(t, published, "section", "report-narrative")
 	for _, want := range []string{"EU is open for business.", "Signed the first EU customer.", "alice@example.com"} {
@@ -1292,7 +1301,7 @@ func TestPullOneHighlightOfACheckinOverHTTP(t *testing.T) {
 		"pick-" + strconv.FormatInt(signed, 10):    {domain.HighlightAccomplishment},
 		"pick-" + strconv.FormatInt(hired, 10):     {domain.HighlightAccomplishment},
 	})
-	resp := postForm(t, client, reportURL+"/publications", url.Values{"baseline": {""}})
+	resp := postForm(t, client, reportURL+"/publications", url.Values{})
 	published := readBody(t, resp)
 	narrative := pageElement(t, published, "section", "report-narrative")
 	if !strings.Contains(narrative, "Signed the first EU customer.") || strings.Contains(narrative, "Hired the EU lead.") {
@@ -1494,7 +1503,7 @@ func TestDraftListsTheGoalsInTheReportOverHTTP(t *testing.T) {
 		}
 	}
 
-	published := readBody(t, postForm(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications", url.Values{"baseline": {""}}))
+	published := readBody(t, postForm(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications", url.Values{}))
 	if strings.Contains(published, `data-testid="report-goals"`) {
 		t.Errorf("the publication carries the author's Goals panel; body:\n%s", published)
 	}
@@ -1576,4 +1585,163 @@ func TestReportShowsTheGoalsThatEnteredOrLeftOverHTTP(t *testing.T) {
 			t.Errorf("%s lists %s, which stayed in:\n%s", name, stays.Title, list)
 		}
 	}
+}
+
+// A date the reader picks lives in the draft's URL: the narrative form carries
+// it on its action, not a hidden input, and saving comes back to the same
+// baseline.
+func TestSavingTheNarrativeKeepsTheChosenBaselineOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	path := "/reports/" + strconv.FormatInt(def.ID, 10)
+
+	form := pageElement(t, getBody(t, client, ts.URL+path+"?baseline=2026-01-01"), "form", "narrative-curation")
+	if !strings.Contains(form, `action="`+path+`/narrative?baseline=2026-01-01"`) || strings.Contains(form, `name="baseline"`) {
+		t.Errorf("narrative form does not carry the chosen baseline on its action alone; form:\n%s", form)
+	}
+	resp := postForm(t, client, ts.URL+path+"/narrative?baseline=2026-01-01", url.Values{"text-" + domain.HighlightInsight: {"Steady."}})
+	_ = readBody(t, resp)
+	if want := path + "?baseline=2026-01-01"; resp.StatusCode != http.StatusOK || resp.Request.URL.RequestURI() != want {
+		t.Errorf("saving the narrative: status %d at %s, want back on %s", resp.StatusCode, resp.Request.URL.RequestURI(), want)
+	}
+
+	form = pageElement(t, getBody(t, client, ts.URL+path), "form", "narrative-curation")
+	if !strings.Contains(form, `action="`+path+`/narrative"`) {
+		t.Errorf("the default narrative form carries a baseline; form:\n%s", form)
+	}
+}
+
+// The draft header's chip says what the draft reads against, picked from the
+// URL: 30 days ago before the first publication, the last publication after
+// it, and a date the reader chose over either. Its menu offers the Last
+// publication only once there is one.
+func TestBaselineChipSaysWhatTheDraftReadsAgainstOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	path := "/reports/" + strconv.FormatInt(def.ID, 10)
+	chip := func(query string) string {
+		t.Helper()
+		header := pageElement(t, getBody(t, client, ts.URL+path+query), "header", "draft-header")
+		return pageElement(t, header, "details", "baseline-chip")
+	}
+	label := func(chip string) string { return chipLabel(t, chip) }
+
+	// Today is 2 Jan 2026, so 30 days ago is 3 Dec 2025.
+	unpublished := chip("")
+	if got := label(unpublished); got != "30 days ago · Dec 3" {
+		t.Errorf("unpublished chip label %q, want %q; chip:\n%s", got, "30 days ago · Dec 3", unpublished)
+	}
+	if !strings.Contains(unpublished, "Changes since <strong") {
+		t.Errorf("chip does not read Changes since …; chip:\n%s", unpublished)
+	}
+	if strings.Contains(unpublished, `data-testid="baseline-last-publication"`) {
+		t.Errorf("an unpublished Report's chip offers the last publication; chip:\n%s", unpublished)
+	}
+	if item := pageElement(t, unpublished, "a", "baseline-30-days"); !strings.Contains(item, `href="`+path+`?baseline=2025-12-03"`) {
+		t.Errorf("30 days ago does not link to 2025-12-03; item:\n%s", item)
+	}
+	pick := pageElement(t, unpublished, "form", "report-baseline")
+	if !strings.Contains(pick, `method="get"`) || !strings.Contains(pick, `type="date" name="baseline"`) || !strings.Contains(pick, "Apply") {
+		t.Errorf("Pick a date… is not a GET date form with Apply; form:\n%s", pick)
+	}
+
+	h.Clock.Set(time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC))
+	h.PublishReport(boss, def)
+	h.Clock.Set(time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC))
+
+	if page := getBody(t, client, ts.URL+path); strings.Contains(page, "Showing what changed since") || strings.Count(page, `data-testid="report-baseline"`) != 1 {
+		t.Errorf("the draft keeps the old baseline sentence or a baseline form outside the chip; body:\n%s", page)
+	}
+	published := chip("")
+	if got := label(published); got != "last publication · Sep 22" {
+		t.Errorf("published chip label %q, want %q; chip:\n%s", got, "last publication · Sep 22", published)
+	}
+	if item := pageElement(t, published, "a", "baseline-last-publication"); !strings.Contains(item, `href="`+path+`"`) {
+		t.Errorf("Last publication does not link to the draft with no baseline; item:\n%s", item)
+	}
+	if item := pageElement(t, published, "a", "baseline-30-days"); !strings.Contains(item, `href="`+path+`?baseline=2026-09-04"`) {
+		t.Errorf("30 days ago does not link to 2026-09-04; item:\n%s", item)
+	}
+
+	chosen := chip("?baseline=2026-01-01")
+	if got := label(chosen); got != "Jan 1" {
+		t.Errorf("chosen chip label %q, want %q; chip:\n%s", got, "Jan 1", chosen)
+	}
+	if !strings.Contains(chosen, `data-testid="baseline-last-publication"`) {
+		t.Errorf("after a chosen date the chip no longer offers the last publication; chip:\n%s", chosen)
+	}
+}
+
+// The chip dates a publication in the org's calendar: published the evening
+// of 1 March in Los Angeles (03:00 UTC on 2 March), it reads Mar 1.
+func TestBaselineChipDatesThePublicationInTheOrgsTimezoneOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	la, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		t.Fatalf("load timezone: %v", err)
+	}
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	h.Clock.Set(time.Date(2026, 3, 2, 3, 0, 0, 0, time.UTC))
+	h.PublishReport(boss, def)
+
+	ts := httptest.NewServer(web.NewServer(domain.NewService(h.DB, h.Clock, h.Email, nil, domain.WithTimezone(la))))
+	t.Cleanup(ts.Close)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+
+	chip := pageElement(t, pageElement(t, page, "header", "draft-header"), "details", "baseline-chip")
+	if got := chipLabel(t, chip); got != "last publication · Mar 1" {
+		t.Errorf("chip label %q, want %q; chip:\n%s", got, "last publication · Mar 1", chip)
+	}
+}
+
+// Closing an Action Item from the draft comes back to the same draft, the
+// chosen baseline included.
+func TestClosingAnActionItemFromTheDraftKeepsTheBaselineOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	if _, err := h.Service.RaiseActionItem(context.Background(), boss.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, Text: "Get a second vendor quote.", OwnerID: boss.ID, DueDate: h.Clock.Now(),
+	}); err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	path := "/reports/" + strconv.FormatInt(def.ID, 10) + "?baseline=2026-01-01"
+
+	form := pageElement(t, getBody(t, client, ts.URL+path), "form", "close-action-item")
+	if want := `name="return" value="` + path + `"`; !strings.Contains(form, want) {
+		t.Errorf("close form does not return to %s; form:\n%s", path, form)
+	}
+}
+
+// chipLabel is the bold part of the baseline chip: what it says the draft
+// reads changes since.
+func chipLabel(t *testing.T, chip string) string {
+	t.Helper()
+	const start = `data-testid="baseline-label">`
+	return strings.TrimPrefix(between(t, chip, start, "</strong>"), start)
 }
