@@ -1,6 +1,7 @@
 package web_test
 
 import (
+	"html"
 	"strconv"
 	"strings"
 	"testing"
@@ -319,6 +320,69 @@ func TestRisksPageIsAllClearWithNothingFlagged(t *testing.T) {
 	}
 	if risks := pageElement(t, page, "a", "nav-risks"); strings.Contains(risks, "count") {
 		t.Errorf("Risks shows a count with nothing flagged: %s", risks)
+	}
+}
+
+// The Risks page heads with how many Goals need attention, each once, then a
+// card per group of signals, by who acts: each counts the Goals it holds once,
+// chips each of its signals with how many Goals it flags, and links to the
+// page filtered to the group.
+func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
+	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	h.Clock.Advance(10 * day)
+	h.Checkin(sam, launch.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.ActiveGoal(kim, "Orphaned work", "It matters.") // Ownerless and Unaligned
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	late := h.ActiveGoalDue(sam, "Late piece", june.AddDate(0, 1, 0)) // Schedule conflict
+	h.RequestLink(sam, late, launch, "")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>3</strong> Goals need attention.") {
+		t.Errorf("header does not count the 3 flagged Goals: %s", head)
+	}
+	last := -1
+	for _, g := range []struct {
+		key, name string
+		count     int
+		chips     []string
+	}{
+		{"owner", "Owner needs to update", 1, []string{"Stale · 1"}},
+		{"plan", "Plan doesn't fit", 3, []string{"Unaligned · 2", "Schedule conflicts · 1"}},
+		{"admin", "Needs an Admin", 1, []string{"Ownerless · 1"}},
+	} {
+		card := pageElement(t, page, "a", "risks-group-"+g.key)
+		for _, want := range append([]string{
+			`href="/risks?group=` + g.key + `"`,
+			html.EscapeString(g.name),
+			`<span class="num">` + strconv.Itoa(g.count) + `</span>`,
+		}, g.chips...) {
+			if !strings.Contains(card, want) {
+				t.Errorf("%s card lacks %s: %s", g.key, want, card)
+			}
+		}
+		if strings.Contains(openTag(card), "aria-current") {
+			t.Errorf("%s card is current with no filter: %s", g.key, openTag(card))
+		}
+		at := strings.Index(page, `data-testid="risks-group-`+g.key+`"`)
+		if at < last {
+			t.Errorf("%s card is out of order", g.key)
+		}
+		last = at
+	}
+	if strings.Contains(page, "Show all") {
+		t.Errorf("page offers Show all with no filter")
 	}
 }
 

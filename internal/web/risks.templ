@@ -9,15 +9,20 @@ import (
 
 // risksPage answers "what's going wrong?": a tile counting each problem type,
 // then a section per type listing the Goals it flags, their Owners, and why.
-templ risksPage(current *domain.Account, v risksView) {
+templ risksPage(current *domain.Account, v risksPageView) {
 	@layout("Risks", current) {
 		@risksStyles()
 		<header class="page-head">
 			<div>
 				<h1>Risks</h1>
-				<p class="muted">What's going wrong: the Goals the signals flag that nobody reported.</p>
+				<p data-testid="risks-attention" class="muted"><strong>{ strconv.Itoa(len(v.Rows)) }</strong> { v.attention() }</p>
 			</div>
 		</header>
+		<nav data-testid="risks-groups" class="rk-cards" aria-label="Risks by who acts">
+			for _, c := range v.Cards() {
+				@riskCardView(c)
+			}
+		</nav>
 		<nav data-testid="risks-summary" class="rk-tiles" aria-label="Risks by type">
 			for _, rt := range v.Types() {
 				@riskTile(rt.Anchor, rt.Name, rt.Count)
@@ -84,6 +89,21 @@ templ risksPage(current *domain.Account, v risksView) {
 	}
 }
 
+// riskCardView is one group's summary card: its name, how many Goals it
+// holds, and a chip per signal that flags one, linking to the page filtered to
+// the group.
+templ riskCardView(c riskCard) {
+	<a data-testid={ "risks-group-" + c.Key } href={ templ.SafeURL("/risks?group=" + c.Key) } class="card rk-card">
+		<span class="label">{ c.Name }</span>
+		<span class="num">{ strconv.Itoa(c.Count) }</span>
+		<span class="rk-chips">
+			for _, sig := range c.Signals {
+				<span class={ "badge " + riskChipClass(sig.Anchor) }>{ sig.Name + " · " + strconv.Itoa(sig.Count) }</span>
+			}
+		</span>
+	</a>
+}
+
 // riskNames lists the empty problem types by name, each carrying its section's
 // anchor so a link to an empty section lands on its name.
 templ riskNames(types []riskType) {
@@ -147,9 +167,13 @@ templ risksStyles() {
 		.rk-tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
 		.rk-tile{padding:16px;display:flex;flex-direction:column;gap:4px}
 		.rk-tile .num{font-size:24px}
+		.rk-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+		.rk-card{padding:16px;display:flex;flex-direction:column;gap:8px}
+		.rk-card .num{font-size:24px}
+		.rk-chips{display:flex;flex-wrap:wrap;gap:8px}
 		.rk-section,.rk-empty{scroll-margin-top:16px}
 		.rk-empty{color:var(--color-ink);font-weight:500}
 		.rk-section{display:flex;flex-direction:column;gap:12px}
-		@media (max-width:900px){.rk-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+		@media (max-width:900px){.rk-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rk-cards{grid-template-columns:minmax(0,1fr)}}
 	</style>
 }
