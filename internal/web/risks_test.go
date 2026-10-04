@@ -54,7 +54,7 @@ func hasRiskRow(page string, g domain.Goal) bool {
 // isRiskRowOf reports whether a Risks table row is g's: its Goal cell links
 // to g.
 func isRiskRowOf(row string, g domain.Goal) bool {
-	return strings.Contains(row, `<td data-testid="risk-goal">`+`<a `+navTo(g.ID)+`>`)
+	return strings.Contains(row, `<td data-testid="risk-goal" class="rk-goal">`+`<a `+navTo(g.ID)+`>`)
 }
 
 // riskChip returns a row's chip for one signal kind.
@@ -1167,5 +1167,86 @@ func TestRisksScopeFormAppliesItself(t *testing.T) {
 	riskRowOf(t, page, own)
 	if rows := riskRows(page); len(rows) != 1 {
 		t.Errorf("scoped to Mine and Platform and filtered to owner, the table has %d rows, want 1", len(rows))
+	}
+}
+
+// A Health chip on the Risks page shows one marker, its dot: the shape
+// healthBadge also emits is for the print page, so the page hides it on screen.
+func TestRisksPageHidesHealthShapesOnScreen(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	stalled := h.ActiveGoal(sam, "Stalled recovery", "It matters.")
+	h.Checkin(sam, stalled.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(10 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	if row := riskRowOf(t, page, stalled); !strings.Contains(row, `class="shape"`) {
+		t.Fatalf("the row's Health chip has no shape, so this test checks nothing:\n%s", row)
+	}
+	if rule := cssRule(t, page, ".shape"); !strings.Contains(rule, "display:none") {
+		t.Errorf("the Risks page shows .shape{%s} on screen beside each Health chip's dot", rule)
+	}
+}
+
+// An Owner's name stays on one line at desktop width rather than wrapping
+// onto two in the table's narrow Owner column.
+func TestRisksPageKeepsOwnersOnOneLine(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.")
+	h.Clock.Advance(10 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	if owner := pageElement(t, riskRowOf(t, page, silent), "td", "risk-owner"); !strings.Contains(openTag(owner), `class="rk-owner"`) {
+		t.Fatalf("the Owner cell has no rk-owner class to style: %s", openTag(owner))
+	}
+	if rule := cssRule(t, page, ".rk-table .rk-owner"); !strings.Contains(rule, "white-space:nowrap") {
+		t.Errorf("the Owner cell .rk-table .rk-owner{%s} wraps", rule)
+	}
+}
+
+// Below 600px each Risks row stacks as a card rather than hiding its Fix off
+// to the side of a sideways scroller: the Goal and its chips first, then its
+// Health and Owner on one line, then its Fix. The cells run Health, Goal,
+// Owner, Fix in the HTML, so the Goal cell is ordered first.
+func TestRisksRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.")
+	h.Clock.Advance(10 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	row := riskRowOf(t, page, silent)
+	for _, class := range []string{"rk-health", "rk-goal", "rk-owner", "rk-fix"} {
+		if !strings.Contains(row, `class="`+class+`"`) {
+			t.Errorf("the row has no %s cell to style:\n%s", class, row)
+		}
+	}
+	phone := between(t, page, "@media (max-width:600px){", "}}") + "}"
+	for selector, want := range map[string]string{
+		".rk-table thead":    "display:none",
+		".rk-table tr":       "display:grid",
+		".rk-table td":       "display:block",
+		".rk-table .rk-goal": "order:-1",
+		".rk-table .rk-fix":  "grid-column:1/-1",
+	} {
+		if rule := cssRule(t, phone, selector); !strings.Contains(rule, want) {
+			t.Errorf("at 600px %s{%s} lacks %s", selector, rule, want)
+		}
+	}
+	if rule := cssRule(t, phone, ".rk-table .rk-goal"); !strings.Contains(rule, "grid-column:1/-1") {
+		t.Errorf("at 600px the Goal cell .rk-table .rk-goal{%s} shares its line with Health rather than heading the card", rule)
 	}
 }
