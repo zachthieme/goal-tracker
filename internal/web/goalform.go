@@ -31,8 +31,8 @@ type goalFormView struct {
 	// CadenceDays the days typed for Custom.
 	Cadence     string
 	CadenceDays string
-	Milestones []milestoneRow
-	Metrics    []metricRow
+	Milestones  []milestoneRow
+	Metrics     []metricRow
 	// Parents are the Goals picked to contribute to, and Candidates every
 	// other Goal, which the no-script select offers.
 	Parents    []parentChoice
