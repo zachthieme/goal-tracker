@@ -191,15 +191,36 @@ func (p risksPageView) Shown() []riskGoalRow {
 	return shown
 }
 
-// Blank is what the filtered group's card says when it holds no Goals, "" with
-// no filter.
-func (p risksPageView) Blank() string {
-	for _, gk := range riskGroupKinds {
-		if gk.Key == p.Group {
-			return gk.Blank
+// Filtered reports whether the page is scoped to Mine or a value, or filtered
+// to a group.
+func (p risksPageView) Filtered() bool {
+	return p.Mine || p.Value.ID != 0 || p.Group != ""
+}
+
+// Empty is what the page says when no Goal is left to show: where nothing
+// needs attention, naming Mine, the value with its Dimension's name, and the
+// group's card's title, in that order.
+func (p risksPageView) Empty() string {
+	var parts []string
+	if p.Mine {
+		parts = append(parts, "Mine")
+	}
+	if p.Value.ID != 0 {
+		for _, d := range p.Dimensions {
+			if d.ID == p.Value.DimensionID {
+				parts = append(parts, d.Name+" "+p.Value.Value)
+			}
 		}
 	}
-	return ""
+	for _, gk := range riskGroupKinds {
+		if gk.Key == p.Group {
+			parts = append(parts, gk.Name)
+		}
+	}
+	if len(parts) == 0 {
+		return "No Goals need attention."
+	}
+	return "No Goals need attention in " + strings.Join(parts, ", ") + "."
 }
 
 // attention is the header's words after its count of the Goals on the page.
