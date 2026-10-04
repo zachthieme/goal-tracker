@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -203,7 +204,7 @@ func wantRefused(t *testing.T, form, name, want string) {
 		t.Errorf("%s isn't marked invalid: %s", name, input)
 	}
 	described := attr(input, "aria-describedby")
-	if described == "" || !strings.Contains(between(t, form, `id="`+described+`"`, "</"), want) {
+	if described == "" || !strings.Contains(html.UnescapeString(between(t, form, `id="`+described+`"`, "</")), want) {
 		t.Errorf("%s isn't described by a message saying %q:\n%s", name, want, form)
 	}
 }
@@ -242,5 +243,116 @@ func TestNewGoalFormHoldSteadyMetricTakesTheChosenDirection(t *testing.T) {
 	metrics, err := h.Service.ListMetrics(context.Background(), goals[0].ID)
 	if err != nil || len(metrics) != 1 || metrics[0].Direction != domain.MetricDown {
 		t.Errorf("saved Metrics %+v (%v), want one holding steady, down", metrics, err)
+	}
+}
+
+// A row's date or number that doesn't parse is refused under its input, in the
+// same 422 as the domain's problems, and every row comes back as typed. A row
+// with anything in it is a row, so its blank required inputs are refused too.
+func TestNewGoalFormRefusesRowValuesThatDontParseKeepingTheRest(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	form := refusedNewGoal(t, client, ts.URL, url.Values{
+		"title": {"Cut checkout latency"}, "so_what": {""},
+		"milestones[0].name": {"Profile checkout"}, "milestones[0].date": {"2026-11-02"},
+		"milestones[1].name": {"Ship the fix"}, "milestones[1].date": {"next week"},
+		"metrics[0].name": {"p95 latency"}, "metrics[0].unit": {"ms"}, "metrics[0].baseline": {"slow"}, "metrics[0].target": {"400"}, "metrics[0].target_date": {"2026-12-31"},
+		"metrics[1].name": {"Conversion"}, "metrics[1].unit": {""}, "metrics[1].baseline": {""}, "metrics[1].target": {"3"}, "metrics[1].target_date": {""},
+	})
+	wantRefused(t, form, "so_what", "a Goal needs a So What")
+	wantRefused(t, form, "milestones[1].date", "isn't a date")
+	wantRefused(t, form, "metrics[0].baseline", "must be a number")
+	wantRefused(t, form, "metrics[1].unit", "a Metric needs a unit")
+	wantRefused(t, form, "metrics[1].baseline", "a Metric needs a baseline")
+	wantRefused(t, form, "metrics[1].target_date", "a Metric needs a target date")
+	for name, value := range map[string]string{
+		"milestones[0].name": "Profile checkout", "milestones[0].date": "2026-11-02",
+		"milestones[1].name": "Ship the fix", "milestones[1].date": "next week",
+		"metrics[0].name": "p95 latency", "metrics[0].target": "400", "metrics[0].target_date": "2026-12-31",
+		"metrics[1].name": "Conversion", "metrics[1].target": "3",
+	} {
+		input := tagAround(t, form, `name="`+name+`"`)
+		if attr(input, "value") != value {
+			t.Errorf("%s came back as %s, want %q", name, input, value)
+		}
+		if name != "milestones[1].date" && attr(input, "aria-invalid") != "" {
+			t.Errorf("%s is marked invalid: %s", name, input)
+		}
+	}
+	// The baseline that didn't parse can't say which way the Metric moves, so
+	// its direction isn't refused as well.
+	if attr(tagAround(t, form, `name="metrics[0].direction"`), "aria-invalid") != "" {
+		t.Errorf("metrics[0].direction is refused though its baseline didn't parse:\n%s", form)
+	}
+	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 0 {
+		t.Errorf("a refused post created %d Goals", len(goals))
+	}
+}
+
+// When only the handler refuses a value, the Goal the domain would have
+// created is not kept.
+func TestNewGoalFormKeepsNothingWhenOnlyAValueDoesntParse(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	form := refusedNewGoal(t, client, ts.URL, newGoalForm(map[string]string{
+		"milestones[0].name": "Profile checkout", "milestones[0].date": "2026-13-45",
+	}))
+	wantRefused(t, form, "milestones[0].date", "isn't a date")
+	if strings.Contains(form, "a Milestone needs a date") {
+		t.Errorf("the date that didn't parse is also refused as missing:\n%s", form)
+	}
+	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 0 {
+		t.Errorf("a refused post created %d Goals", len(goals))
+	}
+}
+
+// How you'll know offers one blank Milestone row and one blank Metric row,
+// whose Direction select is always there for when the target equals the
+// baseline, plus a <template> of each row and a button to add one.
+func TestNewGoalPageOffersMilestoneAndMetricRows(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	form := pageElement(t, getBody(t, client, ts.URL+"/goals/new"), "form", "goal-form")
+	know := pageElement(t, form, "fieldset", "goal-form-know")
+	if !strings.Contains(know, "How you&#39;ll know") && !strings.Contains(know, "How you'll know") {
+		t.Errorf("the section isn't headed How you'll know:\n%s", know)
+	}
+	for _, name := range []string{
+		"milestones[0].name", "milestones[0].date",
+		"metrics[0].name", "metrics[0].unit", "metrics[0].baseline", "metrics[0].target", "metrics[0].direction", "metrics[0].target_date",
+	} {
+		if input := tagAround(t, know, `name="`+name+`"`); attr(input, "value") != "" || strings.Contains(input, " required") {
+			t.Errorf("%s isn't a blank, optional input: %s", name, input)
+		}
+	}
+	if strings.Contains(know, `name="milestones[1].`) || strings.Contains(know, `name="metrics[1].`) {
+		t.Errorf("the section offers more than one row of a kind:\n%s", know)
+	}
+	for _, section := range []string{"milestones", "metrics"} {
+		template := between(t, know, `<template id="`+section+`-row"`, "</template>")
+		if !strings.Contains(template, `name="`+section+`[__i__].name"`) {
+			t.Errorf("the %s <template> has no row to clone:\n%s", section, template)
+		}
+	}
+	for section, label := range map[string]string{"milestones": "+ Milestone", "metrics": "+ Metric"} {
+		button := between(t, know, `data-add-row="`+section+`"`, "</button>")
+		if !strings.Contains(button, label) {
+			t.Errorf("no %q button adds a %s row:\n%s", label, section, button)
+		}
 	}
 }
