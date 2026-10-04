@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/export"
@@ -38,28 +39,96 @@ func (s *Server) handleReports(w http.ResponseWriter, r *http.Request, current d
 }
 
 // handleSaveReport saves a Report Definition from the form and redirects to its
-// live draft.
+// live draft. Until the builder (#149), the form posts root Goals, an Owner
+// filter and Dimension-value filters: with roots, it saves the roots that pass
+// the filters now as a picked definition; with none, the filters as rules.
 func (s *Server) handleSaveReport(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "could not read the form", http.StatusBadRequest)
 		return
 	}
-	depth, _ := strconv.Atoi(r.FormValue("depth"))
-	owner, _ := strconv.ParseInt(r.FormValue("owner"), 10, 64)
-	def, err := s.svc.SaveReportDefinition(r.Context(), current.ID, domain.SaveReportDefinitionInput{
-		Name:              r.FormValue("name"),
-		Introduction:      r.FormValue("introduction"),
-		RootIDs:           formInt64s(r, "root"),
-		Depth:             depth,
-		OwnerFilterID:     owner,
-		DimensionValueIDs: formInt64s(r, "filter"),
-		FieldIDs:          formInt64s(r, "field"),
-	})
+	rules, err := s.formReportRules(r)
+	if err != nil {
+		http.Error(w, "could not read the filters", http.StatusInternalServerError)
+		return
+	}
+	in := domain.SaveReportDefinitionInput{
+		Name:         r.FormValue("name"),
+		Introduction: r.FormValue("introduction"),
+		Mode:         domain.ReportModeRules,
+		Rules:        rules,
+		FieldIDs:     formInt64s(r, "field"),
+	}
+	if roots := formInt64s(r, "root"); len(roots) > 0 {
+		if in.Picked, err = s.rootsPassing(r, roots, rules); err != nil {
+			http.Error(w, "could not apply the filters", http.StatusInternalServerError)
+			return
+		}
+		in.Mode, in.Rules = domain.ReportModePicked, nil
+	}
+	def, err := s.svc.SaveReportDefinition(r.Context(), current.ID, in)
 	if err != nil {
 		writeReportError(w, err)
 		return
 	}
 	http.Redirect(w, r, "/reports/"+strconv.FormatInt(def.ID, 10), http.StatusSeeOther)
+}
+
+// formReportRules reads the form's Owner filter as an "Owner is" rule and its
+// Dimension-value filters as one "is any of" rule per Dimension, as the
+// migration converts a saved definition's filters.
+func (s *Server) formReportRules(r *http.Request) ([]domain.ReportRule, error) {
+	var rules []domain.ReportRule
+	if owner := r.FormValue("owner"); owner != "" {
+		rules = append(rules, domain.ReportRule{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{owner}})
+	}
+	filters := formInt64s(r, "filter")
+	if len(filters) == 0 {
+		return rules, nil
+	}
+	dims, err := s.svc.ListDimensions(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	dimensionOf := map[int64]int64{}
+	for _, d := range dims {
+		for _, v := range d.Values {
+			dimensionOf[v.ID] = d.ID
+		}
+	}
+	ruleOf := map[int64]int{}
+	for _, id := range filters {
+		// An unknown value gets a rule naming no Dimension, which saving refuses.
+		dimID := dimensionOf[id]
+		i, ok := ruleOf[dimID]
+		if !ok {
+			i = len(rules)
+			ruleOf[dimID] = i
+			rules = append(rules, domain.ReportRule{Attribute: domain.RuleDimension, DimensionID: dimID, Op: domain.RuleIsAnyOf})
+		}
+		rules[i].Values = append(rules[i].Values, strconv.FormatInt(id, 10))
+	}
+	return rules, nil
+}
+
+// rootsPassing returns the roots that meet every rule now, in the order
+// given.
+func (s *Server) rootsPassing(r *http.Request, roots []int64, rules []domain.ReportRule) ([]int64, error) {
+	if len(rules) == 0 {
+		return roots, nil
+	}
+	everything := func(time.Time) bool { return true }
+	matched, err := s.svc.SelectGoals(r.Context(), domain.ReportDefinition{Mode: domain.ReportModeRules, Rules: rules}, everything)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]int64, 0, len(roots))
+	for _, id := range roots {
+		if slices.ContainsFunc(matched, func(sg domain.SelectedGoal) bool { return sg.Goal.ID == id }) {
+			out = append(out, id)
+		}
+	}
+	return out, nil
 }
 
 // handleViewReport shows a saved Report Definition, its draft Report, and its

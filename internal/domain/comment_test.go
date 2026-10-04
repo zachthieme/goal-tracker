@@ -21,7 +21,7 @@ func TestCommentOnGoalBlockEmailsTheOwner(t *testing.T) {
 	owner := h.SignIn("owner@example.com")
 	reader := h.SignIn("reader@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(reader, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(reader, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(reader, def)
 
 	c, err := h.Service.AddComment(ctx, reader.ID, pub.ID, g.ID, "  Why did the vendor slip?  ")
@@ -67,7 +67,7 @@ func TestOwnersAndOthersReplyInTheThread(t *testing.T) {
 	reader := h.SignIn("reader@example.com")
 	peer := h.SignIn("peer@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(reader, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(reader, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(reader, def)
 	question, err := h.Service.AddComment(ctx, reader.ID, pub.ID, g.ID, "Why did the vendor slip?")
 	if err != nil {
@@ -119,7 +119,7 @@ func TestCommentRejectsBlankOrUncoveredGoal(t *testing.T) {
 	owner := h.SignIn("owner@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
 	other := h.ActiveGoal(owner, "Cut churn", "Keep customers.")
-	def := h.SaveReportDefinition(owner, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(owner, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(owner, def)
 
 	if _, err := h.Service.AddComment(ctx, owner.ID, pub.ID, other.ID, "Why?"); !errors.Is(err, domain.ErrValidation) {
@@ -151,7 +151,7 @@ func TestCommentIsNotKeptWhenItsAlertFails(t *testing.T) {
 	owner := h.SignIn("owner@example.com")
 	reader := h.SignIn("reader@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(reader, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(reader, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(reader, def)
 	down := domain.NewService(h.DB, h.Clock, failingSender{}, nil)
 

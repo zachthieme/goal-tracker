@@ -1673,7 +1673,7 @@ func TestSeededPagesShowPeopleByName(t *testing.T) {
 	if err := h.Service.MarkDeparted(ctx, admin.ID, departed.ID); err != nil {
 		t.Fatalf("MarkDeparted: %v", err)
 	}
-	def := h.SaveReportDefinition(admin, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(admin, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(admin, def)
 	comment, err := h.Service.AddComment(ctx, other.ID, pub.ID, g.ID, "Why the slip?")
 	if err != nil {

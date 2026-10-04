@@ -23,7 +23,7 @@ func TestSmokeCommentAndReplyOnPublicationOverHTTP(t *testing.T) {
 	author := h.SignIn("author@example.com")
 	h.SignIn("reader@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(author, def)
 
 	ts := newServer(t, h)
@@ -81,7 +81,7 @@ func TestSmokeActionItemCarriesUntilClosedOverHTTP(t *testing.T) {
 	owner := h.SignIn("owner@example.com")
 	author := h.SignIn("author@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	first := h.PublishReport(author, def)
 	question, err := h.Service.AddComment(context.Background(), owner.ID, first.ID, g.ID, "Get a second vendor quote.")
 	if err != nil {
@@ -162,7 +162,7 @@ func TestCloseActionItemNeverRedirectsOffSite(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("owner@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(owner, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(owner, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(owner, def)
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "owner@example.com")
@@ -197,7 +197,7 @@ func TestPublicationDiscussionIsCollapsedOverHTTP(t *testing.T) {
 	owner := h.SignIn("owner@example.com")
 	author := h.SignIn("author@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(author, def)
 	question, err := h.Service.AddComment(context.Background(), author.ID, pub.ID, g.ID, "Why did the vendor slip?")
 	if err != nil {
@@ -240,7 +240,7 @@ func TestCommentThreadIsSetApartByANeutralRuleOverHTTP(t *testing.T) {
 	owner := h.SignIn("owner@example.com")
 	author := h.SignIn("author@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(author, def)
 	if _, err := h.Service.AddComment(context.Background(), author.ID, pub.ID, g.ID, "Why did the vendor slip?"); err != nil {
 		t.Fatalf("AddComment: %v", err)
@@ -261,7 +261,7 @@ func TestOpenActionItemCloseFormIsCollapsedOverHTTP(t *testing.T) {
 	h := testsupport.New(t)
 	owner := h.SignIn("owner@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(owner, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(owner, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	first := h.PublishReport(owner, def)
 	if _, err := h.Service.RaiseActionItem(context.Background(), owner.ID, domain.RaiseActionItemInput{
 		PublicationID: first.ID, Text: "Get a second vendor quote.", OwnerID: owner.ID, DueDate: h.Clock.Now(),

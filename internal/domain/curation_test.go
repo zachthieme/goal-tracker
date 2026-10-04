@@ -42,7 +42,7 @@ func TestDraftListsHighlightsInScopeSinceTheBaseline(t *testing.T) {
 	h.Clock.Advance(day)
 	h.CheckinWithHighlight(boss, churn.ID, domain.HighlightMiss, "Lost two big accounts.")
 	h.CheckinWithHighlight(boss, outside.ID, domain.HighlightInsight, "Not in this Report.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{eu.ID, churn.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{eu.ID, churn.ID}})
 
 	r, err := h.Service.DraftReport(ctx, def, time.Time{})
 	if err != nil {
@@ -130,7 +130,7 @@ func TestAuthorCuratesTheNarrative(t *testing.T) {
 	h.CheckinWithHighlight(alice, eu.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
 	h.CheckinWithHighlight(boss, churn.ID, domain.HighlightMiss, "Lost two big accounts.")
 	h.CheckinWithHighlight(boss, churn.ID, domain.HighlightInsight, "Churn follows price rises.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{eu.ID, churn.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{eu.ID, churn.ID}})
 	r, err := h.Service.DraftReport(ctx, def, time.Time{})
 	if err != nil {
 		t.Fatalf("DraftReport: %v", err)
@@ -210,8 +210,8 @@ func TestCurateNarrativeRejectsHighlightsOutsideTheReport(t *testing.T) {
 	outside := h.ActiveGoal(boss, "Rewrite billing", "Billing is slow.")
 	h.CheckinWithHighlight(boss, eu.ID, domain.HighlightInsight, "EU buyers want invoices.")
 	h.CheckinWithHighlight(boss, outside.ID, domain.HighlightInsight, "Not in this Report.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{eu.ID}})
-	all := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "All", RootIDs: []int64{eu.ID, outside.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{eu.ID}})
+	all := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "All", Mode: domain.ReportModePicked, Picked: []int64{eu.ID, outside.ID}})
 	r, err := h.Service.DraftReport(ctx, all, time.Time{})
 	if err != nil {
 		t.Fatalf("DraftReport: %v", err)
@@ -249,7 +249,7 @@ func TestNarrativeIsFrozenWithTheSnapshot(t *testing.T) {
 	eu := h.ActiveGoal(alice, "Launch in EU", "Expand the market.")
 	h.CheckinWithHighlight(alice, eu.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
 	h.CheckinWithHighlight(alice, eu.ID, domain.HighlightInsight, "EU buyers want invoices.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{eu.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{eu.ID}})
 	r, err := h.Service.DraftReport(ctx, def, time.Time{})
 	if err != nil {
 		t.Fatalf("DraftReport: %v", err)
@@ -319,7 +319,7 @@ func TestAuthorPullsOneHighlightOfACheckinAndLeavesAnother(t *testing.T) {
 		domain.HighlightInput{Kind: domain.HighlightAccomplishment, Note: "Signed the first EU customer."},
 		domain.HighlightInput{Kind: domain.HighlightMiss, Note: "Lost the second customer."},
 	)
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{eu.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{eu.ID}})
 	r, err := h.Service.DraftReport(ctx, def, time.Time{})
 	if err != nil {
 		t.Fatalf("DraftReport: %v", err)

@@ -51,7 +51,7 @@ func draftReport(t *testing.T, h *testsupport.Harness, actor domain.Account, bas
 	for _, g := range goals {
 		roots = append(roots, g.ID)
 	}
-	def := h.SaveReportDefinition(actor, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: roots})
+	def := h.SaveReportDefinition(actor, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: roots})
 	r, err := h.Service.DraftReport(context.Background(), def, baseline)
 	if err != nil {
 		t.Fatalf("DraftReport: %v", err)

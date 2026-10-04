@@ -430,7 +430,7 @@ func TestLookupsByEmailIgnoreCase(t *testing.T) {
 		author := h.SignIn("author@example.com")
 		owner := h.SignIn("owner@example.com")
 		g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-		def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+		def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 		pub := h.PublishReport(author, def)
 
 		item, err := h.Service.RaiseActionItemByEmail(context.Background(), author.ID, domain.RaiseActionItemInput{

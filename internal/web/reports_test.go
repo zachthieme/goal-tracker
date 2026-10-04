@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -43,8 +45,7 @@ func TestSaveReportDefinitionAndSeeDraftOverHTTP(t *testing.T) {
 	resp := postForm(t, client, ts.URL+"/reports", url.Values{
 		"name":         {"EU MBR"},
 		"introduction": {"Quarterly business review."},
-		"root":         {strconv.FormatInt(a.ID, 10)},
-		"depth":        {"1"},
+		"root":         {strconv.FormatInt(a.ID, 10), strconv.FormatInt(b.ID, 10), strconv.FormatInt(c.ID, 10)},
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("save report: status %d", resp.StatusCode)
@@ -71,7 +72,6 @@ func TestSaveReportDefinitionAndSeeDraftOverHTTP(t *testing.T) {
 	if !strings.Contains(list, "EU MBR") {
 		t.Errorf("reports list missing the saved definition; body:\n%s", list)
 	}
-	_ = c
 }
 
 // A Report Definition that selects nothing (no roots, no filters) is rejected.
@@ -89,6 +89,56 @@ func TestSaveReportDefinitionRejectsEmptySelection(t *testing.T) {
 	}
 }
 
+// Until the builder (#149), the create form's roots save as a picked
+// definition of the roots that pass its Owner and Dimension filters as it is
+// saved; with no roots, its filters save as Report rules (ADR 0007).
+func TestCreateFormSavesRootsAsPickedAndFiltersAsRulesOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
+	growth, trust := pillar.Values[0], pillar.Values[1]
+	grower := h.ActiveGoal(boss, "Grow revenue", "The org needs to grow.")
+	truster := h.ActiveGoal(boss, "Earn trust", "Customers need to trust us.")
+	samsGrower := h.ActiveGoal(sam, "Grow EU revenue", "The EU needs to grow.")
+	h.AssignGoalValue(grower, growth)
+	h.AssignGoalValue(truster, trust)
+	h.AssignGoalValue(samsGrower, growth)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	id := func(n int64) string { return strconv.FormatInt(n, 10) }
+
+	for _, form := range []url.Values{
+		{"name": {"Picked"}, "root": {id(grower.ID), id(truster.ID), id(samsGrower.ID)}, "owner": {id(boss.ID)}, "filter": {id(growth.ID)}},
+		{"name": {"Rules"}, "owner": {id(boss.ID)}, "filter": {id(growth.ID), id(trust.ID)}},
+	} {
+		if resp := postForm(t, client, ts.URL+"/reports", form); resp.StatusCode != http.StatusOK {
+			t.Fatalf("save %s: status %d: %s", form.Get("name"), resp.StatusCode, readBody(t, resp))
+		}
+	}
+
+	defs, err := h.Service.ListReportDefinitions(context.Background())
+	if err != nil {
+		t.Fatalf("ListReportDefinitions: %v", err)
+	}
+	if len(defs) != 2 {
+		t.Fatalf("saved %d definitions, want 2", len(defs))
+	}
+	picked, rules := defs[0], defs[1]
+	if picked.Mode != domain.ReportModePicked || !slices.Equal(picked.Picked, []int64{grower.ID}) || len(picked.Rules) != 0 {
+		t.Errorf("roots with filters saved %+v, want picked [%d] (the root owned by boss carrying Growth)", picked, grower.ID)
+	}
+	wantRules := []domain.ReportRule{
+		{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{id(boss.ID)}},
+		{Attribute: domain.RuleDimension, DimensionID: pillar.ID, Op: domain.RuleIsAnyOf, Values: []string{id(growth.ID), id(trust.ID)}},
+	}
+	if rules.Mode != domain.ReportModeRules || !reflect.DeepEqual(rules.Rules, wantRules) || len(rules.Picked) != 0 {
+		t.Errorf("filters alone saved %+v, want rules %+v", rules, wantRules)
+	}
+}
+
 // The draft Report gives an exception the full block and an unchanged Green one
 // line, read against the default baseline or one the reader picks. The Report's
 // content is asserted on its view model in the domain tests; this checks the
@@ -103,7 +153,7 @@ func TestSmokeReportDraftShowsExceptionBlocksAgainstBaseline(t *testing.T) {
 	h.Clock.Advance(40 * 24 * time.Hour)
 	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{red.ID, green.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, green.ID}})
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
@@ -156,8 +206,8 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	h.Clock.Advance(40 * 24 * time.Hour)
 	h.Checkin(boss, g.ID, domain.HealthYellow, "Vendor is late.", "Chase the vendor.", h.Clock.Now().AddDate(0, 0, 14))
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
-	other := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "WBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	other := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "WBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
@@ -234,8 +284,8 @@ func TestSmokeExportPublicationAsMarkdownOverHTTP(t *testing.T) {
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	h.Clock.Advance(40 * 24 * time.Hour)
 	h.Checkin(boss, g.ID, domain.HealthRed, "Vendor is late.", "Chase the vendor.", h.Clock.Now().AddDate(0, 0, 14))
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", RootIDs: []int64{g.ID}})
-	other := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "WBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	other := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "WBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
 	h.Checkin(boss, g.ID, domain.HealthRed, "Vendor is gone.", "Find a new vendor.", h.Clock.Now().AddDate(0, 0, 14))
 
@@ -295,8 +345,8 @@ func TestSmokePrintPublicationOverHTTP(t *testing.T) {
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	h.Clock.Advance(40 * 24 * time.Hour)
 	h.Checkin(boss, g.ID, domain.HealthRed, "Vendor is late.", "Chase the vendor.", h.Clock.Now().AddDate(0, 0, 14))
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", Introduction: "Where the EU launch stands.", RootIDs: []int64{g.ID}})
-	other := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "WBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", Introduction: "Where the EU launch stands.", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	other := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "WBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
 
 	ts := newServer(t, h)
@@ -353,7 +403,7 @@ func TestSmokeCurateNarrativeOverHTTP(t *testing.T) {
 	h.CheckinWithHighlight(alice, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
 	h.Clock.Advance(time.Hour)
 	h.CheckinWithHighlight(alice, g.ID, domain.HighlightMiss, "Lost the second customer.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	draft, err := h.Service.DraftReport(context.Background(), def, time.Time{})
 	if err != nil {
 		t.Fatalf("DraftReport: %v", err)
@@ -436,7 +486,7 @@ func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Checkin(boss, yellow.ID, domain.HealthYellow, "Slow.", "Use a recruiter.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{red.ID, yellow.ID, green.ID, stale.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, yellow.ID, green.ID, stale.ID}})
 	pub := h.PublishReport(boss, def)
 
 	ts := newServer(t, h)
@@ -466,7 +516,7 @@ func TestPublicationSplitsNeedsAttentionFromOnTrackOverHTTP(t *testing.T) {
 	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 0, 1))
 	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	h.Clock.Advance(3 * 24 * time.Hour)
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{red.ID, green.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, green.ID}})
 	pub := h.PublishReport(boss, def)
 
 	ts := newServer(t, h)
@@ -505,7 +555,7 @@ func TestPublicationNarrativeReadsAsProseOverHTTP(t *testing.T) {
 	alice := h.SignIn("alice@example.com")
 	g := h.ActiveGoal(alice, "Launch in EU", "Expand the market.")
 	h.CheckinWithHighlight(alice, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	draft, err := h.Service.DraftReport(context.Background(), def, time.Time{})
 	if err != nil || len(draft.Highlights) != 1 {
 		t.Fatalf("DraftReport: %d Highlights, %v", len(draft.Highlights), err)
@@ -542,7 +592,7 @@ func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
@@ -583,7 +633,8 @@ func TestDraftPagePublishesOnlyAfterThePreviewOverHTTP(t *testing.T) {
 
 // The reports page lists saved definitions as cards and keeps the form behind
 // a New report button. Its Root Goals picker is a scrolling list with the
-// top-level Goals first, and Depth says what its numbers mean.
+// top-level Goals first, and there is no Depth: a report never follows links
+// (ADR 0007).
 func TestReportsListFormOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -591,7 +642,7 @@ func TestReportsListFormOverHTTP(t *testing.T) {
 	boss := h.SignIn("boss@example.com")
 	child := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
 	root := h.MarkTopLevel(boss, h.ActiveGoal(boss, "Grow revenue", "The org needs to grow."))
-	h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{root.ID}})
+	h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{root.ID}})
 
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports")
@@ -610,8 +661,8 @@ func TestReportsListFormOverHTTP(t *testing.T) {
 	if strings.Index(roots, root.Title) > strings.Index(roots, child.Title) {
 		t.Errorf("top-level Goal is not listed first; fieldset:\n%s", roots)
 	}
-	if !strings.Contains(create, "0 = just the roots, 1 = roots and their direct contributors, …") {
-		t.Errorf("Depth is not explained; details:\n%s", create)
+	if strings.Contains(create, `name="depth"`) {
+		t.Errorf("the form still asks for a Depth; details:\n%s", create)
 	}
 }
 
@@ -628,7 +679,7 @@ func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
 	h.Clock.Advance(40 * 24 * time.Hour)
 	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{red.ID, green.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, green.ID}})
 	pub := h.PublishReport(boss, def)
 
 	ts := newServer(t, h)
@@ -659,7 +710,7 @@ func TestDraftPanesStackAtPhoneWidthOverHTTP(t *testing.T) {
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
@@ -686,7 +737,7 @@ func TestDraftShowsTheIntroductionReadOnlyOverHTTP(t *testing.T) {
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Introduction: "Where the EU launch stands.", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Introduction: "Where the EU launch stands.", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
@@ -710,7 +761,7 @@ func TestPrintPageIntroducesEachPersonOnceOverHTTP(t *testing.T) {
 	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
 	first := h.ActiveGoal(ada, "Launch in EU", "Expand the market.")
 	second := h.ActiveGoal(ada, "Cut churn", "Keep customers.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{first.ID, second.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{first.ID, second.ID}})
 	pub := h.PublishReport(boss, def)
 
 	ts := newServer(t, h)
@@ -737,7 +788,7 @@ func TestPublicationShowsNamesAsPublishedOverHTTP(t *testing.T) {
 	boss := h.SignIn("boss@example.com")
 	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
 	g := h.ActiveGoal(ada, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	renamed := h.PublishReport(boss, def)
 	old := h.PublishReport(boss, def)
 	if _, err := h.DB.Exec(`UPDATE accounts SET name = 'Ada Mensah' WHERE id = ?`, ada.ID); err != nil {
@@ -775,7 +826,7 @@ func TestPublicationBylineKeepsThePublishersNameOverHTTP(t *testing.T) {
 	h := testsupport.New(t, "ceo@example.com")
 	ceo := h.SignInNamed("ceo@example.com", "Dana Whitfield")
 	g := h.ActiveGoal(ceo, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(ceo, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(ceo, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(ceo, def)
 	if _, err := h.DB.Exec(`UPDATE accounts SET name = 'Dana Renamed' WHERE id = ?`, ceo.ID); err != nil {
 		t.Fatalf("rename the publisher: %v", err)
@@ -819,7 +870,7 @@ func TestNewReportFormSpacingComesFromAClassOverHTTP(t *testing.T) {
 }
 
 // A Retired Dimension drops out of the Report Definition form's filters, yet a
-// Report Definition saved with a filter on its value still drafts the same
+// Report Definition saved with a rule on its value still drafts the same
 // Goals. Restoring the Dimension returns it to the form (CONTEXT.md: Retired;
 // ADR 0005).
 func TestRetiredDimensionLeavesReportFormButSavedFilterKeepsWorkingOverHTTP(t *testing.T) {
@@ -834,7 +885,9 @@ func TestRetiredDimensionLeavesReportFormButSavedFilterKeepsWorkingOverHTTP(t *t
 	truster := h.ActiveGoal(boss, "Earn trust", "Customers need to trust us.")
 	h.AssignGoalValue(grower, growth)
 	h.AssignGoalValue(truster, trust)
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Growth MBR", DimensionValueIDs: []int64{growth.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Growth MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{
+		{Attribute: domain.RuleDimension, DimensionID: pillar.ID, Op: domain.RuleIsAnyOf, Values: []string{strconv.FormatInt(growth.ID, 10)}},
+	}})
 	ctx := context.Background()
 	if err := h.Service.RetireDimension(ctx, boss.ID, pillar.ID); err != nil {
 		t.Fatalf("RetireDimension: %v", err)
@@ -936,7 +989,7 @@ func TestReportDefinitionShowsChosenFieldsOverHTTP(t *testing.T) {
 		t.Errorf("the draft totals Budget across Goals; body:\n%s", draft)
 	}
 
-	plain := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Plain MBR", RootIDs: []int64{red.ID, green.ID}})
+	plain := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Plain MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, green.ID}})
 	page := getBody(t, client, fmt.Sprintf("%s/reports/%d", ts.URL, plain.ID))
 	if strings.Contains(page, `data-testid="report-fields"`) || strings.Contains(page, "Counsel hired in March.") {
 		t.Errorf("a definition with no Fields chosen shows Fields; body:\n%s", page)
@@ -960,7 +1013,7 @@ func TestPublicationKeepsTheChosenFieldsAsPublishedOverHTTP(t *testing.T) {
 	h.Clock.Advance(40 * 24 * time.Hour)
 	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", RootIDs: []int64{red.ID, green.ID}, FieldIDs: []int64{budget.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, green.ID}, FieldIDs: []int64{budget.ID}})
 	pub := h.PublishReport(boss, def)
 
 	h.SetGoalField(boss, red, budget, "8125")
@@ -1018,7 +1071,7 @@ func TestPullOneHighlightOfACheckinOverHTTP(t *testing.T) {
 		domain.HighlightInput{Kind: domain.HighlightAccomplishment, Note: "Signed the first EU customer."},
 		domain.HighlightInput{Kind: domain.HighlightAccomplishment, Note: "Hired the EU lead."},
 	)
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	draft, err := h.Service.DraftReport(context.Background(), def, time.Time{})
 	if err != nil {
 		t.Fatalf("DraftReport: %v", err)
@@ -1111,7 +1164,7 @@ func TestDraftHistoryListsPublicationsInTheOrgsTimezoneOverHTTP(t *testing.T) {
 	boss := h.SignIn("boss@example.com")
 	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	// 03:00 UTC on 2 and 3 March is the evening before in Los Angeles.
 	h.Clock.Set(time.Date(2026, 3, 2, 3, 0, 0, 0, time.UTC))
 	h.PublishReport(boss, def)
@@ -1164,7 +1217,7 @@ func TestDraftPreviewIsThePublicationOverHTTP(t *testing.T) {
 	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Checkin(boss, yellow.ID, domain.HealthYellow, "Slow.", "Use a recruiter.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Introduction: "Where we stand.", RootIDs: []int64{red.ID, yellow.ID, green.ID, stale.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Introduction: "Where we stand.", Mode: domain.ReportModePicked, Picked: []int64{red.ID, yellow.ID, green.ID, stale.ID}})
 
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
@@ -1205,7 +1258,7 @@ func TestDraftListsTheGoalsInTheReportOverHTTP(t *testing.T) {
 	h.Clock.Advance(40 * 24 * time.Hour)
 	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{red.ID, green.ID, stale.ID, proposed.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, green.ID, stale.ID, proposed.ID}})
 	report, err := h.Service.DraftReport(context.Background(), def, time.Time{})
 	if err != nil {
 		t.Fatalf("DraftReport: %v", err)
@@ -1264,7 +1317,7 @@ func TestDraftGoalsPanelShowsSixThenTheRestOverHTTP(t *testing.T) {
 	for i := 1; i <= 8; i++ {
 		roots = append(roots, h.ActiveGoal(boss, fmt.Sprintf("Goal %d", i), "Matters.").ID)
 	}
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: roots})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: roots})
 
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))

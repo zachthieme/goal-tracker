@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
@@ -506,7 +507,7 @@ func (s *Service) setValueOrder(ctx context.Context, rows []db.DimensionValue) e
 
 // MergeDimensionValue merges one value into another in the same Dimension: every
 // Goal carrying the merged value carries the target instead (once, if it had
-// both), every Report Definition filter on it points at the target, and the
+// both), every Report rule listing it lists the target instead, and the
 // merged value is gone from the list (CONTEXT.md: Extendable — merging values
 // stays with Admins). It is all or nothing. Merging across Dimensions or into
 // the value itself is refused. A merge is written to the Definition log naming
@@ -537,12 +538,13 @@ func (s *Service) MergeDimensionValue(ctx context.Context, actorID, mergedID, ta
 		if err := tx.queries.MoveGoalValuesToTarget(ctx, db.MoveGoalValuesToTargetParams{TargetID: targetID, MergedID: mergedID}); err != nil {
 			return fmt.Errorf("move goals to the target value: %w", err)
 		}
-		filters := db.RemoveMergedReportFilterWhereTargetFilteredParams{MergedID: mergedID, TargetID: targetID}
-		if err := tx.queries.RemoveMergedReportFilterWhereTargetFiltered(ctx, filters); err != nil {
-			return fmt.Errorf("drop merged report filters already on the target: %w", err)
+		mergedValue, targetValue := strconv.FormatInt(mergedID, 10), strconv.FormatInt(targetID, 10)
+		rules := db.RemoveMergedRuleValueWhereTargetListedParams{MergedValue: mergedValue, TargetValue: targetValue}
+		if err := tx.queries.RemoveMergedRuleValueWhereTargetListed(ctx, rules); err != nil {
+			return fmt.Errorf("drop the merged value from report rules already listing the target: %w", err)
 		}
-		if err := tx.queries.MoveReportFiltersToTarget(ctx, db.MoveReportFiltersToTargetParams{TargetID: targetID, MergedID: mergedID}); err != nil {
-			return fmt.Errorf("move report filters to the target value: %w", err)
+		if err := tx.queries.MoveRuleValuesToTarget(ctx, db.MoveRuleValuesToTargetParams{TargetValue: targetValue, MergedValue: mergedValue}); err != nil {
+			return fmt.Errorf("move report rules to the target value: %w", err)
 		}
 		if err := tx.queries.DeleteDimensionValue(ctx, mergedID); err != nil {
 			return fmt.Errorf("delete merged value: %w", err)
