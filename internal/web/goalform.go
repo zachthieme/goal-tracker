@@ -356,6 +356,10 @@ func (s *Server) parentChoice(ctx context.Context, current domain.Account, g dom
 // Goal picked.
 const inputParentID = "parent_id"
 
+// inputRemoveParent is a parent chip's no-script Remove checkbox, posting the
+// parent's id: a ticked one leaves that parent out.
+const inputRemoveParent = "remove_parent"
+
 // cadenceChips are the Check-in cadence's chips, each posting its days but
 // Custom, which posts cadenceCustom and the days typed beside it.
 var cadenceChips = []struct{ Value, Label string }{
@@ -771,7 +775,7 @@ func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain
 	}
 
 	for _, value := range r.PostForm[inputParentID] {
-		if value = strings.TrimSpace(value); value == "" {
+		if value = strings.TrimSpace(value); value == "" || slices.Contains(r.PostForm[inputRemoveParent], value) {
 			continue
 		}
 		id, err := strconv.ParseInt(value, 10, 64)

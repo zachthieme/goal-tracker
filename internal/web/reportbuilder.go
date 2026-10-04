@@ -19,8 +19,10 @@ import (
 // saved: what was typed and picked, the problems a refused save found, and
 // the choices it offers (CONTEXT.md: Report Definition).
 type reportBuilderView struct {
-	// ID is the saved definition being edited, and 0 for a new one.
+	// ID is the saved definition being edited, and 0 for a new one; Saved is
+	// its name as saved, which the breadcrumb shows whatever Name is typed.
 	ID           int64
+	Saved        string
 	Name         string
 	Introduction string
 	// Mode is domain.ReportModeRules or domain.ReportModePicked.
@@ -157,18 +159,18 @@ func (s *Server) handleNewReportForm(w http.ResponseWriter, r *http.Request, cur
 // handleNewReport saves the builder's new Report Definition and lands on its
 // draft, as submitReportBuilder answers.
 func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	s.submitReportBuilder(w, r, current, 0, func(tx *domain.Service, in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error) {
+	s.submitReportBuilder(w, r, current, domain.ReportDefinition{}, func(tx *domain.Service, in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error) {
 		return tx.SaveReportDefinition(r.Context(), current.ID, in)
 	})
 }
 
-// submitReportBuilder answers the builder's form for the definition id, or a
-// new one when id is 0: save stores it as typed, and a stored definition lands
+// submitReportBuilder answers the builder's form for the saved definition, or
+// a new one when its ID is 0: save stores it as typed, and a stored definition lands
 // on its draft. A refused save comes back as the builder, 422, as typed, with
 // each problem beside its input. Add rule, a rule row's × and Show matches
 // save nothing: the builder comes back as typed with a blank row added,
 // without that row, or as it is, its rail listing the Goals as typed.
-func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, current domain.Account, id int64,
+func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, current domain.Account, saved domain.ReportDefinition,
 	save func(tx *domain.Service, in domain.SaveReportDefinitionInput) (domain.ReportDefinition, error),
 ) {
 	if err := r.ParseForm(); err != nil {
@@ -180,7 +182,7 @@ func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, cur
 		dropRuleRow(r.PostForm, r.PostForm.Get(inputRemoveRule))
 	}
 	v, in, unparsed := readReportBuilder(r)
-	v.ID = id
+	v.ID, v.Saved = saved.ID, saved.Name
 	do := r.PostFormValue("do")
 	if do == "add-rule" || do == "show-matches" || removing {
 		if do == "add-rule" {
@@ -307,9 +309,9 @@ func readReportBuilder(r *http.Request) (v reportBuilderView, in domain.SaveRepo
 		Introduction: r.PostFormValue("introduction"),
 		Mode:         r.PostFormValue("mode"),
 		Rules:        reportRuleRows(r.PostForm),
-		PickedIDs:    dedupeInt64s(formInt64s(r, inputPicked)),
-		IncludeIDs:   dedupeInt64s(formInt64s(r, inputInclude)),
-		ExcludeIDs:   dedupeInt64s(formInt64s(r, inputExclude)),
+		PickedIDs:    listedGoals(r, inputPicked),
+		IncludeIDs:   listedGoals(r, inputInclude),
+		ExcludeIDs:   listedGoals(r, inputExclude),
 		FieldIDs:     formInt64s(r, inputShowField),
 	}
 	in = domain.SaveReportDefinitionInput{Name: v.Name, Introduction: v.Introduction, Mode: v.Mode, FieldIDs: v.FieldIDs}
@@ -396,6 +398,21 @@ func (row reportRuleRow) rule() (domain.ReportRule, bool) {
 		rule.Values = append(rule.Values, value)
 	}
 	return rule, belongs
+}
+
+// removeChip is the name of a chip's no-script Remove checkbox in list,
+// posting its Goal's id.
+func removeChip(list string) string {
+	return "remove-" + list
+}
+
+// listedGoals are the ids posted for the Goal list, without repeats, less
+// those whose chip's Remove is ticked.
+func listedGoals(r *http.Request, list string) []int64 {
+	removed := formInt64s(r, removeChip(list))
+	return slices.DeleteFunc(dedupeInt64s(formInt64s(r, list)), func(id int64) bool {
+		return slices.Contains(removed, id)
+	})
 }
 
 // dedupeInt64s is ids without repeats, in first-seen order: a Goal both

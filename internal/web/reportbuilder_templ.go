@@ -101,9 +101,9 @@ func reportBuilderPage(current *domain.Account, v reportBuilderView) templ.Compo
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var5 string
-				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(v.Name)
+				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(v.Saved)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 23, Col: 50}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 23, Col: 51}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 				if templ_7745c5c3_Err != nil {
@@ -116,7 +116,7 @@ func reportBuilderPage(current *domain.Account, v reportBuilderView) templ.Compo
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(" / ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 23, Col: 63}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 23, Col: 64}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
@@ -1003,7 +1003,7 @@ func reportBuilderError(v reportBuilderView, input string) templ.Component {
 // list naming it. Each Goal in the list is a chip holding its id; script
 // searches every Goal by title as it is typed, picking a result adds its chip
 // and × removes one. Without script a multiple select offers every Goal not
-// already in the list.
+// already in the list, and a chip's Remove checkbox takes its Goal out.
 func reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.Goal) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -1378,7 +1378,8 @@ func reportBuilderScript() templ.Component {
 }
 
 // reportGoalChip is a Goal in one of the builder's lists: its hidden id, its
-// title, and the × that removes it.
+// title, and the × that removes it. Without script, its Remove checkbox takes
+// it out of the list on the builder's next submit.
 func reportGoalChip(list string, g domain.Goal) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -1407,7 +1408,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var67 string
 		templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.ResolveAttributeValue(list + "-chip")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 331, Col: 33}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 332, Col: 33}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var67)
 		if templ_7745c5c3_Err != nil {
@@ -1420,7 +1421,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var68 string
 		templ_7745c5c3_Var68, templ_7745c5c3_Err = templ.ResolveAttributeValue(list)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 332, Col: 34}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 333, Col: 34}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var68)
 		if templ_7745c5c3_Err != nil {
@@ -1433,7 +1434,7 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var69 string
 		templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(g.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 332, Col: 61}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 333, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var69)
 		if templ_7745c5c3_Err != nil {
@@ -1446,39 +1447,65 @@ func reportGoalChip(list string, g domain.Goal) templ.Component {
 		var templ_7745c5c3_Var70 string
 		templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.JoinStringErrs(g.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 333, Col: 17}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 334, Col: 17}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var70))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "</span> <button type=\"button\" class=\"btn quiet sm rb-js-only\" data-remove-chip aria-label=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "</span> <label class=\"rb-no-js small\"><input type=\"checkbox\" name=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var71 string
-		templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.ResolveAttributeValue("Remove " + g.Title)
+		templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.ResolveAttributeValue(removeChip(list))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 334, Col: 105}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 335, Col: 78}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var71)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "\" title=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var72 string
-		templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.ResolveAttributeValue("Remove " + g.Title)
+		templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprint(g.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 334, Col: 135}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 335, Col: 105}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var72)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "\">×</button></li>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "\"> Remove</label> <button type=\"button\" class=\"btn quiet sm rb-js-only\" data-remove-chip aria-label=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var73 string
+		templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.ResolveAttributeValue("Remove " + g.Title)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 336, Col: 105}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var73)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "\" title=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var74 string
+		templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.ResolveAttributeValue("Remove " + g.Title)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reportbuilder.templ`, Line: 336, Col: 135}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var74)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "\">×</button></li>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1504,12 +1531,12 @@ func reportBuilderStyles() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var73 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var73 == nil {
-			templ_7745c5c3_Var73 = templ.NopComponent
+		templ_7745c5c3_Var75 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var75 == nil {
+			templ_7745c5c3_Var75 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "<style>\n\t\t.rb-layout{display:grid;grid-template-columns:minmax(0,760px) 320px;gap:24px;align-items:start}\n\t\t.rb-form{padding:24px;display:flex;flex-direction:column;gap:16px}\n\t\t.rb-rail{position:sticky;top:24px;padding:24px;display:flex;flex-direction:column;gap:12px}\n\t\t.rb-rail p{margin:0}\n\t\t.rb-match-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}\n\t\t.rb-match-list>li{display:flex;align-items:center;gap:8px;min-width:0}\n\t\t.rb-match-title{flex:1;min-width:0}\n\t\t@media (max-width:1140px){\n\t\t\t.rb-layout{grid-template-columns:minmax(0,1fr)}\n\t\t\t.rb-rail{position:static}\n\t\t}\n\t\t.rb-form fieldset{border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;min-width:0}\n\t\t.rb-form legend{font-weight:600;padding:0 0 8px}\n\t\t.rb-segments{display:inline-flex;align-self:flex-start;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);overflow:hidden}\n\t\t.rb-segments label{position:relative;padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px}\n\t\t@supports selector(:has(*)){\n\t\t\t.rb-segments input{position:absolute;opacity:0;pointer-events:none}\n\t\t\t.rb-segments label:has(input:checked){background:var(--color-ink);color:var(--color-surface)}\n\t\t\t.rb-segments label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:-2px}\n\t\t\t.rb-form:has(input[name=mode][value=picked]:checked) .rb-rules{display:none}\n\t\t\t.rb-form:has(input[name=mode][value=rules]:checked) .rb-picked{display:none}\n\t\t}\n\t\t.rb-chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}\n\t\t.rb-chips:empty{display:none}\n\t\t.rb-chip{display:inline-flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border:1px solid var(--color-border);border-radius:999px}\n\t\t.rb-form select[multiple]{width:100%;min-height:8em}\n\t\t.rb-rules,.rb-picked{display:flex;flex-direction:column;gap:12px}\n\t\t.rb-rule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}\n\t\t.rb-rule select[multiple]{flex:1 1 240px;width:auto}\n\t\t.rb-input-error{display:block;flex-basis:100%;font-size:13px;color:var(--color-danger-ink)}\n\t\t.rb-problems{border:1px solid var(--color-danger-ink);border-radius:var(--radius-md);padding:12px 16px;color:var(--color-danger-ink)}\n\t\t.rb-problems p,.rb-problems ul{margin:0}\n\t\t.rb-fields>summary{align-self:flex-start;border:1px dashed var(--color-border-strong)}\n\t\t.rb-fields fieldset{margin-top:12px}\n\t\t.rb-actions{display:flex;gap:8px;flex-wrap:wrap}\n\t\t.rb-form:not(.rb-js) .rb-js-only{display:none}\n\t\t.rb-form.rb-js .rb-no-js{display:none}\n\t\t.rb-picker input[type=search]{width:100%}\n\t\t.rb-results{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column}\n\t\t.rb-result{display:flex;gap:8px;width:100%;text-align:left;background:none;border:none;padding:4px 8px;cursor:pointer}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, "<style>\n\t\t.rb-layout{display:grid;grid-template-columns:minmax(0,760px) 320px;gap:24px;align-items:start}\n\t\t.rb-form{padding:24px;display:flex;flex-direction:column;gap:16px}\n\t\t.rb-rail{position:sticky;top:24px;padding:24px;display:flex;flex-direction:column;gap:12px}\n\t\t.rb-rail p{margin:0}\n\t\t.rb-match-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}\n\t\t.rb-match-list>li{display:flex;align-items:center;gap:8px;min-width:0}\n\t\t.rb-match-title{flex:1;min-width:0}\n\t\t@media (max-width:1140px){\n\t\t\t.rb-layout{grid-template-columns:minmax(0,1fr)}\n\t\t\t.rb-rail{position:static}\n\t\t}\n\t\t.rb-form fieldset{border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;min-width:0}\n\t\t.rb-form legend{font-weight:600;padding:0 0 8px}\n\t\t.rb-segments{display:inline-flex;align-self:flex-start;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);overflow:hidden}\n\t\t.rb-segments label{position:relative;padding:8px 16px;cursor:pointer;display:flex;align-items:center;gap:8px}\n\t\t@supports selector(:has(*)){\n\t\t\t.rb-segments input{position:absolute;opacity:0;pointer-events:none}\n\t\t\t.rb-segments label:has(input:checked){background:var(--color-ink);color:var(--color-surface)}\n\t\t\t.rb-segments label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:-2px}\n\t\t\t.rb-form:has(input[name=mode][value=picked]:checked) .rb-rules{display:none}\n\t\t\t.rb-form:has(input[name=mode][value=rules]:checked) .rb-picked{display:none}\n\t\t}\n\t\t.rb-chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}\n\t\t.rb-chips:empty{display:none}\n\t\t.rb-chip{display:inline-flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border:1px solid var(--color-border);border-radius:999px}\n\t\t.rb-form select[multiple]{width:100%;min-height:8em}\n\t\t.rb-rules,.rb-picked{display:flex;flex-direction:column;gap:12px}\n\t\t.rb-rule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}\n\t\t.rb-rule select[multiple]{flex:1 1 240px;width:auto}\n\t\t.rb-input-error{display:block;flex-basis:100%;font-size:13px;color:var(--color-danger-ink)}\n\t\t.rb-problems{border:1px solid var(--color-danger-ink);border-radius:var(--radius-md);padding:12px 16px;color:var(--color-danger-ink)}\n\t\t.rb-problems p,.rb-problems ul{margin:0}\n\t\t.rb-fields>summary{align-self:flex-start;border:1px dashed var(--color-border-strong)}\n\t\t.rb-fields fieldset{margin-top:12px}\n\t\t.rb-actions{display:flex;gap:8px;flex-wrap:wrap}\n\t\t.rb-form:not(.rb-js) .rb-js-only{display:none}\n\t\t.rb-form.rb-js .rb-no-js{display:none}\n\t\t.rb-picker input[type=search]{width:100%}\n\t\t.rb-results{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column}\n\t\t.rb-result{display:flex;gap:8px;width:100%;text-align:left;background:none;border:none;padding:4px 8px;cursor:pointer}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

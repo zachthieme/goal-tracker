@@ -793,3 +793,152 @@ func TestBuilderFormRefreshesItsRailAsItIsTypedOverHTTP(t *testing.T) {
 		}
 	}
 }
+
+// Without script, a chip's Remove checkbox takes its Goal out of the list on
+// the builder's next submit of any kind: Add rule, a rule's ×, Show matches
+// and Save (ticket #168).
+func TestBuilderChipRemoveDropsItsGoalOnAnySubmitOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	kept := h.ActiveGoal(boss, "Grow revenue", "Matters.")
+	gone := h.ActiveGoal(boss, "Cut churn", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	id := func(n int64) string { return strconv.FormatInt(n, 10) }
+	chips := func(page, list string) []string {
+		var ids []string
+		for _, m := range regexp.MustCompile(`name="`+list+`" value="(\d+)"`).FindAllStringSubmatch(pageElement(t, page, "ul", list+"-chips"), -1) {
+			ids = append(ids, m[1])
+		}
+		return ids
+	}
+
+	for _, list := range []string{"include", "exclude", "picked"} {
+		for _, submit := range []url.Values{{"do": {"add-rule"}}, {"remove-rule": {"1"}}, {"do": {"show-matches"}}} {
+			form := url.Values{
+				"name":               {"Exec weekly"},
+				"mode":               {domain.ReportModeRules},
+				"rules[0].attribute": {domain.RuleTopLevel},
+				"rules[0].op":        {domain.RuleIs},
+				"rules[1].attribute": {domain.RuleLifecycle},
+				list:                 {id(kept.ID), id(gone.ID)},
+				"remove-" + list:     {id(gone.ID)},
+			}
+			maps.Copy(form, submit)
+			resp := postForm(t, client, ts.URL+"/reports/new", form)
+			page := readBody(t, resp)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("%s with a ticked Remove in %s: status %d, want 200; body:\n%s", submit, list, resp.StatusCode, page)
+			}
+			if got, want := chips(page, list), []string{id(kept.ID)}; !slices.Equal(got, want) {
+				t.Errorf("%s with %s's Remove ticked for %d leaves chips %q, want %q", submit, list, gone.ID, got, want)
+			}
+		}
+	}
+
+	resp := postForm(t, noRedirects(client), ts.URL+"/reports/new", url.Values{
+		"name":               {"Exec weekly"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleTopLevel},
+		"rules[0].op":        {domain.RuleIs},
+		"include":            {id(kept.ID), id(gone.ID)},
+		"remove-include":     {id(gone.ID)},
+		"exclude":            {id(gone.ID), id(kept.ID)},
+		"remove-exclude":     {id(gone.ID)},
+	})
+	assertSavedReport(t, client, ts.URL, resp)
+	resp = postForm(t, noRedirects(client), ts.URL+"/reports/new", url.Values{
+		"name":          {"Picked weekly"},
+		"mode":          {domain.ReportModePicked},
+		"picked":        {id(kept.ID), id(gone.ID)},
+		"remove-picked": {id(gone.ID)},
+	})
+	assertSavedReport(t, client, ts.URL, resp)
+	defs, err := h.Service.ListReportDefinitions(context.Background())
+	if err != nil || len(defs) != 2 {
+		t.Fatalf("saving made %d definitions (%v), want 2", len(defs), err)
+	}
+	for _, def := range defs {
+		def, _ = h.Service.GetReportDefinition(context.Background(), def.ID)
+		want := []int64{kept.ID}
+		if def.Mode == domain.ReportModePicked && !slices.Equal(def.Picked, want) {
+			t.Errorf("Save with Remove ticked picks %v, want %v", def.Picked, want)
+		}
+		if def.Mode == domain.ReportModeRules && (!slices.Equal(def.Include, want) || !slices.Equal(def.Exclude, want)) {
+			t.Errorf("Save with Remove ticked includes %v and leaves out %v, want %v for each", def.Include, def.Exclude, want)
+		}
+	}
+}
+
+// Each chip carries a Remove checkbox for its Goal, which the builder's
+// script hides, as its × removes the chip instead (ticket #168).
+func TestBuilderChipHasARemoveCheckboxScriptHidesOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Grow revenue", "Matters.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name: "MBR", Mode: domain.ReportModeRules,
+		Rules:   []domain.ReportRule{{Attribute: domain.RuleTopLevel, Op: domain.RuleIs}},
+		Include: []int64{g.ID}, Exclude: []int64{g.ID},
+	})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/edit")
+	for _, list := range []string{"include", "exclude"} {
+		chip := pageElement(t, page, "li", list+"-chip")
+		box := regexp.MustCompile(`<label class="([^"]*)"><input type="checkbox" name="remove-` + list + `" value="` + strconv.FormatInt(g.ID, 10) + `"> Remove</label>`).FindStringSubmatch(chip)
+		if box == nil {
+			t.Errorf("the %s chip has no Remove checkbox for its Goal:\n%s", list, chip)
+			continue
+		}
+		if !slices.Contains(strings.Fields(box[1]), "rb-no-js") {
+			t.Errorf("the %s chip's Remove is class %q, which script doesn't hide", list, box[1])
+		}
+	}
+	if !strings.Contains(page, ".rb-form.rb-js .rb-no-js{display:none}") {
+		t.Errorf("the builder's styles don't hide .rb-no-js when script runs")
+	}
+}
+
+// The edit page's breadcrumb names the definition as saved, not as typed, on
+// every round trip: a refusal, Add rule, a rule's × and Show matches (ticket
+// #168).
+func TestEditBuilderBreadcrumbShowsTheSavedNameOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Grow revenue", "Matters.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	draft := "/reports/" + strconv.FormatInt(def.ID, 10)
+	crumb := `<a href="` + draft + `">MBR</a> / Edit`
+
+	for _, tc := range []struct {
+		name, typed string
+		submit      url.Values
+	}{
+		{"a refusal", "  ", url.Values{}},
+		{"Add rule", "Renamed", url.Values{"do": {"add-rule"}}},
+		{"a rule's ×", "Renamed", url.Values{"remove-rule": {"0"}}},
+		{"Show matches", "Renamed", url.Values{"do": {"show-matches"}}},
+	} {
+		form := url.Values{
+			"name":               {tc.typed},
+			"mode":               {domain.ReportModeRules},
+			"rules[0].attribute": {domain.RuleTopLevel},
+			"rules[0].op":        {domain.RuleIs},
+		}
+		maps.Copy(form, tc.submit)
+		page := readBody(t, postForm(t, client, ts.URL+draft+"/edit", form))
+		if head := between(t, page, `<div class="page-head">`, `</p>`); !strings.Contains(head, crumb) {
+			t.Errorf("after %s the breadcrumb isn't %s:\n%s", tc.name, crumb, head)
+		}
+	}
+}
