@@ -30,7 +30,7 @@ func (s *Server) handleStartHandoff(w http.ResponseWriter, r *http.Request, curr
 func (s *Server) handlePendingHandoffs(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	pending, err := s.svc.PendingHandoffs(r.Context(), current.ID)
 	if err != nil {
-		http.Error(w, "could not list pending handoffs", http.StatusInternalServerError)
+		s.serverError(w, r, "could not list pending handoffs", err)
 		return
 	}
 	toast := s.handoffRejectionToast(r.Context(), takeUndo(w, r), current, "")
@@ -59,7 +59,7 @@ func (s *Server) handleAcceptHandoff(w http.ResponseWriter, r *http.Request, cur
 		keep = append(keep, delegateID)
 	}
 	if _, err := s.svc.AcceptHandoff(r.Context(), id, current.ID, keep); err != nil {
-		writeHandoffError(w, err)
+		s.writeHandoffError(w, r, err)
 		return
 	}
 	http.Redirect(w, r, "/handoffs", http.StatusSeeOther)
@@ -75,7 +75,7 @@ func (s *Server) handleRejectHandoff(w http.ResponseWriter, r *http.Request, cur
 	}
 	token, err := s.svc.RejectHandoff(r.Context(), id, current.ID)
 	if err != nil {
-		writeHandoffError(w, err)
+		s.writeHandoffError(w, r, err)
 		return
 	}
 	back := requestPage(r.FormValue("from"), "/handoffs")
@@ -89,12 +89,12 @@ func (s *Server) handleRejectHandoff(w http.ResponseWriter, r *http.Request, cur
 // saying why, linking back there, and changes nothing.
 func (s *Server) handleRestoreHandoff(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	back := requestPage(r.FormValue("from"), "/handoffs")
-	id, ok := undoIDFromPath(w, r, current, back)
+	id, ok := s.undoIDFromPath(w, r, current, back)
 	if !ok {
 		return
 	}
 	if _, err := s.svc.RestoreHandoff(r.Context(), id, current.ID, r.FormValue(undoField)); err != nil {
-		refuseUndo(w, r, current, back, err)
+		s.refuseUndo(w, r, current, back, err)
 		return
 	}
 	http.Redirect(w, r, back, http.StatusSeeOther)
@@ -129,7 +129,7 @@ func (s *Server) handleDepartAccount(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	if err := s.svc.MarkDeparted(r.Context(), current.ID, id); err != nil {
-		writeHandoffError(w, err)
+		s.writeHandoffError(w, r, err)
 		return
 	}
 	redirectBack(w, r)
@@ -145,7 +145,7 @@ func (s *Server) handleReturnAccount(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	if err := s.svc.MarkReturned(r.Context(), current.ID, id); err != nil {
-		writeHandoffError(w, err)
+		s.writeHandoffError(w, r, err)
 		return
 	}
 	redirectBack(w, r)
@@ -173,7 +173,7 @@ func (s *Server) writeRefusedHandoff(w http.ResponseWriter, r *http.Request, goa
 		s.renderRefusedForm(w, r, goalID, current, form, http.StatusUnprocessableEntity, err)
 		return
 	}
-	writeHandoffError(w, err)
+	s.writeHandoffError(w, r, err)
 }
 
 // redirectBack returns to wherever an action was triggered, usually a Goal page.
@@ -195,7 +195,7 @@ func (s *Server) handoffIDFromPath(w http.ResponseWriter, r *http.Request) (int6
 }
 
 // writeHandoffError maps a domain Handoff/Ownerless error to an HTTP status.
-func writeHandoffError(w http.ResponseWriter, err error) {
+func (s *Server) writeHandoffError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrValidation):
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
@@ -204,6 +204,6 @@ func writeHandoffError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrNotFound):
 		http.Error(w, "not found", http.StatusNotFound)
 	default:
-		http.Error(w, "handoff action failed", http.StatusInternalServerError)
+		s.serverError(w, r, "handoff action failed", err)
 	}
 }

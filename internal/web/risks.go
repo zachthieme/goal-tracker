@@ -24,7 +24,7 @@ import (
 func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	page, err := s.loadRisksPage(r.Context(), r.URL.Query(), current)
 	if err != nil {
-		http.Error(w, "could not read risks", http.StatusInternalServerError)
+		s.serverError(w, r, "could not read risks", err)
 		return
 	}
 	render(w, r, http.StatusOK, risksPage(&current, page))

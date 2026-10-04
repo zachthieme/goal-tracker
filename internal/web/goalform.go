@@ -225,15 +225,15 @@ func (s *Server) handleNewGoalForm(w http.ResponseWriter, r *http.Request, curre
 	var v goalFormView
 	var err error
 	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, ids, 0); err != nil {
-		http.Error(w, "could not load goals", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load goals", err)
 		return
 	}
 	if err := s.loadWhereItFits(r.Context(), &v); err != nil {
-		http.Error(w, "could not load dimensions and fields", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load dimensions and fields", err)
 		return
 	}
 	if v.Chosen, err = s.suggestedValues(r.Context(), v.Parents, v.Dimensions); err != nil {
-		http.Error(w, "could not load parent goals' values", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load parent goals' values", err)
 		return
 	}
 	v.Suggested = len(v.Chosen) > 0
@@ -414,7 +414,7 @@ func (s *Server) handleSearchGoals(w http.ResponseWriter, r *http.Request, curre
 	goalID, _ := strconv.ParseInt(r.URL.Query().Get(searchGoal), 10, 64)
 	_, candidates, err := s.pickParents(r.Context(), current, picked, goalID)
 	if err != nil {
-		http.Error(w, "could not search goals", http.StatusInternalServerError)
+		s.serverError(w, r, "could not search goals", err)
 		return
 	}
 	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
@@ -425,7 +425,7 @@ func (s *Server) handleSearchGoals(w http.ResponseWriter, r *http.Request, curre
 		}
 		p, err := s.parentChoice(r.Context(), current, g)
 		if err != nil {
-			http.Error(w, "could not search goals", http.StatusInternalServerError)
+			s.serverError(w, r, "could not search goals", err)
 			return
 		}
 		matches = append(matches, p)
@@ -466,16 +466,16 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	if !errors.Is(err, domain.ErrValidation) && !errors.Is(err, errUnparsed) {
-		http.Error(w, "could not create goal", http.StatusInternalServerError)
+		s.serverError(w, r, "could not create goal", err)
 		return
 	}
 	v.Problems = goalFormProblems(err, unparsed)
 	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, in.ParentIDs, 0); err != nil {
-		http.Error(w, "could not load goals", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load goals", err)
 		return
 	}
 	if err := s.loadWhereItFits(r.Context(), &v); err != nil {
-		http.Error(w, "could not load dimensions and fields", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load dimensions and fields", err)
 		return
 	}
 	render(w, r, http.StatusUnprocessableEntity, goalFormPage(&current, v))
@@ -546,7 +546,7 @@ func (s *Server) definableGoal(w http.ResponseWriter, r *http.Request, current d
 		s.notFound(w, r)
 		return domain.Goal{}, false
 	} else if err != nil {
-		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load goal", err)
 		return domain.Goal{}, false
 	}
 	if g.Owner.ID != current.ID {
@@ -569,11 +569,11 @@ func (s *Server) handleDefineGoalForm(w http.ResponseWriter, r *http.Request, cu
 	}
 	v, err := s.definitionForm(r.Context(), g)
 	if err != nil {
-		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load goal", err)
 		return
 	}
 	if err := s.loadDefinition(r.Context(), current, g, &v, nil); err != nil {
-		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load goal", err)
 		return
 	}
 	render(w, r, http.StatusOK, goalFormPage(&current, v))
@@ -667,12 +667,12 @@ func (s *Server) handleDefineGoal(w http.ResponseWriter, r *http.Request, curren
 		return
 	}
 	if !errors.Is(err, domain.ErrValidation) && !errors.Is(err, errUnparsed) {
-		http.Error(w, "could not save goal", http.StatusInternalServerError)
+		s.serverError(w, r, "could not save goal", err)
 		return
 	}
 	v.Problems = goalFormProblems(err, unparsed)
 	if err := s.loadDefinition(r.Context(), current, g, &v, in.ParentIDs); err != nil {
-		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load goal", err)
 		return
 	}
 	render(w, r, http.StatusUnprocessableEntity, goalFormPage(&current, v))
@@ -687,7 +687,7 @@ func (s *Server) handleDefineGoalChecklist(w http.ResponseWriter, r *http.Reques
 	}
 	v, _, _ := readGoalForm(r, current)
 	if err := s.loadDefinition(r.Context(), current, g, &v, nil); err != nil {
-		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load goal", err)
 		return
 	}
 	v.Live = true
@@ -701,7 +701,7 @@ func (s *Server) handleDefineGoalChecklist(w http.ResponseWriter, r *http.Reques
 func (s *Server) handleGoalFormChecklist(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	v, _, _ := readGoalForm(r, current)
 	if err := s.loadWhereItFits(r.Context(), &v); err != nil {
-		http.Error(w, "could not load dimensions and fields", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load dimensions and fields", err)
 		return
 	}
 	v.Live = true

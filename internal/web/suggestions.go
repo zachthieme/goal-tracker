@@ -59,7 +59,7 @@ func (s *Server) handleSuggestParent(w http.ResponseWriter, r *http.Request, cur
 	case errors.Is(err, domain.ErrNotAuthorized):
 		s.renderSuggestParent(w, r, current, goalID, http.StatusForbidden, err)
 	case err != nil:
-		http.Error(w, "could not suggest a parent", http.StatusInternalServerError)
+		s.serverError(w, r, "could not suggest a parent", err)
 	default:
 		http.Redirect(w, r, fmt.Sprintf("/goals/%d", goalID), http.StatusSeeOther)
 	}
@@ -74,12 +74,12 @@ func (s *Server) renderSuggestParent(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	if err != nil {
-		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load goal", err)
 		return
 	}
 	candidates, err := s.svc.SuggestableParents(r.Context(), goalID)
 	if err != nil {
-		http.Error(w, "could not load goals", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load goals", err)
 		return
 	}
 	v := suggestParentView{Goal: goal, Candidates: candidates}
@@ -99,7 +99,7 @@ func (s *Server) handleAcceptParentSuggestion(w http.ResponseWriter, r *http.Req
 		return
 	}
 	if _, err := s.svc.AcceptParentSuggestion(r.Context(), current.ID, p.ID); err != nil {
-		writeLinkError(w, err)
+		s.writeLinkError(w, r, err)
 		return
 	}
 	http.Redirect(w, r, requestPage(r.FormValue("from"), goalPath(p.Goal.ID)), http.StatusSeeOther)
@@ -115,7 +115,7 @@ func (s *Server) handleDeclineParentSuggestion(w http.ResponseWriter, r *http.Re
 	}
 	token, err := s.svc.DeclineParentSuggestion(r.Context(), current.ID, p.ID)
 	if err != nil {
-		writeLinkError(w, err)
+		s.writeLinkError(w, r, err)
 		return
 	}
 	back := requestPage(r.FormValue("from"), goalPath(p.Goal.ID))
@@ -130,18 +130,18 @@ func (s *Server) handleDeclineParentSuggestion(w http.ResponseWriter, r *http.Re
 // changes nothing.
 func (s *Server) handleUndoDeclineParentSuggestion(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	back := "/home"
-	id, ok := undoIDFromPath(w, r, current, back)
+	id, ok := s.undoIDFromPath(w, r, current, back)
 	if !ok {
 		return
 	}
 	p, err := s.svc.ParentSuggestion(r.Context(), id)
 	if err != nil {
-		refuseUndo(w, r, current, back, err)
+		s.refuseUndo(w, r, current, back, err)
 		return
 	}
 	back = requestPage(r.FormValue("from"), goalPath(p.Goal.ID))
 	if err := s.svc.UndoDeclineParentSuggestion(r.Context(), current.ID, id, r.FormValue(undoField)); err != nil {
-		refuseUndo(w, r, current, back, err)
+		s.refuseUndo(w, r, current, back, err)
 		return
 	}
 	http.Redirect(w, r, back, http.StatusSeeOther)
@@ -155,7 +155,7 @@ func (s *Server) handleWithdrawParentSuggestion(w http.ResponseWriter, r *http.R
 		return
 	}
 	if err := s.svc.WithdrawParentSuggestion(r.Context(), current.ID, p.ID); err != nil {
-		writeLinkError(w, err)
+		s.writeLinkError(w, r, err)
 		return
 	}
 	http.Redirect(w, r, goalPath(p.Goal.ID), http.StatusSeeOther)
@@ -198,7 +198,7 @@ func (s *Server) suggestionFromPath(w http.ResponseWriter, r *http.Request) (dom
 		return domain.ParentSuggestion{}, false
 	}
 	if err != nil {
-		http.Error(w, "could not load the suggestion", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load the suggestion", err)
 		return domain.ParentSuggestion{}, false
 	}
 	return p, true

@@ -152,7 +152,7 @@ func dimensionAttribute(dimID int64) string {
 func (s *Server) handleNewReportForm(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	v := reportBuilderView{Mode: domain.ReportModeRules}
 	if err := s.loadReportBuilder(r, &v); err != nil {
-		http.Error(w, "could not load the builder", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load the builder", err)
 		return
 	}
 	render(w, r, http.StatusOK, reportBuilderPage(&current, v))
@@ -191,7 +191,7 @@ func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, cur
 			v.Rules = append(v.rows(), reportRuleRow{})
 		}
 		if err := s.loadReportBuilder(r, &v); err != nil {
-			http.Error(w, "could not load the builder", http.StatusInternalServerError)
+			s.serverError(w, r, "could not load the builder", err)
 			return
 		}
 		render(w, r, http.StatusOK, reportBuilderPage(&current, v))
@@ -218,12 +218,12 @@ func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	if !errors.Is(err, domain.ErrValidation) && !errors.Is(err, errUnparsedReport) {
-		http.Error(w, "could not save the report", http.StatusInternalServerError)
+		s.serverError(w, r, "could not save the report", err)
 		return
 	}
 	v.Problems = reportBuilderProblems(err, unparsed)
 	if err := s.loadReportBuilder(r, &v); err != nil {
-		http.Error(w, "could not load the builder", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load the builder", err)
 		return
 	}
 	render(w, r, http.StatusUnprocessableEntity, reportBuilderPage(&current, v))
@@ -249,19 +249,19 @@ func (s *Server) handleReportMatches(w http.ResponseWriter, r *http.Request, _ d
 				s.notFound(w, r)
 				return
 			}
-			http.Error(w, "could not load report", http.StatusInternalServerError)
+			s.serverError(w, r, "could not load report", err)
 			return
 		}
 	}
 	v, _, _ := readReportBuilder(r)
 	goals, err := s.svc.ListGoals(r.Context())
 	if err != nil {
-		http.Error(w, "could not find the matches", http.StatusInternalServerError)
+		s.serverError(w, r, "could not find the matches", err)
 		return
 	}
 	m, err := s.matchReport(r, goals, v, id)
 	if err != nil {
-		http.Error(w, "could not find the matches", http.StatusInternalServerError)
+		s.serverError(w, r, "could not find the matches", err)
 		return
 	}
 	render(w, r, http.StatusOK, reportMatchesRail(m))
@@ -279,7 +279,7 @@ func (s *Server) handleSearchReportGoals(w http.ResponseWriter, r *http.Request,
 	}
 	goals, err := s.svc.ListGoals(r.Context())
 	if err != nil {
-		http.Error(w, "could not search goals", http.StatusInternalServerError)
+		s.serverError(w, r, "could not search goals", err)
 		return
 	}
 	var listed []int64

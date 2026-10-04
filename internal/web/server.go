@@ -4,6 +4,7 @@
 package web
 
 import (
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -18,11 +19,24 @@ const sessionCookie = "gt_session"
 type Server struct {
 	svc *domain.Service
 	mux *http.ServeMux
+	log *slog.Logger
+}
+
+// Option configures a Server as NewServer builds it.
+type Option func(*Server)
+
+// WithLogger sends the Server's log records, such as the cause of each 500, to
+// logger. Without it they go to slog.Default().
+func WithLogger(logger *slog.Logger) Option {
+	return func(s *Server) { s.log = logger }
 }
 
 // NewServer builds a Server whose routes call svc.
-func NewServer(svc *domain.Service) *Server {
-	s := &Server{svc: svc, mux: http.NewServeMux()}
+func NewServer(svc *domain.Service, opts ...Option) *Server {
+	s := &Server{svc: svc, mux: http.NewServeMux(), log: slog.Default()}
+	for _, opt := range opts {
+		opt(s)
+	}
 	s.routes()
 	return s
 }

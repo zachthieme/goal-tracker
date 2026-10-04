@@ -34,6 +34,7 @@ func (s *Server) handleNudge(w http.ResponseWriter, r *http.Request, current dom
 		reason := strings.TrimPrefix(err.Error(), domain.ErrNudgeNotSent.Error()+": ")
 		render(w, r, http.StatusBadGateway, nudgeRefusedPage(&current, "Nudge not emailed", sentence(reason)))
 	default:
+		s.logServerError(r, err)
 		render(w, r, http.StatusInternalServerError, nudgeRefusedPage(&current, "Can't nudge", "The Nudge couldn't be sent, so nothing changed. Try again."))
 	}
 }

@@ -16,7 +16,7 @@ import (
 func (s *Server) handleFields(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	fields, err := s.svc.ListFields(r.Context())
 	if err != nil {
-		http.Error(w, "could not list fields", http.StatusInternalServerError)
+		s.serverError(w, r, "could not list fields", err)
 		return
 	}
 	render(w, r, http.StatusOK, fieldsPage(&current, fields))
@@ -26,7 +26,7 @@ func (s *Server) handleFields(w http.ResponseWriter, r *http.Request, current do
 // optional unit. Only an Admin may.
 func (s *Server) handleCreateField(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if _, err := s.svc.CreateField(r.Context(), current.ID, r.FormValue("name"), r.FormValue("type"), r.FormValue("unit")); err != nil {
-		writeFieldError(w, err)
+		s.writeFieldError(w, r, err)
 		return
 	}
 	http.Redirect(w, r, "/fields", http.StatusSeeOther)
@@ -62,21 +62,21 @@ func (s *Server) fieldAction(w http.ResponseWriter, r *http.Request, current dom
 		return
 	}
 	if err := set(r.Context(), current.ID, id); err != nil {
-		writeFieldError(w, err)
+		s.writeFieldError(w, r, err)
 		return
 	}
 	http.Redirect(w, r, "/fields", http.StatusSeeOther)
 }
 
 // writeFieldError maps a domain Field error to an HTTP status.
-func writeFieldError(w http.ResponseWriter, err error) {
+func (s *Server) writeFieldError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrNotAuthorized):
 		http.Error(w, err.Error(), http.StatusForbidden)
 	case errors.Is(err, domain.ErrValidation):
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 	default:
-		http.Error(w, "field action failed", http.StatusInternalServerError)
+		s.serverError(w, r, "field action failed", err)
 	}
 }
 

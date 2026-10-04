@@ -31,7 +31,7 @@ func (s *Server) handleGoals(w http.ResponseWriter, r *http.Request, current dom
 	}
 	view, err := s.goalsListView(r, current)
 	if err != nil {
-		http.Error(w, "could not list goals", http.StatusInternalServerError)
+		s.serverError(w, r, "could not list goals", err)
 		return
 	}
 	render(w, r, http.StatusOK, goalsPage(&current, view))
@@ -46,7 +46,7 @@ func (s *Server) handleGoals(w http.ResponseWriter, r *http.Request, current dom
 func (s *Server) handleDownloadGoals(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	view, err := s.goalsListView(r, current)
 	if err != nil {
-		http.Error(w, "could not list goals", http.StatusInternalServerError)
+		s.serverError(w, r, "could not list goals", err)
 		return
 	}
 	goals := make([]domain.Goal, 0, len(view.Rows))
@@ -64,7 +64,7 @@ func (s *Server) handleDownloadGoals(w http.ResponseWriter, r *http.Request, cur
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 		return
 	} else if err != nil {
-		http.Error(w, "could not download goals", http.StatusInternalServerError)
+		s.serverError(w, r, "could not download goals", err)
 		return
 	}
 	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
@@ -83,7 +83,7 @@ func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, curren
 			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
 			return
 		}
-		http.Error(w, "could not create goal", http.StatusInternalServerError)
+		s.serverError(w, r, "could not create goal", err)
 		return
 	}
 	http.Redirect(w, r, "/goals", http.StatusSeeOther)
@@ -429,7 +429,7 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 			s.notFound(w, r)
 			return
 		}
-		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load goal", err)
 		return
 	}
 	offer := takeUndo(w, r)
@@ -998,7 +998,7 @@ func parseDate(value string) (time.Time, error) {
 // writeCommandResult redirects back to the Goal on success and surfaces a
 // validation error (e.g. an activation gate failure) as 422 and a refusal to act
 // on someone else's Goal as 403, each with its message.
-func writeCommandResult(w http.ResponseWriter, r *http.Request, goalID int64, err error) {
+func (s *Server) writeCommandResult(w http.ResponseWriter, r *http.Request, goalID int64, err error) {
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrValidation):
@@ -1006,7 +1006,7 @@ func writeCommandResult(w http.ResponseWriter, r *http.Request, goalID int64, er
 		case errors.Is(err, domain.ErrNotAuthorized):
 			http.Error(w, err.Error(), http.StatusForbidden)
 		default:
-			http.Error(w, "could not update goal", http.StatusInternalServerError)
+			s.serverError(w, r, "could not update goal", err)
 		}
 		return
 	}
@@ -1021,7 +1021,7 @@ func (s *Server) writeFormResult(w http.ResponseWriter, r *http.Request, goalID 
 		s.renderRefusedForm(w, r, goalID, current, form, http.StatusUnprocessableEntity, err)
 		return
 	}
-	writeCommandResult(w, r, goalID, err)
+	s.writeCommandResult(w, r, goalID, err)
 }
 
 // renderRefusedForm re-renders the Goal page with status and form open,
@@ -1033,7 +1033,7 @@ func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalI
 			s.notFound(w, r)
 			return
 		}
-		http.Error(w, "could not load goal", http.StatusInternalServerError)
+		s.serverError(w, r, "could not load goal", err)
 		return
 	}
 	view.Open, view.FormError, view.FormInput = form, refused.Error(), r.PostForm
@@ -1051,7 +1051,7 @@ func (s *Server) handleMarkGoalDated(w http.ResponseWriter, r *http.Request, _ d
 		return
 	}
 	_, err = s.svc.MarkGoalDated(r.Context(), id, date)
-	writeCommandResult(w, r, id, err)
+	s.writeCommandResult(w, r, id, err)
 }
 
 func (s *Server) handleMarkGoalOngoing(w http.ResponseWriter, r *http.Request, _ domain.Account) {
@@ -1060,7 +1060,7 @@ func (s *Server) handleMarkGoalOngoing(w http.ResponseWriter, r *http.Request, _
 		return
 	}
 	_, err := s.svc.MarkGoalOngoing(r.Context(), id)
-	writeCommandResult(w, r, id, err)
+	s.writeCommandResult(w, r, id, err)
 }
 
 func (s *Server) handleSetCadence(w http.ResponseWriter, r *http.Request, _ domain.Account) {
@@ -1074,7 +1074,7 @@ func (s *Server) handleSetCadence(w http.ResponseWriter, r *http.Request, _ doma
 		return
 	}
 	_, err = s.svc.SetCadence(r.Context(), id, days)
-	writeCommandResult(w, r, id, err)
+	s.writeCommandResult(w, r, id, err)
 }
 
 func (s *Server) handleEditSoWhat(w http.ResponseWriter, r *http.Request, current domain.Account) {
@@ -1083,7 +1083,7 @@ func (s *Server) handleEditSoWhat(w http.ResponseWriter, r *http.Request, curren
 		return
 	}
 	_, err := s.svc.EditSoWhat(r.Context(), id, r.FormValue("so_what"), current.ID)
-	writeCommandResult(w, r, id, err)
+	s.writeCommandResult(w, r, id, err)
 }
 
 func (s *Server) handleAddContributor(w http.ResponseWriter, r *http.Request, current domain.Account) {
@@ -1110,7 +1110,7 @@ func (s *Server) handleAddMilestone(w http.ResponseWriter, r *http.Request, _ do
 		Name:       r.FormValue("name"),
 		TargetDate: date,
 	})
-	writeCommandResult(w, r, id, err)
+	s.writeCommandResult(w, r, id, err)
 }
 
 func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, _ domain.Account) {
@@ -1129,10 +1129,10 @@ func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, _ d
 		TargetDate:  date,
 	})
 	if err != nil {
-		writeCommandResult(w, r, id, err)
+		s.writeCommandResult(w, r, id, err)
 		return
 	}
-	writeCommandResult(w, r, m.GoalID, nil)
+	s.writeCommandResult(w, r, m.GoalID, nil)
 }
 
 func (s *Server) handleAddMetric(w http.ResponseWriter, r *http.Request, _ domain.Account) {
@@ -1147,7 +1147,7 @@ func (s *Server) handleAddMetric(w http.ResponseWriter, r *http.Request, _ domai
 	}
 	in.GoalID = id
 	_, err = s.svc.AddMetric(r.Context(), in)
-	writeCommandResult(w, r, id, err)
+	s.writeCommandResult(w, r, id, err)
 }
 
 func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, _ domain.Account) {
@@ -1170,10 +1170,10 @@ func (s *Server) handleEditMetric(w http.ResponseWriter, r *http.Request, _ doma
 		TargetDate: in.TargetDate,
 	})
 	if err != nil {
-		writeCommandResult(w, r, id, err)
+		s.writeCommandResult(w, r, id, err)
 		return
 	}
-	writeCommandResult(w, r, m.GoalID, nil)
+	s.writeCommandResult(w, r, m.GoalID, nil)
 }
 
 // metricInputFromForm reads the numeric and date fields common to adding and
@@ -1207,7 +1207,7 @@ func (s *Server) handleActivateGoal(w http.ResponseWriter, r *http.Request, _ do
 		return
 	}
 	_, err := s.svc.ActivateGoal(r.Context(), id)
-	writeCommandResult(w, r, id, err)
+	s.writeCommandResult(w, r, id, err)
 }
 
 // handleAssignGoalValue sets the Goal's Dimension values (CONTEXT.md: Owners
@@ -1253,7 +1253,7 @@ func (s *Server) handleAssignGoalValue(w http.ResponseWriter, r *http.Request, c
 	}
 	raw := r.FormValue("value_id")
 	if raw == "" {
-		writeCommandResult(w, r, id, nil)
+		s.writeCommandResult(w, r, id, nil)
 		return
 	}
 	valueID, err := strconv.ParseInt(raw, 10, 64)
@@ -1656,12 +1656,12 @@ func hiddenColumns(r *http.Request) map[string]bool {
 func (s *Server) handleGoalTableColumns(w http.ResponseWriter, r *http.Request) {
 	dims, err := s.svc.ListDimensions(r.Context())
 	if err != nil {
-		http.Error(w, "could not list goals", http.StatusInternalServerError)
+		s.serverError(w, r, "could not list goals", err)
 		return
 	}
 	columns, err := s.tableColumns(r.Context(), domain.OfferedDimensions(dims))
 	if err != nil {
-		http.Error(w, "could not list goals", http.StatusInternalServerError)
+		s.serverError(w, r, "could not list goals", err)
 		return
 	}
 	q := r.URL.Query()
@@ -2020,7 +2020,7 @@ func (s *Server) handleSaveGoalTable(w http.ResponseWriter, r *http.Request, cur
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	case !errors.Is(err, domain.ErrValidation):
-		http.Error(w, "could not save values", http.StatusInternalServerError)
+		s.serverError(w, r, "could not save values", err)
 		return
 	}
 
@@ -2028,7 +2028,7 @@ func (s *Server) handleSaveGoalTable(w http.ResponseWriter, r *http.Request, cur
 	r.URL.RawQuery = q.Encode()
 	view, verr := s.goalsListView(r, current)
 	if verr != nil {
-		http.Error(w, "could not list goals", http.StatusInternalServerError)
+		s.serverError(w, r, "could not list goals", verr)
 		return
 	}
 	view.Table.Typed = r.PostForm

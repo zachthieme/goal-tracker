@@ -37,7 +37,7 @@ func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, curre
 	case errors.Is(err, domain.ErrValidation):
 		s.renderRefusedForm(w, r, childID, current, formParentLink, http.StatusUnprocessableEntity, err)
 	case err != nil:
-		writeLinkError(w, err)
+		s.writeLinkError(w, r, err)
 	default:
 		http.Redirect(w, r, "/goals/"+strconv.FormatInt(childID, 10), http.StatusSeeOther)
 	}
@@ -48,7 +48,7 @@ func (s *Server) handleRequestLink(w http.ResponseWriter, r *http.Request, curre
 func (s *Server) handlePendingLinks(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	pending, err := s.svc.PendingLinkRequests(r.Context(), current.ID)
 	if err != nil {
-		http.Error(w, "could not list pending requests", http.StatusInternalServerError)
+		s.serverError(w, r, "could not list pending requests", err)
 		return
 	}
 	toast := s.linkRejectionToast(r.Context(), takeUndo(w, r), current, "")
@@ -62,7 +62,7 @@ func (s *Server) handleAcceptLink(w http.ResponseWriter, r *http.Request, curren
 		return
 	}
 	if _, err := s.svc.AcceptLink(r.Context(), linkID, current.ID); err != nil {
-		writeLinkError(w, err)
+		s.writeLinkError(w, r, err)
 		return
 	}
 	http.Redirect(w, r, "/links", http.StatusSeeOther)
@@ -78,7 +78,7 @@ func (s *Server) handleRejectLink(w http.ResponseWriter, r *http.Request, curren
 	}
 	rejection, err := s.svc.RejectLink(r.Context(), linkID, current.ID)
 	if err != nil {
-		writeLinkError(w, err)
+		s.writeLinkError(w, r, err)
 		return
 	}
 	back := requestPage(r.FormValue("from"), "/links")
@@ -92,12 +92,12 @@ func (s *Server) handleRejectLink(w http.ResponseWriter, r *http.Request, curren
 // with a page saying why, linking back there, and changes nothing.
 func (s *Server) handleUndoLinkRejection(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	back := requestPage(r.FormValue("from"), "/links")
-	rejectionID, ok := undoIDFromPath(w, r, current, back)
+	rejectionID, ok := s.undoIDFromPath(w, r, current, back)
 	if !ok {
 		return
 	}
 	if _, err := s.svc.RestoreLinkRequest(r.Context(), rejectionID, current.ID, r.FormValue(undoField)); err != nil {
-		refuseUndo(w, r, current, back, err)
+		s.refuseUndo(w, r, current, back, err)
 		return
 	}
 	http.Redirect(w, r, back, http.StatusSeeOther)
@@ -133,7 +133,7 @@ func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request, curren
 	}
 	removal, err := s.svc.RemoveLink(r.Context(), linkID, current.ID)
 	if err != nil {
-		writeLinkError(w, err)
+		s.writeLinkError(w, r, err)
 		return
 	}
 	back := linkPage(removal.Child.ID, removal.Parent.ID, r.FormValue("goal_id"))
@@ -151,13 +151,13 @@ func (s *Server) handleUndoLinkRemoval(w http.ResponseWriter, r *http.Request, c
 	if goalID, err := strconv.ParseInt(r.FormValue("goal_id"), 10, 64); err == nil {
 		back = "/goals/" + strconv.FormatInt(goalID, 10)
 	}
-	removalID, ok := undoIDFromPath(w, r, current, back)
+	removalID, ok := s.undoIDFromPath(w, r, current, back)
 	if !ok {
 		return
 	}
 	link, err := s.svc.RestoreLink(r.Context(), removalID, current.ID, r.FormValue(undoField))
 	if err != nil {
-		refuseUndo(w, r, current, back, err)
+		s.refuseUndo(w, r, current, back, err)
 		return
 	}
 	http.Redirect(w, r, linkPage(link.Child.ID, link.Parent.ID, r.FormValue("goal_id")), http.StatusSeeOther)
@@ -205,7 +205,7 @@ func (s *Server) linkIDFromPath(w http.ResponseWriter, r *http.Request) (int64, 
 }
 
 // writeLinkError maps a domain link error to an HTTP status.
-func writeLinkError(w http.ResponseWriter, err error) {
+func (s *Server) writeLinkError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrCycle):
 		http.Error(w, err.Error(), http.StatusConflict)
@@ -216,6 +216,6 @@ func writeLinkError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrNotFound):
 		http.Error(w, "not found", http.StatusNotFound)
 	default:
-		http.Error(w, "link action failed", http.StatusInternalServerError)
+		s.serverError(w, r, "link action failed", err)
 	}
 }

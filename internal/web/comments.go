@@ -116,7 +116,7 @@ func (s *Server) handleAddComment(w http.ResponseWriter, r *http.Request, curren
 	}
 	goalID, _ := strconv.ParseInt(r.FormValue("goal"), 10, 64)
 	if _, err := s.svc.AddComment(r.Context(), current.ID, pub.ID, goalID, r.FormValue("body")); err != nil {
-		writeCommentError(w, err)
+		s.writeCommentError(w, r, err)
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("%s#goal-%d", publicationPath(pub), goalID), http.StatusSeeOther)
@@ -135,12 +135,12 @@ func (s *Server) handleReplyToComment(w http.ResponseWriter, r *http.Request, cu
 	}
 	reply, err := s.svc.ReplyToComment(r.Context(), current.ID, id, r.FormValue("body"))
 	if err != nil {
-		writeCommentError(w, err)
+		s.writeCommentError(w, r, err)
 		return
 	}
 	pub, err := s.svc.GetPublication(r.Context(), reply.PublicationID)
 	if err != nil {
-		writeCommentError(w, err)
+		s.writeCommentError(w, r, err)
 		return
 	}
 	http.Redirect(w, r, fmt.Sprintf("%s#goal-%d", publicationPath(pub), reply.GoalID), http.StatusSeeOther)
@@ -169,7 +169,7 @@ func (s *Server) handleRaiseActionItem(w http.ResponseWriter, r *http.Request, c
 		Text:          r.FormValue("text"),
 		DueDate:       due,
 	}, r.FormValue("owner")); err != nil {
-		writeCommentError(w, err)
+		s.writeCommentError(w, r, err)
 		return
 	}
 	http.Redirect(w, r, publicationPath(pub)+"#action-items", http.StatusSeeOther)
@@ -189,7 +189,7 @@ func (s *Server) handleCloseActionItem(w http.ResponseWriter, r *http.Request, c
 	}
 	item, err := s.svc.CloseActionItem(r.Context(), current.ID, id, r.FormValue("note"))
 	if err != nil {
-		writeCommentError(w, err)
+		s.writeCommentError(w, r, err)
 		return
 	}
 	back := r.FormValue("return")
@@ -211,7 +211,7 @@ func localPath(p string) bool {
 
 // writeCommentError maps a domain error from a Report's discussion — a
 // comment or an Action Item — to an HTTP status.
-func writeCommentError(w http.ResponseWriter, err error) {
+func (s *Server) writeCommentError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrValidation):
 		http.Error(w, err.Error(), http.StatusUnprocessableEntity)
@@ -220,6 +220,6 @@ func writeCommentError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrNotFound):
 		http.Error(w, "not found", http.StatusNotFound)
 	default:
-		http.Error(w, "discussion action failed", http.StatusInternalServerError)
+		s.serverError(w, r, "discussion action failed", err)
 	}
 }
