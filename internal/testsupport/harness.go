@@ -1,13 +1,16 @@
 // Package testsupport is the shared test harness every layer's tests reuse: a
-// fresh SQLite database per test with the real migrations applied, a
-// controllable clock, a recording fake email sender, and scenario builders for
+// SQLite database per test, copied from one the real migrations were applied to
+// once per test binary, a controllable clock, a recording fake email sender, and scenario builders for
 // arranging Accounts and Goals.
 package testsupport
 
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -33,24 +36,26 @@ type Harness struct {
 	Service *domain.Service
 }
 
-// New returns a Harness backed by a fresh on-disk SQLite database with the real
-// migrations applied. adminEmails receive the Admin flag on first sign-in.
+// New returns a Harness backed by an on-disk SQLite database of its own, a copy
+// of one the real migrations were applied to once per test binary. adminEmails
+// receive the Admin flag on first sign-in.
 func New(t *testing.T, adminEmails ...string) *Harness {
 	t.Helper()
 
-	// The database is thrown away with the test, so it skips fsync: waiting on
-	// the disk made up most of each test's time, and nearly ran a package's
-	// tests past go test's 10-minute timeout.
-	dsn := "file:" + filepath.Join(t.TempDir(), "test.db") + "?_pragma=synchronous(off)"
-	sqlDB, err := sql.Open("sqlite", dsn)
+	tmpl, err := template()
+	if err != nil {
+		t.Fatalf("template database: %v", err)
+	}
+	path := filepath.Join(t.TempDir(), "test.db")
+	if err := os.WriteFile(path, tmpl, 0o600); err != nil {
+		t.Fatalf("copy template database: %v", err)
+	}
+
+	sqlDB, err := sql.Open("sqlite", dsn(path))
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	t.Cleanup(func() { _ = sqlDB.Close() })
-
-	if err := db.Migrate(sqlDB); err != nil {
-		t.Fatalf("migrate: %v", err)
-	}
 
 	clk := clock.NewFixed(Epoch)
 	rec := email.NewRecorder()
@@ -61,6 +66,53 @@ func New(t *testing.T, adminEmails ...string) *Harness {
 		Email:   rec,
 		Service: domain.NewService(sqlDB, clk, rec, adminEmails),
 	}
+}
+
+// dsn opens the SQLite file at path. The database is thrown away with the
+// test, so it skips fsync: waiting on the disk made up most of each test's
+// time, and nearly ran a package's tests past go test's 10-minute timeout.
+// Each test's database is copied from a template migrated once per test binary
+// rather than migrated itself: running every migration for each of the
+// hundreds of tests queued them all on modernc's process-wide allocator lock.
+func dsn(path string) string {
+	return "file:" + path + "?_pragma=synchronous(off)"
+}
+
+// The migrated database every Harness copies, built on first use, or the error
+// building it failed with.
+var (
+	templateOnce     sync.Once
+	templateContents []byte
+	templateErr      error
+)
+
+// template migrates a database once per test binary and returns its file's
+// contents. Its temp directory is left for /tmp clearing, and never reused
+// across runs, where its schema could be stale.
+func template() ([]byte, error) {
+	templateOnce.Do(func() { templateContents, templateErr = buildTemplate() })
+	return templateContents, templateErr
+}
+
+func buildTemplate() ([]byte, error) {
+	dir, err := os.MkdirTemp("", "goal-tracker-testdb-")
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(dir, "template.db")
+	sqlDB, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		return nil, fmt.Errorf("open sqlite: %w", err)
+	}
+	if err := db.Migrate(sqlDB); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("migrate: %w", err)
+	}
+	// Closed before reading, so the file is complete.
+	if err := sqlDB.Close(); err != nil {
+		return nil, fmt.Errorf("close: %w", err)
+	}
+	return os.ReadFile(path)
 }
 
 // SignIn signs the email in through the domain service, failing the test on
