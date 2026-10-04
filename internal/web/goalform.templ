@@ -1,6 +1,11 @@
 package web
 
-import "github.com/zachthieme/goal-tracker/internal/domain"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
 
 // goalFormPage is the New goal page: a plain form that creates a Proposed Goal
 // and lands on it, so it works without script. A refused submit comes back
@@ -47,6 +52,7 @@ templ goalFormPage(current *domain.Account, v goalFormView) {
 				@goalFormInputError(v, domain.InputSoWhat)
 			</label>
 			@goalFormKnow(v)
+			@goalFormParents(v)
 			<div class="gf-actions">
 				<button type="submit" class="btn primary">Create Goal</button>
 				<a class="btn" href="/goals">Cancel</a>
@@ -209,6 +215,156 @@ templ goalFormRowsScript() {
 	</script>
 }
 
+// goalFormParents is the Contributes to field: the Goals this one is to
+// contribute to, none or several. Each picked parent is a chip holding its
+// parent_id. Script searches the Goals by title as it is typed, picking a
+// result adds its chip and × removes one; without script, a multiple select
+// offers every Goal not picked. The hint names each Owner who'll be asked to
+// accept.
+templ goalFormParents(v goalFormView) {
+	<fieldset data-testid="goal-form-parents" class="gf-parents">
+		<legend>Contributes to</legend>
+		<p class="muted small">Optional: the Goals this one contributes to. Yours link at once.</p>
+		<ul data-testid="parent-chips" id="parent-chips" class="gf-chips">
+			for _, p := range v.Parents {
+				@parentChip(p, v.bad(domain.ParentInput(p.Goal.ID)))
+			}
+		</ul>
+		<div class="gf-js-only gf-search">
+			<input
+				type="search"
+				id="parent-search"
+				name="q"
+				placeholder="Search Goals by title"
+				autocomplete="off"
+				aria-label="Search Goals to contribute to"
+				aria-controls="parent-results"
+				hx-get="/goals/search"
+				hx-trigger="input changed delay:300ms, search"
+				hx-target="#parent-results"
+				hx-include="#parent-chips [name='parent_id']"
+			/>
+			<ul data-testid="parent-results" id="parent-results" class="gf-results" aria-live="polite"></ul>
+		</div>
+		<label class="field gf-no-js">
+			<span>Pick any to contribute to <span class="hint">— hold Ctrl or ⌘ for several</span></span>
+			<select data-testid="parent-select" id={ inputParentID } name={ inputParentID } multiple>
+				for _, c := range v.Candidates {
+					<option value={ fmt.Sprint(c.ID) }>{ c.Title }</option>
+				}
+			</select>
+		</label>
+		@goalFormInputError(v, inputParentID)
+		<p data-testid="parent-hint" class="muted small" hidden?={ len(v.asked()) == 0 }>
+			if len(v.asked()) > 0 {
+				{ "Each Owner is asked to accept: " + strings.Join(v.asked(), ", ") + "." }
+			}
+		</p>
+	</fieldset>
+	@goalFormParentsScript()
+}
+
+// parentChip is a picked parent: its hidden parent_id, its Health badge (its
+// Lifecycle when it has no Health), its title, and the × that removes it. It
+// carries the label of the Owner picking it asks, for script to rebuild the
+// hint from.
+templ parentChip(p parentChoice, bad string) {
+	<li
+		data-testid="parent-chip"
+		id={ domain.ParentInput(p.Goal.ID) }
+		class="gf-chip"
+		if p.Asks != "" {
+			data-asks={ p.Asks }
+		}
+	>
+		<input type="hidden" name={ inputParentID } value={ fmt.Sprint(p.Goal.ID) }/>
+		@parentBadge(p)
+		<span class="gf-chip-title">{ p.Goal.Title }</span>
+		<button type="button" class="btn quiet sm gf-js-only" data-remove-chip aria-label={ "Remove " + p.Goal.Title } title={ "Remove " + p.Goal.Title }>×</button>
+		if bad != "" {
+			<span data-testid="input-error" id={ domain.ParentInput(p.Goal.ID) + "-error" } class="gf-input-error">{ bad }</span>
+		}
+	</li>
+}
+
+// goalSearchResults are the Contributes to search's matches, each a button
+// that picks it beside the <template> of the chip picking it adds.
+templ goalSearchResults(matches []parentChoice) {
+	if len(matches) == 0 {
+		<li data-testid="parent-no-results" class="muted small">No Goals match.</li>
+	}
+	for _, p := range matches {
+		<li data-testid="parent-result">
+			<button type="button" class="gf-result" data-pick>
+				@parentBadge(p)
+				<span>{ p.Goal.Title }</span>
+				<span class="muted small">{ p.Goal.Owner.Label() }</span>
+			</button>
+			<template>
+				@parentChip(p, "")
+			</template>
+		</li>
+	}
+}
+
+// parentBadge is a parent's Health, as the Goal page's sidebar shows a linked
+// Goal's, or its Lifecycle when it has none.
+templ parentBadge(p parentChoice) {
+	if p.Health != "" {
+		<span class={ "badge", healthClass(p.Health) }><span class="dot"></span>{ p.Health }</span>
+	} else {
+		<span class="badge lc">{ p.Goal.Lifecycle }</span>
+	}
+}
+
+// goalFormParentsScript turns the Contributes to field to search: it sets the
+// no-script select aside, keeps Enter in the search from submitting, adds a
+// result's chip when it is picked, removes a chip at its ×, and rebuilds the
+// hint from the chips' Owners each time they change.
+templ goalFormParentsScript() {
+	<script>
+		(function () {
+			var field = document.querySelector('[data-testid="goal-form-parents"]');
+			if (!field) return;
+			var chips = field.querySelector("#parent-chips");
+			var search = field.querySelector("#parent-search");
+			var results = field.querySelector("#parent-results");
+			var hint = field.querySelector('[data-testid="parent-hint"]');
+			var select = field.querySelector('[data-testid="parent-select"]');
+			select.disabled = true;
+			function rebuildHint() {
+				var names = [];
+				chips.querySelectorAll("[data-asks]").forEach(function (chip) {
+					var name = chip.getAttribute("data-asks");
+					if (names.indexOf(name) < 0) names.push(name);
+				});
+				hint.textContent = names.length ? "Each Owner is asked to accept: " + names.join(", ") + "." : "";
+				hint.hidden = names.length === 0;
+			}
+			search.addEventListener("keydown", function (e) {
+				if (e.key === "Enter") e.preventDefault();
+			});
+			field.addEventListener("click", function (e) {
+				var pick = e.target.closest("[data-pick]");
+				if (pick) {
+					var result = pick.closest("li");
+					chips.appendChild(result.querySelector("template").content.firstElementChild.cloneNode(true));
+					result.remove();
+					rebuildHint();
+					search.focus();
+					return;
+				}
+				var remove = e.target.closest("[data-remove-chip]");
+				if (remove) {
+					remove.closest("[data-testid='parent-chip']").remove();
+					rebuildHint();
+					search.focus();
+				}
+			});
+		})();
+	</script>
+}
+
 // goalFormErrors heads a refused submit: nothing was created, and each
 // problem, linked to its input.
 templ goalFormErrors(v goalFormView) {
@@ -256,5 +412,18 @@ templ goalFormStyles() {
 		.gf-remove{align-self:flex-end}
 		.gf-form:not(.gf-js) .gf-js-only{display:none}
 		.gf-know .gf-js-only[data-add-row]{align-self:flex-start}
+		.gf-form.gf-js .gf-no-js{display:none}
+		.gf-parents{display:flex;flex-direction:column;gap:8px;border:0;padding:0;margin:0;min-width:0}
+		.gf-parents legend{font-weight:600;padding:0;margin-bottom:4px}
+		.gf-chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}
+		.gf-chips:empty{display:none}
+		.gf-chip{display:inline-flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border:1px solid var(--color-border);border-radius:999px}
+		.gf-chip .gf-input-error{flex-basis:100%}
+		.gf-search input{width:100%}
+		.gf-results{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+		.gf-results:empty{display:none}
+		.gf-result{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:0;padding:8px;border-radius:6px;cursor:pointer;color:inherit;font:inherit}
+		.gf-result:hover,.gf-result:focus-visible{background:var(--color-surface-hover)}
+		.gf-parents select[multiple]{width:100%;min-height:8em}
 	</style>
 }
