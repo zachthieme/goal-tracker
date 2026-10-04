@@ -10,12 +10,7 @@ import (
 
 // goalsPage is the Goal list an exec scans in seconds: a header offering New
 // goal, the filter bar, and the Goals as a table led by Health, problems first
-// (CONTEXT.md: filter and group Goals).
-//
-// Home's New goal arrives with ?new=1, which renders the propose form open with
-// its Title focused, so it works without script (#93). Closing the form — or
-// creating a Goal, which closes it under htmx — drops ?new=1 from the address,
-// so a reload doesn't open it again.
+// (CONTEXT.md: filter and group Goals). New goal links to the New goal page.
 templ goalsPage(current *domain.Account, view goalsListData) {
 	@layout("Goals", current) {
 		@goalsStyles()
@@ -24,31 +19,11 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 				<h1>Goals</h1>
 				<p class="muted">Every goal in the org. Problems sort to the top.</p>
 			</div>
-			<details data-testid="propose-goal" id="propose-goal" class="gl-propose" open?={ view.ProposeOpen } ontoggle={ forgetProposeOpen() }>
-				<summary data-testid="new-goal" class="btn primary">New goal</summary>
-				<form class="card" hx-post={ view.proposeURL() } hx-target="#goal-list" hx-swap="outerHTML" hx-on::after-request="if(event.detail.successful){this.reset();this.closest('details').open=false}" method="post" action="/goals">
-					<h3>Propose a Goal</h3>
-					<label class="field">
-						<span>Title</span>
-						<input type="text" name="title" required autofocus?={ view.ProposeOpen }/>
-					</label>
-					<label class="field">
-						<span>So What</span>
-						<textarea name="so_what" required></textarea>
-					</label>
-					<button type="submit" class="btn primary">Create Goal</button>
-				</form>
-			</details>
+			<a data-testid="new-goal" class="btn primary" href="/goals/new">New goal</a>
 		</header>
 		@goalFilters(view)
 		@goalList(view)
 	}
-}
-
-// forgetProposeOpen drops ?new=1 from the address once the propose form
-// closes, so reloading the list doesn't open the form again.
-func forgetProposeOpen() templ.ComponentScript {
-	return templ.ComponentScript{Call: "if(!this.open){const u=new URL(location.href);if(u.searchParams.has('new')){u.searchParams.delete('new');history.replaceState(history.state,'',u)}}"}
 }
 
 // goalFilters is the filter bar — search, Health, Lifecycle, Mine only and
@@ -57,8 +32,7 @@ func forgetProposeOpen() templ.ComponentScript {
 //
 // Under htmx the form applies itself (#94): a change, a pause in typing the
 // search, or Enter GETs the view and swaps in only the list, so the form keeps
-// its focus and an open More filters, and pushes the address. The swap also
-// refreshes the propose form, whose post in the table carries the view.
+// its focus and an open More filters, and pushes the address.
 // hx-history="false" keeps htmx from snapshotting the page, whose form controls
 // would come back unchosen: Back loads the earlier address afresh instead.
 templ goalFilters(view goalsListData) {
@@ -71,7 +45,6 @@ templ goalFilters(view goalsListData) {
 		hx-trigger="submit, change[target.type!='search'], input[target.type=='search'] delay:400ms"
 		hx-target="#goal-list"
 		hx-select="#goal-list"
-		hx-select-oob="#propose-goal"
 		hx-swap="outerHTML"
 		hx-push-url="true"
 		hx-sync="this:replace"
@@ -567,13 +540,11 @@ templ goalLinkIf(link bool, g domain.Goal) {
 	}
 }
 
-// goalsStyles are the Goal list's own rules on top of app.css: the propose
-// form's popover, the one-row filter bar, the table's group headers and marks,
+// goalsStyles are the Goal list's own rules on top of app.css: the one-row
+// filter bar, the table's group headers and marks,
 // and the table layout's toggle, Columns control, sort headers and edit mode.
 templ goalsStyles() {
 	<style>
-		.gl-propose{position:relative}
-		.gl-propose>form{position:absolute;right:0;top:48px;z-index:10;width:360px;max-width:calc(100vw - 32px);padding:16px;display:flex;flex-direction:column;gap:12px;box-shadow:var(--shadow-pop);box-sizing:border-box}
 		.gl-filters{display:flex;flex-direction:column;gap:8px}
 		.gl-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 		.gl-bar input[type=search]{flex:1;min-width:200px}

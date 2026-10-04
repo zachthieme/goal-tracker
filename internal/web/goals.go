@@ -86,21 +86,6 @@ func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, curren
 		http.Error(w, "could not create goal", http.StatusInternalServerError)
 		return
 	}
-
-	// htmx swaps the Goal list in place; a plain form post reloads the page. The
-	// swap re-renders the default unfiltered list — the propose form posts to
-	// /goals with no query, so there is no filter or grouping to preserve — save
-	// in the table layout, whose form posts its view's query so the table swaps
-	// back in.
-	if r.Header.Get("HX-Request") == "true" {
-		view, err := s.goalsListView(r, current)
-		if err != nil {
-			http.Error(w, "could not list goals", http.StatusInternalServerError)
-			return
-		}
-		render(w, r, http.StatusOK, goalList(view))
-		return
-	}
 	http.Redirect(w, r, "/goals", http.StatusSeeOther)
 }
 
@@ -120,10 +105,6 @@ type goalsListData struct {
 	Query url.Values
 	// Table is the table layout (?layout=table), nil in the list layout.
 	Table *goalTable
-	// ProposeOpen renders the propose form open with its Title focused, as
-	// Home's New goal asks for with ?new=1 (#93). It isn't part of Query, so no
-	// link or form on the list carries it on.
-	ProposeOpen bool
 }
 
 // moreFiltersSet reports whether a Dimension filter or grouping is chosen, so
@@ -359,16 +340,12 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 	}
 	sortGoalRows(rows)
 
-	query := r.URL.Query()
-	proposeOpen := query.Get("new") == "1"
-	query.Del("new")
 	view := goalsListData{
-		Rows:        rows,
-		Filter:      filter,
-		Dimensions:  dims,
-		Selected:    selected,
-		Query:       query,
-		ProposeOpen: proposeOpen,
+		Rows:       rows,
+		Filter:     filter,
+		Dimensions: dims,
+		Selected:   selected,
+		Query:      r.URL.Query(),
 	}
 	if view.Query.Get("layout") == layoutTable {
 		table, err := s.goalTableView(ctx, rows, dims, view.Query, hiddenColumns(r), current)
@@ -1518,15 +1495,6 @@ func (v goalsListData) queryURL(edit func(url.Values)) templ.SafeURL {
 		return "/goals"
 	}
 	return templ.SafeURL("/goals?" + q.Encode())
-}
-
-// proposeURL is where the propose form posts for its htmx swap: /goals, or in
-// the table layout the table's own view, so the swap keeps the table.
-func (v goalsListData) proposeURL() string {
-	if v.Table == nil {
-		return "/goals"
-	}
-	return string(v.queryURL(func(url.Values) {}))
 }
 
 // downloadURL downloads the Goals this view's filters keep as CSV.
