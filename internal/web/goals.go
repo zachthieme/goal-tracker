@@ -577,6 +577,10 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("load parent suggestions: %w", err)
 	}
+	nudges, err := s.svc.Nudges(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("load nudges: %w", err)
+	}
 	// The Owner decides every open suggestion; anyone else sees only their
 	// own, to withdraw (CONTEXT.md: Parent suggestion).
 	var suggested []domain.ParentSuggestion
@@ -648,6 +652,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		HealthStrip:    strip,
 		Suggestions:    suggestions,
 		Suggested:      suggested,
+		Nudges:         nudges,
 	}
 	view.History = newHistory(view, s.svc.Timezone(), s.svc.Now())
 	return view, nil
@@ -744,6 +749,8 @@ type goalView struct {
 	// decides them, and their own for anyone else, to withdraw.
 	Suggestions []domain.ParentSuggestion
 	Suggested   []domain.ParentSuggestion
+	// Nudges are every Nudge of the Goal, oldest first, for its History.
+	Nudges []domain.Nudge
 	// History is the Goal's History as one timeline, newest first, showing the
 	// filter and page count the page's address asks for.
 	History history
