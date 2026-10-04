@@ -222,6 +222,11 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 			if _, err := tx.queries.SetGoalLifecycle(ctx, db.SetGoalLifecycleParams{Lifecycle: lifecycle.To, ID: goal.Goal.ID}); err != nil {
 				return fmt.Errorf("set goal lifecycle: %w", err)
 			}
+			if lifecycle.To == LifecycleDone || lifecycle.To == LifecycleCancelled {
+				if err := tx.closeSuggestionsOfEndedGoal(ctx, goal.Goal.ID); err != nil {
+					return err
+				}
+			}
 		}
 		if err := tx.recordReadings(ctx, c.ID, in.Readings); err != nil {
 			return err

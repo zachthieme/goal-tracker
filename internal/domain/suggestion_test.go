@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -222,5 +223,273 @@ func TestAcceptParentSuggestion(t *testing.T) {
 	}
 	if open, _ := h.Service.OpenParentSuggestionsFor(ctx, sam.ID); len(open) != 0 {
 		t.Errorf("sam has %d open suggestions, want 0", len(open))
+	}
+}
+
+// Declining closes a suggestion and gives its decliner a token to Undo it,
+// which puts it back open, once. Only the Goal's Owner may decline, and only
+// the decliner may undo.
+func TestDeclineParentSuggestionAndUndo(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
+	parent := h.ActiveGoal(pat, "Reduce outages", "Outages cost trust.")
+	s, err := h.Service.SuggestParent(ctx, pat.ID, goal.ID, parent.ID, "")
+	if err != nil {
+		t.Fatalf("SuggestParent: %v", err)
+	}
+
+	if _, err := h.Service.DeclineParentSuggestion(ctx, pat.ID, s.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("the suggester declining: err = %v, want ErrNotAuthorized", err)
+	}
+	token, err := h.Service.DeclineParentSuggestion(ctx, sam.ID, s.ID)
+	if err != nil {
+		t.Fatalf("DeclineParentSuggestion: %v", err)
+	}
+	if got, _ := h.Service.ParentSuggestion(ctx, s.ID); got.Status != domain.SuggestionDeclined {
+		t.Errorf("Status = %q, want declined", got.Status)
+	}
+	if open, _ := h.Service.OpenParentSuggestions(ctx, goal.ID); len(open) != 0 {
+		t.Errorf("the Goal has %d open suggestions, want 0", len(open))
+	}
+
+	if err := h.Service.UndoDeclineParentSuggestion(ctx, pat.ID, s.ID, token); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("someone else's Undo: err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.UndoDeclineParentSuggestion(ctx, sam.ID, s.ID, token); err != nil {
+		t.Fatalf("UndoDeclineParentSuggestion: %v", err)
+	}
+	got, _ := h.Service.ParentSuggestion(ctx, s.ID)
+	if got.Status != domain.SuggestionOpen || !got.ClosedAt.IsZero() {
+		t.Errorf("suggestion = %+v, want open again", got)
+	}
+	if err := h.Service.UndoDeclineParentSuggestion(ctx, sam.ID, s.ID, token); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("a second Undo: err = %v, want ErrValidation", err)
+	}
+}
+
+// An Undo of a decline is refused, leaving it declined, once the link has
+// been requested since, or the Goal or parent is no longer Active or Proposed.
+func TestUndoDeclineParentSuggestionRefusedOnceThingsChanged(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	for _, c := range []struct {
+		name   string
+		change func(h *testsupport.Harness, sam, pat domain.Account, goal, parent domain.Goal)
+	}{
+		{"the link requested", func(h *testsupport.Harness, sam, _ domain.Account, goal, parent domain.Goal) {
+			h.RequestLink(sam, goal, parent, "")
+		}},
+		{"the link requested and rejected", func(h *testsupport.Harness, sam, pat domain.Account, goal, parent domain.Goal) {
+			link := h.RequestLink(sam, goal, parent, "")
+			if _, err := h.Service.RejectLink(ctx, link.ID, pat.ID); err != nil {
+				t.Fatalf("RejectLink: %v", err)
+			}
+		}},
+		{"the parent Done", func(h *testsupport.Harness, _, pat domain.Account, _, parent domain.Goal) {
+			endGoal(t, h, pat, parent, domain.LifecycleDone)
+		}},
+		{"the Goal On Hold", func(h *testsupport.Harness, sam, _ domain.Account, goal, _ domain.Goal) {
+			if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+				GoalID: goal.ID, AuthorID: sam.ID, Status: "Pausing.", Lifecycle: domain.LifecycleOnHold, LifecycleReason: "Budget.",
+			}); err != nil {
+				t.Fatalf("SubmitCheckin: %v", err)
+			}
+		}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			h := testsupport.New(t)
+			sam := h.SignIn("sam@example.com")
+			pat := h.SignIn("pat@example.com")
+			goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
+			parent := h.ActiveGoal(pat, "Reduce outages", "Outages cost trust.")
+			s, err := h.Service.SuggestParent(ctx, pat.ID, goal.ID, parent.ID, "")
+			if err != nil {
+				t.Fatalf("SuggestParent: %v", err)
+			}
+			token, err := h.Service.DeclineParentSuggestion(ctx, sam.ID, s.ID)
+			if err != nil {
+				t.Fatalf("DeclineParentSuggestion: %v", err)
+			}
+			h.Clock.Advance(time.Minute)
+			c.change(h, sam, pat, goal, parent)
+			if err := h.Service.UndoDeclineParentSuggestion(ctx, sam.ID, s.ID, token); !errors.Is(err, domain.ErrValidation) {
+				t.Errorf("err = %v, want ErrValidation", err)
+			}
+			if got, _ := h.Service.ParentSuggestion(ctx, s.ID); got.Status != domain.SuggestionDeclined {
+				t.Errorf("Status = %q, want still declined", got.Status)
+			}
+		})
+	}
+}
+
+// The suggester may withdraw their own open suggestion; no one else may, and
+// a decided one can't be.
+func TestWithdrawParentSuggestion(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
+	parent := h.ActiveGoal(pat, "Reduce outages", "Outages cost trust.")
+	s, err := h.Service.SuggestParent(ctx, pat.ID, goal.ID, parent.ID, "")
+	if err != nil {
+		t.Fatalf("SuggestParent: %v", err)
+	}
+
+	if err := h.Service.WithdrawParentSuggestion(ctx, sam.ID, s.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("the Owner withdrawing: err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.WithdrawParentSuggestion(ctx, pat.ID, s.ID); err != nil {
+		t.Fatalf("WithdrawParentSuggestion: %v", err)
+	}
+	if got, _ := h.Service.ParentSuggestion(ctx, s.ID); got.Status != domain.SuggestionWithdrawn {
+		t.Errorf("Status = %q, want withdrawn", got.Status)
+	}
+	if err := h.Service.WithdrawParentSuggestion(ctx, pat.ID, s.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("withdrawing again: err = %v, want ErrValidation", err)
+	}
+}
+
+// An open suggestion closes as no longer applying when its Goal or its parent
+// becomes Done or Cancelled, or its link is requested directly, or restored by
+// an Undo of a rejection or a removal. Going On Hold leaves it open.
+func TestParentSuggestionNoLongerApplies(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	for _, c := range []struct {
+		name string
+		// before runs ahead of the suggestion, after once it's made; kim owns
+		// the parent.
+		before func(h *testsupport.Harness, sam, kim domain.Account, goal, parent domain.Goal) func()
+		closes bool
+	}{
+		{"the parent Done", func(h *testsupport.Harness, _, kim domain.Account, _, parent domain.Goal) func() {
+			return func() { endGoal(t, h, kim, parent, domain.LifecycleDone) }
+		}, true},
+		{"the parent Cancelled", func(h *testsupport.Harness, _, kim domain.Account, _, parent domain.Goal) func() {
+			return func() { endGoal(t, h, kim, parent, domain.LifecycleCancelled) }
+		}, true},
+		{"the Goal Done", func(h *testsupport.Harness, sam, _ domain.Account, goal, _ domain.Goal) func() {
+			return func() { endGoal(t, h, sam, goal, domain.LifecycleDone) }
+		}, true},
+		{"the Goal Cancelled", func(h *testsupport.Harness, sam, _ domain.Account, goal, _ domain.Goal) func() {
+			return func() { endGoal(t, h, sam, goal, domain.LifecycleCancelled) }
+		}, true},
+		{"the parent On Hold", func(h *testsupport.Harness, _, kim domain.Account, _, parent domain.Goal) func() {
+			return func() {
+				if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+					GoalID: parent.ID, AuthorID: kim.ID, Status: "Pausing.", Lifecycle: domain.LifecycleOnHold, LifecycleReason: "Budget.",
+				}); err != nil {
+					t.Fatalf("SubmitCheckin: %v", err)
+				}
+			}
+		}, false},
+		{"the link requested directly", func(h *testsupport.Harness, sam, _ domain.Account, goal, parent domain.Goal) func() {
+			return func() { h.RequestLink(sam, goal, parent, "") }
+		}, true},
+		{"a rejected request restored", func(h *testsupport.Harness, sam, kim domain.Account, goal, parent domain.Goal) func() {
+			link := h.RequestLink(sam, goal, parent, "")
+			rejection, err := h.Service.RejectLink(ctx, link.ID, kim.ID)
+			if err != nil {
+				t.Fatalf("RejectLink: %v", err)
+			}
+			return func() {
+				if _, err := h.Service.RestoreLinkRequest(ctx, rejection.ID, kim.ID, rejection.UndoToken); err != nil {
+					t.Fatalf("RestoreLinkRequest: %v", err)
+				}
+			}
+		}, true},
+		{"a removed link restored", func(h *testsupport.Harness, sam, kim domain.Account, goal, parent domain.Goal) func() {
+			link := h.RequestLink(sam, goal, parent, "")
+			if _, err := h.Service.AcceptLink(ctx, link.ID, kim.ID); err != nil {
+				t.Fatalf("AcceptLink: %v", err)
+			}
+			removal, err := h.Service.RemoveLink(ctx, link.ID, sam.ID)
+			if err != nil {
+				t.Fatalf("RemoveLink: %v", err)
+			}
+			return func() {
+				if _, err := h.Service.RestoreLink(ctx, removal.ID, sam.ID, removal.UndoToken); err != nil {
+					t.Fatalf("RestoreLink: %v", err)
+				}
+			}
+		}, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			h := testsupport.New(t)
+			sam := h.SignIn("sam@example.com") // owns the Goal
+			pat := h.SignIn("pat@example.com") // suggests
+			kim := h.SignIn("kim@example.com") // owns the parent
+			goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
+			parent := h.ActiveGoal(kim, "Reduce outages", "Outages cost trust.")
+			after := c.before(h, sam, kim, goal, parent)
+			s, err := h.Service.SuggestParent(ctx, pat.ID, goal.ID, parent.ID, "")
+			if err != nil {
+				t.Fatalf("SuggestParent: %v", err)
+			}
+			h.Clock.Advance(time.Minute)
+			after()
+
+			got, err := h.Service.ParentSuggestion(ctx, s.ID)
+			if err != nil {
+				t.Fatalf("ParentSuggestion: %v", err)
+			}
+			want, wantClosed := domain.SuggestionOpen, time.Time{}
+			if c.closes {
+				want, wantClosed = domain.SuggestionNoLongerApplies, testsupport.Epoch.Add(time.Minute)
+			}
+			if got.Status != want || !got.ClosedAt.Equal(wantClosed) {
+				t.Errorf("suggestion is %q closed at %v, want %q at %v", got.Status, got.ClosedAt, want, wantClosed)
+			}
+		})
+	}
+}
+
+// A Handoff leaves an open suggestion with its Goal, for the new Owner to
+// decide.
+func TestParentSuggestionStaysOpenThroughAHandoff(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	kim := h.SignIn("kim@example.com")
+	goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
+	parent := h.ActiveGoal(pat, "Reduce outages", "Outages cost trust.")
+	s, err := h.Service.SuggestParent(ctx, pat.ID, goal.ID, parent.ID, "")
+	if err != nil {
+		t.Fatalf("SuggestParent: %v", err)
+	}
+	ho, err := h.Service.StartHandoff(ctx, domain.StartHandoffInput{GoalID: goal.ID, ToOwnerID: kim.ID, ActorID: sam.ID})
+	if err != nil {
+		t.Fatalf("StartHandoff: %v", err)
+	}
+	if _, err := h.Service.AcceptHandoff(ctx, ho.ID, kim.ID, nil); err != nil {
+		t.Fatalf("AcceptHandoff: %v", err)
+	}
+
+	if open, _ := h.Service.OpenParentSuggestionsFor(ctx, kim.ID); len(open) != 1 || open[0].ID != s.ID {
+		t.Errorf("the new Owner's open suggestions = %+v, want the suggestion", open)
+	}
+	if open, _ := h.Service.OpenParentSuggestionsFor(ctx, sam.ID); len(open) != 0 {
+		t.Errorf("the old Owner has %d open suggestions, want 0", len(open))
+	}
+	if _, err := h.Service.AcceptParentSuggestion(ctx, sam.ID, s.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("the old Owner accepting: err = %v, want ErrNotAuthorized", err)
+	}
+	if _, err := h.Service.AcceptParentSuggestion(ctx, kim.ID, s.ID); err != nil {
+		t.Errorf("the new Owner accepting: %v", err)
 	}
 }

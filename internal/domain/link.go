@@ -97,16 +97,23 @@ func (s *Service) RequestLink(ctx context.Context, in RequestLinkInput) (Link, e
 	}
 
 	now := s.clock.Now()
-	row, err := s.queries.CreateLink(ctx, db.CreateLinkParams{
-		ChildID:     in.ChildID,
-		ParentID:    in.ParentID,
-		Status:      status,
-		Note:        strings.TrimSpace(in.Note),
-		RequestedBy: in.RequesterID,
-		CreatedAt:   now.Format(timeFormat),
+	var row db.Link
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		row, err = tx.queries.CreateLink(ctx, db.CreateLinkParams{
+			ChildID:     in.ChildID,
+			ParentID:    in.ParentID,
+			Status:      status,
+			Note:        strings.TrimSpace(in.Note),
+			RequestedBy: in.RequesterID,
+			CreatedAt:   now.Format(timeFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("create link: %w", err)
+		}
+		return tx.closeSuggestionsForLink(ctx, in.ChildID, in.ParentID)
 	})
 	if err != nil {
-		return Link{}, fmt.Errorf("create link: %w", err)
+		return Link{}, err
 	}
 
 	return Link{
@@ -332,7 +339,7 @@ func (s *Service) RestoreLinkRequest(ctx context.Context, rejectionID, actorID i
 			return fmt.Errorf("restore link request: %w", err)
 		}
 		linkID = row.ID
-		return nil
+		return tx.closeSuggestionsForLink(ctx, row.ChildID, row.ParentID)
 	})
 	if err != nil {
 		return Link{}, err
@@ -592,7 +599,7 @@ func (s *Service) RestoreLink(ctx context.Context, removalID, actorID int64, tok
 			return fmt.Errorf("restore link: %w", err)
 		}
 		linkID = row.ID
-		return nil
+		return tx.closeSuggestionsForLink(ctx, row.ChildID, row.ParentID)
 	})
 	if err != nil {
 		return Link{}, err

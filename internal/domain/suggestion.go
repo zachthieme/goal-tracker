@@ -143,6 +143,135 @@ func (s *Service) AcceptParentSuggestion(ctx context.Context, actorID, suggestio
 	return link, nil
 }
 
+// undoSuggestionDecline is the Undo kind of declining a Parent suggestion,
+// whose subject is the suggestion (see undo.go for the rest).
+const undoSuggestionDecline = "parent-suggestion-decline"
+
+// DeclineParentSuggestion declines an open suggestion on behalf of actorID,
+// who must own its Goal, and returns the token that lets them undo it
+// (UndoDeclineParentSuggestion) for UndoWindow. Declining takes no reason and
+// tells no one.
+func (s *Service) DeclineParentSuggestion(ctx context.Context, actorID, suggestionID int64) (string, error) {
+	var token string
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		p, err := tx.openSuggestionForOwner(ctx, actorID, suggestionID)
+		if err != nil {
+			return err
+		}
+		if err := tx.closeSuggestion(ctx, p.ID, SuggestionDeclined); err != nil {
+			return err
+		}
+		token, err = tx.issueUndo(ctx, undoSuggestionDecline, p.ID, actorID, "")
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+// UndoDeclineParentSuggestion puts a declined suggestion back to open. Only
+// the person who declined it may, with the token DeclineParentSuggestion gave
+// them, within UndoWindow, and only once. Presenting the token spends it, even
+// when the Undo is then refused. It is refused, changing nothing, when the
+// link it proposes has been requested or made since, when the Goal or the
+// parent is no longer Active or Proposed, or when the same parent has been
+// suggested again since and is still open.
+func (s *Service) UndoDeclineParentSuggestion(ctx context.Context, actorID, suggestionID int64, token string) error {
+	p, err := s.ParentSuggestion(ctx, suggestionID)
+	if err != nil {
+		return err
+	}
+	if p.Status != SuggestionDeclined {
+		return fmt.Errorf("%w: this suggestion is no longer declined", ErrValidation)
+	}
+	if _, err := s.spendUndo(ctx, token, undoSuggestionDecline, suggestionID, actorID); err != nil {
+		return err
+	}
+	return s.WithinTx(ctx, func(tx *Service) error {
+		if err := tx.ensureNotLinkedSinceDecline(ctx, p); err != nil {
+			return err
+		}
+		goal, err := tx.loadGoal(ctx, p.Goal.ID)
+		if err != nil {
+			return err
+		}
+		parent, err := tx.loadGoal(ctx, p.Parent.ID)
+		if err != nil {
+			return err
+		}
+		if !suggestable(goal.Lifecycle) || !suggestable(parent.Lifecycle) {
+			return fmt.Errorf("%w: the Goal or its suggested parent is no longer Active or Proposed", ErrValidation)
+		}
+		if open, err := tx.queries.GetOpenParentSuggestionFor(ctx, db.GetOpenParentSuggestionForParams{
+			GoalID:   p.Goal.ID,
+			ParentID: p.Parent.ID,
+		}); err == nil {
+			return fmt.Errorf("%w: %s has suggested that parent again since", ErrValidation, accountFromRow(open.Account).Label())
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("look up open suggestion: %w", err)
+		}
+		n, err := tx.queries.ReopenParentSuggestion(ctx, suggestionID)
+		if err != nil {
+			return fmt.Errorf("reopen parent suggestion: %w", err)
+		}
+		if n == 0 {
+			return fmt.Errorf("%w: this suggestion is no longer declined", ErrValidation)
+		}
+		return nil
+	})
+}
+
+// ensureNotLinkedSinceDecline refuses to reopen declined suggestion p when the
+// link it proposes has been requested or made since the decline: it exists
+// now, or a request for it was rejected or the link removed since. (While a
+// suggestion is open its link doesn't exist, so any rejection or removal no
+// earlier than the decline is of a request made since.)
+func (s *Service) ensureNotLinkedSinceDecline(ctx context.Context, p ParentSuggestion) error {
+	since := fmt.Errorf("%w: this link has been requested since the suggestion was declined", ErrValidation)
+	if _, err := s.queries.GetLinkByChildParent(ctx, db.GetLinkByChildParentParams{
+		ChildID:  p.Goal.ID,
+		ParentID: p.Parent.ID,
+	}); err == nil {
+		return since
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("look up existing link: %w", err)
+	}
+	rejections, err := s.queries.ListLinkRejectionTimes(ctx, db.ListLinkRejectionTimesParams{
+		ChildID:  p.Goal.ID,
+		ParentID: p.Parent.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("look up link rejections: %w", err)
+	}
+	removals, err := s.queries.ListLinkRemovalTimes(ctx, db.ListLinkRemovalTimesParams{
+		ChildID:  p.Goal.ID,
+		ParentID: p.Parent.ID,
+	})
+	if err != nil {
+		return fmt.Errorf("look up link removals: %w", err)
+	}
+	for _, raw := range append(rejections, removals...) {
+		if at, _ := time.Parse(timeFormat, raw); !at.Before(p.ClosedAt) {
+			return since
+		}
+	}
+	return nil
+}
+
+// WithdrawParentSuggestion withdraws an open suggestion on behalf of actorID,
+// who must have made it.
+func (s *Service) WithdrawParentSuggestion(ctx context.Context, actorID, suggestionID int64) error {
+	p, err := s.ParentSuggestion(ctx, suggestionID)
+	if err != nil {
+		return err
+	}
+	if p.SuggestedBy.ID != actorID {
+		return fmt.Errorf("%w: only the person who made a suggestion may withdraw it", ErrNotAuthorized)
+	}
+	return s.closeSuggestion(ctx, suggestionID, SuggestionWithdrawn)
+}
+
 // openSuggestionForOwner loads a suggestion actorID may decide: one that is
 // still open, on a Goal they own.
 func (s *Service) openSuggestionForOwner(ctx context.Context, actorID, suggestionID int64) (ParentSuggestion, error) {
@@ -258,4 +387,35 @@ func suggestionFromRow(p db.ParentSuggestion, goal db.Goal, goalOwner db.Account
 // for it, or be suggested as one: only while it is Active or Proposed.
 func suggestable(lifecycle string) bool {
 	return lifecycle == LifecycleActive || lifecycle == LifecycleProposed
+}
+
+// closeSuggestionsForLink closes the open suggestions of parentID for goalID
+// as no longer applying, when the link they propose is requested or made
+// another way. A suggestion already given its outcome, such as the one being
+// accepted, is left alone.
+func (s *Service) closeSuggestionsForLink(ctx context.Context, goalID, parentID int64) error {
+	closedAt := s.clock.Now().Format(timeFormat)
+	if err := s.queries.CloseOpenParentSuggestionsForLink(ctx, db.CloseOpenParentSuggestionsForLinkParams{
+		Status:   SuggestionNoLongerApplies,
+		ClosedAt: &closedAt,
+		GoalID:   goalID,
+		ParentID: parentID,
+	}); err != nil {
+		return fmt.Errorf("close parent suggestions: %w", err)
+	}
+	return nil
+}
+
+// closeSuggestionsOfEndedGoal closes the open suggestions goalID is either end
+// of as no longer applying, once it has become Done or Cancelled.
+func (s *Service) closeSuggestionsOfEndedGoal(ctx context.Context, goalID int64) error {
+	closedAt := s.clock.Now().Format(timeFormat)
+	if err := s.queries.CloseOpenParentSuggestionsOfGoal(ctx, db.CloseOpenParentSuggestionsOfGoalParams{
+		Status:   SuggestionNoLongerApplies,
+		ClosedAt: &closedAt,
+		GoalID:   goalID,
+	}); err != nil {
+		return fmt.Errorf("close parent suggestions: %w", err)
+	}
+	return nil
 }
