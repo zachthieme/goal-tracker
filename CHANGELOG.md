@@ -51,6 +51,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] A Report Definition's summary — its Goal count, Health counts, last publication, the Goals changed, entered or left since it, and its scope in plain words — is worked out for the Reports list to show (#148).
 - [user] The Risks page heads with "N Goals need attention. Worst first." and ends with a "What each risk means" disclosure that defines each signal. When nothing is left to show, it says so in one line ("No Goals need attention.", or "No Goals need attention in Mine, Owner needs to update." when scoped or filtered, with a Show everything link) instead of an empty table and cards (#142).
 - [user] The Reports page is a status table: each report shows its scope, how many Goals it has with a bar of their Health, when it was last published (in the org's timezone) and by whom, and how many changes its draft has since — or "Never" and "Not published". Reports never published come first, then those with the most changes, then the longest since published. "Saved Report Definitions" is gone (#150).
+- [ops] Every unexpected server error (a 500) now reaches the server log on stderr as an ERROR record with the request's `method`, `path` and `err`, its underlying cause. Until now a 500 left no trace there. What the browser is sent is unchanged (#181).
 
 **Bug fixes:**
 - [user] Without JavaScript, a Top-level rule row in the Report builder offers only "is Top-level" and "is not Top-level", without a list of every attribute's values beside them (#149).
@@ -72,6 +73,12 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Not found, Can't undo, refused Nudge and unreachable Check-in pages start their content at the page's left edge like every other page, rather than in a centred column (#175).
 - [user] On the New goal page, an item in the Ready to activate checklist that wraps onto a second line keeps its ✓ or ✗ the same width as the others, so every item's text lines up (#175).
 - [internal] `scripts/shots.mjs`: a `"full": false` shot taken after an action that scrolls the page now captures the window where it is scrolled to, not the top of the page, which came out blank. `node --test scripts/*.test.mjs` checks it in Chromium where Chromium is found (#176).
+- [user] On New goal and a draft Goal's define page, searching Contributes to keeps working as you type. Before, the results showed once and then stopped updating, so typing "Site" still listed every Goal matching "S" (#178).
+- [user] A date with its slips struck through now wraps between dates, never in the middle of one, in more places: the due date and Milestone dates on a Report's exception cards, the Goal page's "Delivers" date, and the Due column of the Goals list (#180).
+- [user] On a phone, each row of a Report's On track table stacks as a block (the Goal, then its Health and Owner, then its Due) instead of pushing the Due date off the side of the card (#180).
+- [user] On a Report draft, the baseline chip is as tall as the buttons beside it, and the Highlights line up with the "Highlights since" heading instead of being indented (#180).
+- [user] In the report builder, picking a Goal from a search empties the search box, so the next search starts afresh instead of adding to the last one, and searching no longer logs an htmx warning while a list has no Goals in it (#180).
+- [user] The Suggest a parent page no longer has a stray space before ", owned by" (#180).
 
 **Infrastructure:**
 - [api] Database schema: migration `0037_parent_suggestions` adds a `parent_suggestions` table holding each Parent suggestion: its Goal, suggested parent, suggester, note, outcome, and when it was made and closed. It's additive and runs on startup (#144).
