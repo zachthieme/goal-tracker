@@ -141,7 +141,7 @@ templ riskCardLink(c riskCard) {
 		<span class="num">{ strconv.Itoa(c.Count) }</span>
 		<span class="rk-chips">
 			for _, sig := range c.Signals {
-				<span class={ "badge " + riskChipClass(sig.Anchor) }>{ sig.Name + " · " + strconv.Itoa(sig.Count) }</span>
+				<span data-testid="risk-signal" data-kind={ sig.Anchor } class={ riskChipClass(sig.Anchor) }>{ sig.Name + " · " + strconv.Itoa(sig.Count) }</span>
 			}
 		</span>
 	</a>

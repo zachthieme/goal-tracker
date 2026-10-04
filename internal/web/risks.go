@@ -251,17 +251,17 @@ func (p risksPageView) attention() string {
 	return "Goals need attention. Worst first."
 }
 
-// riskChipClass is the badge style of a signal's chip: the Stale look for the
-// freshness signals, the Ownerless look for Ownerless, and the Lifecycle look
-// for the structural ones.
+// riskChipClass is the class of a signal's chip on a group card, matching the
+// table's: the Stale badge for the freshness signals, the Ownerless badge for
+// Ownerless, and the outlined tag for the structural ones.
 func riskChipClass(kind string) string {
 	switch kind {
 	case "stale", "path-overdue":
-		return "st"
+		return "badge st"
 	case "ownerless":
-		return "ol"
+		return "badge ol"
 	}
-	return "lc"
+	return "rk-tag"
 }
 
 // riskGroupKey is the group key names, or "" for an unknown one, which shows

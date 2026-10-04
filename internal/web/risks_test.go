@@ -505,6 +505,17 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 		}
 		last = at
 	}
+	for _, c := range []struct{ group, kind, class string }{
+		{"owner", "stale", `class="badge st"`},
+		{"plan", "unaligned", `class="rk-tag"`},
+		{"plan", "schedule-conflicts", `class="rk-tag"`},
+		{"admin", "ownerless", `class="badge ol"`},
+	} {
+		card := pageElement(t, page, "a", "risks-group-"+c.group)
+		if chip := riskChip(t, card, c.kind); !strings.Contains(openTag(chip), c.class) {
+			t.Errorf("the %s card's %s chip isn't drawn like the table's %s: %s", c.group, c.kind, c.class, chip)
+		}
+	}
 	if strings.Contains(page, "Show all") {
 		t.Errorf("page offers Show all with no filter")
 	}
