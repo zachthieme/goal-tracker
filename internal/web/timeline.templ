@@ -108,6 +108,11 @@ templ historyItem(h history, e historyEntry) {
 					@person(e.Nudge.Sender)
 					{ " nudged for a Check-in" }
 				</p>
+			case e.Milestone != nil:
+				<p>
+					@person(e.Milestone.Author)
+					{ fmt.Sprintf(" added Milestone %s (%s)", e.Milestone.Name, fmtDate(e.Milestone.AddedDate)) }
+				</p>
 			case e.Link != nil:
 				{{ before, after := linkChange(*e.Link) }}
 				<p>{ before }<a href={ templ.SafeURL(goalPath(e.Link.OtherID)) }>{ e.Link.OtherTitle }</a>{ after }</p>
@@ -251,6 +256,7 @@ templ timelineStyles() {
 		.tl-parent-suggestion{border:2px dashed var(--color-ink-muted);border-radius:50%}
 		.tl-nudge{border:2px dashed var(--color-ink-muted);border-radius:2px}
 		.tl-link{border:2px solid var(--color-ink-muted);border-radius:50% 50% 2px 2px}
+		.tl-milestone{border:3px double var(--color-ink-muted);border-radius:50%}
 		.tl-slips{margin:0;padding-left:20px}
 		.tl-discarded>p{margin:0}
 		.tl-detail summary{cursor:pointer;color:var(--color-primary-strong)}

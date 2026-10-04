@@ -249,7 +249,7 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 				return err
 			}
 		}
-		if err := milestones.apply(ctx, tx, goal.Goal.ID, c.ID); err != nil {
+		if err := milestones.apply(ctx, tx, goal.Goal.ID, c.ID, in.AuthorID); err != nil {
 			return err
 		}
 		if err := tx.recordHighlights(ctx, c.ID, highlights); err != nil {
@@ -475,16 +475,15 @@ func (s *Service) ListCheckins(ctx context.Context, goalID int64) ([]Checkin, er
 	if err != nil {
 		return nil, fmt.Errorf("list milestone changes: %w", err)
 	}
+	// A change made outside a Check-in belongs to none of them
+	// (MilestoneChangesOutsideCheckins).
 	changesBy := make(map[int64][]MilestoneChange)
 	for _, r := range changes {
-		addedDate, _ := time.Parse(dateFormat, r.AddedDate)
-		changesBy[r.MilestoneChange.CheckinID] = append(changesBy[r.MilestoneChange.CheckinID], MilestoneChange{
-			MilestoneID: r.MilestoneChange.MilestoneID,
-			Kind:        r.MilestoneChange.Kind,
-			Reason:      r.MilestoneChange.Reason,
-			Name:        r.MilestoneChange.Name,
-			AddedDate:   addedDate,
-		})
+		if r.MilestoneChange.CheckinID == nil {
+			continue
+		}
+		checkinID := *r.MilestoneChange.CheckinID
+		changesBy[checkinID] = append(changesBy[checkinID], milestoneChangeFromRow(r))
 	}
 	discardedBy, err := s.discardedDraftHighlightsByCheckin(ctx, goalID)
 	if err != nil {

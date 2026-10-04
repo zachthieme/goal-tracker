@@ -70,9 +70,12 @@ func MilestoneMarkOf(m Milestone, priorDates []time.Time, isNew bool, asOf time.
 }
 
 // MilestoneChange is a Milestone a Check-in added, marked Done or marked
-// Removed, recorded with that Check-in. A Check-in's Milestone date moves are
-// its Date Slips instead. Check-ins made before these were recorded have none.
+// Removed, recorded with that Check-in, or one the Owner or a Delegate added
+// from the Goal page while the Goal was Active or On Hold, recorded with no
+// Check-in. A Check-in's Milestone date moves are its Date Slips instead.
+// Check-ins made before these were recorded have none.
 type MilestoneChange struct {
+	ID          int64
 	MilestoneID int64
 	// Kind is MilestoneChangeAdded, MilestoneChangeDone or
 	// MilestoneChangeRemoved; Reason explains a removal.
@@ -83,6 +86,11 @@ type MilestoneChange struct {
 	// any Date Slip moved it.
 	Name      string
 	AddedDate time.Time
+	// CreatedAt is when the change was made. Author is who made it, set only
+	// on a change made outside a Check-in; a Check-in's changes are its
+	// author's.
+	CreatedAt time.Time
+	Author    Account
 }
 
 // The kinds of MilestoneChange.
@@ -140,6 +148,93 @@ func (s *Service) AddMilestone(ctx context.Context, in AddMilestoneInput) (Miles
 		return Milestone{}, fmt.Errorf("look up goal: %w", err)
 	}
 	return s.createMilestone(ctx, in.GoalID, name, in.TargetDate, goal.Goal.Lifecycle == LifecycleActive)
+}
+
+// errMilestonesOwnerOrDelegateOnly is the refusal of anyone but a Goal's
+// Owner or a Delegate who tries to change its Milestones.
+var errMilestonesOwnerOrDelegateOnly = fmt.Errorf("%w: only the Owner or a Delegate may change this Goal's Milestones", ErrNotAuthorized)
+
+// authorizeMilestoneChange allows the Goal's Owner or a Delegate to change its
+// Milestones, by the rules for who may write its Check-ins: a Departed person
+// is refused whichever they are (CONTEXT.md: Delegate, Departed).
+func (s *Service) authorizeMilestoneChange(ctx context.Context, goal db.Goal, actorID int64) error {
+	err := s.authorizeCheckinAuthor(ctx, goal.ID, goal.OwnerID, actorID)
+	if errors.Is(err, ErrNotAuthorized) {
+		return errMilestonesOwnerOrDelegateOnly
+	}
+	return err
+}
+
+// RequireMilestoneEditor allows actorID to change milestoneID only if they are
+// its Goal's Owner or a Delegate; anyone else is refused with
+// ErrNotAuthorized, and a missing Milestone is ErrNotFound. Callers check it
+// before EditMilestone, which trusts its caller.
+func (s *Service) RequireMilestoneEditor(ctx context.Context, actorID, milestoneID int64) error {
+	m, err := s.queries.GetMilestone(ctx, milestoneID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: milestone %d", ErrNotFound, milestoneID)
+		}
+		return fmt.Errorf("look up milestone: %w", err)
+	}
+	goal, err := s.queries.GetGoal(ctx, m.GoalID)
+	if err != nil {
+		return fmt.Errorf("look up goal: %w", err)
+	}
+	return s.authorizeMilestoneChange(ctx, goal.Goal, actorID)
+}
+
+// AddMilestoneAsAuthor adds a Milestone to a Goal outside a Check-in, from the
+// Goal page, as authorID: only its Owner or a Delegate may, and only while the
+// Goal is Proposed, Active or On Hold. Name and target date are required. An
+// addition while the Goal is Active or On Hold is recorded as a Milestone
+// change with its author and no Check-in, for the Goal's history; one while it
+// is Proposed is part of its planning, and isn't. Only an addition while
+// Active counts toward Milestone Churn (CONTEXT.md: Milestone, Milestone
+// Churn). The Goal is read in the same transaction as the addition, so a
+// Check-in that ends it meanwhile can't let one through.
+func (s *Service) AddMilestoneAsAuthor(ctx context.Context, authorID int64, in AddMilestoneInput) (Milestone, error) {
+	var out Milestone
+	err := s.WithinTx(ctx, func(tx *Service) error {
+		goal, err := tx.queries.GetGoal(ctx, in.GoalID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("%w: goal %d", ErrNotFound, in.GoalID)
+			}
+			return fmt.Errorf("look up goal: %w", err)
+		}
+		if err := tx.authorizeMilestoneChange(ctx, goal.Goal, authorID); err != nil {
+			return err
+		}
+		lifecycle := goal.Goal.Lifecycle
+		switch lifecycle {
+		case LifecycleProposed, LifecycleActive, LifecycleOnHold:
+		default:
+			return fmt.Errorf("%w: a %s Goal's Milestones can't change", ErrValidation, lifecycle)
+		}
+		name := strings.TrimSpace(in.Name)
+		if name == "" {
+			return fmt.Errorf("%w: a Milestone needs a name", ErrValidation)
+		}
+		if in.TargetDate.IsZero() {
+			return fmt.Errorf("%w: a Milestone needs a date", ErrValidation)
+		}
+		m, err := tx.createMilestone(ctx, goal.Goal.ID, name, in.TargetDate, lifecycle == LifecycleActive)
+		if err != nil {
+			return err
+		}
+		if lifecycle != LifecycleProposed {
+			if err := tx.recordMilestoneChange(ctx, nil, authorID, m.ID, m.Name, MilestoneChangeAdded, ""); err != nil {
+				return err
+			}
+		}
+		out = m
+		return nil
+	})
+	if err != nil {
+		return Milestone{}, err
+	}
+	return out, nil
 }
 
 // createMilestone inserts a Planned Milestone. addedWhileActive marks one added
@@ -330,9 +425,10 @@ func (s *Service) planMilestoneChanges(ctx context.Context, goalID int64, change
 
 // apply writes the plan's Date Slips, added Milestones, and Done and Removed
 // markings against checkinID, recording each addition and marking as one of
-// the Check-in's Milestone changes. Milestones added in a Check-in are added
-// while the Goal is Active, so they count toward its Milestone Churn.
-func (p milestonePlan) apply(ctx context.Context, tx *Service, goalID, checkinID int64) error {
+// the Check-in's Milestone changes, made by its author authorID. Milestones
+// added in a Check-in are added while the Goal is Active, so they count toward
+// its Milestone Churn.
+func (p milestonePlan) apply(ctx context.Context, tx *Service, goalID, checkinID, authorID int64) error {
 	for _, slip := range p.slips {
 		if err := tx.recordSlip(ctx, goalID, checkinID, slip); err != nil {
 			return err
@@ -343,12 +439,12 @@ func (p milestonePlan) apply(ctx context.Context, tx *Service, goalID, checkinID
 		if err != nil {
 			return err
 		}
-		if err := tx.recordMilestoneChange(ctx, checkinID, m.ID, m.Name, MilestoneChangeAdded, ""); err != nil {
+		if err := tx.recordMilestoneChange(ctx, &checkinID, authorID, m.ID, m.Name, MilestoneChangeAdded, ""); err != nil {
 			return err
 		}
 	}
 	for _, change := range p.statuses {
-		if err := tx.recordMilestoneStatus(ctx, checkinID, change); err != nil {
+		if err := tx.recordMilestoneStatus(ctx, checkinID, authorID, change); err != nil {
 			return err
 		}
 	}
@@ -356,8 +452,8 @@ func (p milestonePlan) apply(ctx context.Context, tx *Service, goalID, checkinID
 }
 
 // recordMilestoneStatus writes a Check-in's Done or Removed marking and
-// records it against checkinID.
-func (s *Service) recordMilestoneStatus(ctx context.Context, checkinID int64, c milestoneStatusChange) error {
+// records it against checkinID, made by its author authorID.
+func (s *Service) recordMilestoneStatus(ctx context.Context, checkinID, authorID int64, c milestoneStatusChange) error {
 	if err := s.queries.SetMilestoneStatus(ctx, db.SetMilestoneStatusParams{
 		Status:        c.status,
 		RemovedReason: c.removedReason,
@@ -365,15 +461,17 @@ func (s *Service) recordMilestoneStatus(ctx context.Context, checkinID int64, c 
 	}); err != nil {
 		return fmt.Errorf("set milestone status: %w", err)
 	}
-	return s.recordMilestoneChange(ctx, checkinID, c.milestoneID, c.name, c.status, c.removedReason)
+	return s.recordMilestoneChange(ctx, &checkinID, authorID, c.milestoneID, c.name, c.status, c.removedReason)
 }
 
-// recordMilestoneChange records that checkinID made a Milestone change of kind
-// to milestoneID, under the name it has now so a later rename leaves the record
-// as it was, stamped with the Service's clock.
-func (s *Service) recordMilestoneChange(ctx context.Context, checkinID, milestoneID int64, name, kind, reason string) error {
+// recordMilestoneChange records that authorID made a Milestone change of kind
+// to milestoneID, in the Check-in checkinID or, when it is nil, outside one,
+// under the name it has now so a later rename leaves the record as it was,
+// stamped with the Service's clock.
+func (s *Service) recordMilestoneChange(ctx context.Context, checkinID *int64, authorID, milestoneID int64, name, kind, reason string) error {
 	if _, err := s.queries.CreateMilestoneChange(ctx, db.CreateMilestoneChangeParams{
 		CheckinID:   checkinID,
+		AuthorID:    &authorID,
 		MilestoneID: milestoneID,
 		Kind:        kind,
 		Reason:      reason,
@@ -383,6 +481,39 @@ func (s *Service) recordMilestoneChange(ctx context.Context, checkinID, mileston
 		return fmt.Errorf("record milestone change: %w", err)
 	}
 	return nil
+}
+
+// MilestoneChangesOutsideCheckins returns the Milestone changes recorded on a
+// Goal outside any Check-in — the Milestones its Owner or a Delegate added
+// from the Goal page while it was Active or On Hold — oldest first, each with
+// its author and when it was made. A Check-in's own changes come with it from
+// ListCheckins.
+func (s *Service) MilestoneChangesOutsideCheckins(ctx context.Context, goalID int64) ([]MilestoneChange, error) {
+	rows, err := s.queries.ListMilestoneChangesByGoal(ctx, goalID)
+	if err != nil {
+		return nil, fmt.Errorf("list milestone changes: %w", err)
+	}
+	authors := map[int64]Account{}
+	var out []MilestoneChange
+	for _, r := range rows {
+		if r.MilestoneChange.CheckinID != nil || r.MilestoneChange.AuthorID == nil {
+			continue
+		}
+		c := milestoneChangeFromRow(r)
+		id := *r.MilestoneChange.AuthorID
+		author, ok := authors[id]
+		if !ok {
+			row, err := s.queries.GetAccount(ctx, id)
+			if err != nil {
+				return nil, fmt.Errorf("look up milestone change author: %w", err)
+			}
+			author = accountFromRow(row)
+			authors[id] = author
+		}
+		c.Author = author
+		out = append(out, c)
+	}
+	return out, nil
 }
 
 // MilestoneChurn returns the number of Milestones added or removed on a Goal
@@ -408,6 +539,20 @@ func (s *Service) ListMilestones(ctx context.Context, goalID int64) ([]Milestone
 		out = append(out, milestoneFromRow(r))
 	}
 	return out, nil
+}
+
+func milestoneChangeFromRow(r db.ListMilestoneChangesByGoalRow) MilestoneChange {
+	addedDate, _ := time.Parse(dateFormat, r.AddedDate)
+	createdAt, _ := time.Parse(timeFormat, r.MilestoneChange.CreatedAt)
+	return MilestoneChange{
+		ID:          r.MilestoneChange.ID,
+		MilestoneID: r.MilestoneChange.MilestoneID,
+		Kind:        r.MilestoneChange.Kind,
+		Reason:      r.MilestoneChange.Reason,
+		Name:        r.MilestoneChange.Name,
+		AddedDate:   addedDate,
+		CreatedAt:   createdAt,
+	}
 }
 
 func milestoneFromRow(m db.Milestone) Milestone {

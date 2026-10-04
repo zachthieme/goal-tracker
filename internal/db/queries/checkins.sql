@@ -92,23 +92,24 @@ SELECT CAST(
 AS INTEGER) AS churn;
 
 -- name: CreateMilestoneChange :one
--- Record a Milestone a Check-in added, marked Done or marked Removed, under the
--- name it had then; Removed carries its reason.
-INSERT INTO milestone_changes (checkin_id, milestone_id, kind, reason, name, created_at)
-VALUES (?, ?, ?, ?, ?, ?)
+-- Record a Milestone a Check-in added, marked Done or marked Removed, or one
+-- its Owner or a Delegate added from the Goal page (checkin_id NULL), under
+-- the name it had then and with who made it; Removed carries its reason.
+INSERT INTO milestone_changes (checkin_id, author_id, milestone_id, kind, reason, name, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ListMilestoneChangesByGoal :many
--- The Milestone changes a Goal's Check-ins recorded, each Check-in's in the
--- order made, with the date the Milestone had when added: its first Date Slip's
--- old date, or its date now if it never slipped.
+-- The Milestone changes recorded on a Goal's Milestones, in the order made:
+-- those its Check-ins made and those made outside a Check-in (checkin_id
+-- NULL). Each carries the date the Milestone had when added: its first Date
+-- Slip's old date, or its date now if it never slipped.
 SELECT sqlc.embed(milestone_changes),
        CAST(COALESCE(
            (SELECT ds.old_date FROM date_slips ds WHERE ds.milestone_id = milestones.id ORDER BY ds.created_at, ds.id LIMIT 1),
            milestones.target_date
        ) AS TEXT) AS added_date
 FROM milestone_changes
-JOIN checkins ON checkins.id = milestone_changes.checkin_id
 JOIN milestones ON milestones.id = milestone_changes.milestone_id
-WHERE checkins.goal_id = @goal_id
+WHERE milestones.goal_id = @goal_id
 ORDER BY milestone_changes.id;

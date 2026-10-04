@@ -585,6 +585,10 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("load link events: %w", err)
 	}
+	milestoneAdditions, err := s.svc.MilestoneChangesOutsideCheckins(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("load milestone additions: %w", err)
+	}
 	// The Owner decides every open suggestion; anyone else sees only their
 	// own, to withdraw (CONTEXT.md: Parent suggestion).
 	var suggested []domain.ParentSuggestion
@@ -632,44 +636,45 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	}
 
 	view := goalView{
-		Goal:            g,
-		Parents:         parents,
-		Children:        children,
-		LinkHealth:      linkHealth,
-		Candidates:      candidates,
-		Milestones:      milestones,
-		Metrics:         metrics,
-		Trends:          trends,
-		Highlights:      highlights,
-		DraftHighlights: drafts,
-		Contributors:    contributors,
-		Delegates:       delegates,
-		CanCheckin:      canCheckin,
-		CanSetValues:    canSetValues,
-		Owns:            current.ID == g.Owner.ID,
-		Admin:           current.IsAdmin,
-		Revisions:       revisions,
-		Ownership:       ownership,
-		ValueHistory:    valueHistory,
-		Dimensions:      dimensions,
-		Values:          values,
-		Fields:          fields,
-		FieldValues:     fieldValues,
-		Checkins:        checkins,
-		LatestCheckin:   latestPtr,
-		RolledUp:        rollup,
-		DateSlips:       slips,
-		MilestoneChurn:  churn,
-		Signals:         signals,
-		Freshness:       freshness,
-		Required:        required,
-		Incomplete:      incomplete,
-		HealthStrip:     strip,
-		Suggestions:     suggestions,
-		Suggested:       suggested,
-		Nudges:          nudges,
-		LinkEvents:      linkEvents,
-		Now:             s.svc.Now(),
+		Goal:               g,
+		Parents:            parents,
+		Children:           children,
+		LinkHealth:         linkHealth,
+		Candidates:         candidates,
+		Milestones:         milestones,
+		Metrics:            metrics,
+		Trends:             trends,
+		Highlights:         highlights,
+		DraftHighlights:    drafts,
+		Contributors:       contributors,
+		Delegates:          delegates,
+		CanCheckin:         canCheckin,
+		CanSetValues:       canSetValues,
+		Owns:               current.ID == g.Owner.ID,
+		Admin:              current.IsAdmin,
+		Revisions:          revisions,
+		Ownership:          ownership,
+		ValueHistory:       valueHistory,
+		Dimensions:         dimensions,
+		Values:             values,
+		Fields:             fields,
+		FieldValues:        fieldValues,
+		Checkins:           checkins,
+		LatestCheckin:      latestPtr,
+		RolledUp:           rollup,
+		DateSlips:          slips,
+		MilestoneChurn:     churn,
+		Signals:            signals,
+		Freshness:          freshness,
+		Required:           required,
+		Incomplete:         incomplete,
+		HealthStrip:        strip,
+		Suggestions:        suggestions,
+		Suggested:          suggested,
+		Nudges:             nudges,
+		LinkEvents:         linkEvents,
+		MilestoneAdditions: milestoneAdditions,
+		Now:                s.svc.Now(),
 	}
 	view.History = newHistory(view, s.svc.Timezone(), view.Now)
 	return view, nil
@@ -774,6 +779,10 @@ type goalView struct {
 	// LinkEvents are every change to the Goal's links, as their child or
 	// their parent, oldest first, for its History.
 	LinkEvents []domain.LinkEvent
+	// MilestoneAdditions are the Milestones the Owner or a Delegate added
+	// from the Goal page while it was Active or On Hold, oldest first, each
+	// with who added it and when, for its History and New marks.
+	MilestoneAdditions []domain.MilestoneChange
 	// History is the Goal's History as one timeline, newest first, showing the
 	// filter and page count the page's address asks for.
 	History history
@@ -800,8 +809,10 @@ const (
 	formParentLink   goalForm = "parent-link"
 	formDelegates    goalForm = "delegates"
 	formContributors goalForm = "contributors"
-	formDimensions   goalForm = "dimensions"
-	formFields       goalForm = "fields"
+	// formMilestones is the Milestones card's Add Milestone form.
+	formMilestones goalForm = "milestones"
+	formDimensions goalForm = "dimensions"
+	formFields     goalForm = "fields"
 	// formDraftHighlight is the Draft Highlights block's log form. It always
 	// shows for whoever may use it; naming it lets a refused log come back in
 	// it.
@@ -827,6 +838,14 @@ func (v goalView) offers(form goalForm) bool {
 		return v.Owns
 	case formContributors:
 		return v.Owns && g.Lifecycle == domain.LifecycleProposed
+	case formMilestones:
+		// The Owner or a Delegate adds a Milestone at any time until the Goal
+		// is Done or Cancelled (CONTEXT.md: Milestone).
+		switch g.Lifecycle {
+		case domain.LifecycleProposed, domain.LifecycleActive, domain.LifecycleOnHold:
+			return v.CanCheckin
+		}
+		return false
 	case formDimensions:
 		return v.CanSetValues && len(domain.OfferedDimensions(v.Dimensions)) > 0
 	case formFields:
@@ -921,20 +940,28 @@ func (v goalView) priorDates(milestoneID int64) []time.Time {
 }
 
 // milestoneMark is the mark a Milestone shows on the Goal page as of today
-// (CONTEXT.md: Milestone). It is New when the Goal's latest Check-in added it.
+// (CONTEXT.md: Milestone). It is New when the Goal's latest Check-in added it,
+// or it was added outside a Check-in since then.
 func (v goalView) milestoneMark(m domain.Milestone) string {
-	return domain.MilestoneMarkOf(m, v.priorDates(m.ID), v.addedByLatestCheckin(m.ID), v.Now)
+	return domain.MilestoneMarkOf(m, v.priorDates(m.ID), v.addedSinceLatestCheckin(m.ID), v.Now)
 }
 
-// addedByLatestCheckin reports whether the Goal's latest Check-in added the
-// Milestone. One added outside a Check-in, before the Goal was Active, never
-// was.
-func (v goalView) addedByLatestCheckin(milestoneID int64) bool {
+// addedSinceLatestCheckin reports whether the Goal's latest Check-in added
+// the Milestone, or its Owner or a Delegate added it from the Goal page after
+// that Check-in. A Goal with no Check-in has nothing New, and a Milestone
+// added while the Goal was Proposed never is.
+func (v goalView) addedSinceLatestCheckin(milestoneID int64) bool {
 	if len(v.Checkins) == 0 {
 		return false
 	}
-	for _, ch := range v.Checkins[0].MilestoneChanges {
+	latest := v.Checkins[0]
+	for _, ch := range latest.MilestoneChanges {
 		if ch.Kind == domain.MilestoneChangeAdded && ch.MilestoneID == milestoneID {
+			return true
+		}
+	}
+	for _, ch := range v.MilestoneAdditions {
+		if ch.Kind == domain.MilestoneChangeAdded && ch.MilestoneID == milestoneID && ch.CreatedAt.After(latest.CreatedAt) {
 			return true
 		}
 	}
@@ -1073,7 +1100,10 @@ func (s *Server) writeFormResult(w http.ResponseWriter, r *http.Request, goalID 
 }
 
 // renderRefusedForm re-renders the Goal page with status and form open,
-// carrying why its submit was refused and what it sent.
+// carrying why its submit was refused and what it sent. When the page no
+// longer offers the viewer that form, such as Add Milestone once the Goal is
+// Done, there is nowhere beside it to say why, so the reason comes back on
+// its own.
 func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, status int, refused error) {
 	view, err := s.goalPageView(r.Context(), goalID, current)
 	if err != nil {
@@ -1082,6 +1112,10 @@ func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalI
 			return
 		}
 		s.serverError(w, r, "could not load goal", err)
+		return
+	}
+	if !view.offers(form) {
+		http.Error(w, refused.Error(), status)
 		return
 	}
 	view.Open, view.FormError, view.FormInput = form, refused.Error(), r.PostForm
@@ -1163,27 +1197,30 @@ func (s *Server) handleAddContributor(w http.ResponseWriter, r *http.Request, cu
 	s.writeFormResult(w, r, id, current, formContributors, err)
 }
 
-func (s *Server) handleAddMilestone(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+// handleAddMilestone adds a Milestone from the Goal page's Add Milestone form,
+// as its Owner or a Delegate. A date that doesn't parse is sent on as no
+// date, so the domain refuses it beside the form like any other.
+func (s *Server) handleAddMilestone(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
-	date, err := parseDate(r.FormValue("target_date"))
-	if err != nil {
-		http.Error(w, "invalid milestone date", http.StatusUnprocessableEntity)
-		return
-	}
-	_, err = s.svc.AddMilestone(r.Context(), domain.AddMilestoneInput{
+	date, _ := parseDate(r.FormValue("target_date"))
+	_, err := s.svc.AddMilestoneAsAuthor(r.Context(), current.ID, domain.AddMilestoneInput{
 		GoalID:     id,
 		Name:       r.FormValue("name"),
 		TargetDate: date,
 	})
-	s.writeCommandResult(w, r, id, err)
+	s.writeFormResult(w, r, id, current, formMilestones, err)
 }
 
-func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+func (s *Server) handleEditMilestone(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
+		return
+	}
+	if err := s.svc.RequireMilestoneEditor(r.Context(), current.ID, id); err != nil {
+		s.writeCommandResult(w, r, id, err)
 		return
 	}
 	date, err := parseDate(r.FormValue("target_date"))

@@ -50,8 +50,8 @@ const historyPage = 20
 // Slips and Metric readings recorded in it, a So What revision, an ownership
 // change (a Handoff or an Admin Reassign), a change to a Dimension value or
 // Field, a Parent suggestion with its outcome, a Nudge, or a change to one of
-// its links. Exactly one of Checkin, Revision, Handoff, Value, Suggestion,
-// Nudge and Link is set.
+// its links, or a Milestone added outside a Check-in. Exactly one of Checkin,
+// Revision, Handoff, Value, Suggestion, Nudge, Link and Milestone is set.
 type historyEntry struct {
 	At         time.Time
 	Checkin    *domain.Checkin
@@ -63,6 +63,7 @@ type historyEntry struct {
 	Suggestion *domain.ParentSuggestion
 	Nudge      *domain.Nudge
 	Link       *domain.LinkEvent
+	Milestone  *domain.MilestoneChange
 }
 
 // historyReading is a Metric's reading as a Check-in recorded it.
@@ -86,6 +87,8 @@ func (e historyEntry) kind() string {
 		return "nudge"
 	case e.Link != nil:
 		return "link"
+	case e.Milestone != nil:
+		return "milestone"
 	}
 	return "value"
 }
@@ -107,17 +110,20 @@ func (e historyEntry) label() string {
 		return "Nudge"
 	case e.Link != nil:
 		return "Link"
+	case e.Milestone != nil:
+		return "Milestone"
 	}
 	return "Value"
 }
 
 // in reports whether the entry is listed under filter. Date Slips lists the
-// Check-ins that carry one; Check-ins lists the Nudges asking for one too;
-// Links lists the Goal's link changes and its Parent suggestions.
+// Check-ins that carry one; Check-ins lists the Nudges asking for one too, and
+// the Milestones added between them; Links lists the Goal's link changes and
+// its Parent suggestions.
 func (e historyEntry) in(filter historyFilter) bool {
 	switch filter {
 	case historyCheckins:
-		return e.Checkin != nil || e.Nudge != nil
+		return e.Checkin != nil || e.Nudge != nil || e.Milestone != nil
 	case historySlips:
 		return len(e.Slips) > 0
 	case historySoWhat:
@@ -149,8 +155,9 @@ type history struct {
 }
 
 // newHistory gathers a Goal's Check-ins, Date Slips, Metric readings, So What
-// revisions, ownership changes, value changes, Parent suggestions, Nudges and
-// link changes into one timeline, newest first, showing everything and the first page.
+// revisions, ownership changes, value changes, Parent suggestions, Nudges,
+// link changes and the Milestones added outside a Check-in into one timeline,
+// newest first, showing everything and the first page.
 func newHistory(v goalView, loc *time.Location, now time.Time) history {
 	slipsBy := map[int64][]domain.DateSlip{}
 	for _, s := range v.DateSlips {
@@ -188,6 +195,9 @@ func newHistory(v goalView, loc *time.Location, now time.Time) history {
 	for _, l := range v.LinkEvents {
 		entries = append(entries, historyEntry{At: l.CreatedAt, Link: &l})
 	}
+	for _, m := range v.MilestoneAdditions {
+		entries = append(entries, historyEntry{At: m.CreatedAt, Milestone: &m})
+	}
 	// Newest first; entries made at the same moment keep the order they were
 	// recorded in, latest first.
 	slices.SortStableFunc(entries, func(a, b historyEntry) int {
@@ -215,6 +225,8 @@ func (e historyEntry) seq() int64 {
 		return e.Nudge.ID
 	case e.Link != nil:
 		return e.Link.ID
+	case e.Milestone != nil:
+		return e.Milestone.ID
 	}
 	return e.Value.ID
 }

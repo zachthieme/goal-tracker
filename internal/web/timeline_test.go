@@ -1379,3 +1379,108 @@ func TestGoalHistoryCheckinListsTheDraftHighlightsItDiscarded(t *testing.T) {
 		t.Errorf("a Draft Highlight deleted by hand appears on the Goal page")
 	}
 }
+
+// A Milestone added from the Goal page while the Goal is Active is its own
+// History entry, saying who added which Milestone with its date, listed under
+// Check-ins and All and under no other chip. One added while the Goal is
+// Proposed is part of planning it, and has none.
+func TestGoalHistoryShowsAMilestoneAddedOutsideACheckin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	dana := h.SignInNamed("dana@example.com", "Dana Reyes")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	h.AddDelegate(sam, dana, goal.ID)
+	h.Clock.Advance(3 * 24 * time.Hour)
+	ts := newServer(t, h)
+	postForm(t, signInClient(t, ts.URL, "dana@example.com"), fmt.Sprintf("%s/goals/%d/milestones", ts.URL, goal.ID),
+		url.Values{"name": {"GA"}, "target_date": {"2026-05-01"}})
+	client := signInClient(t, ts.URL, "sam@example.com")
+	postForm(t, client, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, proposed.ID),
+		url.Values{"name": {"Pricing page"}, "target_date": {"2026-04-01"}})
+
+	milestonesUnder := func(g domain.Goal, filter string) []string {
+		t.Helper()
+		var out []string
+		for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalPageURL(ts.URL, g)+"?history="+filter))) {
+			if entryKind(t, e) == "milestone" {
+				out = append(out, e)
+			}
+		}
+		return out
+	}
+	for _, filter := range []string{"", "checkins"} {
+		added := milestonesUnder(goal, filter)
+		if len(added) != 1 {
+			t.Fatalf("History under %q lists %d Milestone additions, want 1", filter, len(added))
+		}
+		e := added[0]
+		text := entryText(e)
+		for _, fact := range []string{
+			"Milestone " + h.Clock.Now().Format("Mon 2 Jan 15:04"),
+			"Dana Reyes dana@example.com added Milestone GA (2026-05-01)",
+		} {
+			if !strings.Contains(text, fact) {
+				t.Errorf("the addition under %q lacks %q:\n%s", filter, fact, text)
+			}
+		}
+		if !strings.Contains(e, `class="tl-mark tl-milestone"`) {
+			t.Errorf("the addition under %q has no marker of its own:\n%s", filter, e)
+		}
+	}
+	for _, filter := range []string{"date-slips", "so-what", "ownership", "links", "values"} {
+		if n := len(milestonesUnder(goal, filter)); n != 0 {
+			t.Errorf("the %s chip lists %d Milestone additions", filter, n)
+		}
+	}
+	if n := len(milestonesUnder(proposed, "")); n != 0 {
+		t.Errorf("a Proposed Goal's History lists %d Milestone additions, want none", n)
+	}
+}
+
+// Defining a Goal, new on the New goal page or Proposed on its define page,
+// adds its Milestones as part of planning it: they are listed, and its
+// History has no entry for them.
+func TestDefiningAGoalLeavesNoMilestoneHistoryOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp := postForm(t, client, ts.URL+"/goals/new", url.Values{
+		"title": {"Cut checkout latency"}, "so_what": {"Shoppers abandon slow carts."},
+		"milestones[0].name": {"Profile checkout"}, "milestones[0].date": {"2026-11-02"},
+	})
+	created := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("New goal answered %d", resp.StatusCode)
+	}
+	resp = definePost(t, client, ts.URL, proposed, func(f url.Values) {
+		f.Set("milestones[0].name", "Pricing page")
+		f.Set("milestones[0].date", "2026-04-01")
+	})
+	defined := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("define answered %d", resp.StatusCode)
+	}
+
+	for name, tc := range map[string]struct{ page, milestone string }{
+		"new":      {created, "Profile checkout"},
+		"proposed": {defined, "Pricing page"},
+	} {
+		rows := elementTexts(pageElement(t, tc.page, "section", "goal-milestones"), "tr", "goal-milestone")
+		if !slices.ContainsFunc(rows, func(r string) bool { return strings.Contains(r, tc.milestone) }) {
+			t.Errorf("%s Goal's Milestones read %q, want %s", name, rows, tc.milestone)
+		}
+		for _, e := range historyEntries(historyBlock(t, tc.page)) {
+			if entryKind(t, e) == "milestone" {
+				t.Errorf("%s Goal's History has a Milestone entry:\n%s", name, e)
+			}
+		}
+	}
+}
