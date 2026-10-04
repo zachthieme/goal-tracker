@@ -174,8 +174,9 @@ func (s *Server) handleViewReport(w http.ResponseWriter, r *http.Request, curren
 }
 
 // handleCurateNarrative sets the narrative of a Report Definition's next
-// publication from the draft page's form: each in-scope Highlight's section
-// (pick-{highlight}, empty to leave it out) and the author's text for each
+// publication from the draft page's form: the in-scope Highlights the author
+// ticked (include-{highlight}), each with its section (pick-{highlight}, which
+// is ignored for a Highlight left unticked), and the section text for each
 // section (text-{section}). It redirects back to the draft, against the
 // baseline the reader picked (the baseline form field), if any.
 func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, _ domain.Account) {
@@ -189,9 +190,9 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, _
 		return
 	}
 	in := domain.CurateNarrativeInput{Text: map[string]string{}}
-	for key, values := range r.Form {
-		raw, ok := strings.CutPrefix(key, "pick-")
-		if !ok || len(values) == 0 || values[0] == "" {
+	for key := range r.Form {
+		raw, ok := strings.CutPrefix(key, "include-")
+		if !ok {
 			continue
 		}
 		hlID, err := strconv.ParseInt(raw, 10, 64)
@@ -199,7 +200,8 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, _
 			http.Error(w, "unknown Highlight", http.StatusBadRequest)
 			return
 		}
-		in.Picks = append(in.Picks, domain.NarrativePick{HighlightID: hlID, Section: values[0]})
+		// A missing section reaches the domain empty, which refuses it.
+		in.Picks = append(in.Picks, domain.NarrativePick{HighlightID: hlID, Section: r.Form.Get("pick-" + raw)})
 	}
 	for _, section := range narrativeSections {
 		in.Text[section] = r.FormValue("text-" + section)
