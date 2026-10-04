@@ -51,6 +51,65 @@ type goalFormView struct {
 	FieldValues map[int64]string
 	Suggested   bool
 	Problems    []*domain.InputError
+	// Live says the Ready to activate card answers the form as typed, so its
+	// Create and activate follows the checklist. Without it, as the page
+	// loads, Create and activate is enabled, since the server decides.
+	Live bool
+}
+
+// activationFacts are the form's, as typed, for its Ready to activate
+// checklist. Its Owner is the person creating it. Only a Dated Goal's
+// delivery date counts, and only one that parses; a Milestone or Metric row
+// counts once anything is typed in it. A required Dimension is set by a value
+// chosen in it or, when it's Extendable, a value typed to add, and a required
+// Field by a value typed (domain.RequiredValues reads a saved Goal's).
+func (v goalFormView) activationFacts() activationFacts {
+	f := activationFacts{
+		SoWhat:     v.SoWhat,
+		Owned:      true,
+		Kind:       v.Kind,
+		Milestones: len(v.Milestones),
+		Metrics:    len(v.Metrics),
+	}
+	if v.Kind == domain.GoalDated {
+		if d, err := parseDate(strings.TrimSpace(v.DeliveryDate)); err == nil {
+			f.DeliveryDate = d
+		}
+	}
+	for _, d := range v.Dimensions {
+		if !d.Required || d.Retired {
+			continue
+		}
+		set := d.Extendable() && strings.TrimSpace(v.NewValues[d.ID]) != ""
+		for _, val := range d.Values {
+			set = set || v.Chosen[val.ID]
+		}
+		f.Required = append(f.Required, domain.RequiredValue{Name: d.Name, Set: set})
+	}
+	for _, fl := range v.Fields {
+		if fl.Required && !fl.Retired {
+			f.Required = append(f.Required, domain.RequiredValue{Name: fl.Name, Set: strings.TrimSpace(v.FieldValues[fl.ID]) != ""})
+		}
+	}
+	return f
+}
+
+// readyCount is how many of the Ready to activate checklist's items are done,
+// of how many.
+func (v goalFormView) readyCount() (done, of int) {
+	items := v.activationFacts().checklist()
+	for _, item := range items {
+		if item.Done {
+			done++
+		}
+	}
+	return done, len(items)
+}
+
+// activateDisabled says Create and activate is disabled: only on the live
+// card, while the checklist is incomplete.
+func (v goalFormView) activateDisabled() bool {
+	return v.Live && !v.activationFacts().ready()
 }
 
 // parentChoice is a Goal offered or picked to contribute to: its Health, ""
@@ -358,12 +417,67 @@ func (s *Server) handleSearchGoals(w http.ResponseWriter, r *http.Request, curre
 var errUnparsed = errors.New("the New goal form has values that don't parse")
 
 // handleCreateDefinedGoal submits the New goal page: the Goal is created as
-// defined and the post lands on its page, which is the confirmation, so there
-// is no toast. A refused submit comes back as the form, 422, as typed, with
-// every problem listed at the top and marked on its input. A value the
-// handler can't parse is refused the same way, under its input's name, in the
-// same 422 as the domain's problems.
+// defined, and activated too when Create and activate posts activate=1, and
+// the post lands on its page, which is the confirmation, so there is no toast.
+// The server decides activation, whatever the button showed. A refused submit,
+// activation included, comes back as the form, 422, as typed, with every
+// problem listed at the top and marked on its input, and nothing saved. A
+// value the handler can't parse is refused the same way, under its input's
+// name, in the same 422 as the domain's problems.
 func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	v, in, unparsed := readGoalForm(r, current)
+	in.Activate = r.PostFormValue(domain.InputActivate) == "1"
+
+	// The domain checks what parsed even when something didn't, so every
+	// problem comes back together; with any unparsed, nothing it wrote is
+	// kept. Defining a Goal sends no email, so rolling it back recalls it all.
+	var g domain.Goal
+	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
+		var err error
+		g, err = tx.CreateDefinedGoal(r.Context(), in)
+		if err == nil && len(unparsed) > 0 {
+			return errUnparsed
+		}
+		return err
+	})
+	if err == nil {
+		http.Redirect(w, r, fmt.Sprintf("/goals/%d", g.ID), http.StatusSeeOther)
+		return
+	}
+	if !errors.Is(err, domain.ErrValidation) && !errors.Is(err, errUnparsed) {
+		http.Error(w, "could not create goal", http.StatusInternalServerError)
+		return
+	}
+	v.Problems = goalFormProblems(err, unparsed)
+	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, in.ParentIDs); err != nil {
+		http.Error(w, "could not load goals", http.StatusInternalServerError)
+		return
+	}
+	if err := s.loadWhereItFits(r.Context(), &v); err != nil {
+		http.Error(w, "could not load dimensions and fields", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusUnprocessableEntity, goalFormPage(&current, v))
+}
+
+// handleGoalFormChecklist answers the New goal form as it is typed with its
+// Ready to activate card alone, buttons included: the checklist run on the
+// form's values, and Create and activate disabled until every item is done.
+// It saves nothing.
+func (s *Server) handleGoalFormChecklist(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	v, _, _ := readGoalForm(r, current)
+	if err := s.loadWhereItFits(r.Context(), &v); err != nil {
+		http.Error(w, "could not load dimensions and fields", http.StatusInternalServerError)
+		return
+	}
+	v.Live = true
+	render(w, r, http.StatusOK, goalFormReady(v))
+}
+
+// readGoalForm reads a New goal post: the form as typed, to show again, the
+// definition it posts for current, and each value that doesn't parse, refused
+// under its input's name.
+func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain.DefinedGoalInput, []*domain.InputError) {
 	v := goalFormView{
 		Title:        r.FormValue(domain.InputTitle),
 		SoWhat:       r.FormValue(domain.InputSoWhat),
@@ -478,37 +592,7 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 			TargetDate: date(domain.MetricInput(i, "target_date"), m.TargetDate),
 		})
 	}
-
-	// The domain checks what parsed even when something didn't, so every
-	// problem comes back together; with any unparsed, nothing it wrote is
-	// kept. Defining a Goal sends no email, so rolling it back recalls it all.
-	var g domain.Goal
-	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
-		var err error
-		g, err = tx.CreateDefinedGoal(r.Context(), in)
-		if err == nil && len(unparsed) > 0 {
-			return errUnparsed
-		}
-		return err
-	})
-	if err == nil {
-		http.Redirect(w, r, fmt.Sprintf("/goals/%d", g.ID), http.StatusSeeOther)
-		return
-	}
-	if !errors.Is(err, domain.ErrValidation) && !errors.Is(err, errUnparsed) {
-		http.Error(w, "could not create goal", http.StatusInternalServerError)
-		return
-	}
-	v.Problems = goalFormProblems(err, unparsed)
-	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, in.ParentIDs); err != nil {
-		http.Error(w, "could not load goals", http.StatusInternalServerError)
-		return
-	}
-	if err := s.loadWhereItFits(r.Context(), &v); err != nil {
-		http.Error(w, "could not load dimensions and fields", http.StatusInternalServerError)
-		return
-	}
-	render(w, r, http.StatusUnprocessableEntity, goalFormPage(&current, v))
+	return v, in, unparsed
 }
 
 // Where it fits posts each value chosen as value_id, the value typed to add to
