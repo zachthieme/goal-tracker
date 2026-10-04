@@ -4,6 +4,7 @@
 package web
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -43,9 +44,10 @@ func NewServer(svc *domain.Service, opts ...Option) *Server {
 
 // ServeHTTP makes Server an http.Handler. It records the browser's chosen
 // theme in the request context, so every page the request renders is pinned to
-// it.
+// it, and the Server's logger, so a page that fails to draw is logged there.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.mux.ServeHTTP(w, withTheme(r))
+	r = withTheme(r)
+	s.mux.ServeHTTP(w, r.WithContext(withRequestLogger(r.Context(), s.log)))
 }
 
 // currentAccount resolves the signed-in Account from the session cookie, or nil
@@ -95,9 +97,35 @@ func (s *Server) withTopBarCounts(r *http.Request, acc domain.Account) *http.Req
 }
 
 // render writes a templ component with the given status. It puts the request
-// path in the context so the layout can mark the current page.
+// path in the context so the layout can mark the current page. The status is
+// already written when a component fails partway, so the failure is only
+// logged: at Warn when the client went away, at Error otherwise.
 func render(w http.ResponseWriter, r *http.Request, status int, c templ.Component) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	_ = c.Render(withPath(r.Context(), r.URL.Path), w)
+	err := c.Render(withPath(r.Context(), r.URL.Path), w)
+	if err == nil {
+		return
+	}
+	level := slog.LevelError
+	if r.Context().Err() != nil {
+		level = slog.LevelWarn
+	}
+	requestLogger(r.Context()).Log(r.Context(), level, "render failed", "method", r.Method, "path", r.URL.Path, "err", err)
+}
+
+type loggerKey struct{}
+
+// withRequestLogger records l in ctx, so render can log a page that fails to
+// draw to the Server's logger.
+func withRequestLogger(ctx context.Context, l *slog.Logger) context.Context {
+	return context.WithValue(ctx, loggerKey{}, l)
+}
+
+// requestLogger is the logger recorded in ctx, slog.Default() when none was.
+func requestLogger(ctx context.Context) *slog.Logger {
+	if l, ok := ctx.Value(loggerKey{}).(*slog.Logger); ok {
+		return l
+	}
+	return slog.Default()
 }
