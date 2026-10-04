@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a-h/templ"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
@@ -20,7 +22,118 @@ func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current dom
 		http.Error(w, "could not read risks", http.StatusInternalServerError)
 		return
 	}
-	render(w, r, http.StatusOK, risksPage(&current, v))
+	rows, err := s.riskRows(r.Context(), v)
+	if err != nil {
+		http.Error(w, "could not read risks", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, risksPage(&current, risksPageView{risksView: v, Rows: rows, Group: riskGroupKey(r.URL.Query().Get("group"))}))
+}
+
+// risksPageView is the Risks page: its lists, its rows, and the group its
+// address filters it to, "" for every group.
+type risksPageView struct {
+	risksView
+	Rows  []riskGoalRow
+	Group string
+}
+
+// Shows reports whether the page shows the section for a signal kind: every
+// kind with no filter, else only the filtered group's.
+func (p risksPageView) Shows(kind string) bool {
+	for _, gk := range riskGroupKinds {
+		if gk.Key == p.Group {
+			return slices.Contains(gk.Kinds, kind)
+		}
+	}
+	return true
+}
+
+// Empty are the shown sections with no Goals, in the page's order.
+func (p risksPageView) Empty() []riskType {
+	var empty []riskType
+	for _, rt := range p.risksView.Empty() {
+		if p.Shows(rt.Anchor) {
+			empty = append(empty, rt)
+		}
+	}
+	return empty
+}
+
+// attention is the header's words after its count of the Goals on the page.
+func (p risksPageView) attention() string {
+	if len(p.Rows) == 1 {
+		return "Goal needs attention."
+	}
+	return "Goals need attention."
+}
+
+// riskChipClass is the badge style of a signal's chip: the Stale look for the
+// freshness signals, the Ownerless look for Ownerless, and the Lifecycle look
+// for the structural ones.
+func riskChipClass(kind string) string {
+	switch kind {
+	case "stale", "path-overdue":
+		return "st"
+	case "ownerless":
+		return "ol"
+	}
+	return "lc"
+}
+
+// riskGroupKey is the group key names, or "" for an unknown one, which shows
+// every group.
+func riskGroupKey(key string) string {
+	for _, gk := range riskGroupKinds {
+		if gk.Key == key {
+			return key
+		}
+	}
+	return ""
+}
+
+// riskCard is a group's summary card: its count, a count of each of its
+// signals that flags a Goal, the line it shows when it holds none, and
+// whether the page is filtered to it.
+type riskCard struct {
+	riskGroup
+	Signals []riskType
+	Blank   string
+	Current bool
+}
+
+// Attrs marks the card of the group the page is filtered to as the current one.
+func (c riskCard) Attrs() templ.Attributes {
+	if c.Current {
+		return templ.Attributes{"aria-current": "page"}
+	}
+	return templ.Attributes{}
+}
+
+// Cards are the page's group cards, in the page's order.
+func (p risksPageView) Cards() []riskCard {
+	names := map[string]string{}
+	for _, rt := range p.Types() {
+		names[rt.Anchor] = rt.Name
+	}
+	groups := riskGroups(p.Rows)
+	cards := make([]riskCard, 0, len(groups))
+	for i, gk := range riskGroupKinds {
+		c := riskCard{riskGroup: groups[i], Blank: gk.Blank, Current: gk.Key == p.Group}
+		for _, kind := range gk.Kinds {
+			n := 0
+			for _, r := range p.Rows {
+				if _, ok := r.signal(kind); ok {
+					n++
+				}
+			}
+			if n > 0 {
+				c.Signals = append(c.Signals, riskType{Anchor: kind, Name: names[kind], Count: n})
+			}
+		}
+		cards = append(cards, c)
+	}
+	return cards
 }
 
 // risksView is what the Risks page shows, one list per problem type.
@@ -36,8 +149,8 @@ type risksView struct {
 	HaltedParents     []domain.HaltedParent
 }
 
-// riskType is one of the Risks page's sections: the anchor its summary tile
-// links to, its name, and how many Goals it lists.
+// riskType is one of the Risks page's sections, or a signal's chip on a group
+// card: its signal kind's anchor, its name, and how many Goals it lists.
 type riskType struct {
 	Anchor, Name string
 	Count        int
@@ -263,13 +376,15 @@ type riskGroup struct {
 
 // riskGroupKinds are the Risks page's groups in the page's order, with the
 // signal kinds each holds.
+// Blank is what a group's card says when it holds no Goals.
 var riskGroupKinds = []struct {
 	Key, Name string
 	Kinds     []string
+	Blank     string
 }{
-	{"owner", "Owner needs to update", []string{"stale", "path-overdue"}},
-	{"plan", "Plan doesn't fit", []string{"unaligned", "schedule-conflicts"}},
-	{"admin", "Needs an Admin", []string{"ownerless", "halted-parents"}},
+	{"owner", "Owner needs to update", []string{"stale", "path-overdue"}, "Every Owner is up to date."},
+	{"plan", "Plan doesn't fit", []string{"unaligned", "schedule-conflicts"}, "Every plan fits."},
+	{"admin", "Needs an Admin", []string{"ownerless", "halted-parents"}, "Nothing needs an Admin."},
 }
 
 // riskGroups counts the rows in each group, in the page's order.

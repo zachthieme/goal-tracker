@@ -7,65 +7,82 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// risksPage answers "what's going wrong?": a tile counting each problem type,
-// then a section per type listing the Goals it flags, their Owners, and why.
-templ risksPage(current *domain.Account, v risksView) {
+// risksPage answers "what's going wrong?": how many Goals need attention, a
+// card per group of signals by who acts, then a section per signal listing the
+// Goals it flags, their Owners, and why, narrowed to one group when the
+// address asks for it.
+templ risksPage(current *domain.Account, v risksPageView) {
 	@layout("Risks", current) {
 		@risksStyles()
 		<header class="page-head">
 			<div>
 				<h1>Risks</h1>
-				<p class="muted">What's going wrong: the Goals the signals flag that nobody reported.</p>
+				<p data-testid="risks-attention" class="muted"><strong>{ strconv.Itoa(len(v.Rows)) }</strong> { v.attention() }</p>
 			</div>
 		</header>
-		<nav data-testid="risks-summary" class="rk-tiles" aria-label="Risks by type">
-			for _, rt := range v.Types() {
-				@riskTile(rt.Anchor, rt.Name, rt.Count)
+		<nav data-testid="risks-groups" class="rk-cards" aria-label="Risks by who acts">
+			for _, c := range v.Cards() {
+				@riskCardView(c)
 			}
 		</nav>
-		@riskSection("stale", "Stale", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence.", len(v.Stale)) {
-			for _, gf := range v.Stale {
-				@riskRow(gf.Goal) {
-					{ staleSince(gf.Freshness) }
+		if v.Group != "" {
+			<p><a data-testid="risks-show-all" href="/risks">Show all</a></p>
+		}
+		if v.Shows("stale") {
+			@riskSection("stale", "Stale", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence.", len(v.Stale)) {
+				for _, gf := range v.Stale {
+					@riskRow(gf.Goal) {
+						{ staleSince(gf.Freshness) }
+					}
 				}
 			}
 		}
-		@riskSection("path-overdue", "Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green.", len(v.OverduePaths)) {
-			for _, gf := range v.OverduePaths {
-				@riskRow(gf.Goal) {
-					{ pathOverdue(gf.Freshness) }
+		if v.Shows("path-overdue") {
+			@riskSection("path-overdue", "Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green.", len(v.OverduePaths)) {
+				for _, gf := range v.OverduePaths {
+					@riskRow(gf.Goal) {
+						{ pathOverdue(gf.Freshness) }
+					}
 				}
 			}
 		}
-		@riskSection("ownerless", "Ownerless", "Active Goals whose Owner has left the org and hasn't been replaced.", len(v.Ownerless)) {
-			for _, g := range v.Ownerless {
-				@riskRow(g) {
-					<span class="badge ol">Ownerless</span> its Owner has left the org and hasn't been replaced
+		if v.Shows("ownerless") {
+			@riskSection("ownerless", "Ownerless", "Active Goals whose Owner has left the org and hasn't been replaced.", len(v.Ownerless)) {
+				for _, g := range v.Ownerless {
+					@riskRow(g) {
+						<span class="badge ol">Ownerless</span> its Owner has left the org and hasn't been replaced
+					}
 				}
 			}
 		}
-		@riskSection("unaligned", "Unaligned", "Active Goals that contribute to no other Goal and aren't Top-level.", len(v.Unaligned)) {
-			for _, g := range v.Unaligned {
-				@riskRow(g) {
-					contributes to no other Goal and isn't Top-level
+		if v.Shows("unaligned") {
+			@riskSection("unaligned", "Unaligned", "Active Goals that contribute to no other Goal and aren't Top-level.", len(v.Unaligned)) {
+				for _, g := range v.Unaligned {
+					@riskRow(g) {
+						contributes to no other Goal and isn't Top-level
+					}
 				}
 			}
 		}
-		@riskSection("schedule-conflicts", "Schedule conflicts", "Goals due later than a Goal they contribute to.", len(v.ScheduleConflicts)) {
-			for _, c := range v.ScheduleConflicts {
-				@riskRow(c.Child) {
-					due { fmtDate(c.Child.DeliveryDate) }, later than
-					@goalRef(c.Parent)
-					(due { fmtDate(c.Parent.DeliveryDate) }), which it contributes to
+		if v.Shows("schedule-conflicts") {
+			@riskSection("schedule-conflicts", "Schedule conflicts", "Goals due later than a Goal they contribute to.", len(v.ScheduleConflicts)) {
+				for _, c := range v.ScheduleConflicts {
+					@riskRow(c.Child) {
+						due { fmtDate(c.Child.DeliveryDate) }, later than
+						@goalRef(c.Parent)
+						(due { fmtDate(c.Parent.DeliveryDate) }), which it contributes to
+					}
 				}
 			}
 		}
-		@riskSection("halted-parents", "Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled.", len(v.HaltedParents)) {
-			for _, hp := range v.HaltedParents {
-				@riskRow(hp.Child) {
-					contributes to
-					@goalRef(hp.Parent)
-					, which is <span class="badge lc">{ hp.Parent.Lifecycle }</span>
+		if v.Shows("halted-parents") {
+			@riskSection("halted-parents", "Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled.", len(v.HaltedParents)) {
+				for _, hp := range v.HaltedParents {
+					@riskRow(hp.Child) {
+						contributes to
+						@goalRef(hp.Parent)
+						, which is <span class="badge lc">{ hp.Parent.Lifecycle }</span>
+					}
 				}
 			}
 		}
@@ -84,6 +101,33 @@ templ risksPage(current *domain.Account, v risksView) {
 	}
 }
 
+// riskCardView is one group's summary card: its name, how many Goals it
+// holds, and a chip per signal that flags one, linking to the page filtered to
+// the group. A group holding none is a muted card saying so, linking nowhere.
+templ riskCardView(c riskCard) {
+	if c.Count == 0 {
+		<div data-testid={ "risks-group-" + c.Key } class="card rk-card rk-zero">
+			<span class="label">{ c.Name }</span>
+			<span>{ c.Blank }</span>
+		</div>
+	} else {
+		@riskCardLink(c)
+	}
+}
+
+// riskCardLink is a group's card when it holds Goals.
+templ riskCardLink(c riskCard) {
+	<a data-testid={ "risks-group-" + c.Key } href={ templ.SafeURL("/risks?group=" + c.Key) } class="card rk-card" { c.Attrs()... }>
+		<span class="label">{ c.Name }</span>
+		<span class="num">{ strconv.Itoa(c.Count) }</span>
+		<span class="rk-chips">
+			for _, sig := range c.Signals {
+				<span class={ "badge " + riskChipClass(sig.Anchor) }>{ sig.Name + " · " + strconv.Itoa(sig.Count) }</span>
+			}
+		</span>
+	</a>
+}
+
 // riskNames lists the empty problem types by name, each carrying its section's
 // anchor so a link to an empty section lands on its name.
 templ riskNames(types []riskType) {
@@ -93,14 +137,6 @@ templ riskNames(types []riskType) {
 		}
 		<span id={ rt.Anchor } class="rk-empty">{ rt.Name }</span>
 	}
-}
-
-// riskTile counts one problem type and links down to its section.
-templ riskTile(anchor, label string, count int) {
-	<a data-testid={ "risks-tile-" + anchor } href={ templ.SafeURL("#" + anchor) } class="card rk-tile">
-		<span class="label">{ label }</span>
-		<span class="num">{ strconv.Itoa(count) }</span>
-	</a>
 }
 
 // riskSection is one problem type: its heading, a line explaining it, and a
@@ -141,15 +177,17 @@ templ riskRow(g domain.Goal) {
 }
 
 // risksStyles are the Risks page's own rules on top of app.css: the summary
-// tiles and the section layout.
+// cards and the section layout.
 templ risksStyles() {
 	<style>
-		.rk-tiles{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
-		.rk-tile{padding:16px;display:flex;flex-direction:column;gap:4px}
-		.rk-tile .num{font-size:24px}
+		.rk-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+		.rk-card{padding:16px;display:flex;flex-direction:column;gap:8px}
+		.rk-card .num{font-size:24px}
+		.rk-chips{display:flex;flex-wrap:wrap;gap:8px}
+		.rk-zero{border:1px dashed var(--color-border-strong);color:var(--color-ink-muted)}
 		.rk-section,.rk-empty{scroll-margin-top:16px}
 		.rk-empty{color:var(--color-ink);font-weight:500}
 		.rk-section{display:flex;flex-direction:column;gap:12px}
-		@media (max-width:900px){.rk-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+		@media (max-width:900px){.rk-cards{grid-template-columns:minmax(0,1fr)}}
 	</style>
 }
