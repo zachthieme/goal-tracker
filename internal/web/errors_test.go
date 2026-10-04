@@ -230,3 +230,72 @@ func TestANoChangeThatFailsIsLoggedWithItsCause(t *testing.T) {
 	assertCheckinUnavailable(t, page, "The No change couldn&#39;t be recorded. Try again.")
 	assertLoggedOnce(t, buf, before, http.MethodPost, path, "injected failure")
 }
+
+// An import that fails for no reason the app gives answers 500 on the import
+// page, and its cause reaches the server log.
+func TestAFailedImportIsLoggedWithItsCause(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	ts, buf := loggedServer(t, h)
+	admin := signInClient(t, ts.URL, "admin@example.com")
+	if _, err := h.DB.Exec(`ALTER TABLE fields RENAME TO gone_fields`); err != nil {
+		t.Fatalf("rename fields: %v", err)
+	}
+	before := len(logRecords(t, buf))
+
+	resp := postImportRaw(t, admin, ts.URL+"/imports", "goals.csv", webImportCSV, "dry-run")
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status %d, want 500", resp.StatusCode)
+	}
+	assertLoggedOnce(t, buf, before, http.MethodPost, "/imports", "no such table: fields")
+}
+
+// An Undo that fails for no reason the app gives answers 500 on its refusal
+// page, and its cause reaches the server log.
+func TestAFailedUndoIsLoggedWithItsCause(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range undoCases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t, tc.admins...)
+			ts, buf := loggedServer(t, h)
+			client, landed := tc.act(t, h, ts)
+			if _, err := h.DB.Exec(`CREATE TRIGGER fail_undo BEFORE ` + tc.writes + `
+				BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
+				t.Fatalf("install failing trigger: %v", err)
+			}
+			before := len(logRecords(t, buf))
+
+			path := undoAction(t, landed)
+			resp := postForm(t, client, ts.URL+path, toastFields(t, landed))
+			_ = readBody(t, resp)
+			if resp.StatusCode != http.StatusInternalServerError {
+				t.Errorf("status %d, want 500", resp.StatusCode)
+			}
+			assertLoggedOnce(t, buf, before, http.MethodPost, path, "injected failure")
+		})
+	}
+}
+
+// An Undo refused because there is nothing to undo answers 404, which is not a
+// server error, so it leaves the server log alone.
+func TestAnUndoWithNothingToUndoIsNotLogged(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts, buf := loggedServer(t, h)
+	h.SignIn("sam@example.com")
+	client := signInClient(t, ts.URL, "sam@example.com")
+	before := len(logRecords(t, buf))
+
+	resp := postForm(t, client, ts.URL+"/link-removals/x/undo", url.Values{})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("status %d, want 404", resp.StatusCode)
+	}
+	if records := logRecords(t, buf); len(records) != before {
+		t.Errorf("a 404 was logged:\n%s", buf)
+	}
+}
