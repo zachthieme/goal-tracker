@@ -452,7 +452,7 @@ func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 }
 
 // The publication splits the selected Goals in two: exceptions as cards under
-// Needs attention, each with its Health badge and its So What, Status, and
+// Needs attention, headed by how many there are, each with its Health badge and its So What, Status, and
 // Path to Green — marked Overdue once its target date has passed — and the
 // rest as a table of Health, Goal, Owner, and Due under On track.
 func TestPublicationSplitsNeedsAttentionFromOnTrackOverHTTP(t *testing.T) {
@@ -474,6 +474,9 @@ func TestPublicationSplitsNeedsAttentionFromOnTrackOverHTTP(t *testing.T) {
 	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
 
 	attention := pageElement(t, page, "section", "needs-attention")
+	if heading := between(t, attention, "<h2>", "</h2>"); !strings.HasPrefix(heading, "<h2>Needs attention ") || !strings.HasSuffix(pageElement(t, heading, "span", "needs-attention-count"), ">1") {
+		t.Errorf("Needs attention heading does not count its 1 exception: %s", heading)
+	}
 	card := pageElement(t, attention, "article", "report-exception")
 	if !strings.Contains(card, `class="card`) || !strings.Contains(card, `class="badge r"`) {
 		t.Errorf("exception is not a card with a Red badge; card:\n%s", card)
@@ -633,6 +636,9 @@ func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
 
 	if !strings.Contains(printed, "--print-font: 'Source Serif 4', Georgia, serif") || !strings.Contains(printed, "font-family: var(--print-font)") {
 		t.Errorf("print page is not set in Source Serif 4 with a Georgia fallback; body:\n%s", printed)
+	}
+	if count := pageElement(t, printed, "span", "needs-attention-count"); !strings.HasSuffix(count, ">1") {
+		t.Errorf("print page's Needs attention does not count its 1 exception: %s", count)
 	}
 	if block := pageElement(t, printed, "article", "report-exception"); !strings.Contains(block, "■</span>Red") {
 		t.Errorf("Red is not marked ■; block:\n%s", block)
@@ -1138,5 +1144,140 @@ func TestDraftHistoryListsPublicationsInTheOrgsTimezoneOverHTTP(t *testing.T) {
 	}
 	if strings.Contains(page, `data-testid="report-publications"`) {
 		t.Errorf("the Publications sidebar is still on the draft; body:\n%s", page)
+	}
+}
+
+// The draft's preview is the publication: the same Health summary and Report
+// body a reader will see, read off the same component. The export links and
+// the Action Items raised on a publication stay on the publication, since a
+// draft has nothing to export or discuss yet.
+func TestDraftPreviewIsThePublicationOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	yellow := h.ActiveGoal(boss, "Hire a CFO", "We need one.")
+	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	stale := h.ActiveGoal(boss, "Open Tokyo", "Expand east.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(boss, yellow.ID, domain.HealthYellow, "Slow.", "Use a recruiter.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Introduction: "Where we stand.", RootIDs: []int64{red.ID, yellow.ID, green.ID, stale.ID}})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+
+	preview := between(t, page, `id="draft-preview"`, "")
+	summary := pageElement(t, preview, "section", "health-summary")
+	for tile, want := range map[string]string{"red": "1", "yellow": "1", "green": "1", "stale": "1"} {
+		if count := pageElement(t, summary, "span", "health-count-"+tile); !strings.HasSuffix(count, ">"+want) {
+			t.Errorf("preview's %s tile: %q, want a count of %s", tile, count, want)
+		}
+	}
+	snapshot := between(t, preview, `<section data-testid="report-snapshot"`, "")
+	for _, want := range []string{`data-testid="report-introduction"`, `data-testid="needs-attention"`, `data-testid="on-track"`} {
+		if !strings.Contains(snapshot, want) {
+			t.Errorf("preview's Report body missing %s; preview:\n%s", want, preview)
+		}
+	}
+	for _, publicationOnly := range []string{`data-testid="report-export"`, `data-testid="publication-action-items"`} {
+		if strings.Contains(page, publicationOnly) {
+			t.Errorf("the draft carries the publication's %s; body:\n%s", publicationOnly, page)
+		}
+	}
+}
+
+// Above the preview the author sees which Goals the Report selects — every
+// exception and every line, each once with its Health and the exceptions
+// marked for attention — with a slot for the scope summary. The panel is for
+// the author: the publication does not carry it.
+func TestDraftListsTheGoalsInTheReportOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
+	stale := h.ActiveGoal(boss, "Open Tokyo", "Expand east.")
+	proposed := h.CreateGoal(boss, "Hire a CFO", "We need one.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{red.ID, green.ID, stale.ID, proposed.ID}})
+	report, err := h.Service.DraftReport(context.Background(), def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+
+	panel := between(t, page, `<section data-testid="report-goals"`, `id="draft-preview"`)
+	if heading := pageElement(t, panel, "h2", "report-goal-count"); !strings.HasSuffix(heading, ">4 Goals in this report") {
+		t.Errorf("Goals panel heading %q, want 4 Goals in this report", heading)
+	}
+	if n := len(report.Exceptions) + len(report.Lines); n != 4 {
+		t.Errorf("the Report selects %d Goals, want the 4 the panel counts", n)
+	}
+	if !strings.Contains(panel, `data-testid="scope-summary"`) {
+		t.Errorf("Goals panel has no scope summary slot; panel:\n%s", panel)
+	}
+	items := strings.Split(panel, `data-testid="report-goal"`)[1:]
+	if len(items) != 4 {
+		t.Fatalf("Goals panel lists %d Goals, want 4; panel:\n%s", len(items), panel)
+	}
+	for _, g := range []domain.Goal{red, green, stale, proposed} {
+		if n := strings.Count(panel, ">"+g.Title+"<"); n != 1 {
+			t.Errorf("Goals panel lists %q %d times, want once; panel:\n%s", g.Title, n, panel)
+		}
+	}
+	for _, item := range items {
+		if !strings.Contains(item, `class="dot"`) {
+			t.Errorf("Goal in the panel has no Health dot: %s", item)
+		}
+	}
+	if n := strings.Count(panel, `data-testid="report-goal-attention"`); n != len(report.Exceptions) {
+		t.Errorf("Goals panel marks %d for attention, want the %d exceptions; panel:\n%s", n, len(report.Exceptions), panel)
+	}
+	for _, b := range report.Exceptions {
+		if item := between(t, panel, ">"+b.Goal.Title+"<", "</li>"); !strings.Contains(item, ">attention<") {
+			t.Errorf("exception %q is not marked for attention: %s", b.Goal.Title, item)
+		}
+	}
+
+	published := readBody(t, postForm(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications", url.Values{"baseline": {""}}))
+	if strings.Contains(published, `data-testid="report-goals"`) {
+		t.Errorf("the publication carries the author's Goals panel; body:\n%s", published)
+	}
+}
+
+// The Goals panel shows the first 6 Goals and keeps the rest behind Show all.
+func TestDraftGoalsPanelShowsSixThenTheRestOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	var roots []int64
+	for i := 1; i <= 8; i++ {
+		roots = append(roots, h.ActiveGoal(boss, fmt.Sprintf("Goal %d", i), "Matters.").ID)
+	}
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: roots})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+
+	panel := between(t, page, `<section data-testid="report-goals"`, `id="draft-preview"`)
+	shown, rest, ok := strings.Cut(panel, `<details data-testid="report-goals-more"`)
+	if !ok {
+		t.Fatalf("Goals panel keeps no Goals behind Show all; panel:\n%s", panel)
+	}
+	if n := strings.Count(shown, `data-testid="report-goal"`); n != 6 {
+		t.Errorf("Goals panel shows %d Goals up front, want 6; panel:\n%s", n, panel)
+	}
+	if !strings.Contains(rest, "<summary>Show all 8</summary>") || strings.Count(rest, `data-testid="report-goal"`) != 2 {
+		t.Errorf("Show all 8 does not hold the other 2 Goals; details:\n%s", rest)
 	}
 }

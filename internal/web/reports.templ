@@ -167,9 +167,10 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 				@narrativeCuration(r)
 			</aside>
 			<div class="rp-body">
+				@reportGoalsPanel(reportGoals(r))
 				<section id="draft-preview" data-testid="report-draft" class="rp-body">
 					<p class="label">Preview: exactly what readers will see</p>
-					@reportBody(r, asOf, d)
+					@reportContent(r, asOf, d)
 				</section>
 			</div>
 		</div>
@@ -200,6 +201,43 @@ templ reportHistory(pubs []domain.Publication, loc *time.Location) {
 	</details>
 }
 
+// reportGoalsPanel tells the author which Goals the draft selects, for them
+// alone and never published: each Goal once with its Health, the exceptions
+// marked for attention, the first few up front and the rest behind Show all.
+templ reportGoalsPanel(goals []reportGoal) {
+	<section data-testid="report-goals" class="card rp-goals">
+		<div class="rp-goals-head">
+			<h2 data-testid="report-goal-count">{ plural(len(goals), "Goal") + " in this report" }</h2>
+			// The scope summary: #148 fills it.
+			<span data-testid="scope-summary" class="small muted"></span>
+			// Edit definition: #151 fills this slot.
+		</div>
+		@reportGoalList(goals[:min(len(goals), reportGoalsShown)])
+		if len(goals) > reportGoalsShown {
+			<details data-testid="report-goals-more">
+				<summary>{ fmt.Sprintf("Show all %d", len(goals)) }</summary>
+				@reportGoalList(goals[reportGoalsShown:])
+			</details>
+		}
+	</section>
+}
+
+// reportGoalList lists Goals on the draft's Goals panel, each linking to its
+// place in the preview.
+templ reportGoalList(goals []reportGoal) {
+	<ul class="rp-goal-list">
+		for _, g := range goals {
+			<li data-testid="report-goal">
+				<span class={ "rp-goal-dot", healthClass(g.Health) } role="img" aria-label={ reportHealth(g.Health) }><span class="dot"></span></span>
+				<a href={ templ.SafeURL(fmt.Sprintf("#goal-%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
+				if g.Attention {
+					<span data-testid="report-goal-attention" class="small muted rp-attention">attention</span>
+				}
+			</li>
+		}
+	</ul>
+}
+
 // publicationPage shows a published Report exactly as it was frozen: who
 // published it and when, and what it read its changes against. It links the
 // ways to read it outside the tool: Markdown, and a page to print to PDF.
@@ -222,10 +260,7 @@ templ publicationPage(current *domain.Account, p domain.Publication, d discussio
 					<a data-testid="export-print" class="btn sm" href={ templ.SafeURL(publicationPath(p) + "/print") }>Print / PDF</a>
 				</div>
 			</header>
-			@healthSummary(p.Report)
-			<section data-testid="report-snapshot" class="rp-body">
-				@reportBody(p.Report, p.PublishedAt, d)
-			</section>
+			@reportContent(p.Report, p.PublishedAt, d)
 			@publicationActionItems(d)
 		</div>
 	}
@@ -301,6 +336,16 @@ templ publicationPrintPage(p domain.Publication) {
 	</html>
 }
 
+// reportContent is what a reader of a Report sees, published or previewed on
+// the draft: the Health summary, then the Report's body. The draft previews
+// through it so its preview is the publication.
+templ reportContent(r domain.Report, asOf time.Time, d discussion) {
+	@healthSummary(r)
+	<section data-testid="report-snapshot" class="rp-body">
+		@reportBody(r, asOf, d)
+	</section>
+}
+
 // healthSummary counts the Report's selected Goals by Health — Red, Yellow,
 // Green — and how many are Stale, so a reader sees the shape of the org before
 // reading a block.
@@ -331,7 +376,7 @@ templ publishedLine(p domain.Publication) {
 
 // reportBody is a Report's content, drafted or published: its open Action
 // Items, the introduction, the narrative curated from Highlights, then the
-// exceptions that need attention, each a card with the full MBR block, and
+// exceptions that need attention, counted, each a card with the full MBR block, and
 // every other selected Goal on track, one table row with its Health, title,
 // Owner, and due date (CONTEXT.md: Report). A Path to Green is judged overdue
 // as of asOf. On a publication, each Goal carries its discussion.
@@ -346,7 +391,7 @@ templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 	}
 	if len(r.Exceptions) > 0 {
 		<section data-testid="needs-attention">
-			<h2>Needs attention</h2>
+			<h2>Needs attention{ " " }<span data-testid="needs-attention-count" class="num muted">{ fmt.Sprintf("%d", len(r.Exceptions)) }</span></h2>
 			for _, b := range r.Exceptions {
 				@reportBlock(b, asOf, d)
 			}
@@ -687,6 +732,31 @@ func pathOverdueAt(b domain.ReportBlock, asOf time.Time) bool {
 	return fmtDate(asOf.UTC()) > fmtDate(b.PathTargetDate)
 }
 
+// reportGoalsShown is how many Goals the draft's Goals panel lists before Show
+// all.
+const reportGoalsShown = 6
+
+// reportGoal is one Goal on the draft's Goals panel: its Health, and whether it
+// is an exception, which gets a full block that needs the reader's attention.
+type reportGoal struct {
+	Goal      domain.Goal
+	Health    string
+	Attention bool
+}
+
+// reportGoals lists the Goals a Report selects, the exceptions first and then
+// the rest, as the Report itself reads.
+func reportGoals(r domain.Report) []reportGoal {
+	out := make([]reportGoal, 0, len(r.Exceptions)+len(r.Lines))
+	for _, b := range r.Exceptions {
+		out = append(out, reportGoal{Goal: b.Goal, Health: b.Health, Attention: true})
+	}
+	for _, sg := range r.Lines {
+		out = append(out, reportGoal{Goal: sg.Goal, Health: sg.Health})
+	}
+	return out
+}
+
 // healthTile is one count on a Report's Health summary.
 type healthTile struct {
 	key, label, class string
@@ -757,8 +827,9 @@ func narrativeText(r domain.Report, section string) string {
 // reportStyles are the Report pages' own rules on top of app.css: the reading
 // column a publication is centred in, the Health tiles, the exception cards and
 // their tinted status box, the discussion footer, the scrolling root-Goal
-// picker, and draft columns that shrink to a phone's width rather than to the
-// On track table's.
+// picker, and the draft's sticky header, its Goals panel, and its compose and
+// preview panes, which stack into one column at 900px and shrink to a phone's
+// width rather than to the On track table's.
 templ reportStyles() {
 	<style>
 		.shape{display:none}
@@ -814,8 +885,17 @@ templ reportStyles() {
 		.rp-menu{position:relative}
 		.rp-menu>summary{color:var(--color-primary-strong);font-weight:600}
 		.rp-menu>ul{position:absolute;right:0;z-index:3;min-width:280px;max-height:360px;overflow-y:auto}
+		.rp-goals{padding:16px 24px;display:flex;flex-direction:column;gap:12px}
+		.rp-goals-head{display:flex;align-items:baseline;gap:8px 16px;flex-wrap:wrap}
+		.rp-goals-head h2{font-size:19px;margin:0}
+		.rp-goal-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 24px}
+		.rp-goal-list>li{display:flex;align-items:center;gap:8px;min-width:0}
+		.rp-goals .rp-goal-dot{background:none;border:none;display:inline-flex}
+		.rp-attention{margin-left:auto}
+		.rp-goals details>summary{min-height:32px;justify-content:flex-start;color:var(--color-primary-strong);font-weight:500}
+		.rp-goals details>ul{margin-top:8px}
 		.rp-panes{display:grid;grid-template-columns:380px minmax(0,1fr);gap:24px;align-items:start}
 		.rp-panes>*{min-width:0}
-		@media (max-width:900px){.rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-panes{grid-template-columns:minmax(0,1fr)}}
+		@media (max-width:900px){.rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-panes{grid-template-columns:minmax(0,1fr)}.rp-goal-list{grid-template-columns:minmax(0,1fr)}}
 	</style>
 }
