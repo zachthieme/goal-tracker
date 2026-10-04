@@ -1,0 +1,95 @@
+package web
+
+import (
+	"fmt"
+	"slices"
+
+	"github.com/zachthieme/goal-tracker/internal/domain"
+)
+
+// reportBuilderPage builds a new Report Definition (CONTEXT.md: Report
+// Definition): its name and introduction, and what's in it, the Goals
+// matching rules or the Goals the author picks, never those linked to some
+// other Goal (ADR 0007).
+templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
+	@layout("New report", current) {
+		@reportStyles()
+		@reportBuilderStyles()
+		<div class="page-head">
+			<p class="small muted"><a href="/reports">Reports</a>{ " / " }New</p>
+			<h1>New report</h1>
+		</div>
+		<form data-testid="report-builder" class="card rb-form" method="post" action="/reports/new">
+			<label class="field">
+				<span>Name</span>
+				<input type="text" name="name" value={ v.Name } required/>
+			</label>
+			<label class="field">
+				<span>Introduction</span>
+				<textarea name="introduction">{ v.Introduction }</textarea>
+			</label>
+			<fieldset data-testid="report-mode" class="rb-mode">
+				<legend>What's in this report</legend>
+				<div class="rb-segments">
+					<label><input type="radio" name="mode" value={ domain.ReportModeRules } checked?={ v.Mode != domain.ReportModePicked }/>Goals matching rules</label>
+					<label><input type="radio" name="mode" value={ domain.ReportModePicked } checked?={ v.Mode == domain.ReportModePicked }/>Goals I pick</label>
+				</div>
+			</fieldset>
+			<section data-testid="report-picked" class="rb-picked">
+				@reportGoalPicker(v, inputPicked, "Goals I pick", v.Picked)
+			</section>
+			<div><button type="submit" class="btn primary">Save report</button></div>
+		</form>
+	}
+}
+
+// reportGoalPicker picks Goals at any level for one of the builder's lists,
+// list naming it. Each Goal in the list is a chip holding its id; script
+// searches every Goal by title as it is typed, picking a result adds its chip
+// and × removes one. Without script a multiple select offers every Goal not
+// already in the list.
+templ reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.Goal) {
+	<fieldset data-testid={ list + "-picker" } class="rb-picker" data-goal-picker={ list }>
+		<legend>{ legend }</legend>
+		<ul data-testid={ list + "-chips" } id={ list + "-chips" } class="rb-chips">
+			for _, g := range chosen {
+				@reportGoalChip(list, g)
+			}
+		</ul>
+		<label class="field">
+			<span>Pick Goals <span class="hint">— hold Ctrl or ⌘ for several</span></span>
+			<select data-testid={ list + "-select" } name={ list } multiple>
+				for _, g := range v.Goals {
+					if !slices.ContainsFunc(chosen, func(c domain.Goal) bool { return c.ID == g.ID }) {
+						<option value={ fmt.Sprint(g.ID) }>{ g.Title }</option>
+					}
+				}
+			</select>
+		</label>
+	</fieldset>
+}
+
+// reportGoalChip is a Goal in one of the builder's lists: its hidden id, its
+// title, and the × that removes it.
+templ reportGoalChip(list string, g domain.Goal) {
+	<li data-testid={ list + "-chip" } class="rb-chip">
+		<input type="hidden" name={ list } value={ fmt.Sprint(g.ID) }/>
+		<span>{ g.Title }</span>
+		<button type="button" class="btn quiet sm rb-js-only" data-remove-chip aria-label={ "Remove " + g.Title } title={ "Remove " + g.Title }>×</button>
+	</li>
+}
+
+// reportBuilderStyles are the builder's own rules on top of app.css and the
+// Reports pages'.
+templ reportBuilderStyles() {
+	<style>
+		.rb-form{padding:24px;display:flex;flex-direction:column;gap:16px;max-width:760px}
+		.rb-form fieldset{border:none;padding:0;margin:0;display:flex;flex-direction:column;gap:8px;min-width:0}
+		.rb-form legend{font-weight:600;padding:0 0 8px}
+		.rb-chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}
+		.rb-chips:empty{display:none}
+		.rb-chip{display:inline-flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border:1px solid var(--color-border);border-radius:999px}
+		.rb-form select[multiple]{width:100%;min-height:8em}
+		.rb-form:not(.rb-js) .rb-js-only{display:none}
+	</style>
+}
