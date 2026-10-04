@@ -22,7 +22,7 @@ func TestActionItemCarriesIntoEachNewPublicationUntilClosed(t *testing.T) {
 	owner := h.SignIn("owner@example.com")
 	reader := h.SignIn("reader@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	first := h.PublishReport(author, def)
 	question, err := h.Service.AddComment(ctx, reader.ID, first.ID, g.ID, "Can we get a second vendor quote?")
 	if err != nil {
@@ -88,7 +88,7 @@ func TestAuthorCreatesActionItemDirectly(t *testing.T) {
 	owner := h.SignIn("owner@example.com")
 	reader := h.SignIn("reader@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(reader, def)
 	due := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
 	direct := domain.RaiseActionItemInput{PublicationID: pub.ID, Text: "Book the EU legal review.", OwnerID: owner.ID, DueDate: due}
@@ -137,7 +137,7 @@ func TestOnlyTheOwnerClosesAnActionItemWithANote(t *testing.T) {
 	author := h.SignIn("author@example.com")
 	owner := h.SignIn("owner@example.com")
 	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(author, def)
 	item, err := h.Service.RaiseActionItem(ctx, author.ID, domain.RaiseActionItemInput{
 		PublicationID: pub.ID, Text: "Book the EU legal review.", OwnerID: owner.ID, DueDate: h.Clock.Now().AddDate(0, 0, 7),

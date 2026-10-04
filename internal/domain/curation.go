@@ -138,9 +138,14 @@ func (s *Service) clearNarrative(ctx context.Context, defID int64) error {
 }
 
 // definitionHighlights returns the ids of every Highlight on a Goal the
-// Report Definition selects, whenever it was written.
+// Report Definition selects against its default baseline, whenever it was
+// written.
 func (s *Service) definitionHighlights(ctx context.Context, def ReportDefinition) (map[int64]bool, error) {
-	selected, err := s.SelectGoals(ctx, def)
+	since, err := s.readAgainst(ctx, &Report{Definition: def}, time.Time{})
+	if err != nil {
+		return nil, err
+	}
+	selected, err := s.SelectGoals(ctx, def, since)
 	if err != nil {
 		return nil, err
 	}

@@ -40,33 +40,61 @@ func (q *Queries) AddReportDefinitionField(ctx context.Context, arg AddReportDef
 	return err
 }
 
-const addReportDefinitionFilter = `-- name: AddReportDefinitionFilter :exec
-INSERT INTO report_definition_filters (report_definition_id, dimension_value_id)
-VALUES (?, ?)
+const addReportDefinitionGoal = `-- name: AddReportDefinitionGoal :exec
+INSERT INTO report_definition_goals (report_definition_id, list, goal_id)
+VALUES (?, ?, ?)
 `
 
-type AddReportDefinitionFilterParams struct {
+type AddReportDefinitionGoalParams struct {
 	ReportDefinitionID int64
-	DimensionValueID   int64
-}
-
-func (q *Queries) AddReportDefinitionFilter(ctx context.Context, arg AddReportDefinitionFilterParams) error {
-	_, err := q.db.ExecContext(ctx, addReportDefinitionFilter, arg.ReportDefinitionID, arg.DimensionValueID)
-	return err
-}
-
-const addReportDefinitionRoot = `-- name: AddReportDefinitionRoot :exec
-INSERT INTO report_definition_roots (report_definition_id, goal_id)
-VALUES (?, ?)
-`
-
-type AddReportDefinitionRootParams struct {
-	ReportDefinitionID int64
+	List               string
 	GoalID             int64
 }
 
-func (q *Queries) AddReportDefinitionRoot(ctx context.Context, arg AddReportDefinitionRootParams) error {
-	_, err := q.db.ExecContext(ctx, addReportDefinitionRoot, arg.ReportDefinitionID, arg.GoalID)
+// List a Goal on a Report Definition: 'picked', 'include' (Also include) or
+// 'exclude' (Leave out).
+func (q *Queries) AddReportDefinitionGoal(ctx context.Context, arg AddReportDefinitionGoalParams) error {
+	_, err := q.db.ExecContext(ctx, addReportDefinitionGoal, arg.ReportDefinitionID, arg.List, arg.GoalID)
+	return err
+}
+
+const addReportRule = `-- name: AddReportRule :one
+INSERT INTO report_rules (report_definition_id, attribute, dimension_id, op)
+VALUES (?, ?, ?, ?)
+RETURNING id
+`
+
+type AddReportRuleParams struct {
+	ReportDefinitionID int64
+	Attribute          string
+	DimensionID        int64
+	Op                 string
+}
+
+func (q *Queries) AddReportRule(ctx context.Context, arg AddReportRuleParams) (int64, error) {
+	row := q.db.QueryRowContext(ctx, addReportRule,
+		arg.ReportDefinitionID,
+		arg.Attribute,
+		arg.DimensionID,
+		arg.Op,
+	)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
+}
+
+const addReportRuleValue = `-- name: AddReportRuleValue :exec
+INSERT INTO report_rule_values (report_rule_id, value)
+VALUES (?, ?)
+`
+
+type AddReportRuleValueParams struct {
+	ReportRuleID int64
+	Value        string
+}
+
+func (q *Queries) AddReportRuleValue(ctx context.Context, arg AddReportRuleValueParams) error {
+	_, err := q.db.ExecContext(ctx, addReportRuleValue, arg.ReportRuleID, arg.Value)
 	return err
 }
 
@@ -92,26 +120,24 @@ func (q *Queries) ClearNarrativeTexts(ctx context.Context, reportDefinitionID in
 }
 
 const createReportDefinition = `-- name: CreateReportDefinition :one
-INSERT INTO report_definitions (name, introduction, depth, owner_filter_id, created_by, created_at)
-VALUES (?, ?, ?, ?, ?, ?)
-RETURNING id, name, introduction, depth, owner_filter_id, created_by, created_at
+INSERT INTO report_definitions (name, introduction, mode, created_by, created_at)
+VALUES (?, ?, ?, ?, ?)
+RETURNING id, name, introduction, created_by, created_at, mode
 `
 
 type CreateReportDefinitionParams struct {
-	Name          string
-	Introduction  string
-	Depth         int64
-	OwnerFilterID int64
-	CreatedBy     int64
-	CreatedAt     string
+	Name         string
+	Introduction string
+	Mode         string
+	CreatedBy    int64
+	CreatedAt    string
 }
 
 func (q *Queries) CreateReportDefinition(ctx context.Context, arg CreateReportDefinitionParams) (ReportDefinition, error) {
 	row := q.db.QueryRowContext(ctx, createReportDefinition,
 		arg.Name,
 		arg.Introduction,
-		arg.Depth,
-		arg.OwnerFilterID,
+		arg.Mode,
 		arg.CreatedBy,
 		arg.CreatedAt,
 	)
@@ -120,10 +146,9 @@ func (q *Queries) CreateReportDefinition(ctx context.Context, arg CreateReportDe
 		&i.ID,
 		&i.Name,
 		&i.Introduction,
-		&i.Depth,
-		&i.OwnerFilterID,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.Mode,
 	)
 	return i, err
 }
@@ -160,7 +185,7 @@ func (q *Queries) CreateReportPublication(ctx context.Context, arg CreateReportP
 }
 
 const getReportDefinition = `-- name: GetReportDefinition :one
-SELECT id, name, introduction, depth, owner_filter_id, created_by, created_at FROM report_definitions WHERE id = ? LIMIT 1
+SELECT id, name, introduction, created_by, created_at, mode FROM report_definitions WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetReportDefinition(ctx context.Context, id int64) (ReportDefinition, error) {
@@ -170,10 +195,9 @@ func (q *Queries) GetReportDefinition(ctx context.Context, id int64) (ReportDefi
 		&i.ID,
 		&i.Name,
 		&i.Introduction,
-		&i.Depth,
-		&i.OwnerFilterID,
 		&i.CreatedBy,
 		&i.CreatedAt,
+		&i.Mode,
 	)
 	return i, err
 }
@@ -310,56 +334,31 @@ func (q *Queries) ListReportDefinitionFields(ctx context.Context, reportDefiniti
 	return items, nil
 }
 
-const listReportDefinitionFilters = `-- name: ListReportDefinitionFilters :many
-SELECT dimension_value_id FROM report_definition_filters
+const listReportDefinitionGoals = `-- name: ListReportDefinitionGoals :many
+SELECT list, goal_id FROM report_definition_goals
 WHERE report_definition_id = ?
 ORDER BY id
 `
 
-// The Dimension-value filter ids of a Report Definition, in the order saved.
-func (q *Queries) ListReportDefinitionFilters(ctx context.Context, reportDefinitionID int64) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, listReportDefinitionFilters, reportDefinitionID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []int64
-	for rows.Next() {
-		var dimension_value_id int64
-		if err := rows.Scan(&dimension_value_id); err != nil {
-			return nil, err
-		}
-		items = append(items, dimension_value_id)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+type ListReportDefinitionGoalsRow struct {
+	List   string
+	GoalID int64
 }
 
-const listReportDefinitionRoots = `-- name: ListReportDefinitionRoots :many
-SELECT goal_id FROM report_definition_roots
-WHERE report_definition_id = ?
-ORDER BY id
-`
-
-// The root Goal ids of a Report Definition, in the order they were saved.
-func (q *Queries) ListReportDefinitionRoots(ctx context.Context, reportDefinitionID int64) ([]int64, error) {
-	rows, err := q.db.QueryContext(ctx, listReportDefinitionRoots, reportDefinitionID)
+// The Goals a Report Definition lists by hand, each list in the order saved.
+func (q *Queries) ListReportDefinitionGoals(ctx context.Context, reportDefinitionID int64) ([]ListReportDefinitionGoalsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listReportDefinitionGoals, reportDefinitionID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []int64
+	var items []ListReportDefinitionGoalsRow
 	for rows.Next() {
-		var goal_id int64
-		if err := rows.Scan(&goal_id); err != nil {
+		var i ListReportDefinitionGoalsRow
+		if err := rows.Scan(&i.List, &i.GoalID); err != nil {
 			return nil, err
 		}
-		items = append(items, goal_id)
+		items = append(items, i)
 	}
 	if err := rows.Close(); err != nil {
 		return nil, err
@@ -371,7 +370,7 @@ func (q *Queries) ListReportDefinitionRoots(ctx context.Context, reportDefinitio
 }
 
 const listReportDefinitions = `-- name: ListReportDefinitions :many
-SELECT id, name, introduction, depth, owner_filter_id, created_by, created_at FROM report_definitions ORDER BY name, id
+SELECT id, name, introduction, created_by, created_at, mode FROM report_definitions ORDER BY name, id
 `
 
 func (q *Queries) ListReportDefinitions(ctx context.Context) ([]ReportDefinition, error) {
@@ -387,10 +386,9 @@ func (q *Queries) ListReportDefinitions(ctx context.Context) ([]ReportDefinition
 			&i.ID,
 			&i.Name,
 			&i.Introduction,
-			&i.Depth,
-			&i.OwnerFilterID,
 			&i.CreatedBy,
 			&i.CreatedAt,
+			&i.Mode,
 		); err != nil {
 			return nil, err
 		}
@@ -441,40 +439,116 @@ func (q *Queries) ListReportPublications(ctx context.Context, reportDefinitionID
 	return items, nil
 }
 
-const moveReportFiltersToTarget = `-- name: MoveReportFiltersToTarget :exec
-UPDATE report_definition_filters SET dimension_value_id = ?1
-WHERE dimension_value_id = ?2
+const listReportRuleValues = `-- name: ListReportRuleValues :many
+SELECT report_rule_values.report_rule_id, report_rule_values.value
+FROM report_rule_values
+JOIN report_rules ON report_rules.id = report_rule_values.report_rule_id
+WHERE report_rules.report_definition_id = ?
+ORDER BY report_rule_values.id
 `
 
-type MoveReportFiltersToTargetParams struct {
-	TargetID int64
-	MergedID int64
+type ListReportRuleValuesRow struct {
+	ReportRuleID int64
+	Value        string
 }
 
-// Merging a Dimension value: the filters on it point at the target instead.
-func (q *Queries) MoveReportFiltersToTarget(ctx context.Context, arg MoveReportFiltersToTargetParams) error {
-	_, err := q.db.ExecContext(ctx, moveReportFiltersToTarget, arg.TargetID, arg.MergedID)
+// The values of a Report Definition's rules, each rule's in the order saved.
+func (q *Queries) ListReportRuleValues(ctx context.Context, reportDefinitionID int64) ([]ListReportRuleValuesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listReportRuleValues, reportDefinitionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListReportRuleValuesRow
+	for rows.Next() {
+		var i ListReportRuleValuesRow
+		if err := rows.Scan(&i.ReportRuleID, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReportRules = `-- name: ListReportRules :many
+SELECT id, report_definition_id, attribute, dimension_id, op FROM report_rules
+WHERE report_definition_id = ?
+ORDER BY id
+`
+
+// A Report Definition's rules, in the order they were saved.
+func (q *Queries) ListReportRules(ctx context.Context, reportDefinitionID int64) ([]ReportRule, error) {
+	rows, err := q.db.QueryContext(ctx, listReportRules, reportDefinitionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReportRule
+	for rows.Next() {
+		var i ReportRule
+		if err := rows.Scan(
+			&i.ID,
+			&i.ReportDefinitionID,
+			&i.Attribute,
+			&i.DimensionID,
+			&i.Op,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const moveRuleValuesToTarget = `-- name: MoveRuleValuesToTarget :exec
+UPDATE report_rule_values SET value = ?1
+WHERE value = ?2
+  AND report_rule_id IN (SELECT id FROM report_rules WHERE attribute = 'dimension')
+`
+
+type MoveRuleValuesToTargetParams struct {
+	TargetValue string
+	MergedValue string
+}
+
+// Merging a Dimension value: the Dimension rules listing it list the target
+// instead, whatever their operator.
+func (q *Queries) MoveRuleValuesToTarget(ctx context.Context, arg MoveRuleValuesToTargetParams) error {
+	_, err := q.db.ExecContext(ctx, moveRuleValuesToTarget, arg.TargetValue, arg.MergedValue)
 	return err
 }
 
-const removeMergedReportFilterWhereTargetFiltered = `-- name: RemoveMergedReportFilterWhereTargetFiltered :exec
-DELETE FROM report_definition_filters
-WHERE report_definition_filters.dimension_value_id = ?1
-  AND report_definition_id IN (
-    SELECT target.report_definition_id FROM report_definition_filters AS target
-    WHERE target.dimension_value_id = ?2
+const removeMergedRuleValueWhereTargetListed = `-- name: RemoveMergedRuleValueWhereTargetListed :exec
+DELETE FROM report_rule_values
+WHERE report_rule_values.value = ?1
+  AND report_rule_id IN (SELECT id FROM report_rules WHERE attribute = 'dimension')
+  AND report_rule_id IN (
+    SELECT target.report_rule_id FROM report_rule_values AS target
+    WHERE target.value = ?2
   )
 `
 
-type RemoveMergedReportFilterWhereTargetFilteredParams struct {
-	MergedID int64
-	TargetID int64
+type RemoveMergedRuleValueWhereTargetListedParams struct {
+	MergedValue string
+	TargetValue string
 }
 
-// Merging a Dimension value: drop its filter from the Report Definitions that
-// already filter on the target, so none filters on the target twice.
-func (q *Queries) RemoveMergedReportFilterWhereTargetFiltered(ctx context.Context, arg RemoveMergedReportFilterWhereTargetFilteredParams) error {
-	_, err := q.db.ExecContext(ctx, removeMergedReportFilterWhereTargetFiltered, arg.MergedID, arg.TargetID)
+// Merging a Dimension value: drop it from the Dimension rules that already
+// list the target, so no rule lists the target twice.
+func (q *Queries) RemoveMergedRuleValueWhereTargetListed(ctx context.Context, arg RemoveMergedRuleValueWhereTargetListedParams) error {
+	_, err := q.db.ExecContext(ctx, removeMergedRuleValueWhereTargetListed, arg.MergedValue, arg.TargetValue)
 	return err
 }
 

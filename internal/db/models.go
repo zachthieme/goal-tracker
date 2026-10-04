@@ -265,13 +265,12 @@ type RejectedLinkRequest struct {
 }
 
 type ReportDefinition struct {
-	ID            int64
-	Name          string
-	Introduction  string
-	Depth         int64
-	OwnerFilterID int64
-	CreatedBy     int64
-	CreatedAt     string
+	ID           int64
+	Name         string
+	Introduction string
+	CreatedBy    int64
+	CreatedAt    string
+	Mode         string
 }
 
 type ReportDefinitionField struct {
@@ -280,15 +279,10 @@ type ReportDefinitionField struct {
 	FieldID            int64
 }
 
-type ReportDefinitionFilter struct {
+type ReportDefinitionGoal struct {
 	ID                 int64
 	ReportDefinitionID int64
-	DimensionValueID   int64
-}
-
-type ReportDefinitionRoot struct {
-	ID                 int64
-	ReportDefinitionID int64
+	List               string
 	GoalID             int64
 }
 
@@ -298,6 +292,20 @@ type ReportPublication struct {
 	PublishedBy        int64
 	PublishedAt        string
 	Snapshot           string
+}
+
+type ReportRule struct {
+	ID                 int64
+	ReportDefinitionID int64
+	Attribute          string
+	DimensionID        int64
+	Op                 string
+}
+
+type ReportRuleValue struct {
+	ID           int64
+	ReportRuleID int64
+	Value        string
 }
 
 type SoWhatRevision struct {

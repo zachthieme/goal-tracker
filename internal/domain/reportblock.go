@@ -111,35 +111,17 @@ const defaultBaselineDays = 30
 // takes the default: the Definition's previous publication, so the next one
 // marks what changed since it, or 30 days before today when there is none.
 func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baseline time.Time) (Report, error) {
-	selected, err := s.SelectGoals(ctx, def)
+	r := Report{Definition: def}
+	since, err := s.readAgainst(ctx, &r, baseline)
 	if err != nil {
 		return Report{}, err
 	}
-	r := Report{Definition: def}
-	if r.ActionItems, err = s.OpenActionItems(ctx, def.ID); err != nil {
+	selected, err := s.SelectGoals(ctx, def, since)
+	if err != nil {
 		return Report{}, err
 	}
-	if baseline.IsZero() {
-		if r.Previous, err = s.previousPublication(ctx, def.ID); err != nil {
-			return Report{}, err
-		}
-	}
-	// since reports whether an instant counts as a change: after the previous
-	// publication, which already showed anything recorded by then, or on or
-	// after the baseline date in the org's calendar.
-	var since func(time.Time) bool
-	switch {
-	case r.Previous.ID != 0:
-		r.Baseline = orgDate(r.Previous.PublishedAt, s.loc)
-		since = func(t time.Time) bool { return t.After(r.Previous.PublishedAt) }
-	case baseline.IsZero():
-		r.Baseline = orgDate(s.clock.Now(), s.loc).AddDate(0, 0, -defaultBaselineDays)
-	default:
-		y, m, d := baseline.Date()
-		r.Baseline = time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
-	}
-	if since == nil {
-		since = func(t time.Time) bool { return !orgDate(t, s.loc).Before(r.Baseline) }
+	if r.ActionItems, err = s.OpenActionItems(ctx, def.ID); err != nil {
+		return Report{}, err
 	}
 	for _, sg := range selected {
 		if sg.Fields, err = s.reportFields(ctx, def, sg.Goal.ID); err != nil {
@@ -170,6 +152,34 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 		return Report{}, err
 	}
 	return r, nil
+}
+
+// readAgainst sets the baseline r reads changes against — the previous
+// publication of its Definition when baseline is zero, or 30 days before today
+// when there is none, or else the date baseline — and returns since, which
+// reports whether an instant counts as a change: after the previous
+// publication, which already showed anything recorded by then, or on or after
+// the baseline date in the org's calendar.
+func (s *Service) readAgainst(ctx context.Context, r *Report, baseline time.Time) (func(time.Time) bool, error) {
+	if baseline.IsZero() {
+		var err error
+		if r.Previous, err = s.previousPublication(ctx, r.Definition.ID); err != nil {
+			return nil, err
+		}
+	}
+	switch {
+	case r.Previous.ID != 0:
+		at := r.Previous.PublishedAt
+		r.Baseline = orgDate(at, s.loc)
+		return func(t time.Time) bool { return t.After(at) }, nil
+	case baseline.IsZero():
+		r.Baseline = orgDate(s.clock.Now(), s.loc).AddDate(0, 0, -defaultBaselineDays)
+	default:
+		y, m, d := baseline.Date()
+		r.Baseline = time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	}
+	date := r.Baseline
+	return func(t time.Time) bool { return !orgDate(t, s.loc).Before(date) }, nil
 }
 
 // reportFields is a Goal's values in the Fields def chose, by Field name. A

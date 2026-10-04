@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,43 +14,90 @@ import (
 )
 
 // ReportDefinition is a saved, reusable selection of Goals for a Report
-// (CONTEXT.md: Report Definition). It selects Goals by root Goals traversed down
-// the accepted contributes-to links to Depth, by Dimension or Owner filters, or
-// by filters alone; and carries an introduction the Report's narrative opens
-// with. The selection is computed on demand by SelectGoals (ADR-0004), so the
-// definition stores the criteria, never the resulting Goal set.
+// (CONTEXT.md: Report Definition). It selects Goals by Report rules on their
+// attributes, with Goals to Also include and to Leave out, or by a hand-picked
+// list, never by following contributes-to links (ADR 0007); and carries an
+// introduction the Report's narrative opens with. The selection is computed on
+// demand by SelectGoals (ADR-0004), so the definition stores the criteria,
+// never the resulting Goal set.
 type ReportDefinition struct {
 	ID           int64
 	Name         string
 	Introduction string
-	// RootIDs are the Goals traversal starts from; empty for a filter-only
-	// definition, which draws from every Goal.
-	RootIDs []int64
-	// Depth is how many levels of accepted contributes-to links to descend from
-	// each root. 0 selects the roots alone. It is ignored when RootIDs is empty.
-	Depth int
-	// OwnerFilterID keeps only Goals owned by this Account; 0 means no Owner
-	// filter.
-	OwnerFilterID int64
-	// DimensionValueIDs are the Dimension values a selected Goal must match. Within
-	// a Dimension they are OR'd, across Dimensions AND'd (the faceted filter of
-	// FilterGoals). Empty means no Dimension filter.
-	DimensionValueIDs []int64
+	// Mode is ReportModeRules or ReportModePicked.
+	Mode string
+	// Rules are the Report rules a Goal must all meet, in a rules definition.
+	Rules []ReportRule
+	// Include are the Goals to Also include and Exclude the Goals to Leave out
+	// of a rules definition, whatever its rules say.
+	Include []int64
+	Exclude []int64
+	// Picked are the Goals a picked definition selects, in the order picked.
+	Picked []int64
 	// FieldIDs are the Fields the Report shows beside each Goal that has a
 	// value in them. Empty, the default, shows none.
 	FieldIDs  []int64
 	CreatedAt time.Time
 }
 
+// The modes a Report Definition selects its Goals in.
+const (
+	ReportModeRules  = "rules"
+	ReportModePicked = "picked"
+)
+
+// ReportRule is one Report rule: a condition on a Goal's attribute (CONTEXT.md:
+// Report rule). The values within a rule are ORed: a Goal meets "is" or "is
+// any of" by having any of them, and "is not" by having none of them.
+type ReportRule struct {
+	// Attribute is RuleDimension, RuleOwner, RuleLifecycle, RuleHealth or
+	// RuleTopLevel.
+	Attribute string
+	// DimensionID is the Dimension a RuleDimension rule tests, and 0 for every
+	// other attribute.
+	DimensionID int64
+	// Op is RuleIs (exactly one value), RuleIsAnyOf or RuleIsNot.
+	Op string
+	// Values are what the rule tests for: Dimension value ids (of DimensionID)
+	// or Account ids in decimal, or Lifecycle or Health names. A RuleTopLevel
+	// rule has none: it is "is Top-level" or "is not Top-level".
+	Values []string
+}
+
+// The attributes a Report rule can test. Fields are not among them: a Report
+// shows Fields but never selects by them (ADR 0005, ADR 0007).
+const (
+	RuleDimension = "dimension"
+	RuleOwner     = "owner"
+	RuleLifecycle = "lifecycle"
+	RuleHealth    = "health"
+	RuleTopLevel  = "top-level"
+)
+
+// The operators of a Report rule.
+const (
+	RuleIs      = "is"
+	RuleIsAnyOf = "is any of"
+	RuleIsNot   = "is not"
+)
+
+// The lists a Report Definition names Goals in, as stored.
+const (
+	reportListPicked  = "picked"
+	reportListInclude = "include"
+	reportListExclude = "exclude"
+)
+
 // SaveReportDefinitionInput is the save-a-Report-Definition command's input.
 type SaveReportDefinitionInput struct {
-	Name              string
-	Introduction      string
-	RootIDs           []int64
-	Depth             int
-	OwnerFilterID     int64
-	DimensionValueIDs []int64
-	FieldIDs          []int64
+	Name         string
+	Introduction string
+	Mode         string
+	Rules        []ReportRule
+	Include      []int64
+	Exclude      []int64
+	Picked       []int64
+	FieldIDs     []int64
 }
 
 // SelectedGoal is one Goal chosen by a Report Definition, carrying the fields the
@@ -64,105 +113,258 @@ type SelectedGoal struct {
 }
 
 // SaveReportDefinition saves a reusable Report Definition. Anyone signed in may
-// save one (CONTEXT.md: Report Definition); actorID records who created it. A
-// definition needs a name and must select something — root Goals, an Owner
-// filter, or Dimension-value filters — so a definition that selects the whole org
-// by accident is rejected. Depth cannot be negative. Every root Goal, the Owner
-// filter, and each Dimension value must exist. Each chosen Field must exist and
-// not be Retired, as a Retired Field is no longer offered (CONTEXT.md: Retired).
+// save one (CONTEXT.md: Report Definition); actorID records who created it. It
+// refuses each input it can't take with an *InputError naming it.
 func (s *Service) SaveReportDefinition(ctx context.Context, actorID int64, in SaveReportDefinitionInput) (ReportDefinition, error) {
-	name := strings.TrimSpace(in.Name)
-	if name == "" {
-		return ReportDefinition{}, fmt.Errorf("%w: a Report Definition needs a name", ErrValidation)
-	}
-	if len(in.RootIDs) == 0 && in.OwnerFilterID == 0 && len(in.DimensionValueIDs) == 0 {
-		return ReportDefinition{}, fmt.Errorf("%w: a Report Definition needs root Goals or a filter", ErrValidation)
-	}
-	if in.Depth < 0 {
-		return ReportDefinition{}, fmt.Errorf("%w: depth cannot be negative", ErrValidation)
+	in.Name = strings.TrimSpace(in.Name)
+	in.Include, in.Exclude, in.Picked = dedupeIDs(in.Include), dedupeIDs(in.Exclude), dedupeIDs(in.Picked)
+	in.FieldIDs = dedupeIDs(in.FieldIDs)
+	if err := s.validateReportDefinition(ctx, in); err != nil {
+		return ReportDefinition{}, err
 	}
 
-	roots := dedupeIDs(in.RootIDs)
-	for _, id := range roots {
-		if _, err := s.queries.GetGoal(ctx, id); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return ReportDefinition{}, fmt.Errorf("%w: root goal %d does not exist", ErrValidation, id)
-			}
-			return ReportDefinition{}, fmt.Errorf("look up root goal: %w", err)
+	var id int64
+	if err := s.WithinTx(ctx, func(tx *Service) error {
+		row, err := tx.queries.CreateReportDefinition(ctx, db.CreateReportDefinitionParams{
+			Name:         in.Name,
+			Introduction: strings.TrimSpace(in.Introduction),
+			Mode:         in.Mode,
+			CreatedBy:    actorID,
+			CreatedAt:    s.clock.Now().Format(timeFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("create report definition: %w", err)
 		}
+		id = row.ID
+		return tx.saveReportSelection(ctx, id, in)
+	}); err != nil {
+		return ReportDefinition{}, err
 	}
-	if in.OwnerFilterID != 0 {
-		if _, err := s.queries.GetAccount(ctx, in.OwnerFilterID); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return ReportDefinition{}, fmt.Errorf("%w: owner filter account does not exist", ErrValidation)
-			}
-			return ReportDefinition{}, fmt.Errorf("look up owner filter: %w", err)
-		}
-	}
-	filters := dedupeIDs(in.DimensionValueIDs)
-	for _, id := range filters {
-		if _, err := s.queries.GetDimensionValue(ctx, id); err != nil {
-			if errors.Is(err, sql.ErrNoRows) {
-				return ReportDefinition{}, fmt.Errorf("%w: dimension value %d does not exist", ErrValidation, id)
-			}
-			return ReportDefinition{}, fmt.Errorf("look up dimension value: %w", err)
-		}
-	}
+	return s.GetReportDefinition(ctx, id)
+}
 
-	fields := dedupeIDs(in.FieldIDs)
-	for _, id := range fields {
+// saveReportSelection stores what the definition defID selects by and shows:
+// its rules, its listed Goals and its Fields.
+func (s *Service) saveReportSelection(ctx context.Context, defID int64, in SaveReportDefinitionInput) error {
+	for _, rule := range in.Rules {
+		ruleID, err := s.queries.AddReportRule(ctx, db.AddReportRuleParams{
+			ReportDefinitionID: defID,
+			Attribute:          rule.Attribute,
+			DimensionID:        rule.DimensionID,
+			Op:                 rule.Op,
+		})
+		if err != nil {
+			return fmt.Errorf("add report rule: %w", err)
+		}
+		for _, v := range dedupeIDs(rule.Values) {
+			if err := s.queries.AddReportRuleValue(ctx, db.AddReportRuleValueParams{ReportRuleID: ruleID, Value: v}); err != nil {
+				return fmt.Errorf("add report rule value: %w", err)
+			}
+		}
+	}
+	for list, ids := range map[string][]int64{reportListPicked: in.Picked, reportListInclude: in.Include, reportListExclude: in.Exclude} {
+		for _, id := range ids {
+			if err := s.queries.AddReportDefinitionGoal(ctx, db.AddReportDefinitionGoalParams{
+				ReportDefinitionID: defID,
+				List:               list,
+				GoalID:             id,
+			}); err != nil {
+				return fmt.Errorf("list report goal: %w", err)
+			}
+		}
+	}
+	for _, id := range in.FieldIDs {
+		if err := s.queries.AddReportDefinitionField(ctx, db.AddReportDefinitionFieldParams{
+			ReportDefinitionID: defID,
+			FieldID:            id,
+		}); err != nil {
+			return fmt.Errorf("add report field: %w", err)
+		}
+	}
+	return nil
+}
+
+// The inputs of a Report Definition, by the names its errors give them. A
+// rule's is made by RuleInput.
+const (
+	ReportInputName    = "name"
+	ReportInputMode    = "mode"
+	ReportInputRules   = "rules"
+	ReportInputInclude = "include"
+	ReportInputExclude = "exclude"
+	ReportInputPicked  = "picked"
+	ReportInputFields  = "fields"
+)
+
+// RuleInput names the i-th Report rule, counting from zero.
+func RuleInput(i int) string { return fmt.Sprintf("rules[%d]", i) }
+
+// validateReportDefinition returns every input of in that can't be saved, each
+// as an *InputError, joined. A rules definition needs rules and carries no
+// picked list; a picked definition needs Goals and carries no rules, Also
+// include or Leave out. Every Goal listed must exist.
+func (s *Service) validateReportDefinition(ctx context.Context, in SaveReportDefinitionInput) error {
+	var problems []error
+	if in.Name == "" {
+		problems = append(problems, inputError(ReportInputName, "a Report Definition needs a name"))
+	}
+	switch in.Mode {
+	case ReportModeRules:
+		if len(in.Rules) == 0 {
+			problems = append(problems, inputError(ReportInputRules, "a rules Report Definition needs a rule"))
+		}
+		for i, rule := range in.Rules {
+			problem, err := s.validateReportRule(ctx, rule)
+			if err != nil {
+				return err
+			}
+			if problem != "" {
+				problems = append(problems, inputError(RuleInput(i), "%s", problem))
+			}
+		}
+		if len(in.Picked) > 0 {
+			problems = append(problems, inputError(ReportInputPicked, "a rules Report Definition picks no Goals by hand"))
+		}
+	case ReportModePicked:
+		if len(in.Picked) == 0 {
+			problems = append(problems, inputError(ReportInputPicked, "a picked Report Definition needs a Goal"))
+		}
+		if len(in.Rules) > 0 {
+			problems = append(problems, inputError(ReportInputRules, "a picked Report Definition has no rules"))
+		}
+		if len(in.Include) > 0 {
+			problems = append(problems, inputError(ReportInputInclude, "a picked Report Definition has nothing to Also include"))
+		}
+		if len(in.Exclude) > 0 {
+			problems = append(problems, inputError(ReportInputExclude, "a picked Report Definition has nothing to Leave out"))
+		}
+	default:
+		problems = append(problems, inputError(ReportInputMode, "a Report Definition selects by rules or picked Goals, not %q", in.Mode))
+	}
+	for input, ids := range map[string][]int64{ReportInputPicked: in.Picked, ReportInputInclude: in.Include, ReportInputExclude: in.Exclude} {
+		for _, id := range ids {
+			if _, err := s.queries.GetGoal(ctx, id); err != nil {
+				if !errors.Is(err, sql.ErrNoRows) {
+					return fmt.Errorf("look up goal: %w", err)
+				}
+				problems = append(problems, inputError(input, "goal %d does not exist", id))
+				break
+			}
+		}
+	}
+	fieldProblem, err := s.validateReportFields(ctx, in.FieldIDs)
+	if err != nil {
+		return err
+	}
+	if fieldProblem != nil {
+		problems = append(problems, fieldProblem)
+	}
+	return errors.Join(problems...)
+}
+
+// validateReportRule says what is wrong with rule, or "" when nothing is. Its
+// operator must be known, and "is" takes exactly one value. A Top-level rule
+// takes no values and is "is" or "is not"; any other takes at least one, each
+// a value of its Dimension, an Account, a Lifecycle or a Health.
+func (s *Service) validateReportRule(ctx context.Context, rule ReportRule) (string, error) {
+	switch rule.Op {
+	case RuleIs, RuleIsAnyOf, RuleIsNot:
+	default:
+		return fmt.Sprintf("%q is not a rule operator", rule.Op), nil
+	}
+	values := dedupeIDs(rule.Values)
+	if rule.Attribute == RuleTopLevel {
+		if rule.Op == RuleIsAnyOf || len(values) > 0 {
+			return `a Top-level rule is "is Top-level" or "is not Top-level"`, nil
+		}
+		return "", nil
+	}
+	if len(values) == 0 {
+		return "a rule needs a value", nil
+	}
+	if rule.Op == RuleIs && len(values) > 1 {
+		return `"is" takes exactly one value`, nil
+	}
+	var known func(string) (bool, error)
+	var kind string
+	switch rule.Attribute {
+	case RuleDimension:
+		dim, err := s.queries.GetDimension(ctx, rule.DimensionID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return fmt.Sprintf("Dimension %d does not exist", rule.DimensionID), nil
+			}
+			return "", fmt.Errorf("look up dimension: %w", err)
+		}
+		kind = "a value of " + dim.Name
+		known = func(v string) (bool, error) {
+			id, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				return false, nil
+			}
+			val, err := s.queries.GetDimensionValue(ctx, id)
+			if errors.Is(err, sql.ErrNoRows) {
+				return false, nil
+			}
+			return err == nil && val.DimensionID == dim.ID, err
+		}
+	case RuleOwner:
+		kind = "an Account"
+		known = func(v string) (bool, error) {
+			id, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				return false, nil
+			}
+			_, err = s.queries.GetAccount(ctx, id)
+			if errors.Is(err, sql.ErrNoRows) {
+				return false, nil
+			}
+			return err == nil, err
+		}
+	case RuleLifecycle:
+		kind = "a Lifecycle"
+		known = func(v string) (bool, error) { return slices.Contains(lifecycles, v), nil }
+	case RuleHealth:
+		kind = "a Health"
+		known = func(v string) (bool, error) { return validHealth(v), nil }
+	default:
+		return fmt.Sprintf("%q is not a rule attribute", rule.Attribute), nil
+	}
+	for _, v := range values {
+		ok, err := known(v)
+		if err != nil {
+			return "", fmt.Errorf("look up rule value: %w", err)
+		}
+		if !ok {
+			return fmt.Sprintf("%q is not %s", v, kind), nil
+		}
+	}
+	return "", nil
+}
+
+// lifecycles are every Lifecycle a Goal can be in.
+var lifecycles = []string{LifecycleProposed, LifecycleActive, LifecycleOnHold, LifecycleDone, LifecycleCancelled}
+
+// validateReportFields refuses a chosen Field that doesn't exist or is
+// Retired, as a Retired Field is no longer offered (CONTEXT.md: Retired).
+func (s *Service) validateReportFields(ctx context.Context, ids []int64) (*InputError, error) {
+	for _, id := range ids {
 		row, err := s.queries.GetField(ctx, id)
 		if err != nil {
 			if errors.Is(err, sql.ErrNoRows) {
-				return ReportDefinition{}, fmt.Errorf("%w: field %d does not exist", ErrValidation, id)
+				return inputError(ReportInputFields, "field %d does not exist", id), nil
 			}
-			return ReportDefinition{}, fmt.Errorf("look up field: %w", err)
+			return nil, fmt.Errorf("look up field: %w", err)
 		}
 		if f := fieldFromRow(row); f.Retired {
-			return ReportDefinition{}, fmt.Errorf("%w: %s is retired, so a Report can't be set to show it", ErrValidation, f.Name)
+			return inputError(ReportInputFields, "%s is retired, so a Report can't be set to show it", f.Name), nil
 		}
 	}
-
-	row, err := s.queries.CreateReportDefinition(ctx, db.CreateReportDefinitionParams{
-		Name:          name,
-		Introduction:  strings.TrimSpace(in.Introduction),
-		Depth:         int64(in.Depth),
-		OwnerFilterID: in.OwnerFilterID,
-		CreatedBy:     actorID,
-		CreatedAt:     s.clock.Now().Format(timeFormat),
-	})
-	if err != nil {
-		return ReportDefinition{}, fmt.Errorf("create report definition: %w", err)
-	}
-	for _, id := range roots {
-		if err := s.queries.AddReportDefinitionRoot(ctx, db.AddReportDefinitionRootParams{
-			ReportDefinitionID: row.ID,
-			GoalID:             id,
-		}); err != nil {
-			return ReportDefinition{}, fmt.Errorf("add report root: %w", err)
-		}
-	}
-	for _, id := range filters {
-		if err := s.queries.AddReportDefinitionFilter(ctx, db.AddReportDefinitionFilterParams{
-			ReportDefinitionID: row.ID,
-			DimensionValueID:   id,
-		}); err != nil {
-			return ReportDefinition{}, fmt.Errorf("add report filter: %w", err)
-		}
-	}
-	for _, id := range fields {
-		if err := s.queries.AddReportDefinitionField(ctx, db.AddReportDefinitionFieldParams{
-			ReportDefinitionID: row.ID,
-			FieldID:            id,
-		}); err != nil {
-			return ReportDefinition{}, fmt.Errorf("add report field: %w", err)
-		}
-	}
-	return s.GetReportDefinition(ctx, row.ID)
+	return nil, nil
 }
 
-// GetReportDefinition returns the Report Definition with the given id, its roots
-// and filters resolved. It returns ErrNotFound if none exists.
+// GetReportDefinition returns the Report Definition with the given id, its rules
+// and lists resolved. It returns ErrNotFound if none exists.
 func (s *Service) GetReportDefinition(ctx context.Context, id int64) (ReportDefinition, error) {
 	row, err := s.queries.GetReportDefinition(ctx, id)
 	if err != nil {
@@ -175,7 +377,7 @@ func (s *Service) GetReportDefinition(ctx context.Context, id int64) (ReportDefi
 }
 
 // ListReportDefinitions returns every saved Report Definition, ordered by name,
-// each with its roots and filters resolved.
+// each with its rules and lists resolved.
 func (s *Service) ListReportDefinitions(ctx context.Context) ([]ReportDefinition, error) {
 	rows, err := s.queries.ListReportDefinitions(ctx)
 	if err != nil {
@@ -193,93 +395,217 @@ func (s *Service) ListReportDefinitions(ctx context.Context) ([]ReportDefinition
 }
 
 func (s *Service) reportDefinitionFromRow(ctx context.Context, row db.ReportDefinition) (ReportDefinition, error) {
-	roots, err := s.queries.ListReportDefinitionRoots(ctx, row.ID)
-	if err != nil {
-		return ReportDefinition{}, fmt.Errorf("list report roots: %w", err)
+	createdAt, _ := time.Parse(timeFormat, row.CreatedAt)
+	def := ReportDefinition{
+		ID:           row.ID,
+		Name:         row.Name,
+		Introduction: row.Introduction,
+		Mode:         row.Mode,
+		CreatedAt:    createdAt,
 	}
-	filters, err := s.queries.ListReportDefinitionFilters(ctx, row.ID)
+	rules, err := s.queries.ListReportRules(ctx, row.ID)
 	if err != nil {
-		return ReportDefinition{}, fmt.Errorf("list report filters: %w", err)
+		return ReportDefinition{}, fmt.Errorf("list report rules: %w", err)
 	}
-	fields, err := s.queries.ListReportDefinitionFields(ctx, row.ID)
+	values, err := s.queries.ListReportRuleValues(ctx, row.ID)
 	if err != nil {
+		return ReportDefinition{}, fmt.Errorf("list report rule values: %w", err)
+	}
+	valuesOf := make(map[int64][]string, len(rules))
+	for _, v := range values {
+		valuesOf[v.ReportRuleID] = append(valuesOf[v.ReportRuleID], v.Value)
+	}
+	for _, r := range rules {
+		def.Rules = append(def.Rules, ReportRule{
+			Attribute:   r.Attribute,
+			DimensionID: r.DimensionID,
+			Op:          r.Op,
+			Values:      valuesOf[r.ID],
+		})
+	}
+	listed, err := s.queries.ListReportDefinitionGoals(ctx, row.ID)
+	if err != nil {
+		return ReportDefinition{}, fmt.Errorf("list report goals: %w", err)
+	}
+	for _, l := range listed {
+		switch l.List {
+		case reportListPicked:
+			def.Picked = append(def.Picked, l.GoalID)
+		case reportListInclude:
+			def.Include = append(def.Include, l.GoalID)
+		case reportListExclude:
+			def.Exclude = append(def.Exclude, l.GoalID)
+		}
+	}
+	if def.FieldIDs, err = s.queries.ListReportDefinitionFields(ctx, row.ID); err != nil {
 		return ReportDefinition{}, fmt.Errorf("list report fields: %w", err)
 	}
-	createdAt, _ := time.Parse(timeFormat, row.CreatedAt)
-	return ReportDefinition{
-		ID:                row.ID,
-		Name:              row.Name,
-		Introduction:      row.Introduction,
-		RootIDs:           roots,
-		Depth:             int(row.Depth),
-		OwnerFilterID:     row.OwnerFilterID,
-		DimensionValueIDs: filters,
-		FieldIDs:          fields,
-		CreatedAt:         createdAt,
-	}, nil
+	return def, nil
 }
 
 // SelectGoals returns the Goals a Report Definition selects, each once, with the
-// fields the live draft lists per line (CONTEXT.md: Report Definition). It first
-// gathers candidates — the roots traversed to Depth, or every Goal when there are
-// no roots — then applies the Owner and Dimension filters after traversal. A Goal
-// reached through several paths appears once.
-func (s *Service) SelectGoals(ctx context.Context, def ReportDefinition) ([]SelectedGoal, error) {
-	candidates, err := s.reportCandidates(ctx, def)
+// fields the live draft lists per line (CONTEXT.md: Report Definition): the
+// picked list, or the Goals that meet every rule, with Also include added and
+// Leave out taken away. A Goal that was Done or Cancelled before the baseline
+// drops out however it came in, so finished work is reported once. since
+// reports whether an instant falls after the baseline, as DraftReport reads
+// changes.
+func (s *Service) SelectGoals(ctx context.Context, def ReportDefinition, since func(time.Time) bool) ([]SelectedGoal, error) {
+	candidates, err := s.reportCandidates(ctx, def, since)
 	if err != nil {
 		return nil, err
 	}
-
-	// Group the Dimension-value filters by their Dimension to build the faceted
-	// filter FilterGoals applies (values OR'd within a Dimension, AND'd across).
-	selected := map[int64][]int64{}
-	for _, valueID := range def.DimensionValueIDs {
-		val, err := s.queries.GetDimensionValue(ctx, valueID)
-		if err != nil {
-			return nil, fmt.Errorf("look up filter value: %w", err)
-		}
-		selected[val.DimensionID] = append(selected[val.DimensionID], valueID)
-	}
-
-	var valuesByGoal map[int64][]DimensionValue
-	if len(selected) > 0 {
-		valuesByGoal, err = s.goalValuesByGoal(ctx)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	out := make([]SelectedGoal, 0, len(candidates))
-	for _, g := range candidates {
-		if def.OwnerFilterID != 0 && g.Owner.ID != def.OwnerFilterID {
-			continue
-		}
-		if len(selected) > 0 {
-			gv := GoalWithValues{Goal: g, Values: valuesByGoal[g.ID]}
-			if !goalMatchesFilter(gv, selected) {
-				continue
-			}
-		}
-		health := ""
-		latest, ok, err := s.LatestCheckin(ctx, g.ID)
+	for _, sg := range candidates {
+		finished, err := s.finishedBefore(ctx, sg.Goal, since)
 		if err != nil {
 			return nil, err
 		}
-		if ok {
-			health = latest.Health
+		if !finished {
+			out = append(out, sg)
 		}
-		out = append(out, SelectedGoal{Goal: g, Health: health})
 	}
 	return out, nil
 }
 
-// reportCandidates returns the Goals a definition draws from before filtering:
-// the roots traversed to Depth, or every Goal for a filter-only definition.
-func (s *Service) reportCandidates(ctx context.Context, def ReportDefinition) ([]Goal, error) {
-	if len(def.RootIDs) > 0 {
-		return s.SelectDescendants(ctx, def.RootIDs, def.Depth)
+// reportCandidates returns the Goals def selects before finished work drops
+// out: its picked list, or the Goals that meet every rule or are in Also
+// include, less those in Leave out.
+func (s *Service) reportCandidates(ctx context.Context, def ReportDefinition, since func(time.Time) bool) ([]SelectedGoal, error) {
+	if def.Mode == ReportModePicked {
+		out := make([]SelectedGoal, 0, len(def.Picked))
+		for _, id := range def.Picked {
+			g, err := s.loadGoal(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			sg, err := s.selectedGoal(ctx, g)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, sg)
+		}
+		return out, nil
 	}
-	return s.ListGoals(ctx)
+
+	goals, err := s.ListGoals(ctx)
+	if err != nil {
+		return nil, err
+	}
+	valuesByGoal, err := s.goalValuesByGoal(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []SelectedGoal
+	for _, g := range goals {
+		if slices.Contains(def.Exclude, g.ID) {
+			continue
+		}
+		sg, err := s.selectedGoal(ctx, g)
+		if err != nil {
+			return nil, err
+		}
+		meets, err := s.meetsRules(ctx, def.Rules, ruleSubject{SelectedGoal: sg, values: valuesByGoal[g.ID]}, since)
+		if err != nil {
+			return nil, err
+		}
+		if meets || slices.Contains(def.Include, g.ID) {
+			out = append(out, sg)
+		}
+	}
+	return out, nil
+}
+
+// meetsRules reports whether the Goal meets every rule. A Goal that changed
+// Lifecycle since the baseline passes a Lifecycle rule it no longer meets, so
+// its change is reported once.
+func (s *Service) meetsRules(ctx context.Context, rules []ReportRule, subject ruleSubject, since func(time.Time) bool) (bool, error) {
+	for _, r := range rules {
+		if r.matches(subject) {
+			continue
+		}
+		if r.Attribute != RuleLifecycle {
+			return false, nil
+		}
+		h, err := s.goalHistory(ctx, subject.Goal)
+		if err != nil {
+			return false, err
+		}
+		if !h.lifecycleChanged(since) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// finishedBefore reports whether g was Done or Cancelled before the baseline:
+// it is now, and the Check-in that moved it there isn't since.
+func (s *Service) finishedBefore(ctx context.Context, g Goal, since func(time.Time) bool) (bool, error) {
+	if g.Lifecycle != LifecycleDone && g.Lifecycle != LifecycleCancelled {
+		return false, nil
+	}
+	checkins, err := s.ListCheckins(ctx, g.ID)
+	if err != nil {
+		return false, err
+	}
+	// Newest first, so the first that moved it to its Lifecycle moved it last.
+	for _, c := range checkins {
+		if c.LifecycleChange.To == g.Lifecycle {
+			return !since(c.CreatedAt), nil
+		}
+	}
+	// No Check-in records the move, so it can't have been since the baseline.
+	return true, nil
+}
+
+// selectedGoal is g as a Report lists it, with its Health: its latest
+// Check-in's, empty when it has none.
+func (s *Service) selectedGoal(ctx context.Context, g Goal) (SelectedGoal, error) {
+	latest, err := s.queries.GetLatestCheckin(ctx, g.ID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return SelectedGoal{}, fmt.Errorf("get latest checkin: %w", err)
+	}
+	return SelectedGoal{Goal: g, Health: latest.Health}, nil
+}
+
+// ruleSubject is what Report rules test a Goal on: the Goal, its Owner-set
+// Health and its Dimension values.
+type ruleSubject struct {
+	SelectedGoal
+	values []DimensionValue
+}
+
+// matches reports whether the Goal meets the rule: has any of its values for
+// "is" and "is any of", or none of them for "is not". A Top-level rule, which
+// has no values, asks whether the Goal is Top-level.
+func (r ReportRule) matches(subject ruleSubject) bool {
+	if r.Attribute == RuleTopLevel {
+		return subject.Goal.TopLevel == (r.Op != RuleIsNot)
+	}
+	var has func(value string) bool
+	switch r.Attribute {
+	case RuleDimension:
+		has = func(value string) bool {
+			return slices.ContainsFunc(subject.values, func(v DimensionValue) bool {
+				return strconv.FormatInt(v.ID, 10) == value
+			})
+		}
+	case RuleOwner:
+		// The Owner of record, never a Delegate; a departed Owner stays it.
+		has = func(value string) bool { return strconv.FormatInt(subject.Goal.Owner.ID, 10) == value }
+	case RuleLifecycle:
+		has = func(value string) bool { return subject.Goal.Lifecycle == value }
+	case RuleHealth:
+		// No Health is no value, so it meets only "is not".
+		has = func(value string) bool { return subject.Health == value }
+	default:
+		return false
+	}
+	listed := slices.ContainsFunc(r.Values, has)
+	if r.Op == RuleIsNot {
+		return !listed
+	}
+	return listed
 }
 
 // goalValuesByGoal returns every Goal's assigned Dimension values keyed by Goal
@@ -297,9 +623,9 @@ func (s *Service) goalValuesByGoal(ctx context.Context) (map[int64][]DimensionVa
 }
 
 // dedupeIDs returns ids with duplicates removed, keeping first-seen order.
-func dedupeIDs(ids []int64) []int64 {
-	seen := make(map[int64]bool, len(ids))
-	out := make([]int64, 0, len(ids))
+func dedupeIDs[T comparable](ids []T) []T {
+	seen := make(map[T]bool, len(ids))
+	out := make([]T, 0, len(ids))
 	for _, id := range ids {
 		if seen[id] {
 			continue

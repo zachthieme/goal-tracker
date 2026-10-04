@@ -273,7 +273,7 @@ func TestPrintViewIgnoresTheTheme(t *testing.T) {
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")

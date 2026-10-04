@@ -106,8 +106,8 @@ func TestMissingPublicationShowsNotFoundPage(t *testing.T) {
 	ts := newServer(t, h)
 	pat := h.SignIn("pat@example.com")
 	g := h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
-	def := h.SaveReportDefinition(pat, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
-	other := h.SaveReportDefinition(pat, domain.SaveReportDefinitionInput{Name: "WBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(pat, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	other := h.SaveReportDefinition(pat, domain.SaveReportDefinitionInput{Name: "WBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(pat, def)
 	client := signInClient(t, ts.URL, "pat@example.com")
 

@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -543,41 +544,6 @@ func TestSwitchingToOneValueRefusedWhileGoalsCarrySeveral(t *testing.T) {
 	}
 }
 
-// A Report Definition filtering on a value selects a Goal carrying that value
-// among several in the Dimension (filtering is unchanged: values OR'd within a
-// Dimension).
-func TestReportFilterSelectsGoalCarryingValueAmongSeveral(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t, "boss@example.com")
-	boss := h.SignIn("boss@example.com")
-	sam := h.SignIn("sam@example.com")
-	ctx := context.Background()
-
-	teams := h.CreateSeveralValuesDimension(boss, "Team", "Core", "Infra", "Web")
-	core, infra, web := teams.Values[0], teams.Values[1], teams.Values[2]
-	shared := h.CreateGoal(sam, "Alpha", "A matters.")
-	other := h.CreateGoal(sam, "Bravo", "B matters.")
-	h.AssignGoalValue(shared, core)
-	h.AssignGoalValue(shared, infra)
-	h.AssignGoalValue(other, web)
-
-	def, err := h.Service.SaveReportDefinition(ctx, boss.ID, domain.SaveReportDefinitionInput{
-		Name:              "Infra report",
-		DimensionValueIDs: []int64{infra.ID},
-	})
-	if err != nil {
-		t.Fatalf("SaveReportDefinition: %v", err)
-	}
-	selected, err := h.Service.SelectGoals(ctx, def)
-	if err != nil {
-		t.Fatalf("SelectGoals: %v", err)
-	}
-	if got, want := selectedIDs(selected), []int64{shared.ID}; !sameSet(got, want) {
-		t.Errorf("Infra filter selected %v, want %v", got, want)
-	}
-}
-
 // A new Dimension's list is Fixed; an Admin marks it Extendable and switches it
 // back, and a non-Admin can do neither (CONTEXT.md: Fixed, Extendable).
 func TestAdminSwitchesDimensionBetweenFixedAndExtendable(t *testing.T) {
@@ -988,8 +954,12 @@ func TestAdminMergesDimensionValue(t *testing.T) {
 	h.AssignGoalValue(onlyMerged, globex)
 	h.AssignGoalValue(both, acme)
 	h.AssignGoalValue(both, acmeCorp)
-	onMerged := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Acme Corp", DimensionValueIDs: []int64{acmeCorp.ID}})
-	onBoth := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Acmes", DimensionValueIDs: []int64{acme.ID, acmeCorp.ID, globex.ID}})
+	onMerged := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Acme Corp", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{
+		dimensionRule(customer, domain.RuleIsAnyOf, acmeCorp),
+	}})
+	onBoth := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Not Acmes", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{
+		dimensionRule(customer, domain.RuleIsNot, acme, acmeCorp, globex),
+	}})
 
 	if err := h.Service.MergeDimensionValue(ctx, boss.ID, acmeCorp.ID, acme.ID); err != nil {
 		t.Fatalf("MergeDimensionValue: %v", err)
@@ -1006,14 +976,17 @@ func TestAdminMergesDimensionValue(t *testing.T) {
 	}
 	for _, c := range []struct {
 		def  domain.ReportDefinition
-		want []int64
-	}{{onMerged, []int64{acme.ID}}, {onBoth, []int64{acme.ID, globex.ID}}} {
+		want domain.ReportRule
+	}{
+		{onMerged, dimensionRule(customer, domain.RuleIsAnyOf, acme)},
+		{onBoth, dimensionRule(customer, domain.RuleIsNot, acme, globex)},
+	} {
 		def, err := h.Service.GetReportDefinition(ctx, c.def.ID)
 		if err != nil {
 			t.Fatalf("GetReportDefinition: %v", err)
 		}
-		if !sameSet(def.DimensionValueIDs, c.want) || len(def.DimensionValueIDs) != len(c.want) {
-			t.Errorf("%s filters = %v, want %v", def.Name, def.DimensionValueIDs, c.want)
+		if len(def.Rules) != 1 || !reflect.DeepEqual(def.Rules[0], c.want) {
+			t.Errorf("%s rules = %+v, want [%+v]", def.Name, def.Rules, c.want)
 		}
 	}
 }
@@ -1072,7 +1045,8 @@ func TestFailedMergeChangesNothing(t *testing.T) {
 	acme, acmeCorp := customer.Values[0], customer.Values[1]
 	goal := h.CreateGoal(sam, "Alpha", "A matters.")
 	h.AssignGoalValue(goal, acmeCorp)
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Acme Corp", DimensionValueIDs: []int64{acmeCorp.ID}})
+	rule := dimensionRule(customer, domain.RuleIsAnyOf, acmeCorp)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Acme Corp", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{rule}})
 	// Fail the last step, after the Goals and filters have moved.
 	if _, err := h.DB.Exec(`CREATE TRIGGER fail_merge BEFORE DELETE ON dimension_values
 		BEGIN SELECT RAISE(ABORT, 'injected failure'); END`); err != nil {
@@ -1086,8 +1060,8 @@ func TestFailedMergeChangesNothing(t *testing.T) {
 	if got := goalValueNames(t, h, goal.ID); !equalStrings(got, []string{"ACME Corp"}) {
 		t.Errorf("Alpha's values after a failed merge = %v, want [ACME Corp]", got)
 	}
-	if got, err := h.Service.GetReportDefinition(ctx, def.ID); err != nil || !sameSet(got.DimensionValueIDs, []int64{acmeCorp.ID}) {
-		t.Errorf("filters after a failed merge = %v (%v), want [%d]", got.DimensionValueIDs, err, acmeCorp.ID)
+	if got, err := h.Service.GetReportDefinition(ctx, def.ID); err != nil || len(got.Rules) != 1 || !reflect.DeepEqual(got.Rules[0], rule) {
+		t.Errorf("rules after a failed merge = %+v (%v), want [%+v]", got.Rules, err, rule)
 	}
 	if got := valueNames(dimensionNamed(t, h, "Customer").Values); !equalStrings(got, []string{"Acme", "ACME Corp"}) {
 		t.Errorf("Customer list after a failed merge = %v, want [Acme ACME Corp]", got)
@@ -1211,10 +1185,10 @@ func TestAdminRestoresRetiredDimensionAndValue(t *testing.T) {
 	}
 }
 
-// A Report Definition saved with a filter on a Dimension's value selects the
+// A Report Definition saved with a rule on a Dimension's value selects the
 // same Goals once the Dimension is Retired (ADR 0005: saved Report Definitions
 // keep working).
-func TestReportFilterOnRetiredDimensionSelectsSameGoals(t *testing.T) {
+func TestReportRuleOnRetiredDimensionSelectsSameGoals(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -1228,22 +1202,16 @@ func TestReportFilterOnRetiredDimensionSelectsSameGoals(t *testing.T) {
 	truster := h.CreateGoal(sam, "Bravo", "B matters.")
 	h.AssignGoalValue(grower, growth)
 	h.AssignGoalValue(truster, trust)
-	def, err := h.Service.SaveReportDefinition(ctx, boss.ID, domain.SaveReportDefinitionInput{
-		Name:              "Growth report",
-		DimensionValueIDs: []int64{growth.ID},
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:  "Growth report",
+		Mode:  domain.ReportModeRules,
+		Rules: []domain.ReportRule{dimensionRule(pillar, domain.RuleIsAnyOf, growth)},
 	})
-	if err != nil {
-		t.Fatalf("SaveReportDefinition: %v", err)
-	}
 
 	if err := h.Service.RetireDimension(ctx, boss.ID, pillar.ID); err != nil {
 		t.Fatalf("RetireDimension: %v", err)
 	}
-	selected, err := h.Service.SelectGoals(ctx, def)
-	if err != nil {
-		t.Fatalf("SelectGoals: %v", err)
-	}
-	if got, want := selectedIDs(selected), []int64{grower.ID}; !sameSet(got, want) {
+	if got, want := selectByDefault(t, h, def), []int64{grower.ID}; !sameSet(got, want) {
 		t.Errorf("Growth filter on a Retired Pillar selected %v, want %v", got, want)
 	}
 }

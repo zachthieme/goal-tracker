@@ -274,7 +274,7 @@ func TestMarkdownBylineKeepsThePublishersNameAfterARename(t *testing.T) {
 	ctx := context.Background()
 	ceo := h.SignInNamed("ceo@example.com", "Dana Whitfield")
 	g := h.ActiveGoal(ceo, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(ceo, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(ceo, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(ceo, def)
 	if err := h.Service.SetName(ctx, ceo.ID, "Dana Renamed"); err != nil {
 		t.Fatalf("SetName: %v", err)

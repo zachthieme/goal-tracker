@@ -832,10 +832,10 @@ func TestRetiringADimensionValueOffersUndoOnce(t *testing.T) {
 }
 
 // After an Admin merges a value into another from the Dimensions page, a saved
-// Report Definition that filtered on the merged value still drafts the same
+// Report Definition with a rule on the merged value still drafts the same
 // Goals: the Goal that carried it, and not the one carrying neither value
 // (ticket #71).
-func TestMergedValueKeepsASavedReportFilterSelectingTheSameGoalsOverHTTP(t *testing.T) {
+func TestMergedValueKeepsASavedReportRuleSelectingTheSameGoalsOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -846,7 +846,9 @@ func TestMergedValueKeepsASavedReportFilterSelectingTheSameGoalsOverHTTP(t *test
 	h.AssignGoalValue(carrier, acmeCorp)
 	other := h.ActiveGoal(boss, "Pilot Globex", "A new customer.")
 	h.AssignGoalValue(other, globex)
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "ACME MBR", DimensionValueIDs: []int64{acmeCorp.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "ACME MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{
+		{Attribute: domain.RuleDimension, DimensionID: customer.ID, Op: domain.RuleIs, Values: []string{fmt.Sprint(acmeCorp.ID)}},
+	}})
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 	draftURL := fmt.Sprintf("%s/reports/%d", ts.URL, def.ID)

@@ -9,9 +9,10 @@ import (
 )
 
 // reportsPage lists every saved Report Definition as a card, and behind a New
-// report button the form to build a new one (CONTEXT.md: Report Definition). A
-// definition selects Goals by root Goals plus a depth, by Dimension or Owner
-// filters, or by filters alone, and may choose Fields to show beside each Goal.
+// report button the form to build a new one (CONTEXT.md: Report Definition).
+// Until the builder (#149) the form still posts root Goals and Owner and
+// Dimension filters: roots save as the Goals picked, the filters alone as
+// Report rules. A definition may choose Fields to show beside each Goal.
 templ reportsPage(current *domain.Account, data reportsListData) {
 	@layout("Reports", current) {
 		@reportStyles()
@@ -60,11 +61,6 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 						}
 					</fieldset>
 				</div>
-				<label class="field">
-					<span>Depth</span>
-					<input type="number" name="depth" min="0" value="1"/>
-					<span class="hint">0 = just the roots, 1 = roots and their direct contributors, …</span>
-				</label>
 				<label data-testid="report-owner-filter" class="field">
 					<span>Owner filter</span>
 					<select name="owner">

@@ -25,7 +25,7 @@ func TestPublishedReportNeverChanges(t *testing.T) {
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	settle(h)
 	h.Checkin(boss, g.ID, domain.HealthYellow, "Vendor is late.", "Chase the vendor.", h.Clock.Now().AddDate(0, 0, 14))
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 
 	pub, err := h.Service.PublishReport(ctx, boss.ID, def.ID, time.Time{})
 	if err != nil {
@@ -70,12 +70,17 @@ func TestNextPublicationComparesAgainstThePrevious(t *testing.T) {
 	h := testsupport.New(t, "boss@example.com")
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
+	program := h.CreateDimension(boss, "Program", "Growth")
+	growth := program.Values[0]
 	root := h.ActiveGoal(boss, "Grow revenue", "The org needs to grow.")
+	h.AssignGoalValue(root, growth)
 	settle(h)
 	early := h.CreateGoal(boss, "Launch in EU", "Expand the market.")
-	h.RequestLink(boss, early, root, "")
+	h.AssignGoalValue(early, growth)
 	h.Checkin(boss, root.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{root.ID}, Depth: 1})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{
+		dimensionRule(program, domain.RuleIs, growth),
+	}})
 
 	first := publish(t, h, boss, def, time.Time{})
 	if first.Report.Previous.ID != 0 {
@@ -87,7 +92,7 @@ func TestNextPublicationComparesAgainstThePrevious(t *testing.T) {
 
 	h.Clock.Advance(7 * day)
 	late := h.CreateGoal(boss, "Cut churn", "Keep customers.")
-	h.RequestLink(boss, late, root, "")
+	h.AssignGoalValue(late, growth)
 	h.Checkin(boss, root.ID, domain.HealthGreen, "On track.", "", time.Time{})
 
 	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
@@ -141,8 +146,8 @@ func TestListPublicationsPerDefinition(t *testing.T) {
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	mbr := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
-	wbr := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "WBR", RootIDs: []int64{g.ID}})
+	mbr := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	wbr := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "WBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 
 	first := publish(t, h, boss, mbr, time.Time{})
 	h.Clock.Advance(day)
@@ -184,7 +189,7 @@ func TestPublicationFreezesTheOwnersName(t *testing.T) {
 		t.Fatalf("SetName: %v", err)
 	}
 	g := h.ActiveGoal(ada, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
 
 	if err := h.Service.SetName(ctx, ada.ID, "Ada Mensah"); err != nil {
@@ -211,7 +216,7 @@ func TestPublicationFreezesAnUnnamedOwnerAsShown(t *testing.T) {
 	boss := h.SignIn("boss@example.com")
 	sam := h.SignIn("sam@example.com")
 	g := h.ActiveGoal(sam, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
 
 	if err := h.Service.SetName(ctx, sam.ID, "Sam Berg"); err != nil {
@@ -237,7 +242,7 @@ func TestSnapshotFromBeforeNamesShowsEmails(t *testing.T) {
 	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
 	before := `{"Definition":{"ID":1,"Name":"MBR"},"Lines":[{"Goal":{"ID":1,"Title":"Launch in EU",` +
 		`"Owner":{"ID":1,"Email":"boss@example.com","IsAdmin":true,"Departed":false}},"Health":""}]}`
@@ -277,7 +282,7 @@ func TestPublicationFreezesThePublishersName(t *testing.T) {
 	ctx := context.Background()
 	ceo := h.SignInNamed("ceo@example.com", "Dana Whitfield")
 	g := h.ActiveGoal(ceo, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(ceo, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(ceo, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(ceo, def)
 
 	if err := h.Service.SetName(ctx, ceo.ID, "Dana Renamed"); err != nil {
@@ -325,7 +330,7 @@ func TestPublicationFreezesAnUnnamedPublisherAsShown(t *testing.T) {
 	boss := h.SignIn("boss@example.com")
 	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
 	g := h.ActiveGoal(ada, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
 
 	if err := h.Service.SetName(context.Background(), boss.ID, "Bo Sterling"); err != nil {
@@ -348,7 +353,7 @@ func TestUnfrozenPublisherShowsAsFrozenInTheSnapshot(t *testing.T) {
 	h := testsupport.New(t, "ceo@example.com")
 	ceo := h.SignInNamed("ceo@example.com", "Dana Whitfield")
 	g := h.ActiveGoal(ceo, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(ceo, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(ceo, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(ceo, def)
 	unfreezePublisher(t, h, pub)
 
@@ -405,7 +410,7 @@ func TestSnapshotFromBeforeNamesShowsThePublisherByEmail(t *testing.T) {
 			boss := h.SignInNamed("boss@example.com", "Bo Sterling")
 			owner := h.SignInNamed(tc.owner, "Someone Named")
 			g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
-			def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+			def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 			pub := h.PublishReport(boss, def)
 			before := fmt.Sprintf(`{"Definition":{"ID":%d,"Name":"MBR"},"Lines":[{"Goal":{"ID":%d,"Title":"Launch in EU",`+
 				`"Owner":{"ID":%d,"Email":%q,"IsAdmin":false,"Departed":false}},"Health":""}]}`, def.ID, g.ID, owner.ID, owner.Email)
@@ -433,7 +438,7 @@ func TestUnfrozenPublisherNotInTheSnapshotShowsTheirAccount(t *testing.T) {
 	boss := h.SignInNamed("boss@example.com", "Bo Sterling")
 	ada := h.SignInNamed("ada.okafor@example.com", "Ada Okafor")
 	g := h.ActiveGoal(ada, "Launch in EU", "Expand the market.")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
 	unfreezePublisher(t, h, pub)
 
@@ -460,7 +465,7 @@ func TestPublicationFreezesChosenFields(t *testing.T) {
 	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	h.SetGoalField(boss, g, budget, "120")
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", RootIDs: []int64{g.ID}, FieldIDs: []int64{budget.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}, FieldIDs: []int64{budget.ID}})
 	pub := h.PublishReport(boss, def)
 
 	h.Clock.Advance(day)
