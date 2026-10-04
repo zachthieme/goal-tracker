@@ -181,8 +181,8 @@ func TestBuilderRefusesAnUnknownModeBesideTheModeOverHTTP(t *testing.T) {
 
 // Without script, Add rule submits the builder and it comes back, 200, with
 // one more rule row and every value kept, having saved nothing. A Top-level
-// row comes back offering only "is Top-level" and "is not Top-level", and no
-// values.
+// row comes back offering only "is Top-level" and "is not Top-level", and
+// holding no values.
 func TestBuilderAddRuleKeepsEveryValueAndSavesNothingOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -233,14 +233,74 @@ func TestBuilderAddRuleKeepsEveryValueAndSavesNothingOverHTTP(t *testing.T) {
 		ops[0][2] != "is Top-level" || ops[1][2] != "is not Top-level" {
 		t.Errorf("the Top-level row offers operators %q, want only is Top-level and is not Top-level", ops)
 	}
-	if strings.Contains(topLevel, `data-testid="rule-values"`) {
-		t.Errorf("the Top-level row offers values:\n%s", topLevel)
+	if values := pageElement(t, topLevel, "select", "rule-values"); strings.Contains(values, " selected") {
+		t.Errorf("the Top-level row holds values:\n%s", values)
 	}
 	if strings.Contains(rows[2], " selected") {
 		t.Errorf("the added row isn't blank:\n%s", rows[2])
 	}
 	if defs, _ := h.Service.ListReportDefinitions(context.Background()); len(defs) != 0 {
 		t.Errorf("Add rule saved %d definitions", len(defs))
+	}
+}
+
+// A Top-level row that comes back from the server still carries every
+// attribute's values, which script hides until the row tests one, so switching
+// it to a Dimension offers that Dimension's values and the rule saves.
+func TestBuilderTopLevelRowCanBeSwitchedToADimensionOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Identity")
+	platform := team.Values[0]
+	reliability := h.ActiveGoal(boss, "Platform reliability", "Matters.")
+	h.AssignGoalValue(reliability, platform)
+	h.ActiveGoal(boss, "Cut churn", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	dim := "dimension:" + strconv.FormatInt(team.ID, 10)
+
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"Platform MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleTopLevel},
+		"rules[0].op":        {domain.RuleIs},
+		"do":                 {"add-rule"},
+	})
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Add rule: status %d, want 200; body:\n%s", resp.StatusCode, page)
+	}
+	builder := pageElement(t, page, "form", "report-builder")
+	topLevel := strings.Split(builder, `data-testid="report-rule"`)[1]
+	if !strings.Contains(topLevel, `name="rules[0].value"`) {
+		t.Fatalf("the Top-level row has no rules[0].value select:\n%s", topLevel)
+	}
+	values := pageElement(t, topLevel, "select", "rule-values")
+	if regexp.MustCompile(`<select[^>]*\shidden`).MatchString(values) {
+		t.Errorf("the Top-level row's values are hidden in the markup, not by script:\n%s", values)
+	}
+	for _, want := range []string{`label="Team"`, `label="Owner"`, `label="Lifecycle"`, `label="Health"`} {
+		if !strings.Contains(values, want) {
+			t.Errorf("the Top-level row's values have no %s group:\n%s", want, values)
+		}
+	}
+	option := regexp.MustCompile(`<option value="([^"]*)">Platform</option>`).FindStringSubmatch(values)
+	if option == nil {
+		t.Fatalf("the Top-level row's values offer no Platform:\n%s", values)
+	}
+
+	resp = postForm(t, noRedirects(client), ts.URL+"/reports/new", url.Values{
+		"name":               {"Platform MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {html.UnescapeString(option[1])},
+	})
+	draft := assertSavedReport(t, client, ts.URL, resp)
+	if got, want := draftGoalTitles(t, draft), []string{reliability.Title}; !slices.Equal(got, want) {
+		t.Errorf("the switched rule selects %q, want %q", got, want)
 	}
 }
 
