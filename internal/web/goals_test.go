@@ -4316,3 +4316,155 @@ func TestGoalPageOpenFormsKeepTheirConfirmationsOverHTTP(t *testing.T) {
 		}
 	}
 }
+
+// ownerOnlyRoute is one of the Goal-changing routes only the Goal's Owner may
+// use (#191): its path for a Goal and Metric, and a form that changes the Goal.
+type ownerOnlyRoute struct {
+	name string
+	path func(goalID, metricID int64) string
+	form url.Values
+}
+
+func ownerOnlyRoutes() []ownerOnlyRoute {
+	onGoal := func(suffix string) func(goalID, metricID int64) string {
+		return func(goalID, _ int64) string { return fmt.Sprintf("/goals/%d/%s", goalID, suffix) }
+	}
+	return []ownerOnlyRoute{
+		{"dated", onGoal("dated"), url.Values{"delivery_date": {"2026-09-14"}}},
+		{"ongoing", onGoal("ongoing"), nil},
+		{"cadence", onGoal("cadence"), url.Values{"cadence_days": {"14"}}},
+		{"add metric", onGoal("metrics"), url.Values{
+			"name": {"Error rate"}, "unit": {"%"}, "direction": {"down"},
+			"baseline": {"5"}, "target": {"1"}, "target_date": {"2026-06-15"},
+		}},
+		{"edit metric", func(_, metricID int64) string { return fmt.Sprintf("/metrics/%d", metricID) }, url.Values{
+			"name": {"p99 checkout latency"}, "unit": {"ms"}, "direction": {"down"},
+			"baseline": {"1500"}, "target": {"500"}, "target_date": {"2026-06-15"},
+		}},
+		{"activate", onGoal("activate"), nil},
+		{"so what", onGoal("so-what"), url.Values{"so_what": {"Faster checkout lifts conversion."}}},
+		{"contributors", onGoal("contributors"), url.Values{"email": {"dana@example.com"}}},
+	}
+}
+
+// ownerOnlyGoal arranges a Proposed Dated Goal with a Metric, so it could be
+// activated, and returns it with the Metric's id.
+func ownerOnlyGoal(t *testing.T, h *testsupport.Harness, owner domain.Account) (domain.Goal, int64) {
+	t.Helper()
+	ctx := context.Background()
+	g := h.CreateGoal(owner, "Cut checkout latency", "Shoppers abandon slow carts.")
+	if _, err := h.Service.MarkGoalDated(ctx, g.ID, time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("MarkGoalDated: %v", err)
+	}
+	m, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
+		GoalID: g.ID, Name: "p95 checkout latency", Unit: "ms", Direction: domain.MetricDown,
+		Baseline: 1200, Target: 400, TargetDate: time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	return g, m.ID
+}
+
+// ownerOnlyGoalState renders everything the owner-only routes can change about
+// a Goal, so a test can tell whether a request changed it.
+func ownerOnlyGoalState(t *testing.T, h *testsupport.Harness, goalID int64) string {
+	t.Helper()
+	ctx := context.Background()
+	g, err := h.Service.ViewGoal(ctx, goalID)
+	if err != nil {
+		t.Fatalf("ViewGoal: %v", err)
+	}
+	contributors, err := h.Service.ListContributors(ctx, goalID)
+	if err != nil {
+		t.Fatalf("ListContributors: %v", err)
+	}
+	metrics, err := h.Service.ListMetrics(ctx, goalID)
+	if err != nil {
+		t.Fatalf("ListMetrics: %v", err)
+	}
+	revisions, err := h.Service.ListSoWhatRevisions(ctx, goalID)
+	if err != nil {
+		t.Fatalf("ListSoWhatRevisions: %v", err)
+	}
+	return fmt.Sprintf("goal %+v\ncontributors %+v\nmetrics %+v\nrevisions %+v", g, contributors, metrics, revisions)
+}
+
+// Setting a Goal's Kind, delivery date, cadence, So What, Contributors and
+// Metrics, and Activating it, are the Owner's alone: anyone else, a Delegate
+// included, is refused with 403 and the Goal is left as it was (#191).
+func TestOnlyTheOwnerSetsUpAGoalOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	delegate := h.SignIn("tpm@example.com")
+	h.SignIn("other@example.com")
+	h.SignIn("dana@example.com")
+	ts := newServer(t, h)
+	clients := map[string]*http.Client{
+		"another Account": signInClient(t, ts.URL, "other@example.com"),
+		"a Delegate":      signInClient(t, ts.URL, "tpm@example.com"),
+	}
+
+	for _, route := range ownerOnlyRoutes() {
+		g, metricID := ownerOnlyGoal(t, h, owner)
+		h.AddDelegate(owner, delegate, g.ID)
+		before := ownerOnlyGoalState(t, h, g.ID)
+		for who, client := range clients {
+			resp := postForm(t, client, ts.URL+route.path(g.ID, metricID), route.form)
+			_ = readBody(t, resp)
+			if resp.StatusCode != http.StatusForbidden {
+				t.Errorf("%s by %s: status = %d, want 403", route.name, who, resp.StatusCode)
+			}
+			if after := ownerOnlyGoalState(t, h, g.ID); after != before {
+				t.Errorf("%s by %s changed the Goal:\nbefore %s\nafter  %s", route.name, who, before, after)
+			}
+		}
+	}
+}
+
+// The Owner still uses each owner-only route as before (#191).
+func TestOwnerStillSetsUpTheirGoalOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	h.SignIn("dana@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "owner@example.com")
+
+	for _, route := range ownerOnlyRoutes() {
+		g, metricID := ownerOnlyGoal(t, h, owner)
+		before := ownerOnlyGoalState(t, h, g.ID)
+		resp := postForm(t, client, ts.URL+route.path(g.ID, metricID), route.form)
+		_ = readBody(t, resp)
+		if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != fmt.Sprintf("/goals/%d", g.ID) {
+			t.Errorf("%s by the Owner: status = %d at %s, want 200 back on the Goal", route.name, resp.StatusCode, resp.Request.URL.Path)
+		}
+		if after := ownerOnlyGoalState(t, h, g.ID); after == before {
+			t.Errorf("%s by the Owner left the Goal unchanged: %s", route.name, after)
+		}
+	}
+}
+
+// A missing Goal, or Metric, is not found on the owner-only routes, whatever
+// the form holds (#191).
+func TestOwnerOnlyRoutesNotFoundForAMissingGoal(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("owner@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "owner@example.com")
+
+	for _, route := range ownerOnlyRoutes() {
+		for _, form := range []url.Values{route.form, nil} {
+			resp := postForm(t, client, ts.URL+route.path(999, 999), form)
+			_ = readBody(t, resp)
+			if resp.StatusCode != http.StatusNotFound {
+				t.Errorf("%s on a missing id with form %v: status = %d, want 404", route.name, form, resp.StatusCode)
+			}
+		}
+	}
+}

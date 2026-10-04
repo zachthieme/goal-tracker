@@ -393,6 +393,21 @@ func (s *Service) loadGoal(ctx context.Context, id int64) (Goal, error) {
 	return goalFromRow(row.Goal, row.Account), nil
 }
 
+// RequireGoalOwner returns ErrNotAuthorized unless actorID is the Goal's Owner
+// (a Delegate is refused too), or ErrNotFound if no such Goal exists. The web
+// layer calls it before the commands that trust their caller — MarkGoalDated,
+// SetCadence, AddMetric and the like — as DefineGoal does for itself.
+func (s *Service) RequireGoalOwner(ctx context.Context, actorID, goalID int64) error {
+	g, err := s.loadGoal(ctx, goalID)
+	if err != nil {
+		return err
+	}
+	if g.Owner.ID != actorID {
+		return fmt.Errorf("%w: only the Goal's Owner may change it", ErrNotAuthorized)
+	}
+	return nil
+}
+
 // MarkGoalDated marks the Goal as Dated with the given delivery date, against
 // which its Health will be judged (CONTEXT.md: Dated Goal). A Dated Goal needs a
 // delivery date, so a zero date is rejected.
