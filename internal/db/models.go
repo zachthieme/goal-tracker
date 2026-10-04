@@ -252,6 +252,17 @@ type NarrativeText struct {
 	Text               string
 }
 
+type ParentSuggestion struct {
+	ID          int64
+	GoalID      int64
+	ParentID    int64
+	SuggestedBy int64
+	Note        string
+	Status      string
+	CreatedAt   string
+	ClosedAt    *string
+}
+
 type RejectedLinkRequest struct {
 	ID               int64
 	ChildID          int64
