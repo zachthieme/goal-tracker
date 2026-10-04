@@ -33,11 +33,6 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 				class="card rb-form"
 				method="post"
 				action={ templ.SafeURL(v.action()) }
-				hx-post="/reports/new/matches"
-				hx-trigger="change[target.type!='search'], input[target.type!='search'] delay:400ms"
-				hx-target={ "#" + reportMatchesID }
-				hx-swap="outerHTML"
-				hx-sync="this:replace"
 			>
 				// Enter presses a form's first submit, so it saves, not Add rule.
 				<button type="submit" class="sr-only" tabindex="-1" aria-hidden="true">Save report</button>
@@ -54,54 +49,68 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 						</ul>
 					</div>
 				}
-				<label class="field">
-					<span>Name</span>
-					<input type="text" name="name" value={ v.Name } required/>
-					@reportBuilderError(v, domain.ReportInputName)
-				</label>
-				<label class="field">
-					<span>Introduction</span>
-					<textarea name="introduction">{ v.Introduction }</textarea>
-				</label>
-				<fieldset data-testid="report-mode" class="rb-mode">
-					<legend>What's in this report</legend>
-					<div class="rb-segments">
-						<label><input type="radio" name="mode" value={ domain.ReportModeRules } checked?={ v.Mode != domain.ReportModePicked }/>Goals matching rules</label>
-						<label><input type="radio" name="mode" value={ domain.ReportModePicked } checked?={ v.Mode == domain.ReportModePicked }/>Goals I pick</label>
-					</div>
-					@reportBuilderError(v, domain.ReportInputMode)
-				</fieldset>
-				<section data-testid="report-rules" class="rb-rules">
-					<h2 class="label">Rules <span class="hint">— a Goal must meet every rule, and any of a rule's values</span></h2>
-					for i, row := range v.rows() {
-						@reportRuleRowInputs(v, i, row)
+				// The rail's post comes from the inputs, not the form: htmx
+				// validates a form it posts, so an empty Name, which Save
+				// requires, would halt every refresh.
+				<div
+					data-testid="report-builder-inputs"
+					class="rb-inputs"
+					hx-post="/reports/new/matches"
+					hx-include="closest form"
+					hx-trigger="change[target.type!='search'], input[target.type!='search'] delay:400ms"
+					hx-target={ "#" + reportMatchesID }
+					hx-swap="outerHTML"
+					hx-sync="this:replace"
+				>
+					<label class="field">
+						<span>Name</span>
+						<input type="text" name="name" value={ v.Name } required/>
+						@reportBuilderError(v, domain.ReportInputName)
+					</label>
+					<label class="field">
+						<span>Introduction</span>
+						<textarea name="introduction">{ v.Introduction }</textarea>
+					</label>
+					<fieldset data-testid="report-mode" class="rb-mode">
+						<legend>What's in this report</legend>
+						<div class="rb-segments">
+							<label><input type="radio" name="mode" value={ domain.ReportModeRules } checked?={ v.Mode != domain.ReportModePicked }/>Goals matching rules</label>
+							<label><input type="radio" name="mode" value={ domain.ReportModePicked } checked?={ v.Mode == domain.ReportModePicked }/>Goals I pick</label>
+						</div>
+						@reportBuilderError(v, domain.ReportInputMode)
+					</fieldset>
+					<section data-testid="report-rules" class="rb-rules">
+						<h2 class="label">Rules <span class="hint">— a Goal must meet every rule, and any of a rule's values</span></h2>
+						for i, row := range v.rows() {
+							@reportRuleRowInputs(v, i, row)
+						}
+						@reportBuilderError(v, domain.ReportInputRules)
+						<div><button type="submit" name="do" value="add-rule" class="btn quiet sm rb-add" formnovalidate>+ Add rule</button></div>
+						<p data-testid="rules-hint" class="small muted">
+							Rules can test any Dimension, Owner, Lifecycle, Health or Top-level. An Admin can create a Dimension such as "In report" so Owners tag their own Goals in; you still decide what's in through Leave out.
+						</p>
+						@reportGoalPicker(v, inputInclude, "Also include", v.Include)
+						@reportGoalPicker(v, inputExclude, "Leave out", v.Exclude)
+					</section>
+					<section data-testid="report-picked" class="rb-picked">
+						@reportGoalPicker(v, inputPicked, "Goals I pick", v.Picked)
+					</section>
+					if len(v.Fields) > 0 {
+						<details data-testid="report-fields-to-show" class="rb-fields" open?={ len(v.FieldIDs) > 0 || v.bad(domain.ReportInputFields) != "" }>
+							<summary class="btn quiet sm">+ Fields to show</summary>
+							<fieldset data-testid="report-field-choice">
+								<legend>Fields <span class="hint">— shown beside each Goal that has a value</span></legend>
+								for _, f := range v.Fields {
+									<label>
+										<input type="checkbox" name={ inputShowField } value={ fmt.Sprint(f.ID) } checked?={ slices.Contains(v.FieldIDs, f.ID) }/>
+										{ f.Name }
+									</label>
+								}
+							</fieldset>
+							@reportBuilderError(v, domain.ReportInputFields)
+						</details>
 					}
-					@reportBuilderError(v, domain.ReportInputRules)
-					<div><button type="submit" name="do" value="add-rule" class="btn quiet sm rb-add" formnovalidate>+ Add rule</button></div>
-					<p data-testid="rules-hint" class="small muted">
-						Rules can test any Dimension, Owner, Lifecycle, Health or Top-level. An Admin can create a Dimension such as "In report" so Owners tag their own Goals in; you still decide what's in through Leave out.
-					</p>
-					@reportGoalPicker(v, inputInclude, "Also include", v.Include)
-					@reportGoalPicker(v, inputExclude, "Leave out", v.Exclude)
-				</section>
-				<section data-testid="report-picked" class="rb-picked">
-					@reportGoalPicker(v, inputPicked, "Goals I pick", v.Picked)
-				</section>
-				if len(v.Fields) > 0 {
-					<details data-testid="report-fields-to-show" class="rb-fields" open?={ len(v.FieldIDs) > 0 || v.bad(domain.ReportInputFields) != "" }>
-						<summary class="btn quiet sm">+ Fields to show</summary>
-						<fieldset data-testid="report-field-choice">
-							<legend>Fields <span class="hint">— shown beside each Goal that has a value</span></legend>
-							for _, f := range v.Fields {
-								<label>
-									<input type="checkbox" name={ inputShowField } value={ fmt.Sprint(f.ID) } checked?={ slices.Contains(v.FieldIDs, f.ID) }/>
-									{ f.Name }
-								</label>
-							}
-						</fieldset>
-						@reportBuilderError(v, domain.ReportInputFields)
-					</details>
-				}
+				</div>
 				<div class="rb-actions">
 					<button type="submit" class="btn primary">Save report</button>
 					<button type="submit" name="do" value="show-matches" class="btn rb-no-js" formnovalidate>Show matches</button>
@@ -113,8 +122,8 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 	}
 }
 
-// reportMatchesID is the rail's id, which the builder's form swaps as it is
-// typed.
+// reportMatchesID is the rail's id, which the builder's inputs swap as they
+// are typed.
 const reportMatchesID = "report-matches"
 
 // reportMatchesRail is the builder's rail: a flat list of the Goals the
@@ -270,6 +279,7 @@ templ reportBuilderScript() {
 		(function () {
 			var form = document.querySelector('[data-testid="report-builder"]');
 			if (!form) return;
+			var inputs = form.querySelector('[data-testid="report-builder-inputs"]');
 			form.classList.add("rb-js");
 			var ops = {
 				values: [["is", "is"], ["is any of", "is any of"], ["is not", "is not"]],
@@ -315,14 +325,14 @@ templ reportBuilderScript() {
 					var search = picker.querySelector("[data-goal-search]");
 					search.value = "";
 					search.focus();
-					form.dispatchEvent(new Event("change"));
+					inputs.dispatchEvent(new Event("change"));
 					return;
 				}
 				var remove = e.target.closest("[data-remove-chip]");
 				if (remove) {
 					remove.closest("li").remove();
 					picker.querySelector("[data-goal-search]").focus();
-					form.dispatchEvent(new Event("change"));
+					inputs.dispatchEvent(new Event("change"));
 				}
 			});
 		})();
@@ -347,6 +357,7 @@ templ reportBuilderStyles() {
 	<style>
 		.rb-layout{display:grid;grid-template-columns:minmax(0,760px) 320px;gap:24px;align-items:start}
 		.rb-form{padding:24px;display:flex;flex-direction:column;gap:16px}
+		.rb-inputs{display:contents}
 		.rb-rail{position:sticky;top:24px;padding:24px;display:flex;flex-direction:column;gap:12px}
 		.rb-rail p{margin:0}
 		.rb-match-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}

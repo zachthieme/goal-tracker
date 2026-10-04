@@ -826,6 +826,12 @@ func TestBuilderMatchesReadAgainstTheDefinitionsBaselineOverHTTP(t *testing.T) {
 // input after a pause, but not a picker's search — swapping the rail, which
 // sits outside the form. The rail is there from the first render, and after
 // Add rule and a refused save, which re-render the builder.
+//
+// The post comes from report-builder-inputs, inside the form, not the form:
+// htmx validates a form it posts, so with Name, which is required, still empty
+// it would halt every refresh (#179). The wrapper is display:contents, so the
+// form's gap still spaces the sections, and the script's change for a chip
+// picked or removed is dispatched where the wrapper hears it.
 func TestBuilderFormRefreshesItsRailAsItIsTypedOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -838,17 +844,49 @@ func TestBuilderFormRefreshesItsRailAsItIsTypedOverHTTP(t *testing.T) {
 	page := getBody(t, client, ts.URL+"/reports/new")
 	form := tagAround(t, page, `data-testid="report-builder"`)
 	for name, want := range map[string]string{
-		"method":     "post",
-		"action":     "/reports/new",
+		"method":  "post",
+		"action":  "/reports/new",
+		"hx-post": "",
+	} {
+		if got := html.UnescapeString(attr(form, name)); got != want {
+			t.Errorf("the builder's %s = %q, want %q", name, got, want)
+		}
+	}
+	builder := pageElement(t, page, "form", "report-builder")
+	if !strings.Contains(builder, `data-testid="report-builder-inputs"`) {
+		t.Fatalf("the builder's inputs have no wrapper inside the form:\n%s", builder)
+	}
+	inputs := tagAround(t, builder, `data-testid="report-builder-inputs"`)
+	for name, want := range map[string]string{
 		"hx-post":    "/reports/new/matches",
+		"hx-include": "closest form",
 		"hx-trigger": "change[target.type!='search'], input[target.type!='search'] delay:400ms",
 		"hx-target":  "#report-matches",
 		"hx-swap":    "outerHTML",
 		"hx-sync":    "this:replace",
 	} {
-		if got := html.UnescapeString(attr(form, name)); got != want {
-			t.Errorf("the builder's %s = %q, want %q", name, got, want)
+		if got := html.UnescapeString(attr(inputs, name)); got != want {
+			t.Errorf("the builder's inputs' %s = %q, want %q", name, got, want)
 		}
+	}
+	if !strings.Contains(between(t, builder, `data-testid="report-builder-inputs"`, ""), `name="name"`) {
+		t.Errorf("the builder's inputs' wrapper doesn't hold Name")
+	}
+	if name := tagAround(t, builder, `name="name"`); !regexp.MustCompile(`\srequired[\s/>]`).MatchString(name) {
+		t.Errorf("Name is no longer required, so Save doesn't prompt for it: %s", name)
+	}
+	if rule := cssRule(t, page, ".rb-inputs"); !strings.Contains(rule, "display:contents") {
+		t.Errorf("the inputs' wrapper isn't display:contents, so the form's gap no longer spaces its sections; rule: %s", rule)
+	}
+	if !strings.Contains(attr(inputs, "class"), "rb-inputs") {
+		t.Errorf("the inputs' wrapper isn't .rb-inputs: %s", inputs)
+	}
+	script := between(t, page, "var pick = e.target.closest(\"[data-pick]\")", "</script>")
+	if strings.Contains(script, "form.dispatchEvent(") {
+		t.Errorf("picking or removing a chip dispatches change on the form, which the inputs' wrapper inside it never hears:\n%s", script)
+	}
+	if got := strings.Count(script, `inputs.dispatchEvent(new Event("change"))`); got != 2 {
+		t.Errorf("picking and removing a chip dispatch change on the inputs' wrapper %d times, want 2:\n%s", got, script)
 	}
 	rail := tagAround(t, page, `data-testid="report-matches"`)
 	if attr(rail, "id") != "report-matches" {
