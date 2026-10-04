@@ -107,6 +107,16 @@ type DimensionValue struct {
 	Position    int64
 }
 
+type DraftHighlight struct {
+	ID                 int64
+	GoalID             int64
+	Kind               string
+	Note               string
+	LoggedBy           int64
+	CreatedAt          string
+	DiscardedCheckinID *int64
+}
+
 type Field struct {
 	ID        int64
 	Name      string

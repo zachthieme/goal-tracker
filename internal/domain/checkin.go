@@ -40,7 +40,11 @@ type Checkin struct {
 	// marked Removed, in the order made. Only ListCheckins loads them; a
 	// Check-in from before they were recorded has none.
 	MilestoneChanges []MilestoneChange
-	CreatedAt        time.Time
+	// DiscardedDraftHighlights are the Draft Highlights this Check-in offered
+	// and didn't keep, oldest first (CONTEXT.md: Draft Highlight). Only
+	// ListCheckins loads them.
+	DiscardedDraftHighlights []DraftHighlight
+	CreatedAt                time.Time
 }
 
 // Health values a Check-in can set (CONTEXT.md: Health). Green needs no Path to
@@ -448,8 +452,8 @@ func (s *Service) LatestCheckin(ctx context.Context, goalID int64) (Checkin, boo
 }
 
 // ListCheckins returns a Goal's Check-in history, newest first, each with its
-// author and the Owner it was written for resolved, and the Milestone changes
-// it recorded.
+// author and the Owner it was written for resolved, the Milestone changes it
+// recorded and the Draft Highlights it discarded.
 func (s *Service) ListCheckins(ctx context.Context, goalID int64) ([]Checkin, error) {
 	rows, err := s.queries.ListCheckins(ctx, goalID)
 	if err != nil {
@@ -470,10 +474,15 @@ func (s *Service) ListCheckins(ctx context.Context, goalID int64) ([]Checkin, er
 			AddedDate:   addedDate,
 		})
 	}
+	discardedBy, err := s.discardedDraftHighlightsByCheckin(ctx, goalID)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]Checkin, 0, len(rows))
 	for _, r := range rows {
 		c := checkinFromRow(r.Checkin, r.Account, r.Account_2)
 		c.MilestoneChanges = changesBy[c.ID]
+		c.DiscardedDraftHighlights = discardedBy[c.ID]
 		out = append(out, c)
 	}
 	return out, nil
