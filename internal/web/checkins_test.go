@@ -364,7 +364,7 @@ func TestSmokeCheckinChangesMilestones(t *testing.T) {
 
 	page := getBody(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
 	milestones := pageElement(t, page, "section", "goal-milestones")
-	for _, want := range []string{fmt.Sprintf("<del>%s</del> <span>%s</span>", oldBeta, newBeta), "Docs folded into GA."} {
+	for _, want := range []string{fmt.Sprintf("<span>%s</span> <del>%s</del>", newBeta, oldBeta), "Docs folded into GA."} {
 		if !strings.Contains(milestones, want) {
 			t.Errorf("Milestone list missing %q; section:\n%s", want, milestones)
 		}

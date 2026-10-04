@@ -1530,7 +1530,7 @@ func TestExceptionCardDatesDoNotBreakOverHTTP(t *testing.T) {
 		t.Errorf("the card's due date is not a wrapper of whole dates:\n got %s\nwant %s", due, want)
 	}
 	milestone := strings.Join(strings.Fields(pageElement(t, block, "li", "report-milestone")), " ")
-	if want := `<span class="rp-dates"><del>` + beta.TargetDate.Format("2006-01-02") + `</del> <span>` + slippedBeta.Format("2006-01-02") + `</span></span>`; !strings.Contains(milestone, want) {
+	if want := `<span class="rp-dates"><span>` + slippedBeta.Format("2006-01-02") + `</span> <del>` + beta.TargetDate.Format("2006-01-02") + `</del> </span>`; !strings.Contains(milestone, want) {
 		t.Errorf("the Milestone's dates are not a wrapper of whole dates:\nwant %s\nin %s", want, milestone)
 	}
 	if rule := cssRule(t, page, ".rp-dates>*"); !strings.Contains(rule, "white-space:nowrap") {
@@ -1538,6 +1538,102 @@ func TestExceptionCardDatesDoNotBreakOverHTTP(t *testing.T) {
 	}
 	if rule, ok := ruleFor(page, ".rp-dates"); ok && strings.Contains(rule, "nowrap") {
 		t.Errorf("the whole wrapper is kept on one line, so its slips can't wrap: .rp-dates{%s}", rule)
+	}
+}
+
+// healthClassYellow is the class a Yellow Health badge carries.
+const healthClassYellow = "y"
+
+// reportMarkedMilestones is how the Report lists MilestoneMarksGoal's
+// Milestones, earliest date first, each mark, then date, then name.
+var reportMarkedMilestones = []string{
+	"Red 2026-01-20 Security review",
+	"Done 2026-02-01 Pilot",
+	"New 2026-03-10 Docs",
+	"Yellow 2026-04-12 2026-04-02 Beta",
+	"Yellow 2026-04-20 2026-03-20 (3) Vendor sign-off",
+	"2026-05-01 Runbook",
+	"Removed 2026-05-20 Launch party — Budget cut.",
+	"2026-06-15 GA launch",
+}
+
+// An exception block lists each Milestone as its mark, its date and its name,
+// on the draft and the publication alike. The mark is the first that applies:
+// Done, Removed, Red while overdue, Yellow once slipped, New since the
+// baseline, and none while on track. The date is the current one with the most
+// recent it slipped from struck through, and a count once it slipped more than
+// once. The marks are not a Health: the Goal keeps the Yellow its Owner set and
+// its Rolled-up Health (ADR 0003).
+func TestReportListsMilestonesAsMarkDateNameOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.MilestoneMarksGoal(boss)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	for name, url := range map[string]string{
+		"draft":       fmt.Sprintf("%s/reports/%d?baseline=2026-01-12", ts.URL, def.ID),
+		"publication": fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID),
+	} {
+		t.Run(name, func(t *testing.T) {
+			block := pageElement(t, getBody(t, client, url), "article", "report-exception")
+			if got := elementTexts(block, "li", "report-milestone"); !slices.Equal(got, reportMarkedMilestones) {
+				t.Errorf("Milestones read\n %q\nwant\n %q", got, reportMarkedMilestones)
+			}
+			vendor := pageElement(t, block, "li", "report-milestone")
+			for _, li := range strings.Split(block, `<li data-testid="report-milestone"`) {
+				if strings.Contains(li, "Vendor sign-off") {
+					vendor = li
+				}
+			}
+			if !strings.Contains(vendor, "<del>2026-03-20</del>") {
+				t.Errorf("Vendor sign-off does not strike through the date it last slipped from:\n%s", vendor)
+			}
+			for _, older := range []string{"2026-03-01", "2026-03-10"} {
+				if strings.Contains(vendor, older) {
+					t.Errorf("Vendor sign-off still lists the older date %s:\n%s", older, vendor)
+				}
+			}
+			if !strings.Contains(block, "<del>Launch party</del>") {
+				t.Errorf("the Removed Milestone's name is not struck through:\n%s", block)
+			}
+			for _, want := range []string{"report-health", "rollup-health"} {
+				if health := openTag(pageElement(t, block, "span", want)); attr(health, "class") != "badge "+healthClassYellow {
+					t.Errorf("%s is not the Yellow set by the Owner and rolled up from the child: %s", want, health)
+				}
+			}
+		})
+	}
+}
+
+// A publication frozen before Milestones read mark, date, name shows them in
+// that form: the snapshot already holds all the mark needs.
+func TestPublicationFromBeforeMilestoneMarksListsMarkDateNameOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","SoWhat":"Expand the market.",` +
+		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Milestones":[` +
+		`{"Milestone":{"ID":1,"Name":"Beta","TargetDate":"2025-12-20T00:00:00Z","Status":"Planned"},"New":false,"PriorDates":["2025-12-01T00:00:00Z"]},` +
+		`{"Milestone":{"ID":2,"Name":"GA","TargetDate":"2026-03-01T00:00:00Z","Status":"Planned"},"New":true,"PriorDates":null},` +
+		`{"Milestone":{"ID":3,"Name":"Launch","TargetDate":"2026-04-01T00:00:00Z","Status":"Planned"},"New":false,"PriorDates":null}]}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+		t.Fatalf("write an older snapshot: %v", err)
+	}
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID))
+	want := []string{"Red 2025-12-20 2025-12-01 Beta", "New 2026-03-01 GA", "2026-04-01 Launch"}
+	if got := elementTexts(pageElement(t, page, "article", "report-exception"), "li", "report-milestone"); !slices.Equal(got, want) {
+		t.Errorf("Milestones read\n %q\nwant\n %q", got, want)
 	}
 }
 

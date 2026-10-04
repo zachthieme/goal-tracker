@@ -1098,10 +1098,12 @@ templ goalIncomplete(missing []string) {
 	}
 }
 
-// milestoneList is a Goal's Milestones as a table of status, name, and date
-// with its history struck through (CONTEXT.md: Date Slip), headed by the Goal's
-// slip count and Milestone Churn. editable gives the Owner of a Proposed Goal an
-// edit form on each; once Active, Milestones change in a Check-in.
+// milestoneList is a Goal's Milestones as a table of mark, date with the date
+// it last slipped from struck through, and name (CONTEXT.md: Milestone, Date
+// Slip), headed by the Goal's slip count and Milestone Churn. A Milestone with
+// no mark leaves its Status blank, so those marked stand out. editable gives
+// the Owner of a Proposed Goal an edit form on each; once Active, Milestones
+// change in a Check-in.
 templ milestoneList(v goalView, editable bool) {
 	<p class="muted small">
 		<span data-testid="goal-slip-count">{ fmt.Sprintf("%d", len(v.DateSlips)) }</span> slips
@@ -1115,8 +1117,8 @@ templ milestoneList(v goalView, editable bool) {
 			<thead>
 				<tr>
 					<th>Status</th>
-					<th>Milestone</th>
 					<th>Date</th>
+					<th>Milestone</th>
 					if editable {
 						<th><span class="sr-only">Edit</span></th>
 					}
@@ -1125,7 +1127,12 @@ templ milestoneList(v goalView, editable bool) {
 			<tbody>
 				for _, m := range v.Milestones {
 					<tr data-testid="goal-milestone">
-						<td><span class="badge lc" data-testid="milestone-status">{ m.Status }</span></td>
+						<td>
+							@milestoneMarkBadge(v.milestoneMark(m))
+						</td>
+						<td class="num gp-dates">
+							@milestoneDates(m.TargetDate, v.priorDates(m.ID))
+						</td>
 						if m.Status == domain.MilestoneRemoved {
 							<td>
 								<del>{ m.Name }</del>
@@ -1136,10 +1143,6 @@ templ milestoneList(v goalView, editable bool) {
 						} else {
 							<td>{ m.Name }</td>
 						}
-						<td class="num gp-dates">
-							@struckDates(v.priorDates(m.ID))
-							<span>{ fmtDate(m.TargetDate) }</span>
-						</td>
 						if editable {
 							<td>
 								<details class="gp-edit">
@@ -1164,6 +1167,29 @@ templ milestoneList(v goalView, editable bool) {
 templ struckDates(dates []time.Time) {
 	for _, d := range dates {
 		<del>{ fmtDate(d) }</del>{ " " }
+	}
+}
+
+// milestoneMarkBadge is a Milestone's mark (domain.MilestoneMarkOf) as a
+// badge, Red and Yellow in their Health colours though they are not a Health,
+// or nothing when it has none and reads as on track (CONTEXT.md: Milestone).
+templ milestoneMarkBadge(mark string) {
+	if mark != domain.MilestoneMarkNone {
+		<span data-testid="milestone-mark" class={ "badge", healthClass(mark) }>{ mark }</span>
+	}
+}
+
+// milestoneDates renders a Milestone's date current first, then the most
+// recent date it slipped from struck through, and the number of times it
+// slipped once that is more than one: 11/20 ~~11/03~~ (3) (CONTEXT.md: Date
+// Slip). prior comes earliest first.
+templ milestoneDates(current time.Time, prior []time.Time) {
+	<span>{ fmtDate(current) }</span>
+	if n := len(prior); n > 0 {
+		<del>{ fmtDate(prior[n-1]) }</del>
+	}
+	if n := len(prior); n > 1 {
+		<span data-testid="milestone-slips">{ fmt.Sprintf("(%d)", n) }</span>
 	}
 }
 

@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"fmt"
+	"html"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -180,6 +181,29 @@ func pageElement(t *testing.T, page, tag, testID string) string {
 		t.Fatalf("<%s> %q is not closed", tag, testID)
 	}
 	return page[start : start+end]
+}
+
+// elementTexts returns the text of every tag element carrying data-testid, in
+// order, with its markup dropped and its whitespace collapsed, so an assertion
+// can read the order a row's parts come in. It suits elements that don't nest
+// their own tag.
+func elementTexts(page, tag, testID string) []string {
+	var out []string
+	markup := regexp.MustCompile(`<[^>]*>`)
+	for rest := page; ; {
+		start := strings.Index(rest, "<"+tag+` data-testid="`+testID+`"`)
+		if start < 0 {
+			return out
+		}
+		rest = rest[start:]
+		end := strings.Index(rest, "</"+tag+">")
+		if end < 0 {
+			return out
+		}
+		text := html.UnescapeString(markup.ReplaceAllString(rest[:end], " "))
+		out = append(out, strings.Join(strings.Fields(text), " "))
+		rest = rest[end:]
+	}
 }
 
 // openTag returns element up to the end of its opening tag, so an assertion

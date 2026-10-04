@@ -470,3 +470,54 @@ func TestMilestoneChurnIsUnchangedByRecordedChanges(t *testing.T) {
 		t.Errorf("churn without recorded changes = %d, want still 3", got)
 	}
 }
+
+// A Milestone's mark is the first that applies of Done, Removed, Red (Planned
+// and past its date as of the day), Yellow (Planned and slipped), and New
+// (Planned and added within the window); a Planned Milestone that is none of
+// these has no mark and reads as on track (CONTEXT.md: Milestone).
+func TestMilestoneMarkTakesTheFirstThatApplies(t *testing.T) {
+	t.Parallel()
+
+	day := func(s string) time.Time {
+		d, err := time.Parse("2006-01-02", s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return d
+	}
+	asOf := time.Date(2026, 10, 4, 15, 0, 0, 0, time.UTC)
+	slipped := []time.Time{day("2026-09-01")}
+	milestone := func(status, target string) domain.Milestone {
+		return domain.Milestone{Name: "Vendor sign-off", Status: status, TargetDate: day(target)}
+	}
+	cases := []struct {
+		name  string
+		m     domain.Milestone
+		prior []time.Time
+		isNew bool
+		asOf  time.Time
+		want  string
+	}{
+		{"done", milestone(domain.MilestoneDone, "2026-11-01"), nil, false, asOf, "Done"},
+		{"done outranks overdue, slipped and new", milestone(domain.MilestoneDone, "2026-09-30"), slipped, true, asOf, "Done"},
+		{"removed", milestone(domain.MilestoneRemoved, "2026-11-01"), nil, false, asOf, "Removed"},
+		{"removed outranks overdue", milestone(domain.MilestoneRemoved, "2026-09-30"), slipped, true, asOf, "Removed"},
+		{"overdue is red", milestone(domain.MilestonePlanned, "2026-10-03"), nil, false, asOf, "Red"},
+		{"red outranks yellow and new", milestone(domain.MilestonePlanned, "2026-10-03"), slipped, true, asOf, "Red"},
+		{"due as of the day is not overdue", milestone(domain.MilestonePlanned, "2026-10-04"), nil, false, asOf, ""},
+		{"overdue compares the calendar date of as of in UTC", milestone(domain.MilestonePlanned, "2026-10-04"), nil, false,
+			time.Date(2026, 10, 4, 20, 0, 0, 0, time.FixedZone("UTC-5", -5*60*60)), "Red"},
+		{"slipped is yellow", milestone(domain.MilestonePlanned, "2026-11-20"), slipped, false, asOf, "Yellow"},
+		{"yellow outranks new", milestone(domain.MilestonePlanned, "2026-11-20"), slipped, true, asOf, "Yellow"},
+		{"new", milestone(domain.MilestonePlanned, "2026-11-20"), nil, true, asOf, "New"},
+		{"on track has no mark", milestone(domain.MilestonePlanned, "2026-12-15"), nil, false, asOf, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			if got := domain.MilestoneMarkOf(c.m, c.prior, c.isNew, c.asOf); got != c.want {
+				t.Errorf("MilestoneMarkOf = %q, want %q", got, c.want)
+			}
+		})
+	}
+}

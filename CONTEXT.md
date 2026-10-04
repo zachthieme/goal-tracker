@@ -56,6 +56,7 @@ _Avoid_: KPI, key result, measure
 
 **Milestone**:
 A dated checkpoint within a Goal. A Milestone slip that doesn't move the Goal's delivery date does not affect Health.
+Wherever Milestones are listed (the Goal page, a Report, its Markdown export), each reads mark, date, name, with one mark, the first that applies: **Done**; **Removed**; **Red**, still Planned and past its date; **Yellow**, still Planned and slipped at least once; **New**, still Planned and added within the window (since the Report's baseline, or by the Goal's latest Check-in). A Planned Milestone with none of these has no mark and reads as on track. The marks are display marks, not a Health (see **Health**): they never feed the Goal's Health, which its Owner sets.
 _Avoid_: task, deliverable, phase
 
 **Dated Goal**:
@@ -127,7 +128,7 @@ Where a Goal is in its existence: Proposed, Active, On Hold, Done, or Cancelled.
 _Avoid_: status, state, New (use Proposed)
 
 **Date Slip**:
-A recorded change to a Goal's delivery date or a Milestone's date, always with a reason. The full history is kept, and a Goal's date is shown struck through (~~10/15~~ 11/03).
+A recorded change to a Goal's delivery date or a Milestone's date, always with a reason. The full history is kept, and a Goal's date is shown struck through (~~10/15~~ 11/03). A Milestone's date shows current first, then the date it last slipped from struck through (11/03 ~~10/15~~), and how many times it slipped once that is more than once (11/20 ~~11/03~~ (3)).
 _Avoid_: New Date (as a status), re-plan, reschedule
 
 **Milestone Churn**:
