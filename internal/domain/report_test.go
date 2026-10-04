@@ -546,3 +546,147 @@ func sameSet(got, want []int64) bool {
 	}
 	return true
 }
+
+// Editing a Report Definition replaces its name, introduction, scope and
+// Fields; its draft then selects only by the new scope. A publication it
+// already had stays frozen with the name and Goals it was published with
+// (ticket #151).
+func TestUpdateReportDefinitionChangesOnlyTheDraft(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Web")
+	platform, web := team.Values[0], team.Values[1]
+	onPlatform := h.ActiveGoal(boss, "Platform goal", "why")
+	onWeb := h.ActiveGoal(boss, "Web goal", "why")
+	picked := h.ActiveGoal(boss, "Picked goal", "why")
+	h.AssignGoalValue(onPlatform, platform)
+	h.AssignGoalValue(onWeb, web)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:    "Platform MBR",
+		Mode:    domain.ReportModeRules,
+		Rules:   []domain.ReportRule{dimensionRule(team, domain.RuleIs, platform)},
+		Include: []int64{picked.ID},
+	})
+	pub := h.PublishReport(boss, def)
+
+	updated, err := h.Service.UpdateReportDefinition(ctx, boss.ID, def.ID, domain.SaveReportDefinitionInput{
+		Name:         " Web MBR ",
+		Introduction: "Web only now.",
+		Mode:         domain.ReportModeRules,
+		Rules:        []domain.ReportRule{dimensionRule(team, domain.RuleIs, web)},
+	})
+	if err != nil {
+		t.Fatalf("UpdateReportDefinition: %v", err)
+	}
+	if updated.ID != def.ID || updated.Name != "Web MBR" || updated.Introduction != "Web only now." {
+		t.Errorf("updated = %d %q %q, want %d %q %q", updated.ID, updated.Name, updated.Introduction, def.ID, "Web MBR", "Web only now.")
+	}
+	if len(updated.Include) != 0 || len(updated.Rules) != 1 {
+		t.Errorf("updated scope = rules %+v, include %v; want the one new rule and no Also include", updated.Rules, updated.Include)
+	}
+	reloaded, err := h.Service.GetReportDefinition(ctx, def.ID)
+	if err != nil {
+		t.Fatalf("GetReportDefinition: %v", err)
+	}
+	if got, want := selectByDefault(t, h, reloaded), []int64{onWeb.ID}; !sameSet(got, want) {
+		t.Errorf("the edited draft selected %v, want %v", got, want)
+	}
+
+	frozen, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if frozen.Report.Definition.Name != "Platform MBR" {
+		t.Errorf("publication's name = %q, want the old %q", frozen.Report.Definition.Name, "Platform MBR")
+	}
+	if got, want := append(blockIDs(frozen.Report), lineIDs(frozen.Report)...), []int64{onPlatform.ID, picked.ID}; !sameSet(got, want) {
+		t.Errorf("publication's Goals = %v, want the old %v", got, want)
+	}
+}
+
+// Only a Report Definition's creator or an Admin may edit it; anyone else is
+// refused with ErrNotAuthorized and the definition stays as it was. Anyone
+// signed in may still save one of their own (ticket #151).
+func TestUpdateReportDefinitionOnlyByItsCreatorOrAnAdmin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	alice := h.SignIn("alice@example.com")
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(alice, "Grow revenue", "why")
+	in := func(name string) domain.SaveReportDefinitionInput {
+		return domain.SaveReportDefinitionInput{Name: name, Mode: domain.ReportModePicked, Picked: []int64{g.ID}}
+	}
+	def := h.SaveReportDefinition(alice, in("Alice's MBR"))
+
+	if def.CreatedBy != alice.ID {
+		t.Errorf("CreatedBy = %d, want Alice, %d", def.CreatedBy, alice.ID)
+	}
+	defs, err := h.Service.ListReportDefinitions(ctx)
+	if err != nil {
+		t.Fatalf("ListReportDefinitions: %v", err)
+	}
+	if len(defs) != 1 || defs[0].CreatedBy != alice.ID {
+		t.Errorf("listed definitions = %+v, want Alice's, created by %d", defs, alice.ID)
+	}
+	for _, c := range []struct {
+		who  string
+		as   domain.Account
+		want bool
+	}{{"the creator", alice, true}, {"an Admin", boss, true}, {"anyone else", sam, false}} {
+		if got := domain.CanEditReportDefinition(c.as, def); got != c.want {
+			t.Errorf("CanEditReportDefinition(%s) = %v, want %v", c.who, got, c.want)
+		}
+	}
+
+	if _, err := h.Service.UpdateReportDefinition(ctx, sam.ID, def.ID, in("Sam's now")); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("Sam editing Alice's definition: err = %v, want ErrNotAuthorized", err)
+	}
+	if got, _ := h.Service.GetReportDefinition(ctx, def.ID); got.Name != "Alice's MBR" {
+		t.Errorf("after Sam's refused edit the name = %q, want %q", got.Name, "Alice's MBR")
+	}
+	if _, err := h.Service.UpdateReportDefinition(ctx, alice.ID, def.ID, in("Alice's edit")); err != nil {
+		t.Errorf("Alice editing her own definition: %v", err)
+	}
+	updated, err := h.Service.UpdateReportDefinition(ctx, boss.ID, def.ID, in("Admin's edit"))
+	if err != nil {
+		t.Fatalf("an Admin editing Alice's definition: %v", err)
+	}
+	if updated.Name != "Admin's edit" || updated.CreatedBy != alice.ID {
+		t.Errorf("after the Admin's edit: %q created by %d, want %q still created by Alice", updated.Name, updated.CreatedBy, "Admin's edit")
+	}
+}
+
+// Editing refuses what saving refuses, each with an InputError naming its
+// input, and keeps the definition as it was; an unknown definition is
+// ErrNotFound (ticket #151).
+func TestUpdateReportDefinitionRefusals(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.CreateGoal(boss, "Grow revenue", "why")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	_, err := h.Service.UpdateReportDefinition(ctx, boss.ID, def.ID, domain.SaveReportDefinitionInput{Name: " ", Mode: domain.ReportModeRules})
+	if got := inputNames(domain.InputErrors(err)); !errors.Is(err, domain.ErrValidation) || !sameStrings(got, []string{"name", "rules"}) {
+		t.Errorf("blank name and no rules: err = %v (inputs %v), want InputErrors naming name and rules", err, got)
+	}
+	got, err := h.Service.GetReportDefinition(ctx, def.ID)
+	if err != nil {
+		t.Fatalf("GetReportDefinition: %v", err)
+	}
+	if got.Name != "MBR" || got.Mode != domain.ReportModePicked || !slices.Equal(got.Picked, []int64{g.ID}) {
+		t.Errorf("after a refused edit: %q %s %v, want it as it was", got.Name, got.Mode, got.Picked)
+	}
+
+	if _, err := h.Service.UpdateReportDefinition(ctx, boss.ID, 9999, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}}); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("editing an unknown definition: err = %v, want ErrNotFound", err)
+	}
+}
