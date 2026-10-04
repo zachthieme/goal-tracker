@@ -2,6 +2,8 @@ package web_test
 
 import (
 	"context"
+	"html"
+	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -9,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -394,8 +397,9 @@ func TestBuilderGoalSearchFindsEveryGoalLessThoseListedOverHTTP(t *testing.T) {
 	}
 }
 
-// Show matches submits the builder and it comes back, 200, as typed, listing
-// the Goals the definition would select, and saves nothing.
+// Without script, Show matches submits the builder and it comes back, 200, as
+// typed, its rail listing the Goals the definition would select, and saves
+// nothing.
 func TestBuilderShowMatchesListsTheGoalsAndSavesNothingOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -407,21 +411,25 @@ func TestBuilderShowMatchesListsTheGoalsAndSavesNothingOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 
-	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+	form := url.Values{
 		"name":               {"Exec weekly"},
 		"mode":               {domain.ReportModeRules},
 		"rules[0].attribute": {domain.RuleTopLevel},
 		"rules[0].op":        {domain.RuleIs},
 		"exclude":            {strconv.FormatInt(left.ID, 10)},
 		"do":                 {"show-matches"},
-	})
+	}
+	resp := postForm(t, client, ts.URL+"/reports/new", form)
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("Show matches: status %d, want 200; body:\n%s", resp.StatusCode, page)
 	}
-	matches := pageElement(t, page, "section", "builder-matches")
+	matches := pageElement(t, page, "aside", "report-matches")
 	if !strings.Contains(matches, "1 Goal") || !strings.Contains(matches, top.Title) || strings.Contains(matches, other.Title) || strings.Contains(matches, left.Title) {
 		t.Errorf("Show matches doesn't list just %q:\n%s", top.Title, matches)
+	}
+	if rail, _ := postFormHX(t, client, ts.URL+"/reports/new/matches", form); !strings.HasPrefix(rail, matches) {
+		t.Errorf("Show matches lists\n%s\nbut the live rail lists\n%s", matches, rail)
 	}
 	if !strings.Contains(pageElement(t, page, "form", "report-builder"), `name="name" value="Exec weekly"`) {
 		t.Errorf("Show matches lost the name")
@@ -456,4 +464,295 @@ func draftGoalTitles(t *testing.T, draft string) []string {
 	}
 	slices.Sort(titles)
 	return titles
+}
+
+// The builder's rail answers its form at /reports/new/matches with only the
+// rail: how many Goals the definition would select, the same count its saved
+// draft lists.
+func TestBuilderMatchesCountWhatTheSavedDraftSelectsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.MarkTopLevel(boss, h.ActiveGoal(boss, "Grow revenue", "Matters."))
+	h.MarkTopLevel(boss, h.ActiveGoal(boss, "Earn trust", "Matters."))
+	h.ActiveGoal(boss, "Cut churn", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	form := url.Values{
+		"name":               {"Exec weekly"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleTopLevel},
+		"rules[0].op":        {domain.RuleIs},
+	}
+
+	rail, status := postFormHX(t, client, ts.URL+"/reports/new/matches", form)
+	if status != http.StatusOK {
+		t.Fatalf("matches: status %d, want 200; body:\n%s", status, rail)
+	}
+	if strings.Contains(rail, "<html") || strings.Contains(rail, "<form") {
+		t.Errorf("matches answers more than the rail:\n%s", rail)
+	}
+	draft := assertSavedReport(t, client, ts.URL, postForm(t, noRedirects(client), ts.URL+"/reports/new", form))
+	if got, want := railCount(t, rail), len(draftGoalTitles(t, draft)); got != want {
+		t.Errorf("the rail matches %d Goals, the saved draft selects %d:\n%s", got, want, rail)
+	}
+}
+
+// railCount is the N of the rail's "Matches N Goals".
+func railCount(t *testing.T, rail string) int {
+	t.Helper()
+	m := regexp.MustCompile(`Matches (\d+) Goals?`).FindStringSubmatch(rail)
+	if m == nil {
+		t.Fatalf("the rail has no count:\n%s", rail)
+	}
+	n, _ := strconv.Atoi(m[1])
+	return n
+}
+
+// Until a rules definition has a usable rule — one with a value, or a
+// Top-level one — the rail asks for one and counts nothing; its name isn't
+// checked. An id naming no saved definition answers 404.
+func TestBuilderMatchesAskForARuleAndRefuseAnUnknownDefinitionOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.ActiveGoal(boss, "Grow revenue", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	form := url.Values{
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleHealth},
+		"rules[0].op":        {domain.RuleIsAnyOf},
+	}
+
+	rail, status := postFormHX(t, client, ts.URL+"/reports/new/matches", form)
+	if status != http.StatusOK {
+		t.Fatalf("matches: status %d, want 200; body:\n%s", status, rail)
+	}
+	if !strings.Contains(rail, "Add a rule to see matching Goals") || strings.Contains(rail, "Matches 0") || strings.Contains(rail, `data-testid="matches-count"`) {
+		t.Errorf("a rule with no values gets a count, not a request for a rule:\n%s", rail)
+	}
+	form.Set("id", "9999")
+	if body, status := postFormHX(t, client, ts.URL+"/reports/new/matches", form); status != http.StatusNotFound {
+		t.Errorf("matches for an unknown definition: status %d, want 404; body:\n%s", status, body)
+	}
+}
+
+// In rules mode the rail marks "added" a Goal only Also include selects; in
+// picked mode, which ignores rules and Also include, it marks none. Each Goal
+// shows its Health, or with none yet its Lifecycle.
+func TestBuilderMatchesMarkAlsoIncludeAndShowHealthOrLifecycleOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Mobile")
+	reliability := h.ActiveGoal(boss, "Platform reliability", "Matters.")
+	h.AssignGoalValue(reliability, team.Values[0])
+	h.Checkin(boss, reliability.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	sdk := h.ActiveGoal(boss, "Mobile SDK auth update", "Matters.")
+	h.AssignGoalValue(sdk, team.Values[1])
+	proposed := h.CreateGoal(boss, "Retire the job scheduler", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	id := func(n int64) string { return strconv.FormatInt(n, 10) }
+	dim := "dimension:" + id(team.ID)
+	form := url.Values{
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {dim},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {dim + "=" + id(team.Values[0].ID)},
+		"include":            {id(sdk.ID)},
+		"picked":             {id(sdk.ID), id(proposed.ID)},
+	}
+
+	rail, _ := postFormHX(t, client, ts.URL+"/reports/new/matches", form)
+	matches := railMatches(rail)
+	if len(matches) != 2 {
+		t.Fatalf("the rules rail lists %d Goals, want 2:\n%s", len(matches), rail)
+	}
+	if m := matches[reliability.Title]; strings.Contains(m, "match-added") || !strings.Contains(m, `class="badge g"><span class="dot"></span>Green</span>`) {
+		t.Errorf("the rule match isn't shown Green and unmarked:\n%s", m)
+	}
+	if m := matches[sdk.Title]; !strings.Contains(m, `data-testid="match-added"`) || !strings.Contains(m, `class="badge lc">Active</span>`) {
+		t.Errorf("the Also include Goal isn't marked added with its Lifecycle:\n%s", m)
+	}
+
+	form.Set("mode", domain.ReportModePicked)
+	rail, _ = postFormHX(t, client, ts.URL+"/reports/new/matches", form)
+	matches = railMatches(rail)
+	if len(matches) != 2 || matches[sdk.Title] == "" || matches[proposed.Title] == "" {
+		t.Fatalf("the picked rail doesn't list just the picked Goals:\n%s", rail)
+	}
+	if strings.Contains(rail, "match-added") {
+		t.Errorf("the picked rail marks a Goal added:\n%s", rail)
+	}
+	if m := matches[proposed.Title]; !strings.Contains(m, `class="badge lc">Proposed</span>`) {
+		t.Errorf("the Proposed Goal doesn't show its Lifecycle:\n%s", m)
+	}
+}
+
+// railMatches are the rail's listed Goals, each its markup by title.
+func railMatches(rail string) map[string]string {
+	out := map[string]string{}
+	for _, li := range strings.Split(rail, `<li data-testid="match"`)[1:] {
+		li, _, _ = strings.Cut(li, "</li>")
+		if m := regexp.MustCompile(`class="rb-match-title">([^<]*)</span>`).FindStringSubmatch(li); m != nil {
+			out[m[1]] = li
+		}
+	}
+	return out
+}
+
+// The rail lists the first 10 Goals by title, then "+ n more" for the rest and
+// "m left out" for the rule matches Leave out takes away — not one no rule
+// matches — each part only when it isn't 0.
+func TestBuilderMatchesListTenByTitleThenCountTheRestOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	var top []domain.Goal
+	for _, title := range []string{"Mobile", "kilo", "lima", "Juliet", "India", "Hotel", "Golf", "Foxtrot", "Echo", "Delta", "Charlie", "Bravo", "Alpha"} {
+		top = append(top, h.MarkTopLevel(boss, h.ActiveGoal(boss, title, "Matters.")))
+	}
+	other := h.ActiveGoal(boss, "Zulu", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	id := func(n int64) string { return strconv.FormatInt(n, 10) }
+	form := url.Values{
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleTopLevel},
+		"rules[0].op":        {domain.RuleIs},
+		"exclude":            {id(top[1].ID), id(top[3].ID), id(other.ID)},
+		"include":            {id(other.ID)},
+	}
+
+	rail, _ := postFormHX(t, client, ts.URL+"/reports/new/matches", form)
+	if got := railCount(t, rail); got != 11 {
+		t.Errorf("the rail matches %d Goals, want 11", got)
+	}
+	var titles []string
+	for _, m := range regexp.MustCompile(`class="rb-match-title">([^<]*)</span>`).FindAllStringSubmatch(rail, -1) {
+		titles = append(titles, m[1])
+	}
+	if want := []string{"Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India", "lima"}; !slices.Equal(titles, want) {
+		t.Errorf("the rail lists %q, want %q", titles, want)
+	}
+	if more := pageElement(t, rail, "p", "matches-more"); !strings.HasSuffix(more, ">+ 1 more · 2 left out") {
+		t.Errorf("the rail's closing line is %q, want + 1 more · 2 left out", more)
+	}
+
+	form["exclude"] = []string{id(top[1].ID), id(top[3].ID), id(top[5].ID), id(top[7].ID)}
+	rail, _ = postFormHX(t, client, ts.URL+"/reports/new/matches", form)
+	if more := pageElement(t, rail, "p", "matches-more"); !strings.HasSuffix(more, ">4 left out") {
+		t.Errorf("with 10 matches the closing line is %q, want just 4 left out", more)
+	}
+	form.Del("exclude")
+	form.Del("include")
+	form.Set("rules[0].op", domain.RuleIsNot)
+	rail, _ = postFormHX(t, client, ts.URL+"/reports/new/matches", form)
+	if railCount(t, rail) != 1 || strings.Contains(rail, "matches-more") {
+		t.Errorf("one match and none left out still has a closing line:\n%s", rail)
+	}
+}
+
+// The rail reads the matches against the default baseline: with no id a new
+// definition's, 30 days ago, and with the id of a saved one its last
+// publication. Either way it counts what the saved draft lists, so a Goal
+// finished between the two counts only for the new one.
+func TestBuilderMatchesReadAgainstTheDefinitionsBaselineOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.MarkTopLevel(boss, h.ActiveGoal(boss, "Grow revenue", "Matters."))
+	shipped := h.MarkTopLevel(boss, h.ActiveGoal(boss, "Ship the SDK", "Matters."))
+	rule := domain.ReportRule{Attribute: domain.RuleTopLevel, Op: domain.RuleIs}
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Exec weekly", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{rule}})
+	h.Clock.Advance(5 * 24 * time.Hour)
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID: shipped.ID, AuthorID: boss.ID, Status: "Shipped.", Lifecycle: domain.LifecycleDone, Outcome: "Shipped.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin to Done: %v", err)
+	}
+	h.Clock.Advance(5 * 24 * time.Hour)
+	h.PublishReport(boss, def)
+	h.Clock.Advance(24 * time.Hour)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	form := url.Values{
+		"name":               {"Exec weekly"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleTopLevel},
+		"rules[0].op":        {domain.RuleIs},
+	}
+
+	rail, _ := postFormHX(t, client, ts.URL+"/reports/new/matches", form)
+	draft := assertSavedReport(t, client, ts.URL, postForm(t, noRedirects(client), ts.URL+"/reports/new", form))
+	if got, want := railCount(t, rail), len(draftGoalTitles(t, draft)); got != 2 || got != want {
+		t.Errorf("for a new definition the rail matches %d Goals, its saved draft %d, want 2", got, want)
+	}
+	form.Set("id", strconv.FormatInt(def.ID, 10))
+	rail, _ = postFormHX(t, client, ts.URL+"/reports/new/matches", form)
+	draft = getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+	if got, want := railCount(t, rail), len(draftGoalTitles(t, draft)); got != 1 || got != want {
+		t.Errorf("for the published definition the rail matches %d Goals, its draft %d, want 1", got, want)
+	}
+}
+
+// The builder posts itself to the rail as it is typed — on change, and on
+// input after a pause, but not a picker's search — swapping the rail, which
+// sits outside the form. The rail is there from the first render, and after
+// Add rule and a refused save, which re-render the builder.
+func TestBuilderFormRefreshesItsRailAsItIsTypedOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.MarkTopLevel(boss, h.ActiveGoal(boss, "Grow revenue", "Matters."))
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	page := getBody(t, client, ts.URL+"/reports/new")
+	form := tagAround(t, page, `data-testid="report-builder"`)
+	for name, want := range map[string]string{
+		"method":     "post",
+		"action":     "/reports/new",
+		"hx-post":    "/reports/new/matches",
+		"hx-trigger": "change[target.type!='search'], input[target.type!='search'] delay:400ms",
+		"hx-target":  "#report-matches",
+		"hx-swap":    "outerHTML",
+		"hx-sync":    "this:replace",
+	} {
+		if got := html.UnescapeString(attr(form, name)); got != want {
+			t.Errorf("the builder's %s = %q, want %q", name, got, want)
+		}
+	}
+	rail := tagAround(t, page, `data-testid="report-matches"`)
+	if attr(rail, "id") != "report-matches" {
+		t.Errorf("the rail has no id to swap: %s", rail)
+	}
+	if !strings.Contains(pageElement(t, page, "aside", "report-matches"), "Add a rule to see matching Goals") {
+		t.Errorf("the new builder's rail doesn't ask for a rule")
+	}
+	if builder := pageElement(t, page, "form", "report-builder"); strings.Contains(builder, `data-testid="report-matches"`) {
+		t.Errorf("the rail sits inside the form, so its swap could replace an input")
+	}
+
+	rules := url.Values{
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleTopLevel},
+		"rules[0].op":        {domain.RuleIs},
+	}
+	for what, do := range map[string]string{"Add rule": "add-rule", "a refused save": ""} {
+		form := url.Values{"do": {do}}
+		maps.Copy(form, rules)
+		page := readBody(t, postForm(t, client, ts.URL+"/reports/new", form))
+		if got := railCount(t, pageElement(t, page, "aside", "report-matches")); got != 1 {
+			t.Errorf("after %s the rail matches %d Goals, want 1", what, got)
+		}
+	}
 }

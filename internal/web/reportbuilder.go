@@ -1,6 +1,7 @@
 package web
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"maps"
@@ -40,9 +41,43 @@ type reportBuilderView struct {
 	Goals []domain.Goal
 	// Fields are the Fields still offered to show.
 	Fields []domain.Field
-	// Matches are the Goals the definition would select, shown after Show
-	// matches, and nil before.
-	Matches []reportGoal
+	// Matches is the rail: the Goals the definition as typed would select.
+	Matches reportMatches
+}
+
+// reportMatches is the builder's rail: how many Goals the definition as typed
+// would select on its draft, the first railLength of them by title, and how
+// many its rules match that Leave out takes away.
+type reportMatches struct {
+	// NeedsRule is a rules definition with no usable rule yet, which has no
+	// matches to show.
+	NeedsRule bool
+	Count     int
+	Shown     []reportMatch
+	LeftOut   int
+}
+
+// reportMatch is a Goal on the rail. Added is one a rules definition selects
+// only because of Also include.
+type reportMatch struct {
+	domain.SelectedGoal
+	Added bool
+}
+
+// railLength is how many Goals the rail lists before "+ n more".
+const railLength = 10
+
+// more is the rail's closing line: "+ n more" for the Goals past those listed
+// and "m left out" for those Leave out takes away, each only when not 0.
+func (m reportMatches) more() string {
+	var parts []string
+	if n := m.Count - len(m.Shown); n > 0 {
+		parts = append(parts, fmt.Sprintf("+ %d more", n))
+	}
+	if m.LeftOut > 0 {
+		parts = append(parts, fmt.Sprintf("%d left out", m.LeftOut))
+	}
+	return strings.Join(parts, " · ")
 }
 
 // reportRuleRow is one rule row as the form posts it: its attribute's key, its
@@ -99,7 +134,7 @@ func (s *Server) handleNewReportForm(w http.ResponseWriter, r *http.Request, cur
 // draft. A refused save comes back as the builder, 422, as typed, with each
 // problem beside its input. Add rule, a rule row's × and Show matches save
 // nothing: the builder comes back as typed with a blank row added, without
-// that row, or listing the Goals its first draft would.
+// that row, or as it is, its rail listing the Goals as typed.
 func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "could not read the form", http.StatusBadRequest)
@@ -118,12 +153,6 @@ func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current
 		if err := s.loadReportBuilder(r, &v); err != nil {
 			http.Error(w, "could not load the builder", http.StatusInternalServerError)
 			return
-		}
-		if do == "show-matches" {
-			if err := s.showMatches(r, &v, in); err != nil {
-				http.Error(w, "could not find the matches", http.StatusInternalServerError)
-				return
-			}
 		}
 		render(w, r, http.StatusOK, reportBuilderPage(&current, v))
 		return
@@ -154,6 +183,44 @@ func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current
 		return
 	}
 	render(w, r, http.StatusUnprocessableEntity, reportBuilderPage(&current, v))
+}
+
+// handleReportMatches answers the builder's form, as it is typed, with only its
+// rail. The optional id names the saved definition being edited, whose default
+// baseline the matches are read against; with none, a new definition's.
+func (s *Server) handleReportMatches(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "could not read the form", http.StatusBadRequest)
+		return
+	}
+	var id int64
+	if raw := r.PostFormValue("id"); raw != "" {
+		var err error
+		if id, err = strconv.ParseInt(raw, 10, 64); err != nil {
+			s.notFound(w, r)
+			return
+		}
+		if _, err := s.svc.GetReportDefinition(r.Context(), id); err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				s.notFound(w, r)
+				return
+			}
+			http.Error(w, "could not load report", http.StatusInternalServerError)
+			return
+		}
+	}
+	v, _, _ := readReportBuilder(r)
+	goals, err := s.svc.ListGoals(r.Context())
+	if err != nil {
+		http.Error(w, "could not find the matches", http.StatusInternalServerError)
+		return
+	}
+	m, err := s.matchReport(r, goals, v, id)
+	if err != nil {
+		http.Error(w, "could not find the matches", http.StatusInternalServerError)
+		return
+	}
+	render(w, r, http.StatusOK, reportMatchesRail(m))
 }
 
 // handleSearchReportGoals answers a builder picker's search as it is typed:
@@ -303,8 +370,8 @@ func dedupeInt64s(ids []int64) []int64 {
 	return out
 }
 
-// loadReportBuilder fills in the choices the builder offers, and the listed
-// Goals as chips from their ids.
+// loadReportBuilder fills in the choices the builder offers, the listed Goals
+// as chips from their ids, and the rail.
 func (s *Server) loadReportBuilder(r *http.Request, v *reportBuilderView) error {
 	goals, err := s.svc.ListGoals(r.Context())
 	if err != nil {
@@ -324,7 +391,8 @@ func (s *Server) loadReportBuilder(r *http.Request, v *reportBuilderView) error 
 	v.Include = goalsByID(goals, v.IncludeIDs)
 	v.Exclude = goalsByID(goals, v.ExcludeIDs)
 	v.Attributes = ruleAttributes(domain.OfferedDimensions(dims), distinctOwners(goals))
-	return nil
+	v.Matches, err = s.matchReport(r, goals, *v, 0)
+	return err
 }
 
 // ruleAttributes are what a new rule can test: each Dimension given and its
@@ -367,33 +435,62 @@ func ruleAttributes(dims []domain.Dimension, owners []domain.Account) []ruleAttr
 	return out
 }
 
-// showMatches lists the Goals the definition in would select on its first
-// draft, read against the default baseline. A Goal listed that doesn't exist
-// selects nothing.
-func (s *Server) showMatches(r *http.Request, v *reportBuilderView, in domain.SaveReportDefinitionInput) error {
-	ids := func(goals []domain.Goal) []int64 {
-		out := make([]int64, 0, len(goals))
-		for _, g := range goals {
+// matchReport is the rail for the definition the builder v describes, read
+// against the default baseline of the saved definition id, or of a new one
+// when id is 0. It takes only the chosen mode's inputs, leaves out each rule
+// with no values but a Top-level one, and each listed Goal that doesn't exist.
+func (s *Server) matchReport(r *http.Request, goals []domain.Goal, v reportBuilderView, id int64) (reportMatches, error) {
+	existing := func(ids []int64) []int64 {
+		var out []int64
+		for _, g := range goalsByID(goals, ids) {
 			out = append(out, g.ID)
 		}
 		return out
 	}
-	def := domain.ReportDefinition{Mode: in.Mode, Rules: in.Rules}
-	switch in.Mode {
-	case domain.ReportModePicked:
-		def.Picked = ids(v.Picked)
-	case domain.ReportModeRules:
-		def.Include, def.Exclude = ids(v.Include), ids(v.Exclude)
+	def := domain.ReportDefinition{ID: id, Mode: domain.ReportModeRules}
+	if v.Mode == domain.ReportModePicked {
+		def.Mode, def.Picked = domain.ReportModePicked, existing(v.PickedIDs)
+	} else {
+		for _, row := range v.Rules {
+			if rule, _ := row.rule(); rule.Attribute == domain.RuleTopLevel || len(rule.Values) > 0 {
+				def.Rules = append(def.Rules, rule)
+			}
+		}
+		if len(def.Rules) == 0 {
+			return reportMatches{NeedsRule: true}, nil
+		}
+		def.Include, def.Exclude = existing(v.IncludeIDs), existing(v.ExcludeIDs)
 	}
-	report, err := s.svc.DraftReport(r.Context(), def, time.Time{})
+	selected, err := s.svc.SelectGoalsAgainst(r.Context(), def, time.Time{})
 	if err != nil {
-		return err
+		return reportMatches{}, err
 	}
-	v.Matches = reportGoals(report)
-	if v.Matches == nil {
-		v.Matches = []reportGoal{}
+	// What the rules alone select tells Also include's Goals from the rest,
+	// and which of Leave out's the rules would have selected.
+	var matched []domain.SelectedGoal
+	if def.Mode == domain.ReportModeRules {
+		bare := def
+		bare.Include, bare.Exclude = nil, nil
+		if matched, err = s.svc.SelectGoalsAgainst(r.Context(), bare, time.Time{}); err != nil {
+			return reportMatches{}, err
+		}
 	}
-	return nil
+	isMatched := func(goalID int64) bool {
+		return slices.ContainsFunc(matched, func(sg domain.SelectedGoal) bool { return sg.Goal.ID == goalID })
+	}
+	m := reportMatches{Count: len(selected)}
+	for _, goalID := range def.Exclude {
+		if isMatched(goalID) {
+			m.LeftOut++
+		}
+	}
+	slices.SortStableFunc(selected, func(a, b domain.SelectedGoal) int {
+		return cmp.Or(strings.Compare(strings.ToLower(a.Goal.Title), strings.ToLower(b.Goal.Title)), cmp.Compare(a.Goal.ID, b.Goal.ID))
+	})
+	for _, sg := range selected[:min(len(selected), railLength)] {
+		m.Shown = append(m.Shown, reportMatch{SelectedGoal: sg, Added: def.Mode == domain.ReportModeRules && !isMatched(sg.Goal.ID)})
+	}
+	return m, nil
 }
 
 // goalsByID are the Goals with the given ids, in the order given, leaving out
