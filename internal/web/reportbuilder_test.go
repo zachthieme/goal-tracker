@@ -934,6 +934,45 @@ func TestBuilderChipRemoveDropsItsGoalOnAnySubmitOverHTTP(t *testing.T) {
 
 // Each chip carries a Remove checkbox for its Goal, which the builder's
 // script hides, as its × removes the chip instead (ticket #168).
+// Without script, a Top-level rule row offers only "is Top-level" and "is not
+// Top-level": its values list, kept in the markup so script can switch the row
+// to another attribute, is hidden by a style that applies only before script
+// runs. Other rows keep theirs.
+func TestBuilderTopLevelRowHidesItsValuesWithoutScriptOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.CreateDimension(boss, "Team", "Platform")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"Platform MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleTopLevel},
+		"rules[0].op":        {domain.RuleIs},
+		"do":                 {"add-rule"},
+	})
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("Add rule: status %d, want 200; body:\n%s", resp.StatusCode, page)
+	}
+	rows := strings.Split(pageElement(t, page, "form", "report-builder"), `data-testid="report-rule"`)[1:]
+	if len(rows) != 2 {
+		t.Fatalf("got %d rule rows, want the Top-level row and a new one", len(rows))
+	}
+	if !strings.Contains(openTag(rows[0]), "data-top-level") {
+		t.Errorf("the Top-level row isn't marked data-top-level: %s", openTag(rows[0]))
+	}
+	if strings.Contains(openTag(rows[1]), "data-top-level") {
+		t.Errorf("the new, empty row is marked data-top-level: %s", openTag(rows[1]))
+	}
+	if got := cssRule(t, page, `.rb-form:not(.rb-js) [data-top-level] [data-testid="rule-values"]`); got != "display:none" {
+		t.Errorf("without script, a Top-level row's values are styled %q, want display:none", got)
+	}
+}
+
 func TestBuilderChipHasARemoveCheckboxScriptHidesOverHTTP(t *testing.T) {
 	t.Parallel()
 

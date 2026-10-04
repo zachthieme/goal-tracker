@@ -156,9 +156,11 @@ templ reportMatchesRail(m reportMatches) {
 // chosen attribute's. A Top-level row tests no values, so it offers only "is
 // Top-level" and "is not Top-level", but still carries every attribute's
 // values, hidden by script, so switching it to another attribute offers that
-// attribute's. The × submits the form without the row.
+// attribute's. Before script runs, a style hides a Top-level row's values, so
+// without script it offers only the two operators. The × submits the form
+// without the row.
 templ reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) {
-	<div data-testid="report-rule" class="rb-rule" data-rule>
+	<div data-testid="report-rule" class="rb-rule" data-rule data-top-level?={ row.Attribute == domain.RuleTopLevel }>
 		<select data-testid="rule-attribute" name={ ruleRowInput(i, "attribute") } aria-label="What the rule tests">
 			<option value="">Choose…</option>
 			for _, a := range v.Attributes {
@@ -378,6 +380,7 @@ templ reportBuilderStyles() {
 		.rb-actions{display:flex;gap:8px;flex-wrap:wrap}
 		.rb-form:not(.rb-js) .rb-js-only{display:none}
 		.rb-form.rb-js .rb-no-js{display:none}
+		.rb-form:not(.rb-js) [data-top-level] [data-testid="rule-values"]{display:none}
 		.rb-picker input[type=search]{width:100%}
 		.rb-results{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column}
 		.rb-result{display:flex;gap:8px;width:100%;text-align:left;background:none;border:none;padding:4px 8px;cursor:pointer}

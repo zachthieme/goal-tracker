@@ -53,6 +53,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Reports page is a status table: each report shows its scope, how many Goals it has with a bar of their Health, when it was last published (in the org's timezone) and by whom, and how many changes its draft has since — or "Never" and "Not published". Reports never published come first, then those with the most changes, then the longest since published. "Saved Report Definitions" is gone (#150).
 
 **Bug fixes:**
+- [user] Without JavaScript, a Top-level rule row in the Report builder offers only "is Top-level" and "is not Top-level", without a list of every attribute's values beside them (#149).
 - [internal] `scripts/shots.mjs` runs an action as an async function body only when it uses `await` in its code, not when the word appears in a string, comment, regex or property name, so such actions keep their completion value and awaited promise; a `name` ending in `.PNG` now saves `<name>.png` (#126).
 - [user] The Not found page for an unknown address shows the top bar's Home and Risks counts like every other page, and asking an unknown address with any method, not just GET, shows that page instead of a bare "Method Not Allowed" (#127).
 - [user] On the Risks page, Goals that aren't Stale and otherwise tie now list in title order; before, the one with the shorter cadence came first whatever its title (#161).
