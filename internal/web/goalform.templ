@@ -7,10 +7,12 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// goalFormPage is the New goal page: a plain form that creates a Proposed Goal
-// and lands on it, so it works without script. A refused submit comes back
-// with what was typed, a summary of every problem first, and each bad input
-// marked with why.
+// goalFormPage is the New goal page: a plain form that creates a Goal, Proposed
+// or activated at once, and lands on it, so it works without script. Beside it
+// the Ready to activate card holds the submit buttons; script posts the form
+// to /goals/new/checklist as it changes and swaps the card for the one that
+// comes back. A refused submit comes back with what was typed, a summary of
+// every problem first, and each bad input marked with why.
 templ goalFormPage(current *domain.Account, v goalFormView) {
 	@layout("New goal", current) {
 		@goalFormStyles()
@@ -20,19 +22,61 @@ templ goalFormPage(current *domain.Account, v goalFormView) {
 				<p class="muted">Say what the Goal is and why it matters.</p>
 			</div>
 		</header>
-		<form data-testid="goal-form" class="card gf-form" method="post" action="/goals/new">
-			@goalFormErrors(v)
-			@goalFormWhat(v)
-			@goalFormDelivery(v)
-			@goalFormKnow(v)
-			@goalFormParents(v)
-			@goalFormFits(v)
-			<div class="gf-actions">
-				<button type="submit" class="btn primary">Create Goal</button>
-				<a class="btn" href="/goals">Cancel</a>
+		<form
+			data-testid="goal-form"
+			class="gf-form"
+			method="post"
+			action="/goals/new"
+			hx-post="/goals/new/checklist"
+			hx-trigger="load, change, input delay:400ms"
+			hx-target={ "#" + goalFormReadyID }
+			hx-swap="outerHTML"
+			hx-sync="this:replace"
+		>
+			<div class="card gf-main">
+				@goalFormErrors(v)
+				@goalFormWhat(v)
+				@goalFormDelivery(v)
+				@goalFormKnow(v)
+				@goalFormParents(v)
+				@goalFormFits(v)
 			</div>
+			@goalFormReady(v)
 		</form>
 	}
+}
+
+// goalFormReadyID is the Ready to activate card's id, which the form's live
+// checklist swaps.
+const goalFormReadyID = "goal-form-ready"
+
+// goalFormReady is the Ready to activate card, sticky beside the form: how
+// many of the activation checklist's items the form meets, as a bar and "n of
+// m", each item done or missing, and the submit buttons. Create and activate
+// posts activate=1 and is disabled while the live checklist is incomplete;
+// Save as Proposed needs only a Title and So What.
+templ goalFormReady(v goalFormView) {
+	{{ done, of := v.readyCount() }}
+	<aside data-testid="goal-form-ready" id={ goalFormReadyID } class="card gf-ready" aria-labelledby="goal-form-ready-head">
+		<h2 id="goal-form-ready-head" class="gf-ready-head">Ready to activate</h2>
+		<progress class="gf-progress" value={ fmt.Sprint(done) } max={ fmt.Sprint(of) } aria-labelledby="goal-form-ready-head"></progress>
+		<p data-testid="goal-form-ready-count" class="muted small">{ fmt.Sprintf("%d of %d", done, of) }</p>
+		<ul data-testid="activation-checklist" class="gf-checklist">
+			for _, item := range v.activationFacts().checklist() {
+				if item.Done {
+					<li data-done="true" class="gf-check done"><span aria-hidden="true">✓</span> <span>{ item.Label }</span> <span class="muted small">done</span></li>
+				} else {
+					<li data-done="false" class="gf-check"><span aria-hidden="true">✗</span> <span>{ item.Label }</span> <span class="muted small">missing</span></li>
+				}
+			}
+		</ul>
+		<div class="gf-actions">
+			<button type="submit" id={ domain.InputActivate } name={ domain.InputActivate } value="1" class="btn primary" disabled?={ v.activateDisabled() }>Create and activate</button>
+			<button type="submit" class="btn">Save as Proposed</button>
+		</div>
+		<p class="muted small">Only Title and So What are needed to save.</p>
+		<a class="small gf-cancel" href="/goals">Cancel</a>
+	</aside>
 }
 
 // goalFormWhat is the "What and why" section: the Goal's Title, focused, and
@@ -596,12 +640,30 @@ templ goalFormInputError(v goalFormView, input string) {
 // goalFormStyles are the New goal page's own rules on top of app.css.
 templ goalFormStyles() {
 	<style>
-		.gf-form{display:flex;flex-direction:column;gap:16px;max-width:640px}
+		.gf-form{display:grid;grid-template-columns:minmax(0,640px) 280px;gap:24px;align-items:start}
+		.gf-main{display:flex;flex-direction:column;gap:16px;min-width:0}
+		.gf-ready{position:sticky;top:24px;display:flex;flex-direction:column;gap:12px}
+		.gf-ready p{margin:0}
+		.gf-ready-head{font-size:16px;margin:0}
+		.gf-progress{appearance:none;display:block;width:100%;height:8px;border:0;border-radius:999px;background:var(--color-surface-alt);overflow:hidden}
+		.gf-progress::-webkit-progress-bar{background:var(--color-surface-alt)}
+		.gf-progress::-webkit-progress-value{background:var(--color-ink-muted)}
+		.gf-progress::-moz-progress-bar{background:var(--color-ink-muted)}
+		.gf-checklist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+		.gf-check{display:flex;gap:8px;align-items:baseline}
+		.gf-check>span:first-child{width:16px;font-weight:600;color:var(--health-r-ink)}
+		.gf-check.done>span:first-child{color:var(--health-g-ink)}
+		.gf-check .muted{margin-left:auto}
+		.gf-cancel{align-self:flex-start}
+		@media (max-width:960px){
+			.gf-form{grid-template-columns:minmax(0,1fr)}
+			.gf-ready{position:static}
+		}
 		.gf-errors{flex-direction:column;align-items:flex-start;gap:4px}
 		.gf-errors ul{margin:0;padding-left:20px}
 		.gf-errors a{color:inherit}
 		.gf-input-error{display:block;font-size:13px;color:var(--color-danger-ink)}
-		.gf-actions{display:flex;gap:8px}
+		.gf-actions{display:flex;flex-direction:column;gap:8px}
 		.gf-section{display:flex;flex-direction:column;gap:16px;border:0;padding:0;margin:0;min-width:0}
 		.gf-section>legend{font-weight:600;padding:0;margin-bottom:4px}
 		.gf-hint{display:block}

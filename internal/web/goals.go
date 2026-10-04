@@ -1410,38 +1410,74 @@ type activationItem struct {
 	Done  bool
 }
 
-// activationChecklist restates the minimum standard domain.ActivateGoal
-// enforces, so the Owner sees what's missing before they try: a So What, an
-// Owner, Dated with a delivery date or Ongoing, a Milestone or Metric for a
-// Dated Goal or a Metric for an Ongoing one, and a value in each required
-// Dimension and Field (CONTEXT.md: Incomplete). The server still enforces the rules
-// on activation.
-func (v goalView) activationChecklist() []activationItem {
-	g := v.Goal
+// activationFacts are what the activation checklist reads, whether from a
+// saved Goal or from the New goal form as typed: its So What, whether it has
+// an Owner, its Kind and delivery date, how many Milestones and Metrics it
+// has, and every required Dimension and Field, set or not.
+type activationFacts struct {
+	SoWhat       string
+	Owned        bool
+	Kind         string
+	DeliveryDate time.Time
+	Milestones   int
+	Metrics      int
+	Required     []domain.RequiredValue
+}
+
+// checklist restates the minimum standard domain.ActivateGoal enforces, so the
+// Owner sees what's missing before they try: a So What, an Owner, Dated with a
+// delivery date or Ongoing, a Milestone or Metric for a Dated Goal or a Metric
+// for an Ongoing one, and a value in each required Dimension and Field
+// (CONTEXT.md: Incomplete). The server still enforces the rules on activation.
+func (f activationFacts) checklist() []activationItem {
 	items := []activationItem{
-		{"So What", strings.TrimSpace(g.SoWhat) != ""},
-		{"Owner", g.Owner.ID != 0},
-		{"Dated with a delivery date, or Ongoing", g.Kind == domain.GoalOngoing || (g.Kind == domain.GoalDated && !g.DeliveryDate.IsZero())},
+		{"So What", strings.TrimSpace(f.SoWhat) != ""},
+		{"Owner", f.Owned},
+		{"Dated with a delivery date, or Ongoing", f.Kind == domain.GoalOngoing || (f.Kind == domain.GoalDated && !f.DeliveryDate.IsZero())},
 	}
-	if g.Kind == domain.GoalOngoing {
-		items = append(items, activationItem{"A Metric", len(v.Metrics) > 0})
+	if f.Kind == domain.GoalOngoing {
+		items = append(items, activationItem{"A Metric", f.Metrics > 0})
 	} else {
-		items = append(items, activationItem{"A Milestone or Metric", len(v.Milestones)+len(v.Metrics) > 0})
+		items = append(items, activationItem{"A Milestone or Metric", f.Milestones+f.Metrics > 0})
 	}
-	for _, r := range v.Required {
+	for _, r := range f.Required {
 		items = append(items, activationItem{"A value in " + r.Name, r.Set})
 	}
 	return items
 }
 
-// readyToActivate reports whether every activation checklist item is done.
-func (v goalView) readyToActivate() bool {
-	for _, item := range v.activationChecklist() {
+// ready reports whether every activation checklist item is done.
+func (f activationFacts) ready() bool {
+	for _, item := range f.checklist() {
 		if !item.Done {
 			return false
 		}
 	}
 	return true
+}
+
+// activationFacts are the saved Goal's, for its activation checklist.
+func (v goalView) activationFacts() activationFacts {
+	g := v.Goal
+	return activationFacts{
+		SoWhat:       g.SoWhat,
+		Owned:        g.Owner.ID != 0,
+		Kind:         g.Kind,
+		DeliveryDate: g.DeliveryDate,
+		Milestones:   len(v.Milestones),
+		Metrics:      len(v.Metrics),
+		Required:     v.Required,
+	}
+}
+
+// activationChecklist is the Proposed Goal's activation checklist.
+func (v goalView) activationChecklist() []activationItem {
+	return v.activationFacts().checklist()
+}
+
+// readyToActivate reports whether every activation checklist item is done.
+func (v goalView) readyToActivate() bool {
+	return v.activationFacts().ready()
 }
 
 // ownershipOutcome names an ownership change's outcome for the Goal page's
