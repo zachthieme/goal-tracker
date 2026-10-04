@@ -82,6 +82,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Suggest a parent page no longer has a stray space before ", owned by" (#180).
 - [user] Requests that overlap, such as saving a report while its matches rail is still loading, now wait their turn for the database instead of failing with a server error (#177).
 - [user] In the report builder, the Matches panel updates as you add rules and pick Goals even before the report has a Name. Before, it kept saying "Add a rule to see matching Goals" until a Name was typed. Save still asks for a Name (#179).
+- [user] On a phone or tablet the report draft's baseline chip is now 44px tall, the same as the History, Edit definition and Publish… buttons beside it, instead of 40px (#183).
+- [internal] `web.WithLogger(nil)` keeps the server logging to `slog.Default()` instead of panicking on the first 500 (#184).
 
 **Infrastructure:**
 - [api] Database schema: migration `0037_parent_suggestions` adds a `parent_suggestions` table holding each Parent suggestion: its Goal, suggested parent, suggester, note, outcome, and when it was made and closed. It's additive and runs on startup (#144).
@@ -100,6 +102,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The test harness copies a database migrated once per test binary instead of running every migration for each test, so `make test` takes about 50 seconds instead of about 2½ minutes (#136).
 - [internal] The test harness escapes its database path, so a test whose temp directory holds a '#' (an unnamed subtest is "#00") gets the migrated copy instead of an empty database (#136).
 - [internal] A web test covers the page shown when a Nudge's email can't be sent: a 502 "Nudge not emailed" page saying "The Nudge was recorded, but the email to … couldn't be sent." names the Owner, and the Goal keeps its Nudge. Until now only the domain side was tested (#170).
+- [internal] Each 500 that draws its own page (a failed Nudge, both No change failures, a failed import, a failed Undo) has a test that it logs its cause with the request's method and path, and an Undo answering 404 has one that it logs nothing (#184).
 
 **Documentation:**
 - [internal] `CONTEXT.md` defines a Nudge (a one-off request to a Goal's Owner and Delegates to check in on a Stale or Path-overdue Goal) and a Parent suggestion (someone other than the Owner proposes a parent; only the Owner decides), and ADR 0006 records why a Parent suggestion is its own record rather than a link status (#143, #144).
