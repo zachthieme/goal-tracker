@@ -8,4 +8,4 @@ A Report definition today selects Goals by starting at root Goals and descending
 - The Goals in a report change only when a Goal's attributes change or an author edits the lists. Linking or unlinking a Goal doesn't move it in or out of a report.
 - Fields are not a rule attribute. ADR 0005 keeps Fields for describing a Goal, not for slicing, so a report shows Fields but never selects by them. Anything a report needs to select by becomes a Dimension.
 - A group of Goals that has no shared attribute is brought in with a Dimension (for example "In report"), not with links.
-- If anyone proposes adding a Depth or "and its descendants" back to the scope, point them to this ADR. A one-off action that copies a Goal's contributors into Also include is still open: it adds nothing live, so it would be consistent with this ADR.
+- If anyone proposes adding a Depth or "and its descendants" back to the scope, point them to this ADR. A one-off action that copies a Goal's contributors into Also include was considered and left out for now. It would add nothing live, so it wouldn't break this ADR, but hand-picking with search covers the need.
