@@ -5,7 +5,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,8 +12,6 @@ import (
 	"strings"
 	"time"
 	_ "time/tzdata" // the org's timezone resolves without the host's zoneinfo
-
-	_ "modernc.org/sqlite" // pure-Go SQLite driver (ADR 0004)
 
 	"github.com/zachthieme/goal-tracker/internal/clock"
 	"github.com/zachthieme/goal-tracker/internal/db"
@@ -44,7 +41,7 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("GOAL_TRACKER_REMINDER_DAY/GOAL_TRACKER_REMINDER_TIME: %w", err)
 	}
 
-	sqlDB, err := sql.Open("sqlite", "file:"+cfg.dbPath)
+	sqlDB, err := db.Open(cfg.dbPath)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
 	}
