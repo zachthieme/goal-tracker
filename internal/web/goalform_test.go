@@ -1734,3 +1734,45 @@ func TestGoalFormParentChipHasARemoveCheckboxScriptHides(t *testing.T) {
 		t.Errorf("the form's styles don't hide .gf-no-js when script runs")
 	}
 }
+
+// The Contributes to search swaps its matches into its results list rather
+// than inheriting the form's outerHTML swap, which would replace the list and
+// lose the id the next search targets, and syncs only with itself, on the New
+// goal and define pages alike (ticket #178). The search answers bare items,
+// with no list of its own to nest and no id outside the chips' templates.
+func TestGoalFormParentSearchKeepsItsResultsList(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Site speed", "Shoppers abandon slow pages.")
+	h.CreateGoal(sam, "Site revenue", "The business needs it.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, path := range []string{"/goals/new", fmt.Sprintf("/goals/%d/define", g.ID)} {
+		search := tagAround(t, getBody(t, client, ts.URL+path), `id="parent-search"`)
+		for name, want := range map[string]string{
+			"hx-target":  "#parent-results",
+			"hx-swap":    "innerHTML",
+			"hx-sync":    "this:replace",
+			"hx-include": "#parent-chips [name='parent_id']",
+		} {
+			if got := html.UnescapeString(attr(search, name)); got != want {
+				t.Errorf("%s: the search's %s = %q, want %q", path, name, got, want)
+			}
+		}
+	}
+
+	templates := regexp.MustCompile(`(?s)<template>.*?</template>`)
+	for _, q := range []string{"site", "nothing like it"} {
+		page := getBody(t, client, ts.URL+"/goals/search?"+url.Values{"q": {q}}.Encode())
+		body := strings.TrimSpace(page)
+		if !strings.HasPrefix(body, "<li") || strings.Contains(body, "<ul") {
+			t.Errorf("searching %q answers more than bare items:\n%s", q, page)
+		}
+		if outside := templates.ReplaceAllString(body, ""); regexp.MustCompile(`\sid="`).MatchString(outside) {
+			t.Errorf("searching %q answers an id outside the chips' templates:\n%s", q, page)
+		}
+	}
+}
