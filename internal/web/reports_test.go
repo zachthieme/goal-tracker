@@ -930,6 +930,32 @@ func TestReportsListSortsWhatNeedsPublishingFirstOverHTTP(t *testing.T) {
 	}
 }
 
+// At phone width the status table drops its column headings and each row
+// stacks as a block, its cells one under another, so nothing scrolls the page
+// sideways.
+func TestReportsListRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports")
+
+	phone := between(t, page, "@media (max-width:600px){", "}}") + "}"
+	for selector, want := range map[string]string{
+		".rp-table thead": "display:none",
+		".rp-table tr":    "display:block",
+		".rp-table td":    "display:block",
+	} {
+		if rule := cssRule(t, phone, selector); !strings.Contains(rule, want) {
+			t.Errorf("at 600px %s{%s} lacks %s", selector, rule, want)
+		}
+	}
+}
+
 // The print page sets the Report in the design system's serif, falling back to
 // Georgia, and marks Health with a shape as well as its name so it survives
 // black-and-white printing: ■ Red, ▲ Yellow, ● Green.
