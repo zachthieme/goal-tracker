@@ -106,33 +106,34 @@ func (s *Service) pendingDraftHighlights(ctx context.Context, goalID int64) ([]D
 	return out, nil
 }
 
-// DeleteDraftHighlight deletes a pending Draft Highlight outright: it is no
-// longer pending, and no Check-in keeps or discards it. Only its Goal's Owner
-// or a Delegate, as actorID, may delete one. One that doesn't exist, or that a
-// Check-in has already discarded, is ErrNotFound.
-func (s *Service) DeleteDraftHighlight(ctx context.Context, actorID, id int64) error {
+// DeleteDraftHighlight deletes a pending Draft Highlight outright, returning
+// it as it was: it is no longer pending, and no Check-in keeps or discards it.
+// Only its Goal's Owner or a Delegate, as actorID, may delete one. One that
+// doesn't exist, or that a Check-in has already discarded, is ErrNotFound.
+func (s *Service) DeleteDraftHighlight(ctx context.Context, actorID, id int64) (DraftHighlight, error) {
 	row, err := s.queries.GetDraftHighlight(ctx, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("%w: draft highlight %d", ErrNotFound, id)
+			return DraftHighlight{}, fmt.Errorf("%w: draft highlight %d", ErrNotFound, id)
 		}
-		return fmt.Errorf("get draft highlight: %w", err)
+		return DraftHighlight{}, fmt.Errorf("get draft highlight: %w", err)
 	}
-	goal, err := s.loadGoal(ctx, row.DraftHighlight.GoalID)
+	draft := draftHighlightFromRow(row.DraftHighlight, row.Account)
+	goal, err := s.loadGoal(ctx, draft.GoalID)
 	if err != nil {
-		return err
+		return DraftHighlight{}, err
 	}
 	if err := s.authorizeDraftHighlighter(ctx, goal, actorID); err != nil {
-		return err
+		return DraftHighlight{}, err
 	}
 	n, err := s.queries.DeletePendingDraftHighlight(ctx, id)
 	if err != nil {
-		return fmt.Errorf("delete draft highlight: %w", err)
+		return DraftHighlight{}, fmt.Errorf("delete draft highlight: %w", err)
 	}
 	if n == 0 {
-		return fmt.Errorf("%w: draft highlight %d is no longer pending", ErrNotFound, id)
+		return DraftHighlight{}, fmt.Errorf("%w: draft highlight %d is no longer pending", ErrNotFound, id)
 	}
-	return nil
+	return draft, nil
 }
 
 // draftHighlightPicks is what a Check-in does with the Draft Highlights it

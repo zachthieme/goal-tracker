@@ -117,7 +117,7 @@ func TestDraftHighlightsRefuseAnyoneElse(t *testing.T) {
 		if _, err := h.Service.PendingDraftHighlights(ctx, who.ID, goal.ID); !errors.Is(err, domain.ErrNotAuthorized) {
 			t.Errorf("%s seeing: err = %v, want ErrNotAuthorized", who.Email, err)
 		}
-		if err := h.Service.DeleteDraftHighlight(ctx, who.ID, draft.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		if _, err := h.Service.DeleteDraftHighlight(ctx, who.ID, draft.ID); !errors.Is(err, domain.ErrNotAuthorized) {
 			t.Errorf("%s deleting: err = %v, want ErrNotAuthorized", who.Email, err)
 		}
 	}
@@ -166,13 +166,13 @@ func TestDeleteDraftHighlightLeavesNoTrace(t *testing.T) {
 	h.AddDelegate(sam, dee, goal.ID)
 	draft := h.LogDraftHighlight(sam, goal.ID, domain.HighlightMiss, "Runbook was late.")
 
-	if err := h.Service.DeleteDraftHighlight(ctx, dee.ID, draft.ID); err != nil {
+	if _, err := h.Service.DeleteDraftHighlight(ctx, dee.ID, draft.ID); err != nil {
 		t.Fatalf("DeleteDraftHighlight by a Delegate: %v", err)
 	}
 	if pending, _ := h.Service.PendingDraftHighlights(ctx, sam.ID, goal.ID); len(pending) != 0 {
 		t.Errorf("pending = %q, want none after the delete", draftNotes(pending))
 	}
-	if err := h.Service.DeleteDraftHighlight(ctx, sam.ID, draft.ID); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := h.Service.DeleteDraftHighlight(ctx, sam.ID, draft.ID); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("deleting it again: err = %v, want ErrNotFound", err)
 	}
 
@@ -375,7 +375,7 @@ func TestCheckinIgnoresARowNamingNoPendingDraftHighlight(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	other := h.ActiveGoal(sam, "Cut costs", "Spend less.")
 	gone := h.LogDraftHighlight(sam, goal.ID, domain.HighlightInsight, "Deleted before the submit.")
-	if err := h.Service.DeleteDraftHighlight(ctx, sam.ID, gone.ID); err != nil {
+	if _, err := h.Service.DeleteDraftHighlight(ctx, sam.ID, gone.ID); err != nil {
 		t.Fatalf("DeleteDraftHighlight: %v", err)
 	}
 	elsewhere := h.LogDraftHighlight(sam, other.ID, domain.HighlightInsight, "On another Goal.")

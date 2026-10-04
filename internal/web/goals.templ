@@ -626,6 +626,7 @@ templ goalPage(current *domain.Account, v goalView) {
 					<h3>Milestones</h3>
 					@milestoneList(v, owner && g.Lifecycle == domain.LifecycleProposed)
 				</section>
+				@draftHighlightSection(v)
 				<section data-testid="goal-highlights" class="gp-block ruled">
 					<h2>Highlights</h2>
 					@highlightList(v.Highlights)
