@@ -25,6 +25,16 @@ JOIN accounts ON accounts.id = goals.owner_id
 WHERE links.child_id = @child_id AND links.status = 'accepted'
 ORDER BY goals.created_at DESC, goals.id DESC;
 
+-- name: ListPendingParentLinks :many
+-- The Goals a Goal has asked to contribute to and is waiting on (its Pending
+-- parents), each with the id of its request.
+SELECT links.id AS link_id, sqlc.embed(goals), sqlc.embed(accounts)
+FROM links
+JOIN goals ON goals.id = links.parent_id
+JOIN accounts ON accounts.id = goals.owner_id
+WHERE links.child_id = @child_id AND links.status = 'pending'
+ORDER BY links.created_at, links.id;
+
 -- name: ListChildGoals :many
 -- The Goals that contribute to a Goal (its accepted children), for navigation,
 -- each with the id of the link that can remove it.

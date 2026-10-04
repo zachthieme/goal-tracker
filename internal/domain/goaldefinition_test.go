@@ -590,3 +590,330 @@ func TestCreateDefinedGoalAddsANewValueToAnExtendableList(t *testing.T) {
 		t.Errorf("values = %v, want Globex", valueNames(values))
 	}
 }
+
+// DefineGoal (#135) finishes defining a Proposed Goal on the New goal form,
+// with CreateDefinedGoal's input.
+
+// definition is the input that leaves g as it is: its Title and So What, and
+// nothing else changed.
+func definition(g domain.Goal) domain.DefinedGoalInput {
+	return domain.DefinedGoalInput{Title: g.Title, SoWhat: g.SoWhat, OwnerID: g.Owner.ID, Kind: g.Kind, DeliveryDate: g.DeliveryDate}
+}
+
+func TestDefineGoalChangesKindAddsAMilestoneAndSwapsAValueInOneCall(t *testing.T) {
+	t.Parallel()
+
+	s := newDefinedGoalSetup(t)
+	ctx := context.Background()
+	area := s.h.CreateSeveralValuesDimension(s.admin, "Area", "Billing", "Search", "Mobile")
+	g := s.h.CreateGoal(s.owner, "Ship v2", "Customers wait too long for v2.")
+	if _, err := s.h.Service.MarkGoalOngoing(ctx, g.ID); err != nil {
+		t.Fatalf("MarkGoalOngoing: %v", err)
+	}
+	s.h.AssignGoalValue(g, area.Values[0])
+	s.h.AssignGoalValue(g, area.Values[1])
+	s.h.SetGoalField(s.owner, g, s.headcount, "3")
+	in := definition(g)
+	in.SoWhat = "Customers churn waiting for v2."
+	in.Kind, in.DeliveryDate = domain.GoalDated, futureDate
+	in.CadenceDays = 14
+	in.Milestones = []domain.MilestoneDefinition{{Name: "Beta cut", Date: futureDate.AddDate(0, 0, -30)}}
+	in.ValueIDs = []int64{area.Values[1].ID, area.Values[2].ID} // Billing unticked, Mobile ticked
+	in.FieldValues = map[int64]string{s.headcount.ID: ""}
+
+	got, err := s.h.Service.DefineGoal(ctx, s.owner.ID, g.ID, in)
+	if err != nil {
+		t.Fatalf("DefineGoal: %v", err)
+	}
+
+	if got.ID != g.ID || got.Lifecycle != domain.LifecycleProposed {
+		t.Errorf("Goal = %d %q, want %d still Proposed", got.ID, got.Lifecycle, g.ID)
+	}
+	if got.Kind != domain.GoalDated || !got.DeliveryDate.Equal(futureDate) {
+		t.Errorf("Kind, delivery date = %q, %v, want Dated, %v", got.Kind, got.DeliveryDate, futureDate)
+	}
+	if got.CadenceDays != 14 {
+		t.Errorf("CadenceDays = %d, want 14", got.CadenceDays)
+	}
+	if got.SoWhat != "Customers churn waiting for v2." {
+		t.Errorf("So What = %q, want the new one", got.SoWhat)
+	}
+	revisions, err := s.h.Service.ListSoWhatRevisions(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("ListSoWhatRevisions: %v", err)
+	}
+	if len(revisions) == 0 || revisions[0].SoWhat != "Customers churn waiting for v2." || revisions[0].Author.ID != s.owner.ID {
+		t.Errorf("latest revision = %+v, want the new So What by the Owner", revisions)
+	}
+	milestones, err := s.h.Service.ListMilestones(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("ListMilestones: %v", err)
+	}
+	if len(milestones) != 1 || milestones[0].Name != "Beta cut" {
+		t.Errorf("Milestones = %+v, want Beta cut", milestones)
+	}
+	values, err := s.h.Service.GoalValues(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	if names := sorted(valueNames(values)); !slices.Equal(names, []string{"Mobile", "Search"}) {
+		t.Errorf("values = %v, want Search and Mobile", names)
+	}
+	fields, err := s.h.Service.GoalFields(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("GoalFields: %v", err)
+	}
+	if len(fields) != 0 {
+		t.Errorf("Fields = %+v, want Headcount cleared", fields)
+	}
+}
+
+// Only the Owner defines their Goal, and only while it is Proposed; either
+// refusal changes nothing.
+func TestDefineGoalRefusesAnyoneButTheOwnerAndAGoalNotProposed(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	ctx := context.Background()
+	admin := h.SignIn("admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	proposed := h.CreateGoal(sam, "Ship v2", "Customers wait too long for v2.")
+	h.AddDelegate(sam, kim, proposed.ID)
+	active := h.ActiveGoal(sam, "Grow revenue", "Revenue is flat.")
+
+	for _, actor := range []domain.Account{kim, admin} {
+		in := definition(proposed)
+		in.Kind = domain.GoalOngoing
+		if _, err := h.Service.DefineGoal(ctx, actor.ID, proposed.ID, in); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("DefineGoal by %s: err = %v, want ErrNotAuthorized", actor.Email, err)
+		}
+	}
+	in := definition(active)
+	in.CadenceDays = 30
+	if _, err := h.Service.DefineGoal(ctx, sam.ID, active.ID, in); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("DefineGoal on an Active Goal: err = %v, want ErrValidation", err)
+	}
+
+	if got, _ := h.Service.ViewGoal(ctx, proposed.ID); got.Kind != "" {
+		t.Errorf("Kind = %q, want still none chosen", got.Kind)
+	}
+	if got, _ := h.Service.ViewGoal(ctx, active.ID); got.CadenceDays == 30 {
+		t.Errorf("CadenceDays = %d, want unchanged", got.CadenceDays)
+	}
+}
+
+// A value Retired after the form loaded is refused, under its input, and
+// nothing else the submit changed is kept.
+func TestDefineGoalWithAValueRetiredSinceLeavesTheGoalUnchanged(t *testing.T) {
+	t.Parallel()
+
+	s := newDefinedGoalSetup(t)
+	ctx := context.Background()
+	area := s.h.CreateSeveralValuesDimension(s.admin, "Area", "Billing", "Search")
+	g := s.h.CreateGoal(s.owner, "Ship v2", "Customers wait too long for v2.")
+	s.h.AssignGoalValue(g, area.Values[0])
+	if err := s.h.Service.RetireDimensionValue(ctx, s.admin.ID, area.Values[1].ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	in := definition(g)
+	in.Kind, in.DeliveryDate = domain.GoalDated, futureDate
+	in.Milestones = []domain.MilestoneDefinition{{Name: "Beta cut", Date: futureDate}}
+	in.ValueIDs = []int64{area.Values[1].ID} // Billing unticked, Search ticked
+
+	_, err := s.h.Service.DefineGoal(ctx, s.owner.ID, g.ID, in)
+
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
+	}
+	var inputs []string
+	for _, p := range domain.InputErrors(err) {
+		inputs = append(inputs, p.Input)
+	}
+	if !slices.Equal(inputs, []string{id("value:", area.Values[1].ID)}) {
+		t.Errorf("inputs refused = %v, want Search's", inputs)
+	}
+	got, err := s.h.Service.ViewGoal(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("ViewGoal: %v", err)
+	}
+	if got.Kind != "" {
+		t.Errorf("Kind = %q, want still none chosen", got.Kind)
+	}
+	if milestones, _ := s.h.Service.ListMilestones(ctx, g.ID); len(milestones) != 0 {
+		t.Errorf("Milestones = %+v, want none", milestones)
+	}
+	values, err := s.h.Service.GoalValues(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	if names := valueNames(values); !slices.Equal(names, []string{"Billing"}) {
+		t.Errorf("values = %v, want Billing still", names)
+	}
+}
+
+// A Retired value the Goal already carries may be kept, as SetGoalValues
+// keeps it, and a Field value it already has needs no checking.
+func TestDefineGoalKeepsARetiredValueAndFieldTheGoalAlreadyHas(t *testing.T) {
+	t.Parallel()
+
+	s := newDefinedGoalSetup(t)
+	ctx := context.Background()
+	g := s.h.CreateGoal(s.owner, "Ship v2", "Customers wait too long for v2.")
+	s.h.AssignGoalValue(g, s.team.Values[0])
+	s.h.SetGoalField(s.owner, g, s.headcount, "3")
+	if err := s.h.Service.RetireDimensionValue(ctx, s.admin.ID, s.team.Values[0].ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+	if err := s.h.Service.RetireField(ctx, s.admin.ID, s.headcount.ID); err != nil {
+		t.Fatalf("RetireField: %v", err)
+	}
+	in := definition(g)
+	in.ValueIDs = []int64{s.team.Values[0].ID}
+	in.FieldValues = map[int64]string{s.headcount.ID: "3"}
+
+	if _, err := s.h.Service.DefineGoal(ctx, s.owner.ID, g.ID, in); err != nil {
+		t.Fatalf("DefineGoal: %v", err)
+	}
+
+	values, err := s.h.Service.GoalValues(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("GoalValues: %v", err)
+	}
+	if names := valueNames(values); !slices.Equal(names, []string{"Platform"}) {
+		t.Errorf("values = %v, want Platform kept", names)
+	}
+}
+
+// A parent already linked, Accepted or Pending, is kept and not requested
+// again; a new one is requested; one that would close a cycle is refused.
+func TestDefineGoalRequestsOnlyNewParentsAndRefusesACycle(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	g := h.CreateGoal(sam, "Ship v2", "Customers wait too long for v2.")
+	accepted := h.CreateGoal(sam, "Win enterprise", "Enterprise deals stall.")
+	pending := h.CreateGoal(kim, "Grow revenue", "Revenue is flat.")
+	fresh := h.CreateGoal(kim, "Cut churn", "Customers leave.")
+	child := h.CreateGoal(sam, "Fix search", "Search is slow.")
+	h.RequestLink(sam, g, accepted, "")
+	h.RequestLink(sam, g, pending, "")
+	h.RequestLink(sam, child, g, "")
+
+	in := definition(g)
+	in.ParentIDs = []int64{child.ID}
+	_, err := h.Service.DefineGoal(ctx, sam.ID, g.ID, in)
+	var inputs []string
+	for _, p := range domain.InputErrors(err) {
+		inputs = append(inputs, p.Input)
+	}
+	if !slices.Equal(inputs, []string{id("parent:", child.ID)}) {
+		t.Errorf("err = %v, want the cycle refused under %s", err, id("parent:", child.ID))
+	}
+
+	in.ParentIDs = []int64{accepted.ID, pending.ID, fresh.ID}
+	if _, err := h.Service.DefineGoal(ctx, sam.ID, g.ID, in); err != nil {
+		t.Fatalf("DefineGoal: %v", err)
+	}
+	requests, err := h.Service.PendingLinkRequests(ctx, kim.ID)
+	if err != nil {
+		t.Fatalf("PendingLinkRequests: %v", err)
+	}
+	var parents []string
+	for _, l := range requests {
+		parents = append(parents, l.Parent.Title)
+	}
+	if !slices.Equal(sorted(parents), []string{"Cut churn", "Grow revenue"}) {
+		t.Errorf("Kim's pending requests = %v, want Grow revenue once and Cut churn", parents)
+	}
+	if got := h.ParentsOf(g); len(got) != 1 || got[0].ID != accepted.ID {
+		t.Errorf("Accepted parents = %+v, want %s", got, accepted.Title)
+	}
+}
+
+// With Activate, a definition that completes the checklist activates the Goal;
+// one that doesn't is refused under activate and keeps nothing.
+func TestDefineGoalWithActivate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Ship v2", "Customers wait too long for v2.")
+	in := definition(g)
+	in.Kind, in.DeliveryDate = domain.GoalDated, futureDate
+	in.Activate = true
+
+	_, err := h.Service.DefineGoal(ctx, sam.ID, g.ID, in)
+	if problems := domain.InputErrors(err); len(problems) != 1 || problems[0].Input != domain.InputActivate {
+		t.Fatalf("err = %v, want the activation refused under activate", err)
+	}
+	if got, _ := h.Service.ViewGoal(ctx, g.ID); got.Kind != "" {
+		t.Errorf("Kind = %q, want the refused submit to keep nothing", got.Kind)
+	}
+
+	in.Milestones = []domain.MilestoneDefinition{{Name: "Beta cut", Date: futureDate}}
+	got, err := h.Service.DefineGoal(ctx, sam.ID, g.ID, in)
+	if err != nil {
+		t.Fatalf("DefineGoal: %v", err)
+	}
+	if got.Lifecycle != domain.LifecycleActive {
+		t.Errorf("Lifecycle = %q, want %q", got.Lifecycle, domain.LifecycleActive)
+	}
+}
+
+// The Title can't be changed while finishing a Goal's definition.
+func TestDefineGoalRefusesAChangedTitle(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Ship v2", "Customers wait too long for v2.")
+	in := definition(g)
+	in.Title = "Ship v3"
+
+	_, err := h.Service.DefineGoal(context.Background(), sam.ID, g.ID, in)
+
+	if problems := domain.InputErrors(err); len(problems) != 1 || problems[0].Input != domain.InputTitle {
+		t.Errorf("err = %v, want the Title refused", err)
+	}
+}
+
+// A Goal's parent candidates are the Goals it could be asked to contribute
+// to: neither itself, nor a Goal that contributes to it however indirectly,
+// which would close a cycle (ADR-0001), nor a Goal it is already linked to,
+// Accepted or Pending.
+func TestParentCandidatesLeaveOutCyclesAndExistingParents(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	g := h.CreateGoal(sam, "Ship v2", "Customers wait too long for v2.")
+	child := h.CreateGoal(sam, "Fix search", "Search is slow.")
+	grandchild := h.CreateGoal(sam, "Index faster", "Indexing lags.")
+	accepted := h.CreateGoal(sam, "Win enterprise", "Enterprise deals stall.")
+	pending := h.CreateGoal(kim, "Grow revenue", "Revenue is flat.")
+	free := h.CreateGoal(kim, "Cut churn", "Customers leave.")
+	h.RequestLink(sam, child, g, "")
+	h.RequestLink(sam, grandchild, child, "")
+	h.RequestLink(sam, g, accepted, "")
+	h.RequestLink(sam, g, pending, "")
+
+	candidates, err := h.Service.ParentCandidates(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("ParentCandidates: %v", err)
+	}
+
+	var titles []string
+	for _, c := range candidates {
+		titles = append(titles, c.Title)
+	}
+	if !slices.Equal(sorted(titles), []string{free.Title}) {
+		t.Errorf("candidates = %v, want only %s", titles, free.Title)
+	}
+}

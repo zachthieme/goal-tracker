@@ -677,6 +677,20 @@ func (s *Service) ParentLinks(ctx context.Context, goalID int64) ([]GoalLink, er
 	return links, nil
 }
 
+// PendingParentLinks returns the parents goalID has requested and is waiting
+// on, oldest request first, each paired with its request's link id.
+func (s *Service) PendingParentLinks(ctx context.Context, goalID int64) ([]GoalLink, error) {
+	rows, err := s.queries.ListPendingParentLinks(ctx, goalID)
+	if err != nil {
+		return nil, fmt.Errorf("list pending parent links: %w", err)
+	}
+	links := make([]GoalLink, 0, len(rows))
+	for _, r := range rows {
+		links = append(links, GoalLink{LinkID: r.LinkID, Goal: goalFromRow(r.Goal, r.Account)})
+	}
+	return links, nil
+}
+
 // ChildLinks returns goalID's accepted children paired with their link ids, for
 // navigation and removal.
 func (s *Service) ChildLinks(ctx context.Context, goalID int64) ([]GoalLink, error) {

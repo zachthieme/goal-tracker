@@ -481,6 +481,65 @@ func (q *Queries) ListPendingLinksForOwner(ctx context.Context, ownerID int64) (
 	return items, nil
 }
 
+const listPendingParentLinks = `-- name: ListPendingParentLinks :many
+SELECT links.id AS link_id, goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
+FROM links
+JOIN goals ON goals.id = links.parent_id
+JOIN accounts ON accounts.id = goals.owner_id
+WHERE links.child_id = ?1 AND links.status = 'pending'
+ORDER BY links.created_at, links.id
+`
+
+type ListPendingParentLinksRow struct {
+	LinkID  int64
+	Goal    Goal
+	Account Account
+}
+
+// The Goals a Goal has asked to contribute to and is waiting on (its Pending
+// parents), each with the id of its request.
+func (q *Queries) ListPendingParentLinks(ctx context.Context, childID int64) ([]ListPendingParentLinksRow, error) {
+	rows, err := q.db.QueryContext(ctx, listPendingParentLinks, childID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListPendingParentLinksRow
+	for rows.Next() {
+		var i ListPendingParentLinksRow
+		if err := rows.Scan(
+			&i.LinkID,
+			&i.Goal.ID,
+			&i.Goal.Title,
+			&i.Goal.SoWhat,
+			&i.Goal.OwnerID,
+			&i.Goal.Lifecycle,
+			&i.Goal.CreatedAt,
+			&i.Goal.Kind,
+			&i.Goal.DeliveryDate,
+			&i.Goal.CadenceDays,
+			&i.Goal.TopLevel,
+			&i.Goal.ActivatedAt,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markLinkRemovalRestored = `-- name: MarkLinkRemovalRestored :execrows
 UPDATE link_removals SET restored_at = ? WHERE id = ? AND restored_at IS NULL
 `

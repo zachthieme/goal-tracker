@@ -761,3 +761,31 @@ func TestRestoreLinkRequestRefusesACycleThatAppearedSinceTheRejection(t *testing
 		t.Errorf("pending = %+v, want none after a refused Undo", got)
 	}
 }
+
+// A Goal's Pending parent requests are listed apart from its Accepted parents,
+// each with its link, so the New goal form can show both and request neither
+// again.
+func TestPendingParentLinksListsAGoalsPendingRequests(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	g := h.CreateGoal(sam, "Ship v2", "Customers wait too long for v2.")
+	own := h.CreateGoal(sam, "Win enterprise", "Enterprise deals stall.")
+	theirs := h.CreateGoal(kim, "Grow revenue", "Revenue is flat.")
+	h.RequestLink(sam, g, own, "")
+	link := h.RequestLink(sam, g, theirs, "")
+	other := h.CreateGoal(sam, "Fix search", "Search is slow.")
+	h.RequestLink(sam, other, theirs, "")
+
+	pending, err := h.Service.PendingParentLinks(ctx, g.ID)
+	if err != nil {
+		t.Fatalf("PendingParentLinks: %v", err)
+	}
+
+	if len(pending) != 1 || pending[0].LinkID != link.ID || pending[0].Goal.ID != theirs.ID || pending[0].Goal.Owner.ID != kim.ID {
+		t.Errorf("pending parents = %+v, want only %s, owned by Kim", pending, theirs.Title)
+	}
+}
