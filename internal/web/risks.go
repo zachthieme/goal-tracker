@@ -623,8 +623,10 @@ func sortRiskRows(rows []riskGoalRow) {
 		if c := cmp.Compare(boolRank(!aIsStale), boolRank(!bIsStale)); c != 0 {
 			return c
 		}
-		if c := cmp.Compare(bStale.Days-b.Goal.CadenceDays, aStale.Days-a.Goal.CadenceDays); c != 0 {
-			return c
+		if aIsStale && bIsStale {
+			if c := cmp.Compare(bStale.Days-b.Goal.CadenceDays, aStale.Days-a.Goal.CadenceDays); c != 0 {
+				return c
+			}
 		}
 		return cmp.Compare(strings.ToLower(a.Goal.Title), strings.ToLower(b.Goal.Title))
 	})
