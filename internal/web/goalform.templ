@@ -22,35 +22,8 @@ templ goalFormPage(current *domain.Account, v goalFormView) {
 		</header>
 		<form data-testid="goal-form" class="card gf-form" method="post" action="/goals/new">
 			@goalFormErrors(v)
-			<label class="field">
-				<span>Title</span>
-				<input
-					type="text"
-					id={ domain.InputTitle }
-					name={ domain.InputTitle }
-					value={ v.Title }
-					required
-					autofocus
-					if v.bad(domain.InputTitle) != "" {
-						aria-invalid="true"
-						aria-describedby={ domain.InputTitle + "-error" }
-					}
-				/>
-				@goalFormInputError(v, domain.InputTitle)
-			</label>
-			<label class="field">
-				<span>So What <span class="hint">— why it matters</span></span>
-				<textarea
-					id={ domain.InputSoWhat }
-					name={ domain.InputSoWhat }
-					required
-					if v.bad(domain.InputSoWhat) != "" {
-						aria-invalid="true"
-						aria-describedby={ domain.InputSoWhat + "-error" }
-					}
-				>{ v.SoWhat }</textarea>
-				@goalFormInputError(v, domain.InputSoWhat)
-			</label>
+			@goalFormWhat(v)
+			@goalFormDelivery(v)
 			@goalFormKnow(v)
 			@goalFormParents(v)
 			<div class="gf-actions">
@@ -59,6 +32,121 @@ templ goalFormPage(current *domain.Account, v goalFormView) {
 			</div>
 		</form>
 	}
+}
+
+// goalFormWhat is the "What and why" section: the Goal's Title, focused, and
+// its So What.
+templ goalFormWhat(v goalFormView) {
+	<fieldset data-testid="goal-form-what" class="gf-section">
+		<legend>What and why</legend>
+		<label class="field">
+			<span>Title</span>
+			<input
+				type="text"
+				id={ domain.InputTitle }
+				name={ domain.InputTitle }
+				value={ v.Title }
+				required
+				autofocus
+				if v.bad(domain.InputTitle) != "" {
+					aria-invalid="true"
+					aria-describedby={ domain.InputTitle + "-error" }
+				}
+			/>
+			@goalFormInputError(v, domain.InputTitle)
+		</label>
+		<label class="field">
+			<span>So What <span class="hint gf-hint">The customer problem, and what changes when this succeeds.</span></span>
+			<textarea
+				id={ domain.InputSoWhat }
+				name={ domain.InputSoWhat }
+				required
+				if v.bad(domain.InputSoWhat) != "" {
+					aria-invalid="true"
+					aria-describedby={ domain.InputSoWhat + "-error" }
+				}
+			>{ v.SoWhat }</textarea>
+			@goalFormInputError(v, domain.InputSoWhat)
+		</label>
+	</fieldset>
+}
+
+// goalFormDelivery is the "Delivery" section: the Kind, neither chosen at
+// first, the delivery date a Dated Goal needs, and the Check-in cadence,
+// Weekly at first. The delivery date shows once Dated is chosen and Custom's
+// days once Custom is, by CSS :has, so a browser without it shows both always.
+templ goalFormDelivery(v goalFormView) {
+	<fieldset data-testid="goal-form-delivery" class="gf-section gf-delivery">
+		<legend>Delivery</legend>
+		<fieldset id={ domain.InputKind } class="gf-group">
+			<legend>Kind</legend>
+			<div class="gf-segments">
+				@kindChoice(v, domain.GoalDated, "Has a delivery date; its Health is judged against that date and its Milestones.")
+				@kindChoice(v, domain.GoalOngoing, "Has no delivery date; its Health is judged against its Metrics' targets.")
+			</div>
+			@goalFormInputError(v, domain.InputKind)
+		</fieldset>
+		<label class="field gf-date">
+			<span>Delivery date</span>
+			<input
+				type="date"
+				id={ domain.InputDeliveryDate }
+				name={ domain.InputDeliveryDate }
+				value={ v.DeliveryDate }
+				if v.bad(domain.InputDeliveryDate) != "" {
+					aria-invalid="true"
+					aria-describedby={ domain.InputDeliveryDate + "-error" }
+				}
+			/>
+			@goalFormInputError(v, domain.InputDeliveryDate)
+		</label>
+		<fieldset class="gf-group gf-cadence">
+			<legend>Check-in cadence</legend>
+			<div class="gf-picks">
+				for _, c := range cadenceChips {
+					<label class="gf-pick">
+						<input type="radio" id={ "cadence-" + c.Value } name={ domain.InputCadence } value={ c.Value } checked?={ v.cadenceChosen() == c.Value }/>
+						<span>{ c.Label }</span>
+					</label>
+				}
+			</div>
+			<label class="field gf-custom">
+				<span>Days between Check-ins</span>
+				<input
+					type="number"
+					id={ domain.InputCadence }
+					name={ inputCadenceDays }
+					value={ v.customDays() }
+					min="1"
+					step="1"
+					inputmode="numeric"
+					if v.bad(domain.InputCadence) != "" {
+						aria-invalid="true"
+						aria-describedby={ domain.InputCadence + "-error" }
+					}
+				/>
+				@goalFormInputError(v, domain.InputCadence)
+			</label>
+		</fieldset>
+	</fieldset>
+}
+
+// kindChoice is one segment of the Kind group: the Kind and what it means.
+templ kindChoice(v goalFormView, kind, means string) {
+	<label class="gf-pick gf-segment">
+		<input
+			type="radio"
+			id={ "kind-" + strings.ToLower(kind) }
+			name={ domain.InputKind }
+			value={ kind }
+			checked?={ v.Kind == kind }
+			if v.bad(domain.InputKind) != "" {
+				aria-invalid="true"
+				aria-describedby={ domain.InputKind + "-error" }
+			}
+		/>
+		<span><strong>{ kind }</strong> <span class="hint">{ means }</span></span>
+	</label>
 }
 
 // goalFormKnow is the "How you'll know" section: the Goal's Milestones and
@@ -402,6 +490,24 @@ templ goalFormStyles() {
 		.gf-errors a{color:inherit}
 		.gf-input-error{display:block;font-size:13px;color:var(--color-danger-ink)}
 		.gf-actions{display:flex;gap:8px}
+		.gf-section{display:flex;flex-direction:column;gap:16px;border:0;padding:0;margin:0;min-width:0}
+		.gf-section>legend{font-weight:600;padding:0;margin-bottom:4px}
+		.gf-hint{display:block}
+		.gf-group{display:flex;flex-direction:column;gap:8px;border:0;padding:0;margin:0;min-width:0}
+		.gf-group>legend{font-weight:600;font-size:13px;padding:0;margin-bottom:8px}
+		.gf-segments{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+		.gf-picks{display:flex;flex-wrap:wrap;gap:8px}
+		.gf-pick{position:relative;display:inline-flex;align-items:center;gap:8px;padding:4px 12px;border:1px solid var(--color-border);border-radius:999px;cursor:pointer}
+		.gf-segment{align-items:flex-start;padding:8px 12px;border-radius:6px}
+		.gf-segment .hint{display:block}
+		.gf-delivery:not(:has(#kind-dated:checked)) .gf-date{display:none}
+		.gf-cadence:not(:has(#cadence-custom:checked)) .gf-custom{display:none}
+		.gf-custom input{max-width:160px}
+		@supports selector(:has(*)){
+			.gf-pick input{position:absolute;opacity:0;pointer-events:none}
+			.gf-pick:has(input:checked){border-color:var(--color-primary);background:var(--color-primary-subtle)}
+			label.gf-pick:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}
+		}
 		.gf-know{display:flex;flex-direction:column;gap:12px;border:0;padding:0;margin:0;min-width:0}
 		.gf-know legend{font-weight:600;padding:0;margin-bottom:4px}
 		.gf-know-head{font-size:14px;margin:4px 0 0}
