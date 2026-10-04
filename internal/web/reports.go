@@ -138,8 +138,11 @@ func fmtMonthDay(t time.Time) string {
 // ticked (include-{highlight}), each with its section (pick-{highlight}, which
 // is ignored for a Highlight left unticked), and the section text for each
 // section (text-{section}). It redirects back to the draft, against the
-// baseline the reader picked (the baseline query parameter), if any.
-func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+// baseline the reader picked (the baseline query parameter), if any. An htmx
+// post is the compose form autosaving: it gets the preview and the save status
+// instead, and a refusal changes only the save status, so what the author typed
+// stays.
+func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		s.notFound(w, r)
@@ -166,19 +169,56 @@ func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, _
 	for _, section := range narrativeSections {
 		in.Text[section] = r.FormValue("text-" + section)
 	}
+	hx := r.Header.Get("HX-Request") == "true"
 	if err := s.svc.CurateNarrative(r.Context(), id, in); err != nil {
-		if errors.Is(err, domain.ErrNotFound) {
+		switch {
+		case errors.Is(err, domain.ErrNotFound):
 			s.notFound(w, r)
-			return
+		case hx && errors.Is(err, domain.ErrValidation):
+			w.Header().Set("HX-Reswap", "none")
+			render(w, r, http.StatusOK, saveStatus("Not saved: "+plainReason(err), true))
+		default:
+			writeReportError(w, err)
 		}
-		writeReportError(w, err)
 		return
 	}
 	target := "/reports/" + strconv.FormatInt(id, 10)
 	if baseline := r.URL.Query().Get("baseline"); baseline != "" {
 		target += "?baseline=" + url.QueryEscape(baseline)
 	}
+	if hx {
+		s.renderNarrativeSaved(w, r, current, id, target)
+		return
+	}
 	http.Redirect(w, r, target, http.StatusSeeOther)
+}
+
+// renderNarrativeSaved answers an autosave with the draft's preview, against
+// the baseline the reader picked, and the save status saying Saved. The
+// preview's forms come back to draft, the draft's path.
+func (s *Server) renderNarrativeSaved(w http.ResponseWriter, r *http.Request, current domain.Account, id int64, draft string) {
+	def, err := s.svc.GetReportDefinition(r.Context(), id)
+	if err != nil {
+		http.Error(w, "could not load report", http.StatusInternalServerError)
+		return
+	}
+	baseline, err := parseDate(r.URL.Query().Get("baseline"))
+	if err != nil {
+		http.Error(w, "the baseline must be a date", http.StatusBadRequest)
+		return
+	}
+	report, err := s.svc.DraftReport(r.Context(), def, baseline)
+	if err != nil {
+		http.Error(w, "could not build the draft", http.StatusInternalServerError)
+		return
+	}
+	d, err := s.draftDiscussion(r, current, def.ID)
+	if err != nil {
+		http.Error(w, "could not load Action Items", http.StatusInternalServerError)
+		return
+	}
+	d.Return = draft
+	render(w, r, http.StatusOK, narrativeSaved(report, s.svc.Now(), d))
 }
 
 // handlePublishReport publishes a Report Definition, freezing its Report
