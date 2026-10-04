@@ -432,7 +432,11 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 		http.Error(w, "could not load goal", http.StatusInternalServerError)
 		return
 	}
-	view.Toast = s.linkRemovalToast(r.Context(), takeUndo(w, r), current, id)
+	offer := takeUndo(w, r)
+	view.Toast = cmp.Or(
+		s.linkRemovalToast(r.Context(), offer, current, id),
+		s.suggestionDeclineToast(r.Context(), offer, current, id, ""),
+	)
 	view.Open = goalForm(r.URL.Query().Get("open"))
 	view.History = view.History.narrowed(r.URL.Query())
 	render(w, r, http.StatusOK, goalPage(&current, view))
@@ -569,6 +573,18 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("read health strip: %w", err)
 	}
+	suggestions, err := s.svc.ParentSuggestions(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("load parent suggestions: %w", err)
+	}
+	// The Owner decides every open suggestion; anyone else sees only their
+	// own, to withdraw (CONTEXT.md: Parent suggestion).
+	var suggested []domain.ParentSuggestion
+	for _, p := range suggestions {
+		if p.Status == domain.SuggestionOpen && (current.ID == g.Owner.ID || current.ID == p.SuggestedBy.ID) {
+			suggested = append(suggested, p)
+		}
+	}
 
 	// Each linked Goal's Health, shown beside it in the sidebar.
 	linkHealth := map[int64]string{}
@@ -630,6 +646,8 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Required:       required,
 		Incomplete:     incomplete,
 		HealthStrip:    strip,
+		Suggestions:    suggestions,
+		Suggested:      suggested,
 	}
 	view.History = newHistory(view, s.svc.Timezone(), s.svc.Now())
 	return view, nil
@@ -720,11 +738,18 @@ type goalView struct {
 	// HealthStrip is the Goal's Health over its last Check-in periods, shown
 	// above its History; it has no periods until the Goal has been Active.
 	HealthStrip domain.HealthStrip
+	// Suggestions are every Parent suggestion made for the Goal with its
+	// outcome, oldest first, for its History. Suggested are the open ones the
+	// viewer is shown under Suggested parents: all of them for the Owner, who
+	// decides them, and their own for anyone else, to withdraw.
+	Suggestions []domain.ParentSuggestion
+	Suggested   []domain.ParentSuggestion
 	// History is the Goal's History as one timeline, newest first, showing the
 	// filter and page count the page's address asks for.
 	History history
 	// Toast is the one-time notice the page carries straight after the viewer
-	// removed one of its links, with an Undo; nil on any other visit.
+	// removed one of its links or declined one of its Parent suggestions, with
+	// an Undo; nil on any other visit.
 	Toast *toast
 }
 

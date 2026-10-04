@@ -6,6 +6,7 @@ import (
 	"html"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -149,5 +150,178 @@ func TestSuggestingAParentFromTheRisksFix(t *testing.T) {
 	}
 	if open, _ := h.Service.OpenParentSuggestions(context.Background(), loner.ID); len(open) != 1 || open[0].Parent.ID != parent.ID {
 		t.Errorf("open suggestions = %+v, want kim's of the parent", open)
+	}
+}
+
+// suggestionScene is Pat Lee's suggestion, with a note, that Sam's Goal
+// contribute to Kim's parent.
+func suggestionScene(t *testing.T, h *testsupport.Harness) (goal, parent domain.Goal, s domain.ParentSuggestion) {
+	t.Helper()
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignInNamed("pat@example.com", "Pat Lee")
+	kim := h.SignIn("kim@example.com")
+	goal = h.CreateGoal(sam, "Migrate displays", "Old displays fail often.")
+	parent = h.CreateGoal(kim, "Reduce outages", "Outages cost trust.")
+	s, err := h.Service.SuggestParent(context.Background(), pat.ID, goal.ID, parent.ID, "displays cause outages")
+	if err != nil {
+		t.Fatalf("SuggestParent: %v", err)
+	}
+	return goal, parent, s
+}
+
+// The Goal page lists its open suggestions for its Owner under Suggested
+// parents, each saying who suggested which parent and why, with Decline and
+// Accept returning to the Goal page; accepting requests the link. The
+// suggester sees their own with Withdraw instead, and anyone else sees none.
+func TestGoalPageListsSuggestedParents(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	goal, parent, s := suggestionScene(t, h)
+	h.SignIn("mel@example.com")
+	base := fmt.Sprintf("/parent-suggestions/%d", s.ID)
+
+	if page := getBody(t, signInClient(t, ts.URL, "mel@example.com"), goalPageURL(ts.URL, goal)); strings.Contains(page, `data-testid="goal-suggestions"`) {
+		t.Errorf("someone else sees the suggestions")
+	}
+
+	pat := signInClient(t, ts.URL, "pat@example.com")
+	list := pageElement(t, getBody(t, pat, goalPageURL(ts.URL, goal)), "ul", "goal-suggestions")
+	if !strings.Contains(list, `action="`+base+`/withdraw"`) || strings.Contains(list, base+"/accept") || strings.Contains(list, base+"/decline") {
+		t.Errorf("the suggester's list doesn't offer just Withdraw:\n%s", list)
+	}
+
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	list = pageElement(t, getBody(t, sam, goalPageURL(ts.URL, goal)), "ul", "goal-suggestions")
+	for _, want := range []string{"Pat Lee", navTo(parent.ID), "displays cause outages", `action="` + base + `/decline"`, `action="` + base + `/accept"`} {
+		if !strings.Contains(list, want) {
+			t.Errorf("the Owner's list lacks %q:\n%s", want, list)
+		}
+	}
+	if strings.Contains(list, base+"/withdraw") {
+		t.Errorf("the Owner is offered Withdraw:\n%s", list)
+	}
+
+	resp := postForm(t, sam, ts.URL+base+"/accept", toastFormOf(t, list, base+"/accept"))
+	page := readBody(t, resp)
+	if resp.Request.URL.Path != fmt.Sprintf("/goals/%d", goal.ID) {
+		t.Errorf("accepting landed on %s, want the Goal page", resp.Request.URL.Path)
+	}
+	if strings.Contains(page, `data-testid="goal-suggestions"`) {
+		t.Errorf("the Goal page still lists the accepted suggestion")
+	}
+	if pending := h.ParentsOf(goal); len(pending) != 0 {
+		t.Errorf("the link is accepted before Kim decides: %+v", pending)
+	}
+	links, _ := h.Service.PendingParentLinks(context.Background(), goal.ID)
+	if len(links) != 1 || links[0].Goal.ID != parent.ID {
+		t.Errorf("Pending parents = %+v, want the suggested parent", links)
+	}
+}
+
+// The suggester withdraws their open suggestion from the Goal page, which
+// then no longer lists it.
+func TestWithdrawingASuggestionFromTheGoalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	goal, _, s := suggestionScene(t, h)
+
+	pat := signInClient(t, ts.URL, "pat@example.com")
+	resp := postForm(t, pat, fmt.Sprintf("%s/parent-suggestions/%d/withdraw", ts.URL, s.ID), url.Values{})
+	page := readBody(t, resp)
+	if resp.Request.URL.Path != fmt.Sprintf("/goals/%d", goal.ID) {
+		t.Errorf("withdrawing landed on %s, want the Goal page", resp.Request.URL.Path)
+	}
+	if strings.Contains(page, `data-testid="goal-suggestions"`) {
+		t.Errorf("the Goal page still lists the withdrawn suggestion")
+	}
+	if got, _ := h.Service.ParentSuggestion(context.Background(), s.ID); got.Status != domain.SuggestionWithdrawn {
+		t.Errorf("Status = %q, want withdrawn", got.Status)
+	}
+}
+
+// toastFormOf is the hidden inputs of the form in html posting to action.
+func toastFormOf(t *testing.T, html, action string) url.Values {
+	t.Helper()
+	form := between(t, html, `action="`+action+`"`, "</form>")
+	fields := url.Values{}
+	for _, m := range regexp.MustCompile(`name="([^"]+)" value="([^"]*)"`).FindAllStringSubmatch(form, -1) {
+		fields.Set(m[1], m[2])
+	}
+	return fields
+}
+
+// After declining a suggestion, from Home or from the Goal page, the page
+// shown next carries a toast saying so with an Undo; the toast isn't shown on
+// a later visit, and Undo returns to the same page with the suggestion open
+// again.
+func TestDecliningASuggestionOffersUndoOnce(t *testing.T) {
+	t.Parallel()
+
+	for _, from := range []string{"/home", "goal"} {
+		t.Run(from, func(t *testing.T) {
+			t.Parallel()
+			h := testsupport.New(t)
+			ts := newServer(t, h)
+			goal, _, s := suggestionScene(t, h)
+			page := from
+			if from == "goal" {
+				page = fmt.Sprintf("/goals/%d", goal.ID)
+			}
+			sam := signInClient(t, ts.URL, "sam@example.com")
+			decline := fmt.Sprintf("/parent-suggestions/%d/decline", s.ID)
+			resp := postForm(t, sam, ts.URL+decline, toastFormOf(t, getBody(t, sam, ts.URL+page), decline))
+			landed := readBody(t, resp)
+			if resp.Request.URL.Path != page {
+				t.Fatalf("declining landed on %s, want %s", resp.Request.URL.Path, page)
+			}
+			toast := pageElement(t, landed, "aside", "toast")
+			for _, want := range []string{"Migrate displays", "Reduce outages", "Undo"} {
+				if !strings.Contains(toast, want) {
+					t.Errorf("toast missing %q:\n%s", want, toast)
+				}
+			}
+			if got, _ := h.Service.ParentSuggestion(context.Background(), s.ID); got.Status != domain.SuggestionDeclined {
+				t.Errorf("Status = %q, want declined", got.Status)
+			}
+			if later := getBody(t, sam, ts.URL+page); strings.Contains(later, `data-testid="toast"`) {
+				t.Errorf("toast shown again on a later visit")
+			}
+
+			resp = postForm(t, sam, ts.URL+undoAction(t, landed), toastFields(t, landed))
+			_ = readBody(t, resp)
+			if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != page {
+				t.Errorf("undo landed on %s (status %d), want %s", resp.Request.URL.Path, resp.StatusCode, page)
+			}
+			if got, _ := h.Service.ParentSuggestion(context.Background(), s.ID); got.Status != domain.SuggestionOpen {
+				t.Errorf("Status = %q, want open again", got.Status)
+			}
+		})
+	}
+}
+
+// An Undo of a decline is refused, with a page saying why, once the link has
+// been requested since.
+func TestUndoingADeclineIsRefusedOnceTheLinkWasRequested(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	goal, parent, s := suggestionScene(t, h)
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	resp := postForm(t, sam, fmt.Sprintf("%s/parent-suggestions/%d/decline", ts.URL, s.ID), url.Values{"from": {"home"}})
+	landed := readBody(t, resp)
+	h.RequestLink(h.SignIn("sam@example.com"), goal, parent, "")
+
+	resp = postForm(t, sam, ts.URL+undoAction(t, landed), toastFields(t, landed))
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(page, "requested since") {
+		t.Errorf("undo: status %d, want 422 saying the link was requested since:\n%s", resp.StatusCode, page)
+	}
+	if got, _ := h.Service.ParentSuggestion(context.Background(), s.ID); got.Status != domain.SuggestionDeclined {
+		t.Errorf("Status = %q, want still declined", got.Status)
 	}
 }

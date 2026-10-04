@@ -638,6 +638,7 @@ templ goalPage(current *domain.Account, v goalView) {
 					}
 					@linkList(g.ID, v.Parents, v.LinkHealth, "no-parents", "This Goal contributes to nothing yet.")
 					@requestParentLink(v)
+					@suggestedParents(v)
 				</section>
 				<section data-testid="goal-children" class="gp-block ruled">
 					<h3>Contributed to by</h3>
@@ -803,6 +804,8 @@ templ goalPageStyles() {
 		.gp-link{display:flex;flex-direction:column;gap:4px}
 		.gp-link-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 		.gp-link-meta form{margin:0 0 0 auto}
+		.gp-decide{display:flex;gap:8px;margin-left:auto}
+		.gp-link-meta .gp-decide form{margin:0}
 		.gp-metric-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
 		.gp-current .num{font-size:28px;line-height:1.1}
 		.gp-spark{max-width:100%;height:auto;display:block;overflow:visible}

@@ -25,6 +25,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request, current doma
 	v.Toast = cmp.Or(
 		s.linkRejectionToast(r.Context(), offer, current, fromHome),
 		s.handoffRejectionToast(r.Context(), offer, current, fromHome),
+		s.suggestionDeclineToast(r.Context(), offer, current, 0, fromHome),
 	)
 	render(w, r, http.StatusOK, homePage(&current, v))
 }
@@ -36,8 +37,8 @@ type homeView struct {
 	// email uses, most overdue first.
 	Due []domain.PersonalGoal
 	// Requests are the link requests waiting on the person as the parent's
-	// Owner and the Handoffs waiting on them as the proposed new Owner, oldest
-	// first.
+	// Owner, the Handoffs waiting on them as the proposed new Owner, and the
+	// Parent suggestions on the Goals they Own, oldest first.
 	Requests []homeRequest
 	// Green, Yellow, and Red count the Active Goals the person Owns by Health,
 	// and AtRisk lists the Red ones, then the Yellow.
@@ -45,7 +46,8 @@ type homeView struct {
 	AtRisk             []domain.PersonalGoal
 	// Delegated counts the Goals the person is a Delegate on.
 	Delegated int
-	// Toast, when set, offers Undo for the request just rejected from Home.
+	// Toast, when set, offers Undo for the request just rejected, or the
+	// suggestion just declined, from Home.
 	Toast *toast
 }
 
@@ -73,22 +75,26 @@ func fromField(from string) []toastField {
 }
 
 // NeedsYou counts what's waiting on the person: the Goals to check in on, and
-// the link requests and Handoffs to decide.
+// the link requests, Handoffs and Parent suggestions to decide.
 func (v homeView) NeedsYou() int {
 	return len(v.Due) + len(v.Requests)
 }
 
-// homeRequest is one request waiting on the person's decision: a link request
-// or a Handoff, whichever is set.
+// homeRequest is one request waiting on the person's decision: a link
+// request, a Handoff or a Parent suggestion, whichever is set.
 type homeRequest struct {
-	Link    *domain.Link
-	Handoff *domain.Handoff
+	Link       *domain.Link
+	Handoff    *domain.Handoff
+	Suggestion *domain.ParentSuggestion
 }
 
 // madeAt is when the request was made.
 func (r homeRequest) madeAt() time.Time {
-	if r.Link != nil {
+	switch {
+	case r.Link != nil:
 		return r.Link.CreatedAt
+	case r.Suggestion != nil:
+		return r.Suggestion.CreatedAt
 	}
 	return r.Handoff.CreatedAt
 }
@@ -108,11 +114,18 @@ func (s *Server) loadHome(ctx context.Context, accountID int64) (homeView, error
 	if err != nil {
 		return homeView{}, err
 	}
+	suggestions, err := s.svc.OpenParentSuggestionsFor(ctx, accountID)
+	if err != nil {
+		return homeView{}, err
+	}
 	for i := range links {
 		v.Requests = append(v.Requests, homeRequest{Link: &links[i]})
 	}
 	for i := range handoffs {
 		v.Requests = append(v.Requests, homeRequest{Handoff: &handoffs[i]})
+	}
+	for i := range suggestions {
+		v.Requests = append(v.Requests, homeRequest{Suggestion: &suggestions[i]})
 	}
 	slices.SortStableFunc(v.Requests, func(a, b homeRequest) int {
 		return a.madeAt().Compare(b.madeAt())

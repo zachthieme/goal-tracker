@@ -59,3 +59,75 @@ templ suggestionStyles() {
 		.sg-actions{display:flex;gap:8px;align-items:center}
 	</style>
 }
+
+// suggestionRequestRow is a Parent suggestion on a Goal the person Owns,
+// waiting on their decision on Home: who suggested which parent, and why.
+// Decline sends at once, and Home then offers Undo in a toast; Accept requests
+// the link.
+templ suggestionRequestRow(p domain.ParentSuggestion) {
+	<li data-testid="home-request">
+		<div class="hm-what">
+			<span class="badge lc">Parent suggestion</span>
+			<a href={ templ.SafeURL(goalPath(p.Goal.ID)) }>{ p.Goal.Title }</a>
+			<span class="muted">
+				@person(p.SuggestedBy)
+				{ " suggests it contribute to" }
+			</span>
+			<a href={ templ.SafeURL(goalPath(p.Parent.ID)) }>{ p.Parent.Title }</a>
+			if p.Note != "" {
+				<p data-testid="home-request-note" class="muted small">{ p.Note }</p>
+			}
+		</div>
+		<div class="hm-actions">
+			@declineAccept(fmt.Sprintf("/parent-suggestions/%d", p.ID), fromHome)
+		</div>
+	</li>
+}
+
+// declineAccept is the pair of buttons deciding the Parent suggestion at base,
+// returning to the page from names: Decline as a text button, which sends at
+// once and is offered Undo in a toast, then Accept outlined.
+templ declineAccept(base, from string) {
+	<form method="post" action={ templ.SafeURL(base + "/decline") } class="inline-form">
+		<input type="hidden" name="from" value={ from }/>
+		<button type="submit" class="btn quiet sm">Decline</button>
+	</form>
+	<form method="post" action={ templ.SafeURL(base + "/accept") } class="inline-form">
+		<input type="hidden" name="from" value={ from }/>
+		<button type="submit" class="btn sm">Accept</button>
+	</form>
+}
+
+// suggestedParents lists, under Contributes to, the Goal's open Parent
+// suggestions the viewer is shown: for the Owner each with Decline and Accept,
+// returning to the Goal page; for the suggester their own with Withdraw.
+templ suggestedParents(v goalView) {
+	if len(v.Suggested) > 0 {
+		<h3 class="label">Suggested parents</h3>
+		<ul data-testid="goal-suggestions" class="gp-list">
+			for _, p := range v.Suggested {
+				<li data-testid="goal-suggestion" class="gp-link">
+					<a href={ templ.SafeURL(goalPath(p.Parent.ID)) }>{ p.Parent.Title }</a>
+					<span class="muted small">
+						{ "Suggested by " }
+						@person(p.SuggestedBy)
+					</span>
+					if p.Note != "" {
+						<span class="muted small">{ p.Note }</span>
+					}
+					<span class="gp-link-meta">
+						if v.Owns {
+							<span class="gp-decide">
+								@declineAccept(fmt.Sprintf("/parent-suggestions/%d", p.ID), "")
+							</span>
+						} else {
+							<form method="post" action={ templ.SafeURL(fmt.Sprintf("/parent-suggestions/%d/withdraw", p.ID)) }>
+								<button type="submit" class="btn quiet sm">Withdraw</button>
+							</form>
+						}
+					</span>
+				</li>
+			}
+		</ul>
+	}
+}
