@@ -15,25 +15,37 @@ import (
 // site's chrome, with a link back to back (#120).
 func assertNotFoundPage(t *testing.T, client *http.Client, rawURL, back string) {
 	t.Helper()
-	resp, err := client.Get(rawURL)
+	assertNotFoundPageFor(t, client, http.MethodGet, rawURL, back)
+}
+
+// assertNotFoundPageFor is assertNotFoundPage for a request with any method,
+// and returns the page.
+func assertNotFoundPageFor(t *testing.T, client *http.Client, method, rawURL, back string) string {
+	t.Helper()
+	req, err := http.NewRequest(method, rawURL, nil)
 	if err != nil {
-		t.Fatalf("GET %s: %v", rawURL, err)
+		t.Fatalf("new %s request: %v", method, err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("%s %s: %v", method, rawURL, err)
 	}
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("GET %s: status %d, want 404", rawURL, resp.StatusCode)
+		t.Errorf("%s %s: status %d, want 404", method, rawURL, resp.StatusCode)
 	}
 	if !strings.Contains(page, "<title>Not found · Goal Tracker</title>") || !strings.Contains(page, `class="brand"`) {
-		t.Fatalf("GET %s: not a Not found page inside the site's chrome; body:\n%s", rawURL, page)
+		t.Fatalf("%s %s: not a Not found page inside the site's chrome; body:\n%s", method, rawURL, page)
 	}
 	element := pageElement(t, page, "p", "not-found")
 	sentence := html.UnescapeString(element[strings.Index(element, ">")+1:])
 	if sentence != "There's nothing here. It may have been removed, or the link may be wrong." {
-		t.Errorf("GET %s: Not found page says %q", rawURL, sentence)
+		t.Errorf("%s %s: Not found page says %q", method, rawURL, sentence)
 	}
 	if !strings.Contains(page, `<a href="`+back+`">`) {
-		t.Errorf("GET %s: Not found page has no link to %s; body:\n%s", rawURL, back, page)
+		t.Errorf("%s %s: Not found page has no link to %s; body:\n%s", method, rawURL, back, page)
 	}
+	return page
 }
 
 // A signed-in person following a link to a Goal that doesn't exist gets the
@@ -129,4 +141,78 @@ func TestUnknownAddressShowsNotFoundPage(t *testing.T) {
 
 	assertNotFoundPage(t, pat, ts.URL+"/no-such-page", "/home")
 	assertNotFoundPage(t, http.DefaultClient, ts.URL+"/no-such-page", "/signin")
+}
+
+// topBarCounts returns the top bar's Home and Risks items on page.
+func topBarCounts(t *testing.T, page string) (home, risks string) {
+	t.Helper()
+	return pageElement(t, page, "a", "nav-home"), pageElement(t, page, "a", "nav-risks")
+}
+
+// An unknown address's Not found page shows the top bar's counts, the same as
+// a missing Goal's does for the same person (#127).
+func TestUnknownAddressShowsTopBarCounts(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Silent work", "It matters.") // due a Check-in, and Unaligned
+	h.Clock.Advance(10 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	wantHome, wantRisks := topBarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/goals/999999", "/home"))
+	if !strings.Contains(wantHome, "count") || !strings.Contains(wantRisks, "count") {
+		t.Fatalf("a missing Goal's top bar lacks the counts this test compares against: %s %s", wantHome, wantRisks)
+	}
+	home, risks := topBarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/no-such-page", "/home"))
+	if home != wantHome || risks != wantRisks {
+		t.Errorf("unknown address's top bar = %s %s, want %s %s", home, risks, wantHome, wantRisks)
+	}
+}
+
+// Asking an unknown address with any method, not just GET, gets the Not found
+// page: with the top bar's counts for someone signed in, and the way to sign in
+// for a visitor who isn't (#127).
+func TestUnknownAddressShowsNotFoundPageForEveryMethod(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Silent work", "It matters.") // due a Check-in, and Unaligned
+	h.Clock.Advance(10 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	wantHome, wantRisks := topBarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/goals/999999", "/home"))
+
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
+		home, risks := topBarCounts(t, assertNotFoundPageFor(t, client, method, ts.URL+"/no-such-page", "/home"))
+		if home != wantHome || risks != wantRisks {
+			t.Errorf("%s /no-such-page: top bar = %s %s, want %s %s", method, home, risks, wantHome, wantRisks)
+		}
+		assertNotFoundPageFor(t, http.DefaultClient, method, ts.URL+"/no-such-page", "/signin")
+	}
+}
+
+// A path some route serves, asked with a method none serves it with, still
+// answers 405 naming the methods it takes, rather than the Not found page. The
+// bare root names nothing to anything but GET (#127).
+func TestKnownPathWithWrongMethodIsNotAllowed(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	h.SignIn("sam@example.com")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp, err := client.Post(ts.URL+"/risks", "application/x-www-form-urlencoded", nil)
+	if err != nil {
+		t.Fatalf("POST /risks: %v", err)
+	}
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusMethodNotAllowed || resp.Header.Get("Allow") != "GET, HEAD" {
+		t.Errorf("POST /risks: status %d, Allow %q; want 405, %q", resp.StatusCode, resp.Header.Get("Allow"), "GET, HEAD")
+	}
+
+	assertNotFoundPageFor(t, client, http.MethodPost, ts.URL+"/", "/home")
 }
