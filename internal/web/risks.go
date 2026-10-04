@@ -22,7 +22,7 @@ import (
 // Dimension's value (?value=). The scope narrows the rows only after they are
 // built: loadRisks stays org-wide for the top bar's count.
 func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	page, err := s.risksPage(r.Context(), r.URL.Query(), current)
+	page, err := s.loadRisksPage(r.Context(), r.URL.Query(), current)
 	if err != nil {
 		http.Error(w, "could not read risks", http.StatusInternalServerError)
 		return
@@ -30,8 +30,8 @@ func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current dom
 	render(w, r, http.StatusOK, risksPage(&current, page))
 }
 
-// risksPage builds the Risks page current sees at an address with query q.
-func (s *Server) risksPage(ctx context.Context, q url.Values, current domain.Account) (risksPageView, error) {
+// loadRisksPage builds the Risks page current sees at an address with query q.
+func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain.Account) (risksPageView, error) {
 	v, err := s.loadRisks(ctx)
 	if err != nil {
 		return risksPageView{}, err
