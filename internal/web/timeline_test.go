@@ -1079,3 +1079,49 @@ func TestGoalHistoryShowsEachParentSuggestionAndItsOutcome(t *testing.T) {
 		}
 	}
 }
+
+// Each Nudge is a History entry saying who nudged for a Check-in, listed under
+// Check-ins and All and under no other chip.
+func TestGoalHistoryShowsEachNudge(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignInNamed("pat@example.com", "Pat Lee")
+	goal := h.ActiveGoal(sam, "Silent work", "It matters.")
+	h.Clock.Advance(10 * 24 * time.Hour)
+	if _, err := h.Service.Nudge(context.Background(), pat.ID, goal.ID); err != nil {
+		t.Fatalf("Nudge: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := goalPageURL(ts.URL, goal)
+
+	nudgesUnder := func(filter string) []string {
+		t.Helper()
+		var out []string
+		for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalURL+"?history="+filter))) {
+			if entryKind(t, e) == "nudge" {
+				out = append(out, html.UnescapeString(e))
+			}
+		}
+		return out
+	}
+	for _, filter := range []string{"", "checkins"} {
+		nudges := nudgesUnder(filter)
+		if len(nudges) != 1 {
+			t.Fatalf("History under %q lists %d Nudges, want 1", filter, len(nudges))
+		}
+		e := nudges[0]
+		for _, fact := range []string{"Nudge", "Pat Lee", "nudged for a Check-in", `class="tl-mark tl-nudge"`} {
+			if !strings.Contains(e, fact) {
+				t.Errorf("the Nudge under %q lacks %q:\n%s", filter, fact, e)
+			}
+		}
+	}
+	for _, filter := range []string{"date-slips", "so-what", "ownership", "values"} {
+		if n := len(nudgesUnder(filter)); n != 0 {
+			t.Errorf("the %s chip lists %d Nudges", filter, n)
+		}
+	}
+}

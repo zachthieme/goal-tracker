@@ -44,11 +44,26 @@ func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain
 	if err != nil {
 		return risksPageView{}, fmt.Errorf("load delegated goals: %w", err)
 	}
-	delegate := map[int64]bool{}
+	facts := riskFixFacts{delegate: map[int64]bool{}, unreachable: map[int64]bool{}}
 	for _, g := range delegated {
-		delegate[g.ID] = true
+		facts.delegate[g.ID] = true
 	}
-	fixRiskRows(current, rows, delegate)
+	ids := make([]int64, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.Goal.ID)
+		if !row.Goal.Ownerless {
+			continue
+		}
+		delegates, err := s.svc.ListDelegates(ctx, row.Goal.ID)
+		if err != nil {
+			return risksPageView{}, err
+		}
+		facts.unreachable[row.Goal.ID] = !slices.ContainsFunc(delegates, func(a domain.Account) bool { return !a.Departed })
+	}
+	if facts.nudged, err = s.svc.NudgedToday(ctx, ids); err != nil {
+		return risksPageView{}, err
+	}
+	fixRiskRows(current, rows, facts)
 	dims, err := s.svc.ListDimensions(ctx)
 	if err != nil {
 		return risksPageView{}, err
@@ -73,7 +88,7 @@ func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain
 		}
 	}
 	for _, row := range rows {
-		if page.Mine && row.Goal.Owner.ID != current.ID && !delegate[row.Goal.ID] {
+		if page.Mine && row.Goal.Owner.ID != current.ID && !facts.delegate[row.Goal.ID] {
 			continue
 		}
 		if valued != nil && !valued[row.Goal.ID] {
@@ -140,6 +155,11 @@ func (p risksPageView) url(group string, mine bool) string {
 		return "/risks"
 	}
 	return "/risks?" + q.Encode()
+}
+
+// Here is the page's own address, with its filters and scope.
+func (p risksPageView) Here() string {
+	return p.url(p.Group, p.Mine)
 }
 
 // ShowAllURL is the page's address unfiltered, keeping its scope.
@@ -408,32 +428,56 @@ type riskGoalRow struct {
 }
 
 // riskFix is a row's one Fix button: what it says, where it goes, and whether
-// it is the page's primary kind of action.
+// it is the page's primary kind of action. Post makes it a form posting to
+// Href rather than a link; Disabled shows it without letting it be used.
 type riskFix struct {
-	Label   string
-	Href    string
-	Primary bool
+	Label    string
+	Href     string
+	Primary  bool
+	Post     bool
+	Disabled bool
 }
 
-// fixRiskRows sets each row's Fix for current, who is a Delegate on the Goals
-// delegate holds.
-func fixRiskRows(current domain.Account, rows []riskGoalRow, delegate map[int64]bool) {
+// riskFixFacts are what the rows' Fixes turn on beyond the rows themselves:
+// the Goals the viewer is a Delegate on, the Goals nudged today with their
+// Nudge, and the Ownerless Goals with no Delegate left to check in on them.
+type riskFixFacts struct {
+	delegate    map[int64]bool
+	nudged      map[int64]domain.Nudge
+	unreachable map[int64]bool
+}
+
+// fixRiskRows sets each row's Fix for current.
+func fixRiskRows(current domain.Account, rows []riskGoalRow, facts riskFixFacts) {
 	for i := range rows {
-		rows[i].Fix = rows[i].fix(current, delegate[rows[i].Goal.ID])
+		id := rows[i].Goal.ID
+		nudge, nudged := facts.nudged[id]
+		var today *domain.Nudge
+		if nudged {
+			today = &nudge
+		}
+		rows[i].Fix = rows[i].fix(current, facts.delegate[id], today, facts.unreachable[id])
 	}
 }
 
-// fix is the row's Fix for current, the first that applies of:
+// fix is the row's Fix for current, given whether current is a Delegate on
+// the Goal, its Nudge today, if any, and whether nobody is left to check in on
+// it. It is the first that applies of:
 //  1. Reassign, for an Ownerless Goal and an Admin;
 //  2. Check in, for a Stale or Path to Green overdue Goal current Owns or is a
 //     Delegate on (an Admin has no Check-in right);
-//  3. Link to a parent, for an Unaligned Goal current Owns;
-//  4. Compare dates, the Goal's own page, for a Schedule conflict;
-//  5. Open parent, for a Goal under a halted parent: the first by title;
-//  6. Suggest a parent, for an Unaligned Goal current doesn't Own, a Delegate
+//  3. Nudge, for someone else's Stale or Path to Green overdue Goal that
+//     someone can check in on (CONTEXT.md: Nudge); once it has been nudged
+//     today, a disabled "Nudged today by" whoever did. Freshness outranks
+//     alignment, as 2 outranks 4;
+//  4. Link to a parent, for an Unaligned Goal current Owns;
+//  5. Compare dates, the Goal's own page, for a Schedule conflict;
+//  6. Open parent, for a Goal under a halted parent: the first by title;
+//  7. Suggest a parent, for an Unaligned Goal current doesn't Own, a Delegate
 //     on it included (CONTEXT.md: Parent suggestion);
-//  7. Open Goal, for anything else, someone else's Stale Goal among them.
-func (r riskGoalRow) fix(current domain.Account, delegate bool) riskFix {
+//  8. Open Goal, for anything else, a Stale Goal nobody can check in on among
+//     them.
+func (r riskGoalRow) fix(current domain.Account, delegate bool, nudged *domain.Nudge, unreachable bool) riskFix {
 	goal := fmt.Sprintf("/goals/%d", r.Goal.ID)
 	if _, ownerless := r.signal("ownerless"); ownerless && current.IsAdmin {
 		return riskFix{Label: "Reassign", Href: goal + "?open=reassign"}
@@ -442,6 +486,12 @@ func (r riskGoalRow) fix(current domain.Account, delegate bool) riskFix {
 	_, overdue := r.signal("path-overdue")
 	if (stale || overdue) && (r.Goal.Owner.ID == current.ID || delegate) {
 		return riskFix{Label: "Check in", Href: goal + "/checkin", Primary: true}
+	}
+	if (stale || overdue) && nudged != nil {
+		return riskFix{Label: "Nudged today by " + nudged.Sender.Label(), Disabled: true}
+	}
+	if (stale || overdue) && !unreachable {
+		return riskFix{Label: "Nudge", Href: goal + "/nudge", Post: true}
 	}
 	if _, unaligned := r.signal("unaligned"); unaligned && r.Goal.Owner.ID == current.ID {
 		return riskFix{Label: "Link to a parent", Href: goal + "?open=parent-link"}

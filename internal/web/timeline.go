@@ -47,8 +47,8 @@ const historyPage = 20
 // historyEntry is one event in a Goal's History: a Check-in with the Date
 // Slips and Metric readings recorded in it, a So What revision, an ownership
 // change (a Handoff or an Admin Reassign), a change to a Dimension value or
-// Field, or a Parent suggestion with its outcome. Exactly one of Checkin,
-// Revision, Handoff, Value and Suggestion is set.
+// Field, a Parent suggestion with its outcome, or a Nudge. Exactly one of
+// Checkin, Revision, Handoff, Value, Suggestion and Nudge is set.
 type historyEntry struct {
 	At         time.Time
 	Checkin    *domain.Checkin
@@ -58,6 +58,7 @@ type historyEntry struct {
 	Handoff    *domain.Handoff
 	Value      *domain.ValueChange
 	Suggestion *domain.ParentSuggestion
+	Nudge      *domain.Nudge
 }
 
 // historyReading is a Metric's reading as a Check-in recorded it.
@@ -77,6 +78,8 @@ func (e historyEntry) kind() string {
 		return "ownership"
 	case e.Suggestion != nil:
 		return "parent-suggestion"
+	case e.Nudge != nil:
+		return "nudge"
 	}
 	return "value"
 }
@@ -94,16 +97,19 @@ func (e historyEntry) label() string {
 		return "Handoff"
 	case e.Suggestion != nil:
 		return "Parent suggestion"
+	case e.Nudge != nil:
+		return "Nudge"
 	}
 	return "Value"
 }
 
 // in reports whether the entry is listed under filter. Date Slips lists the
-// Check-ins that carry one; a Parent suggestion is listed under All only.
+// Check-ins that carry one; Check-ins lists the Nudges asking for one too; a
+// Parent suggestion is listed under All only.
 func (e historyEntry) in(filter historyFilter) bool {
 	switch filter {
 	case historyCheckins:
-		return e.Checkin != nil
+		return e.Checkin != nil || e.Nudge != nil
 	case historySlips:
 		return len(e.Slips) > 0
 	case historySoWhat:
@@ -133,8 +139,8 @@ type history struct {
 }
 
 // newHistory gathers a Goal's Check-ins, Date Slips, Metric readings, So What
-// revisions, ownership changes, value changes and Parent suggestions into one
-// timeline, newest first, showing everything and the first page.
+// revisions, ownership changes, value changes, Parent suggestions and Nudges
+// into one timeline, newest first, showing everything and the first page.
 func newHistory(v goalView, loc *time.Location, now time.Time) history {
 	slipsBy := map[int64][]domain.DateSlip{}
 	for _, s := range v.DateSlips {
@@ -166,6 +172,9 @@ func newHistory(v goalView, loc *time.Location, now time.Time) history {
 	for _, p := range v.Suggestions {
 		entries = append(entries, historyEntry{At: p.CreatedAt, Suggestion: &p})
 	}
+	for _, n := range v.Nudges {
+		entries = append(entries, historyEntry{At: n.CreatedAt, Nudge: &n})
+	}
 	// Newest first; entries made at the same moment keep the order they were
 	// recorded in, latest first.
 	slices.SortStableFunc(entries, func(a, b historyEntry) int {
@@ -189,6 +198,8 @@ func (e historyEntry) seq() int64 {
 		return e.Handoff.ID
 	case e.Suggestion != nil:
 		return e.Suggestion.ID
+	case e.Nudge != nil:
+		return e.Nudge.ID
 	}
 	return e.Value.ID
 }

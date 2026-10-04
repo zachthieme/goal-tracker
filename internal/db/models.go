@@ -252,6 +252,14 @@ type NarrativeText struct {
 	Text               string
 }
 
+type Nudge struct {
+	ID        int64
+	GoalID    int64
+	SentBy    int64
+	NudgedOn  string
+	CreatedAt string
+}
+
 type ParentSuggestion struct {
 	ID          int64
 	GoalID      int64
