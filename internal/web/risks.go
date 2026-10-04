@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/a-h/templ"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
@@ -34,6 +36,28 @@ type risksPageView struct {
 	risksView
 	Rows  []riskGoalRow
 	Group string
+}
+
+// Shows reports whether the page shows the section for a signal kind: every
+// kind with no filter, else only the filtered group's.
+func (p risksPageView) Shows(kind string) bool {
+	for _, gk := range riskGroupKinds {
+		if gk.Key == p.Group {
+			return slices.Contains(gk.Kinds, kind)
+		}
+	}
+	return true
+}
+
+// Empty are the shown sections with no Goals, in the page's order.
+func (p risksPageView) Empty() []riskType {
+	var empty []riskType
+	for _, rt := range p.risksView.Empty() {
+		if p.Shows(rt.Anchor) {
+			empty = append(empty, rt)
+		}
+	}
+	return empty
 }
 
 // attention is the header's words after its count of the Goals on the page.
@@ -76,6 +100,14 @@ type riskCard struct {
 	Signals []riskType
 	Blank   string
 	Current bool
+}
+
+// Attrs marks the card of the group the page is filtered to as the current one.
+func (c riskCard) Attrs() templ.Attributes {
+	if c.Current {
+		return templ.Attributes{"aria-current": "page"}
+	}
+	return templ.Attributes{}
 }
 
 // Cards are the page's group cards, in the page's order.

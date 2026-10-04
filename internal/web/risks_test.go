@@ -12,16 +12,9 @@ import (
 )
 
 // riskSection returns the rows of the Risks page's section for one problem
-// type, checking that its summary tile counts want Goals and links down to it.
-func riskSection(t *testing.T, page, anchor, tileID string, want int) string {
+// type.
+func riskSection(t *testing.T, page, anchor string) string {
 	t.Helper()
-	tile := pageElement(t, page, "a", tileID)
-	if !strings.Contains(tile, `href="#`+anchor+`"`) {
-		t.Errorf("summary tile %s does not link to #%s: %s", tileID, anchor, tile)
-	}
-	if !strings.Contains(tile, `<span class="num">`+strconv.Itoa(want)+`</span>`) {
-		t.Errorf("summary tile %s does not count %d: %s", tileID, want, tile)
-	}
 	section := pageElement(t, page, "section", "risks-"+anchor)
 	if !strings.Contains(openTag(section), `id="`+anchor+`"`) {
 		t.Errorf("section risks-%s has no #%s anchor: %s", anchor, anchor, openTag(section))
@@ -49,7 +42,7 @@ func TestRisksPageListsStaleGoals(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
-	stale := riskSection(t, page, "stale", "risks-tile-stale", 1)
+	stale := riskSection(t, page, "stale")
 	for _, want := range []string{navTo(silent.ID), "sam@example.com", "no Check-in for 10 days on a 7-day cadence"} {
 		if !strings.Contains(stale, want) {
 			t.Errorf("Stale section lacks %s:\n%s", want, stale)
@@ -140,7 +133,7 @@ func TestRisksPageListsOverduePathsToGreen(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
-	overdue := riskSection(t, page, "path-overdue", "risks-tile-path-overdue", 1)
+	overdue := riskSection(t, page, "path-overdue")
 	for _, want := range []string{navTo(stalled.ID), "sam@example.com", "meant to be back to Green by 2026-01-05"} {
 		if !strings.Contains(overdue, want) {
 			t.Errorf("Path to Green overdue section lacks %s:\n%s", want, overdue)
@@ -171,7 +164,7 @@ func TestRisksPageListsOwnerlessGoals(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/risks")
 
-	ownerless := riskSection(t, page, "ownerless", "risks-tile-ownerless", 1)
+	ownerless := riskSection(t, page, "ownerless")
 	for _, want := range []string{navTo(orphaned.ID), "sam@example.com", "has left the org"} {
 		if !strings.Contains(ownerless, want) {
 			t.Errorf("Ownerless section lacks %s:\n%s", want, ownerless)
@@ -199,7 +192,7 @@ func TestRisksPageListsUnalignedGoals(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
-	unaligned := riskSection(t, page, "unaligned", "risks-tile-unaligned", 1)
+	unaligned := riskSection(t, page, "unaligned")
 	for _, want := range []string{navTo(loner.ID), "sam@example.com", "contributes to no other Goal"} {
 		if !strings.Contains(unaligned, want) {
 			t.Errorf("Unaligned section lacks %s:\n%s", want, unaligned)
@@ -230,7 +223,7 @@ func TestRisksPageListsScheduleConflicts(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
-	conflicts := riskSection(t, page, "schedule-conflicts", "risks-tile-schedule-conflicts", 1)
+	conflicts := riskSection(t, page, "schedule-conflicts")
 	for _, want := range []string{navTo(late.ID), "sam@example.com", "2026-07-01", navTo(launch.ID), "2026-06-01"} {
 		if !strings.Contains(conflicts, want) {
 			t.Errorf("Schedule conflicts section lacks %s:\n%s", want, conflicts)
@@ -266,7 +259,7 @@ func TestRisksPageListsGoalsUnderHaltedParents(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
-	halted := riskSection(t, page, "halted-parents", "risks-tile-halted-parents", 1)
+	halted := riskSection(t, page, "halted-parents")
 	for _, want := range []string{navTo(underPaused.ID), "sam@example.com", navTo(paused.ID), "On Hold"} {
 		if !strings.Contains(halted, want) {
 			t.Errorf("Parent On Hold or Cancelled section lacks %s:\n%s", want, halted)
@@ -383,6 +376,75 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 	}
 	if strings.Contains(page, "Show all") {
 		t.Errorf("page offers Show all with no filter")
+	}
+}
+
+// A group card's address filters the page to the signals in that group, with
+// no script: the card is current, the cards still count every group, and Show
+// all clears the filter. An unknown group shows everything.
+func TestRisksPageFiltersToAGroup(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	h.Clock.Advance(10 * day)
+	orphaned := h.ActiveGoal(kim, "Orphaned work", "It matters.") // Ownerless and Unaligned
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?group=owner")
+
+	if stale := riskSection(t, page, "stale"); !strings.Contains(stale, navTo(silent.ID)) {
+		t.Errorf("filtered to owner, the Stale section lacks %q:\n%s", silent.Title, stale)
+	}
+	for _, hidden := range []string{"unaligned", "ownerless"} {
+		if strings.Contains(page, `data-testid="risks-`+hidden+`"`) {
+			t.Errorf("filtered to owner, the page still shows the %s section", hidden)
+		}
+	}
+	if strings.Contains(page, navTo(orphaned.ID)) {
+		t.Errorf("filtered to owner, the page lists %q, flagged only outside it", orphaned.Title)
+	}
+	line := pageElement(t, page, "p", "risks-nothing-in")
+	if !strings.Contains(line, `id="path-overdue"`) || strings.Contains(line, `id="halted-parents"`) {
+		t.Errorf("filtered to owner, the Nothing in line doesn't name just the group's empty signals: %s", line)
+	}
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>2</strong>") {
+		t.Errorf("filtered to owner, the header doesn't still count both flagged Goals: %s", head)
+	}
+	for key, want := range map[string]string{"owner": "1", "plan": "2", "admin": "1"} {
+		card := pageElement(t, page, "a", "risks-group-"+key)
+		if !strings.Contains(card, `<span class="num">`+want+`</span>`) {
+			t.Errorf("filtered to owner, the %s card doesn't count %s: %s", key, want, card)
+		}
+		if current := strings.Contains(openTag(card), `aria-current="page"`); current != (key == "owner") {
+			t.Errorf("filtered to owner, the %s card's aria-current is %v: %s", key, current, openTag(card))
+		}
+	}
+	if all := pageElement(t, page, "a", "risks-show-all"); !strings.Contains(all, `href="/risks"`) || !strings.Contains(all, "Show all") {
+		t.Errorf("Show all doesn't clear the filter: %s", all)
+	}
+
+	page = getBody(t, client, ts.URL+"/risks?group=bogus")
+
+	for _, shown := range []string{"stale", "unaligned", "ownerless"} {
+		if !strings.Contains(page, `data-testid="risks-`+shown+`"`) {
+			t.Errorf("an unknown group hides the %s section", shown)
+		}
+	}
+	for _, key := range []string{"owner", "plan", "admin"} {
+		if card := pageElement(t, page, "a", "risks-group-"+key); strings.Contains(openTag(card), "aria-current") {
+			t.Errorf("an unknown group marks the %s card current: %s", key, openTag(card))
+		}
+	}
+	if strings.Contains(page, `data-testid="risks-show-all"`) {
+		t.Errorf("an unknown group offers Show all")
 	}
 }
 
