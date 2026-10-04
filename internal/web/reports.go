@@ -1,11 +1,13 @@
 package web
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -14,13 +16,16 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/export"
 )
 
-// reportsListData is what the reports page needs: the saved definitions.
+// reportsListData is what the reports page needs: a summary of each saved
+// definition, in the order the status table lists them, and the org's
+// timezone to date their publications in.
 type reportsListData struct {
-	Defs []domain.ReportDefinition
+	Reports []domain.ReportSummary
+	Loc     *time.Location
 }
 
-// handleReports shows every saved Report Definition and links to the builder
-// for a new one (CONTEXT.md: Report Definition). Anyone signed in may save one.
+// handleReports shows every saved Report Definition as a row of a status
+// table and links to the builder for a new one (CONTEXT.md: Report Definition). Anyone signed in may save one.
 func (s *Server) handleReports(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	data, err := s.reportsList(r)
 	if err != nil {
@@ -431,13 +436,43 @@ func publicationPath(p domain.Publication) string {
 	return fmt.Sprintf("/reports/%d/publications/%d", p.DefinitionID, p.ID)
 }
 
-// reportsList gathers the saved definitions.
+// reportsList summarises the saved definitions.
 func (s *Server) reportsList(r *http.Request) (reportsListData, error) {
-	defs, err := s.svc.ListReportDefinitions(r.Context())
+	sums, err := s.svc.ReportSummaries(r.Context())
 	if err != nil {
 		return reportsListData{}, err
 	}
-	return reportsListData{Defs: defs}, nil
+	slices.SortFunc(sums, byPublishingNeed)
+	return reportsListData{Reports: sums, Loc: s.svc.Timezone()}, nil
+}
+
+// byPublishingNeed orders the status table: never-published reports first,
+// then those with changes, most first, then the rest by when they were last
+// published, oldest first. Ties go by name.
+func byPublishingNeed(a, b domain.ReportSummary) int {
+	rank := func(s domain.ReportSummary) int {
+		switch {
+		case s.LastPublication == nil:
+			return 0
+		case *s.Changes > 0:
+			return 1
+		}
+		return 2
+	}
+	if c := cmp.Compare(rank(a), rank(b)); c != 0 {
+		return c
+	}
+	switch rank(a) {
+	case 1:
+		if c := cmp.Compare(*b.Changes, *a.Changes); c != 0 {
+			return c
+		}
+	case 2:
+		if c := a.LastPublication.PublishedAt.Compare(b.LastPublication.PublishedAt); c != 0 {
+			return c
+		}
+	}
+	return cmp.Compare(a.Definition.Name, b.Definition.Name)
 }
 
 // distinctOwners returns the Goals' Owners, one each, in first-seen order — the
