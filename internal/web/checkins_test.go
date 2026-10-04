@@ -2023,3 +2023,90 @@ func TestCheckinAddAnotherKeepsOfferedDraftHighlightsAsTyped(t *testing.T) {
 		t.Errorf("pending = %q, want both still pending", got)
 	}
 }
+
+// Two kept offered rows of the same kind both become Highlights, a kept row
+// whose note was blanked is discarded, and a Draft Highlight logged after the
+// form opened, so not among its rows, stays pending.
+func TestCheckinFormKeepsSameKindDiscardsBlankedAndLeavesUnofferedPending(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	a := h.LogDraftHighlight(sam, goal.ID, domain.HighlightAccomplishment, "Retired the old pager.")
+	b := h.LogDraftHighlight(sam, goal.ID, domain.HighlightAccomplishment, "Halved alert noise.")
+	c := h.LogDraftHighlight(sam, goal.ID, domain.HighlightMiss, "Runbook was late.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	form := getBody(t, samClient, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	if n := len(highlightRows(t, form)); n != 4 {
+		t.Fatalf("form shows %d Highlight rows, want 3 offered and 1 empty", n)
+	}
+	h.LogDraftHighlight(sam, goal.ID, domain.HighlightInsight, "Logged after the form opened.")
+	id := func(d domain.DraftHighlight) string { return strconv.FormatInt(d.ID, 10) }
+
+	_, status := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":                        {domain.HealthGreen},
+		"status":                        {"On track."},
+		"draft_highlight_id":            {id(a), id(b), id(c)},
+		"draft_highlight_keep":          {id(a), id(b), id(c)},
+		"draft_highlight_kind_" + id(a): {a.Kind},
+		"draft_highlight_note_" + id(a): {a.Note},
+		"draft_highlight_kind_" + id(b): {b.Kind},
+		"draft_highlight_note_" + id(b): {b.Note},
+		"draft_highlight_kind_" + id(c): {c.Kind},
+		"draft_highlight_note_" + id(c): {""},
+		"highlight_kind":                {""},
+		"highlight_note":                {""},
+	})
+	if status != http.StatusOK {
+		t.Fatalf("submit: status %d, want 200", status)
+	}
+
+	highlights, err := h.Service.ListHighlightsByGoal(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ListHighlightsByGoal: %v", err)
+	}
+	var got []string
+	for _, hl := range highlights {
+		got = append(got, hl.Kind+": "+hl.Note)
+	}
+	if want := []string{"Accomplishment: Retired the old pager.", "Accomplishment: Halved alert noise."}; !slices.Equal(got, want) {
+		t.Errorf("highlights = %q, want %q", got, want)
+	}
+	checkins, err := h.Service.ListCheckins(context.Background(), goal.ID)
+	if err != nil || len(checkins) != 1 {
+		t.Fatalf("ListCheckins = %d, %v; want the one Check-in", len(checkins), err)
+	}
+	if d := checkins[0].DiscardedDraftHighlights; len(d) != 1 || d[0].ID != c.ID {
+		t.Errorf("discarded = %v, want only the blanked one", d)
+	}
+	if got := pendingDraftNotes(t, h, sam, goal.ID); !slices.Equal(got, []string{"Logged after the form opened."}) {
+		t.Errorf("pending = %q, want only the one logged after the form opened", got)
+	}
+}
+
+// A No change Check-in records no Highlights and leaves pending Draft
+// Highlights untouched.
+func TestNoChangeCheckinLeavesDraftHighlightsPendingOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.LogDraftHighlight(sam, goal.ID, domain.HighlightInsight, "Waiting for a real Check-in.")
+
+	resp := postForm(t, noRedirects(signInClient(t, ts.URL, "sam@example.com")), fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), url.Values{})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("No change: status %d, want 303", resp.StatusCode)
+	}
+	if got := pendingDraftNotes(t, h, sam, goal.ID); !slices.Equal(got, []string{"Waiting for a real Check-in."}) {
+		t.Errorf("pending = %q, want the Draft Highlight untouched", got)
+	}
+	if highlights, _ := h.Service.ListHighlightsByGoal(context.Background(), goal.ID); len(highlights) != 0 {
+		t.Errorf("highlights = %d, want none recorded", len(highlights))
+	}
+}

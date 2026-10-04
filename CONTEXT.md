@@ -154,6 +154,10 @@ _Avoid_: reminder (that's the weekly email), ping, chase
 An optional note in a Check-in, marked as an Insight, Accomplishment, or Miss, that a Report author may pull into a Report's narrative. A Check-in may carry several, of any mix of kinds, and an author pulls each one separately. The Goal's Owner is credited.
 _Avoid_: win, callout, note
 
+**Draft Highlight**:
+A Highlight logged on a Goal between Check-ins, waiting for the next Check-in. Only the Goal's Owner and Delegates can log one or see a pending one. The next Check-in offers each one; those kept become that Check-in's Highlights, and the rest are discarded, which the Goal's history records.
+_Avoid_: note, jot, log entry
+
 **Report**:
 A document generated from Check-ins for a chosen set of Goals, at whatever cadence the reader needs, in MBR format. Exceptions (Red, Yellow, Stale, slipped, newly Proposed, Lifecycle changes) get the full treatment; unchanged Green Goals take one line each.
 _Avoid_: MBR (a Report may be used as one), review, rollup
