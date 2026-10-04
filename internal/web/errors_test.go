@@ -2,8 +2,8 @@ package web_test
 
 import (
 	"bytes"
-	"fmt"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
