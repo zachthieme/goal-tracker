@@ -137,6 +137,37 @@ func (s *Server) handleNewReport(w http.ResponseWriter, r *http.Request, current
 	render(w, r, http.StatusUnprocessableEntity, reportBuilderPage(&current, v))
 }
 
+// handleSearchReportGoals answers a builder picker's search as it is typed:
+// every Goal, at any level, whose title contains q, ignoring case, less those
+// already in the picker's list, which come along under the list's name. Each
+// result carries the chip picking it adds to that list.
+func (s *Server) handleSearchReportGoals(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+	list := r.URL.Query().Get("list")
+	if !slices.Contains([]string{inputPicked, inputInclude, inputExclude}, list) {
+		http.Error(w, "unknown Goal list", http.StatusBadRequest)
+		return
+	}
+	goals, err := s.svc.ListGoals(r.Context())
+	if err != nil {
+		http.Error(w, "could not search goals", http.StatusInternalServerError)
+		return
+	}
+	var listed []int64
+	for _, raw := range r.URL.Query()[list] {
+		if id, err := strconv.ParseInt(raw, 10, 64); err == nil {
+			listed = append(listed, id)
+		}
+	}
+	q := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("q")))
+	var matches []domain.Goal
+	for _, g := range goals {
+		if !slices.Contains(listed, g.ID) && strings.Contains(strings.ToLower(g.Title), q) {
+			matches = append(matches, g)
+		}
+	}
+	render(w, r, http.StatusOK, reportGoalSearchResults(list, matches))
+}
+
 // errUnparsedReport rolls back a builder save the domain accepted when the
 // handler refused some of its values.
 var errUnparsedReport = errors.New("the builder has values that don't parse")

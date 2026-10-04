@@ -357,6 +357,43 @@ func TestBuilderRefusesAValueFromAnotherAttributeAsItsRuleOverHTTP(t *testing.T)
 	}
 }
 
+// GET /reports/goals/search answers a builder picker's search: every Goal at
+// any level whose title contains q, ignoring case, less those already in the
+// picker's list. Leave out searches every Goal, not just the current
+// matches. Each result holds the chip picking it adds to that list, and the
+// builder's pickers search there.
+func TestBuilderGoalSearchFindsEveryGoalLessThoseListedOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	parent := h.MarkTopLevel(boss, h.ActiveGoal(boss, "Secure every login", "Matters."))
+	sdk := h.ActiveChildOf(boss, parent, "Mobile SDK auth update", "Matters.")
+	listed := h.ActiveGoal(boss, "Migrate AUTH service", "Matters.")
+	h.ActiveGoal(boss, "Edge cache rollout", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	builder := getBody(t, client, ts.URL+"/reports/new")
+	for _, list := range []string{"picked", "include", "exclude"} {
+		picker := pageElement(t, builder, "fieldset", list+"-picker")
+		if !strings.Contains(picker, `hx-get="/reports/goals/search?list=`+list+`"`) {
+			t.Errorf("the %s picker doesn't search /reports/goals/search:\n%s", list, picker)
+		}
+	}
+
+	q := url.Values{"list": {"exclude"}, "q": {"auth"}, "exclude": {strconv.FormatInt(listed.ID, 10)}}
+	page := getBody(t, client, ts.URL+"/reports/goals/search?"+q.Encode())
+	results := strings.Split(page, `data-testid="report-goal-result"`)[1:]
+	if len(results) != 1 || !strings.Contains(between(t, results[0], "data-pick", "</button>"), sdk.Title) {
+		t.Fatalf("searching Leave out for %q found %d results, want only %q:\n%s", "auth", len(results), sdk.Title, page)
+	}
+	chip := between(t, results[0], "<template>", "</template>")
+	if !strings.Contains(chip, `<input type="hidden" name="exclude" value="`+strconv.FormatInt(sdk.ID, 10)+`">`) {
+		t.Errorf("picking %q adds the chip %s", sdk.Title, chip)
+	}
+}
+
 // assertSavedReport checks resp, a builder's save, answered 303 to a Report's
 // draft, and returns the draft as client sees it.
 func assertSavedReport(t *testing.T, client *http.Client, baseURL string, resp *http.Response) string {

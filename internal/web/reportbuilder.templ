@@ -67,6 +67,7 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 			</section>
 			<div><button type="submit" class="btn primary">Save report</button></div>
 		</form>
+		@reportBuilderScript()
 	}
 }
 
@@ -125,7 +126,23 @@ templ reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain
 				@reportGoalChip(list, g)
 			}
 		</ul>
-		<label class="field">
+		<div class="rb-js-only">
+			<input
+				type="search"
+				name="q"
+				placeholder="Search any Goal by title"
+				autocomplete="off"
+				aria-label={ "Search Goals: " + legend }
+				aria-controls={ list + "-results" }
+				hx-get={ "/reports/goals/search?list=" + list }
+				hx-trigger="input changed delay:300ms, search"
+				hx-target={ "#" + list + "-results" }
+				hx-include={ "#" + list + "-chips [name='" + list + "']" }
+				data-goal-search
+			/>
+			<ul data-testid={ list + "-results" } id={ list + "-results" } class="rb-results" aria-live="polite"></ul>
+		</div>
+		<label class="field rb-no-js">
 			<span>Pick Goals <span class="hint">— hold Ctrl or ⌘ for several</span></span>
 			<select data-testid={ list + "-select" } name={ list } multiple>
 				for _, g := range v.Goals {
@@ -137,6 +154,89 @@ templ reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain
 		</label>
 		@reportBuilderError(v, list)
 	</fieldset>
+}
+
+// reportGoalSearchResults are a picker's search matches, each a button that
+// picks it beside the <template> of the chip picking it adds to list.
+templ reportGoalSearchResults(list string, matches []domain.Goal) {
+	if len(matches) == 0 {
+		<li class="muted small">No Goals match.</li>
+	}
+	for _, g := range matches {
+		<li data-testid="report-goal-result">
+			<button type="button" class="rb-result" data-pick>
+				<span>{ g.Title }</span>
+				<span class="muted small">{ g.Owner.Label() }</span>
+			</button>
+			<template>
+				@reportGoalChip(list, g)
+			</template>
+		</li>
+	}
+}
+
+// reportBuilderScript turns the builder to script: each rule row offers only
+// its attribute's values and operators, each picker searches in place of its
+// no-script select, adding a chip when a result is picked and removing one at
+// its ×.
+templ reportBuilderScript() {
+	<script>
+		(function () {
+			var form = document.querySelector('[data-testid="report-builder"]');
+			if (!form) return;
+			form.classList.add("rb-js");
+			var ops = {
+				values: [["is", "is"], ["is any of", "is any of"], ["is not", "is not"]],
+				"top-level": [["is", "is Top-level"], ["is not", "is not Top-level"]]
+			};
+			function narrow(row) {
+				var attribute = row.querySelector('[data-testid="rule-attribute"]').value;
+				var op = row.querySelector('[data-testid="rule-op"]');
+				var values = row.querySelector('[data-testid="rule-values"]');
+				var wanted = ops[attribute === "top-level" ? "top-level" : "values"];
+				var chosen = op.value;
+				op.textContent = "";
+				wanted.forEach(function (o) {
+					op.add(new Option(o[1], o[0], false, o[0] === chosen));
+				});
+				if (!values) return;
+				values.hidden = attribute === "top-level" || attribute === "";
+				values.querySelectorAll("optgroup").forEach(function (group) {
+					var mine = group.getAttribute("data-attribute") === attribute;
+					group.hidden = !mine;
+					group.disabled = !mine;
+					if (!mine) group.querySelectorAll("option").forEach(function (o) { o.selected = false; });
+				});
+			}
+			form.querySelectorAll("[data-rule]").forEach(narrow);
+			form.addEventListener("change", function (e) {
+				if (e.target.matches('[data-testid="rule-attribute"]')) narrow(e.target.closest("[data-rule]"));
+			});
+			form.querySelectorAll("[data-goal-picker] .rb-no-js select").forEach(function (select) {
+				select.disabled = true;
+			});
+			form.addEventListener("keydown", function (e) {
+				if (e.key === "Enter" && e.target.matches("[data-goal-search]")) e.preventDefault();
+			});
+			form.addEventListener("click", function (e) {
+				var picker = e.target.closest("[data-goal-picker]");
+				if (!picker) return;
+				var pick = e.target.closest("[data-pick]");
+				if (pick) {
+					var result = pick.closest("li");
+					picker.querySelector(".rb-chips").appendChild(result.querySelector("template").content.firstElementChild.cloneNode(true));
+					result.remove();
+					picker.querySelector("[data-goal-search]").focus();
+					return;
+				}
+				var remove = e.target.closest("[data-remove-chip]");
+				if (remove) {
+					remove.closest("li").remove();
+					picker.querySelector("[data-goal-search]").focus();
+				}
+			});
+		})();
+	</script>
 }
 
 // reportGoalChip is a Goal in one of the builder's lists: its hidden id, its
@@ -167,5 +267,9 @@ templ reportBuilderStyles() {
 		.rb-problems{border:1px solid var(--color-danger-ink);border-radius:var(--radius-md);padding:12px 16px;color:var(--color-danger-ink)}
 		.rb-problems p,.rb-problems ul{margin:0}
 		.rb-form:not(.rb-js) .rb-js-only{display:none}
+		.rb-form.rb-js .rb-no-js{display:none}
+		.rb-picker input[type=search]{width:100%}
+		.rb-results{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column}
+		.rb-result{display:flex;gap:8px;width:100%;text-align:left;background:none;border:none;padding:4px 8px;cursor:pointer}
 	</style>
 }
