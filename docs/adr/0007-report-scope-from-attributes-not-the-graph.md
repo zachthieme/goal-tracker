@@ -6,6 +6,7 @@ A Report definition today selects Goals by starting at root Goals and descending
 
 - New definitions have no Depth. Existing definitions with depth 0 become hand-picked. Those with a depth above 0 are converted once, by migration, to a fixed set of Goals.
 - The Goals in a report change only when a Goal's attributes change or an author edits the lists. Linking or unlinking a Goal doesn't move it in or out of a report.
+- The Owner's Chain is a rule attribute (#264): "Owner is in the Chain of Priya" selects by an attribute of the Owner, so it walks no Contributes to links. The only walk is over Managers, from the org's directory (ADR 0008), as they are when the draft is computed.
 - Fields are not a rule attribute. ADR 0005 keeps Fields for describing a Goal, not for slicing, so a report shows Fields but never selects by them. Anything a report needs to select by becomes a Dimension.
 - A group of Goals that has no shared attribute is brought in with a Dimension (for example "In report"), not with links.
 - If anyone proposes adding a Depth or "and its descendants" back to the scope, point them to this ADR. A one-off action that copies a Goal's contributors into Also include was considered and left out for now. It would add nothing live, so it wouldn't break this ADR, but hand-picking with search covers the need.
