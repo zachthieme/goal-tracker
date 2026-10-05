@@ -223,9 +223,9 @@ func loadDirectoryConfig() (*directoryConfig, error) {
 	case u == "" && token == "":
 		return nil, nil
 	case token == "":
-		return nil, errors.New("the directory sync needs GOAL_TRACKER_DIRECTORY_TOKEN as well as GOAL_TRACKER_DIRECTORY_URL")
+		return nil, errors.New("the directory sync needs both GOAL_TRACKER_DIRECTORY_* variables; missing GOAL_TRACKER_DIRECTORY_TOKEN")
 	case u == "":
-		return nil, errors.New("the directory sync needs GOAL_TRACKER_DIRECTORY_URL as well as GOAL_TRACKER_DIRECTORY_TOKEN")
+		return nil, errors.New("the directory sync needs both GOAL_TRACKER_DIRECTORY_* variables; missing GOAL_TRACKER_DIRECTORY_URL")
 	}
 	return &directoryConfig{url: u, token: token}, nil
 }

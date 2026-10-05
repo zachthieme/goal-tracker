@@ -165,6 +165,9 @@ func TestPartialDirectoryConfigNamesWhatsMissing(t *testing.T) {
 			if !strings.Contains(err.Error(), missing) {
 				t.Errorf("error %q doesn't name %s", err, missing)
 			}
+			if strings.Contains(err.Error(), set) {
+				t.Errorf("error %q names %s, which is set", err, set)
+			}
 		})
 	}
 }
