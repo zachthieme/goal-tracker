@@ -6,7 +6,7 @@
 //
 // It writes <assets-dir>/shots/*.png and <assets-dir>/checkin.mp4 (default
 // docs/pitch/assets), which build.mjs reads. It writes to the app: it submits
-// one Check-in and publishes one Report, so point it at a throwaway copy such
+// two Check-ins and publishes one Report, so point it at a throwaway copy such
 // as `scripts/scratch-app start`, never at a database you want to keep.
 //
 // Playwright comes from e2e/node_modules (`make e2e` or `npm ci` in e2e/
@@ -33,8 +33,11 @@ rmSync(rawVideo, { recursive: true, force: true });
 
 // The seed's people and Goals the deck shows.
 const leader = "cto@example.com";
-const staleOwner = "ada.okafor@example.com";
-const staleGoal = "Blue-green deploys for the monolith";
+// The Owner in the recording has a Stale Goal that No change is allowed on (no
+// overdue Milestone) and a second Goal for the full Check-in.
+const owner = "grace.oduya@example.com";
+const staleGoal = "Macro library for the top 50 issues";
+const updatedGoal = "Chatbot deflection for billing questions";
 const redGoal = "Launch a referral program";
 
 const browser = await chromium.launch(process.env.CHROME ? { executablePath: process.env.CHROME } : {});
@@ -60,8 +63,8 @@ async function goalPath(page, title) {
   return href;
 }
 
-// The leader's pages: Goals, Risks, and one Red Goal. Taken before the
-// recording's Check-in, so Risks still lists the Stale Goal.
+// The leader's pages: Risks and one Red Goal. Taken before the recording's
+// Check-ins, so Risks still lists the Stale Goal.
 const leaderContext = await browser.newContext({
   baseURL: base,
   viewport: { width: 1440, height: 900 },
@@ -70,50 +73,58 @@ const leaderContext = await browser.newContext({
 const cto = await leaderContext.newPage();
 await signIn(cto, leader);
 const redGoalPath = await goalPath(cto, redGoal);
-const staleGoalPath = await goalPath(cto, staleGoal);
-await shot(cto, "goals");
+const updatedGoalPath = await goalPath(cto, updatedGoal);
 await cto.goto("/risks");
 await shot(cto, "risks");
+// The title slide's closer view: the counts and the first rows.
+await cto.screenshot({ path: join(shots, "risks-top.png"), clip: { x: 160, y: 150, width: 1120, height: 700 } });
+console.log("shot   risks-top.png");
 await cto.goto(redGoalPath);
 await shot(cto, "goal");
 
-// The recording: an Owner lands on Home, opens a Stale Goal, and checks in
-// Yellow with a Path to Green. Its poster frame is the filled-in form.
+// The recording: an Owner lands on Home and clears a Stale Goal with one
+// click on No change, then checks in Yellow on a second Goal. Its poster
+// frame is the filled-in form.
 const videoContext = await browser.newContext({
   baseURL: base,
   viewport: { width: 1280, height: 720 },
   recordVideo: { dir: rawVideo, size: { width: 1280, height: 720 } },
 });
-const owner = await videoContext.newPage();
-const pause = (ms) => owner.waitForTimeout(ms);
-await signIn(owner, staleOwner);
-await pause(2000);
-await owner.goto(staleGoalPath);
+const page = await videoContext.newPage();
+const pause = (ms) => page.waitForTimeout(ms);
+await signIn(page, owner);
+await pause(2500);
+const due = page.getByTestId("home-due-goal").filter({ hasText: staleGoal });
+await due.getByRole("button", { name: "No change" }).hover();
+await pause(800);
+await due.getByRole("button", { name: "No change" }).click();
+// No change lands on the Goal's page; a refusal lands on its Check-in form.
+await page.waitForURL(/\/goals\/\d+$/);
+await pause(2500);
+await page.goto(`${updatedGoalPath}/checkin`);
 await pause(1500);
-await owner.goto(`${staleGoalPath}/checkin`);
-await pause(1500);
-const form = owner.getByTestId("checkin-form");
+const form = page.getByTestId("checkin-form");
 await form.getByTestId("checkin-health").getByText("Yellow", { exact: true }).click();
 await pause(800);
 await form
   .getByRole("textbox", { name: "Plan", exact: true })
-  .pressSequentially("Cut over the two quiet services first; borrow an SRE for the database step.", { delay: 25 });
+  .pressSequentially("Retrain on last quarter's billing tickets; ship behind a flag.", { delay: 25 });
 const backToGreen = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 await form.getByLabel("Back to Green by").fill(backToGreen);
 await pause(500);
 const status = form.getByRole("textbox", { name: /^Status/ });
 await status.fill("");
-await status.pressSequentially("Cutover rehearsal failed on the database step. Fix is in review.", { delay: 25 });
+await status.pressSequentially("Deflection fell to 31% after the pricing change; answers are out of date.", { delay: 25 });
 await pause(800);
-await owner.screenshot({ path: join(shots, "checkin-filled.png") });
+await page.screenshot({ path: join(shots, "checkin-filled.png") });
 console.log("shot   checkin-filled.png");
 const submit = form.getByRole("button", { name: "Submit check-in" });
 await submit.scrollIntoViewIfNeeded();
 await pause(800);
 await submit.click();
-await owner.waitForLoadState("networkidle");
+await page.waitForLoadState("networkidle");
 await pause(2500);
-await owner.goto("/home");
+await page.goto("/home");
 await pause(2500);
 await videoContext.close();
 

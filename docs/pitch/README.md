@@ -1,7 +1,8 @@
 # Pitch deck
 
-`goal-tracker-pitch.pptx` is a nine-slide deck pitching Goal Tracker to
-leadership. Its screenshots and its 20-second check-in recording come from the
+`goal-tracker-pitch.pptx` is an eleven-slide deck asking leadership to pilot
+Goal Tracker in place of a PowerPoint status deck. Its screenshots and its
+short check-in recording come from the
 real app over the [fake org](../../README.md#seed-a-fake-org), and the two
 scripts here rebuild it.
 
@@ -20,7 +21,7 @@ It needs Playwright from `e2e/node_modules` (`make e2e`, or `npm ci` in
 
 - **`capture.mjs <base-url> [assets-dir]`** drives the app in headless
   Chromium and writes `assets/shots/*.png` and `assets/checkin.mp4`. It
-  **writes to the app** (one Check-in, one published Report), so run it only
+  **writes to the app** (two Check-ins, one published Report), so run it only
   against a throwaway copy such as the scratch app. `assets/` isn't committed.
 - **`build.mjs [assets-dir] [out.pptx]`** writes the deck from those assets
   with pptxgenjs. The slide text, speaker notes and the theme's colours are
@@ -34,5 +35,7 @@ screenshots show different dates, and the same Goals.
 Edit the text or layout in `build.mjs` and rebuild; to change what a
 screenshot shows, edit `capture.mjs`. Open the result in PowerPoint or
 LibreOffice and look at every slide: text that fits in one may wrap in the
-other. Slide 2's problems and slide 9's ask are generic. Fit them to the
-audience before presenting.
+other. Slide 3's problems and slide 4's PowerPoint column are generic,
+and the pilot on slides 2 and 11 names no org, date or cost. Fit them to the
+audience before presenting. Slide 9 says what is built and what isn't: keep
+it true as the product changes.

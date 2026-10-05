@@ -49,7 +49,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Documentation:**
 - [internal] DESIGN.md's History timeline now describes the markers and labels for Nudge and Parent suggestion entries: a dashed square for a Nudge and a dashed ring for a Parent suggestion, both `--color-ink-muted` (#194).
 - [internal] DESIGN.md's History timeline now says the list also holds Parent suggestions, Nudges and Milestones added outside a Check-in, and that the Check-ins chip lists those Nudges and Milestones beside the Check-ins (#203, #204, #219).
-- [internal] `docs/pitch/goal-tracker-pitch.pptx`: a nine-slide deck pitching Goal Tracker to leadership, with screenshots and a 20-second check-in recording taken from the seeded demo org. `docs/pitch/capture.mjs` takes them from a scratch app and `docs/pitch/build.mjs` writes the deck; `docs/pitch/README.md` has the steps.
+- [internal] `docs/pitch/goal-tracker-pitch.pptx`: an eleven-slide deck asking leadership to pilot Goal Tracker in place of a PowerPoint status deck, with screenshots and a short check-in recording taken from the seeded demo org. `docs/pitch/capture.mjs` takes them from a scratch app and `docs/pitch/build.mjs` writes the deck; `docs/pitch/README.md` has the steps.
 
 ### Collected changes — October 4, 2026
 
