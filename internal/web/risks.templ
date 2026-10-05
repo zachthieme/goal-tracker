@@ -12,7 +12,7 @@ import (
 // Goals need attention, a card per group of signals by who acts, then one
 // table row per flagged Goal, worst first, narrowed to one group when the
 // address asks for it, and at the bottom what each signal means. The header's
-// form and the Everyone | Mine toggle scope it all to some Goals; #risks-body
+// form and the Everyone | Mine | Chain toggle scope it all to some Goals; #risks-body
 // is what a change of scope swaps. With no Goal left to show, #risks-body says
 // so in one line in place of the count, the cards and the table.
 templ risksPage(current *domain.Account, v risksPageView) {
@@ -20,7 +20,7 @@ templ risksPage(current *domain.Account, v risksPageView) {
 		@risksStyles()
 		<header class="page-head">
 			<h1>Risks</h1>
-			if len(v.Dimensions) > 0 {
+			if len(v.Dimensions) > 0 || v.Chain.Offered() {
 				@risksFilters(v)
 			}
 		</header>
@@ -69,17 +69,26 @@ templ risksDefinitions() {
 	</details>
 }
 
-// risksScope is the page's Everyone | Mine toggle.
+// risksScope is the page's Everyone | Mine toggle, with My Chain for a viewer
+// with anyone under them, and, scoped to anyone else's Chain, that Chain by
+// whose it is, as the current choice.
 templ risksScope(v risksPageView) {
 	<nav class="rk-scope" aria-label="Scope">
-		<a data-testid="risks-scope-everyone" class="btn quiet sm" href={ v.ScopeURL(false) } { v.ScopeAttrs(false)... }>Everyone</a>
-		<a data-testid="risks-scope-mine" class="btn quiet sm" href={ v.ScopeURL(true) } { v.ScopeAttrs(true)... }>Mine</a>
+		<a data-testid="risks-scope-everyone" class="btn quiet sm" href={ v.ScopeURL(riskPageScope{}) } { v.ScopeAttrs(riskPageScope{})... }>Everyone</a>
+		<a data-testid="risks-scope-mine" class="btn quiet sm" href={ v.ScopeURL(riskPageScope{Mine: true}) } { v.ScopeAttrs(riskPageScope{Mine: true})... }>Mine</a>
+		if v.Chain.OffersMine {
+			<a data-testid="risks-scope-my-chain" class="btn quiet sm" href={ v.ScopeURL(v.MyChain()) } { v.ScopeAttrs(v.MyChain())... }>My Chain</a>
+		}
+		if v.Chain.Of != nil && (v.Chain.Of.ID != v.Chain.Viewer.ID || !v.Chain.OffersMine) {
+			<a data-testid="risks-scope-chain" class="btn quiet sm" href={ v.ScopeURL(v.scope()) } aria-current="page">{ v.Chain.Name() }</a>
+		}
 	</nav>
 }
 
-// risksFilters scopes the Risks page to the Goals with a Dimension value,
-// submitted as a GET so the scope lives in the address, carrying the page's
-// group and Mine along. Under htmx it applies itself on a change, as the Goal
+// risksFilters scopes the Risks page to the Goals with a Dimension value, and
+// to a Chain when anyone has a Manager, submitted as a GET so the scope lives
+// in the address, carrying the page's group and Mine along; a Chain chosen
+// takes over from Mine. Under htmx it applies itself on a change, as the Goal
 // list's filter bar does, swapping in only #risks-body so the form keeps its
 // focus, and pushes the address; hx-history="false" makes Back load the
 // earlier address afresh rather than a snapshot whose select would come back
@@ -106,16 +115,21 @@ templ risksFilters(v risksPageView) {
 		if v.Mine {
 			<input type="hidden" name="mine" value="1"/>
 		}
-		<select data-testid="risks-value" name="value" aria-label="Dimension value">
-			<option value="" selected?={ v.Value.ID == 0 }>Any value</option>
-			for _, d := range v.Dimensions {
-				<optgroup label={ d.Name }>
-					for _, dv := range d.Values {
-						<option value={ strconv.FormatInt(dv.ID, 10) } selected?={ v.Value.ID == dv.ID }>{ riskValueLabel(dv) }</option>
-					}
-				</optgroup>
-			}
-		</select>
+		if v.Chain.Offered() {
+			@pageChainSelect("risks-chain", v.Chain)
+		}
+		if len(v.Dimensions) > 0 {
+			<select data-testid="risks-value" name="value" aria-label="Dimension value">
+				<option value="" selected?={ v.Value.ID == 0 }>Any value</option>
+				for _, d := range v.Dimensions {
+					<optgroup label={ d.Name }>
+						for _, dv := range d.Values {
+							<option value={ strconv.FormatInt(dv.ID, 10) } selected?={ v.Value.ID == dv.ID }>{ riskValueLabel(dv) }</option>
+						}
+					</optgroup>
+				}
+			</select>
+		}
 		<noscript><button type="submit" class="btn">Apply</button></noscript>
 	</form>
 }

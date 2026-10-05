@@ -98,7 +98,7 @@ type goalsListData struct {
 	Filter goalFilter
 	// Chain is the Chain the list is scoped to (?chain=), and the Chains it
 	// offers.
-	Chain      chainScope
+	Chain      pageChainScope
 	Dimensions []domain.Dimension
 	Selected   map[int64]bool
 	GroupID    int64
@@ -339,7 +339,7 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 			byDimension[dimID] = append(byDimension[dimID], id)
 		}
 	}
-	chain, err := s.loadChainScope(ctx, r.URL.Query().Get("chain"), current, goalsOf(goals))
+	chain, err := s.loadPageChainScope(ctx, r.URL.Query().Get("chain"), current, goalsOfValues(goals))
 	if err != nil {
 		return goalsListData{}, err
 	}
@@ -398,8 +398,8 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 	return view, nil
 }
 
-// goalsOf is the Goals of gvs, in order.
-func goalsOf(gvs []domain.GoalWithValues) []domain.Goal {
+// goalsOfValues is the Goals of gvs, in order.
+func goalsOfValues(gvs []domain.GoalWithValues) []domain.Goal {
 	goals := make([]domain.Goal, 0, len(gvs))
 	for _, gv := range gvs {
 		goals = append(goals, gv.Goal)
@@ -407,12 +407,12 @@ func goalsOf(gvs []domain.GoalWithValues) []domain.Goal {
 	return goals
 }
 
-// chainScope is the Chain a page of Goals is scoped to (?chain=), by each
+// pageChainScope is the Chain a page of Goals is scoped to (?chain=), by each
 // Goal's Owner and never its Delegates, and the Chains the page offers to
 // scope to (CONTEXT.md: Chain). A Chain adds no access, only a way to find
 // Goals, so anyone may scope to anyone's (ADR 0002, ADR 0008). The Goals
 // pages and Risks share it.
-type chainScope struct {
+type pageChainScope struct {
 	// Of is the person whose Chain the page is scoped to, nil when it isn't.
 	Of *domain.Account
 	// in holds the Account IDs in Of's Chain.
@@ -428,15 +428,15 @@ type chainScope struct {
 	People []domain.Account
 }
 
-// loadChainScope reads raw, a ?chain= Account ID, into the scope current sees
+// loadPageChainScope reads raw, a ?chain= Account ID, into the scope current sees
 // over goals. A malformed ID, or one naming no one, scopes nothing, as does
 // any ID when no one has a Manager: the page then offers no Chain, so has no
 // control to undo it.
-func (s *Server) loadChainScope(ctx context.Context, raw string, current domain.Account, goals []domain.Goal) (chainScope, error) {
-	scope := chainScope{Viewer: current}
+func (s *Server) loadPageChainScope(ctx context.Context, raw string, current domain.Account, goals []domain.Goal) (pageChainScope, error) {
+	scope := pageChainScope{Viewer: current}
 	var err error
 	if scope.OffersMine, err = s.svc.HasAnyoneUnder(ctx, current.ID); err != nil {
-		return chainScope{}, err
+		return pageChainScope{}, err
 	}
 	managed := scope.OffersMine || current.ManagerID != nil
 	// Each Owner, then their Manager and on up, stopping at anyone reached: the
@@ -451,12 +451,12 @@ func (s *Server) loadChainScope(ctx context.Context, raw string, current domain.
 			}
 			managed = true
 			if a, err = s.svc.Account(ctx, *a.ManagerID); err != nil {
-				return chainScope{}, err
+				return pageChainScope{}, err
 			}
 		}
 	}
 	if !managed {
-		return chainScope{Viewer: current}, nil
+		return pageChainScope{Viewer: current}, nil
 	}
 	scope.People = slices.DeleteFunc(scope.People, func(a domain.Account) bool { return a.ID == current.ID })
 	slices.SortFunc(scope.People, func(a, b domain.Account) int {
@@ -470,7 +470,7 @@ func (s *Server) loadChainScope(ctx context.Context, raw string, current domain.
 	if errors.Is(err, domain.ErrNotFound) {
 		return scope, nil
 	} else if err != nil {
-		return chainScope{}, err
+		return pageChainScope{}, err
 	}
 	scope.Of = &chain[0]
 	scope.in = map[int64]bool{}
@@ -483,19 +483,19 @@ func (s *Server) loadChainScope(ctx context.Context, raw string, current domain.
 // keeps reports whether g's Owner is in the scope's Chain, or the page isn't
 // scoped to one. An Ownerless Goal's Departed Owner keeps their Manager, so
 // the Goal stays in the Chain its Owner was in.
-func (c chainScope) keeps(g domain.Goal) bool {
+func (c pageChainScope) keeps(g domain.Goal) bool {
 	return c.Of == nil || c.in[g.Owner.ID]
 }
 
 // Offered reports whether the page offers any Chain to scope to: not when no
 // one has a Manager.
-func (c chainScope) Offered() bool {
+func (c pageChainScope) Offered() bool {
 	return c.OffersMine || len(c.People) > 0
 }
 
 // Others are the people the picker offers beside My Chain: People, and
 // whoever the page is scoped to if a link named someone else.
-func (c chainScope) Others() []domain.Account {
+func (c pageChainScope) Others() []domain.Account {
 	if c.Of == nil || c.Of.ID == c.Viewer.ID || slices.ContainsFunc(c.People, func(a domain.Account) bool { return a.ID == c.Of.ID }) {
 		return c.People
 	}
@@ -503,7 +503,7 @@ func (c chainScope) Others() []domain.Account {
 }
 
 // Value is the ?chain= the scope keeps in its page's address, "" for none.
-func (c chainScope) Value() string {
+func (c pageChainScope) Value() string {
 	if c.Of == nil {
 		return ""
 	}
@@ -512,7 +512,7 @@ func (c chainScope) Value() string {
 
 // Name is the Chain the page is scoped to, by whose it is: "My Chain" for the
 // viewer's own, "Priya Raman's Chain" for anyone else's.
-func (c chainScope) Name() string {
+func (c pageChainScope) Name() string {
 	if c.Of == nil {
 		return ""
 	}

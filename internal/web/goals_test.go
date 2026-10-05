@@ -852,11 +852,11 @@ func TestGoalListScopesToMyChain(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
-	org := newChainOrg(h)
+	org := newScopeChainOrg(h)
 	ts := newServer(t, h)
 
 	vera := signInClient(t, ts.URL, "vera@example.com")
-	page := getBody(t, vera, chainURL(ts.URL, "/goals", org.Vera))
+	page := getBody(t, vera, scopeChainURL(ts.URL, "/goals", org.Vera))
 	got := rowTitles(goalRows(t, page), org.goals()...)
 	if want := []string{"Max's goal", "Mia's goal", "Pax's goal", "Pia's goal", "Vera's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Vera's My Chain: rows = %q, want %q", got, want)
@@ -870,7 +870,7 @@ func TestGoalListScopesToMyChain(t *testing.T) {
 	}
 
 	mia := signInClient(t, ts.URL, "mia@example.com")
-	page = getBody(t, mia, chainURL(ts.URL, "/goals", org.Mia))
+	page = getBody(t, mia, scopeChainURL(ts.URL, "/goals", org.Mia))
 	got = rowTitles(goalRows(t, page), org.goals()...)
 	if want := []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Mia's My Chain: rows = %q, want %q", got, want)
@@ -891,7 +891,7 @@ func TestGoalListScopesToAnotherPersonsChain(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
-	org := newChainOrg(h)
+	org := newScopeChainOrg(h)
 	boss := h.SignIn("boss@example.com")
 	h.AddDelegate(org.Oz, org.Pax, org.OzGoal.ID)
 	if err := h.Service.MarkDeparted(t.Context(), boss.ID, org.Pax.ID); err != nil {
@@ -906,7 +906,7 @@ func TestGoalListScopesToAnotherPersonsChain(t *testing.T) {
 		t.Errorf("the Chain picker doesn't offer Max by Name and email: %s", chain)
 	}
 
-	page = getBody(t, pia, chainURL(ts.URL, "/goals", org.Max))
+	page = getBody(t, pia, scopeChainURL(ts.URL, "/goals", org.Max))
 	got := rowTitles(goalRows(t, page), org.goals()...)
 	if want := []string{"Pax's goal", "Max's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Max's Chain: rows = %q, want %q (Pax's Ownerless Goal, not Oz's that Pax is a Delegate on)", got, want)
@@ -926,7 +926,7 @@ func TestGoalListKeepsTheChainInItsAddress(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
-	org := newChainOrg(h)
+	org := newScopeChainOrg(h)
 	boss := h.SignIn("boss@example.com")
 	team := h.CreateDimension(boss, "Team", "Core")
 	h.AssignGoalValue(org.PiaGoal, team.Values[0])
@@ -965,17 +965,17 @@ func TestGoalListSaysAnEmptyChainIsEmpty(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
-	org := newChainOrg(h)
+	org := newScopeChainOrg(h)
 	lee := h.SignInNamed("lee@example.com", "Lee Lund")
 	h.SetManager(lee, org.Vera)
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "vera@example.com")
 
-	page := getBody(t, client, chainURL(ts.URL, "/goals", lee))
+	page := getBody(t, client, scopeChainURL(ts.URL, "/goals", lee))
 	if empty := pageElement(t, page, "td", "no-goals"); !strings.Contains(empty, "No Goals in Lee Lund&#39;s Chain.") {
 		t.Errorf("an empty Chain doesn't say so: %s", empty)
 	}
-	page = getBody(t, client, chainURL(ts.URL, "/goals", lee)+"&health=red")
+	page = getBody(t, client, scopeChainURL(ts.URL, "/goals", lee)+"&health=red")
 	if empty := pageElement(t, page, "td", "no-goals"); !strings.Contains(empty, "No Goals in Lee Lund&#39;s Chain match.") {
 		t.Errorf("an empty Chain under another filter doesn't say so: %s", empty)
 	}

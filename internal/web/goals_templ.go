@@ -259,7 +259,7 @@ func goalFilters(view goalsListData) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if view.Chain.Offered() {
-			templ_7745c5c3_Err = chainSelect("goal-chain-filter", view.Chain).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = pageChainSelect("goal-chain-filter", view.Chain).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -501,11 +501,11 @@ func goalFilters(view goalsListData) templ.Component {
 	})
 }
 
-// chainSelect picks the Chain a page of Goals is scoped to: Any Chain, My
+// pageChainSelect picks the Chain a page of Goals is scoped to: Any Chain, My
 // Chain for a viewer with anyone under them, then each other person whose
 // Chain holds Goals, by Name with their email to tell same-Named people apart
 // (CONTEXT.md: Chain, Name). It submits ?chain=, the chosen person's ID.
-func chainSelect(testID string, c chainScope) templ.Component {
+func pageChainSelect(testID string, c pageChainScope) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {

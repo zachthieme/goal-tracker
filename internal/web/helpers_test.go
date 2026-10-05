@@ -350,18 +350,18 @@ func onlyMilestone(t *testing.T, h *testsupport.Harness, goal domain.Goal) domai
 	return ms[0]
 }
 
-// chainOrg is a three-level org for scoping a page to a Chain (CONTEXT.md:
+// scopeChainOrg is a three-level org for scoping a page to a Chain (CONTEXT.md:
 // Chain): Vera, a VP, manages Mia and Max; Mia manages Pia and Max manages
 // Pax. Oz is outside it, with no Manager. Each owns one Active Goal.
-type chainOrg struct {
+type scopeChainOrg struct {
 	Vera, Mia, Max, Pia, Pax, Oz                         domain.Account
 	VeraGoal, MiaGoal, MaxGoal, PiaGoal, PaxGoal, OzGoal domain.Goal
 }
 
-// newChainOrg arranges a chainOrg in h, its people signed in with Names.
-func newChainOrg(h *testsupport.Harness) chainOrg {
+// newScopeChainOrg arranges a scopeChainOrg in h, its people signed in with Names.
+func newScopeChainOrg(h *testsupport.Harness) scopeChainOrg {
 	h.T.Helper()
-	var o chainOrg
+	var o scopeChainOrg
 	o.Vera = h.SignInNamed("vera@example.com", "Vera Vance")
 	o.Mia = h.SignInNamed("mia@example.com", "Mia Moss")
 	o.Max = h.SignInNamed("max@example.com", "Max Marsh")
@@ -382,11 +382,11 @@ func newChainOrg(h *testsupport.Harness) chainOrg {
 }
 
 // goals is every Goal in the org, Oz's included.
-func (o chainOrg) goals() []domain.Goal {
+func (o scopeChainOrg) goals() []domain.Goal {
 	return []domain.Goal{o.VeraGoal, o.MiaGoal, o.MaxGoal, o.PiaGoal, o.PaxGoal, o.OzGoal}
 }
 
-// chainURL is path scoped to who's Chain (?chain=).
-func chainURL(base, path string, who domain.Account) string {
+// scopeChainURL is path scoped to who's Chain (?chain=).
+func scopeChainURL(base, path string, who domain.Account) string {
 	return base + path + "?chain=" + strconv.FormatInt(who.ID, 10)
 }

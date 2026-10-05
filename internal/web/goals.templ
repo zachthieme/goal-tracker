@@ -75,7 +75,7 @@ templ goalFilters(view goalsListData) {
 				Mine only
 			</label>
 			if view.Chain.Offered() {
-				@chainSelect("goal-chain-filter", view.Chain)
+				@pageChainSelect("goal-chain-filter", view.Chain)
 			}
 			<label class="gl-mine">
 				<input data-testid="goal-incomplete-filter" type="checkbox" name="incomplete" value="1" checked?={ view.Filter.Incomplete }/>
@@ -129,11 +129,11 @@ templ goalFilters(view goalsListData) {
 	</form>
 }
 
-// chainSelect picks the Chain a page of Goals is scoped to: Any Chain, My
+// pageChainSelect picks the Chain a page of Goals is scoped to: Any Chain, My
 // Chain for a viewer with anyone under them, then each other person whose
 // Chain holds Goals, by Name with their email to tell same-Named people apart
 // (CONTEXT.md: Chain, Name). It submits ?chain=, the chosen person's ID.
-templ chainSelect(testID string, c chainScope) {
+templ pageChainSelect(testID string, c pageChainScope) {
 	<select data-testid={ testID } name="chain" aria-label="Chain">
 		<option value="" selected?={ c.Of == nil }>Any Chain</option>
 		if c.OffersMine || (c.Of != nil && c.Of.ID == c.Viewer.ID) {
