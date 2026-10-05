@@ -3,7 +3,8 @@
 // delivery date needs a reason and stays visible as a Date Slip, and the
 // trouble reaches the parent's Owner as Rolled-up Health without turning
 // every ancestor Red.
-import { expect, type Locator, type Page, signIn, test } from "../fixtures";
+import type { Locator, Page } from "@playwright/test";
+import { expect, signIn, test } from "../fixtures";
 
 // The scenario's people are roles. "Priya" is the project's Owner and
 // "Marcus" the Owner of the team Goal it contributes to; both are chosen from
@@ -233,11 +234,9 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
   });
 
   await test.step("It worked if: one Red child doesn't turn every ancestor Red", async () => {
-    const orgRollups: string[] = [];
-    for (const org of chain.orgOutcomes) {
-      await marcus.goto(`/goals/${org.id}`);
-      orgRollups.push((await marcus.getByTestId("goal-rollup-health").textContent()) ?? "");
-    }
+    const org = chain.orgOutcome;
+    await marcus.goto(`/goals/${org.id}`);
+    await expect(marcus.getByTestId("goal-rollup-health"), `${org.title}'s Rolled-up Health`).toHaveText("Green");
 
     await page.goto(`/goals/${project.id}/checkin`);
     const form = page.getByTestId("checkin-form");
@@ -256,17 +255,13 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     await expect(marcus.getByTestId("goal-rollup-health")).toHaveText("Red");
     await expect(marcus.getByTestId("goal-health")).toHaveText("Green");
 
-    // Rolled-up Health goes one level only (RolledUpHealth,
-    // internal/domain/rollup.go): an org outcome reads the team Goal Owner's
-    // Green, not the project's Red, so its Rolled-up Health is as it was:
-    // Green when its other children are Green, never Red (the chain's org
-    // outcomes have no Red Active child).
-    for (const [i, org] of chain.orgOutcomes.entries()) {
-      await marcus.goto(`/goals/${org.id}`);
-      const rollup = marcus.getByTestId("goal-rollup-health");
-      await expect(rollup, `${org.title}'s Rolled-up Health`).toHaveText(orgRollups[i]);
-      await expect(rollup, `${org.title}'s Rolled-up Health`).not.toHaveText("Red");
-    }
+    // It worked if: the org outcome's Rolled-up Health reads the team Goal
+    // Owner's Green, not Red. Rolled-up Health goes one level only
+    // (RolledUpHealth, internal/domain/rollup.go): the org outcome reads the
+    // team Goal Owner's Green, not the project's Red, and its other Active
+    // children are Green (chooseBadNewsChain).
+    await marcus.goto(`/goals/${org.id}`);
+    await expect(marcus.getByTestId("goal-rollup-health"), `${org.title}'s Rolled-up Health`).toHaveText("Green");
   });
 });
 
@@ -275,6 +270,7 @@ type Goal = {
   title: string;
   email: string;
   name: string;
+  departed: number;
   lifecycle: string;
   kind: string;
   delivery_date: string;
@@ -287,22 +283,27 @@ type Chain = {
   // team is the project's Team, the Dimension value a Report rule matches.
   project: Goal & { milestones: Milestone[]; team: string };
   team: Goal;
-  orgOutcomes: Goal[];
+  // orgOutcome is an org outcome the team Goal contributes to whose other
+  // Active children are all Green, so it rolls up Green.
+  orgOutcome: Goal;
 };
 
 type Lookup = <T>(sql: string) => T[];
 
-// chooseBadNewsChain finds a project, the team Goal it contributes to and that
-// Goal's org outcomes, meeting every rule the scenario needs. Health in the
-// seed depends on its end date, so the chain is found at test time; when no
-// chain meets a rule, the test fails naming it rather than using a weaker one.
+// chooseBadNewsChain finds a project, the team Goal it contributes to and one
+// of that Goal's org outcomes, meeting every rule the scenario needs. Health
+// in the seed depends on its end date and time of day, so the chain is found
+// at test time; when no chain meets a rule, the test fails naming it rather
+// than using a weaker one. Goals whose Owner has departed still count as
+// children, since Rolled-up Health counts them, but are never the project or
+// the team Goal.
 function chooseBadNewsChain(lookup: Lookup): Chain {
   const goals = lookup<Goal>(`
-    select g.id, g.title, a.email, coalesce(a.name, a.email) name, g.lifecycle, g.kind, g.delivery_date,
+    select g.id, g.title, a.email, coalesce(a.name, a.email) name, a.departed,
+           g.lifecycle, g.kind, g.delivery_date,
            (select c.health from checkins c where c.goal_id = g.id
             order by c.created_at desc, c.id desc limit 1) health
-    from goals g join accounts a on a.id = g.owner_id
-    where a.departed = 0`);
+    from goals g join accounts a on a.id = g.owner_id`);
   const links = lookup<Link>(`select child_id, parent_id from links where status = 'accepted'`);
   const milestones = lookup<Milestone>(
     `select id, goal_id, name, target_date, status from milestones order by target_date, id`,
@@ -321,12 +322,21 @@ function chooseBadNewsChain(lookup: Lookup): Chain {
   const children = (g: Goal) => links.filter((l) => l.parent_id === g.id).flatMap((l) => byID.get(l.child_id) ?? []);
   const parents = (g: Goal) => links.filter((l) => l.child_id === g.id).flatMap((l) => byID.get(l.parent_id) ?? []);
   const activeGreen = (g: Goal) => g.lifecycle === "Active" && g.health === "Green";
+  // An org outcome rolls up Green over a Green team Goal when every other
+  // Active child with a Health is Green too: Rolled-up Health is the worst
+  // among them, so one Yellow sibling would keep it Yellow.
+  const greenOrgOutcomes = (team: Goal) =>
+    parents(team).filter((o) =>
+      children(o).every(
+        (c) => c.id === team.id || c.lifecycle !== "Active" || c.health === null || c.health === "Green",
+      ),
+    );
 
   type Candidate = { project: Goal; team: Goal };
   let candidates: Candidate[] = links.flatMap((l) => {
     const project = byID.get(l.child_id);
     const team = byID.get(l.parent_id);
-    return project && team ? [{ project, team }] : [];
+    return project && team && !project.departed && !team.departed ? [{ project, team }] : [];
   });
   const rules: [string, (c: Candidate) => boolean][] = [
     ["the project is Active, Dated and Green", ({ project }) => activeGreen(project) && project.kind === "Dated"],
@@ -347,11 +357,8 @@ function chooseBadNewsChain(lookup: Lookup): Chain {
     ["the team Goal has no overdue Planned Milestone", ({ team }) => !overdue(team)],
     ["the team Goal contributes to an org outcome", ({ team }) => parents(team).length > 0],
     [
-      "the team Goal's org outcomes aren't Red and have no Red Active child",
-      ({ team }) =>
-        parents(team).every(
-          (o) => o.health !== "Red" && children(o).every((c) => c.lifecycle !== "Active" || c.health !== "Red"),
-        ),
+      "the team Goal contributes to an org outcome whose other Active children are all Green",
+      ({ team }) => greenOrgOutcomes(team).length > 0,
     ],
   ];
   for (const [rule, meets] of rules) {
@@ -366,7 +373,7 @@ function chooseBadNewsChain(lookup: Lookup): Chain {
       team: teamOf(project) ?? "",
     },
     team,
-    orgOutcomes: parents(team),
+    orgOutcome: greenOrgOutcomes(team)[0],
   };
 }
 
