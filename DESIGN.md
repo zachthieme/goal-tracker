@@ -386,11 +386,13 @@ Load the fonts with this URL:
     Health beside it. Every other kind has a neutral `--color-ink-muted`
     marker with its own shape: a hollow ring for So What, a hollow diamond for
     an ownership change, a bar for a value change, a hollow arch (round on
-    top, square below) for a link change, a double ring for a Milestone added
-    outside a Check-in, and a hollow square for a Check-in with no Health,
-    such as one that put the Goal On Hold. Every entry also opens with its
-    kind as a bold text label (Check-in, So What, Handoff, Reassign, Value,
-    Link, Milestone), so the marker is never the only signal.
+    top, square below) for a link change, a dashed ring for a Parent
+    suggestion, a dashed square for a Nudge, a double ring for a Milestone
+    added outside a Check-in, and a hollow square for a Check-in with no
+    Health, such as one that put the Goal On Hold. Every entry also opens with
+    its kind as a bold text label (Check-in, So What, Handoff, Reassign, Value,
+    Link, Parent suggestion, Nudge, Milestone), so the marker is never the only
+    signal.
   - **A Check-in entry** shows its Health badge and status, then any
     Lifecycle change, Path to Green, and the Date Slips it recorded (the
     delivery date or a Milestone, ~~old~~ new, and the reason). Last comes who
