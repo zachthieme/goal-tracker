@@ -1103,7 +1103,7 @@ func (s *Server) writeFormResult(w http.ResponseWriter, r *http.Request, goalID 
 // carrying why its submit was refused and what it sent. When the page no
 // longer offers the viewer that form, such as Add Milestone once the Goal is
 // Done, there is nowhere beside it to say why, so the reason comes back on
-// its own.
+// its own. Either way the reason is a sentence without its internal prefix.
 func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, form goalForm, status int, refused error) {
 	view, err := s.goalPageView(r.Context(), goalID, current)
 	if err != nil {
@@ -1114,11 +1114,12 @@ func (s *Server) renderRefusedForm(w http.ResponseWriter, r *http.Request, goalI
 		s.serverError(w, r, "could not load goal", err)
 		return
 	}
+	reason := sentence(plainReason(refused))
 	if !view.offers(form) {
-		http.Error(w, refused.Error(), status)
+		http.Error(w, reason, status)
 		return
 	}
-	view.Open, view.FormError, view.FormInput = form, refused.Error(), r.PostForm
+	view.Open, view.FormError, view.FormInput = form, reason, r.PostForm
 	render(w, r, status, goalPage(&current, view))
 }
 
