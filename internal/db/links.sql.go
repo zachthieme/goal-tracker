@@ -245,7 +245,7 @@ func (q *Queries) GetRejectedLinkRequest(ctx context.Context, id int64) (Rejecte
 }
 
 const listChildGoals = `-- name: ListChildGoals :many
-SELECT links.id AS link_id, goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
+SELECT links.id AS link_id, goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
 FROM links
 JOIN goals ON goals.id = links.child_id
 JOIN accounts ON accounts.id = goals.owner_id
@@ -289,6 +289,7 @@ func (q *Queries) ListChildGoals(ctx context.Context, parentID int64) ([]ListChi
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
 			&i.Account.Name,
+			&i.Account.ManagerID,
 		); err != nil {
 			return nil, err
 		}
@@ -337,7 +338,7 @@ func (q *Queries) ListLinkRemovalTimes(ctx context.Context, arg ListLinkRemovalT
 }
 
 const listParentGoals = `-- name: ListParentGoals :many
-SELECT links.id AS link_id, goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
+SELECT links.id AS link_id, goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
 FROM links
 JOIN goals ON goals.id = links.parent_id
 JOIN accounts ON accounts.id = goals.owner_id
@@ -381,6 +382,7 @@ func (q *Queries) ListParentGoals(ctx context.Context, childID int64) ([]ListPar
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
 			&i.Account.Name,
+			&i.Account.ManagerID,
 		); err != nil {
 			return nil, err
 		}
@@ -396,7 +398,7 @@ func (q *Queries) ListParentGoals(ctx context.Context, childID int64) ([]ListPar
 }
 
 const listPendingLinksForOwner = `-- name: ListPendingLinksForOwner :many
-SELECT links.id, links.child_id, links.parent_id, links.status, links.note, links.requested_by, links.created_at, child.id, child.title, child.so_what, child.owner_id, child.lifecycle, child.created_at, child.kind, child.delivery_date, child.cadence_days, child.top_level, child.activated_at, child_owner.id, child_owner.email, child_owner.is_admin, child_owner.created_at, child_owner.departed, child_owner.name, parent.id, parent.title, parent.so_what, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent.top_level, parent.activated_at, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed, parent_owner.name
+SELECT links.id, links.child_id, links.parent_id, links.status, links.note, links.requested_by, links.created_at, child.id, child.title, child.so_what, child.owner_id, child.lifecycle, child.created_at, child.kind, child.delivery_date, child.cadence_days, child.top_level, child.activated_at, child_owner.id, child_owner.email, child_owner.is_admin, child_owner.created_at, child_owner.departed, child_owner.name, child_owner.manager_id, parent.id, parent.title, parent.so_what, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent.top_level, parent.activated_at, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed, parent_owner.name, parent_owner.manager_id
 FROM links
 JOIN goals child ON child.id = links.child_id
 JOIN accounts child_owner ON child_owner.id = child.owner_id
@@ -450,6 +452,7 @@ func (q *Queries) ListPendingLinksForOwner(ctx context.Context, ownerID int64) (
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
 			&i.Account.Name,
+			&i.Account.ManagerID,
 			&i.Goal_2.ID,
 			&i.Goal_2.Title,
 			&i.Goal_2.SoWhat,
@@ -467,6 +470,7 @@ func (q *Queries) ListPendingLinksForOwner(ctx context.Context, ownerID int64) (
 			&i.Account_2.CreatedAt,
 			&i.Account_2.Departed,
 			&i.Account_2.Name,
+			&i.Account_2.ManagerID,
 		); err != nil {
 			return nil, err
 		}
@@ -482,7 +486,7 @@ func (q *Queries) ListPendingLinksForOwner(ctx context.Context, ownerID int64) (
 }
 
 const listPendingParentLinks = `-- name: ListPendingParentLinks :many
-SELECT links.id AS link_id, goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
+SELECT links.id AS link_id, goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
 FROM links
 JOIN goals ON goals.id = links.parent_id
 JOIN accounts ON accounts.id = goals.owner_id
@@ -526,6 +530,7 @@ func (q *Queries) ListPendingParentLinks(ctx context.Context, childID int64) ([]
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
 			&i.Account.Name,
+			&i.Account.ManagerID,
 		); err != nil {
 			return nil, err
 		}

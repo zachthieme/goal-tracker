@@ -25,6 +25,10 @@ type Account struct {
 	// Departed is set once an Admin records that the person has left the org; the
 	// Goals they still own are then Ownerless (CONTEXT.md: Ownerless).
 	Departed bool
+	// ManagerID is the Account of the person this one reports to, as the org's
+	// directory records it; nil for someone it gives none (CONTEXT.md:
+	// Manager). Only the directory sync sets it (ADR 0008).
+	ManagerID *int64
 }
 
 // ErrNotFound is returned when a requested record does not exist.
@@ -38,7 +42,7 @@ var ErrDeparted = errors.New("account has departed")
 const timeFormat = time.RFC3339Nano
 
 func accountFromRow(a db.Account) Account {
-	acc := Account{ID: a.ID, Email: a.Email, IsAdmin: a.IsAdmin != 0, Departed: a.Departed != 0}
+	acc := Account{ID: a.ID, Email: a.Email, IsAdmin: a.IsAdmin != 0, Departed: a.Departed != 0, ManagerID: a.ManagerID}
 	if a.Name != nil {
 		acc.Name = *a.Name
 	}

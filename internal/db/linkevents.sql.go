@@ -44,7 +44,7 @@ func (q *Queries) CreateLinkEvent(ctx context.Context, arg CreateLinkEventParams
 }
 
 const listLinkEventsForGoal = `-- name: ListLinkEventsForGoal :many
-SELECT link_events.id, link_events.child_id, link_events.parent_id, link_events.kind, link_events.actor_id, link_events.created_at, child.title AS child_title, parent.title AS parent_title, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
+SELECT link_events.id, link_events.child_id, link_events.parent_id, link_events.kind, link_events.actor_id, link_events.created_at, child.title AS child_title, parent.title AS parent_title, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
 FROM link_events
 JOIN goals child ON child.id = link_events.child_id
 JOIN goals parent ON parent.id = link_events.parent_id
@@ -86,6 +86,7 @@ func (q *Queries) ListLinkEventsForGoal(ctx context.Context, goalID int64) ([]Li
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
 			&i.Account.Name,
+			&i.Account.ManagerID,
 		); err != nil {
 			return nil, err
 		}

@@ -10,7 +10,7 @@ import (
 )
 
 const listDefinitionChanges = `-- name: ListDefinitionChanges :many
-SELECT definition_changes.id, definition_changes.actor_id, definition_changes.dimension_id, definition_changes.field_id, definition_changes.summary, definition_changes.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
+SELECT definition_changes.id, definition_changes.actor_id, definition_changes.dimension_id, definition_changes.field_id, definition_changes.summary, definition_changes.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
 FROM definition_changes
 JOIN accounts ON accounts.id = definition_changes.actor_id
 ORDER BY definition_changes.id DESC
@@ -45,6 +45,7 @@ func (q *Queries) ListDefinitionChanges(ctx context.Context) ([]ListDefinitionCh
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
 			&i.Account.Name,
+			&i.Account.ManagerID,
 		); err != nil {
 			return nil, err
 		}
@@ -60,7 +61,7 @@ func (q *Queries) ListDefinitionChanges(ctx context.Context) ([]ListDefinitionCh
 }
 
 const listDefinitionChangesForDimension = `-- name: ListDefinitionChangesForDimension :many
-SELECT definition_changes.id, definition_changes.actor_id, definition_changes.dimension_id, definition_changes.field_id, definition_changes.summary, definition_changes.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
+SELECT definition_changes.id, definition_changes.actor_id, definition_changes.dimension_id, definition_changes.field_id, definition_changes.summary, definition_changes.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
 FROM definition_changes
 JOIN accounts ON accounts.id = definition_changes.actor_id
 WHERE definition_changes.dimension_id = ?
@@ -95,6 +96,7 @@ func (q *Queries) ListDefinitionChangesForDimension(ctx context.Context, dimensi
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
 			&i.Account.Name,
+			&i.Account.ManagerID,
 		); err != nil {
 			return nil, err
 		}
@@ -110,7 +112,7 @@ func (q *Queries) ListDefinitionChangesForDimension(ctx context.Context, dimensi
 }
 
 const listDefinitionChangesForField = `-- name: ListDefinitionChangesForField :many
-SELECT definition_changes.id, definition_changes.actor_id, definition_changes.dimension_id, definition_changes.field_id, definition_changes.summary, definition_changes.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
+SELECT definition_changes.id, definition_changes.actor_id, definition_changes.dimension_id, definition_changes.field_id, definition_changes.summary, definition_changes.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
 FROM definition_changes
 JOIN accounts ON accounts.id = definition_changes.actor_id
 WHERE definition_changes.field_id = ?
@@ -145,6 +147,7 @@ func (q *Queries) ListDefinitionChangesForField(ctx context.Context, fieldID *in
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
 			&i.Account.Name,
+			&i.Account.ManagerID,
 		); err != nil {
 			return nil, err
 		}
