@@ -9,8 +9,10 @@ regular cadence with Check-ins, and produces Reports. The domain language is in
 | Command | Make target | What it does |
 | ------- | ----------- | ------------ |
 | `go run ./cmd/goal-tracker` | `make build` (builds `bin/goal-tracker`) | Serves the web app. |
-| | `make serve` | Builds and serves the web app on your tailnet at `https://<machine>.<tailnet>.ts.net:8090` via `tailscale serve`, with `admin@example.com` as Admin. Override with `SERVE_PORT`, `SERVE_DB`, and `SERVE_ADMINS`. |
-| | `make restart` | Rebuilds, stops the server listening on `127.0.0.1:$SERVE_PORT`, and starts `make serve` again in the background, logging to `serve.log` (`SERVE_LOG`). Takes the same overrides. |
+| | `make serve` | Builds and serves the web app on your tailnet at `https://<machine>.<tailnet>.ts.net:8090` via `tailscale serve`, with `admin@example.com` as Admin. Override with `SERVE_PORT`, `SERVE_DB`, and `SERVE_ADMINS`. With `AUTHENTIK=1`, people sign in through the [local Authentik](dev/authentik/README.md), which it starts and serves on the tailnet at `:9443` (`AUTHENTIK_PORT`). |
+| | `make start` | Like `make serve`, but in the background, logging to `serve.log` (`SERVE_LOG`). Stops the server a previous `make start` left running first. Takes the same settings, `AUTHENTIK=1` included, and records them for `make stop` and `make restart`. |
+| | `make stop` | Stops the server `make start` started, and its Authentik if it started with `AUTHENTIK=1` (Authentik's data is kept). |
+| | `make restart` | Rebuilds and starts the server again with the settings the last `make start` recorded. A setting given to `make restart` replaces the recorded one. |
 | `go run ./cmd/seed` | `make seed` | Fills a fresh database with a fake org for demos (see [Seed a fake org](#seed-a-fake-org)). |
 
 The server is configured from the environment:

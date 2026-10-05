@@ -1,4 +1,4 @@
-.PHONY: build test test-quick lint generate generate-check check test-scripts e2e clean help seed serve restart
+.PHONY: build test test-quick lint generate generate-check check test-scripts e2e clean help seed serve serve-app authentik-up start stop restart
 
 # A bare `make` runs generate. Each target's `## ` comment is its line in
 # `make help`.
@@ -87,37 +87,97 @@ SEED_DB ?= goal-tracker.db
 seed: ## Fill a fresh database with a fake org (SEED_DB)
 	go run ./cmd/seed -db $(SEED_DB)
 
+# `make start` records how it started the app here, so `make stop` and
+# `make restart` act on the same port, database and sign-in. Only they read it;
+# `make start` and `make serve` take their settings fresh. Git-ignored.
+SERVE_STATE := .serve-state.mk
+ifneq ($(filter stop restart,$(MAKECMDGOALS)),)
+-include $(SERVE_STATE)
+endif
+
 # Serve the app on the tailnet: the server listens on localhost only and
 # `tailscale serve` proxies https://<this machine>.<tailnet>.ts.net:$(SERVE_PORT)
 # to it, so emailed links point at the tailnet URL. The proxy outlives the
 # server; `tailscale serve --https=$(SERVE_PORT) off` removes it.
+#
+# AUTHENTIK=1 signs people in through the local Authentik in dev/authentik/
+# (see its README; it needs dev/authentik/.env) instead of the development
+# form. Authentik is started, told the app's tailnet callback, and put on the
+# tailnet at https://<this machine>.<tailnet>.ts.net:$(AUTHENTIK_PORT), so
+# sign-in works from any device on the tailnet.
 SERVE_PORT ?= 8090
 SERVE_DB ?= goal-tracker.db
 SERVE_ADMINS ?= admin@example.com
-serve: build ## Build and serve the app on the tailnet (SERVE_PORT, SERVE_DB, SERVE_ADMINS)
+SERVE_LOG ?= serve.log
+AUTHENTIK ?= 0
+AUTHENTIK_PORT ?= 9443
+TAILNET_HOST = $$(tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")')
+WITH_AUTHENTIK = $(if $(filter 1,$(AUTHENTIK)),authentik-up)
+
+serve: build $(WITH_AUTHENTIK) serve-app ## Build and serve the app on the tailnet (SERVE_PORT, SERVE_DB, SERVE_ADMINS, AUTHENTIK=1)
+
+# The server itself, in the foreground, for `make serve` and `make start`.
+serve-app:
 	tailscale serve --bg --https=$(SERVE_PORT) http://127.0.0.1:$(SERVE_PORT)
-	host=$$(tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")') && \
+	host=$(TAILNET_HOST) && \
 	GOAL_TRACKER_ADDR=127.0.0.1:$(SERVE_PORT) \
 	GOAL_TRACKER_DB=$(SERVE_DB) \
 	GOAL_TRACKER_ADMINS=$(SERVE_ADMINS) \
 	GOAL_TRACKER_BASE_URL=https://$$host:$(SERVE_PORT) \
+	$(if $(filter 1,$(AUTHENTIK)),\
+	GOAL_TRACKER_OIDC_ISSUER=https://$$host:$(AUTHENTIK_PORT)/application/o/goal-tracker/ \
+	GOAL_TRACKER_OIDC_CLIENT_ID=goal-tracker \
+	GOAL_TRACKER_OIDC_CLIENT_SECRET=$$(sed -n 's/^GOAL_TRACKER_OIDC_CLIENT_SECRET=//p' dev/authentik/.env) \
+	) \
 	exec bin/goal-tracker
 
-# Rebuild and restart the tailnet server in the background: stop whatever
-# serves 127.0.0.1:$(SERVE_PORT) (only the local listener, never tailscaled's
-# proxy on the tailnet address), then run `make serve` detached, logging to
-# $(SERVE_LOG). Takes the same SERVE_* overrides as `make serve`.
-SERVE_LOG ?= serve.log
-restart: build ## Rebuild and restart the tailnet server in the background, logging to SERVE_LOG
-	@pid=$$(ss -ltnpH 'sport = :$(SERVE_PORT)' src 127.0.0.1 | grep -o 'pid=[0-9]*' | cut -d= -f2 | head -1); \
+# Start the local Authentik with the app's tailnet callback registered, and put
+# it on the tailnet. apply.sh re-applies the blueprint, since Authentik doesn't
+# notice a changed callback by itself.
+authentik-up:
+	host=$(TAILNET_HOST) && cd dev/authentik && \
+	GOAL_TRACKER_TAILNET_CALLBACK=https://$$host:$(SERVE_PORT)/auth/callback docker compose up -d && \
+	./apply.sh
+	tailscale serve --bg --https=$(AUTHENTIK_PORT) http://127.0.0.1:9000
+
+# stop_server port: stop whatever serves 127.0.0.1:port (only the local
+# listener, never tailscaled's proxy on the tailnet address).
+define stop_server
+	pid=$$(ss -ltnpH "sport = :$(1)" src 127.0.0.1 | grep -o 'pid=[0-9]*' | cut -d= -f2 | head -1); \
 	if [ -n "$$pid" ]; then \
-		echo "stopping goal-tracker (pid $$pid)"; kill $$pid; \
+		echo "stopping goal-tracker on :$(1) (pid $$pid)"; kill $$pid; \
 		for i in $$(seq 50); do kill -0 $$pid 2>/dev/null || break; sleep 0.1; done; \
 		if kill -0 $$pid 2>/dev/null; then echo "pid $$pid did not stop" >&2; exit 1; fi; \
 	fi
-	setsid nohup $(MAKE) serve SERVE_PORT=$(SERVE_PORT) SERVE_DB=$(SERVE_DB) SERVE_ADMINS=$(SERVE_ADMINS) >$(SERVE_LOG) 2>&1 </dev/null &
+endef
+
+# Build and start the app in the background, logging to $(SERVE_LOG), first
+# stopping the one a previous `make start` left running. Starting without
+# AUTHENTIK=1 after a start with it also stops Authentik.
+start: build $(WITH_AUTHENTIK) ## Build and start the app on the tailnet in the background (SERVE_*, AUTHENTIK=1)
+	@if [ -f $(SERVE_STATE) ]; then \
+		old=$$(sed -n 's/^SERVE_PORT := //p' $(SERVE_STATE)); \
+		if [ -n "$$old" ] && [ "$$old" != "$(SERVE_PORT)" ]; then $(call stop_server,$$old); fi; \
+		if grep -qx 'AUTHENTIK := 1' $(SERVE_STATE) && [ "$(AUTHENTIK)" != 1 ]; then \
+			echo "stopping Authentik"; (cd dev/authentik && docker compose stop); fi; \
+	fi
+	@$(call stop_server,$(SERVE_PORT))
+	@printf 'SERVE_PORT := %s\nSERVE_DB := %s\nSERVE_ADMINS := %s\nSERVE_LOG := %s\nAUTHENTIK := %s\n' \
+		'$(SERVE_PORT)' '$(SERVE_DB)' '$(SERVE_ADMINS)' '$(SERVE_LOG)' '$(AUTHENTIK)' >$(SERVE_STATE)
+	setsid nohup $(MAKE) serve-app SERVE_PORT=$(SERVE_PORT) SERVE_DB=$(SERVE_DB) SERVE_ADMINS=$(SERVE_ADMINS) AUTHENTIK=$(AUTHENTIK) AUTHENTIK_PORT=$(AUTHENTIK_PORT) >$(SERVE_LOG) 2>&1 </dev/null &
 	@for i in $$(seq 100); do \
 		if ss -ltnH 'sport = :$(SERVE_PORT)' src 127.0.0.1 | grep -q .; then \
-			echo "goal-tracker is serving on :$(SERVE_PORT) (log: $(SERVE_LOG))"; exit 0; fi; \
+			echo "goal-tracker is serving on :$(SERVE_PORT)$(if $(filter 1,$(AUTHENTIK)), with Authentik sign-in,) (log: $(SERVE_LOG))"; exit 0; fi; \
 		sleep 0.1; done; \
 	echo "goal-tracker did not come up; see $(SERVE_LOG)" >&2; tail -20 $(SERVE_LOG) >&2; exit 1
+
+# Stop what `make start` started: the app, and Authentik if it started with
+# AUTHENTIK=1 (its data is kept). The tailnet proxies stay, as with serve.
+stop: ## Stop the app `make start` started, and its Authentik
+	@$(call stop_server,$(SERVE_PORT))
+	@if [ "$(AUTHENTIK)" = 1 ]; then echo "stopping Authentik"; cd dev/authentik && docker compose stop; fi
+
+# Rebuild and start the app again as the last `make start` did; any setting
+# given here replaces the recorded one.
+restart: ## Rebuild and restart the app as the last `make start` did
+	@$(MAKE) --no-print-directory start SERVE_PORT=$(SERVE_PORT) SERVE_DB=$(SERVE_DB) SERVE_ADMINS=$(SERVE_ADMINS) SERVE_LOG=$(SERVE_LOG) AUTHENTIK=$(AUTHENTIK) AUTHENTIK_PORT=$(AUTHENTIK_PORT)

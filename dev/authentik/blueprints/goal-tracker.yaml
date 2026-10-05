@@ -70,12 +70,16 @@ entries:
       grant_types: [authorization_code, refresh_token]
       client_id: goal-tracker
       client_secret: !Env GOAL_TRACKER_OIDC_CLIENT_SECRET
-      # The app's default address (GOAL_TRACKER_BASE_URL), by either name.
+      # The app's default address (GOAL_TRACKER_BASE_URL), by either name, and
+      # the tailnet address `make start AUTHENTIK=1` serves it at, which it
+      # passes in GOAL_TRACKER_TAILNET_CALLBACK (unset, a repeat of the first).
       redirect_uris:
         - matching_mode: strict
           url: http://127.0.0.1:8080/auth/callback
         - matching_mode: strict
           url: http://localhost:8080/auth/callback
+        - matching_mode: strict
+          url: !Env [GOAL_TRACKER_TAILNET_CALLBACK, http://127.0.0.1:8080/auth/callback]
       signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
       sub_mode: user_email
       include_claims_in_id_token: true

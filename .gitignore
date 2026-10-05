@@ -30,3 +30,6 @@ docs/pitch/assets/
 
 # Local Authentik secrets (see dev/authentik/README.md)
 dev/authentik/.env
+
+# What `make start` recorded for `make stop` and `make restart`
+/.serve-state.mk

@@ -27,6 +27,19 @@ person and their manager, a password sign-in, and the claims Goal Tracker gets
 through the authorization code flow. It prints `all checks passed` or lists
 each failure.
 
+## With `make start`
+
+From the repo root, `make start AUTHENTIK=1` does all of this for you: it
+starts Authentik, registers the app's tailnet callback, serves Authentik on the
+tailnet at `https://<machine>.<tailnet>.ts.net:9443`, and starts Goal Tracker
+signing in through it. People on the tailnet sign in from any device.
+`make stop` stops both, and `make restart` keeps Authentik sign-in. You still
+need `.env` filled in first.
+
+The tailnet callback reaches the blueprint as `GOAL_TRACKER_TAILNET_CALLBACK`.
+Authentik doesn't re-apply a blueprint when only such a value changes, so
+`make start` runs `./apply.sh`, which applies it now and waits until it has.
+
 ## Stop, wipe, and re-apply
 
 ```sh
@@ -52,7 +65,8 @@ to drop something you removed from the file, wipe the database.
 | Scopes | `openid email profile manager` |
 
 Both redirect URIs are the app's default address, so run Goal Tracker on port
-8080. To serve it somewhere else, add that address's `/auth/callback` to
+8080, or use `make start AUTHENTIK=1`, which registers its tailnet address too.
+To serve it somewhere else, add that address's `/auth/callback` to
 `redirect_uris` in the blueprint. The client ID and secret also show in the
 admin UI under **Applications → Providers → Goal Tracker**.
 
