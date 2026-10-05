@@ -2,6 +2,7 @@ package web_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -78,6 +79,37 @@ func TestAnUnexpectedServerErrorIsLoggedWithItsCause(t *testing.T) {
 	}
 	if cause, _ := rec["err"].(string); !strings.Contains(cause, "database is closed") {
 		t.Errorf("record err %q, want the closed database's error", cause)
+	}
+}
+
+// A request the client abandoned, like a checklist post htmx replaces with a
+// newer one, fails only because its own context was cancelled. That isn't a
+// server fault, so it isn't logged at ERROR, and the 500 it answers is
+// unchanged.
+func TestARequestTheClientAbandonedIsNotLoggedAsAServerError(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts, buf := loggedServer(t, h)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	form := url.Values{"email": {"sam@example.com"}}
+	r := httptest.NewRequestWithContext(ctx, http.MethodPost, "/signin", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	ts.Config.Handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("status %d, want 500", w.Code)
+	}
+	if body := w.Body.String(); body != "sign-in failed\n" {
+		t.Errorf("body %q, want %q", body, "sign-in failed\n")
+	}
+	for _, rec := range logRecords(t, buf) {
+		if rec["level"] == "ERROR" {
+			t.Errorf("an abandoned request was logged at ERROR: %v", rec)
+		}
 	}
 }
 
