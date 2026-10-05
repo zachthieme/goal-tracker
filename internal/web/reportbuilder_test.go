@@ -1101,3 +1101,98 @@ func TestEditBuilderBreadcrumbShowsTheSavedNameOverHTTP(t *testing.T) {
 		}
 	}
 }
+
+// The builder offers the Owner's Chain beside the Owner, picking people the
+// same way: a Chain rule saves, its draft selects the Goals of the person and
+// everyone below them, and the edit page reloads it as "Owner's Chain is in
+// the Chain of <Name>" (CONTEXT.md: Chain).
+func TestBuilderSavesAndReloadsAChainRuleOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	vp := h.SignInNamed("vp@example.com", "Priya Raman")
+	mia := h.SignInNamed("mia@example.com", "Mia Lund")
+	out := h.SignInNamed("out@example.com", "Oona Hart")
+	h.SetManager(mia, vp)
+	vps := h.ActiveGoal(vp, "Grow revenue", "Matters.")
+	mias := h.ActiveGoal(mia, "Platform reliability", "Matters.")
+	h.ActiveGoal(out, "Edge cache rollout", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "vp@example.com")
+	person := domain.RuleChain + "=" + strconv.FormatInt(vp.ID, 10)
+
+	attribute := pageElement(t, pageElement(t, getBody(t, client, ts.URL+"/reports/new"), "form", "report-builder"), "select", "rule-attribute")
+	if want := `<option value="` + domain.RuleChain + `">` + reportChainAttributeLabel + `</option>`; !strings.Contains(attribute, want) {
+		t.Errorf("the attribute select doesn't offer the Owner's Chain %s:\n%s", want, attribute)
+	}
+
+	resp := postForm(t, noRedirects(client), ts.URL+"/reports/new", url.Values{
+		"name":               {"Priya's org"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleChain},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {person},
+	})
+	draft := assertSavedReport(t, client, ts.URL, resp)
+	want := []string{vps.Title, mias.Title}
+	slices.Sort(want)
+	if got := draftGoalTitles(t, draft); !slices.Equal(got, want) {
+		t.Errorf("the Chain rule's draft selects %q, want %q", got, want)
+	}
+
+	defs, err := h.Service.ListReportDefinitions(context.Background())
+	if err != nil || len(defs) != 1 {
+		t.Fatalf("ListReportDefinitions = %v, %v; want the one saved", defs, err)
+	}
+	edit := pageElement(t, getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(defs[0].ID, 10)+"/edit"), "div", "report-rule")
+	for _, want := range []string{
+		`<option value="` + domain.RuleChain + `" selected>` + reportChainAttributeLabel + `</option>`,
+		`<option value="` + domain.RuleIs + `" selected>is in the Chain of</option>`,
+		`<option value="` + person + `" selected>Priya Raman</option>`,
+	} {
+		if !strings.Contains(edit, want) {
+			t.Errorf("the reloaded rule lacks %s:\n%s", want, edit)
+		}
+	}
+}
+
+// With no one's Manager known, the builder doesn't offer the Owner's Chain.
+// A saved Chain rule still loads and applies: it matches only the named
+// people's own Goals.
+func TestBuilderOffersTheChainOnlyWhenAnyoneHasAManagerOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	vp := h.SignInNamed("vp@example.com", "Priya Raman")
+	mia := h.SignInNamed("mia@example.com", "Mia Lund")
+	vps := h.ActiveGoal(vp, "Grow revenue", "Matters.")
+	h.ActiveGoal(mia, "Platform reliability", "Matters.")
+	def := h.SaveReportDefinition(vp, domain.SaveReportDefinitionInput{Name: "Priya's org", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{
+		{Attribute: domain.RuleChain, Op: domain.RuleIs, Values: []string{strconv.FormatInt(vp.ID, 10)}},
+	}})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "vp@example.com")
+
+	attribute := pageElement(t, pageElement(t, getBody(t, client, ts.URL+"/reports/new"), "form", "report-builder"), "select", "rule-attribute")
+	if strings.Contains(attribute, reportChainAttributeLabel) {
+		t.Errorf("with no Manager known, the attribute select offers the Owner's Chain:\n%s", attribute)
+	}
+
+	draftURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	edit := pageElement(t, getBody(t, client, draftURL+"/edit"), "div", "report-rule")
+	for _, want := range []string{
+		`<option value="` + domain.RuleChain + `" selected>` + reportChainAttributeLabel + `</option>`,
+		`<option value="` + domain.RuleChain + "=" + strconv.FormatInt(vp.ID, 10) + `" selected>Priya Raman</option>`,
+	} {
+		if !strings.Contains(edit, want) {
+			t.Errorf("the saved Chain rule doesn't load, lacking %s:\n%s", want, edit)
+		}
+	}
+	if got, want := draftGoalTitles(t, getBody(t, client, draftURL)), []string{vps.Title}; !slices.Equal(got, want) {
+		t.Errorf("with no Manager known, the Chain rule's draft selects %q, want %q", got, want)
+	}
+}
+
+// reportChainAttributeLabel is the Owner's Chain attribute's label as the builder's HTML
+// escapes it.
+var reportChainAttributeLabel = html.EscapeString("Owner's Chain")

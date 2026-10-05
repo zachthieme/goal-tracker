@@ -283,13 +283,14 @@ templ reportBuilderScript() {
 			form.classList.add("rb-js");
 			var ops = {
 				values: [["is", "is"], ["is any of", "is any of"], ["is not", "is not"]],
-				"top-level": [["is", "is Top-level"], ["is not", "is not Top-level"]]
+				"top-level": [["is", "is Top-level"], ["is not", "is not Top-level"]],
+				chain: [["is", "is in the Chain of"], ["is any of", "is in the Chain of any of"], ["is not", "is not in the Chain of"]]
 			};
 			function narrow(row) {
 				var attribute = row.querySelector('[data-testid="rule-attribute"]').value;
 				var op = row.querySelector('[data-testid="rule-op"]');
 				var values = row.querySelector('[data-testid="rule-values"]');
-				var wanted = ops[attribute === "top-level" ? "top-level" : "values"];
+				var wanted = ops[attribute] || ops.values;
 				var chosen = op.value;
 				op.textContent = "";
 				wanted.forEach(function (o) {

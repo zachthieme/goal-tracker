@@ -723,6 +723,32 @@ func (r ReportRule) matches(subject ruleSubject) bool {
 	return listed
 }
 
+// ReportRuleManagers returns everyone who is someone's Manager, by id, for the
+// Report builder to offer a Chain rule on: with none, no one has a Manager and
+// a Chain is only its person (CONTEXT.md: Chain).
+func (s *Service) ReportRuleManagers(ctx context.Context) ([]Account, error) {
+	managed, err := s.queries.ListManagedAccounts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list managed accounts: %w", err)
+	}
+	var ids []int64
+	for _, row := range managed {
+		if !slices.Contains(ids, *row.ManagerID) {
+			ids = append(ids, *row.ManagerID)
+		}
+	}
+	slices.Sort(ids)
+	out := make([]Account, 0, len(ids))
+	for _, id := range ids {
+		a, err := s.Account(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, a)
+	}
+	return out, nil
+}
+
 // goalValuesByGoal returns every Goal's assigned Dimension values keyed by Goal
 // id, for applying a Report Definition's Dimension filter across the candidates.
 func (s *Service) goalValuesByGoal(ctx context.Context) (map[int64][]DimensionValue, error) {
