@@ -95,6 +95,40 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   );
   expect(tiered, "the seed has two Active Platform Goals").toHaveLength(2);
 
+  // An Unaligned Goal: Active, not Top-level, contributing to no Goal.
+  const [unaligned] = seedLookup<Goal>(
+    `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
+     where g.lifecycle = 'Active' and g.top_level = 0 and a.email <> ?
+       and not exists (select 1 from links l where l.child_id = g.id and l.status = 'accepted')
+     order by g.id limit 1`,
+    departing.email,
+  );
+  expect(unaligned, "the seed has an Unaligned Goal").toBeDefined();
+
+  // A Goal with two signals: Stale, and due later than a Goal it contributes
+  // to (a Schedule conflict), with its Team.
+  const [twoReasons] = seedLookup<Goal & { team: string }>(
+    `select g.id, g.title, a.email, v.value as team from goals g
+     join accounts a on a.id = g.owner_id
+     join goal_dimension_values gdv on gdv.goal_id = g.id
+     join dimension_values v on v.id = gdv.dimension_value_id
+     join dimensions d on d.id = v.dimension_id and d.name = 'Team'
+     where g.lifecycle = 'Active' and a.email <> ? and ${isStale} and g.delivery_date <> ''
+       and exists (select 1 from links l join goals p on p.id = l.parent_id
+                   where l.child_id = g.id and l.status = 'accepted'
+                     and p.delivery_date <> '' and g.delivery_date > p.delivery_date)
+     order by g.id limit 1`,
+    departing.email,
+  );
+  expect(twoReasons, "the seed has a Stale Goal with a Schedule conflict").toBeDefined();
+
+  // The departed Owner's Active Goals, which become Ownerless on Risks.
+  const ownerless = seedLookup<Goal>(
+    `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
+     where a.email = ? and g.lifecycle = 'Active' order by g.id`,
+    departing.email,
+  );
+
   const adminPage = await as(admin);
 
   await test.step("Setup 1: the Admin departs an Owner, so their Goals are Ownerless", async () => {
@@ -189,7 +223,152 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
       await expect(goalRow(group, goal.title)).toBeVisible();
     }
   });
+
+  await test.step("3. Risks says how many Goals need attention, in three groups by who has to act", async () => {
+    await page.goto("/risks");
+    await expect(page.getByTestId("risks-attention")).toContainText("Goals need attention");
+    const cards = [
+      { key: "owner", name: "Owner needs to update", kinds: ["stale", "path-overdue"] },
+      { key: "plan", name: "Plan doesn't fit", kinds: ["unaligned", "schedule-conflicts"] },
+      { key: "admin", name: "Needs an Admin", kinds: ["ownerless"] },
+    ];
+    for (const c of cards) {
+      const card = page.getByTestId(`risks-group-${c.key}`);
+      await expect(card).toContainText(c.name);
+      await expect(card.getByText(/^\d+$/)).toBeVisible();
+      // A chip per signal that flags a Goal; the setup makes every one of
+      // these flag at least one.
+      for (const kind of c.kinds) {
+        await expect(card.locator(`[data-kind="${kind}"]`), `${c.name} has a ${kind} chip`).toBeVisible();
+      }
+    }
+
+    // Following a card narrows the one flat table to that group: each row
+    // carries a chip of the group's signals, and the card counts the rows.
+    const expected: Record<string, { goal: Goal; kind: string }[]> = {
+      owner: [
+        { goal: stale, kind: "stale" },
+        { goal: overdue, kind: "path-overdue" },
+      ],
+      plan: [
+        { goal: unaligned, kind: "unaligned" },
+        { goal: twoReasons, kind: "schedule-conflicts" },
+      ],
+      admin: ownerless.map((goal) => ({ goal, kind: "ownerless" })),
+    };
+    for (const c of cards) {
+      await page.goto("/risks");
+      const card = page.getByTestId(`risks-group-${c.key}`);
+      const count = Number(await card.getByText(/^\d+$/).textContent());
+      await card.click();
+      await expect(page).toHaveURL(new RegExp(`/risks\\?group=${c.key}$`));
+      const rows = await riskRows(page);
+      expect(rows, `the ${c.name} card counts its rows`).toHaveLength(count);
+      for (const r of rows) {
+        expect(r.kinds.length, `${r.title} has a chip`).toBeGreaterThan(0);
+        expect(c.kinds, `${r.title}'s chips are ${c.name}'s`).toEqual(expect.arrayContaining(r.kinds));
+      }
+      for (const { goal, kind } of expected[c.key]) {
+        const row = rows.find((r) => r.id === goal.id);
+        expect(row?.kinds, `${goal.title} is under ${c.name} with a ${kind} chip`).toContain(kind);
+      }
+      // The Stale chip on the card counts the Stale rows.
+      for (const kind of c.kinds) {
+        const n = rows.filter((r) => r.kinds.includes(kind)).length;
+        await expect(card.locator(`[data-kind="${kind}"]`)).toHaveText(new RegExp(` · ${n}$`));
+      }
+    }
+  });
+
+  await test.step("4. Narrowed to her org, each flagged Goal is one row, worst first, with a chip per reason and one Fix", async () => {
+    const everyone = await navRisksCount(page);
+    await page.goto("/risks");
+    await page.getByTestId("risks-value").selectOption({ label: "Platform" });
+    await expect(page).toHaveURL(/[?&]value=\d+/);
+    const rows = await riskRows(page);
+    await expect(page.getByTestId("risks-attention")).toHaveText(new RegExp(`^${rows.length} Goals? needs? attention`));
+    // The top bar counts the whole org; the narrowed page doesn't.
+    expect(rows.length, "Platform has fewer flagged Goals than the org").toBeLessThan(everyone);
+    expect(await navRisksCount(page), "the top bar's count doesn't narrow").toBe(everyone);
+
+    expect(new Set(rows.map((r) => r.id)).size, "one row per Goal").toBe(rows.length);
+    for (const r of rows) {
+      expect(["Red", "Yellow", "Green", "—"], `${r.title}'s Health`).toContain(r.health);
+      expect(r.kinds.length, `${r.title} has a chip per reason`).toBeGreaterThan(0);
+      expect(r.fixCells, `${r.title} has one Fix`).toBe(1);
+      expect(r.fixes, `${r.title}'s Fix is one action: ${r.fix}`).toBe(1);
+    }
+    // Worst first (sortRiskRows): Ownerless, then by Health (Red, Yellow,
+    // none, Green), then Path to Green overdue, then Stale.
+    const keys = rows.map((r) => [
+      r.kinds.includes("ownerless") ? 0 : 1,
+      riskHealthRank(r.health),
+      r.kinds.includes("path-overdue") ? 0 : 1,
+      r.kinds.includes("stale") ? 0 : 1,
+    ]);
+    for (let i = 1; i < keys.length; i++) {
+      expect(compareKeys(keys[i - 1], keys[i]), `${rows[i - 1].title} is no better off than ${rows[i].title}`).toBeLessThanOrEqual(0);
+    }
+    for (const { goal, kind } of [
+      { goal: departing, kind: "ownerless" },
+      { goal: overdue, kind: "path-overdue" },
+      { goal: stale, kind: "stale" },
+    ]) {
+      expect(rows.find((r) => r.id === goal.id)?.kinds, `${goal.title} is a Platform row with a ${kind} chip`).toContain(kind);
+    }
+
+    // A Goal with two reasons is one row with two chips and one Fix.
+    await page.getByTestId("risks-value").selectOption({ label: twoReasons.team });
+    await expect(page.getByTestId("risks-value").locator("option:checked")).toHaveText(twoReasons.team);
+    await expect(page.getByTestId("risks-table").getByRole("link", { name: twoReasons.title, exact: true })).toBeVisible();
+    const team = await riskRows(page);
+    const two = team.filter((r) => r.id === twoReasons.id);
+    expect(two, `${twoReasons.title} is one row`).toHaveLength(1);
+    expect(two[0].kinds.toSorted(), "with a chip for each reason").toEqual(["schedule-conflicts", "stale"]);
+    expect(two[0].fixes, "and one Fix").toBe(1);
+  });
 });
+
+type RiskRow = { id: number; title: string; health: string; kinds: string[]; fixCells: number; fixes: number; fix: string };
+
+// riskRows reads the Risks table's rows in order: each flagged Goal's id and
+// title (its first link; a chip may link its parent), Health, the kinds of its
+// chips, its Fix cells, and the controls in them and what they say.
+function riskRows(page: Page): Promise<RiskRow[]> {
+  return page
+    .getByTestId("risks-table")
+    .getByTestId("risk-row")
+    .evaluateAll((trs) =>
+      trs.map((tr) => {
+        const link = tr.querySelector('[data-testid="risk-goal"] a');
+        const fix = [...tr.querySelectorAll('[data-testid="risk-fix"]')];
+        const controls = fix.flatMap((td) => [...td.querySelectorAll("a, button")]);
+        return {
+          id: Number(link?.getAttribute("href")?.replace("/goals/", "")),
+          title: link?.textContent?.trim() ?? "",
+          // innerText leaves out the hidden print-only shape.
+          health: (tr.querySelector('[data-testid="risk-health"]') as HTMLElement | null)?.innerText.trim() ?? "",
+          kinds: [...tr.querySelectorAll('[data-testid="risk-signal"]')].map((c) => c.getAttribute("data-kind") ?? ""),
+          fixCells: fix.length,
+          fixes: controls.length,
+          fix: controls.map((c) => c.textContent?.trim()).join(" | "),
+        };
+      }),
+    );
+}
+
+// riskHealthRank orders Health on Risks worst first: Red, Yellow, none, Green.
+function riskHealthRank(health: string): number {
+  return { Red: 0, Yellow: 1, Green: 3 }[health] ?? 2;
+}
+
+// compareKeys compares two sort keys element by element.
+function compareKeys(a: number[], b: number[]): number {
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return a[i] - b[i];
+  }
+  return 0;
+}
 
 type GoalListRow = { title: string; health: string; stale: boolean; ownerless: boolean; overdue: boolean };
 
