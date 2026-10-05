@@ -41,7 +41,7 @@ templ homePage(current *domain.Account, v homeView) {
 							<h4 class="label">Requests</h4>
 							<ul data-testid="home-requests" class="hm-list">
 								for _, req := range v.Requests {
-									switch  {
+									switch {
 										case req.Link != nil:
 											@linkRequestRow(*req.Link)
 										case req.Suggestion != nil:
