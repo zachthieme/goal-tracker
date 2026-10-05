@@ -5,7 +5,7 @@
 // closes it. The watch-list Report is scenario 2's other half (#198).
 import { type Locator, type Page } from "@playwright/test";
 
-import { admin, expect, test } from "../fixtures";
+import { admin, appToday, expect, test } from "../fixtures";
 
 // The leader ("Elena") and the reader two levels up. The seed names them
 // Priya Raman and Dana Whitfield; the page is asserted on those Names.
@@ -25,7 +25,7 @@ const platformGoals = `
     and not (g.lifecycle in ('Done', 'Cancelled')
              and coalesce((select max(c.created_at) from checkins c
                            where c.goal_id = g.id and c.lifecycle_to = g.lifecycle), '')
-                 < strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-30 days'))
+                 < strftime('%Y-%m-%dT%H:%M:%SZ', $now, '-30 days'))
   order by g.id`;
 
 type Goal = { id: number; title: string };
@@ -157,7 +157,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
       health: "Yellow",
       status: "The vendor's API change pushed integration out three weeks.",
       pathToGreen: "Pair with the vendor on the new API; cut the reporting extras.",
-      backToGreen: addDays(today(), 28),
+      backToGreen: addDays(appToday(), 28),
       deliveryDate: newDate,
       dateReason: "The vendor changed their API under us.",
     });
@@ -182,7 +182,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
           ? "Load tests pass at twice peak; back on plan."
           : "Two engineers out; the plan is at risk.",
       ...(turnedTo === "Yellow"
-        ? { pathToGreen: "Borrow one engineer from Data for a month.", backToGreen: addDays(today(), 21) }
+        ? { pathToGreen: "Borrow one engineer from Data for a month.", backToGreen: addDays(appToday(), 21) }
         : {}),
     });
 
@@ -378,7 +378,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     await expect.poll(() => mailLines(serverLog(), replySubject)).toEqual([expect.stringContaining(`to=${reader} `)]);
   });
 
-  const due = addDays(today(), 14);
+  const due = addDays(appToday(), 14);
   await test.step("8 She makes the thread an Action Item, which stays listed until its owner closes it", async () => {
     await elena.goto(secondPublication);
     const discussion = elena
@@ -531,10 +531,10 @@ function pickCheckinGoal(seedLookup: SeedLookup, health: string, extra = ""): Go
     `select g.id from (${platformGoals}) p join goals g on g.id = p.id join accounts a on a.id = g.owner_id
      where g.lifecycle = 'Active' and a.departed = 0
        and (select max(created_at) from checkins c where c.goal_id = g.id)
-           > strftime('%Y-%m-%dT%H:%M:%SZ', 'now', '-' || g.cadence_days || ' days')
+           > strftime('%Y-%m-%dT%H:%M:%SZ', $now, '-' || g.cadence_days || ' days')
        and not exists (select 1 from links l where l.parent_id = g.id and l.status = 'accepted')
        and not exists (select 1 from milestones m
-                       where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date('now'))
+                       where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now))
        ${extra}
      order by (select health from checkins c where c.goal_id = g.id order by created_at desc, id desc limit 1) = ? desc, g.id
      limit 1`,
@@ -586,11 +586,6 @@ async function checkIn(page: Page, goalID: number, c: CheckinInput) {
   }
   await page.getByTestId("checkin-form").getByRole("button", { name: "Submit check-in" }).click();
   await page.waitForURL(new RegExp(`/goals/${goalID}$`));
-}
-
-// today is today's date in UTC, the server's timezone, as YYYY-MM-DD.
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 // addDays is the YYYY-MM-DD date days after date.

@@ -30,3 +30,21 @@ func (f *Fixed) Set(t time.Time) { f.t = t.UTC() }
 
 // Advance moves the clock forward by d.
 func (f *Fixed) Advance(d time.Duration) { f.t = f.t.Add(d) }
+
+// Offset reads a chosen start instant plus the real time elapsed since it was
+// created: "now" starts there and then ticks normally. The e2e suite runs the
+// app on one (GOAL_TRACKER_START_AT) so every run sees its frozen seed at the
+// same moment.
+type Offset struct {
+	start   time.Time
+	created time.Time
+}
+
+// NewOffset returns an Offset clock reading start now.
+func NewOffset(start time.Time) *Offset {
+	return &Offset{start: start.UTC(), created: time.Now()}
+}
+
+// Now returns the start instant plus the time elapsed since the clock was
+// created.
+func (o *Offset) Now() time.Time { return o.start.Add(time.Since(o.created)) }

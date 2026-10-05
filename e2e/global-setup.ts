@@ -24,17 +24,31 @@ export function templatePath(dir: string, template: Template): string {
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
-// The seed's -end for each template, or none for now.
+// referenceDate is the day the e2e org is frozen at: both templates are seeded
+// relative to it, not to the machine's date, so every run sees the same org.
+// The seed's org isn't the same org shifted in time (delivery dates snap to
+// the calendar, so another -end changes the draws and which Goals are Red),
+// so the specs' choices by Health only hold at this date. #226's follow-up,
+// the seed invariants test in internal/seed, pins the same date: the two move
+// together.
+export const referenceDate = "2026-10-05";
+
+// startAt is the instant each test's app starts its clock at
+// (GOAL_TRACKER_START_AT), then ticks on from: 5 minutes after the 18:00 UTC
+// the seed reads -end as. The seed's last Check-ins land at about 15:49 that
+// day, so a Check-in a test writes is the Goal's latest.
+export const startAt = `${referenceDate}T18:05:00Z`;
+
+// The seed's -end for each template.
 //
-// default: no -end, so the seed's last Check-ins land just before now. With
-// -end <today>, the seed puts them at about 15:00 today, after a test's own
-// Check-in until mid-afternoon, so the test's wouldn't be the latest.
+// default: the reference date, so the last Check-ins are a couple of hours
+// old when each test's app starts.
 //
-// due: the last Check-ins are 4 days old, so 7-day Goals are due on Home but
-// not Stale.
-const templates: Record<Template, string | undefined> = {
-  default: undefined,
-  due: daysAgo(4),
+// due: 4 days before the reference date, so the last Check-ins are 4 days old
+// and 7-day Goals are due on Home but not Stale.
+const templates: Record<Template, string> = {
+  default: referenceDate,
+  due: "2026-10-01",
 };
 
 export default function globalSetup() {
@@ -45,16 +59,9 @@ export default function globalSetup() {
     execFileSync("go", ["build", "-o", join(dir, cmd), `./cmd/${cmd}`], { cwd: root, stdio: "inherit" });
   }
   for (const [name, end] of Object.entries(templates)) {
-    const args = ["-db", templatePath(dir, name as Template), "-seed", "23", "-admin", admin];
-    if (end) args.push("-end", end);
+    const args = ["-db", templatePath(dir, name as Template), "-seed", "23", "-admin", admin, "-end", end];
     execFileSync(join(dir, "seed"), args, { stdio: "pipe" });
   }
 
   return () => rmSync(dir, { recursive: true, force: true });
-}
-
-// daysAgo is the UTC date n days before today, as YYYY-MM-DD: the calendar
-// the seed reads -end in.
-function daysAgo(n: number): string {
-  return new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }

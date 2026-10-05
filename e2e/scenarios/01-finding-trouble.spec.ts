@@ -9,7 +9,7 @@
 // Path to Green, and a second Dimension.
 import type { Locator, Page } from "@playwright/test";
 
-import { admin, expect, signIn, test } from "../fixtures";
+import { admin, appToday, expect, signIn, test } from "../fixtures";
 
 const leader = "cto@example.com";
 const leaderName = "Priya Raman";
@@ -21,7 +21,7 @@ const tier = { name: "Tier", values: ["Core", "Edge"] };
 // has none, is older than its cadence: the seed's Stale Goals are weeks past
 // it, so the day boundary doesn't matter.
 const isStale = `
-  julianday('now') - julianday(coalesce(
+  julianday($now) - julianday(coalesce(
     (select max(c.created_at) from checkins c where c.goal_id = g.id),
     nullif(g.activated_at, ''), g.created_at)) > g.cadence_days`;
 
@@ -78,7 +78,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
        and not exists (select 1 from links l join goals c on c.id = l.child_id
                        where l.parent_id = g.id and l.status = 'accepted' and c.lifecycle = 'Active')
        and not exists (select 1 from milestones m
-                       where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date('now'))
+                       where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now))
      order by g.id limit 1`,
     "Platform",
     leader,
@@ -543,8 +543,10 @@ async function navRisksCount(page: Page): Promise<number> {
   return Number(m?.[0]);
 }
 
-// isoDate is today plus days, as a date input takes it, in UTC: the org's
-// timezone in the suite.
+// isoDate is the app's today plus days, as a date input takes it, in UTC: the
+// org's timezone in the suite.
 function isoDate(days: number): string {
-  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+  const d = new Date(`${appToday()}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }

@@ -9,7 +9,7 @@
 // Petrova (cpo@ is the seed's Marcus Bell).
 import type { Page } from "@playwright/test";
 
-import { admin, expect, signIn, test } from "../fixtures";
+import { admin, appToday, expect, signIn, test } from "../fixtures";
 
 const manager = "growth-lead@example.com";
 // otherLead is another lead, who neither built nor administers the Reports.
@@ -20,9 +20,10 @@ type Lookup = <T = Record<string, unknown>>(sql: string, ...params: (string | nu
 type SeedGoal = { id: number; title: string };
 
 // growthGoals are the Team = Growth Goals: inReport those a Report reading
-// against its default baseline, 30 days ago, lists, every one but those Done or
-// Cancelled more than 30 days ago, and finishedEarlier those that leave it.
-function growthGoals(seedLookup: Lookup): { inReport: SeedGoal[]; finishedEarlier: SeedGoal[] } {
+// against its default baseline, 30 days before now (the app's time), lists,
+// every one but those Done or Cancelled more than 30 days ago, and
+// finishedEarlier those that leave it.
+function growthGoals(seedLookup: Lookup, now: Date): { inReport: SeedGoal[]; finishedEarlier: SeedGoal[] } {
   const rows = seedLookup<SeedGoal & { finished_at: string | null; lifecycle: string }>(`
     select g.id, g.title, g.lifecycle,
       (select max(c.created_at) from checkins c
@@ -33,7 +34,7 @@ function growthGoals(seedLookup: Lookup): { inReport: SeedGoal[]; finishedEarlie
     join dimensions d on d.id = v.dimension_id
     where d.name = 'Team' and v.value = 'Growth'
     order by g.id`);
-  const baseline = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const baseline = now.getTime() - 30 * 24 * 60 * 60 * 1000;
   const finished = (g: (typeof rows)[number]) =>
     (g.lifecycle === "Done" || g.lifecycle === "Cancelled") && (!g.finished_at || Date.parse(g.finished_at) < baseline);
   const strip = ({ id, title }: SeedGoal) => ({ id, title });
@@ -77,7 +78,7 @@ function pickedGoals(seedLookup: Lookup): Picks {
       (select count(*) from links k join goals child on child.id = k.child_id
         where k.parent_id = g.id and k.status = 'accepted' and child.lifecycle = 'Active') as children,
       (select count(*) from milestones m
-        where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date('now')) as overdue
+        where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now)) as overdue
     from goals g
     join latest l on l.goal_id = g.id
     join accounts a on a.id = g.owner_id
@@ -132,9 +133,9 @@ async function buildPickedReport(page: Page, name: string, goals: SeedGoal[]): P
 
 // checkinFields are a Check-in form's fields, valid for any Active Goal: Yellow,
 // so no overdue Milestone or Rolled-up Health refuses it, with a Path to
-// Green back by three weeks from today.
+// Green back by three weeks from the app's today.
 function checkinFields(): Record<string, string> {
-  const back = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const back = new Date(Date.parse(appToday()) + 21 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   return {
     health: "Yellow",
     status: "Written by someone who doesn't own the Goal",
@@ -176,6 +177,7 @@ async function reportGoalTitles(page: Page): Promise<string[]> {
 
 test("a manager builds Reports over Goals they don't own, and gets nothing over them", async ({
   page,
+  app,
   as,
   seedLookup,
 }) => {
@@ -188,7 +190,7 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
   let pickedReport = 0;
 
   await test.step("1 A rule Report lists the team's Goals, less those finished before the baseline", async () => {
-    const { inReport, finishedEarlier } = growthGoals(seedLookup);
+    const { inReport, finishedEarlier } = growthGoals(seedLookup, app.now());
     expect(finishedEarlier.length, "the seed has a Growth Goal finished more than 30 days ago").toBeGreaterThan(0);
 
     ruleReport = await buildRuleReport(page, ruleReportName);

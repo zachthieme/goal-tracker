@@ -4,7 +4,7 @@
 // trouble reaches the parent's Owner as Rolled-up Health without turning
 // every ancestor Red.
 import type { Locator, Page } from "@playwright/test";
-import { expect, signIn, test } from "../fixtures";
+import { appToday, expect, signIn, test } from "../fixtures";
 
 // The scenario's people are roles. "Priya" is the project's Owner and
 // "Marcus" the Owner of the team Goal it contributes to; both are chosen from
@@ -41,7 +41,7 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     await expect(path.getByLabel("Plan")).toHaveValue("Escalate with the vendor and ship behind a flag.");
   });
 
-  const today = isoDate(new Date());
+  const today = appToday();
   const oldDue = project.delivery_date;
   const newDue = addDays(oldDue, 21);
   const dueReason = "The vendor's API slipped three weeks.";
@@ -316,7 +316,7 @@ function chooseBadNewsChain(lookup: Lookup): Chain {
     where d.name = 'Team'`);
   const teamOf = (g: Goal) => teams.find((t) => t.goal_id === g.id)?.value;
   const byID = new Map(goals.map((g) => [g.id, g]));
-  const today = isoDate(new Date());
+  const today = appToday();
   const planned = (g: Goal) => milestones.filter((m) => m.goal_id === g.id && m.status === "Planned");
   const overdue = (g: Goal) => planned(g).some((m) => m.target_date < today);
   const children = (g: Goal) => links.filter((l) => l.parent_id === g.id).flatMap((l) => byID.get(l.child_id) ?? []);

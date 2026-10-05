@@ -16,12 +16,12 @@ const noChangeGoal = `
     and exists (select 1 from checkins c where c.goal_id = g.id)
     and not exists (select 1 from links l where l.parent_id = g.id and l.status = 'accepted')
     and not exists (select 1 from milestones m
-                    where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date('now'))
+                    where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now))
   order by g.id
   limit 1`;
 
 for (const name of ["first", "second"]) {
-  test(`No change adds exactly one History entry (${name} of two)`, async ({ page, seedLookup }) => {
+  test(`No change adds exactly one History entry (${name} of two)`, async ({ page, app, seedLookup }) => {
     const [goal] = seedLookup<{ id: number; email: string }>(noChangeGoal);
     expect(goal, "the seed has a Goal its Owner can press No change on").toBeDefined();
 
@@ -30,24 +30,24 @@ for (const name of ["first", "second"]) {
     const before = await historyCount(page);
     // No Check-in was written minutes ago: the seed's are hours old, so one
     // that recent is the other test's, landed in this test's database.
-    expect(await justCheckedIn(page), "the Goal's latest entry isn't another test's Check-in").toBe(false);
+    expect(await justCheckedIn(page, app.now()), "the Goal's latest entry isn't another test's Check-in").toBe(false);
 
     await page.getByTestId("goal-actions").getByRole("button", { name: "No change" }).click();
 
     await expect(allChip(page)).toHaveAccessibleName(`All ${before + 1}`);
     // The Check-in it wrote is the Goal's latest, whatever the time of day.
     await expect(page.getByTestId("history-entry").first()).toHaveAttribute("data-kind", "checkin");
-    expect(await justCheckedIn(page), "the latest entry is the Check-in just written").toBe(true);
+    expect(await justCheckedIn(page, app.now()), "the latest entry is the Check-in just written").toBe(true);
   });
 }
 
 // justCheckedIn reports whether the Goal's latest History entry is a Check-in
-// written in the last 5 minutes.
-async function justCheckedIn(page: Page): Promise<boolean> {
+// written in the 5 minutes before now, the app's time.
+async function justCheckedIn(page: Page, now: Date): Promise<boolean> {
   const latest = page.getByTestId("history-entry").first();
   if ((await latest.getAttribute("data-kind")) !== "checkin") return false;
   const at = Date.parse((await latest.locator("time").getAttribute("datetime")) ?? "");
-  return Math.abs(Date.now() - at) < 5 * 60 * 1000;
+  return Math.abs(now.getTime() - at) < 5 * 60 * 1000;
 }
 
 // allChip is the History's All chip, which counts every entry, shown or not.
