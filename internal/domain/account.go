@@ -127,6 +127,20 @@ func (s *Service) Account(ctx context.Context, id int64) (Account, error) {
 	return accountFromRow(a), nil
 }
 
+// AccountByEmail returns the Account with the given email, whatever its case
+// or surrounding spaces (CONTEXT.md: Account), without creating one. It returns
+// ErrNotFound if there is none.
+func (s *Service) AccountByEmail(ctx context.Context, emailAddr string) (Account, error) {
+	a, err := s.queries.GetAccountByEmail(ctx, emailAddr)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Account{}, fmt.Errorf("%w: account %s", ErrNotFound, emailAddr)
+		}
+		return Account{}, fmt.Errorf("get account: %w", err)
+	}
+	return accountFromRow(a), nil
+}
+
 // SetName records the Name the org's sign-in supplies for the person behind
 // accountID (CONTEXT.md: Name); a blank name clears it. Nothing in the tool lets
 // anyone type a Name: this is the seam a sign-in integration, or the seed,
