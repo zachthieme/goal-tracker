@@ -1348,19 +1348,71 @@ func TestNewGoalPageRendersTheReadyCardEnabledWithoutScript(t *testing.T) {
 
 	tag := openTag(form)
 	for name, want := range map[string]string{
-		"method":     "post",
-		"action":     "/goals/new",
-		"hx-post":    "/goals/new/checklist",
-		"hx-trigger": "load, change, input delay:400ms",
-		"hx-target":  "#" + attr(openTag(card), "id"),
-		"hx-swap":    "outerHTML",
+		"method":  "post",
+		"action":  "/goals/new",
+		"hx-post": "",
 	} {
 		if got := attr(tag, name); got != want {
 			t.Errorf("the form's %s = %q, want %q", name, got, want)
 		}
 	}
+	live := tagAround(t, form, `hx-post="/goals/new/checklist"`)
+	for name, want := range map[string]string{
+		"hx-trigger": "load, change from:closest form, input delay:400ms from:closest form",
+		"hx-target":  "#" + attr(openTag(card), "id"),
+		"hx-swap":    "outerHTML",
+		"hx-sync":    "this:replace",
+	} {
+		if got := attr(live, name); got != want {
+			t.Errorf("the live checklist's %s = %q, want %q", name, got, want)
+		}
+	}
 	if attr(openTag(card), "id") == "" {
 		t.Errorf("the card has no id to swap: %s", openTag(card))
+	}
+}
+
+// htmx checks a form's required inputs before a request the form itself
+// makes, so the live checklist posts from an element inside the New goal and
+// define forms, not the form: an empty Title or So What doesn't hold it back,
+// and the checklist answers such a form, while the form keeps both inputs
+// required for a real submit (#212).
+func TestGoalFormChecklistAnswersAnEmptyTitleAndSoWhat(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, path := range []string{"/goals/new", fmt.Sprintf("/goals/%d/define", g.ID)} {
+		form := pageElement(t, getBody(t, client, ts.URL+path), "form", "goal-form")
+		if attr(openTag(form), "hx-post") != "" || attr(openTag(form), "hx-trigger") != "" {
+			t.Errorf("%s: the form itself posts the checklist, so htmx validates it first: %s", path, openTag(form))
+		}
+		live := tagAround(t, form, `hx-post="`+path+`/checklist"`)
+		if strings.HasPrefix(live, "<form") || !strings.Contains(attr(live, "hx-trigger"), "from:closest form") {
+			t.Errorf("%s: the live checklist doesn't post from inside the form: %s", path, live)
+		}
+		for _, input := range []string{`name="title"`, `name="so_what"`} {
+			if tag := tagAround(t, form, input); !strings.Contains(tag, " required") {
+				t.Errorf("%s: %s isn't required: %s", path, input, tag)
+			}
+		}
+
+		resp := postForm(t, client, ts.URL+path+"/checklist", url.Values{"title": {""}, "so_what": {""}, "kind": {"Ongoing"}})
+		body := readBody(t, resp)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s: the checklist answered an empty Title and So What with %d:\n%s", path, resp.StatusCode, body)
+		}
+		card, activate := readyCard(t, body)
+		if got := activationItems(t, card); got["So What"] || !got["Dated with a delivery date, or Ongoing"] {
+			t.Errorf("%s: the empty form's checklist = %v, want So What missing and the Kind done", path, got)
+		}
+		if !strings.Contains(card, "2 of 4") || !strings.Contains(activate, " disabled") {
+			t.Errorf("%s: the empty form's card isn't 2 of 4 with Create and activate disabled:\n%s", path, card)
+		}
 	}
 }
 

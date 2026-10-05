@@ -164,8 +164,9 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     });
     await expect(count).toHaveText("1 of 6");
 
-    // The live card swaps in once Title and So What are typed (the test.fixme
-    // below covers the empty form), and Create and activate follows it.
+    // The live card swaps in on load, empty form or not (the test below covers
+    // the empty form), and Create and activate follows it.
+    await expect(activate).toBeDisabled();
     await priya.getByLabel("Title").fill(goalB.title);
     await priya.getByLabel(/^So What/).fill(goalB.soWhat);
     await expect(activate).toBeDisabled();
@@ -355,29 +356,69 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
 
 // Step 2: "The card is server-rendered on first load. Create and activate is
 // disabled only once htmx's first POST /goals/new/checklist swaps in the live
-// card", and each item "ticks as it's met". On the empty form that first post
-// never goes: htmx validates the form before posting it, and Title and So What
-// are required, so the load trigger, and every change after it, is dropped
-// until both are typed. Until then Create and activate stays enabled and
-// choosing a Kind ticks nothing.
-test.fixme("5.2 The live Ready to activate card answers the empty form", async ({ page, seedLookup }) => {
+// card", and each item "ticks as it's met". That first post goes on the empty
+// form too, and every change after it, with Title and So What still empty:
+// the card is what says they're missing. A real submit still needs them.
+test("5.2 The live Ready to activate card answers the empty form", async ({ page, seedLookup }) => {
   const [owner] = seedLookup<{ email: string }>(projectOwners, 0);
   await signIn(page, owner.email);
   const live = page.waitForResponse((r) => new URL(r.url()).pathname === "/goals/new/checklist", { timeout: 5000 });
   await page.goto("/goals/new");
+  const activate = page.getByTestId("goal-form-ready").getByRole("button", { name: "Create and activate" });
+  const count = page.getByTestId("goal-form-ready-count");
 
   await test.step("5.2 The first POST /goals/new/checklist disables Create and activate", async () => {
     expect((await live).ok()).toBe(true);
-    const activate = page.getByTestId("goal-form-ready").getByRole("button", { name: "Create and activate" });
     await expect(activate).toBeDisabled();
+    await expectItem(page, "So What", false);
+    await expect(count).toHaveText("1 of 4");
   });
 
   await test.step("5.2 Choosing a Kind before a Title ticks its item", async () => {
     await chooseKind(page, "Ongoing");
     await expectItem(page, "Dated with a delivery date, or Ongoing", true);
-    await expect(page.getByTestId("goal-form-ready-count")).toHaveText("2 of 4");
+    await expect(count).toHaveText("2 of 4");
+  });
+
+  await test.step("5.2 Saving with no Title is still refused by the browser", async () => {
+    await page.getByLabel(/^So What/).fill("Refunds take a week to land.");
+    await expectItem(page, "So What", true);
+    await expectRefusedByTheBrowser(page, "Title", () => page.getByRole("button", { name: "Save as Proposed" }).click());
+    await expect(page).toHaveURL(/\/goals\/new$/);
+  });
+
+  await test.step("5.2 On the define page, clearing So What still answers", async () => {
+    await page.getByLabel("Title").fill("Refunds land in a day");
+    await page.getByRole("button", { name: "Save as Proposed" }).click();
+    await expect(page).toHaveURL(/\/goals\/\d+$/);
+    await page.getByTestId("finish-defining").click();
+    await expect(page).toHaveURL(/\/goals\/\d+\/define$/);
+    await expectItem(page, "So What", true);
+
+    const cleared = page.waitForResponse((r) => /^\/goals\/\d+\/define\/checklist$/.test(new URL(r.url()).pathname));
+    await page.getByLabel(/^So What/).fill("");
+    expect((await cleared).ok()).toBe(true);
+    await expectItem(page, "So What", false);
+    await expect(activate).toBeDisabled();
+    await expectRefusedByTheBrowser(page, /^So What/, () => page.getByRole("button", { name: "Save as Proposed" }).click());
+    await expect(page).toHaveURL(/\/goals\/\d+\/define$/);
   });
 });
+
+// expectRefusedByTheBrowser says submitting leaves the labelled required input
+// missing and posts nothing: the browser's own validation holds the submit.
+async function expectRefusedByTheBrowser(page: Page, label: string | RegExp, submit: () => Promise<void>) {
+  const posts: string[] = [];
+  const record = (r: { method(): string; url(): string }) => {
+    const path = new URL(r.url()).pathname;
+    if (r.method() === "POST" && !path.endsWith("/checklist")) posts.push(path);
+  };
+  page.on("request", record);
+  await submit();
+  await expect.poll(() => page.getByLabel(label).evaluate((el: HTMLInputElement) => el.validity.valueMissing)).toBe(true);
+  page.off("request", record);
+  expect(posts).toEqual([]);
+}
 
 // expectItem says the Ready to activate card marks the item done or missing.
 async function expectItem(page: Page, label: string, done: boolean) {
