@@ -1,6 +1,11 @@
 .vetinari.local/
 bin/
 /node_modules/
+
+# The Playwright suite's own package and its output (see e2e/README.md)
+e2e/node_modules/
+e2e/test-results/
+e2e/playwright-report/
 bundle/
 
 # Local SQLite database (default GOAL_TRACKER_DB)

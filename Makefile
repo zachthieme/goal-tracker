@@ -1,4 +1,4 @@
-.PHONY: build test test-quick lint generate generate-check check test-scripts clean help seed serve restart
+.PHONY: build test test-quick lint generate generate-check check test-scripts e2e clean help seed serve restart
 
 # A bare `make` runs generate. Each target's `## ` comment is its line in
 # `make help`.
@@ -54,6 +54,24 @@ lint: ## Run golangci-lint
 test-scripts: ## Run the scripts/ tests: shots.mjs and contrast.py's doctest
 	node --test scripts/*.test.mjs
 	python3 -B -m doctest scripts/contrast.py
+
+# The Playwright end-to-end suite in e2e/ (see e2e/README.md): it builds the
+# binaries, seeds template databases, and drives each test's own server in
+# headless Chromium. Not a gate, and needs outbound network (htmx and fonts
+# load from CDNs). Runs `npm ci` in e2e/ when its dependencies are missing or
+# older than its lockfile; with CHROME unset it also installs Playwright's
+# Chromium. E2E_ARGS goes to `playwright test`, e.g. E2E_ARGS=smoke for one
+# spec. Node >= 22.13 (seedLookup uses node:sqlite, whose experimental warning
+# is silenced).
+E2E_ARGS ?=
+e2e: e2e/node_modules/.package-lock.json ## Run the Playwright end-to-end suite in e2e/; not a gate (CHROME, E2E_ARGS)
+	@if [ -z "$$CHROME" ]; then cd e2e && npx playwright install chromium; fi
+	cd e2e && NODE_OPTIONS=--disable-warning=ExperimentalWarning npx playwright test $(E2E_ARGS)
+
+# npm ci writes node_modules/.package-lock.json, so this reruns it when the
+# lockfile changes, such as a Playwright version bump.
+e2e/node_modules/.package-lock.json: e2e/package-lock.json
+	cd e2e && npm ci
 
 # What `make build` and `make restart` leave behind. Never a database.
 clean: ## Remove bin/ and serve.log
