@@ -28,6 +28,7 @@ The server is configured from the environment:
 
 Sign-in is a development sign-in by email: any address works, and an account is
 created on first sign-in.
+A local [Authentik](dev/authentik/README.md) with the seed's people and their managers is ready for single sign-on work.
 
 Other targets: `make test`, `make test-quick` (the tests without the race
 detector, for a quick local loop), `make lint`, `make generate` (templ and

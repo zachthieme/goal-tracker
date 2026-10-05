@@ -1,0 +1,435 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+#
+# Goal Tracker's slice of the local Authentik: the OpenID Connect application
+# it signs in through, and a directory of the seed's people, each with their
+# manager. Authentik applies this on start, and again whenever it changes.
+# See README.md.
+version: 1
+metadata:
+  name: Goal Tracker
+entries:
+  # The default flows and scope mappings this blueprint points at come from
+  # Authentik's own blueprints; apply those first on a fresh volume.
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        path: system/providers-oauth2.yaml
+      required: true
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        path: default/flow-default-provider-authorization-implicit-consent.yaml
+      required: true
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        path: default/flow-default-provider-invalidation.yaml
+      required: true
+
+  # --- The application -------------------------------------------------------
+
+  # The email scope, like Authentik's default but trusting the directory: the
+  # default always says email_verified false, and Goal Tracker signs people in
+  # by verified email.
+  - model: authentik_providers_oauth2.scopemapping
+    id: scope-email
+    identifiers:
+      name: "Goal Tracker: email"
+    attrs:
+      scope_name: email
+      description: Email address
+      expression: |
+        return {
+            "email": request.user.email,
+            "email_verified": bool(request.user.attributes.get("email_verified", False)),
+        }
+
+  # The manager scope: the user's manager, by email, in a "manager" claim (ID
+  # token and userinfo). The top of the chain gets no claim.
+  - model: authentik_providers_oauth2.scopemapping
+    id: scope-manager
+    identifiers:
+      name: "Goal Tracker: manager"
+    attrs:
+      scope_name: manager
+      description: Who you report to
+      expression: |
+        manager = request.user.attributes.get("manager")
+        if not manager:
+            return {}
+        return {"manager": manager}
+
+  - model: authentik_providers_oauth2.oauth2provider
+    id: provider
+    identifiers:
+      name: Goal Tracker
+    attrs:
+      authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      client_type: confidential
+      grant_types: [authorization_code, refresh_token]
+      client_id: goal-tracker
+      client_secret: !Env GOAL_TRACKER_OIDC_CLIENT_SECRET
+      # The app's default address (GOAL_TRACKER_BASE_URL), by either name.
+      redirect_uris:
+        - matching_mode: strict
+          url: http://127.0.0.1:8080/auth/callback
+        - matching_mode: strict
+          url: http://localhost:8080/auth/callback
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
+      sub_mode: user_email
+      include_claims_in_id_token: true
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
+        - !KeyOf scope-email
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
+        - !KeyOf scope-manager
+
+  - model: authentik_core.application
+    identifiers:
+      slug: goal-tracker
+    attrs:
+      name: Goal Tracker
+      provider: !KeyOf provider
+      meta_launch_url: http://127.0.0.1:8080/
+
+  # --- The directory ---------------------------------------------------------
+  #
+  # Every Account the seed creates (internal/seed/org.go), with the seed's Name.
+  # attributes.manager is the manager's email; the CEO is the top of the chain.
+  # Everyone signs in with DEV_USER_PASSWORD from .env.
+
+  - model: authentik_core.user
+    identifiers:
+      username: ceo@example.com
+    attrs:
+      name: Dana Whitfield
+      email: ceo@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+
+  - model: authentik_core.user
+    identifiers:
+      username: cto@example.com
+    attrs:
+      name: Priya Raman
+      email: cto@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: ceo@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: cpo@example.com
+    attrs:
+      name: Marcus Bell
+      email: cpo@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: ceo@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: admin@example.com
+    attrs:
+      name: Robin Ellis
+      email: admin@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: ceo@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: platform-lead@example.com
+    attrs:
+      name: Jonas Lindqvist
+      email: platform-lead@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: cto@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: data-lead@example.com
+    attrs:
+      name: Sofia Marquez
+      email: data-lead@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: cto@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: payments-lead@example.com
+    attrs:
+      name: Amara Nwosu
+      email: payments-lead@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: cto@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: growth-lead@example.com
+    attrs:
+      name: Elena Petrova
+      email: growth-lead@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: cpo@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: mobile-lead@example.com
+    attrs:
+      name: Kenji Watanabe
+      email: mobile-lead@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: cpo@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: support-lead@example.com
+    attrs:
+      name: Rahul Iyer
+      email: support-lead@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: cpo@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: mei.lin@example.com
+    attrs:
+      name: Mei Lin
+      email: mei.lin@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: platform-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: ada.okafor@example.com
+    attrs:
+      name: Ada Okafor
+      email: ada.okafor@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: platform-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: tomas.berg@example.com
+    attrs:
+      name: Tomas Berg
+      email: tomas.berg@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: platform-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: luca.romano@example.com
+    attrs:
+      name: Luca Romano
+      email: luca.romano@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: payments-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: noor.haddad@example.com
+    attrs:
+      name: Noor Haddad
+      email: noor.haddad@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: payments-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: sam.kowalski@example.com
+    attrs:
+      name: Sam Kowalski
+      email: sam.kowalski@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: payments-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: hana.sato@example.com
+    attrs:
+      name: Hana Sato
+      email: hana.sato@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: growth-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: ines.duarte@example.com
+    attrs:
+      name: Ines Duarte
+      email: ines.duarte@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: growth-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: kwame.mensah@example.com
+    attrs:
+      name: Kwame Mensah
+      email: kwame.mensah@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: growth-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: olu.adeyemi@example.com
+    attrs:
+      name: Olu Adeyemi
+      email: olu.adeyemi@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: mobile-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: freya.nilsen@example.com
+    attrs:
+      name: Freya Nilsen
+      email: freya.nilsen@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: mobile-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: diego.alvarez@example.com
+    attrs:
+      name: Diego Alvarez
+      email: diego.alvarez@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: mobile-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: ben.fischer@example.com
+    attrs:
+      name: Ben Fischer
+      email: ben.fischer@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: data-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: anika.rao@example.com
+    attrs:
+      name: Anika Rao
+      email: anika.rao@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: data-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: yara.nasser@example.com
+    attrs:
+      name: Yara Nasser
+      email: yara.nasser@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: data-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: grace.oduya@example.com
+    attrs:
+      name: Grace Oduya
+      email: grace.oduya@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: support-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: matteo.ricci@example.com
+    attrs:
+      name: Matteo Ricci
+      email: matteo.ricci@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: support-lead@example.com
+
+  - model: authentik_core.user
+    identifiers:
+      username: leah.cohen@example.com
+    attrs:
+      name: Leah Cohen
+      email: leah.cohen@example.com
+      path: goal-tracker
+      password: !Env DEV_USER_PASSWORD
+      attributes:
+        email_verified: true
+        manager: support-lead@example.com

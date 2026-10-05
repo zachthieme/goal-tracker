@@ -27,3 +27,6 @@ bundle/
 # The pitch deck's packages and captured assets (see docs/pitch/README.md)
 docs/pitch/node_modules/
 docs/pitch/assets/
+
+# Local Authentik secrets (see dev/authentik/README.md)
+dev/authentik/.env

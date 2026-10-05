@@ -16,6 +16,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 ### Collected changes — October 5, 2026
 
 **New features:**
+- [internal] `dev/authentik/` runs Authentik 2026.8.3 locally in Docker, configured by blueprint: a **Goal Tracker** OpenID Connect application (client ID `goal-tracker`, callback `http://localhost:8080/auth/callback` or `http://127.0.0.1:8080/auth/callback`, scopes `openid email profile manager`), and the seed's 28 people with verified emails, a shared dev password, and a `manager` claim naming their manager's email. `dev/authentik/check.sh` checks a running instance against all of that. `dev/authentik/README.md` covers starting, wiping, and wiring it to Goal Tracker (#97).
 - [ops] `GOAL_TRACKER_START_AT`, test-only: set to an RFC 3339 instant, the app's clock (the domain's "now" and the weekly-email scheduler) starts there and then ticks normally. Startup logs a WARN with the instant when it's set, and stops with an error naming the variable when it doesn't parse. Unset, the app reads the wall clock as before (#230).
 
 **Improvements:**

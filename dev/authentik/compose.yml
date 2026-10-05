@@ -1,0 +1,60 @@
+# Authentik for local development: the org directory and OpenID Connect
+# provider Goal Tracker signs in against. Adapted from Authentik's official
+# compose file for the pinned release below. See README.md.
+services:
+  postgresql:
+    image: docker.io/library/postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: authentik
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: ${PG_PASS:?set PG_PASS in .env}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      interval: 30s
+      retries: 5
+      start_period: 20s
+      timeout: 5s
+    volumes:
+      - database:/var/lib/postgresql/data
+
+  server:
+    image: ghcr.io/goauthentik/server:2026.8.3
+    command: server
+    restart: unless-stopped
+    shm_size: 512mb
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    env_file: .env
+    environment: &authentik-env
+      AUTHENTIK_POSTGRESQL__HOST: postgresql
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: ${PG_PASS}
+      AUTHENTIK_SECRET_KEY: ${AUTHENTIK_SECRET_KEY:?set AUTHENTIK_SECRET_KEY in .env}
+      AUTHENTIK_BOOTSTRAP_PASSWORD: ${AUTHENTIK_BOOTSTRAP_PASSWORD:?set AUTHENTIK_BOOTSTRAP_PASSWORD in .env}
+      AUTHENTIK_BOOTSTRAP_TOKEN: ${AUTHENTIK_BOOTSTRAP_TOKEN:?set AUTHENTIK_BOOTSTRAP_TOKEN in .env}
+      # Read by blueprints/goal-tracker.yaml.
+      DEV_USER_PASSWORD: ${DEV_USER_PASSWORD:?set DEV_USER_PASSWORD in .env}
+      GOAL_TRACKER_OIDC_CLIENT_SECRET: ${GOAL_TRACKER_OIDC_CLIENT_SECRET:?set GOAL_TRACKER_OIDC_CLIENT_SECRET in .env}
+    ports:
+      - 9000:9000
+    volumes:
+      - ./blueprints:/blueprints/custom:ro
+
+  worker:
+    image: ghcr.io/goauthentik/server:2026.8.3
+    command: worker
+    restart: unless-stopped
+    shm_size: 512mb
+    depends_on:
+      postgresql:
+        condition: service_healthy
+    env_file: .env
+    environment: *authentik-env
+    volumes:
+      - ./blueprints:/blueprints/custom:ro
+
+volumes:
+  database:
