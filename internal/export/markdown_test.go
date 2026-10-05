@@ -437,3 +437,31 @@ boss · Active · Health: **Red**
 		t.Errorf("Markdown totals Budget across Goals:\n%s", got)
 	}
 }
+
+// A Goal whose Health changed since the baseline shows what it was after its
+// Health; one whose Health didn't change shows no earlier Health.
+func TestMarkdownShowsTheEarlierHealthOfAChangedGoal(t *testing.T) {
+	t.Parallel()
+
+	pub := publication([]domain.ReportBlock{
+		{
+			Goal:        domain.Goal{Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive, DeliveryDate: date(2026, 5, 1)},
+			Health:      domain.HealthYellow,
+			PriorHealth: domain.HealthGreen,
+		},
+		{
+			Goal:   domain.Goal{Title: "Cut churn", SoWhat: "Keep customers.", Owner: boss, Lifecycle: domain.LifecycleActive},
+			Health: domain.HealthRed,
+		},
+	}, nil)
+
+	got := export.Markdown(pub)
+	for _, want := range []string{
+		"\n\nboss · Active · Health: **Yellow** · was Green · due 2026-05-01\n",
+		"\n\nboss · Active · Health: **Red**\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Markdown lacks %q:\n%s", want, got)
+		}
+	}
+}

@@ -749,9 +749,10 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 // Lifecycle, and due date with its history struck through; Health and badges
 // top right; So What, latest status, and Path to Green in a tinted box, marked
 // Overdue when its target date passed before asOf; Milestones, Metrics against
-// target, and the Rolled-up Health with the Owner's explanation. The Fields the
-// definition chose sit under the head, beside the Goal rather than in the
-// status box. On a publication it ends with the Goal's discussion.
+// target, and the Rolled-up Health with the Owner's explanation. A Health that
+// changed since the baseline reads with what it was ("Yellow · was Green"). The
+// Fields the definition chose sit under the head, beside the Goal rather than
+// in the status box. On a publication it ends with the Goal's discussion.
 templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 	<article data-testid="report-exception" class="card rp-card" id={ fmt.Sprintf("goal-%d", b.Goal.ID) }>
 		<div class="rp-card-head">
@@ -773,6 +774,9 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 			</div>
 			<div class="rp-badges">
 				@healthBadge("report-health", b.Health)
+				if b.PriorHealth != "" {
+					<span data-testid="report-prior-health" class="small muted">{ "· was " + b.PriorHealth }</span>
+				}
 				for _, badge := range b.Badges {
 					<span data-testid="report-badge" class={ "badge", badgeClass(badge) }>{ badge }</span>
 				}
@@ -1137,7 +1141,7 @@ templ reportStyles() {
 		.rp-card{padding:24px;display:flex;flex-direction:column;gap:12px}
 		.rp-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
 		.rp-card-head h3{font-size:19px}
-		.rp-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+		.rp-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
 		.rp-tint{background:var(--color-surface-alt);border-radius:var(--radius-md);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
 		.rp-tint.overdue{background:var(--health-r-bg)}
 		.rp-card ul{margin:0;padding-left:20px}

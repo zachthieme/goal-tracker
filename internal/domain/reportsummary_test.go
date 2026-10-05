@@ -172,9 +172,10 @@ func TestReportSummaryOfAPublishedDefinitionHasItsLastPublication(t *testing.T) 
 }
 
 // Since its last publication, a definition's summary counts each Goal that
-// changed — was created, slipped a date, gained a Milestone or changed
-// Lifecycle — or entered or left the Report, once however many of those it
-// did. A standing condition is no change: a Goal that stays Red adds nothing.
+// changed — was created, slipped a date, gained a Milestone, changed Lifecycle
+// or changed Health — or entered or left the Report, once however many of
+// those it did. A standing condition is no change: a Goal that stays Red adds
+// nothing until it recovers.
 func TestReportSummaryCountsEachGoalChangedSinceTheLastPublicationOnce(t *testing.T) {
 	t.Parallel()
 
@@ -188,6 +189,8 @@ func TestReportSummaryCountsEachGoalChangedSinceTheLastPublicationOnce(t *testin
 	paused := h.ActiveGoal(boss, "Paused", "why")
 	leftOut := h.ActiveGoal(boss, "Left out", "why")
 	entered := h.ActiveGoal(lee, "Also included", "why")
+	turnsYellow := h.ActiveGoal(boss, "Turns Yellow", "why")
+	h.Checkin(boss, turnsYellow.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	red := func(g domain.Goal) {
 		h.Checkin(boss, g.ID, domain.HealthRed, "Blocked.", "Unblock it.", h.Clock.Now().AddDate(0, 1, 0))
 	}
@@ -226,6 +229,10 @@ func TestReportSummaryCountsEachGoalChangedSinceTheLastPublicationOnce(t *testin
 	changes("changed Lifecycle", 5)
 	listGoal(t, h, def, "exclude", leftOut)
 	changes("left", 6)
+	h.Checkin(boss, turnsYellow.ID, domain.HealthYellow, "Slipping.", "Add staff.", h.Clock.Now().AddDate(0, 1, 0))
+	changes("changed Health", 7)
+	h.Checkin(boss, staysRed.ID, domain.HealthGreen, "Unblocked.", "", time.Time{})
+	changes("recovered", 8)
 }
 
 // ReportSummaries summarises every saved definition, as ListReportDefinitions
