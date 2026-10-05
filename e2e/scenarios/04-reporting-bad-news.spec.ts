@@ -101,6 +101,173 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     ]);
     await expect(latest.getByTestId("milestone-change")).toHaveText([`Marked ${done.name} Done`]);
   });
+
+  const marcus = await as(chain.team.email);
+
+  await test.step("It worked if: the slip shows on the Goals list and in a Report draft", async () => {
+    // It worked if: the slip shows wherever the date does — the Goals list.
+    await page.goto("/goals");
+    const due = goalRow(page, project.title).getByTestId("goal-row-due");
+    await expect(due.locator("del")).toHaveText(oldDue);
+    await expect(due).toHaveText(`${oldDue} ${newDue}`);
+
+    // ...and a Report draft over the project, built by the team Goal's Owner
+    // with a rule on the project's Team.
+    await marcus.goto("/reports/new");
+    const builder = marcus.getByTestId("report-builder");
+    await builder.getByLabel("Name").fill("Bad news this week");
+    const rule = builder.getByTestId("report-rule").first();
+    await rule.getByTestId("rule-attribute").selectOption({ label: "Team" });
+    await rule.getByTestId("rule-values").selectOption({ label: project.team });
+    await builder.getByRole("button", { name: "Save report" }).last().click();
+    await marcus.waitForURL(/\/reports\/\d+$/);
+    const block = marcus
+      .getByTestId("report-exception")
+      .filter({ has: marcus.getByRole("link", { name: project.title, exact: true }) });
+    const reportDue = block.getByTestId("report-due");
+    await expect(reportDue.locator("del")).toHaveText(oldDue);
+    await expect(reportDue).toHaveText(`${oldDue} ${newDue}`);
+  });
+
+  await test.step("4.5 the team Goal's Owner can't stay Green over a Yellow child without saying why", async () => {
+    // It worked if: Marcus couldn't stay Green over a Yellow child without
+    // saying why.
+    await marcus.goto(`/goals/${chain.team.id}`);
+    await expect(marcus.getByTestId("goal-owner")).toContainText(chain.team.name);
+    await expect(marcus.getByTestId("goal-rollup-health")).toHaveText("Yellow");
+    await expect(marcus.getByTestId("goal-health")).toHaveText("Green");
+
+    await marcus.goto(`/goals/${chain.team.id}/checkin`);
+    const form = marcus.getByTestId("checkin-form");
+    await expect(form.getByTestId("checkin-form-rollup")).toContainText("Rolled-up Health: Yellow");
+    // The Explanation is there whenever there is a Rolled-up Health, whatever
+    // Health is picked.
+    for (const health of ["Yellow", "Red", "Green"]) {
+      await pickHealth(form, health);
+      await expect(form.getByTestId("checkin-explanation")).toBeVisible();
+    }
+
+    await statusBox(form).fill("On track overall.");
+    await form.getByTestId("checkin-explanation").fill("");
+    await submit(form);
+    await expect(fieldError(form, "explanation")).toContainText("differs from the Rolled-up Health (Yellow)");
+
+    const why = "The vendor slip is covered by the project's plan; the team Goal still lands.";
+    await form.getByTestId("checkin-explanation").fill(why);
+    await submit(form);
+    await marcus.waitForURL(`**/goals/${chain.team.id}`);
+    await expect(marcus.getByTestId("goal-health")).toHaveText("Green");
+    await expect(marcus.getByTestId("goal-rollup-explanation")).toContainText(why);
+  });
+
+  await test.step("4.6 a passed back-to-Green date is flagged on Risks and on the Goals list", async () => {
+    // Two days ago, so it has passed in any org timezone.
+    await page.goto(`/goals/${project.id}/checkin`);
+    const form = page.getByTestId("checkin-form");
+    await expect(form.getByRole("radio", { name: "Yellow" })).toBeChecked();
+    await form.getByTestId("path-to-green-field").getByLabel("Back to Green by").fill(addDays(today, -2));
+    await statusBox(form).fill("Still waiting on the vendor.");
+    await submit(form);
+    await page.waitForURL(`**/goals/${project.id}`);
+
+    await marcus.goto("/risks");
+    await marcus.getByTestId("risks-group-owner").click();
+    await expect(marcus).toHaveURL(/[?&]group=owner\b/);
+    const row = marcus
+      .getByTestId("risk-row")
+      .filter({ has: marcus.getByRole("link", { name: project.title, exact: true }) });
+    await expect(row.getByTestId("risk-owner")).toContainText(project.name);
+    await expect(row.locator('[data-testid="risk-signal"][data-kind="path-overdue"]')).toHaveText(
+      /^Path to Green \d+d overdue$/,
+    );
+    await expect(row.getByTestId("risk-fix")).toHaveCount(1);
+
+    // On the Goals list it sorts with the Stale and overdue Goals, above every
+    // Yellow and Green Goal without a mark.
+    await page.goto("/goals");
+    await expect(goalRow(page, project.title).getByTestId("path-overdue")).toBeVisible();
+    const rows = await page.getByTestId("goal-row").evaluateAll((trs) =>
+      trs.map((tr) => ({
+        title: tr.querySelector("td:nth-child(2) a")?.textContent?.trim() ?? "",
+        health: tr.querySelector('[data-testid="goal-row-health"]')?.textContent?.trim() ?? "",
+        marked:
+          tr.querySelector('[data-testid="ownerless"], [data-testid="stale"], [data-testid="path-overdue"]') !== null,
+      })),
+    );
+    const at = rows.findIndex((r) => r.title === project.title);
+    expect(at, "the project is on the Goals list").toBeGreaterThanOrEqual(0);
+    const quietAbove = rows
+      .slice(0, at)
+      .filter((r) => !r.marked && (r.health === "Yellow" || r.health === "Green"))
+      .map((r) => r.title);
+    expect(quietAbove, "no unmarked Yellow or Green Goal sorts above the overdue project").toEqual([]);
+    expect(
+      rows.slice(at + 1).some((r) => !r.marked && (r.health === "Yellow" || r.health === "Green")),
+      "unmarked Yellow and Green Goals sort below it",
+    ).toBe(true);
+  });
+
+  await test.step("It worked if: the slip can't be quietly overwritten", async () => {
+    // The Goal page offers no delivery-date edit outside a Check-in.
+    await page.goto(`/goals/${project.id}`);
+    await expect(page.locator('input[name="delivery_date"]')).toHaveCount(0);
+    await expect(page.locator('form[action$="/dated"]')).toHaveCount(0);
+
+    // Posting one anyway is refused once the Goal is Active
+    // (requireProposedToSetDelivery); without a valid date it's refused before
+    // that check runs.
+    const refused = await page.request.post(`/goals/${project.id}/dated`, {
+      form: { delivery_date: addDays(newDue, 30) },
+    });
+    expect(refused.status()).toBe(422);
+    expect(await refused.text()).toContain("delivery date changes only in a Check-in");
+    const malformed = await page.request.post(`/goals/${project.id}/dated`, { form: { delivery_date: "soon" } });
+    expect(malformed.status()).toBe(422);
+    expect(await malformed.text()).toContain("invalid delivery date");
+
+    // The define page, where a Proposed Goal's date is set, sends an Active
+    // Goal back to its page.
+    await page.goto(`/goals/${project.id}/define`);
+    await expect(page).toHaveURL(new RegExp(`/goals/${project.id}$`));
+    await expect(page.getByTestId("goal-delivery-date")).toHaveText(`${oldDue} ${newDue}`);
+  });
+
+  await test.step("It worked if: one Red child doesn't turn every ancestor Red", async () => {
+    const orgRollups: string[] = [];
+    for (const org of chain.orgOutcomes) {
+      await marcus.goto(`/goals/${org.id}`);
+      orgRollups.push((await marcus.getByTestId("goal-rollup-health").textContent()) ?? "");
+    }
+
+    await page.goto(`/goals/${project.id}/checkin`);
+    const form = page.getByTestId("checkin-form");
+    await pickHealth(form, "Red");
+    const path = form.getByTestId("path-to-green-field");
+    await path.getByLabel("Plan").fill("Swap to the backup vendor; we need Platform's help to integrate.");
+    await path.getByLabel("Back to Green by").fill(addDays(today, 42));
+    await statusBox(form).fill("The vendor has pulled out.");
+    await submit(form);
+    await page.waitForURL(`**/goals/${project.id}`);
+    await expect(page.getByTestId("goal-health")).toHaveText("Red");
+
+    // The team Goal's Rolled-up Health is the worst among its direct Active
+    // children; its Owner's Health stays as set.
+    await marcus.goto(`/goals/${chain.team.id}`);
+    await expect(marcus.getByTestId("goal-rollup-health")).toHaveText("Red");
+    await expect(marcus.getByTestId("goal-health")).toHaveText("Green");
+
+    // Rolled-up Health goes one level only (RolledUpHealth,
+    // internal/domain/rollup.go): an org outcome reads the team Goal Owner's
+    // Green, not the project's Red, so its Rolled-up Health is as it was:
+    // Green when its other children are Green, never Red (the chain's org
+    // outcomes have no Red Active child).
+    for (const [i, org] of chain.orgOutcomes.entries()) {
+      await marcus.goto(`/goals/${org.id}`);
+      const rollup = marcus.getByTestId("goal-rollup-health");
+      await expect(rollup, `${org.title}'s Rolled-up Health`).toHaveText(orgRollups[i]);
+      await expect(rollup, `${org.title}'s Rolled-up Health`).not.toHaveText("Red");
+    }
+  });
 });
 
 type Goal = {
@@ -117,7 +284,8 @@ type Link = { child_id: number; parent_id: number };
 type Milestone = { id: number; goal_id: number; name: string; target_date: string; status: string };
 
 type Chain = {
-  project: Goal & { milestones: Milestone[] };
+  // team is the project's Team, the Dimension value a Report rule matches.
+  project: Goal & { milestones: Milestone[]; team: string };
   team: Goal;
   orgOutcomes: Goal[];
 };
@@ -136,15 +304,22 @@ function chooseBadNewsChain(lookup: Lookup): Chain {
     from goals g join accounts a on a.id = g.owner_id
     where a.departed = 0`);
   const links = lookup<Link>(`select child_id, parent_id from links where status = 'accepted'`);
-  const milestones = lookup<Milestone>(`select id, goal_id, name, target_date, status from milestones order by target_date, id`);
+  const milestones = lookup<Milestone>(
+    `select id, goal_id, name, target_date, status from milestones order by target_date, id`,
+  );
+  const teams = lookup<{ goal_id: number; value: string }>(`
+    select gdv.goal_id, dv.value
+    from goal_dimension_values gdv
+    join dimension_values dv on dv.id = gdv.dimension_value_id
+    join dimensions d on d.id = dv.dimension_id
+    where d.name = 'Team'`);
+  const teamOf = (g: Goal) => teams.find((t) => t.goal_id === g.id)?.value;
   const byID = new Map(goals.map((g) => [g.id, g]));
   const today = isoDate(new Date());
   const planned = (g: Goal) => milestones.filter((m) => m.goal_id === g.id && m.status === "Planned");
   const overdue = (g: Goal) => planned(g).some((m) => m.target_date < today);
-  const children = (g: Goal) =>
-    links.filter((l) => l.parent_id === g.id).flatMap((l) => byID.get(l.child_id) ?? []);
-  const parents = (g: Goal) =>
-    links.filter((l) => l.child_id === g.id).flatMap((l) => byID.get(l.parent_id) ?? []);
+  const children = (g: Goal) => links.filter((l) => l.parent_id === g.id).flatMap((l) => byID.get(l.child_id) ?? []);
+  const parents = (g: Goal) => links.filter((l) => l.child_id === g.id).flatMap((l) => byID.get(l.parent_id) ?? []);
   const activeGreen = (g: Goal) => g.lifecycle === "Active" && g.health === "Green";
 
   type Candidate = { project: Goal; team: Goal };
@@ -160,6 +335,7 @@ function chooseBadNewsChain(lookup: Lookup): Chain {
       ({ project }) => planned(project).filter((m) => m.target_date > today).length >= 2,
     ],
     ["the project has no overdue Planned Milestone", ({ project }) => !overdue(project)],
+    ["the project has a Team", ({ project }) => teamOf(project) !== undefined],
     ["the team Goal is Active and Green", ({ team }) => activeGreen(team)],
     ["the team Goal has another Owner than the project", ({ project, team }) => project.email !== team.email],
     [
@@ -184,7 +360,11 @@ function chooseBadNewsChain(lookup: Lookup): Chain {
   }
   const { project, team } = candidates[0];
   return {
-    project: { ...project, milestones: planned(project).filter((m) => m.target_date > today) },
+    project: {
+      ...project,
+      milestones: planned(project).filter((m) => m.target_date > today),
+      team: teamOf(project) ?? "",
+    },
     team,
     orgOutcomes: parents(team),
   };
@@ -214,7 +394,6 @@ function addDays(date: string, n: number): string {
   return isoDate(d);
 }
 
-
 // statusBox is the Check-in form's Status, which is required in the browser,
 // so every submit fills it.
 function statusBox(form: Locator): Locator {
@@ -228,7 +407,10 @@ function fieldError(form: Locator, name: string): Locator {
 
 // milestoneRow is the Goal page's row for the Milestone named name.
 function milestoneRow(page: Page, name: string): Locator {
-  return page
-    .getByTestId("goal-milestone")
-    .filter({ has: page.getByRole("cell", { name, exact: true }) });
+  return page.getByTestId("goal-milestone").filter({ has: page.getByRole("cell", { name, exact: true }) });
+}
+
+// goalRow is the Goals list's row for the Goal titled title.
+function goalRow(page: Page, title: string): Locator {
+  return page.getByTestId("goal-row").filter({ has: page.getByRole("link", { name: title, exact: true }) });
 }
