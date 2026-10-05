@@ -5,9 +5,9 @@ package web
 
 import (
 	"context"
+	"crypto/rand"
 	"log/slog"
 	"net/http"
-	"strconv"
 
 	"github.com/a-h/templ"
 
@@ -21,6 +21,14 @@ type Server struct {
 	svc *domain.Service
 	mux *http.ServeMux
 	log *slog.Logger
+	// sessions signs and checks the session cookie.
+	sessions sessionCodec
+	// secureCookies marks the session cookie Secure, for an app served over
+	// https.
+	secureCookies bool
+	// oidc, when set, is the org's provider people sign in through; the
+	// development email form is off.
+	oidc *OIDC
 }
 
 // Option configures a Server as NewServer builds it.
@@ -36,9 +44,27 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
+// WithSessionKey signs session cookies with key, so sessions survive a restart
+// that keeps it. Without it, NewServer signs them with a random key.
+func WithSessionKey(key []byte) Option {
+	return func(s *Server) {
+		s.sessions.key = key
+	}
+}
+
+// WithSecureCookies marks the session cookie Secure, so browsers send it only
+// over https. Set it when the app is served over https.
+func WithSecureCookies(secure bool) Option {
+	return func(s *Server) {
+		s.secureCookies = secure
+	}
+}
+
 // NewServer builds a Server whose routes call svc.
 func NewServer(svc *domain.Service, opts ...Option) *Server {
 	s := &Server{svc: svc, mux: http.NewServeMux(), log: slog.Default()}
+	s.sessions.key = make([]byte, 32)
+	_, _ = rand.Read(s.sessions.key)
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -55,15 +81,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // currentAccount resolves the signed-in Account from the session cookie, or nil
-// if there is none. A Departed person's session ends with their departure, so
+// if there is none or its signature doesn't verify. A Departed person's session ends with their departure, so
 // their Account resolves to nil too (CONTEXT.md: Departed).
 func (s *Server) currentAccount(r *http.Request) *domain.Account {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil {
 		return nil
 	}
-	id, err := strconv.ParseInt(c.Value, 10, 64)
-	if err != nil {
+	id, ok := s.sessions.decode(c.Value)
+	if !ok {
 		return nil
 	}
 	acc, err := s.svc.Account(r.Context(), id)

@@ -5,6 +5,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -30,7 +33,10 @@ func main() {
 }
 
 func run(logger *slog.Logger) error {
-	cfg := loadConfig()
+	cfg, err := loadConfig()
+	if err != nil {
+		return err
+	}
 	loc, err := time.LoadLocation(cfg.timezone)
 	if err != nil {
 		return fmt.Errorf("GOAL_TRACKER_TIMEZONE: %w", err)
@@ -61,7 +67,25 @@ func run(logger *slog.Logger) error {
 
 	sender := email.LogSender{Logger: logger}
 	svc := domain.NewService(sqlDB, clk, sender, cfg.adminEmails, domain.WithTimezone(loc), domain.WithBaseURL(cfg.baseURL))
-	srv := web.NewServer(svc, web.WithLogger(logger))
+	webOpts := []web.Option{
+		web.WithLogger(logger),
+		web.WithSecureCookies(strings.HasPrefix(cfg.baseURL, "https://")),
+	}
+	if cfg.sessionKey == nil {
+		logger.Warn("GOAL_TRACKER_SESSION_KEY is unset: signing sessions with a random key, so they won't survive a restart")
+		cfg.sessionKey = make([]byte, 32)
+		_, _ = rand.Read(cfg.sessionKey)
+	}
+	webOpts = append(webOpts, web.WithSessionKey(cfg.sessionKey))
+	if cfg.oidc != nil {
+		o, err := web.NewOIDC(context.Background(), *cfg.oidc)
+		if err != nil {
+			return err
+		}
+		webOpts = append(webOpts, web.WithOIDC(o))
+		logger.Info("signing in through the organization's OIDC provider", "issuer", cfg.oidc.Issuer, "redirect_url", cfg.oidc.RedirectURL)
+	}
+	srv := web.NewServer(svc, webOpts...)
 
 	notifier := notify.New(svc, sender, cfg.baseURL, loc)
 	scheduler := notify.NewScheduler(clk, weekly, notifier.SendWeekly)
@@ -97,9 +121,15 @@ type config struct {
 	// instead of the wall clock. For testing only: the e2e suite runs against
 	// a seed frozen at one date.
 	startAt string
+	// oidc, when set, is the org's OpenID Connect provider people sign in
+	// through; nil leaves the development email form.
+	oidc *web.OIDCConfig
+	// sessionKey signs session cookies; nil when GOAL_TRACKER_SESSION_KEY is
+	// unset.
+	sessionKey []byte
 }
 
-func loadConfig() config {
+func loadConfig() (config, error) {
 	cfg := config{
 		addr:         envOr("GOAL_TRACKER_ADDR", ":8080"),
 		dbPath:       envOr("GOAL_TRACKER_DB", "goal-tracker.db"),
@@ -114,7 +144,50 @@ func loadConfig() config {
 			cfg.adminEmails = append(cfg.adminEmails, e)
 		}
 	}
-	return cfg
+
+	oidc, err := oidcConfig(cfg.baseURL)
+	if err != nil {
+		return config{}, err
+	}
+	cfg.oidc = oidc
+
+	if v := os.Getenv("GOAL_TRACKER_SESSION_KEY"); v != "" {
+		key, err := base64.StdEncoding.DecodeString(v)
+		if err != nil {
+			return config{}, fmt.Errorf("GOAL_TRACKER_SESSION_KEY isn't base64: %w", err)
+		}
+		if len(key) < 32 {
+			return config{}, fmt.Errorf("GOAL_TRACKER_SESSION_KEY is %d bytes, want at least 32", len(key))
+		}
+		cfg.sessionKey = key
+	}
+	return cfg, nil
+}
+
+// oidcConfig is the org's OpenID Connect provider from the GOAL_TRACKER_OIDC_*
+// variables: nil when none is set, an error naming the missing ones when only
+// some are. The redirect URL is baseURL's /auth/callback.
+func oidcConfig(baseURL string) (*web.OIDCConfig, error) {
+	vars := []string{"GOAL_TRACKER_OIDC_ISSUER", "GOAL_TRACKER_OIDC_CLIENT_ID", "GOAL_TRACKER_OIDC_CLIENT_SECRET"}
+	var values, missing []string
+	for _, v := range vars {
+		values = append(values, os.Getenv(v))
+		if os.Getenv(v) == "" {
+			missing = append(missing, v)
+		}
+	}
+	switch len(missing) {
+	case len(vars):
+		return nil, nil
+	case 0:
+		return &web.OIDCConfig{
+			Issuer:       values[0],
+			ClientID:     values[1],
+			ClientSecret: values[2],
+			RedirectURL:  strings.TrimRight(baseURL, "/") + "/auth/callback",
+		}, nil
+	}
+	return nil, errors.New("organization sign-in needs all of the GOAL_TRACKER_OIDC_* variables; missing " + strings.Join(missing, ", "))
 }
 
 func envOr(key, fallback string) string {

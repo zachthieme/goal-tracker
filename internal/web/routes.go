@@ -7,7 +7,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/", s.handleUnknown)
 	s.mux.HandleFunc("GET /static/app.css", s.handleStylesheet)
 	s.mux.HandleFunc("GET /signin", s.handleSignInForm)
-	s.mux.HandleFunc("POST /signin", s.handleSignIn)
+	if s.oidc != nil {
+		s.mux.HandleFunc("GET /auth/start", s.handleOIDCStart)
+		s.mux.HandleFunc("GET /auth/callback", s.handleOIDCCallback)
+	} else {
+		s.mux.HandleFunc("POST /signin", s.handleSignIn)
+	}
 	s.mux.HandleFunc("POST /signout", s.handleSignOut)
 	s.mux.HandleFunc("POST /theme", s.handleSetTheme)
 	s.mux.HandleFunc("GET /home", s.requireAuth(s.handleHome))

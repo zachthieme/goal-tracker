@@ -24,11 +24,30 @@ The server is configured from the environment:
 | `GOAL_TRACKER_REMINDER_DAY` | `Monday` | Day of the week the weekly emails go out (see [Weekly emails](#weekly-emails)). |
 | `GOAL_TRACKER_REMINDER_TIME` | `09:00` | 24-hour time of day, in the org's timezone, the weekly emails go out. |
 | `GOAL_TRACKER_BASE_URL` | from `GOAL_TRACKER_ADDR`, e.g. `http://localhost:8080` | Where people reach the app. Links in emails (the weekly emails and comment alerts) point here. |
+| `GOAL_TRACKER_OIDC_ISSUER` | _(none)_ | The org's OpenID Connect issuer URL. With the client ID and secret below, people sign in through it (see [Sign-in](#sign-in)). Set all three or none. |
+| `GOAL_TRACKER_OIDC_CLIENT_ID` | _(none)_ | Goal Tracker's client ID at the provider. |
+| `GOAL_TRACKER_OIDC_CLIENT_SECRET` | _(none)_ | Goal Tracker's client secret at the provider. |
+| `GOAL_TRACKER_SESSION_KEY` | _(random at each start)_ | Base64 key, at least 32 bytes, that signs session cookies (`openssl rand -base64 32`). Unset, the app makes a random one and logs a WARN: everyone is signed out when it restarts. |
 | `GOAL_TRACKER_START_AT` | _(none: the wall clock)_ | **Test-only.** An RFC 3339 instant (e.g. `2026-10-05T18:05:00Z`) the app's clock starts at, then ticks normally from; startup logs a WARN when it's set. The e2e suite uses it to run against a seed frozen at one date. Never set it in production. |
 
-Sign-in is a development sign-in by email: any address works, and an account is
-created on first sign-in.
-A local [Authentik](dev/authentik/README.md) with the seed's people and their managers is ready for single sign-on work.
+## Sign-in
+
+With the three `GOAL_TRACKER_OIDC_*` variables set, people sign in through the
+org's OpenID Connect provider: the sign-in page has one button, "Sign in with
+your organization". Register `GOAL_TRACKER_BASE_URL` + `/auth/callback` (by
+default `http://localhost:8080/auth/callback`) as the redirect URI, and allow
+the authorization code grant with the scopes `openid email profile`. The
+provider must send a verified `email`; its `name` claim becomes the person's
+Name. Startup stops if the issuer can't be discovered or only some of the
+variables are set. A local [Authentik](dev/authentik/README.md) with the seed's
+people and their managers is set up for this.
+
+Without them, sign-in is the development form: any email address signs in, and
+an account is created on first sign-in. The seed, `scripts/scratch-app` and the
+e2e suite use it.
+
+Either way the session cookie is signed with `GOAL_TRACKER_SESSION_KEY`, and is
+`Secure` when `GOAL_TRACKER_BASE_URL` is `https`.
 
 Other targets: `make test`, `make test-quick` (the tests without the race
 detector, for a quick local loop), `make lint`, `make generate` (templ and

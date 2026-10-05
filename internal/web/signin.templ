@@ -21,6 +21,24 @@ templ signInPage(failure string) {
 	}
 }
 
+// orgSignInPage is sign-in through the org's provider: the same card as the
+// development form, with one button that starts the sign-in. A failed sign-in
+// shows its reason, and the button offers to try again.
+templ orgSignInPage(failure string) {
+	@layout("Sign in", nil) {
+		@signInStyles()
+		<div data-testid="signin-card" class="card si-card">
+			<h1>Sign in</h1>
+			if failure != "" {
+				<p data-testid="signin-error" class="si-error" role="alert">{ failure }</p>
+				<a data-testid="signin-org" class="btn primary" href="/auth/start">Try again</a>
+			} else {
+				<a data-testid="signin-org" class="btn primary" href="/auth/start">Sign in with your organization</a>
+			}
+		</div>
+	}
+}
+
 // signInStyles are the sign-in page's own rules on top of app.css.
 templ signInStyles() {
 	<style>

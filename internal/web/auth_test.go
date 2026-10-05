@@ -6,6 +6,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -223,5 +224,95 @@ func TestDepartedDelegateCannotCheckIn(t *testing.T) {
 	}
 	if _, ok, err := h.Service.LatestCheckin(t.Context(), goal.ID); err != nil || ok {
 		t.Errorf("the Departed Delegate's Check-in was recorded (ok=%v, err=%v)", ok, err)
+	}
+}
+
+// sessionCookieOf signs emailAddr in through the form and returns the session
+// cookie the server issued.
+func sessionCookieOf(t *testing.T, baseURL, emailAddr string) *http.Cookie {
+	t.Helper()
+	resp := postForm(t, noRedirects(http.DefaultClient), baseURL+"/signin", url.Values{"email": {emailAddr}})
+	_ = readBody(t, resp)
+	for _, c := range resp.Cookies() {
+		if c.Name == "gt_session" && c.Value != "" {
+			return c
+		}
+	}
+	t.Fatalf("sign in %q issued no session cookie", emailAddr)
+	return nil
+}
+
+// signedOut reports whether a request carrying only cookie is sent to sign-in.
+func signedOut(t *testing.T, baseURL string, cookie *http.Cookie) bool {
+	t.Helper()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, baseURL+"/home", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.AddCookie(cookie)
+	resp, err := noRedirects(http.DefaultClient).Do(req)
+	if err != nil {
+		t.Fatalf("GET /home: %v", err)
+	}
+	_ = readBody(t, resp)
+	return resp.StatusCode == http.StatusSeeOther && resp.Header.Get("Location") == "/signin"
+}
+
+// The session cookie is signed: one whose Account ID is swapped for another's,
+// keeping its signature, doesn't sign anyone in.
+func TestATamperedSessionCookieIsSignedOut(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := sessionCookieOf(t, ts.URL, "sam@example.com")
+	if signedOut(t, ts.URL, sam) {
+		t.Fatal("sam's own session cookie doesn't sign sam in")
+	}
+
+	id, sig, ok := strings.Cut(sam.Value, ".")
+	if !ok {
+		t.Fatalf("session cookie %q isn't signed", sam.Value)
+	}
+	if id == strconv.FormatInt(boss.ID, 10) {
+		t.Fatalf("sam and boss share Account ID %s", id)
+	}
+	forged := &http.Cookie{Name: "gt_session", Value: strconv.FormatInt(boss.ID, 10) + "." + sig}
+	if !signedOut(t, ts.URL, forged) {
+		t.Errorf("a cookie with boss's ID and sam's signature signs someone in")
+	}
+}
+
+// A session cookie from before cookies were signed, the bare Account ID, counts
+// as signed out (the breaking change: everyone signs in once more).
+func TestAnUnsignedSessionCookieIsSignedOut(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+
+	legacy := &http.Cookie{Name: "gt_session", Value: strconv.FormatInt(sam.ID, 10)}
+	if !signedOut(t, ts.URL, legacy) {
+		t.Errorf("an unsigned gt_session=%d signs sam in", sam.ID)
+	}
+}
+
+// The session cookie is HttpOnly and SameSite=Lax, and Secure when the app is
+// served over https.
+func TestTheSessionCookieIsSecureOverHTTPS(t *testing.T) {
+	t.Parallel()
+
+	for _, secure := range []bool{false, true} {
+		h := testsupport.New(t)
+		ts := httptest.NewServer(web.NewServer(h.Service, web.WithSecureCookies(secure)))
+		t.Cleanup(ts.Close)
+
+		c := sessionCookieOf(t, ts.URL, "sam@example.com")
+		if c.Secure != secure || !c.HttpOnly || c.SameSite != http.SameSiteLaxMode {
+			t.Errorf("WithSecureCookies(%v): session cookie Secure=%v HttpOnly=%v SameSite=%v, want Secure=%v HttpOnly SameSite=Lax",
+				secure, c.Secure, c.HttpOnly, c.SameSite, secure)
+		}
 	}
 }
