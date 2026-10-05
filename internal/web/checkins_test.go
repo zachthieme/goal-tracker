@@ -807,16 +807,6 @@ func TestCheckinMilestoneDateReasonErrorShownNextToReasonField(t *testing.T) {
 	}
 }
 
-// onlyMilestone returns the one Milestone an ActiveGoal starts with.
-func onlyMilestone(t *testing.T, h *testsupport.Harness, goal domain.Goal) domain.Milestone {
-	t.Helper()
-	ms, err := h.Service.ListMilestones(context.Background(), goal.ID)
-	if err != nil || len(ms) != 1 {
-		t.Fatalf("ListMilestones = %v, %v", ms, err)
-	}
-	return ms[0]
-}
-
 // A Check-in that removes a Milestone without a reason gets its error next to
 // that Milestone's reason-for-removing field.
 func TestCheckinMilestoneRemovedReasonErrorShownNextToReasonField(t *testing.T) {
