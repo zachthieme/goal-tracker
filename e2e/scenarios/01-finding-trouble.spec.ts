@@ -54,7 +54,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
 
   // An Owner to depart: owns an Active Platform Goal, owns no Stale Goal (so
   // not the one nudged) and no Top-level Goal, and is neither the leader nor
-  // the Admin.
+  // the Admin. The Stale subquery names its Goal g, as isStale reads it.
   const [departing] = seedLookup<Goal>(
     `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
      where g.lifecycle = 'Active' and ${onTeam} and a.email not in (?, ?) and a.is_admin = 0
@@ -69,8 +69,8 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
 
   // A Goal to put past its Path to Green: an Active Platform Goal whose Owner
   // stays, with no Active child Goals (so no Rolled-up Health asking for an
-  // explanation), not Stale, and with no overdue Planned Milestone (which would
-  // refuse nothing at Yellow, but keeps the Check-in plain).
+  // explanation), not Stale, and with no overdue Planned Milestone, so the
+  // Check-in is only Health, status and Path to Green.
   const [overdue] = seedLookup<Goal>(
     `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
      where g.lifecycle = 'Active' and ${onTeam} and a.email not in (?, ?) and a.departed = 0
@@ -129,6 +129,28 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     departing.email,
   );
 
+  // Two Red Goals to open: one with Active child Goals contributing to it
+  // (Rolled-up Health), one whose delivery date has slipped. Seed 23 has no
+  // Red Goal with both. The first is otherwise fine: not Stale, contributing to
+  // a Goal, with an Owner who stays, so no Risks signal flags it.
+  const [redWithChildren] = seedLookup<Goal>(
+    `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
+     where g.lifecycle = 'Active' and ${latestHealth} = 'Red' and not (${isStale}) and a.email <> ?
+       and exists (select 1 from links l where l.child_id = g.id and l.status = 'accepted')
+       and exists (select 1 from links l join goals c on c.id = l.child_id
+                   where l.parent_id = g.id and l.status = 'accepted' and c.lifecycle = 'Active')
+     order by g.id limit 1`,
+    departing.email,
+  );
+  expect(redWithChildren, "the seed has a Red Goal with Active child Goals").toBeDefined();
+  const [redSlipped] = seedLookup<Goal>(
+    `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
+     where g.lifecycle = 'Active' and ${latestHealth} = 'Red' and g.delivery_date <> ''
+       and exists (select 1 from date_slips s where s.goal_id = g.id and s.milestone_id is null)
+     order by g.id limit 1`,
+  );
+  expect(redSlipped, "the seed has a Red Goal with a Date Slip").toBeDefined();
+
   const adminPage = await as(admin);
 
   await test.step("Setup 1: the Admin departs an Owner, so their Goals are Ownerless", async () => {
@@ -145,8 +167,8 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     await owner.goto(`/goals/${overdue.id}/checkin`);
     const form = owner.getByTestId("checkin-form");
     await form.getByRole("radio", { name: "Yellow" }).check();
-    await form.getByLabel("Plan").fill("Move the last two services over before the freeze.");
-    await form.getByLabel("Back to Green by").fill(isoDate(-2));
+    await form.getByRole("textbox", { name: "Plan", exact: true }).fill("Move the last two services over before the freeze.");
+    await form.getByLabel("Back to Green by", { exact: true }).fill(isoDate(-2));
     await form.getByRole("textbox", { name: /^Status/ }).fill("The cut-over slipped past the date we gave.");
     await form.getByRole("button", { name: "Submit check-in" }).click();
     await owner.waitForURL(`**/goals/${overdue.id}`);
@@ -219,7 +241,8 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     await expect(page).toHaveURL(/[?&]group=\d+/);
     await expect(page.getByTestId("goal-group-label")).toHaveText([...tier.values, "Unassigned"]);
     for (const [i, goal] of tiered.entries()) {
-      const group = page.getByTestId("goal-group").filter({ has: page.getByTestId("goal-group-label").getByText(tier.values[i], { exact: true }) });
+      const label = page.getByTestId("goal-group-label").getByText(tier.values[i], { exact: true });
+      const group = page.getByTestId("goal-group").filter({ has: label });
       await expect(goalRow(group, goal.title)).toBeVisible();
     }
   });
@@ -327,6 +350,109 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     expect(two[0].kinds.toSorted(), "with a chip for each reason").toEqual(["schedule-conflicts", "stale"]);
     expect(two[0].fixes, "and one Fix").toBe(1);
   });
+
+  await test.step("5. Nudge on a Stale Goal she doesn't own asks its Owner to check in, once that day", async () => {
+    await page.goto("/risks");
+    const row = riskRow(page, stale.id);
+    const fix = row.getByTestId("risk-fix");
+    await fix.getByRole("button", { name: "Nudge" }).click();
+    await expect(page).toHaveURL(/\/risks$/);
+    // No toast: the row's Fix now says who nudged it today, and can't be used.
+    await expect(page.getByTestId("toast")).toHaveCount(0);
+    await expect(fix.getByRole("button")).toHaveText(`Nudged today by ${leaderName}`);
+    await expect(fix.getByRole("button")).toBeDisabled();
+
+    // A second Nudge the same day is refused.
+    const again = await page.request.post(`/goals/${stale.id}/nudge`, { form: { return: "/risks" }, maxRedirects: 0 });
+    expect(again.status(), "a second Nudge the same day is refused").toBe(422);
+    expect(await again.text()).toMatch(/data-testid="nudge-refused">[^<]*already nudged this Goal today/);
+
+    // The Goal's History shows the Nudge.
+    await page.goto(`/goals/${stale.id}`);
+    const nudge = page.getByTestId("goal-history").getByTestId("history-entry").and(page.locator('[data-kind="nudge"]'));
+    await expect(nudge).toHaveCount(1);
+    await expect(nudge).toContainText(leaderName);
+    await expect(nudge).toContainText("nudged for a Check-in");
+
+    // The Owner and Delegates are asked only by email.
+    expect(serverLog()).toContain(`Check-in requested: ${stale.title}`);
+  });
+
+  await test.step("6. A Red Goal shows the Owner's status and Path to Green, Rolled-up Health, struck dates and History", async () => {
+    for (const goal of [redWithChildren, redSlipped]) {
+      await page.goto(`/goals/${goal.id}`);
+      await expect(page.getByTestId("goal-title")).toHaveText(goal.title);
+      await expect(page.getByTestId("goal-health")).toHaveText("Red");
+      await expect(page.getByTestId("goal-status")).not.toBeEmpty();
+      await expect(page.getByTestId("goal-path-to-green")).toContainText("Path to Green:");
+      await expect(page.getByTestId("goal-history").getByTestId("history-entry").first()).toBeVisible();
+    }
+
+    // Rolled-up Health beside the Owner's Health, on the Red Goal with Active
+    // child Goals contributing to it.
+    await page.goto(`/goals/${redWithChildren.id}`);
+    const cells = page.getByTestId("goal-status-cells");
+    await expect(cells.getByTestId("goal-health")).toHaveText("Red");
+    await expect(cells.getByTestId("goal-rollup-health")).toHaveText(/^(Red|Yellow|Green)$/);
+
+    // A struck-through delivery date, on the Red Goal with a Date Slip.
+    await page.goto(`/goals/${redSlipped.id}`);
+    await expect(page.getByTestId("goal-delivery-date").locator("del").first()).toBeVisible();
+  });
+
+  await test.step("It worked if: a Goal nobody has updated is as loud as a Red one", async () => {
+    // On Goals, the Stale row sorts above every unmarked Yellow and Green row,
+    // and carries its own mark.
+    await page.goto("/goals");
+    const rows = await goalRows(page);
+    const at = rows.findIndex((r) => r.title === stale.title);
+    expect(rows[at]?.stale, `${stale.title} carries its Stale mark`).toBe(true);
+    const quieter = rows.findIndex((r) => (r.health === "Yellow" || r.health === "Green") && !marked(r));
+    expect(at, `${stale.title} sorts above every unmarked Yellow and Green row`).toBeLessThan(quieter);
+
+    // On Risks, it's a row in the main table, not in the folded definitions,
+    // with its chip and a Fix, and counted on the owner card.
+    await page.goto("/risks");
+    const row = riskRow(page, stale.id);
+    await expect(row.locator('[data-testid="risk-signal"][data-kind="stale"]')).toBeVisible();
+    await expect(row.getByTestId("risk-fix")).toHaveCount(1);
+    await expect(page.getByTestId("risks-definitions").getByText(stale.title)).toHaveCount(0);
+    await page.getByTestId("risks-group-owner").click();
+    expect((await riskRows(page)).map((r) => r.id), "the owner card counts it").toContain(stale.id);
+  });
+
+  await test.step("It worked if: she could tell in trouble from silent from badly placed", async () => {
+    // In trouble: Red or Yellow Health, on Goals. Health isn't a Risks
+    // signal: a Red Goal nothing else is wrong with isn't on Risks.
+    await page.goto("/goals");
+    await expect(goalRow(page, redWithChildren.title).getByTestId("goal-row-health")).toHaveText("Red");
+    await expect(goalRow(page, overdue.title).getByTestId("goal-row-health")).toHaveText("Yellow");
+    await page.goto("/risks");
+    expect((await riskRows(page)).map((r) => r.id), `${redWithChildren.title} isn't on Risks`).not.toContain(redWithChildren.id);
+
+    // Silent: Stale, under Owner needs to update, not Plan doesn't fit.
+    // Badly placed: Unaligned or a Schedule conflict, under Plan doesn't fit,
+    // not Owner needs to update.
+    await page.goto("/risks?group=owner");
+    const owner = (await riskRows(page)).map((r) => r.id);
+    await page.goto("/risks?group=plan");
+    const plan = (await riskRows(page)).map((r) => r.id);
+    expect(owner, "Stale is under Owner needs to update").toContain(stale.id);
+    expect(plan, "Stale isn't under Plan doesn't fit").not.toContain(stale.id);
+    expect(plan, "Unaligned is under Plan doesn't fit").toContain(unaligned.id);
+    expect(owner, "Unaligned isn't under Owner needs to update").not.toContain(unaligned.id);
+    expect(plan, "a Schedule conflict is under Plan doesn't fit").toContain(twoReasons.id);
+  });
+
+  await test.step("It worked if: every row on Risks answered what to do about it, with exactly one Fix", async () => {
+    await page.goto("/risks");
+    const rows = await riskRows(page);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(r.fixCells, `${r.title} has one Fix`).toBe(1);
+      expect(r.fixes, `${r.title}'s Fix is one action: ${r.fix}`).toBe(1);
+    }
+  });
 });
 
 type RiskRow = { id: number; title: string; health: string; kinds: string[]; fixCells: number; fixes: number; fix: string };
@@ -355,6 +481,15 @@ function riskRows(page: Page): Promise<RiskRow[]> {
         };
       }),
     );
+}
+
+// riskRow is the Risks table's row for the Goal with id: the row whose first
+// link is the Goal's (a chip may link its parent).
+function riskRow(page: Page, id: number): Locator {
+  return page
+    .getByTestId("risks-table")
+    .getByTestId("risk-row")
+    .filter({ has: page.getByTestId("risk-goal").locator(`a[href="/goals/${id}"]`).first() });
 }
 
 // riskHealthRank orders Health on Risks worst first: Red, Yellow, none, Green.
