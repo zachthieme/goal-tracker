@@ -11,6 +11,7 @@ import (
 
 	"github.com/a-h/templ"
 
+	"github.com/zachthieme/goal-tracker/internal/directory"
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
@@ -29,6 +30,9 @@ type Server struct {
 	// oidc, when set, is the org's provider people sign in through; the
 	// development email form is off.
 	oidc *OIDC
+	// directorySync, when set, syncs people and their Managers from the org's
+	// directory; the Admin page shows it (see WithDirectorySync).
+	directorySync *directory.Sync
 }
 
 // Option configures a Server as NewServer builds it.
