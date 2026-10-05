@@ -62,6 +62,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /handoffs/{id}/restore", s.requireAuth(s.handleRestoreHandoff))
 	s.mux.HandleFunc("POST /accounts/{id}/depart", s.requireAuth(s.handleDepartAccount))
 	s.mux.HandleFunc("POST /accounts/{id}/return", s.requireAuth(s.handleReturnAccount))
+	if s.directorySync != nil {
+		s.mux.HandleFunc("POST /admin/directory-sync", s.requireAuth(s.handleDirectorySyncNow))
+	}
 	s.mux.HandleFunc("GET /dimensions", s.requireAuth(s.handleDimensions))
 	s.mux.HandleFunc("POST /dimensions", s.requireAuth(s.handleCreateDimension))
 	s.mux.HandleFunc("POST /dimensions/{id}/values", s.requireAuth(s.handleAddDimensionValue))

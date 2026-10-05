@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/base64"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -52,11 +53,11 @@ func TestAppClockRejectsAMalformedStartAt(t *testing.T) {
 // oidcVars are the variables that switch organization sign-in on.
 var oidcVars = []string{"GOAL_TRACKER_OIDC_ISSUER", "GOAL_TRACKER_OIDC_CLIENT_ID", "GOAL_TRACKER_OIDC_CLIENT_SECRET"}
 
-// clearAuthEnv unsets the sign-in variables for the test, so the host's own
+// clearAuthEnv unsets the sign-in and directory variables for the test, so the host's own
 // settings don't leak in.
 func clearAuthEnv(t *testing.T) {
 	t.Helper()
-	for _, v := range append(oidcVars, "GOAL_TRACKER_SESSION_KEY", "GOAL_TRACKER_BASE_URL") {
+	for _, v := range slices.Concat(oidcVars, directoryVars, []string{"GOAL_TRACKER_SESSION_KEY", "GOAL_TRACKER_BASE_URL"}) {
 		t.Setenv(v, "")
 	}
 }
@@ -142,5 +143,56 @@ func TestAGoodSessionKeyIsUsed(t *testing.T) {
 	}
 	if string(cfg.sessionKey) != string(key) {
 		t.Errorf("session key %q, want %q", cfg.sessionKey, key)
+	}
+}
+
+// directoryVars are the variables that switch the directory sync on.
+var directoryVars = []string{"GOAL_TRACKER_DIRECTORY_URL", "GOAL_TRACKER_DIRECTORY_TOKEN"}
+
+// Setting one of the directory variables without the other stops startup,
+// naming the one that's missing.
+func TestPartialDirectoryConfigNamesWhatsMissing(t *testing.T) {
+	for i, set := range directoryVars {
+		missing := directoryVars[1-i]
+		t.Run(set, func(t *testing.T) {
+			clearAuthEnv(t)
+			t.Setenv(set, "value")
+
+			_, err := loadConfig()
+			if err == nil {
+				t.Fatalf("loadConfig accepted %s without %s", set, missing)
+			}
+			if !strings.Contains(err.Error(), missing) {
+				t.Errorf("error %q doesn't name %s", err, missing)
+			}
+			if strings.Contains(err.Error(), set) {
+				t.Errorf("error %q names %s, which is set", err, set)
+			}
+		})
+	}
+}
+
+// With neither directory variable set there is no sync; with both, it reads
+// the directory at the URL with the token.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestDirectorySyncIsOnlyOnWithBothVariables(t *testing.T) {
+	clearAuthEnv(t)
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.directory != nil {
+		t.Errorf("the directory sync is on with neither variable set: %+v", cfg.directory)
+	}
+
+	t.Setenv("GOAL_TRACKER_DIRECTORY_URL", "http://localhost:9000")
+	t.Setenv("GOAL_TRACKER_DIRECTORY_TOKEN", "token")
+	cfg, err = loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.directory == nil || cfg.directory.url != "http://localhost:9000" || cfg.directory.token != "token" {
+		t.Errorf("directory = %+v, want the URL and token set", cfg.directory)
 	}
 }

@@ -25,6 +25,10 @@ type Account struct {
 	// Departed is set once an Admin records that the person has left the org; the
 	// Goals they still own are then Ownerless (CONTEXT.md: Ownerless).
 	Departed bool
+	// ManagerID is the Account of this person's Manager, as the org's
+	// directory records it; nil for someone it gives none (CONTEXT.md:
+	// Manager). Only the directory sync sets it (ADR 0008).
+	ManagerID *int64
 }
 
 // ErrNotFound is returned when a requested record does not exist.
@@ -38,7 +42,7 @@ var ErrDeparted = errors.New("account has departed")
 const timeFormat = time.RFC3339Nano
 
 func accountFromRow(a db.Account) Account {
-	acc := Account{ID: a.ID, Email: a.Email, IsAdmin: a.IsAdmin != 0, Departed: a.Departed != 0}
+	acc := Account{ID: a.ID, Email: a.Email, IsAdmin: a.IsAdmin != 0, Departed: a.Departed != 0, ManagerID: a.ManagerID}
 	if a.Name != nil {
 		acc.Name = *a.Name
 	}
@@ -117,6 +121,20 @@ func (s *Service) Account(ctx context.Context, id int64) (Account, error) {
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Account{}, fmt.Errorf("%w: account %d", ErrNotFound, id)
+		}
+		return Account{}, fmt.Errorf("get account: %w", err)
+	}
+	return accountFromRow(a), nil
+}
+
+// AccountByEmail returns the Account with the given email, whatever its case
+// or surrounding spaces (CONTEXT.md: Account), without creating one. It returns
+// ErrNotFound if there is none.
+func (s *Service) AccountByEmail(ctx context.Context, emailAddr string) (Account, error) {
+	a, err := s.queries.GetAccountByEmail(ctx, emailAddr)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Account{}, fmt.Errorf("%w: account %s", ErrNotFound, emailAddr)
 		}
 		return Account{}, fmt.Errorf("get account: %w", err)
 	}

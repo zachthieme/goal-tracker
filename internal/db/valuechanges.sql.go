@@ -10,7 +10,7 @@ import (
 )
 
 const listValueChangesForGoal = `-- name: ListValueChangesForGoal :many
-SELECT goal_value_changes.id, goal_value_changes.goal_id, goal_value_changes.actor_id, goal_value_changes.dimension_id, goal_value_changes.field_id, goal_value_changes.attribute, goal_value_changes.several, goal_value_changes.before_value, goal_value_changes.after_value, goal_value_changes.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
+SELECT goal_value_changes.id, goal_value_changes.goal_id, goal_value_changes.actor_id, goal_value_changes.dimension_id, goal_value_changes.field_id, goal_value_changes.attribute, goal_value_changes.several, goal_value_changes.before_value, goal_value_changes.after_value, goal_value_changes.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
 FROM goal_value_changes
 JOIN accounts ON accounts.id = goal_value_changes.actor_id
 WHERE goal_value_changes.goal_id = ?
@@ -50,6 +50,7 @@ func (q *Queries) ListValueChangesForGoal(ctx context.Context, goalID int64) ([]
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
 			&i.Account.Name,
+			&i.Account.ManagerID,
 		); err != nil {
 			return nil, err
 		}

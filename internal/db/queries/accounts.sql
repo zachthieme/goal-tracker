@@ -17,3 +17,14 @@ UPDATE accounts SET name = ? WHERE id = ?;
 
 -- name: ListDepartedAccounts :many
 SELECT * FROM accounts WHERE departed = 1 ORDER BY email;
+
+-- name: SetAccountManager :exec
+UPDATE accounts SET manager_id = ? WHERE id = ?;
+
+-- name: ListAccountsUnder :many
+-- The people whose Manager is one of the given Accounts: one level of a Chain.
+SELECT * FROM accounts WHERE manager_id IN (sqlc.slice(manager_ids)) ORDER BY id;
+
+-- name: ListManagedAccounts :many
+-- Every Account with a Manager, for finding the cycles the directory gave.
+SELECT * FROM accounts WHERE manager_id IS NOT NULL ORDER BY id;

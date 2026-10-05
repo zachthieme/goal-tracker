@@ -18,6 +18,7 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/clock"
 	"github.com/zachthieme/goal-tracker/internal/db"
+	"github.com/zachthieme/goal-tracker/internal/directory"
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/email"
 	"github.com/zachthieme/goal-tracker/internal/notify"
@@ -85,6 +86,14 @@ func run(logger *slog.Logger) error {
 		webOpts = append(webOpts, web.WithOIDC(o))
 		logger.Info("signing in through the organization's OIDC provider", "issuer", cfg.oidc.Issuer, "redirect_url", cfg.oidc.RedirectURL)
 	}
+	if cfg.directory != nil {
+		sync := directory.NewSync(svc, directory.NewAuthentik(cfg.directory.url, cfg.directory.token), logger)
+		go sync.RunEvery(context.Background(), time.Hour)
+		webOpts = append(webOpts, web.WithDirectorySync(sync))
+		logger.Info("syncing people and their Managers from the org's directory, now and hourly", "url", cfg.directory.url)
+	} else {
+		logger.Info("GOAL_TRACKER_DIRECTORY_URL is unset: no directory sync, so no one has a Manager")
+	}
 	srv := web.NewServer(svc, webOpts...)
 
 	notifier := notify.New(svc, sender, cfg.baseURL, loc)
@@ -127,6 +136,16 @@ type config struct {
 	// sessionKey signs session cookies; nil when GOAL_TRACKER_SESSION_KEY is
 	// unset.
 	sessionKey []byte
+	// directory, when set, is the org's directory Managers are synced from
+	// (ADR 0008); nil leaves no one with a Manager.
+	directory *directoryConfig
+}
+
+// directoryConfig is where the directory sync reads people from: Authentik's
+// base URL and an API token that can read users.
+type directoryConfig struct {
+	url   string
+	token string
 }
 
 func loadConfig() (config, error) {
@@ -150,6 +169,11 @@ func loadConfig() (config, error) {
 		return config{}, err
 	}
 	cfg.oidc = oidc
+
+	cfg.directory, err = loadDirectoryConfig()
+	if err != nil {
+		return config{}, err
+	}
 
 	if v := os.Getenv("GOAL_TRACKER_SESSION_KEY"); v != "" {
 		key, err := base64.StdEncoding.DecodeString(v)
@@ -188,6 +212,26 @@ func oidcConfig(baseURL string) (*web.OIDCConfig, error) {
 		}, nil
 	}
 	return nil, errors.New("organization sign-in needs all of the GOAL_TRACKER_OIDC_* variables; missing " + strings.Join(missing, ", "))
+}
+
+// loadDirectoryConfig is the directory sync's settings from
+// GOAL_TRACKER_DIRECTORY_URL and GOAL_TRACKER_DIRECTORY_TOKEN: nil when neither
+// is set, an error naming the missing one when only one is.
+func loadDirectoryConfig() (*directoryConfig, error) {
+	vars := []string{"GOAL_TRACKER_DIRECTORY_URL", "GOAL_TRACKER_DIRECTORY_TOKEN"}
+	var missing []string
+	for _, v := range vars {
+		if os.Getenv(v) == "" {
+			missing = append(missing, v)
+		}
+	}
+	switch len(missing) {
+	case len(vars):
+		return nil, nil
+	case 0:
+		return &directoryConfig{url: os.Getenv(vars[0]), token: os.Getenv(vars[1])}, nil
+	}
+	return nil, errors.New("the directory sync needs both GOAL_TRACKER_DIRECTORY_* variables; missing " + strings.Join(missing, ", "))
 }
 
 func envOr(key, fallback string) string {

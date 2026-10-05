@@ -11,6 +11,7 @@ type Account struct {
 	CreatedAt string
 	Departed  int64
 	Name      *string
+	ManagerID *int64
 }
 
 type ActionItem struct {

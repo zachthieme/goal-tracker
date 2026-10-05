@@ -1,7 +1,8 @@
 # yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
 #
 # Goal Tracker's slice of the local Authentik: the OpenID Connect application
-# it signs in through, and a directory of the seed's people, each with their
+# it signs in through, the service account whose token its directory sync
+# reads people with, and a directory of the seed's people, each with their
 # manager. Authentik applies this on start, and again whenever it changes.
 # See README.md.
 version: 1
@@ -111,6 +112,42 @@ entries:
       # The tile in Authentik's app list starts the app's own sign-in, so a person
       # already signed in to Authentik goes straight through.
       meta_launch_url: !Format ["%s/auth/start", !Env [GOAL_TRACKER_APP_URL, http://localhost:8080]]
+
+  # --- The directory sync ----------------------------------------------------
+  #
+  # Goal Tracker reads every person and their manager from Authentik's users API
+  # (ADR 0008) with an API token, GOAL_TRACKER_DIRECTORY_TOKEN from .env. The
+  # token belongs to a service account whose only permission is to view users,
+  # so it can list them and change nothing.
+
+  - model: authentik_rbac.role
+    id: directory-reader-role
+    identifiers:
+      name: "Goal Tracker: directory reader"
+    attrs:
+      permissions:
+        - authentik_core.view_user
+
+  - model: authentik_core.user
+    id: directory-reader
+    identifiers:
+      username: goal-tracker-directory
+    attrs:
+      name: Goal Tracker directory sync
+      type: service_account
+      path: goal-tracker
+      roles:
+        - !KeyOf directory-reader-role
+
+  - model: authentik_core.token
+    identifiers:
+      identifier: goal-tracker-directory
+    attrs:
+      user: !KeyOf directory-reader
+      intent: api
+      expiring: false
+      key: !Env GOAL_TRACKER_DIRECTORY_TOKEN
+      description: Goal Tracker's directory sync reads people and their managers with this.
 
   # --- The directory ---------------------------------------------------------
   #

@@ -6,10 +6,11 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// adminPage gathers the Admin tools: a card per tool, then the Ownerless Goals
+// adminPage gathers the Admin tools: a card per tool, then the directory sync
+// when the app has one (nil, it shows nothing), then the Ownerless Goals
 // waiting for an Admin to reassign them (CONTEXT.md: Ownerless), then the
 // Departed people an Admin can mark returned (CONTEXT.md: Departed).
-templ adminPage(current *domain.Account, ownerless []domain.Goal, departed []domain.Account) {
+templ adminPage(current *domain.Account, dirSync *directorySyncView, ownerless []domain.Goal, departed []domain.Account) {
 	@layout("Admin", current) {
 		@adminStyles()
 		<header class="page-head">
@@ -24,6 +25,9 @@ templ adminPage(current *domain.Account, ownerless []domain.Goal, departed []dom
 			@adminTool("admin-imports", "/imports", "Import goals", "Load Goals from a CSV or XLSX spreadsheet")
 			@adminTool("admin-definition-log", "/definition-log", "Definition log", "Every change to the Dimensions and Fields, with who made it and when")
 		</nav>
+		if dirSync != nil {
+			@adminDirectorySync(*dirSync)
+		}
 		<section data-testid="admin-ownerless" class="ad-section">
 			<div>
 				<h2>Ownerless Goals</h2>
@@ -90,6 +94,29 @@ templ adminPage(current *domain.Account, ownerless []domain.Goal, departed []dom
 // person returned from the Admin page, where they may own no Goals at all.
 const confirmReturnPerson = "Mark this person returned? They can sign in and act again, and any Goals they still own stop being Ownerless. Goals reassigned while they were away stay with their new Owners."
 
+// adminDirectorySync shows when the directory sync last ran and how it went,
+// with Sync now to run it at once (ADR 0008).
+templ adminDirectorySync(v directorySyncView) {
+	<section data-testid="admin-directory-sync" class="ad-section">
+		<div>
+			<h2>Directory sync</h2>
+			<p class="muted">People and their Managers come from the org's directory, synced at startup and then hourly.</p>
+		</div>
+		<div class="card ad-sync">
+			if !v.Ran {
+				<p data-testid="admin-directory-sync-status">Not synced yet.</p>
+			} else if v.Err != "" {
+				<p data-testid="admin-directory-sync-status">Last sync, { v.At }, failed: { v.Err }</p>
+			} else {
+				<p data-testid="admin-directory-sync-status">{ fmt.Sprintf("Last synced %s. Read %s.", v.At, directorySyncPeople(v.People)) }</p>
+			}
+			<form method="post" action="/admin/directory-sync">
+				<button type="submit" class="btn sm">Sync now</button>
+			</form>
+		</div>
+	</section>
+}
+
 // adminTool is a card linking to one Admin tool, saying what it's for.
 templ adminTool(testID, href, label, blurb string) {
 	<a data-testid={ testID } class="card ad-tool" href={ templ.SafeURL(href) }>
@@ -105,6 +132,7 @@ templ adminStyles() {
 		.ad-tool{padding:24px;display:flex;flex-direction:column;gap:8px}
 		.ad-section{display:flex;flex-direction:column;gap:12px}
 		.ad-action{text-align:right}
+		.ad-sync{display:flex;align-items:center;justify-content:space-between;gap:16px}
 		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 		@media (max-width:900px){.ad-tools{grid-template-columns:1fr}}
 	</style>

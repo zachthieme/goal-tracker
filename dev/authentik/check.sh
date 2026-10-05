@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Checks a running local Authentik against what the blueprint promises: the
 # Goal Tracker application, the manager scope, every seeded person with their
-# manager, password sign-in, and the manager claim Goal Tracker will read.
+# manager, the directory sync's token, password sign-in, and the manager claim
+# Goal Tracker will read.
 # Run from anywhere after `docker compose up -d`; reads .env beside this script.
 set -euo pipefail
 
@@ -136,6 +137,33 @@ while IFS='|' read -r email name manager; do
 		fail "$email: want $want (name|active|manager|verified), got $got"
 	fi
 done <<<"$people"
+
+# --- The directory sync's token ---------------------------------------------
+
+# The token Goal Tracker's directory sync uses lists every seeded person, and
+# can't change anyone: renaming the CEO to the Name they already have is
+# refused.
+listed=$(curl -fsS -H "Authorization: Bearer $GOAL_TRACKER_DIRECTORY_TOKEN" "$base/api/v3/core/users/?page_size=100" |
+	jq -r '[.results[].email] | join(" ")' || true)
+missing=0
+while IFS='|' read -r email _; do
+	[[ -z $email ]] && continue
+	[[ " $listed " == *" $email "* ]] || missing=$((missing + 1))
+done <<<"$people"
+if [[ -n $listed && $missing == 0 ]]; then
+	pass "the directory token lists every seeded person"
+else
+	fail "the directory token lists every seeded person ($missing missing)"
+fi
+ceo=$(api "core/users/?email=ceo@example.com" | jq -r '.results[0].pk')
+status=$(curl -sS -o /dev/null -w '%{http_code}' -X PATCH \
+	-H "Authorization: Bearer $GOAL_TRACKER_DIRECTORY_TOKEN" -H 'Content-Type: application/json' \
+	-d '{"name": "Dana Whitfield"}' "$base/api/v3/core/users/$ceo/")
+if [[ $status == 403 ]]; then
+	pass "the directory token can't change a user"
+else
+	fail "the directory token can't change a user: PATCH answered $status, want 403"
+fi
 
 # --- Signing in -------------------------------------------------------------
 

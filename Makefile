@@ -101,7 +101,8 @@ endif
 # server; `tailscale serve --https=$(SERVE_PORT) off` removes it.
 #
 # People sign in through the local Authentik in dev/authentik/ (see its README;
-# it needs dev/authentik/.env), single sign-on as the org would have it.
+# it needs dev/authentik/.env), single sign-on as the org would have it, and
+# the app syncs people and their Managers from its directory.
 # NO_SSO=1 uses the development email form instead, and leaves Authentik be. Authentik is started, told the app's tailnet callback, and put on the
 # tailnet at https://<this machine>.<tailnet>.ts.net:$(AUTHENTIK_PORT), so
 # sign-in works from any device on the tailnet.
@@ -129,6 +130,8 @@ serve-app:
 	GOAL_TRACKER_OIDC_ISSUER=https://$$host:$(AUTHENTIK_PORT)/application/o/goal-tracker/ \
 	GOAL_TRACKER_OIDC_CLIENT_ID=goal-tracker \
 	GOAL_TRACKER_OIDC_CLIENT_SECRET=$$(sed -n 's/^GOAL_TRACKER_OIDC_CLIENT_SECRET=//p' dev/authentik/.env) \
+	GOAL_TRACKER_DIRECTORY_URL=http://127.0.0.1:9000 \
+	GOAL_TRACKER_DIRECTORY_TOKEN=$$(sed -n 's/^GOAL_TRACKER_DIRECTORY_TOKEN=//p' dev/authentik/.env) \
 	) \
 	exec bin/goal-tracker
 

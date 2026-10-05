@@ -23,8 +23,8 @@ The first start takes a minute or two. The admin UI is at
 <http://localhost:9000>: sign in as `akadmin` with `AUTHENTIK_BOOTSTRAP_PASSWORD`.
 
 `check.sh` needs `curl` and `jq`. It checks the application, every seeded
-person and their manager, a password sign-in, and the claims Goal Tracker gets
-through the authorization code flow. It prints `all checks passed` or lists
+person and their manager, the directory token, a password sign-in, and the
+claims Goal Tracker gets through the authorization code flow. It prints `all checks passed` or lists
 each failure.
 
 ## With `make start`
@@ -32,7 +32,8 @@ each failure.
 From the repo root, `make start` does all of this for you: it
 starts Authentik, registers the app's tailnet callback, serves Authentik on the
 tailnet at `https://<machine>.<tailnet>.ts.net:9443`, and starts Goal Tracker
-signing in through it. People on the tailnet sign in from any device.
+signing in through it and syncing its directory. People on the tailnet sign in
+from any device.
 `make stop` stops both, and `make restart` keeps Authentik sign-in. You still
 need `.env` filled in first. `make start NO_SSO=1` runs the app with the
 development sign-in form and leaves Authentik alone.
@@ -83,6 +84,25 @@ The tokens and userinfo carry `email` with `email_verified: true`, `name` (the
 person's Name, as the seed has it), and `manager`: the email of the person they
 report to. The CEO is at the top of the chain and has no `manager` claim. Each
 person's manager is the `manager` attribute on their user in the blueprint.
+
+## The directory token
+
+Goal Tracker syncs every person and their manager from Authentik's users API
+(see the repo's README, "Managers"). It reads with the API token
+`GOAL_TRACKER_DIRECTORY_TOKEN` from `.env`, which the blueprint gives to a
+service account, `goal-tracker-directory`, whose only permission (the role
+"Goal Tracker: directory reader") is to view users. It can list people and
+change no one; `check.sh` checks both. Point the app at it with:
+
+| Setting | Value |
+| ------- | ----- |
+| `GOAL_TRACKER_DIRECTORY_URL` | `http://localhost:9000` |
+| `GOAL_TRACKER_DIRECTORY_TOKEN` | `GOAL_TRACKER_DIRECTORY_TOKEN` from `.env` |
+
+`make start` passes both. The token's key is set by the blueprint, so changing
+it in `.env` takes `docker compose up -d` (to pass the new value in) and
+`./apply.sh`. Authentik's own bootstrap admin, `akadmin`, is a user with an
+email too, so the sync gives it an Account like anyone else.
 
 ## Sign in as a seeded person
 

@@ -363,7 +363,7 @@ func (q *Queries) ListGoalValues(ctx context.Context, goalID int64) ([]ListGoalV
 }
 
 const listGoalsWithSeveralValuesInDimension = `-- name: ListGoalsWithSeveralValuesInDimension :many
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name
+SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 WHERE goals.id IN (
@@ -411,6 +411,7 @@ func (q *Queries) ListGoalsWithSeveralValuesInDimension(ctx context.Context, dim
 			&i.Account.CreatedAt,
 			&i.Account.Departed,
 			&i.Account.Name,
+			&i.Account.ManagerID,
 		); err != nil {
 			return nil, err
 		}
