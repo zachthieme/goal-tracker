@@ -18,7 +18,8 @@ import (
 
 // handleRisks answers "what's going wrong?" for leadership: every Goal the
 // freshness and graph signals flag, by problem type, scoped by its address to
-// the viewer's own Goals (?mine=1) and to the Goals with an offered
+// the viewer's own Goals (?mine=1) or a Chain's (?chain=), and to the Goals
+// with an offered
 // Dimension's value (?value=). The scope narrows the rows only after they are
 // built: loadRisks stays org-wide for the top bar's count.
 func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current domain.Account) {
@@ -68,10 +69,19 @@ func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain
 	if err != nil {
 		return risksPageView{}, err
 	}
+	goals, err := s.svc.ListGoals(ctx)
+	if err != nil {
+		return risksPageView{}, err
+	}
+	chain, err := s.loadPageChainScope(ctx, q.Get("chain"), current, goals)
+	if err != nil {
+		return risksPageView{}, err
+	}
 	page := risksPageView{
 		risksView:  v,
 		Group:      riskGroupKey(q.Get("group")),
-		Mine:       q.Get("mine") == "1",
+		Mine:       q.Get("mine") == "1" && chain.Of == nil,
+		Chain:      chain,
 		Dimensions: domain.OfferedDimensions(dims),
 		Today:      s.svc.Now().In(s.svc.Timezone()),
 	}
@@ -89,6 +99,9 @@ func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain
 	}
 	for _, row := range rows {
 		if page.Mine && row.Goal.Owner.ID != current.ID && !facts.delegate[row.Goal.ID] {
+			continue
+		}
+		if !chain.keeps(row.Goal) {
 			continue
 		}
 		if valued != nil && !valued[row.Goal.ID] {
@@ -126,26 +139,51 @@ func riskValueLabel(v domain.DimensionValue) string {
 
 // risksPageView is the Risks page: its lists, its rows in scope, the group its
 // address filters it to, "" for every group, whether it is scoped to the
-// viewer's own Goals, the offered Dimensions and the value of theirs it is
-// scoped to, if any, and today, which its dates are read against.
+// viewer's own Goals or a Chain, one at a time, the offered Dimensions and the
+// value of theirs it is scoped to, if any, and today, which its dates are read
+// against.
 type risksPageView struct {
 	risksView
 	Rows       []riskGoalRow
 	Group      string
 	Mine       bool
+	Chain      pageChainScope
 	Dimensions []domain.Dimension
 	Value      domain.DimensionValue
 	Today      time.Time
 }
 
+// riskPageScope is whose Goals the Risks page is scoped to: everyone's, the zero
+// value, the viewer's own (Mine), or the Chain of the person with ID Chain.
+type riskPageScope struct {
+	Mine  bool
+	Chain int64
+}
+
+// scope is whose Goals the page is scoped to.
+func (p risksPageView) scope() riskPageScope {
+	if p.Chain.Of != nil {
+		return riskPageScope{Chain: p.Chain.Of.ID}
+	}
+	return riskPageScope{Mine: p.Mine}
+}
+
+// MyChain is the scope of the viewer's own Chain.
+func (p risksPageView) MyChain() riskPageScope {
+	return riskPageScope{Chain: p.Chain.Viewer.ID}
+}
+
 // url is the Risks page's address filtered to group ("" for every group),
-// scoped to mine, and keeping the page's value scope.
-func (p risksPageView) url(group string, mine bool) string {
+// scoped to sc, and keeping the page's value scope.
+func (p risksPageView) url(group string, sc riskPageScope) string {
 	q := url.Values{}
+	if sc.Chain != 0 {
+		q.Set("chain", strconv.FormatInt(sc.Chain, 10))
+	}
 	if group != "" {
 		q.Set("group", group)
 	}
-	if mine {
+	if sc.Mine {
 		q.Set("mine", "1")
 	}
 	if p.Value.ID != 0 {
@@ -159,24 +197,23 @@ func (p risksPageView) url(group string, mine bool) string {
 
 // Here is the page's own address, with its filters and scope.
 func (p risksPageView) Here() string {
-	return p.url(p.Group, p.Mine)
+	return p.url(p.Group, p.scope())
 }
 
 // ShowAllURL is the page's address unfiltered, keeping its scope.
 func (p risksPageView) ShowAllURL() templ.SafeURL {
-	return templ.SafeURL(p.url("", p.Mine))
+	return templ.SafeURL(p.url("", p.scope()))
 }
 
-// ScopeURL is the page's address scoped to the viewer's own Goals or not,
-// keeping its group.
-func (p risksPageView) ScopeURL(mine bool) templ.SafeURL {
-	return templ.SafeURL(p.url(p.Group, mine))
+// ScopeURL is the page's address scoped to sc, keeping its group.
+func (p risksPageView) ScopeURL(sc riskPageScope) templ.SafeURL {
+	return templ.SafeURL(p.url(p.Group, sc))
 }
 
-// ScopeAttrs marks the Everyone | Mine choice the page is scoped to as the
-// current one.
-func (p risksPageView) ScopeAttrs(mine bool) templ.Attributes {
-	if p.Mine == mine {
+// ScopeAttrs marks the Everyone | Mine | Chain choice the page is scoped to as
+// the current one.
+func (p risksPageView) ScopeAttrs(sc riskPageScope) templ.Attributes {
+	if p.scope() == sc {
 		return templ.Attributes{"aria-current": "page"}
 	}
 	return templ.Attributes{}
@@ -211,19 +248,22 @@ func (p risksPageView) Shown() []riskGoalRow {
 	return shown
 }
 
-// Filtered reports whether the page is scoped to Mine or a value, or filtered
-// to a group.
+// Filtered reports whether the page is scoped to Mine, a Chain or a value, or
+// filtered to a group.
 func (p risksPageView) Filtered() bool {
-	return p.Mine || p.Value.ID != 0 || p.Group != ""
+	return p.Mine || p.Chain.Of != nil || p.Value.ID != 0 || p.Group != ""
 }
 
 // Empty is what the page says when no Goal is left to show: where nothing
-// needs attention, naming Mine, the value with its Dimension's name, and the
-// group's card's title, in that order.
+// needs attention, naming Mine or the Chain, the value with its Dimension's
+// name, and the group's card's title, in that order.
 func (p risksPageView) Empty() string {
 	var parts []string
 	if p.Mine {
 		parts = append(parts, "Mine")
+	}
+	if p.Chain.Of != nil {
+		parts = append(parts, p.Chain.Name())
 	}
 	if p.Value.ID != 0 {
 		for _, d := range p.Dimensions {
@@ -304,7 +344,7 @@ func (p risksPageView) Cards() []riskCard {
 	groups := riskGroups(p.Rows)
 	cards := make([]riskCard, 0, len(groups))
 	for i, gk := range riskGroupKinds {
-		c := riskCard{riskGroup: groups[i], Blank: gk.Blank, Current: gk.Key == p.Group, Href: templ.SafeURL(p.url(gk.Key, p.Mine))}
+		c := riskCard{riskGroup: groups[i], Blank: gk.Blank, Current: gk.Key == p.Group, Href: templ.SafeURL(p.url(gk.Key, p.scope()))}
 		for _, kind := range gk.Kinds {
 			n := 0
 			for _, r := range p.Rows {

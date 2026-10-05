@@ -26,8 +26,8 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 	}
 }
 
-// goalFilters is the filter bar — search, Health, Lifecycle, Mine only and
-// Incomplete — with the Dimension filters and Group by folded under More
+// goalFilters is the filter bar — search, Health, Lifecycle, Mine only, the
+// Chain when anyone has a Manager, and Incomplete — with the Dimension filters and Group by folded under More
 // filters, all submitted as a GET so the chosen slice lives in the URL.
 //
 // Under htmx the form applies itself (#94): a change, a pause in typing the
@@ -74,6 +74,9 @@ templ goalFilters(view goalsListData) {
 				<input data-testid="goal-mine-filter" type="checkbox" name="mine" value="1" checked?={ view.Filter.Mine }/>
 				Mine only
 			</label>
+			if view.Chain.Offered() {
+				@pageChainSelect("goal-chain-filter", view.Chain)
+			}
 			<label class="gl-mine">
 				<input data-testid="goal-incomplete-filter" type="checkbox" name="incomplete" value="1" checked?={ view.Filter.Incomplete }/>
 				Incomplete
@@ -126,6 +129,22 @@ templ goalFilters(view goalsListData) {
 	</form>
 }
 
+// pageChainSelect picks the Chain a page of Goals is scoped to: Any Chain, My
+// Chain for a viewer with anyone under them, then each other person whose
+// Chain holds Goals, by Name with their email to tell same-Named people apart
+// (CONTEXT.md: Chain, Name). It submits ?chain=, the chosen person's ID.
+templ pageChainSelect(testID string, c pageChainScope) {
+	<select data-testid={ testID } name="chain" aria-label="Chain">
+		<option value="" selected?={ c.Of == nil }>Any Chain</option>
+		if c.OffersMine || (c.Of != nil && c.Of.ID == c.Viewer.ID) {
+			<option value={ fmt.Sprint(c.Viewer.ID) } selected?={ c.Of != nil && c.Of.ID == c.Viewer.ID }>My Chain</option>
+		}
+		for _, a := range c.Others() {
+			<option value={ fmt.Sprint(a.ID) } selected?={ c.Of != nil && c.Of.ID == a.ID }>{ a.LongLabel() }</option>
+		}
+	</select>
+}
+
 // goalList is the htmx swap target: the Goal list as a table led by Health,
 // flat or with a section per value of the grouping Dimension, under a total of
 // the Goals it lists. Grouped by a several-values Dimension a Goal can appear in
@@ -149,7 +168,7 @@ templ goalListLayout(view goalsListData) {
 			if view.GroupID != 0 {
 				if len(view.Groups) == 0 {
 					<tbody>
-						@noGoals("No Goals match.")
+						@noGoals(view.noMatch())
 					</tbody>
 				}
 				for _, grp := range view.Groups {
@@ -171,7 +190,7 @@ templ goalListLayout(view goalsListData) {
 			} else {
 				<tbody>
 					if len(view.Rows) == 0 && view.filtered() {
-						@noGoals("No Goals match.")
+						@noGoals(view.noMatch())
 					} else if len(view.Rows) == 0 {
 						@noGoals("No Goals yet.")
 					}
@@ -188,7 +207,7 @@ templ goalListLayout(view goalsListData) {
 // whose links keep every filter.
 templ goalListHead(view goalsListData) {
 	<div class="gl-head">
-		<p data-testid="goal-count" class="muted small gl-count">{ goalCount(len(view.Rows)) }</p>
+		<p data-testid="goal-count" class="muted small gl-count">{ view.countLabel() }</p>
 		<nav class="gl-layout" aria-label="Layout">
 			<a
 				data-testid="layout-list"
@@ -311,7 +330,7 @@ templ goalTableGrid(view goalsListData) {
 			</thead>
 			<tbody>
 				if len(view.Table.Rows) == 0 {
-					<tr><td data-testid="no-goals" colspan={ fmt.Sprintf("%d", len(view.Table.Columns)) } class="muted">No Goals match.</td></tr>
+					<tr><td data-testid="no-goals" colspan={ fmt.Sprintf("%d", len(view.Table.Columns)) } class="muted">{ view.noMatch() }</td></tr>
 				}
 				for _, row := range view.Table.Rows {
 					<tr data-testid="goal-table-row">

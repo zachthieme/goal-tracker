@@ -1256,3 +1256,178 @@ func TestRisksRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 		t.Errorf("at 600px the Goal cell .rk-table .rk-goal{%s} shares its line with Health rather than heading the card", rule)
 	}
 }
+
+// chainScopedRiskTitles names the Goals the Risks table lists, in order, by matching each
+// row against the Goals it could be.
+func chainScopedRiskTitles(page string, goals ...domain.Goal) []string {
+	var titles []string
+	for _, row := range riskRows(page) {
+		for _, g := range goals {
+			if isRiskRowOf(row, g) {
+				titles = append(titles, g.Title)
+			}
+		}
+	}
+	slices.Sort(titles)
+	return titles
+}
+
+// Scoped to My Chain, the Risks page keeps the Goals whose Owner is in the
+// viewer's Chain, their own included: for a VP every level below them, for a
+// manager only their part. The toggle offers it beside Everyone and Mine only
+// to a viewer with anyone under them.
+func TestRisksPageScopedToMyChain(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	org := newScopeChainOrg(h)
+	h.Clock.Advance(10 * day)
+	ts := newServer(t, h)
+
+	vera := signInClient(t, ts.URL, "vera@example.com")
+	page := getBody(t, vera, ts.URL+"/risks")
+	myChain := pageElement(t, page, "a", "risks-scope-my-chain")
+	if want := "/risks?chain=" + strconv.FormatInt(org.Vera.ID, 10); attr(openTag(myChain), "href") != want || strings.Contains(myChain, "aria-current") {
+		t.Errorf("for Everyone, My Chain isn't a link to %s: %s", want, myChain)
+	}
+
+	page = getBody(t, vera, scopeChainURL(ts.URL, "/risks", org.Vera))
+	if got, want := chainScopedRiskTitles(page, org.goals()...), []string{"Max's goal", "Mia's goal", "Pax's goal", "Pia's goal", "Vera's goal"}; !slices.Equal(got, want) {
+		t.Errorf("Vera's My Chain: rows = %q, want %q", got, want)
+	}
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>5</strong>") {
+		t.Errorf("Vera's My Chain: the header doesn't count 5 Goals: %s", head)
+	}
+	if myChain := pageElement(t, page, "a", "risks-scope-my-chain"); !strings.Contains(openTag(myChain), `aria-current="page"`) {
+		t.Errorf("scoped to My Chain, My Chain isn't current: %s", myChain)
+	}
+	if everyone := pageElement(t, page, "a", "risks-scope-everyone"); strings.Contains(openTag(everyone), "aria-current") {
+		t.Errorf("scoped to My Chain, Everyone is current: %s", everyone)
+	}
+
+	mia := signInClient(t, ts.URL, "mia@example.com")
+	page = getBody(t, mia, scopeChainURL(ts.URL, "/risks", org.Mia))
+	if got, want := chainScopedRiskTitles(page, org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
+		t.Errorf("Mia's My Chain: rows = %q, want %q", got, want)
+	}
+
+	pia := signInClient(t, ts.URL, "pia@example.com")
+	page = getBody(t, pia, ts.URL+"/risks")
+	if strings.Contains(page, "risks-scope-my-chain") {
+		t.Errorf("Pia, with no one under her, is offered My Chain")
+	}
+}
+
+// Anyone may scope the Risks page to another person's Chain, picked by Name
+// with their email, and the page names whose Chain it is. A Goal is in a Chain
+// by its Owner: a Delegate in the Chain doesn't bring in a Goal owned outside
+// it, and an Ownerless Goal stays in the Chain its Departed Owner was in.
+func TestRisksPageScopedToAnotherPersonsChain(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	org := newScopeChainOrg(h)
+	boss := h.SignIn("boss@example.com")
+	h.AddDelegate(org.Oz, org.Pax, org.OzGoal.ID)
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, org.Pax.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	h.Clock.Advance(10 * day)
+	ts := newServer(t, h)
+	pia := signInClient(t, ts.URL, "pia@example.com")
+
+	page := getBody(t, pia, ts.URL+"/risks")
+	chain := pageElement(t, page, "select", "risks-chain")
+	if !strings.Contains(chain, `<option value="`+strconv.FormatInt(org.Max.ID, 10)+`">Max Marsh (max@example.com)</option>`) {
+		t.Errorf("the Chain picker doesn't offer Max by Name and email: %s", chain)
+	}
+
+	page = getBody(t, pia, scopeChainURL(ts.URL, "/risks", org.Max))
+	if got, want := chainScopedRiskTitles(page, org.goals()...), []string{"Max's goal", "Pax's goal"}; !slices.Equal(got, want) {
+		t.Errorf("Max's Chain: rows = %q, want %q (Pax's Ownerless Goal, not Oz's that Pax is a Delegate on)", got, want)
+	}
+	if scope := pageElement(t, page, "a", "risks-scope-chain"); !strings.Contains(scope, "Max Marsh&#39;s Chain") || !strings.Contains(openTag(scope), `aria-current="page"`) {
+		t.Errorf("the page doesn't name Max's Chain as its scope: %s", scope)
+	}
+	if mine := pageElement(t, page, "a", "risks-scope-mine"); strings.Contains(openTag(mine), "aria-current") {
+		t.Errorf("scoped to Max's Chain, Mine is current: %s", mine)
+	}
+	chain = pageElement(t, page, "select", "risks-chain")
+	if !strings.Contains(chain, `<option value="`+strconv.FormatInt(org.Max.ID, 10)+`" selected>Max Marsh (max@example.com)</option>`) {
+		t.Errorf("Max's Chain isn't the chosen scope: %s", chain)
+	}
+}
+
+// The Chain lives in the Risks page's address, so its group cards, Show all
+// and the scope form keep it, and a reload shows it again; a Chain chosen
+// takes over from Mine. A ?chain= naming no one, or malformed, scopes nothing,
+// and a Chain with nothing needing attention says so.
+func TestRisksPageKeepsTheChainInItsAddress(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	org := newScopeChainOrg(h)
+	lee := h.SignInNamed("lee@example.com", "Lee Lund")
+	h.SetManager(lee, org.Vera)
+	h.Clock.Advance(10 * day)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "oz@example.com")
+	chain := strconv.FormatInt(org.Mia.ID, 10)
+
+	page := getBody(t, client, ts.URL+"/risks?chain="+chain+"&mine=1")
+	card := pageElement(t, page, "a", "risks-group-owner")
+	address := html.UnescapeString(attr(openTag(card), "href"))
+	if want := "/risks?chain=" + chain + "&group=owner"; address != want {
+		t.Fatalf("the owner card links to %s, want %s", address, want)
+	}
+
+	page = getBody(t, client, ts.URL+address)
+	if got, want := chainScopedRiskTitles(page, org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
+		t.Errorf("grouped in Mia's Chain: rows = %q, want %q", got, want)
+	}
+	if all := pageElement(t, page, "a", "risks-show-all"); attr(openTag(all), "href") != "/risks?chain="+chain {
+		t.Errorf("Show all drops the Chain: %s", all)
+	}
+	filters := between(t, page, `data-testid="risks-filters"`, "</form>")
+	if values := formValues(filters); values.Get("chain") != chain || values.Get("group") != "owner" {
+		t.Errorf("the scope form doesn't carry the Chain and group: %v", values)
+	}
+
+	for _, raw := range []string{"abc", "999999"} {
+		page := getBody(t, client, ts.URL+"/risks?chain="+raw)
+		if got := chainScopedRiskTitles(page, org.goals()...); len(got) != 6 {
+			t.Errorf("chain=%q: rows = %q, want all 6", raw, got)
+		}
+		if everyone := pageElement(t, page, "a", "risks-scope-everyone"); !strings.Contains(openTag(everyone), `aria-current="page"`) {
+			t.Errorf("chain=%q: Everyone isn't current: %s", raw, everyone)
+		}
+	}
+
+	page = getBody(t, client, scopeChainURL(ts.URL, "/risks", lee))
+	if empty := pageElement(t, page, "p", "risks-empty"); !strings.Contains(empty, "No Goals need attention in Lee Lund&#39;s Chain.") {
+		t.Errorf("an empty Chain doesn't say so: %s", empty)
+	}
+}
+
+// With no Managers anywhere, as when no directory is synced, the Risks page
+// offers no Chain, and a ?chain= link scopes nothing.
+func TestRisksPageOffersNoChainWithoutManagers(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	h.ActiveGoal(sam, "Sam's", "It matters.")
+	h.ActiveGoal(kim, "Kim's", "It matters.")
+	h.Clock.Advance(10 * day)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?chain="+strconv.FormatInt(kim.ID, 10))
+	if strings.Contains(page, "Chain") || strings.Contains(page, "risks-filters") {
+		t.Errorf("without Managers the Risks page offers a Chain")
+	}
+	if rows := riskRows(page); len(rows) != 2 {
+		t.Errorf("without Managers a ?chain= scoped the page to %d Goals, want both", len(rows))
+	}
+}
