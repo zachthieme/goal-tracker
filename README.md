@@ -24,6 +24,7 @@ The server is configured from the environment:
 | `GOAL_TRACKER_REMINDER_DAY` | `Monday` | Day of the week the weekly emails go out (see [Weekly emails](#weekly-emails)). |
 | `GOAL_TRACKER_REMINDER_TIME` | `09:00` | 24-hour time of day, in the org's timezone, the weekly emails go out. |
 | `GOAL_TRACKER_BASE_URL` | from `GOAL_TRACKER_ADDR`, e.g. `http://localhost:8080` | Where people reach the app. Links in emails (the weekly emails and comment alerts) point here. |
+| `GOAL_TRACKER_START_AT` | _(none: the wall clock)_ | **Test-only.** An RFC 3339 instant (e.g. `2026-10-05T18:05:00Z`) the app's clock starts at, then ticks normally from; startup logs a WARN when it's set. The e2e suite uses it to run against a seed frozen at one date. Never set it in production. |
 
 Sign-in is a development sign-in by email: any address works, and an account is
 created on first sign-in.

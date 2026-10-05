@@ -41,6 +41,14 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("GOAL_TRACKER_REMINDER_DAY/GOAL_TRACKER_REMINDER_TIME: %w", err)
 	}
 
+	clk, err := appClock(cfg.startAt)
+	if err != nil {
+		return err
+	}
+	if cfg.startAt != "" {
+		logger.Warn("clock is offset, for testing only: now starts at GOAL_TRACKER_START_AT and ticks from there", "start_at", cfg.startAt)
+	}
+
 	sqlDB, err := db.Open(cfg.dbPath)
 	if err != nil {
 		return fmt.Errorf("open database: %w", err)
@@ -52,11 +60,11 @@ func run(logger *slog.Logger) error {
 	}
 
 	sender := email.LogSender{Logger: logger}
-	svc := domain.NewService(sqlDB, clock.Real{}, sender, cfg.adminEmails, domain.WithTimezone(loc), domain.WithBaseURL(cfg.baseURL))
+	svc := domain.NewService(sqlDB, clk, sender, cfg.adminEmails, domain.WithTimezone(loc), domain.WithBaseURL(cfg.baseURL))
 	srv := web.NewServer(svc, web.WithLogger(logger))
 
 	notifier := notify.New(svc, sender, cfg.baseURL, loc)
-	scheduler := notify.NewScheduler(clock.Real{}, weekly, notifier.SendWeekly)
+	scheduler := notify.NewScheduler(clk, weekly, notifier.SendWeekly)
 	go scheduler.Run(context.Background(), time.Minute, logger)
 
 	httpServer := &http.Server{
@@ -85,6 +93,10 @@ type config struct {
 	reminderTime string
 	// baseURL is where people reach the web app, for the links in emails.
 	baseURL string
+	// startAt, when set, is the RFC 3339 instant the app's clock starts at
+	// instead of the wall clock. For testing only: the e2e suite runs against
+	// a seed frozen at one date.
+	startAt string
 }
 
 func loadConfig() config {
@@ -94,6 +106,7 @@ func loadConfig() config {
 		timezone:     envOr("GOAL_TRACKER_TIMEZONE", "UTC"),
 		reminderDay:  envOr("GOAL_TRACKER_REMINDER_DAY", "Monday"),
 		reminderTime: envOr("GOAL_TRACKER_REMINDER_TIME", "09:00"),
+		startAt:      os.Getenv("GOAL_TRACKER_START_AT"),
 	}
 	cfg.baseURL = envOr("GOAL_TRACKER_BASE_URL", defaultBaseURL(cfg.addr))
 	for _, e := range strings.Split(os.Getenv("GOAL_TRACKER_ADMINS"), ",") {
@@ -118,4 +131,18 @@ func defaultBaseURL(addr string) string {
 		return "http://localhost" + addr
 	}
 	return "http://" + addr
+}
+
+// appClock is the clock the app reads "now" from: the wall clock, unless
+// startAt (GOAL_TRACKER_START_AT) names an RFC 3339 instant for it to start
+// at instead.
+func appClock(startAt string) (clock.Clock, error) {
+	if startAt == "" {
+		return clock.Real{}, nil
+	}
+	start, err := time.Parse(time.RFC3339, startAt)
+	if err != nil {
+		return nil, fmt.Errorf("GOAL_TRACKER_START_AT: %w", err)
+	}
+	return clock.NewOffset(start), nil
 }
