@@ -13,6 +13,24 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 5, 2026
+
+**Improvements:**
+- [user] A Report marks a Goal whose Health changed since its baseline. The block's Health reads with what it was, such as "Yellow · was Green", on the draft, on publications and in the Markdown export. A Goal that recovers to Green keeps its full block under Needs attention instead of dropping to a one-line row, and a change of Health counts toward a Report's changes on the Reports list. A Goal's Health at the baseline is that of its latest Check-in before it, so a Goal that stays the same Health, or had no Check-in by then, shows no earlier Health. Publications from before this change show none (#202).
+
+**Bug fixes:**
+- [user] A refused submit from a form the Goal page opens in place (Hand off, Reassign, Parent link, Delegates, Contributors, Add Milestone, Dimensions, Fields) now gives its reason as a plain sentence, such as `No account with email "not-an-email".`, instead of starting with the internal "validation failed:" or "not authorized:" prefix. The same holds when the page no longer offers that form, such as Add Milestone on a Done Goal (#192).
+
+**Infrastructure:**
+- [internal] The vetinari image installs Playwright's Chromium and its system libraries into `/ms-playwright`, pinned to `e2e/package.json`'s version, so a campaign agent can run `make e2e` (#195).
+
+**Testing:**
+- [internal] The web test helper `onlyMilestone`, which the Check-in, Goal and Report tests share, moves unchanged from `checkins_test.go` into `internal/web/helpers_test.go` (#193).
+- [internal] `make e2e` runs a new Playwright end-to-end suite in `e2e/`: each test gets its own server over a fresh copy of a seeded database (`default`, or `due` with Check-ins 4 days old), with `signIn`, `as`, `seedLookup` and `serverLog` helpers, a smoke test and an isolation test. `e2e/README.md` sets the conventions for the keystone scenario specs. It isn't a gate. `CHROME` points it at a local Chromium (#195).
+
+**Documentation:**
+- [internal] DESIGN.md's History timeline now describes the markers and labels for Nudge and Parent suggestion entries: a dashed square for a Nudge and a dashed ring for a Parent suggestion, both `--color-ink-muted` (#194).
+
 ### Collected changes — October 4, 2026
 
 **Breaking changes:**
