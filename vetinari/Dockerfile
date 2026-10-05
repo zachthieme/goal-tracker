@@ -65,6 +65,19 @@ ENV PATH="/usr/local/go/bin:/home/agent/go/bin:$PATH"
 ARG GOLANGCI_LINT_VERSION=v2.13.2
 RUN curl -fsSL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh \
   | sh -s -- -b /usr/local/bin "$GOLANGCI_LINT_VERSION"
+
+# Playwright's Chromium and its system libraries, for `make e2e` (e2e/README.md;
+# not a gate). PLAYWRIGHT_VERSION and @playwright/test in e2e/package.json move
+# together: a browser built for another version won't launch. Installed as root
+# because --with-deps uses apt, into PLAYWRIGHT_BROWSERS_PATH rather than
+# /root/.cache, where the agent couldn't see it. The agent may write there too:
+# `make e2e` runs `playwright install chromium`, which finds the browser
+# installed but still records itself in the directory.
+ARG PLAYWRIGHT_VERSION=1.63.0
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx -y "playwright@$PLAYWRIGHT_VERSION" install --with-deps chromium \
+  && chmod -R a+rwX /ms-playwright \
+  && rm -rf /var/lib/apt/lists/* /root/.npm
 # ------------------------------------------------------------------------------
 
 ARG AGENT_UID=1000

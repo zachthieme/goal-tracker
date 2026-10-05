@@ -35,6 +35,9 @@ background a gate and wait for it. **Commit before you end your turn.** A
 campaign run is a single turn, so a turn that ends waiting on a background job,
 or with work uncommitted, parks the issue as "stalled, no-commit".
 
+`make e2e` runs the Playwright suite in `e2e/` over a freshly seeded app (see
+`e2e/README.md`). It isn't a gate.
+
 ## Changelog
 
 **Log every change, and tag who it reaches.** Every change, internal work
