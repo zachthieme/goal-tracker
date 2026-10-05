@@ -552,14 +552,15 @@ templ goalFormParentsScript() {
 // goalFormFits is the "Where it fits" section: each Dimension still offered,
 // a select when a Goal takes one of its values and checkboxes when it takes
 // several, with an input to add a value when it's Extendable, then an input of
-// each Field's type. Nothing here is needed to save. Arriving with parents, the
+// each Field's type. Nothing here is needed to save, though its note names
+// what activation needs, as the checklist does. Arriving with parents, the
 // values they suggest come ticked; only what is still ticked is assigned.
 templ goalFormFits(v goalFormView) {
 	if len(v.Dimensions) > 0 || len(v.Fields) > 0 {
 		<fieldset data-testid="goal-form-fits" class="gf-section">
 			<legend>Where it fits</legend>
-			<p class="muted small">
-				Optional: the Goal's Dimension values and Fields.
+			<p data-testid="goal-form-fits-note" class="muted small">
+				{ v.fitsRequiredNote() }
 				if v.Suggested {
 					Values from the Goals it contributes to come ticked; untick any that don't fit.
 				}
@@ -572,6 +573,33 @@ templ goalFormFits(v goalFormView) {
 			}
 		</fieldset>
 	}
+}
+
+// fitsRequiredNote opens Where it fits' note: optional, when no Dimension or
+// Field is required, or else the required ones, named as the checklist names
+// them (activationFacts skips a Retired one), and the rest optional when any
+// are left.
+func (v goalFormView) fitsRequiredNote() string {
+	required := v.activationFacts().Required
+	if len(required) == 0 {
+		return "Optional: the Goal's Dimension values and Fields."
+	}
+	note := "Required: a value in "
+	for i, r := range required {
+		switch {
+		case i == 0:
+		case i == len(required)-1:
+			note += " and in "
+		default:
+			note += ", in "
+		}
+		note += r.Name
+	}
+	note += "."
+	if len(required) < len(v.Dimensions)+len(v.Fields) {
+		note += " The rest are optional."
+	}
+	return note
 }
 
 // goalFormDimension is one Dimension of Where it fits, each value chosen
