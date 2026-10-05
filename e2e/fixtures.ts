@@ -47,7 +47,8 @@ export const test = base.extend<Fixtures>({
 
   app: async ({ template }, use, testInfo) => {
     const dir = process.env[e2eDirEnv];
-    if (!dir) throw new Error(`${e2eDirEnv} is unset: run the suite with npx playwright test (global-setup.ts sets it)`);
+    if (!dir)
+      throw new Error(`${e2eDirEnv} is unset: run the suite with npx playwright test (global-setup.ts sets it)`);
     const work = mkdtempSync(join(dir, "test-"));
     const db = join(work, "app.db");
     copyFileSync(templatePath(dir, template), db);

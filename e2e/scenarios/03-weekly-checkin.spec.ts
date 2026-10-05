@@ -3,7 +3,9 @@
 // and a Delegate covers for an Owner who's away. Steps 3.1–3.6 are the week,
 // 3.D1–3.D4 the Delegate. "Four Goals took under five minutes" can't be
 // asserted, so it isn't.
-import { expect, type Page, signIn, test } from "../fixtures";
+import type { Page } from "@playwright/test";
+
+import { expect, signIn, test } from "../fixtures";
 
 type OwnedGoal = { id: number; title: string; metric: number };
 

@@ -7,9 +7,9 @@
 // The leader ("Elena" in the scenario) is cto@example.com, whom the seed names
 // Priya Raman. The setup makes what the seed lacks: Ownerless Goals, an overdue
 // Path to Green, and a second Dimension.
-import type { Locator } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
-import { admin, expect, type Page, signIn, test } from "../fixtures";
+import { admin, expect, signIn, test } from "../fixtures";
 
 const leader = "cto@example.com";
 const leaderName = "Priya Raman";

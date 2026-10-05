@@ -1,7 +1,9 @@
 // The harness's isolation check: two tests write to the same seeded Goal at
 // once, and each sees only its own write. Each test has its own database and
 // server (the app fixture), and fullyParallel runs these two side by side.
-import { expect, type Page, signIn, test } from "./fixtures";
+import type { Page } from "@playwright/test";
+
+import { expect, signIn, test } from "./fixtures";
 
 // A Goal whose Owner can press No change: Active, checked in before, no
 // accepted contributors (so no Rolled-up Health to refuse a repeat) and no
