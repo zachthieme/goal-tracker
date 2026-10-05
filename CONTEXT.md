@@ -12,6 +12,14 @@ _Avoid_: user, member
 What the tool calls a person. It comes from the org's sign-in and is never typed into the tool. A person without one is shown by the part of their email before the `@`. Two people can share a Name, so wherever the web pages show a person, the Name can be clicked, tapped or activated from the keyboard to show their email beside it, and activated again to hide it. Documents without controls, the Markdown export and the Print view, introduce each person as Name (email) on first mention instead.
 _Avoid_: display name, full name, username
 
+**Manager**:
+The person someone reports to, as the org's directory records it. It is read from the directory and never set in the tool. Someone at the top of the org, or whom the directory gives no manager, has none.
+_Avoid_: boss, supervisor, lead, reports to (it collides with Report)
+
+**Chain**:
+A person and everyone below them: the people whose Manager is that person, whose Manager's Manager is, and so on at every depth. "Priya's Chain" includes Priya. A Chain scopes what a page or Report shows by each Goal's Owner, never by its Delegates, and never limits or ranks a Contributes to link (ADR 0002). When a Manager changes, a Chain simply finds different Goals.
+_Avoid_: org, team, reporting line, org chart, direct reports
+
 **Departed**:
 An Account whose person has left the org, as recorded by an Admin. A departed person can't sign in or act, but everything they did stays attributed to them. An Admin can reverse it.
 _Avoid_: deactivated, deleted, offboarded
