@@ -117,12 +117,16 @@ func (s *Service) AlsoIncludedOnly(ctx context.Context, r Report) (map[int64]boo
 	if err != nil {
 		return nil, err
 	}
+	chains, err := s.ruleChains(ctx, def.Rules)
+	if err != nil {
+		return nil, err
+	}
 	out := map[int64]bool{}
 	for _, sg := range r.selected() {
 		if !slices.Contains(def.Include, sg.Goal.ID) {
 			continue
 		}
-		meets, err := s.meetsRules(ctx, def.Rules, ruleSubject{SelectedGoal: sg, values: valuesByGoal[sg.Goal.ID]}, s.since(r))
+		meets, err := s.meetsRules(ctx, def.Rules, ruleSubject{SelectedGoal: sg, values: valuesByGoal[sg.Goal.ID], chains: chains}, s.since(r))
 		if err != nil {
 			return nil, err
 		}
@@ -189,9 +193,9 @@ func (s *Service) reportScope(ctx context.Context, def ReportDefinition) (string
 }
 
 // ruleScope says one Report rule in plain words: "<attribute>: <values>" for a
-// Dimension, Owner or Health rule, a Lifecycle rule's values alone, and
-// "Top-level" or "Not top-level". Values are joined with " or ", after "not"
-// for "is not".
+// Dimension, Owner or Health rule, a Lifecycle rule's values alone, "Owner is
+// in the Chain of <people>" for a Chain rule, and "Top-level" or "Not
+// top-level". Values are joined with " or ", after "not" for "is not".
 func (s *Service) ruleScope(ctx context.Context, rule ReportRule) (string, error) {
 	if rule.Attribute == RuleTopLevel {
 		if rule.Op == RuleIsNot {
@@ -215,7 +219,7 @@ func (s *Service) ruleScope(ctx context.Context, rule ReportRule) (string, error
 			}
 			return val.Value, nil
 		}
-	case RuleOwner:
+	case RuleOwner, RuleChain:
 		label = "Owner"
 		name = func(v string) (string, error) {
 			id, _ := strconv.ParseInt(v, 10, 64)
@@ -237,6 +241,12 @@ func (s *Service) ruleScope(ctx context.Context, rule ReportRule) (string, error
 		names = append(names, n)
 	}
 	text := strings.Join(names, " or ")
+	if rule.Attribute == RuleChain {
+		if rule.Op == RuleIsNot {
+			return "Owner is not in the Chain of " + text, nil
+		}
+		return "Owner is in the Chain of " + text, nil
+	}
 	if rule.Op == RuleIsNot {
 		text = "not " + text
 	}

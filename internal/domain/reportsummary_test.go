@@ -13,7 +13,8 @@ import (
 
 // A rules definition's scope summary reads its rules in order, joined with
 // " · ": a Dimension, Owner or Health rule as "<name>: <values>" ("not
-// <values>" for "is not"), a Lifecycle rule as its values alone, and a
+// <values>" for "is not"), a Chain rule as "Owner is in the Chain of
+// <people>" ("is not in" for "is not"), a Lifecycle rule as its values alone, and a
 // Top-level rule as "Top-level" or "Not top-level". Also include and Leave out
 // close it as "n added, m left out", each left off when empty.
 func TestReportSummaryScopeOfARulesDefinition(t *testing.T) {
@@ -67,6 +68,16 @@ func TestReportSummaryScopeOfARulesDefinition(t *testing.T) {
 			name:  "top-level",
 			rules: []domain.ReportRule{{Attribute: domain.RuleTopLevel, Op: domain.RuleIs}, ownerRule(domain.RuleIsNot, lee)},
 			want:  "Top-level · Owner: not Lee Chen",
+		},
+		{
+			name:  "chain",
+			rules: []domain.ReportRule{chainRule(domain.RuleIs, boss)},
+			want:  "Owner is in the Chain of Dana Okafor",
+		},
+		{
+			name:  "chain of any of, and not",
+			rules: []domain.ReportRule{chainRule(domain.RuleIsAnyOf, boss, lee), chainRule(domain.RuleIsNot, lee)},
+			want:  "Owner is in the Chain of Dana Okafor or Lee Chen · Owner is not in the Chain of Lee Chen",
 		},
 		{
 			name:  "not top-level",

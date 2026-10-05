@@ -59,8 +59,8 @@ const (
 // Report rule). The values within a rule are ORed: a Goal meets "is" or "is
 // any of" by having any of them, and "is not" by having none of them.
 type ReportRule struct {
-	// Attribute is RuleDimension, RuleOwner, RuleLifecycle, RuleHealth or
-	// RuleTopLevel.
+	// Attribute is RuleDimension, RuleOwner, RuleChain, RuleLifecycle,
+	// RuleHealth or RuleTopLevel.
 	Attribute string
 	// DimensionID is the Dimension a RuleDimension rule tests, and 0 for every
 	// other attribute.
@@ -68,7 +68,7 @@ type ReportRule struct {
 	// Op is RuleIs (exactly one value), RuleIsAnyOf or RuleIsNot.
 	Op string
 	// Values are what the rule tests for: Dimension value ids (of DimensionID)
-	// or Account ids in decimal, or Lifecycle or Health names. A RuleTopLevel
+	// or Account ids (of Owners, or of the people whose Chain) in decimal, or Lifecycle or Health names. A RuleTopLevel
 	// rule has none: it is "is Top-level" or "is not Top-level".
 	Values []string
 }
@@ -78,6 +78,10 @@ type ReportRule struct {
 const (
 	RuleDimension = "dimension"
 	RuleOwner     = "owner"
+	// RuleChain tests the Owner's Chain: whether the Owner is in the Chain of
+	// any of the people it names, by their Managers as they are when the
+	// Report is drafted. Like the Owner rule, it never looks at Delegates.
+	RuleChain     = "chain"
 	RuleLifecycle = "lifecycle"
 	RuleHealth    = "health"
 	RuleTopLevel  = "top-level"
@@ -330,7 +334,8 @@ func (s *Service) validateReportDefinition(ctx context.Context, in SaveReportDef
 // validateReportRule says what is wrong with rule, or "" when nothing is. Its
 // operator must be known, and "is" takes exactly one value. A Top-level rule
 // takes no values and is "is" or "is not"; any other takes at least one, each
-// a value of its Dimension, an Account, a Lifecycle or a Health.
+// a value of its Dimension, an Account (for an Owner or a Chain rule), a
+// Lifecycle or a Health.
 func (s *Service) validateReportRule(ctx context.Context, rule ReportRule) (string, error) {
 	switch rule.Op {
 	case RuleIs, RuleIsAnyOf, RuleIsNot:
@@ -373,7 +378,7 @@ func (s *Service) validateReportRule(ctx context.Context, rule ReportRule) (stri
 			}
 			return err == nil && val.DimensionID == dim.ID, err
 		}
-	case RuleOwner:
+	case RuleOwner, RuleChain:
 		kind = "an Account"
 		known = func(v string) (bool, error) {
 			id, err := strconv.ParseInt(v, 10, 64)
@@ -564,6 +569,10 @@ func (s *Service) reportCandidates(ctx context.Context, def ReportDefinition, si
 	if err != nil {
 		return nil, err
 	}
+	chains, err := s.ruleChains(ctx, def.Rules)
+	if err != nil {
+		return nil, err
+	}
 	var out []SelectedGoal
 	for _, g := range goals {
 		if slices.Contains(def.Exclude, g.ID) {
@@ -573,7 +582,7 @@ func (s *Service) reportCandidates(ctx context.Context, def ReportDefinition, si
 		if err != nil {
 			return nil, err
 		}
-		meets, err := s.meetsRules(ctx, def.Rules, ruleSubject{SelectedGoal: sg, values: valuesByGoal[g.ID]}, since)
+		meets, err := s.meetsRules(ctx, def.Rules, ruleSubject{SelectedGoal: sg, values: valuesByGoal[g.ID], chains: chains}, since)
 		if err != nil {
 			return nil, err
 		}
@@ -637,10 +646,45 @@ func (s *Service) selectedGoal(ctx context.Context, g Goal) (SelectedGoal, error
 }
 
 // ruleSubject is what Report rules test a Goal on: the Goal, its Owner-set
-// Health and its Dimension values.
+// Health and its Dimension values, beside the Chains its rules name.
 type ruleSubject struct {
 	SelectedGoal
 	values []DimensionValue
+	chains ruleChains
+}
+
+// ruleChains are the Chains a definition's Chain rules name: the ids of the
+// people in each, keyed by the rule value naming its person.
+type ruleChains map[string]map[int64]bool
+
+// ruleChains walks the Chain of each person a Chain rule among rules names, by
+// the Managers as they are now, so a Manager change moves Goals in or out at
+// the next draft (CONTEXT.md: Chain).
+func (s *Service) ruleChains(ctx context.Context, rules []ReportRule) (ruleChains, error) {
+	chains := ruleChains{}
+	for _, r := range rules {
+		if r.Attribute != RuleChain {
+			continue
+		}
+		for _, v := range r.Values {
+			if _, ok := chains[v]; ok {
+				continue
+			}
+			id, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("chain rule value %q: %w", v, err)
+			}
+			people, err := s.Chain(ctx, id)
+			if err != nil {
+				return nil, err
+			}
+			chains[v] = make(map[int64]bool, len(people))
+			for _, p := range people {
+				chains[v][p.ID] = true
+			}
+		}
+	}
+	return chains, nil
 }
 
 // matches reports whether the Goal meets the rule: has any of its values for
@@ -661,6 +705,9 @@ func (r ReportRule) matches(subject ruleSubject) bool {
 	case RuleOwner:
 		// The Owner of record, never a Delegate; a departed Owner stays it.
 		has = func(value string) bool { return strconv.FormatInt(subject.Goal.Owner.ID, 10) == value }
+	case RuleChain:
+		// The Owner of record's place in the Chain, never a Delegate's.
+		has = func(value string) bool { return subject.chains[value][subject.Goal.Owner.ID] }
 	case RuleLifecycle:
 		has = func(value string) bool { return subject.Goal.Lifecycle == value }
 	case RuleHealth:
