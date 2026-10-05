@@ -288,9 +288,9 @@ func (h goalHistory) changed(since func(time.Time) bool) bool {
 
 // priorHealth is the Goal's Health at the baseline when its latest Check-in's
 // Health differs from it, and empty otherwise. Its Health at the baseline is
-// that of its latest Check-in since doesn't count; a Goal with no Check-in by
-// then had none, and neither Health may be empty. Only the end state counts:
-// Green to Yellow and back since the baseline is no change.
+// that of its latest Check-in that since does not count; a Goal with no
+// Check-in by then had none, and neither Health may be empty. Only the end
+// state counts: Green to Yellow and back since the baseline is no change.
 func (h goalHistory) priorHealth(since func(time.Time) bool) string {
 	now := h.latest().Health
 	i := slices.IndexFunc(h.checkins, func(c Checkin) bool { return !since(c.CreatedAt) })
