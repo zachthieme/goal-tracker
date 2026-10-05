@@ -1,6 +1,8 @@
 // Scenario 3 in docs/scenarios.md, The weekly Check-in: an Owner clears a
 // routine week from Home in a few clicks, retyping nothing that didn't change,
-// and a Delegate covers for an Owner who's away.
+// and a Delegate covers for an Owner who's away. Steps 3.1–3.6 are the week,
+// 3.D1–3.D4 the Delegate. "Four Goals took under five minutes" can't be
+// asserted, so it isn't.
 import { expect, type Page, signIn, test } from "../fixtures";
 
 type OwnedGoal = { id: number; title: string; metric: number };
@@ -52,7 +54,7 @@ test.describe("on the due template", () => {
     const metric = metricGoal;
     const routine = due.filter((g) => g !== metric);
 
-    await test.step("1 Signing in lands on Home, where Needs you lists each Check-in due", async () => {
+    await test.step("3.1 Signing in lands on Home, where Needs you lists each Check-in due", async () => {
       await expect(page).toHaveURL(/\/home$/);
       await expect(page.getByRole("heading", { level: 1, name: "Your week" })).toBeVisible();
       await expect(dueRows(page)).toHaveCount(due.length);
@@ -66,7 +68,7 @@ test.describe("on the due template", () => {
       await expect(page.getByTestId("nav-home")).toHaveText(navHome(due.length));
     });
 
-    await test.step("2 The optional parts of the Check-in form start folded", async () => {
+    await test.step("3.2 The optional parts of the Check-in form start folded", async () => {
       // It worked if: the optional parts stayed folded away until needed.
       const [first] = routine;
       await page.goto(`/goals/${first.id}/checkin`);
@@ -78,7 +80,7 @@ test.describe("on the due template", () => {
       }
     });
 
-    await test.step("3 No change on each routine Goal repeats its last Check-in and leaves Home", async () => {
+    await test.step("3.3 No change on each routine Goal repeats its last Check-in and leaves Home", async () => {
       let left = due.length;
       for (const g of routine) {
         await page.goto(`/goals/${g.id}`);
@@ -118,7 +120,7 @@ test.describe("on the due template", () => {
     const latest = { health: "", status: "", reading: "" };
     const draftNote = "Cold-start fix landed on the beta channel";
 
-    await test.step("4 She logs a Draft Highlight on the Goal that moved", async () => {
+    await test.step("3.4 She logs a Draft Highlight on the Goal that moved", async () => {
       await page.goto(`/goals/${metric.id}`);
       latest.health = ((await page.getByTestId("goal-health").textContent()) ?? "").trim();
       latest.status = (await page.getByTestId("goal-status").textContent()) ?? "";
@@ -137,7 +139,7 @@ test.describe("on the due template", () => {
     const newStatus = "Cold start p90 down after the lazy-init change; beta looks good.";
     const newReading = latest.reading === "3" ? "4" : "3";
 
-    await test.step("5 Check in comes prefilled, offers the Draft, and keeps it as a Highlight", async () => {
+    await test.step("3.5 Check in comes prefilled, offers the Draft, and keeps it as a Highlight", async () => {
       await page.goto("/home");
       await dueRow(page, metric).getByRole("link", { name: "Check in" }).click();
       await expect(page).toHaveURL(new RegExp(`/goals/${metric.id}/checkin$`));
@@ -179,7 +181,7 @@ test.describe("on the due template", () => {
       await expect(highlight).toContainText(`Accomplishment: ${draftNote}`);
     });
 
-    await test.step("6 Home says she's all caught up", async () => {
+    await test.step("3.6 Home says she's all caught up", async () => {
       await page.goto("/home");
       await expect(page.getByTestId("home-caught-up")).toHaveText("You're all caught up.");
       await expect(dueRows(page)).toHaveCount(0);
@@ -198,6 +200,111 @@ function checkinEntries(page: Page) {
 // the server's zone).
 function today(): RegExp {
   return new RegExp(`^${new Date().toISOString().slice(0, 10)}T`);
+}
+
+// staleGoal is a Goal on the default template whose Owner is away: Active,
+// last checked in more than its cadence (and a day) ago, so Stale on Risks,
+// with no accepted children or overdue Planned Milestone to complicate its
+// Check-in, and no Delegates yet. The oldest first.
+const staleGoal = `
+  select g.id, g.title, a.email, a.name
+  from goals g join accounts a on a.id = g.owner_id
+  where g.lifecycle = 'Active' and a.departed = 0 and a.name is not null
+    and julianday('now') - julianday((select max(c.created_at) from checkins c where c.goal_id = g.id))
+        > g.cadence_days + 1
+    and not exists (select 1 from links l where l.parent_id = g.id and l.status = 'accepted')
+    and not exists (select 1 from milestones m
+                    where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date('now'))
+    and not exists (select 1 from delegates d where d.goal_id = g.id)
+  order by (select max(c.created_at) from checkins c where c.goal_id = g.id), g.id
+  limit 1`;
+
+// delegateFor is another seeded person, neither the Owner nor an Admin, to
+// cover for them.
+const delegateFor = `
+  select email, name from accounts
+  where departed = 0 and is_admin = 0 and name is not null and email <> ?
+  order by id
+  limit 1`;
+
+test("a Delegate checks in for an Owner who's away, and the Goal stops being Stale", async ({
+  page,
+  as,
+  seedLookup,
+}) => {
+  type Person = { email: string; name: string };
+  const [goal] = seedLookup<{ id: number; title: string } & Person>(staleGoal);
+  expect(goal, "the seed has a Stale Goal to delegate").toBeDefined();
+  const owner: Person = { email: goal.email, name: goal.name };
+  const [delegate] = seedLookup<Person>(delegateFor, owner.email);
+  expect(delegate, "the seed has someone to delegate to").toBeDefined();
+
+  await test.step("3.D1 The Goal is Stale on Risks and on its Owner's Home", async () => {
+    await signIn(page, owner.email);
+    await page.goto("/risks");
+    await expect(staleChip(page, goal.title)).toBeVisible();
+    await page.goto("/home");
+    const row = dueRows(page).filter({ has: page.getByRole("link", { name: goal.title, exact: true }) });
+    await expect(row.getByTestId("home-due-stale")).toBeVisible();
+  });
+
+  await test.step("3.D2 The Owner authorizes a Delegate from the Goal page", async () => {
+    await page.goto(`/goals/${goal.id}`);
+    await page.getByRole("link", { name: "Manage Delegates" }).click();
+    const add = page.getByTestId("add-delegate");
+    await add.getByRole("textbox", { name: "Delegate email" }).fill(delegate.email);
+    await add.getByRole("button", { name: "Add Delegate" }).click();
+    await expect(page.getByTestId("delegate-list").getByRole("button", { name: delegate.name })).toBeVisible();
+  });
+
+  const covering = await as(delegate.email);
+  const coveringRow = dueRows(covering).filter({ has: covering.getByRole("link", { name: goal.title, exact: true }) });
+
+  await test.step("3.D3 The Delegate finds the Goal delegated to them, for its Owner", async () => {
+    const link = covering.getByTestId("home-delegate-link");
+    await expect(link).toContainText("Goals delegated to you");
+    await link.click();
+    await expect(covering.getByRole("heading", { level: 1, name: "Goals delegated to me" })).toBeVisible();
+    await expect(
+      covering.getByTestId("delegated-goal").getByRole("link", { name: goal.title, exact: true }),
+    ).toBeVisible();
+
+    await covering.goto("/home");
+    // The Name is visible; the email sits only in a title and a hidden span.
+    await expect(coveringRow.getByTestId("home-due-for")).toHaveText(`for ${owner.name}`, { useInnerText: true });
+  });
+
+  await test.step("3.D4 The Delegate checks in; the Check-in records who wrote it, and the Goal isn't Stale", async () => {
+    await coveringRow.getByRole("link", { name: "Check in" }).click();
+    await expect(covering).toHaveURL(new RegExp(`/goals/${goal.id}/checkin$`));
+    const status = `Covering while ${owner.name} is away: on track.`;
+    await covering.getByTestId("checkin-form").getByRole("textbox", { name: /^Status/ }).fill(status);
+    await covering.getByRole("button", { name: "Submit check-in" }).click();
+    await covering.waitForURL(new RegExp(`/goals/${goal.id}$`));
+
+    const entry = checkinEntries(covering).first();
+    await expect(entry).toContainText(status);
+    await expect(entry.getByRole("button", { name: delegate.name })).toBeVisible();
+    await expect(entry.getByRole("button", { name: owner.name })).toBeVisible();
+    await expect(entry).toContainText(`by ${delegate.name} for ${owner.name}`, { useInnerText: true });
+
+    await page.goto("/risks");
+    await expect(page.getByTestId("risks-table")).toBeVisible();
+    await expect(staleChip(page, goal.title)).toHaveCount(0);
+    await page.goto("/home");
+    await expect(page.getByRole("heading", { level: 1, name: "Your week" })).toBeVisible();
+    const row = dueRows(page).filter({ has: page.getByRole("link", { name: goal.title, exact: true }) });
+    await expect(row.getByTestId("home-due-stale")).toHaveCount(0);
+  });
+});
+
+// staleChip is the Stale signal on title's row on Risks.
+function staleChip(page: Page, title: string) {
+  return page
+    .getByTestId("risk-row")
+    .filter({ has: page.getByRole("link", { name: title, exact: true }) })
+    .getByTestId("risk-signal")
+    .filter({ hasText: /^Stale/ });
 }
 
 // dueRows are Home's Check-ins due.
