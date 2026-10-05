@@ -134,9 +134,9 @@ func (s *Service) AlsoIncludedOnly(ctx context.Context, r Report) (map[int64]boo
 }
 
 // changedGoals counts the Goals r reads as changed since its baseline — those
-// it selects that were created, slipped a date, gained a Milestone or changed
-// Lifecycle since, and those that entered or left it — each once. A standing
-// condition, such as staying Red, is no change, and nor is a change of Health.
+// it selects that were created, slipped a date, gained a Milestone, changed
+// Lifecycle or changed Health since, and those that entered or left it — each
+// once. A standing condition, such as staying Red, is no change.
 func (s *Service) changedGoals(ctx context.Context, r Report) (int, error) {
 	since := s.since(r)
 	changed := map[int64]bool{}

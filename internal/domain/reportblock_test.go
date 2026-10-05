@@ -432,3 +432,70 @@ func milestoneNamed(h *testsupport.Harness, g domain.Goal, name string) domain.M
 	h.T.Fatalf("no Milestone %q", name)
 	return domain.Milestone{}
 }
+
+// A Goal whose Health changed since the baseline — its latest Check-in's Health
+// differs from its Health at the baseline — earns the full block with its
+// earlier Health, a recovery to Green included. Staying the same Health is no
+// change, and a Goal with no Check-in by the baseline had no Health to change
+// from (CONTEXT.md: Report).
+func TestReportMarksAGoalWhoseHealthChangedSinceTheBaseline(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		// created is whether the Goal is created once the clock has settled,
+		// after the baseline, rather than at Epoch.
+		created bool
+		// before are the Healths checked in at Epoch, before the default
+		// baseline, and after those checked in once the clock has settled.
+		before, after []string
+		// block is whether the Goal earns the full block, and prior the
+		// earlier Health it shows.
+		block bool
+		prior string
+	}{
+		{name: "Green to Yellow", before: []string{domain.HealthGreen}, after: []string{domain.HealthYellow}, block: true, prior: domain.HealthGreen},
+		{name: "Yellow back to Green", before: []string{domain.HealthYellow}, after: []string{domain.HealthGreen}, block: true, prior: domain.HealthYellow},
+		{name: "Red to Green read from the latest before the baseline", before: []string{domain.HealthGreen, domain.HealthRed}, after: []string{domain.HealthGreen}, block: true, prior: domain.HealthRed},
+		{name: "stays Red", before: []string{domain.HealthRed}, after: []string{domain.HealthRed}, block: true},
+		{name: "stays Green", before: []string{domain.HealthGreen}, after: []string{domain.HealthGreen}, block: false},
+		{name: "Green to Yellow and back since the baseline", before: []string{domain.HealthGreen}, after: []string{domain.HealthYellow, domain.HealthGreen}, block: false},
+		{name: "no Check-in by the baseline", after: []string{domain.HealthYellow}, block: true},
+		{name: "created since the baseline", created: true, after: []string{domain.HealthGreen, domain.HealthYellow}, block: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := testsupport.New(t, "boss@example.com")
+			boss := h.SignIn("boss@example.com")
+			var g domain.Goal
+			if !tc.created {
+				g = h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+			}
+			checkin := func(health string) {
+				h.Checkin(boss, g.ID, health, "Status.", "Path.", h.Clock.Now().AddDate(0, 1, 0))
+			}
+			for _, health := range tc.before {
+				checkin(health)
+			}
+			settle(h)
+			if tc.created {
+				g = h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+			}
+			for _, health := range tc.after {
+				h.Clock.Advance(time.Hour)
+				checkin(health)
+			}
+
+			r := draftReport(t, h, boss, time.Time{}, g)
+
+			if got := len(r.Exceptions) == 1; got != tc.block {
+				t.Fatalf("full block %t, want %t (one-line Goals %v)", got, tc.block, lineIDs(r))
+			}
+			if tc.block {
+				if got := r.Exceptions[0].PriorHealth; got != tc.prior {
+					t.Errorf("prior Health %q, want %q", got, tc.prior)
+				}
+			}
+		})
+	}
+}

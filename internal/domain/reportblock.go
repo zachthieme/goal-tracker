@@ -57,6 +57,9 @@ func (r Report) covers(goalID int64) bool {
 type ReportBlock struct {
 	Goal   Goal
 	Health string
+	// PriorHealth is the Goal's Health at the baseline, set only when its
+	// Health has changed since, shown beside it ("Yellow · was Green").
+	PriorHealth string `json:",omitempty"`
 	// Badges flag what the reader must not miss, in the order BadgeNew,
 	// BadgeNewDate, BadgeStale, BadgeOwnerless, BadgeOnHold.
 	Badges []string
@@ -266,7 +269,7 @@ func (h goalHistory) last() lastCheckin {
 
 // exception reports whether the Goal earns the full block: it is Red or
 // Yellow, Stale, or Ownerless, or since the baseline it was created, slipped a
-// date, or changed Lifecycle (CONTEXT.md: Report).
+// date, changed Lifecycle, or changed Health (CONTEXT.md: Report).
 func (h goalHistory) exception(since func(time.Time) bool, fresh Freshness) bool {
 	return needsPathToGreen(h.latest().Health) ||
 		fresh.Stale ||
@@ -275,11 +278,29 @@ func (h goalHistory) exception(since func(time.Time) bool, fresh Freshness) bool
 }
 
 // changed reports whether, since the baseline, the Goal was created, slipped
-// a date, or changed Lifecycle.
+// a date, changed Lifecycle, or changed Health.
 func (h goalHistory) changed(since func(time.Time) bool) bool {
 	return since(h.goal.CreatedAt) ||
 		slices.ContainsFunc(h.slips, func(d DateSlip) bool { return since(d.CreatedAt) }) ||
-		h.lifecycleChanged(since)
+		h.lifecycleChanged(since) ||
+		h.priorHealth(since) != ""
+}
+
+// priorHealth is the Goal's Health at the baseline when its latest Check-in's
+// Health differs from it, and empty otherwise. Its Health at the baseline is
+// that of its latest Check-in since doesn't count; a Goal with no Check-in by
+// then had none, and neither Health may be empty. Only the end state counts:
+// Green to Yellow and back since the baseline is no change.
+func (h goalHistory) priorHealth(since func(time.Time) bool) string {
+	now := h.latest().Health
+	i := slices.IndexFunc(h.checkins, func(c Checkin) bool { return !since(c.CreatedAt) })
+	if i < 0 || now == "" {
+		return ""
+	}
+	if then := h.checkins[i].Health; then != "" && then != now {
+		return then
+	}
+	return ""
 }
 
 // lifecycleChanged reports whether the Goal changed Lifecycle since the
@@ -320,6 +341,7 @@ func (s *Service) reportBlock(ctx context.Context, h goalHistory, since func(tim
 	b := ReportBlock{
 		Goal:           h.goal,
 		Health:         latest.Health,
+		PriorHealth:    h.priorHealth(since),
 		Badges:         h.badges(since, fresh),
 		PriorDueDates:  h.priorDates(0),
 		Status:         latest.Status,

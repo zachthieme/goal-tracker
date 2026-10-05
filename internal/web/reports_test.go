@@ -3200,3 +3200,114 @@ func TestEditDefinitionKeepsARetiredFieldOverHTTP(t *testing.T) {
 		t.Errorf("saved FieldIDs = %v, want [%d]", got.FieldIDs, legacy.ID)
 	}
 }
+
+// Since the last publication, a Goal whose Health changed reads its Health with
+// what it was — worsening or recovering, which keeps the full block — and
+// counts as a change on the Reports list. One that stayed Red, or was created
+// since and had no Health then, shows no earlier Health (CONTEXT.md: Report).
+func TestReportMarksAChangeOfHealthOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	checkin := func(g domain.Goal, health string) {
+		h.Checkin(boss, g.ID, health, "Status.", "Path.", h.Clock.Now().AddDate(0, 1, 0))
+	}
+	worsened := h.ActiveGoal(boss, "Worsened", "why")
+	recovered := h.ActiveGoal(boss, "Recovered", "why")
+	staysRed := h.ActiveGoal(boss, "Stays Red", "why")
+	checkin(worsened, domain.HealthGreen)
+	checkin(recovered, domain.HealthYellow)
+	checkin(staysRed, domain.HealthRed)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:  "MBR",
+		Mode:  domain.ReportModeRules,
+		Rules: []domain.ReportRule{{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{strconv.FormatInt(boss.ID, 10)}}},
+	})
+	h.PublishReport(boss, def)
+	h.Clock.Advance(24 * time.Hour)
+	checkin(worsened, domain.HealthYellow)
+	checkin(recovered, domain.HealthGreen)
+	checkin(staysRed, domain.HealthRed)
+	created := h.ActiveGoal(boss, "Created", "why")
+	checkin(created, domain.HealthYellow)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+
+	for _, tc := range []struct {
+		g     domain.Goal
+		reads string
+	}{
+		{worsened, "Yellow · was Green"},
+		{recovered, "Green · was Yellow"},
+		{staysRed, "Red"},
+		{created, "Yellow"},
+	} {
+		block := reportBlockFor(t, page, tc.g)
+		badges := strings.TrimPrefix(between(t, block, `class="rp-badges">`, "</div>"), `class="rp-badges">`)
+		markup := regexp.MustCompile(`<[^>]*>|[■▲●]`)
+		if got := strings.Join(strings.Fields(markup.ReplaceAllString(badges, " ")), " "); !strings.HasPrefix(got, tc.reads+" ") && got != tc.reads {
+			t.Errorf("%s's Health reads %q, want %q", tc.g.Title, got, tc.reads)
+		}
+		if marked := strings.Contains(block, `data-testid="report-prior-health"`); marked != strings.Contains(tc.reads, "was") {
+			t.Errorf("%s marks its earlier Health %t; block:\n%s", tc.g.Title, marked, block)
+		}
+	}
+
+	row := pageElement(t, getBody(t, client, ts.URL+"/reports"), "tr", "report-row")
+	if want := "3 changes"; !strings.Contains(row, want) {
+		t.Errorf("row lacks %q, counting the worsened, the recovered, and the created Goal; row:\n%s", want, row)
+	}
+}
+
+// reportBlockFor is g's exception block on a Report page, failing the test
+// when g has none.
+func reportBlockFor(t *testing.T, page string, g domain.Goal) string {
+	t.Helper()
+	start := strings.Index(page, fmt.Sprintf(`<article data-testid="report-exception" class="card rp-card" id="goal-%d"`, g.ID))
+	if start < 0 {
+		t.Fatalf("%s has no exception block", g.Title)
+	}
+	end := strings.Index(page[start:], "</article>")
+	return page[start : start+end]
+}
+
+// A publication freezes a Goal's earlier Health with the rest of its block, and
+// one published before Reports marked a change of Health still renders, with
+// no earlier Health to show.
+func TestPublicationFreezesTheEarlierHealthOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	before := h.PublishReport(boss, def)
+	h.Clock.Advance(24 * time.Hour)
+	h.Checkin(boss, g.ID, domain.HealthYellow, "Vendor is late.", "Chase the vendor.", h.Clock.Now().AddDate(0, 1, 0))
+	marked := h.PublishReport(boss, def)
+	h.Clock.Advance(24 * time.Hour)
+	h.Checkin(boss, g.ID, domain.HealthRed, "Vendor is gone.", "Find another.", h.Clock.Now().AddDate(0, 1, 0))
+
+	old := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","SoWhat":"Expand the market.",` +
+		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Yellow","Status":"Vendor is late."}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, old, before.ID); err != nil {
+		t.Fatalf("write an older snapshot: %v", err)
+	}
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	publication := func(p domain.Publication) string {
+		return getBody(t, client, fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, p.ID))
+	}
+	if got := elementTexts(reportBlockFor(t, publication(marked), g), "span", "report-prior-health"); !slices.Equal(got, []string{"· was Green"}) {
+		t.Errorf("the publication's earlier Health reads %q, want the Green it was when published", got)
+	}
+	block := reportBlockFor(t, publication(before), g)
+	if !strings.Contains(block, "Vendor is late.") || strings.Contains(block, `data-testid="report-prior-health"`) {
+		t.Errorf("the older publication does not render its block as published; block:\n%s", block)
+	}
+}
