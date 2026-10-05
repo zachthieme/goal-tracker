@@ -23,3 +23,7 @@ bundle/
 
 # `make restart` server log
 /serve.log
+
+# The pitch deck's packages and captured assets (see docs/pitch/README.md)
+docs/pitch/node_modules/
+docs/pitch/assets/

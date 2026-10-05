@@ -1,0 +1,9 @@
+{
+  "name": "goal-tracker-pitch",
+  "private": true,
+  "description": "Builds docs/pitch/goal-tracker-pitch.pptx (see README.md)",
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "pptxgenjs": "^4.0.1"
+  }
+}
