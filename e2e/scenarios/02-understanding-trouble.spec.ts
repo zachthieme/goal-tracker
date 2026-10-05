@@ -125,10 +125,16 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
   });
 
   let firstPublication = "";
+  // firstPublishedOn is the day the first publication says it was published,
+  // in UTC, the server's timezone: the baseline once there's a second draft.
+  let firstPublishedOn = "";
   await test.step("3 Publish… opens a confirmation, and confirming it publishes", async () => {
     await publish(elena, reportName);
     firstPublication = new URL(elena.url()).pathname;
-    await expect(elena.getByTestId("report-published")).toContainText("by Priya Raman");
+    const published = elena.getByTestId("report-published");
+    await expect(published).toContainText("by Priya Raman");
+    firstPublishedOn = /Published (\d{4}-\d{2}-\d{2}) /.exec((await published.textContent()) ?? "")?.[1] ?? "";
+    expect(firstPublishedOn, "the publication says the day it was published").not.toBe("");
   });
 
   // The Goals the month's changes happen to: one slips, one leaves for another
@@ -246,7 +252,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     const curation = elena.getByTestId("narrative-curation");
     // Only the Highlights since the baseline, which is now the first
     // publication: the seed wrote none, so exactly those just flagged.
-    await expect(curation.getByRole("heading", { name: `Highlights since ${today()}` })).toBeVisible();
+    await expect(curation.getByRole("heading", { name: `Highlights since ${firstPublishedOn}` })).toBeVisible();
     await expect(curation.getByTestId("curation-highlight")).toHaveCount(highlights.length);
     for (const h of highlights) {
       const row = curation.getByTestId("curation-highlight").filter({ hasText: h.note });

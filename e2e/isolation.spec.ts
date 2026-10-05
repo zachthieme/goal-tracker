@@ -26,16 +26,26 @@ for (const name of ["first", "second"]) {
     await signIn(page, goal.email);
     await page.goto(`/goals/${goal.id}`);
     const before = await historyCount(page);
+    // No Check-in was written minutes ago: the seed's are hours old, so one
+    // that recent is the other test's, landed in this test's database.
+    expect(await justCheckedIn(page), "the Goal's latest entry isn't another test's Check-in").toBe(false);
 
     await page.getByTestId("goal-actions").getByRole("button", { name: "No change" }).click();
 
     await expect(allChip(page)).toHaveAccessibleName(`All ${before + 1}`);
     // The Check-in it wrote is the Goal's latest, whatever the time of day.
-    const latest = page.getByTestId("history-entry").first();
-    await expect(latest).toHaveAttribute("data-kind", "checkin");
-    const at = Date.parse((await latest.locator("time").getAttribute("datetime")) ?? "");
-    expect(Math.abs(Date.now() - at), "the latest entry is the Check-in just written").toBeLessThan(5 * 60 * 1000);
+    await expect(page.getByTestId("history-entry").first()).toHaveAttribute("data-kind", "checkin");
+    expect(await justCheckedIn(page), "the latest entry is the Check-in just written").toBe(true);
   });
+}
+
+// justCheckedIn reports whether the Goal's latest History entry is a Check-in
+// written in the last 5 minutes.
+async function justCheckedIn(page: Page): Promise<boolean> {
+  const latest = page.getByTestId("history-entry").first();
+  if ((await latest.getAttribute("data-kind")) !== "checkin") return false;
+  const at = Date.parse((await latest.locator("time").getAttribute("datetime")) ?? "");
+  return Math.abs(Date.now() - at) < 5 * 60 * 1000;
 }
 
 // allChip is the History's All chip, which counts every entry, shown or not.
