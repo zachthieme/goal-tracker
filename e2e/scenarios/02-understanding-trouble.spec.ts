@@ -30,12 +30,17 @@ const platformGoals = `
 
 type Goal = { id: number; title: string };
 
-test("a leader's Report from Definition to publication, Comment and Action Item", async ({ as, seedLookup }) => {
+test("a leader's Report from Definition to publication, Comment and Action Item", async ({
+  as,
+  seedLookup,
+  serverLog,
+}) => {
   test.setTimeout(180_000);
   const reportName = "Platform monthly review";
   const introduction = "Platform's month: where the deploy and cost work stands, and what needs a hand.";
 
   const elena = await as(leader);
+  const typed = await trackTyping(elena);
   let reportURL = "";
 
   await test.step("1 She builds a Report Definition, and the rail lists the Goals its rule selects", async () => {
@@ -62,11 +67,15 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
       await expect(rail.getByTestId("match").filter({ hasText: g.title })).toHaveCount(1);
     }
 
-    await builder.getByRole("button", { name: "Save report" }).last().click();
+    await builder.getByRole("button", { name: "Save report" }).click();
     await expect(elena.getByTestId("draft-header").getByTestId("report-name")).toHaveText(reportName);
     reportURL = new URL(elena.url()).pathname;
     expect(reportURL).toMatch(/^\/reports\/\d+$/);
   });
+
+  // From the draft to the second publication, every box she types in is
+  // recorded, for "she wrote only the introduction and her own notes".
+  typed.start();
 
   await test.step("2 The draft preview shows the Health summary, the exceptions in full, then the rest on track", async () => {
     const draft = preview(elena);
@@ -77,6 +86,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     // to Green) and enough context to stand alone.
     const blocks = draft.getByTestId("report-exception");
     const exceptions: string[] = [];
+    // What each block should carry is read from the Goal itself.
     for (const block of await blocks.all()) {
       const goal = goalOfBlock(seedLookup, await block.getAttribute("id"));
       exceptions.push(goal.title);
@@ -161,7 +171,10 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     const turner = await as(turning.email);
     await checkIn(turner, turning.id, {
       health: turnedTo,
-      status: turnedTo === "Green" ? "Load tests pass at twice peak; back on plan." : "Two engineers out; the plan is at risk.",
+      status:
+        turnedTo === "Green"
+          ? "Load tests pass at twice peak; back on plan."
+          : "Two engineers out; the plan is at risk.",
       ...(turnedTo === "Yellow"
         ? { pathToGreen: "Borrow one engineer from Data for a month.", backToGreen: addDays(today(), 21) }
         : {}),
@@ -201,7 +214,307 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
       "· was Green",
     );
   });
+
+  // The Highlights Owners flag after the first publication, between them one
+  // of each kind.
+  const highlights = [
+    {
+      goal: slipped,
+      kind: "Insight",
+      note: "Vendor API churn is our biggest schedule risk this half.",
+    },
+    {
+      goal: slipped,
+      kind: "Accomplishment",
+      note: "Shipped the dual-write path with no customer impact.",
+    },
+    { goal: turning, kind: "Miss", note: "The capacity plan missed the holiday traffic forecast." },
+  ];
+  const note = "Two slips this month trace back to vendors; I'm raising it with procurement.";
+
+  await test.step("5 She composes the narrative from the Owners' Highlights, and adds a note of her own", async () => {
+    for (const goal of [slipped, turning]) {
+      const page = await as(goal.email);
+      await checkIn(page, goal.id, {
+        health: goal === slipped ? "Yellow" : turnedTo,
+        status: "Steady week; notes in the Highlights.",
+        highlights: highlights.filter((h) => h.goal === goal),
+      });
+    }
+
+    await elena.goto(reportURL);
+    const curation = elena.getByTestId("narrative-curation");
+    // Only the Highlights since the baseline, which is now the first
+    // publication: the seed wrote none, so exactly those just flagged.
+    await expect(curation.getByRole("heading", { name: `Highlights since ${today()}` })).toBeVisible();
+    await expect(curation.getByTestId("curation-highlight")).toHaveCount(highlights.length);
+    for (const h of highlights) {
+      const row = curation.getByTestId("curation-highlight").filter({ hasText: h.note });
+      await row.getByRole("checkbox", { name: h.note }).check();
+      await row.getByRole("radio", { name: h.kind, exact: true }).check();
+    }
+    await curation.getByTestId("section-text-Insight").getByTestId("section-text-summary").click();
+    await curation.getByLabel("Insights, note 1").fill(note);
+    // It autosaves once she pauses, and the preview follows.
+    await expect(preview(elena).getByTestId("narrative-text")).toHaveText([note]);
+    await expect(elena.getByTestId("save-result")).toHaveText("Saved");
+    await expect(elena.getByTestId("curation-count")).toHaveText(`${highlights.length} of ${highlights.length} in`);
+
+    await elena.reload();
+    for (const h of highlights) {
+      const row = curation.getByTestId("curation-highlight").filter({ hasText: h.note });
+      await expect(row.getByRole("checkbox", { name: h.note })).toBeChecked();
+      await expect(row.getByRole("radio", { name: h.kind, exact: true })).toBeChecked();
+    }
+    await expect(curation.getByLabel("Insights, note 1")).toHaveValue(note);
+
+    // The preview follows: her note, and each Highlight in its section,
+    // credited to the Goal's Owner.
+    const draft = preview(elena);
+    await expectReportOrder(draft, ["health-summary", "report-introduction", "report-narrative", "needs-attention"]);
+    const narrative = draft.getByTestId("report-narrative");
+    await expect(narrative.getByTestId("narrative-section")).toHaveText(["Insights", "Accomplishments", "Misses"]);
+    await expect(narrative.getByTestId("narrative-text")).toHaveText([note]);
+    for (const h of highlights) {
+      const item = narrative.getByTestId("narrative-highlight").filter({ hasText: h.note });
+      await expect(item.getByTestId("highlight-credit")).toHaveText(`— ${h.goal.owner}, ${h.goal.title}`, {
+        useInnerText: true,
+      });
+    }
+  });
+
+  let secondPublication = "";
+  await test.step("6 The second publication is frozen, and shared as Markdown and printed", async () => {
+    await elena.goto(reportURL);
+    await publish(elena, reportName);
+    secondPublication = new URL(elena.url()).pathname;
+    expect(secondPublication).not.toBe(firstPublication);
+
+    // What the publication carries, as the exports must too.
+    const content = await coreContent(elena.getByTestId("report-snapshot"));
+    expect(content.introduction).toBe(introduction);
+    expect(content.narrative).toEqual(expect.arrayContaining([note, ...highlights.map((h) => h.note)]));
+    expect(content.exceptions.length).toBeGreaterThan(0);
+
+    // A later Check-in doesn't change it.
+    const block = elena.getByTestId("report-snapshot").locator(`#goal-${turning.id}`);
+    const before = await block.getByTestId("report-status").textContent();
+    const later = "A later Check-in, after the publication was frozen.";
+    await checkIn(await as(turning.email), turning.id, {
+      health: turnedTo,
+      status: later,
+    });
+    await elena.reload();
+    await expect(block.getByTestId("report-status")).toHaveText(before ?? "");
+    await expect(elena.getByTestId("report-snapshot")).not.toContainText(later);
+
+    // Markdown is served as an attachment, so it's fetched, not opened.
+    const md = await elena.request.get(`${secondPublication}/markdown`);
+    expect(md.ok()).toBe(true);
+    expect(md.headers()["content-disposition"]).toMatch(/^attachment/);
+    const markdown = await md.text();
+    expect(markdown).not.toContain(later);
+    for (const text of coreTexts(content))
+      expect(markdown, "the Markdown carries the publication's content").toContain(text);
+
+    await elena.goto(`${secondPublication}/print`);
+    const printed = elena.getByTestId("report-snapshot");
+    await expect(elena.getByTestId("report-name")).toHaveText(reportName);
+    for (const text of coreTexts(content))
+      await expect(printed, "the print view carries the publication's content").toContainText(text);
+    await expect(printed).not.toContainText(later);
+
+    // It worked if she wrote only the introduction and her own notes: from
+    // the draft to here, the only box she typed in was a section's note.
+    typed.stop();
+    expect(typed.names()).toContain("text-Insight");
+    for (const name of typed.names())
+      expect(name, "she typed only the introduction or a note").toMatch(/^(introduction|text-\w+)$/);
+  });
+
+  const question = "What would it take to hold the new date if the vendor slips again?";
+  const answer = "A fallback to the old API for one more quarter; I'll cost it by Friday.";
+
+  await test.step("7 A reader comments on a Yellow Goal's block, and its Owner replies in the thread", async () => {
+    const dana = await as(reader);
+    await dana.goto(secondPublication);
+    const block = dana.getByTestId("report-snapshot").locator(`#goal-${slipped.id}`);
+    expect(await healthOf(block.getByTestId("report-health"))).toBe("Yellow");
+    const discussion = block.getByTestId("goal-discussion");
+    await discussion.getByTestId("comment-toggle").locator("summary").click();
+    await discussion.getByRole("textbox", { name: "Comment" }).fill(question);
+    await discussion.getByRole("button", { name: "Comment" }).click();
+    await expect(discussion.getByTestId("comment-count")).toHaveText("1 comment");
+
+    // It worked if a question reached the right Owner without anyone looking
+    // up who owns what: the reader named no one, and the one email about it
+    // went to the Goal's Owner.
+    const commentSubject = `subject="Comment on ${slipped.title} in ${reportName}"`;
+    await expect
+      .poll(() => mailLines(serverLog(), commentSubject))
+      .toEqual([expect.stringContaining(`to=${slipped.email} `)]);
+
+    const owner = await as(slipped.email);
+    await owner.goto(secondPublication);
+    const thread = owner.getByTestId("report-snapshot").locator(`#goal-${slipped.id}`).getByTestId("goal-discussion");
+    await thread.getByTestId("comment-count").click();
+    await thread.getByTestId("reply-toggle").locator("summary").click();
+    await thread.getByTestId("reply-form").getByRole("textbox", { name: "Reply" }).fill(answer);
+    await thread.getByTestId("reply-form").getByRole("button", { name: "Reply" }).click();
+
+    await dana.reload();
+    await discussion.getByTestId("comment-count").click();
+    await expect(discussion.getByTestId("comment-thread").getByTestId("comment")).toHaveText([
+      new RegExp(`Dana Whitfield.*${escapeRegExp(question)}`, "s"),
+      new RegExp(`${escapeRegExp(slipped.owner)}.*${escapeRegExp(answer)}`, "s"),
+    ]);
+    const replySubject = `subject="Reply on ${slipped.title} in ${reportName}"`;
+    await expect.poll(() => mailLines(serverLog(), replySubject)).toEqual([expect.stringContaining(`to=${reader} `)]);
+  });
+
+  const due = addDays(today(), 14);
+  await test.step("8 She makes the thread an Action Item, which stays listed until its owner closes it", async () => {
+    await elena.goto(secondPublication);
+    const discussion = elena
+      .getByTestId("report-snapshot")
+      .locator(`#goal-${slipped.id}`)
+      .getByTestId("goal-discussion");
+    await discussion.getByTestId("comment-count").click();
+    const make = discussion.getByTestId("make-action-item").first();
+    await make.locator("summary").click();
+    await make.getByLabel("Owner").fill(slipped.email);
+    await make.getByLabel("Due").fill(due);
+    await make.getByRole("button", { name: "Make Action Item" }).click();
+    await expect(elena.getByTestId("raised-action-item")).toContainText(question);
+
+    // It worked if nothing agreed was lost by the next review: the next
+    // publication opens with it, and its exports carry it.
+    await elena.goto(reportURL);
+    await publish(elena, reportName);
+    const thirdPublication = new URL(elena.url()).pathname;
+    const open = elena.getByTestId("report-action-items").getByTestId("open-action-item").filter({ hasText: question });
+    await expect(open).toContainText(slipped.owner);
+    await expect(open).toContainText(`due ${due}`);
+    await expectReportOrder(elena.getByRole("main"), ["health-summary", "report-action-items", "report-introduction"]);
+    const content = await coreContent(elena.getByTestId("report-snapshot"));
+    expect(content.actionItems).toEqual([expect.stringContaining(question)]);
+    const markdown = await (await elena.request.get(`${thirdPublication}/markdown`)).text();
+    expect(markdown).toContain(question);
+    await elena.goto(`${thirdPublication}/print`);
+    await expect(elena.getByTestId("report-snapshot")).toContainText(question);
+
+    // Its owner closes it with a note, and the publication after no longer
+    // lists it.
+    const owner = await as(slipped.email);
+    await owner.goto(thirdPublication);
+    const item = owner.getByTestId("report-action-items").getByTestId("open-action-item").filter({ hasText: question });
+    await item.getByTestId("close-toggle").locator("summary").click();
+    await item.getByLabel("Closing note").fill("Fallback costed: two sprints, approved.");
+    await item.getByRole("button", { name: "Close" }).click();
+    // The publication it was listed on stays as frozen, marking it closed.
+    await expect(owner).toHaveURL(new RegExp(`${thirdPublication}(#.*)?$`));
+    await expect(item.getByTestId("action-item-closed-since")).toBeVisible();
+    await owner.goto(secondPublication);
+    await expect(
+      owner.getByTestId("raised-action-item").filter({ hasText: question }).getByTestId("action-item-note"),
+    ).toHaveText("— Fallback costed: two sprints, approved.");
+
+    await elena.goto(reportURL);
+    await publish(elena, reportName);
+    await expect(elena.getByTestId("report-snapshot")).not.toContainText(question);
+    await expect(elena.getByTestId("report-action-items")).toHaveCount(0);
+  });
 });
+
+type CoreContent = {
+  introduction: string;
+  narrative: string[];
+  actionItems: string[];
+  exceptions: { title: string; pathToGreen: string }[];
+};
+
+// coreContent reads what every way of reading a publication must carry: the
+// introduction, the narrative's notes and Highlights, the open Action Items,
+// and each exception's title with its Path to Green. Not the Health summary or
+// the Goals that entered or left.
+async function coreContent(report: Locator): Promise<CoreContent> {
+  const intro = report.getByTestId("report-introduction");
+  const narrative = [
+    ...(await report.getByTestId("narrative-text").allTextContents()),
+    ...(await report.getByTestId("narrative-highlight").evaluateAll((items) =>
+      // The Highlight's own note, without its credit.
+      items.map((li) => (li.firstChild?.textContent ?? "").trim()),
+    )),
+  ].map((t) => t.trim());
+  const actionItems = await report
+    .getByTestId("open-action-item")
+    .evaluateAll((items) => items.map((li) => (li.firstChild?.textContent ?? "").trim()));
+  const exceptions = [];
+  for (const block of await report.getByTestId("report-exception").all()) {
+    const title = (await block.getByRole("heading", { level: 3 }).textContent())?.trim() ?? "";
+    const path = (await block.getByTestId("report-path-to-green").count())
+      ? ((await block.getByTestId("report-path-to-green").textContent()) ?? "")
+      : "";
+    const plan = path.match(/Path to Green:\s*(.*?)\s*\(back to Green by/s)?.[1] ?? "";
+    exceptions.push({ title, pathToGreen: plan });
+  }
+  return {
+    introduction: (await intro.count()) ? ((await intro.textContent()) ?? "").trim() : "",
+    narrative,
+    actionItems,
+    exceptions,
+  };
+}
+
+// coreTexts are the strings in a publication's core content, each to be
+// found in an export.
+function coreTexts(c: CoreContent): string[] {
+  return [
+    c.introduction,
+    ...c.narrative,
+    ...c.actionItems,
+    ...c.exceptions.flatMap((e) => [e.title, e.pathToGreen]),
+  ].filter((t) => t !== "");
+}
+
+// mailLines are the lines of the server's log recording an email with the
+// subject given, as slog writes it (subject="…").
+function mailLines(log: string, subject: string): string[] {
+  return log.split("\n").filter((l) => l.includes("email send") && l.includes(subject));
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// trackTyping records each box the page's person types text into, by its
+// name, from start on: an input event on a textarea or a text-like input.
+// Ticking a box or picking a radio or an option isn't typing.
+async function trackTyping(page: Page) {
+  const names: string[] = [];
+  let on = false;
+  await page.context().exposeBinding("recordTyping", (_source, name: string) => {
+    if (on) names.push(name);
+  });
+  await page.context().addInitScript(() => {
+    document.addEventListener(
+      "input",
+      (e) => {
+        const t = e.target as HTMLInputElement;
+        const text =
+          t instanceof HTMLTextAreaElement ||
+          (t instanceof HTMLInputElement && !["checkbox", "radio"].includes(t.type));
+        if (text) (window as unknown as { recordTyping: (n: string) => void }).recordTyping(t.name);
+      },
+      true,
+    );
+  });
+  return {
+    start: () => (on = true),
+    stop: () => (on = false),
+    names: () => [...names],
+  };
+}
 
 // pickCheckinGoal picks a Platform Goal whose Owner can check in on it
 // plainly, with the Health given first if one has it: Active, its Owner still
@@ -312,7 +625,10 @@ async function expectReportOrder(report: Locator, required: string[]) {
       (a, b) => !!(b && a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING),
       after,
     );
-    expect(follows, `${await present[i - 1].getAttribute("data-testid")} comes before ${await present[i].getAttribute("data-testid")}`).toBe(true);
+    expect(
+      follows,
+      `${await present[i - 1].getAttribute("data-testid")} comes before ${await present[i].getAttribute("data-testid")}`,
+    ).toBe(true);
   }
 }
 
