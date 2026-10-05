@@ -1227,8 +1227,13 @@ func TestOnlyTheOwnerOrADelegateChangesMilestonesOverHTTP(t *testing.T) {
 		before := rows(g)
 		resp := postForm(t, sam2, fmt.Sprintf("%s/goals/%d/milestones", ts.URL, g.ID), url.Values{"name": {"Late"}, "target_date": {"2026-05-01"}})
 		body := html.UnescapeString(readBody(t, resp))
-		if want := "a " + lifecycle + " Goal's Milestones can't change"; resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, want) {
+		if want := "A " + lifecycle + " Goal's Milestones can't change."; resp.StatusCode != http.StatusUnprocessableEntity || !strings.Contains(body, want) {
 			t.Errorf("adding to a %s Goal answered %d %q, want 422 saying %q", lifecycle, resp.StatusCode, body, want)
+		}
+		for _, internal := range []string{"validation failed", "not authorized"} {
+			if strings.Contains(body, internal) {
+				t.Errorf("adding to a %s Goal answered %q, carrying the internal %q prefix", lifecycle, body, internal)
+			}
 		}
 		if after := rows(g); !slices.Equal(after, before) {
 			t.Errorf("a %s Goal took a Milestone: %q", lifecycle, after)
@@ -4519,8 +4524,9 @@ func TestGoalPageSidebarLinksOpenTheirFormInPlaceOverHTTP(t *testing.T) {
 }
 
 // A refused submit from a form opened in place comes back as the Goal page
-// with that same form open, the reason beside it, and what was typed still in
-// it, rather than a bare error page.
+// with that same form open, the reason beside it as a sentence without the
+// internal "validation failed:" prefix (#192), and what was typed still in it,
+// rather than a bare error page.
 func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -4549,13 +4555,14 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 		sent              url.Values
 		reason, typed     string
 	}{
-		{"sam", "handoff", path(goal, "/handoff"), url.Values{"to_email": {"nobody@example.com"}}, "no account with email", `value="nobody@example.com"`},
-		{"ada", "reassign", path(orphan, "/reassign"), url.Values{"email": {"nobody@example.com"}}, "no account with email", `value="nobody@example.com"`},
+		{"sam", "handoff", path(goal, "/handoff"), url.Values{"to_email": {"nobody@example.com"}}, "No account with email", `value="nobody@example.com"`},
+		{"ada", "reassign", path(orphan, "/reassign"), url.Values{"email": {"nobody@example.com"}}, "No account with email", `value="nobody@example.com"`},
 		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {fmt.Sprint(goal.ID)}, "note": {"Because."}}, "cannot contribute to itself", ">Because.</textarea>"},
+		{"sam", "parent-link", path(goal, "/links"), url.Values{"parent_id": {""}, "note": {"Because."}}, "A parent Goal is required.", ">Because.</textarea>"},
 		{"sam", "delegates", path(goal, "/delegates"), url.Values{"email": {"nobody@example.com"}}, "nobody@example.com", `value="nobody@example.com"`},
-		{"sam", "contributors", path(proposed, "/contributors"), url.Values{"email": {"nobody@example.com"}}, "no account with email", `value="nobody@example.com"`},
-		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"  "}, "target_date": {"2026-05-01"}}, "a Milestone needs a name", `value="2026-05-01"`},
-		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"GA"}, "target_date": {""}}, "a Milestone needs a date", `value="GA"`},
+		{"sam", "contributors", path(proposed, "/contributors"), url.Values{"email": {"not-an-email"}}, `No account with email "not-an-email".`, `value="not-an-email"`},
+		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"  "}, "target_date": {"2026-05-01"}}, "A Milestone needs a name.", `value="2026-05-01"`},
+		{"sam", "milestones", path(goal, "/milestones"), url.Values{"name": {"GA"}, "target_date": {""}}, "A Milestone needs a date.", `value="GA"`},
 		{"sam", "dimensions", path(goal, "/dimensions"), url.Values{"dimension_id": {fmt.Sprint(team.ID)}, "new_value": {"  "}}, "cannot be blank", `value="  "`},
 		{"sam", "fields", path(goal, "/fields"), url.Values{"field_id": {fmt.Sprint(budget.ID)}, "value": {"lots"}}, "Budget", `value="lots"`},
 	} {
@@ -4569,6 +4576,11 @@ func TestGoalPageRefusedFormComesBackOpenOverHTTP(t *testing.T) {
 		reason := pageElement(t, open, "p", "form-error")
 		if !strings.Contains(html.UnescapeString(reason), tc.reason) {
 			t.Errorf("%s: open form's error %q doesn't say %q", tc.form, reason, tc.reason)
+		}
+		for _, internal := range []string{"validation failed", "not authorized"} {
+			if strings.Contains(reason, internal) {
+				t.Errorf("%s: open form's error %q carries the internal %q prefix", tc.form, reason, internal)
+			}
 		}
 		if !strings.Contains(open, tc.typed) {
 			t.Errorf("%s: open form lost what was typed (%s): %s", tc.form, tc.typed, open)
