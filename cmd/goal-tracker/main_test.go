@@ -9,6 +9,8 @@ import (
 )
 
 func TestAppClockIsTheRealClockWhenStartAtIsUnset(t *testing.T) {
+	t.Parallel()
+
 	clk, err := appClock("")
 	if err != nil {
 		t.Fatal(err)
@@ -19,6 +21,8 @@ func TestAppClockIsTheRealClockWhenStartAtIsUnset(t *testing.T) {
 }
 
 func TestAppClockStartsAtAValidStartAt(t *testing.T) {
+	t.Parallel()
+
 	clk, err := appClock("2026-10-05T18:05:00Z")
 	if err != nil {
 		t.Fatal(err)
@@ -33,6 +37,8 @@ func TestAppClockStartsAtAValidStartAt(t *testing.T) {
 }
 
 func TestAppClockRejectsAMalformedStartAt(t *testing.T) {
+	t.Parallel()
+
 	_, err := appClock("5 Oct 2026")
 	if err == nil {
 		t.Fatal("appClock accepted a value that isn't RFC 3339")

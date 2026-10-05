@@ -5,7 +5,7 @@
 // asserted, so it isn't.
 import type { Page } from "@playwright/test";
 
-import { expect, signIn, test } from "../fixtures";
+import { appToday, expect, signIn, test } from "../fixtures";
 
 type OwnedGoal = { id: number; title: string; metric: number };
 
@@ -23,7 +23,7 @@ const weekOwners = `
     and sum(exists (select 1 from metrics m where m.goal_id = g.id)) = 1
     and sum(exists (select 1 from links l where l.parent_id = g.id and l.status = 'accepted')) = 0
     and sum(exists (select 1 from milestones m
-                    where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date('now'))) = 0
+                    where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now))) = 0
   order by count(*) desc, a.id`;
 
 const activeGoalsOf = `
@@ -198,10 +198,10 @@ function checkinEntries(page: Page) {
   return page.getByTestId("history-entry").and(page.locator('[data-kind="checkin"]'));
 }
 
-// today is a datetime prefix for a History entry's time written today (UTC,
-// the server's zone).
+// today is a datetime prefix for a History entry's time written on the app's
+// today (UTC, the server's zone).
 function today(): RegExp {
-  return new RegExp(`^${new Date().toISOString().slice(0, 10)}T`);
+  return new RegExp(`^${appToday()}T`);
 }
 
 // staleGoal is a Goal on the default template whose Owner is away: Active,
@@ -212,11 +212,11 @@ const staleGoal = `
   select g.id, g.title, a.email, a.name
   from goals g join accounts a on a.id = g.owner_id
   where g.lifecycle = 'Active' and a.departed = 0 and a.name is not null
-    and julianday('now') - julianday((select max(c.created_at) from checkins c where c.goal_id = g.id))
+    and julianday($now) - julianday((select max(c.created_at) from checkins c where c.goal_id = g.id))
         > g.cadence_days + 1
     and not exists (select 1 from links l where l.parent_id = g.id and l.status = 'accepted')
     and not exists (select 1 from milestones m
-                    where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date('now'))
+                    where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now))
     and not exists (select 1 from delegates d where d.goal_id = g.id)
   order by (select max(c.created_at) from checkins c where c.goal_id = g.id), g.id
   limit 1`;

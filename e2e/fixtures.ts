@@ -9,10 +9,17 @@ import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 
 import { type Browser, type Page, test as base, type TestInfo } from "@playwright/test";
 
-import { admin, e2eDirEnv, type Template, templatePath } from "./global-setup";
+import { admin, e2eDirEnv, referenceDate, startAt, type Template, templatePath } from "./global-setup";
 
 export { expect } from "@playwright/test";
-export { admin, type Template } from "./global-setup";
+export { admin, startAt, type Template } from "./global-setup";
+
+// appToday is the app's date, YYYY-MM-DD in UTC (the server's timezone): the
+// reference date. Each test's app starts its clock at 18:05 that day, and no
+// run lasts long enough to cross midnight.
+export function appToday(): string {
+  return referenceDate;
+}
 
 // App is the running copy of Goal Tracker a test drives.
 export type App = {
@@ -22,6 +29,10 @@ export type App = {
   db: string;
   // log is everything the server has written to stdout and stderr so far.
   log: () => string;
+  // now is the app's current time: startAt plus the time since this test's
+  // server started, as its clock (GOAL_TRACKER_START_AT) reads it. Use it, or
+  // appToday, wherever a test needs "now", never the machine's clock.
+  now: () => Date;
 };
 
 type Fixtures = {
@@ -35,7 +46,9 @@ type Fixtures = {
   as: (email: string) => Promise<Page>;
   // seedLookup runs a read-only query on the test's database, to choose
   // actors and Goals by criteria. Never to assert an outcome: those are
-  // asserted on the page.
+  // asserted on the page. $now in the SQL is bound to app.now(), as an ISO
+  // 8601 string SQLite's date functions read: write date($now), never
+  // SQLite's own now, which reads the machine's clock.
   seedLookup: <T = Record<string, unknown>>(sql: string, ...params: SQLInputValue[]) => T[];
   // serverLog is what the server has logged so far, for what the app only
   // logs, such as email (email.LogSender).
@@ -55,7 +68,7 @@ export const test = base.extend<Fixtures>({
 
     const server = await startServer(join(dir, "goal-tracker"), db, testInfo);
     try {
-      await use({ url: server.url, db, log: server.log });
+      await use({ url: server.url, db, log: server.log, now: server.now });
     } finally {
       await server.stop();
       if (testInfo.status !== testInfo.expectedStatus) {
@@ -86,7 +99,11 @@ export const test = base.extend<Fixtures>({
     function lookup<T>(sql: string, ...params: SQLInputValue[]): T[] {
       const conn = new DatabaseSync(app.db, { readOnly: true, timeout: 5000 });
       try {
-        return conn.prepare(sql).all(...params) as T[];
+        const stmt = conn.prepare(sql);
+        // Bind $now only where the SQL names it: an unknown named parameter
+        // is an error.
+        const rows = /\$now\b/.test(sql) ? stmt.all({ now: app.now().toISOString() }, ...params) : stmt.all(...params);
+        return rows as T[];
       } finally {
         conn.close();
       }
@@ -115,12 +132,14 @@ async function newSignedInPage(browser: Browser, url: string, email: string): Pr
   return page;
 }
 
-type Server = { url: string; log: () => string; stop: () => Promise<void> };
+type Server = { url: string; log: () => string; now: () => Date; stop: () => Promise<void> };
 
 // startServer starts the binary as scripts/scratch-app does: on a free port,
 // over db, with the seed's Admin, and waits until /signin answers. The
 // server's environment is pinned (UTC, the default weekly reminder), so a
 // GOAL_TRACKER_* variable in the caller's shell can't change what tests see.
+// Its clock starts at startAt (GOAL_TRACKER_START_AT), so it sees the frozen
+// seed at the same moment on every run.
 //
 // The server migrates the database before it binds the port, so an answer on
 // the port may come from another server that took it first. Each worker picks
@@ -143,6 +162,9 @@ class ServerExited extends Error {}
 async function tryStartServer(bin: string, db: string, port: number): Promise<Server> {
   const url = `http://127.0.0.1:${port}`;
   const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GOAL_TRACKER_")));
+  // The binary starts its clock at startAt as it launches, a moment after
+  // this. performance.now() is monotonic and isn't the machine's date.
+  const launched = performance.now();
   const child = spawn(bin, [], {
     env: {
       ...env,
@@ -151,6 +173,7 @@ async function tryStartServer(bin: string, db: string, port: number): Promise<Se
       GOAL_TRACKER_ADMINS: admin,
       GOAL_TRACKER_BASE_URL: url,
       GOAL_TRACKER_TIMEZONE: "UTC",
+      GOAL_TRACKER_START_AT: startAt,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -167,7 +190,8 @@ async function tryStartServer(bin: string, db: string, port: number): Promise<Se
     });
   });
   const gone = () => spawnErr !== undefined || child.exitCode !== null || child.signalCode !== null;
-  const server = { url, log: () => output, stop: () => stopServer(child, exited, gone) };
+  const now = () => new Date(Date.parse(startAt) + (performance.now() - launched));
+  const server = { url, log: () => output, now, stop: () => stopServer(child, exited, gone) };
 
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {

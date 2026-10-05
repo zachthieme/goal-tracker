@@ -10,6 +10,8 @@ import (
 var offsetStart = time.Date(2026, 10, 5, 18, 5, 0, 0, time.UTC)
 
 func TestOffsetReadsItsStartInstantWhenCreated(t *testing.T) {
+	t.Parallel()
+
 	c := clock.NewOffset(offsetStart)
 
 	got := c.Now()
@@ -19,6 +21,8 @@ func TestOffsetReadsItsStartInstantWhenCreated(t *testing.T) {
 }
 
 func TestOffsetAdvancesWithRealTime(t *testing.T) {
+	t.Parallel()
+
 	c := clock.NewOffset(offsetStart)
 	before := c.Now()
 
@@ -30,6 +34,8 @@ func TestOffsetAdvancesWithRealTime(t *testing.T) {
 }
 
 func TestOffsetReturnsUTC(t *testing.T) {
+	t.Parallel()
+
 	c := clock.NewOffset(offsetStart.In(time.FixedZone("EDT", -4*60*60)))
 
 	if loc := c.Now().Location(); loc != time.UTC {

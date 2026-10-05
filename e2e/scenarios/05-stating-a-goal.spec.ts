@@ -3,7 +3,7 @@
 // the parent Owner's consent.
 import type { Page } from "@playwright/test";
 
-import { admin, expect, signIn, test } from "../fixtures";
+import { admin, appToday, expect, signIn, test } from "../fixtures";
 
 // A team Goal to contribute to: Active, owned by a team lead, with its Team.
 // Which of them shows Rolled-up Health Green, or none, is read from the page.
@@ -464,6 +464,7 @@ function goalIdOf(page: Page): number {
   return Number(new URL(page.url()).pathname.split("/").pop());
 }
 
+// isoDaysFromNow is the app's today plus days, as a date input takes it.
 function isoDaysFromNow(days: number): string {
-  return new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+  return new Date(Date.parse(appToday()) + days * 86_400_000).toISOString().slice(0, 10);
 }
