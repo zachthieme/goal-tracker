@@ -935,6 +935,112 @@ func TestNewGoalFormAssignsDimensionValuesAndFields(t *testing.T) {
 	}
 }
 
+// fitsNote is the text of Where it fits' note, under its legend, which says
+// what in the section is required.
+func fitsNote(t *testing.T, page string) string {
+	t.Helper()
+	notes := elementTexts(page, "p", "goal-form-fits-note")
+	if len(notes) != 1 {
+		t.Fatalf("Where it fits has %d notes, want 1:\n%s", len(notes), fitsSection(t, page))
+	}
+	return notes[0]
+}
+
+// With a Dimension required, Where it fits no longer calls itself optional: it
+// names the Dimension as required, as the checklist does.
+func TestNewGoalPageWhereItFitsNamesARequiredDimension(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	fits := arrangeWhereItFits(h)
+	h.SetDimensionRequired(boss, fits.team, true)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	note := fitsNote(t, getBody(t, client, ts.URL+"/goals/new"))
+	if want := "Required: a value in Team. The rest are optional."; note != want {
+		t.Errorf("Where it fits says %q, want %q", note, want)
+	}
+}
+
+// With nothing required, Where it fits says the whole section is optional.
+func TestNewGoalPageWhereItFitsIsOptionalWithNothingRequired(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	arrangeWhereItFits(h)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	note := fitsNote(t, getBody(t, client, ts.URL+"/goals/new"))
+	if want := "Optional: the Goal's Dimension values and Fields."; note != want {
+		t.Errorf("Where it fits says %q, want %q", note, want)
+	}
+}
+
+// A required Field is named as a required Dimension is, while a Dimension or
+// Field required and then Retired isn't named, as the checklist doesn't list
+// it.
+func TestNewGoalPageWhereItFitsNamesARequiredFieldNotARetiredOne(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	fits := arrangeWhereItFits(h)
+	h.SetFieldRequired(boss, fits.budget, true)
+	h.SetDimensionRequired(boss, fits.pillar, true)
+	notes := h.CreateField(boss, "Notes", domain.FieldShortText, "")
+	h.SetFieldRequired(boss, notes, true)
+	ctx := context.Background()
+	if err := h.Service.RetireDimension(ctx, boss.ID, fits.pillar.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	if err := h.Service.RetireField(ctx, boss.ID, notes.ID); err != nil {
+		t.Fatalf("RetireField: %v", err)
+	}
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	note := fitsNote(t, getBody(t, client, ts.URL+"/goals/new"))
+	if want := "Required: a value in Budget. The rest are optional."; note != want {
+		t.Errorf("Where it fits says %q, want %q", note, want)
+	}
+}
+
+// With several required, Where it fits names each, in the checklist's order,
+// on the define page as on the New goal page; with all of them required, none
+// is left to call optional.
+func TestDefineGoalPageWhereItFitsNamesEachRequired(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	fits := arrangeWhereItFits(h)
+	h.SetDimensionRequired(boss, fits.team, true)
+	h.SetFieldRequired(boss, fits.budget, true)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	define := fmt.Sprintf("%s/goals/%d/define", ts.URL, g.ID)
+
+	note := fitsNote(t, getBody(t, client, define))
+	if want := "Required: a value in Team and in Budget. The rest are optional."; note != want {
+		t.Errorf("Where it fits says %q, want %q", note, want)
+	}
+
+	h.SetDimensionRequired(boss, fits.pillar, true)
+	h.SetDimensionRequired(boss, fits.channel, true)
+	note = fitsNote(t, getBody(t, client, define))
+	if want := "Required: a value in Channel, in Pillar, in Team and in Budget."; note != want {
+		t.Errorf("with all required, Where it fits says %q, want %q", note, want)
+	}
+}
+
 // chosen reports whether Where it fits shows the value ticked or selected.
 func chosen(t *testing.T, section string, v domain.DimensionValue) bool {
 	t.Helper()
