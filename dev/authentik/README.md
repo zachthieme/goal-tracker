@@ -36,7 +36,12 @@ signing in through it. People on the tailnet sign in from any device.
 `make stop` stops both, and `make restart` keeps Authentik sign-in. You still
 need `.env` filled in first.
 
-The tailnet callback reaches the blueprint as `GOAL_TRACKER_TAILNET_CALLBACK`.
+Sign in at Goal Tracker's address, not Authentik's: Authentik only sends you
+back to the app when the sign-in started there. Signed in at Authentik
+directly, click **Goal Tracker** in its app list to go through.
+
+The tailnet callback reaches the blueprint as `GOAL_TRACKER_TAILNET_CALLBACK`,
+and the app list's link as `GOAL_TRACKER_LAUNCH_URL`.
 Authentik doesn't re-apply a blueprint when only such a value changes, so
 `make start` runs `./apply.sh`, which applies it now and waits until it has.
 

@@ -131,12 +131,13 @@ serve-app:
 	) \
 	exec bin/goal-tracker
 
-# Start the local Authentik with the app's tailnet callback registered, and put
-# it on the tailnet. apply.sh re-applies the blueprint, since Authentik doesn't
+# Start the local Authentik with the app's tailnet callback registered and its
+# app tile launching the app's sign-in, and put it on the tailnet. apply.sh re-applies the blueprint, since Authentik doesn't
 # notice a changed callback by itself.
 authentik-up:
 	host=$(TAILNET_HOST) && cd dev/authentik && \
-	GOAL_TRACKER_TAILNET_CALLBACK=https://$$host:$(SERVE_PORT)/auth/callback docker compose up -d && \
+	GOAL_TRACKER_TAILNET_CALLBACK=https://$$host:$(SERVE_PORT)/auth/callback \
+	GOAL_TRACKER_LAUNCH_URL=https://$$host:$(SERVE_PORT)/auth/start docker compose up -d && \
 	./apply.sh
 	tailscale serve --bg --https=$(AUTHENTIK_PORT) http://127.0.0.1:9000
 

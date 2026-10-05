@@ -95,7 +95,10 @@ entries:
     attrs:
       name: Goal Tracker
       provider: !KeyOf provider
-      meta_launch_url: http://127.0.0.1:8080/
+      # The tile in Authentik's app list starts the app's own sign-in, so a person
+      # already signed in to Authentik goes straight through. `make start
+      # AUTHENTIK=1` passes the tailnet address in GOAL_TRACKER_LAUNCH_URL.
+      meta_launch_url: !Env [GOAL_TRACKER_LAUNCH_URL, http://localhost:8080/auth/start]
 
   # --- The directory ---------------------------------------------------------
   #
