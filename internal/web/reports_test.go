@@ -3254,6 +3254,13 @@ func TestReportMarksAChangeOfHealthOverHTTP(t *testing.T) {
 		if marked := strings.Contains(block, `data-testid="report-prior-health"`); marked != strings.Contains(tc.reads, "was") {
 			t.Errorf("%s marks its earlier Health %t; block:\n%s", tc.g.Title, marked, block)
 		}
+		together := regexp.MustCompile(`<span class="rp-health"><span data-testid="report-health"[^>]*>.*?</span><span data-testid="report-prior-health"[^>]*>[^<]*</span></span>`)
+		if grouped := together.MatchString(regexp.MustCompile(`>\s+<`).ReplaceAllString(badges, "><")); grouped != strings.Contains(tc.reads, "was") {
+			t.Errorf("%s groups its Health badge with its earlier Health %t, so the marker can wrap onto a line of its own; badges:\n%s", tc.g.Title, grouped, badges)
+		}
+	}
+	if rule := cssRule(t, page, ".rp-health"); !strings.Contains(rule, "white-space:nowrap") {
+		t.Errorf("a Health badge and its earlier Health can break apart: .rp-health{%s}", rule)
 	}
 
 	row := pageElement(t, getBody(t, client, ts.URL+"/reports"), "tr", "report-row")

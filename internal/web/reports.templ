@@ -773,9 +773,13 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 				</p>
 			</div>
 			<div class="rp-badges">
-				@healthBadge("report-health", b.Health)
 				if b.PriorHealth != "" {
-					<span data-testid="report-prior-health" class="small muted">{ "· was " + b.PriorHealth }</span>
+					<span class="rp-health">
+						@healthBadge("report-health", b.Health)
+						<span data-testid="report-prior-health" class="small muted">{ "· was " + b.PriorHealth }</span>
+					</span>
+				} else {
+					@healthBadge("report-health", b.Health)
 				}
 				for _, badge := range b.Badges {
 					<span data-testid="report-badge" class={ "badge", badgeClass(badge) }>{ badge }</span>
@@ -1142,6 +1146,7 @@ templ reportStyles() {
 		.rp-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
 		.rp-card-head h3{font-size:19px}
 		.rp-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
+		.rp-health{display:inline-flex;gap:8px;align-items:center;white-space:nowrap}
 		.rp-tint{background:var(--color-surface-alt);border-radius:var(--radius-md);padding:12px 16px;display:flex;flex-direction:column;gap:8px}
 		.rp-tint.overdue{background:var(--health-r-bg)}
 		.rp-card ul{margin:0;padding-left:20px}
