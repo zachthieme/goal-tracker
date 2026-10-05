@@ -123,6 +123,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] `docs/mockups/reports/` holds the Reports redesign mockups (5a and 5b are the current list and draft, 5c and 5d the proposed ones), which the Reports tickets link to for layout and copy (#149, #153).
 - [internal] `CONTEXT.md`'s Report rule entry says Leave out can list Goals whether or not they match the rules (#149).
 - [internal] `docs/changelog-conventions.md` shows three real fragments from this repo's history (#51, #184, #181) after the placeholder, including one that spans two sections, so agents no longer dig past fragments out of git (#186).
+- [internal] `docs/scenarios.md` states what the product is for as five scenarios: a leader finding trouble between reviews (Goals and Risks) and understanding it at the review (Reports), fed by the weekly Check-in, reporting bad news, and stating and connecting a Goal. It also records what was left out and why.
 
 ### Collected changes — October 3, 2026
 
