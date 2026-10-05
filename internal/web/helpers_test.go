@@ -339,3 +339,13 @@ func pendingDraftNotes(t *testing.T, h *testsupport.Harness, owner domain.Accoun
 	}
 	return out
 }
+
+// onlyMilestone returns the one Milestone an ActiveGoal starts with.
+func onlyMilestone(t *testing.T, h *testsupport.Harness, goal domain.Goal) domain.Milestone {
+	t.Helper()
+	ms, err := h.Service.ListMilestones(context.Background(), goal.ID)
+	if err != nil || len(ms) != 1 {
+		t.Fatalf("ListMilestones = %v, %v", ms, err)
+	}
+	return ms[0]
+}
