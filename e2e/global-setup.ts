@@ -15,6 +15,9 @@ export type Template = "default" | "due";
 // templates) to the test workers.
 export const e2eDirEnv = "GOAL_TRACKER_E2E_DIR";
 
+// admin is the seed's Admin, and the server's GOAL_TRACKER_ADMINS.
+export const admin = "admin@example.com";
+
 export function templatePath(dir: string, template: Template): string {
   return join(dir, `${template}.db`);
 }
@@ -42,7 +45,7 @@ export default function globalSetup() {
     execFileSync("go", ["build", "-o", join(dir, cmd), `./cmd/${cmd}`], { cwd: root, stdio: "inherit" });
   }
   for (const [name, end] of Object.entries(templates)) {
-    const args = ["-db", templatePath(dir, name as Template), "-seed", "23", "-admin", "admin@example.com"];
+    const args = ["-db", templatePath(dir, name as Template), "-seed", "23", "-admin", admin];
     if (end) args.push("-end", end);
     execFileSync(join(dir, "seed"), args, { stdio: "pipe" });
   }

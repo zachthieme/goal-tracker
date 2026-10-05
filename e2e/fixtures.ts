@@ -7,15 +7,12 @@ import { createServer } from "node:net";
 import { join } from "node:path";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
 
-import { type Browser, type Page, test as base } from "@playwright/test";
+import { type Browser, type Page, test as base, type TestInfo } from "@playwright/test";
 
-import { e2eDirEnv, type Template, templatePath } from "./global-setup";
+import { admin, e2eDirEnv, type Template, templatePath } from "./global-setup";
 
 export { expect } from "@playwright/test";
-export type { Template } from "./global-setup";
-
-// admin is the seed's Admin, and the server's GOAL_TRACKER_ADMINS.
-export const admin = "admin@example.com";
+export { admin, type Template } from "./global-setup";
 
 // App is the running copy of Goal Tracker a test drives.
 export type App = {
@@ -55,7 +52,7 @@ export const test = base.extend<Fixtures>({
     const db = join(work, "app.db");
     copyFileSync(templatePath(dir, template), db);
 
-    const server = await startServer(join(dir, "goal-tracker"), db);
+    const server = await startServer(join(dir, "goal-tracker"), db, testInfo);
     try {
       await use({ url: server.url, db, log: server.log });
     } finally {
@@ -84,14 +81,16 @@ export const test = base.extend<Fixtures>({
   },
 
   seedLookup: async ({ app }, use) => {
-    await use((sql, ...params) => {
-      const conn = new DatabaseSync(app.db, { readOnly: true });
+    // The server may be writing; wait for it as the app's own connections do.
+    function lookup<T>(sql: string, ...params: SQLInputValue[]): T[] {
+      const conn = new DatabaseSync(app.db, { readOnly: true, timeout: 5000 });
       try {
-        return conn.prepare(sql).all(...params) as never;
+        return conn.prepare(sql).all(...params) as T[];
       } finally {
         conn.close();
       }
-    });
+    }
+    await use(lookup);
   },
 
   serverLog: async ({ app }, use) => {
@@ -118,75 +117,96 @@ async function newSignedInPage(browser: Browser, url: string, email: string): Pr
 type Server = { url: string; log: () => string; stop: () => Promise<void> };
 
 // startServer starts the binary as scripts/scratch-app does: on a free port,
-// over db, with the seed's Admin, and waits until /signin answers. It tries a
-// few ports, in case another test takes the one it picked first.
-async function startServer(bin: string, db: string): Promise<Server> {
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
+// over db, with the seed's Admin, and waits until /signin answers. The
+// server's environment is pinned (UTC, the default weekly reminder), so a
+// GOAL_TRACKER_* variable in the caller's shell can't change what tests see.
+//
+// The server migrates the database before it binds the port, so an answer on
+// the port may come from another server that took it first. Each worker picks
+// only ports congruent to its parallelIndex, so two tests' servers never pick
+// the same port; a server that still can't bind (something else took the
+// port) exits, and another port is tried.
+async function startServer(bin: string, db: string, testInfo: TestInfo): Promise<Server> {
+  for (let attempt = 1; ; attempt++) {
+    const port = await freePort(testInfo.parallelIndex, testInfo.config.workers);
     try {
-      return await tryStartServer(bin, db, await freePort());
+      return await tryStartServer(bin, db, port);
     } catch (err) {
-      lastErr = err;
+      if (!(err instanceof ServerExited) || attempt === 3) throw err;
     }
   }
-  throw lastErr;
 }
+
+class ServerExited extends Error {}
 
 async function tryStartServer(bin: string, db: string, port: number): Promise<Server> {
   const url = `http://127.0.0.1:${port}`;
+  const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith("GOAL_TRACKER_")));
   const child = spawn(bin, [], {
     env: {
-      ...process.env,
+      ...env,
       GOAL_TRACKER_ADDR: `127.0.0.1:${port}`,
       GOAL_TRACKER_DB: db,
       GOAL_TRACKER_ADMINS: admin,
       GOAL_TRACKER_BASE_URL: url,
+      GOAL_TRACKER_TIMEZONE: "UTC",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";
-  child.stdout.on("data", (b: Buffer) => (output += b));
-  child.stderr.on("data", (b: Buffer) => (output += b));
-  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
-  const server = { url, log: () => output, stop: () => stopServer(child, exited) };
+  child.stdout?.on("data", (b: Buffer) => (output += b));
+  child.stderr?.on("data", (b: Buffer) => (output += b));
+  // A binary that can't be spawned emits error, not exit.
+  let spawnErr: Error | undefined;
+  const exited = new Promise<void>((resolve) => {
+    child.once("exit", () => resolve());
+    child.once("error", (err) => {
+      spawnErr = err;
+      resolve();
+    });
+  });
+  const gone = () => spawnErr !== undefined || child.exitCode !== null || child.signalCode !== null;
+  const server = { url, log: () => output, stop: () => stopServer(child, exited, gone) };
 
-  // Each poll waits first, so a server that couldn't bind the port (another
-  // process took it) has exited before something else's answer is taken for
-  // its own.
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
-    await new Promise((r) => setTimeout(r, 100));
-    let answered = false;
+    if (spawnErr) throw new Error(`can't start ${bin}: ${spawnErr.message}`);
+    if (gone()) throw new ServerExited(`goal-tracker exited before answering on ${url}:\n${output}`);
     try {
       await fetch(`${url}/signin`, { signal: AbortSignal.timeout(1000) });
-      answered = true;
+      return server;
     } catch {
-      // Not listening yet.
+      await new Promise((r) => setTimeout(r, 100));
     }
-    if (child.exitCode !== null || child.signalCode !== null) {
-      throw new Error(`goal-tracker exited before answering on ${url}:\n${output}`);
-    }
-    if (answered) return server;
   }
   await server.stop();
   throw new Error(`goal-tracker didn't answer on ${url} within 20s:\n${output}`);
 }
 
-async function stopServer(child: ChildProcess, exited: Promise<void>): Promise<void> {
-  if (child.exitCode !== null || child.signalCode !== null) return;
+async function stopServer(child: ChildProcess, exited: Promise<void>, gone: () => boolean): Promise<void> {
+  if (gone()) return;
   child.kill("SIGTERM");
   const timeout = setTimeout(() => child.kill("SIGKILL"), 5000);
   await exited;
   clearTimeout(timeout);
 }
 
-function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
+// freePort is a port nothing listens on, congruent to slot modulo slots. It
+// picks from below Linux's ephemeral range (32768 up), where outgoing
+// connections take their ports, and checks the port by binding it.
+async function freePort(slot: number, slots: number): Promise<number> {
+  const low = 20000;
+  const candidates = Math.floor((32768 - low - slot) / slots);
+  for (;;) {
+    const port = low + slot + slots * Math.floor(Math.random() * candidates);
+    if (await isFree(port)) return port;
+  }
+}
+
+function isFree(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
     const srv = createServer();
-    srv.once("error", reject);
-    srv.listen(0, "127.0.0.1", () => {
-      const addr = srv.address();
-      srv.close(() => (typeof addr === "object" && addr ? resolve(addr.port) : reject(new Error("no port"))));
-    });
+    srv.once("error", () => resolve(false));
+    srv.listen(port, "127.0.0.1", () => srv.close(() => resolve(true)));
   });
 }

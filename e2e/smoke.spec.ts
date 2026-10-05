@@ -7,7 +7,7 @@ test("an Admin signs in to Home with Risks in the top bar", async ({ page }) => 
   await expect(page).toHaveURL(/\/home$/);
   await expect(page.getByRole("heading", { level: 1, name: "Your week" })).toBeVisible();
   await expect(page.getByTestId("current-user")).toContainText("(Admin)");
-  await expect(page.getByRole("link", { name: /^Risks/ })).toBeVisible();
+  await expect(page.getByTestId("nav-risks")).toHaveText(/^Risks/);
 });
 
 test("a lead signs in and sees Your week", async ({ page }) => {

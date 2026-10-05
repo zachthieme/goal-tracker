@@ -53,7 +53,9 @@ there, not from `@playwright/test`. Each test gets:
   template unless the test asks for another: `test.use({ template: "due" })`.
   Every test starts from the same seeded org and can't see another test's
   writes, so the suite runs `fullyParallel`. `page` and `as` resolve paths
-  such as `"/home"` against it.
+  such as `"/home"` against it. The server runs in UTC with the default weekly
+  reminder (Monday 09:00); no `GOAL_TRACKER_*` variable from your shell reaches
+  it.
 - **`signIn(page, email)`**: signs in through the development sign-in form, and
   waits for Home. Any email signs in.
 - **`as(email)`**: opens a page in a new browser context, already signed in,
@@ -75,8 +77,10 @@ Admin** is empty, and no Path to Green is overdue: every back-to-Green date is
 3–6 weeks ahead. A test that needs an overdue one makes it. The app accepts a
 back-to-Green date in the past.
 
-[`smoke.spec.ts`](smoke.spec.ts) checks that the app comes up and people can
-sign in. [`isolation.spec.ts`](isolation.spec.ts) checks that two tests
+`fixtures.ts` also exports `admin`, the seed's Admin's email.
+
+[`smoke.spec.ts`](smoke.spec.ts) checks that the app comes up, that people can
+sign in, one at a time and two at once, and that the `due` template is due. [`isolation.spec.ts`](isolation.spec.ts) checks that two tests
 writing to the same Goal at once each see only their own write.
 
 ## Conventions for the scenario specs
