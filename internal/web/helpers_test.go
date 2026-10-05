@@ -349,3 +349,44 @@ func onlyMilestone(t *testing.T, h *testsupport.Harness, goal domain.Goal) domai
 	}
 	return ms[0]
 }
+
+// chainOrg is a three-level org for scoping a page to a Chain (CONTEXT.md:
+// Chain): Vera, a VP, manages Mia and Max; Mia manages Pia and Max manages
+// Pax. Oz is outside it, with no Manager. Each owns one Active Goal.
+type chainOrg struct {
+	Vera, Mia, Max, Pia, Pax, Oz                         domain.Account
+	VeraGoal, MiaGoal, MaxGoal, PiaGoal, PaxGoal, OzGoal domain.Goal
+}
+
+// newChainOrg arranges a chainOrg in h, its people signed in with Names.
+func newChainOrg(h *testsupport.Harness) chainOrg {
+	h.T.Helper()
+	var o chainOrg
+	o.Vera = h.SignInNamed("vera@example.com", "Vera Vance")
+	o.Mia = h.SignInNamed("mia@example.com", "Mia Moss")
+	o.Max = h.SignInNamed("max@example.com", "Max Marsh")
+	o.Pia = h.SignInNamed("pia@example.com", "Pia Park")
+	o.Pax = h.SignInNamed("pax@example.com", "Pax Penn")
+	o.Oz = h.SignInNamed("oz@example.com", "Oz Ortiz")
+	h.SetManager(o.Mia, o.Vera)
+	h.SetManager(o.Max, o.Vera)
+	h.SetManager(o.Pia, o.Mia)
+	h.SetManager(o.Pax, o.Max)
+	o.VeraGoal = h.ActiveGoal(o.Vera, "Vera's goal", "It matters.")
+	o.MiaGoal = h.ActiveGoal(o.Mia, "Mia's goal", "It matters.")
+	o.MaxGoal = h.ActiveGoal(o.Max, "Max's goal", "It matters.")
+	o.PiaGoal = h.ActiveGoal(o.Pia, "Pia's goal", "It matters.")
+	o.PaxGoal = h.ActiveGoal(o.Pax, "Pax's goal", "It matters.")
+	o.OzGoal = h.ActiveGoal(o.Oz, "Oz's goal", "It matters.")
+	return o
+}
+
+// goals is every Goal in the org, Oz's included.
+func (o chainOrg) goals() []domain.Goal {
+	return []domain.Goal{o.VeraGoal, o.MiaGoal, o.MaxGoal, o.PiaGoal, o.PaxGoal, o.OzGoal}
+}
+
+// chainURL is path scoped to who's Chain (?chain=).
+func chainURL(base, path string, who domain.Account) string {
+	return base + path + "?chain=" + strconv.FormatInt(who.ID, 10)
+}
