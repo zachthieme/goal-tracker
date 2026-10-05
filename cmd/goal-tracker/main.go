@@ -218,16 +218,20 @@ func oidcConfig(baseURL string) (*web.OIDCConfig, error) {
 // GOAL_TRACKER_DIRECTORY_URL and GOAL_TRACKER_DIRECTORY_TOKEN: nil when neither
 // is set, an error naming the missing one when only one is.
 func loadDirectoryConfig() (*directoryConfig, error) {
-	u, token := os.Getenv("GOAL_TRACKER_DIRECTORY_URL"), os.Getenv("GOAL_TRACKER_DIRECTORY_TOKEN")
-	switch {
-	case u == "" && token == "":
-		return nil, nil
-	case token == "":
-		return nil, errors.New("the directory sync needs both GOAL_TRACKER_DIRECTORY_* variables; missing GOAL_TRACKER_DIRECTORY_TOKEN")
-	case u == "":
-		return nil, errors.New("the directory sync needs both GOAL_TRACKER_DIRECTORY_* variables; missing GOAL_TRACKER_DIRECTORY_URL")
+	vars := []string{"GOAL_TRACKER_DIRECTORY_URL", "GOAL_TRACKER_DIRECTORY_TOKEN"}
+	var missing []string
+	for _, v := range vars {
+		if os.Getenv(v) == "" {
+			missing = append(missing, v)
+		}
 	}
-	return &directoryConfig{url: u, token: token}, nil
+	switch len(missing) {
+	case len(vars):
+		return nil, nil
+	case 0:
+		return &directoryConfig{url: os.Getenv(vars[0]), token: os.Getenv(vars[1])}, nil
+	}
+	return nil, errors.New("the directory sync needs both GOAL_TRACKER_DIRECTORY_* variables; missing " + strings.Join(missing, ", "))
 }
 
 func envOr(key, fallback string) string {

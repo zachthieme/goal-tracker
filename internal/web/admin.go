@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
@@ -80,7 +81,9 @@ func (s *Server) handleDirectorySyncNow(w http.ResponseWriter, r *http.Request, 
 		http.Error(w, "only an Admin may sync the directory", http.StatusForbidden)
 		return
 	}
-	s.directorySync.Run(r.Context())
+	// The sync is all-or-nothing, so it runs to the end even if the Admin
+	// leaves the page.
+	s.directorySync.Run(context.WithoutCancel(r.Context()))
 	http.Redirect(w, r, "/admin", http.StatusSeeOther)
 }
 
