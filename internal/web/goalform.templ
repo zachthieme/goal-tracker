@@ -10,9 +10,10 @@ import (
 // goalFormPage is the New goal page: a plain form that creates a Goal, Proposed
 // or activated at once, and lands on it, so it works without script. Beside it
 // the Ready to activate card holds the submit buttons; script posts the form
-// to /goals/new/checklist as it changes and swaps the card for the one that
-// comes back. A refused submit comes back with what was typed, a summary of
-// every problem first, and each bad input marked with why. Finishing a
+// to /goals/new/checklist on load and as it changes, filled in or not, and
+// swaps the card for the one that comes back. A refused submit comes back
+// with what was typed, a summary of every problem first, and each bad input
+// marked with why. Finishing a
 // Proposed Goal, it is the define page: the same form, filled in from the
 // Goal, posting to /goals/<id>/define.
 templ goalFormPage(current *domain.Account, v goalFormView) {
@@ -33,12 +34,8 @@ templ goalFormPage(current *domain.Account, v goalFormView) {
 			class="gf-form"
 			method="post"
 			action={ templ.SafeURL(v.action()) }
-			hx-post={ v.checklistURL() }
-			hx-trigger="load, change, input delay:400ms"
-			hx-target={ "#" + goalFormReadyID }
-			hx-swap="outerHTML"
-			hx-sync="this:replace"
 		>
+			@goalFormLiveChecklist(v)
 			<div class="card gf-main">
 				@goalFormErrors(v)
 				@goalFormWhat(v)
@@ -50,6 +47,24 @@ templ goalFormPage(current *domain.Account, v goalFormView) {
 			@goalFormReady(v)
 		</form>
 	}
+}
+
+// goalFormLiveChecklist posts the form to its checklist URL on load and as it
+// changes, swapping the Ready to activate card for the one that comes back.
+// It sits inside the form rather than on it because htmx checks a form's
+// required inputs before a request the form itself makes, so an empty Title
+// or So What would hold back the very card that says what's missing; posted
+// from here, the enclosing form's values go as they are, while a real submit
+// is still checked.
+templ goalFormLiveChecklist(v goalFormView) {
+	<div
+		hidden
+		hx-post={ v.checklistURL() }
+		hx-trigger="load, change from:closest form, input delay:400ms from:closest form"
+		hx-target={ "#" + goalFormReadyID }
+		hx-swap="outerHTML"
+		hx-sync="this:replace"
+	></div>
 }
 
 // goalFormReadyID is the Ready to activate card's id, which the form's live
