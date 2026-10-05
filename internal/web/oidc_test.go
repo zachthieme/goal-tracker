@@ -40,9 +40,14 @@ type fakeProvider struct {
 	claims    map[string]any
 	tamper    func(claims map[string]any)
 	authorize func(callback url.Values)
+	// endSession advertises an end_session_endpoint in discovery, for
+	// RP-initiated logout.
+	endSession bool
 
 	mu    sync.Mutex
 	codes map[string]pendingCode
+	// idToken is the last ID token the token endpoint issued.
+	idToken string
 }
 
 // pendingCode is what the authorize endpoint saw, for the token endpoint to
@@ -71,7 +76,7 @@ func newFakeProvider(t *testing.T, claims map[string]any) *fakeProvider {
 func (p *fakeProvider) issuer() string { return p.srv.URL }
 
 func (p *fakeProvider) discovery(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, map[string]any{
+	doc := map[string]any{
 		"issuer":                                p.issuer(),
 		"authorization_endpoint":                p.issuer() + "/authorize",
 		"token_endpoint":                        p.issuer() + "/token",
@@ -80,7 +85,11 @@ func (p *fakeProvider) discovery(w http.ResponseWriter, _ *http.Request) {
 		"subject_types_supported":               []string{"public"},
 		"id_token_signing_alg_values_supported": []string{"RS256"},
 		"code_challenge_methods_supported":      []string{"S256"},
-	})
+	}
+	if p.endSession {
+		doc["end_session_endpoint"] = p.issuer() + "/end-session"
+	}
+	writeJSON(w, doc)
 }
 
 func (p *fakeProvider) jwks(w http.ResponseWriter, _ *http.Request) {
@@ -157,9 +166,13 @@ func (p *fakeProvider) token(w http.ResponseWriter, r *http.Request) {
 	if p.tamper != nil {
 		p.tamper(claims)
 	}
+	idToken := p.sign(claims)
+	p.mu.Lock()
+	p.idToken = idToken
+	p.mu.Unlock()
 	writeJSON(w, map[string]any{
 		"access_token": "access", "token_type": "Bearer", "expires_in": 3600,
-		"id_token": p.sign(claims),
+		"id_token": idToken,
 	})
 }
 
@@ -401,5 +414,79 @@ func TestNewOIDCNamesAnIssuerItCantDiscover(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), nothing.URL) {
 		t.Errorf("error %q doesn't name the issuer %s", err, nothing.URL)
+	}
+}
+
+// signOut posts the top bar's Sign out as client and returns where the app
+// sends the browser.
+func signOut(t *testing.T, client *http.Client, appURL string) *url.URL {
+	t.Helper()
+	resp := postForm(t, noRedirects(client), appURL+"/signout", nil)
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("sign out: status %d, want 303", resp.StatusCode)
+	}
+	loc, err := resp.Location()
+	if err != nil {
+		t.Fatalf("sign out: %v", err)
+	}
+	return loc
+}
+
+// Signing out of the app also signs the person out of the org's provider when
+// it offers RP-initiated logout, so the next sign-in asks who they are instead
+// of slipping straight back in as the same person. The provider is handed the
+// ID token as a hint and sends the browser back to the app's sign-in page.
+func TestSigningOutAlsoSignsOutOfTheProvider(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	p := newFakeProvider(t, map[string]any{"email": "cpo@example.com", "email_verified": true, "name": "Marcus Bell"})
+	p.endSession = true
+	ts := newOIDCServer(t, h, p)
+	client, resp, page := signInThroughProvider(t, ts.URL)
+	if resp.Request.URL.Path != "/home" {
+		t.Fatalf("signing in ended at %s, want Home:\n%s", resp.Request.URL, page)
+	}
+
+	loc := signOut(t, client, ts.URL)
+	if got, want := loc.Scheme+"://"+loc.Host+loc.Path, p.issuer()+"/end-session"; got != want {
+		t.Fatalf("sign out sends the browser to %s, want the provider's %s", got, want)
+	}
+	q := loc.Query()
+	p.mu.Lock()
+	issued := p.idToken
+	p.mu.Unlock()
+	if q.Get("id_token_hint") != issued {
+		t.Errorf("id_token_hint = %q, want the ID token the provider issued", q.Get("id_token_hint"))
+	}
+	if got, want := q.Get("post_logout_redirect_uri"), ts.URL+"/signin"; got != want {
+		t.Errorf("post_logout_redirect_uri = %q, want %q", got, want)
+	}
+	if q.Get("client_id") != oidcClientID {
+		t.Errorf("client_id = %q, want %q", q.Get("client_id"), oidcClientID)
+	}
+	home, err := noRedirects(client).Get(ts.URL + "/home")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = readBody(t, home)
+	if home.StatusCode != http.StatusSeeOther {
+		t.Errorf("after signing out, /home answers %d, want a redirect to sign-in", home.StatusCode)
+	}
+}
+
+// A provider without RP-initiated logout leaves sign-out local: the app's
+// session ends and the browser goes to the sign-in page, as without OIDC.
+func TestSigningOutStaysLocalWithoutProviderLogout(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	p := newFakeProvider(t, map[string]any{"email": "cpo@example.com", "email_verified": true})
+	ts := newOIDCServer(t, h, p)
+	client, _, _ := signInThroughProvider(t, ts.URL)
+
+	if loc := signOut(t, client, ts.URL); loc.String() != "/signin" && loc.String() != ts.URL+"/signin" {
+		t.Errorf("sign out sends the browser to %s, want /signin", loc)
 	}
 }

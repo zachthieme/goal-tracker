@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -15,6 +16,10 @@ import (
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
+
+// idTokenCookie keeps the ID token from sign-in for sign-out to hand back to
+// the provider; only /signout reads it.
+const idTokenCookie = "gt_id_token"
 
 // flowCookie carries one sign-in's state, nonce and PKCE verifier from
 // /auth/start to /auth/callback, signed like the session cookie.
@@ -34,6 +39,11 @@ type OIDCConfig struct {
 type OIDC struct {
 	oauth    oauth2.Config
 	verifier *oidc.IDTokenVerifier
+	// endSession is the provider's RP-initiated logout endpoint, empty when
+	// it has none; signedOutURL is the app's sign-in page, where it sends the
+	// browser back to.
+	endSession   string
+	signedOutURL string
 }
 
 // NewOIDC discovers the provider at cfg.Issuer. It fails, naming the issuer,
@@ -43,7 +53,19 @@ func NewOIDC(ctx context.Context, cfg OIDCConfig) (*OIDC, error) {
 	if err != nil {
 		return nil, fmt.Errorf("OIDC discovery at %s: %w", cfg.Issuer, err)
 	}
+	var discovered struct {
+		EndSession string `json:"end_session_endpoint"`
+	}
+	if err := provider.Claims(&discovered); err != nil {
+		return nil, fmt.Errorf("OIDC discovery at %s: %w", cfg.Issuer, err)
+	}
+	callback, err := url.Parse(cfg.RedirectURL)
+	if err != nil {
+		return nil, fmt.Errorf("OIDC redirect URL %q: %w", cfg.RedirectURL, err)
+	}
 	return &OIDC{
+		endSession:   discovered.EndSession,
+		signedOutURL: callback.ResolveReference(&url.URL{Path: "/signin"}).String(),
 		oauth: oauth2.Config{
 			ClientID:     cfg.ClientID,
 			ClientSecret: cfg.ClientSecret,
@@ -125,7 +147,36 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.startSession(w, acc.ID)
+	http.SetCookie(w, &http.Cookie{
+		Name:     idTokenCookie,
+		Value:    claims.raw,
+		Path:     "/signout",
+		HttpOnly: true,
+		Secure:   s.secureCookies,
+		SameSite: http.SameSiteLaxMode,
+	})
 	http.Redirect(w, r, "/home", http.StatusSeeOther)
+}
+
+// providerSignOutURL is where sign-out sends the browser so the provider ends
+// its own session too, handing back the ID token from sign-in as a hint; empty
+// when the provider has no logout endpoint, and sign-out stays local.
+func (s *Server) providerSignOutURL(r *http.Request) string {
+	if s.oidc == nil || s.oidc.endSession == "" {
+		return ""
+	}
+	q := url.Values{"client_id": {s.oidc.oauth.ClientID}}
+	// A provider may refuse to redirect back without the hint, so ask for the
+	// redirect only with one.
+	if c, err := r.Cookie(idTokenCookie); err == nil && c.Value != "" {
+		q.Set("id_token_hint", c.Value)
+		q.Set("post_logout_redirect_uri", s.oidc.signedOutURL)
+	}
+	sep := "?"
+	if strings.Contains(s.oidc.endSession, "?") {
+		sep = "&"
+	}
+	return s.oidc.endSession + sep + q.Encode()
 }
 
 // identityClaims are the ID token claims sign-in reads.
@@ -133,6 +184,8 @@ type identityClaims struct {
 	Email         string `json:"email"`
 	EmailVerified bool   `json:"email_verified"`
 	Name          string `json:"name"`
+	// raw is the ID token itself, kept for sign-out's hint.
+	raw string
 }
 
 // signInFailure is a sign-in the provider's answer doesn't allow, with the
@@ -181,6 +234,7 @@ func (s *Server) verifyCallback(r *http.Request) (identityClaims, error) {
 	if err := idToken.Claims(&claims); err != nil {
 		return identityClaims{}, fmt.Errorf("read ID token claims: %w", err)
 	}
+	claims.raw = raw
 	if claims.Email == "" {
 		return identityClaims{}, signInFailure{
 			sentence: "Your organization didn't share your email, so you can't be signed in. Ask an Admin to check the sign-in setup.",

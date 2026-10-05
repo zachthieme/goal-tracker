@@ -2,8 +2,8 @@
 # Applies blueprints/goal-tracker.yaml to a running local Authentik now, and
 # waits until it has. Authentik re-applies the file by itself when the file
 # changes, but not when only a value it reads with !Env does, such as
-# GOAL_TRACKER_TAILNET_CALLBACK; `make start AUTHENTIK=1` runs this after
-# starting Authentik so the app's tailnet callback is registered.
+# GOAL_TRACKER_APP_URL; `make start` runs this after starting
+# Authentik so the app's tailnet address is registered.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)

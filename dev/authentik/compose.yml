@@ -38,10 +38,8 @@ services:
       # Read by blueprints/goal-tracker.yaml.
       DEV_USER_PASSWORD: ${DEV_USER_PASSWORD:?set DEV_USER_PASSWORD in .env}
       GOAL_TRACKER_OIDC_CLIENT_SECRET: ${GOAL_TRACKER_OIDC_CLIENT_SECRET:?set GOAL_TRACKER_OIDC_CLIENT_SECRET in .env}
-      # Set by `make start AUTHENTIK=1` to the app's tailnet /auth/callback and
-      # /auth/start.
-      GOAL_TRACKER_TAILNET_CALLBACK: ${GOAL_TRACKER_TAILNET_CALLBACK:-}
-      GOAL_TRACKER_LAUNCH_URL: ${GOAL_TRACKER_LAUNCH_URL:-}
+      # Set by `make start` to the app's tailnet address.
+      GOAL_TRACKER_APP_URL: ${GOAL_TRACKER_APP_URL:-}
     ports:
       - 9000:9000
     volumes:

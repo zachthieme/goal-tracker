@@ -29,19 +29,23 @@ each failure.
 
 ## With `make start`
 
-From the repo root, `make start AUTHENTIK=1` does all of this for you: it
+From the repo root, `make start` does all of this for you: it
 starts Authentik, registers the app's tailnet callback, serves Authentik on the
 tailnet at `https://<machine>.<tailnet>.ts.net:9443`, and starts Goal Tracker
 signing in through it. People on the tailnet sign in from any device.
 `make stop` stops both, and `make restart` keeps Authentik sign-in. You still
-need `.env` filled in first.
+need `.env` filled in first. `make start NO_SSO=1` runs the app with the
+development sign-in form and leaves Authentik alone.
 
 Sign in at Goal Tracker's address, not Authentik's: Authentik only sends you
 back to the app when the sign-in started there. Signed in at Authentik
 directly, click **Goal Tracker** in its app list to go through.
 
-The tailnet callback reaches the blueprint as `GOAL_TRACKER_TAILNET_CALLBACK`,
-and the app list's link as `GOAL_TRACKER_LAUNCH_URL`.
+Signing out of Goal Tracker signs you out of Authentik too, and brings you
+back to Goal Tracker's sign-in page, so you can sign in as someone else.
+
+The app's tailnet address reaches the blueprint as `GOAL_TRACKER_APP_URL`, for
+its sign-in callback, its sign-out return, and the app list's link.
 Authentik doesn't re-apply a blueprint when only such a value changes, so
 `make start` runs `./apply.sh`, which applies it now and waits until it has.
 
@@ -70,7 +74,7 @@ to drop something you removed from the file, wipe the database.
 | Scopes | `openid email profile manager` |
 
 Both redirect URIs are the app's default address, so run Goal Tracker on port
-8080, or use `make start AUTHENTIK=1`, which registers its tailnet address too.
+8080, or use `make start`, which registers its tailnet address too.
 To serve it somewhere else, add that address's `/auth/callback` to
 `redirect_uris` in the blueprint. The client ID and secret also show in the
 admin UI under **Applications → Providers → Goal Tracker**.

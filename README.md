@@ -9,9 +9,9 @@ regular cadence with Check-ins, and produces Reports. The domain language is in
 | Command | Make target | What it does |
 | ------- | ----------- | ------------ |
 | `go run ./cmd/goal-tracker` | `make build` (builds `bin/goal-tracker`) | Serves the web app. |
-| | `make serve` | Builds and serves the web app on your tailnet at `https://<machine>.<tailnet>.ts.net:8090` via `tailscale serve`, with `admin@example.com` as Admin. Override with `SERVE_PORT`, `SERVE_DB`, and `SERVE_ADMINS`. With `AUTHENTIK=1`, people sign in through the [local Authentik](dev/authentik/README.md), which it starts and serves on the tailnet at `:9443` (`AUTHENTIK_PORT`). |
-| | `make start` | Like `make serve`, but in the background, logging to `serve.log` (`SERVE_LOG`). Stops the server a previous `make start` left running first. Takes the same settings, `AUTHENTIK=1` included, and records them for `make stop` and `make restart`. |
-| | `make stop` | Stops the server `make start` started, and its Authentik if it started with `AUTHENTIK=1` (Authentik's data is kept). |
+| | `make serve` | Builds and serves the web app on your tailnet at `https://<machine>.<tailnet>.ts.net:8090` via `tailscale serve`, with `admin@example.com` as Admin. Override with `SERVE_PORT`, `SERVE_DB`, and `SERVE_ADMINS`. People sign in through the [local Authentik](dev/authentik/README.md), which it starts and serves on the tailnet at `:9443` (`AUTHENTIK_PORT`); it needs `dev/authentik/.env`. `NO_SSO=1` uses the development sign-in form instead. |
+| | `make start` | Like `make serve`, but in the background, logging to `serve.log` (`SERVE_LOG`). Stops the server a previous `make start` left running first. Takes the same settings, `NO_SSO=1` included, and records them for `make stop` and `make restart`. |
+| | `make stop` | Stops the server `make start` started, and its Authentik unless it started with `NO_SSO=1` (Authentik's data is kept). |
 | | `make restart` | Rebuilds and starts the server again with the settings the last `make start` recorded. A setting given to `make restart` replaces the recorded one. |
 | `go run ./cmd/seed` | `make seed` | Fills a fresh database with a fake org for demos (see [Seed a fake org](#seed-a-fake-org)). |
 
@@ -40,8 +40,11 @@ your organization". Register `GOAL_TRACKER_BASE_URL` + `/auth/callback` (by
 default `http://localhost:8080/auth/callback`) as the redirect URI, and allow
 the authorization code grant with the scopes `openid email profile`. The
 provider must send a verified `email`; its `name` claim becomes the person's
-Name. Startup stops if the issuer can't be discovered or only some of the
-variables are set. A local [Authentik](dev/authentik/README.md) with the seed's
+Name. Signing out of the app also signs the person out of the provider when it
+offers RP-initiated logout (`end_session_endpoint`), and the provider sends
+them back to the sign-in page; register `GOAL_TRACKER_BASE_URL` + `/signin` as
+a post-logout redirect URI for that. Startup stops if the issuer can't be
+discovered or only some of the variables are set. A local [Authentik](dev/authentik/README.md) with the seed's
 people and their managers is set up for this.
 
 Without them, sign-in is the development form: any email address signs in, and

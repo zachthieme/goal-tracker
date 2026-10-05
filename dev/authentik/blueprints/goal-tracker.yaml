@@ -23,7 +23,7 @@ entries:
   - model: authentik_blueprints.metaapplyblueprint
     attrs:
       identifiers:
-        path: default/flow-default-provider-invalidation.yaml
+        path: default/flow-default-invalidation-flow.yaml
       required: true
 
   # --- The application -------------------------------------------------------
@@ -65,21 +65,34 @@ entries:
       name: Goal Tracker
     attrs:
       authorization_flow: !Find [authentik_flows.flow, [slug, default-provider-authorization-implicit-consent]]
-      invalidation_flow: !Find [authentik_flows.flow, [slug, default-provider-invalidation-flow]]
+      # Signing out of Goal Tracker signs the person out of Authentik too
+      # (RP-initiated logout), so the next sign-in asks who they are. The
+      # default provider invalidation flow would leave the Authentik session.
+      invalidation_flow: !Find [authentik_flows.flow, [slug, default-invalidation-flow]]
       client_type: confidential
       grant_types: [authorization_code, refresh_token]
       client_id: goal-tracker
       client_secret: !Env GOAL_TRACKER_OIDC_CLIENT_SECRET
       # The app's default address (GOAL_TRACKER_BASE_URL), by either name, and
-      # the tailnet address `make start AUTHENTIK=1` serves it at, which it
-      # passes in GOAL_TRACKER_TAILNET_CALLBACK (unset, a repeat of the first).
+      # GOAL_TRACKER_APP_URL, the tailnet address `make start`
+      # serves it at (unset, the default again): its sign-in callback, and its
+      # sign-in page to come back to after signing out.
       redirect_uris:
         - matching_mode: strict
           url: http://127.0.0.1:8080/auth/callback
         - matching_mode: strict
           url: http://localhost:8080/auth/callback
         - matching_mode: strict
-          url: !Env [GOAL_TRACKER_TAILNET_CALLBACK, http://127.0.0.1:8080/auth/callback]
+          url: !Format ["%s/auth/callback", !Env [GOAL_TRACKER_APP_URL, http://localhost:8080]]
+        - matching_mode: strict
+          redirect_uri_type: logout
+          url: http://127.0.0.1:8080/signin
+        - matching_mode: strict
+          redirect_uri_type: logout
+          url: http://localhost:8080/signin
+        - matching_mode: strict
+          redirect_uri_type: logout
+          url: !Format ["%s/signin", !Env [GOAL_TRACKER_APP_URL, http://localhost:8080]]
       signing_key: !Find [authentik_crypto.certificatekeypair, [name, authentik Self-signed Certificate]]
       sub_mode: user_email
       include_claims_in_id_token: true
@@ -96,9 +109,8 @@ entries:
       name: Goal Tracker
       provider: !KeyOf provider
       # The tile in Authentik's app list starts the app's own sign-in, so a person
-      # already signed in to Authentik goes straight through. `make start
-      # AUTHENTIK=1` passes the tailnet address in GOAL_TRACKER_LAUNCH_URL.
-      meta_launch_url: !Env [GOAL_TRACKER_LAUNCH_URL, http://localhost:8080/auth/start]
+      # already signed in to Authentik goes straight through.
+      meta_launch_url: !Format ["%s/auth/start", !Env [GOAL_TRACKER_APP_URL, http://localhost:8080]]
 
   # --- The directory ---------------------------------------------------------
   #
