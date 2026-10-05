@@ -374,7 +374,8 @@ Load the fonts with this URL:
   History is one canvas block, open on load with no outer disclosure. It is
   a single list, newest first, of every Check-in, So What revision, ownership
   change (a Handoff with its outcome, or an Admin Reassign), change to a
-  Dimension value or Field, and change to one of its "contributes to" links.
+  Dimension value or Field, change to one of its "contributes to" links,
+  Parent suggestion, Nudge, and Milestone added outside a Check-in.
   - **Weeks:** entries are grouped by week, Monday to Sunday in the org's
     timezone. Each week is headed by a `.label` "Week of 28 Sep", with the
     year added when it isn't this year. Each entry's time is written in that
@@ -434,9 +435,10 @@ Load the fonts with this URL:
     Goal that has been Active, and it changes nothing: not Stale, not Health.
   - **Filter chips (`.tl-chips`):** a row of `--radius-full` chips above the
     list, wrapping on narrow screens: All, Check-ins, Date Slips, So What,
-    Ownership, Links, Values. Each carries its count. Date Slips counts and
-    lists the Check-ins that carry one, and Links the link changes and Parent
-    suggestions. A chip is a plain link to
+    Ownership, Links, Values. Each carries its count. Check-ins counts and
+    lists the Check-ins, the Nudges asking for one, and the Milestones added
+    outside a Check-in; Date Slips the Check-ins that carry one; and Links the
+    link changes and Parent suggestions. A chip is a plain link to
     `/goals/{id}?history=<filter>#history`, so the page reloads with the
     filter in the address and the History block in view. The current chip is
     `aria-current="page"`, with a `--color-primary-light` fill and a
