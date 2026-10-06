@@ -452,16 +452,63 @@ func (s *Server) loadReportBuilder(r *http.Request, v *reportBuilderView) error 
 	v.Picked = goalsByID(goals, v.PickedIDs)
 	v.Include = goalsByID(goals, v.IncludeIDs)
 	v.Exclude = goalsByID(goals, v.ExcludeIDs)
-	v.Attributes = ruleAttributes(dims, distinctOwners(goals))
+	managers, err := s.svc.ReportRuleManagers(r.Context())
+	if err != nil {
+		return err
+	}
+	chainPeople, err := s.chainRulePeople(r, v.Rules, distinctOwners(goals), managers)
+	if err != nil {
+		return err
+	}
+	v.Attributes = ruleAttributes(dims, distinctOwners(goals), chainPeople, len(managers) > 0)
 	v.Matches, err = s.matchReport(r, goals, *v, v.ID)
 	return err
 }
 
+// chainRulePeople are the people a Chain rule offers: the Owners, as the Owner
+// rule offers, then each Manager who isn't one, then anyone a rule row already
+// names who is neither, so a saved rule keeps its people however the
+// directory has changed.
+func (s *Server) chainRulePeople(r *http.Request, rows []reportRuleRow, owners, managers []domain.Account) ([]domain.Account, error) {
+	people := slices.Clone(owners)
+	add := func(a domain.Account) {
+		if !slices.ContainsFunc(people, func(p domain.Account) bool { return p.ID == a.ID }) {
+			people = append(people, a)
+		}
+	}
+	for _, m := range managers {
+		add(m)
+	}
+	for _, row := range rows {
+		if row.Attribute != domain.RuleChain {
+			continue
+		}
+		rule, _ := row.rule()
+		for _, value := range rule.Values {
+			id, err := strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				continue
+			}
+			a, err := s.svc.Account(r.Context(), id)
+			if errors.Is(err, domain.ErrNotFound) {
+				continue
+			}
+			if err != nil {
+				return nil, err
+			}
+			add(a)
+		}
+	}
+	return people, nil
+}
+
 // ruleAttributes are what a rule can test: each Dimension and its values,
-// then Owner, Lifecycle, Health and Top-level. A Retired Dimension or value is
-// marked, as only a saved rule that already tests it still offers it. Fields
-// are not among them: they describe a Goal and never select it (ADR 0005).
-func ruleAttributes(dims []domain.Dimension, owners []domain.Account) []ruleAttribute {
+// then Owner, the Owner's Chain, Lifecycle, Health and Top-level. A Retired
+// Dimension or value is marked, as only a saved rule that already tests it
+// still offers it; so is the Owner's Chain when no one has a Manager (anyManager
+// false), as a Chain is then only its person. Fields are not among them: they
+// describe a Goal and never select it (ADR 0005).
+func ruleAttributes(dims []domain.Dimension, owners, chainPeople []domain.Account, anyManager bool) []ruleAttribute {
 	var out []ruleAttribute
 	attribute := func(key, label string, values [][2]string) {
 		a := ruleAttribute{Key: key, Label: label}
@@ -482,11 +529,16 @@ func ruleAttributes(dims []domain.Dimension, owners []domain.Account) []ruleAttr
 			a.Values[i].Retired = d.Retired || v.Retired
 		}
 	}
-	var people [][2]string
-	for _, o := range owners {
-		people = append(people, [2]string{strconv.FormatInt(o.ID, 10), o.Label()})
+	people := func(accounts []domain.Account) [][2]string {
+		var out [][2]string
+		for _, a := range accounts {
+			out = append(out, [2]string{strconv.FormatInt(a.ID, 10), a.Label()})
+		}
+		return out
 	}
-	attribute(domain.RuleOwner, "Owner", people)
+	attribute(domain.RuleOwner, "Owner", people(owners))
+	attribute(domain.RuleChain, "Owner's Chain", people(chainPeople))
+	out[len(out)-1].Retired = !anyManager
 	var lifecycles, healths [][2]string
 	for _, l := range []string{domain.LifecycleProposed, domain.LifecycleActive, domain.LifecycleOnHold, domain.LifecycleDone, domain.LifecycleCancelled} {
 		lifecycles = append(lifecycles, [2]string{l, l})
@@ -651,10 +703,14 @@ func (v reportBuilderView) rows() []reportRuleRow {
 
 // ruleOps are the operators a rule row offers, each with its label: "is
 // Top-level" and "is not Top-level" for a Top-level rule, which tests no
-// values.
+// values, and "is in the Chain of" and the like for the Owner's Chain, so the
+// row reads as the rule does.
 func ruleOps(attribute string) [][2]string {
-	if attribute == domain.RuleTopLevel {
+	switch attribute {
+	case domain.RuleTopLevel:
 		return [][2]string{{domain.RuleIs, "is Top-level"}, {domain.RuleIsNot, "is not Top-level"}}
+	case domain.RuleChain:
+		return [][2]string{{domain.RuleIs, "is in the Chain of"}, {domain.RuleIsAnyOf, "is in the Chain of any of"}, {domain.RuleIsNot, "is not in the Chain of"}}
 	}
 	return [][2]string{{domain.RuleIs, "is"}, {domain.RuleIsAnyOf, "is any of"}, {domain.RuleIsNot, "is not"}}
 }

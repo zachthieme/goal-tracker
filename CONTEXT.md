@@ -177,7 +177,7 @@ A saved, reusable selection of Goals for a Report, made either by Report rules o
 _Avoid_: template, saved view, dashboard
 
 **Report rule**:
-A condition on a Goal's Dimension values, Owner, Lifecycle, Health or whether it's Top-level, that decides which Goals a Report Definition selects. A Goal must meet every rule, and meets a rule by having any of its values. Health means the Owner-set Health, and a Goal with no Health meets only "is not" rules on it. A rule-based Definition can also list Goals to **Also include** by hand and Goals to **Leave out** even when they match.
+A condition on a Goal's Dimension values, Owner, Owner's Chain, Lifecycle, Health or whether it's Top-level, that decides which Goals a Report Definition selects. A Goal must meet every rule, and meets a rule by having any of its values. A Chain rule reads "Owner is in the Chain of Priya": its Owner is in any named person's Chain, by the Managers as they are at each draft. Health means the Owner-set Health, and a Goal with no Health meets only "is not" rules on it. A rule-based Definition can also list Goals to **Also include** by hand and Goals to **Leave out** even when they match.
 _Avoid_: filter, query, criteria
 
 **Comment**:

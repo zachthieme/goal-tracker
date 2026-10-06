@@ -90,6 +90,163 @@ func ownerRule(op string, accounts ...domain.Account) domain.ReportRule {
 	return rule
 }
 
+// A Chain rule selects by whether the Goal's Owner is in a named person's
+// Chain: "is in the Chain of" the VP selects the Goals of the VP and everyone
+// below; "of any of" two managers selects both parts; "is not" only Goals
+// whose Owner is in none of them (CONTEXT.md: Report rule, Chain).
+func TestReportChainRule(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	org := chainOrg(h)
+
+	for _, c := range []struct {
+		name string
+		rule domain.ReportRule
+		want []int64
+	}{
+		{"is in the Chain of the VP", chainRule(domain.RuleIs, org.vp), org.goals(org.vp, org.mia, org.max, org.ian, org.ida)},
+		{"is in the Chain of any of Mia, Max", chainRule(domain.RuleIsAnyOf, org.mia, org.max), org.goals(org.mia, org.max, org.ian, org.ida)},
+		{"is in the Chain of Mia", chainRule(domain.RuleIs, org.mia), org.goals(org.mia, org.ian)},
+		{"is not in the Chain of Mia", chainRule(domain.RuleIsNot, org.mia), org.goals(org.vp, org.max, org.ida, org.out)},
+		{"is not in the Chain of Mia or Max", chainRule(domain.RuleIsNot, org.mia, org.max), org.goals(org.vp, org.out)},
+	} {
+		def := h.SaveReportDefinition(org.vp, domain.SaveReportDefinitionInput{Name: c.name, Mode: domain.ReportModeRules, Rules: []domain.ReportRule{c.rule}})
+		if got := selectByDefault(t, h, def); !sameSet(got, c.want) {
+			t.Errorf("Owner %s selected %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// A Chain rule selects by the Owner of record: a Delegate in the Chain
+// doesn't bring a Goal in, and an Ownerless Goal stays in its Departed
+// Owner's Chain (CONTEXT.md: Chain, Ownerless).
+func TestReportChainRuleByOwnerOnly(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	org := chainOrg(h)
+	delegated := h.ActiveGoal(org.out, "Out's, delegated to Ian", "why")
+	h.AddDelegate(org.out, org.ian, delegated.ID)
+	if err := h.Service.MarkDeparted(context.Background(), org.vp.ID, org.ida.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	def := h.SaveReportDefinition(org.vp, domain.SaveReportDefinitionInput{Name: "VP", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{chainRule(domain.RuleIs, org.vp)}})
+	if got, want := selectByDefault(t, h, def), org.goals(org.vp, org.mia, org.max, org.ian, org.ida); !sameSet(got, want) {
+		t.Errorf("Owner is in the Chain of the VP selected %v, want %v", got, want)
+	}
+}
+
+// A Chain rule is a rule like any other: a Goal must meet it and every other
+// rule, and Leave out still leaves a Goal out (CONTEXT.md: Report rule).
+func TestReportChainRuleCombines(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	org := chainOrg(h)
+	proposed := h.CreateGoal(org.ian, "Ian's proposal", "why")
+
+	def := h.SaveReportDefinition(org.vp, domain.SaveReportDefinitionInput{
+		Name: "Mia's org, Active",
+		Mode: domain.ReportModeRules,
+		Rules: []domain.ReportRule{
+			chainRule(domain.RuleIs, org.mia),
+			namedRule(domain.RuleLifecycle, domain.RuleIs, domain.LifecycleActive),
+		},
+		Exclude: org.goals(org.mia),
+	})
+	got := selectByDefault(t, h, def)
+	if want := org.goals(org.ian); !sameSet(got, want) {
+		t.Errorf("in the Chain of Mia, Active, leaving out Mia's, selected %v, want %v", got, want)
+	}
+	if slices.Contains(got, proposed.ID) {
+		t.Errorf("selected the Proposed Goal %d despite the Lifecycle rule", proposed.ID)
+	}
+}
+
+// A Chain rule reads the Managers as they are at each draft: a Manager change
+// moves a Goal in or out of the next, and the next publication lists it as
+// entering or leaving, while the earlier publication keeps its snapshot
+// (CONTEXT.md: Chain; ADR 0008).
+func TestReportChainRuleFollowsAManagerChange(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	org := chainOrg(h)
+	def := h.SaveReportDefinition(org.vp, domain.SaveReportDefinitionInput{Name: "Mia's org", Mode: domain.ReportModeRules, Rules: []domain.ReportRule{chainRule(domain.RuleIs, org.mia)}})
+	first := h.PublishReport(org.vp, def)
+	if got, want := append(blockIDs(first.Report), lineIDs(first.Report)...), org.goals(org.mia, org.ian); !sameSet(got, want) {
+		t.Fatalf("first publication has %v, want %v", got, want)
+	}
+	h.Clock.Advance(day)
+
+	h.SetManager(org.ida, org.mia)
+	h.SetManager(org.ian, org.max)
+
+	if got, want := selectByDefault(t, h, def), org.goals(org.mia, org.ida); !sameSet(got, want) {
+		t.Errorf("after the Manager changes, the draft selects %v, want %v", got, want)
+	}
+	second := h.PublishReport(org.vp, def)
+	assertMembershipChanges(t, byGoal(t, second.Report.MembershipChanges), map[int64]string{
+		org.goalOf[org.ida.ID].ID: "Added: " + domain.MembershipNowMatches,
+		org.goalOf[org.ian.ID].ID: "Left: " + domain.MembershipNoLongerMatches,
+	})
+	kept, err := h.Service.GetPublication(context.Background(), first.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if got, want := append(blockIDs(kept.Report), lineIDs(kept.Report)...), org.goals(org.mia, org.ian); !sameSet(got, want) {
+		t.Errorf("the first publication now has %v, want its snapshot %v", got, want)
+	}
+}
+
+// chainTestOrg is a three-level org: the VP manages Mia and Max, Mia manages
+// Ian and Max manages Ida; Out has no Manager. Each owns one Active Goal.
+type chainTestOrg struct {
+	vp, mia, max, ian, ida, out domain.Account
+	goalOf                      map[int64]domain.Goal
+}
+
+func chainOrg(h *testsupport.Harness) chainTestOrg {
+	h.T.Helper()
+	org := chainTestOrg{
+		vp:     h.SignInNamed("vp@example.com", "Vera Patel"),
+		mia:    h.SignInNamed("mia@example.com", "Mia Lund"),
+		max:    h.SignInNamed("max@example.com", "Max Ruiz"),
+		ian:    h.SignInNamed("ian@example.com", "Ian Cole"),
+		ida:    h.SignInNamed("ida@example.com", "Ida Berg"),
+		out:    h.SignInNamed("out@example.com", "Oona Hart"),
+		goalOf: map[int64]domain.Goal{},
+	}
+	h.SetManager(org.mia, org.vp)
+	h.SetManager(org.max, org.vp)
+	h.SetManager(org.ian, org.mia)
+	h.SetManager(org.ida, org.max)
+	for _, a := range []domain.Account{org.vp, org.mia, org.max, org.ian, org.ida, org.out} {
+		org.goalOf[a.ID] = h.ActiveGoal(a, a.Name+"'s goal", "why")
+	}
+	return org
+}
+
+// goals are the ids of the Goals the owners own in the org.
+func (org chainTestOrg) goals(owners ...domain.Account) []int64 {
+	var out []int64
+	for _, o := range owners {
+		out = append(out, org.goalOf[o.ID].ID)
+	}
+	return out
+}
+
+// chainRule is the rule "Owner op in the Chain of people".
+func chainRule(op string, people ...domain.Account) domain.ReportRule {
+	rule := domain.ReportRule{Attribute: domain.RuleChain, Op: op}
+	for _, p := range people {
+		rule.Values = append(rule.Values, strconv.FormatInt(p.ID, 10))
+	}
+	return rule
+}
+
 // A Health rule selects by the Owner-set Health, the latest Check-in's. A Goal
 // with no Health — Proposed, On Hold, Done or Cancelled, or Active with no
 // Check-in yet — meets only "is not" (CONTEXT.md: Report rule).
@@ -362,6 +519,7 @@ func TestSaveReportDefinitionRefusals(t *testing.T) {
 		{"unknown Dimension value", rules(domain.ReportRule{Attribute: domain.RuleDimension, DimensionID: team.ID, Op: domain.RuleIs, Values: []string{"9999"}}), "rules[0]"},
 		{"value of another Dimension", rules(isPlatform, dimensionRule(team, domain.RuleIsNot, growth)), "rules[1]"},
 		{"unknown Account", rules(domain.ReportRule{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{"9999"}}), "rules[0]"},
+		{"unknown Chain person", rules(domain.ReportRule{Attribute: domain.RuleChain, Op: domain.RuleIsAnyOf, Values: []string{"9999"}}), "rules[0]"},
 		{"unknown Lifecycle", rules(namedRule(domain.RuleLifecycle, domain.RuleIs, "Paused")), "rules[0]"},
 		{"unknown Health", rules(namedRule(domain.RuleHealth, domain.RuleIsNot, "Blue")), "rules[0]"},
 		{"Top-level with values", rules(domain.ReportRule{Attribute: domain.RuleTopLevel, Op: domain.RuleIs, Values: []string{"yes"}}), "rules[0]"},

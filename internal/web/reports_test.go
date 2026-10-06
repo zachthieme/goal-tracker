@@ -2267,6 +2267,47 @@ func TestDraftListsTheGoalsInTheReportOverHTTP(t *testing.T) {
 	}
 }
 
+// A Chain rule reads back as "Owner is in the Chain of <Name>" in the draft's
+// Goals panel and on the Reports list, and a Goal listed to Also include whose
+// Owner is in the Chain isn't marked added (CONTEXT.md: Chain).
+func TestReportsReadAChainRuleBackOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	vp := h.SignInNamed("vp@example.com", "Priya Raman")
+	mia := h.SignInNamed("mia@example.com", "Mia Lund")
+	lee := h.SignInNamed("lee@example.com", "Lee Chen")
+	h.SetManager(mia, vp)
+	mias := h.ActiveGoal(mia, "Cut churn", "Keep customers.")
+	lees := h.ActiveGoal(lee, "Open Tokyo", "Expand east.")
+	def := h.SaveReportDefinition(vp, domain.SaveReportDefinitionInput{
+		Name:    "Priya's org",
+		Mode:    domain.ReportModeRules,
+		Rules:   []domain.ReportRule{{Attribute: domain.RuleChain, Op: domain.RuleIs, Values: []string{strconv.FormatInt(vp.ID, 10)}}},
+		Include: []int64{mias.ID, lees.ID},
+	})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "vp@example.com")
+	const want = "Owner is in the Chain of Priya Raman · 2 added"
+
+	panel := between(t, getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)), `<section data-testid="report-goals"`, `id="draft-preview"`)
+	if scope := pageElement(t, panel, "span", "scope-summary"); !strings.HasSuffix(scope, ">"+want) {
+		t.Errorf("scope summary %q, want %s", scope, want)
+	}
+	for _, c := range []struct {
+		goal  domain.Goal
+		added bool
+	}{{mias, false}, {lees, true}} {
+		item := between(t, panel, ">"+c.goal.Title+"<", "</li>")
+		if got := strings.Contains(item, `data-testid="report-goal-added"`); got != c.added {
+			t.Errorf("%q marked added %t, want %t: %s", c.goal.Title, got, c.added, item)
+		}
+	}
+	if list := getBody(t, client, ts.URL+"/reports"); !strings.Contains(list, `<span data-testid="report-scope" class="small muted">`+want+`</span>`) {
+		t.Errorf("the Reports list doesn't read the Chain rule as %s:\n%s", want, list)
+	}
+}
+
 // The Goals panel says what the definition selects in plain words, and marks
 // "added" each Goal in it only because of Also include: not one listed there
 // that meets the rules anyway, and never one picked by hand.
