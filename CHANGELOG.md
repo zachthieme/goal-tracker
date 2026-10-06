@@ -13,6 +13,11 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 6, 2026
+
+**New features:**
+- [user] A Report rule can select by the Owner's Chain: "Owner is in the Chain of Priya", "… of any of Priya, Marcus", or "Owner is not in the Chain of …". It reads the Managers from the org's directory each time the draft is computed, so a Report follows a leader's org as people join, leave and move. The next publication lists the Goals that entered or left, and earlier publications keep their snapshot. Only the Owner counts, never a Delegate, and an Ownerless Goal stays in its Departed Owner's Chain. The builder offers **Owner's Chain** beside **Owner** once anyone has a Manager. The Reports list and the draft's Goals panel read the rule as "Owner is in the Chain of Priya Raman" (#264).
+
 ### Collected changes — October 5, 2026
 
 **Breaking changes:**
