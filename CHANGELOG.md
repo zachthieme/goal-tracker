@@ -18,6 +18,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **New features:**
 - [user] A Report rule can select by the Owner's Chain: "Owner is in the Chain of Priya", "… of any of Priya, Marcus", or "Owner is not in the Chain of …". It reads the Managers from the org's directory each time the draft is computed, so a Report follows a leader's org as people join, leave and move. The next publication lists the Goals that entered or left, and earlier publications keep their snapshot. Only the Owner counts, never a Delegate, and an Ownerless Goal stays in its Departed Owner's Chain. The builder offers **Owner's Chain** beside **Owner** once anyone has a Manager. The Reports list and the draft's Goals panel read the rule as "Owner is in the Chain of Priya Raman" (#264).
 
+**Bug fixes:**
+- [ops] `make start` no longer fails at `dev/authentik/apply.sh` when the Goal Tracker blueprint's last apply failed: the script now waits for its own apply's status instead of reading the earlier failure as this run's.
+
 ### Collected changes — October 5, 2026
 
 **Breaking changes:**

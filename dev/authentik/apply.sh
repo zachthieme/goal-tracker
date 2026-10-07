@@ -34,13 +34,15 @@ if [[ -z $blueprint ]]; then
 fi
 
 # Applying is a queued background task: wait for one that finished after this
-# request.
+# request. A status from before it, such as an earlier failure, isn't this
+# apply's.
 asked=$(date -u +%s)
 api -o /dev/null -X POST "$base/api/v3/managed/blueprints/$blueprint/apply/"
 for _ in $(seq 120); do
 	applied=$(api "$base/api/v3/managed/blueprints/$blueprint/" | jq -r --argjson asked "$asked" '
-		if .status == "error" then "error"
-		elif .status == "successful" and (.last_applied | sub("\\.[0-9]+"; "") | fromdate) >= $asked then "yes"
+		if (.last_applied | sub("\\.[0-9]+"; "") | fromdate) < $asked then "no"
+		elif .status == "error" then "error"
+		elif .status == "successful" then "yes"
 		else "no" end')
 	case $applied in
 	yes) echo "applied blueprints/goal-tracker.yaml"; exit 0 ;;
