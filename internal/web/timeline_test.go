@@ -474,8 +474,8 @@ func TestGoalHistoryWorksWithoutJavaScript(t *testing.T) {
 	}
 	links := strings.Split(between(t, history, `data-testid="history-chips"`, "</nav>"), "<a ")[1:]
 	links = append(links, between(t, history, `<a data-testid="history-earlier"`, "</a>"))
-	if len(links) != 8 {
-		t.Fatalf("History has %d chip and Show earlier links, want 8", len(links))
+	if len(links) != 9 {
+		t.Fatalf("History has %d chip and Show earlier links, want 9", len(links))
 	}
 	for _, link := range links {
 		_, href, _ := strings.Cut(link, `href="`)
@@ -1073,7 +1073,7 @@ func TestGoalHistoryShowsEachParentSuggestionAndItsOutcome(t *testing.T) {
 		}
 	}
 
-	for _, filter := range []string{"checkins", "date-slips", "so-what", "ownership", "values"} {
+	for _, filter := range []string{"checkins", "date-slips", "so-what", "title", "ownership", "values"} {
 		page := getBody(t, client, goalPageURL(ts.URL, goal)+"?history="+filter)
 		if strings.Contains(historyBlock(t, page), `data-kind="parent-suggestion"`) {
 			t.Errorf("the %s chip lists a suggestion", filter)
@@ -1120,7 +1120,7 @@ func TestGoalHistoryShowsEachNudge(t *testing.T) {
 			}
 		}
 	}
-	for _, filter := range []string{"date-slips", "so-what", "ownership", "values"} {
+	for _, filter := range []string{"date-slips", "so-what", "title", "ownership", "values"} {
 		if n := len(nudgesUnder(filter)); n != 0 {
 			t.Errorf("the %s chip lists %d Nudges", filter, n)
 		}
@@ -1305,7 +1305,7 @@ func TestGoalHistoryLinksChipListsLinkChangesAndParentSuggestions(t *testing.T) 
 	for _, chip := range strings.Split(between(t, history, `data-testid="history-chips"`, "</nav>"), `data-testid="history-chip"`)[1:] {
 		labels = append(labels, strings.TrimSpace(between(t, chip, ">", "<span")[1:]))
 	}
-	if want := []string{"All", "Check-ins", "Date Slips", "So What", "Ownership", "Links", "Values"}; !slices.Equal(labels, want) {
+	if want := []string{"All", "Check-ins", "Date Slips", "So What", "Title", "Ownership", "Links", "Values"}; !slices.Equal(labels, want) {
 		t.Errorf("chips = %v, want %v", labels, want)
 	}
 	if got := historyChips(t, history)["Links"]; got.count != "2" || filterOf(got.href) != "links" {
@@ -1320,7 +1320,7 @@ func TestGoalHistoryLinksChipListsLinkChangesAndParentSuggestions(t *testing.T) 
 		t.Errorf("?history=links lists %v, want %v", kinds, want)
 	}
 
-	for _, filter := range []string{"checkins", "date-slips", "so-what", "ownership", "values"} {
+	for _, filter := range []string{"checkins", "date-slips", "so-what", "title", "ownership", "values"} {
 		for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalURL+"?history="+filter))) {
 			if kind := entryKind(t, e); kind == "link" || kind == "parent-suggestion" {
 				t.Errorf("the %s chip lists a %s entry", filter, kind)
@@ -1430,7 +1430,7 @@ func TestGoalHistoryShowsAMilestoneAddedOutsideACheckin(t *testing.T) {
 			t.Errorf("the addition under %q has no marker of its own:\n%s", filter, e)
 		}
 	}
-	for _, filter := range []string{"date-slips", "so-what", "ownership", "links", "values"} {
+	for _, filter := range []string{"date-slips", "so-what", "title", "ownership", "links", "values"} {
 		if n := len(milestonesUnder(goal, filter)); n != 0 {
 			t.Errorf("the %s chip lists %d Milestone additions", filter, n)
 		}
@@ -1481,6 +1481,57 @@ func TestDefiningAGoalLeavesNoMilestoneHistoryOverHTTP(t *testing.T) {
 			if entryKind(t, e) == "milestone" {
 				t.Errorf("%s Goal's History has a Milestone entry:\n%s", name, e)
 			}
+		}
+	}
+}
+
+// Each change to a Goal's title is a History entry, listed and counted under
+// the Title chip, which sits after So What and lists nothing else, and under
+// All; the So What chip doesn't list it (#281).
+func TestGoalHistoryTitleChipListsOnlyTitleChanges(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	goal := oneOfEachKind(t, h)
+	sam := goal.Owner
+	for _, title := range []string{"Ship v2 by spring", "Ship v2 by summer"} {
+		h.Clock.Advance(time.Hour)
+		if _, err := h.Service.EditTitle(context.Background(), goal.ID, title, sam.ID); err != nil {
+			t.Fatalf("EditTitle: %v", err)
+		}
+	}
+	h.Clock.Advance(time.Hour)
+	if _, err := h.Service.EditSoWhat(context.Background(), goal.ID, "Customers wait far too long.", sam.ID); err != nil {
+		t.Fatalf("EditSoWhat: %v", err)
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := goalPageURL(ts.URL, goal)
+
+	chips := historyChips(t, historyBlock(t, getBody(t, client, goalURL)))
+	if got := chips["Title"]; got.count != "2" || filterOf(got.href) != "title" {
+		t.Errorf("Title chip = %+v, want 2 to ?history=title", got)
+	}
+	if got := chips["So What"]; got.count != "2" {
+		t.Errorf("So What chip counts %s, want 2: the first So What and its edit", got.count)
+	}
+	if got := chips["All"]; got.count != "7" {
+		t.Errorf("All chip counts %s, want 7: the four of each kind, the two title changes and the So What edit", got.count)
+	}
+
+	titles := filteredEntries(t, client, goalURL, "title", "title")
+	want := []string{"Ship v2 by spring → Ship v2 by summer", "Ship v2 → Ship v2 by spring"}
+	if len(titles) != len(want) {
+		t.Fatalf("?history=title lists %d entries, want %d", len(titles), len(want))
+	}
+	for i, w := range want {
+		if !strings.Contains(titles[i], w) {
+			t.Errorf("title entry %d doesn't read %q:\n%s", i, w, titles[i])
+		}
+	}
+	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalURL+"?history=so-what"))) {
+		if kind := entryKind(t, e); kind != "so-what" {
+			t.Errorf("the So What chip lists a %s entry", kind)
 		}
 	}
 }

@@ -31,7 +31,7 @@ _Avoid_: deactivated, deleted, offboarded
 ## Goals and structure
 
 **Goal**:
-The single unit of work being tracked, at any level, from a company-wide outcome to a team project. It may carry Metrics and Milestones.
+The single unit of work being tracked, at any level, from a company-wide outcome to a team project. It may carry Metrics and Milestones. Its title can be changed by its Owner or an Admin in any Lifecycle, and each change is kept in the Goal's history with the old and new titles.
 _Avoid_: Objective, Key Result, Project, Initiative (as distinct types)
 
 **So What**:
@@ -55,7 +55,7 @@ A Goal whose Owner is Departed and hasn't been replaced, either by an Admin reas
 _Avoid_: orphaned, unassigned
 
 **Admin**:
-One of a small set of people who define Dimensions and Fields, reassign Ownerless Goals, and can override links and Lifecycle changes.
+One of a small set of people who define Dimensions and Fields, reassign Ownerless Goals, can edit any Goal's title and So What, and can override links and Lifecycle changes.
 _Avoid_: moderator, superuser
 
 **Contributor**:

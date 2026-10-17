@@ -23,6 +23,7 @@ const (
 	historyCheckins  historyFilter = "checkins"
 	historySlips     historyFilter = "date-slips"
 	historySoWhat    historyFilter = "so-what"
+	historyTitle     historyFilter = "title"
 	historyOwnership historyFilter = "ownership"
 	historyLinks     historyFilter = "links"
 	historyValues    historyFilter = "values"
@@ -37,6 +38,7 @@ var historyFilters = []struct {
 	{historyCheckins, "Check-ins"},
 	{historySlips, "Date Slips"},
 	{historySoWhat, "So What"},
+	{historyTitle, "Title"},
 	{historyOwnership, "Ownership"},
 	{historyLinks, "Links"},
 	{historyValues, "Values"},
@@ -47,17 +49,19 @@ var historyFilters = []struct {
 const historyPage = 20
 
 // historyEntry is one event in a Goal's History: a Check-in with the Date
-// Slips and Metric readings recorded in it, a So What revision, an ownership
-// change (a Handoff or an Admin Reassign), a change to a Dimension value or
-// Field, a Parent suggestion with its outcome, a Nudge, or a change to one of
-// its links, or a Milestone added outside a Check-in. Exactly one of Checkin,
-// Revision, Handoff, Value, Suggestion, Nudge, Link and Milestone is set.
+// Slips and Metric readings recorded in it, a So What revision, a change to
+// its title, an ownership change (a Handoff or an Admin Reassign), a change to
+// a Dimension value or Field, a Parent suggestion with its outcome, a Nudge, or
+// a change to one of its links, or a Milestone added outside a Check-in.
+// Exactly one of Checkin, Revision, Title, Handoff, Value, Suggestion, Nudge,
+// Link and Milestone is set.
 type historyEntry struct {
 	At         time.Time
 	Checkin    *domain.Checkin
 	Slips      []domain.DateSlip
 	Readings   []historyReading
 	Revision   *domain.SoWhatRevision
+	Title      *domain.TitleRevision
 	Handoff    *domain.Handoff
 	Value      *domain.ValueChange
 	Suggestion *domain.ParentSuggestion
@@ -79,6 +83,8 @@ func (e historyEntry) kind() string {
 		return "checkin"
 	case e.Revision != nil:
 		return "so-what"
+	case e.Title != nil:
+		return "title"
 	case e.Handoff != nil:
 		return "ownership"
 	case e.Suggestion != nil:
@@ -100,6 +106,8 @@ func (e historyEntry) label() string {
 		return "Check-in"
 	case e.Revision != nil:
 		return "So What"
+	case e.Title != nil:
+		return "Title"
 	case e.Handoff != nil && e.Handoff.Status == domain.HandoffReassigned:
 		return "Reassign"
 	case e.Handoff != nil:
@@ -128,6 +136,8 @@ func (e historyEntry) in(filter historyFilter) bool {
 		return len(e.Slips) > 0
 	case historySoWhat:
 		return e.Revision != nil
+	case historyTitle:
+		return e.Title != nil
 	case historyOwnership:
 		return e.Handoff != nil
 	case historyLinks:
@@ -155,7 +165,7 @@ type history struct {
 }
 
 // newHistory gathers a Goal's Check-ins, Date Slips, Metric readings, So What
-// revisions, ownership changes, value changes, Parent suggestions, Nudges,
+// revisions, title changes, ownership changes, value changes, Parent suggestions, Nudges,
 // link changes and the Milestones added outside a Check-in into one timeline,
 // newest first, showing everything and the first page.
 func newHistory(v goalView, loc *time.Location, now time.Time) history {
@@ -179,6 +189,9 @@ func newHistory(v goalView, loc *time.Location, now time.Time) history {
 	}
 	for _, r := range v.Revisions {
 		entries = append(entries, historyEntry{At: r.CreatedAt, Revision: &r})
+	}
+	for _, r := range v.TitleRevisions {
+		entries = append(entries, historyEntry{At: r.CreatedAt, Title: &r})
 	}
 	for _, o := range v.Ownership {
 		entries = append(entries, historyEntry{At: o.CreatedAt, Handoff: &o})
@@ -217,6 +230,8 @@ func (e historyEntry) seq() int64 {
 		return e.Checkin.ID
 	case e.Revision != nil:
 		return e.Revision.ID
+	case e.Title != nil:
+		return e.Title.ID
 	case e.Handoff != nil:
 		return e.Handoff.ID
 	case e.Suggestion != nil:

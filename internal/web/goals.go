@@ -659,6 +659,10 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("load So What history: %w", err)
 	}
+	titleRevisions, err := s.svc.ListTitleRevisions(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("load title history: %w", err)
+	}
 	ownership, err := s.svc.OwnershipHistory(ctx, id)
 	if err != nil {
 		return goalView{}, fmt.Errorf("load ownership history: %w", err)
@@ -807,6 +811,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Owns:               current.ID == g.Owner.ID,
 		Admin:              current.IsAdmin,
 		Revisions:          revisions,
+		TitleRevisions:     titleRevisions,
 		Ownership:          ownership,
 		ValueHistory:       valueHistory,
 		Dimensions:         dimensions,
@@ -862,6 +867,9 @@ type goalView struct {
 	Delegates  []domain.Account
 	CanCheckin bool
 	Revisions  []domain.SoWhatRevision
+	// TitleRevisions are every change to the Goal's title, newest first, for
+	// its History.
+	TitleRevisions []domain.TitleRevision
 	// Ownership is the Goal's ownership history, oldest first: every Handoff
 	// with its outcome and every Admin Reassign (CONTEXT.md: Handoff). The page
 	// shows it, and the rest of the Goal's history, as History.
@@ -971,6 +979,9 @@ const (
 	// shows for whoever may use it; naming it lets a refused log come back in
 	// it.
 	formDraftHighlight goalForm = "draft-highlight"
+	// formTitleSoWhat edits the Goal's title and So What together, in the
+	// page head.
+	formTitleSoWhat goalForm = "title-so-what"
 )
 
 // offers reports whether the viewer may use form on this Goal: the same people
@@ -988,6 +999,8 @@ func (v goalView) offers(form goalForm) bool {
 		return v.Admin && g.Owner.Departed
 	case formTopLevel:
 		return v.Admin
+	case formTitleSoWhat:
+		return v.Owns || v.Admin
 	case formParentLink, formDelegates:
 		return v.Owns
 	case formContributors:
@@ -1058,6 +1071,7 @@ func (v goalView) actions() []goalAction {
 		form  goalForm
 		href  string
 	}{
+		{"Edit title and So What", formTitleSoWhat, ""},
 		{"Hand off", formHandoff, ""},
 		{"Add a delegate", formDelegates, ""},
 		{"Link to a parent Goal", formParentLink, ""},
@@ -1326,17 +1340,41 @@ func (s *Server) handleSetCadence(w http.ResponseWriter, r *http.Request, curren
 	s.writeCommandResult(w, r, id, err)
 }
 
+// handleEditSoWhat saves the Edit title and So What form, for the Goal's Owner
+// or an Admin. It changes the title, when the form sends one, and the So What,
+// each only when it differs from what the Goal has, all or nothing: an
+// unchanged field records no revision, and a refused save changes neither.
 func (s *Server) handleEditSoWhat(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
 	}
-	if err := s.svc.RequireGoalOwner(r.Context(), current.ID, id); err != nil {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
+		return
+	}
+	if err := s.svc.RequireGoalOwnerOrAdmin(r.Context(), current.ID, id); err != nil {
 		s.writeCommandResult(w, r, id, err)
 		return
 	}
-	_, err := s.svc.EditSoWhat(r.Context(), id, r.FormValue("so_what"), current.ID)
-	s.writeCommandResult(w, r, id, err)
+	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
+		g, err := tx.ViewGoal(r.Context(), id)
+		if err != nil {
+			return err
+		}
+		if _, sent := r.PostForm["title"]; sent {
+			if _, err := tx.EditTitle(r.Context(), id, r.PostFormValue("title"), current.ID); err != nil {
+				return err
+			}
+		}
+		if soWhat := r.PostFormValue("so_what"); strings.TrimSpace(soWhat) != g.SoWhat {
+			if _, err := tx.EditSoWhat(r.Context(), id, soWhat, current.ID); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	s.writeFormResult(w, r, id, current, formTitleSoWhat, err)
 }
 
 func (s *Server) handleAddContributor(w http.ResponseWriter, r *http.Request, current domain.Account) {
