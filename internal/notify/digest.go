@@ -22,13 +22,13 @@ type Notifier struct {
 	sender email.Sender
 	// baseURL is where the web app is reached, so emails can link into it.
 	baseURL string
-	// loc is the org's timezone, the calendar a week is counted in.
+	// loc is the company's timezone, the calendar a week is counted in.
 	loc *time.Location
 }
 
 // New returns a Notifier reading from svc and sending through sender. baseURL
 // is the web app's address (e.g. http://localhost:8080) that links in emails
-// point at; loc is the org's timezone.
+// point at; loc is the company's timezone.
 func New(svc *domain.Service, sender email.Sender, baseURL string, loc *time.Location) *Notifier {
 	return &Notifier{svc: svc, sender: sender, baseURL: strings.TrimRight(baseURL, "/"), loc: loc}
 }
@@ -50,7 +50,7 @@ type reminderItem struct {
 // SendReminders emails each Owner and Delegate the Active Goals whose Check-in
 // is due — it would go Stale before next week's reminder — or that are Stale
 // already, each linking to its pre-filled Check-in. Someone with nothing due
-// gets no email, and nobody who has left the org is emailed.
+// gets no email, and nobody who has left the company is emailed.
 func (n *Notifier) SendReminders(ctx context.Context) error {
 	goals, err := n.svc.ListGoals(ctx)
 	if err != nil {
@@ -83,7 +83,7 @@ func (n *Notifier) SendReminders(ctx context.Context) error {
 // dateFormat is how calendar dates read in emails.
 const dateFormat = "2006-01-02"
 
-// daysPerWeek is how far apart the weekly emails are, in days of the org's
+// daysPerWeek is how far apart the weekly emails are, in days of the company's
 // calendar.
 const daysPerWeek = 7
 
@@ -220,7 +220,7 @@ func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekSta
 	}
 	if child.Ownerless {
 		// The digest has already introduced the Owner on the child's line.
-		reasons = append(reasons, "is Ownerless: "+child.Owner.Label()+" has left the org")
+		reasons = append(reasons, "is Ownerless: "+child.Owner.Label()+" has left the company")
 	}
 	signals, err := n.svc.GoalSignals(ctx, child.ID)
 	if err != nil {
@@ -292,7 +292,7 @@ func (n *Notifier) digestBody(entries []digestEntry) string {
 
 // outbox collects the items bound for each recipient, in the order recipients
 // were first seen, so each person gets one email however many items they have.
-// It never collects for someone who has left the org.
+// It never collects for someone who has left the company.
 type outbox[T any] struct {
 	order []string
 	items map[string][]T

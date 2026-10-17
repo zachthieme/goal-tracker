@@ -85,7 +85,7 @@ func adminPage(current *domain.Account, dirSync *directorySyncView, ownerless []
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, " <section data-testid=\"admin-ownerless\" class=\"ad-section\"><div><h2>Ownerless Goals</h2><p class=\"muted\">Goals whose Owner has left the org, waiting for an Admin to reassign them on the Goal's page.</p></div><div class=\"card\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, " <section data-testid=\"admin-ownerless\" class=\"ad-section\"><div><h2>Ownerless Goals</h2><p class=\"muted\">Goals whose Owner has left the company, waiting for an Admin to reassign them on the Goal's page.</p></div><div class=\"card\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -157,12 +157,12 @@ func adminPage(current *domain.Account, dirSync *directorySyncView, ownerless []
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</div></section><section data-testid=\"admin-departed\" class=\"ad-section\"><div><h2>Departed people</h2><p class=\"muted\">People who have left the org. Mark someone returned to let them sign in and act again.</p></div><div class=\"card\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</div></section><section data-testid=\"admin-departed\" class=\"ad-section\"><div><h2>Departed people</h2><p class=\"muted\">People who have left the company. Mark someone returned to let them sign in and act again.</p></div><div class=\"card\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if len(departed) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<p data-testid=\"admin-departed-empty\" class=\"muted\">Nobody has left the org.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<p data-testid=\"admin-departed-empty\" class=\"muted\">Nobody has left the company.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -261,7 +261,7 @@ func adminDirectorySync(v directorySyncView) templ.Component {
 			templ_7745c5c3_Var8 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<section data-testid=\"admin-directory-sync\" class=\"ad-section\"><div><h2>Directory sync</h2><p class=\"muted\">People and their Managers come from the org's directory, synced at startup and then hourly.</p></div><div class=\"card ad-sync\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<section data-testid=\"admin-directory-sync\" class=\"ad-section\"><div><h2>Directory sync</h2><p class=\"muted\">People and their Managers come from the company's directory, synced at startup and then hourly.</p></div><div class=\"card ad-sync\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

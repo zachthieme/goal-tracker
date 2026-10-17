@@ -45,7 +45,7 @@ type RaiseActionItemInput struct {
 // RaiseActionItem raises an Action Item on the published Report
 // in.PublicationID, for its Report Definition. Only the Report's author — who
 // saved its Definition, or who published this publication — may raise one. It
-// needs an owner who has not left the org and a due date; a comment it is
+// needs an owner who has not left the company and a due date; a comment it is
 // turned from must be on the same publication.
 func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseActionItemInput) (ActionItem, error) {
 	pub, err := s.GetPublication(ctx, in.PublicationID)
@@ -86,7 +86,7 @@ func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseAc
 		return ActionItem{}, fmt.Errorf("look up owner: %w", err)
 	}
 	if owner.Departed != 0 {
-		return ActionItem{}, fmt.Errorf("%w: %s has left the org", ErrValidation, owner.Email)
+		return ActionItem{}, fmt.Errorf("%w: %s has left the company", ErrValidation, owner.Email)
 	}
 	row, err := s.queries.CreateActionItem(ctx, db.CreateActionItemParams{
 		ReportDefinitionID: pub.DefinitionID,

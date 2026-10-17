@@ -51,7 +51,7 @@ func TestAdminPageIsForAdminsOnly(t *testing.T) {
 	}
 }
 
-// The Admin page lists the open Goals whose Owner has left the org, each
+// The Admin page lists the open Goals whose Owner has left the company, each
 // linking to the Goal where an Admin reassigns it. A Goal with a present Owner
 // isn't listed, nor is a closed one (Cancelled) that waits on nobody.
 func TestAdminPageListsOwnerlessGoals(t *testing.T) {
@@ -74,7 +74,7 @@ func TestAdminPageListsOwnerlessGoals(t *testing.T) {
 	owned := h.ActiveGoal(kim, "Grow revenue", "It pays for everything.")
 	client := signInClient(t, ts.URL, "ada@example.com")
 
-	if list := pageElement(t, getBody(t, client, ts.URL+"/admin"), "section", "admin-ownerless"); !strings.Contains(list, `data-testid="admin-ownerless-empty"`) {
+	if list := pageElement(t, getBody(t, client, ts.URL+"/admin"), "section", "admin-ownerless"); !strings.Contains(list, `data-testid="admin-ownerless-empty"`) || !strings.Contains(list, "Goals whose Owner has left the company") {
 		t.Errorf("with no Ownerless Goals, the list doesn't say so:\n%s", list)
 	}
 
@@ -154,8 +154,8 @@ func TestAdminPageListsDepartedPeople(t *testing.T) {
 	moved := h.ActiveGoal(sam, "Migrate displays", "Displays fail often.")
 	client := signInClient(t, ts.URL, "ada@example.com")
 
-	if list := pageElement(t, getBody(t, client, ts.URL+"/admin"), "section", "admin-departed"); !strings.Contains(list, `data-testid="admin-departed-empty"`) {
-		t.Errorf("with nobody Departed, the list doesn't say so:\n%s", list)
+	if list := pageElement(t, getBody(t, client, ts.URL+"/admin"), "section", "admin-departed"); !strings.Contains(list, `data-testid="admin-departed-empty"`) || !strings.Contains(list, "Nobody has left the company.") || !strings.Contains(list, "People who have left the company.") {
+		t.Errorf("with nobody Departed, the list doesn't say nobody has left the company:\n%s", list)
 	}
 
 	for _, acc := range []domain.Account{sam, kim} {

@@ -845,53 +845,62 @@ func TestGoalListFiltersToMine(t *testing.T) {
 	}
 }
 
-// My Chain keeps the Goals whose Owner is in the viewer's Chain, their own
+// My org keeps the Goals whose Owner is in the viewer's org, their own
 // included: for a VP every level below them, for a manager only their part. A
 // viewer with no one under them isn't offered it.
-func TestGoalListScopesToMyChain(t *testing.T) {
+func TestGoalListScopesToMyOrg(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
-	org := newScopeChainOrg(h)
+	org := newScopeOrgFixture(h)
 	ts := newServer(t, h)
 
 	vera := signInClient(t, ts.URL, "vera@example.com")
-	page := getBody(t, vera, scopeChainURL(ts.URL, "/goals", org.Vera))
+	page := getBody(t, vera, scopeOrgURL(ts.URL, "/goals", org.Vera))
 	got := rowTitles(goalRows(t, page), org.goals()...)
 	if want := []string{"Max's goal", "Mia's goal", "Pax's goal", "Pia's goal", "Vera's goal"}; !slices.Equal(got, want) {
-		t.Errorf("Vera's My Chain: rows = %q, want %q", got, want)
+		t.Errorf("Vera's My org: rows = %q, want %q", got, want)
 	}
-	chain := pageElement(t, page, "select", "goal-chain-filter")
-	if !strings.Contains(chain, fmt.Sprintf(`<option value="%d" selected>My Chain</option>`, org.Vera.ID)) {
-		t.Errorf("Vera's My Chain isn't the chosen scope: %s", chain)
+	orgSel := pageElement(t, page, "select", "goal-org-filter")
+	if !strings.Contains(orgSel, fmt.Sprintf(`<option value="%d" selected>My org</option>`, org.Vera.ID)) {
+		t.Errorf("Vera's My org isn't the chosen scope: %s", orgSel)
 	}
-	if count := pageElement(t, page, "p", "goal-count"); !strings.Contains(count, "5 Goals in My Chain") {
-		t.Errorf("the count doesn't name My Chain: %s", count)
+	if !strings.Contains(orgSel, `<option value="">Any org</option>`) {
+		t.Errorf("the org picker doesn't offer Any org, unchosen: %s", orgSel)
+	}
+	if !strings.Contains(orgSel, fmt.Sprintf(`<option value="%d">Mia Moss (mia@example.com)</option>`, org.Mia.ID)) {
+		t.Errorf("the org picker doesn't offer Mia by Name and email: %s", orgSel)
+	}
+	if !strings.Contains(orgSel, `aria-label="Org"`) {
+		t.Errorf("the org picker isn't labelled Org: %s", orgSel)
+	}
+	if count := pageElement(t, page, "p", "goal-count"); !strings.Contains(count, "5 Goals in My org") {
+		t.Errorf("the count doesn't name My org: %s", count)
 	}
 
 	mia := signInClient(t, ts.URL, "mia@example.com")
-	page = getBody(t, mia, scopeChainURL(ts.URL, "/goals", org.Mia))
+	page = getBody(t, mia, scopeOrgURL(ts.URL, "/goals", org.Mia))
 	got = rowTitles(goalRows(t, page), org.goals()...)
 	if want := []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
-		t.Errorf("Mia's My Chain: rows = %q, want %q", got, want)
+		t.Errorf("Mia's My org: rows = %q, want %q", got, want)
 	}
 
 	pia := signInClient(t, ts.URL, "pia@example.com")
 	page = getBody(t, pia, ts.URL+"/goals")
-	if chain := pageElement(t, page, "select", "goal-chain-filter"); strings.Contains(chain, "My Chain") {
-		t.Errorf("Pia, with no one under her, is offered My Chain: %s", chain)
+	if orgSel := pageElement(t, page, "select", "goal-org-filter"); strings.Contains(orgSel, "My org") {
+		t.Errorf("Pia, with no one under her, is offered My org: %s", orgSel)
 	}
 }
 
-// Anyone may scope the list to another person's Chain, picked by Name with
-// their email, and the list names whose Chain it is. A Goal is in a Chain by
-// its Owner: a Delegate in the Chain doesn't bring in a Goal owned outside it,
-// and an Ownerless Goal stays in the Chain its Departed Owner was in.
-func TestGoalListScopesToAnotherPersonsChain(t *testing.T) {
+// Anyone may scope the list to another person's org, picked by Name with
+// their email, and the list names whose org it is. A Goal is in an org by
+// its Owner: a Delegate in the org doesn't bring in a Goal owned outside it,
+// and an Ownerless Goal stays in the org its Departed Owner was in.
+func TestGoalListScopesToAnotherPersonsOrg(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
-	org := newScopeChainOrg(h)
+	org := newScopeOrgFixture(h)
 	boss := h.SignIn("boss@example.com")
 	h.AddDelegate(org.Oz, org.Pax, org.OzGoal.ID)
 	if err := h.Service.MarkDeparted(t.Context(), boss.ID, org.Pax.ID); err != nil {
@@ -901,89 +910,109 @@ func TestGoalListScopesToAnotherPersonsChain(t *testing.T) {
 	pia := signInClient(t, ts.URL, "pia@example.com")
 
 	page := getBody(t, pia, ts.URL+"/goals")
-	chain := pageElement(t, page, "select", "goal-chain-filter")
-	if !strings.Contains(chain, fmt.Sprintf(`<option value="%d">Max Marsh (max@example.com)</option>`, org.Max.ID)) {
-		t.Errorf("the Chain picker doesn't offer Max by Name and email: %s", chain)
+	orgSel := pageElement(t, page, "select", "goal-org-filter")
+	if !strings.Contains(orgSel, fmt.Sprintf(`<option value="%d">Max Marsh (max@example.com)</option>`, org.Max.ID)) {
+		t.Errorf("the org picker doesn't offer Max by Name and email: %s", orgSel)
 	}
 
-	page = getBody(t, pia, scopeChainURL(ts.URL, "/goals", org.Max))
+	page = getBody(t, pia, scopeOrgURL(ts.URL, "/goals", org.Max))
 	got := rowTitles(goalRows(t, page), org.goals()...)
 	if want := []string{"Pax's goal", "Max's goal"}; !slices.Equal(got, want) {
-		t.Errorf("Max's Chain: rows = %q, want %q (Pax's Ownerless Goal, not Oz's that Pax is a Delegate on)", got, want)
+		t.Errorf("Max's org: rows = %q, want %q (Pax's Ownerless Goal, not Oz's that Pax is a Delegate on)", got, want)
 	}
-	if count := pageElement(t, page, "p", "goal-count"); !strings.Contains(count, "2 Goals in Max Marsh&#39;s Chain") {
-		t.Errorf("the count doesn't name Max's Chain: %s", count)
+	if count := pageElement(t, page, "p", "goal-count"); !strings.Contains(count, "2 Goals in Max Marsh&#39;s org") {
+		t.Errorf("the count doesn't name Max's org: %s", count)
 	}
-	chain = pageElement(t, page, "select", "goal-chain-filter")
-	if !strings.Contains(chain, fmt.Sprintf(`<option value="%d" selected>Max Marsh (max@example.com)</option>`, org.Max.ID)) {
-		t.Errorf("Max's Chain isn't the chosen scope: %s", chain)
+	orgSel = pageElement(t, page, "select", "goal-org-filter")
+	if !strings.Contains(orgSel, fmt.Sprintf(`<option value="%d" selected>Max Marsh (max@example.com)</option>`, org.Max.ID)) {
+		t.Errorf("Max's org isn't the chosen scope: %s", orgSel)
 	}
 }
 
-// The Chain lives in the list's address, so it survives grouping, the layout
-// toggle and a reload; a ?chain= naming no one, or malformed, lists everyone.
-func TestGoalListKeepsTheChainInItsAddress(t *testing.T) {
+// The org lives in the list's address, so it survives grouping, the layout
+// toggle and a reload; a ?org= naming no one, or malformed, lists everyone.
+func TestGoalListKeepsTheOrgInItsAddress(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
-	org := newScopeChainOrg(h)
+	org := newScopeOrgFixture(h)
 	boss := h.SignIn("boss@example.com")
 	team := h.CreateDimension(boss, "Team", "Core")
 	h.AssignGoalValue(org.PiaGoal, team.Values[0])
 	h.AssignGoalValue(org.OzGoal, team.Values[0])
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "oz@example.com")
-	chain := strconv.FormatInt(org.Mia.ID, 10)
+	orgID := strconv.FormatInt(org.Mia.ID, 10)
 
-	page := getBody(t, client, ts.URL+"/goals?chain="+chain+"&group="+strconv.FormatInt(team.ID, 10))
+	page := getBody(t, client, ts.URL+"/goals?org="+orgID+"&group="+strconv.FormatInt(team.ID, 10))
 	if got := elementTexts(page, "th", "goal-group-label"); !slices.Equal(got, []string{"Core", "Unassigned"}) {
-		t.Errorf("grouped in Mia's Chain, groups = %q", got)
+		t.Errorf("grouped in Mia's org, groups = %q", got)
 	}
 	if got, want := rowTitles(goalRows(t, page), org.goals()...), []string{"Pia's goal", "Mia's goal"}; !slices.Equal(got, want) {
-		t.Errorf("grouped in Mia's Chain, rows = %q, want %q", got, want)
+		t.Errorf("grouped in Mia's org, rows = %q, want %q", got, want)
 	}
-	if sel := pageElement(t, page, "select", "goal-chain-filter"); !strings.Contains(sel, `value="`+chain+`" selected`) {
-		t.Errorf("grouped, the Chain picker lost Mia: %s", sel)
+	if sel := pageElement(t, page, "select", "goal-org-filter"); !strings.Contains(sel, `value="`+orgID+`" selected`) {
+		t.Errorf("grouped, the org picker lost Mia: %s", sel)
 	}
-	if table := pageElement(t, page, "a", "layout-table"); !strings.Contains(attr(openTag(table), "href"), "chain="+chain) {
-		t.Errorf("the Table toggle drops the Chain: %s", table)
+	if table := pageElement(t, page, "a", "layout-table"); !strings.Contains(attr(openTag(table), "href"), "org="+orgID) {
+		t.Errorf("the Table toggle drops the org: %s", table)
 	}
 
 	for _, raw := range []string{"abc", "999999", ""} {
-		page := getBody(t, client, ts.URL+"/goals?chain="+raw)
+		page := getBody(t, client, ts.URL+"/goals?org="+raw)
 		if got := rowTitles(goalRows(t, page), org.goals()...); len(got) != 6 {
-			t.Errorf("chain=%q: rows = %q, want all 6", raw, got)
+			t.Errorf("org=%q: rows = %q, want all 6", raw, got)
 		}
-		if sel := pageElement(t, page, "select", "goal-chain-filter"); !strings.Contains(sel, `<option value="" selected>Any Chain</option>`) {
-			t.Errorf("chain=%q: Any Chain isn't chosen: %s", raw, sel)
+		if sel := pageElement(t, page, "select", "goal-org-filter"); !strings.Contains(sel, `<option value="" selected>Any org</option>`) {
+			t.Errorf("org=%q: Any org isn't chosen: %s", raw, sel)
 		}
 	}
 }
 
-// A Chain holding no Goals says so, naming whose Chain it is.
-func TestGoalListSaysAnEmptyChainIsEmpty(t *testing.T) {
+// The scope parameter is ?org=; the old ?chain= is no scope at all, ignored
+// like any unknown parameter, so the list is everyone's and no org is chosen.
+func TestGoalListIgnoresTheOldChainParameter(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
-	org := newScopeChainOrg(h)
+	org := newScopeOrgFixture(h)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "vera@example.com")
+
+	unscoped := rowTitles(goalRows(t, getBody(t, client, ts.URL+"/goals")), org.goals()...)
+	page := getBody(t, client, ts.URL+"/goals?chain="+strconv.FormatInt(org.Mia.ID, 10))
+	if got := rowTitles(goalRows(t, page), org.goals()...); !slices.Equal(got, unscoped) || len(got) != 6 {
+		t.Errorf("?chain=: rows = %q, want the unscoped %q", got, unscoped)
+	}
+	if sel := pageElement(t, page, "select", "goal-org-filter"); !strings.Contains(sel, `<option value="" selected>Any org</option>`) || strings.Count(sel, "selected") != 1 {
+		t.Errorf("?chain=: an org is chosen: %s", sel)
+	}
+}
+
+// An org holding no Goals says so, naming whose org it is.
+func TestGoalListSaysAnEmptyOrgIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	org := newScopeOrgFixture(h)
 	lee := h.SignInNamed("lee@example.com", "Lee Lund")
 	h.SetManager(lee, org.Vera)
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "vera@example.com")
 
-	page := getBody(t, client, scopeChainURL(ts.URL, "/goals", lee))
-	if empty := pageElement(t, page, "td", "no-goals"); !strings.Contains(empty, "No Goals in Lee Lund&#39;s Chain.") {
-		t.Errorf("an empty Chain doesn't say so: %s", empty)
+	page := getBody(t, client, scopeOrgURL(ts.URL, "/goals", lee))
+	if empty := pageElement(t, page, "td", "no-goals"); !strings.Contains(empty, "No Goals in Lee Lund&#39;s org.") {
+		t.Errorf("an empty org doesn't say so: %s", empty)
 	}
-	page = getBody(t, client, scopeChainURL(ts.URL, "/goals", lee)+"&health=red")
-	if empty := pageElement(t, page, "td", "no-goals"); !strings.Contains(empty, "No Goals in Lee Lund&#39;s Chain match.") {
-		t.Errorf("an empty Chain under another filter doesn't say so: %s", empty)
+	page = getBody(t, client, scopeOrgURL(ts.URL, "/goals", lee)+"&health=red")
+	if empty := pageElement(t, page, "td", "no-goals"); !strings.Contains(empty, "No Goals in Lee Lund&#39;s org match.") {
+		t.Errorf("an empty org under another filter doesn't say so: %s", empty)
 	}
 }
 
 // With no Managers anywhere, as when no directory is synced, the list offers
-// no Chain, and a ?chain= link scopes nothing.
-func TestGoalListOffersNoChainWithoutManagers(t *testing.T) {
+// no org, and a ?org= link scopes nothing.
+func TestGoalListOffersNoOrgWithoutManagers(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -994,12 +1023,12 @@ func TestGoalListOffersNoChainWithoutManagers(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/goals?chain="+strconv.FormatInt(kim.ID, 10))
-	if strings.Contains(page, "goal-chain-filter") || strings.Contains(page, "Chain") {
-		t.Errorf("without Managers the list offers a Chain")
+	page := getBody(t, client, ts.URL+"/goals?org="+strconv.FormatInt(kim.ID, 10))
+	if strings.Contains(page, "goal-org-filter") || strings.Contains(page, "Any org") {
+		t.Errorf("without Managers the list offers an org")
 	}
 	if got := len(goalRows(t, page)); got != 2 {
-		t.Errorf("without Managers a ?chain= scoped the list to %d Goals, want both", got)
+		t.Errorf("without Managers a ?org= scoped the list to %d Goals, want both", got)
 	}
 }
 
@@ -1068,7 +1097,7 @@ func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 
 	page := getBody(t, client, ts.URL+"/goals")
 	head := pageElement(t, page, "header", "goals-head")
-	for _, want := range []string{"<h1>Goals</h1>", "Every goal in the org. Problems sort to the top."} {
+	for _, want := range []string{"<h1>Goals</h1>", "Every goal in the company. Problems sort to the top."} {
 		if !strings.Contains(head, want) {
 			t.Errorf("header lacks %q: %s", want, head)
 		}
@@ -2061,7 +2090,7 @@ func TestGoalPageExplainsSoWhatAndTopLevelOnActivation(t *testing.T) {
 
 	for _, tc := range []struct{ label, control, text string }{
 		{"What is a So What?", `<button type="button" class="disclose help explain gp-lead-help"`, "The customer problem this Goal addresses and what is expected to change when it succeeds."},
-		{"Top-level", `<button type="button" class="disclose help" data-testid="goal-top-level"`, "One of the org's root outcomes"},
+		{"Top-level", `<button type="button" class="disclose help" data-testid="goal-top-level"`, "One of the company's root outcomes"},
 	} {
 		at := strings.Index(page, tc.control)
 		if at < 0 {
@@ -2086,7 +2115,7 @@ func TestGoalPageExplainsSoWhatAndTopLevelOnActivation(t *testing.T) {
 	disclosureScript(t, page)
 }
 
-// With a seeded org, every page that shows people shows them by Name with
+// With a seeded company, every page that shows people shows them by Name with
 // their email a click, tap or keypress away, never an email as text until
 // asked for; the Print view, with no hover or controls, introduces them as
 // Name (email) (CONTEXT.md: Name).
@@ -2106,7 +2135,7 @@ func TestSeededPagesShowPeopleByName(t *testing.T) {
 	}
 
 	// An Active Goal owned by someone whose email spells out their Name, and
-	// another person to delegate to, hand off to, and leave the org.
+	// another person to delegate to, hand off to, and leave the company.
 	var g domain.Goal
 	for _, c := range goals {
 		if c.Lifecycle == domain.LifecycleActive && strings.Contains(c.Owner.Email, ".") && c.Owner.Name != "" {
@@ -2115,7 +2144,7 @@ func TestSeededPagesShowPeopleByName(t *testing.T) {
 		}
 	}
 	if g.ID == 0 {
-		t.Fatal("seeded org has no Active Goal owned by a named person")
+		t.Fatal("seeded company has no Active Goal owned by a named person")
 	}
 	owner := g.Owner
 	var other, departed domain.Account

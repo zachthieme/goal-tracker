@@ -17,15 +17,15 @@ import (
 type Account struct {
 	ID    int64
 	Email string
-	// Name is what the tool calls the person, from the org's sign-in; empty
+	// Name is what the tool calls the person, from the company's sign-in; empty
 	// until they have one (CONTEXT.md: Name). Show a person with Label, not
 	// Name or Email.
 	Name    string
 	IsAdmin bool
-	// Departed is set once an Admin records that the person has left the org; the
+	// Departed is set once an Admin records that the person has left the company; the
 	// Goals they still own are then Ownerless (CONTEXT.md: Ownerless).
 	Departed bool
-	// ManagerID is the Account of this person's Manager, as the org's
+	// ManagerID is the Account of this person's Manager, as the company's
 	// directory records it; nil for someone it gives none (CONTEXT.md:
 	// Manager). Only the directory sync sets it (ADR 0008).
 	ManagerID *int64
@@ -35,7 +35,7 @@ type Account struct {
 var ErrNotFound = errors.New("not found")
 
 // ErrDeparted is returned when a Departed person tries to sign in: they have
-// left the org and can't sign in or act (CONTEXT.md: Departed).
+// left the company and can't sign in or act (CONTEXT.md: Departed).
 var ErrDeparted = errors.New("account has departed")
 
 // timeFormat is how timestamps are stored in SQLite TEXT columns.
@@ -141,7 +141,7 @@ func (s *Service) AccountByEmail(ctx context.Context, emailAddr string) (Account
 	return accountFromRow(a), nil
 }
 
-// SetName records the Name the org's sign-in supplies for the person behind
+// SetName records the Name the company's sign-in supplies for the person behind
 // accountID (CONTEXT.md: Name); a blank name clears it. Nothing in the tool lets
 // anyone type a Name: this is the seam a sign-in integration, or the seed,
 // supplies it through.
@@ -156,7 +156,7 @@ func (s *Service) SetName(ctx context.Context, accountID int64, name string) err
 	return nil
 }
 
-// MarkDeparted records that the person behind accountID has left the org, so the
+// MarkDeparted records that the person behind accountID has left the company, so the
 // Goals they still own become Ownerless (CONTEXT.md: Ownerless), and cancels
 // every pending Handoff to them in the same transaction. Pending Handoffs they
 // started as Owner stay pending, so the new Owner can still accept them. Only an
@@ -253,7 +253,7 @@ func (s *Service) SignIn(ctx context.Context, emailAddr string) (Account, error)
 		return Account{}, err
 	}
 	if acc.Departed {
-		return Account{}, fmt.Errorf("%w: %s has left the org", ErrDeparted, emailAddr)
+		return Account{}, fmt.Errorf("%w: %s has left the company", ErrDeparted, emailAddr)
 	}
 	return acc, nil
 }

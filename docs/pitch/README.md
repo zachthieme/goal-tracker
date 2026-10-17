@@ -3,7 +3,7 @@
 `goal-tracker-pitch.pptx` is an eleven-slide deck asking leadership to pilot
 Goal Tracker in place of a PowerPoint status deck. Its screenshots and its
 short check-in recording come from the
-real app over the [fake org](../../README.md#seed-a-fake-org), and the two
+real app over the [fake company](../../README.md#seed-a-fake-company), and the two
 scripts here rebuild it.
 
 ## Rebuilding it
@@ -36,6 +36,6 @@ Edit the text or layout in `build.mjs` and rebuild; to change what a
 screenshot shows, edit `capture.mjs`. Open the result in PowerPoint or
 LibreOffice and look at every slide: text that fits in one may wrap in the
 other. Slide 3's problems and slide 4's PowerPoint column are generic,
-and the pilot on slides 2 and 11 names no org, date or cost. Fit them to the
+and the pilot on slides 2 and 11 names no company, date or cost. Fit them to the
 audience before presenting. Slide 9 says what is built and what isn't: keep
 it true as the product changes.

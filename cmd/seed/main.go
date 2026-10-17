@@ -1,8 +1,8 @@
-// Command seed fills a fresh database with a fake but realistic org — about 50
+// Command seed fills a fresh database with a fake but realistic company — about 50
 // Goals across six teams, with weeks of Check-in history — so the prototype can
 // be demoed without real data (ticket #23). It works through the spreadsheet
 // import and the domain commands, never by writing to the database directly,
-// and it is deterministic: the same -seed and -end build the same org.
+// and it is deterministic: the same -seed and -end build the same company.
 package main
 
 import (
@@ -35,7 +35,7 @@ func main() {
 func run(logger *slog.Logger, args []string) error {
 	fs := flag.NewFlagSet("seed", flag.ContinueOnError)
 	dbPath := fs.String("db", envOr("GOAL_TRACKER_DB", "goal-tracker.db"), "SQLite database to seed; it must have no Goals yet")
-	seedValue := fs.Uint64("seed", seed.DefaultSeed, "random seed; the same seed builds the same org")
+	seedValue := fs.Uint64("seed", seed.DefaultSeed, "random seed; the same seed builds the same company")
 	adminEmail := fs.String("admin", "admin@example.com", "email of the Admin who defines the Team Dimension and runs the import")
 	endFlag := fs.String("end", "", "last day of the Check-in history, YYYY-MM-DD (default: now)")
 	if err := fs.Parse(args); err != nil {
@@ -69,7 +69,7 @@ func run(logger *slog.Logger, args []string) error {
 	if err != nil {
 		return err
 	}
-	logger.Info("seeded a fake org",
+	logger.Info("seeded a fake company",
 		"db", *dbPath, "goals", sum.Goals, "checkins", sum.Checkins,
 		"admin", *adminEmail, "seed", *seedValue, "end", end.Format(time.DateOnly))
 	return nil

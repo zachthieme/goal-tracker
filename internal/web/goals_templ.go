@@ -56,7 +56,7 @@ func goalsPage(current *domain.Account, view goalsListData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <header data-testid=\"goals-head\" class=\"page-head\"><div><h1>Goals</h1><p class=\"muted\">Every goal in the org. Problems sort to the top.</p></div><a data-testid=\"new-goal\" class=\"btn primary\" href=\"/goals/new\">New goal</a></header>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <header data-testid=\"goals-head\" class=\"page-head\"><div><h1>Goals</h1><p class=\"muted\">Every goal in the company. Problems sort to the top.</p></div><a data-testid=\"new-goal\" class=\"btn primary\" href=\"/goals/new\">New goal</a></header>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -83,7 +83,7 @@ func goalsPage(current *domain.Account, view goalsListData) templ.Component {
 }
 
 // goalFilters is the filter bar — search, Health, Lifecycle, Mine only, the
-// Chain when anyone has a Manager, and Incomplete — with the Dimension filters and Group by folded under More
+// Org when anyone has a Manager, and Incomplete — with the Dimension filters and Group by folded under More
 // filters, all submitted as a GET so the chosen slice lives in the URL.
 //
 // Under htmx the form applies itself (#94): a change, a pause in typing the
@@ -258,8 +258,8 @@ func goalFilters(view goalsListData) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if view.Chain.Offered() {
-			templ_7745c5c3_Err = pageChainSelect("goal-chain-filter", view.Chain).Render(ctx, templ_7745c5c3_Buffer)
+		if view.Org.Offered() {
+			templ_7745c5c3_Err = pageOrgSelect("goal-org-filter", view.Org).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -501,11 +501,11 @@ func goalFilters(view goalsListData) templ.Component {
 	})
 }
 
-// pageChainSelect picks the Chain a page of Goals is scoped to: Any Chain, My
-// Chain for a viewer with anyone under them, then each other person whose
-// Chain holds Goals, by Name with their email to tell same-Named people apart
-// (CONTEXT.md: Chain, Name). It submits ?chain=, the chosen person's ID.
-func pageChainSelect(testID string, c pageChainScope) templ.Component {
+// pageOrgSelect picks the Org a page of Goals is scoped to: Any org, My
+// org for a viewer with anyone under them, then each other person whose
+// Org holds Goals, by Name with their email to tell same-Named people apart
+// (CONTEXT.md: Org, Name). It submits ?org=, the chosen person's ID.
+func pageOrgSelect(testID string, c pageOrgScope) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -539,7 +539,7 @@ func pageChainSelect(testID string, c pageChainScope) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "\" name=\"chain\" aria-label=\"Chain\"><option value=\"\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "\" name=\"org\" aria-label=\"Org\"><option value=\"\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -549,7 +549,7 @@ func pageChainSelect(testID string, c pageChainScope) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, ">Any Chain</option> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, ">Any org</option> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -577,7 +577,7 @@ func pageChainSelect(testID string, c pageChainScope) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, ">My Chain</option> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, ">My org</option> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2727,7 +2727,7 @@ func goalPage(current *domain.Account, v goalView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if g.Ownerless {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 256, "<p data-testid=\"goal-ownerless\" class=\"alert ol\" role=\"alert\"><strong>Ownerless</strong><span>this Goal's Owner has left the org and it needs an Admin to reassign it.</span></p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 256, "<p data-testid=\"goal-ownerless\" class=\"alert ol\" role=\"alert\"><strong>Ownerless</strong><span>this Goal's Owner has left the company and it needs an Admin to reassign it.</span></p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -4032,9 +4032,9 @@ func ownerForms(v goalView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var173 string
-				templ_7745c5c3_Var173, templ_7745c5c3_Err = templ.JoinStringErrs(" has left the org.")
+				templ_7745c5c3_Var173, templ_7745c5c3_Err = templ.JoinStringErrs(" has left the company.")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goals.templ`, Line: 937, Col: 26}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goals.templ`, Line: 937, Col: 30}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var173))
 				if templ_7745c5c3_Err != nil {
@@ -4129,9 +4129,9 @@ func ownerForms(v goalView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var179 string
-				templ_7745c5c3_Var179, templ_7745c5c3_Err = templ.JoinStringErrs(" is back in the org.")
+				templ_7745c5c3_Var179, templ_7745c5c3_Err = templ.JoinStringErrs(" is back in the company.")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goals.templ`, Line: 952, Col: 28}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goals.templ`, Line: 952, Col: 32}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var179))
 				if templ_7745c5c3_Err != nil {
@@ -4212,7 +4212,7 @@ func ownerForms(v goalView) templ.Component {
 const soWhatHelp = "The customer problem this Goal addresses and what is expected to change when it succeeds."
 
 // topLevelHelp says what Top-level means, opened from the Goal page's badge.
-const topLevelHelp = "One of the org's root outcomes"
+const topLevelHelp = "One of the company's root outcomes"
 
 // confirmDepart is what an Admin confirms before marking a Goal's Owner departed.
 const confirmDepart = "Mark this Owner departed? Every Goal they own becomes Ownerless until an Admin reassigns it."

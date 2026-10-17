@@ -51,7 +51,7 @@ and who has to act.
    in three groups by who has to act: **Owner needs to update** (Stale, Path
    to Green overdue), **Plan doesn't fit** (Unaligned, schedule conflicts),
    **Needs an Admin** (Ownerless, parent On Hold or Cancelled).
-4. She narrows it to the same org. Each flagged Goal is one row, worst first,
+4. She narrows it to her org. Each flagged Goal is one row, worst first,
    with a chip for each reason and one **Fix**.
 5. A Goal she doesn't own has gone Stale. The Fix is **Nudge**: its Owner and
    Delegates are asked to check in, and it can't be nudged again that day.
@@ -71,7 +71,7 @@ as it needs to go: her boss, and their boss.
 rest: the detailed data on each, the Owner's next steps, and the context of
 what other challenges sit around it. It writes itself from the managers'
 Check-ins, so Elena curates and doesn't chase or retype, and a reader two
-levels up can follow it without knowing the org.
+levels up can follow it without knowing her org.
 
 1. Once, she builds a Report Definition: a name, an introduction, and a Report
    rule such as Team is any of Platform. A rail lists the Goals the rules
@@ -104,7 +104,7 @@ rules or a hand-picked list, never from following Contributes to links
 
 **It worked if:** each exception carried its data, its next steps (the Path
 to Green) and enough context to stand alone; the narrative and the other
-exceptions showed what else the org is up against; she wrote only the
+exceptions showed what else her org is up against; she wrote only the
 introduction and her own notes; a reader far above the work understood it
 cold; a question reached the right Owner without anyone looking up who owns
 what; nothing agreed was lost by the next review.

@@ -31,7 +31,7 @@ templ adminPage(current *domain.Account, dirSync *directorySyncView, ownerless [
 		<section data-testid="admin-ownerless" class="ad-section">
 			<div>
 				<h2>Ownerless Goals</h2>
-				<p class="muted">Goals whose Owner has left the org, waiting for an Admin to reassign them on the Goal's page.</p>
+				<p class="muted">Goals whose Owner has left the company, waiting for an Admin to reassign them on the Goal's page.</p>
 			</div>
 			<div class="card">
 				if len(ownerless) == 0 {
@@ -59,11 +59,11 @@ templ adminPage(current *domain.Account, dirSync *directorySyncView, ownerless [
 		<section data-testid="admin-departed" class="ad-section">
 			<div>
 				<h2>Departed people</h2>
-				<p class="muted">People who have left the org. Mark someone returned to let them sign in and act again.</p>
+				<p class="muted">People who have left the company. Mark someone returned to let them sign in and act again.</p>
 			</div>
 			<div class="card">
 				if len(departed) == 0 {
-					<p data-testid="admin-departed-empty" class="muted">Nobody has left the org.</p>
+					<p data-testid="admin-departed-empty" class="muted">Nobody has left the company.</p>
 				} else {
 					<table>
 						<thead>
@@ -100,7 +100,7 @@ templ adminDirectorySync(v directorySyncView) {
 	<section data-testid="admin-directory-sync" class="ad-section">
 		<div>
 			<h2>Directory sync</h2>
-			<p class="muted">People and their Managers come from the org's directory, synced at startup and then hourly.</p>
+			<p class="muted">People and their Managers come from the company's directory, synced at startup and then hourly.</p>
 		</div>
 		<div class="card ad-sync">
 			if !v.Ran {
