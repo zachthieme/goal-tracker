@@ -1064,6 +1064,70 @@ func TestBuilderChipHasARemoveCheckboxScriptHidesOverHTTP(t *testing.T) {
 	}
 }
 
+// The builder's head is laid out like every other page's: one <div> inside
+// <header class="page-head">, its breadcrumb above its title, both at the
+// left, the last crumb the page itself (ticket #277).
+func TestBuilderHeadStacksTheBreadcrumbAboveTheTitleOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Grow revenue", "Matters.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	draft := "/reports/" + strconv.FormatInt(def.ID, 10)
+
+	for _, tc := range []struct {
+		path, crumb, title string
+		links              []string
+	}{
+		{"/reports/new", "Reports / New", "New report", []string{`<a href="/reports">Reports</a>`}},
+		{draft + "/edit", "Reports / MBR / Edit", "Edit report", []string{`<a href="/reports">Reports</a>`, `<a href="` + draft + `">MBR</a>`}},
+	} {
+		crumb, title := reportBuilderHead(t, getBody(t, client, ts.URL+tc.path))
+		if got := strings.Join(strings.Fields(html.UnescapeString(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(crumb, " "))), " "); got != tc.crumb {
+			t.Errorf("%s: the breadcrumb reads %q, want %q", tc.path, got, tc.crumb)
+		}
+		for _, link := range tc.links {
+			if !strings.Contains(crumb, link) {
+				t.Errorf("%s: the breadcrumb lacks %s:\n%s", tc.path, link, crumb)
+			}
+		}
+		if last := tc.crumb[strings.LastIndex(tc.crumb, "/ ")+2:]; !strings.Contains(crumb, `<span aria-current="page">`+last+`</span>`) {
+			t.Errorf("%s: the last crumb %q isn't marked the current page:\n%s", tc.path, last, crumb)
+		}
+		if title != tc.title {
+			t.Errorf("%s: the title is %q, want %q", tc.path, title, tc.title)
+		}
+	}
+}
+
+// reportBuilderHead checks the builder page's head is <header
+// class="page-head"> holding one <div> of a breadcrumb nav then an <h1>, and
+// returns the nav and the title.
+func reportBuilderHead(t *testing.T, page string) (crumb, title string) {
+	t.Helper()
+	head := between(t, page, `<header class="page-head">`, `</header>`)
+	rest, ok := strings.CutPrefix(head, `<header class="page-head"><div>`)
+	if !ok || !strings.HasPrefix(rest, "<nav ") {
+		t.Fatalf("the head doesn't open with a <div> holding a <nav>:\n%s", head)
+	}
+	crumb, rest, _ = strings.Cut(rest, "</nav>")
+	if !strings.Contains(openTag(crumb), `aria-label="Breadcrumb"`) {
+		t.Errorf("the head's nav isn't the breadcrumb: %s", openTag(crumb))
+	}
+	title, ok = strings.CutPrefix(rest, "<h1>")
+	if !ok {
+		t.Fatalf("no <h1> follows the breadcrumb:\n%s", head)
+	}
+	title, ok = strings.CutSuffix(title, "</h1></div>")
+	if !ok {
+		t.Fatalf("the head holds more than the breadcrumb and title in one <div>:\n%s", head)
+	}
+	return crumb, title
+}
+
 // The edit page's breadcrumb names the definition as saved, not as typed, on
 // every round trip: a refusal, Add rule, a rule's × and Show matches (ticket
 // #168).
@@ -1077,7 +1141,7 @@ func TestEditBuilderBreadcrumbShowsTheSavedNameOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 	draft := "/reports/" + strconv.FormatInt(def.ID, 10)
-	crumb := `<a href="` + draft + `">MBR</a> / Edit`
+	crumb := `<a href="` + draft + `">MBR</a> / <span aria-current="page">Edit</span>`
 
 	for _, tc := range []struct {
 		name, typed string
@@ -1096,8 +1160,8 @@ func TestEditBuilderBreadcrumbShowsTheSavedNameOverHTTP(t *testing.T) {
 		}
 		maps.Copy(form, tc.submit)
 		page := readBody(t, postForm(t, client, ts.URL+draft+"/edit", form))
-		if head := between(t, page, `<div class="page-head">`, `</p>`); !strings.Contains(head, crumb) {
-			t.Errorf("after %s the breadcrumb isn't %s:\n%s", tc.name, crumb, head)
+		if nav, _ := reportBuilderHead(t, page); !strings.Contains(nav, crumb) {
+			t.Errorf("after %s the breadcrumb isn't %s:\n%s", tc.name, crumb, nav)
 		}
 	}
 }

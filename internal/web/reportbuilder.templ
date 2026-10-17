@@ -16,17 +16,19 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 	@layout(v.title(), current) {
 		@reportStyles()
 		@reportBuilderStyles()
-		<div class="page-head">
-			<p class="small muted">
-				<a href="/reports">Reports</a>{ " / " }
-				if v.ID != 0 {
-					<a href={ templ.SafeURL(v.draft()) }>{ v.Saved }</a>{ " / " }Edit
-				} else {
-					New
-				}
-			</p>
-			<h1>{ v.title() }</h1>
-		</div>
+		<header class="page-head">
+			<div>
+				<nav class="small muted" aria-label="Breadcrumb">
+					<a href="/reports">Reports</a>{ " / " }
+					if v.ID != 0 {
+						<a href={ templ.SafeURL(v.draft()) }>{ v.Saved }</a>{ " / " }<span aria-current="page">Edit</span>
+					} else {
+						<span aria-current="page">New</span>
+					}
+				</nav>
+				<h1>{ v.title() }</h1>
+			</div>
+		</header>
 		<div class="rb-layout">
 			<form
 				data-testid="report-builder"
