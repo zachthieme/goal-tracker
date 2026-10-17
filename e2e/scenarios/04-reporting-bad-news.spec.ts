@@ -184,7 +184,7 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
       .filter({ has: marcus.getByRole("link", { name: project.title, exact: true }) });
     await expect(row.getByTestId("risk-owner")).toContainText(project.name);
     await expect(row.locator('[data-testid="risk-signal"][data-kind="path-overdue"]')).toHaveText(
-      /^Path to Green \d+d overdue$/,
+      /^Path to Green \d+ days? overdue$/,
     );
     await expect(row.getByTestId("risk-fix")).toHaveCount(1);
 

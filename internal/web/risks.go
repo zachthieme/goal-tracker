@@ -19,7 +19,8 @@ import (
 // handleRisks answers "what's going wrong?" for leadership: every Goal the
 // freshness and graph signals flag, by problem type, scoped by its address to
 // the viewer's own Goals (?org=mine, or the older ?mine=1) or an Org's
-// (?org=), and to the Goals with an offered Dimension's value (?value=). The
+// (?org=), and to the Goals with an offered Dimension's value (?value=, one per
+// Dimension). The
 // scope narrows the rows only after they are built: loadRisks stays
 // company-wide for the top bar's count.
 func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current domain.Account) {
@@ -85,15 +86,19 @@ func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain
 		Dimensions: domain.OfferedDimensions(dims),
 		Today:      s.svc.Now().In(s.svc.Timezone()),
 	}
-	page.Value = riskValue(q.Get("value"), page.Dimensions)
+	page.Values = riskValues(q["value"], page.Dimensions)
 	var valued map[int64]bool
-	if page.Value.ID != 0 {
+	if len(page.Values) > 0 {
 		goals, err := s.svc.ListGoalsWithValues(ctx)
 		if err != nil {
 			return risksPageView{}, err
 		}
+		byDimension := map[int64][]int64{}
+		for _, v := range page.Values {
+			byDimension[v.DimensionID] = []int64{v.ID}
+		}
 		valued = map[int64]bool{}
-		for _, gv := range domain.FilterGoals(goals, map[int64][]int64{page.Value.DimensionID: {page.Value.ID}}) {
+		for _, gv := range domain.FilterGoals(goals, byDimension) {
 			valued[gv.Goal.ID] = true
 		}
 	}
@@ -112,21 +117,27 @@ func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain
 	return page, nil
 }
 
-// riskValue is the offered Dimensions' value raw names by its ID, or the zero
-// value when it names none of them.
-func riskValue(raw string, dims []domain.Dimension) domain.DimensionValue {
-	id, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		return domain.DimensionValue{}
-	}
+// riskValues are the offered Dimensions' values raw names by their IDs, in
+// the Dimensions' order, at most one per Dimension: the first raw names there.
+// A raw naming none of them is ignored.
+func riskValues(raw []string, dims []domain.Dimension) []domain.DimensionValue {
+	var values []domain.DimensionValue
 	for _, d := range dims {
-		for _, v := range d.Values {
-			if v.ID == id {
-				return v
+	value:
+		for _, r := range raw {
+			id, err := strconv.ParseInt(r, 10, 64)
+			if err != nil {
+				continue
+			}
+			for _, v := range d.Values {
+				if v.ID == id {
+					values = append(values, v)
+					break value
+				}
 			}
 		}
 	}
-	return domain.DimensionValue{}
+	return values
 }
 
 // riskValueLabel is how the value select names a value: a Retired one says so.
@@ -140,8 +151,8 @@ func riskValueLabel(v domain.DimensionValue) string {
 // risksPageView is the Risks page: its lists, its rows in scope, the group its
 // address filters it to, "" for every group, whether it is scoped to the
 // viewer's own Goals or an Org, one at a time, the offered Dimensions and the
-// value of theirs it is scoped to, if any, and today, which its dates are read
-// against.
+// values of theirs it is scoped to, at most one each, in the Dimensions'
+// order, and today, which its dates are read against.
 type risksPageView struct {
 	risksView
 	Rows       []riskGoalRow
@@ -149,8 +160,19 @@ type risksPageView struct {
 	Mine       bool
 	Org        pageOrgScope
 	Dimensions []domain.Dimension
-	Value      domain.DimensionValue
+	Values     []domain.DimensionValue
 	Today      time.Time
+}
+
+// valueIn is the value of the Dimension dimID the page is scoped to, or the
+// zero value when it is scoped to none of that Dimension's.
+func (p risksPageView) valueIn(dimID int64) domain.DimensionValue {
+	for _, v := range p.Values {
+		if v.DimensionID == dimID {
+			return v
+		}
+	}
+	return domain.DimensionValue{}
 }
 
 // scope is the ?org= the page is scoped by: "mine" for Mine, the ID of the
@@ -163,7 +185,7 @@ func (p risksPageView) scope() string {
 }
 
 // url is the Risks page's address filtered to group ("" for every group),
-// keeping the page's scope and value scope.
+// keeping the page's scope and every value it is scoped to.
 func (p risksPageView) url(group string) string {
 	q := url.Values{}
 	if sc := p.scope(); sc != "" {
@@ -172,8 +194,8 @@ func (p risksPageView) url(group string) string {
 	if group != "" {
 		q.Set("group", group)
 	}
-	if p.Value.ID != 0 {
-		q.Set("value", strconv.FormatInt(p.Value.ID, 10))
+	for _, v := range p.Values {
+		q.Add("value", strconv.FormatInt(v.ID, 10))
 	}
 	if len(q) == 0 {
 		return "/risks"
@@ -220,15 +242,15 @@ func (p risksPageView) Shown() []riskGoalRow {
 	return shown
 }
 
-// Filtered reports whether the page is scoped to Mine, an Org or a value, or
+// Filtered reports whether the page is scoped to Mine, an Org or values, or
 // filtered to a group.
 func (p risksPageView) Filtered() bool {
-	return p.Mine || p.Org.Of != nil || p.Value.ID != 0 || p.Group != ""
+	return p.Mine || p.Org.Of != nil || len(p.Values) > 0 || p.Group != ""
 }
 
 // Empty is what the page says when no Goal is left to show: where nothing
-// needs attention, naming Mine or the Org, the value with its Dimension's
-// name, and the group's card's title, in that order.
+// needs attention, naming Mine or the Org, each value with its Dimension's
+// name, in the Dimensions' order, and the group's card's title, in that order.
 func (p risksPageView) Empty() string {
 	var parts []string
 	if p.Mine {
@@ -237,11 +259,9 @@ func (p risksPageView) Empty() string {
 	if p.Org.Of != nil {
 		parts = append(parts, p.Org.Name())
 	}
-	if p.Value.ID != 0 {
-		for _, d := range p.Dimensions {
-			if d.ID == p.Value.DimensionID {
-				parts = append(parts, d.Name+" "+p.Value.Value)
-			}
+	for _, d := range p.Dimensions {
+		if v := p.valueIn(d.ID); v.ID != 0 {
+			parts = append(parts, d.Name+" "+v.Value)
 		}
 	}
 	for _, gk := range riskGroupKinds {
