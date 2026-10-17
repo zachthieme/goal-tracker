@@ -27,9 +27,13 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Goal page's Draft Highlights block no longer shows its log form on every visit: a "+ Log a highlight" link beside its heading opens the form in place, with a Cancel, and an empty block is just its heading and that link. A Done or Cancelled Goal offers no link and leaves the block out unless Draft Highlights are still pending (#280).
 - [user] The Goal page leaves out its Highlights section when the Goal has no Highlights, instead of saying "No Highlights yet" (#280).
 - [user] The Goal page's History opens on its 5 latest entries instead of 20, and "Show earlier" adds 20 more at a time. A run of Check-ins that repeat the one before them, as No change Check-ins do, folds into one "No change ×N" entry that lists each folded Check-in's time and author behind a disclosure; the filter chips still count every Check-in (#279).
+- [user] Every page shows dates one way, "Nov 7", or "Nov 7, 2025" outside the current year, and times as "Nov 7, 15:04" in the org's timezone (`GOAL_TRACKER_TIMEZONE`), with no "UTC". This replaces the ISO dates on the Goal page, the Goal list and Reports, and History's "Sat 17 Oct 16:25". Report pages always show the year, a date Field's value shows as a date, and dates outside tables are no longer set in monospace. Date inputs still hold ISO dates (#276).
 
 **Bug fixes:**
 - [user] The New report and Edit report headers match the other pages: the breadcrumb sits above the title, both at the left, instead of the title being pushed to the far right (#277).
+
+**Documentation:**
+- [internal] DESIGN.md gains a "Dates and times" section with the two formats and their rules, and its History examples use the new wording (#276).
 
 ### Collected changes — October 6, 2026
 
