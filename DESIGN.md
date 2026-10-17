@@ -484,10 +484,10 @@ Load the fonts with this URL:
   Deviations.
 - **Choice cards (`.gf-segment`):** the New goal form's Kind cards, Dated
   and Ongoing, with neither chosen at first. Each card draws its own radio dot.
-  An unchosen card is an outline: a 1px `--color-border-strong` edge, no fill,
+  An unchosen card is an outline: a 2px `--color-border-strong` edge, no fill,
   and an empty dot with a 2px `--color-border-strong` ring. The chosen card has
   a 2px `--color-primary` edge, a `--color-primary-light` fill and a filled
-  `--color-primary` dot. Its padding drops by 1px, so the card keeps its size.
+  `--color-primary` dot. The edge is 2px either way, so the card keeps its size.
   Keyboard focus takes the usual ring. All of this needs `:has()`. A browser
   without it shows the native radio, which still chooses. The Check-in cadence
   chips (`.gf-pick`) keep their 1px `--color-border` pill.

@@ -2099,10 +2099,10 @@ func TestProposedGoalChecklistLinksNowhere(t *testing.T) {
 }
 
 // A Kind card shows whether it's chosen: unchosen, an outline in the control
-// edge colour with an empty radio dot; chosen, a 2px primary edge, a filled
-// dot and a fill, the padding giving back the extra pixel so the card keeps its
-// size. All of it waits on :has, so a browser without it keeps the native
-// radio, which still chooses.
+// edge colour with an empty radio dot; chosen, a primary edge, a filled dot
+// and a fill. The edge is 2px either way, so choosing doesn't resize the card.
+// All of it waits on :has, so a browser without it keeps the native radio,
+// which still chooses.
 func TestNewGoalPageKindCardsShowWhichIsChosen(t *testing.T) {
 	t.Parallel()
 
@@ -2116,9 +2116,9 @@ func TestNewGoalPageKindCardsShowWhichIsChosen(t *testing.T) {
 	const supports = "@supports selector(:has(*))"
 	block := mediaBlock(t, style, supports)
 	for sel, want := range map[string][]string{
-		".gf-segment":                            {"border-color:var(--color-border-strong)"},
+		".gf-segment":                            {"border:2px solid var(--color-border-strong)"},
 		".gf-segment::before":                    {"border:2px solid var(--color-border-strong)", "border-radius:50%"},
-		".gf-segment:has(input:checked)":         {"border:2px solid var(--color-primary)", "padding:7px 11px", "background:var(--color-primary-light)"},
+		".gf-segment:has(input:checked)":         {"border-color:var(--color-primary)", "background:var(--color-primary-light)"},
 		".gf-segment:has(input:checked)::before": {"border-color:var(--color-primary)", "var(--color-primary)"},
 	} {
 		rule, ok := ruleFor(block, sel)
@@ -2132,8 +2132,8 @@ func TestNewGoalPageKindCardsShowWhichIsChosen(t *testing.T) {
 			}
 		}
 	}
-	if rule, ok := ruleFor(style, ".gf-segment"); !ok || !strings.Contains(rule, "padding:8px 12px") {
-		t.Errorf(".gf-segment declares %q, want the 8px 12px padding a 1px edge leaves", rule)
+	if rule, _ := ruleFor(block, ".gf-segment:has(input:checked)"); strings.Contains(rule, "border-width") || strings.Contains(rule, "padding") || strings.Contains(rule, "border:") {
+		t.Errorf("choosing a Kind card resizes it: %s", rule)
 	}
 	outside := strings.Replace(style, supports+"{"+block, "", 1)
 	if strings.Contains(outside, "opacity:0") || strings.Contains(outside, ".gf-segment::before") {

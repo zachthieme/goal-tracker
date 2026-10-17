@@ -795,9 +795,9 @@ templ goalFormStyles() {
 		@supports selector(:has(*)){
 			.gf-pick input{position:absolute;opacity:0;pointer-events:none}
 			.gf-pick:has(input:checked){border-color:var(--color-primary);background:var(--color-primary-subtle)}
-			.gf-segment{border-color:var(--color-border-strong)}
-			.gf-segment::before{content:"";flex:none;box-sizing:border-box;width:16px;height:16px;margin-top:2px;border:2px solid var(--color-border-strong);border-radius:50%}
-			.gf-segment:has(input:checked){border:2px solid var(--color-primary);padding:7px 11px;background:var(--color-primary-light)}
+			.gf-segment{border:2px solid var(--color-border-strong)}
+			.gf-segment::before{content:"";flex:none;box-sizing:border-box;width:16px;height:16px;margin-top:4px;border:2px solid var(--color-border-strong);border-radius:50%}
+			.gf-segment:has(input:checked){border-color:var(--color-primary);background:var(--color-primary-light)}
 			.gf-segment:has(input:checked)::before{border-color:var(--color-primary);background:radial-gradient(circle,var(--color-primary) 0 4px,transparent 4.5px)}
 			label.gf-pick:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}
 		}
