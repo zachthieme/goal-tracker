@@ -17,6 +17,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **New features:**
 - [user] A Goal's Owner or an Admin can fix its title and So What from "Edit title and So What" in the More ▾ menu, in any Lifecycle, Active included. Each title change shows in the Goal's History as "old → new" with who made it, under a new Title chip (#281).
+- [user] Put a Goal On Hold, mark it Done or cancel it from the Goal page's action menu. For the Owner or a Delegate, **Put on hold…**, **Mark done…** and **Cancel…** (on an Active Goal) or **Cancel…** (on an On Hold one) open the Check-in page with that change picked and its section open; it is still a Check-in, so the usual reason, outcome and final readings apply (#287).
 
 **Improvements:**
 - [user] Chain now reads **Org**, the glossary's word for a person and everyone below them by Manager. On Goals and Risks the scope picker offers "Any org", "My org" and "Priya Raman's org", and the Risks toggle has a **My org** button. In the Report builder, **Owner's org** comes with "is in the org of", "is in the org of any of" and "is not in the org of". Rules read back as "Owner is in the org of Priya Raman". Where a page, email or error message meant the whole organization by "the org", it now says "the company": "Every goal in the company", "has left the company", "the company's directory". The scope URL parameter is now `?org=`. Old `?chain=` links no longer scope a page, which shows unscoped (#288).
