@@ -1,6 +1,6 @@
 # Goal Tracker
 
-An MBR-caliber goal-tracking tool: an org states its Goals, updates them on a
+An MBR-caliber goal-tracking tool: a company states its Goals, updates them on a
 regular cadence with Check-ins, and produces Reports. The domain language is in
 [`CONTEXT.md`](CONTEXT.md) and the key decisions are in [`docs/adr/`](docs/adr/).
 
@@ -13,7 +13,7 @@ regular cadence with Check-ins, and produces Reports. The domain language is in
 | | `make start` | Like `make serve`, but in the background, logging to `serve.log` (`SERVE_LOG`). Stops the server a previous `make start` left running first. Takes the same settings, `NO_SSO=1` included, and records them for `make stop` and `make restart`. |
 | | `make stop` | Stops the server `make start` started, and its Authentik unless it started with `NO_SSO=1` (Authentik's data is kept). |
 | | `make restart` | Rebuilds and starts the server again with the settings the last `make start` recorded. A setting given to `make restart` replaces the recorded one. |
-| `go run ./cmd/seed` | `make seed` | Fills a fresh database with a fake org for demos (see [Seed a fake org](#seed-a-fake-org)). |
+| `go run ./cmd/seed` | `make seed` | Fills a fresh database with a fake company for demos (see [Seed a fake company](#seed-a-fake-company)). |
 
 The server is configured from the environment:
 
@@ -22,14 +22,14 @@ The server is configured from the environment:
 | `GOAL_TRACKER_ADDR` | `:8080` | Address to listen on. |
 | `GOAL_TRACKER_DB` | `goal-tracker.db` | SQLite database file; migrations run on start. |
 | `GOAL_TRACKER_ADMINS` | _(none)_ | Comma-separated emails that get the Admin flag when their account is first created. |
-| `GOAL_TRACKER_TIMEZONE` | `UTC` | The org's IANA timezone (e.g. `America/Los_Angeles`). Check-in cadences are counted in its days, so a Goal turns Stale and a Path to Green goes overdue at its midnight. |
+| `GOAL_TRACKER_TIMEZONE` | `UTC` | The company's IANA timezone (e.g. `America/Los_Angeles`). Check-in cadences are counted in its days, so a Goal turns Stale and a Path to Green goes overdue at its midnight. |
 | `GOAL_TRACKER_REMINDER_DAY` | `Monday` | Day of the week the weekly emails go out (see [Weekly emails](#weekly-emails)). |
-| `GOAL_TRACKER_REMINDER_TIME` | `09:00` | 24-hour time of day, in the org's timezone, the weekly emails go out. |
+| `GOAL_TRACKER_REMINDER_TIME` | `09:00` | 24-hour time of day, in the company's timezone, the weekly emails go out. |
 | `GOAL_TRACKER_BASE_URL` | from `GOAL_TRACKER_ADDR`, e.g. `http://localhost:8080` | Where people reach the app. Links in emails (the weekly emails and comment alerts) point here. |
-| `GOAL_TRACKER_OIDC_ISSUER` | _(none)_ | The org's OpenID Connect issuer URL. With the client ID and secret below, people sign in through it (see [Sign-in](#sign-in)). Set all three or none. |
+| `GOAL_TRACKER_OIDC_ISSUER` | _(none)_ | The company's OpenID Connect issuer URL. With the client ID and secret below, people sign in through it (see [Sign-in](#sign-in)). Set all three or none. |
 | `GOAL_TRACKER_OIDC_CLIENT_ID` | _(none)_ | Goal Tracker's client ID at the provider. |
 | `GOAL_TRACKER_OIDC_CLIENT_SECRET` | _(none)_ | Goal Tracker's client secret at the provider. |
-| `GOAL_TRACKER_DIRECTORY_URL` | _(none)_ | The org's directory, Authentik's base URL (e.g. `https://auth.example.com`). With the token below, the app syncs people and their Managers from it (see [Managers](#managers)). Set both or neither. |
+| `GOAL_TRACKER_DIRECTORY_URL` | _(none)_ | The company's directory, Authentik's base URL (e.g. `https://auth.example.com`). With the token below, the app syncs people and their Managers from it (see [Managers](#managers)). Set both or neither. |
 | `GOAL_TRACKER_DIRECTORY_TOKEN` | _(none)_ | An Authentik API token that can read users. |
 | `GOAL_TRACKER_SESSION_KEY` | _(random at each start)_ | Base64 key, at least 32 bytes, that signs session cookies (`openssl rand -base64 32`). Unset, the app makes a random one and logs a WARN: everyone is signed out when it restarts. |
 | `GOAL_TRACKER_START_AT` | _(none: the wall clock)_ | **Test-only.** An RFC 3339 instant (e.g. `2026-10-05T18:05:00Z`) the app's clock starts at, then ticks normally from; startup logs a WARN when it's set. The e2e suite uses it to run against a seed frozen at one date. Never set it in production. |
@@ -37,7 +37,7 @@ The server is configured from the environment:
 ## Sign-in
 
 With the three `GOAL_TRACKER_OIDC_*` variables set, people sign in through the
-org's OpenID Connect provider: the sign-in page has one button, "Sign in with
+company's OpenID Connect provider: the sign-in page has one button, "Sign in with
 your organization". Register `GOAL_TRACKER_BASE_URL` + `/auth/callback` (by
 default `http://localhost:8080/auth/callback`) as the redirect URI, and allow
 the authorization code grant with the scopes `openid email profile`. The
@@ -58,7 +58,7 @@ Either way the session cookie is signed with `GOAL_TRACKER_SESSION_KEY`, and is
 
 ## Managers
 
-Each person's Manager comes from the org's directory, never from the tool
+Each person's Manager comes from the company's directory, never from the tool
 ([ADR 0008](docs/adr/0008-managers-come-from-a-directory-sync.md)). With
 `GOAL_TRACKER_DIRECTORY_URL` and `GOAL_TRACKER_DIRECTORY_TOKEN` set, the app
 reads every user from Authentik's users API at startup and then hourly. Each
@@ -105,7 +105,7 @@ comment emails the Goal's current Owner. Replies in the thread email the Owner
 and everyone else who has written in it, except the reply's author. As with the
 weekly emails, the prototype logs these instead of sending them.
 
-## Seed a fake org
+## Seed a fake company
 
 To demo the prototype with a realistic organisation and no real data:
 
@@ -115,16 +115,16 @@ go run ./cmd/goal-tracker        # then sign in as admin@example.com
 ```
 
 The seed builds about 50 Goals and 12 weeks of history. It uses the same paths a
-real org would: an Admin defines a **Team** Dimension and loads the Goals
+real company would: an Admin defines a **Team** Dimension and loads the Goals
 through the [spreadsheet import](docs/import-format.md). The Owners then
 activate their Goals and write weekly Check-ins through the domain commands.
 Nothing is written to the database directly.
 
-- **Three levels of the graph:** three org outcomes (Ongoing, owned by the CEO,
+- **Three levels of the graph:** three company outcomes (Ongoing, owned by the CEO,
   CTO and CPO) are driven by two team Goals from each of six teams (Platform,
   Payments, Growth, Mobile, Data, Support). Each team Goal is driven by the
   team's projects.
-- **Check-in history:** team Goals and projects check in weekly, and org
+- **Check-in history:** team Goals and projects check in weekly, and company
   outcomes every other week on a 14-day cadence. Check-ins carry Health, a
   status, Paths to Green, and Metric readings. A parent's Owner usually reports
   its Rolled-up Health. Sometimes they report better than it and explain why.
@@ -140,13 +140,13 @@ Nothing is written to the database directly.
 - **Lifecycle:** a few projects are Done with an outcome, one is On Hold, one
   is Cancelled, and two are still Proposed.
 
-Sign in as `admin@example.com` (an Admin), or as any Owner in the org: the
-leads (`platform-lead@example.com` and so on), the org outcome owners
+Sign in as `admin@example.com` (an Admin), or as any Owner in the company: the
+leads (`platform-lead@example.com` and so on), the company outcome owners
 (`ceo@example.com`, `cto@example.com`, `cpo@example.com`), or a project Owner.
 Everyone the seed creates has a Name, which the pages show in place of their
 email; you still sign in with the email.
 
-The seed is deterministic. The same seed and end date build the same org,
+The seed is deterministic. The same seed and end date build the same company,
 Check-in for Check-in. It only seeds a fresh database: it refuses one that
 already has Goals, so to reseed, delete the database file and run it again.
 

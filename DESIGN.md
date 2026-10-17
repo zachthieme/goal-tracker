@@ -376,7 +376,7 @@ Load the fonts with this URL:
   change (a Handoff with its outcome, or an Admin Reassign), change to a
   Dimension value or Field, change to one of its "contributes to" links,
   Parent suggestion, Nudge, and Milestone added outside a Check-in.
-  - **Weeks:** entries are grouped by week, Monday to Sunday in the org's
+  - **Weeks:** entries are grouped by week, Monday to Sunday in the company's
     timezone. Each week is headed by a `.label` "Week of 28 Sep", with the
     year added when it isn't this year. Each entry's time is written in that
     timezone too ("Thu 8 Jan 15:04").
@@ -409,7 +409,7 @@ Load the fonts with this URL:
     the filter chips, the Goal's Health over its last 11 Check-in periods, one
     cell for each, oldest on the left and the current period on the right. A
     period is the Goal's cadence long (a week by default), counted in days of
-    the org's timezone as Stale is, and the current one ends on the Sunday
+    the company's timezone as Stale is, and the current one ends on the Sunday
     that closes this week, so a weekly Goal's cells are the weeks History is
     grouped by. How a period ended decides its cell: the last Check-in made in
     it. If that Check-in left the Goal Active, the cell takes its Health: the

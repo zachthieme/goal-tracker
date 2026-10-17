@@ -7,7 +7,7 @@ machine: Go, Python 3, Node 22, and Chromium for `shots.mjs`.
 ## `scratch-app`: a throwaway copy of the app
 
 `start` builds the working tree into a scratch directory, seeds a fresh
-database with the [fake org](../README.md#seed-a-fake-org), and serves it on a
+database with the [fake company](../README.md#seed-a-fake-company), and serves it on a
 free port with `admin@example.com` as an Admin. It waits until the app answers,
 then prints the base URL and how to sign in. Running `start` again replaces the
 running copy with a new build and a fresh database.

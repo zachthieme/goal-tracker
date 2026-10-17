@@ -43,8 +43,8 @@ October 2026**, not the machine's date:
 
 Every test's app starts its clock at **2026-10-05T18:05:00Z**
 (`GOAL_TRACKER_START_AT`, exported as `startAt`) and ticks on from there, so
-every run sees the same org at the same moment, whatever the machine's date.
-The seed's org isn't the same org shifted in time, so the date can't float:
+every run sees the same company at the same moment, whatever the machine's date.
+The seed's company isn't the same company shifted in time, so the date can't float:
 #226's follow-up, the seed invariants test in `internal/seed`, pins the same
 date, and the two move together.
 
@@ -59,7 +59,7 @@ there, not from `@playwright/test`. Each test gets:
   on a free port with `admin@example.com` as Admin, the way
   `scripts/scratch-app start` does, and stops after the test. `default` is the
   template unless the test asks for another: `test.use({ template: "due" })`.
-  Every test starts from the same seeded org and can't see another test's
+  Every test starts from the same seeded company and can't see another test's
   writes, so the suite runs `fullyParallel`. `page` and `as` resolve paths
   such as `"/home"` against it. The server runs in UTC with the default weekly
   reminder (Monday 09:00) and its clock offset to start at `startAt`; no
@@ -84,7 +84,7 @@ there, not from `@playwright/test`. Each test gets:
   only logs: email goes to the log through `email.LogSender`, not out.
 
 The seed's accounts are `admin@example.com` (Admin), `ceo@`, `cto@` and
-`cpo@example.com` (org outcomes), `<team>-lead@example.com` for Platform,
+`cpo@example.com` (company outcomes), `<team>-lead@example.com` for Platform,
 Payments, Growth, Mobile, Data and Support, and the project Owners. A fresh
 seed has Stale, Unaligned and Schedule conflict Goals on Risks. **Needs an
 Admin** is empty, and no Path to Green is overdue: every back-to-Green date is
