@@ -11,9 +11,9 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// handleCheckinPage shows the Check-in form on its own page, showing the Goal's
-// latest Check-in's answers as ghost text. Only whoever may write a Check-in — the Owner or a
-// Delegate — may open it (CONTEXT.md: Check-in, Delegate).
+// handleCheckinPage shows the Check-in form on its own page, with the Goal's
+// latest Check-in's answers as ghost text. Only whoever may write a Check-in —
+// the Owner or a Delegate — may open it (CONTEXT.md: Check-in, Delegate).
 func (s *Server) handleCheckinPage(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	goalID, ok := s.goalIDFromPath(w, r)
 	if !ok {

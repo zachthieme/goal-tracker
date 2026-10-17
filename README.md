@@ -87,7 +87,8 @@ The server sends two emails once a week, at the configured day and time:
 
 - **Check-in reminder**, to each Owner and Delegate. It lists their Active
   Goals that are Stale, or that will go Stale before next week's reminder
-  unless someone checks in. Each Goal links to its Check-in form, which shows last week's answers.
+  unless someone checks in. Each Goal links to its Check-in form, which shows
+  last week's answers.
 - **Parent digest**, to each parent Owner. It lists the link requests waiting
   on them. It also lists problems with the Goals that contribute to theirs: a
   child whose Health went Yellow or Red, that recorded a Date Slip, or that went

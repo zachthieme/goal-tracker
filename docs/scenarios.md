@@ -132,8 +132,8 @@ the price of scenarios 1 and 2, so it has to stay low.
 **It worked if:** four Goals took under five minutes; the Goal that moved got
 a Status written fresh, with last week's answers in view as she wrote it and
 none of them sent unless she typed it; her Health didn't have to be picked
-again; the optional parts (Highlights, dates and Milestones,
-Lifecycle) stayed folded away until she needed them.
+again; the optional parts (Highlights, dates and Milestones, Lifecycle) stayed
+folded away until she needed them.
 
 **When Priya is on holiday,** a Delegate she authorized checks in for her from
 "Goals delegated to you". The Check-in records who wrote it, and the Goal
