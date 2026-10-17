@@ -30,7 +30,11 @@ templ goalHistory(h history) {
 					<h3 class="label">{ w.Heading }</h3>
 					<ol class="tl-list">
 						for _, e := range w.Entries {
-							@historyItem(h, e)
+							if len(e.Folded) > 0 {
+								@historyFolded(h, e)
+							} else {
+								@historyItem(h, e)
+							}
 						}
 					</ol>
 				</section>
@@ -133,6 +137,48 @@ templ historyItem(h history, e historyEntry) {
 					@person(e.Value.Actor)
 				</p>
 		}
+	</li>
+}
+
+// historyFolded is a run of Check-ins that repeat the one before them, folded
+// into one line: "No change ×N" with the Health they repeat and the newest
+// one's time. A disclosure lists each folded Check-in's time and who wrote it
+// for whom, as plain text, so the entry keeps one time element.
+templ historyFolded(h history, e historyEntry) {
+	{{ c := e.Checkin }}
+	<li data-testid="history-entry" data-kind="checkin" data-folded={ strconv.Itoa(len(e.Folded)) } class="tl-entry">
+		@historyMarker(e)
+		<p class="tl-head">
+			<span class="tl-kind">{ e.foldedLabel() }</span>
+			if c.Health != "" {
+				<span class={ "badge", healthClass(c.Health) }><span class="dot"></span>{ c.Health }</span>
+			}
+			<time class="muted small" datetime={ e.At.In(h.Loc).Format("2006-01-02T15:04:05Z07:00") }>{ h.when(e.At) }</time>
+		</p>
+		<details data-testid="folded-checkins" class="tl-detail">
+			<summary class="small">
+				if len(e.Folded) == 1 {
+					1 Check-in
+				} else {
+					{ strconv.Itoa(len(e.Folded)) } Check-ins
+				}
+			</summary>
+			<ul class="tl-readings">
+				for _, f := range e.Folded {
+					<li>
+						<span>{ h.when(f.At) }</span>
+						<span class="muted small">
+							{ " by " }
+							@person(f.Checkin.Author)
+							if f.Checkin.Owner.ID != f.Checkin.Author.ID {
+								{ " for " }
+								@person(f.Checkin.Owner)
+							}
+						</span>
+					</li>
+				}
+			</ul>
+		</details>
 	</li>
 }
 

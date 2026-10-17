@@ -1577,3 +1577,121 @@ func TestGoalHistoryTitleChipListsOnlyTitleChanges(t *testing.T) {
 		}
 	}
 }
+
+// noChangeCheckin submits a No change Check-in on goal as author, failing the
+// test on error.
+func noChangeCheckin(t *testing.T, h *testsupport.Harness, author domain.Account, goal domain.Goal) domain.Checkin {
+	t.Helper()
+	c, err := h.Service.SubmitNoChangeCheckin(context.Background(), goal.ID, author.ID)
+	if err != nil {
+		t.Fatalf("SubmitNoChangeCheckin: %v", err)
+	}
+	return c
+}
+
+// foldedCount is how many Check-ins an entry folds, or "" for a full entry.
+func foldedCount(entry string) string {
+	_, rest, ok := strings.Cut(openTagOf(entry), `data-folded="`)
+	if !ok {
+		return ""
+	}
+	n, _, _ := strings.Cut(rest, `"`)
+	return n
+}
+
+// openTagOf is the rest of an entry's opening tag, after its test ID.
+func openTagOf(entry string) string {
+	tag, _, _ := strings.Cut(entry, ">")
+	return tag
+}
+
+// A Check-in followed by three No change Check-ins shows in full, under one
+// "No change ×3" entry at the newest one's place: a Check-in entry with the
+// Health it repeats, the newest one's time as its one time element, and a
+// disclosure listing each folded Check-in's time and who wrote it for whom.
+// The Check-ins chip still counts all four.
+func TestGoalHistoryFoldsNoChangeCheckinsIntoOneEntry(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignInNamed("sam@example.com", "Sam Owner")
+	dee := h.SignInNamed("dee@example.com", "Dee Delegate")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.AddDelegate(sam, dee, goal.ID)
+	h.Clock.Advance(24 * time.Hour) // Sat 3 Jan
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Vendor is late.", "Swap vendors.", testsupport.Epoch.AddDate(0, 2, 0))
+	for _, who := range []domain.Account{sam, dee, sam} { // Sat 10, 17 and 24 Jan
+		h.Clock.Advance(7 * 24 * time.Hour)
+		noChangeCheckin(t, h, who, goal)
+	}
+	ts := newServer(t, h)
+
+	history := historyBlock(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal)))
+	entries := historyEntries(history)
+	if len(entries) != 3 {
+		t.Fatalf("History lists %d entries, want the folded one, the full Check-in and the So What:\n%s", len(entries), history)
+	}
+	folded, full := entries[0], entries[1]
+	if kind, n := entryKind(t, folded), foldedCount(folded); kind != "checkin" || n != "3" {
+		t.Errorf("the latest entry is a %s folding %q, want a Check-in folding 3:\n%s", kind, n, folded)
+	}
+	if text := entryText(folded); !strings.Contains(text, "No change ×3") || !strings.Contains(text, "Yellow") {
+		t.Errorf("the folded entry reads %q, want No change ×3 and its Yellow", text)
+	}
+	if !strings.Contains(folded, `<span class="tl-mark y" aria-hidden="true">`) {
+		t.Errorf("the folded entry lacks the Yellow marker:\n%s", folded)
+	}
+	if times := regexp.MustCompile(`<time[ >]`).FindAllString(folded, -1); len(times) != 1 {
+		t.Errorf("the folded entry has %d time elements, want 1:\n%s", len(times), folded)
+	}
+	if at := between(t, folded, "<time", "</time>"); !strings.Contains(at, `datetime="2026-01-24T15:04:05Z"`) || !strings.Contains(at, "Sat 24 Jan 15:04") {
+		t.Errorf("the folded entry is dated %s, want its newest Check-in's Sat 24 Jan 15:04", at)
+	}
+	listed := between(t, folded, `data-testid="folded-checkins"`, "</details>")
+	samBy, deeBy := "by "+shownAs(sam.Email, "Sam Owner"), "by "+shownAs(dee.Email, "Dee Delegate")+" for "+shownAs(sam.Email, "Sam Owner")
+	lines := strings.Split(listed, "<li")[1:]
+	if len(lines) != 3 {
+		t.Fatalf("the disclosure lists %d Check-ins, want 3:\n%s", len(lines), listed)
+	}
+	for i, want := range []struct{ at, by string }{
+		{"Sat 24 Jan 15:04", samBy},
+		{"Sat 17 Jan 15:04", deeBy},
+		{"Sat 10 Jan 15:04", samBy},
+	} {
+		if !strings.Contains(lines[i], want.at) || !strings.Contains(lines[i], want.by) {
+			t.Errorf("folded Check-in %d lacks %q %q:\n%s", i, want.at, want.by, lines[i])
+		}
+	}
+	if foldedCount(full) != "" || !strings.Contains(full, "Vendor is late.") || !strings.Contains(full, "Sat 3 Jan 15:04") {
+		t.Errorf("the repeated Check-in doesn't show in full:\n%s", full)
+	}
+	weeks := strings.Split(history, `data-testid="history-week"`)[1:]
+	if len(weeks) != 2 || !strings.Contains(weeks[0], "Week of 19 Jan") || !strings.Contains(weeks[0], `data-folded="3"`) {
+		t.Errorf("the folded entry isn't under its newest Check-in's week, 19 Jan:\n%s", history)
+	}
+	if chips := historyChips(t, history); chips["Check-ins"].count != "4" || chips["All"].count != "5" {
+		t.Errorf("chips count %s Check-ins and %s in all, want 4 and 5", chips["Check-ins"].count, chips["All"].count)
+	}
+}
+
+// A single No change after a Check-in reads "No change", without a count.
+func TestGoalHistoryFoldsASingleNoChange(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.Clock.Advance(24 * time.Hour)
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(7 * 24 * time.Hour)
+	noChangeCheckin(t, h, sam, goal)
+	ts := newServer(t, h)
+
+	entries := historyEntries(historyBlock(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))))
+	if len(entries) != 3 || foldedCount(entries[0]) != "1" {
+		t.Fatalf("History doesn't lead with one folded No change: %d entries", len(entries))
+	}
+	if text := entryText(entries[0]); !strings.Contains(text, "No change") || strings.Contains(text, "×") {
+		t.Errorf("the folded entry reads %q, want No change without a count", text)
+	}
+}
