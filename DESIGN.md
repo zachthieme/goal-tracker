@@ -335,8 +335,8 @@ Load the fonts with this URL:
     (the Owner or a Delegate), a primary **Check in** link to the Goal's
     Check-in page and a quiet **No change** (`.btn.quiet`). Beside them sits
     the action menu. Anyone else sees only the menu.
-  - **Action menu (`.gp-more`):** a secondary button reading "⋯", named "More
-    actions" for assistive technology. It is a `<details>`, so it opens without
+  - **Action menu (`.gp-more`):** a secondary button reading "More ▾", named
+    and titled "More actions". It is a `<details>`, so it opens without
     script, and its panel (`.gp-menu`) is a card anchored right under the
     button. It lists actions, never forms: each item is a plain link, and each
     person sees only the actions they may take. When there would be none, the
@@ -349,7 +349,9 @@ Load the fonts with this URL:
   plain page. A refused submit comes back as the same page with the same form
   open, the reason in an alert at its top and what was typed still in it. It
   is all links and plain form posts, so it works without script.
-  - **Where each opens:** Top-level opens in the head, under the metadata line.
+  - **Where each opens:** Edit title and So What, for the Owner or an Admin,
+    and Top-level open in the head, under the metadata line. Edit title and So
+    What holds the title and the So What as they stand, with a Save.
     Hand off, Reassign, Mark owner departed and Mark returned open in People,
     under the Owner. Delegates and Contributors forms open in their groups.
     Link to a parent Goal opens under Contributes to, and the Dimension and
@@ -372,8 +374,8 @@ Load the fonts with this URL:
   A Goal with no Health shows its message in place of the cells.
 - **History timeline (`goalHistory` in `timeline.templ`):** the Goal page's
   History is one canvas block, open on load with no outer disclosure. It is
-  a single list, newest first, of every Check-in, So What revision, ownership
-  change (a Handoff with its outcome, or an Admin Reassign), change to a
+  a single list, newest first, of every Check-in, So What revision, title
+  change, ownership change (a Handoff with its outcome, or an Admin Reassign), change to a
   Dimension value or Field, change to one of its "contributes to" links,
   Parent suggestion, Nudge, and Milestone added outside a Check-in.
   - **Weeks:** entries are grouped by week, Monday to Sunday in the company's
@@ -385,15 +387,17 @@ Load the fonts with this URL:
     A Check-in's marker is its Health's dot, in the Health's ink and shape:
     ● Green, ▲ Yellow, ■ Red. It reads without colour, and its badge names the
     Health beside it. Every other kind has a neutral `--color-ink-muted`
-    marker with its own shape: a hollow ring for So What, a hollow diamond for
+    marker with its own shape: a hollow ring for So What and for a title
+    change, a hollow diamond for
     an ownership change, a bar for a value change, a hollow arch (round on
     top, square below) for a link change, a dashed ring for a Parent
     suggestion, a dashed square for a Nudge, a double ring for a Milestone
     added outside a Check-in, and a hollow square for a Check-in with no
     Health, such as one that put the Goal On Hold. Every entry also opens with
-    its kind as a bold text label (Check-in, So What, Handoff, Reassign, Value,
-    Link, Parent suggestion, Nudge, Milestone), so the marker is never the only
-    signal.
+    its kind as a bold text label (Check-in, So What, Title, Handoff, Reassign,
+    Value, Link, Parent suggestion, Nudge, Milestone), so the marker is never
+    the only signal.
+  - **A title entry** reads "*old* → *new*", then who changed it, by Name.
   - **A Check-in entry** shows its Health badge and status, then any
     Lifecycle change, Path to Green, and the Date Slips it recorded (the
     delivery date or a Milestone, ~~old~~ new, and the reason). Last comes who
@@ -435,7 +439,7 @@ Load the fonts with this URL:
     Goal that has been Active, and it changes nothing: not Stale, not Health.
   - **Filter chips (`.tl-chips`):** a row of `--radius-full` chips above the
     list, wrapping on narrow screens: All, Check-ins, Date Slips, So What,
-    Ownership, Links, Values. Each carries its count. Check-ins counts and
+    Title, Ownership, Links, Values. Each carries its count. Check-ins counts and
     lists the Check-ins, the Nudges asking for one, and the Milestones added
     outside a Check-in; Date Slips the Check-ins that carry one; and Links the
     link changes and Parent suggestions. A chip is a plain link to

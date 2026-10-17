@@ -4891,9 +4891,10 @@ func ownerOnlyGoalState(t *testing.T, h *testsupport.Harness, goalID int64) stri
 	return fmt.Sprintf("goal %+v\ncontributors %+v\nmetrics %+v\nrevisions %+v", g, contributors, metrics, revisions)
 }
 
-// Setting a Goal's Kind, delivery date, cadence, So What, Contributors and
-// Metrics, and Activating it, are the Owner's alone: anyone else, a Delegate
-// included, is refused with 403 and the Goal is left as it was (#191).
+// Setting a Goal's Kind, delivery date, cadence, Contributors and Metrics, and
+// Activating it, are the Owner's alone, and its So What the Owner's or an
+// Admin's (#281): anyone else, a Delegate included, is refused with 403 and
+// the Goal is left as it was (#191).
 func TestOnlyTheOwnerSetsUpAGoalOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -5072,5 +5073,146 @@ func TestOwnerOrAdminChangesAnActiveGoalsTitleOverHTTP(t *testing.T) {
 		if by := "by " + shownAs(who, strings.Split(who, "@")[0]); !strings.Contains(titles[0], by) {
 			t.Errorf("%s: the Title entry doesn't say it is %s: %s", who, by, titles[0])
 		}
+	}
+}
+
+// titleSoWhatHistory counts a Goal's So What revisions and title changes.
+func titleSoWhatHistory(t *testing.T, h *testsupport.Harness, goalID int64) (soWhats, titles int) {
+	t.Helper()
+	revisions, err := h.Service.ListSoWhatRevisions(t.Context(), goalID)
+	if err != nil {
+		t.Fatalf("ListSoWhatRevisions: %v", err)
+	}
+	titleRevisions, err := h.Service.ListTitleRevisions(t.Context(), goalID)
+	if err != nil {
+		t.Fatalf("ListTitleRevisions: %v", err)
+	}
+	return len(revisions), len(titleRevisions)
+}
+
+// Saving the Edit title and So What form changes only the field that
+// differs: an unchanged title records no title change, and an unchanged So
+// What no So What revision (#281).
+func TestEditTitleAndSoWhatRecordsOnlyWhatChangedOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	g := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	soWhats, titles := titleSoWhatHistory(t, h, g.ID)
+	_ = readBody(t, postForm(t, client, fmt.Sprintf("%s/goals/%d/so-what", ts.URL, g.ID), url.Values{
+		"title": {"Reduce outages"}, "so_what": {"Outages cost us customers."},
+	}))
+	if s, ti := titleSoWhatHistory(t, h, g.ID); s != soWhats+1 || ti != titles {
+		t.Errorf("only the So What changed: %d So What revisions and %d title changes, want %d and %d", s, ti, soWhats+1, titles)
+	}
+
+	g = h.ActiveGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	soWhats, titles = titleSoWhatHistory(t, h, g.ID)
+	_ = readBody(t, postForm(t, client, fmt.Sprintf("%s/goals/%d/so-what", ts.URL, g.ID), url.Values{
+		"title": {"Grow revenue 20%"}, "so_what": {" Revenue funds the rest. "},
+	}))
+	if s, ti := titleSoWhatHistory(t, h, g.ID); s != soWhats || ti != titles+1 {
+		t.Errorf("only the title changed: %d So What revisions and %d title changes, want %d and %d", s, ti, soWhats, titles+1)
+	}
+}
+
+// A blank title is refused as at creation, and a blank So What as ever: the
+// page comes back with the form open, the reason beside it and what was typed,
+// and neither field is saved (#281).
+func TestEditTitleAndSoWhatRefusesABlankTitleOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	ts := newServer(t, h)
+	soWhats, titles := titleSoWhatHistory(t, h, g.ID)
+
+	resp := postForm(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/so-what", ts.URL, g.ID), url.Values{
+		"title": {"   "}, "so_what": {"Outages cost us customers."},
+	})
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("a blank title is %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+	}
+	open := openForm(t, page, "title-so-what")
+	if reason := pageElement(t, open, "p", "form-error"); !strings.Contains(reason, "A Goal needs a title.") {
+		t.Errorf("the open form's error %q doesn't say A Goal needs a title.", reason)
+	}
+	if !strings.Contains(open, ">Outages cost us customers.</textarea>") {
+		t.Errorf("the open form lost the So What as typed: %s", open)
+	}
+	got, err := h.Service.ViewGoal(t.Context(), g.ID)
+	if err != nil {
+		t.Fatalf("ViewGoal: %v", err)
+	}
+	if got.Title != "Reduce outages" || got.SoWhat != "Outages cost trust." {
+		t.Errorf("a refused save changed the Goal to %q / %q", got.Title, got.SoWhat)
+	}
+	if s, ti := titleSoWhatHistory(t, h, g.ID); s != soWhats || ti != titles {
+		t.Errorf("a refused save recorded %d So What revisions and %d title changes, want %d and %d", s, ti, soWhats, titles)
+	}
+
+	resp = postForm(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/so-what", ts.URL, g.ID), url.Values{
+		"title": {"Halve outages"}, "so_what": {"  "},
+	})
+	page = readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("a blank So What is %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+	}
+	if open := openForm(t, page, "title-so-what"); !strings.Contains(open, `value="Halve outages"`) {
+		t.Errorf("the open form lost the title as typed: %s", open)
+	}
+	if got, _ := h.Service.ViewGoal(t.Context(), g.ID); got.Title != "Reduce outages" {
+		t.Errorf("a save refused for its So What still changed the title to %q", got.Title)
+	}
+	if s, ti := titleSoWhatHistory(t, h, g.ID); s != soWhats || ti != titles {
+		t.Errorf("a save refused for its So What recorded %d So What revisions and %d title changes, want %d and %d", s, ti, soWhats, titles)
+	}
+}
+
+// Nobody but the Owner or an Admin edits the title and So What: a Delegate or
+// another Account is refused with 403 and the Goal is left as it was. A post
+// with only a So What, as before the form had a title, still edits the So
+// What and leaves the title (#281).
+func TestEditTitleAndSoWhatIsTheOwnersOrAnAdminsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	tpm := h.SignIn("tpm@example.com")
+	h.SignIn("mel@example.com")
+	g := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, tpm, g.ID)
+	ts := newServer(t, h)
+	goalURL := fmt.Sprintf("%s/goals/%d/so-what", ts.URL, g.ID)
+
+	for _, who := range []string{"tpm@example.com", "mel@example.com"} {
+		resp := postForm(t, signInClient(t, ts.URL, who), goalURL, url.Values{
+			"title": {"Halve outages"}, "so_what": {"Outages cost us customers."},
+		})
+		_ = readBody(t, resp)
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s: status = %d, want 403", who, resp.StatusCode)
+		}
+		got, _ := h.Service.ViewGoal(t.Context(), g.ID)
+		if got.Title != "Reduce outages" || got.SoWhat != "Outages cost trust." {
+			t.Errorf("%s changed the Goal to %q / %q", who, got.Title, got.SoWhat)
+		}
+		if _, titles := titleSoWhatHistory(t, h, g.ID); titles != 0 {
+			t.Errorf("%s recorded %d title changes", who, titles)
+		}
+	}
+
+	_ = readBody(t, postForm(t, signInClient(t, ts.URL, "sam@example.com"), goalURL, url.Values{
+		"so_what": {"Outages cost us customers."},
+	}))
+	got, _ := h.Service.ViewGoal(t.Context(), g.ID)
+	if got.Title != "Reduce outages" || got.SoWhat != "Outages cost us customers." {
+		t.Errorf("a post with only a So What left the Goal at %q / %q, want the title kept and the So What changed", got.Title, got.SoWhat)
 	}
 }
