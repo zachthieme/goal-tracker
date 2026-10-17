@@ -11,6 +11,8 @@ var datesNow = time.Date(2026, time.October, 17, 18, 52, 0, 0, time.UTC)
 // A calendar date reads "Nov 7" in the current year and carries its year in
 // any other, past or next.
 func TestShowDateCarriesTheYearOnlyOutsideTheCurrentOne(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		d    time.Time
 		want string
@@ -28,6 +30,8 @@ func TestShowDateCarriesTheYearOnlyOutsideTheCurrentOne(t *testing.T) {
 // A calendar date is stored as midnight UTC and shows its own day even when
 // the org's timezone is west of UTC, where that instant is the evening before.
 func TestShowDateKeepsACalendarDateOnItsOwnDayWestOfUTC(t *testing.T) {
+	t.Parallel()
+
 	la, err := time.LoadLocation("America/Los_Angeles")
 	if err != nil {
 		t.Fatal(err)
@@ -41,6 +45,8 @@ func TestShowDateKeepsACalendarDateOnItsOwnDayWestOfUTC(t *testing.T) {
 // The current year is the org's: at 03:00 UTC on 1 Jan 2027 it's still 2026 in
 // Los Angeles.
 func TestShowDateJudgesTheCurrentYearInTheOrgsTimezone(t *testing.T) {
+	t.Parallel()
+
 	la, err := time.LoadLocation("America/Los_Angeles")
 	if err != nil {
 		t.Fatal(err)
@@ -58,6 +64,8 @@ func TestShowDateJudgesTheCurrentYearInTheOrgsTimezone(t *testing.T) {
 // A timestamp reads "Nov 7, 15:04" in the org's timezone, on the org's day
 // even when its UTC day differs, and carries its year outside the current one.
 func TestShowTimeReadsInTheOrgsTimezone(t *testing.T) {
+	t.Parallel()
+
 	tokyo, err := time.LoadLocation("Asia/Tokyo")
 	if err != nil {
 		t.Fatal(err)
@@ -78,6 +86,8 @@ func TestShowTimeReadsInTheOrgsTimezone(t *testing.T) {
 
 // Report pages always show the year, the current one included.
 func TestTheYearVariantsShowTheYearInTheCurrentYear(t *testing.T) {
+	t.Parallel()
+
 	tokyo, err := time.LoadLocation("Asia/Tokyo")
 	if err != nil {
 		t.Fatal(err)
@@ -96,6 +106,8 @@ func TestTheYearVariantsShowTheYearInTheCurrentYear(t *testing.T) {
 // An instant shown as a date, a Check-in's CreatedAt say, is the org's day it
 // fell on, not its UTC day.
 func TestShowDayOfIsTheOrgsDay(t *testing.T) {
+	t.Parallel()
+
 	la, err := time.LoadLocation("America/Los_Angeles")
 	if err != nil {
 		t.Fatal(err)
@@ -111,6 +123,8 @@ func TestShowDayOfIsTheOrgsDay(t *testing.T) {
 
 // A page's dates follow the year rule, and a Report's always show the year.
 func TestDisplayDatesShowTheYearAlwaysOnAReport(t *testing.T) {
+	t.Parallel()
+
 	d := time.Date(2026, time.November, 7, 0, 0, 0, 0, time.UTC)
 	at := time.Date(2026, time.November, 7, 15, 4, 0, 0, time.UTC)
 	page := displayDates{Now: datesNow, Loc: time.UTC}
@@ -132,6 +146,8 @@ func TestDisplayDatesShowTheYearAlwaysOnAReport(t *testing.T) {
 // A date typed or stored as ISO text, a date Field's value say, shows as a
 // date; anything else shows as typed.
 func TestDisplayDatesShowAnISODateTextAsADate(t *testing.T) {
+	t.Parallel()
+
 	page := displayDates{Now: datesNow, Loc: time.UTC}
 	for raw, want := range map[string]string{
 		"2026-03-01": "Mar 1",

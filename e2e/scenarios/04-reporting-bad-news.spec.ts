@@ -86,8 +86,8 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
   await test.step("4.4 the Goal page shows the slips and the Milestone change", async () => {
     // It worked if: the slip shows wherever the date does — the Goal page.
     const due = page.getByTestId("goal-delivery-date");
-    await expect(due.locator("del")).toHaveText(oldDue);
-    await expect(due).toHaveText(`${oldDue} ${newDue}`);
+    await expect(due.locator("del")).toHaveText(shownDate(oldDue));
+    await expect(due).toHaveText(`${shownDate(oldDue)} ${shownDate(newDue)}`);
 
     await expect(milestoneRow(page, slipped.name).getByTestId("milestone-mark")).toHaveText("Yellow");
     await expect(milestoneRow(page, done.name).getByTestId("milestone-mark")).toHaveText("Done");
@@ -97,8 +97,8 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     await expect(latest).toContainText(project.name);
     const slips = latest.getByTestId("entry-slips").getByTestId("date-slip");
     await expect(slips).toHaveText([
-      `Delivery date: ${oldDue} ${newDue} — ${dueReason}`,
-      `Milestone ${slipped.name}: ${slipped.target_date} ${slippedTo} — ${slipReason}`,
+      `Delivery date: ${shownDate(oldDue)} ${shownDate(newDue)} — ${dueReason}`,
+      `Milestone ${slipped.name}: ${shownDate(slipped.target_date)} ${shownDate(slippedTo)} — ${slipReason}`,
     ]);
     await expect(latest.getByTestId("milestone-change")).toHaveText([`Marked ${done.name} Done`]);
   });
@@ -109,8 +109,8 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     // It worked if: the slip shows wherever the date does — the Goals list.
     await page.goto("/goals");
     const due = goalRow(page, project.title).getByTestId("goal-row-due");
-    await expect(due.locator("del")).toHaveText(oldDue);
-    await expect(due).toHaveText(`${oldDue} ${newDue}`);
+    await expect(due.locator("del")).toHaveText(shownDate(oldDue));
+    await expect(due).toHaveText(`${shownDate(oldDue)} ${shownDate(newDue)}`);
 
     // ...and a Report draft over the project, built by the team Goal's Owner
     // with a rule on the project's Team.
@@ -126,8 +126,8 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
       .getByTestId("report-exception")
       .filter({ has: marcus.getByRole("link", { name: project.title, exact: true }) });
     const reportDue = block.getByTestId("report-due");
-    await expect(reportDue.locator("del")).toHaveText(oldDue);
-    await expect(reportDue).toHaveText(`${oldDue} ${newDue}`);
+    await expect(reportDue.locator("del")).toHaveText(reportDate(oldDue));
+    await expect(reportDue).toHaveText(`${reportDate(oldDue)} ${reportDate(newDue)}`);
   });
 
   await test.step("4.5 the team Goal's Owner can't stay Green over a Yellow child without saying why", async () => {
@@ -235,7 +235,7 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     // Goal back to its page.
     await page.goto(`/goals/${project.id}/define`);
     await expect(page).toHaveURL(new RegExp(`/goals/${project.id}$`));
-    await expect(page.getByTestId("goal-delivery-date")).toHaveText(`${oldDue} ${newDue}`);
+    await expect(page.getByTestId("goal-delivery-date")).toHaveText(`${shownDate(oldDue)} ${shownDate(newDue)}`);
   });
 
   await test.step("It worked if: one Red child doesn't turn every ancestor Red", async () => {
@@ -397,6 +397,24 @@ async function submit(form: Locator): Promise<void> {
 // isoDate is d as YYYY-MM-DD in UTC, the server's timezone.
 function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
+}
+
+// months are the month names the pages write dates with.
+const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// shownDate is the YYYY-MM-DD date as the pages show it: "Nov 7", with its
+// year when it isn't the app's current year, "Nov 7, 2027".
+function shownDate(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const day = `${months[m - 1]} ${d}`;
+  return String(y) === appToday().slice(0, 4) ? day : `${day}, ${y}`;
+}
+
+// reportDate is the YYYY-MM-DD date as a Report shows it, always with its
+// year: "Nov 7, 2026".
+function reportDate(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return `${months[m - 1]} ${d}, ${y}`;
 }
 
 // addDays is the YYYY-MM-DD date n days after date.

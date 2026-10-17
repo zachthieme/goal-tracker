@@ -131,6 +131,14 @@ async function buildPickedReport(page: Page, name: string, goals: SeedGoal[]): P
   return saveReport(page);
 }
 
+// reportDate is the YYYY-MM-DD date as a Report shows it, always with its
+// year: "Nov 7, 2026".
+function reportDate(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1];
+  return `${month} ${d}, ${y}`;
+}
+
 // checkinFields are a Check-in form's fields, valid for any Active Goal: Yellow,
 // so no overdue Milestone or Rolled-up Health refuses it, with a Path to
 // Green back by three weeks from the app's today.
@@ -223,7 +231,7 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
     // ... and their slips: the earlier delivery date, struck through.
     const slipped = preview.getByTestId("report-exception").filter({ hasText: picks.slipped.title });
     await expect(slipped.getByTestId("report-due").getByRole("deletion").first()).toHaveText(
-      picks.slipped.slipped_from!,
+      reportDate(picks.slipped.slipped_from!),
     );
   });
 

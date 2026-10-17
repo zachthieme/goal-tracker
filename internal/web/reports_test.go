@@ -3369,3 +3369,35 @@ func TestPublicationFreezesTheEarlierHealthOverHTTP(t *testing.T) {
 		t.Errorf("the older publication does not render its block as published; block:\n%s", block)
 	}
 }
+
+// A publication's byline, its Print view's title and the Reports list date it
+// on the org's clock with its year, though it's the current year, and never
+// say UTC: 15:04 UTC on Jan 2 is 00:04 on Jan 3 in Tokyo (ticket #276).
+func TestPublicationIsDatedWithItsYearInTheOrgsTimezoneOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	tokyo, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("load timezone: %v", err)
+	}
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def) // Jan 2, 2026, 15:04 UTC
+
+	ts := httptest.NewServer(web.NewServer(domain.NewService(h.DB, h.Clock, h.Email, nil, domain.WithTimezone(tokyo))))
+	t.Cleanup(ts.Close)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	pubPath := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
+
+	if line := pageElement(t, getBody(t, client, pubPath), "p", "report-published"); !strings.Contains(line, "Published Jan 3, 2026, 00:04 by ") || strings.Contains(line, "UTC") {
+		t.Errorf("the byline doesn't read Published Jan 3, 2026, 00:04, with no UTC:\n%s", line)
+	}
+	if title := between(t, getBody(t, client, pubPath+"/print"), "<title>", "</title>"); !strings.Contains(title, "Jan 3, 2026, 00:04") || strings.Contains(title, "UTC") {
+		t.Errorf("the Print view's title is %q, want it dated Jan 3, 2026, 00:04", title)
+	}
+	if row := pageElement(t, getBody(t, client, ts.URL+"/reports"), "tr", "report-row"); !strings.Contains(row, `<span data-testid="report-published">Jan 3, 2026</span>`) || strings.Contains(row, "UTC") {
+		t.Errorf("the Reports list doesn't date the publication Jan 3, 2026:\n%s", row)
+	}
+}
