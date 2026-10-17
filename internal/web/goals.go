@@ -108,6 +108,8 @@ type goalsListData struct {
 	Query url.Values
 	// Table is the table layout (?layout=table), nil in the list layout.
 	Table *goalTable
+	// Dates is the clock the list shows its dates against.
+	Dates displayDates
 }
 
 // moreFiltersSet reports whether a Dimension filter or grouping is chosen, so
@@ -376,6 +378,7 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 		Dimensions: dims,
 		Selected:   selected,
 		Query:      r.URL.Query(),
+		Dates:      s.displayDates(),
 	}
 	if view.Query.Get("layout") == layoutTable {
 		table, err := s.goalTableView(ctx, rows, dims, view.Query, hiddenColumns(r), current)
@@ -1095,6 +1098,12 @@ func (v goalView) actions() []goalAction {
 	return out
 }
 
+// dates is the clock the Goal page shows its dates against: the app clock's
+// now in the org's timezone.
+func (v goalView) dates() displayDates {
+	return displayDates{Now: v.Now, Loc: v.History.Loc}
+}
+
 // priorDates returns the dates a Goal's delivery date (milestoneID 0) or one of
 // its Milestones held before each of its Date Slips, earliest first, for
 // showing struck through ahead of the current date (CONTEXT.md: Date Slip).
@@ -1214,7 +1223,9 @@ func (s *Server) goalIDFromPath(w http.ResponseWriter, r *http.Request) (int64, 
 	return id, true
 }
 
-// fmtDate renders a calendar date for a date input, or "" for the zero time.
+// fmtDate renders a calendar date as ISO, or "" for the zero time: for a date
+// input's value, a value compared as a string, or a query string. A page shows
+// a date through dates.go instead (DESIGN.md: Dates and times).
 func fmtDate(t time.Time) string {
 	if t.IsZero() {
 		return ""
@@ -1621,8 +1632,9 @@ func (s sparkline) last() sparkPoint {
 	return s.Points[len(s.Points)-1]
 }
 
-// sparkline lays the Metric's readings out against its target.
-func (t metricTrend) sparkline() sparkline {
+// sparkline lays the Metric's readings out against its target, each point
+// titled with the day it was read as dates shows it.
+func (t metricTrend) sparkline(dates displayDates) sparkline {
 	lo, hi := t.Metric.Target, t.Metric.Target
 	for _, r := range t.Readings {
 		lo, hi = min(lo, r.Value), max(hi, r.Value)
@@ -1641,7 +1653,7 @@ func (t metricTrend) sparkline() sparkline {
 		}
 		s.Points = append(s.Points, sparkPoint{
 			X: x, Y: y(r.Value),
-			Title: fmt.Sprintf("%s: %s %s", fmtDate(r.CreatedAt), fmtNum(r.Value), t.Metric.Unit),
+			Title: fmt.Sprintf("%s: %s %s", dates.dayOf(r.CreatedAt), fmtNum(r.Value), t.Metric.Unit),
 		})
 	}
 	return s
@@ -2147,8 +2159,9 @@ func (c tableColumn) sortKey(row goalTableRow) (cellKey, bool) {
 }
 
 // text is row's value in a Dimension's or Field's column: a several-values
-// Dimension's values joined by commas, a number Field's value with its unit.
-func (c tableColumn) text(row goalTableRow) string {
+// Dimension's values joined by commas, a number Field's value with its unit, a
+// date Field's as dates shows it.
+func (c tableColumn) text(row goalTableRow, dates displayDates) string {
 	switch {
 	case c.Dimension != nil:
 		var values []string
@@ -2160,6 +2173,9 @@ func (c tableColumn) text(row goalTableRow) string {
 		return strings.Join(values, ", ")
 	case c.Field != nil:
 		value, ok := row.Fields[c.Field.ID]
+		if ok && c.Field.Type == domain.FieldDate {
+			return dates.dateText(value)
+		}
 		if ok && c.Field.Unit != "" {
 			return value + " " + c.Field.Unit
 		}

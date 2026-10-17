@@ -9,7 +9,7 @@ import (
 // freshnessSignalsPage is the Stale list, with the Goals whose Path to Green is
 // overdue beside it, so both surface as prominently as Red (CONTEXT.md: Stale,
 // Path to Green).
-templ freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSignals) {
+templ freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSignals, dates displayDates) {
 	@layout("Freshness signals", current) {
 		<h1>Freshness signals</h1>
 		<p>Stale Goals, and Goals still not Green past their Path to Green's target date.</p>
@@ -36,7 +36,7 @@ templ freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSign
 				}
 				for _, gf := range signals.OverduePaths {
 					<li data-testid="overdue-path">
-						@freshnessItem(gf.Goal, pathOverdue(gf.Freshness))
+						@freshnessItem(gf.Goal, pathOverdue(gf.Freshness, dates))
 					</li>
 				}
 			</ul>
@@ -59,7 +59,7 @@ templ freshnessItem(g domain.Goal, why string) {
 // whose Path to Green is overdue, as a banner in Stale's style. The Stale
 // banner ends with a link to the Check-in form for whoever may check in (the
 // Owner or a Delegate). It renders nothing for a fresh Goal.
-templ goalFreshness(goalID int64, f domain.Freshness, canCheckin bool) {
+templ goalFreshness(goalID int64, f domain.Freshness, canCheckin bool, dates displayDates) {
 	if f.Stale {
 		<p data-testid="goal-stale" class="alert st" role="alert">
 			<strong>Stale</strong><span>{ staleSince(f) }</span>
@@ -69,7 +69,7 @@ templ goalFreshness(goalID int64, f domain.Freshness, canCheckin bool) {
 		</p>
 	}
 	if f.PathToGreenOverdue {
-		<p data-testid="goal-path-overdue" class="alert st" role="alert"><strong>Path to Green overdue</strong><span>{ pathOverdue(f) }</span></p>
+		<p data-testid="goal-path-overdue" class="alert st" role="alert"><strong>Path to Green overdue</strong><span>{ pathOverdue(f, dates) }</span></p>
 	}
 }
 
@@ -98,7 +98,8 @@ func staleSince(f domain.Freshness) string {
 	return fmt.Sprintf("no Check-in for %d days on a %d-day cadence", f.DaysSince, f.CadenceDays)
 }
 
-// pathOverdue names the target date a Path to Green has missed.
-func pathOverdue(f domain.Freshness) string {
-	return fmt.Sprintf("meant to be back to Green by %s", fmtDate(f.PathTargetDate))
+// pathOverdue names the target date a Path to Green has missed, as dates
+// shows it.
+func pathOverdue(f domain.Freshness, dates displayDates) string {
+	return fmt.Sprintf("meant to be back to Green by %s", dates.date(f.PathTargetDate))
 }

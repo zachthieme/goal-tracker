@@ -108,3 +108,42 @@ func TestShowDayOfIsTheOrgsDay(t *testing.T) {
 		t.Errorf("showDayOf(zero) = %q, want empty", got)
 	}
 }
+
+// A page's dates follow the year rule, and a Report's always show the year.
+func TestDisplayDatesShowTheYearAlwaysOnAReport(t *testing.T) {
+	d := time.Date(2026, time.November, 7, 0, 0, 0, 0, time.UTC)
+	at := time.Date(2026, time.November, 7, 15, 4, 0, 0, time.UTC)
+	page := displayDates{Now: datesNow, Loc: time.UTC}
+	report := reportDates(time.UTC)
+	for _, tc := range []struct{ name, got, want string }{
+		{"page date", page.date(d), "Nov 7"},
+		{"page timestamp", page.timestamp(at), "Nov 7, 15:04"},
+		{"page day of", page.dayOf(at), "Nov 7"},
+		{"report date", report.date(d), "Nov 7, 2026"},
+		{"report timestamp", report.timestamp(at), "Nov 7, 2026, 15:04"},
+		{"report day of", report.dayOf(at), "Nov 7, 2026"},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s = %q, want %q", tc.name, tc.got, tc.want)
+		}
+	}
+}
+
+// A date typed or stored as ISO text, a date Field's value say, shows as a
+// date; anything else shows as typed.
+func TestDisplayDatesShowAnISODateTextAsADate(t *testing.T) {
+	page := displayDates{Now: datesNow, Loc: time.UTC}
+	for raw, want := range map[string]string{
+		"2026-03-01": "Mar 1",
+		"2025-03-01": "Mar 1, 2025",
+		"soon":       "soon",
+		"":           "",
+	} {
+		if got := page.dateText(raw); got != want {
+			t.Errorf("dateText(%q) = %q, want %q", raw, got, want)
+		}
+	}
+	if got := reportDates(time.UTC).dateText("2026-03-01"); got != "Mar 1, 2026" {
+		t.Errorf("report dateText = %q, want %q", got, "Mar 1, 2026")
+	}
+}

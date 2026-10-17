@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -31,6 +32,14 @@ type discussion struct {
 	Author bool
 	// Return is the page a form comes back to.
 	Return string
+	// Loc is the org's timezone, the Report's times are shown in.
+	Loc *time.Location
+}
+
+// dates is the clock a Report page shows its dates against: every one with
+// its year (DESIGN.md: Dates and times).
+func (d discussion) dates() displayDates {
+	return reportDates(d.Loc)
 }
 
 // canClose reports whether the reader may close the Action Item now: they own
@@ -77,6 +86,7 @@ func (s *Server) publicationDiscussion(r *http.Request, current domain.Account, 
 		Open:    open,
 		Author:  author,
 		Return:  publicationPath(pub),
+		Loc:     s.svc.Timezone(),
 	}, nil
 }
 
@@ -87,7 +97,7 @@ func (s *Server) draftDiscussion(r *http.Request, current domain.Account, defID 
 	if err != nil {
 		return discussion{}, err
 	}
-	return discussion{Current: &current, Open: open, Return: fmt.Sprintf("/reports/%d", defID)}, nil
+	return discussion{Current: &current, Open: open, Return: fmt.Sprintf("/reports/%d", defID), Loc: s.svc.Timezone()}, nil
 }
 
 // openActionItems is the set of the Report Definition's Action Items open now.

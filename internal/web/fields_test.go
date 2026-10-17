@@ -6,6 +6,7 @@ import (
 	"html"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -151,11 +152,12 @@ func TestOwnerAndDelegateSetAndClearFieldsOnTheGoalPage(t *testing.T) {
 		field domain.Field
 		input string
 		value string
+		shown string
 	}{
-		{h.CreateField(boss, "Budget", domain.FieldNumber, "$"), `type="number"`, "1200"},
-		{h.CreateField(boss, "Design doc", domain.FieldShortText, ""), `type="text"`, "In review"},
-		{h.CreateField(boss, "Notes", domain.FieldLongText, ""), `<textarea`, "Owned by infra."},
-		{h.CreateField(boss, "Kickoff", domain.FieldDate, ""), `type="date"`, "2026-03-01"},
+		{h.CreateField(boss, "Budget", domain.FieldNumber, "$"), `type="number"`, "1200", "1200"},
+		{h.CreateField(boss, "Design doc", domain.FieldShortText, ""), `type="text"`, "In review", "In review"},
+		{h.CreateField(boss, "Notes", domain.FieldLongText, ""), `<textarea`, "Owned by infra.", "Owned by infra."},
+		{h.CreateField(boss, "Kickoff", domain.FieldDate, ""), `type="date"`, "2026-03-01", "Mar 1"},
 	}
 	ts := newServer(t, h)
 	action := fmt.Sprintf(`action="/goals/%d/fields"`, goal.ID)
@@ -181,8 +183,8 @@ func TestOwnerAndDelegateSetAndClearFieldsOnTheGoalPage(t *testing.T) {
 		}
 		shown := pageElement(t, getBody(t, client, goalPageURL(ts.URL, goal)), "ul", "goal-fields")
 		for _, f := range fields {
-			if !strings.Contains(shown, f.value) {
-				t.Errorf("%s: the Goal page doesn't show %s = %s:\n%s", email, f.field.Name, f.value, shown)
+			if !strings.Contains(shown, f.shown) {
+				t.Errorf("%s: the Goal page doesn't show %s = %s:\n%s", email, f.field.Name, f.shown, shown)
 			}
 		}
 		for _, f := range fields {
@@ -482,5 +484,37 @@ func TestRetiredFieldsRequiredSettingIsRefusedOverHTTP(t *testing.T) {
 	postForm(t, boss, fmt.Sprintf("%s/fields/%d/restore", ts.URL, budget.ID), url.Values{})
 	if card := pageElement(t, getBody(t, boss, ts.URL+"/fields"), "li", "field"); !strings.Contains(card, `data-testid="field-required"`) {
 		t.Errorf("restored Budget isn't required:\n%s", card)
+	}
+}
+
+// A date Field's value shows as a date: "Mar 1" on the Goal page and in the
+// Goal table, "Mar 1, 2026" on a Report, while its input still holds it as
+// typed (ticket #276).
+func TestADateFieldShowsInTheDateFormat(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	kickoff := h.CreateField(boss, "Kickoff", domain.FieldDate, "")
+	goal := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.SetGoalField(boss, goal, kickoff, "2026-03-01")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", Mode: domain.ReportModePicked, Picked: []int64{goal.ID}, FieldIDs: []int64{kickoff.ID}})
+	pub := h.PublishReport(boss, def)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	page := getBody(t, client, goalPageURL(ts.URL, goal)+"?open=fields")
+	if got := pageElement(t, page, "span", "goal-field-value"); !strings.HasSuffix(got, ">Mar 1") {
+		t.Errorf("the Goal page shows the Kickoff as %s, want Mar 1", got)
+	}
+	if form := between(t, openForm(t, page, "fields"), fmt.Sprintf(`name="field_id" value="%d"`, kickoff.ID), "</form>"); !strings.Contains(form, `value="2026-03-01"`) {
+		t.Errorf("the Kickoff input doesn't hold 2026-03-01:\n%s", form)
+	}
+	if row := between(t, getBody(t, client, ts.URL+"/goals?layout=table"), "<tbody", "</tbody>"); !strings.Contains(row, ">Mar 1<") {
+		t.Errorf("the Goal table doesn't show the Kickoff as Mar 1:\n%s", row)
+	}
+	pubPage := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
+	if fields := pageElement(t, pubPage, "dl", "report-fields"); !strings.Contains(fields, "Mar 1, 2026") {
+		t.Errorf("the Report doesn't show the Kickoff as Mar 1, 2026:\n%s", fields)
 	}
 }

@@ -91,7 +91,7 @@ func TestANonAdminReadsTheLogNewestFirst(t *testing.T) {
 			t.Errorf("entry %d lacks boss's %q:\n%s", i, want[i], e)
 		}
 	}
-	if when := testsupport.Epoch.Add(time.Hour).Format("2006-01-02 15:04"); !strings.Contains(entries[0], when) {
+	if when := testsupport.Epoch.Add(time.Hour).Format("Jan 2, 15:04"); !strings.Contains(entries[0], when) {
 		t.Errorf("newest entry lacks its time %s:\n%s", when, entries[0])
 	}
 }

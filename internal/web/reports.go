@@ -219,16 +219,16 @@ func newBaselineChip(r domain.Report, chosen, published bool, now time.Time, loc
 	c := baselineChip{
 		Draft:         "/reports/" + strconv.FormatInt(r.Definition.ID, 10),
 		Published:     published,
-		ThirtyDaysAgo: time.Date(y, m, d-30, 0, 0, 0, 0, time.UTC).Format(dateLayout),
+		ThirtyDaysAgo: fmtDate(time.Date(y, m, d-30, 0, 0, 0, 0, time.UTC)),
 	}
 	switch {
 	case chosen:
-		c.Label = fmtMonthDay(r.Baseline)
+		c.Label = showDateYear(r.Baseline)
 		c.Query = "?baseline=" + url.QueryEscape(fmtDate(r.Baseline))
 	case published:
-		c.Label = "last publication · " + fmtMonthDay(r.Baseline)
+		c.Label = "last publication · " + showDateYear(r.Baseline)
 	default:
-		c.Label = "30 days ago · " + fmtMonthDay(r.Baseline)
+		c.Label = "30 days ago · " + showDateYear(r.Baseline)
 	}
 	return c
 }
@@ -243,12 +243,6 @@ func publishSummary(r domain.Report, chip baselineChip) string {
 	}
 	return fmt.Sprintf("%s · %d need attention · %s · changes since %s. Readers can comment on the frozen copy.",
 		plural(len(r.Exceptions)+len(r.Lines), "Goal"), len(r.Exceptions), plural(highlights, "Highlight"), chip.Label)
-}
-
-// fmtMonthDay renders a calendar date as "Sep 22". A Report's baseline is
-// already the org's calendar date at midnight UTC, so it is not converted.
-func fmtMonthDay(t time.Time) string {
-	return t.Format("Jan 2")
 }
 
 // handleCurateNarrative sets the narrative of a Report Definition's next
@@ -529,7 +523,7 @@ func (s *Server) handlePrintPublication(w http.ResponseWriter, r *http.Request, 
 	if !ok {
 		return
 	}
-	render(w, r.WithContext(withoutHover(r.Context())), http.StatusOK, publicationPrintPage(pub))
+	render(w, r.WithContext(withoutHover(r.Context())), http.StatusOK, publicationPrintPage(pub, s.svc.Timezone()))
 }
 
 // handleExportMarkdown downloads a published Report as Markdown, with the same

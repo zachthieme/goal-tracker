@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -48,6 +47,8 @@ type checkinFormData struct {
 	// (CONTEXT.md: Lifecycle).
 	Lifecycle lifecycleFormData
 	Error     checkinError
+	// Shown is the clock the form shows its dates against.
+	Shown displayDates
 }
 
 // checkinError is a Check-in validation message and the field it is about,
@@ -259,11 +260,12 @@ func (d checkinDatesFormData) changed() bool {
 }
 
 // summary is the dates and Milestones section's summary line: the delivery
-// date and how many Milestones are still Planned, as the form stands.
-func (d checkinDatesFormData) summary() string {
+// date as dates shows it and how many Milestones are still Planned, as the
+// form stands.
+func (d checkinDatesFormData) summary(dates displayDates) string {
 	parts := []string{"Change dates or milestones"}
 	if d.Dated && d.DeliveryDate != "" {
-		parts = append(parts, "delivers "+shortDate(d.DeliveryDate))
+		parts = append(parts, "delivers "+dates.dateText(d.DeliveryDate))
 	}
 	planned := 0
 	for _, row := range d.Milestones {
@@ -279,15 +281,6 @@ func (d checkinDatesFormData) summary() string {
 		parts = append(parts, fmt.Sprintf("%d planned milestones", planned))
 	}
 	return strings.Join(parts, " · ")
-}
-
-// shortDate renders a form date as "Dec 12", or as typed when it isn't a date.
-func shortDate(raw string) string {
-	t, err := time.Parse(dateLayout, raw)
-	if err != nil {
-		return raw
-	}
-	return t.Format("Jan 2")
 }
 
 // lifecycleChoice is one Lifecycle the form offers: the value posted and its
@@ -358,7 +351,7 @@ func (d lifecycleFormData) summary() string {
 // date and Planned Milestones so the Owner can move or close them.
 func checkinFormFromLatest(v goalView) checkinFormData {
 	g := v.Goal
-	d := checkinFormData{GoalID: g.ID, Health: domain.HealthGreen, RolledUp: v.RolledUp, Metrics: v.Metrics}
+	d := checkinFormData{GoalID: g.ID, Health: domain.HealthGreen, RolledUp: v.RolledUp, Metrics: v.Metrics, Shown: v.dates()}
 	if latest := v.LatestCheckin; latest != nil {
 		d.Health = latest.Health
 	}
@@ -398,14 +391,14 @@ templ checkinSection(v goalView) {
 			<p data-testid="goal-no-health" class="muted">{ fmt.Sprintf("A %s Goal has no Health.", g.Lifecycle) }</p>
 			if v.LatestCheckin != nil {
 				<p data-testid="goal-status">{ v.LatestCheckin.Status }</p>
-				@checkinByline(*v.LatestCheckin)
+				@checkinByline(*v.LatestCheckin, v.dates())
 			}
 		} else if v.LatestCheckin != nil {
 			@statusCells(v)
 			<p data-testid="goal-status">{ v.LatestCheckin.Status }</p>
 			if v.LatestCheckin.PathToGreen != "" {
 				<p data-testid="goal-path-to-green">
-					<strong>Path to Green:</strong> { v.LatestCheckin.PathToGreen } — back to Green by { fmtDate(v.LatestCheckin.PathTargetDate) }
+					<strong>Path to Green:</strong> { v.LatestCheckin.PathToGreen } — back to Green by { v.dates().date(v.LatestCheckin.PathTargetDate) }
 				</p>
 			}
 			if v.LatestCheckin.Explanation != "" {
@@ -413,7 +406,7 @@ templ checkinSection(v goalView) {
 					<strong>Why this differs from the Rolled-up Health:</strong> { v.LatestCheckin.Explanation }
 				</p>
 			}
-			@checkinByline(*v.LatestCheckin)
+			@checkinByline(*v.LatestCheckin, v.dates())
 		} else {
 			if g.Lifecycle == domain.LifecycleProposed {
 				<p data-testid="goal-no-health" class="muted">A Proposed Goal has no Health until it is Active.</p>
@@ -460,7 +453,7 @@ templ statusCells(v goalView) {
 		if c.PathToGreen != "" {
 			<div data-testid="goal-back-to-green-cell" class="gp-cell">
 				<dt class="label">Back to Green by</dt>
-				<dd class="num">{ fmtDate(c.PathTargetDate) }</dd>
+				<dd>{ v.dates().date(c.PathTargetDate) }</dd>
 			</div>
 		}
 	</dl>
@@ -468,14 +461,14 @@ templ statusCells(v goalView) {
 
 // checkinByline says who wrote a Check-in and when, and whom a Delegate wrote
 // it for (CONTEXT.md: each Check-in records who wrote it).
-templ checkinByline(c domain.Checkin) {
+templ checkinByline(c domain.Checkin, dates displayDates) {
 	<p class="muted small">
 		@person(c.Author)
 		if c.Author.ID != c.Owner.ID {
 			{ " for " }
 			@person(c.Owner)
 		}
-		{ " · " + c.CreatedAt.Format("2006-01-02") }
+		{ " · " + dates.dayOf(c.CreatedAt) }
 	</p>
 }
 
@@ -515,7 +508,7 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 			if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
 				<div data-testid="no-change-card" class="card">
 					<div>
-						<h3>{ "Nothing changed since " + v.LatestCheckin.CreatedAt.Format("Jan 2") + "?" }</h3>
+						<h3>{ "Nothing changed since " + v.dates().dayOf(v.LatestCheckin.CreatedAt) + "?" }</h3>
 						<p class="muted">Records the same Health and status with today's date.</p>
 					</div>
 					@noChangeCheckinButton(g.ID, "No change", "btn")
@@ -592,7 +585,7 @@ templ checkinForm(d checkinFormData) {
 				<input type="date" name="path_target_date" value={ d.PathTargetDate } { d.pathTargetLastAttrs()... }/>
 			</label>
 			if d.Previous.PathTargetDate != "" {
-				<span data-testid="checkin-path-target-last" id={ d.pathTargetLastID() } class="hint">Last time: { shortDate(d.Previous.PathTargetDate) }</span>
+				<span data-testid="checkin-path-target-last" id={ d.pathTargetLastID() } class="hint">Last time: { d.Shown.dateText(d.Previous.PathTargetDate) }</span>
 			}
 			@checkinFieldError(d.Error, "path_to_green")
 		</fieldset>
@@ -642,7 +635,7 @@ templ checkinForm(d checkinFormData) {
 			</div>
 		</details>
 		<details data-testid="checkin-dates-section" class="checkin-more" open?={ d.datesOpen() }>
-			<summary>{ d.Dates.summary() }</summary>
+			<summary>{ d.Dates.summary(d.Shown) }</summary>
 			@checkinDateFields(d.Dates, d.Error)
 		</details>
 		<details data-testid="checkin-lifecycle-section" class="checkin-more" open?={ d.lifecycleOpen() }>

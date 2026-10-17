@@ -62,7 +62,7 @@ func (s *Server) handleDefinitionLog(w http.ResponseWriter, r *http.Request, cur
 		s.serverError(w, r, "could not read the definition log", err)
 		return
 	}
-	render(w, r, http.StatusOK, definitionLogPage(&current, dims, fields, scope, changes))
+	render(w, r, http.StatusOK, definitionLogPage(&current, dims, fields, scope, changes, s.displayDates()))
 }
 
 // parseLogScope reads the about query parameter against the Dimensions and

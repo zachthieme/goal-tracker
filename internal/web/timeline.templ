@@ -3,6 +3,7 @@ package web
 import (
 	"fmt"
 	"strconv"
+	"time"
 )
 
 // goalHistory is a Goal's History as one timeline, open on load and newest
@@ -78,7 +79,7 @@ templ historyItem(h history, e historyEntry) {
 		@historyMarker(e)
 		<p class="tl-head">
 			<span class="tl-kind">{ e.label() }</span>
-			<time class="muted small" datetime={ e.At.In(h.Loc).Format("2006-01-02T15:04:05Z07:00") }>{ h.when(e.At) }</time>
+			<time class="muted small" datetime={ e.At.In(h.Loc).Format(time.RFC3339) }>{ h.dates().timestamp(e.At) }</time>
 		</p>
 		switch  {
 			case e.Checkin != nil:
@@ -121,7 +122,7 @@ templ historyItem(h history, e historyEntry) {
 			case e.Milestone != nil:
 				<p>
 					@person(e.Milestone.Author)
-					{ fmt.Sprintf(" added Milestone %s (%s)", e.Milestone.Name, fmtDate(e.Milestone.AddedDate)) }
+					{ fmt.Sprintf(" added Milestone %s (%s)", e.Milestone.Name, h.dates().date(e.Milestone.AddedDate)) }
 				</p>
 			case e.Link != nil:
 				{{ before, after := linkChange(*e.Link) }}
@@ -153,7 +154,7 @@ templ historyFolded(h history, e historyEntry) {
 			if c.Health != "" {
 				<span class={ "badge", healthClass(c.Health) }><span class="dot"></span>{ c.Health }</span>
 			}
-			<time class="muted small" datetime={ e.At.In(h.Loc).Format("2006-01-02T15:04:05Z07:00") }>{ h.when(e.At) }</time>
+			<time class="muted small" datetime={ e.At.In(h.Loc).Format(time.RFC3339) }>{ h.dates().timestamp(e.At) }</time>
 		</p>
 		<details data-testid="folded-checkins" class="tl-detail">
 			<summary class="small">
@@ -166,7 +167,7 @@ templ historyFolded(h history, e historyEntry) {
 			<ul class="tl-readings">
 				for _, f := range e.Folded {
 					<li>
-						<span>{ h.when(f.At) }</span>
+						<span>{ h.dates().timestamp(f.At) }</span>
 						<span class="muted small">
 							{ " by " }
 							@person(f.Checkin.Author)
@@ -226,13 +227,13 @@ templ historyCheckin(h history, e historyEntry) {
 		</p>
 	}
 	if c.PathToGreen != "" {
-		<p>Path to Green: { c.PathToGreen } (by { fmtDate(c.PathTargetDate) })</p>
+		<p>Path to Green: { c.PathToGreen } (by { h.dates().date(c.PathTargetDate) })</p>
 	}
 	if len(e.Slips) > 0 {
 		<ul data-testid="entry-slips" class="tl-slips">
 			for _, s := range e.Slips {
 				<li data-testid="date-slip">
-					<strong>{ h.slipWhat(s) }</strong>: <del>{ fmtDate(s.OldDate) }</del> { fmtDate(s.NewDate) } <span>— { s.Reason }</span>
+					<strong>{ h.slipWhat(s) }</strong>: <del>{ h.dates().date(s.OldDate) }</del> { h.dates().date(s.NewDate) } <span>— { s.Reason }</span>
 				</li>
 			}
 		</ul>
@@ -240,7 +241,7 @@ templ historyCheckin(h history, e historyEntry) {
 	if len(c.MilestoneChanges) > 0 {
 		<ul data-testid="entry-milestone-changes" class="tl-slips">
 			for _, m := range c.MilestoneChanges {
-				<li data-testid="milestone-change">{ milestoneChangeText(m) }</li>
+				<li data-testid="milestone-change">{ milestoneChangeText(m, h.dates()) }</li>
 			}
 		</ul>
 	}

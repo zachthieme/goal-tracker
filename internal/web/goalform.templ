@@ -281,10 +281,10 @@ templ goalFormExisting(v goalFormView) {
 			<p class="muted small">Already defined; edit these on the Goal's page.</p>
 			<ul class="gf-list">
 				for _, m := range v.ExistingMilestones {
-					<li>Milestone: <strong>{ m.Name }</strong> <span class="muted small">{ fmtDate(m.TargetDate) }</span></li>
+					<li>Milestone: <strong>{ m.Name }</strong> <span class="muted small">{ v.Dates.date(m.TargetDate) }</span></li>
 				}
 				for _, m := range v.ExistingMetrics {
-					<li>Metric: <strong>{ m.Name }</strong> <span class="muted small">{ fmt.Sprintf("%s → %s %s by %s", fmtNum(m.Baseline), fmtNum(m.Target), m.Unit, fmtDate(m.TargetDate)) }</span></li>
+					<li>Metric: <strong>{ m.Name }</strong> <span class="muted small">{ fmt.Sprintf("%s → %s %s by %s", fmtNum(m.Baseline), fmtNum(m.Target), m.Unit, v.Dates.date(m.TargetDate)) }</span></li>
 				}
 			</ul>
 		</div>

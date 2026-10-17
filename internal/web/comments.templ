@@ -88,7 +88,7 @@ templ comment(c domain.Comment, d discussion, reply bool) {
 		<strong>
 			@person(c.Author)
 		</strong>
-		<span class="small muted">{ " · " }{ fmtPublished(c.CreatedAt) }</span>
+		<span class="small muted">{ " · " }{ d.dates().timestamp(c.CreatedAt) }</span>
 		<br/>
 		{ c.Body }
 	</p>
@@ -135,7 +135,7 @@ templ publicationActionItems(d discussion) {
 				<li data-testid="raised-action-item">
 					@actionItemSummary(item)
 					if item.Closed {
-						{ " " }<strong>[Closed { fmtDate(item.ClosedAt) }]</strong>
+						{ " " }<strong>[Closed { d.dates().dayOf(item.ClosedAt) }]</strong>
 						<span data-testid="action-item-note">— { item.ClosingNote }</span>
 					}
 					if d.canClose(item) {
@@ -183,7 +183,7 @@ templ actionItemFields(textRequired bool) {
 templ actionItemSummary(item domain.ActionItem) {
 	{ item.Text }{ " · " }
 	@person(item.Owner)
-	{ " · due " }{ fmtDate(item.DueDate) }
+	{ " · due " }{ showDateYear(item.DueDate) }
 }
 
 // closeActionItemForm lets an Action Item's owner close it with a note, behind

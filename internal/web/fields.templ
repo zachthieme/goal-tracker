@@ -135,7 +135,7 @@ templ goalFields(v goalView) {
 					}
 					<br/>
 					if set {
-						@fieldValueView(f, value)
+						@fieldValueView(f, value, v.dates())
 					} else {
 						<span class="muted" data-testid="goal-field-unset">not set</span>
 					}
@@ -186,13 +186,15 @@ templ fieldInput(f domain.Field, value string, focus bool) {
 
 // fieldValueView shows a Goal's value in a Field: a number with its unit, a
 // short text that is an http(s) URL as a link, and a long text with its line
-// breaks kept.
-templ fieldValueView(f domain.Field, value string) {
+// breaks kept, and a date as dates shows it.
+templ fieldValueView(f domain.Field, value string, dates displayDates) {
 	switch f.Type {
 		case domain.FieldNumber:
 			<span data-testid="goal-field-value"><span class="num">{ value }</span> { f.Unit }</span>
 		case domain.FieldLongText:
 			<p data-testid="goal-field-value" class="gp-field-long">{ value }</p>
+		case domain.FieldDate:
+			<span data-testid="goal-field-value">{ dates.dateText(value) }</span>
 		default:
 			if f.Type == domain.FieldShortText && isWebURL(value) {
 				<a data-testid="goal-field-value" href={ templ.URL(value) } rel="noopener noreferrer">{ value }</a>

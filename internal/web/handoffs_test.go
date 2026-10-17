@@ -252,9 +252,9 @@ func TestOwnershipHistoryKeepsEveryHandoffOutcome(t *testing.T) {
 	}
 	entries := ownershipEntries(t, bossClient, goalURL)
 	want := []struct{ to, outcome, at string }{
-		{shownAs("lee@example.com", "lee"), "accepted", "Fri 2 Jan 17:04"},
-		{shownAs("pat@example.com", "pat"), "cancelled", "Fri 2 Jan 16:04"},
-		{shownAs("mel@example.com", "mel"), "rejected", "Fri 2 Jan 15:04"},
+		{shownAs("lee@example.com", "lee"), "accepted", "Jan 2, 17:04"},
+		{shownAs("pat@example.com", "pat"), "cancelled", "Jan 2, 16:04"},
+		{shownAs("mel@example.com", "mel"), "rejected", "Jan 2, 15:04"},
 	}
 	if len(entries) != len(want) {
 		t.Fatalf("History lists %d ownership changes, want %d:\n%s", len(entries), len(want), strings.Join(entries, "\n"))

@@ -17,7 +17,7 @@ import (
 // freshnessSignalsPage is the Stale list, with the Goals whose Path to Green is
 // overdue beside it, so both surface as prominently as Red (CONTEXT.md: Stale,
 // Path to Green).
-func freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSignals) templ.Component {
+func freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSignals, dates displayDates) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -89,7 +89,7 @@ func freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSigna
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = freshnessItem(gf.Goal, pathOverdue(gf.Freshness)).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = freshnessItem(gf.Goal, pathOverdue(gf.Freshness, dates)).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -176,7 +176,7 @@ func freshnessItem(g domain.Goal, why string) templ.Component {
 // whose Path to Green is overdue, as a banner in Stale's style. The Stale
 // banner ends with a link to the Check-in form for whoever may check in (the
 // Owner or a Delegate). It renders nothing for a fresh Goal.
-func goalFreshness(goalID int64, f domain.Freshness, canCheckin bool) templ.Component {
+func goalFreshness(goalID int64, f domain.Freshness, canCheckin bool, dates displayDates) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -245,9 +245,9 @@ func goalFreshness(goalID int64, f domain.Freshness, canCheckin bool) templ.Comp
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var9 string
-			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(pathOverdue(f))
+			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(pathOverdue(f, dates))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/freshness.templ`, Line: 72, Col: 127}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/freshness.templ`, Line: 72, Col: 134}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -366,9 +366,10 @@ func staleSince(f domain.Freshness) string {
 	return fmt.Sprintf("no Check-in for %d days on a %d-day cadence", f.DaysSince, f.CadenceDays)
 }
 
-// pathOverdue names the target date a Path to Green has missed.
-func pathOverdue(f domain.Freshness) string {
-	return fmt.Sprintf("meant to be back to Green by %s", fmtDate(f.PathTargetDate))
+// pathOverdue names the target date a Path to Green has missed, as dates
+// shows it.
+func pathOverdue(f domain.Freshness, dates displayDates) string {
+	return fmt.Sprintf("meant to be back to Green by %s", dates.date(f.PathTargetDate))
 }
 
 var _ = templruntime.GeneratedTemplate

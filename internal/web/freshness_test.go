@@ -41,8 +41,8 @@ func TestFreshnessPageListsStaleGoalsAndOverduePaths(t *testing.T) {
 	}
 
 	overdue := pageElement(t, page, "ul", "overdue-paths")
-	if !strings.Contains(overdue, navTo(stalled.ID)) || !strings.Contains(overdue, "2026-01-05") {
-		t.Errorf("overdue Paths to Green do not show %q due back at Green by 2026-01-05; section:\n%s", stalled.Title, overdue)
+	if !strings.Contains(overdue, navTo(stalled.ID)) || !strings.Contains(overdue, "back to Green by Jan 5") {
+		t.Errorf("overdue Paths to Green do not show %q due back at Green by Jan 5; section:\n%s", stalled.Title, overdue)
 	}
 	if strings.Contains(overdue, navTo(silent.ID)) || strings.Contains(overdue, navTo(fresh.ID)) {
 		t.Errorf("overdue Paths to Green list a Goal with no Path to Green; section:\n%s", overdue)
@@ -83,7 +83,7 @@ func TestGoalPageFlagsFreshness(t *testing.T) {
 	}
 
 	stalledPage := pageOf(stalled)
-	if !strings.Contains(stalledPage, `data-testid="goal-path-overdue"`) || !strings.Contains(stalledPage, "2026-01-05") {
+	if !strings.Contains(stalledPage, `data-testid="goal-path-overdue"`) || !strings.Contains(stalledPage, "back to Green by Jan 5") {
 		t.Errorf("page of a Goal past its Path to Green target does not flag it; body:\n%s", stalledPage)
 	}
 

@@ -14,5 +14,5 @@ func (s *Server) handleFreshnessSignals(w http.ResponseWriter, r *http.Request, 
 		s.serverError(w, r, "could not read freshness signals", err)
 		return
 	}
-	render(w, r, http.StatusOK, freshnessSignalsPage(&current, signals))
+	render(w, r, http.StatusOK, freshnessSignalsPage(&current, signals, s.displayDates()))
 }
