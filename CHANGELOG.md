@@ -15,11 +15,15 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 ### Collected changes — October 17, 2026
 
+**New features:**
+- [user] A Goal's Owner or an Admin can fix its title and So What from "Edit title and So What" in the More ▾ menu, in any Lifecycle, Active included. Each title change shows in the Goal's History as "old → new" with who made it, under a new Title chip (#281).
+
 **Improvements:**
 - [user] Chain now reads **Org**, the glossary's word for a person and everyone below them by Manager. On Goals and Risks the scope picker offers "Any org", "My org" and "Priya Raman's org", and the Risks toggle has a **My org** button. In the Report builder, **Owner's org** comes with "is in the org of", "is in the org of any of" and "is not in the org of". Rules read back as "Owner is in the org of Priya Raman". Where a page, email or error message meant the whole organization by "the org", it now says "the company": "Every goal in the company", "has left the company", "the company's directory". The scope URL parameter is now `?org=`. Old `?chain=` links no longer scope a page, which shows unscoped (#288).
 - [internal] The Chain concept is renamed Org in the code: `Service.Org` in `internal/domain/org.go`, `RuleOrg`, `pageOrgScope` and the test ids (`goal-org-filter`, `risks-org`, `risks-scope-my-org`, `risks-scope-org`). The Report rule attribute is stored as `"org"`, with no migration. A stored `"chain"` rule is treated as an unknown attribute: saving it is refused and its draft matches nothing, so re-seed dev databases (#288).
 - [user] On New goal and when finishing a Proposed Goal, the Dated and Ongoing cards now show which one is chosen: a filled dot, a bold teal edge and a tinted fill, against an outlined card with an empty dot. Neither is chosen at first. Each item in the Ready to activate checklist now links to the field or section that meets it: So What, the Kind (or the delivery date once Dated is chosen), How you'll know, and each required Dimension and Field (#283).
 - [user] The Check-in form no longer pre-fills last week's words. Status, Path to Green, Explanation, each Metric reading and the Back to Green by date start empty, with the previous Check-in's answers and each Metric's latest reading shown as ghost text and a "Last time: Nov 7" hint beside the date. Health is still picked from the previous Check-in. The ghost text stays after a refused submit and after Add another, and nothing in it is submitted, so a full Check-in is written fresh. **No change** still repeats last week (#284).
+- [user] The Goal page's action menu button reads "More ▾" instead of a bare "⋯", which looked like a minus sign (#281).
 
 **Bug fixes:**
 - [user] The New report and Edit report headers match the other pages: the breadcrumb sits above the title, both at the left, instead of the title being pushed to the far right (#277).
