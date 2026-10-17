@@ -531,6 +531,39 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   title and the top bar's Home count both count every row. Goals the person is
   a Delegate on aren't listed again elsewhere: the sidebar has one link to the
   Delegate page with their number, shown only above zero.
+- **Home's My org card (`homeOrgCard` in `home.templ`):** shown only to
+  someone with anyone under them by Manager, so never before a directory sync
+  (ADR 0008). It sits in the main column directly under Needs you, as its own
+  `card hm-card` titled **My org**, and counts what is in trouble in the
+  person's Org, leaving out the Goals they Own themselves, which Your goals
+  covers. A Goal is in the Org by its Owner, never its Delegates, and an
+  Ownerless Goal stays where its Departed Owner was. It lists people and
+  counts, never Goals:
+  - **Total line:** across everyone under the person, one badge per signal
+    with anything in it, in the order Red · Path to Green overdue · Stale ·
+    Yellow. Each reads as a count and a name ("2 Red", "1 Path to Green
+    overdue", "3 Stale", "1 Yellow"), so it reads without colour. Red and
+    Yellow take their Health's badge; Path to Green overdue and Stale take the
+    Stale mark's `badge st`, as on Risks. A Goal counts under every signal it
+    has, so the counts can add up to more than the Goals behind them.
+  - **Rows (`.hm-list.hm-compact`):** one per person directly under the
+    viewer whose Org has anything flagged: the person, a `badge lc`
+    "departed" beside a Departed one, their Org's badges in the same order,
+    and **Their org on Goals →** (`/goals?org=<their ID>`). The most Red
+    come first, then the most Path to Green overdue, the most Stale and the
+    most Yellow, then by Name. Someone further down counts in the row of the
+    person directly under the viewer they're under, so the rows add up to the
+    total.
+  - **All clear:** the people directly under the viewer with nothing flagged
+    share one muted line after the rows, "2 others all clear" ("1 other all
+    clear"), left out when there are none. With nothing flagged anywhere,
+    the card shows only one muted "Everyone in My org is all clear." line.
+  - **Links:** the card ends with **My org on Goals →** and **My org on
+    Risks →** (`?org=<viewer ID>`), whose pages include the person's own
+    Goals.
+
+  The card adds nothing to Needs you, the summary under the page title or the
+  top bar's Home count.
 - **Health distribution bar (`.hm-bar`):** in Home's "Your goals", a 12px
   `--radius-full` bar of the person's own Active Goals by Health, one equal
   unit per Goal, Green then Yellow then Red. Units fill with the Health's

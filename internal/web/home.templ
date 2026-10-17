@@ -54,6 +54,9 @@ templ homePage(current *domain.Account, v homeView) {
 						</div>
 					}
 				</section>
+				if v.Org != nil {
+					@homeOrgCard(*v.Org)
+				}
 			</div>
 			<aside class="hm-col">
 				<section data-testid="home-your-goals" class="card hm-card">
@@ -94,6 +97,53 @@ templ homePage(current *domain.Account, v homeView) {
 			</aside>
 		</div>
 		@toastNotice(v.Toast)
+	}
+}
+
+// homeOrgCard is the My org card: counts and people, never Goals, with links
+// on to the Org's Goals and Risks for the detail.
+templ homeOrgCard(org homeOrg) {
+	<section data-testid="home-org" class="card hm-card">
+		<h3>My org</h3>
+		if org.Total.Any() {
+			<p data-testid="home-org-total" class="hm-counts">
+				@homeOrgCounts(org.Total)
+			</p>
+			<ul class="hm-list hm-compact">
+				for _, p := range org.Flagged {
+					<li data-testid="home-org-person">
+						<div class="hm-what">
+							@person(p.Person)
+							if p.Person.Departed {
+								<span data-testid="home-org-departed" class="badge lc">departed</span>
+							}
+							@homeOrgCounts(p.Counts)
+						</div>
+						<div class="hm-actions">
+							<a href={ templ.SafeURL(fmt.Sprintf("/goals?org=%d", p.Person.ID)) }>Their org on Goals →</a>
+						</div>
+					</li>
+				}
+			</ul>
+			if org.Clear > 0 {
+				<p data-testid="home-org-clear" class="muted">{ othersAllClear(org.Clear) }</p>
+			}
+		} else {
+			<p data-testid="home-org-all-clear" class="muted">Everyone in My org is all clear.</p>
+		}
+		<p>
+			<a data-testid="home-org-goals-link" href={ templ.SafeURL(fmt.Sprintf("/goals?org=%d", org.ViewerID)) }>My org on Goals →</a>
+			{ " " }
+			<a data-testid="home-org-risks-link" href={ templ.SafeURL(fmt.Sprintf("/risks?org=%d", org.ViewerID)) }>My org on Risks →</a>
+		</p>
+	</section>
+}
+
+// homeOrgCounts badges each of a My org count that has anything, labelled to
+// read without colour, Red, then Path to Green overdue, Stale and Yellow.
+templ homeOrgCounts(c domain.SignalCounts) {
+	for _, b := range homeOrgBadges(c) {
+		<span data-testid="home-org-count" data-kind={ b.Kind } class={ "badge", b.Class }>{ b.Label }</span>
 	}
 }
 
