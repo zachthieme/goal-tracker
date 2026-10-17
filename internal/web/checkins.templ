@@ -10,8 +10,9 @@ import (
 )
 
 // checkinFormData is the state the Check-in form renders from: the Goal it posts
-// to, the prefilled Health, status, and Path to Green, and an optional
-// validation error shown next to the field it is about.
+// to, the Health picked and the status and Path to Green as typed, the previous
+// Check-in's answers shown as ghost text, and an optional validation error shown
+// next to the field it is about.
 type checkinFormData struct {
 	GoalID         int64
 	Health         string
@@ -26,10 +27,13 @@ type checkinFormData struct {
 	Explanation string
 	// Metrics are the Goal's Metrics, one reading input each (CONTEXT.md: a
 	// Metric's current value is recorded at each Check-in). Readings holds each
-	// input's value, keyed by Metric ID: the Metric's latest reading on a fresh
-	// form, or what the reader typed so an error re-render keeps it.
+	// input's value as typed, keyed by Metric ID, so an error re-render keeps
+	// it; a fresh form's are empty.
 	Metrics  []domain.Metric
 	Readings map[int64]string
+	// Previous is what the Goal's latest Check-in said, shown as ghost text in
+	// the fields that start empty; nothing in it is submitted.
+	Previous checkinPreviousAnswers
 	// DraftHighlights are the rows offered from the Goal's pending Draft
 	// Highlights, oldest first, as typed (CONTEXT.md: Draft Highlight); they
 	// come before the rest. Highlights are the Highlight rows as typed, blank
@@ -114,6 +118,60 @@ type highlightFormData struct {
 	Keep    bool
 }
 
+// checkinPreviousAnswers are the Goal's latest Check-in's status, Path to Green,
+// target date and explanation, and each Metric's latest reading keyed by Metric
+// ID, as the form shows them. A field with no previous value is empty.
+type checkinPreviousAnswers struct {
+	Status         string
+	PathToGreen    string
+	PathTargetDate string
+	Explanation    string
+	Readings       map[int64]string
+}
+
+// checkinPreviousFrom gathers the answers to show as ghost text from the Goal's
+// latest Check-in, nil when there is none, and its Metrics' readings over time.
+func checkinPreviousFrom(latest *domain.Checkin, trends []metricTrend) checkinPreviousAnswers {
+	var p checkinPreviousAnswers
+	if latest != nil {
+		p.Status = latest.Status
+		p.PathToGreen = latest.PathToGreen
+		p.PathTargetDate = fmtDate(latest.PathTargetDate)
+		p.Explanation = latest.Explanation
+	}
+	p.Readings = make(map[int64]string, len(trends))
+	for _, t := range trends {
+		if n := len(t.Readings); n > 0 {
+			p.Readings[t.Metric.ID] = fmtNum(t.Readings[n-1].Value)
+		}
+	}
+	return p
+}
+
+// checkinGhostText shows previous as a field's placeholder, or no placeholder
+// when there is no previous value.
+func checkinGhostText(previous string) templ.Attributes {
+	if previous == "" {
+		return nil
+	}
+	return templ.Attributes{"placeholder": previous}
+}
+
+// pathTargetLastID names the hint beside the Back to Green by input that shows
+// the previous target date: a date input can't show a placeholder.
+func (d checkinFormData) pathTargetLastID() string {
+	return fmt.Sprintf("checkin-path-target-last-%d", d.GoalID)
+}
+
+// pathTargetLastAttrs describe the Back to Green by input by its "Last time"
+// hint, when there is one.
+func (d checkinFormData) pathTargetLastAttrs() templ.Attributes {
+	if d.Previous.PathTargetDate == "" {
+		return nil
+	}
+	return templ.Attributes{"aria-describedby": d.pathTargetLastID()}
+}
+
 // draftHighlightRows are the rows offering each of drafts, oldest first, each
 // ticked to keep, with its kind and note as logged.
 func draftHighlightRows(drafts []domain.DraftHighlight) []highlightFormData {
@@ -124,11 +182,8 @@ func draftHighlightRows(drafts []domain.DraftHighlight) []highlightFormData {
 	return out
 }
 
-// reading returns the value to prefill a Metric's reading input with.
+// reading returns a Metric's reading as typed.
 func (d checkinFormData) reading(metricID int64) string {
-	if d.Readings == nil {
-		return ""
-	}
 	return d.Readings[metricID]
 }
 
@@ -294,28 +349,20 @@ func (d lifecycleFormData) summary() string {
 	}
 }
 
-// checkinFormFromLatest prefills the Check-in form from a Goal's latest Check-in,
-// or with a fresh Green form when there is none (CONTEXT.md: the form is
-// pre-filled from the latest Check-in), and each Metric's reading with its latest
-// value, blank for a Metric not yet read. It also carries the Rolled-up Health so
-// the form can show it beside the Owner's Health, and the Goal's current
-// delivery date and Planned Milestones so the Owner can move or close them.
+// checkinFormFromLatest starts the Check-in form from a Goal's latest Check-in:
+// its Health picked, Green when there is none, and the status, Path to Green,
+// explanation and readings empty, with the latest Check-in's answers and each
+// Metric's latest reading shown as ghost text, so a full Check-in is written
+// fresh (CONTEXT.md: Check-in). It also carries the Rolled-up Health so the
+// form can show it beside the Owner's Health, and the Goal's current delivery
+// date and Planned Milestones so the Owner can move or close them.
 func checkinFormFromLatest(v goalView) checkinFormData {
 	g := v.Goal
 	d := checkinFormData{GoalID: g.ID, Health: domain.HealthGreen, RolledUp: v.RolledUp, Metrics: v.Metrics}
 	if latest := v.LatestCheckin; latest != nil {
 		d.Health = latest.Health
-		d.Status = latest.Status
-		d.PathToGreen = latest.PathToGreen
-		d.PathTargetDate = fmtDate(latest.PathTargetDate)
-		d.Explanation = latest.Explanation
 	}
-	d.Readings = make(map[int64]string, len(v.Trends))
-	for _, t := range v.Trends {
-		if n := len(t.Readings); n > 0 {
-			d.Readings[t.Metric.ID] = fmtNum(t.Readings[n-1].Value)
-		}
-	}
+	d.Previous = checkinPreviousFrom(v.LatestCheckin, v.Trends)
 	d.DraftHighlights = draftHighlightRows(v.DraftHighlights)
 	d.Lifecycle.Current = g.Lifecycle
 	if g.Lifecycle == domain.LifecycleOnHold {
@@ -453,8 +500,9 @@ templ noChangeCheckinButton(goalID int64, label, class string) {
 // checkinPage is the Check-in on its own page, reached from the Goal page by
 // the Owner or a Delegate: a breadcrumb back to the Goal, then the one-click
 // "no change" card when there is a previous Check-in to repeat, then the form,
-// prefilled from the latest Check-in. Refusal, when not empty, is why a No
-// change couldn't be recorded, shown at the top of the form.
+// showing the latest Check-in's answers as ghost text. A refusal in the form's
+// error, such as why a No change couldn't be recorded, shows at the top of the
+// form.
 templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 	{{ g := v.Goal }}
 	@layout("Check in · "+g.Title, current) {
@@ -483,7 +531,7 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 	}
 }
 
-// checkinFormRefused is the Goal's Check-in form, pre-filled from its latest
+// checkinFormRefused is the Goal's Check-in form, started from its latest
 // Check-in, with a refusal shown at the top.
 func checkinFormRefused(v goalView, refusal string) checkinFormData {
 	d := checkinFormFromLatest(v)
@@ -537,12 +585,15 @@ templ checkinForm(d checkinFormData) {
 			<legend>Path to Green (required when Yellow or Red)</legend>
 			<label>
 				Plan
-				<textarea name="path_to_green">{ d.PathToGreen }</textarea>
+				<textarea name="path_to_green" { checkinGhostText(d.Previous.PathToGreen)... }>{ d.PathToGreen }</textarea>
 			</label>
 			<label>
 				Back to Green by
-				<input type="date" name="path_target_date" value={ d.PathTargetDate }/>
+				<input type="date" name="path_target_date" value={ d.PathTargetDate } { d.pathTargetLastAttrs()... }/>
 			</label>
+			if d.Previous.PathTargetDate != "" {
+				<span data-testid="checkin-path-target-last" id={ d.pathTargetLastID() } class="hint">Last time: { shortDate(d.Previous.PathTargetDate) }</span>
+			}
 			@checkinFieldError(d.Error, "path_to_green")
 		</fieldset>
 		if d.RolledUp.Present {
@@ -551,13 +602,13 @@ templ checkinForm(d checkinFormData) {
 			</p>
 			<label>
 				Explanation (required if your Health differs from the Rolled-up Health)
-				<textarea name="explanation" data-testid="checkin-explanation">{ d.Explanation }</textarea>
+				<textarea name="explanation" data-testid="checkin-explanation" { checkinGhostText(d.Previous.Explanation)... }>{ d.Explanation }</textarea>
 			</label>
 			@checkinFieldError(d.Error, "explanation")
 		}
 		<label>
 			<span>Status <span class="hint">what changed since the last check-in</span></span>
-			<textarea name="status" required>{ d.Status }</textarea>
+			<textarea name="status" required { checkinGhostText(d.Previous.Status)... }>{ d.Status }</textarea>
 		</label>
 		@checkinFieldError(d.Error, "status")
 		if len(d.Metrics) > 0 {
@@ -571,6 +622,7 @@ templ checkinForm(d checkinFormData) {
 							step="any"
 							name={ readingField(m.ID) }
 							value={ d.reading(m.ID) }
+							{ checkinGhostText(d.Previous.Readings[m.ID])... }
 						/>
 					</label>
 					@checkinFieldError(d.Error, readingField(m.ID))

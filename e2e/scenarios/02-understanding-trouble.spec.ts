@@ -241,9 +241,15 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
   await test.step("5 She composes the narrative from the Owners' Highlights, and adds a note of her own", async () => {
     for (const goal of [slipped, turning]) {
       const page = await as(goal.email);
+      const health = goal === slipped ? "Yellow" : turnedTo;
       await checkIn(page, goal.id, {
-        health: goal === slipped ? "Yellow" : turnedTo,
+        health,
         status: "Steady week; notes in the Highlights.",
+        // The form shows last week's Path to Green only as ghost text, so a
+        // Yellow Check-in writes its own.
+        ...(health === "Yellow"
+          ? { pathToGreen: "Same plan as last week.", backToGreen: addDays(appToday(), 28) }
+          : {}),
         highlights: highlights.filter((h) => h.goal === goal),
       });
     }
@@ -309,6 +315,9 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     await checkIn(await as(turning.email), turning.id, {
       health: turnedTo,
       status: later,
+      ...(turnedTo === "Yellow"
+        ? { pathToGreen: "Same plan as last week.", backToGreen: addDays(appToday(), 28) }
+        : {}),
     });
     await elena.reload();
     await expect(block.getByTestId("report-status")).toHaveText(before ?? "");

@@ -572,10 +572,10 @@ func TestCheckinNonNumericReadingNamesTheMetric(t *testing.T) {
 	}
 }
 
-// The Check-in form pre-fills each Metric's reading with its latest value, like
-// the rest of the form, so a "same as last week" Check-in stays one click; a
-// Metric with no readings yet stays blank (ticket #29).
-func TestCheckinFormPrefillsLatestReadings(t *testing.T) {
+// The Check-in form shows each Metric's latest reading as ghost text in its
+// empty reading input (ticket #29, #284); a Metric with no readings yet shows
+// none.
+func TestCheckinFormShowsLatestReadingsAsGhostText(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -616,11 +616,11 @@ func TestCheckinFormPrefillsLatestReadings(t *testing.T) {
 	}
 
 	form := pageElement(t, getBody(t, samClient, goalURL+"/checkin"), "fieldset", "checkin-readings")
-	if want := fmt.Sprintf(`name="reading_%d" value="135.5"`, signups.ID); !strings.Contains(form, want) {
-		t.Errorf("Signups reading not pre-filled with its latest value (want %s); form:\n%s", want, form)
+	if want := fmt.Sprintf(`name="reading_%d" value="" placeholder="135.5"`, signups.ID); !strings.Contains(form, want) {
+		t.Errorf("Signups reading not empty with its latest value as ghost text (want %s); form:\n%s", want, form)
 	}
-	if want := fmt.Sprintf(`name="reading_%d" value=""`, referrals.ID); !strings.Contains(form, want) {
-		t.Errorf("Referrals has no readings, so its input should be blank (want %s); form:\n%s", want, form)
+	if want := fmt.Sprintf(`name="reading_%d" value="">`, referrals.ID); !strings.Contains(form, want) {
+		t.Errorf("Referrals has no readings, so its input should be blank with no ghost text (want %s); form:\n%s", want, form)
 	}
 }
 
@@ -1247,7 +1247,7 @@ func TestGoalPageLinksToCheckinPage(t *testing.T) {
 	}
 }
 
-// Health is picked from a radio group, not a select, prefilled from the latest
+// Health is picked from a radio group, not a select, picked from the latest
 // Check-in. The Path to Green fieldset stays in the form, hidden by CSS alone
 // while Green is picked.
 func TestCheckinPageHealthIsRadioGroup(t *testing.T) {
@@ -1562,6 +1562,9 @@ func TestNoChangeRefusedWhenRollupDiffersLandsOnCheckinForm(t *testing.T) {
 		t.Errorf("status = %d, want 422", resp.StatusCode)
 	}
 	assertNoChangeRefusalOnForm(t, page, "differs from the Rolled-up Health (Red)")
+	if tag, typed := checkinGhostTextarea(t, page, "status"); typed != "" || attr(tag, "placeholder") != "On track." {
+		t.Errorf("status = %q with %s, want empty with the last Check-in's as ghost text", typed, tag)
+	}
 	if history, _ := h.Service.ListCheckins(context.Background(), parent.ID); len(history) != 1 {
 		t.Errorf("a refused No change recorded a Check-in: history has %d, want 1", len(history))
 	}
@@ -2099,4 +2102,275 @@ func TestNoChangeCheckinLeavesDraftHighlightsPendingOverHTTP(t *testing.T) {
 	if highlights, _ := h.Service.ListHighlightsByGoal(context.Background(), goal.ID); len(highlights) != 0 {
 		t.Errorf("highlights = %d, want none recorded", len(highlights))
 	}
+}
+
+// The Check-in form starts its text, number and date fields empty, showing the
+// latest Check-in's answers and each Metric's latest reading as ghost text, so
+// a full Check-in is written fresh; Health stays picked from the latest
+// Check-in (ticket #284).
+func TestCheckinFormShowsLatestAnswersAsGhostText(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	parent := h.ActiveGoal(sam, "Autoscale the API tier", "Traffic spikes cost us.")
+	child := h.ActiveChildOf(sam, parent, "Load tests", "Know the limits.")
+	h.Checkin(sam, child.ID, domain.HealthGreen, "Done for this quarter.", "", time.Time{})
+	rps := addCheckinGhostMetric(t, h, parent, "Peak requests")
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:         parent.ID,
+		AuthorID:       sam.ID,
+		Health:         domain.HealthYellow,
+		Status:         "Vendor sign-off is slower than expected.",
+		PathToGreen:    "Escalate to the vendor.",
+		PathTargetDate: pathDate,
+		Explanation:    "The load tests miss the vendor risk.",
+		Readings:       []domain.MetricReadingInput{{MetricID: rps.ID, Value: 1250.5}},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, parent.ID))
+	form := between(t, page, `id="checkin-form"`, "</form>")
+	for name, want := range map[string]string{
+		"status":        "Vendor sign-off is slower than expected.",
+		"path_to_green": "Escalate to the vendor.",
+		"explanation":   "The load tests miss the vendor risk.",
+	} {
+		tag, typed := checkinGhostTextarea(t, form, name)
+		if typed != "" {
+			t.Errorf("%s starts as %q, want empty", name, typed)
+		}
+		if got := html.UnescapeString(attr(tag, "placeholder")); got != want {
+			t.Errorf("%s placeholder = %q, want %q", name, got, want)
+		}
+	}
+	reading := tagAround(t, form, fmt.Sprintf(`name="reading_%d"`, rps.ID))
+	if got := attr(reading, "value"); got != "" {
+		t.Errorf("reading starts as %q, want empty", got)
+	}
+	if got := attr(reading, "placeholder"); got != "1250.5" {
+		t.Errorf("reading placeholder = %q, want 1250.5", got)
+	}
+	date := tagAround(t, form, `name="path_target_date"`)
+	if got := attr(date, "value"); got != "" {
+		t.Errorf("Back to Green by starts as %q, want empty", got)
+	}
+	if got := elementTexts(form, "span", "checkin-path-target-last"); !slices.Equal(got, []string{"Last time: Jun 15"}) {
+		t.Errorf("Back to Green by hint = %q, want [Last time: Jun 15]", got)
+	}
+	hint := tagAround(t, form, `data-testid="checkin-path-target-last"`)
+	if described := attr(date, "aria-describedby"); described == "" || described != attr(hint, "id") {
+		t.Errorf("Back to Green by is not described by its hint: input %s, hint %s", date, hint)
+	}
+	if !strings.Contains(form, `type="radio" name="health" value="Yellow" checked`) {
+		t.Errorf("Yellow is not picked; form:\n%s", form)
+	}
+}
+
+// A first Check-in has nothing to show as ghost text: its fields carry no
+// placeholder and no "Last time" hint, and it starts on Green.
+func TestCheckinFormWithoutPreviousCheckinShowsNoGhostText(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	parent := h.ActiveGoal(sam, "Autoscale the API tier", "Traffic spikes cost us.")
+	child := h.ActiveChildOf(sam, parent, "Load tests", "Know the limits.")
+	h.Checkin(sam, child.ID, domain.HealthGreen, "Done for this quarter.", "", time.Time{})
+	addCheckinGhostMetric(t, h, parent, "Peak requests")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, parent.ID))
+	form := between(t, page, `id="checkin-form"`, "</form>")
+	if !strings.Contains(form, `name="explanation"`) {
+		t.Fatalf("form has no explanation field to check; form:\n%s", form)
+	}
+	for _, field := range []string{"checkin-readings", "path-to-green-field"} {
+		if fieldset := pageElement(t, form, "fieldset", field); strings.Contains(fieldset, "placeholder=") {
+			t.Errorf("%s shows ghost text with no previous Check-in:\n%s", field, fieldset)
+		}
+	}
+	for _, name := range []string{"status", "explanation"} {
+		if tag, _ := checkinGhostTextarea(t, form, name); strings.Contains(tag, "placeholder=") {
+			t.Errorf("%s shows ghost text with no previous Check-in: %s", name, tag)
+		}
+	}
+	if strings.Contains(form, `data-testid="checkin-path-target-last"`) {
+		t.Errorf("form shows a Last time hint with no previous Check-in; form:\n%s", form)
+	}
+	if !strings.Contains(form, `type="radio" name="health" value="Green" checked`) {
+		t.Errorf("a first Check-in does not start on Green; form:\n%s", form)
+	}
+}
+
+// A refused Check-in, and Add another, come back with what was typed kept and
+// the latest Check-in's answers still shown as ghost text, over htmx and as a
+// plain post.
+func TestCheckinReRenderKeepsTypedAndGhostText(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Autoscale the API tier", "Traffic spikes cost us.")
+	rps := addCheckinGhostMetric(t, h, goal, "Peak requests")
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:         goal.ID,
+		AuthorID:       sam.ID,
+		Health:         domain.HealthYellow,
+		Status:         "Vendor sign-off is slower than expected.",
+		PathToGreen:    "Escalate to the vendor.",
+		PathTargetDate: pathDate,
+		Readings:       []domain.MetricReadingInput{{MetricID: rps.ID, Value: 1250.5}},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	checkinsURL := fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID)
+	// Red with no Path to Green is refused.
+	typed := url.Values{
+		"health":                          {domain.HealthRed},
+		"status":                          {"The vendor went quiet."},
+		fmt.Sprintf("reading_%d", rps.ID): {"900"},
+	}
+
+	addAnother := url.Values{"add_highlight": {"1"}}
+	for k, v := range typed {
+		addAnother[k] = v
+	}
+
+	htmxBody, _ := postFormHX(t, samClient, checkinsURL, typed)
+	plainResp := postForm(t, samClient, checkinsURL, typed)
+	if plainResp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("plain refused post status = %d, want 422", plainResp.StatusCode)
+	}
+	htmxAgain, _ := postFormHX(t, samClient, checkinsURL, addAnother)
+	plainAgain := postForm(t, samClient, checkinsURL, addAnother)
+	for how, body := range map[string]string{
+		"htmx refused":      htmxBody,
+		"plain refused":     readBody(t, plainResp),
+		"htmx add another":  htmxAgain,
+		"plain add another": readBody(t, plainAgain),
+	} {
+		form := between(t, body, `id="checkin-form"`, "</form>")
+		if refused := strings.Contains(form, `data-testid="checkin-error"`); refused != strings.HasSuffix(how, "refused") {
+			t.Fatalf("%s: form shows an error = %v; form:\n%s", how, refused, form)
+		}
+		tag, status := checkinGhostTextarea(t, form, "status")
+		if status != "The vendor went quiet." {
+			t.Errorf("%s: status re-rendered as %q, want what was typed", how, status)
+		}
+		if got := html.UnescapeString(attr(tag, "placeholder")); got != "Vendor sign-off is slower than expected." {
+			t.Errorf("%s: status placeholder = %q, want the latest Check-in's", how, got)
+		}
+		if tag, _ := checkinGhostTextarea(t, form, "path_to_green"); attr(tag, "placeholder") != "Escalate to the vendor." {
+			t.Errorf("%s: Path to Green placeholder lost: %s", how, tag)
+		}
+		reading := tagAround(t, form, fmt.Sprintf(`name="reading_%d"`, rps.ID))
+		if attr(reading, "value") != "900" || attr(reading, "placeholder") != "1250.5" {
+			t.Errorf("%s: reading = %s, want value 900 and placeholder 1250.5", how, reading)
+		}
+		if got := elementTexts(form, "span", "checkin-path-target-last"); !slices.Equal(got, []string{"Last time: Jun 15"}) {
+			t.Errorf("%s: Back to Green by hint = %q, want [Last time: Jun 15]", how, got)
+		}
+		if !strings.Contains(form, `type="radio" name="health" value="Red" checked`) {
+			t.Errorf("%s: the Health picked was not kept; form:\n%s", how, form)
+		}
+	}
+}
+
+// Ghost text is never submitted: a Check-in sent with the status left empty is
+// refused though the last Check-in had one, and a reading left blank records
+// no reading though the Metric was read before.
+func TestCheckinGhostTextIsNotSubmitted(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Autoscale the API tier", "Traffic spikes cost us.")
+	rps := addCheckinGhostMetric(t, h, goal, "Peak requests")
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: sam.ID,
+		Health:   domain.HealthGreen,
+		Status:   "Scaling to plan.",
+		Readings: []domain.MetricReadingInput{{MetricID: rps.ID, Value: 1250.5}},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	checkinsURL := fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID)
+	blankReading := fmt.Sprintf("reading_%d", rps.ID)
+
+	body, _ := postFormHX(t, samClient, checkinsURL, url.Values{
+		"health":     {domain.HealthGreen},
+		"status":     {""},
+		blankReading: {""},
+	})
+	if msg := fieldError(t, body, `name="status"`); !strings.Contains(msg, "needs a status") {
+		t.Errorf("status field's error = %q, want the status one", msg)
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
+		t.Errorf("an empty status recorded a Check-in: history has %d, want 1", len(history))
+	}
+
+	resp := postForm(t, samClient, checkinsURL, url.Values{
+		"health":     {domain.HealthGreen},
+		"status":     {"Still scaling to plan."},
+		blankReading: {""},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("submit check-in: status %d; body:\n%s", resp.StatusCode, readBody(t, resp))
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 2 {
+		t.Fatalf("history has %d Check-ins, want 2", len(history))
+	}
+	readings, err := h.Service.ListMetricReadings(context.Background(), rps.ID)
+	if err != nil {
+		t.Fatalf("ListMetricReadings: %v", err)
+	}
+	if len(readings) != 1 {
+		t.Errorf("a blank reading recorded one: Metric has %d readings, want 1", len(readings))
+	}
+}
+
+// addCheckinGhostMetric adds a Metric to goal, failing the test on error.
+func addCheckinGhostMetric(t *testing.T, h *testsupport.Harness, goal domain.Goal, name string) domain.Metric {
+	t.Helper()
+	m, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+		GoalID:     goal.ID,
+		Name:       name,
+		Unit:       "per second",
+		Direction:  domain.MetricUp,
+		Baseline:   100,
+		Target:     5000,
+		TargetDate: h.Clock.Now().AddDate(0, 6, 0),
+	})
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	return m
+}
+
+// checkinGhostTextarea returns the named textarea's opening tag and what it
+// holds as typed.
+func checkinGhostTextarea(t *testing.T, form, name string) (tag, typed string) {
+	t.Helper()
+	start := strings.Index(form, `<textarea name="`+name+`"`)
+	if start < 0 {
+		t.Fatalf("form has no textarea %s", name)
+	}
+	rest := form[start:]
+	open, end := strings.Index(rest, ">"), strings.Index(rest, "</textarea>")
+	if end < 0 {
+		t.Fatalf("textarea %s is not closed", name)
+	}
+	return rest[:open+1], html.UnescapeString(rest[open+1 : end])
 }

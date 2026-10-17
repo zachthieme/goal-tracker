@@ -120,16 +120,19 @@ the price of scenarios 1 and 2, so it has to stay low.
    item in the top bar carries the count.
 2. Three Goals haven't changed. She presses **No change** on each. One click
    records a Check-in repeating last week's values, and the row leaves the list.
-3. The fourth moved. She presses **Check in**. The form comes prefilled from
-   her latest Check-in: Health, Status, a reading for each Metric. She updates
-   the Status and one reading and submits.
+3. The fourth moved. She presses **Check in**. Her Health is already picked
+   from her latest Check-in, and the empty Status, Path to Green and reading
+   fields show last week's answers as ghost text. She types this week's Status
+   and the reading that moved, and submits.
 4. During the week she had logged a Draft Highlight on that Goal. The form
    offers it, ticked to keep, and it becomes one of this Check-in's Highlights,
    which Elena may later pull into her Report.
 5. Home says "You're all caught up."
 
-**It worked if:** four Goals took under five minutes; nothing she didn't change
-had to be retyped; the optional parts (Highlights, dates and Milestones,
+**It worked if:** four Goals took under five minutes; the Goal that moved got
+a Status written fresh, with last week's answers in view as she wrote it and
+none of them sent unless she typed it; her Health didn't have to be picked
+again; the optional parts (Highlights, dates and Milestones,
 Lifecycle) stayed folded away until she needed them.
 
 **When Priya is on holiday,** a Delegate she authorized checks in for her from
