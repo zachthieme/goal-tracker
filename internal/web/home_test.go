@@ -112,6 +112,72 @@ func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
 	}
 }
 
+// A Stale Goal's Health in Check-ins due is its last Check-in's, so it reads
+// as last reported: a muted badge naming just the Health, with "as of" how
+// long ago beside it, still flagged Stale. A due Goal that isn't Stale yet
+// keeps its full-colour badge and no "as of".
+func TestHomeDatesStaleGoalsHealth(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	stale := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, stale.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(day)
+	dueSoon := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	setCadence(t, h, dueSoon, 14)
+	h.Checkin(sam, dueSoon.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(8 * day)
+
+	due := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due")
+
+	row := homeRow(t, due, stale)
+	badge := tagAround(t, row, `data-testid="home-due-health"`)
+	if !hasClass(badge, "as-of") {
+		t.Errorf("Stale Goal's Health badge is not muted: %s", badge)
+	}
+	if !regexp.MustCompile(`data-testid="home-due-health"[^>]*><span class="dot"></span>\s*Green\s*</span>`).MatchString(row) {
+		t.Errorf("Stale Goal's Health badge does not read just Green:\n%s", row)
+	}
+	if got := elementTexts(row, "span", "home-due-as-of"); len(got) != 1 || got[0] != "as of 9 days ago" {
+		t.Errorf("Stale Goal's Health is dated %q, want as of 9 days ago:\n%s", got, row)
+	}
+	if !strings.Contains(row, `data-testid="home-due-stale"`) {
+		t.Errorf("Stale Goal is no longer flagged Stale:\n%s", row)
+	}
+
+	row = homeRow(t, due, dueSoon)
+	if hasClass(tagAround(t, row, `data-testid="home-due-health"`), "as-of") || strings.Contains(row, `data-testid="home-due-as-of"`) {
+		t.Errorf("due Goal that isn't Stale has its Health dated:\n%s", row)
+	}
+}
+
+// A Stale Goal never checked in on has no reported Health to date: its badge
+// reads "No Health yet", unmuted, with no "as of", since its days count from
+// activation.
+func TestHomeLeavesNoHealthYetUndated(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	silent := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Clock.Advance(9 * day)
+
+	row := homeRow(t, pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due"), silent)
+	if !strings.Contains(row, `data-testid="home-due-stale"`) {
+		t.Fatalf("Goal 9 days past activation on a weekly cadence isn't Stale:\n%s", row)
+	}
+	badge := tagAround(t, row, `data-testid="home-due-health"`)
+	if hasClass(badge, "as-of") || !strings.Contains(row, "No Health yet") {
+		t.Errorf("Goal with no Check-in doesn't read No Health yet, unmuted: %s", row)
+	}
+	if strings.Contains(row, `data-testid="home-due-as-of"`) {
+		t.Errorf("Goal with no Check-in has its Health dated:\n%s", row)
+	}
+}
+
 // "Check-ins due" lists the most overdue Goal first: how far past its cadence
 // it is, not how long since its last update, so a long cadence doesn't push a
 // Goal ahead of one already further behind.
@@ -420,8 +486,11 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 			t.Errorf("Your goals lists %q, which isn't one of sam's Red or Yellow Goals:\n%s", g.Title, yours)
 		}
 	}
-	if !strings.Contains(yours, `href="/goals"`) {
-		t.Errorf("Your goals does not link to all of sam's Goals:\n%s", yours)
+	if !strings.Contains(yours, `<a href="/goals?mine=1">Goals you own or help with →</a>`) {
+		t.Errorf("Your goals does not link to the Goals sam owns or helps with:\n%s", yours)
+	}
+	if strings.Contains(yours, `href="/goals"`) {
+		t.Errorf("Your goals still links to every Goal in the org:\n%s", yours)
 	}
 
 	// All four Goals were last checked in 2 days ago on a weekly cadence, so
@@ -431,6 +500,69 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 	}
 	if head := pageElement(t, page, "header", "home-head"); !strings.Contains(head, ">New goal</a>") {
 		t.Errorf("heading has no New goal link:\n%s", head)
+	}
+}
+
+// "Your goals" lists the viewer's Red and Yellow Goals under a "Not Green"
+// heading, Red first, so the list doesn't read as all their Goals. With only
+// Green Goals there is neither heading nor list.
+func TestHomeHeadsNotGreenGoals(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	target := testsupport.Epoch.AddDate(0, 1, 0)
+	yellow := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Slipping.", "Cut scope.", target)
+	red := h.ActiveGoal(sam, "Cut churn", "Customers leave.")
+	h.Checkin(sam, red.ID, domain.HealthRed, "Blocked.", "Escalate.", target)
+	green := h.ActiveGoal(kim, "Ship search", "People can't find things.")
+	h.Checkin(kim, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	yours := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-your-goals")
+	heading := strings.Index(yours, `<h4 class="label">Not Green</h4>`)
+	first, second := strings.Index(yours, navTo(red.ID)), strings.Index(yours, navTo(yellow.ID))
+	if heading < 0 || first < heading || second < first {
+		t.Errorf("Your goals does not list Red then Yellow under a Not Green heading:\n%s", yours)
+	}
+
+	kims := pageElement(t, getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home"), "section", "home-your-goals")
+	if strings.Contains(kims, "Not Green") || strings.Contains(kims, "hm-compact") {
+		t.Errorf("kim has only Green Goals but sees a Not Green list:\n%s", kims)
+	}
+}
+
+// In the Not Green list a Stale Goal's Health is muted and dated as last
+// reported, as in Check-ins due; a Goal checked in on lately keeps its
+// full-colour badge and no "as of".
+func TestHomeDatesStaleNotGreenHealth(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	target := testsupport.Epoch.AddDate(0, 1, 0)
+	stale := h.ActiveGoal(sam, "Cut churn", "Customers leave.")
+	h.Checkin(sam, stale.ID, domain.HealthRed, "Blocked.", "Escalate.", target)
+	h.Clock.Advance(9 * day)
+	fresh := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	h.Checkin(sam, fresh.ID, domain.HealthYellow, "Slipping.", "Cut scope.", target)
+
+	yours := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-your-goals")
+
+	row := homeRow(t, yours, stale)
+	if badge := tagAround(t, row, `data-testid="home-goal-health"`); !hasClass(badge, "as-of") {
+		t.Errorf("Stale Red Goal's Health badge is not muted: %s", badge)
+	}
+	if got := elementTexts(row, "span", "home-goal-as-of"); len(got) != 1 || got[0] != "as of 9 days ago" {
+		t.Errorf("Stale Red Goal's Health is dated %q, want as of 9 days ago:\n%s", got, row)
+	}
+
+	row = homeRow(t, yours, fresh)
+	if hasClass(tagAround(t, row, `data-testid="home-goal-health"`), "as-of") || strings.Contains(row, `data-testid="home-goal-as-of"`) {
+		t.Errorf("Yellow Goal checked in today has its Health dated:\n%s", row)
 	}
 }
 

@@ -176,6 +176,16 @@ func dueReason(g domain.PersonalGoal) string {
 	return fmt.Sprintf("Last check-in %s on a %d-day cadence", daysAgo(f.DaysSince), f.CadenceDays)
 }
 
+// healthAsOf dates a Stale Goal's Health as last reported ("as of 9 days
+// ago"), or is "" when the Goal isn't Stale or has no Check-in to date it by,
+// and its Health badge reads as current.
+func healthAsOf(g domain.PersonalGoal) string {
+	if !g.Freshness.Stale || !g.CheckedIn || g.Health == "" {
+		return ""
+	}
+	return "as of " + daysAgo(g.Freshness.DaysSince)
+}
+
 // healthBarLabel reads the Health distribution bar's counts.
 func healthBarLabel(v homeView) string {
 	return fmt.Sprintf("%d Green, %d Yellow, %d Red", v.Green, v.Yellow, v.Red)
