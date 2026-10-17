@@ -88,14 +88,49 @@ func TestRisksPageListsStaleGoals(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
 	row := riskRowOf(t, page, silent)
-	if chip := riskChip(t, row, "stale"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Stale · 10d on 7d") {
-		t.Errorf("Stale chip is not a Stale badge saying 10d on 7d: %s", chip)
+	if chip := riskChip(t, row, "stale"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Stale · 10 days, checks in weekly") {
+		t.Errorf("Stale chip is not a Stale badge saying 10 days, checks in weekly: %s", chip)
 	}
 	if owner := pageElement(t, row, "td", "risk-owner"); !strings.HasSuffix(owner, ">You") || strings.Contains(owner, "sam@example.com") {
 		t.Errorf("the viewer's own Goal isn't Owned by You: %s", owner)
 	}
 	if row := riskRowOf(t, page, fresh); strings.Contains(row, `data-kind="stale"`) {
 		t.Errorf("%q, which checked in today, is Stale:\n%s", fresh.Title, row)
+	}
+}
+
+// A Stale chip says in words how long its Goal has gone without a Check-in and
+// how often it checks in, naming its cadence as the New goal form's chips do,
+// and counting the days of any other.
+func TestRisksStaleChipSaysItsCadenceInWords(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	want := map[int]string{
+		7:  "Stale · 42 days, checks in weekly",
+		14: "Stale · 42 days, checks in every 2 weeks",
+		30: "Stale · 42 days, checks in monthly",
+		3:  "Stale · 42 days, checks in every 3 days",
+	}
+	goals := map[int]domain.Goal{}
+	for cadence := range want {
+		g := h.ActiveGoal(sam, "Every "+strconv.Itoa(cadence)+" days", "It matters.")
+		if _, err := h.Service.SetCadence(t.Context(), g.ID, cadence); err != nil {
+			t.Fatalf("SetCadence: %v", err)
+		}
+		goals[cadence] = g
+	}
+	h.Clock.Advance(42 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	for cadence, g := range goals {
+		chip := riskChip(t, riskRowOf(t, page, g), "stale")
+		if !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">"+want[cadence]) {
+			t.Errorf("on a %d-day cadence, the Stale chip doesn't read %q: %s", cadence, want[cadence], chip)
+		}
 	}
 }
 
@@ -117,14 +152,40 @@ func TestRisksPageListsOverduePathsToGreen(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
 	row := riskRowOf(t, page, stalled)
-	if chip := riskChip(t, row, "path-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Path to Green 2d overdue") {
-		t.Errorf("overdue chip is not a Stale-colored badge saying 2d overdue: %s", chip)
+	if chip := riskChip(t, row, "path-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Path to Green 2 days overdue") {
+		t.Errorf("overdue chip is not a Stale-colored badge saying 2 days overdue: %s", chip)
 	}
 	if health := pageElement(t, row, "span", "risk-health"); !strings.Contains(openTag(health), `class="badge r"`) {
 		t.Errorf("row doesn't show the Goal's Red Health: %s", health)
 	}
 	if row := riskRowOf(t, page, green); strings.Contains(row, `data-kind="path-overdue"`) {
 		t.Errorf("Green %q is overdue:\n%s", green.Title, row)
+	}
+}
+
+// A Path to Green overdue chip says in words how many days overdue it is.
+func TestRisksPathToGreenChipSaysItsDaysInWords(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	start := h.Clock.Now()
+	want := map[int]string{12: "Path to Green 12 days overdue", 1: "Path to Green 1 day overdue"}
+	goals := map[int]domain.Goal{}
+	for overdue := range want {
+		g := h.ActiveGoal(sam, strconv.Itoa(overdue)+" days overdue", "It matters.")
+		h.Checkin(sam, g.ID, domain.HealthRed, "Blocked.", "Escalate.", start.AddDate(0, 0, 1-overdue))
+		goals[overdue] = g
+	}
+	h.Clock.Advance(day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	for overdue, g := range goals {
+		if chip := riskChip(t, riskRowOf(t, page, g), "path-overdue"); !strings.HasSuffix(chip, ">"+want[overdue]) {
+			t.Errorf("%d days overdue, the chip doesn't read %q: %s", overdue, want[overdue], chip)
+		}
 	}
 }
 
@@ -974,10 +1035,78 @@ func TestRisksPageScopedToMine(t *testing.T) {
 	}
 }
 
+// risksValueSelects returns each of the Risks page's Dimension value selects,
+// in order.
+func risksValueSelects(page string) []string {
+	return regexp.MustCompile(`(?s)<select data-testid="risks-value".*?</select>`).FindAllString(page, -1)
+}
+
+// risksValueSelect returns the Risks page's value select for the Dimension
+// named dim, failing the test unless there is exactly one.
+func risksValueSelect(t *testing.T, page, dim string) string {
+	t.Helper()
+	var found []string
+	for _, sel := range risksValueSelects(page) {
+		if attr(openTag(sel), "data-dimension") == dim {
+			found = append(found, sel)
+		}
+	}
+	if len(found) != 1 {
+		t.Fatalf("the Risks page has %d value selects for %s, want 1:\n%s", len(found), dim, page)
+	}
+	return found[0]
+}
+
+// The Risks page has a value select per offered Dimension, in the Dimensions'
+// order, by name, each named value and labelled by its Dimension's name, offering
+// "<Dimension>: any", which scopes nothing, then the Dimension's values, a
+// Retired one saying so.
+func TestRisksPageHasAValueSelectPerDimension(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	h.SignIn("sam@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Growth")
+	h.CreateDimension(boss, "Quarter", "Q3")
+	if err := h.Service.RetireDimensionValue(t.Context(), boss.ID, team.Values[1].ID); err != nil {
+		t.Fatalf("RetireDimensionValue: %v", err)
+	}
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	sels := risksValueSelects(page)
+	var dims []string
+	for _, sel := range sels {
+		dims = append(dims, attr(openTag(sel), "data-dimension"))
+	}
+	if !slices.Equal(dims, []string{"Quarter", "Team"}) {
+		t.Fatalf("the value selects are for %q, want Quarter then Team", dims)
+	}
+	for dim, want := range map[string][]string{"Team": {"Team: any", "Platform", "Growth (retired)"}, "Quarter": {"Quarter: any", "Q3"}} {
+		sel := risksValueSelect(t, page, dim)
+		if name := attr(openTag(sel), "name"); name != "value" {
+			t.Errorf("the %s select is named %q, want value", dim, name)
+		}
+		if label := attr(openTag(sel), "aria-label"); label != dim {
+			t.Errorf("the %s select is labelled %q", dim, label)
+		}
+		choices, value, _ := scopeChoices(sel)
+		if !slices.Equal(choices, want) {
+			t.Errorf("the %s select offers %q, want %q", dim, choices, want)
+		}
+		if first := regexp.MustCompile(`<option[^>]*>`).FindString(sel); attr(first, "value") != "" || value != "" {
+			t.Errorf("unscoped, the %s select's any option doesn't post nothing, chosen: %s", dim, sel)
+		}
+	}
+}
+
 // Scoped to a Dimension value (?value=), the Risks page keeps only the Goals
-// that have it, counting those alone, and its value select offers Any value
-// then each offered Dimension's values, the chosen one selected. A value of a
-// Retired Dimension, or no value at all, scopes nothing.
+// that have it, counting those alone, and its Dimension's select offers
+// "Team: any" then the Dimension's values, the chosen one selected. A value of
+// a Retired Dimension, which has no select, or no value at all, scopes
+// nothing.
 func TestRisksPageScopedToADimensionValue(t *testing.T) {
 	t.Parallel()
 
@@ -1018,25 +1147,11 @@ func TestRisksPageScopedToADimensionValue(t *testing.T) {
 	if risks := pageElement(t, page, "a", "nav-risks"); !strings.Contains(risks, `<span class="count">3</span>`) {
 		t.Errorf("scoped to Platform, the top bar's Risks count follows scope: %s", risks)
 	}
-	sel := between(t, page, `<select data-testid="risks-value"`, "</select>")
-	if attr(sel, "name") != "value" {
-		t.Errorf("the value select isn't named value: %s", sel)
+	if sels := risksValueSelects(page); len(sels) != 1 {
+		t.Errorf("with Team the one offered Dimension, the page has %d value selects, want 1", len(sels))
 	}
-	options := regexp.MustCompile(`<option[^>]*>[^<]*`).FindAllString(sel, -1)
-	if len(options) != 3 || !strings.HasSuffix(options[0], ">Any value") || attr(options[0], "value") != "" {
-		t.Fatalf("the value select doesn't offer Any value then Team's 2 values: %s", sel)
-	}
-	if !strings.Contains(sel, `<optgroup label="Team">`) || strings.Contains(sel, "Region") {
-		t.Errorf("the value select doesn't group the offered Dimension's values alone: %s", sel)
-	}
-	for i, v := range []domain.DimensionValue{platform, growth} {
-		o := options[i+1]
-		if attr(o, "value") != id(v) || !strings.HasSuffix(o, ">"+v.Value) {
-			t.Errorf("option %d isn't %s: %s", i+1, v.Value, o)
-		}
-		if selected := regexp.MustCompile(`\sselected[\s/>]`).MatchString(o); selected != (v.ID == platform.ID) {
-			t.Errorf("scoped to Platform, %s selected is %v", v.Value, selected)
-		}
+	if choices, value, label := scopeChoices(risksValueSelect(t, page, "Team")); !slices.Equal(choices, []string{"Team: any", "Platform", "Growth"}) || value != id(platform) || label != "Platform" {
+		t.Errorf("scoped to Platform, the Team select offers %q with %q %q chosen, want Team: any, Platform, Growth with Platform", choices, value, label)
 	}
 	values := formValues(between(t, page, `data-testid="risks-filters"`, "</form>"))
 	if values.Set("org", "mine"); values.Encode() != "org=mine&value="+id(platform) {
@@ -1049,6 +1164,125 @@ func TestRisksPageScopedToADimensionValue(t *testing.T) {
 			riskRowOf(t, page, g)
 		}
 	}
+}
+
+// Scoped to values of two Dimensions, the Risks page keeps only the flagged
+// Goals carrying both, as the Goal list does; scoped to one, those carrying
+// it. Of two values in one Dimension it keeps the first, which its select
+// shows chosen, and a value naming no offered one scopes nothing.
+func TestRisksPageScopedToValuesOfSeveralDimensions(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform", "Growth")
+	quarter := h.CreateDimension(boss, "Quarter", "Q3")
+	platform, growth, q3 := team.Values[0], team.Values[1], quarter.Values[0]
+	both := h.ActiveGoal(sam, "Platform in Q3", "It matters.")
+	h.AssignGoalValue(both, platform)
+	h.AssignGoalValue(both, q3)
+	platformOnly := h.ActiveGoal(sam, "Platform any time", "It matters.")
+	h.AssignGoalValue(platformOnly, platform)
+	growthInQ3 := h.ActiveGoal(sam, "Growth in Q3", "It matters.")
+	h.AssignGoalValue(growthInQ3, growth)
+	h.AssignGoalValue(growthInQ3, q3)
+	untagged := h.ActiveGoal(sam, "Untagged work", "It matters.")
+	h.Clock.Advance(10 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	id := func(v domain.DimensionValue) string { return strconv.FormatInt(v.ID, 10) }
+	all := []domain.Goal{both, platformOnly, growthInQ3, untagged}
+
+	for query, want := range map[string][]domain.Goal{
+		"value=" + id(platform) + "&value=" + id(q3):     {both},
+		"value=" + id(q3) + "&value=" + id(platform):     {both},
+		"value=" + id(platform):                          {both, platformOnly},
+		"value=&value=" + id(q3):                         {both, growthInQ3},
+		"value=" + id(platform) + "&value=" + id(growth): {both, platformOnly},
+		"value=bogus&value=" + id(growth) + "&value=999": {growthInQ3},
+	} {
+		page := getBody(t, client, ts.URL+"/risks?"+query)
+		for _, g := range all {
+			if listed := hasRiskRow(page, g); listed != slices.Contains(want, g) {
+				t.Errorf("at ?%s, %q listed is %v", query, g.Title, listed)
+			}
+		}
+	}
+
+	page := getBody(t, client, ts.URL+"/risks?value="+id(platform)+"&value="+id(growth))
+
+	if _, value, label := scopeChoices(risksValueSelect(t, page, "Team")); value != id(platform) || label != "Platform" {
+		t.Errorf("of Platform then Growth, the Team select shows %q %q chosen, want Platform", value, label)
+	}
+	if _, value, label := scopeChoices(risksValueSelect(t, page, "Quarter")); value != "" || label != "Quarter: any" {
+		t.Errorf("with no Quarter chosen, the Quarter select shows %q %q chosen, want Quarter: any", value, label)
+	}
+}
+
+// Scoped to values of two Dimensions, the group cards and Show all keep every
+// value, and with nothing flagged there the empty line names each value with
+// its Dimension, in the Dimensions' order.
+func TestRisksPageKeepsEveryValueInItsAddress(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	platform := h.CreateDimension(boss, "Team", "Platform").Values[0]
+	q3 := h.CreateDimension(boss, "Quarter", "Q3").Values[0]
+	g := h.ActiveGoal(sam, "Platform in Q3", "It matters.")
+	h.AssignGoalValue(g, platform)
+	h.AssignGoalValue(g, q3)
+	h.ActiveGoal(sam, "Untagged work", "It matters.")
+	h.Clock.Advance(10 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	scope := "value=" + strconv.FormatInt(q3.ID, 10) + "&value=" + strconv.FormatInt(platform.ID, 10)
+
+	page := getBody(t, client, ts.URL+"/risks?value="+strconv.FormatInt(platform.ID, 10)+"&value="+strconv.FormatInt(q3.ID, 10))
+
+	href := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "risks-group-owner")), "href"))
+	if href != "/risks?group=owner&"+scope {
+		t.Fatalf("the owner card's link %q doesn't keep both values", href)
+	}
+	page = getBody(t, client, ts.URL+href)
+	if all := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "risks-show-all")), "href")); all != "/risks?"+scope {
+		t.Errorf("Show all %q doesn't keep both values", all)
+	}
+
+	page = getBody(t, client, ts.URL+"/risks?group=admin&"+scope)
+
+	if empty := html.UnescapeString(pageElement(t, page, "p", "risks-empty")); !strings.Contains(empty, ">No Goals need attention in Quarter Q3, Team Platform, Needs an Admin. ") {
+		t.Errorf("the empty line doesn't name both values with their Dimensions: %s", empty)
+	}
+}
+
+// With no Dimension offered, the Risks page has no value select, and a value
+// in its address scopes nothing.
+func TestRisksPageWithNoDimensionsHasNoValueSelect(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	team := h.CreateDimension(boss, "Team", "Platform")
+	g := h.ActiveGoal(sam, "Platform work", "It matters.")
+	h.AssignGoalValue(g, team.Values[0])
+	other := h.ActiveGoal(sam, "Other work", "It matters.")
+	if err := h.Service.RetireDimension(t.Context(), boss.ID, team.ID); err != nil {
+		t.Fatalf("RetireDimension: %v", err)
+	}
+	h.Clock.Advance(10 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks?value="+strconv.FormatInt(team.Values[0].ID, 10))
+
+	if strings.Contains(page, `data-testid="risks-value"`) {
+		t.Errorf("with no Dimension offered, the page has a value select")
+	}
+	riskRowOf(t, page, g)
+	riskRowOf(t, page, other)
 }
 
 // Scoped to Mine and a value, the group cards and Show all keep the scope, so

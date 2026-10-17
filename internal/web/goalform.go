@@ -372,6 +372,18 @@ var cadenceChips = []struct{ Value, Label string }{
 	{cadenceCustom, "Custom…"},
 }
 
+// cadenceInWords says how often a Goal checks in, as its cadence's chip names
+// it but lower-cased ("weekly", "every 2 weeks", "monthly"), or by its days
+// for a cadence no chip but Custom posts ("every 3 days").
+func cadenceInWords(days int) string {
+	for _, c := range cadenceChips {
+		if c.Value != cadenceCustom && c.Value == strconv.Itoa(days) {
+			return strings.ToLower(c.Label)
+		}
+	}
+	return "every " + plural(days, "day")
+}
+
 // cadenceChosen is the cadence chip to show chosen: Weekly at first, and
 // Custom for days posted that no other chip posts.
 func (v goalFormView) cadenceChosen() string {

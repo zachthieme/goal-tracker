@@ -66,9 +66,9 @@ templ risksDefinitions() {
 }
 
 // risksFilters scopes the Risks page by its Scope (Everyone, Mine or an
-// Org), and to the Goals with a Dimension value when there are Dimensions,
-// submitted as a GET so the scope lives in the address, carrying the page's
-// group along. Under htmx it applies itself on a change, as the Goal list's
+// Org), and to the Goals with a value of each Dimension, one select per
+// offered Dimension named for it, submitted as a GET so the scope lives in the
+// address, carrying the page's group along. Under htmx it applies itself on a change, as the Goal list's
 // filter bar does, swapping in only #risks-body so the form keeps its focus,
 // and pushes the address; hx-history="false" makes Back load the earlier
 // address afresh rather than a snapshot whose selects would come back
@@ -92,15 +92,11 @@ templ risksFilters(v risksPageView) {
 			<input type="hidden" name="group" value={ v.Group }/>
 		}
 		@pageScopeSelect("risks-scope", v.Mine, v.Org)
-		if len(v.Dimensions) > 0 {
-			<select data-testid="risks-value" name="value" aria-label="Dimension value">
-				<option value="" selected?={ v.Value.ID == 0 }>Any value</option>
-				for _, d := range v.Dimensions {
-					<optgroup label={ d.Name }>
-						for _, dv := range d.Values {
-							<option value={ strconv.FormatInt(dv.ID, 10) } selected?={ v.Value.ID == dv.ID }>{ riskValueLabel(dv) }</option>
-						}
-					</optgroup>
+		for _, d := range v.Dimensions {
+			<select data-testid="risks-value" data-dimension={ d.Name } name="value" aria-label={ d.Name }>
+				<option value="" selected?={ v.valueIn(d.ID).ID == 0 }>{ d.Name + ": any" }</option>
+				for _, dv := range d.Values {
+					<option value={ strconv.FormatInt(dv.ID, 10) } selected?={ v.valueIn(d.ID).ID == dv.ID }>{ riskValueLabel(dv) }</option>
 				}
 			</select>
 		}
@@ -197,9 +193,9 @@ templ riskRow(current *domain.Account, today time.Time, here string, r riskGoalR
 templ riskChip(today time.Time, g domain.Goal, sig riskSignal) {
 	switch sig.Kind {
 		case "stale":
-			<span data-testid="risk-signal" data-kind="stale" class="badge st">{ fmt.Sprintf("Stale · %dd on %dd", sig.Days, g.CadenceDays) }</span>
+			<span data-testid="risk-signal" data-kind="stale" class="badge st">{ "Stale · " + plural(sig.Days, "day") + ", checks in " + cadenceInWords(g.CadenceDays) }</span>
 		case "path-overdue":
-			<span data-testid="risk-signal" data-kind="path-overdue" class="badge st">{ fmt.Sprintf("Path to Green %dd overdue", sig.Days) }</span>
+			<span data-testid="risk-signal" data-kind="path-overdue" class="badge st">{ "Path to Green " + plural(sig.Days, "day") + " overdue" }</span>
 		case "ownerless":
 			<span data-testid="risk-signal" data-kind="ownerless" class="badge ol">Ownerless</span>
 		case "unaligned":

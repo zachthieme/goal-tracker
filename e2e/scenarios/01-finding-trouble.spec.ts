@@ -306,7 +306,9 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   await test.step("4. Narrowed to her org, each flagged Goal is one row, worst first, with a chip per reason and one Fix", async () => {
     const everyone = await navRisksCount(page);
     await page.goto("/risks");
-    await page.getByTestId("risks-value").selectOption({ label: "Platform" });
+    const teamSelect = page.locator('[data-testid="risks-value"][data-dimension="Team"]');
+    await expect(teamSelect.locator("option").first()).toHaveText("Team: any");
+    await teamSelect.selectOption({ label: "Platform" });
     await expect(page).toHaveURL(/[?&]value=\d+/);
     const rows = await riskRows(page);
     await expect(page.getByTestId("risks-attention")).toHaveText(new RegExp(`^${rows.length} Goals? needs? attention`));
@@ -341,8 +343,8 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     }
 
     // A Goal with two reasons is one row with two chips and one Fix.
-    await page.getByTestId("risks-value").selectOption({ label: twoReasons.team });
-    await expect(page.getByTestId("risks-value").locator("option:checked")).toHaveText(twoReasons.team);
+    await teamSelect.selectOption({ label: twoReasons.team });
+    await expect(teamSelect.locator("option:checked")).toHaveText(twoReasons.team);
     await expect(page.getByTestId("risks-table").getByRole("link", { name: twoReasons.title, exact: true })).toBeVisible();
     const team = await riskRows(page);
     const two = team.filter((r) => r.id === twoReasons.id);

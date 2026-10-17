@@ -609,10 +609,13 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   value's tag takes a dashed edge instead, struck through and muted.
 - **Stale chip (`.badge.st`):** marks a Stale Goal wherever its Health shows
   (the Goal list, Home, a Report), with its age ("Stale · 9 days" on the Goal
-  list). It is a warning about freshness, never a tag, so it can't share a
-  tag's look: a `--stale-bg` grey fill, `--stale-ink` text and a 1px dashed
+  list; on Risks, with its cadence too: "Stale · 42 days, checks in weekly",
+  naming the cadence as the New goal form's chips do, or "every 3 days"). It
+  is a warning about freshness, never a tag, so it can't share a tag's look:
+  a `--stale-bg` grey fill, `--stale-ink` text and a 1px dashed
   `--stale-edge` border, at a Health badge's `--radius-sm`. The Goal list's
-  "Path to Green overdue" chip takes the same style.
+  "Path to Green overdue" chip takes the same style, as does Risks' ("Path to
+  Green 12 days overdue").
 - **Stale banner (`.alert.st`):** at the top of a Stale Goal's page, a
   `--color-surface` banner in a 1px dashed `--stale-edge` border, with
   `--color-ink` text: **Stale**, then how long it has gone without a Check-in
