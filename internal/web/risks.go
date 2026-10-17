@@ -19,8 +19,9 @@ import (
 // handleRisks answers "what's going wrong?" for leadership: every Goal the
 // freshness and graph signals flag, by problem type, scoped by its address to
 // the viewer's own Goals (?org=mine, or the older ?mine=1) or an Org's
-// (?org=), and to the Goals with an offered Dimension's value (?value=). The scope narrows the rows only after they are
-// built: loadRisks stays company-wide for the top bar's count.
+// (?org=), and to the Goals with an offered Dimension's value (?value=). The
+// scope narrows the rows only after they are built: loadRisks stays
+// company-wide for the top bar's count.
 func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	page, err := s.loadRisksPage(r.Context(), r.URL.Query(), current)
 	if err != nil {
