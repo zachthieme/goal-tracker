@@ -780,6 +780,9 @@ templ goalHead(v goalView, owner, admin bool) {
 			if note := v.lifecycleNote(); note != "" {
 				<p data-testid="goal-lifecycle-note" class="muted">{ note }</p>
 			}
+			if v.opens(formTitleSoWhat) {
+				@titleSoWhatForm(v)
+			}
 			if v.opens(formTopLevel) {
 				@openGoalForm(v, formTopLevel, "") {
 					@topLevelControl(g)
@@ -854,14 +857,14 @@ templ goalPageStyles() {
 	</style>
 }
 
-// goalMore is the header's action menu, a "⋯" disclosure: every action on the
+// goalMore is the header's action menu, a "More ▾" disclosure: every action on the
 // Goal the viewer may take beyond checking in, each a plain link that reloads
 // the page with that action's form open where it belongs (goalView.openURL).
 // It holds no forms, and is left out when it would be empty.
 templ goalMore(v goalView) {
 	if actions := v.actions(); len(actions) > 0 {
 		<details data-testid="goal-more" class="gp-more">
-			<summary class="btn" aria-label="More actions" title="More actions">⋯</summary>
+			<summary class="btn" aria-label="More actions" title="More actions">More ▾</summary>
 			<div class="card gp-menu">
 				<ul>
 					for _, a := range actions {
@@ -870,6 +873,33 @@ templ goalMore(v goalView) {
 				</ul>
 			</div>
 		</details>
+	}
+}
+
+// titleSoWhatForm is the Edit title and So What form, open in the page head
+// for the Owner or an Admin: the Goal's title and So What as they stand, or
+// each as typed when a save was refused.
+templ titleSoWhatForm(v goalView) {
+	{{ g := v.Goal }}
+	{{ title, soWhat := g.Title, g.SoWhat }}
+	if typed, ok := v.FormInput["title"]; ok && len(typed) > 0 {
+		{{ title = typed[0] }}
+	}
+	if typed, ok := v.FormInput["so_what"]; ok && len(typed) > 0 {
+		{{ soWhat = typed[0] }}
+	}
+	@openGoalForm(v, formTitleSoWhat, "Edit title and So What") {
+		<form data-testid="edit-title-so-what" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/so-what", g.ID)) } class="gp-form">
+			<label class="field">
+				<span>Title</span>
+				<input type="text" name="title" value={ title } required autofocus/>
+			</label>
+			<label class="field">
+				<span>So What</span>
+				<textarea name="so_what" rows="3" required>{ soWhat }</textarea>
+			</label>
+			<button type="submit" class="btn">Save</button>
+		</form>
 	}
 }
 

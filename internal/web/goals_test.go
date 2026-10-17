@@ -4428,7 +4428,7 @@ func actionMenu(t *testing.T, page string) string {
 }
 
 // An Owner's header offers Check in as the primary action, No change as a quiet
-// one, and beside them a "⋯" menu named for assistive technology. A signed-in
+// one, and beside them a "More ▾" menu, named and titled "More actions". A signed-in
 // person with no role on the Goal gets neither button, only the menu.
 func TestGoalPageHeaderActionsOverHTTP(t *testing.T) {
 	t.Parallel()
@@ -4450,8 +4450,12 @@ func TestGoalPageHeaderActionsOverHTTP(t *testing.T) {
 		t.Errorf("No change is not a quiet button: %s", noChange)
 	}
 	summary := between(t, actionMenu(t, page), "<summary", "</summary>")
-	if !strings.Contains(summary, ">⋯") || attr(summary+">", "aria-label") == "" {
-		t.Errorf("the menu is not a ⋯ with an accessible name: %s", summary)
+	open := openTag(summary)
+	if text := strings.TrimSpace(summary[len(open)+1:]); text != "More ▾" {
+		t.Errorf("the menu button reads %q, want %q: %s", text, "More ▾", summary)
+	}
+	if attr(open, "aria-label") != "More actions" || attr(open, "title") != "More actions" {
+		t.Errorf("the menu button is not named and titled %q: %s", "More actions", summary)
 	}
 
 	page = getBody(t, signInClient(t, ts.URL, "mel@example.com"), goalPageURL(ts.URL, goal))
@@ -4491,10 +4495,10 @@ func menuItems(t *testing.T, page string) map[string]string {
 
 // The action menu lists the actions a person may take, each a plain link to the
 // Goal page with that action's form open, but Add a child Goal, which links to
-// the New goal form with this Goal picked as its parent: an Owner gets Hand
-// off, Add a delegate, Link to a parent Goal, Add a child Goal and, with
+// the New goal form with this Goal picked as its parent: an Owner gets Edit
+// title and So What, Hand off, Add a delegate, Link to a parent Goal, Add a child Goal and, with
 // Dimensions and Fields defined, Edit Dimension values and Edit Fields; an
-// Admin adds Mark Top-level and Mark owner departed…, and on an Ownerless Goal
+// Admin gets Edit title and So What too, and adds Mark Top-level and Mark owner departed…, and on an Ownerless Goal
 // Reassign and Mark returned… in place of Hand off; anyone else only Add a
 // child Goal. Anyone but the Owner gets Suggest a parent, linking to its own
 // form.
@@ -4524,30 +4528,33 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 		want map[string]string
 	}{
 		{"sam@example.com", goal, map[string]string{
-			"Hand off":              open(goal, "handoff"),
-			"Add a delegate":        open(goal, "delegates"),
-			"Link to a parent Goal": open(goal, "parent-link"),
-			"Add a child Goal":      child(goal),
-			"Edit Dimension values": open(goal, "dimensions"),
-			"Edit Fields":           open(goal, "fields"),
+			"Edit title and So What": open(goal, "title-so-what"),
+			"Hand off":               open(goal, "handoff"),
+			"Add a delegate":         open(goal, "delegates"),
+			"Link to a parent Goal":  open(goal, "parent-link"),
+			"Add a child Goal":       child(goal),
+			"Edit Dimension values":  open(goal, "dimensions"),
+			"Edit Fields":            open(goal, "fields"),
 		}},
 		{"ada@example.com", goal, map[string]string{
-			"Hand off":              open(goal, "handoff"),
-			"Suggest a parent":      suggest(goal),
-			"Add a child Goal":      child(goal),
-			"Edit Dimension values": open(goal, "dimensions"),
-			"Edit Fields":           open(goal, "fields"),
-			"Mark Top-level":        open(goal, "top-level"),
-			"Mark owner departed…":  open(goal, "depart"),
+			"Edit title and So What": open(goal, "title-so-what"),
+			"Hand off":               open(goal, "handoff"),
+			"Suggest a parent":       suggest(goal),
+			"Add a child Goal":       child(goal),
+			"Edit Dimension values":  open(goal, "dimensions"),
+			"Edit Fields":            open(goal, "fields"),
+			"Mark Top-level":         open(goal, "top-level"),
+			"Mark owner departed…":   open(goal, "depart"),
 		}},
 		{"ada@example.com", orphan, map[string]string{
-			"Suggest a parent":      suggest(orphan),
-			"Add a child Goal":      child(orphan),
-			"Edit Dimension values": open(orphan, "dimensions"),
-			"Edit Fields":           open(orphan, "fields"),
-			"Mark Top-level":        open(orphan, "top-level"),
-			"Mark returned…":        open(orphan, "return"),
-			"Reassign":              open(orphan, "reassign"),
+			"Edit title and So What": open(orphan, "title-so-what"),
+			"Suggest a parent":       suggest(orphan),
+			"Add a child Goal":       child(orphan),
+			"Edit Dimension values":  open(orphan, "dimensions"),
+			"Edit Fields":            open(orphan, "fields"),
+			"Mark Top-level":         open(orphan, "top-level"),
+			"Mark returned…":         open(orphan, "return"),
+			"Reassign":               open(orphan, "reassign"),
 		}},
 		{"mel@example.com", goal, map[string]string{
 			"Suggest a parent": suggest(goal),
@@ -4613,11 +4620,13 @@ func TestGoalPageMenuItemOpensItsFormInPlaceOverHTTP(t *testing.T) {
 		action      string
 		start, next string
 	}{
+		{"sam", "Edit title and So What", goal, "title-so-what", fmt.Sprintf("/goals/%d/so-what", goal.ID), head, actions},
 		{"sam", "Hand off", goal, "handoff", fmt.Sprintf("/goals/%d/handoff", goal.ID), people, dimensions},
 		{"sam", "Add a delegate", goal, "delegates", fmt.Sprintf("/goals/%d/delegates", goal.ID), people, dimensions},
 		{"sam", "Link to a parent Goal", goal, "parent-link", fmt.Sprintf("/goals/%d/links", goal.ID), parents, children},
 		{"sam", "Edit Dimension values", goal, "dimensions", fmt.Sprintf("/goals/%d/dimensions", goal.ID), dimensions, fields},
 		{"sam", "Edit Fields", goal, "fields", fmt.Sprintf("/goals/%d/fields", goal.ID), fields, "</aside>"},
+		{"ada", "Edit title and So What", goal, "title-so-what", fmt.Sprintf("/goals/%d/so-what", goal.ID), head, actions},
 		{"ada", "Hand off", goal, "handoff", fmt.Sprintf("/goals/%d/handoff", goal.ID), people, dimensions},
 		{"ada", "Mark Top-level", goal, "top-level", fmt.Sprintf("/goals/%d/top-level", goal.ID), head, actions},
 		{"ada", "Mark owner departed…", goal, "depart", fmt.Sprintf("/accounts/%d/depart", sam.ID), people, dimensions},
@@ -4957,6 +4966,111 @@ func TestOwnerOnlyRoutesNotFoundForAMissingGoal(t *testing.T) {
 			if resp.StatusCode != http.StatusNotFound {
 				t.Errorf("%s on a missing id with form %v: status = %d, want 404", route.name, form, resp.StatusCode)
 			}
+		}
+	}
+}
+
+// titleSoWhatOpen is the Goal page with the Edit title and So What form open.
+func titleSoWhatOpen(g domain.Goal) string {
+	return fmt.Sprintf("/goals/%d?open=title-so-what", g.ID)
+}
+
+// The Owner and an Admin get Edit title and So What on a Goal in any
+// Lifecycle, opening a form in the page head that holds the current title and
+// So What. A Delegate and another Account get neither the item nor the form
+// (#281).
+func TestEditTitleAndSoWhatIsOfferedToTheOwnerAndAnAdminOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	tpm := h.SignIn("tpm@example.com")
+	h.SignIn("mel@example.com")
+	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	proposed := h.CreateGoal(sam, "Grow revenue", "Revenue funds the rest.")
+	done := h.ActiveGoal(sam, "Ship v2", "Customers wait for v2.")
+	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
+	ts := newServer(t, h)
+
+	for _, g := range []domain.Goal{active, proposed, done} {
+		h.AddDelegate(sam, tpm, g.ID)
+		for _, who := range []string{"sam@example.com", "ada@example.com"} {
+			client := signInClient(t, ts.URL, who)
+			if got := menuItems(t, getBody(t, client, goalPageURL(ts.URL, g)))["Edit title and So What"]; got != titleSoWhatOpen(g) {
+				t.Errorf("%s on %q: Edit title and So What leads to %q, want %q", who, g.Title, got, titleSoWhatOpen(g))
+			}
+			open := openForm(t, getBody(t, client, ts.URL+titleSoWhatOpen(g)), "title-so-what")
+			if !strings.Contains(open, "Edit title and So What") {
+				t.Errorf("%s on %q: the open form is not labelled Edit title and So What: %s", who, g.Title, open)
+			}
+			title := tagAround(t, open, `name="title"`)
+			if attr(title, "type") != "text" || attr(title, "value") != g.Title || !strings.Contains(title, " autofocus") {
+				t.Errorf("%s on %q: the Title input is not a focused text input holding %q: %s", who, g.Title, g.Title, title)
+			}
+			if !strings.Contains(open, `name="so_what"`) || !strings.Contains(open, ">"+g.SoWhat+"</textarea>") {
+				t.Errorf("%s on %q: the So What textarea doesn't hold %q: %s", who, g.Title, g.SoWhat, open)
+			}
+			if !strings.Contains(open, ">Save</button>") {
+				t.Errorf("%s on %q: the form has no Save button: %s", who, g.Title, open)
+			}
+		}
+		for _, who := range []string{"tpm@example.com", "mel@example.com"} {
+			client := signInClient(t, ts.URL, who)
+			if got, ok := menuItems(t, getBody(t, client, goalPageURL(ts.URL, g)))["Edit title and So What"]; ok {
+				t.Errorf("%s on %q is offered Edit title and So What, leading to %q", who, g.Title, got)
+			}
+			if n := openForms(getBody(t, client, ts.URL+titleSoWhatOpen(g))); n != 0 {
+				t.Errorf("%s on %q: ?open=title-so-what shows %d forms open, want none", who, g.Title, n)
+			}
+		}
+	}
+}
+
+// The Owner, and an Admin, change an Active Goal's title from the Edit title
+// and So What form: the save lands on the plain Goal page, which shows the new
+// title, and its History carries a Title entry reading old → new, by whoever
+// made it (#281).
+func TestOwnerOrAdminChangesAnActiveGoalsTitleOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+
+	for _, who := range []string{"sam@example.com", "ada@example.com"} {
+		g := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+		client := signInClient(t, ts.URL, who)
+		resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/so-what", ts.URL, g.ID), url.Values{
+			"title":   {"  Halve outages  "},
+			"so_what": {g.SoWhat},
+		})
+		page := readBody(t, resp)
+		if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != fmt.Sprintf("/goals/%d", g.ID) || resp.Request.URL.RawQuery != "" {
+			t.Errorf("%s: save is %d at %s, want 200 on the plain Goal page", who, resp.StatusCode, resp.Request.URL)
+		}
+		if title := pageElement(t, page, "h1", "goal-title"); !strings.HasSuffix(title, ">Halve outages") {
+			t.Errorf("%s: the page's title is %s, want Halve outages", who, title)
+		}
+		entries := historyEntries(historyBlock(t, page))
+		var titles []string
+		for _, e := range entries {
+			if entryKind(t, e) == "title" {
+				titles = append(titles, between(t, e, "", "</li>"))
+			}
+		}
+		if len(titles) != 1 {
+			t.Fatalf("%s: History has %d title entries, want 1", who, len(titles))
+		}
+		text := strings.Join(strings.Fields(html.UnescapeString(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(titles[0], " "))), " ")
+		for _, want := range []string{"Title", "Reduce outages → Halve outages"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s: the Title entry %q doesn't say %q", who, text, want)
+			}
+		}
+		if by := "by " + shownAs(who, strings.Split(who, "@")[0]); !strings.Contains(titles[0], by) {
+			t.Errorf("%s: the Title entry doesn't say it is %s: %s", who, by, titles[0])
 		}
 	}
 }
