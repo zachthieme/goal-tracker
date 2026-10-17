@@ -82,11 +82,12 @@ func ownershipEntries(t *testing.T, client *http.Client, goalURL string) []strin
 }
 
 // filteredEntries are the entries the Goal page's History lists under filter,
-// each checked to be of kind, with entities unescaped.
+// up to its first two pages, each checked to be of kind, with entities
+// unescaped.
 func filteredEntries(t *testing.T, client *http.Client, goalURL, filter, kind string) []string {
 	t.Helper()
 	var out []string
-	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalURL+"?history="+filter))) {
+	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalURL+"?history="+filter+"&shown=25"))) {
 		if got := entryKind(t, e); got != kind {
 			t.Errorf("the %s chip lists a %s entry", filter, got)
 		}
@@ -253,10 +254,21 @@ func filterOf(href string) string {
 	return u.Query().Get("history")
 }
 
-// With more than 20 entries History shows the latest 20, and "Show earlier"
-// reloads the page with 20 more under the same filter, the History block in
-// view; once everything shows, it is gone.
-func TestGoalHistoryShowsTwentyAndShowEarlierAddsTwentyMoreKeepingTheFilter(t *testing.T) {
+// historyEarlier is the address History's "Show earlier" link goes to.
+func historyEarlier(t *testing.T, history string) string {
+	t.Helper()
+	_, href, ok := strings.Cut(between(t, history, `data-testid="history-earlier"`, ">"), `href="`)
+	if !ok {
+		t.Fatalf("no Show earlier link in:\n%s", history)
+	}
+	href, _, _ = strings.Cut(href, `"`)
+	return html.UnescapeString(href)
+}
+
+// History opens on the latest 5 entries, and "Show earlier" reloads the page
+// with 20 more under the same filter, the History block in view; once
+// everything shows, it is gone.
+func TestGoalHistoryShowsFiveAndShowEarlierAddsTwentyMoreKeepingTheFilter(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -280,26 +292,17 @@ func TestGoalHistoryShowsTwentyAndShowEarlierAddsTwentyMoreKeepingTheFilter(t *t
 		}
 		return out
 	}
-	earlier := func(history string) string {
-		t.Helper()
-		_, href, ok := strings.Cut(between(t, history, `data-testid="history-earlier"`, ">"), `href="`)
-		if !ok {
-			t.Fatalf("no Show earlier link in:\n%s", history)
-		}
-		href, _, _ = strings.Cut(href, `"`)
-		return html.UnescapeString(href)
-	}
 
-	// All: 45 entries, the latest 20 first.
+	// All: 45 entries, the latest 5 first.
 	history := historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)))
-	if got := statuses(history); len(got) != 20 || got[0] != "44" || got[19] != "25" {
-		t.Fatalf("History first shows %v, want Updates 44 down to 25", got)
+	if got := statuses(history); len(got) != 5 || got[0] != "44" || got[4] != "40" {
+		t.Fatalf("History first shows %v, want Updates 44 down to 40", got)
 	}
-	history = historyBlock(t, getBody(t, client, ts.URL+earlier(history)))
-	if got := statuses(history); len(got) != 40 || got[39] != "5" {
-		t.Fatalf("Show earlier shows %v, want Updates 44 down to 5", got)
+	history = historyBlock(t, getBody(t, client, ts.URL+historyEarlier(t, history)))
+	if got := statuses(history); len(got) != 25 || got[24] != "20" {
+		t.Fatalf("Show earlier shows %v, want Updates 44 down to 20", got)
 	}
-	history = historyBlock(t, getBody(t, client, ts.URL+earlier(history)))
+	history = historyBlock(t, getBody(t, client, ts.URL+historyEarlier(t, history)))
 	if got := statuses(history); len(got) != 45 || got[44] != "So What" {
 		t.Fatalf("Show earlier again shows %v, want everything down to the So What", got)
 	}
@@ -309,13 +312,52 @@ func TestGoalHistoryShowsTwentyAndShowEarlierAddsTwentyMoreKeepingTheFilter(t *t
 
 	// Check-ins: Show earlier keeps the filter.
 	history = historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)+"?history=checkins"))
-	link := earlier(history)
+	link := historyEarlier(t, history)
 	if filterOf(link) != "checkins" || !strings.HasSuffix(link, "#history") {
 		t.Errorf("Show earlier drops the filter or the History block: %s", link)
 	}
 	history = historyBlock(t, getBody(t, client, ts.URL+link))
-	if got := statuses(history); len(got) != 40 || slices.Contains(got, "So What") {
-		t.Errorf("Show earlier under Check-ins shows %v, want 40 Check-ins", got)
+	if got := statuses(history); len(got) != 25 || slices.Contains(got, "So What") {
+		t.Errorf("Show earlier under Check-ins shows %v, want 25 Check-ins", got)
+	}
+}
+
+// A Goal with 8 History entries opens on 5, with "Show earlier" asking for 25;
+// following it shows all 8 and no link. A missing, bad or non-positive count
+// shows the first page.
+func TestGoalHistoryOfEightShowsFiveThenAll(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	for i := 1; i <= 7; i++ {
+		h.Clock.Advance(time.Hour)
+		h.Checkin(sam, goal.ID, domain.HealthGreen, fmt.Sprintf("Update %d.", i), "", time.Time{})
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	history := historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)))
+	if n := len(historyEntries(history)); n != 5 {
+		t.Fatalf("History first shows %d entries, want 5", n)
+	}
+	link := historyEarlier(t, history)
+	if want := fmt.Sprintf("/goals/%d?shown=25#history", goal.ID); link != want {
+		t.Errorf("Show earlier goes to %s, want %s", link, want)
+	}
+	history = historyBlock(t, getBody(t, client, ts.URL+link))
+	if n := len(historyEntries(history)); n != 8 {
+		t.Errorf("Show earlier shows %d entries, want 8", n)
+	}
+	if strings.Contains(history, `data-testid="history-earlier"`) {
+		t.Errorf("Show earlier stays once everything shows")
+	}
+	for _, shown := range []string{"", "?shown=x", "?shown=0", "?shown=-3"} {
+		history := historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)+shown))
+		if n := len(historyEntries(history)); n != 5 {
+			t.Errorf("%q shows %d entries, want the first page of 5", shown, n)
+		}
 	}
 }
 
@@ -1050,7 +1092,7 @@ func TestGoalHistoryShowsEachParentSuggestionAndItsOutcome(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	var got []string
-	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)))) {
+	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)+"?shown=25"))) {
 		if entryKind(t, e) == "parent-suggestion" {
 			got = append(got, html.UnescapeString(e))
 		}

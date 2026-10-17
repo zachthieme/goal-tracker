@@ -44,9 +44,12 @@ var historyFilters = []struct {
 	{historyValues, "Values"},
 }
 
-// historyPage is how many entries the timeline shows at first, and how many
-// more each "Show earlier" adds.
-const historyPage = 20
+// historyFirstPage is how many entries the timeline shows at first, and
+// historyPageStep how many more each "Show earlier" adds.
+const (
+	historyFirstPage = 5
+	historyPageStep  = 20
+)
 
 // historyEntry is one event in a Goal's History: a Check-in with the Date
 // Slips and Metric readings recorded in it, a So What revision, a change to
@@ -219,7 +222,7 @@ func newHistory(v goalView, loc *time.Location, now time.Time) history {
 		}
 		return cmp.Compare(b.seq(), a.seq())
 	})
-	return history{GoalID: v.Goal.ID, Entries: entries, Milestones: v.Milestones, Shown: historyPage, Loc: loc, Now: now, Strip: v.HealthStrip}
+	return history{GoalID: v.Goal.ID, Entries: entries, Milestones: v.Milestones, Shown: historyFirstPage, Loc: loc, Now: now, Strip: v.HealthStrip}
 }
 
 // seq is the entry's record ID, which orders entries of one kind made at the
@@ -255,7 +258,7 @@ func (h history) narrowed(q url.Values) history {
 			h.Filter = f.filter
 		}
 	}
-	h.Shown = historyPage
+	h.Shown = historyFirstPage
 	if n, err := strconv.Atoi(q.Get("shown")); err == nil && n > 0 {
 		h.Shown = n
 	}
@@ -526,7 +529,7 @@ func (h history) url(filter historyFilter, shown int) templ.SafeURL {
 	if filter != historyAll {
 		q.Set("history", string(filter))
 	}
-	if shown > historyPage {
+	if shown > historyFirstPage {
 		q.Set("shown", strconv.Itoa(shown))
 	}
 	u := fmt.Sprintf("/goals/%d", h.GoalID)
@@ -538,7 +541,7 @@ func (h history) url(filter historyFilter, shown int) templ.SafeURL {
 
 // earlierURL shows the next page of entries under the same filter.
 func (h history) earlierURL() templ.SafeURL {
-	return h.url(h.Filter, h.Shown+historyPage)
+	return h.url(h.Filter, h.Shown+historyPageStep)
 }
 
 // chipAttrs marks the chip for the filter shown as the current one.
