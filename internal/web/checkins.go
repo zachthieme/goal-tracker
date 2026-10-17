@@ -151,6 +151,8 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		Lifecycle:       lifecycle.To,
 		LifecycleReason: lifecycle.Reason,
 		Outcome:         lifecycle.Outcome,
+		// Save as Green anyway, on the off-target warning, posts this.
+		ConfirmOffTarget: r.FormValue("confirm_off_target") != "",
 	}
 	if err := dates.applyTo(&in); err != nil {
 		s.renderCheckinFormError(w, r, goalID, formData(err))
@@ -166,6 +168,16 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	}
 
 	if _, err = s.svc.SubmitCheckin(r.Context(), in); err != nil {
+		// A Green with a Metric off target is a question, not a field's
+		// error: the form comes back as typed, warning about the Metrics and
+		// offering to save the Green anyway.
+		var offTarget *domain.GreenOffTargetError
+		if errors.As(err, &offTarget) {
+			d := formData(nil)
+			d.OffTarget = offTarget.Metrics
+			s.renderCheckinFormError(w, r, goalID, d)
+			return
+		}
 		if errors.Is(err, domain.ErrValidation) {
 			s.renderCheckinFormError(w, r, goalID, formData(err))
 			return
@@ -174,6 +186,13 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	s.checkinRedirect(w, r, goalID)
+}
+
+// offTargetSentence says how a Metric missed its target: "Idle capacity is
+// 40.88 percent; its target was 20 by Nov 30."
+func offTargetSentence(o domain.OffTargetMetric, shown displayDates) string {
+	return fmt.Sprintf("%s is %s %s; its target was %s by %s.",
+		o.Metric.Name, fmtNum(o.Reading), o.Metric.Unit, fmtNum(o.Metric.Target), shown.date(o.Metric.TargetDate))
 }
 
 // checkinErrorField names the form field a Check-in validation message is
@@ -472,11 +491,26 @@ func (s *Server) renderNoChangeRefusal(w http.ResponseWriter, r *http.Request, c
 			status = http.StatusOK
 			w.Header().Set("HX-Push-Url", "/goals/"+strconv.FormatInt(goalID, 10)+"/checkin")
 		}
-		render(w, r, status, checkinPage(&current, view, checkinFormRefused(view, plainReason(err))))
+		render(w, r, status, checkinPage(&current, view, checkinFormRefused(view, s.noChangeReason(err))))
 	default:
 		s.logServerError(r, err)
 		render(w, r, http.StatusInternalServerError, checkinUnavailablePage(&current, "Check-in failed", "The No change couldn't be recorded. Try again."))
 	}
+}
+
+// noChangeReason is why a No change was refused, as the Check-in form shows it.
+// A Green refused for an off-target Metric names each miss as the form's
+// off-target warning does, with its dates as the page shows them.
+func (s *Server) noChangeReason(err error) string {
+	var offTarget *domain.GreenOffTargetError
+	if !errors.As(err, &offTarget) {
+		return plainReason(err)
+	}
+	missed := make([]string, 0, len(offTarget.Metrics))
+	for _, o := range offTarget.Metrics {
+		missed = append(missed, offTargetSentence(o, s.displayDates()))
+	}
+	return strings.Join(missed, " ") + " A No change can't repeat Green: submit a Check-in to confirm it or change the Health."
 }
 
 // plainReason is a domain validation or authorization message without its

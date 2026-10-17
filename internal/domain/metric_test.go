@@ -141,3 +141,36 @@ func TestRequireMetricOwnerAdmitsOnlyTheGoalsOwner(t *testing.T) {
 		t.Errorf("missing Metric: err = %v, want ErrNotFound", err)
 	}
 }
+
+// A Metric is off target once its target date has passed and its reading
+// hasn't reached the target in its direction; a reading equal to the target is
+// on target, and before or on the target date nothing is off target.
+func TestMetricOffTarget(t *testing.T) {
+	t.Parallel()
+
+	targetDate := time.Date(2026, 11, 30, 0, 0, 0, 0, time.UTC)
+	dayAfter := targetDate.AddDate(0, 0, 1)
+	up := domain.Metric{Name: "Activation", Unit: "percent", Direction: domain.MetricUp, Target: 60, TargetDate: targetDate}
+	down := domain.Metric{Name: "Idle capacity", Unit: "percent", Direction: domain.MetricDown, Target: 20, TargetDate: targetDate}
+
+	for _, tc := range []struct {
+		name    string
+		metric  domain.Metric
+		reading float64
+		today   time.Time
+		want    bool
+	}{
+		{"up, below target, past its date", up, 59.5, dayAfter, true},
+		{"up, at target, past its date", up, 60, dayAfter, false},
+		{"up, above target, past its date", up, 72, dayAfter, false},
+		{"down, above target, past its date", down, 40.88, dayAfter, true},
+		{"down, at target, past its date", down, 20, dayAfter, false},
+		{"down, below target, past its date", down, 12, dayAfter, false},
+		{"up, below target, on its date", up, 10, targetDate, false},
+		{"down, above target, before its date", down, 90, targetDate.AddDate(0, 0, -5), false},
+	} {
+		if got := tc.metric.OffTarget(tc.reading, tc.today); got != tc.want {
+			t.Errorf("%s: OffTarget(%v, %s) = %v, want %v", tc.name, tc.reading, tc.today.Format("2006-01-02"), got, tc.want)
+		}
+	}
+}
