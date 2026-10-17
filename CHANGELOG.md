@@ -26,6 +26,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Goal page's action menu button reads "More ▾" instead of a bare "⋯", which looked like a minus sign (#281).
 - [user] The Goal page's Draft Highlights block no longer shows its log form on every visit: a "+ Log a highlight" link beside its heading opens the form in place, with a Cancel, and an empty block is just its heading and that link. A Done or Cancelled Goal offers no link and leaves the block out unless Draft Highlights are still pending (#280).
 - [user] The Goal page leaves out its Highlights section when the Goal has no Highlights, instead of saying "No Highlights yet" (#280).
+- [user] The Goal page's History opens on its 5 latest entries instead of 20, and "Show earlier" adds 20 more at a time. A run of Check-ins that repeat the one before them, as No change Check-ins do, folds into one "No change ×N" entry that lists each folded Check-in's time and author behind a disclosure; the filter chips still count every Check-in (#279).
 
 **Bug fixes:**
 - [user] The New report and Edit report headers match the other pages: the breadcrumb sits above the title, both at the left, instead of the title being pushed to the far right (#277).
