@@ -1322,7 +1322,7 @@ func TestGoalPageAddsAMilestoneInPlaceOverHTTP(t *testing.T) {
 		link := tagAround(t, card, `data-testid="open-milestones"`)
 		page := getBody(t, client, ts.URL+html.UnescapeString(attr(link, "href")))
 		open := openForm(t, page, "milestones")
-		assertOpenIn(t, page, "milestones", `data-testid="goal-milestones"`, `data-testid="goal-highlights"`)
+		assertOpenIn(t, page, "milestones", `data-testid="goal-milestones"`, `data-testid="goal-draft-highlights"`)
 		for _, want := range []string{fmt.Sprintf(`action="/goals/%d/milestones"`, tc.goal.ID), `name="name"`, `type="date" name="target_date"`} {
 			if !strings.Contains(open, want) {
 				t.Errorf("%s on %s: the Add Milestone form lacks %s: %s", tc.who, tc.goal.Lifecycle, want, open)
@@ -2419,6 +2419,7 @@ func TestGoalPageCardsOnlyWhatAPersonActsOn(t *testing.T) {
 		t.Fatalf("AddMetric: %v", err)
 	}
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	h.CheckinWithHighlights(sam, goal.ID, domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."})
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
 
@@ -2430,6 +2431,7 @@ func TestGoalPageCardsOnlyWhatAPersonActsOn(t *testing.T) {
 		{"div", "goal-metric", true},
 		{"section", "goal-milestones", true},
 		{"article", "goal", false},
+		{"section", "goal-draft-highlights", false},
 		{"section", "goal-highlights", false},
 		{"div", "goal-history", false},
 		{"section", "goal-parents", false},
@@ -2467,18 +2469,21 @@ func hasClass(openTag, class string) bool {
 	return slices.Contains(strings.Fields(list), class)
 }
 
-// Highlights and History are page sections on the canvas, so they take an h2;
-// the sidebar's canvas blocks keep the h3 size (DESIGN.md § Components: Card).
+// Draft Highlights, Highlights and History are page sections on the canvas, so
+// they take an h2; the sidebar's canvas blocks keep the h3 size (DESIGN.md §
+// Components: Card).
 func TestGoalPageCanvasBlockHeadings(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.CheckinWithHighlights(sam, goal.ID, domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."})
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
 
 	for _, tc := range []struct{ tag, testID, heading string }{
+		{"section", "goal-draft-highlights", "<h2>Draft Highlights</h2>"},
 		{"section", "goal-highlights", "<h2>Highlights</h2>"},
 		{"div", "goal-history", "<h2>History</h2>"},
 		{"section", "goal-parents", "<h3>Contributes to</h3>"},
@@ -2503,10 +2508,12 @@ func TestGoalPageCanvasBlocksSitUnderARule(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.CheckinWithHighlights(sam, goal.ID, domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."})
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
 
 	for _, tc := range []struct{ tag, testID string }{
+		{"section", "goal-draft-highlights"},
 		{"section", "goal-highlights"},
 		{"div", "goal-history"},
 		{"section", "goal-children"},
@@ -4186,6 +4193,34 @@ func TestGoalPageListsEachHighlightOfACheckinSeparately(t *testing.T) {
 		}
 		if !strings.Contains(entries[i], `title="sam@example.com"`) {
 			t.Errorf("entry %d does not credit the Owner: %s", i+1, entries[i])
+		}
+	}
+}
+
+// A Goal with no Highlights has no Highlights section on its page, for its
+// Owner or anyone else; once it has one the section lists it.
+func TestGoalPageLeavesOutAnEmptyHighlightsSection(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("pat@example.com")
+	quiet := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	flagged := h.ActiveGoal(sam, "Migrate billing", "Billing is brittle.")
+	h.CheckinWithHighlights(sam, flagged.ID, domain.HighlightInput{Kind: domain.HighlightInsight, Note: "Retries masked the root cause."})
+
+	for _, who := range []string{"sam@example.com", "pat@example.com"} {
+		client := signInClient(t, ts.URL, who)
+		page := getBody(t, client, goalPageURL(ts.URL, quiet))
+		for _, gone := range []string{`data-testid="goal-highlights"`, `data-testid="no-highlights"`, "<h2>Highlights</h2>"} {
+			if strings.Contains(page, gone) {
+				t.Errorf("%s: a Goal with no Highlights shows %s", who, gone)
+			}
+		}
+		block := pageElement(t, getBody(t, client, goalPageURL(ts.URL, flagged)), "section", "goal-highlights")
+		if got := elementTexts(block, "li", "highlight"); len(got) != 1 || !strings.Contains(got[0], "Retries masked the root cause.") {
+			t.Errorf("%s: the Highlights section lists %q, want the one flagged", who, got)
 		}
 	}
 }

@@ -657,10 +657,12 @@ templ goalPage(current *domain.Account, v goalView) {
 					}
 				</section>
 				@draftHighlightSection(v)
-				<section data-testid="goal-highlights" class="gp-block ruled">
-					<h2>Highlights</h2>
-					@highlightList(v.Highlights)
-				</section>
+				if len(v.Highlights) > 0 {
+					<section data-testid="goal-highlights" class="gp-block ruled">
+						<h2>Highlights</h2>
+						@highlightList(v.Highlights)
+					</section>
+				}
 				@goalHistory(v.History)
 			</div>
 			<aside data-testid="goal-sidebar" class="gp-col gp-side">
@@ -1332,11 +1334,9 @@ templ metricTrendReadings(t metricTrend) {
 
 // highlightList shows a Goal's Highlights, newest first, each with its kind,
 // note, the Owner credited, and when it was flagged (CONTEXT.md: Highlight).
+// The Goal page leaves it out for a Goal with none.
 templ highlightList(highlights []domain.Highlight) {
 	<ul>
-		if len(highlights) == 0 {
-			<li data-testid="no-highlights">No Highlights yet.</li>
-		}
 		for _, hl := range highlights {
 			<li data-testid="highlight">
 				<strong>{ hl.Kind }</strong>: { hl.Note }

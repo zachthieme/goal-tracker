@@ -136,6 +136,7 @@ test.describe("on the due template", () => {
 
       const drafts = page.getByTestId("goal-draft-highlights");
       await expect(drafts.getByRole("heading", { name: "Draft Highlights" })).toBeVisible();
+      await drafts.getByRole("link", { name: "Log a highlight" }).click();
       const log = drafts.getByTestId("log-draft-highlight");
       await log.getByLabel("Kind").selectOption("Accomplishment");
       await log.getByLabel("Note").fill(draftNote);
@@ -196,7 +197,7 @@ test.describe("on the due template", () => {
       await expect(page.getByTestId("goal-health")).toHaveText(latest.health);
       // The Draft became one of this Check-in's Highlights: none waits as a
       // Draft, the Check-in discarded none, and it is the newest Highlight.
-      await expect(page.getByTestId("no-draft-highlights")).toBeVisible();
+      await expect(page.getByTestId("draft-highlight")).toHaveCount(0);
       const entry = checkinEntries(page).first();
       await expect(entry).toContainText(newStatus);
       await expect(entry.getByTestId("discarded-draft-highlight")).toHaveCount(0);

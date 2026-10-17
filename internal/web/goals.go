@@ -975,9 +975,8 @@ const (
 	formMilestones goalForm = "milestones"
 	formDimensions goalForm = "dimensions"
 	formFields     goalForm = "fields"
-	// formDraftHighlight is the Draft Highlights block's log form. It always
-	// shows for whoever may use it; naming it lets a refused log come back in
-	// it.
+	// formDraftHighlight is the Draft Highlights block's log form, opened in
+	// place from its "+ Log a highlight" link.
 	formDraftHighlight goalForm = "draft-highlight"
 	// formTitleSoWhat edits the Goal's title and So What together, in the
 	// page head.
@@ -1018,7 +1017,9 @@ func (v goalView) offers(form goalForm) bool {
 	case formFields:
 		return v.CanSetValues && len(domain.OfferedFields(v.Fields)) > 0
 	case formDraftHighlight:
-		return v.CanCheckin
+		// The Owner or a Delegate logs one while the Goal still takes
+		// Check-ins to offer it at (CONTEXT.md: Draft Highlight).
+		return v.CanCheckin && draftHighlightsLoggable(g)
 	}
 	return false
 }
