@@ -172,15 +172,15 @@ func TestSmokeCheckinDeliveryDateSlipShownStruckThrough(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
 	samClient := signInClient(t, ts.URL, "sam@example.com")
-	oldDate := goal.DeliveryDate.Format("2006-01-02")
-	newDate := goal.DeliveryDate.AddDate(0, 0, 14).Format("2006-01-02")
+	oldDate := goal.DeliveryDate.Format("Jan 2")
+	newDate := goal.DeliveryDate.AddDate(0, 0, 14).Format("Jan 2")
 
 	resp := postForm(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
 		"health":               {domain.HealthYellow},
 		"status":               {"Vendor is late."},
 		"path_to_green":        {"Swap vendors."},
 		"path_target_date":     {"2026-06-15"},
-		"delivery_date":        {newDate},
+		"delivery_date":        {goal.DeliveryDate.AddDate(0, 0, 14).Format("2006-01-02")},
 		"delivery_date_reason": {"Vendor API delayed two weeks."},
 	})
 	if resp.StatusCode != http.StatusOK {
@@ -237,7 +237,7 @@ func TestLatestStatusOpensWithCells(t *testing.T) {
 		{"goal-health-cell", "Owner's Health", `data-testid="goal-health">Yellow<`},
 		{"goal-rollup-cell", "Rolled-up Health", `data-testid="goal-rollup-health">Red<`},
 		{"goal-rollup-cell", "Rolled-up Health", `data-testid="goal-rollup-stale">1 of 2 Stale<`},
-		{"goal-back-to-green-cell", "Back to Green by", "2026-06-15"},
+		{"goal-back-to-green-cell", "Back to Green by", "<dd>Jun 15</dd>"},
 	} {
 		cell := between(t, cells, `data-testid="`+tc.testID+`"`, "")
 		cell, _, _ = strings.Cut(cell, "<div ")
@@ -349,12 +349,12 @@ func TestSmokeCheckinChangesMilestones(t *testing.T) {
 	}
 
 	// Second Check-in slips Beta and removes Docs.
-	oldBeta := beta.TargetDate.Format("2006-01-02")
-	newBeta := beta.TargetDate.AddDate(0, 0, 10).Format("2006-01-02")
+	oldBeta := beta.TargetDate.Format("Jan 2")
+	newBeta := beta.TargetDate.AddDate(0, 0, 10).Format("Jan 2")
 	resp = postForm(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
 		"health": {domain.HealthGreen},
 		"status": {"Beta moves; launch holds."},
-		fmt.Sprintf("milestone_date_%d", beta.ID):           {newBeta},
+		fmt.Sprintf("milestone_date_%d", beta.ID):           {beta.TargetDate.AddDate(0, 0, 10).Format("2006-01-02")},
 		fmt.Sprintf("milestone_date_reason_%d", beta.ID):    {"Design review moved."},
 		fmt.Sprintf("milestone_status_%d", docs.ID):         {domain.MilestoneRemoved},
 		fmt.Sprintf("milestone_removed_reason_%d", docs.ID): {"Docs folded into GA."},

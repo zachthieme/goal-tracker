@@ -17,7 +17,7 @@ func (s *Server) handleGraphSignals(w http.ResponseWriter, r *http.Request, curr
 		s.serverError(w, r, "could not read graph signals", err)
 		return
 	}
-	render(w, r, http.StatusOK, graphSignalsPage(&current, signals))
+	render(w, r, http.StatusOK, graphSignalsPage(&current, signals, s.displayDates()))
 }
 
 // handleSetTopLevel marks the Goal in the path a Top-level Goal when top_level

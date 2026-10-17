@@ -191,6 +191,29 @@ In the stylesheet, the empty dark `@media` block above repeats the full
 Load the fonts with this URL:
 `https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&family=Plus+Jakarta+Sans:wght@600;700&display=swap`
 
+## Dates and times
+
+Every page writes dates and times one way, through `internal/web/dates.go`:
+
+- **A date** reads "Nov 7", or "Nov 7, 2025" when it falls outside the
+  current year, past or next.
+- **A timestamp** reads "Nov 7, 15:04": 24-hour, with no zone suffix, under
+  the same year rule ("Nov 7, 2025, 15:04").
+- **The current year** is the company's, judged in its timezone
+  (`GOAL_TRACKER_TIMEZONE`) from the app's clock.
+- **Report pages always show the year**, the current one included: every
+  date and time on a draft or a publication, and a publication's date
+  wherever it appears, as on the Reports list ("Nov 7, 2026").
+- **The company's timezone:** a timestamp, and an instant shown as a date
+  (when a Check-in or reading was written), is shown in it. A calendar date
+  (a delivery date, Milestone, Metric target, Back to Green, baseline or due
+  date) is the day it names and is never shifted.
+- **Inputs stay ISO:** an `<input type="date">` holds `2026-11-07`, as do
+  query strings such as `?baseline=`; `datetime=` attributes are RFC 3339.
+- **Monospace only in tables:** a date takes `.num` only in a table column,
+  such as the Goal list's Due or the Milestones table. Elsewhere it is body
+  type.
+
 ## Components (mapped to `internal/web/static/app.css`)
 
 - **Top bar (`.nav`):** `--nav-bg`, which is deep teal `#134E4A` in light
@@ -381,9 +404,9 @@ Load the fonts with this URL:
   Dimension value or Field, change to one of its "contributes to" links,
   Parent suggestion, Nudge, and Milestone added outside a Check-in.
   - **Weeks:** entries are grouped by week, Monday to Sunday in the company's
-    timezone. Each week is headed by a `.label` "Week of 28 Sep", with the
-    year added when it isn't this year. Each entry's time is written in that
-    timezone too ("Thu 8 Jan 15:04").
+    timezone. Each week is headed by a `.label` "Week of Sep 28", with the
+    year added when it isn't this year. Each entry's time is a timestamp in
+    that timezone too ("Jan 8, 15:04"; see Dates and times).
   - **The rule and markers (`.tl-list`, `.tl-mark`):** the week's entries hang
     off a 1px `--color-border` rule, each with a 12px marker on the rule.
     A Check-in's marker is its Health's dot, in the Health's ink and shape:
@@ -445,10 +468,10 @@ Load the fonts with this URL:
     became Active, or one it spent or ended On Hold, Done or Cancelled, owed no
     Check-in and is blank, with no edge. Cells are 24px tall, share the row 4px
     apart up to 480px wide, and take `--radius-sm`. Each cell's text equivalent
-    is visually hidden inside it and repeated as its tooltip: "Week of 28 Sep:
-    Yellow", "Week of 21 Sep: no Check-in", "Week of 5 Oct: not yet due",
-    "Week of 7 Sep: On Hold", or "not yet Active". A Goal on another cadence
-    names a period by its first and last days ("14 Sep – 27 Sep"). A muted line
+    is visually hidden inside it and repeated as its tooltip: "Week of Sep 28:
+    Yellow", "Week of Sep 21: no Check-in", "Week of Oct 5: not yet due",
+    "Week of Sep 7: On Hold", or "not yet Active". A Goal on another cadence
+    names a period by its first and last days ("Sep 14 – Sep 27"). A muted line
     under the strip sums it up, counting the periods not yet due apart from the
     missed ones, and naming them only when there are any: "Last 11 weeks: 7
     Green, 1 Yellow, 2 with no Check-in, 1 not yet due." The strip shows for any

@@ -26,7 +26,7 @@ templ topLevelControl(g domain.Goal) {
 
 // graphSignalsPage lists the risks the Goal graph flags on its own, so
 // leadership sees them without anyone reporting them (CONTEXT.md: Unaligned).
-templ graphSignalsPage(current *domain.Account, signals domain.GraphSignals) {
+templ graphSignalsPage(current *domain.Account, signals domain.GraphSignals, dates displayDates) {
 	@layout("Graph signals", current) {
 		<h1>Graph signals</h1>
 		<p>Risks the Goal graph flags that nobody reported.</p>
@@ -57,7 +57,7 @@ templ graphSignalsPage(current *domain.Account, signals domain.GraphSignals) {
 				}
 				for _, c := range signals.ScheduleConflicts {
 					<li data-testid="schedule-conflict">
-						@scheduleConflict(c)
+						@scheduleConflict(c, dates)
 					</li>
 				}
 			</ul>
@@ -86,12 +86,12 @@ templ goalRef(g domain.Goal) {
 }
 
 // scheduleConflict names a child due later than the parent it contributes to,
-// with both delivery dates.
-templ scheduleConflict(c domain.ScheduleConflict) {
+// with both delivery dates as dates shows them.
+templ scheduleConflict(c domain.ScheduleConflict, dates displayDates) {
 	@goalRef(c.Child)
-	<span>(due { fmtDate(c.Child.DeliveryDate) }) contributes to </span>
+	<span>(due { dates.date(c.Child.DeliveryDate) }) contributes to </span>
 	@goalRef(c.Parent)
-	<span>(due { fmtDate(c.Parent.DeliveryDate) })</span>
+	<span>(due { dates.date(c.Parent.DeliveryDate) })</span>
 }
 
 // haltedParent names a child whose parent is On Hold or Cancelled.
@@ -112,7 +112,7 @@ templ goalSignalsStyles() {
 
 // goalSignals flags, at the top of a Goal's page, the graph signals that touch
 // it, one banner each. It renders nothing when the graph flags nothing.
-templ goalSignals(signals domain.GoalSignals) {
+templ goalSignals(signals domain.GoalSignals, dates displayDates) {
 	if signals.Unaligned || len(signals.ScheduleConflicts) > 0 || len(signals.HaltedParents) > 0 {
 		@goalSignalsStyles()
 		<section data-testid="goal-signals" aria-label="Graph signals" class="gp-signals">
@@ -123,7 +123,7 @@ templ goalSignals(signals domain.GoalSignals) {
 				<p data-testid="goal-schedule-conflict" class="alert lc" role="alert">
 					<strong>Schedule conflict</strong>
 					<span>
-						@scheduleConflict(c)
+						@scheduleConflict(c, dates)
 					</span>
 				</p>
 			}

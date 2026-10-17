@@ -183,7 +183,7 @@ templ goalListLayout(view goalsListData) {
 							</th>
 						</tr>
 						for _, row := range grp.Rows {
-							@goalListRow(row)
+							@goalListRow(row, view.Dates)
 						}
 					</tbody>
 				}
@@ -195,7 +195,7 @@ templ goalListLayout(view goalsListData) {
 						@noGoals("No Goals yet.")
 					}
 					for _, row := range view.Rows {
-						@goalListRow(row)
+						@goalListRow(row, view.Dates)
 					}
 				</tbody>
 			}
@@ -238,7 +238,7 @@ templ noGoals(text string) {
 // Ownerless, freshness and Incomplete marks under it (Incomplete the quietest),
 // its Owner, and its Dimension values, a Retired one or one in a Retired
 // Dimension marked retired.
-templ goalListRow(row goalRow) {
+templ goalListRow(row goalRow, dates displayDates) {
 	{{ g := row.Goal }}
 	<tr data-testid="goal-row">
 		<td>
@@ -269,8 +269,8 @@ templ goalListRow(row goalRow) {
 			if g.DeliveryDate.IsZero() {
 				<span class="muted">—</span>
 			} else {
-				@struckDates(row.PriorDates)
-				<span>{ fmtDate(g.DeliveryDate) }</span>
+				@struckDates(row.PriorDates, dates)
+				<span>{ dates.date(g.DeliveryDate) }</span>
 			}
 		</td>
 		<td data-testid="goal-row-last-checkin" class="muted">{ row.lastCheckin() }</td>
@@ -338,7 +338,7 @@ templ goalTableGrid(view goalsListData) {
 							if view.Table.editsCell(col, row) {
 								@goalTableEditCell(view.Table, col, row)
 							} else {
-								@goalTableCell(col, row, view.Table.Edit)
+								@goalTableCell(col, row, view.Table.Edit, view.Dates)
 							}
 						}
 					</tr>
@@ -505,7 +505,7 @@ templ goalTableColumns(view goalsListData) {
 // Lifecycle and delivery date link to the Goal, whose page changes them; an
 // empty cell has no link. The Owner stays the person control, which a link
 // can't hold, and the Title already links to the Goal.
-templ goalTableCell(col tableColumn, row goalTableRow, edit bool) {
+templ goalTableCell(col tableColumn, row goalTableRow, edit bool, dates displayDates) {
 	{{ g := row.Goal }}
 	switch col.Key {
 		case "title":
@@ -532,8 +532,8 @@ templ goalTableCell(col tableColumn, row goalTableRow, edit bool) {
 			<td class="num">
 				if !g.DeliveryDate.IsZero() {
 					@goalLinkIf(edit, g) {
-						@struckDates(row.PriorDates)
-						{ fmtDate(g.DeliveryDate) }
+						@struckDates(row.PriorDates, dates)
+						{ dates.date(g.DeliveryDate) }
 					}
 				}
 			</td>
@@ -544,7 +544,7 @@ templ goalTableCell(col tableColumn, row goalTableRow, edit bool) {
 				}
 			</td>
 		default:
-			<td class={ templ.KV("num", col.Field != nil && col.Field.Type == domain.FieldNumber), templ.KV("gl-long", col.Field != nil && col.Field.Type == domain.FieldLongText) }>{ col.text(row) }</td>
+			<td class={ templ.KV("num", col.Field != nil && col.Field.Type == domain.FieldNumber), templ.KV("gl-long", col.Field != nil && col.Field.Type == domain.FieldLongText) }>{ col.text(row, dates) }</td>
 	}
 }
 
@@ -626,8 +626,8 @@ templ goalPage(current *domain.Account, v goalView) {
 			}
 			<span aria-current="page">{ g.Title }</span>
 		</nav>
-		@goalFreshness(g.ID, v.Freshness, v.CanCheckin)
-		@goalSignals(v.Signals)
+		@goalFreshness(g.ID, v.Freshness, v.CanCheckin, v.dates())
+		@goalSignals(v.Signals, v.dates())
 		@goalIncomplete(v.Incomplete)
 		@goalHead(v, owner, admin)
 		@toastNotice(v.Toast)
@@ -639,7 +639,7 @@ templ goalPage(current *domain.Account, v goalView) {
 				@checkinSection(v)
 				<section data-testid="goal-metrics" class="gp-block">
 					<h2>Metrics</h2>
-					@metricList(v.Trends, owner)
+					@metricList(v.Trends, owner, v.dates())
 				</section>
 				<section data-testid="goal-milestones" class="card gp-card">
 					@groupHead(v, formMilestones, "+ Add", "Add a Milestone") {
@@ -660,7 +660,7 @@ templ goalPage(current *domain.Account, v goalView) {
 				if len(v.Highlights) > 0 {
 					<section data-testid="goal-highlights" class="gp-block ruled">
 						<h2>Highlights</h2>
-						@highlightList(v.Highlights)
+						@highlightList(v.Highlights, v.dates())
 					</section>
 				}
 				@goalHistory(v.History)
@@ -766,8 +766,8 @@ templ goalHead(v goalView, owner, admin bool) {
 					<span>
 						Delivers 
 						<span data-testid="goal-delivery-date" class="gp-dates">
-							@struckDates(v.priorDates(0))
-							<strong>{ fmtDate(g.DeliveryDate) }</strong>
+							@struckDates(v.priorDates(0), v.dates())
+							<strong>{ v.dates().date(g.DeliveryDate) }</strong>
 						</span>
 					</span>
 				}
@@ -1194,7 +1194,7 @@ templ milestoneList(v goalView, editable bool) {
 							@milestoneMarkBadge(v.milestoneMark(m))
 						</td>
 						<td class="num gp-dates">
-							@milestoneDates(m.TargetDate, v.priorDates(m.ID))
+							@milestoneDates(m.TargetDate, v.priorDates(m.ID), v.dates())
 						</td>
 						if m.Status == domain.MilestoneRemoved {
 							<td>
@@ -1227,9 +1227,9 @@ templ milestoneList(v goalView, editable bool) {
 
 // struckDates renders the dates a date held before its Date Slips, each struck
 // through ahead of the current date: ~~10/15~~ 11/03 (CONTEXT.md: Date Slip).
-templ struckDates(dates []time.Time) {
-	for _, d := range dates {
-		<del>{ fmtDate(d) }</del>{ " " }
+templ struckDates(prior []time.Time, dates displayDates) {
+	for _, d := range prior {
+		<del>{ dates.date(d) }</del>{ " " }
 	}
 }
 
@@ -1246,10 +1246,10 @@ templ milestoneMarkBadge(mark string) {
 // recent date it slipped from struck through, and the number of times it
 // slipped once that is more than one: 11/20 ~~11/03~~ (3) (CONTEXT.md: Date
 // Slip). prior comes earliest first.
-templ milestoneDates(current time.Time, prior []time.Time) {
-	<span>{ fmtDate(current) }</span>
+templ milestoneDates(current time.Time, prior []time.Time, dates displayDates) {
+	<span>{ dates.date(current) }</span>
 	if n := len(prior); n > 0 {
-		<del>{ fmtDate(prior[n-1]) }</del>
+		<del>{ dates.date(prior[n-1]) }</del>
 	}
 	if n := len(prior); n > 1 {
 		<span data-testid="milestone-slips">{ fmt.Sprintf("(%d)", n) }</span>
@@ -1260,7 +1260,7 @@ templ milestoneDates(current time.Time, prior []time.Time) {
 // baseline and target, and its trend over time against the target (CONTEXT.md:
 // the Goal page shows each Metric's trend); the Owner edits one in a collapsed
 // section.
-templ metricList(trends []metricTrend, owner bool) {
+templ metricList(trends []metricTrend, owner bool, dates displayDates) {
 	if len(trends) == 0 {
 		<p data-testid="no-metrics" class="muted">No Metrics yet.</p>
 	}
@@ -1270,7 +1270,7 @@ templ metricList(trends []metricTrend, owner bool) {
 			<div class="gp-metric-head">
 				<div>
 					<h3>{ m.Name }</h3>
-					<p class="muted small">{ fmtNum(m.Baseline) } → { fmtNum(m.Target) } { m.Unit } by { fmtDate(m.TargetDate) }</p>
+					<p class="muted small">{ fmtNum(m.Baseline) } → { fmtNum(m.Target) } { m.Unit } by { dates.date(m.TargetDate) }</p>
 				</div>
 				<p class="gp-current">
 					if v, ok := t.current(); ok {
@@ -1281,9 +1281,9 @@ templ metricList(trends []metricTrend, owner bool) {
 				</p>
 			</div>
 			if len(t.Readings) > 0 {
-				@metricSparkline(t)
+				@metricSparkline(t, dates)
 			}
-			@metricTrendReadings(t)
+			@metricTrendReadings(t, dates)
 			if owner {
 				<details data-testid="metric-edit" class="gp-edit">
 					<summary class="small">Edit Metric</summary>
@@ -1299,8 +1299,8 @@ templ metricList(trends []metricTrend, owner bool) {
 
 // metricSparkline draws a Metric's readings as a line, the latest point marked,
 // over a dashed line at its target, each point naming its reading on hover.
-templ metricSparkline(t metricTrend) {
-	{{ s := t.sparkline() }}
+templ metricSparkline(t metricTrend, dates displayDates) {
+	{{ s := t.sparkline(dates) }}
 	<svg class="gp-spark" role="img" aria-label={ t.trendLabel() } viewBox={ fmt.Sprintf("0 0 %g %g", sparkW, sparkH) } width={ fmt.Sprintf("%g", sparkW) } height={ fmt.Sprintf("%g", sparkH) }>
 		<line x1="0" x2={ fmt.Sprintf("%g", sparkW) } y1={ fmt.Sprintf("%.1f", s.TargetY) } y2={ fmt.Sprintf("%.1f", s.TargetY) } class="gp-spark-target" stroke-width="1" stroke-dasharray="4 3"></line>
 		<polyline points={ s.polyline() } class="gp-spark-line" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></polyline>
@@ -1314,7 +1314,7 @@ templ metricSparkline(t metricTrend) {
 // metricTrendReadings lists a Metric's readings over time against its target —
 // the sparkline as a table a reader can scan — collapsed under a count
 // (CONTEXT.md: Metric - its current value is recorded at each Check-in).
-templ metricTrendReadings(t metricTrend) {
+templ metricTrendReadings(t metricTrend, dates displayDates) {
 	{{ m := t.Metric }}
 	<details>
 		<summary class="small muted">{ fmt.Sprintf("Readings (%d)", len(t.Readings)) }</summary>
@@ -1324,7 +1324,7 @@ templ metricTrendReadings(t metricTrend) {
 			}
 			for _, rd := range t.Readings {
 				<li data-testid="metric-reading">
-					<span class="num">{ rd.CreatedAt.Format("2006-01-02") }: { fmtNum(rd.Value) } { m.Unit }</span>
+					<span>{ dates.dayOf(rd.CreatedAt) }: <span class="num">{ fmtNum(rd.Value) }</span> { m.Unit }</span>
 					<span class="muted">(target { fmtNum(m.Target) })</span>
 				</li>
 			}
@@ -1335,7 +1335,7 @@ templ metricTrendReadings(t metricTrend) {
 // highlightList shows a Goal's Highlights, newest first, each with its kind,
 // note, the Owner credited, and when it was flagged (CONTEXT.md: Highlight).
 // The Goal page leaves it out for a Goal with none.
-templ highlightList(highlights []domain.Highlight) {
+templ highlightList(highlights []domain.Highlight, dates displayDates) {
 	<ul>
 		for _, hl := range highlights {
 			<li data-testid="highlight">
@@ -1343,7 +1343,7 @@ templ highlightList(highlights []domain.Highlight) {
 				<span>
 					{ "— " }
 					@person(hl.Owner)
-					{ " at " + hl.CreatedAt.Format("2006-01-02 15:04") }
+					{ " at " + dates.timestamp(hl.CreatedAt) }
 				</span>
 			</li>
 		}

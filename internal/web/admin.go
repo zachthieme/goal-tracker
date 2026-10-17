@@ -59,7 +59,7 @@ func (s *Server) directorySyncStatus() *directorySyncView {
 	if !ran {
 		return &directorySyncView{}
 	}
-	v := &directorySyncView{Ran: true, At: last.At.In(s.svc.Timezone()).Format("2 Jan 2006 15:04"), People: last.People}
+	v := &directorySyncView{Ran: true, At: s.displayDates().timestamp(last.At), People: last.People}
 	if last.Err != nil {
 		v.Err = last.Err.Error()
 	}

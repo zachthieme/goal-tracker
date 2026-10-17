@@ -30,7 +30,7 @@ templ draftHighlightSection(v goalView) {
 							</span>
 							<span class="muted small">
 								@person(d.LoggedBy)
-								{ " · " + v.History.when(d.CreatedAt) }
+								{ " · " + v.dates().timestamp(d.CreatedAt) }
 							</span>
 							<form data-testid="delete-draft-highlight" method="post" action={ templ.SafeURL(fmt.Sprintf("/draft-highlights/%d/delete", d.ID)) }>
 								<button type="submit" class="btn quiet sm">Delete</button>

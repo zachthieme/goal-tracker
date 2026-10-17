@@ -1459,3 +1459,35 @@ func TestRisksPageOffersNoOrgWithoutManagers(t *testing.T) {
 		t.Errorf("without Managers a ?org= scoped the page to %d Goals, want both", len(rows))
 	}
 }
+
+// A Risks schedule-conflict chip says the delivery date the way the Goal page
+// it links to does, in this year and the next (ticket #276).
+func TestRisksScheduleConflictDateReadsAsTheGoalPageDoes(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	client := signInClient(t, ts.URL, "sam@example.com")
+	for _, c := range []struct {
+		parentDue, due time.Time
+		shown          string
+	}{
+		{time.Date(2026, 11, 30, 0, 0, 0, 0, time.UTC), time.Date(2026, 12, 28, 0, 0, 0, 0, time.UTC), "Dec 28"},
+		{time.Date(2026, 12, 20, 0, 0, 0, 0, time.UTC), time.Date(2027, 1, 10, 0, 0, 0, 0, time.UTC), "Jan 10, 2027"},
+	} {
+		parent := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Parent due "+c.shown, c.parentDue))
+		child := h.ActiveGoalDue(sam, "Child due "+c.shown, c.due)
+		h.RequestLink(sam, child, parent, "")
+
+		chip := riskChip(t, riskRowOf(t, getBody(t, client, ts.URL+"/risks"), child), "schedule-conflicts")
+		if !strings.Contains(chip, "due "+c.shown+",") {
+			t.Errorf("the chip doesn't say due %s: %s", c.shown, chip)
+		}
+		delivery := pageElement(t, getBody(t, client, goalPageURL(ts.URL, child)), "span", "goal-delivery-date")
+		if !strings.Contains(delivery, "<strong>"+c.shown+"</strong>") {
+			t.Errorf("the Goal page doesn't show its delivery date as %s, as its Risks chip does: %s", c.shown, delivery)
+		}
+	}
+}

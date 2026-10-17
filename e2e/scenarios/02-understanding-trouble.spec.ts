@@ -95,7 +95,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
       await expect(block).toContainText(`· ${goal.lifecycle}`);
       await expect(block.getByTestId("report-so-what")).toHaveText(`So What: ${goal.so_what}`);
       await expect(block.getByTestId("report-status")).toHaveText(`Status: ${goal.status}`);
-      if (goal.delivery_date) await expect(block.getByTestId("report-due")).toContainText(goal.delivery_date);
+      if (goal.delivery_date) await expect(block.getByTestId("report-due")).toContainText(reportDate(goal.delivery_date));
       await expect(block.getByTestId("report-milestone")).toHaveCount(goal.milestones);
       await expect(block.getByTestId("report-metric")).toHaveCount(goal.metrics);
       const health = await healthOf(block.getByTestId("report-health"));
@@ -126,14 +126,15 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
 
   let firstPublication = "";
   // firstPublishedOn is the day the first publication says it was published,
-  // in UTC, the server's timezone: the baseline once there's a second draft.
+  // "Oct 17, 2026", in UTC, the server's timezone: the baseline once there's a
+  // second draft.
   let firstPublishedOn = "";
   await test.step("3 Publish… opens a confirmation, and confirming it publishes", async () => {
     await publish(elena, reportName);
     firstPublication = new URL(elena.url()).pathname;
     const published = elena.getByTestId("report-published");
     await expect(published).toContainText("by Priya Raman");
-    firstPublishedOn = /Published (\d{4}-\d{2}-\d{2}) /.exec((await published.textContent()) ?? "")?.[1] ?? "";
+    firstPublishedOn = /Published ([A-Z][a-z]{2} \d{1,2}, \d{4}), \d{2}:\d{2} /.exec((await published.textContent()) ?? "")?.[1] ?? "";
     expect(firstPublishedOn, "the publication says the day it was published").not.toBe("");
   });
 
@@ -194,8 +195,8 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     // The slip is marked: New Date, and the old date struck through.
     const slipBlock = draft.locator(`#goal-${slipped.id}`);
     await expect(slipBlock.getByTestId("report-badge").filter({ hasText: "New Date" })).toBeVisible();
-    await expect(slipBlock.getByTestId("report-due").locator("del")).toHaveText(slipped.delivery_date);
-    await expect(slipBlock.getByTestId("report-due")).toContainText(newDate);
+    await expect(slipBlock.getByTestId("report-due").locator("del")).toHaveText(reportDate(slipped.delivery_date));
+    await expect(slipBlock.getByTestId("report-due")).toContainText(reportDate(newDate));
 
     // The re-teamed Goal left, and says why.
     const left = draft.getByTestId("membership-change").filter({ hasText: moved.title });
@@ -409,7 +410,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     const thirdPublication = new URL(elena.url()).pathname;
     const open = elena.getByTestId("report-action-items").getByTestId("open-action-item").filter({ hasText: question });
     await expect(open).toContainText(slipped.owner);
-    await expect(open).toContainText(`due ${due}`);
+    await expect(open).toContainText(`due ${reportDate(due)}`);
     await expectReportOrder(elena.getByRole("main"), ["health-summary", "report-action-items", "report-introduction"]);
     const content = await coreContent(elena.getByTestId("report-snapshot"));
     expect(content.actionItems).toEqual([expect.stringContaining(question)]);
@@ -602,6 +603,14 @@ function addDays(date: string, days: number): string {
   const d = new Date(`${date}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+// reportDate is the YYYY-MM-DD date as a Report shows it, always with its
+// year: "Nov 7, 2026".
+function reportDate(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  const month = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1];
+  return `${month} ${d}, ${y}`;
 }
 
 // preview is the draft page's preview: exactly what readers will see.

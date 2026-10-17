@@ -690,7 +690,7 @@ func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
 		t.Fatalf("rows = %q", got)
 	}
 
-	if due := strings.Join(strings.Fields(pageElement(t, rows[0], "td", "goal-row-due")), " "); !strings.Contains(due, `<td data-testid="goal-row-due" class="num gl-dates"><del>2026-07-02</del> <span>2026-07-16</span>`) {
+	if due := strings.Join(strings.Fields(pageElement(t, rows[0], "td", "goal-row-due")), " "); !strings.Contains(due, `<td data-testid="goal-row-due" class="num gl-dates"><del>Jul 2</del> <span>Jul 16</span>`) {
 		t.Errorf("slipped Goal's Due does not strike its prior date, each date whole: %s", due)
 	}
 	if rule := cssRule(t, page, ".gl-dates>*"); !strings.Contains(rule, "white-space:nowrap") {
@@ -1164,7 +1164,7 @@ func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
 		`<span data-testid="goal-lifecycle">Active</span>`,
 		`<span data-testid="goal-kind">Dated</span>`,
 		`Owner <strong data-testid="goal-owner">` + shownAs("sam@example.com", "sam") + `</strong>`,
-		`Delivers <span data-testid="goal-delivery-date" class="gp-dates"><del>2026-07-02</del> <strong>2026-07-16</strong></span>`,
+		`Delivers <span data-testid="goal-delivery-date" class="gp-dates"><del>Jul 2</del> <strong>Jul 16</strong></span>`,
 		`Checks in <span data-testid="goal-cadence">every 7 days</span>`,
 		`data-testid="goal-top-level"`,
 	} {
@@ -1271,7 +1271,7 @@ func TestGoalPageMilestonesTable(t *testing.T) {
 			t.Errorf("Milestones lack %s: %s", want, section)
 		}
 	}
-	if got := elementTexts(section, "tr", "goal-milestone"); !slices.Equal(got, []string{"2026-04-02 Beta"}) {
+	if got := elementTexts(section, "tr", "goal-milestone"); !slices.Equal(got, []string{"Apr 2 Beta"}) {
 		t.Errorf("Milestone rows read %q, want Beta's date and name with no mark", got)
 	}
 	if strings.Contains(section, `data-testid="milestone-mark"`) {
@@ -1336,7 +1336,7 @@ func TestGoalPageAddsAMilestoneInPlaceOverHTTP(t *testing.T) {
 			t.Fatalf("%s on %s: add answered %d at %s, want the Goal page", tc.who, tc.goal.Lifecycle, resp.StatusCode, resp.Request.URL)
 		}
 		rows := elementTexts(pageElement(t, page, "section", "goal-milestones"), "tr", "goal-milestone")
-		if !slices.ContainsFunc(rows, func(r string) bool { return strings.Contains(r, "2026-05-01 "+name) }) {
+		if !slices.ContainsFunc(rows, func(r string) bool { return strings.Contains(r, "May 1 "+name) }) {
 			t.Errorf("%s on %s: Milestones read %q, want %s listed", tc.who, tc.goal.Lifecycle, rows, name)
 		}
 		if got := churn(pageElement(t, page, "section", "goal-milestones")); !strings.HasSuffix(got, ">"+tc.churnAfter) {
@@ -1502,10 +1502,10 @@ func TestGoalPageMarksAMilestoneAddedSinceTheLatestCheckinNewOverHTTP(t *testing
 		t.Helper()
 		return elementTexts(pageElement(t, getBody(t, client, goalPageURL(ts.URL, g)), "section", "goal-milestones"), "tr", "goal-milestone")
 	}
-	if got, want := rows(goal), []string{"2026-04-02 Beta", "2026-05-01 Runbook", "New 2026-05-01 GA"}; !slices.Equal(got, want) {
+	if got, want := rows(goal), []string{"Apr 2 Beta", "May 1 Runbook", "New May 1 GA"}; !slices.Equal(got, want) {
 		t.Errorf("Milestones read %q, want %q", got, want)
 	}
-	if got, want := rows(unchecked), []string{"2026-04-02 Beta", "2026-05-01 Docs"}; !slices.Equal(got, want) {
+	if got, want := rows(unchecked), []string{"Apr 2 Beta", "May 1 Docs"}; !slices.Equal(got, want) {
 		t.Errorf("with no Check-in, Milestones read %q, want %q", got, want)
 	}
 }
@@ -1513,14 +1513,14 @@ func TestGoalPageMarksAMilestoneAddedSinceTheLatestCheckinNewOverHTTP(t *testing
 // goalMarkedMilestones is how the Goal page lists MilestoneMarksGoal's
 // Milestones, earliest date first: mark, then date, then name.
 var goalMarkedMilestones = []string{
-	"Red 2026-01-20 Security review",
-	"Done 2026-02-01 Pilot",
-	"New 2026-03-10 Docs",
-	"Yellow 2026-04-12 2026-04-02 Beta",
-	"Yellow 2026-04-20 2026-03-20 (3) Vendor sign-off",
-	"2026-05-01 Runbook",
-	"Removed 2026-05-20 Launch party Removed: Budget cut.",
-	"2026-06-15 GA launch",
+	"Red Jan 20 Security review",
+	"Done Feb 1 Pilot",
+	"New Mar 10 Docs",
+	"Yellow Apr 12 Apr 2 Beta",
+	"Yellow Apr 20 Mar 20 (3) Vendor sign-off",
+	"May 1 Runbook",
+	"Removed May 20 Launch party Removed: Budget cut.",
+	"Jun 15 GA launch",
 }
 
 // The Goal page's Milestones table reads Status, Date, Milestone. Each
@@ -1556,10 +1556,10 @@ func TestGoalPageListsMilestonesAsMarkDateNameOverHTTP(t *testing.T) {
 			vendor = tr
 		}
 	}
-	if !strings.Contains(vendor, "<del>2026-03-20</del>") {
+	if !strings.Contains(vendor, "<del>Mar 20</del>") {
 		t.Errorf("Vendor sign-off does not strike through the date it last slipped from:\n%s", vendor)
 	}
-	for _, older := range []string{"2026-03-01", "2026-03-10"} {
+	for _, older := range []string{"Mar 1<", "Mar 10"} {
 		if strings.Contains(vendor, older) {
 			t.Errorf("Vendor sign-off still lists the older date %s:\n%s", older, vendor)
 		}
@@ -1597,7 +1597,7 @@ func TestGoalPageMilestoneDatesDoNotBreakOverHTTP(t *testing.T) {
 	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
 	row := pageElement(t, pageElement(t, page, "section", "goal-milestones"), "tr", "goal-milestone")
 	cell := between(t, row, `<td class="num gp-dates">`, "</td>")
-	for _, want := range []string{"<del>" + beta.TargetDate.Format("2006-01-02") + "</del>", "<span>" + slipped.Format("2006-01-02") + "</span>"} {
+	for _, want := range []string{"<del>" + beta.TargetDate.Format("Jan 2") + "</del>", "<span>" + slipped.Format("Jan 2") + "</span>"} {
 		if !strings.Contains(cell, want) {
 			t.Errorf("the Milestone's date cell lacks %s: %s", want, cell)
 		}
@@ -1737,7 +1737,7 @@ func TestGoalPageMetricCardsShowASparkline(t *testing.T) {
 	if !strings.Contains(between(t, card, "<", `data-testid="metric-current"`), "num") {
 		t.Errorf("current value is not set as a number")
 	}
-	if !strings.Contains(card, "1200 → 400 ms by 2026-06-15") {
+	if !strings.Contains(card, "1200 → 400 ms by Jun 15") {
 		t.Errorf("card lacks baseline → target by date:\n%s", card)
 	}
 	svg := between(t, card, "<svg", "</svg>")
@@ -1816,7 +1816,7 @@ func TestGoalPageLatestStatusCard(t *testing.T) {
 	if !strings.Contains(openTag(status), "card") {
 		t.Errorf("Latest status is not a card: %s", openTag(status))
 	}
-	for _, want := range []string{"Latest status", "Wobbling.", "Add a second on-call.", "sam@example.com", "2026-01-02"} {
+	for _, want := range []string{"Latest status", "Wobbling.", "Add a second on-call.", "sam@example.com", "Jan 2"} {
 		if !strings.Contains(status, want) {
 			t.Errorf("Latest status lacks %q:\n%s", want, status)
 		}
@@ -3100,13 +3100,13 @@ func TestGoalPageListsValueHistory(t *testing.T) {
 	}
 	patShown, deeShown := shownAs(pat.Email, "Pat Owner"), shownAs(dee.Email, "Dee Delegate")
 	want := []struct{ change, by, at string }{
-		{"Budget: cleared (was 350)", patShown, "Fri 2 Jan 22:04"},
-		{"Region: added APAC", deeShown, "Fri 2 Jan 21:04"},
-		{"Region: removed EMEA", deeShown, "Fri 2 Jan 21:04"},
-		{"Region: added EMEA", patShown, "Fri 2 Jan 20:04"},
-		{"Pillar: set to Growth", patShown, "Fri 2 Jan 18:04"},
-		{"Budget: 200 → 350", deeShown, "Fri 2 Jan 16:04"},
-		{"Budget: set to 200", patShown, "Fri 2 Jan 15:04"},
+		{"Budget: cleared (was 350)", patShown, "Jan 2, 22:04"},
+		{"Region: added APAC", deeShown, "Jan 2, 21:04"},
+		{"Region: removed EMEA", deeShown, "Jan 2, 21:04"},
+		{"Region: added EMEA", patShown, "Jan 2, 20:04"},
+		{"Pillar: set to Growth", patShown, "Jan 2, 18:04"},
+		{"Budget: 200 → 350", deeShown, "Jan 2, 16:04"},
+		{"Budget: set to 200", patShown, "Jan 2, 15:04"},
 	}
 	entries := valueEntries(t, patClient, goalPageURL(ts.URL, goal))
 	if len(entries) != len(want) {
@@ -5249,5 +5249,44 @@ func TestEditTitleAndSoWhatIsTheOwnersOrAnAdminsOverHTTP(t *testing.T) {
 	got, _ := h.Service.ViewGoal(t.Context(), g.ID)
 	if got.Title != "Reduce outages" || got.SoWhat != "Outages cost us customers." {
 		t.Errorf("a post with only a So What left the Goal at %q / %q, want the title kept and the So What changed", got.Title, got.SoWhat)
+	}
+}
+
+// The Goal page shows its delivery date, the date it slipped from and its
+// Milestone's date as "Jul 16", while the Check-in form's date inputs still
+// hold ISO values (ticket #276).
+func TestGoalPageShowsDatesInTheDateFormat(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.") // due Jul 2 2026, Beta on Apr 2
+	client := signInClient(t, ts.URL, "sam@example.com")
+	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":               {domain.HealthYellow},
+		"status":               {"Vendor is late."},
+		"path_to_green":        {"Swap vendors."},
+		"path_target_date":     {"2026-06-15"},
+		"delivery_date":        {"2026-07-16"},
+		"delivery_date_reason": {"Vendor API delayed two weeks."},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("submit check-in: status %d", resp.StatusCode)
+	}
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	if delivery := pageElement(t, page, "span", "goal-delivery-date"); !strings.Contains(delivery, "<del>Jul 2</del> <strong>Jul 16</strong>") {
+		t.Errorf("the delivery date is not shown as ~~Jul 2~~ Jul 16; element:\n%s", delivery)
+	}
+	if milestone := pageElement(t, page, "tr", "goal-milestone"); !strings.Contains(milestone, "<span>Apr 2</span>") {
+		t.Errorf("the Milestone's date is not shown as Apr 2; row:\n%s", milestone)
+	}
+
+	form := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	for _, want := range []string{`name="delivery_date" value="2026-07-16"`, `value="2026-04-02" aria-label="Date of Beta"`} {
+		if !strings.Contains(form, want) {
+			t.Errorf("the Check-in form's date inputs do not hold %s", want)
+		}
 	}
 }

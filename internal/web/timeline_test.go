@@ -131,8 +131,8 @@ func TestGoalHistoryIsOneTimelineNewestFirstUnderWeekHeadings(t *testing.T) {
 		heading string
 		kinds   []string
 	}{
-		{"Week of 5 Jan", []string{"ownership", "checkin", "value"}},
-		{"Week of 29 Dec 2025", []string{"so-what"}},
+		{"Week of Jan 5", []string{"ownership", "checkin", "value"}},
+		{"Week of Dec 29, 2025", []string{"so-what"}},
 	} {
 		if heading := between(t, weeks[i], "<h3", "</h3>"); !strings.Contains(heading, want.heading) {
 			t.Errorf("week %d is headed %q, want %q", i, heading, want.heading)
@@ -167,10 +167,10 @@ func TestGoalHistoryWeeksAreInTheOrgsTimezone(t *testing.T) {
 
 	history := historyBlock(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal)))
 	weeks := strings.Split(history, `data-testid="history-week"`)[1:]
-	if len(weeks) != 1 || !strings.Contains(weeks[0], "Week of 29 Dec 2025") {
-		t.Fatalf("History is not one week of 29 Dec 2025 in Los Angeles:\n%s", history)
+	if len(weeks) != 1 || !strings.Contains(weeks[0], "Week of Dec 29, 2025") {
+		t.Fatalf("History is not one week of Dec 29, 2025 in Los Angeles:\n%s", history)
 	}
-	if checkin := historyEntries(history)[0]; !strings.Contains(checkin, "Sun 4 Jan 19:00") {
+	if checkin := historyEntries(history)[0]; !strings.Contains(checkin, "Jan 4, 19:00") {
 		t.Errorf("the Check-in doesn't show its Los Angeles time:\n%s", checkin)
 	}
 }
@@ -442,7 +442,7 @@ func TestGoalHistoryCheckinShowsWhatItRecorded(t *testing.T) {
 		}
 	}
 	for _, want := range []string{
-		"Yellow", "Vendor is late.", "Path to Green: Swap vendors. (by 2026-03-02)",
+		"Yellow", "Vendor is late.", "Path to Green: Swap vendors. (by Mar 2)",
 		"by " + shownAs(dee.Email, "Dee Delegate") + " for " + shownAs(sam.Email, "Sam Owner"),
 	} {
 		if !strings.Contains(slipped, want) {
@@ -460,8 +460,8 @@ func TestGoalHistoryCheckinShowsWhatItRecorded(t *testing.T) {
 	}
 }
 
-// fmtDay is a date as the pages write it.
-func fmtDay(d time.Time) string { return d.Format("2006-01-02") }
+// fmtDay is a date in the current year as the pages write it, "Jul 2".
+func fmtDay(d time.Time) string { return d.Format("Jan 2") }
 
 // Every fact the five old history sections showed is on the timeline, with
 // people by Name: the So What text and who wrote it, a Handoff's from, to,
@@ -480,11 +480,11 @@ func TestGoalHistoryKeepsEveryFactOfTheOldSections(t *testing.T) {
 	}
 	sam, pat := shownAs("sam@example.com", "Sam Owner"), shownAs("pat@example.com", "Pat Next")
 	for i, want := range [][]string{
-		{">Handoff<", "Sun 11 Jan 15:04", sam + " → " + pat, "pending", "started by " + sam},
-		{">Check-in<", "Thu 8 Jan 15:04", "Yellow", "Vendor is late.", "Path to Green: Swap vendors. (by 2026-03-02)", "by " + sam,
-			"<strong>Delivery date</strong>: <del>2026-07-02</del> 2026-07-16", "Vendor API delayed two weeks."},
-		{">Value<", "Tue 6 Jan 15:04", "Budget: set to 200", "by " + sam},
-		{">So What<", "Fri 2 Jan 15:04", "Customers wait too long.", "by " + sam},
+		{">Handoff<", "Jan 11, 15:04", sam + " → " + pat, "pending", "started by " + sam},
+		{">Check-in<", "Jan 8, 15:04", "Yellow", "Vendor is late.", "Path to Green: Swap vendors. (by Mar 2)", "by " + sam,
+			"<strong>Delivery date</strong>: <del>Jul 2</del> Jul 16", "Vendor API delayed two weeks."},
+		{">Value<", "Jan 6, 15:04", "Budget: set to 200", "by " + sam},
+		{">So What<", "Jan 2, 15:04", "Customers wait too long.", "by " + sam},
 	} {
 		for _, part := range want {
 			if !strings.Contains(entries[i], part) {
@@ -579,9 +579,9 @@ func TestGoalPageShowsHealthStripAboveHistory(t *testing.T) {
 	}
 	monday := time.Date(2025, time.December, 29, 0, 0, 0, 0, time.UTC)
 	for i, c := range cells {
-		heading := "Week of " + monday.AddDate(0, 0, 7*i).Format("2 Jan")
+		heading := "Week of " + monday.AddDate(0, 0, 7*i).Format("Jan 2")
 		if i == 0 {
-			heading += " 2025"
+			heading += ", 2025"
 		}
 		want := healthCell{"g", heading + ": Green"}
 		switch i {
@@ -631,9 +631,9 @@ func TestHealthStripCellsAreBlankWhereNoCheckinWasOwed(t *testing.T) {
 		}
 	}
 	for i, want := range []healthCell{
-		{"no-checkin", "Week of 29 Dec 2025: no Check-in"},
-		{"blank", "Week of 5 Jan: On Hold"},
-		{"blank", "Week of 12 Jan: On Hold"},
+		{"no-checkin", "Week of Dec 29, 2025: no Check-in"},
+		{"blank", "Week of Jan 5: On Hold"},
+		{"blank", "Week of Jan 12: On Hold"},
 	} {
 		if c := cells[8+i]; c != want {
 			t.Errorf("cell %d = %+v, want %+v", 8+i, c, want)
@@ -669,10 +669,10 @@ func TestHealthStripShowsTheWeekInProgressAsNotYetDue(t *testing.T) {
 	if len(cells) != 11 {
 		t.Fatalf("strip has %d cells, want 11: %v", len(cells), cells)
 	}
-	if want := (healthCell{"g", "Week of 29 Dec 2025: Green"}); cells[9] != want {
+	if want := (healthCell{"g", "Week of Dec 29, 2025: Green"}); cells[9] != want {
 		t.Errorf("last week's cell = %+v, want %+v", cells[9], want)
 	}
-	if want := (healthCell{"not-yet-due", "Week of 5 Jan: not yet due"}); cells[10] != want {
+	if want := (healthCell{"not-yet-due", "Week of Jan 5: not yet due"}); cells[10] != want {
 		t.Errorf("this week's cell = %+v, want %+v", cells[10], want)
 	}
 	if strings.Contains(between(t, page, `data-state="not-yet-due"`, "</li>"), `class="dot"`) {
@@ -715,9 +715,9 @@ func TestHealthStripWeekEndingOnHoldIsBlank(t *testing.T) {
 		t.Fatalf("strip has %d cells, want 11: %v", len(cells), cells)
 	}
 	for i, want := range []healthCell{
-		{"no-checkin", "Week of 29 Dec 2025: no Check-in"},
-		{"blank", "Week of 5 Jan: On Hold"},
-		{"blank", "Week of 12 Jan: On Hold"},
+		{"no-checkin", "Week of Dec 29, 2025: no Check-in"},
+		{"blank", "Week of Jan 5: On Hold"},
+		{"blank", "Week of Jan 12: On Hold"},
 	} {
 		if c := cells[8+i]; c != want {
 			t.Errorf("cell %d = %+v, want %+v", 8+i, c, want)
@@ -749,10 +749,10 @@ func TestHealthStripPeriodsFollowTheGoalsCadence(t *testing.T) {
 	if len(cells) != 11 {
 		t.Fatalf("strip has %d cells, want 11: %v", len(cells), cells)
 	}
-	if want := (healthCell{"g", "29 Dec 2025 – 11 Jan: Green"}); cells[10] != want {
+	if want := (healthCell{"g", "Dec 29, 2025 – Jan 11: Green"}); cells[10] != want {
 		t.Errorf("current cell = %+v, want %+v", cells[10], want)
 	}
-	if want := (healthCell{"blank", "15 Dec 2025 – 28 Dec 2025: not yet Active"}); cells[9] != want {
+	if want := (healthCell{"blank", "Dec 15, 2025 – Dec 28, 2025: not yet Active"}); cells[9] != want {
 		t.Errorf("cell before = %+v, want %+v", cells[9], want)
 	}
 	summary := html.UnescapeString(between(t, page, `data-testid="health-strip-summary"`, "</"))
@@ -1041,7 +1041,7 @@ func TestCheckinFormRecordsMilestoneChangesOnlyWhenValid(t *testing.T) {
 	page = getBody(t, client, goalPageURL(ts.URL, goal))
 	entries := historyEntries(historyBlock(t, page))
 	changes := html.UnescapeString(between(t, entries[0], `data-testid="entry-milestone-changes"`, "</ul>"))
-	for _, want := range []string{"Added Milestone GA (2026-05-01)", "Marked Beta Done", "Removed Rollout to 50%: descoped"} {
+	for _, want := range []string{"Added Milestone GA (May 1)", "Marked Beta Done", "Removed Rollout to 50%: descoped"} {
 		if !strings.Contains(changes, want) {
 			t.Errorf("the Check-in's Milestone changes lack %q:\n%s", want, changes)
 		}
@@ -1102,8 +1102,8 @@ func TestGoalHistoryShowsEachParentSuggestionAndItsOutcome(t *testing.T) {
 		outcome string
 	}{
 		{open, "Still open"},
-		{accepted, "Accepted Sun 4 Jan 15:04"},
-		{declined, "Declined Sat 3 Jan 15:04"},
+		{accepted, "Accepted Jan 4, 15:04"},
+		{declined, "Declined Jan 3, 15:04"},
 	} {
 		if i >= len(got) {
 			t.Fatalf("History has %d suggestions, want 3", len(got))
@@ -1461,8 +1461,8 @@ func TestGoalHistoryShowsAMilestoneAddedOutsideACheckin(t *testing.T) {
 		e := added[0]
 		text := entryText(e)
 		for _, fact := range []string{
-			"Milestone " + h.Clock.Now().Format("Mon 2 Jan 15:04"),
-			"Dana Reyes dana@example.com added Milestone GA (2026-05-01)",
+			"Milestone " + h.Clock.Now().Format("Jan 2, 15:04"),
+			"Dana Reyes dana@example.com added Milestone GA (May 1)",
 		} {
 			if !strings.Contains(text, fact) {
 				t.Errorf("the addition under %q lacks %q:\n%s", filter, fact, text)
@@ -1644,8 +1644,8 @@ func TestGoalHistoryFoldsNoChangeCheckinsIntoOneEntry(t *testing.T) {
 	if times := regexp.MustCompile(`<time[ >]`).FindAllString(folded, -1); len(times) != 1 {
 		t.Errorf("the folded entry has %d time elements, want 1:\n%s", len(times), folded)
 	}
-	if at := between(t, folded, "<time", "</time>"); !strings.Contains(at, `datetime="2026-01-24T15:04:05Z"`) || !strings.Contains(at, "Sat 24 Jan 15:04") {
-		t.Errorf("the folded entry is dated %s, want its newest Check-in's Sat 24 Jan 15:04", at)
+	if at := between(t, folded, "<time", "</time>"); !strings.Contains(at, `datetime="2026-01-24T15:04:05Z"`) || !strings.Contains(at, "Jan 24, 15:04") {
+		t.Errorf("the folded entry is dated %s, want its newest Check-in's Jan 24, 15:04", at)
 	}
 	listed := between(t, folded, `data-testid="folded-checkins"`, "</details>")
 	samBy, deeBy := "by "+shownAs(sam.Email, "Sam Owner"), "by "+shownAs(dee.Email, "Dee Delegate")+" for "+shownAs(sam.Email, "Sam Owner")
@@ -1654,20 +1654,20 @@ func TestGoalHistoryFoldsNoChangeCheckinsIntoOneEntry(t *testing.T) {
 		t.Fatalf("the disclosure lists %d Check-ins, want 3:\n%s", len(lines), listed)
 	}
 	for i, want := range []struct{ at, by string }{
-		{"Sat 24 Jan 15:04", samBy},
-		{"Sat 17 Jan 15:04", deeBy},
-		{"Sat 10 Jan 15:04", samBy},
+		{"Jan 24, 15:04", samBy},
+		{"Jan 17, 15:04", deeBy},
+		{"Jan 10, 15:04", samBy},
 	} {
 		if !strings.Contains(lines[i], want.at) || !strings.Contains(lines[i], want.by) {
 			t.Errorf("folded Check-in %d lacks %q %q:\n%s", i, want.at, want.by, lines[i])
 		}
 	}
-	if foldedCount(full) != "" || !strings.Contains(full, "Vendor is late.") || !strings.Contains(full, "Sat 3 Jan 15:04") {
+	if foldedCount(full) != "" || !strings.Contains(full, "Vendor is late.") || !strings.Contains(full, "Jan 3, 15:04") {
 		t.Errorf("the repeated Check-in doesn't show in full:\n%s", full)
 	}
 	weeks := strings.Split(history, `data-testid="history-week"`)[1:]
-	if len(weeks) != 2 || !strings.Contains(weeks[0], "Week of 19 Jan") || !strings.Contains(weeks[0], `data-folded="3"`) {
-		t.Errorf("the folded entry isn't under its newest Check-in's week, 19 Jan:\n%s", history)
+	if len(weeks) != 2 || !strings.Contains(weeks[0], "Week of Jan 19") || !strings.Contains(weeks[0], `data-folded="3"`) {
+		t.Errorf("the folded entry isn't under its newest Check-in's week, Jan 19:\n%s", history)
 	}
 	if chips := historyChips(t, history); chips["Check-ins"].count != "4" || chips["All"].count != "5" {
 		t.Errorf("chips count %s Check-ins and %s in all, want 4 and 5", chips["Check-ins"].count, chips["All"].count)

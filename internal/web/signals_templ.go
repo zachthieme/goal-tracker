@@ -76,7 +76,7 @@ func topLevelControl(g domain.Goal) templ.Component {
 
 // graphSignalsPage lists the risks the Goal graph flags on its own, so
 // leadership sees them without anyone reporting them (CONTEXT.md: Unaligned).
-func graphSignalsPage(current *domain.Account, signals domain.GraphSignals) templ.Component {
+func graphSignalsPage(current *domain.Account, signals domain.GraphSignals, dates displayDates) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -165,7 +165,7 @@ func graphSignalsPage(current *domain.Account, signals domain.GraphSignals) temp
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = scheduleConflict(c).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = scheduleConflict(c, dates).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -269,8 +269,8 @@ func goalRef(g domain.Goal) templ.Component {
 }
 
 // scheduleConflict names a child due later than the parent it contributes to,
-// with both delivery dates.
-func scheduleConflict(c domain.ScheduleConflict) templ.Component {
+// with both delivery dates as dates shows them.
+func scheduleConflict(c domain.ScheduleConflict, dates displayDates) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -300,9 +300,9 @@ func scheduleConflict(c domain.ScheduleConflict) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var10 string
-		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(fmtDate(c.Child.DeliveryDate))
+		templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(dates.date(c.Child.DeliveryDate))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 92, Col: 43}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 92, Col: 46}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 		if templ_7745c5c3_Err != nil {
@@ -321,9 +321,9 @@ func scheduleConflict(c domain.ScheduleConflict) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var11 string
-		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(fmtDate(c.Parent.DeliveryDate))
+		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(dates.date(c.Parent.DeliveryDate))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 94, Col: 44}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/signals.templ`, Line: 94, Col: 47}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 		if templ_7745c5c3_Err != nil {
@@ -425,7 +425,7 @@ func goalSignalsStyles() templ.Component {
 
 // goalSignals flags, at the top of a Goal's page, the graph signals that touch
 // it, one banner each. It renders nothing when the graph flags nothing.
-func goalSignals(signals domain.GoalSignals) templ.Component {
+func goalSignals(signals domain.GoalSignals, dates displayDates) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -466,7 +466,7 @@ func goalSignals(signals domain.GoalSignals) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = scheduleConflict(c).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = scheduleConflict(c, dates).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

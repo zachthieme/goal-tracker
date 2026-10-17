@@ -391,23 +391,19 @@ func (h history) weeks() []historyWeek {
 	return out
 }
 
-// weekHeading names the week t falls in by its Monday, "Week of 28 Sep", with
+// weekHeading names the week t falls in by its Monday, "Week of Sep 28", with
 // the year when it isn't this year.
 func (h history) weekHeading(t time.Time) string {
 	local := t.In(h.Loc)
 	y, m, d := local.Date()
 	day := time.Date(y, m, d, 0, 0, 0, 0, h.Loc)
 	monday := day.AddDate(0, 0, -((int(day.Weekday()) + 6) % 7))
-	return "Week of " + h.dayLabel(monday)
+	return "Week of " + h.dates().date(monday)
 }
 
-// dayLabel names a calendar date, "28 Sep", with the year when it isn't this
-// year.
-func (h history) dayLabel(d time.Time) string {
-	if d.Year() != h.Now.In(h.Loc).Year() {
-		return d.Format("2 Jan 2006")
-	}
-	return d.Format("2 Jan")
+// dates is the clock History shows its dates and times against.
+func (h history) dates() displayDates {
+	return displayDates{Now: h.Now, Loc: h.Loc}
 }
 
 // stripCell is one cell of the Health strip: its state (the Health's class,
@@ -445,13 +441,13 @@ func (h history) stripCells() []stripCell {
 }
 
 // periodLabel names a period on the strip: a weekly Goal's by its Monday,
-// "Week of 28 Sep", as History's headings do, and any other's by its first and
-// last days.
+// "Week of Sep 28", as History's headings do, and any other's by its first and
+// last days, "Sep 28 – Oct 11".
 func (h history) periodLabel(p domain.HealthPeriod) string {
 	if h.Strip.CadenceDays == 7 {
-		return "Week of " + h.dayLabel(p.First)
+		return "Week of " + h.dates().date(p.First)
 	}
-	return h.dayLabel(p.First) + " – " + h.dayLabel(p.Last)
+	return h.dates().date(p.First) + " – " + h.dates().date(p.Last)
 }
 
 // stripSpan names the stretch the strip covers: "Last 11 weeks", or "Last 11
@@ -509,21 +505,16 @@ func (h history) slipWhat(s domain.DateSlip) string {
 }
 
 // milestoneChangeText says what a Check-in did to a Milestone: "Added
-// Milestone GA (2026-11-09)", "Marked Beta Done" or "Removed Rollout to 50%:
+// Milestone GA (Nov 9)", "Marked Beta Done" or "Removed Rollout to 50%:
 // descoped".
-func milestoneChangeText(m domain.MilestoneChange) string {
+func milestoneChangeText(m domain.MilestoneChange, dates displayDates) string {
 	switch m.Kind {
 	case domain.MilestoneChangeAdded:
-		return fmt.Sprintf("Added Milestone %s (%s)", m.Name, fmtDate(m.AddedDate))
+		return fmt.Sprintf("Added Milestone %s (%s)", m.Name, dates.date(m.AddedDate))
 	case domain.MilestoneChangeDone:
 		return fmt.Sprintf("Marked %s Done", m.Name)
 	}
 	return fmt.Sprintf("Removed %s: %s", m.Name, m.Reason)
-}
-
-// when is t as an entry shows it, in the org's timezone: "Fri 2 Jan 15:04".
-func (h history) when(t time.Time) string {
-	return t.In(h.Loc).Format("Mon 2 Jan 15:04")
 }
 
 // linkChange says what a link change did, phrased for the Goal whose History
@@ -577,13 +568,13 @@ func (h history) suggestionOutcome(p domain.ParentSuggestion) string {
 	case domain.SuggestionOpen:
 		return "Still open"
 	case domain.SuggestionAccepted:
-		return "Accepted " + h.when(p.ClosedAt)
+		return "Accepted " + h.dates().timestamp(p.ClosedAt)
 	case domain.SuggestionDeclined:
-		return "Declined " + h.when(p.ClosedAt)
+		return "Declined " + h.dates().timestamp(p.ClosedAt)
 	case domain.SuggestionWithdrawn:
-		return "Withdrawn " + h.when(p.ClosedAt)
+		return "Withdrawn " + h.dates().timestamp(p.ClosedAt)
 	}
-	return "No longer applies, since " + h.when(p.ClosedAt)
+	return "No longer applies, since " + h.dates().timestamp(p.ClosedAt)
 }
 
 // url is the Goal page listing filter with shown entries, scrolled to the

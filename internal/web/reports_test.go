@@ -205,7 +205,7 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 		t.Errorf("the default publish form carries a baseline; form:\n%s", form)
 	}
 	resp = postForm(t, client, reportURL+"/publications", url.Values{})
-	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "changes since the previous publication, 2026-02-11") {
+	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "changes since the previous publication, Feb 11, 2026, ") {
 		t.Errorf("publication does not read against the previous publication; line:\n%s", line)
 	}
 
@@ -217,7 +217,7 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 		t.Errorf("publish form does not carry the chosen baseline on its action alone; form:\n%s", form)
 	}
 	resp = postForm(t, client, reportURL+"/publications?baseline=2026-01-01", url.Values{})
-	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "changes since 2026-01-01") {
+	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "changes since Jan 1, 2026") {
 		t.Errorf("publication does not read against the chosen baseline; line:\n%s", line)
 	}
 
@@ -1155,7 +1155,7 @@ func TestReportsListLinksToTheBuilderOverHTTP(t *testing.T) {
 }
 
 // A published definition's row dates its last publication in the company's
-// timezone, "Jan 1" for 03:00 UTC on 2 January in Los Angeles, with who
+// timezone, "Jan 1, 2026" for 03:00 UTC on 2 January in Los Angeles, with who
 // published it; counts its draft's changes since in an amber pill; and draws
 // its Goals that have a Health as a bar labelled for assistive technology,
 // leaving out the three new Goals that have none yet.
@@ -1195,7 +1195,7 @@ func TestReportsListRowShowsTheLastPublicationAndChangesOverHTTP(t *testing.T) {
 		`<span data-testid="report-scope" class="small muted">Owner: boss</span>`,
 		`<span data-testid="report-goals">5</span>`,
 		`<div data-testid="report-health-bar" class="rp-bar" role="img" aria-label="1 Green, 0 Yellow, 1 Red"><span class="g"></span><span class="r"></span></div>`,
-		`<span data-testid="report-published">Jan 1</span>`,
+		`<span data-testid="report-published">Jan 1, 2026</span>`,
 		shownAs("ada.okafor@example.com", "Ada Okafor"),
 		`<span data-testid="report-draft" class="rp-changes-hot">3 changes</span>`,
 	} {
@@ -1526,11 +1526,11 @@ func TestExceptionCardDatesDoNotBreakOverHTTP(t *testing.T) {
 
 	block := pageElement(t, page, "article", "report-exception")
 	due := strings.Join(strings.Fields(between(t, block, `<span data-testid="report-due"`, "</p>")), " ")
-	if want := `<span data-testid="report-due" class="rp-dates"><del>2026-07-02</del> <span>2026-07-16</span></span>`; due != want {
+	if want := `<span data-testid="report-due" class="rp-dates"><del>Jul 2, 2026</del> <span>Jul 16, 2026</span></span>`; due != want {
 		t.Errorf("the card's due date is not a wrapper of whole dates:\n got %s\nwant %s", due, want)
 	}
 	milestone := strings.Join(strings.Fields(pageElement(t, block, "li", "report-milestone")), " ")
-	if want := `<span class="rp-dates"><span>` + slippedBeta.Format("2006-01-02") + `</span> <del>` + beta.TargetDate.Format("2006-01-02") + `</del> </span>`; !strings.Contains(milestone, want) {
+	if want := `<span class="rp-dates"><span>` + slippedBeta.Format("Jan 2, 2006") + `</span> <del>` + beta.TargetDate.Format("Jan 2, 2006") + `</del> </span>`; !strings.Contains(milestone, want) {
 		t.Errorf("the Milestone's dates are not a wrapper of whole dates:\nwant %s\nin %s", want, milestone)
 	}
 	if rule := cssRule(t, page, ".rp-dates>*"); !strings.Contains(rule, "white-space:nowrap") {
@@ -1547,14 +1547,14 @@ const healthClassYellow = "y"
 // reportMarkedMilestones is how the Report lists MilestoneMarksGoal's
 // Milestones, earliest date first, each mark, then date, then name.
 var reportMarkedMilestones = []string{
-	"Red 2026-01-20 Security review",
-	"Done 2026-02-01 Pilot",
-	"New 2026-03-10 Docs",
-	"Yellow 2026-04-12 2026-04-02 Beta",
-	"Yellow 2026-04-20 2026-03-20 (3) Vendor sign-off",
-	"2026-05-01 Runbook",
-	"Removed 2026-05-20 Launch party — Budget cut.",
-	"2026-06-15 GA launch",
+	"Red Jan 20, 2026 Security review",
+	"Done Feb 1, 2026 Pilot",
+	"New Mar 10, 2026 Docs",
+	"Yellow Apr 12, 2026 Apr 2, 2026 Beta",
+	"Yellow Apr 20, 2026 Mar 20, 2026 (3) Vendor sign-off",
+	"May 1, 2026 Runbook",
+	"Removed May 20, 2026 Launch party — Budget cut.",
+	"Jun 15, 2026 GA launch",
 }
 
 // An exception block lists each Milestone as its mark, its date and its name,
@@ -1590,10 +1590,10 @@ func TestReportListsMilestonesAsMarkDateNameOverHTTP(t *testing.T) {
 					vendor = li
 				}
 			}
-			if !strings.Contains(vendor, "<del>2026-03-20</del>") {
+			if !strings.Contains(vendor, "<del>Mar 20, 2026</del>") {
 				t.Errorf("Vendor sign-off does not strike through the date it last slipped from:\n%s", vendor)
 			}
-			for _, older := range []string{"2026-03-01", "2026-03-10"} {
+			for _, older := range []string{"Mar 1,", "Mar 10,"} {
 				if strings.Contains(vendor, older) {
 					t.Errorf("Vendor sign-off still lists the older date %s:\n%s", older, vendor)
 				}
@@ -1631,7 +1631,7 @@ func TestPublicationFromBeforeMilestoneMarksListsMarkDateNameOverHTTP(t *testing
 
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID))
-	want := []string{"Red 2025-12-20 2025-12-01 Beta", "New 2026-03-01 GA", "2026-04-01 Launch"}
+	want := []string{"Red Dec 20, 2025 Dec 1, 2025 Beta", "New Mar 1, 2026 GA", "Apr 1, 2026 Launch"}
 	if got := elementTexts(pageElement(t, page, "article", "report-exception"), "li", "report-milestone"); !slices.Equal(got, want) {
 		t.Errorf("Milestones read\n %q\nwant\n %q", got, want)
 	}
@@ -2145,8 +2145,8 @@ func TestDraftHistoryListsPublicationsInTheOrgsTimezoneOverHTTP(t *testing.T) {
 		t.Fatalf("History lists %d publications, want 2; menu:\n%s", len(items), history)
 	}
 	for i, want := range []struct{ when, by string }{
-		{"2 Mar 2026, 19:00 PST", shownAs("ada.okafor@example.com", "Ada Okafor")},
-		{"1 Mar 2026, 19:00 PST", shownAs("boss@example.com", "boss")},
+		{">Mar 2, 2026, 19:00<", shownAs("ada.okafor@example.com", "Ada Okafor")},
+		{">Mar 1, 2026, 19:00<", shownAs("boss@example.com", "boss")},
 	} {
 		if !strings.Contains(items[i], want.when) || !strings.Contains(items[i], want.by) {
 			t.Errorf("History entry %d is not %s by %s; entry:\n%s", i+1, want.when, want.by, items[i])
@@ -2497,8 +2497,8 @@ func TestBaselineChipSaysWhatTheDraftReadsAgainstOverHTTP(t *testing.T) {
 
 	// Today is 2 Jan 2026, so 30 days ago is 3 Dec 2025.
 	unpublished := chip("")
-	if got := label(unpublished); got != "30 days ago · Dec 3" {
-		t.Errorf("unpublished chip label %q, want %q; chip:\n%s", got, "30 days ago · Dec 3", unpublished)
+	if got := label(unpublished); got != "30 days ago · Dec 3, 2025" {
+		t.Errorf("unpublished chip label %q, want %q; chip:\n%s", got, "30 days ago · Dec 3, 2025", unpublished)
 	}
 	if !strings.Contains(unpublished, "Changes since <strong") {
 		t.Errorf("chip does not read Changes since …; chip:\n%s", unpublished)
@@ -2522,8 +2522,8 @@ func TestBaselineChipSaysWhatTheDraftReadsAgainstOverHTTP(t *testing.T) {
 		t.Errorf("the draft keeps the old baseline sentence or a baseline form outside the chip; body:\n%s", page)
 	}
 	published := chip("")
-	if got := label(published); got != "last publication · Sep 22" {
-		t.Errorf("published chip label %q, want %q; chip:\n%s", got, "last publication · Sep 22", published)
+	if got := label(published); got != "last publication · Sep 22, 2026" {
+		t.Errorf("published chip label %q, want %q; chip:\n%s", got, "last publication · Sep 22, 2026", published)
 	}
 	if item := pageElement(t, published, "a", "baseline-last-publication"); !strings.Contains(item, `href="`+path+`"`) {
 		t.Errorf("Last publication does not link to the draft with no baseline; item:\n%s", item)
@@ -2533,8 +2533,8 @@ func TestBaselineChipSaysWhatTheDraftReadsAgainstOverHTTP(t *testing.T) {
 	}
 
 	chosen := chip("?baseline=2026-01-01")
-	if got := label(chosen); got != "Jan 1" {
-		t.Errorf("chosen chip label %q, want %q; chip:\n%s", got, "Jan 1", chosen)
+	if got := label(chosen); got != "Jan 1, 2026" {
+		t.Errorf("chosen chip label %q, want %q; chip:\n%s", got, "Jan 1, 2026", chosen)
 	}
 	if !strings.Contains(chosen, `data-testid="baseline-last-publication"`) {
 		t.Errorf("after a chosen date the chip no longer offers the last publication; chip:\n%s", chosen)
@@ -2562,8 +2562,8 @@ func TestBaselineChipDatesThePublicationInTheOrgsTimezoneOverHTTP(t *testing.T) 
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
 
 	chip := pageElement(t, pageElement(t, page, "header", "draft-header"), "details", "baseline-chip")
-	if got := chipLabel(t, chip); got != "last publication · Mar 1" {
-		t.Errorf("chip label %q, want %q; chip:\n%s", got, "last publication · Mar 1", chip)
+	if got := chipLabel(t, chip); got != "last publication · Mar 1, 2026" {
+		t.Errorf("chip label %q, want %q; chip:\n%s", got, "last publication · Mar 1, 2026", chip)
 	}
 }
 
@@ -2658,7 +2658,7 @@ func TestPublishConfirmsWhatItWillFreezeOverHTTP(t *testing.T) {
 	if !strings.Contains(confirm, "Publish Platform MBR?") {
 		t.Errorf("the confirmation does not name the Report; disclosure:\n%s", confirm)
 	}
-	const want = "4 Goals · 2 need attention · 1 Highlight · changes since last publication · Sep 22. Readers can comment on the frozen copy."
+	const want = "4 Goals · 2 need attention · 1 Highlight · changes since last publication · Sep 22, 2026. Readers can comment on the frozen copy."
 	if got := pageElement(t, confirm, "p", "publish-summary"); !strings.HasSuffix(got, ">"+want) {
 		t.Errorf("publish summary %q, want %q", got, want)
 	}
@@ -2671,7 +2671,7 @@ func TestPublishConfirmsWhatItWillFreezeOverHTTP(t *testing.T) {
 	}
 
 	confirm = pageElement(t, getBody(t, client, ts.URL+path+"?baseline=2026-01-01"), "details", "publish-confirm")
-	if got := pageElement(t, confirm, "p", "publish-summary"); !strings.Contains(got, "· changes since Jan 1.") {
+	if got := pageElement(t, confirm, "p", "publish-summary"); !strings.Contains(got, "· changes since Jan 1, 2026.") {
 		t.Errorf("publish summary %q does not read against the chosen date", got)
 	}
 	if form := pageElement(t, confirm, "form", "report-publish"); !strings.Contains(form, `action="`+path+`/publications?baseline=2026-01-01"`) {
@@ -2681,7 +2681,7 @@ func TestPublishConfirmsWhatItWillFreezeOverHTTP(t *testing.T) {
 		t.Errorf("Cancel does not keep the chosen baseline; link:\n%s", cancel)
 	}
 	resp := postForm(t, client, ts.URL+path+"/publications?baseline=2026-01-01", url.Values{})
-	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "changes since 2026-01-01") {
+	if line := pageElement(t, readBody(t, resp), "p", "report-published"); !strings.Contains(line, "changes since Jan 1, 2026") {
 		t.Errorf("publication does not read against the chosen baseline; line:\n%s", line)
 	}
 }
@@ -3367,5 +3367,37 @@ func TestPublicationFreezesTheEarlierHealthOverHTTP(t *testing.T) {
 	block := reportBlockFor(t, publication(before), g)
 	if !strings.Contains(block, "Vendor is late.") || strings.Contains(block, `data-testid="report-prior-health"`) {
 		t.Errorf("the older publication does not render its block as published; block:\n%s", block)
+	}
+}
+
+// A publication's byline, its Print view's title and the Reports list date it
+// on the org's clock with its year, though it's the current year, and never
+// say UTC: 15:04 UTC on Jan 2 is 00:04 on Jan 3 in Tokyo (ticket #276).
+func TestPublicationIsDatedWithItsYearInTheOrgsTimezoneOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	tokyo, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatalf("load timezone: %v", err)
+	}
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def) // Jan 2, 2026, 15:04 UTC
+
+	ts := httptest.NewServer(web.NewServer(domain.NewService(h.DB, h.Clock, h.Email, nil, domain.WithTimezone(tokyo))))
+	t.Cleanup(ts.Close)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	pubPath := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
+
+	if line := pageElement(t, getBody(t, client, pubPath), "p", "report-published"); !strings.Contains(line, "Published Jan 3, 2026, 00:04 by ") || strings.Contains(line, "UTC") {
+		t.Errorf("the byline doesn't read Published Jan 3, 2026, 00:04, with no UTC:\n%s", line)
+	}
+	if title := between(t, getBody(t, client, pubPath+"/print"), "<title>", "</title>"); !strings.Contains(title, "Jan 3, 2026, 00:04") || strings.Contains(title, "UTC") {
+		t.Errorf("the Print view's title is %q, want it dated Jan 3, 2026, 00:04", title)
+	}
+	if row := pageElement(t, getBody(t, client, ts.URL+"/reports"), "tr", "report-row"); !strings.Contains(row, `<span data-testid="report-published">Jan 3, 2026</span>`) || strings.Contains(row, "UTC") {
+		t.Errorf("the Reports list doesn't date the publication Jan 3, 2026:\n%s", row)
 	}
 }

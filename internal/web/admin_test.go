@@ -310,9 +310,9 @@ func TestAdminSeesTheDirectorySyncAndCanSyncNow(t *testing.T) {
 		t.Errorf("before any sync, the status doesn't say so:\n%s", status)
 	}
 
-	h.Clock.Advance(90 * time.Minute) // 2 Jan 2026 16:34 UTC
+	h.Clock.Advance(90 * time.Minute) // Jan 2, 2026, 16:34 UTC
 	status = pageElement(t, pressSyncNow(t, client, ts.URL), "section", "admin-directory-sync")
-	for _, want := range []string{"2 Jan 2026 16:34", "Read 2 people"} {
+	for _, want := range []string{"Jan 2, 16:34", "Read 2 people"} {
 		if !strings.Contains(status, want) {
 			t.Errorf("after Sync now, the status lacks %q:\n%s", want, status)
 		}
@@ -324,7 +324,7 @@ func TestAdminSeesTheDirectorySyncAndCanSyncNow(t *testing.T) {
 	dir.set(nil, errors.New("authentik users page 1: 403 Forbidden"))
 	h.Clock.Advance(time.Hour)
 	status = pageElement(t, pressSyncNow(t, client, ts.URL), "section", "admin-directory-sync")
-	for _, want := range []string{"2 Jan 2026 17:34", "403 Forbidden"} {
+	for _, want := range []string{"Jan 2, 17:34", "403 Forbidden"} {
 		if !strings.Contains(status, want) {
 			t.Errorf("after a failed Sync now, the status lacks %q:\n%s", want, status)
 		}
@@ -389,5 +389,28 @@ func TestAdminPageHasNoDirectorySyncWhenUnconfigured(t *testing.T) {
 	resp := postForm(t, noRedirects(client), ts.URL+"/admin/directory-sync", url.Values{})
 	if body := readBody(t, resp); resp.StatusCode != http.StatusNotFound {
 		t.Errorf("POST /admin/directory-sync unconfigured: status %d, want 404:\n%s", resp.StatusCode, body)
+	}
+}
+
+// The directory sync's time reads on the org's clock: 16:34 UTC on 2 Jan is
+// 01:34 on 3 Jan in Tokyo (ticket #276).
+func TestAdminSeesTheDirectorySyncTimeInTheOrgsTimezone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	tokyo, err := time.LoadLocation("Asia/Tokyo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.Service = domain.NewService(h.DB, h.Clock, h.Email, []string{"ada@example.com"}, domain.WithTimezone(tokyo))
+	dir := &adminDirectoryFake{people: []domain.DirectoryPerson{{Email: "ceo@example.com", Name: "Dana Whitfield"}}}
+	ts := newDirectorySyncServer(t, h, dir)
+	h.SignIn("ada@example.com")
+	client := signInClient(t, ts.URL, "ada@example.com")
+
+	h.Clock.Advance(90 * time.Minute) // Jan 2, 2026, 16:34 UTC
+	status := pageElement(t, pressSyncNow(t, client, ts.URL), "section", "admin-directory-sync")
+	if !strings.Contains(status, "Jan 3, 01:34") {
+		t.Errorf("the sync's time isn't Jan 3, 01:34 in Tokyo:\n%s", status)
 	}
 }

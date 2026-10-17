@@ -672,15 +672,6 @@ func sortRiskRows(rows []riskGoalRow) {
 	})
 }
 
-// riskDate is a date as the Risks page says it, "Jan 2", with its year when
-// that isn't today's.
-func riskDate(t, today time.Time) string {
-	if t.Year() != today.Year() {
-		return t.Format("Jan 2, 2006")
-	}
-	return t.Format("Jan 2")
-}
-
 // riskDays says a count of days in words: "1 day", "22 days".
 func riskDays(n int) string {
 	if n == 1 {

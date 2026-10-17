@@ -33,8 +33,8 @@ func TestGoalPageShowsPendingDraftHighlightsOnlyToOwnerAndDelegates(t *testing.T
 	h.LogDraftHighlight(dee, goal.ID, "", "Vendor may raise prices.")
 
 	want := []string{
-		"Accomplishment Cut paging noise by half. Sam Rivera sam@example.com · Fri 2 Jan 15:04 Delete",
-		"No kind Vendor may raise prices. Dee Okafor dee@example.com · Sat 3 Jan 17:04 Delete",
+		"Accomplishment Cut paging noise by half. Sam Rivera sam@example.com · Jan 2, 15:04 Delete",
+		"No kind Vendor may raise prices. Dee Okafor dee@example.com · Jan 3, 17:04 Delete",
 	}
 	for _, who := range []string{"sam@example.com", "dee@example.com"} {
 		page := getBody(t, signInClient(t, ts.URL, who), goalPageURL(ts.URL, goal))

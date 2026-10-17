@@ -44,6 +44,8 @@ func TestSmokeCommentAndReplyOnPublicationOverHTTP(t *testing.T) {
 	if thread := pageElement(t, readBody(t, resp), "div", "comment-thread"); !strings.Contains(thread, "Why did the vendor slip?") ||
 		!strings.Contains(thread, "reader@example.com") {
 		t.Errorf("publication does not show the comment and its author; thread:\n%s", thread)
+	} else if !strings.Contains(thread, " · Jan 2, 2026, 15:04") {
+		t.Errorf("the comment's time doesn't read Jan 2, 2026, 15:04, with the year as a Report shows it; thread:\n%s", thread)
 	}
 	if sent := h.Email.Sent(); len(sent) != 1 || sent[0].To != "owner@example.com" {
 		t.Errorf("emails %+v, want one comment alert to the Owner", sent)
@@ -107,7 +109,7 @@ func TestSmokeActionItemCarriesUntilClosedOverHTTP(t *testing.T) {
 		t.Fatalf("raise action item: status %d", resp.StatusCode)
 	}
 	if item := pageElement(t, readBody(t, resp), "li", "raised-action-item"); !strings.Contains(item, "Get a second vendor quote.") ||
-		!strings.Contains(item, "owner@example.com") || !strings.Contains(item, "2026-02-01") {
+		!strings.Contains(item, "owner@example.com") || !strings.Contains(item, "due Feb 1, 2026") {
 		t.Errorf("publication does not list the raised Action Item; item:\n%s", item)
 	}
 	resp = postForm(t, ownerClient, firstURL+"/action-items", url.Values{
@@ -144,7 +146,8 @@ func TestSmokeActionItemCarriesUntilClosedOverHTTP(t *testing.T) {
 		!strings.Contains(item, `data-testid="action-item-closed-since"`) {
 		t.Errorf("a frozen Action Item closed since publication is not marked so; item:\n%s", item)
 	}
-	if item := pageElement(t, getBody(t, ownerClient, firstURL), "li", "raised-action-item"); !strings.Contains(item, "Quote is in: 20% cheaper.") {
+	if item := pageElement(t, getBody(t, ownerClient, firstURL), "li", "raised-action-item"); !strings.Contains(item, "Quote is in: 20% cheaper.") ||
+		!strings.Contains(item, "[Closed Jan 2, 2026]") {
 		t.Errorf("the publication it was raised on does not show the closing note; item:\n%s", item)
 	}
 
@@ -274,7 +277,7 @@ func TestOpenActionItemCloseFormIsCollapsedOverHTTP(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "owner@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, second.ID))
 
 	item := pageElement(t, page, "li", "open-action-item")
-	if want := "Get a second vendor quote. · " + shownAs("owner@example.com", "owner") + " · due " + h.Clock.Now().Format("2006-01-02"); !strings.Contains(item, want) {
+	if want := "Get a second vendor quote. · " + shownAs("owner@example.com", "owner") + " · due " + h.Clock.Now().Format("Jan 2, 2006"); !strings.Contains(item, want) {
 		t.Errorf("open Action Item does not read %q; item:\n%s", want, item)
 	}
 	toggle := pageElement(t, item, "details", "close-toggle")

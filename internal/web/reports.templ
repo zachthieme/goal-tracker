@@ -60,7 +60,7 @@ templ reportRow(sum domain.ReportSummary, loc *time.Location) {
 		</td>
 		<td>
 			if p := sum.LastPublication; p != nil {
-				<span data-testid="report-published">{ fmtPublishedDateIn(p.PublishedAt, loc) }</span>
+				<span data-testid="report-published">{ showDayOfYear(p.PublishedAt, loc) }</span>
 				<span class="small muted">
 					@person(p.PublishedBy)
 				</span>
@@ -282,7 +282,7 @@ templ reportHistory(pubs []domain.Publication, loc *time.Location) {
 			}
 			for _, p := range pubs {
 				<li data-testid="report-publication">
-					<a href={ templ.SafeURL(publicationPath(p)) }>{ fmtPublishedIn(p.PublishedAt, loc) }</a>
+					<a href={ templ.SafeURL(publicationPath(p)) }>{ showTimeYear(p.PublishedAt, loc) }</a>
 					<br/>
 					<span class="small muted">
 						{ "by " }
@@ -358,7 +358,7 @@ templ publicationPage(current *domain.Account, p domain.Publication, d discussio
 						<a href="/reports">Reports</a>{ " / " }<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d", p.DefinitionID)) }>{ p.Report.Definition.Name }</a>
 					</p>
 					<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
-					@publishedLine(p)
+					@publishedLine(p, d.Loc)
 				</div>
 				<div class="rp-actions" data-testid="report-export">
 					<a data-testid="export-markdown" class="btn sm" href={ templ.SafeURL(publicationPath(p) + "/markdown") }>Markdown</a>
@@ -373,13 +373,13 @@ templ publicationPage(current *domain.Account, p domain.Publication, d discussio
 
 // publicationPrintPage is a published Report on its own, without the app's
 // navigation, styled to print to PDF from the browser.
-templ publicationPrintPage(p domain.Publication) {
+templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 	<!DOCTYPE html>
 	<html lang="en">
 		<head>
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
-			<title>{ p.Report.Definition.Name } · { fmtPublished(p.PublishedAt) }</title>
+			<title>{ p.Report.Definition.Name } · { showTimeYear(p.PublishedAt, loc) }</title>
 			<link rel="preconnect" href="https://fonts.googleapis.com"/>
 			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 			<link rel="stylesheet" href={ reportFontsURL }/>
@@ -433,9 +433,9 @@ templ publicationPrintPage(p domain.Publication) {
 				<a href={ templ.SafeURL(publicationPath(p)) }>Back to the publication</a>
 			</p>
 			<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
-			@publishedLine(p)
+			@publishedLine(p, loc)
 			<section data-testid="report-snapshot">
-				@reportBody(p.Report, p.PublishedAt, discussion{})
+				@reportBody(p.Report, p.PublishedAt, discussion{Loc: loc})
 			</section>
 		</body>
 	</html>
@@ -466,15 +466,15 @@ templ healthSummary(r domain.Report) {
 }
 
 // publishedLine says who published a Report and when, and what it read its
-// changes against.
-templ publishedLine(p domain.Publication) {
+// changes against, its times in the org's timezone (loc).
+templ publishedLine(p domain.Publication, loc *time.Location) {
 	<p data-testid="report-published" class="muted">
-		{ "Published " + fmtPublished(p.PublishedAt) + " by " }
+		{ "Published " + showTimeYear(p.PublishedAt, loc) + " by " }
 		@person(p.PublishedBy)
 		if p.Report.Previous.ID != 0 {
-			{ " · changes since the previous publication, " }{ fmtPublished(p.Report.Previous.PublishedAt) }
+			{ " · changes since the previous publication, " }{ showTimeYear(p.Report.Previous.PublishedAt, loc) }
 		} else {
-			{ " · changes since " }{ fmtDate(p.Report.Baseline) }
+			{ " · changes since " }{ showDateYear(p.Report.Baseline) }
 		}
 	</p>
 }
@@ -519,14 +519,14 @@ templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 								</td>
 								<td class="rp-track-goal">
 									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", sg.Goal.ID)) }>{ sg.Goal.Title }</a>
-									@reportFields(sg.Fields)
+									@reportFields(sg.Fields, d.dates())
 								</td>
 								<td data-testid="selected-owner" class="rp-track-owner">
 									@person(sg.Goal.Owner)
 								</td>
 								<td class="rp-track-due">
 									if !sg.Goal.DeliveryDate.IsZero() {
-										<span data-testid="selected-due" class="num rp-date">{ fmtDate(sg.Goal.DeliveryDate) }</span>
+										<span data-testid="selected-due" class="rp-date">{ showDateYear(sg.Goal.DeliveryDate) }</span>
 									} else {
 										<span class="muted">—</span>
 									}
@@ -602,10 +602,10 @@ templ narrativeCuration(f narrativeForm) {
 			hx-on:htmx:send-error={ notSavedScript }
 		>
 			if len(f.Choices) == 0 {
-				<p data-testid="no-highlights">No Highlights since { fmtDate(f.Report.Baseline) }.</p>
+				<p data-testid="no-highlights">No Highlights since { showDateYear(f.Report.Baseline) }.</p>
 			} else {
 				<div class="rp-curation-head">
-					<h3>Highlights since { fmtDate(f.Report.Baseline) }</h3>
+					<h3>Highlights since { showDateYear(f.Report.Baseline) }</h3>
 					@curationCount(f.included(), len(f.Choices), false)
 				</div>
 				<ul class="rp-list">
@@ -766,8 +766,8 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 					if !b.Goal.DeliveryDate.IsZero() {
 						{ " · due " }
 						<span data-testid="report-due" class="rp-dates">
-							@struckDates(b.PriorDueDates)
-							<span>{ fmtDate(b.Goal.DeliveryDate) }</span>
+							@struckDates(b.PriorDueDates, d.dates())
+							<span>{ showDateYear(b.Goal.DeliveryDate) }</span>
 						</span>
 					}
 				</p>
@@ -786,7 +786,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 				}
 			</div>
 		</div>
-		@reportFields(b.Fields)
+		@reportFields(b.Fields, d.dates())
 		<div data-testid="report-status-box" class={ "rp-tint", templ.KV("overdue", pathOverdueAt(b, asOf)) }>
 			<p data-testid="report-so-what"><strong>So What:</strong> { b.Goal.SoWhat }</p>
 			if b.Status != "" {
@@ -794,7 +794,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 			}
 			if b.PathToGreen != "" {
 				<p data-testid="report-path-to-green">
-					<strong>Path to Green:</strong> { b.PathToGreen } (back to Green by { fmtDate(b.PathTargetDate) })
+					<strong>Path to Green:</strong> { b.PathToGreen } (back to Green by { showDateYear(b.PathTargetDate) })
 					if pathOverdueAt(b, asOf) {
 						{ " " }<strong data-testid="path-overdue" class="badge r">Overdue</strong>
 					}
@@ -812,7 +812,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 								{ " " }
 							}
 							<span class="rp-dates">
-								@milestoneDates(m.Milestone.TargetDate, m.PriorDates)
+								@milestoneDates(m.Milestone.TargetDate, m.PriorDates, d.dates())
 							</span>
 							{ " " }
 							if m.Milestone.Status == domain.MilestoneRemoved {
@@ -841,7 +841,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 							} else {
 								no reading yet
 							}
-							{ " against a target of " }{ fmtNum(m.Metric.Target) } { m.Metric.Unit } by { fmtDate(m.Metric.TargetDate) }
+							{ " against a target of " }{ fmtNum(m.Metric.Target) } { m.Metric.Unit } by { showDateYear(m.Metric.TargetDate) }
 							{ " (baseline " }{ fmtNum(m.Metric.Baseline) }, { m.Metric.Direction })
 						</li>
 					}
@@ -867,8 +867,9 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 
 // reportFields is a Goal's values in the Fields its Report chose, each a
 // labelled value: a number with its unit, a long text with its line breaks
-// kept. A Goal with no value in any of them shows nothing (ticket #78).
-templ reportFields(fields []domain.FieldValue) {
+// kept, a date as dates shows it. A Goal with no value in any of them shows
+// nothing (ticket #78).
+templ reportFields(fields []domain.FieldValue, dates displayDates) {
 	if len(fields) > 0 {
 		<dl data-testid="report-fields" class="rp-fields small">
 			for _, v := range fields {
@@ -880,6 +881,8 @@ templ reportFields(fields []domain.FieldValue) {
 							if v.Field.Unit != "" {
 								{ " " + v.Field.Unit }
 							}
+						} else if v.Field.Type == domain.FieldDate {
+							{ dates.dateText(v.Value) }
 						} else {
 							{ v.Value }
 						}
@@ -1028,23 +1031,6 @@ func reportHealth(health string) string {
 		return "—"
 	}
 	return health
-}
-
-// fmtPublished renders the instant a Report was published, to the minute.
-func fmtPublished(t time.Time) string {
-	return t.UTC().Format("2006-01-02 15:04 UTC")
-}
-
-// fmtPublishedIn renders the instant a Report was published, to the minute, in
-// the org's timezone: "2 Mar 2026, 19:00 PST".
-func fmtPublishedIn(t time.Time, loc *time.Location) string {
-	return t.In(loc).Format("2 Jan 2006, 15:04 MST")
-}
-
-// fmtPublishedDateIn renders the day a Report was published in the org's
-// timezone: "Mar 2".
-func fmtPublishedDateIn(t time.Time, loc *time.Location) string {
-	return t.In(loc).Format("Jan 2")
 }
 
 // pickedHighlights counts the Highlights the author has picked into a section,

@@ -30,9 +30,12 @@ type goalFormView struct {
 	Goal               *domain.Goal
 	ExistingMilestones []domain.Milestone
 	ExistingMetrics    []domain.Metric
-	Linked             []linkedParent
-	Title              string
-	SoWhat             string
+	// Dates is the clock the existing Milestones and Metrics show their dates
+	// against.
+	Dates  displayDates
+	Linked []linkedParent
+	Title  string
+	SoWhat string
 	// Kind is the Kind chosen, "" for not chosen, and DeliveryDate the date
 	// typed, which counts only for a Dated Goal.
 	Kind         string
@@ -616,6 +619,7 @@ func (s *Server) definitionForm(ctx context.Context, g domain.Goal) (goalFormVie
 func (s *Server) loadDefinition(ctx context.Context, current domain.Account, g domain.Goal, v *goalFormView, ids []int64) error {
 	v.Goal, v.Title = &g, g.Title
 	var err error
+	v.Dates = s.displayDates()
 	if v.ExistingMilestones, err = s.svc.ListMilestones(ctx, g.ID); err != nil {
 		return fmt.Errorf("load milestones: %w", err)
 	}
