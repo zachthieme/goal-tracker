@@ -11,9 +11,9 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// handleCheckinPage shows the Check-in form on its own page, prefilled from the
-// Goal's latest Check-in. Only whoever may write a Check-in — the Owner or a
-// Delegate — may open it (CONTEXT.md: Check-in, Delegate).
+// handleCheckinPage shows the Check-in form on its own page, with the Goal's
+// latest Check-in's answers as ghost text. Only whoever may write a Check-in —
+// the Owner or a Delegate — may open it (CONTEXT.md: Check-in, Delegate).
 func (s *Server) handleCheckinPage(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	goalID, ok := s.goalIDFromPath(w, r)
 	if !ok {
@@ -468,11 +468,13 @@ func plainReason(err error) string {
 // For an htmx request it returns 200 so htmx swaps the form in place (htmx does
 // not swap error statuses by default); a plain post gets 422. It reloads the
 // Goal's Rolled-up Health so the re-rendered form still shows it beside the
-// Owner's Health (ADR-0003).
+// Owner's Health (ADR-0003), and the latest Check-in's answers so it still
+// shows them as ghost text.
 func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, goalID int64, data checkinFormData) {
 	if rollup, err := s.svc.RolledUpHealth(r.Context(), goalID); err == nil {
 		data.RolledUp = rollup
 	}
+	data.Previous = s.loadCheckinPrevious(r, goalID, data.Metrics)
 	status := http.StatusUnprocessableEntity
 	if r.Header.Get("HX-Request") == "true" {
 		status = http.StatusOK
@@ -482,11 +484,13 @@ func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, 
 
 // renderCheckinFormAgain re-renders the Check-in form as typed, with no error
 // (Add another): htmx swaps in the form alone, a plain post gets the whole
-// Check-in page around it.
+// Check-in page around it. The latest Check-in's answers still show as ghost
+// text.
 func (s *Server) renderCheckinFormAgain(w http.ResponseWriter, r *http.Request, current domain.Account, data checkinFormData) {
 	if rollup, err := s.svc.RolledUpHealth(r.Context(), data.GoalID); err == nil {
 		data.RolledUp = rollup
 	}
+	data.Previous = s.loadCheckinPrevious(r, data.GoalID, data.Metrics)
 	if r.Header.Get("HX-Request") == "true" {
 		render(w, r, http.StatusOK, checkinForm(data))
 		return
@@ -497,6 +501,32 @@ func (s *Server) renderCheckinFormAgain(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	render(w, r, http.StatusOK, checkinPage(&current, view, data))
+}
+
+// loadCheckinPrevious loads the Goal's latest Check-in and its Metrics'
+// readings, for a re-rendered form to show as ghost text. Ghost text only helps
+// the reader, so a failure to load it is logged and the form shows none rather
+// than losing what was typed.
+func (s *Server) loadCheckinPrevious(r *http.Request, goalID int64, metrics []domain.Metric) checkinPreviousAnswers {
+	latest, ok, err := s.svc.LatestCheckin(r.Context(), goalID)
+	if err != nil {
+		s.logServerError(r, err)
+		return checkinPreviousAnswers{}
+	}
+	var latestPtr *domain.Checkin
+	if ok {
+		latestPtr = &latest
+	}
+	trends := make([]metricTrend, 0, len(metrics))
+	for _, m := range metrics {
+		readings, err := s.svc.ListMetricReadings(r.Context(), m.ID)
+		if err != nil {
+			s.logServerError(r, err)
+			return checkinPreviousAnswers{}
+		}
+		trends = append(trends, metricTrend{Metric: m, Readings: readings})
+	}
+	return checkinPreviousFrom(latestPtr, trends)
 }
 
 // checkinRedirect returns the reader to the Goal page after a successful

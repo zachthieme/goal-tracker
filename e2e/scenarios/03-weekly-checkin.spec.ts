@@ -1,6 +1,6 @@
 // Scenario 3 in docs/scenarios.md, The weekly Check-in: an Owner clears a
-// routine week from Home in a few clicks, retyping nothing that didn't change,
-// and a Delegate covers for an Owner who's away. Steps 3.1–3.6 are the week,
+// routine week from Home in a few clicks, writing fresh only the Check-in on the
+// Goal that moved, and a Delegate covers for an Owner who's away. Steps 3.1–3.6 are the week,
 // 3.D1–3.D4 the Delegate. "Four Goals took under five minutes" can't be
 // asserted, so it isn't.
 import type { Page } from "@playwright/test";
@@ -35,7 +35,7 @@ const activeGoalsOf = `
 test.describe("on the due template", () => {
   test.use({ template: "due" });
 
-  test("the week: No change on the routine Goals, a prefilled Check-in on the one that moved", async ({
+  test("the week: No change on the routine Goals, a fresh Check-in over the ghost text on the one that moved", async ({
     page,
     seedLookup,
   }) => {
@@ -119,13 +119,18 @@ test.describe("on the due template", () => {
     });
 
     // The Metric Goal's latest Check-in and reading, as its page shows them.
-    const latest = { health: "", status: "", reading: "" };
+    const latest = { health: "", status: "", pathToGreen: "", reading: "" };
     const draftNote = "Cold-start fix landed on the beta channel";
 
     await test.step("3.4 She logs a Draft Highlight on the Goal that moved", async () => {
       await page.goto(`/goals/${metric.id}`);
       latest.health = ((await page.getByTestId("goal-health").textContent()) ?? "").trim();
       latest.status = (await page.getByTestId("goal-status").textContent()) ?? "";
+      if (latest.health !== "Green") {
+        const path = (await page.getByTestId("goal-path-to-green").textContent()) ?? "";
+        latest.pathToGreen = path.match(/Path to Green:\s*([\s\S]*?)\s*— back to Green by/)?.[1] ?? "";
+        expect(latest.pathToGreen, "the Goal has a Path to Green").not.toBe("");
+      }
       latest.reading = ((await page.getByTestId("metric-current").textContent()) ?? "").trim();
       expect(latest.reading, "the Metric has a reading").toMatch(/^-?[\d.]+$/);
 
@@ -141,18 +146,29 @@ test.describe("on the due template", () => {
     const newStatus = "Cold start p90 down after the lazy-init change; beta looks good.";
     const newReading = latest.reading === "3" ? "4" : "3";
 
-    await test.step("3.5 Check in comes prefilled, offers the Draft, and keeps it as a Highlight", async () => {
+    await test.step("3.5 Check in shows last week as ghost text, offers the Draft, and keeps it as a Highlight", async () => {
       await page.goto("/home");
       await dueRow(page, metric).getByRole("link", { name: "Check in" }).click();
       await expect(page).toHaveURL(new RegExp(`/goals/${metric.id}/checkin$`));
       const form = page.getByTestId("checkin-form");
 
-      // It worked if: nothing she didn't change had to be retyped. The form
-      // holds the latest Check-in's Health and Status and the latest reading.
+      // It worked if: her Health didn't have to be picked again, and last
+      // week's answers are in view as ghost text, none of them sent unless
+      // she types it. The Status and reading start empty.
       await expect(form.getByRole("radio", { name: latest.health })).toBeChecked();
-      await expect(form.getByRole("textbox", { name: /^Status/ })).toHaveValue(latest.status);
+      const status = form.getByRole("textbox", { name: /^Status/ });
+      await expect(status).toHaveValue("");
+      await expect(status).toHaveAttribute("placeholder", latest.status);
       const reading = form.getByTestId("checkin-readings").getByRole("spinbutton");
-      await expect(reading).toHaveValue(latest.reading);
+      await expect(reading).toHaveValue("");
+      await expect(reading).toHaveAttribute("placeholder", latest.reading);
+      const path = form.getByTestId("path-to-green-field");
+      if (latest.health !== "Green") {
+        await expect(path.getByLabel("Plan")).toHaveValue("");
+        await expect(path.getByLabel("Plan")).toHaveAttribute("placeholder", latest.pathToGreen);
+        await expect(path.getByLabel("Back to Green by")).toHaveValue("");
+        await expect(path.getByTestId("checkin-path-target-last")).toHaveText(/^Last time: [A-Z][a-z]{2} \d{1,2}$/);
+      }
 
       // The Highlight section opens to offer the Draft, ticked to keep; the
       // other optional parts stay folded (It worked if: folded until needed).
@@ -164,9 +180,14 @@ test.describe("on the due template", () => {
       await expect(form.getByTestId("checkin-dates-section")).toHaveJSProperty("open", false);
       await expect(form.getByTestId("checkin-lifecycle-section")).toHaveJSProperty("open", false);
 
-      // The only two fields she fills: the Status and the one reading.
-      await form.getByRole("textbox", { name: /^Status/ }).fill(newStatus);
+      // She writes the Status and the one reading, and a Yellow or Red Goal's
+      // Path to Green.
+      await status.fill(newStatus);
       await reading.fill(newReading);
+      if (latest.health !== "Green") {
+        await path.getByLabel("Plan").fill("Ship the lazy-init change to everyone.");
+        await path.getByLabel("Back to Green by").fill(addDays(appToday(), 28));
+      }
       await form.getByRole("button", { name: "Submit check-in" }).click();
       await page.waitForURL(new RegExp(`/goals/${metric.id}$`));
 
@@ -280,7 +301,15 @@ test("a Delegate checks in for an Owner who's away, and the Goal stops being Sta
     await coveringRow.getByRole("link", { name: "Check in" }).click();
     await expect(covering).toHaveURL(new RegExp(`/goals/${goal.id}/checkin$`));
     const status = `Covering while ${owner.name} is away: on track.`;
-    await covering.getByTestId("checkin-form").getByRole("textbox", { name: /^Status/ }).fill(status);
+    const form = covering.getByTestId("checkin-form");
+    await form.getByRole("textbox", { name: /^Status/ }).fill(status);
+    // The Owner's Health stays picked; a Yellow or Red one needs a Path to
+    // Green written afresh, as the form shows last week's only as ghost text.
+    const path = form.getByTestId("path-to-green-field");
+    if (await path.isVisible()) {
+      await path.getByLabel("Plan").fill(`Keep to ${owner.name}'s plan until they're back.`);
+      await path.getByLabel("Back to Green by").fill(addDays(appToday(), 28));
+    }
     await covering.getByRole("button", { name: "Submit check-in" }).click();
     await covering.waitForURL(new RegExp(`/goals/${goal.id}$`));
 
@@ -317,6 +346,13 @@ function dueRows(page: Page) {
 // dueRow is the Check-in due row for g on Home.
 function dueRow(page: Page, g: OwnedGoal) {
   return dueRows(page).filter({ has: page.getByRole("link", { name: g.title, exact: true }) });
+}
+
+// addDays is the YYYY-MM-DD date days after date.
+function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 // navHome is the top bar's Home item carrying count, or no count at 0.
