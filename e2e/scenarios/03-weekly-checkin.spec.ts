@@ -87,6 +87,7 @@ test.describe("on the due template", () => {
       for (const g of routine) {
         await page.goto(`/goals/${g.id}`);
         const readings = await page.getByTestId("metric-current").allTextContents();
+        const status = ((await page.getByTestId("goal-status").textContent()) ?? "").trim();
 
         await page.goto("/home");
         await dueRow(page, g).getByRole("button", { name: "No change" }).click();
@@ -99,12 +100,16 @@ test.describe("on the due template", () => {
         }
         await expect(page).toHaveURL(new RegExp(`/goals/${g.id}$`));
 
-        // The new entry repeats the previous Check-in's Health and Status.
+        // The new entry repeats the previous Check-in, so History folds it
+        // into a "No change" entry dated today by its one time element, with
+        // the repeated Check-in in full below it, its Status unchanged.
         const [latest, previous] = [checkinEntries(page).first(), checkinEntries(page).nth(1)];
-        await expect(latest.getByRole("time")).toHaveAttribute("datetime", today());
-        await expect(latest.getByRole("paragraph").nth(1)).toHaveText(
-          (await previous.getByRole("paragraph").nth(1).textContent()) ?? "",
-        );
+        await expect(latest).toHaveAttribute("data-folded", /^\d+$/);
+        await expect(latest.locator(".tl-kind")).toHaveText(/^No change( ×\d+)?$/);
+        await expect(latest.locator("time")).toHaveCount(1);
+        await expect(latest.locator("time")).toHaveAttribute("datetime", today());
+        await expect(previous).not.toHaveAttribute("data-folded", /.*/);
+        await expect(previous.getByRole("paragraph").nth(1)).toContainText(status);
         // It carries no Metric reading: a reading is a measurement, not copied,
         // and the Goal's Metric still shows its last one.
         await expect(latest.getByTestId("checkin-detail")).toHaveCount(0);

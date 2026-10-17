@@ -44,9 +44,12 @@ var historyFilters = []struct {
 	{historyValues, "Values"},
 }
 
-// historyPage is how many entries the timeline shows at first, and how many
-// more each "Show earlier" adds.
-const historyPage = 20
+// historyFirstPage is how many entries the timeline shows at first, and
+// historyPageStep how many more each "Show earlier" adds.
+const (
+	historyFirstPage = 5
+	historyPageStep  = 20
+)
 
 // historyEntry is one event in a Goal's History: a Check-in with the Date
 // Slips and Metric readings recorded in it, a So What revision, a change to
@@ -54,12 +57,17 @@ const historyPage = 20
 // a Dimension value or Field, a Parent suggestion with its outcome, a Nudge, or
 // a change to one of its links, or a Milestone added outside a Check-in.
 // Exactly one of Checkin, Revision, Title, Handoff, Value, Suggestion, Nudge,
-// Link and Milestone is set.
+// Link and Milestone is set. A Check-in's Highlights are the ones it carries.
+//
+// Folded, when set, makes the entry stand for a run of Check-ins that repeat
+// the one before them, newest first; the entry is the newest of them.
 type historyEntry struct {
 	At         time.Time
 	Checkin    *domain.Checkin
 	Slips      []domain.DateSlip
 	Readings   []historyReading
+	Highlights []domain.Highlight
+	Folded     []historyEntry
 	Revision   *domain.SoWhatRevision
 	Title      *domain.TitleRevision
 	Handoff    *domain.Handoff
@@ -70,10 +78,12 @@ type historyEntry struct {
 	Milestone  *domain.MilestoneChange
 }
 
-// historyReading is a Metric's reading as a Check-in recorded it.
+// historyReading is a Metric's reading as a Check-in recorded it. Changed is
+// whether it differs from the Metric's reading before it, or is its first.
 type historyReading struct {
-	Metric string
-	Value  string
+	Metric  string
+	Value   string
+	Changed bool
 }
 
 // kind names the entry's kind for its marker and the page's markup.
@@ -175,17 +185,22 @@ func newHistory(v goalView, loc *time.Location, now time.Time) history {
 	}
 	readingsBy := map[int64][]historyReading{}
 	for _, t := range v.Trends {
-		for _, r := range t.Readings {
+		for i, r := range t.Readings {
 			readingsBy[r.CheckinID] = append(readingsBy[r.CheckinID], historyReading{
-				Metric: t.Metric.Name,
-				Value:  strings.TrimSpace(fmtNum(r.Value) + " " + t.Metric.Unit),
+				Metric:  t.Metric.Name,
+				Value:   strings.TrimSpace(fmtNum(r.Value) + " " + t.Metric.Unit),
+				Changed: i == 0 || r.Value != t.Readings[i-1].Value,
 			})
 		}
+	}
+	highlightsBy := map[int64][]domain.Highlight{}
+	for _, hl := range v.Highlights {
+		highlightsBy[hl.CheckinID] = append(highlightsBy[hl.CheckinID], hl)
 	}
 
 	var entries []historyEntry
 	for _, c := range v.Checkins {
-		entries = append(entries, historyEntry{At: c.CreatedAt, Checkin: &c, Slips: slipsBy[c.ID], Readings: readingsBy[c.ID]})
+		entries = append(entries, historyEntry{At: c.CreatedAt, Checkin: &c, Slips: slipsBy[c.ID], Readings: readingsBy[c.ID], Highlights: highlightsBy[c.ID]})
 	}
 	for _, r := range v.Revisions {
 		entries = append(entries, historyEntry{At: r.CreatedAt, Revision: &r})
@@ -219,7 +234,7 @@ func newHistory(v goalView, loc *time.Location, now time.Time) history {
 		}
 		return cmp.Compare(b.seq(), a.seq())
 	})
-	return history{GoalID: v.Goal.ID, Entries: entries, Milestones: v.Milestones, Shown: historyPage, Loc: loc, Now: now, Strip: v.HealthStrip}
+	return history{GoalID: v.Goal.ID, Entries: entries, Milestones: v.Milestones, Shown: historyFirstPage, Loc: loc, Now: now, Strip: v.HealthStrip}
 }
 
 // seq is the entry's record ID, which orders entries of one kind made at the
@@ -255,7 +270,7 @@ func (h history) narrowed(q url.Values) history {
 			h.Filter = f.filter
 		}
 	}
-	h.Shown = historyPage
+	h.Shown = historyFirstPage
 	if n, err := strconv.Atoi(q.Get("shown")); err == nil && n > 0 {
 		h.Shown = n
 	}
@@ -295,9 +310,61 @@ func (h history) listed() []historyEntry {
 	return out
 }
 
-// more reports whether entries earlier than those shown are left.
+// slots are the listed entries with each run of Check-ins that repeat the one
+// before them folded into one entry, at the newest one's place, newest first.
+// Each slot is one of the entries the page shows.
+func (h history) slots() []historyEntry {
+	listed := h.listed()
+	var out []historyEntry
+	for i := 0; i < len(listed); i++ {
+		var run []historyEntry
+		for i+1 < len(listed) && listed[i].repeats(listed[i+1]) {
+			run = append(run, listed[i])
+			i++
+		}
+		if len(run) > 0 {
+			folded := run[0]
+			folded.Folded = run
+			out = append(out, folded)
+		}
+		out = append(out, listed[i])
+	}
+	return out
+}
+
+// repeats reports whether the entry is a Check-in that repeats prev, the entry
+// just before it: prev is a Check-in with the same Health, status, Path to
+// Green, target date and explanation, and this one records nothing more — no
+// Date Slip, Milestone or Lifecycle change, Highlight, discarded Draft
+// Highlight or Metric reading that differs from the one before it.
+func (e historyEntry) repeats(prev historyEntry) bool {
+	c, p := e.Checkin, prev.Checkin
+	if c == nil || p == nil {
+		return false
+	}
+	if c.Health != p.Health || c.Status != p.Status || c.PathToGreen != p.PathToGreen ||
+		!c.PathTargetDate.Equal(p.PathTargetDate) || c.Explanation != p.Explanation {
+		return false
+	}
+	if len(e.Slips) > 0 || len(c.MilestoneChanges) > 0 || c.LifecycleChange.Changed() ||
+		len(e.Highlights) > 0 || len(c.DiscardedDraftHighlights) > 0 {
+		return false
+	}
+	return !slices.ContainsFunc(e.Readings, func(r historyReading) bool { return r.Changed })
+}
+
+// foldedLabel is what a folded entry reads: "No change", or "No change ×3"
+// for several.
+func (e historyEntry) foldedLabel() string {
+	if len(e.Folded) == 1 {
+		return "No change"
+	}
+	return fmt.Sprintf("No change ×%d", len(e.Folded))
+}
+
+// more reports whether slots earlier than those shown are left.
 func (h history) more() bool {
-	return len(h.listed()) > h.Shown
+	return len(h.slots()) > h.Shown
 }
 
 // historyWeek is the entries of one week, Monday to Sunday in the org's
@@ -307,14 +374,14 @@ type historyWeek struct {
 	Entries []historyEntry
 }
 
-// weeks are the shown entries grouped by the week they fell in.
+// weeks are the shown slots grouped by the week they fell in.
 func (h history) weeks() []historyWeek {
-	listed := h.listed()
-	if len(listed) > h.Shown {
-		listed = listed[:h.Shown]
+	slots := h.slots()
+	if len(slots) > h.Shown {
+		slots = slots[:h.Shown]
 	}
 	var out []historyWeek
-	for _, e := range listed {
+	for _, e := range slots {
 		heading := h.weekHeading(e.At)
 		if len(out) == 0 || out[len(out)-1].Heading != heading {
 			out = append(out, historyWeek{Heading: heading})
@@ -526,7 +593,7 @@ func (h history) url(filter historyFilter, shown int) templ.SafeURL {
 	if filter != historyAll {
 		q.Set("history", string(filter))
 	}
-	if shown > historyPage {
+	if shown > historyFirstPage {
 		q.Set("shown", strconv.Itoa(shown))
 	}
 	u := fmt.Sprintf("/goals/%d", h.GoalID)
@@ -538,7 +605,7 @@ func (h history) url(filter historyFilter, shown int) templ.SafeURL {
 
 // earlierURL shows the next page of entries under the same filter.
 func (h history) earlierURL() templ.SafeURL {
-	return h.url(h.Filter, h.Shown+historyPage)
+	return h.url(h.Filter, h.Shown+historyPageStep)
 }
 
 // chipAttrs marks the chip for the filter shown as the current one.

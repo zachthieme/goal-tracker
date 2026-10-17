@@ -82,11 +82,12 @@ func ownershipEntries(t *testing.T, client *http.Client, goalURL string) []strin
 }
 
 // filteredEntries are the entries the Goal page's History lists under filter,
-// each checked to be of kind, with entities unescaped.
+// up to its first two pages, each checked to be of kind, with entities
+// unescaped.
 func filteredEntries(t *testing.T, client *http.Client, goalURL, filter, kind string) []string {
 	t.Helper()
 	var out []string
-	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalURL+"?history="+filter))) {
+	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalURL+"?history="+filter+"&shown=25"))) {
 		if got := entryKind(t, e); got != kind {
 			t.Errorf("the %s chip lists a %s entry", filter, got)
 		}
@@ -253,10 +254,21 @@ func filterOf(href string) string {
 	return u.Query().Get("history")
 }
 
-// With more than 20 entries History shows the latest 20, and "Show earlier"
-// reloads the page with 20 more under the same filter, the History block in
-// view; once everything shows, it is gone.
-func TestGoalHistoryShowsTwentyAndShowEarlierAddsTwentyMoreKeepingTheFilter(t *testing.T) {
+// historyEarlier is the address History's "Show earlier" link goes to.
+func historyEarlier(t *testing.T, history string) string {
+	t.Helper()
+	_, href, ok := strings.Cut(between(t, history, `data-testid="history-earlier"`, ">"), `href="`)
+	if !ok {
+		t.Fatalf("no Show earlier link in:\n%s", history)
+	}
+	href, _, _ = strings.Cut(href, `"`)
+	return html.UnescapeString(href)
+}
+
+// History opens on the latest 5 entries, and "Show earlier" reloads the page
+// with 20 more under the same filter, the History block in view; once
+// everything shows, it is gone.
+func TestGoalHistoryShowsFiveAndShowEarlierAddsTwentyMoreKeepingTheFilter(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -280,26 +292,17 @@ func TestGoalHistoryShowsTwentyAndShowEarlierAddsTwentyMoreKeepingTheFilter(t *t
 		}
 		return out
 	}
-	earlier := func(history string) string {
-		t.Helper()
-		_, href, ok := strings.Cut(between(t, history, `data-testid="history-earlier"`, ">"), `href="`)
-		if !ok {
-			t.Fatalf("no Show earlier link in:\n%s", history)
-		}
-		href, _, _ = strings.Cut(href, `"`)
-		return html.UnescapeString(href)
-	}
 
-	// All: 45 entries, the latest 20 first.
+	// All: 45 entries, the latest 5 first.
 	history := historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)))
-	if got := statuses(history); len(got) != 20 || got[0] != "44" || got[19] != "25" {
-		t.Fatalf("History first shows %v, want Updates 44 down to 25", got)
+	if got := statuses(history); len(got) != 5 || got[0] != "44" || got[4] != "40" {
+		t.Fatalf("History first shows %v, want Updates 44 down to 40", got)
 	}
-	history = historyBlock(t, getBody(t, client, ts.URL+earlier(history)))
-	if got := statuses(history); len(got) != 40 || got[39] != "5" {
-		t.Fatalf("Show earlier shows %v, want Updates 44 down to 5", got)
+	history = historyBlock(t, getBody(t, client, ts.URL+historyEarlier(t, history)))
+	if got := statuses(history); len(got) != 25 || got[24] != "20" {
+		t.Fatalf("Show earlier shows %v, want Updates 44 down to 20", got)
 	}
-	history = historyBlock(t, getBody(t, client, ts.URL+earlier(history)))
+	history = historyBlock(t, getBody(t, client, ts.URL+historyEarlier(t, history)))
 	if got := statuses(history); len(got) != 45 || got[44] != "So What" {
 		t.Fatalf("Show earlier again shows %v, want everything down to the So What", got)
 	}
@@ -309,13 +312,52 @@ func TestGoalHistoryShowsTwentyAndShowEarlierAddsTwentyMoreKeepingTheFilter(t *t
 
 	// Check-ins: Show earlier keeps the filter.
 	history = historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)+"?history=checkins"))
-	link := earlier(history)
+	link := historyEarlier(t, history)
 	if filterOf(link) != "checkins" || !strings.HasSuffix(link, "#history") {
 		t.Errorf("Show earlier drops the filter or the History block: %s", link)
 	}
 	history = historyBlock(t, getBody(t, client, ts.URL+link))
-	if got := statuses(history); len(got) != 40 || slices.Contains(got, "So What") {
-		t.Errorf("Show earlier under Check-ins shows %v, want 40 Check-ins", got)
+	if got := statuses(history); len(got) != 25 || slices.Contains(got, "So What") {
+		t.Errorf("Show earlier under Check-ins shows %v, want 25 Check-ins", got)
+	}
+}
+
+// A Goal with 8 History entries opens on 5, with "Show earlier" asking for 25;
+// following it shows all 8 and no link. A missing, bad or non-positive count
+// shows the first page.
+func TestGoalHistoryOfEightShowsFiveThenAll(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	for i := 1; i <= 7; i++ {
+		h.Clock.Advance(time.Hour)
+		h.Checkin(sam, goal.ID, domain.HealthGreen, fmt.Sprintf("Update %d.", i), "", time.Time{})
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	history := historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)))
+	if n := len(historyEntries(history)); n != 5 {
+		t.Fatalf("History first shows %d entries, want 5", n)
+	}
+	link := historyEarlier(t, history)
+	if want := fmt.Sprintf("/goals/%d?shown=25#history", goal.ID); link != want {
+		t.Errorf("Show earlier goes to %s, want %s", link, want)
+	}
+	history = historyBlock(t, getBody(t, client, ts.URL+link))
+	if n := len(historyEntries(history)); n != 8 {
+		t.Errorf("Show earlier shows %d entries, want 8", n)
+	}
+	if strings.Contains(history, `data-testid="history-earlier"`) {
+		t.Errorf("Show earlier stays once everything shows")
+	}
+	for _, shown := range []string{"", "?shown=x", "?shown=0", "?shown=-3"} {
+		history := historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)+shown))
+		if n := len(historyEntries(history)); n != 5 {
+			t.Errorf("%q shows %d entries, want the first page of 5", shown, n)
+		}
 	}
 }
 
@@ -1050,7 +1092,7 @@ func TestGoalHistoryShowsEachParentSuggestionAndItsOutcome(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	var got []string
-	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)))) {
+	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)+"?shown=25"))) {
 		if entryKind(t, e) == "parent-suggestion" {
 			got = append(got, html.UnescapeString(e))
 		}
@@ -1533,5 +1575,323 @@ func TestGoalHistoryTitleChipListsOnlyTitleChanges(t *testing.T) {
 		if kind := entryKind(t, e); kind != "so-what" {
 			t.Errorf("the So What chip lists a %s entry", kind)
 		}
+	}
+}
+
+// noChangeCheckin submits a No change Check-in on goal as author, failing the
+// test on error.
+func noChangeCheckin(t *testing.T, h *testsupport.Harness, author domain.Account, goal domain.Goal) domain.Checkin {
+	t.Helper()
+	c, err := h.Service.SubmitNoChangeCheckin(context.Background(), goal.ID, author.ID)
+	if err != nil {
+		t.Fatalf("SubmitNoChangeCheckin: %v", err)
+	}
+	return c
+}
+
+// foldedCount is how many Check-ins an entry folds, or "" for a full entry.
+func foldedCount(entry string) string {
+	_, rest, ok := strings.Cut(openTagOf(entry), `data-folded="`)
+	if !ok {
+		return ""
+	}
+	n, _, _ := strings.Cut(rest, `"`)
+	return n
+}
+
+// openTagOf is the rest of an entry's opening tag, after its test ID.
+func openTagOf(entry string) string {
+	tag, _, _ := strings.Cut(entry, ">")
+	return tag
+}
+
+// A Check-in followed by three No change Check-ins shows in full, under one
+// "No change ×3" entry at the newest one's place: a Check-in entry with the
+// Health it repeats, the newest one's time as its one time element, and a
+// disclosure listing each folded Check-in's time and who wrote it for whom.
+// The Check-ins chip still counts all four.
+func TestGoalHistoryFoldsNoChangeCheckinsIntoOneEntry(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignInNamed("sam@example.com", "Sam Owner")
+	dee := h.SignInNamed("dee@example.com", "Dee Delegate")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.AddDelegate(sam, dee, goal.ID)
+	h.Clock.Advance(24 * time.Hour) // Sat 3 Jan
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Vendor is late.", "Swap vendors.", testsupport.Epoch.AddDate(0, 2, 0))
+	for _, who := range []domain.Account{sam, dee, sam} { // Sat 10, 17 and 24 Jan
+		h.Clock.Advance(7 * 24 * time.Hour)
+		noChangeCheckin(t, h, who, goal)
+	}
+	ts := newServer(t, h)
+
+	history := historyBlock(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal)))
+	entries := historyEntries(history)
+	if len(entries) != 3 {
+		t.Fatalf("History lists %d entries, want the folded one, the full Check-in and the So What:\n%s", len(entries), history)
+	}
+	folded, full := entries[0], entries[1]
+	if kind, n := entryKind(t, folded), foldedCount(folded); kind != "checkin" || n != "3" {
+		t.Errorf("the latest entry is a %s folding %q, want a Check-in folding 3:\n%s", kind, n, folded)
+	}
+	if text := entryText(folded); !strings.Contains(text, "No change ×3") || !strings.Contains(text, "Yellow") {
+		t.Errorf("the folded entry reads %q, want No change ×3 and its Yellow", text)
+	}
+	if !strings.Contains(folded, `<span class="tl-mark y" aria-hidden="true">`) {
+		t.Errorf("the folded entry lacks the Yellow marker:\n%s", folded)
+	}
+	if times := regexp.MustCompile(`<time[ >]`).FindAllString(folded, -1); len(times) != 1 {
+		t.Errorf("the folded entry has %d time elements, want 1:\n%s", len(times), folded)
+	}
+	if at := between(t, folded, "<time", "</time>"); !strings.Contains(at, `datetime="2026-01-24T15:04:05Z"`) || !strings.Contains(at, "Sat 24 Jan 15:04") {
+		t.Errorf("the folded entry is dated %s, want its newest Check-in's Sat 24 Jan 15:04", at)
+	}
+	listed := between(t, folded, `data-testid="folded-checkins"`, "</details>")
+	samBy, deeBy := "by "+shownAs(sam.Email, "Sam Owner"), "by "+shownAs(dee.Email, "Dee Delegate")+" for "+shownAs(sam.Email, "Sam Owner")
+	lines := strings.Split(listed, "<li")[1:]
+	if len(lines) != 3 {
+		t.Fatalf("the disclosure lists %d Check-ins, want 3:\n%s", len(lines), listed)
+	}
+	for i, want := range []struct{ at, by string }{
+		{"Sat 24 Jan 15:04", samBy},
+		{"Sat 17 Jan 15:04", deeBy},
+		{"Sat 10 Jan 15:04", samBy},
+	} {
+		if !strings.Contains(lines[i], want.at) || !strings.Contains(lines[i], want.by) {
+			t.Errorf("folded Check-in %d lacks %q %q:\n%s", i, want.at, want.by, lines[i])
+		}
+	}
+	if foldedCount(full) != "" || !strings.Contains(full, "Vendor is late.") || !strings.Contains(full, "Sat 3 Jan 15:04") {
+		t.Errorf("the repeated Check-in doesn't show in full:\n%s", full)
+	}
+	weeks := strings.Split(history, `data-testid="history-week"`)[1:]
+	if len(weeks) != 2 || !strings.Contains(weeks[0], "Week of 19 Jan") || !strings.Contains(weeks[0], `data-folded="3"`) {
+		t.Errorf("the folded entry isn't under its newest Check-in's week, 19 Jan:\n%s", history)
+	}
+	if chips := historyChips(t, history); chips["Check-ins"].count != "4" || chips["All"].count != "5" {
+		t.Errorf("chips count %s Check-ins and %s in all, want 4 and 5", chips["Check-ins"].count, chips["All"].count)
+	}
+}
+
+// A single No change after a Check-in reads "No change", without a count.
+func TestGoalHistoryFoldsASingleNoChange(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.Clock.Advance(24 * time.Hour)
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(7 * 24 * time.Hour)
+	noChangeCheckin(t, h, sam, goal)
+	ts := newServer(t, h)
+
+	entries := historyEntries(historyBlock(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))))
+	if len(entries) != 3 || foldedCount(entries[0]) != "1" {
+		t.Fatalf("History doesn't lead with one folded No change: %d entries", len(entries))
+	}
+	if text := entryText(entries[0]); !strings.Contains(text, "No change") || strings.Contains(text, "×") {
+		t.Errorf("the folded entry reads %q, want No change without a count", text)
+	}
+}
+
+// foldedCounts are how many Check-ins each entry on the Goal's first page of
+// History folds, "" for a full entry.
+func foldedCounts(t *testing.T, client *http.Client, goalURL string) []string {
+	t.Helper()
+	var out []string
+	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalURL))) {
+		out = append(out, foldedCount(e))
+	}
+	return out
+}
+
+// A Check-in that records something more than the one before it — a Date
+// Slip, a Highlight, a Milestone change or a Metric reading that differs from
+// the one before — shows in full and ends the run of repeats: the No change
+// before it and the one after it each fold alone. A reading equal to the one
+// before ends nothing, and all three fold under the first Check-in.
+func TestGoalHistoryCheckinThatRecordsMoreEndsTheRun(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		more   func(in *domain.SubmitCheckinInput, goal domain.Goal, metric domain.Metric)
+		folded []string
+	}{
+		{"date slip", func(in *domain.SubmitCheckinInput, goal domain.Goal, _ domain.Metric) {
+			in.DeliveryDate, in.DeliveryDateReason = goal.DeliveryDate.AddDate(0, 0, 14), "Vendor API delayed."
+		}, []string{"1", "", "1", "", ""}},
+		{"highlight", func(in *domain.SubmitCheckinInput, _ domain.Goal, _ domain.Metric) {
+			in.Highlights = []domain.HighlightInput{{Kind: domain.HighlightAccomplishment, Note: "Beta shipped."}}
+		}, []string{"1", "", "1", "", ""}},
+		{"milestone change", func(in *domain.SubmitCheckinInput, _ domain.Goal, _ domain.Metric) {
+			in.NewMilestones = []domain.NewMilestoneInput{{Name: "GA", TargetDate: testsupport.Epoch.AddDate(0, 3, 0)}}
+		}, []string{"1", "", "1", "", ""}},
+		{"different reading", func(in *domain.SubmitCheckinInput, _ domain.Goal, m domain.Metric) {
+			in.Readings = []domain.MetricReadingInput{{MetricID: m.ID, Value: 900}}
+		}, []string{"1", "", "1", "", ""}},
+		{"equal reading", func(in *domain.SubmitCheckinInput, _ domain.Goal, m domain.Metric) {
+			in.Readings = []domain.MetricReadingInput{{MetricID: m.ID, Value: 800}}
+		}, []string{"3", "", ""}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			ctx := context.Background()
+			sam := h.SignIn("sam@example.com")
+			goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+			latency, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
+				GoalID: goal.ID, Name: "p95 latency", Unit: "ms", Direction: domain.MetricDown,
+				Baseline: 1000, Target: 400, TargetDate: testsupport.Epoch.AddDate(0, 6, 0),
+			})
+			if err != nil {
+				t.Fatalf("AddMetric: %v", err)
+			}
+			checkin := func(in domain.SubmitCheckinInput) {
+				t.Helper()
+				h.Clock.Advance(7 * 24 * time.Hour)
+				in.GoalID, in.AuthorID, in.Health, in.Status = goal.ID, sam.ID, domain.HealthYellow, "Vendor is late."
+				in.PathToGreen, in.PathTargetDate = "Swap vendors.", testsupport.Epoch.AddDate(0, 3, 0)
+				if _, err := h.Service.SubmitCheckin(ctx, in); err != nil {
+					t.Fatalf("SubmitCheckin: %v", err)
+				}
+			}
+			checkin(domain.SubmitCheckinInput{Readings: []domain.MetricReadingInput{{MetricID: latency.ID, Value: 800}}})
+			h.Clock.Advance(7 * 24 * time.Hour)
+			noChangeCheckin(t, h, sam, goal)
+			var more domain.SubmitCheckinInput
+			tc.more(&more, goal, latency)
+			checkin(more)
+			h.Clock.Advance(7 * 24 * time.Hour)
+			noChangeCheckin(t, h, sam, goal)
+			ts := newServer(t, h)
+
+			got := foldedCounts(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
+			if !slices.Equal(got, tc.folded) {
+				t.Errorf("History's entries fold %q, want %q", got, tc.folded)
+			}
+		})
+	}
+}
+
+// Any other entry between two identical Check-ins keeps them apart: with a
+// Nudge between them, neither folds.
+func TestGoalHistoryNudgeBetweenIdenticalCheckinsKeepsThemApart(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	lee := h.SignIn("lee@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.Clock.Advance(24 * time.Hour)
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(10 * 24 * time.Hour) // Stale
+	if _, err := h.Service.Nudge(context.Background(), lee.ID, goal.ID); err != nil {
+		t.Fatalf("Nudge: %v", err)
+	}
+	h.Clock.Advance(24 * time.Hour)
+	noChangeCheckin(t, h, sam, goal)
+	ts := newServer(t, h)
+
+	client := signInClient(t, ts.URL, "sam@example.com")
+	for _, filter := range []string{"", "?history=checkins"} {
+		got := foldedCounts(t, client, goalPageURL(ts.URL, goal)+filter)
+		if want := map[string][]string{"": {"", "", "", ""}, "?history=checkins": {"", "", ""}}[filter]; !slices.Equal(got, want) {
+			t.Errorf("History%s folds %q, want %q", filter, got, want)
+		}
+	}
+}
+
+// A folded run takes one of the first page's 5 places: a Check-in, three No
+// change Check-ins and four Check-ins after them open on the four and the
+// folded run, with Show earlier leading to the full Check-in and the So What.
+func TestGoalHistoryFoldedRunIsOneOfTheFirstFive(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.Clock.Advance(time.Hour)
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	for range 3 {
+		h.Clock.Advance(time.Hour)
+		noChangeCheckin(t, h, sam, goal)
+	}
+	for i := 1; i <= 4; i++ {
+		h.Clock.Advance(time.Hour)
+		h.Checkin(sam, goal.ID, domain.HealthGreen, fmt.Sprintf("Update %d.", i), "", time.Time{})
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	history := historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)))
+	if got, want := foldedCounts(t, client, goalPageURL(ts.URL, goal)), []string{"", "", "", "", "3"}; !slices.Equal(got, want) {
+		t.Fatalf("History first folds %q, want %q", got, want)
+	}
+	history = historyBlock(t, getBody(t, client, ts.URL+historyEarlier(t, history)))
+	if n := len(historyEntries(history)); n != 7 {
+		t.Errorf("Show earlier shows %d entries, want 7", n)
+	}
+	if strings.Contains(history, `data-testid="history-earlier"`) {
+		t.Errorf("Show earlier stays once everything shows")
+	}
+	if chips := historyChips(t, history); chips["All"].count != "9" {
+		t.Errorf("the All chip counts %s, want 9", chips["All"].count)
+	}
+}
+
+// Whether Check-ins fold depends on what the filter lists: two identical
+// Check-ins with a So What revision between them show in full under All, and
+// fold under Check-ins, where the revision isn't listed.
+func TestGoalHistoryFoldsAcrossEntriesTheFilterLeavesOut(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.Clock.Advance(time.Hour)
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(time.Hour)
+	if _, err := h.Service.EditSoWhat(context.Background(), goal.ID, "Customers leave.", sam.ID); err != nil {
+		t.Fatalf("EditSoWhat: %v", err)
+	}
+	h.Clock.Advance(time.Hour)
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	if got, want := foldedCounts(t, client, goalPageURL(ts.URL, goal)), []string{"", "", "", ""}; !slices.Equal(got, want) {
+		t.Errorf("History under All folds %q, want %q", got, want)
+	}
+	if got, want := foldedCounts(t, client, goalPageURL(ts.URL, goal)+"?history=checkins"), []string{"1", ""}; !slices.Equal(got, want) {
+		t.Errorf("History under Check-ins folds %q, want %q", got, want)
+	}
+}
+
+// Show earlier counts places, not Check-ins: a Check-in and five No change
+// Check-ins after it are seven entries but three places, all on the first page.
+func TestGoalHistoryShowEarlierCountsFoldedRunsOnce(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.Clock.Advance(time.Hour)
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	for range 5 {
+		h.Clock.Advance(time.Hour)
+		noChangeCheckin(t, h, sam, goal)
+	}
+	ts := newServer(t, h)
+
+	history := historyBlock(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal)))
+	if n := len(historyEntries(history)); n != 3 {
+		t.Errorf("History shows %d entries, want 3", n)
+	}
+	if strings.Contains(history, `data-testid="history-earlier"`) {
+		t.Errorf("History offers Show earlier with everything shown")
 	}
 }
