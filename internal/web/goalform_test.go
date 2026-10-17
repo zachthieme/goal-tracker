@@ -1934,3 +1934,212 @@ func TestGoalFormParentSearchKeepsItsResultsList(t *testing.T) {
 		}
 	}
 }
+
+// readyItemLinks are the Ready to activate checklist's items, by label, each
+// with the href it links to, "" when it links nowhere.
+func readyItemLinks(t *testing.T, card string) map[string]string {
+	t.Helper()
+	list := pageElement(t, card, "ul", "activation-checklist")
+	links := map[string]string{}
+	for _, li := range strings.Split(list, "<li ")[1:] {
+		words := strings.Fields(regexpTags.ReplaceAllString(li[strings.Index(li, ">")+1:], " "))
+		if len(words) < 3 {
+			t.Fatalf("checklist item has no mark, label and state: %s", li)
+		}
+		href := ""
+		if strings.Contains(li, "<a ") {
+			href = attr(tagAround(t, li, "<a "), "href")
+		}
+		links[strings.Join(words[1:len(words)-1], " ")] = href
+	}
+	return links
+}
+
+// assertLinksTo checks each linked checklist item's href names an element on
+// page by id, so following it lands on the field or section that meets it.
+func assertLinksTo(t *testing.T, what, page string, links map[string]string) {
+	t.Helper()
+	for item, href := range links {
+		if id, ok := strings.CutPrefix(href, "#"); ok && !strings.Contains(page, ` id="`+id+`"`) {
+			t.Errorf("%s: %q links to %s, which isn't on the page", what, item, href)
+		}
+	}
+}
+
+// Each item of the Ready to activate checklist links to the field, or the
+// section, that would meet it, as the error summary links a refused input: So
+// What to its input, the Kind to its group, a Milestone or Metric to How you'll
+// know, and each required Dimension and Field to its input. The Owner is the
+// person creating the Goal, so nothing on the form meets it and it links
+// nowhere.
+func TestNewGoalChecklistLinksEachItemToItsField(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	fits := arrangeWhereItFits(h)
+	h.SetDimensionRequired(boss, fits.pillar, true)
+	h.SetDimensionRequired(boss, fits.channel, true)
+	h.SetFieldRequired(boss, fits.budget, true)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals/new")
+	card, _ := readyCard(t, page)
+	links := readyItemLinks(t, card)
+	know := links["A Milestone or Metric"]
+	want := map[string]string{
+		"So What":                                "#so_what",
+		"Owner":                                  "",
+		"Dated with a delivery date, or Ongoing": "#kind",
+		"A Milestone or Metric":                  know,
+		"A value in Pillar":                      fmt.Sprintf("#dimension:%d", fits.pillar.ID),
+		"A value in Channel":                     fmt.Sprintf("#dimension:%d", fits.channel.ID),
+		"A value in Budget":                      fmt.Sprintf("#field:%d", fits.budget.ID),
+	}
+	if !maps.Equal(links, want) {
+		t.Errorf("a fresh form's checklist links = %v, want %v", links, want)
+	}
+	if section := tagAround(t, page, `data-testid="goal-form-know"`); know == "" || know != "#"+attr(section, "id") {
+		t.Errorf("A Milestone or Metric links to %q, not How you'll know: %s", know, section)
+	}
+	assertLinksTo(t, "a fresh form", page, links)
+}
+
+// The checklist's links survive its live swaps on the New goal and define
+// forms alike: as the page loads, and as the form posts to its checklist. Once
+// Dated is chosen, the Kind item links to the delivery date it still needs,
+// and once Ongoing is, the Metric item links to How you'll know.
+func TestGoalFormChecklistLinksSurviveItsSwaps(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	fits := arrangeWhereItFits(h)
+	h.SetDimensionRequired(boss, fits.team, true)
+	h.SetFieldRequired(boss, fits.budget, true)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	team := fmt.Sprintf("#dimension:%d", fits.team.ID)
+	budget := fmt.Sprintf("#field:%d", fits.budget.ID)
+
+	for _, path := range []string{"/goals/new", fmt.Sprintf("/goals/%d/define", g.ID)} {
+		page := getBody(t, client, ts.URL+path)
+		card, _ := readyCard(t, page)
+		want := map[string]string{
+			"So What":                                "#so_what",
+			"Owner":                                  "",
+			"Dated with a delivery date, or Ongoing": "#kind",
+			"A Milestone or Metric":                  "#know",
+			"A value in Team":                        team,
+			"A value in Budget":                      budget,
+		}
+		if got := readyItemLinks(t, card); !maps.Equal(got, want) {
+			t.Errorf("%s: the loaded checklist links = %v, want %v", path, got, want)
+		}
+		assertLinksTo(t, path, page, want)
+
+		for kind, want := range map[string]map[string]string{
+			"Dated": {
+				"So What":                                "#so_what",
+				"Owner":                                  "",
+				"Dated with a delivery date, or Ongoing": "#delivery_date",
+				"A Milestone or Metric":                  "#know",
+				"A value in Team":                        team,
+				"A value in Budget":                      budget,
+			},
+			"Ongoing": {
+				"So What":                                "#so_what",
+				"Owner":                                  "",
+				"Dated with a delivery date, or Ongoing": "#kind",
+				"A Metric":                               "#know",
+				"A value in Team":                        team,
+				"A value in Budget":                      budget,
+			},
+		} {
+			body, status := postFormHX(t, client, ts.URL+path+"/checklist", url.Values{"title": {"Cut checkout latency"}, "so_what": {""}, "kind": {kind}})
+			if status != http.StatusOK {
+				t.Fatalf("%s: the checklist answered %s with %d:\n%s", path, kind, status, body)
+			}
+			card, _ := readyCard(t, body)
+			if got := readyItemLinks(t, card); !maps.Equal(got, want) {
+				t.Errorf("%s: %s posted, the checklist links = %v, want %v", path, kind, got, want)
+			}
+			assertLinksTo(t, path, page, want)
+		}
+	}
+}
+
+// The Goal page's activation checklist for a Proposed Goal links nowhere: the
+// fields that meet it are on the define page, which Finish defining opens.
+func TestProposedGoalChecklistLinksNowhere(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	fits := arrangeWhereItFits(h)
+	h.SetDimensionRequired(boss, fits.team, true)
+	h.SetFieldRequired(boss, fits.budget, true)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, g.ID))
+	list := pageElement(t, page, "ul", "activation-checklist")
+	if strings.Contains(list, "<a ") {
+		t.Errorf("the Proposed Goal's checklist links:\n%s", list)
+	}
+	if got := activationItems(t, page); len(got) != 6 {
+		t.Errorf("the Proposed Goal's checklist = %v, want 6 items", got)
+	}
+}
+
+// A Kind card shows whether it's chosen: unchosen, an outline in the control
+// edge colour with an empty radio dot; chosen, a primary edge, a filled dot
+// and a fill. The edge is 2px either way, so choosing doesn't resize the card.
+// All of it waits on :has, so a browser without it keeps the native radio,
+// which still chooses.
+func TestNewGoalPageKindCardsShowWhichIsChosen(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals/new")
+	style := between(t, page, ".gf-form{", "</style>")
+	const supports = "@supports selector(:has(*))"
+	block := mediaBlock(t, style, supports)
+	for sel, want := range map[string][]string{
+		".gf-segment":                            {"border:2px solid var(--color-border-strong)"},
+		".gf-segment::before":                    {"border:2px solid var(--color-border-strong)", "border-radius:50%"},
+		".gf-segment:has(input:checked)":         {"border-color:var(--color-primary)", "background:var(--color-primary-light)"},
+		".gf-segment:has(input:checked)::before": {"border-color:var(--color-primary)", "var(--color-primary)"},
+	} {
+		rule, ok := ruleFor(block, sel)
+		if !ok {
+			t.Errorf("%s has no %s rule", supports, sel)
+			continue
+		}
+		for _, decl := range want {
+			if !strings.Contains(rule, decl) {
+				t.Errorf("%s declares %q, want %s", sel, rule, decl)
+			}
+		}
+	}
+	if rule, _ := ruleFor(block, ".gf-segment:has(input:checked)"); strings.Contains(rule, "border-width") || strings.Contains(rule, "padding") || strings.Contains(rule, "border:") {
+		t.Errorf("choosing a Kind card resizes it: %s", rule)
+	}
+	outside := strings.Replace(style, supports+"{"+block, "", 1)
+	if strings.Contains(outside, "opacity:0") || strings.Contains(outside, ".gf-segment::before") {
+		t.Errorf("the native radio is hidden, or a drawn dot shown, without :has:\n%s", outside)
+	}
+	if !strings.Contains(block, ".gf-pick input{position:absolute;opacity:0") {
+		t.Errorf("with :has the native radio isn't hidden behind the drawn dot:\n%s", block)
+	}
+}

@@ -92,11 +92,11 @@ func (v goalFormView) activationFacts() activationFacts {
 		for _, val := range d.Values {
 			set = set || v.Chosen[val.ID]
 		}
-		f.Required = append(f.Required, domain.RequiredValue{Name: d.Name, Set: set})
+		f.Required = append(f.Required, domain.RequiredValue{Name: d.Name, Set: set, DimensionID: d.ID})
 	}
 	for _, fl := range v.Fields {
 		if fl.Required && !fl.Retired {
-			f.Required = append(f.Required, domain.RequiredValue{Name: fl.Name, Set: strings.TrimSpace(v.FieldValues[fl.ID]) != ""})
+			f.Required = append(f.Required, domain.RequiredValue{Name: fl.Name, Set: strings.TrimSpace(v.FieldValues[fl.ID]) != "", FieldID: fl.ID})
 		}
 	}
 	return f

@@ -67,6 +67,10 @@ templ goalFormLiveChecklist(v goalFormView) {
 	></div>
 }
 
+// goalFormKnowID is the How you'll know section's id, which the checklist's
+// Milestone or Metric item links to.
+const goalFormKnowID = "know"
+
 // goalFormReadyID is the Ready to activate card's id, which the form's live
 // checklist swaps.
 const goalFormReadyID = "goal-form-ready"
@@ -87,9 +91,9 @@ templ goalFormReady(v goalFormView) {
 		<ul data-testid="activation-checklist" class="gf-checklist">
 			for _, item := range v.activationFacts().checklist() {
 				if item.Done {
-					<li data-done="true" class="gf-check done"><span aria-hidden="true">✓</span> <span>{ item.Label }</span> <span class="muted small">done</span></li>
+					<li data-done="true" class="gf-check done"><span aria-hidden="true">✓</span> @goalFormCheckLabel(item) <span class="muted small">done</span></li>
 				} else {
-					<li data-done="false" class="gf-check"><span aria-hidden="true">✗</span> <span>{ item.Label }</span> <span class="muted small">missing</span></li>
+					<li data-done="false" class="gf-check"><span aria-hidden="true">✗</span> @goalFormCheckLabel(item) <span class="muted small">missing</span></li>
 				}
 			}
 		</ul>
@@ -100,6 +104,16 @@ templ goalFormReady(v goalFormView) {
 		<p class="muted small">Only Title and So What are needed to save.</p>
 		<a class="small gf-cancel" href={ v.cancelURL() }>Cancel</a>
 	</aside>
+}
+
+// goalFormCheckLabel is a checklist item's label, linked to the field or
+// section that meets it, as the error summary links a refused input.
+templ goalFormCheckLabel(item activationItem) {
+	if item.Input != "" {
+		<a href={ templ.SafeURL("#" + item.Input) }>{ item.Label }</a>
+	} else {
+		<span>{ item.Label }</span>
+	}
 }
 
 // goalFormWhat is the "What and why" section: the Goal's Title, focused, and
@@ -206,6 +220,8 @@ templ goalFormDelivery(v goalFormView) {
 }
 
 // kindChoice is one segment of the Kind group: the Kind and what it means.
+// With :has, the native radio hides behind a dot the card draws, empty or
+// filled, and the chosen card takes a 2px primary edge and a fill.
 templ kindChoice(v goalFormView, kind, means string) {
 	<label class="gf-pick gf-segment">
 		<input
@@ -228,7 +244,7 @@ templ kindChoice(v goalFormView, kind, means string) {
 // row of each; script adds a row from its <template> and removes one with ×,
 // and shows a Metric's Direction only while its target equals its baseline.
 templ goalFormKnow(v goalFormView) {
-	<fieldset data-testid="goal-form-know" class="gf-know">
+	<fieldset data-testid="goal-form-know" id={ goalFormKnowID } class="gf-know">
 		<legend>How you'll know</legend>
 		<p class="muted small">Milestones and Metrics are optional; a row left blank is ignored.</p>
 		@goalFormExisting(v)
@@ -779,6 +795,10 @@ templ goalFormStyles() {
 		@supports selector(:has(*)){
 			.gf-pick input{position:absolute;opacity:0;pointer-events:none}
 			.gf-pick:has(input:checked){border-color:var(--color-primary);background:var(--color-primary-subtle)}
+			.gf-segment{border:2px solid var(--color-border-strong)}
+			.gf-segment::before{content:"";flex:none;box-sizing:border-box;width:16px;height:16px;margin-top:4px;border:2px solid var(--color-border-strong);border-radius:50%}
+			.gf-segment:has(input:checked){border-color:var(--color-primary);background:var(--color-primary-light)}
+			.gf-segment:has(input:checked)::before{border-color:var(--color-primary);background:radial-gradient(circle,var(--color-primary) 0 4px,transparent 4.5px)}
 			label.gf-pick:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}
 		}
 		.gf-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}

@@ -1647,10 +1647,12 @@ func (t metricTrend) trendLabel() string {
 }
 
 // activationItem is one line of a Proposed Goal's activation checklist: a rule
-// activation enforces and whether the Goal meets it yet.
+// activation enforces, whether the Goal meets it yet, and Input, the id of the
+// New goal form's field or section that would meet it, "" when none does.
 type activationItem struct {
 	Label string
 	Done  bool
+	Input string
 }
 
 // activationFacts are what the activation checklist reads, whether from a
@@ -1672,21 +1674,37 @@ type activationFacts struct {
 // delivery date or Ongoing, a Milestone or Metric for a Dated Goal or a Metric
 // for an Ongoing one, and a value in each required Dimension and Field
 // (CONTEXT.md: Incomplete). The server still enforces the rules on activation.
+// Each item names the form's input that meets it: the delivery date once Dated
+// is chosen, the Kind group until then, and How you'll know for a Milestone or
+// Metric; nothing on the form makes its creator the Owner.
 func (f activationFacts) checklist() []activationItem {
+	kindInput := domain.InputKind
+	if f.Kind == domain.GoalDated {
+		kindInput = domain.InputDeliveryDate
+	}
 	items := []activationItem{
-		{"So What", strings.TrimSpace(f.SoWhat) != ""},
-		{"Owner", f.Owned},
-		{"Dated with a delivery date, or Ongoing", f.Kind == domain.GoalOngoing || (f.Kind == domain.GoalDated && !f.DeliveryDate.IsZero())},
+		{"So What", strings.TrimSpace(f.SoWhat) != "", domain.InputSoWhat},
+		{"Owner", f.Owned, ""},
+		{"Dated with a delivery date, or Ongoing", f.Kind == domain.GoalOngoing || (f.Kind == domain.GoalDated && !f.DeliveryDate.IsZero()), kindInput},
 	}
 	if f.Kind == domain.GoalOngoing {
-		items = append(items, activationItem{"A Metric", f.Metrics > 0})
+		items = append(items, activationItem{"A Metric", f.Metrics > 0, goalFormKnowID})
 	} else {
-		items = append(items, activationItem{"A Milestone or Metric", f.Milestones+f.Metrics > 0})
+		items = append(items, activationItem{"A Milestone or Metric", f.Milestones+f.Metrics > 0, goalFormKnowID})
 	}
 	for _, r := range f.Required {
-		items = append(items, activationItem{"A value in " + r.Name, r.Set})
+		items = append(items, activationItem{"A value in " + r.Name, r.Set, requiredInput(r)})
 	}
 	return items
+}
+
+// requiredInput is the New goal form's input for a required Dimension or
+// Field: the Dimension's select or group, or the Field's input.
+func requiredInput(r domain.RequiredValue) string {
+	if r.FieldID != 0 {
+		return domain.FieldInput(r.FieldID)
+	}
+	return dimensionInput(domain.Dimension{ID: r.DimensionID})
 }
 
 // ready reports whether every activation checklist item is done.
