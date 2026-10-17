@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -253,5 +254,33 @@ func TestClearingARequiredValueFlagsRatherThanRefuses(t *testing.T) {
 
 	if got := incomplete(t, h, g.ID); strings.Join(got, ", ") != "Pillar, Budget" {
 		t.Errorf("Incomplete = %q, want Pillar, Budget", got)
+	}
+}
+
+// RequiredValues says which Dimension or Field each required value is, by id,
+// Dimensions first, so a form can point at the input that sets it.
+func TestRequiredValuesNameTheirDimensionOrField(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	budget := h.CreateField(boss, "Budget", domain.FieldNumber, "$")
+	h.SetFieldRequired(boss, budget, true)
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	h.SetDimensionRequired(boss, pillar, true)
+	g := readyGoal(t, h, sam, "Ship v2")
+	h.AssignGoalValue(g, pillar.Values[0])
+
+	got, err := h.Service.RequiredValues(context.Background(), g.ID)
+	if err != nil {
+		t.Fatalf("RequiredValues: %v", err)
+	}
+	want := []domain.RequiredValue{
+		{Name: "Pillar", Set: true, DimensionID: pillar.ID},
+		{Name: "Budget", Set: false, FieldID: budget.ID},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("RequiredValues = %+v, want %+v", got, want)
 	}
 }

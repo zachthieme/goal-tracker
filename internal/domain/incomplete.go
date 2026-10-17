@@ -6,10 +6,13 @@ import (
 )
 
 // RequiredValue is a Dimension or Field an Admin has marked required, by name,
-// and whether a Goal has a value in it (CONTEXT.md: Incomplete).
+// and whether a Goal has a value in it (CONTEXT.md: Incomplete). Exactly one of
+// DimensionID and FieldID is set, saying which it is.
 type RequiredValue struct {
-	Name string
-	Set  bool
+	Name        string
+	Set         bool
+	DimensionID int64
+	FieldID     int64
 }
 
 // RequiredValues lists the Dimensions and Fields a Goal needs a value in,
@@ -34,7 +37,7 @@ func (s *Service) RequiredValues(ctx context.Context, goalID int64) ([]RequiredV
 	var out []RequiredValue
 	for _, row := range dims {
 		if d := dimensionFromRow(row); d.Required && !d.Retired {
-			out = append(out, RequiredValue{Name: d.Name, Set: carried[d.ID]})
+			out = append(out, RequiredValue{Name: d.Name, Set: carried[d.ID], DimensionID: d.ID})
 		}
 	}
 
@@ -52,7 +55,7 @@ func (s *Service) RequiredValues(ctx context.Context, goalID int64) ([]RequiredV
 	}
 	for _, f := range fields {
 		if f.Required && !f.Retired {
-			out = append(out, RequiredValue{Name: f.Name, Set: set[f.ID]})
+			out = append(out, RequiredValue{Name: f.Name, Set: set[f.ID], FieldID: f.ID})
 		}
 	}
 	return out, nil

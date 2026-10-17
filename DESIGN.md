@@ -482,6 +482,15 @@ Load the fonts with this URL:
   field takes the same ring as everything else, `2px solid var(--color-focus)`,
   offset 1px. The ring shows on mouse focus too and never transitions. See
   Deviations.
+- **Choice cards (`.gf-segment`):** the New goal form's Kind cards, Dated
+  and Ongoing, with neither chosen at first. Each card draws its own radio dot.
+  An unchosen card is an outline: a 1px `--color-border-strong` edge, no fill,
+  and an empty dot with a 2px `--color-border-strong` ring. The chosen card has
+  a 2px `--color-primary` edge, a `--color-primary-light` fill and a filled
+  `--color-primary` dot. Its padding drops by 1px, so the card keeps its size.
+  Keyboard focus takes the usual ring. All of this needs `:has()`. A browser
+  without it shows the native radio, which still chooses. The Check-in cadence
+  chips (`.gf-pick`) keep their 1px `--color-border` pill.
 - **Sizes and touch targets:** buttons and text, email, date, number and search
   inputs and selects are 40px tall, and `.btn.sm` is 32px. On a coarse pointer
   (`@media (pointer:coarse)`) all of them get a 44px `min-height`, so every
