@@ -88,6 +88,40 @@ func (q *Queries) CreateGoal(ctx context.Context, arg CreateGoalParams) (Goal, e
 	return i, err
 }
 
+const createGoalTitleRevision = `-- name: CreateGoalTitleRevision :one
+INSERT INTO goal_title_revisions (goal_id, old_title, new_title, author_id, created_at)
+VALUES (?, ?, ?, ?, ?)
+RETURNING id, goal_id, old_title, new_title, author_id, created_at
+`
+
+type CreateGoalTitleRevisionParams struct {
+	GoalID    int64
+	OldTitle  string
+	NewTitle  string
+	AuthorID  int64
+	CreatedAt string
+}
+
+func (q *Queries) CreateGoalTitleRevision(ctx context.Context, arg CreateGoalTitleRevisionParams) (GoalTitleRevision, error) {
+	row := q.db.QueryRowContext(ctx, createGoalTitleRevision,
+		arg.GoalID,
+		arg.OldTitle,
+		arg.NewTitle,
+		arg.AuthorID,
+		arg.CreatedAt,
+	)
+	var i GoalTitleRevision
+	err := row.Scan(
+		&i.ID,
+		&i.GoalID,
+		&i.OldTitle,
+		&i.NewTitle,
+		&i.AuthorID,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createMetric = `-- name: CreateMetric :one
 INSERT INTO metrics (goal_id, name, unit, direction, baseline, target, target_date, created_at)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -401,6 +435,56 @@ func (q *Queries) ListContributors(ctx context.Context, goalID int64) ([]ListCon
 	for rows.Next() {
 		var i ListContributorsRow
 		if err := rows.Scan(
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+			&i.Account.ManagerID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGoalTitleRevisions = `-- name: ListGoalTitleRevisions :many
+SELECT goal_title_revisions.id, goal_title_revisions.goal_id, goal_title_revisions.old_title, goal_title_revisions.new_title, goal_title_revisions.author_id, goal_title_revisions.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
+FROM goal_title_revisions
+JOIN accounts ON accounts.id = goal_title_revisions.author_id
+WHERE goal_title_revisions.goal_id = ?
+ORDER BY goal_title_revisions.created_at DESC, goal_title_revisions.id DESC
+`
+
+type ListGoalTitleRevisionsRow struct {
+	GoalTitleRevision GoalTitleRevision
+	Account           Account
+}
+
+func (q *Queries) ListGoalTitleRevisions(ctx context.Context, goalID int64) ([]ListGoalTitleRevisionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listGoalTitleRevisions, goalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGoalTitleRevisionsRow
+	for rows.Next() {
+		var i ListGoalTitleRevisionsRow
+		if err := rows.Scan(
+			&i.GoalTitleRevision.ID,
+			&i.GoalTitleRevision.GoalID,
+			&i.GoalTitleRevision.OldTitle,
+			&i.GoalTitleRevision.NewTitle,
+			&i.GoalTitleRevision.AuthorID,
+			&i.GoalTitleRevision.CreatedAt,
 			&i.Account.ID,
 			&i.Account.Email,
 			&i.Account.IsAdmin,
@@ -760,6 +844,35 @@ type SetGoalSoWhatParams struct {
 
 func (q *Queries) SetGoalSoWhat(ctx context.Context, arg SetGoalSoWhatParams) (Goal, error) {
 	row := q.db.QueryRowContext(ctx, setGoalSoWhat, arg.SoWhat, arg.ID)
+	var i Goal
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.SoWhat,
+		&i.OwnerID,
+		&i.Lifecycle,
+		&i.CreatedAt,
+		&i.Kind,
+		&i.DeliveryDate,
+		&i.CadenceDays,
+		&i.TopLevel,
+		&i.ActivatedAt,
+	)
+	return i, err
+}
+
+const setGoalTitle = `-- name: SetGoalTitle :one
+UPDATE goals SET title = ? WHERE id = ?
+RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level, activated_at
+`
+
+type SetGoalTitleParams struct {
+	Title string
+	ID    int64
+}
+
+func (q *Queries) SetGoalTitle(ctx context.Context, arg SetGoalTitleParams) (Goal, error) {
+	row := q.db.QueryRowContext(ctx, setGoalTitle, arg.Title, arg.ID)
 	var i Goal
 	err := row.Scan(
 		&i.ID,

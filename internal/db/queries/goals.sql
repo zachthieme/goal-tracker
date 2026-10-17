@@ -27,6 +27,10 @@ RETURNING *;
 UPDATE goals SET so_what = ? WHERE id = ?
 RETURNING *;
 
+-- name: SetGoalTitle :one
+UPDATE goals SET title = ? WHERE id = ?
+RETURNING *;
+
 -- name: SetGoalLifecycle :one
 UPDATE goals SET lifecycle = ? WHERE id = ?
 RETURNING *;
@@ -94,6 +98,18 @@ FROM so_what_revisions
 JOIN accounts ON accounts.id = so_what_revisions.author_id
 WHERE so_what_revisions.goal_id = ?
 ORDER BY so_what_revisions.created_at DESC, so_what_revisions.id DESC;
+
+-- name: CreateGoalTitleRevision :one
+INSERT INTO goal_title_revisions (goal_id, old_title, new_title, author_id, created_at)
+VALUES (?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: ListGoalTitleRevisions :many
+SELECT sqlc.embed(goal_title_revisions), sqlc.embed(accounts)
+FROM goal_title_revisions
+JOIN accounts ON accounts.id = goal_title_revisions.author_id
+WHERE goal_title_revisions.goal_id = ?
+ORDER BY goal_title_revisions.created_at DESC, goal_title_revisions.id DESC;
 
 -- name: SetGoalTopLevel :exec
 UPDATE goals SET top_level = ? WHERE id = ?;

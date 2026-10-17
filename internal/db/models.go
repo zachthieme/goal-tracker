@@ -156,6 +156,15 @@ type GoalFieldValue struct {
 	UpdatedAt string
 }
 
+type GoalTitleRevision struct {
+	ID        int64
+	GoalID    int64
+	OldTitle  string
+	NewTitle  string
+	AuthorID  int64
+	CreatedAt string
+}
+
 type GoalValueChange struct {
 	ID          int64
 	GoalID      int64

@@ -1,0 +1,104 @@
+package domain
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/zachthieme/goal-tracker/internal/db"
+)
+
+// TitleRevision is one change to a Goal's title, kept with the old and new
+// titles so it shows in the Goal's History (CONTEXT.md: Goal).
+type TitleRevision struct {
+	ID        int64
+	GoalID    int64
+	OldTitle  string
+	NewTitle  string
+	Author    Account
+	CreatedAt time.Time
+}
+
+// EditTitle changes a Goal's title in any Lifecycle, recording the change with
+// the old and new titles. The title is checked as at creation: trimmed, and
+// required. A title the same as the current one changes nothing and records
+// nothing. authorID records who made the change; the caller has already
+// checked they may (RequireGoalOwnerOrAdmin).
+func (s *Service) EditTitle(ctx context.Context, goalID int64, title string, authorID int64) (Goal, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return Goal{}, fmt.Errorf("%w: a Goal needs a title", ErrValidation)
+	}
+	current, err := s.loadGoal(ctx, goalID)
+	if err != nil {
+		return Goal{}, err
+	}
+	if title == current.Title {
+		return current, nil
+	}
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		if _, err := tx.queries.SetGoalTitle(ctx, db.SetGoalTitleParams{Title: title, ID: goalID}); err != nil {
+			return fmt.Errorf("set title: %w", err)
+		}
+		if _, err := tx.queries.CreateGoalTitleRevision(ctx, db.CreateGoalTitleRevisionParams{
+			GoalID:    goalID,
+			OldTitle:  current.Title,
+			NewTitle:  title,
+			AuthorID:  authorID,
+			CreatedAt: tx.clock.Now().Format(timeFormat),
+		}); err != nil {
+			return fmt.Errorf("record title revision: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return Goal{}, err
+	}
+	return s.loadGoal(ctx, goalID)
+}
+
+// ListTitleRevisions returns every change to a Goal's title, newest first, each
+// with its author resolved.
+func (s *Service) ListTitleRevisions(ctx context.Context, goalID int64) ([]TitleRevision, error) {
+	rows, err := s.queries.ListGoalTitleRevisions(ctx, goalID)
+	if err != nil {
+		return nil, fmt.Errorf("list title revisions: %w", err)
+	}
+	out := make([]TitleRevision, 0, len(rows))
+	for _, r := range rows {
+		createdAt, _ := time.Parse(timeFormat, r.GoalTitleRevision.CreatedAt)
+		out = append(out, TitleRevision{
+			ID:        r.GoalTitleRevision.ID,
+			GoalID:    r.GoalTitleRevision.GoalID,
+			OldTitle:  r.GoalTitleRevision.OldTitle,
+			NewTitle:  r.GoalTitleRevision.NewTitle,
+			Author:    accountFromRow(r.Account),
+			CreatedAt: createdAt,
+		})
+	}
+	return out, nil
+}
+
+// RequireGoalOwnerOrAdmin returns ErrNotAuthorized unless actorID is the Goal's
+// Owner or an Admin (a Delegate is refused), or ErrNotFound if no such Goal
+// exists. The web layer calls it before changing a Goal's title and So What.
+func (s *Service) RequireGoalOwnerOrAdmin(ctx context.Context, actorID, goalID int64) error {
+	g, err := s.loadGoal(ctx, goalID)
+	if err != nil {
+		return err
+	}
+	if g.Owner.ID == actorID {
+		return nil
+	}
+	actor, err := s.queries.GetAccount(ctx, actorID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("look up actor: %w", err)
+	}
+	if err != nil || actor.IsAdmin == 0 {
+		return fmt.Errorf("%w: only the Goal's Owner or an Admin may change it", ErrNotAuthorized)
+	}
+	return nil
+}
