@@ -952,7 +952,7 @@ func TestHomeShowsMyOrgOnlyToSomeoneWithPeopleUnderThem(t *testing.T) {
 		t.Errorf("My org card isn't titled My org:\n%s", card)
 	}
 	needsYou, org, aside := strings.Index(page, `data-testid="home-needs-you"`), strings.Index(page, `data-testid="home-org"`), strings.Index(page, "<aside")
-	if !(needsYou < org && org < aside) {
+	if needsYou >= org || org >= aside {
 		t.Errorf("My org isn't in the main column under Needs you: needs-you at %d, my org at %d, aside at %d", needsYou, org, aside)
 	}
 }
@@ -967,10 +967,10 @@ func homeOrgCounts(section string) []string {
 			return out
 		}
 		rest = rest[strings.LastIndex(rest[:at], "<"):]
-		badge := rest[:strings.Index(rest, "</span>")]
-		label := badge[strings.Index(badge, ">")+1:]
+		badge, after, _ := strings.Cut(rest, "</span>")
+		_, label, _ := strings.Cut(badge, ">")
 		out = append(out, attr(openTag(badge), "data-kind")+": "+label)
-		rest = rest[len(badge):]
+		rest = after
 	}
 }
 
