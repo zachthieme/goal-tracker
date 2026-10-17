@@ -46,9 +46,25 @@ type homeView struct {
 	AtRisk             []domain.PersonalGoal
 	// Delegated counts the Goals the person is a Delegate on.
 	Delegated int
+	// Org is the My org card, nil for someone with no one under them.
+	Org *homeOrg
 	// Toast, when set, offers Undo for the request just rejected, or the
 	// suggestion just declined, from Home.
 	Toast *toast
+}
+
+// homeOrg is Home's My org card: what is in trouble in the viewer's Org,
+// leaving out the viewer's own Goals, person by person (CONTEXT.md: Org).
+type homeOrg struct {
+	// ViewerID is whose Org it is, for the links to it on Goals and Risks.
+	ViewerID int64
+	// Total counts the flagged Goals across everyone under the viewer.
+	Total domain.SignalCounts
+	// Flagged are the people directly under the viewer whose Org has anything
+	// flagged, worst off first.
+	Flagged []domain.PersonSignals
+	// Clear counts the people directly under the viewer with nothing flagged.
+	Clear int
 }
 
 // fromHome is the from a request's Reject and its Undo post when they come
@@ -155,10 +171,61 @@ func (s *Server) loadHome(ctx context.Context, accountID int64) (homeView, error
 		}
 	}
 	v.AtRisk = append(v.AtRisk, yellow...)
+	if v.Org, err = s.loadHomeOrg(ctx, accountID); err != nil {
+		return homeView{}, err
+	}
 	slices.SortStableFunc(v.Due, func(a, b domain.PersonalGoal) int {
 		return cmp.Compare(overdueDays(b.Freshness), overdueDays(a.Freshness))
 	})
 	return v, nil
+}
+
+// homeOrgBadge is one count on the My org card: what it counts, for its
+// data-kind, how it reads, and its badge's class.
+type homeOrgBadge struct {
+	Kind, Label, Class string
+}
+
+// homeOrgBadges are c's non-zero counts, Red, then Path to Green overdue,
+// Stale and Yellow. Red and Yellow take their Health's colour, and the
+// freshness signals the Stale mark's, as on Risks.
+func homeOrgBadges(c domain.SignalCounts) []homeOrgBadge {
+	var out []homeOrgBadge
+	for _, b := range []struct {
+		n                  int
+		kind, label, class string
+	}{
+		{c.Red, "red", domain.HealthRed, healthClass(domain.HealthRed)},
+		{c.PathOverdue, "path-overdue", "Path to Green overdue", "st"},
+		{c.Stale, "stale", "Stale", "st"},
+		{c.Yellow, "yellow", domain.HealthYellow, healthClass(domain.HealthYellow)},
+	} {
+		if b.n > 0 {
+			out = append(out, homeOrgBadge{Kind: b.kind, Label: fmt.Sprintf("%d %s", b.n, b.label), Class: b.class})
+		}
+	}
+	return out
+}
+
+// loadHomeOrg reads accountID's My org card, or nil when they have no one
+// under them.
+func (s *Server) loadHomeOrg(ctx context.Context, accountID int64) (*homeOrg, error) {
+	if under, err := s.svc.HasAnyoneUnder(ctx, accountID); err != nil || !under {
+		return nil, err
+	}
+	sig, err := s.svc.OrgSignals(ctx, accountID)
+	if err != nil {
+		return nil, err
+	}
+	org := &homeOrg{ViewerID: accountID, Total: sig.Total}
+	for _, p := range sig.Under {
+		if p.Counts.Any() {
+			org.Flagged = append(org.Flagged, p)
+		} else {
+			org.Clear++
+		}
+	}
+	return org, nil
 }
 
 // overdueDays is how many days past its cadence a Goal's Check-in is, negative
@@ -197,6 +264,15 @@ func thingsNeedYou(n int) string {
 		return "1 thing needs you"
 	}
 	return fmt.Sprintf("%d things need you", n)
+}
+
+// othersAllClear reads the count of people directly under the viewer whose
+// Org has nothing flagged.
+func othersAllClear(n int) string {
+	if n == 1 {
+		return "1 other all clear"
+	}
+	return fmt.Sprintf("%d others all clear", n)
 }
 
 // daysAgo reads a count of days in the past.

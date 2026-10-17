@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -912,5 +914,304 @@ func TestNavOrderForAnAdmin(t *testing.T) {
 	}
 	if got, want := strings.Join(order, " "), "nav-home nav-goals nav-risks nav-reports nav-admin"; got != want {
 		t.Errorf("an Admin's nav items read %q, want %q", got, want)
+	}
+}
+
+// homeOrgCard is Home's My org card, failing the test when Home has none.
+func homeOrgCard(t *testing.T, page string) string {
+	t.Helper()
+	return pageElement(t, page, "section", "home-org")
+}
+
+// Home shows a My org card only to someone with anyone under them by
+// Manager: not when no directory has synced any Managers, not to someone with
+// no one under them, and not to someone who manages only themselves. It sits
+// in the main column, under Needs you.
+func TestHomeShowsMyOrgOnlyToSomeoneWithPeopleUnderThem(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	lead := h.SignIn("lead@example.com")
+	dev := h.SignIn("dev@example.com")
+	self := h.SignIn("self@example.com")
+	if page := getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"); strings.Contains(page, `data-testid="home-org"`) {
+		t.Errorf("Home shows My org with no Managers synced")
+	}
+	h.SetManager(dev, lead)
+	h.SetManager(self, self)
+	for _, who := range []string{"dev@example.com", "self@example.com"} {
+		if page := getBody(t, signInClient(t, ts.URL, who), ts.URL+"/home"); strings.Contains(page, `data-testid="home-org"`) {
+			t.Errorf("Home shows My org to %s, who has no one under them", who)
+		}
+	}
+
+	page := getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
+	card := homeOrgCard(t, page)
+	if !strings.Contains(card, "<h3>My org</h3>") {
+		t.Errorf("My org card isn't titled My org:\n%s", card)
+	}
+	needsYou, org, aside := strings.Index(page, `data-testid="home-needs-you"`), strings.Index(page, `data-testid="home-org"`), strings.Index(page, "<aside")
+	if !(needsYou < org && org < aside) {
+		t.Errorf("My org isn't in the main column under Needs you: needs-you at %d, my org at %d, aside at %d", needsYou, org, aside)
+	}
+}
+
+// homeOrgCounts reads the My org count badges in section, in order, as
+// "kind: label", so an assertion sees both what each reads and what it is.
+func homeOrgCounts(section string) []string {
+	var out []string
+	for rest := section; ; {
+		at := strings.Index(rest, `data-testid="home-org-count"`)
+		if at < 0 {
+			return out
+		}
+		rest = rest[strings.LastIndex(rest[:at], "<"):]
+		badge := rest[:strings.Index(rest, "</span>")]
+		label := badge[strings.Index(badge, ">")+1:]
+		out = append(out, attr(openTag(badge), "data-kind")+": "+label)
+		rest = rest[len(badge):]
+	}
+}
+
+// homeOrgRows are the My org card's rows, one per flagged person, in order.
+func homeOrgRows(card string) []string {
+	var out []string
+	for rest := card; ; {
+		start := strings.Index(rest, `<li data-testid="home-org-person"`)
+		if start < 0 {
+			return out
+		}
+		rest = rest[start:]
+		end := strings.Index(rest, "</li>")
+		out = append(out, rest[:end])
+		rest = rest[end:]
+	}
+}
+
+// homeOrgFixture is a lead with Ana and Ben directly under them and Cy under
+// Ana. Cy's Goal is Red, Stale and past its Path to Green, Ana's is Yellow,
+// and Ben's is Red.
+type homeOrgFixture struct {
+	lead, ana, ben, cy domain.Account
+	goals              []domain.Goal
+}
+
+func newHomeOrgFixture(h *testsupport.Harness) homeOrgFixture {
+	f := homeOrgFixture{
+		lead: h.SignInNamed("lead@example.com", "Lee Lead"),
+		ana:  h.SignInNamed("ana@example.com", "Ana"),
+		ben:  h.SignInNamed("ben@example.com", "Ben"),
+		cy:   h.SignInNamed("cy@example.com", "Cy"),
+	}
+	h.SetManager(f.ana, f.lead)
+	h.SetManager(f.ben, f.lead)
+	h.SetManager(f.cy, f.ana)
+	troubled := h.ActiveGoal(f.cy, "Ship search", "People can't find things.")
+	h.Checkin(f.cy, troubled.ID, domain.HealthRed, "Blocked.", "Escalate.", testsupport.Epoch.AddDate(0, 0, 3))
+	h.Clock.Advance(10 * day)
+	far := h.Clock.Now().AddDate(0, 1, 0)
+	slipping := h.ActiveGoal(f.ana, "Cut costs", "Spend is up.")
+	h.Checkin(f.ana, slipping.ID, domain.HealthYellow, "Slipping.", "Renegotiate.", far)
+	blocked := h.ActiveGoal(f.ben, "Move offices", "The lease ends.")
+	h.Checkin(f.ben, blocked.ID, domain.HealthRed, "No site.", "Widen the search.", far)
+	f.goals = []domain.Goal{troubled, slipping, blocked}
+	return f
+}
+
+// My org's total line counts, across everyone under the viewer, each signal
+// that has anything, labelled so it reads without colour, in the order Red,
+// Path to Green overdue, Stale, Yellow. Each person directly under the viewer
+// with anything flagged gets a row with their whole Org's counts, worst off
+// first, linking to Goals scoped to their Org; someone two levels down counts
+// in the row of the person they're under. The card lists no Goals.
+func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newHomeOrgFixture(h)
+
+	card := homeOrgCard(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
+	total := pageElement(t, card, "p", "home-org-total")
+	wantTotal := []string{"red: 2 Red", "path-overdue: 1 Path to Green overdue", "stale: 1 Stale", "yellow: 1 Yellow"}
+	if got := homeOrgCounts(total); !slices.Equal(got, wantTotal) {
+		t.Errorf("total line = %v, want %v", got, wantTotal)
+	}
+	for _, want := range []string{`data-kind="red" class="badge r"`, `data-kind="path-overdue" class="badge st"`, `data-kind="stale" class="badge st"`, `data-kind="yellow" class="badge y"`} {
+		if !strings.Contains(total, want) {
+			t.Errorf("total line lacks %s:\n%s", want, total)
+		}
+	}
+
+	rows := homeOrgRows(card)
+	if len(rows) != 2 {
+		t.Fatalf("My org has %d rows, want Ana's and Ben's:\n%s", len(rows), card)
+	}
+	for i, want := range []struct {
+		who    domain.Account
+		counts []string
+	}{
+		{f.ana, []string{"red: 1 Red", "path-overdue: 1 Path to Green overdue", "stale: 1 Stale", "yellow: 1 Yellow"}},
+		{f.ben, []string{"red: 1 Red"}},
+	} {
+		if !strings.Contains(rows[i], shownAs(want.who.Email, want.who.Name)) {
+			t.Errorf("row %d isn't %s's:\n%s", i, want.who.Name, rows[i])
+		}
+		if got := homeOrgCounts(rows[i]); !slices.Equal(got, want.counts) {
+			t.Errorf("%s's row counts %v, want %v", want.who.Name, got, want.counts)
+		}
+		if href := fmt.Sprintf(`href="/goals?org=%d"`, want.who.ID); !strings.Contains(rows[i], href) {
+			t.Errorf("%s's row doesn't link to %s:\n%s", want.who.Name, href, rows[i])
+		}
+	}
+	if strings.Contains(card, "Cy") {
+		t.Errorf("Cy, two levels down, appears on the card:\n%s", card)
+	}
+	for _, href := range []string{fmt.Sprintf(`href="/goals?org=%d"`, f.lead.ID), fmt.Sprintf(`href="/risks?org=%d"`, f.lead.ID)} {
+		if !strings.Contains(card, href) {
+			t.Errorf("My org doesn't link on with %s:\n%s", href, card)
+		}
+	}
+	for _, g := range f.goals {
+		if strings.Contains(card, g.Title) {
+			t.Errorf("My org lists the Goal %q:\n%s", g.Title, card)
+		}
+	}
+}
+
+// People directly under the viewer with nothing flagged get no row of their
+// own, only one line counting them after the rows; it's left out when there
+// are none.
+func TestHomeMyOrgCountsThoseAllClearInOneLine(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		clear int
+		want  string
+	}{
+		{0, ""},
+		{1, "1 other all clear"},
+		{2, "2 others all clear"},
+	} {
+		t.Run(strconv.Itoa(tc.clear), func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			ts := newServer(t, h)
+			f := newHomeOrgFixture(h)
+			for i := range tc.clear {
+				fine := h.SignIn(fmt.Sprintf("fine%d@example.com", i))
+				h.SetManager(fine, f.lead)
+				g := h.ActiveGoal(fine, "Run payroll", "People get paid.")
+				h.Checkin(fine, g.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+			}
+
+			card := homeOrgCard(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
+			if rows := homeOrgRows(card); len(rows) != 2 {
+				t.Errorf("My org has %d rows, want only the 2 flagged people's", len(rows))
+			}
+			if strings.Contains(card, "home-org-all-clear") {
+				t.Errorf("My org says everyone is all clear while some are flagged:\n%s", card)
+			}
+			if tc.want == "" {
+				if strings.Contains(card, "home-org-clear") {
+					t.Errorf("My org counts others all clear when there are none:\n%s", card)
+				}
+				return
+			}
+			clear := pageElement(t, card, "p", "home-org-clear")
+			if !strings.Contains(clear, ">"+tc.want) || !strings.Contains(openTag(clear), "muted") {
+				t.Errorf("all-clear line = %s, want a muted %q", clear, tc.want)
+			}
+			if rows := strings.Index(card, "home-org-person"); rows > strings.Index(card, "home-org-clear") {
+				t.Errorf("the all-clear line comes before the rows:\n%s", card)
+			}
+		})
+	}
+}
+
+// With nothing flagged anywhere under the viewer, My org says so in one line,
+// with no total and no rows, and still links on to the Org's Goals and Risks.
+func TestHomeMyOrgSaysWhenEveryoneIsAllClear(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	lead := h.SignIn("lead@example.com")
+	for _, who := range []string{"ana@example.com", "ben@example.com"} {
+		p := h.SignIn(who)
+		h.SetManager(p, lead)
+		g := h.ActiveGoal(p, "Run payroll", "People get paid.")
+		h.Checkin(p, g.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	}
+	own := h.ActiveGoal(lead, "Set strategy", "No direction.")
+	h.Checkin(lead, own.ID, domain.HealthRed, "Stuck.", "Offsite.", h.Clock.Now().AddDate(0, 1, 0))
+
+	card := homeOrgCard(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
+	allClear := pageElement(t, card, "p", "home-org-all-clear")
+	if !strings.Contains(allClear, ">Everyone in My org is all clear.") || !strings.Contains(openTag(allClear), "muted") {
+		t.Errorf("all-clear line = %s, want a muted %q", allClear, "Everyone in My org is all clear.")
+	}
+	for _, gone := range []string{"home-org-total", "home-org-person", "home-org-clear\"", "home-org-count"} {
+		if strings.Contains(card, gone) {
+			t.Errorf("My org with nothing flagged shows %s:\n%s", gone, card)
+		}
+	}
+	for testID, href := range map[string]string{
+		"home-org-goals-link": fmt.Sprintf("/goals?org=%d", lead.ID),
+		"home-org-risks-link": fmt.Sprintf("/risks?org=%d", lead.ID),
+	} {
+		if link := pageElement(t, card, "a", testID); attr(openTag(link), "href") != href {
+			t.Errorf("%s = %s, want href %s", testID, link, href)
+		}
+	}
+}
+
+// A Departed person directly under the viewer keeps their row, marked
+// departed, while their Ownerless Goal stays flagged where they were.
+func TestHomeMyOrgMarksADepartedPerson(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	ts := newServer(t, h)
+	admin := h.SignIn("admin@example.com")
+	f := newHomeOrgFixture(h)
+	if err := h.Service.MarkDeparted(context.Background(), admin.ID, f.ben.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	rows := homeOrgRows(homeOrgCard(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")))
+	if len(rows) != 2 {
+		t.Fatalf("My org has %d rows, want Ana's and Ben's", len(rows))
+	}
+	if !strings.Contains(rows[1], shownAs(f.ben.Email, f.ben.Name)) || !strings.Contains(rows[1], `data-testid="home-org-departed"`) {
+		t.Errorf("Ben's row isn't marked departed:\n%s", rows[1])
+	}
+	if strings.Contains(rows[0], "home-org-departed") {
+		t.Errorf("Ana's row is marked departed:\n%s", rows[0])
+	}
+}
+
+// My org adds nothing to what needs the viewer: with no Check-ins due and no
+// requests, they're all caught up however much is Red under them, and the top
+// bar's Home item carries no count.
+func TestHomeMyOrgAddsNothingToNeedsYou(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	newHomeOrgFixture(h)
+
+	page := getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
+	homeOrgCard(t, page)
+	if !strings.Contains(page, `data-testid="home-caught-up"`) || !strings.Contains(page, "You're all caught up.") {
+		t.Errorf("Needs you isn't caught up with only the Org's Goals Red")
+	}
+	if summary := pageElement(t, page, "p", "home-summary"); !strings.Contains(summary, "0 things need you") {
+		t.Errorf("summary = %s, want 0 things need you", summary)
+	}
+	if home := pageElement(t, page, "a", "nav-home"); strings.Contains(home, "count") {
+		t.Errorf("Home's nav item counts the Org's Goals: %s", home)
 	}
 }
