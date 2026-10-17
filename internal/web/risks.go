@@ -18,10 +18,10 @@ import (
 
 // handleRisks answers "what's going wrong?" for leadership: every Goal the
 // freshness and graph signals flag, by problem type, scoped by its address to
-// the viewer's own Goals (?mine=1) or an Org's (?org=), and to the Goals
-// with an offered
-// Dimension's value (?value=). The scope narrows the rows only after they are
-// built: loadRisks stays company-wide for the top bar's count.
+// the viewer's own Goals (?org=mine, or the older ?mine=1) or an Org's
+// (?org=), and to the Goals with an offered Dimension's value (?value=). The
+// scope narrows the rows only after they are built: loadRisks stays
+// company-wide for the top bar's count.
 func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	page, err := s.loadRisksPage(r.Context(), r.URL.Query(), current)
 	if err != nil {
@@ -80,7 +80,7 @@ func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain
 	page := risksPageView{
 		risksView:  v,
 		Group:      riskGroupKey(q.Get("group")),
-		Mine:       q.Get("mine") == "1" && org.Of == nil,
+		Mine:       scopedToMine(q, org),
 		Org:        org,
 		Dimensions: domain.OfferedDimensions(dims),
 		Today:      s.svc.Now().In(s.svc.Timezone()),
@@ -153,38 +153,24 @@ type risksPageView struct {
 	Today      time.Time
 }
 
-// riskPageScope is whose Goals the Risks page is scoped to: everyone's, the zero
-// value, the viewer's own (Mine), or the Org of the person with ID Org.
-type riskPageScope struct {
-	Mine bool
-	Org  int64
-}
-
-// scope is whose Goals the page is scoped to.
-func (p risksPageView) scope() riskPageScope {
-	if p.Org.Of != nil {
-		return riskPageScope{Org: p.Org.Of.ID}
+// scope is the ?org= the page is scoped by: "mine" for Mine, the ID of the
+// person whose Org it is, or "" for everyone's.
+func (p risksPageView) scope() string {
+	if p.Mine {
+		return scopeMineValue
 	}
-	return riskPageScope{Mine: p.Mine}
-}
-
-// MyOrg is the scope of the viewer's own Org.
-func (p risksPageView) MyOrg() riskPageScope {
-	return riskPageScope{Org: p.Org.Viewer.ID}
+	return p.Org.Value()
 }
 
 // url is the Risks page's address filtered to group ("" for every group),
-// scoped to sc, and keeping the page's value scope.
-func (p risksPageView) url(group string, sc riskPageScope) string {
+// keeping the page's scope and value scope.
+func (p risksPageView) url(group string) string {
 	q := url.Values{}
-	if sc.Org != 0 {
-		q.Set("org", strconv.FormatInt(sc.Org, 10))
+	if sc := p.scope(); sc != "" {
+		q.Set("org", sc)
 	}
 	if group != "" {
 		q.Set("group", group)
-	}
-	if sc.Mine {
-		q.Set("mine", "1")
 	}
 	if p.Value.ID != 0 {
 		q.Set("value", strconv.FormatInt(p.Value.ID, 10))
@@ -197,26 +183,12 @@ func (p risksPageView) url(group string, sc riskPageScope) string {
 
 // Here is the page's own address, with its filters and scope.
 func (p risksPageView) Here() string {
-	return p.url(p.Group, p.scope())
+	return p.url(p.Group)
 }
 
 // ShowAllURL is the page's address unfiltered, keeping its scope.
 func (p risksPageView) ShowAllURL() templ.SafeURL {
-	return templ.SafeURL(p.url("", p.scope()))
-}
-
-// ScopeURL is the page's address scoped to sc, keeping its group.
-func (p risksPageView) ScopeURL(sc riskPageScope) templ.SafeURL {
-	return templ.SafeURL(p.url(p.Group, sc))
-}
-
-// ScopeAttrs marks the Everyone | Mine | Org choice the page is scoped to as
-// the current one.
-func (p risksPageView) ScopeAttrs(sc riskPageScope) templ.Attributes {
-	if p.scope() == sc {
-		return templ.Attributes{"aria-current": "page"}
-	}
-	return templ.Attributes{}
+	return templ.SafeURL(p.url(""))
 }
 
 // Shown are the rows the table shows: every row with no filter, else each row
@@ -283,12 +255,21 @@ func (p risksPageView) Empty() string {
 	return "No Goals need attention in " + strings.Join(parts, ", ") + "."
 }
 
-// attention is the header's words after its count of the Goals on the page.
+// attention is the header's words after its count of the Goals on the page,
+// naming Mine or the Org it is scoped to: "Goals need attention in My org.
+// Worst first."
 func (p risksPageView) attention() string {
-	if len(p.Rows) == 1 {
-		return "Goal needs attention. Worst first."
+	in := ""
+	switch {
+	case p.Mine:
+		in = " in Mine"
+	case p.Org.Of != nil:
+		in = " in " + p.Org.Name()
 	}
-	return "Goals need attention. Worst first."
+	if len(p.Rows) == 1 {
+		return "Goal needs attention" + in + ". Worst first."
+	}
+	return "Goals need attention" + in + ". Worst first."
 }
 
 // riskChipClass is the class of a signal's chip on a group card, matching the
@@ -344,7 +325,7 @@ func (p risksPageView) Cards() []riskCard {
 	groups := riskGroups(p.Rows)
 	cards := make([]riskCard, 0, len(groups))
 	for i, gk := range riskGroupKinds {
-		c := riskCard{riskGroup: groups[i], Blank: gk.Blank, Current: gk.Key == p.Group, Href: templ.SafeURL(p.url(gk.Key, p.scope()))}
+		c := riskCard{riskGroup: groups[i], Blank: gk.Blank, Current: gk.Key == p.Group, Href: templ.SafeURL(p.url(gk.Key))}
 		for _, kind := range gk.Kinds {
 			n := 0
 			for _, r := range p.Rows {

@@ -1,0 +1,27 @@
+package web
+
+import "fmt"
+
+// pageScopeSelect is the one control scoping a page of Goals: Everyone,
+// Mine (the Goals the viewer Owns or is a Delegate on), My org for a viewer
+// with anyone under them, then under Other orgs each other person whose Org
+// holds Goals, by Name with their email to tell same-Named people apart
+// (CONTEXT.md: Org, Name). With no Managers anywhere it offers Everyone and
+// Mine alone (ADR 0008). It submits ?org=: "" for Everyone, "mine" for Mine,
+// else the chosen person's ID, so the page is scoped to one at a time.
+templ pageScopeSelect(testID string, mine bool, c pageOrgScope) {
+	<select data-testid={ testID } name="org" aria-label="Scope">
+		<option value="" selected?={ !mine && c.Of == nil }>Everyone</option>
+		<option value={ scopeMineValue } selected?={ mine }>Mine</option>
+		if c.OffersMine || (c.Of != nil && c.Of.ID == c.Viewer.ID) {
+			<option value={ fmt.Sprint(c.Viewer.ID) } selected?={ c.Of != nil && c.Of.ID == c.Viewer.ID }>My org</option>
+		}
+		if others := c.Others(); len(others) > 0 {
+			<optgroup label="Other orgs">
+				for _, a := range others {
+					<option value={ fmt.Sprint(a.ID) } selected?={ c.Of != nil && c.Of.ID == a.ID }>{ a.LongLabel() }</option>
+				}
+			</optgroup>
+		}
+	</select>
+}

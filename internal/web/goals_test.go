@@ -812,8 +812,10 @@ func TestGoalListFiltersByLifecycle(t *testing.T) {
 	}
 }
 
-// Mine only keeps the Goals the viewer Owns or is a Delegate on, and its
-// checkbox stays checked.
+// Scoped to Mine, by ?org=mine or the older ?mine=1 that links and bookmarks
+// carry, the list keeps the Goals the viewer Owns or is a Delegate on, and the
+// Scope select shows Mine chosen. Without Managers it offers Everyone and Mine
+// alone. The other filters still combine with it.
 func TestGoalListFiltersToMine(t *testing.T) {
 	t.Parallel()
 
@@ -827,27 +829,75 @@ func TestGoalListFiltersToMine(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/goals?mine=1")
-	got := rowTitles(goalRows(t, page), owned, delegated, others)
-	if want := []string{"Kim's, delegated to Sam", "Sam's own"}; !slices.Equal(got, want) {
-		t.Errorf("mine=1: rows = %q, want %q", got, want)
-	}
-	if box := pageTag(t, page, "input", "goal-mine-filter"); !strings.Contains(box, "checked") {
-		t.Errorf("Mine only checkbox lost its check: %s", box)
+	for _, scope := range []string{"org=mine", "mine=1"} {
+		page := getBody(t, client, ts.URL+"/goals?"+scope)
+		got := rowTitles(goalRows(t, page), owned, delegated, others)
+		if want := []string{"Kim's, delegated to Sam", "Sam's own"}; !slices.Equal(got, want) {
+			t.Errorf("%s: rows = %q, want %q", scope, got, want)
+		}
+		choices, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter"))
+		if value != "mine" || label != "Mine" {
+			t.Errorf("%s: the Scope select shows %q %q chosen, want Mine", scope, value, label)
+		}
+		if want := []string{"Everyone", "Mine"}; !slices.Equal(choices, want) {
+			t.Errorf("%s: without Managers the Scope select offers %q, want %q", scope, choices, want)
+		}
 	}
 
-	page = getBody(t, client, ts.URL+"/goals")
+	page := getBody(t, client, ts.URL+"/goals")
 	if got := rowTitles(goalRows(t, page), owned, delegated, others); len(got) != 3 {
-		t.Errorf("without Mine only every Goal shows; rows = %q", got)
+		t.Errorf("for Everyone every Goal shows; rows = %q", got)
 	}
-	if box := pageTag(t, page, "input", "goal-mine-filter"); strings.Contains(box, "checked") {
-		t.Errorf("Mine only is checked without ?mine=1: %s", box)
+	if _, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != "" || label != "Everyone" {
+		t.Errorf("unscoped, the Scope select shows %q %q chosen, want Everyone", value, label)
+	}
+
+	later := testsupport.Epoch.AddDate(0, 2, 0)
+	ownRed := h.ActiveGoal(sam, "Sam's red", "It matters.")
+	h.Checkin(sam, ownRed.ID, domain.HealthRed, "On fire.", "Put it out.", later)
+	kimsRed := h.ActiveGoal(kim, "Kim's red", "It matters.")
+	h.Checkin(kim, kimsRed.ID, domain.HealthRed, "On fire.", "Put it out.", later)
+	page = getBody(t, client, ts.URL+"/goals?org=mine&health=red")
+	if got := rowTitles(goalRows(t, page), owned, delegated, others, ownRed, kimsRed); !slices.Equal(got, []string{"Sam's red"}) {
+		t.Errorf("Mine and Red: rows = %q, want only Sam's red", got)
+	}
+}
+
+// Mine and an org are one Scope, not two filters: an org that resolves to
+// someone takes over from an older ?mine=1, listing the org's Goals the viewer
+// neither Owns nor is a Delegate on, while one naming no one leaves Mine.
+func TestGoalListScopesToAnOrgOverMine(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	org := newScopeOrgFixture(h)
+	ts := newServer(t, h)
+	oz := signInClient(t, ts.URL, "oz@example.com")
+
+	page := getBody(t, oz, scopeOrgURL(ts.URL, "/goals", org.Mia)+"&mine=1")
+	if got, want := rowTitles(goalRows(t, page), org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
+		t.Errorf("Mia's org over Mine: rows = %q, want %q", got, want)
+	}
+	if _, value, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != strconv.FormatInt(org.Mia.ID, 10) {
+		t.Errorf("Mia's org over Mine: the Scope select shows %q chosen", value)
+	}
+
+	for _, raw := range []string{"abc", "999999"} {
+		page := getBody(t, oz, ts.URL+"/goals?mine=1&org="+raw)
+		if got := rowTitles(goalRows(t, page), org.goals()...); !slices.Equal(got, []string{"Oz's goal"}) {
+			t.Errorf("mine=1&org=%s: rows = %q, want only Oz's", raw, got)
+		}
+		if _, value, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != "mine" {
+			t.Errorf("mine=1&org=%s: the Scope select shows %q chosen, want Mine", raw, value)
+		}
 	}
 }
 
 // My org keeps the Goals whose Owner is in the viewer's org, their own
-// included: for a VP every level below them, for a manager only their part. A
-// viewer with no one under them isn't offered it.
+// included: for a VP every level below them, for a manager only their part. The
+// filter bar's one Scope select, its first control, offers Everyone, Mine, My
+// org, then each other person's org under Other orgs, by Name with their email;
+// a viewer with no one under them isn't offered My org.
 func TestGoalListScopesToMyOrg(t *testing.T) {
 	t.Parallel()
 
@@ -861,18 +911,27 @@ func TestGoalListScopesToMyOrg(t *testing.T) {
 	if want := []string{"Max's goal", "Mia's goal", "Pax's goal", "Pia's goal", "Vera's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Vera's My org: rows = %q, want %q", got, want)
 	}
-	orgSel := pageElement(t, page, "select", "goal-org-filter")
-	if !strings.Contains(orgSel, fmt.Sprintf(`<option value="%d" selected>My org</option>`, org.Vera.ID)) {
-		t.Errorf("Vera's My org isn't the chosen scope: %s", orgSel)
+	sel := scopeSelect(t, page, "goal-scope-filter")
+	choices, value, label := scopeChoices(sel)
+	if want := []string{
+		"Everyone", "Mine", "My org",
+		"Other orgs: Max Marsh (max@example.com)", "Other orgs: Mia Moss (mia@example.com)", "Other orgs: Oz Ortiz (oz@example.com)",
+		"Other orgs: Pax Penn (pax@example.com)", "Other orgs: Pia Park (pia@example.com)",
+	}; !slices.Equal(choices, want) {
+		t.Errorf("the Scope select offers %q, want %q", choices, want)
 	}
-	if !strings.Contains(orgSel, `<option value="">Any org</option>`) {
-		t.Errorf("the org picker doesn't offer Any org, unchosen: %s", orgSel)
+	if want := strconv.FormatInt(org.Vera.ID, 10); value != want || label != "My org" {
+		t.Errorf("Vera's My org isn't the chosen scope: %q %q", value, label)
 	}
-	if !strings.Contains(orgSel, fmt.Sprintf(`<option value="%d">Mia Moss (mia@example.com)</option>`, org.Mia.ID)) {
-		t.Errorf("the org picker doesn't offer Mia by Name and email: %s", orgSel)
+	if attr(openTag(sel), "name") != "org" {
+		t.Errorf("the Scope select doesn't submit ?org=: %s", openTag(sel))
 	}
-	if !strings.Contains(orgSel, `aria-label="Org"`) {
-		t.Errorf("the org picker isn't labelled Org: %s", orgSel)
+	bar := between(t, page, `<div class="gl-bar">`, "</div>")
+	if !strings.HasPrefix(bar, `<div class="gl-bar"><select data-testid="goal-scope-filter"`) {
+		t.Errorf("the Scope select isn't the filter bar's first control: %s", bar)
+	}
+	if strings.Contains(page, `name="mine"`) || strings.Contains(page, "Mine only") {
+		t.Errorf("the filter bar still has a Mine only checkbox")
 	}
 	if count := pageElement(t, page, "p", "goal-count"); !strings.Contains(count, "5 Goals in My org") {
 		t.Errorf("the count doesn't name My org: %s", count)
@@ -887,8 +946,8 @@ func TestGoalListScopesToMyOrg(t *testing.T) {
 
 	pia := signInClient(t, ts.URL, "pia@example.com")
 	page = getBody(t, pia, ts.URL+"/goals")
-	if orgSel := pageElement(t, page, "select", "goal-org-filter"); strings.Contains(orgSel, "My org") {
-		t.Errorf("Pia, with no one under her, is offered My org: %s", orgSel)
+	if choices, _, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); slices.Contains(choices, "My org") {
+		t.Errorf("Pia, with no one under her, is offered My org: %q", choices)
 	}
 }
 
@@ -910,9 +969,9 @@ func TestGoalListScopesToAnotherPersonsOrg(t *testing.T) {
 	pia := signInClient(t, ts.URL, "pia@example.com")
 
 	page := getBody(t, pia, ts.URL+"/goals")
-	orgSel := pageElement(t, page, "select", "goal-org-filter")
+	orgSel := scopeSelect(t, page, "goal-scope-filter")
 	if !strings.Contains(orgSel, fmt.Sprintf(`<option value="%d">Max Marsh (max@example.com)</option>`, org.Max.ID)) {
-		t.Errorf("the org picker doesn't offer Max by Name and email: %s", orgSel)
+		t.Errorf("the Scope select doesn't offer Max by Name and email: %s", orgSel)
 	}
 
 	page = getBody(t, pia, scopeOrgURL(ts.URL, "/goals", org.Max))
@@ -923,7 +982,7 @@ func TestGoalListScopesToAnotherPersonsOrg(t *testing.T) {
 	if count := pageElement(t, page, "p", "goal-count"); !strings.Contains(count, "2 Goals in Max Marsh&#39;s org") {
 		t.Errorf("the count doesn't name Max's org: %s", count)
 	}
-	orgSel = pageElement(t, page, "select", "goal-org-filter")
+	orgSel = scopeSelect(t, page, "goal-scope-filter")
 	if !strings.Contains(orgSel, fmt.Sprintf(`<option value="%d" selected>Max Marsh (max@example.com)</option>`, org.Max.ID)) {
 		t.Errorf("Max's org isn't the chosen scope: %s", orgSel)
 	}
@@ -951,8 +1010,8 @@ func TestGoalListKeepsTheOrgInItsAddress(t *testing.T) {
 	if got, want := rowTitles(goalRows(t, page), org.goals()...), []string{"Pia's goal", "Mia's goal"}; !slices.Equal(got, want) {
 		t.Errorf("grouped in Mia's org, rows = %q, want %q", got, want)
 	}
-	if sel := pageElement(t, page, "select", "goal-org-filter"); !strings.Contains(sel, `value="`+orgID+`" selected`) {
-		t.Errorf("grouped, the org picker lost Mia: %s", sel)
+	if sel := scopeSelect(t, page, "goal-scope-filter"); !strings.Contains(sel, `value="`+orgID+`" selected`) {
+		t.Errorf("grouped, the Scope select lost Mia: %s", sel)
 	}
 	if table := pageElement(t, page, "a", "layout-table"); !strings.Contains(attr(openTag(table), "href"), "org="+orgID) {
 		t.Errorf("the Table toggle drops the org: %s", table)
@@ -963,8 +1022,8 @@ func TestGoalListKeepsTheOrgInItsAddress(t *testing.T) {
 		if got := rowTitles(goalRows(t, page), org.goals()...); len(got) != 6 {
 			t.Errorf("org=%q: rows = %q, want all 6", raw, got)
 		}
-		if sel := pageElement(t, page, "select", "goal-org-filter"); !strings.Contains(sel, `<option value="" selected>Any org</option>`) {
-			t.Errorf("org=%q: Any org isn't chosen: %s", raw, sel)
+		if _, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != "" || label != "Everyone" {
+			t.Errorf("org=%q: Everyone isn't chosen: %q %q", raw, value, label)
 		}
 	}
 }
@@ -984,7 +1043,7 @@ func TestGoalListIgnoresTheOldChainParameter(t *testing.T) {
 	if got := rowTitles(goalRows(t, page), org.goals()...); !slices.Equal(got, unscoped) || len(got) != 6 {
 		t.Errorf("?chain=: rows = %q, want the unscoped %q", got, unscoped)
 	}
-	if sel := pageElement(t, page, "select", "goal-org-filter"); !strings.Contains(sel, `<option value="" selected>Any org</option>`) || strings.Count(sel, "selected") != 1 {
+	if sel := scopeSelect(t, page, "goal-scope-filter"); !strings.Contains(sel, `<option value="" selected>Everyone</option>`) || strings.Count(sel, "selected") != 1 {
 		t.Errorf("?chain=: an org is chosen: %s", sel)
 	}
 }
@@ -1010,8 +1069,27 @@ func TestGoalListSaysAnEmptyOrgIsEmpty(t *testing.T) {
 	}
 }
 
-// With no Managers anywhere, as when no directory is synced, the list offers
-// no org, and a ?org= link scopes nothing.
+// With My org offered and no one else's org holding Goals, the Scope select
+// has no Other orgs group.
+func TestGoalListScopeOffersNoOtherOrgsWhenNoneHoldGoals(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	vera := h.SignInNamed("vera@example.com", "Vera Vance")
+	lee := h.SignInNamed("lee@example.com", "Lee Lund")
+	h.SetManager(lee, vera)
+	h.ActiveGoal(vera, "Vera's goal", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "vera@example.com")
+
+	sel := scopeSelect(t, getBody(t, client, ts.URL+"/goals"), "goal-scope-filter")
+	if choices, _, _ := scopeChoices(sel); !slices.Equal(choices, []string{"Everyone", "Mine", "My org"}) || strings.Contains(sel, "<optgroup") {
+		t.Errorf("with no other org holding Goals the Scope select offers %q: %s", choices, sel)
+	}
+}
+
+// With no Managers anywhere, as when no directory is synced, the Scope select
+// offers no org, only Everyone and Mine, and a ?org= link scopes nothing.
 func TestGoalListOffersNoOrgWithoutManagers(t *testing.T) {
 	t.Parallel()
 
@@ -1024,8 +1102,8 @@ func TestGoalListOffersNoOrgWithoutManagers(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	page := getBody(t, client, ts.URL+"/goals?org="+strconv.FormatInt(kim.ID, 10))
-	if strings.Contains(page, "goal-org-filter") || strings.Contains(page, "Any org") {
-		t.Errorf("without Managers the list offers an org")
+	if choices, _, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); !slices.Equal(choices, []string{"Everyone", "Mine"}) {
+		t.Errorf("without Managers the Scope select offers %q, want only Everyone and Mine", choices)
 	}
 	if got := len(goalRows(t, page)); got != 2 {
 		t.Errorf("without Managers a ?org= scoped the list to %d Goals, want both", got)

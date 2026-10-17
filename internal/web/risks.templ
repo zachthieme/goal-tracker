@@ -12,17 +12,15 @@ import (
 // Goals need attention, a card per group of signals by who acts, then one
 // table row per flagged Goal, worst first, narrowed to one group when the
 // address asks for it, and at the bottom what each signal means. The header's
-// form and the Everyone | Mine | Org toggle scope it all to some Goals; #risks-body
-// is what a change of scope swaps. With no Goal left to show, #risks-body says
-// so in one line in place of the count, the cards and the table.
+// form scopes it all to some Goals; #risks-body is what a change of scope
+// swaps. With no Goal left to show, #risks-body says so in one line in place
+// of the count, the cards and the table.
 templ risksPage(current *domain.Account, v risksPageView) {
 	@layout("Risks", current) {
 		@risksStyles()
 		<header class="page-head">
 			<h1>Risks</h1>
-			if len(v.Dimensions) > 0 || v.Org.Offered() {
-				@risksFilters(v)
-			}
+			@risksFilters(v)
 		</header>
 		<div id="risks-body" class="rk-body">
 			if shown := v.Shown(); len(shown) == 0 {
@@ -33,12 +31,10 @@ templ risksPage(current *domain.Account, v risksPageView) {
 							<a href="/risks">Show everything</a>
 						}
 					</p>
-					@risksScope(v)
 				</div>
 			} else {
 				<div class="rk-head">
 					<p data-testid="risks-attention" class="muted"><strong>{ strconv.Itoa(len(v.Rows)) }</strong> { v.attention() }</p>
-					@risksScope(v)
 				</div>
 				<nav data-testid="risks-groups" class="rk-cards" aria-label="Risks by who acts">
 					for _, c := range v.Cards() {
@@ -69,31 +65,14 @@ templ risksDefinitions() {
 	</details>
 }
 
-// risksScope is the page's Everyone | Mine toggle, with My org for a viewer
-// with anyone under them, and, scoped to anyone else's org, that Org by
-// whose it is, as the current choice.
-templ risksScope(v risksPageView) {
-	<nav class="rk-scope" aria-label="Scope">
-		<a data-testid="risks-scope-everyone" class="btn quiet sm" href={ v.ScopeURL(riskPageScope{}) } { v.ScopeAttrs(riskPageScope{})... }>Everyone</a>
-		<a data-testid="risks-scope-mine" class="btn quiet sm" href={ v.ScopeURL(riskPageScope{Mine: true}) } { v.ScopeAttrs(riskPageScope{Mine: true})... }>Mine</a>
-		if v.Org.OffersMine {
-			<a data-testid="risks-scope-my-org" class="btn quiet sm" href={ v.ScopeURL(v.MyOrg()) } { v.ScopeAttrs(v.MyOrg())... }>My org</a>
-		}
-		if v.Org.Of != nil && (v.Org.Of.ID != v.Org.Viewer.ID || !v.Org.OffersMine) {
-			<a data-testid="risks-scope-org" class="btn quiet sm" href={ v.ScopeURL(v.scope()) } aria-current="page">{ v.Org.Name() }</a>
-		}
-	</nav>
-}
-
-// risksFilters scopes the Risks page to the Goals with a Dimension value, and
-// to an Org when anyone has a Manager, submitted as a GET so the scope lives
-// in the address, carrying the page's group and Mine along; an Org chosen
-// takes over from Mine. Under htmx it applies itself on a change, as the Goal
-// list's filter bar does, swapping in only #risks-body so the form keeps its
-// focus, and pushes the address; hx-history="false" makes Back load the
-// earlier address afresh rather than a snapshot whose select would come back
-// unchosen. Mine is a link outside the form, inside #risks-body, so a swap
-// keeps its address in step with the chosen value.
+// risksFilters scopes the Risks page by its Scope (Everyone, Mine or an
+// Org), and to the Goals with a Dimension value when there are Dimensions,
+// submitted as a GET so the scope lives in the address, carrying the page's
+// group along. Under htmx it applies itself on a change, as the Goal list's
+// filter bar does, swapping in only #risks-body so the form keeps its focus,
+// and pushes the address; hx-history="false" makes Back load the earlier
+// address afresh rather than a snapshot whose selects would come back
+// unchosen.
 templ risksFilters(v risksPageView) {
 	<form
 		method="get"
@@ -112,12 +91,7 @@ templ risksFilters(v risksPageView) {
 		if v.Group != "" {
 			<input type="hidden" name="group" value={ v.Group }/>
 		}
-		if v.Mine {
-			<input type="hidden" name="mine" value="1"/>
-		}
-		if v.Org.Offered() {
-			@pageOrgSelect("risks-org", v.Org)
-		}
+		@pageScopeSelect("risks-scope", v.Mine, v.Org)
 		if len(v.Dimensions) > 0 {
 			<select data-testid="risks-value" name="value" aria-label="Dimension value">
 				<option value="" selected?={ v.Value.ID == 0 }>Any value</option>
@@ -241,11 +215,10 @@ templ riskChip(today time.Time, g domain.Goal, sig riskSignal) {
 	}
 }
 
-// risksStyles are the Risks page's own rules on top of app.css: the scope
-// controls, the toggle styled as the Goal list's layout toggle, the summary
-// cards, the chips under each Goal in the table, the outlined neutral chip
-// the structural signals take: a .tag with the badges' small radius, and the
-// definitions' disclosure. The Health chips' print-only shapes stay hidden, as
+// risksStyles are the Risks page's own rules on top of app.css: the header
+// form, the summary cards, the chips under each Goal in the table, the
+// outlined neutral chip the structural signals take: a .tag with the badges'
+// small radius, and the definitions' disclosure. The Health chips' print-only shapes stay hidden, as
 // on the report pages, and an Owner's name keeps to one line. Below 600px each
 // table row stacks as a card, as the Reports list's do: the Goal cell, ordered
 // first though it comes second in the HTML, then Health and Owner on one line,
@@ -257,8 +230,6 @@ templ risksStyles() {
 		.rk-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 		.rk-head p{margin:0}
 		.rk-filters{display:flex;align-items:center;gap:8px}
-		.rk-scope{display:inline-flex;gap:4px}
-		.rk-scope a[aria-current=page]{background:var(--color-primary-subtle);color:var(--color-ink)}
 		.rk-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
 		.rk-card{padding:16px;display:flex;flex-direction:column;gap:8px}
 		.rk-card .num{font-size:24px}
