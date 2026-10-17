@@ -355,7 +355,9 @@ Load the fonts with this URL:
     Hand off, Reassign, Mark owner departed and Mark returned open in People,
     under the Owner. Delegates and Contributors forms open in their groups.
     Link to a parent Goal opens under Contributes to, and the Dimension and
-    Field forms in their blocks. Add a child Goal is the one menu item that
+    Field forms in their blocks. The Draft Highlight form opens in the Draft
+    Highlights block, from its **+ Log a highlight** link beside the
+    heading. Add a child Goal is the one menu item that
     doesn't open in place: it leads to the New goal form with this Goal picked
     as the parent (`/goals/new?parent=<id>`).
   - **Sidebar links (`.gp-group-head`):** a sidebar group whose form opens in
