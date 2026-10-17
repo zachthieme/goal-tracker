@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -105,6 +106,10 @@ type SubmitCheckinInput struct {
 	Lifecycle       string
 	LifecycleReason string
 	Outcome         string
+	// ConfirmOffTarget is the Owner's confirmation that the Goal is Green
+	// although a Metric is off target; without it such a Check-in is refused
+	// with a *GreenOffTargetError.
+	ConfirmOffTarget bool
 }
 
 // SubmitCheckin records a Check-in on a Goal. The Goal must be Active — a
@@ -189,6 +194,14 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	if err := s.rejectGreenWhileOverdue(health, milestones.resulting); err != nil {
 		return Checkin{}, err
 	}
+	// Health is the Owner's call (ADR-0003), so a Metric that missed its target
+	// only asks them to confirm a Green; an overdue Milestone, refused above,
+	// wins over it.
+	if health == HealthGreen && !in.ConfirmOffTarget {
+		if err := s.rejectGreenWhileOffTarget(ctx, goal.Goal.ID, in.Readings); err != nil {
+			return Checkin{}, err
+		}
+	}
 
 	pathTargetDate := ""
 	if needsPathToGreen(health) {
@@ -267,6 +280,80 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	return out, nil
 }
 
+// ErrGreenOffTarget is a Green Check-in refused because a Metric on the Goal is
+// off target (see Metric.OffTarget). A full Check-in may be confirmed Green
+// anyway; a No change can't repeat it.
+var ErrGreenOffTarget = errors.New("Green with a Metric off target")
+
+// OffTargetMetric is a Metric that has missed its target, with the reading
+// that missed it.
+type OffTargetMetric struct {
+	Metric  Metric
+	Reading float64
+}
+
+// GreenOffTargetError refuses a Green Check-in, unconfirmed, while Metrics on
+// the Goal are off target, naming each with its reading so the Owner can
+// confirm the Green or change it. It is both an ErrGreenOffTarget and an
+// ErrValidation.
+type GreenOffTargetError struct {
+	Metrics []OffTargetMetric
+}
+
+func (e *GreenOffTargetError) Error() string {
+	missed := make([]string, 0, len(e.Metrics))
+	for _, o := range e.Metrics {
+		missed = append(missed, fmt.Sprintf("%s is %s %s; its target was %s by %s",
+			o.Metric.Name, formatMetricValue(o.Reading), o.Metric.Unit, formatMetricValue(o.Metric.Target), o.Metric.TargetDate.Format(dateFormat)))
+	}
+	return fmt.Sprintf("%v: %s, so the Goal's Green needs confirming", ErrValidation, strings.Join(missed, "; "))
+}
+
+func (e *GreenOffTargetError) Unwrap() []error { return []error{ErrGreenOffTarget, ErrValidation} }
+
+// formatMetricValue renders a reading or target without trailing zeros.
+func formatMetricValue(v float64) string {
+	return strconv.FormatFloat(v, 'f', -1, 64)
+}
+
+// rejectGreenWhileOffTarget refuses a Green on goalID with a
+// *GreenOffTargetError while any of its Metrics is off target today, in the
+// org's timezone. Each Metric is judged by the reading entered in this
+// Check-in or, when none was, its latest recorded one; a Metric never read is
+// not off target.
+func (s *Service) rejectGreenWhileOffTarget(ctx context.Context, goalID int64, readings []MetricReadingInput) error {
+	metrics, err := s.ListMetrics(ctx, goalID)
+	if err != nil {
+		return err
+	}
+	entered := make(map[int64]float64, len(readings))
+	for _, rd := range readings {
+		entered[rd.MetricID] = rd.Value
+	}
+	today := orgDate(s.clock.Now(), s.loc)
+	var missed []OffTargetMetric
+	for _, m := range metrics {
+		reading, ok := entered[m.ID]
+		if !ok {
+			recorded, err := s.queries.ListMetricReadings(ctx, m.ID)
+			if err != nil {
+				return fmt.Errorf("list metric readings: %w", err)
+			}
+			if len(recorded) == 0 {
+				continue
+			}
+			reading = recorded[len(recorded)-1].Value
+		}
+		if m.OffTarget(reading, today) {
+			missed = append(missed, OffTargetMetric{Metric: m, Reading: reading})
+		}
+	}
+	if len(missed) > 0 {
+		return &GreenOffTargetError{Metrics: missed}
+	}
+	return nil
+}
+
 // validateReadings checks that each reading names a Metric on goalID; a reading
 // for a Metric that does not exist or belongs to another Goal is rejected.
 func (s *Service) validateReadings(ctx context.Context, goalID int64, readings []MetricReadingInput) error {
@@ -343,6 +430,13 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 	}
 	if err := s.rejectGreenWhileOverdue(prev.Health, milestones); err != nil {
 		return Checkin{}, fmt.Errorf("%w — submit a Check-in to update it", err)
+	}
+	// Nor a Green while a Metric is off target: only a full Check-in can
+	// confirm that.
+	if prev.Health == HealthGreen {
+		if err := s.rejectGreenWhileOffTarget(ctx, goalID, nil); err != nil {
+			return Checkin{}, fmt.Errorf("%w — submit a Check-in to confirm or update it", err)
+		}
 	}
 	return s.createCheckin(ctx, db.CreateCheckinParams{
 		GoalID:         goalID,

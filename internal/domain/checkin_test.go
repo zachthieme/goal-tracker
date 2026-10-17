@@ -480,3 +480,210 @@ func TestGreenRejectedWhenAddedMilestoneIsAlreadyPast(t *testing.T) {
 		t.Fatalf("err = %v, want ErrValidation", err)
 	}
 }
+
+// offTargetMetricGoal arranges an Active Goal whose Idle capacity Metric (down,
+// target 20 by Jan 30) last read 40.88 in a Green Check-in, then moves the
+// clock to Feb 2: past the Metric's target date, so it is off target, but
+// before the Goal's Milestone is due.
+func offTargetMetricGoal(t *testing.T, h *testsupport.Harness, owner domain.Account) (domain.Goal, domain.Metric) {
+	t.Helper()
+	ctx := context.Background()
+	goal := h.ActiveGoal(owner, "Reclaim idle capacity", "Idle machines cost money.")
+	m, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
+		GoalID:     goal.ID,
+		Name:       "Idle capacity",
+		Unit:       "percent",
+		Direction:  domain.MetricDown,
+		Baseline:   55,
+		Target:     20,
+		TargetDate: time.Date(2026, 1, 30, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: owner.ID,
+		Health:   domain.HealthGreen,
+		Status:   "Draining the old pool.",
+		Readings: []domain.MetricReadingInput{{MetricID: m.ID, Value: 40.88}},
+	}); err != nil {
+		t.Fatalf("Green before the Metric's target date: %v", err)
+	}
+	h.Clock.Set(time.Date(2026, 2, 2, 15, 0, 0, 0, time.UTC))
+	return goal, m
+}
+
+// A Green Check-in while a Metric is off target is refused until the Owner
+// confirms it: unconfirmed it records nothing and names the Metric and its
+// reading; confirmed, it records Green.
+func TestGreenWithOffTargetMetricNeedsConfirming(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal, idle := offTargetMetricGoal(t, h, sam)
+	before, _, _ := h.Service.LatestCheckin(context.Background(), goal.ID)
+
+	green := domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: sam.ID,
+		Health:   domain.HealthGreen,
+		Status:   "Still on track.",
+	}
+	_, err := h.Service.SubmitCheckin(context.Background(), green)
+	if !errors.Is(err, domain.ErrGreenOffTarget) || !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("unconfirmed Green: err = %v, want ErrGreenOffTarget and ErrValidation", err)
+	}
+	var offTarget *domain.GreenOffTargetError
+	if !errors.As(err, &offTarget) {
+		t.Fatalf("unconfirmed Green: err = %v, want a *GreenOffTargetError", err)
+	}
+	if len(offTarget.Metrics) != 1 || offTarget.Metrics[0].Metric.ID != idle.ID || offTarget.Metrics[0].Reading != 40.88 {
+		t.Errorf("off-target Metrics = %+v, want Idle capacity at 40.88", offTarget.Metrics)
+	}
+	if latest, _, _ := h.Service.LatestCheckin(context.Background(), goal.ID); latest.ID != before.ID {
+		t.Errorf("an unconfirmed Green was recorded")
+	}
+
+	green.ConfirmOffTarget = true
+	c, err := h.Service.SubmitCheckin(context.Background(), green)
+	if err != nil {
+		t.Fatalf("confirmed Green: %v", err)
+	}
+	if c.Health != domain.HealthGreen {
+		t.Errorf("Health = %q, want %q", c.Health, domain.HealthGreen)
+	}
+}
+
+// Only Green asks for confirming: a Yellow Check-in while a Metric is off
+// target records as any other.
+func TestYellowWithOffTargetMetricRecordsWithoutConfirming(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal, _ := offTargetMetricGoal(t, h, sam)
+
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:         goal.ID,
+		AuthorID:       sam.ID,
+		Health:         domain.HealthYellow,
+		Status:         "Idle capacity missed.",
+		PathToGreen:    "Retire the old pool.",
+		PathTargetDate: pathDate,
+	}); err != nil {
+		t.Fatalf("Yellow with an off-target Metric: %v", err)
+	}
+}
+
+// The reading entered in the Check-in is the one judged: one that reaches the
+// target means the Metric isn't off target, whatever it last read.
+func TestGreenWithReadingReachingTargetNeedsNoConfirming(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal, idle := offTargetMetricGoal(t, h, sam)
+
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: sam.ID,
+		Health:   domain.HealthGreen,
+		Status:   "Hit it.",
+		Readings: []domain.MetricReadingInput{{MetricID: idle.ID, Value: 20}},
+	}); err != nil {
+		t.Fatalf("Green with a reading at the target: %v", err)
+	}
+}
+
+// A Metric that has never been read isn't off target, even past its target
+// date.
+func TestGreenWithUnreadMetricPastItsDateNeedsNoConfirming(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reclaim idle capacity", "Idle machines cost money.")
+	if _, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+		GoalID: goal.ID, Name: "Idle capacity", Unit: "percent", Direction: domain.MetricDown,
+		Baseline: 55, Target: 20, TargetDate: time.Date(2026, 1, 30, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	h.Clock.Set(time.Date(2026, 2, 2, 15, 0, 0, 0, time.UTC))
+
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: sam.ID,
+		Health:   domain.HealthGreen,
+		Status:   "On track.",
+	}); err != nil {
+		t.Fatalf("Green with a never-read Metric: %v", err)
+	}
+}
+
+// When a Milestone is overdue too, Green is refused for the Milestone, which
+// no confirming gets past, and not with the off-target refusal.
+func TestGreenRefusedForOverdueMilestoneBeforeOffTargetMetric(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal, _ := offTargetMetricGoal(t, h, sam)
+	beta := onlyMilestone(t, h, goal.ID)
+	h.Clock.Set(beta.TargetDate.AddDate(0, 0, 1))
+
+	_, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:   goal.ID,
+		AuthorID: sam.ID,
+		Health:   domain.HealthGreen,
+		Status:   "On track.",
+	})
+	if !errors.Is(err, domain.ErrValidation) || errors.Is(err, domain.ErrGreenOffTarget) {
+		t.Fatalf("Green with an overdue Milestone and an off-target Metric: err = %v, want the overdue refusal", err)
+	}
+
+	if _, err := h.Service.SubmitNoChangeCheckin(context.Background(), goal.ID, sam.ID); !errors.Is(err, domain.ErrValidation) || errors.Is(err, domain.ErrGreenOffTarget) {
+		t.Fatalf("no-change Green with an overdue Milestone and an off-target Metric: err = %v, want the overdue refusal", err)
+	}
+}
+
+// A Metric's target date is judged in the org's timezone: late on its target
+// date in Los Angeles, already the next day in UTC, it isn't off target yet.
+func TestOffTargetJudgedInOrgTimezone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	la, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		t.Fatalf("load timezone: %v", err)
+	}
+	h.Service = domain.NewService(h.DB, h.Clock, h.Email, nil, domain.WithTimezone(la))
+	sam := h.SignIn("sam@example.com")
+	goal, _ := offTargetMetricGoal(t, h, sam)
+
+	green := domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "On track."}
+	h.Clock.Set(time.Date(2026, 1, 31, 5, 0, 0, 0, time.UTC)) // Jan 30, 9pm in Los Angeles
+	if _, err := h.Service.SubmitCheckin(context.Background(), green); err != nil {
+		t.Fatalf("Green on the Metric's target date in the org's timezone: %v", err)
+	}
+	h.Clock.Set(time.Date(2026, 1, 31, 9, 0, 0, 0, time.UTC)) // Jan 31, 1am in Los Angeles
+	if _, err := h.Service.SubmitCheckin(context.Background(), green); !errors.Is(err, domain.ErrGreenOffTarget) {
+		t.Fatalf("Green the day after the Metric's target date: err = %v, want ErrGreenOffTarget", err)
+	}
+}
+
+// A No change can't repeat a Green while a Metric is off target; the Owner
+// writes a full Check-in instead.
+func TestNoChangeGreenRefusedWhileMetricOffTarget(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal, _ := offTargetMetricGoal(t, h, sam)
+
+	if _, err := h.Service.SubmitNoChangeCheckin(context.Background(), goal.ID, sam.ID); !errors.Is(err, domain.ErrGreenOffTarget) {
+		t.Fatalf("no-change Green with an off-target Metric: err = %v, want ErrGreenOffTarget", err)
+	}
+}
