@@ -29,6 +29,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Goal page's History opens on its 5 latest entries instead of 20, and "Show earlier" adds 20 more at a time. A run of Check-ins that repeat the one before them, as No change Check-ins do, folds into one "No change ×N" entry that lists each folded Check-in's time and author behind a disclosure; the filter chips still count every Check-in (#279).
 - [user] Every page shows dates one way, "Nov 7", or "Nov 7, 2025" outside the current year, and times as "Nov 7, 15:04" in the org's timezone (`GOAL_TRACKER_TIMEZONE`), with no "UTC". This replaces the ISO dates on the Goal page, the Goal list and Reports, and History's "Sat 17 Oct 16:25". Report pages always show the year, a date Field's value shows as a date, and dates outside tables are no longer set in monospace. Date inputs still hold ISO dates (#276).
 - [user] Home's Your goals panel links to "Goals you own or help with →", the Goals list filtered to Mine, instead of every Goal in the org. Its list of Red and Yellow Goals now sits under a "Not Green" heading. A Stale Goal's Health on Home, in Check-ins due and in Not Green, is a muted badge with "as of N days ago" beside it, so a stale Green no longer reads as current (#274).
+- [user] The top bar now offers **Goals** between Home and Risks, marked current on the Goals list and every page under it — a Goal's page, New goal and a Check-in — so the main list is one click away from anywhere. On a narrow screen the nav items wrap onto another line rather than overflow (#273).
+- [user] The "Goal Tracker" brand link now goes to Home, the front door, instead of the Goals list (#273).
 
 **Bug fixes:**
 - [user] The New report and Edit report headers match the other pages: the breadcrumb sits above the title, both at the left, instead of the title being pushed to the far right (#277).
@@ -36,6 +38,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Documentation:**
 - [internal] DESIGN.md gains a "Dates and times" section with the two formats and their rules, and its History examples use the new wording (#276).
 - [internal] DESIGN.md describes Home's Your goals panel and the muted, dated Health of a Stale Goal on Home (#274).
+- [internal] DESIGN.md names the top bar's items and their order, and how an Admin's five items wrap at 320px (#273).
 
 ### Collected changes — October 6, 2026
 
