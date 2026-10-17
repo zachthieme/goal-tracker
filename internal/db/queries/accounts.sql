@@ -22,7 +22,7 @@ SELECT * FROM accounts WHERE departed = 1 ORDER BY email;
 UPDATE accounts SET manager_id = ? WHERE id = ?;
 
 -- name: ListAccountsUnder :many
--- The people whose Manager is one of the given Accounts: one level of a Chain.
+-- The people whose Manager is one of the given Accounts: one level of an Org.
 SELECT * FROM accounts WHERE manager_id IN (sqlc.slice(manager_ids)) ORDER BY id;
 
 -- name: ListManagedAccounts :many

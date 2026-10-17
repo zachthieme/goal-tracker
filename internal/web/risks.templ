@@ -12,7 +12,7 @@ import (
 // Goals need attention, a card per group of signals by who acts, then one
 // table row per flagged Goal, worst first, narrowed to one group when the
 // address asks for it, and at the bottom what each signal means. The header's
-// form and the Everyone | Mine | Chain toggle scope it all to some Goals; #risks-body
+// form and the Everyone | Mine | Org toggle scope it all to some Goals; #risks-body
 // is what a change of scope swaps. With no Goal left to show, #risks-body says
 // so in one line in place of the count, the cards and the table.
 templ risksPage(current *domain.Account, v risksPageView) {
@@ -20,7 +20,7 @@ templ risksPage(current *domain.Account, v risksPageView) {
 		@risksStyles()
 		<header class="page-head">
 			<h1>Risks</h1>
-			if len(v.Dimensions) > 0 || v.Chain.Offered() {
+			if len(v.Dimensions) > 0 || v.Org.Offered() {
 				@risksFilters(v)
 			}
 		</header>
@@ -69,25 +69,25 @@ templ risksDefinitions() {
 	</details>
 }
 
-// risksScope is the page's Everyone | Mine toggle, with My Chain for a viewer
-// with anyone under them, and, scoped to anyone else's Chain, that Chain by
+// risksScope is the page's Everyone | Mine toggle, with My org for a viewer
+// with anyone under them, and, scoped to anyone else's org, that Org by
 // whose it is, as the current choice.
 templ risksScope(v risksPageView) {
 	<nav class="rk-scope" aria-label="Scope">
 		<a data-testid="risks-scope-everyone" class="btn quiet sm" href={ v.ScopeURL(riskPageScope{}) } { v.ScopeAttrs(riskPageScope{})... }>Everyone</a>
 		<a data-testid="risks-scope-mine" class="btn quiet sm" href={ v.ScopeURL(riskPageScope{Mine: true}) } { v.ScopeAttrs(riskPageScope{Mine: true})... }>Mine</a>
-		if v.Chain.OffersMine {
-			<a data-testid="risks-scope-my-chain" class="btn quiet sm" href={ v.ScopeURL(v.MyChain()) } { v.ScopeAttrs(v.MyChain())... }>My Chain</a>
+		if v.Org.OffersMine {
+			<a data-testid="risks-scope-my-org" class="btn quiet sm" href={ v.ScopeURL(v.MyOrg()) } { v.ScopeAttrs(v.MyOrg())... }>My org</a>
 		}
-		if v.Chain.Of != nil && (v.Chain.Of.ID != v.Chain.Viewer.ID || !v.Chain.OffersMine) {
-			<a data-testid="risks-scope-chain" class="btn quiet sm" href={ v.ScopeURL(v.scope()) } aria-current="page">{ v.Chain.Name() }</a>
+		if v.Org.Of != nil && (v.Org.Of.ID != v.Org.Viewer.ID || !v.Org.OffersMine) {
+			<a data-testid="risks-scope-org" class="btn quiet sm" href={ v.ScopeURL(v.scope()) } aria-current="page">{ v.Org.Name() }</a>
 		}
 	</nav>
 }
 
 // risksFilters scopes the Risks page to the Goals with a Dimension value, and
-// to a Chain when anyone has a Manager, submitted as a GET so the scope lives
-// in the address, carrying the page's group and Mine along; a Chain chosen
+// to an Org when anyone has a Manager, submitted as a GET so the scope lives
+// in the address, carrying the page's group and Mine along; an Org chosen
 // takes over from Mine. Under htmx it applies itself on a change, as the Goal
 // list's filter bar does, swapping in only #risks-body so the form keeps its
 // focus, and pushes the address; hx-history="false" makes Back load the
@@ -115,8 +115,8 @@ templ risksFilters(v risksPageView) {
 		if v.Mine {
 			<input type="hidden" name="mine" value="1"/>
 		}
-		if v.Chain.Offered() {
-			@pageChainSelect("risks-chain", v.Chain)
+		if v.Org.Offered() {
+			@pageOrgSelect("risks-org", v.Org)
 		}
 		if len(v.Dimensions) > 0 {
 			<select data-testid="risks-value" name="value" aria-label="Dimension value">

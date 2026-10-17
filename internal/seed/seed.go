@@ -1,14 +1,14 @@
-// Package seed builds a fake but realistic org so a developer can demo the
+// Package seed builds a fake but realistic company so a developer can demo the
 // prototype without real data (ticket #23). It fills a fresh database the way
-// the org itself would: an Admin defines a Team Dimension, imports the Goals
-// through the spreadsheet import (internal/importer), and marks the org
+// the company itself would: an Admin defines a Team Dimension, imports the Goals
+// through the spreadsheet import (internal/importer), and marks the company
 // outcomes Top-level Goals, then the Owners activate them and write weeks of
 // Check-ins through the domain commands — Health, Paths to Green, Metric
 // readings, Date Slips, Milestone Churn, and Lifecycle changes.
 // Nothing is written to the database directly.
 //
-// The org is deterministic: the same random seed and the same end date build
-// the same org, Check-in for Check-in.
+// The seeded company is deterministic: the same random seed and the same end date build
+// the same company, Check-in for Check-in.
 package seed
 
 import (
@@ -27,7 +27,7 @@ import (
 )
 
 // DefaultSeed is the fixed random seed the seed command uses unless told
-// otherwise, so every developer demos the same org.
+// otherwise, so every developer demos the same company.
 const DefaultSeed uint64 = 23
 
 // weeks is how many weeks of Check-in history the seed writes, ending at the
@@ -38,12 +38,12 @@ const weeks = 12
 const dateFormat = "2006-01-02"
 
 // ErrNotFresh is returned when the database already holds Goals: the seed only
-// builds an org into a fresh database.
+// builds a company into a fresh database.
 var ErrNotFresh = errors.New("the database already has Goals; seed a fresh database")
 
 // Options configures a seed run.
 type Options struct {
-	// Seed is the random seed; the same seed builds the same org.
+	// Seed is the random seed; the same seed builds the same company.
 	Seed uint64
 	// Admin is the email of the Admin who defines the Team Dimension and runs
 	// the import. The Service must list it as an Admin.
@@ -56,7 +56,7 @@ type Summary struct {
 	Checkins int
 }
 
-// Run builds the fake org through svc. The history ends at clk's current time:
+// Run builds the fake company through svc. The history ends at clk's current time:
 // Run moves clk back to the start of the history and forward week by week as
 // the Owners check in, leaving it where it started.
 func Run(ctx context.Context, svc *domain.Service, clk *clock.Fixed, opts Options) (Summary, error) {
@@ -90,10 +90,10 @@ func Run(ctx context.Context, svc *domain.Service, clk *clock.Fixed, opts Option
 
 	rep, err := importer.New(svc).Commit(ctx, admin.ID, "seed.csv", plan.csv())
 	if err != nil {
-		return Summary{}, fmt.Errorf("import the org: %w", err)
+		return Summary{}, fmt.Errorf("import the company: %w", err)
 	}
 	if !rep.Committed {
-		return Summary{}, fmt.Errorf("import the org: %s", rowErrors(rep))
+		return Summary{}, fmt.Errorf("import the company: %s", rowErrors(rep))
 	}
 	for i, row := range rep.Rows {
 		plan.goals[i].id = row.GoalID
@@ -119,7 +119,7 @@ func Run(ctx context.Context, svc *domain.Service, clk *clock.Fixed, opts Option
 }
 
 // nameEveryone gives the Admin and every Owner the import created the Name the
-// org's sign-in would supply (CONTEXT.md: Name).
+// company's sign-in would supply (CONTEXT.md: Name).
 func nameEveryone(ctx context.Context, svc *domain.Service, admin domain.Account, p *plan) error {
 	if err := svc.SetName(ctx, admin.ID, nameOf(admin.Email)); err != nil {
 		return fmt.Errorf("name %s: %w", admin.Email, err)
@@ -141,17 +141,17 @@ func nameEveryone(ctx context.Context, svc *domain.Service, admin domain.Account
 	return nil
 }
 
-// plannedGoal is one Goal of the org with everything the random seed decided
+// plannedGoal is one Goal of the company with everything the random seed decided
 // about it.
 type plannedGoal struct {
 	entry
-	team       string // "" for an org outcome
+	team       string // "" for a company outcome
 	owner      string
 	parents    []string // titles of the Goals it contributes to
 	delivery   time.Time
 	milestones []plannedMilestone
 	metricCell string  // import-format Metric with its target date, or ""
-	level      int     // 1 for an org outcome, 2 for a team Goal, 3 for a project
+	level      int     // 1 for a company outcome, 2 for a team Goal, 3 for a project
 	profile    profile // how a project's weeks play out
 	// turn is the week a project's profile plays out: a troubled one turns
 	// Yellow, a churning one's scope moves, a stale one's Owner goes quiet, and
@@ -172,7 +172,7 @@ type plannedMilestone struct {
 	date time.Time
 }
 
-// plan is the whole org, outcomes first, then each team's Goals, then the
+// plan is the whole company, outcomes first, then each team's Goals, then the
 // projects, so every Goal comes after the Goals it contributes to.
 type plan struct {
 	goals []*plannedGoal

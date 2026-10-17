@@ -82,7 +82,7 @@ const listAccountsUnder = `-- name: ListAccountsUnder :many
 SELECT id, email, is_admin, created_at, departed, name, manager_id FROM accounts WHERE manager_id IN (/*SLICE:manager_ids*/?) ORDER BY id
 `
 
-// The people whose Manager is one of the given Accounts: one level of a Chain.
+// The people whose Manager is one of the given Accounts: one level of an Org.
 func (q *Queries) ListAccountsUnder(ctx context.Context, managerIds []*int64) ([]Account, error) {
 	query := listAccountsUnder
 	var queryParams []interface{}

@@ -19,7 +19,7 @@ const (
 )
 
 // newNotifier wires a Notifier over the harness's Service and its recording
-// email sender, on the org's default UTC calendar.
+// email sender, on the company's default UTC calendar.
 func newNotifier(h *testsupport.Harness) *notify.Notifier {
 	return notify.New(h.Service, h.Email, baseURL, time.UTC)
 }
@@ -135,7 +135,7 @@ func TestReminderGoesToDelegatesToo(t *testing.T) {
 	}
 }
 
-// Someone who has left the org isn't emailed: their Goal is Ownerless, but its
+// Someone who has left the company isn't emailed: their Goal is Ownerless, but its
 // Delegate is still reminded.
 func TestReminderSkipsADepartedOwner(t *testing.T) {
 	t.Parallel()
@@ -349,7 +349,7 @@ func TestDigestListsChildrenThatWentStaleThisWeek(t *testing.T) {
 	}
 }
 
-// The digest names a child that is Ownerless — its Owner left the org — so the
+// The digest names a child that is Ownerless — its Owner left the company — so the
 // parent's Owner can get it reassigned.
 func TestDigestListsOwnerlessChildren(t *testing.T) {
 	t.Parallel()
@@ -372,6 +372,9 @@ func TestDigestListsOwnerlessChildren(t *testing.T) {
 	body := digestTo(t, h.Email, "pat@example.com")
 	if !strings.Contains(body, "Launch pricing page") || !strings.Contains(body, "Ownerless") {
 		t.Errorf("digest does not say Launch pricing page is Ownerless:\n%s", body)
+	}
+	if !strings.Contains(body, "is Ownerless: kim has left the company") {
+		t.Errorf("digest does not say kim has left the company:\n%s", body)
 	}
 }
 

@@ -83,7 +83,7 @@ func (s *Service) StartHandoff(ctx context.Context, in StartHandoffInput) (Hando
 		return Handoff{}, fmt.Errorf("look up new owner: %w", err)
 	}
 	if newOwner.Departed != 0 {
-		return Handoff{}, fmt.Errorf("%w: the new Owner has left the org", ErrValidation)
+		return Handoff{}, fmt.Errorf("%w: the new Owner has left the company", ErrValidation)
 	}
 
 	if _, err := s.queries.GetPendingHandoffForGoal(ctx, in.GoalID); err == nil {
@@ -285,7 +285,7 @@ func (s *Service) RestoreHandoff(ctx context.Context, handoffID, actorID int64, 
 			return fmt.Errorf("look up new owner: %w", err)
 		}
 		if to.Departed != 0 {
-			return fmt.Errorf("%w: the new Owner has left the org", ErrValidation)
+			return fmt.Errorf("%w: the new Owner has left the company", ErrValidation)
 		}
 		n, err := tx.queries.ReopenRejectedHandoff(ctx, handoffID)
 		if err != nil {
@@ -400,7 +400,7 @@ func (s *Service) ReassignGoal(ctx context.Context, actorID, goalID, newOwnerID 
 		return Goal{}, fmt.Errorf("look up new owner: %w", err)
 	}
 	if newOwner.Departed != 0 {
-		return Goal{}, fmt.Errorf("%w: the new Owner has left the org", ErrValidation)
+		return Goal{}, fmt.Errorf("%w: the new Owner has left the company", ErrValidation)
 	}
 	err = s.WithinTx(ctx, func(tx *Service) error {
 		pending, err := tx.queries.GetPendingHandoffForGoal(ctx, goalID)

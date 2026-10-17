@@ -18,7 +18,7 @@ type Outcome struct {
 	Err    error
 }
 
-// Sync keeps the tool's Accounts and their Managers in step with the org's
+// Sync keeps the tool's Accounts and their Managers in step with the company's
 // directory (ADR 0008), and remembers how the last run went, for the Admin
 // page. Its methods are safe to call at once; runs take turns.
 type Sync struct {
@@ -52,9 +52,9 @@ func (s *Sync) Run(ctx context.Context) Outcome {
 	if err != nil {
 		s.log.Error("directory sync failed; Accounts and Managers are as they were, and the next sync tries again", "err", err)
 	} else {
-		s.log.Info("directory sync read the org's people", "people", res.People)
+		s.log.Info("directory sync read the company's people", "people", res.People)
 		for _, cycle := range res.Cycles {
-			s.log.Warn("the directory's Managers form a cycle; each Chain in it stops where it began", "people", cycleNames(cycle))
+			s.log.Warn("the directory's Managers form a cycle; each Org in it stops where it began", "people", cycleNames(cycle))
 		}
 	}
 

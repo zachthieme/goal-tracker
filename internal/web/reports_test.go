@@ -29,7 +29,7 @@ func TestSaveReportDefinitionAndSeeDraftOverHTTP(t *testing.T) {
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 
-	a := h.ActiveGoal(boss, "Grow revenue", "The org needs to grow.")
+	a := h.ActiveGoal(boss, "Grow revenue", "The company needs to grow.")
 	b := h.ActiveChildOf(boss, a, "Launch in EU", "Expand the market.")
 	c := h.ActiveChildOf(boss, a, "Cut churn", "Keep customers.")
 	h.Checkin(boss, b.ID, domain.HealthYellow, "slipping", "add staff", h.Clock.Now().AddDate(0, 1, 0))
@@ -933,7 +933,7 @@ func draftHighlightID(t *testing.T, h *testsupport.Harness, def domain.ReportDef
 
 // The publication opens with a Health summary: how many of the Report's
 // selected Goals are Red, Yellow, Green, and Stale, so an exec sees the shape
-// of the org before reading a block.
+// of the company before reading a block.
 func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1114,7 +1114,7 @@ func TestReportsListLinksToTheBuilderOverHTTP(t *testing.T) {
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
-	root := h.MarkTopLevel(boss, h.ActiveGoal(boss, "Grow revenue", "The org needs to grow."))
+	root := h.MarkTopLevel(boss, h.ActiveGoal(boss, "Grow revenue", "The company needs to grow."))
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{root.ID}})
 
 	ts := newServer(t, h)
@@ -1154,7 +1154,7 @@ func TestReportsListLinksToTheBuilderOverHTTP(t *testing.T) {
 	}
 }
 
-// A published definition's row dates its last publication in the org's
+// A published definition's row dates its last publication in the company's
 // timezone, "Jan 1" for 03:00 UTC on 2 January in Los Angeles, with who
 // published it; counts its draft's changes since in an amber pill; and draws
 // its Goals that have a Health as a bar labelled for assistive technology,
@@ -1835,7 +1835,7 @@ func TestRetiredDimensionLeavesReportFormButSavedFilterKeepsWorkingOverHTTP(t *t
 	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Trust")
 	h.CreateDimension(boss, "Team", "Core")
 	growth, trust := pillar.Values[0], pillar.Values[1]
-	grower := h.ActiveGoal(boss, "Grow revenue", "The org needs to grow.")
+	grower := h.ActiveGoal(boss, "Grow revenue", "The company needs to grow.")
 	truster := h.ActiveGoal(boss, "Earn trust", "Customers need to trust us.")
 	h.AssignGoalValue(grower, growth)
 	h.AssignGoalValue(truster, trust)
@@ -2112,7 +2112,7 @@ func TestReportFilterSelectsAGoalCarryingTheValueAmongSeveralOverHTTP(t *testing
 
 // The draft's header carries a History menu in place of the Publications
 // sidebar: each publication newest first, with its publisher and the date and
-// time it was published in the org's timezone, not UTC.
+// time it was published in the company's timezone, not UTC.
 func TestDraftHistoryListsPublicationsInTheOrgsTimezoneOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -2267,10 +2267,10 @@ func TestDraftListsTheGoalsInTheReportOverHTTP(t *testing.T) {
 	}
 }
 
-// A Chain rule reads back as "Owner is in the Chain of <Name>" in the draft's
+// An Org rule reads back as "Owner is in the org of <Name>" in the draft's
 // Goals panel and on the Reports list, and a Goal listed to Also include whose
-// Owner is in the Chain isn't marked added (CONTEXT.md: Chain).
-func TestReportsReadAChainRuleBackOverHTTP(t *testing.T) {
+// Owner is in the org isn't marked added (CONTEXT.md: Org).
+func TestReportsReadAnOrgRuleBackOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "vp@example.com")
@@ -2283,12 +2283,12 @@ func TestReportsReadAChainRuleBackOverHTTP(t *testing.T) {
 	def := h.SaveReportDefinition(vp, domain.SaveReportDefinitionInput{
 		Name:    "Priya's org",
 		Mode:    domain.ReportModeRules,
-		Rules:   []domain.ReportRule{{Attribute: domain.RuleChain, Op: domain.RuleIs, Values: []string{strconv.FormatInt(vp.ID, 10)}}},
+		Rules:   []domain.ReportRule{{Attribute: domain.RuleOrg, Op: domain.RuleIs, Values: []string{strconv.FormatInt(vp.ID, 10)}}},
 		Include: []int64{mias.ID, lees.ID},
 	})
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "vp@example.com")
-	const want = "Owner is in the Chain of Priya Raman · 2 added"
+	const want = "Owner is in the org of Priya Raman · 2 added"
 
 	panel := between(t, getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)), `<section data-testid="report-goals"`, `id="draft-preview"`)
 	if scope := pageElement(t, panel, "span", "scope-summary"); !strings.HasSuffix(scope, ">"+want) {
@@ -2304,7 +2304,17 @@ func TestReportsReadAChainRuleBackOverHTTP(t *testing.T) {
 		}
 	}
 	if list := getBody(t, client, ts.URL+"/reports"); !strings.Contains(list, `<span data-testid="report-scope" class="small muted">`+want+`</span>`) {
-		t.Errorf("the Reports list doesn't read the Chain rule as %s:\n%s", want, list)
+		t.Errorf("the Reports list doesn't read the Org rule as %s:\n%s", want, list)
+	}
+
+	h.SaveReportDefinition(vp, domain.SaveReportDefinitionInput{
+		Name:  "Outside Priya's org",
+		Mode:  domain.ReportModeRules,
+		Rules: []domain.ReportRule{{Attribute: domain.RuleOrg, Op: domain.RuleIsNot, Values: []string{strconv.FormatInt(vp.ID, 10)}}},
+	})
+	const notWant = "Owner is not in the org of Priya Raman"
+	if list := getBody(t, client, ts.URL+"/reports"); !strings.Contains(list, `<span data-testid="report-scope" class="small muted">`+notWant+`</span>`) {
+		t.Errorf("the Reports list doesn't read the is-not Org rule as %s:\n%s", notWant, list)
 	}
 }
 
@@ -2531,7 +2541,7 @@ func TestBaselineChipSaysWhatTheDraftReadsAgainstOverHTTP(t *testing.T) {
 	}
 }
 
-// The chip dates a publication in the org's calendar: published the evening
+// The chip dates a publication in the company's calendar: published the evening
 // of 1 March in Los Angeles (03:00 UTC on 2 March), it reads Mar 1.
 func TestBaselineChipDatesThePublicationInTheOrgsTimezoneOverHTTP(t *testing.T) {
 	t.Parallel()

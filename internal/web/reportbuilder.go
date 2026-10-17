@@ -456,20 +456,20 @@ func (s *Server) loadReportBuilder(r *http.Request, v *reportBuilderView) error 
 	if err != nil {
 		return err
 	}
-	chainPeople, err := s.chainRulePeople(r, v.Rules, distinctOwners(goals), managers)
+	orgPeople, err := s.orgRulePeople(r, v.Rules, distinctOwners(goals), managers)
 	if err != nil {
 		return err
 	}
-	v.Attributes = ruleAttributes(dims, distinctOwners(goals), chainPeople, len(managers) > 0)
+	v.Attributes = ruleAttributes(dims, distinctOwners(goals), orgPeople, len(managers) > 0)
 	v.Matches, err = s.matchReport(r, goals, *v, v.ID)
 	return err
 }
 
-// chainRulePeople are the people a Chain rule offers: the Owners, as the Owner
+// orgRulePeople are the people an Org rule offers: the Owners, as the Owner
 // rule offers, then each Manager who isn't one, then anyone a rule row already
 // names who is neither, so a saved rule keeps its people however the
 // directory has changed.
-func (s *Server) chainRulePeople(r *http.Request, rows []reportRuleRow, owners, managers []domain.Account) ([]domain.Account, error) {
+func (s *Server) orgRulePeople(r *http.Request, rows []reportRuleRow, owners, managers []domain.Account) ([]domain.Account, error) {
 	people := slices.Clone(owners)
 	add := func(a domain.Account) {
 		if !slices.ContainsFunc(people, func(p domain.Account) bool { return p.ID == a.ID }) {
@@ -480,7 +480,7 @@ func (s *Server) chainRulePeople(r *http.Request, rows []reportRuleRow, owners, 
 		add(m)
 	}
 	for _, row := range rows {
-		if row.Attribute != domain.RuleChain {
+		if row.Attribute != domain.RuleOrg {
 			continue
 		}
 		rule, _ := row.rule()
@@ -503,12 +503,12 @@ func (s *Server) chainRulePeople(r *http.Request, rows []reportRuleRow, owners, 
 }
 
 // ruleAttributes are what a rule can test: each Dimension and its values,
-// then Owner, the Owner's Chain, Lifecycle, Health and Top-level. A Retired
+// then Owner, the Owner's org, Lifecycle, Health and Top-level. A Retired
 // Dimension or value is marked, as only a saved rule that already tests it
-// still offers it; so is the Owner's Chain when no one has a Manager (anyManager
-// false), as a Chain is then only its person. Fields are not among them: they
+// still offers it; so is the Owner's org when no one has a Manager (anyManager
+// false), as an Org is then only its person. Fields are not among them: they
 // describe a Goal and never select it (ADR 0005).
-func ruleAttributes(dims []domain.Dimension, owners, chainPeople []domain.Account, anyManager bool) []ruleAttribute {
+func ruleAttributes(dims []domain.Dimension, owners, orgPeople []domain.Account, anyManager bool) []ruleAttribute {
 	var out []ruleAttribute
 	attribute := func(key, label string, values [][2]string) {
 		a := ruleAttribute{Key: key, Label: label}
@@ -537,7 +537,7 @@ func ruleAttributes(dims []domain.Dimension, owners, chainPeople []domain.Accoun
 		return out
 	}
 	attribute(domain.RuleOwner, "Owner", people(owners))
-	attribute(domain.RuleChain, "Owner's Chain", people(chainPeople))
+	attribute(domain.RuleOrg, "Owner's org", people(orgPeople))
 	out[len(out)-1].Retired = !anyManager
 	var lifecycles, healths [][2]string
 	for _, l := range []string{domain.LifecycleProposed, domain.LifecycleActive, domain.LifecycleOnHold, domain.LifecycleDone, domain.LifecycleCancelled} {
@@ -703,14 +703,14 @@ func (v reportBuilderView) rows() []reportRuleRow {
 
 // ruleOps are the operators a rule row offers, each with its label: "is
 // Top-level" and "is not Top-level" for a Top-level rule, which tests no
-// values, and "is in the Chain of" and the like for the Owner's Chain, so the
+// values, and "is in the org of" and the like for the Owner's org, so the
 // row reads as the rule does.
 func ruleOps(attribute string) [][2]string {
 	switch attribute {
 	case domain.RuleTopLevel:
 		return [][2]string{{domain.RuleIs, "is Top-level"}, {domain.RuleIsNot, "is not Top-level"}}
-	case domain.RuleChain:
-		return [][2]string{{domain.RuleIs, "is in the Chain of"}, {domain.RuleIsAnyOf, "is in the Chain of any of"}, {domain.RuleIsNot, "is not in the Chain of"}}
+	case domain.RuleOrg:
+		return [][2]string{{domain.RuleIs, "is in the org of"}, {domain.RuleIsAnyOf, "is in the org of any of"}, {domain.RuleIsNot, "is not in the org of"}}
 	}
 	return [][2]string{{domain.RuleIs, "is"}, {domain.RuleIsAnyOf, "is any of"}, {domain.RuleIsNot, "is not"}}
 }

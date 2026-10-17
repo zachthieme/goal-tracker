@@ -7,16 +7,16 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
-// chainEmails is the emails of the people in id's Chain, sorted, failing the
+// orgEmails is the emails of the people in id's Org, sorted, failing the
 // test on error.
-func chainEmails(t *testing.T, h *testsupport.Harness, id int64) []string {
+func orgEmails(t *testing.T, h *testsupport.Harness, id int64) []string {
 	t.Helper()
-	chain, err := h.Service.Chain(t.Context(), id)
+	org, err := h.Service.Org(t.Context(), id)
 	if err != nil {
-		t.Fatalf("Chain(%d): %v", id, err)
+		t.Fatalf("Org(%d): %v", id, err)
 	}
 	var out []string
-	for _, a := range chain {
+	for _, a := range org {
 		out = append(out, a.Email)
 	}
 	slices.Sort(out)
@@ -34,9 +34,9 @@ func hasAnyoneUnder(t *testing.T, h *testsupport.Harness, id int64) bool {
 	return under
 }
 
-// A person's Chain is them and everyone below them at every depth, by Manager
-// (CONTEXT.md: Chain); someone beside them, or above, isn't in it.
-func TestChainIsThePersonAndEveryoneBelowThem(t *testing.T) {
+// A person's Org is them and everyone below them at every depth, by Manager
+// (CONTEXT.md: Org); someone beside them, or above, isn't in it.
+func TestOrgIsThePersonAndEveryoneBelowThem(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -52,19 +52,19 @@ func TestChainIsThePersonAndEveryoneBelowThem(t *testing.T) {
 	h.SetManager(dev, lead)
 	h.SetManager(designer, cpo)
 
-	if got, want := chainEmails(t, h, cto.ID), []string{"cto@example.com", "dev@example.com", "lead@example.com"}; !slices.Equal(got, want) {
-		t.Errorf("CTO's Chain = %v, want %v", got, want)
+	if got, want := orgEmails(t, h, cto.ID), []string{"cto@example.com", "dev@example.com", "lead@example.com"}; !slices.Equal(got, want) {
+		t.Errorf("CTO's Org = %v, want %v", got, want)
 	}
-	if got := chainEmails(t, h, ceo.ID); len(got) != 6 {
-		t.Errorf("CEO's Chain = %v, want all six people", got)
+	if got := orgEmails(t, h, ceo.ID); len(got) != 6 {
+		t.Errorf("CEO's Org = %v, want all six people", got)
 	}
 	if !hasAnyoneUnder(t, h, cto.ID) {
 		t.Error("the CTO has people under them, but HasAnyoneUnder says not")
 	}
 }
 
-// Someone with nobody under them has a Chain of one: themselves.
-func TestChainOfSomeoneWithNobodyUnderThemIsThemAlone(t *testing.T) {
+// Someone with nobody under them has an Org of one: themselves.
+func TestOrgOfSomeoneWithNobodyUnderThemIsThemAlone(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -72,17 +72,17 @@ func TestChainOfSomeoneWithNobodyUnderThemIsThemAlone(t *testing.T) {
 	dev := h.SignIn("dev@example.com")
 	h.SetManager(dev, lead)
 
-	if got, want := chainEmails(t, h, dev.ID), []string{"dev@example.com"}; !slices.Equal(got, want) {
-		t.Errorf("Chain = %v, want %v", got, want)
+	if got, want := orgEmails(t, h, dev.ID), []string{"dev@example.com"}; !slices.Equal(got, want) {
+		t.Errorf("Org = %v, want %v", got, want)
 	}
 	if hasAnyoneUnder(t, h, dev.ID) {
 		t.Error("HasAnyoneUnder is true for someone with nobody under them")
 	}
 }
 
-// The directory's cycles are stored as given (ADR 0008), so a Chain stops at
+// The directory's cycles are stored as given (ADR 0008), so an Org stops at
 // anyone it has already reached: A→B→A and a self-reference end the walk.
-func TestChainWalkEndsAtACycle(t *testing.T) {
+func TestOrgWalkEndsAtACycle(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -95,11 +95,11 @@ func TestChainWalkEndsAtACycle(t *testing.T) {
 	h.SetManager(c, b)
 	h.SetManager(self, self)
 
-	if got, want := chainEmails(t, h, a.ID), []string{"a@example.com", "b@example.com", "c@example.com"}; !slices.Equal(got, want) {
-		t.Errorf("A's Chain = %v, want %v", got, want)
+	if got, want := orgEmails(t, h, a.ID), []string{"a@example.com", "b@example.com", "c@example.com"}; !slices.Equal(got, want) {
+		t.Errorf("A's Org = %v, want %v", got, want)
 	}
-	if got, want := chainEmails(t, h, self.ID), []string{"self@example.com"}; !slices.Equal(got, want) {
-		t.Errorf("a self-managed person's Chain = %v, want %v", got, want)
+	if got, want := orgEmails(t, h, self.ID), []string{"self@example.com"}; !slices.Equal(got, want) {
+		t.Errorf("a self-managed person's Org = %v, want %v", got, want)
 	}
 	if hasAnyoneUnder(t, h, self.ID) {
 		t.Error("a self-managed person with no one else under them has someone under them")

@@ -18,10 +18,10 @@ import (
 
 // handleRisks answers "what's going wrong?" for leadership: every Goal the
 // freshness and graph signals flag, by problem type, scoped by its address to
-// the viewer's own Goals (?mine=1) or a Chain's (?chain=), and to the Goals
+// the viewer's own Goals (?mine=1) or an Org's (?org=), and to the Goals
 // with an offered
 // Dimension's value (?value=). The scope narrows the rows only after they are
-// built: loadRisks stays org-wide for the top bar's count.
+// built: loadRisks stays company-wide for the top bar's count.
 func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	page, err := s.loadRisksPage(r.Context(), r.URL.Query(), current)
 	if err != nil {
@@ -73,15 +73,15 @@ func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain
 	if err != nil {
 		return risksPageView{}, err
 	}
-	chain, err := s.loadPageChainScope(ctx, q.Get("chain"), current, goals)
+	org, err := s.loadPageOrgScope(ctx, q.Get("org"), current, goals)
 	if err != nil {
 		return risksPageView{}, err
 	}
 	page := risksPageView{
 		risksView:  v,
 		Group:      riskGroupKey(q.Get("group")),
-		Mine:       q.Get("mine") == "1" && chain.Of == nil,
-		Chain:      chain,
+		Mine:       q.Get("mine") == "1" && org.Of == nil,
+		Org:        org,
 		Dimensions: domain.OfferedDimensions(dims),
 		Today:      s.svc.Now().In(s.svc.Timezone()),
 	}
@@ -101,7 +101,7 @@ func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain
 		if page.Mine && row.Goal.Owner.ID != current.ID && !facts.delegate[row.Goal.ID] {
 			continue
 		}
-		if !chain.keeps(row.Goal) {
+		if !org.keeps(row.Goal) {
 			continue
 		}
 		if valued != nil && !valued[row.Goal.ID] {
@@ -139,7 +139,7 @@ func riskValueLabel(v domain.DimensionValue) string {
 
 // risksPageView is the Risks page: its lists, its rows in scope, the group its
 // address filters it to, "" for every group, whether it is scoped to the
-// viewer's own Goals or a Chain, one at a time, the offered Dimensions and the
+// viewer's own Goals or an Org, one at a time, the offered Dimensions and the
 // value of theirs it is scoped to, if any, and today, which its dates are read
 // against.
 type risksPageView struct {
@@ -147,38 +147,38 @@ type risksPageView struct {
 	Rows       []riskGoalRow
 	Group      string
 	Mine       bool
-	Chain      pageChainScope
+	Org        pageOrgScope
 	Dimensions []domain.Dimension
 	Value      domain.DimensionValue
 	Today      time.Time
 }
 
 // riskPageScope is whose Goals the Risks page is scoped to: everyone's, the zero
-// value, the viewer's own (Mine), or the Chain of the person with ID Chain.
+// value, the viewer's own (Mine), or the Org of the person with ID Org.
 type riskPageScope struct {
-	Mine  bool
-	Chain int64
+	Mine bool
+	Org  int64
 }
 
 // scope is whose Goals the page is scoped to.
 func (p risksPageView) scope() riskPageScope {
-	if p.Chain.Of != nil {
-		return riskPageScope{Chain: p.Chain.Of.ID}
+	if p.Org.Of != nil {
+		return riskPageScope{Org: p.Org.Of.ID}
 	}
 	return riskPageScope{Mine: p.Mine}
 }
 
-// MyChain is the scope of the viewer's own Chain.
-func (p risksPageView) MyChain() riskPageScope {
-	return riskPageScope{Chain: p.Chain.Viewer.ID}
+// MyOrg is the scope of the viewer's own Org.
+func (p risksPageView) MyOrg() riskPageScope {
+	return riskPageScope{Org: p.Org.Viewer.ID}
 }
 
 // url is the Risks page's address filtered to group ("" for every group),
 // scoped to sc, and keeping the page's value scope.
 func (p risksPageView) url(group string, sc riskPageScope) string {
 	q := url.Values{}
-	if sc.Chain != 0 {
-		q.Set("chain", strconv.FormatInt(sc.Chain, 10))
+	if sc.Org != 0 {
+		q.Set("org", strconv.FormatInt(sc.Org, 10))
 	}
 	if group != "" {
 		q.Set("group", group)
@@ -210,7 +210,7 @@ func (p risksPageView) ScopeURL(sc riskPageScope) templ.SafeURL {
 	return templ.SafeURL(p.url(p.Group, sc))
 }
 
-// ScopeAttrs marks the Everyone | Mine | Chain choice the page is scoped to as
+// ScopeAttrs marks the Everyone | Mine | Org choice the page is scoped to as
 // the current one.
 func (p risksPageView) ScopeAttrs(sc riskPageScope) templ.Attributes {
 	if p.scope() == sc {
@@ -248,22 +248,22 @@ func (p risksPageView) Shown() []riskGoalRow {
 	return shown
 }
 
-// Filtered reports whether the page is scoped to Mine, a Chain or a value, or
+// Filtered reports whether the page is scoped to Mine, an Org or a value, or
 // filtered to a group.
 func (p risksPageView) Filtered() bool {
-	return p.Mine || p.Chain.Of != nil || p.Value.ID != 0 || p.Group != ""
+	return p.Mine || p.Org.Of != nil || p.Value.ID != 0 || p.Group != ""
 }
 
 // Empty is what the page says when no Goal is left to show: where nothing
-// needs attention, naming Mine or the Chain, the value with its Dimension's
+// needs attention, naming Mine or the Org, the value with its Dimension's
 // name, and the group's card's title, in that order.
 func (p risksPageView) Empty() string {
 	var parts []string
 	if p.Mine {
 		parts = append(parts, "Mine")
 	}
-	if p.Chain.Of != nil {
-		parts = append(parts, p.Chain.Name())
+	if p.Org.Of != nil {
+		parts = append(parts, p.Org.Name())
 	}
 	if p.Value.ID != 0 {
 		for _, d := range p.Dimensions {
@@ -365,7 +365,7 @@ func (p risksPageView) Cards() []riskCard {
 type risksView struct {
 	Stale        []domain.GoalFreshness
 	OverduePaths []domain.GoalFreshness
-	// Ownerless are the Active Goals whose Owner has left the org.
+	// Ownerless are the Active Goals whose Owner has left the company.
 	Ownerless []domain.Goal
 	Unaligned []domain.Goal
 	// ScheduleConflicts and HaltedParents are listed by their child, the Goal
@@ -398,7 +398,7 @@ func (v risksView) Types() []riskType {
 var riskDefinitions = []struct{ Name, Means string }{
 	{"Stale", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
 	{"Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green."},
-	{"Ownerless", "Active Goals whose Owner has left the org and hasn't been replaced."},
+	{"Ownerless", "Active Goals whose Owner has left the company and hasn't been replaced."},
 	{"Unaligned", "Active Goals that contribute to no other Goal and aren't Top-level."},
 	{"Schedule conflicts", "Goals due later than a Goal they contribute to."},
 	{"Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled."},
@@ -427,7 +427,7 @@ func (v risksView) Flagged() int {
 	return len(flagged)
 }
 
-// loadRisks reads every Goal the org's signals flag.
+// loadRisks reads every Goal the company's signals flag.
 func (s *Server) loadRisks(ctx context.Context) (risksView, error) {
 	fresh, err := s.svc.FreshnessSignals(ctx)
 	if err != nil {

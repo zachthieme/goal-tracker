@@ -284,7 +284,7 @@ templ reportBuilderScript() {
 			var ops = {
 				values: [["is", "is"], ["is any of", "is any of"], ["is not", "is not"]],
 				"top-level": [["is", "is Top-level"], ["is not", "is not Top-level"]],
-				chain: [["is", "is in the Chain of"], ["is any of", "is in the Chain of any of"], ["is not", "is not in the Chain of"]]
+				org: [["is", "is in the org of"], ["is any of", "is in the org of any of"], ["is not", "is not in the org of"]]
 			};
 			function narrow(row) {
 				var attribute = row.querySelector('[data-testid="rule-attribute"]').value;

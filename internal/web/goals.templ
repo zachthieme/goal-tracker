@@ -17,7 +17,7 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 		<header data-testid="goals-head" class="page-head">
 			<div>
 				<h1>Goals</h1>
-				<p class="muted">Every goal in the org. Problems sort to the top.</p>
+				<p class="muted">Every goal in the company. Problems sort to the top.</p>
 			</div>
 			<a data-testid="new-goal" class="btn primary" href="/goals/new">New goal</a>
 		</header>
@@ -27,7 +27,7 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 }
 
 // goalFilters is the filter bar — search, Health, Lifecycle, Mine only, the
-// Chain when anyone has a Manager, and Incomplete — with the Dimension filters and Group by folded under More
+// Org when anyone has a Manager, and Incomplete — with the Dimension filters and Group by folded under More
 // filters, all submitted as a GET so the chosen slice lives in the URL.
 //
 // Under htmx the form applies itself (#94): a change, a pause in typing the
@@ -74,8 +74,8 @@ templ goalFilters(view goalsListData) {
 				<input data-testid="goal-mine-filter" type="checkbox" name="mine" value="1" checked?={ view.Filter.Mine }/>
 				Mine only
 			</label>
-			if view.Chain.Offered() {
-				@pageChainSelect("goal-chain-filter", view.Chain)
+			if view.Org.Offered() {
+				@pageOrgSelect("goal-org-filter", view.Org)
 			}
 			<label class="gl-mine">
 				<input data-testid="goal-incomplete-filter" type="checkbox" name="incomplete" value="1" checked?={ view.Filter.Incomplete }/>
@@ -129,15 +129,15 @@ templ goalFilters(view goalsListData) {
 	</form>
 }
 
-// pageChainSelect picks the Chain a page of Goals is scoped to: Any Chain, My
-// Chain for a viewer with anyone under them, then each other person whose
-// Chain holds Goals, by Name with their email to tell same-Named people apart
-// (CONTEXT.md: Chain, Name). It submits ?chain=, the chosen person's ID.
-templ pageChainSelect(testID string, c pageChainScope) {
-	<select data-testid={ testID } name="chain" aria-label="Chain">
-		<option value="" selected?={ c.Of == nil }>Any Chain</option>
+// pageOrgSelect picks the Org a page of Goals is scoped to: Any org, My
+// org for a viewer with anyone under them, then each other person whose
+// Org holds Goals, by Name with their email to tell same-Named people apart
+// (CONTEXT.md: Org, Name). It submits ?org=, the chosen person's ID.
+templ pageOrgSelect(testID string, c pageOrgScope) {
+	<select data-testid={ testID } name="org" aria-label="Org">
+		<option value="" selected?={ c.Of == nil }>Any org</option>
 		if c.OffersMine || (c.Of != nil && c.Of.ID == c.Viewer.ID) {
-			<option value={ fmt.Sprint(c.Viewer.ID) } selected?={ c.Of != nil && c.Of.ID == c.Viewer.ID }>My Chain</option>
+			<option value={ fmt.Sprint(c.Viewer.ID) } selected?={ c.Of != nil && c.Of.ID == c.Viewer.ID }>My org</option>
 		}
 		for _, a := range c.Others() {
 			<option value={ fmt.Sprint(a.ID) } selected?={ c.Of != nil && c.Of.ID == a.ID }>{ a.LongLabel() }</option>
@@ -615,7 +615,7 @@ templ goalPage(current *domain.Account, v goalView) {
 	@layout(g.Title, current) {
 		@goalPageStyles()
 		if g.Ownerless {
-			<p data-testid="goal-ownerless" class="alert ol" role="alert"><strong>Ownerless</strong><span>this Goal's Owner has left the org and it needs an Admin to reassign it.</span></p>
+			<p data-testid="goal-ownerless" class="alert ol" role="alert"><strong>Ownerless</strong><span>this Goal's Owner has left the company and it needs an Admin to reassign it.</span></p>
 		}
 		<nav data-testid="goal-breadcrumb" class="small muted" aria-label="Breadcrumb">
 			<a href="/goals">Goals</a>
@@ -934,7 +934,7 @@ templ ownerForms(v goalView) {
 		@openGoalForm(v, formDepart, "Mark owner departed") {
 			<p class="small muted">
 				@person(g.Owner)
-				{ " has left the org." }
+				{ " has left the company." }
 			</p>
 			<form data-testid="depart-owner" method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/depart", g.Owner.ID)) } onsubmit={ confirmScript(confirmDepart) }>
 				<button type="submit" class="btn danger" autofocus>
@@ -949,7 +949,7 @@ templ ownerForms(v goalView) {
 		@openGoalForm(v, formReturn, "Mark returned") {
 			<p class="small muted">
 				@person(g.Owner)
-				{ " is back in the org." }
+				{ " is back in the company." }
 			</p>
 			<form data-testid="return-owner" method="post" action={ templ.SafeURL(fmt.Sprintf("/accounts/%d/return", g.Owner.ID)) } onsubmit={ confirmScript(confirmReturn) }>
 				<button type="submit" class="btn" autofocus>
@@ -966,7 +966,7 @@ templ ownerForms(v goalView) {
 const soWhatHelp = "The customer problem this Goal addresses and what is expected to change when it succeeds."
 
 // topLevelHelp says what Top-level means, opened from the Goal page's badge.
-const topLevelHelp = "One of the org's root outcomes"
+const topLevelHelp = "One of the company's root outcomes"
 
 // confirmDepart is what an Admin confirms before marking a Goal's Owner departed.
 const confirmDepart = "Mark this Owner departed? Every Goal they own becomes Ownerless until an Admin reassigns it."

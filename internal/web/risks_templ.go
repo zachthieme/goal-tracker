@@ -20,7 +20,7 @@ import (
 // Goals need attention, a card per group of signals by who acts, then one
 // table row per flagged Goal, worst first, narrowed to one group when the
 // address asks for it, and at the bottom what each signal means. The header's
-// form and the Everyone | Mine | Chain toggle scope it all to some Goals; #risks-body
+// form and the Everyone | Mine | Org toggle scope it all to some Goals; #risks-body
 // is what a change of scope swaps. With no Goal left to show, #risks-body says
 // so in one line in place of the count, the cards and the table.
 func risksPage(current *domain.Account, v risksPageView) templ.Component {
@@ -64,7 +64,7 @@ func risksPage(current *domain.Account, v risksPageView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if len(v.Dimensions) > 0 || v.Chain.Offered() {
+			if len(v.Dimensions) > 0 || v.Org.Offered() {
 				templ_7745c5c3_Err = risksFilters(v).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -272,8 +272,8 @@ func risksDefinitions() templ.Component {
 	})
 }
 
-// risksScope is the page's Everyone | Mine toggle, with My Chain for a viewer
-// with anyone under them, and, scoped to anyone else's Chain, that Chain by
+// risksScope is the page's Everyone | Mine toggle, with My org for a viewer
+// with anyone under them, and, scoped to anyone else's org, that Org by
 // whose it is, as the current choice.
 func risksScope(v risksPageView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -342,15 +342,15 @@ func risksScope(v risksPageView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if v.Chain.OffersMine {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<a data-testid=\"risks-scope-my-chain\" class=\"btn quiet sm\" href=\"")
+		if v.Org.OffersMine {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<a data-testid=\"risks-scope-my-org\" class=\"btn quiet sm\" href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var13 templ.SafeURL
-			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs(v.ScopeURL(v.MyChain()))
+			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs(v.ScopeURL(v.MyOrg()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 80, Col: 92}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 80, Col: 88}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
@@ -360,24 +360,24 @@ func risksScope(v risksPageView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templ.RenderAttributes(ctx, templ_7745c5c3_Buffer, v.ScopeAttrs(v.MyChain()))
+			templ_7745c5c3_Err = templ.RenderAttributes(ctx, templ_7745c5c3_Buffer, v.ScopeAttrs(v.MyOrg()))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, ">My Chain</a> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, ">My org</a> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		if v.Chain.Of != nil && (v.Chain.Of.ID != v.Chain.Viewer.ID || !v.Chain.OffersMine) {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<a data-testid=\"risks-scope-chain\" class=\"btn quiet sm\" href=\"")
+		if v.Org.Of != nil && (v.Org.Of.ID != v.Org.Viewer.ID || !v.Org.OffersMine) {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<a data-testid=\"risks-scope-org\" class=\"btn quiet sm\" href=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var14 templ.SafeURL
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinURLErrs(v.ScopeURL(v.scope()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 83, Col: 87}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 83, Col: 85}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 			if templ_7745c5c3_Err != nil {
@@ -388,9 +388,9 @@ func risksScope(v risksPageView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var15 string
-			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(v.Chain.Name())
+			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(v.Org.Name())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 83, Col: 126}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 83, Col: 122}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
@@ -410,8 +410,8 @@ func risksScope(v risksPageView) templ.Component {
 }
 
 // risksFilters scopes the Risks page to the Goals with a Dimension value, and
-// to a Chain when anyone has a Manager, submitted as a GET so the scope lives
-// in the address, carrying the page's group and Mine along; a Chain chosen
+// to an Org when anyone has a Manager, submitted as a GET so the scope lives
+// in the address, carrying the page's group and Mine along; an Org chosen
 // takes over from Mine. Under htmx it applies itself on a change, as the Goal
 // list's filter bar does, swapping in only #risks-body so the form keeps its
 // focus, and pushes the address; hx-history="false" makes Back load the
@@ -468,8 +468,8 @@ func risksFilters(v risksPageView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		if v.Chain.Offered() {
-			templ_7745c5c3_Err = pageChainSelect("risks-chain", v.Chain).Render(ctx, templ_7745c5c3_Buffer)
+		if v.Org.Offered() {
+			templ_7745c5c3_Err = pageOrgSelect("risks-org", v.Org).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
