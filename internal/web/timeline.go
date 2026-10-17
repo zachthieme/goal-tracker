@@ -376,12 +376,12 @@ type historyWeek struct {
 
 // weeks are the shown slots grouped by the week they fell in.
 func (h history) weeks() []historyWeek {
-	listed := h.slots()
-	if len(listed) > h.Shown {
-		listed = listed[:h.Shown]
+	slots := h.slots()
+	if len(slots) > h.Shown {
+		slots = slots[:h.Shown]
 	}
 	var out []historyWeek
-	for _, e := range listed {
+	for _, e := range slots {
 		heading := h.weekHeading(e.At)
 		if len(out) == 0 || out[len(out)-1].Heading != heading {
 			out = append(out, historyWeek{Heading: heading})

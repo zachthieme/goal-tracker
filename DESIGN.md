@@ -406,6 +406,20 @@ Load the fonts with this URL:
     wrote it, by Name, "for" the Owner when a Delegate wrote it. Its Metric
     readings and its explanation of a Health that differs from the Rolled-up
     Health sit in a small "Readings and explanation" disclosure on the entry.
+  - **A folded "No change" entry (`historyFolded`):** a Check-in that
+    repeats the entry just before it — another Check-in with the same Health,
+    status, Path to Green, target date and explanation — while recording
+    nothing more (no Date Slip, Milestone or Lifecycle change, Highlight,
+    discarded Draft Highlight, or Metric reading that differs from the one
+    before) is a repeat, as a No change Check-in is. The first Check-in of a
+    run shows in full; the repeats after it fold into one Check-in entry at
+    the newest one's place and week, reading "No change", or "No change ×3"
+    for several, beside the Health marker and badge it repeats and the newest
+    one's time. A small disclosure on it lists each folded Check-in's time and
+    who wrote it, "for" the Owner when a Delegate did. Any other entry between
+    two Check-ins keeps them apart, so folding follows the filter: two
+    identical Check-ins with a So What revision between them show in full
+    under All and fold under Check-ins. Chips still count every Check-in.
   - **A link entry** is on both Goals' timelines, phrased for the Goal it's
     on, with the other Goal's title as a link: "Requested to contribute to
     *Reduce outages*" on the child is "*Migrate displays* asked to contribute
@@ -450,9 +464,9 @@ Load the fonts with this URL:
     `aria-current="page"`, with a `--color-primary-light` fill and a
     `--color-primary` edge, and the rest sit on `--color-surface`. Chips are
     32px tall, and 44px on a coarse pointer.
-  - **Paging:** the latest 20 entries show. When there are more, a quiet
-    **Show earlier** link (`?shown=40`) reloads the page with 20 more under
-    the same filter. Chips and paging are links, so History works without
+  - **Paging:** the latest 5 entries show, a folded run counting as one.
+    When there are more, a quiet **Show earlier** link (`?shown=25`) reloads
+    the page with 20 more under the same filter. Chips and paging are links, so History works without
     script.
 - **Home's Needs you list (`homePage` in `home.templ`):** one card in the main
   column holding everything waiting on the person, in two subgroups, each a
