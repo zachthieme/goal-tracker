@@ -50,8 +50,9 @@ func TestTopBarMarksTheCurrentPage(t *testing.T) {
 	for _, tc := range []struct{ path, current string }{
 		{"/reports", "nav-reports"},
 		{"/home", "nav-home"},
+		{"/risks", "nav-risks"},
 		{"/dimensions", ""},
-		{"/goals", ""},
+		{"/goals", "nav-goals"},
 	} {
 		page := getBody(t, client, ts.URL+tc.path)
 		if !strings.Contains(page, `<link rel="stylesheet" href="/static/app.css`) {
@@ -63,7 +64,7 @@ func TestTopBarMarksTheCurrentPage(t *testing.T) {
 		if !strings.Contains(page, `<main class="page">`) {
 			t.Errorf("%s does not wrap its content in the page; body:\n%s", tc.path, page)
 		}
-		for _, item := range []string{"nav-home", "nav-risks", "nav-reports"} {
+		for _, item := range []string{"nav-home", "nav-goals", "nav-risks", "nav-reports"} {
 			link := pageElement(t, page, "a", item)
 			marked := strings.Contains(link, `aria-current="page"`) && strings.Contains(link, `class="navitem on"`)
 			if item == tc.current && !marked {
@@ -104,6 +105,31 @@ func TestTopBarMarksTheSectionOfANestedPage(t *testing.T) {
 	link := pageElement(t, page, "a", "nav-reports")
 	if !strings.Contains(link, `aria-current="page"`) {
 		t.Errorf("a Report page does not mark Reports current: %s", link)
+	}
+}
+
+// Every page under Goals — a Goal's page, New goal, a Goal's Check-in page —
+// marks Goals current, and only Goals.
+func TestTopBarMarksGoalsOnPagesUnderIt(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Grow revenue", "The org needs to grow.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	id := strconv.FormatInt(goal.ID, 10)
+	for _, path := range []string{"/goals/" + id, "/goals/new", "/goals/" + id + "/checkin"} {
+		page := getBody(t, client, ts.URL+path)
+		if link := pageElement(t, page, "a", "nav-goals"); !strings.Contains(link, `aria-current="page"`) || !strings.Contains(link, `class="navitem on"`) {
+			t.Errorf("on %s, Goals is not marked current: %s", path, link)
+		}
+		for _, item := range []string{"nav-home", "nav-risks", "nav-reports"} {
+			if link := pageElement(t, page, "a", item); strings.Contains(link, `aria-current`) {
+				t.Errorf("on %s, %s is marked current: %s", path, item, link)
+			}
+		}
 	}
 }
 
@@ -185,7 +211,7 @@ func TestNarrowTopBarPutsNavItemsOnASecondRow(t *testing.T) {
 		t.Fatalf("the top bar does not group its nav items:\n%s", page)
 	}
 	items := page[start : start+strings.Index(page[start:], "</div>")]
-	for _, item := range []string{"nav-home", "nav-risks", "nav-reports"} {
+	for _, item := range []string{"nav-home", "nav-goals", "nav-risks", "nav-reports"} {
 		if !strings.Contains(items, `data-testid="`+item+`"`) {
 			t.Errorf("%s is not in the nav items' row: %s", item, items)
 		}
@@ -214,6 +240,27 @@ func TestNarrowTopBarPutsNavItemsOnASecondRow(t *testing.T) {
 		if !strings.Contains(narrow, want) {
 			t.Errorf("on a narrow screen the nav items do not take a row of their own below (want %s): %s", want, narrow)
 		}
+	}
+}
+
+// On a narrow screen an Admin's five nav items wrap onto another line rather
+// than overflow when they don't fit on one: the nav items' own row wraps, not
+// just the top bar around it.
+func TestNarrowNavItemsWrapRatherThanOverflow(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	var items string
+	for _, block := range mediaBlocks(css, "@media (max-width:900px)") {
+		if decls, ok := ruleFor(block, ".navitems"); ok {
+			items += decls
+		}
+	}
+	if !strings.Contains(items, "flex-wrap:wrap") {
+		t.Errorf("on a narrow screen the nav items' row does not wrap: %s", items)
 	}
 }
 

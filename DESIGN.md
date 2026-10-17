@@ -221,15 +221,23 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   value is the top bar's own, not `--color-ink`, so the bar stays teal while the
   ink is neutral. Resting items use `--nav-ink-2`; hover is the
   translucent-white `--nav-hover`.
-  The current item (`.on`) gets a `--color-primary` underline or pill.
+  The nav items read **Home · Goals · Risks · Reports**, then **Admin** for an
+  Admin. Home counts what needs the person and Risks counts the Goals it flags;
+  Goals and Reports carry no count. The brand link goes to Home.
+  The current item (`.on`) gets a `--color-primary` underline or pill. An item
+  is current on its own page and every page under it, so a Goal's page, New
+  goal and a Check-in all mark Goals.
   Above 900px it is one 56px row. At 900px and below it takes two rows and
   never scrolls sideways. The brand, the person and Sign out are on the first
   row and the nav items (`.navitems`) are on the second, each label on one line.
   The person shows by Name alone, and a long Name truncates with an ellipsis.
   "Signed in as" and "(Admin)" are hidden visually with `font-size:0`, so screen
   readers still read them. At 360px and below the nav items' padding tightens
-  so an Admin's four items fit at 320px with two-digit counts, and so do the
-  gaps and padding beside Sign out, so the Theme menu fits beside it.
+  to fit an Admin's five items at 320px with two-digit counts. If they still
+  don't fit on one line, the nav items' row wraps onto another line
+  (`flex-wrap:wrap` on `.navitems`) rather than overflow, each label still on
+  one line. The gaps and padding beside Sign out tighten too, so the Theme menu
+  fits beside it.
 - **Theme menu (`.theme`):** a quiet "Theme" disclosure in the top bar beside
   Sign out, on every page including sign-in. Opened, it lists three choices in
   words: **System** (the default: follow the operating system), **Light** and
