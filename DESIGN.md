@@ -371,7 +371,13 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     script, and its panel (`.gp-menu`) is a card anchored right under the
     button. It lists actions, never forms: each item is a plain link, and each
     person sees only the actions they may take. When there would be none, the
-    menu is left out.
+    menu is left out. For whoever may check in, the menu also offers, after
+    the other items, the Lifecycle changes the Goal allows: **Put on hold…**,
+    **Mark done…** and **Cancel…** on an Active Goal, **Cancel…** alone on an
+    On Hold one, none otherwise. Unlike the other items, these lead to the
+    Check-in page with that change picked and its section open
+    (`/goals/{id}/checkin?lifecycle=<Lifecycle>`), for a Lifecycle change is
+    made in a Check-in.
 - **Forms that open in place (`.gp-open`):** a Goal page action's form opens
   in the part of the page it concerns, never in a modal, side panel or the
   menu. A menu item or sidebar link leads to `/goals/{id}?open=<form>`, which
@@ -388,9 +394,10 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     Link to a parent Goal opens under Contributes to, and the Dimension and
     Field forms in their blocks. The Draft Highlight form opens in the Draft
     Highlights block, from its **+ Log a highlight** link beside the
-    heading. Add a child Goal is the one menu item that
-    doesn't open in place: it leads to the New goal form with this Goal picked
-    as the parent (`/goals/new?parent=<id>`).
+    heading. A few menu items don't open in place but lead to a page of their
+    own: Add a child Goal to the New goal form with this Goal picked as the
+    parent (`/goals/new?parent=<id>`), Suggest a parent to its form, and the
+    Lifecycle changes to the Check-in page with the change picked.
   - **Sidebar links (`.gp-group-head`):** a sidebar group whose form opens in
     place has a small link beside its heading, shown only to those who may use
     it and hidden while its form is open: **Manage** for Delegates and for

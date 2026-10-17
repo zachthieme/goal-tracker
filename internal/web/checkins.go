@@ -32,7 +32,31 @@ func (s *Server) handleCheckinPage(w http.ResponseWriter, r *http.Request, curre
 		http.Error(w, "only the Owner or a Delegate may check in", http.StatusForbidden)
 		return
 	}
-	render(w, r, http.StatusOK, checkinPage(&current, view, checkinFormFromLatest(view)))
+	form := checkinFormFromLatest(view)
+	if to, ok := lifecycleFromQuery(r, form.Lifecycle); ok {
+		form.Lifecycle.To = to
+	}
+	render(w, r, http.StatusOK, checkinPage(&current, view, form))
+}
+
+// lifecycleFromQuery is the Lifecycle change the Goal page's menu picked for the
+// Check-in (?lifecycle=), when the form offers it from the Goal's current
+// Lifecycle and it isn't the form's default. Anything else is ignored, so the
+// form opens as it would without it.
+func lifecycleFromQuery(r *http.Request, l lifecycleFormData) (string, bool) {
+	to := r.URL.Query().Get("lifecycle")
+	if to == "" || to == l.defaultTo() {
+		return "", false
+	}
+	if l.Current != domain.LifecycleActive && l.Current != domain.LifecycleOnHold {
+		return "", false
+	}
+	for _, c := range l.choices() {
+		if c.To == to {
+			return to, true
+		}
+	}
+	return "", false
 }
 
 // handleSubmitCheckin records a Check-in on the Goal in the path, written by the

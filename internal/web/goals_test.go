@@ -4536,7 +4536,8 @@ func menuItems(t *testing.T, page string) map[string]string {
 // Admin gets Edit title and So What too, and adds Mark Top-level and Mark owner departed…, and on an Ownerless Goal
 // Reassign and Mark returned… in place of Hand off; anyone else only Add a
 // child Goal. Anyone but the Owner gets Suggest a parent, linking to its own
-// form.
+// form. The Owner also gets the Lifecycle changes, which lead to the Check-in
+// page (TestGoalPageActionMenuOffersLifecycleChangesOverHTTP).
 func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -4570,6 +4571,9 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 			"Add a child Goal":       child(goal),
 			"Edit Dimension values":  open(goal, "dimensions"),
 			"Edit Fields":            open(goal, "fields"),
+			"Put on hold…":           fmt.Sprintf("/goals/%d/checkin?lifecycle=On+Hold", goal.ID),
+			"Mark done…":             fmt.Sprintf("/goals/%d/checkin?lifecycle=Done", goal.ID),
+			"Cancel…":                fmt.Sprintf("/goals/%d/checkin?lifecycle=Cancelled", goal.ID),
 		}},
 		{"ada@example.com", goal, map[string]string{
 			"Edit title and So What": open(goal, "title-so-what"),
@@ -4600,6 +4604,88 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 		if got := menuItems(t, page); !maps.Equal(got, tc.want) {
 			t.Errorf("%s on %q: menu is %v, want %v", tc.who, tc.goal.Title, got, tc.want)
 		}
+	}
+}
+
+// lifecycleMenuItems are the action menu's Lifecycle items, label to where
+// each leads.
+func lifecycleMenuItems(t *testing.T, page string) map[string]string {
+	t.Helper()
+	out := map[string]string{}
+	for label, href := range menuItems(t, page) {
+		switch label {
+		case "Put on hold…", "Mark done…", "Cancel…":
+			out[label] = href
+		}
+	}
+	return out
+}
+
+// Whoever may check in — the Owner or a Delegate — finds the Lifecycle changes
+// the Goal allows in the action menu, after the other items: Put on hold…,
+// Mark done… and Cancel… on an Active Goal, Cancel… alone on an On Hold one,
+// none on a Proposed, Done or Cancelled one. Each leads to the Check-in page
+// with that change picked. Nobody else sees them, an Admin included.
+func TestGoalPageActionMenuOffersLifecycleChangesOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	tpm := h.SignIn("tpm@example.com")
+	h.SignIn("mel@example.com")
+	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	onHold := h.OnHoldGoal(sam, "Grow revenue", "Revenue funds the rest.", "Waiting on budget.")
+	proposed := h.CreateGoal(sam, "Hire a team", "We need people.")
+	done := h.ActiveGoal(sam, "Ship v1", "Customers wait.")
+	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
+	cancelled := h.ActiveGoal(sam, "Rewrite in Rust", "Speed.")
+	h.EndGoalInCheckin(sam, cancelled.ID, domain.LifecycleCancelled)
+	for _, g := range []domain.Goal{active, onHold, proposed, done, cancelled} {
+		h.AddDelegate(sam, tpm, g.ID)
+	}
+	ts := newServer(t, h)
+	checkin := func(g domain.Goal, to string) string {
+		return fmt.Sprintf("/goals/%d/checkin?lifecycle=%s", g.ID, url.QueryEscape(to))
+	}
+
+	for _, who := range []string{"sam@example.com", "tpm@example.com"} {
+		client := signInClient(t, ts.URL, who)
+		for _, tc := range []struct {
+			goal domain.Goal
+			want map[string]string
+		}{
+			{active, map[string]string{
+				"Put on hold…": checkin(active, domain.LifecycleOnHold),
+				"Mark done…":   checkin(active, domain.LifecycleDone),
+				"Cancel…":      checkin(active, domain.LifecycleCancelled),
+			}},
+			{onHold, map[string]string{"Cancel…": checkin(onHold, domain.LifecycleCancelled)}},
+			{proposed, map[string]string{}},
+			{done, map[string]string{}},
+			{cancelled, map[string]string{}},
+		} {
+			page := getBody(t, client, goalPageURL(ts.URL, tc.goal))
+			if got := lifecycleMenuItems(t, page); !maps.Equal(got, tc.want) {
+				t.Errorf("%s on the %s Goal: Lifecycle items are %v, want %v", who, tc.goal.Lifecycle, got, tc.want)
+			}
+		}
+	}
+	for _, who := range []string{"mel@example.com", "ada@example.com"} {
+		page := getBody(t, signInClient(t, ts.URL, who), goalPageURL(ts.URL, active))
+		if got := lifecycleMenuItems(t, page); len(got) > 0 {
+			t.Errorf("%s, who may not check in, sees Lifecycle items %v", who, got)
+		}
+	}
+
+	// They come last in the menu, in that order.
+	list := between(t, actionMenu(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, active))), "<ul", "</ul>")
+	var labels []string
+	for _, m := range menuLink.FindAllStringSubmatch(list, -1) {
+		labels = append(labels, html.UnescapeString(m[2]))
+	}
+	if n := len(labels); n < 4 || !slices.Equal(labels[n-3:], []string{"Put on hold…", "Mark done…", "Cancel…"}) {
+		t.Errorf("the Lifecycle items don't come last: %v", labels)
 	}
 }
 
