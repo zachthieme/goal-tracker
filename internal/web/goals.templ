@@ -26,9 +26,10 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 	}
 }
 
-// goalFilters is the filter bar — search, Health, Lifecycle, Mine only, the
-// Org when anyone has a Manager, and Incomplete — with the Dimension filters and Group by folded under More
-// filters, all submitted as a GET so the chosen slice lives in the URL.
+// goalFilters is the filter bar — the Scope (Everyone, Mine or an Org),
+// search, Health, Lifecycle and Incomplete — with the Dimension filters and
+// Group by folded under More filters, all submitted as a GET so the chosen
+// slice lives in the URL.
 //
 // Under htmx the form applies itself (#94): a change, a pause in typing the
 // search, or Enter GETs the view and swaps in only the list, so the form keeps
@@ -51,6 +52,7 @@ templ goalFilters(view goalsListData) {
 		hx-history="false"
 	>
 		<div class="gl-bar">
+			@pageScopeSelect("goal-scope-filter", view.Filter.Mine, view.Org)
 			<input data-testid="goal-search" type="search" name="q" value={ view.Filter.Query } placeholder="Search title or Owner" aria-label="Search Goals by title or Owner"/>
 			<select data-testid="goal-health-filter" name="health" aria-label="Health">
 				<option value="" selected?={ view.Filter.Health == "" }>Any Health</option>
@@ -70,13 +72,6 @@ templ goalFilters(view goalsListData) {
 					<option value={ lc } selected?={ view.Filter.Lifecycle == lc }>{ lc }</option>
 				}
 			</select>
-			<label class="gl-mine">
-				<input data-testid="goal-mine-filter" type="checkbox" name="mine" value="1" checked?={ view.Filter.Mine }/>
-				Mine only
-			</label>
-			if view.Org.Offered() {
-				@pageOrgSelect("goal-org-filter", view.Org)
-			}
 			<label class="gl-mine">
 				<input data-testid="goal-incomplete-filter" type="checkbox" name="incomplete" value="1" checked?={ view.Filter.Incomplete }/>
 				Incomplete
@@ -127,22 +122,6 @@ templ goalFilters(view goalsListData) {
 			}
 		}
 	</form>
-}
-
-// pageOrgSelect picks the Org a page of Goals is scoped to: Any org, My
-// org for a viewer with anyone under them, then each other person whose
-// Org holds Goals, by Name with their email to tell same-Named people apart
-// (CONTEXT.md: Org, Name). It submits ?org=, the chosen person's ID.
-templ pageOrgSelect(testID string, c pageOrgScope) {
-	<select data-testid={ testID } name="org" aria-label="Org">
-		<option value="" selected?={ c.Of == nil }>Any org</option>
-		if c.OffersMine || (c.Of != nil && c.Of.ID == c.Viewer.ID) {
-			<option value={ fmt.Sprint(c.Viewer.ID) } selected?={ c.Of != nil && c.Of.ID == c.Viewer.ID }>My org</option>
-		}
-		for _, a := range c.Others() {
-			<option value={ fmt.Sprint(a.ID) } selected?={ c.Of != nil && c.Of.ID == a.ID }>{ a.LongLabel() }</option>
-		}
-	</select>
 }
 
 // goalList is the htmx swap target: the Goal list as a table led by Health,

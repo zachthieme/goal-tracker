@@ -390,3 +390,40 @@ func (o scopeOrgFixture) goals() []domain.Goal {
 func scopeOrgURL(base, path string, who domain.Account) string {
 	return base + path + "?org=" + strconv.FormatInt(who.ID, 10)
 }
+
+// scopeSelect returns the page's one Scope select (CONTEXT.md: Org), failing
+// the test unless the page has exactly one control labelled Scope and it is
+// the select carrying testID.
+func scopeSelect(t *testing.T, page, testID string) string {
+	t.Helper()
+	if n := strings.Count(page, `aria-label="Scope"`); n != 1 {
+		t.Fatalf("page has %d controls labelled Scope, want 1", n)
+	}
+	sel := pageElement(t, page, "select", testID)
+	if !strings.Contains(openTag(sel), `aria-label="Scope"`) {
+		t.Fatalf("the %s select isn't labelled Scope: %s", testID, openTag(sel))
+	}
+	return sel
+}
+
+// scopeChoices reads a Scope select's options in order, each by its label,
+// those in a group led by the group's label ("Other orgs: Mia Moss
+// (mia@example.com)"), and the value and label of the one selected, if any.
+func scopeChoices(sel string) (choices []string, selectedValue, selectedLabel string) {
+	group := ""
+	for _, m := range regexp.MustCompile(`<optgroup label="([^"]*)">|</optgroup>|(<option[^>]*>)([^<]*)</option>`).FindAllStringSubmatch(sel, -1) {
+		switch {
+		case strings.HasPrefix(m[0], "<optgroup"):
+			group = html.UnescapeString(m[1]) + ": "
+		case m[0] == "</optgroup>":
+			group = ""
+		default:
+			label := html.UnescapeString(m[3])
+			choices = append(choices, group+label)
+			if regexp.MustCompile(`\sselected[\s/>]`).MatchString(m[2]) {
+				selectedValue, selectedLabel = attr(m[2], "value"), label
+			}
+		}
+	}
+	return choices, selectedValue, selectedLabel
+}

@@ -166,7 +166,8 @@ type goalFilter struct {
 	// Lifecycle keeps the Goals in one Lifecycle (?lifecycle=). "" keeps every
 	// Lifecycle.
 	Lifecycle string
-	// Mine keeps the Goals the viewer Owns or is a Delegate on (?mine=1).
+	// Mine keeps the Goals the viewer Owns or is a Delegate on (?org=mine, or
+	// the older ?mine=1). It is false when the list is scoped to an org.
 	Mine bool
 	// Incomplete keeps the Incomplete Goals (?incomplete=1; CONTEXT.md:
 	// Incomplete).
@@ -192,13 +193,14 @@ var healthFilters = []struct{ Value, Health string }{
 	{"none", ""},
 }
 
-// readGoalFilter reads the filter bar's fields from the query string.
-func readGoalFilter(q url.Values) goalFilter {
+// readGoalFilter reads the filter bar's fields from the query string, Mine
+// from the Scope, which an org scope takes over from.
+func readGoalFilter(q url.Values, org pageOrgScope) goalFilter {
 	return goalFilter{
 		Query:      strings.TrimSpace(q.Get("q")),
 		Health:     q.Get("health"),
 		Lifecycle:  q.Get("lifecycle"),
-		Mine:       q.Get("mine") == "1",
+		Mine:       scopedToMine(q, org),
 		Incomplete: q.Get("incomplete") == "1",
 	}
 }
@@ -346,7 +348,7 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 		return goalsListData{}, err
 	}
 	goals = domain.FilterGoals(goals, byDimension)
-	filter := readGoalFilter(r.URL.Query())
+	filter := readGoalFilter(r.URL.Query(), org)
 	delegatedIDs := map[int64]bool{}
 	if filter.Mine {
 		delegated, err := s.svc.DelegatedGoals(ctx, current.ID)
@@ -481,6 +483,16 @@ func (s *Server) loadPageOrgScope(ctx context.Context, raw string, current domai
 		scope.in[a.ID] = true
 	}
 	return scope, nil
+}
+
+// scopeMineValue is the ?org= scoping a page of Goals to Mine.
+const scopeMineValue = "mine"
+
+// scopedToMine reports whether the address q scopes its page to Mine: by
+// ?org=mine, or the older ?mine=1 that links and bookmarks still carry. An org
+// that resolves to someone takes over, so the page is scoped to one at a time.
+func scopedToMine(q url.Values, org pageOrgScope) bool {
+	return org.Of == nil && (q.Get("org") == scopeMineValue || q.Get("mine") == "1")
 }
 
 // keeps reports whether g's Owner is in the scope's org, or the page isn't
