@@ -67,16 +67,22 @@ templ homePage(current *domain.Account, v homeView) {
 						@healthCountTile("home-count-red", domain.HealthRed, v.Red)
 					</p>
 					if len(v.AtRisk) > 0 {
-						<ul class="hm-list hm-compact">
-							for _, g := range v.AtRisk {
-								<li>
-									<span class={ "badge", healthClass(g.Health) }><span class="dot"></span>{ g.Health }</span>
-									<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
-								</li>
-							}
-						</ul>
+						<div class="hm-group">
+							<h4 class="label">Not Green</h4>
+							<ul class="hm-list hm-compact">
+								for _, g := range v.AtRisk {
+									<li>
+										<span data-testid="home-goal-health" class={ "badge", healthClass(g.Health), templ.KV("as-of", healthAsOf(g) != "") }><span class="dot"></span>{ g.Health }</span>
+										if asOf := healthAsOf(g); asOf != "" {
+											<span data-testid="home-goal-as-of" class="muted small">{ asOf }</span>
+										}
+										<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
+									</li>
+								}
+							</ul>
+						</div>
 					}
-					<a href="/goals">All your goals →</a>
+					<a href="/goals?mine=1">Goals you own or help with →</a>
 				</section>
 				if v.Delegated > 0 {
 					<a data-testid="home-delegate-link" href="/delegates">
@@ -91,12 +97,13 @@ templ homePage(current *domain.Account, v homeView) {
 	}
 }
 
-// dueRow is one Goal to check in on: its Health, why it's listed, and the
-// one-click No change beside the Check in link to the Goal's Check-in page.
+// dueRow is one Goal to check in on: its Health, muted and dated when Stale,
+// why it's listed, and the one-click No change beside the Check in link to the
+// Goal's Check-in page.
 templ dueRow(g domain.PersonalGoal) {
 	<li data-testid="home-due-goal">
 		<div class="hm-what">
-			<span data-testid="home-due-health" class={ "badge", healthClass(g.Health) }>
+			<span data-testid="home-due-health" class={ "badge", healthClass(g.Health), templ.KV("as-of", healthAsOf(g) != "") }>
 				<span class="dot"></span>
 				if g.Health == "" {
 					No Health yet
@@ -104,6 +111,9 @@ templ dueRow(g domain.PersonalGoal) {
 					{ g.Health }
 				}
 			</span>
+			if asOf := healthAsOf(g); asOf != "" {
+				<span data-testid="home-due-as-of" class="muted small">{ asOf }</span>
+			}
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
 			if g.Freshness.Stale {
 				<span data-testid="home-due-stale" class="badge st">Stale</span>
@@ -254,5 +264,6 @@ templ homeStyles() {
 		.hm-bar>.g+.y,.hm-bar>.g+.r,.hm-bar>.y+.r{margin-left:4px}
 		.hm-group{display:flex;flex-direction:column;gap:8px}
 		.hm-group>h4{margin:0}
+		.badge.as-of{padding:0 8px;background:var(--color-surface);color:var(--color-ink-muted);border:1px solid var(--color-border)}
 	</style>
 }

@@ -496,7 +496,12 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   `.label` heading over ruled rows (`.hm-list`):
   - **Check-ins due:** the Goals the person owes a Check-in on, most overdue
     first. Each row keeps its Health badge, its Stale mark, a secondary
-    **No change** and a primary **Check in**. A Goal they are a Delegate on
+    **No change** and a primary **Check in**. A Stale Goal's Health is its
+    last Check-in's, so its badge is muted (`.badge.as-of`, Home's own rule:
+    card fill, muted ink, a 1px `--color-border` edge), keeping the Health's
+    name and dot shape, with a muted "as of 9 days ago" beside it. A Goal
+    that isn't Stale, or has no Health yet, keeps its full-colour badge and
+    no "as of". A Goal they are a Delegate on
     carries a "for [Owner]" tag, and appears only here.
   - **Requests:** link requests and Handoffs waiting on the person, oldest
     first. **Reject** is a quiet text button (`.btn.quiet`) and **Accept** a
@@ -520,6 +525,15 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   drawn, and with none to draw the bar is left out. The Health count badges
   beneath it are its labels, so it reads without colour, and its `aria-label`
   ("2 Green, 0 Yellow, 1 Red") says the same to a screen reader.
+- **Your goals panel (`homePage` in `home.templ`):** Home's sidebar card. The
+  Health distribution bar and the count badges count the Goals the person
+  Owns, a Stale one under its last Health. Beneath them a `.label` heading,
+  **Not Green**, styled like Needs you's subgroup headings, sits over a
+  compact list of those Goals that are Red, then Yellow. Their Health badges
+  are muted and dated when Stale, as in Check-ins due. With none, neither
+  heading nor list shows. The card ends with **Goals you own or help with →**,
+  which opens the Goals list filtered to Mine (`/goals?mine=1`): the Goals
+  the person Owns or is a Delegate on.
 - **Inputs:** `--color-surface`, 1px `--color-border-strong`, `--radius-md`,
   12px × 16px padding. On focus, the border becomes `--color-focus` and the
   field takes the same ring as everything else, `2px solid var(--color-focus)`,
