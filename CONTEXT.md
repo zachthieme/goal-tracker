@@ -1,33 +1,37 @@
 # Goal Tracker
 
-A single mechanism for an org to state its goals, update them on a regular cadence, and produce MBR-caliber reports at any cadence. It combines the rigor of an Amazon MBR, the ease of a 5-15, and the org-wide view of OKRs.
+A single mechanism for a company to state its goals, update them on a regular cadence, and produce MBR-caliber reports at any cadence. It combines the rigor of an Amazon MBR, the ease of a 5-15, and the company-wide view of OKRs.
 
 ## People
+
+**Company**:
+The whole organization using the tool: everyone who signs in, its directory of people and Managers, and its timezone. "Company-wide" means across all of it.
+_Avoid_: org, the org, organization (an **Org** is one person's part of it)
 
 **Account**:
 A person's identity in the tool, identified by their email address, matched whatever its letter case or surrounding spaces: `Sam@Example.com` and `sam@example.com` are the same Account. Owners, Delegates, Contributors and Admins are all Accounts.
 _Avoid_: user, member
 
 **Name**:
-What the tool calls a person. It comes from the org's sign-in and is never typed into the tool. A person without one is shown by the part of their email before the `@`. Two people can share a Name, so wherever the web pages show a person, the Name can be clicked, tapped or activated from the keyboard to show their email beside it, and activated again to hide it. Documents without controls, the Markdown export and the Print view, introduce each person as Name (email) on first mention instead.
+What the tool calls a person. It comes from the company's sign-in and is never typed into the tool. A person without one is shown by the part of their email before the `@`. Two people can share a Name, so wherever the web pages show a person, the Name can be clicked, tapped or activated from the keyboard to show their email beside it, and activated again to hide it. Documents without controls, the Markdown export and the Print view, introduce each person as Name (email) on first mention instead.
 _Avoid_: display name, full name, username
 
 **Manager**:
-The person someone reports to, as the org's directory records it. It is read from the directory and never set in the tool. Someone at the top of the org, or whom the directory gives no manager, has none.
+The person someone reports to, as the company's directory records it. It is read from the directory and never set in the tool. Someone at the top of the company, or whom the directory gives no manager, has none.
 _Avoid_: boss, supervisor, lead, reports to (it collides with Report)
 
-**Chain**:
-A person and everyone below them: the people whose Manager is that person, whose Manager's Manager is, and so on at every depth. "Priya's Chain" includes Priya. A Chain scopes what a page or Report shows by each Goal's Owner, never by its Delegates, and never limits or ranks a Contributes to link (ADR 0002). When a Manager changes, a Chain simply finds different Goals.
-_Avoid_: org, team, reporting line, org chart, direct reports
+**Org**:
+A person and everyone below them: the people whose Manager is that person, whose Manager's Manager is, and so on at every depth. "Priya's org" includes Priya; a viewer's own is "My org". An org scopes what a page or Report shows by each Goal's Owner, never by its Delegates, and never limits or ranks a Contributes to link (ADR 0002). When a Manager changes, an org simply finds different Goals.
+_Avoid_: Chain, team, reporting line, org chart, direct reports; "the org" for the whole company
 
 **Departed**:
-An Account whose person has left the org, as recorded by an Admin. A departed person can't sign in or act, but everything they did stays attributed to them. An Admin can reverse it.
+An Account whose person has left the company, as recorded by an Admin. A departed person can't sign in or act, but everything they did stays attributed to them. An Admin can reverse it.
 _Avoid_: deactivated, deleted, offboarded
 
 ## Goals and structure
 
 **Goal**:
-The single unit of work being tracked, at any level, from an org-wide outcome to a team project. It may carry Metrics and Milestones.
+The single unit of work being tracked, at any level, from a company-wide outcome to a team project. It may carry Metrics and Milestones.
 _Avoid_: Objective, Key Result, Project, Initiative (as distinct types)
 
 **So What**:
@@ -89,7 +93,7 @@ An Active Goal that contributes to no other Goal and is not a Top-level Goal. Al
 _Avoid_: orphan, root
 
 **Top-level Goal**:
-A Goal an Admin has marked as one of the org's root outcomes. It isn't expected to contribute to anything, so it's never Unaligned.
+A Goal an Admin has marked as one of the company's root outcomes. It isn't expected to contribute to anything, so it's never Unaligned.
 _Avoid_: root, north star, company goal
 
 **Dimension**:
@@ -116,7 +120,7 @@ _Avoid_: deleted, archived, disabled
 An Active Goal missing a value in a Dimension or Field that an Admin has marked required. Flagged and listed, but less prominently than Red or Stale. A Proposed Goal can't become Active while it would be Incomplete.
 _Avoid_: invalid, missing data
 
-Teams are not a built-in concept; an org that wants them adds a Team Dimension. The structure of the goal graph comes only from what Goals drive.
+Teams are not a built-in concept; a company that wants them adds a Team Dimension. The structure of the goal graph comes only from what Goals drive.
 
 ## Status
 
@@ -129,7 +133,7 @@ The worst Health among a Goal's active children, shown next to the Owner-set Hea
 _Avoid_: computed status, aggregate health
 
 **Stale**:
-An Active Goal whose last Check-in (or its activation, if it has none) is older than its expected cadence (weekly by default), counted in days of the org's timezone. On Hold Goals are never Stale. Surfaced as prominently as Red; a Rolled-up Health says how many children are Stale ("3 of 12 Stale") without changing its color.
+An Active Goal whose last Check-in (or its activation, if it has none) is older than its expected cadence (weekly by default), counted in days of the company's timezone. On Hold Goals are never Stale. Surfaced as prominently as Red; a Rolled-up Health says how many children are Stale ("3 of 12 Stale") without changing its color.
 _Avoid_: overdue, missing update
 
 **Lifecycle**:
@@ -177,7 +181,7 @@ A saved, reusable selection of Goals for a Report, made either by Report rules o
 _Avoid_: template, saved view, dashboard
 
 **Report rule**:
-A condition on a Goal's Dimension values, Owner, Owner's Chain, Lifecycle, Health or whether it's Top-level, that decides which Goals a Report Definition selects. A Goal must meet every rule, and meets a rule by having any of its values. A Chain rule reads "Owner is in the Chain of Priya": its Owner is in any named person's Chain, by the Managers as they are at each draft. Health means the Owner-set Health, and a Goal with no Health meets only "is not" rules on it. A rule-based Definition can also list Goals to **Also include** by hand and Goals to **Leave out** even when they match.
+A condition on a Goal's Dimension values, Owner, Owner's org, Lifecycle, Health or whether it's Top-level, that decides which Goals a Report Definition selects. A Goal must meet every rule, and meets a rule by having any of its values. An org rule reads "Owner is in the org of Priya": its Owner is in any named person's org, by the Managers as they are at each draft. Health means the Owner-set Health, and a Goal with no Health meets only "is not" rules on it. A rule-based Definition can also list Goals to **Also include** by hand and Goals to **Leave out** even when they match.
 _Avoid_: filter, query, criteria
 
 **Comment**:

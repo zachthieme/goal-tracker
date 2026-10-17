@@ -21,6 +21,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Bug fixes:**
 - [ops] `make start` no longer fails at `dev/authentik/apply.sh` when the Goal Tracker blueprint's last apply failed: the script now waits for its own apply's status instead of reading the earlier failure as this run's.
 
+**Documentation:**
+- [internal] The glossary renames **Chain** to **Org** ("Priya's org", "My org") and adds **Company** for the whole organization, so "the org" no longer means two things. ADR 0008 notes the rename. The code, screens and URLs follow in their own ticket (#236).
+
 ### Collected changes — October 5, 2026
 
 **Breaking changes:**
