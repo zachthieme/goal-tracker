@@ -2509,3 +2509,148 @@ func checkinGhostTextarea(t *testing.T, form, name string) (tag, typed string) {
 	}
 	return rest[:open+1], html.UnescapeString(rest[open+1 : end])
 }
+
+// offTargetIdleGoal arranges an Active Goal whose Idle capacity Metric (down,
+// target 20 by Jan 30) last read 40.88, with the clock moved to Feb 2: past the
+// Metric's target date, so it is off target, and before the Beta Milestone is
+// due.
+func offTargetIdleGoal(t *testing.T, h *testsupport.Harness, owner domain.Account) (domain.Goal, domain.Metric) {
+	t.Helper()
+	ctx := context.Background()
+	goal := h.ActiveGoal(owner, "Reclaim idle capacity", "Idle machines cost money.")
+	idle, err := h.Service.AddMetric(ctx, domain.AddMetricInput{
+		GoalID: goal.ID, Name: "Idle capacity", Unit: "percent", Direction: domain.MetricDown,
+		Baseline: 55, Target: 20, TargetDate: time.Date(2026, 1, 30, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+		GoalID: goal.ID, AuthorID: owner.ID, Health: domain.HealthGreen, Status: "Draining the old pool.",
+		Readings: []domain.MetricReadingInput{{MetricID: idle.ID, Value: 40.88}},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	h.Clock.Set(time.Date(2026, 2, 2, 15, 0, 0, 0, time.UTC))
+	return goal, idle
+}
+
+// A Green Check-in while a Metric is off target records nothing: the form comes
+// back as typed with a warning naming the Metric, its reading and unit, its
+// target and target date, and a Save as Green anyway button in the form.
+func TestCheckinGreenWithOffTargetMetricWarnsBeforeSaving(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal, idle := offTargetIdleGoal(t, h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	body, status := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":                           {domain.HealthGreen},
+		"status":                           {"Old pool nearly drained."},
+		fmt.Sprintf("reading_%d", idle.ID): {"35.5"},
+	})
+
+	if status != http.StatusOK {
+		t.Errorf("htmx status = %d, want 200 so the form swaps in", status)
+	}
+	warning := pageElement(t, body, "section", "checkin-off-target")
+	if !strings.Contains(warning, "Idle capacity is 35.5 percent; its target was 20 by Jan 30.") {
+		t.Errorf("warning does not name the Metric, the reading entered, its target and date: %s", warning)
+	}
+	confirm := tagAround(t, warning, `name="confirm_off_target"`)
+	if !strings.Contains(confirm, `type="submit"`) || attr(confirm, "value") != "1" || !strings.Contains(warning, "Save as Green anyway") {
+		t.Errorf("warning offers no Save as Green anyway that submits the form confirmed: %s", warning)
+	}
+	if !strings.Contains(body, "Old pool nearly drained.</textarea>") {
+		t.Errorf("the status typed was lost; body:\n%s", body)
+	}
+	if !strings.Contains(body, `value="35.5"`) {
+		t.Errorf("the reading typed was lost; body:\n%s", body)
+	}
+	if !strings.Contains(tagAround(t, body, `value="Green"`), "checked") {
+		t.Errorf("the Health picked was lost; body:\n%s", body)
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
+		t.Errorf("an unconfirmed Green was recorded: history has %d, want 1", len(history))
+	}
+}
+
+// Save as Green anyway posts the form again confirmed, and the Check-in records
+// as Green.
+func TestCheckinSaveAsGreenAnywayRecordsGreen(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal, _ := offTargetIdleGoal(t, h, sam)
+	client := noRedirects(signInClient(t, ts.URL, "sam@example.com"))
+
+	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":             {domain.HealthGreen},
+		"status":             {"Missed by a little; the trend is right."},
+		"confirm_off_target": {"1"},
+	})
+	_ = readBody(t, resp)
+
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 back to the Goal", resp.StatusCode)
+	}
+	latest, _, err := h.Service.LatestCheckin(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("LatestCheckin: %v", err)
+	}
+	if latest.Health != domain.HealthGreen || latest.Status != "Missed by a little; the trend is right." {
+		t.Errorf("latest Check-in = %s %q, want the confirmed Green", latest.Health, latest.Status)
+	}
+}
+
+// A No change can't repeat a Green while a Metric is off target: it lands on
+// the Check-in page with the Metric's miss as the form's error.
+func TestNoChangeRefusedWhileMetricOffTargetLandsOnCheckinForm(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal, _ := offTargetIdleGoal(t, h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", resp.StatusCode)
+	}
+	assertNoChangeRefusalOnForm(t, page, "Idle capacity is 40.88 percent; its target was 20 by Jan 30.")
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
+		t.Errorf("a refused No change recorded a Check-in: history has %d, want 1", len(history))
+	}
+}
+
+// An overdue Milestone's refusal wins: with a Metric off target too, the form
+// shows the overdue error and offers no Save as Green anyway.
+func TestCheckinOverdueMilestoneRefusalWinsOverOffTargetWarning(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal, _ := offTargetIdleGoal(t, h, sam)
+	h.Clock.Set(onlyMilestone(t, h, goal).TargetDate.AddDate(0, 0, 1))
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"On track."},
+	})
+
+	if !strings.Contains(body, "is overdue") {
+		t.Errorf("the overdue Milestone's refusal isn't shown; body:\n%s", body)
+	}
+	if strings.Contains(body, "confirm_off_target") {
+		t.Errorf("an overdue Milestone's refusal offers Save as Green anyway; body:\n%s", body)
+	}
+}
