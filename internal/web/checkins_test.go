@@ -1370,6 +1370,141 @@ func TestCheckinSectionOpensOnErrorOrSubmittedValue(t *testing.T) {
 	}
 }
 
+// The Goal page's menu leads to the Check-in page with a Lifecycle change
+// picked (?lifecycle=): the Lifecycle section opens with that choice selected
+// and its reason and outcome empty, ready to write.
+func TestCheckinPageOpensWithLifecyclePickedFromQuery(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, tc := range []struct{ query, picked, summary string }{
+		{"On%20Hold", domain.LifecycleOnHold, "Pause, finish, or cancel this goal · On Hold"},
+		{"Done", domain.LifecycleDone, "Pause, finish, or cancel this goal · Done"},
+		{"Cancelled", domain.LifecycleCancelled, "Pause, finish, or cancel this goal · Cancelled"},
+	} {
+		page := getBody(t, samClient, fmt.Sprintf("%s/goals/%d/checkin?lifecycle=%s", ts.URL, goal.ID, tc.query))
+		section := pageElement(t, page, "details", "checkin-lifecycle-section")
+		if !strings.Contains(openTag(section), " open") {
+			t.Errorf("?lifecycle=%s: the Lifecycle section stays collapsed; section:\n%s", tc.query, section)
+		}
+		if !strings.Contains(section, tc.summary) {
+			t.Errorf("?lifecycle=%s: summary missing %q; section:\n%s", tc.query, tc.summary, section)
+		}
+		if got := checkedLifecycle(section); got != tc.picked {
+			t.Errorf("?lifecycle=%s: %q is picked, want %q; section:\n%s", tc.query, got, tc.picked, section)
+		}
+		if !strings.Contains(section, `<textarea name="lifecycle_reason"></textarea>`) {
+			t.Errorf("?lifecycle=%s: the reason isn't empty; section:\n%s", tc.query, section)
+		}
+		if !strings.Contains(section, `<input type="text" name="outcome" value="">`) {
+			t.Errorf("?lifecycle=%s: the outcome isn't empty; section:\n%s", tc.query, section)
+		}
+	}
+}
+
+// Following the Goal page's Put on hold… leads to a plain Check-in: submitted
+// with no reason it is refused as any On Hold Check-in is, the reason's error
+// beside its field; with a reason the Goal is On Hold and History shows the
+// change on that Check-in.
+func TestCheckinFromPutOnHoldMenuItemIsStillACheckin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
+
+	page := getBody(t, samClient, ts.URL+menuItems(t, getBody(t, samClient, goalURL))["Put on hold…"])
+	picked := checkedLifecycle(pageElement(t, page, "details", "checkin-lifecycle-section"))
+	if picked != domain.LifecycleOnHold {
+		t.Fatalf("Put on hold… opened the Check-in with %q picked", picked)
+	}
+	form := url.Values{"health": {domain.HealthGreen}, "status": {"Pausing for the reorg."}, "lifecycle": {picked}}
+
+	body, _ := postFormHX(t, samClient, goalURL+"/checkins", form)
+	if msg := fieldError(t, body, `name="lifecycle_reason"`); !strings.Contains(msg, "On Hold needs a reason") {
+		t.Errorf("with no reason the error is %q, want the On Hold one", msg)
+	}
+	if got, err := h.Service.ViewGoal(t.Context(), goal.ID); err != nil || got.Lifecycle != domain.LifecycleActive {
+		t.Fatalf("after a refused Check-in the Goal is %q (%v), want Active", got.Lifecycle, err)
+	}
+
+	form.Set("lifecycle_reason", "Team moved to the payments incident.")
+	if resp := postForm(t, samClient, goalURL+"/checkins", form); resp.StatusCode != http.StatusOK {
+		t.Fatalf("put On Hold: status %d", resp.StatusCode)
+	}
+	page = getBody(t, samClient, goalURL)
+	if !strings.Contains(page, `data-testid="goal-lifecycle">On Hold<`) {
+		t.Errorf("Goal page does not show the Goal On Hold")
+	}
+	if entry := pageElement(t, page, "span", "checkin-lifecycle"); !strings.Contains(entry, "Active → On Hold") || !strings.Contains(entry, "Team moved to the payments incident.") {
+		t.Errorf("History missing the Lifecycle change; element:\n%s", entry)
+	}
+}
+
+// A ?lifecycle= the form doesn't offer from the Goal's current Lifecycle, or
+// one that is the form's default, is ignored: the page renders as it does
+// without it, Lifecycle section closed and the default picked. It is never
+// refused.
+func TestCheckinPageIgnoresLifecycleQueryItDoesNotOffer(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	onHold := h.OnHoldGoal(sam, "Grow revenue", "Revenue funds the rest.", "Waiting on budget.")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, tc := range []struct {
+		goal   domain.Goal
+		query  string
+		picked string
+	}{
+		{onHold, "Done", domain.LifecycleActive},
+		{onHold, "On%20Hold", domain.LifecycleActive},
+		{onHold, "Active", domain.LifecycleActive},
+		{active, "bogus", ""},
+		{active, "Active", ""},
+		{active, "", ""},
+	} {
+		checkinURL := fmt.Sprintf("%s/goals/%d/checkin", ts.URL, tc.goal.ID)
+		plain := between(t, getBody(t, samClient, checkinURL), `data-testid="checkin-form"`, "</form>")
+		form := between(t, getBody(t, samClient, checkinURL+"?lifecycle="+tc.query), `data-testid="checkin-form"`, "</form>")
+		if form != plain {
+			t.Errorf("%s ?lifecycle=%s: the form differs from the one without it:\n%s\nwant:\n%s", tc.goal.Lifecycle, tc.query, form, plain)
+		}
+		section := pageElement(t, form, "details", "checkin-lifecycle-section")
+		if strings.Contains(openTag(section), " open") {
+			t.Errorf("%s ?lifecycle=%s: the Lifecycle section is open", tc.goal.Lifecycle, tc.query)
+		}
+		if got := checkedLifecycle(section); got != tc.picked {
+			t.Errorf("%s ?lifecycle=%s: %q is picked, want the default %q", tc.goal.Lifecycle, tc.query, got, tc.picked)
+		}
+	}
+}
+
+// checkedLifecycle is the value of the Lifecycle radio checked in the section.
+func checkedLifecycle(section string) string {
+	for _, tag := range strings.Split(section, "<input")[1:] {
+		tag, _, _ = strings.Cut(tag, ">")
+		if strings.Contains(tag, `name="lifecycle"`) && strings.Contains(tag, " checked") {
+			return html.UnescapeString(attr(tag, "value"))
+		}
+	}
+	return "none"
+}
+
 // When the Goal is Active and has a previous Check-in, the Check-in page opens
 // with the one-click no-change card, dated from that Check-in, above the form.
 // With no previous Check-in there is nothing to repeat, so there is no card.

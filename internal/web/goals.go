@@ -1056,10 +1056,11 @@ type goalAction struct {
 }
 
 // actions lists the action menu's items the viewer may use, in menu order:
-// each opens its form in place, but two lead to pages of their own. Suggest a
+// each opens its form in place, but some lead to pages of their own. Suggest a
 // parent, for anyone but the Owner of an Active or Proposed Goal, leads to its
 // form (CONTEXT.md: Parent suggestion); Add a child Goal, which anyone may
-// use, to the New goal form with this Goal picked as the parent.
+// use, to the New goal form with this Goal picked as the parent; and the
+// Lifecycle changes, last, to the Check-in page with that change picked.
 func (v goalView) actions() []goalAction {
 	topLevel := "Mark Top-level"
 	if v.Goal.TopLevel {
@@ -1094,6 +1095,34 @@ func (v goalView) actions() []goalAction {
 		case a.form != "" && v.offers(a.form):
 			out = append(out, goalAction{a.label, v.openURL(a.form)})
 		}
+	}
+	return append(out, v.lifecycleActions()...)
+}
+
+// lifecycleActions are the action menu's Lifecycle changes, for whoever may
+// check in: an Active Goal may go On Hold, be marked Done or be Cancelled, and
+// an On Hold one be Cancelled (resuming is its Check-in's default). Each leads
+// to the Check-in page with that change picked, for a Lifecycle change is made
+// in a Check-in (CONTEXT.md: Lifecycle).
+func (v goalView) lifecycleActions() []goalAction {
+	if !v.CanCheckin {
+		return nil
+	}
+	type change struct{ label, to string }
+	var changes []change
+	switch v.Goal.Lifecycle {
+	case domain.LifecycleActive:
+		changes = []change{
+			{"Put on hold…", domain.LifecycleOnHold},
+			{"Mark done…", domain.LifecycleDone},
+			{"Cancel…", domain.LifecycleCancelled},
+		}
+	case domain.LifecycleOnHold:
+		changes = []change{{"Cancel…", domain.LifecycleCancelled}}
+	}
+	out := make([]goalAction, 0, len(changes))
+	for _, c := range changes {
+		out = append(out, goalAction{c.label, templ.SafeURL(fmt.Sprintf("/goals/%d/checkin?lifecycle=%s", v.Goal.ID, url.QueryEscape(c.to)))})
 	}
 	return out
 }
