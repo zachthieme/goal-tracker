@@ -92,10 +92,11 @@ templ layout(title string, current *domain.Account) {
 		</head>
 		<body>
 			<nav class="nav">
-				<a class="brand" href="/goals">Goal Tracker</a>
+				<a class="brand" href="/home">Goal Tracker</a>
 				if current != nil {
 					<div class="navitems">
 						@navItem("/home", "nav-home", "Home", needsYou(ctx), "count needs-you")
+						@navItem("/goals", "nav-goals", "Goals", 0, "count")
 						@navItem("/risks", "nav-risks", "Risks", risks(ctx), "count")
 						@navItem("/reports", "nav-reports", "Reports", 0, "count")
 						if current.IsAdmin {

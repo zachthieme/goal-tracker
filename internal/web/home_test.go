@@ -827,3 +827,90 @@ func TestHomeListsParentSuggestionsToDecide(t *testing.T) {
 		t.Errorf("kim's requests = %+v, want the Goal's link", pending)
 	}
 }
+
+// Every page's top bar offers Goals, the app's main list, between Home and
+// Risks, with Reports after Risks.
+func TestNavOffersGoalsBetweenHomeAndRisks(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, path := range []string{"/home", "/goals", "/risks", "/reports"} {
+		page := getBody(t, client, ts.URL+path)
+		nav := page[strings.Index(page, "<nav"):strings.Index(page, "</nav>")]
+		if goals := pageElement(t, page, "a", "nav-goals"); !strings.Contains(openTag(goals), `href="/goals"`) {
+			t.Errorf("on %s, the Goals nav item does not link to /goals: %s", path, goals)
+		}
+		home := strings.Index(nav, `data-testid="nav-home"`)
+		goals := strings.Index(nav, `data-testid="nav-goals"`)
+		risks := strings.Index(nav, `data-testid="nav-risks"`)
+		reports := strings.Index(nav, `data-testid="nav-reports"`)
+		if home < 0 || goals < home || risks < goals || reports < risks {
+			t.Errorf("on %s, the nav items do not read Home, Goals, Risks, Reports:\n%s", path, nav)
+		}
+	}
+}
+
+// The brand link leads to Home, the front door, on every page.
+func TestBrandLinkLeadsHome(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, path := range []string{"/home", "/goals", "/reports"} {
+		page := getBody(t, client, ts.URL+path)
+		if brand := tagAround(t, page, `class="brand"`); attr(brand, "href") != "/home" {
+			t.Errorf("on %s, the brand link does not lead to /home: %s", path, brand)
+		}
+	}
+}
+
+// The Goals nav item carries no count, even when the viewer owns Red and Stale
+// Goals that Home and Risks count.
+func TestNavGoalsCarriesNoCount(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	red := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	h.Checkin(sam, red.ID, domain.HealthRed, "Behind.", "Hire two reps.", h.Clock.Now().AddDate(0, 1, 0))
+	h.ActiveGoal(sam, "Cut churn", "Customers leave.")
+	h.Clock.Advance(10 * day)
+
+	client := signInClient(t, ts.URL, "sam@example.com")
+	for _, path := range []string{"/home", "/goals", "/risks"} {
+		page := getBody(t, client, ts.URL+path)
+		if home := pageElement(t, page, "a", "nav-home"); !strings.Contains(home, `class="count needs-you"`) {
+			t.Fatalf("on %s, Home counts nothing, so the fixture has nothing for Goals to count: %s", path, home)
+		}
+		if goals := pageElement(t, page, "a", "nav-goals"); strings.Contains(goals, "<span") {
+			t.Errorf("on %s, the Goals nav item carries a count: %s", path, goals)
+		}
+	}
+}
+
+// An Admin's top bar reads Home, Goals, Risks, Reports, Admin.
+func TestNavOrderForAnAdmin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	h.SignIn("ada@example.com")
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "ada@example.com"), ts.URL+"/home")
+
+	nav := page[strings.Index(page, "<nav"):strings.Index(page, "</nav>")]
+	var order []string
+	for _, m := range regexp.MustCompile(`data-testid="(nav-[a-z]+)"`).FindAllStringSubmatch(nav, -1) {
+		order = append(order, m[1])
+	}
+	if got, want := strings.Join(order, " "), "nav-home nav-goals nav-risks nav-reports nav-admin"; got != want {
+		t.Errorf("an Admin's nav items read %q, want %q", got, want)
+	}
+}
