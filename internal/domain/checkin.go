@@ -283,7 +283,7 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 // ErrGreenOffTarget is a Green Check-in refused because a Metric on the Goal is
 // off target (see Metric.OffTarget). A full Check-in may be confirmed Green
 // anyway; a No change can't repeat it.
-var ErrGreenOffTarget = errors.New("Green with a Metric off target")
+var ErrGreenOffTarget = errors.New("green with a Metric off target")
 
 // OffTargetMetric is a Metric that has missed its target, with the reading
 // that missed it.
