@@ -507,6 +507,34 @@ func TestAdminCantIssueASetPasswordLinkToADepartedPerson(t *testing.T) {
 	}
 }
 
+// A set-password link is only issued for an email address: anything else is
+// refused under the field, which keeps what was typed, and no Account is made.
+func TestAdminCantIssueASetPasswordLinkToSomethingNotAnEmail(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newPasswordServer(t, h)
+	client := passwordSignInClient(t, h, ts.URL, "ada@example.com")
+
+	status, page := issuePasswordLink(t, client, ts.URL, "not-an-email")
+	if status != http.StatusUnprocessableEntity {
+		t.Errorf("Issue link for not-an-email: status %d, want 422", status)
+	}
+	section := pageElement(t, page, "section", "admin-password-links")
+	if msg := elementTexts(section, "p", "admin-password-link-error"); len(msg) != 1 || msg[0] != "That isn't an email address." {
+		t.Errorf("the refusal says %q, want \"That isn't an email address.\"", msg)
+	}
+	if value := attr(tagAround(t, section, `name="email"`), "value"); value != "not-an-email" {
+		t.Errorf("the email field holds %q, want what was typed, \"not-an-email\"", value)
+	}
+	if strings.Contains(page, "/set-password?token=") {
+		t.Errorf("the page shows a link for not-an-email:\n%s", section)
+	}
+	if _, err := h.Service.AccountByEmail(t.Context(), "not-an-email"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("Issue link for not-an-email created an Account (err %v)", err)
+	}
+}
+
 // Only an Admin may issue a set-password link: anyone else is refused, as with
 // Sync now, and no link is made.
 func TestNonAdminCantIssueASetPasswordLink(t *testing.T) {

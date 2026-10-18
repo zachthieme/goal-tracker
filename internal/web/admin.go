@@ -64,7 +64,8 @@ type passwordLinksView struct {
 
 // handleIssuePasswordLink issues a set-password link for the email the Admin
 // typed, creating the Account if there is none, and shows it on the Admin
-// page. A Departed person is refused. Only an Admin may.
+// page. A Departed person is refused, as is anything that isn't an email
+// address. Only an Admin may.
 func (s *Server) handleIssuePasswordLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if !current.IsAdmin {
 		http.Error(w, "only an Admin may issue set-password links", http.StatusForbidden)
@@ -76,6 +77,13 @@ func (s *Server) handleIssuePasswordLink(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	token, expires, err := s.svc.IssuePasswordLink(r.Context(), emailAddr)
+	if errors.Is(err, domain.ErrNotAnEmail) {
+		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, &passwordLinksView{
+			Email:   emailAddr,
+			Refusal: "That isn't an email address.",
+		})
+		return
+	}
 	if errors.Is(err, domain.ErrDeparted) {
 		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, &passwordLinksView{
 			Email:   emailAddr,

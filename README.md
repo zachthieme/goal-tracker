@@ -13,7 +13,7 @@ regular cadence with Check-ins, and produces Reports. The domain language is in
 | | `make start` | Like `make serve`, but in the background, logging to `serve.log` (`SERVE_LOG`). Stops the server a previous `make start` left running first. Takes the same settings, `NO_SSO=1` included, and records them for `make stop` and `make restart`. |
 | | `make stop` | Stops the server `make start` started, and its Authentik unless it started with `NO_SSO=1` (Authentik's data is kept). |
 | | `make restart` | Rebuilds and starts the server again with the settings the last `make start` recorded. A setting given to `make restart` replaces the recorded one. |
-| `goal-tracker password-link <email>` | | With `GOAL_TRACKER_SIGNIN=password`, prints a one-time set-password link for the email and exits: how the first Admin gets a password (see [Passwords](#passwords-password)). |
+| `goal-tracker password-link <email>` | | With `GOAL_TRACKER_SIGNIN=password`, prints a one-time set-password link for the email and exits, refusing anything that isn't an email address: how the first Admin gets a password (see [Passwords](#passwords-password)). |
 | `go run ./cmd/seed` | `make seed` | Fills a fresh database with a fake company for demos (see [Seed a fake company](#seed-a-fake-company)). |
 
 The server is configured from the environment:
@@ -82,10 +82,13 @@ like.
   It runs the migrations, creates the account if there's none (so
   `GOAL_TRACKER_ADMINS` applies to it), prints
   `GOAL_TRACKER_BASE_URL/set-password?token=...` and exits. It refuses unless
-  `GOAL_TRACKER_SIGNIN=password`.
+  `GOAL_TRACKER_SIGNIN=password`, and refuses anything that isn't an email
+  address, creating no account.
 - **Issuing links.** On the Admin page, the **Set-password links** card takes
   an email and shows the whole link once. Issuing one for an email with no
-  account creates the account; a Departed person can't be issued one. A link
+  account creates the account. A link is only issued for an email address, so
+  a typo like `ada` or `Ada <ada@example.com>` is refused and creates nothing;
+  a Departed person can't be issued one either. A link
   works once and expires after 72 hours, and issuing a new one for a person
   replaces their old one.
 - **Setting and resetting.** The link opens a page showing the person's email
@@ -101,6 +104,8 @@ like.
   connection's, never `X-Forwarded-For`, so **behind a reverse proxy the limit
   counts the proxy's address**, and one person's mistakes count against
   everyone behind it. The counts are kept in memory, so a restart clears them.
+  Each password hash takes 64 MiB, so at most one runs per CPU at once and a
+  burst of sign-ins waits its turn rather than exhausting memory.
 
 ### `dev`: the development form
 
