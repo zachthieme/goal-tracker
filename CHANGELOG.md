@@ -32,6 +32,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Needs an Admin keeps your scope, so Show all and the other cards come back to it; it always lists the company's Goals, and an Admin sees it even when nothing in their own scope needs attention (#315).
 - [user] `/goals?mine=1` is no longer read; it opens your default scope. Use `?org=mine` (#315).
 - [ops] Password sign-in runs at most as many password hashes at once as the server has CPUs, so a burst of sign-ins can't exhaust memory (#313).
+- [internal] goalform.templ's activation checklist is written so `templ fmt` leaves it alone, and CLAUDE.md says not to run `templ fmt` (#302).
 
 **Bug fixes:**
 - [user] An Org link (`?org=`) to Goals or Risks now scopes the page for everyone once anyone in the company has a Manager, instead of silently showing every Goal to a viewer with no Manager and no one under them; and the Report builder no longer offers the Owner's org when the only Manager is someone set as their own (#269).
@@ -39,6 +40,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [ops] A directory CSV with empty or repeated extra columns, such as trailing empty header cells, or a stray `"` inside a field no longer fails the whole sync; only `email`, `name` or `manager_email` named twice is still an error (#312).
 - [user] Changing a rule's attribute without script no longer stops a Report saving: a rule keeps only the values of what it tests and drops any left selected for another; chips keep their padding without script; and the builder scrolls each rule's value list so the pre-filled author shows (#314).
 - [user] An Admin can't issue a set-password link for something that isn't an email address (#313).
+- [user] A No change is refused on a Goal with an overdue Milestone at any Health, not only Green, and the refusal says to move the Milestone's date, mark it Done or remove it (#234).
+- [internal] `scripts/shots.mjs` no longer exits 1 when it can't clean up its Chromium profile (it warns instead), no longer leaves Chromium core dumps in the directory it ran from, and finds the Playwright-installed Chromium under `PLAYWRIGHT_BROWSERS_PATH` or `~/.cache/ms-playwright` without `CHROME` (#289).
+- [user] A Check-in field error no longer starts with "validation failed:"; it reads as a sentence, e.g. "This Health differs from the Rolled-up Health (Red); explain why." (#303).
 
 **Infrastructure:**
 - [internal] Each Account has a session generation (the new `account_sessions` table) that `domain.Service.EndSessions` moves on to end all of a person's sessions at once, for password sign-in to use (#299).
