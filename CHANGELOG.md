@@ -29,6 +29,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Risks flags an Active Goal with an overdue Action Item, in a new "Action Items overdue" group with its own card, without changing its Health. Its chip says how many days the most overdue item is late, its Fix is See Action Items, and it counts in the top bar's Risks count. Among Goals of the same Health it ranks below a Path to Green that's overdue and above Stale (#326).
 - [user] The weekly reminder lists your open Action Items, overdue first, and reaches you even when no Check-in is due (#327).
 - [user] A Goal's page lists its open Action Items from every Report, soonest due first and flagged when overdue, with owner, due date and the Report they came from, and the owner can close one there (#324).
+- [user] An Action Item's owner gets an email when it's raised, or reassigned to them, with its Report, Goal, due date and a link (#322).
+- [user] A Goal's timeline shows when an Action Item about it was raised, reassigned and closed, with an Action Items filter (#325).
 
 **Improvements:**
 - [internal] CONTEXT.md's Action Item entry says an Action Item may be about one Goal in its Report, who may close and reassign it, and when it is overdue.
