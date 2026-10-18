@@ -63,3 +63,33 @@ WHERE action_items.closed_at = ''
   AND action_items.goal_id <> 0
   AND action_items.due_date < sqlc.arg(today)
 ORDER BY action_items.due_date, action_items.id;
+
+-- name: ReassignActionItem :execrows
+-- Hands an open Action Item to a new owner; no rows change once it is closed.
+UPDATE action_items SET owner_id = ? WHERE id = ? AND closed_at = '';
+
+-- name: CreateActionItemReassignment :one
+INSERT INTO action_item_reassignments (action_item_id, from_owner_id, to_owner_id, reassigned_by, reassigned_at)
+VALUES (?, ?, ?, ?, ?)
+RETURNING *;
+
+-- name: GetLatestActionItemReassignment :one
+-- An Action Item's most recent reassignment, naming who had it before.
+SELECT * FROM action_item_reassignments
+WHERE action_item_id = ?
+ORDER BY id DESC
+LIMIT 1;
+
+-- name: ListActionItemReassignments :many
+-- An Action Item's reassignments, oldest first.
+SELECT * FROM action_item_reassignments
+WHERE action_item_id = ?
+ORDER BY id;
+
+-- name: ListActionItemReassignmentsForGoal :many
+-- The reassignments of the Action Items about one Goal, oldest first.
+SELECT action_item_reassignments.*
+FROM action_item_reassignments
+JOIN action_items ON action_items.id = action_item_reassignments.action_item_id
+WHERE action_items.goal_id = ?
+ORDER BY action_item_reassignments.id;

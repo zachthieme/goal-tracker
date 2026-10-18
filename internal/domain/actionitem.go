@@ -35,6 +35,10 @@ type ActionItem struct {
 	// snapshot freezes GoalTitle as it read at publishing.
 	GoalID    int64
 	GoalTitle string
+	// ReassignedFrom is who owned it before its most recent reassignment, or
+	// nil if it has never been reassigned. A publication's snapshot freezes it
+	// as it stood at publishing.
+	ReassignedFrom *Account
 }
 
 // RaiseActionItemInput is the raise-an-Action-Item command's input. Set
@@ -186,6 +190,190 @@ func (s *Service) CloseActionItem(ctx context.Context, actorID, id int64, note s
 	return s.GetActionItem(ctx, id)
 }
 
+// ActionItemReassignment records one open Action Item handed to a new owner
+// (CONTEXT.md: Action Item): who had it, who has it now, who reassigned it,
+// and when.
+type ActionItemReassignment struct {
+	ID       int64
+	ItemID   int64
+	ItemText string
+	// GoalID is the Goal the item is about, or 0 for a whole Report.
+	GoalID int64
+	From   Account
+	To     Account
+	By     Account
+	At     time.Time
+}
+
+// ReassignActionItem hands the open Action Item itemID to newOwnerID and
+// records the reassignment. Only those CanReassignActionItem allows may do
+// it, and the new owner must not have left the company or already own it.
+func (s *Service) ReassignActionItem(ctx context.Context, actorID, itemID, newOwnerID int64) (ActionItem, error) {
+	item, err := s.reassignableActionItem(ctx, actorID, itemID)
+	if err != nil {
+		return ActionItem{}, err
+	}
+	owner, err := s.queries.GetAccount(ctx, newOwnerID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ActionItem{}, fmt.Errorf("%w: an Action Item needs an owner", ErrValidation)
+		}
+		return ActionItem{}, fmt.Errorf("look up new owner: %w", err)
+	}
+	if owner.Departed != 0 {
+		return ActionItem{}, fmt.Errorf("%w: %s has left the company", ErrValidation, owner.Email)
+	}
+	if owner.ID == item.Owner.ID {
+		return ActionItem{}, fmt.Errorf("%w: %s already owns this Action Item", ErrValidation, owner.Email)
+	}
+	if err := s.WithinTx(ctx, func(tx *Service) error {
+		n, err := tx.queries.ReassignActionItem(ctx, db.ReassignActionItemParams{OwnerID: owner.ID, ID: item.ID})
+		if err != nil {
+			return fmt.Errorf("reassign action item: %w", err)
+		}
+		if n == 0 {
+			return fmt.Errorf("%w: the Action Item is already closed", ErrValidation)
+		}
+		if _, err := tx.queries.CreateActionItemReassignment(ctx, db.CreateActionItemReassignmentParams{
+			ActionItemID: item.ID,
+			FromOwnerID:  item.Owner.ID,
+			ToOwnerID:    owner.ID,
+			ReassignedBy: actorID,
+			ReassignedAt: s.clock.Now().Format(timeFormat),
+		}); err != nil {
+			return fmt.Errorf("record action item reassignment: %w", err)
+		}
+		return nil
+	}); err != nil {
+		return ActionItem{}, err
+	}
+	return s.GetActionItem(ctx, item.ID)
+}
+
+// ReassignActionItemByEmail hands the Action Item itemID to the Account with
+// the given email, the web-facing convenience over ReassignActionItem. An
+// email with no account is rejected.
+func (s *Service) ReassignActionItemByEmail(ctx context.Context, actorID, itemID int64, email string) (ActionItem, error) {
+	acc, err := s.queries.GetAccountByEmail(ctx, strings.TrimSpace(email))
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return ActionItem{}, fmt.Errorf("look up new owner: %w", err)
+		}
+		// Report a missing or unreassignable item before the email.
+		if _, err := s.reassignableActionItem(ctx, actorID, itemID); err != nil {
+			return ActionItem{}, err
+		}
+		return ActionItem{}, fmt.Errorf("%w: no account with email %q", ErrValidation, email)
+	}
+	return s.ReassignActionItem(ctx, actorID, itemID, acc.ID)
+}
+
+// reassignableActionItem returns the Action Item itemID if it exists, is open,
+// and actorID may reassign it.
+func (s *Service) reassignableActionItem(ctx context.Context, actorID, itemID int64) (ActionItem, error) {
+	item, err := s.GetActionItem(ctx, itemID)
+	if err != nil {
+		return ActionItem{}, err
+	}
+	if item.Closed {
+		return ActionItem{}, fmt.Errorf("%w: the Action Item is already closed", ErrValidation)
+	}
+	ok, err := s.CanReassignActionItem(ctx, actorID, item)
+	if err != nil {
+		return ActionItem{}, err
+	}
+	if !ok {
+		return ActionItem{}, fmt.Errorf("%w: only the Report's creator or publisher, an Admin, or the creator's Manager reassigns an Action Item", ErrNotAuthorized)
+	}
+	return item, nil
+}
+
+// CanReassignActionItem reports whether actorID may hand the Action Item to a
+// new owner (CONTEXT.md: Action Item): it is open, and they are its Report
+// Definition's creator, who published the publication it was raised on, an
+// Admin, or the creator's Manager. A Departed person can't.
+func (s *Service) CanReassignActionItem(ctx context.Context, actorID int64, item ActionItem) (bool, error) {
+	if item.Closed {
+		return false, nil
+	}
+	actor, err := s.queries.GetAccount(ctx, actorID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("look up actor: %w", err)
+	}
+	if actor.Departed != 0 {
+		return false, nil
+	}
+	if actor.IsAdmin != 0 {
+		return true, nil
+	}
+	def, err := s.queries.GetReportDefinition(ctx, item.DefinitionID)
+	if err != nil {
+		return false, fmt.Errorf("get report definition: %w", err)
+	}
+	if def.CreatedBy == actorID {
+		return true, nil
+	}
+	pub, err := s.queries.GetReportPublication(ctx, item.PublicationID)
+	if err != nil {
+		return false, fmt.Errorf("get report publication: %w", err)
+	}
+	if pub.PublishedBy == actorID {
+		return true, nil
+	}
+	creator, err := s.queries.GetAccount(ctx, def.CreatedBy)
+	if err != nil {
+		return false, fmt.Errorf("look up report creator: %w", err)
+	}
+	return creator.ManagerID != nil && *creator.ManagerID == actorID, nil
+}
+
+// ActionItemReassignments returns the Action Item itemID's reassignments,
+// oldest first.
+func (s *Service) ActionItemReassignments(ctx context.Context, itemID int64) ([]ActionItemReassignment, error) {
+	rows, err := s.queries.ListActionItemReassignments(ctx, itemID)
+	if err != nil {
+		return nil, fmt.Errorf("list action item reassignments: %w", err)
+	}
+	return s.actionItemReassignmentsFromRows(ctx, rows)
+}
+
+// ActionItemReassignmentsAbout returns the reassignments of the Action Items
+// about the Goal goalID, oldest first.
+func (s *Service) ActionItemReassignmentsAbout(ctx context.Context, goalID int64) ([]ActionItemReassignment, error) {
+	rows, err := s.queries.ListActionItemReassignmentsForGoal(ctx, goalID)
+	if err != nil {
+		return nil, fmt.Errorf("list goal's action item reassignments: %w", err)
+	}
+	return s.actionItemReassignmentsFromRows(ctx, rows)
+}
+
+func (s *Service) actionItemReassignmentsFromRows(ctx context.Context, rows []db.ActionItemReassignment) ([]ActionItemReassignment, error) {
+	out := make([]ActionItemReassignment, 0, len(rows))
+	for _, row := range rows {
+		item, err := s.queries.GetActionItem(ctx, row.ActionItemID)
+		if err != nil {
+			return nil, fmt.Errorf("get reassigned action item: %w", err)
+		}
+		r := ActionItemReassignment{ID: row.ID, ItemID: item.ID, ItemText: item.Text, GoalID: item.GoalID}
+		for _, p := range []struct {
+			id  int64
+			acc *Account
+		}{{row.FromOwnerID, &r.From}, {row.ToOwnerID, &r.To}, {row.ReassignedBy, &r.By}} {
+			acc, err := s.queries.GetAccount(ctx, p.id)
+			if err != nil {
+				return nil, fmt.Errorf("look up reassignment account: %w", err)
+			}
+			*p.acc = accountFromRow(acc)
+		}
+		r.At, _ = time.Parse(timeFormat, row.ReassignedAt)
+		out = append(out, r)
+	}
+	return out, nil
+}
+
 // GetActionItem returns the Action Item with the given id, or ErrNotFound if
 // none exists.
 func (s *Service) GetActionItem(ctx context.Context, id int64) (ActionItem, error) {
@@ -267,6 +455,18 @@ func (s *Service) actionItemFromRow(ctx context.Context, row db.ActionItem) (Act
 	if row.ClosedAt != "" {
 		item.Closed = true
 		item.ClosedAt, _ = time.Parse(timeFormat, row.ClosedAt)
+	}
+	latest, err := s.queries.GetLatestActionItemReassignment(ctx, row.ID)
+	switch {
+	case err == nil:
+		from, err := s.queries.GetAccount(ctx, latest.FromOwnerID)
+		if err != nil {
+			return ActionItem{}, fmt.Errorf("look up action item's previous owner: %w", err)
+		}
+		prev := accountFromRow(from)
+		item.ReassignedFrom = &prev
+	case !errors.Is(err, sql.ErrNoRows):
+		return ActionItem{}, fmt.Errorf("get latest action item reassignment: %w", err)
 	}
 	return item, nil
 }
