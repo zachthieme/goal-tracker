@@ -1313,7 +1313,8 @@ func homeActionItemRows(page string) []string {
 	list := page[start : start+strings.Index(page[start:], "</ul>")]
 	var rows []string
 	for _, part := range strings.Split(list, `<li data-testid="home-action-item"`)[1:] {
-		rows = append(rows, part[:strings.Index(part, "</li>")])
+		row, _, _ := strings.Cut(part, "</li>")
+		rows = append(rows, row)
 	}
 	return rows
 }
