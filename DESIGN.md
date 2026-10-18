@@ -328,6 +328,14 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   the border becomes `--color-primary`.
 - **Quiet button (`.btn.quiet`):** no fill, `--color-primary-strong` text. On
   hover it takes a `--color-primary-subtle` fill.
+- **Icon remove button (`.btn.rb-remove`):** the Report builder's × on a rule
+  row and on a Goal chip. It is a 40px square, the height of the selects
+  beside it, with a 1px `--color-border-strong` edge and the standard focus
+  ring. On a Goal chip it is round and forms the pill's right end: the chip
+  keeps only its 12px left padding, so it stays compact. On a coarse pointer
+  it is 44px wide as well as tall. It shows only the ×, so it always carries
+  an `aria-label` and a matching `title` naming what it removes ("Remove
+  rule", "Remove <Goal title>").
 - **Card (`.card`):** `--color-surface`, 1px `--color-border`,
   `--radius-lg`, 24px padding, and no shadow in either theme. On hover a
   clickable card's border becomes `--color-border-strong` over `--dur-base`,

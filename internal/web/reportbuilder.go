@@ -29,6 +29,9 @@ type reportBuilderView struct {
 	Mode string
 	// Rules are the rule rows, as typed.
 	Rules []reportRuleRow
+	// StartNote says which rule a new definition started with, under the
+	// rules, on its first render only; "" when it started blank.
+	StartNote string
 	// PickedIDs, IncludeIDs and ExcludeIDs are the Goals picked by hand, to
 	// Also include and to Leave out, each in the order listed; Picked, Include
 	// and Exclude are those Goals.
@@ -148,14 +151,48 @@ func dimensionAttribute(dimID int64) string {
 }
 
 // handleNewReportForm shows the builder for a new Report Definition, selecting
-// by rules until the author chooses to pick Goals by hand.
+// by rules until the author chooses to pick Goals by hand, and starting with
+// the rule newReportStartingRule chooses for the author.
 func (s *Server) handleNewReportForm(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	v := reportBuilderView{Mode: domain.ReportModeRules}
+	start, note, err := s.newReportStartingRule(r, current)
+	if err != nil {
+		s.serverError(w, r, "could not load the builder", err)
+		return
+	}
+	if note != "" {
+		v.Rules, v.StartNote = []reportRuleRow{start}, note
+	}
 	if err := s.loadReportBuilder(r, &v); err != nil {
 		s.serverError(w, r, "could not load the builder", err)
 		return
 	}
 	render(w, r, http.StatusOK, reportBuilderPage(&current, v))
+}
+
+// newReportStartingRule is the rule a new Report Definition starts with, and
+// the note saying so: the author's org when anyone is under them, or else
+// their own Goals when they own any. With neither, note is "" and the builder
+// starts with a blank row.
+func (s *Server) newReportStartingRule(r *http.Request, author domain.Account) (row reportRuleRow, note string, err error) {
+	authorID := strconv.FormatInt(author.ID, 10)
+	under, err := s.svc.HasAnyoneUnder(r.Context(), author.ID)
+	if err != nil {
+		return reportRuleRow{}, "", err
+	}
+	if under {
+		return reportRuleRow{Attribute: domain.RuleOrg, Op: domain.RuleIs, Values: []string{domain.RuleOrg + "=" + authorID}},
+			"Started with your org. Change or remove it.", nil
+	}
+	goals, err := s.svc.ListGoals(r.Context())
+	if err != nil {
+		return reportRuleRow{}, "", err
+	}
+	if slices.ContainsFunc(distinctOwners(goals), func(a domain.Account) bool { return a.ID == author.ID }) {
+		return reportRuleRow{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{domain.RuleOwner + "=" + authorID}},
+			"Started with your own Goals. Change or remove it.", nil
+	}
+	return reportRuleRow{}, "", nil
 }
 
 // handleNewReport saves the builder's new Report Definition and lands on its
