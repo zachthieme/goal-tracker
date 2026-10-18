@@ -545,7 +545,7 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 	}{
 		{"owner", "Owner needs to update", "/risks?group=owner&amp;org=all", 1, []string{"Stale · 1"}},
 		{"plan", "Plan doesn't fit", "/risks?group=plan&amp;org=all", 3, []string{"Unaligned · 2", "Schedule conflicts · 1"}},
-		{"admin", "Needs an Admin", "/risks?group=admin", 1, []string{"Ownerless · 1"}},
+		{"admin", "Needs an Admin", "/risks?group=admin&amp;org=all", 1, []string{"Ownerless · 1"}},
 	} {
 		card := pageElement(t, page, "a", "risks-group-"+g.key)
 		for _, want := range append([]string{
@@ -644,7 +644,9 @@ func TestRisksPageFiltersToAGroup(t *testing.T) {
 
 // Scoped and filtered to nothing while other Goals are flagged, the Risks page
 // says where nothing needs attention, Mine then the value then the group, and
-// links to everything, Everyone's, with no count, table or cards.
+// links to everything, Everyone's, with no count, table or cards. Needs an
+// Admin, company-wide, says nothing needs an Admin in the value alone, and
+// has nowhere wider to link.
 func TestRisksPageFilteredToNothingSaysWhere(t *testing.T) {
 	t.Parallel()
 
@@ -661,17 +663,20 @@ func TestRisksPageFilteredToNothingSaysWhere(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	for address, want := range map[string]string{
-		"/risks?mine=1&group=owner": "No Goals need attention in Mine, Owner needs to update.",
-		"/risks?group=admin&value=" + strconv.FormatInt(platform.ID, 10) + "&org=mine": "No Goals need attention in Mine, Team Platform, Needs an Admin.",
+		"/risks?org=mine&group=owner": "No Goals need attention in Mine, Owner needs to update.",
+		"/risks?group=admin&value=" + strconv.FormatInt(platform.ID, 10) + "&org=mine": "Nothing needs an Admin in Team Platform.",
 		"/risks?org=all&value=" + strconv.FormatInt(platform.ID, 10):                   "No Goals need attention in Team Platform.",
 	} {
 		page := getBody(t, client, ts.URL+address)
 
 		empty := html.UnescapeString(pageElement(t, page, "p", "risks-empty"))
-		if !strings.Contains(empty, ">"+want+" ") {
+		if strings.HasPrefix(address, "/risks?group=admin") {
+			if !strings.HasSuffix(strings.TrimSpace(empty), ">"+want) {
+				t.Errorf("at %s, the empty line doesn't say only %q: %s", address, want, empty)
+			}
+		} else if !strings.Contains(empty, ">"+want+" ") {
 			t.Errorf("at %s, the empty line doesn't say %q: %s", address, want, empty)
-		}
-		if link := between(t, empty, "<a ", ""); attr(link, "href") != "/risks?org=all" || !strings.HasSuffix(link, ">Show everything</a>") {
+		} else if link := between(t, empty, "<a ", ""); attr(link, "href") != "/risks?org=all" || !strings.HasSuffix(link, ">Show everything</a>") {
 			t.Errorf("at %s, the empty line doesn't end linking to everything: %s", address, empty)
 		}
 		for _, gone := range []string{"<table", `data-testid="risks-attention"`, `data-testid="risks-groups"`, `data-testid="risks-group-`, "risks-show-all", "risks-group-blank"} {
@@ -1259,7 +1264,7 @@ func TestRisksPageKeepsEveryValueInItsAddress(t *testing.T) {
 
 	page = getBody(t, client, ts.URL+"/risks?group=admin&"+scope)
 
-	if empty := html.UnescapeString(pageElement(t, page, "p", "risks-empty")); !strings.Contains(empty, ">No Goals need attention in Quarter Q3, Team Platform, Needs an Admin. ") {
+	if empty := html.UnescapeString(pageElement(t, page, "p", "risks-empty")); !strings.Contains(empty, ">Nothing needs an Admin in Quarter Q3, Team Platform.") {
 		t.Errorf("the empty line doesn't name both values with their Dimensions: %s", empty)
 	}
 }
@@ -1596,10 +1601,12 @@ func TestRisksPageNamesEveryoneAsOrgAll(t *testing.T) {
 	}
 }
 
-// An Admin's job in Needs an Admin is company-wide: that group with no scope
-// in its address shows every Ownerless and halted-parent Goal, for an Admin
-// with no one under them too, and its card counts the company's whatever the
-// page's scope, keeping the page's values, and links there without the scope.
+// An Admin's job in Needs an Admin is company-wide: that group lists every
+// Ownerless and halted-parent Goal whatever the page's scope, which stays the
+// one its address names, the viewer's default with none, for an Admin with no
+// one under them too. Its card counts the company's, keeping the page's scope
+// and values in its link, so its count and its table agree, and Show all and
+// the other cards from there come back to the page's scope.
 func TestRisksNeedsAnAdminIsCompanyWide(t *testing.T) {
 	t.Parallel()
 
@@ -1622,16 +1629,19 @@ func TestRisksNeedsAnAdminIsCompanyWide(t *testing.T) {
 	if got := orgScopedRiskTitles(page, org.goals()...); !slices.Equal(got, []string{"Pax's goal"}) {
 		t.Errorf("Needs an Admin for an Admin with no one under them: rows = %q, want Pax's Ownerless Goal", got)
 	}
-	if _, value, _ := scopeChoices(scopeSelect(t, page, "risks-scope")); value != "all" {
-		t.Errorf("Needs an Admin with no scope shows %q chosen, want Everyone", value)
+	if _, value, _ := scopeChoices(scopeSelect(t, page, "risks-scope")); value != "mine" {
+		t.Errorf("Needs an Admin with no scope shows %q chosen, want the Admin's default, Mine", value)
+	}
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "><strong>1</strong> Goal needs an Admin across the company. Worst first.") {
+		t.Errorf("Needs an Admin's header doesn't say 1 Goal needs an Admin across the company: %s", head)
 	}
 
 	mia := signInClient(t, ts.URL, "mia@example.com")
 	coreID := strconv.FormatInt(core.ID, 10)
 	for _, c := range []struct{ query, count, href string }{
 		{"", "1", "/risks?group=admin"},
-		{"?org=mine", "1", "/risks?group=admin"},
-		{"?org=all", "1", "/risks?group=admin"},
+		{"?org=mine", "1", "/risks?group=admin&org=mine"},
+		{"?org=all", "1", "/risks?group=admin&org=all"},
 		{"?value=" + coreID, "1", "/risks?group=admin&value=" + coreID},
 	} {
 		card := pageElement(t, getBody(t, mia, ts.URL+"/risks"+c.query), "a", "risks-group-admin")
@@ -1642,9 +1652,99 @@ func TestRisksNeedsAnAdminIsCompanyWide(t *testing.T) {
 			t.Errorf("/risks%s: the Needs an Admin card links to %q, want %q", c.query, href, c.href)
 		}
 	}
+	page = getBody(t, mia, ts.URL+"/risks?group=admin&org=mine")
+	if got := orgScopedRiskTitles(page, org.goals()...); !slices.Equal(got, []string{"Pax's goal"}) {
+		t.Errorf("Needs an Admin in Mia's Mine: rows = %q, want Pax's Ownerless Goal", got)
+	}
+	if card := pageElement(t, page, "a", "risks-group-admin"); !strings.Contains(card, `<span class="num">1</span>`) {
+		t.Errorf("Needs an Admin in Mia's Mine: the card doesn't count 1: %s", card)
+	}
 	page = getBody(t, mia, ts.URL+"/risks?value="+strconv.FormatInt(edge.ID, 10))
 	if card := pageElement(t, page, "div", "risks-group-admin"); !strings.Contains(card, "Nothing needs an Admin.") {
 		t.Errorf("the Needs an Admin card doesn't keep the page's values: %s", card)
+	}
+
+	miaID := strconv.FormatInt(org.Mia.ID, 10)
+	page = getBody(t, mia, ts.URL+"/risks?group=admin&org="+miaID)
+	if _, value, _ := scopeChoices(scopeSelect(t, page, "risks-scope")); value != miaID {
+		t.Errorf("Needs an Admin in Mia's org shows %q chosen, want %s", value, miaID)
+	}
+	if all := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "risks-show-all")), "href")); all != "/risks?org="+miaID {
+		t.Errorf("Show all from Needs an Admin links to %q, want it to keep Mia's org", all)
+	}
+	if href := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "risks-group-owner")), "href")); href != "/risks?group=owner&org="+miaID {
+		t.Errorf("the owner card from Needs an Admin links to %q, want it to keep Mia's org", href)
+	}
+}
+
+// With nothing for an Admin anywhere, Needs an Admin says so in one line, with
+// nowhere wider to link, whatever the page's scope.
+func TestRisksNeedsAnAdminWithNothingSaysSo(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	h.Clock.Advance(10 * day)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, query := range []string{"", "&org=mine", "&org=all"} {
+		page := getBody(t, client, ts.URL+"/risks?group=admin"+query)
+		if empty := strings.TrimSpace(pageElement(t, page, "p", "risks-empty")); !strings.HasSuffix(empty, ">Nothing needs an Admin.") {
+			t.Errorf("group=admin%s: the empty line doesn't say only that nothing needs an Admin: %s", query, empty)
+		}
+		if strings.Contains(page, "Show everything") {
+			t.Errorf("group=admin%s: the empty line offers Show everything", query)
+		}
+	}
+}
+
+// An Admin whose own scope has nothing flagged still sees, after the empty
+// line, the Needs an Admin card counting the company's, the other cards blank;
+// anyone else sees only the empty line.
+func TestRisksShowsAnAdminTheirCardOnAnEmptyScope(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("kim@example.com")
+	h.ActiveGoal(sam, "Orphaned work", "It matters.")
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/risks")
+	empty := pageElement(t, page, "p", "risks-empty")
+	if !strings.Contains(empty, "No Goals need attention in Mine.") {
+		t.Errorf("the Admin's empty Mine doesn't say so: %s", empty)
+	}
+	card := pageElement(t, page, "a", "risks-group-admin")
+	if !strings.Contains(card, `<span class="num">1</span>`) || !strings.Contains(card, "Ownerless · 1") {
+		t.Errorf("the Admin's Needs an Admin card doesn't count the company's 1: %s", card)
+	}
+	if strings.Index(page, `data-testid="risks-empty"`) > strings.Index(page, `data-testid="risks-groups"`) {
+		t.Errorf("the cards come before the empty line")
+	}
+	for key, blank := range map[string]string{"owner": "Every Owner is up to date.", "plan": "Every plan fits."} {
+		if card := pageElement(t, page, "div", "risks-group-"+key); !strings.Contains(card, blank) {
+			t.Errorf("the Admin's %s card isn't blank: %s", key, card)
+		}
+	}
+	for _, gone := range []string{"<table", `data-testid="risks-attention"`, "risks-show-all"} {
+		if strings.Contains(page, gone) {
+			t.Errorf("the Admin's empty Mine has %s", gone)
+		}
+	}
+
+	page = getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/risks")
+	pageElement(t, page, "p", "risks-empty")
+	for _, gone := range []string{`data-testid="risks-groups"`, `data-testid="risks-group-`} {
+		if strings.Contains(page, gone) {
+			t.Errorf("a non-Admin's empty Mine has %s", gone)
+		}
 	}
 }
 

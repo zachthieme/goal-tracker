@@ -14,7 +14,8 @@ import (
 // address asks for it, and at the bottom what each signal means. The header's
 // form scopes it all to some Goals; #risks-body is what a change of scope
 // swaps. With no Goal left to show, #risks-body says so in one line in place
-// of the count, the cards and the table.
+// of the count, the cards and the table; for an Admin, the cards follow it
+// while the company has a Goal that Needs an Admin.
 templ risksPage(current *domain.Account, v risksPageView) {
 	@layout("Risks", current) {
 		@risksStyles()
@@ -27,20 +28,19 @@ templ risksPage(current *domain.Account, v risksPageView) {
 				<div class="rk-head">
 					<p data-testid="risks-empty" class="muted">
 						{ v.Empty() }
-						if v.Filtered() {
+						if v.OffersShowEverything() {
 							<a href={ v.ShowEverythingURL() }>Show everything</a>
 						}
 					</p>
 				</div>
+				if v.CardsWhenEmpty() {
+					@riskCardsView(v)
+				}
 			} else {
 				<div class="rk-head">
-					<p data-testid="risks-attention" class="muted"><strong>{ strconv.Itoa(len(v.Rows)) }</strong> { v.attention() }</p>
+					<p data-testid="risks-attention" class="muted"><strong>{ strconv.Itoa(v.attentionCount()) }</strong> { v.attention() }</p>
 				</div>
-				<nav data-testid="risks-groups" class="rk-cards" aria-label="Risks by who acts">
-					for _, c := range v.Cards() {
-						@riskCardView(c)
-					}
-				</nav>
+				@riskCardsView(v)
 				if v.Group != "" {
 					<p><a data-testid="risks-show-all" href={ v.ShowAllURL() }>Show all</a></p>
 				}
@@ -102,6 +102,15 @@ templ risksFilters(v risksPageView) {
 		}
 		<noscript><button type="submit" class="btn">Apply</button></noscript>
 	</form>
+}
+
+// riskCardsView is the page's group cards, in the page's order.
+templ riskCardsView(v risksPageView) {
+	<nav data-testid="risks-groups" class="rk-cards" aria-label="Risks by who acts">
+		for _, c := range v.Cards() {
+			@riskCardView(c)
+		}
+	</nav>
 }
 
 // riskCardView is one group's summary card: its name, how many Goals it

@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"fmt"
-	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -19,11 +18,11 @@ import (
 
 // handleRisks answers "what's going wrong?" for leadership: every Goal the
 // freshness and graph signals flag, by problem type, scoped by its address to
-// Everyone (?org=all), the viewer's own Goals (?org=mine, or the older
-// ?mine=1) or an Org's (?org=), else the viewer's default scope, and to the
-// Goals with an offered Dimension's value (?value=, one per Dimension). The
-// scope narrows the rows only after they are built: loadRisks stays
-// company-wide, for the Needs an Admin card.
+// Everyone (?org=all), the viewer's own Goals (?org=mine) or an Org's
+// (?org=), else the viewer's default scope, and to the Goals with an offered
+// Dimension's value (?value=, one per Dimension). The scope narrows the rows
+// only after they are built: loadRisks stays company-wide, for Needs an
+// Admin.
 func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	page, err := s.loadRisksPage(r.Context(), r.URL.Query(), current)
 	if err != nil {
@@ -34,8 +33,6 @@ func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current dom
 }
 
 // loadRisksPage builds the Risks page current sees at an address with query q.
-// An Admin's job in Needs an Admin is company-wide, so that group with no
-// scope in its address is Everyone's, whoever is looking.
 func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain.Account) (risksPageView, error) {
 	v, err := s.loadRisks(ctx)
 	if err != nil {
@@ -78,10 +75,6 @@ func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain
 		return risksPageView{}, err
 	}
 	group := riskGroupKey(q.Get("group"))
-	if group == riskGroupAdmin && q.Get("org") == "" && q.Get("mine") != "1" {
-		q = maps.Clone(q)
-		q.Set("org", scopeEveryoneValue)
-	}
 	org, err := s.loadPageOrgScope(ctx, q, current, goals)
 	if err != nil {
 		return risksPageView{}, err
@@ -180,11 +173,10 @@ func (p risksPageView) valueIn(dimID int64) domain.DimensionValue {
 }
 
 // url is the Risks page's address filtered to group ("" for every group),
-// keeping the page's scope and every value it is scoped to. Needs an Admin
-// drops the scope, landing on that group's company-wide rows.
+// keeping the page's scope and every value it is scoped to.
 func (p risksPageView) url(group string) string {
 	q := url.Values{}
-	if sc := p.Org.Value(); sc != "" && group != riskGroupAdmin {
+	if sc := p.Org.Value(); sc != "" {
 		q.Set("org", sc)
 	}
 	if group != "" {
@@ -216,7 +208,8 @@ func (p risksPageView) ShowEverythingURL() templ.SafeURL {
 
 // Shown are the rows the table shows: every row with no filter, else each row
 // a signal of the filtered group flags, chipped with that group's signals
-// only.
+// only. Needs an Admin's are the company's, whatever the page's scope: an
+// Admin's job there is company-wide.
 func (p risksPageView) Shown() []riskGoalRow {
 	var kinds []string
 	for _, gk := range riskGroupKinds {
@@ -227,8 +220,12 @@ func (p risksPageView) Shown() []riskGoalRow {
 	if kinds == nil {
 		return p.Rows
 	}
+	rows := p.Rows
+	if p.Group == riskGroupAdmin {
+		rows = p.CompanyRows
+	}
 	var shown []riskGoalRow
-	for _, r := range p.Rows {
+	for _, r := range rows {
 		var signals []riskSignal
 		for _, sig := range r.Signals {
 			if slices.Contains(kinds, sig.Kind) {
@@ -249,18 +246,48 @@ func (p risksPageView) Filtered() bool {
 	return p.Org.Name() != "" || len(p.Values) > 0 || p.Group != ""
 }
 
+// CardsWhenEmpty reports whether the page shows its cards after its empty
+// line: for an Admin, with no group filter, while the company has a Goal
+// Needs an Admin holds, so an Admin's own empty scope doesn't hide it.
+func (p risksPageView) CardsWhenEmpty() bool {
+	if !p.Org.Viewer.IsAdmin || p.Group != "" {
+		return false
+	}
+	for i, g := range riskGroups(p.CompanyRows) {
+		if riskGroupKinds[i].Key == riskGroupAdmin {
+			return g.Count > 0
+		}
+	}
+	return false
+}
+
+// OffersShowEverything reports whether the empty line links to everything:
+// when the page is filtered, but not on Needs an Admin, which is company-wide
+// already.
+func (p risksPageView) OffersShowEverything() bool {
+	return p.Filtered() && p.Group != riskGroupAdmin
+}
+
 // Empty is what the page says when no Goal is left to show: where nothing
 // needs attention, naming Mine or the Org, each value with its Dimension's
 // name, in the Dimensions' order, and the group's card's title, in that order.
+// Needs an Admin, company-wide, names only the values: "Nothing needs an
+// Admin in Team Platform."
 func (p risksPageView) Empty() string {
 	var parts []string
-	if name := p.Org.Name(); name != "" {
+	if name := p.Org.Name(); name != "" && p.Group != riskGroupAdmin {
 		parts = append(parts, name)
 	}
 	for _, d := range p.Dimensions {
 		if v := p.valueIn(d.ID); v.ID != 0 {
 			parts = append(parts, d.Name+" "+v.Value)
 		}
+	}
+	if p.Group == riskGroupAdmin {
+		if len(parts) == 0 {
+			return "Nothing needs an Admin."
+		}
+		return "Nothing needs an Admin in " + strings.Join(parts, ", ") + "."
 	}
 	for _, gk := range riskGroupKinds {
 		if gk.Key == p.Group {
@@ -273,15 +300,30 @@ func (p risksPageView) Empty() string {
 	return "No Goals need attention in " + strings.Join(parts, ", ") + "."
 }
 
-// attention is the header's words after its count of the Goals on the page,
-// naming Mine or the Org it is scoped to: "Goals need attention in My org.
-// Worst first."
+// attentionCount is the header's count: the Goals in the page's scope, or on
+// Needs an Admin the company's Goals its table shows.
+func (p risksPageView) attentionCount() int {
+	if p.Group == riskGroupAdmin {
+		return len(p.Shown())
+	}
+	return len(p.Rows)
+}
+
+// attention is the header's words after its count, naming Mine or the Org
+// the page is scoped to: "Goals need attention in My org. Worst first." On
+// Needs an Admin they name the company instead.
 func (p risksPageView) attention() string {
+	if p.Group == riskGroupAdmin {
+		if p.attentionCount() == 1 {
+			return "Goal needs an Admin across the company. Worst first."
+		}
+		return "Goals need an Admin across the company. Worst first."
+	}
 	in := ""
 	if name := p.Org.Name(); name != "" {
 		in = " in " + name
 	}
-	if len(p.Rows) == 1 {
+	if p.attentionCount() == 1 {
 		return "Goal needs attention" + in + ". Worst first."
 	}
 	return "Goals need attention" + in + ". Worst first."
