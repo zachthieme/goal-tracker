@@ -30,18 +30,21 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Goals and Risks open on your own part of the company: My org if anyone reports to you, Mine otherwise. Everyone is still one choice away in the Scope select, and its address is now `?org=all`, which Goals' Clear and Risks' Show everything link to. An empty default list offers "See everyone's →". The top bar's Risks count counts the same default, matching a bare Risks page, and Needs an Admin stays company-wide (#307).
 - [user] Needs an Admin keeps your scope, so Show all and the other cards come back to it; it always lists the company's Goals, and an Admin sees it even when nothing in their own scope needs attention (#315).
 - [user] `/goals?mine=1` is no longer read; it opens your default scope. Use `?org=mine` (#315).
+- [ops] Password sign-in runs at most as many password hashes at once as the server has CPUs, so a burst of sign-ins can't exhaust memory (#313).
 
 **Bug fixes:**
 - [user] An Org link (`?org=`) to Goals or Risks now scopes the page for everyone once anyone in the company has a Manager, instead of silently showing every Goal to a viewer with no Manager and no one under them; and the Report builder no longer offers the Owner's org when the only Manager is someone set as their own (#269).
 - [user] The password fields on the sign-in and set-password pages look like the other fields, and the Admin page's Issue link button lines up with its email field (#311).
 - [ops] A directory CSV with empty or repeated extra columns, such as trailing empty header cells, or a stray `"` inside a field no longer fails the whole sync; only `email`, `name` or `manager_email` named twice is still an error (#312).
 - [user] Changing a rule's attribute without script no longer stops a Report saving: a rule keeps only the values of what it tests and drops any left selected for another; chips keep their padding without script; and the builder scrolls each rule's value list so the pre-filled author shows (#314).
+- [user] An Admin can't issue a set-password link for something that isn't an email address (#313).
 
 **Infrastructure:**
 - [internal] Each Account has a session generation (the new `account_sessions` table) that `domain.Service.EndSessions` moves on to end all of a person's sessions at once, for password sign-in to use (#299).
 
 **Testing:**
 - [internal] The seeded-pages check that no page shows an email as text skips a select's options, as its comment always said it did for form fields: the Scope select names people as Name (email) by design (#275), and the seed's Managers now make it list them (#306).
+- [internal] The seed test checks every team person's Manager, not only those who own a Goal, and the seeded-pages email check exempts only the Scope select's options, so an email in any other select's option is caught (#316).
 
 ### Collected changes — October 17, 2026
 
