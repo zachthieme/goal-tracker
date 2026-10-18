@@ -9,8 +9,8 @@ import (
 // reportActionItems lists a Report's open Action Items at its top, soonest due
 // first, each with its owner and due date (CONTEXT.md: Action Item). A
 // publication lists them as they stood when it was published, marking any
-// closed since; an owner reading it while the item is still open gets the
-// form to close it.
+// closed since. While the item is still open, its owner now gets the form to
+// close it, and those who may reassign it the form to do that.
 templ reportActionItems(items []domain.ActionItem, d discussion) {
 	if len(items) > 0 {
 		<section data-testid="report-action-items">
@@ -24,6 +24,9 @@ templ reportActionItems(items []domain.ActionItem, d discussion) {
 						}
 						if d.canClose(item) {
 							@closeActionItemForm(item, d.Return)
+						}
+						if d.canReassign(item) {
+							@reassignActionItemForm(item, d.Return)
 						}
 					</li>
 				}
@@ -141,6 +144,9 @@ templ publicationActionItems(d discussion) {
 					if d.canClose(item) {
 						@closeActionItemForm(item, d.Return)
 					}
+					if d.canReassign(item) {
+						@reassignActionItemForm(item, d.Return)
+					}
 				</li>
 			}
 		</ul>
@@ -187,11 +193,20 @@ templ actionItemFields(textRequired bool) {
 	</label>
 }
 
-// actionItemSummary is an Action Item on one line: what · who owns it · when
-// it is due · the Goal it is about, if it names one.
+// actionItemSummary is an Action Item on one line: what · who owns it, and
+// who had it before if it was reassigned · when it is due · the Goal it is
+// about, if it names one.
 templ actionItemSummary(item domain.ActionItem) {
 	{ item.Text }{ " · " }
 	@person(item.Owner)
+	if item.ReassignedFrom != nil {
+		{ " " }
+		<span data-testid="action-item-was">
+			{ "(was " }
+			@person(*item.ReassignedFrom)
+			{ "'s)" }
+		</span>
+	}
 	{ " · due " }{ showDateYear(item.DueDate) }
 	if item.GoalTitle != "" {
 		{ " · about " }{ item.GoalTitle }
@@ -210,6 +225,23 @@ templ closeActionItemForm(item domain.ActionItem, returnTo string) {
 				<input type="text" name="note" required/>
 			</label>
 			<button type="submit" class="btn primary sm">Close</button>
+		</form>
+	</details>
+}
+
+// reassignActionItemForm lets those who may hand an open Action Item to a new
+// owner, by email, behind a small Reassign button, and comes back to
+// returnTo.
+templ reassignActionItemForm(item domain.ActionItem, returnTo string) {
+	<details data-testid="reassign-toggle">
+		<summary class="btn sm">Reassign</summary>
+		<form data-testid="reassign-action-item" class="rp-inline-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/action-items/%d/reassign", item.ID)) }>
+			<input type="hidden" name="return" value={ returnTo }/>
+			<label>
+				New owner
+				<input type="email" name="owner" required/>
+			</label>
+			<button type="submit" class="btn primary sm">Reassign</button>
 		</form>
 	</details>
 }

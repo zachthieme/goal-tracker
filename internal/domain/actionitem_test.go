@@ -429,3 +429,285 @@ func TestActionItemListingIsOverdueTheDayAfterItsDueDate(t *testing.T) {
 		t.Errorf("the day after the legal review's due date, overdue = %v, want it and not the closed item", got)
 	}
 }
+
+// reassignWorld is an open Action Item on a published Report, owned by
+// someone other than the Report's author, and a second person to hand it to.
+type reassignWorld struct {
+	h                     *testsupport.Harness
+	creator, owner, other domain.Account
+	goal                  domain.Goal
+	def                   domain.ReportDefinition
+	pub                   domain.Publication
+	item                  domain.ActionItem
+}
+
+// newReassignWorld publishes the Report as publisher (the creator when it is
+// the zero Account) and raises the item on it. adminEmails get the Admin flag.
+func newReassignWorld(t *testing.T, adminEmails ...string) reassignWorld {
+	t.Helper()
+	h := testsupport.New(t, adminEmails...)
+	w := reassignWorld{h: h}
+	w.creator = h.SignIn("creator@example.com")
+	w.owner = h.SignIn("owner@example.com")
+	w.other = h.SignIn("other@example.com")
+	w.goal = h.ActiveGoal(w.owner, "Launch in EU", "Expand the market.")
+	w.def = h.SaveReportDefinition(w.creator, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{w.goal.ID}})
+	w.pub = h.PublishReport(w.creator, w.def)
+	w.item = w.raise(t, w.pub, "Book the EU legal review.")
+	return w
+}
+
+// raise raises an Action Item about the world's Goal on pub, owned by the
+// world's owner.
+func (w reassignWorld) raise(t *testing.T, pub domain.Publication, text string) domain.ActionItem {
+	t.Helper()
+	item, err := w.h.Service.RaiseActionItem(context.Background(), pub.PublishedBy.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, GoalID: w.goal.ID, Text: text, OwnerID: w.owner.ID, DueDate: w.h.Clock.Now().AddDate(0, 0, 7),
+	})
+	if err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+	return item
+}
+
+// After a reassignment the item is the new owner's, it names who had it
+// before, and the reassignment is recorded; only the new owner closes it.
+func TestReassignedActionItemBelongsToItsNewOwner(t *testing.T) {
+	t.Parallel()
+
+	w := newReassignWorld(t)
+	ctx := context.Background()
+	w.h.Clock.Advance(day)
+
+	got, err := w.h.Service.ReassignActionItemByEmail(ctx, w.creator.ID, w.item.ID, " other@example.com ")
+	if err != nil {
+		t.Fatalf("ReassignActionItemByEmail: %v", err)
+	}
+	if got.Owner.ID != w.other.ID || got.ReassignedFrom == nil || got.ReassignedFrom.ID != w.owner.ID {
+		t.Errorf("reassigned item owned by %d, reassigned from %+v; want owned by %d, from %d", got.Owner.ID, got.ReassignedFrom, w.other.ID, w.owner.ID)
+	}
+	if fresh, err := w.h.Service.GetActionItem(ctx, w.item.ID); err != nil || fresh.Owner.ID != w.other.ID || fresh.ReassignedFrom == nil || fresh.ReassignedFrom.ID != w.owner.ID {
+		t.Errorf("item read back %+v (err %v), want the new owner and who had it before", fresh, err)
+	}
+	if w.item.ReassignedFrom != nil {
+		t.Errorf("item before any reassignment was reassigned from %+v, want nil", w.item.ReassignedFrom)
+	}
+
+	history, err := w.h.Service.ActionItemReassignments(ctx, w.item.ID)
+	if err != nil {
+		t.Fatalf("ActionItemReassignments: %v", err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("reassignments %+v, want one", history)
+	}
+	r := history[0]
+	if r.ID == 0 || r.ItemID != w.item.ID || r.ItemText != "Book the EU legal review." || r.GoalID != w.goal.ID ||
+		r.From.ID != w.owner.ID || r.To.ID != w.other.ID || r.By.ID != w.creator.ID || !r.At.Equal(w.h.Clock.Now()) {
+		t.Errorf("reassignment %+v, want the item from owner to other, by the creator, now", r)
+	}
+
+	if _, err := w.h.Service.CloseActionItem(ctx, w.owner.ID, w.item.ID, "Done."); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("closed by the old owner: err %v, want ErrNotAuthorized", err)
+	}
+	if _, err := w.h.Service.CloseActionItem(ctx, w.other.ID, w.item.ID, "Done."); err != nil {
+		t.Errorf("closed by the new owner: %v", err)
+	}
+}
+
+// The Report Definition's creator, whoever published the publication an
+// Action Item was raised on, an Admin, and the creator's Manager may each
+// reassign it; nobody else may, its own owner included (CONTEXT.md: Action
+// Item).
+func TestWhoMayReassignAnActionItem(t *testing.T) {
+	t.Parallel()
+
+	for name, who := range map[string]func(t *testing.T, w *reassignWorld) domain.Account{
+		"the Definition's creator": func(_ *testing.T, w *reassignWorld) domain.Account { return w.creator },
+		"who published it": func(t *testing.T, w *reassignWorld) domain.Account {
+			publisher := w.h.SignIn("publisher@example.com")
+			w.h.Clock.Advance(day)
+			w.pub = w.h.PublishReport(publisher, w.def)
+			w.item = w.raise(t, w.pub, "Chase the vendor.")
+			return publisher
+		},
+		"an Admin": func(_ *testing.T, w *reassignWorld) domain.Account { return w.h.SignIn("admin@example.com") },
+		"the creator's Manager": func(_ *testing.T, w *reassignWorld) domain.Account {
+			manager := w.h.SignIn("manager@example.com")
+			w.h.SetManager(w.creator, manager)
+			return manager
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			w := newReassignWorld(t, "admin@example.com")
+			actor := who(t, &w)
+			ctx := context.Background()
+			if ok, err := w.h.Service.CanReassignActionItem(ctx, actor.ID, w.item); err != nil || !ok {
+				t.Errorf("CanReassignActionItem = %v (err %v), want true", ok, err)
+			}
+			got, err := w.h.Service.ReassignActionItem(ctx, actor.ID, w.item.ID, w.other.ID)
+			if err != nil {
+				t.Fatalf("ReassignActionItem: %v", err)
+			}
+			if got.Owner.ID != w.other.ID {
+				t.Errorf("item owned by %d, want %d", got.Owner.ID, w.other.ID)
+			}
+		})
+	}
+
+	w := newReassignWorld(t, "admin@example.com")
+	ctx := context.Background()
+	// A later publication's publisher didn't publish the one it was raised on.
+	laterPublisher := w.h.SignIn("later@example.com")
+	w.h.Clock.Advance(day)
+	w.h.PublishReport(laterPublisher, w.def)
+	// A manager of someone other than the creator.
+	ownersManager := w.h.SignIn("owners-manager@example.com")
+	w.h.SetManager(w.owner, ownersManager)
+	for name, actor := range map[string]domain.Account{
+		"its owner":                    w.owner,
+		"a stranger":                   w.other,
+		"a later publication's author": laterPublisher,
+		"the owner's Manager":          ownersManager,
+	} {
+		if ok, err := w.h.Service.CanReassignActionItem(ctx, actor.ID, w.item); err != nil || ok {
+			t.Errorf("%s: CanReassignActionItem = %v (err %v), want false", name, ok, err)
+		}
+		if _, err := w.h.Service.ReassignActionItem(ctx, actor.ID, w.item.ID, w.other.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s: ReassignActionItem err %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if _, err := w.h.Service.ReassignActionItem(ctx, w.creator.ID, w.item.ID+100, w.other.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("reassigning a missing item: err %v, want ErrNotFound", err)
+	}
+}
+
+// Reassigning a closed item, to someone who has left, to an email with no
+// account, or to its current owner is refused, and nothing is recorded.
+func TestReassigningAnActionItemNeedsAnOpenItemAndANewOwner(t *testing.T) {
+	t.Parallel()
+
+	w := newReassignWorld(t, "admin@example.com")
+	ctx := context.Background()
+	admin := w.h.SignIn("admin@example.com")
+	gone := w.h.SignIn("gone@example.com")
+	if err := w.h.Service.MarkDeparted(ctx, admin.ID, gone.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	closed := w.raise(t, w.pub, "Translate the site.")
+	if _, err := w.h.Service.CloseActionItem(ctx, w.owner.ID, closed.ID, "Done in-house."); err != nil {
+		t.Fatalf("CloseActionItem: %v", err)
+	}
+
+	for name, try := range map[string]func() error{
+		"a closed item": func() error {
+			_, err := w.h.Service.ReassignActionItem(ctx, w.creator.ID, closed.ID, w.other.ID)
+			return err
+		},
+		"to a Departed person": func() error {
+			_, err := w.h.Service.ReassignActionItemByEmail(ctx, w.creator.ID, w.item.ID, "gone@example.com")
+			return err
+		},
+		"to an unknown email": func() error {
+			_, err := w.h.Service.ReassignActionItemByEmail(ctx, w.creator.ID, w.item.ID, "nobody@example.com")
+			return err
+		},
+		"to its current owner": func() error {
+			_, err := w.h.Service.ReassignActionItemByEmail(ctx, w.creator.ID, w.item.ID, "owner@example.com")
+			return err
+		},
+	} {
+		if err := try(); !errors.Is(err, domain.ErrValidation) {
+			t.Errorf("reassigning %s: err %v, want ErrValidation", name, err)
+		}
+	}
+	for _, id := range []int64{w.item.ID, closed.ID} {
+		if history, err := w.h.Service.ActionItemReassignments(ctx, id); err != nil || len(history) != 0 {
+			t.Errorf("item %d's reassignments %+v (err %v), want none", id, history, err)
+		}
+	}
+	if got, err := w.h.Service.GetActionItem(ctx, w.item.ID); err != nil || got.Owner.ID != w.owner.ID || got.ReassignedFrom != nil {
+		t.Errorf("item %+v (err %v), want it still the owner's, never reassigned", got, err)
+	}
+}
+
+// An item whose owner has left can be handed on by the Report's creator, and
+// its new owner closes it; a creator who has since left can't reassign.
+func TestDepartedOwnersActionItemIsReassignedButDepartedCreatorCant(t *testing.T) {
+	t.Parallel()
+
+	w := newReassignWorld(t, "admin@example.com")
+	ctx := context.Background()
+	admin := w.h.SignIn("admin@example.com")
+	another := w.raise(t, w.pub, "Chase the vendor.")
+	if err := w.h.Service.MarkDeparted(ctx, admin.ID, w.owner.ID); err != nil {
+		t.Fatalf("MarkDeparted owner: %v", err)
+	}
+	if _, err := w.h.Service.ReassignActionItem(ctx, w.creator.ID, w.item.ID, w.other.ID); err != nil {
+		t.Fatalf("reassigning the Departed owner's item: %v", err)
+	}
+	if _, err := w.h.Service.CloseActionItem(ctx, w.other.ID, w.item.ID, "Picked it up and booked it."); err != nil {
+		t.Errorf("closed by its new owner: %v", err)
+	}
+
+	if err := w.h.Service.MarkDeparted(ctx, admin.ID, w.creator.ID); err != nil {
+		t.Fatalf("MarkDeparted creator: %v", err)
+	}
+	if _, err := w.h.Service.ReassignActionItem(ctx, w.creator.ID, another.ID, w.other.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("reassigned by a Departed creator: err %v, want ErrNotAuthorized", err)
+	}
+}
+
+// A Goal's reassignments are those of the Action Items about it, oldest
+// first; none about another Goal or a whole Report.
+func TestActionItemReassignmentsAboutAGoal(t *testing.T) {
+	t.Parallel()
+
+	w := newReassignWorld(t)
+	ctx := context.Background()
+	v2 := w.h.ActiveGoal(w.owner, "Ship v2", "Win back churned accounts.")
+	def := w.h.SaveReportDefinition(w.creator, domain.SaveReportDefinitionInput{Name: "QBR", Mode: domain.ReportModePicked, Picked: []int64{w.goal.ID, v2.ID}})
+	pub := w.h.PublishReport(w.creator, def)
+	raise := func(goalID int64, text string) domain.ActionItem {
+		t.Helper()
+		item, err := w.h.Service.RaiseActionItem(ctx, w.creator.ID, domain.RaiseActionItemInput{
+			PublicationID: pub.ID, GoalID: goalID, Text: text, OwnerID: w.owner.ID, DueDate: w.h.Clock.Now().AddDate(0, 0, 7),
+		})
+		if err != nil {
+			t.Fatalf("RaiseActionItem %q: %v", text, err)
+		}
+		return item
+	}
+	reassign := func(item domain.ActionItem, to domain.Account) {
+		t.Helper()
+		if _, err := w.h.Service.ReassignActionItem(ctx, w.creator.ID, item.ID, to.ID); err != nil {
+			t.Fatalf("ReassignActionItem %q: %v", item.Text, err)
+		}
+	}
+	distributor := raise(w.goal.ID, "Find an EU distributor.")
+	reassign(raise(v2.ID, "Price the v2 tiers."), w.other)
+	reassign(raise(0, "Move the QBR to Tuesdays."), w.other)
+	reassign(distributor, w.other)
+	reassign(w.item, w.other)
+	reassign(distributor, w.owner)
+
+	got, err := w.h.Service.ActionItemReassignmentsAbout(ctx, w.goal.ID)
+	if err != nil {
+		t.Fatalf("ActionItemReassignmentsAbout: %v", err)
+	}
+	var names []string
+	for _, r := range got {
+		names = append(names, r.ItemText+": "+r.From.Email+" -> "+r.To.Email)
+	}
+	want := []string{
+		"Find an EU distributor.: owner@example.com -> other@example.com",
+		"Book the EU legal review.: owner@example.com -> other@example.com",
+		"Find an EU distributor.: other@example.com -> owner@example.com",
+	}
+	if !slices.Equal(names, want) {
+		t.Errorf("EU Goal's reassignments = %q, want %q", names, want)
+	}
+	if fresh, err := w.h.Service.GetActionItem(ctx, distributor.ID); err != nil || fresh.ReassignedFrom == nil || fresh.ReassignedFrom.ID != w.other.ID {
+		t.Errorf("twice-reassigned item %+v (err %v), want it reassigned from its latest previous owner", fresh, err)
+	}
+}

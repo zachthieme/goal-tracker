@@ -41,6 +41,15 @@ type ActionItem struct {
 	GoalID             int64
 }
 
+type ActionItemReassignment struct {
+	ID           int64
+	ActionItemID int64
+	FromOwnerID  int64
+	ToOwnerID    int64
+	ReassignedBy int64
+	ReassignedAt string
+}
+
 type Checkin struct {
 	ID              int64
 	GoalID          int64

@@ -72,6 +72,40 @@ func (q *Queries) CreateActionItem(ctx context.Context, arg CreateActionItemPara
 	return i, err
 }
 
+const createActionItemReassignment = `-- name: CreateActionItemReassignment :one
+INSERT INTO action_item_reassignments (action_item_id, from_owner_id, to_owner_id, reassigned_by, reassigned_at)
+VALUES (?, ?, ?, ?, ?)
+RETURNING id, action_item_id, from_owner_id, to_owner_id, reassigned_by, reassigned_at
+`
+
+type CreateActionItemReassignmentParams struct {
+	ActionItemID int64
+	FromOwnerID  int64
+	ToOwnerID    int64
+	ReassignedBy int64
+	ReassignedAt string
+}
+
+func (q *Queries) CreateActionItemReassignment(ctx context.Context, arg CreateActionItemReassignmentParams) (ActionItemReassignment, error) {
+	row := q.db.QueryRowContext(ctx, createActionItemReassignment,
+		arg.ActionItemID,
+		arg.FromOwnerID,
+		arg.ToOwnerID,
+		arg.ReassignedBy,
+		arg.ReassignedAt,
+	)
+	var i ActionItemReassignment
+	err := row.Scan(
+		&i.ID,
+		&i.ActionItemID,
+		&i.FromOwnerID,
+		&i.ToOwnerID,
+		&i.ReassignedBy,
+		&i.ReassignedAt,
+	)
+	return i, err
+}
+
 const getActionItem = `-- name: GetActionItem :one
 SELECT id, report_definition_id, publication_id, comment_id, text, owner_id, due_date, created_by, created_at, closed_at, closing_note, goal_id FROM action_items WHERE id = ? LIMIT 1
 `
@@ -94,6 +128,104 @@ func (q *Queries) GetActionItem(ctx context.Context, id int64) (ActionItem, erro
 		&i.GoalID,
 	)
 	return i, err
+}
+
+const getLatestActionItemReassignment = `-- name: GetLatestActionItemReassignment :one
+SELECT id, action_item_id, from_owner_id, to_owner_id, reassigned_by, reassigned_at FROM action_item_reassignments
+WHERE action_item_id = ?
+ORDER BY id DESC
+LIMIT 1
+`
+
+// An Action Item's most recent reassignment, naming who had it before.
+func (q *Queries) GetLatestActionItemReassignment(ctx context.Context, actionItemID int64) (ActionItemReassignment, error) {
+	row := q.db.QueryRowContext(ctx, getLatestActionItemReassignment, actionItemID)
+	var i ActionItemReassignment
+	err := row.Scan(
+		&i.ID,
+		&i.ActionItemID,
+		&i.FromOwnerID,
+		&i.ToOwnerID,
+		&i.ReassignedBy,
+		&i.ReassignedAt,
+	)
+	return i, err
+}
+
+const listActionItemReassignments = `-- name: ListActionItemReassignments :many
+SELECT id, action_item_id, from_owner_id, to_owner_id, reassigned_by, reassigned_at FROM action_item_reassignments
+WHERE action_item_id = ?
+ORDER BY id
+`
+
+// An Action Item's reassignments, oldest first.
+func (q *Queries) ListActionItemReassignments(ctx context.Context, actionItemID int64) ([]ActionItemReassignment, error) {
+	rows, err := q.db.QueryContext(ctx, listActionItemReassignments, actionItemID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ActionItemReassignment
+	for rows.Next() {
+		var i ActionItemReassignment
+		if err := rows.Scan(
+			&i.ID,
+			&i.ActionItemID,
+			&i.FromOwnerID,
+			&i.ToOwnerID,
+			&i.ReassignedBy,
+			&i.ReassignedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listActionItemReassignmentsForGoal = `-- name: ListActionItemReassignmentsForGoal :many
+SELECT action_item_reassignments.id, action_item_reassignments.action_item_id, action_item_reassignments.from_owner_id, action_item_reassignments.to_owner_id, action_item_reassignments.reassigned_by, action_item_reassignments.reassigned_at
+FROM action_item_reassignments
+JOIN action_items ON action_items.id = action_item_reassignments.action_item_id
+WHERE action_items.goal_id = ?
+ORDER BY action_item_reassignments.id
+`
+
+// The reassignments of the Action Items about one Goal, oldest first.
+func (q *Queries) ListActionItemReassignmentsForGoal(ctx context.Context, goalID int64) ([]ActionItemReassignment, error) {
+	rows, err := q.db.QueryContext(ctx, listActionItemReassignmentsForGoal, goalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ActionItemReassignment
+	for rows.Next() {
+		var i ActionItemReassignment
+		if err := rows.Scan(
+			&i.ID,
+			&i.ActionItemID,
+			&i.FromOwnerID,
+			&i.ToOwnerID,
+			&i.ReassignedBy,
+			&i.ReassignedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listActionItemsForGoal = `-- name: ListActionItemsForGoal :many
@@ -403,4 +535,22 @@ func (q *Queries) ListPublicationActionItems(ctx context.Context, publicationID 
 		return nil, err
 	}
 	return items, nil
+}
+
+const reassignActionItem = `-- name: ReassignActionItem :execrows
+UPDATE action_items SET owner_id = ? WHERE id = ? AND closed_at = ''
+`
+
+type ReassignActionItemParams struct {
+	OwnerID int64
+	ID      int64
+}
+
+// Hands an open Action Item to a new owner; no rows change once it is closed.
+func (q *Queries) ReassignActionItem(ctx context.Context, arg ReassignActionItemParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, reassignActionItem, arg.OwnerID, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }
