@@ -16,7 +16,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 ### Collected changes — October 18, 2026
 
 **Breaking changes:**
-- [ops] **Configuration**: `GOAL_TRACKER_SIGNIN` is now required, `oidc` or `dev`, and startup stops without it. Leaving the `GOAL_TRACKER_OIDC_*` variables unset no longer selects the development form, which could open the app to everyone through one missing variable: set `GOAL_TRACKER_SIGNIN=dev` for it, and `dev` refuses any `GOAL_TRACKER_OIDC_*` variable. `oidc` now requires `GOAL_TRACKER_SESSION_KEY` too; `make serve` reads it from `dev/authentik/.env`, so add `GOAL_TRACKER_SESSION_KEY=$(openssl rand -base64 32)` there (#299).
+- [ops] **Configuration**: `GOAL_TRACKER_SIGNIN` is now required, `oidc`, `password` or `dev`, and startup stops without it. Leaving the `GOAL_TRACKER_OIDC_*` variables unset no longer selects the development form, which could open the app to everyone through one missing variable: set `GOAL_TRACKER_SIGNIN=dev` for it, and `dev` refuses any `GOAL_TRACKER_OIDC_*` variable. `oidc` now requires `GOAL_TRACKER_SESSION_KEY` too; `make serve` reads it from `dev/authentik/.env`, so add `GOAL_TRACKER_SESSION_KEY=$(openssl rand -base64 32)` there (#299).
 - [ops] **Sessions**: the session cookie now carries a per-Account session generation, so existing sessions are signed out once and everyone signs in again (#299).
 
 **New features:**
