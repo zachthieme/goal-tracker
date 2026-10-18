@@ -151,7 +151,8 @@ func dimensionAttribute(dimID int64) string {
 }
 
 // handleNewReportForm shows the builder for a new Report Definition, selecting
-// by rules until the author chooses to pick Goals by hand.
+// by rules until the author chooses to pick Goals by hand, and starting with
+// the rule newReportStartingRule chooses for the author.
 func (s *Server) handleNewReportForm(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	v := reportBuilderView{Mode: domain.ReportModeRules}
 	start, note, err := s.newReportStartingRule(r, current)
