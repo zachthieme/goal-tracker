@@ -44,21 +44,21 @@ func TestNudgingFromTheRisksFix(t *testing.T) {
 	h.Clock.Advance(10 * day)
 
 	pat := signInClient(t, ts.URL, "pat@example.com")
-	form := nudgeForm(t, riskRowOf(t, getBody(t, pat, ts.URL+"/risks?group=owner"), silent))
+	form := nudgeForm(t, riskRowOf(t, getBody(t, pat, ts.URL+"/risks?group=owner&org=all"), silent))
 	action := attr(openTag(form)+">", "action")
 	if want := "/goals/" + strconv.FormatInt(silent.ID, 10) + "/nudge"; action != want || !strings.Contains(openTag(form), `method="post"`) {
 		t.Fatalf("Nudge form posts to %q, want %s: %s", action, want, form)
 	}
-	if !strings.Contains(form, `<input type="hidden" name="return" value="/risks?group=owner">`) {
+	if !strings.Contains(form, `<input type="hidden" name="return" value="/risks?group=owner&amp;org=all">`) {
 		t.Errorf("the Nudge form doesn't return to the Risks page as filtered: %s", form)
 	}
 	if !strings.Contains(form, ">Nudge</button>") {
 		t.Errorf("the Nudge form's button doesn't say Nudge: %s", form)
 	}
 
-	resp := postForm(t, pat, ts.URL+action, url.Values{"return": {"/risks?group=owner"}})
+	resp := postForm(t, pat, ts.URL+action, url.Values{"return": {"/risks?group=owner&org=all"}})
 	_ = readBody(t, resp)
-	if got := resp.Request.URL.String(); got != ts.URL+"/risks?group=owner" {
+	if got := resp.Request.URL.String(); got != ts.URL+"/risks?group=owner&org=all" {
 		t.Errorf("nudging landed on %s, want the Risks page as filtered", got)
 	}
 	if n := len(h.Email.Sent()); n != 1 {
@@ -66,12 +66,12 @@ func TestNudgingFromTheRisksFix(t *testing.T) {
 	}
 
 	for _, viewer := range []string{"pat@example.com", "kim@example.com"} {
-		cell := pageElement(t, riskRowOf(t, getBody(t, signInClient(t, ts.URL, viewer), ts.URL+"/risks"), silent), "td", "risk-fix")
+		cell := pageElement(t, riskRowOf(t, getBody(t, signInClient(t, ts.URL, viewer), ts.URL+"/risks?org=all"), silent), "td", "risk-fix")
 		if !strings.Contains(cell, "disabled") || !strings.Contains(cell, "Nudged today by Pat Okafor") || strings.Contains(cell, "<form") {
 			t.Errorf("%s sees Fix %s, want a disabled Nudged today by Pat Okafor", viewer, cell)
 		}
 	}
-	label, _, _ := riskFix(t, riskRowOf(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks"), silent))
+	label, _, _ := riskFix(t, riskRowOf(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks?org=all"), silent))
 	if label != "Check in" {
 		t.Errorf("the Owner sees Fix %q, want Check in", label)
 	}
@@ -89,7 +89,7 @@ func TestNudgeOutranksSuggestAParent(t *testing.T) {
 	loner := h.ActiveGoal(sam, "Silent side project", "Nobody asked.")
 	h.Clock.Advance(10 * day)
 
-	row := riskRowOf(t, getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/risks"), loner)
+	row := riskRowOf(t, getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/risks?org=all"), loner)
 	riskChip(t, row, "stale")
 	riskChip(t, row, "unaligned")
 	nudgeForm(t, row)
@@ -114,7 +114,7 @@ func TestNudgeOfAnOwnerlessGoalOnlyWithAPresentDelegate(t *testing.T) {
 	}
 	h.Clock.Advance(10 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/risks")
+	page := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/risks?org=all")
 	nudgeForm(t, riskRowOf(t, page, delegated))
 	if label, href, _ := riskFix(t, riskRowOf(t, page, alone)); label != "Open Goal" || href != "/goals/"+strconv.FormatInt(alone.ID, 10) {
 		t.Errorf("the Ownerless Goal with nobody to nudge has Fix %q → %s, want Open Goal", label, href)

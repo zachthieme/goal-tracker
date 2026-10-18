@@ -634,7 +634,7 @@ func TestGoalListSortsProblemsFirst(t *testing.T) {
 	h.Checkin(sam, red.ID, domain.HealthRed, "On fire.", "Put it out.", later)
 	ts := newServer(t, h)
 
-	list := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals")
+	list := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals?org=all")
 	rows := goalRows(t, list)
 
 	got := rowTitles(rows, stale, proposed, betaGreen, alphaGreen, yellow, ownerless, red)
@@ -733,7 +733,7 @@ func TestGoalListSearchesTitleAndOwner(t *testing.T) {
 		{"example.com", []string{"Cut checkout latency", "Hire two engineers"}},
 		{"nothing like it", nil},
 	} {
-		page := getBody(t, client, ts.URL+"/goals?q="+url.QueryEscape(tc.q))
+		page := getBody(t, client, ts.URL+"/goals?org=all&q="+url.QueryEscape(tc.q))
 		if got := rowTitles(goalRows(t, page), latency, hiring); !slices.Equal(got, tc.want) {
 			t.Errorf("q=%q: rows = %q, want %q", tc.q, got, tc.want)
 		}
@@ -844,12 +844,12 @@ func TestGoalListFiltersToMine(t *testing.T) {
 		}
 	}
 
-	page := getBody(t, client, ts.URL+"/goals")
+	page := getBody(t, client, ts.URL+"/goals?org=all")
 	if got := rowTitles(goalRows(t, page), owned, delegated, others); len(got) != 3 {
 		t.Errorf("for Everyone every Goal shows; rows = %q", got)
 	}
-	if _, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != "" || label != "Everyone" {
-		t.Errorf("unscoped, the Scope select shows %q %q chosen, want Everyone", value, label)
+	if _, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != "all" || label != "Everyone" {
+		t.Errorf("for Everyone, the Scope select shows %q %q chosen, want Everyone", value, label)
 	}
 
 	later := testsupport.Epoch.AddDate(0, 2, 0)
@@ -1106,7 +1106,8 @@ func TestGoalListKeepsTheOrgInItsAddress(t *testing.T) {
 }
 
 // The scope parameter is ?org=; the old ?chain= is no scope at all, ignored
-// like any unknown parameter, so the list is everyone's and no org is chosen.
+// like any unknown parameter, so the list is on the viewer's default, Vera's
+// My org, and not Mia's.
 func TestGoalListIgnoresTheOldChainParameter(t *testing.T) {
 	t.Parallel()
 
@@ -1117,11 +1118,11 @@ func TestGoalListIgnoresTheOldChainParameter(t *testing.T) {
 
 	unscoped := rowTitles(goalRows(t, getBody(t, client, ts.URL+"/goals")), org.goals()...)
 	page := getBody(t, client, ts.URL+"/goals?chain="+strconv.FormatInt(org.Mia.ID, 10))
-	if got := rowTitles(goalRows(t, page), org.goals()...); !slices.Equal(got, unscoped) || len(got) != 6 {
+	if got := rowTitles(goalRows(t, page), org.goals()...); !slices.Equal(got, unscoped) || len(got) != 5 {
 		t.Errorf("?chain=: rows = %q, want the unscoped %q", got, unscoped)
 	}
-	if sel := scopeSelect(t, page, "goal-scope-filter"); !strings.Contains(sel, `<option value="" selected>Everyone</option>`) || strings.Count(sel, "selected") != 1 {
-		t.Errorf("?chain=: an org is chosen: %s", sel)
+	if sel := scopeSelect(t, page, "goal-scope-filter"); !strings.Contains(sel, fmt.Sprintf(`<option value="%d" selected>My org</option>`, org.Vera.ID)) || strings.Count(sel, "selected") != 1 {
+		t.Errorf("?chain=: Vera's default isn't the one chosen scope: %s", sel)
 	}
 }
 
@@ -1237,7 +1238,8 @@ func TestGoalListScopeOffersNoOtherOrgsWhenNoneHoldGoals(t *testing.T) {
 }
 
 // With no Managers anywhere, as when no directory is synced, the Scope select
-// offers no org, only Everyone and Mine, and a ?org= link scopes nothing.
+// offers no org, only Everyone and Mine, and a ?org= link names no one, so
+// gives the viewer's default, Mine.
 func TestGoalListOffersNoOrgWithoutManagers(t *testing.T) {
 	t.Parallel()
 
@@ -1253,8 +1255,11 @@ func TestGoalListOffersNoOrgWithoutManagers(t *testing.T) {
 	if choices, _, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); !slices.Equal(choices, []string{"Everyone", "Mine"}) {
 		t.Errorf("without Managers the Scope select offers %q, want only Everyone and Mine", choices)
 	}
-	if got := len(goalRows(t, page)); got != 2 {
-		t.Errorf("without Managers a ?org= scoped the list to %d Goals, want both", got)
+	if got := len(goalRows(t, page)); got != 1 {
+		t.Errorf("without Managers a ?org= scoped the list to %d Goals, want Mine's 1", got)
+	}
+	if _, value, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != "mine" {
+		t.Errorf("without Managers a ?org= chose %q, want the default Mine", value)
 	}
 }
 
@@ -1330,7 +1335,7 @@ func TestGoalListFoldsDimensionFiltersAndGroupsIntoSections(t *testing.T) {
 		t.Errorf("Goals without a Pillar have no Unassigned section; body:\n%s", grouped)
 	}
 
-	empty := getBody(t, client, ts.URL+"/goals?q=nothing+like+it")
+	empty := getBody(t, client, ts.URL+"/goals?org=all&q=nothing+like+it")
 	if none := pageElement(t, empty, "td", "no-goals"); !strings.Contains(none, "No Goals match.") {
 		t.Errorf("a filtered-out list does not say nothing matches: %s", none)
 	}
@@ -1349,7 +1354,7 @@ func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 
 	page := getBody(t, client, ts.URL+"/goals")
 	head := pageElement(t, page, "header", "goals-head")
-	for _, want := range []string{"<h1>Goals</h1>", "Every goal in the company. Problems sort to the top."} {
+	for _, want := range []string{"<h1>Goals</h1>", "Problems sort to the top."} {
 		if !strings.Contains(head, want) {
 			t.Errorf("header lacks %q: %s", want, head)
 		}
@@ -2251,7 +2256,7 @@ func TestGoalPagesShowPeopleByName(t *testing.T) {
 	h.CreateGoal(sam, "Hire a PM", "Nobody owns the roadmap.")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	list := getBody(t, client, ts.URL+"/goals")
+	list := getBody(t, client, ts.URL+"/goals?org=all")
 	for _, want := range []string{shownAs("ada.okafor@example.com", "Ada Okafor"), shownAs("sam@example.com", "sam")} {
 		if !strings.Contains(list, want) {
 			t.Errorf("Goal list does not show %s", want)
@@ -2445,11 +2450,11 @@ func TestSeededPagesShowPeopleByName(t *testing.T) {
 	reportPath := fmt.Sprintf("/reports/%d", def.ID)
 	pubPath := fmt.Sprintf("%s/publications/%d", reportPath, pub.ID)
 	pages := []struct{ as, path string }{
-		{owner.Email, "/goals"},
+		{owner.Email, "/goals?org=all"},
 		{owner.Email, fmt.Sprintf("/goals/%d", g.ID)},
 		{owner.Email, "/home"},
 		{owner.Email, "/links"},
-		{owner.Email, "/risks"},
+		{owner.Email, "/risks?org=all"},
 		{owner.Email, "/signals"},
 		{owner.Email, "/freshness"},
 		{other.Email, "/home"},
@@ -3084,7 +3089,7 @@ func TestGoalTableLayoutKeepsFiltersAndIsShareable(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	list := getBody(t, client, fmt.Sprintf("%s/goals?q=alpha&value=%d", ts.URL, growth.ID))
+	list := getBody(t, client, fmt.Sprintf("%s/goals?org=all&q=alpha&value=%d", ts.URL, growth.ID))
 	toTable := linkQuery(t, list, "layout-table")
 	if toTable.Get("layout") != "table" || toTable.Get("q") != "alpha" || toTable.Get("value") != fmt.Sprint(growth.ID) {
 		t.Fatalf("the Table toggle drops a filter: %v", toTable)
@@ -3492,7 +3497,7 @@ func TestGoalTableEditModeHasInputsOnlyOnRowsThePersonMayEdit(t *testing.T) {
 	h.AddDelegate(pat, sam, gamma.ID)
 	ts := newServer(t, h)
 
-	page := editTable(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL, "/goals?layout=table")
+	page := editTable(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL, "/goals?layout=table&org=all")
 
 	form := pageTag(t, page, "form", "goal-table-form")
 	if attr(form, "method") != "post" || !strings.HasPrefix(attr(form, "action"), "/goals/values") {
@@ -4389,7 +4394,7 @@ func TestGoalListFilterChangeUnderHTMXKeepsTheView(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	// The table, sorted by Title descending and carrying a grouping, searched.
-	table := getBody(t, client, ts.URL+"/goals?layout=table&sort=title&dir=desc&group="+group)
+	table := getBody(t, client, ts.URL+"/goals?org=all&layout=table&sort=title&dir=desc&group="+group)
 	body, address := htmxFilter(t, client, ts.URL, table, func(v url.Values) { v.Set("q", "launch") })
 	swapped := swappedList(t, body)
 	if got, want := rowTitles(tableRows(t, swapped), goals...), []string{"Charlie launch", "Bravo launch", "Alpha launch"}; !slices.Equal(got, want) {
@@ -4407,8 +4412,8 @@ func TestGoalListFilterChangeUnderHTMXKeepsTheView(t *testing.T) {
 	}
 
 	// The list, grouped by Pillar, narrowed to Mine only.
-	list := getBody(t, client, ts.URL+"/goals?group="+group)
-	body, address = htmxFilter(t, client, ts.URL, list, func(v url.Values) { v.Set("mine", "1") })
+	list := getBody(t, client, ts.URL+"/goals?org=all&group="+group)
+	body, address = htmxFilter(t, client, ts.URL, list, func(v url.Values) { v.Set("org", "mine") })
 	swapped = swappedList(t, body)
 	if got, want := cellTexts(swapped, "th"), []string{"Health", "Goal", "Owner", "Due", "Last check-in", "Dimension tags", "Growth", "Trust"}; !slices.Equal(got, want) {
 		t.Errorf("the list under htmx heads %q, want %q: grouping lost", got, want)
@@ -4692,7 +4697,7 @@ func TestGoalTableEditModeGivesAnAdminInputsOnEveryRowAndLinksToTheGoal(t *testi
 	gamma := h.CreateGoal(pat, "Gamma", "C matters.")
 	ts := newServer(t, h)
 
-	page := editTable(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL, "/goals?layout=table")
+	page := editTable(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL, "/goals?layout=table&org=all")
 
 	for _, g := range []domain.Goal{alpha, beta, gamma} {
 		row := tableRowOf(t, page, g)

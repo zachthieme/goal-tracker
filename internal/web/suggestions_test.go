@@ -155,7 +155,7 @@ func TestSuggestingAParentFromTheRisksFix(t *testing.T) {
 	parent := h.CreateGoal(kim, "Grow revenue", "It pays for everything.")
 
 	client := signInClient(t, ts.URL, "kim@example.com")
-	label, href, _ := riskFix(t, riskRowOf(t, getBody(t, client, ts.URL+"/risks"), loner))
+	label, href, _ := riskFix(t, riskRowOf(t, getBody(t, client, ts.URL+"/risks?org=all"), loner))
 	if label != "Suggest a parent" {
 		t.Fatalf("Fix = %q, want Suggest a parent", label)
 	}
