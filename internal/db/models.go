@@ -14,6 +14,13 @@ type Account struct {
 	ManagerID *int64
 }
 
+type AccountPassword struct {
+	AccountID     int64
+	PasswordHash  *string
+	FailedSignins int64
+	LockedUntil   *string
+}
+
 type AccountSession struct {
 	AccountID  int64
 	Generation int64
@@ -305,6 +312,12 @@ type ParentSuggestion struct {
 	Status      string
 	CreatedAt   string
 	ClosedAt    *string
+}
+
+type PasswordLink struct {
+	AccountID int64
+	TokenHash string
+	ExpiresAt string
 }
 
 type RejectedLinkRequest struct {

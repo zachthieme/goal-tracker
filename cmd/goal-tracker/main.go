@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -26,18 +27,39 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
+// main serves the app, or with the arguments password-link <email>, prints a
+// set-password link for that email and exits.
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	if err := run(logger); err != nil {
+	if err := run(logger, os.Args[1:], os.Stdout); err != nil {
 		logger.Error("goal-tracker failed", "err", err)
 		os.Exit(1)
 	}
 }
 
-func run(logger *slog.Logger) error {
+// passwordLinkCommand is the argument that, followed by an email, has run
+// print a set-password link for it instead of serving: how the operator gives
+// the first Admin a password.
+const passwordLinkCommand = "password-link"
+
+// run serves the app, configured from the environment. With args
+// password-link <email>, it instead issues a set-password link for the email,
+// creating the Account if there is none, writes it to stdout, and returns.
+// Any other args are ignored.
+func run(logger *slog.Logger, args []string, stdout io.Writer) error {
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
+	}
+	var linkFor string
+	if len(args) > 0 && args[0] == passwordLinkCommand {
+		if cfg.signIn != signInPassword {
+			return fmt.Errorf("%s needs GOAL_TRACKER_SIGNIN=%s; got %q", passwordLinkCommand, signInPassword, cfg.signIn)
+		}
+		if len(args) != 2 || strings.TrimSpace(args[1]) == "" {
+			return fmt.Errorf("usage: goal-tracker %s <email>", passwordLinkCommand)
+		}
+		linkFor = args[1]
 	}
 	loc, err := time.LoadLocation(cfg.timezone)
 	if err != nil {
@@ -69,6 +91,14 @@ func run(logger *slog.Logger) error {
 
 	sender := email.LogSender{Logger: logger}
 	svc := domain.NewService(sqlDB, clk, sender, cfg.adminEmails, domain.WithTimezone(loc), domain.WithBaseURL(cfg.baseURL))
+	if linkFor != "" {
+		token, _, err := svc.IssuePasswordLink(context.Background(), linkFor)
+		if err != nil {
+			return fmt.Errorf("issue a set-password link for %s: %w", linkFor, err)
+		}
+		_, err = fmt.Fprintln(stdout, svc.PasswordLinkURL(token))
+		return err
+	}
 	webOpts := []web.Option{
 		web.WithLogger(logger),
 		web.WithSecureCookies(strings.HasPrefix(cfg.baseURL, "https://")),
@@ -82,6 +112,10 @@ func run(logger *slog.Logger) error {
 		_, _ = rand.Read(cfg.sessionKey)
 	}
 	webOpts = append(webOpts, web.WithSessionKey(cfg.sessionKey))
+	if cfg.signIn == signInPassword {
+		webOpts = append(webOpts, web.WithPasswordSignIn())
+		logger.Info("signing in with passwords")
+	}
 	if cfg.oidc != nil {
 		o, err := web.NewOIDC(context.Background(), *cfg.oidc)
 		if err != nil {
@@ -148,7 +182,8 @@ type config struct {
 	// signInMethods.
 	signIn string
 	// oidc, with signIn "oidc", is the org's OpenID Connect provider people
-	// sign in through; nil with "dev", which serves the development email form.
+	// sign in through; nil with "dev", which serves the development email form,
+	// and with "password".
 	oidc *web.OIDCConfig
 	// sessionKey signs session cookies; nil when GOAL_TRACKER_SESSION_KEY is
 	// unset, which only "dev" allows.
@@ -159,13 +194,15 @@ type config struct {
 }
 
 // The sign-in methods GOAL_TRACKER_SIGNIN accepts: the org's OpenID Connect
-// provider, or the development email form, which signs anyone in as anyone.
+// provider, passwords set through Admin-issued set-password links, or the
+// development email form, which signs anyone in as anyone.
 const (
-	signInOIDC = "oidc"
-	signInDev  = "dev"
+	signInOIDC     = "oidc"
+	signInPassword = "password"
+	signInDev      = "dev"
 )
 
-var signInMethods = []string{signInOIDC, signInDev}
+var signInMethods = []string{signInOIDC, signInPassword, signInDev}
 
 // directoryConfig is where the directory sync reads people from: a CSV file,
 // or Authentik's base URL and an API token that can read users.

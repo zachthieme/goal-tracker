@@ -32,11 +32,14 @@ func (s *Server) handleSignInForm(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/home", http.StatusSeeOther)
 		return
 	}
-	if s.oidc != nil {
+	switch {
+	case s.oidc != nil:
 		render(w, r, http.StatusOK, orgSignInPage(""))
-		return
+	case s.passwordFailures != nil:
+		render(w, r, http.StatusOK, passwordSignInPage("", ""))
+	default:
+		render(w, r, http.StatusOK, signInPage(""))
 	}
-	render(w, r, http.StatusOK, signInPage(""))
 }
 
 func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {

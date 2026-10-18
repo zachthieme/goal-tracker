@@ -7,10 +7,15 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/", s.handleUnknown)
 	s.mux.HandleFunc("GET /static/app.css", s.handleStylesheet)
 	s.mux.HandleFunc("GET /signin", s.handleSignInForm)
-	if s.oidc != nil {
+	switch {
+	case s.oidc != nil:
 		s.mux.HandleFunc("GET /auth/start", s.handleOIDCStart)
 		s.mux.HandleFunc("GET /auth/callback", s.handleOIDCCallback)
-	} else {
+	case s.passwordFailures != nil:
+		s.mux.HandleFunc("POST /signin", s.handlePasswordSignIn)
+		s.mux.HandleFunc("GET /set-password", s.handleSetPasswordForm)
+		s.mux.HandleFunc("POST /set-password", s.handleSetPassword)
+	default:
 		s.mux.HandleFunc("POST /signin", s.handleSignIn)
 	}
 	s.mux.HandleFunc("POST /signout", s.handleSignOut)
@@ -64,6 +69,9 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /accounts/{id}/return", s.requireAuth(s.handleReturnAccount))
 	if s.directorySync != nil {
 		s.mux.HandleFunc("POST /admin/directory-sync", s.requireAuth(s.handleDirectorySyncNow))
+	}
+	if s.passwordFailures != nil {
+		s.mux.HandleFunc("POST /admin/password-links", s.requireAuth(s.handleIssuePasswordLink))
 	}
 	s.mux.HandleFunc("GET /dimensions", s.requireAuth(s.handleDimensions))
 	s.mux.HandleFunc("POST /dimensions", s.requireAuth(s.handleCreateDimension))

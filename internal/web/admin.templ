@@ -7,10 +7,11 @@ import (
 )
 
 // adminPage gathers the Admin tools: a card per tool, then the directory sync
-// when the app has one (nil, it shows nothing), then the Ownerless Goals
+// when the app has one (nil, it shows nothing), then set-password links with
+// password sign-in (nil, it shows nothing), then the Ownerless Goals
 // waiting for an Admin to reassign them (CONTEXT.md: Ownerless), then the
 // Departed people an Admin can mark returned (CONTEXT.md: Departed).
-templ adminPage(current *domain.Account, dirSync *directorySyncView, ownerless []domain.Goal, departed []domain.Account) {
+templ adminPage(current *domain.Account, dirSync *directorySyncView, links *passwordLinksView, ownerless []domain.Goal, departed []domain.Account) {
 	@layout("Admin", current) {
 		@adminStyles()
 		<header class="page-head">
@@ -27,6 +28,9 @@ templ adminPage(current *domain.Account, dirSync *directorySyncView, ownerless [
 		</nav>
 		if dirSync != nil {
 			@adminDirectorySync(*dirSync)
+		}
+		if links != nil {
+			@adminPasswordLinks(*links)
 		}
 		<section data-testid="admin-ownerless" class="ad-section">
 			<div>
@@ -117,6 +121,36 @@ templ adminDirectorySync(v directorySyncView) {
 	</section>
 }
 
+// adminPasswordLinks issues a set-password link for an email, and shows the
+// one just issued, whole, this once, with when it expires; or why it wasn't.
+templ adminPasswordLinks(v passwordLinksView) {
+	<section data-testid="admin-password-links" class="ad-section">
+		<div>
+			<h2>Set-password links</h2>
+			<p class="muted">A person sets or resets their password through a link only an Admin can issue. Issuing one for an email with no account creates the account.</p>
+		</div>
+		<div class="card ad-links">
+			<form class="ad-link-form" method="post" action="/admin/password-links">
+				<label class="field">
+					<span>Email</span>
+					<input type="email" name="email" value={ v.Email } required/>
+				</label>
+				<button type="submit" class="btn sm">Issue link</button>
+			</form>
+			if v.Refusal != "" {
+				<p data-testid="admin-password-link-error" class="ad-error" role="alert">{ v.Refusal }</p>
+			}
+			if v.Link != "" {
+				<div data-testid="admin-password-link" class="ad-link">
+					<p>Set-password link for <strong>{ v.Email }</strong>, expires { v.Expires }:</p>
+					<input type="text" class="ad-link-url" value={ v.Link } readonly aria-label="Set-password link" onfocus="this.select()"/>
+					<p class="muted">Send this to the person. It works once and expires in 72 hours.</p>
+				</div>
+			}
+		</div>
+	</section>
+}
+
 // adminTool is a card linking to one Admin tool, saying what it's for.
 templ adminTool(testID, href, label, blurb string) {
 	<a data-testid={ testID } class="card ad-tool" href={ templ.SafeURL(href) }>
@@ -133,6 +167,13 @@ templ adminStyles() {
 		.ad-section{display:flex;flex-direction:column;gap:12px}
 		.ad-action{text-align:right}
 		.ad-sync{display:flex;align-items:center;justify-content:space-between;gap:16px}
+		.ad-links{display:flex;flex-direction:column;gap:12px}
+		.ad-link-form{display:flex;align-items:flex-end;gap:12px}
+		.ad-link-form .field{flex:1}
+		.ad-link{display:flex;flex-direction:column;gap:8px}
+		.ad-link p{margin:0}
+		.ad-link-url{width:100%;font-family:var(--font-mono)}
+		.ad-error{color:var(--color-danger-ink);margin:0}
 		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 		@media (max-width:900px){.ad-tools{grid-template-columns:1fr}}
 	</style>

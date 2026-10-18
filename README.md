@@ -13,13 +13,14 @@ regular cadence with Check-ins, and produces Reports. The domain language is in
 | | `make start` | Like `make serve`, but in the background, logging to `serve.log` (`SERVE_LOG`). Stops the server a previous `make start` left running first. Takes the same settings, `NO_SSO=1` included, and records them for `make stop` and `make restart`. |
 | | `make stop` | Stops the server `make start` started, and its Authentik unless it started with `NO_SSO=1` (Authentik's data is kept). |
 | | `make restart` | Rebuilds and starts the server again with the settings the last `make start` recorded. A setting given to `make restart` replaces the recorded one. |
+| `goal-tracker password-link <email>` | | With `GOAL_TRACKER_SIGNIN=password`, prints a one-time set-password link for the email and exits: how the first Admin gets a password (see [Passwords](#passwords-password)). |
 | `go run ./cmd/seed` | `make seed` | Fills a fresh database with a fake company for demos (see [Seed a fake company](#seed-a-fake-company)). |
 
 The server is configured from the environment:
 
 | Variable | Default | Meaning |
 | -------- | ------- | ------- |
-| `GOAL_TRACKER_SIGNIN` | _(required)_ | How people sign in: `oidc`, through the company's OpenID Connect provider, or `dev`, the development form that signs anyone in as anyone (see [Sign-in](#sign-in)). Startup stops when it's unset or anything else. |
+| `GOAL_TRACKER_SIGNIN` | _(required)_ | How people sign in: `oidc`, through the company's OpenID Connect provider; `password`, with passwords set through Admin-issued links; or `dev`, the development form that signs anyone in as anyone (see [Sign-in](#sign-in)). Startup stops when it's unset or anything else. |
 | `GOAL_TRACKER_ADDR` | `:8080` | Address to listen on. |
 | `GOAL_TRACKER_DB` | `goal-tracker.db` | SQLite database file; migrations run on start. |
 | `GOAL_TRACKER_ADMINS` | _(none)_ | Comma-separated emails that get the Admin flag when their account is first created. |
@@ -27,13 +28,13 @@ The server is configured from the environment:
 | `GOAL_TRACKER_REMINDER_DAY` | `Monday` | Day of the week the weekly emails go out (see [Weekly emails](#weekly-emails)). |
 | `GOAL_TRACKER_REMINDER_TIME` | `09:00` | 24-hour time of day, in the company's timezone, the weekly emails go out. |
 | `GOAL_TRACKER_BASE_URL` | from `GOAL_TRACKER_ADDR`, e.g. `http://localhost:8080` | Where people reach the app. Links in emails (the weekly emails and comment alerts) point here. |
-| `GOAL_TRACKER_OIDC_ISSUER` | _(none)_ | The company's OpenID Connect issuer URL. Required, with the client ID and secret below, for `GOAL_TRACKER_SIGNIN=oidc`, and refused with `dev` (see [Sign-in](#sign-in)). |
+| `GOAL_TRACKER_OIDC_ISSUER` | _(none)_ | The company's OpenID Connect issuer URL. Required, with the client ID and secret below, for `GOAL_TRACKER_SIGNIN=oidc`, and refused with `password` and `dev` (see [Sign-in](#sign-in)). |
 | `GOAL_TRACKER_OIDC_CLIENT_ID` | _(none)_ | Goal Tracker's client ID at the provider. |
 | `GOAL_TRACKER_OIDC_CLIENT_SECRET` | _(none)_ | Goal Tracker's client secret at the provider. |
 | `GOAL_TRACKER_DIRECTORY_URL` | _(none)_ | The company's directory, Authentik's base URL (e.g. `https://auth.example.com`). With the token below, the app syncs people and their Managers from it (see [Managers](#managers)). Set both or neither. |
 | `GOAL_TRACKER_DIRECTORY_TOKEN` | _(none)_ | An Authentik API token that can read users. |
 | `GOAL_TRACKER_DIRECTORY_FILE` | _(none)_ | A CSV file of people and their Managers, exported from the company's HR system: the directory to sync from instead of Authentik (see [Managers](#managers)). Startup stops if it's set with either Authentik variable above. |
-| `GOAL_TRACKER_SESSION_KEY` | _(required for `oidc` and `password`)_ | Base64 key, at least 32 bytes, that signs session cookies (`openssl rand -base64 32`). Required for `GOAL_TRACKER_SIGNIN=oidc`, and for `password` once that method lands. With `dev` it may be unset: the app then makes a random one and logs a WARN, and everyone is signed out when it restarts. |
+| `GOAL_TRACKER_SESSION_KEY` | _(required for `oidc` and `password`)_ | Base64 key, at least 32 bytes, that signs session cookies (`openssl rand -base64 32`). Required for `GOAL_TRACKER_SIGNIN=oidc` and `password`. With `dev` it may be unset: the app then makes a random one and logs a WARN, and everyone is signed out when it restarts. |
 | `GOAL_TRACKER_START_AT` | _(none: the wall clock)_ | **Test-only.** An RFC 3339 instant (e.g. `2026-10-05T18:05:00Z`) the app's clock starts at, then ticks normally from; startup logs a WARN when it's set. The e2e suite uses it to run against a seed frozen at one date. Never set it in production. |
 
 ## Sign-in
@@ -58,6 +59,48 @@ to the sign-in page; register `GOAL_TRACKER_BASE_URL` + `/signin` as a
 post-logout redirect URI for that. A local [Authentik](dev/authentik/README.md)
 with the seed's people and their managers is set up for this, and `make serve`
 uses it.
+
+### Passwords (`password`)
+
+For a company without an SSO provider. People sign in with their email and a
+password, hashed with argon2id. Nobody chooses their own way in: a password can
+only be set through a one-time set-password link that an Admin hands to the
+person, so each person reaches only their own account. It needs
+`GOAL_TRACKER_SESSION_KEY`, and setting any `GOAL_TRACKER_OIDC_*` variable with
+it stops startup. Nothing is emailed; the Admin sends the link however they
+like.
+
+- **The first Admin.** No one can sign in until someone has a password, so the
+  operator prints the first link from the command line, with the same
+  environment the server runs with:
+
+  ```sh
+  GOAL_TRACKER_SIGNIN=password GOAL_TRACKER_SESSION_KEY=... GOAL_TRACKER_ADMINS=ada@example.com \
+    goal-tracker password-link ada@example.com
+  ```
+
+  It runs the migrations, creates the account if there's none (so
+  `GOAL_TRACKER_ADMINS` applies to it), prints
+  `GOAL_TRACKER_BASE_URL/set-password?token=...` and exits. It refuses unless
+  `GOAL_TRACKER_SIGNIN=password`.
+- **Issuing links.** On the Admin page, the **Set-password links** card takes
+  an email and shows the whole link once. Issuing one for an email with no
+  account creates the account; a Departed person can't be issued one. A link
+  works once and expires after 72 hours, and issuing a new one for a person
+  replaces their old one.
+- **Setting and resetting.** The link opens a page showing the person's email
+  and two password fields. A password is at least 12 characters and at most
+  1024 bytes; nothing else is required. Setting it signs the person out of
+  every other browser and signs them in. A forgotten password is reset the same
+  way: an Admin issues a new link.
+- **Lockout.** Every failed sign-in says the same thing, whatever went wrong.
+  Five wrong passwords in a row lock the account for 15 minutes, even against
+  the right one; using a new set-password link lifts the lock at once. Apart
+  from that, 50 failed sign-ins from one IP address within 15 minutes hold
+  every sign-in from that address until the window passes. The address is the
+  connection's, never `X-Forwarded-For`, so **behind a reverse proxy the limit
+  counts the proxy's address**, and one person's mistakes count against
+  everyone behind it. The counts are kept in memory, so a restart clears them.
 
 ### `dev`: the development form
 

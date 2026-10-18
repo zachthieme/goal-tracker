@@ -46,3 +46,29 @@ templ signInStyles() {
 		.si-error{color:var(--color-danger-ink);margin:0}
 	</style>
 }
+
+// passwordSignInPage is password sign-in: the same card as the development
+// form, with the email and password fields, and where to turn for a forgotten
+// password. A failed sign-in shows its reason above the fields, with the email
+// kept.
+templ passwordSignInPage(failure, emailAddr string) {
+	@layout("Sign in", nil) {
+		@signInStyles()
+		<form data-testid="signin-card" class="card si-card" method="post" action="/signin">
+			<h1>Sign in</h1>
+			if failure != "" {
+				<p data-testid="signin-error" class="si-error" role="alert">{ failure }</p>
+			}
+			<label class="field">
+				<span>Email</span>
+				<input type="email" name="email" value={ emailAddr } required autocomplete="username" autofocus/>
+			</label>
+			<label class="field">
+				<span>Password</span>
+				<input type="password" name="password" required autocomplete="current-password"/>
+			</label>
+			<button type="submit" class="btn primary">Sign in</button>
+			<p class="muted">Forgot your password? Ask an Admin for a set-password link.</p>
+		</form>
+	}
+}
