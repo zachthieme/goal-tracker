@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/mail"
 	"runtime"
 	"strings"
 	"time"
@@ -29,6 +30,18 @@ var ErrBadCredentials = errors.New("bad email or password")
 // ErrLinkInvalid is returned for a set-password link that is unknown, expired,
 // or already used.
 var ErrLinkInvalid = errors.New("set-password link is invalid")
+
+// ErrNotAnEmail is returned for a set-password link asked for something that
+// isn't a bare email address, such as a name or "Ada <ada@x.com>".
+var ErrNotAnEmail = errors.New("not an email address")
+
+// isBareEmail reports whether emailAddr, trimmed, is an email address and
+// nothing else.
+func isBareEmail(emailAddr string) bool {
+	trimmed := strings.TrimSpace(emailAddr)
+	parsed, err := mail.ParseAddress(trimmed)
+	return err == nil && parsed.Address == trimmed
+}
 
 // ErrPasswordRules is returned for a password too short or too long; its
 // message after "password rules: " says which, without the password.
@@ -65,8 +78,12 @@ const passwordLinkLife = 72 * time.Hour
 // IssuePasswordLink issues a set-password link for emailAddr, creating the
 // Account through EnsureAccount when there is none, and replacing any link the
 // Account had. It returns the link's token, which is stored only as its hash,
-// and when the link expires.
+// and when the link expires. It returns ErrNotAnEmail, creating nothing, for
+// anything but a bare email address.
 func (s *Service) IssuePasswordLink(ctx context.Context, emailAddr string) (string, time.Time, error) {
+	if !isBareEmail(emailAddr) {
+		return "", time.Time{}, fmt.Errorf("%w: %q", ErrNotAnEmail, emailAddr)
+	}
 	acc, err := s.EnsureAccount(ctx, emailAddr)
 	if err != nil {
 		return "", time.Time{}, err

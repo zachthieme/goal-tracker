@@ -50,6 +50,24 @@ func issueLink(t *testing.T, h *testsupport.Harness, emailAddr string) string {
 	return token
 }
 
+// A set-password link is only issued for a bare email address: anything else
+// is refused with ErrNotAnEmail, and no Account is made for it.
+func TestASetPasswordLinkIsOnlyForAnEmailAddress(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	for _, notAnEmail := range []string{"ada", "Ada <ada@x.com>", "a b@x.com"} {
+		if _, _, err := h.Service.IssuePasswordLink(t.Context(), notAnEmail); !errors.Is(err, domain.ErrNotAnEmail) {
+			t.Errorf("IssuePasswordLink(%q) = %v, want ErrNotAnEmail", notAnEmail, err)
+		}
+		if acc, err := h.Service.AccountByEmail(t.Context(), notAnEmail); !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("IssuePasswordLink(%q) left an Account %+v (err %v)", notAnEmail, acc, err)
+		}
+	}
+	issueLink(t, h, "ada@example.com")
+	issueLink(t, h, "  ada@example.com  ")
+}
+
 // A set-password link works for 72 hours, once, and only while it's the
 // Account's newest.
 func TestASetPasswordLinkWorksOnceWithin72Hours(t *testing.T) {
