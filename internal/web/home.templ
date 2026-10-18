@@ -31,7 +31,7 @@ templ homePage(current *domain.Account, v homeView) {
 							<h4 class="label">Check-ins due</h4>
 							<ul data-testid="home-due" class="hm-list">
 								for _, g := range v.Due {
-									@dueRow(g)
+									@dueRow(g, g.CheckedIn && !v.NoChangeRefused[g.Goal.ID])
 								}
 							</ul>
 						</div>
@@ -148,9 +148,9 @@ templ homeOrgCounts(c domain.SignalCounts) {
 }
 
 // dueRow is one Goal to check in on: its Health, muted and dated when Stale,
-// why it's listed, and the one-click No change beside the Check in link to the
-// Goal's Check-in page.
-templ dueRow(g domain.PersonalGoal) {
+// why it's listed, and, when noChange says one would be recorded, the
+// one-click No change beside the Check in link to the Goal's Check-in page.
+templ dueRow(g domain.PersonalGoal, noChange bool) {
 	<li data-testid="home-due-goal">
 		<div class="hm-what">
 			<span data-testid="home-due-health" class={ "badge", healthClass(g.Health), templ.KV("as-of", healthAsOf(g) != "") }>
@@ -177,7 +177,7 @@ templ dueRow(g domain.PersonalGoal) {
 			<p class="muted small">{ dueReason(g) }</p>
 		</div>
 		<div class="hm-actions">
-			if g.CheckedIn {
+			if noChange {
 				<form method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins/no-change", g.Goal.ID)) } class="inline-form">
 					<button type="submit" class="btn sm">No change</button>
 				</form>
