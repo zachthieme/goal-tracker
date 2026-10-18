@@ -101,6 +101,33 @@ func TestThePasswordSignInPageAsksForEmailAndPassword(t *testing.T) {
 	}
 }
 
+// Password fields look like the email field beside them: the stylesheet gives
+// input[type=password] the rule every text input shares, 40px tall, and on a
+// coarse pointer the same 44px floor.
+func TestPasswordFieldsAreStyledLikeTheOtherFields(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	password, ok := ruleFor(css, "input[type=password]")
+	if !ok {
+		t.Fatalf("no rule styles input[type=password]")
+	}
+	if !strings.Contains(password, "height:40px") {
+		t.Errorf("input[type=password] is not 40px tall: %s", password)
+	}
+	if email, _ := ruleFor(css, "input[type=email]"); password != email {
+		t.Errorf("input[type=password] declares %q, input[type=email] %q", password, email)
+	}
+
+	coarse := mediaBlock(t, css, "@media (pointer:coarse)")
+	if decls, ok := ruleFor(coarse, "input[type=password]"); !ok || !strings.Contains(decls, "min-height:44px") {
+		t.Errorf("on a coarse pointer input[type=password] is not raised to 44px: %s", coarse)
+	}
+}
+
 // Every failed password sign-in shows the form again with status 401 and the
 // same words, whether the email is unknown, its Account has no password, the
 // password is wrong, or the Account is locked, and creates no Account.
