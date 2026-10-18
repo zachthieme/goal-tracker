@@ -91,9 +91,17 @@ templ goalFormReady(v goalFormView) {
 		<ul data-testid="activation-checklist" class="gf-checklist">
 			for _, item := range v.activationFacts().checklist() {
 				if item.Done {
-					<li data-done="true" class="gf-check done"><span aria-hidden="true">✓</span> @goalFormCheckLabel(item) <span class="muted small">done</span></li>
+					<li data-done="true" class="gf-check done">
+						<span aria-hidden="true">✓</span>
+						@goalFormCheckLabel(item)
+						<span class="muted small">done</span>
+					</li>
 				} else {
-					<li data-done="false" class="gf-check"><span aria-hidden="true">✗</span> @goalFormCheckLabel(item) <span class="muted small">missing</span></li>
+					<li data-done="false" class="gf-check">
+						<span aria-hidden="true">✗</span>
+						@goalFormCheckLabel(item)
+						<span class="muted small">missing</span>
+					</li>
 				}
 			}
 		</ul>
