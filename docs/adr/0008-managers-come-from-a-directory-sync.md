@@ -2,6 +2,8 @@
 
 > Note (2026-10-17): the **Chain** this ADR names was renamed **Org**, and the whole-organization sense of "the org" is now **the Company** (CONTEXT.md). The decision is unchanged.
 
+> Note (2026-10-18): A CSV file (`GOAL_TRACKER_DIRECTORY_FILE`) is now a second source behind the same seam; the decision is unchanged.
+
 A Chain (CONTEXT.md) needs every person's Manager, and the org's identity provider already knows it. The provider can hand it over two ways: as a `manager` claim when each person signs in, or through its directory API for everyone at once. We decided the tool reads Managers by syncing the directory, at startup and then hourly, with an Admin able to sync on demand. A claim only reaches the tool when its person signs in, so a leader's Chain would stay missing everyone below someone who hadn't. That includes Owners loaded by the spreadsheet import who never sign in themselves. A Chain that silently drops people is worse than none. A sync covers the whole org from the first run, and creates Accounts for people the tool hasn't seen, the way the import does.
 
 ## Consequences
