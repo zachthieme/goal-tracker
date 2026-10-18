@@ -2244,12 +2244,32 @@ var collapsedEmail = regexp.MustCompile(`<span class="person-email" hidden>[^<]*
 // disclose an email, so the Scope select names people as Name (email) (#275).
 var selectOption = regexp.MustCompile(`<option[^>]*>[^<]*</option>`)
 
+// emailExemptSelect is a Scope select (scope.templ), on the Goal list or the Risks
+// page: the only select whose options name people as Name (email).
+var emailExemptSelect = regexp.MustCompile(`(?s)<select\b[^>]*\bdata-testid="(?:goal-scope-filter|risks-scope)"[^>]*>.*?</select>`)
+
 // visibleEmails returns every email a page shows as text rather than on hover,
-// in a collapsed expansion, or in a form field.
+// in a collapsed expansion, or in a Scope select's option.
 func visibleEmails(page string) []string {
 	page = collapsedEmail.ReplaceAllString(page, "")
-	page = selectOption.ReplaceAllString(page, "")
+	page = emailExemptSelect.ReplaceAllStringFunc(page, func(s string) string { return selectOption.ReplaceAllString(s, "") })
 	return regexp.MustCompile(`>[^<>]*@example\.com[^<>]*<`).FindAllString(page, -1)
+}
+
+// visibleEmails exempts only the Scope selects' options, which name people as
+// Name (email) by design; an email in any other select's option still shows.
+func TestVisibleEmailsExemptsOnlyScopeSelectOptions(t *testing.T) {
+	t.Parallel()
+
+	page := `<form>` +
+		`<select data-testid="goal-scope-filter" name="org" aria-label="Scope"><option value="all">Everyone</option><optgroup label="Other orgs"><option value="3">Ada Okafor (ada.okafor@example.com)</option></optgroup></select>` +
+		`<select data-testid="risks-scope" name="org" aria-label="Scope"><option value="4" selected>Mei Lin (mei.lin@example.com)</option></select>` +
+		`<select name="parent_id"><option value="5">Owned by tomas.berg@example.com</option></select>` +
+		`</form>`
+	shown := visibleEmails(page)
+	if want := []string{">Owned by tomas.berg@example.com<"}; !slices.Equal(shown, want) {
+		t.Errorf("visibleEmails = %q, want %q", shown, want)
+	}
 }
 
 // The Goal list and a Goal page show each Owner by Name, or by their email's
@@ -2389,7 +2409,10 @@ func TestGoalPageExplainsSoWhatAndTopLevelOnActivation(t *testing.T) {
 // With a seeded company, every page that shows people shows them by Name with
 // their email a click, tap or keypress away, never an email as text until
 // asked for; the Print view, with no hover or controls, introduces them as
-// Name (email) (CONTEXT.md: Name).
+// Name (email) (CONTEXT.md: Name). Only the Scope selects' options
+// (goal-scope-filter, risks-scope) are exempt: an option can't hold a control
+// to disclose an email, so they name people as Name (email) to tell
+// same-Named people apart (#275). Any other select's options are checked.
 func TestSeededPagesShowPeopleByName(t *testing.T) {
 	t.Parallel()
 

@@ -420,6 +420,16 @@ func everyoneInTheManagerTree(t *testing.T, h *testsupport.Harness) {
 			t.Errorf("%s reports to %q, want %q", addr, got, want)
 		}
 	}
+	// Each of a team's people reports to its lead, whether or not they own a
+	// Goal.
+	for _, tm := range seed.TeamsForTest() {
+		lead := strings.ToLower(tm.Name) + "-lead@example.com"
+		for _, addr := range tm.People {
+			if got := managerEmail(t, h, accountByEmail(t, h, addr)); got != lead {
+				t.Errorf("%s is on %s but reports to %q, want %q", addr, tm.Name, got, lead)
+			}
+		}
+	}
 
 	team := teamDimensionID(t, h)
 	projectOwners := map[string]domain.Account{}
