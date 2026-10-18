@@ -5699,3 +5699,162 @@ func TestGoalPageShowsDatesInTheDateFormat(t *testing.T) {
 		}
 	}
 }
+
+// goalActionItemFixture is a Goal, Launch in EU, that two Reports, MBR and
+// QBR, cover, each published so Action Items about it can be raised there.
+type goalActionItemFixture struct {
+	h      *testsupport.Harness
+	author domain.Account
+	sam    domain.Account
+	goal   domain.Goal
+	mbr    domain.ReportDefinition
+	mbrPub domain.Publication
+	qbr    domain.ReportDefinition
+	qbrPub domain.Publication
+}
+
+func newGoalActionItemFixture(h *testsupport.Harness) goalActionItemFixture {
+	f := goalActionItemFixture{h: h, author: h.SignIn("author@example.com"), sam: h.SignIn("sam.smith@example.com")}
+	f.goal = h.ActiveGoal(f.author, "Launch in EU", "Expand the market.")
+	f.mbr = h.SaveReportDefinition(f.author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{f.goal.ID}})
+	f.mbrPub = h.PublishReport(f.author, f.mbr)
+	f.qbr = h.SaveReportDefinition(f.author, domain.SaveReportDefinitionInput{Name: "QBR", Mode: domain.ReportModePicked, Picked: []int64{f.goal.ID}})
+	f.qbrPub = h.PublishReport(f.author, f.qbr)
+	return f
+}
+
+// raise raises an Action Item on pub for owner, due in dueIn days (negative
+// for overdue), about goalID, or the whole Report for 0.
+func (f goalActionItemFixture) raise(pub domain.Publication, owner domain.Account, text string, dueIn int, goalID int64) domain.ActionItem {
+	f.h.T.Helper()
+	item, err := f.h.Service.RaiseActionItem(context.Background(), f.author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, GoalID: goalID, Text: text, OwnerID: owner.ID, DueDate: f.h.Clock.Now().AddDate(0, 0, dueIn),
+	})
+	if err != nil {
+		f.h.T.Fatalf("RaiseActionItem: %v", err)
+	}
+	return item
+}
+
+// goalActionItemRows returns each row of the Goal page's Action Items, in
+// order, or none when the page has no such section.
+func goalActionItemRows(page string) []string {
+	start := strings.Index(page, `<section id="action-items" data-testid="goal-action-items"`)
+	if start < 0 {
+		return nil
+	}
+	section := page[start : start+strings.Index(page[start:], "</section>")]
+	var rows []string
+	for _, part := range strings.Split(section, `<li data-testid="goal-action-item"`)[1:] {
+		row, _, _ := strings.Cut(part, "</li>")
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+// A Goal's page lists its open Action Items from every Report, after its
+// Milestones, soonest due first. Each row names its owner, when it's due and
+// the Report it came from, linking to that publication's Action Items; an
+// overdue one is flagged Overdue, and one due today isn't. A closed one isn't
+// listed.
+func TestGoalPageListsItsOpenActionItems(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newGoalActionItemFixture(h)
+	f.raise(f.qbrPub, f.sam, "Book the venue.", 5, f.goal.ID)
+	f.raise(f.mbrPub, f.sam, "Explain the slip.", -2, f.goal.ID)
+	closed := f.raise(f.mbrPub, f.sam, "Already handled.", -5, f.goal.ID)
+	if _, err := h.Service.CloseActionItem(context.Background(), f.sam.ID, closed.ID, "Done."); err != nil {
+		t.Fatalf("CloseActionItem: %v", err)
+	}
+	client := signInClient(t, ts.URL, "author@example.com")
+
+	page := getBody(t, client, goalPageURL(ts.URL, f.goal))
+	rows := goalActionItemRows(page)
+	if len(rows) != 2 {
+		t.Fatalf("Action Items rows = %d, want 2:\n%q", len(rows), rows)
+	}
+	if !strings.Contains(page, `<h2>Action Items</h2>`) {
+		t.Errorf("the Action Items section has no Action Items heading")
+	}
+	if ms, ai := strings.Index(page, `data-testid="goal-milestones"`), strings.Index(page, `data-testid="goal-action-items"`); ai < ms {
+		t.Errorf("Action Items come before the Milestones")
+	}
+	overdue, later := rows[0], rows[1]
+	for _, want := range []string{
+		"Explain the slip.",
+		shownAs(f.sam.Email, f.sam.Label()),
+		"due Dec 31, 2025",
+		`data-testid="goal-action-item-overdue"`,
+		fmt.Sprintf(`href="/reports/%d/publications/%d#action-items"`, f.mbr.ID, f.mbrPub.ID),
+		">MBR<",
+	} {
+		if !strings.Contains(overdue, want) {
+			t.Errorf("first row lacks %s:\n%s", want, overdue)
+		}
+	}
+	for _, want := range []string{
+		"Book the venue.",
+		shownAs(f.sam.Email, f.sam.Label()),
+		"due Jan 7, 2026",
+		fmt.Sprintf(`href="/reports/%d/publications/%d#action-items"`, f.qbr.ID, f.qbrPub.ID),
+		">QBR<",
+	} {
+		if !strings.Contains(later, want) {
+			t.Errorf("second row lacks %s:\n%s", want, later)
+		}
+	}
+	if strings.Contains(later, "goal-action-item-overdue") {
+		t.Errorf("an Action Item due in five days is flagged Overdue:\n%s", later)
+	}
+	if strings.Contains(page, "Already handled.") {
+		t.Errorf("a closed Action Item is listed")
+	}
+
+	f.raise(f.mbrPub, f.sam, "Call the vendor.", 0, f.goal.ID)
+	rows = goalActionItemRows(getBody(t, client, goalPageURL(ts.URL, f.goal)))
+	if len(rows) != 3 || !strings.Contains(rows[1], "Call the vendor.") {
+		t.Fatalf("with one due today, rows = %q, want it second of 3", rows)
+	}
+	if strings.Contains(rows[1], "goal-action-item-overdue") {
+		t.Errorf("an Action Item due today is flagged Overdue:\n%s", rows[1])
+	}
+}
+
+// A Goal's page lists only the Action Items about it: not one about another
+// Goal in the same Report, nor one about the whole Report. A Goal with no open
+// Action Item has no Action Items section, even with a closed one.
+func TestGoalPageListsOnlyItsOwnOpenActionItems(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newGoalActionItemFixture(h)
+	other := h.ActiveGoal(f.author, "Hire in Berlin", "We need people there.")
+	def := h.SaveReportDefinition(f.author, domain.SaveReportDefinitionInput{Name: "Ops review", Mode: domain.ReportModePicked, Picked: []int64{f.goal.ID, other.ID}})
+	pub := h.PublishReport(f.author, def)
+	f.raise(pub, f.sam, "Explain the slip.", 3, f.goal.ID)
+	f.raise(pub, f.sam, "Post the job ad.", 3, other.ID)
+	f.raise(pub, f.sam, "Send the minutes.", 3, 0)
+	client := signInClient(t, ts.URL, "author@example.com")
+
+	rows := goalActionItemRows(getBody(t, client, goalPageURL(ts.URL, f.goal)))
+	if len(rows) != 1 || !strings.Contains(rows[0], "Explain the slip.") {
+		t.Errorf("Launch in EU's Action Items = %q, want only Explain the slip.", rows)
+	}
+
+	quiet := h.ActiveGoal(f.author, "Cut costs", "Margins are thin.")
+	qdef := h.SaveReportDefinition(f.author, domain.SaveReportDefinitionInput{Name: "Cost review", Mode: domain.ReportModePicked, Picked: []int64{quiet.ID}})
+	closed := f.raise(h.PublishReport(f.author, qdef), f.sam, "Audit the vendors.", 3, quiet.ID)
+	if _, err := h.Service.CloseActionItem(context.Background(), f.sam.ID, closed.ID, "Done."); err != nil {
+		t.Fatalf("CloseActionItem: %v", err)
+	}
+	if rows := goalActionItemRows(getBody(t, client, goalPageURL(ts.URL, other))); len(rows) != 1 || !strings.Contains(rows[0], "Post the job ad.") {
+		t.Errorf("Hire in Berlin's Action Items = %q, want only Post the job ad.", rows)
+	}
+	if page := getBody(t, client, goalPageURL(ts.URL, quiet)); strings.Contains(page, `data-testid="goal-action-items"`) {
+		t.Errorf("a Goal with only a closed Action Item shows an Action Items section")
+	}
+}
