@@ -1,6 +1,6 @@
-// Package notify sends the weekly emails: each Owner's and Delegate's Check-in
-// reminder, and each parent Owner's digest of problems among the Goals that
-// contribute to theirs. It reads everything through the domain Service and
+// Package notify sends the weekly emails: each Owner's and Delegate's reminder
+// of their Check-ins due and the open Action Items they own, and each parent
+// Owner's digest of problems among the Goals that contribute to theirs. It reads everything through the domain Service and
 // sends through the injected email sender, so tests drive it with the fake
 // clock and assert on the recording sender.
 package notify
@@ -33,24 +33,29 @@ func New(svc *domain.Service, sender email.Sender, baseURL string, loc *time.Loc
 	return &Notifier{svc: svc, sender: sender, baseURL: strings.TrimRight(baseURL, "/"), loc: loc}
 }
 
-// SendWeekly sends the week's emails: the Check-in reminders, then the parent
+// SendWeekly sends the week's emails: the reminders, then the parent
 // digests. A failure in one doesn't stop the other; both are returned.
 func (n *Notifier) SendWeekly(ctx context.Context) error {
 	return errors.Join(n.SendReminders(ctx), n.SendDigests(ctx))
 }
 
-// reminderItem is one Goal on a person's reminder. asDelegate is set when the
-// person is reminded as the Goal's Delegate rather than its Owner.
+// reminderItem is one entry on a person's reminder: a Goal whose Check-in is
+// due, or an open Action Item they own when actionItem is set. asDelegate is
+// set when the person is reminded of a Goal as its Delegate rather than its
+// Owner.
 type reminderItem struct {
 	goal       domain.Goal
 	freshness  domain.Freshness
 	asDelegate bool
+	actionItem *domain.ActionItemListing
 }
 
 // SendReminders emails each Owner and Delegate the Active Goals whose Check-in
 // is due — it would go Stale before next week's reminder — or that are Stale
-// already, each linking to its pre-filled Check-in. Someone with nothing due
-// gets no email, and nobody who has left the company is emailed.
+// already, each linking to its pre-filled Check-in. It also lists every open
+// Action Item the person owns, overdue first, so the owner of one is emailed
+// even with no Check-in due. Someone with no Check-in due and no open Action
+// Item gets no email, and nobody who has left the company is emailed.
 func (n *Notifier) SendReminders(ctx context.Context) error {
 	goals, err := n.svc.ListGoals(ctx)
 	if err != nil {
@@ -77,7 +82,35 @@ func (n *Notifier) SendReminders(ctx context.Context) error {
 			out.add(d, reminderItem{goal: g, freshness: f, asDelegate: true})
 		}
 	}
-	return out.send(ctx, n.sender, "Your Check-ins this week", n.reminderBody)
+	items, err := n.svc.AllOpenActionItems(ctx)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		out.add(items[i].Item.Owner, reminderItem{actionItem: &items[i]})
+	}
+	return out.send(ctx, n.sender, reminderSubject, n.reminderBody)
+}
+
+// reminderSubject titles a reminder by what it holds: Check-ins, Action Items,
+// or both.
+func reminderSubject(items []reminderItem) string {
+	var checkins, actionItems bool
+	for _, it := range items {
+		if it.actionItem != nil {
+			actionItems = true
+		} else {
+			checkins = true
+		}
+	}
+	switch {
+	case checkins && actionItems:
+		return "Your Check-ins and Action Items this week"
+	case actionItems:
+		return "Your Action Items this week"
+	default:
+		return "Your Check-ins this week"
+	}
 }
 
 // dateFormat is how calendar dates read in emails.
@@ -87,14 +120,26 @@ const dateFormat = "2006-01-02"
 // calendar.
 const daysPerWeek = 7
 
-// reminderBody lists the Goals needing a Check-in. With no hover in an email,
-// the Owner a Delegate writes for reads Name (email) at their first mention and
-// by Name after that (CONTEXT.md: Name).
+// reminderBody lists the Goals needing a Check-in, then the open Action Items
+// the person owns. With no hover in an email, the Owner a Delegate writes for
+// reads Name (email) at their first mention and by Name after that
+// (CONTEXT.md: Name).
 func (n *Notifier) reminderBody(items []reminderItem) string {
 	var b strings.Builder
 	var people domain.Mentions
-	b.WriteString("These Goals need a Check-in:\n\n")
+	var checkins []reminderItem
+	var actionItems []*domain.ActionItemListing
 	for _, it := range items {
+		if it.actionItem != nil {
+			actionItems = append(actionItems, it.actionItem)
+		} else {
+			checkins = append(checkins, it)
+		}
+	}
+	if len(checkins) > 0 {
+		b.WriteString("These Goals need a Check-in:\n\n")
+	}
+	for _, it := range checkins {
 		title := it.goal.Title
 		if it.asDelegate {
 			title += ", as Delegate for " + people.Of(it.goal.Owner)
@@ -106,7 +151,33 @@ func (n *Notifier) reminderBody(items []reminderItem) string {
 		fmt.Fprintf(&b, "- %s: %s, %d days without a Check-in (cadence: %d days)\n  %s\n",
 			title, state, it.freshness.DaysSince, it.freshness.CadenceDays, n.checkinURL(it.goal.ID))
 	}
+	if len(actionItems) > 0 {
+		if len(checkins) > 0 {
+			b.WriteString("\n")
+		}
+		b.WriteString("Action Items you own:\n\n")
+	}
+	for _, l := range actionItems {
+		where := l.ReportName
+		if l.GoalTitle != "" {
+			where += ", about " + l.GoalTitle
+		}
+		due := "due " + l.Item.DueDate.Format(dateFormat)
+		if l.Overdue {
+			due = "overdue since " + l.Item.DueDate.Format(dateFormat)
+		}
+		fmt.Fprintf(&b, "- %s (%s): %s\n  %s\n", l.Item.Text, where, due, n.actionItemURL(l.Item))
+	}
 	return b.String()
+}
+
+// actionItemURL links to an Action Item where it is listed: the page of the
+// Goal it is about, or else the publication it was raised on.
+func (n *Notifier) actionItemURL(item domain.ActionItem) string {
+	if item.GoalID != 0 {
+		return n.goalURL(item.GoalID) + "#action-items"
+	}
+	return fmt.Sprintf("%s/reports/%d/publications/%d#action-items", n.baseURL, item.DefinitionID, item.PublicationID)
 }
 
 // goalURL links to a Goal's page.
@@ -173,7 +244,7 @@ func (n *Notifier) SendDigests(ctx context.Context) error {
 			}
 		}
 	}
-	return out.send(ctx, n.sender, "Your weekly digest", n.digestBody)
+	return out.send(ctx, n.sender, func([]digestEntry) string { return "Your weekly digest" }, n.digestBody)
 }
 
 // childProblems says what's wrong with child, a Goal that contributes to one
@@ -311,11 +382,13 @@ func (o *outbox[T]) add(to domain.Account, item T) {
 	o.items[to.Email] = append(o.items[to.Email], item)
 }
 
-// send emails each recipient one message whose body renders their items. A
-// failed send doesn't stop the rest; every failure is returned together.
-func (o *outbox[T]) send(ctx context.Context, sender email.Sender, subject string, body func([]T) string) error {
+// send emails each recipient one message whose subject and body render their
+// items. A failed send doesn't stop the rest; every failure is returned
+// together.
+func (o *outbox[T]) send(ctx context.Context, sender email.Sender, subjectOf, body func([]T) string) error {
 	var errs []error
 	for _, addr := range o.order {
+		subject := subjectOf(o.items[addr])
 		if err := sender.Send(ctx, email.Message{
 			To:      addr,
 			Subject: subject,

@@ -178,10 +178,12 @@ gate, and `CHROME=/usr/bin/chromium make e2e` uses a local Chromium), `make clea
 
 The server sends two emails once a week, at the configured day and time:
 
-- **Check-in reminder**, to each Owner and Delegate. It lists their Active
-  Goals that are Stale, or that will go Stale before next week's reminder
-  unless someone checks in. Each Goal links to its Check-in form, which shows
-  last week's answers.
+- **Reminder**, to each Owner and Delegate with a Check-in due, and to each
+  owner of an open Action Item. It lists their Active Goals that are Stale, or
+  that will go Stale before next week's reminder unless someone checks in.
+  Each Goal links to its Check-in form, which shows last week's answers. It
+  then lists every open Action Item the person owns, overdue first, each with
+  its Report, the Goal it is about, its due date, and a link to it.
 - **Parent digest**, to each parent Owner. It lists the link requests waiting
   on them. It also lists problems with the Goals that contribute to theirs: a
   child whose Health went Yellow or Red, that recorded a Date Slip, or that went
