@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -158,6 +160,70 @@ func TestSmokeActionItemCarriesUntilClosedOverHTTP(t *testing.T) {
 }
 
 // Closing an Action Item comes back only to a page on this site: a return
+
+// The Report's author names the Goal an Action Item raised directly is about,
+// from the Goals the publication covers, or leaves it about the whole Report;
+// the publication then says which Goal it is about (CONTEXT.md: Action Item).
+func TestDirectActionItemNamesAGoalOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	author := h.SignIn("author@example.com")
+	v2 := h.ActiveGoal(author, "Ship v2", "Win back churned accounts.")
+	eu := h.ActiveGoal(author, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{v2.ID, eu.ID}})
+	pub := h.PublishReport(author, def)
+	if _, err := h.Service.AddComment(context.Background(), author.ID, pub.ID, v2.ID, "Is pricing settled?"); err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+	ts := newServer(t, h)
+	pubURL := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
+	client := signInClient(t, ts.URL, "author@example.com")
+
+	page := getBody(t, client, pubURL)
+	form := pageElement(t, page, "form", "action-item-form")
+	sel := pageElement(t, form, "select", "action-item-goal")
+	if attr(openTag(sel), "name") != "goal" {
+		t.Errorf("the Goal select isn't named goal: %s", openTag(sel))
+	}
+	var options []string
+	for _, m := range regexp.MustCompile(`(<option[^>]*>)([^<]*)</option>`).FindAllStringSubmatch(sel, -1) {
+		option := attr(m[1], "value") + " " + m[2]
+		if regexp.MustCompile(`\sselected[\s/>]`).MatchString(m[1]) {
+			option += " (selected)"
+		}
+		options = append(options, option)
+	}
+	want := []string{
+		"0 The whole Report (selected)",
+		fmt.Sprintf("%d Launch in EU", eu.ID),
+		fmt.Sprintf("%d Ship v2", v2.ID),
+	}
+	if !slices.Equal(options, want) {
+		t.Errorf("Goal options = %q, want %q", options, want)
+	}
+	if strings.Contains(pageElement(t, page, "form", "comment-action-item-form"), `name="goal"`) {
+		t.Errorf("the form raising an Action Item from a comment asks for a Goal")
+	}
+
+	resp := postForm(t, client, pubURL+"/action-items", url.Values{
+		"text": {"Book the EU legal review."}, "goal": {strconv.FormatInt(eu.ID, 10)}, "owner": {"author@example.com"}, "due": {"2026-02-01"},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("raise action item: status %d", resp.StatusCode)
+	}
+	if item := elementTexts(readBody(t, resp), "li", "raised-action-item"); len(item) != 1 || !strings.Contains(item[0], "due Feb 1, 2026 · about Launch in EU") {
+		t.Errorf("raised Action Items %q, want the one about Launch in EU", item)
+	}
+
+	resp = postForm(t, client, pubURL+"/action-items", url.Values{
+		"text": {"Book the EU legal review."}, "goal": {"Launch in EU"}, "owner": {"author@example.com"}, "due": {"2026-02-01"},
+	})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("a goal that isn't a number: status %d, want 422", resp.StatusCode)
+	}
+}
 // address that a browser would read as another site is ignored.
 func TestCloseActionItemNeverRedirectsOffSite(t *testing.T) {
 	t.Parallel()

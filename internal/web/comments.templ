@@ -23,7 +23,7 @@ templ reportActionItems(items []domain.ActionItem, d discussion) {
 							{ " " }<strong data-testid="action-item-closed-since">[Closed since]</strong>
 						}
 						if d.canClose(item) {
-							@closeActionItemForm(item, d)
+							@closeActionItemForm(item, d.Return)
 						}
 					</li>
 				}
@@ -139,7 +139,7 @@ templ publicationActionItems(d discussion) {
 						<span data-testid="action-item-note">— { item.ClosingNote }</span>
 					}
 					if d.canClose(item) {
-						@closeActionItemForm(item, d)
+						@closeActionItemForm(item, d.Return)
 					}
 				</li>
 			}
@@ -149,6 +149,15 @@ templ publicationActionItems(d discussion) {
 				<summary class="btn sm">Add Action Item</summary>
 				<form data-testid="action-item-form" class="rp-inline-form" method="post" action={ templ.SafeURL(publicationPath(*d.Pub) + "/action-items") }>
 					@actionItemFields(true)
+					<label>
+						About
+						<select data-testid="action-item-goal" name="goal">
+							<option value="0" selected>The whole Report</option>
+							for _, g := range d.actionItemGoalChoices() {
+								<option value={ fmt.Sprint(g.ID) }>{ g.Title }</option>
+							}
+						</select>
+					</label>
 					<button type="submit" class="btn primary sm">Add Action Item</button>
 				</form>
 			</details>
@@ -179,20 +188,23 @@ templ actionItemFields(textRequired bool) {
 }
 
 // actionItemSummary is an Action Item on one line: what · who owns it · when
-// it is due.
+// it is due · the Goal it is about, if it names one.
 templ actionItemSummary(item domain.ActionItem) {
 	{ item.Text }{ " · " }
 	@person(item.Owner)
 	{ " · due " }{ showDateYear(item.DueDate) }
+	if item.GoalTitle != "" {
+		{ " · about " }{ item.GoalTitle }
+	}
 }
 
 // closeActionItemForm lets an Action Item's owner close it with a note, behind
-// a small Close button.
-templ closeActionItemForm(item domain.ActionItem, d discussion) {
+// a small Close button, and comes back to returnTo.
+templ closeActionItemForm(item domain.ActionItem, returnTo string) {
 	<details data-testid="close-toggle">
 		<summary class="btn sm">Close</summary>
 		<form data-testid="close-action-item" class="rp-inline-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/action-items/%d/close", item.ID)) }>
-			<input type="hidden" name="return" value={ d.Return }/>
+			<input type="hidden" name="return" value={ returnTo }/>
 			<label>
 				Closing note
 				<input type="text" name="note" required/>
