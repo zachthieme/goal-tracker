@@ -1651,9 +1651,78 @@ func overdueGreenGoal(h *testsupport.Harness, owner domain.Account) domain.Goal 
 	return goal
 }
 
-// The Goal page's No change posts with htmx; a refusal comes back as the whole
-// Check-in page with 200, so htmx swaps it in, and the Check-in page's URL is
-// pushed so the address bar matches what the person sees (#103).
+// The Check-in page's "Nothing changed since …?" card offers its No change
+// only where it would be recorded. On a Goal whose Milestone has gone overdue
+// it says why in place of the button, and once a No change has been refused it
+// leaves the reason to the form's top error, so it shows once. On a Goal a No
+// change would repeat it keeps its button (#235).
+func TestCheckinPageNoChangeCardSaysWhyNoChangeIsUnavailable(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	overdue := overdueGreenGoal(h, sam)
+	repeatable := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, repeatable.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	client := signInClient(t, ts.URL, "sam@example.com")
+	card := func(page string) string {
+		return between(t, page, `data-testid="no-change-card"`, `data-testid="checkin-form"`)
+	}
+
+	c := card(getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, overdue.ID)))
+	if strings.Contains(c, `data-testid="no-change-checkin"`) {
+		t.Errorf("the overdue Goal's card offers a No change that would be refused:\n%s", c)
+	}
+	unavailable := tagAround(t, c, `data-testid="no-change-unavailable"`)
+	if !hasClass(unavailable, "muted") {
+		t.Errorf("the card's reason is not muted: %s", unavailable)
+	}
+	reason := html.UnescapeString(between(t, c[strings.Index(c, unavailable)+len(unavailable):], "", "</p>"))
+	if !strings.HasPrefix(reason, `Milestone "Beta" is overdue`) || !strings.HasSuffix(reason, ".") {
+		t.Errorf("the card's reason = %q, want the overdue Milestone named, as a sentence", reason)
+	}
+
+	_, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, overdue.ID), false)
+	if c := card(page); strings.Contains(c, `data-testid="no-change-unavailable"`) {
+		t.Errorf("after a refused No change, the card repeats the form's error:\n%s", c)
+	}
+	if n := strings.Count(page, `Milestone &#34;Beta&#34; is overdue`); n != 1 {
+		t.Errorf("after a refused No change, the reason shows %d times, want once", n)
+	}
+	assertNoChangeRefusalOnForm(t, page, `Milestone &#34;Beta&#34; is overdue`)
+
+	c = card(getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, repeatable.ID)))
+	if !strings.Contains(c, `data-testid="no-change-checkin"`) {
+		t.Errorf("the repeatable Goal's card has no No change:\n%s", c)
+	}
+	if strings.Contains(c, `data-testid="no-change-unavailable"`) {
+		t.Errorf("the repeatable Goal's card says No change is unavailable:\n%s", c)
+	}
+}
+
+// A refused No change's reason, at the top of the Check-in form, is styled as
+// an error, as the import page's error flash is, not left as plain text (#235).
+func TestNoChangeRefusalIsStyledAsAnError(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := overdueGreenGoal(h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	_, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+
+	form := between(t, page, `data-testid="checkin-form"`, `data-testid="checkin-health"`)
+	if tag := tagAround(t, form, `data-testid="checkin-error"`); attr(tag, "class") != "alert r" {
+		t.Errorf("the form's top error has class %q, want %q: %s", attr(tag, "class"), "alert r", tag)
+	}
+}
+
+// A No change refused over htmx comes back as the whole Check-in page with 200,
+// so htmx swaps it in, and the Check-in page's URL is pushed so the address bar
+// matches what the person sees (#103).
 func TestNoChangeRefusedOverHtmxSwapsInCheckinPage(t *testing.T) {
 	t.Parallel()
 
@@ -1663,14 +1732,7 @@ func TestNoChangeRefusedOverHtmxSwapsInCheckinPage(t *testing.T) {
 	goal := overdueGreenGoal(h, sam)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	goalPage := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	button := tagAround(t, goalPage, `data-testid="no-change-checkin"`)
-	action := fmt.Sprintf("/goals/%d/checkins/no-change", goal.ID)
-	if !strings.Contains(button, `hx-post="`+action+`"`) {
-		t.Fatalf("the Goal page's No change does not post with htmx to %s: %s", action, button)
-	}
-
-	resp, page := postNoChange(t, client, ts.URL+action, true)
+	resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), true)
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("htmx status = %d, want 200 so htmx swaps the page in", resp.StatusCode)

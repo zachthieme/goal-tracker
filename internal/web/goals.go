@@ -852,6 +852,17 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	// The Owner's Delegates and Admins set a Goal's Dimension values and Fields
 	// too (CONTEXT.md: Delegate).
 	canSetValues := canCheckin || current.IsAdmin
+	// The Owner and Delegates are offered a No change only where it would be
+	// recorded; where it wouldn't, the Check-in page says why.
+	var noChangeRefusal string
+	if canCheckin && g.Lifecycle == domain.LifecycleActive && latestPtr != nil {
+		switch err := s.svc.NoChangeRefusal(ctx, id); {
+		case errors.Is(err, domain.ErrValidation):
+			noChangeRefusal = sentence(s.noChangeReason(err))
+		case err != nil:
+			return goalView{}, fmt.Errorf("check no change: %w", err)
+		}
+	}
 	// Only the Owner and Delegates see the pending Draft Highlights; one who
 	// has since Departed is refused them, and sees none (CONTEXT.md: Draft
 	// Highlight).
@@ -877,6 +888,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Contributors:       contributors,
 		Delegates:          delegates,
 		CanCheckin:         canCheckin,
+		NoChangeRefusal:    noChangeRefusal,
 		CanSetValues:       canSetValues,
 		Owns:               current.ID == g.Owner.ID,
 		Admin:              current.IsAdmin,
@@ -937,6 +949,10 @@ type goalView struct {
 	Delegates  []domain.Account
 	CanCheckin bool
 	Revisions  []domain.SoWhatRevision
+	// NoChangeRefusal is why a No change on this Active Goal would be
+	// refused, as a sentence, or "" when one would be recorded or isn't on
+	// offer: there's no Check-in to repeat or the viewer can't check in.
+	NoChangeRefusal string
 	// TitleRevisions are every change to the Goal's title, newest first, for
 	// its History.
 	TitleRevisions []domain.TitleRevision

@@ -3,6 +3,7 @@ package web
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -17,6 +18,9 @@ import (
 // on, and what else is waiting on them.
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	v, err := s.loadHome(r.Context(), current.ID)
+	if err == nil {
+		v.NoChangeRefused, err = s.refusedNoChanges(r.Context(), v.Due)
+	}
 	if err != nil {
 		s.serverError(w, r, "could not load your week", err)
 		return
@@ -36,6 +40,10 @@ type homeView struct {
 	// Check-in is due before next week's reminder, the same rule the reminder
 	// email uses, most overdue first.
 	Due []domain.PersonalGoal
+	// NoChangeRefused marks, by Goal ID, the due Goals with a Check-in on which
+	// a No change would be refused, so their row offers only Check in. Only
+	// Home's own handler fills it, not the top bar's count.
+	NoChangeRefused map[int64]bool
 	// Requests are the link requests waiting on the person as the parent's
 	// Owner, the Handoffs waiting on them as the proposed new Owner, and the
 	// Parent suggestions on the Goals they Own, oldest first.
@@ -178,6 +186,25 @@ func (s *Server) loadHome(ctx context.Context, accountID int64) (homeView, error
 		return cmp.Compare(overdueDays(b.Freshness), overdueDays(a.Freshness))
 	})
 	return v, nil
+}
+
+// refusedNoChanges asks, for each due Goal with a Check-in to repeat, whether
+// a No change on it would be refused, and marks those that would by Goal ID.
+func (s *Server) refusedNoChanges(ctx context.Context, due []domain.PersonalGoal) (map[int64]bool, error) {
+	refused := map[int64]bool{}
+	for _, g := range due {
+		if !g.CheckedIn {
+			continue
+		}
+		err := s.svc.NoChangeRefusal(ctx, g.Goal.ID)
+		switch {
+		case errors.Is(err, domain.ErrValidation):
+			refused[g.Goal.ID] = true
+		case err != nil:
+			return nil, fmt.Errorf("check no change on goal %d: %w", g.Goal.ID, err)
+		}
+	}
+	return refused, nil
 }
 
 // homeOrgBadge is one count on the My org card: what it counts, for its

@@ -3466,7 +3466,7 @@ func goalHead(v goalView, owner, admin bool) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
+			if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil && v.NoChangeRefusal == "" {
 				templ_7745c5c3_Err = noChangeCheckinButton(g.ID, "No change", "btn quiet").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err

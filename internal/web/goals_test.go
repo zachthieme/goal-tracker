@@ -4799,6 +4799,35 @@ func TestGoalPageHeaderActionsOverHTTP(t *testing.T) {
 	}
 }
 
+// The header offers No change only where it would be recorded: on a Goal
+// whose Milestone has gone overdue it offers only Check in, while on a Goal a
+// No change would repeat it offers both (#235).
+func TestGoalPageHeaderOffersNoChangeOnlyWhereItWouldBeRecorded(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	overdue := overdueGreenGoal(h, sam)
+	repeatable := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, repeatable.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	actions := pageElement(t, getBody(t, client, goalPageURL(ts.URL, overdue)), "div", "goal-actions")
+	if !strings.Contains(actions, `data-testid="checkin-link"`) {
+		t.Errorf("the overdue Goal's header has no Check in: %s", actions)
+	}
+	if strings.Contains(actions, `data-testid="no-change-checkin"`) {
+		t.Errorf("the overdue Goal's header offers a No change that would be refused: %s", actions)
+	}
+	actions = pageElement(t, getBody(t, client, goalPageURL(ts.URL, repeatable)), "div", "goal-actions")
+	for _, want := range []string{`data-testid="checkin-link"`, `data-testid="no-change-checkin"`} {
+		if !strings.Contains(actions, want) {
+			t.Errorf("the repeatable Goal's header lacks %s: %s", want, actions)
+		}
+	}
+}
+
 // menuLink matches one of the action menu's items: a plain link and its label.
 var menuLink = regexp.MustCompile(`<a [^>]*href="([^"]*)"[^>]*>([^<]*)</a>`)
 

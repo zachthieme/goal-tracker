@@ -83,7 +83,7 @@ func homePage(current *domain.Account, v homeView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				for _, g := range v.Due {
-					templ_7745c5c3_Err = dueRow(g).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = dueRow(g, g.CheckedIn && !v.NoChangeRefused[g.Goal.ID]).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -547,9 +547,9 @@ func homeOrgCounts(c domain.SignalCounts) templ.Component {
 }
 
 // dueRow is one Goal to check in on: its Health, muted and dated when Stale,
-// why it's listed, and the one-click No change beside the Check in link to the
-// Goal's Check-in page.
-func dueRow(g domain.PersonalGoal) templ.Component {
+// why it's listed, and, when noChange says one would be recorded, the
+// one-click No change beside the Check in link to the Goal's Check-in page.
+func dueRow(g domain.PersonalGoal, noChange bool) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -711,7 +711,7 @@ func dueRow(g domain.PersonalGoal) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if g.CheckedIn {
+		if noChange {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "<form method=\"post\" action=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err

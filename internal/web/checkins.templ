@@ -497,9 +497,10 @@ templ noChangeCheckinButton(goalID int64, label, class string) {
 // checkinPage is the Check-in on its own page, reached from the Goal page by
 // the Owner or a Delegate: a breadcrumb back to the Goal, then the one-click
 // "no change" card when there is a previous Check-in to repeat, then the form,
-// showing the latest Check-in's answers as ghost text. A refusal in the form's
-// error, such as why a No change couldn't be recorded, shows at the top of the
-// form.
+// showing the latest Check-in's answers as ghost text. Where a No change would
+// be refused, the card says why in place of its button. A refusal in the
+// form's error, such as why a No change couldn't be recorded, shows at the top
+// of the form, and the card then leaves the reason to it.
 templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 	{{ g := v.Goal }}
 	@layout("Check in · "+g.Title, current) {
@@ -515,7 +516,11 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 						<h3>{ "Nothing changed since " + v.dates().dayOf(v.LatestCheckin.CreatedAt) + "?" }</h3>
 						<p class="muted">Records the same Health and status with today's date.</p>
 					</div>
-					@noChangeCheckinButton(g.ID, "No change", "btn")
+					if v.NoChangeRefusal == "" {
+						@noChangeCheckinButton(g.ID, "No change", "btn")
+					} else if form.Error.Message == "" || form.Error.Field != "" {
+						<p data-testid="no-change-unavailable" class="muted">{ v.NoChangeRefusal }</p>
+					}
 				</div>
 			}
 			if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold {
@@ -914,9 +919,14 @@ templ checkinLifecycleFields(d lifecycleFormData, e checkinError) {
 }
 
 // checkinFieldError shows the form's validation message when it is about the
-// named field.
+// named field. One about no field, shown at the top of the form, is styled as
+// an error, like the import page's error flash.
 templ checkinFieldError(e checkinError, field string) {
 	if e.Message != "" && e.Field == field {
-		<p data-testid="checkin-error" role="alert">{ e.Message }</p>
+		if field == "" {
+			<p data-testid="checkin-error" class="alert r" role="alert">{ e.Message }</p>
+		} else {
+			<p data-testid="checkin-error" role="alert">{ e.Message }</p>
+		}
 	}
 }

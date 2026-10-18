@@ -725,9 +725,42 @@ func TestHomeInlineFormsComeFromTheSharedClass(t *testing.T) {
 	}
 }
 
-// Home's No change on a Green Goal whose Milestone has gone overdue is refused;
-// the person lands on that Goal's Check-in form with the reason, whether the
-// button posted plainly or through htmx, and nothing is recorded (#103).
+// Home offers a due Goal's No change only where it would be recorded: a Green
+// Goal whose Milestone has gone overdue gets only its Check in, while a due
+// Goal a No change would repeat keeps its No change (#235).
+func TestHomeOffersNoChangeOnlyWhereItWouldBeRecorded(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	overdue := overdueGreenGoal(h, sam)
+	repeatable := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	setCadence(t, h, repeatable, 14)
+	h.Checkin(sam, repeatable.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(16 * day)
+
+	due := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due")
+
+	row := homeRow(t, due, overdue)
+	if !strings.Contains(row, `data-testid="home-due-checkin"`) {
+		t.Errorf("the overdue Goal's row has no Check in:\n%s", row)
+	}
+	if strings.Contains(row, "/checkins/no-change") {
+		t.Errorf("the overdue Goal's row offers a No change that would be refused:\n%s", row)
+	}
+	row = homeRow(t, due, repeatable)
+	for _, want := range []string{fmt.Sprintf(`action="/goals/%d/checkins/no-change"`, repeatable.ID), `data-testid="home-due-checkin"`} {
+		if !strings.Contains(row, want) {
+			t.Errorf("the repeatable Goal's row lacks %s:\n%s", want, row)
+		}
+	}
+}
+
+// A No change on a Green Goal whose Milestone has gone overdue is refused, as
+// one sent from Home's row before the Milestone went overdue would be; the
+// person lands on that Goal's Check-in form with the reason, whether it posted
+// plainly or through htmx, and nothing is recorded (#103).
 func TestHomeNoChangeRefusedLandsOnCheckinForm(t *testing.T) {
 	t.Parallel()
 
@@ -736,12 +769,7 @@ func TestHomeNoChangeRefusedLandsOnCheckinForm(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	goal := overdueGreenGoal(h, sam)
 	client := signInClient(t, ts.URL, "sam@example.com")
-
-	row := homeRow(t, pageElement(t, getBody(t, client, ts.URL+"/home"), "ul", "home-due"), goal)
-	action := attr(tagAround(t, row, `action="/goals/`), "action")
-	if want := fmt.Sprintf("/goals/%d/checkins/no-change", goal.ID); action != want {
-		t.Fatalf("Home's No change posts to %q, want %q:\n%s", action, want, row)
-	}
+	action := fmt.Sprintf("/goals/%d/checkins/no-change", goal.ID)
 
 	for _, hx := range []bool{false, true} {
 		resp, page := postNoChange(t, client, ts.URL+action, hx)
@@ -1213,5 +1241,32 @@ func TestHomeMyOrgAddsNothingToNeedsYou(t *testing.T) {
 	}
 	if home := pageElement(t, page, "a", "nav-home"); strings.Contains(home, "count") {
 		t.Errorf("Home's nav item counts the Org's Goals: %s", home)
+	}
+}
+
+// Home whose due Goal can't be asked whether a No change would be recorded
+// answers 500, as any failure to load Home does, rather than offering a No
+// change it couldn't check (#235).
+func TestHomeFailsWhenNoChangeCantBeChecked(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(8 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	if _, err := h.DB.Exec(`ALTER TABLE milestones RENAME TO gone_milestones`); err != nil {
+		t.Fatalf("rename milestones: %v", err)
+	}
+
+	resp, err := client.Get(ts.URL + "/home")
+	if err != nil {
+		t.Fatalf("GET /home: %v", err)
+	}
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", resp.StatusCode)
 	}
 }
