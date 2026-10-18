@@ -17,7 +17,7 @@ templ goalsPage(current *domain.Account, view goalsListData) {
 		<header data-testid="goals-head" class="page-head">
 			<div>
 				<h1>Goals</h1>
-				<p class="muted">Every goal in the company. Problems sort to the top.</p>
+				<p class="muted">Problems sort to the top.</p>
 			</div>
 			<a data-testid="new-goal" class="btn primary" href="/goals/new">New goal</a>
 		</header>
@@ -52,7 +52,7 @@ templ goalFilters(view goalsListData) {
 		hx-history="false"
 	>
 		<div class="gl-bar">
-			@pageScopeSelect("goal-scope-filter", view.Filter.Mine, view.Org)
+			@pageScopeSelect("goal-scope-filter", view.Org)
 			<input data-testid="goal-search" type="search" name="q" value={ view.Filter.Query } placeholder="Search title or Owner" aria-label="Search Goals by title or Owner"/>
 			<select data-testid="goal-health-filter" name="health" aria-label="Health">
 				<option value="" selected?={ view.Filter.Health == "" }>Any Health</option>
@@ -77,7 +77,7 @@ templ goalFilters(view goalsListData) {
 				Incomplete
 			</label>
 			<noscript><button type="submit" class="btn">Apply</button></noscript>
-			<a href="/goals" class="btn quiet">Clear</a>
+			<a href="/goals?org=all" class="btn quiet">Clear</a>
 		</div>
 		if len(view.Dimensions) > 0 {
 			<details data-testid="more-filters" open?={ view.moreFiltersSet() }>
@@ -147,7 +147,7 @@ templ goalListLayout(view goalsListData) {
 			if view.GroupID != 0 {
 				if len(view.Groups) == 0 {
 					<tbody>
-						@noGoals(view.noMatch())
+						@noGoals(view, view.noMatch())
 					</tbody>
 				}
 				for _, grp := range view.Groups {
@@ -169,9 +169,9 @@ templ goalListLayout(view goalsListData) {
 			} else {
 				<tbody>
 					if len(view.Rows) == 0 && view.filtered() {
-						@noGoals(view.noMatch())
+						@noGoals(view, view.noMatch())
 					} else if len(view.Rows) == 0 {
-						@noGoals("No Goals yet.")
+						@noGoals(view, "No Goals yet.")
 					}
 					for _, row := range view.Rows {
 						@goalListRow(row, view.Dates)
@@ -209,8 +209,21 @@ templ goalListHead(view goalsListData) {
 }
 
 // noGoals is the Goal list's empty state, spanning the table.
-templ noGoals(text string) {
-	<tr><td data-testid="no-goals" colspan="6" class="muted">{ text }</td></tr>
+templ noGoals(view goalsListData, text string) {
+	<tr>
+		<td data-testid="no-goals" colspan="6" class="muted">
+			{ text }
+			@seeEveryonesGoals(view)
+		</td>
+	</tr>
+}
+
+// seeEveryonesGoals links an empty list on the viewer's default scope to
+// everyone's Goals, keeping its other filters.
+templ seeEveryonesGoals(view goalsListData) {
+	if view.Org.Default {
+		<a data-testid="see-everyones" href={ view.everyoneURL() }>See everyone's →</a>
+	}
 }
 
 // goalListRow is one Goal in the list: its Health, its title with the
@@ -309,7 +322,12 @@ templ goalTableGrid(view goalsListData) {
 			</thead>
 			<tbody>
 				if len(view.Table.Rows) == 0 {
-					<tr><td data-testid="no-goals" colspan={ fmt.Sprintf("%d", len(view.Table.Columns)) } class="muted">{ view.noMatch() }</td></tr>
+					<tr>
+						<td data-testid="no-goals" colspan={ fmt.Sprintf("%d", len(view.Table.Columns)) } class="muted">
+							{ view.noMatch() }
+							@seeEveryonesGoals(view)
+						</td>
+					</tr>
 				}
 				for _, row := range view.Table.Rows {
 					<tr data-testid="goal-table-row">

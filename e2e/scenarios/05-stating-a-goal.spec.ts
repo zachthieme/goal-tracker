@@ -330,7 +330,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
   });
 
   await test.step("It worked if: the Team she set lets the Goal be found on /goals", async () => {
-    await priya.goto("/goals");
+    await priya.goto("/goals?org=all");
     await priya.getByTestId("more-filters").locator("summary").click();
     await priya
       .getByTestId("more-filters")

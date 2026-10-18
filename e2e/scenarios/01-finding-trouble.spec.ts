@@ -199,12 +199,14 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     await signIn(page, leader);
     const count = await navRisksCount(page);
     expect(count, "Risks shows a count from Home").toBeGreaterThan(0);
+    // The count is her default scope, My org, as many as a bare /risks lists.
     await page.goto("/risks");
-    await expect(page.getByTestId("risks-attention")).toHaveText(new RegExp(`^${count} Goals need attention`));
+    await expect(page.getByTestId("risks-attention")).toHaveText(new RegExp(`^${count} Goals need attention in My org`));
+    expect(await riskRows(page), "the count is a bare /risks's rows").toHaveLength(count);
   });
 
   await test.step("2. Goals is led by Health, problems first, filtered to her org and grouped by another Dimension", async () => {
-    await page.goto("/goals");
+    await page.goto("/goals?org=all");
     const rows = await goalRows(page);
     expect(rows.length, "the Goal list lists the seed's Goals").toBeGreaterThan(10);
 
@@ -248,7 +250,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   });
 
   await test.step("3. Risks says how many Goals need attention, in three groups by who has to act", async () => {
-    await page.goto("/risks");
+    await page.goto("/risks?org=all");
     await expect(page.getByTestId("risks-attention")).toContainText("Goals need attention");
     const cards = [
       { key: "owner", name: "Owner needs to update", kinds: ["stale", "path-overdue"] },
@@ -279,12 +281,14 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
       ],
       admin: ownerless.map((goal) => ({ goal, kind: "ownerless" })),
     };
+    // A card keeps Everyone (keys sorted), but Needs an Admin, which is
+    // company-wide whatever the scope, drops it.
     for (const c of cards) {
-      await page.goto("/risks");
+      await page.goto("/risks?org=all");
       const card = page.getByTestId(`risks-group-${c.key}`);
       const count = Number(await card.getByText(/^\d+$/).textContent());
       await card.click();
-      await expect(page).toHaveURL(new RegExp(`/risks\\?group=${c.key}$`));
+      await expect(page).toHaveURL(new RegExp(c.key === "admin" ? `/risks\\?group=admin$` : `/risks\\?group=${c.key}&org=all$`));
       const rows = await riskRows(page);
       expect(rows, `the ${c.name} card counts its rows`).toHaveLength(count);
       for (const r of rows) {
@@ -304,17 +308,19 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   });
 
   await test.step("4. Narrowed to her org, each flagged Goal is one row, worst first, with a chip per reason and one Fix", async () => {
-    const everyone = await navRisksCount(page);
+    // A bare /risks is her default, My org, which the top bar counts.
     await page.goto("/risks");
+    const inOrg = await navRisksCount(page);
+    expect(await riskRows(page), "the top bar counts a bare /risks's rows").toHaveLength(inOrg);
     const teamSelect = page.locator('[data-testid="risks-value"][data-dimension="Team"]');
     await expect(teamSelect.locator("option").first()).toHaveText("Team: any");
     await teamSelect.selectOption({ label: "Platform" });
     await expect(page).toHaveURL(/[?&]value=\d+/);
     const rows = await riskRows(page);
     await expect(page.getByTestId("risks-attention")).toHaveText(new RegExp(`^${rows.length} Goals? needs? attention`));
-    // The top bar counts the whole org; the narrowed page doesn't.
-    expect(rows.length, "Platform has fewer flagged Goals than the org").toBeLessThan(everyone);
-    expect(await navRisksCount(page), "the top bar's count doesn't narrow").toBe(everyone);
+    // The top bar counts her whole org; the narrowed page doesn't.
+    expect(rows.length, "Platform has fewer flagged Goals than her org").toBeLessThan(inOrg);
+    expect(await navRisksCount(page), "the top bar's count doesn't narrow").toBe(inOrg);
 
     expect(new Set(rows.map((r) => r.id)).size, "one row per Goal").toBe(rows.length);
     for (const r of rows) {
@@ -426,18 +432,18 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   await test.step("It worked if: she could tell in trouble from silent from badly placed", async () => {
     // In trouble: Red or Yellow Health, on Goals. Health isn't a Risks
     // signal: a Red Goal nothing else is wrong with isn't on Risks.
-    await page.goto("/goals");
+    await page.goto("/goals?org=all");
     await expect(goalRow(page, redWithChildren.title).getByTestId("goal-row-health")).toHaveText("Red");
     await expect(goalRow(page, overdue.title).getByTestId("goal-row-health")).toHaveText("Yellow");
-    await page.goto("/risks");
+    await page.goto("/risks?org=all");
     expect((await riskRows(page)).map((r) => r.id), `${redWithChildren.title} isn't on Risks`).not.toContain(redWithChildren.id);
 
     // Silent: Stale, under Owner needs to update, not Plan doesn't fit.
     // Badly placed: Unaligned or a Schedule conflict, under Plan doesn't fit,
     // not Owner needs to update.
-    await page.goto("/risks?group=owner");
+    await page.goto("/risks?group=owner&org=all");
     const owner = (await riskRows(page)).map((r) => r.id);
-    await page.goto("/risks?group=plan");
+    await page.goto("/risks?group=plan&org=all");
     const plan = (await riskRows(page)).map((r) => r.id);
     expect(owner, "Stale is under Owner needs to update").toContain(stale.id);
     expect(plan, "Stale isn't under Plan doesn't fit").not.toContain(stale.id);
@@ -447,7 +453,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   });
 
   await test.step("It worked if: every row on Risks answered what to do about it, with exactly one Fix", async () => {
-    await page.goto("/risks");
+    await page.goto("/risks?org=all");
     const rows = await riskRows(page);
     expect(rows.length).toBeGreaterThan(0);
     for (const r of rows) {

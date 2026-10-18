@@ -28,7 +28,7 @@ templ risksPage(current *domain.Account, v risksPageView) {
 					<p data-testid="risks-empty" class="muted">
 						{ v.Empty() }
 						if v.Filtered() {
-							<a href="/risks">Show everything</a>
+							<a href={ v.ShowEverythingURL() }>Show everything</a>
 						}
 					</p>
 				</div>
@@ -91,7 +91,7 @@ templ risksFilters(v risksPageView) {
 		if v.Group != "" {
 			<input type="hidden" name="group" value={ v.Group }/>
 		}
-		@pageScopeSelect("risks-scope", v.Mine, v.Org)
+		@pageScopeSelect("risks-scope", v.Org)
 		for _, d := range v.Dimensions {
 			<select data-testid="risks-value" data-dimension={ d.Name } name="value" aria-label={ d.Name }>
 				<option value="" selected?={ v.valueIn(d.ID).ID == 0 }>{ d.Name + ": any" }</option>

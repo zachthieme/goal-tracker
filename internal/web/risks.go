@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -18,11 +19,11 @@ import (
 
 // handleRisks answers "what's going wrong?" for leadership: every Goal the
 // freshness and graph signals flag, by problem type, scoped by its address to
-// the viewer's own Goals (?org=mine, or the older ?mine=1) or an Org's
-// (?org=), and to the Goals with an offered Dimension's value (?value=, one per
-// Dimension). The
+// Everyone (?org=all), the viewer's own Goals (?org=mine, or the older
+// ?mine=1) or an Org's (?org=), else the viewer's default scope, and to the
+// Goals with an offered Dimension's value (?value=, one per Dimension). The
 // scope narrows the rows only after they are built: loadRisks stays
-// company-wide for the top bar's count.
+// company-wide, for the Needs an Admin card.
 func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	page, err := s.loadRisksPage(r.Context(), r.URL.Query(), current)
 	if err != nil {
@@ -33,6 +34,8 @@ func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current dom
 }
 
 // loadRisksPage builds the Risks page current sees at an address with query q.
+// An Admin's job in Needs an Admin is company-wide, so that group with no
+// scope in its address is Everyone's, whoever is looking.
 func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain.Account) (risksPageView, error) {
 	v, err := s.loadRisks(ctx)
 	if err != nil {
@@ -74,14 +77,18 @@ func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain
 	if err != nil {
 		return risksPageView{}, err
 	}
-	org, err := s.loadPageOrgScope(ctx, q.Get("org"), current, goals)
+	group := riskGroupKey(q.Get("group"))
+	if group == riskGroupAdmin && q.Get("org") == "" && q.Get("mine") != "1" {
+		q = maps.Clone(q)
+		q.Set("org", scopeEveryoneValue)
+	}
+	org, err := s.loadPageOrgScope(ctx, q, current, goals)
 	if err != nil {
 		return risksPageView{}, err
 	}
 	page := risksPageView{
 		risksView:  v,
-		Group:      riskGroupKey(q.Get("group")),
-		Mine:       scopedToMine(q, org),
+		Group:      group,
 		Org:        org,
 		Dimensions: domain.OfferedDimensions(dims),
 		Today:      s.svc.Now().In(s.svc.Timezone()),
@@ -103,16 +110,13 @@ func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain
 		}
 	}
 	for _, row := range rows {
-		if page.Mine && row.Goal.Owner.ID != current.ID && !facts.delegate[row.Goal.ID] {
-			continue
-		}
-		if !org.keeps(row.Goal) {
-			continue
-		}
 		if valued != nil && !valued[row.Goal.ID] {
 			continue
 		}
-		page.Rows = append(page.Rows, row)
+		page.CompanyRows = append(page.CompanyRows, row)
+		if org.keeps(row.Goal) {
+			page.Rows = append(page.Rows, row)
+		}
 	}
 	return page, nil
 }
@@ -148,20 +152,20 @@ func riskValueLabel(v domain.DimensionValue) string {
 	return v.Value
 }
 
-// risksPageView is the Risks page: its lists, its rows in scope, the group its
-// address filters it to, "" for every group, whether it is scoped to the
-// viewer's own Goals or an Org, one at a time, the offered Dimensions and the
-// values of theirs it is scoped to, at most one each, in the Dimensions'
-// order, and today, which its dates are read against.
+// risksPageView is the Risks page: its lists, its rows in scope, its rows
+// with its values in any scope, which the Needs an Admin card counts, the
+// group its address filters it to, "" for every group, its Scope, the offered
+// Dimensions and the values of theirs it is scoped to, at most one each, in
+// the Dimensions' order, and today, which its dates are read against.
 type risksPageView struct {
 	risksView
-	Rows       []riskGoalRow
-	Group      string
-	Mine       bool
-	Org        pageOrgScope
-	Dimensions []domain.Dimension
-	Values     []domain.DimensionValue
-	Today      time.Time
+	Rows        []riskGoalRow
+	CompanyRows []riskGoalRow
+	Group       string
+	Org         pageOrgScope
+	Dimensions  []domain.Dimension
+	Values      []domain.DimensionValue
+	Today       time.Time
 }
 
 // valueIn is the value of the Dimension dimID the page is scoped to, or the
@@ -175,20 +179,12 @@ func (p risksPageView) valueIn(dimID int64) domain.DimensionValue {
 	return domain.DimensionValue{}
 }
 
-// scope is the ?org= the page is scoped by: "mine" for Mine, the ID of the
-// person whose Org it is, or "" for everyone's.
-func (p risksPageView) scope() string {
-	if p.Mine {
-		return scopeMineValue
-	}
-	return p.Org.Value()
-}
-
 // url is the Risks page's address filtered to group ("" for every group),
-// keeping the page's scope and every value it is scoped to.
+// keeping the page's scope and every value it is scoped to. Needs an Admin
+// drops the scope, landing on that group's company-wide rows.
 func (p risksPageView) url(group string) string {
 	q := url.Values{}
-	if sc := p.scope(); sc != "" {
+	if sc := p.Org.Value(); sc != "" && group != riskGroupAdmin {
 		q.Set("org", sc)
 	}
 	if group != "" {
@@ -211,6 +207,11 @@ func (p risksPageView) Here() string {
 // ShowAllURL is the page's address unfiltered, keeping its scope.
 func (p risksPageView) ShowAllURL() templ.SafeURL {
 	return templ.SafeURL(p.url(""))
+}
+
+// ShowEverythingURL is the Risks page with no filter and scoped to Everyone.
+func (p risksPageView) ShowEverythingURL() templ.SafeURL {
+	return templ.SafeURL("/risks?org=" + scopeEveryoneValue)
 }
 
 // Shown are the rows the table shows: every row with no filter, else each row
@@ -245,7 +246,7 @@ func (p risksPageView) Shown() []riskGoalRow {
 // Filtered reports whether the page is scoped to Mine, an Org or values, or
 // filtered to a group.
 func (p risksPageView) Filtered() bool {
-	return p.Mine || p.Org.Of != nil || len(p.Values) > 0 || p.Group != ""
+	return p.Org.Name() != "" || len(p.Values) > 0 || p.Group != ""
 }
 
 // Empty is what the page says when no Goal is left to show: where nothing
@@ -253,11 +254,8 @@ func (p risksPageView) Filtered() bool {
 // name, in the Dimensions' order, and the group's card's title, in that order.
 func (p risksPageView) Empty() string {
 	var parts []string
-	if p.Mine {
-		parts = append(parts, "Mine")
-	}
-	if p.Org.Of != nil {
-		parts = append(parts, p.Org.Name())
+	if name := p.Org.Name(); name != "" {
+		parts = append(parts, name)
 	}
 	for _, d := range p.Dimensions {
 		if v := p.valueIn(d.ID); v.ID != 0 {
@@ -280,11 +278,8 @@ func (p risksPageView) Empty() string {
 // Worst first."
 func (p risksPageView) attention() string {
 	in := ""
-	switch {
-	case p.Mine:
-		in = " in Mine"
-	case p.Org.Of != nil:
-		in = " in " + p.Org.Name()
+	if name := p.Org.Name(); name != "" {
+		in = " in " + name
 	}
 	if len(p.Rows) == 1 {
 		return "Goal needs attention" + in + ". Worst first."
@@ -336,19 +331,25 @@ func (c riskCard) Attrs() templ.Attributes {
 	return templ.Attributes{}
 }
 
-// Cards are the page's group cards, in the page's order.
+// Cards are the page's group cards, in the page's order, each counting the
+// page's rows but Needs an Admin, which counts the company's: an Admin's job
+// there is company-wide.
 func (p risksPageView) Cards() []riskCard {
 	names := map[string]string{}
 	for _, rt := range p.Types() {
 		names[rt.Anchor] = rt.Name
 	}
-	groups := riskGroups(p.Rows)
+	groups, company := riskGroups(p.Rows), riskGroups(p.CompanyRows)
 	cards := make([]riskCard, 0, len(groups))
 	for i, gk := range riskGroupKinds {
-		c := riskCard{riskGroup: groups[i], Blank: gk.Blank, Current: gk.Key == p.Group, Href: templ.SafeURL(p.url(gk.Key))}
+		rows, group := p.Rows, groups[i]
+		if gk.Key == riskGroupAdmin {
+			rows, group = p.CompanyRows, company[i]
+		}
+		c := riskCard{riskGroup: group, Blank: gk.Blank, Current: gk.Key == p.Group, Href: templ.SafeURL(p.url(gk.Key))}
 		for _, kind := range gk.Kinds {
 			n := 0
-			for _, r := range p.Rows {
+			for _, r := range rows {
 				if _, ok := r.signal(kind); ok {
 					n++
 				}
@@ -405,27 +406,46 @@ var riskDefinitions = []struct{ Name, Means string }{
 	{"Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled."},
 }
 
-// Flagged counts the Goals the Risks page lists, each once however many
-// signals flag it.
-func (v risksView) Flagged() int {
+// Flagged counts the Goals the Risks page lists in scope, each once however
+// many signals flag it.
+func (v risksView) Flagged(scope pageOrgScope) int {
 	flagged := map[int64]bool{}
+	flag := func(g domain.Goal) {
+		if scope.keeps(g) {
+			flagged[g.ID] = true
+		}
+	}
 	for _, list := range [][]domain.GoalFreshness{v.Stale, v.OverduePaths} {
 		for _, gf := range list {
-			flagged[gf.Goal.ID] = true
+			flag(gf.Goal)
 		}
 	}
 	for _, list := range [][]domain.Goal{v.Ownerless, v.Unaligned} {
 		for _, g := range list {
-			flagged[g.ID] = true
+			flag(g)
 		}
 	}
 	for _, c := range v.ScheduleConflicts {
-		flagged[c.Child.ID] = true
+		flag(c.Child)
 	}
 	for _, hp := range v.HaltedParents {
-		flagged[hp.Child.ID] = true
+		flag(hp.Child)
 	}
 	return len(flagged)
+}
+
+// countDefaultRisks counts the Goals flagged in acc's default scope, as many
+// as the rows a bare /risks lists, for the top bar.
+func (s *Server) countDefaultRisks(ctx context.Context, acc domain.Account) (int, error) {
+	v, err := s.loadRisks(ctx)
+	if err != nil {
+		return 0, err
+	}
+	scope, err := s.resolvePageOrgScope(ctx, url.Values{}, acc)
+	if err != nil {
+		return 0, err
+	}
+	return v.Flagged(scope), nil
 }
 
 // loadRisks reads every Goal the company's signals flag.
@@ -709,8 +729,12 @@ var riskGroupKinds = []struct {
 }{
 	{"owner", "Owner needs to update", []string{"stale", "path-overdue"}, "Every Owner is up to date."},
 	{"plan", "Plan doesn't fit", []string{"unaligned", "schedule-conflicts"}, "Every plan fits."},
-	{"admin", "Needs an Admin", []string{"ownerless", "halted-parents"}, "Nothing needs an Admin."},
+	{riskGroupAdmin, "Needs an Admin", []string{"ownerless", "halted-parents"}, "Nothing needs an Admin."},
 }
+
+// riskGroupAdmin is the key of the Needs an Admin group, whose card counts
+// the company's rows.
+const riskGroupAdmin = "admin"
 
 // riskGroups counts the rows in each group, in the page's order.
 func riskGroups(rows []riskGoalRow) []riskGroup {

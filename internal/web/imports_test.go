@@ -309,7 +309,7 @@ Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,,
 	if !strings.Contains(body, "Imported 1 Goals") {
 		t.Fatalf("commit didn't import the row lacking Pillar and Budget; body:\n%s", body)
 	}
-	if list := getBody(t, admin, ts.URL+"/goals"); !strings.Contains(list, "Grow revenue") {
+	if list := getBody(t, admin, ts.URL+"/goals?org=all"); !strings.Contains(list, "Grow revenue") {
 		t.Errorf("the imported Goal isn't on the Goal list; body:\n%s", list)
 	}
 }
