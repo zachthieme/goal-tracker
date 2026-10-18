@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -412,5 +413,121 @@ func TestAdminSeesTheDirectorySyncTimeInTheOrgsTimezone(t *testing.T) {
 	status := pageElement(t, pressSyncNow(t, client, ts.URL), "section", "admin-directory-sync")
 	if !strings.Contains(status, "Jan 3, 01:34") {
 		t.Errorf("the sync's time isn't Jan 3, 01:34 in Tokyo:\n%s", status)
+	}
+}
+
+// issuePasswordLink presses Issue link on the Admin page for emailAddr as
+// client, and returns the status and the page it answers with.
+func issuePasswordLink(t *testing.T, client *http.Client, base, emailAddr string) (int, string) {
+	t.Helper()
+	section := pageElement(t, getBody(t, client, base+"/admin"), "section", "admin-password-links")
+	form := tagAround(t, section, `action="/admin/password-links"`)
+	if !strings.Contains(form, `method="post"`) || !strings.Contains(section, `type="email" name="email"`) || !strings.Contains(section, "Issue link") {
+		t.Fatalf("the card has no email field and Issue link button posting to /admin/password-links:\n%s", section)
+	}
+	resp := postForm(t, noRedirects(client), base+"/admin/password-links", url.Values{"email": {emailAddr}})
+	return resp.StatusCode, readBody(t, resp)
+}
+
+// With password sign-in, an Admin issues a set-password link from the Admin
+// page and sees the whole link once, with when it expires; it creates the
+// Account for an email that has none, and the link works.
+func TestAdminIssuesASetPasswordLink(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	h.Service = domain.NewService(h.DB, h.Clock, h.Email, []string{"ada@example.com"}, domain.WithBaseURL("https://goals.example.com/"))
+	ts := newPasswordServer(t, h)
+	client := passwordSignInClient(t, h, ts.URL, "ada@example.com")
+
+	status, page := issuePasswordLink(t, client, ts.URL, "new.hire@example.com")
+	if status != http.StatusOK {
+		t.Fatalf("Issue link: status %d, want 200:\n%s", status, page)
+	}
+	result := pageElement(t, page, "div", "admin-password-link")
+	link := regexp.MustCompile(`https://goals\.example\.com/set-password\?token=[A-Za-z0-9_-]{43}`).FindString(result)
+	if link == "" {
+		t.Fatalf("the result shows no set-password link:\n%s", result)
+	}
+	for _, want := range []string{"new.hire@example.com", "Jan 5, 15:04", "Send this to the person. It works once and expires in 72 hours."} {
+		if !strings.Contains(result, want) {
+			t.Errorf("the result lacks %q:\n%s", want, result)
+		}
+	}
+
+	token := strings.TrimPrefix(link, "https://goals.example.com/set-password?token=")
+	acc, err := h.Service.PasswordLinkAccount(t.Context(), token)
+	if err != nil || acc.Email != "new.hire@example.com" {
+		t.Errorf("the shown link is for %+v (err %v), want new.hire@example.com", acc, err)
+	}
+	if strings.Contains(getBody(t, client, ts.URL+"/admin"), token) {
+		t.Error("the Admin page shows the link again after it was issued")
+	}
+}
+
+// A Departed person can't be issued a set-password link: the Admin page says
+// so, and shows no link.
+func TestAdminCantIssueASetPasswordLinkToADepartedPerson(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newPasswordServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, sam.ID); err != nil {
+		t.Fatal(err)
+	}
+	client := passwordSignInClient(t, h, ts.URL, "ada@example.com")
+
+	status, page := issuePasswordLink(t, client, ts.URL, "sam@example.com")
+	if status != http.StatusUnprocessableEntity {
+		t.Errorf("Issue link for a Departed person: status %d, want 422", status)
+	}
+	section := pageElement(t, page, "section", "admin-password-links")
+	if msg := pageElement(t, section, "p", "admin-password-link-error"); !strings.Contains(msg, "sam@example.com has left the company") {
+		t.Errorf("the refusal says %s", msg)
+	}
+	if strings.Contains(page, "/set-password?token=") {
+		t.Errorf("the page shows a link for a Departed person:\n%s", section)
+	}
+}
+
+// Only an Admin may issue a set-password link: anyone else is refused, as with
+// Sync now, and no link is made.
+func TestNonAdminCantIssueASetPasswordLink(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newPasswordServer(t, h)
+	sam := passwordSignInClient(t, h, ts.URL, "sam@example.com")
+
+	resp := postForm(t, noRedirects(sam), ts.URL+"/admin/password-links", url.Values{"email": {"kim@example.com"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden || strings.Contains(body, "/set-password?token=") {
+		t.Errorf("non-Admin POST /admin/password-links: status %d, want 403 with no link:\n%s", resp.StatusCode, body)
+	}
+	if _, err := h.Service.AccountByEmail(t.Context(), "kim@example.com"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("a non-Admin's Issue link created an Account (err %v)", err)
+	}
+}
+
+// Without password sign-in, the Admin page has no set-password links card and
+// there's nothing to post to.
+func TestAdminPageHasNoSetPasswordLinksWithoutPasswordSignIn(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	h.SignIn("ada@example.com")
+	client := signInClient(t, ts.URL, "ada@example.com")
+
+	page := getBody(t, client, ts.URL+"/admin")
+	for _, absent := range []string{"admin-password-links", "Set-password links", "/admin/password-links"} {
+		if strings.Contains(page, absent) {
+			t.Errorf("the Admin page without password sign-in shows %q", absent)
+		}
+	}
+	resp := postForm(t, noRedirects(client), ts.URL+"/admin/password-links", url.Values{"email": {"kim@example.com"}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("POST /admin/password-links without password sign-in: status %d, want 404:\n%s", resp.StatusCode, body)
 	}
 }

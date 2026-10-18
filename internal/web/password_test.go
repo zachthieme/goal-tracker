@@ -5,46 +5,16 @@ import (
 	"html"
 	"net/http"
 	"net/http/cookiejar"
-	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
-	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
 // samsPassword is a password long enough to be accepted.
 const samsPassword = "correct horse battery"
-
-// newPasswordServer serves the app with password sign-in.
-func newPasswordServer(t *testing.T, h *testsupport.Harness) *httptest.Server {
-	t.Helper()
-	ts := httptest.NewServer(web.NewServer(h.Service, web.WithPasswordSignIn()))
-	t.Cleanup(ts.Close)
-	return ts
-}
-
-// passwordLinkToken issues a set-password link for emailAddr and returns its
-// token, failing the test on error.
-func passwordLinkToken(t *testing.T, h *testsupport.Harness, emailAddr string) string {
-	t.Helper()
-	token, _, err := h.Service.IssuePasswordLink(t.Context(), emailAddr)
-	if err != nil {
-		t.Fatalf("IssuePasswordLink(%q): %v", emailAddr, err)
-	}
-	return token
-}
-
-// givePassword sets emailAddr's password through a fresh set-password link,
-// failing the test on error.
-func givePassword(t *testing.T, h *testsupport.Harness, emailAddr, password string) {
-	t.Helper()
-	if _, err := h.Service.SetPassword(t.Context(), passwordLinkToken(t, h, emailAddr), password); err != nil {
-		t.Fatalf("SetPassword(%q): %v", emailAddr, err)
-	}
-}
 
 // passwordSignInCookie signs emailAddr in with password and returns the
 // session cookie, failing the test unless the sign-in sends them to /home.

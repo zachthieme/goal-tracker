@@ -427,3 +427,50 @@ func scopeChoices(sel string) (choices []string, selectedValue, selectedLabel st
 	}
 	return choices, selectedValue, selectedLabel
 }
+
+// newPasswordServer serves the app with password sign-in.
+func newPasswordServer(t *testing.T, h *testsupport.Harness) *httptest.Server {
+	t.Helper()
+	ts := httptest.NewServer(web.NewServer(h.Service, web.WithPasswordSignIn()))
+	t.Cleanup(ts.Close)
+	return ts
+}
+
+// passwordLinkToken issues a set-password link for emailAddr and returns its
+// token, failing the test on error.
+func passwordLinkToken(t *testing.T, h *testsupport.Harness, emailAddr string) string {
+	t.Helper()
+	token, _, err := h.Service.IssuePasswordLink(t.Context(), emailAddr)
+	if err != nil {
+		t.Fatalf("IssuePasswordLink(%q): %v", emailAddr, err)
+	}
+	return token
+}
+
+// givePassword sets emailAddr's password through a fresh set-password link,
+// failing the test on error.
+func givePassword(t *testing.T, h *testsupport.Harness, emailAddr, password string) {
+	t.Helper()
+	if _, err := h.Service.SetPassword(t.Context(), passwordLinkToken(t, h, emailAddr), password); err != nil {
+		t.Fatalf("SetPassword(%q): %v", emailAddr, err)
+	}
+}
+
+// passwordSignInClient returns an HTTP client with its own cookie jar, signed
+// in with emailAddr's password, which it first sets through a set-password
+// link.
+func passwordSignInClient(t *testing.T, h *testsupport.Harness, baseURL, emailAddr string) *http.Client {
+	t.Helper()
+	const password = "a password for tests"
+	givePassword(t, h, emailAddr, password)
+	jar, err := cookiejar.New(nil)
+	if err != nil {
+		t.Fatalf("cookiejar: %v", err)
+	}
+	client := &http.Client{Jar: jar}
+	resp := postForm(t, client, baseURL+"/signin", url.Values{"email": {emailAddr}, "password": {password}})
+	if body := readBody(t, resp); resp.StatusCode != http.StatusOK || resp.Request.URL.Path != "/home" {
+		t.Fatalf("password sign-in as %q: status %d at %s:\n%s", emailAddr, resp.StatusCode, resp.Request.URL.Path, body)
+	}
+	return client
+}
