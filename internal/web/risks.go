@@ -485,6 +485,9 @@ func (v risksView) Flagged(scope pageOrgScope) int {
 	for _, hp := range v.HaltedParents {
 		flag(hp.Child)
 	}
+	for _, og := range v.OverdueActionItems {
+		flag(og.Goal)
+	}
 	return len(flagged)
 }
 
