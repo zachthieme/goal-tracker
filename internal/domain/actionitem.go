@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
+	"github.com/zachthieme/goal-tracker/internal/email"
 )
 
 // ActionItem is a follow-up raised while a Report is discussed (CONTEXT.md:
@@ -60,7 +61,8 @@ type RaiseActionItemInput struct {
 // saved its Definition, or who published this publication — may raise one. It
 // needs an owner who has not left the company and a due date; a comment it is
 // turned from must be on the same publication, and a Goal it names must be one
-// the publication covers.
+// the publication covers. The owner is emailed it unless they raised it
+// themselves; an Action Item whose email can't be sent is not kept.
 func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseActionItemInput) (ActionItem, error) {
 	pub, err := s.GetPublication(ctx, in.PublicationID)
 	if err != nil {
@@ -109,21 +111,54 @@ func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseAc
 	if owner.Departed != 0 {
 		return ActionItem{}, fmt.Errorf("%w: %s has left the company", ErrValidation, owner.Email)
 	}
-	row, err := s.queries.CreateActionItem(ctx, db.CreateActionItemParams{
-		ReportDefinitionID: pub.DefinitionID,
-		PublicationID:      pub.ID,
-		CommentID:          in.CommentID,
-		GoalID:             goalID,
-		Text:               text,
-		OwnerID:            owner.ID,
-		DueDate:            in.DueDate.Format(dateFormat),
-		CreatedBy:          actorID,
-		CreatedAt:          s.clock.Now().Format(timeFormat),
+	var item ActionItem
+	err = s.WithinTx(ctx, func(tx *Service) error {
+		row, err := tx.queries.CreateActionItem(ctx, db.CreateActionItemParams{
+			ReportDefinitionID: pub.DefinitionID,
+			PublicationID:      pub.ID,
+			CommentID:          in.CommentID,
+			GoalID:             goalID,
+			Text:               text,
+			OwnerID:            owner.ID,
+			DueDate:            in.DueDate.Format(dateFormat),
+			CreatedBy:          actorID,
+			CreatedAt:          s.clock.Now().Format(timeFormat),
+		})
+		if err != nil {
+			return fmt.Errorf("create action item: %w", err)
+		}
+		if item, err = tx.actionItemFromRow(ctx, row); err != nil {
+			return err
+		}
+		if item.Owner.ID == actorID {
+			return nil
+		}
+		var people Mentions
+		return tx.emailActionItemOwner(ctx, item, fmt.Sprintf("%s raised an Action Item for you", people.Of(item.CreatedBy)))
 	})
+	return item, err
+}
+
+// emailActionItemOwner emails the Action Item to its owner: intro, saying who
+// gave it to them, then what it is, its Report and Goal, its due date, and a
+// link to it.
+func (s *Service) emailActionItemOwner(ctx context.Context, item ActionItem, intro string) error {
+	def, err := s.queries.GetReportDefinition(ctx, item.DefinitionID)
 	if err != nil {
-		return ActionItem{}, fmt.Errorf("create action item: %w", err)
+		return fmt.Errorf("get report definition: %w", err)
 	}
-	return s.actionItemFromRow(ctx, row)
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s in the Report %s:\n\n%s\n\n", intro, def.Name, item.Text)
+	if item.GoalTitle != "" {
+		fmt.Fprintf(&b, "Goal: %s\n", item.GoalTitle)
+	}
+	fmt.Fprintf(&b, "Due: %s\n\n", item.DueDate.Format(dateFormat))
+	fmt.Fprintf(&b, "%s/reports/%d/publications/%d#action-items\n", s.baseURL, item.DefinitionID, item.PublicationID)
+	subject := "Action Item: " + strings.Join(strings.Fields(item.Text), " ")
+	if err := s.email.Send(ctx, email.Message{To: item.Owner.Email, Subject: subject, Body: b.String()}); err != nil {
+		return fmt.Errorf("send action item email: %w", err)
+	}
+	return nil
 }
 
 // IsReportAuthor reports whether actorID is the author of the published Report
@@ -208,6 +243,8 @@ type ActionItemReassignment struct {
 // ReassignActionItem hands the open Action Item itemID to newOwnerID and
 // records the reassignment. Only those CanReassignActionItem allows may do
 // it, and the new owner must not have left the company or already own it.
+// The new owner is emailed it unless they reassigned it to themselves; a
+// reassignment whose email can't be sent is not kept.
 func (s *Service) ReassignActionItem(ctx context.Context, actorID, itemID, newOwnerID int64) (ActionItem, error) {
 	item, err := s.reassignableActionItem(ctx, actorID, itemID)
 	if err != nil {
@@ -226,6 +263,7 @@ func (s *Service) ReassignActionItem(ctx context.Context, actorID, itemID, newOw
 	if owner.ID == item.Owner.ID {
 		return ActionItem{}, fmt.Errorf("%w: %s already owns this Action Item", ErrValidation, owner.Email)
 	}
+	var reassigned ActionItem
 	if err := s.WithinTx(ctx, func(tx *Service) error {
 		n, err := tx.queries.ReassignActionItem(ctx, db.ReassignActionItemParams{OwnerID: owner.ID, ID: item.ID})
 		if err != nil {
@@ -243,11 +281,23 @@ func (s *Service) ReassignActionItem(ctx context.Context, actorID, itemID, newOw
 		}); err != nil {
 			return fmt.Errorf("record action item reassignment: %w", err)
 		}
-		return nil
+		if reassigned, err = tx.GetActionItem(ctx, item.ID); err != nil {
+			return err
+		}
+		if owner.ID == actorID {
+			return nil
+		}
+		by, err := tx.queries.GetAccount(ctx, actorID)
+		if err != nil {
+			return fmt.Errorf("look up reassigner: %w", err)
+		}
+		var people Mentions
+		intro := fmt.Sprintf("%s reassigned an Action Item to you from %s", people.Of(accountFromRow(by)), people.Of(item.Owner))
+		return tx.emailActionItemOwner(ctx, reassigned, intro)
 	}); err != nil {
 		return ActionItem{}, err
 	}
-	return s.GetActionItem(ctx, item.ID)
+	return reassigned, nil
 }
 
 // ReassignActionItemByEmail hands the Action Item itemID to the Account with
