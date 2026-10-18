@@ -5858,3 +5858,39 @@ func TestGoalPageListsOnlyItsOwnOpenActionItems(t *testing.T) {
 		t.Errorf("a Goal with only a closed Action Item shows an Action Items section")
 	}
 }
+
+// An Action Item's owner can close it from the Goal page, with a note, and
+// comes back to the page's Action Items; anyone else reading the page sees it
+// without a Close.
+func TestGoalPageLetsAnActionItemsOwnerCloseIt(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newGoalActionItemFixture(h)
+	item := f.raise(f.mbrPub, f.sam, "Explain the slip.", 3, f.goal.ID)
+	author := signInClient(t, ts.URL, "author@example.com")
+	sam := noRedirects(signInClient(t, ts.URL, "sam.smith@example.com"))
+
+	if rows := goalActionItemRows(getBody(t, author, goalPageURL(ts.URL, f.goal))); len(rows) != 1 || strings.Contains(rows[0], `data-testid="close-action-item"`) {
+		t.Errorf("someone who doesn't own the Action Item is offered its Close: %q", rows)
+	}
+	rows := goalActionItemRows(getBody(t, sam, goalPageURL(ts.URL, f.goal)))
+	if len(rows) != 1 {
+		t.Fatalf("Action Items rows = %d, want 1", len(rows))
+	}
+	back := fmt.Sprintf("/goals/%d#action-items", f.goal.ID)
+	form := rows[0]
+	if !strings.Contains(form, fmt.Sprintf(`action="/action-items/%d/close"`, item.ID)) || !strings.Contains(form, `name="return" value="`+back+`"`) {
+		t.Fatalf("the owner's row has no Close that comes back to %s:\n%s", back, form)
+	}
+
+	resp := postForm(t, sam, fmt.Sprintf("%s/action-items/%d/close", ts.URL, item.ID), url.Values{"note": {"Vendor was late."}, "return": {back}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != back {
+		t.Errorf("close: status %d to %q, want 303 to %q", resp.StatusCode, resp.Header.Get("Location"), back)
+	}
+	if page := getBody(t, author, goalPageURL(ts.URL, f.goal)); strings.Contains(page, `data-testid="goal-action-items"`) {
+		t.Errorf("the Goal page still lists the Action Item its owner closed")
+	}
+}

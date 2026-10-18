@@ -346,8 +346,8 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   that sit outside cards.
   A card is for something a person acts on or reads as a unit of status,
   such as the Goal page's Check-in, each Metric and Milestones. Reference
-  blocks are not cards. On the Goal page these are Highlights, History and
-  the sidebar's blocks.
+  blocks are not cards. On the Goal page these are Action Items, Highlights,
+  History and the sidebar's blocks.
 - **Canvas block (`.ruled`):** a reference block sits on the canvas with no
   surface, border or shadow. A 1px `--color-border` rule sits above it with
   20px of padding below the rule. The first block in a column has no rule,
