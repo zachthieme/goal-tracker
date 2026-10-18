@@ -5809,7 +5809,7 @@ func TestGoalPageListsItsOpenActionItems(t *testing.T) {
 	if strings.Contains(later, "goal-action-item-overdue") {
 		t.Errorf("an Action Item due in five days is flagged Overdue:\n%s", later)
 	}
-	if strings.Contains(page, "Already handled.") {
+	if strings.Contains(strings.Join(rows, ""), "Already handled.") {
 		t.Errorf("a closed Action Item is listed")
 	}
 
