@@ -27,7 +27,7 @@ The server is configured from the environment:
 | `GOAL_TRACKER_TIMEZONE` | `UTC` | The company's IANA timezone (e.g. `America/Los_Angeles`). Check-in cadences are counted in its days, so a Goal turns Stale and a Path to Green goes overdue at its midnight. The pages also show dates and times in it. |
 | `GOAL_TRACKER_REMINDER_DAY` | `Monday` | Day of the week the weekly emails go out (see [Weekly emails](#weekly-emails)). |
 | `GOAL_TRACKER_REMINDER_TIME` | `09:00` | 24-hour time of day, in the company's timezone, the weekly emails go out. |
-| `GOAL_TRACKER_BASE_URL` | from `GOAL_TRACKER_ADDR`, e.g. `http://localhost:8080` | Where people reach the app. Links in emails (the weekly emails and comment alerts) point here. |
+| `GOAL_TRACKER_BASE_URL` | from `GOAL_TRACKER_ADDR`, e.g. `http://localhost:8080` | Where people reach the app. Links in emails (the weekly emails, comment alerts, and Action Item emails) point here. |
 | `GOAL_TRACKER_OIDC_ISSUER` | _(none)_ | The company's OpenID Connect issuer URL. Required, with the client ID and secret below, for `GOAL_TRACKER_SIGNIN=oidc`, and refused with `password` and `dev` (see [Sign-in](#sign-in)). |
 | `GOAL_TRACKER_OIDC_CLIENT_ID` | _(none)_ | Goal Tracker's client ID at the provider. |
 | `GOAL_TRACKER_OIDC_CLIENT_SECRET` | _(none)_ | Goal Tracker's client secret at the provider. |
@@ -198,8 +198,14 @@ and subject instead of sending it.
 
 Readers comment on a Goal in a published Report from its publication page. The
 comment emails the Goal's current Owner. Replies in the thread email the Owner
-and everyone else who has written in it, except the reply's author. As with the
-weekly emails, the prototype logs these instead of sending them.
+and everyone else who has written in it, except the reply's author.
+
+Raising an Action Item emails its owner, unless they raised it themselves.
+Reassigning one emails its new owner, unless they reassigned it to themselves,
+and says who had it before. The email names the Report, the Goal it is about,
+and its due date, and links to it.
+
+As with the weekly emails, the prototype logs these instead of sending them.
 
 ## Seed a fake company
 

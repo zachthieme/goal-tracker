@@ -514,10 +514,13 @@ func reminderReport(h *testsupport.Harness, name string, goals ...domain.Goal) d
 }
 
 // raiseReminderItem raises an open Action Item on pub, owned by owner and due
-// on due, about goalID (0 for the whole Report).
+// on due, about goalID (0 for the whole Report). The email its owner gets
+// when it's raised goes to a recorder of its own, so h.Email holds only the
+// reminders.
 func raiseReminderItem(h *testsupport.Harness, pub domain.Publication, owner domain.Account, goalID int64, text string, due time.Time) domain.ActionItem {
 	h.T.Helper()
-	item, err := h.Service.RaiseActionItem(context.Background(), pub.PublishedBy.ID, domain.RaiseActionItemInput{
+	svc := domain.NewService(h.DB, h.Clock, email.NewRecorder(), nil)
+	item, err := svc.RaiseActionItem(context.Background(), pub.PublishedBy.ID, domain.RaiseActionItemInput{
 		PublicationID: pub.ID,
 		GoalID:        goalID,
 		Text:          text,

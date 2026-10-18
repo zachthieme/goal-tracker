@@ -3,7 +3,9 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -709,5 +711,135 @@ func TestActionItemReassignmentsAboutAGoal(t *testing.T) {
 	}
 	if fresh, err := w.h.Service.GetActionItem(ctx, distributor.ID); err != nil || fresh.ReassignedFrom == nil || fresh.ReassignedFrom.ID != w.other.ID {
 		t.Errorf("twice-reassigned item %+v (err %v), want it reassigned from its latest previous owner", fresh, err)
+	}
+}
+
+// Raising an Action Item for someone else emails them what it is, who raised
+// it, its Report and Goal, its due date, and a link to it.
+func TestRaisingAnActionItemEmailsItsOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	svc := domain.NewService(h.DB, h.Clock, h.Email, nil, domain.WithBaseURL("https://goals.example.com/"))
+	author := h.SignIn("author@example.com")
+	owner := h.SignIn("owner@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+	sentBefore := len(h.Email.Sent())
+
+	if _, err := svc.RaiseActionItem(ctx, author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, GoalID: g.ID, Text: "Book the EU\n  legal review.", OwnerID: owner.ID,
+		DueDate: time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+
+	sent := h.Email.Sent()[sentBefore:]
+	if len(sent) != 1 {
+		t.Fatalf("sent %d emails, want 1 to the owner: %+v", len(sent), sent)
+	}
+	m := sent[0]
+	if m.To != "owner@example.com" {
+		t.Errorf("email to %q, want the owner", m.To)
+	}
+	if want := "Action Item: Book the EU legal review."; m.Subject != want {
+		t.Errorf("subject %q, want %q", m.Subject, want)
+	}
+	link := fmt.Sprintf("https://goals.example.com/reports/%d/publications/%d#action-items", def.ID, pub.ID)
+	for _, want := range []string{"author (author@example.com) raised", "MBR", "Launch in EU", "2026-02-01", link} {
+		if !strings.Contains(m.Body, want) {
+			t.Errorf("body does not mention %q:\n%s", want, m.Body)
+		}
+	}
+}
+
+// An author who raises an Action Item for themselves isn't emailed about it.
+func TestRaisingAnActionItemForYourselfSendsNothing(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	author := h.SignIn("author@example.com")
+	g := h.ActiveGoal(author, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+	sentBefore := len(h.Email.Sent())
+
+	if _, err := h.Service.RaiseActionItem(context.Background(), author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, Text: "Move the MBR to Tuesdays.", OwnerID: author.ID, DueDate: h.Clock.Now().AddDate(0, 0, 7),
+	}); err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+	if sent := h.Email.Sent()[sentBefore:]; len(sent) != 0 {
+		t.Errorf("sent %+v, want nothing to the author raising it for themselves", sent)
+	}
+}
+
+// An Action Item, or a reassignment, whose email to its owner can't be sent
+// isn't kept.
+func TestActionItemIsNotKeptWhenItsEmailFails(t *testing.T) {
+	t.Parallel()
+
+	w := newReassignWorld(t)
+	ctx := context.Background()
+	down := domain.NewService(w.h.DB, w.h.Clock, failingSender{}, nil)
+
+	if _, err := down.RaiseActionItem(ctx, w.creator.ID, domain.RaiseActionItemInput{
+		PublicationID: w.pub.ID, Text: "Chase the vendor.", OwnerID: w.owner.ID, DueDate: w.h.Clock.Now().AddDate(0, 0, 7),
+	}); err == nil {
+		t.Fatal("RaiseActionItem succeeded though its email could not be sent")
+	}
+	items, err := w.h.Service.PublicationActionItems(ctx, w.pub.ID)
+	if err != nil {
+		t.Fatalf("PublicationActionItems: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != w.item.ID {
+		t.Errorf("publication's Action Items %+v, want only the one raised before mail went down", items)
+	}
+
+	if _, err := down.ReassignActionItem(ctx, w.creator.ID, w.item.ID, w.other.ID); err == nil {
+		t.Fatal("ReassignActionItem succeeded though its email could not be sent")
+	}
+	if got, err := w.h.Service.GetActionItem(ctx, w.item.ID); err != nil || got.Owner.ID != w.owner.ID || got.ReassignedFrom != nil {
+		t.Errorf("item after the failed reassignment %+v (err %v), want it still the owner's", got, err)
+	}
+	if history, err := w.h.Service.ActionItemReassignments(ctx, w.item.ID); err != nil || len(history) != 0 {
+		t.Errorf("reassignments %+v (err %v), want none", history, err)
+	}
+}
+
+// Reassigning an Action Item emails its new owner who handed it to them and
+// from whom, with the same details as when it was raised. The previous owner
+// gets nothing.
+func TestReassigningAnActionItemEmailsItsNewOwner(t *testing.T) {
+	t.Parallel()
+
+	w := newReassignWorld(t)
+	ctx := context.Background()
+	svc := domain.NewService(w.h.DB, w.h.Clock, w.h.Email, nil, domain.WithBaseURL("https://goals.example.com"))
+	sentBefore := len(w.h.Email.Sent())
+
+	if _, err := svc.ReassignActionItem(ctx, w.creator.ID, w.item.ID, w.other.ID); err != nil {
+		t.Fatalf("ReassignActionItem: %v", err)
+	}
+
+	sent := w.h.Email.Sent()[sentBefore:]
+	if len(sent) != 1 {
+		t.Fatalf("sent %d emails, want 1 to the new owner: %+v", len(sent), sent)
+	}
+	m := sent[0]
+	if m.To != "other@example.com" {
+		t.Errorf("email to %q, want the new owner", m.To)
+	}
+	if want := "Action Item: Book the EU legal review."; m.Subject != want {
+		t.Errorf("subject %q, want %q", m.Subject, want)
+	}
+	link := fmt.Sprintf("https://goals.example.com/reports/%d/publications/%d#action-items", w.def.ID, w.pub.ID)
+	due := w.item.DueDate.Format("2006-01-02")
+	for _, want := range []string{"creator (creator@example.com) reassigned", "from owner (owner@example.com)", "MBR", "Launch in EU", due, link} {
+		if !strings.Contains(m.Body, want) {
+			t.Errorf("body does not mention %q:\n%s", want, m.Body)
+		}
 	}
 }
