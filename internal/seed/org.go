@@ -81,6 +81,24 @@ type team struct {
 	unaligned []entry
 }
 
+// The leadership team's addresses: the CEO is at the top of the Manager tree,
+// with the CTO and CPO reporting to them.
+const (
+	ceoEmail = "ceo@example.com"
+	ctoEmail = "cto@example.com"
+	cpoEmail = "cpo@example.com"
+)
+
+// teamExecutives is the executive each team's lead reports to, by team name.
+var teamExecutives = map[string]string{
+	"Platform": ctoEmail,
+	"Mobile":   ctoEmail,
+	"Data":     ctoEmail,
+	"Payments": cpoEmail,
+	"Growth":   cpoEmail,
+	"Support":  cpoEmail,
+}
+
 var teams = []team{
 	{
 		name:   "Platform",

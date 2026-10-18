@@ -65,8 +65,29 @@ func TestSeededOrg(t *testing.T) {
 	t.Run("Stale and Unaligned Goals", func(t *testing.T) { staleAndUnaligned(t, h) })
 	t.Run("Lifecycle changes", func(t *testing.T) { lifecycleChanges(t, h) })
 	t.Run("every person has a Name", func(t *testing.T) { everyPersonNamed(t, h) })
+	t.Run("everyone has a place in the Manager tree", func(t *testing.T) { everyoneInTheManagerTree(t, h) })
+	t.Run("every team's lead has an executive", func(t *testing.T) { everyTeamLeadHasAnExecutive(t) })
 	t.Run("only into a fresh database", func(t *testing.T) { onlyIntoAFreshDatabase(t, h) })
 	t.Run("deterministic", func(t *testing.T) { deterministic(t, h) })
+}
+
+// An Admin who already has a place in the Manager tree keeps it: seeded as
+// the Admin, the CEO still reports to no one rather than to themselves, and
+// the CTO still reports to the CEO.
+func TestSeededAdminKeepsTheirPlaceInTheManagerTree(t *testing.T) {
+	t.Parallel()
+
+	const ceo = "ceo@example.com"
+	h := testsupport.New(t, ceo)
+	if _, err := seed.Run(context.Background(), h.Service, h.Clock, seed.Options{Seed: seed.DefaultSeed, Admin: ceo}); err != nil {
+		t.Fatalf("seed.Run: %v", err)
+	}
+	if got := managerEmail(t, h, accountByEmail(t, h, ceo)); got != "" {
+		t.Errorf("the CEO, seeded as the Admin, reports to %q, want no one", got)
+	}
+	if got := managerEmail(t, h, accountByEmail(t, h, "cto@example.com")); got != ceo {
+		t.Errorf("cto@example.com reports to %q, want %q", got, ceo)
+	}
 }
 
 // The seed builds a realistic org: about 50 Goals spread across several teams
@@ -353,6 +374,158 @@ func everyPersonNamed(t *testing.T, h *testsupport.Harness) {
 	}
 }
 
+// accountByEmail looks up the seeded Account with the given email.
+func accountByEmail(t *testing.T, h *testsupport.Harness, addr string) domain.Account {
+	t.Helper()
+	acc, err := h.Service.AccountByEmail(context.Background(), addr)
+	if err != nil {
+		t.Fatalf("AccountByEmail(%s): %v", addr, err)
+	}
+	return acc
+}
+
+// managerEmail is the email of acc's Manager, or "" when they have none.
+func managerEmail(t *testing.T, h *testsupport.Harness, acc domain.Account) string {
+	t.Helper()
+	if acc.ManagerID == nil {
+		return ""
+	}
+	manager, err := h.Service.Account(context.Background(), *acc.ManagerID)
+	if err != nil {
+		t.Fatalf("Account(%d): %v", *acc.ManagerID, err)
+	}
+	return manager.Email
+}
+
+// The seed's company has a Manager tree (CONTEXT.md: Manager), so its Orgs
+// show up: the CEO at the top, the CTO, CPO and Admin under them, each team's
+// lead under the CTO or CPO, and the team's people under their lead. The CEO's
+// Org is the whole company.
+func everyoneInTheManagerTree(t *testing.T, h *testsupport.Harness) {
+	ctx := context.Background()
+	wantManager := map[string]string{
+		"ceo@example.com":           "",
+		"cto@example.com":           "ceo@example.com",
+		"cpo@example.com":           "ceo@example.com",
+		admin:                       "ceo@example.com",
+		"platform-lead@example.com": "cto@example.com",
+		"mobile-lead@example.com":   "cto@example.com",
+		"data-lead@example.com":     "cto@example.com",
+		"payments-lead@example.com": "cpo@example.com",
+		"growth-lead@example.com":   "cpo@example.com",
+		"support-lead@example.com":  "cpo@example.com",
+	}
+	for addr, want := range wantManager {
+		if got := managerEmail(t, h, accountByEmail(t, h, addr)); got != want {
+			t.Errorf("%s reports to %q, want %q", addr, got, want)
+		}
+	}
+
+	team := teamDimensionID(t, h)
+	projectOwners := map[string]domain.Account{}
+	for _, g := range listGoals(t, h) {
+		values, err := h.Service.GoalValues(ctx, g.ID)
+		if err != nil {
+			t.Fatalf("GoalValues: %v", err)
+		}
+		var teamName string
+		for _, v := range values {
+			if v.DimensionID == team {
+				teamName = v.Value
+			}
+		}
+		// A project is a team's Goal that isn't one of the team's own Goals,
+		// which sit at depth 2 under the company outcomes.
+		if teamName == "" || depth(t, h, g.ID) == 2 {
+			continue
+		}
+		projectOwners[g.Owner.Email] = g.Owner
+		lead := strings.ToLower(teamName) + "-lead@example.com"
+		if got := managerEmail(t, h, accountByEmail(t, h, g.Owner.Email)); got != lead {
+			t.Errorf("%s owns %s project %q but reports to %q, want %q", g.Owner.Email, teamName, g.Title, got, lead)
+		}
+	}
+	if len(projectOwners) == 0 {
+		t.Fatalf("found no project Owners")
+	}
+
+	ceo := accountByEmail(t, h, "ceo@example.com")
+	org, err := h.Service.Org(ctx, ceo.ID)
+	if err != nil {
+		t.Fatalf("Org: %v", err)
+	}
+	inOrg := map[int64]bool{}
+	for _, p := range org {
+		inOrg[p.ID] = true
+	}
+	for _, g := range listGoals(t, h) {
+		if !inOrg[g.Owner.ID] {
+			t.Errorf("Owner %s of %q is not in the CEO's Org", g.Owner.Email, g.Title)
+		}
+	}
+
+	hasAnyoneUnder := func(acc domain.Account) bool {
+		t.Helper()
+		under, err := h.Service.HasAnyoneUnder(ctx, acc.ID)
+		if err != nil {
+			t.Fatalf("HasAnyoneUnder(%s): %v", acc.Email, err)
+		}
+		return under
+	}
+	for addr := range wantManager {
+		if addr == admin {
+			continue
+		}
+		if !hasAnyoneUnder(accountByEmail(t, h, addr)) {
+			t.Errorf("%s has no one under them, want an Org", addr)
+		}
+	}
+	for addr, owner := range projectOwners {
+		if hasAnyoneUnder(owner) {
+			t.Errorf("project Owner %s has someone under them, want no one", addr)
+		}
+	}
+}
+
+// The Manager tree is built from the company's fixed shape, so it covers it:
+// every team's lead has an executive to report to, and no one is in two places
+// — in two teams' people, or in a team's people and among the role addresses.
+func everyTeamLeadHasAnExecutive(t *testing.T) {
+	executives := seed.TeamExecutivesForTest()
+	roles := seed.RoleNamesForTest()
+	teamOf := map[string]string{}
+	for _, team := range seed.TeamsForTest() {
+		if _, ok := executives[team.Name]; !ok {
+			t.Errorf("team %s has no executive for its lead to report to", team.Name)
+		}
+		for _, p := range team.People {
+			if other, ok := teamOf[p]; ok {
+				t.Errorf("%s is in both %s's and %s's people", p, other, team.Name)
+			}
+			teamOf[p] = team.Name
+			if _, ok := roles[p]; ok {
+				t.Errorf("%s is in %s's people and has a role address", p, team.Name)
+			}
+		}
+	}
+}
+
+// teamDimensionID is the ID of the seed's Team Dimension.
+func teamDimensionID(t *testing.T, h *testsupport.Harness) int64 {
+	t.Helper()
+	dims, err := h.Service.ListDimensions(context.Background())
+	if err != nil {
+		t.Fatalf("ListDimensions: %v", err)
+	}
+	for _, d := range dims {
+		if d.Name == "Team" {
+			return d.ID
+		}
+	}
+	t.Fatalf("no Team Dimension in %+v", dims)
+	return 0
+}
+
 // Seeding a database that already has Goals is refused, and leaves it as it
 // was: the seed builds an org into a fresh database only.
 func onlyIntoAFreshDatabase(t *testing.T, h *testsupport.Harness) {
@@ -375,12 +548,24 @@ func deterministic(t *testing.T, h *testsupport.Harness) {
 	}
 }
 
-// fingerprint renders every Goal with its Lifecycle, dates, Top-level mark,
-// parents, and full Check-in, Date Slip, and Milestone history.
+// fingerprint renders every Account — the Admin, the Goals' Owners, and the
+// CEO's Org — with its Manager, then every Goal with its Lifecycle, dates,
+// Top-level mark, parents, and full Check-in, Date Slip, and Milestone history.
 func fingerprint(t *testing.T, h *testsupport.Harness) string {
 	t.Helper()
 	ctx := context.Background()
 	var b strings.Builder
+	people := map[string]domain.Account{admin: accountByEmail(t, h, admin)}
+	for _, g := range listGoals(t, h) {
+		people[g.Owner.Email] = g.Owner
+	}
+	org, _ := h.Service.Org(ctx, accountByEmail(t, h, "ceo@example.com").ID)
+	for _, p := range org {
+		people[p.Email] = p
+	}
+	for _, addr := range slices.Sorted(maps.Keys(people)) {
+		fmt.Fprintf(&b, "account %s manager=%s\n", addr, managerEmail(t, h, accountByEmail(t, h, addr)))
+	}
 	for _, g := range listGoals(t, h) {
 		fmt.Fprintf(&b, "%d %q owner=%s (%s) %s %s due=%s cadence=%d top=%t\n", g.ID, g.Title, g.Owner.Email, g.Owner.Name, g.Lifecycle, g.Kind, g.DeliveryDate.Format(time.DateOnly), g.CadenceDays, g.TopLevel)
 		parents, _ := h.Service.ParentsOf(ctx, g.ID)

@@ -1,8 +1,9 @@
 // Package seed builds a fake but realistic company so a developer can demo the
 // prototype without real data (ticket #23). It fills a fresh database the way
 // the company itself would: an Admin defines a Team Dimension, imports the Goals
-// through the spreadsheet import (internal/importer), and marks the company
-// outcomes Top-level Goals, then the Owners activate them and write weeks of
+// through the spreadsheet import (internal/importer), records everyone's
+// Manager from the company's directory (Service.SyncDirectory, ADR 0008), and
+// marks the company outcomes Top-level Goals, then the Owners activate them and write weeks of
 // Check-ins through the domain commands — Health, Paths to Green, Metric
 // readings, Date Slips, Milestone Churn, and Lifecycle changes.
 // Nothing is written to the database directly.
@@ -100,6 +101,9 @@ func Run(ctx context.Context, svc *domain.Service, clk *clock.Fixed, opts Option
 	}
 	if err := nameEveryone(ctx, svc, admin, plan); err != nil {
 		return Summary{}, err
+	}
+	if _, err := svc.SyncDirectory(ctx, managerTree(admin.Email)); err != nil {
+		return Summary{}, fmt.Errorf("record the Managers: %w", err)
 	}
 	for _, g := range plan.goals {
 		if g.level != 1 {

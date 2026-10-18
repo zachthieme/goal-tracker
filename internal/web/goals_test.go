@@ -2078,10 +2078,15 @@ func shownPlainAs(emailAddr, label string) string {
 // collapsedEmail is a person's email waiting, hidden, in its expansion.
 var collapsedEmail = regexp.MustCompile(`<span class="person-email" hidden>[^<]*</span>`)
 
+// selectOption is a select's option, a form field that can't hold a control to
+// disclose an email, so the Scope select names people as Name (email) (#275).
+var selectOption = regexp.MustCompile(`<option[^>]*>[^<]*</option>`)
+
 // visibleEmails returns every email a page shows as text rather than on hover,
 // in a collapsed expansion, or in a form field.
 func visibleEmails(page string) []string {
 	page = collapsedEmail.ReplaceAllString(page, "")
+	page = selectOption.ReplaceAllString(page, "")
 	return regexp.MustCompile(`>[^<>]*@example\.com[^<>]*<`).FindAllString(page, -1)
 }
 
