@@ -27,6 +27,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Improvements:**
 - [internal] The seed gives its fake company a Manager tree, recorded through the directory sync: the CEO at the top, the CTO, CPO and Admin under them, each team's lead under the CTO or CPO, and each team's people under their lead. A seeded demo, a scratch copy and the e2e app now show the Org features: sign in as `ceo@example.com` for the whole company, or a team lead such as `growth-lead@example.com` for a team (#306).
 - [user] A new Report now starts with a rule for your org, or for your own Goals when no one is under you, so the rail shows matches straight away; a note under the rules says so. The remove buttons on rule rows and Goal chips are larger, bordered 40px buttons (#285).
+- [user] Goals and Risks open on your own part of the company: My org if anyone reports to you, Mine otherwise. Everyone is still one choice away in the Scope select, and its address is now `?org=all`, which Goals' Clear and Risks' Show everything link to. An empty default list offers "See everyone's →". The top bar's Risks count counts the same default, matching a bare Risks page, and Needs an Admin stays company-wide (#307).
 
 **Bug fixes:**
 - [user] An Org link (`?org=`) to Goals or Risks now scopes the page for everyone once anyone in the company has a Manager, instead of silently showing every Goal to a viewer with no Manager and no one under them; and the Report builder no longer offers the Owner's org when the only Manager is someone set as their own (#269).
