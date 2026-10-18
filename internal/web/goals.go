@@ -463,12 +463,12 @@ func (s *Server) loadPageOrgScope(ctx context.Context, q url.Values, current dom
 }
 
 // resolvePageOrgScope reads the Scope of the address q for current, without
-// the Orgs it offers. A ?org= Account ID that names someone scopes to their
-// Org, taking over from the older ?mine=1. Otherwise ?org=all is Everyone,
-// and ?org=mine or ?mine=1 is Mine. Anything else, no ?org= or one that is
-// malformed or names no one, is the viewer's default (Default): My org when
-// they have anyone under them, else Mine. When no one has a Manager, any ID
-// names no one: the page then offers no Org, so has no control to undo it.
+// the Orgs it offers, from ?org= alone. An Account ID that names someone
+// scopes to their Org. Otherwise ?org=all is Everyone, and ?org=mine is Mine.
+// Anything else, no ?org= or one that is malformed or names no one, is the
+// viewer's default (Default): My org when they have anyone under them, else
+// Mine. When no one has a Manager, any ID names no one: the page then offers
+// no Org, so has no control to undo it.
 func (s *Server) resolvePageOrgScope(ctx context.Context, q url.Values, current domain.Account) (pageOrgScope, error) {
 	scope := pageOrgScope{Viewer: current}
 	var err error
@@ -489,7 +489,7 @@ func (s *Server) resolvePageOrgScope(ctx context.Context, q url.Values, current 
 	switch {
 	case raw == scopeEveryoneValue:
 		return scope, nil
-	case raw == scopeMineValue || q.Get("mine") == "1":
+	case raw == scopeMineValue:
 	case scope.OffersMine:
 		scope.Default = true
 		_, err := scope.scopeToOrg(ctx, s.svc, current.ID)
@@ -1946,7 +1946,6 @@ func (v goalsListData) queryURL(edit func(url.Values)) templ.SafeURL {
 func (v goalsListData) everyoneURL() templ.SafeURL {
 	return v.queryURL(func(q url.Values) {
 		q.Set("org", scopeEveryoneValue)
-		q.Del("mine")
 	})
 }
 

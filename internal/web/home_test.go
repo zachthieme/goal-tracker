@@ -488,7 +488,7 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 			t.Errorf("Your goals lists %q, which isn't one of sam's Red or Yellow Goals:\n%s", g.Title, yours)
 		}
 	}
-	if !strings.Contains(yours, `<a href="/goals?mine=1">Goals you own or help with →</a>`) {
+	if !strings.Contains(yours, `<a href="/goals?org=mine">Goals you own or help with →</a>`) {
 		t.Errorf("Your goals does not link to the Goals sam owns or helps with:\n%s", yours)
 	}
 	if strings.Contains(yours, `href="/goals"`) {

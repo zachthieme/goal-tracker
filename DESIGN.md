@@ -593,11 +593,16 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     `?org=all`. Risks keeps its own empty line, whose Show everything is the
     way out.
   - **Needs an Admin is company-wide:** an Admin's job there is the company's,
-    so `/risks?group=admin` with no scope is Everyone's, and the Needs an
-    Admin card counts, and chips, every Ownerless and halted-parent Goal in
-    the company under the page's Dimension values, linking to
-    `/risks?group=admin` without the scope. The other cards count the page's
-    own rows.
+    so the Needs an Admin card counts, and chips, every Ownerless and
+    halted-parent Goal in the company under the page's Dimension values,
+    while the other cards count the page's own rows. Its card keeps the
+    page's scope in its link like every other card, so Show all and the other
+    cards come back to it. `/risks?group=admin` always lists the company's
+    rows whatever the scope, as its card counts them, heading "N Goals need an
+    Admin across the company." or saying "Nothing needs an Admin." with no
+    Show everything. An Admin whose own scope has nothing flagged still sees
+    the cards after the empty line while the company has a Goal that Needs an
+    Admin.
 - **Health distribution bar (`.hm-bar`):** in Home's "Your goals", a 12px
   `--radius-full` bar of the person's own Active Goals by Health, one equal
   unit per Goal, Green then Yellow then Red. Units fill with the Health's
@@ -614,7 +619,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   compact list of those Goals that are Red, then Yellow. Their Health badges
   are muted and dated when Stale, as in Check-ins due. With none, neither
   heading nor list shows. The card ends with **Goals you own or help with →**,
-  which opens the Goals list filtered to Mine (`/goals?mine=1`): the Goals
+  which opens the Goals list filtered to Mine (`/goals?org=mine`): the Goals
   the person Owns or is a Delegate on.
 - **Inputs:** `--color-surface`, 1px `--color-border-strong`, `--radius-md`,
   12px × 16px padding. On focus, the border becomes `--color-focus` and the

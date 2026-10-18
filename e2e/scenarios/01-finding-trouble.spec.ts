@@ -281,14 +281,13 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
       ],
       admin: ownerless.map((goal) => ({ goal, kind: "ownerless" })),
     };
-    // A card keeps Everyone (keys sorted), but Needs an Admin, which is
-    // company-wide whatever the scope, drops it.
+    // Every card keeps Everyone (keys sorted), Needs an Admin included.
     for (const c of cards) {
       await page.goto("/risks?org=all");
       const card = page.getByTestId(`risks-group-${c.key}`);
       const count = Number(await card.getByText(/^\d+$/).textContent());
       await card.click();
-      await expect(page).toHaveURL(new RegExp(c.key === "admin" ? `/risks\\?group=admin$` : `/risks\\?group=${c.key}&org=all$`));
+      await expect(page).toHaveURL(new RegExp(`/risks\\?group=${c.key}&org=all$`));
       const rows = await riskRows(page);
       expect(rows, `the ${c.name} card counts its rows`).toHaveLength(count);
       for (const r of rows) {

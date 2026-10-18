@@ -85,7 +85,7 @@ templ homePage(current *domain.Account, v homeView) {
 							</ul>
 						</div>
 					}
-					<a href="/goals?mine=1">Goals you own or help with →</a>
+					<a href="/goals?org=mine">Goals you own or help with →</a>
 				</section>
 				if v.Delegated > 0 {
 					<a data-testid="home-delegate-link" href="/delegates">

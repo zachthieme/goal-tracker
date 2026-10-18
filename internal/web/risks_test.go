@@ -987,8 +987,7 @@ func TestRiskFixOnAStructuralSignal(t *testing.T) {
 	}
 }
 
-// Scoped to Mine, by ?org=mine or the older ?mine=1 that links and bookmarks
-// carry, the Risks page keeps only the Goals the viewer Owns or is a Delegate
+// Scoped to Mine, by ?org=mine, the Risks page keeps only the Goals the viewer Owns or is a Delegate
 // on, and its count line names Mine and counts those alone, as do its cards,
 // while the top bar still counts every flagged Goal. The Scope select shows
 // the current scope; with no Managers it offers only Everyone and Mine.
@@ -1006,33 +1005,31 @@ func TestRisksPageScopedToMine(t *testing.T) {
 	h.Clock.Advance(10 * day)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	for _, scope := range []string{"org=mine", "mine=1"} {
-		page := getBody(t, client, ts.URL+"/risks?"+scope)
+	page := getBody(t, client, ts.URL+"/risks?org=mine")
 
-		riskRowOf(t, page, own)
-		riskRowOf(t, page, delegated)
-		if hasRiskRow(page, other) {
-			t.Errorf("%s: the page lists %q, which sam neither Owns nor is a Delegate on", scope, other.Title)
-		}
-		if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "<strong>2</strong> Goals need attention in Mine. Worst first.") {
-			t.Errorf("%s: the count line doesn't count sam's 2 Goals in Mine: %s", scope, head)
-		}
-		if card := pageElement(t, page, "a", "risks-group-owner"); !strings.Contains(card, `<span class="num">2</span>`) || !strings.Contains(card, "Stale · 2") {
-			t.Errorf("%s: the owner card doesn't count sam's 2 Goals: %s", scope, card)
-		}
-		if risks := pageElement(t, page, "a", "nav-risks"); !strings.Contains(risks, `<span class="count">2</span>`) {
-			t.Errorf("%s: the top bar's Risks count isn't sam's default, Mine's 2: %s", scope, risks)
-		}
-		choices, value, label := scopeChoices(scopeSelect(t, page, "risks-scope"))
-		if value != "mine" || label != "Mine" {
-			t.Errorf("%s: the Scope select shows %q %q chosen, want Mine", scope, value, label)
-		}
-		if want := []string{"Everyone", "Mine"}; !slices.Equal(choices, want) {
-			t.Errorf("%s: without Managers the Scope select offers %q, want %q", scope, choices, want)
-		}
+	riskRowOf(t, page, own)
+	riskRowOf(t, page, delegated)
+	if hasRiskRow(page, other) {
+		t.Errorf("the page lists %q, which sam neither Owns nor is a Delegate on", other.Title)
+	}
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "<strong>2</strong> Goals need attention in Mine. Worst first.") {
+		t.Errorf("the count line doesn't count sam's 2 Goals in Mine: %s", head)
+	}
+	if card := pageElement(t, page, "a", "risks-group-owner"); !strings.Contains(card, `<span class="num">2</span>`) || !strings.Contains(card, "Stale · 2") {
+		t.Errorf("the owner card doesn't count sam's 2 Goals: %s", card)
+	}
+	if risks := pageElement(t, page, "a", "nav-risks"); !strings.Contains(risks, `<span class="count">2</span>`) {
+		t.Errorf("the top bar's Risks count isn't sam's default, Mine's 2: %s", risks)
+	}
+	choices, value, label := scopeChoices(scopeSelect(t, page, "risks-scope"))
+	if value != "mine" || label != "Mine" {
+		t.Errorf("the Scope select shows %q %q chosen, want Mine", value, label)
+	}
+	if want := []string{"Everyone", "Mine"}; !slices.Equal(choices, want) {
+		t.Errorf("without Managers the Scope select offers %q, want %q", choices, want)
 	}
 
-	page := getBody(t, client, ts.URL+"/risks?org=all")
+	page = getBody(t, client, ts.URL+"/risks?org=all")
 
 	riskRowOf(t, page, other)
 	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "<strong>3</strong> Goals need attention. Worst first.") {
@@ -1374,7 +1371,7 @@ func TestRisksScopeFormAppliesItself(t *testing.T) {
 	h.Clock.Advance(10 * day)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, ts.URL+"/risks?group=owner&mine=1")
+	page := getBody(t, client, ts.URL+"/risks?group=owner&org=mine")
 
 	form := tagAround(t, page, `data-testid="risks-filters"`)
 	for name, want := range map[string]string{
@@ -1523,7 +1520,7 @@ func orgScopedRiskTitles(page string, goals ...domain.Goal) []string {
 // shown chosen and named in the count line. An explicit Scope is never
 // overridden: ?org=all is Everyone, ?org=mine Mine and ?org=<id> that
 // person's Org, while a malformed ?org=, or one naming no one, gives the
-// default.
+// default, as does the old ?mine=1, ignored like any unknown parameter.
 func TestRisksPageOpensOnTheViewersDefaultScope(t *testing.T) {
 	t.Parallel()
 
@@ -1556,6 +1553,7 @@ func TestRisksPageOpensOnTheViewersDefaultScope(t *testing.T) {
 			{"?org=" + maxID, maxID, []string{"Max's goal", "Pax's goal"}},
 			{"?org=abc", viewer.defaultValue, viewer.defaultTitles},
 			{"?org=999999", viewer.defaultValue, viewer.defaultTitles},
+			{"?mine=1", viewer.defaultValue, viewer.defaultTitles},
 		} {
 			page := getBody(t, client, ts.URL+"/risks"+c.query)
 			if got := orgScopedRiskTitles(page, org.goals()...); !slices.Equal(got, c.titles) {
@@ -1917,11 +1915,11 @@ func TestRisksPageScopesAnOrgLinkForAViewerOutsideAnyOrg(t *testing.T) {
 }
 
 // The org lives in the Risks page's address, so its group cards, Show all
-// and the scope form keep it, and a reload shows it again; an org that
-// resolves takes over from an older ?mine=1, and the form keeps no Mine of its
-// own, so choosing Everyone from there lists every flagged Goal. A ?org=
-// naming no one, or malformed, gives the viewer's default, Mine for Oz, or Mine
-// beside ?mine=1, and an org with nothing needing attention says so.
+// and the scope form keep it, and a reload shows it again; the form keeps no
+// Mine of its own, so choosing Everyone from there lists every flagged Goal.
+// A ?org= naming no one, or malformed, gives the viewer's default, Mine for
+// Oz, the old ?mine=1 beside it changing nothing, and an org with nothing
+// needing attention says so.
 func TestRisksPageKeepsTheOrgInItsAddress(t *testing.T) {
 	t.Parallel()
 
@@ -1934,18 +1932,18 @@ func TestRisksPageKeepsTheOrgInItsAddress(t *testing.T) {
 	client := signInClient(t, ts.URL, "oz@example.com")
 	orgID := strconv.FormatInt(org.Mia.ID, 10)
 
-	page := getBody(t, client, ts.URL+"/risks?org="+orgID+"&mine=1")
+	page := getBody(t, client, ts.URL+"/risks?org="+orgID)
 	filters := between(t, page, `data-testid="risks-filters"`, "</form>")
 	if strings.Contains(filters, `name="mine"`) {
 		t.Errorf("the scope form carries a mine field:\n%s", filters)
 	}
 	if _, value, _ := scopeChoices(scopeSelect(t, page, "risks-scope")); value != orgID {
-		t.Errorf("Mia's org over Mine: the Scope select shows %q chosen, want %s", value, orgID)
+		t.Errorf("Mia's org: the Scope select shows %q chosen, want %s", value, orgID)
 	}
 	values := formValues(filters)
 	values.Set("org", "all")
 	if got := orgScopedRiskTitles(getBody(t, client, ts.URL+"/risks?"+values.Encode()), org.goals()...); len(got) != 6 {
-		t.Errorf("choosing Everyone from Mia's org over Mine: rows = %q, want all 6", got)
+		t.Errorf("choosing Everyone from Mia's org: rows = %q, want all 6", got)
 	}
 	card := pageElement(t, page, "a", "risks-group-owner")
 	address := html.UnescapeString(attr(openTag(card), "href"))
@@ -1975,7 +1973,7 @@ func TestRisksPageKeepsTheOrgInItsAddress(t *testing.T) {
 		}
 		page = getBody(t, client, ts.URL+"/risks?mine=1&org="+raw)
 		if got := orgScopedRiskTitles(page, org.goals()...); !slices.Equal(got, []string{"Oz's goal"}) {
-			t.Errorf("mine=1&org=%q: rows = %q, want only Oz's", raw, got)
+			t.Errorf("org=%q beside the old Mine parameter: rows = %q, want Oz's default, Mine", raw, got)
 		}
 	}
 

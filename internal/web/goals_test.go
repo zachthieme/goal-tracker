@@ -812,9 +812,8 @@ func TestGoalListFiltersByLifecycle(t *testing.T) {
 	}
 }
 
-// Scoped to Mine, by ?org=mine or the older ?mine=1 that links and bookmarks
-// carry, the list keeps the Goals the viewer Owns or is a Delegate on, and the
-// Scope select shows Mine chosen. Without Managers it offers Everyone and Mine
+// Scoped to Mine, by ?org=mine, the list keeps the Goals the viewer Owns or is
+// a Delegate on, and the Scope select shows Mine chosen. Without Managers it offers Everyone and Mine
 // alone. The other filters still combine with it.
 func TestGoalListFiltersToMine(t *testing.T) {
 	t.Parallel()
@@ -829,22 +828,20 @@ func TestGoalListFiltersToMine(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	for _, scope := range []string{"org=mine", "mine=1"} {
-		page := getBody(t, client, ts.URL+"/goals?"+scope)
-		got := rowTitles(goalRows(t, page), owned, delegated, others)
-		if want := []string{"Kim's, delegated to Sam", "Sam's own"}; !slices.Equal(got, want) {
-			t.Errorf("%s: rows = %q, want %q", scope, got, want)
-		}
-		choices, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter"))
-		if value != "mine" || label != "Mine" {
-			t.Errorf("%s: the Scope select shows %q %q chosen, want Mine", scope, value, label)
-		}
-		if want := []string{"Everyone", "Mine"}; !slices.Equal(choices, want) {
-			t.Errorf("%s: without Managers the Scope select offers %q, want %q", scope, choices, want)
-		}
+	page := getBody(t, client, ts.URL+"/goals?org=mine")
+	got := rowTitles(goalRows(t, page), owned, delegated, others)
+	if want := []string{"Kim's, delegated to Sam", "Sam's own"}; !slices.Equal(got, want) {
+		t.Errorf("rows = %q, want %q", got, want)
+	}
+	choices, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter"))
+	if value != "mine" || label != "Mine" {
+		t.Errorf("the Scope select shows %q %q chosen, want Mine", value, label)
+	}
+	if want := []string{"Everyone", "Mine"}; !slices.Equal(choices, want) {
+		t.Errorf("without Managers the Scope select offers %q, want %q", choices, want)
 	}
 
-	page := getBody(t, client, ts.URL+"/goals?org=all")
+	page = getBody(t, client, ts.URL+"/goals?org=all")
 	if got := rowTitles(goalRows(t, page), owned, delegated, others); len(got) != 3 {
 		t.Errorf("for Everyone every Goal shows; rows = %q", got)
 	}
@@ -863,32 +860,44 @@ func TestGoalListFiltersToMine(t *testing.T) {
 	}
 }
 
-// Mine and an org are one Scope, not two filters: an org that resolves to
-// someone takes over from an older ?mine=1, listing the org's Goals the viewer
-// neither Owns nor is a Delegate on, while one naming no one leaves Mine.
+// The Scope is read from ?org= alone: the old ?mine=1 is ignored like any
+// unknown parameter, so on its own it gives the viewer's default, My org for
+// Mia, and beside an org that resolves to someone it gives that Org, listing
+// Goals the viewer neither Owns nor is a Delegate on. An org naming no one, or
+// malformed, gives the default, Mine for Oz.
 func TestGoalListScopesToAnOrgOverMine(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	org := newScopeOrgFixture(h)
 	ts := newServer(t, h)
+	mia := signInClient(t, ts.URL, "mia@example.com")
 	oz := signInClient(t, ts.URL, "oz@example.com")
+	miaID := strconv.FormatInt(org.Mia.ID, 10)
 
-	page := getBody(t, oz, scopeOrgURL(ts.URL, "/goals", org.Mia)+"&mine=1")
+	page := getBody(t, mia, ts.URL+"/goals?mine=1")
 	if got, want := rowTitles(goalRows(t, page), org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
-		t.Errorf("Mia's org over Mine: rows = %q, want %q", got, want)
+		t.Errorf("Mia at the old Mine address: rows = %q, want her default, My org's %q", got, want)
 	}
-	if _, value, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != strconv.FormatInt(org.Mia.ID, 10) {
-		t.Errorf("Mia's org over Mine: the Scope select shows %q chosen", value)
+	if _, value, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != miaID {
+		t.Errorf("Mia at the old Mine address: the Scope select shows %q chosen, want her default, %s", value, miaID)
+	}
+
+	page = getBody(t, oz, ts.URL+"/goals?mine=1&org="+miaID)
+	if got, want := rowTitles(goalRows(t, page), org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
+		t.Errorf("Mia's org beside the old Mine parameter: rows = %q, want %q", got, want)
+	}
+	if _, value, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != miaID {
+		t.Errorf("Mia's org beside the old Mine parameter: the Scope select shows %q chosen", value)
 	}
 
 	for _, raw := range []string{"abc", "999999"} {
-		page := getBody(t, oz, ts.URL+"/goals?mine=1&org="+raw)
+		page := getBody(t, oz, ts.URL+"/goals?org="+raw)
 		if got := rowTitles(goalRows(t, page), org.goals()...); !slices.Equal(got, []string{"Oz's goal"}) {
-			t.Errorf("mine=1&org=%s: rows = %q, want only Oz's", raw, got)
+			t.Errorf("org=%s: rows = %q, want Oz's default, Mine", raw, got)
 		}
 		if _, value, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != "mine" {
-			t.Errorf("mine=1&org=%s: the Scope select shows %q chosen, want Mine", raw, value)
+			t.Errorf("org=%s: the Scope select shows %q chosen, want Oz's default, Mine", raw, value)
 		}
 	}
 }
