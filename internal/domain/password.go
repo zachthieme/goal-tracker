@@ -137,9 +137,11 @@ func (s *Service) SetPassword(ctx context.Context, token, password string) (Acco
 }
 
 // PasswordSignIn resolves a password sign-in for emailAddr. An unknown email,
-// an Account with no password, and a wrong password all return
-// ErrBadCredentials, and each takes as long, since each hashes the password.
-// It never creates an Account.
+// an Account with no password, a wrong password, and an Account locked by
+// wrong ones all return ErrBadCredentials, and each takes as long, since each
+// hashes the password. Each wrong password counts toward the lockout; the
+// right one clears the count. A Departed person with the right password is
+// refused with ErrDeparted. It never creates an Account.
 func (s *Service) PasswordSignIn(ctx context.Context, emailAddr, password string) (Account, error) {
 	row, err := s.queries.GetAccountByEmail(ctx, emailAddr)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -157,10 +159,53 @@ func (s *Service) PasswordSignIn(ctx context.Context, emailAddr, password string
 	if err != nil {
 		return Account{}, fmt.Errorf("get password: %w", err)
 	}
-	if !passwordMatches(*stored.PasswordHash, password) {
+	matches := passwordMatches(*stored.PasswordHash, password)
+	now := s.clock.Now()
+	locked, err := lockedAt(stored, now)
+	if err != nil {
+		return Account{}, err
+	}
+	if locked {
 		return Account{}, ErrBadCredentials
 	}
-	return accountFromRow(row), nil
+	if !matches {
+		lockedUntil := now.UTC().Add(signInLockout).Format(timeFormat)
+		if err := s.queries.RecordFailedSignin(ctx, db.RecordFailedSigninParams{
+			LockAt: signInLockAt, LockedUntil: &lockedUntil, AccountID: row.ID,
+		}); err != nil {
+			return Account{}, fmt.Errorf("record failed sign-in: %w", err)
+		}
+		return Account{}, ErrBadCredentials
+	}
+	if stored.FailedSignins != 0 || stored.LockedUntil != nil {
+		if err := s.queries.ClearFailedSignins(ctx, row.ID); err != nil {
+			return Account{}, fmt.Errorf("clear failed sign-ins: %w", err)
+		}
+	}
+	acc := accountFromRow(row)
+	if acc.Departed {
+		return Account{}, fmt.Errorf("%w: %s has left the company", ErrDeparted, acc.Email)
+	}
+	return acc, nil
+}
+
+// The lockout: signInLockAt wrong passwords in a row lock an Account for
+// signInLockout, even against the right one.
+const (
+	signInLockAt  = 5
+	signInLockout = 15 * time.Minute
+)
+
+// lockedAt reports whether the Account stored is for is locked at now.
+func lockedAt(stored db.AccountPassword, now time.Time) (bool, error) {
+	if stored.LockedUntil == nil {
+		return false, nil
+	}
+	until, err := time.Parse(timeFormat, *stored.LockedUntil)
+	if err != nil {
+		return false, fmt.Errorf("read lock: %w", err)
+	}
+	return now.Before(until), nil
 }
 
 // dummyPasswordHash is what a sign-in with no password to check hashes the

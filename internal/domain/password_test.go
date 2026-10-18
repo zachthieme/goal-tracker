@@ -215,3 +215,96 @@ func TestABadPasswordSignInFailsAlikeAndCreatesNoAccount(t *testing.T) {
 		t.Errorf("a sign-in with an unknown email created an Account (err %v)", err)
 	}
 }
+
+// samWithPassword is a Harness, with adminEmails its Admins, where
+// sam@example.com has samPassword.
+func samWithPassword(t *testing.T, adminEmails ...string) *testsupport.Harness {
+	t.Helper()
+	h := testsupport.New(t, adminEmails...)
+	if _, err := h.Service.SetPassword(t.Context(), issueLink(t, h, "sam@example.com"), samPassword); err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+// failSignIns signs in as sam with a wrong password n times.
+func failSignIns(t *testing.T, h *testsupport.Harness, n int) {
+	t.Helper()
+	for i := range n {
+		if _, err := h.Service.PasswordSignIn(t.Context(), "sam@example.com", "not sam's password"); !errors.Is(err, domain.ErrBadCredentials) {
+			t.Fatalf("wrong password %d: %v, want ErrBadCredentials", i+1, err)
+		}
+	}
+}
+
+// Five wrong passwords lock the Account for 15 minutes: the right one fails
+// until they pass, then works.
+func TestFiveWrongPasswordsLockTheAccountFor15Minutes(t *testing.T) {
+	t.Parallel()
+
+	h := samWithPassword(t)
+	failSignIns(t, h, 5)
+
+	h.Clock.Advance(15*time.Minute - time.Second)
+	if _, err := h.Service.PasswordSignIn(t.Context(), "sam@example.com", samPassword); !errors.Is(err, domain.ErrBadCredentials) {
+		t.Errorf("the right password during the lock: %v, want ErrBadCredentials", err)
+	}
+	h.Clock.Advance(time.Second)
+	if _, err := h.Service.PasswordSignIn(t.Context(), "sam@example.com", samPassword); err != nil {
+		t.Errorf("the right password once the lock passed: %v", err)
+	}
+}
+
+// A successful sign-in clears the wrong passwords before it, so four, a
+// success, then four more doesn't lock the Account.
+func TestASuccessfulSignInResetsTheWrongPasswordCount(t *testing.T) {
+	t.Parallel()
+
+	h := samWithPassword(t)
+	failSignIns(t, h, 4)
+	if _, err := h.Service.PasswordSignIn(t.Context(), "sam@example.com", samPassword); err != nil {
+		t.Fatalf("the right password after 4 wrong ones: %v", err)
+	}
+	failSignIns(t, h, 4)
+	if _, err := h.Service.PasswordSignIn(t.Context(), "sam@example.com", samPassword); err != nil {
+		t.Errorf("the right password after 4 more wrong ones: %v", err)
+	}
+}
+
+// Using a new set-password link lifts a lock at once: how an Admin unlocks
+// someone.
+func TestANewPasswordLiftsTheLock(t *testing.T) {
+	t.Parallel()
+
+	h := samWithPassword(t)
+	failSignIns(t, h, 5)
+	if _, err := h.Service.SetPassword(t.Context(), issueLink(t, h, "sam@example.com"), "a brand new password"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Service.PasswordSignIn(t.Context(), "sam@example.com", "a brand new password"); err != nil {
+		t.Errorf("the new password while the old lock would still hold: %v", err)
+	}
+}
+
+// A Departed person with the right password is told they've departed; with a
+// wrong one, they fail like anyone (CONTEXT.md: Departed).
+func TestADepartedPersonsPasswordSignInSaysTheyDeparted(t *testing.T) {
+	t.Parallel()
+
+	h := samWithPassword(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam, err := h.Service.AccountByEmail(t.Context(), "sam@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, sam.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := h.Service.PasswordSignIn(t.Context(), "sam@example.com", samPassword); !errors.Is(err, domain.ErrDeparted) {
+		t.Errorf("the right password: %v, want ErrDeparted", err)
+	}
+	if _, err := h.Service.PasswordSignIn(t.Context(), "sam@example.com", "not sam's password"); !errors.Is(err, domain.ErrBadCredentials) {
+		t.Errorf("a wrong password: %v, want ErrBadCredentials", err)
+	}
+}

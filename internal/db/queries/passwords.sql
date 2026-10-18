@@ -18,7 +18,14 @@ SELECT * FROM account_passwords WHERE account_id = ?;
 INSERT INTO account_passwords (account_id, password_hash, failed_signins, locked_until) VALUES (?, ?, 0, NULL)
 ON CONFLICT (account_id) DO UPDATE SET password_hash = excluded.password_hash, failed_signins = 0, locked_until = NULL;
 
--- name: SetPasswordFailures :exec
--- Records an Account's failed sign-ins since its last success, and the lock
--- they put it under, if any.
-UPDATE account_passwords SET failed_signins = ?, locked_until = ? WHERE account_id = ?;
+-- name: RecordFailedSignin :exec
+-- Counts a wrong password against an Account. The one that brings the count
+-- to sqlc.arg(lock_at) locks the Account until sqlc.arg(locked_until) and
+-- starts the count again.
+UPDATE account_passwords SET
+    failed_signins = CASE WHEN failed_signins + 1 >= sqlc.arg(lock_at) THEN 0 ELSE failed_signins + 1 END,
+    locked_until = CASE WHEN failed_signins + 1 >= sqlc.arg(lock_at) THEN sqlc.arg(locked_until) ELSE locked_until END
+WHERE account_id = sqlc.arg(account_id);
+
+-- name: ClearFailedSignins :exec
+UPDATE account_passwords SET failed_signins = 0, locked_until = NULL WHERE account_id = ?;

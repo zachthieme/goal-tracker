@@ -9,6 +9,15 @@ import (
 	"context"
 )
 
+const clearFailedSignins = `-- name: ClearFailedSignins :exec
+UPDATE account_passwords SET failed_signins = 0, locked_until = NULL WHERE account_id = ?
+`
+
+func (q *Queries) ClearFailedSignins(ctx context.Context, accountID int64) error {
+	_, err := q.db.ExecContext(ctx, clearFailedSignins, accountID)
+	return err
+}
+
 const deletePasswordLink = `-- name: DeletePasswordLink :exec
 DELETE FROM password_links WHERE account_id = ?
 `
@@ -46,6 +55,27 @@ func (q *Queries) GetPasswordLink(ctx context.Context, tokenHash string) (Passwo
 	return i, err
 }
 
+const recordFailedSignin = `-- name: RecordFailedSignin :exec
+UPDATE account_passwords SET
+    failed_signins = CASE WHEN failed_signins + 1 >= ?1 THEN 0 ELSE failed_signins + 1 END,
+    locked_until = CASE WHEN failed_signins + 1 >= ?1 THEN ?2 ELSE locked_until END
+WHERE account_id = ?3
+`
+
+type RecordFailedSigninParams struct {
+	LockAt      int64
+	LockedUntil *string
+	AccountID   int64
+}
+
+// Counts a wrong password against an Account. The one that brings the count
+// to sqlc.arg(lock_at) locks the Account until sqlc.arg(locked_until) and
+// starts the count again.
+func (q *Queries) RecordFailedSignin(ctx context.Context, arg RecordFailedSigninParams) error {
+	_, err := q.db.ExecContext(ctx, recordFailedSignin, arg.LockAt, arg.LockedUntil, arg.AccountID)
+	return err
+}
+
 const setAccountPassword = `-- name: SetAccountPassword :exec
 INSERT INTO account_passwords (account_id, password_hash, failed_signins, locked_until) VALUES (?, ?, 0, NULL)
 ON CONFLICT (account_id) DO UPDATE SET password_hash = excluded.password_hash, failed_signins = 0, locked_until = NULL
@@ -59,23 +89,6 @@ type SetAccountPasswordParams struct {
 // Stores an Account's password hash and clears its failed sign-ins and lock.
 func (q *Queries) SetAccountPassword(ctx context.Context, arg SetAccountPasswordParams) error {
 	_, err := q.db.ExecContext(ctx, setAccountPassword, arg.AccountID, arg.PasswordHash)
-	return err
-}
-
-const setPasswordFailures = `-- name: SetPasswordFailures :exec
-UPDATE account_passwords SET failed_signins = ?, locked_until = ? WHERE account_id = ?
-`
-
-type SetPasswordFailuresParams struct {
-	FailedSignins int64
-	LockedUntil   *string
-	AccountID     int64
-}
-
-// Records an Account's failed sign-ins since its last success, and the lock
-// they put it under, if any.
-func (q *Queries) SetPasswordFailures(ctx context.Context, arg SetPasswordFailuresParams) error {
-	_, err := q.db.ExecContext(ctx, setPasswordFailures, arg.FailedSignins, arg.LockedUntil, arg.AccountID)
 	return err
 }
 
