@@ -1270,3 +1270,100 @@ func TestHomeFailsWhenNoChangeCantBeChecked(t *testing.T) {
 		t.Errorf("status = %d, want 500", resp.StatusCode)
 	}
 }
+
+// homeActionItemFixture is a Report, MBR, on a Goal its author Owns, published
+// so Action Items can be raised on it for sam, who has nothing else waiting.
+type homeActionItemFixture struct {
+	h      *testsupport.Harness
+	author domain.Account
+	sam    domain.Account
+	goal   domain.Goal
+	def    domain.ReportDefinition
+	pub    domain.Publication
+}
+
+func newHomeActionItemFixture(h *testsupport.Harness) homeActionItemFixture {
+	f := homeActionItemFixture{h: h, author: h.SignIn("author@example.com"), sam: h.SignIn("sam@example.com")}
+	f.goal = h.ActiveGoal(f.author, "Launch in EU", "Expand the market.")
+	f.def = h.SaveReportDefinition(f.author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{f.goal.ID}})
+	f.pub = h.PublishReport(f.author, f.def)
+	return f
+}
+
+// raise raises an Action Item on the fixture's publication for owner, due in
+// dueIn days (negative for overdue), about goalID, or the whole Report for 0.
+func (f homeActionItemFixture) raise(owner domain.Account, text string, dueIn int, goalID int64) domain.ActionItem {
+	f.h.T.Helper()
+	item, err := f.h.Service.RaiseActionItem(context.Background(), f.author.ID, domain.RaiseActionItemInput{
+		PublicationID: f.pub.ID, GoalID: goalID, Text: text, OwnerID: owner.ID, DueDate: f.h.Clock.Now().AddDate(0, 0, dueIn),
+	})
+	if err != nil {
+		f.h.T.Fatalf("RaiseActionItem: %v", err)
+	}
+	return item
+}
+
+// homeActionItemRows returns each row of Home's Action Items, in order, or
+// none when Home shows no such group.
+func homeActionItemRows(page string) []string {
+	start := strings.Index(page, `<ul data-testid="home-action-items"`)
+	if start < 0 {
+		return nil
+	}
+	list := page[start : start+strings.Index(page[start:], "</ul>")]
+	var rows []string
+	for _, part := range strings.Split(list, `<li data-testid="home-action-item"`)[1:] {
+		rows = append(rows, part[:strings.Index(part, "</li>")])
+	}
+	return rows
+}
+
+// Home's Needs you lists the reader's open Action Items under their own
+// heading, soonest due first so an overdue one leads, flagged Overdue. Each
+// row names its Report and when it's due, and one about a Goal links to the
+// Goal page's Action Items and names the Goal.
+func TestHomeListsYourOpenActionItems(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newHomeActionItemFixture(h)
+	f.raise(f.sam, "Send the vendor plan.", 7, 0)
+	f.raise(f.sam, "Explain the slip.", -2, f.goal.ID)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+
+	needs := pageElement(t, page, "section", "home-needs-you")
+	if !strings.Contains(needs, `<h4 class="label">Action Items</h4>`) {
+		t.Errorf("Needs you has no Action Items heading:\n%s", needs)
+	}
+	rows := homeActionItemRows(page)
+	if len(rows) != 2 {
+		t.Fatalf("Home lists %d Action Items, want 2:\n%s", len(rows), needs)
+	}
+	overdue, later := rows[0], rows[1]
+	if !strings.Contains(overdue, "Explain the slip.") {
+		t.Errorf("the overdue Action Item is not listed first:\n%s", needs)
+	}
+	for _, want := range []string{
+		`<span class="badge lc">Action Item</span>`,
+		`<span data-testid="home-action-item-overdue" class="badge r">Overdue</span>`,
+		fmt.Sprintf(`href="/goals/%d#action-items"`, f.goal.ID),
+		"Launch in EU",
+		"due " + h.Clock.Now().AddDate(0, 0, -2).Format("Jan 2, 2006"),
+		`class="hm-what"`,
+		`class="hm-actions"`,
+	} {
+		if !strings.Contains(overdue, want) {
+			t.Errorf("overdue Action Item's row lacks %s:\n%s", want, overdue)
+		}
+	}
+	if strings.Contains(later, "home-action-item-overdue") {
+		t.Errorf("an Action Item due next week is flagged Overdue:\n%s", later)
+	}
+	for _, row := range rows {
+		if !strings.Contains(row, "MBR") {
+			t.Errorf("Action Item's row does not name its Report:\n%s", row)
+		}
+	}
+}
