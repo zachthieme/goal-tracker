@@ -14,6 +14,11 @@ type Account struct {
 	ManagerID *int64
 }
 
+type AccountSession struct {
+	AccountID  int64
+	Generation int64
+}
+
 type ActionItem struct {
 	ID                 int64
 	ReportDefinitionID int64
