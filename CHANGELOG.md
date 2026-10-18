@@ -25,6 +25,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] With password sign-in, you sign in with your email and password. Your Admin sends you a set-password link to choose one, at least 12 characters, and a new link resets a forgotten one. Setting a password signs you out of every other browser (#300).
 
 **Improvements:**
+- [internal] CONTEXT.md's Action Item entry says an Action Item may be about one Goal in its Report, who may close and reassign it, and when it is overdue.
 - [internal] CLAUDE.md tells agents never to run `git worktree add`, `remove` or `prune`, or export `GIT_DIR`: in a campaign container, `prune` deleted every other agent's worktree (#224).
 - [internal] The seed gives its fake company a Manager tree, recorded through the directory sync: the CEO at the top, the CTO, CPO and Admin under them, each team's lead under the CTO or CPO, and each team's people under their lead. A seeded demo, a scratch copy and the e2e app now show the Org features: sign in as `ceo@example.com` for the whole company, or a team lead such as `growth-lead@example.com` for a team (#306).
 - [user] A new Report now starts with a rule for your org, or for your own Goals when no one is under you, so the rail shows matches straight away; a note under the rules says so. The remove buttons on rule rows and Goal chips are larger, bordered 40px buttons (#285).

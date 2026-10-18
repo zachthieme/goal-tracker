@@ -192,4 +192,7 @@ _Avoid_: feedback, note, annotation
 
 **Action Item**:
 A follow-up raised while a Report is discussed. It has an owner and a due date, belongs to a Report Definition, and carries into each new publication until closed.
+It may be about one Goal in the Report: one raised from a Comment is about that Comment's Goal, and one raised directly may name a Goal or stay about the Report as a whole.
+Only its owner closes it, with a note. While it is open, it may be handed to a new owner by the Report Definition's creator, whoever published the publication it was raised on, an Admin, or the Definition creator's Manager.
+An open Action Item past its due date is overdue. It doesn't change any Goal's Health.
 _Avoid_: todo, follow-up, task
