@@ -113,7 +113,7 @@ func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain
 		if valued != nil && !valued[row.Goal.ID] {
 			continue
 		}
-		page.Everyones = append(page.Everyones, row)
+		page.CompanyRows = append(page.CompanyRows, row)
 		if org.keeps(row.Goal) {
 			page.Rows = append(page.Rows, row)
 		}
@@ -159,13 +159,13 @@ func riskValueLabel(v domain.DimensionValue) string {
 // the Dimensions' order, and today, which its dates are read against.
 type risksPageView struct {
 	risksView
-	Rows       []riskGoalRow
-	Everyones  []riskGoalRow
-	Group      string
-	Org        pageOrgScope
-	Dimensions []domain.Dimension
-	Values     []domain.DimensionValue
-	Today      time.Time
+	Rows        []riskGoalRow
+	CompanyRows []riskGoalRow
+	Group       string
+	Org         pageOrgScope
+	Dimensions  []domain.Dimension
+	Values      []domain.DimensionValue
+	Today       time.Time
 }
 
 // valueIn is the value of the Dimension dimID the page is scoped to, or the
@@ -339,13 +339,14 @@ func (p risksPageView) Cards() []riskCard {
 	for _, rt := range p.Types() {
 		names[rt.Anchor] = rt.Name
 	}
-	cards := make([]riskCard, 0, len(riskGroupKinds))
+	groups, company := riskGroups(p.Rows), riskGroups(p.CompanyRows)
+	cards := make([]riskCard, 0, len(groups))
 	for i, gk := range riskGroupKinds {
-		rows := p.Rows
+		rows, group := p.Rows, groups[i]
 		if gk.Key == riskGroupAdmin {
-			rows = p.Everyones
+			rows, group = p.CompanyRows, company[i]
 		}
-		c := riskCard{riskGroup: riskGroups(rows)[i], Blank: gk.Blank, Current: gk.Key == p.Group, Href: templ.SafeURL(p.url(gk.Key))}
+		c := riskCard{riskGroup: group, Blank: gk.Blank, Current: gk.Key == p.Group, Href: templ.SafeURL(p.url(gk.Key))}
 		for _, kind := range gk.Kinds {
 			n := 0
 			for _, r := range rows {
