@@ -522,8 +522,8 @@ func TestCheckinCancelWithoutReasonErrorReadsNaturally(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("htmx validation response status = %d, want 200", status)
 	}
-	if msg := pageElement(t, body, "p", "checkin-error"); !strings.Contains(msg, "cancelling a Goal needs a reason") {
-		t.Errorf("error = %q, want it to say cancelling a Goal needs a reason", msg)
+	if msg := pageElement(t, body, "p", "checkin-error"); !strings.Contains(msg, "Cancelling a Goal needs a reason") {
+		t.Errorf("error = %q, want it to say Cancelling a Goal needs a reason", msg)
 	}
 }
 
@@ -643,9 +643,12 @@ func TestCheckinExplanationErrorShownNextToExplanationField(t *testing.T) {
 		"health": {domain.HealthGreen},
 		"status": {"Looks fine."},
 	})
-	msg := fieldError(t, body, `name="explanation"`)
-	if !strings.Contains(msg, "differs from the Rolled-up Health") {
-		t.Errorf("explanation field's error = %q, want the Rolled-up Health one", msg)
+	const want = "This Health differs from the Rolled-up Health (Red); explain why."
+	if msg := fieldError(t, body, `name="explanation"`); !strings.Contains(msg, `">`+want) {
+		t.Errorf("explanation field's error = %q, want it to read %q", msg, want)
+	}
+	if strings.Contains(body, "validation failed") {
+		t.Errorf("page shows the internal \"validation failed\" prefix; body:\n%s", body)
 	}
 }
 
@@ -687,8 +690,12 @@ func TestCheckinPathToGreenErrorShownNextToPathToGreenField(t *testing.T) {
 		"health": {domain.HealthYellow},
 		"status": {"Slipping a little."},
 	})
-	if msg := fieldError(t, body, `name="path_target_date"`); !strings.Contains(msg, "needs a Path to Green") {
-		t.Errorf("Path to Green field's error = %q, want the Path to Green one", msg)
+	const want = "A Yellow Goal needs a Path to Green"
+	if msg := fieldError(t, body, `name="path_target_date"`); !strings.Contains(msg, `">`+want) {
+		t.Errorf("Path to Green field's error = %q, want it to start %q", msg, want)
+	}
+	if strings.Contains(body, "validation failed") {
+		t.Errorf("page shows the internal \"validation failed\" prefix; body:\n%s", body)
 	}
 }
 
@@ -826,7 +833,7 @@ func TestCheckinMilestoneRemovedReasonErrorShownNextToReasonField(t *testing.T) 
 		fmt.Sprintf("milestone_status_%d", beta.ID): {domain.MilestoneRemoved},
 	})
 	marker := fmt.Sprintf(`name="milestone_removed_reason_%d"`, beta.ID)
-	if msg := fieldError(t, body, marker); !strings.Contains(msg, "removing Milestone") {
+	if msg := fieldError(t, body, marker); !strings.Contains(msg, "Removing Milestone") {
 		t.Errorf("Milestone removal field's error = %q, want the removal one", msg)
 	}
 }
@@ -1179,7 +1186,7 @@ func TestCheckinErrorAboutNoOneFieldShownAtTopOfForm(t *testing.T) {
 		"health": {domain.HealthGreen},
 		"status": {"Trying anyway."},
 	})
-	if msg := fieldError(t, body, `data-testid="checkin-form"`); !strings.Contains(msg, "only an Active Goal") {
+	if msg := fieldError(t, body, `data-testid="checkin-form"`); !strings.Contains(msg, "Only an Active Goal") {
 		t.Errorf("the form's top error = %q, want the Active Goal one", msg)
 	}
 }

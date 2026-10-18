@@ -58,7 +58,7 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     await dates.getByText(/^Change dates or milestones/).click();
     await dates.getByLabel("Delivery date", { exact: true }).fill(newDue);
     await submit(form);
-    await expect(fieldError(form, "delivery_date_reason")).toContainText("changing the delivery date needs a reason");
+    await expect(fieldError(form, "delivery_date_reason")).toContainText("Changing the delivery date needs a reason");
 
     await dates.getByLabel("Reason (required if the delivery date changes)").fill(dueReason);
     await pickHealth(form, "Green");
