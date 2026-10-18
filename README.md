@@ -142,9 +142,11 @@ ada@example.com,Ada Lovelace,grace@example.com
 grace@example.com,Grace Hopper,
 ```
 
-The columns may come in any order, and their names in any case; other columns
-are ignored, and a column named twice is an error. Each later row is one
-person, who gets an Account if they have none. An empty `name` leaves the Name
+The columns may come in any order, and their names in any case. Other
+columns, empty or repeated, are ignored, but naming `email`, `name` or
+`manager_email` twice is an error. A stray `"` inside an unquoted field is kept
+as part of it. Each later row is one person, who gets an Account if they have
+none. An empty `name` leaves the Name
 they have, and an empty `manager_email` means no Manager. Blank lines and a
 leading BOM are skipped. A file that's missing, lacks one of the three columns,
 or has a row with the wrong number of fields fails the whole sync, with an

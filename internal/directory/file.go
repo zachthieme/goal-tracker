@@ -31,11 +31,12 @@ const (
 
 // People lists one person per row of the file. Its first row is the header,
 // naming the email, name and manager_email columns in any order and case;
-// other columns are ignored. An empty name gives no Name, and an empty
-// manager_email no Manager. Blank lines and a leading UTF-8 BOM are skipped.
+// other columns, empty or repeated, are ignored. An empty name gives no Name,
+// and an empty manager_email no Manager. Blank lines and a leading UTF-8 BOM
+// are skipped, and a stray quote in an unquoted field is kept as part of it.
 // It returns an error naming the file, and no one, if the file can't be read,
-// the header lacks a column or names one twice, or a row has the wrong number
-// of fields (the error gives its line).
+// the header lacks one of those three columns or names one twice, or a row has
+// the wrong number of fields (the error gives its line).
 func (f *File) People(_ context.Context) ([]domain.DirectoryPerson, error) {
 	file, err := os.Open(f.path)
 	if err != nil {
@@ -47,8 +48,11 @@ func (f *File) People(_ context.Context) ([]domain.DirectoryPerson, error) {
 		_, _ = r.Discard(3)
 	}
 	// FieldsPerRecord stays 0, so a row with a different number of fields
-	// from the header is an error.
-	records, err := csv.NewReader(r).ReadAll()
+	// from the header is an error. LazyQuotes keeps a stray quote in an
+	// unquoted field, as HR exports write names like Ada "the" L.
+	cr := csv.NewReader(r)
+	cr.LazyQuotes = true
+	records, err := cr.ReadAll()
 	if err != nil {
 		return nil, fmt.Errorf("directory file %s: %w", f.path, err)
 	}
@@ -58,6 +62,9 @@ func (f *File) People(_ context.Context) ([]domain.DirectoryPerson, error) {
 	columns := map[string]int{}
 	for i, name := range records[0] {
 		name = strings.ToLower(strings.TrimSpace(name))
+		if name != fileEmailColumn && name != fileNameColumn && name != fileManagerColumn {
+			continue
+		}
 		if _, dup := columns[name]; dup {
 			return nil, fmt.Errorf("directory file %s: the header names the column %q twice", f.path, name)
 		}

@@ -99,21 +99,111 @@ func TestFileIgnoresOtherColumns(t *testing.T) {
 	}
 }
 
-// A column named twice, whatever its case, is an error naming it.
+// Columns People doesn't read may repeat, empty ones included, as spreadsheet
+// exports often leave trailing empty cells.
+func TestFileIgnoresRepeatedOtherColumns(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		contents string
+	}{
+		{
+			name: "trailing empty cells",
+			contents: "email,name,manager_email,,\n" +
+				"ada@example.com,Ada,grace@example.com,,\n" +
+				"grace@example.com,Grace,,,\n",
+		},
+		{
+			name: "an ignored column named twice",
+			contents: "notes,email,name,manager_email,Notes\n" +
+				"first,ada@example.com,Ada,grace@example.com,second\n" +
+				",grace@example.com,Grace,,\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeDirectoryFile(t, tc.contents)
+
+			people, err := directory.NewFile(path).People(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []domain.DirectoryPerson{
+				{Email: "ada@example.com", Name: "Ada", ManagerEmail: "grace@example.com"},
+				{Email: "grace@example.com", Name: "Grace"},
+			}
+			if !reflect.DeepEqual(people, want) {
+				t.Fatalf("People() = %+v, want %+v", people, want)
+			}
+		})
+	}
+}
+
+// A stray quote in an unquoted field is kept as part of it, while a quoted
+// field still reads its commas and "" escapes.
+func TestFileReadsQuotesInFields(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		row      string
+		wantName string
+	}{
+		{name: "bare quote", row: `ada@x.com,Ada "the" L,`, wantName: `Ada "the" L`},
+		{name: "quoted field", row: `ada@x.com,"Okafor, Ada ""A""",`, wantName: `Okafor, Ada "A"`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeDirectoryFile(t, "email,name,manager_email\n"+tc.row+"\n")
+
+			people, err := directory.NewFile(path).People(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []domain.DirectoryPerson{{Email: "ada@x.com", Name: tc.wantName}}
+			if !reflect.DeepEqual(people, want) {
+				t.Fatalf("People() = %+v, want %+v", people, want)
+			}
+		})
+	}
+}
+
+// One of the columns People reads, named twice whatever its case, is an error
+// naming it.
 func TestFileRejectsADuplicatedColumn(t *testing.T) {
 	t.Parallel()
-	path := writeDirectoryFile(t, "email,name,manager_email,Name\n"+
-		"ada@example.com,Ada,grace@example.com,Ada L\n")
+	for _, tc := range []struct {
+		name     string
+		contents string
+		want     string
+	}{
+		{
+			name: "name",
+			contents: "email,name,manager_email,Name\n" +
+				"ada@example.com,Ada,grace@example.com,Ada L\n",
+			want: `the header names the column "name" twice`,
+		},
+		{
+			name: "email",
+			contents: "email,name,manager_email, EMAIL\n" +
+				"ada@example.com,Ada,grace@example.com,ada@example.org\n",
+			want: `the header names the column "email" twice`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeDirectoryFile(t, tc.contents)
 
-	people, err := directory.NewFile(path).People(t.Context())
-	if err == nil {
-		t.Fatalf("People() accepted a header naming name twice: %+v", people)
-	}
-	if people != nil {
-		t.Errorf("People() listed %+v along with the error", people)
-	}
-	if !strings.Contains(err.Error(), `"name"`) {
-		t.Errorf("error %q doesn't name the duplicated column", err)
+			people, err := directory.NewFile(path).People(t.Context())
+			if err == nil {
+				t.Fatalf("People() accepted a header naming %s twice: %+v", tc.name, people)
+			}
+			if people != nil {
+				t.Errorf("People() listed %+v along with the error", people)
+			}
+			if !strings.Contains(err.Error(), "people.csv") || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error %q doesn't name the file and say %s", err, tc.want)
+			}
+		})
 	}
 }
 
