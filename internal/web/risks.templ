@@ -237,7 +237,7 @@ templ risksStyles() {
 		.rk-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 		.rk-head p{margin:0}
 		.rk-filters{display:flex;align-items:center;gap:8px}
-		.rk-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+		.rk-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 		.rk-card{padding:16px;display:flex;flex-direction:column;gap:8px}
 		.rk-card .num{font-size:24px}
 		.rk-chips{display:flex;flex-wrap:wrap;gap:8px}
@@ -250,6 +250,7 @@ templ risksStyles() {
 		.rk-defs dt{font-weight:600}
 		.rk-defs dd{margin:0}
 		.rk-tag{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;padding:0 8px;border-radius:var(--radius-sm);color:var(--color-ink);font-size:13px;line-height:20px;border:1px solid var(--color-border-strong)}
+		@media (max-width:1151px){.rk-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 		@media (max-width:900px){.rk-cards{grid-template-columns:minmax(0,1fr)}}
 		@media (max-width:600px){.rk-table thead{display:none}.rk-table tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rk-table tbody tr:last-child{border-bottom:none}.rk-table td{display:block;padding:0;border-bottom:none}.rk-table .rk-goal{order:-1;grid-column:1/-1}.rk-table .rk-owner{white-space:normal}.rk-table .rk-fix{grid-column:1/-1;margin-top:4px}}
 	</style>

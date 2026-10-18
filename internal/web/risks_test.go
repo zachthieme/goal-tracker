@@ -491,6 +491,7 @@ func TestRisksPageDefinesEachRisk(t *testing.T) {
 	for name, means := range map[string]string{
 		"Stale":                       "Active Goals whose last Check-in, or activation if they have none, is older than their cadence.",
 		"Path to Green overdue":       "Active Goals past their Path to Green's target date that still aren't Green.",
+		"Action Item overdue":         "An Action Item about this Goal, raised in a Report, is past its due date.",
 		"Ownerless":                   "Active Goals whose Owner has left the company and hasn't been replaced.",
 		"Unaligned":                   "Active Goals that contribute to no other Goal and aren't Top-level.",
 		"Schedule conflicts":          "Goals due later than a Goal they contribute to.",
@@ -522,9 +523,10 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 	kim := h.SignIn("kim@example.com")
 	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
-	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Stale, Unaligned and an overdue Action Item
 	h.Clock.Advance(10 * day)
 	h.Checkin(sam, launch.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	raiseRiskActionItem(t, h, ada, silent, sam, "Break the silence.", -1)
 	h.ActiveGoal(kim, "Orphaned work", "It matters.") // Ownerless and Unaligned
 	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
 		t.Fatalf("MarkDeparted: %v", err)
@@ -544,6 +546,7 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 		chips           []string
 	}{
 		{"owner", "Owner needs to update", "/risks?group=owner&amp;org=all", 1, []string{"Stale · 1"}},
+		{"followup", "Action Items overdue", "/risks?group=followup&amp;org=all", 1, []string{"Action Item overdue · 1"}},
 		{"plan", "Plan doesn't fit", "/risks?group=plan&amp;org=all", 3, []string{"Unaligned · 2", "Schedule conflicts · 1"}},
 		{"admin", "Needs an Admin", "/risks?group=admin&amp;org=all", 1, []string{"Ownerless · 1"}},
 	} {
@@ -568,6 +571,7 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 	}
 	for _, c := range []struct{ group, kind, class string }{
 		{"owner", "stale", `class="badge st"`},
+		{"followup", "action-item-overdue", `class="badge st"`},
 		{"plan", "unaligned", `class="rk-tag"`},
 		{"plan", "schedule-conflicts", `class="rk-tag"`},
 		{"admin", "ownerless", `class="badge ol"`},
@@ -1726,7 +1730,7 @@ func TestRisksShowsAnAdminTheirCardOnAnEmptyScope(t *testing.T) {
 	if strings.Index(page, `data-testid="risks-empty"`) > strings.Index(page, `data-testid="risks-groups"`) {
 		t.Errorf("the cards come before the empty line")
 	}
-	for key, blank := range map[string]string{"owner": "Every Owner is up to date.", "plan": "Every plan fits."} {
+	for key, blank := range map[string]string{"owner": "Every Owner is up to date.", "followup": "No Action Item is overdue.", "plan": "Every plan fits."} {
 		if card := pageElement(t, page, "div", "risks-group-"+key); !strings.Contains(card, blank) {
 			t.Errorf("the Admin's %s card isn't blank: %s", key, card)
 		}
@@ -2141,6 +2145,91 @@ func TestRiskFixOnAnOverdueActionItemIsSeeActionItems(t *testing.T) {
 		label, href, primary := riskFix(t, row)
 		if want := "/goals/" + strconv.FormatInt(launch.ID, 10) + "#action-items"; label != "See Action Items" || href != want || primary {
 			t.Errorf("%s: Fix = %q → %q (primary %v), want See Action Items → %q", who, label, href, primary, want)
+		}
+	}
+}
+
+// Action Items overdue is a group of its own, its card after Owner needs to
+// update's: filtered to it, the page lists only the Goals an overdue Action
+// Item flags. With none, its card is muted and says no Action Item is
+// overdue.
+func TestRisksPageGroupsOverdueActionItems(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	h.Clock.Advance(10 * day)
+	launch := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Launch in EU", "Expand the market."))
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?org=all")
+
+	if card := pageElement(t, page, "div", "risks-group-followup"); !strings.Contains(openTag(card), "rk-zero") || !strings.Contains(card, "No Action Item is overdue.") {
+		t.Errorf("with no overdue Action Item, the followup card isn't muted saying so: %s", card)
+	}
+
+	raiseRiskActionItem(t, h, ada, launch, sam, "Book the legal review.", -2)
+	page = getBody(t, client, ts.URL+"/risks?org=all")
+
+	card := pageElement(t, page, "a", "risks-group-followup")
+	for _, want := range []string{`href="/risks?group=followup&amp;org=all"`, "Action Items overdue", `<span class="num">1</span>`, "Action Item overdue · 1"} {
+		if !strings.Contains(card, want) {
+			t.Errorf("followup card lacks %s: %s", want, card)
+		}
+	}
+	if chip := riskChip(t, card, "action-item-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) {
+		t.Errorf("the followup card's chip isn't drawn like the table's: %s", chip)
+	}
+	if order := []int{
+		strings.Index(page, `data-testid="risks-group-owner"`),
+		strings.Index(page, `data-testid="risks-group-followup"`),
+		strings.Index(page, `data-testid="risks-group-plan"`),
+	}; !slices.IsSorted(order) {
+		t.Errorf("the followup card isn't between the owner and plan cards: %v", order)
+	}
+
+	page = getBody(t, client, ts.URL+"/risks?group=followup&org=all")
+
+	riskChip(t, riskRowOf(t, page, launch), "action-item-overdue")
+	if hasRiskRow(page, silent) {
+		t.Errorf("filtered to followup, the page lists %q, flagged only outside it", silent.Title)
+	}
+	if card := pageElement(t, page, "a", "risks-group-followup"); !strings.Contains(openTag(card), `aria-current="page"`) {
+		t.Errorf("filtered to followup, its card isn't current: %s", openTag(card))
+	}
+}
+
+// The Risks page's four group cards sit four across at the page's full width,
+// two by two where the page is narrower, and stack below 900px.
+func TestRisksGroupCardsFitFourAcross(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Silent work", "It matters.")
+	h.Clock.Advance(10 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	if n := strings.Count(page, `data-testid="risks-group-`); n != 4 {
+		t.Errorf("the page has %d group cards, want 4", n)
+	}
+	css := between(t, page, "<style>", "</style>")
+	for query, want := range map[string]string{
+		"":                          "grid-template-columns:repeat(4,minmax(0,1fr))",
+		"@media (max-width:1151px)": "grid-template-columns:repeat(2,minmax(0,1fr))",
+		"@media (max-width:900px)":  "grid-template-columns:minmax(0,1fr)",
+	} {
+		block := css
+		if query != "" {
+			block = mediaBlock(t, css, query)
+		}
+		if rule, _ := ruleFor(block, ".rk-cards"); !strings.Contains(rule, want) {
+			t.Errorf("%q .rk-cards{%s} lacks %s", query, rule, want)
 		}
 	}
 }

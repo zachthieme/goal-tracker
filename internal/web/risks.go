@@ -440,6 +440,7 @@ func (v risksView) Types() []riskType {
 	return []riskType{
 		{"stale", "Stale", len(v.Stale)},
 		{"path-overdue", "Path to Green overdue", len(v.OverduePaths)},
+		{"action-item-overdue", "Action Item overdue", len(v.OverdueActionItems)},
 		{"ownerless", "Ownerless", len(v.Ownerless)},
 		{"unaligned", "Unaligned", len(v.Unaligned)},
 		{"schedule-conflicts", "Schedule conflicts", len(v.ScheduleConflicts)},
@@ -452,6 +453,7 @@ func (v risksView) Types() []riskType {
 var riskDefinitions = []struct{ Name, Means string }{
 	{"Stale", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
 	{"Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green."},
+	{"Action Item overdue", "An Action Item about this Goal, raised in a Report, is past its due date."},
 	{"Ownerless", "Active Goals whose Owner has left the company and hasn't been replaced."},
 	{"Unaligned", "Active Goals that contribute to no other Goal and aren't Top-level."},
 	{"Schedule conflicts", "Goals due later than a Goal they contribute to."},
@@ -823,6 +825,7 @@ var riskGroupKinds = []struct {
 	Blank     string
 }{
 	{"owner", "Owner needs to update", []string{"stale", "path-overdue"}, "Every Owner is up to date."},
+	{"followup", "Action Items overdue", []string{"action-item-overdue"}, "No Action Item is overdue."},
 	{"plan", "Plan doesn't fit", []string{"unaligned", "schedule-conflicts"}, "Every plan fits."},
 	{riskGroupAdmin, "Needs an Admin", []string{"ownerless", "halted-parents"}, "Nothing needs an Admin."},
 }

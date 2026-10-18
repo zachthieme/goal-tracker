@@ -228,10 +228,13 @@ func TestRiskGroupsCountUniqueGoals(t *testing.T) {
 		row("Orphan under two halted parents", 7, "", sig("ownerless"), sig("halted-parents"), sig("halted-parents")),
 		row("Under a halted parent", 7, domain.HealthGreen, sig("halted-parents")),
 		row("Unaligned", 7, domain.HealthGreen, sig("unaligned")),
+		row("Stale with an overdue Action Item", 7, domain.HealthYellow, sig("stale"), sig("action-item-overdue")),
+		row("Overdue Action Item", 7, domain.HealthGreen, sig("action-item-overdue")),
 	}
 
 	want := []riskGroup{
-		{Key: "owner", Name: "Owner needs to update", Count: 2},
+		{Key: "owner", Name: "Owner needs to update", Count: 3},
+		{Key: "followup", Name: "Action Items overdue", Count: 2},
 		{Key: "plan", Name: "Plan doesn't fit", Count: 3},
 		{Key: "admin", Name: "Needs an Admin", Count: 2},
 	}
