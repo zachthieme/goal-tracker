@@ -90,13 +90,15 @@ func run(logger *slog.Logger) error {
 		webOpts = append(webOpts, web.WithOIDC(o))
 		logger.Info("signing in through the organization's OIDC provider", "issuer", cfg.oidc.Issuer, "redirect_url", cfg.oidc.RedirectURL)
 	}
-	if cfg.directory != nil {
-		sync := directory.NewSync(svc, directory.NewAuthentik(cfg.directory.url, cfg.directory.token), logger)
-		go sync.RunEvery(context.Background(), time.Hour)
-		webOpts = append(webOpts, web.WithDirectorySync(sync))
+	switch {
+	case cfg.directory == nil:
+		logger.Info("neither GOAL_TRACKER_DIRECTORY_FILE nor GOAL_TRACKER_DIRECTORY_URL is set: no directory sync, so no one has a Manager")
+	case cfg.directory.file != "":
+		webOpts = append(webOpts, startDirectorySync(svc, directory.NewFile(cfg.directory.file), logger))
+		logger.Info("syncing people and their Managers from the directory file, now and hourly", "file", cfg.directory.file)
+	default:
+		webOpts = append(webOpts, startDirectorySync(svc, directory.NewAuthentik(cfg.directory.url, cfg.directory.token), logger))
 		logger.Info("syncing people and their Managers from the org's directory, now and hourly", "url", cfg.directory.url)
-	} else {
-		logger.Info("GOAL_TRACKER_DIRECTORY_URL is unset: no directory sync, so no one has a Manager")
 	}
 	srv := web.NewServer(svc, webOpts...)
 
@@ -115,6 +117,14 @@ func run(logger *slog.Logger) error {
 		return fmt.Errorf("serve: %w", err)
 	}
 	return nil
+}
+
+// startDirectorySync syncs from dir now and hourly, and gives the web app the
+// sync for the Admin page's Sync now.
+func startDirectorySync(svc *domain.Service, dir domain.Directory, logger *slog.Logger) web.Option {
+	sync := directory.NewSync(svc, dir, logger)
+	go sync.RunEvery(context.Background(), time.Hour)
+	return web.WithDirectorySync(sync)
 }
 
 type config struct {
@@ -157,9 +167,11 @@ const (
 
 var signInMethods = []string{signInOIDC, signInDev}
 
-// directoryConfig is where the directory sync reads people from: Authentik's
-// base URL and an API token that can read users.
+// directoryConfig is where the directory sync reads people from: a CSV file,
+// or Authentik's base URL and an API token that can read users.
 type directoryConfig struct {
+	// file, when set, is the CSV file's path, and url and token are empty.
+	file  string
 	url   string
 	token string
 }
@@ -245,16 +257,26 @@ func oidcConfig(signIn, baseURL string) (*web.OIDCConfig, error) {
 	}, nil
 }
 
-// loadDirectoryConfig is the directory sync's settings from
-// GOAL_TRACKER_DIRECTORY_URL and GOAL_TRACKER_DIRECTORY_TOKEN: nil when neither
-// is set, an error naming the missing one when only one is.
+// loadDirectoryConfig is the directory sync's settings: the CSV file named by
+// GOAL_TRACKER_DIRECTORY_FILE, or Authentik from GOAL_TRACKER_DIRECTORY_URL
+// and GOAL_TRACKER_DIRECTORY_TOKEN. It is nil when none is set, an error naming
+// both sources when the file is set with either Authentik variable, and an
+// error naming the missing one when only one Authentik variable is.
 func loadDirectoryConfig() (*directoryConfig, error) {
 	vars := []string{"GOAL_TRACKER_DIRECTORY_URL", "GOAL_TRACKER_DIRECTORY_TOKEN"}
-	var missing []string
+	var set, missing []string
 	for _, v := range vars {
 		if os.Getenv(v) == "" {
 			missing = append(missing, v)
+		} else {
+			set = append(set, v)
 		}
+	}
+	if file := os.Getenv("GOAL_TRACKER_DIRECTORY_FILE"); file != "" {
+		if len(set) > 0 {
+			return nil, errors.New("the directory sync reads one source: GOAL_TRACKER_DIRECTORY_FILE or Authentik; unset GOAL_TRACKER_DIRECTORY_FILE, or unset " + strings.Join(set, ", "))
+		}
+		return &directoryConfig{file: file}, nil
 	}
 	switch len(missing) {
 	case len(vars):

@@ -57,7 +57,7 @@ var oidcVars = []string{"GOAL_TRACKER_OIDC_ISSUER", "GOAL_TRACKER_OIDC_CLIENT_ID
 // settings don't leak in.
 func clearAuthEnv(t *testing.T) {
 	t.Helper()
-	for _, v := range slices.Concat(oidcVars, directoryVars, []string{"GOAL_TRACKER_SIGNIN", "GOAL_TRACKER_SESSION_KEY", "GOAL_TRACKER_BASE_URL"}) {
+	for _, v := range slices.Concat(oidcVars, directoryVars, []string{directoryFileVar, "GOAL_TRACKER_SIGNIN", "GOAL_TRACKER_SESSION_KEY", "GOAL_TRACKER_BASE_URL"}) {
 		t.Setenv(v, "")
 	}
 }
@@ -280,5 +280,47 @@ func TestDirectorySyncIsOnlyOnWithBothVariables(t *testing.T) {
 	}
 	if cfg.directory == nil || cfg.directory.url != "http://localhost:9000" || cfg.directory.token != "token" {
 		t.Errorf("directory = %+v, want the URL and token set", cfg.directory)
+	}
+}
+
+// directoryFileVar names the CSV file the directory sync can read instead of
+// Authentik. It's kept out of directoryVars, which are Authentik's pair.
+const directoryFileVar = "GOAL_TRACKER_DIRECTORY_FILE"
+
+// The file alone switches the directory sync on, reading that file.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestDirectorySyncReadsTheFileAlone(t *testing.T) {
+	devEnv(t)
+	t.Setenv(directoryFileVar, "/etc/goal-tracker/people.csv")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.directory == nil || cfg.directory.file != "/etc/goal-tracker/people.csv" || cfg.directory.url != "" {
+		t.Errorf("directory = %+v, want the file and no Authentik URL", cfg.directory)
+	}
+}
+
+// The file and Authentik are two sources; setting the file with either
+// Authentik variable stops startup, naming both.
+func TestDirectoryFileWithAuthentikNamesBothSources(t *testing.T) {
+	for _, v := range directoryVars {
+		t.Run(v, func(t *testing.T) {
+			devEnv(t)
+			t.Setenv(directoryFileVar, "people.csv")
+			t.Setenv(v, "value")
+
+			_, err := loadConfig()
+			if err == nil {
+				t.Fatalf("loadConfig accepted %s with %s", directoryFileVar, v)
+			}
+			for _, name := range []string{directoryFileVar, v} {
+				if !strings.Contains(err.Error(), name) {
+					t.Errorf("error %q doesn't name %s", err, name)
+				}
+			}
+		})
 	}
 }

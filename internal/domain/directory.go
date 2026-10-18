@@ -17,8 +17,9 @@ type DirectoryPerson struct {
 	ManagerEmail string
 }
 
-// Directory is the org's directory, where Managers come from (ADR 0008). The
-// first one reads Authentik's users API; another provider, or SCIM, is another
+// Directory is the org's directory, where Managers come from (ADR 0008).
+// directory.Authentik reads Authentik's users API, and directory.File a CSV
+// file exported from an HR system; another provider, or SCIM, is another
 // implementation, and nothing above it changes.
 type Directory interface {
 	// People lists everyone in the directory, or fails without listing any.

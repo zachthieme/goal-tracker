@@ -32,6 +32,7 @@ The server is configured from the environment:
 | `GOAL_TRACKER_OIDC_CLIENT_SECRET` | _(none)_ | Goal Tracker's client secret at the provider. |
 | `GOAL_TRACKER_DIRECTORY_URL` | _(none)_ | The company's directory, Authentik's base URL (e.g. `https://auth.example.com`). With the token below, the app syncs people and their Managers from it (see [Managers](#managers)). Set both or neither. |
 | `GOAL_TRACKER_DIRECTORY_TOKEN` | _(none)_ | An Authentik API token that can read users. |
+| `GOAL_TRACKER_DIRECTORY_FILE` | _(none)_ | A CSV file of people and their Managers, exported from the company's HR system: the directory to sync from instead of Authentik (see [Managers](#managers)). Startup stops if it's set with either Authentik variable above. |
 | `GOAL_TRACKER_SESSION_KEY` | _(required for `oidc` and `password`)_ | Base64 key, at least 32 bytes, that signs session cookies (`openssl rand -base64 32`). Required for `GOAL_TRACKER_SIGNIN=oidc`, and for `password` once that method lands. With `dev` it may be unset: the app then makes a random one and logs a WARN, and everyone is signed out when it restarts. |
 | `GOAL_TRACKER_START_AT` | _(none: the wall clock)_ | **Test-only.** An RFC 3339 instant (e.g. `2026-10-05T18:05:00Z`) the app's clock starts at, then ticks normally from; startup logs a WARN when it's set. The e2e suite uses it to run against a seed frozen at one date. Never set it in production. |
 
@@ -77,18 +78,42 @@ they're signed in on out, and their next sign-in works as usual.
 ## Managers
 
 Each person's Manager comes from the company's directory, never from the tool
-([ADR 0008](docs/adr/0008-managers-come-from-a-directory-sync.md)). With
-`GOAL_TRACKER_DIRECTORY_URL` and `GOAL_TRACKER_DIRECTORY_TOKEN` set, the app
-reads every user from Authentik's users API at startup and then hourly. Each
-user with an email gets an Account if they have none, their Name, and their
-Manager from the `manager` attribute (an email); service accounts are skipped.
-The sync never marks anyone Departed, and someone the directory stops listing
-keeps their last Manager. A sync that fails changes nothing, logs the cause at
-ERROR, and the next one tries again; Manager cycles are kept and logged at
-WARN. The Admin page shows when it last ran and how it went, with **Sync now**
-to run it at once. Startup stops if only one of the two variables is set.
+([ADR 0008](docs/adr/0008-managers-come-from-a-directory-sync.md)). The
+directory is one of two sources, synced at startup and then hourly: Authentik's
+users API, or a CSV file. Set one or the other; startup stops if
+`GOAL_TRACKER_DIRECTORY_FILE` is set with either Authentik variable.
 
-Unset, there is no sync, and no one has a Manager.
+With `GOAL_TRACKER_DIRECTORY_URL` and `GOAL_TRACKER_DIRECTORY_TOKEN` set, the
+app reads every user from Authentik's users API. Each user with an email gets
+an Account if they have none, their Name, and their Manager from the `manager`
+attribute (an email); service accounts are skipped. Startup stops if only one
+of the two variables is set.
+
+With `GOAL_TRACKER_DIRECTORY_FILE` set, the app reads that file instead, afresh
+on every sync, so an edit to it applies at the next hourly sync or **Sync
+now**. It's a UTF-8 CSV whose first row is the header `email,name,manager_email`:
+
+```csv
+email,name,manager_email
+ada@example.com,Ada Lovelace,grace@example.com
+grace@example.com,Grace Hopper,
+```
+
+The columns may come in any order, and their names in any case; other columns
+are ignored, and a column named twice is an error. Each later row is one
+person, who gets an Account if they have none. An empty `name` leaves the Name
+they have, and an empty `manager_email` means no Manager. Blank lines and a
+leading BOM are skipped. A file that's missing, lacks one of the three columns,
+or has a row with the wrong number of fields fails the whole sync, with an
+error naming the file and the bad row's line.
+
+Either way, the sync never marks anyone Departed, and someone the directory
+stops listing keeps their last Manager. A sync that fails changes nothing, logs
+the cause at ERROR, and the next one tries again; Manager cycles are kept and
+logged at WARN. The Admin page shows when it last ran and how it went, with
+**Sync now** to run it at once.
+
+With neither source set, there is no sync, and no one has a Manager.
 
 Other targets: `make test`, `make test-quick` (the tests without the race
 detector, for a quick local loop), `make lint`, `make generate` (templ and
