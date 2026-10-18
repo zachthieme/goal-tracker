@@ -465,6 +465,21 @@ func TestAdminIssuesASetPasswordLink(t *testing.T) {
 	}
 }
 
+// The Issue link button is a full-size button, so it lines up with the 40px
+// email field beside it.
+func TestIssueLinkButtonLinesUpWithItsEmailField(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newPasswordServer(t, h)
+	client := passwordSignInClient(t, h, ts.URL, "ada@example.com")
+
+	section := pageElement(t, getBody(t, client, ts.URL+"/admin"), "section", "admin-password-links")
+	if class := attr(tagAround(t, section, ">Issue link</button>"), "class"); class != "btn" {
+		t.Errorf("the Issue link button's class is %q, want \"btn\"", class)
+	}
+}
+
 // A Departed person can't be issued a set-password link: the Admin page says
 // so, and shows no link.
 func TestAdminCantIssueASetPasswordLinkToADepartedPerson(t *testing.T) {

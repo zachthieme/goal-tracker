@@ -135,7 +135,7 @@ templ adminPasswordLinks(v passwordLinksView) {
 					<span>Email</span>
 					<input type="email" name="email" value={ v.Email } required/>
 				</label>
-				<button type="submit" class="btn sm">Issue link</button>
+				<button type="submit" class="btn">Issue link</button>
 			</form>
 			if v.Refusal != "" {
 				<p data-testid="admin-password-link-error" class="ad-error" role="alert">{ v.Refusal }</p>

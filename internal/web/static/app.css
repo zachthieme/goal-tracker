@@ -223,7 +223,7 @@ tr[aria-selected=true] td{background:var(--color-primary-light)}
 .field>span{font-weight:600;font-size:13px;color:var(--color-ink)}
 .hint{font-size:13px;color:var(--color-ink-muted);font-weight:400}
 .inline-form{display:inline}
-input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],textarea,select{font:inherit;color:var(--color-ink);background:var(--color-surface);border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:0 16px;height:40px;box-sizing:border-box}
+input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],input[type=password],textarea,select{font:inherit;color:var(--color-ink);background:var(--color-surface);border:1px solid var(--color-border-strong);border-radius:var(--radius-md);padding:0 16px;height:40px;box-sizing:border-box}
 input::placeholder,textarea::placeholder{color:var(--color-ink-muted)}
 textarea{padding:12px 16px;height:auto;min-height:88px;resize:vertical;line-height:1.5}
 input:not([type=checkbox]):not([type=radio]):focus,textarea:focus,select:focus{outline:2px solid var(--color-focus);outline-offset:1px;border-color:var(--color-focus)}
@@ -266,4 +266,4 @@ fieldset{min-width:0}
 @media (max-width:900px){.nav{flex-wrap:wrap;height:auto;min-height:56px;padding:0 16px;column-gap:12px}.brand{margin-right:0}.me{flex:1 1 0;justify-content:flex-end;min-width:0;min-height:56px}.who{display:flex;min-width:0;font-size:0}.who .person{display:flex;flex-direction:column;align-items:flex-start;min-width:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.who .person>.disclose{max-width:100%;overflow:hidden;text-overflow:ellipsis}.who .person-email{margin-left:0;white-space:normal}.navitems{order:1;flex:1 0 100%;flex-wrap:wrap;margin:0 -8px 8px}.navitems .navitem{padding:0 8px}.card:has(table){overflow-x:auto}}
 @media (max-width:360px){.navitems .navitem{padding:0 4px}.navitems .count{margin-left:8px}.me{gap:4px}.me .btn.sm{padding:0 8px}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0s!important}.btn:active{transform:none!important}}
-@media (pointer:coarse){.btn,.btn.sm,input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],select{min-height:44px}}
+@media (pointer:coarse){.btn,.btn.sm,input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],input[type=password],select{min-height:44px}}
