@@ -499,3 +499,155 @@ func TestDigestIntroducesEachOwnerOnce(t *testing.T) {
 		}
 	}
 }
+
+// reminderReport publishes a Report named name covering goals, authored by a
+// new author, so a test can raise Action Items on it.
+func reminderReport(h *testsupport.Harness, name string, goals ...domain.Goal) domain.Publication {
+	h.T.Helper()
+	author := h.SignIn(strings.ToLower(name) + "-author@example.com")
+	var picked []int64
+	for _, g := range goals {
+		picked = append(picked, g.ID)
+	}
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: name, Mode: domain.ReportModePicked, Picked: picked})
+	return h.PublishReport(author, def)
+}
+
+// raiseReminderItem raises an open Action Item on pub, owned by owner and due
+// on due, about goalID (0 for the whole Report).
+func raiseReminderItem(h *testsupport.Harness, pub domain.Publication, owner domain.Account, goalID int64, text string, due time.Time) domain.ActionItem {
+	h.T.Helper()
+	item, err := h.Service.RaiseActionItem(context.Background(), pub.PublishedBy.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID,
+		GoalID:        goalID,
+		Text:          text,
+		OwnerID:       owner.ID,
+		DueDate:       due,
+	})
+	if err != nil {
+		h.T.Fatalf("RaiseActionItem: %v", err)
+	}
+	return item
+}
+
+// An Owner with a Check-in due and open Action Items gets one reminder holding
+// both: the Check-in first, then the items they own, overdue first, each with
+// its Report, the Goal it is about, its due date, and a link to it.
+func TestReminderListsOpenActionItemsAfterCheckins(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	pub := reminderReport(h, "MBR", g)
+	h.Clock.Advance(10 * day) // 2026-01-12
+	raiseReminderItem(h, pub, sam, 0, "Move the MBR to Tuesdays", time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC))
+	raiseReminderItem(h, pub, sam, g.ID, "Book the legal review", time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC))
+
+	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
+		t.Fatalf("SendReminders: %v", err)
+	}
+
+	msgs := sentTo(h.Email, "sam@example.com")
+	if len(msgs) != 1 {
+		t.Fatalf("reminders to sam = %d, want 1: %+v", len(msgs), h.Email.Sent())
+	}
+	if got, want := msgs[0].Subject, "Your Check-ins and Action Items this week"; got != want {
+		t.Errorf("subject = %q, want %q", got, want)
+	}
+	body := msgs[0].Body
+	checkin := fmt.Sprintf("These Goals need a Check-in:\n\n- Ship search: Stale, 10 days without a Check-in (cadence: 7 days)\n  http://goals.test/goals/%d#checkin-form\n", g.ID)
+	items := fmt.Sprintf("\nAction Items you own:\n\n"+
+		"- Book the legal review (MBR, about Ship search): overdue since 2026-01-05\n  http://goals.test/goals/%d#action-items\n"+
+		"- Move the MBR to Tuesdays (MBR): due 2026-01-20\n  http://goals.test/reports/%d/publications/%d#action-items\n",
+		g.ID, pub.DefinitionID, pub.ID)
+	if want := checkin + items; body != want {
+		t.Errorf("reminder body =\n%s\nwant\n%s", body, want)
+	}
+}
+
+// Someone who owns an open Action Item but no Goal is still reminded, with a
+// reminder that holds only their Action Items.
+func TestReminderReachesAnActionItemOwnerWithNoCheckinDue(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	pub := reminderReport(h, "MBR", g)
+	raiseReminderItem(h, pub, kim, g.ID, "Book the legal review", time.Date(2026, 1, 9, 0, 0, 0, 0, time.UTC))
+
+	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
+		t.Fatalf("SendReminders: %v", err)
+	}
+
+	msgs := sentTo(h.Email, "kim@example.com")
+	if len(msgs) != 1 {
+		t.Fatalf("reminders to kim = %d, want 1: %+v", len(msgs), h.Email.Sent())
+	}
+	if got, want := msgs[0].Subject, "Your Action Items this week"; got != want {
+		t.Errorf("subject = %q, want %q", got, want)
+	}
+	want := fmt.Sprintf("Action Items you own:\n\n"+
+		"- Book the legal review (MBR, about Ship search): due 2026-01-09\n  http://goals.test/goals/%d#action-items\n", g.ID)
+	if body := msgs[0].Body; body != want {
+		t.Errorf("reminder body =\n%s\nwant\n%s", body, want)
+	}
+}
+
+// An Owner with a Check-in due and no open Action Item gets the reminder as it
+// was before Action Items: its subject names only Check-ins, and it has no
+// Action Items part. A closed Action Item isn't listed.
+func TestReminderWithNoOpenActionItemsListsOnlyCheckins(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	pub := reminderReport(h, "MBR", g)
+	item := raiseReminderItem(h, pub, sam, g.ID, "Book the legal review", time.Date(2026, 1, 9, 0, 0, 0, 0, time.UTC))
+	if _, err := h.Service.CloseActionItem(context.Background(), sam.ID, item.ID, "Booked for March."); err != nil {
+		t.Fatalf("CloseActionItem: %v", err)
+	}
+	h.Clock.Advance(10 * day)
+
+	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
+		t.Fatalf("SendReminders: %v", err)
+	}
+
+	msgs := sentTo(h.Email, "sam@example.com")
+	if len(msgs) != 1 {
+		t.Fatalf("reminders to sam = %d, want 1: %+v", len(msgs), h.Email.Sent())
+	}
+	if got, want := msgs[0].Subject, "Your Check-ins this week"; got != want {
+		t.Errorf("subject = %q, want %q", got, want)
+	}
+	if body := msgs[0].Body; strings.Contains(body, "Action Items you own:") || strings.Contains(body, "Book the legal review") {
+		t.Errorf("reminder lists Action Items, want none:\n%s", body)
+	}
+}
+
+// An Action Item's owner who has since left the company isn't emailed about it.
+func TestReminderSkipsADepartedActionItemOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	pub := reminderReport(h, "MBR", g)
+	raiseReminderItem(h, pub, kim, g.ID, "Book the legal review", time.Date(2026, 1, 9, 0, 0, 0, 0, time.UTC))
+	if err := h.Service.MarkDeparted(context.Background(), admin.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	if err := newNotifier(h).SendReminders(context.Background()); err != nil {
+		t.Fatalf("SendReminders: %v", err)
+	}
+
+	if got := sentTo(h.Email, "kim@example.com"); len(got) != 0 {
+		t.Errorf("departed owner was sent %d reminders, want none: %+v", len(got), got)
+	}
+}
