@@ -334,7 +334,7 @@ func (p risksPageView) attention() string {
 // Ownerless, and the outlined tag for the structural ones.
 func riskChipClass(kind string) string {
 	switch kind {
-	case "stale", "path-overdue":
+	case "stale", "path-overdue", "action-item-overdue":
 		return "badge st"
 	case "ownerless":
 		return "badge ol"
@@ -416,6 +416,16 @@ type risksView struct {
 	// that needs to change.
 	ScheduleConflicts []domain.ScheduleConflict
 	HaltedParents     []domain.HaltedParent
+	// OverdueActionItems are the Active Goals an overdue Action Item is about,
+	// one entry each.
+	OverdueActionItems []riskOverdueGoal
+}
+
+// riskOverdueGoal is a Goal with an overdue Action Item about it, and how many
+// days the most overdue of them is past its due date.
+type riskOverdueGoal struct {
+	Goal domain.Goal
+	Days int
 }
 
 // riskType is one of the Risks page's signals, or its chip on a group card:
@@ -516,7 +526,31 @@ func (s *Server) loadRisks(ctx context.Context) (risksView, error) {
 			v.Ownerless = append(v.Ownerless, g)
 		}
 	}
+	items, err := s.svc.OverdueActionItems(ctx)
+	if err != nil {
+		return risksView{}, err
+	}
+	v.OverdueActionItems = riskOverdueGoals(goals, items, s.svc.Now().In(s.svc.Timezone()))
 	return v, nil
+}
+
+// riskOverdueGoals are the Active Goals among goals that an overdue Action
+// Item among items is about, in goals' order, each with the days its most
+// overdue item is past its due date as of today.
+func riskOverdueGoals(goals []domain.Goal, items []domain.ActionItemListing, today time.Time) []riskOverdueGoal {
+	days := map[int64]int{}
+	for _, l := range items {
+		if d := calendarDays(l.Item.DueDate, today); d > days[l.Item.GoalID] {
+			days[l.Item.GoalID] = d
+		}
+	}
+	var out []riskOverdueGoal
+	for _, g := range goals {
+		if d, ok := days[g.ID]; ok && g.Lifecycle == domain.LifecycleActive {
+			out = append(out, riskOverdueGoal{Goal: g, Days: d})
+		}
+	}
+	return out
 }
 
 // riskGoalRow is one flagged Goal on the Risks page with every signal that
@@ -620,9 +654,11 @@ func (r riskGoalRow) fix(current domain.Account, delegate bool, nudged *domain.N
 // riskSignal is one reason a Goal is flagged. Kind names the signal, as the
 // chip's data-kind on the Risks page. Days is how long the signal has held: for
 // "stale" the days since the last update, for "path-overdue" the days past
-// the Path to Green's target date, for "schedule-conflicts" the days the
-// child's delivery date falls after the parent's, and 0 otherwise. Related is
-// the parent for "schedule-conflicts" and "halted-parents".
+// the Path to Green's target date, for "action-item-overdue" the days the most
+// overdue Action Item about the Goal is past its due date, for
+// "schedule-conflicts" the days the child's delivery date falls after the
+// parent's, and 0 otherwise. Related is the parent for "schedule-conflicts"
+// and "halted-parents".
 type riskSignal struct {
 	Kind    string
 	Days    int
@@ -650,6 +686,9 @@ func (s *Server) riskRows(ctx context.Context, v risksView) ([]riskGoalRow, erro
 	}
 	for _, gf := range v.OverduePaths {
 		add(gf.Goal, riskSignal{Kind: "path-overdue", Days: calendarDays(gf.Freshness.PathTargetDate, today)})
+	}
+	for _, og := range v.OverdueActionItems {
+		add(og.Goal, riskSignal{Kind: "action-item-overdue", Days: og.Days})
 	}
 	for _, g := range v.Ownerless {
 		add(g, riskSignal{Kind: "ownerless"})

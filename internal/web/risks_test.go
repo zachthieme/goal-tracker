@@ -2063,3 +2063,49 @@ func TestRisksScheduleConflictDateReadsAsTheGoalPageDoes(t *testing.T) {
 		}
 	}
 }
+
+// raiseRiskActionItem has author, who saves and publishes a Report covering
+// goal, raise an Action Item about it, or about the whole Report for a zero
+// goal, owned by owner and due dueInDays from today, so a negative dueInDays
+// is already overdue.
+func raiseRiskActionItem(t *testing.T, h *testsupport.Harness, author domain.Account, goal domain.Goal, owner domain.Account, text string, dueInDays int) domain.ActionItem {
+	t.Helper()
+	in := domain.SaveReportDefinitionInput{Name: "MBR · " + text, Mode: domain.ReportModePicked}
+	if goal.ID != 0 {
+		in.Picked = []int64{goal.ID}
+	}
+	pub := h.PublishReport(author, h.SaveReportDefinition(author, in))
+	item, err := h.Service.RaiseActionItem(t.Context(), author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, GoalID: goal.ID, Text: text, OwnerID: owner.ID, DueDate: h.Clock.Now().AddDate(0, 0, dueInDays),
+	})
+	if err != nil {
+		t.Fatalf("RaiseActionItem %q: %v", text, err)
+	}
+	return item
+}
+
+// A Green Goal with an Action Item two days past its due date is on the Risks
+// page with a chip, drawn like Path to Green overdue's, saying how long, and
+// its Health is still Green: an overdue Action Item doesn't change a Goal's
+// Health.
+func TestRisksPageListsGoalsWithOverdueActionItems(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	launch := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Launch in EU", "Expand the market."))
+	h.Checkin(sam, launch.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	raiseRiskActionItem(t, h, ada, launch, sam, "Book the legal review.", -2)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	row := riskRowOf(t, page, launch)
+	if chip := riskChip(t, row, "action-item-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Action Item 2 days overdue") {
+		t.Errorf("overdue Action Item chip is not a Stale-colored badge saying 2 days overdue: %s", chip)
+	}
+	if health := pageElement(t, row, "span", "risk-health"); !strings.Contains(openTag(health), `class="badge g"`) {
+		t.Errorf("row doesn't show the Goal's Green Health: %s", health)
+	}
+}
