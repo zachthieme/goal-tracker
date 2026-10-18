@@ -1651,9 +1651,9 @@ func overdueGreenGoal(h *testsupport.Harness, owner domain.Account) domain.Goal 
 	return goal
 }
 
-// The Goal page's No change posts with htmx; a refusal comes back as the whole
-// Check-in page with 200, so htmx swaps it in, and the Check-in page's URL is
-// pushed so the address bar matches what the person sees (#103).
+// A No change refused over htmx comes back as the whole Check-in page with 200,
+// so htmx swaps it in, and the Check-in page's URL is pushed so the address bar
+// matches what the person sees (#103).
 func TestNoChangeRefusedOverHtmxSwapsInCheckinPage(t *testing.T) {
 	t.Parallel()
 
@@ -1663,14 +1663,7 @@ func TestNoChangeRefusedOverHtmxSwapsInCheckinPage(t *testing.T) {
 	goal := overdueGreenGoal(h, sam)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	goalPage := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	button := tagAround(t, goalPage, `data-testid="no-change-checkin"`)
-	action := fmt.Sprintf("/goals/%d/checkins/no-change", goal.ID)
-	if !strings.Contains(button, `hx-post="`+action+`"`) {
-		t.Fatalf("the Goal page's No change does not post with htmx to %s: %s", action, button)
-	}
-
-	resp, page := postNoChange(t, client, ts.URL+action, true)
+	resp, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), true)
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("htmx status = %d, want 200 so htmx swaps the page in", resp.StatusCode)

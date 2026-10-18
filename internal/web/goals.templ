@@ -791,7 +791,7 @@ templ goalHead(v goalView, owner, admin bool) {
 		<div data-testid="goal-actions" class="gp-actions">
 			if v.CanCheckin && (g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold) {
 				<a class="btn primary" data-testid="checkin-link" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", g.ID)) }>Check in</a>
-				if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
+				if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil && v.NoChangeRefusal == "" {
 					@noChangeCheckinButton(g.ID, "No change", "btn quiet")
 				}
 			}
