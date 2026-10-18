@@ -1262,6 +1262,25 @@ func TestBuilderOffersTheOrgOnlyWhenAnyoneHasAManagerOverHTTP(t *testing.T) {
 	}
 }
 
+// A self-reference, as a directory can give (ADR 0008), puts no one under its
+// person, so as the only Manager it doesn't make the builder offer the
+// Owner's org.
+func TestBuilderOffersNoOrgForASelfReferenceOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	vp := h.SignInNamed("vp@example.com", "Priya Raman")
+	h.SetManager(vp, vp)
+	h.ActiveGoal(vp, "Grow revenue", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "vp@example.com")
+
+	attribute := pageElement(t, pageElement(t, getBody(t, client, ts.URL+"/reports/new"), "form", "report-builder"), "select", "rule-attribute")
+	if strings.Contains(attribute, reportOrgAttributeLabel) {
+		t.Errorf("with only a self-referencing Manager, the attribute select offers the Owner's org:\n%s", attribute)
+	}
+}
+
 // reportOrgAttributeLabel is the Owner's org attribute's label as the builder's HTML
 // escapes it.
 var reportOrgAttributeLabel = html.EscapeString("Owner's org")

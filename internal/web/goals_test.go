@@ -1110,6 +1110,32 @@ func TestGoalListOffersNoOrgWithoutManagers(t *testing.T) {
 	}
 }
 
+// Whether the Goals pages offer Orgs is the company's answer, not the viewer's:
+// with Vera managing Mia, Oz, who has no Manager and no one under them, can
+// open a link to Vera's org though no Goal on the page has an Owner with a
+// Manager, and sees it scoped and chosen.
+func TestGoalListScopesAnOrgLinkForAViewerOutsideAnyOrg(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	vera := h.SignInNamed("vera@example.com", "Vera Vance")
+	mia := h.SignInNamed("mia@example.com", "Mia Moss")
+	oz := h.SignInNamed("oz@example.com", "Oz Ortiz")
+	h.SetManager(mia, vera)
+	veraGoal := h.ActiveGoal(vera, "Vera's goal", "It matters.")
+	ozGoal := h.ActiveGoal(oz, "Oz's goal", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "oz@example.com")
+
+	page := getBody(t, client, scopeOrgURL(ts.URL, "/goals", vera))
+	if got, want := rowTitles(goalRows(t, page), veraGoal, ozGoal), []string{"Vera's goal"}; !slices.Equal(got, want) {
+		t.Errorf("Oz in Vera's org: rows = %q, want %q", got, want)
+	}
+	if _, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != strconv.FormatInt(vera.ID, 10) || label != "Vera Vance (vera@example.com)" {
+		t.Errorf("Oz in Vera's org: the Scope select shows %q %q chosen, want Vera's org", value, label)
+	}
+}
+
 // The Dimension filters and Group by fold under More filters, which opens when
 // either is set; grouping gives each value its own table section headed by a
 // row naming it, sorted problems first within.

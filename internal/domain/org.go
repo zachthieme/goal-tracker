@@ -49,3 +49,20 @@ func (s *Service) HasAnyoneUnder(ctx context.Context, personID int64) (bool, err
 	}
 	return false, nil
 }
+
+// AnyoneHasManager reports whether anyone has a Manager other than themselves,
+// so an Org can hold more than its person (CONTEXT.md: Org). A self-reference,
+// as a directory can say, isn't one; a Departed person keeps their Manager, so
+// counts (ADR 0008).
+func (s *Service) AnyoneHasManager(ctx context.Context) (bool, error) {
+	managed, err := s.queries.ListManagedAccounts(ctx)
+	if err != nil {
+		return false, fmt.Errorf("list managed accounts: %w", err)
+	}
+	for _, row := range managed {
+		if *row.ManagerID != row.ID {
+			return true, nil
+		}
+	}
+	return false, nil
+}

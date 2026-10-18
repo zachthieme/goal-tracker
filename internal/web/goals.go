@@ -429,21 +429,29 @@ type pageOrgScope struct {
 	OffersMine bool
 	// People are the others whose Org the page offers, by Label: every Owner
 	// of a Goal and everyone above them, whose Orgs are the ones holding
-	// Goals. It is empty when no one has a Manager.
+	// Goals. It is empty when no one has a Manager other than themselves
+	// (Service.AnyoneHasManager), whoever is looking.
 	People []domain.Account
 }
 
 // loadPageOrgScope reads raw, a ?org= Account ID, into the scope current sees
-// over goals. A malformed ID, or one naming no one, scopes nothing, as does
-// any ID when no one has a Manager: the page then offers no Org, so has no
-// control to undo it.
+// over goals. Whether the page offers Orgs is the company's answer, the same
+// for every viewer: whether anyone has a Manager other than themselves. When
+// no one does, any ID scopes nothing: the page then offers no Org, so has no
+// control to undo it. Otherwise a malformed ID, or one naming no one, scopes
+// nothing.
 func (s *Server) loadPageOrgScope(ctx context.Context, raw string, current domain.Account, goals []domain.Goal) (pageOrgScope, error) {
 	scope := pageOrgScope{Viewer: current}
-	var err error
+	managed, err := s.svc.AnyoneHasManager(ctx)
+	if err != nil {
+		return pageOrgScope{}, err
+	}
+	if !managed {
+		return scope, nil
+	}
 	if scope.OffersMine, err = s.svc.HasAnyoneUnder(ctx, current.ID); err != nil {
 		return pageOrgScope{}, err
 	}
-	managed := scope.OffersMine || current.ManagerID != nil
 	// Each Owner, then their Manager and on up, stopping at anyone reached: the
 	// directory's cycles are stored as it gives them (ADR 0008).
 	reached := map[int64]bool{}
@@ -454,14 +462,10 @@ func (s *Server) loadPageOrgScope(ctx context.Context, raw string, current domai
 			if a.ManagerID == nil {
 				break
 			}
-			managed = true
 			if a, err = s.svc.Account(ctx, *a.ManagerID); err != nil {
 				return pageOrgScope{}, err
 			}
 		}
-	}
-	if !managed {
-		return pageOrgScope{Viewer: current}, nil
 	}
 	scope.People = slices.DeleteFunc(scope.People, func(a domain.Account) bool { return a.ID == current.ID })
 	slices.SortFunc(scope.People, func(a, b domain.Account) int {
