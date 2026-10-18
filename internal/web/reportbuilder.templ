@@ -276,7 +276,8 @@ templ reportGoalSearchResults(list string, matches []domain.Goal) {
 }
 
 // reportBuilderScript turns the builder to script: each rule row offers only
-// its attribute's values and operators, each picker searches in place of its
+// its attribute's values and operators, and shows its first selected value on
+// load, each picker searches in place of its
 // no-script select, adding a chip when a result is picked and removing one at
 // its ×, and either refreshes the rail.
 templ reportBuilderScript() {
@@ -310,7 +311,19 @@ templ reportBuilderScript() {
 					if (!mine) group.querySelectorAll("option").forEach(function (o) { o.selected = false; });
 				});
 			}
+			// reveal scrolls a row's values to its first selected one, top of
+			// the list, moving only the list: left to itself, the browser sets
+			// it on the list's bottom edge, where it can sit half out of view.
+			function reveal(row) {
+				var values = row.querySelector('[data-testid="rule-values"]');
+				var first = values && values.selectedOptions[0];
+				if (!first || values.hidden) return;
+				values.scrollTop += first.getBoundingClientRect().top - values.getBoundingClientRect().top - values.clientTop;
+			}
 			form.querySelectorAll("[data-rule]").forEach(narrow);
+			form.querySelectorAll("[data-rule]").forEach(reveal);
+			// A web font that loads late changes each option's height.
+			if (document.fonts) document.fonts.ready.then(function () { form.querySelectorAll("[data-rule]").forEach(reveal); });
 			form.addEventListener("change", function (e) {
 				if (e.target.matches('[data-testid="rule-attribute"]')) narrow(e.target.closest("[data-rule]"));
 			});

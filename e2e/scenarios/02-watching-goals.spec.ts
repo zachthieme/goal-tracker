@@ -197,6 +197,26 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
   let ruleReport = 0;
   let pickedReport = 0;
 
+  await test.step("New starts with the manager's own org, in view in its value list", async () => {
+    const [me] = seedLookup<{ id: number }>("select id from accounts where email = ?", manager);
+    // The cut-off was seen at both widths (ticket #314).
+    for (const width of [1280, 390]) {
+      await page.setViewportSize({ width, height: 720 });
+      await page.goto("/reports/new");
+      const values = page.getByTestId("report-rule").first().getByTestId("rule-values");
+      const checked = values.locator("option:checked");
+      await expect(checked).toHaveAttribute("value", `org=${me.id}`);
+      // It worked if: the selected author shows wholly inside the list.
+      const list = (await values.boundingBox())!;
+      const option = (await checked.boundingBox())!;
+      expect(option.y, `at ${width}px the author's top is inside the list`).toBeGreaterThanOrEqual(list.y);
+      expect(option.y + option.height, `at ${width}px the author's bottom is inside the list`).toBeLessThanOrEqual(
+        list.y + list.height,
+      );
+    }
+    await page.setViewportSize({ width: 1280, height: 720 });
+  });
+
   await test.step("1 A rule Report lists the team's Goals, less those finished before the baseline", async () => {
     const { inReport, finishedEarlier } = growthGoals(seedLookup, app.now());
     expect(finishedEarlier.length, "the seed has a Growth Goal finished more than 30 days ago").toBeGreaterThan(0);
