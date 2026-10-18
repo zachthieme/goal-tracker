@@ -612,7 +612,9 @@ func fixRiskRows(current domain.Account, rows []riskGoalRow, facts riskFixFacts)
 //  6. Open parent, for a Goal under a halted parent: the first by title;
 //  7. Suggest a parent, for an Unaligned Goal current doesn't Own, a Delegate
 //     on it included (CONTEXT.md: Parent suggestion);
-//  8. Open Goal, for anything else, a Stale Goal nobody can check in on among
+//  8. See Action Items, the Goal page's, for a Goal with an overdue Action
+//     Item;
+//  9. Open Goal, for anything else, a Stale Goal nobody can check in on among
 //     them.
 func (r riskGoalRow) fix(current domain.Account, delegate bool, nudged *domain.Nudge, unreachable bool) riskFix {
 	goal := fmt.Sprintf("/goals/%d", r.Goal.ID)
@@ -647,6 +649,9 @@ func (r riskGoalRow) fix(current domain.Account, delegate bool, nudged *domain.N
 	}
 	if _, unaligned := r.signal("unaligned"); unaligned {
 		return riskFix{Label: "Suggest a parent", Href: goal + "/suggest-parent"}
+	}
+	if _, overdue := r.signal("action-item-overdue"); overdue {
+		return riskFix{Label: "See Action Items", Href: goal + "#action-items"}
 	}
 	return riskFix{Label: "Open Goal", Href: goal}
 }
@@ -740,8 +745,9 @@ func riskHealthRank(health string) int {
 
 // sortRiskRows puts the worst-off Goals first, key by key: Ownerless first;
 // then by Health (riskHealthRank); then a Path to Green overdue first, longest
-// overdue first; then Stale first, furthest past its cadence first; then by
-// title, ignoring case. The structural signals don't move a row.
+// overdue first; then an overdue Action Item first, longest overdue first;
+// then Stale first, furthest past its cadence first; then by title, ignoring
+// case. The structural signals don't move a row.
 func sortRiskRows(rows []riskGoalRow) {
 	slices.SortStableFunc(rows, func(a, b riskGoalRow) int {
 		_, aOwnerless := a.signal("ownerless")
@@ -758,6 +764,14 @@ func sortRiskRows(rows []riskGoalRow) {
 			return c
 		}
 		if c := cmp.Compare(bPath.Days, aPath.Days); c != 0 {
+			return c
+		}
+		aItem, aItemOverdue := a.signal("action-item-overdue")
+		bItem, bItemOverdue := b.signal("action-item-overdue")
+		if c := cmp.Compare(boolRank(!aItemOverdue), boolRank(!bItemOverdue)); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(bItem.Days, aItem.Days); c != 0 {
 			return c
 		}
 		aStale, aIsStale := a.signal("stale")

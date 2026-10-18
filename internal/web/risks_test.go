@@ -2064,6 +2064,15 @@ func TestRisksScheduleConflictDateReadsAsTheGoalPageDoes(t *testing.T) {
 	}
 }
 
+// riskSignalKinds lists the kinds of a row's signal chips, in order.
+func riskSignalKinds(row string) []string {
+	var out []string
+	for _, m := range regexp.MustCompile(`data-testid="risk-signal" data-kind="([^"]+)"`).FindAllStringSubmatch(row, -1) {
+		out = append(out, m[1])
+	}
+	return out
+}
+
 // raiseRiskActionItem has author, who saves and publishes a Report covering
 // goal, raise an Action Item about it, or about the whole Report for a zero
 // goal, owned by owner and due dueInDays from today, so a negative dueInDays
@@ -2107,5 +2116,31 @@ func TestRisksPageListsGoalsWithOverdueActionItems(t *testing.T) {
 	}
 	if health := pageElement(t, row, "span", "risk-health"); !strings.Contains(openTag(health), `class="badge g"`) {
 		t.Errorf("row doesn't show the Goal's Green Health: %s", health)
+	}
+}
+
+// A row flagged only for an overdue Action Item has one Fix, See Action
+// Items, linking to its Goal page's Action Items.
+func TestRiskFixOnAnOverdueActionItemIsSeeActionItems(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	launch := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Launch in EU", "Expand the market."))
+	raiseRiskActionItem(t, h, ada, launch, sam, "Book the legal review.", -2)
+
+	for _, who := range []string{"sam@example.com", "ada@example.com"} {
+		page := getBody(t, signInClient(t, ts.URL, who), ts.URL+"/risks?org=all")
+
+		row := riskRowOf(t, page, launch)
+		if got := riskSignalKinds(row); !slices.Equal(got, []string{"action-item-overdue"}) {
+			t.Fatalf("%s: row's signals = %q, want only action-item-overdue", who, got)
+		}
+		label, href, primary := riskFix(t, row)
+		if want := "/goals/" + strconv.FormatInt(launch.ID, 10) + "#action-items"; label != "See Action Items" || href != want || primary {
+			t.Errorf("%s: Fix = %q → %q (primary %v), want See Action Items → %q", who, label, href, primary, want)
+		}
 	}
 }
