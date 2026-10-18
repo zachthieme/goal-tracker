@@ -29,16 +29,18 @@
 // For each shot it saves <out>/<name>.png and prints the page's status and
 // title, the theme pin, horizontal overflow, the focused element, any toast,
 // and any dialog that opened. It drives the Chromium already on the machine
-// over the DevTools protocol, so nothing needs installing; set CHROME to its
-// path if it isn't found. Exits 1 if any shot failed to load, sign in or run
-// its action, or ended on an HTTP status other than its status (without one,
-// on 400 or more; a status that can't be read never fails). Exits 2 if the
-// arguments or a shot are invalid. node --test scripts/*.test.mjs tests the
+// over the DevTools protocol, so nothing needs installing: $CHROME, else a
+// Chrome-family browser on PATH, else the newest Chromium Playwright installed
+// under $PLAYWRIGHT_BROWSERS_PATH or ~/.cache/ms-playwright, else the macOS
+// app bundles. Exits 1 if any shot failed to load, sign in or run its action,
+// or ended on an HTTP status other than its status (without one, on 400 or
+// more; a status that can't be read never fails). Exits 2 if the arguments or
+// a shot are invalid. node --test scripts/*.test.mjs tests the
 // parts that don't need a browser, and takes a shot where Chromium is found.
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Script } from "node:vm";
@@ -134,17 +136,37 @@ function fail(message) {
 }
 
 // findChrome is the Chromium to drive: $CHROME, else the first browser of the
-// Chrome family on PATH, else the macOS app bundles.
+// Chrome family on PATH, else the newest Chromium Playwright installed under
+// $PLAYWRIGHT_BROWSERS_PATH or ~/.cache/ms-playwright, else the macOS app
+// bundles.
 function findChrome() {
   if (process.env.CHROME) return process.env.CHROME;
   const names = ["chromium", "chromium-browser", "google-chrome-stable", "google-chrome", "chrome", "chrome-headless-shell", "microsoft-edge"];
   for (const dir of (process.env.PATH ?? "").split(delimiter)) {
     for (const name of names) if (dir && existsSync(join(dir, name))) return join(dir, name);
   }
+  for (const root of [process.env.PLAYWRIGHT_BROWSERS_PATH, join(homedir(), ".cache", "ms-playwright")]) {
+    const chrome = root && playwrightChrome(root);
+    if (chrome) return chrome;
+  }
   for (const app of ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium"]) {
     if (existsSync(app)) return app;
   }
-  fail("no Chromium found; set CHROME to its path");
+  fail("no Chromium found on PATH or under PLAYWRIGHT_BROWSERS_PATH; set CHROME to its path");
+}
+
+// playwrightChrome is the Chromium that Playwright installed under root, a
+// browsers directory such as $PLAYWRIGHT_BROWSERS_PATH: the
+// chromium-<rev>/chrome-linux64/chrome with the highest revision, or undefined
+// if there is none.
+export function playwrightChrome(root) {
+  if (!existsSync(root)) return undefined;
+  const revision = (dir) => Number(dir.slice("chromium-".length));
+  const dirs = readdirSync(root).filter((d) => /^chromium-\d+$/.test(d));
+  for (const dir of dirs.sort((a, b) => revision(b) - revision(a))) {
+    const chrome = join(root, dir, "chrome-linux64", "chrome");
+    if (existsSync(chrome)) return chrome;
+  }
 }
 
 // launch starts headless Chromium and resolves to it and its DevTools
@@ -155,7 +177,9 @@ async function launch(chrome, sandbox = true) {
   const flags = ["--headless", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--hide-scrollbars",
     "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--disable-extensions", "--mute-audio"];
   if (!sandbox) flags.push("--no-sandbox");
-  const proc = spawn(chrome, [...flags, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
+  // Chromium runs in its profile, so a core file it dumps lands there and not
+  // in the directory the script ran from.
+  const proc = spawn(chrome, [...flags, "about:blank"], { cwd: profile, stdio: ["ignore", "ignore", "pipe"] });
   const exited = new Promise((r) => proc.on("exit", r));
   let stderr = "";
   const ws = await new Promise((done, failed) => {
@@ -170,7 +194,13 @@ async function launch(chrome, sandbox = true) {
   const stop = async () => {
     proc.kill();
     await exited;
-    rmSync(profile, { recursive: true, force: true, maxRetries: 5 });
+    // Chromium's children can still be writing the profile, so removing it
+    // can fail; that leaves it behind but doesn't fail the shots.
+    try {
+      rmSync(profile, { recursive: true, force: true, maxRetries: 5 });
+    } catch (err) {
+      console.error(`shots.mjs: couldn't remove the Chromium profile ${profile}: ${err.code ?? err.message}`);
+    }
   };
   if (ws) return { ws, stop };
   await stop();

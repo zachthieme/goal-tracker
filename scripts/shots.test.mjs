@@ -3,14 +3,14 @@
 //   node --test scripts/*.test.mjs
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { inflateSync } from "node:zlib";
 
-import { captureParams, formatReport, normalise, statusProblem, wrapAction } from "./shots.mjs";
+import { captureParams, formatReport, normalise, playwrightChrome, statusProblem, wrapAction } from "./shots.mjs";
 
 test("a shot's status must be an integer", () => {
   assert.throws(() => normalise({ path: "/goals", status: "404" }, 0), /shot 1: status must be an integer/);
@@ -91,6 +91,39 @@ test("an action that mentions await only in a string, comment, regex or name run
   ]) {
     assert.equal(wrapAction(action), action);
   }
+});
+
+// browsersDir is a temporary Playwright browsers directory holding a Chromium
+// binary under each of dirs, as chromium-<rev>/chrome-linux64/chrome.
+function browsersDir(t, dirs) {
+  const root = mkdtempSync(join(tmpdir(), "shots-browsers-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (const dir of dirs) {
+    mkdirSync(join(root, dir, "chrome-linux64"), { recursive: true });
+    writeFileSync(join(root, dir, "chrome-linux64", "chrome"), "");
+  }
+  return root;
+}
+
+test("the Playwright Chromium is the newest one installed", (t) => {
+  const root = browsersDir(t, ["chromium-1200", "chromium-1243"]);
+  assert.equal(playwrightChrome(root), join(root, "chromium-1243", "chrome-linux64", "chrome"));
+});
+
+test("Playwright Chromium revisions compare as numbers", (t) => {
+  const root = browsersDir(t, ["chromium-999", "chromium-1243"]);
+  assert.equal(playwrightChrome(root), join(root, "chromium-1243", "chrome-linux64", "chrome"));
+});
+
+test("Playwright's headless shell isn't taken for its Chromium", (t) => {
+  const root = browsersDir(t, ["chromium-1200", "chromium-1243", "chromium_headless_shell-1300"]);
+  assert.equal(playwrightChrome(root), join(root, "chromium-1243", "chrome-linux64", "chrome"));
+});
+
+test("no Playwright Chromium is found in an empty or missing directory", (t) => {
+  const root = browsersDir(t, []);
+  assert.equal(playwrightChrome(root), undefined);
+  assert.equal(playwrightChrome(join(root, "missing")), undefined);
 });
 
 const facts = {

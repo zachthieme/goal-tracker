@@ -33,7 +33,12 @@ the facts a reviewer checks without opening the image: the theme pin,
 horizontal overflow, the focused element, any toast, and any dialog that
 opened (a native `confirm()` or an in-page dialog). It drives the Chromium
 already on the machine over the DevTools protocol, so there's nothing to
-install. Set `CHROME` to the browser's path if it isn't on `PATH`.
+install. It drives `$CHROME` if that's set, else the first Chrome-family
+browser on `PATH`, else the newest Chromium that Playwright installed under
+`$PLAYWRIGHT_BROWSERS_PATH` or `~/.cache/ms-playwright`, else Chrome or
+Chromium from `/Applications` on macOS. A run's exit code depends only on its
+shots: if Chromium's temporary profile can't be removed afterwards, it warns
+and leaves that directory behind.
 
 ```sh
 node scripts/shots.mjs "$(scripts/scratch-app url)" '[
