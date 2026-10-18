@@ -18,15 +18,6 @@ func (q *Queries) ClearFailedSignins(ctx context.Context, accountID int64) error
 	return err
 }
 
-const deletePasswordLink = `-- name: DeletePasswordLink :exec
-DELETE FROM password_links WHERE account_id = ?
-`
-
-func (q *Queries) DeletePasswordLink(ctx context.Context, accountID int64) error {
-	_, err := q.db.ExecContext(ctx, deletePasswordLink, accountID)
-	return err
-}
-
 const getAccountPassword = `-- name: GetAccountPassword :one
 SELECT account_id, password_hash, failed_signins, locked_until FROM account_passwords WHERE account_id = ?
 `
@@ -107,4 +98,18 @@ type UpsertPasswordLinkParams struct {
 func (q *Queries) UpsertPasswordLink(ctx context.Context, arg UpsertPasswordLinkParams) error {
 	_, err := q.db.ExecContext(ctx, upsertPasswordLink, arg.AccountID, arg.TokenHash, arg.ExpiresAt)
 	return err
+}
+
+const useUpPasswordLink = `-- name: UseUpPasswordLink :execrows
+DELETE FROM password_links WHERE token_hash = ?
+`
+
+// Deletes the set-password link with the token hash, reporting whether there
+// was one, so of two uses of a link only one finds it.
+func (q *Queries) UseUpPasswordLink(ctx context.Context, tokenHash string) (int64, error) {
+	result, err := q.db.ExecContext(ctx, useUpPasswordLink, tokenHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
 }

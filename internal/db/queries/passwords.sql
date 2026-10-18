@@ -6,8 +6,10 @@ ON CONFLICT (account_id) DO UPDATE SET token_hash = excluded.token_hash, expires
 -- name: GetPasswordLink :one
 SELECT * FROM password_links WHERE token_hash = ?;
 
--- name: DeletePasswordLink :exec
-DELETE FROM password_links WHERE account_id = ?;
+-- name: UseUpPasswordLink :execrows
+-- Deletes the set-password link with the token hash, reporting whether there
+-- was one, so of two uses of a link only one finds it.
+DELETE FROM password_links WHERE token_hash = ?;
 
 -- name: GetAccountPassword :one
 -- An Account's password and failed sign-ins; no row means no password.

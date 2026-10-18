@@ -128,8 +128,12 @@ func (s *Service) SetPassword(ctx context.Context, token, password string) (Acco
 		if err := tx.queries.SetAccountPassword(ctx, db.SetAccountPasswordParams{AccountID: acc.ID, PasswordHash: &hash}); err != nil {
 			return fmt.Errorf("store password: %w", err)
 		}
-		if err := tx.queries.DeletePasswordLink(ctx, acc.ID); err != nil {
+		used, err := tx.queries.UseUpPasswordLink(ctx, passwordLinkHash(token))
+		if err != nil {
 			return fmt.Errorf("use up password link: %w", err)
+		}
+		if used == 0 { // used, or replaced, since it was checked
+			return ErrLinkInvalid
 		}
 		return tx.EndSessions(ctx, acc.ID)
 	})

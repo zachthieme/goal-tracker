@@ -2,7 +2,9 @@ package domain_test
 
 import (
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -306,5 +308,29 @@ func TestADepartedPersonsPasswordSignInSaysTheyDeparted(t *testing.T) {
 	}
 	if _, err := h.Service.PasswordSignIn(t.Context(), "sam@example.com", "not sam's password"); !errors.Is(err, domain.ErrBadCredentials) {
 		t.Errorf("a wrong password: %v, want ErrBadCredentials", err)
+	}
+}
+
+// Of two uses of one set-password link at once, only one sets the password.
+func TestASetPasswordLinkUsedTwiceAtOnceWorksOnce(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	token := issueLink(t, h, "sam@example.com")
+
+	var wg sync.WaitGroup
+	results := make([]error, 2)
+	for i := range results {
+		wg.Go(func() {
+			_, results[i] = h.Service.SetPassword(t.Context(), token, fmt.Sprintf("password number %d", i))
+		})
+	}
+	wg.Wait()
+
+	if results[0] == nil && results[1] == nil {
+		t.Fatal("both uses of the link set the password")
+	}
+	if results[0] != nil && results[1] != nil {
+		t.Fatalf("neither use of the link set the password: %v; %v", results[0], results[1])
 	}
 }
