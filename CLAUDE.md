@@ -34,6 +34,9 @@ foreground and read each to the end; `make test` takes about 50 seconds. Never
 background a gate and wait for it. **Commit before you end your turn.** A
 campaign run is a single turn, so a turn that ends waiting on a background job,
 or with work uncommitted, parks the issue as "stalled, no-commit".
+Never run `git worktree add`, `remove` or `prune`, or export `GIT_DIR`: in a
+campaign container the host's `.git` is shared, and `prune` there deletes every
+other agent's worktree (jjforge/vetinari#494).
 
 `make e2e` runs the Playwright suite in `e2e/` over a freshly seeded app (see
 `e2e/README.md`). It isn't a gate.
