@@ -96,7 +96,7 @@ func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, curren
 type goalsListData struct {
 	Rows   []goalRow
 	Filter goalFilter
-	// Org is the Org the list is scoped to (?org=), and the Orgs it
+	// Org is the Scope the list is scoped to (?org=), and the Orgs it
 	// offers.
 	Org        pageOrgScope
 	Dimensions []domain.Dimension
@@ -129,15 +129,15 @@ func goalCount(n int) string {
 // filtered reports whether any filter is narrowing the list, so an empty list
 // says nothing matches rather than that there are no Goals.
 func (v goalsListData) filtered() bool {
-	return len(v.Selected) > 0 || v.Filter != goalFilter{} || v.Org.Of != nil
+	return len(v.Selected) > 0 || v.Filter != goalFilter{} || v.Org.Name() != ""
 }
 
 // noMatch is what the list says when its filters leave no Goal, naming the
-// Org it is scoped to: "No Goals match.", "No Goals in My org.", or "No
-// Goals in My org match." under another filter too.
+// Scope it is scoped to: "No Goals match.", "No Goals in My org.", "No Goals
+// in Mine.", or "No Goals in My org match." under another filter too.
 func (v goalsListData) noMatch() string {
 	switch {
-	case v.Org.Of == nil:
+	case v.Org.Name() == "":
 		return "No Goals match."
 	case len(v.Selected) == 0 && v.Filter == goalFilter{}:
 		return "No Goals in " + v.Org.Name() + "."
@@ -166,9 +166,6 @@ type goalFilter struct {
 	// Lifecycle keeps the Goals in one Lifecycle (?lifecycle=). "" keeps every
 	// Lifecycle.
 	Lifecycle string
-	// Mine keeps the Goals the viewer Owns or is a Delegate on (?org=mine, or
-	// the older ?mine=1). It is false when the list is scoped to an org.
-	Mine bool
 	// Incomplete keeps the Incomplete Goals (?incomplete=1; CONTEXT.md:
 	// Incomplete).
 	Incomplete bool
@@ -193,24 +190,19 @@ var healthFilters = []struct{ Value, Health string }{
 	{"none", ""},
 }
 
-// readGoalFilter reads the filter bar's fields from the query string, Mine
-// from the Scope, which an org scope takes over from.
-func readGoalFilter(q url.Values, org pageOrgScope) goalFilter {
+// readGoalFilter reads the filter bar's fields, all but the Scope, from the
+// query string.
+func readGoalFilter(q url.Values) goalFilter {
 	return goalFilter{
 		Query:      strings.TrimSpace(q.Get("q")),
 		Health:     q.Get("health"),
 		Lifecycle:  q.Get("lifecycle"),
-		Mine:       scopedToMine(q, org),
 		Incomplete: q.Get("incomplete") == "1",
 	}
 }
 
-// keeps reports whether row passes the filter. mine reports whether the viewer
-// Owns the row's Goal or is a Delegate on it.
-func (f goalFilter) keeps(row goalRow, mine func(domain.Goal) bool) bool {
-	if f.Mine && !mine(row.Goal) {
-		return false
-	}
+// keeps reports whether row passes the filter.
+func (f goalFilter) keeps(row goalRow) bool {
 	if f.Query != "" {
 		q := strings.ToLower(f.Query)
 		owner := row.Goal.Owner
@@ -343,31 +335,23 @@ func (s *Server) goalsListView(r *http.Request, current domain.Account) (goalsLi
 			byDimension[dimID] = append(byDimension[dimID], id)
 		}
 	}
-	org, err := s.loadPageOrgScope(ctx, r.URL.Query().Get("org"), current, goalsOfValues(goals))
+	org, err := s.loadPageOrgScope(ctx, r.URL.Query(), current, goalsOfValues(goals))
 	if err != nil {
 		return goalsListData{}, err
 	}
 	goals = domain.FilterGoals(goals, byDimension)
-	filter := readGoalFilter(r.URL.Query(), org)
-	delegatedIDs := map[int64]bool{}
-	if filter.Mine {
-		delegated, err := s.svc.DelegatedGoals(ctx, current.ID)
-		if err != nil {
-			return goalsListData{}, err
-		}
-		for _, g := range delegated {
-			delegatedIDs[g.ID] = true
-		}
-	}
-	mine := func(g domain.Goal) bool { return g.Owner.ID == current.ID || delegatedIDs[g.ID] }
+	filter := readGoalFilter(r.URL.Query())
 
 	rows := make([]goalRow, 0, len(goals))
 	for _, gv := range goals {
+		if !org.keeps(gv.Goal) {
+			continue
+		}
 		row, err := s.loadGoalRow(ctx, gv)
 		if err != nil {
 			return goalsListData{}, err
 		}
-		if filter.keeps(row, mine) && org.keeps(row.Goal) {
+		if filter.keeps(row) {
 			rows = append(rows, row)
 		}
 	}
@@ -412,45 +396,49 @@ func goalsOfValues(gvs []domain.GoalWithValues) []domain.Goal {
 	return goals
 }
 
-// pageOrgScope is the Org a page of Goals is scoped to (?org=), by each
-// Goal's Owner and never its Delegates, and the Orgs the page offers to
-// scope to (CONTEXT.md: Org). An Org adds no access, only a way to find
-// Goals, so anyone may scope to anyone's (ADR 0002, ADR 0008). The Goals
-// pages and Risks share it.
+// pageOrgScope is the Scope of a page of Goals (?org=): Everyone, Mine, or
+// an Org, by each Goal's Owner and never its Delegates, and the Orgs the
+// page offers to scope to (CONTEXT.md: Org). An Org adds no access, only a
+// way to find Goals, so anyone may scope to anyone's (ADR 0002, ADR 0008).
+// An address naming no scope opens on the viewer's default: My org for
+// someone with anyone under them, Mine for everyone else. The Goals pages and
+// Risks share it.
 type pageOrgScope struct {
 	// Of is the person whose Org the page is scoped to, nil when it isn't.
 	Of *domain.Account
 	// in holds the Account IDs in Of's org.
 	in map[int64]bool
+	// Mine is whether the page is scoped to the Goals the viewer Owns or is
+	// a Delegate on, delegated holding the latter's IDs. It is false when
+	// the page is scoped to an Org.
+	Mine      bool
+	delegated map[int64]bool
+	// Default is whether the address named no scope, or one naming no one,
+	// so the page is on the viewer's default scope.
+	Default bool
 	// Viewer is who is looking, so their own Org reads as My org.
 	Viewer domain.Account
 	// OffersMine is whether the viewer has anyone under them, so My org is
 	// offered; with no one, it would be Mine without the Delegate Goals.
 	OffersMine bool
+	// managed is whether anyone has a Manager other than themselves
+	// (Service.AnyoneHasManager), so the page offers Orgs at all.
+	managed bool
 	// People are the others whose Org the page offers, by Label: every Owner
 	// of a Goal and everyone above them, whose Orgs are the ones holding
-	// Goals. It is empty when no one has a Manager other than themselves
-	// (Service.AnyoneHasManager), whoever is looking.
+	// Goals. It is empty when no one has a Manager other than themselves,
+	// whoever is looking.
 	People []domain.Account
 }
 
-// loadPageOrgScope reads raw, a ?org= Account ID, into the scope current sees
-// over goals. Whether the page offers Orgs is the company's answer, the same
-// for every viewer: whether anyone has a Manager other than themselves. When
-// no one does, any ID scopes nothing: the page then offers no Org, so has no
-// control to undo it. Otherwise a malformed ID, or one naming no one, scopes
-// nothing.
-func (s *Server) loadPageOrgScope(ctx context.Context, raw string, current domain.Account, goals []domain.Goal) (pageOrgScope, error) {
-	scope := pageOrgScope{Viewer: current}
-	managed, err := s.svc.AnyoneHasManager(ctx)
-	if err != nil {
-		return pageOrgScope{}, err
-	}
-	if !managed {
-		return scope, nil
-	}
-	if scope.OffersMine, err = s.svc.HasAnyoneUnder(ctx, current.ID); err != nil {
-		return pageOrgScope{}, err
+// loadPageOrgScope reads the Scope of the address q into the scope current
+// sees over goals, with the Orgs it offers. Whether the page offers Orgs is
+// the company's answer, the same for every viewer: whether anyone has a
+// Manager other than themselves.
+func (s *Server) loadPageOrgScope(ctx context.Context, q url.Values, current domain.Account, goals []domain.Goal) (pageOrgScope, error) {
+	scope, err := s.resolvePageOrgScope(ctx, q, current)
+	if err != nil || !scope.managed {
+		return scope, err
 	}
 	// Each Owner, then their Manager and on up, stopping at anyone reached: the
 	// directory's cycles are stored as it gives them (ADR 0008).
@@ -471,39 +459,91 @@ func (s *Server) loadPageOrgScope(ctx context.Context, raw string, current domai
 	slices.SortFunc(scope.People, func(a, b domain.Account) int {
 		return cmp.Or(cmp.Compare(strings.ToLower(a.Label()), strings.ToLower(b.Label())), cmp.Compare(a.Email, b.Email))
 	})
-	id, err := strconv.ParseInt(raw, 10, 64)
-	if err != nil {
-		return scope, nil
-	}
-	org, err := s.svc.Org(ctx, id)
-	if errors.Is(err, domain.ErrNotFound) {
-		return scope, nil
-	} else if err != nil {
+	return scope, nil
+}
+
+// resolvePageOrgScope reads the Scope of the address q for current, without
+// the Orgs it offers. A ?org= Account ID that names someone scopes to their
+// Org, taking over from the older ?mine=1. Otherwise ?org=all is Everyone,
+// and ?org=mine or ?mine=1 is Mine. Anything else, no ?org= or one that is
+// malformed or names no one, is the viewer's default (Default): My org when
+// they have anyone under them, else Mine. When no one has a Manager, any ID
+// names no one: the page then offers no Org, so has no control to undo it.
+func (s *Server) resolvePageOrgScope(ctx context.Context, q url.Values, current domain.Account) (pageOrgScope, error) {
+	scope := pageOrgScope{Viewer: current}
+	var err error
+	if scope.managed, err = s.svc.AnyoneHasManager(ctx); err != nil {
 		return pageOrgScope{}, err
 	}
-	scope.Of = &org[0]
-	scope.in = map[int64]bool{}
-	for _, a := range org {
-		scope.in[a.ID] = true
+	if scope.managed {
+		if scope.OffersMine, err = s.svc.HasAnyoneUnder(ctx, current.ID); err != nil {
+			return pageOrgScope{}, err
+		}
+	}
+	raw := q.Get("org")
+	if id, err := strconv.ParseInt(raw, 10, 64); err == nil && scope.managed {
+		if ok, err := scope.scopeToOrg(ctx, s.svc, id); err != nil || ok {
+			return scope, err
+		}
+	}
+	switch {
+	case raw == scopeEveryoneValue:
+		return scope, nil
+	case raw == scopeMineValue || q.Get("mine") == "1":
+	case scope.OffersMine:
+		scope.Default = true
+		_, err := scope.scopeToOrg(ctx, s.svc, current.ID)
+		return scope, err
+	default:
+		scope.Default = true
+	}
+	scope.Mine = true
+	delegated, err := s.svc.DelegatedGoals(ctx, current.ID)
+	if err != nil {
+		return pageOrgScope{}, fmt.Errorf("load delegated goals: %w", err)
+	}
+	scope.delegated = map[int64]bool{}
+	for _, g := range delegated {
+		scope.delegated[g.ID] = true
 	}
 	return scope, nil
+}
+
+// scopeToOrg scopes c to the Org of the person id names, reporting whether
+// it names anyone.
+func (c *pageOrgScope) scopeToOrg(ctx context.Context, svc *domain.Service, id int64) (bool, error) {
+	org, err := svc.Org(ctx, id)
+	if errors.Is(err, domain.ErrNotFound) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	c.Of = &org[0]
+	c.in = map[int64]bool{}
+	for _, a := range org {
+		c.in[a.ID] = true
+	}
+	return true, nil
 }
 
 // scopeMineValue is the ?org= scoping a page of Goals to Mine.
 const scopeMineValue = "mine"
 
-// scopedToMine reports whether the address q scopes its page to Mine: by
-// ?org=mine, or the older ?mine=1 that links and bookmarks still carry. An org
-// that resolves to someone takes over, so the page is scoped to one at a time.
-func scopedToMine(q url.Values, org pageOrgScope) bool {
-	return org.Of == nil && (q.Get("org") == scopeMineValue || q.Get("mine") == "1")
-}
+// scopeEveryoneValue is the ?org= scoping a page of Goals to Everyone.
+const scopeEveryoneValue = "all"
 
-// keeps reports whether g's Owner is in the scope's org, or the page isn't
-// scoped to one. An Ownerless Goal's Departed Owner keeps their Manager, so
-// the Goal stays in the Org its Owner was in.
+// keeps reports whether g is in the scope: its Owner is in the scope's Org,
+// the viewer Owns it or is a Delegate on it for Mine, or the scope is
+// Everyone. An Ownerless Goal's Departed Owner keeps their Manager, so the
+// Goal stays in the Org its Owner was in.
 func (c pageOrgScope) keeps(g domain.Goal) bool {
-	return c.Of == nil || c.in[g.Owner.ID]
+	switch {
+	case c.Of != nil:
+		return c.in[g.Owner.ID]
+	case c.Mine:
+		return g.Owner.ID == c.Viewer.ID || c.delegated[g.ID]
+	}
+	return true
 }
 
 // Offered reports whether the page offers any Org to scope to: not when no
@@ -521,17 +561,28 @@ func (c pageOrgScope) Others() []domain.Account {
 	return append([]domain.Account{*c.Of}, c.People...)
 }
 
-// Value is the ?org= the scope keeps in its page's address, "" for none.
+// Value is the ?org= the scope keeps in its page's address: "all" for
+// Everyone, "mine" for Mine, the ID of the person whose Org it is, or "" for
+// the viewer's default, which a bare address opens on.
 func (c pageOrgScope) Value() string {
-	if c.Of == nil {
+	switch {
+	case c.Default:
 		return ""
+	case c.Of != nil:
+		return strconv.FormatInt(c.Of.ID, 10)
+	case c.Mine:
+		return scopeMineValue
 	}
-	return strconv.FormatInt(c.Of.ID, 10)
+	return scopeEveryoneValue
 }
 
-// Name is the Org the page is scoped to, by whose it is: "My org" for the
-// viewer's own, "Priya Raman's org" for anyone else's.
+// Name is the scope by whose Goals it holds: "Mine", "My org" for the
+// viewer's own Org, "Priya Raman's org" for anyone else's, or "" for
+// Everyone.
 func (c pageOrgScope) Name() string {
+	if c.Mine {
+		return "Mine"
+	}
 	if c.Of == nil {
 		return ""
 	}
@@ -1888,6 +1939,15 @@ func (v goalsListData) queryURL(edit func(url.Values)) templ.SafeURL {
 		return "/goals"
 	}
 	return templ.SafeURL("/goals?" + q.Encode())
+}
+
+// everyoneURL links to the Goal list scoped to Everyone, keeping every other
+// filter.
+func (v goalsListData) everyoneURL() templ.SafeURL {
+	return v.queryURL(func(q url.Values) {
+		q.Set("org", scopeEveryoneValue)
+		q.Del("mine")
+	})
 }
 
 // downloadURL downloads the Goals this view's filters keep as CSV.

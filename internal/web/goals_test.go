@@ -988,8 +988,85 @@ func TestGoalListScopesToAnotherPersonsOrg(t *testing.T) {
 	}
 }
 
+// With no scope in its address the list opens on the viewer's default: My
+// org for someone with anyone under them, Mine for everyone else, each shown
+// chosen in the Scope select.
+func TestGoalListOpensOnTheViewersDefaultScope(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	org := newScopeOrgFixture(h)
+	ts := newServer(t, h)
+
+	mia := signInClient(t, ts.URL, "mia@example.com")
+	page := getBody(t, mia, ts.URL+"/goals")
+	if got, want := rowTitles(goalRows(t, page), org.goals()...), []string{"Mia's goal", "Pia's goal"}; !slices.Equal(got, want) {
+		t.Errorf("Mia's default: rows = %q, want %q", got, want)
+	}
+	if _, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != strconv.FormatInt(org.Mia.ID, 10) || label != "My org" {
+		t.Errorf("Mia's default: the Scope select shows %q %q chosen, want My org", value, label)
+	}
+	if count := pageElement(t, page, "p", "goal-count"); !strings.Contains(count, "2 Goals in My org") {
+		t.Errorf("Mia's default: the count doesn't name My org: %s", count)
+	}
+
+	pia := signInClient(t, ts.URL, "pia@example.com")
+	page = getBody(t, pia, ts.URL+"/goals")
+	if got, want := rowTitles(goalRows(t, page), org.goals()...), []string{"Pia's goal"}; !slices.Equal(got, want) {
+		t.Errorf("Pia's default: rows = %q, want %q", got, want)
+	}
+	if _, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != "mine" || label != "Mine" {
+		t.Errorf("Pia's default: the Scope select shows %q %q chosen, want Mine", value, label)
+	}
+}
+
+// An explicit Scope is never overridden by the default: ?org=all is Everyone,
+// ?org=mine is Mine and ?org=<id> that person's Org, for a viewer with
+// someone under them and one with no one alike. A malformed ?org=, or one
+// naming no one, gives the viewer's default, not Everyone.
+func TestGoalListKeepsAnExplicitScopeOverTheDefault(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	org := newScopeOrgFixture(h)
+	ts := newServer(t, h)
+	maxID := strconv.FormatInt(org.Max.ID, 10)
+
+	for _, viewer := range []struct {
+		email         string
+		defaultValue  string
+		defaultTitles []string
+		mine          string
+	}{
+		{"mia@example.com", strconv.FormatInt(org.Mia.ID, 10), []string{"Mia's goal", "Pia's goal"}, "Mia's goal"},
+		{"pia@example.com", "mine", []string{"Pia's goal"}, "Pia's goal"},
+	} {
+		client := signInClient(t, ts.URL, viewer.email)
+		for _, c := range []struct {
+			query, value string
+			titles       []string
+		}{
+			{"org=all", "all", []string{"Max's goal", "Mia's goal", "Oz's goal", "Pax's goal", "Pia's goal", "Vera's goal"}},
+			{"org=mine", "mine", []string{viewer.mine}},
+			{"org=" + maxID, maxID, []string{"Max's goal", "Pax's goal"}},
+			{"org=abc", viewer.defaultValue, viewer.defaultTitles},
+			{"org=999999", viewer.defaultValue, viewer.defaultTitles},
+			{"org=", viewer.defaultValue, viewer.defaultTitles},
+		} {
+			page := getBody(t, client, ts.URL+"/goals?"+c.query)
+			if got := rowTitles(goalRows(t, page), org.goals()...); !slices.Equal(got, c.titles) {
+				t.Errorf("%s, %s: rows = %q, want %q", viewer.email, c.query, got, c.titles)
+			}
+			if _, value, _ := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != c.value {
+				t.Errorf("%s, %s: the Scope select shows %q chosen, want %q", viewer.email, c.query, value, c.value)
+			}
+		}
+	}
+}
+
 // The org lives in the list's address, so it survives grouping, the layout
-// toggle and a reload; a ?org= naming no one, or malformed, lists everyone.
+// toggle and a reload; a ?org= naming no one, or malformed, lists the
+// viewer's default.
 func TestGoalListKeepsTheOrgInItsAddress(t *testing.T) {
 	t.Parallel()
 
@@ -1019,11 +1096,11 @@ func TestGoalListKeepsTheOrgInItsAddress(t *testing.T) {
 
 	for _, raw := range []string{"abc", "999999", ""} {
 		page := getBody(t, client, ts.URL+"/goals?org="+raw)
-		if got := rowTitles(goalRows(t, page), org.goals()...); len(got) != 6 {
-			t.Errorf("org=%q: rows = %q, want all 6", raw, got)
+		if got := rowTitles(goalRows(t, page), org.goals()...); !slices.Equal(got, []string{"Oz's goal"}) {
+			t.Errorf("org=%q: rows = %q, want Oz's default, Mine", raw, got)
 		}
-		if _, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != "" || label != "Everyone" {
-			t.Errorf("org=%q: Everyone isn't chosen: %q %q", raw, value, label)
+		if _, value, label := scopeChoices(scopeSelect(t, page, "goal-scope-filter")); value != "mine" || label != "Mine" {
+			t.Errorf("org=%q: Mine, Oz's default, isn't chosen: %q %q", raw, value, label)
 		}
 	}
 }
@@ -1066,6 +1143,77 @@ func TestGoalListSaysAnEmptyOrgIsEmpty(t *testing.T) {
 	page = getBody(t, client, scopeOrgURL(ts.URL, "/goals", lee)+"&health=red")
 	if empty := pageElement(t, page, "td", "no-goals"); !strings.Contains(empty, "No Goals in Lee Lund&#39;s org match.") {
 		t.Errorf("an empty org under another filter doesn't say so: %s", empty)
+	}
+}
+
+// Everyone is an explicit ?org=all: the Scope select submits it, Clear links
+// to it, and a page showing Everyone keeps it in the links that keep its
+// filters, since a bare /goals is the viewer's default.
+func TestGoalListNamesEveryoneAsOrgAll(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	newScopeOrgFixture(h)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "mia@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals?health=red")
+	if sel := scopeSelect(t, page, "goal-scope-filter"); !strings.Contains(sel, `<option value="all">Everyone</option>`) {
+		t.Errorf("the Scope select's Everyone doesn't submit org=all: %s", sel)
+	}
+	if clear := between(t, page, `<div class="gl-bar">`, "</div>"); !strings.Contains(clear, `<a href="/goals?org=all" class="btn quiet">Clear</a>`) {
+		t.Errorf("Clear doesn't link to Everyone: %s", clear)
+	}
+
+	page = getBody(t, client, ts.URL+"/goals?org=all")
+	for _, id := range []string{"layout-table", "layout-list"} {
+		if href := attr(openTag(pageElement(t, page, "a", id)), "href"); !strings.Contains(href, "org=all") {
+			t.Errorf("on Everyone, the %s link drops org=all: %s", id, href)
+		}
+	}
+}
+
+// An empty default scope says so, naming it, with a link to everyone's Goals
+// that keeps the list's other filters, in both layouts.
+func TestGoalListSaysAnEmptyDefaultIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	newScopeOrgFixture(h)
+	lee := h.SignInNamed("lee@example.com", "Lee Lund")
+	ned := h.SignInNamed("ned@example.com", "Ned Nash")
+	h.SetManager(ned, lee)
+	ts := newServer(t, h)
+
+	for _, c := range []struct{ email, empty string }{
+		{"lee@example.com", "No Goals in My org."},
+		{"ned@example.com", "No Goals in Mine."},
+	} {
+		client := signInClient(t, ts.URL, c.email)
+		for _, path := range []string{"/goals", "/goals?layout=table"} {
+			empty := pageElement(t, getBody(t, client, ts.URL+path), "td", "no-goals")
+			if !strings.Contains(empty, c.empty) {
+				t.Errorf("%s, %s: the empty default doesn't say %q: %s", c.email, path, c.empty, empty)
+			}
+			link := pageElement(t, empty, "a", "see-everyones")
+			if href, _ := url.Parse(html.UnescapeString(attr(openTag(link), "href"))); href.Path != "/goals" || href.Query().Get("org") != "all" || !strings.Contains(link, "See everyone's →") {
+				t.Errorf("%s, %s: the empty default's link isn't to everyone's Goals: %s", c.email, path, link)
+			}
+		}
+	}
+
+	lees := signInClient(t, ts.URL, "lee@example.com")
+	empty := pageElement(t, getBody(t, lees, ts.URL+"/goals?health=red"), "td", "no-goals")
+	if !strings.Contains(empty, "No Goals in My org match.") {
+		t.Errorf("an empty default under another filter doesn't say so: %s", empty)
+	}
+	href, _ := url.Parse(html.UnescapeString(attr(openTag(pageElement(t, empty, "a", "see-everyones")), "href")))
+	if q := href.Query(); q.Get("org") != "all" || q.Get("health") != "red" {
+		t.Errorf("the link to everyone's Goals drops the other filters: %s", href)
+	}
+
+	if strings.Contains(getBody(t, lees, scopeOrgURL(ts.URL, "/goals", lee)), `data-testid="see-everyones"`) {
+		t.Errorf("an explicitly chosen empty org links to everyone's Goals")
 	}
 }
 

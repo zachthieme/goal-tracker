@@ -1507,6 +1507,178 @@ func orgScopedRiskTitles(page string, goals ...domain.Goal) []string {
 	return titles
 }
 
+// With no scope in its address the Risks page opens on the viewer's default:
+// My org for someone with anyone under them, Mine for everyone else, each
+// shown chosen and named in the count line. An explicit Scope is never
+// overridden: ?org=all is Everyone, ?org=mine Mine and ?org=<id> that
+// person's Org, while a malformed ?org=, or one naming no one, gives the
+// default.
+func TestRisksPageOpensOnTheViewersDefaultScope(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	org := newScopeOrgFixture(h)
+	h.Clock.Advance(10 * day)
+	ts := newServer(t, h)
+	maxID := strconv.FormatInt(org.Max.ID, 10)
+
+	for _, viewer := range []struct {
+		email, defaultValue, defaultLine string
+		defaultTitles                    []string
+		mine                             string
+	}{
+		{"mia@example.com", strconv.FormatInt(org.Mia.ID, 10), "<strong>2</strong> Goals need attention in My org. Worst first.", []string{"Mia's goal", "Pia's goal"}, "Mia's goal"},
+		{"pia@example.com", "mine", "<strong>1</strong> Goal needs attention in Mine. Worst first.", []string{"Pia's goal"}, "Pia's goal"},
+	} {
+		client := signInClient(t, ts.URL, viewer.email)
+		page := getBody(t, client, ts.URL+"/risks")
+		if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, viewer.defaultLine) {
+			t.Errorf("%s's default: the count line = %s, want %q", viewer.email, head, viewer.defaultLine)
+		}
+		for _, c := range []struct {
+			query, value string
+			titles       []string
+		}{
+			{"", viewer.defaultValue, viewer.defaultTitles},
+			{"?org=all", "all", []string{"Max's goal", "Mia's goal", "Oz's goal", "Pax's goal", "Pia's goal", "Vera's goal"}},
+			{"?org=mine", "mine", []string{viewer.mine}},
+			{"?org=" + maxID, maxID, []string{"Max's goal", "Pax's goal"}},
+			{"?org=abc", viewer.defaultValue, viewer.defaultTitles},
+			{"?org=999999", viewer.defaultValue, viewer.defaultTitles},
+		} {
+			page := getBody(t, client, ts.URL+"/risks"+c.query)
+			if got := orgScopedRiskTitles(page, org.goals()...); !slices.Equal(got, c.titles) {
+				t.Errorf("%s, /risks%s: rows = %q, want %q", viewer.email, c.query, got, c.titles)
+			}
+			if _, value, _ := scopeChoices(scopeSelect(t, page, "risks-scope")); value != c.value {
+				t.Errorf("%s, /risks%s: the Scope select shows %q chosen, want %q", viewer.email, c.query, value, c.value)
+			}
+		}
+	}
+}
+
+// Everyone is an explicit ?org=all on the Risks page: the Scope select
+// submits it, Show everything links to it, and a page showing Everyone keeps
+// it in its group cards' links and Show all, since a bare /risks is the
+// viewer's default.
+func TestRisksPageNamesEveryoneAsOrgAll(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	newScopeOrgFixture(h)
+	lee := h.SignInNamed("lee@example.com", "Lee Lund")
+	h.Clock.Advance(10 * day)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "mia@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?org=all")
+	if sel := scopeSelect(t, page, "risks-scope"); !strings.Contains(sel, `<option value="all" selected>Everyone</option>`) {
+		t.Errorf("the Scope select's Everyone doesn't submit org=all: %s", sel)
+	}
+	if href := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "risks-group-owner")), "href")); href != "/risks?group=owner&org=all" {
+		t.Errorf("on Everyone, the owner card links to %q, want it to keep org=all", href)
+	}
+	page = getBody(t, client, ts.URL+"/risks?group=owner&org=all")
+	if href := html.UnescapeString(attr(openTag(pageElement(t, page, "a", "risks-show-all")), "href")); href != "/risks?org=all" {
+		t.Errorf("on Everyone, Show all links to %q, want it to keep org=all", href)
+	}
+
+	lees := signInClient(t, ts.URL, lee.Email)
+	empty := pageElement(t, getBody(t, lees, ts.URL+"/risks"), "p", "risks-empty")
+	if !strings.Contains(empty, "No Goals need attention in Mine.") || !strings.Contains(empty, `<a href="/risks?org=all">Show everything</a>`) {
+		t.Errorf("an empty default doesn't say so with Show everything to Everyone: %s", empty)
+	}
+}
+
+// An Admin's job in Needs an Admin is company-wide: that group with no scope
+// in its address shows every Ownerless and halted-parent Goal, for an Admin
+// with no one under them too, and its card counts the company's whatever the
+// page's scope, keeping the page's values, and links there without the scope.
+func TestRisksNeedsAnAdminIsCompanyWide(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	org := newScopeOrgFixture(h)
+	boss := h.SignIn("boss@example.com")
+	team := h.CreateDimension(boss, "Team", "Core", "Edge")
+	core, edge := team.Values[0], team.Values[1]
+	h.AssignGoalValue(org.PaxGoal, core)
+	h.AssignGoalValue(org.MiaGoal, core)
+	h.AssignGoalValue(org.PiaGoal, edge)
+	if err := h.Service.MarkDeparted(t.Context(), boss.ID, org.Pax.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	h.Clock.Advance(10 * day)
+	ts := newServer(t, h)
+
+	admin := signInClient(t, ts.URL, "boss@example.com")
+	page := getBody(t, admin, ts.URL+"/risks?group=admin")
+	if got := orgScopedRiskTitles(page, org.goals()...); !slices.Equal(got, []string{"Pax's goal"}) {
+		t.Errorf("Needs an Admin for an Admin with no one under them: rows = %q, want Pax's Ownerless Goal", got)
+	}
+	if _, value, _ := scopeChoices(scopeSelect(t, page, "risks-scope")); value != "all" {
+		t.Errorf("Needs an Admin with no scope shows %q chosen, want Everyone", value)
+	}
+
+	mia := signInClient(t, ts.URL, "mia@example.com")
+	coreID := strconv.FormatInt(core.ID, 10)
+	for _, c := range []struct{ query, count, href string }{
+		{"", "1", "/risks?group=admin"},
+		{"?org=mine", "1", "/risks?group=admin"},
+		{"?org=all", "1", "/risks?group=admin"},
+		{"?value=" + coreID, "1", "/risks?group=admin&value=" + coreID},
+	} {
+		card := pageElement(t, getBody(t, mia, ts.URL+"/risks"+c.query), "a", "risks-group-admin")
+		if !strings.Contains(card, `<span class="num">`+c.count+`</span>`) || !strings.Contains(card, "Ownerless · 1") {
+			t.Errorf("/risks%s: the Needs an Admin card doesn't count the company's 1: %s", c.query, card)
+		}
+		if href := html.UnescapeString(attr(openTag(card), "href")); href != c.href {
+			t.Errorf("/risks%s: the Needs an Admin card links to %q, want %q", c.query, href, c.href)
+		}
+	}
+	page = getBody(t, mia, ts.URL+"/risks?value="+strconv.FormatInt(edge.ID, 10))
+	if card := pageElement(t, page, "div", "risks-group-admin"); !strings.Contains(card, "Nothing needs an Admin.") {
+		t.Errorf("the Needs an Admin card doesn't keep the page's values: %s", card)
+	}
+}
+
+// The top bar's Risks count is the viewer's default scope, as many as a bare
+// /risks lists: My org's for a manager, Mine's, Delegate Goals included, for
+// someone with no one under them, an Admin among them.
+func TestTopBarRisksCountIsTheViewersDefaultScope(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	org := newScopeOrgFixture(h)
+	boss := h.SignIn("boss@example.com")
+	h.ActiveGoal(boss, "Boss's goal", "It matters.")
+	h.AddDelegate(org.Oz, boss, org.OzGoal.ID)
+	h.Clock.Advance(10 * day)
+	ts := newServer(t, h)
+
+	for _, c := range []struct {
+		email string
+		count int
+	}{
+		{"vera@example.com", 5},
+		{"mia@example.com", 2},
+		{"pia@example.com", 1},
+		{"boss@example.com", 2},
+	} {
+		client := signInClient(t, ts.URL, c.email)
+		page := getBody(t, client, ts.URL+"/risks")
+		if rows := len(riskRows(page)); rows != c.count {
+			t.Errorf("%s: a bare /risks lists %d rows, want %d", c.email, rows, c.count)
+		}
+		for _, path := range []string{"/home", "/goals", "/risks"} {
+			nav := pageElement(t, getBody(t, client, ts.URL+path), "a", "nav-risks")
+			if want := `<span class="count">` + strconv.Itoa(c.count) + `</span>`; !strings.Contains(nav, want) {
+				t.Errorf("%s on %s: the nav's Risks count isn't the %d a bare /risks lists: %s", c.email, path, c.count, nav)
+			}
+		}
+	}
+}
+
 // Scoped to My org, the Risks page keeps the Goals whose Owner is in the
 // viewer's org, their own included: for a VP every level below them, for a
 // manager only their part, and its count line names it. The header form's one

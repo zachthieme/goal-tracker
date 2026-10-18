@@ -7,12 +7,14 @@ import "fmt"
 // with anyone under them, then under Other orgs each other person whose Org
 // holds Goals, by Name with their email to tell same-Named people apart
 // (CONTEXT.md: Org, Name). With no Managers anywhere it offers Everyone and
-// Mine alone (ADR 0008). It submits ?org=: "" for Everyone, "mine" for Mine,
-// else the chosen person's ID, so the page is scoped to one at a time.
-templ pageScopeSelect(testID string, mine bool, c pageOrgScope) {
+// Mine alone (ADR 0008). It submits ?org=: "all" for Everyone, "mine" for
+// Mine, else the chosen person's ID, so the page is scoped to one at a time.
+// It shows the scope the page is on, the viewer's default when its address
+// names none.
+templ pageScopeSelect(testID string, c pageOrgScope) {
 	<select data-testid={ testID } name="org" aria-label="Scope">
-		<option value="" selected?={ !mine && c.Of == nil }>Everyone</option>
-		<option value={ scopeMineValue } selected?={ mine }>Mine</option>
+		<option value={ scopeEveryoneValue } selected?={ !c.Mine && c.Of == nil }>Everyone</option>
+		<option value={ scopeMineValue } selected?={ c.Mine }>Mine</option>
 		if c.OffersMine || (c.Of != nil && c.Of.ID == c.Viewer.ID) {
 			<option value={ fmt.Sprint(c.Viewer.ID) } selected?={ c.Of != nil && c.Of.ID == c.Viewer.ID }>My org</option>
 		}
