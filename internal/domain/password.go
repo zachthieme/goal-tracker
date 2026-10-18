@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
 
@@ -28,6 +29,29 @@ var ErrBadCredentials = errors.New("bad email or password")
 // or already used.
 var ErrLinkInvalid = errors.New("set-password link is invalid")
 
+// ErrPasswordRules is returned for a password too short or too long; its
+// message after "password rules: " says which, without the password.
+var ErrPasswordRules = errors.New("password rules")
+
+// The bounds of a password: at least passwordMinRunes characters, at most
+// passwordMaxBytes bytes.
+const (
+	passwordMinRunes = 12
+	passwordMaxBytes = 1024
+)
+
+// checkPasswordRules returns ErrPasswordRules, saying why, unless password is
+// within the bounds.
+func checkPasswordRules(password string) error {
+	if utf8.RuneCountInString(password) < passwordMinRunes {
+		return fmt.Errorf("%w: a password needs at least %d characters", ErrPasswordRules, passwordMinRunes)
+	}
+	if len(password) > passwordMaxBytes {
+		return fmt.Errorf("%w: a password can be at most %d bytes", ErrPasswordRules, passwordMaxBytes)
+	}
+	return nil
+}
+
 // passwordLinkLife is how long a set-password link works after it's issued.
 const passwordLinkLife = 72 * time.Hour
 
@@ -39,6 +63,9 @@ func (s *Service) IssuePasswordLink(ctx context.Context, emailAddr string) (stri
 	acc, err := s.EnsureAccount(ctx, emailAddr)
 	if err != nil {
 		return "", time.Time{}, err
+	}
+	if acc.Departed {
+		return "", time.Time{}, fmt.Errorf("%w: %s has left the company", ErrDeparted, acc.Email)
 	}
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
@@ -66,6 +93,13 @@ func (s *Service) PasswordLinkAccount(ctx context.Context, token string) (Accoun
 	if err != nil {
 		return Account{}, fmt.Errorf("get password link: %w", err)
 	}
+	expires, err := time.Parse(timeFormat, link.ExpiresAt)
+	if err != nil {
+		return Account{}, fmt.Errorf("read password link expiry: %w", err)
+	}
+	if !s.clock.Now().Before(expires) {
+		return Account{}, ErrLinkInvalid
+	}
 	return s.Account(ctx, link.AccountID)
 }
 
@@ -75,6 +109,12 @@ func (s *Service) PasswordLinkAccount(ctx context.Context, token string) (Accoun
 func (s *Service) SetPassword(ctx context.Context, token, password string) (Account, error) {
 	acc, err := s.PasswordLinkAccount(ctx, token)
 	if err != nil {
+		return Account{}, err
+	}
+	if acc.Departed {
+		return Account{}, fmt.Errorf("%w: %s has left the company", ErrDeparted, acc.Email)
+	}
+	if err := checkPasswordRules(password); err != nil {
 		return Account{}, err
 	}
 	hash, err := hashPassword(password)
@@ -96,13 +136,24 @@ func (s *Service) SetPassword(ctx context.Context, token, password string) (Acco
 	return acc, nil
 }
 
-// PasswordSignIn resolves a password sign-in. It never creates an Account.
+// PasswordSignIn resolves a password sign-in for emailAddr. An unknown email,
+// an Account with no password, and a wrong password all return
+// ErrBadCredentials, and each takes as long, since each hashes the password.
+// It never creates an Account.
 func (s *Service) PasswordSignIn(ctx context.Context, emailAddr, password string) (Account, error) {
 	row, err := s.queries.GetAccountByEmail(ctx, emailAddr)
+	if errors.Is(err, sql.ErrNoRows) {
+		passwordMatches(dummyPasswordHash, password)
+		return Account{}, ErrBadCredentials
+	}
 	if err != nil {
 		return Account{}, fmt.Errorf("look up account: %w", err)
 	}
 	stored, err := s.queries.GetAccountPassword(ctx, row.ID)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && stored.PasswordHash == nil {
+		passwordMatches(dummyPasswordHash, password)
+		return Account{}, ErrBadCredentials
+	}
 	if err != nil {
 		return Account{}, fmt.Errorf("get password: %w", err)
 	}
@@ -111,6 +162,11 @@ func (s *Service) PasswordSignIn(ctx context.Context, emailAddr, password string
 	}
 	return accountFromRow(row), nil
 }
+
+// dummyPasswordHash is what a sign-in with no password to check hashes the
+// given one against, so it takes as long as one that has. No password matches
+// it.
+const dummyPasswordHash = "$argon2id$v=19$m=65536,t=1,p=4$Z29hbC10cmFja2VyLWR1bQ$bm8gcGFzc3dvcmQgZXZlciBoYXNoZXMgdG8gdGhpcy4"
 
 // passwordLinkHash is how a set-password link's token is stored: its SHA-256,
 // in hex.
