@@ -35,6 +35,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [ops] Password sign-in runs at most as many password hashes at once as the server has CPUs, so a burst of sign-ins can't exhaust memory (#313).
 - [internal] goalform.templ's activation checklist is written so `templ fmt` leaves it alone, and CLAUDE.md says not to run `templ fmt` (#302).
 - [user] Home and the Goal page offer No change only where it would be recorded, and the Check-in page's "Nothing changed since …?" card says why it isn't available, e.g. that a Milestone is overdue. A refused No change shows as an error at the top of the Check-in form (#235).
+- [user] When an author raises an Action Item on a Report, they can say which Goal it's about, and one raised from a Comment is about that Comment's Goal. The Report shows the Goal next to the item (#320).
+- [api] **Database schema**: `action_items.goal_id`, filled in for existing items raised from a Comment (#320).
 
 **Bug fixes:**
 - [user] An Org link (`?org=`) to Goals or Risks now scopes the page for everyone once anyone in the company has a Manager, instead of silently showing every Goal to a viewer with no Manager and no one under them; and the Report builder no longer offers the Owner's org when the only Manager is someone set as their own (#269).
