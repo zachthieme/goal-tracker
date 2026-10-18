@@ -183,6 +183,13 @@ Nothing is written to the database directly.
 - **Unaligned:** five side projects contribute to no other Goal.
 - **Lifecycle:** a few projects are Done with an outcome, one is On Hold, one
   is Cancelled, and two are still Proposed.
+- **Managers:** everyone has a Manager, recorded through the same directory
+  sync a real company uses (see [Managers](#managers)). The CEO is at the top,
+  with the CTO, CPO and Admin under them. The Platform, Mobile and Data leads
+  report to the CTO, and the Payments, Growth and Support leads to the CPO.
+  Each team's people report to their lead. Sign in as `ceo@example.com` to see
+  the whole company as one Org, or as a team lead such as
+  `growth-lead@example.com` to see a team's.
 
 Sign in as `admin@example.com` (an Admin), or as any Owner in the company: the
 leads (`platform-lead@example.com` and so on), the company outcome owners
