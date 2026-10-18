@@ -1196,6 +1196,24 @@ func TestBuilderChipHasARemoveCheckboxScriptHidesOverHTTP(t *testing.T) {
 	}
 }
 
+// Without script a chip's × is hidden and its Remove checkbox ends the pill,
+// so the chip keeps padding on its right, as on its left, and above and below
+// (ticket #314).
+func TestBuilderChipKeepsItsPaddingWithoutScriptOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/new")
+
+	css := cssRule(t, page, ".rb-form:not(.rb-js) .rb-chip")
+	padding, ok := strings.CutPrefix(css, "padding:")
+	sides := strings.Fields(padding)
+	if !ok || len(sides) != 2 || sides[0] == "0" || sides[1] != "12px" {
+		t.Errorf("without script a chip is styled %q, want padding with 12px left and right and some above and below", css)
+	}
+}
+
 // The builder's head is laid out like every other page's: one <div> inside
 // <header class="page-head">, its breadcrumb above its title, both at the
 // left, the last crumb the page itself (ticket #277).
