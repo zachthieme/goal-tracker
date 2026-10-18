@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
+	"log/slog"
+	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -322,5 +326,108 @@ func TestDirectoryFileWithAuthentikNamesBothSources(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// passwordEnv is clearAuthEnv with password sign-in chosen and a session key
+// set, as it requires.
+func passwordEnv(t *testing.T) {
+	t.Helper()
+	clearAuthEnv(t)
+	t.Setenv("GOAL_TRACKER_SIGNIN", "password")
+	t.Setenv("GOAL_TRACKER_SESSION_KEY", base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")))
+}
+
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestPasswordSignInIsAccepted(t *testing.T) {
+	passwordEnv(t)
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.signIn != signInPassword {
+		t.Errorf("sign-in method %q, want %q", cfg.signIn, signInPassword)
+	}
+	if cfg.oidc != nil {
+		t.Errorf("OIDC is on with password sign-in chosen: %+v", cfg.oidc)
+	}
+}
+
+// Password sign-in needs a session key, as organization sign-in does.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestPasswordSignInNeedsASessionKey(t *testing.T) {
+	passwordEnv(t)
+	t.Setenv("GOAL_TRACKER_SESSION_KEY", "")
+
+	_, err := loadConfig()
+	if err == nil {
+		t.Fatal("loadConfig accepted GOAL_TRACKER_SIGNIN=password without a session key")
+	}
+	if !strings.Contains(err.Error(), "GOAL_TRACKER_SESSION_KEY") {
+		t.Errorf("error %q doesn't name GOAL_TRACKER_SESSION_KEY", err)
+	}
+}
+
+// With password sign-in chosen, any OIDC variable stops startup.
+func TestPasswordSignInRefusesOIDCVariables(t *testing.T) {
+	for _, set := range oidcVars {
+		t.Run(set, func(t *testing.T) {
+			passwordEnv(t)
+			t.Setenv(set, "value")
+
+			_, err := loadConfig()
+			if err == nil {
+				t.Fatalf("loadConfig accepted GOAL_TRACKER_SIGNIN=password with %s set", set)
+			}
+			if !strings.Contains(err.Error(), set) {
+				t.Errorf("error %q doesn't name %s", err, set)
+			}
+		})
+	}
+}
+
+// discardLogger is a logger that writes nowhere.
+func discardLogger() *slog.Logger {
+	return slog.New(slog.DiscardHandler)
+}
+
+// goal-tracker password-link <email> prints a set-password link at the base
+// URL, creating the Account in a migrated database, and exits.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestThePasswordLinkCommandPrintsALink(t *testing.T) {
+	passwordEnv(t)
+	t.Setenv("GOAL_TRACKER_DB", filepath.Join(t.TempDir(), "goal-tracker.db"))
+	t.Setenv("GOAL_TRACKER_BASE_URL", "https://goals.example.com")
+
+	var out bytes.Buffer
+	if err := run(discardLogger(), []string{"password-link", "first.admin@example.com"}, &out); err != nil {
+		t.Fatalf("password-link: %v", err)
+	}
+	if !regexp.MustCompile(`^https://goals\.example\.com/set-password\?token=[A-Za-z0-9_-]{43}\n$`).MatchString(out.String()) {
+		t.Errorf("password-link printed %q, want the link alone on a line", out.String())
+	}
+}
+
+// The password-link command refuses unless GOAL_TRACKER_SIGNIN=password, and
+// prints nothing.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestThePasswordLinkCommandNeedsPasswordSignIn(t *testing.T) {
+	devEnv(t)
+	t.Setenv("GOAL_TRACKER_DB", filepath.Join(t.TempDir(), "goal-tracker.db"))
+
+	var out bytes.Buffer
+	err := run(discardLogger(), []string{"password-link", "first.admin@example.com"}, &out)
+	if err == nil {
+		t.Fatal("password-link ran with GOAL_TRACKER_SIGNIN=dev")
+	}
+	if !strings.Contains(err.Error(), "GOAL_TRACKER_SIGNIN=password") {
+		t.Errorf("error %q doesn't say it needs GOAL_TRACKER_SIGNIN=password", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("password-link printed %q", out.String())
 	}
 }
