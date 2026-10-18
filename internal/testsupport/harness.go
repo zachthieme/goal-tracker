@@ -77,9 +77,13 @@ func New(t *testing.T, adminEmails ...string) *Harness {
 // hundreds of tests queued them all on modernc's process-wide allocator lock.
 // The path is escaped because it's a URI: a test's temp directory can hold a
 // '#' (an unnamed subtest is "#00"), which would otherwise end the path and
-// open a new, empty database in place of the copy.
+// open a new, empty database in place of the copy. Like the app's own
+// db.Open, a statement that meets another connection's lock waits for it, and
+// transactions take the write lock at BEGIN, so a test running two requests at
+// once sees them queue as they would in the app rather than fail with
+// SQLITE_BUSY.
 func dsn(path string) string {
-	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?_pragma=synchronous(off)"
+	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?_pragma=synchronous(off)&_pragma=busy_timeout(5000)&_txlock=immediate"
 }
 
 // The migrated database every Harness copies, built on first use, or the error
