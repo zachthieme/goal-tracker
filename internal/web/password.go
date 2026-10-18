@@ -142,6 +142,9 @@ func clientIP(r *http.Request) string {
 const (
 	passwordFailuresPerIP = 50
 	passwordFailureWindow = 15 * time.Minute
+	// passwordFailureIPsBeforeSweep is how many IPs the count holds before a
+	// failure sweeps out those whose failures have all aged out.
+	passwordFailureIPsBeforeSweep = 4096
 )
 
 // passwordFailuresByIP counts each client IP's failed password sign-ins within
@@ -169,7 +172,7 @@ func (f *passwordFailuresByIP) record(ip string, now time.Time) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.byIP[ip] = append(f.recent(ip, now), now)
-	if len(f.byIP) > 4096 { // forget the IPs whose failures have all aged out
+	if len(f.byIP) > passwordFailureIPsBeforeSweep { // forget the IPs whose failures have all aged out
 		for other := range f.byIP {
 			f.recent(other, now)
 		}

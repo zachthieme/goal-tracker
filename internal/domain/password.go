@@ -52,6 +52,12 @@ func checkPasswordRules(password string) error {
 	return nil
 }
 
+// departedPasswordError is the ErrDeparted a Departed person's set-password
+// link or password sign-in is refused with.
+func departedPasswordError(acc Account) error {
+	return fmt.Errorf("%w: %s has left the company", ErrDeparted, acc.Email)
+}
+
 // passwordLinkLife is how long a set-password link works after it's issued.
 const passwordLinkLife = 72 * time.Hour
 
@@ -65,7 +71,7 @@ func (s *Service) IssuePasswordLink(ctx context.Context, emailAddr string) (stri
 		return "", time.Time{}, err
 	}
 	if acc.Departed {
-		return "", time.Time{}, fmt.Errorf("%w: %s has left the company", ErrDeparted, acc.Email)
+		return "", time.Time{}, departedPasswordError(acc)
 	}
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
@@ -115,7 +121,7 @@ func (s *Service) SetPassword(ctx context.Context, token, password string) (Acco
 		return Account{}, err
 	}
 	if acc.Departed {
-		return Account{}, fmt.Errorf("%w: %s has left the company", ErrDeparted, acc.Email)
+		return Account{}, departedPasswordError(acc)
 	}
 	if err := checkPasswordRules(password); err != nil {
 		return Account{}, err
@@ -191,7 +197,7 @@ func (s *Service) PasswordSignIn(ctx context.Context, emailAddr, password string
 	}
 	acc := accountFromRow(row)
 	if acc.Departed {
-		return Account{}, fmt.Errorf("%w: %s has left the company", ErrDeparted, acc.Email)
+		return Account{}, departedPasswordError(acc)
 	}
 	return acc, nil
 }
