@@ -104,11 +104,12 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	lifecycle := lifecycleFromForm(r, goal)
 
 	// An error from reading the form already names its field; the domain's are
-	// placed by checkinErrorField.
+	// placed by checkinErrorField and read as a sentence, without the internal
+	// prefix.
 	formData := func(err error) checkinFormData {
 		var e checkinError
 		if err != nil && !errors.As(err, &e) {
-			e = checkinError{Field: checkinErrorField(err.Error(), dates, metrics), Message: err.Error()}
+			e = checkinError{Field: checkinErrorField(err.Error(), dates, metrics), Message: sentence(plainReason(err))}
 		}
 		return checkinFormData{
 			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, Explanation: explanation,
