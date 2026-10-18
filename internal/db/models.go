@@ -38,6 +38,7 @@ type ActionItem struct {
 	CreatedAt          string
 	ClosedAt           string
 	ClosingNote        string
+	GoalID             int64
 }
 
 type Checkin struct {

@@ -236,6 +236,53 @@ func TestMigrationNamesExistingMilestoneChanges(t *testing.T) {
 	}
 }
 
+// An Action Item raised from a Comment before Action Items could name a Goal
+// is about that Comment's Goal on upgrade; one raised directly stays about
+// the Report as a whole (CONTEXT.md: Action Item).
+func TestMigrationGivesExistingActionItemsTheirCommentsGoal(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := migratedExcept(t, "migrations/0047_action_item_goals.sql")
+	// Put back the table as 0046 left it: no Goal. SQLite won't drop an
+	// indexed column, so the indexes go first.
+	if _, err := sqlDB.Exec(`
+		DROP INDEX idx_action_items_goal;
+		DROP INDEX idx_action_items_owner;
+		ALTER TABLE action_items DROP COLUMN goal_id`); err != nil {
+		t.Fatalf("undo 0047: %v", err)
+	}
+	if _, err := sqlDB.Exec(`
+		INSERT INTO comments (id, publication_id, goal_id, parent_id, author_id, body, created_at) VALUES
+			(4, 2, 9, 0, 7, 'Second vendor quote?', '2026-01-09T00:00:00Z');
+		INSERT INTO action_items (id, report_definition_id, publication_id, comment_id, text, owner_id, due_date, created_by, created_at) VALUES
+			(1, 1, 2, 4, 'Second vendor quote?', 7, '2026-02-01', 7, '2026-01-09T00:00:00Z'),
+			(2, 1, 2, 0, 'Book the EU legal review.', 7, '2026-02-01', 7, '2026-01-09T00:00:00Z')`); err != nil {
+		t.Fatalf("arrange 0046 action items: %v", err)
+	}
+
+	if err := db.Migrate(sqlDB); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	rows, err := sqlDB.Query(`SELECT id, goal_id FROM action_items ORDER BY id`)
+	if err != nil {
+		t.Fatalf("read action items: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var got []string
+	for rows.Next() {
+		var id, goalID int64
+		if err := rows.Scan(&id, &goalID); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, fmt.Sprintf("%d goal %d", id, goalID))
+	}
+	want := []string{"1 goal 9", "2 goal 0"}
+	if !slices.Equal(got, want) {
+		t.Errorf("action items = %v, want %v", got, want)
+	}
+}
+
 // Milestone changes recorded before a Milestone could be added outside a
 // Check-in keep every column on upgrade and take their author from their
 // Check-in; a change whose Check-in is missing keeps no author. Afterwards a
