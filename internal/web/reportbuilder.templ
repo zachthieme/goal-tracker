@@ -199,7 +199,7 @@ templ reportRuleRowInputs(v reportBuilderView, i int, row reportRuleRow) {
 				}
 			}
 		</select>
-		<button type="submit" name={ inputRemoveRule } value={ fmt.Sprint(i) } class="btn quiet sm" formnovalidate aria-label="Remove rule" title="Remove rule">×</button>
+		<button type="submit" name={ inputRemoveRule } value={ fmt.Sprint(i) } class="btn rb-remove" formnovalidate aria-label="Remove rule" title="Remove rule">×</button>
 		@reportBuilderError(v, domain.RuleInput(i))
 	</div>
 }
@@ -353,7 +353,7 @@ templ reportGoalChip(list string, g domain.Goal) {
 		<input type="hidden" name={ list } value={ fmt.Sprint(g.ID) }/>
 		<span>{ g.Title }</span>
 		<label class="rb-no-js small"><input type="checkbox" name={ removeChip(list) } value={ fmt.Sprint(g.ID) }/> Remove</label>
-		<button type="button" class="btn quiet sm rb-js-only" data-remove-chip aria-label={ "Remove " + g.Title } title={ "Remove " + g.Title }>×</button>
+		<button type="button" class="btn rb-remove rb-js-only" data-remove-chip aria-label={ "Remove " + g.Title } title={ "Remove " + g.Title }>×</button>
 	</li>
 }
 
@@ -386,7 +386,10 @@ templ reportBuilderStyles() {
 		}
 		.rb-chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}
 		.rb-chips:empty{display:none}
-		.rb-chip{display:inline-flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border:1px solid var(--color-border);border-radius:999px}
+		.rb-chip{display:inline-flex;align-items:center;gap:8px;padding:2px 2px 2px 12px;border:1px solid var(--color-border);border-radius:999px}
+		.rb-remove{width:40px;padding:0;border-color:var(--color-border-strong);font-size:20px;font-weight:400;line-height:1}
+		.rb-chip .rb-remove{border-radius:999px}
+		@media (pointer:coarse){.rb-remove{min-width:44px}}
 		.rb-form select[multiple]{width:100%;min-height:8em}
 		.rb-rules,.rb-picked{display:flex;flex-direction:column;gap:12px}
 		.rb-rule{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start}

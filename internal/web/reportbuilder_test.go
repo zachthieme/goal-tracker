@@ -1513,3 +1513,53 @@ func TestNewBuilderSavesPickedWithTheStartedRuleStillThereOverHTTP(t *testing.T)
 		t.Errorf("saved %s with rules %+v picking %v, want picked with no rules picking [%d]", def.Mode, def.Rules, def.Picked, picked.ID)
 	}
 }
+
+// A rule row's × and a chip's × are 40px-square icon buttons with a
+// --color-border-strong edge, matching the selects beside them, and 44px on a
+// coarse pointer, not bare quiet small buttons. Each keeps its aria-label and
+// title, and its behaviour: the rule's submits remove-rule, and the chip's is
+// script-only (ticket #285).
+func TestBuilderRemoveControlsAreBorderedIconButtonsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Grow revenue", "Matters.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name: "MBR", Mode: domain.ReportModeRules,
+		Rules:   []domain.ReportRule{{Attribute: domain.RuleTopLevel, Op: domain.RuleIs}},
+		Include: []int64{g.ID}, Exclude: []int64{g.ID},
+	})
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/edit")
+
+	iconButton := func(what, button string) {
+		t.Helper()
+		classes := strings.Fields(attr(button, "class"))
+		if !slices.Contains(classes, "btn") || !slices.Contains(classes, "rb-remove") || slices.Contains(classes, "quiet") || slices.Contains(classes, "sm") {
+			t.Errorf("the %s is class %q, want btn rb-remove, not quiet or sm", what, attr(button, "class"))
+		}
+	}
+	rule := tagAround(t, pageElement(t, page, "div", "report-rule"), `aria-label="Remove rule"`)
+	iconButton("rule's remove", rule)
+	if attr(rule, "title") != "Remove rule" || attr(rule, "type") != "submit" || attr(rule, "name") != "remove-rule" {
+		t.Errorf("the rule's remove lost its title or its submit: %s", rule)
+	}
+	for _, list := range []string{"include", "exclude"} {
+		chip := tagAround(t, pageElement(t, page, "li", list+"-chip"), `aria-label="Remove `+g.Title+`"`)
+		iconButton(list+" chip's remove", chip)
+		if attr(chip, "title") != "Remove "+g.Title || attr(chip, "type") != "button" || !slices.Contains(strings.Fields(attr(chip, "class")), "rb-js-only") {
+			t.Errorf("the %s chip's remove lost its title or isn't script-only: %s", list, chip)
+		}
+	}
+
+	css := cssRule(t, page, ".rb-remove")
+	for _, want := range []string{"width:40px", "padding:0", "border-color:var(--color-border-strong)"} {
+		if !strings.Contains(css, want) {
+			t.Errorf(".rb-remove lacks %s: %s", want, css)
+		}
+	}
+	if coarse := mediaBlock(t, between(t, page, ".rb-layout{", "</style>"), "@media (pointer:coarse)"); !strings.Contains(coarse, ".rb-remove{min-width:44px}") {
+		t.Errorf("on a coarse pointer .rb-remove isn't 44px wide: %s", coarse)
+	}
+}

@@ -52,7 +52,9 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     await builder.getByLabel("Name").fill(reportName);
     await builder.getByLabel("Introduction").fill(introduction);
 
-    // The rule is picked, not typed, in the blank row that's there by default.
+    // The rule is picked, not typed, in the one row a new Report starts
+    // with: blank, or already testing her org or her own Goals, which picking
+    // Team replaces.
     const rule = builder.getByTestId("report-rule");
     await expect(rule).toHaveCount(1);
     await rule.getByLabel("What the rule tests").selectOption({ label: "Team" });
