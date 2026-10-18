@@ -57,13 +57,50 @@ var oidcVars = []string{"GOAL_TRACKER_OIDC_ISSUER", "GOAL_TRACKER_OIDC_CLIENT_ID
 // settings don't leak in.
 func clearAuthEnv(t *testing.T) {
 	t.Helper()
-	for _, v := range slices.Concat(oidcVars, directoryVars, []string{"GOAL_TRACKER_SESSION_KEY", "GOAL_TRACKER_BASE_URL"}) {
+	for _, v := range slices.Concat(oidcVars, directoryVars, []string{"GOAL_TRACKER_SIGNIN", "GOAL_TRACKER_SESSION_KEY", "GOAL_TRACKER_BASE_URL"}) {
 		t.Setenv(v, "")
 	}
 }
 
-func TestPartialOIDCConfigNamesWhatsMissing(t *testing.T) {
+// The sign-in method has to be stated: without GOAL_TRACKER_SIGNIN, or with a
+// method it doesn't know, startup stops and lists the ones it accepts.
+func TestTheSignInMethodIsRequired(t *testing.T) {
+	for name, value := range map[string]string{"unset": "", "unknown": "sso"} {
+		t.Run(name, func(t *testing.T) {
+			clearAuthEnv(t)
+			t.Setenv("GOAL_TRACKER_SIGNIN", value)
+
+			_, err := loadConfig()
+			if err == nil {
+				t.Fatalf("loadConfig accepted GOAL_TRACKER_SIGNIN=%q", value)
+			}
+			for _, want := range []string{"GOAL_TRACKER_SIGNIN", "oidc", "dev"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q doesn't name %s", err, want)
+				}
+			}
+		})
+	}
+}
+
+// devEnv is clearAuthEnv with the development sign-in form chosen.
+func devEnv(t *testing.T) {
+	t.Helper()
 	clearAuthEnv(t)
+	t.Setenv("GOAL_TRACKER_SIGNIN", "dev")
+}
+
+// oidcEnv is clearAuthEnv with organization sign-in chosen and a session key
+// set, as it requires; the OIDC variables are left to the test.
+func oidcEnv(t *testing.T) {
+	t.Helper()
+	clearAuthEnv(t)
+	t.Setenv("GOAL_TRACKER_SIGNIN", "oidc")
+	t.Setenv("GOAL_TRACKER_SESSION_KEY", base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef")))
+}
+
+func TestPartialOIDCConfigNamesWhatsMissing(t *testing.T) {
+	oidcEnv(t)
 	t.Setenv("GOAL_TRACKER_OIDC_ISSUER", "http://localhost:9000/application/o/goal-tracker/")
 
 	_, err := loadConfig()
@@ -80,16 +117,25 @@ func TestPartialOIDCConfigNamesWhatsMissing(t *testing.T) {
 	}
 }
 
-func TestFullOIDCConfigRedirectsToTheBaseURLsCallback(t *testing.T) {
-	clearAuthEnv(t)
+// setOIDCVars sets all three OIDC variables.
+func setOIDCVars(t *testing.T) {
+	t.Helper()
 	t.Setenv("GOAL_TRACKER_OIDC_ISSUER", "http://localhost:9000/application/o/goal-tracker/")
 	t.Setenv("GOAL_TRACKER_OIDC_CLIENT_ID", "goal-tracker")
 	t.Setenv("GOAL_TRACKER_OIDC_CLIENT_SECRET", "secret")
+}
+
+func TestFullOIDCConfigRedirectsToTheBaseURLsCallback(t *testing.T) {
+	oidcEnv(t)
+	setOIDCVars(t)
 	t.Setenv("GOAL_TRACKER_BASE_URL", "https://goals.example.com/")
 
 	cfg, err := loadConfig()
 	if err != nil {
 		t.Fatal(err)
+	}
+	if cfg.signIn != signInOIDC {
+		t.Errorf("sign-in method %q, want %q", cfg.signIn, signInOIDC)
 	}
 	if cfg.oidc == nil {
 		t.Fatal("OIDC is off with all three variables set")
@@ -99,16 +145,56 @@ func TestFullOIDCConfigRedirectsToTheBaseURLsCallback(t *testing.T) {
 	}
 }
 
+// Organization sign-in needs a session key, so sessions survive a restart and
+// every instance signs them alike.
+//
 //nolint:paralleltest // sets the process environment, through clearAuthEnv
-func TestNoOIDCConfigLeavesTheDevelopmentForm(t *testing.T) {
-	clearAuthEnv(t)
+func TestOIDCSignInNeedsASessionKey(t *testing.T) {
+	oidcEnv(t)
+	setOIDCVars(t)
+	t.Setenv("GOAL_TRACKER_SESSION_KEY", "")
+
+	_, err := loadConfig()
+	if err == nil {
+		t.Fatal("loadConfig accepted GOAL_TRACKER_SIGNIN=oidc without a session key")
+	}
+	if !strings.Contains(err.Error(), "GOAL_TRACKER_SESSION_KEY") {
+		t.Errorf("error %q doesn't name GOAL_TRACKER_SESSION_KEY", err)
+	}
+}
+
+// With the development form chosen, any OIDC variable stops startup, so a
+// half-meant organization sign-in can't fall back to the open form.
+func TestDevSignInRefusesOIDCVariables(t *testing.T) {
+	for _, set := range oidcVars {
+		t.Run(set, func(t *testing.T) {
+			devEnv(t)
+			t.Setenv(set, "value")
+
+			_, err := loadConfig()
+			if err == nil {
+				t.Fatalf("loadConfig accepted GOAL_TRACKER_SIGNIN=dev with %s set", set)
+			}
+			if !strings.Contains(err.Error(), set) {
+				t.Errorf("error %q doesn't name %s", err, set)
+			}
+		})
+	}
+}
+
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestDevSignInLeavesTheDevelopmentForm(t *testing.T) {
+	devEnv(t)
 
 	cfg, err := loadConfig()
 	if err != nil {
 		t.Fatal(err)
 	}
+	if cfg.signIn != signInDev {
+		t.Errorf("sign-in method %q, want %q", cfg.signIn, signInDev)
+	}
 	if cfg.oidc != nil {
-		t.Errorf("OIDC is on with none of its variables set: %+v", cfg.oidc)
+		t.Errorf("OIDC is on with the development form chosen: %+v", cfg.oidc)
 	}
 }
 
@@ -118,7 +204,7 @@ func TestABadSessionKeyIsNamed(t *testing.T) {
 		"not base64": strings.Repeat("!", 64),
 	} {
 		t.Run(name, func(t *testing.T) {
-			clearAuthEnv(t)
+			devEnv(t)
 			t.Setenv("GOAL_TRACKER_SESSION_KEY", key)
 
 			_, err := loadConfig()
@@ -133,7 +219,7 @@ func TestABadSessionKeyIsNamed(t *testing.T) {
 }
 
 func TestAGoodSessionKeyIsUsed(t *testing.T) {
-	clearAuthEnv(t)
+	devEnv(t)
 	key := []byte("0123456789abcdef0123456789abcdef")
 	t.Setenv("GOAL_TRACKER_SESSION_KEY", base64.StdEncoding.EncodeToString(key))
 
@@ -155,7 +241,7 @@ func TestPartialDirectoryConfigNamesWhatsMissing(t *testing.T) {
 	for i, set := range directoryVars {
 		missing := directoryVars[1-i]
 		t.Run(set, func(t *testing.T) {
-			clearAuthEnv(t)
+			devEnv(t)
 			t.Setenv(set, "value")
 
 			_, err := loadConfig()
@@ -177,7 +263,7 @@ func TestPartialDirectoryConfigNamesWhatsMissing(t *testing.T) {
 //
 //nolint:paralleltest // sets the process environment, through clearAuthEnv
 func TestDirectorySyncIsOnlyOnWithBothVariables(t *testing.T) {
-	clearAuthEnv(t)
+	devEnv(t)
 	cfg, err := loadConfig()
 	if err != nil {
 		t.Fatal(err)

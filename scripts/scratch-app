@@ -87,6 +87,7 @@ start() {
 		GOAL_TRACKER_DB=$dir/app.db \
 		GOAL_TRACKER_ADMINS=$admin \
 		GOAL_TRACKER_BASE_URL=$base \
+		GOAL_TRACKER_SIGNIN=dev \
 		${launch[@]+"${launch[@]}"} "$bin" >"$dir/server.log" 2>&1 </dev/null &
 	local pid=$!
 	echo "$pid" >"$dir/pid"

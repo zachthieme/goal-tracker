@@ -1,6 +1,9 @@
 package web_test
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/cookiejar"
@@ -314,5 +317,81 @@ func TestTheSessionCookieIsSecureOverHTTPS(t *testing.T) {
 			t.Errorf("WithSecureCookies(%v): session cookie Secure=%v HttpOnly=%v SameSite=%v, want Secure=%v HttpOnly SameSite=Lax",
 				secure, c.Secure, c.HttpOnly, c.SameSite, secure)
 		}
+	}
+}
+
+// EndSessions ends a session already open: the cookie issued before it sends
+// /home to sign-in. Signing in again afterwards issues a cookie that works.
+func TestEndingSessionsSignsAnOpenSessionOut(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	before := sessionCookieOf(t, ts.URL, "sam@example.com")
+	if signedOut(t, ts.URL, before) {
+		t.Fatal("sam's session cookie doesn't sign sam in")
+	}
+	sam, err := h.Service.AccountByEmail(t.Context(), "sam@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := h.Service.EndSessions(t.Context(), sam.ID); err != nil {
+		t.Fatalf("EndSessions: %v", err)
+	}
+
+	if !signedOut(t, ts.URL, before) {
+		t.Error("a cookie issued before EndSessions still signs sam in")
+	}
+	if after := sessionCookieOf(t, ts.URL, "sam@example.com"); signedOut(t, ts.URL, after) {
+		t.Error("signing in again after EndSessions doesn't sign sam in")
+	}
+}
+
+// A "<id>.<signature>" cookie, the shape issued before cookies carried a
+// session generation, counts as signed out even when signed with the right key
+// (the breaking change: everyone signs in once more).
+func TestATwoPartSessionCookieIsSignedOut(t *testing.T) {
+	t.Parallel()
+
+	key := []byte("0123456789abcdef0123456789abcdef")
+	h := testsupport.New(t)
+	ts := httptest.NewServer(web.NewServer(h.Service, web.WithSessionKey(key)))
+	t.Cleanup(ts.Close)
+	sam := h.SignIn("sam@example.com")
+
+	id := strconv.FormatInt(sam.ID, 10)
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(id))
+	old := &http.Cookie{Name: "gt_session", Value: id + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))}
+	if !signedOut(t, ts.URL, old) {
+		t.Errorf("a two-part gt_session=%s signs sam in", old.Value)
+	}
+}
+
+// A session cookie whose generation is edited, keeping its signature, doesn't
+// sign anyone in, so an ended session can't be revived by moving its
+// generation on.
+func TestASessionCookieWithAnEditedGenerationIsSignedOut(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	cookie := sessionCookieOf(t, ts.URL, "sam@example.com")
+	sam, err := h.Service.AccountByEmail(t.Context(), "sam@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.Service.EndSessions(t.Context(), sam.ID); err != nil {
+		t.Fatalf("EndSessions: %v", err)
+	}
+
+	parts := strings.Split(cookie.Value, ".")
+	if len(parts) != 3 || parts[1] != "0" {
+		t.Fatalf("session cookie %q isn't <id>.0.<signature>", cookie.Value)
+	}
+	edited := &http.Cookie{Name: "gt_session", Value: parts[0] + ".1." + parts[2]}
+	if !signedOut(t, ts.URL, edited) {
+		t.Errorf("a cookie with its generation edited to the current one signs sam in")
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strings"
 	"time"
 	_ "time/tzdata" // the org's timezone resolves without the host's zoneinfo
@@ -72,7 +73,10 @@ func run(logger *slog.Logger) error {
 		web.WithLogger(logger),
 		web.WithSecureCookies(strings.HasPrefix(cfg.baseURL, "https://")),
 	}
-	if cfg.sessionKey == nil {
+	if cfg.signIn == signInDev {
+		logger.Warn("GOAL_TRACKER_SIGNIN=dev: anyone who can reach the app can sign in as anyone. For development and tests only.")
+	}
+	if cfg.sessionKey == nil { // only with GOAL_TRACKER_SIGNIN=dev; loadConfig requires a key otherwise
 		logger.Warn("GOAL_TRACKER_SESSION_KEY is unset: signing sessions with a random key, so they won't survive a restart")
 		cfg.sessionKey = make([]byte, 32)
 		_, _ = rand.Read(cfg.sessionKey)
@@ -130,16 +134,28 @@ type config struct {
 	// instead of the wall clock. For testing only: the e2e suite runs against
 	// a seed frozen at one date.
 	startAt string
-	// oidc, when set, is the org's OpenID Connect provider people sign in
-	// through; nil leaves the development email form.
+	// signIn is how people sign in, from GOAL_TRACKER_SIGNIN: one of
+	// signInMethods.
+	signIn string
+	// oidc, with signIn "oidc", is the org's OpenID Connect provider people
+	// sign in through; nil with "dev", which serves the development email form.
 	oidc *web.OIDCConfig
 	// sessionKey signs session cookies; nil when GOAL_TRACKER_SESSION_KEY is
-	// unset.
+	// unset, which only "dev" allows.
 	sessionKey []byte
 	// directory, when set, is the org's directory Managers are synced from
 	// (ADR 0008); nil leaves no one with a Manager.
 	directory *directoryConfig
 }
+
+// The sign-in methods GOAL_TRACKER_SIGNIN accepts: the org's OpenID Connect
+// provider, or the development email form, which signs anyone in as anyone.
+const (
+	signInOIDC = "oidc"
+	signInDev  = "dev"
+)
+
+var signInMethods = []string{signInOIDC, signInDev}
 
 // directoryConfig is where the directory sync reads people from: Authentik's
 // base URL and an API token that can read users.
@@ -164,7 +180,12 @@ func loadConfig() (config, error) {
 		}
 	}
 
-	oidc, err := oidcConfig(cfg.baseURL)
+	cfg.signIn = os.Getenv("GOAL_TRACKER_SIGNIN")
+	if !slices.Contains(signInMethods, cfg.signIn) {
+		return config{}, fmt.Errorf("GOAL_TRACKER_SIGNIN must be one of %s; got %q", strings.Join(signInMethods, ", "), cfg.signIn)
+	}
+
+	oidc, err := oidcConfig(cfg.signIn, cfg.baseURL)
 	if err != nil {
 		return config{}, err
 	}
@@ -185,33 +206,43 @@ func loadConfig() (config, error) {
 		}
 		cfg.sessionKey = key
 	}
+	if cfg.sessionKey == nil && cfg.signIn != signInDev {
+		return config{}, fmt.Errorf("GOAL_TRACKER_SIGNIN=%s needs GOAL_TRACKER_SESSION_KEY: 32 or more random bytes in base64 (openssl rand -base64 32)", cfg.signIn)
+	}
 	return cfg, nil
 }
 
 // oidcConfig is the org's OpenID Connect provider from the GOAL_TRACKER_OIDC_*
-// variables: nil when none is set, an error naming the missing ones when only
-// some are. The redirect URL is baseURL's /auth/callback.
-func oidcConfig(baseURL string) (*web.OIDCConfig, error) {
+// variables for the sign-in method: with "oidc", an error naming any that are
+// missing; with any other method, nil, or an error naming those set, so a
+// half-meant organization sign-in can't fall back to the open development
+// form. The redirect URL is baseURL's /auth/callback.
+func oidcConfig(signIn, baseURL string) (*web.OIDCConfig, error) {
 	vars := []string{"GOAL_TRACKER_OIDC_ISSUER", "GOAL_TRACKER_OIDC_CLIENT_ID", "GOAL_TRACKER_OIDC_CLIENT_SECRET"}
-	var values, missing []string
+	var values, set, missing []string
 	for _, v := range vars {
 		values = append(values, os.Getenv(v))
 		if os.Getenv(v) == "" {
 			missing = append(missing, v)
+		} else {
+			set = append(set, v)
 		}
 	}
-	switch len(missing) {
-	case len(vars):
+	if signIn != signInOIDC {
+		if len(set) > 0 {
+			return nil, fmt.Errorf("GOAL_TRACKER_SIGNIN=%s doesn't use the GOAL_TRACKER_OIDC_* variables; unset %s, or set GOAL_TRACKER_SIGNIN=oidc", signIn, strings.Join(set, ", "))
+		}
 		return nil, nil
-	case 0:
-		return &web.OIDCConfig{
-			Issuer:       values[0],
-			ClientID:     values[1],
-			ClientSecret: values[2],
-			RedirectURL:  strings.TrimRight(baseURL, "/") + "/auth/callback",
-		}, nil
 	}
-	return nil, errors.New("organization sign-in needs all of the GOAL_TRACKER_OIDC_* variables; missing " + strings.Join(missing, ", "))
+	if len(missing) > 0 {
+		return nil, errors.New("organization sign-in needs all of the GOAL_TRACKER_OIDC_* variables; missing " + strings.Join(missing, ", "))
+	}
+	return &web.OIDCConfig{
+		Issuer:       values[0],
+		ClientID:     values[1],
+		ClientSecret: values[2],
+		RedirectURL:  strings.TrimRight(baseURL, "/") + "/auth/callback",
+	}, nil
 }
 
 // loadDirectoryConfig is the directory sync's settings from

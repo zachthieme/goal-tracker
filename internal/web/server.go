@@ -85,19 +85,23 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // currentAccount resolves the signed-in Account from the session cookie, or nil
-// if there is none or its signature doesn't verify. A Departed person's session ends with their departure, so
-// their Account resolves to nil too (CONTEXT.md: Departed).
+// if there is none, its signature doesn't verify, or it carries a session
+// generation EndSessions has since ended. A Departed person's session ends with
+// their departure, so their Account resolves to nil too (CONTEXT.md: Departed).
 func (s *Server) currentAccount(r *http.Request) *domain.Account {
 	c, err := r.Cookie(sessionCookie)
 	if err != nil {
 		return nil
 	}
-	id, ok := s.sessions.decode(c.Value)
+	id, gen, ok := s.sessions.decode(c.Value)
 	if !ok {
 		return nil
 	}
 	acc, err := s.svc.Account(r.Context(), id)
 	if err != nil || acc.Departed {
+		return nil
+	}
+	if current, err := s.svc.SessionGeneration(r.Context(), id); err != nil || gen != current {
 		return nil
 	}
 	return &acc

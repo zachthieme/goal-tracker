@@ -35,8 +35,12 @@ tailnet at `https://<machine>.<tailnet>.ts.net:9443`, and starts Goal Tracker
 signing in through it and syncing its directory. People on the tailnet sign in
 from any device.
 `make stop` stops both, and `make restart` keeps Authentik sign-in. You still
-need `.env` filled in first. `make start NO_SSO=1` runs the app with the
-development sign-in form and leaves Authentik alone.
+need `.env` filled in first, including `GOAL_TRACKER_SESSION_KEY`, the key the
+app signs its session cookies with (`openssl rand -base64 32`): it isn't
+Authentik's, but `make start` passes it to the app, which needs one to sign in
+through Authentik (`GOAL_TRACKER_SIGNIN=oidc`). `make start NO_SSO=1` runs the
+app with the development sign-in form (`GOAL_TRACKER_SIGNIN=dev`) and leaves
+Authentik alone.
 
 Sign in at Goal Tracker's address, not Authentik's: Authentik only sends you
 back to the app when the sign-in started there. Signed in at Authentik
