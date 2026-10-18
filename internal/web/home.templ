@@ -209,13 +209,7 @@ templ actionItemRow(l domain.ActionItemListing) {
 			if l.Overdue {
 				<span data-testid="home-action-item-overdue" class="badge r">Overdue</span>
 			}
-			<span class="muted">
-				{ l.ReportName }
-				if l.GoalTitle != "" {
-					{ " · " }{ l.GoalTitle }
-				}
-				{ " · due " }{ showDateYear(l.Item.DueDate) }
-			</span>
+			<span class="muted">{ homeActionItemPlace(l) }</span>
 		</div>
 		<div class="hm-actions">
 			@closeActionItemForm(l.Item, "/home")

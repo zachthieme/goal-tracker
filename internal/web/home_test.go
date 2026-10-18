@@ -1367,3 +1367,114 @@ func TestHomeListsYourOpenActionItems(t *testing.T) {
 		}
 	}
 }
+
+// An Action Item about the whole Report has no Goal page to lead to, so its
+// row on Home links to the Action Items on the publication it was raised on.
+func TestHomeActionItemAboutTheReportLinksToItsPublication(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newHomeActionItemFixture(h)
+	f.raise(f.sam, "Send the vendor plan.", 7, 0)
+
+	rows := homeActionItemRows(getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"))
+	if len(rows) != 1 {
+		t.Fatalf("Home lists %d Action Items, want 1", len(rows))
+	}
+	if want := fmt.Sprintf(`href="/reports/%d/publications/%d#action-items"`, f.def.ID, f.pub.ID); !strings.Contains(rows[0], want) {
+		t.Errorf("whole-Report Action Item's row lacks %s:\n%s", want, rows[0])
+	}
+	if strings.Contains(rows[0], navTo(f.goal.ID)) {
+		t.Errorf("whole-Report Action Item's row links to a Goal:\n%s", rows[0])
+	}
+}
+
+// Open Action Items count toward what needs the reader, in the summary under
+// the page title and the top bar's Home count, and someone whose only open
+// work is one isn't told they're caught up.
+func TestHomeCountsOpenActionItems(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newHomeActionItemFixture(h)
+	f.raise(f.sam, "Send the vendor plan.", 7, 0)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "1 thing needs you") {
+		t.Errorf("summary = %s, want 1 thing needs you for the Action Item", got)
+	}
+	if home := pageElement(t, page, "a", "nav-home"); !strings.Contains(home, `<span class="count needs-you">1</span>`) {
+		t.Errorf("top bar's Home does not count the Action Item: %s", home)
+	}
+	if strings.Contains(page, `data-testid="home-caught-up"`) {
+		t.Errorf("Home says sam is caught up with an Action Item open")
+	}
+}
+
+// The owner closes an Action Item from its row on Home with a note, and comes
+// back to Home, where it's gone.
+func TestHomeClosesAnActionItem(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newHomeActionItemFixture(h)
+	item := f.raise(f.sam, "Send the vendor plan.", 7, 0)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/home")
+	rows := homeActionItemRows(page)
+	if len(rows) != 1 {
+		t.Fatalf("Home lists %d Action Items, want 1", len(rows))
+	}
+	form := tagAround(t, rows[0], `data-testid="close-action-item"`)
+	action := attr(form, "action")
+	if want := fmt.Sprintf("/action-items/%d/close", item.ID); action != want {
+		t.Fatalf("row's close form posts to %q, want %q", action, want)
+	}
+	if !strings.Contains(rows[0], `<input type="hidden" name="return" value="/home">`) {
+		t.Errorf("row's close form does not return to Home:\n%s", rows[0])
+	}
+	if got := cssRule(t, page, ".rp-inline-form"); !strings.Contains(got, "display:flex") {
+		t.Errorf("Home does not lay out the close form: .rp-inline-form{%s}", got)
+	}
+
+	resp := postForm(t, noRedirects(client), ts.URL+action, url.Values{"note": {"Sent."}, "return": {"/home"}})
+	_ = readBody(t, resp)
+	if got := resp.Header.Get("Location"); resp.StatusCode != http.StatusSeeOther || got != "/home" {
+		t.Errorf("closing from Home: %d to %q, want 303 to /home", resp.StatusCode, got)
+	}
+	if rows := homeActionItemRows(getBody(t, client, ts.URL+"/home")); len(rows) != 0 {
+		t.Errorf("Home still lists the closed Action Item:\n%s", rows)
+	}
+}
+
+// Home lists only the reader's open Action Items: not one they've closed, nor
+// one someone else owns.
+func TestHomeLeavesOutClosedAndOthersActionItems(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newHomeActionItemFixture(h)
+	kim := h.SignIn("kim@example.com")
+	closed := f.raise(f.sam, "Send the vendor plan.", 7, 0)
+	if _, err := h.Service.CloseActionItem(context.Background(), f.sam.ID, closed.ID, "Sent."); err != nil {
+		t.Fatalf("CloseActionItem: %v", err)
+	}
+	f.raise(kim, "Explain the slip.", -2, f.goal.ID)
+	f.raise(f.sam, "Book the review.", 3, 0)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	rows := homeActionItemRows(page)
+	if len(rows) != 1 || !strings.Contains(rows[0], "Book the review.") {
+		t.Errorf("Home lists %d Action Items, want only sam's open one:\n%s", len(rows), rows)
+	}
+	for _, gone := range []string{"Send the vendor plan.", "Explain the slip."} {
+		if strings.Contains(page, gone) {
+			t.Errorf("Home shows %q, which isn't sam's to close", gone)
+		}
+	}
+}

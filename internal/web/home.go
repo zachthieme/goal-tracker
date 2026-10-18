@@ -108,6 +108,16 @@ func (v homeView) NeedsYou() int {
 	return len(v.Due) + len(v.ActionItems) + len(v.Requests)
 }
 
+// homeActionItemPlace reads where an Action Item on Home comes from and when
+// it is due: its Report, the Goal it is about, if any, and its due date.
+func homeActionItemPlace(l domain.ActionItemListing) string {
+	place := l.ReportName
+	if l.GoalTitle != "" {
+		place += " · " + l.GoalTitle
+	}
+	return place + " · due " + showDateYear(l.Item.DueDate)
+}
+
 // homeActionItemPath is where an Action Item on Home leads: the Action Items
 // on the page of the Goal it is about, or on the publication it was raised on
 // when it is about the whole Report.
