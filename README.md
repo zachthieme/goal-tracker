@@ -3,6 +3,7 @@
 An MBR-caliber goal-tracking tool: a company states its Goals, updates them on a
 regular cadence with Check-ins, and produces Reports. The domain language is in
 [`CONTEXT.md`](CONTEXT.md) and the key decisions are in [`docs/adr/`](docs/adr/).
+To install it on a server, follow [`docs/install.md`](docs/install.md).
 
 ## Modes
 

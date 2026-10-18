@@ -59,6 +59,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Infrastructure:**
 - [internal] Each Account has a session generation (the new `account_sessions` table) that `domain.Service.EndSessions` moves on to end all of a person's sessions at once, for password sign-in to use (#299).
 
+**Documentation:**
+- [ops] [`docs/install.md`](docs/install.md) is an install guide for one Linux host: building the static binary, the settings file, the CSV directory, a systemd unit, a reverse proxy, the first Admin's sign-in, backups and upgrades. It opens with what this release doesn't do yet: emails are only logged, it runs as a single instance, browsers need `unpkg.com` and Google Fonts, Admins are set only when an account is first created, and a CSV unclosed quote isn't caught (#329).
+
 **Testing:**
 - [internal] The seeded-pages check that no page shows an email as text skips a select's options, as its comment always said it did for form fields: the Scope select names people as Name (email) by design (#275), and the seed's Managers now make it list them (#306).
 - [internal] The seed test checks every team person's Manager, not only those who own a Goal, and the seeded-pages email check exempts only the Scope select's options, so an email in any other select's option is caught (#316).
