@@ -388,16 +388,18 @@ func TestBuilderAttributeSelectOffersEveryLiveAttributeAndNoFieldOverHTTP(t *tes
 }
 
 // A value posted for a rule that tests another attribute, such as a Health
-// for an Owner rule, is refused as that rule, and nothing is saved.
-func TestBuilderRefusesAValueFromAnotherAttributeAsItsRuleOverHTTP(t *testing.T) {
+// for an Owner rule, is dropped: the Owner rule saves with only its Owner
+// value (ticket #314).
+func TestBuilderDropsAValueFromAnotherAttributeFromItsRuleOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
+	bossID := strconv.FormatInt(boss.ID, 10)
 
-	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+	resp := postForm(t, noRedirects(client), ts.URL+"/reports/new", url.Values{
 		"name":               {"MBR"},
 		"mode":               {domain.ReportModeRules},
 		"rules[0].attribute": {domain.RuleLifecycle},
@@ -405,18 +407,147 @@ func TestBuilderRefusesAValueFromAnotherAttributeAsItsRuleOverHTTP(t *testing.T)
 		"rules[0].value":     {"lifecycle=" + domain.LifecycleActive},
 		"rules[1].attribute": {domain.RuleOwner},
 		"rules[1].op":        {domain.RuleIsAnyOf},
-		"rules[1].value":     {"owner=" + strconv.FormatInt(boss.ID, 10), "health=" + domain.HealthRed},
+		"rules[1].value":     {"owner=" + bossID, "health=" + domain.HealthRed},
+	})
+	assertSavedReport(t, client, ts.URL, resp)
+	defs, err := h.Service.ListReportDefinitions(context.Background())
+	if err != nil || len(defs) != 1 {
+		t.Fatalf("ListReportDefinitions = %v, %v; want the one saved", defs, err)
+	}
+	if rules := defs[0].Rules; len(rules) != 2 || rules[1].Attribute != domain.RuleOwner || !slices.Equal(rules[1].Values, []string{bossID}) {
+		t.Errorf("the Owner rule with a Health is stored as %+v, want Owner is any of %s alone", rules, bossID)
+	}
+}
+
+// Without script every attribute's values stay selected, so an author who
+// switches the started Owner's org row to Lifecycle still posts their org
+// beside Active. The row keeps only its own attribute's values: the save
+// stores Lifecycle is Active (ticket #314).
+func TestBuilderSavesAChangedStartingRowWithoutItsStaleValueOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	vp := h.SignIn("vp@example.com")
+	h.SetManager(h.SignIn("mia@example.com"), vp)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "vp@example.com")
+
+	resp := postForm(t, noRedirects(client), ts.URL+"/reports/new", url.Values{
+		"name":               {"MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleLifecycle},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {domain.RuleOrg + "=" + strconv.FormatInt(vp.ID, 10), domain.RuleLifecycle + "=" + domain.LifecycleActive},
+	})
+	assertSavedReport(t, client, ts.URL, resp)
+	defs, err := h.Service.ListReportDefinitions(context.Background())
+	if err != nil || len(defs) != 1 {
+		t.Fatalf("ListReportDefinitions = %v, %v; want the one saved", defs, err)
+	}
+	want := []domain.ReportRule{{Attribute: domain.RuleLifecycle, Op: domain.RuleIs, Values: []string{domain.LifecycleActive}}}
+	if got := defs[0].Rules; len(got) != 1 || got[0].Attribute != want[0].Attribute || got[0].Op != want[0].Op || !slices.Equal(got[0].Values, want[0].Values) {
+		t.Errorf("the changed row is stored as %+v, want %+v", got, want)
+	}
+}
+
+// Show matches and a refused save re-render a switched row with only its own
+// attribute's values selected, not the stale one it posted (ticket #314).
+func TestBuilderRerendersAChangedRowWithOnlyItsOwnValuesOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	vp := h.SignIn("vp@example.com")
+	h.SetManager(h.SignIn("mia@example.com"), vp)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "vp@example.com")
+	stale := domain.RuleOrg + "=" + strconv.FormatInt(vp.ID, 10)
+
+	for _, tc := range []struct {
+		what, name, do string
+		status         int
+	}{
+		{"Show matches", "MBR", "show-matches", http.StatusOK},
+		{"a save with no name", "", "", http.StatusUnprocessableEntity},
+	} {
+		resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+			"name":               {tc.name},
+			"do":                 {tc.do},
+			"mode":               {domain.ReportModeRules},
+			"rules[0].attribute": {domain.RuleLifecycle},
+			"rules[0].op":        {domain.RuleIs},
+			"rules[0].value":     {stale, domain.RuleLifecycle + "=" + domain.LifecycleActive},
+		})
+		page := readBody(t, resp)
+		if resp.StatusCode != tc.status {
+			t.Fatalf("%s: status %d, want %d; body:\n%s", tc.what, resp.StatusCode, tc.status, page)
+		}
+		values := pageElement(t, pageElement(t, page, "form", "report-builder"), "select", "rule-values")
+		if got := regexp.MustCompile(`value="([^"]*)" selected`).FindAllStringSubmatch(values, -1); len(got) != 1 || got[0][1] != domain.RuleLifecycle+"="+domain.LifecycleActive {
+			t.Errorf("after %s the row's values select %v, want only lifecycle=Active:\n%s", tc.what, got, values)
+		}
+	}
+}
+
+// A row whose only posted value is another attribute's is left with none, and
+// refused as a row with no value is: 422 beside the row, nothing saved
+// (ticket #314).
+func TestBuilderRefusesARowLeftWithNoValueOfItsOwnOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	vp := h.SignIn("vp@example.com")
+	h.SetManager(h.SignIn("mia@example.com"), vp)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "vp@example.com")
+
+	resp := postForm(t, client, ts.URL+"/reports/new", url.Values{
+		"name":               {"MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleLifecycle},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {domain.RuleOrg + "=" + strconv.FormatInt(vp.ID, 10)},
 	})
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("a Health in an Owner rule: status %d, want 422; body:\n%s", resp.StatusCode, page)
+		t.Fatalf("a Lifecycle row with only an org value: status %d, want 422; body:\n%s", resp.StatusCode, page)
 	}
-	rows := strings.Split(pageElement(t, page, "form", "report-builder"), `data-testid="report-rule"`)[1:]
-	if len(rows) != 2 || strings.Contains(rows[0], "input-error") || !strings.Contains(rows[1], `id="rules[1]-error"`) {
-		t.Errorf("the Owner rule with a Health isn't refused as rules[1]:\n%s", strings.Join(rows, "\n---\n"))
+	row := pageElement(t, pageElement(t, page, "form", "report-builder"), "div", "report-rule")
+	if bad := between(t, row, `id="rules[0]-error"`, `</span>`); !strings.Contains(bad, "a rule needs a value") {
+		t.Errorf("the row's error reads %q, want \"a rule needs a value\"", bad)
 	}
 	if defs, _ := h.Service.ListReportDefinitions(context.Background()); len(defs) != 0 {
 		t.Errorf("the refused save saved %d definitions", len(defs))
+	}
+}
+
+// A row with no attribute keeps no value, so one posting only a stale value
+// is left out as a blank row is, and the rules beside it save (ticket #314).
+func TestBuilderLeavesOutARowWithNoAttributeAndAStaleValueOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	vp := h.SignIn("vp@example.com")
+	h.SetManager(h.SignIn("mia@example.com"), vp)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "vp@example.com")
+
+	resp := postForm(t, noRedirects(client), ts.URL+"/reports/new", url.Values{
+		"name":               {"MBR"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {""},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {domain.RuleOrg + "=" + strconv.FormatInt(vp.ID, 10)},
+		"rules[1].attribute": {domain.RuleLifecycle},
+		"rules[1].op":        {domain.RuleIs},
+		"rules[1].value":     {domain.RuleLifecycle + "=" + domain.LifecycleActive},
+	})
+	assertSavedReport(t, client, ts.URL, resp)
+	defs, err := h.Service.ListReportDefinitions(context.Background())
+	if err != nil || len(defs) != 1 {
+		t.Fatalf("ListReportDefinitions = %v, %v; want the one saved", defs, err)
+	}
+	if rules := defs[0].Rules; len(rules) != 1 || rules[0].Attribute != domain.RuleLifecycle || !slices.Equal(rules[0].Values, []string{domain.LifecycleActive}) {
+		t.Errorf("the rules are stored as %+v, want only Lifecycle is Active", rules)
 	}
 }
 

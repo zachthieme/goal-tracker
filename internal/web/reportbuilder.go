@@ -220,7 +220,7 @@ func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, cur
 	if removing {
 		dropRuleRow(r.PostForm, r.PostForm.Get(inputRemoveRule))
 	}
-	v, in, unparsed := readReportBuilder(r)
+	v, in := readReportBuilder(r)
 	v.ID, v.Saved, v.SavedFieldIDs = saved.ID, saved.Name, saved.FieldIDs
 	do := r.PostFormValue("do")
 	if do == "add-rule" || do == "show-matches" || removing {
@@ -234,16 +234,10 @@ func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, cur
 		render(w, r, http.StatusOK, reportBuilderPage(&current, v))
 		return
 	}
-	// The domain checks what parsed even when something didn't, so every
-	// problem comes back together; with any unparsed, nothing it saved is
-	// kept.
 	var def domain.ReportDefinition
 	err := s.svc.WithinTx(r.Context(), func(tx *domain.Service) error {
 		var err error
 		def, err = save(tx, in)
-		if err == nil && len(unparsed) > 0 {
-			return errUnparsedReport
-		}
 		return err
 	})
 	if err == nil {
@@ -254,11 +248,11 @@ func (s *Server) submitReportBuilder(w http.ResponseWriter, r *http.Request, cur
 		http.Error(w, err.Error(), http.StatusForbidden)
 		return
 	}
-	if !errors.Is(err, domain.ErrValidation) && !errors.Is(err, errUnparsedReport) {
+	if !errors.Is(err, domain.ErrValidation) {
 		s.serverError(w, r, "could not save the report", err)
 		return
 	}
-	v.Problems = reportBuilderProblems(err, unparsed)
+	v.Problems = reportBuilderProblems(err)
 	if err := s.loadReportBuilder(r, &v); err != nil {
 		s.serverError(w, r, "could not load the builder", err)
 		return
@@ -290,7 +284,7 @@ func (s *Server) handleReportMatches(w http.ResponseWriter, r *http.Request, _ d
 			return
 		}
 	}
-	v, _, _ := readReportBuilder(r)
+	v, _ := readReportBuilder(r)
 	goals, err := s.svc.ListGoals(r.Context())
 	if err != nil {
 		s.serverError(w, r, "could not find the matches", err)
@@ -335,14 +329,9 @@ func (s *Server) handleSearchReportGoals(w http.ResponseWriter, r *http.Request,
 	render(w, r, http.StatusOK, reportGoalSearchResults(list, matches))
 }
 
-// errUnparsedReport rolls back a builder save the domain accepted when the
-// handler refused some of its values.
-var errUnparsedReport = errors.New("the builder has values that don't parse")
-
 // readReportBuilder reads the builder's form as typed, both modes' inputs
 // kept, and the definition it saves: only what the chosen mode selects by.
-// unparsed refuses each rule whose values don't belong to its attribute.
-func readReportBuilder(r *http.Request) (v reportBuilderView, in domain.SaveReportDefinitionInput, unparsed []*domain.InputError) {
+func readReportBuilder(r *http.Request) (v reportBuilderView, in domain.SaveReportDefinitionInput) {
 	v = reportBuilderView{
 		Name:         r.PostFormValue("name"),
 		Introduction: r.PostFormValue("introduction"),
@@ -359,15 +348,11 @@ func readReportBuilder(r *http.Request) (v reportBuilderView, in domain.SaveRepo
 		in.Picked = v.PickedIDs
 	case domain.ReportModeRules:
 		in.Include, in.Exclude = v.IncludeIDs, v.ExcludeIDs
-		for i, row := range v.Rules {
-			rule, ok := row.rule()
-			if !ok {
-				unparsed = append(unparsed, &domain.InputError{Input: domain.RuleInput(i), Message: "a rule's values must be values of what it tests"})
-			}
-			in.Rules = append(in.Rules, rule)
+		for _, row := range v.Rules {
+			in.Rules = append(in.Rules, row.rule())
 		}
 	}
-	return v, in, unparsed
+	return v, in
 }
 
 // inputRemoveRule is a rule row's ×, posting the row's i.
@@ -383,8 +368,11 @@ func dropRuleRow(form url.Values, i string) {
 }
 
 // reportRuleRows gathers the rule rows, posted as rules[i].attribute,
-// rules[i].op and rules[i].value, in the order of their i, leaving out each
-// row with neither an attribute nor a value. A row's i is only its place.
+// rules[i].op and rules[i].value, in the order of their i. Each row keeps only
+// the values of its attribute: without script every attribute's values stay
+// selected, so a row switched to another attribute still posts its old ones.
+// A row then with neither an attribute nor a value is left out. A row's i is
+// only its place.
 func reportRuleRows(form url.Values) []reportRuleRow {
 	byIndex := map[int]*reportRuleRow{}
 	for name, values := range form {
@@ -411,32 +399,30 @@ func reportRuleRows(form url.Values) []reportRuleRow {
 	}
 	var rows []reportRuleRow
 	for _, i := range slices.Sorted(maps.Keys(byIndex)) {
-		if row := byIndex[i]; row.Attribute != "" || len(row.Values) > 0 {
+		row := byIndex[i]
+		row.Values = slices.DeleteFunc(slices.Clone(row.Values), func(posted string) bool {
+			return row.Attribute == "" || !strings.HasPrefix(posted, row.Attribute+"=")
+		})
+		if row.Attribute != "" || len(row.Values) > 0 {
 			rows = append(rows, *row)
 		}
 	}
 	return rows
 }
 
-// rule is the Report rule the row posts, and whether each of its values
-// belongs to its attribute; one that doesn't is left out of the rule.
-func (row reportRuleRow) rule() (domain.ReportRule, bool) {
+// rule is the Report rule the row posts. Its values are the domain's, without
+// the attribute's key each option posts them under.
+func (row reportRuleRow) rule() domain.ReportRule {
 	rule := domain.ReportRule{Attribute: row.Attribute, Op: row.Op}
 	if raw, ok := strings.CutPrefix(row.Attribute, "dimension:"); ok {
 		rule.Attribute = domain.RuleDimension
 		// An id that doesn't parse names no Dimension, which saving refuses.
 		rule.DimensionID, _ = strconv.ParseInt(raw, 10, 64)
 	}
-	belongs := true
 	for _, posted := range row.Values {
-		value, ok := strings.CutPrefix(posted, row.Attribute+"=")
-		if !ok || row.Attribute == "" {
-			belongs = false
-			continue
-		}
-		rule.Values = append(rule.Values, value)
+		rule.Values = append(rule.Values, strings.TrimPrefix(posted, row.Attribute+"="))
 	}
-	return rule, belongs
+	return rule
 }
 
 // removeChip is the name of a chip's no-script Remove checkbox in list,
@@ -520,8 +506,7 @@ func (s *Server) orgRulePeople(r *http.Request, rows []reportRuleRow, owners, ma
 		if row.Attribute != domain.RuleOrg {
 			continue
 		}
-		rule, _ := row.rule()
-		for _, value := range rule.Values {
+		for _, value := range row.rule().Values {
 			id, err := strconv.ParseInt(value, 10, 64)
 			if err != nil {
 				continue
@@ -606,7 +591,7 @@ func (s *Server) matchReport(r *http.Request, goals []domain.Goal, v reportBuild
 		def.Mode, def.Picked = domain.ReportModePicked, existing(v.PickedIDs)
 	} else {
 		for _, row := range v.Rules {
-			if rule, _ := row.rule(); rule.Attribute == domain.RuleTopLevel || len(rule.Values) > 0 {
+			if rule := row.rule(); rule.Attribute == domain.RuleTopLevel || len(rule.Values) > 0 {
 				def.Rules = append(def.Rules, rule)
 			}
 		}
@@ -659,17 +644,10 @@ func goalsByID(goals []domain.Goal, ids []int64) []domain.Goal {
 	return out
 }
 
-// reportBuilderProblems are a refused save's problems: the domain's, each
-// displaced by the handler's under the same input, since a rule whose values
-// didn't parse reached the domain without them.
-func reportBuilderProblems(err error, unparsed []*domain.InputError) []*domain.InputError {
-	var problems []*domain.InputError
-	for _, p := range domain.InputErrors(err) {
-		if !slices.ContainsFunc(unparsed, func(u *domain.InputError) bool { return u.Input == p.Input }) {
-			problems = append(problems, p)
-		}
-	}
-	problems = append(problems, unparsed...)
+// reportBuilderProblems are a refused save's problems, each naming its input,
+// or the refusal itself when it names none.
+func reportBuilderProblems(err error) []*domain.InputError {
+	problems := domain.InputErrors(err)
 	if len(problems) == 0 {
 		problems = []*domain.InputError{{Message: strings.TrimPrefix(err.Error(), domain.ErrValidation.Error()+": ")}}
 	}
