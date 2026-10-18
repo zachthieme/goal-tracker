@@ -87,6 +87,9 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 							@reportRuleRowInputs(v, i, row)
 						}
 						@reportBuilderError(v, domain.ReportInputRules)
+						if v.StartNote != "" {
+							<p data-testid="rules-start-note" class="small muted">{ v.StartNote }</p>
+						}
 						<div><button type="submit" name="do" value="add-rule" class="btn quiet sm rb-add" formnovalidate>+ Add rule</button></div>
 						<p data-testid="rules-hint" class="small muted">
 							Rules can test any Dimension, Owner, Lifecycle, Health or Top-level. An Admin can create a Dimension such as "In report" so Owners tag their own Goals in; you still decide what's in through Leave out.

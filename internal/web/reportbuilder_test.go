@@ -892,8 +892,9 @@ func TestBuilderFormRefreshesItsRailAsItIsTypedOverHTTP(t *testing.T) {
 	if attr(rail, "id") != "report-matches" {
 		t.Errorf("the rail has no id to swap: %s", rail)
 	}
-	if !strings.Contains(pageElement(t, page, "aside", "report-matches"), "Add a rule to see matching Goals") {
-		t.Errorf("the new builder's rail doesn't ask for a rule")
+	// The boss owns a Goal, so the new builder starts with their own Goals.
+	if got := railCount(t, pageElement(t, page, "aside", "report-matches")); got != 1 {
+		t.Errorf("the new builder's rail matches %d Goals, want the boss's own 1", got)
 	}
 	if builder := pageElement(t, page, "form", "report-builder"); strings.Contains(builder, `data-testid="report-matches"`) {
 		t.Errorf("the rail sits inside the form, so its swap could replace an input")
@@ -1186,7 +1187,8 @@ func TestBuilderSavesAndReloadsAnOrgRuleOverHTTP(t *testing.T) {
 	person := domain.RuleOrg + "=" + strconv.FormatInt(vp.ID, 10)
 
 	attribute := pageElement(t, pageElement(t, getBody(t, client, ts.URL+"/reports/new"), "form", "report-builder"), "select", "rule-attribute")
-	if want := `<option value="` + domain.RuleOrg + `">` + reportOrgAttributeLabel + `</option>`; !strings.Contains(attribute, want) {
+	// Priya has Mia under her, so a new definition starts with her org chosen.
+	if want := `<option value="` + domain.RuleOrg + `" selected>` + reportOrgAttributeLabel + `</option>`; !strings.Contains(attribute, want) {
 		t.Errorf("the attribute select doesn't offer the Owner's org %s:\n%s", want, attribute)
 	}
 
@@ -1284,3 +1286,230 @@ func TestBuilderOffersNoOrgForASelfReferenceOverHTTP(t *testing.T) {
 // reportOrgAttributeLabel is the Owner's org attribute's label as the builder's HTML
 // escapes it.
 var reportOrgAttributeLabel = html.EscapeString("Owner's org")
+
+// A new Report Definition starts with the author's org when anyone is under
+// them: one rule row, the Owner's org "is in the org of" the author, a note
+// saying so under the rules, and a rail already listing their org's Goals
+// (ticket #285).
+func TestNewBuilderStartsWithTheAuthorsOrgOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	vp := h.SignInNamed("vp@example.com", "Priya Raman")
+	mia := h.SignInNamed("mia@example.com", "Mia Lund")
+	out := h.SignInNamed("out@example.com", "Oona Hart")
+	h.SetManager(mia, vp)
+	vps := h.ActiveGoal(vp, "Grow revenue", "Matters.")
+	mias := h.ActiveGoal(mia, "Platform reliability", "Matters.")
+	outs := h.ActiveGoal(out, "Edge cache rollout", "Matters.")
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "vp@example.com"), ts.URL+"/reports/new")
+	rules := pageElement(t, page, "section", "report-rules")
+	rows := strings.Split(rules, `data-testid="report-rule"`)[1:]
+	if len(rows) != 1 {
+		t.Fatalf("the new builder has %d rule rows, want 1:\n%s", len(rows), rules)
+	}
+	for _, want := range []string{
+		`<option value="` + domain.RuleOrg + `" selected>` + reportOrgAttributeLabel + `</option>`,
+		`<option value="` + domain.RuleIs + `" selected>is in the org of</option>`,
+		`<option value="` + domain.RuleOrg + "=" + strconv.FormatInt(vp.ID, 10) + `" selected>Priya Raman</option>`,
+	} {
+		if !strings.Contains(rows[0], want) {
+			t.Errorf("the new builder's rule lacks %s:\n%s", want, rows[0])
+		}
+	}
+	if note := pageElement(t, rules, "p", "rules-start-note"); !strings.Contains(note, "Started with your org. Change or remove it.") {
+		t.Errorf("the note under the rules reads %s", note)
+	}
+	rail := pageElement(t, page, "aside", "report-matches")
+	if got := railCount(t, rail); got != 2 || !strings.Contains(rail, vps.Title) || !strings.Contains(rail, mias.Title) || strings.Contains(rail, outs.Title) {
+		t.Errorf("the rail doesn't list just %q and %q:\n%s", vps.Title, mias.Title, rail)
+	}
+	refresh := url.Values{
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleOrg},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {domain.RuleOrg + "=" + strconv.FormatInt(vp.ID, 10)},
+	}
+	if live, _ := postFormHX(t, signInClient(t, ts.URL, "vp@example.com"), ts.URL+"/reports/new/matches", refresh); !strings.HasPrefix(live, rail) {
+		t.Errorf("the first rail lists\n%s\nbut the live rail for the started rule lists\n%s", rail, live)
+	}
+}
+
+// With no one under them, a new Report Definition starts with the author's
+// own Goals when they own any: Owner "is" the author, and a note saying so
+// (ticket #285).
+func TestNewBuilderStartsWithTheAuthorsOwnGoalsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "sam@example.com")
+	sam := h.SignInNamed("sam@example.com", "Sam Rivera")
+	boss := h.SignInNamed("boss@example.com", "Bo Ss")
+	h.SetManager(sam, boss)
+	sams := h.ActiveGoal(sam, "Edge cache rollout", "Matters.")
+	bosses := h.ActiveGoal(boss, "Grow revenue", "Matters.")
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/reports/new")
+	rules := pageElement(t, page, "section", "report-rules")
+	rows := strings.Split(rules, `data-testid="report-rule"`)[1:]
+	if len(rows) != 1 {
+		t.Fatalf("the new builder has %d rule rows, want 1:\n%s", len(rows), rules)
+	}
+	for _, want := range []string{
+		`<option value="` + domain.RuleOwner + `" selected>Owner</option>`,
+		`<option value="` + domain.RuleIs + `" selected>is</option>`,
+		`<option value="` + domain.RuleOwner + "=" + strconv.FormatInt(sam.ID, 10) + `" selected>Sam Rivera</option>`,
+	} {
+		if !strings.Contains(rows[0], want) {
+			t.Errorf("the new builder's rule lacks %s:\n%s", want, rows[0])
+		}
+	}
+	if note := pageElement(t, rules, "p", "rules-start-note"); !strings.Contains(note, "Started with your own Goals. Change or remove it.") {
+		t.Errorf("the note under the rules reads %s", note)
+	}
+	rail := pageElement(t, page, "aside", "report-matches")
+	if got := railCount(t, rail); got != 1 || !strings.Contains(rail, sams.Title) || strings.Contains(rail, bosses.Title) {
+		t.Errorf("the rail doesn't list just %q:\n%s", sams.Title, rail)
+	}
+}
+
+// An author with no one under them and no Goal of their own starts with the
+// blank row, and no note (ticket #285).
+func TestNewBuilderStartsBlankForAnAuthorWithNoOrgOrGoalsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "sam@example.com")
+	h.SignIn("sam@example.com")
+	boss := h.SignIn("boss@example.com")
+	h.ActiveGoal(boss, "Grow revenue", "Matters.")
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/reports/new")
+	rules := pageElement(t, page, "section", "report-rules")
+	rows := strings.Split(rules, `data-testid="report-rule"`)[1:]
+	if len(rows) != 1 || strings.Contains(rows[0], " selected") {
+		t.Errorf("the new builder doesn't start with one blank row:\n%s", rules)
+	}
+	if strings.Contains(rules, "rules-start-note") {
+		t.Errorf("the blank start has a note:\n%s", rules)
+	}
+	if !strings.Contains(pageElement(t, page, "aside", "report-matches"), "Add a rule to see matching Goals") {
+		t.Errorf("the blank start's rail doesn't ask for a rule")
+	}
+}
+
+// Editing a saved definition shows its saved rules and no note: only a new
+// one starts with a rule (ticket #285).
+func TestEditBuilderShowsTheSavedRulesAndNoStartNoteOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	vp := h.SignIn("vp@example.com")
+	mia := h.SignIn("mia@example.com")
+	h.SetManager(mia, vp)
+	h.ActiveGoal(vp, "Grow revenue", "Matters.")
+	def := h.SaveReportDefinition(vp, domain.SaveReportDefinitionInput{Name: "Top", Mode: domain.ReportModeRules,
+		Rules: []domain.ReportRule{{Attribute: domain.RuleTopLevel, Op: domain.RuleIs}}})
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "vp@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/edit")
+	rules := pageElement(t, page, "section", "report-rules")
+	rows := strings.Split(rules, `data-testid="report-rule"`)[1:]
+	if len(rows) != 1 || !strings.Contains(rows[0], `<option value="`+domain.RuleTopLevel+`" selected>Top-level</option>`) {
+		t.Errorf("the edit page doesn't show just the saved Top-level rule:\n%s", rules)
+	}
+	if strings.Contains(rules, "rules-start-note") {
+		t.Errorf("the edit page has the new builder's note:\n%s", rules)
+	}
+}
+
+// The note and the started rule belong to the new builder's first render:
+// Add rule keeps the rows as typed without the note, and removing the last
+// row leaves the blank row, not the started rule again (ticket #285).
+func TestNewBuilderStartNoteIsOnlyOnTheFirstRenderOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	vp := h.SignIn("vp@example.com")
+	mia := h.SignIn("mia@example.com")
+	h.SetManager(mia, vp)
+	h.ActiveGoal(vp, "Grow revenue", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "vp@example.com")
+	started := url.Values{
+		"name":               {"Mine"},
+		"mode":               {domain.ReportModeRules},
+		"rules[0].attribute": {domain.RuleOrg},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {domain.RuleOrg + "=" + strconv.FormatInt(vp.ID, 10)},
+	}
+
+	for _, tc := range []struct {
+		name   string
+		submit url.Values
+		rows   int
+	}{
+		{"Add rule", url.Values{"do": {"add-rule"}}, 2},
+		{"removing the last row", url.Values{"remove-rule": {"0"}}, 1},
+		{"Show matches", url.Values{"do": {"show-matches"}}, 1},
+	} {
+		form := url.Values{}
+		maps.Copy(form, started)
+		maps.Copy(form, tc.submit)
+		resp := postForm(t, client, ts.URL+"/reports/new", form)
+		page := readBody(t, resp)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("%s: status %d, want 200; body:\n%s", tc.name, resp.StatusCode, page)
+		}
+		rules := pageElement(t, page, "section", "report-rules")
+		if strings.Contains(rules, "rules-start-note") {
+			t.Errorf("after %s the note is back:\n%s", tc.name, rules)
+		}
+		rows := strings.Split(rules, `data-testid="report-rule"`)[1:]
+		if len(rows) != tc.rows {
+			t.Errorf("after %s there are %d rule rows, want %d", tc.name, len(rows), tc.rows)
+		}
+		if tc.submit.Has("remove-rule") && len(rows) > 0 && strings.Contains(rows[0], " selected") {
+			t.Errorf("after removing the last row the started rule is back:\n%s", rows[0])
+		}
+	}
+}
+
+// Switching a new definition to Goals I pick with the started rule still in
+// the form saves a picked definition with no rules: only rules mode reads
+// the rule rows (ticket #285).
+func TestNewBuilderSavesPickedWithTheStartedRuleStillThereOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	vp := h.SignIn("vp@example.com")
+	mia := h.SignIn("mia@example.com")
+	h.SetManager(mia, vp)
+	h.ActiveGoal(vp, "Grow revenue", "Matters.")
+	picked := h.ActiveGoal(mia, "Platform reliability", "Matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "vp@example.com")
+
+	resp := postForm(t, noRedirects(client), ts.URL+"/reports/new", url.Values{
+		"name":               {"Picked"},
+		"mode":               {domain.ReportModePicked},
+		"picked":             {strconv.FormatInt(picked.ID, 10)},
+		"rules[0].attribute": {domain.RuleOrg},
+		"rules[0].op":        {domain.RuleIs},
+		"rules[0].value":     {domain.RuleOrg + "=" + strconv.FormatInt(vp.ID, 10)},
+	})
+	assertSavedReport(t, client, ts.URL, resp)
+	defs, err := h.Service.ListReportDefinitions(context.Background())
+	if err != nil || len(defs) != 1 {
+		t.Fatalf("ListReportDefinitions = %v, %v; want the one saved", defs, err)
+	}
+	def, err := h.Service.GetReportDefinition(context.Background(), defs[0].ID)
+	if err != nil {
+		t.Fatalf("GetReportDefinition: %v", err)
+	}
+	if def.Mode != domain.ReportModePicked || len(def.Rules) != 0 || !slices.Equal(def.Picked, []int64{picked.ID}) {
+		t.Errorf("saved %s with rules %+v picking %v, want picked with no rules picking [%d]", def.Mode, def.Rules, def.Picked, picked.ID)
+	}
+}
