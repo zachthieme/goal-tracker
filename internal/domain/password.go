@@ -103,9 +103,12 @@ func (s *Service) PasswordLinkAccount(ctx context.Context, token string) (Accoun
 	return s.Account(ctx, link.AccountID)
 }
 
-// SetPassword sets the password of the Account the set-password link is for,
-// using the link up. It returns ErrLinkInvalid for a link that is unknown,
-// expired, or used.
+// SetPassword sets the password of the Account the set-password link is for:
+// it stores the hash, lifts any lock, uses the link up, and ends every session
+// the person had (EndSessions), so a browser signed in before is signed out.
+// It returns ErrLinkInvalid for a link that is unknown, expired, or used,
+// ErrPasswordRules for a password too short or long, leaving the link to try
+// again, and ErrDeparted for a Departed person.
 func (s *Service) SetPassword(ctx context.Context, token, password string) (Account, error) {
 	acc, err := s.PasswordLinkAccount(ctx, token)
 	if err != nil {
@@ -128,7 +131,7 @@ func (s *Service) SetPassword(ctx context.Context, token, password string) (Acco
 		if err := tx.queries.DeletePasswordLink(ctx, acc.ID); err != nil {
 			return fmt.Errorf("use up password link: %w", err)
 		}
-		return nil
+		return tx.EndSessions(ctx, acc.ID)
 	})
 	if err != nil {
 		return Account{}, err
@@ -212,6 +215,12 @@ func lockedAt(stored db.AccountPassword, now time.Time) (bool, error) {
 // given one against, so it takes as long as one that has. No password matches
 // it.
 const dummyPasswordHash = "$argon2id$v=19$m=65536,t=1,p=4$Z29hbC10cmFja2VyLWR1bQ$bm8gcGFzc3dvcmQgZXZlciBoYXNoZXMgdG8gdGhpcy4"
+
+// PasswordLinkURL is the set-password link for token, at the web app's base
+// URL.
+func (s *Service) PasswordLinkURL(token string) string {
+	return s.baseURL + "/set-password?token=" + token
+}
 
 // passwordLinkHash is how a set-password link's token is stored: its SHA-256,
 // in hex.

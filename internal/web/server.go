@@ -30,6 +30,10 @@ type Server struct {
 	// oidc, when set, is the org's provider people sign in through; the
 	// development email form is off.
 	oidc *OIDC
+	// passwordFailures, when set, means people sign in with a password set
+	// through an Admin's set-password link, and counts each client IP's failed
+	// tries; the development email form is off (see WithPasswordSignIn).
+	passwordFailures *passwordFailuresByIP
 	// directorySync, when set, syncs people and their Managers from the org's
 	// directory; the Admin page shows it (see WithDirectorySync).
 	directorySync *directory.Sync
@@ -61,6 +65,15 @@ func WithSessionKey(key []byte) Option {
 func WithSecureCookies(secure bool) Option {
 	return func(s *Server) {
 		s.secureCookies = secure
+	}
+}
+
+// WithPasswordSignIn has people sign in with an email and password, the
+// password set only through a set-password link an Admin issues on the Admin
+// page. The development email form is off.
+func WithPasswordSignIn() Option {
+	return func(s *Server) {
+		s.passwordFailures = newPasswordFailuresByIP()
 	}
 }
 
