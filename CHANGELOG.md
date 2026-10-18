@@ -28,6 +28,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Home's Needs you lists your open Action Items, soonest due first and flagged when overdue, counts them in its total and the top bar's Home count, and lets you close one there (#323).
 - [user] Risks flags an Active Goal with an overdue Action Item, in a new "Action Items overdue" group with its own card, without changing its Health. Its chip says how many days the most overdue item is late, its Fix is See Action Items, and it counts in the top bar's Risks count. Among Goals of the same Health it ranks below a Path to Green that's overdue and above Stale (#326).
 - [user] The weekly reminder lists your open Action Items, overdue first, and reaches you even when no Check-in is due (#327).
+- [user] A Goal's page lists its open Action Items from every Report, soonest due first and flagged when overdue, with owner, due date and the Report they came from, and the owner can close one there (#324).
 
 **Improvements:**
 - [internal] CONTEXT.md's Action Item entry says an Action Item may be about one Goal in its Report, who may close and reassign it, and when it is overdue.
