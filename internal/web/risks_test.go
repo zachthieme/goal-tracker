@@ -1609,6 +1609,35 @@ func TestRisksPageScopedToAnotherPersonsOrg(t *testing.T) {
 	}
 }
 
+// Whether the Risks page offers Orgs is the company's answer, not the
+// viewer's: with Vera managing Mia, Oz, who has no Manager and no one under
+// them, can open a link to Vera's org and sees it scoped and chosen.
+func TestRisksPageScopesAnOrgLinkForAViewerOutsideAnyOrg(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	vera := h.SignInNamed("vera@example.com", "Vera Vance")
+	mia := h.SignInNamed("mia@example.com", "Mia Moss")
+	oz := h.SignInNamed("oz@example.com", "Oz Ortiz")
+	h.SetManager(mia, vera)
+	veraGoal := h.ActiveGoal(vera, "Vera's goal", "It matters.")
+	ozGoal := h.ActiveGoal(oz, "Oz's goal", "It matters.")
+	h.Clock.Advance(10 * day)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "oz@example.com")
+
+	if got := orgScopedRiskTitles(getBody(t, client, ts.URL+"/risks"), veraGoal, ozGoal); len(got) != 2 {
+		t.Fatalf("unscoped, rows = %q, want both stale Goals", got)
+	}
+	page := getBody(t, client, scopeOrgURL(ts.URL, "/risks", vera))
+	if got, want := orgScopedRiskTitles(page, veraGoal, ozGoal), []string{"Vera's goal"}; !slices.Equal(got, want) {
+		t.Errorf("Oz in Vera's org: rows = %q, want %q", got, want)
+	}
+	if _, value, _ := scopeChoices(scopeSelect(t, page, "risks-scope")); value != strconv.FormatInt(vera.ID, 10) {
+		t.Errorf("Oz in Vera's org: the Scope select shows %q chosen, want %d", value, vera.ID)
+	}
+}
+
 // The org lives in the Risks page's address, so its group cards, Show all
 // and the scope form keep it, and a reload shows it again; an org that
 // resolves takes over from an older ?mine=1, and the form keeps no Mine of its

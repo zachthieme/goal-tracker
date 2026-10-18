@@ -723,9 +723,11 @@ func (r ReportRule) matches(subject ruleSubject) bool {
 	return listed
 }
 
-// ReportRuleManagers returns everyone who is someone's Manager, by id, for the
-// Report builder to offer an Org rule on: with none, no one has a Manager and
-// an Org is only its person (CONTEXT.md: Org).
+// ReportRuleManagers returns everyone who is the Manager of someone other than
+// themselves, by id, for the Report builder to offer an Org rule on. A
+// self-reference, as a directory can say, puts no one under its person, so is
+// left out: with none, AnyoneHasManager is false and an Org is only its person
+// (CONTEXT.md: Org).
 func (s *Service) ReportRuleManagers(ctx context.Context) ([]Account, error) {
 	managed, err := s.queries.ListManagedAccounts(ctx)
 	if err != nil {
@@ -733,7 +735,7 @@ func (s *Service) ReportRuleManagers(ctx context.Context) ([]Account, error) {
 	}
 	var ids []int64
 	for _, row := range managed {
-		if !slices.Contains(ids, *row.ManagerID) {
+		if *row.ManagerID != row.ID && !slices.Contains(ids, *row.ManagerID) {
 			ids = append(ids, *row.ManagerID)
 		}
 	}

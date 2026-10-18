@@ -909,3 +909,38 @@ func TestUpdateReportDefinitionKeepsARetiredFieldItShows(t *testing.T) {
 		t.Errorf("after the edit FieldIDs = %v, want [%d]", updated.FieldIDs, budget.ID)
 	}
 }
+
+// The Report builder offers an Org rule on the Managers of someone other than
+// themselves: a self-reference, as a directory can give (ADR 0008), puts no one
+// under its person, so isn't one.
+func TestReportRuleManagersLeavesOutSelfReferences(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	vp := h.SignIn("vp@example.com")
+	vera := h.SignIn("vera@example.com")
+	mia := h.SignIn("mia@example.com")
+	h.SetManager(vp, vp)
+
+	got, err := h.Service.ReportRuleManagers(ctx)
+	if err != nil {
+		t.Fatalf("ReportRuleManagers: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("with only a self-reference ReportRuleManagers = %v, want none", got)
+	}
+
+	h.SetManager(mia, vera)
+	got, err = h.Service.ReportRuleManagers(ctx)
+	if err != nil {
+		t.Fatalf("ReportRuleManagers: %v", err)
+	}
+	var emails []string
+	for _, a := range got {
+		emails = append(emails, a.Email)
+	}
+	if want := []string{"vera@example.com"}; !slices.Equal(emails, want) {
+		t.Errorf("ReportRuleManagers = %v, want %v", emails, want)
+	}
+}

@@ -126,3 +126,54 @@ func TestAccountCarriesItsManager(t *testing.T) {
 		t.Errorf("Manager = %v, want %d", got.ManagerID, lead.ID)
 	}
 }
+
+// anyoneHasManager reports whether anyone has a Manager other than themselves,
+// failing the test on error.
+func anyoneHasManager(t *testing.T, h *testsupport.Harness) bool {
+	t.Helper()
+	has, err := h.Service.AnyoneHasManager(t.Context())
+	if err != nil {
+		t.Fatalf("AnyoneHasManager: %v", err)
+	}
+	return has
+}
+
+// The company has Managers once anyone has a Manager other than themselves; a
+// self-reference, as a directory can give (ADR 0008), isn't one.
+func TestAnyoneHasManagerIgnoresSelfReferences(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	vp := h.SignIn("vp@example.com")
+	vera := h.SignIn("vera@example.com")
+	mia := h.SignIn("mia@example.com")
+	if anyoneHasManager(t, h) {
+		t.Error("AnyoneHasManager is true with no Managers")
+	}
+	h.SetManager(vp, vp)
+	if anyoneHasManager(t, h) {
+		t.Error("AnyoneHasManager is true when the only Manager is a self-reference")
+	}
+	h.SetManager(mia, vera)
+	if !anyoneHasManager(t, h) {
+		t.Error("AnyoneHasManager is false with Vera managing Mia")
+	}
+}
+
+// A Departed person keeps their Manager (ADR 0008), so still counts.
+func TestAnyoneHasManagerCountsDepartedPeople(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	vera := h.SignIn("vera@example.com")
+	mia := h.SignIn("mia@example.com")
+	h.SetManager(mia, vera)
+	if err := h.Service.MarkDeparted(t.Context(), admin.ID, mia.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	if !anyoneHasManager(t, h) {
+		t.Error("AnyoneHasManager is false when the person with a Manager has departed")
+	}
+}
