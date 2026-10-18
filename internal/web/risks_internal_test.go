@@ -190,6 +190,31 @@ func TestSortRiskRowsPutsTheWorstFirst(t *testing.T) {
 	}
 }
 
+// Among Goals of the same Health, an overdue Action Item ranks a row below a
+// Path to Green overdue and above Stale, the longest overdue first.
+func TestSortRiskRowsRanksOverdueActionItemsBetweenPathsAndStale(t *testing.T) {
+	t.Parallel()
+
+	itemOverdue := func(days int) riskSignal { return riskSignal{Kind: "action-item-overdue", Days: days} }
+	want := []string{"Path overdue", "Item long overdue", "Item overdue", "Stale"}
+	rows := []riskGoalRow{
+		row("Stale", 7, domain.HealthYellow, riskSignal{Kind: "stale", Days: 30}),
+		row("Item overdue", 7, domain.HealthYellow, itemOverdue(2)),
+		row("Item long overdue", 7, domain.HealthYellow, itemOverdue(9)),
+		row("Path overdue", 7, domain.HealthYellow, riskSignal{Kind: "path-overdue", Days: 1}),
+	}
+
+	sortRiskRows(rows)
+
+	var got []string
+	for _, r := range rows {
+		got = append(got, r.Goal.Title)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("sorted rows:\n got %q\nwant %q", got, want)
+	}
+}
+
 // The Risks page groups the signals by who acts on them, and each group counts
 // the Goals it holds once, however many of its signals flag a Goal.
 func TestRiskGroupsCountUniqueGoals(t *testing.T) {
@@ -203,10 +228,13 @@ func TestRiskGroupsCountUniqueGoals(t *testing.T) {
 		row("Orphan under two halted parents", 7, "", sig("ownerless"), sig("halted-parents"), sig("halted-parents")),
 		row("Under a halted parent", 7, domain.HealthGreen, sig("halted-parents")),
 		row("Unaligned", 7, domain.HealthGreen, sig("unaligned")),
+		row("Stale with an overdue Action Item", 7, domain.HealthYellow, sig("stale"), sig("action-item-overdue")),
+		row("Overdue Action Item", 7, domain.HealthGreen, sig("action-item-overdue")),
 	}
 
 	want := []riskGroup{
-		{Key: "owner", Name: "Owner needs to update", Count: 2},
+		{Key: "owner", Name: "Owner needs to update", Count: 3},
+		{Key: "followup", Name: "Action Items overdue", Count: 2},
 		{Key: "plan", Name: "Plan doesn't fit", Count: 3},
 		{Key: "admin", Name: "Needs an Admin", Count: 2},
 	}

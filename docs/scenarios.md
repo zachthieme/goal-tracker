@@ -48,8 +48,9 @@ and who has to act.
    to her org by a Dimension and groups by another, and reads the shape: how
    many Red, how many Yellow, which rows carry a Stale or Ownerless mark.
 3. She opens **Risks** for the reasons. It says how many Goals need attention,
-   in three groups by who has to act: **Owner needs to update** (Stale, Path
-   to Green overdue), **Plan doesn't fit** (Unaligned, schedule conflicts),
+   in four groups by who has to act: **Owner needs to update** (Stale, Path
+   to Green overdue), **Action Items overdue** (an Action Item from a Report
+   past its due date), **Plan doesn't fit** (Unaligned, schedule conflicts),
    **Needs an Admin** (Ownerless, parent On Hold or Cancelled).
 4. She narrows it to her org. Each flagged Goal is one row, worst first,
    with a chip for each reason and one **Fix**.

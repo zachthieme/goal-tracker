@@ -6,7 +6,7 @@
 //
 // The leader ("Elena" in the scenario) is cto@example.com, whom the seed names
 // Priya Raman. The setup makes what the seed lacks: Ownerless Goals, an overdue
-// Path to Green, and a second Dimension.
+// Path to Green, a second Dimension, and an overdue Action Item.
 import type { Locator, Page } from "@playwright/test";
 
 import { admin, appToday, expect, signIn, test } from "../fixtures";
@@ -195,6 +195,35 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     }
   });
 
+  await test.step("Setup 4: the leader publishes a Report and raises an Action Item about the Stale Goal, due two days ago", async () => {
+    const leaderPage = await as(leader);
+    const reportName = "Platform follow-ups";
+    await leaderPage.goto("/reports/new");
+    const builder = leaderPage.getByTestId("report-builder");
+    await builder.getByLabel("Name").fill(reportName);
+    const rule = builder.getByTestId("report-rule");
+    await rule.getByLabel("What the rule tests").selectOption({ label: "Team" });
+    await rule.getByLabel("Operator").selectOption({ label: "is any of" });
+    await rule.getByLabel("Values").selectOption({ label: "Platform" });
+    await builder.getByRole("button", { name: "Save report" }).click();
+    await expect(leaderPage.getByTestId("draft-header").getByTestId("report-name")).toHaveText(reportName);
+
+    const confirm = leaderPage.getByTestId("publish-confirm");
+    await confirm.getByText("Publish…").click();
+    await confirm.getByRole("button", { name: "Publish", exact: true }).click();
+    await leaderPage.waitForURL(/\/reports\/\d+\/publications\/\d+$/);
+
+    const items = leaderPage.getByTestId("publication-action-items");
+    await items.locator("summary").click();
+    const form = items.getByTestId("action-item-form");
+    await form.getByLabel("Action Item").fill("Agree a date for the overdue cut-over.");
+    await form.getByLabel("Owner").fill(stale.email);
+    await form.getByLabel("Due").fill(isoDate(-2));
+    await form.getByTestId("action-item-goal").selectOption(String(stale.id));
+    await form.getByRole("button", { name: "Add Action Item" }).click();
+    await expect(items.getByTestId("raised-action-item")).toContainText(`about ${stale.title}`);
+  });
+
   await test.step("1. The top bar shows a count on Risks before she clicks anything", async () => {
     await signIn(page, leader);
     const count = await navRisksCount(page);
@@ -249,11 +278,12 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     }
   });
 
-  await test.step("3. Risks says how many Goals need attention, in three groups by who has to act", async () => {
+  await test.step("3. Risks says how many Goals need attention, in four groups by who has to act", async () => {
     await page.goto("/risks?org=all");
     await expect(page.getByTestId("risks-attention")).toContainText("Goals need attention");
     const cards = [
       { key: "owner", name: "Owner needs to update", kinds: ["stale", "path-overdue"] },
+      { key: "followup", name: "Action Items overdue", kinds: ["action-item-overdue"] },
       { key: "plan", name: "Plan doesn't fit", kinds: ["unaligned", "schedule-conflicts"] },
       { key: "admin", name: "Needs an Admin", kinds: ["ownerless"] },
     ];
@@ -275,6 +305,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
         { goal: stale, kind: "stale" },
         { goal: overdue, kind: "path-overdue" },
       ],
+      followup: [{ goal: stale, kind: "action-item-overdue" }],
       plan: [
         { goal: unaligned, kind: "unaligned" },
         { goal: twoReasons, kind: "schedule-conflicts" },
@@ -329,11 +360,13 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
       expect(r.fixes, `${r.title}'s Fix is one action: ${r.fix}`).toBe(1);
     }
     // Worst first (sortRiskRows): Ownerless, then by Health (Red, Yellow,
-    // none, Green), then Path to Green overdue, then Stale.
+    // none, Green), then Path to Green overdue, then an overdue Action Item,
+    // then Stale.
     const keys = rows.map((r) => [
       r.kinds.includes("ownerless") ? 0 : 1,
       riskHealthRank(r.health),
       r.kinds.includes("path-overdue") ? 0 : 1,
+      r.kinds.includes("action-item-overdue") ? 0 : 1,
       r.kinds.includes("stale") ? 0 : 1,
     ]);
     for (let i = 1; i < keys.length; i++) {

@@ -491,6 +491,7 @@ func TestRisksPageDefinesEachRisk(t *testing.T) {
 	for name, means := range map[string]string{
 		"Stale":                       "Active Goals whose last Check-in, or activation if they have none, is older than their cadence.",
 		"Path to Green overdue":       "Active Goals past their Path to Green's target date that still aren't Green.",
+		"Action Item overdue":         "An Action Item about this Goal, raised in a Report, is past its due date.",
 		"Ownerless":                   "Active Goals whose Owner has left the company and hasn't been replaced.",
 		"Unaligned":                   "Active Goals that contribute to no other Goal and aren't Top-level.",
 		"Schedule conflicts":          "Goals due later than a Goal they contribute to.",
@@ -522,9 +523,10 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 	kim := h.SignIn("kim@example.com")
 	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
-	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Stale, Unaligned and an overdue Action Item
 	h.Clock.Advance(10 * day)
 	h.Checkin(sam, launch.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	raiseRiskActionItem(t, h, ada, silent, sam, "Break the silence.", -1)
 	h.ActiveGoal(kim, "Orphaned work", "It matters.") // Ownerless and Unaligned
 	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
 		t.Fatalf("MarkDeparted: %v", err)
@@ -544,6 +546,7 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 		chips           []string
 	}{
 		{"owner", "Owner needs to update", "/risks?group=owner&amp;org=all", 1, []string{"Stale · 1"}},
+		{"followup", "Action Items overdue", "/risks?group=followup&amp;org=all", 1, []string{"Action Item overdue · 1"}},
 		{"plan", "Plan doesn't fit", "/risks?group=plan&amp;org=all", 3, []string{"Unaligned · 2", "Schedule conflicts · 1"}},
 		{"admin", "Needs an Admin", "/risks?group=admin&amp;org=all", 1, []string{"Ownerless · 1"}},
 	} {
@@ -568,6 +571,7 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 	}
 	for _, c := range []struct{ group, kind, class string }{
 		{"owner", "stale", `class="badge st"`},
+		{"followup", "action-item-overdue", `class="badge st"`},
 		{"plan", "unaligned", `class="rk-tag"`},
 		{"plan", "schedule-conflicts", `class="rk-tag"`},
 		{"admin", "ownerless", `class="badge ol"`},
@@ -1726,7 +1730,7 @@ func TestRisksShowsAnAdminTheirCardOnAnEmptyScope(t *testing.T) {
 	if strings.Index(page, `data-testid="risks-empty"`) > strings.Index(page, `data-testid="risks-groups"`) {
 		t.Errorf("the cards come before the empty line")
 	}
-	for key, blank := range map[string]string{"owner": "Every Owner is up to date.", "plan": "Every plan fits."} {
+	for key, blank := range map[string]string{"owner": "Every Owner is up to date.", "followup": "No Action Item is overdue.", "plan": "Every plan fits."} {
 		if card := pageElement(t, page, "div", "risks-group-"+key); !strings.Contains(card, blank) {
 			t.Errorf("the Admin's %s card isn't blank: %s", key, card)
 		}
@@ -2061,5 +2065,277 @@ func TestRisksScheduleConflictDateReadsAsTheGoalPageDoes(t *testing.T) {
 		if !strings.Contains(delivery, "<strong>"+c.shown+"</strong>") {
 			t.Errorf("the Goal page doesn't show its delivery date as %s, as its Risks chip does: %s", c.shown, delivery)
 		}
+	}
+}
+
+// riskSignalKinds lists the kinds of a row's signal chips, in order.
+func riskSignalKinds(row string) []string {
+	var out []string
+	for _, m := range regexp.MustCompile(`data-testid="risk-signal" data-kind="([^"]+)"`).FindAllStringSubmatch(row, -1) {
+		out = append(out, m[1])
+	}
+	return out
+}
+
+// raiseRiskActionItem has author, who saves and publishes a Report covering
+// goal, raise an Action Item about it, owned by owner and due dueInDays from
+// today, so a negative dueInDays is already overdue.
+func raiseRiskActionItem(t *testing.T, h *testsupport.Harness, author domain.Account, goal domain.Goal, owner domain.Account, text string, dueInDays int) domain.ActionItem {
+	t.Helper()
+	pub := h.PublishReport(author, h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{
+		Name: "MBR · " + text, Mode: domain.ReportModePicked, Picked: []int64{goal.ID},
+	}))
+	item, err := h.Service.RaiseActionItem(t.Context(), author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, GoalID: goal.ID, Text: text, OwnerID: owner.ID, DueDate: h.Clock.Now().AddDate(0, 0, dueInDays),
+	})
+	if err != nil {
+		t.Fatalf("RaiseActionItem %q: %v", text, err)
+	}
+	return item
+}
+
+// A Green Goal with an Action Item two days past its due date is on the Risks
+// page with a chip, drawn like Path to Green overdue's, saying how long, and
+// its Health is still Green: an overdue Action Item doesn't change a Goal's
+// Health.
+func TestRisksPageListsGoalsWithOverdueActionItems(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	launch := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Launch in EU", "Expand the market."))
+	h.Checkin(sam, launch.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	raiseRiskActionItem(t, h, ada, launch, sam, "Book the legal review.", -2)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	row := riskRowOf(t, page, launch)
+	if chip := riskChip(t, row, "action-item-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Action Item 2 days overdue") {
+		t.Errorf("overdue Action Item chip is not a Stale-colored badge saying 2 days overdue: %s", chip)
+	}
+	if health := pageElement(t, row, "span", "risk-health"); !strings.Contains(openTag(health), `class="badge g"`) {
+		t.Errorf("row doesn't show the Goal's Green Health: %s", health)
+	}
+}
+
+// A row flagged only for an overdue Action Item has one Fix, See Action
+// Items, linking to its Goal page's Action Items.
+func TestRiskFixOnAnOverdueActionItemIsSeeActionItems(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	launch := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Launch in EU", "Expand the market."))
+	raiseRiskActionItem(t, h, ada, launch, sam, "Book the legal review.", -2)
+
+	for _, who := range []string{"sam@example.com", "ada@example.com"} {
+		page := getBody(t, signInClient(t, ts.URL, who), ts.URL+"/risks?org=all")
+
+		row := riskRowOf(t, page, launch)
+		if got := riskSignalKinds(row); !slices.Equal(got, []string{"action-item-overdue"}) {
+			t.Fatalf("%s: row's signals = %q, want only action-item-overdue", who, got)
+		}
+		label, href, primary := riskFix(t, row)
+		if want := "/goals/" + strconv.FormatInt(launch.ID, 10) + "#action-items"; label != "See Action Items" || href != want || primary {
+			t.Errorf("%s: Fix = %q → %q (primary %v), want See Action Items → %q", who, label, href, primary, want)
+		}
+	}
+}
+
+// Action Items overdue is a group of its own, its card after Owner needs to
+// update's: filtered to it, the page lists only the Goals an overdue Action
+// Item flags. With none, its card is muted and says no Action Item is
+// overdue.
+func TestRisksPageGroupsOverdueActionItems(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	h.Clock.Advance(10 * day)
+	launch := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Launch in EU", "Expand the market."))
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?org=all")
+
+	if card := pageElement(t, page, "div", "risks-group-followup"); !strings.Contains(openTag(card), "rk-zero") || !strings.Contains(card, "No Action Item is overdue.") {
+		t.Errorf("with no overdue Action Item, the followup card isn't muted saying so: %s", card)
+	}
+
+	raiseRiskActionItem(t, h, ada, launch, sam, "Book the legal review.", -2)
+	page = getBody(t, client, ts.URL+"/risks?org=all")
+
+	card := pageElement(t, page, "a", "risks-group-followup")
+	for _, want := range []string{`href="/risks?group=followup&amp;org=all"`, "Action Items overdue", `<span class="num">1</span>`, "Action Item overdue · 1"} {
+		if !strings.Contains(card, want) {
+			t.Errorf("followup card lacks %s: %s", want, card)
+		}
+	}
+	if chip := riskChip(t, card, "action-item-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) {
+		t.Errorf("the followup card's chip isn't drawn like the table's: %s", chip)
+	}
+	if order := []int{
+		strings.Index(page, `data-testid="risks-group-owner"`),
+		strings.Index(page, `data-testid="risks-group-followup"`),
+		strings.Index(page, `data-testid="risks-group-plan"`),
+	}; !slices.IsSorted(order) {
+		t.Errorf("the followup card isn't between the owner and plan cards: %v", order)
+	}
+
+	page = getBody(t, client, ts.URL+"/risks?group=followup&org=all")
+
+	riskChip(t, riskRowOf(t, page, launch), "action-item-overdue")
+	if hasRiskRow(page, silent) {
+		t.Errorf("filtered to followup, the page lists %q, flagged only outside it", silent.Title)
+	}
+	if card := pageElement(t, page, "a", "risks-group-followup"); !strings.Contains(openTag(card), `aria-current="page"`) {
+		t.Errorf("filtered to followup, its card isn't current: %s", openTag(card))
+	}
+}
+
+// The Risks page's four group cards sit four across at the page's full width,
+// two by two where the page is narrower, and stack below 900px.
+func TestRisksGroupCardsFitFourAcross(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Silent work", "It matters.")
+	h.Clock.Advance(10 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	if n := strings.Count(page, `data-testid="risks-group-`); n != 4 {
+		t.Errorf("the page has %d group cards, want 4", n)
+	}
+	css := between(t, page, "<style>", "</style>")
+	for query, want := range map[string]string{
+		"":                          "grid-template-columns:repeat(4,minmax(0,1fr))",
+		"@media (max-width:1151px)": "grid-template-columns:repeat(2,minmax(0,1fr))",
+		"@media (max-width:900px)":  "grid-template-columns:minmax(0,1fr)",
+	} {
+		block := css
+		if query != "" {
+			block = mediaBlock(t, css, query)
+		}
+		if rule, _ := ruleFor(block, ".rk-cards"); !strings.Contains(rule, want) {
+			t.Errorf("%q .rk-cards{%s} lacks %s", query, rule, want)
+		}
+	}
+}
+
+// A Goal flagged only for an overdue Action Item counts in the top bar's
+// Risks count, as it does on the page.
+func TestTopBarRisksCountsOverdueActionItems(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	h.Clock.Advance(10 * day)
+	launch := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Launch in EU", "Expand the market."))
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	if nav := pageElement(t, getBody(t, client, ts.URL+"/home"), "a", "nav-risks"); !strings.Contains(nav, `<span class="count">1</span>`) {
+		t.Fatalf("before the Action Item is overdue, the nav's Risks count isn't 1: %s", nav)
+	}
+	raiseRiskActionItem(t, h, ada, launch, sam, "Book the legal review.", -2)
+
+	if nav := pageElement(t, getBody(t, client, ts.URL+"/home"), "a", "nav-risks"); !strings.Contains(nav, `<span class="count">2</span>`) {
+		t.Errorf("with an overdue Action Item, the nav's Risks count isn't 2: %s", nav)
+	}
+}
+
+// The page's scope narrows overdue Action Items like any other row: under
+// Mine, a Goal the viewer doesn't Own isn't listed for one, however much the
+// viewer owns the item; under Everyone it is.
+func TestRisksPageScopesOverdueActionItems(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	own := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Own work", "It matters."))
+	kims := h.MarkTopLevel(ada, h.ActiveGoal(kim, "Kim's work", "It matters."))
+	raiseRiskActionItem(t, h, ada, own, kim, "Chase the vendor.", -1)
+	raiseRiskActionItem(t, h, ada, kims, sam, "Send Kim the numbers.", -3)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?org=mine")
+
+	riskChip(t, riskRowOf(t, page, own), "action-item-overdue")
+	if hasRiskRow(page, kims) {
+		t.Errorf("under Mine, the page lists %q, which Sam doesn't Own", kims.Title)
+	}
+	if card := pageElement(t, page, "a", "risks-group-followup"); !strings.Contains(card, `<span class="num">1</span>`) {
+		t.Errorf("under Mine, the followup card doesn't count Sam's 1: %s", card)
+	}
+
+	page = getBody(t, client, ts.URL+"/risks?org=all")
+
+	if chip := riskChip(t, riskRowOf(t, page, kims), "action-item-overdue"); !strings.HasSuffix(chip, ">Action Item 3 days overdue") {
+		t.Errorf("under Everyone, %q's chip doesn't say 3 days overdue: %s", kims.Title, chip)
+	}
+	riskChip(t, riskRowOf(t, page, own), "action-item-overdue")
+}
+
+// An Action Item due today, a closed one past its due date, one about the
+// whole Report, and one past its due date on a Done Goal flag nothing.
+func TestRisksPageIgnoresActionItemsNotOverdueAboutAnActiveGoal(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	goal := func(title string) domain.Goal {
+		g := h.MarkTopLevel(ada, h.ActiveGoal(sam, title, "It matters."))
+		h.Checkin(sam, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+		return g
+	}
+	dueToday := goal("Due today")
+	raiseRiskActionItem(t, h, ada, dueToday, sam, "Do it today.", 0)
+	closed := goal("Closed item")
+	item := raiseRiskActionItem(t, h, ada, closed, sam, "Done already.", -4)
+	if _, err := h.Service.CloseActionItem(t.Context(), sam.ID, item.ID, "Handled."); err != nil {
+		t.Fatalf("CloseActionItem: %v", err)
+	}
+	whole := goal("In a Report")
+	pub := h.PublishReport(ada, h.SaveReportDefinition(ada, domain.SaveReportDefinitionInput{
+		Name: "QBR", Mode: domain.ReportModePicked, Picked: []int64{whole.ID},
+	}))
+	if _, err := h.Service.RaiseActionItem(t.Context(), ada.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, Text: "Move the QBR.", OwnerID: sam.ID, DueDate: h.Clock.Now().AddDate(0, 0, -5),
+	}); err != nil {
+		t.Fatalf("RaiseActionItem about the whole Report: %v", err)
+	}
+	done := goal("Done goal")
+	raiseRiskActionItem(t, h, ada, done, sam, "Write the retro.", -2)
+	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?org=all")
+
+	for _, g := range []domain.Goal{dueToday, closed, whole, done} {
+		if hasRiskRow(page, g) {
+			t.Errorf("the page lists %q:\n%s", g.Title, riskRowOf(t, page, g))
+		}
+	}
+	if !strings.Contains(page, `data-testid="risks-empty"`) {
+		t.Errorf("with no overdue Action Item about an Active Goal, the page isn't empty")
+	}
+	if nav := pageElement(t, page, "a", "nav-risks"); strings.Contains(nav, "count") {
+		t.Errorf("the nav counts a Risk: %s", nav)
 	}
 }

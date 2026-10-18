@@ -334,7 +334,7 @@ func (p risksPageView) attention() string {
 // Ownerless, and the outlined tag for the structural ones.
 func riskChipClass(kind string) string {
 	switch kind {
-	case "stale", "path-overdue":
+	case "stale", "path-overdue", "action-item-overdue":
 		return "badge st"
 	case "ownerless":
 		return "badge ol"
@@ -416,6 +416,16 @@ type risksView struct {
 	// that needs to change.
 	ScheduleConflicts []domain.ScheduleConflict
 	HaltedParents     []domain.HaltedParent
+	// OverdueActionItems are the Active Goals an overdue Action Item is about,
+	// one entry each.
+	OverdueActionItems []riskOverdueGoal
+}
+
+// riskOverdueGoal is a Goal with an overdue Action Item about it, and how many
+// days the most overdue of them is past its due date.
+type riskOverdueGoal struct {
+	Goal domain.Goal
+	Days int
 }
 
 // riskType is one of the Risks page's signals, or its chip on a group card:
@@ -430,6 +440,7 @@ func (v risksView) Types() []riskType {
 	return []riskType{
 		{"stale", "Stale", len(v.Stale)},
 		{"path-overdue", "Path to Green overdue", len(v.OverduePaths)},
+		{"action-item-overdue", "Action Item overdue", len(v.OverdueActionItems)},
 		{"ownerless", "Ownerless", len(v.Ownerless)},
 		{"unaligned", "Unaligned", len(v.Unaligned)},
 		{"schedule-conflicts", "Schedule conflicts", len(v.ScheduleConflicts)},
@@ -442,6 +453,7 @@ func (v risksView) Types() []riskType {
 var riskDefinitions = []struct{ Name, Means string }{
 	{"Stale", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
 	{"Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green."},
+	{"Action Item overdue", "An Action Item about this Goal, raised in a Report, is past its due date."},
 	{"Ownerless", "Active Goals whose Owner has left the company and hasn't been replaced."},
 	{"Unaligned", "Active Goals that contribute to no other Goal and aren't Top-level."},
 	{"Schedule conflicts", "Goals due later than a Goal they contribute to."},
@@ -472,6 +484,9 @@ func (v risksView) Flagged(scope pageOrgScope) int {
 	}
 	for _, hp := range v.HaltedParents {
 		flag(hp.Child)
+	}
+	for _, og := range v.OverdueActionItems {
+		flag(og.Goal)
 	}
 	return len(flagged)
 }
@@ -516,7 +531,31 @@ func (s *Server) loadRisks(ctx context.Context) (risksView, error) {
 			v.Ownerless = append(v.Ownerless, g)
 		}
 	}
+	items, err := s.svc.OverdueActionItems(ctx)
+	if err != nil {
+		return risksView{}, err
+	}
+	v.OverdueActionItems = riskOverdueGoals(goals, items, s.svc.Now().In(s.svc.Timezone()))
 	return v, nil
+}
+
+// riskOverdueGoals are the Active Goals among goals that an overdue Action
+// Item among items is about, in goals' order, each with the days its most
+// overdue item is past its due date as of today.
+func riskOverdueGoals(goals []domain.Goal, items []domain.ActionItemListing, today time.Time) []riskOverdueGoal {
+	days := map[int64]int{}
+	for _, l := range items {
+		if d := calendarDays(l.Item.DueDate, today); d > days[l.Item.GoalID] {
+			days[l.Item.GoalID] = d
+		}
+	}
+	var out []riskOverdueGoal
+	for _, g := range goals {
+		if d, ok := days[g.ID]; ok && g.Lifecycle == domain.LifecycleActive {
+			out = append(out, riskOverdueGoal{Goal: g, Days: d})
+		}
+	}
+	return out
 }
 
 // riskGoalRow is one flagged Goal on the Risks page with every signal that
@@ -578,7 +617,9 @@ func fixRiskRows(current domain.Account, rows []riskGoalRow, facts riskFixFacts)
 //  6. Open parent, for a Goal under a halted parent: the first by title;
 //  7. Suggest a parent, for an Unaligned Goal current doesn't Own, a Delegate
 //     on it included (CONTEXT.md: Parent suggestion);
-//  8. Open Goal, for anything else, a Stale Goal nobody can check in on among
+//  8. See Action Items, the Goal page's, for a Goal with an overdue Action
+//     Item;
+//  9. Open Goal, for anything else, a Stale Goal nobody can check in on among
 //     them.
 func (r riskGoalRow) fix(current domain.Account, delegate bool, nudged *domain.Nudge, unreachable bool) riskFix {
 	goal := fmt.Sprintf("/goals/%d", r.Goal.ID)
@@ -614,15 +655,20 @@ func (r riskGoalRow) fix(current domain.Account, delegate bool, nudged *domain.N
 	if _, unaligned := r.signal("unaligned"); unaligned {
 		return riskFix{Label: "Suggest a parent", Href: goal + "/suggest-parent"}
 	}
+	if _, overdue := r.signal("action-item-overdue"); overdue {
+		return riskFix{Label: "See Action Items", Href: goal + "#action-items"}
+	}
 	return riskFix{Label: "Open Goal", Href: goal}
 }
 
 // riskSignal is one reason a Goal is flagged. Kind names the signal, as the
 // chip's data-kind on the Risks page. Days is how long the signal has held: for
 // "stale" the days since the last update, for "path-overdue" the days past
-// the Path to Green's target date, for "schedule-conflicts" the days the
-// child's delivery date falls after the parent's, and 0 otherwise. Related is
-// the parent for "schedule-conflicts" and "halted-parents".
+// the Path to Green's target date, for "action-item-overdue" the days the most
+// overdue Action Item about the Goal is past its due date, for
+// "schedule-conflicts" the days the child's delivery date falls after the
+// parent's, and 0 otherwise. Related is the parent for "schedule-conflicts"
+// and "halted-parents".
 type riskSignal struct {
 	Kind    string
 	Days    int
@@ -650,6 +696,9 @@ func (s *Server) riskRows(ctx context.Context, v risksView) ([]riskGoalRow, erro
 	}
 	for _, gf := range v.OverduePaths {
 		add(gf.Goal, riskSignal{Kind: "path-overdue", Days: calendarDays(gf.Freshness.PathTargetDate, today)})
+	}
+	for _, og := range v.OverdueActionItems {
+		add(og.Goal, riskSignal{Kind: "action-item-overdue", Days: og.Days})
 	}
 	for _, g := range v.Ownerless {
 		add(g, riskSignal{Kind: "ownerless"})
@@ -701,8 +750,9 @@ func riskHealthRank(health string) int {
 
 // sortRiskRows puts the worst-off Goals first, key by key: Ownerless first;
 // then by Health (riskHealthRank); then a Path to Green overdue first, longest
-// overdue first; then Stale first, furthest past its cadence first; then by
-// title, ignoring case. The structural signals don't move a row.
+// overdue first; then an overdue Action Item first, longest overdue first;
+// then Stale first, furthest past its cadence first; then by title, ignoring
+// case. The structural signals don't move a row.
 func sortRiskRows(rows []riskGoalRow) {
 	slices.SortStableFunc(rows, func(a, b riskGoalRow) int {
 		_, aOwnerless := a.signal("ownerless")
@@ -719,6 +769,14 @@ func sortRiskRows(rows []riskGoalRow) {
 			return c
 		}
 		if c := cmp.Compare(bPath.Days, aPath.Days); c != 0 {
+			return c
+		}
+		aItem, aItemOverdue := a.signal("action-item-overdue")
+		bItem, bItemOverdue := b.signal("action-item-overdue")
+		if c := cmp.Compare(boolRank(!aItemOverdue), boolRank(!bItemOverdue)); c != 0 {
+			return c
+		}
+		if c := cmp.Compare(bItem.Days, aItem.Days); c != 0 {
 			return c
 		}
 		aStale, aIsStale := a.signal("stale")
@@ -770,6 +828,7 @@ var riskGroupKinds = []struct {
 	Blank     string
 }{
 	{"owner", "Owner needs to update", []string{"stale", "path-overdue"}, "Every Owner is up to date."},
+	{"followup", "Action Items overdue", []string{"action-item-overdue"}, "No Action Item is overdue."},
 	{"plan", "Plan doesn't fit", []string{"unaligned", "schedule-conflicts"}, "Every plan fits."},
 	{riskGroupAdmin, "Needs an Admin", []string{"ownerless", "halted-parents"}, "Nothing needs an Admin."},
 }
