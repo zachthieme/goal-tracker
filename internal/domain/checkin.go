@@ -391,52 +391,22 @@ func (s *Service) recordReadings(ctx context.Context, checkinID int64, readings 
 
 // SubmitNoChangeCheckin records a Check-in that repeats the Goal's previous
 // values in one click (CONTEXT.md: a Check-in should take minutes). It needs a
-// previous Check-in to repeat, so it is rejected on a Goal with none. The new
-// Check-in is still immutable and records its own author and Owner.
+// previous Check-in to repeat, so it is rejected on a Goal with none. It is
+// also refused, whatever the Health, while a Milestone is overdue: the missed
+// date needs a full Check-in that moves it, marks it Done or removes it. The
+// new Check-in is still immutable and records its own author and Owner.
 func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID int64) (Checkin, error) {
-	goal, err := s.queries.GetGoal(ctx, goalID)
+	goal, err := s.activeGoalForNoChange(ctx, goalID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Checkin{}, fmt.Errorf("%w: goal does not exist", ErrValidation)
-		}
-		return Checkin{}, fmt.Errorf("look up goal: %w", err)
-	}
-	if goal.Goal.Lifecycle != LifecycleActive {
-		return Checkin{}, fmt.Errorf("%w: only an Active Goal can be checked in on", ErrValidation)
+		return Checkin{}, err
 	}
 	if err := s.authorizeCheckinAuthor(ctx, goal.Goal.ID, goal.Goal.OwnerID, authorID); err != nil {
 		return Checkin{}, err
 	}
 
-	prev, err := s.queries.GetLatestCheckin(ctx, goalID)
+	prev, explanation, err := s.noChangeCheck(ctx, goalID)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Checkin{}, fmt.Errorf("%w: there is no previous Check-in to repeat", ErrValidation)
-		}
-		return Checkin{}, fmt.Errorf("look up previous checkin: %w", err)
-	}
-	// A no-change repeat still cannot violate the Rolled-up Health rule: if the
-	// roll-up has since changed so the repeated Health would differ from it and
-	// the previous Check-in carried no explanation, refuse it so the Owner uses
-	// the full form to explain (ADR-0003).
-	explanation, err := s.resolveRollupExplanation(ctx, goalID, prev.Health, prev.Explanation)
-	if err != nil {
-		return Checkin{}, fmt.Errorf("%w — submit a Check-in to explain", err)
-	}
-	// Nor can it repeat a Green once a Milestone has gone overdue.
-	milestones, err := s.queries.ListMilestones(ctx, goalID)
-	if err != nil {
-		return Checkin{}, fmt.Errorf("list milestones: %w", err)
-	}
-	if err := s.rejectGreenWhileOverdue(prev.Health, milestones); err != nil {
-		return Checkin{}, fmt.Errorf("%w — submit a Check-in to update it", err)
-	}
-	// Nor a Green while a Metric is off target: only a full Check-in can
-	// confirm that.
-	if prev.Health == HealthGreen {
-		if err := s.rejectGreenWhileOffTarget(ctx, goalID, nil); err != nil {
-			return Checkin{}, fmt.Errorf("%w — submit a Check-in to confirm or update it", err)
-		}
+		return Checkin{}, err
 	}
 	return s.createCheckin(ctx, db.CreateCheckinParams{
 		GoalID:         goalID,
@@ -448,6 +418,73 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 		PathTargetDate: prev.PathTargetDate,
 		Explanation:    explanation,
 	})
+}
+
+// NoChangeRefusal reports why a No change on goalID would be refused for any
+// author allowed to check in on it, or nil when one would be recorded. It
+// gives the error SubmitNoChangeCheckin would, without recording anything, so
+// a page can offer the No change only when it would be taken.
+func (s *Service) NoChangeRefusal(ctx context.Context, goalID int64) error {
+	if _, err := s.activeGoalForNoChange(ctx, goalID); err != nil {
+		return err
+	}
+	_, _, err := s.noChangeCheck(ctx, goalID)
+	return err
+}
+
+// activeGoalForNoChange looks up goalID for a No change, refusing a Goal that
+// doesn't exist or isn't Active.
+func (s *Service) activeGoalForNoChange(ctx context.Context, goalID int64) (db.GetGoalRow, error) {
+	goal, err := s.queries.GetGoal(ctx, goalID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return db.GetGoalRow{}, fmt.Errorf("%w: goal does not exist", ErrValidation)
+		}
+		return db.GetGoalRow{}, fmt.Errorf("look up goal: %w", err)
+	}
+	if goal.Goal.Lifecycle != LifecycleActive {
+		return db.GetGoalRow{}, fmt.Errorf("%w: only an Active Goal can be checked in on", ErrValidation)
+	}
+	return goal, nil
+}
+
+// noChangeCheck runs the checks a No change on goalID must pass once the Goal
+// is known to be Active and the author allowed to check in, none of which
+// depend on who is asking. It returns the previous Check-in to repeat and the
+// explanation to record with it.
+func (s *Service) noChangeCheck(ctx context.Context, goalID int64) (db.Checkin, string, error) {
+	prev, err := s.queries.GetLatestCheckin(ctx, goalID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return db.Checkin{}, "", fmt.Errorf("%w: there is no previous Check-in to repeat", ErrValidation)
+		}
+		return db.Checkin{}, "", fmt.Errorf("look up previous checkin: %w", err)
+	}
+	// A no-change repeat still cannot violate the Rolled-up Health rule: if the
+	// roll-up has since changed so the repeated Health would differ from it and
+	// the previous Check-in carried no explanation, refuse it so the Owner uses
+	// the full form to explain (ADR-0003).
+	explanation, err := s.resolveRollupExplanation(ctx, goalID, prev.Health, prev.Explanation)
+	if err != nil {
+		return db.Checkin{}, "", fmt.Errorf("%w — submit a Check-in to explain", err)
+	}
+	// Nor can it repeat any Health once a Milestone has gone overdue: the
+	// missed date needs a response.
+	milestones, err := s.queries.ListMilestones(ctx, goalID)
+	if err != nil {
+		return db.Checkin{}, "", fmt.Errorf("list milestones: %w", err)
+	}
+	if m, ok := overdueMilestone(milestones, s.clock.Now().Format(dateFormat)); ok {
+		return db.Checkin{}, "", fmt.Errorf("%w: Milestone %q is overdue (due %s): submit a Check-in to move its date, mark it Done or remove it", ErrValidation, m.Name, m.TargetDate)
+	}
+	// Nor a Green while a Metric is off target: only a full Check-in can
+	// confirm that.
+	if prev.Health == HealthGreen {
+		if err := s.rejectGreenWhileOffTarget(ctx, goalID, nil); err != nil {
+			return db.Checkin{}, "", fmt.Errorf("%w — submit a Check-in to confirm or update it", err)
+		}
+	}
+	return prev, explanation, nil
 }
 
 // authorizeCheckinAuthor allows a Check-in to be written only by the Goal's

@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -444,7 +445,7 @@ func TestGreenAcceptedWhenOverdueMilestoneSlipsInSameCheckin(t *testing.T) {
 }
 
 // The one-click no-change Check-in can't repeat a Green while a Milestone is
-// overdue.
+// overdue, and says how to respond to the missed date.
 func TestNoChangeGreenRejectedWhileMilestoneOverdue(t *testing.T) {
 	t.Parallel()
 
@@ -455,8 +456,142 @@ func TestNoChangeGreenRejectedWhileMilestoneOverdue(t *testing.T) {
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
 
 	h.Clock.Set(beta.TargetDate.AddDate(0, 0, 1))
-	if _, err := h.Service.SubmitNoChangeCheckin(context.Background(), goal.ID, sam.ID); !errors.Is(err, domain.ErrValidation) {
+	_, err := h.Service.SubmitNoChangeCheckin(context.Background(), goal.ID, sam.ID)
+	if !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("no-change Green with an overdue Milestone: err = %v, want ErrValidation", err)
+	}
+	assertOverdueNoChangeRefusal(t, err)
+}
+
+// A No change can't repeat a Yellow or Red either while a Milestone is overdue:
+// the missed date needs a response, so the refusal says what to do with it.
+func TestNoChangeRefusedWhileMilestoneOverdueWhateverTheHealth(t *testing.T) {
+	t.Parallel()
+
+	for _, health := range []string{domain.HealthYellow, domain.HealthRed} {
+		t.Run(health, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			sam := h.SignIn("sam@example.com")
+			goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+			beta := onlyMilestone(t, h, goal.ID)
+			h.Checkin(sam, goal.ID, health, "Behind.", "Add a second reviewer.", beta.TargetDate.AddDate(0, 1, 0))
+
+			h.Clock.Set(beta.TargetDate.AddDate(0, 0, 1))
+			_, err := h.Service.SubmitNoChangeCheckin(context.Background(), goal.ID, sam.ID)
+			if !errors.Is(err, domain.ErrValidation) {
+				t.Fatalf("no-change %s with an overdue Milestone: err = %v, want ErrValidation", health, err)
+			}
+			assertOverdueNoChangeRefusal(t, err)
+			if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
+				t.Errorf("got %d Check-ins, want only the original one", len(history))
+			}
+		})
+	}
+}
+
+// A full Yellow Check-in may still leave a Milestone overdue: only a Green or a
+// No change is refused for it.
+func TestYellowCheckinMayLeaveMilestoneOverdue(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	beta := onlyMilestone(t, h, goal.ID)
+
+	h.Clock.Set(beta.TargetDate.AddDate(0, 0, 1))
+	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:         goal.ID,
+		AuthorID:       sam.ID,
+		Health:         domain.HealthYellow,
+		Status:         "Beta is late.",
+		PathToGreen:    "Add a second reviewer.",
+		PathTargetDate: beta.TargetDate.AddDate(0, 1, 0),
+	}); err != nil {
+		t.Fatalf("Yellow leaving an overdue Milestone: %v", err)
+	}
+}
+
+// NoChangeRefusal answers, without recording anything, whether a No change
+// would be refused and why: nil when it would be recorded, otherwise the
+// refusal SubmitNoChangeCheckin gives.
+func TestNoChangeRefusal(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	t.Run("allowed", func(t *testing.T) {
+		t.Parallel()
+		h := testsupport.New(t)
+		sam := h.SignIn("sam@example.com")
+		goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+		h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+		if err := h.Service.NoChangeRefusal(ctx, goal.ID); err != nil {
+			t.Fatalf("NoChangeRefusal = %v, want nil", err)
+		}
+	})
+	t.Run("no previous Check-in", func(t *testing.T) {
+		t.Parallel()
+		h := testsupport.New(t)
+		sam := h.SignIn("sam@example.com")
+		goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+
+		if err := h.Service.NoChangeRefusal(ctx, goal.ID); !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("NoChangeRefusal = %v, want ErrValidation", err)
+		}
+	})
+	t.Run("not Active", func(t *testing.T) {
+		t.Parallel()
+		h := testsupport.New(t)
+		sam := h.SignIn("sam@example.com")
+		goal := h.OnHoldGoal(sam, "Ship v2", "Customers wait too long.", "Waiting on the vendor.")
+
+		if err := h.Service.NoChangeRefusal(ctx, goal.ID); !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("NoChangeRefusal = %v, want ErrValidation", err)
+		}
+	})
+	t.Run("overdue Milestone", func(t *testing.T) {
+		t.Parallel()
+		h := testsupport.New(t)
+		sam := h.SignIn("sam@example.com")
+		goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+		beta := onlyMilestone(t, h, goal.ID)
+		h.Checkin(sam, goal.ID, domain.HealthRed, "Behind.", "Add a second reviewer.", beta.TargetDate.AddDate(0, 1, 0))
+
+		h.Clock.Set(beta.TargetDate.AddDate(0, 0, 1))
+		err := h.Service.NoChangeRefusal(ctx, goal.ID)
+		if !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("NoChangeRefusal = %v, want ErrValidation", err)
+		}
+		assertOverdueNoChangeRefusal(t, err)
+	})
+	t.Run("off-target Green", func(t *testing.T) {
+		t.Parallel()
+		h := testsupport.New(t)
+		sam := h.SignIn("sam@example.com")
+		goal, _ := offTargetMetricGoal(t, h, sam)
+
+		err := h.Service.NoChangeRefusal(ctx, goal.ID)
+		if !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("NoChangeRefusal = %v, want ErrValidation", err)
+		}
+		var offTarget *domain.GreenOffTargetError
+		if !errors.As(err, &offTarget) {
+			t.Fatalf("NoChangeRefusal = %v, want a *GreenOffTargetError", err)
+		}
+	})
+}
+
+// assertOverdueNoChangeRefusal checks a No change refused for the overdue Beta
+// Milestone names it and says how to respond to the missed date.
+func assertOverdueNoChangeRefusal(t *testing.T, err error) {
+	t.Helper()
+	for _, want := range []string{`Milestone "Beta" is overdue`, "move its date, mark it Done or remove it"} {
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, want it to contain %q", err, want)
+		}
 	}
 }
 

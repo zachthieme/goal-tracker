@@ -159,6 +159,7 @@ _Avoid_: mitigation, recovery plan, get-well plan
 An owner's routine update to one Goal: Health, a short status, Date Slips, and Milestone changes. It should take minutes and be hard to get wrong.
 A Check-in is where a Milestone's date moves and where it is marked Done or Removed; it can add Milestones too, though a Milestone can also be added from the Goal page between Check-ins.
 A Green Check-in with an off-target Metric asks the Owner to confirm, and a No change can't repeat it.
+A No change is refused while a Milestone is overdue, whatever the Health: the Owner or a Delegate has to respond to the missed date.
 _Avoid_: status update, 5-15, report
 
 **Nudge**:
