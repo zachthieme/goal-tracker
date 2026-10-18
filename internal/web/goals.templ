@@ -653,6 +653,16 @@ templ goalPage(current *domain.Account, v goalView) {
 						}
 					}
 				</section>
+				if items := v.openActionItems(); len(items) > 0 {
+					<section id="action-items" data-testid="goal-action-items" class="gp-block ruled">
+						<h2>Action Items</h2>
+						<ul class="gp-list">
+							for _, l := range items {
+								@goalActionItemRow(l, current, fmt.Sprintf("/goals/%d#action-items", g.ID))
+							}
+						</ul>
+					</section>
+				}
 				@draftHighlightSection(v)
 				if len(v.Highlights) > 0 {
 					<section data-testid="goal-highlights" class="gp-block ruled">
@@ -723,6 +733,26 @@ templ goalPage(current *domain.Account, v goalView) {
 			</aside>
 		</div>
 	}
+}
+
+// goalActionItemRow is an open Action Item about the Goal: what it asks, who
+// owns it, when it is due, flagged when overdue, and the Report it came from,
+// leading to that publication's Action Items. Its owner gets the Close that
+// comes back to returnTo.
+templ goalActionItemRow(l domain.ActionItemListing, current *domain.Account, returnTo string) {
+	<li data-testid="goal-action-item">
+		{ l.Item.Text }{ " · " }
+		@person(l.Item.Owner)
+		{ " · due " }{ showDateYear(l.Item.DueDate) }
+		if l.Overdue {
+			<span data-testid="goal-action-item-overdue" class="badge r">Overdue</span>
+		}
+		{ " · from " }
+		<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications/%d#action-items", l.Item.DefinitionID, l.Item.PublicationID)) }>{ l.ReportName }</a>
+		if current != nil && current.ID == l.Item.Owner.ID {
+			@closeActionItemForm(l.Item, returnTo)
+		}
+	</li>
 }
 
 // goalHead is the Goal's summary a reader takes in at a glance: its title, its
@@ -833,6 +863,8 @@ templ goalPageStyles() {
 		@media (max-width:900px){.gp-side>.ruled:first-child{border-top:1px solid var(--color-border);padding-top:20px}}
 		.gp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 		.gp-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+		.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
 		.gp-values{border:0;margin:0;padding:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 		.gp-form{display:flex;flex-direction:column;gap:12px}
 		.gp-edit form{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}

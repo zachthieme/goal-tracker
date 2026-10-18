@@ -817,6 +817,10 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("load milestone additions: %w", err)
 	}
+	actionItems, err := s.svc.ActionItemsAbout(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("load action items: %w", err)
+	}
 	// The Owner decides every open suggestion; anyone else sees only their
 	// own, to withdraw (CONTEXT.md: Parent suggestion).
 	var suggested []domain.ParentSuggestion
@@ -915,6 +919,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Nudges:             nudges,
 		LinkEvents:         linkEvents,
 		MilestoneAdditions: milestoneAdditions,
+		ActionItems:        actionItems,
 		Now:                s.svc.Now(),
 	}
 	view.History = newHistory(view, s.svc.Timezone(), view.Now)
@@ -1031,6 +1036,9 @@ type goalView struct {
 	// from the Goal page while it was Active or On Hold, oldest first, each
 	// with who added it and when, for its History and New marks.
 	MilestoneAdditions []domain.MilestoneChange
+	// ActionItems are every Action Item about the Goal, open and closed, from
+	// every Report, soonest due first; the page lists the open ones.
+	ActionItems []domain.ActionItemListing
 	// History is the Goal's History as one timeline, newest first, showing the
 	// filter and page count the page's address asks for.
 	History history
@@ -1206,6 +1214,18 @@ func (v goalView) lifecycleActions() []goalAction {
 	out := make([]goalAction, 0, len(changes))
 	for _, c := range changes {
 		out = append(out, goalAction{c.label, templ.SafeURL(fmt.Sprintf("/goals/%d/checkin?lifecycle=%s", v.Goal.ID, url.QueryEscape(c.to)))})
+	}
+	return out
+}
+
+// openActionItems are the Goal's open Action Items, soonest due first, as its
+// page lists them.
+func (v goalView) openActionItems() []domain.ActionItemListing {
+	var out []domain.ActionItemListing
+	for _, l := range v.ActionItems {
+		if !l.Item.Closed {
+			out = append(out, l)
+		}
 	}
 	return out
 }
