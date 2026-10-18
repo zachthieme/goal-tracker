@@ -36,6 +36,16 @@ templ homePage(current *domain.Account, v homeView) {
 							</ul>
 						</div>
 					}
+					if len(v.ActionItems) > 0 {
+						<div class="hm-group">
+							<h4 class="label">Action Items</h4>
+							<ul data-testid="home-action-items" class="hm-list">
+								for _, l := range v.ActionItems {
+									@actionItemRow(l)
+								}
+							</ul>
+						</div>
+					}
 					if len(v.Requests) > 0 {
 						<div class="hm-group">
 							<h4 class="label">Requests</h4>
@@ -187,6 +197,26 @@ templ dueRow(g domain.PersonalGoal, noChange bool) {
 	</li>
 }
 
+// actionItemRow is an open Action Item the person owns: what it asks, leading
+// to it on its Goal's page or its publication, flagged when overdue, with its
+// Report, the Goal it is about, if any, and when it is due, and the Close that
+// returns to Home.
+templ actionItemRow(l domain.ActionItemListing) {
+	<li data-testid="home-action-item">
+		<div class="hm-what">
+			<span class="badge lc">Action Item</span>
+			<a href={ templ.SafeURL(homeActionItemPath(l.Item)) }>{ l.Item.Text }</a>
+			if l.Overdue {
+				<span data-testid="home-action-item-overdue" class="badge r">Overdue</span>
+			}
+			<span class="muted">{ homeActionItemPlace(l) }</span>
+		</div>
+		<div class="hm-actions">
+			@closeActionItemForm(l.Item, "/home")
+		</div>
+	</li>
+}
+
 // linkRequestRow is a link request waiting on the person as the parent's Owner.
 templ linkRequestRow(l domain.Link) {
 	<li data-testid="home-request">
@@ -305,6 +335,8 @@ templ homeStyles() {
 		.hm-what>a,.hm-compact a{font-weight:500}
 		.hm-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}
 		.hm-actions form{margin:0}
+		.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
 		.hm-counts{display:flex;flex-wrap:wrap;gap:8px}
 		.hm-bar{display:flex;height:12px;border-radius:var(--radius-full);overflow:hidden}
 		.hm-bar>span{flex:1 1 0;min-width:2px}

@@ -516,7 +516,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     the page with 20 more under the same filter. Chips and paging are links, so History works without
     script.
 - **Home's Needs you list (`homePage` in `home.templ`):** one card in the main
-  column holding everything waiting on the person, in two subgroups, each a
+  column holding everything waiting on the person, in three subgroups, each a
   `.label` heading over ruled rows (`.hm-list`):
   - **Check-ins due:** the Goals the person owes a Check-in on, most overdue
     first. Each row keeps its Health badge, its Stale mark, a secondary
@@ -527,6 +527,15 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     that isn't Stale, or has no Health yet, keeps its full-colour badge and
     no "as of". A Goal they are a Delegate on
     carries a "for [Owner]" tag, and appears only here.
+  - **Action Items:** the open Action Items the person owns, from every
+    Report, soonest due first, so an overdue one leads. Each row has a
+    `badge lc` reading "Action Item", the item's text linking to the Action
+    Items on the Goal page of the Goal it is about, or on its publication
+    when it is about the whole Report, then a muted line naming its Report,
+    its Goal, if any, and its due date. An overdue one carries a red
+    **Overdue** badge (`badge r`). Its action is the Report page's **Close**:
+    a small button opening a closing note, which closes the item and returns
+    to Home. Home carries its own copy of the `.rp-inline-form` rules for it.
   - **Requests:** link requests and Handoffs waiting on the person, oldest
     first. **Reject** is a quiet text button (`.btn.quiet`) and **Accept** a
     secondary, outlined one (`.btn`). Reject sends at once and returns to
@@ -535,7 +544,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     **Review** and leads to the Pending handoffs page, where those choices
     are made.
 
-  A subgroup with nothing in it is left out, and with both empty the card
+  A subgroup with nothing in it is left out, and with all three empty the card
   shows one muted "You're all caught up." line. The summary under the page
   title and the top bar's Home count both count every row. Goals the person is
   a Delegate on aren't listed again elsewhere: the sidebar has one link to the

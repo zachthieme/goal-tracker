@@ -48,6 +48,9 @@ type homeView struct {
 	// Owner, the Handoffs waiting on them as the proposed new Owner, and the
 	// Parent suggestions on the Goals they Own, oldest first.
 	Requests []homeRequest
+	// ActionItems are the open Action Items the person owns, from every
+	// Report, soonest due first, so an overdue one leads.
+	ActionItems []domain.ActionItemListing
 	// Green, Yellow, and Red count the Active Goals the person Owns by Health,
 	// and AtRisk lists the Red ones, then the Yellow.
 	Green, Yellow, Red int
@@ -98,10 +101,31 @@ func fromField(from string) []toastField {
 	return []toastField{{Name: "from", Value: from}}
 }
 
-// NeedsYou counts what's waiting on the person: the Goals to check in on, and
-// the link requests, Handoffs and Parent suggestions to decide.
+// NeedsYou counts what's waiting on the person: the Goals to check in on, the
+// Action Items to close, and the link requests, Handoffs and Parent
+// suggestions to decide.
 func (v homeView) NeedsYou() int {
-	return len(v.Due) + len(v.Requests)
+	return len(v.Due) + len(v.ActionItems) + len(v.Requests)
+}
+
+// homeActionItemPlace reads where an Action Item on Home comes from and when
+// it is due: its Report, the Goal it is about, if any, and its due date.
+func homeActionItemPlace(l domain.ActionItemListing) string {
+	place := l.ReportName
+	if l.GoalTitle != "" {
+		place += " · " + l.GoalTitle
+	}
+	return place + " · due " + showDateYear(l.Item.DueDate)
+}
+
+// homeActionItemPath is where an Action Item on Home leads: the Action Items
+// on the page of the Goal it is about, or on the publication it was raised on
+// when it is about the whole Report.
+func homeActionItemPath(item domain.ActionItem) string {
+	if item.GoalID != 0 {
+		return fmt.Sprintf("/goals/%d#action-items", item.GoalID)
+	}
+	return fmt.Sprintf("/reports/%d/publications/%d#action-items", item.DefinitionID, item.PublicationID)
 }
 
 // homeRequest is one request waiting on the person's decision: a link
@@ -140,6 +164,9 @@ func (s *Server) loadHome(ctx context.Context, accountID int64) (homeView, error
 	}
 	suggestions, err := s.svc.OpenParentSuggestionsFor(ctx, accountID)
 	if err != nil {
+		return homeView{}, err
+	}
+	if v.ActionItems, err = s.svc.OpenActionItemsOwnedBy(ctx, accountID); err != nil {
 		return homeView{}, err
 	}
 	for i := range links {
