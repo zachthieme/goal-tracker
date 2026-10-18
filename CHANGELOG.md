@@ -22,11 +22,17 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **New features:**
 - [ops] **Managers from a CSV file**: `GOAL_TRACKER_DIRECTORY_FILE` names a CSV file (`email,name,manager_email`) exported from the Company's HR system, and the directory sync reads people and their Managers from it instead of Authentik: at startup, hourly, and on **Sync now**, re-reading the file each time. A file that's missing, lacks a column, or has a ragged row fails the sync and changes nothing. Startup stops if it's set with either `GOAL_TRACKER_DIRECTORY_URL` or `GOAL_TRACKER_DIRECTORY_TOKEN` (#298).
 
+**Improvements:**
+- [internal] The seed gives its fake company a Manager tree, recorded through the directory sync: the CEO at the top, the CTO, CPO and Admin under them, each team's lead under the CTO or CPO, and each team's people under their lead. A seeded demo, a scratch copy and the e2e app now show the Org features: sign in as `ceo@example.com` for the whole company, or a team lead such as `growth-lead@example.com` for a team (#306).
+
 **Bug fixes:**
 - [user] An Org link (`?org=`) to Goals or Risks now scopes the page for everyone once anyone in the company has a Manager, instead of silently showing every Goal to a viewer with no Manager and no one under them; and the Report builder no longer offers the Owner's org when the only Manager is someone set as their own (#269).
 
 **Infrastructure:**
 - [internal] Each Account has a session generation (the new `account_sessions` table) that `domain.Service.EndSessions` moves on to end all of a person's sessions at once, for password sign-in to use (#299).
+
+**Testing:**
+- [internal] The seeded-pages check that no page shows an email as text skips a select's options, as its comment always said it did for form fields: the Scope select names people as Name (email) by design (#275), and the seed's Managers now make it list them (#306).
 
 ### Collected changes — October 17, 2026
 
