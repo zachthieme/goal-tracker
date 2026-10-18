@@ -919,9 +919,14 @@ templ checkinLifecycleFields(d lifecycleFormData, e checkinError) {
 }
 
 // checkinFieldError shows the form's validation message when it is about the
-// named field.
+// named field. One about no field, shown at the top of the form, is styled as
+// an error, like the import page's error flash.
 templ checkinFieldError(e checkinError, field string) {
 	if e.Message != "" && e.Field == field {
-		<p data-testid="checkin-error" role="alert">{ e.Message }</p>
+		if field == "" {
+			<p data-testid="checkin-error" class="alert r" role="alert">{ e.Message }</p>
+		} else {
+			<p data-testid="checkin-error" role="alert">{ e.Message }</p>
+		}
 	}
 }

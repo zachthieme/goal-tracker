@@ -1701,6 +1701,25 @@ func TestCheckinPageNoChangeCardSaysWhyNoChangeIsUnavailable(t *testing.T) {
 	}
 }
 
+// A refused No change's reason, at the top of the Check-in form, is styled as
+// an error, as the import page's error flash is, not left as plain text (#235).
+func TestNoChangeRefusalIsStyledAsAnError(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := overdueGreenGoal(h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	_, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+
+	form := between(t, page, `data-testid="checkin-form"`, `data-testid="checkin-health"`)
+	if tag := tagAround(t, form, `data-testid="checkin-error"`); attr(tag, "class") != "alert r" {
+		t.Errorf("the form's top error has class %q, want %q: %s", attr(tag, "class"), "alert r", tag)
+	}
+}
+
 // A No change refused over htmx comes back as the whole Check-in page with 200,
 // so htmx swaps it in, and the Check-in page's URL is pushed so the address bar
 // matches what the person sees (#103).

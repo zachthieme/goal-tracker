@@ -1243,3 +1243,30 @@ func TestHomeMyOrgAddsNothingToNeedsYou(t *testing.T) {
 		t.Errorf("Home's nav item counts the Org's Goals: %s", home)
 	}
 }
+
+// Home whose due Goal can't be asked whether a No change would be recorded
+// answers 500, as any failure to load Home does, rather than offering a No
+// change it couldn't check (#235).
+func TestHomeFailsWhenNoChangeCantBeChecked(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(8 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	if _, err := h.DB.Exec(`ALTER TABLE milestones RENAME TO gone_milestones`); err != nil {
+		t.Fatalf("rename milestones: %v", err)
+	}
+
+	resp, err := client.Get(ts.URL + "/home")
+	if err != nil {
+		t.Fatalf("GET /home: %v", err)
+	}
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Errorf("status = %d, want 500", resp.StatusCode)
+	}
+}
