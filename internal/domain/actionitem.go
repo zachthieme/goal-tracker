@@ -29,14 +29,23 @@ type ActionItem struct {
 	Closed        bool
 	ClosedAt      time.Time
 	ClosingNote   string
+	// GoalID is the Goal in the Report it is about, and GoalTitle that Goal's
+	// title; they are 0 and "" when it is about the Report as a whole. One
+	// raised from a comment is about the comment's Goal. A publication's
+	// snapshot freezes GoalTitle as it read at publishing.
+	GoalID    int64
+	GoalTitle string
 }
 
 // RaiseActionItemInput is the raise-an-Action-Item command's input. Set
 // CommentID to turn a comment into the Action Item; its Text then defaults to
-// the comment's. Leave it 0 to create one directly, which needs Text.
+// the comment's, and it is about the comment's Goal. Leave it 0 to create one
+// directly, which needs Text; GoalID then names the Goal it is about, or is 0
+// for the Report as a whole.
 type RaiseActionItemInput struct {
 	PublicationID int64
 	CommentID     int64
+	GoalID        int64
 	Text          string
 	OwnerID       int64
 	DueDate       time.Time
@@ -46,7 +55,8 @@ type RaiseActionItemInput struct {
 // in.PublicationID, for its Report Definition. Only the Report's author — who
 // saved its Definition, or who published this publication — may raise one. It
 // needs an owner who has not left the company and a due date; a comment it is
-// turned from must be on the same publication.
+// turned from must be on the same publication, and a Goal it names must be one
+// the publication covers.
 func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseActionItemInput) (ActionItem, error) {
 	pub, err := s.GetPublication(ctx, in.PublicationID)
 	if err != nil {
@@ -60,6 +70,7 @@ func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseAc
 		return ActionItem{}, fmt.Errorf("%w: only the Report's author raises Action Items", ErrNotAuthorized)
 	}
 	text := strings.TrimSpace(in.Text)
+	goalID := in.GoalID
 	if in.CommentID != 0 {
 		c, err := s.GetComment(ctx, in.CommentID)
 		if err != nil {
@@ -68,9 +79,15 @@ func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseAc
 		if c.PublicationID != pub.ID {
 			return ActionItem{}, fmt.Errorf("%w: comment %d is not on this publication", ErrValidation, c.ID)
 		}
+		if goalID != 0 && goalID != c.GoalID {
+			return ActionItem{}, fmt.Errorf("%w: an Action Item raised from a comment is about the comment's Goal", ErrValidation)
+		}
+		goalID = c.GoalID
 		if text == "" {
 			text = c.Body
 		}
+	} else if goalID != 0 && !pub.Report.covers(goalID) {
+		return ActionItem{}, fmt.Errorf("%w: goal %d is not in this publication", ErrValidation, goalID)
 	}
 	if text == "" {
 		return ActionItem{}, fmt.Errorf("%w: an Action Item needs a description", ErrValidation)
@@ -92,6 +109,7 @@ func (s *Service) RaiseActionItem(ctx context.Context, actorID int64, in RaiseAc
 		ReportDefinitionID: pub.DefinitionID,
 		PublicationID:      pub.ID,
 		CommentID:          in.CommentID,
+		GoalID:             goalID,
 		Text:               text,
 		OwnerID:            owner.ID,
 		DueDate:            in.DueDate.Format(dateFormat),
@@ -222,6 +240,14 @@ func (s *Service) actionItemFromRow(ctx context.Context, row db.ActionItem) (Act
 	if err != nil {
 		return ActionItem{}, fmt.Errorf("look up action item author: %w", err)
 	}
+	var goalTitle string
+	if row.GoalID != 0 {
+		g, err := s.queries.GetGoal(ctx, row.GoalID)
+		if err != nil {
+			return ActionItem{}, fmt.Errorf("look up action item goal: %w", err)
+		}
+		goalTitle = g.Goal.Title
+	}
 	due, _ := time.Parse(dateFormat, row.DueDate)
 	createdAt, _ := time.Parse(timeFormat, row.CreatedAt)
 	item := ActionItem{
@@ -229,6 +255,8 @@ func (s *Service) actionItemFromRow(ctx context.Context, row db.ActionItem) (Act
 		DefinitionID:  row.ReportDefinitionID,
 		PublicationID: row.PublicationID,
 		CommentID:     row.CommentID,
+		GoalID:        row.GoalID,
+		GoalTitle:     goalTitle,
 		Text:          row.Text,
 		Owner:         accountFromRow(owner),
 		DueDate:       due,
@@ -241,4 +269,99 @@ func (s *Service) actionItemFromRow(ctx context.Context, row db.ActionItem) (Act
 		item.ClosedAt, _ = time.Parse(timeFormat, row.ClosedAt)
 	}
 	return item, nil
+}
+
+// ActionItemListing is an Action Item listed outside its Report — on Home, a
+// Goal's page, Risks, or an email — with what a reader needs to place it.
+type ActionItemListing struct {
+	Item ActionItem
+	// ReportName is the name of the Report Definition it belongs to.
+	ReportName string
+	// GoalTitle is the same as Item.GoalTitle: "" when it is about the whole
+	// Report.
+	GoalTitle string
+	// Overdue is whether it is open and its due date is before today, in the
+	// org's timezone. One due today is not overdue.
+	Overdue bool
+}
+
+// OpenActionItemsOwnedBy returns ownerID's open Action Items across every
+// Report, soonest due first.
+func (s *Service) OpenActionItemsOwnedBy(ctx context.Context, ownerID int64) ([]ActionItemListing, error) {
+	rows, err := s.queries.ListOpenActionItemsForOwner(ctx, ownerID)
+	if err != nil {
+		return nil, fmt.Errorf("list owner's open action items: %w", err)
+	}
+	return actionItemListings(ctx, s, rows, func(r db.ListOpenActionItemsForOwnerRow) (db.ActionItem, string) {
+		return r.ActionItem, r.ReportName
+	})
+}
+
+// ActionItemsAbout returns the Action Items about the Goal goalID, open and
+// closed, from every Report, soonest due first.
+func (s *Service) ActionItemsAbout(ctx context.Context, goalID int64) ([]ActionItemListing, error) {
+	rows, err := s.queries.ListActionItemsForGoal(ctx, goalID)
+	if err != nil {
+		return nil, fmt.Errorf("list goal's action items: %w", err)
+	}
+	return actionItemListings(ctx, s, rows, func(r db.ListActionItemsForGoalRow) (db.ActionItem, string) {
+		return r.ActionItem, r.ReportName
+	})
+}
+
+// AllOpenActionItems returns every open Action Item, by owner and then
+// soonest due.
+func (s *Service) AllOpenActionItems(ctx context.Context) ([]ActionItemListing, error) {
+	rows, err := s.queries.ListAllOpenActionItems(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list all open action items: %w", err)
+	}
+	return actionItemListings(ctx, s, rows, func(r db.ListAllOpenActionItemsRow) (db.ActionItem, string) {
+		return r.ActionItem, r.ReportName
+	})
+}
+
+// OverdueActionItems returns the open Action Items about a Goal whose due
+// date is before today, in the org's timezone, soonest due first. One about a
+// whole Report is never listed: it has no Goal to put at risk.
+func (s *Service) OverdueActionItems(ctx context.Context) ([]ActionItemListing, error) {
+	today := orgDate(s.clock.Now(), s.loc).Format(dateFormat)
+	rows, err := s.queries.ListOverdueActionItems(ctx, today)
+	if err != nil {
+		return nil, fmt.Errorf("list overdue action items: %w", err)
+	}
+	return actionItemListings(ctx, s, rows, func(r db.ListOverdueActionItemsRow) (db.ActionItem, string) {
+		return r.ActionItem, r.ReportName
+	})
+}
+
+// actionItemListings lists rows in order, split by row into each one's Action
+// Item and its Report's name.
+func actionItemListings[R any](ctx context.Context, s *Service, rows []R, row func(R) (db.ActionItem, string)) ([]ActionItemListing, error) {
+	out := make([]ActionItemListing, 0, len(rows))
+	for _, r := range rows {
+		item, reportName := row(r)
+		l, err := s.actionItemListing(ctx, item, reportName)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, l)
+	}
+	return out, nil
+}
+
+// actionItemListing loads row's Action Item and places it in its Report,
+// judging it overdue against today in the org's timezone.
+func (s *Service) actionItemListing(ctx context.Context, row db.ActionItem, reportName string) (ActionItemListing, error) {
+	item, err := s.actionItemFromRow(ctx, row)
+	if err != nil {
+		return ActionItemListing{}, err
+	}
+	today := orgDate(s.clock.Now(), s.loc).Format(dateFormat)
+	return ActionItemListing{
+		Item:       item,
+		ReportName: reportName,
+		GoalTitle:  item.GoalTitle,
+		Overdue:    !item.Closed && row.DueDate < today,
+	}, nil
 }

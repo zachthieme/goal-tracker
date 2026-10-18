@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -52,6 +53,23 @@ func (d discussion) canClose(item domain.ActionItem) bool {
 // been closed since. The read-only view (no reader) doesn't know.
 func (d discussion) closedSince(item domain.ActionItem) bool {
 	return d.Current != nil && !d.Open[item.ID]
+}
+
+// actionItemGoalChoices are the Goals an Action Item raised directly on the
+// publication may be about: each one it covers, by title.
+func (d discussion) actionItemGoalChoices() []domain.Goal {
+	if d.Pub == nil {
+		return nil
+	}
+	var goals []domain.Goal
+	for _, b := range d.Pub.Report.Exceptions {
+		goals = append(goals, b.Goal)
+	}
+	for _, sg := range d.Pub.Report.Lines {
+		goals = append(goals, sg.Goal)
+	}
+	slices.SortStableFunc(goals, func(a, b domain.Goal) int { return strings.Compare(a.Title, b.Title) })
+	return goals
 }
 
 // publicationDiscussion gathers the discussion of the published Report pub
@@ -158,6 +176,8 @@ func (s *Server) handleReplyToComment(w http.ResponseWriter, r *http.Request, cu
 
 // handleRaiseActionItem raises an Action Item on a published Report, from a
 // comment or directly, owned by the Account the owner field names by email.
+// One raised directly is about the Goal the goal field names, or the whole
+// Report when it is 0 or absent, as from the comment form.
 func (s *Server) handleRaiseActionItem(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	pub, ok := s.publication(w, r)
 	if !ok {
@@ -173,9 +193,17 @@ func (s *Server) handleRaiseActionItem(w http.ResponseWriter, r *http.Request, c
 		return
 	}
 	commentID, _ := strconv.ParseInt(r.FormValue("comment"), 10, 64)
+	var goalID int64
+	if v := r.FormValue("goal"); v != "" {
+		if goalID, err = strconv.ParseInt(v, 10, 64); err != nil {
+			s.writeCommentError(w, r, fmt.Errorf("%w: the Goal must be a Goal's id", domain.ErrValidation))
+			return
+		}
+	}
 	if _, err := s.svc.RaiseActionItemByEmail(r.Context(), current.ID, domain.RaiseActionItemInput{
 		PublicationID: pub.ID,
 		CommentID:     commentID,
+		GoalID:        goalID,
 		Text:          r.FormValue("text"),
 		DueDate:       due,
 	}, r.FormValue("owner")); err != nil {
