@@ -27,6 +27,9 @@ const (
 	historyOwnership historyFilter = "ownership"
 	historyLinks     historyFilter = "links"
 	historyValues    historyFilter = "values"
+	// historyActionItems lists the Action Items about the Goal: each one
+	// raised, reassigned and closed.
+	historyActionItems historyFilter = "action-items"
 )
 
 // historyFilters are the chips in the order they show, each with its label.
@@ -42,6 +45,7 @@ var historyFilters = []struct {
 	{historyOwnership, "Ownership"},
 	{historyLinks, "Links"},
 	{historyValues, "Values"},
+	{historyActionItems, "Action Items"},
 }
 
 // historyFirstPage is how many entries the timeline shows at first, and
@@ -55,9 +59,11 @@ const (
 // Slips and Metric readings recorded in it, a So What revision, a change to
 // its title, an ownership change (a Handoff or an Admin Reassign), a change to
 // a Dimension value or Field, a Parent suggestion with its outcome, a Nudge, or
-// a change to one of its links, or a Milestone added outside a Check-in.
+// a change to one of its links, a Milestone added outside a Check-in, or an
+// Action Item about it raised, reassigned or closed.
 // Exactly one of Checkin, Revision, Title, Handoff, Value, Suggestion, Nudge,
-// Link and Milestone is set. A Check-in's Highlights are the ones it carries.
+// Link, Milestone, ActionItem and ActionReassign is set. A Check-in's
+// Highlights are the ones it carries.
 //
 // Folded, when set, makes the entry stand for a run of Check-ins that repeat
 // the one before them, newest first; the entry is the newest of them.
@@ -76,7 +82,23 @@ type historyEntry struct {
 	Nudge      *domain.Nudge
 	Link       *domain.LinkEvent
 	Milestone  *domain.MilestoneChange
+	// ActionItem is an Action Item raised, or closed when ActionItemEvent
+	// says so; ActionRaisedFor is who it was raised for, its owner before any
+	// reassignment. ActionReassign is one handed to a new owner.
+	ActionItem      *domain.ActionItemListing
+	ActionItemEvent historyActionItemEvent
+	ActionRaisedFor domain.Account
+	ActionReassign  *domain.ActionItemReassignment
 }
+
+// historyActionItemEvent is what an ActionItem entry records of its Action
+// Item: that it was raised, or closed.
+type historyActionItemEvent int
+
+const (
+	historyActionItemRaised historyActionItemEvent = iota
+	historyActionItemClosed
+)
 
 // historyReading is a Metric's reading as a Check-in recorded it. Changed is
 // whether it differs from the Metric's reading before it, or is its first.
@@ -105,6 +127,8 @@ func (e historyEntry) kind() string {
 		return "link"
 	case e.Milestone != nil:
 		return "milestone"
+	case e.ActionItem != nil, e.ActionReassign != nil:
+		return "action-item"
 	}
 	return "value"
 }
@@ -130,6 +154,12 @@ func (e historyEntry) label() string {
 		return "Link"
 	case e.Milestone != nil:
 		return "Milestone"
+	case e.ActionItem != nil && e.ActionItemEvent == historyActionItemClosed:
+		return "Action Item closed"
+	case e.ActionItem != nil:
+		return "Action Item raised"
+	case e.ActionReassign != nil:
+		return "Action Item reassigned"
 	}
 	return "Value"
 }
@@ -154,6 +184,8 @@ func (e historyEntry) in(filter historyFilter) bool {
 		return e.Link != nil || e.Suggestion != nil
 	case historyValues:
 		return e.Value != nil
+	case historyActionItems:
+		return e.ActionItem != nil || e.ActionReassign != nil
 	}
 	return true
 }
@@ -176,8 +208,9 @@ type history struct {
 
 // newHistory gathers a Goal's Check-ins, Date Slips, Metric readings, So What
 // revisions, title changes, ownership changes, value changes, Parent suggestions, Nudges,
-// link changes and the Milestones added outside a Check-in into one timeline,
-// newest first, showing everything and the first page.
+// link changes, the Milestones added outside a Check-in and its Action Items'
+// raising, reassignments and closing into one timeline, newest first, showing
+// everything and the first page.
 func newHistory(v goalView, loc *time.Location, now time.Time) history {
 	slipsBy := map[int64][]domain.DateSlip{}
 	for _, s := range v.DateSlips {
@@ -226,6 +259,25 @@ func newHistory(v goalView, loc *time.Location, now time.Time) history {
 	for _, m := range v.MilestoneAdditions {
 		entries = append(entries, historyEntry{At: m.CreatedAt, Milestone: &m})
 	}
+	// An Action Item was raised for the owner its first reassignment took it
+	// from, since a reassignment changes its owner in place.
+	raisedFor := map[int64]domain.Account{}
+	for _, r := range v.ActionReassigns {
+		if _, ok := raisedFor[r.ItemID]; !ok {
+			raisedFor[r.ItemID] = r.From
+		}
+		entries = append(entries, historyEntry{At: r.At, ActionReassign: &r})
+	}
+	for _, l := range v.ActionItems {
+		owner, ok := raisedFor[l.Item.ID]
+		if !ok {
+			owner = l.Item.Owner
+		}
+		entries = append(entries, historyEntry{At: l.Item.CreatedAt, ActionItem: &l, ActionRaisedFor: owner})
+		if l.Item.Closed {
+			entries = append(entries, historyEntry{At: l.Item.ClosedAt, ActionItem: &l, ActionItemEvent: historyActionItemClosed})
+		}
+	}
 	// Newest first; entries made at the same moment keep the order they were
 	// recorded in, latest first.
 	slices.SortStableFunc(entries, func(a, b historyEntry) int {
@@ -257,6 +309,10 @@ func (e historyEntry) seq() int64 {
 		return e.Link.ID
 	case e.Milestone != nil:
 		return e.Milestone.ID
+	case e.ActionItem != nil:
+		return e.ActionItem.Item.ID
+	case e.ActionReassign != nil:
+		return e.ActionReassign.ID
 	}
 	return e.Value.ID
 }
@@ -622,6 +678,8 @@ func (h history) emptyText() string {
 		return "No link changes or Parent suggestions yet."
 	case historyValues:
 		return "No value changes yet."
+	case historyActionItems:
+		return "No Action Items yet."
 	}
 	return "Nothing has happened on this Goal yet."
 }

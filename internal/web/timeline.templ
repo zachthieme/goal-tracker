@@ -131,6 +131,37 @@ templ historyItem(h history, e historyEntry) {
 					{ "by " }
 					@person(e.Link.Actor)
 				</p>
+			case e.ActionItem != nil && e.ActionItemEvent == historyActionItemClosed:
+				<p>{ e.ActionItem.Item.Text }</p>
+				<p><span class="muted">Note: </span>{ e.ActionItem.Item.ClosingNote }</p>
+				<p class="muted small">
+					{ "by " }
+					@person(e.ActionItem.Item.Owner)
+				</p>
+			case e.ActionItem != nil:
+				{{ item := e.ActionItem.Item }}
+				<p>{ item.Text }</p>
+				<p>
+					{ "for " }
+					@person(e.ActionRaisedFor)
+					{ " · due " + h.dates().date(item.DueDate) + " · from " }
+					<a href={ templ.SafeURL(fmt.Sprintf("/reports/%d/publications/%d#action-items", item.DefinitionID, item.PublicationID)) }>{ e.ActionItem.ReportName }</a>
+				</p>
+				<p class="muted small">
+					{ "by " }
+					@person(item.CreatedBy)
+				</p>
+			case e.ActionReassign != nil:
+				<p>{ e.ActionReassign.ItemText }</p>
+				<p>
+					@person(e.ActionReassign.From)
+					{ " → " }
+					@person(e.ActionReassign.To)
+				</p>
+				<p class="muted small">
+					{ "by " }
+					@person(e.ActionReassign.By)
+				</p>
 			default:
 				<p>{ valueChangeText(*e.Value) }</p>
 				<p class="muted small">
@@ -310,6 +341,7 @@ templ timelineStyles() {
 		.tl-nudge{border:2px dashed var(--color-ink-muted);border-radius:2px}
 		.tl-link{border:2px solid var(--color-ink-muted);border-radius:50% 50% 2px 2px}
 		.tl-milestone{border:3px double var(--color-ink-muted);border-radius:50%}
+		.tl-action-item{border:2px solid var(--color-ink-muted);border-radius:2px 50% 50% 2px}
 		.tl-slips{margin:0;padding-left:20px}
 		.tl-discarded>p{margin:0}
 		.tl-detail summary{cursor:pointer;color:var(--color-primary-strong)}

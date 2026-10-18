@@ -516,8 +516,8 @@ func TestGoalHistoryWorksWithoutJavaScript(t *testing.T) {
 	}
 	links := strings.Split(between(t, history, `data-testid="history-chips"`, "</nav>"), "<a ")[1:]
 	links = append(links, between(t, history, `<a data-testid="history-earlier"`, "</a>"))
-	if len(links) != 9 {
-		t.Fatalf("History has %d chip and Show earlier links, want 9", len(links))
+	if len(links) != 10 {
+		t.Fatalf("History has %d chip and Show earlier links, want 10", len(links))
 	}
 	for _, link := range links {
 		_, href, _ := strings.Cut(link, `href="`)
@@ -1347,7 +1347,7 @@ func TestGoalHistoryLinksChipListsLinkChangesAndParentSuggestions(t *testing.T) 
 	for _, chip := range strings.Split(between(t, history, `data-testid="history-chips"`, "</nav>"), `data-testid="history-chip"`)[1:] {
 		labels = append(labels, strings.TrimSpace(between(t, chip, ">", "<span")[1:]))
 	}
-	if want := []string{"All", "Check-ins", "Date Slips", "So What", "Title", "Ownership", "Links", "Values"}; !slices.Equal(labels, want) {
+	if want := []string{"All", "Check-ins", "Date Slips", "So What", "Title", "Ownership", "Links", "Values", "Action Items"}; !slices.Equal(labels, want) {
 		t.Errorf("chips = %v, want %v", labels, want)
 	}
 	if got := historyChips(t, history)["Links"]; got.count != "2" || filterOf(got.href) != "links" {
@@ -1893,5 +1893,158 @@ func TestGoalHistoryShowEarlierCountsFoldedRunsOnce(t *testing.T) {
 	}
 	if strings.Contains(history, `data-testid="history-earlier"`) {
 		t.Errorf("History offers Show earlier with everything shown")
+	}
+}
+
+// timelineActionItemGoal arranges an Active Goal, Launch in EU, owned by Ana
+// Author, and a published Report, MBR, that covers it, so Action Items about
+// it can be raised there.
+func timelineActionItemGoal(h *testsupport.Harness) (author domain.Account, goal domain.Goal, pub domain.Publication) {
+	author = h.SignInNamed("ana@example.com", "Ana Author")
+	goal = h.ActiveGoal(author, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{goal.ID}})
+	return author, goal, h.PublishReport(author, def)
+}
+
+// timelineRaiseActionItem raises an Action Item on pub as author, for owner,
+// due on Sun 1 Feb 2026, about goalID, or the whole Report for 0.
+func timelineRaiseActionItem(t *testing.T, h *testsupport.Harness, author domain.Account, pub domain.Publication, owner domain.Account, text string, goalID int64) domain.ActionItem {
+	t.Helper()
+	item, err := h.Service.RaiseActionItem(context.Background(), author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, GoalID: goalID, Text: text, OwnerID: owner.ID, DueDate: testsupport.Epoch.AddDate(0, 0, 30),
+	})
+	if err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+	return item
+}
+
+// An Action Item about the Goal is three entries in its History, newest
+// first: closed by its owner with the note, reassigned from one owner to
+// another, and raised for the owner it was raised for, with its due date and
+// the Report it came from. Each says who did it.
+func TestGoalHistoryShowsAnActionItemRaisedReassignedAndClosed(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	author, goal, pub := timelineActionItemGoal(h)
+	sam := h.SignInNamed("sam@example.com", "Sam First")
+	pat := h.SignInNamed("pat@example.com", "Pat Second")
+	ctx := context.Background()
+	h.Clock.Advance(time.Hour)
+	item := timelineRaiseActionItem(t, h, author, pub, sam, "Book the launch venue.", goal.ID)
+	h.Clock.Advance(time.Hour)
+	if _, err := h.Service.ReassignActionItem(ctx, author.ID, item.ID, pat.ID); err != nil {
+		t.Fatalf("ReassignActionItem: %v", err)
+	}
+	h.Clock.Advance(time.Hour)
+	if _, err := h.Service.CloseActionItem(ctx, pat.ID, item.ID, "Booked the Lisbon hall."); err != nil {
+		t.Fatalf("CloseActionItem: %v", err)
+	}
+	ts := newServer(t, h)
+
+	var items []string
+	for _, e := range historyEntries(historyBlock(t, getBody(t, signInClient(t, ts.URL, "ana@example.com"), goalPageURL(ts.URL, goal)))) {
+		if entryKind(t, e) == "action-item" {
+			items = append(items, e)
+		}
+	}
+	if len(items) != 3 {
+		t.Fatalf("History lists %d Action Item entries, want 3: %q", len(items), items)
+	}
+	pubLink := fmt.Sprintf(`href="/reports/%d/publications/%d#action-items"`, pub.DefinitionID, pub.ID)
+	for i, tc := range []struct {
+		facts []string
+		not   []string
+	}{
+		{facts: []string{"Action Item closed", "Book the launch venue.", "Booked the Lisbon hall.", "by Pat Second", `class="tl-mark tl-action-item"`}},
+		{facts: []string{"Action Item reassigned", "Book the launch venue.", "Sam First", "→", "Pat Second", "by Ana Author"}},
+		{facts: []string{"Action Item raised", "Book the launch venue.", "for Sam First", "due Feb 1", "from MBR", pubLink, "by Ana Author"}, not: []string{"Pat Second", "pat@example.com"}},
+	} {
+		text := entryText(items[i])
+		for _, fact := range tc.facts {
+			if !strings.Contains(text, fact) && !strings.Contains(items[i], fact) {
+				t.Errorf("Action Item entry %d lacks %q:\n%s", i, fact, items[i])
+			}
+		}
+		for _, wrong := range tc.not {
+			if strings.Contains(items[i], wrong) {
+				t.Errorf("Action Item entry %d names %q, not who it was raised for:\n%s", i, wrong, items[i])
+			}
+		}
+	}
+}
+
+// The Action Items chip lists only the Action Items' entries, and the other
+// chips leave them out; with none, it says so.
+func TestGoalHistoryActionItemsChipListsOnlyActionItems(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	author, goal, pub := timelineActionItemGoal(h)
+	h.Clock.Advance(time.Hour)
+	h.Checkin(author, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(time.Hour)
+	item := timelineRaiseActionItem(t, h, author, pub, author, "Book the launch venue.", goal.ID)
+	h.Clock.Advance(time.Hour)
+	if _, err := h.Service.CloseActionItem(context.Background(), author.ID, item.ID, "Booked."); err != nil {
+		t.Fatalf("CloseActionItem: %v", err)
+	}
+	quiet := h.ActiveGoal(author, "Hire a team", "We need people.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "ana@example.com")
+	goalURL := goalPageURL(ts.URL, goal)
+
+	if got := historyChips(t, historyBlock(t, getBody(t, client, goalURL)))["Action Items"]; got.count != "2" || filterOf(got.href) != "action-items" {
+		t.Errorf("Action Items chip = %+v, want 2 to ?history=action-items", got)
+	}
+	items := filteredEntries(t, client, goalURL, "action-items", "action-item")
+	if len(items) != 2 || !strings.Contains(items[0], "Action Item closed") || !strings.Contains(items[1], "Action Item raised") {
+		t.Errorf("?history=action-items lists %q, want the closing and the raising", items)
+	}
+	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalURL+"?history=checkins"))) {
+		if kind := entryKind(t, e); kind == "action-item" {
+			t.Errorf("the Check-ins chip lists an Action Item:\n%s", e)
+		}
+	}
+
+	empty := historyBlock(t, getBody(t, client, goalPageURL(ts.URL, quiet)+"?history=action-items"))
+	if got := entryText(between(t, empty, `data-testid="no-history"`, "</p>")); !strings.Contains(got, "No Action Items yet.") {
+		t.Errorf("the Action Items chip on a Goal with none reads %q, want No Action Items yet.", got)
+	}
+}
+
+// Only Action Items about the Goal are in its History: not one about another
+// Goal, nor one about the whole Report.
+func TestGoalHistoryLeavesOutActionItemsAboutOthers(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	author := h.SignInNamed("ana@example.com", "Ana Author")
+	goal := h.ActiveGoal(author, "Launch in EU", "Expand the market.")
+	other := h.ActiveGoal(author, "Hire a team", "We need people.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{goal.ID, other.ID}})
+	pub := h.PublishReport(author, def)
+	pat := h.SignInNamed("pat@example.com", "Pat Second")
+	h.Clock.Advance(time.Hour)
+	for _, goalID := range []int64{other.ID, 0} {
+		item := timelineRaiseActionItem(t, h, author, pub, author, "Not this Goal's.", goalID)
+		if _, err := h.Service.ReassignActionItem(context.Background(), author.ID, item.ID, pat.ID); err != nil {
+			t.Fatalf("ReassignActionItem: %v", err)
+		}
+		if _, err := h.Service.CloseActionItem(context.Background(), pat.ID, item.ID, "Done."); err != nil {
+			t.Fatalf("CloseActionItem: %v", err)
+		}
+	}
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "ana@example.com")
+
+	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal)))) {
+		if entryKind(t, e) == "action-item" {
+			t.Errorf("History lists another's Action Item:\n%s", e)
+		}
+	}
+	if n := len(filteredEntries(t, client, goalPageURL(ts.URL, other), "action-items", "action-item")); n != 3 {
+		t.Errorf("the other Goal's History lists %d Action Item entries, want 3", n)
 	}
 }
