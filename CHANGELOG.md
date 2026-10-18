@@ -13,6 +13,18 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 18, 2026
+
+**Breaking changes:**
+- [ops] **Configuration**: `GOAL_TRACKER_SIGNIN` is now required, `oidc` or `dev`, and startup stops without it. Leaving the `GOAL_TRACKER_OIDC_*` variables unset no longer selects the development form, which could open the app to everyone through one missing variable: set `GOAL_TRACKER_SIGNIN=dev` for it, and `dev` refuses any `GOAL_TRACKER_OIDC_*` variable. `oidc` now requires `GOAL_TRACKER_SESSION_KEY` too; `make serve` reads it from `dev/authentik/.env`, so add `GOAL_TRACKER_SESSION_KEY=$(openssl rand -base64 32)` there (#299).
+- [ops] **Sessions**: the session cookie now carries a per-Account session generation, so existing sessions are signed out once and everyone signs in again (#299).
+
+**Bug fixes:**
+- [user] An Org link (`?org=`) to Goals or Risks now scopes the page for everyone once anyone in the company has a Manager, instead of silently showing every Goal to a viewer with no Manager and no one under them; and the Report builder no longer offers the Owner's org when the only Manager is someone set as their own (#269).
+
+**Infrastructure:**
+- [internal] Each Account has a session generation (the new `account_sessions` table) that `domain.Service.EndSessions` moves on to end all of a person's sessions at once, for password sign-in to use (#299).
+
 ### Collected changes — October 17, 2026
 
 **New features:**
