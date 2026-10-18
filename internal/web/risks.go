@@ -146,7 +146,7 @@ func riskValueLabel(v domain.DimensionValue) string {
 }
 
 // risksPageView is the Risks page: its lists, its rows in scope, its rows
-// with its values in any scope, which the Needs an Admin card counts, the
+// with its values in any scope, which Needs an Admin's card and table hold, the
 // group its address filters it to, "" for every group, its Scope, the offered
 // Dimensions and the values of theirs it is scoped to, at most one each, in
 // the Dimensions' order, and today, which its dates are read against.
@@ -774,8 +774,8 @@ var riskGroupKinds = []struct {
 	{riskGroupAdmin, "Needs an Admin", []string{"ownerless", "halted-parents"}, "Nothing needs an Admin."},
 }
 
-// riskGroupAdmin is the key of the Needs an Admin group, whose card counts
-// the company's rows.
+// riskGroupAdmin is the key of the Needs an Admin group, whose card and table
+// hold the company's rows.
 const riskGroupAdmin = "admin"
 
 // riskGroups counts the rows in each group, in the page's order.
