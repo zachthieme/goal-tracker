@@ -159,8 +159,6 @@ func TestSmokeActionItemCarriesUntilClosedOverHTTP(t *testing.T) {
 	}
 }
 
-// Closing an Action Item comes back only to a page on this site: a return
-
 // The Report's author names the Goal an Action Item raised directly is about,
 // from the Goals the publication covers, or leaves it about the whole Report;
 // the publication then says which Goal it is about (CONTEXT.md: Action Item).
@@ -224,6 +222,8 @@ func TestDirectActionItemNamesAGoalOverHTTP(t *testing.T) {
 		t.Errorf("a goal that isn't a number: status %d, want 422", resp.StatusCode)
 	}
 }
+
+// Closing an Action Item comes back only to a page on this site: a return
 // address that a browser would read as another site is ignored.
 func TestCloseActionItemNeverRedirectsOffSite(t *testing.T) {
 	t.Parallel()
@@ -349,5 +349,155 @@ func TestOpenActionItemCloseFormIsCollapsedOverHTTP(t *testing.T) {
 	toggle := pageElement(t, item, "details", "close-toggle")
 	if strings.HasPrefix(toggle, "<details data-testid=\"close-toggle\" open") || !strings.Contains(toggle, `data-testid="close-action-item"`) {
 		t.Errorf("the close form is not behind a collapsed toggle; toggle:\n%s", toggle)
+	}
+}
+
+// The Report's author reassigns an open Action Item from the publication it
+// was raised on; the item then names its new owner and who had it before.
+// Its owner, who isn't an author, isn't offered to, and can't (CONTEXT.md:
+// Action Item).
+func TestAuthorReassignsAnActionItemOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignInNamed("owner@example.com", "Olive Owner")
+	author := h.SignIn("author@example.com")
+	h.SignInNamed("newbie@example.com", "Nina Newbie")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+	item, err := h.Service.RaiseActionItem(context.Background(), author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, Text: "Book the EU legal review.", OwnerID: owner.ID, DueDate: h.Clock.Now(),
+	})
+	if err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+	ts := newServer(t, h)
+	pubPath := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
+	authorClient := signInClient(t, ts.URL, "author@example.com")
+	ownerClient := signInClient(t, ts.URL, "owner@example.com")
+	reassignURL := fmt.Sprintf("%s/action-items/%d/reassign", ts.URL, item.ID)
+
+	row := pageElement(t, getBody(t, authorClient, ts.URL+pubPath), "li", "raised-action-item")
+	toggle := pageElement(t, row, "details", "reassign-toggle")
+	form := pageElement(t, toggle, "form", "reassign-action-item")
+	if !strings.Contains(toggle, `<summary class="btn sm">Reassign</summary>`) || !strings.Contains(form, "New owner") ||
+		!strings.Contains(form, `type="email" name="owner"`) || attr(openTag(form), "action") != fmt.Sprintf("/action-items/%d/reassign", item.ID) {
+		t.Errorf("the author's reassign toggle isn't a Reassign button over a New owner form; toggle:\n%s", toggle)
+	}
+	if row := pageElement(t, getBody(t, ownerClient, ts.URL+pubPath), "li", "raised-action-item"); strings.Contains(row, "reassign-toggle") {
+		t.Errorf("its owner, who isn't an author, is offered to reassign it; row:\n%s", row)
+	}
+
+	resp := postForm(t, ownerClient, reassignURL, url.Values{"owner": {"newbie@example.com"}, "return": {pubPath}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("reassigned by its owner: status %d, want 403", resp.StatusCode)
+	}
+
+	back := pubPath + "#action-items"
+	resp = postForm(t, authorClient, reassignURL, url.Values{"owner": {"newbie@example.com"}, "return": {back}})
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != pubPath {
+		t.Fatalf("reassign: status %d at %s, want back on %s", resp.StatusCode, resp.Request.URL, pubPath)
+	}
+	row = pageElement(t, readBody(t, resp), "li", "raised-action-item")
+	if !strings.Contains(row, "Book the EU legal review. · "+shownAs("newbie@example.com", "Nina Newbie")) {
+		t.Errorf("the reassigned item doesn't name its new owner; row:\n%s", row)
+	}
+	_, afterOwner, _ := strings.Cut(row, shownAs("newbie@example.com", "Nina Newbie"))
+	if want := `<span data-testid="action-item-was">(was ` + shownAs("owner@example.com", "Olive Owner") + `&#39;s)</span>`; !strings.Contains(afterOwner, want) {
+		t.Errorf("the reassigned item doesn't say who had it before, after its owner; row:\n%s", row)
+	}
+
+	resp = postForm(t, authorClient, reassignURL, url.Values{"owner": {"nobody@example.com"}, "return": {pubPath}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("reassigned to an unknown email: status %d, want 422", resp.StatusCode)
+	}
+	resp = postForm(t, authorClient, fmt.Sprintf("%s/action-items/%d/reassign", ts.URL, item.ID+100), url.Values{"owner": {"owner@example.com"}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("reassigning a missing item: status %d, want 404", resp.StatusCode)
+	}
+}
+
+// Reassigning an Action Item comes back only to a page on this site, as
+// closing one does.
+func TestReassignActionItemNeverRedirectsOffSite(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	author := h.SignIn("author@example.com")
+	first := h.SignIn("first@example.com")
+	second := h.SignIn("second@example.com")
+	g := h.ActiveGoal(author, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+	item, err := h.Service.RaiseActionItem(context.Background(), author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, Text: "Follow up.", OwnerID: first.ID, DueDate: h.Clock.Now(),
+	})
+	if err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+	ts := newServer(t, h)
+	client := noRedirects(signInClient(t, ts.URL, "author@example.com"))
+
+	for i, back := range []string{"//evil.example", "/\t/evil.example", "/\\evil.example", "https://evil.example/", "/\n/evil.example"} {
+		to := []domain.Account{second, first}[i%2]
+		resp := postForm(t, client, fmt.Sprintf("%s/action-items/%d/reassign", ts.URL, item.ID), url.Values{
+			"owner": {to.Email}, "return": {back},
+		})
+		_ = readBody(t, resp)
+		want := fmt.Sprintf("/reports/%d/publications/%d", def.ID, pub.ID)
+		if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != want {
+			t.Errorf("return %q: status %d to %q, want 303 to %q", back, resp.StatusCode, resp.Header.Get("Location"), want)
+		}
+	}
+}
+
+// A later publication lists a carried Action Item as it froze, with the owner
+// it had then, but its forms follow the live item: after a reassignment the
+// new owner gets the close form and the old owner doesn't.
+func TestFrozenActionItemFollowsItsReassignmentOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	author := h.SignIn("author@example.com")
+	owner := h.SignIn("owner@example.com")
+	h.SignIn("newbie@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	first := h.PublishReport(author, def)
+	if _, err := h.Service.RaiseActionItem(context.Background(), author.ID, domain.RaiseActionItemInput{
+		PublicationID: first.ID, Text: "Book the EU legal review.", OwnerID: owner.ID, DueDate: h.Clock.Now(),
+	}); err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+	second := h.PublishReport(author, def)
+	ts := newServer(t, h)
+	secondPath := fmt.Sprintf("/reports/%d/publications/%d", def.ID, second.ID)
+	authorClient := signInClient(t, ts.URL, "author@example.com")
+	ownerClient := signInClient(t, ts.URL, "owner@example.com")
+	newbieClient := signInClient(t, ts.URL, "newbie@example.com")
+
+	row := pageElement(t, getBody(t, authorClient, ts.URL+secondPath), "li", "open-action-item")
+	form := pageElement(t, pageElement(t, row, "details", "reassign-toggle"), "form", "reassign-action-item")
+	if strings.Contains(row, "close-toggle") {
+		t.Errorf("the author, who doesn't own the carried item, is offered to close it; row:\n%s", row)
+	}
+	resp := postForm(t, authorClient, ts.URL+attr(openTag(form), "action"), url.Values{"owner": {"newbie@example.com"}, "return": {secondPath}})
+	if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != secondPath {
+		t.Fatalf("reassign: status %d at %s, want back on %s", resp.StatusCode, resp.Request.URL, secondPath)
+	}
+	if row := pageElement(t, readBody(t, resp), "li", "open-action-item"); !strings.Contains(row, `title="owner@example.com"`) ||
+		strings.Contains(row, "action-item-closed-since") {
+		t.Errorf("the frozen row doesn't still show its frozen owner, open; row:\n%s", row)
+	}
+
+	if row := pageElement(t, getBody(t, newbieClient, ts.URL+secondPath), "li", "open-action-item"); !strings.Contains(row, `data-testid="close-toggle"`) {
+		t.Errorf("the new owner isn't offered to close the carried item; row:\n%s", row)
+	}
+	if row := pageElement(t, getBody(t, ownerClient, ts.URL+secondPath), "li", "open-action-item"); strings.Contains(row, "close-toggle") {
+		t.Errorf("the old owner is still offered to close the carried item; row:\n%s", row)
 	}
 }
