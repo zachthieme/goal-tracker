@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"regexp"
@@ -12,6 +13,8 @@ import (
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/clock"
+	"github.com/zachthieme/goal-tracker/internal/db"
+	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
 func TestAppClockIsTheRealClockWhenStartAtIsUnset(t *testing.T) {
@@ -429,5 +432,34 @@ func TestThePasswordLinkCommandNeedsPasswordSignIn(t *testing.T) {
 	}
 	if out.Len() != 0 {
 		t.Errorf("password-link printed %q", out.String())
+	}
+}
+
+// The password-link command refuses anything that isn't an email address,
+// prints nothing, and leaves no Account for it.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestThePasswordLinkCommandNeedsAnEmailAddress(t *testing.T) {
+	passwordEnv(t)
+	dbPath := filepath.Join(t.TempDir(), "goal-tracker.db")
+	t.Setenv("GOAL_TRACKER_DB", dbPath)
+
+	var out bytes.Buffer
+	err := run(discardLogger(), []string{"password-link", "not-an-email"}, &out)
+	if !errors.Is(err, domain.ErrNotAnEmail) {
+		t.Errorf("password-link not-an-email: %v, want ErrNotAnEmail", err)
+	}
+	if out.Len() != 0 {
+		t.Errorf("password-link printed %q", out.String())
+	}
+
+	sqlDB, err := db.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sqlDB.Close()
+	svc := domain.NewService(sqlDB, clock.Real{}, nil, nil)
+	if _, err := svc.AccountByEmail(t.Context(), "not-an-email"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("password-link not-an-email left an Account (err %v)", err)
 	}
 }
