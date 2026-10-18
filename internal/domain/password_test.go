@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -254,6 +255,35 @@ func TestFiveWrongPasswordsLockTheAccountFor15Minutes(t *testing.T) {
 	h.Clock.Advance(time.Second)
 	if _, err := h.Service.PasswordSignIn(t.Context(), "sam@example.com", samPassword); err != nil {
 		t.Errorf("the right password once the lock passed: %v", err)
+	}
+}
+
+// A sign-in whose context ends before its password is hashed gives up with
+// the context's error, not ErrBadCredentials, and doesn't count toward the
+// lockout: five wrong passwords afterwards still lock the Account, not four.
+func TestASignInThatGivesUpBeforeHashingCountsForNothing(t *testing.T) {
+	t.Parallel()
+
+	h := samWithPassword(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	for name, email := range map[string]string{
+		"has a password": "sam@example.com",
+		"unknown email":  "nobody@example.com",
+	} {
+		_, err := h.Service.PasswordSignIn(ctx, email, "not sam's password")
+		if !errors.Is(err, context.Canceled) || errors.Is(err, domain.ErrBadCredentials) {
+			t.Errorf("%s: PasswordSignIn with an ended context = %v, want context.Canceled", name, err)
+		}
+	}
+
+	failSignIns(t, h, 4)
+	if _, err := h.Service.PasswordSignIn(t.Context(), "sam@example.com", samPassword); err != nil {
+		t.Fatalf("the right password after the given-up sign-in and 4 wrong ones: %v", err)
+	}
+	failSignIns(t, h, 5)
+	if _, err := h.Service.PasswordSignIn(t.Context(), "sam@example.com", samPassword); !errors.Is(err, domain.ErrBadCredentials) {
+		t.Errorf("the right password after 5 wrong ones: %v, want ErrBadCredentials", err)
 	}
 }
 
