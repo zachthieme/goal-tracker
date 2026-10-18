@@ -146,7 +146,10 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	s.startSession(w, acc.ID)
+	if err := s.startSession(w, r, acc); err != nil {
+		s.serverError(w, r, "sign-in failed", err)
+		return
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     idTokenCookie,
 		Value:    claims.raw,

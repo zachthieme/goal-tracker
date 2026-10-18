@@ -54,20 +54,29 @@ func (s *Server) handleSignIn(w http.ResponseWriter, r *http.Request) {
 		s.serverError(w, r, "sign-in failed", err)
 		return
 	}
-	s.startSession(w, acc.ID)
+	if err := s.startSession(w, r, acc); err != nil {
+		s.serverError(w, r, "sign-in failed", err)
+		return
+	}
 	http.Redirect(w, r, "/home", http.StatusSeeOther)
 }
 
-// startSession signs accountID in on this browser: a signed session cookie.
-func (s *Server) startSession(w http.ResponseWriter, accountID int64) {
+// startSession signs acc in on this browser: a signed session cookie carrying
+// their current session generation, so EndSessions ends it.
+func (s *Server) startSession(w http.ResponseWriter, r *http.Request, acc domain.Account) error {
+	gen, err := s.svc.SessionGeneration(r.Context(), acc.ID)
+	if err != nil {
+		return err
+	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookie,
-		Value:    s.sessions.encode(accountID),
+		Value:    s.sessions.encode(acc.ID, gen),
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   s.secureCookies,
 		SameSite: http.SameSiteLaxMode,
 	})
+	return nil
 }
 
 // departedSentence is what the sign-in page says to a Departed person.
@@ -96,28 +105,42 @@ func (s *Server) handleSignOut(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/signin", http.StatusSeeOther)
 }
 
-// sessionCodec turns an Account ID into a session cookie value and back. The
-// value is the ID and its HMAC-SHA256 under key, so a cookie can't be edited to
-// name someone else.
+// sessionCodec turns an Account ID and its session generation into a session
+// cookie value and back. The value carries them with their HMAC-SHA256 under
+// key, so a cookie can't be edited to name someone else or an ended
+// generation.
 type sessionCodec struct {
 	key []byte
 }
 
-// encode is the cookie value that signs id in: "<id>.<signature>".
-func (c sessionCodec) encode(id int64) string {
-	payload := strconv.FormatInt(id, 10)
+// encode is the cookie value that signs id in at session generation gen:
+// "<id>.<generation>.<signature>".
+func (c sessionCodec) encode(id, gen int64) string {
+	payload := strconv.FormatInt(id, 10) + "." + strconv.FormatInt(gen, 10)
 	return payload + "." + c.sign(payload)
 }
 
-// decode is the Account ID value carries, and whether its signature verifies.
-// A value without one, like the bare IDs older versions issued, doesn't.
-func (c sessionCodec) decode(value string) (int64, bool) {
-	payload, sig, ok := strings.Cut(value, ".")
-	if !ok || !c.verify(payload, sig) {
-		return 0, false
+// decode is the Account ID and session generation value carries, and whether
+// its signature verifies. A value of any other shape, like the "<id>.<signature>"
+// or bare IDs older versions issued, doesn't.
+func (c sessionCodec) decode(value string) (id, gen int64, ok bool) {
+	parts := strings.Split(value, ".")
+	if len(parts) != 3 {
+		return 0, 0, false
 	}
-	id, err := strconv.ParseInt(payload, 10, 64)
-	return id, err == nil
+	payload := parts[0] + "." + parts[1]
+	if !c.verify(payload, parts[2]) {
+		return 0, 0, false
+	}
+	id, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	gen, err = strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	return id, gen, true
 }
 
 // verify reports whether sig is payload's signature.
