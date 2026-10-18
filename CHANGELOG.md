@@ -19,6 +19,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [ops] **Configuration**: `GOAL_TRACKER_SIGNIN` is now required, `oidc` or `dev`, and startup stops without it. Leaving the `GOAL_TRACKER_OIDC_*` variables unset no longer selects the development form, which could open the app to everyone through one missing variable: set `GOAL_TRACKER_SIGNIN=dev` for it, and `dev` refuses any `GOAL_TRACKER_OIDC_*` variable. `oidc` now requires `GOAL_TRACKER_SESSION_KEY` too; `make serve` reads it from `dev/authentik/.env`, so add `GOAL_TRACKER_SESSION_KEY=$(openssl rand -base64 32)` there (#299).
 - [ops] **Sessions**: the session cookie now carries a per-Account session generation, so existing sessions are signed out once and everyone signs in again (#299).
 
+**New features:**
+- [ops] **Managers from a CSV file**: `GOAL_TRACKER_DIRECTORY_FILE` names a CSV file (`email,name,manager_email`) exported from the Company's HR system, and the directory sync reads people and their Managers from it instead of Authentik: at startup, hourly, and on **Sync now**, re-reading the file each time. A file that's missing, lacks a column, or has a ragged row fails the sync and changes nothing. Startup stops if it's set with either `GOAL_TRACKER_DIRECTORY_URL` or `GOAL_TRACKER_DIRECTORY_TOKEN` (#298).
+
 **Bug fixes:**
 - [user] An Org link (`?org=`) to Goals or Risks now scopes the page for everyone once anyone in the company has a Manager, instead of silently showing every Goal to a viewer with no Manager and no one under them; and the Report builder no longer offers the Owner's org when the only Manager is someone set as their own (#269).
 
