@@ -172,6 +172,7 @@ async function tryStartServer(bin: string, db: string, port: number): Promise<Se
       GOAL_TRACKER_DB: db,
       GOAL_TRACKER_ADMINS: admin,
       GOAL_TRACKER_BASE_URL: url,
+      GOAL_TRACKER_SIGNIN: "dev",
       GOAL_TRACKER_TIMEZONE: "UTC",
       GOAL_TRACKER_START_AT: startAt,
     },

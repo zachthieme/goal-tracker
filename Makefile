@@ -101,9 +101,11 @@ endif
 # server; `tailscale serve --https=$(SERVE_PORT) off` removes it.
 #
 # People sign in through the local Authentik in dev/authentik/ (see its README;
-# it needs dev/authentik/.env), single sign-on as the org would have it, and
-# the app syncs people and their Managers from its directory.
-# NO_SSO=1 uses the development email form instead, and leaves Authentik be. Authentik is started, told the app's tailnet callback, and put on the
+# it needs dev/authentik/.env, GOAL_TRACKER_SESSION_KEY included), single
+# sign-on as the org would have it (GOAL_TRACKER_SIGNIN=oidc), and the app
+# syncs people and their Managers from its directory.
+# NO_SSO=1 uses the development email form instead (GOAL_TRACKER_SIGNIN=dev),
+# and leaves Authentik be. Authentik is started, told the app's tailnet callback, and put on the
 # tailnet at https://<this machine>.<tailnet>.ts.net:$(AUTHENTIK_PORT), so
 # sign-in works from any device on the tailnet.
 SERVE_PORT ?= 8090
@@ -116,10 +118,18 @@ AUTHENTIK_PORT ?= 9443
 TAILNET_HOST = $$(tailscale status --json | jq -r '.Self.DNSName | rtrimstr(".")')
 WITH_AUTHENTIK = $(if $(filter 1,$(SSO)),authentik-up)
 
+# env_value name: the value of name in dev/authentik/.env.
+env_value = $$(sed -n 's/^$(1)=//p' dev/authentik/.env)
+
+# Stops the recipe unless dev/authentik/.env has the session key that
+# GOAL_TRACKER_SIGNIN=oidc needs.
+CHECK_SESSION_KEY = test -n "$(call env_value,GOAL_TRACKER_SESSION_KEY)" || { echo "dev/authentik/.env has no GOAL_TRACKER_SESSION_KEY: add one, e.g. GOAL_TRACKER_SESSION_KEY=\$$(openssl rand -base64 32), or pass NO_SSO=1 for the development sign-in form" >&2; exit 1; }
+
 serve: build $(WITH_AUTHENTIK) serve-app ## Build and serve the app on the tailnet with Authentik sign-in (SERVE_PORT, SERVE_DB, SERVE_ADMINS, NO_SSO=1)
 
 # The server itself, in the foreground, for `make serve` and `make start`.
 serve-app:
+	$(if $(filter 1,$(SSO)),@$(CHECK_SESSION_KEY))
 	tailscale serve --bg --https=$(SERVE_PORT) http://127.0.0.1:$(SERVE_PORT)
 	host=$(TAILNET_HOST) && \
 	GOAL_TRACKER_ADDR=127.0.0.1:$(SERVE_PORT) \
@@ -127,11 +137,15 @@ serve-app:
 	GOAL_TRACKER_ADMINS=$(SERVE_ADMINS) \
 	GOAL_TRACKER_BASE_URL=https://$$host:$(SERVE_PORT) \
 	$(if $(filter 1,$(SSO)),\
+	GOAL_TRACKER_SIGNIN=oidc \
+	GOAL_TRACKER_SESSION_KEY=$(call env_value,GOAL_TRACKER_SESSION_KEY) \
 	GOAL_TRACKER_OIDC_ISSUER=https://$$host:$(AUTHENTIK_PORT)/application/o/goal-tracker/ \
 	GOAL_TRACKER_OIDC_CLIENT_ID=goal-tracker \
-	GOAL_TRACKER_OIDC_CLIENT_SECRET=$$(sed -n 's/^GOAL_TRACKER_OIDC_CLIENT_SECRET=//p' dev/authentik/.env) \
+	GOAL_TRACKER_OIDC_CLIENT_SECRET=$(call env_value,GOAL_TRACKER_OIDC_CLIENT_SECRET) \
 	GOAL_TRACKER_DIRECTORY_URL=http://127.0.0.1:9000 \
-	GOAL_TRACKER_DIRECTORY_TOKEN=$$(sed -n 's/^GOAL_TRACKER_DIRECTORY_TOKEN=//p' dev/authentik/.env) \
+	GOAL_TRACKER_DIRECTORY_TOKEN=$(call env_value,GOAL_TRACKER_DIRECTORY_TOKEN) \
+	,\
+	GOAL_TRACKER_SIGNIN=dev \
 	) \
 	exec bin/goal-tracker
 
@@ -140,6 +154,7 @@ serve-app:
 # notice a changed callback by itself.
 authentik-up:
 	@test -f dev/authentik/.env || { echo "dev/authentik/.env is missing: copy dev/authentik/.env.example and fill it in (see dev/authentik/README.md), or pass NO_SSO=1 for the development sign-in form" >&2; exit 1; }
+	@$(CHECK_SESSION_KEY)
 	host=$(TAILNET_HOST) && cd dev/authentik && \
 	GOAL_TRACKER_APP_URL=https://$$host:$(SERVE_PORT) docker compose up -d && \
 	./apply.sh

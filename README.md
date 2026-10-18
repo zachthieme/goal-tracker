@@ -8,8 +8,8 @@ regular cadence with Check-ins, and produces Reports. The domain language is in
 
 | Command | Make target | What it does |
 | ------- | ----------- | ------------ |
-| `go run ./cmd/goal-tracker` | `make build` (builds `bin/goal-tracker`) | Serves the web app. |
-| | `make serve` | Builds and serves the web app on your tailnet at `https://<machine>.<tailnet>.ts.net:8090` via `tailscale serve`, with `admin@example.com` as Admin. Override with `SERVE_PORT`, `SERVE_DB`, and `SERVE_ADMINS`. People sign in through the [local Authentik](dev/authentik/README.md), which it starts and serves on the tailnet at `:9443` (`AUTHENTIK_PORT`); it needs `dev/authentik/.env`. `NO_SSO=1` uses the development sign-in form instead. |
+| `GOAL_TRACKER_SIGNIN=dev go run ./cmd/goal-tracker` | `make build` (builds `bin/goal-tracker`) | Serves the web app, with the development sign-in form (see [Sign-in](#sign-in)). |
+| | `make serve` | Builds and serves the web app on your tailnet at `https://<machine>.<tailnet>.ts.net:8090` via `tailscale serve`, with `admin@example.com` as Admin. Override with `SERVE_PORT`, `SERVE_DB`, and `SERVE_ADMINS`. People sign in through the [local Authentik](dev/authentik/README.md), which it starts and serves on the tailnet at `:9443` (`AUTHENTIK_PORT`); it needs `dev/authentik/.env`, and reads the app's `GOAL_TRACKER_SESSION_KEY` from there too, stopping if it's missing. `NO_SSO=1` uses the development sign-in form instead. |
 | | `make start` | Like `make serve`, but in the background, logging to `serve.log` (`SERVE_LOG`). Stops the server a previous `make start` left running first. Takes the same settings, `NO_SSO=1` included, and records them for `make stop` and `make restart`. |
 | | `make stop` | Stops the server `make start` started, and its Authentik unless it started with `NO_SSO=1` (Authentik's data is kept). |
 | | `make restart` | Rebuilds and starts the server again with the settings the last `make start` recorded. A setting given to `make restart` replaces the recorded one. |
@@ -19,6 +19,7 @@ The server is configured from the environment:
 
 | Variable | Default | Meaning |
 | -------- | ------- | ------- |
+| `GOAL_TRACKER_SIGNIN` | _(required)_ | How people sign in: `oidc`, through the company's OpenID Connect provider, or `dev`, the development form that signs anyone in as anyone (see [Sign-in](#sign-in)). Startup stops when it's unset or anything else. |
 | `GOAL_TRACKER_ADDR` | `:8080` | Address to listen on. |
 | `GOAL_TRACKER_DB` | `goal-tracker.db` | SQLite database file; migrations run on start. |
 | `GOAL_TRACKER_ADMINS` | _(none)_ | Comma-separated emails that get the Admin flag when their account is first created. |
@@ -26,35 +27,52 @@ The server is configured from the environment:
 | `GOAL_TRACKER_REMINDER_DAY` | `Monday` | Day of the week the weekly emails go out (see [Weekly emails](#weekly-emails)). |
 | `GOAL_TRACKER_REMINDER_TIME` | `09:00` | 24-hour time of day, in the company's timezone, the weekly emails go out. |
 | `GOAL_TRACKER_BASE_URL` | from `GOAL_TRACKER_ADDR`, e.g. `http://localhost:8080` | Where people reach the app. Links in emails (the weekly emails and comment alerts) point here. |
-| `GOAL_TRACKER_OIDC_ISSUER` | _(none)_ | The company's OpenID Connect issuer URL. With the client ID and secret below, people sign in through it (see [Sign-in](#sign-in)). Set all three or none. |
+| `GOAL_TRACKER_OIDC_ISSUER` | _(none)_ | The company's OpenID Connect issuer URL. Required, with the client ID and secret below, for `GOAL_TRACKER_SIGNIN=oidc`, and refused with `dev` (see [Sign-in](#sign-in)). |
 | `GOAL_TRACKER_OIDC_CLIENT_ID` | _(none)_ | Goal Tracker's client ID at the provider. |
 | `GOAL_TRACKER_OIDC_CLIENT_SECRET` | _(none)_ | Goal Tracker's client secret at the provider. |
 | `GOAL_TRACKER_DIRECTORY_URL` | _(none)_ | The company's directory, Authentik's base URL (e.g. `https://auth.example.com`). With the token below, the app syncs people and their Managers from it (see [Managers](#managers)). Set both or neither. |
 | `GOAL_TRACKER_DIRECTORY_TOKEN` | _(none)_ | An Authentik API token that can read users. |
-| `GOAL_TRACKER_SESSION_KEY` | _(random at each start)_ | Base64 key, at least 32 bytes, that signs session cookies (`openssl rand -base64 32`). Unset, the app makes a random one and logs a WARN: everyone is signed out when it restarts. |
+| `GOAL_TRACKER_SESSION_KEY` | _(required for `oidc` and `password`)_ | Base64 key, at least 32 bytes, that signs session cookies (`openssl rand -base64 32`). Required for `GOAL_TRACKER_SIGNIN=oidc`, and for `password` once that method lands. With `dev` it may be unset: the app then makes a random one and logs a WARN, and everyone is signed out when it restarts. |
 | `GOAL_TRACKER_START_AT` | _(none: the wall clock)_ | **Test-only.** An RFC 3339 instant (e.g. `2026-10-05T18:05:00Z`) the app's clock starts at, then ticks normally from; startup logs a WARN when it's set. The e2e suite uses it to run against a seed frozen at one date. Never set it in production. |
 
 ## Sign-in
 
-With the three `GOAL_TRACKER_OIDC_*` variables set, people sign in through the
-company's OpenID Connect provider: the sign-in page has one button, "Sign in with
-your organization". Register `GOAL_TRACKER_BASE_URL` + `/auth/callback` (by
-default `http://localhost:8080/auth/callback`) as the redirect URI, and allow
-the authorization code grant with the scopes `openid email profile`. The
-provider must send a verified `email`; its `name` claim becomes the person's
-Name. Signing out of the app also signs the person out of the provider when it
-offers RP-initiated logout (`end_session_endpoint`), and the provider sends
-them back to the sign-in page; register `GOAL_TRACKER_BASE_URL` + `/signin` as
-a post-logout redirect URI for that. Startup stops if the issuer can't be
-discovered or only some of the variables are set. A local [Authentik](dev/authentik/README.md) with the seed's
-people and their managers is set up for this.
+`GOAL_TRACKER_SIGNIN` says how people sign in. It has no default: startup stops
+when it's unset or names a method the app doesn't know, so a missing variable
+can never open the app to everyone.
 
-Without them, sign-in is the development form: any email address signs in, and
-an account is created on first sign-in. The seed, `scripts/scratch-app` and the
-e2e suite use it.
+### `oidc`: the company's provider
 
-Either way the session cookie is signed with `GOAL_TRACKER_SESSION_KEY`, and is
-`Secure` when `GOAL_TRACKER_BASE_URL` is `https`.
+People sign in through the company's OpenID Connect provider: the sign-in page
+has one button, "Sign in with your organization". It needs the three
+`GOAL_TRACKER_OIDC_*` variables and `GOAL_TRACKER_SESSION_KEY`; startup stops,
+naming what's missing, without them, or if the issuer can't be discovered.
+Register `GOAL_TRACKER_BASE_URL` + `/auth/callback` (by default
+`http://localhost:8080/auth/callback`) as the redirect URI, and allow the
+authorization code grant with the scopes `openid email profile`. The provider
+must send a verified `email`; its `name` claim becomes the person's Name.
+Signing out of the app also signs the person out of the provider when it offers
+RP-initiated logout (`end_session_endpoint`), and the provider sends them back
+to the sign-in page; register `GOAL_TRACKER_BASE_URL` + `/signin` as a
+post-logout redirect URI for that. A local [Authentik](dev/authentik/README.md)
+with the seed's people and their managers is set up for this, and `make serve`
+uses it.
+
+### `dev`: the development form
+
+Any email address signs in, and an account is created on first sign-in: anyone
+who can reach the app can act as anyone, so startup logs a WARN saying so. It's
+for development and tests only. Setting any `GOAL_TRACKER_OIDC_*` variable with
+it stops startup, so a half-made provider setup can't fall back to the open
+form. `make serve NO_SSO=1`, `scripts/scratch-app` and the e2e suite use it.
+
+### Sessions
+
+Whatever the method, the session cookie is signed with
+`GOAL_TRACKER_SESSION_KEY`, and is `Secure` when `GOAL_TRACKER_BASE_URL` is
+`https`. It also carries the person's session generation, so all of their
+sessions can be ended at once: moving the generation on signs every browser
+they're signed in on out, and their next sign-in works as usual.
 
 ## Managers
 
@@ -111,8 +129,8 @@ weekly emails, the prototype logs these instead of sending them.
 To demo the prototype with a realistic organisation and no real data:
 
 ```sh
-make seed                        # seeds goal-tracker.db
-go run ./cmd/goal-tracker        # then sign in as admin@example.com
+make seed                                        # seeds goal-tracker.db
+GOAL_TRACKER_SIGNIN=dev go run ./cmd/goal-tracker  # then sign in as admin@example.com
 ```
 
 The seed builds about 50 Goals and 12 weeks of history. It uses the same paths a
