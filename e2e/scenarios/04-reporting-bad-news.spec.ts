@@ -188,9 +188,9 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     );
     await expect(row.getByTestId("risk-fix")).toHaveCount(1);
 
-    // On the Goals list it sorts with the Stale and overdue Goals, above every
-    // Yellow and Green Goal without a mark.
-    await page.goto("/goals");
+    // On everyone's Goals list it sorts with the Stale and overdue Goals,
+    // above every Yellow and Green Goal without a mark.
+    await page.goto("/goals?org=all");
     await expect(goalRow(page, project.title).getByTestId("path-overdue")).toBeVisible();
     const rows = await page.getByTestId("goal-row").evaluateAll((trs) =>
       trs.map((tr) => ({

@@ -222,8 +222,9 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   ink is neutral. Resting items use `--nav-ink-2`; hover is the
   translucent-white `--nav-hover`.
   The nav items read **Home · Goals · Risks · Reports**, then **Admin** for an
-  Admin. Home counts what needs the person and Risks counts the Goals it flags;
-  Goals and Reports carry no count. The brand link goes to Home.
+  Admin. Home counts what needs the person and Risks counts the Goals it flags
+  in the person's default scope (see Scope), as many as a bare `/risks` lists
+  for them; Goals and Reports carry no count. The brand link goes to Home.
   The current item (`.on`) gets a `--color-primary` underline or pill. An item
   is current on its own page and every page under it, so a Goal's page, New
   goal and a Check-in all mark Goals.
@@ -572,6 +573,31 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
 
   The card adds nothing to Needs you, the summary under the page title or the
   top bar's Home count.
+- **Scope (Goals and Risks, `pageScopeSelect` in `scope.templ`):** the one
+  select scoping the Goal list and the Risks page, submitted as `?org=`:
+  **Everyone** (`all`), **Mine** (`mine`, the Goals the person Owns or is a
+  Delegate on), **My org** for someone with anyone under them, then each other
+  person's Org under **Other orgs** (their ID).
+  - **The default scope:** an address naming no scope, or one that is
+    malformed or names no one, opens on the person's default: My org for
+    someone with anyone under them, Mine for everyone else, Admins included.
+    The select shows it chosen, and the count lines and empty states read as
+    for that scope chosen. A bare `/goals`, `/goals/download` or `/risks`
+    therefore means "my default", and links meant to land there stay bare
+    (the Goals breadcrumb, Back to Goals, the Nudge page's Back to Risks).
+  - **Everyone is explicit:** `?org=all`. Goals' **Clear** and Risks' **Show
+    everything** link to it, and a page on Everyone keeps it in every link
+    that keeps the page's filters. A chosen scope is never overridden.
+  - **An empty default:** the Goal list says "No Goals in My org." or "No
+    Goals in Mine." with a **See everyone's →** link to the same view with
+    `?org=all`. Risks keeps its own empty line, whose Show everything is the
+    way out.
+  - **Needs an Admin is company-wide:** an Admin's job there is the company's,
+    so `/risks?group=admin` with no scope is Everyone's, and the Needs an
+    Admin card counts, and chips, every Ownerless and halted-parent Goal in
+    the company under the page's Dimension values, linking to
+    `/risks?group=admin` without the scope. The other cards count the page's
+    own rows.
 - **Health distribution bar (`.hm-bar`):** in Home's "Your goals", a 12px
   `--radius-full` bar of the person's own Active Goals by Health, one equal
   unit per Goal, Green then Yellow then Red. Units fill with the Health's

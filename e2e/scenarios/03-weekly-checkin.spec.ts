@@ -325,8 +325,10 @@ test("a Delegate checks in for an Owner who's away, and the Goal stops being Sta
     await expect(entry.getByRole("button", { name: owner.name })).toBeVisible();
     await expect(entry).toContainText(`by ${delegate.name} for ${owner.name}`, { useInnerText: true });
 
+    // The Owner's Risks opens on their default scope, which may now hold
+    // nothing: the page has loaded once it shows its count or its empty line.
     await page.goto("/risks");
-    await expect(page.getByTestId("risks-table")).toBeVisible();
+    await expect(page.getByTestId("risks-attention").or(page.getByTestId("risks-empty"))).toBeVisible();
     await expect(staleChip(page, goal.title)).toHaveCount(0);
     await page.goto("/home");
     await expect(page.getByRole("heading", { level: 1, name: "Your week" })).toBeVisible();
