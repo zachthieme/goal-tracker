@@ -37,6 +37,9 @@ or with work uncommitted, parks the issue as "stalled, no-commit".
 Never run `git worktree add`, `remove` or `prune`, or export `GIT_DIR`: in a
 campaign container the host's `.git` is shared, and `prune` there deletes every
 other agent's worktree (jjforge/vetinari#494).
+Don't run `templ fmt`: the repo isn't kept in its format, and where Prettier is
+installed it rewrites every inline `<style>` and `<script>` block. Format .templ
+files by hand to match the surrounding code.
 
 `make e2e` runs the Playwright suite in `e2e/` over a freshly seeded app (see
 `e2e/README.md`). It isn't a gate.
