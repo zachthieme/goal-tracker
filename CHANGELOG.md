@@ -23,6 +23,11 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [ops] **Managers from a CSV file**: `GOAL_TRACKER_DIRECTORY_FILE` names a CSV file (`email,name,manager_email`) exported from the Company's HR system, and the directory sync reads people and their Managers from it instead of Authentik: at startup, hourly, and on **Sync now**, re-reading the file each time. A file that's missing, lacks a column, or has a ragged row fails the sync and changes nothing. Startup stops if it's set with either `GOAL_TRACKER_DIRECTORY_URL` or `GOAL_TRACKER_DIRECTORY_TOKEN` (#298).
 - [ops] `GOAL_TRACKER_SIGNIN=password` signs people in with passwords, for a company with no SSO provider. It needs `GOAL_TRACKER_SESSION_KEY` and refuses any `GOAL_TRACKER_OIDC_*` variable. A password is set only through a one-time set-password link, valid for 72 hours, that an Admin issues from the Admin page's new **Set-password links** card; `goal-tracker password-link <email>` prints one from the command line to give the first Admin a password. Five wrong passwords lock an account for 15 minutes, and 50 failed sign-ins from one IP address within 15 minutes hold that address's sign-ins; behind a reverse proxy that's the proxy's address (#300).
 - [user] With password sign-in, you sign in with your email and password. Your Admin sends you a set-password link to choose one, at least 12 characters, and a new link resets a forgotten one. Setting a password signs you out of every other browser (#300).
+- [user] An open Action Item can be reassigned to a new owner from its Report by the Report's creator or the person who published it, an Admin, or the creator's Manager, and the item shows who had it before (#321).
+- [api] **Database schema**: `action_item_reassignments`, a record of each Action Item handed to a new owner (#321).
+- [user] Home's Needs you lists your open Action Items, soonest due first and flagged when overdue, counts them in its total and the top bar's Home count, and lets you close one there (#323).
+- [user] Risks flags an Active Goal with an overdue Action Item, in a new "Action Items overdue" group with its own card, without changing its Health. Its chip says how many days the most overdue item is late, its Fix is See Action Items, and it counts in the top bar's Risks count. Among Goals of the same Health it ranks below a Path to Green that's overdue and above Stale (#326).
+- [user] The weekly reminder lists your open Action Items, overdue first, and reaches you even when no Check-in is due (#327).
 
 **Improvements:**
 - [internal] CONTEXT.md's Action Item entry says an Action Item may be about one Goal in its Report, who may close and reassign it, and when it is overdue.
@@ -54,6 +59,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Testing:**
 - [internal] The seeded-pages check that no page shows an email as text skips a select's options, as its comment always said it did for form fields: the Scope select names people as Name (email) by design (#275), and the seed's Managers now make it list them (#306).
 - [internal] The seed test checks every team person's Manager, not only those who own a Goal, and the seeded-pages email check exempts only the Scope select's options, so an email in any other select's option is caught (#316).
+- [internal] Test databases wait out another connection's lock and take the write lock at BEGIN, as the app's do, so tests that run two requests at once no longer fail now and then with SQLITE_BUSY (#323).
 
 ### Collected changes — October 17, 2026
 
