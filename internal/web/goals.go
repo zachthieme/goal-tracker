@@ -821,6 +821,10 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("load action items: %w", err)
 	}
+	actionItemReassignments, err := s.svc.ActionItemReassignmentsAbout(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("load action item reassignments: %w", err)
+	}
 	// The Owner decides every open suggestion; anyone else sees only their
 	// own, to withdraw (CONTEXT.md: Parent suggestion).
 	var suggested []domain.ParentSuggestion
@@ -920,6 +924,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		LinkEvents:         linkEvents,
 		MilestoneAdditions: milestoneAdditions,
 		ActionItems:        actionItems,
+		ActionReassigns:    actionItemReassignments,
 		Now:                s.svc.Now(),
 	}
 	view.History = newHistory(view, s.svc.Timezone(), view.Now)
@@ -1039,6 +1044,9 @@ type goalView struct {
 	// ActionItems are every Action Item about the Goal, open and closed, from
 	// every Report, soonest due first; the page lists the open ones.
 	ActionItems []domain.ActionItemListing
+	// ActionReassigns are the reassignments of the Action Items
+	// about the Goal, oldest first, for its History.
+	ActionReassigns []domain.ActionItemReassignment
 	// History is the Goal's History as one timeline, newest first, showing the
 	// filter and page count the page's address asks for.
 	History history
