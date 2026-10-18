@@ -457,7 +457,7 @@ func TestThePasswordLinkCommandNeedsAnEmailAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer sqlDB.Close()
+	t.Cleanup(func() { _ = sqlDB.Close() })
 	svc := domain.NewService(sqlDB, clock.Real{}, nil, nil)
 	if _, err := svc.AccountByEmail(t.Context(), "not-an-email"); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("password-link not-an-email left an Account (err %v)", err)
