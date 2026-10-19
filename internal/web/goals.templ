@@ -724,6 +724,8 @@ templ goalPage(current *domain.Account, v goalView) {
 					@groupHead(v, formDimensions, "Edit", "Edit Dimensions") {
 						<h3>Dimensions</h3>
 					}
+					<button type="button" class="disclose help explain" aria-expanded="false" aria-controls="dimension-values-help" title={ dimensionValuesHelp }>What are Dimension values?</button>
+					<p id="dimension-values-help" class="explain" hidden>{ dimensionValuesHelp }</p>
 					@goalDimensions(v)
 				</section>
 				<section data-testid="goal-field-block" class="gp-block ruled">
@@ -782,7 +784,7 @@ templ goalHead(v goalView, owner, admin bool) {
 					if g.Kind == "" {
 						Not yet Dated or Ongoing
 					} else {
-						{ g.Kind }
+						<button type="button" class="disclose help" aria-expanded="false" aria-controls="kind-help" title={ kindHelp(g.Kind) }>{ g.Kind }</button>
 					}
 				</span>
 				<span>
@@ -805,6 +807,9 @@ templ goalHead(v goalView, owner, admin bool) {
 					<span><button type="button" class="disclose help" data-testid="goal-top-level" aria-expanded="false" aria-controls="top-level-help" title={ topLevelHelp }>Top-level</button></span>
 				}
 			</p>
+			if g.Kind != "" {
+				<p id="kind-help" class="explain" hidden>{ kindHelp(g.Kind) }</p>
+			}
 			if g.TopLevel {
 				<p id="top-level-help" class="explain" hidden>{ topLevelHelp }</p>
 			}
@@ -1032,6 +1037,29 @@ const soWhatHelp = "The customer problem this Goal addresses and what is expecte
 
 // topLevelHelp says what Top-level means, opened from the Goal page's badge.
 const topLevelHelp = "One of the company's root outcomes"
+
+// datedHelp says what Dated means, opened from the Goal page's kind and shown
+// on the New goal form's Dated card.
+const datedHelp = "Has a delivery date. Its Health is judged against that date and its Milestones."
+
+// ongoingHelp says what Ongoing means, opened from the Goal page's kind and
+// shown on the New goal form's Ongoing card.
+const ongoingHelp = "Has no delivery date. Its Health is judged against its Metrics' targets."
+
+// kindHelp is the help text for a Goal's kind, Dated or Ongoing.
+func kindHelp(kind string) string {
+	if kind == domain.GoalOngoing {
+		return ongoingHelp
+	}
+	return datedHelp
+}
+
+// ownerlessHelp says what Ownerless means, as the title of an Ownerless badge.
+const ownerlessHelp = "Its Owner has left the company. It gets a new Owner when an Admin reassigns it, or when someone accepts a Handoff its Owner started before leaving."
+
+// dimensionValuesHelp says what Dimension values are, opened from under the
+// Goal page's Dimensions heading.
+const dimensionValuesHelp = "Values from lists an Admin defines, such as Pillar or Quarter, used to filter and group Goals."
 
 // confirmDepart is what an Admin confirms before marking a Goal's Owner departed.
 const confirmDepart = "Mark this Owner departed? Every Goal they own becomes Ownerless until an Admin reassigns it."

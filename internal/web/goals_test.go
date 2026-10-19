@@ -1483,7 +1483,7 @@ func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
 	}
 	for _, want := range []string{
 		`<span data-testid="goal-lifecycle">Active</span>`,
-		`<span data-testid="goal-kind">Dated</span>`,
+		`<span data-testid="goal-kind"><button type="button" class="disclose help" aria-expanded="false" aria-controls="kind-help" title="Has a delivery date. Its Health is judged against that date and its Milestones.">Dated</button></span>`,
 		`Owner <strong data-testid="goal-owner">` + shownAs("sam@example.com", "sam") + `</strong>`,
 		`Delivers <span data-testid="goal-delivery-date" class="gp-dates"><del>Jul 2</del> <strong>Jul 16</strong></span>`,
 		`Checks in <span data-testid="goal-cadence">every 7 days</span>`,
@@ -2459,6 +2459,58 @@ func TestGoalPageExplainsSoWhatAndTopLevelOnActivation(t *testing.T) {
 		t.Errorf("the So What is not labelled for assistive technology by a visually hidden %s: %s", want, statement)
 	}
 	disclosureScript(t, page)
+}
+
+// The Goal page explains Dated or Ongoing from the word in its metadata line,
+// and what a Delegate and Dimension values are under their sidebar headings,
+// each collapsed behind a help button that opens the definition in place. A
+// Goal not yet Dated or Ongoing says so in plain text, with nothing to open.
+func TestGoalPageExplainsKindDelegatesAndDimensionValues(t *testing.T) {
+	t.Parallel()
+
+	const (
+		dated     = "Has a delivery date. Its Health is judged against that date and its Milestones."
+		ongoing   = "Has no delivery date. Its Health is judged against its Metrics' targets."
+		delegate  = "Someone the Owner authorizes to write Check-ins and set this Goal's Dimension values and Fields. The Owner stays accountable."
+		dimension = "Values from lists an Admin defines, such as Pillar or Quarter, used to filter and group Goals."
+	)
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	client := signInClient(t, ts.URL, ada.Email)
+
+	g := h.ActiveGoal(ada, "Grow revenue", "It pays for everything.")
+	page := getBody(t, client, goalPageURL(ts.URL, g))
+	if button := assertTermHelp(t, page, pageElement(t, page, "span", "goal-kind"), "Dated", dated); attr(button, "aria-controls") != "kind-help" {
+		t.Errorf("the Dated button controls %q, want kind-help", attr(button, "aria-controls"))
+	}
+	for _, tc := range []struct{ label, id, text string }{
+		{"What is a Delegate?", "delegate-help", delegate},
+		{"What are Dimension values?", "dimension-values-help", dimension},
+	} {
+		if button := assertTermHelp(t, page, page, tc.label, tc.text); attr(button, "aria-controls") != tc.id {
+			t.Errorf("%q controls %q, want %s", tc.label, attr(button, "aria-controls"), tc.id)
+		}
+	}
+	disclosureScript(t, page)
+
+	o := h.CreateGoal(ada, "Keep the lights on", "Customers expect it.")
+	if _, err := h.Service.MarkGoalOngoing(context.Background(), o.ID); err != nil {
+		t.Fatalf("MarkGoalOngoing: %v", err)
+	}
+	page = getBody(t, client, goalPageURL(ts.URL, o))
+	if button := assertTermHelp(t, page, pageElement(t, page, "span", "goal-kind"), "Ongoing", ongoing); attr(button, "aria-controls") != "kind-help" {
+		t.Errorf("the Ongoing button controls %q, want kind-help", attr(button, "aria-controls"))
+	}
+
+	p := h.CreateGoal(ada, "Find a market", "We need one.")
+	page = getBody(t, client, goalPageURL(ts.URL, p))
+	if kind := pageElement(t, page, "span", "goal-kind"); kind != `<span data-testid="goal-kind">Not yet Dated or Ongoing` {
+		t.Errorf("a Goal with no kind shows %s, want plain Not yet Dated or Ongoing", kind)
+	}
+	if strings.Contains(page, `id="kind-help"`) {
+		t.Errorf("a Goal with no kind has a kind explanation")
+	}
 }
 
 // With a seeded company, every page that shows people shows them by Name with
