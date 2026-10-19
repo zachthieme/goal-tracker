@@ -509,6 +509,37 @@ func TestIssueLinkButtonLinesUpWithItsEmailField(t *testing.T) {
 	}
 }
 
+// At phone width the Admin page's email forms wrap: the Email field takes the
+// whole row and its button sits under it, rather than the button being cut off
+// at the card's edge ("Make Ad"). Above 600px they share a row (#338).
+func TestAdminFormsFitAPhoneOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newPasswordServer(t, h)
+	client := passwordSignInClient(t, h, ts.URL, "ada@example.com")
+
+	page := getBody(t, client, ts.URL+"/admin")
+	for _, section := range []string{"admin-admins", "admin-password-links"} {
+		if !strings.Contains(pageElement(t, page, "section", section), `<form class="ad-link-form"`) {
+			t.Errorf("the %s section's email form isn't .ad-link-form", section)
+		}
+	}
+	if rule := cssRule(t, page, ".ad-link-form"); strings.Contains(rule, "wrap") {
+		t.Errorf("above 600px the Email field and its button no longer share a row: .ad-link-form{%s}", rule)
+	}
+	phone := mediaBlock(t, page, "@media (max-width:600px)")
+	if rule, _ := ruleFor(phone, ".ad-link-form"); !strings.Contains(rule, "flex-wrap:wrap") {
+		t.Errorf("at 600px .ad-link-form{%s} doesn't wrap its button under the field", rule)
+	}
+	field, _ := ruleFor(phone, ".ad-link-form .field")
+	for _, want := range []string{"flex:1 1 100%", "min-width:0"} {
+		if !strings.Contains(field, want) {
+			t.Errorf("at 600px .ad-link-form .field{%s} lacks %s, so it doesn't take the whole row", field, want)
+		}
+	}
+}
+
 // A Departed person can't be issued a set-password link: the Admin page says
 // so, and shows no link.
 func TestAdminCantIssueASetPasswordLinkToADepartedPerson(t *testing.T) {
