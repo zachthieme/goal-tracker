@@ -699,7 +699,10 @@ templ checkinUnavailablePage(current *domain.Account, title, message string) {
 // script, the Highlight editor (highlighteditor.templ) upgrades the Highlight
 // section into add buttons, an editor and items. The
 // Path to Green asks for a reason for moving its back-to-Green date only once
-// the date is later than the latest Check-in's (see pathReasonShown).
+// the date is later than the latest Check-in's (see pathReasonShown). The form
+// ends with its submit bar, which sticks to the window's bottom while the form
+// runs past it: Cancel and Submit check-in beside a summary of what the
+// Check-in will record, empty until checkinSummaryScript fills it.
 templ checkinForm(d checkinFormData) {
 	<form
 		data-testid="checkin-form"
@@ -1171,7 +1174,8 @@ templ checkinStyles() {
 // remove Planned Milestones, and add new ones, the Milestones laid out as a
 // grid of name, date, and status. Every date change needs a reason and is kept
 // as a Date Slip; moving the delivery date later rules out Green (CONTEXT.md:
-// Date Slip, Milestone).
+// Date Slip, Milestone). Each date input carries the Goal's current date as
+// data-current, so checkinSummaryScript can tell a changed one.
 templ checkinDateFields(d checkinDatesFormData, e checkinError) {
 	<fieldset data-testid="checkin-dates">
 		<legend>Dates and Milestones</legend>

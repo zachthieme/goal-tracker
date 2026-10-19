@@ -594,7 +594,24 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     toward target in `--color-primary-strong`. On the right, a 120px reading
     input with right-aligned numbers in `--font-mono`.
   - **Optional sections** follow, as below (Check-in form's optional
-    sections), 12px apart, then Cancel and Submit check-in.
+    sections), 12px apart, then the submit bar.
+  - **Submit bar (`.checkin-submit-bar`):** the form's last child, sticky at
+    the bottom of the window (`position: sticky; bottom: 0`) while the form
+    runs past it, and in its own place at the form's end once scrolled
+    there, so it never covers the last field. It is as wide as the form
+    column, not the window. Flat, like a card: `--color-surface` under a 1px
+    `--color-border` top rule, no shadow, 12px 16px padding. The page's
+    `scroll-padding-bottom` keeps a field focused by Tab or an error clear of
+    it. On the left, a summary of what the Check-in will record, in 14px
+    `--color-ink-2`, its parts joined by " · " and wrapping whole: the
+    Health badge picked (left out when the Lifecycle picked takes the Goal
+    out of Active), "Path to Green" while Yellow or Red has a Plan, "2
+    Metrics" read, "1 Highlight" written or kept, "dates changed", and the
+    Lifecycle change ("→ Done"). Script fills it and keeps it up to date;
+    without script the bar holds only the buttons. On the right, a quiet
+    **Cancel** back to the Goal and **Submit check-in**, primary and 44px
+    tall. At 600px and below Cancel hides (the breadcrumb goes back to the
+    Goal), the summary drops to 13px and Submit check-in grows to 48px.
 - **Home's Needs you list (`homePage` in `home.templ`):** one card in the main
   column holding everything waiting on the person, in four subgroups, each a
   `.label` heading over ruled rows (`.hm-list`):
