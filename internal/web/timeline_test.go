@@ -516,8 +516,8 @@ func TestGoalHistoryWorksWithoutJavaScript(t *testing.T) {
 	}
 	links := strings.Split(between(t, history, `data-testid="history-chips"`, "</nav>"), "<a ")[1:]
 	links = append(links, between(t, history, `<a data-testid="history-earlier"`, "</a>"))
-	if len(links) != 10 {
-		t.Fatalf("History has %d chip and Show earlier links, want 10", len(links))
+	if len(links) != 11 {
+		t.Fatalf("History has %d chip and Show earlier links, want 11", len(links))
 	}
 	for _, link := range links {
 		_, href, _ := strings.Cut(link, `href="`)
@@ -1347,7 +1347,7 @@ func TestGoalHistoryLinksChipListsLinkChangesAndParentSuggestions(t *testing.T) 
 	for _, chip := range strings.Split(between(t, history, `data-testid="history-chips"`, "</nav>"), `data-testid="history-chip"`)[1:] {
 		labels = append(labels, strings.TrimSpace(between(t, chip, ">", "<span")[1:]))
 	}
-	if want := []string{"All", "Check-ins", "Date Slips", "So What", "Title", "Ownership", "Links", "Values", "Action Items"}; !slices.Equal(labels, want) {
+	if want := []string{"All", "Check-ins", "Date Slips", "So What", "Title", "Ownership", "Links", "Values", "Action Items", "Comments"}; !slices.Equal(labels, want) {
 		t.Errorf("chips = %v, want %v", labels, want)
 	}
 	if got := historyChips(t, history)["Links"]; got.count != "2" || filterOf(got.href) != "links" {
@@ -2046,5 +2046,89 @@ func TestGoalHistoryLeavesOutActionItemsAboutOthers(t *testing.T) {
 	}
 	if n := len(filteredEntries(t, client, goalPageURL(ts.URL, other), "action-items", "action-item")); n != 3 {
 		t.Errorf("the other Goal's History lists %d Action Item entries, want 3", n)
+	}
+}
+
+// Every Comment and reply about the Goal, on the Goal itself or on a Report,
+// is an entry in its History, newest first, saying who wrote it; one made on
+// a Report links to the Goal's block there. The Comments chip lists exactly
+// those (CONTEXT.md: Comment).
+func TestGoalHistoryShowsEveryCommentOnTheGoalOrAReport(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	author, goal, pub := timelineActionItemGoal(h)
+	pat := h.SignInNamed("pat@example.com", "Pat Reader")
+	ctx := context.Background()
+	h.Clock.Advance(time.Hour)
+	if _, err := h.Service.AddComment(ctx, pat.ID, pub.ID, goal.ID, "Why did the vendor slip?"); err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+	h.Clock.Advance(time.Hour)
+	onGoal, err := h.Service.AddGoalComment(ctx, pat.ID, goal.ID, "Is the EU date still real?")
+	if err != nil {
+		t.Fatalf("AddGoalComment: %v", err)
+	}
+	h.Clock.Advance(time.Hour)
+	if _, err := h.Service.ReplyToComment(ctx, author.ID, onGoal.ID, "Yes, as of today."); err != nil {
+		t.Fatalf("ReplyToComment: %v", err)
+	}
+	h.Clock.Advance(time.Hour)
+	h.Checkin(author, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "ana@example.com")
+	goalURL := goalPageURL(ts.URL, goal)
+
+	var comments []string
+	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalURL))) {
+		if entryKind(t, e) == "comment" {
+			comments = append(comments, e)
+		}
+	}
+	if len(comments) != 3 {
+		t.Fatalf("History lists %d Comment entries, want 3: %q", len(comments), comments)
+	}
+	pubLink := fmt.Sprintf(`href="/reports/%d/publications/%d#goal-%d"`, pub.DefinitionID, pub.ID, goal.ID)
+	for i, tc := range []struct {
+		label string
+		facts []string
+		not   []string
+	}{
+		{"Reply", []string{"Yes, as of today.", "by Ana Author"}, []string{" in MBR", "/reports/"}},
+		{"Comment", []string{"Is the EU date still real?", "by Pat Reader", `class="tl-mark tl-comment"`}, []string{" in MBR", "/reports/"}},
+		{"Comment", []string{"Why did the vendor slip?", "by Pat Reader", "· in MBR", pubLink}, nil},
+	} {
+		text := entryText(comments[i])
+		if got := between(t, comments[i], `<span class="tl-kind">`, "</span>")[len(`<span class="tl-kind">`):]; got != tc.label {
+			t.Errorf("Comment entry %d is labelled %q, want %q", i, got, tc.label)
+		}
+		for _, fact := range tc.facts {
+			if !strings.Contains(text, fact) && !strings.Contains(comments[i], fact) {
+				t.Errorf("Comment entry %d lacks %q:\n%s", i, fact, comments[i])
+			}
+		}
+		for _, wrong := range tc.not {
+			if strings.Contains(comments[i], wrong) {
+				t.Errorf("Comment entry %d names %q, though it was made on the Goal:\n%s", i, wrong, comments[i])
+			}
+		}
+	}
+
+	if got := historyChips(t, historyBlock(t, getBody(t, client, goalURL)))["Comments"]; got.count != "3" || filterOf(got.href) != "comments" {
+		t.Errorf("Comments chip = %+v, want 3 to ?history=comments", got)
+	}
+	if listed := filteredEntries(t, client, goalURL, "comments", "comment"); len(listed) != 3 {
+		t.Errorf("?history=comments lists %d entries, want the 3 Comments", len(listed))
+	}
+	for _, e := range historyEntries(historyBlock(t, getBody(t, client, goalURL+"?history=checkins"))) {
+		if kind := entryKind(t, e); kind == "comment" {
+			t.Errorf("the Check-ins chip lists a Comment:\n%s", e)
+		}
+	}
+
+	quiet := h.ActiveGoal(author, "Hire a team", "We need people.")
+	empty := historyBlock(t, getBody(t, client, goalPageURL(ts.URL, quiet)+"?history=comments"))
+	if got := entryText(between(t, empty, `data-testid="no-history"`, "</p>")); !strings.Contains(got, "No Comments yet.") {
+		t.Errorf("the Comments chip on a Goal with none reads %q, want No Comments yet.", got)
 	}
 }
