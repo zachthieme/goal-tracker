@@ -1770,3 +1770,44 @@ func TestBuilderRemoveControlsAreBorderedIconButtonsOverHTTP(t *testing.T) {
 		t.Errorf("on a coarse pointer .rb-remove isn't 44px wide: %s", coarse)
 	}
 }
+
+// The builder explains Also include and Leave out with a help button after
+// each legend, leaving the legends, and so the pickers' names, as they were;
+// Goals I pick needs no help. Its rules hint says in plain words what a rule
+// can check.
+func TestBuilderExplainsAlsoIncludeLeaveOutAndItsRulesOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, boss.Email), ts.URL+"/reports/new")
+
+	for _, tc := range []struct{ picker, legend, label, id, text string }{
+		{"include-picker", "Also include", "What does Also include do?", "include-help", "Goals to add by hand, even if they don't meet the rules."},
+		{"exclude-picker", "Leave out", "What does Leave out do?", "exclude-help", "Goals to drop, even if they meet the rules."},
+	} {
+		picker := pageElement(t, page, "fieldset", tc.picker)
+		if button := assertTermHelp(t, page, picker, tc.label, tc.text); attr(button, "aria-controls") != tc.id {
+			t.Errorf("%q controls %q, want %s", tc.label, attr(button, "aria-controls"), tc.id)
+		}
+		if want := "<legend>" + tc.legend + "</legend>"; !strings.Contains(picker, want) {
+			t.Errorf("%s's legend isn't exactly %s:\n%s", tc.picker, want, picker)
+		}
+		if !strings.Contains(picker, `<p id="`+tc.id+`" class="explain" hidden>`) {
+			t.Errorf("%s's explanation isn't inside its fieldset:\n%s", tc.picker, picker)
+		}
+	}
+	if picked := pageElement(t, page, "fieldset", "picked-picker"); strings.Contains(picked, "disclose help") {
+		t.Errorf("Goals I pick has a help button:\n%s", picked)
+	}
+
+	hint := pageElement(t, page, "p", "rules-hint")
+	const want = `A rule can check a Dimension value, the Owner or whose org they're in, the Lifecycle, the Health, or whether the Goal is Top-level. To let Owners opt their own Goals in, an Admin can add a Dimension such as "In report"; you still decide with Leave out.`
+	if got := html.UnescapeString(strings.Join(strings.Fields(hint[len(openTag(hint))+1:]), " ")); got != want {
+		t.Errorf("rules hint reads %q, want %q", got, want)
+	}
+	if strings.Contains(hint, "Rules can test") {
+		t.Errorf("rules hint still reads the old shorthand: %s", hint)
+	}
+}

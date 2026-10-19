@@ -371,8 +371,19 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     `--color-ink-muted` text separated by `·`: Lifecycle, Dated or Ongoing,
     Owner (the usual person control), the delivery date with any slipped dates
     struck through when Dated, the Check-in cadence, and Top-level when it
-    applies. Only Health is a badge. The line wraps on narrow screens.
+    applies. Only Health is a badge; Dated, Ongoing and Top-level are help
+    buttons (see Help on terms). The line wraps on narrow screens.
     Dimension values and Fields stay in the sidebar, never the head.
+  - **Help on terms:** a glossary term a reader may meet cold carries a
+    `disclose help` button that opens a one-line definition in place
+    (`.explain`), with the same text as the button's `title` so it is still
+    reachable without script. So What has one under the lead; Top-level, Dated
+    and Ongoing are the word in the metadata line itself; Delegates and
+    Dimension values have one under their sidebar headings; and the Report
+    builder's Also include and Leave out have one after each legend. Ownerless
+    badges on the Goals list, the Goal page's link lists and the Risks table
+    carry the definition as a `title` only, because a button in every row
+    would be too heavy.
   - **Header actions (`.gp-actions`):** top right, for whoever may check in
     (the Owner or a Delegate), a primary **Check in** link to the Goal's
     Check-in page and a quiet **No change** (`.btn.quiet`). Beside them sits
