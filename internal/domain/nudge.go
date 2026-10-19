@@ -12,8 +12,8 @@ import (
 )
 
 // Nudge is a one-off request from someone else to a Goal's Owner and
-// Delegates to check in on it while it is Stale or past its Path to Green
-// (CONTEXT.md: Nudge). Unlike the weekly reminder, someone sends it.
+// Delegates to check in on it while it is Stale, past its Path to Green, or
+// marked Milestone overdue (CONTEXT.md: Nudge). Unlike the weekly reminder, someone sends it.
 type Nudge struct {
 	ID        int64
 	GoalID    int64
@@ -23,8 +23,9 @@ type Nudge struct {
 
 // Nudge asks the Owner and Delegates of the Goal goalID to check in on it,
 // emailing each who hasn't left the org; actorID is who asks. Only a Goal
-// that is Stale or past its Path to Green can be nudged, and only by someone
-// who can't check in on it themselves. A Goal is nudged at most once a
+// that is Stale, past its Path to Green, or marked Milestone overdue (see
+// Freshness.MilestoneOverdue) can be nudged, and only by someone who can't
+// check in on it themselves. A Goal is nudged at most once a
 // calendar day in the org's timezone, whoever asks.
 //
 // The Nudge is recorded before any email goes out, so a rollback never leaves
@@ -50,8 +51,8 @@ func (s *Service) Nudge(ctx context.Context, actorID, goalID int64) (Nudge, erro
 	if err != nil {
 		return Nudge{}, err
 	}
-	if !fresh.Stale && !fresh.PathToGreenOverdue {
-		return Nudge{}, fmt.Errorf("%w: only a Stale Goal or one past its Path to Green can be nudged", ErrValidation)
+	if !fresh.Stale && !fresh.PathToGreenOverdue && !fresh.MilestoneOverdue {
+		return Nudge{}, fmt.Errorf("%w: only a Stale Goal, one past its Path to Green, or a Green one past a Milestone's date can be nudged", ErrValidation)
 	}
 	to := nudgeRecipients(goal.Owner, delegates)
 	if len(to) == 0 {
@@ -167,10 +168,13 @@ func (s *Service) nudgeBody(sender Account, goal Goal, f Freshness, asDelegate b
 	if asDelegate {
 		title += ", as Delegate for " + people.Of(goal.Owner)
 	}
-	if f.Stale {
+	switch {
+	case f.Stale:
 		fmt.Fprintf(&b, "%s: Stale, %d days without a Check-in (cadence: %d days)\n", title, f.DaysSince, f.CadenceDays)
-	} else {
+	case f.PathToGreenOverdue:
 		fmt.Fprintf(&b, "%s: Path to Green overdue since %s\n", title, f.PathTargetDate.Format(dateFormat))
+	default:
+		fmt.Fprintf(&b, "%s: Milestone %q overdue since %s\n", title, f.OverdueMilestone, f.OverdueMilestoneDate.Format(dateFormat))
 	}
 	fmt.Fprintf(&b, "%s/goals/%d/checkin\n", s.baseURL, goal.ID)
 	return b.String()
