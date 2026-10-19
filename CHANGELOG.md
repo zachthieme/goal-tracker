@@ -15,6 +15,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 ### Collected changes — October 19, 2026
 
+**Breaking changes:**
+- [ops] **Configuration**: `GOAL_TRACKER_TIMEZONE=Local` now stops the server at startup. "Local" is the host's zone, not an IANA name, so Reports read it back as UTC and judged Milestones and overdue Paths to Green in UTC for Goals whose Owner has no timezone. Set the company's IANA name instead, such as `America/Los_Angeles`. Unset still means `UTC` (#359).
+
 **New features:**
 - [user] Admins can make someone an Admin, or remove another Admin, from the Admins section of the Admin page. Make Admin takes an email and never creates an account; no Admin can remove their own role, so there is always at least one (#335).
 - [user] A Report, its Print page and its Markdown export open with a line counting what moved since the baseline: Goals that turned Red or Yellow, came back to Green, slipped, changed Lifecycle, are new, entered or left (#341).
@@ -59,6 +62,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A back-to-Green date that slipped in the current Run off Green shows as slipped ("Oct 3 ~~Sep 12~~ (3)") on Risks' Not Green rows and on Report exception blocks, where a publication keeps it as published, on Print and in the Markdown export too (#352).
 - [user] The New goal and Finish defining pages are redrawn without the one long card. The Title comes first, as a heading; Delivery has Kind tiles, with the delivery date inside Dated, and a segmented Check-in cadence; Contributes to and Where it fits sit in a More detail section as rows that open in place; and the Ready to activate panel shows ✓ and ○ marks without the "to do" text that wrapped (#357) (#368).
 - [user] Highlights in a Check-in are now added with + Insight, + Accomplishment or + Miss: each opens an inline Note editor, and Save turns it into an item you can Edit (Kind included) or Remove. Draft Highlights from the Goal page show as items already saved, marked "Draft · logged by …", and Remove discards one; a Draft logged with no Kind opens as an editor asking for one. Nothing is recorded until the Check-in is submitted, and without script the form works as before, with rows and Add another (#362).
+- [user] The Check-in page lists the Goal's children with their Health beside the form (above it on a narrow screen), the Goal page's "Contributed to by" list read-only, so the Owner sees what sets the Rolled-up Health without leaving the form. The form's Rolled-up Health line now names the Goal's Active children, not "your" children, and counts the Red and Yellow ones, e.g. "(2 of 5 Yellow)" (#361).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
