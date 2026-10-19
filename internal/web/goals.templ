@@ -892,7 +892,7 @@ templ goalPageStyles() {
 		.gp-edit form{flex-direction:column}
 		.gp-activation{display:flex;flex-direction:column;gap:4px;padding-top:12px;border-top:1px solid var(--color-border)}
 		.gp-check{display:flex;gap:8px;align-items:baseline}
-		.gp-check>span:first-child{width:16px;font-weight:600;color:var(--health-r-ink)}
+		.gp-check>span:first-child{width:16px;font-weight:600;color:var(--color-ink-muted)}
 		.gp-check.done>span:first-child{color:var(--health-g-ink)}
 		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 	</style>
@@ -1202,7 +1202,7 @@ templ defineGoal(v goalView) {
 					if item.Done {
 						<li data-done="true" class="gp-check done"><span aria-hidden="true">✓</span> <span>{ item.Label }</span> <span class="muted small">done</span></li>
 					} else {
-						<li data-done="false" class="gp-check"><span aria-hidden="true">✗</span> <span>{ item.Label }</span> <span class="muted small">missing</span></li>
+						<li data-done="false" class="gp-check"><span aria-hidden="true">○</span> <span>{ item.Label }</span> <span class="muted small">to do</span></li>
 					}
 				}
 			</ul>

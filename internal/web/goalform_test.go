@@ -1288,7 +1288,7 @@ func readyCard(t *testing.T, page string) (card, activate string) {
 
 // The Ready to activate card's checklist runs on the form as typed: posted to
 // /goals/new/checklist, a partial form comes back as the card alone with each
-// item done or missing, "n of m", and Create and activate disabled, and a
+// item done or to do, "n of m", and Create and activate disabled, and a
 // complete one with it enabled. A required Dimension or Field counts as set by
 // a value chosen, a value typed to add, or a Field's value typed.
 func TestNewGoalChecklistRunsOnTheFormAsTyped(t *testing.T) {
@@ -1424,6 +1424,46 @@ func TestNewGoalPageRendersTheReadyCardEnabledWithoutScript(t *testing.T) {
 	}
 	if attr(openTag(card), "id") == "" {
 		t.Errorf("the card has no id to swap: %s", openTag(card))
+	}
+}
+
+// An empty New goal form's checklist marks each item not yet met with a
+// neutral ○ "to do", never a red ✗ "missing": nothing has gone wrong before
+// anything is typed. The Owner, met by the person creating the Goal, is ✓
+// "done".
+func TestNewGoalChecklistMarksUnmetItemsToDo(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals/new")
+	list := pageElement(t, page, "ul", "activation-checklist")
+	for _, li := range strings.Split(list, "<li ")[1:] {
+		mark, label, state := activationItemParts(t, li)
+		want := [2]string{"○", "to do"}
+		if label == "Owner" {
+			want = [2]string{"✓", "done"}
+		}
+		if got := [2]string{mark, state}; got != want {
+			t.Errorf("%q is marked %q %q, want %q %q: %s", label, mark, state, want[0], want[1], li)
+		}
+	}
+	for _, gone := range []string{"✗", "missing"} {
+		if strings.Contains(list, gone) {
+			t.Errorf("the checklist says %q:\n%s", gone, list)
+		}
+	}
+	if rule := cssRule(t, page, ".gf-check>span:first-child"); !strings.Contains(rule, "color:var(--color-ink-muted)") {
+		t.Errorf("an unmet item's mark isn't the neutral muted ink: %s", rule)
+	}
+	if rule := cssRule(t, page, ".gf-check.done>span:first-child"); !strings.Contains(rule, "color:var(--health-g-ink)") {
+		t.Errorf("a met item's mark isn't Green's ink: %s", rule)
+	}
+	if regexp.MustCompile(`\.gf-check[^{}]*\{[^}]*--health-r-ink`).MatchString(page) {
+		t.Errorf("the checklist still uses Red's ink")
 	}
 }
 
@@ -1997,15 +2037,12 @@ func readyItemLinks(t *testing.T, card string) map[string]string {
 	list := pageElement(t, card, "ul", "activation-checklist")
 	links := map[string]string{}
 	for _, li := range strings.Split(list, "<li ")[1:] {
-		words := strings.Fields(regexpTags.ReplaceAllString(li[strings.Index(li, ">")+1:], " "))
-		if len(words) < 3 {
-			t.Fatalf("checklist item has no mark, label and state: %s", li)
-		}
+		_, label, _ := activationItemParts(t, li)
 		href := ""
 		if strings.Contains(li, "<a ") {
 			href = attr(tagAround(t, li, "<a "), "href")
 		}
-		links[strings.Join(words[1:len(words)-1], " ")] = href
+		links[label] = href
 	}
 	return links
 }
