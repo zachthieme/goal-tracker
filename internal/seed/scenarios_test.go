@@ -193,6 +193,16 @@ func (o *e2eOrg) overdueMilestone(g *e2eGoal) bool {
 	return slices.ContainsFunc(g.plannedMilestones(), func(m domain.Milestone) bool { return m.TargetDate.Before(o.today()) })
 }
 
+// pathOverdue reports whether g's back-to-Green date has passed, as of the
+// specs' today: its latest Check-in has one, and it is before today.
+func (o *e2eOrg) pathOverdue(g *e2eGoal) bool {
+	if len(g.checkins) == 0 {
+		return false
+	}
+	date := g.checkins[0].PathTargetDate
+	return !date.IsZero() && date.Before(o.today())
+}
+
 // e2eScenario4 is chooseBadNewsChain (04-reporting-bad-news.spec.ts): a
 // project, the team Goal it contributes to, and an org outcome the team Goal
 // contributes to whose other Active children are all Green. The candidates
@@ -324,7 +334,7 @@ func (g *e2eGoal) activeChildren() []*e2eGoal {
 func (g *e2eGoal) deliverySlips() []domain.DateSlip {
 	var out []domain.DateSlip
 	for _, s := range g.slips {
-		if s.MilestoneID == 0 {
+		if s.OnDeliveryDate() {
 			out = append(out, s)
 		}
 	}
@@ -823,10 +833,11 @@ func e2eScenario5(t *testing.T, o *e2eOrg) {
 }
 
 // e2eIsolation is isolation.spec.ts's noChangeGoal: a Goal its Owner can
-// press No change on, whose latest Check-in is more than 5 minutes old.
+// press No change on, whose latest Check-in is more than 5 minutes old. No
+// Milestone is overdue, nor has its back-to-Green date passed.
 func e2eIsolation(t *testing.T, o *e2eOrg) {
 	g := o.find((*e2eGoal).active, func(g *e2eGoal) bool {
-		return !g.Owner.Departed && len(g.checkins) > 0 && len(g.children) == 0 && !o.overdueMilestone(g)
+		return !g.Owner.Departed && len(g.checkins) > 0 && len(g.children) == 0 && !o.overdueMilestone(g) && !o.pathOverdue(g)
 	})
 	if g == nil {
 		t.Fatal("isolation: no Goal its Owner can press No change on (noChangeGoal)")

@@ -180,26 +180,30 @@ func checkinHistoryWithMixedHealth(t *testing.T, h *testsupport.Harness) {
 	}
 }
 
-// Some Goals' delivery dates have slipped and some Milestones' dates have
-// moved, each Date Slip moving the date later with a reason, and the Goal's
-// delivery date now reads as the latest slip's new date.
+// Some Goals' delivery dates have slipped, some Milestones' dates have moved
+// and some back-to-Green dates have moved, each Date Slip moving the date
+// later with a reason, and the Goal's delivery date now reads as the latest
+// delivery slip's new date.
 func dateSlips(t *testing.T, h *testsupport.Harness) {
 	ctx := context.Background()
-	var deliverySlipped, milestoneSlipped int
+	var deliverySlipped, milestoneSlipped, backToGreenSlipped int
 	for _, g := range listGoals(t, h) {
 		slips, err := h.Service.ListDateSlips(ctx, g.ID)
 		if err != nil {
 			t.Fatalf("ListDateSlips: %v", err)
 		}
 		var lastDelivery time.Time
-		var delivery, milestone bool
+		var delivery, milestone, backToGreen bool
 		for _, s := range slips {
 			if s.Reason == "" || !s.NewDate.After(s.OldDate) {
 				t.Errorf("Goal %q: want each Date Slip later and with a reason, got %+v", g.Title, s)
 			}
-			if s.MilestoneID == 0 {
+			switch {
+			case s.OnDeliveryDate():
 				delivery, lastDelivery = true, s.NewDate
-			} else {
+			case s.BackToGreen:
+				backToGreen = true
+			default:
 				milestone = true
 			}
 		}
@@ -212,12 +216,18 @@ func dateSlips(t *testing.T, h *testsupport.Harness) {
 		if milestone {
 			milestoneSlipped++
 		}
+		if backToGreen {
+			backToGreenSlipped++
+		}
 	}
 	if deliverySlipped < 3 {
 		t.Errorf("want several Goals whose delivery date slipped, got %d", deliverySlipped)
 	}
 	if milestoneSlipped < 3 {
 		t.Errorf("want several Goals with a Milestone date slip, got %d", milestoneSlipped)
+	}
+	if backToGreenSlipped < 1 {
+		t.Errorf("want a Goal whose back-to-Green date slipped, got %d", backToGreenSlipped)
 	}
 }
 
@@ -588,7 +598,7 @@ func fingerprint(t *testing.T, h *testsupport.Harness) string {
 		}
 		slips, _ := h.Service.ListDateSlips(ctx, g.ID)
 		for _, s := range slips {
-			fmt.Fprintf(&b, "  slip %d %s->%s %q\n", s.MilestoneID, s.OldDate.Format(time.DateOnly), s.NewDate.Format(time.DateOnly), s.Reason)
+			fmt.Fprintf(&b, "  slip %d %v %s->%s %q\n", s.MilestoneID, s.BackToGreen, s.OldDate.Format(time.DateOnly), s.NewDate.Format(time.DateOnly), s.Reason)
 		}
 		milestones, _ := h.Service.ListMilestones(ctx, g.ID)
 		for _, m := range milestones {

@@ -277,7 +277,10 @@ func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekSta
 			continue
 		}
 		what := "its delivery date"
-		if sl.MilestoneID != 0 {
+		switch {
+		case sl.BackToGreen:
+			what = "its back-to-Green date"
+		case sl.MilestoneID != 0:
 			what = "a Milestone"
 		}
 		reasons = append(reasons, fmt.Sprintf("slipped %s from %s to %s (%s)",

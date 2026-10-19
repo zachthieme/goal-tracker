@@ -192,6 +192,12 @@ func (h *history) checkIn(ctx context.Context, g *plannedGoal, w int) error {
 	if in.Health != domain.HealthGreen {
 		in.PathToGreen = pick(h.rng, pathsToGreen)
 		in.PathTargetDate = today.AddDate(0, 0, 7*(3+h.rng.IntN(4)))
+		// Moving the back-to-Green date later is a Date Slip, which needs a
+		// reason (CONTEXT.md: Date Slip). It is picked by the week rather than
+		// drawn, so the rest of the seeded data doesn't shift.
+		if !g.backToGreen.IsZero() && in.PathTargetDate.After(g.backToGreen) {
+			in.PathTargetDateReason = slipReasons[w%len(slipReasons)]
+		}
 	}
 
 	for _, m := range g.metrics {
@@ -207,12 +213,14 @@ func (h *history) checkIn(ctx context.Context, g *plannedGoal, w int) error {
 		in.Status = "Pausing this Goal; the team is needed elsewhere."
 	}
 
-	if _, err := h.svc.SubmitCheckin(ctx, in); err != nil {
+	c, err := h.svc.SubmitCheckin(ctx, in)
+	if err != nil {
 		return err
 	}
 	if in.Lifecycle != "" {
 		g.lifecycle = in.Lifecycle
 	}
+	g.backToGreen = c.PathTargetDate
 	return nil
 }
 
