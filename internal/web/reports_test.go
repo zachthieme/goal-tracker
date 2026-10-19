@@ -3616,3 +3616,136 @@ func TestPublicationSaysHowItSelects(t *testing.T) {
 		}
 	}
 }
+
+// linkedBlockOf is the exception block a Report page gives g, up to its
+// close.
+func linkedBlockOf(t *testing.T, page string, g domain.Goal) string {
+	t.Helper()
+	start := strings.Index(page, fmt.Sprintf(`<article data-testid="report-exception" class="card rp-card" id="goal-%d">`, g.ID))
+	if start < 0 {
+		t.Fatalf("page has no exception block for %q; body:\n%s", g.Title, page)
+	}
+	end := strings.Index(page[start:], "</article>")
+	if end < 0 {
+		t.Fatalf("exception block for %q is not closed", g.Title)
+	}
+	return page[start : start+end]
+}
+
+// linkedGoalLink is the report-linked-goal link in s to href with its text
+// and what follows it up to the next entry, or "" when there is none.
+func linkedGoalLink(s, href string) string {
+	start := strings.Index(s, `<a data-testid="report-linked-goal" href="`+href+`">`)
+	if start < 0 {
+		return ""
+	}
+	rest := s[start:]
+	if next := strings.Index(rest[1:], `<a data-testid="report-linked-goal"`); next >= 0 {
+		rest = rest[:next+1]
+	}
+	return rest
+}
+
+// An exception block counts the Red, Yellow and Stale children behind its
+// Rolled-up Health, names the Red and Yellow ones and every child the Report
+// holds, and names the Goals in the Report it contributes to, each linking to
+// its place in the Report or, outside it, to its Goal page; the draft, the
+// publication and the print page all show it (#246, #247).
+func TestReportBlockLinksTheGoalsBehindItAndThatItContributesTo(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	s := h.LinkedGoalsReport(boss)
+	pub := h.PublishReport(boss, s.Definition)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := ts.URL + "/reports/" + strconv.FormatInt(s.Definition.ID, 10)
+	pubURL := reportURL + "/publications/" + strconv.FormatInt(pub.ID, 10)
+	for _, page := range []struct{ name, url string }{
+		{"draft", reportURL},
+		{"publication", pubURL},
+		{"print", pubURL + "/print"},
+	} {
+		body := getBody(t, client, page.url)
+		referral := linkedBlockOf(t, body, s.Referral)
+		if got := elementTexts(referral, "span", "report-rollup-count"); !slices.Equal(got, []string{"2 of 5 Red · 1 Yellow"}) {
+			t.Errorf("%s: Referral program count %q, want 2 of 5 Red · 1 Yellow", page.name, got)
+		}
+		behind := pageElement(t, referral, "span", "report-behind-it")
+		alpha := linkedGoalLink(behind, fmt.Sprintf("#goal-%d", s.Alpha.ID))
+		if !strings.HasPrefix(alpha, fmt.Sprintf(`<a data-testid="report-linked-goal" href="#goal-%d">Alpha ledger ↓</a> (Red)`, s.Alpha.ID)) {
+			t.Errorf("%s: Behind it does not link Alpha ledger ↓ (Red) to its block; line:\n%s", page.name, behind)
+		}
+		if beta := linkedGoalLink(behind, fmt.Sprintf("/goals/%d", s.Beta.ID)); !strings.HasPrefix(beta, fmt.Sprintf(`<a data-testid="report-linked-goal" href="/goals/%d">Beta payouts</a>`, s.Beta.ID)) {
+			t.Errorf("%s: Behind it does not link Beta payouts to its Goal page; line:\n%s", page.name, behind)
+		}
+		epsilon := fmt.Sprintf("#goal-%d", s.Epsilon.ID)
+		if linkedGoalLink(behind, epsilon) == "" {
+			t.Errorf("%s: Behind it does not link Epsilon signup to its line; line:\n%s", page.name, behind)
+		}
+		if !strings.Contains(body, fmt.Sprintf(`<tr data-testid="selected-goal" id="goal-%d">`, s.Epsilon.ID)) {
+			t.Errorf("%s: %s does not resolve to Epsilon signup's on-track line", page.name, epsilon)
+		}
+		if strings.Contains(behind, "Delta copy") {
+			t.Errorf("%s: Behind it names the Green Delta copy outside the Report; line:\n%s", page.name, behind)
+		}
+		contributes := pageElement(t, referral, "p", "report-contributes-to")
+		if growth := linkedGoalLink(contributes, fmt.Sprintf("#goal-%d", s.Growth.ID)); !strings.HasPrefix(growth, fmt.Sprintf(`<a data-testid="report-linked-goal" href="#goal-%d">Growth ↓</a>`, s.Growth.ID)) {
+			t.Errorf("%s: Contributes to does not link Growth ↓ to its block; line:\n%s", page.name, contributes)
+		}
+		alphaContributes := pageElement(t, linkedBlockOf(t, body, s.Alpha), "p", "report-contributes-to")
+		if linkedGoalLink(alphaContributes, fmt.Sprintf("#goal-%d", s.Referral.ID)) == "" {
+			t.Errorf("%s: Alpha ledger's Contributes to does not link Referral program; line:\n%s", page.name, alphaContributes)
+		}
+	}
+}
+
+// A publication frozen before Reports counted Red and Yellow children or
+// named linked Goals reads as it did: its Rolled-up Health counts only the
+// Stale children, and it names no other Goal (#246).
+func TestPublicationFromBeforeLinkedGoalsReadsAsItDid(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	s := h.LinkedGoalsReport(boss)
+	pub := h.PublishReport(boss, s.Definition)
+	h.FreezeBeforeLinkedGoals(pub, s.Referral)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(s.Definition.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
+	referral := linkedBlockOf(t, page, s.Referral)
+	if got := elementTexts(referral, "p", "report-rollup"); len(got) != 1 || !strings.Contains(got[0], "Red · 1 of 3 Stale") {
+		t.Errorf("Rolled-up Health %q, want Red · 1 of 3 Stale", got)
+	}
+	for _, testID := range []string{"report-behind-it", "report-contributes-to"} {
+		if strings.Contains(page, `data-testid="`+testID+`"`) {
+			t.Errorf("publication from before linked Goals shows %s; body:\n%s", testID, page)
+		}
+	}
+}
+
+// A block whose only child has no Health yet has no Rolled-up Health to count,
+// so its Behind it line opens the paragraph rather than breaking a line under
+// nothing (#246).
+func TestReportBehindItAloneOpensItsParagraph(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	parent := h.ActiveGoal(boss, "Growth", "Grow the business.")
+	child := h.ActiveChildOf(boss, parent, "Referral program", "Customers bring customers.")
+	h.Checkin(boss, parent.ID, domain.HealthRed, "Off track.", "Add staff.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "Growth", Mode: domain.ReportModePicked, Picked: []int64{parent.ID, child.ID}})
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	block := linkedBlockOf(t, getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)), parent)
+	rollup := pageElement(t, block, "p", "report-rollup")
+	if want := `<p data-testid="report-rollup"><span data-testid="report-behind-it"><strong>Behind it:</strong>`; !strings.HasPrefix(rollup, want) {
+		t.Errorf("Rolled-up Health paragraph does not open with Behind it; paragraph:\n%s", rollup)
+	}
+}
