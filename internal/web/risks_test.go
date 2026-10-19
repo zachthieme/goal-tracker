@@ -586,9 +586,9 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 		chips           []string
 	}{
 		{"health", "Not Green", "/risks?group=health&amp;org=all", 1, []string{"Red · 1"}},
-		{"owner", "Owner needs to update", "/risks?group=owner&amp;org=all", 1, []string{"Stale · 1"}},
+		{"owner", "Waiting on a Check-in", "/risks?group=owner&amp;org=all", 1, []string{"Stale · 1"}},
 		{"followup", "Action Items overdue", "/risks?group=followup&amp;org=all", 1, []string{"Action Item overdue · 1"}},
-		{"plan", "Plan doesn't fit", "/risks?group=plan&amp;org=all", 3, []string{"Unaligned · 2", "Schedule conflicts · 1"}},
+		{"plan", "Placement and dates", "/risks?group=plan&amp;org=all", 3, []string{"Unaligned · 2", "Schedule conflicts · 1"}},
 		{"admin", "Needs an Admin", "/risks?group=admin&amp;org=all", 1, []string{"Ownerless · 1"}},
 	} {
 		card := pageElement(t, page, "a", "risks-group-"+g.key)
@@ -630,7 +630,7 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 
 // A group card's address filters the page to the signals in that group, with
 // no script: the table lists only the Goals they flag, chipped with them
-// alone, the card is current, the cards still count every group, and Show all
+// alone, the card is current under its name, the cards still count every group, and Show all
 // clears the filter. An unknown group shows everything.
 func TestRisksPageFiltersToAGroup(t *testing.T) {
 	t.Parallel()
@@ -673,6 +673,30 @@ func TestRisksPageFiltersToAGroup(t *testing.T) {
 	if all := pageElement(t, page, "a", "risks-show-all"); !strings.Contains(all, `href="/risks?org=all"`) || !strings.Contains(all, "Show all") {
 		t.Errorf("Show all doesn't clear the filter: %s", all)
 	}
+	if card := pageElement(t, page, "a", "risks-group-owner"); !strings.Contains(card, "Waiting on a Check-in") {
+		t.Errorf("filtered to owner, the current card isn't Waiting on a Check-in: %s", card)
+	}
+
+	page = getBody(t, client, ts.URL+"/risks?group=plan&org=all")
+
+	for _, g := range []domain.Goal{silent, orphaned} {
+		row := riskRowOf(t, page, g)
+		riskChip(t, row, "unaligned")
+		for _, other := range []string{"stale", "ownerless"} {
+			if strings.Contains(row, `data-kind="`+other+`"`) {
+				t.Errorf("filtered to plan, %q still has its %s chip:\n%s", g.Title, other, row)
+			}
+		}
+	}
+	for _, key := range []string{"owner", "plan", "admin"} {
+		card := pageElement(t, page, "a", "risks-group-"+key)
+		if current := strings.Contains(openTag(card), `aria-current="page"`); current != (key == "plan") {
+			t.Errorf("filtered to plan, the %s card's aria-current is %v: %s", key, current, openTag(card))
+		}
+	}
+	if card := pageElement(t, page, "a", "risks-group-plan"); !strings.Contains(card, "Placement and dates") {
+		t.Errorf("filtered to plan, the current card isn't Placement and dates: %s", card)
+	}
 
 	page = getBody(t, client, ts.URL+"/risks?group=bogus&org=all")
 
@@ -709,7 +733,7 @@ func TestRisksPageFilteredToNothingSaysWhere(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	for address, want := range map[string]string{
-		"/risks?org=mine&group=owner": "No Goals need attention in Mine, Owner needs to update.",
+		"/risks?org=mine&group=owner": "No Goals need attention in Mine, Waiting on a Check-in.",
 		"/risks?group=admin&value=" + strconv.FormatInt(platform.ID, 10) + "&org=mine": "Nothing needs an Admin in Team Platform.",
 		"/risks?org=all&value=" + strconv.FormatInt(platform.ID, 10):                   "No Goals need attention in Team Platform.",
 	} {
@@ -1910,7 +1934,7 @@ func TestRisksShowsAnAdminTheirCardOnAnEmptyScope(t *testing.T) {
 	if strings.Index(page, `data-testid="risks-empty"`) > strings.Index(page, `data-testid="risks-groups"`) {
 		t.Errorf("the cards come before the empty line")
 	}
-	for key, blank := range map[string]string{"owner": "Every Owner is up to date.", "followup": "No Action Item is overdue.", "plan": "Every plan fits."} {
+	for key, blank := range map[string]string{"owner": "Nothing is waiting on a Check-in.", "followup": "No Action Item is overdue.", "plan": "Every Goal is placed and its dates fit."} {
 		if card := pageElement(t, page, "div", "risks-group-"+key); !strings.Contains(card, blank) {
 			t.Errorf("the Admin's %s card isn't blank: %s", key, card)
 		}
@@ -2621,7 +2645,7 @@ func TestRisksNotGreenRowsShowTheRunOffGreen(t *testing.T) {
 	}
 }
 
-// A Proposed Goal whose plan doesn't fit is listed, but after every Active
+// A Proposed Goal under Placement and dates is listed, but after every Active
 // Goal: nothing has gone wrong with it yet. Lacking a Health doesn't rank it
 // above a Green Goal that has gone Stale.
 func TestRisksPageListsGoalsThatArentActiveLast(t *testing.T) {
@@ -2746,7 +2770,7 @@ func TestRisksPageDropsAnAskTheOwnerUnmarks(t *testing.T) {
 }
 
 // A Goal whose latest Check-in is Green while a Milestone is overdue is listed
-// under Owner needs to update with a Milestone overdue chip in Stale's style,
+// under Waiting on a Check-in with a Milestone overdue chip in Stale's style,
 // counted on its card and in the top bar. Its Fix is Check in for its Owner,
 // and Nudge for anyone else, as its Owner answers it in a Check-in
 // (CONTEXT.md: Nudge).
@@ -2773,7 +2797,7 @@ func TestRisksPageListsGreenGoalsPastAMilestone(t *testing.T) {
 	}
 	card := pageElement(t, page, "a", "risks-group-owner")
 	if !strings.Contains(card, `<span class="num">1</span>`) || !strings.Contains(card, "Milestone overdue · 1") {
-		t.Errorf("Owner needs to update card doesn't count the Goal with a Milestone overdue · 1 chip: %s", card)
+		t.Errorf("Waiting on a Check-in card doesn't count the Goal with a Milestone overdue · 1 chip: %s", card)
 	}
 	if chip := riskChip(t, card, "milestone-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) {
 		t.Errorf("the card's Milestone overdue chip isn't drawn like the table's: %s", chip)

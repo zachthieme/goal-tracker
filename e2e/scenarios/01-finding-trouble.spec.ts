@@ -298,9 +298,9 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     await expect(page.getByTestId("risks-attention")).toContainText("Goals need attention");
     const cards = [
       { key: "health", name: "Not Green", kinds: ["red", "yellow"] },
-      { key: "owner", name: "Owner needs to update", kinds: ["stale", "path-overdue", "milestone-overdue"] },
+      { key: "owner", name: "Waiting on a Check-in", kinds: ["stale", "path-overdue", "milestone-overdue"] },
       { key: "followup", name: "Action Items overdue", kinds: ["action-item-overdue"] },
-      { key: "plan", name: "Plan doesn't fit", kinds: ["unaligned", "schedule-conflicts"] },
+      { key: "plan", name: "Placement and dates", kinds: ["unaligned", "schedule-conflicts"] },
       { key: "admin", name: "Needs an Admin", kinds: ["ownerless"] },
     ];
     for (const c of cards) {
@@ -529,20 +529,20 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
       `${redWithChildren.title} is under Not Green`,
     ).toContain(redWithChildren.id);
 
-    // Silent: Stale, under Owner needs to update, not Plan doesn't fit.
-    // Badly placed: Unaligned or a Schedule conflict, under Plan doesn't fit,
-    // not Owner needs to update.
+    // Silent: Stale, under Waiting on a Check-in, not Placement and dates.
+    // Badly placed: Unaligned or a Schedule conflict, under Placement and
+    // dates, not Waiting on a Check-in.
     await page.goto("/risks?group=owner&org=all");
     const owner = (await riskRows(page)).map((r) => r.id);
     await page.goto("/risks?group=plan&org=all");
     const plan = (await riskRows(page)).map((r) => r.id);
-    expect(owner, "Stale is under Owner needs to update").toContain(stale.id);
-    expect(plan, "Stale isn't under Plan doesn't fit").not.toContain(stale.id);
-    expect(plan, "Unaligned is under Plan doesn't fit").toContain(unaligned.id);
-    expect(owner, "Unaligned isn't under Owner needs to update").not.toContain(unaligned.id);
-    expect(plan, "a Schedule conflict is under Plan doesn't fit").toContain(twoReasons.id);
-    expect(owner, "a Red Goal that's up to date isn't under Owner needs to update").not.toContain(redWithChildren.id);
-    expect(plan, "a Red Goal that's well placed isn't under Plan doesn't fit").not.toContain(redWithChildren.id);
+    expect(owner, "Stale is under Waiting on a Check-in").toContain(stale.id);
+    expect(plan, "Stale isn't under Placement and dates").not.toContain(stale.id);
+    expect(plan, "Unaligned is under Placement and dates").toContain(unaligned.id);
+    expect(owner, "Unaligned isn't under Waiting on a Check-in").not.toContain(unaligned.id);
+    expect(plan, "a Schedule conflict is under Placement and dates").toContain(twoReasons.id);
+    expect(owner, "a Red Goal that's up to date isn't under Waiting on a Check-in").not.toContain(redWithChildren.id);
+    expect(plan, "a Red Goal that's well placed isn't under Placement and dates").not.toContain(redWithChildren.id);
   });
 
   await test.step("It worked if: every row on Risks answered what to do about it, with exactly one Fix", async () => {

@@ -156,7 +156,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     const activate = ready.getByRole("button", { name: "Create and activate" });
 
     // It worked if: she always knew what was still missing. The card the page
-    // loads with marks every item but Owner missing.
+    // loads with marks every item but Owner to do.
     await expectChecklist(priya, {
       "So What": false,
       Owner: true,
@@ -433,7 +433,7 @@ async function expectRefusedByTheBrowser(page: Page, label: string | RegExp, sub
   expect(posts).toEqual([]);
 }
 
-// expectItem says the Ready to activate card marks the item done or missing.
+// expectItem says the Ready to activate card marks the item done or to do.
 async function expectItem(page: Page, label: string, done: boolean) {
   const item = page
     .getByTestId("goal-form-ready")
@@ -441,11 +441,11 @@ async function expectItem(page: Page, label: string, done: boolean) {
     .getByRole("listitem")
     .filter({ has: page.getByText(label, { exact: true }) });
   await expect(item).toHaveAttribute("data-done", String(done));
-  await expect(item).toContainText(done ? "done" : "missing");
+  await expect(item).toContainText(done ? "done" : "to do");
 }
 
-// expectChecklist says the card lists exactly these items, each done or
-// missing.
+// expectChecklist says the card lists exactly these items, each done or to
+// do.
 async function expectChecklist(page: Page, items: Record<string, boolean>) {
   const list = page.getByTestId("goal-form-ready").getByTestId("activation-checklist").getByRole("listitem");
   await expect(list).toHaveCount(Object.keys(items).length);

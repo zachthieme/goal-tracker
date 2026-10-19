@@ -983,9 +983,9 @@ var riskGroupKinds = []struct {
 	Blank     string
 }{
 	{"health", "Not Green", []string{"red", "yellow", "asks-for-help"}, "No Goal is Red or Yellow."},
-	{"owner", "Owner needs to update", []string{"stale", "path-overdue", "milestone-overdue"}, "Every Owner is up to date."},
+	{"owner", "Waiting on a Check-in", []string{"stale", "path-overdue", "milestone-overdue"}, "Nothing is waiting on a Check-in."},
 	{"followup", "Action Items overdue", []string{"action-item-overdue"}, "No Action Item is overdue."},
-	{"plan", "Plan doesn't fit", []string{"unaligned", "schedule-conflicts"}, "Every plan fits."},
+	{"plan", "Placement and dates", []string{"unaligned", "schedule-conflicts"}, "Every Goal is placed and its dates fit."},
 	{riskGroupAdmin, "Needs an Admin", []string{"ownerless", "halted-parents"}, "Nothing needs an Admin."},
 }
 

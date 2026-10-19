@@ -2231,29 +2231,46 @@ func TestGoalPageLatestStatusCard(t *testing.T) {
 
 // activationItems reads the activation checklist on a Proposed Goal's page as
 // each item's label mapped to whether it is done. Each item reads as a mark,
-// its label, and "done" or "missing", so it never relies on the mark alone.
+// its label, and "done" or "to do", so it never relies on the mark alone: ✓
+// for done and a neutral ○ for to do.
 func activationItems(t *testing.T, page string) map[string]bool {
 	t.Helper()
 	list := pageElement(t, page, "ul", "activation-checklist")
 	items := map[string]bool{}
 	for _, li := range strings.Split(list, "<li ")[1:] {
-		words := strings.Fields(regexpTags.ReplaceAllString(li[strings.Index(li, ">")+1:], " "))
-		if len(words) < 3 {
-			t.Fatalf("checklist item has no mark, label and state: %s", li)
-		}
+		mark, label, state := activationItemParts(t, li)
 		done := strings.Contains(openTag(li), `data-done="true"`)
-		if state := words[len(words)-1]; state != map[bool]string{true: "done", false: "missing"}[done] {
-			t.Errorf("checklist item says %q against data-done=%v: %s", state, done, li)
+		if want := map[bool]string{true: "done", false: "to do"}[done]; state != want {
+			t.Errorf("checklist item says %q against data-done=%v, want %q: %s", state, done, want, li)
 		}
-		items[strings.Join(words[1:len(words)-1], " ")] = done
+		if want := map[bool]string{true: "✓", false: "○"}[done]; mark != want {
+			t.Errorf("checklist item is marked %q against data-done=%v, want %q: %s", mark, done, want, li)
+		}
+		items[label] = done
 	}
 	return items
+}
+
+// activationItemParts splits an activation checklist item's text into its
+// mark, its label, and its trailing state, "done" or the two words "to do".
+func activationItemParts(t *testing.T, li string) (mark, label, state string) {
+	t.Helper()
+	words := strings.Fields(regexpTags.ReplaceAllString(li[strings.Index(li, ">")+1:], " "))
+	stateWords := 1
+	if n := len(words); n >= 2 && words[n-2] == "to" && words[n-1] == "do" {
+		stateWords = 2
+	}
+	if len(words) < 2+stateWords {
+		t.Fatalf("checklist item has no mark, label and state: %s", li)
+	}
+	n := len(words) - stateWords
+	return words[0], strings.Join(words[1:n], " "), strings.Join(words[n:], " ")
 }
 
 var regexpTags = regexp.MustCompile(`<[^>]*>`)
 
 // A Proposed Goal's Owner sees the activation checklist drawn from the rules
-// activation enforces, each item done or missing, and Activate stays disabled
+// activation enforces, each item done or to do, and Activate stays disabled
 // until every item is done.
 func TestProposedGoalShowsActivationChecklist(t *testing.T) {
 	t.Parallel()
@@ -2293,6 +2310,46 @@ func TestProposedGoalShowsActivationChecklist(t *testing.T) {
 	}
 	if button := between(t, pageElement(t, page, "form", "activate-goal"), "<button", ">"); strings.Contains(button, "disabled") {
 		t.Errorf("Activate is disabled with every item done: %s", button)
+	}
+}
+
+// A Proposed Goal's checklist marks each item not yet met with a neutral ○
+// "to do", as the New goal form does, never a red ✗ "missing", and each met
+// item ✓ "done".
+func TestProposedGoalChecklistMarksUnmetItemsToDo(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	list := pageElement(t, page, "ul", "activation-checklist")
+	for _, li := range strings.Split(list, "<li ")[1:] {
+		mark, label, state := activationItemParts(t, li)
+		want := [2]string{"○", "to do"}
+		if label == "So What" || label == "Owner" {
+			want = [2]string{"✓", "done"}
+		}
+		if got := [2]string{mark, state}; got != want {
+			t.Errorf("%q is marked %q %q, want %q %q: %s", label, mark, state, want[0], want[1], li)
+		}
+	}
+	for _, gone := range []string{"✗", "missing"} {
+		if strings.Contains(list, gone) {
+			t.Errorf("the checklist says %q:\n%s", gone, list)
+		}
+	}
+	if rule := cssRule(t, page, ".gp-check>span:first-child"); !strings.Contains(rule, "color:var(--color-ink-muted)") {
+		t.Errorf("an unmet item's mark isn't the neutral muted ink: %s", rule)
+	}
+	if rule := cssRule(t, page, ".gp-check.done>span:first-child"); !strings.Contains(rule, "color:var(--health-g-ink)") {
+		t.Errorf("a met item's mark isn't Green's ink: %s", rule)
+	}
+	if regexp.MustCompile(`\.gp-check[^{}]*\{[^}]*--health-r-ink`).MatchString(page) {
+		t.Errorf("the checklist still uses Red's ink")
 	}
 }
 
