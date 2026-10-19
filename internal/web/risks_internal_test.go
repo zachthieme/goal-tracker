@@ -153,7 +153,8 @@ func row(title string, cadence int, health string, signals ...riskSignal) riskGo
 // Hold ones; then Ownerless first; then Red, Yellow, no Health, Green; then a
 // Path to Green overdue first, longest overdue first; then Stale first,
 // furthest past its cadence first; then more kinds of signal first; then by
-// title, ignoring case.
+// title, ignoring case. A Milestone overdue and an overdue Action Item rank
+// between the Path to Green and Stale keys (see the tests below).
 func TestSortRiskRowsPutsTheWorstFirst(t *testing.T) {
 	t.Parallel()
 
@@ -240,6 +241,32 @@ func TestSortRiskRowsRanksOverdueActionItemsBetweenPathsAndStale(t *testing.T) {
 		row("Item overdue", 7, domain.HealthYellow, itemOverdue(2)),
 		row("Item long overdue", 7, domain.HealthYellow, itemOverdue(9)),
 		row("Path overdue", 7, domain.HealthYellow, riskSignal{Kind: "path-overdue", Days: 1}),
+	}
+
+	sortRiskRows(rows)
+
+	var got []string
+	for _, r := range rows {
+		got = append(got, r.Goal.Title)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("sorted rows:\n got %q\nwant %q", got, want)
+	}
+}
+
+// Among Green Goals, a Milestone overdue ranks a row above an overdue Action
+// Item and Stale, the longest overdue first: it takes the place a Path to
+// Green overdue holds among Goals that aren't Green.
+func TestSortRiskRowsRanksMilestoneOverdueAfterPaths(t *testing.T) {
+	t.Parallel()
+
+	milestoneOverdue := func(days int) riskSignal { return riskSignal{Kind: "milestone-overdue", Days: days} }
+	want := []string{"Milestone long overdue", "Milestone overdue", "Item overdue", "Stale"}
+	rows := []riskGoalRow{
+		row("Stale", 7, domain.HealthGreen, riskSignal{Kind: "stale", Days: 30}),
+		row("Item overdue", 7, domain.HealthGreen, riskSignal{Kind: "action-item-overdue", Days: 9}),
+		row("Milestone overdue", 7, domain.HealthGreen, milestoneOverdue(1)),
+		row("Milestone long overdue", 7, domain.HealthGreen, milestoneOverdue(6)),
 	}
 
 	sortRiskRows(rows)
