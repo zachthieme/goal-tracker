@@ -5,7 +5,7 @@ package web
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /", s.handleIndex)
 	s.mux.HandleFunc("/", s.handleUnknown)
-	s.mux.HandleFunc("GET /static/app.css", s.handleStylesheet)
+	s.mux.HandleFunc("GET /static/", s.handleStaticFile)
 	s.mux.HandleFunc("GET /signin", s.handleSignInForm)
 	switch {
 	case s.oidc != nil:

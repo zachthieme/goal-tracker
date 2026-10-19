@@ -1,8 +1,11 @@
 package web_test
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -28,12 +31,189 @@ func TestStylesheetIsServedAsCSS(t *testing.T) {
 	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/css") {
 		t.Errorf("Content-Type %q, want text/css", ct)
 	}
-	if cc := resp.Header.Get("Cache-Control"); !strings.Contains(cc, "max-age") {
-		t.Errorf("Cache-Control %q, want a max-age", cc)
+	if cc := resp.Header.Get("Cache-Control"); cc != "public, max-age=31536000" {
+		t.Errorf("Cache-Control %q, want public, max-age=31536000", cc)
 	}
 	body := readBody(t, resp)
 	if !strings.Contains(body, ".navitem.on{") {
 		t.Errorf("stylesheet missing the nav rules; body:\n%s", body)
+	}
+}
+
+// htmx is served from the app, the exact release the pages were written
+// against, so a browser that can't reach a CDN still gets the in-page
+// interactions.
+func TestHtmxIsServedFromTheApp(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	resp, err := http.Get(ts.URL + "/static/htmx.min.js")
+	if err != nil {
+		t.Fatalf("GET /static/htmx.min.js: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "text/javascript; charset=utf-8" {
+		t.Errorf("Content-Type %q, want text/javascript; charset=utf-8", ct)
+	}
+	if cc := resp.Header.Get("Cache-Control"); cc != "public, max-age=31536000" {
+		t.Errorf("Cache-Control %q, want public, max-age=31536000", cc)
+	}
+	sum := sha256.Sum256([]byte(readBody(t, resp)))
+	if got, want := hex.EncodeToString(sum[:]), "491955cd1810747d7d7b9ccb936400afb760e06d25d53e4572b64b6563b2784e"; got != want {
+		t.Errorf("htmx.min.js SHA-256 %s, want %s (htmx 2.0.3)", got, want)
+	}
+}
+
+// Every font face the pages use is served from the app as a woff2 font.
+func TestFontsAreServedFromTheApp(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	for _, name := range []string{
+		"inter-latin-wght-normal.woff2",
+		"inter-latin-ext-wght-normal.woff2",
+		"plus-jakarta-sans-latin-wght-normal.woff2",
+		"plus-jakarta-sans-latin-ext-wght-normal.woff2",
+		"jetbrains-mono-latin-500-normal.woff2",
+		"jetbrains-mono-latin-ext-500-normal.woff2",
+		"source-serif-4-latin-wght-normal.woff2",
+		"source-serif-4-latin-ext-wght-normal.woff2",
+		"source-serif-4-latin-wght-italic.woff2",
+		"source-serif-4-latin-ext-wght-italic.woff2",
+	} {
+		resp, err := http.Get(ts.URL + "/static/fonts/" + name)
+		if err != nil {
+			t.Fatalf("GET %s: %v", name, err)
+		}
+		body := readBody(t, resp)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("%s: status %d, want 200", name, resp.StatusCode)
+			continue
+		}
+		if ct := resp.Header.Get("Content-Type"); ct != "font/woff2" {
+			t.Errorf("%s: Content-Type %q, want font/woff2", name, ct)
+		}
+		if !strings.HasPrefix(body, "wOF2") {
+			t.Errorf("%s is not a woff2 file", name)
+		}
+	}
+}
+
+// Under /static/ the app serves files only: a directory, with or without its
+// trailing slash, or a missing file is not found — never a listing of what is
+// there, nor a redirect to one.
+func TestStaticServesFilesOnly(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	client := noRedirects(http.DefaultClient)
+
+	for _, p := range []string{"/static/", "/static/fonts/", "/static/fonts", "/static/nope.js"} {
+		resp, err := client.Get(ts.URL + p)
+		if err != nil {
+			t.Fatalf("GET %s: %v", p, err)
+		}
+		body := readBody(t, resp)
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s: status %d, want 404; Location %q; body:\n%s", p, resp.StatusCode, resp.Header.Get("Location"), body)
+		}
+		if strings.Contains(body, "app.css") || strings.Contains(body, ".woff2") {
+			t.Errorf("%s lists the directory:\n%s", p, body)
+		}
+	}
+}
+
+// No page loads anything from another host: every stylesheet and script a
+// signed-in page or a Report's Print view links is the app's own, htmx among
+// them with a fingerprint, so a browser that can't reach a CDN gets the whole
+// app.
+func TestPagesLoadNothingFromAnotherHost(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	tags := regexp.MustCompile(`<(?:link|script)\b[^>]*>`)
+	home := getBody(t, client, ts.URL+"/home")
+	printed := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
+	for path, page := range map[string]string{"/home": home, "a Print view": printed} {
+		for _, tag := range tags.FindAllString(page, -1) {
+			if strings.Contains(attr(tag, "href"), "https://") || strings.Contains(attr(tag, "src"), "https://") {
+				t.Errorf("%s loads from another host: %s", path, tag)
+			}
+		}
+	}
+	htmx := tagAround(t, home, "/static/htmx.min.js")
+	if !strings.HasPrefix(attr(htmx, "src"), "/static/htmx.min.js?v=") {
+		t.Errorf("htmx's script tag carries no fingerprint: %s", htmx)
+	}
+}
+
+// The faces the pages name are the app's own: the stylesheet declares Inter,
+// Plus Jakarta Sans and JetBrains Mono, the Print view declares Source Serif
+// 4, and every font file they point at is served.
+func TestFontFacesPointAtTheAppsFonts(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "EU MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	printed := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10)+"/print")
+	faces := regexp.MustCompile(`@font-face\s*\{[^}]*\}`)
+	family := regexp.MustCompile(`font-family:\s*"([^"]+)"`)
+	src := regexp.MustCompile(`url\(([^)]*)\)`)
+	for where, want := range map[string]struct {
+		text     string
+		families []string
+	}{
+		"app.css":        {css, []string{"Inter", "Plus Jakarta Sans", "JetBrains Mono"}},
+		"the Print view": {printed, []string{"Source Serif 4"}},
+	} {
+		declared := map[string]int{}
+		for _, face := range faces.FindAllString(want.text, -1) {
+			m := family.FindStringSubmatch(face)
+			if m == nil {
+				t.Errorf("%s declares a face with no family: %s", where, face)
+				continue
+			}
+			declared[m[1]]++
+			u := src.FindStringSubmatch(face)
+			if u == nil || !strings.HasPrefix(u[1], "/static/fonts/") {
+				t.Errorf("%s declares %s from somewhere other than the app's fonts: %s", where, m[1], face)
+				continue
+			}
+			resp, err := http.Get(ts.URL + u[1])
+			if err != nil {
+				t.Fatalf("GET %s: %v", u[1], err)
+			}
+			readBody(t, resp)
+			if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "font/woff2" {
+				t.Errorf("%s's %s points at %s, which serves %d %q", where, m[1], u[1], resp.StatusCode, resp.Header.Get("Content-Type"))
+			}
+		}
+		for _, f := range want.families {
+			if declared[f] == 0 {
+				t.Errorf("%s declares no %s face", where, f)
+			}
+		}
 	}
 }
 

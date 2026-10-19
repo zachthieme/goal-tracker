@@ -66,10 +66,6 @@ func mentions(ctx context.Context) *domain.Mentions {
 	return m
 }
 
-// fontsURL loads DESIGN.md's faces (Plus Jakarta Sans, Inter, JetBrains Mono);
-// the font stacks in app.css fall back to system fonts when it can't be reached.
-const fontsURL = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&family=Plus+Jakarta+Sans:wght@600;700&display=swap"
-
 // layout is the shared page chrome. htmx drives the in-place create-Goal swap.
 templ layout(title string, current *domain.Account) {
 	<!DOCTYPE html>
@@ -83,11 +79,8 @@ templ layout(title string, current *domain.Account) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>{ title } · Goal Tracker</title>
-			<link rel="preconnect" href="https://fonts.googleapis.com"/>
-			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-			<link rel="stylesheet" href={ fontsURL }/>
 			<link rel="stylesheet" href={ stylesheetURL }/>
-			<script src="https://unpkg.com/htmx.org@2.0.3" crossorigin="anonymous"></script>
+			<script src={ htmxURL }></script>
 			@disclosure()
 		</head>
 		<body>

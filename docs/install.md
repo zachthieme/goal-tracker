@@ -18,11 +18,6 @@ Read these first; some may decide whether the install goes ahead now.
   counts are kept in memory, and the weekly email job runs in the process. Run
   exactly one copy against one database file. There is no clustering or
   failover.
-- **Browsers need the internet.** Pages load htmx from `unpkg.com` and fonts
-  from `fonts.googleapis.com`. A browser that can't reach them gets unstyled
-  fonts and loses the in-page interactions (forms still submit without them).
-  The server itself makes no outbound calls with the CSV directory and password
-  sign-in; with OIDC it calls the provider.
 - **Admins are set at account creation.** `GOAL_TRACKER_ADMINS` gives the Admin
   flag only when an account is first created, and the CSV sync creates an
   account for everyone in the file on the first start. So list every Admin
