@@ -83,3 +83,43 @@ func (q *Queries) ListActiveGoalsWithLatestCheckin(ctx context.Context) ([]ListA
 	}
 	return items, nil
 }
+
+const listOverdueMilestones = `-- name: ListOverdueMilestones :many
+SELECT id, goal_id, name, target_date, created_at, status, removed_reason, added_while_active FROM milestones
+WHERE status = 'Planned' AND target_date < ?
+ORDER BY goal_id, target_date, id
+`
+
+// Every Planned Milestone whose target date is before the date given, each
+// Goal's earliest first (CONTEXT.md: Milestone).
+func (q *Queries) ListOverdueMilestones(ctx context.Context, targetDate string) ([]Milestone, error) {
+	rows, err := q.db.QueryContext(ctx, listOverdueMilestones, targetDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Milestone
+	for rows.Next() {
+		var i Milestone
+		if err := rows.Scan(
+			&i.ID,
+			&i.GoalID,
+			&i.Name,
+			&i.TargetDate,
+			&i.CreatedAt,
+			&i.Status,
+			&i.RemovedReason,
+			&i.AddedWhileActive,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

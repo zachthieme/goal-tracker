@@ -269,15 +269,15 @@ func (r goalRow) lastCheckin() string {
 }
 
 // problemRank orders the Goal list so problems sort to the top: Red, then
-// Ownerless, then Stale or Path to Green overdue, then Yellow, then Green, then
-// no Health.
+// Ownerless, then Stale, Path to Green overdue or Milestone overdue, then
+// Yellow, then Green, then no Health.
 func (r goalRow) problemRank() int {
 	switch {
 	case r.health() == domain.HealthRed:
 		return 0
 	case r.Goal.Ownerless:
 		return 1
-	case r.Freshness.Stale || r.Freshness.PathToGreenOverdue:
+	case r.Freshness.Stale || r.Freshness.PathToGreenOverdue || r.Freshness.MilestoneOverdue:
 		return 2
 	case r.health() == domain.HealthYellow:
 		return 3

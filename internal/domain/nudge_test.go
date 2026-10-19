@@ -260,3 +260,24 @@ func TestNudgeStandsWhenItsEmailFails(t *testing.T) {
 		t.Errorf("kept %d Nudges, want 1", len(kept))
 	}
 }
+
+// A Green Goal past a Milestone's date can be nudged, as its Owner answers it
+// in a Check-in (CONTEXT.md: Nudge), its email naming the Milestone and its
+// date.
+func TestAGoalMarkedMilestoneOverdueCanBeNudged(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal, beta := h.GreenGoalWithOverdueMilestone(sam, "Ship search")
+
+	if _, err := h.Service.Nudge(context.Background(), pat.ID, goal.ID); err != nil {
+		t.Fatalf("nudging a Goal marked Milestone overdue: %v", err)
+	}
+	sent := h.Email.Sent()
+	want := `Ship search: Milestone "Beta" overdue since ` + beta.TargetDate.Format("2006-01-02")
+	if len(sent) != 1 || !strings.Contains(sent[0].Body, want) {
+		t.Errorf("sent %+v, want one email saying %q", sent, want)
+	}
+}

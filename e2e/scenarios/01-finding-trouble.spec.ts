@@ -298,7 +298,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     await expect(page.getByTestId("risks-attention")).toContainText("Goals need attention");
     const cards = [
       { key: "health", name: "Not Green", kinds: ["red", "yellow"] },
-      { key: "owner", name: "Owner needs to update", kinds: ["stale", "path-overdue"] },
+      { key: "owner", name: "Owner needs to update", kinds: ["stale", "path-overdue", "milestone-overdue"] },
       { key: "followup", name: "Action Items overdue", kinds: ["action-item-overdue"] },
       { key: "plan", name: "Plan doesn't fit", kinds: ["unaligned", "schedule-conflicts"] },
       { key: "admin", name: "Needs an Admin", kinds: ["ownerless"] },
@@ -395,12 +395,14 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     }
     // Worst first (sortRiskRows): Active Goals before Proposed and On Hold
     // ones, then Ownerless, then by Health (Red, Yellow, none, Green), then
-    // Path to Green overdue, then an overdue Action Item, then Stale.
+    // Path to Green overdue, then Milestone overdue, then an overdue Action
+    // Item, then Stale.
     const keys = rows.map((r) => [
       lifecycles.get(r.id) === "Active" ? 0 : 1,
       r.kinds.includes("ownerless") ? 0 : 1,
       riskHealthRank(r.health),
       r.kinds.includes("path-overdue") ? 0 : 1,
+      r.kinds.includes("milestone-overdue") ? 0 : 1,
       r.kinds.includes("action-item-overdue") ? 0 : 1,
       r.kinds.includes("stale") ? 0 : 1,
     ]);
@@ -612,7 +614,14 @@ function compareKeys(a: number[], b: number[]): number {
   return 0;
 }
 
-type GoalListRow = { title: string; health: string; stale: boolean; ownerless: boolean; overdue: boolean };
+type GoalListRow = {
+  title: string;
+  health: string;
+  stale: boolean;
+  ownerless: boolean;
+  overdue: boolean;
+  milestoneOverdue: boolean;
+};
 
 // goalRows reads the Goal list's rows in order: each Goal's title, Health
 // (or Lifecycle when it has none) and marks.
@@ -626,6 +635,7 @@ function goalRows(page: Page): Promise<GoalListRow[]> {
         stale: has("stale"),
         ownerless: has("ownerless"),
         overdue: has("path-overdue"),
+        milestoneOverdue: has("milestone-overdue"),
       };
     }),
   );
@@ -633,7 +643,7 @@ function goalRows(page: Page): Promise<GoalListRow[]> {
 
 // marked reports whether a Goal list row carries a problem mark.
 function marked(r: GoalListRow): boolean {
-  return r.stale || r.ownerless || r.overdue;
+  return r.stale || r.ownerless || r.overdue || r.milestoneOverdue;
 }
 
 // goalRow is the Goal list's row for the Goal titled title, within scope.

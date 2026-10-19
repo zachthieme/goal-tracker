@@ -526,6 +526,7 @@ func TestRisksPageDefinesEachRisk(t *testing.T) {
 		"Yellow":                      "Active Goals whose latest Check-in is Yellow.",
 		"Stale":                       "Active Goals whose last Check-in, or activation if they have none, is older than their cadence.",
 		"Path to Green overdue":       "Active Goals past their Path to Green's target date that still aren't Green.",
+		"Milestone overdue":           "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Green can't be repeated until the Owner responds.",
 		"Action Item overdue":         "An Action Item about this Goal, raised in a Report, is past its due date.",
 		"Ownerless":                   "Active Goals whose Owner has left the company and hasn't been replaced.",
 		"Unaligned":                   "Active Goals that contribute to no other Goal and aren't Top-level.",
@@ -2589,5 +2590,57 @@ func TestRisksPageDropsAnAskTheOwnerUnmarks(t *testing.T) {
 
 	if row := riskRowOf(t, getBody(t, client, ts.URL+"/risks?org=all"), goal); strings.Contains(row, `data-kind="asks-for-help"`) {
 		t.Errorf("the row still carries the Asks for help chip after the Owner unmarked it:\n%s", row)
+	}
+}
+
+// A Goal whose latest Check-in is Green while a Milestone is overdue is listed
+// under Owner needs to update with a Milestone overdue chip in Stale's style,
+// counted on its card and in the top bar. Its Fix is Check in for its Owner,
+// and Nudge for anyone else, as its Owner answers it in a Check-in
+// (CONTEXT.md: Nudge).
+func TestRisksPageListsGreenGoalsPastAMilestone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("kim@example.com")
+	g, _ := h.GreenGoalWithOverdueMilestone(sam, "Ship search")
+	g = h.MarkTopLevel(ada, g)
+	goal := "/goals/" + strconv.FormatInt(g.ID, 10)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	row := riskRowOf(t, page, g)
+	if chip := riskChip(t, row, "milestone-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Milestone 1 day overdue") {
+		t.Errorf("Milestone overdue chip is not a Stale-colored badge saying 1 day overdue: %s", chip)
+	}
+	if health := pageElement(t, row, "span", "risk-health"); !strings.Contains(openTag(health), `class="badge g"`) {
+		t.Errorf("row doesn't show the Owner's Green: %s", health)
+	}
+	card := pageElement(t, page, "a", "risks-group-owner")
+	if !strings.Contains(card, `<span class="num">1</span>`) || !strings.Contains(card, "Milestone overdue · 1") {
+		t.Errorf("Owner needs to update card doesn't count the Goal with a Milestone overdue · 1 chip: %s", card)
+	}
+	if chip := riskChip(t, card, "milestone-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) {
+		t.Errorf("the card's Milestone overdue chip isn't drawn like the table's: %s", chip)
+	}
+	if risks := pageElement(t, page, "a", "nav-risks"); !strings.Contains(risks, `<span class="count">1</span>`) {
+		t.Errorf("the top bar's Risks doesn't count the Goal: %s", risks)
+	}
+
+	for _, c := range []struct {
+		viewer, label, href string
+		primary             bool
+	}{
+		{"sam@example.com", "Check in", goal + "/checkin", true},
+		{"kim@example.com", "Nudge", goal + "/nudge", false},
+	} {
+		page := getBody(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/risks?org=all")
+		label, href, primary := riskFix(t, riskRowOf(t, page, g))
+		if label != c.label || href != c.href || primary != c.primary {
+			t.Errorf("%s sees Fix %q → %s (primary %v), want %q → %s (primary %v)", c.viewer, label, href, primary, c.label, c.href, c.primary)
+		}
 	}
 }

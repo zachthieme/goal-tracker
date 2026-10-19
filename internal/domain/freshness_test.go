@@ -385,3 +385,128 @@ func TestCadenceCountsCalendarDaysAcrossDaylightSaving(t *testing.T) {
 		}
 	}
 }
+
+// An Active Goal whose latest Check-in is Green while a Milestone is still
+// Planned past its date is marked Milestone overdue, naming that Milestone,
+// and listed so; the Health stays the Owner's, and the Goal isn't Stale.
+func TestGreenGoalWithAnOverdueMilestoneIsMarkedMilestoneOverdue(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g, beta := h.GreenGoalWithOverdueMilestone(sam, "Ship search")
+
+	f := h.Freshness(g.ID)
+	if !f.MilestoneOverdue || f.OverdueMilestone != "Beta" || !f.OverdueMilestoneDate.Equal(beta.TargetDate) || f.Stale {
+		t.Errorf("MilestoneOverdue, OverdueMilestone, OverdueMilestoneDate, Stale = %v, %q, %v, %v; want true, \"Beta\", %v, false",
+			f.MilestoneOverdue, f.OverdueMilestone, f.OverdueMilestoneDate, f.Stale, beta.TargetDate)
+	}
+	got, err := h.Service.FreshnessSignals(context.Background())
+	if err != nil {
+		t.Fatalf("FreshnessSignals: %v", err)
+	}
+	if len(got.OverdueMilestones) != 1 || got.OverdueMilestones[0].Goal.ID != g.ID || got.OverdueMilestones[0].Freshness.OverdueMilestone != "Beta" {
+		t.Errorf("OverdueMilestones = %+v, want only %q, its Beta overdue", got.OverdueMilestones, g.Title)
+	}
+	if len(got.Stale) != 0 {
+		t.Errorf("Stale = %+v, want none", got.Stale)
+	}
+}
+
+// Only a Green Goal is marked Milestone overdue: a Yellow one with the same
+// overdue Milestone isn't, nor is a Green one whose Milestone is due today,
+// not before, nor an On Hold one. None is listed.
+func TestOnlyAnActiveGreenGoalPastAMilestoneIsMarkedMilestoneOverdue(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	ctx := context.Background()
+
+	paused, _ := h.GreenGoalWithOverdueMilestone(sam, "Paused work")
+	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+		GoalID: paused.ID, AuthorID: sam.ID, Status: "Putting this On Hold.",
+		Lifecycle: domain.LifecycleOnHold, LifecycleReason: "Budget freeze.",
+	}); err != nil {
+		t.Fatalf("SubmitCheckin On Hold: %v", err)
+	}
+	yellow, _ := h.GreenGoalWithOverdueMilestone(sam, "Slipping work")
+	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Beta slipped.", "Move Beta.", h.Clock.Now().AddDate(0, 1, 0))
+
+	dueToday := h.ActiveGoal(sam, "Due today", "It matters.")
+	milestones, err := h.Service.ListMilestones(ctx, dueToday.ID)
+	if err != nil {
+		t.Fatalf("ListMilestones: %v", err)
+	}
+	h.Clock.Set(milestones[0].TargetDate.Add(9 * time.Hour))
+	h.Checkin(sam, dueToday.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Set(milestones[0].TargetDate.Add(23 * time.Hour))
+
+	for _, g := range []domain.Goal{paused, yellow, dueToday} {
+		if f := h.Freshness(g.ID); f.MilestoneOverdue {
+			t.Errorf("%q is marked Milestone overdue (%q)", g.Title, f.OverdueMilestone)
+		}
+	}
+	got, err := h.Service.FreshnessSignals(ctx)
+	if err != nil {
+		t.Fatalf("FreshnessSignals: %v", err)
+	}
+	if len(got.OverdueMilestones) != 0 {
+		t.Errorf("OverdueMilestones = %+v, want none", got.OverdueMilestones)
+	}
+}
+
+// A Milestone's date passes in the Goal's Owner's Timezone (CONTEXT.md:
+// Timezone), as the Check-in refusals judge it: at 4pm UTC on Beta's date it is
+// already the next day in Tokyo, so a Tokyo Owner's Green Goal is marked and
+// listed, while one whose Owner has no Timezone isn't yet. With several
+// overdue, the earliest-dated one counts, and the list runs earliest first.
+func TestMilestoneOverdueIsJudgedInTheOwnersTimezone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	kenji := h.SignIn("kenji@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.SetTimezone(kenji, "Asia/Tokyo")
+	beta := time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC)
+	tokyo := h.CreateGoal(kenji, "Ship search", "People can't find things.")
+	plain := h.CreateGoal(sam, "Reduce outages", "Outages cost trust.")
+	for _, g := range []domain.Goal{tokyo, plain} {
+		if _, err := h.Service.MarkGoalDated(ctx, g.ID, beta.AddDate(0, 6, 0)); err != nil {
+			t.Fatalf("MarkGoalDated: %v", err)
+		}
+		if _, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta", TargetDate: beta}); err != nil {
+			t.Fatalf("AddMilestone: %v", err)
+		}
+		if _, err := h.Service.ActivateGoal(ctx, g.ID); err != nil {
+			t.Fatalf("ActivateGoal: %v", err)
+		}
+	}
+	if _, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{GoalID: plain.ID, Name: "Alpha", TargetDate: beta.AddDate(0, 0, -3)}); err != nil {
+		t.Fatalf("AddMilestone: %v", err)
+	}
+	h.Clock.Set(beta.AddDate(0, 0, -5))
+	h.Checkin(kenji, tokyo.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Checkin(sam, plain.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	h.Clock.Set(beta.Add(16 * time.Hour)) // Jan 21, 1am in Tokyo
+	if f := h.Freshness(tokyo.ID); !f.MilestoneOverdue || f.OverdueMilestone != "Beta" {
+		t.Errorf("Tokyo Owner's Goal: MilestoneOverdue, OverdueMilestone = %v, %q; want Beta overdue the day after its date there", f.MilestoneOverdue, f.OverdueMilestone)
+	}
+	if f := h.Freshness(plain.ID); f.OverdueMilestone != "Alpha" || !f.OverdueMilestoneDate.Equal(beta.AddDate(0, 0, -3)) {
+		t.Errorf("Goal of an Owner with no Timezone: OverdueMilestone, OverdueMilestoneDate = %q, %v; want Alpha, the earliest overdue, not Beta, due today in the company's",
+			f.OverdueMilestone, f.OverdueMilestoneDate)
+	}
+	got, err := h.Service.FreshnessSignals(ctx)
+	if err != nil {
+		t.Fatalf("FreshnessSignals: %v", err)
+	}
+	var titles []string
+	for _, gf := range got.OverdueMilestones {
+		titles = append(titles, gf.Goal.Title+": "+gf.Freshness.OverdueMilestone)
+	}
+	if want := []string{"Reduce outages: Alpha", "Ship search: Beta"}; !equalStrings(titles, want) {
+		t.Errorf("OverdueMilestones = %q, want %q (earliest Milestone first)", titles, want)
+	}
+}

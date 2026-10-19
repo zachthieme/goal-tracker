@@ -188,8 +188,9 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     );
     await expect(row.getByTestId("risk-fix")).toHaveCount(1);
 
-    // On everyone's Goals list it sorts with the Stale and overdue Goals,
-    // above every Yellow and Green Goal without a mark.
+    // On everyone's Goals list it sorts with the Stale and overdue Goals, a
+    // Green one marked Milestone overdue among them, above every Yellow and
+    // Green Goal without a mark.
     await page.goto("/goals?org=all");
     await expect(goalRow(page, project.title).getByTestId("path-overdue")).toBeVisible();
     const rows = await page.getByTestId("goal-row").evaluateAll((trs) =>
@@ -197,7 +198,9 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
         title: tr.querySelector("td:nth-child(2) a")?.textContent?.trim() ?? "",
         health: tr.querySelector('[data-testid="goal-row-health"]')?.textContent?.trim() ?? "",
         marked:
-          tr.querySelector('[data-testid="ownerless"], [data-testid="stale"], [data-testid="path-overdue"]') !== null,
+          tr.querySelector(
+            '[data-testid="ownerless"], [data-testid="stale"], [data-testid="path-overdue"], [data-testid="milestone-overdue"]',
+          ) !== null,
       })),
     );
     const at = rows.findIndex((r) => r.title === project.title);
