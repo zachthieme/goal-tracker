@@ -189,6 +189,43 @@ func TestDevSignInRefusesOIDCVariables(t *testing.T) {
 	}
 }
 
+// An OIDC client secret of only whitespace counts as unset, and organization
+// sign-in names it as missing.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestABlankOIDCClientSecretIsMissing(t *testing.T) {
+	oidcEnv(t)
+	setOIDCVars(t)
+	t.Setenv("GOAL_TRACKER_OIDC_CLIENT_SECRET", "  ")
+
+	_, err := loadConfig()
+	if err == nil {
+		t.Fatal("loadConfig accepted an OIDC client secret of only whitespace")
+	}
+	if !strings.Contains(err.Error(), "GOAL_TRACKER_OIDC_CLIENT_SECRET") {
+		t.Errorf("error %q doesn't name GOAL_TRACKER_OIDC_CLIENT_SECRET", err)
+	}
+}
+
+// OIDC variables of only whitespace aren't set, so the development form
+// doesn't refuse them.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestDevSignInAcceptsBlankOIDCVariables(t *testing.T) {
+	devEnv(t)
+	for _, v := range oidcVars {
+		t.Setenv(v, "  ")
+	}
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig refused GOAL_TRACKER_SIGNIN=dev with blank OIDC variables: %v", err)
+	}
+	if cfg.oidc != nil {
+		t.Errorf("OIDC is on with the development form chosen: %+v", cfg.oidc)
+	}
+}
+
 //nolint:paralleltest // sets the process environment, through clearAuthEnv
 func TestDevSignInLeavesTheDevelopmentForm(t *testing.T) {
 	devEnv(t)
@@ -329,6 +366,60 @@ func TestDirectoryFileWithAuthentikNamesBothSources(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// A directory token of only whitespace counts as unset, so the URL without it
+// stops startup, naming the token, instead of failing every sync.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestABlankDirectoryTokenIsMissing(t *testing.T) {
+	devEnv(t)
+	t.Setenv("GOAL_TRACKER_DIRECTORY_URL", "http://localhost:9000")
+	t.Setenv("GOAL_TRACKER_DIRECTORY_TOKEN", " \t")
+
+	_, err := loadConfig()
+	if err == nil {
+		t.Fatal("loadConfig accepted a directory token of only whitespace")
+	}
+	if !strings.Contains(err.Error(), "missing GOAL_TRACKER_DIRECTORY_TOKEN") {
+		t.Errorf("error %q doesn't name GOAL_TRACKER_DIRECTORY_TOKEN as missing", err)
+	}
+}
+
+// Directory variables of only whitespace are all unset: there is no sync.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestBlankDirectoryVariablesLeaveTheSyncOff(t *testing.T) {
+	devEnv(t)
+	for _, v := range append(slices.Clone(directoryVars), directoryFileVar) {
+		t.Setenv(v, "  ")
+	}
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.directory != nil {
+		t.Errorf("the directory sync is on with its variables blank: %+v", cfg.directory)
+	}
+}
+
+// Whitespace around the directory URL and token, as from a stray space in an
+// env file, isn't kept.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestDirectoryVariablesAreTrimmed(t *testing.T) {
+	devEnv(t)
+	t.Setenv("GOAL_TRACKER_DIRECTORY_URL", " http://localhost:9000 ")
+	t.Setenv("GOAL_TRACKER_DIRECTORY_TOKEN", "\ttoken \n")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.directory == nil || cfg.directory.url != "http://localhost:9000" || cfg.directory.token != "token" {
+		t.Errorf("directory = %+v, want the URL and token trimmed", cfg.directory)
 	}
 }
 

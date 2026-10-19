@@ -167,7 +167,7 @@ templ adminDirectorySync(v directorySyncView) {
 			} else {
 				<p data-testid="admin-directory-sync-status">{ fmt.Sprintf("Last synced %s. Read %s.", v.At, directorySyncPeople(v.People)) }</p>
 			}
-			<form method="post" action="/admin/directory-sync">
+			<form method="post" action="/admin/directory-sync" onsubmit={ syncingScript }>
 				<button type="submit" class="btn sm">Sync now</button>
 			</form>
 		</div>

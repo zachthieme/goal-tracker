@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/a-h/templ"
+
 	"github.com/zachthieme/goal-tracker/internal/directory"
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -223,6 +225,13 @@ func directorySyncPeople(n int) string {
 	}
 	return strconv.Itoa(n) + " people"
 }
+
+// syncingScript shows Sync now's form busy once it's sent, as the sync runs
+// inside the request: the form is marked aria-busy, and its button is disabled
+// and reads "Syncing…". It lets the form post.
+var syncingScript = templ.JSUnsafeFuncCall("this.setAttribute('aria-busy', 'true'); " +
+	"const button = this.querySelector('button'); button.disabled = true; button.textContent = 'Syncing…'; " +
+	"return true")
 
 // handleDirectorySyncNow runs the directory sync at once, then brings the Admin
 // back to the Admin page showing how it went. Only an Admin may.
