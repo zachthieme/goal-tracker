@@ -723,11 +723,11 @@ func goalFormDelivery(v goalFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = kindChoice(v, domain.GoalDated, "Has a delivery date; its Health is judged against that date and its Milestones.").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = kindChoice(v, domain.GoalDated, datedHelp).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = kindChoice(v, domain.GoalOngoing, "Has no delivery date; its Health is judged against its Metrics' targets.").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = kindChoice(v, domain.GoalOngoing, ongoingHelp).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
