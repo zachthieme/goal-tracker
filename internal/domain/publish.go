@@ -21,6 +21,9 @@ type Publication struct {
 	// same way the snapshot freezes its Owners.
 	PublishedBy Account
 	PublishedAt time.Time
+	// Scope is the Report's selection in plain words, as it read when
+	// published; empty for publications from before selections were frozen.
+	Scope string
 	// Report is the Report as it read when published, exactly as rendered. It
 	// is stored as JSON of the Report view model, so renaming a field of
 	// Report (or of a type it holds) drops that field from earlier snapshots.
@@ -28,11 +31,13 @@ type Publication struct {
 }
 
 // snapshot is a Publication as stored: the Report as it read when published
-// and, beside it, the publisher as they were shown then. A snapshot frozen
-// before publishers were has no PublishedBy.
+// and, beside it, the publisher as they were shown then and the Report's
+// selection in plain words. A snapshot frozen before publishers were has no
+// PublishedBy, and one frozen before selections were has no Scope.
 type snapshot struct {
 	Report
 	PublishedBy *Account `json:",omitempty"`
+	Scope       string   `json:",omitempty"`
 }
 
 // PreviousPublication identifies the publication a Report reads its changes
@@ -44,9 +49,9 @@ type PreviousPublication struct {
 
 // PublishReport publishes the Report Definition defID: it drafts the Report
 // against baseline, as DraftReport does — so by default against the previous
-// publication — and freezes the result, its curated narrative included. The
-// next publication's narrative then starts empty. Anyone signed in may
-// publish; actorID records who did.
+// publication — and freezes the result, its curated narrative included, and
+// how it selects in plain words. The next publication's narrative then starts
+// empty. Anyone signed in may publish; actorID records who did.
 func (s *Service) PublishReport(ctx context.Context, actorID, defID int64, baseline time.Time) (Publication, error) {
 	def, err := s.GetReportDefinition(ctx, defID)
 	if err != nil {
@@ -60,7 +65,11 @@ func (s *Service) PublishReport(ctx context.Context, actorID, defID int64, basel
 	if err != nil {
 		return Publication{}, err
 	}
-	frozen, err := json.Marshal(snapshot{Report: report, PublishedBy: &publisher})
+	scope, err := s.reportScope(ctx, def)
+	if err != nil {
+		return Publication{}, err
+	}
+	frozen, err := json.Marshal(snapshot{Report: report, PublishedBy: &publisher, Scope: scope})
 	if err != nil {
 		return Publication{}, fmt.Errorf("freeze report: %w", err)
 	}
@@ -128,6 +137,7 @@ func (s *Service) publicationFromRow(ctx context.Context, row db.ReportPublicati
 		DefinitionID: row.ReportDefinitionID,
 		PublishedBy:  by,
 		PublishedAt:  publishedAt,
+		Scope:        snap.Scope,
 		Report:       snap.Report,
 	}, nil
 }

@@ -636,3 +636,92 @@ func TestSnapshotFromBeforeChangesHasNone(t *testing.T) {
 		t.Errorf("pre-changes snapshot movement %+v, want none", got.Report.Movement)
 	}
 }
+
+// A publication freezes how its Report selected, in the same plain words as
+// the "how this Report selects" summary, as it read when published: editing
+// the definition's rules changes the next publication's selection, not this
+// one's.
+func TestPublicationFreezesItsSelection(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignInNamed("boss@example.com", "Dana Okafor")
+	h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:  "MBR",
+		Mode:  domain.ReportModeRules,
+		Rules: []domain.ReportRule{ownerRule(domain.RuleIs, boss), namedRule(domain.RuleLifecycle, domain.RuleIs, domain.LifecycleActive)},
+	})
+	pub := h.PublishReport(boss, def)
+	if got, want := pub.Scope, "Owner: Dana Okafor · Active"; got != want {
+		t.Errorf("published selection %q, want %q", got, want)
+	}
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if want := "Owner: Dana Okafor · Active"; got.Scope != want {
+		t.Errorf("reloaded selection %q, want %q", got.Scope, want)
+	}
+
+	h.Clock.Advance(day)
+	updated, err := h.Service.UpdateReportDefinition(ctx, boss.ID, def.ID, domain.SaveReportDefinitionInput{
+		Name:  "MBR",
+		Mode:  domain.ReportModeRules,
+		Rules: []domain.ReportRule{namedRule(domain.RuleLifecycle, domain.RuleIs, domain.LifecycleOnHold)},
+	})
+	if err != nil {
+		t.Fatalf("UpdateReportDefinition: %v", err)
+	}
+	got, err = h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if want := "Owner: Dana Okafor · Active"; got.Scope != want {
+		t.Errorf("selection after editing the rules %q, want as published %q", got.Scope, want)
+	}
+	if next, want := h.PublishReport(boss, updated), "On Hold"; next.Scope != want {
+		t.Errorf("next publication's selection %q, want %q", next.Scope, want)
+	}
+}
+
+// A picked definition's publication says how many Goals were picked by hand.
+func TestPickedPublicationFreezesItsSelection(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	one := h.ActiveGoal(boss, "One", "why")
+	two := h.ActiveGoal(boss, "Two", "why")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{one.ID, two.ID}})
+	if got, want := h.PublishReport(boss, def).Scope, "2 Goals picked by hand"; got != want {
+		t.Errorf("published selection %q, want %q", got, want)
+	}
+}
+
+// A snapshot frozen before selections were has no selection.
+func TestSnapshotFromBeforeSelectionsHasNone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = json_remove(snapshot, '$.Scope') WHERE id = ?`, pub.ID); err != nil {
+		t.Fatalf("write a pre-selection snapshot: %v", err)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if got.Scope != "" {
+		t.Errorf("pre-selection snapshot's selection %q, want none", got.Scope)
+	}
+	if got.Report.Definition.Name != "MBR" {
+		t.Errorf("pre-selection snapshot's Report %q, want it kept", got.Report.Definition.Name)
+	}
+}
