@@ -46,7 +46,7 @@ test: ## Run the Go tests with the race detector
 test-quick: ## Run the Go tests without the race detector
 	go test -count=1 ./...
 
-lint: ## Run golangci-lint
+lint: ## Run golangci-lint (linters and gofmt)
 	golangci-lint run
 
 # The tests of the verification scripts in scripts/ (see scripts/README.md).
