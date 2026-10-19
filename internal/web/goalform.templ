@@ -79,9 +79,10 @@ const goalFormReadyID = "goal-form-ready"
 // many of the activation checklist's items the form meets, as a bar and "n of
 // m", each item done or missing, and the submit buttons. Create and activate
 // posts activate=1 and is disabled while the live checklist is incomplete;
-// Save as Proposed needs only a Title and So What. Save as Proposed comes
-// first in the markup, so Enter in a text field saves as Proposed, while CSS
-// order shows Create and activate first.
+// Save as Proposed needs a Title and So What, plus the delivery date when
+// Dated is chosen. Save as Proposed comes first in the markup, so Enter in a
+// text field saves as Proposed, while CSS order shows Create and activate
+// first.
 templ goalFormReady(v goalFormView) {
 	{{ done, of := v.readyCount() }}
 	<aside data-testid="goal-form-ready" id={ goalFormReadyID } class="card gf-ready" aria-labelledby="goal-form-ready-head">
@@ -109,7 +110,7 @@ templ goalFormReady(v goalFormView) {
 			<button type="submit" class="btn">Save as Proposed</button>
 			<button type="submit" id={ domain.InputActivate } name={ domain.InputActivate } value="1" class="btn primary gf-activate" disabled?={ v.activateDisabled() }>Create and activate</button>
 		</div>
-		<p class="muted small">Only Title and So What are needed to save.</p>
+		<p class="muted small">Saving needs a Title and So What, and a delivery date if Dated is chosen.</p>
 		<a class="small gf-cancel" href={ v.cancelURL() }>Cancel</a>
 	</aside>
 }

@@ -14,8 +14,9 @@ import (
 )
 
 // DefinedGoalInput is the create-a-defined-Goal command's input: everything
-// the single-page New goal form gathers. Only Title, So What and the Owner are
-// required; the rest defines as much of the Goal as the Owner has to hand.
+// the single-page New goal form gathers. Title, So What and the Owner are
+// required, and a Dated Goal also needs its delivery date; the rest defines as
+// much of the Goal as the Owner has to hand.
 type DefinedGoalInput struct {
 	Title  string
 	SoWhat string
