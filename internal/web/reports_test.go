@@ -3401,3 +3401,128 @@ func TestPublicationIsDatedWithItsYearInTheOrgsTimezoneOverHTTP(t *testing.T) {
 		t.Errorf("the Reports list doesn't date the publication Jan 3, 2026:\n%s", row)
 	}
 }
+
+// A Report opens with a line counting what moved since its baseline, under its
+// Health tiles on the draft and the publication and under the byline on Print;
+// each exception block opens with what changed on it, and the exceptions come
+// worst first on every page (CONTEXT.md: Report).
+func TestReportSaysWhatMovedSinceTheBaselineOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	checkin := func(g domain.Goal, health string) {
+		if health == domain.HealthGreen {
+			h.Checkin(boss, g.ID, health, "On track.", "", time.Time{})
+			return
+		}
+		h.Checkin(boss, g.ID, health, "Status.", "Path.", h.Clock.Now().AddDate(0, 1, 0))
+	}
+	recovered := h.ActiveGoal(boss, "Recovered", "why")
+	staysRed := h.ActiveGoal(boss, "Stays Red", "why")
+	turnedRed := h.ActiveGoal(boss, "Turned Red", "why")
+	checkin(recovered, domain.HealthYellow)
+	checkin(staysRed, domain.HealthRed)
+	checkin(turnedRed, domain.HealthGreen)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:  "MBR",
+		Mode:  domain.ReportModeRules,
+		Rules: []domain.ReportRule{{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{strconv.FormatInt(boss.ID, 10)}}},
+	})
+	h.PublishReport(boss, def)
+	h.Clock.Advance(24 * time.Hour)
+	checkin(recovered, domain.HealthGreen)
+	checkin(staysRed, domain.HealthRed)
+	checkin(turnedRed, domain.HealthRed)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := fmt.Sprintf("%s/reports/%d", ts.URL, def.ID)
+	worstFirst := []string{"Turned Red", "Stays Red", "Recovered"}
+	exceptions := func(page string) []string {
+		var out []string
+		for _, m := range regexp.MustCompile(`<article data-testid="report-exception"[^>]*>\s*<div class="rp-card-head">\s*<div>\s*<h3><a [^>]*>([^<]*)</a>`).FindAllStringSubmatch(page, -1) {
+			out = append(out, m[1])
+		}
+		return out
+	}
+	movement := "Since the previous publication: 1 turned Red · 1 back to Green"
+
+	draft := getBody(t, client, reportURL)
+	if got := elementTexts(draft, "p", "report-movement"); !slices.Equal(got, []string{movement}) {
+		t.Errorf("the draft's movement line reads %q, want %q", got, movement)
+	}
+	if tiles, line := strings.Index(draft, `data-testid="health-summary"`), strings.Index(draft, `data-testid="report-movement"`); tiles < 0 || line < tiles {
+		t.Errorf("the draft's movement line doesn't come under its Health tiles")
+	}
+	if got := exceptions(draft); !slices.Equal(got, worstFirst) {
+		t.Errorf("the draft's exceptions come %q, want %q", got, worstFirst)
+	}
+	if got := elementTexts(reportBlockFor(t, draft, turnedRed), "p", "report-changes"); !slices.Equal(got, []string{"Changed: Turned Red"}) {
+		t.Errorf("the changed block's line reads %q, want [Changed: Turned Red]", got)
+	}
+	if got := elementTexts(reportBlockFor(t, draft, recovered), "span", "report-change"); !slices.Equal(got, []string{"Back to Green"}) {
+		t.Errorf("the recovered block's changes read %q, want [Back to Green]", got)
+	}
+	if block := reportBlockFor(t, draft, staysRed); strings.Contains(block, `data-testid="report-changes"`) {
+		t.Errorf("the standing Red block says something changed; block:\n%s", block)
+	}
+
+	againstDate := getBody(t, client, reportURL+"?baseline=2026-01-03")
+	if want := "Since Jan 3, 2026: 1 turned Red · 1 back to Green"; !slices.Equal(elementTexts(againstDate, "p", "report-movement"), []string{want}) {
+		t.Errorf("the draft against a date's movement line reads %q, want %q", elementTexts(againstDate, "p", "report-movement"), want)
+	}
+
+	pub := h.PublishReport(boss, def)
+	pubURL := fmt.Sprintf("%s/publications/%d", reportURL, pub.ID)
+	publication := getBody(t, client, pubURL)
+	if got := elementTexts(publication, "p", "report-movement"); !slices.Equal(got, []string{movement}) {
+		t.Errorf("the publication's movement line reads %q, want %q", got, movement)
+	}
+	if got := exceptions(publication); !slices.Equal(got, worstFirst) {
+		t.Errorf("the publication's exceptions come %q, want %q", got, worstFirst)
+	}
+	print := getBody(t, client, pubURL+"/print")
+	if got := elementTexts(print, "p", "report-movement"); !slices.Equal(got, []string{movement}) {
+		t.Errorf("the Print page's movement line reads %q, want %q", got, movement)
+	}
+	if byline, line := strings.Index(print, `data-testid="report-published"`), strings.Index(print, `data-testid="report-movement"`); byline < 0 || line < byline {
+		t.Errorf("the Print page's movement line doesn't come under its byline")
+	}
+	if got := exceptions(print); !slices.Equal(got, worstFirst) {
+		t.Errorf("the Print page's exceptions come %q, want %q", got, worstFirst)
+	}
+
+	if want := "No movement since the previous publication."; !slices.Equal(elementTexts(getBody(t, client, reportURL), "p", "report-movement"), []string{want}) {
+		t.Errorf("with nothing changed since, the draft's movement line reads %q, want %q", elementTexts(getBody(t, client, reportURL), "p", "report-movement"), want)
+	}
+}
+
+// A publication from before Reports said what moved and what changed renders
+// with neither line.
+func TestPublicationFromBeforeMovementHasNoMovementLineOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	old := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","SoWhat":"Expand the market.",` +
+		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","PriorHealth":"Green","Status":"Vendor is gone."}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, old, pub.ID); err != nil {
+		t.Fatalf("write an older snapshot: %v", err)
+	}
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	pubURL := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
+	for name, page := range map[string]string{"publication": getBody(t, client, pubURL), "Print page": getBody(t, client, pubURL+"/print")} {
+		if strings.Contains(page, `data-testid="report-movement"`) || strings.Contains(page, `data-testid="report-changes"`) {
+			t.Errorf("the older %s shows a movement or a changes line it never had", name)
+		}
+		if !strings.Contains(reportBlockFor(t, page, g), "Vendor is gone.") {
+			t.Errorf("the older %s does not render its block as published", name)
+		}
+	}
+}

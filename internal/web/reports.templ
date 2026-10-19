@@ -372,7 +372,9 @@ templ publicationPage(current *domain.Account, p domain.Publication, d discussio
 }
 
 // publicationPrintPage is a published Report on its own, without the app's
-// navigation, styled to print to PDF from the browser.
+// navigation, styled to print to PDF from the browser. It has no Health
+// tiles, so the line counting what moved since the baseline sits under the
+// byline.
 templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 	<!DOCTYPE html>
 	<html lang="en">
@@ -466,6 +468,7 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 			</p>
 			<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
 			@publishedLine(p, loc)
+			@reportMovement(p.Report)
 			<section data-testid="report-snapshot">
 				@reportBody(p.Report, p.PublishedAt, discussion{Loc: loc})
 			</section>
@@ -474,10 +477,12 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 }
 
 // reportContent is what a reader of a Report sees, published or previewed on
-// the draft: the Health summary, then the Report's body. The draft previews
-// through it so its preview is the publication.
+// the draft: the Health summary, the line counting what moved since the
+// baseline, then the Report's body. The draft previews through it so its
+// preview is the publication.
 templ reportContent(r domain.Report, asOf time.Time, d discussion) {
 	@healthSummary(r)
+	@reportMovement(r)
 	<section data-testid="report-snapshot" class="rp-body">
 		@reportBody(r, asOf, d)
 	</section>
@@ -497,6 +502,37 @@ templ healthSummary(r domain.Report) {
 	</section>
 }
 
+// reportMovement is the line counting the Goals that moved since the Report's
+// baseline, its previous publication or a date ("Since the previous
+// publication: 2 turned Red · 1 back to Green"). A Report frozen before
+// Reports counted it has none to show.
+templ reportMovement(r domain.Report) {
+	if r.Movement != nil {
+		<p data-testid="report-movement">
+			if parts := r.Movement.Parts(); len(parts) > 0 {
+				<strong>{ reportMovementLead(r) + ":" }</strong>{ " " + strings.Join(parts, " · ") }
+			} else {
+				{ "No movement since " + reportMovementSince(r) + "." }
+			}
+		</p>
+	}
+}
+
+// reportMovementLead opens the movement line with what it counts against:
+// "Since the previous publication", or "Since" its baseline date.
+func reportMovementLead(r domain.Report) string {
+	return "Since " + reportMovementSince(r)
+}
+
+// reportMovementSince is what the Report reads changes against, as the
+// movement line names it: "the previous publication", or its baseline date.
+func reportMovementSince(r domain.Report) string {
+	if r.Previous.ID != 0 {
+		return "the previous publication"
+	}
+	return showDateYear(r.Baseline)
+}
+
 // publishedLine says who published a Report and when, and what it read its
 // changes against, its times in the org's timezone (loc).
 templ publishedLine(p domain.Publication, loc *time.Location) {
@@ -513,7 +549,8 @@ templ publishedLine(p domain.Publication, loc *time.Location) {
 
 // reportBody is a Report's content, drafted or published: its open Action
 // Items, the introduction, the narrative curated from Highlights, then the
-// exceptions that need attention, counted, each a card with the full MBR block, and
+// exceptions that need attention, counted and worst first, each a card with
+// the full MBR block opening with what changed on it since the baseline, and
 // every other selected Goal on track, one table row with its Health, title,
 // Owner, and due date (CONTEXT.md: Report), and last the Goals that entered or
 // left since the latest publication. A Path to Green is judged overdue as of
@@ -779,7 +816,8 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 
 // reportBlock is an exception Goal's full MBR block, as a card: title, Owner,
 // Lifecycle, and due date with its history struck through; Health and badges
-// top right; So What, latest status, and Path to Green in a tinted box, marked
+// top right; under them, when it changed since the baseline, a line saying
+// what changed ("Changed: Turned Red · 1 Milestone slipped"); So What, latest status, and Path to Green in a tinted box, marked
 // Overdue when its target date passed before asOf; Milestones, Metrics against
 // target, and the Rolled-up Health with the Owner's explanation. A Health that
 // changed since the baseline reads with what it was ("Yellow · was Green"). The
@@ -818,6 +856,17 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 				}
 			</div>
 		</div>
+		if len(b.Changes) > 0 {
+			<p data-testid="report-changes" class="small">
+				<strong>Changed:</strong>{ " " }
+				for i, c := range b.Changes {
+					if i > 0 {
+						{ " · " }
+					}
+					<span data-testid="report-change">{ c }</span>
+				}
+			</p>
+		}
 		@reportFields(b.Fields, d.dates())
 		<div data-testid="report-status-box" class={ "rp-tint", templ.KV("overdue", pathOverdueAt(b, asOf)) }>
 			<p data-testid="report-so-what"><strong>So What:</strong> { b.Goal.SoWhat }</p>
