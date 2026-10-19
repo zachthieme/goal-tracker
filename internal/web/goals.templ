@@ -602,7 +602,7 @@ templ goalsStyles() {
 
 // goalPage shows a single Goal: a header summarizing it with every action in
 // reach and its So What beneath, then its latest status, Metrics, Milestones,
-// Highlights and history in the main column, and its links, people,
+// Highlights, Comments and history in the main column, and its links, people,
 // Dimension values and Fields in the sidebar. Only the latest status, each Metric and
 // Milestones are cards; the rest sit on the canvas under a rule.
 templ goalPage(current *domain.Account, v goalView) {
@@ -670,6 +670,7 @@ templ goalPage(current *domain.Account, v goalView) {
 						@highlightList(v.Highlights, v.dates())
 					</section>
 				}
+				@goalComments(current, v)
 				@goalHistory(v.History)
 			</div>
 			<aside data-testid="goal-sidebar" class="gp-col gp-side">
@@ -865,6 +866,8 @@ templ goalPageStyles() {
 		.gp-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
 		.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
 		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
+		.rp-thread{border-left:1px solid var(--color-border);padding-left:12px;margin:8px 0;display:flex;flex-direction:column;gap:8px}
+		.rp-reply{margin-left:24px}
 		.gp-values{border:0;margin:0;padding:0;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 		.gp-form{display:flex;flex-direction:column;gap:12px}
 		.gp-edit form{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}

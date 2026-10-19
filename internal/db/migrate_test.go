@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -188,6 +189,79 @@ func TestMigrationKeepsHighlightsAndAllowsSeveralPerCheckin(t *testing.T) {
 	if _, err := sqlDB.Exec(`INSERT INTO highlights (checkin_id, kind, note, created_at)
 		VALUES (10, 'Accomplishment', 'Cut MTTR in half.', '2026-01-02T00:00:00Z')`); err != nil {
 		t.Errorf("a second Highlight on the same Check-in: %v", err)
+	}
+}
+
+// Comments made on a Report before a Comment could be made on the Goal itself
+// keep every column on upgrade, and the table no longer claims every Comment
+// is on a publication (CONTEXT.md: Comment).
+func TestMigrationKeepsReportCommentsAndFreesThePublication(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := migratedExcept(t, "migrations/0049_goal_comments.sql")
+	// Put back the table as 0016 made it: every Comment on a publication.
+	if _, err := sqlDB.Exec(`
+		DROP TABLE comments;
+		CREATE TABLE comments (
+			id             INTEGER PRIMARY KEY,
+			publication_id INTEGER NOT NULL REFERENCES report_publications(id),
+			goal_id        INTEGER NOT NULL REFERENCES goals(id),
+			parent_id      INTEGER NOT NULL DEFAULT 0,
+			author_id      INTEGER NOT NULL REFERENCES accounts(id),
+			body           TEXT    NOT NULL,
+			created_at     TEXT    NOT NULL
+		);
+		CREATE INDEX idx_comments_publication ON comments (publication_id);
+		INSERT INTO comments (id, publication_id, goal_id, parent_id, author_id, body, created_at) VALUES
+			(4, 2, 9, 0, 7, 'Second vendor quote?', '2026-01-09T00:00:00Z'),
+			(6, 2, 9, 4, 8, 'Asked on Monday.', '2026-01-10T00:00:00Z')`); err != nil {
+		t.Fatalf("arrange 0016 comments: %v", err)
+	}
+
+	if err := db.Migrate(sqlDB); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	rows, err := sqlDB.Query(`SELECT id, publication_id, goal_id, parent_id, author_id, body, created_at
+		FROM comments ORDER BY id`)
+	if err != nil {
+		t.Fatalf("read comments: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var got []string
+	for rows.Next() {
+		var id, pubID, goalID, parentID, authorID int64
+		var body, createdAt string
+		if err := rows.Scan(&id, &pubID, &goalID, &parentID, &authorID, &body, &createdAt); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got = append(got, fmt.Sprintf("%d pub %d goal %d parent %d author %d %s %s",
+			id, pubID, goalID, parentID, authorID, body, createdAt))
+	}
+	want := []string{
+		"4 pub 2 goal 9 parent 0 author 7 Second vendor quote? 2026-01-09T00:00:00Z",
+		"6 pub 2 goal 9 parent 4 author 8 Asked on Monday. 2026-01-10T00:00:00Z",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("comments = %v, want %v", got, want)
+	}
+
+	var schema string
+	if err := sqlDB.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'comments'`).Scan(&schema); err != nil {
+		t.Fatalf("read comments schema: %v", err)
+	}
+	if strings.Contains(schema, "REFERENCES report_publications") {
+		t.Errorf("comments still references report_publications: %s", schema)
+	}
+	for _, index := range []string{"idx_comments_publication", "idx_comments_goal"} {
+		var n int
+		if err := sqlDB.QueryRow(`SELECT count(*) FROM sqlite_master
+			WHERE type = 'index' AND name = ? AND tbl_name = 'comments'`, index).Scan(&n); err != nil {
+			t.Fatalf("look up %s: %v", index, err)
+		}
+		if n != 1 {
+			t.Errorf("index %s missing on comments", index)
+		}
 	}
 }
 

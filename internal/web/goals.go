@@ -825,6 +825,14 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("load action item reassignments: %w", err)
 	}
+	threads, err := s.svc.GoalThreads(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("load comment threads: %w", err)
+	}
+	comments, err := s.svc.GoalComments(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("load comments: %w", err)
+	}
 	// The Owner decides every open suggestion; anyone else sees only their
 	// own, to withdraw (CONTEXT.md: Parent suggestion).
 	var suggested []domain.ParentSuggestion
@@ -925,6 +933,8 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		MilestoneAdditions: milestoneAdditions,
 		ActionItems:        actionItems,
 		ActionReassigns:    actionItemReassignments,
+		Threads:            threads,
+		Comments:           comments,
 		Now:                s.svc.Now(),
 	}
 	view.History = newHistory(view, s.svc.Timezone(), view.Now)
@@ -1047,6 +1057,12 @@ type goalView struct {
 	// ActionReassigns are the reassignments of the Action Items
 	// about the Goal, oldest first, for its History.
 	ActionReassigns []domain.ActionItemReassignment
+	// Threads are the comment threads started on the Goal itself, oldest
+	// first, for its Comments block. Comments are every Comment and reply
+	// about the Goal, on the Goal or on a Report, oldest first, for its
+	// History (CONTEXT.md: Comment).
+	Threads  []domain.Thread
+	Comments []domain.CommentListing
 	// History is the Goal's History as one timeline, newest first, showing the
 	// filter and page count the page's address asks for.
 	History history

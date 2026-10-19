@@ -30,6 +30,9 @@ const (
 	// historyActionItems lists the Action Items about the Goal: each one
 	// raised, reassigned and closed.
 	historyActionItems historyFilter = "action-items"
+	// historyComments lists every Comment and reply about the Goal, made on
+	// the Goal itself or on a Report.
+	historyComments historyFilter = "comments"
 )
 
 // historyFilters are the chips in the order they show, each with its label.
@@ -46,6 +49,7 @@ var historyFilters = []struct {
 	{historyLinks, "Links"},
 	{historyValues, "Values"},
 	{historyActionItems, "Action Items"},
+	{historyComments, "Comments"},
 }
 
 // historyFirstPage is how many entries the timeline shows at first, and
@@ -59,10 +63,11 @@ const (
 // Slips and Metric readings recorded in it, a So What revision, a change to
 // its title, an ownership change (a Handoff or an Admin Reassign), a change to
 // a Dimension value or Field, a Parent suggestion with its outcome, a Nudge, or
-// a change to one of its links, a Milestone added outside a Check-in, or an
-// Action Item about it raised, reassigned or closed.
+// a change to one of its links, a Milestone added outside a Check-in, an
+// Action Item about it raised, reassigned or closed, or a Comment or reply
+// about it, on the Goal itself or on a Report.
 // Exactly one of Checkin, Revision, Title, Handoff, Value, Suggestion, Nudge,
-// Link, Milestone, ActionItem and ActionReassign is set. A Check-in's
+// Link, Milestone, ActionItem, ActionReassign and Comment is set. A Check-in's
 // Highlights are the ones it carries.
 //
 // Folded, when set, makes the entry stand for a run of Check-ins that repeat
@@ -89,6 +94,7 @@ type historyEntry struct {
 	ActionItemEvent historyActionItemEvent
 	ActionRaisedFor domain.Account
 	ActionReassign  *domain.ActionItemReassignment
+	Comment         *domain.CommentListing
 }
 
 // historyActionItemEvent is what an ActionItem entry records of its Action
@@ -129,6 +135,8 @@ func (e historyEntry) kind() string {
 		return "milestone"
 	case e.ActionItem != nil, e.ActionReassign != nil:
 		return "action-item"
+	case e.Comment != nil:
+		return "comment"
 	}
 	return "value"
 }
@@ -160,6 +168,10 @@ func (e historyEntry) label() string {
 		return "Action Item raised"
 	case e.ActionReassign != nil:
 		return "Action Item reassigned"
+	case e.Comment != nil && e.Comment.Comment.ThreadID != 0:
+		return "Reply"
+	case e.Comment != nil:
+		return "Comment"
 	}
 	return "Value"
 }
@@ -186,6 +198,8 @@ func (e historyEntry) in(filter historyFilter) bool {
 		return e.Value != nil
 	case historyActionItems:
 		return e.ActionItem != nil || e.ActionReassign != nil
+	case historyComments:
+		return e.Comment != nil
 	}
 	return true
 }
@@ -208,9 +222,9 @@ type history struct {
 
 // newHistory gathers a Goal's Check-ins, Date Slips, Metric readings, So What
 // revisions, title changes, ownership changes, value changes, Parent suggestions, Nudges,
-// link changes, the Milestones added outside a Check-in and its Action Items'
-// raising, reassignments and closing into one timeline, newest first, showing
-// everything and the first page.
+// link changes, the Milestones added outside a Check-in, its Action Items'
+// raising, reassignments and closing, and every Comment and reply about it into
+// one timeline, newest first, showing everything and the first page.
 func newHistory(v goalView, loc *time.Location, now time.Time) history {
 	slipsBy := map[int64][]domain.DateSlip{}
 	for _, s := range v.DateSlips {
@@ -278,6 +292,9 @@ func newHistory(v goalView, loc *time.Location, now time.Time) history {
 			entries = append(entries, historyEntry{At: l.Item.ClosedAt, ActionItem: &l, ActionItemEvent: historyActionItemClosed})
 		}
 	}
+	for _, c := range v.Comments {
+		entries = append(entries, historyEntry{At: c.Comment.CreatedAt, Comment: &c})
+	}
 	// Newest first; entries made at the same moment keep the order they were
 	// recorded in, latest first.
 	slices.SortStableFunc(entries, func(a, b historyEntry) int {
@@ -313,6 +330,8 @@ func (e historyEntry) seq() int64 {
 		return e.ActionItem.Item.ID
 	case e.ActionReassign != nil:
 		return e.ActionReassign.ID
+	case e.Comment != nil:
+		return e.Comment.Comment.ID
 	}
 	return e.Value.ID
 }
@@ -680,6 +699,8 @@ func (h history) emptyText() string {
 		return "No value changes yet."
 	case historyActionItems:
 		return "No Action Items yet."
+	case historyComments:
+		return "No Comments yet."
 	}
 	return "Nothing has happened on this Goal yet."
 }

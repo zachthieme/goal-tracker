@@ -119,6 +119,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /reports/{id}/publications/{pub}/print", s.requireAuth(s.handlePrintPublication))
 	s.mux.HandleFunc("POST /reports/{id}/publications/{pub}/comments", s.requireAuth(s.handleAddComment))
 	s.mux.HandleFunc("POST /reports/{id}/publications/{pub}/action-items", s.requireAuth(s.handleRaiseActionItem))
+	s.mux.HandleFunc("POST /goals/{id}/comments", s.requireAuth(s.handleAddGoalComment))
 	s.mux.HandleFunc("POST /comments/{id}/replies", s.requireAuth(s.handleReplyToComment))
 	s.mux.HandleFunc("POST /action-items/{id}/close", s.requireAuth(s.handleCloseActionItem))
 	s.mux.HandleFunc("POST /action-items/{id}/reassign", s.requireAuth(s.handleReassignActionItem))
