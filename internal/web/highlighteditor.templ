@@ -83,11 +83,12 @@ templ highlightKindOptions(selected string) {
 
 // highlightEditorStyles lay out the editor and its items. What only script
 // can drive (.hl-js-only) shows once script has marked the container hl-js,
-// and what script replaces (.hl-no-js) hides then.
+// and what script replaces (.hl-no-js), and the summary of a <details> the
+// container sits in, hide then.
 templ highlightEditorStyles() {
 	<style>
 		[data-highlight-editor]:not(.hl-js) .hl-js-only{display:none}
-		.hl-js .hl-no-js{display:none}
+		.hl-js .hl-no-js,details:has(>.hl-js)>summary{display:none}
 		.hl-head{font-size:18px}
 		.hl-add{display:flex;flex-wrap:wrap;gap:8px}
 		.hl-items{display:flex;flex-direction:column;gap:8px}
@@ -124,11 +125,7 @@ templ highlightEditorScript() {
 			function upgrade(box) {
 				box.classList.add("hl-js");
 				var details = box.closest("details");
-				if (details) {
-					details.open = true;
-					var summary = details.querySelector(":scope > summary");
-					if (summary) summary.hidden = true;
-				}
+				if (details) details.open = true;
 				var scope = box.closest("form") || box;
 				var list = box.querySelector("[data-hl-items]");
 				var addAnother = box.querySelector("button[name=add_highlight]");
