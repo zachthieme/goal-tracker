@@ -309,7 +309,10 @@ function chooseBadNewsChain(lookup: Lookup): Chain {
            (select c.health from checkins c where c.goal_id = g.id
             order by c.created_at desc, c.id desc limit 1) health
     from goals g join accounts a on a.id = g.owner_id`);
-  const links = lookup<Link>(`select child_id, parent_id from links where status = 'accepted'`);
+  // Ordered as e2eScenario4 in internal/seed/scenarios_test.go, so both choose the same chain and org outcome.
+  const links = lookup<Link>(
+    `select child_id, parent_id from links where status = 'accepted' order by parent_id, child_id`,
+  );
   const milestones = lookup<Milestone>(
     `select id, goal_id, name, target_date, status from milestones order by target_date, id`,
   );

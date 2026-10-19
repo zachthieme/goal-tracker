@@ -195,9 +195,11 @@ func (o *e2eOrg) overdueMilestone(g *e2eGoal) bool {
 
 // e2eScenario4 is chooseBadNewsChain (04-reporting-bad-news.spec.ts): a
 // project, the team Goal it contributes to, and an org outcome the team Goal
-// contributes to whose other Active children are all Green. The rules filter
-// the candidate links in the spec's order, and the first that leaves none is
-// the failure.
+// contributes to whose other Active children are all Green. The candidates
+// are in (team Goal id, project id) order, as the spec's "order by parent_id,
+// child_id" reads them, and the org outcome is the lowest-id one that
+// qualifies. The rules filter the candidates in turn, and the first that
+// leaves none is the failure.
 func e2eScenario4(t *testing.T, o *e2eOrg) {
 	type chain struct{ project, team *e2eGoal }
 	activeGreen := func(g *e2eGoal) bool { return g.active() && g.health() == domain.HealthGreen }
@@ -507,6 +509,13 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 	// redWithChildren isn't on Risks: nothing but its Health is wrong with it.
 	if got := o.riskReasons(t, redWithChildren); len(got) > 0 {
 		t.Errorf("scenario 1: Red Goal %q with Active children is on Risks for %q, want it off Risks", redWithChildren.Title, got)
+	}
+	// Step 6 reads goal-rollup-health on its page, which renders only when the
+	// rollup is Present.
+	if r := o.rollup(t, redWithChildren); !r.Present ||
+		!slices.Contains([]string{domain.HealthRed, domain.HealthYellow, domain.HealthGreen}, r.Health) {
+		t.Errorf("scenario 1: Red Goal %q with Active children rolls up %+v, want a Rolled-up Health to show (step 6)",
+			redWithChildren.Title, r)
 	}
 	// Each Red Goal shows the Owner's status and Path to Green.
 	for _, g := range []*e2eGoal{redWithChildren, redSlipped} {
