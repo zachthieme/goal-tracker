@@ -57,6 +57,10 @@ type checkinFormData struct {
 	// confirmation, so the next submit counts as confirmed and the form shows
 	// no warning.
 	OffTargetConfirmed bool
+	// Overdue is set when the form starts on a Goal whose No change is
+	// refused for an overdue Milestone: the dates and Milestones section
+	// opens, so the Owner can move it, mark it Done or remove it.
+	Overdue bool
 	// Shown is the clock the form shows its dates against.
 	Shown displayDates
 }
@@ -256,9 +260,10 @@ func (d checkinFormData) offTargetWarned() bool {
 }
 
 // datesOpen reports whether the dates and Milestones section renders open: it
-// holds the error, or the reader changed something in it.
+// holds the error, the reader changed something in it, or a Milestone in it is
+// overdue.
 func (d checkinFormData) datesOpen() bool {
-	return d.Error.about("delivery_date", "milestone", "new_milestone") || d.Dates.changed()
+	return d.Overdue || d.Error.about("delivery_date", "milestone", "new_milestone") || d.Dates.changed()
 }
 
 // changed reports whether any date or Milestone field differs from the Goal's
@@ -365,12 +370,20 @@ func (d lifecycleFormData) summary() string {
 // Metric's latest reading shown as ghost text, so a full Check-in is written
 // fresh (CONTEXT.md: Check-in). It also carries the Rolled-up Health so the
 // form can show it beside the Owner's Health, and the Goal's current delivery
-// date and Planned Milestones so the Owner can move or close them.
+// date and Planned Milestones so the Owner can move or close them. While a
+// Milestone is overdue it picks no Health over a latest Green, as a slip is
+// never hidden behind a Green (CONTEXT.md: Date Slip), and opens the dates and
+// Milestones section: the Check-in may still be Green once it moves the
+// Milestone, marks it Done or removes it.
 func checkinFormFromLatest(v goalView) checkinFormData {
 	g := v.Goal
 	d := checkinFormData{GoalID: g.ID, Health: domain.HealthGreen, RolledUp: v.RolledUp, Metrics: v.Metrics, Shown: v.dates()}
 	if latest := v.LatestCheckin; latest != nil {
 		d.Health = latest.Health
+	}
+	d.Overdue = v.NoChangeOverdue
+	if d.Overdue && d.Health == domain.HealthGreen {
+		d.Health = ""
 	}
 	d.Previous = checkinPreviousFrom(v.LatestCheckin, v.Trends)
 	d.DraftHighlights = draftHighlightRows(v.DraftHighlights)

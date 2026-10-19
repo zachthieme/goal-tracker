@@ -1672,10 +1672,86 @@ func postNoChange(t *testing.T, client *http.Client, rawURL string, hx bool) (*h
 // overdueGreenGoal arranges a Goal whose latest Check-in is Green and whose
 // Beta Milestone has since gone overdue, so No change on it is refused.
 func overdueGreenGoal(h *testsupport.Harness, owner domain.Account) domain.Goal {
+	return overdueGoal(h, owner, domain.HealthGreen)
+}
+
+// overdueGoal arranges a Goal whose latest Check-in has health (with a Path to
+// Green and its date when Yellow or Red) and whose Beta Milestone, due Apr 2,
+// has since gone overdue, so No change on it is refused.
+func overdueGoal(h *testsupport.Harness, owner domain.Account, health string) domain.Goal {
 	goal := h.ActiveGoal(owner, "Blue-green deploys for the monolith", "Deploys take the site down.")
-	h.Checkin(owner, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	path, pathTarget := "", time.Time{}
+	if health != domain.HealthGreen {
+		path, pathTarget = "Add a second reviewer.", pathDate
+	}
+	h.Checkin(owner, goal.ID, health, "On track.", path, pathTarget)
 	h.Clock.Advance(100 * day) // past the Beta Milestone's date
 	return goal
+}
+
+// checkedHealth is the value of the Health radio checked on the page, or
+// "none".
+func checkedHealth(page string) string {
+	for _, tag := range strings.Split(page, "<input")[1:] {
+		tag, _, _ = strings.Cut(tag, ">")
+		if strings.Contains(tag, `name="health"`) && strings.Contains(tag, " checked") {
+			return attr(tag, "value")
+		}
+	}
+	return "none"
+}
+
+// While a Milestone is overdue the Check-in page doesn't preselect the latest
+// Check-in's Green — a slip is never hidden behind a Green — but leaves the
+// Health to pick, with the dates and Milestones section open; so does the page
+// a refused No change lands on. A Yellow or Red stays picked, the section
+// open too (#342).
+func TestCheckinPagePreselectsNoGreenWhileMilestoneOverdue(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ health, want string }{
+		{domain.HealthGreen, "none"},
+		{domain.HealthYellow, domain.HealthYellow},
+	} {
+		t.Run(tc.health, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			ts := newServer(t, h)
+			sam := h.SignIn("sam@example.com")
+			goal := overdueGoal(h, sam, tc.health)
+			client := signInClient(t, ts.URL, "sam@example.com")
+
+			_, refused := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+			for name, page := range map[string]string{
+				"Check-in page":     getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)),
+				"refused No change": refused,
+			} {
+				if got := checkedHealth(page); got != tc.want {
+					t.Errorf("%s: Health checked = %s, want %s", name, got, tc.want)
+				}
+				if section := pageElement(t, page, "details", "checkin-dates-section"); !strings.Contains(openTag(section), " open") {
+					t.Errorf("%s: the dates and Milestones section is collapsed", name)
+				}
+			}
+		})
+	}
+}
+
+// A No change refused because a Metric is off target leaves Green picked: the
+// full form can confirm that Green (#342).
+func TestCheckinPageKeepsGreenWhileMetricOffTarget(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal, _ := offTargetIdleGoal(t, h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	if got := checkedHealth(getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))); got != domain.HealthGreen {
+		t.Errorf("Health checked = %s, want Green", got)
+	}
 }
 
 // The Check-in page's "Nothing changed since …?" card offers its No change
