@@ -13,7 +13,9 @@ import (
 
 // Markdown renders a published Report as Markdown with the same content as its
 // snapshot page: who published it and when, what it read its changes against,
-// the line counting what moved since then, its open Action Items, the introduction, the narrative curated from
+// how it selected its Goals as it read when published (nothing for a
+// publication frozen before selections were), the line counting what moved
+// since then, its open Action Items, the introduction, the narrative curated from
 // Highlights, each exception's full MBR block opening with what changed on it,
 // worst first, and every other selected Goal
 // one line (CONTEXT.md: Report), each Goal with the Fields the Report chose. With no hover to show an email, a person's
@@ -28,6 +30,9 @@ func Markdown(p domain.Publication) string {
 		fmt.Fprintf(&b, "Changes since the previous publication, %s.\n", fmtPublished(r.Previous.PublishedAt))
 	} else {
 		fmt.Fprintf(&b, "Changes since %s.\n", fmtDate(r.Baseline))
+	}
+	if p.Scope != "" {
+		fmt.Fprintf(&b, "\n**Selection:** %s\n", text(p.Scope))
 	}
 	if r.Movement != nil {
 		since := fmtDate(r.Baseline)

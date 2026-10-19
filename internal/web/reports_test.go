@@ -3562,3 +3562,57 @@ func TestPublicationFromBeforeMovementHasNoMovementLineOverHTTP(t *testing.T) {
 		}
 	}
 }
+
+// A publication's page and its print page say how it selected its Goals, as
+// it read when published, under the published line; one frozen before
+// selections were says nothing about it, and nor does the draft.
+func TestPublicationSaysHowItSelects(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignInNamed("boss@example.com", "Dana Okafor")
+	h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name: "EU MBR",
+		Mode: domain.ReportModeRules,
+		Rules: []domain.ReportRule{
+			{Attribute: domain.RuleOwner, Op: domain.RuleIs, Values: []string{strconv.FormatInt(boss.ID, 10)}},
+			{Attribute: domain.RuleLifecycle, Op: domain.RuleIs, Values: []string{domain.LifecycleActive}},
+		},
+	})
+	pub := h.PublishReport(boss, def)
+	old := h.PublishReport(boss, def)
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = json_remove(snapshot, '$.Scope') WHERE id = ?`, old.ID); err != nil {
+		t.Fatalf("write a pre-selection snapshot: %v", err)
+	}
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	pubPath := func(p domain.Publication) string {
+		return ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10) + "/publications/" + strconv.FormatInt(p.ID, 10)
+	}
+	for name, url := range map[string]string{"publication page": pubPath(pub), "print page": pubPath(pub) + "/print"} {
+		page := getBody(t, client, url)
+		line := pageElement(t, page, "p", "report-selection")
+		if want := ">Selection: Owner: Dana Okafor · Active"; !strings.Contains(line, want) {
+			t.Errorf("%s's selection line %q, want it to read %q", name, line, want)
+		}
+		published := strings.Index(page, `data-testid="report-published"`)
+		selection := strings.Index(page, `data-testid="report-selection"`)
+		if selection < published {
+			t.Errorf("%s shows the selection line before the published line", name)
+		}
+		if movement := strings.Index(page, `data-testid="report-movement"`); movement >= 0 && movement < selection {
+			t.Errorf("%s shows the movement line before the selection line", name)
+		}
+	}
+	for name, url := range map[string]string{
+		"old publication page": pubPath(old),
+		"old print page":       pubPath(old) + "/print",
+		"draft":                ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10),
+	} {
+		if page := getBody(t, client, url); strings.Contains(page, `data-testid="report-selection"`) {
+			t.Errorf("%s has a selection line", name)
+		}
+	}
+}

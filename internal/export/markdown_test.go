@@ -544,3 +544,38 @@ func TestMarkdownSaysWhatChangedOnABlock(t *testing.T) {
 		t.Errorf("Markdown says what changed %d times, want once, on the changed block:\n%s", n, got)
 	}
 }
+
+// A publication says how it selected its Goals directly under its byline,
+// before what moved, escaped like anything else people typed; one frozen
+// before selections were says nothing about it.
+func TestMarkdownSaysHowThePublicationSelects(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, scope, want string
+	}{
+		{
+			name:  "rules",
+			scope: "Team: Platform or Identity · Active",
+			want:  "Changes since 2026-01-12.\n\n**Selection:** Team: Platform or Identity · Active\n\n**Since 2026-01-12:** 1 new\n",
+		},
+		{
+			name:  "markdown in a value",
+			scope: "Team: R&D_ops",
+			want:  "Changes since 2026-01-12.\n\n**Selection:** Team: R&D\\_ops\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pub := publication(nil, nil)
+			pub.Scope = tc.scope
+			pub.Report.Movement = &domain.ReportMovement{New: 1}
+			if got := export.Markdown(pub); !strings.Contains(got, tc.want) {
+				t.Errorf("Markdown:\n%s\nwant it to contain:\n%s", got, tc.want)
+			}
+		})
+	}
+
+	if got := export.Markdown(publication(nil, nil)); strings.Contains(got, "Selection") {
+		t.Errorf("Markdown of a publication with no selection mentions one:\n%s", got)
+	}
+}

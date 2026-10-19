@@ -344,7 +344,8 @@ templ reportGoalList(goals []reportGoal) {
 }
 
 // publicationPage shows a published Report exactly as it was frozen: who
-// published it and when, and what it read its changes against. It links the
+// published it and when, what it read its changes against, and how it
+// selected its Goals as it read then. It links the
 // ways to read it outside the tool: Markdown, and a page to print to PDF.
 // Readers discuss it in place: comments on each Goal's block, and the Action
 // Items raised on it (ticket #19).
@@ -359,6 +360,7 @@ templ publicationPage(current *domain.Account, p domain.Publication, d discussio
 					</p>
 					<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
 					@publishedLine(p, d.Loc)
+					@publicationSelection(p)
 				</div>
 				<div class="rp-actions" data-testid="report-export">
 					<a data-testid="export-markdown" class="btn sm" href={ templ.SafeURL(publicationPath(p) + "/markdown") }>Markdown</a>
@@ -372,9 +374,9 @@ templ publicationPage(current *domain.Account, p domain.Publication, d discussio
 }
 
 // publicationPrintPage is a published Report on its own, without the app's
-// navigation, styled to print to PDF from the browser. It has no Health
-// tiles, so the line counting what moved since the baseline sits under the
-// byline.
+// navigation, styled to print to PDF from the browser. Under the byline it
+// says how the Report selected its Goals; it has no Health tiles, so the line
+// counting what moved since the baseline follows.
 templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 	<!DOCTYPE html>
 	<html lang="en">
@@ -468,6 +470,7 @@ templ publicationPrintPage(p domain.Publication, loc *time.Location) {
 			</p>
 			<h1 data-testid="report-name">{ p.Report.Definition.Name }</h1>
 			@publishedLine(p, loc)
+			@publicationSelection(p)
 			@reportMovement(p.Report)
 			<section data-testid="report-snapshot">
 				@reportBody(p.Report, p.PublishedAt, discussion{Loc: loc})
@@ -545,6 +548,15 @@ templ publishedLine(p domain.Publication, loc *time.Location) {
 			{ " · changes since " }{ showDateYear(p.Report.Baseline) }
 		}
 	</p>
+}
+
+// publicationSelection says how a published Report selected its Goals, as it
+// read when published ("Selection: Owner is in the org of Dana Okafor ·
+// Active"). A publication frozen before selections were has none to show.
+templ publicationSelection(p domain.Publication) {
+	if p.Scope != "" {
+		<p data-testid="report-selection" class="muted">Selection: { p.Scope }</p>
+	}
 }
 
 // reportBody is a Report's content, drafted or published: its open Action
