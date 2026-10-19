@@ -479,31 +479,37 @@ func (s *Server) loadReportBuilder(r *http.Request, v *reportBuilderView) error 
 	if err != nil {
 		return err
 	}
-	orgPeople, err := s.orgRulePeople(r, v.Rules, distinctOwners(goals), managers)
+	owners := distinctOwners(goals)
+	ownerPeople, err := s.withRuleNamedPeople(r, v.Rules, domain.RuleOwner, owners)
 	if err != nil {
 		return err
 	}
-	v.Attributes = ruleAttributes(dims, distinctOwners(goals), orgPeople, len(managers) > 0)
+	orgPeople, err := s.withRuleNamedPeople(r, v.Rules, domain.RuleOrg, append(slices.Clone(owners), managers...))
+	if err != nil {
+		return err
+	}
+	v.Attributes = ruleAttributes(dims, ownerPeople, orgPeople, len(managers) > 0)
 	v.Matches, err = s.matchReport(r, goals, *v, v.ID)
 	return err
 }
 
-// orgRulePeople are the people an Org rule offers: the Owners, as the Owner
-// rule offers, then each Manager who isn't one, then anyone a rule row already
-// names who is neither, so a saved rule keeps its people however the
-// directory has changed.
-func (s *Server) orgRulePeople(r *http.Request, rows []reportRuleRow, owners, managers []domain.Account) ([]domain.Account, error) {
-	people := slices.Clone(owners)
+// withRuleNamedPeople is people, one each in first-seen order, then anyone a
+// row testing attribute (domain.RuleOwner or domain.RuleOrg) already names who
+// isn't among them, so a saved rule keeps its people however the Goals'
+// Owners or the directory have changed. The Owner rule offers the Owners so;
+// the Org rule the Owners, then each Manager who isn't one.
+func (s *Server) withRuleNamedPeople(r *http.Request, rows []reportRuleRow, attribute string, people []domain.Account) ([]domain.Account, error) {
+	var out []domain.Account
 	add := func(a domain.Account) {
-		if !slices.ContainsFunc(people, func(p domain.Account) bool { return p.ID == a.ID }) {
-			people = append(people, a)
+		if !slices.ContainsFunc(out, func(p domain.Account) bool { return p.ID == a.ID }) {
+			out = append(out, a)
 		}
 	}
-	for _, m := range managers {
-		add(m)
+	for _, p := range people {
+		add(p)
 	}
 	for _, row := range rows {
-		if row.Attribute != domain.RuleOrg {
+		if row.Attribute != attribute {
 			continue
 		}
 		for _, value := range row.rule().Values {
@@ -521,7 +527,7 @@ func (s *Server) orgRulePeople(r *http.Request, rows []reportRuleRow, owners, ma
 			add(a)
 		}
 	}
-	return people, nil
+	return out, nil
 }
 
 // ruleAttributes are what a rule can test: each Dimension and its values,

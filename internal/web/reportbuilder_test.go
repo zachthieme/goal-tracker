@@ -1413,6 +1413,64 @@ func TestBuilderOffersTheOrgOnlyWhenAnyoneHasAManagerOverHTTP(t *testing.T) {
 	}
 }
 
+// A saved Owner rule keeps a person who owns no Goal, as after a Handoff: the
+// edit page still offers and selects them, so saving it back keeps them in
+// the rule rather than refusing it or dropping them (ticket #265). A new
+// definition still offers only the current Owners.
+func TestEditBuilderKeepsAnOwnerRulesPersonWhoOwnsNoGoalOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "vp@example.com")
+	vp := h.SignInNamed("vp@example.com", "Priya Raman")
+	sam := h.SignInNamed("sam@example.com", "Sam Ito")
+	h.ActiveGoal(vp, "Grow revenue", "Matters.")
+	samID, vpID := strconv.FormatInt(sam.ID, 10), strconv.FormatInt(vp.ID, 10)
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "vp@example.com")
+	samOption := `<option value="` + domain.RuleOwner + "=" + samID + `" selected>Sam Ito</option>`
+
+	for _, c := range []struct {
+		op  string
+		ids []string
+	}{
+		{domain.RuleIs, []string{samID}},
+		{domain.RuleIsAnyOf, []string{samID, vpID}},
+	} {
+		def := h.SaveReportDefinition(vp, domain.SaveReportDefinitionInput{Name: "Owner " + c.op, Mode: domain.ReportModeRules, Rules: []domain.ReportRule{
+			{Attribute: domain.RuleOwner, Op: c.op, Values: c.ids},
+		}})
+		draftPath := "/reports/" + strconv.FormatInt(def.ID, 10)
+		if row := pageElement(t, getBody(t, client, ts.URL+draftPath+"/edit"), "div", "report-rule"); !strings.Contains(row, samOption) {
+			t.Errorf("Owner %s: the edit page's rule lacks %s:\n%s", c.op, samOption, row)
+		}
+
+		form := url.Values{
+			"name":               {def.Name},
+			"mode":               {domain.ReportModeRules},
+			"rules[0].attribute": {domain.RuleOwner},
+			"rules[0].op":        {c.op},
+		}
+		for _, id := range c.ids {
+			form.Add("rules[0].value", domain.RuleOwner+"="+id)
+		}
+		resp := postForm(t, noRedirects(client), ts.URL+draftPath+"/edit", form)
+		if body := readBody(t, resp); resp.StatusCode != http.StatusSeeOther {
+			t.Fatalf("Owner %s: saving the edit form gives %d, want 303; body:\n%s", c.op, resp.StatusCode, body)
+		}
+		saved, err := h.Service.GetReportDefinition(context.Background(), def.ID)
+		if err != nil {
+			t.Fatalf("GetReportDefinition: %v", err)
+		}
+		if rules := saved.Rules; len(rules) != 1 || rules[0].Attribute != domain.RuleOwner || !slices.Equal(rules[0].Values, c.ids) {
+			t.Errorf("Owner %s: the saved rule is %+v, want Owner values %q", c.op, rules, c.ids)
+		}
+	}
+
+	if fresh := pageElement(t, getBody(t, client, ts.URL+"/reports/new"), "form", "report-builder"); strings.Contains(fresh, `value="`+domain.RuleOwner+"="+samID+`"`) {
+		t.Errorf("a new definition offers Sam, who owns no Goal, as an Owner:\n%s", fresh)
+	}
+}
+
 // A self-reference, as a directory can give (ADR 0008), puts no one under its
 // person, so as the only Manager it doesn't make the builder offer the
 // Owner's org.
