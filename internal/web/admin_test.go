@@ -336,6 +336,34 @@ func TestAdminSeesTheDirectorySyncAndCanSyncNow(t *testing.T) {
 	}
 }
 
+// Sync now runs the sync inside its request, so on submit its form shows it's
+// busy: it's marked aria-busy, and its button is disabled and reads
+// "Syncing…". The form still posts.
+func TestSyncNowShowsItIsRunning(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	dir := &adminDirectoryFake{people: []domain.DirectoryPerson{{Email: "ceo@example.com", Name: "Dana Whitfield"}}}
+	ts := newDirectorySyncServer(t, h, dir)
+	h.SignIn("ada@example.com")
+	client := signInClient(t, ts.URL, "ada@example.com")
+
+	section := pageElement(t, getBody(t, client, ts.URL+"/admin"), "section", "admin-directory-sync")
+	script := html.UnescapeString(attr(tagAround(t, section, `action="/admin/directory-sync"`), "onsubmit"))
+	for _, want := range []string{
+		"this.setAttribute('aria-busy', 'true')",
+		".disabled = true",
+		".textContent = 'Syncing…'",
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("Sync now's onsubmit lacks %q: %q", want, script)
+		}
+	}
+	if !strings.HasSuffix(script, "return true") {
+		t.Errorf("Sync now's onsubmit doesn't end by letting the form post: %q", script)
+	}
+}
+
 // Only an Admin can see the sync or run it: anyone else is refused both.
 func TestNonAdminCantSeeOrRunTheDirectorySync(t *testing.T) {
 	t.Parallel()
