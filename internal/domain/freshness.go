@@ -32,6 +32,16 @@ type Freshness struct {
 	// PathTargetDate is the date the latest Path to Green aims to be back at
 	// Green by, the zero time when the Goal is Green or has no Check-in.
 	PathTargetDate time.Time
+	// MilestoneOverdue is true when the Goal is Active, its latest Check-in is
+	// Green, and one of its Milestones is overdue: still Planned past its date
+	// in the Goal's Owner's Timezone (see Service.GoalTimezone). The Health
+	// stays the Owner's (CONTEXT.md: Milestone). OverdueMilestone and
+	// OverdueMilestoneDate are that Milestone's name and date, the
+	// earliest-dated when several are overdue. Only Service.Freshness and
+	// Service.FreshnessSignals set these three.
+	MilestoneOverdue     bool
+	OverdueMilestone     string
+	OverdueMilestoneDate time.Time
 }
 
 // reminderIntervalDays is how far apart the weekly Check-in reminders go out,
@@ -61,7 +71,39 @@ func (s *Service) Freshness(ctx context.Context, goalID int64) (Freshness, error
 	if ok {
 		last = lastCheckin{at: latest.CreatedAt, health: latest.Health, pathTargetDate: latest.PathTargetDate}
 	}
-	return s.judgeFreshness(g, last), nil
+	f := s.judgeFreshness(g, last)
+	if greenWhileActive(g, last.health) {
+		milestones, err := s.queries.ListMilestones(ctx, goalID)
+		if err != nil {
+			return Freshness{}, fmt.Errorf("list milestones: %w", err)
+		}
+		s.markMilestoneOverdue(&f, g, last.health, milestones)
+	}
+	return f, nil
+}
+
+// greenWhileActive reports whether g is Active with a latest Check-in of the
+// given Health that is Green: the only Goal that can be marked Milestone
+// overdue.
+func greenWhileActive(g Goal, health string) bool {
+	return g.Lifecycle == LifecycleActive && health == HealthGreen
+}
+
+// markMilestoneOverdue sets f's Milestone overdue fields (see
+// Freshness.MilestoneOverdue) for g, whose latest Check-in's Health is health,
+// from g's milestones sorted by date, judging overdue as overdueMilestone does
+// as of today in g's timezone, as the Check-in refusals judge it.
+func (s *Service) markMilestoneOverdue(f *Freshness, g Goal, health string, milestones []db.Milestone) {
+	if !greenWhileActive(g, health) {
+		return
+	}
+	m, ok := overdueMilestone(milestones, s.goalToday(g).Format(dateFormat))
+	if !ok {
+		return
+	}
+	f.MilestoneOverdue = true
+	f.OverdueMilestone = m.Name
+	f.OverdueMilestoneDate, _ = time.Parse(dateFormat, m.TargetDate)
 }
 
 // GoalFreshness is a Goal with its freshness signals and the Health of its
@@ -76,25 +118,42 @@ type GoalFreshness struct {
 // longest since its last update first, and every Goal whose Path to Green is
 // overdue, longest overdue first. Both surface as prominently as Red. NotGreen
 // is every Active Goal whose latest Check-in is Red or Yellow, in the order
-// the Active Goals are read.
+// the Active Goals are read. OverdueMilestones is every Goal marked Milestone
+// overdue (see Freshness.MilestoneOverdue), earliest Milestone date first.
 type FreshnessSignals struct {
-	Stale        []GoalFreshness
-	OverduePaths []GoalFreshness
-	NotGreen     []GoalFreshness
+	Stale             []GoalFreshness
+	OverduePaths      []GoalFreshness
+	NotGreen          []GoalFreshness
+	OverdueMilestones []GoalFreshness
 }
 
 // FreshnessSignals reads the freshness signals of every Active Goal: its
-// Stale and overdue-Path-to-Green Goals, and its Not Green ones, whose latest
-// Check-in is Red or Yellow.
+// Stale and overdue-Path-to-Green Goals, its Not Green ones, whose latest
+// Check-in is Red or Yellow, and its Green ones with an overdue Milestone.
 func (s *Service) FreshnessSignals(ctx context.Context) (FreshnessSignals, error) {
 	rows, err := s.queries.ListActiveGoalsWithLatestCheckin(ctx)
 	if err != nil {
 		return FreshnessSignals{}, fmt.Errorf("list active goals: %w", err)
 	}
+	// Each Goal's today is its Owner's (see GoalTimezone), never later than
+	// the day after the UTC date, so reading the Milestones due before that
+	// misses none; markMilestoneOverdue then judges each in its Goal's today.
+	overdue, err := s.queries.ListOverdueMilestones(ctx, s.clock.Now().UTC().AddDate(0, 0, 1).Format(dateFormat))
+	if err != nil {
+		return FreshnessSignals{}, fmt.Errorf("list overdue milestones: %w", err)
+	}
+	milestones := map[int64][]db.Milestone{}
+	for _, m := range overdue {
+		milestones[m.GoalID] = append(milestones[m.GoalID], m)
+	}
 	var out FreshnessSignals
 	for _, r := range rows {
 		g := goalFromRow(r.Goal, r.Account)
 		gf := GoalFreshness{Goal: g, Freshness: s.judgeFreshness(g, lastCheckinFromRow(r)), Health: r.CheckinHealth}
+		s.markMilestoneOverdue(&gf.Freshness, g, gf.Health, milestones[g.ID])
+		if gf.Freshness.MilestoneOverdue {
+			out.OverdueMilestones = append(out.OverdueMilestones, gf)
+		}
 		if gf.Freshness.Stale {
 			out.Stale = append(out.Stale, gf)
 		}
@@ -110,6 +169,9 @@ func (s *Service) FreshnessSignals(ctx context.Context) (FreshnessSignals, error
 	})
 	slices.SortStableFunc(out.OverduePaths, func(a, b GoalFreshness) int {
 		return a.Freshness.PathTargetDate.Compare(b.Freshness.PathTargetDate)
+	})
+	slices.SortStableFunc(out.OverdueMilestones, func(a, b GoalFreshness) int {
+		return a.Freshness.OverdueMilestoneDate.Compare(b.Freshness.OverdueMilestoneDate)
 	})
 	return out, nil
 }

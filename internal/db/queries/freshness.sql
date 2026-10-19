@@ -17,3 +17,10 @@ LEFT JOIN checkins latest ON latest.id = (
 )
 WHERE goals.lifecycle = 'Active'
 ORDER BY goals.created_at DESC, goals.id DESC;
+
+-- name: ListOverdueMilestones :many
+-- Every Planned Milestone whose target date is before the date given, each
+-- Goal's earliest first (CONTEXT.md: Milestone).
+SELECT * FROM milestones
+WHERE status = 'Planned' AND target_date < ?
+ORDER BY goal_id, target_date, id;
