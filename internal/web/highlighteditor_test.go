@@ -28,7 +28,7 @@ func TestCheckinPageCarriesTheHighlightEditor(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
 
-	editor := templateByID(t, page, "highlight-editor")
+	editor := highlightEditorPart(t, page, "highlight-editor")
 	var options []string
 	for _, m := range regexp.MustCompile(`<option[^>]*>([^<]*)</option>`).FindAllStringSubmatch(editor, -1) {
 		options = append(options, m[1])
@@ -36,7 +36,7 @@ func TestCheckinPageCarriesTheHighlightEditor(t *testing.T) {
 	if want := []string{"None", "Insight", "Accomplishment", "Miss"}; !slices.Equal(options, want) {
 		t.Errorf("the editor's Kind select offers %q, want %q", options, want)
 	}
-	templateByID(t, page, "highlight-item")
+	highlightEditorPart(t, page, "highlight-item")
 
 	var kinds []string
 	for _, tag := range regexp.MustCompile(`<button[^>]*data-testid="highlight-add"[^>]*>`).FindAllString(page, -1) {
@@ -91,9 +91,9 @@ func TestCheckinDraftHighlightRowCarriesWhoLoggedIt(t *testing.T) {
 	}
 }
 
-// templateByID returns the <template> element with the id, up to its closing
-// tag.
-func templateByID(t *testing.T, page, id string) string {
+// highlightEditorPart returns the Highlight editor's <template> with the id,
+// up to its closing tag.
+func highlightEditorPart(t *testing.T, page, id string) string {
 	t.Helper()
 	start := strings.Index(page, `<template id="`+id+`"`)
 	if start < 0 {

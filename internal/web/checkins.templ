@@ -633,7 +633,9 @@ templ checkinUnavailablePage(current *domain.Account, title, message string) {
 // itself, so a validation error re-renders it in place with the message next to
 // the field it is about. Health, status, and readings are always shown; the
 // Highlight, dates and Milestones, and Lifecycle each sit in a collapsed
-// section that opens when it holds an error or a value the reader typed. The
+// section that opens when it holds an error or a value the reader typed; with
+// script, the Highlight editor (highlighteditor.templ) upgrades the Highlight
+// section into add buttons, an editor and items. The
 // Path to Green asks for a reason for moving its back-to-Green date only once
 // the date is later than the latest Check-in's (see pathReasonShown).
 templ checkinForm(d checkinFormData) {
