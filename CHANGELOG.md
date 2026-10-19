@@ -62,6 +62,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The directory sync's hourly run, and its failures on a malformed page, an unreachable server and a page pointing back, have tests (#271).
 - [internal] A 390px e2e spec, `e2e/phone-width.spec.ts`, checks that the Goals list, Risks, a Report draft and the Admin page don't clip or scroll sideways and keep every control on screen (#343).
 - [internal] `make e2e-typecheck` (`npm run typecheck` in `e2e/`) type-checks every TypeScript file in the e2e suite with `tsc` in strict mode, from a new `e2e/tsconfig.json` (ES2023, DOM, Node 22 types). It isn't a gate, and `make check` doesn't run it (#225).
+- [internal] Two e2e checks now fail without the fix they cover: the goal form's empty-submit check asserts the input's invalid event (#212), and the Report builder step asserts the selected author is scrolled to the top of its value list, where a no-op scroll left it on the bottom edge and still passed (#314) (#348).
 
 **Code quality:**
 - [internal] e2e/ has a Prettier config pinning its 120-column style, so a plain npx prettier --check there passes, and the three scenario specs that didn't follow it now do (#346).
