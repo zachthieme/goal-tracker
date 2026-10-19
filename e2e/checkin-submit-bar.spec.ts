@@ -93,7 +93,7 @@ test("(e) a new Milestone's name shows dates changed", async ({ page }) => {
   const form = await openCheckin(page);
   await expect(summaryOf(form)).not.toContainText("dates changed");
   const dates = form.getByTestId("checkin-dates-section");
-  await dates.locator("summary").click();
+  await page.getByTestId("checkin-add-bar").getByRole("button", { name: "Move a date or Milestone" }).click();
   await dates.getByLabel("New Milestone name").fill("Docs");
   await expect(summaryOf(form)).toContainText("dates changed");
   await dates.getByLabel("New Milestone name").fill("");
@@ -104,7 +104,7 @@ test("(f) Mark Done shows → Done, and the Health badge goes", async ({ page })
   const form = await openCheckin(page);
   const health = await pickedHealth(form);
   const lifecycle = form.getByTestId("checkin-lifecycle-section");
-  await lifecycle.locator("summary").click();
+  await page.getByTestId("checkin-add-bar").getByRole("button", { name: "Pause, finish or cancel" }).click();
   await lifecycle.getByRole("radio", { name: "Mark Done" }).check();
   await expect(summaryOf(form)).toContainText("→ Done");
   await expect(summaryOf(form).getByText(health, { exact: true })).toHaveCount(0);
@@ -113,7 +113,11 @@ test("(f) Mark Done shows → Done, and the Health badge goes", async ({ page })
 test("(g) at 1280×800 Submit check-in stays in the window, and the bar ends the form", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   const form = await openCheckin(page);
+  // The Lifecycle section shows once opened from the add bar (#365), the last
+  // of the optional sections.
+  await page.getByTestId("checkin-add-bar").getByRole("button", { name: "Pause, finish or cancel" }).click();
   const lastSection = form.getByTestId("checkin-lifecycle-section");
+  await expect(lastSection).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
   const below = (await lastSection.boundingBox())!;
   expect(below.y, "the form runs past the window at the top of the page").toBeGreaterThan(800);
@@ -144,6 +148,8 @@ test("(h) at 390×800 the bar drops Cancel and fits the window", async ({ page }
   const outside = await page.evaluate((width) => {
     return [...document.querySelectorAll("main *")]
       .filter((e) => {
+        // The add bar's buttons scroll sideways in their own row (#365).
+        if (e.closest('[data-testid="checkin-add-buttons"]')) return false;
         if (!e.checkVisibility({ visibilityProperty: true })) return false;
         const r = e.getBoundingClientRect();
         return r.width > 0 && r.right > width + 1;

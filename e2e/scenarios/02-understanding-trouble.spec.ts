@@ -590,14 +590,17 @@ async function checkIn(page: Page, goalID: number, c: CheckinInput) {
   }
   await form.getByRole("textbox", { name: /^What changed since the last check-in/ }).fill(c.status);
   if (c.deliveryDate) {
-    await form.getByTestId("checkin-dates-section").locator("summary").click();
+    await page.getByTestId("checkin-add-bar").getByRole("button", { name: "Move a date or Milestone" }).click();
     await form.getByLabel("Delivery date", { exact: true }).fill(c.deliveryDate);
     await form.getByLabel("Reason (required if the delivery date changes)").fill(c.dateReason ?? "");
   }
-  // Each Highlight is written through its kind's add button, the Note and
-  // Save.
+  // Each Highlight is written through its kind's add button in the
+  // Highlights section, the Note and Save.
   for (const h of c.highlights ?? []) {
-    await form.getByRole("button", { name: `+ ${h.kind}` }).click();
+    await form
+      .getByTestId("checkin-highlights")
+      .getByRole("button", { name: `+ ${h.kind}` })
+      .click();
     const editor = form.getByTestId("highlight-editor");
     await editor.getByLabel("Note").fill(h.note);
     await editor.getByRole("button", { name: "Save" }).click();

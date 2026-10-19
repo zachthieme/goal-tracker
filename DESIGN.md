@@ -568,6 +568,27 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     under the title on a narrow screen, sits No change: a muted "Nothing
     changed since Oct 5?" beside a secondary **No change** button, or the
     reason it is refused in its place.
+  - **Add to this check-in (`.checkin-add-bar`, `checkinAddBar`):** with
+    script, directly under the header and above the form (and the column
+    beside it), spanning the page's width: a white panel (`--color-surface`,
+    1px `--color-border`, `--radius-lg`, 12px 16px padding), a labelled group
+    (`role="group"`, not a toolbar). In a row, 8px apart and wrapping: the
+    label "Add to this check-in" (13px, 600, `--color-ink-muted`);
+    **+ Insight**, **+ Accomplishment** and **+ Miss**, filled in
+    `--color-primary-subtle` with `--color-primary-strong` text; a 1px by
+    24px `--color-border` divider; then **Move a date or Milestone** and
+    **Pause, finish or cancel** ("Resume or cancel" for an On Hold Goal),
+    outlined (no fill, `--color-border` edge, `--color-ink` text). All are
+    `btn sm` with `--radius-full` corners and one label at every width. The
+    Highlight buttons stand for the Highlights section's own: each scrolls to
+    it and opens its editor there, and they wait while an editor is open.
+    The other two each show their section, scroll to it and move focus to
+    its heading; once their section shows, on load or by a press, they are
+    used: `--color-surface-alt` fill and `--color-ink-muted` text, still
+    pressable to go back to it. A Highlight button is never used, as a
+    Check-in may carry several. At 600px and below the label sits above the
+    buttons, which keep to one line that scrolls sideways inside the bar, the
+    divider hidden. Without script the bar doesn't show.
   - **Sections:** "How is it going?" (the three Health choices at full width,
     56px tall with `--radius-lg`; then "What changed since the last
     check-in?"; then the Rolled-up Health panel), "Path to Green" (shown while
@@ -594,7 +615,8 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     toward target in `--color-primary-strong`. On the right, a 120px reading
     input with right-aligned numbers in `--font-mono`.
   - **Optional sections** follow, as below (Check-in form's optional
-    sections), 12px apart, then the submit bar.
+    sections), then the submit bar: with script, 40px apart like the rest,
+    each a plain headed section; without, folded panels 12px apart.
   - **Submit bar (`.checkin-submit-bar`):** the form's last child, sticky at
     the bottom of the window (`position: sticky; bottom: 0`) while the form
     runs past it, and in its own place at the form's end once scrolled
@@ -811,17 +833,31 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     date and marks no overdue Milestone; the form's dates section does.
 
   Above 900px the column is 240–320px on the right of the form, 32px away,
-  under the breadcrumb and header, and sticky (`top: 24px`), scrolling within
+  under the breadcrumb, header and add bar, and sticky (`top: 24px`), scrolling within
   itself when it is taller than the window. At 900px and below it sits above
-  the form, after the header, and doesn't stick. At 600px and below it drops
+  the form, after the header and add bar, and doesn't stick. At 600px and below it drops
   Last time and Dates, which the form's ghost text already covers, so only
   Contributed to by stays, and a Goal with no children shows no column.
 - **Check-in form's optional sections:** Highlights, dates and Milestones,
   and Lifecycle each sit in a `<details>` (`.checkin-more`) that starts folded
   and opens by itself when it holds an error or something typed.
+  - **With script** (`checkinSectionsScript`, which marks the page
+    `.checkin-js`), no summary and no ▸/▾ shows. The Highlights section always
+    shows. The dates and Milestones section and the Lifecycle section show
+    only while their `<details>` is open, as a plain section with no panel,
+    under their own heading in the form's section-heading look (22px, display
+    face, 700): "Dates and Milestones" and "Lifecycle". The add bar's buttons
+    open them. The server's rules still open them on load, and their bar
+    button shows as used: an error in the section, something typed in it, an
+    overdue Milestone, `?open=dates` (a Schedule conflict's Fix on Risks), and
+    a Lifecycle picked by `?lifecycle=` (the Goal page's menu). A shown
+    section never hides again; its fields are sent whether it shows or not.
+    The script runs again on the form a refused submit swaps back, so the bar
+    marks used whatever then shows.
   - **Highlights (the Highlight editor, `highlighteditor.templ`):** with
-    script, the Highlights section isn't folded. It is an 18px `<h2>`
-    "Highlights", then three quiet small buttons, **+ Insight**,
+    script, the Highlights section isn't folded. It is a 22px `<h2>`
+    "Highlights" with a muted "A Report author can pull each one in" on its
+    baseline, then three quiet small buttons, **+ Insight**,
     **+ Accomplishment** and **+ Miss** (`highlightAddButtons`), then the
     Highlights so far. An add button opens one inline editor above them,
     headed "New Miss" (or Insight, or Accomplishment), asking only for the
@@ -837,7 +873,10 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     logged with no Kind comes in as an open editor with the Kind select and
     Remove, not Cancel. Saving records nothing: the Highlights are sent with
     the Check-in, and an editor still open with a Note is sent as if saved.
-  - **Without script,** the Highlights section is as before: a folded
+  - **Without script,** the page has no add bar and no section headings,
+    and each section is a folded panel opened by its summary ("Change dates
+    or milestones · …", "Pause, finish, or cancel this goal · …"). The
+    Highlights section is as before: a folded
     `<details>`, "Flag a highlight (optional)", with a numbered row of Kind
     and Note per Highlight, a Keep box on each Draft's row, and **Add
     another**, which posts the form back for one more row. The script
@@ -864,8 +903,8 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   height. A small button keeps its smaller type and padding. Textareas,
   checkboxes and radios are left alone.
 - **Phone width (600px and below):** nothing scrolls sideways, and no control
-  is clipped. The Goal list's Table layout and a wide data table may scroll
-  inside their own container. List tables stack each row as a card, the Goal
+  is clipped. The Goal list's Table layout, a wide data table and the
+  Check-in page's add bar buttons may scroll inside their own container. List tables stack each row as a card, the Goal
   or name first (Risks, the Reports list, On track, the Goal list). The Goal
   list's phone rows show the Goal, then Health and Owner, then Due and Last
   check-in (each led by a small muted label), with Dimension tags hidden. A
