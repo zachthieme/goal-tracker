@@ -295,19 +295,52 @@ func newHistory(v goalView, loc *time.Location, now time.Time) history {
 	for _, c := range v.Comments {
 		entries = append(entries, historyEntry{At: c.Comment.CreatedAt, Comment: &c})
 	}
-	// Newest first; entries made at the same moment keep the order they were
-	// recorded in, latest first.
+	// Newest first. Entries made at the same moment keep the order they were
+	// recorded in, latest first, but an Action Item's events stay together:
+	// newest item first, each closed above its reassignments, latest first,
+	// above its raising.
 	slices.SortStableFunc(entries, func(a, b historyEntry) int {
 		if c := b.At.Compare(a.At); c != 0 {
 			return c
 		}
-		return cmp.Compare(b.seq(), a.seq())
+		return b.tieKey().compare(a.tieKey())
 	})
 	return history{GoalID: v.Goal.ID, Entries: entries, Milestones: v.Milestones, Shown: historyFirstPage, Loc: loc, Now: now, Strip: v.HealthStrip}
 }
 
+// historyTieKey orders entries made at the same moment: by seq, then rank,
+// then sub, each ascending from oldest to newest.
+type historyTieKey struct {
+	seq  int64 // the entry's record ID, or for an Action Item's events its item's
+	rank int   // an Action Item's event: 0 raised (and every other kind), 1 reassigned, 2 closed
+	sub  int64 // a reassignment's record ID, ordering one item's reassignments; else 0
+}
+
+// compare is -1, 0 or +1 as k orders before, with or after o.
+func (k historyTieKey) compare(o historyTieKey) int {
+	if c := cmp.Compare(k.seq, o.seq); c != 0 {
+		return c
+	}
+	if c := cmp.Compare(k.rank, o.rank); c != 0 {
+		return c
+	}
+	return cmp.Compare(k.sub, o.sub)
+}
+
+// tieKey is the key that orders the entry among those made at the same moment.
+func (e historyEntry) tieKey() historyTieKey {
+	k := historyTieKey{seq: e.seq()}
+	switch {
+	case e.ActionReassign != nil:
+		k.rank, k.sub = 1, e.ActionReassign.ID
+	case e.ActionItem != nil && e.ActionItemEvent == historyActionItemClosed:
+		k.rank = 2
+	}
+	return k
+}
+
 // seq is the entry's record ID, which orders entries of one kind made at the
-// same moment.
+// same moment; for an Action Item's events it is the item's ID.
 func (e historyEntry) seq() int64 {
 	switch {
 	case e.Checkin != nil:
@@ -329,7 +362,7 @@ func (e historyEntry) seq() int64 {
 	case e.ActionItem != nil:
 		return e.ActionItem.Item.ID
 	case e.ActionReassign != nil:
-		return e.ActionReassign.ID
+		return e.ActionReassign.ItemID
 	case e.Comment != nil:
 		return e.Comment.Comment.ID
 	}
