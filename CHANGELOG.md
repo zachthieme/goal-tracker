@@ -81,6 +81,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Whether a Milestone is overdue is now judged by the date in the Goal's Owner's timezone (the company's for an Owner without one), as Stale and Metric targets are. Near midnight, a Green or No change was refused, or allowed, by the UTC date, and the Goal page marked the Milestone Red by that date too (#318).
 - [user] A Report and its Markdown export mark a Milestone Red, and a Path to Green Overdue, by the date in the Goal's Owner's timezone (the company's for an Owner without one), as the Goal page does, frozen with each publication. Near midnight they were judged by the UTC date (#349).
 - [user] A date moved back after slipping is no longer struck through beside itself ("Nov 9 ~~Nov 9~~"). The back-to-Green date and a Milestone's date strike through the most recent earlier date that differs, keeping the slip count, and a delivery date leaves its current date out of the struck list. This holds on the Goal page, the Goals list, Risks, Reports (published ones included), the print page and the Markdown export (#358).
+- [user] The Goal page's Ask for help line has a space before its Answer link ("Asks for help of Jonas Lindqvist Answer"), and on Risks a Not Green row's Health badge and its "· N wks" stay on one line (#357).
 
 **Infrastructure:**
 - [internal] `make lint` now fails on Go code that isn't gofmt-formatted, using golangci-lint's gofmt formatter; generated code stays guarded by `make generate-check` (#328).
