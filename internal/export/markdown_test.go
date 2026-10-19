@@ -465,3 +465,82 @@ func TestMarkdownShowsTheEarlierHealthOfAChangedGoal(t *testing.T) {
 		}
 	}
 }
+
+// The export opens, under its byline and before its Action Items, with the
+// line counting what moved since the baseline, as the snapshot page does; a
+// publication frozen before Reports counted it has none (CONTEXT.md: Report).
+func TestMarkdownOpensWithWhatMovedSinceTheBaseline(t *testing.T) {
+	t.Parallel()
+
+	byline := "Published 2026-02-21 09:30 UTC by boss (boss@example.com). "
+	for _, tc := range []struct {
+		name     string
+		previous bool
+		movement *domain.ReportMovement
+		want     string
+	}{
+		{
+			name:     "against the previous publication",
+			previous: true,
+			movement: &domain.ReportMovement{TurnedRed: 2, Left: 1},
+			want: byline + "Changes since the previous publication, 2026-01-20 14:05 UTC.\n" +
+				"\n**Since the previous publication:** 2 turned Red · 1 left\n" +
+				"\n## Open Action Items\n",
+		},
+		{
+			name:     "against a date",
+			movement: &domain.ReportMovement{New: 1},
+			want:     byline + "Changes since 2026-01-12.\n\n**Since 2026-01-12:** 1 new\n\n## Open Action Items\n",
+		},
+		{
+			name:     "with nothing moved",
+			previous: true,
+			movement: &domain.ReportMovement{},
+			want: byline + "Changes since the previous publication, 2026-01-20 14:05 UTC.\n" +
+				"\nNo movement since the previous publication.\n\n## Open Action Items\n",
+		},
+		{
+			name: "frozen before Reports counted it",
+			want: byline + "Changes since 2026-01-12.\n\n## Open Action Items\n",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pub := publication(nil, nil)
+			if tc.previous {
+				pub.Report.Previous = domain.PreviousPublication{ID: 6, PublishedAt: time.Date(2026, 1, 20, 14, 5, 0, 0, time.UTC)}
+			}
+			pub.Report.Movement = tc.movement
+			pub.Report.ActionItems = []domain.ActionItem{{Text: "Call legal.", Owner: boss, DueDate: date(2026, 3, 1)}}
+			if got := export.Markdown(pub); !strings.Contains(got, tc.want) {
+				t.Errorf("Markdown:\n%s\nwant it to contain:\n%s", got, tc.want)
+			}
+		})
+	}
+}
+
+// An exception block says what changed on it since the baseline under its
+// Owner line, before its Fields; a block where nothing changed says nothing.
+func TestMarkdownSaysWhatChangedOnABlock(t *testing.T) {
+	t.Parallel()
+
+	pub := publication([]domain.ReportBlock{
+		{
+			Goal:    domain.Goal{Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive, DeliveryDate: date(2026, 5, 1)},
+			Health:  domain.HealthRed,
+			Changes: []string{"Turned Red", "Delivery date slipped 3 weeks"},
+			Fields:  []domain.FieldValue{{Field: domain.Field{Name: "Tier"}, Value: "1"}},
+		},
+		{
+			Goal:   domain.Goal{Title: "Cut churn", SoWhat: "Keep customers.", Owner: boss, Lifecycle: domain.LifecycleActive},
+			Health: domain.HealthRed,
+		},
+	}, nil)
+
+	got := export.Markdown(pub)
+	if want := "\n\nboss · Active · Health: **Red** · due 2026-05-01\n\n**Changed:** Turned Red · Delivery date slipped 3 weeks\n\n**Tier:** 1\n"; !strings.Contains(got, want) {
+		t.Errorf("Markdown lacks %q:\n%s", want, got)
+	}
+	if n := strings.Count(got, "**Changed:**"); n != 1 {
+		t.Errorf("Markdown says what changed %d times, want once, on the changed block:\n%s", n, got)
+	}
+}
