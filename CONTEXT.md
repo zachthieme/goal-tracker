@@ -132,6 +132,10 @@ _Avoid_: status, RAG, RYG
 The worst Health among a Goal's active children, shown next to the Owner-set Health. When the two differ, the Owner must explain why.
 _Avoid_: computed status, aggregate health
 
+**Run off Green**:
+How long an Active Goal has been Yellow or Red without a Green Check-in in between, counted in weeks of the company's timezone. Moving between Red and Yellow doesn't end it; a Green Check-in does. Shown beside the Health ("Red · 5 wks"), never changing it.
+_Avoid_: time in status, red streak, days red
+
 **Stale**:
 An Active Goal whose last Check-in (or its activation, if it has none) is older than its expected cadence (weekly by default), counted in days of the company's timezone. On Hold Goals are never Stale. Surfaced as prominently as Red; a Rolled-up Health says how many children are Stale ("3 of 12 Stale") without changing its color.
 _Avoid_: overdue, missing update
@@ -141,16 +145,21 @@ Where a Goal is in its existence: Proposed, Active, On Hold, Done, or Cancelled.
 _Avoid_: status, state, New (use Proposed)
 
 **Date Slip**:
-A recorded change to a Goal's delivery date or a Milestone's date, always with a reason. The full history is kept, and a Goal's date is shown struck through (~~10/15~~ 11/03). A Milestone's date shows current first, then the date it last slipped from struck through (11/03 ~~10/15~~), and how many times it slipped once that is more than once (11/20 ~~11/03~~ (3)).
+A recorded change to a Goal's delivery date, a Milestone's date, or a Path to Green's back-to-Green date, always with a reason. The full history is kept, and a Goal's date is shown struck through (~~10/15~~ 11/03). A Milestone's date shows current first, then the date it last slipped from struck through (11/03 ~~10/15~~), and how many times it slipped once that is more than once (11/20 ~~11/03~~ (3)).
 _Avoid_: New Date (as a status), re-plan, reschedule
 
 **Milestone Churn**:
 The number of Milestones added or removed on a Goal since it became Active. Read alongside Date Slips as a scope-creep and capacity signal.
 _Avoid_: scope change, replan count
 
+**Schedule conflict**:
+A Goal due after a Goal it contributes to, so the parent's date can't be met as planned. Either Goal's Owner can resolve it: the child's by moving its date earlier or re-planning, the parent's by accepting the later date.
+_Avoid_: date mismatch, timeline clash
+
 **Path to Green**:
 The owner's stated plan, or request for help, to return a Yellow or Red Goal to Green.
-It carries a target date for being back to Green. Once that date has passed and the Goal still isn't Green, the Goal is flagged as prominently as Red.
+It carries a target date for being back to Green; moving that date later is a Date Slip. Once that date has passed and the Goal still isn't Green, the Goal is flagged as prominently as Red.
+A Path to Green marked as asking for help is an **Ask for help**, addressed up the Owner's reporting line: to their Manager, or, past anyone who has left the company or has no account, to the next Manager above. An Owner with no one above them has no addressee; the ask still shows on Risks and in Reports. It stays open until the Owner unmarks it in a later Check-in or the Run off Green ends; an answer alone doesn't close it.
 _Avoid_: mitigation, recovery plan, get-well plan
 
 ## Updates
@@ -159,11 +168,11 @@ _Avoid_: mitigation, recovery plan, get-well plan
 An owner's routine update to one Goal: Health, a short status, Date Slips, and Milestone changes. It should take minutes and be hard to get wrong.
 A Check-in is where a Milestone's date moves and where it is marked Done or Removed; it can add Milestones too, though a Milestone can also be added from the Goal page between Check-ins.
 A Green Check-in with an off-target Metric asks the Owner to confirm, and a No change can't repeat it.
-A No change is refused while a Milestone is overdue, whatever the Health: the Owner or a Delegate has to respond to the missed date.
+A No change is refused while a Milestone is overdue, or the Path to Green's back-to-Green date has passed, whatever the Health: the Owner or a Delegate has to respond to the missed date.
 _Avoid_: status update, 5-15, report
 
 **Nudge**:
-A one-off request from someone else to a Goal's Owner and Delegates to check in on a Goal that is Stale or past its Path to Green. A Goal can be nudged at most once a day, and each Nudge is kept in the Goal's history.
+A one-off request from someone else to a Goal's Owner and Delegates to check in on a Goal with something its Owner answers in a Check-in: Stale, past its Path to Green, a Milestone overdue, or a Schedule conflict. A Goal can be nudged at most once a day, and each Nudge is kept in the Goal's history.
 _Avoid_: reminder (that's the weekly email), ping, chase
 
 **Highlight**:
@@ -187,7 +196,7 @@ A condition on a Goal's Dimension values, Owner, Owner's org, Lifecycle, Health 
 _Avoid_: filter, query, criteria
 
 **Comment**:
-A question or answer about one Goal in a published Report. A Comment starts a thread that is routed to the Goal's Owner, and anyone may reply in it.
+A question or answer about one Goal, made on the Goal itself or on a published Report, and kept in the Goal's history. A Comment starts a thread that is routed to the Goal's Owner, and anyone may reply in it.
 _Avoid_: feedback, note, annotation
 
 **Action Item**:
