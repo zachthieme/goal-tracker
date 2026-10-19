@@ -67,6 +67,9 @@ type checkinFormData struct {
 	// refused for an overdue Milestone: the dates and Milestones section
 	// opens, so the Owner can move it, mark it Done or remove it.
 	Overdue bool
+	// OpenDates is set when the page was opened with ?open=dates, from a
+	// Schedule conflict's Fix: the dates and Milestones section opens.
+	OpenDates bool
 	// Shown is the clock the form shows its dates against.
 	Shown displayDates
 }
@@ -266,10 +269,10 @@ func (d checkinFormData) offTargetWarned() bool {
 }
 
 // datesOpen reports whether the dates and Milestones section renders open: it
-// holds the error, the reader changed something in it, or a Milestone in it is
-// overdue.
+// holds the error, the reader changed something in it, a Milestone in it is
+// overdue, or the page was opened with ?open=dates.
 func (d checkinFormData) datesOpen() bool {
-	return d.Overdue || d.Error.about("delivery_date", "milestone", "new_milestone") || d.Dates.changed()
+	return d.OpenDates || d.Overdue || d.Error.about("delivery_date", "milestone", "new_milestone") || d.Dates.changed()
 }
 
 // changed reports whether any date or Milestone field differs from the Goal's

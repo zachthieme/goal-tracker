@@ -36,6 +36,7 @@ func (s *Server) handleCheckinPage(w http.ResponseWriter, r *http.Request, curre
 	if to, ok := lifecycleFromQuery(r, form.Lifecycle); ok {
 		form.Lifecycle.To = to
 	}
+	form.OpenDates = r.URL.Query().Get("open") == "dates"
 	render(w, r, http.StatusOK, checkinPage(&current, view, form))
 }
 
