@@ -57,6 +57,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A No change is refused once the back-to-Green date has passed, whatever the Health. Move the date, with a reason, or come back to Green (#242).
 - [ops] A new migration (`0052_back_to_green_slips`) adds `date_slips.back_to_green` (default 0) on startup. Existing rows are unchanged, and no action is needed (#242).
 - [user] A back-to-Green date that slipped in the current Run off Green shows as slipped ("Oct 3 ~~Sep 12~~ (3)") on Risks' Not Green rows and on Report exception blocks, where a publication keeps it as published, on Print and in the Markdown export too (#352).
+- [user] The New goal and Finish defining pages are redrawn without the one long card. The Title comes first, as a heading; Delivery has Kind tiles, with the delivery date inside Dated, and a segmented Check-in cadence; Contributes to and Where it fits sit in a More detail section as rows that open in place; and the Ready to activate panel shows ✓ and ○ marks without the "to do" text that wrapped (#357) (#368).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
@@ -74,6 +75,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] On a phone, the Goals list stacks each Goal's Health, Owner, Due and Last check-in under its title (Dimension tags are hidden there), a Report card's Health drops under its title, the Risks filters wrap so both selects are on screen, and the Admin page's Make Admin and Issue link buttons fit under their Email field (#343).
 - [user] Whether a Milestone is overdue is now judged by the date in the Goal's Owner's timezone (the company's for an Owner without one), as Stale and Metric targets are. Near midnight, a Green or No change was refused, or allowed, by the UTC date, and the Goal page marked the Milestone Red by that date too (#318).
 - [user] A Report and its Markdown export mark a Milestone Red, and a Path to Green Overdue, by the date in the Goal's Owner's timezone (the company's for an Owner without one), as the Goal page does, frozen with each publication. Near midnight they were judged by the UTC date (#349).
+- [user] A date moved back after slipping is no longer struck through beside itself ("Nov 9 ~~Nov 9~~"). The back-to-Green date and a Milestone's date strike through the most recent earlier date that differs, keeping the slip count, and a delivery date leaves its current date out of the struck list. This holds on the Goal page, the Goals list, Risks, Reports (published ones included), the print page and the Markdown export (#358).
 
 **Infrastructure:**
 - [internal] `make lint` now fails on Go code that isn't gofmt-formatted, using golangci-lint's gofmt formatter; generated code stays guarded by `make generate-check` (#328).
@@ -86,6 +88,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] A 390px e2e spec, `e2e/phone-width.spec.ts`, checks that the Goals list, Risks, a Report draft and the Admin page don't clip or scroll sideways and keep every control on screen (#343).
 - [internal] `make e2e-typecheck` (`npm run typecheck` in `e2e/`) type-checks every TypeScript file in the e2e suite with `tsc` in strict mode, from a new `e2e/tsconfig.json` (ES2023, DOM, Node 22 types). It isn't a gate, and `make check` doesn't run it (#225).
 - [internal] Two e2e checks now fail without the fix they cover: the goal form's empty-submit check asserts the input's invalid event (#212), and the Report builder step asserts the selected author is scrolled to the top of its value list, where a no-op scroll left it on the bottom edge and still passed (#314) (#348).
+- [internal] Behaviour from #345 and #246 that no test caught now has tests that fail without it: the Risks page counts a Milestone's overdue days in the Owner's Timezone, a Report block names its linked Goals by title ignoring case then by id within each Health, and a pending link is never named in "Contributes to" or "Behind" (#360).
 
 **Code quality:**
 - [internal] e2e/ has a Prettier config pinning its 120-column style, so a plain npx prettier --check there passes, and the three scenario specs that didn't follow it now do (#346).
