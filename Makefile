@@ -1,4 +1,4 @@
-.PHONY: build test test-quick lint generate generate-check check test-scripts e2e clean help seed serve serve-app authentik-up start stop restart
+.PHONY: build test test-quick lint generate generate-check check test-scripts e2e e2e-typecheck clean help seed serve serve-app authentik-up start stop restart
 
 # A bare `make` runs generate. Each target's `## ` comment is its line in
 # `make help`.
@@ -68,6 +68,12 @@ e2e: e2e/node_modules/.package-lock.json ## Run the Playwright end-to-end suite 
 	@if [ -z "$$CHROME" ]; then cd e2e && npx playwright install chromium; fi
 	cd e2e && NODE_OPTIONS=--disable-warning=ExperimentalWarning npx playwright test $(E2E_ARGS)
 
+# Type-checks e2e/: `tsc -p .` over every .ts file in it, with the strict
+# settings in e2e/tsconfig.json. Needs no Chromium and no Go. Not a gate:
+# `make check` doesn't run it.
+e2e-typecheck: e2e/node_modules/.package-lock.json ## Type-check e2e/ with tsc in strict mode; not a gate
+	cd e2e && npm run typecheck
+
 # npm ci writes node_modules/.package-lock.json, so this reruns it when the
 # lockfile changes, such as a Playwright version bump.
 e2e/node_modules/.package-lock.json: e2e/package-lock.json
@@ -79,7 +85,7 @@ clean: ## Remove bin/ and serve.log
 	rm -f serve.log
 
 help: ## List the targets
-	@awk 'BEGIN { FS = ":[^#]*## " } /^[a-zA-Z_-]+:[^#]*## / { printf "  %-15s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	@awk 'BEGIN { FS = ":[^#]*## " } /^[a-zA-Z0-9_-]+:[^#]*## / { printf "  %-15s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 # Fill a fresh database with a fake org for demos (see README). SEED_DB defaults
 # to the server's default database; the seed refuses one that already has Goals.
