@@ -652,7 +652,11 @@ templ checkinForm(d checkinFormData) {
 			if d.Previous.PathTargetDate != "" {
 				<span data-testid="checkin-path-target-last" id={ d.pathTargetLastID() } class="hint">Last time: { d.Shown.dateText(d.Previous.PathTargetDate) }</span>
 			}
-			<label><input type="checkbox" name="asks_for_help" value="1" data-testid="checkin-asks-for-help" checked?={ d.AsksForHelp }/> This asks for help</label>
+			@checkinFieldError(d.Error, "path_to_green")
+			<label class="checkin-ask">
+				<input type="checkbox" name="asks_for_help" value="1" data-testid="checkin-asks-for-help" checked?={ d.AsksForHelp }/>
+				This asks for help
+			</label>
 			if d.AskAddressee != nil {
 				<span data-testid="checkin-ask-addressee" class="hint">
 					{ "Goes to " }
@@ -662,7 +666,6 @@ templ checkinForm(d checkinFormData) {
 			} else {
 				<span data-testid="checkin-ask-addressee" class="hint">No one is above the Owner to ask. It still shows on Risks and in Reports.</span>
 			}
-			@checkinFieldError(d.Error, "path_to_green")
 		</fieldset>
 		if d.RolledUp.Present {
 			<p data-testid="checkin-form-rollup">
@@ -869,7 +872,7 @@ templ checkinStyles() {
 			.checkin-highlights{display:flex;flex-direction:column;gap:16px}
 			.checkin-more .checkin-highlights fieldset>legend{display:block;padding:0;font-size:13px;color:var(--color-ink-muted)}
 			.checkin-highlights>button{align-self:flex-start}
-			.checkin-form .checkin-keep{flex-direction:row;align-items:center}
+			.checkin-form .checkin-keep, .checkin-form .checkin-ask{flex-direction:row;align-items:center}
 			.ms-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1fr);gap:8px 12px;align-items:start}
 			.ms-row{display:contents}
 			.ms-name{font-weight:600;align-self:center}
