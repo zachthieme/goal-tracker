@@ -2525,7 +2525,7 @@ func moreRow(t *testing.T, page, testID string) (tag, summary string) {
 	if !strings.HasPrefix(tag, "<details") {
 		t.Fatalf("%s isn't a <details>: %s", testID, tag)
 	}
-	text := between(t, page[strings.Index(page, tag):], "<summary", "</summary>")
+	text := between(t, between(t, page, `data-testid="`+testID+`"`, ""), "<summary", "</summary>")
 	return tag, strings.Join(strings.Fields(html.UnescapeString(regexpTags.ReplaceAllString(text, " "))), " ")
 }
 
