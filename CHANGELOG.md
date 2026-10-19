@@ -24,6 +24,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Goal page and History show the ask (#241).
 - [user] Risks marks a Goal that asks for help with an "Asks for help" chip in Not Green, naming who it asks (#351).
 - [user] A Report's exception block says the Goal asks for help, and of whom, as it stood when published (#351).
+- [user] A Goal's own dates are judged in its Owner's timezone, from the company's directory: when it turns Stale, when its Path to Green goes overdue, and when a Metric misses its target. An Ownerless Goal, and an Owner with no timezone, use the company's (#354).
 
 **Improvements:**
 - [ops] Pages no longer load anything from other hosts: htmx and the fonts are served from the app, so browsers on a network that blocks `unpkg.com` or Google Fonts get the full app (#336).
