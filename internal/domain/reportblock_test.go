@@ -641,3 +641,59 @@ func TestReportBlockReadsNoDeliverySlipFromABackToGreenSlip(t *testing.T) {
 		t.Errorf("badges %q, want no %q", b.Badges, domain.BadgeNewDate)
 	}
 }
+
+// A block keeps the dates its back-to-Green date slipped from within the
+// current Run off Green, earliest first, to strike through beside it.
+func TestReportBlockKeepsTheBackToGreenDatesSlippedFromInTheRun(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	settle(h)
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", date(2026, 3, 6))
+	h.Clock.Advance(day)
+	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Hire counsel.", date(2026, 3, 13), "Counsel starts later.")
+	h.Clock.Advance(day)
+	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Hire counsel.", date(2026, 4, 3), "Counsel quit.")
+
+	r := draftReport(t, h, boss, time.Time{}, g)
+
+	if len(r.Exceptions) != 1 {
+		t.Fatalf("exception blocks %v, want [%d]", blockIDs(r), g.ID)
+	}
+	b := r.Exceptions[0]
+	if want := []time.Time{date(2026, 3, 6), date(2026, 3, 13)}; !slices.EqualFunc(b.PriorPathTargetDates, want, time.Time.Equal) {
+		t.Errorf("PriorPathTargetDates %v, want %v", b.PriorPathTargetDates, want)
+	}
+	if !b.PathTargetDate.Equal(date(2026, 4, 3)) {
+		t.Errorf("PathTargetDate %v, want %v", b.PathTargetDate, date(2026, 4, 3))
+	}
+}
+
+// A new Run off Green counts its slips afresh: a Goal whose back-to-Green date
+// slipped only before its latest Green Check-in, now Yellow again, keeps none.
+func TestReportBlockKeepsNoBackToGreenSlipFromAnEarlierRun(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	settle(h)
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", date(2026, 3, 6))
+	h.Clock.Advance(day)
+	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Hire counsel.", date(2026, 3, 13), "Counsel starts later.")
+	h.Clock.Advance(day)
+	h.Checkin(boss, g.ID, domain.HealthGreen, "Counsel signed off.", "", time.Time{})
+	h.Clock.Advance(day)
+	h.Checkin(boss, g.ID, domain.HealthYellow, "A new filing is due.", "File it.", date(2026, 3, 27))
+
+	r := draftReport(t, h, boss, time.Time{}, g)
+
+	if len(r.Exceptions) != 1 {
+		t.Fatalf("exception blocks %v, want [%d]", blockIDs(r), g.ID)
+	}
+	if got := r.Exceptions[0].PriorPathTargetDates; len(got) != 0 {
+		t.Errorf("PriorPathTargetDates %v, want none", got)
+	}
+}
