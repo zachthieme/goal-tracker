@@ -26,6 +26,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
 - [user] Pressing Enter in a Check-in field submits the Check-in instead of adding a Highlight row (#296).
 - [user] Remove shows on a Goal's link only for an Owner of either linked Goal, and a refused removal shows a "Can't remove link" page inside the app instead of bare text (#251).
+- [ops] A directory file with an unclosed quote fails the sync and names the line, instead of reading the rest of the file as one value and dropping everyone after it (#329).
 
 ### Collected changes — October 18, 2026
 
