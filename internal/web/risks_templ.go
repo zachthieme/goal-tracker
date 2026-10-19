@@ -741,7 +741,8 @@ func risksTable(current *domain.Account, today time.Time, here string, rows []ri
 	})
 }
 
-// riskRow is one flagged Goal: its Health, its title with a chip per signal
+// riskRow is one flagged Goal: its Health, with its Run off Green on a Not
+// Green row ("Red · 5 wks"), its title with a chip per signal
 // that flags it, its Owner ("You" for the viewer's own), and a cell for its
 // fix: a link, a form posting back to here, or a disabled button saying why
 // it can't be used.
@@ -782,7 +783,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs("· " + r.RunOffGreen.Label())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 170, Col: 94}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 171, Col: 94}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
@@ -800,7 +801,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 		var templ_7745c5c3_Var35 templ.SafeURL
 		templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", r.Goal.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 174, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 175, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 		if templ_7745c5c3_Err != nil {
@@ -813,7 +814,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 		var templ_7745c5c3_Var36 string
 		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(r.Goal.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 174, Col: 80}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 175, Col: 80}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 		if templ_7745c5c3_Err != nil {
@@ -856,7 +857,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var37 string
 			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(r.Fix.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 190, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 191, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 			if templ_7745c5c3_Err != nil {
@@ -874,7 +875,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var38 templ.SafeURL
 			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(r.Fix.Href))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 192, Col: 78}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 193, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 			if templ_7745c5c3_Err != nil {
@@ -887,7 +888,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var39 string
 			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.ResolveAttributeValue(here)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 193, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 194, Col: 52}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var39)
 			if templ_7745c5c3_Err != nil {
@@ -900,7 +901,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(r.Fix.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 194, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 195, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 			if templ_7745c5c3_Err != nil {
@@ -918,7 +919,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var41 templ.SafeURL
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(r.Fix.Href))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 197, Col: 62}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 198, Col: 62}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 			if templ_7745c5c3_Err != nil {
@@ -931,7 +932,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var42 string
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(r.Fix.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 197, Col: 78}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 198, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 			if templ_7745c5c3_Err != nil {
@@ -949,7 +950,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var43 templ.SafeURL
 			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(r.Fix.Href))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 199, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 200, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 			if templ_7745c5c3_Err != nil {
@@ -962,7 +963,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var44 string
 			templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(r.Fix.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 199, Col: 70}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 200, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 			if templ_7745c5c3_Err != nil {
@@ -1016,7 +1017,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 				var templ_7745c5c3_Var46 string
 				templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs("Asks for help of ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 214, Col: 26}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 215, Col: 26}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 				if templ_7745c5c3_Err != nil {
@@ -1030,7 +1031,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 				var templ_7745c5c3_Var47 string
 				templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs("Asks for help · no one above the Owner")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 216, Col: 48}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 217, Col: 48}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 				if templ_7745c5c3_Err != nil {
@@ -1049,7 +1050,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 			var templ_7745c5c3_Var48 string
 			templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs("Stale · " + plural(sig.Days, "day") + ", checks in " + cadenceInWords(g.CadenceDays))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 220, Col: 158}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 221, Col: 158}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 			if templ_7745c5c3_Err != nil {
@@ -1067,7 +1068,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 			var templ_7745c5c3_Var49 string
 			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs("Path to Green " + plural(sig.Days, "day") + " overdue")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 222, Col: 134}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 223, Col: 134}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 			if templ_7745c5c3_Err != nil {
@@ -1085,7 +1086,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 			var templ_7745c5c3_Var50 string
 			templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs("Milestone " + plural(sig.Days, "day") + " overdue")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 224, Col: 135}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 225, Col: 135}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 			if templ_7745c5c3_Err != nil {
@@ -1103,7 +1104,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 			var templ_7745c5c3_Var51 string
 			templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs("Action Item " + plural(sig.Days, "day") + " overdue")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 226, Col: 139}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 227, Col: 139}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 			if templ_7745c5c3_Err != nil {
@@ -1121,7 +1122,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 			var templ_7745c5c3_Var52 string
 			templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.ResolveAttributeValue(ownerlessHelp)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 228, Col: 95}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 229, Col: 95}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var52)
 			if templ_7745c5c3_Err != nil {
@@ -1144,7 +1145,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 			var templ_7745c5c3_Var53 string
 			templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("Schedule conflict · due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), riskDays(sig.Days)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 233, Col: 141}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 234, Col: 141}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
 			if templ_7745c5c3_Err != nil {
@@ -1166,7 +1167,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 			var templ_7745c5c3_Var54 string
 			templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs("Parent " + sig.Related.Lifecycle + " · ")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 237, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 238, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
 			if templ_7745c5c3_Err != nil {
