@@ -43,10 +43,10 @@ vetinari don't run it. From `e2e/`, `npm run typecheck` does the same.
 databases with `-seed 23`, both frozen at the **reference date, Monday 5
 October 2026**, not the machine's date:
 
-| Template | Seeded with | What it gives |
-| -------- | ----------- | ------------- |
+| Template  | Seeded with       | What it gives                                                                                                                                                                                    |
+| --------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `default` | `-end 2026-10-05` | History ends on the reference date: the seed's last Check-ins land at about 15:49 UTC, a couple of hours before each test's app starts its clock. A Check-in a test writes is the Goal's latest. |
-| `due` | `-end 2026-10-01` | The last Check-ins are 4 days old at the reference date, so 7-day Goals are due on Home without being Stale. |
+| `due`     | `-end 2026-10-01` | The last Check-ins are 4 days old at the reference date, so 7-day Goals are due on Home without being Stale.                                                                                     |
 
 Every test's app starts its clock at **2026-10-05T18:05:00Z**
 (`GOAL_TRACKER_START_AT`, exported as `startAt`) and ticks on from there, so
@@ -120,8 +120,8 @@ check-in staying in the window at 1280×800 while the bar sits below the last
 optional section at the page's end; and at 390px, Cancel hidden and nothing
 past the window's edge.
 [`highlight-editor.spec.ts`](highlight-editor.spec.ts) checks the Check-in
-form's Highlight editor with script on: the + Insight, + Accomplishment and
-+ Miss buttons, the Note editor's Save, Edit, Cancel and Remove, an editor
+form's Highlight editor with script on: the + Insight, + Accomplishment
+and + Miss buttons, the Note editor's Save, Edit, Cancel and Remove, an editor
 left open at submit, and Draft Highlights shown as items or, with no Kind, as
 an open editor.
 [`checkin-add-bar.spec.ts`](checkin-add-bar.spec.ts) checks the Check-in
@@ -131,11 +131,11 @@ refused submit, its Highlight buttons opening the Highlights section's
 editor, Enter still submitting, its row scrolling sideways at 390px, and the
 folded sections without script.
 [`goal-measures-editor.spec.ts`](goal-measures-editor.spec.ts) checks the New
-goal form's Milestone and Metric editor with script on: + Milestone and
-+ Metric, each editor's Save and the fields it waits for, the items with Edit,
-Cancel and Remove, the Ready card's "Save the Milestone you started", Enter in
-an editor, a refused submit reopening its editor, and Finish defining adding
-to a Goal's existing Milestone.
+goal form's Milestone and Metric editor with script on: + Milestone
+and + Metric, each editor's Save and the fields it waits for, the items with
+Edit, Cancel and Remove, the Ready card's "Save the Milestone you started",
+Enter in an editor, a refused submit reopening its editor, and Finish defining
+adding to a Goal's existing Milestone.
 
 ## Conventions for the scenario specs
 

@@ -142,7 +142,9 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     await expect(more.getByRole("heading", { level: 2, name: /^More detail/ })).toBeVisible();
     // Contributes to is a closed row, with nothing picked, until it's opened.
     const contributes = more.getByRole("group", { name: "Contributes to" });
-    await expect(more.getByTestId("goal-form-parents-row").locator("summary")).toHaveText(/Contributes to\s*· none\s*Set/);
+    await expect(more.getByTestId("goal-form-parents-row").locator("summary")).toHaveText(
+      /Contributes to\s*· none\s*Set/,
+    );
     await expect(contributes).toBeHidden();
     await openContributesTo(priya);
     await expect(contributes).toBeVisible();
