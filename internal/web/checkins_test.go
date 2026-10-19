@@ -3515,3 +3515,158 @@ func TestCheckinPageRefusesNoChangeOnceTheBackToGreenDateHasPassed(t *testing.T)
 	_, page = postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
 	assertNoChangeRefusalOnForm(t, page, want)
 }
+
+// checkinChildrenFixture is a Goal Sam owns with two Active children Sam also
+// owns, one checked in Yellow and one Green, so its Rolled-up Health is Yellow.
+type checkinChildrenFixture struct {
+	parent, yellow, green domain.Goal
+}
+
+func newCheckinChildrenFixture(h *testsupport.Harness, sam domain.Account) checkinChildrenFixture {
+	parent := h.ActiveGoal(sam, "Delight customers in their first week", "First impressions stick.")
+	yellow := h.ActiveChildOf(sam, parent, "Lift trial-to-paid conversion", "Revenue.")
+	green := h.ActiveChildOf(sam, parent, "Raise the app store rating", "Reputation.")
+	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Slipping.", "Fix the paywall.", pathDate)
+	h.Checkin(sam, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	return checkinChildrenFixture{parent: parent, yellow: yellow, green: green}
+}
+
+// The Check-in page shows the Goal's children, the Goal page's "Contributed to
+// by" list, so the Owner sees which children set the Rolled-up Health without
+// leaving the form. It is read-only: no Remove button, even for the Owner of
+// the Goal and of each child.
+func TestCheckinPageListsTheGoalsChildren(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	f := newCheckinChildrenFixture(h, sam)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, f.parent.ID))
+	aside := pageElement(t, page, "aside", "checkin-children")
+	if !strings.Contains(aside, "<h3>Contributed to by</h3>") {
+		t.Errorf("children list is not headed Contributed to by; aside:\n%s", aside)
+	}
+	for _, child := range []struct {
+		goal  domain.Goal
+		badge string
+	}{
+		{f.yellow, `<span class="badge y"><span class="dot"></span>Yellow</span>`},
+		{f.green, `<span class="badge g"><span class="dot"></span>Green</span>`},
+	} {
+		link := fmt.Sprintf(`<a href="/goals/%d">%s</a>`, child.goal.ID, child.goal.Title)
+		at := strings.Index(aside, link)
+		if at < 0 {
+			t.Errorf("children list has no link %s; aside:\n%s", link, aside)
+			continue
+		}
+		item, _, _ := strings.Cut(aside[at:], "</li>")
+		if !strings.Contains(item, child.badge) {
+			t.Errorf("%s shows no %s; item:\n%s", child.goal.Title, child.badge, item)
+		}
+	}
+	if strings.Contains(aside, "/links/") {
+		t.Errorf("children list offers a Remove form; aside:\n%s", aside)
+	}
+}
+
+// A Goal with no children keeps the Check-in page as it was: no children list,
+// and the page stays one column.
+func TestCheckinPageWithoutChildrenHasNoChildrenList(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(sam, "Ship it", "It matters.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, g.ID))
+	if strings.Contains(page, `data-testid="checkin-children"`) {
+		t.Errorf("a Goal with no children shows a children list; body:\n%s", page)
+	}
+	if !strings.Contains(page, `<div class="checkin-page">`) {
+		t.Errorf("a Goal with no children doesn't keep the one-column Check-in page; body:\n%s", page)
+	}
+}
+
+// The form's Rolled-up Health line names the Goal's children, not the
+// Owner's, and counts the ones that set it.
+func TestCheckinFormRollupLineCountsTheGoalsChildren(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	f := newCheckinChildrenFixture(h, sam)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, f.parent.ID))
+	line := pageElement(t, page, "p", "checkin-form-rollup")
+	got := strings.Join(strings.Fields(html.UnescapeString(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(line, ""))), " ")
+	const want = "Rolled-up Health: Yellow, the worst Health among this Goal's Active children. (1 of 2 Yellow)"
+	if got != want {
+		t.Errorf("rollup line = %q, want %q", got, want)
+	}
+	if !strings.Contains(line, "Rolled-up Health: <strong>Yellow</strong>,") {
+		t.Errorf("rollup line doesn't set the Health in bold; line:\n%s", line)
+	}
+	if strings.Contains(page, "your Active children") {
+		t.Errorf("rollup line still reads as the Owner's children; body:\n%s", page)
+	}
+}
+
+// A refused submit re-renders only the form, with its error, for htmx to swap
+// in place; the children list sits outside the form, so it stays as it was.
+func TestCheckinRefusedSubmitLeavesTheChildrenListAlone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	f := newCheckinChildrenFixture(h, sam)
+
+	body, status := postFormHX(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkins", ts.URL, f.parent.ID), url.Values{
+		"health":        {domain.HealthYellow},
+		"status":        {""},
+		"path_to_green": {"Fix the paywall."},
+	})
+	if status != http.StatusOK {
+		t.Fatalf("htmx validation response status = %d, want 200", status)
+	}
+	fieldError(t, body, `name="status"`)
+	if !strings.Contains(body, `data-testid="checkin-form"`) {
+		t.Errorf("refused submit doesn't re-render the form; body:\n%s", body)
+	}
+	if strings.Contains(body, `data-testid="checkin-children"`) {
+		t.Errorf("refused submit re-renders the children list along with the form; body:\n%s", body)
+	}
+}
+
+// The children list's rules live in app.css, shared by the Goal page and the
+// Check-in page, so the two lists can't drift; the Goal page no longer carries
+// its own copy.
+func TestChildrenListStylesAreShared(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	f := newCheckinChildrenFixture(h, sam)
+
+	rules := []string{
+		".gp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}",
+		".gp-link{display:flex;flex-direction:column;gap:4px}",
+		".gp-link-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}",
+		".gp-link-meta form{margin:0 0 0 auto}",
+	}
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	goalPage := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, f.parent.ID))
+	for _, rule := range rules {
+		if !strings.Contains(css, rule) {
+			t.Errorf("app.css lacks %s", rule)
+		}
+		if strings.Contains(goalPage, rule) {
+			t.Errorf("Goal page's inline styles still carry %s", rule)
+		}
+	}
+}
