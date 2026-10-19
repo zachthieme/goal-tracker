@@ -710,6 +710,61 @@ func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
 	}
 }
 
+// At phone width the Goal list's rows stack as cards, as Risks' do: the Goal
+// across the top, then Health and Owner, then Due and Last check-in, each led
+// by a label only the phone shows, with the Dimension tags hidden (#258).
+func TestGoalListRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship the phone layout", "It matters.")
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals")
+	if !strings.Contains(page, `<table class="gl-list">`) {
+		t.Errorf("the list layout's table has no gl-list class to style")
+	}
+	rows := goalRows(t, page)
+	if got := rowTitles(rows, goal); !slices.Equal(got, []string{goal.Title}) {
+		t.Fatalf("rows = %q", got)
+	}
+	for _, class := range []string{"gl-health", "gl-goal", "gl-owner", "num gl-dates", "muted gl-checkin", "gl-tags"} {
+		if !strings.Contains(rows[0], `class="`+class+`"`) {
+			t.Errorf("the row has no %s cell to style:\n%s", class, rows[0])
+		}
+	}
+
+	phone := mediaBlock(t, page, "@media (max-width:600px)")
+	for selector, want := range map[string]string{
+		".gl-list thead":      "display:none",
+		".gl-list tr":         "display:grid",
+		".gl-list td":         "display:block",
+		".gl-list .gl-goal":   "order:-1",
+		".gl-list .gl-tags":   "display:none",
+		".gl-dates::before":   `content:"Due "`,
+		".gl-checkin::before": `content:"Last check-in "`,
+		".gl-list .gl-owner":  "white-space:normal",
+		".gl-list [colspan]":  "grid-column:1/-1",
+	} {
+		rule, ok := ruleFor(phone, selector)
+		if !ok {
+			t.Errorf("at 600px there is no %s rule", selector)
+		} else if !strings.Contains(rule, want) {
+			t.Errorf("at 600px %s{%s} lacks %s", selector, rule, want)
+		}
+	}
+	if rule, _ := ruleFor(phone, ".gl-list .gl-goal"); !strings.Contains(rule, "grid-column:1/-1") {
+		t.Errorf("at 600px the Goal cell .gl-list .gl-goal{%s} shares its line with Health rather than heading the card", rule)
+	}
+	outside := strings.Replace(page, phone, "", 1)
+	for _, label := range []string{".gl-dates::before", ".gl-checkin::before"} {
+		if strings.Contains(outside, label) {
+			t.Errorf("%s labels the cell outside the phone block, so the desktop table shows it too", label)
+		}
+	}
+}
+
 // Searching the Goal list keeps the Goals whose title or Owner's email or Name
 // holds the text, ignoring case, and the search box keeps what was typed.
 func TestGoalListSearchesTitleAndOwner(t *testing.T) {
