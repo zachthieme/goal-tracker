@@ -492,6 +492,35 @@ func TestMarkdownShowsTheEarlierHealthOfAChangedGoal(t *testing.T) {
 	}
 }
 
+// A block's Run off Green, frozen with the publication, sits right after its
+// Health and before what it was ("Red · 5 wks · was Green"); a block with none
+// says nothing of weeks (CONTEXT.md: Run off Green).
+func TestMarkdownShowsTheRunOffGreenBesideTheHealth(t *testing.T) {
+	t.Parallel()
+
+	pub := publication([]domain.ReportBlock{
+		{
+			Goal:             domain.Goal{Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
+			Health:           domain.HealthRed,
+			RunOffGreenWeeks: 5,
+			PriorHealth:      domain.HealthGreen,
+		},
+	}, nil)
+	if got, want := export.Markdown(pub), "Health: **Red** · 5 wks · was Green\n"; !strings.Contains(got, want) {
+		t.Errorf("Markdown lacks %q:\n%s", want, got)
+	}
+
+	pub = publication([]domain.ReportBlock{
+		{
+			Goal:   domain.Goal{Title: "Cut churn", SoWhat: "Keep customers.", Owner: boss, Lifecycle: domain.LifecycleActive},
+			Health: domain.HealthGreen,
+		},
+	}, nil)
+	if got := export.Markdown(pub); strings.Contains(got, "wk") {
+		t.Errorf("Markdown of a block with no Run off Green mentions weeks:\n%s", got)
+	}
+}
+
 // The export opens, under its byline and before its Action Items, with the
 // line counting what moved since the baseline, as the snapshot page does; a
 // publication frozen before Reports counted it has none (CONTEXT.md: Report).
