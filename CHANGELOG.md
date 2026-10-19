@@ -26,6 +26,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A Report's exception block says the Goal asks for help, and of whom, as it stood when published (#351).
 - [user] A Goal's own dates are judged in its Owner's timezone, from the company's directory: when it turns Stale, when its Path to Green goes overdue, and when a Metric misses its target. An Ownerless Goal, and an Owner with no timezone, use the company's (#354).
 - [user] A Red or Yellow Goal shows how long it has been off Green ("Red · 5 wks"), counted in calendar weeks of its Owner's timezone, on its page, on Risks' Not Green rows and on Report exception blocks, where a publication keeps the count it was published with (#243).
+- [user] Moving a Path to Green's back-to-Green date later is a Date Slip. The Check-in form asks for a reason only when the date moves later, History keeps it, and the Goal page shows the date as a slipped Milestone's is ("Oct 3 ~~Sep 12~~ (3)"), counted within the current Run off Green (#242).
 
 **Improvements:**
 - [ops] Pages no longer load anything from other hosts: htmx and the fonts are served from the app, so browsers on a network that blocks `unpkg.com` or Google Fonts get the full app (#336).
@@ -49,6 +50,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A Goal in a Schedule conflict can be nudged. The email names each conflict and opens the Check-in's dates (#257).
 - [user] Risks' groups "Owner needs to update" and "Plan doesn't fit" are now "Waiting on a Check-in" and "Placement and dates", and their empty cards now read "Nothing is waiting on a Check-in." and "Every Goal is placed and its dates fit." Their links (`?group=owner`, `?group=plan`) are unchanged (#253).
 - [user] The activation checklist, on the New goal form, a Proposed Goal's page and its define page (and the checklist that updates as the form is typed), marks an item not yet met with a neutral ○ "to do" in place of a red ✗ "missing" (#253).
+- [user] A No change is refused once the back-to-Green date has passed, whatever the Health. Move the date, with a reason, or come back to Green (#242).
+- [ops] A new migration (`0052_back_to_green_slips`) adds `date_slips.back_to_green` (default 0) on startup. Existing rows are unchanged, and no action is needed (#242).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
