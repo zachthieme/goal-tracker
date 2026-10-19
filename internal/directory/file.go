@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -35,8 +36,10 @@ const (
 // and an empty manager_email no Manager. Blank lines and a leading UTF-8 BOM
 // are skipped, and a stray quote in an unquoted field is kept as part of it.
 // It returns an error naming the file, and no one, if the file can't be read,
-// the header lacks one of those three columns or names one twice, or a row has
-// the wrong number of fields (the error gives its line).
+// the header lacks one of those three columns or names one twice, a row has the
+// wrong number of fields, or one of those three fields runs onto the next line,
+// the sign of a quote that isn't closed (for a bad row the error gives its
+// line).
 func (f *File) People(_ context.Context) ([]domain.DirectoryPerson, error) {
 	file, err := os.Open(f.path)
 	if err != nil {
@@ -52,15 +55,15 @@ func (f *File) People(_ context.Context) ([]domain.DirectoryPerson, error) {
 	// unquoted field, as HR exports write names like Ada "the" L.
 	cr := csv.NewReader(r)
 	cr.LazyQuotes = true
-	records, err := cr.ReadAll()
+	header, err := cr.Read()
+	if err == io.EOF {
+		return nil, fmt.Errorf("directory file %s is empty; its first row must be the header %s,%s,%s", f.path, fileEmailColumn, fileNameColumn, fileManagerColumn)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("directory file %s: %w", f.path, err)
 	}
-	if len(records) == 0 {
-		return nil, fmt.Errorf("directory file %s is empty; its first row must be the header %s,%s,%s", f.path, fileEmailColumn, fileNameColumn, fileManagerColumn)
-	}
 	columns := map[string]int{}
-	for i, name := range records[0] {
+	for i, name := range header {
 		name = strings.ToLower(strings.TrimSpace(name))
 		if name != fileEmailColumn && name != fileNameColumn && name != fileManagerColumn {
 			continue
@@ -70,16 +73,34 @@ func (f *File) People(_ context.Context) ([]domain.DirectoryPerson, error) {
 		}
 		columns[name] = i
 	}
+	readColumns := []string{fileEmailColumn, fileNameColumn, fileManagerColumn}
 	var at [3]int
-	for i, name := range []string{fileEmailColumn, fileNameColumn, fileManagerColumn} {
+	for i, name := range readColumns {
 		col, ok := columns[name]
 		if !ok {
 			return nil, fmt.Errorf("directory file %s: the header has no %q column", f.path, name)
 		}
 		at[i] = col
 	}
-	people := make([]domain.DirectoryPerson, 0, len(records)-1)
-	for _, rec := range records[1:] {
+	people := []domain.DirectoryPerson{}
+	for {
+		// Read returns a ragged row's fields along with its error, so the
+		// error comes first.
+		rec, err := cr.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("directory file %s: %w", f.path, err)
+		}
+		// A quoted field may hold a newline, so a quote that is never closed
+		// swallows the rows after it into one of the fields People reads.
+		for i, col := range at {
+			if strings.ContainsAny(rec[col], "\r\n") {
+				line, _ := cr.FieldPos(col)
+				return nil, fmt.Errorf("directory file %s: line %d: the %s field runs onto the next line; check for a quote that isn't closed", f.path, line, readColumns[i])
+			}
+		}
 		people = append(people, domain.DirectoryPerson{Email: rec[at[0]], Name: rec[at[1]], ManagerEmail: rec[at[2]]})
 	}
 	return people, nil
