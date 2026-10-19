@@ -34,6 +34,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [api] **Database schema**: `account_passwords`, an Account's password hash, failed sign-ins and lockout, and `password_links`, the one outstanding set-password link per Account, kept as the SHA-256 of its token (#300).
 - [user] The Check-in form's off-target warning is flagged at the top of the form, stays through Add another, and isn't asked again after a later error once you've confirmed Green. The No change refusal reads as a sentence, shows its due date as the rest of the page does, and no longer preselects Green while a Milestone is overdue (#342).
 - [user] Risks lists every Active Red and Yellow Goal under a new first card, Not Green, and the top bar's Risks count includes them (#344).
+- [user] The Goal page explains Dated, Ongoing, Delegates and Dimension values with a help button, and Ownerless badges say what Ownerless means on hover. The Report builder explains Also include and Leave out, and its rules hint is in plain words (#282).
+- [ops] The directory sync reads each person's timezone, an IANA name, from an optional `timezone` column in the CSV directory file or a `timezone` attribute in Authentik. A blank or invalid value means none, and an invalid one is logged at WARN. Nothing uses it yet. A new migration (`0050_account_timezones`) adds `accounts.timezone` on startup; no action is needed (#353).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
