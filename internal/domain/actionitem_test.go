@@ -204,6 +204,34 @@ func TestActionItemFromACommentIsAboutItsGoal(t *testing.T) {
 	}
 }
 
+// A Comment on the Goal itself belongs to no Report, so it can't be turned
+// into an Action Item on a publication (ticket #350).
+func TestActionItemIsNotRaisedFromACommentOnTheGoalItself(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	author := h.SignIn("author@example.com")
+	owner := h.SignIn("owner@example.com")
+	eu := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{eu.ID}})
+	pub := h.PublishReport(author, def)
+	question, err := h.Service.AddGoalComment(ctx, owner.ID, eu.ID, "Can we get a second vendor quote?")
+	if err != nil {
+		t.Fatalf("AddGoalComment: %v", err)
+	}
+
+	_, err = h.Service.RaiseActionItem(ctx, author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, CommentID: question.ID, OwnerID: owner.ID, DueDate: h.Clock.Now().AddDate(0, 0, 7),
+	})
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("Action Item from a Goal Comment: err %v, want ErrValidation", err)
+	}
+	if items, err := h.Service.PublicationActionItems(ctx, pub.ID); err != nil || len(items) != 0 {
+		t.Errorf("Action Items %+v (err %v), want none raised", items, err)
+	}
+}
+
 // An Action Item raised directly is about the Report as a whole, or names a
 // Goal the publication covers; a Goal it doesn't cover is refused.
 func TestDirectActionItemNamesAGoalTheReportCovers(t *testing.T) {
