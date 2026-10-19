@@ -85,9 +85,9 @@ func signInPage(failure string) templ.Component {
 	})
 }
 
-// orgSignInPage is sign-in through the org's provider: the same card as the
-// development form, with one button that starts the sign-in. A failed sign-in
-// shows its reason, and the button offers to try again.
+// orgSignInPage is sign-in through the company's provider: the same card as
+// the development form, with one button that starts the sign-in. A failed
+// sign-in shows its reason, and the button offers to try again.
 func orgSignInPage(failure string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

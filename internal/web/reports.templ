@@ -12,7 +12,7 @@ import (
 // reportsPage lists every saved Report Definition as a row of a status table —
 // its scope, its Goals and their Health, when it was last published and by
 // whom, and how much its draft has changed since — and links New report to the
-// builder (CONTEXT.md: Report Definition). Dates are the org's (loc).
+// builder (CONTEXT.md: Report Definition). Dates are the company's (loc).
 templ reportsPage(current *domain.Account, data reportsListData) {
 	@layout("Reports", current) {
 		@reportStyles()
@@ -44,7 +44,7 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 
 // reportRow is one Report Definition in the status table: its name over its
 // scope, its Goal count over a bar of their Health, its last publication's
-// date in the org's timezone (loc) over its publisher, or Never, and its
+// date in the company's timezone (loc) over its publisher, or Never, and its
 // draft's changes since, or Not published.
 templ reportRow(sum domain.ReportSummary, loc *time.Location) {
 	<tr data-testid="report-row">
@@ -101,7 +101,7 @@ templ reportHealthBar(h domain.HealthCounts) {
 // reportDraftPage shows a saved Report Definition and its draft Report read
 // against a baseline the reader can change — by default the previous
 // publication. A header, sticky above a phone's width, carries the save status,
-// the baseline chip, the History of its publications (times in the org's
+// the baseline chip, the History of its publications (times in the company's
 // timezone, loc) and Publish; below it the
 // author composes the narrative on the left beside a preview of exactly what
 // readers will see (CONTEXT.md: Report, Report Definition). Paths to Green are
@@ -271,8 +271,8 @@ templ publishSummaryText(r domain.Report, chip baselineChip, oob bool) {
 }
 
 // reportHistory is the draft header's menu of a Report Definition's
-// publications, newest first, each with when it was published in the org's
-// timezone and who published it.
+// publications, newest first, each with when it was published in the
+// company's timezone and who published it.
 templ reportHistory(pubs []domain.Publication, loc *time.Location) {
 	<details data-testid="report-history" class="rp-menu">
 		<summary>{ fmt.Sprintf("History (%d)", len(pubs)) }</summary>
@@ -489,8 +489,8 @@ templ reportContent(r domain.Report, asOf time.Time, d discussion) {
 }
 
 // healthSummary counts the Report's selected Goals by Health — Red, Yellow,
-// Green — and how many are Stale, so a reader sees the shape of the org before
-// reading a block.
+// Green — and how many are Stale, so a reader sees the shape of the Report's
+// Goals before reading a block.
 templ healthSummary(r domain.Report) {
 	<section data-testid="health-summary" class="rp-tiles">
 		for _, t := range healthTiles(r) {
@@ -534,7 +534,7 @@ func reportMovementSince(r domain.Report) string {
 }
 
 // publishedLine says who published a Report and when, and what it read its
-// changes against, its times in the org's timezone (loc).
+// changes against, its times in the company's timezone (loc).
 templ publishedLine(p domain.Publication, loc *time.Location) {
 	<p data-testid="report-published" class="muted">
 		{ "Published " + showTimeYear(p.PublishedAt, loc) + " by " }

@@ -47,8 +47,8 @@ func TestSchedulerSendsTheWeeklyEmailsAtTheConfiguredTime(t *testing.T) {
 	}
 }
 
-// The day and time are on the org's calendar: Monday 09:00 in Los Angeles is
-// 17:00 UTC in winter.
+// The day and time are on the company's calendar: Monday 09:00 in Los Angeles
+// is 17:00 UTC in winter.
 func TestSchedulerReadsTheTimeInTheOrgsTimezone(t *testing.T) {
 	t.Parallel()
 

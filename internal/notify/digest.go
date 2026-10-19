@@ -52,10 +52,11 @@ type reminderItem struct {
 
 // SendReminders emails each Owner and Delegate the Active Goals whose Check-in
 // is due — it would go Stale before next week's reminder — or that are Stale
-// already, each linking to its pre-filled Check-in. It also lists every open
-// Action Item the person owns, overdue first, so the owner of one is emailed
-// even with no Check-in due. Someone with no Check-in due and no open Action
-// Item gets no email, and nobody who has left the company is emailed.
+// already, each linking to its Check-in page, which shows the last Check-in's
+// answers as ghost text. It also lists every open Action Item the person owns,
+// overdue first, so the owner of one is emailed even with no Check-in due.
+// Someone with no Check-in due and no open Action Item gets no email, and
+// nobody who has left the company is emailed.
 func (n *Notifier) SendReminders(ctx context.Context) error {
 	goals, err := n.svc.ListGoals(ctx)
 	if err != nil {
