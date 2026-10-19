@@ -4153,7 +4153,7 @@ func TestCheckinPageContextSectionsInOrder(t *testing.T) {
 	last := strings.Index(aside, `data-testid="checkin-last-time"`)
 	children := strings.Index(aside, `data-testid="checkin-children"`)
 	dates := strings.Index(aside, `data-testid="checkin-context-dates"`)
-	if last < 0 || children < 0 || dates < 0 || !(last < children && children < dates) {
+	if last < 0 || children <= last || dates <= children {
 		t.Errorf("the column's sections are at %d (Last time), %d (children), %d (Dates), want Last time, children, then Dates:\n%s", last, children, dates, aside)
 	}
 
