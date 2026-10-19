@@ -350,7 +350,7 @@ func TestGoalPageDimensionsSectionLinksToDimensionsForNonOwner(t *testing.T) {
 
 	h.CreateDimension(boss, "Quarter", "Q3", "Q4")
 	defined := pageElement(t, getBody(t, otherClient, goalURL), "section", "goal-dimensions")
-	if !strings.Contains(defined, "Quarter") {
+	if listed := elementTexts(defined, "li", "goal-dimension"); len(listed) != 1 || !strings.HasPrefix(listed[0], "Quarter") {
 		t.Fatalf("Dimensions section doesn't list Quarter:\n%s", defined)
 	}
 	if !strings.Contains(defined, `href="/dimensions"`) {
@@ -2998,8 +2998,10 @@ func TestRetiredDimensionLeavesGoalPageControlsOverHTTP(t *testing.T) {
 	if !strings.Contains(shown, `data-testid="goal-dimension-value">Growth`) || !strings.Contains(shown, `data-testid="retired"`) {
 		t.Errorf("Growth isn't shown marked retired:\n%s", shown)
 	}
-	if strings.Contains(shown, "Quarter") {
-		t.Errorf("a Retired Dimension the Goal carries no value in is listed:\n%s", shown)
+	for _, listed := range elementTexts(shown, "li", "goal-dimension") {
+		if strings.Contains(listed, "Quarter") {
+			t.Errorf("a Retired Dimension the Goal carries no value in is listed:\n%s", shown)
+		}
 	}
 	edit := openForm(t, page, "dimensions")
 	for _, d := range []domain.Dimension{pillar, quarter} {
