@@ -73,7 +73,10 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
 
     await page.goto("/dimensions");
     const dim = page.getByTestId("dimension").filter({ has: page.getByRole("heading", { name: "Team", exact: true }) });
-    await dim.locator("summary").filter({ hasText: /^Edit$/ }).click();
+    await dim
+      .locator("summary")
+      .filter({ hasText: /^Edit$/ })
+      .click();
     await dim.getByRole("button", { name: "Make it required" }).click();
     await expect(dim.getByTestId("dimension-required")).toHaveText("Required");
   });
@@ -383,7 +386,9 @@ test("5.2 The live Ready to activate card answers the empty form", async ({ page
   await test.step("5.2 Saving with no Title is still refused by the browser", async () => {
     await page.getByLabel(/^So What/).fill("Refunds take a week to land.");
     await expectItem(page, "So What", true);
-    await expectRefusedByTheBrowser(page, "Title", () => page.getByRole("button", { name: "Save as Proposed" }).click());
+    await expectRefusedByTheBrowser(page, "Title", () =>
+      page.getByRole("button", { name: "Save as Proposed" }).click(),
+    );
     await expect(page).toHaveURL(/\/goals\/new$/);
   });
 
@@ -400,7 +405,9 @@ test("5.2 The live Ready to activate card answers the empty form", async ({ page
     expect((await cleared).ok()).toBe(true);
     await expectItem(page, "So What", false);
     await expect(activate).toBeDisabled();
-    await expectRefusedByTheBrowser(page, /^So What/, () => page.getByRole("button", { name: "Save as Proposed" }).click());
+    await expectRefusedByTheBrowser(page, /^So What/, () =>
+      page.getByRole("button", { name: "Save as Proposed" }).click(),
+    );
     await expect(page).toHaveURL(/\/goals\/\d+\/define$/);
   });
 });
@@ -415,7 +422,9 @@ async function expectRefusedByTheBrowser(page: Page, label: string | RegExp, sub
   };
   page.on("request", record);
   await submit();
-  await expect.poll(() => page.getByLabel(label).evaluate((el: HTMLInputElement) => el.validity.valueMissing)).toBe(true);
+  await expect
+    .poll(() => page.getByLabel(label).evaluate((el: HTMLInputElement) => el.validity.valueMissing))
+    .toBe(true);
   page.off("request", record);
   expect(posts).toEqual([]);
 }
