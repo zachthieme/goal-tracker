@@ -3749,3 +3749,71 @@ func TestReportBehindItAloneOpensItsParagraph(t *testing.T) {
 		t.Errorf("Rolled-up Health paragraph does not open with Behind it; paragraph:\n%s", rollup)
 	}
 }
+
+// An exception block whose Goal asks for help says so after its Path to
+// Green, naming whom it asks, or that no one is above the Owner, on the draft,
+// the publication and its Print page alike. A block that doesn't ask says
+// nothing of it.
+func TestReportBlockShowsAnAskForHelpOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	lee := h.SignIn("lee@example.com")
+	h.SetManager(sam, h.SignInNamed("mia@example.com", "Mia Chen"))
+	later := h.Clock.Now().AddDate(0, 1, 0)
+	asking := h.ActiveGoal(sam, "Launch in EU", "Expand the market.")
+	h.AskForHelp(sam, asking.ID, domain.HealthRed, "Blocked on legal.", "Need counsel budget.", later)
+	alone := h.ActiveGoal(lee, "Cut churn", "Keep customers.")
+	h.AskForHelp(lee, alone.ID, domain.HealthYellow, "Slipping.", "Need a reviewer.", later)
+	quiet := h.ActiveGoal(sam, "Ship billing", "Get paid.")
+	h.Checkin(sam, quiet.ID, domain.HealthYellow, "Slipping.", "Add a team.", later)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{asking.ID, alone.ID, quiet.ID}})
+	pub := h.PublishReport(boss, def)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	pubURL := reportURL + "/publications/" + strconv.FormatInt(pub.ID, 10)
+
+	for name, tc := range map[string]struct{ url, of string }{
+		"draft":       {reportURL, "Asks for help of Mia Chen mia@example.com"},
+		"publication": {pubURL, "Asks for help of Mia Chen mia@example.com"},
+		"print":       {pubURL + "/print", "Asks for help of Mia Chen (mia@example.com)"},
+	} {
+		page := getBody(t, client, tc.url)
+		want := map[string]string{
+			asking.Title: tc.of,
+			alone.Title:  "Asks for help · no one above the Owner",
+			quiet.Title:  "",
+		}
+		var blocks []string
+		for _, block := range strings.Split(page, `<article data-testid="report-exception"`)[1:] {
+			blocks = append(blocks, block[:strings.Index(block, "</article>")])
+		}
+		if len(blocks) != len(want) {
+			t.Fatalf("%s: %d exception blocks, want %d:\n%s", name, len(blocks), len(want), page)
+		}
+		for _, block := range blocks {
+			for title, ask := range want {
+				if !strings.Contains(block, title) {
+					continue
+				}
+				asks := elementTexts(block, "p", "report-ask-for-help")
+				if ask == "" && len(asks) != 0 {
+					t.Errorf("%s: %q, which doesn't ask, shows %q", name, title, asks)
+				}
+				if ask != "" && (len(asks) != 1 || asks[0] != ask) {
+					t.Errorf("%s: %q shows %q, want %q", name, title, asks, ask)
+				}
+			}
+		}
+		if n := strings.Count(page, `<p data-testid="report-ask-for-help"><strong>Asks for help</strong>`); n != 2 {
+			t.Errorf("%s: %d asks for help open with a strong Asks for help, want 2:\n%s", name, n, page)
+		}
+		if path, ask := strings.Index(page, "Need counsel budget."), strings.Index(page, `data-testid="report-ask-for-help"`); path < 0 || ask < path {
+			t.Errorf("%s: the ask doesn't follow the Path to Green:\n%s", name, page)
+		}
+	}
+}
