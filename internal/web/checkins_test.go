@@ -3867,3 +3867,29 @@ func TestCheckinFormPathToGreenNotesRunOffGreen(t *testing.T) {
 		t.Errorf("a Goal with no previous Back to Green date says a later one asks why")
 	}
 }
+
+// The Check-in page separates its sections by whitespace, not boxes: the Path
+// to Green is no longer filled Yellow or Red, and no fieldset is boxed, while
+// the Path to Green still hides while Green is picked (ticket #364).
+func TestCheckinPageSectionsAreNotBoxed(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	for _, gone := range []string{
+		".checkin-form:has(input[name=health][value=Yellow]:checked) .path-to-green",
+		".checkin-form:has(input[name=health][value=Red]:checked) .path-to-green",
+		".checkin-form fieldset{border:1px",
+	} {
+		if strings.Contains(page, gone) {
+			t.Errorf("styles still carry %s", gone)
+		}
+	}
+	if !strings.Contains(page, `.checkin-form:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error){display:none}`) {
+		t.Errorf("styles no longer hide the Path to Green while Green is picked")
+	}
+}
