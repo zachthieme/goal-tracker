@@ -713,6 +713,30 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   it shows each item's mark only, ✓ in a `--health-g-ink` circle or ○ as an
   empty `--color-border-strong` ring, its done or to do for screen readers
   alone. The Finish defining page is the same page.
+  - **How you'll know (the Milestone and Metric editor):** with script, it
+    starts as two quiet small buttons, **+ Milestone** and **+ Metric**, the
+    Highlight editor's add buttons, and no blank rows. Each opens one inline
+    editor below the items, in the Highlight editor's look
+    (`itemEditorStyles`: the bordered box, its 15px heading, the Save and
+    Cancel row and the item row): "New Milestone" asks for Name and Date, the
+    Name two-thirds of the row; "New Metric" for Name, Unit, Baseline, Target,
+    Target date, and Direction only while the target equals the baseline, two
+    to a row. **Save** (`.btn.primary.sm`) stays disabled until the server
+    would take what's typed, Enter in a field presses it, and **Cancel**
+    (`.btn.sm`) drops a new editor or puts back the item it edits. While an
+    editor is open the add buttons and every Edit wait, and the Ready to
+    activate card's How you'll know item reads "Save the Milestone you
+    started" (or Metric), to do, linked to the editor. Save makes an item: its
+    name, then a muted line in body type, not mono, with a Milestone's date or
+    a Metric's "baseline → target unit by date", and quiet small **Edit**
+    (reopening the editor in place, "Edit Milestone") and **Remove**. The
+    "Milestones" and "Metrics" `<h3>`s are `.label` caps, shown only once
+    their section has an item; a Finish defining Goal's own Milestones and
+    Metrics stay a read-only list above. Saving records nothing: the items are
+    sent with the form, and an editor still open is sent as if saved. A
+    refused submit brings a refused row back as an open editor showing why.
+    **Without script,** How you'll know is rows as before: a blank Milestone
+    row and a blank Metric row, or those typed.
 - **Check-in page's children (`.checkin-children`):** a Goal with children
   shows the Goal page's "Contributed to by" list read-only (no Remove), so the
   Owner sees which children set the Rolled-up Health. Above 900px it is a

@@ -109,13 +109,20 @@ the reference instant each test's app starts its clock at.
 sign in, one at a time and two at once, and that the `due` template is due. [`isolation.spec.ts`](isolation.spec.ts) checks that two tests
 writing to the same Goal at once each see only their own write.
 [`phone-width.spec.ts`](phone-width.spec.ts) checks that at 390px the Goals
-list, Risks, the Admin page, a Report draft and the New goal page don't clip
-or scroll sideways, and keep every control on screen.
+list, Risks, the Admin page, a Report draft and the New goal page, with its
+Metric editor open, don't clip or scroll sideways, and keep every control on
+screen.
 [`highlight-editor.spec.ts`](highlight-editor.spec.ts) checks the Check-in
 form's Highlight editor with script on: the + Insight, + Accomplishment and
 + Miss buttons, the Note editor's Save, Edit, Cancel and Remove, an editor
 left open at submit, and Draft Highlights shown as items or, with no Kind, as
 an open editor.
+[`goal-measures-editor.spec.ts`](goal-measures-editor.spec.ts) checks the New
+goal form's Milestone and Metric editor with script on: + Milestone and
++ Metric, each editor's Save and the fields it waits for, the items with Edit,
+Cancel and Remove, the Ready card's "Save the Milestone you started", Enter in
+an editor, a refused submit reopening its editor, and Finish defining adding
+to a Goal's existing Milestone.
 
 ## Conventions for the scenario specs
 
