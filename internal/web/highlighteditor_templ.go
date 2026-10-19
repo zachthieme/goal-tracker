@@ -26,9 +26,12 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 var highlightAddKinds = []string{domain.HighlightInsight, domain.HighlightAccomplishment, domain.HighlightMiss}
 
 // highlightAddButtons are + Insight, + Accomplishment and + Miss, each opening
-// the editor for a new Highlight of its kind. They only work with script, so
-// they show only once it has run.
-func highlightAddButtons() templ.Component {
+// the editor for a new Highlight of its kind, under testID and class. They
+// only work with script, so they show only once it has run. A copy outside the
+// editor's container names, as controls, the element holding the container
+// (the Check-in page's add bar): it stands for the container's own buttons,
+// and is disabled with them.
+func highlightAddButtons(testID, class, controls string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -54,38 +57,92 @@ func highlightAddButtons() templ.Component {
 			return templ_7745c5c3_Err
 		}
 		for _, kind := range highlightAddKinds {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<button type=\"button\" data-testid=\"highlight-add\" data-kind=\"")
+			var templ_7745c5c3_Var2 = []any{class}
+			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var2...)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var2 string
-			templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.ResolveAttributeValue(kind)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/highlighteditor.templ`, Line: 26, Col: 69}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var2)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" data-highlight-add class=\"btn quiet sm\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<button type=\"button\" data-testid=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
-			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs("+ " + kind)
+			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.ResolveAttributeValue(testID)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/highlighteditor.templ`, Line: 26, Col: 125}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/highlighteditor.templ`, Line: 31, Col: 24}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var3)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "</button>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" data-kind=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var4 string
+			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.ResolveAttributeValue(kind)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/highlighteditor.templ`, Line: 32, Col: 20}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var4)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "\" data-highlight-add class=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var5 string
+			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var2).String())
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/highlighteditor.templ`, Line: 1, Col: 0}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if controls != "" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, " aria-controls=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var6 string
+				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(controls)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/highlighteditor.templ`, Line: 36, Col: 29}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, ">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var7 string
+			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs("+ " + kind)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/highlighteditor.templ`, Line: 38, Col: 17}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</button>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -116,12 +173,12 @@ func highlightEditorTemplate() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var4 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var4 == nil {
-			templ_7745c5c3_Var4 = templ.NopComponent
+		templ_7745c5c3_Var8 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var8 == nil {
+			templ_7745c5c3_Var8 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<template id=\"highlight-editor\"><div data-testid=\"highlight-editor\" class=\"ie-editor hl-editor\" role=\"group\"><h3 class=\"ie-editor-head\" data-hl-heading></h3><p class=\"hl-draft muted small\" data-hl-draft>Draft · logged by <span data-hl-logged-by></span></p><input type=\"hidden\" data-hl-kind-hidden> <label data-hl-kind-select>Kind <select>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<template id=\"highlight-editor\"><div data-testid=\"highlight-editor\" class=\"ie-editor hl-editor\" role=\"group\"><h3 class=\"ie-editor-head\" data-hl-heading></h3><p class=\"hl-draft muted small\" data-hl-draft>Draft · logged by <span data-hl-logged-by></span></p><input type=\"hidden\" data-hl-kind-hidden> <label data-hl-kind-select>Kind <select>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -129,7 +186,7 @@ func highlightEditorTemplate() templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</select></label> <label>Note <textarea data-hl-note></textarea></label><div class=\"ie-actions\"><button type=\"button\" class=\"btn sm\" data-hl-save>Save</button> <button type=\"button\" class=\"btn quiet sm\" data-hl-cancel>Cancel</button> <button type=\"button\" class=\"btn quiet sm\" data-hl-remove>Remove</button></div></div></template>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</select></label> <label>Note <textarea data-hl-note></textarea></label><div class=\"ie-actions\"><button type=\"button\" class=\"btn sm\" data-hl-save>Save</button> <button type=\"button\" class=\"btn quiet sm\" data-hl-cancel>Cancel</button> <button type=\"button\" class=\"btn quiet sm\" data-hl-remove>Remove</button></div></div></template>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -156,12 +213,12 @@ func highlightItemTemplate() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var5 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var5 == nil {
-			templ_7745c5c3_Var5 = templ.NopComponent
+		templ_7745c5c3_Var9 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var9 == nil {
+			templ_7745c5c3_Var9 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<template id=\"highlight-item\"><div data-testid=\"highlight-item\" class=\"ie-item hl-item\"><p class=\"hl-item-text\"><strong data-testid=\"highlight-item-kind\"></strong>: <span data-testid=\"highlight-item-note\"></span></p><p class=\"hl-draft muted small\" data-hl-draft>Draft · logged by <span data-hl-logged-by></span></p><div class=\"ie-actions\"><button type=\"button\" class=\"btn quiet sm\" data-hl-edit>Edit</button> <button type=\"button\" class=\"btn quiet sm\" data-hl-remove>Remove</button></div></div></template>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<template id=\"highlight-item\"><div data-testid=\"highlight-item\" class=\"ie-item hl-item\"><p class=\"hl-item-text\"><strong data-testid=\"highlight-item-kind\"></strong>: <span data-testid=\"highlight-item-note\"></span></p><p class=\"hl-draft muted small\" data-hl-draft>Draft · logged by <span data-hl-logged-by></span></p><div class=\"ie-actions\"><button type=\"button\" class=\"btn quiet sm\" data-hl-edit>Edit</button> <button type=\"button\" class=\"btn quiet sm\" data-hl-remove>Remove</button></div></div></template>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -187,91 +244,91 @@ func highlightKindOptions(selected string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var6 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var6 == nil {
-			templ_7745c5c3_Var6 = templ.NopComponent
+		templ_7745c5c3_Var10 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var10 == nil {
+			templ_7745c5c3_Var10 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<option value=\"\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<option value=\"\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if selected == "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, ">None</option> <option value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, ">None</option> <option value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var7 string
-		templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.HighlightInsight)
+		var templ_7745c5c3_Var11 string
+		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.HighlightInsight)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/highlighteditor.templ`, Line: 83, Col: 40}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/highlighteditor.templ`, Line: 95, Col: 40}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var11)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if selected == domain.HighlightInsight {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, ">Insight</option> <option value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, ">Insight</option> <option value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var8 string
-		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.HighlightAccomplishment)
+		var templ_7745c5c3_Var12 string
+		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.HighlightAccomplishment)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/highlighteditor.templ`, Line: 84, Col: 47}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/highlighteditor.templ`, Line: 96, Col: 47}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if selected == domain.HighlightAccomplishment {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, ">Accomplishment</option> <option value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, ">Accomplishment</option> <option value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var9 string
-		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.HighlightMiss)
+		var templ_7745c5c3_Var13 string
+		templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.HighlightMiss)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/highlighteditor.templ`, Line: 85, Col: 37}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/highlighteditor.templ`, Line: 97, Col: 37}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if selected == domain.HighlightMiss {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, " selected")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, " selected")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, ">Miss</option>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, ">Miss</option>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -300,16 +357,16 @@ func highlightEditorStyles() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var10 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var10 == nil {
-			templ_7745c5c3_Var10 = templ.NopComponent
+		templ_7745c5c3_Var14 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var14 == nil {
+			templ_7745c5c3_Var14 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		templ_7745c5c3_Err = itemEditorStyles().Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<style>\n\t\t[data-highlight-editor]:not([data-hl-js]) .hl-js-only{display:none}\n\t\t[data-hl-js] .hl-no-js,details:has(>[data-hl-js])>summary{display:none}\n\t\t.hl-head{font-size:18px}\n\t\t.hl-add{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.hl-items{display:flex;flex-direction:column;gap:8px}\n\t\t.hl-items:empty{display:none}\n\t\t.hl-item-text{white-space:pre-wrap}\n\t\t.hl-draft[hidden]{display:none}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<style>\n\t\t[data-highlight-editor]:not([data-hl-js]) .hl-js-only{display:none}\n\t\t[data-hl-js] .hl-no-js,details:has(>[data-hl-js])>summary{display:none}\n\t\t.hl-head{font-size:18px}\n\t\t.hl-add{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.hl-items{display:flex;flex-direction:column;gap:8px}\n\t\t.hl-items:empty{display:none}\n\t\t.hl-item-text{white-space:pre-wrap}\n\t\t.hl-draft[hidden]{display:none}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -339,12 +396,12 @@ func itemEditorStyles() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var11 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var11 == nil {
-			templ_7745c5c3_Var11 = templ.NopComponent
+		templ_7745c5c3_Var15 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var15 == nil {
+			templ_7745c5c3_Var15 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<style>\n\t\t.ie-item,.ie-editor{display:flex;flex-direction:column;gap:8px;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;background:var(--color-surface)}\n\t\t.ie-item p{margin:0}\n\t\t.ie-editor-head{margin:0;font-family:var(--font-display);font-size:15px;font-weight:600;line-height:1.4;color:var(--color-ink)}\n\t\t.ie-editor [hidden]{display:none}\n\t\t.ie-actions{display:flex;flex-wrap:wrap;gap:8px}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<style>\n\t\t.ie-item,.ie-editor{display:flex;flex-direction:column;gap:8px;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;background:var(--color-surface)}\n\t\t.ie-item p{margin:0}\n\t\t.ie-editor-head{margin:0;font-family:var(--font-display);font-size:15px;font-weight:600;line-height:1.4;color:var(--color-ink)}\n\t\t.ie-editor [hidden]{display:none}\n\t\t.ie-actions{display:flex;flex-wrap:wrap;gap:8px}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -363,7 +420,9 @@ func itemEditorStyles() templ.Component {
 // sent in the order written. Edit swaps an item for an editor in place, with
 // the Kind select, and Cancel swaps it back. Remove drops an item, keeping a
 // Draft's draft_highlight_id so the Check-in discards it. One editor is open
-// at a time: the add and Edit buttons are disabled while one is.
+// at a time: the add and Edit buttons are disabled while one is, as is any
+// copy of an add button outside the container that stands for it (the
+// Check-in page's add bar, through aria-controls).
 //
 // A Highlight with a url saves to the server instead (the Goal page's Draft
 // Highlights): Save posts its kind and note there with htmx and swaps the
@@ -391,12 +450,12 @@ func highlightEditorScript() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var12 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var12 == nil {
-			templ_7745c5c3_Var12 = templ.NopComponent
+		templ_7745c5c3_Var16 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var16 == nil {
+			templ_7745c5c3_Var16 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<script>\n\t\t(function () {\n\t\t\tvar editorTemplate = document.getElementById(\"highlight-editor\");\n\t\t\tvar itemTemplate = document.getElementById(\"highlight-item\");\n\t\t\tif (!editorTemplate || !itemTemplate) return;\n\t\t\tdocument.querySelectorAll(\"[data-highlight-editor]:not([data-hl-js])\").forEach(upgrade);\n\n\t\t\tfunction upgrade(box) {\n\t\t\t\t// The mark is an attribute: htmx settles a swapped-in container\n\t\t\t\t// that has the old one's id by giving it the old class for a\n\t\t\t\t// moment, then its own, so a class would be lost. The hl-js\n\t\t\t\t// class is for page styles keyed on it.\n\t\t\t\tbox.setAttribute(\"data-hl-js\", \"\");\n\t\t\t\tbox.classList.add(\"hl-js\");\n\t\t\t\tvar details = box.closest(\"details\");\n\t\t\t\tif (details) details.open = true;\n\t\t\t\tvar scope = box.closest(\"form\") || box;\n\t\t\t\tvar list = box.querySelector(\"[data-hl-items]\");\n\t\t\t\tvar addAnother = box.querySelector(\"button[name=add_highlight]\");\n\t\t\t\tif (addAnother) addAnother.remove();\n\t\t\t\tvar kindOptional = box.hasAttribute(\"data-kind-optional\");\n\t\t\t\tvar noun = box.getAttribute(\"data-hl-noun\") || \"Highlight\";\n\t\t\t\tbox.querySelectorAll(\"[data-hl-js-label]\").forEach(function (b) {\n\t\t\t\t\tb.textContent = b.getAttribute(\"data-hl-js-label\");\n\t\t\t\t});\n\t\t\t\tbox.querySelectorAll(\"[data-testid=checkin-highlight-row]\").forEach(function (row) {\n\t\t\t\t\tvar h = fromRow(row);\n\t\t\t\t\tvar error = row.querySelector(\"[role=alert]\");\n\t\t\t\t\trow.remove();\n\t\t\t\t\tif (h.draftID && (!h.keep || !h.note.trim())) {\n\t\t\t\t\t\tlist.appendChild(removedDraft(h.draftID));\n\t\t\t\t\t} else if (error || (h.note.trim() && !h.kind)) {\n\t\t\t\t\t\tvar editor = openEditor(h, { select: true, error: error });\n\t\t\t\t\t\tlist.appendChild(editor);\n\t\t\t\t\t} else if (h.note.trim()) {\n\t\t\t\t\t\tlist.appendChild(item(h));\n\t\t\t\t\t}\n\t\t\t\t});\n\t\t\t\tbox.querySelectorAll(\".hl-item[data-hl-url]\").forEach(function (saved) {\n\t\t\t\t\tsaved.hl = { url: saved.getAttribute(\"data-hl-url\"), kind: saved.getAttribute(\"data-hl-kind\"), note: saved.getAttribute(\"data-hl-note\") };\n\t\t\t\t\tvar edit = document.createElement(\"button\");\n\t\t\t\t\tedit.type = \"button\";\n\t\t\t\t\tedit.className = \"btn quiet sm\";\n\t\t\t\t\tedit.setAttribute(\"data-hl-edit\", \"\");\n\t\t\t\t\tedit.textContent = \"Edit\";\n\t\t\t\t\tvar actions = saved.querySelector(\"[data-hl-actions]\") || saved;\n\t\t\t\t\tactions.prepend(edit);\n\t\t\t\t\tif (saved.hasAttribute(\"data-hl-refused\")) {\n\t\t\t\t\t\tvar typed = { url: saved.hl.url, kind: saved.getAttribute(\"data-hl-typed-kind\"), note: saved.getAttribute(\"data-hl-typed-note\") };\n\t\t\t\t\t\tsaved.replaceWith(openEditor(typed, { select: true, restore: saved, error: saved.querySelector(\"[role=alert]\") }));\n\t\t\t\t\t}\n\t\t\t\t});\n\t\t\t\tvar opened = box.querySelector(\"[data-open-form]\");\n\t\t\t\tvar openedForm = opened && opened.querySelector(\"form[action]\");\n\t\t\t\tif (openedForm) {\n\t\t\t\t\tvar logged = {\n\t\t\t\t\t\turl: openedForm.getAttribute(\"action\"),\n\t\t\t\t\t\tkind: openedForm.querySelector(\"[name=kind]\").value,\n\t\t\t\t\t\tnote: openedForm.querySelector(\"[name=note]\").value,\n\t\t\t\t\t};\n\t\t\t\t\tvar reason = opened.querySelector(\"[role=alert]\");\n\t\t\t\t\topened.remove();\n\t\t\t\t\tlist.prepend(openEditor(logged, { select: true, isNew: true, error: reason }));\n\t\t\t\t}\n\t\t\t\trefresh();\n\n\t\t\t\tfunction fromRow(row) {\n\t\t\t\t\tvar id = row.querySelector(\"input[name=draft_highlight_id]\");\n\t\t\t\t\tif (!id) {\n\t\t\t\t\t\treturn {\n\t\t\t\t\t\t\tkind: row.querySelector(\"[name=highlight_kind]\").value,\n\t\t\t\t\t\t\tnote: row.querySelector(\"[name=highlight_note]\").value,\n\t\t\t\t\t\t};\n\t\t\t\t\t}\n\t\t\t\t\tvar by = row.querySelector('[name=\"draft_highlight_logged_by_' + id.value + '\"]');\n\t\t\t\t\treturn {\n\t\t\t\t\t\tdraftID: id.value,\n\t\t\t\t\t\tkeep: row.querySelector(\"input[name=draft_highlight_keep]\").checked,\n\t\t\t\t\t\tkind: row.querySelector('[name=\"draft_highlight_kind_' + id.value + '\"]').value,\n\t\t\t\t\t\tnote: row.querySelector('[name=\"draft_highlight_note_' + id.value + '\"]').value,\n\t\t\t\t\t\tloggedBy: by ? by.value : \"\",\n\t\t\t\t\t};\n\t\t\t\t}\n\n\t\t\t\t// fields are a Highlight's names, as the rows post them.\n\t\t\t\tfunction fields(h) {\n\t\t\t\t\tif (h.url) return { kind: \"kind\", note: \"note\" };\n\t\t\t\t\tif (!h.draftID) return { kind: \"highlight_kind\", note: \"highlight_note\" };\n\t\t\t\t\treturn { kind: \"draft_highlight_kind_\" + h.draftID, note: \"draft_highlight_note_\" + h.draftID };\n\t\t\t\t}\n\n\t\t\t\tfunction hidden(name, value) {\n\t\t\t\t\tvar input = document.createElement(\"input\");\n\t\t\t\t\tinput.type = \"hidden\";\n\t\t\t\t\tinput.name = name;\n\t\t\t\t\tinput.value = value;\n\t\t\t\t\treturn input;\n\t\t\t\t}\n\n\t\t\t\t// draftInputs say which Draft Highlight an item or editor is and\n\t\t\t\t// that it is kept.\n\t\t\t\tfunction draftInputs(el, h) {\n\t\t\t\t\tif (!h.draftID) return;\n\t\t\t\t\tel.appendChild(hidden(\"draft_highlight_id\", h.draftID));\n\t\t\t\t\tel.appendChild(hidden(\"draft_highlight_keep\", h.draftID));\n\t\t\t\t\tel.appendChild(hidden(\"draft_highlight_logged_by_\" + h.draftID, h.loggedBy || \"\"));\n\t\t\t\t}\n\n\t\t\t\tfunction draftLine(el, h) {\n\t\t\t\t\tvar line = el.querySelector(\"[data-hl-draft]\");\n\t\t\t\t\tline.hidden = !h.draftID;\n\t\t\t\t\tline.querySelector(\"[data-hl-logged-by]\").textContent = h.loggedBy || \"\";\n\t\t\t\t}\n\n\t\t\t\t// removedDraft is what a removed Draft leaves: its id, not kept,\n\t\t\t\t// so the Check-in discards it.\n\t\t\t\tfunction removedDraft(id) {\n\t\t\t\t\treturn hidden(\"draft_highlight_id\", id);\n\t\t\t\t}\n\n\t\t\t\tfunction item(h) {\n\t\t\t\t\tvar el = itemTemplate.content.firstElementChild.cloneNode(true);\n\t\t\t\t\tel.hl = h;\n\t\t\t\t\tel.querySelector('[data-testid=\"highlight-item-kind\"]').textContent = h.kind;\n\t\t\t\t\tel.querySelector('[data-testid=\"highlight-item-note\"]').textContent = h.note;\n\t\t\t\t\tdraftLine(el, h);\n\t\t\t\t\tvar names = fields(h);\n\t\t\t\t\tdraftInputs(el, h);\n\t\t\t\t\tel.appendChild(hidden(names.kind, h.kind));\n\t\t\t\t\tel.appendChild(hidden(names.note, h.note));\n\t\t\t\t\treturn el;\n\t\t\t\t}\n\n\t\t\t\t// openEditor is an editor for h. With opts.select it shows the\n\t\t\t\t// Kind select, else the kind is the hidden h.kind. opts.restore\n\t\t\t\t// is the item Cancel puts back; opts.isNew marks one an add\n\t\t\t\t// button opened; opts.error is a reason to show under the Note.\n\t\t\t\tfunction openEditor(h, opts) {\n\t\t\t\t\tvar el = editorTemplate.content.firstElementChild.cloneNode(true);\n\t\t\t\t\tel.hl = h;\n\t\t\t\t\tel.restore = opts.restore || null;\n\t\t\t\t\tel.isNew = !!opts.isNew;\n\t\t\t\t\tvar heading = el.querySelector(\"[data-hl-heading]\");\n\t\t\t\t\tif (opts.isNew) heading.textContent = \"New \" + (opts.select ? noun : h.kind);\n\t\t\t\t\telse if (opts.restore) heading.textContent = \"Edit \" + noun;\n\t\t\t\t\telse heading.textContent = h.draftID ? \"Draft Highlight\" : \"Highlight\";\n\t\t\t\t\tdraftLine(el, h);\n\t\t\t\t\tvar names = fields(h);\n\t\t\t\t\tdraftInputs(el, h);\n\t\t\t\t\tvar kindHidden = el.querySelector(\"[data-hl-kind-hidden]\");\n\t\t\t\t\tvar kindLabel = el.querySelector(\"[data-hl-kind-select]\");\n\t\t\t\t\tif (opts.select) {\n\t\t\t\t\t\tkindHidden.remove();\n\t\t\t\t\t\tvar select = kindLabel.querySelector(\"select\");\n\t\t\t\t\t\tselect.name = names.kind;\n\t\t\t\t\t\tselect.value = h.kind || \"\";\n\t\t\t\t\t} else {\n\t\t\t\t\t\tkindLabel.remove();\n\t\t\t\t\t\tkindHidden.name = names.kind;\n\t\t\t\t\t\tkindHidden.value = h.kind;\n\t\t\t\t\t}\n\t\t\t\t\tvar note = el.querySelector(\"[data-hl-note]\");\n\t\t\t\t\tnote.name = names.note;\n\t\t\t\t\tnote.value = h.note || \"\";\n\t\t\t\t\tif (opts.error) note.parentElement.after(opts.error);\n\t\t\t\t\t// A Draft with no item to go back to is kept or removed;\n\t\t\t\t\t// anything else can be cancelled.\n\t\t\t\t\tvar keepOrRemove = !!h.draftID && !el.restore;\n\t\t\t\t\tel.querySelector(\"[data-hl-cancel]\").hidden = keepOrRemove;\n\t\t\t\t\tel.querySelector(\"[data-hl-remove]\").hidden = !keepOrRemove;\n\t\t\t\t\treturn el;\n\t\t\t\t}\n\n\t\t\t\tfunction editorValues(el) {\n\t\t\t\t\tvar kind = el.querySelector(\"select[name], input[data-hl-kind-hidden]\");\n\t\t\t\t\treturn {\n\t\t\t\t\t\turl: el.hl.url,\n\t\t\t\t\t\tdraftID: el.hl.draftID,\n\t\t\t\t\t\tkeep: true,\n\t\t\t\t\t\tloggedBy: el.hl.loggedBy,\n\t\t\t\t\t\tkind: kind.value,\n\t\t\t\t\t\tnote: el.querySelector(\"[data-hl-note]\").value,\n\t\t\t\t\t};\n\t\t\t\t}\n\n\t\t\t\tfunction ready(el) {\n\t\t\t\t\tvar v = editorValues(el);\n\t\t\t\t\treturn v.note.trim() !== \"\" && (kindOptional || v.kind !== \"\");\n\t\t\t\t}\n\n\t\t\t\t// send saves a Highlight to the server at its url and swaps the\n\t\t\t\t// container for what the server answers with: the items as saved, or the editor again\n\t\t\t\t// with why it was refused. Focus then goes where it would after\n\t\t\t\t// a Save here: to the editor still open, the edited item's Edit,\n\t\t\t\t// or the first add button.\n\t\t\t\tfunction send(el, v) {\n\t\t\t\t\tel.querySelector(\"[data-hl-save]\").disabled = true;\n\t\t\t\t\tvar target = box.id ? \"#\" + box.id : null;\n\t\t\t\t\thtmx.ajax(\"POST\", v.url, { source: el, target: target || box, swap: \"outerHTML\", values: { kind: v.kind, note: v.note } }).then(function () {\n\t\t\t\t\t\tvar swapped = target && document.querySelector(target);\n\t\t\t\t\t\tif (!swapped) return;\n\t\t\t\t\t\tvar edited = '.hl-item[data-hl-url=\"' + v.url + '\"] [data-hl-edit]';\n\t\t\t\t\t\tfocus(swapped.querySelector(\".hl-editor [data-hl-note]\") || swapped.querySelector(edited) || swapped.querySelector(\"[data-highlight-add]\"));\n\t\t\t\t\t});\n\t\t\t\t}\n\n\t\t\t\tfunction refresh() {\n\t\t\t\t\tvar open = box.querySelector(\".hl-editor\") !== null;\n\t\t\t\t\tscope.querySelectorAll(\"[data-highlight-add]\").forEach(function (b) {\n\t\t\t\t\t\tb.disabled = open;\n\t\t\t\t\t});\n\t\t\t\t\tbox.querySelectorAll(\"[data-hl-edit]\").forEach(function (b) {\n\t\t\t\t\t\tb.disabled = open;\n\t\t\t\t\t});\n\t\t\t\t\tbox.querySelectorAll(\".hl-editor\").forEach(function (el) {\n\t\t\t\t\t\tel.querySelector(\"[data-hl-save]\").disabled = !ready(el);\n\t\t\t\t\t});\n\t\t\t\t}\n\n\t\t\t\tfunction firstAdd() {\n\t\t\t\t\treturn scope.querySelector(\"[data-highlight-add]\");\n\t\t\t\t}\n\n\t\t\t\tfunction focus(el) {\n\t\t\t\t\tif (el) el.focus();\n\t\t\t\t}\n\n\t\t\t\tbox.addEventListener(\"input\", refresh);\n\t\t\t\tbox.addEventListener(\"change\", refresh);\n\t\t\t\tscope.addEventListener(\"click\", function (e) {\n\t\t\t\t\tvar add = e.target.closest(\"[data-highlight-add]\");\n\t\t\t\t\tif (add && !add.disabled) {\n\t\t\t\t\t\tvar kind = add.getAttribute(\"data-kind\");\n\t\t\t\t\t\tvar editor = openEditor({ kind: kind || \"\", note: \"\", url: add.getAttribute(\"data-hl-url\") }, { isNew: true, select: !kind });\n\t\t\t\t\t\tlist.prepend(editor);\n\t\t\t\t\t\trefresh();\n\t\t\t\t\t\tfocus(editor.querySelector(\"[data-hl-note]\"));\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t\tif (!box.contains(e.target)) return;\n\t\t\t\t\tvar el = e.target.closest(\".hl-editor, .hl-item\");\n\t\t\t\t\tif (!el) return;\n\t\t\t\t\tif (e.target.closest(\"[data-hl-save]\")) {\n\t\t\t\t\t\tif (!ready(el)) return;\n\t\t\t\t\t\tvar values = editorValues(el);\n\t\t\t\t\t\tif (values.url) {\n\t\t\t\t\t\t\tsend(el, values);\n\t\t\t\t\t\t\treturn;\n\t\t\t\t\t\t}\n\t\t\t\t\t\tvar saved = item(values);\n\t\t\t\t\t\tif (el.isNew) {\n\t\t\t\t\t\t\tel.remove();\n\t\t\t\t\t\t\tlist.appendChild(saved);\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\tel.replaceWith(saved);\n\t\t\t\t\t\t}\n\t\t\t\t\t\trefresh();\n\t\t\t\t\t\tfocus(saved.querySelector(\"[data-hl-edit]\"));\n\t\t\t\t\t} else if (e.target.closest(\"[data-hl-cancel]\")) {\n\t\t\t\t\t\tif (el.restore) {\n\t\t\t\t\t\t\tel.replaceWith(el.restore);\n\t\t\t\t\t\t\trefresh();\n\t\t\t\t\t\t\tfocus(el.restore.querySelector(\"[data-hl-edit]\"));\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\tel.remove();\n\t\t\t\t\t\t\trefresh();\n\t\t\t\t\t\t\tfocus(firstAdd());\n\t\t\t\t\t\t}\n\t\t\t\t\t} else if (e.target.closest(\"[data-hl-edit]\")) {\n\t\t\t\t\t\tvar editing = openEditor(el.hl, { select: true, restore: el });\n\t\t\t\t\t\tel.replaceWith(editing);\n\t\t\t\t\t\trefresh();\n\t\t\t\t\t\tfocus(editing.querySelector(\"[data-hl-note]\"));\n\t\t\t\t\t} else if (e.target.closest(\"[data-hl-remove]\")) {\n\t\t\t\t\t\tif (el.hl.draftID) el.replaceWith(removedDraft(el.hl.draftID));\n\t\t\t\t\t\telse el.remove();\n\t\t\t\t\t\trefresh();\n\t\t\t\t\t\tfocus(firstAdd());\n\t\t\t\t\t}\n\t\t\t\t});\n\t\t\t}\n\t\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<script>\n\t\t(function () {\n\t\t\tvar editorTemplate = document.getElementById(\"highlight-editor\");\n\t\t\tvar itemTemplate = document.getElementById(\"highlight-item\");\n\t\t\tif (!editorTemplate || !itemTemplate) return;\n\t\t\tdocument.querySelectorAll(\"[data-highlight-editor]:not([data-hl-js])\").forEach(upgrade);\n\n\t\t\tfunction upgrade(box) {\n\t\t\t\t// The mark is an attribute: htmx settles a swapped-in container\n\t\t\t\t// that has the old one's id by giving it the old class for a\n\t\t\t\t// moment, then its own, so a class would be lost. The hl-js\n\t\t\t\t// class is for page styles keyed on it.\n\t\t\t\tbox.setAttribute(\"data-hl-js\", \"\");\n\t\t\t\tbox.classList.add(\"hl-js\");\n\t\t\t\tvar details = box.closest(\"details\");\n\t\t\t\tif (details) details.open = true;\n\t\t\t\tvar scope = box.closest(\"form\") || box;\n\t\t\t\tvar list = box.querySelector(\"[data-hl-items]\");\n\t\t\t\tvar addAnother = box.querySelector(\"button[name=add_highlight]\");\n\t\t\t\tif (addAnother) addAnother.remove();\n\t\t\t\tvar kindOptional = box.hasAttribute(\"data-kind-optional\");\n\t\t\t\tvar noun = box.getAttribute(\"data-hl-noun\") || \"Highlight\";\n\t\t\t\tbox.querySelectorAll(\"[data-hl-js-label]\").forEach(function (b) {\n\t\t\t\t\tb.textContent = b.getAttribute(\"data-hl-js-label\");\n\t\t\t\t});\n\t\t\t\tbox.querySelectorAll(\"[data-testid=checkin-highlight-row]\").forEach(function (row) {\n\t\t\t\t\tvar h = fromRow(row);\n\t\t\t\t\tvar error = row.querySelector(\"[role=alert]\");\n\t\t\t\t\trow.remove();\n\t\t\t\t\tif (h.draftID && (!h.keep || !h.note.trim())) {\n\t\t\t\t\t\tlist.appendChild(removedDraft(h.draftID));\n\t\t\t\t\t} else if (error || (h.note.trim() && !h.kind)) {\n\t\t\t\t\t\tvar editor = openEditor(h, { select: true, error: error });\n\t\t\t\t\t\tlist.appendChild(editor);\n\t\t\t\t\t} else if (h.note.trim()) {\n\t\t\t\t\t\tlist.appendChild(item(h));\n\t\t\t\t\t}\n\t\t\t\t});\n\t\t\t\tbox.querySelectorAll(\".hl-item[data-hl-url]\").forEach(function (saved) {\n\t\t\t\t\tsaved.hl = { url: saved.getAttribute(\"data-hl-url\"), kind: saved.getAttribute(\"data-hl-kind\"), note: saved.getAttribute(\"data-hl-note\") };\n\t\t\t\t\tvar edit = document.createElement(\"button\");\n\t\t\t\t\tedit.type = \"button\";\n\t\t\t\t\tedit.className = \"btn quiet sm\";\n\t\t\t\t\tedit.setAttribute(\"data-hl-edit\", \"\");\n\t\t\t\t\tedit.textContent = \"Edit\";\n\t\t\t\t\tvar actions = saved.querySelector(\"[data-hl-actions]\") || saved;\n\t\t\t\t\tactions.prepend(edit);\n\t\t\t\t\tif (saved.hasAttribute(\"data-hl-refused\")) {\n\t\t\t\t\t\tvar typed = { url: saved.hl.url, kind: saved.getAttribute(\"data-hl-typed-kind\"), note: saved.getAttribute(\"data-hl-typed-note\") };\n\t\t\t\t\t\tsaved.replaceWith(openEditor(typed, { select: true, restore: saved, error: saved.querySelector(\"[role=alert]\") }));\n\t\t\t\t\t}\n\t\t\t\t});\n\t\t\t\tvar opened = box.querySelector(\"[data-open-form]\");\n\t\t\t\tvar openedForm = opened && opened.querySelector(\"form[action]\");\n\t\t\t\tif (openedForm) {\n\t\t\t\t\tvar logged = {\n\t\t\t\t\t\turl: openedForm.getAttribute(\"action\"),\n\t\t\t\t\t\tkind: openedForm.querySelector(\"[name=kind]\").value,\n\t\t\t\t\t\tnote: openedForm.querySelector(\"[name=note]\").value,\n\t\t\t\t\t};\n\t\t\t\t\tvar reason = opened.querySelector(\"[role=alert]\");\n\t\t\t\t\topened.remove();\n\t\t\t\t\tlist.prepend(openEditor(logged, { select: true, isNew: true, error: reason }));\n\t\t\t\t}\n\t\t\t\trefresh();\n\n\t\t\t\tfunction fromRow(row) {\n\t\t\t\t\tvar id = row.querySelector(\"input[name=draft_highlight_id]\");\n\t\t\t\t\tif (!id) {\n\t\t\t\t\t\treturn {\n\t\t\t\t\t\t\tkind: row.querySelector(\"[name=highlight_kind]\").value,\n\t\t\t\t\t\t\tnote: row.querySelector(\"[name=highlight_note]\").value,\n\t\t\t\t\t\t};\n\t\t\t\t\t}\n\t\t\t\t\tvar by = row.querySelector('[name=\"draft_highlight_logged_by_' + id.value + '\"]');\n\t\t\t\t\treturn {\n\t\t\t\t\t\tdraftID: id.value,\n\t\t\t\t\t\tkeep: row.querySelector(\"input[name=draft_highlight_keep]\").checked,\n\t\t\t\t\t\tkind: row.querySelector('[name=\"draft_highlight_kind_' + id.value + '\"]').value,\n\t\t\t\t\t\tnote: row.querySelector('[name=\"draft_highlight_note_' + id.value + '\"]').value,\n\t\t\t\t\t\tloggedBy: by ? by.value : \"\",\n\t\t\t\t\t};\n\t\t\t\t}\n\n\t\t\t\t// fields are a Highlight's names, as the rows post them.\n\t\t\t\tfunction fields(h) {\n\t\t\t\t\tif (h.url) return { kind: \"kind\", note: \"note\" };\n\t\t\t\t\tif (!h.draftID) return { kind: \"highlight_kind\", note: \"highlight_note\" };\n\t\t\t\t\treturn { kind: \"draft_highlight_kind_\" + h.draftID, note: \"draft_highlight_note_\" + h.draftID };\n\t\t\t\t}\n\n\t\t\t\tfunction hidden(name, value) {\n\t\t\t\t\tvar input = document.createElement(\"input\");\n\t\t\t\t\tinput.type = \"hidden\";\n\t\t\t\t\tinput.name = name;\n\t\t\t\t\tinput.value = value;\n\t\t\t\t\treturn input;\n\t\t\t\t}\n\n\t\t\t\t// draftInputs say which Draft Highlight an item or editor is and\n\t\t\t\t// that it is kept.\n\t\t\t\tfunction draftInputs(el, h) {\n\t\t\t\t\tif (!h.draftID) return;\n\t\t\t\t\tel.appendChild(hidden(\"draft_highlight_id\", h.draftID));\n\t\t\t\t\tel.appendChild(hidden(\"draft_highlight_keep\", h.draftID));\n\t\t\t\t\tel.appendChild(hidden(\"draft_highlight_logged_by_\" + h.draftID, h.loggedBy || \"\"));\n\t\t\t\t}\n\n\t\t\t\tfunction draftLine(el, h) {\n\t\t\t\t\tvar line = el.querySelector(\"[data-hl-draft]\");\n\t\t\t\t\tline.hidden = !h.draftID;\n\t\t\t\t\tline.querySelector(\"[data-hl-logged-by]\").textContent = h.loggedBy || \"\";\n\t\t\t\t}\n\n\t\t\t\t// removedDraft is what a removed Draft leaves: its id, not kept,\n\t\t\t\t// so the Check-in discards it.\n\t\t\t\tfunction removedDraft(id) {\n\t\t\t\t\treturn hidden(\"draft_highlight_id\", id);\n\t\t\t\t}\n\n\t\t\t\tfunction item(h) {\n\t\t\t\t\tvar el = itemTemplate.content.firstElementChild.cloneNode(true);\n\t\t\t\t\tel.hl = h;\n\t\t\t\t\tel.querySelector('[data-testid=\"highlight-item-kind\"]').textContent = h.kind;\n\t\t\t\t\tel.querySelector('[data-testid=\"highlight-item-note\"]').textContent = h.note;\n\t\t\t\t\tdraftLine(el, h);\n\t\t\t\t\tvar names = fields(h);\n\t\t\t\t\tdraftInputs(el, h);\n\t\t\t\t\tel.appendChild(hidden(names.kind, h.kind));\n\t\t\t\t\tel.appendChild(hidden(names.note, h.note));\n\t\t\t\t\treturn el;\n\t\t\t\t}\n\n\t\t\t\t// openEditor is an editor for h. With opts.select it shows the\n\t\t\t\t// Kind select, else the kind is the hidden h.kind. opts.restore\n\t\t\t\t// is the item Cancel puts back; opts.isNew marks one an add\n\t\t\t\t// button opened; opts.error is a reason to show under the Note.\n\t\t\t\tfunction openEditor(h, opts) {\n\t\t\t\t\tvar el = editorTemplate.content.firstElementChild.cloneNode(true);\n\t\t\t\t\tel.hl = h;\n\t\t\t\t\tel.restore = opts.restore || null;\n\t\t\t\t\tel.isNew = !!opts.isNew;\n\t\t\t\t\tvar heading = el.querySelector(\"[data-hl-heading]\");\n\t\t\t\t\tif (opts.isNew) heading.textContent = \"New \" + (opts.select ? noun : h.kind);\n\t\t\t\t\telse if (opts.restore) heading.textContent = \"Edit \" + noun;\n\t\t\t\t\telse heading.textContent = h.draftID ? \"Draft Highlight\" : \"Highlight\";\n\t\t\t\t\tdraftLine(el, h);\n\t\t\t\t\tvar names = fields(h);\n\t\t\t\t\tdraftInputs(el, h);\n\t\t\t\t\tvar kindHidden = el.querySelector(\"[data-hl-kind-hidden]\");\n\t\t\t\t\tvar kindLabel = el.querySelector(\"[data-hl-kind-select]\");\n\t\t\t\t\tif (opts.select) {\n\t\t\t\t\t\tkindHidden.remove();\n\t\t\t\t\t\tvar select = kindLabel.querySelector(\"select\");\n\t\t\t\t\t\tselect.name = names.kind;\n\t\t\t\t\t\tselect.value = h.kind || \"\";\n\t\t\t\t\t} else {\n\t\t\t\t\t\tkindLabel.remove();\n\t\t\t\t\t\tkindHidden.name = names.kind;\n\t\t\t\t\t\tkindHidden.value = h.kind;\n\t\t\t\t\t}\n\t\t\t\t\tvar note = el.querySelector(\"[data-hl-note]\");\n\t\t\t\t\tnote.name = names.note;\n\t\t\t\t\tnote.value = h.note || \"\";\n\t\t\t\t\tif (opts.error) note.parentElement.after(opts.error);\n\t\t\t\t\t// A Draft with no item to go back to is kept or removed;\n\t\t\t\t\t// anything else can be cancelled.\n\t\t\t\t\tvar keepOrRemove = !!h.draftID && !el.restore;\n\t\t\t\t\tel.querySelector(\"[data-hl-cancel]\").hidden = keepOrRemove;\n\t\t\t\t\tel.querySelector(\"[data-hl-remove]\").hidden = !keepOrRemove;\n\t\t\t\t\treturn el;\n\t\t\t\t}\n\n\t\t\t\tfunction editorValues(el) {\n\t\t\t\t\tvar kind = el.querySelector(\"select[name], input[data-hl-kind-hidden]\");\n\t\t\t\t\treturn {\n\t\t\t\t\t\turl: el.hl.url,\n\t\t\t\t\t\tdraftID: el.hl.draftID,\n\t\t\t\t\t\tkeep: true,\n\t\t\t\t\t\tloggedBy: el.hl.loggedBy,\n\t\t\t\t\t\tkind: kind.value,\n\t\t\t\t\t\tnote: el.querySelector(\"[data-hl-note]\").value,\n\t\t\t\t\t};\n\t\t\t\t}\n\n\t\t\t\tfunction ready(el) {\n\t\t\t\t\tvar v = editorValues(el);\n\t\t\t\t\treturn v.note.trim() !== \"\" && (kindOptional || v.kind !== \"\");\n\t\t\t\t}\n\n\t\t\t\t// send saves a Highlight to the server at its url and swaps the\n\t\t\t\t// container for what the server answers with: the items as saved, or the editor again\n\t\t\t\t// with why it was refused. Focus then goes where it would after\n\t\t\t\t// a Save here: to the editor still open, the edited item's Edit,\n\t\t\t\t// or the first add button.\n\t\t\t\tfunction send(el, v) {\n\t\t\t\t\tel.querySelector(\"[data-hl-save]\").disabled = true;\n\t\t\t\t\tvar target = box.id ? \"#\" + box.id : null;\n\t\t\t\t\thtmx.ajax(\"POST\", v.url, { source: el, target: target || box, swap: \"outerHTML\", values: { kind: v.kind, note: v.note } }).then(function () {\n\t\t\t\t\t\tvar swapped = target && document.querySelector(target);\n\t\t\t\t\t\tif (!swapped) return;\n\t\t\t\t\t\tvar edited = '.hl-item[data-hl-url=\"' + v.url + '\"] [data-hl-edit]';\n\t\t\t\t\t\tfocus(swapped.querySelector(\".hl-editor [data-hl-note]\") || swapped.querySelector(edited) || swapped.querySelector(\"[data-highlight-add]\"));\n\t\t\t\t\t});\n\t\t\t\t}\n\n\t\t\t\t// addButtons are the container's add buttons, and the copies\n\t\t\t\t// outside it that stand for them: those whose aria-controls\n\t\t\t\t// names an element holding the container.\n\t\t\t\tfunction addButtons() {\n\t\t\t\t\tvar own = Array.prototype.slice.call(scope.querySelectorAll(\"[data-highlight-add]\"));\n\t\t\t\t\tdocument.querySelectorAll(\"[data-highlight-add][aria-controls]\").forEach(function (b) {\n\t\t\t\t\t\tvar controlled = document.getElementById(b.getAttribute(\"aria-controls\"));\n\t\t\t\t\t\tif (controlled && controlled.contains(box) && own.indexOf(b) < 0) own.push(b);\n\t\t\t\t\t});\n\t\t\t\t\treturn own;\n\t\t\t\t}\n\n\t\t\t\tfunction refresh() {\n\t\t\t\t\tvar open = box.querySelector(\".hl-editor\") !== null;\n\t\t\t\t\taddButtons().forEach(function (b) {\n\t\t\t\t\t\tb.disabled = open;\n\t\t\t\t\t});\n\t\t\t\t\tbox.querySelectorAll(\"[data-hl-edit]\").forEach(function (b) {\n\t\t\t\t\t\tb.disabled = open;\n\t\t\t\t\t});\n\t\t\t\t\tbox.querySelectorAll(\".hl-editor\").forEach(function (el) {\n\t\t\t\t\t\tel.querySelector(\"[data-hl-save]\").disabled = !ready(el);\n\t\t\t\t\t});\n\t\t\t\t}\n\n\t\t\t\tfunction firstAdd() {\n\t\t\t\t\treturn scope.querySelector(\"[data-highlight-add]\");\n\t\t\t\t}\n\n\t\t\t\tfunction focus(el) {\n\t\t\t\t\tif (el) el.focus();\n\t\t\t\t}\n\n\t\t\t\tbox.addEventListener(\"input\", refresh);\n\t\t\t\tbox.addEventListener(\"change\", refresh);\n\t\t\t\tscope.addEventListener(\"click\", function (e) {\n\t\t\t\t\tvar add = e.target.closest(\"[data-highlight-add]\");\n\t\t\t\t\tif (add && !add.disabled) {\n\t\t\t\t\t\tvar kind = add.getAttribute(\"data-kind\");\n\t\t\t\t\t\tvar editor = openEditor({ kind: kind || \"\", note: \"\", url: add.getAttribute(\"data-hl-url\") }, { isNew: true, select: !kind });\n\t\t\t\t\t\tlist.prepend(editor);\n\t\t\t\t\t\trefresh();\n\t\t\t\t\t\tfocus(editor.querySelector(\"[data-hl-note]\"));\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t\tif (!box.contains(e.target)) return;\n\t\t\t\t\tvar el = e.target.closest(\".hl-editor, .hl-item\");\n\t\t\t\t\tif (!el) return;\n\t\t\t\t\tif (e.target.closest(\"[data-hl-save]\")) {\n\t\t\t\t\t\tif (!ready(el)) return;\n\t\t\t\t\t\tvar values = editorValues(el);\n\t\t\t\t\t\tif (values.url) {\n\t\t\t\t\t\t\tsend(el, values);\n\t\t\t\t\t\t\treturn;\n\t\t\t\t\t\t}\n\t\t\t\t\t\tvar saved = item(values);\n\t\t\t\t\t\tif (el.isNew) {\n\t\t\t\t\t\t\tel.remove();\n\t\t\t\t\t\t\tlist.appendChild(saved);\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\tel.replaceWith(saved);\n\t\t\t\t\t\t}\n\t\t\t\t\t\trefresh();\n\t\t\t\t\t\tfocus(saved.querySelector(\"[data-hl-edit]\"));\n\t\t\t\t\t} else if (e.target.closest(\"[data-hl-cancel]\")) {\n\t\t\t\t\t\tif (el.restore) {\n\t\t\t\t\t\t\tel.replaceWith(el.restore);\n\t\t\t\t\t\t\trefresh();\n\t\t\t\t\t\t\tfocus(el.restore.querySelector(\"[data-hl-edit]\"));\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\tel.remove();\n\t\t\t\t\t\t\trefresh();\n\t\t\t\t\t\t\tfocus(firstAdd());\n\t\t\t\t\t\t}\n\t\t\t\t\t} else if (e.target.closest(\"[data-hl-edit]\")) {\n\t\t\t\t\t\tvar editing = openEditor(el.hl, { select: true, restore: el });\n\t\t\t\t\t\tel.replaceWith(editing);\n\t\t\t\t\t\trefresh();\n\t\t\t\t\t\tfocus(editing.querySelector(\"[data-hl-note]\"));\n\t\t\t\t\t} else if (e.target.closest(\"[data-hl-remove]\")) {\n\t\t\t\t\t\tif (el.hl.draftID) el.replaceWith(removedDraft(el.hl.draftID));\n\t\t\t\t\t\telse el.remove();\n\t\t\t\t\t\trefresh();\n\t\t\t\t\t\tfocus(firstAdd());\n\t\t\t\t\t}\n\t\t\t\t});\n\t\t\t}\n\t\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

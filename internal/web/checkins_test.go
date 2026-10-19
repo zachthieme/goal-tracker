@@ -4210,3 +4210,179 @@ func TestCheckinPageContextStyles(t *testing.T) {
 		}
 	}
 }
+
+// checkinAddBar returns the Check-in page's "Add to this check-in" bar, from
+// its opening tag to the context column after it, failing unless it comes
+// before the form.
+func checkinAddBar(t *testing.T, page string) string {
+	t.Helper()
+	at := strings.Index(page, `data-testid="checkin-add-bar"`)
+	if form := strings.Index(page, `id="checkin-form"`); at < 0 || form < 0 || at > form {
+		t.Fatalf("the add bar isn't before the form (bar at %d, form at %d):\n%s", at, form, page)
+	}
+	return between(t, page, `<div data-testid="checkin-add-bar"`, `data-testid="checkin-context"`)
+}
+
+// Above the form, a group of buttons adds to the Check-in: a Highlight of each
+// kind, standing for the Highlights section's own add buttons, then Move a
+// date or Milestone and Pause, finish or cancel, each controlling its section.
+// None submits, and it shows only once script has run (ticket #365).
+func TestCheckinPageHasAddToThisCheckinBar(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	bar := checkinAddBar(t, page)
+	open := openTag(bar)
+	if attr(open, "role") != "group" || attr(open, "aria-label") != "Add to this check-in" {
+		t.Errorf("the bar = %s, want a group labelled Add to this check-in", open)
+	}
+	if !slices.Contains(strings.Fields(attr(open, "class")), "checkin-js-only") {
+		t.Errorf("the bar shows without script: %s", open)
+	}
+	var kinds []string
+	for _, tag := range regexp.MustCompile(`<button[^>]*data-testid="checkin-add-highlight"[^>]*>`).FindAllString(bar, -1) {
+		if attr(tag, "type") != "button" {
+			t.Errorf("a Highlight button would submit the form: %s", tag)
+		}
+		kinds = append(kinds, attr(tag, "data-kind"))
+	}
+	if want := []string{"Insight", "Accomplishment", "Miss"}; !slices.Equal(kinds, want) {
+		t.Errorf("the bar's Highlight kinds = %q, want %q", kinds, want)
+	}
+	for testID, want := range map[string]struct{ text, controls string }{
+		"checkin-add-dates":     {"Move a date or Milestone", "checkin-dates-section"},
+		"checkin-add-lifecycle": {"Pause, finish or cancel", "checkin-lifecycle-section"},
+	} {
+		button := tagAround(t, bar, `data-testid="`+testID+`"`)
+		if attr(button, "type") != "button" || attr(button, "aria-controls") != want.controls {
+			t.Errorf("%s = %s, want a button controlling %s", testID, button, want.controls)
+		}
+		if got := elementTexts(bar, "button", testID); !slices.Equal(got, []string{want.text}) {
+			t.Errorf("%s reads %q, want %q", testID, got, want.text)
+		}
+	}
+	if n := strings.Count(page, `data-testid="highlight-add"`); n != 3 {
+		t.Errorf("the page has %d highlight-add buttons, want the Highlights section's 3", n)
+	}
+}
+
+// An On Hold Goal's add bar offers to resume or cancel it, as its form does;
+// an ended Goal, which takes no Check-in, has no bar (ticket #365).
+func TestCheckinAddBarFollowsTheGoalsLifecycle(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	onHold := h.OnHoldGoal(sam, "Grow revenue", "Revenue funds the rest.", "Waiting on budget.")
+	done := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	bar := checkinAddBar(t, getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, onHold.ID)))
+	if got := elementTexts(bar, "button", "checkin-add-lifecycle"); !slices.Equal(got, []string{"Resume or cancel"}) {
+		t.Errorf("an On Hold Goal's Lifecycle button reads %q, want Resume or cancel", got)
+	}
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, done.ID))
+	if !strings.Contains(page, `data-testid="goal-no-health"`) {
+		t.Fatalf("the Done Goal's Check-in page doesn't say it takes no Check-ins:\n%s", page)
+	}
+	if strings.Contains(page, `data-testid="checkin-add-bar"`) {
+		t.Errorf("a Done Goal's Check-in page has an add bar:\n%s", page)
+	}
+}
+
+// The dates and Lifecycle sections carry the ids the add bar's buttons control
+// and, for script to show in place of their summaries, a heading it can move
+// focus to. A refused submit's re-render keeps them, and doesn't send the bar,
+// which sits outside the form (ticket #365).
+func TestCheckinSectionsCarryHeadingsForTheAddBar(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {""},
+	})
+	if !strings.Contains(body, `data-testid="checkin-error"`) {
+		t.Fatalf("a Check-in with no status wasn't refused; body:\n%s", body)
+	}
+	if strings.Contains(body, `data-testid="checkin-add-bar"`) {
+		t.Errorf("the refused submit re-renders the add bar; body:\n%s", body)
+	}
+	for name, html := range map[string]string{"page": page, "re-render": body} {
+		for section, heading := range map[string]struct{ testID, text string }{
+			"checkin-dates-section":     {"checkin-dates-heading", "Dates and Milestones"},
+			"checkin-lifecycle-section": {"checkin-lifecycle-heading", "Lifecycle"},
+		} {
+			details := between(t, html, `<details data-testid="`+section+`"`, "</details>")
+			if attr(openTag(details), "id") != section {
+				t.Errorf("%s: %s = %s, want id %s", name, section, openTag(details), section)
+			}
+			tag := tagAround(t, details, `data-testid="`+heading.testID+`"`)
+			if !slices.Contains(strings.Fields(attr(tag, "class")), "checkin-js-only") || attr(tag, "tabindex") != "-1" {
+				t.Errorf("%s: %s = %s, want class checkin-js-only and tabindex -1", name, heading.testID, tag)
+			}
+			if got := elementTexts(details, "h2", heading.testID); !slices.Equal(got, []string{heading.text}) {
+				t.Errorf("%s: %s reads %q, want %q", name, heading.testID, got, heading.text)
+			}
+		}
+	}
+}
+
+// Without script the add bar and the sections' headings hide, and the
+// sections stay collapsed <details>; once script marks the page checkin-js,
+// a closed section and every summary hide, so a section shows, unboxed, once
+// opened. On a phone the bar's buttons keep to one line that scrolls sideways
+// (ticket #365).
+func TestCheckinAddBarStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	styles := between(t, page, ".checkin-page{", "</style>")
+	for sel, want := range map[string]string{
+		".checkin-page:not(.checkin-js) .checkin-js-only": "display:none",
+		".checkin-js .checkin-more:not([open])":           "display:none",
+		".checkin-js .checkin-more>summary":               "display:none",
+		".checkin-js .checkin-more[open]":                 "border:none",
+		".checkin-add-bar":                                "background:var(--color-surface)",
+		".checkin-add-bar .btn[data-used]":                "background:var(--color-surface-alt)",
+	} {
+		if rule, ok := ruleFor(styles, sel); !ok || !strings.Contains(rule, want) {
+			t.Errorf("%s{%s} doesn't declare %s", sel, rule, want)
+		}
+	}
+	phone := mediaBlocks(styles, "@media (max-width:600px)")
+	for sel, want := range map[string]string{
+		".checkin-add-buttons":      "overflow-x:auto",
+		".checkin-add-buttons .btn": "flex:none",
+		".checkin-add-divider":      "display:none",
+	} {
+		found := false
+		for _, block := range phone {
+			if rule, ok := ruleFor(block, sel); ok && strings.Contains(rule, want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("at 600px %s doesn't declare %s", sel, want)
+		}
+	}
+}

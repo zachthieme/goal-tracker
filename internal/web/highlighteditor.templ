@@ -18,12 +18,24 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 var highlightAddKinds = []string{domain.HighlightInsight, domain.HighlightAccomplishment, domain.HighlightMiss}
 
 // highlightAddButtons are + Insight, + Accomplishment and + Miss, each opening
-// the editor for a new Highlight of its kind. They only work with script, so
-// they show only once it has run.
-templ highlightAddButtons() {
+// the editor for a new Highlight of its kind, under testID and class. They
+// only work with script, so they show only once it has run. A copy outside the
+// editor's container names, as controls, the element holding the container
+// (the Check-in page's add bar): it stands for the container's own buttons,
+// and is disabled with them.
+templ highlightAddButtons(testID, class, controls string) {
 	<div class="hl-add hl-js-only">
 		for _, kind := range highlightAddKinds {
-			<button type="button" data-testid="highlight-add" data-kind={ kind } data-highlight-add class="btn quiet sm">{ "+ " + kind }</button>
+			<button
+				type="button"
+				data-testid={ testID }
+				data-kind={ kind }
+				data-highlight-add
+				class={ class }
+				if controls != "" {
+					aria-controls={ controls }
+				}
+			>{ "+ " + kind }</button>
 		}
 	</div>
 }
@@ -131,7 +143,9 @@ templ itemEditorStyles() {
 // sent in the order written. Edit swaps an item for an editor in place, with
 // the Kind select, and Cancel swaps it back. Remove drops an item, keeping a
 // Draft's draft_highlight_id so the Check-in discards it. One editor is open
-// at a time: the add and Edit buttons are disabled while one is.
+// at a time: the add and Edit buttons are disabled while one is, as is any
+// copy of an add button outside the container that stands for it (the
+// Check-in page's add bar, through aria-controls).
 //
 // A Highlight with a url saves to the server instead (the Goal page's Draft
 // Highlights): Save posts its kind and note there with htmx and swaps the
@@ -350,9 +364,21 @@ templ highlightEditorScript() {
 					});
 				}
 
+				// addButtons are the container's add buttons, and the copies
+				// outside it that stand for them: those whose aria-controls
+				// names an element holding the container.
+				function addButtons() {
+					var own = Array.prototype.slice.call(scope.querySelectorAll("[data-highlight-add]"));
+					document.querySelectorAll("[data-highlight-add][aria-controls]").forEach(function (b) {
+						var controlled = document.getElementById(b.getAttribute("aria-controls"));
+						if (controlled && controlled.contains(box) && own.indexOf(b) < 0) own.push(b);
+					});
+					return own;
+				}
+
 				function refresh() {
 					var open = box.querySelector(".hl-editor") !== null;
-					scope.querySelectorAll("[data-highlight-add]").forEach(function (b) {
+					addButtons().forEach(function (b) {
 						b.disabled = open;
 					});
 					box.querySelectorAll("[data-hl-edit]").forEach(function (b) {

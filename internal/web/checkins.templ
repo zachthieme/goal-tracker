@@ -401,6 +401,15 @@ func (d checkinFormData) lifecycleOpen() bool {
 		strings.TrimSpace(l.Reason) != "" || strings.TrimSpace(l.Outcome) != ""
 }
 
+// addLabel is the Check-in page's add bar button that opens the Lifecycle
+// section, naming what the section offers.
+func (d lifecycleFormData) addLabel() string {
+	if d.Current == domain.LifecycleOnHold {
+		return "Resume or cancel"
+	}
+	return "Pause, finish or cancel"
+}
+
 // summary is the Lifecycle section's summary line, naming the change picked.
 func (d lifecycleFormData) summary() string {
 	title := "Pause, finish, or cancel this goal"
@@ -635,6 +644,9 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 					</div>
 				}
 			</div>
+			if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold {
+				@checkinAddBar(form.Lifecycle)
+			}
 			<aside data-testid="checkin-context" class="checkin-context">
 				if c := v.LatestCheckin; c != nil {
 					<section data-testid="checkin-last-time" class="checkin-context-last">
@@ -671,6 +683,25 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 			}
 		</div>
 	}
+}
+
+// checkinAddBar is the Check-in page's "Add to this check-in" bar, under its
+// header: + Insight, + Accomplishment and + Miss, which stand for the
+// Highlights section's own add buttons, then Move a date or Milestone and the
+// Lifecycle's button, each showing its section. It works only with script
+// (checkinSectionsScript), so shows only once that has run; without it the
+// form's sections stay collapsed <details> to open by their summaries. It sits
+// outside the form, so a refused submit's re-render leaves it be.
+templ checkinAddBar(l lifecycleFormData) {
+	<div data-testid="checkin-add-bar" class="checkin-add-bar checkin-js-only" role="group" aria-label="Add to this check-in">
+		<span class="checkin-add-label">Add to this check-in</span>
+		<div data-testid="checkin-add-buttons" class="checkin-add-buttons">
+			@highlightAddButtons("checkin-add-highlight", "btn sm checkin-add-hl", "checkin-highlight-section")
+			<span class="checkin-add-divider" aria-hidden="true"></span>
+			<button data-testid="checkin-add-dates" type="button" class="btn sm checkin-add-section" aria-controls="checkin-dates-section">Move a date or Milestone</button>
+			<button data-testid="checkin-add-lifecycle" type="button" class="btn sm checkin-add-section" aria-controls="checkin-lifecycle-section">{ l.addLabel() }</button>
+		</div>
+	</div>
 }
 
 // checkinPageMeta is the line under the Check-in page's title: the week it is,
@@ -901,11 +932,14 @@ templ checkinForm(d checkinFormData) {
 			</fieldset>
 		}
 		<div class="checkin-more-group">
-			<details data-testid="checkin-highlight-section" class="checkin-more" open?={ d.highlightOpen() }>
+			<details data-testid="checkin-highlight-section" id="checkin-highlight-section" class="checkin-more" open?={ d.highlightOpen() }>
 				<summary>{ d.highlightSummary() }</summary>
 				<div data-testid="checkin-highlights" class="checkin-highlights" data-highlight-editor>
-					<h2 class="hl-js-only hl-head">Highlights</h2>
-					@highlightAddButtons()
+					<div class="checkin-section-head hl-js-only">
+						<h2 data-testid="checkin-highlights-heading" tabindex="-1">Highlights</h2>
+						<span class="hint">A Report author can pull each one in</span>
+					</div>
+					@highlightAddButtons("highlight-add", "btn quiet sm", "")
 					<div class="hl-items" data-hl-items></div>
 					for i, row := range d.DraftHighlights {
 						@checkinDraftHighlightRow(i+1, row, d.Error)
@@ -922,15 +956,22 @@ templ checkinForm(d checkinFormData) {
 			@highlightEditorTemplate()
 			@highlightItemTemplate()
 			@highlightEditorScript()
-			<details data-testid="checkin-dates-section" class="checkin-more" open?={ d.datesOpen() }>
+			<details data-testid="checkin-dates-section" id="checkin-dates-section" class="checkin-more" open?={ d.datesOpen() }>
 				<summary>{ d.Dates.summary(d.Shown) }</summary>
+				<div class="checkin-section-head">
+					<h2 data-testid="checkin-dates-heading" class="checkin-js-only" tabindex="-1">Dates and Milestones</h2>
+				</div>
 				@checkinDateFields(d.Dates, d.Error)
 			</details>
-			<details data-testid="checkin-lifecycle-section" class="checkin-more" open?={ d.lifecycleOpen() }>
+			<details data-testid="checkin-lifecycle-section" id="checkin-lifecycle-section" class="checkin-more" open?={ d.lifecycleOpen() }>
 				<summary>{ d.Lifecycle.summary() }</summary>
+				<div class="checkin-section-head">
+					<h2 data-testid="checkin-lifecycle-heading" class="checkin-js-only" tabindex="-1">Lifecycle</h2>
+				</div>
 				@checkinLifecycleFields(d.Lifecycle, d.Error)
 			</details>
 		</div>
+		@checkinSectionsScript()
 		if d.offTargetWarned() {
 			@checkinOffTargetWarning(d.OffTarget, d.Shown)
 		}
@@ -944,6 +985,53 @@ templ checkinForm(d checkinFormData) {
 			<button type="submit" class="btn primary">Submit check-in</button>
 		</div>
 	</form>
+}
+
+// checkinSectionsScript shows the form's optional sections as the page's add
+// bar (checkinAddBar) drives them. It marks the page checkin-js, so the bar and
+// the sections' headings show, and a section shows, without its summary, only
+// while its <details> is open: as the server rendered it, by the same rules
+// that open it without script, or once its button is pressed. It marks Move a
+// date or Milestone and the Lifecycle's button used while their section
+// shows; pressing one opens its section and moves focus to its heading. A
+// Highlight button opens the Highlights section and presses the section's own
+// add button of its kind, so the Highlight editor does the rest. It isn't
+// behind a once handle, so it runs again on the form an htmx re-render swaps
+// in, marking the bar afresh; the bar, outside the form, is wired only once.
+templ checkinSectionsScript() {
+	<script>
+		(function () {
+			var page = document.querySelector(".checkin-page");
+			var bar = page && page.querySelector(".checkin-add-bar");
+			if (!bar) return;
+			page.classList.add("checkin-js");
+			bar.querySelectorAll(".checkin-add-section").forEach(function (b) {
+				var s = section(b);
+				b.toggleAttribute("data-used", !!s && s.open);
+			});
+			if (bar.checkinWired) return;
+			bar.checkinWired = true;
+			bar.addEventListener("click", function (e) {
+				var b = e.target.closest("button[aria-controls]");
+				var s = b && !b.disabled && section(b);
+				if (!s) return;
+				s.open = true;
+				var heading = s.querySelector("h2[tabindex]");
+				if (heading) heading.scrollIntoView({ block: "start" });
+				if (b.hasAttribute("data-highlight-add")) {
+					var own = s.querySelector('[data-highlight-add][data-kind="' + b.getAttribute("data-kind") + '"]');
+					if (own) own.click();
+					return;
+				}
+				b.setAttribute("data-used", "");
+				if (heading) heading.focus({ preventScroll: true });
+			});
+
+			function section(b) {
+				return document.getElementById(b.getAttribute("aria-controls"));
+			}
+		})();
+	</script>
 }
 
 // checkinSummaryScript fills the submit bar's summary with what the Check-in
@@ -1156,6 +1244,18 @@ templ checkinStyles() {
 			.checkin-page>*{grid-column:1}
 			.checkin-page>nav,.checkin-page>.checkin-head{grid-column:1/-1}
 			.checkin-page>.checkin-context{grid-column:2;grid-row:3}
+			.checkin-page>.checkin-add-bar{grid-column:1/-1}
+			.checkin-page.checkin-js>.checkin-context{grid-row:4}
+			.checkin-page:not(.checkin-js) .checkin-js-only{display:none}
+			.checkin-add-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:12px 16px}
+			.checkin-add-label{font-size:13px;font-weight:600;color:var(--color-ink-muted)}
+			.checkin-add-buttons{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+			.checkin-add-bar .hl-add{display:contents}
+			.checkin-add-divider{width:1px;height:24px;background:var(--color-border)}
+			.checkin-add-bar .btn{border-radius:var(--radius-full)}
+			.checkin-add-bar .checkin-add-hl{background:var(--color-primary-subtle);border-color:var(--color-primary-subtle);color:var(--color-primary-strong)}
+			.checkin-add-bar .checkin-add-section{background:transparent;border-color:var(--color-border);color:var(--color-ink)}
+			.checkin-add-bar .btn[data-used]{background:var(--color-surface-alt);color:var(--color-ink-muted)}
 			.checkin-context{display:flex;flex-direction:column;gap:20px;position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px);overflow-y:auto}
 			.checkin-context>section{display:flex;flex-direction:column;gap:8px}
 			.checkin-context>section+section{border-top:1px solid var(--color-border);padding-top:20px}
@@ -1166,6 +1266,7 @@ templ checkinStyles() {
 			.checkin-context-dates p{font-size:14px;color:var(--color-ink)}
 			@media (max-width:900px){.checkin-page{display:flex;flex-direction:column}.checkin-context{position:static;max-height:none;overflow-y:visible}}
 			@media (max-width:600px){.checkin-context-last,.checkin-context-dates{display:none}.checkin-context>.checkin-context-children{border-top:none;padding-top:0}.checkin-context:not(:has(.checkin-context-children)){display:none}}
+			@media (max-width:600px){.checkin-add-bar{flex-direction:column;align-items:stretch}.checkin-add-buttons{flex-wrap:nowrap;overflow-x:auto}.checkin-add-buttons .btn{flex:none}.checkin-add-divider{display:none}}
 			.checkin-form{display:flex;flex-direction:column;gap:40px}
 			.checkin-default-submit{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0}
 			.checkin-form .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;padding:0;border:0}
@@ -1215,6 +1316,10 @@ templ checkinStyles() {
 			.checkin-more .checkin-highlights fieldset>legend{display:block;padding:0;font-size:13px;color:var(--color-ink-muted)}
 			.checkin-highlights>button{align-self:flex-start}
 			.checkin-more:has(>.hl-js){padding-top:16px}
+			.checkin-js .checkin-more-group{gap:40px}
+			.checkin-js .checkin-more:not([open]),.checkin-js .checkin-more>summary{display:none}
+			.checkin-js .checkin-more[open]{background:none;border:none;border-radius:0;padding:0}
+			.checkin-js .checkin-more>.checkin-section-head{margin-bottom:16px}
 			.checkin-form .checkin-keep, .checkin-form .checkin-ask{flex-direction:row;align-items:center}
 			.checkin-form .checkin-ask{flex-wrap:wrap;font-weight:400}
 			.ms-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1fr);gap:8px 12px;align-items:start}
