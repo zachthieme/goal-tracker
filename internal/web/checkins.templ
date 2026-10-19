@@ -468,6 +468,7 @@ templ checkinSection(v goalView) {
 					if v.Ask.Addressee != nil {
 						{ "of " }
 						@person(*v.Ask.Addressee)
+						// templ renders this line break as the one space before Answer.
 					} else {
 						{ "· no one above the Owner" }
 					}
