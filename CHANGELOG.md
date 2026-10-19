@@ -19,6 +19,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Admins can make someone an Admin, or remove another Admin, from the Admins section of the Admin page. Make Admin takes an email and never creates an account; no Admin can remove their own role, so there is always at least one (#335).
 - [user] A Report, its Print page and its Markdown export open with a line counting what moved since the baseline: Goals that turned Red or Yellow, came back to Green, slipped, changed Lifecycle, are new, entered or left (#341).
 - [user] Anyone can comment on a Goal from its page and reply in the thread there. The Owner is emailed, as for a Comment on a Report (#350).
+- [user] A published Report says how it selects its Goals ("Selection: Owner is in the org of Dana Okafor · Active"), as it read when published, on the publication page, Print and the Markdown export. Publications made before this change show no selection line (#270).
 
 **Improvements:**
 - [ops] Pages no longer load anything from other hosts: htmx and the fonts are served from the app, so browsers on a network that blocks `unpkg.com` or Google Fonts get the full app (#336).
@@ -57,10 +58,12 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] Five fixes that no test caught now have tests that fail without them: the DEBUG "request abandoned" record (#213), the "come ticked" sentence beside Where it fits' Required note (#214), a password sign-in giving up while waiting for a hash slot on each of its three paths (#313; the Service now holds its hash limiter), Remove for the linked Goal's Owner and the refused-removal page's Back to Home (#251) (#347).
 - [internal] The directory sync's hourly run, and its failures on a malformed page, an unreachable server and a page pointing back, have tests (#271).
 - [internal] A 390px e2e spec, `e2e/phone-width.spec.ts`, checks that the Goals list, Risks, a Report draft and the Admin page don't clip or scroll sideways and keep every control on screen (#343).
+- [internal] `make e2e-typecheck` (`npm run typecheck` in `e2e/`) type-checks every TypeScript file in the e2e suite with `tsc` in strict mode, from a new `e2e/tsconfig.json` (ES2023, DOM, Node 22 types). It isn't a gate, and `make check` doesn't run it (#225).
 
 **Code quality:**
 - [internal] e2e/ has a Prettier config pinning its 120-column style, so a plain npx prettier --check there passes, and the three scenario specs that didn't follow it now do (#346).
 - [internal] Comments in the reminder scheduler, the weekly digest, and the Reports, Top-level, sign-in and History pages say "the company" for the whole company and no longer call the Check-in form pre-filled (#305).
+- [internal] A Report builder test's doc comment moves back to the test it describes, the comment on the Check-in styles' once handle gives the real reason for it, and three over-long lines in DESIGN.md are re-wrapped (#340).
 
 **Documentation:**
 - [internal] CLAUDE.md says `make test` takes about 2 minutes, most of it `internal/web` under the race detector, instead of about 50 seconds, which it no longer does (#310).
