@@ -20,6 +20,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A Report, its Print page and its Markdown export open with a line counting what moved since the baseline: Goals that turned Red or Yellow, came back to Green, slipped, changed Lifecycle, are new, entered or left (#341).
 - [user] Anyone can comment on a Goal from its page and reply in the thread there. The Owner is emailed, as for a Comment on a Report (#350).
 - [user] A published Report says how it selects its Goals ("Selection: Owner is in the org of Dana Okafor · Active"), as it read when published, on the publication page, Print and the Markdown export. Publications made before this change show no selection line (#270).
+- [user] A Check-in can mark its Path to Green "This asks for help". The ask goes to the Owner's Manager (past anyone who has left the company), who sees it under Needs you on Home until the Owner unmarks it or the Goal is back to Green (#241).
+- [user] The Goal page and History show the ask (#241).
 
 **Improvements:**
 - [ops] Pages no longer load anything from other hosts: htmx and the fonts are served from the app, so browsers on a network that blocks `unpkg.com` or Google Fonts get the full app (#336).
@@ -37,6 +39,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Goal page explains Dated, Ongoing, Delegates and Dimension values with a help button, and Ownerless badges say what Ownerless means on hover. The Report builder explains Also include and Leave out, and its rules hint is in plain words (#282).
 - [ops] The directory sync reads each person's timezone, an IANA name, from an optional `timezone` column in the CSV directory file or a `timezone` attribute in Authentik. A blank or invalid value means none, and an invalid one is logged at WARN. Nothing uses it yet. A new migration (`0050_account_timezones`) adds `accounts.timezone` on startup; no action is needed (#353).
 - [user] People's Names no longer have a dotted underline that made them look like links. Hovering over a Name or focusing it shows a faint tint, and clicking it still shows the email (#278).
+- [user] A Report's exception block counts the Red, Yellow and Stale Goals behind its Rolled-up Health ("2 of 6 Red · 1 Yellow"), names the Red and Yellow ones, and links to the Goals in the same Report it contributes to or that contribute to it. The Markdown export and Print carry the same (#246).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
@@ -55,6 +58,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Infrastructure:**
 - [internal] `make lint` now fails on Go code that isn't gofmt-formatted, using golangci-lint's gofmt formatter; generated code stays guarded by `make generate-check` (#328).
+- [ops] A new migration (`0051_asks_for_help`) adds `checkins.asks_for_help` on startup; existing Check-ins ask for nothing, and no action is needed (#241).
 
 **Testing:**
 - [internal] The seed invariants test now checks scenario 1's Red Goal with Active children shows a Rolled-up Health, and scenario 4's spec reads its candidate links in the same order the test does, so both pick the same chain (#233).
