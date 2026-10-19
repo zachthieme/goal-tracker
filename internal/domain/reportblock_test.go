@@ -499,3 +499,48 @@ func TestReportMarksAGoalWhoseHealthChangedSinceTheBaseline(t *testing.T) {
 		})
 	}
 }
+
+// An exception block marks a Goal's open Ask for help with whom it asks then:
+// the Owner's Manager, or past a Departed one the Manager above. A Yellow Goal
+// that doesn't ask has neither.
+func TestReportBlockMarksAnAskForHelp(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	lee := h.SignIn("lee@example.com")
+	mia := h.SignInNamed("mia@example.com", "Mia Chen")
+	vp := h.SignInNamed("vp@example.com", "Vee Pee")
+	h.SetManager(sam, mia)
+	h.SetManager(lee, vp)
+	h.SetManager(vp, boss)
+	askMarkDeparted(t, h, boss, vp)
+	asking := h.ActiveGoal(sam, "Launch in EU", "Expand the market.")
+	pastDeparted := h.ActiveGoal(lee, "Cut churn", "Keep customers.")
+	quiet := h.ActiveGoal(sam, "Ship billing", "Get paid.")
+	settle(h)
+	later := h.Clock.Now().AddDate(0, 1, 0)
+	h.AskForHelp(sam, asking.ID, domain.HealthRed, "Blocked on legal.", "Need counsel budget.", later)
+	h.AskForHelp(lee, pastDeparted.ID, domain.HealthYellow, "Slipping.", "Need a reviewer.", later)
+	h.Checkin(sam, quiet.ID, domain.HealthYellow, "Slipping.", "Add a team.", later)
+
+	r := draftReport(t, h, boss, time.Time{}, asking, pastDeparted, quiet)
+
+	blocks := map[int64]domain.ReportBlock{}
+	for _, b := range r.Exceptions {
+		blocks[b.Goal.ID] = b
+	}
+	for _, want := range []struct {
+		goal domain.Goal
+		of   domain.Account
+	}{{asking, mia}, {pastDeparted, boss}} {
+		b := blocks[want.goal.ID]
+		if !b.AsksForHelp || b.AskAddressee == nil || b.AskAddressee.ID != want.of.ID {
+			t.Errorf("%q's block AsksForHelp %v of %+v, want an ask of %s", want.goal.Title, b.AsksForHelp, b.AskAddressee, want.of.Email)
+		}
+	}
+	if b, ok := blocks[quiet.ID]; !ok || b.AsksForHelp || b.AskAddressee != nil {
+		t.Errorf("%q's block (drafted %v) AsksForHelp %v of %+v, want no ask", quiet.Title, ok, b.AsksForHelp, b.AskAddressee)
+	}
+}

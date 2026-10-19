@@ -95,6 +95,14 @@ type ReportBlock struct {
 	// Fields are the Goal's values in the Fields the definition chose, shown
 	// as labelled values beside the Goal, never in the narrative (ADR 0005).
 	Fields []FieldValue `json:",omitempty"`
+	// AsksForHelp marks an Ask for help open when the Report was drafted: the
+	// Goal Active, its latest Check-in Yellow or Red and asking (CONTEXT.md:
+	// Ask for help). AskAddressee is whom it asked then, nil when no one was
+	// above the Owner. Both are frozen with the publication, so a later
+	// Check-in or directory change doesn't alter them; a snapshot frozen
+	// before Reports showed asks has neither.
+	AsksForHelp  bool     `json:",omitempty"`
+	AskAddressee *Account `json:",omitempty"`
 }
 
 // ReportMilestone is a Milestone as an exception block shows it: marked New
@@ -378,6 +386,13 @@ func (s *Service) reportBlock(ctx context.Context, h goalHistory, since func(tim
 		PathToGreen:    latest.PathToGreen,
 		PathTargetDate: latest.PathTargetDate,
 		Explanation:    latest.Explanation,
+		AsksForHelp:    h.goal.Lifecycle == LifecycleActive && needsPathToGreen(latest.Health) && latest.AsksForHelp,
+	}
+	if b.AsksForHelp {
+		var err error
+		if b.AskAddressee, err = s.AskAddressee(ctx, h.goal.Owner); err != nil {
+			return ReportBlock{}, err
+		}
 	}
 	milestones, err := s.ListMilestones(ctx, h.goal.ID)
 	if err != nil {
