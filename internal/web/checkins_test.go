@@ -3893,3 +3893,189 @@ func TestCheckinPageSectionsAreNotBoxed(t *testing.T) {
 		t.Errorf("styles no longer hide the Path to Green while Green is picked")
 	}
 }
+
+// checkinSubmitBar returns the Check-in form's submit bar, from its opening
+// tag to the form's end, failing unless it is the form's last element.
+func checkinSubmitBar(t *testing.T, form string) string {
+	t.Helper()
+	bar := between(t, form, `<div data-testid="checkin-submit-bar"`, "")
+	if !strings.HasSuffix(strings.TrimSpace(bar), "</div>") || strings.Count(bar, "<div") != strings.Count(bar, "</div>") {
+		t.Fatalf("the submit bar isn't the form's last element:\n%s", bar)
+	}
+	return bar
+}
+
+// The Check-in form ends with its submit bar: a summary the script fills,
+// empty from the server, then Cancel and Submit check-in, and no field. The
+// hidden default submit is still the form's first, so Enter submits the
+// Check-in (ticket #367).
+func TestCheckinFormEndsWithSubmitBar(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	form := between(t, page, `data-testid="checkin-form"`, "</form>")
+	bar := checkinSubmitBar(t, form)
+	if !strings.HasPrefix(bar, `<div data-testid="checkin-submit-bar" class="checkin-submit-bar">`) {
+		t.Errorf("the submit bar's opening tag = %s", openTag(bar))
+	}
+	summary := tagAround(t, bar, `data-testid="checkin-summary"`)
+	if attr(summary, "class") != "checkin-summary" || attr(summary, "aria-live") != "polite" {
+		t.Errorf("the summary = %s, want class checkin-summary and aria-live polite", summary)
+	}
+	if !strings.Contains(bar, summary+"</div>") {
+		t.Errorf("the summary isn't empty from the server:\n%s", bar)
+	}
+	if !strings.Contains(bar, fmt.Sprintf(`<a class="btn quiet" href="/goals/%d">Cancel</a>`, goal.ID)) {
+		t.Errorf("the submit bar has no Cancel back to the Goal:\n%s", bar)
+	}
+	if !strings.Contains(bar, `<button type="submit" class="btn primary">Submit check-in</button>`) {
+		t.Errorf("the submit bar has no Submit check-in:\n%s", bar)
+	}
+	for _, field := range []string{"<input", "<select", "<textarea"} {
+		if strings.Contains(bar, field) {
+			t.Errorf("the submit bar holds a field (%s):\n%s", field, bar)
+		}
+	}
+	first := regexp.MustCompile(`<button[^>]*type="submit"[^>]*>`).FindString(form)
+	if attr(first, "data-testid") != "checkin-default-submit" {
+		t.Errorf("the form's first submit isn't the default submit: %s", first)
+	}
+	if strings.Contains(page, `class="checkin-submit"`) {
+		t.Errorf("the page still has the old checkin-submit row")
+	}
+}
+
+// The submit bar sticks to the bottom of the window while the form runs past
+// it, flat on the surface under a 1px rule, and the page keeps a field it
+// scrolls to clear of it. At 600px and below Cancel hides, the summary
+// shrinks and Submit check-in grows to a thumb's size (ticket #367).
+func TestCheckinSubmitBarSticksFlatToTheWindowsBottom(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	bar := cssRule(t, page, ".checkin-submit-bar")
+	for _, want := range []string{
+		"position:sticky", "bottom:0", "z-index:10",
+		"background:var(--color-surface)", "border-top:1px solid var(--color-border)",
+		"padding:12px 16px", "display:flex", "align-items:center", "gap:16px", "flex-wrap:wrap",
+	} {
+		if !strings.Contains(bar, want) {
+			t.Errorf(".checkin-submit-bar declares %q, missing %s", bar, want)
+		}
+	}
+	if strings.Contains(bar, "shadow") || strings.Contains(bar, "#") {
+		t.Errorf(".checkin-submit-bar floats or names a colour by hex: %q", bar)
+	}
+	summary := cssRule(t, page, ".checkin-summary")
+	for _, want := range []string{"flex:1", "color:var(--color-ink-2)", "font-size:14px"} {
+		if !strings.Contains(summary, want) {
+			t.Errorf(".checkin-summary declares %q, missing %s", summary, want)
+		}
+	}
+	if part := cssRule(t, page, ".checkin-summary>*"); !strings.Contains(part, "white-space:nowrap") {
+		t.Errorf("the summary's parts break inside themselves rather than wrap whole: %q", part)
+	}
+	if submit := cssRule(t, page, ".checkin-submit-bar .btn.primary"); !strings.Contains(submit, "height:44px") {
+		t.Errorf("Submit check-in isn't 44px tall: %q", submit)
+	}
+	if pad := cssRule(t, page, "html:has(.checkin-submit-bar)"); !strings.Contains(pad, "scroll-padding-bottom:") {
+		t.Errorf("the page doesn't keep a scrolled-to field clear of the bar: %q", pad)
+	}
+
+	phone := map[string]string{
+		".checkin-submit-bar .btn.quiet":   "display:none",
+		".checkin-summary":                 "font-size:13px",
+		".checkin-submit-bar .btn.primary": "height:48px",
+	}
+	for sel, want := range phone {
+		found := false
+		for _, block := range mediaBlocks(page, "@media (max-width:600px)") {
+			if decls, ok := ruleFor(block, sel); ok && strings.Contains(decls, want) {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("at 600px and below %s doesn't declare %s", sel, want)
+		}
+	}
+}
+
+// The delivery date and each Milestone's date carry the Goal's current one as
+// data-current, so the summary script can tell a changed date from one left
+// alone, however the form was re-rendered (ticket #367). ActiveGoal delivers
+// six months after the harness's Jan 2, 2026, and its Beta is due in three.
+func TestCheckinDateFieldsCarryTheCurrentDates(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	beta := onlyMilestone(t, h, goal)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	betaDate := fmt.Sprintf(`name="milestone_date_%d"`, beta.ID)
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	if got := attr(tagAround(t, page, `name="delivery_date"`), "data-current"); got != "2026-07-02" {
+		t.Errorf("delivery_date's data-current = %q, want 2026-07-02", got)
+	}
+	if got := attr(tagAround(t, page, betaDate), "data-current"); got != "2026-04-02" {
+		t.Errorf("Beta's date's data-current = %q, want 2026-04-02", got)
+	}
+
+	// Refused for its blank status, the form comes back with the dates as
+	// typed and the current ones still marked.
+	body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":        {domain.HealthGreen},
+		"status":        {" "},
+		"delivery_date": {"2026-08-01"},
+		fmt.Sprintf("milestone_date_%d", beta.ID): {"2026-05-01"},
+	})
+	delivery := tagAround(t, body, `name="delivery_date"`)
+	if attr(delivery, "value") != "2026-08-01" || attr(delivery, "data-current") != "2026-07-02" {
+		t.Errorf("re-rendered delivery_date = %s, want value 2026-08-01 and data-current 2026-07-02", delivery)
+	}
+	milestone := tagAround(t, body, betaDate)
+	if attr(milestone, "value") != "2026-05-01" || attr(milestone, "data-current") != "2026-04-02" {
+		t.Errorf("re-rendered Beta date = %s, want value 2026-05-01 and data-current 2026-04-02", milestone)
+	}
+}
+
+// A refused htmx submit swaps the form back with its submit bar and the
+// script that fills the bar's summary, so the summary runs again on the new
+// form (ticket #367).
+func TestCheckinRefusedSubmitBringsBackTheSubmitBar(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	body, status := postFormHX(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {" "},
+	})
+	if status != http.StatusOK {
+		t.Fatalf("refused htmx submit: status %d, want 200 so htmx swaps the form", status)
+	}
+	form := between(t, body, `data-testid="checkin-form"`, "</form>")
+	checkinSubmitBar(t, form)
+	found := false
+	for _, m := range regexp.MustCompile(`(?s)<script>(.*?)</script>`).FindAllStringSubmatch(form, -1) {
+		found = found || strings.Contains(m[1], "checkin-form") && strings.Contains(m[1], "checkin-summary")
+	}
+	if !found {
+		t.Errorf("the re-rendered form has no script filling the summary:\n%s", form)
+	}
+}

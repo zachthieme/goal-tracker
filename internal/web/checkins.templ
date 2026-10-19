@@ -699,7 +699,10 @@ templ checkinUnavailablePage(current *domain.Account, title, message string) {
 // script, the Highlight editor (highlighteditor.templ) upgrades the Highlight
 // section into add buttons, an editor and items. The
 // Path to Green asks for a reason for moving its back-to-Green date only once
-// the date is later than the latest Check-in's (see pathReasonShown).
+// the date is later than the latest Check-in's (see pathReasonShown). The form
+// ends with its submit bar, which sticks to the window's bottom while the form
+// runs past it: Cancel and Submit check-in beside a summary of what the
+// Check-in will record, empty until checkinSummaryScript fills it.
 templ checkinForm(d checkinFormData) {
 	<form
 		data-testid="checkin-form"
@@ -871,11 +874,107 @@ templ checkinForm(d checkinFormData) {
 		if d.OffTargetConfirmed && d.Health == domain.HealthGreen {
 			<input type="hidden" name="off_target_confirmed" value="1"/>
 		}
-		<div class="checkin-submit">
+		@checkinSummaryScript()
+		<div data-testid="checkin-submit-bar" class="checkin-submit-bar">
+			<div data-testid="checkin-summary" class="checkin-summary" aria-live="polite"></div>
 			<a class="btn quiet" href={ templ.SafeURL(fmt.Sprintf("/goals/%d", d.GoalID)) }>Cancel</a>
 			<button type="submit" class="btn primary">Submit check-in</button>
 		</div>
 	</form>
+}
+
+// checkinSummaryScript fills the submit bar's summary with what the Check-in
+// will record, as the form stands: the Health picked, as its badge, unless the
+// Lifecycle picked takes the Goal out of Active and so records none; "Path to
+// Green" while Yellow or Red has a Plan; how many Metrics have a reading; how
+// many Highlights have a note or are kept Drafts; "dates changed" when the
+// dates section would change anything (checkinDatesFormData.changed, each
+// date's current value read from its data-current); and the Lifecycle change.
+// It counts fields by name, not by markup, so it holds when a section's
+// markup changes, and runs again on every input and change, and whenever
+// script adds or removes anything in the form outside the bar, such as a
+// Highlight item. It isn't behind a once handle, so it runs again on the form
+// an htmx re-render swaps in; on the first load, the bar after it isn't parsed
+// yet, so it waits for the page.
+templ checkinSummaryScript() {
+	<script>
+		(function () {
+			if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+			else start();
+
+			function start() {
+				var form = document.getElementById("checkin-form");
+				var bar = form && form.querySelector("[data-testid=checkin-submit-bar]");
+				var summary = bar && bar.querySelector("[data-testid=checkin-summary]");
+				if (!summary) return;
+				var shown = null;
+				render();
+				form.addEventListener("input", render);
+				form.addEventListener("change", render);
+				new MutationObserver(function (changes) {
+					if (changes.some(function (c) { return !bar.contains(c.target); })) render();
+				}).observe(form, { childList: true, subtree: true });
+
+				function all(selector) {
+					return Array.prototype.slice.call(form.querySelectorAll(selector));
+				}
+
+				function typed(el) {
+					return el.value.trim() !== "";
+				}
+
+				function count(n, noun) {
+					return n === 1 ? "1 " + noun : n + " " + noun + "s";
+				}
+
+				function datesChanged() {
+					return all("input[data-current]").some(function (el) { return el.value.trim() !== el.getAttribute("data-current"); }) ||
+						all("select[name^=milestone_status_]").some(function (el) { return el.value !== "" && el.value !== "Planned"; }) ||
+						all("[name=delivery_date_reason], [name^=milestone_date_reason_], [name^=milestone_removed_reason_], [name=new_milestone_name], [name=new_milestone_date]").some(typed);
+				}
+
+				function render() {
+					var health = form.querySelector("input[name=health]:checked");
+					var lifecycle = form.querySelector("input[name=lifecycle]:checked");
+					var to = lifecycle ? lifecycle.value : "";
+					var parts = [];
+					if (health && (to === "" || to === "Active")) parts.push({ health: health.value });
+					if (health && (health.value === "Yellow" || health.value === "Red") && all("[name=path_to_green]").some(typed)) parts.push("Path to Green");
+					var readings = all("input[name^=reading_]").filter(typed).length;
+					if (readings) parts.push(count(readings, "Metric"));
+					var highlights = all("[name=highlight_note]").filter(typed).length +
+						all("[name=draft_highlight_keep]").filter(function (el) { return el.type !== "checkbox" || el.checked; }).length;
+					if (highlights) parts.push(count(highlights, "Highlight"));
+					if (datesChanged()) parts.push("dates changed");
+					if (to) parts.push("→ " + to);
+					var key = JSON.stringify(parts);
+					if (key === shown) return;
+					shown = key;
+					summary.replaceChildren();
+					parts.forEach(function (part, i) {
+						if (i) summary.appendChild(document.createTextNode(" · "));
+						summary.appendChild(typeof part === "string" ? text(part) : badge(part.health));
+					});
+				}
+
+				function text(s) {
+					var span = document.createElement("span");
+					span.textContent = s;
+					return span;
+				}
+
+				function badge(health) {
+					var span = document.createElement("span");
+					span.className = "badge " + ({ Green: "g", Yellow: "y", Red: "r" }[health] || "lc");
+					var dot = document.createElement("span");
+					dot.className = "dot";
+					span.appendChild(dot);
+					span.appendChild(document.createTextNode(health));
+					return span;
+				}
+			}
+		})();
+	</script>
 }
 
 // checkinOffTargetWarning asks the Owner to confirm a Green while Metrics are
@@ -1058,7 +1157,13 @@ templ checkinStyles() {
 			.checkin-off-target{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;background:var(--health-y-bg)}
 			.checkin-off-target p,.checkin-off-target ul{margin:0 0 8px}
 			.checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target, .checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target-notice{display:none}
-			.checkin-submit{display:flex;justify-content:flex-end;gap:12px}
+			.checkin-submit-bar{position:sticky;bottom:0;z-index:10;background:var(--color-surface);border-top:1px solid var(--color-border);padding:12px 16px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+			.checkin-summary{flex:1;color:var(--color-ink-2);font-size:14px}
+			.checkin-summary>*{white-space:nowrap}
+			.checkin-submit-bar .btn{flex:none}
+			.checkin-submit-bar .btn.primary{height:44px}
+			html:has(.checkin-submit-bar){scroll-padding-bottom:80px}
+			@media (max-width:600px){.checkin-submit-bar .btn.quiet{display:none}.checkin-summary{font-size:13px}.checkin-submit-bar .btn.primary{height:48px}}
 			.checkin-history{list-style:none;padding:0;margin:0}
 			.checkin-history li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--color-border)}
 		</style>
@@ -1069,14 +1174,15 @@ templ checkinStyles() {
 // remove Planned Milestones, and add new ones, the Milestones laid out as a
 // grid of name, date, and status. Every date change needs a reason and is kept
 // as a Date Slip; moving the delivery date later rules out Green (CONTEXT.md:
-// Date Slip, Milestone).
+// Date Slip, Milestone). Each date input carries the Goal's current date as
+// data-current, so checkinSummaryScript can tell a changed one.
 templ checkinDateFields(d checkinDatesFormData, e checkinError) {
 	<fieldset data-testid="checkin-dates">
 		<legend>Dates and Milestones</legend>
 		if d.Dated {
 			<label>
 				Delivery date
-				<input type="date" name="delivery_date" value={ d.DeliveryDate }/>
+				<input type="date" name="delivery_date" value={ d.DeliveryDate } data-current={ d.CurrentDeliveryDate }/>
 			</label>
 			@checkinFieldError(e, "delivery_date")
 			<label>
@@ -1095,7 +1201,7 @@ templ checkinDateFields(d checkinDatesFormData, e checkinError) {
 					<span class="ms-name">{ row.Milestone.Name }</span>
 					<div>
 						<label>
-							<input type="date" name={ fmt.Sprintf("milestone_date_%d", id) } value={ row.Date } aria-label={ "Date of " + row.Milestone.Name }/>
+							<input type="date" name={ fmt.Sprintf("milestone_date_%d", id) } value={ row.Date } aria-label={ "Date of " + row.Milestone.Name } data-current={ fmtDate(row.Milestone.TargetDate) }/>
 						</label>
 						@checkinFieldError(e, fmt.Sprintf("milestone_date_%d", id))
 					</div>
