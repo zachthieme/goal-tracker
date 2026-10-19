@@ -130,8 +130,13 @@ func (s *Server) handleIssuePasswordLink(w http.ResponseWriter, r *http.Request,
 
 // handleMakeAdmin makes the person with the email the Admin typed an Admin,
 // then brings the Admin back to the Admins section. It never creates an
-// Account: an email no one has is refused, as is a Departed person.
+// Account: an email no one has is refused, as is a Departed person. Only an
+// Admin may.
 func (s *Server) handleMakeAdmin(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	if !current.IsAdmin {
+		http.Error(w, "only an Admin may make someone an Admin", http.StatusForbidden)
+		return
+	}
 	emailAddr := strings.TrimSpace(r.FormValue("email"))
 	refuse := func(refusal string) {
 		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, s.passwordLinksCard(), adminsSectionView{Email: emailAddr, Refusal: refusal})
@@ -150,6 +155,36 @@ func (s *Server) handleMakeAdmin(w http.ResponseWriter, r *http.Request, current
 		return
 	case err != nil:
 		s.serverError(w, r, "could not make the Admin", err)
+		return
+	}
+	http.Redirect(w, r, "/admin#admin-admins", http.StatusSeeOther)
+}
+
+// handleRemoveAdmin takes the Admin role from the Account in the path, then
+// brings the Admin back to the Admins section. No Admin can take it from
+// themselves (CONTEXT.md: Admin); an Account that doesn't exist is not found.
+// Only an Admin may.
+func (s *Server) handleRemoveAdmin(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	if !current.IsAdmin {
+		http.Error(w, "only an Admin may remove an Admin", http.StatusForbidden)
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		s.notFound(w, r)
+		return
+	}
+	if id == current.ID {
+		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, s.passwordLinksCard(), adminsSectionView{Refusal: "You can't remove your own Admin role."})
+		return
+	}
+	err = s.svc.RemoveAdmin(r.Context(), current.ID, id)
+	if errors.Is(err, domain.ErrValidation) {
+		s.notFound(w, r)
+		return
+	}
+	if err != nil {
+		s.serverError(w, r, "could not remove the Admin", err)
 		return
 	}
 	http.Redirect(w, r, "/admin#admin-admins", http.StatusSeeOther)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -628,6 +629,9 @@ func TestAdminPageListsTheAdmins(t *testing.T) {
 	if !strings.Contains(form, `method="post"`) || !strings.Contains(form, `onsubmit="return confirm(`) {
 		t.Errorf("Remove Admin for Kim isn't a confirmed post: %s", form)
 	}
+	if script := html.UnescapeString(attr(form, "onsubmit")); !regexp.MustCompile(`^return confirm\('Remove this person.s Admin role\? They keep their account and their Goals\.'\)$`).MatchString(script) || strings.Count(script, "'") != 2 {
+		t.Errorf("Remove Admin's confirmation isn't one well-quoted message: %s", script)
+	}
 	if class := attr(tagAround(t, section, ">Remove Admin…</button>"), "class"); class != "btn sm" {
 		t.Errorf("the Remove Admin… button's class is %q, want \"btn sm\"", class)
 	}
@@ -741,5 +745,95 @@ func TestAdminCantMakeAnAdminOfSomeoneWithoutAnAccount(t *testing.T) {
 	}
 	if acc, err := h.Service.Account(t.Context(), sam.ID); err != nil || acc.IsAdmin {
 		t.Errorf("Sam after the refused Make Admin = %+v, %v; want a non-Admin", acc, err)
+	}
+}
+
+// removeAdmin presses Remove Admin… on the Admin page for the Account with id
+// as client, and returns the response, unfollowed.
+func removeAdmin(t *testing.T, client *http.Client, base, id string) *http.Response {
+	t.Helper()
+	return postForm(t, noRedirects(client), base+"/admin/admins/"+id+"/remove", nil)
+}
+
+// An Admin takes the Admin role from another Admin on the Admin page, and is
+// brought back to the Admins section; the other can't open the Admin page on
+// their next page load.
+func TestAdminRemovesAnotherAdminFromTheAdminPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com", "kim@example.com")
+	ts := newServer(t, h)
+	h.SignIn("ada@example.com")
+	kim := h.SignIn("kim@example.com")
+	ada := signInClient(t, ts.URL, "ada@example.com")
+	kimClient := signInClient(t, ts.URL, "kim@example.com")
+
+	resp := removeAdmin(t, ada, ts.URL, fmt.Sprint(kim.ID))
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/admin#admin-admins" {
+		t.Errorf("Remove Admin: status %d to %q, want 303 to /admin#admin-admins", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	if status := adminPageStatus(t, kimClient, ts.URL); status != http.StatusForbidden {
+		t.Errorf("Kim, no longer an Admin, GET /admin: status %d, want 403", status)
+	}
+	if section := pageElement(t, getBody(t, ada, ts.URL+"/admin"), "section", "admin-admins"); strings.Contains(section, "kim@example.com") {
+		t.Errorf("the Admins section still lists Kim:\n%s", section)
+	}
+}
+
+// No Admin can take the role from themselves, even by posting their own id:
+// the Admins section says so and they stay an Admin. An id that's no one's,
+// or isn't an id, is not found.
+func TestAdminCantRemoveTheirOwnAdminRole(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	client := signInClient(t, ts.URL, "ada@example.com")
+
+	resp := removeAdmin(t, client, ts.URL, fmt.Sprint(ada.ID))
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("Remove Admin of yourself: status %d, want 422", resp.StatusCode)
+	} else if msg := elementTexts(pageElement(t, page, "section", "admin-admins"), "p", "admin-admins-error"); len(msg) != 1 || msg[0] != "You can't remove your own Admin role." {
+		t.Errorf("the refusal says %q, want \"You can't remove your own Admin role.\"", msg)
+	}
+	if status := adminPageStatus(t, client, ts.URL); status != http.StatusOK {
+		t.Errorf("after removing their own Admin role, GET /admin: status %d, want 200", status)
+	}
+
+	for _, id := range []string{fmt.Sprint(ada.ID + 1000), "nobody"} {
+		resp := removeAdmin(t, client, ts.URL, id)
+		if body := readBody(t, resp); resp.StatusCode != http.StatusNotFound {
+			t.Errorf("Remove Admin of %q: status %d, want 404:\n%s", id, resp.StatusCode, body)
+		}
+	}
+}
+
+// Only an Admin may give or take the Admin role: anyone else is refused, even
+// posting their own id, and sees nothing of the Admin page.
+func TestNonAdminCantMakeOrRemoveAnAdmin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("kim@example.com")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for what, resp := range map[string]*http.Response{
+		"Make Admin":               makeAdmin(t, client, ts.URL, "kim@example.com"),
+		"Remove Admin of an Admin": removeAdmin(t, client, ts.URL, fmt.Sprint(ada.ID)),
+		"Remove Admin of yourself": removeAdmin(t, client, ts.URL, fmt.Sprint(sam.ID)),
+	} {
+		if body := readBody(t, resp); resp.StatusCode != http.StatusForbidden || strings.Contains(body, "admin-admins") {
+			t.Errorf("non-Admin %s: status %d, want 403 without the Admin page:\n%s", what, resp.StatusCode, body)
+		}
+	}
+	admins, err := h.Service.Admins(t.Context())
+	if err != nil || len(admins) != 1 || admins[0].ID != ada.ID {
+		t.Errorf("Admins after a non-Admin's attempts = %+v, %v; want only Ada", admins, err)
 	}
 }

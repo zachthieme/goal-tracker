@@ -101,8 +101,9 @@ templ adminPage(current *domain.Account, dirSync *directorySyncView, links *pass
 const confirmReturnPerson = "Mark this person returned? They can sign in and act again, and any Goals they still own stop being Ownerless. Goals reassigned while they were away stay with their new Owners."
 
 // confirmRemoveAdmin is what an Admin confirms before taking the Admin role
-// from another Admin.
-const confirmRemoveAdmin = "Remove this person's Admin role? They keep their account and their Goals."
+// from another Admin. Its apostrophe is a typographic one: confirmScript quotes
+// the message with straight ones.
+const confirmRemoveAdmin = "Remove this person’s Admin role? They keep their account and their Goals."
 
 // adminAdmins lists every Admin, with Remove Admin… on each but the viewer's
 // own row, as no Admin can take the role from themselves (CONTEXT.md: Admin),

@@ -74,6 +74,7 @@ func (s *Server) routes() {
 		s.mux.HandleFunc("POST /admin/password-links", s.requireAuth(s.handleIssuePasswordLink))
 	}
 	s.mux.HandleFunc("POST /admin/admins", s.requireAuth(s.handleMakeAdmin))
+	s.mux.HandleFunc("POST /admin/admins/{id}/remove", s.requireAuth(s.handleRemoveAdmin))
 	s.mux.HandleFunc("GET /dimensions", s.requireAuth(s.handleDimensions))
 	s.mux.HandleFunc("POST /dimensions", s.requireAuth(s.handleCreateDimension))
 	s.mux.HandleFunc("POST /dimensions/{id}/values", s.requireAuth(s.handleAddDimensionValue))
