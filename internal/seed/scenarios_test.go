@@ -384,6 +384,7 @@ func (o *e2eOrg) riskReasons(t *testing.T, g *e2eGoal) []string {
 		flags  bool
 	}{
 		{"Ownerless", g.Ownerless},
+		{"Milestone overdue", f.MilestoneOverdue},
 		{"Parent halted", len(s.HaltedParents) > 0},
 		{"Path to Green overdue", f.PathToGreenOverdue},
 		{"Red", g.active() && g.health() == domain.HealthRed},
@@ -495,9 +496,11 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 		t.Error("scenario 1: no Stale or Unaligned Goal off Platform, so narrowing Risks to Platform wouldn't narrow it")
 	}
 
-	// stale is under Owner needs to update and not Plan doesn't fit.
-	if got := o.riskReasons(t, stale); !slices.Equal(got, []string{"Stale"}) {
-		t.Errorf("scenario 1: stale Goal %q is on Risks for %q, want only Stale", stale.Title, got)
+	// stale is under Owner needs to update and not Plan doesn't fit. On the
+	// default seed it is Green with an overdue Milestone, so it is marked
+	// Milestone overdue too, which Owner needs to update also holds.
+	if got := o.riskReasons(t, stale); !slices.Equal(got, []string{"Milestone overdue", "Stale"}) {
+		t.Errorf("scenario 1: stale Goal %q is on Risks for %q, want Milestone overdue and Stale", stale.Title, got)
 	}
 	// unaligned is under Plan doesn't fit and not Owner needs to update, even
 	// after the setup puts overdue past its Path to Green.

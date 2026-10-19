@@ -715,7 +715,9 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   a `--stale-bg` grey fill, `--stale-ink` text and a 1px dashed
   `--stale-edge` border, at a Health badge's `--radius-sm`. The Goal list's
   "Path to Green overdue" chip takes the same style, as does Risks' ("Path to
-  Green 12 days overdue").
+  Green 12 days overdue"). So does the "Milestone overdue" chip on a Green
+  Goal past a Milestone's date: "Milestone overdue" on the Goal list,
+  "Milestone 3 days overdue" on Risks.
 - **Stale banner (`.alert.st`):** at the top of a Stale Goal's page, a
   `--color-surface` banner in a 1px dashed `--stale-edge` border, with
   `--color-ink` text: **Stale**, then how long it has gone without a Check-in
