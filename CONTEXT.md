@@ -55,7 +55,7 @@ A Goal whose Owner is Departed and hasn't been replaced, either by an Admin reas
 _Avoid_: orphaned, unassigned
 
 **Admin**:
-One of a small set of people who define Dimensions and Fields, reassign Ownerless Goals, can edit any Goal's title and So What, and can override links and Lifecycle changes.
+One of a small set of people who define Dimensions and Fields, reassign Ownerless Goals, can edit any Goal's title and So What, and can override links and Lifecycle changes. An Admin can make another person an Admin, or take the role from another Admin, but never from themselves, so there is always at least one.
 _Avoid_: moderator, superuser
 
 **Contributor**:

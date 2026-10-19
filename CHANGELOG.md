@@ -61,6 +61,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Documentation:**
 - [ops] [`docs/install.md`](docs/install.md) is an install guide for one Linux host: building the static binary, the settings file, the CSV directory, a systemd unit, a reverse proxy, the first Admin's sign-in, backups and upgrades. It opens with what this release doesn't do yet: emails are only logged, it runs as a single instance, browsers need `unpkg.com` and Google Fonts, Admins are set only when an account is first created, and a CSV unclosed quote isn't caught (#329).
+- [internal] CONTEXT.md's Admin entry says an Admin can make another person an Admin or take the role from another Admin, never from themselves.
 
 **Testing:**
 - [internal] The seeded-pages check that no page shows an email as text skips a select's options, as its comment always said it did for form fields: the Scope select names people as Name (email) by design (#275), and the seed's Managers now make it list them (#306).
