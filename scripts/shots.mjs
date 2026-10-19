@@ -158,11 +158,16 @@ function findChrome() {
 // playwrightChrome is the Chromium that Playwright installed under root, a
 // browsers directory such as $PLAYWRIGHT_BROWSERS_PATH: the
 // chromium-<rev>/chrome-linux64/chrome with the highest revision, or undefined
-// if there is none.
+// if there is none or root isn't a readable directory.
 export function playwrightChrome(root) {
-  if (!existsSync(root)) return undefined;
+  let entries;
+  try {
+    entries = readdirSync(root);
+  } catch {
+    return undefined;
+  }
   const revision = (dir) => Number(dir.slice("chromium-".length));
-  const dirs = readdirSync(root).filter((d) => /^chromium-\d+$/.test(d));
+  const dirs = entries.filter((d) => /^chromium-\d+$/.test(d));
   for (const dir of dirs.sort((a, b) => revision(b) - revision(a))) {
     const chrome = join(root, dir, "chrome-linux64", "chrome");
     if (existsSync(chrome)) return chrome;
