@@ -2476,3 +2476,89 @@ func TestRisksPageListsGoalsThatArentActiveLast(t *testing.T) {
 		t.Errorf("rows in order %q, want %q", order, want)
 	}
 }
+
+// A Goal with an open Ask for help carries an "Asks for help" chip in Not
+// Green naming whom it asks, or saying no one is above its Owner; the Not
+// Green card counts the asks, and the definitions say what one means. A
+// Yellow Goal that doesn't ask has no such chip, and an asking Goal is still
+// counted once.
+func TestRisksPageMarksAsksForHelpUnderNotGreen(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	mia := h.SignInNamed("mia@example.com", "Mia Chen")
+	lee := h.SignIn("lee@example.com")
+	h.SetManager(sam, mia)
+	later := h.Clock.Now().AddDate(0, 1, 0)
+	red := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Stalled recovery", "It matters."))
+	h.AskForHelp(sam, red.ID, domain.HealthRed, "Blocked.", "Need budget.", later)
+	alone := h.MarkTopLevel(ada, h.ActiveGoal(lee, "Lonely launch", "It matters."))
+	h.AskForHelp(lee, alone.ID, domain.HealthYellow, "Slipping.", "Need a reviewer.", later)
+	yellow := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Slipping launch", "It matters."))
+	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Slipping.", "Add a team.", later)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?org=all")
+
+	for g, want := range map[*domain.Goal]string{
+		&red:   `<span data-testid="risk-signal" data-kind="asks-for-help" class="rk-tag">Asks for help of ` + shownAs(mia.Email, "Mia Chen") + `</span>`,
+		&alone: `<span data-testid="risk-signal" data-kind="asks-for-help" class="rk-tag">Asks for help · no one above the Owner</span>`,
+	} {
+		if row := riskRowOf(t, page, *g); strings.Count(row, `data-kind="asks-for-help"`) != 1 || !strings.Contains(row, want) {
+			t.Errorf("%q's row doesn't carry one chip %s:\n%s", g.Title, want, row)
+		}
+	}
+	if row := riskRowOf(t, page, yellow); strings.Contains(row, `data-kind="asks-for-help"`) {
+		t.Errorf("%q, which doesn't ask, carries an Asks for help chip:\n%s", yellow.Title, row)
+	}
+	card := pageElement(t, page, "a", "risks-group-health")
+	if chip := riskChip(t, card, "asks-for-help"); !strings.Contains(openTag(chip), `class="rk-tag"`) || !strings.HasSuffix(chip, ">Asks for help · 2") {
+		t.Errorf("the Not Green card's asks chip isn't an rk-tag saying Asks for help · 2: %s", chip)
+	}
+	if !strings.Contains(card, `<span class="num">3</span>`) {
+		t.Errorf("the Not Green card doesn't count 3 Goals: %s", card)
+	}
+
+	filtered := getBody(t, client, ts.URL+"/risks?group=health&org=all")
+	if rows := riskRows(filtered); len(rows) != 3 || !hasRiskRow(filtered, red) || !hasRiskRow(filtered, alone) || !hasRiskRow(filtered, yellow) {
+		t.Errorf("Not Green lists %d rows, want %q, %q and %q:\n%s", len(rows), red.Title, alone.Title, yellow.Title, filtered)
+	}
+
+	defs := between(t, html.UnescapeString(page), `<details data-testid="risks-definitions"`, "</details>")
+	if means := "Red or Yellow Goals whose Path to Green asks for help from the Owner's Manager, until the Owner unmarks it or the Goal is back to Green."; !strings.Contains(defs, "<dt>Yellow</dt><dd>Active Goals whose latest Check-in is Yellow.</dd><dt>Asks for help</dt><dd>"+means+"</dd>") {
+		t.Errorf("the definitions don't define Asks for help after Yellow:\n%s", defs)
+	}
+
+	// The top bar counts sam's default scope, their own two Goals, each once.
+	if nav := pageElement(t, getBody(t, client, ts.URL+"/home"), "a", "nav-risks"); !strings.Contains(nav, `<span class="count">2</span>`) {
+		t.Errorf("the nav's Risks count doesn't count each of sam's Goals once: %s", nav)
+	}
+}
+
+// An ask is cleared from Risks when its Owner checks in again without it,
+// though the Goal stays Not Green.
+func TestRisksPageDropsAnAskTheOwnerUnmarks(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.SetManager(sam, h.SignIn("mia@example.com"))
+	later := h.Clock.Now().AddDate(0, 1, 0)
+	goal := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Stalled recovery", "It matters."))
+	h.AskForHelp(sam, goal.ID, domain.HealthRed, "Blocked.", "Need budget.", later)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	if row := riskRowOf(t, getBody(t, client, ts.URL+"/risks?org=all"), goal); !strings.Contains(row, `data-kind="asks-for-help"`) {
+		t.Fatalf("the asking Goal's row has no Asks for help chip:\n%s", row)
+	}
+
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Better.", "Keep going.", later)
+
+	if row := riskRowOf(t, getBody(t, client, ts.URL+"/risks?org=all"), goal); strings.Contains(row, `data-kind="asks-for-help"`) {
+		t.Errorf("the row still carries the Asks for help chip after the Owner unmarked it:\n%s", row)
+	}
+}
