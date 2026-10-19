@@ -331,6 +331,13 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   the border becomes `--color-primary`.
 - **Quiet button (`.btn.quiet`):** no fill, `--color-primary-strong` text. On
   hover it takes a `--color-primary-subtle` fill.
+- **A person's Name (`.person`):** plain text in the surrounding ink, with no
+  underline, so it never reads as a link. On hover and keyboard focus it takes a
+  faint `--color-primary-subtle` tint (`--nav-hover` in the top bar), as a quiet
+  button does, and focus keeps the focus ring. Clicking, tapping or activating
+  it from the keyboard shows the person's email beside it, and doing it again
+  hides it (CONTEXT.md: Name). `personPlain`, inside another control, and the
+  Print view's "Name (email)" have no control.
 - **Icon remove button (`.btn.rb-remove`):** the Report builder's × on a rule
   row and on a Goal chip. It is a 40px square, the height of the selects
   beside it, with a 1px `--color-border-strong` edge and the standard focus
@@ -779,16 +786,17 @@ stays black on white whatever is chosen.
    The top bar keeps its teal through its own `--nav-bg`.
 
    Each ink's contrast on every surface text sits on (`--color-primary-light`
-   is the selected-row fill):
+   is the selected-row fill, and `--color-primary-subtle` the hover fill of a
+   quiet control and of a Name):
 
-   | Theme | Ink | Canvas | Surface | Surface hover | Surface alt | Primary light |
-   | --- | --- | --- | --- | --- | --- | --- |
-   | Light | `--color-ink` `#18211F` | 15.20 | 16.46 | 16.02 | 14.66 | 14.60 |
-   | Light | `--color-ink-2` `#3E4946` | 8.63 | 9.35 | 9.10 | 8.33 | 8.30 |
-   | Light | `--color-ink-muted` `#66706D` | 4.73 | 5.12 | 4.98 | 4.56 | 4.54 |
-   | Dark | `--color-ink` `#E8E8E8` | 16.01 | 11.99 | 10.99 | 15.19 | 10.99 |
-   | Dark | `--color-ink-2` `#C2C2C2` | 11.01 | 8.25 | 7.56 | 10.45 | 7.56 |
-   | Dark | `--color-ink-muted` `#9E9E9E` | 7.32 | 5.48 | 5.03 | 6.95 | 5.03 |
+   | Theme | Ink | Canvas | Surface | Surface hover | Surface alt | Primary light | Primary subtle |
+   | --- | --- | --- | --- | --- | --- | --- | --- |
+   | Light | `--color-ink` `#18211F` | 15.20 | 16.46 | 16.02 | 14.66 | 14.60 | 15.78 |
+   | Light | `--color-ink-2` `#3E4946` | 8.63 | 9.35 | 9.10 | 8.33 | 8.30 | 8.96 |
+   | Light | `--color-ink-muted` `#66706D` | 4.73 | 5.12 | 4.98 | 4.56 | 4.54 | 4.91 |
+   | Dark | `--color-ink` `#E8E8E8` | 16.01 | 11.99 | 10.99 | 15.19 | 10.99 | 15.19 |
+   | Dark | `--color-ink-2` `#C2C2C2` | 11.01 | 8.25 | 7.56 | 10.45 | 7.56 | 10.45 |
+   | Dark | `--color-ink-muted` `#9E9E9E` | 7.32 | 5.48 | 5.03 | 6.95 | 5.03 | 6.95 |
 
    The nav counts' numbers reach 4.5:1 on their pills, and each pill's edge
    reaches 3:1 against the top bar so the shape shows:

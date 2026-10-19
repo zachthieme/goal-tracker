@@ -121,13 +121,13 @@ scripts/contrast.py
 
 ```
 light: each mark on each surface, ! under 4.5:1 for text or 3:1 for edges
-                               canvas  surface  surface-hover  surface-alt  primary-light
---color-ink (text)             15.20    16.46          16.02        14.66          14.60
---color-ink-muted (text)        4.73     5.12           4.98         4.56           4.54
---color-border-strong (edge)    3.12     3.38           3.29         3.01           3.00
+                               canvas  surface  surface-hover  surface-alt  primary-light  primary-subtle
+--color-ink (text)             15.20    16.46          16.02        14.66          14.60           15.78
+--color-ink-muted (text)        4.73     5.12           4.98         4.56           4.54            4.91
+--color-border-strong (edge)    3.12     3.38           3.29         3.01           3.00            3.24
 …
 Every ratio meets its minimum.
-DESIGN.md: all 82 ratios its tables state match.
+DESIGN.md: all 88 ratios its tables state match.
 ```
 
 It exits 1 if a ratio is under its minimum, if the two dark blocks differ, or
