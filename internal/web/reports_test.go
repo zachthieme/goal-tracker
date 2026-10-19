@@ -3790,7 +3790,8 @@ func TestReportBlockShowsAnAskForHelpOverHTTP(t *testing.T) {
 		}
 		var blocks []string
 		for _, block := range strings.Split(page, `<article data-testid="report-exception"`)[1:] {
-			blocks = append(blocks, block[:strings.Index(block, "</article>")])
+			block, _, _ = strings.Cut(block, "</article>")
+			blocks = append(blocks, block)
 		}
 		if len(blocks) != len(want) {
 			t.Fatalf("%s: %d exception blocks, want %d:\n%s", name, len(blocks), len(want), page)
