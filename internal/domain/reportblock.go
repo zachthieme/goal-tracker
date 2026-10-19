@@ -35,6 +35,10 @@ type Report struct {
 	// its Definition's latest publication, whatever the baseline. They are
 	// frozen with the snapshot.
 	MembershipChanges []MembershipChange `json:",omitempty"`
+	// Movement counts what moved since the baseline, for the line a Report
+	// opens with. It is frozen with the snapshot; one frozen before Reports
+	// counted it has none.
+	Movement *ReportMovement `json:",omitempty"`
 }
 
 // covers reports whether the Report includes the Goal, as an exception block
@@ -159,7 +163,12 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 		}
 		b.Fields = sg.Fields
 		b.Changes = h.reportChanges(b, since, r.Baseline, fresh)
-		exceptions = append(exceptions, reportException{block: b, pathOverdue: fresh.PathToGreenOverdue})
+		exceptions = append(exceptions, reportException{
+			block:          b,
+			pathOverdue:    fresh.PathToGreenOverdue,
+			slipped:        h.deliveryMoveDays(since) > 0,
+			movedLifecycle: h.movedLifecycle(b, since),
+		})
 	}
 	sortReportExceptions(exceptions)
 	for _, x := range exceptions {
@@ -171,6 +180,7 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 	if r.MembershipChanges, err = s.membershipChanges(ctx, r, since); err != nil {
 		return Report{}, err
 	}
+	r.Movement = reportMovement(r, exceptions, since)
 	return r, nil
 }
 

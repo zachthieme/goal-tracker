@@ -554,3 +554,85 @@ func TestSnapshotFromBeforeSeveralNotesKeepsItsNote(t *testing.T) {
 		t.Errorf("pre-several-notes Misses %+v, want no notes and its Highlight", n[1])
 	}
 }
+
+// A publication freezes what its blocks say changed, what moved since its
+// baseline, and the order of its exceptions: a later Check-in that turns
+// another Goal Red changes the next draft, not the publication.
+func TestPublicationFreezesWhatChangedAndItsOrder(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	standing := h.ActiveGoal(boss, "Stays Red", "why")
+	turned := h.ActiveGoal(boss, "Turns Red", "why")
+	later := h.ActiveGoal(boss, "Turns Red later", "why")
+	checkinHealth(h, boss, standing, domain.HealthRed)
+	checkinHealth(h, boss, turned, domain.HealthGreen)
+	checkinHealth(h, boss, later, domain.HealthGreen)
+	settle(h)
+	checkinHealth(h, boss, standing, domain.HealthRed)
+	checkinHealth(h, boss, turned, domain.HealthRed)
+	checkinHealth(h, boss, later, domain.HealthGreen)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{standing.ID, turned.ID, later.ID}})
+	pub := h.PublishReport(boss, def)
+	if got, want := blockIDs(pub.Report), []int64{turned.ID, standing.ID}; !slices.Equal(got, want) {
+		t.Fatalf("published exceptions %v, want %v", got, want)
+	}
+
+	h.Clock.Advance(day)
+	checkinHealth(h, boss, later, domain.HealthRed)
+	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	if got, want := blockIDs(draft), []int64{later.ID, standing.ID, turned.ID}; !slices.Equal(got, want) {
+		t.Errorf("next draft's exceptions %v, want %v", got, want)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if ids, want := blockIDs(got.Report), []int64{turned.ID, standing.ID}; !slices.Equal(ids, want) {
+		t.Errorf("publication's exceptions %v after the Check-in, want as published %v", ids, want)
+	}
+	if b := got.Report.Exceptions[0]; !slices.Equal(b.Changes, []string{"Turned Red"}) {
+		t.Errorf("publication's first block changes %q, want [Turned Red]", b.Changes)
+	}
+	if b := got.Report.Exceptions[1]; len(b.Changes) != 0 {
+		t.Errorf("publication's standing block changes %q, want none", b.Changes)
+	}
+	if got.Report.Movement == nil || *got.Report.Movement != (domain.ReportMovement{TurnedRed: 1}) {
+		t.Errorf("publication's movement %+v, want 1 turned Red", got.Report.Movement)
+	}
+}
+
+// A snapshot frozen before Reports said what changed on each block, or
+// counted what moved, reads with neither.
+func TestSnapshotFromBeforeChangesHasNone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[` +
+		`{"Goal":{"ID":1,"Title":"Launch in EU"},"Health":"Red","PriorHealth":"Green","Badges":null}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+		t.Fatalf("write a pre-changes snapshot: %v", err)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if len(got.Report.Exceptions) != 1 || len(got.Report.Exceptions[0].Changes) != 0 {
+		t.Errorf("pre-changes snapshot exceptions %+v, want one block saying no changes", got.Report.Exceptions)
+	}
+	if got.Report.Movement != nil {
+		t.Errorf("pre-changes snapshot movement %+v, want none", got.Report.Movement)
+	}
+}

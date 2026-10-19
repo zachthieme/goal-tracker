@@ -302,3 +302,145 @@ func activeGoalDue(h *testsupport.Harness, owner domain.Account, title string, d
 	}
 	return active
 }
+
+// A Report counts what moved since its baseline across its Goals, each Goal
+// in every count it fits: a Goal created since is new, and activating it is
+// no Lifecycle change of its own (CONTEXT.md: Report).
+func TestReportCountsWhatMovedSinceTheBaseline(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	turnedRed := h.ActiveGoal(boss, "Turned Red", "why")
+	backToGreen := h.ActiveGoal(boss, "Back to Green", "why")
+	slipped := h.ActiveGoal(boss, "Slipped", "why")
+	checkinHealth(h, boss, turnedRed, domain.HealthGreen)
+	checkinHealth(h, boss, backToGreen, domain.HealthYellow)
+	settle(h)
+	checkinHealth(h, boss, turnedRed, domain.HealthRed)
+	checkinHealth(h, boss, backToGreen, domain.HealthGreen)
+	slipDelivery(h, boss, slipped, slipped.DeliveryDate.AddDate(0, 0, 21))
+	created := h.ActiveGoal(boss, "Created", "why")
+
+	r := draftReport(t, h, boss, time.Time{}, turnedRed, backToGreen, slipped, created)
+
+	if r.Movement == nil {
+		t.Fatal("no movement, want the draft's")
+	}
+	if got, want := *r.Movement, (domain.ReportMovement{TurnedRed: 1, BackToGreen: 1, Slipped: 1, New: 1}); got != want {
+		t.Errorf("movement %+v, want %+v", got, want)
+	}
+	if got, want := r.Movement.Parts(), []string{"1 turned Red", "1 back to Green", "1 slipped", "1 new"}; !slices.Equal(got, want) {
+		t.Errorf("movement parts %q, want %q", got, want)
+	}
+	for _, b := range r.Exceptions {
+		if b.Goal.ID == created.ID && slices.Contains(b.Changes, "Moved to Active") {
+			t.Errorf("new Goal's changes %q, want no Lifecycle move beside its New badge", b.Changes)
+		}
+	}
+}
+
+// Against the previous publication a Report counts the Goals that entered it,
+// a new one only as new, and those that left. Against a date the reader
+// chose it counts neither, as which Goals entered or left is read against
+// the latest publication, not that date. A delivery date pulled in is no
+// slip.
+func TestReportCountsGoalsThatEnteredOrLeftAgainstThePreviousPublication(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	h.ActiveGoal(boss, "Stays in", "why")
+	entered := h.ActiveGoal(boss, "Recovers", "why")
+	left := h.ActiveGoal(boss, "Turns Red", "why")
+	pulledIn := h.ActiveGoal(boss, "Pulled in", "why")
+	settle(h)
+	checkinHealth(h, boss, entered, domain.HealthRed)
+	checkinHealth(h, boss, left, domain.HealthGreen)
+	checkinHealth(h, boss, pulledIn, domain.HealthGreen)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{
+		Name:  "MBR",
+		Mode:  domain.ReportModeRules,
+		Rules: []domain.ReportRule{namedRule(domain.RuleHealth, domain.RuleIsNot, domain.HealthRed)},
+	})
+	h.PublishReport(boss, def)
+	h.Clock.Advance(day)
+	checkinHealth(h, boss, entered, domain.HealthGreen)
+	checkinHealth(h, boss, left, domain.HealthRed)
+	slipDelivery(h, boss, pulledIn, pulledIn.DeliveryDate.AddDate(0, 0, -5))
+	h.ActiveGoal(boss, "Created", "why")
+
+	for name, tc := range map[string]struct {
+		baseline time.Time
+		want     domain.ReportMovement
+	}{
+		"against the previous publication": {
+			want: domain.ReportMovement{TurnedYellow: 1, BackToGreen: 1, New: 1, Entered: 1, Left: 1},
+		},
+		"against a chosen date": {
+			baseline: orgDay(h.Clock.Now()),
+			want:     domain.ReportMovement{TurnedYellow: 1, BackToGreen: 1, New: 1},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r, err := h.Service.DraftReport(ctx, def, tc.baseline)
+			if err != nil {
+				t.Fatalf("DraftReport: %v", err)
+			}
+			if len(r.MembershipChanges) != 3 {
+				t.Errorf("membership changes %v, want the new Goal's, and those of the Goal that entered and the one that left", byGoal(t, r.MembershipChanges))
+			}
+			if r.Movement == nil {
+				t.Fatal("no movement, want the draft's")
+			}
+			if got := *r.Movement; got != tc.want {
+				t.Errorf("movement %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// orgDay is the calendar date of t, as a reader picks a baseline.
+func orgDay(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+}
+
+// A Report where nothing moved since the baseline still counts it, as none.
+func TestReportWithNothingMovedCountsNone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Stays Red", "why")
+	checkinHealth(h, boss, g, domain.HealthRed)
+	settle(h)
+	checkinHealth(h, boss, g, domain.HealthRed)
+
+	r := draftReport(t, h, boss, time.Time{}, g)
+
+	if r.Movement == nil {
+		t.Fatal("no movement, want the draft's")
+	}
+	if got := r.Movement.Parts(); len(got) != 0 {
+		t.Errorf("movement parts %q, want none", got)
+	}
+}
+
+// The movement's parts read each count that isn't zero, in a fixed order.
+func TestReportMovementPartsReadEachCount(t *testing.T) {
+	t.Parallel()
+
+	m := domain.ReportMovement{TurnedRed: 1, TurnedYellow: 2, ImprovedToYellow: 3, BackToGreen: 4, Slipped: 5, ChangedLifecycle: 6, New: 7, Entered: 8, Left: 9}
+	want := []string{
+		"1 turned Red", "2 turned Yellow", "3 improved to Yellow", "4 back to Green", "5 slipped",
+		"6 changed Lifecycle", "7 new", "8 entered", "9 left",
+	}
+	if got := m.Parts(); !slices.Equal(got, want) {
+		t.Errorf("parts\n got %q\nwant %q", got, want)
+	}
+	if got := (domain.ReportMovement{Left: 1}).Parts(); !slices.Equal(got, []string{"1 left"}) {
+		t.Errorf("parts of one Goal that left %q, want [1 left]", got)
+	}
+}

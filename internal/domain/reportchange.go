@@ -9,12 +9,97 @@ import (
 	"time"
 )
 
+// ReportMovement counts the Goals that moved since a Report's baseline, for
+// the line the Report opens with (CONTEXT.md: Report). A Goal counts in every
+// count it fits.
+type ReportMovement struct {
+	// TurnedRed, TurnedYellow, ImprovedToYellow and BackToGreen count the
+	// Goals whose Health changed since the baseline, by what it changed to:
+	// Red; Yellow from Green; Yellow from Red; Green.
+	TurnedRed, TurnedYellow, ImprovedToYellow, BackToGreen int
+	// Slipped counts the Goals whose delivery date is later than it was at
+	// the baseline, ChangedLifecycle those that moved Lifecycle, and New
+	// those created since. Entered and Left count the Goals that entered or
+	// left the Report since its previous publication, a new Goal only as new;
+	// a Report read against a date counts neither.
+	Slipped, ChangedLifecycle, New, Entered, Left int
+}
+
+// Parts are the movement's counts that aren't zero, in its fields' order,
+// each as it reads in the line ("2 turned Red").
+func (m ReportMovement) Parts() []string {
+	var out []string
+	for _, c := range []struct {
+		n    int
+		what string
+	}{
+		{m.TurnedRed, "turned Red"},
+		{m.TurnedYellow, "turned Yellow"},
+		{m.ImprovedToYellow, "improved to Yellow"},
+		{m.BackToGreen, "back to Green"},
+		{m.Slipped, "slipped"},
+		{m.ChangedLifecycle, "changed Lifecycle"},
+		{m.New, "new"},
+		{m.Entered, "entered"},
+		{m.Left, "left"},
+	} {
+		if c.n > 0 {
+			out = append(out, fmt.Sprintf("%d %s", c.n, c.what))
+		}
+	}
+	return out
+}
+
+// reportMovement counts what moved on r since its baseline from its
+// exceptions, as every Goal that changed is one, and from its membership
+// changes when r reads against its previous publication, the publication they
+// are read against.
+func reportMovement(r Report, exceptions []reportException, since func(time.Time) bool) *ReportMovement {
+	var m ReportMovement
+	for _, x := range exceptions {
+		b := x.block
+		switch {
+		case b.PriorHealth == "":
+		case b.Health == HealthRed:
+			m.TurnedRed++
+		case b.Health == HealthYellow && b.PriorHealth == HealthGreen:
+			m.TurnedYellow++
+		case b.Health == HealthYellow && b.PriorHealth == HealthRed:
+			m.ImprovedToYellow++
+		case b.Health == HealthGreen:
+			m.BackToGreen++
+		}
+		if x.slipped {
+			m.Slipped++
+		}
+		if x.movedLifecycle {
+			m.ChangedLifecycle++
+		}
+		if b.hasBadge(BadgeNew) {
+			m.New++
+		}
+	}
+	if r.Previous.ID != 0 {
+		for _, c := range r.MembershipChanges {
+			switch {
+			case c.Direction == MembershipLeft:
+				m.Left++
+			case !since(c.Goal.CreatedAt):
+				m.Entered++
+			}
+		}
+	}
+	return &m
+}
+
 // reportException is an exception block as DraftReport orders and counts it,
 // with what it reads of the Goal beside the block, out of the snapshot: whether
-// its Path to Green is overdue.
+// its Path to Green is overdue, its delivery date slipped, and it moved
+// Lifecycle since the baseline.
 type reportException struct {
-	block       ReportBlock
-	pathOverdue bool
+	block                ReportBlock
+	pathOverdue, slipped bool
+	movedLifecycle       bool
 }
 
 // sortReportExceptions puts the worst-off exceptions first, key by key, as the
