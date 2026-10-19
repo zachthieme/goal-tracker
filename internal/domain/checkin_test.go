@@ -1068,3 +1068,164 @@ func TestNoChangeCheckinRepeatsAsksForHelp(t *testing.T) {
 		t.Errorf("AsksForHelp = false, want the No change to repeat the ask")
 	}
 }
+
+// redMovingPath submits a Red Check-in on goalID whose back-to-Green date is
+// date, with reason for moving it.
+func redMovingPath(h *testsupport.Harness, author domain.Account, goalID int64, date time.Time, reason string) (domain.Checkin, error) {
+	return h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:               goalID,
+		AuthorID:             author.ID,
+		Health:               domain.HealthRed,
+		Status:               "Still behind.",
+		PathToGreen:          "Add a second reviewer.",
+		PathTargetDate:       date,
+		PathTargetDateReason: reason,
+	})
+}
+
+// Moving the back-to-Green date later is a Date Slip, so it needs a reason;
+// without one nothing is recorded (CONTEXT.md: Date Slip).
+func TestMovingBackToGreenDateLaterNeedsAReason(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.Checkin(sam, goal.ID, domain.HealthRed, "Behind.", "Add a second reviewer.", pathDate)
+
+	_, err := redMovingPath(h, sam, goal.ID, pathDate.AddDate(0, 0, 7), "  ")
+	if !errors.Is(err, domain.ErrValidation) {
+		t.Fatalf("err = %v, want ErrValidation", err)
+	}
+	if !strings.Contains(err.Error(), "moving the back-to-Green date later needs a reason") {
+		t.Errorf("err = %q, want it to ask for a reason", err)
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
+		t.Errorf("got %d Check-ins, want only the original one", len(history))
+	}
+}
+
+// With a reason, moving the back-to-Green date later records a Date Slip of
+// that date on the new Check-in, and leaves the delivery date alone.
+func TestMovingBackToGreenDateLaterRecordsADateSlip(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.Checkin(sam, goal.ID, domain.HealthRed, "Behind.", "Add a second reviewer.", pathDate)
+	later := pathDate.AddDate(0, 0, 7)
+
+	c, err := redMovingPath(h, sam, goal.ID, later, "  The reviewer starts a week late.  ")
+	if err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+
+	slips, err := h.Service.ListDateSlips(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ListDateSlips: %v", err)
+	}
+	if len(slips) != 1 {
+		t.Fatalf("got %d Date Slips, want 1", len(slips))
+	}
+	s := slips[0]
+	if !s.BackToGreen || s.MilestoneID != 0 {
+		t.Errorf("BackToGreen = %v, MilestoneID = %d; want a back-to-Green slip", s.BackToGreen, s.MilestoneID)
+	}
+	if !s.OldDate.Equal(pathDate) || !s.NewDate.Equal(later) {
+		t.Errorf("slip dates = %s → %s, want %s → %s", s.OldDate, s.NewDate, pathDate, later)
+	}
+	if s.Reason != "The reviewer starts a week late." {
+		t.Errorf("Reason = %q", s.Reason)
+	}
+	if s.CheckinID != c.ID {
+		t.Errorf("CheckinID = %d, want %d", s.CheckinID, c.ID)
+	}
+	g, err := h.Service.ViewGoal(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ViewGoal: %v", err)
+	}
+	if !g.DeliveryDate.Equal(goal.DeliveryDate) {
+		t.Errorf("DeliveryDate = %s, want it unchanged at %s", g.DeliveryDate, goal.DeliveryDate)
+	}
+}
+
+// Only a later back-to-Green date than the latest Check-in's is a slip: an
+// earlier or unchanged one, or a first one after a Green, records none, even
+// with a reason typed.
+func TestBackToGreenDateRecordsNoSlipUnlessLater(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		before string
+		date   time.Time
+	}{
+		{"earlier", domain.HealthRed, pathDate.AddDate(0, 0, -3)},
+		{"unchanged", domain.HealthRed, pathDate},
+		{"after a Green", domain.HealthGreen, pathDate.AddDate(0, 0, 7)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			sam := h.SignIn("sam@example.com")
+			goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+			if tc.before == domain.HealthGreen {
+				h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+			} else {
+				h.Checkin(sam, goal.ID, tc.before, "Behind.", "Add a second reviewer.", pathDate)
+			}
+
+			if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+				GoalID:               goal.ID,
+				AuthorID:             sam.ID,
+				Health:               domain.HealthYellow,
+				Status:               "Behind.",
+				PathToGreen:          "Add a second reviewer.",
+				PathTargetDate:       tc.date,
+				PathTargetDateReason: "A reason nobody needed.",
+			}); err != nil {
+				t.Fatalf("SubmitCheckin: %v", err)
+			}
+			if slips, _ := h.Service.ListDateSlips(context.Background(), goal.ID); len(slips) != 0 {
+				t.Errorf("got %d Date Slips, want none: %+v", len(slips), slips)
+			}
+		})
+	}
+}
+
+// A No change can't repeat a back-to-Green date that has passed, whatever the
+// Health: the Owner must move it, with a reason, or come back to Green
+// (CONTEXT.md: Check-in).
+func TestNoChangeRefusedOnceTheBackToGreenDateHasPassed(t *testing.T) {
+	t.Parallel()
+
+	for _, health := range []string{domain.HealthYellow, domain.HealthRed} {
+		t.Run(health, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			sam := h.SignIn("sam@example.com")
+			goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+			h.Checkin(sam, goal.ID, health, "Behind.", "Add a second reviewer.", h.Clock.Now().AddDate(0, 0, 3))
+
+			h.Clock.Advance(5 * 24 * time.Hour)
+			const want = "the back-to-Green date has passed: submit a Check-in to move it later, with a reason, or come back to Green"
+			refusal := h.Service.NoChangeRefusal(context.Background(), goal.ID)
+			_, err := h.Service.SubmitNoChangeCheckin(context.Background(), goal.ID, sam.ID)
+			if !errors.Is(err, domain.ErrValidation) {
+				t.Fatalf("no-change %s past its back-to-Green date: err = %v, want ErrValidation", health, err)
+			}
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("err = %q, want it to contain %q", err, want)
+			}
+			if refusal == nil || refusal.Error() != err.Error() {
+				t.Errorf("NoChangeRefusal = %v, want %v", refusal, err)
+			}
+			if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
+				t.Errorf("got %d Check-ins, want only the original one", len(history))
+			}
+		})
+	}
+}

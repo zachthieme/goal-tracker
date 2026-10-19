@@ -3,31 +3,63 @@ package domain
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
 )
 
-// DateSlip is a recorded change to a Goal's delivery date or a Milestone's date,
-// always with a reason (CONTEXT.md: Date Slip). The full history is kept, each
-// slip keeping the old and new dates and the Check-in that recorded it.
+// DateSlip is a recorded change to a Goal's delivery date, a Milestone's date,
+// or a Path to Green's back-to-Green date, always with a reason (CONTEXT.md:
+// Date Slip). The full history is kept, each slip keeping the old and new
+// dates and the Check-in that recorded it.
 type DateSlip struct {
 	ID        int64
 	GoalID    int64
 	CheckinID int64
 	// MilestoneID is the Milestone whose date moved, or 0 when the slip moved the
-	// Goal's delivery date.
+	// Goal's delivery date or its back-to-Green date.
 	MilestoneID int64
+	// BackToGreen marks a slip of the Path to Green's back-to-Green date: one
+	// Check-in moved it later than the one before had it.
+	BackToGreen bool
 	OldDate     time.Time
 	NewDate     time.Time
 	Reason      string
 	CreatedAt   time.Time
 }
 
+// OnDeliveryDate reports whether the slip moved the Goal's delivery date,
+// rather than a Milestone's date or the back-to-Green date.
+func (d DateSlip) OnDeliveryDate() bool { return d.MilestoneID == 0 && !d.BackToGreen }
+
+// BackToGreenPriorDates returns the dates the back-to-Green date slipped from
+// within run, earliest first: the OldDate of each back-to-Green slip recorded
+// since the run began. A new Run off Green starts the count afresh, and there
+// is none when the Goal isn't in a run (CONTEXT.md: Date Slip, Run off Green).
+func BackToGreenPriorDates(slips []DateSlip, run RunOffGreen) []time.Time {
+	if !run.Running() {
+		return nil
+	}
+	var inRun []DateSlip
+	for _, d := range slips {
+		if d.BackToGreen && !d.CreatedAt.Before(run.Since) {
+			inRun = append(inRun, d)
+		}
+	}
+	slices.SortStableFunc(inRun, func(a, b DateSlip) int { return a.CreatedAt.Compare(b.CreatedAt) })
+	out := make([]time.Time, 0, len(inRun))
+	for _, d := range inRun {
+		out = append(out, d.OldDate)
+	}
+	return out
+}
+
 // slipPlan is a validated date change waiting to be written with its Check-in.
 type slipPlan struct {
-	milestoneID int64 // 0 for the delivery date
+	milestoneID int64 // 0 for the delivery date or the back-to-Green date
+	backToGreen bool  // the back-to-Green date, which no stored date follows
 	oldDate     time.Time
 	newDate     time.Time
 	reason      string
@@ -52,6 +84,29 @@ func planMilestoneSlip(m db.Milestone, newDate time.Time, reason string) (*slipP
 	return planSlip(m.ID, fmt.Sprintf("the date of Milestone %q", m.Name), m.TargetDate, newDate, reason)
 }
 
+// planBackToGreenSlip validates a Check-in's back-to-Green date against the
+// latest Check-in's, last. Only a later date is a slip, and it needs a reason;
+// an earlier or unchanged one, or a first one (last is zero), is none (nil).
+func planBackToGreenSlip(last, newDate time.Time, reason string) (*slipPlan, error) {
+	if last.IsZero() || newDate.IsZero() {
+		return nil, nil
+	}
+	// Dates are compared as the calendar dates stored, whatever the time of
+	// day newDate carries.
+	newDate, err := time.Parse(dateFormat, newDate.Format(dateFormat))
+	if err != nil {
+		return nil, fmt.Errorf("parse the back-to-Green date: %w", err)
+	}
+	if !newDate.After(last) {
+		return nil, nil
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return nil, fmt.Errorf("%w: moving the back-to-Green date later needs a reason", ErrValidation)
+	}
+	return &slipPlan{backToGreen: true, oldDate: last, newDate: newDate, reason: reason}, nil
+}
+
 // planSlip validates moving a stored date (oldDate, in dateFormat) to newDate.
 // A zero or unchanged newDate is no slip (nil); a change needs a reason. what
 // names the date for the error message.
@@ -70,12 +125,17 @@ func planSlip(milestoneID int64, what, oldDate string, newDate time.Time, reason
 	return &slipPlan{milestoneID: milestoneID, oldDate: old, newDate: newDate, reason: reason}, nil
 }
 
-// recordSlip writes a Date Slip for checkinID and moves the date it changes.
+// recordSlip writes a Date Slip for checkinID and moves the date it changes. A
+// back-to-Green slip moves no stored date: the Check-in carries the new one.
 func (s *Service) recordSlip(ctx context.Context, goalID, checkinID int64, p slipPlan) error {
 	var milestoneID *int64
 	if p.milestoneID != 0 {
 		id := p.milestoneID
 		milestoneID = &id
+	}
+	backToGreen := int64(0)
+	if p.backToGreen {
+		backToGreen = 1
 	}
 	if _, err := s.queries.CreateDateSlip(ctx, db.CreateDateSlipParams{
 		GoalID:      goalID,
@@ -85,8 +145,12 @@ func (s *Service) recordSlip(ctx context.Context, goalID, checkinID int64, p sli
 		NewDate:     p.newDate.Format(dateFormat),
 		Reason:      p.reason,
 		CreatedAt:   s.clock.Now().Format(timeFormat),
+		BackToGreen: backToGreen,
 	}); err != nil {
 		return fmt.Errorf("create date slip: %w", err)
+	}
+	if p.backToGreen {
+		return nil
 	}
 	if p.milestoneID != 0 {
 		if err := s.queries.SetMilestoneTargetDate(ctx, db.SetMilestoneTargetDateParams{
@@ -106,8 +170,8 @@ func (s *Service) recordSlip(ctx context.Context, goalID, checkinID int64, p sli
 	return nil
 }
 
-// ListDateSlips returns a Goal's Date Slips, earliest first, covering both its
-// delivery date and its Milestones' dates. Their count is the Goal's slip count.
+// ListDateSlips returns a Goal's Date Slips, earliest first, covering its
+// delivery date, its Milestones' dates and its back-to-Green date. Their count is the Goal's slip count.
 func (s *Service) ListDateSlips(ctx context.Context, goalID int64) ([]DateSlip, error) {
 	rows, err := s.queries.ListDateSlips(ctx, goalID)
 	if err != nil {
@@ -133,6 +197,7 @@ func dateSlipFromRow(r db.DateSlip) DateSlip {
 		GoalID:      r.GoalID,
 		CheckinID:   r.CheckinID,
 		MilestoneID: milestoneID,
+		BackToGreen: r.BackToGreen != 0,
 		OldDate:     oldDate,
 		NewDate:     newDate,
 		Reason:      r.Reason,

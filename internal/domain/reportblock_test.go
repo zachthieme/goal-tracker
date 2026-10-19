@@ -227,14 +227,17 @@ func TestReportExceptionTriggers(t *testing.T) {
 func slipDelivery(h *testsupport.Harness, owner domain.Account, g domain.Goal, newDate time.Time) {
 	h.T.Helper()
 	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
-		GoalID:             g.ID,
-		AuthorID:           owner.ID,
-		Health:             domain.HealthYellow,
-		Status:             "Vendor is late.",
-		PathToGreen:        "Chase the vendor.",
-		PathTargetDate:     h.Clock.Now().AddDate(0, 0, 14),
-		DeliveryDate:       newDate,
-		DeliveryDateReason: "Vendor slipped.",
+		GoalID:         g.ID,
+		AuthorID:       owner.ID,
+		Health:         domain.HealthYellow,
+		Status:         "Vendor is late.",
+		PathToGreen:    "Chase the vendor.",
+		PathTargetDate: h.Clock.Now().AddDate(0, 0, 14),
+		// Two weeks out from a later day moves the back-to-Green date later
+		// too, a Date Slip of its own.
+		PathTargetDateReason: "Vendor slipped.",
+		DeliveryDate:         newDate,
+		DeliveryDateReason:   "Vendor slipped.",
 	}); err != nil {
 		h.T.Fatalf("SubmitCheckin slip: %v", err)
 	}
@@ -319,16 +322,18 @@ func TestReportBlockShowsTheMBRTreatment(t *testing.T) {
 	settle(h)
 	h.Checkin(boss, child.ID, domain.HealthRed, "Payments vendor down.", "Switch vendor.", date(2026, 3, 30))
 	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
-		GoalID:             g.ID,
-		AuthorID:           boss.ID,
-		Health:             domain.HealthYellow,
-		Status:             "Vendor is late again.",
-		PathToGreen:        "Second vendor in parallel.",
-		PathTargetDate:     date(2026, 4, 1),
-		Explanation:        "Checkout's Red is contained to one market.",
-		DeliveryDate:       date(2026, 8, 3),
-		DeliveryDateReason: "Vendor slipped again.",
-		Readings:           []domain.MetricReadingInput{{MetricID: revenue.ID, Value: 14}},
+		GoalID:         g.ID,
+		AuthorID:       boss.ID,
+		Health:         domain.HealthYellow,
+		Status:         "Vendor is late again.",
+		PathToGreen:    "Second vendor in parallel.",
+		PathTargetDate: date(2026, 4, 1),
+		// Later than the back-to-Green date the slip before the baseline set.
+		PathTargetDateReason: "The second vendor needs onboarding.",
+		Explanation:          "Checkout's Red is contained to one market.",
+		DeliveryDate:         date(2026, 8, 3),
+		DeliveryDateReason:   "Vendor slipped again.",
+		Readings:             []domain.MetricReadingInput{{MetricID: revenue.ID, Value: 14}},
 		Milestones: []domain.MilestoneChangeInput{
 			{MilestoneID: alpha.ID, Status: domain.MilestoneDone},
 			{MilestoneID: docs.ID, Status: domain.MilestoneRemoved, RemovedReason: "Folded into Beta."},
@@ -471,8 +476,10 @@ func TestReportMarksAGoalWhoseHealthChangedSinceTheBaseline(t *testing.T) {
 			if !tc.created {
 				g = h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 			}
+			// A month out from a later day moves the back-to-Green date later,
+			// so each gives the reason that slip needs.
 			checkin := func(health string) {
-				h.Checkin(boss, g.ID, health, "Status.", "Path.", h.Clock.Now().AddDate(0, 1, 0))
+				h.CheckinMovingPath(boss, g.ID, health, "Status.", "Path.", h.Clock.Now().AddDate(0, 1, 0), "Path takes longer.")
 			}
 			for _, health := range tc.before {
 				checkin(health)
@@ -604,5 +611,33 @@ func TestReportBlockLocationIsItsTimezoneOrUTC(t *testing.T) {
 		if got := (domain.ReportBlock{Timezone: tc.tz}).Location().String(); got != tc.want {
 			t.Errorf("ReportBlock{Timezone: %q}.Location() = %s, want %s", tc.tz, got, tc.want)
 		}
+	}
+}
+
+// A slip of the back-to-Green date isn't one of the delivery date: a Goal
+// whose only slip moved its back-to-Green date strikes no due date and has no
+// New date badge.
+func TestReportBlockReadsNoDeliverySlipFromABackToGreenSlip(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	settle(h)
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 0, 14))
+	h.Clock.Advance(day)
+	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Hire counsel.", h.Clock.Now().AddDate(0, 0, 28), "Counsel starts later.")
+
+	r := draftReport(t, h, boss, time.Time{}, g)
+
+	if len(r.Exceptions) != 1 {
+		t.Fatalf("exception blocks %v, want [%d]", blockIDs(r), g.ID)
+	}
+	b := r.Exceptions[0]
+	if len(b.PriorDueDates) != 0 {
+		t.Errorf("struck-through due dates %v, want none", b.PriorDueDates)
+	}
+	if slices.Contains(b.Badges, domain.BadgeNewDate) {
+		t.Errorf("badges %q, want no %q", b.Badges, domain.BadgeNewDate)
 	}
 }

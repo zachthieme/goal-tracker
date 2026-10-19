@@ -510,3 +510,25 @@ func TestMilestoneOverdueIsJudgedInTheOwnersTimezone(t *testing.T) {
 		t.Errorf("OverdueMilestones = %q, want %q (earliest Milestone first)", titles, want)
 	}
 }
+
+// Moving a passed back-to-Green date later, with the reason that Date Slip
+// needs, clears "Path to Green overdue": the flag reads the latest date.
+func TestMovingThePassedBackToGreenDateLaterClearsPathToGreenOverdue(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	target := time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC)
+	h.Checkin(sam, g.ID, domain.HealthRed, "Blocked.", "Escalate to the vendor.", target)
+
+	h.Clock.Set(time.Date(2026, 1, 22, 9, 0, 0, 0, time.UTC))
+	if f := h.Freshness(g.ID); !f.PathToGreenOverdue {
+		t.Fatalf("Path to Green isn't overdue two days after its date")
+	}
+	later := time.Date(2026, 2, 3, 0, 0, 0, 0, time.UTC)
+	h.CheckinMovingPath(sam, g.ID, domain.HealthRed, "Still blocked.", "Escalate to the vendor.", later, "The vendor is out until February.")
+	if f := h.Freshness(g.ID); f.PathToGreenOverdue || !f.PathTargetDate.Equal(later) {
+		t.Errorf("PathToGreenOverdue, PathTargetDate = %v, %v after moving the date; want not overdue, %v", f.PathToGreenOverdue, f.PathTargetDate, later)
+	}
+}

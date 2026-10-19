@@ -49,6 +49,26 @@ func (h *Harness) Checkin(author domain.Account, goalID int64, health, status st
 	return c
 }
 
+// CheckinMovingPath submits a Check-in on goal as author whose back-to-Green
+// date may be later than the latest Check-in's, giving reason for moving it
+// (CONTEXT.md: Date Slip), failing the test on error.
+func (h *Harness) CheckinMovingPath(author domain.Account, goalID int64, health, status, path string, pathTargetDate time.Time, reason string) domain.Checkin {
+	h.T.Helper()
+	c, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:               goalID,
+		AuthorID:             author.ID,
+		Health:               health,
+		Status:               status,
+		PathToGreen:          path,
+		PathTargetDate:       pathTargetDate,
+		PathTargetDateReason: reason,
+	})
+	if err != nil {
+		h.T.Fatalf("SubmitCheckin moving the back-to-Green date: %v", err)
+	}
+	return c
+}
+
 // CheckinWithHighlight submits a Green Check-in on goal as author carrying a
 // Highlight of the given kind and note, failing the test on error. It is a
 // scenario builder for arranging a Goal's Highlights.

@@ -336,7 +336,8 @@ func TestHealthStripPeriodsAreTheGoalsCadenceLong(t *testing.T) {
 	h.Clock.Advance(29 * 7 * day)
 	h.Checkin(sam, g.ID, domain.HealthRed, "Blocked.", "Escalate.", h.Clock.Now().AddDate(0, 0, 14))
 	h.Clock.Advance(7 * day)
-	h.Checkin(sam, g.ID, domain.HealthYellow, "Unblocked, still behind.", "Add a reviewer.", h.Clock.Now().AddDate(0, 0, 14))
+	// Two weeks out from a week later moves the back-to-Green date later.
+	h.CheckinMovingPath(sam, g.ID, domain.HealthYellow, "Unblocked, still behind.", "Add a reviewer.", h.Clock.Now().AddDate(0, 0, 14), "The reviewer starts later.")
 
 	strip := healthStrip(t, h, g.ID)
 	if strip.CadenceDays != 14 || len(strip.Periods) != 11 {

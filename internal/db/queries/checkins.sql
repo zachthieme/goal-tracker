@@ -62,10 +62,12 @@ WHERE checkins.goal_id = @goal_id
 ORDER BY checkins.created_at DESC, checkins.id DESC, highlights.id;
 
 -- name: CreateDateSlip :one
--- Record a change to a Goal's delivery date (milestone_id NULL) or a Milestone's
--- date, keeping the old and new dates and the reason (CONTEXT.md: Date Slip).
-INSERT INTO date_slips (goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+-- Record a change to a Goal's delivery date (milestone_id NULL), a Milestone's
+-- date, or a Path to Green's back-to-Green date (milestone_id NULL,
+-- back_to_green 1), keeping the old and new dates and the reason (CONTEXT.md:
+-- Date Slip).
+INSERT INTO date_slips (goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at, back_to_green)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 RETURNING *;
 
 -- name: ListDateSlips :many

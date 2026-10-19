@@ -40,7 +40,8 @@ func TestPublishedReportNeverChanges(t *testing.T) {
 	}
 
 	h.Clock.Advance(day)
-	h.Checkin(boss, g.ID, domain.HealthRed, "Vendor is gone.", "Find a new vendor.", h.Clock.Now().AddDate(0, 0, 14))
+	// Two weeks out from a day later moves the back-to-Green date later.
+	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Vendor is gone.", "Find a new vendor.", h.Clock.Now().AddDate(0, 0, 14), "A new vendor takes longer.")
 	if _, err := h.Service.EditSoWhat(ctx, g.ID, "EU shoppers can't pay in euros.", boss.ID); err != nil {
 		t.Fatalf("EditSoWhat: %v", err)
 	}
