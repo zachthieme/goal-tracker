@@ -87,10 +87,17 @@ type ReportBlock struct {
 	Status         string
 	PathToGreen    string
 	PathTargetDate time.Time
-	Explanation    string
-	Milestones     []ReportMilestone
-	Metrics        []ReportMetric
-	RolledUp       RolledUpHealth
+	// PriorPathTargetDates are the dates the back-to-Green date slipped from
+	// within the Goal's current Run off Green, earliest first (see
+	// BackToGreenPriorDates), struck through beside PathTargetDate as a
+	// Milestone's are. It is frozen with the snapshot, so a later slip doesn't
+	// change a publication's; a snapshot frozen before Reports showed them has
+	// none.
+	PriorPathTargetDates []time.Time `json:",omitempty"`
+	Explanation          string
+	Milestones           []ReportMilestone
+	Metrics              []ReportMetric
+	RolledUp             RolledUpHealth
 	// ContributesTo are the Goals this one contributes to that the Report
 	// holds. Behind are the Goals that contribute to it that the Report holds,
 	// and the Red and Yellow Active ones it doesn't, which set its Rolled-up
@@ -412,6 +419,7 @@ func (s *Service) reportBlock(ctx context.Context, h goalHistory, since func(tim
 		AsksForHelp:      h.goal.Lifecycle == LifecycleActive && needsPathToGreen(latest.Health) && latest.AsksForHelp,
 		Timezone:         s.GoalTimezone(h.goal).String(),
 	}
+	b.PriorPathTargetDates = BackToGreenPriorDates(h.slips, s.runOffGreen(h.goal, h.checkins))
 	if b.AsksForHelp {
 		var err error
 		if b.AskAddressee, err = s.AskAddressee(ctx, h.goal.Owner); err != nil {

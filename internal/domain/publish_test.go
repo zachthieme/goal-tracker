@@ -934,3 +934,72 @@ func TestSnapshotFromBeforeTheRunOffGreenHasNone(t *testing.T) {
 		t.Errorf("pre-run-off-green blocks %+v, want one Red block with no Run off Green", b)
 	}
 }
+
+// A publication freezes the dates each block's back-to-Green date slipped
+// from: a later Check-in slipping it again changes a fresh draft, not the
+// publication.
+func TestPublicationFreezesTheBackToGreenDatesSlippedFrom(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", date(2026, 3, 6))
+	h.Clock.Advance(day)
+	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Hire counsel.", date(2026, 3, 13), "Counsel starts later.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	published := []time.Time{date(2026, 3, 6)}
+	if b := pub.Report.Exceptions; len(b) != 1 || !slices.EqualFunc(b[0].PriorPathTargetDates, published, time.Time.Equal) {
+		t.Fatalf("published blocks %+v, want one slipped from %v", b, published)
+	}
+
+	h.Clock.Advance(day)
+	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Hire counsel.", date(2026, 4, 3), "Counsel quit.")
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if b := got.Report.Exceptions; len(b) != 1 || !slices.EqualFunc(b[0].PriorPathTargetDates, published, time.Time.Equal) {
+		t.Errorf("publication's blocks %+v, want one still slipped from %v, as published", b, published)
+	}
+	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	if want := []time.Time{date(2026, 3, 6), date(2026, 3, 13)}; len(draft.Exceptions) != 1 || !slices.EqualFunc(draft.Exceptions[0].PriorPathTargetDates, want, time.Time.Equal) {
+		t.Errorf("a fresh draft's blocks %+v, want one slipped from %v", draft.Exceptions, want)
+	}
+}
+
+// A snapshot frozen before Reports showed back-to-Green slips loads its blocks
+// with none.
+func TestSnapshotFromBeforeBackToGreenSlipsHasNone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", date(2026, 3, 6))
+	h.Clock.Advance(day)
+	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Hire counsel.", date(2026, 3, 13), "Counsel starts later.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[` +
+		`{"Goal":{"ID":1,"Title":"Launch in EU"},"Health":"Red","Badges":null,"PriorDueDates":null,` +
+		`"PathToGreen":"Hire counsel.","PathTargetDate":"2026-03-13T00:00:00Z"}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+		t.Fatalf("write a pre-back-to-Green-slips snapshot: %v", err)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if b := got.Report.Exceptions; len(b) != 1 || !b[0].PathTargetDate.Equal(date(2026, 3, 13)) || len(b[0].PriorPathTargetDates) != 0 {
+		t.Errorf("pre-back-to-Green-slips blocks %+v, want one back to Green by 2026-03-13 with no prior dates", b)
+	}
+}

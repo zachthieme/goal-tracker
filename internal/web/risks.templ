@@ -160,9 +160,11 @@ templ risksTable(current *domain.Account, today time.Time, here string, rows []r
 
 // riskRow is one flagged Goal: its Health, with its Run off Green on a Not
 // Green row ("Red · 5 wks"), its title with a chip per signal
-// that flags it, its Owner ("You" for the viewer's own), and a cell for its
-// fix: a link, a form posting back to here, or a disabled button saying why
-// it can't be used.
+// that flags it, then on a Not Green row whose back-to-Green date slipped in
+// its Run off Green a tag reading it as a Milestone's slipped date does
+// ("Back to Green Oct 3 ~~Sep 12~~ (3)"), which isn't a signal; its Owner
+// ("You" for the viewer's own), and a cell for its fix: a link, a form
+// posting back to here, or a disabled button saying why it can't be used.
 templ riskRow(current *domain.Account, today time.Time, here string, r riskGoalRow) {
 	<tr data-testid="risk-row">
 		<td class="rk-health">
@@ -176,6 +178,12 @@ templ riskRow(current *domain.Account, today time.Time, here string, r riskGoalR
 			<span class="rk-chips">
 				for _, sig := range r.Signals {
 					@riskChip(today, r.Goal, sig)
+				}
+				if len(r.PathPriorDates) > 0 {
+					<span data-testid="risk-back-to-green" class="rk-tag">
+						{ "Back to Green " }
+						@slippedDates(r.PathTargetDate, r.PathPriorDates, displayDates{Now: today, Loc: today.Location()}, "risk-back-to-green-slips")
+					</span>
 				}
 			</span>
 		</td>

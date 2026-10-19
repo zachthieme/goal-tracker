@@ -831,7 +831,10 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 // top right; under them, when it changed since the baseline, a line saying
 // what changed ("Changed: Turned Red · 1 Milestone slipped"), and under that
 // the Goals in the Report it contributes to ("Contributes to: Growth ↓ (Red)");
-// So What, latest status, and Path to Green in a tinted box, marked
+// So What, latest status, and Path to Green in a tinted box, its back-to-Green
+// date followed by the date it last slipped from in the Run off Green struck
+// through and the count of slips once more than one, as drafted (see
+// reportBackToGreenPrior), and marked
 // Overdue when its target date passed before asOf, and after it an Ask for help
 // open when the Report was drafted, naming whom it asks or saying no one is
 // above the Owner; Milestones, each marked as of asOf, Metrics against
@@ -908,7 +911,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 			}
 			if b.PathToGreen != "" {
 				<p data-testid="report-path-to-green">
-					<strong>Path to Green:</strong> { b.PathToGreen } (back to Green by { showDateYear(b.PathTargetDate) })
+					<strong>Path to Green:</strong> { b.PathToGreen } (back to Green by { showDateYear(b.PathTargetDate) }@reportBackToGreenPrior(b.PriorPathTargetDates))
 					if pathOverdueAt(b, asOf) {
 						{ " " }<strong data-testid="path-overdue" class="badge r">Overdue</strong>
 					}
@@ -998,6 +1001,19 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 		}
 		@goalDiscussion(b.Goal.ID, d)
 	</article>
+}
+
+// reportBackToGreenPrior follows a block's back-to-Green date with the date it
+// last slipped from within the Run off Green struck through, and the number of
+// times it slipped once that is more than one, as a Milestone's date reads:
+// Oct 3, 2026 ~~Sep 12, 2026~~ (3). prior comes earliest first; with none it
+// renders nothing.
+templ reportBackToGreenPrior(prior []time.Time) {
+	if n := len(prior); n > 1 {
+		{ " " }<del data-testid="report-back-to-green-prior">{ showDateYear(prior[n-1]) }</del>{ " " }<span data-testid="report-back-to-green-slips">{ fmt.Sprintf("(%d)", n) }</span>
+	} else if n == 1 {
+		{ " " }<del data-testid="report-back-to-green-prior">{ showDateYear(prior[0]) }</del>
+	}
 }
 
 // linkedGoals names the Goals an exception block links to, joined by " · ":

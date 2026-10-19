@@ -3964,3 +3964,97 @@ func TestPublicationKeepsTheTimezoneItWasJudgedInOverHTTP(t *testing.T) {
 		t.Errorf("Markdown export does not mark Beta Red:\n%s", md)
 	}
 }
+
+// A back-to-Green date that slipped within the Run off Green reads on an
+// exception block as a Milestone's slipped date does: the current date, the
+// one it last slipped from struck through, and the count once it slipped more
+// than once. The draft, the publication and its print page all show it, and a
+// publication from before Reports showed it renders as published.
+func TestReportBlockStrikesTheBackToGreenDateItSlippedFromOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name  string
+		slips []time.Time
+		prior string // the struck-through date, "" for none
+		count string // the count, "" for none
+	}{
+		{"twice", []time.Time{time.Date(2026, 3, 13, 0, 0, 0, 0, time.UTC), time.Date(2026, 4, 3, 0, 0, 0, 0, time.UTC)}, "Mar 13, 2026", "(2)"},
+		{"once", []time.Time{time.Date(2026, 4, 3, 0, 0, 0, 0, time.UTC)}, "Mar 6, 2026", ""},
+		{"never", nil, "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t, "boss@example.com")
+			boss := h.SignIn("boss@example.com")
+			g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+			h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", time.Date(2026, 3, 6, 0, 0, 0, 0, time.UTC))
+			for _, d := range tc.slips {
+				h.Clock.Advance(24 * time.Hour)
+				h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Hire counsel.", d, "Counsel starts later.")
+			}
+			def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+			pub := h.PublishReport(boss, def)
+
+			ts := newServer(t, h)
+			client := signInClient(t, ts.URL, "boss@example.com")
+			pubURL := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
+			for name, url := range map[string]string{
+				"draft":       fmt.Sprintf("%s/reports/%d", ts.URL, def.ID),
+				"publication": pubURL,
+				"print page":  pubURL + "/print",
+			} {
+				path := pageElement(t, reportBlockFor(t, getBody(t, client, url), g), "p", "report-path-to-green")
+				if got := elementTexts(path, "del", "report-back-to-green-prior"); !slices.Equal(got, slippedBackToGreenTexts(tc.prior)) {
+					t.Errorf("%s strikes through %q, want %q; path:\n%s", name, got, slippedBackToGreenTexts(tc.prior), path)
+				}
+				if got := elementTexts(path, "span", "report-back-to-green-slips"); !slices.Equal(got, slippedBackToGreenTexts(tc.count)) {
+					t.Errorf("%s counts the slips as %q, want %q; path:\n%s", name, got, slippedBackToGreenTexts(tc.count), path)
+				}
+				if !strings.HasSuffix(strings.TrimSpace(path), ")") {
+					t.Errorf("%s's back-to-Green date does not close its parenthesis; path:\n%s", name, path)
+				}
+			}
+		})
+	}
+}
+
+// slippedBackToGreenTexts is s as the texts of the elements that show it: none for "".
+func slippedBackToGreenTexts(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return []string{s}
+}
+
+// A publication frozen before Reports struck the back-to-Green date through
+// shows its date as published, with nothing struck through.
+func TestPublicationFromBeforeBackToGreenSlipsShowsItsDateOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", time.Date(2026, 3, 6, 0, 0, 0, 0, time.UTC))
+	h.Clock.Advance(24 * time.Hour)
+	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Hire counsel.", time.Date(2026, 3, 13, 0, 0, 0, 0, time.UTC), "Counsel starts later.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","SoWhat":"Expand the market.",` +
+		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Status":"Blocked.",` +
+		`"PathToGreen":"Hire counsel.","PathTargetDate":"2026-03-13T00:00:00Z"}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+		t.Fatalf("write an older snapshot: %v", err)
+	}
+
+	ts := newServer(t, h)
+	block := reportBlockFor(t, getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)), g)
+	path := pageElement(t, block, "p", "report-path-to-green")
+	if got, want := elementTexts(block, "p", "report-path-to-green"), []string{"Path to Green: Hire counsel. (back to Green by Mar 13, 2026)"}; !slices.Equal(got, want) {
+		t.Errorf("an older publication's Path to Green reads %q, want %q", got, want)
+	}
+	if strings.Contains(path, "<del") {
+		t.Errorf("an older publication strikes a back-to-Green date through; path:\n%s", path)
+	}
+}

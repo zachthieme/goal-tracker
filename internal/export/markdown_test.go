@@ -722,3 +722,32 @@ func TestMarkdownOfASnapshotFromBeforeAsksSaysNoAsk(t *testing.T) {
 		t.Errorf("Markdown:\n%s\nwant the Path to Green and no ask", md)
 	}
 }
+
+// A back-to-Green date that slipped within the Run off Green reads as a
+// Milestone's slipped date does: the current date, the one it last slipped
+// from struck through, and the count once it slipped more than once.
+func TestMarkdownStrikesTheBackToGreenDateItSlippedFrom(t *testing.T) {
+	t.Parallel()
+
+	block := func(prior []time.Time) domain.ReportBlock {
+		return domain.ReportBlock{
+			Goal:                 domain.Goal{Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
+			Health:               domain.HealthRed,
+			PathToGreen:          "Hire counsel.",
+			PathTargetDate:       date(2026, 10, 3),
+			PriorPathTargetDates: prior,
+		}
+	}
+	for _, tc := range []struct {
+		prior []time.Time
+		want  string
+	}{
+		{[]time.Time{date(2026, 9, 5), date(2026, 9, 12)}, "**Path to Green:** Hire counsel. (back to Green by 2026-10-03 ~~2026-09-12~~ (2))\n"},
+		{[]time.Time{date(2026, 9, 12)}, "**Path to Green:** Hire counsel. (back to Green by 2026-10-03 ~~2026-09-12~~)\n"},
+		{nil, "**Path to Green:** Hire counsel. (back to Green by 2026-10-03)\n"},
+	} {
+		if got := export.Markdown(publication([]domain.ReportBlock{block(tc.prior)}, nil)); !strings.Contains(got, tc.want) {
+			t.Errorf("Markdown of a block slipped from %v lacks %q:\n%s", tc.prior, tc.want, got)
+		}
+	}
+}
