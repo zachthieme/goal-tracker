@@ -496,14 +496,14 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 		t.Error("scenario 1: no Stale or Unaligned Goal off Platform, so narrowing Risks to Platform wouldn't narrow it")
 	}
 
-	// stale is under Owner needs to update and not Plan doesn't fit. On the
+	// stale is under Waiting on a Check-in and not Placement and dates. On the
 	// default seed it is Green with an overdue Milestone, so it is marked
-	// Milestone overdue too, which Owner needs to update also holds.
+	// Milestone overdue too, which Waiting on a Check-in also holds.
 	if got := o.riskReasons(t, stale); !slices.Equal(got, []string{"Milestone overdue", "Stale"}) {
 		t.Errorf("scenario 1: stale Goal %q is on Risks for %q, want Milestone overdue and Stale", stale.Title, got)
 	}
-	// unaligned is under Plan doesn't fit and not Owner needs to update, even
-	// after the setup puts overdue past its Path to Green.
+	// unaligned is under Placement and dates and not Waiting on a Check-in,
+	// even after the setup puts overdue past its Path to Green.
 	if got := o.riskReasons(t, unaligned); !slices.Equal(got, []string{"Unaligned"}) || unaligned == overdue {
 		t.Errorf("scenario 1: Unaligned Goal %q is on Risks for %q, or is the Goal the setup makes overdue (%t); want only Unaligned",
 			unaligned.Title, got, unaligned == overdue)

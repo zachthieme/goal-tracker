@@ -183,7 +183,7 @@ shot(s, "risks", 4.83, 1.6, 7.9, "Risks page", "The Risks page with ten flagged 
 demoNote(s, 4.83);
 points(s, [
   { mark: "stale", head: "Stale is a first-class signal", body: "A goal past its check-in cadence is flagged, even when its last status was Green." },
-  { mark: "yellow", head: "Grouped by who must act", body: "Owner needs to update, plan doesn't fit, or needs an Admin." },
+  { mark: "yellow", head: "Grouped by who must act", body: "Waiting on a Check-in, placement and dates, or needs an Admin." },
   { mark: "green", head: "One fix per row", body: "Nudge the owner, check in with the dates open, or suggest a parent. No looking up who owns what." },
 ], 0.6, 1.75, 3.85);
 s.addNotes("This is what a leader opens between reviews: which goals need attention, why, and who has to act. The count sits in the top bar on every page. In the demo org, 10 of 50 goals are flagged, and 4 of those are Green goals nobody has updated in three to six weeks.");

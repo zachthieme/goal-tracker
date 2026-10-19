@@ -301,9 +301,9 @@ func TestRiskGroupsCountUniqueGoals(t *testing.T) {
 
 	want := []riskGroup{
 		{Key: "health", Name: "Not Green", Count: 2},
-		{Key: "owner", Name: "Owner needs to update", Count: 4},
+		{Key: "owner", Name: "Waiting on a Check-in", Count: 4},
 		{Key: "followup", Name: "Action Items overdue", Count: 2},
-		{Key: "plan", Name: "Plan doesn't fit", Count: 3},
+		{Key: "plan", Name: "Placement and dates", Count: 3},
 		{Key: "admin", Name: "Needs an Admin", Count: 2},
 	}
 	if got := riskGroups(rows); !slices.Equal(got, want) {
