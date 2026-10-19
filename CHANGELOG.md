@@ -47,6 +47,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] In a Goal's History, an Action Item's raising, reassignments and closing made at the same instant now read in the order they happened, so a raising never shows as newer than its own reassignment or closing (#331).
 - [user] "Save as Green anyway" always records Green. Before, it could save another Health picked after the warning (#342).
 - [user] Risks' "Worst first" puts Proposed and On Hold Goals after every Active Goal, and among Goals otherwise equal, the one with more reasons first (#344).
+- [user] On a phone, the Goals list stacks each Goal's Health, Owner, Due and Last check-in under its title (Dimension tags are hidden there), a Report card's Health drops under its title, the Risks filters wrap so both selects are on screen, and the Admin page's Make Admin and Issue link buttons fit under their Email field (#343).
 
 **Infrastructure:**
 - [internal] `make lint` now fails on Go code that isn't gofmt-formatted, using golangci-lint's gofmt formatter; generated code stays guarded by `make generate-check` (#328).
@@ -55,6 +56,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The seed invariants test now checks scenario 1's Red Goal with Active children shows a Rolled-up Health, and scenario 4's spec reads its candidate links in the same order the test does, so both pick the same chain (#233).
 - [internal] Five fixes that no test caught now have tests that fail without them: the DEBUG "request abandoned" record (#213), the "come ticked" sentence beside Where it fits' Required note (#214), a password sign-in giving up while waiting for a hash slot on each of its three paths (#313; the Service now holds its hash limiter), Remove for the linked Goal's Owner and the refused-removal page's Back to Home (#251) (#347).
 - [internal] The directory sync's hourly run, and its failures on a malformed page, an unreachable server and a page pointing back, have tests (#271).
+- [internal] A 390px e2e spec, `e2e/phone-width.spec.ts`, checks that the Goals list, Risks, a Report draft and the Admin page don't clip or scroll sideways and keep every control on screen (#343).
 
 **Code quality:**
 - [internal] e2e/ has a Prettier config pinning its 120-column style, so a plain npx prettier --check there passes, and the three scenario specs that didn't follow it now do (#346).
