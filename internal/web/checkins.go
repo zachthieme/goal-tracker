@@ -70,6 +70,15 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	health := r.FormValue("health")
+	// Save as Green anyway does what it says, whatever Health was picked after
+	// the warning. Once pressed, a re-rendered form carries the confirmation
+	// (off_target_confirmed) while Green is picked, so the Owner isn't asked
+	// again after a later error or Add another.
+	confirmPressed := r.FormValue("confirm_off_target") != ""
+	if confirmPressed {
+		health = domain.HealthGreen
+	}
+	offTargetConfirmed := confirmPressed || r.FormValue("off_target_confirmed") != ""
 	status := r.FormValue("status")
 	path := r.FormValue("path_to_green")
 	explanation := r.FormValue("explanation")
@@ -109,20 +118,32 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	formData := func(err error) checkinFormData {
 		var e checkinError
 		if err != nil && !errors.As(err, &e) {
-			e = checkinError{Field: checkinErrorField(err.Error(), dates, metrics), Message: sentence(plainReason(err))}
+			e = checkinError{Field: checkinErrorField(err.Error(), dates, metrics), Message: sentence(plainReasonShown(err, s.displayDates()))}
 		}
 		return checkinFormData{
 			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, Explanation: explanation,
 			Metrics: metrics, Readings: rawReadings, DraftHighlights: drafts, Highlights: highlights, Dates: dates, Lifecycle: lifecycle, Error: e,
-			Shown: s.displayDates(),
+			OffTargetConfirmed: offTargetConfirmed, Shown: s.displayDates(),
 		}
 	}
 
 	// Add another records nothing: it re-renders the form, everything typed
-	// kept, with one more Highlight row.
+	// kept, with one more Highlight row. A form that warned a Metric is off
+	// target warns again while Green is still picked and unconfirmed, judged
+	// by the readings as typed; one that doesn't parse is left for the next
+	// submit to report.
 	if r.FormValue("add_highlight") != "" {
 		d := formData(nil)
 		d.Highlights = append(d.Highlights, highlightFormData{})
+		if r.FormValue("off_target_warned") != "" && health == domain.HealthGreen && !offTargetConfirmed {
+			if readings, err := readingsFromForm(metrics, rawReadings); err == nil {
+				d.OffTarget, err = s.svc.OffTargetMetrics(r.Context(), goalID, readings)
+				if err != nil {
+					s.serverError(w, r, "could not judge metrics", err)
+					return
+				}
+			}
+		}
 		s.renderCheckinFormAgain(w, r, current, d)
 		return
 	}
@@ -152,8 +173,9 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		Lifecycle:       lifecycle.To,
 		LifecycleReason: lifecycle.Reason,
 		Outcome:         lifecycle.Outcome,
-		// Save as Green anyway, on the off-target warning, posts this.
-		ConfirmOffTarget: r.FormValue("confirm_off_target") != "",
+		// Save as Green anyway, on the off-target warning, posts this, and a
+		// form re-rendered since carries it.
+		ConfirmOffTarget: offTargetConfirmed,
 	}
 	if err := dates.applyTo(&in); err != nil {
 		s.renderCheckinFormError(w, r, goalID, formData(err))
@@ -470,9 +492,10 @@ func (s *Server) handleNoChangeCheckin(w http.ResponseWriter, r *http.Request, c
 // renderNoChangeRefusal shows why a No change couldn't be recorded. A refusal
 // that means "write a full Check-in" (no previous Check-in, a Goal that isn't
 // Active, a Health the roll-up or an overdue Milestone now rules out) lands the
-// reader on the Goal's Check-in page with the reason as the form's error. For
-// htmx it returns 200, so the page is swapped in, and pushes the Check-in
-// page's URL; a plain post gets 422. A Goal that doesn't exist, or one the
+// reader on the Goal's Check-in page with the reason as the form's error, a
+// sentence reading as the No change card gives it. For htmx it returns 200, so
+// the page is swapped in, and pushes the Check-in page's URL; a plain post gets
+// 422. A Goal that doesn't exist, or one the
 // reader may not check in on, gets 404 or 403 with a page saying so.
 func (s *Server) renderNoChangeRefusal(w http.ResponseWriter, r *http.Request, current domain.Account, goalID int64, err error) {
 	// The Goal is loaded first: the domain checks the Lifecycle before who may
@@ -492,20 +515,21 @@ func (s *Server) renderNoChangeRefusal(w http.ResponseWriter, r *http.Request, c
 			status = http.StatusOK
 			w.Header().Set("HX-Push-Url", "/goals/"+strconv.FormatInt(goalID, 10)+"/checkin")
 		}
-		render(w, r, status, checkinPage(&current, view, checkinFormRefused(view, s.noChangeReason(err))))
+		render(w, r, status, checkinPage(&current, view, checkinFormRefused(view, sentence(s.noChangeReason(err)))))
 	default:
 		s.logServerError(r, err)
 		render(w, r, http.StatusInternalServerError, checkinUnavailablePage(&current, "Check-in failed", "The No change couldn't be recorded. Try again."))
 	}
 }
 
-// noChangeReason is why a No change was refused, as the Check-in form shows it.
-// A Green refused for an off-target Metric names each miss as the form's
-// off-target warning does, with its dates as the page shows them.
+// noChangeReason is why a No change was refused, as the Check-in form shows it,
+// with an overdue Milestone's due date as the page shows dates. A Green
+// refused for an off-target Metric names each miss as the form's off-target
+// warning does, with its dates as the page shows them.
 func (s *Server) noChangeReason(err error) string {
 	var offTarget *domain.GreenOffTargetError
 	if !errors.As(err, &offTarget) {
-		return plainReason(err)
+		return plainReasonShown(err, s.displayDates())
 	}
 	missed := make([]string, 0, len(offTarget.Metrics))
 	for _, o := range offTarget.Metrics {
@@ -520,6 +544,18 @@ func plainReason(err error) string {
 	msg := err.Error()
 	for _, kind := range []error{domain.ErrValidation, domain.ErrNotAuthorized} {
 		msg = strings.TrimPrefix(msg, kind.Error()+": ")
+	}
+	return msg
+}
+
+// plainReasonShown is plainReason with an overdue Milestone's due date, which
+// the domain gives as ISO text, shown as the page shows dates.
+func plainReasonShown(err error, shown displayDates) string {
+	msg := plainReason(err)
+	var overdue *domain.MilestoneOverdueError
+	if errors.As(err, &overdue) {
+		due := overdue.Milestone.TargetDate
+		msg = strings.Replace(msg, "(due "+due.Format(dateLayout)+")", "(due "+shown.date(due)+")", 1)
 	}
 	return msg
 }

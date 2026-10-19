@@ -48,9 +48,19 @@ type checkinFormData struct {
 	Lifecycle lifecycleFormData
 	Error     checkinError
 	// OffTarget are the Metrics off target when a Green was submitted
-	// unconfirmed: the form warns about them and offers to save the Green
-	// anyway (CONTEXT.md: Check-in).
+	// unconfirmed, or kept through Add another on a form that warned: the form
+	// warns about them, flagged at its top, and offers to save the Green
+	// anyway (CONTEXT.md: Check-in). A confirmed form shows no warning.
 	OffTarget []domain.OffTargetMetric
+	// OffTargetConfirmed is set once the Owner has pressed Save as Green
+	// anyway: while Green is picked, a re-rendered form carries the
+	// confirmation, so the next submit counts as confirmed and the form shows
+	// no warning.
+	OffTargetConfirmed bool
+	// Overdue is set when the form starts on a Goal whose No change is
+	// refused for an overdue Milestone: the dates and Milestones section
+	// opens, so the Owner can move it, mark it Done or remove it.
+	Overdue bool
 	// Shown is the clock the form shows its dates against.
 	Shown displayDates
 }
@@ -242,10 +252,18 @@ func (d checkinFormData) highlightSummary() string {
 	return "Flag a highlight · " + strings.Join(kinds, ", ")
 }
 
+// offTargetWarned reports whether the form warns that a Metric is off target:
+// a Green was submitted unconfirmed while one is, and the Owner hasn't
+// confirmed it since.
+func (d checkinFormData) offTargetWarned() bool {
+	return len(d.OffTarget) > 0 && !d.OffTargetConfirmed
+}
+
 // datesOpen reports whether the dates and Milestones section renders open: it
-// holds the error, or the reader changed something in it.
+// holds the error, the reader changed something in it, or a Milestone in it is
+// overdue.
 func (d checkinFormData) datesOpen() bool {
-	return d.Error.about("delivery_date", "milestone", "new_milestone") || d.Dates.changed()
+	return d.Overdue || d.Error.about("delivery_date", "milestone", "new_milestone") || d.Dates.changed()
 }
 
 // changed reports whether any date or Milestone field differs from the Goal's
@@ -352,12 +370,20 @@ func (d lifecycleFormData) summary() string {
 // Metric's latest reading shown as ghost text, so a full Check-in is written
 // fresh (CONTEXT.md: Check-in). It also carries the Rolled-up Health so the
 // form can show it beside the Owner's Health, and the Goal's current delivery
-// date and Planned Milestones so the Owner can move or close them.
+// date and Planned Milestones so the Owner can move or close them. While a
+// Milestone is overdue it picks no Health over a latest Green, as a slip is
+// never hidden behind a Green (CONTEXT.md: Date Slip), and opens the dates and
+// Milestones section: the Check-in may still be Green once it moves the
+// Milestone, marks it Done or removes it.
 func checkinFormFromLatest(v goalView) checkinFormData {
 	g := v.Goal
 	d := checkinFormData{GoalID: g.ID, Health: domain.HealthGreen, RolledUp: v.RolledUp, Metrics: v.Metrics, Shown: v.dates()}
 	if latest := v.LatestCheckin; latest != nil {
 		d.Health = latest.Health
+	}
+	d.Overdue = v.NoChangeOverdue
+	if d.Overdue && d.Health == domain.HealthGreen {
+		d.Health = ""
 	}
 	d.Previous = checkinPreviousFrom(v.LatestCheckin, v.Trends)
 	d.DraftHighlights = draftHighlightRows(v.DraftHighlights)
@@ -576,6 +602,11 @@ templ checkinForm(d checkinFormData) {
 		<button type="submit" data-testid="checkin-default-submit" class="checkin-default-submit" tabindex="-1" aria-hidden="true">Submit check-in</button>
 		@checkinStyles()
 		@checkinFieldError(d.Error, "")
+		if d.offTargetWarned() {
+			<p data-testid="checkin-off-target-notice" class="checkin-off-target-notice alert y">
+				A Metric is off target, so a Green needs confirming. <a href="#checkin-off-target">See below</a>
+			</p>
+		}
 		<fieldset data-testid="checkin-health" class="health-toggle">
 			<legend>Health</legend>
 			for _, health := range []string{domain.HealthGreen, domain.HealthYellow, domain.HealthRed} {
@@ -654,8 +685,11 @@ templ checkinForm(d checkinFormData) {
 			<summary>{ d.Lifecycle.summary() }</summary>
 			@checkinLifecycleFields(d.Lifecycle, d.Error)
 		</details>
-		if len(d.OffTarget) > 0 {
+		if d.offTargetWarned() {
 			@checkinOffTargetWarning(d.OffTarget, d.Shown)
+		}
+		if d.OffTargetConfirmed && d.Health == domain.HealthGreen {
+			<input type="hidden" name="off_target_confirmed" value="1"/>
 		}
 		<div class="checkin-submit">
 			<a class="btn quiet" href={ templ.SafeURL(fmt.Sprintf("/goals/%d", d.GoalID)) }>Cancel</a>
@@ -666,11 +700,15 @@ templ checkinForm(d checkinFormData) {
 
 // checkinOffTargetWarning asks the Owner to confirm a Green while Metrics are
 // off target, naming each with its reading and target. Save as Green anyway
-// submits the form as typed, confirmed; the Owner can instead change the
-// Health and submit. Pressing Enter in a field never confirms: Enter presses
-// the form's first submit, the hidden plain Submit check-in.
+// submits the form as typed, confirmed and as Green; the Owner can instead
+// change the Health, which hides the warning, and submit. Pressing Enter in a
+// field doesn't confirm a first warning: Enter presses the form's first
+// submit, the hidden plain Submit check-in. But a form already confirmed stays
+// confirmed (off_target_confirmed), so Enter on it saves the Green. The hidden
+// off_target_warned lets Add another warn again.
 templ checkinOffTargetWarning(missed []domain.OffTargetMetric, shown displayDates) {
-	<section data-testid="checkin-off-target" class="checkin-off-target" role="alert">
+	<section data-testid="checkin-off-target" id="checkin-off-target" class="checkin-off-target" role="alert">
+		<input type="hidden" name="off_target_warned" value="1"/>
 		<p><strong>A Metric is off target. Is the Goal still Green?</strong></p>
 		<ul>
 			for _, o := range missed {
@@ -757,7 +795,8 @@ var swapErrorPageScript = templ.ComponentScript{Call: "htmx.swap('body', event.d
 var checkinStylesOnce = templ.NewOnceHandle()
 
 // checkinStyles lays out the Check-in form. The Path to Green hides while Green
-// is picked, by CSS alone, unless it holds a validation error; its fields stay
+// is picked, by CSS alone, unless it holds a validation error, and the
+// off-target warning and its notice hide while Green isn't; their fields stay
 // in the form either way, so the server's validation is what decides.
 templ checkinStyles() {
 	@checkinStylesOnce.Once() {
@@ -805,6 +844,7 @@ templ checkinStyles() {
 			.lifecycle-choices label{flex-direction:row;align-items:center;font-weight:500}
 			.checkin-off-target{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;background:var(--health-y-bg)}
 			.checkin-off-target p,.checkin-off-target ul{margin:0 0 8px}
+			.checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target, .checkin-form:not(:has(input[name=health][value=Green]:checked)) .checkin-off-target-notice{display:none}
 			.checkin-submit{display:flex;justify-content:flex-end;gap:12px}
 			.checkin-history{list-style:none;padding:0;margin:0}
 			.checkin-history li{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--color-border)}

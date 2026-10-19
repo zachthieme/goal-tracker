@@ -860,8 +860,12 @@ func TestCheckinOverdueMilestoneErrorShownNextToMilestoneDate(t *testing.T) {
 		fmt.Sprintf("milestone_date_reason_%d", beta.ID): {"It was really due yesterday."},
 	})
 	marker := fmt.Sprintf(`name="milestone_date_%d"`, beta.ID)
-	if msg := fieldError(t, body, marker); !strings.Contains(msg, "is overdue") {
-		t.Errorf("Milestone date field's error = %q, want the overdue one", msg)
+	msg := html.UnescapeString(fieldError(t, body, marker))
+	if !strings.Contains(msg, "is overdue (due Jan 1), so the Goal can't be Green.") {
+		t.Errorf("Milestone date field's error = %q, want the overdue one, its date as the page shows dates", msg)
+	}
+	if regexp.MustCompile(`\d{4}-\d{2}-\d{2}`).MatchString(msg) {
+		t.Errorf("Milestone date field's error = %q, want no ISO date", msg)
 	}
 }
 
@@ -1672,10 +1676,113 @@ func postNoChange(t *testing.T, client *http.Client, rawURL string, hx bool) (*h
 // overdueGreenGoal arranges a Goal whose latest Check-in is Green and whose
 // Beta Milestone has since gone overdue, so No change on it is refused.
 func overdueGreenGoal(h *testsupport.Harness, owner domain.Account) domain.Goal {
+	return overdueGoal(h, owner, domain.HealthGreen)
+}
+
+// overdueGoal arranges a Goal whose latest Check-in has health (with a Path to
+// Green and its date when Yellow or Red) and whose Beta Milestone, due Apr 2,
+// has since gone overdue, so No change on it is refused.
+func overdueGoal(h *testsupport.Harness, owner domain.Account, health string) domain.Goal {
 	goal := h.ActiveGoal(owner, "Blue-green deploys for the monolith", "Deploys take the site down.")
-	h.Checkin(owner, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	path, pathTarget := "", time.Time{}
+	if health != domain.HealthGreen {
+		path, pathTarget = "Add a second reviewer.", pathDate
+	}
+	h.Checkin(owner, goal.ID, health, "On track.", path, pathTarget)
 	h.Clock.Advance(100 * day) // past the Beta Milestone's date
 	return goal
+}
+
+// checkedHealth is the value of the Health radio checked on the page, or
+// "none".
+func checkedHealth(page string) string {
+	for _, tag := range strings.Split(page, "<input")[1:] {
+		tag, _, _ = strings.Cut(tag, ">")
+		if strings.Contains(tag, `name="health"`) && strings.Contains(tag, " checked") {
+			return attr(tag, "value")
+		}
+	}
+	return "none"
+}
+
+// A No change refused for an overdue Milestone reads the same on the card and,
+// once refused, as the form's top error: a sentence with the due date shown as
+// the page shows dates, not as ISO text (#342).
+func TestNoChangeOverdueRefusalReadsTheSameOnCardAndForm(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := overdueGreenGoal(h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	const want = `Milestone "Beta" is overdue (due Apr 2): submit a Check-in to move its date, mark it Done or remove it.`
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	card := between(t, page, `data-testid="no-change-card"`, `data-testid="checkin-form"`)
+	unavailable := tagAround(t, card, `data-testid="no-change-unavailable"`)
+	if got := html.UnescapeString(between(t, card[strings.Index(card, unavailable)+len(unavailable):], "", "</p>")); got != want {
+		t.Errorf("the card's reason = %q, want %q", got, want)
+	}
+
+	_, refused := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+	topError := pageElement(t, refused, "p", "checkin-error")
+	if got := html.UnescapeString(topError[strings.Index(topError, ">")+1:]); got != want {
+		t.Errorf("the form's top error = %q, want %q", got, want)
+	}
+}
+
+// While a Milestone is overdue the Check-in page doesn't preselect the latest
+// Check-in's Green — a slip is never hidden behind a Green — but leaves the
+// Health to pick, with the dates and Milestones section open; so does the page
+// a refused No change lands on. A Yellow or Red stays picked, the section
+// open too (#342).
+func TestCheckinPagePreselectsNoGreenWhileMilestoneOverdue(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ health, want string }{
+		{domain.HealthGreen, "none"},
+		{domain.HealthYellow, domain.HealthYellow},
+	} {
+		t.Run(tc.health, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t)
+			ts := newServer(t, h)
+			sam := h.SignIn("sam@example.com")
+			goal := overdueGoal(h, sam, tc.health)
+			client := signInClient(t, ts.URL, "sam@example.com")
+
+			_, refused := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+			for name, page := range map[string]string{
+				"Check-in page":     getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)),
+				"refused No change": refused,
+			} {
+				if got := checkedHealth(page); got != tc.want {
+					t.Errorf("%s: Health checked = %s, want %s", name, got, tc.want)
+				}
+				if section := pageElement(t, page, "details", "checkin-dates-section"); !strings.Contains(openTag(section), " open") {
+					t.Errorf("%s: the dates and Milestones section is collapsed", name)
+				}
+			}
+		})
+	}
+}
+
+// A No change refused because a Metric is off target leaves Green picked: the
+// full form can confirm that Green (#342).
+func TestCheckinPageKeepsGreenWhileMetricOffTarget(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal, _ := offTargetIdleGoal(t, h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	if got := checkedHealth(getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))); got != domain.HealthGreen {
+		t.Errorf("Health checked = %s, want Green", got)
+	}
 }
 
 // The Check-in page's "Nothing changed since …?" card offers its No change
@@ -1814,7 +1921,7 @@ func TestNoChangeRefusedWithoutPreviousCheckinLandsOnCheckinForm(t *testing.T) {
 
 	for _, hx := range []bool{false, true} {
 		_, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), hx)
-		assertNoChangeRefusalOnForm(t, page, "there is no previous Check-in to repeat")
+		assertNoChangeRefusalOnForm(t, page, "There is no previous Check-in to repeat.")
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
 		t.Errorf("a refused No change recorded a Check-in: history has %d, want 0", len(history))
@@ -1833,7 +1940,7 @@ func TestNoChangeRefusedOnGoalNotActive(t *testing.T) {
 	onHold := h.OnHoldGoal(sam, "Ship search", "People can't find things.", "Waiting on budget.")
 	cancelled := closeGoal(t, h, sam, h.ActiveGoal(sam, "Cut churn", "Customers leave."), domain.LifecycleCancelled)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	const reason = "only an Active Goal can be checked in on"
+	const reason = "Only an Active Goal can be checked in on."
 
 	for _, hx := range []bool{false, true} {
 		for _, goal := range []domain.Goal{onHold, cancelled} {
@@ -2748,5 +2855,179 @@ func TestCheckinOverdueMilestoneRefusalWinsOverOffTargetWarning(t *testing.T) {
 	}
 	if strings.Contains(body, "confirm_off_target") {
 		t.Errorf("an overdue Milestone's refusal offers Save as Green anyway; body:\n%s", body)
+	}
+}
+
+// The off-target warning sits by the submit buttons, so a one-line notice near
+// the top of the form, before the Health, flags it and links down to it: an
+// Owner who pressed Enter near the top still sees the question (#342). The
+// notice isn't announced as an alert too; the warning is.
+func TestCheckinOffTargetWarningIsFlaggedAtTopOfForm(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal, _ := offTargetIdleGoal(t, h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {"Old pool nearly drained."},
+	})
+
+	notice := pageElement(t, body, "p", "checkin-off-target-notice")
+	if at, health := strings.Index(body, `data-testid="checkin-off-target-notice"`), strings.Index(body, `data-testid="checkin-health"`); at > health {
+		t.Errorf("the notice comes after the Health; body:\n%s", body)
+	}
+	tag := openTag(notice)
+	if !hasClass(tag, "alert") || !hasClass(tag, "y") || !hasClass(tag, "checkin-off-target-notice") || strings.Contains(tag, "role=") {
+		t.Errorf("notice tag = %s, want classes alert y and checkin-off-target-notice, and no role", tag)
+	}
+	if !strings.Contains(notice, "A Metric is off target, so a Green needs confirming.") {
+		t.Errorf("notice = %s, want it to say a Green needs confirming", notice)
+	}
+	if link := tagAround(t, notice, `href=`); attr(link, "href") != "#checkin-off-target" || !strings.Contains(notice, "See below</a>") {
+		t.Errorf("notice does not link down to the warning: %s", notice)
+	}
+	warning := pageElement(t, body, "section", "checkin-off-target")
+	if attr(openTag(warning)+">", "id") != "checkin-off-target" {
+		t.Errorf("warning has no id the notice can link to: %s", openTag(warning))
+	}
+	if warned := tagAround(t, warning, `name="off_target_warned"`); attr(warned, "type") != "hidden" || attr(warned, "value") != "1" {
+		t.Errorf("warning carries no hidden off_target_warned: %s", warned)
+	}
+}
+
+// The off-target warning and its notice hide, by CSS alone, while another
+// Health than Green is picked: changing the Health answers the question.
+func TestCheckinOffTargetWarningHidesUnlessGreenPicked(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal, _ := offTargetIdleGoal(t, h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	const notGreen = ".checkin-form:not(:has(input[name=health][value=Green]:checked))"
+	if got := cssRule(t, page, notGreen+" .checkin-off-target, "+notGreen+" .checkin-off-target-notice"); got != "display:none" {
+		t.Errorf("the rule hiding the warning while Green isn't picked declares %q, want display:none", got)
+	}
+}
+
+// Add another on a warned form keeps the off-target warning while Green is
+// still picked, judged by the readings typed, and adds the Highlight row; once
+// another Health is picked it shows no warning (#342).
+func TestCheckinAddAnotherKeepsOffTargetWarning(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal, idle := offTargetIdleGoal(t, h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	addAnother := func(health string) string {
+		body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+			"health":                           {health},
+			"status":                           {"Old pool nearly drained."},
+			"path_to_green":                    {"Retire the old pool."},
+			fmt.Sprintf("reading_%d", idle.ID): {"35.5"},
+			"highlight_kind":                   {domain.HighlightMiss},
+			"highlight_note":                   {"The pool drained slowly."},
+			"off_target_warned":                {"1"},
+			"add_highlight":                    {"1"},
+		})
+		return body
+	}
+
+	body := addAnother(domain.HealthGreen)
+	warning := pageElement(t, body, "section", "checkin-off-target")
+	if !strings.Contains(warning, "Idle capacity is 35.5 percent; its target was 20 by Jan 30.") {
+		t.Errorf("after Add another, the warning doesn't name Idle capacity at the reading typed: %s", warning)
+	}
+	if rows := highlightRows(t, body); len(rows) != 2 {
+		t.Errorf("form shows %d Highlight rows, want 2 after Add another", len(rows))
+	}
+
+	if body := addAnother(domain.HealthYellow); strings.Contains(body, `data-testid="checkin-off-target"`) {
+		t.Errorf("Add another with Yellow picked still warns; body:\n%s", body)
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
+		t.Errorf("Add another recorded a Check-in: history has %d, want 1", len(history))
+	}
+}
+
+// Save as Green anyway records Green, even when another Health was picked
+// after the warning: the button does what it says (#342).
+func TestCheckinSaveAsGreenAnywayRecordsGreenWhateverHealthIsPicked(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal, _ := offTargetIdleGoal(t, h, sam)
+	client := noRedirects(signInClient(t, ts.URL, "sam@example.com"))
+
+	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":             {domain.HealthYellow},
+		"status":             {"Missed by a little."},
+		"path_to_green":      {"Retire the old pool."},
+		"path_target_date":   {"2026-03-01"},
+		"confirm_off_target": {"1"},
+	})
+	_ = readBody(t, resp)
+
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303 back to the Goal", resp.StatusCode)
+	}
+	latest, _, err := h.Service.LatestCheckin(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("LatestCheckin: %v", err)
+	}
+	if latest.Health != domain.HealthGreen || latest.Status != "Missed by a little." {
+		t.Errorf("latest Check-in = %s %q, want the confirmed Green", latest.Health, latest.Status)
+	}
+}
+
+// A confirmed Green refused for another field comes back without the warning,
+// carrying the confirmation, so fixing the field and submitting records the
+// Green without asking again (#342).
+func TestCheckinOffTargetConfirmationSurvivesALaterError(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal, _ := offTargetIdleGoal(t, h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	form := url.Values{
+		"health":             {domain.HealthGreen},
+		"status":             {"Missed by a little; the trend is right."},
+		"highlight_kind":     {""},
+		"highlight_note":     {"The pool drained slowly."},
+		"confirm_off_target": {"1"},
+	}
+
+	body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), form)
+	if rows := highlightRows(t, body); len(rows) != 1 || !strings.Contains(rows[0], "Highlight 1 needs a kind") {
+		t.Fatalf("want the Highlight's error; body:\n%s", body)
+	}
+	if strings.Contains(body, `data-testid="checkin-off-target"`) {
+		t.Errorf("a confirmed Green is warned again; body:\n%s", body)
+	}
+	if confirmed := tagAround(t, body, `name="off_target_confirmed"`); attr(confirmed, "type") != "hidden" || attr(confirmed, "value") != "1" {
+		t.Errorf("the form doesn't carry the confirmation: %s", confirmed)
+	}
+
+	form.Del("confirm_off_target")
+	form.Set("off_target_confirmed", "1")
+	form.Set("highlight_kind", domain.HighlightMiss)
+	if body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), form); strings.Contains(body, "checkin-form") {
+		t.Fatalf("the fixed, confirmed Green was refused; body:\n%s", body)
+	}
+	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 2 {
+		t.Errorf("history has %d Check-ins, want 2 once the confirmed Green is recorded", len(history))
 	}
 }

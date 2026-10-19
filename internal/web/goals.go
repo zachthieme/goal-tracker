@@ -871,10 +871,13 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	// The Owner and Delegates are offered a No change only where it would be
 	// recorded; where it wouldn't, the Check-in page says why.
 	var noChangeRefusal string
+	var noChangeOverdue bool
 	if canCheckin && g.Lifecycle == domain.LifecycleActive && latestPtr != nil {
 		switch err := s.svc.NoChangeRefusal(ctx, id); {
 		case errors.Is(err, domain.ErrValidation):
 			noChangeRefusal = sentence(s.noChangeReason(err))
+			var overdue *domain.MilestoneOverdueError
+			noChangeOverdue = errors.As(err, &overdue)
 		case err != nil:
 			return goalView{}, fmt.Errorf("check no change: %w", err)
 		}
@@ -905,6 +908,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Delegates:          delegates,
 		CanCheckin:         canCheckin,
 		NoChangeRefusal:    noChangeRefusal,
+		NoChangeOverdue:    noChangeOverdue,
 		CanSetValues:       canSetValues,
 		Owns:               current.ID == g.Owner.ID,
 		Admin:              current.IsAdmin,
@@ -973,6 +977,9 @@ type goalView struct {
 	// refused, as a sentence, or "" when one would be recorded or isn't on
 	// offer: there's no Check-in to repeat or the viewer can't check in.
 	NoChangeRefusal string
+	// NoChangeOverdue is set when that refusal is for an overdue Milestone,
+	// so the Check-in form doesn't start from a Green the Milestone rules out.
+	NoChangeOverdue bool
 	// TitleRevisions are every change to the Goal's title, newest first, for
 	// its History.
 	TitleRevisions []domain.TitleRevision

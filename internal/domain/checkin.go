@@ -317,14 +317,28 @@ func formatMetricValue(v float64) string {
 }
 
 // rejectGreenWhileOffTarget refuses a Green on goalID with a
-// *GreenOffTargetError while any of its Metrics is off target today, in the
-// org's timezone. Each Metric is judged by the reading entered in this
-// Check-in or, when none was, its latest recorded one; a Metric never read is
-// not off target.
+// *GreenOffTargetError while any of its Metrics is off target (see
+// OffTargetMetrics).
 func (s *Service) rejectGreenWhileOffTarget(ctx context.Context, goalID int64, readings []MetricReadingInput) error {
-	metrics, err := s.ListMetrics(ctx, goalID)
+	missed, err := s.OffTargetMetrics(ctx, goalID, readings)
 	if err != nil {
 		return err
+	}
+	if len(missed) > 0 {
+		return &GreenOffTargetError{Metrics: missed}
+	}
+	return nil
+}
+
+// OffTargetMetrics returns goalID's Metrics that are off target today, in the
+// org's timezone, each with the reading that missed; none when none is. Each
+// Metric is judged by the reading in readings (as entered in a Check-in) or,
+// when there is none, its latest recorded one; a Metric never read is not off
+// target.
+func (s *Service) OffTargetMetrics(ctx context.Context, goalID int64, readings []MetricReadingInput) ([]OffTargetMetric, error) {
+	metrics, err := s.ListMetrics(ctx, goalID)
+	if err != nil {
+		return nil, err
 	}
 	entered := make(map[int64]float64, len(readings))
 	for _, rd := range readings {
@@ -337,7 +351,7 @@ func (s *Service) rejectGreenWhileOffTarget(ctx context.Context, goalID int64, r
 		if !ok {
 			recorded, err := s.queries.ListMetricReadings(ctx, m.ID)
 			if err != nil {
-				return fmt.Errorf("list metric readings: %w", err)
+				return nil, fmt.Errorf("list metric readings: %w", err)
 			}
 			if len(recorded) == 0 {
 				continue
@@ -348,10 +362,7 @@ func (s *Service) rejectGreenWhileOffTarget(ctx context.Context, goalID int64, r
 			missed = append(missed, OffTargetMetric{Metric: m, Reading: reading})
 		}
 	}
-	if len(missed) > 0 {
-		return &GreenOffTargetError{Metrics: missed}
-	}
-	return nil
+	return missed, nil
 }
 
 // validateReadings checks that each reading names a Metric on goalID; a reading
@@ -475,7 +486,7 @@ func (s *Service) noChangeCheck(ctx context.Context, goalID int64) (db.Checkin, 
 		return db.Checkin{}, "", fmt.Errorf("list milestones: %w", err)
 	}
 	if m, ok := overdueMilestone(milestones, s.clock.Now().Format(dateFormat)); ok {
-		return db.Checkin{}, "", fmt.Errorf("%w: Milestone %q is overdue (due %s): submit a Check-in to move its date, mark it Done or remove it", ErrValidation, m.Name, m.TargetDate)
+		return db.Checkin{}, "", fmt.Errorf("%w: submit a Check-in to move its date, mark it Done or remove it", &MilestoneOverdueError{Milestone: milestoneFromRow(m)})
 	}
 	// Nor a Green while a Metric is off target: only a full Check-in can
 	// confirm that.
