@@ -6,9 +6,12 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 // Highlight). Its markup is an upgrade: the server renders the plain rows
 // that work without script, and highlightEditorScript turns them, within one
 // [data-highlight-editor] container, into finished items and an editor, so
-// the server never needs to know whether script ran. Saving an item records
-// nothing: an item is hidden inputs under the names the rows post, sent with
-// the form around it.
+// the server never needs to know whether script ran. In the Check-in form,
+// saving an item records nothing: an item is hidden inputs under the names
+// the rows post, sent with the form around it. On the Goal page, whose Draft
+// Highlights have no form around them, an editor opened by an add button or
+// an item carrying a data-hl-url saves to the server there at once instead
+// (draftHighlightSection).
 
 // highlightAddKinds are the Highlight kinds, one add button each, in the
 // order the buttons show.
@@ -118,8 +121,7 @@ templ itemEditorStyles() {
 }
 
 // highlightEditorScript upgrades each [data-highlight-editor] container not
-// yet upgraded, so it runs again on a form htmx swaps back in after a refused
-// submit. It shows the container's <details> open without its summary, drops
+// yet upgraded, so it runs again on a form or block htmx swaps back in. It shows the container's <details> open without its summary, drops
 // Add another and the blank rows, and turns each row with a note into an item,
 // or into an open editor when the row holds an error or a note with no kind (a
 // Draft logged without one). An add button opens an editor for its kind above
@@ -129,6 +131,18 @@ templ itemEditorStyles() {
 // the Kind select, and Cancel swaps it back. Remove drops an item, keeping a
 // Draft's draft_highlight_id so the Check-in discards it. One editor is open
 // at a time: the add and Edit buttons are disabled while one is.
+//
+// A Highlight with a url saves to the server instead (the Goal page's Draft
+// Highlights): Save posts its kind and note there with htmx and swaps the
+// container, or the element its data-hl-target names, for the one the server
+// answers with. The container's items are
+// then the server's, each an .hl-item carrying its url, kind and note, which
+// gains an Edit; one marked data-hl-refused, a refused edit, opens as an
+// editor again with what was typed and the reason, as does a log form the
+// server rendered open. A [data-hl-js-label] control takes that label. The
+// container's data-kind-optional lets Save go without a Kind, and its
+// data-hl-noun names what an editor with the Kind select is of, in its
+// heading.
 templ highlightEditorScript() {
 	<script>
 		(function () {
@@ -145,6 +159,11 @@ templ highlightEditorScript() {
 				var list = box.querySelector("[data-hl-items]");
 				var addAnother = box.querySelector("button[name=add_highlight]");
 				if (addAnother) addAnother.remove();
+				var kindOptional = box.hasAttribute("data-kind-optional");
+				var noun = box.getAttribute("data-hl-noun") || "Highlight";
+				box.querySelectorAll("[data-hl-js-label]").forEach(function (b) {
+					b.textContent = b.getAttribute("data-hl-js-label");
+				});
 				box.querySelectorAll("[data-testid=checkin-highlight-row]").forEach(function (row) {
 					var h = fromRow(row);
 					var error = row.querySelector("[role=alert]");
@@ -158,6 +177,32 @@ templ highlightEditorScript() {
 						list.appendChild(item(h));
 					}
 				});
+				box.querySelectorAll(".hl-item[data-hl-url]").forEach(function (saved) {
+					saved.hl = { url: saved.getAttribute("data-hl-url"), kind: saved.getAttribute("data-hl-kind"), note: saved.getAttribute("data-hl-note") };
+					var edit = document.createElement("button");
+					edit.type = "button";
+					edit.className = "btn quiet sm";
+					edit.setAttribute("data-hl-edit", "");
+					edit.textContent = "Edit";
+					var actions = saved.querySelector("[data-hl-actions]") || saved;
+					actions.prepend(edit);
+					if (saved.hasAttribute("data-hl-refused")) {
+						var typed = { url: saved.hl.url, kind: saved.getAttribute("data-hl-typed-kind"), note: saved.getAttribute("data-hl-typed-note") };
+						saved.replaceWith(openEditor(typed, { select: true, restore: saved, error: saved.querySelector("[role=alert]") }));
+					}
+				});
+				var opened = box.querySelector("[data-open-form]");
+				var openedForm = opened && opened.querySelector("form[action]");
+				if (openedForm) {
+					var logged = {
+						url: openedForm.getAttribute("action"),
+						kind: openedForm.querySelector("[name=kind]").value,
+						note: openedForm.querySelector("[name=note]").value,
+					};
+					var reason = opened.querySelector("[role=alert]");
+					opened.remove();
+					list.prepend(openEditor(logged, { select: true, isNew: true, error: reason }));
+				}
 				refresh();
 
 				function fromRow(row) {
@@ -180,6 +225,7 @@ templ highlightEditorScript() {
 
 				// fields are a Highlight's names, as the rows post them.
 				function fields(h) {
+					if (h.url) return { kind: "kind", note: "note" };
 					if (!h.draftID) return { kind: "highlight_kind", note: "highlight_note" };
 					return { kind: "draft_highlight_kind_" + h.draftID, note: "draft_highlight_note_" + h.draftID };
 				}
@@ -229,15 +275,15 @@ templ highlightEditorScript() {
 				// openEditor is an editor for h. With opts.select it shows the
 				// Kind select, else the kind is the hidden h.kind. opts.restore
 				// is the item Cancel puts back; opts.isNew marks one an add
-				// button opened.
+				// button opened; opts.error is a reason to show under the Note.
 				function openEditor(h, opts) {
 					var el = editorTemplate.content.firstElementChild.cloneNode(true);
 					el.hl = h;
 					el.restore = opts.restore || null;
 					el.isNew = !!opts.isNew;
 					var heading = el.querySelector("[data-hl-heading]");
-					if (opts.isNew) heading.textContent = "New " + h.kind;
-					else if (opts.restore) heading.textContent = "Edit Highlight";
+					if (opts.isNew) heading.textContent = "New " + (opts.select ? noun : h.kind);
+					else if (opts.restore) heading.textContent = "Edit " + noun;
 					else heading.textContent = h.draftID ? "Draft Highlight" : "Highlight";
 					draftLine(el, h);
 					var names = fields(h);
@@ -269,6 +315,7 @@ templ highlightEditorScript() {
 				function editorValues(el) {
 					var kind = el.querySelector("select[name], input[data-hl-kind-hidden]");
 					return {
+						url: el.hl.url,
 						draftID: el.hl.draftID,
 						keep: true,
 						loggedBy: el.hl.loggedBy,
@@ -279,7 +326,24 @@ templ highlightEditorScript() {
 
 				function ready(el) {
 					var v = editorValues(el);
-					return v.note.trim() !== "" && v.kind !== "";
+					return v.note.trim() !== "" && (kindOptional || v.kind !== "");
+				}
+
+				// send saves a Highlight to the server at its url and swaps the
+				// container's data-hl-target, or the container, for what the
+				// server answers with: the items as saved, or the editor again
+				// with why it was refused. Focus then goes where it would after
+				// a Save here: to the editor still open, the edited item's Edit,
+				// or the first add button.
+				function send(el, v) {
+					el.querySelector("[data-hl-save]").disabled = true;
+					var target = box.getAttribute("data-hl-target");
+					htmx.ajax("POST", v.url, { source: el, target: target || box, swap: "outerHTML", values: { kind: v.kind, note: v.note } }).then(function () {
+						var swapped = target && document.querySelector(target);
+						if (!swapped) return;
+						var edited = '.hl-item[data-hl-url="' + v.url + '"] [data-hl-edit]';
+						focus(swapped.querySelector(".hl-editor [data-hl-note]") || swapped.querySelector(edited) || swapped.querySelector("[data-highlight-add]"));
+					});
 				}
 
 				function refresh() {
@@ -308,7 +372,8 @@ templ highlightEditorScript() {
 				scope.addEventListener("click", function (e) {
 					var add = e.target.closest("[data-highlight-add]");
 					if (add && !add.disabled) {
-						var editor = openEditor({ kind: add.getAttribute("data-kind"), note: "" }, { isNew: true });
+						var kind = add.getAttribute("data-kind");
+						var editor = openEditor({ kind: kind || "", note: "", url: add.getAttribute("data-hl-url") }, { isNew: true, select: !kind });
 						list.prepend(editor);
 						refresh();
 						focus(editor.querySelector("[data-hl-note]"));
@@ -319,7 +384,12 @@ templ highlightEditorScript() {
 					if (!el) return;
 					if (e.target.closest("[data-hl-save]")) {
 						if (!ready(el)) return;
-						var saved = item(editorValues(el));
+						var values = editorValues(el);
+						if (values.url) {
+							send(el, values);
+							return;
+						}
+						var saved = item(values);
 						if (el.isNew) {
 							el.remove();
 							list.appendChild(saved);

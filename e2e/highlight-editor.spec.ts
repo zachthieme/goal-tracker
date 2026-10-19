@@ -207,14 +207,15 @@ async function submit(page: Page, form: Locator, goal: Goal) {
   await page.waitForURL(new RegExp(`/goals/${goal.id}$`));
 }
 
-// logDraft logs a Draft Highlight from the Goal page, kind "None" for none.
+// logDraft logs a Draft Highlight from the Goal page through + Log a
+// highlight, its editor and Save (#363), kind "None" for none.
 async function logDraft(page: Page, goal: Goal, kind: string, note: string) {
   await page.goto(`/goals/${goal.id}`);
   const drafts = page.getByTestId("goal-draft-highlights");
-  await drafts.getByRole("link", { name: "Log a highlight" }).click();
-  const log = drafts.getByTestId("log-draft-highlight");
-  await log.getByLabel("Kind").selectOption({ label: kind });
-  await log.getByLabel("Note").fill(note);
-  await log.getByRole("button", { name: "Log Draft Highlight" }).click();
+  await drafts.getByRole("button", { name: "+ Log a highlight" }).click();
+  const editor = drafts.getByTestId("highlight-editor");
+  await editor.getByLabel("Kind").selectOption({ label: kind });
+  await editor.getByLabel("Note").fill(note);
+  await editor.getByRole("button", { name: "Save" }).click();
   await expect(page.getByTestId("draft-highlight")).toContainText(note);
 }

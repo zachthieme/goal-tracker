@@ -32,95 +32,92 @@ templ draftHighlightSection(v goalView) {
 // the editor's htmx posts swap.
 templ draftHighlightBlock(v goalView, refused draftHighlightRefusal) {
 	if v.CanCheckin && (draftHighlightsLoggable(v.Goal) || len(v.DraftHighlights) > 0) {
-		<section
-			data-testid="goal-draft-highlights"
-			id="draft-highlights"
-			class="gp-block ruled"
-			data-highlight-editor
-			data-kind-optional
-			data-hl-noun="Draft Highlight"
-			hx-on:htmx:response-error={ swapErrorPageScript }
-		>
-			@groupHead(v, formDraftHighlight, "+ Log a highlight", "Log a highlight") {
-				<h2>Draft Highlights</h2>
-				if v.offers(formDraftHighlight) {
-					<button type="button" data-testid="draft-highlight-add" data-highlight-add data-hl-url={ fmt.Sprintf("/goals/%d/draft-highlights", v.Goal.ID) } class="btn quiet sm hl-js-only">+ Log a highlight</button>
-				}
-			}
-			<div class="hl-items dh-new" data-hl-items></div>
-			if len(v.DraftHighlights) > 0 {
-				<ul class="gp-list">
-					for _, d := range v.DraftHighlights {
-						<li
-							data-testid="draft-highlight"
-							class="dh-item hl-item"
-							data-hl-url={ fmt.Sprintf("/draft-highlights/%d", d.ID) }
-							data-hl-kind={ d.Kind }
-							data-hl-note={ d.Note }
-							if refused.ID == d.ID {
-								data-hl-refused
-								data-hl-typed-kind={ refused.Kind }
-								data-hl-typed-note={ refused.Note }
-							}
-						>
-							<span>
-								<strong>{ draftHighlightKind(d.Kind) }</strong>
-								{ " " + d.Note }
-							</span>
-							<span class="muted small">
-								@person(d.LoggedBy)
-								{ " · " + v.dates().timestamp(d.CreatedAt) }
-							</span>
-							<form
-								data-testid="delete-draft-highlight"
-								method="post"
-								action={ templ.SafeURL(fmt.Sprintf("/draft-highlights/%d/delete", d.ID)) }
-								hx-post={ fmt.Sprintf("/draft-highlights/%d/delete", d.ID) }
-								hx-target="#draft-highlights"
-								hx-swap="outerHTML"
-								data-hl-actions
-							>
-								<button type="submit" class="btn quiet sm" data-hl-js-label="Remove">Delete</button>
-							</form>
-							if refused.ID == d.ID {
-								<p data-testid="form-error" class="alert r" role="alert">{ refused.Reason }</p>
-							}
-						</li>
+		<section data-testid="goal-draft-highlights" id="draft-highlights" class="gp-block ruled" hx-on:htmx:response-error={ swapErrorPageScript }>
+			// The editor's container sits inside the swap target: htmx settles
+			// a swapped-in element with the target's id by giving it the old
+			// one's class for a moment, which would hide it from the script.
+			<div data-testid="draft-highlight-editor" data-highlight-editor data-kind-optional data-hl-noun="Draft Highlight" data-hl-target="#draft-highlights">
+				@groupHead(v, formDraftHighlight, "+ Log a highlight", "Log a highlight") {
+					<h2>Draft Highlights</h2>
+					if v.offers(formDraftHighlight) {
+						<button type="button" data-testid="draft-highlight-add" data-highlight-add data-hl-url={ fmt.Sprintf("/goals/%d/draft-highlights", v.Goal.ID) } class="btn quiet sm hl-js-only">+ Log a highlight</button>
 					}
-				</ul>
-			}
-			if v.opens(formDraftHighlight) {
-				@openGoalForm(v, formDraftHighlight, "Log a Draft Highlight") {
-					<p class="muted small">Log what's worth reporting as it happens. Your next Check-in offers each one to keep as a Highlight.</p>
-					<form data-testid="log-draft-highlight" class="dh-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/draft-highlights", v.Goal.ID)) }>
-						<label>
-							Kind
-							<select name="kind">
-								@highlightKindOptions(v.FormInput.Get("kind"))
-							</select>
-						</label>
-						<label>
-							Note
-							<textarea name="note" required autofocus>{ v.FormInput.Get("note") }</textarea>
-						</label>
-						<button type="submit" class="btn sm">Log Draft Highlight</button>
-					</form>
 				}
-			}
-			// The editor's parts sit in the block, so a swapped-in block brings
-			// them back and upgrades itself again.
-			@highlightEditorStyles()
-			@highlightEditorTemplate()
-			@highlightItemTemplate()
-			@highlightEditorScript()
-			<style>
-				.dh-item{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
-				.dh-item form{display:flex;gap:8px;margin:0 0 0 auto}
-				.dh-form{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
-				.dh-form label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px;align-self:stretch}
-				.dh-new{margin:8px 0}
-				.hl-js>.gp-group-head>a{display:none}
-			</style>
+				<div class="hl-items dh-new" data-hl-items></div>
+				if len(v.DraftHighlights) > 0 {
+					<ul class="gp-list">
+						for _, d := range v.DraftHighlights {
+							<li
+								data-testid="draft-highlight"
+								class="dh-item hl-item"
+								data-hl-url={ fmt.Sprintf("/draft-highlights/%d", d.ID) }
+								data-hl-kind={ d.Kind }
+								data-hl-note={ d.Note }
+								if refused.ID == d.ID {
+									data-hl-refused
+									data-hl-typed-kind={ refused.Kind }
+									data-hl-typed-note={ refused.Note }
+								}
+							>
+								<span>
+									<strong>{ draftHighlightKind(d.Kind) }</strong>
+									{ " " + d.Note }
+								</span>
+								<span class="muted small">
+									@person(d.LoggedBy)
+									{ " · " + v.dates().timestamp(d.CreatedAt) }
+								</span>
+								<form
+									data-testid="delete-draft-highlight"
+									method="post"
+									action={ templ.SafeURL(fmt.Sprintf("/draft-highlights/%d/delete", d.ID)) }
+									hx-post={ fmt.Sprintf("/draft-highlights/%d/delete", d.ID) }
+									hx-target="#draft-highlights"
+									hx-swap="outerHTML"
+									data-hl-actions
+								>
+									<button type="submit" class="btn quiet sm" data-hl-js-label="Remove">Delete</button>
+								</form>
+								if refused.ID == d.ID {
+									<p data-testid="form-error" class="alert r" role="alert">{ refused.Reason }</p>
+								}
+							</li>
+						}
+					</ul>
+				}
+				if v.opens(formDraftHighlight) {
+					@openGoalForm(v, formDraftHighlight, "Log a Draft Highlight") {
+						<p class="muted small">Log what's worth reporting as it happens. Your next Check-in offers each one to keep as a Highlight.</p>
+						<form data-testid="log-draft-highlight" class="dh-form" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/draft-highlights", v.Goal.ID)) }>
+							<label>
+								Kind
+								<select name="kind">
+									@highlightKindOptions(v.FormInput.Get("kind"))
+								</select>
+							</label>
+							<label>
+								Note
+								<textarea name="note" required autofocus>{ v.FormInput.Get("note") }</textarea>
+							</label>
+							<button type="submit" class="btn sm">Log Draft Highlight</button>
+						</form>
+					}
+				}
+				// The editor's parts sit in the block, so a swapped-in block brings
+				// them back and upgrades itself again.
+				@highlightEditorStyles()
+				@highlightEditorTemplate()
+				@highlightItemTemplate()
+				@highlightEditorScript()
+				<style>
+					.dh-item{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
+					.dh-item form{display:flex;gap:8px;margin:0 0 0 auto}
+					.dh-form{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+					.dh-form label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px;align-self:stretch}
+					.dh-new{margin:8px 0}
+					.hl-js>.gp-group-head>a{display:none}
+				</style>
+			</div>
 		</section>
 	}
 }

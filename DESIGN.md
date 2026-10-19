@@ -422,9 +422,11 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     Hand off, Reassign, Mark owner departed and Mark returned open in People,
     under the Owner. Delegates and Contributors forms open in their groups.
     Link to a parent Goal opens under Contributes to, and the Dimension and
-    Field forms in their blocks. The Draft Highlight form opens in the Draft
-    Highlights block, from its **+ Log a highlight** link beside the
-    heading. A few menu items don't open in place but lead to a page of their
+    Field forms in their blocks. Without script, the Draft Highlight form
+    opens in the Draft Highlights block, from its **+ Log a highlight** link
+    beside the heading, and each pending one has a **Delete**; with script
+    the block is the Highlight editor instead (see Highlights under the
+    Check-in form). A few menu items don't open in place but lead to a page of their
     own: Add a child Goal to the New goal form with this Goal picked as the
     parent (`/goals/new?parent=<id>`), Suggest a parent to its form, and the
     Lifecycle changes to the Check-in page with the change picked.
@@ -807,6 +809,20 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     another**, which posts the form back for one more row. The script
     upgrades that markup in place, so the server renders the same form either
     way.
+  - **On the Goal page,** the Draft Highlights block uses the same editor.
+    With script, **+ Log a highlight** beside the heading is a quiet small
+    button that opens the editor at the top of the list, headed "New Draft
+    Highlight", with the Kind select (optional here: a Draft Highlight may
+    have no Kind) and the Note. **Save**, enabled once the Note is filled,
+    logs it at once with htmx and the block comes back from the server with
+    it listed, with no page load; **Cancel** closes the editor. Each pending
+    one gains a quiet small **Edit**, which opens it in the editor in place
+    ("Edit Draft Highlight"), its Save posting the edit and its Cancel
+    putting the row back, and its **Delete** reads **Remove** and deletes it
+    at once, with no confirmation. A refused Save comes back with the editor
+    open, the reason under the Note and what was typed kept. One editor is
+    open at a time. Without script the block is as before: the link opening
+    the log form in place, and **Delete** on each row.
 - **Sizes and touch targets:** buttons and text, email, date, number and search
   inputs and selects are 40px tall, and `.btn.sm` is 32px. On a coarse pointer
   (`@media (pointer:coarse)`) all of them get a 44px `min-height`, so every

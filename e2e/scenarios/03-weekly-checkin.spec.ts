@@ -155,11 +155,15 @@ test.describe("on the due template", () => {
 
       const drafts = page.getByTestId("goal-draft-highlights");
       await expect(drafts.getByRole("heading", { name: "Draft Highlights" })).toBeVisible();
-      await drafts.getByRole("link", { name: "Log a highlight" }).click();
-      const log = drafts.getByTestId("log-draft-highlight");
-      await log.getByLabel("Kind").selectOption("Accomplishment");
-      await log.getByLabel("Note").fill(draftNote);
-      await log.getByRole("button", { name: "Log Draft Highlight" }).click();
+      // + Log a highlight opens the Highlight editor, and Save logs it
+      // without leaving the page.
+      await drafts.getByRole("button", { name: "+ Log a highlight" }).click();
+      const editor = drafts.getByTestId("highlight-editor");
+      await editor.getByLabel("Kind").selectOption("Accomplishment");
+      await editor.getByLabel("Note").fill(draftNote);
+      await editor.getByRole("button", { name: "Save" }).click();
+      await expect(editor).toHaveCount(0);
+      await expect(page).toHaveURL(new RegExp(`/goals/${metric.id}$`));
       await expect(page.getByTestId("draft-highlight")).toContainText(draftNote);
     });
 

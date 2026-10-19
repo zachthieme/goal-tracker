@@ -394,7 +394,7 @@ func TestDraftHighlightEditorPostsGetTheBlockBack(t *testing.T) {
 	if got := elementTexts(body, "li", "draft-highlight"); !slices.Equal(got, want) {
 		t.Errorf("after the log the block lists %q, want %q", got, want)
 	}
-	if strings.Contains(body, "data-open-form") {
+	if strings.Contains(body, `data-open-form="`) {
 		t.Errorf("after the log the block shows a form open")
 	}
 
@@ -419,7 +419,7 @@ func TestDraftHighlightEditorPostsGetTheBlockBack(t *testing.T) {
 	if got := strings.Count(body, "A Draft Highlight needs a note."); got != 1 {
 		t.Errorf("the refused edit's reason shows %d times, want once", got)
 	}
-	if strings.Contains(body, "data-open-form") {
+	if strings.Contains(body, `data-open-form="`) {
 		t.Errorf("a refused edit opens the log form")
 	}
 
@@ -433,8 +433,8 @@ func TestDraftHighlightEditorPostsGetTheBlockBack(t *testing.T) {
 }
 
 // The Goal page's Draft Highlights block carries the Highlight editor for
-// script to upgrade it with: the block is the htmx target, marked for the
-// editor with the Kind optional; "+ Log a highlight" is a button posting
+// script to upgrade it with: the block is the htmx target, holding the
+// editor's container with the Kind optional; "+ Log a highlight" is a button posting
 // nothing that saves to the log route, beside the link that opens the form
 // without script; each Draft Highlight carries its edit route and values, and
 // its Delete posts with htmx too; and the editor's and an item's templates.
@@ -452,10 +452,14 @@ func TestGoalPageDraftHighlightsCarryTheHighlightEditor(t *testing.T) {
 	if attr(section, "id") != "draft-highlights" {
 		t.Errorf("the block's id is %q, want draft-highlights: %s", attr(section, "id"), section)
 	}
+	editor := tagAround(t, page, `data-testid="draft-highlight-editor"`)
 	for _, mark := range []string{" data-highlight-editor", " data-kind-optional"} {
-		if !strings.Contains(section, mark) {
-			t.Errorf("the block lacks %s: %s", mark, section)
+		if !strings.Contains(editor, mark) {
+			t.Errorf("the block's editor lacks %s: %s", mark, editor)
 		}
+	}
+	if got := attr(editor, "data-hl-target"); got != "#draft-highlights" {
+		t.Errorf("the editor's Saves swap %q, want the block", got)
 	}
 
 	add := tagAround(t, page, `data-testid="draft-highlight-add"`)
