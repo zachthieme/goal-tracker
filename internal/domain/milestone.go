@@ -48,18 +48,19 @@ const (
 
 // MilestoneMarkOf is the one mark a Milestone shows, the first that applies:
 // Done or Removed by its Status; Red while Planned and past its date as of asOf,
-// compared as calendar dates in UTC; Yellow while Planned and slipped, having
-// prior dates; New while Planned and isNew, added within the window being
-// read. Risk outranks newness, so a new Milestone that slipped is Yellow. It
-// needs only what a frozen Report snapshot holds, so every surface marks a
-// Milestone the same way.
+// compared with the calendar date asOf falls on in its own location, so a
+// caller passes a time in the Goal's timezone to judge by its calendar; Yellow
+// while Planned and slipped, having prior dates; New while Planned and isNew,
+// added within the window being read. Risk outranks newness, so a new
+// Milestone that slipped is Yellow. It needs only what a frozen Report
+// snapshot holds, so every surface marks a Milestone the same way.
 func MilestoneMarkOf(m Milestone, priorDates []time.Time, isNew bool, asOf time.Time) string {
 	switch {
 	case m.Status == MilestoneDone:
 		return MilestoneMarkDone
 	case m.Status == MilestoneRemoved:
 		return MilestoneMarkRemoved
-	case m.TargetDate.Format(dateFormat) < asOf.UTC().Format(dateFormat):
+	case m.TargetDate.Format(dateFormat) < asOf.Format(dateFormat):
 		return MilestoneMarkRed
 	case len(priorDates) > 0:
 		return MilestoneMarkYellow
