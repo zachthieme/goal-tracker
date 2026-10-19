@@ -15,3 +15,9 @@ linters:
   settings:
     paralleltest:
       ignore-missing-subtests: true
+# Fail on hand-written Go code that isn't gofmt-formatted (simplify is on by
+# default). golangci-lint skips generated files here; make generate-check
+# guards those by regenerating them and diffing against what is committed.
+formatters:
+  enable:
+    - gofmt
