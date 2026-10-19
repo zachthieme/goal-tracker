@@ -124,6 +124,12 @@ form's Highlight editor with script on: the + Insight, + Accomplishment and
 + Miss buttons, the Note editor's Save, Edit, Cancel and Remove, an editor
 left open at submit, and Draft Highlights shown as items or, with no Kind, as
 an open editor.
+[`checkin-add-bar.spec.ts`](checkin-add-bar.spec.ts) checks the Check-in
+page's "Add to this check-in" bar: the sections it shows and the heading it
+focuses, its buttons marked used, sections the page opens on load and after a
+refused submit, its Highlight buttons opening the Highlights section's
+editor, Enter still submitting, its row scrolling sideways at 390px, and the
+folded sections without script.
 [`goal-measures-editor.spec.ts`](goal-measures-editor.spec.ts) checks the New
 goal form's Milestone and Metric editor with script on: + Milestone and
 + Metric, each editor's Save and the fields it waits for, the items with Edit,
