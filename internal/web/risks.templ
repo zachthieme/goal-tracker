@@ -9,9 +9,10 @@ import (
 )
 
 // risksPage answers "which Goals are in trouble, and how badly?": how many
-// Goals need attention, a card per group of signals by who acts, then one
-// table row per flagged Goal, worst first, narrowed to one group when the
-// address asks for it, and at the bottom what each signal means. The header's
+// Goals need attention, a card per group of signals, Not Green and then by
+// who acts, then one table row per flagged Goal, worst first, narrowed to one
+// group when the address asks for it, and at the bottom what each signal
+// means. The header's
 // form scopes it all to some Goals; #risks-body is what a change of scope
 // swaps. With no Goal left to show, #risks-body says so in one line in place
 // of the count, the cards and the table; for an Admin, the cards follow it
@@ -198,9 +199,11 @@ templ riskRow(current *domain.Account, today time.Time, here string, r riskGoalR
 	</tr>
 }
 
-// riskChip says why a signal flags g.
+// riskChip says why a signal flags g. Red and Yellow, Not Green's signals,
+// take no chip: the row's Health badge says so already.
 templ riskChip(today time.Time, g domain.Goal, sig riskSignal) {
 	switch sig.Kind {
+		case "red", "yellow":
 		case "stale":
 			<span data-testid="risk-signal" data-kind="stale" class="badge st">{ "Stale · " + plural(sig.Days, "day") + ", checks in " + cadenceInWords(g.CadenceDays) }</span>
 		case "path-overdue":
@@ -237,7 +240,7 @@ templ risksStyles() {
 		.rk-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 		.rk-head p{margin:0}
 		.rk-filters{display:flex;align-items:center;gap:8px}
-		.rk-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+		.rk-cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}
 		.rk-card{padding:16px;display:flex;flex-direction:column;gap:8px}
 		.rk-card .num{font-size:24px}
 		.rk-chips{display:flex;flex-wrap:wrap;gap:8px}

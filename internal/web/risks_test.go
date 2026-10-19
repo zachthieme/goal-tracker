@@ -489,6 +489,8 @@ func TestRisksPageDefinesEachRisk(t *testing.T) {
 		t.Errorf("the definitions aren't titled What each risk means:\n%s", defs)
 	}
 	for name, means := range map[string]string{
+		"Red":                         "Active Goals whose latest Check-in is Red.",
+		"Yellow":                      "Active Goals whose latest Check-in is Yellow.",
 		"Stale":                       "Active Goals whose last Check-in, or activation if they have none, is older than their cadence.",
 		"Path to Green overdue":       "Active Goals past their Path to Green's target date that still aren't Green.",
 		"Action Item overdue":         "An Action Item about this Goal, raised in a Report, is past its due date.",
@@ -510,7 +512,7 @@ func TestRisksPageDefinesEachRisk(t *testing.T) {
 }
 
 // The Risks page heads with how many Goals need attention, each once, then a
-// card per group of signals, by who acts: each counts the Goals it holds once,
+// card per group of signals, Not Green first, then by who acts: each counts the Goals it holds once,
 // chips each of its signals with how many Goals it flags, and links to the
 // page filtered to the group.
 func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
@@ -533,11 +535,13 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 	}
 	late := h.ActiveGoalDue(sam, "Late piece", june.AddDate(0, 1, 0)) // Schedule conflict
 	h.RequestLink(sam, late, launch, "")
+	stalled := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Stalled recovery", "It matters.")) // Red
+	h.Checkin(sam, stalled.ID, domain.HealthRed, "Blocked.", "Escalate.", june)
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks?org=all")
 
-	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>3</strong> Goals need attention.") {
-		t.Errorf("header does not count the 3 flagged Goals: %s", head)
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>4</strong> Goals need attention.") {
+		t.Errorf("header does not count the 4 flagged Goals: %s", head)
 	}
 	last := -1
 	for _, g := range []struct {
@@ -545,6 +549,7 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 		count           int
 		chips           []string
 	}{
+		{"health", "Not Green", "/risks?group=health&amp;org=all", 1, []string{"Red · 1"}},
 		{"owner", "Owner needs to update", "/risks?group=owner&amp;org=all", 1, []string{"Stale · 1"}},
 		{"followup", "Action Items overdue", "/risks?group=followup&amp;org=all", 1, []string{"Action Item overdue · 1"}},
 		{"plan", "Plan doesn't fit", "/risks?group=plan&amp;org=all", 3, []string{"Unaligned · 2", "Schedule conflicts · 1"}},
@@ -570,6 +575,7 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 		last = at
 	}
 	for _, c := range []struct{ group, kind, class string }{
+		{"health", "red", `class="badge r"`},
 		{"owner", "stale", `class="badge st"`},
 		{"followup", "action-item-overdue", `class="badge st"`},
 		{"plan", "unaligned", `class="rk-tag"`},
@@ -2199,9 +2205,9 @@ func TestRisksPageGroupsOverdueActionItems(t *testing.T) {
 	}
 }
 
-// The Risks page's four group cards sit four across at the page's full width,
-// two by two where the page is narrower, and stack below 900px.
-func TestRisksGroupCardsFitFourAcross(t *testing.T) {
+// The Risks page's five group cards sit five across at the page's full width,
+// two across where the page is narrower, and stack below 900px.
+func TestRisksGroupCardsFitFiveAcross(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -2212,12 +2218,12 @@ func TestRisksGroupCardsFitFourAcross(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
-	if n := strings.Count(page, `data-testid="risks-group-`); n != 4 {
-		t.Errorf("the page has %d group cards, want 4", n)
+	if n := strings.Count(page, `data-testid="risks-group-`); n != 5 {
+		t.Errorf("the page has %d group cards, want 5", n)
 	}
 	css := between(t, page, "<style>", "</style>")
 	for query, want := range map[string]string{
-		"":                          "grid-template-columns:repeat(4,minmax(0,1fr))",
+		"":                          "grid-template-columns:repeat(5,minmax(0,1fr))",
 		"@media (max-width:1151px)": "grid-template-columns:repeat(2,minmax(0,1fr))",
 		"@media (max-width:900px)":  "grid-template-columns:minmax(0,1fr)",
 	} {
@@ -2337,5 +2343,104 @@ func TestRisksPageIgnoresActionItemsNotOverdueAboutAnActiveGoal(t *testing.T) {
 	}
 	if nav := pageElement(t, page, "a", "nav-risks"); strings.Contains(nav, "count") {
 		t.Errorf("the nav counts a Risk: %s", nav)
+	}
+}
+
+// Not Green is the Risks page's first card: it holds every Active Goal whose
+// latest Check-in is Red or Yellow, chipped like their Health badges, and the
+// top bar counts them. A Red or Yellow row takes no chip of its own, as its
+// Health badge says so already, and its Fix opens the Goal. A Green Goal with
+// nothing else wrong isn't listed.
+func TestRisksPageListsRedAndYellowGoalsUnderNotGreen(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	later := h.Clock.Now().AddDate(0, 1, 0)
+	red := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Stalled recovery", "It matters."))
+	h.Checkin(sam, red.ID, domain.HealthRed, "Blocked.", "Escalate.", later)
+	yellow := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Slipping launch", "It matters."))
+	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Slipping.", "Add a team.", later)
+	green := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Steady work", "It matters."))
+	h.Checkin(sam, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?org=all")
+
+	if first := strings.Index(page, `data-testid="risks-group-`); first < 0 || !strings.HasPrefix(page[first:], `data-testid="risks-group-health"`) {
+		t.Errorf("the Not Green card isn't the first card:\n%s", page)
+	}
+	card := pageElement(t, page, "a", "risks-group-health")
+	if !strings.Contains(card, "Not Green") || !strings.Contains(card, `<span class="num">2</span>`) {
+		t.Errorf("the Not Green card doesn't count 2 Goals: %s", card)
+	}
+	for kind, want := range map[string]struct{ class, text string }{
+		"red":    {`class="badge r"`, ">Red · 1"},
+		"yellow": {`class="badge y"`, ">Yellow · 1"},
+	} {
+		if chip := riskChip(t, card, kind); !strings.Contains(openTag(chip), want.class) || !strings.HasSuffix(chip, want.text) {
+			t.Errorf("the Not Green card's %s chip isn't %s saying %s: %s", kind, want.class, want.text, chip)
+		}
+	}
+	for _, g := range []domain.Goal{red, yellow} {
+		row := riskRowOf(t, page, g)
+		if strings.Contains(row, `data-testid="risk-signal"`) {
+			t.Errorf("%q's row chips its Health:\n%s", g.Title, row)
+		}
+		if label, href, _ := riskFix(t, row); label != "Open Goal" || href != "/goals/"+strconv.FormatInt(g.ID, 10) {
+			t.Errorf("%q's Fix = %q %q, want Open Goal", g.Title, label, href)
+		}
+	}
+	if hasRiskRow(page, green) {
+		t.Errorf("%q, Green with nothing wrong, is listed:\n%s", green.Title, riskRowOf(t, page, green))
+	}
+
+	filtered := getBody(t, client, ts.URL+"/risks?group=health&org=all")
+	if rows := riskRows(filtered); len(rows) != 2 || !hasRiskRow(filtered, red) || !hasRiskRow(filtered, yellow) {
+		t.Errorf("Not Green lists %d rows, want only %q and %q:\n%s", len(rows), red.Title, yellow.Title, filtered)
+	}
+
+	if nav := pageElement(t, getBody(t, client, ts.URL+"/home"), "a", "nav-risks"); !strings.Contains(nav, `<span class="count">2</span>`) {
+		t.Errorf("the nav's Risks count doesn't count the Red and Yellow Goals: %s", nav)
+	}
+}
+
+// A Proposed Goal whose plan doesn't fit is listed, but after every Active
+// Goal: nothing has gone wrong with it yet. Lacking a Health doesn't rank it
+// above a Green Goal that has gone Stale.
+func TestRisksPageListsGoalsThatArentActiveLast(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	stale := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Zero-downtime deploys", "It matters."))
+	h.Checkin(sam, stale.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Clock.Advance(10 * day)
+	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
+	proposed := h.CreateGoal(sam, "Article backlog", "It matters.")
+	if _, err := h.Service.MarkGoalDated(t.Context(), proposed.ID, june.AddDate(0, 1, 0)); err != nil {
+		t.Fatalf("MarkGoalDated: %v", err)
+	}
+	h.RequestLink(sam, proposed, launch, "")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks?org=all")
+
+	riskChip(t, riskRowOf(t, page, stale), "stale")
+	riskChip(t, riskRowOf(t, page, proposed), "schedule-conflicts")
+	var order []string
+	for _, row := range riskRows(page) {
+		for _, g := range []domain.Goal{stale, proposed} {
+			if isRiskRowOf(row, g) {
+				order = append(order, g.Title)
+			}
+		}
+	}
+	if want := []string{stale.Title, proposed.Title}; !slices.Equal(order, want) {
+		t.Errorf("rows in order %q, want %q", order, want)
 	}
 }

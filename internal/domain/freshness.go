@@ -61,21 +61,28 @@ func (s *Service) Freshness(ctx context.Context, goalID int64) (Freshness, error
 	return s.judgeFreshness(g, last), nil
 }
 
-// GoalFreshness is a Goal with its freshness signals.
+// GoalFreshness is a Goal with its freshness signals and the Health of its
+// latest Check-in ("" when it has none, or that Check-in set none).
 type GoalFreshness struct {
 	Goal      Goal
 	Freshness Freshness
+	Health    string
 }
 
 // FreshnessSignals are the org-wide freshness signals: every Stale Goal,
 // longest since its last update first, and every Goal whose Path to Green is
-// overdue, longest overdue first. Both surface as prominently as Red.
+// overdue, longest overdue first. Both surface as prominently as Red. NotGreen
+// is every Active Goal whose latest Check-in is Red or Yellow, in the order
+// the Active Goals are read.
 type FreshnessSignals struct {
 	Stale        []GoalFreshness
 	OverduePaths []GoalFreshness
+	NotGreen     []GoalFreshness
 }
 
-// FreshnessSignals reads the freshness signals of every Active Goal.
+// FreshnessSignals reads the freshness signals of every Active Goal: its
+// Stale and overdue-Path-to-Green Goals, and its Not Green ones, whose latest
+// Check-in is Red or Yellow.
 func (s *Service) FreshnessSignals(ctx context.Context) (FreshnessSignals, error) {
 	rows, err := s.queries.ListActiveGoalsWithLatestCheckin(ctx)
 	if err != nil {
@@ -84,12 +91,15 @@ func (s *Service) FreshnessSignals(ctx context.Context) (FreshnessSignals, error
 	var out FreshnessSignals
 	for _, r := range rows {
 		g := goalFromRow(r.Goal, r.Account)
-		gf := GoalFreshness{Goal: g, Freshness: s.judgeFreshness(g, lastCheckinFromRow(r))}
+		gf := GoalFreshness{Goal: g, Freshness: s.judgeFreshness(g, lastCheckinFromRow(r)), Health: r.CheckinHealth}
 		if gf.Freshness.Stale {
 			out.Stale = append(out.Stale, gf)
 		}
 		if gf.Freshness.PathToGreenOverdue {
 			out.OverduePaths = append(out.OverduePaths, gf)
+		}
+		if gf.Health == HealthRed || gf.Health == HealthYellow {
+			out.NotGreen = append(out.NotGreen, gf)
 		}
 	}
 	slices.SortStableFunc(out.Stale, func(a, b GoalFreshness) int {

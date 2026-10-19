@@ -1,8 +1,8 @@
 // Scenario 1, Finding trouble between reviews (docs/scenarios.md): a leader
 // learns what's in trouble, and why, from Goals and Risks without anyone
 // telling her, and every problem sits beside the one action that moves it.
-// Goals is where Health shows; Risks is where the reasons show. Red Health
-// isn't a Risks signal, by design.
+// Goals is where Health shows; Risks is where the reasons show, a Red or
+// Yellow Goal under Not Green beside its other reasons and its Fix.
 //
 // The leader ("Elena" in the scenario) is cto@example.com, whom the seed names
 // Priya Raman. The setup makes what the seed lacks: Ownerless Goals, an overdue
@@ -132,7 +132,8 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   // Two Red Goals to open: one with Active child Goals contributing to it
   // (Rolled-up Health), one whose delivery date has slipped. Seed 23 has no
   // Red Goal with both. The first is otherwise fine: not Stale, contributing to
-  // a Goal, with an Owner who stays, so no Risks signal flags it.
+  // a Goal, with an Owner who stays, so only its Health, under Not Green, puts
+  // it on Risks.
   const [redWithChildren] = seedLookup<Goal>(
     `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
      where g.lifecycle = 'Active' and ${latestHealth} = 'Red' and not (${isStale}) and a.email <> ?
@@ -150,6 +151,11 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
      order by g.id limit 1`,
   );
   expect(redSlipped, "the seed has a Red Goal with a Date Slip").toBeDefined();
+
+  // Each Goal's Lifecycle, which Risks' order reads: Active Goals first.
+  const lifecycles = new Map(
+    seedLookup<{ id: number; lifecycle: string }>("select id, lifecycle from goals").map((g) => [g.id, g.lifecycle]),
+  );
 
   const adminPage = await as(admin);
 
@@ -287,10 +293,11 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     }
   });
 
-  await test.step("3. Risks says how many Goals need attention, in four groups by who has to act", async () => {
+  await test.step("3. Risks says how many Goals need attention, in five groups by who has to act", async () => {
     await page.goto("/risks?org=all");
     await expect(page.getByTestId("risks-attention")).toContainText("Goals need attention");
     const cards = [
+      { key: "health", name: "Not Green", kinds: ["red", "yellow"] },
       { key: "owner", name: "Owner needs to update", kinds: ["stale", "path-overdue"] },
       { key: "followup", name: "Action Items overdue", kinds: ["action-item-overdue"] },
       { key: "plan", name: "Plan doesn't fit", kinds: ["unaligned", "schedule-conflicts"] },
@@ -308,8 +315,10 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     }
 
     // Following a card narrows the one flat table to that group: each row
-    // carries a chip of the group's signals, and the card counts the rows.
+    // carries a chip of the group's signals, and the card counts the rows. Not
+    // Green's rows take no chip: their Health badge says Red or Yellow.
     const expected: Record<string, { goal: Goal; kind: string }[]> = {
+      health: [{ goal: redWithChildren, kind: "red" }],
       owner: [
         { goal: stale, kind: "stale" },
         { goal: overdue, kind: "path-overdue" },
@@ -330,17 +339,29 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
       await expect(page).toHaveURL(new RegExp(`/risks\\?group=${c.key}&org=all$`));
       const rows = await riskRows(page);
       expect(rows, `the ${c.name} card counts its rows`).toHaveLength(count);
+      const health = c.key === "health";
       for (const r of rows) {
-        expect(r.kinds.length, `${r.title} has a chip`).toBeGreaterThan(0);
+        if (health) {
+          expect(["Red", "Yellow"], `${r.title}'s Health is Red or Yellow`).toContain(r.health);
+        } else {
+          expect(r.kinds.length, `${r.title} has a chip`).toBeGreaterThan(0);
+        }
         expect(c.kinds, `${r.title}'s chips are ${c.name}'s`).toEqual(expect.arrayContaining(r.kinds));
       }
       for (const { goal, kind } of expected[c.key]) {
         const row = rows.find((r) => r.id === goal.id);
-        expect(row?.kinds, `${goal.title} is under ${c.name} with a ${kind} chip`).toContain(kind);
+        if (health) {
+          expect(row, `${goal.title} is under ${c.name}`).toBeDefined();
+        } else {
+          expect(row?.kinds, `${goal.title} is under ${c.name} with a ${kind} chip`).toContain(kind);
+        }
       }
-      // The Stale chip on the card counts the Stale rows.
+      // The Stale chip on the card counts the Stale rows; Not Green's Red and
+      // Yellow chips count the rows of that Health.
       for (const kind of c.kinds) {
-        const n = rows.filter((r) => r.kinds.includes(kind)).length;
+        const n = health
+          ? rows.filter((r) => r.health === (kind === "red" ? "Red" : "Yellow")).length
+          : rows.filter((r) => r.kinds.includes(kind)).length;
         await expect(card.locator(`[data-kind="${kind}"]`)).toHaveText(new RegExp(` · ${n}$`));
       }
     }
@@ -364,14 +385,19 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     expect(new Set(rows.map((r) => r.id)).size, "one row per Goal").toBe(rows.length);
     for (const r of rows) {
       expect(["Red", "Yellow", "Green", "—"], `${r.title}'s Health`).toContain(r.health);
-      expect(r.kinds.length, `${r.title} has a chip per reason`).toBeGreaterThan(0);
+      // A Red or Yellow row's Health is its reason; any other has a chip.
+      expect(
+        r.kinds.length > 0 || ["Red", "Yellow"].includes(r.health),
+        `${r.title} has a chip per reason, or is Red or Yellow`,
+      ).toBe(true);
       expect(r.fixCells, `${r.title} has one Fix`).toBe(1);
       expect(r.fixes, `${r.title}'s Fix is one action: ${r.fix}`).toBe(1);
     }
-    // Worst first (sortRiskRows): Ownerless, then by Health (Red, Yellow,
-    // none, Green), then Path to Green overdue, then an overdue Action Item,
-    // then Stale.
+    // Worst first (sortRiskRows): Active Goals before Proposed and On Hold
+    // ones, then Ownerless, then by Health (Red, Yellow, none, Green), then
+    // Path to Green overdue, then an overdue Action Item, then Stale.
     const keys = rows.map((r) => [
+      lifecycles.get(r.id) === "Active" ? 0 : 1,
       r.kinds.includes("ownerless") ? 0 : 1,
       riskHealthRank(r.health),
       r.kinds.includes("path-overdue") ? 0 : 1,
@@ -485,16 +511,21 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   });
 
   await test.step("It worked if: she could tell in trouble from silent from badly placed", async () => {
-    // In trouble: Red or Yellow Health, on Goals. Health isn't a Risks
-    // signal: a Red Goal nothing else is wrong with isn't on Risks.
+    // In trouble: Red or Yellow Health, on Goals, and under Not Green on
+    // Risks, a Red Goal nothing else is wrong with included.
     await page.goto("/goals?org=all");
     await expect(goalRow(page, redWithChildren.title).getByTestId("goal-row-health")).toHaveText("Red");
     await expect(goalRow(page, overdue.title).getByTestId("goal-row-health")).toHaveText("Yellow");
     await page.goto("/risks?org=all");
     expect(
       (await riskRows(page)).map((r) => r.id),
-      `${redWithChildren.title} isn't on Risks`,
-    ).not.toContain(redWithChildren.id);
+      `${redWithChildren.title} is on Risks`,
+    ).toContain(redWithChildren.id);
+    await page.goto("/risks?group=health&org=all");
+    expect(
+      (await riskRows(page)).map((r) => r.id),
+      `${redWithChildren.title} is under Not Green`,
+    ).toContain(redWithChildren.id);
 
     // Silent: Stale, under Owner needs to update, not Plan doesn't fit.
     // Badly placed: Unaligned or a Schedule conflict, under Plan doesn't fit,
@@ -508,6 +539,8 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     expect(plan, "Unaligned is under Plan doesn't fit").toContain(unaligned.id);
     expect(owner, "Unaligned isn't under Owner needs to update").not.toContain(unaligned.id);
     expect(plan, "a Schedule conflict is under Plan doesn't fit").toContain(twoReasons.id);
+    expect(owner, "a Red Goal that's up to date isn't under Owner needs to update").not.toContain(redWithChildren.id);
+    expect(plan, "a Red Goal that's well placed isn't under Plan doesn't fit").not.toContain(redWithChildren.id);
   });
 
   await test.step("It worked if: every row on Risks answered what to do about it, with exactly one Fix", async () => {
