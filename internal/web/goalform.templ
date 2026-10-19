@@ -8,27 +8,18 @@ import (
 )
 
 // goalFormPage is the New goal page: a plain form that creates a Goal, Proposed
-// or activated at once, and lands on it, so it works without script. Beside it
-// the Ready to activate card holds the submit buttons; script posts the form
-// to /goals/new/checklist on load and as it changes, filled in or not, and
-// swaps the card for the one that comes back. A refused submit comes back
-// with what was typed, a summary of every problem first, and each bad input
-// marked with why. Finishing a
-// Proposed Goal, it is the define page: the same form, filled in from the
-// Goal, posting to /goals/<id>/define.
+// or activated at once, and lands on it, so it works without script. Its
+// column holds the Title and So What, then Delivery, How you'll know and More
+// detail, each a section on the canvas rather than in a card; beside it the
+// Ready to activate card holds the submit buttons. Script posts the form to
+// /goals/new/checklist on load and as it changes, filled in or not, and swaps
+// the card for the one that comes back. A refused submit comes back with what
+// was typed, a summary of every problem first, and each bad input marked with
+// why. Finishing a Proposed Goal, it is the define page: the same form, filled
+// in from the Goal, posting to /goals/<id>/define.
 templ goalFormPage(current *domain.Account, v goalFormView) {
 	@layout(v.heading(), current) {
 		@goalFormStyles()
-		<header data-testid="goal-form-head" class="page-head">
-			<div>
-				<h1>{ v.heading() }</h1>
-				if v.Goal == nil {
-					<p class="muted">Say what the Goal is and why it matters.</p>
-				} else {
-					<p class="muted">{ v.Goal.Title } is Proposed: finish defining it, then activate it.</p>
-				}
-			</div>
-		</header>
 		<form
 			data-testid="goal-form"
 			class="gf-form"
@@ -36,13 +27,12 @@ templ goalFormPage(current *domain.Account, v goalFormView) {
 			action={ templ.SafeURL(v.action()) }
 		>
 			@goalFormLiveChecklist(v)
-			<div class="card gf-main">
+			<div class="gf-main">
 				@goalFormErrors(v)
 				@goalFormWhat(v)
 				@goalFormDelivery(v)
 				@goalFormKnow(v)
-				@goalFormParents(v)
-				@goalFormFits(v)
+				@goalFormMore(v)
 			</div>
 			@goalFormReady(v)
 		</form>
@@ -76,32 +66,32 @@ const goalFormKnowID = "know"
 const goalFormReadyID = "goal-form-ready"
 
 // goalFormReady is the Ready to activate card, sticky beside the form: how
-// many of the activation checklist's items the form meets, as a bar and "n of
-// m", each item done or to do, and the submit buttons. Create and activate
-// posts activate=1 and is disabled while the live checklist is incomplete;
-// Save as Proposed needs a Title and So What, plus the delivery date when
-// Dated is chosen. Save as Proposed comes first in the markup, so Enter in a
-// text field saves as Proposed, while CSS order shows Create and activate
-// first.
+// many of the activation checklist's items the form meets, as "n of m done"
+// and a bar, each item's mark, ✓ or ○, with its done or to do for screen
+// readers alone, and the submit buttons. Create and activate posts activate=1
+// and is disabled while the live checklist is incomplete; Save as Proposed
+// needs a Title and So What, plus the delivery date when Dated is chosen. Save
+// as Proposed comes first in the markup, so Enter in a text field saves as
+// Proposed, while CSS order shows Create and activate first.
 templ goalFormReady(v goalFormView) {
 	{{ done, of := v.readyCount() }}
 	<aside data-testid="goal-form-ready" id={ goalFormReadyID } class="card gf-ready" aria-labelledby="goal-form-ready-head">
 		<h2 id="goal-form-ready-head" class="gf-ready-head">Ready to activate</h2>
+		<p data-testid="goal-form-ready-count" class="muted small">{ fmt.Sprintf("%d of %d done", done, of) }</p>
 		<progress class="gf-progress" value={ fmt.Sprint(done) } max={ fmt.Sprint(of) } aria-labelledby="goal-form-ready-head"></progress>
-		<p data-testid="goal-form-ready-count" class="muted small">{ fmt.Sprintf("%d of %d", done, of) }</p>
 		<ul data-testid="activation-checklist" class="gf-checklist">
 			for _, item := range v.activationFacts().checklist() {
 				if item.Done {
 					<li data-done="true" class="gf-check done">
-						<span aria-hidden="true">✓</span>
+						<span aria-hidden="true" class="gf-mark">✓</span>
 						@goalFormCheckLabel(item)
-						<span class="muted small">done</span>
+						<span class="sr-only">done</span>
 					</li>
 				} else {
 					<li data-done="false" class="gf-check">
-						<span aria-hidden="true">○</span>
+						<span aria-hidden="true" class="gf-mark">○</span>
 						@goalFormCheckLabel(item)
-						<span class="muted small">to do</span>
+						<span class="sr-only">to do</span>
 					</li>
 				}
 			}
@@ -125,19 +115,25 @@ templ goalFormCheckLabel(item activationItem) {
 	}
 }
 
-// goalFormWhat is the "What and why" section: the Goal's Title, focused, and
+// goalFormWhat opens the form with no heading of its own: the page's <h1> as a
+// muted line, then the Goal's Title, focused, as a heading-style input, and
 // its So What. Finishing a saved Goal, the Title is read-only and the So What
 // takes the focus.
 templ goalFormWhat(v goalFormView) {
-	<fieldset data-testid="goal-form-what" class="gf-section">
-		<legend>What and why</legend>
+	<section data-testid="goal-form-what" class="gf-section gf-what">
+		<div class="gf-page-line">
+			<h1>{ v.heading() }</h1>
+			<span>· Proposed until it's activated</span>
+		</div>
 		<label class="field">
-			<span>Title</span>
+			<span class="sr-only">Title</span>
 			<input
 				type="text"
+				class="gf-title"
 				id={ domain.InputTitle }
 				name={ domain.InputTitle }
 				value={ v.Title }
+				placeholder="Name the outcome"
 				required
 				if v.Goal == nil {
 					autofocus
@@ -152,7 +148,7 @@ templ goalFormWhat(v goalFormView) {
 			@goalFormInputError(v, domain.InputTitle)
 		</label>
 		<label class="field">
-			<span>So What <span class="hint gf-hint">The customer problem, and what changes when this succeeds.</span></span>
+			<span>So What <span class="hint">· the customer problem, and what changes when this succeeds</span></span>
 			<textarea
 				id={ domain.InputSoWhat }
 				name={ domain.InputSoWhat }
@@ -165,43 +161,48 @@ templ goalFormWhat(v goalFormView) {
 			>{ v.SoWhat }</textarea>
 			@goalFormInputError(v, domain.InputSoWhat)
 		</label>
-	</fieldset>
+	</section>
 }
 
-// goalFormDelivery is the "Delivery" section: the Kind, neither chosen at
-// first, the delivery date a Dated Goal needs, and the Check-in cadence,
-// Weekly at first. The delivery date shows once Dated is chosen and Custom's
-// days once Custom is, by CSS :has, so a browser without it shows both always.
+// goalFormDelivery is the "Delivery" section: the Kind, two tiles with neither
+// chosen at first, the Dated one holding the delivery date a Dated Goal needs,
+// and the Check-in cadence, one segmented control, Weekly at first. The
+// delivery date shows once Dated is chosen and Custom's days once Custom is,
+// by CSS :has, so a browser without it shows both always.
 templ goalFormDelivery(v goalFormView) {
-	<fieldset data-testid="goal-form-delivery" class="gf-section gf-delivery">
-		<legend>Delivery</legend>
+	<section data-testid="goal-form-delivery" class="gf-section gf-delivery">
+		<h2 class="gf-h2">Delivery</h2>
 		<fieldset id={ domain.InputKind } class="gf-group">
 			<legend>Kind</legend>
 			<div class="gf-segments">
-				@kindChoice(v, domain.GoalDated, datedHelp)
-				@kindChoice(v, domain.GoalOngoing, ongoingHelp)
+				<div class="gf-tile">
+					@kindChoice(v, domain.GoalDated, datedHelp)
+					<label class="field gf-date">
+						<span>Delivery date</span>
+						<input
+							type="date"
+							id={ domain.InputDeliveryDate }
+							name={ domain.InputDeliveryDate }
+							value={ v.DeliveryDate }
+							if v.bad(domain.InputDeliveryDate) != "" {
+								aria-invalid="true"
+								aria-describedby={ domain.InputDeliveryDate + "-error" }
+							}
+						/>
+						@goalFormInputError(v, domain.InputDeliveryDate)
+					</label>
+				</div>
+				<div class="gf-tile">
+					@kindChoice(v, domain.GoalOngoing, ongoingHelp)
+				</div>
 			</div>
 			@goalFormInputError(v, domain.InputKind)
 		</fieldset>
-		<label class="field gf-date">
-			<span>Delivery date</span>
-			<input
-				type="date"
-				id={ domain.InputDeliveryDate }
-				name={ domain.InputDeliveryDate }
-				value={ v.DeliveryDate }
-				if v.bad(domain.InputDeliveryDate) != "" {
-					aria-invalid="true"
-					aria-describedby={ domain.InputDeliveryDate + "-error" }
-				}
-			/>
-			@goalFormInputError(v, domain.InputDeliveryDate)
-		</label>
 		<fieldset class="gf-group gf-cadence">
 			<legend>Check-in cadence</legend>
-			<div class="gf-picks">
+			<div class="gf-segctl">
 				for _, c := range cadenceChips {
-					<label class="gf-pick">
+					<label class="gf-seg">
 						<input type="radio" id={ "cadence-" + c.Value } name={ domain.InputCadence } value={ c.Value } checked?={ v.cadenceChosen() == c.Value }/>
 						<span>{ c.Label }</span>
 					</label>
@@ -225,14 +226,14 @@ templ goalFormDelivery(v goalFormView) {
 				@goalFormInputError(v, domain.InputCadence)
 			</label>
 		</fieldset>
-	</fieldset>
+	</section>
 }
 
-// kindChoice is one segment of the Kind group: the Kind and what it means.
-// With :has, the native radio hides behind a dot the card draws, empty or
-// filled, and the chosen card takes a 2px primary edge and a fill.
+// kindChoice is a Kind tile's choice: the Kind and what it means. With :has,
+// the native radio hides behind a dot the choice draws, empty or filled, and
+// the tile around it takes a 2px primary edge and a fill once it's chosen.
 templ kindChoice(v goalFormView, kind, means string) {
-	<label class="gf-pick gf-segment">
+	<label class="gf-segment">
 		<input
 			type="radio"
 			id={ "kind-" + strings.ToLower(kind) }
@@ -253,11 +254,16 @@ templ kindChoice(v goalFormView, kind, means string) {
 // row of each; script adds a row from its <template> and removes one with ×,
 // and shows a Metric's Direction only while its target equals its baseline.
 templ goalFormKnow(v goalFormView) {
-	<fieldset data-testid="goal-form-know" id={ goalFormKnowID } class="gf-know">
-		<legend>How you'll know</legend>
-		<p class="muted small">Milestones and Metrics are optional; a row left blank is ignored.</p>
+	<section data-testid="goal-form-know" id={ goalFormKnowID } class="gf-know">
+		<div class="gf-head-line">
+			<h2 class="gf-h2">How you'll know</h2>
+			<p class="muted small">
+				<span class="gf-rule-any">At least one Milestone or Metric to activate</span>
+				<span class="gf-rule-ongoing">At least one Metric to activate</span>
+			</p>
+		</div>
 		@goalFormExisting(v)
-		<h2 class="gf-know-head">Milestones</h2>
+		<h3 class="gf-know-head">Milestones</h3>
 		<div data-testid="milestone-rows" class="gf-rows" data-rows="milestones">
 			for i, m := range v.milestoneRows() {
 				@milestoneRowFields(v, rowNames(domain.MilestoneInput, i), m)
@@ -267,7 +273,7 @@ templ goalFormKnow(v goalFormView) {
 			@milestoneRowFields(goalFormView{}, templateRowNames("milestones"), milestoneRow{})
 		</template>
 		<button type="button" class="btn quiet sm gf-js-only" data-add-row="milestones">+ Milestone</button>
-		<h2 class="gf-know-head">Metrics</h2>
+		<h3 class="gf-know-head">Metrics</h3>
 		<div data-testid="metric-rows" class="gf-rows" data-rows="metrics">
 			for i, m := range v.metricRows() {
 				@metricRowFields(v, rowNames(domain.MetricInput, i), m)
@@ -277,7 +283,7 @@ templ goalFormKnow(v goalFormView) {
 			@metricRowFields(goalFormView{}, templateRowNames("metrics"), metricRow{})
 		</template>
 		<button type="button" class="btn quiet sm gf-js-only" data-add-row="metrics">+ Metric</button>
-	</fieldset>
+	</section>
 	@goalFormRowsScript()
 }
 
@@ -422,6 +428,29 @@ templ goalFormRowsScript() {
 	</script>
 }
 
+// goalFormMore is the "More detail" section: Contributes to and Where it fits,
+// optional, each a one-line row that opens in place. A closed row's inputs
+// still post, so it works without script.
+templ goalFormMore(v goalFormView) {
+	<section data-testid="goal-form-more" class="gf-section gf-more">
+		<h2 class="gf-h2-sm">More detail <span class="muted">optional, and editable later</span></h2>
+		<details data-testid="goal-form-parents-row" class="gf-more-row">
+			<summary>
+				<span class="gf-more-name">Contributes to</span>
+			</summary>
+			@goalFormParents(v)
+		</details>
+		if len(v.Dimensions) > 0 || len(v.Fields) > 0 {
+			<details data-testid="goal-form-fits-row" class="gf-more-row">
+				<summary>
+					<span class="gf-more-name">Where it fits</span>
+				</summary>
+				@goalFormFits(v)
+			</details>
+		}
+	</section>
+}
+
 // goalFormParents is the Contributes to field: the Goals this one is to
 // contribute to, none or several. Each picked parent is a chip holding its
 // parent_id. Script searches the Goals by title as it is typed, picking a
@@ -430,7 +459,7 @@ templ goalFormRowsScript() {
 // accept.
 templ goalFormParents(v goalFormView) {
 	<fieldset data-testid="goal-form-parents" class="gf-parents">
-		<legend>Contributes to</legend>
+		<legend class="sr-only">Contributes to</legend>
 		<p class="muted small">Optional: the Goals this one contributes to. Yours link at once.</p>
 		if len(v.Linked) > 0 {
 			<ul data-testid="linked-parents" class="gf-list">
@@ -589,30 +618,29 @@ templ goalFormParentsScript() {
 	</script>
 }
 
-// goalFormFits is the "Where it fits" section: each Dimension still offered,
+// goalFormFits is the Where it fits field: each Dimension still offered,
 // a select when a Goal takes one of its values and checkboxes when it takes
 // several, with an input to add a value when it's Extendable, then an input of
 // each Field's type. Nothing here is needed to save, though its note names
 // what activation needs, as the checklist does. Arriving with parents, the
 // values they suggest come ticked; only what is still ticked is assigned.
+// More detail shows it only when there are Dimensions or Fields.
 templ goalFormFits(v goalFormView) {
-	if len(v.Dimensions) > 0 || len(v.Fields) > 0 {
-		<fieldset data-testid="goal-form-fits" class="gf-section">
-			<legend>Where it fits</legend>
-			<p data-testid="goal-form-fits-note" class="muted small">
-				{ v.fitsRequiredNote() }
-				if v.Suggested {
-					Values from the Goals it contributes to come ticked; untick any that don't fit.
-				}
-			</p>
-			for _, d := range v.Dimensions {
-				@goalFormDimension(v, d)
+	<fieldset data-testid="goal-form-fits" class="gf-section">
+		<legend class="sr-only">Where it fits</legend>
+		<p data-testid="goal-form-fits-note" class="muted small">
+			{ v.fitsRequiredNote() }
+			if v.Suggested {
+				Values from the Goals it contributes to come ticked; untick any that don't fit.
 			}
-			for _, f := range v.Fields {
-				@goalFormField(v, f)
-			}
-		</fieldset>
-	}
+		</p>
+		for _, d := range v.Dimensions {
+			@goalFormDimension(v, d)
+		}
+		for _, f := range v.Fields {
+			@goalFormField(v, f)
+		}
+	</fieldset>
 }
 
 // fitsRequiredNote opens Where it fits' note: optional, when no Dimension or
@@ -763,25 +791,25 @@ templ goalFormInputError(v goalFormView, input string) {
 // goalFormStyles are the New goal page's own rules on top of app.css.
 templ goalFormStyles() {
 	<style>
-		.gf-form{display:grid;grid-template-columns:minmax(0,640px) 280px;gap:24px;align-items:start}
-		.gf-main{display:flex;flex-direction:column;gap:16px;min-width:0}
+		.gf-form{display:grid;grid-template-columns:minmax(0,640px) 300px;gap:48px;align-items:start}
+		.gf-main{display:flex;flex-direction:column;gap:48px;min-width:0}
 		.gf-ready{position:sticky;top:24px;display:flex;flex-direction:column;gap:12px}
 		.gf-ready p{margin:0}
-		.gf-ready-head{font-size:16px;margin:0}
+		.gf-ready-head{font-size:18px;margin:0}
 		.gf-progress{appearance:none;display:block;width:100%;height:8px;border:0;border-radius:999px;background:var(--color-surface-alt);overflow:hidden}
 		.gf-progress::-webkit-progress-bar{background:var(--color-surface-alt)}
 		.gf-progress::-webkit-progress-value{background:var(--color-ink-muted)}
 		.gf-progress::-moz-progress-bar{background:var(--color-ink-muted)}
-		.gf-checklist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
-		.gf-check{display:flex;gap:8px;align-items:baseline}
-		.gf-check>span:first-child{flex:none;width:16px;font-weight:600;color:var(--color-ink-muted)}
-		.gf-check.done>span:first-child{color:var(--health-g-ink)}
-		.gf-check .muted{margin-left:auto}
-		.gf-cancel{align-self:flex-start}
+		.gf-checklist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+		.gf-check{position:relative;display:flex;gap:12px;align-items:flex-start}
+		.gf-mark{flex:none;box-sizing:border-box;width:18px;height:18px;margin-top:3px;border:2px solid var(--color-border-strong);border-radius:50%;color:transparent;font-size:11px;font-weight:700;line-height:14px;text-align:center}
+		.gf-check.done .gf-mark{border-color:var(--health-g-ink);background:var(--health-g-ink);color:var(--color-surface)}
+		.gf-cancel{align-self:center}
 		@media (max-width:960px){
 			.gf-form{grid-template-columns:minmax(0,1fr)}
 			.gf-ready{position:static}
 		}
+		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 		.gf-errors{flex-direction:column;align-items:flex-start;gap:4px}
 		.gf-errors ul{margin:0;padding-left:20px}
 		.gf-errors a{color:inherit}
@@ -789,32 +817,59 @@ templ goalFormStyles() {
 		.gf-actions{display:flex;flex-direction:column;gap:8px}
 		.gf-activate{order:-1}
 		.gf-section{display:flex;flex-direction:column;gap:16px;border:0;padding:0;margin:0;min-width:0}
-		.gf-section>legend{font-weight:600;padding:0;margin-bottom:4px}
-		.gf-hint{display:block}
+		.gf-h2{font-size:22px}
+		.gf-h2-sm{font-size:18px}
+		.gf-head-line{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 16px}
+		.gf-page-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px;font-size:13px;line-height:1.5;color:var(--color-ink-muted)}
+		.gf-page-line h1{font-family:var(--font-body);font-size:inherit;font-weight:600;line-height:inherit;letter-spacing:0;color:inherit}
+		.gf-what .gf-title{font-family:var(--font-display);font-weight:700;font-size:34px;line-height:1.2;height:auto;padding:4px 0;border:0;border-bottom:2px solid var(--color-primary-strong);border-radius:0;background:transparent}
+		.gf-what .gf-title[aria-invalid=true]{border-bottom-color:var(--color-danger-ink)}
+		.gf-delivery{gap:24px}
 		.gf-group{display:flex;flex-direction:column;gap:8px;border:0;padding:0;margin:0;min-width:0}
 		.gf-group>legend{font-weight:600;font-size:13px;padding:0;margin-bottom:8px}
-		.gf-segments{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+		.gf-segments{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start}
+		.gf-tile{display:flex;flex-direction:column;min-width:0;border:1px solid var(--color-border);border-radius:var(--radius-md)}
+		.gf-segment{position:relative;display:flex;align-items:flex-start;gap:8px;padding:12px 16px;cursor:pointer}
+		.gf-segment .hint{display:block}
+		.gf-tile .gf-date{padding:0 16px 16px 40px}
 		.gf-picks{display:flex;flex-wrap:wrap;gap:8px}
 		.gf-pick{position:relative;display:inline-flex;align-items:center;gap:8px;padding:4px 12px;border:1px solid var(--color-border);border-radius:999px;cursor:pointer}
-		.gf-segment{align-items:flex-start;padding:8px 12px;border-radius:6px}
-		.gf-segment .hint{display:block}
+		.gf-segctl{display:inline-flex;flex-wrap:wrap;align-self:flex-start;border:1px solid var(--color-border-strong);border-radius:var(--radius-md)}
+		.gf-seg{position:relative;display:flex;align-items:center;justify-content:center;gap:8px;min-height:40px;padding:0 16px;box-sizing:border-box;cursor:pointer;white-space:nowrap}
+		.gf-seg:first-child{border-radius:calc(var(--radius-md) - 1px) 0 0 calc(var(--radius-md) - 1px)}
+		.gf-seg:last-child{border-radius:0 calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0}
+		.gf-seg+.gf-seg{border-left:1px solid var(--color-border)}
 		.gf-delivery:not(:has(#kind-dated:checked)) .gf-date{display:none}
 		.gf-cadence:not(:has(#cadence-custom:checked)) .gf-custom{display:none}
 		.gf-custom input{max-width:160px}
 		@supports selector(:has(*)){
-			.gf-pick input{position:absolute;opacity:0;pointer-events:none}
+			.gf-seg input,.gf-segment input,.gf-pick input{position:absolute;opacity:0;pointer-events:none}
+			.gf-form:has(#kind-ongoing:checked) .gf-rule-any{display:none}
+			.gf-form:has(#kind-ongoing:checked) .gf-rule-ongoing{display:inline}
+			.gf-seg:has(input:checked){background:var(--color-ink);color:var(--color-ink-inverse);font-weight:600}
 			.gf-pick:has(input:checked){border-color:var(--color-primary);background:var(--color-primary-subtle)}
-			.gf-segment{border:2px solid var(--color-border-strong)}
+			.gf-tile{border:2px solid var(--color-border-strong)}
+			.gf-tile:has(input:checked){border-color:var(--color-primary);background:var(--color-primary-subtle)}
 			.gf-segment::before{content:"";flex:none;box-sizing:border-box;width:16px;height:16px;margin-top:4px;border:2px solid var(--color-border-strong);border-radius:50%}
-			.gf-segment:has(input:checked){border-color:var(--color-primary);background:var(--color-primary-light)}
 			.gf-segment:has(input:checked)::before{border-color:var(--color-primary);background:radial-gradient(circle,var(--color-primary) 0 4px,transparent 4.5px)}
-			label.gf-pick:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}
+			.gf-tile:has(.gf-segment input:focus-visible),.gf-seg:has(input:focus-visible),label.gf-pick:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}
+		}
+		@media (max-width:600px){
+			.gf-segments{grid-template-columns:minmax(0,1fr)}
+			.gf-segctl{display:grid;grid-template-columns:1fr 1fr;align-self:stretch}
+			.gf-seg{white-space:normal;text-align:center}
+			.gf-seg:nth-child(odd){border-left:0}
+			.gf-seg:nth-child(n+3){border-top:1px solid var(--color-border)}
+			.gf-seg:nth-child(1){border-radius:calc(var(--radius-md) - 1px) 0 0 0}
+			.gf-seg:nth-child(2){border-radius:0 calc(var(--radius-md) - 1px) 0 0}
+			.gf-seg:nth-child(3){border-radius:0 0 0 calc(var(--radius-md) - 1px)}
+			.gf-seg:nth-child(4){border-radius:0 0 calc(var(--radius-md) - 1px) 0}
 		}
 		.gf-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
 		.gf-existing{display:flex;flex-direction:column;gap:4px}
-		.gf-know{display:flex;flex-direction:column;gap:12px;border:0;padding:0;margin:0;min-width:0}
-		.gf-know legend{font-weight:600;padding:0;margin-bottom:4px}
-		.gf-know-head{font-size:14px;margin:4px 0 0}
+		.gf-know{display:flex;flex-direction:column;gap:12px;min-width:0}
+		.gf-know-head{font-size:15px;margin:4px 0 0}
+		.gf-rule-ongoing{display:none}
 		.gf-rows{display:flex;flex-direction:column;gap:12px}
 		.gf-row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 12px}
 		.gf-row .field{flex:1 1 140px;min-width:0}
@@ -823,8 +878,17 @@ templ goalFormStyles() {
 		.gf-form:not(.gf-js) .gf-js-only{display:none}
 		.gf-know .gf-js-only[data-add-row]{align-self:flex-start}
 		.gf-form.gf-js .gf-no-js{display:none}
+		.gf-more{gap:0;border-top:1px solid var(--color-border);padding-top:24px}
+		.gf-more>h2{margin-bottom:8px}
+		.gf-more>h2 .muted{margin-left:4px;font-family:var(--font-body);font-size:14px;font-weight:400;letter-spacing:0}
+		.gf-more-row{border-bottom:1px solid var(--color-border)}
+		.gf-more-row>summary{min-height:48px;justify-content:flex-start;gap:8px;list-style:none}
+		.gf-more-row>summary::-webkit-details-marker{display:none}
+		.gf-more-name{flex:none;font-weight:600;color:var(--color-ink)}
+		.gf-more-value{min-width:0;overflow-wrap:anywhere}
+		.gf-more-action{flex:none;margin-left:auto;font-weight:600;color:var(--color-primary-strong)}
+		.gf-more-row>fieldset{padding-bottom:16px}
 		.gf-parents{display:flex;flex-direction:column;gap:8px;border:0;padding:0;margin:0;min-width:0}
-		.gf-parents legend{font-weight:600;padding:0;margin-bottom:4px}
 		.gf-chips{display:flex;flex-wrap:wrap;gap:8px;list-style:none;margin:0;padding:0}
 		.gf-chips:empty{display:none}
 		.gf-chip{display:inline-flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border:1px solid var(--color-border);border-radius:999px}

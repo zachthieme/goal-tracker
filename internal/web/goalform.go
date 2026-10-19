@@ -40,7 +40,7 @@ type goalFormView struct {
 	// typed, which counts only for a Dated Goal.
 	Kind         string
 	DeliveryDate string
-	// Cadence is the cadence chip chosen, its days or cadenceCustom, and
+	// Cadence is the cadence segment chosen, its days or cadenceCustom, and
 	// CadenceDays the days typed for Custom.
 	Cadence     string
 	CadenceDays string
@@ -363,18 +363,18 @@ const inputParentID = "parent_id"
 // parent's id: a ticked one leaves that parent out.
 const inputRemoveParent = "remove_parent"
 
-// cadenceChips are the Check-in cadence's chips, each posting its days but
+// cadenceChips are the Check-in cadence's segments, each posting its days but
 // Custom, which posts cadenceCustom and the days typed beside it.
 var cadenceChips = []struct{ Value, Label string }{
 	{"7", "Weekly"},
 	{"14", "Every 2 weeks"},
 	{"30", "Monthly"},
-	{cadenceCustom, "Custom…"},
+	{cadenceCustom, "Custom"},
 }
 
-// cadenceInWords says how often a Goal checks in, as its cadence's chip names
+// cadenceInWords says how often a Goal checks in, as its cadence's segment names
 // it but lower-cased ("weekly", "every 2 weeks", "monthly"), or by its days
-// for a cadence no chip but Custom posts ("every 3 days").
+// for a cadence no segment but Custom posts ("every 3 days").
 func cadenceInWords(days int) string {
 	for _, c := range cadenceChips {
 		if c.Value != cadenceCustom && c.Value == strconv.Itoa(days) {
@@ -384,8 +384,8 @@ func cadenceInWords(days int) string {
 	return "every " + plural(days, "day")
 }
 
-// cadenceChosen is the cadence chip to show chosen: Weekly at first, and
-// Custom for days posted that no other chip posts.
+// cadenceChosen is the cadence segment to show chosen: Weekly at first, and
+// Custom for days posted that no other segment posts.
 func (v goalFormView) cadenceChosen() string {
 	if v.Cadence == "" {
 		return cadenceChips[0].Value
@@ -399,7 +399,7 @@ func (v goalFormView) cadenceChosen() string {
 }
 
 // customDays are the days to show beside Custom: those typed there, or the
-// days posted that no other chip posts.
+// days posted that no other segment posts.
 func (v goalFormView) customDays() string {
 	if v.cadenceChosen() == cadenceCustom && v.Cadence != cadenceCustom {
 		return v.Cadence
@@ -407,8 +407,8 @@ func (v goalFormView) customDays() string {
 	return v.CadenceDays
 }
 
-// inputCadenceDays is the number of days the Custom cadence chip reveals.
-// cadenceCustom is that chip's value.
+// inputCadenceDays is the number of days the Custom cadence segment reveals.
+// cadenceCustom is that segment's value.
 const (
 	inputCadenceDays = "cadence_days"
 	cadenceCustom    = "custom"
@@ -773,7 +773,7 @@ func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain
 		in.DeliveryDate = date(domain.InputDeliveryDate, v.DeliveryDate)
 	}
 
-	// A chip posts its days; Custom posts the days typed beside it. Either is a
+	// A segment posts its days; Custom posts the days typed beside it. Either is a
 	// whole number above 0, so the domain is never sent 0 for a cadence chosen.
 	if cadence := strings.TrimSpace(v.Cadence); cadence != "" {
 		if cadence == cadenceCustom {
