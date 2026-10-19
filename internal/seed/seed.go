@@ -169,6 +169,9 @@ type plannedGoal struct {
 	metrics   []domain.Metric
 	slipped   map[int64]bool // Milestones whose date has moved
 	lifecycle string         // the Goal's Lifecycle as the history plays out
+	// backToGreen is the back-to-Green date of the Goal's last Check-in: zero
+	// after a Green one, or one that recorded no Health.
+	backToGreen time.Time
 }
 
 type plannedMilestone struct {

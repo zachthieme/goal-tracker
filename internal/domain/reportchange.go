@@ -197,7 +197,7 @@ func (h goalHistory) deliveryMoveDays(since func(time.Time) bool) int {
 		return 0
 	}
 	for _, d := range h.slips {
-		if d.MilestoneID == 0 && since(d.CreatedAt) {
+		if d.OnDeliveryDate() && since(d.CreatedAt) {
 			return int(math.Round(h.goal.DeliveryDate.Sub(d.OldDate).Hours() / 24))
 		}
 	}

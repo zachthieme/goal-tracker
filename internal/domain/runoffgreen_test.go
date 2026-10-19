@@ -24,7 +24,9 @@ func runOffGreen(t *testing.T, svc *domain.Service, goalID int64) domain.RunOffG
 // needs.
 func redCheckin(h *testsupport.Harness, author domain.Account, goalID int64) domain.Checkin {
 	h.T.Helper()
-	return h.Checkin(author, goalID, domain.HealthRed, "Blocked.", "Unblock it.", h.Clock.Now().AddDate(0, 0, 30))
+	// 30 days out from a later day moves the back-to-Green date later, so it
+	// gives the reason that slip needs.
+	return h.CheckinMovingPath(author, goalID, domain.HealthRed, "Blocked.", "Unblock it.", h.Clock.Now().AddDate(0, 0, 30), "Unblocking takes longer.")
 }
 
 // A Goal that turned Red today has been off Green for 1 week, counted from

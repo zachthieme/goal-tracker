@@ -1304,17 +1304,23 @@ templ milestoneMarkBadge(mark string) {
 	}
 }
 
-// milestoneDates renders a Milestone's date current first, then the most
-// recent date it slipped from struck through, and the number of times it
-// slipped once that is more than one: 11/20 ~~11/03~~ (3) (CONTEXT.md: Date
-// Slip). prior comes earliest first.
+// milestoneDates renders a Milestone's date as slippedDates does, its count
+// marked milestone-slips.
 templ milestoneDates(current time.Time, prior []time.Time, dates displayDates) {
+	@slippedDates(current, prior, dates, "milestone-slips")
+}
+
+// slippedDates renders a date current first, then the most recent date it
+// slipped from struck through, and the number of times it slipped once that is
+// more than one, marked with countTestID: 11/20 ~~11/03~~ (3) (CONTEXT.md: Date
+// Slip). prior comes earliest first.
+templ slippedDates(current time.Time, prior []time.Time, dates displayDates, countTestID string) {
 	<span>{ dates.date(current) }</span>
 	if n := len(prior); n > 0 {
 		<del>{ dates.date(prior[n-1]) }</del>
 	}
 	if n := len(prior); n > 1 {
-		<span data-testid="milestone-slips">{ fmt.Sprintf("(%d)", n) }</span>
+		<span data-testid={ countTestID }>{ fmt.Sprintf("(%d)", n) }</span>
 	}
 }
 

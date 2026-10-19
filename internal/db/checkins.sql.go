@@ -89,9 +89,9 @@ func (q *Queries) CreateCheckin(ctx context.Context, arg CreateCheckinParams) (C
 }
 
 const createDateSlip = `-- name: CreateDateSlip :one
-INSERT INTO date_slips (goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-RETURNING id, goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at
+INSERT INTO date_slips (goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at, back_to_green)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at, back_to_green
 `
 
 type CreateDateSlipParams struct {
@@ -102,10 +102,13 @@ type CreateDateSlipParams struct {
 	NewDate     string
 	Reason      string
 	CreatedAt   string
+	BackToGreen int64
 }
 
-// Record a change to a Goal's delivery date (milestone_id NULL) or a Milestone's
-// date, keeping the old and new dates and the reason (CONTEXT.md: Date Slip).
+// Record a change to a Goal's delivery date (milestone_id NULL), a Milestone's
+// date, or a Path to Green's back-to-Green date (milestone_id NULL,
+// back_to_green 1), keeping the old and new dates and the reason (CONTEXT.md:
+// Date Slip).
 func (q *Queries) CreateDateSlip(ctx context.Context, arg CreateDateSlipParams) (DateSlip, error) {
 	row := q.db.QueryRowContext(ctx, createDateSlip,
 		arg.GoalID,
@@ -115,6 +118,7 @@ func (q *Queries) CreateDateSlip(ctx context.Context, arg CreateDateSlipParams) 
 		arg.NewDate,
 		arg.Reason,
 		arg.CreatedAt,
+		arg.BackToGreen,
 	)
 	var i DateSlip
 	err := row.Scan(
@@ -126,6 +130,7 @@ func (q *Queries) CreateDateSlip(ctx context.Context, arg CreateDateSlipParams) 
 		&i.NewDate,
 		&i.Reason,
 		&i.CreatedAt,
+		&i.BackToGreen,
 	)
 	return i, err
 }
@@ -342,7 +347,7 @@ func (q *Queries) ListCheckins(ctx context.Context, goalID int64) ([]ListCheckin
 }
 
 const listDateSlips = `-- name: ListDateSlips :many
-SELECT id, goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at FROM date_slips WHERE goal_id = ? ORDER BY created_at, id
+SELECT id, goal_id, checkin_id, milestone_id, old_date, new_date, reason, created_at, back_to_green FROM date_slips WHERE goal_id = ? ORDER BY created_at, id
 `
 
 // A Goal's Date Slips, earliest first, so a date's history reads in order.
@@ -364,6 +369,7 @@ func (q *Queries) ListDateSlips(ctx context.Context, goalID int64) ([]DateSlip, 
 			&i.NewDate,
 			&i.Reason,
 			&i.CreatedAt,
+			&i.BackToGreen,
 		); err != nil {
 			return nil, err
 		}

@@ -147,7 +147,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   const [redSlipped] = seedLookup<Goal>(
     `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
      where g.lifecycle = 'Active' and ${latestHealth} = 'Red' and g.delivery_date <> ''
-       and exists (select 1 from date_slips s where s.goal_id = g.id and s.milestone_id is null)
+       and exists (select 1 from date_slips s where s.goal_id = g.id and s.milestone_id is null and s.back_to_green = 0)
      order by g.id limit 1`,
   );
   expect(redSlipped, "the seed has a Red Goal with a Date Slip").toBeDefined();
@@ -177,6 +177,10 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
       .getByRole("textbox", { name: "Plan", exact: true })
       .fill("Move the last two services over before the freeze.");
     await form.getByLabel("Back to Green by", { exact: true }).fill(isoDate(-2));
+    // A date later than the last Check-in's is a Date Slip, so the form asks
+    // why.
+    const reason = form.getByLabel("Reason for moving it later");
+    if (await reason.isVisible()) await reason.fill("The cut-over needs another week.");
     await form.getByRole("textbox", { name: /^Status/ }).fill("The cut-over slipped past the date we gave.");
     await form.getByRole("button", { name: "Submit check-in" }).click();
     await owner.waitForURL(`**/goals/${overdue.id}`);

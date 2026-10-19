@@ -95,6 +95,7 @@ type DateSlip struct {
 	NewDate     string
 	Reason      string
 	CreatedAt   string
+	BackToGreen int64
 }
 
 type DefinitionChange struct {

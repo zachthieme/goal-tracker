@@ -49,14 +49,15 @@ func TestReportBlockSaysHowItsHealthChanged(t *testing.T) {
 }
 
 // checkinHealth checks g in at health, with a Path to Green a month out when
-// health needs one.
+// health needs one. A month out from a later day moves the back-to-Green date
+// later, so it gives the reason that slip needs.
 func checkinHealth(h *testsupport.Harness, author domain.Account, g domain.Goal, health string) {
 	h.T.Helper()
 	if health == domain.HealthGreen {
 		h.Checkin(author, g.ID, health, "On track.", "", time.Time{})
 		return
 	}
-	h.Checkin(author, g.ID, health, "Off track.", "Add staff.", h.Clock.Now().AddDate(0, 1, 0))
+	h.CheckinMovingPath(author, g.ID, health, "Off track.", "Add staff.", h.Clock.Now().AddDate(0, 1, 0), "Staff arrive later.")
 }
 
 // A delivery date that moved since the baseline says by how much, net of

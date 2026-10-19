@@ -3,7 +3,9 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -249,5 +251,52 @@ func TestActiveGoalDatesMoveOnlyInACheckin(t *testing.T) {
 	g, _ := h.Service.ViewGoal(ctx, goal.ID)
 	if !g.DeliveryDate.Equal(goal.DeliveryDate) {
 		t.Errorf("delivery date moved to %s outside a Check-in", g.DeliveryDate)
+	}
+}
+
+// Only a slip of neither a Milestone's date nor the back-to-Green date is on
+// the delivery date.
+func TestDateSlipOnDeliveryDate(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		slip domain.DateSlip
+		want bool
+	}{
+		{"delivery date", domain.DateSlip{}, true},
+		{"Milestone", domain.DateSlip{MilestoneID: 7}, false},
+		{"back-to-Green date", domain.DateSlip{BackToGreen: true}, false},
+	} {
+		if got := tc.slip.OnDeliveryDate(); got != tc.want {
+			t.Errorf("%s: OnDeliveryDate = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// The back-to-Green date's prior dates are those it slipped from within the
+// current Run off Green, earliest first: a slip before a Green Check-in ended
+// the last run isn't counted, nor is any other date's slip, and there are none
+// when the Goal isn't in a run (CONTEXT.md: Date Slip, Run off Green).
+func TestBackToGreenPriorDatesCountWithinTheCurrentRun(t *testing.T) {
+	t.Parallel()
+
+	day := func(d int) time.Time { return time.Date(2026, 3, d, 0, 0, 0, 0, time.UTC) }
+	at := func(d int) time.Time { return time.Date(2026, 2, d, 9, 0, 0, 0, time.UTC) }
+	slips := []domain.DateSlip{
+		{BackToGreen: true, OldDate: day(1), NewDate: day(5), CreatedAt: at(2)},    // the last run's
+		{OldDate: day(10), NewDate: day(20), CreatedAt: at(12)},                    // the delivery date
+		{BackToGreen: true, OldDate: day(12), NewDate: day(19), CreatedAt: at(16)}, // out of order
+		{MilestoneID: 4, OldDate: day(8), NewDate: day(9), CreatedAt: at(13)},      // a Milestone
+		{BackToGreen: true, OldDate: day(6), NewDate: day(12), CreatedAt: at(10)},  // the run's first slip, at its start
+	}
+	run := domain.RunOffGreen{Since: at(10), Weeks: 2}
+
+	got := domain.BackToGreenPriorDates(slips, run)
+	if want := []time.Time{day(6), day(12)}; !slices.EqualFunc(got, want, time.Time.Equal) {
+		t.Errorf("BackToGreenPriorDates = %v, want %v", got, want)
+	}
+	if got := domain.BackToGreenPriorDates(slips, domain.RunOffGreen{}); got != nil {
+		t.Errorf("BackToGreenPriorDates with no run = %v, want nil", got)
 	}
 }

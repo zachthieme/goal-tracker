@@ -215,10 +215,11 @@ func TestLatestStatusShowsTheRunOffGreen(t *testing.T) {
 	red := h.ActiveGoal(sam, "Ship search", "People can't find things.")
 	green := h.ActiveGoal(sam, "Cut churn", "Keep customers.")
 	h.Checkin(sam, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	// Red on Mondays 5 and 12 January, read on the 12th.
+	// Red on Mondays 5 and 12 January, read on the 12th, each moving the
+	// back-to-Green date a week later with the reason that needs.
 	for _, d := range []int{5, 12} {
 		h.Clock.Set(time.Date(2026, time.January, d, 9, 0, 0, 0, time.UTC))
-		h.Checkin(sam, red.ID, domain.HealthRed, "Blocked.", "Escalate.", h.Clock.Now().AddDate(0, 1, 0))
+		h.CheckinMovingPath(sam, red.ID, domain.HealthRed, "Blocked.", "Escalate.", h.Clock.Now().AddDate(0, 1, 0), "Escalation takes longer.")
 	}
 	client := signInClient(t, ts.URL, "sam@example.com")
 
@@ -265,10 +266,12 @@ func TestLatestStatusOpensWithCells(t *testing.T) {
 		{"goal-health-cell", "Owner's Health", `data-testid="goal-health">Yellow<`},
 		{"goal-rollup-cell", "Rolled-up Health", `data-testid="goal-rollup-health">Red<`},
 		{"goal-rollup-cell", "Rolled-up Health", `data-testid="goal-rollup-stale">1 of 2 Stale<`},
-		{"goal-back-to-green-cell", "Back to Green by", "<dd>Jun 15</dd>"},
+		{"goal-back-to-green-cell", "Back to Green by", "<dd><span>Jun 15</span></dd>"},
 	} {
 		cell := between(t, cells, `data-testid="`+tc.testID+`"`, "")
 		cell, _, _ = strings.Cut(cell, "<div ")
+		// Whitespace before a closing tag shows as nothing.
+		cell = regexp.MustCompile(`\s+</`).ReplaceAllString(cell, "</")
 		if !strings.Contains(cell, `<dt class="label">`+tc.label+`</dt>`) || !strings.Contains(cell, tc.value) {
 			t.Errorf("%s cell lacks label %q over %s: %s", tc.testID, tc.label, tc.value, cell)
 		}
@@ -3283,4 +3286,197 @@ func TestLatestStatusShowsAnAskWithNoOneAbove(t *testing.T) {
 	if len(got) != 1 || !strings.HasPrefix(got[0], "Asks for help · no one above the Owner") {
 		t.Errorf("ask = %q, want it to read \"Asks for help · no one above the Owner\"", got)
 	}
+}
+
+// pathReasonLabel is the open tag of the Check-in form's "Reason for moving it
+// later" label.
+func pathReasonLabel(t *testing.T, form string) string {
+	t.Helper()
+	return tagAround(t, form, `data-testid="checkin-path-target-reason"`)
+}
+
+// isHidden reports whether an open tag carries the hidden attribute.
+func isHidden(tag string) bool {
+	return regexp.MustCompile(`\shidden(\s|>|=|/)`).MatchString(tag)
+}
+
+// The Check-in form asks for a reason for moving the back-to-Green date only
+// once it is later than the latest Check-in's: the field starts hidden, and the
+// date input carries that date for the page's script to compare against
+// (CONTEXT.md: Date Slip).
+func TestCheckinFormHidesTheBackToGreenReasonUntilTheDateMovesLater(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	form := between(t, page, `id="checkin-form"`, "</form>")
+	label := pathReasonLabel(t, form)
+	if !isHidden(label) {
+		t.Errorf("the reason field shows before the date moves: %s", label)
+	}
+	if !strings.Contains(between(t, form, `data-testid="checkin-path-target-reason"`, "</label>"), "Reason for moving it later") {
+		t.Errorf("the reason field isn't labelled \"Reason for moving it later\"; form:\n%s", form)
+	}
+	if !strings.Contains(form, `name="path_target_date_reason"`) {
+		t.Errorf("the form has no path_target_date_reason; form:\n%s", form)
+	}
+	date := tagAround(t, form, `name="path_target_date"`)
+	if got := attr(date, "data-last"); got != "2026-06-15" {
+		t.Errorf("Back to Green by data-last = %q, want 2026-06-15: %s", got, date)
+	}
+	if !strings.Contains(date, "hx-on:input=") {
+		t.Errorf("Back to Green by has no input handler to show the reason: %s", date)
+	}
+
+	// A Goal with no back-to-Green date yet has nothing to slip from.
+	fresh := h.ActiveGoal(sam, "Cut churn", "Keep customers.")
+	page = getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, fresh.ID))
+	form = between(t, page, `id="checkin-form"`, "</form>")
+	if !isHidden(pathReasonLabel(t, form)) {
+		t.Errorf("the reason field shows on a Goal with no back-to-Green date")
+	}
+	if date := tagAround(t, form, `name="path_target_date"`); strings.Contains(date, "data-last=") {
+		t.Errorf("Back to Green by carries a data-last with no previous date: %s", date)
+	}
+}
+
+// Moving the back-to-Green date later without a reason is refused, with the
+// error beside the reason field, now shown; with a reason the Check-in is
+// recorded.
+func TestCheckinMovingTheBackToGreenDateLaterNeedsAReasonOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	form := url.Values{
+		"health":           {domain.HealthRed},
+		"status":           {"Still blocked."},
+		"path_to_green":    {"Escalate."},
+		"path_target_date": {"2026-06-29"},
+	}
+
+	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), form)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("status = %d, want 422", resp.StatusCode)
+	}
+	body := between(t, readBody(t, resp), `id="checkin-form"`, "</form>")
+	const want = "Moving the back-to-Green date later needs a reason."
+	if msg := fieldError(t, body, `name="path_target_date_reason"`); !strings.Contains(msg, `">`+want) {
+		t.Errorf("reason field's error = %q, want it to read %q", msg, want)
+	}
+	if label := pathReasonLabel(t, body); isHidden(label) {
+		t.Errorf("the refused form hides the reason field: %s", label)
+	}
+	if fieldset := tagAround(t, body, `data-testid="path-to-green-field"`); !hasClass(fieldset, "has-error") {
+		t.Errorf("the Path to Green isn't marked as holding the error: %s", fieldset)
+	}
+
+	form.Set("path_target_date_reason", "The vendor is out until July.")
+	if _, code := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), form); code != http.StatusOK {
+		t.Fatalf("status with a reason = %d, want 200", code)
+	}
+	checkins, err := h.Service.ListCheckins(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("ListCheckins: %v", err)
+	}
+	if len(checkins) != 2 || checkins[0].Status != "Still blocked." {
+		t.Errorf("Check-ins %+v, want the new one recorded", checkins)
+	}
+	slips, _ := h.Service.ListDateSlips(context.Background(), goal.ID)
+	if len(slips) != 1 || !slips[0].BackToGreen || slips[0].Reason != "The vendor is out until July." {
+		t.Errorf("Date Slips %+v, want the back-to-Green slip with its reason", slips)
+	}
+}
+
+// backToGreenCell is the Latest status's "Back to Green by" cell on goal's
+// page.
+func backToGreenCell(t *testing.T, client *http.Client, base string, goal domain.Goal) string {
+	t.Helper()
+	cells := pageElement(t, getBody(t, client, goalPageURL(base, goal)), "dl", "goal-status-cells")
+	return between(t, cells, `data-testid="goal-back-to-green-cell"`, "</dd>")
+}
+
+// The Latest status's Back to Green by shows a slipped back-to-Green date as a
+// slipped Milestone's shows: the current date, the date it last slipped from
+// struck through, and how many times it slipped once that is more than one,
+// counted within the current Run off Green (CONTEXT.md: Date Slip, Run off
+// Green).
+func TestLatestStatusShowsASlippedBackToGreenDate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	client := signInClient(t, ts.URL, "sam@example.com")
+	jun := func(d int) time.Time { return time.Date(2026, 6, d, 0, 0, 0, 0, time.UTC) }
+
+	twice := h.ActiveGoal(sam, "Slipped twice", "It matters.")
+	h.Checkin(sam, twice.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(15))
+	h.CheckinMovingPath(sam, twice.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(22), "The vendor is out.")
+	h.CheckinMovingPath(sam, twice.ID, domain.HealthYellow, "Better.", "Escalate.", jun(29), "The vendor is still out.")
+	cell := backToGreenCell(t, client, ts.URL, twice)
+	if want := "<dd><span>Jun 29</span><del>Jun 22</del><span data-testid=\"back-to-green-slips\">(2)</span>"; !strings.Contains(strings.Join(strings.Fields(cell), ""), strings.Join(strings.Fields(want), "")) {
+		t.Errorf("the cell doesn't read Jun 29 ~~Jun 22~~ (2): %s", cell)
+	}
+
+	once := h.ActiveGoal(sam, "Slipped once", "It matters.")
+	h.Checkin(sam, once.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(15))
+	h.CheckinMovingPath(sam, once.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(22), "The vendor is out.")
+	cell = backToGreenCell(t, client, ts.URL, once)
+	if !strings.Contains(cell, "<span>Jun 22</span>") || !strings.Contains(cell, "<del>Jun 15</del>") {
+		t.Errorf("the cell doesn't read Jun 22 ~~Jun 15~~: %s", cell)
+	}
+	if strings.Contains(cell, "back-to-green-slips") {
+		t.Errorf("a date that slipped once shows a count: %s", cell)
+	}
+
+	// A Green Check-in ends the run, and its slips with it.
+	recovered := h.ActiveGoal(sam, "Back and off again", "It matters.")
+	h.Checkin(sam, recovered.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(15))
+	h.CheckinMovingPath(sam, recovered.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(22), "The vendor is out.")
+	h.Clock.Advance(time.Hour)
+	h.Checkin(sam, recovered.ID, domain.HealthGreen, "Unblocked.", "", time.Time{})
+	h.Clock.Advance(time.Hour)
+	h.Checkin(sam, recovered.ID, domain.HealthYellow, "Wobbling.", "Watch it.", jun(29))
+	cell = backToGreenCell(t, client, ts.URL, recovered)
+	if !strings.Contains(cell, "<span>Jun 29</span>") || strings.Contains(cell, "<del>") {
+		t.Errorf("a new Run off Green strikes the last run's date: %s", cell)
+	}
+}
+
+// A No change is refused once the back-to-Green date has passed: the Check-in
+// page says why in place of the button, and a No change posted anyway lands on
+// the form with the reason (CONTEXT.md: Check-in).
+func TestCheckinPageRefusesNoChangeOnceTheBackToGreenDateHasPassed(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Behind.", "Escalate.", h.Clock.Now().AddDate(0, 0, 3))
+	h.Clock.Advance(5 * day)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	c := between(t, page, `data-testid="no-change-card"`, `data-testid="checkin-form"`)
+	if strings.Contains(c, `data-testid="no-change-checkin"`) {
+		t.Errorf("the card offers a No change that would be refused:\n%s", c)
+	}
+	const want = "The back-to-Green date has passed: submit a Check-in to move it later, with a reason, or come back to Green."
+	if got := elementTexts(c, "p", "no-change-unavailable"); !slices.Equal(got, []string{want}) {
+		t.Errorf("the card's reason = %q, want %q", got, want)
+	}
+
+	_, page = postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+	assertNoChangeRefusalOnForm(t, page, want)
 }

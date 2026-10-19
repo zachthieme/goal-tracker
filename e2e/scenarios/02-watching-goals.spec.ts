@@ -73,7 +73,7 @@ function pickedGoals(seedLookup: Lookup): Picks {
       where c.id = (select c2.id from checkins c2 where c2.goal_id = c.goal_id
                     order by c2.created_at desc, c2.id desc limit 1))
     select g.id, g.title, l.health, l.path_to_green,
-      (select s.old_date from date_slips s where s.goal_id = g.id and s.milestone_id is null
+      (select s.old_date from date_slips s where s.goal_id = g.id and s.milestone_id is null and s.back_to_green = 0
         order by s.created_at limit 1) as slipped_from,
       (select count(*) from links k join goals child on child.id = k.child_id
         where k.parent_id = g.id and k.status = 'accepted' and child.lifecycle = 'Active') as children,

@@ -614,7 +614,7 @@ func (s *Server) loadGoalRow(ctx context.Context, gv domain.GoalWithValues) (goa
 		return goalRow{}, fmt.Errorf("load date slips: %w", err)
 	}
 	for _, slip := range slips {
-		if slip.MilestoneID == 0 {
+		if slip.OnDeliveryDate() {
 			row.PriorDates = append(row.PriorDates, slip.OldDate)
 		}
 	}
@@ -1052,7 +1052,8 @@ type goalView struct {
 	Ask          *domain.AskForHelp
 	AskAddressee *domain.Account
 	// DateSlips is the Goal's Date Slip history, earliest first, covering its
-	// delivery date and its Milestones' dates; its length is the slip count.
+	// delivery date, its Milestones' dates and its back-to-Green date; its
+	// length is the slip count.
 	// MilestoneChurn counts Milestones added or removed since the Goal became
 	// Active (CONTEXT.md: Date Slip, Milestone Churn).
 	DateSlips      []domain.DateSlip
@@ -1303,15 +1304,23 @@ func (v goalView) dates() displayDates {
 
 // priorDates returns the dates a Goal's delivery date (milestoneID 0) or one of
 // its Milestones held before each of its Date Slips, earliest first, for
-// showing struck through ahead of the current date (CONTEXT.md: Date Slip).
+// showing struck through ahead of the current date (CONTEXT.md: Date Slip). A
+// slip of the back-to-Green date is neither; see pathPriorDates.
 func (v goalView) priorDates(milestoneID int64) []time.Time {
 	var out []time.Time
 	for _, s := range v.DateSlips {
-		if s.MilestoneID == milestoneID {
+		if s.MilestoneID == milestoneID && !s.BackToGreen {
 			out = append(out, s.OldDate)
 		}
 	}
 	return out
+}
+
+// pathPriorDates returns the dates the Path to Green's back-to-Green date
+// slipped from within the current Run off Green, earliest first (CONTEXT.md:
+// Date Slip, Run off Green).
+func (v goalView) pathPriorDates() []time.Time {
+	return domain.BackToGreenPriorDates(v.DateSlips, v.RunOffGreen)
 }
 
 // milestoneMark is the mark a Milestone shows on the Goal page as of today's

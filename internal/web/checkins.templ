@@ -18,6 +18,10 @@ type checkinFormData struct {
 	Status         string
 	PathToGreen    string
 	PathTargetDate string
+	// PathTargetDateReason is the reason, as typed, for moving the back-to-
+	// Green date later than the latest Check-in's, a Date Slip (CONTEXT.md:
+	// Date Slip). Its field shows only when it is needed; see pathReasonShown.
+	PathTargetDateReason string
 	// AsksForHelp is the Path to Green's "This asks for help" box: ticked
 	// while the Goal's ask is open, so carrying it forward takes no effort,
 	// or as posted. AskAddressee is whom an ask would go to, nil for no one
@@ -188,12 +192,23 @@ func (d checkinFormData) pathTargetLastID() string {
 }
 
 // pathTargetLastAttrs describe the Back to Green by input by its "Last time"
-// hint, when there is one.
+// hint, when there is one, and carry that date as data-last for
+// showPathReasonScript to compare against.
 func (d checkinFormData) pathTargetLastAttrs() templ.Attributes {
 	if d.Previous.PathTargetDate == "" {
 		return nil
 	}
-	return templ.Attributes{"aria-describedby": d.pathTargetLastID()}
+	return templ.Attributes{"aria-describedby": d.pathTargetLastID(), "data-last": d.Previous.PathTargetDate}
+}
+
+// pathReasonShown reports whether the form shows its "Reason for moving it
+// later" field: when the date typed is later than the latest Check-in's (both
+// ISO dates, so they compare as text), when a reason is typed, or when the
+// form's error is about it. Without script, this is the only rule.
+func (d checkinFormData) pathReasonShown() bool {
+	return (d.PathTargetDate != "" && d.Previous.PathTargetDate != "" && d.PathTargetDate > d.Previous.PathTargetDate) ||
+		strings.TrimSpace(d.PathTargetDateReason) != "" ||
+		d.Error.Field == "path_target_date_reason"
 }
 
 // draftHighlightRows are the rows offering each of drafts, oldest first, each
@@ -515,7 +530,7 @@ templ statusCells(v goalView) {
 		if c.PathToGreen != "" {
 			<div data-testid="goal-back-to-green-cell" class="gp-cell">
 				<dt class="label">Back to Green by</dt>
-				<dd>{ v.dates().date(c.PathTargetDate) }</dd>
+				<dd>@slippedDates(c.PathTargetDate, v.pathPriorDates(), v.dates(), "back-to-green-slips")</dd>
 			</div>
 		}
 	</dl>
@@ -616,7 +631,9 @@ templ checkinUnavailablePage(current *domain.Account, title, message string) {
 // itself, so a validation error re-renders it in place with the message next to
 // the field it is about. Health, status, and readings are always shown; the
 // Highlight, dates and Milestones, and Lifecycle each sit in a collapsed
-// section that opens when it holds an error or a value the reader typed.
+// section that opens when it holds an error or a value the reader typed. The
+// Path to Green asks for a reason for moving its back-to-Green date only once
+// the date is later than the latest Check-in's (see pathReasonShown).
 templ checkinForm(d checkinFormData) {
 	<form
 		data-testid="checkin-form"
@@ -649,7 +666,7 @@ templ checkinForm(d checkinFormData) {
 			}
 		</fieldset>
 		@checkinFieldError(d.Error, "health")
-		<fieldset data-testid="path-to-green-field" class={ "path-to-green", templ.KV("has-error", d.Error.Field == "path_to_green") }>
+		<fieldset data-testid="path-to-green-field" class={ "path-to-green", templ.KV("has-error", d.Error.Field == "path_to_green" || d.Error.Field == "path_target_date_reason") }>
 			<legend>Path to Green (required when Yellow or Red)</legend>
 			<label>
 				Plan
@@ -657,12 +674,17 @@ templ checkinForm(d checkinFormData) {
 			</label>
 			<label>
 				Back to Green by
-				<input type="date" name="path_target_date" value={ d.PathTargetDate } { d.pathTargetLastAttrs()... }/>
+				<input type="date" name="path_target_date" value={ d.PathTargetDate } hx-on:input={ showPathReasonScript } { d.pathTargetLastAttrs()... }/>
 			</label>
 			if d.Previous.PathTargetDate != "" {
 				<span data-testid="checkin-path-target-last" id={ d.pathTargetLastID() } class="hint">Last time: { d.Shown.dateText(d.Previous.PathTargetDate) }</span>
 			}
 			@checkinFieldError(d.Error, "path_to_green")
+			<label data-testid="checkin-path-target-reason" hidden?={ !d.pathReasonShown() }>
+				Reason for moving it later
+				<textarea name="path_target_date_reason">{ d.PathTargetDateReason }</textarea>
+			</label>
+			@checkinFieldError(d.Error, "path_target_date_reason")
 			<label class="checkin-ask">
 				<input type="checkbox" name="asks_for_help" value="1" data-testid="checkin-asks-for-help" checked?={ d.AsksForHelp }/>
 				This asks for help
@@ -830,6 +852,12 @@ var confirmCancelScript = templ.ComponentScript{Call: fmt.Sprintf(
 	domain.LifecycleCancelled,
 )}
 
+// showPathReasonScript shows the Path to Green's "Reason for moving it later"
+// field while the Back to Green by date is later than the latest Check-in's,
+// its data-last, and hides it otherwise. It looks only within its own form, so
+// it works where a page holds several.
+var showPathReasonScript = templ.ComponentScript{Call: "var r = this.form.querySelector('[data-testid=checkin-path-target-reason]'); if (r) r.hidden = !(this.value && this.dataset.last && this.dataset.last < this.value)"}
+
 // swapErrorPageScript swaps an error page into the body, whatever its status
 // (a refusal's 403 or 404, a failure's 500), as htmx does for the refusals it
 // swaps itself; htmx 2 swaps no error status by default.
@@ -860,6 +888,7 @@ templ checkinStyles() {
 			.checkin-form fieldset{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;margin:0;display:flex;flex-direction:column;gap:8px;background:var(--color-surface)}
 			.checkin-form legend{font-weight:600;font-size:13px;padding:0 4px}
 			.checkin-form label{display:flex;flex-direction:column;gap:8px;font-weight:600;font-size:13px}
+			.checkin-form label[hidden]{display:none}
 			.health-toggle{flex-direction:row!important;flex-wrap:wrap;gap:12px!important;border:none!important;padding:0!important;background:none!important}
 			.health-toggle legend{padding:0;margin-bottom:8px}
 			.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:15px;height:48px;padding:0 20px;border:2px solid currentColor;cursor:pointer}

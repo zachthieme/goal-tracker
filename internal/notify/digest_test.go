@@ -221,6 +221,11 @@ func childOf(h *testsupport.Harness, owner domain.Account, parent domain.Goal, t
 	return child
 }
 
+// backToGreenBy is the back-to-Green date of every Path to Green these tests
+// write. Keeping it unchanged from one Check-in to the next records no Date
+// Slip of it, which the digest would report.
+var backToGreenBy = testsupport.Epoch.AddDate(0, 3, 0)
+
 // checkinHealth submits a Check-in setting health, with a Path to Green when
 // it isn't Green.
 func checkinHealth(h *testsupport.Harness, author domain.Account, goalID int64, health string) {
@@ -229,7 +234,7 @@ func checkinHealth(h *testsupport.Harness, author domain.Account, goalID int64, 
 		h.Checkin(author, goalID, health, "On track.", "", time.Time{})
 		return
 	}
-	h.Checkin(author, goalID, health, "Behind.", "Add a second engineer.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Checkin(author, goalID, health, "Behind.", "Add a second engineer.", backToGreenBy)
 }
 
 // The digest names children whose Health got worse this week — to Yellow or to
@@ -274,7 +279,7 @@ func TestDigestListsChildrenThatWentYellowOrRedThisWeek(t *testing.T) {
 }
 
 // slip moves goal's delivery date a month later in a Yellow Check-in, recording
-// a Date Slip.
+// a Date Slip of it alone.
 func slip(h *testsupport.Harness, author domain.Account, goal domain.Goal) {
 	h.T.Helper()
 	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
@@ -283,7 +288,7 @@ func slip(h *testsupport.Harness, author domain.Account, goal domain.Goal) {
 		Health:             domain.HealthYellow,
 		Status:             "Vendor is late.",
 		PathToGreen:        "Chase the vendor.",
-		PathTargetDate:     h.Clock.Now().AddDate(0, 1, 0),
+		PathTargetDate:     backToGreenBy,
 		DeliveryDate:       goal.DeliveryDate.AddDate(0, 1, 0),
 		DeliveryDateReason: "Vendor is late.",
 	}); err != nil {
@@ -658,5 +663,30 @@ func TestReminderSkipsADepartedActionItemOwner(t *testing.T) {
 
 	if got := sentTo(h.Email, "kim@example.com"); len(got) != 0 {
 		t.Errorf("departed owner was sent %d reminders, want none: %+v", len(got), got)
+	}
+}
+
+// The digest names a child whose back-to-Green date slipped this week, with
+// the dates and the reason (CONTEXT.md: Date Slip).
+func TestDigestListsChildrenWhoseBackToGreenDateSlippedThisWeek(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	pat := h.SignIn("pat@example.com")
+	kim := h.SignIn("kim@example.com")
+	parent := h.ActiveGoal(pat, "Grow revenue", "It pays for everything.")
+	child := childOf(h, kim, parent, "Launch pricing page")
+	h.Checkin(kim, child.ID, domain.HealthYellow, "Behind.", "Add a second engineer.", time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC))
+	h.Clock.Advance(8 * day)
+	h.CheckinMovingPath(kim, child.ID, domain.HealthYellow, "Still behind.", "Add a second engineer.", time.Date(2026, 2, 3, 0, 0, 0, 0, time.UTC), "The engineer starts in February.")
+	h.Clock.Advance(1 * day)
+
+	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
+		t.Fatalf("SendDigests: %v", err)
+	}
+
+	body := digestTo(t, h.Email, "pat@example.com")
+	if want := "slipped its back-to-Green date from 2026-01-20 to 2026-02-03 (The engineer starts in February.)"; !strings.Contains(body, want) {
+		t.Errorf("digest does not say %q:\n%s", want, body)
 	}
 }

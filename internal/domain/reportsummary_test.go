@@ -202,8 +202,11 @@ func TestReportSummaryCountsEachGoalChangedSinceTheLastPublicationOnce(t *testin
 	entered := h.ActiveGoal(lee, "Also included", "why")
 	turnsYellow := h.ActiveGoal(boss, "Turns Yellow", "why")
 	h.Checkin(boss, turnsYellow.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	// Each Red keeps the same back-to-Green date: moving it later would be a
+	// Date Slip, a change of its own.
+	backToGreenBy := h.Clock.Now().AddDate(0, 1, 0)
 	red := func(g domain.Goal) {
-		h.Checkin(boss, g.ID, domain.HealthRed, "Blocked.", "Unblock it.", h.Clock.Now().AddDate(0, 1, 0))
+		h.Checkin(boss, g.ID, domain.HealthRed, "Blocked.", "Unblock it.", backToGreenBy)
 	}
 	red(staysRed)
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{

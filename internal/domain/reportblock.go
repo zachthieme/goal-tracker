@@ -380,7 +380,7 @@ func (h goalHistory) badges(since func(time.Time) bool, fresh Freshness) []strin
 	if since(h.goal.CreatedAt) {
 		out = append(out, BadgeNew)
 	}
-	if slices.ContainsFunc(h.slips, func(d DateSlip) bool { return d.MilestoneID == 0 && since(d.CreatedAt) }) {
+	if slices.ContainsFunc(h.slips, func(d DateSlip) bool { return d.OnDeliveryDate() && since(d.CreatedAt) }) {
 		out = append(out, BadgeNewDate)
 	}
 	if fresh.Stale {
@@ -451,11 +451,12 @@ func (s *Service) reportBlock(ctx context.Context, h goalHistory, since func(tim
 }
 
 // priorDates returns the dates the delivery date (milestoneID 0) or a
-// Milestone held before each of its Date Slips, earliest first.
+// Milestone held before each of its Date Slips, earliest first. A slip of the
+// back-to-Green date is neither.
 func (h goalHistory) priorDates(milestoneID int64) []time.Time {
 	var out []time.Time
 	for _, d := range h.slips {
-		if d.MilestoneID == milestoneID {
+		if d.MilestoneID == milestoneID && !d.BackToGreen {
 			out = append(out, d.OldDate)
 		}
 	}

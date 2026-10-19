@@ -79,6 +79,11 @@ type SubmitCheckinInput struct {
 	Status         string
 	PathToGreen    string
 	PathTargetDate time.Time
+	// PathTargetDateReason is why PathTargetDate is later than the latest
+	// Check-in's back-to-Green date: moving it later records a Date Slip that
+	// needs one (CONTEXT.md: Date Slip). An earlier, unchanged or first date
+	// needs none, and any stray reason is dropped.
+	PathTargetDateReason string
 	// AsksForHelp marks the Path to Green as asking for help (CONTEXT.md: Ask
 	// for help). It is kept only with the Path to Green: a Check-in that is
 	// Green, or takes the Goal out of Active, stores no ask.
@@ -211,6 +216,16 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 		}
 	}
 
+	// Moving the back-to-Green date later than the latest Check-in had it is a
+	// Date Slip of that date (CONTEXT.md: Date Slip).
+	var pathSlip *slipPlan
+	if needsPathToGreen(health) {
+		pathSlip, err = s.planPathSlip(ctx, goal.Goal.ID, in.PathTargetDate, in.PathTargetDateReason)
+		if err != nil {
+			return Checkin{}, err
+		}
+	}
+
 	pathTargetDate := ""
 	asksForHelp := int64(0)
 	if needsPathToGreen(health) {
@@ -270,8 +285,11 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 		if err := tx.recordReadings(ctx, c.ID, in.Readings); err != nil {
 			return err
 		}
-		if deliverySlip != nil {
-			if err := tx.recordSlip(ctx, goal.Goal.ID, c.ID, *deliverySlip); err != nil {
+		for _, slip := range []*slipPlan{deliverySlip, pathSlip} {
+			if slip == nil {
+				continue
+			}
+			if err := tx.recordSlip(ctx, goal.Goal.ID, c.ID, *slip); err != nil {
 				return err
 			}
 		}
@@ -291,6 +309,17 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 		return Checkin{}, err
 	}
 	return out, nil
+}
+
+// planPathSlip plans the Date Slip, if any, of a Check-in on goalID whose
+// back-to-Green date is newDate, against the Goal's latest Check-in, read
+// before the new one is written; see planBackToGreenSlip.
+func (s *Service) planPathSlip(ctx context.Context, goalID int64, newDate time.Time, reason string) (*slipPlan, error) {
+	latest, ok, err := s.LatestCheckin(ctx, goalID)
+	if err != nil || !ok {
+		return nil, err
+	}
+	return planBackToGreenSlip(latest.PathTargetDate, newDate, reason)
 }
 
 // ErrGreenOffTarget is a Green Check-in refused because a Metric on the Goal is
@@ -426,8 +455,10 @@ func (s *Service) recordReadings(ctx context.Context, checkinID int64, readings 
 // values in one click (CONTEXT.md: a Check-in should take minutes). It needs a
 // previous Check-in to repeat, so it is rejected on a Goal with none. It is
 // also refused, whatever the Health, while a Milestone is overdue: the missed
-// date needs a full Check-in that moves it, marks it Done or removes it. The
-// new Check-in is still immutable and records its own author and Owner.
+// date needs a full Check-in that moves it, marks it Done or removes it. So it
+// is once the Path to Green's back-to-Green date has passed: the Owner must
+// move it later, with a reason, or come back to Green. The new Check-in is
+// still immutable and records its own author and Owner.
 func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID int64) (Checkin, error) {
 	goal, err := s.activeGoalForNoChange(ctx, goalID)
 	if err != nil {
@@ -457,7 +488,8 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 // NoChangeRefusal reports why a No change on goalID would be refused for any
 // author allowed to check in on it, or nil when one would be recorded. It
 // gives the error SubmitNoChangeCheckin would, without recording anything, so
-// a page can offer the No change only when it would be taken.
+// a page can offer the No change only when it would be taken: none while a
+// Milestone is overdue or the back-to-Green date has passed.
 func (s *Service) NoChangeRefusal(ctx context.Context, goalID int64) error {
 	goal, err := s.activeGoalForNoChange(ctx, goalID)
 	if err != nil {
@@ -511,6 +543,16 @@ func (s *Service) noChangeCheck(ctx context.Context, g Goal) (db.Checkin, string
 	}
 	if m, ok := overdueMilestone(milestones, s.goalToday(g).Format(dateFormat)); ok {
 		return db.Checkin{}, "", fmt.Errorf("%w: submit a Check-in to move its date, mark it Done or remove it", &MilestoneOverdueError{Milestone: milestoneFromRow(m)})
+	}
+	// Nor once the back-to-Green date has passed, as of today in the Goal's
+	// timezone, whatever the Health: the Owner must move it, with a reason, or
+	// come back to Green (CONTEXT.md: Check-in).
+	fresh, err := s.Freshness(ctx, g.ID)
+	if err != nil {
+		return db.Checkin{}, "", err
+	}
+	if fresh.PathToGreenOverdue {
+		return db.Checkin{}, "", fmt.Errorf("%w: the back-to-Green date has passed: submit a Check-in to move it later, with a reason, or come back to Green", ErrValidation)
 	}
 	// Nor a Green while a Metric is off target: only a full Check-in can
 	// confirm that.

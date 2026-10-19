@@ -2212,3 +2212,34 @@ func TestGoalHistoryShowsAnAskAndKeepsItFromFolding(t *testing.T) {
 		}
 	}
 }
+
+// Under the Date Slips filter, a Check-in that moved the back-to-Green date
+// later lists that slip as the Back to Green date's, its old date struck and
+// its reason given (CONTEXT.md: Date Slip).
+func TestGoalHistoryListsABackToGreenSlip(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.Checkin(sam, goal.ID, domain.HealthRed, "Blocked.", "Escalate.", time.Date(2026, 3, 2, 0, 0, 0, 0, time.UTC))
+	h.Clock.Advance(time.Hour)
+	h.CheckinMovingPath(sam, goal.ID, domain.HealthRed, "Still blocked.", "Escalate.", time.Date(2026, 3, 16, 0, 0, 0, 0, time.UTC), "The vendor is out until March.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	chip, ok := historyChips(t, historyBlock(t, getBody(t, client, goalPageURL(ts.URL, goal))))["Date Slips"]
+	if !ok || chip.count != "1" {
+		t.Fatalf("Date Slips chip = %+v, want it counting 1", chip)
+	}
+	entries := historyEntries(historyBlock(t, getBody(t, client, ts.URL+chip.href)))
+	if len(entries) != 1 {
+		t.Fatalf("Date Slips lists %d entries, want 1", len(entries))
+	}
+	slips := between(t, entries[0], `data-testid="entry-slips"`, "</ul>")
+	for _, want := range []string{"<strong>Back to Green date</strong>: <del>Mar 2</del> Mar 16", "The vendor is out until March."} {
+		if !strings.Contains(slips, want) {
+			t.Errorf("the Check-in's Date Slips lack %q:\n%s", want, slips)
+		}
+	}
+}

@@ -2622,7 +2622,8 @@ func TestRisksNotGreenRowsShowTheRunOffGreen(t *testing.T) {
 	h.Checkin(ada, stale.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	h.Checkin(ada, red.ID, domain.HealthRed, "Blocked.", "Escalate.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Clock.Set(time.Date(2026, time.January, 12, 9, 0, 0, 0, time.UTC))
-	h.Checkin(ada, red.ID, domain.HealthRed, "Still blocked.", "Escalate.", h.Clock.Now().AddDate(0, 1, 0))
+	// A month out from a week later moves the back-to-Green date later.
+	h.CheckinMovingPath(ada, red.ID, domain.HealthRed, "Still blocked.", "Escalate.", h.Clock.Now().AddDate(0, 1, 0), "Escalation takes longer.")
 	h.Clock.Set(time.Date(2026, time.January, 14, 9, 0, 0, 0, time.UTC))
 	client := signInClient(t, ts.URL, "ada@example.com")
 
