@@ -79,6 +79,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] CONTEXT.md's Admin entry says an Admin can make another person an Admin or take the role from another Admin, never from themselves.
 - [internal] The #201 changelog entry no longer says a `test.fixme` covers the live Ready card on the empty form; #212 made that a real check in the same milestone (#228).
 - [internal] CONTEXT.md defines Run off Green, Schedule conflict and Ask for help; a later back-to-Green date is a Date Slip, a passed one refuses No change, a Nudge covers anything an Owner answers in a Check-in, and a Comment can be made on a Goal itself (triage of #240–#282).
+- [internal] CONTEXT.md defines a person's Timezone, read from the directory: a Goal's own dates and cadence are judged in its Owner's Timezone, falling back to the company's (#349).
 
 **Testing:**
 - [internal] The seeded-pages check that no page shows an email as text skips a select's options, as its comment always said it did for form fields: the Scope select names people as Name (email) by design (#275), and the seed's Managers now make it list them (#306).

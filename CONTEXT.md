@@ -5,7 +5,7 @@ A single mechanism for a company to state its goals, update them on a regular ca
 ## People
 
 **Company**:
-The whole organization using the tool: everyone who signs in, its directory of people and Managers, and its timezone. "Company-wide" means across all of it.
+The whole organization using the tool: everyone who signs in, its directory of people and Managers, and its timezone, used for company-wide dates and for anyone without a Timezone of their own. "Company-wide" means across all of it.
 _Avoid_: org, the org, organization (an **Org** is one person's part of it)
 
 **Account**:
@@ -19,6 +19,10 @@ _Avoid_: display name, full name, username
 **Manager**:
 The person someone reports to, as the company's directory records it. It is read from the directory and never set in the tool. Someone at the top of the company, or whom the directory gives no manager, has none.
 _Avoid_: boss, supervisor, lead, reports to (it collides with Report)
+
+**Timezone**:
+Where a person works, as the company's directory records it; read from the directory and never set in the tool. A person without one uses the company's. A Goal's own dates and cadence are judged in its Owner's Timezone: whether it is Stale, whether a Milestone or the back-to-Green date has passed, whether a Metric is off target, and its Run off Green. An Ownerless Goal uses the company's. Company-wide dates, such as a Report's baseline, stay in the company's timezone.
+_Avoid_: locale, location, region
 
 **Org**:
 A person and everyone below them: the people whose Manager is that person, whose Manager's Manager is, and so on at every depth. "Priya's org" includes Priya; a viewer's own is "My org". An org scopes what a page or Report shows by each Goal's Owner, never by its Delegates, and never limits or ranks a Contributes to link (ADR 0002). When a Manager changes, an org simply finds different Goals.
@@ -133,11 +137,11 @@ The worst Health among a Goal's active children, shown next to the Owner-set Hea
 _Avoid_: computed status, aggregate health
 
 **Run off Green**:
-How long an Active Goal has been Yellow or Red without a Green Check-in in between, counted in weeks of the company's timezone. Moving between Red and Yellow doesn't end it; a Green Check-in does. Shown beside the Health ("Red · 5 wks"), never changing it.
+How long an Active Goal has been Yellow or Red without a Green Check-in in between, counted in weeks of the Owner's Timezone. Moving between Red and Yellow doesn't end it; a Green Check-in does. Shown beside the Health ("Red · 5 wks"), never changing it.
 _Avoid_: time in status, red streak, days red
 
 **Stale**:
-An Active Goal whose last Check-in (or its activation, if it has none) is older than its expected cadence (weekly by default), counted in days of the company's timezone. On Hold Goals are never Stale. Surfaced as prominently as Red; a Rolled-up Health says how many children are Stale ("3 of 12 Stale") without changing its color.
+An Active Goal whose last Check-in (or its activation, if it has none) is older than its expected cadence (weekly by default), counted in days of the Owner's Timezone. On Hold Goals are never Stale. Surfaced as prominently as Red; a Rolled-up Health says how many children are Stale ("3 of 12 Stale") without changing its color.
 _Avoid_: overdue, missing update
 
 **Lifecycle**:
