@@ -211,8 +211,12 @@ func TestRisksPageListsOwnerlessGoals(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/risks?org=all")
 
 	row := riskRowOf(t, page, orphaned)
-	if chip := riskChip(t, row, "ownerless"); !strings.Contains(openTag(chip), `class="badge ol"`) || !strings.HasSuffix(chip, ">Ownerless") {
+	chip := riskChip(t, row, "ownerless")
+	if !strings.Contains(openTag(chip), `class="badge ol"`) || !strings.HasSuffix(chip, ">Ownerless") {
 		t.Errorf("Ownerless chip is not an Ownerless badge: %s", chip)
+	}
+	if got, want := attr(openTag(chip), "title"), html.EscapeString("Its Owner has left the company. It gets a new Owner when an Admin reassigns it, or when someone accepts a Handoff its Owner started before leaving."); got != want {
+		t.Errorf("Ownerless chip's title = %q, want %q", got, want)
 	}
 	if owner := pageElement(t, row, "td", "risk-owner"); !strings.Contains(owner, `title="sam@example.com"`) || strings.Contains(owner, "You") {
 		t.Errorf("row doesn't show the departed Owner: %s", owner)

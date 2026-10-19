@@ -211,7 +211,7 @@ templ riskChip(today time.Time, g domain.Goal, sig riskSignal) {
 		case "action-item-overdue":
 			<span data-testid="risk-signal" data-kind="action-item-overdue" class="badge st">{ "Action Item " + plural(sig.Days, "day") + " overdue" }</span>
 		case "ownerless":
-			<span data-testid="risk-signal" data-kind="ownerless" class="badge ol">Ownerless</span>
+			<span data-testid="risk-signal" data-kind="ownerless" class="badge ol" title={ ownerlessHelp }>Ownerless</span>
 		case "unaligned":
 			<span data-testid="risk-signal" data-kind="unaligned" class="rk-tag">Unaligned · no parent Goal, not Top-level</span>
 		case "schedule-conflicts":

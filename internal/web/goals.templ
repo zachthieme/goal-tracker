@@ -245,7 +245,7 @@ templ goalListRow(row goalRow, dates displayDates) {
 			if g.Ownerless || row.Freshness.Stale || row.Freshness.PathToGreenOverdue || len(row.Incomplete) > 0 {
 				<div class="gl-marks">
 					if g.Ownerless {
-						<span data-testid="ownerless" class="badge ol">Ownerless</span>
+						<span data-testid="ownerless" class="badge ol" title={ ownerlessHelp }>Ownerless</span>
 					}
 					@goalRowFreshness(row.Freshness)
 					if len(row.Incomplete) > 0 {
@@ -1462,7 +1462,7 @@ templ linkList(g domain.Goal, current *domain.Account, links []domain.GoalLink, 
 						<span class="badge lc">{ l.Goal.Lifecycle }</span>
 					}
 					if l.Goal.Ownerless {
-						<span data-testid="ownerless" class="badge ol">Ownerless</span>
+						<span data-testid="ownerless" class="badge ol" title={ ownerlessHelp }>Ownerless</span>
 					}
 					if current != nil && (current.ID == g.Owner.ID || current.ID == l.Goal.Owner.ID) {
 						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/links/%d/remove", l.LinkID)) }>

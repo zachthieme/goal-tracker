@@ -2513,6 +2513,39 @@ func TestGoalPageExplainsKindDelegatesAndDimensionValues(t *testing.T) {
 	}
 }
 
+// An Ownerless badge says what Ownerless means on hover, on the Goals list and
+// in a parent Goal's Contributed to by list, where a button in every row would
+// be too heavy.
+func TestOwnerlessBadgesSayWhatOwnerlessMeans(t *testing.T) {
+	t.Parallel()
+
+	const ownerless = "Its Owner has left the company. It gets a new Owner when an Admin reassigns it, or when someone accepts a Handoff its Owner started before leaving."
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	parent := h.ActiveGoal(boss, "Reduce outages", "Outages cost trust.")
+	child := h.ActiveGoal(sam, "Migrate displays", "Displays fail often.")
+	link := h.RequestLink(sam, child, parent, "")
+	if _, err := h.Service.AcceptLink(context.Background(), link.ID, boss.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+	if err := h.Service.MarkDeparted(context.Background(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	client := signInClient(t, ts.URL, boss.Email)
+
+	for _, tc := range []struct{ where, page string }{
+		{"the Goals list", getBody(t, client, ts.URL+"/goals?org=all")},
+		{"the parent's Contributed to by list", getBody(t, client, goalPageURL(ts.URL, parent))},
+	} {
+		badge := tagAround(t, tc.page, `data-testid="ownerless"`)
+		if got, want := attr(badge, "title"), html.EscapeString(ownerless); got != want {
+			t.Errorf("the Ownerless badge on %s has title %q, want %q", tc.where, got, want)
+		}
+	}
+}
+
 // With a seeded company, every page that shows people shows them by Name with
 // their email a click, tap or keypress away, never an email as text until
 // asked for; the Print view, with no hover or controls, introduces them as
