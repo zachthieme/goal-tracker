@@ -1276,6 +1276,42 @@ func TestReportsListRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 	}
 }
 
+// At phone width a Report card's head stacks: the title block spans the card
+// and the Health badge and its badges drop under it, left-aligned, rather than
+// squeezing the title into a narrow column beside them (#229).
+func TestReportCardHeadStacksAtPhoneWidthOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	red := h.ActiveGoal(boss, "Cut infrastructure cost per request", "Margins matter.")
+	h.Clock.Advance(40 * 24 * time.Hour)
+	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID}})
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
+	head := between(t, pageElement(t, page, "article", "report-exception"), `<div class="rp-card-head">`, `<div class="rp-badges">`)
+	if !strings.Contains(head, "<h3>") {
+		t.Fatalf("the card head's title block holds no title:\n%s", head)
+	}
+
+	phone := mediaBlock(t, page, "@media (max-width:600px)")
+	cardHead, _ := ruleFor(phone, ".rp-card-head")
+	badges, _ := ruleFor(phone, ".rp-badges")
+	column := strings.Contains(cardHead, "flex-direction:column")
+	wrapped := strings.Contains(cardHead, "flex-wrap:wrap") && strings.Contains(badges, "flex-basis:100%")
+	if !column && !wrapped {
+		t.Errorf("at 600px the card head keeps its badges beside the title: .rp-card-head{%s} .rp-badges{%s}", cardHead, badges)
+	}
+	if !strings.Contains(badges, "justify-content:flex-start") {
+		t.Errorf("at 600px the badges under the title stay right-aligned: .rp-badges{%s}", badges)
+	}
+	if rule := cssRule(t, page, ".rp-card-head"); !strings.Contains(rule, "justify-content:space-between") {
+		t.Errorf("above 600px the card head no longer sets its badges right of the title: .rp-card-head{%s}", rule)
+	}
+}
+
 // The print page sets the Report in the design system's serif, falling back to
 // Georgia, and marks Health with a shape as well as its name so it survives
 // black-and-white printing: ■ Red, ▲ Yellow, ● Green.
