@@ -54,7 +54,8 @@ type authentikPage struct {
 }
 
 // People lists every user in the directory, following the API's pagination,
-// with their Name and the email in their manager attribute. Service accounts
+// with their Name, the email in their manager attribute, and the timezone in
+// their timezone attribute, as Authentik gives it. Service accounts
 // and users without an email aren't people, and are left out. It returns an
 // error, and no one, if any page can't be read.
 func (a *Authentik) People(ctx context.Context) ([]domain.DirectoryPerson, error) {
@@ -69,7 +70,8 @@ func (a *Authentik) People(ctx context.Context) ([]domain.DirectoryPerson, error
 				continue
 			}
 			manager, _ := u.Attributes["manager"].(string)
-			people = append(people, domain.DirectoryPerson{Email: u.Email, Name: u.Name, ManagerEmail: manager})
+			timezone, _ := u.Attributes["timezone"].(string)
+			people = append(people, domain.DirectoryPerson{Email: u.Email, Name: u.Name, ManagerEmail: manager, Timezone: timezone})
 		}
 		if p.Pagination.Next != 0 && p.Pagination.Next <= page {
 			return nil, fmt.Errorf("authentik users page %d points back to page %d", page, p.Pagination.Next)

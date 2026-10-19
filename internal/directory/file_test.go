@@ -62,6 +62,28 @@ func TestFileReadsColumnsInAnyOrderAfterABOM(t *testing.T) {
 	}
 }
 
+// An optional timezone column, matched in any case and position like the
+// others, gives each person the timezone as the file has it; an empty field
+// gives none (CONTEXT.md: Timezone).
+func TestFileReadsAnOptionalTimezoneColumn(t *testing.T) {
+	t.Parallel()
+	path := writeDirectoryFile(t, "email, TimeZone ,name,manager_email\n"+
+		"ada@example.com,America/Los_Angeles,Ada Lovelace,grace@example.com\n"+
+		"grace@example.com,,Grace Hopper,\n")
+
+	people, err := directory.NewFile(path).People(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []domain.DirectoryPerson{
+		{Email: "ada@example.com", Name: "Ada Lovelace", ManagerEmail: "grace@example.com", Timezone: "America/Los_Angeles"},
+		{Email: "grace@example.com", Name: "Grace Hopper"},
+	}
+	if !reflect.DeepEqual(people, want) {
+		t.Fatalf("People() = %+v, want %+v", people, want)
+	}
+}
+
 // Each call reads the file afresh, so an edit shows up on the next sync.
 func TestFileRereadsTheFileEachTime(t *testing.T) {
 	t.Parallel()
@@ -187,6 +209,12 @@ func TestFileRejectsADuplicatedColumn(t *testing.T) {
 			contents: "email,name,manager_email, EMAIL\n" +
 				"ada@example.com,Ada,grace@example.com,ada@example.org\n",
 			want: `the header names the column "email" twice`,
+		},
+		{
+			name: "timezone",
+			contents: "email,name,manager_email,timezone,TimeZone\n" +
+				"ada@example.com,Ada,grace@example.com,Europe/London,Europe/Paris\n",
+			want: `the header names the column "timezone" twice`,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -327,6 +355,14 @@ func TestFileRejectsAFieldThatRunsOntoTheNextLine(t *testing.T) {
 				"bob@x.com,\"Bob\",\n" +
 				"cy@x.com,Cy,\n",
 			want: []string{"people.csv", "line 2", "the name field"},
+		},
+		{
+			name: "unclosed quote in timezone",
+			contents: "email,name,manager_email,timezone\n" +
+				"ada@x.com,Ada,,\"Europe/London\n" +
+				"bob@x.com,Bob,,\n" +
+				"cy@x.com,Cy,,\n",
+			want: []string{"people.csv", "line 2", "the timezone field"},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

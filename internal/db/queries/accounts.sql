@@ -34,3 +34,6 @@ SELECT * FROM accounts WHERE is_admin = 1 ORDER BY email;
 
 -- name: SetAccountAdmin :exec
 UPDATE accounts SET is_admin = ? WHERE id = ?;
+
+-- name: SetAccountTimezone :exec
+UPDATE accounts SET timezone = ? WHERE id = ?;

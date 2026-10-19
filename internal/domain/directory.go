@@ -10,11 +10,14 @@ import (
 )
 
 // DirectoryPerson is one person as the org's directory lists them: their email,
-// their Name, and their Manager's email, empty for none (ADR 0008).
+// their Name, their Manager's email, empty for none (ADR 0008), and their
+// Timezone as the directory gives it, unchecked, empty for none (CONTEXT.md:
+// Timezone).
 type DirectoryPerson struct {
 	Email        string
 	Name         string
 	ManagerEmail string
+	Timezone     string
 }
 
 // Directory is the org's directory, where Managers come from (ADR 0008).
@@ -27,20 +30,32 @@ type Directory interface {
 }
 
 // DirectorySyncResult is what one sync of the directory found: how many
-// people it read, and the cycles among the Managers it stored, each as the
-// people in it in Manager order.
+// people it read, the cycles among the Managers it stored, each as the people
+// in it in Manager order, and the timezones it refused, in directory order.
 type DirectorySyncResult struct {
-	People int
-	Cycles [][]Account
+	People           int
+	Cycles           [][]Account
+	InvalidTimezones []InvalidTimezone
+}
+
+// InvalidTimezone is a timezone the directory gives a person that isn't an
+// IANA name, as it gives it, trimmed. The person is stored with none, and
+// uses the company's (CONTEXT.md: Timezone).
+type InvalidTimezone struct {
+	Email string
+	Value string
 }
 
 // SyncDirectory reads everyone from dir and records each person the way the
 // spreadsheet import does: an Account, matched whatever its case and created
 // if there is none, with their Name from the directory when it gives one, and
 // their Manager, whose Account is created too if needed (ADR 0008). A person
-// with no Manager email has none. It never marks anyone Departed, and someone
-// the directory doesn't list keeps the Manager they had. Cycles are stored as
-// the directory gives them, and returned. Nothing changes unless it all does:
+// with no Manager email has none. Each person's Timezone is the one the
+// directory gives, and none when it gives a blank one or one that isn't an
+// IANA name; those it refuses are returned (CONTEXT.md: Timezone). It never
+// marks anyone Departed, and someone the directory doesn't list keeps the
+// Manager and Timezone they had. Cycles are stored as the directory gives
+// them, and returned. Nothing changes unless it all does:
 // a directory that can't be read, or a person that can't be recorded, leaves
 // every Account as it was.
 func (s *Service) SyncDirectory(ctx context.Context, dir Directory) (DirectorySyncResult, error) {
@@ -54,8 +69,12 @@ func (s *Service) SyncDirectory(ctx context.Context, dir Directory) (DirectorySy
 			if strings.TrimSpace(p.Email) == "" {
 				continue
 			}
-			if err := tx.recordDirectoryPerson(ctx, p); err != nil {
+			invalid, err := tx.recordDirectoryPerson(ctx, p)
+			if err != nil {
 				return err
+			}
+			if invalid != nil {
+				out.InvalidTimezones = append(out.InvalidTimezones, *invalid)
 			}
 			out.People++
 		}
@@ -69,31 +88,43 @@ func (s *Service) SyncDirectory(ctx context.Context, dir Directory) (DirectorySy
 	return out, nil
 }
 
-// recordDirectoryPerson gives p an Account, their Name, and their Manager.
-func (s *Service) recordDirectoryPerson(ctx context.Context, p DirectoryPerson) error {
+// recordDirectoryPerson gives p an Account, their Name, their Manager, and
+// their Timezone. A timezone it refuses is stored as none, and returned.
+func (s *Service) recordDirectoryPerson(ctx context.Context, p DirectoryPerson) (*InvalidTimezone, error) {
 	acc, err := s.EnsureAccount(ctx, p.Email)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if name := strings.TrimSpace(p.Name); name != "" && name != acc.Name {
 		if err := s.SetName(ctx, acc.ID, name); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	var managerID *int64
 	if m := strings.TrimSpace(p.ManagerEmail); m != "" {
 		manager, err := s.EnsureAccount(ctx, m)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		managerID = &manager.ID
 	}
 	if !sameManager(acc.ManagerID, managerID) {
 		if err := s.queries.SetAccountManager(ctx, db.SetAccountManagerParams{ManagerID: managerID, ID: acc.ID}); err != nil {
-			return fmt.Errorf("set manager: %w", err)
+			return nil, fmt.Errorf("set manager: %w", err)
 		}
 	}
-	return nil
+	var invalid *InvalidTimezone
+	tz := strings.TrimSpace(p.Timezone)
+	if _, ok := loadTimezone(tz); tz != "" && !ok {
+		invalid = &InvalidTimezone{Email: acc.Email, Value: tz}
+		tz = ""
+	}
+	if tz != acc.Timezone {
+		if err := s.queries.SetAccountTimezone(ctx, db.SetAccountTimezoneParams{Timezone: tz, ID: acc.ID}); err != nil {
+			return nil, fmt.Errorf("set timezone: %w", err)
+		}
+	}
+	return invalid, nil
 }
 
 func sameManager(a, b *int64) bool {

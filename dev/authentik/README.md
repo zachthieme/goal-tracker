@@ -92,7 +92,11 @@ person's manager is the `manager` attribute on their user in the blueprint.
 ## The directory token
 
 Goal Tracker syncs every person and their manager from Authentik's users API
-(see the repo's README, "Managers"). It reads with the API token
+(see the repo's README, "Managers"), and their Timezone from the `timezone`
+attribute, an IANA name. Two seeded people have one: Sofia Marquez
+(`data-lead@example.com`, `Europe/Madrid`) and Rahul Iyer
+(`support-lead@example.com`, `Asia/Kolkata`); everyone else uses the company's.
+It reads with the API token
 `GOAL_TRACKER_DIRECTORY_TOKEN` from `.env`, which the blueprint gives to a
 service account, `goal-tracker-directory`, whose only permission (the role
 "Goal Tracker: directory reader") is to view users. It can list people and

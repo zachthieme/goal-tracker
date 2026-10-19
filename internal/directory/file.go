@@ -28,18 +28,23 @@ const (
 	fileEmailColumn   = "email"
 	fileNameColumn    = "name"
 	fileManagerColumn = "manager_email"
+	// fileTimezoneColumn is optional: a file without it gives no one a
+	// Timezone.
+	fileTimezoneColumn = "timezone"
 )
 
 // People lists one person per row of the file. Its first row is the header,
-// naming the email, name and manager_email columns in any order and case;
-// other columns, empty or repeated, are ignored. An empty name gives no Name,
-// and an empty manager_email no Manager. Blank lines and a leading UTF-8 BOM
-// are skipped, and a stray quote in an unquoted field is kept as part of it.
-// It returns an error naming the file, and no one, if the file can't be read,
-// the header lacks one of those three columns or names one twice, a row has the
-// wrong number of fields, or one of those three fields runs onto the next line,
-// the sign of a quote that isn't closed (for a bad row the error gives its
-// line).
+// naming the email, name and manager_email columns, and optionally a timezone
+// column, in any order and case; other columns, empty or repeated, are
+// ignored. An empty name gives no Name, and an empty manager_email no Manager.
+// The timezone is given as the file has it, an IANA name or not, and is empty
+// without the column. Blank lines and a leading UTF-8 BOM are skipped, and a
+// stray quote in an unquoted field is kept as part of it. It returns an error
+// naming the file, and no one, if the file can't be read, the header lacks one
+// of the three required columns or names any of the four twice, a row has the
+// wrong number of fields, or one of the fields it reads runs onto the next
+// line, the sign of a quote that isn't closed (for a bad row the error gives
+// its line).
 func (f *File) People(_ context.Context) ([]domain.DirectoryPerson, error) {
 	file, err := os.Open(f.path)
 	if err != nil {
@@ -65,7 +70,7 @@ func (f *File) People(_ context.Context) ([]domain.DirectoryPerson, error) {
 	columns := map[string]int{}
 	for i, name := range header {
 		name = strings.ToLower(strings.TrimSpace(name))
-		if name != fileEmailColumn && name != fileNameColumn && name != fileManagerColumn {
+		if name != fileEmailColumn && name != fileNameColumn && name != fileManagerColumn && name != fileTimezoneColumn {
 			continue
 		}
 		if _, dup := columns[name]; dup {
@@ -74,13 +79,17 @@ func (f *File) People(_ context.Context) ([]domain.DirectoryPerson, error) {
 		columns[name] = i
 	}
 	readColumns := []string{fileEmailColumn, fileNameColumn, fileManagerColumn}
-	var at [3]int
-	for i, name := range readColumns {
+	at := make([]int, 0, len(readColumns)+1)
+	for _, name := range readColumns {
 		col, ok := columns[name]
 		if !ok {
 			return nil, fmt.Errorf("directory file %s: the header has no %q column", f.path, name)
 		}
-		at[i] = col
+		at = append(at, col)
+	}
+	if col, ok := columns[fileTimezoneColumn]; ok {
+		readColumns = append(readColumns, fileTimezoneColumn)
+		at = append(at, col)
 	}
 	people := []domain.DirectoryPerson{}
 	for {
@@ -101,7 +110,11 @@ func (f *File) People(_ context.Context) ([]domain.DirectoryPerson, error) {
 				return nil, fmt.Errorf("directory file %s: line %d: the %s field runs onto the next line; check for a quote that isn't closed", f.path, line, readColumns[i])
 			}
 		}
-		people = append(people, domain.DirectoryPerson{Email: rec[at[0]], Name: rec[at[1]], ManagerEmail: rec[at[2]]})
+		p := domain.DirectoryPerson{Email: rec[at[0]], Name: rec[at[1]], ManagerEmail: rec[at[2]]}
+		if len(at) > 3 {
+			p.Timezone = rec[at[3]]
+		}
+		people = append(people, p)
 	}
 	return people, nil
 }
