@@ -683,14 +683,36 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   offset 1px. The ring shows on mouse focus too and never transitions. See
   Deviations.
 - **Choice cards (`.gf-segment`):** the New goal form's Kind cards, Dated
-  and Ongoing, with neither chosen at first. Each card draws its own radio dot.
-  An unchosen card is an outline: a 2px `--color-border-strong` edge, no fill,
-  and an empty dot with a 2px `--color-border-strong` ring. The chosen card has
-  a 2px `--color-primary` edge, a `--color-primary-light` fill and a filled
-  `--color-primary` dot. The edge is 2px either way, so the card keeps its size.
-  Keyboard focus takes the usual ring. All of this needs `:has()`. A browser
-  without it shows the native radio, which still chooses. The Check-in cadence
-  chips (`.gf-pick`) keep their 1px `--color-border` pill.
+  and Ongoing, side by side (stacked at phone width), with neither chosen at
+  first. Each card draws its own radio dot. An unchosen card is an outline: a
+  2px `--color-border-strong` edge, no fill, and an empty dot with a 2px
+  `--color-border-strong` ring. The chosen card has a 2px `--color-primary`
+  edge, a `--color-primary-subtle` fill and a filled `--color-primary` dot. The
+  edge is 2px either way, so the card keeps its size. The Dated card holds the
+  Delivery date, shown once Dated is chosen, its white input on the card's
+  fill. Keyboard focus takes the usual ring. All of this needs `:has()`. A
+  browser without it shows the native radio and the date, and the radio still
+  chooses.
+- **Segmented control (`.gf-segctl`):** the New goal form's Check-in cadence,
+  Weekly | Every 2 weeks | Monthly | Custom, one radio each. A 1px
+  `--color-border-strong` edge and `--radius-md` go round the whole control,
+  and 1px `--color-border` lines divide the segments. The chosen segment fills
+  with `--color-ink`, its text `--color-ink-inverse` in 600 weight. The focused
+  segment takes the usual ring. The native radio hides only with `:has()`. At
+  phone width the control becomes a 2×2 grid the width of the form.
+- **New goal page (`goalFormPage`):** no outer card. The form's column is
+  sections on the canvas, 48px apart: the Title and So What with no heading
+  (a muted "New goal · Proposed until it's activated" line holds the `<h1>`,
+  and the Title is a 34px display-face input on a 2px `--color-primary-strong`
+  underline), then **Delivery** and **How you'll know** as 22px `<h2>`s, then
+  **More detail**, an 18px `<h2>` over a 1px `--color-border` rule. More
+  detail's Contributes to and Where it fits are `<details>` rows, one 48px line
+  each: the name, a muted "· " and what it holds, and **Set** or **Change** at
+  the right. A row opens by itself when it holds a refused input or, for Where
+  it fits, a required value not set. The sticky Ready to activate card beside
+  it shows each item's mark only, ✓ in a `--health-g-ink` circle or ○ as an
+  empty `--color-border-strong` ring, its done or to do for screen readers
+  alone. The Finish defining page is the same page.
 - **Sizes and touch targets:** buttons and text, email, date, number and search
   inputs and selects are 40px tall, and `.btn.sm` is 32px. On a coarse pointer
   (`@media (pointer:coarse)`) all of them get a 44px `min-height`, so every
@@ -713,7 +735,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
 - **Stale chip (`.badge.st`):** marks a Stale Goal wherever its Health shows
   (the Goal list, Home, a Report), with its age ("Stale · 9 days" on the Goal
   list; on Risks, with its cadence too: "Stale · 42 days, checks in weekly",
-  naming the cadence as the New goal form's chips do, or "every 3 days"). It
+  naming the cadence as the New goal form's segments do, or "every 3 days"). It
   is a warning about freshness, never a tag, so it can't share a tag's look:
   a `--stale-bg` grey fill, `--stale-ink` text and a 1px dashed
   `--stale-edge` border, at a Health badge's `--radius-sm`. The Goal list's

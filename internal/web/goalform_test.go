@@ -331,9 +331,12 @@ func TestNewGoalPageOffersMilestoneAndMetricRows(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	form := pageElement(t, getBody(t, client, ts.URL+"/goals/new"), "form", "goal-form")
-	know := pageElement(t, form, "fieldset", "goal-form-know")
-	if !strings.Contains(know, "How you&#39;ll know") && !strings.Contains(know, "How you'll know") {
-		t.Errorf("the section isn't headed How you'll know:\n%s", know)
+	know := pageElement(t, form, "section", "goal-form-know")
+	if h2s := headingTexts(know, "h2"); len(h2s) != 1 || h2s[0] != "How you'll know" {
+		t.Errorf("the section is headed %q, want How you'll know:\n%s", h2s, know)
+	}
+	if h3s := headingTexts(know, "h3"); !slices.Equal(h3s, []string{"Milestones", "Metrics"}) {
+		t.Errorf("the section's <h3>s read %q, want Milestones and Metrics", h3s)
 	}
 	for _, name := range []string{
 		"milestones[0].name", "milestones[0].date",
@@ -731,7 +734,7 @@ func TestNewGoalFormRefusesACustomCadenceThatIsntWholeDaysKeepingTheRest(t *test
 
 // A Dated Goal's delivery date, missing or not a date, is refused under
 // delivery_date, and the summary lists each problem in the order the page
-// shows its inputs: What and why, then Delivery, then How you'll know.
+// shows its inputs: the Title and So What, then Delivery, then How you'll know.
 func TestNewGoalFormRefusesADatedGoalsDeliveryDateInPageOrder(t *testing.T) {
 	t.Parallel()
 
@@ -766,7 +769,6 @@ func TestNewGoalFormRefusesADatedGoalsDeliveryDateInPageOrder(t *testing.T) {
 	}
 }
 
-// The New goal page opens with What and why, its So What hinted, then
 // The New goal form's Dated and Ongoing cards say what each means in the
 // same words the Goal page's kind help uses.
 func TestNewGoalKindCardsUseTheGoalPagesHelpText(t *testing.T) {
@@ -805,16 +807,21 @@ func TestNewGoalPageOffersWhatAndWhyAndDelivery(t *testing.T) {
 
 	page := getBody(t, client, ts.URL+"/goals/new")
 	form := pageElement(t, page, "form", "goal-form")
-	what := pageElement(t, form, "fieldset", "goal-form-what")
-	if !strings.Contains(what, "<legend>What and why</legend>") || !strings.Contains(what, "The customer problem, and what changes when this succeeds.") {
-		t.Errorf("What and why isn't headed and hinted:\n%s", what)
+	what := pageElement(t, form, "section", "goal-form-what")
+	if !strings.Contains(what, "the customer problem, and what changes when this succeeds") {
+		t.Errorf("So What isn't hinted:\n%s", what)
 	}
 	delivery := between(t, form, `data-testid="goal-form-delivery"`, `data-testid="goal-form-know"`)
-	if !strings.Contains(delivery, "<legend>Delivery</legend>") {
-		t.Errorf("Delivery isn't headed:\n%s", delivery)
+	if h2s := headingTexts(delivery, "h2"); !slices.Equal(h2s, []string{"Delivery"}) {
+		t.Errorf("Delivery is headed %q:\n%s", h2s, delivery)
+	}
+	for _, legend := range []string{"<legend>Kind</legend>", "<legend>Check-in cadence</legend>"} {
+		if !strings.Contains(delivery, legend) {
+			t.Errorf("Delivery has no %s:\n%s", legend, delivery)
+		}
 	}
 	if strings.Index(form, `data-testid="goal-form-what"`) > strings.Index(form, `data-testid="goal-form-delivery"`) {
-		t.Errorf("Delivery comes before What and why")
+		t.Errorf("Delivery comes before the Title and So What")
 	}
 
 	for _, radio := range []struct{ id, name, value, label string }{
@@ -823,7 +830,7 @@ func TestNewGoalPageOffersWhatAndWhyAndDelivery(t *testing.T) {
 		{"cadence-7", "cadence", "7", "Weekly"},
 		{"cadence-14", "cadence", "14", "Every 2 weeks"},
 		{"cadence-30", "cadence", "30", "Monthly"},
-		{"cadence-custom", "cadence", "custom", "Custom…"},
+		{"cadence-custom", "cadence", "custom", "Custom"},
 	} {
 		tag := tagAround(t, delivery, `id="`+radio.id+`"`)
 		if attr(tag, "type") != "radio" || attr(tag, "name") != radio.name || attr(tag, "value") != radio.value {
@@ -1385,8 +1392,18 @@ func TestNewGoalPageRendersTheReadyCardEnabledWithoutScript(t *testing.T) {
 	if got := activationItems(t, card); got["So What"] || !got["Owner"] {
 		t.Errorf("an empty form's checklist = %v, want So What missing and Owner done", got)
 	}
-	if !strings.Contains(card, "1 of 4") {
-		t.Errorf("an empty form's card doesn't say 1 of 4:\n%s", card)
+	if count := elementTexts(card, "p", "goal-form-ready-count"); len(count) != 1 || count[0] != "1 of 4 done" {
+		t.Errorf("an empty form's card counts %q, want 1 of 4 done:\n%s", count, card)
+	}
+	var order []int
+	for _, part := range []string{`id="goal-form-ready-head"`, `data-testid="goal-form-ready-count"`, "<progress", `data-testid="activation-checklist"`, ">Save as Proposed", `name="activate"`, "Saving needs", ">Cancel<"} {
+		order = append(order, strings.Index(card, part))
+	}
+	if slices.Contains(order, -1) || !slices.IsSorted(order) {
+		t.Errorf("the card isn't its heading, count, bar, checklist, buttons, note and Cancel in turn (at %v):\n%s", order, card)
+	}
+	if rule := cssRule(t, page, ".gf-activate"); rule != "order:-1" {
+		t.Errorf("Create and activate doesn't show above Save as Proposed: .gf-activate{%s}", rule)
 	}
 	if strings.Contains(activate, " disabled") || attr(activate, "type") != "submit" || attr(activate, "value") != "1" || !strings.Contains(between(t, card, `name="activate"`, "</button>"), "Create and activate") {
 		t.Errorf("Create and activate isn't an enabled submit posting activate=1: %s", activate)
@@ -1430,7 +1447,9 @@ func TestNewGoalPageRendersTheReadyCardEnabledWithoutScript(t *testing.T) {
 // An empty New goal form's checklist marks each item not yet met with a
 // neutral ○ "to do", never a red ✗ "missing": nothing has gone wrong before
 // anything is typed. The Owner, met by the person creating the Goal, is ✓
-// "done".
+// "done". Only the mark shows: an empty ring, or a circle filled with Green's
+// ink. The state is there for screen readers alone, so nothing beside the
+// label can wrap (#357).
 func TestNewGoalChecklistMarksUnmetItemsToDo(t *testing.T) {
 	t.Parallel()
 
@@ -1450,19 +1469,31 @@ func TestNewGoalChecklistMarksUnmetItemsToDo(t *testing.T) {
 		if got := [2]string{mark, state}; got != want {
 			t.Errorf("%q is marked %q %q, want %q %q: %s", label, mark, state, want[0], want[1], li)
 		}
+		if !strings.Contains(li, `<span aria-hidden="true" class="gf-mark">`+mark+"</span>") {
+			t.Errorf("%q's mark isn't hidden from screen readers: %s", label, li)
+		}
+		if !strings.Contains(li, `<span class="sr-only">`+state+"</span>") {
+			t.Errorf("%q's state isn't for screen readers alone: %s", label, li)
+		}
 	}
 	for _, gone := range []string{"✗", "missing"} {
 		if strings.Contains(list, gone) {
 			t.Errorf("the checklist says %q:\n%s", gone, list)
 		}
 	}
-	if rule := cssRule(t, page, ".gf-check>span:first-child"); !strings.Contains(rule, "color:var(--color-ink-muted)") {
-		t.Errorf("an unmet item's mark isn't the neutral muted ink: %s", rule)
+	if rule := cssRule(t, page, ".gf-mark"); !strings.Contains(rule, "border:2px solid var(--color-border-strong)") || !strings.Contains(rule, "border-radius:50%") {
+		t.Errorf("an unmet item's mark isn't a ring in the control edge colour: %s", rule)
 	}
-	if rule := cssRule(t, page, ".gf-check.done>span:first-child"); !strings.Contains(rule, "color:var(--health-g-ink)") {
-		t.Errorf("a met item's mark isn't Green's ink: %s", rule)
+	if rule := cssRule(t, page, ".gf-check.done .gf-mark"); !strings.Contains(rule, "background:var(--health-g-ink)") || !strings.Contains(rule, "color:var(--color-surface)") {
+		t.Errorf("a met item's mark isn't filled with Green's ink: %s", rule)
 	}
-	if regexp.MustCompile(`\.gf-check[^{}]*\{[^}]*--health-r-ink`).MatchString(page) {
+	if !strings.Contains(page, ".sr-only{position:absolute;width:1px;height:1px;overflow:hidden") {
+		t.Errorf("the page's styles don't hide .sr-only")
+	}
+	if strings.Contains(page, ".gf-check .muted{margin-left:auto}") {
+		t.Errorf("the checklist still pushes a visible state to the right")
+	}
+	if regexp.MustCompile(`\.gf-(check|mark)[^{}]*\{[^}]*--health-r-ink`).MatchString(page) {
 		t.Errorf("the checklist still uses Red's ink")
 	}
 }
@@ -1656,7 +1687,7 @@ func TestDefineGoalPageIsTheNewGoalFormPrefilled(t *testing.T) {
 		t.Errorf("Budget isn't the Goal's: %s", budget)
 	}
 
-	know := pageElement(t, page, "fieldset", "goal-form-know")
+	know := pageElement(t, page, "section", "goal-form-know")
 	existing := between(t, know, `data-testid="existing-measures"`, `data-testid="milestone-rows"`)
 	for _, name := range []string{"Beta cut", "p95 latency"} {
 		if !strings.Contains(existing, name) {
@@ -2190,11 +2221,12 @@ func TestProposedGoalChecklistLinksNowhere(t *testing.T) {
 	}
 }
 
-// A Kind card shows whether it's chosen: unchosen, an outline in the control
+// A Kind tile shows whether it's chosen: unchosen, an outline in the control
 // edge colour with an empty radio dot; chosen, a primary edge, a filled dot
-// and a fill. The edge is 2px either way, so choosing doesn't resize the card.
-// All of it waits on :has, so a browser without it keeps the native radio,
-// which still chooses.
+// and the subtle primary fill, which the Delivery date's white input sits on.
+// The edge is 2px either way, so choosing doesn't resize the tile. All of it
+// waits on :has, so a browser without it keeps the native radio, which still
+// chooses.
 func TestNewGoalPageKindCardsShowWhichIsChosen(t *testing.T) {
 	t.Parallel()
 
@@ -2208,9 +2240,9 @@ func TestNewGoalPageKindCardsShowWhichIsChosen(t *testing.T) {
 	const supports = "@supports selector(:has(*))"
 	block := mediaBlock(t, style, supports)
 	for sel, want := range map[string][]string{
-		".gf-segment":                            {"border:2px solid var(--color-border-strong)"},
+		".gf-tile":                               {"border:2px solid var(--color-border-strong)"},
 		".gf-segment::before":                    {"border:2px solid var(--color-border-strong)", "border-radius:50%"},
-		".gf-segment:has(input:checked)":         {"border-color:var(--color-primary)", "background:var(--color-primary-light)"},
+		".gf-tile:has(input:checked)":            {"border-color:var(--color-primary)", "background:var(--color-primary-subtle)"},
 		".gf-segment:has(input:checked)::before": {"border-color:var(--color-primary)", "var(--color-primary)"},
 	} {
 		rule, ok := ruleFor(block, sel)
@@ -2224,8 +2256,11 @@ func TestNewGoalPageKindCardsShowWhichIsChosen(t *testing.T) {
 			}
 		}
 	}
-	if rule, _ := ruleFor(block, ".gf-segment:has(input:checked)"); strings.Contains(rule, "border-width") || strings.Contains(rule, "padding") || strings.Contains(rule, "border:") {
-		t.Errorf("choosing a Kind card resizes it: %s", rule)
+	if rule, _ := ruleFor(block, ".gf-tile:has(input:checked)"); strings.Contains(rule, "border-width") || strings.Contains(rule, "padding") || strings.Contains(rule, "border:") {
+		t.Errorf("choosing a Kind tile resizes it: %s", rule)
+	}
+	if strings.Contains(style, "primary-light") {
+		t.Errorf("a Kind tile still fills with --color-primary-light")
 	}
 	outside := strings.Replace(style, supports+"{"+block, "", 1)
 	if strings.Contains(outside, "opacity:0") || strings.Contains(outside, ".gf-segment::before") {
@@ -2233,5 +2268,386 @@ func TestNewGoalPageKindCardsShowWhichIsChosen(t *testing.T) {
 	}
 	if !strings.Contains(block, ".gf-pick input{position:absolute;opacity:0") {
 		t.Errorf("with :has the native radio isn't hidden behind the drawn dot:\n%s", block)
+	}
+}
+
+// headingTexts are the text of every tag element in page, a heading's, in
+// order, markup dropped and whitespace collapsed.
+func headingTexts(page, tag string) []string {
+	var out []string
+	for _, m := range regexp.MustCompile(`(?s)<`+tag+`[ >].*?</`+tag+`>`).FindAllString(page, -1) {
+		out = append(out, strings.Join(strings.Fields(html.UnescapeString(regexpTags.ReplaceAllString(m, " "))), " "))
+	}
+	return out
+}
+
+// The New goal page has no outer card: its column holds the Title and So
+// What, then Delivery, How you'll know and More detail, each a section headed
+// by an <h2> with no step number, and the Ready to activate aside follows.
+// The <h1> is a muted line above the Title, which reads as a heading itself.
+func TestNewGoalPageIsHeadedSectionsWithoutACard(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals/new")
+	form := pageElement(t, page, "form", "goal-form")
+	column := tagAround(t, form, "gf-main")
+	if slices.Contains(strings.Fields(attr(column, "class")), "card") {
+		t.Errorf("the form's column is a card: %s", column)
+	}
+	var order []int
+	for _, id := range []string{"goal-form-what", "goal-form-delivery", "goal-form-know", "goal-form-more", "goal-form-ready"} {
+		at := strings.Index(form, `data-testid="`+id+`"`)
+		if at < 0 {
+			t.Fatalf("the form has no %s:\n%s", id, form)
+		}
+		order = append(order, at)
+	}
+	if !slices.IsSorted(order) {
+		t.Errorf("the sections aren't What, Delivery, How you'll know, More detail, then Ready (at %v)", order)
+	}
+	for _, id := range []string{"goal-form-what", "goal-form-delivery", "goal-form-know", "goal-form-more"} {
+		if tag := tagAround(t, form, `data-testid="`+id+`"`); !strings.HasPrefix(tag, "<section") {
+			t.Errorf("%s isn't a <section>: %s", id, tag)
+		}
+	}
+	if tag := tagAround(t, form, `data-testid="goal-form-ready"`); !strings.HasPrefix(tag, "<aside") {
+		t.Errorf("Ready to activate isn't an <aside>: %s", tag)
+	}
+
+	h2s := headingTexts(form, "h2")
+	if len(h2s) != 4 || h2s[0] != "Delivery" || h2s[1] != "How you'll know" || !strings.HasPrefix(h2s[2], "More detail ") || h2s[3] != "Ready to activate" {
+		t.Errorf("the <h2>s read %q, want Delivery, How you'll know, More detail …, Ready to activate", h2s)
+	}
+	for _, h2 := range h2s {
+		if regexp.MustCompile(`^(\d|Step)`).MatchString(h2) {
+			t.Errorf("the <h2> %q is numbered", h2)
+		}
+	}
+	if strings.Contains(page, `class="page-head"`) || strings.Contains(page, "Say what the Goal is and why it matters.") {
+		t.Errorf("the page keeps its old page-head and lead")
+	}
+
+	what := pageElement(t, form, "section", "goal-form-what")
+	if h1s := headingTexts(what, "h1"); len(h1s) != 1 || h1s[0] != "New goal" {
+		t.Errorf("the <h1>s in the Title's section read %q, want New goal", h1s)
+	}
+	if line := between(t, what, "<h1", `name="title"`); !strings.Contains(html.UnescapeString(line), "· Proposed until it's activated") {
+		t.Errorf("the <h1> isn't followed by · Proposed until it's activated:\n%s", line)
+	}
+	title := tagAround(t, what, `name="title"`)
+	if attr(title, "placeholder") != "Name the outcome" {
+		t.Errorf("the Title doesn't ask to Name the outcome: %s", title)
+	}
+	if label := between(t, what, "<label", `name="title"`); !strings.Contains(label, ">Title</span>") {
+		t.Errorf("the Title isn't labelled Title:\n%s", label)
+	}
+	if label := html.UnescapeString(between(t, what, `name="title"`, `name="so_what"`)); !strings.Contains(label, "So What") || !strings.Contains(label, "· the customer problem, and what changes when this succeeds") {
+		t.Errorf("So What isn't labelled with its hint inline:\n%s", label)
+	}
+}
+
+// Finish defining is the same page: its <h1> reads Finish defining, and its
+// Title stays the Goal's, read-only.
+func TestDefineGoalPageIsHeadedFinishDefining(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	form := pageElement(t, getBody(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, g.ID)), "form", "goal-form")
+	what := pageElement(t, form, "section", "goal-form-what")
+	if h1s := headingTexts(what, "h1"); len(h1s) != 1 || h1s[0] != "Finish defining" {
+		t.Errorf("the <h1>s read %q, want Finish defining", h1s)
+	}
+	if title := tagAround(t, what, `name="title"`); attr(title, "value") != g.Title || !strings.Contains(title, " readonly") {
+		t.Errorf("Title isn't the Goal's, read-only: %s", title)
+	}
+}
+
+// Delivery's Kind is two tiles, the Dated one holding the Delivery date, and
+// its cadence is one segmented control of the same four radios, Custom
+// without an ellipsis.
+func TestNewGoalPageDatedTileHoldsTheDeliveryDate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	form := pageElement(t, getBody(t, client, ts.URL+"/goals/new"), "form", "goal-form")
+	delivery := between(t, form, `data-testid="goal-form-delivery"`, `data-testid="goal-form-know"`)
+	tiles := strings.Split(between(t, delivery, `id="kind"`, "</fieldset>"), `class="gf-tile"`)[1:]
+	if len(tiles) != 2 {
+		t.Fatalf("the Kind has %d tiles, want 2:\n%s", len(tiles), delivery)
+	}
+	dated, ongoing := tiles[0], tiles[1]
+	if !strings.Contains(dated, `id="kind-dated"`) || !strings.Contains(between(t, dated, `id="kind-dated"`, ""), `name="delivery_date"`) {
+		t.Errorf("the Dated tile doesn't hold its radio, then the Delivery date:\n%s", dated)
+	}
+	if !strings.Contains(between(t, dated, "gf-date", ""), ">Delivery date</span>") {
+		t.Errorf("the Delivery date isn't labelled:\n%s", dated)
+	}
+	if !strings.Contains(ongoing, `id="kind-ongoing"`) || strings.Contains(ongoing, "delivery_date") {
+		t.Errorf("the Ongoing tile isn't its radio alone:\n%s", ongoing)
+	}
+
+	control := between(t, delivery, `class="gf-segctl"`, `class="field gf-custom"`)
+	for _, chip := range []struct{ id, value, label string }{
+		{"cadence-7", "7", "Weekly"},
+		{"cadence-14", "14", "Every 2 weeks"},
+		{"cadence-30", "30", "Monthly"},
+		{"cadence-custom", "custom", "Custom"},
+	} {
+		radio := tagAround(t, control, `id="`+chip.id+`"`)
+		if attr(radio, "type") != "radio" || attr(radio, "name") != "cadence" || attr(radio, "value") != chip.value {
+			t.Errorf("%s isn't the cadence radio posting %s: %s", chip.id, chip.value, radio)
+		}
+		rest := between(t, control, `id="`+chip.id+`"`, "</label>")
+		if label := strings.TrimSpace(regexpTags.ReplaceAllString(rest[strings.Index(rest, ">")+1:], "")); label != chip.label {
+			t.Errorf("%s reads %q, want %q", chip.id, label, chip.label)
+		}
+	}
+}
+
+// The Check-in cadence is one segmented control: a 1px control edge around
+// the whole, segments divided by the border colour, and the chosen one filled
+// with ink. The native radio hides, and the focus ring shows on the focused
+// segment, only with :has. At phone widths the Kind tiles stack and the
+// control becomes a 2×2 grid the width of the form.
+func TestNewGoalPageCadenceIsASegmentedControl(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	style := between(t, getBody(t, client, ts.URL+"/goals/new"), ".gf-form{", "</style>")
+	for sel, want := range map[string][]string{
+		".gf-segctl":      {"border:1px solid var(--color-border-strong)", "border-radius:var(--radius-md)"},
+		".gf-seg+.gf-seg": {"border-left:1px solid var(--color-border)"},
+	} {
+		rule, ok := ruleFor(style, sel)
+		if !ok {
+			t.Errorf("the style block has no %s rule", sel)
+		}
+		for _, decl := range want {
+			if !strings.Contains(rule, decl) {
+				t.Errorf("%s declares %q, want %s", sel, rule, decl)
+			}
+		}
+	}
+	if rule, _ := ruleFor(style, ".gf-segctl"); strings.Contains(rule, "overflow") {
+		t.Errorf("the control clips its segments' focus ring: %s", rule)
+	}
+
+	const supports = "@supports selector(:has(*))"
+	block := mediaBlock(t, style, supports)
+	for sel, want := range map[string][]string{
+		".gf-seg input":                    {"position:absolute", "opacity:0"},
+		".gf-seg:has(input:checked)":       {"background:var(--color-ink)", "color:var(--color-ink-inverse)", "font-weight:600"},
+		".gf-seg:has(input:focus-visible)": {"outline:2px solid var(--color-focus)"},
+	} {
+		rule, ok := ruleFor(block, sel)
+		if !ok {
+			t.Errorf("%s has no %s rule", supports, sel)
+		}
+		for _, decl := range want {
+			if !strings.Contains(rule, decl) {
+				t.Errorf("%s declares %q, want %s", sel, rule, decl)
+			}
+		}
+	}
+	if outside := strings.Replace(style, supports+"{"+block, "", 1); strings.Contains(outside, ".gf-seg input") {
+		t.Errorf("the cadence's native radio is hidden without :has")
+	}
+
+	phone := mediaBlock(t, style, "@media (max-width:600px)")
+	for sel, want := range map[string]string{
+		".gf-segments": "grid-template-columns:minmax(0,1fr)",
+		".gf-segctl":   "grid-template-columns:1fr 1fr",
+	} {
+		if rule, _ := ruleFor(phone, sel); !strings.Contains(rule, want) {
+			t.Errorf("at phone width %s declares %q, want %s", sel, rule, want)
+		}
+	}
+}
+
+// Beside How you'll know's heading, a line says what activation needs of it:
+// at least one Milestone or Metric, or, once Ongoing is chosen, at least one
+// Metric. Both are rendered and :has swaps them, so a browser without it
+// shows the first; the old "optional" hint is gone.
+func TestNewGoalPageHowYoullKnowSaysWhatActivationNeeds(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals/new")
+	know := pageElement(t, page, "section", "goal-form-know")
+	head := between(t, know, "<h2", `data-testid="milestone-rows"`)
+	any := tagAround(t, head, ">At least one Milestone or Metric to activate<")
+	ongoing := tagAround(t, head, ">At least one Metric to activate<")
+	if strings.Contains(know, "Milestones and Metrics are optional") {
+		t.Errorf("How you'll know keeps its old optional hint:\n%s", know)
+	}
+
+	style := between(t, page, ".gf-form{", "</style>")
+	anyClass, ongoingClass := "."+attr(any, "class"), "."+attr(ongoing, "class")
+	if rule, _ := ruleFor(style, ongoingClass); !strings.Contains(rule, "display:none") {
+		t.Errorf("the Ongoing line shows without :has: %s{%s}", ongoingClass, rule)
+	}
+	block := mediaBlock(t, style, "@supports selector(:has(*))")
+	if rule, _ := ruleFor(block, ".gf-form:has(#kind-ongoing:checked) "+anyClass); !strings.Contains(rule, "display:none") {
+		t.Errorf("choosing Ongoing doesn't hide %s: %q", anyClass, rule)
+	}
+	if rule, ok := ruleFor(block, ".gf-form:has(#kind-ongoing:checked) "+ongoingClass); !ok || strings.Contains(rule, "display:none") {
+		t.Errorf("choosing Ongoing doesn't show %s: %q", ongoingClass, rule)
+	}
+}
+
+// moreRow is a More detail row of page: its <details> opening tag and its
+// summary's text, markup dropped and whitespace collapsed.
+func moreRow(t *testing.T, page, testID string) (tag, summary string) {
+	t.Helper()
+	tag = tagAround(t, page, `data-testid="`+testID+`"`)
+	if !strings.HasPrefix(tag, "<details") {
+		t.Fatalf("%s isn't a <details>: %s", testID, tag)
+	}
+	text := between(t, between(t, page, `data-testid="`+testID+`"`, ""), "<summary", "</summary>")
+	return tag, strings.Join(strings.Fields(html.UnescapeString(regexpTags.ReplaceAllString(text, " "))), " ")
+}
+
+// isOpen says a <details> opening tag renders it open.
+func isOpen(tag string) bool {
+	return regexp.MustCompile(`\sopen[\s>]`).MatchString(tag)
+}
+
+// More detail holds Contributes to as a one-line row, closed with nothing
+// picked, saying so and offering to Set it; arriving with a parent picked, it
+// names the parent and offers to Change it. Its fieldset keeps its accessible
+// name in a visually hidden legend.
+func TestNewGoalPageContributesToIsAMoreDetailRow(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	parent := h.CreateGoal(sam, "Grow revenue", "The business needs it.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals/new")
+	more := pageElement(t, page, "section", "goal-form-more")
+	tag, summary := moreRow(t, more, "goal-form-parents-row")
+	if isOpen(tag) {
+		t.Errorf("Contributes to opens with nothing picked: %s", tag)
+	}
+	if summary != "Contributes to · none Set" {
+		t.Errorf("Contributes to's row reads %q, want Contributes to · none Set", summary)
+	}
+	if fieldset := between(t, more, `data-testid="goal-form-parents-row"`, `data-testid="goal-form-parents"`); !strings.Contains(fieldset, "</summary>") {
+		t.Errorf("the Contributes to field isn't the row's body:\n%s", fieldset)
+	}
+	if !strings.Contains(more, `<legend class="sr-only">Contributes to</legend>`) {
+		t.Errorf("the Contributes to field's legend isn't visually hidden:\n%s", more)
+	}
+
+	page = getBody(t, client, fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, parent.ID))
+	if _, summary = moreRow(t, page, "goal-form-parents-row"); summary != "Contributes to · Grow revenue Change" {
+		t.Errorf("with a parent picked, the row reads %q, want Contributes to · Grow revenue Change", summary)
+	}
+}
+
+// Where it fits is More detail's second row. With only optional Dimensions and
+// Fields it's closed, not set, offering to Set it; with a required one unset,
+// it opens by itself, since the checklist links into it. On the define page it
+// names the values the Goal carries, in page order (Channel, then Pillar),
+// offering to Change them.
+func TestGoalFormWhereItFitsIsAMoreDetailRow(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	fits := arrangeWhereItFits(h)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	h.AssignGoalValue(g, fits.channel.Values[1])
+	h.AssignGoalValue(g, fits.pillar.Values[0])
+	h.SetGoalField(sam, g, fits.budget, "25000")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	tag, summary := moreRow(t, getBody(t, client, ts.URL+"/goals/new"), "goal-form-fits-row")
+	if isOpen(tag) || summary != "Where it fits · not set Set" {
+		t.Errorf("with nothing required, the row is %s reading %q, want closed, Where it fits · not set Set", tag, summary)
+	}
+	if more := pageElement(t, getBody(t, client, ts.URL+"/goals/new"), "section", "goal-form-more"); !strings.Contains(more, `<legend class="sr-only">Where it fits</legend>`) {
+		t.Errorf("the Where it fits field's legend isn't visually hidden:\n%s", more)
+	}
+
+	tag, summary = moreRow(t, getBody(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, g.ID)), "goal-form-fits-row")
+	if isOpen(tag) || summary != "Where it fits · Mobile, Growth, 25000 Change" {
+		t.Errorf("on the define page, the row is %s reading %q, want closed, Where it fits · Mobile, Growth, 25000 Change", tag, summary)
+	}
+
+	h.SetDimensionRequired(boss, fits.team, true)
+	if tag, _ = moreRow(t, getBody(t, client, ts.URL+"/goals/new"), "goal-form-fits-row"); !isOpen(tag) {
+		t.Errorf("with Team required and unset, the row is closed: %s", tag)
+	}
+}
+
+// With no Dimensions or Fields, More detail holds Contributes to alone.
+func TestNewGoalPageMoreDetailWithoutWhereItFits(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	more := pageElement(t, getBody(t, client, ts.URL+"/goals/new"), "section", "goal-form-more")
+	if strings.Contains(more, "goal-form-fits") {
+		t.Errorf("More detail offers Where it fits with nothing to set:\n%s", more)
+	}
+}
+
+// A refused submit opens the More detail row holding a refused input, so its
+// message isn't hidden: Contributes to for a parent that isn't a Goal, and
+// Where it fits for a Field value that isn't its type. A row with nothing
+// refused stays closed.
+func TestNewGoalFormRefusalOpensTheRowItRefuses(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	fits := arrangeWhereItFits(h)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	form := refusedNewGoal(t, client, ts.URL, newGoalForm(map[string]string{"parent_id": "first"}))
+	if tag, _ := moreRow(t, form, "goal-form-parents-row"); !isOpen(tag) {
+		t.Errorf("a refused parent leaves Contributes to closed: %s", tag)
+	}
+	if tag, _ := moreRow(t, form, "goal-form-fits-row"); isOpen(tag) {
+		t.Errorf("with nothing refused in it, Where it fits opens: %s", tag)
+	}
+
+	form = refusedNewGoal(t, client, ts.URL, newGoalForm(map[string]string{fmt.Sprintf("field:%d", fits.budget.ID): "lots"}))
+	if tag, _ := moreRow(t, form, "goal-form-fits-row"); !isOpen(tag) {
+		t.Errorf("a refused Budget leaves Where it fits closed: %s", tag)
+	}
+	if tag, _ := moreRow(t, form, "goal-form-parents-row"); isOpen(tag) {
+		t.Errorf("with nothing refused in it, Contributes to opens: %s", tag)
 	}
 }

@@ -115,21 +115,35 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     await expect(priya.getByRole("heading", { level: 1, name: "New goal" })).toBeVisible();
 
     const form = priya.getByTestId("goal-form");
-    const what = form.getByRole("group", { name: "What and why" });
+    // The Title and So What come first, with no heading of their own.
+    const what = form.getByTestId("goal-form-what");
+    await expect(what.getByRole("heading")).toHaveCount(1);
     await expect(what.getByLabel("Title")).toBeVisible();
+    await expect(what.getByLabel("Title")).toHaveAttribute("placeholder", "Name the outcome");
     await expect(what.getByLabel(/^So What/)).toBeVisible();
-    const delivery = form.getByRole("group", { name: "Delivery" });
+    const delivery = form.getByTestId("goal-form-delivery");
+    await expect(delivery.getByRole("heading", { level: 2, name: "Delivery" })).toBeVisible();
     await expect(delivery.getByRole("group", { name: "Kind" }).getByRole("radio")).toHaveCount(2);
     await expect(delivery.getByRole("radio", { name: /^Dated/ })).toBeVisible();
     await expect(delivery.getByRole("radio", { name: /^Ongoing/ })).toBeVisible();
     await expect(delivery.getByRole("group", { name: "Check-in cadence" })).toBeVisible();
     // The delivery date shows once Dated is chosen; it's there all along.
     await expect(delivery.getByLabel("Delivery date", { exact: true })).toBeAttached();
-    const know = form.getByRole("group", { name: "How you'll know" });
-    await expect(know.getByRole("heading", { name: "Milestones" })).toBeVisible();
-    await expect(know.getByRole("heading", { name: "Metrics" })).toBeVisible();
-    await expect(form.getByRole("group", { name: "Contributes to" })).toBeVisible();
-    const fits = form.getByRole("group", { name: "Where it fits" });
+    const know = form.getByTestId("goal-form-know");
+    await expect(know.getByRole("heading", { level: 2, name: "How you'll know" })).toBeVisible();
+    await expect(know.getByText("At least one Milestone or Metric to activate")).toBeVisible();
+    await expect(know.getByRole("heading", { level: 3, name: "Milestones" })).toBeVisible();
+    await expect(know.getByRole("heading", { level: 3, name: "Metrics" })).toBeVisible();
+    const more = form.getByTestId("goal-form-more");
+    await expect(more.getByRole("heading", { level: 2, name: /^More detail/ })).toBeVisible();
+    // Contributes to is a closed row, with nothing picked, until it's opened.
+    const contributes = more.getByRole("group", { name: "Contributes to" });
+    await expect(more.getByTestId("goal-form-parents-row").locator("summary")).toHaveText(/Contributes to\s*· none\s*Set/);
+    await expect(contributes).toBeHidden();
+    await openContributesTo(priya);
+    await expect(contributes).toBeVisible();
+    // Where it fits opens by itself: Team and the Field are required, and unset.
+    const fits = more.getByRole("group", { name: "Where it fits" });
     await expect(fits.getByRole("combobox", { name: "Team", exact: true })).toBeVisible();
     await expect(fits.getByLabel(fieldName, { exact: true })).toBeVisible();
   });
@@ -139,7 +153,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     // the Goals it offers to contribute to, which are other people's words.
     const words = await priya
       .getByTestId("goal-form")
-      .locator("label, legend, h2, option, button")
+      .locator("label, legend, h1, h2, h3, summary, option, button")
       .evaluateAll((els) =>
         els.filter((el) => !el.closest('[data-testid="parent-select"]')).map((el) => (el.textContent ?? "").trim()),
       );
@@ -165,7 +179,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
       "A value in Team": false,
       [`A value in ${fieldName}`]: false,
     });
-    await expect(count).toHaveText("1 of 6");
+    await expect(count).toHaveText("1 of 6 done");
 
     // The live card swaps in on load, empty form or not (the test below covers
     // the empty form), and Create and activate follows it.
@@ -174,22 +188,25 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     await priya.getByLabel(/^So What/).fill(goalB.soWhat);
     await expect(activate).toBeDisabled();
     await expectItem(priya, "So What", true);
-    await expect(count).toHaveText("2 of 6");
+    await expect(count).toHaveText("2 of 6 done");
 
-    // Ongoing asks for a Metric, not a Milestone.
+    // Ongoing asks for a Metric, not a Milestone, and How you'll know says so.
     await chooseKind(priya, "Ongoing");
     await expectItem(priya, "A Metric", false);
+    const know = priya.getByTestId("goal-form-know");
+    await expect(know.getByText("At least one Metric to activate")).toBeVisible();
+    await expect(know.getByText("At least one Milestone or Metric to activate")).toBeHidden();
     await expectItem(priya, "Dated with a delivery date, or Ongoing", true);
-    await expect(count).toHaveText("3 of 6");
+    await expect(count).toHaveText("3 of 6 done");
 
     // Dated counts only with a delivery date.
     await chooseKind(priya, "Dated");
     await expectItem(priya, "A Milestone or Metric", false);
     await expectItem(priya, "Dated with a delivery date, or Ongoing", false);
-    await expect(count).toHaveText("2 of 6");
+    await expect(count).toHaveText("2 of 6 done");
     await priya.getByLabel("Delivery date", { exact: true }).fill(isoDaysFromNow(120));
     await expectItem(priya, "Dated with a delivery date, or Ongoing", true);
-    await expect(count).toHaveText("3 of 6");
+    await expect(count).toHaveText("3 of 6 done");
     await expect(activate).toBeDisabled();
 
     // A forced submit before the checklist is met is refused, and says why.
@@ -210,25 +227,25 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     // The refused form comes back as typed, its card live again.
     await expect(priya.getByLabel("Title")).toHaveValue(goalB.title);
     await expect(activate).toBeDisabled();
-    await expect(count).toHaveText("3 of 6");
+    await expect(count).toHaveText("3 of 6 done");
 
     const milestone = priya.getByTestId("milestone-row").first();
     await milestone.getByLabel("Name").fill("Translations reviewed");
     await milestone.getByLabel("Date").fill(isoDaysFromNow(60));
     await expectItem(priya, "A Milestone or Metric", true);
-    await expect(count).toHaveText("4 of 6");
+    await expect(count).toHaveText("4 of 6 done");
 
     await priya.getByTestId("goal-form-fits").scrollIntoViewIfNeeded();
     await expect(ready, "the card stays in view beside Where it fits").toBeInViewport();
 
     await priya.getByRole("combobox", { name: "Team", exact: true }).selectOption({ label: team.team });
     await expectItem(priya, "A value in Team", true);
-    await expect(count).toHaveText("5 of 6");
+    await expect(count).toHaveText("5 of 6 done");
     await expect(activate).toBeDisabled();
 
     await priya.getByLabel(fieldName, { exact: true }).fill("OPS-114");
     await expectItem(priya, `A value in ${fieldName}`, true);
-    await expect(count).toHaveText("6 of 6");
+    await expect(count).toHaveText("6 of 6 done");
     await expect(activate).toBeEnabled();
   });
 
@@ -257,7 +274,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     await fillDated(priya, "Refund flow live in all EU markets");
     await priya.getByRole("combobox", { name: "Team", exact: true }).selectOption({ label: team.team });
     await priya.getByLabel(fieldName, { exact: true }).fill("OPS-115");
-    await expect(priya.getByTestId("goal-form-ready-count")).toHaveText("6 of 6");
+    await expect(priya.getByTestId("goal-form-ready-count")).toHaveText("6 of 6 done");
     await activate.click();
     await expect(priya).toHaveURL(new RegExp(`/goals/${goalAId}$`));
     await expect(priya.getByTestId("goal-lifecycle")).toHaveText("Active");
@@ -273,12 +290,13 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
 
     const hint = priya.getByTestId("parent-hint");
     await expect(hint).toBeHidden();
+    await openContributesTo(priya);
     await priya.getByLabel("Search Goals to contribute to").fill(team.title);
     await priya.getByTestId("parent-result").filter({ hasText: team.title }).getByRole("button").click();
     await expect(priya.getByTestId("parent-chip").filter({ hasText: team.title })).toBeVisible();
     await expect(hint).toHaveText(`Each Owner is asked to accept: ${team.name}.`);
 
-    await expect(priya.getByTestId("goal-form-ready-count")).toHaveText("6 of 6");
+    await expect(priya.getByTestId("goal-form-ready-count")).toHaveText("6 of 6 done");
     await priya.getByRole("button", { name: "Create and activate" }).click();
     await expect(priya).toHaveURL(/\/goals\/\d+$/);
     goalCId = goalIdOf(priya);
@@ -378,13 +396,13 @@ test("5.2 The live Ready to activate card answers the empty form", async ({ page
     expect((await live).ok()).toBe(true);
     await expect(activate).toBeDisabled();
     await expectItem(page, "So What", false);
-    await expect(count).toHaveText("1 of 4");
+    await expect(count).toHaveText("1 of 4 done");
   });
 
   await test.step("5.2 Choosing a Kind before a Title ticks its item", async () => {
     await chooseKind(page, "Ongoing");
     await expectItem(page, "Dated with a delivery date, or Ongoing", true);
-    await expect(count).toHaveText("2 of 4");
+    await expect(count).toHaveText("2 of 4 done");
   });
 
   await test.step("5.2 Saving with no Title is still refused by the browser", async () => {
@@ -437,7 +455,15 @@ async function expectRefusedByTheBrowser(page: Page, label: string | RegExp, sub
   expect(posts).toEqual([]);
 }
 
-// expectItem says the Ready to activate card marks the item done or to do.
+// openContributesTo opens More detail's Contributes to row by its summary.
+async function openContributesTo(page: Page) {
+  const row = page.getByTestId("goal-form-parents-row");
+  await row.locator("summary").click();
+  await expect(row).toHaveAttribute("open", "");
+}
+
+// expectItem says the Ready to activate card marks the item done or to do:
+// its mark shows, and its state is there for screen readers.
 async function expectItem(page: Page, label: string, done: boolean) {
   const item = page
     .getByTestId("goal-form-ready")

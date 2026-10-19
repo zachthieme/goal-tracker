@@ -1,6 +1,7 @@
-// Phone width: at 390px the Goals list, Risks, the Admin page and a Report
-// draft fit the screen. Nothing inside main is clipped or scrolls sideways,
-// and every control lies within the window (#343: #258, #268, #338, #229).
+// Phone width: at 390px the Goals list, Risks, the Admin page, a Report draft
+// and the New goal page fit the screen. Nothing inside main is clipped or
+// scrolls sideways, and every control lies within the window (#343: #258,
+// #268, #338, #229; #368).
 import type { Page } from "@playwright/test";
 
 import { admin, expect, signIn, test } from "./fixtures";
@@ -105,5 +106,27 @@ test("at 390px a Report card's Health drops under its title", async ({ page }) =
       title.y + title.height - 1,
     );
   }
+  await expectFitsAPhone(page);
+});
+
+test("at 390px the New goal page stacks its Kind tiles and fits its cadence", async ({ page }) => {
+  await signIn(page, admin);
+  await page.goto("/goals/new");
+  const form = page.getByTestId("goal-form");
+  const kind = form.getByRole("group", { name: "Kind" });
+  await kind.getByText("Dated", { exact: true }).click();
+  await expect(kind.getByRole("radio", { name: /^Dated/ })).toBeChecked();
+  await expect(form.getByLabel("Delivery date", { exact: true })).toBeVisible();
+  const cadence = form.getByRole("group", { name: "Check-in cadence" });
+  await cadence.getByText("Custom", { exact: true }).click();
+  await expect(cadence.getByRole("radio", { name: "Custom" })).toBeChecked();
+  await expect(form.getByLabel("Days between Check-ins")).toBeVisible();
+  const parents = form.getByTestId("goal-form-parents-row");
+  await parents.locator("summary").click();
+  await expect(form.getByRole("group", { name: "Contributes to" })).toBeVisible();
+
+  const dated = (await kind.locator(".gf-tile").first().boundingBox())!;
+  const ongoing = (await kind.locator(".gf-tile").last().boundingBox())!;
+  expect(ongoing.y, "the Ongoing tile sits under the Dated one").toBeGreaterThanOrEqual(dated.y + dated.height - 1);
   await expectFitsAPhone(page);
 });
