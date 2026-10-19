@@ -490,3 +490,55 @@ func TestNarrowTopBarShowsThePersonByName(t *testing.T) {
 		t.Errorf("on a narrow screen a long Name cannot shrink, so it pushes Sign out off the row: .me %s .who %s", row, who)
 	}
 }
+
+// A person's Name never looks like a link: at rest it is plain text in the
+// surrounding ink, with no underline. On hover and keyboard focus it takes the
+// faint tint of a quiet control, keeping its colour and the focus ring. The
+// help buttons, which share the disclose control, keep their dotted edge.
+func TestNamesDoNotLookLikeLinks(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	for _, rule := range strings.Split(css, "}") {
+		open := strings.LastIndex(rule, "{")
+		if open < 0 {
+			continue
+		}
+		selectors := rule[strings.LastIndex(rule[:open], "{")+1 : open]
+		if !strings.Contains(selectors, ".person>.disclose") {
+			continue
+		}
+		if decls := rule[open+1:]; strings.Contains(decls, "underline") || strings.Contains(decls, "border-bottom") {
+			t.Errorf("a Name is underlined like a link: %s{%s}", strings.TrimSpace(selectors), decls)
+		}
+	}
+	if decls := cssRule(t, css, "\n.disclose"); !strings.Contains(decls, "color:inherit") {
+		t.Errorf("a Name no longer takes the surrounding ink: %s", decls)
+	}
+	for _, sel := range []string{".person>.disclose:hover", ".person>.disclose:focus-visible"} {
+		decls, ok := ruleFor(css, sel)
+		if !ok {
+			t.Errorf("nothing styles %s", sel)
+			continue
+		}
+		if !strings.Contains(decls, "background:var(--color-primary-subtle)") {
+			t.Errorf("%s does not take the quiet controls' tint: %s", sel, decls)
+		}
+		for _, banned := range []string{"outline:none", "outline:0", "color:"} {
+			if strings.Contains(decls, banned) {
+				t.Errorf("%s declares %s: %s", sel, banned, decls)
+			}
+		}
+	}
+	for _, sel := range []string{".me .person>.disclose:hover", ".me .person>.disclose:focus-visible"} {
+		if decls, ok := ruleFor(css, sel); !ok || !strings.Contains(decls, "background:var(--nav-hover)") {
+			t.Errorf("in the top bar %s does not take the nav's hover tint: %s", sel, decls)
+		}
+	}
+	if decls := cssRule(t, css, "\n.help"); decls != "border-bottom:1px dotted var(--color-ink-muted);cursor:help" {
+		t.Errorf("the help buttons' dotted edge changed: %s", decls)
+	}
+}

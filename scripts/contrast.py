@@ -24,7 +24,8 @@ THEME_SELECTORS = {
 }
 
 # The surfaces text and control edges sit on (--color-primary-light is the
-# selected-row fill), and the marks checked on each with the ratio WCAG asks
+# selected-row fill; --color-primary-subtle is the hover fill of quiet controls
+# and of a Name), and the marks checked on each with the ratio WCAG asks
 # of it: 4.5:1 for text, 3:1 for a control's edge or focus ring.
 # --color-border is left out: it draws rules, not control edges.
 SURFACES = [
@@ -33,6 +34,7 @@ SURFACES = [
     "--color-surface-hover",
     "--color-surface-alt",
     "--color-primary-light",
+    "--color-primary-subtle",
 ]
 MARKS = {
     "--color-ink": 4.5,
