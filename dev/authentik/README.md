@@ -118,8 +118,8 @@ once it signs in with OIDC.
 | --- | ----- | ---------- |
 | Dana Whitfield | `ceo@example.com` | — |
 | Priya Raman, Marcus Bell, Robin Ellis | `cto@`, `cpo@`, `admin@example.com` | the CEO |
-| Jonas Lindqvist, Sofia Marquez, Amara Nwosu | `platform-lead@`, `data-lead@`, `payments-lead@example.com` | the CTO |
-| Elena Petrova, Kenji Watanabe, Rahul Iyer | `growth-lead@`, `mobile-lead@`, `support-lead@example.com` | the CPO |
+| Jonas Lindqvist, Kenji Watanabe, Sofia Marquez | `platform-lead@`, `mobile-lead@`, `data-lead@example.com` | the CTO |
+| Amara Nwosu, Elena Petrova, Rahul Iyer | `payments-lead@`, `growth-lead@`, `support-lead@example.com` | the CPO |
 | Everyone else | `firstname.lastname@example.com` | their team's lead |
 
 The directory is written into the blueprint once and isn't kept in sync with
