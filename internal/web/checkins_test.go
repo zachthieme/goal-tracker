@@ -4323,6 +4323,16 @@ func TestCheckinSectionsCarryHeadingsForTheAddBar(t *testing.T) {
 		t.Errorf("the refused submit re-renders the add bar; body:\n%s", body)
 	}
 	for name, html := range map[string]string{"page": page, "re-render": body} {
+		highlights := between(t, html, `<details data-testid="checkin-highlight-section"`, "</details>")
+		if attr(openTag(highlights), "id") != "checkin-highlight-section" {
+			t.Errorf("%s: the Highlights section = %s, want id checkin-highlight-section", name, openTag(highlights))
+		}
+		if tag := tagAround(t, highlights, `data-testid="checkin-highlights-heading"`); attr(tag, "tabindex") != "-1" {
+			t.Errorf("%s: the Highlights heading = %s, want tabindex -1", name, tag)
+		}
+		if !strings.Contains(highlights, "A Report author can pull each one in") {
+			t.Errorf("%s: the Highlights heading has no muted line:\n%s", name, highlights)
+		}
 		for section, heading := range map[string]struct{ testID, text string }{
 			"checkin-dates-section":     {"checkin-dates-heading", "Dates and Milestones"},
 			"checkin-lifecycle-section": {"checkin-lifecycle-heading", "Lifecycle"},
