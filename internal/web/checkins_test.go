@@ -1395,6 +1395,37 @@ func TestCheckinPageOptionalSectionsCollapsedByDefault(t *testing.T) {
 	}
 }
 
+// The Check-in page opened with ?open=dates, as a Schedule conflict's Fix
+// opens it, has its dates and Milestones section open and the others
+// collapsed; any other open value, or none, leaves the dates collapsed.
+func TestCheckinPageOpenDatesOpensTheDatesSection(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+	checkin := fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)
+
+	page := getBody(t, client, checkin+"?open=dates")
+	for testID, open := range map[string]bool{
+		"checkin-dates-section":     true,
+		"checkin-highlight-section": false,
+		"checkin-lifecycle-section": false,
+	} {
+		if got := strings.Contains(openTag(pageElement(t, page, "details", testID)), " open"); got != open {
+			t.Errorf("with ?open=dates, %s open = %v, want %v", testID, got, open)
+		}
+	}
+	for _, query := range []string{"?open=other", ""} {
+		page := getBody(t, client, checkin+query)
+		if strings.Contains(openTag(pageElement(t, page, "details", "checkin-dates-section")), " open") {
+			t.Errorf("with %q, the dates section is open, want it collapsed", query)
+		}
+	}
+}
+
 // A collapsed section opens on a re-render when it holds the error or a value
 // the reader typed, so the field at fault is never hidden.
 func TestCheckinSectionOpensOnErrorOrSubmittedValue(t *testing.T) {

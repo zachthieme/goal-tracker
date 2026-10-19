@@ -12,8 +12,9 @@ import (
 )
 
 // Nudge is a one-off request from someone else to a Goal's Owner and
-// Delegates to check in on it while it is Stale, past its Path to Green, or
-// marked Milestone overdue (CONTEXT.md: Nudge). Unlike the weekly reminder, someone sends it.
+// Delegates to check in on it with something its Owner answers in a Check-in:
+// Stale, past its Path to Green, a Milestone overdue, or a Schedule conflict
+// (CONTEXT.md: Nudge). Unlike the weekly reminder, someone sends it.
 type Nudge struct {
 	ID        int64
 	GoalID    int64
@@ -24,8 +25,9 @@ type Nudge struct {
 // Nudge asks the Owner and Delegates of the Goal goalID to check in on it,
 // emailing each who hasn't left the org; actorID is who asks. Only a Goal
 // that is Stale, past its Path to Green, or marked Milestone overdue (see
-// Freshness.MilestoneOverdue) can be nudged, and only by someone who can't
-// check in on it themselves. A Goal is nudged at most once a
+// Freshness.MilestoneOverdue), or an Active Goal in a Schedule conflict as the
+// child or the parent, can be nudged, and only by someone who can't check in
+// on it themselves. A Goal is nudged at most once a
 // calendar day in the org's timezone, whoever asks.
 //
 // The Nudge is recorded before any email goes out, so a rollback never leaves
@@ -51,8 +53,19 @@ func (s *Service) Nudge(ctx context.Context, actorID, goalID int64) (Nudge, erro
 	if err != nil {
 		return Nudge{}, err
 	}
-	if !fresh.Stale && !fresh.PathToGreenOverdue && !fresh.MilestoneOverdue {
-		return Nudge{}, fmt.Errorf("%w: only a Stale Goal, one past its Path to Green, or a Green one past a Milestone's date can be nudged", ErrValidation)
+	signals, err := s.GoalSignals(ctx, goalID)
+	if err != nil {
+		return Nudge{}, err
+	}
+	// Only an Active Goal takes the ordinary Check-in a Schedule conflict asks
+	// for.
+	conflicted := goal.Lifecycle == LifecycleActive && len(signals.ScheduleConflicts) > 0
+	if !fresh.Stale && !fresh.PathToGreenOverdue && !fresh.MilestoneOverdue && !conflicted {
+		return Nudge{}, fmt.Errorf("%w: only a Goal that is Stale, past its Path to Green, has a Milestone overdue or has a Schedule conflict can be nudged", ErrValidation)
+	}
+	var conflicts []ScheduleConflict
+	if conflicted {
+		conflicts = signals.ScheduleConflicts
 	}
 	to := nudgeRecipients(goal.Owner, delegates)
 	if len(to) == 0 {
@@ -93,7 +106,7 @@ func (s *Service) Nudge(ctx context.Context, actorID, goalID int64) (Nudge, erro
 		msg := email.Message{
 			To:      r.Email,
 			Subject: "Check-in requested: " + goal.Title,
-			Body:    s.nudgeBody(sender, goal, fresh, r.ID != goal.Owner.ID),
+			Body:    s.nudgeBody(sender, goal, fresh, conflicts, r.ID != goal.Owner.ID),
 		}
 		if err := s.email.Send(ctx, msg); err != nil {
 			unsent = append(unsent, r.Email)
@@ -157,10 +170,13 @@ func nudgeRecipients(owner Account, delegates []Account) []Account {
 }
 
 // nudgeBody is a Nudge's email: who asked, the Goal's line in the weekly
-// reminder's words (a Delegate's naming the Owner they check in for), and the
-// link to check in. With no hover in an email, people read Name (email) at
-// their first mention.
-func (s *Service) nudgeBody(sender Account, goal Goal, f Freshness, asDelegate bool) string {
+// reminder's words (a Delegate's naming the Owner they check in for) with the
+// first of Stale, Path to Green overdue and Milestone overdue that holds, or
+// else Schedule conflict, a line for each of the Goal's Schedule conflicts in
+// the Goal page banner's words, and the link to check in, opening its dates
+// when there is a conflict. With no hover in an email, people read Name
+// (email) at their first mention.
+func (s *Service) nudgeBody(sender Account, goal Goal, f Freshness, conflicts []ScheduleConflict, asDelegate bool) string {
 	var people Mentions
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s asked for a Check-in on this Goal.\n\n", people.Of(sender))
@@ -173,10 +189,20 @@ func (s *Service) nudgeBody(sender Account, goal Goal, f Freshness, asDelegate b
 		fmt.Fprintf(&b, "%s: Stale, %d days without a Check-in (cadence: %d days)\n", title, f.DaysSince, f.CadenceDays)
 	case f.PathToGreenOverdue:
 		fmt.Fprintf(&b, "%s: Path to Green overdue since %s\n", title, f.PathTargetDate.Format(dateFormat))
-	default:
+	case f.MilestoneOverdue:
 		fmt.Fprintf(&b, "%s: Milestone %q overdue since %s\n", title, f.OverdueMilestone, f.OverdueMilestoneDate.Format(dateFormat))
+	default:
+		fmt.Fprintf(&b, "%s: Schedule conflict\n", title)
 	}
-	fmt.Fprintf(&b, "%s/goals/%d/checkin\n", s.baseURL, goal.ID)
+	for _, c := range conflicts {
+		fmt.Fprintf(&b, "Schedule conflict: %s (due %s) contributes to %s (due %s)\n",
+			c.Child.Title, c.Child.DeliveryDate.Format(dateFormat), c.Parent.Title, c.Parent.DeliveryDate.Format(dateFormat))
+	}
+	checkin := fmt.Sprintf("%s/goals/%d/checkin", s.baseURL, goal.ID)
+	if len(conflicts) > 0 {
+		checkin += "?open=dates"
+	}
+	fmt.Fprintln(&b, checkin)
 	return b.String()
 }
 
