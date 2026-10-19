@@ -124,6 +124,41 @@ func (q *Queries) ListAccountsUnder(ctx context.Context, managerIds []*int64) ([
 	return items, nil
 }
 
+const listAdminAccounts = `-- name: ListAdminAccounts :many
+SELECT id, email, is_admin, created_at, departed, name, manager_id FROM accounts WHERE is_admin = 1 ORDER BY email
+`
+
+func (q *Queries) ListAdminAccounts(ctx context.Context) ([]Account, error) {
+	rows, err := q.db.QueryContext(ctx, listAdminAccounts)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Account
+	for rows.Next() {
+		var i Account
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.IsAdmin,
+			&i.CreatedAt,
+			&i.Departed,
+			&i.Name,
+			&i.ManagerID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listDepartedAccounts = `-- name: ListDepartedAccounts :many
 SELECT id, email, is_admin, created_at, departed, name, manager_id FROM accounts WHERE departed = 1 ORDER BY email
 `
@@ -193,6 +228,20 @@ func (q *Queries) ListManagedAccounts(ctx context.Context) ([]Account, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const setAccountAdmin = `-- name: SetAccountAdmin :exec
+UPDATE accounts SET is_admin = ? WHERE id = ?
+`
+
+type SetAccountAdminParams struct {
+	IsAdmin int64
+	ID      int64
+}
+
+func (q *Queries) SetAccountAdmin(ctx context.Context, arg SetAccountAdminParams) error {
+	_, err := q.db.ExecContext(ctx, setAccountAdmin, arg.IsAdmin, arg.ID)
+	return err
 }
 
 const setAccountManager = `-- name: SetAccountManager :exec

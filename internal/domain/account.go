@@ -229,6 +229,81 @@ func (s *Service) DepartedAccounts(ctx context.Context) ([]Account, error) {
 	return out, nil
 }
 
+// Admins lists every Admin, Departed ones included, in the order they are
+// shown: by Label, ignoring case, as DepartedAccounts sorts.
+func (s *Service) Admins(ctx context.Context) ([]Account, error) {
+	rows, err := s.queries.ListAdminAccounts(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list admin accounts: %w", err)
+	}
+	out := make([]Account, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, accountFromRow(r))
+	}
+	slices.SortStableFunc(out, func(a, b Account) int {
+		return strings.Compare(strings.ToLower(a.Label()), strings.ToLower(b.Label()))
+	})
+	return out, nil
+}
+
+// MakeAdmin gives the Admin role to the person with emailAddr, whatever its
+// case or surrounding spaces, and returns their Account (CONTEXT.md: Admin);
+// an Admin already is returned as they are. It never creates an Account, so a
+// typo can't make a stray one: an email no one has is ErrValidation, and a
+// Departed person is ErrDeparted. Only an Admin may do this; actorID
+// identifies the acting Account.
+func (s *Service) MakeAdmin(ctx context.Context, actorID int64, emailAddr string) (Account, error) {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return Account{}, err
+	}
+	row, err := s.queries.GetAccountByEmail(ctx, emailAddr)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Account{}, fmt.Errorf("%w: no one with that email has an account", ErrValidation)
+		}
+		return Account{}, fmt.Errorf("look up account: %w", err)
+	}
+	acc := accountFromRow(row)
+	if acc.Departed {
+		return Account{}, fmt.Errorf("%w: %s has left the company", ErrDeparted, acc.Email)
+	}
+	if acc.IsAdmin {
+		return acc, nil
+	}
+	if err := s.queries.SetAccountAdmin(ctx, db.SetAccountAdminParams{IsAdmin: 1, ID: row.ID}); err != nil {
+		return Account{}, fmt.Errorf("make admin: %w", err)
+	}
+	acc.IsAdmin = true
+	return acc, nil
+}
+
+// RemoveAdmin takes the Admin role from the person behind accountID; someone
+// who isn't an Admin is left as they are. No Admin can take it from
+// themselves, so there is always at least one (CONTEXT.md: Admin). Only an
+// Admin may do this; actorID identifies the acting Account.
+func (s *Service) RemoveAdmin(ctx context.Context, actorID, accountID int64) error {
+	if err := s.requireAdmin(ctx, actorID); err != nil {
+		return err
+	}
+	if accountID == actorID {
+		return fmt.Errorf("%w: you can't remove your own Admin role", ErrValidation)
+	}
+	row, err := s.queries.GetAccount(ctx, accountID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: account does not exist", ErrValidation)
+		}
+		return fmt.Errorf("look up account: %w", err)
+	}
+	if row.IsAdmin == 0 {
+		return nil
+	}
+	if err := s.queries.SetAccountAdmin(ctx, db.SetAccountAdminParams{IsAdmin: 0, ID: accountID}); err != nil {
+		return fmt.Errorf("remove admin: %w", err)
+	}
+	return nil
+}
+
 // requireAdmin returns ErrNotAuthorized unless actorID is an Admin.
 func (s *Service) requireAdmin(ctx context.Context, actorID int64) error {
 	actor, err := s.queries.GetAccount(ctx, actorID)

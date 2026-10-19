@@ -22,23 +22,30 @@ func WithDirectorySync(sync *directory.Sync) Option {
 
 // handleAdmin is the home of the Admin tools: Dimensions, Import goals, the
 // directory sync when there is one, set-password links with password sign-in,
-// the Ownerless Goals waiting for an Admin to reassign them, and the Departed
-// people an Admin can mark returned. Only an Admin may open it.
+// the Admins, the Ownerless Goals waiting for an Admin to reassign them, and
+// the Departed people an Admin can mark returned. Only an Admin may open it.
 func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	if !current.IsAdmin {
 		http.Error(w, "only an Admin may open the Admin page", http.StatusForbidden)
 		return
 	}
-	var links *passwordLinksView
-	if s.passwordFailures != nil {
-		links = &passwordLinksView{}
+	s.renderAdmin(w, r, http.StatusOK, current, s.passwordLinksCard(), adminsSectionView{})
+}
+
+// passwordLinksCard is the set-password links card as the Admin page first
+// shows it: empty with password sign-in, or no card (nil) without.
+func (s *Server) passwordLinksCard() *passwordLinksView {
+	if s.passwordFailures == nil {
+		return nil
 	}
-	s.renderAdmin(w, r, http.StatusOK, current, links)
+	return &passwordLinksView{}
 }
 
 // renderAdmin draws the Admin page for current with status, its set-password
-// links card showing links, or no card when links is nil.
-func (s *Server) renderAdmin(w http.ResponseWriter, r *http.Request, status int, current domain.Account, links *passwordLinksView) {
+// links card showing links, or no card when links is nil, and its Admins
+// section's form showing admins' Email and Refusal; renderAdmin lists the
+// Admins themselves.
+func (s *Server) renderAdmin(w http.ResponseWriter, r *http.Request, status int, current domain.Account, links *passwordLinksView, admins adminsSectionView) {
 	goals, err := s.svc.ListGoals(r.Context())
 	if err != nil {
 		s.serverError(w, r, "could not read goals", err)
@@ -49,7 +56,20 @@ func (s *Server) renderAdmin(w http.ResponseWriter, r *http.Request, status int,
 		s.serverError(w, r, "could not read departed people", err)
 		return
 	}
-	render(w, r, status, adminPage(&current, s.directorySyncStatus(), links, awaitingReassignment(goals), departed))
+	admins.Admins, err = s.svc.Admins(r.Context())
+	if err != nil {
+		s.serverError(w, r, "could not read the Admins", err)
+		return
+	}
+	render(w, r, status, adminPage(&current, s.directorySyncStatus(), links, admins, awaitingReassignment(goals), departed))
+}
+
+// adminsSectionView is the Admin page's Admins section: every Admin, and the
+// Make Admin form, empty, or keeping the email typed with why it was refused.
+type adminsSectionView struct {
+	Admins  []domain.Account
+	Email   string
+	Refusal string
 }
 
 // passwordLinksView is the Admin page's set-password links card: empty before
@@ -73,7 +93,7 @@ func (s *Server) handleIssuePasswordLink(w http.ResponseWriter, r *http.Request,
 	}
 	emailAddr := strings.TrimSpace(r.FormValue("email"))
 	if emailAddr == "" {
-		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, &passwordLinksView{Refusal: "Enter the person's email."})
+		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, &passwordLinksView{Refusal: "Enter the person's email."}, adminsSectionView{})
 		return
 	}
 	token, expires, err := s.svc.IssuePasswordLink(r.Context(), emailAddr)
@@ -81,14 +101,14 @@ func (s *Server) handleIssuePasswordLink(w http.ResponseWriter, r *http.Request,
 		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, &passwordLinksView{
 			Email:   emailAddr,
 			Refusal: "That isn't an email address.",
-		})
+		}, adminsSectionView{})
 		return
 	}
 	if errors.Is(err, domain.ErrDeparted) {
 		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, &passwordLinksView{
 			Email:   emailAddr,
 			Refusal: emailAddr + " has left the company, so can't be given a set-password link. Mark them returned first.",
-		})
+		}, adminsSectionView{})
 		return
 	}
 	if err != nil {
@@ -105,7 +125,69 @@ func (s *Server) handleIssuePasswordLink(w http.ResponseWriter, r *http.Request,
 		Email:   acc.Email,
 		Link:    s.svc.PasswordLinkURL(token),
 		Expires: s.displayDates().timestamp(expires),
-	})
+	}, adminsSectionView{})
+}
+
+// handleMakeAdmin makes the person with the email the Admin typed an Admin,
+// then brings the Admin back to the Admins section. It never creates an
+// Account: an email no one has is refused, as is a Departed person. Only an
+// Admin may.
+func (s *Server) handleMakeAdmin(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	if !current.IsAdmin {
+		http.Error(w, "only an Admin may make someone an Admin", http.StatusForbidden)
+		return
+	}
+	emailAddr := strings.TrimSpace(r.FormValue("email"))
+	refuse := func(refusal string) {
+		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, s.passwordLinksCard(), adminsSectionView{Email: emailAddr, Refusal: refusal})
+	}
+	if emailAddr == "" {
+		refuse("Enter the person's email.")
+		return
+	}
+	_, err := s.svc.MakeAdmin(r.Context(), current.ID, emailAddr)
+	switch {
+	case errors.Is(err, domain.ErrValidation):
+		refuse("No one with that email has an account yet.")
+		return
+	case errors.Is(err, domain.ErrDeparted):
+		refuse(emailAddr + " has left the company. Mark them returned first.")
+		return
+	case err != nil:
+		s.serverError(w, r, "could not make the Admin", err)
+		return
+	}
+	http.Redirect(w, r, "/admin#admin-admins", http.StatusSeeOther)
+}
+
+// handleRemoveAdmin takes the Admin role from the Account in the path, then
+// brings the Admin back to the Admins section. No Admin can take it from
+// themselves (CONTEXT.md: Admin); an Account that doesn't exist is not found.
+// Only an Admin may.
+func (s *Server) handleRemoveAdmin(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	if !current.IsAdmin {
+		http.Error(w, "only an Admin may remove an Admin", http.StatusForbidden)
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		s.notFound(w, r)
+		return
+	}
+	if id == current.ID {
+		s.renderAdmin(w, r, http.StatusUnprocessableEntity, current, s.passwordLinksCard(), adminsSectionView{Refusal: "You can't remove your own Admin role."})
+		return
+	}
+	err = s.svc.RemoveAdmin(r.Context(), current.ID, id)
+	if errors.Is(err, domain.ErrValidation) {
+		s.notFound(w, r)
+		return
+	}
+	if err != nil {
+		s.serverError(w, r, "could not remove the Admin", err)
+		return
+	}
+	http.Redirect(w, r, "/admin#admin-admins", http.StatusSeeOther)
 }
 
 // directorySyncView is the directory sync as the Admin page shows it: whether

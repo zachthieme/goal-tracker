@@ -8,10 +8,11 @@ import (
 
 // adminPage gathers the Admin tools: a card per tool, then the directory sync
 // when the app has one (nil, it shows nothing), then set-password links with
-// password sign-in (nil, it shows nothing), then the Ownerless Goals
-// waiting for an Admin to reassign them (CONTEXT.md: Ownerless), then the
-// Departed people an Admin can mark returned (CONTEXT.md: Departed).
-templ adminPage(current *domain.Account, dirSync *directorySyncView, links *passwordLinksView, ownerless []domain.Goal, departed []domain.Account) {
+// password sign-in (nil, it shows nothing), then the Admins, then the
+// Ownerless Goals waiting for an Admin to reassign them (CONTEXT.md:
+// Ownerless), then the Departed people an Admin can mark returned (CONTEXT.md:
+// Departed).
+templ adminPage(current *domain.Account, dirSync *directorySyncView, links *passwordLinksView, admins adminsSectionView, ownerless []domain.Goal, departed []domain.Account) {
 	@layout("Admin", current) {
 		@adminStyles()
 		<header class="page-head">
@@ -32,6 +33,7 @@ templ adminPage(current *domain.Account, dirSync *directorySyncView, links *pass
 		if links != nil {
 			@adminPasswordLinks(*links)
 		}
+		@adminAdmins(current.ID, admins)
 		<section data-testid="admin-ownerless" class="ad-section">
 			<div>
 				<h2>Ownerless Goals</h2>
@@ -97,6 +99,58 @@ templ adminPage(current *domain.Account, dirSync *directorySyncView, links *pass
 // confirmReturnPerson is what an Admin confirms before marking a Departed
 // person returned from the Admin page, where they may own no Goals at all.
 const confirmReturnPerson = "Mark this person returned? They can sign in and act again, and any Goals they still own stop being Ownerless. Goals reassigned while they were away stay with their new Owners."
+
+// confirmRemoveAdmin is what an Admin confirms before taking the Admin role
+// from another Admin. Its apostrophe is a typographic one: confirmScript quotes
+// the message with straight ones.
+const confirmRemoveAdmin = "Remove this person’s Admin role? They keep their account and their Goals."
+
+// adminAdmins lists every Admin, with Remove Admin… on each but the viewer's
+// own row, as no Admin can take the role from themselves (CONTEXT.md: Admin),
+// then makes a person an Admin by email; or says why it didn't.
+templ adminAdmins(viewerID int64, v adminsSectionView) {
+	<section data-testid="admin-admins" id="admin-admins" class="ad-section">
+		<div>
+			<h2>Admins</h2>
+			<p class="muted">Admins define Dimensions and Fields, reassign Ownerless Goals and use this page.</p>
+		</div>
+		<div class="card ad-links">
+			<table>
+				<thead>
+					<tr><th>Person</th><th><span class="sr-only">Action</span></th></tr>
+				</thead>
+				<tbody>
+					for _, a := range v.Admins {
+						<tr data-testid="admin-admin-person">
+							<td>
+								@person(a)
+							</td>
+							<td class="ad-action">
+								if a.ID == viewerID {
+									<span class="muted">you</span>
+								} else {
+									<form method="post" action={ templ.SafeURL(fmt.Sprintf("/admin/admins/%d/remove", a.ID)) } onsubmit={ confirmScript(confirmRemoveAdmin) }>
+										<button type="submit" class="btn sm">Remove Admin…</button>
+									</form>
+								}
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+			<form class="ad-link-form" method="post" action="/admin/admins">
+				<label class="field">
+					<span>Email</span>
+					<input type="email" name="email" value={ v.Email } required/>
+				</label>
+				<button type="submit" class="btn">Make Admin</button>
+			</form>
+			if v.Refusal != "" {
+				<p data-testid="admin-admins-error" class="ad-error" role="alert">{ v.Refusal }</p>
+			}
+		</div>
+	</section>
+}
 
 // adminDirectorySync shows when the directory sync last ran and how it went,
 // with Sync now to run it at once (ADR 0008).
