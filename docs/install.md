@@ -23,10 +23,6 @@ Read these first; some may decide whether the install goes ahead now.
   for everyone in the file on the first start, so list at least one Admin
   **before the first start**. Admins can make others Admins later on the Admin
   page; see [Making someone an Admin later](#making-someone-an-admin-later).
-- **Check the CSV for unclosed quotes.** A field that opens with `"` and never
-  closes it currently swallows the rest of the file and the sync still
-  succeeds, leaving everyone after that line out of the sync (issue #329).
-  Until that's fixed, check exports for it; see [The CSV file](#the-csv-file).
 - **Stopping is abrupt.** The server doesn't wait for in-flight requests on
   `SIGTERM`. Each change is one database transaction, so nothing is left half
   written, but a request in progress at the moment of a restart fails and the
@@ -158,23 +154,13 @@ grace@example.com,Grace Hopper,ada@example.com
 - Everyone in the file gets an account (without a password) if they don't have
   one. An empty `name` keeps the name they have; an empty `manager_email`
   means no Manager.
-- A file that's missing, lacks a column, or has a row with the wrong number of
-  fields fails the sync and changes nothing. The Admin page shows when the last
+- A file that's missing, lacks a column, has a row with the wrong number of
+  fields, or has a field that runs onto the next line (an unclosed quote)
+  fails the sync and changes nothing. The Admin page shows when the last
   sync ran and whether it worked, and failures are logged at `ERROR`.
 - The sync never removes anyone. Someone who leaves the company stays until an
   Admin marks them **Departed**, from the Owner section of any Goal they own;
   they then can't sign in, get no email, and their Goals show as Ownerless.
-- **Check for unclosed quotes** until #329 is fixed. A file with a line like
-  `ada@example.com,Ada,"grace@example.com` (a quote with no closing quote)
-  reads as if the rest of the file were one value. This lists any line with an
-  odd number of quotes:
-
-  ```sh
-  awk -F'"' 'NF % 2 == 0 { print FILENAME ":" FNR ": " $0 }' /etc/goal-tracker/people.csv
-  ```
-
-  A file that only uses quotes the standard way (whole fields in `"…"`, inner
-  quotes doubled) never trips it.
 
 Have HR's export land somewhere the service can read
 (`sudo install -m 0640 -o root -g goal-tracker export.csv /etc/goal-tracker/people.csv`),

@@ -151,7 +151,8 @@ grace@example.com,Grace Hopper,
 The columns may come in any order, and their names in any case. Other
 columns, empty or repeated, are ignored, but naming `email`, `name` or
 `manager_email` twice is an error. A stray `"` inside an unquoted field is kept
-as part of it. Each later row is one person, who gets an Account if they have
+as part of it. A field that runs onto the next line, the sign of a quote that
+isn't closed, fails the whole sync, naming its line. Each later row is one person, who gets an Account if they have
 none. An empty `name` leaves the Name
 they have, and an empty `manager_email` means no Manager. Blank lines and a
 leading BOM are skipped. A file that's missing, lacks one of the three columns,

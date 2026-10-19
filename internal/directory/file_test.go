@@ -228,6 +228,14 @@ func TestFileThatCantBeReadListsNoOne(t *testing.T) {
 			contents: "email,name,manager_email\nada@example.com,Ada,grace@example.com\ngrace@example.com,Grace\n",
 			want:     []string{"people.csv", "line 3"},
 		},
+		{
+			name: "quote never closed to the end of the file",
+			contents: "email,name,manager_email\n" +
+				"ada@x.com,\"Ada,grace@x.com\n" +
+				"bob@x.com,Bob,\n" +
+				"cy@x.com,Cy,\n",
+			want: []string{"people.csv", "wrong number of fields"},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -252,6 +260,27 @@ func TestFileThatCantBeReadListsNoOne(t *testing.T) {
 	}
 }
 
+// A quoted value that runs over two lines in a column People doesn't read is
+// ignored like any other.
+func TestFileIgnoresAMultiLineValueInAnotherColumn(t *testing.T) {
+	t.Parallel()
+	path := writeDirectoryFile(t, "email,name,manager_email,notes\n"+
+		"ada@x.com,Ada,grace@x.com,\"first line\nsecond line\"\n"+
+		"grace@x.com,Grace,,\n")
+
+	people, err := directory.NewFile(path).People(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []domain.DirectoryPerson{
+		{Email: "ada@x.com", Name: "Ada", ManagerEmail: "grace@x.com"},
+		{Email: "grace@x.com", Name: "Grace"},
+	}
+	if !reflect.DeepEqual(people, want) {
+		t.Fatalf("People() = %+v, want %+v", people, want)
+	}
+}
+
 // An empty name gives no Name and an empty manager_email no Manager; blank
 // lines are skipped.
 func TestFileLeavesEmptyFieldsEmptyAndSkipsBlankLines(t *testing.T) {
@@ -270,5 +299,52 @@ func TestFileLeavesEmptyFieldsEmptyAndSkipsBlankLines(t *testing.T) {
 	}
 	if !reflect.DeepEqual(people, want) {
 		t.Fatalf("People() = %+v, want %+v", people, want)
+	}
+}
+
+// A field People reads that runs onto the next line is the sign of a quote
+// that was never closed, which would otherwise swallow the rows after it. It
+// fails the whole read, naming the field and the line it starts on.
+func TestFileRejectsAFieldThatRunsOntoTheNextLine(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		contents string
+		want     []string
+	}{
+		{
+			name: "unclosed quote in manager_email",
+			contents: "email,name,manager_email\n" +
+				"ada@x.com,Ada,\"grace@x.com\n" +
+				"bob@x.com,Bob,\n" +
+				"cy@x.com,Cy,\n",
+			want: []string{"people.csv", "line 2", "manager_email"},
+		},
+		{
+			name: "unclosed quote in name",
+			contents: "email,name,manager_email\n" +
+				"ada@x.com,\"Ada,grace@x.com\n" +
+				"bob@x.com,\"Bob\",\n" +
+				"cy@x.com,Cy,\n",
+			want: []string{"people.csv", "line 2", "the name field"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path := writeDirectoryFile(t, tc.contents)
+
+			people, err := directory.NewFile(path).People(t.Context())
+			if err == nil {
+				t.Fatalf("People() = %+v, want an error", people)
+			}
+			if people != nil {
+				t.Errorf("People() listed %+v along with the error", people)
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(err.Error(), w) {
+					t.Errorf("error %q doesn't contain %s", err, w)
+				}
+			}
+		})
 	}
 }
