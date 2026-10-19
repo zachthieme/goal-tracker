@@ -236,7 +236,7 @@ entries:
       password: !Env DEV_USER_PASSWORD
       attributes:
         email_verified: true
-        manager: cto@example.com
+        manager: cpo@example.com
 
   - model: authentik_core.user
     identifiers:
@@ -260,7 +260,7 @@ entries:
       password: !Env DEV_USER_PASSWORD
       attributes:
         email_verified: true
-        manager: cpo@example.com
+        manager: cto@example.com
 
   - model: authentik_core.user
     identifiers:

@@ -98,9 +98,9 @@ cpo@example.com|Marcus Bell|ceo@example.com
 admin@example.com|Robin Ellis|ceo@example.com
 platform-lead@example.com|Jonas Lindqvist|cto@example.com
 data-lead@example.com|Sofia Marquez|cto@example.com
-payments-lead@example.com|Amara Nwosu|cto@example.com
+payments-lead@example.com|Amara Nwosu|cpo@example.com
 growth-lead@example.com|Elena Petrova|cpo@example.com
-mobile-lead@example.com|Kenji Watanabe|cpo@example.com
+mobile-lead@example.com|Kenji Watanabe|cto@example.com
 support-lead@example.com|Rahul Iyer|cpo@example.com
 mei.lin@example.com|Mei Lin|platform-lead@example.com
 ada.okafor@example.com|Ada Okafor|platform-lead@example.com
@@ -240,7 +240,7 @@ jwt_payload() {
 # app, so both callbacks are registered.
 for case in \
 	noor.haddad@example.com=payments-lead@example.com=http://127.0.0.1:8080/auth/callback \
-	payments-lead@example.com=cto@example.com=http://127.0.0.1:8080/auth/callback \
+	payments-lead@example.com=cpo@example.com=http://127.0.0.1:8080/auth/callback \
 	ceo@example.com==http://localhost:8080/auth/callback; do
 	IFS='=' read -r email want redirect <<<"$case"
 	if ! response=$(tokens "$email" "$redirect"); then
