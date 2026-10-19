@@ -56,7 +56,7 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     await giveBackToGreenReason(path, "The vendor's API slipped three weeks.");
 
     const dates = form.getByTestId("checkin-dates-section");
-    await dates.getByText(/^Change dates or milestones/).click();
+    await page.getByTestId("checkin-add-bar").getByRole("button", { name: "Move a date or Milestone" }).click();
     await dates.getByLabel("Delivery date", { exact: true }).fill(newDue);
     await submit(form);
     await expect(fieldError(form, "delivery_date_reason")).toContainText("Changing the delivery date needs a reason");

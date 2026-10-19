@@ -83,6 +83,9 @@ test.describe("on the due template", () => {
       await page.goto(`/goals/${first.id}/checkin`);
       const form = page.getByTestId("checkin-form");
       await expect(form).toBeVisible();
+      // The "Add to this check-in" bar offers the rest, each part hidden
+      // until wanted.
+      await expect(page.getByTestId("checkin-add-bar")).toBeVisible();
       // The Highlights are a heading and the add buttons, with no Draft and
       // no empty Highlight waiting.
       const highlights = form.getByTestId("checkin-highlight-section");
@@ -92,7 +95,7 @@ test.describe("on the due template", () => {
       await expect(highlights.getByTestId("highlight-editor")).toHaveCount(0);
       await expect(highlights.getByRole("textbox")).toHaveCount(0);
       for (const section of ["checkin-dates-section", "checkin-lifecycle-section"]) {
-        await expect(form.getByTestId(section), `${section} is closed`).toHaveJSProperty("open", false);
+        await expect(form.getByTestId(section), `${section} is hidden`).toBeHidden();
       }
     });
 
@@ -202,8 +205,10 @@ test.describe("on the due template", () => {
       await expect(draftItem).toContainText(`Draft · logged by ${ownerName}`);
       await expect(draftItem.getByTestId("highlight-item-kind")).toHaveText("Accomplishment");
       await expect(draftItem.getByTestId("highlight-item-note")).toHaveText(draftNote);
-      await expect(form.getByTestId("checkin-dates-section")).toHaveJSProperty("open", false);
-      await expect(form.getByTestId("checkin-lifecycle-section")).toHaveJSProperty("open", false);
+      await expect(form.getByTestId("checkin-highlight-section")).toBeVisible();
+      await expect(draftItem).toBeVisible();
+      await expect(form.getByTestId("checkin-dates-section")).toBeHidden();
+      await expect(form.getByTestId("checkin-lifecycle-section")).toBeHidden();
 
       // She writes the Status and the one reading, and a Yellow or Red Goal's
       // Path to Green.

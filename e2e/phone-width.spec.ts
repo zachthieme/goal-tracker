@@ -15,34 +15,49 @@ test.beforeEach(async ({ page }) => {
 
 // expectFitsAPhone asserts that no element inside main hides content behind
 // its own sideways scroll or clip, and that every visible link, button, input
-// and select inside main lies within the window.
-async function expectFitsAPhone(page: Page): Promise<void> {
-  const clipped = await page.evaluate(() =>
-    [...document.querySelectorAll("main *")]
-      .filter((e) => {
-        const overflow = getComputedStyle(e).overflowX;
-        return (
-          overflow !== "visible" && e.clientWidth > 1 && e.getClientRects().length && e.scrollWidth > e.clientWidth + 1
-        );
-      })
-      .map((e) => `${(e as HTMLElement).dataset.testid || e.className || e.tagName} ${e.scrollWidth}>${e.clientWidth}`),
+// and select inside main lies within the window. scrollers are the test ids of
+// containers DESIGN.md § Phone width lets scroll sideways inside themselves,
+// such as the Check-in page's add bar's buttons (#365); they and what they
+// hold are left out.
+async function expectFitsAPhone(page: Page, scrollers: string[] = []): Promise<void> {
+  const clipped = await page.evaluate(
+    (scrollers) =>
+      [...document.querySelectorAll("main *")]
+        .filter((e) => {
+          if (scrollers.includes((e as HTMLElement).dataset.testid ?? "")) return false;
+          const overflow = getComputedStyle(e).overflowX;
+          return (
+            overflow !== "visible" &&
+            e.clientWidth > 1 &&
+            e.getClientRects().length &&
+            e.scrollWidth > e.clientWidth + 1
+          );
+        })
+        .map(
+          (e) => `${(e as HTMLElement).dataset.testid || e.className || e.tagName} ${e.scrollWidth}>${e.clientWidth}`,
+        ),
+    scrollers,
   );
   expect(clipped, "elements in main that clip or scroll sideways").toEqual([]);
 
-  const outside = await page.evaluate((width) => {
-    return [...document.querySelectorAll("main a, main button, main input, main select")]
-      .filter((e) => {
-        // checkVisibility is false inside a closed details, whose content
-        // still has a box.
-        if (!e.checkVisibility({ visibilityProperty: true })) return false;
-        const r = e.getBoundingClientRect();
-        return r.width > 0 && (r.left < -1 || r.right > width + 1);
-      })
-      .map((e) => {
-        const r = e.getBoundingClientRect();
-        return `${e.tagName.toLowerCase()} "${(e.textContent || (e as HTMLInputElement).name || "").trim()}" (${Math.round(r.left)}–${Math.round(r.right)}px)`;
-      });
-  }, phone.width);
+  const outside = await page.evaluate(
+    ({ width, scrollers }) => {
+      return [...document.querySelectorAll("main a, main button, main input, main select")]
+        .filter((e) => {
+          if (scrollers.some((id) => e.closest(`[data-testid="${id}"]`))) return false;
+          // checkVisibility is false inside a closed details, whose content
+          // still has a box.
+          if (!e.checkVisibility({ visibilityProperty: true })) return false;
+          const r = e.getBoundingClientRect();
+          return r.width > 0 && (r.left < -1 || r.right > width + 1);
+        })
+        .map((e) => {
+          const r = e.getBoundingClientRect();
+          return `${e.tagName.toLowerCase()} "${(e.textContent || (e as HTMLInputElement).name || "").trim()}" (${Math.round(r.left)}–${Math.round(r.right)}px)`;
+        });
+    },
+    { width: phone.width, scrollers },
+  );
   expect(outside, `controls in main past the ${phone.width}px window`).toEqual([]);
 }
 
@@ -156,5 +171,5 @@ test("at 390px the Check-in page fits", async ({ page, seedLookup }) => {
   await expect(form.getByRole("radio", { name: "Yellow" })).toBeChecked();
   await expect(form.getByTestId("path-to-green-field")).toBeVisible();
   await expect(form.getByTestId("checkin-readings")).toBeVisible();
-  await expectFitsAPhone(page);
+  await expectFitsAPhone(page, ["checkin-add-buttons"]);
 });
