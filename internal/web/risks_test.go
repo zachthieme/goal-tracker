@@ -1510,6 +1510,34 @@ func TestRisksRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
 	}
 }
 
+// The Risks filters wrap, as the Goal list's filter bar does, and never grow
+// past their column: a Scope select listing Other orgs by their long labels
+// shrinks within the form rather than pushing the Team select off a phone's
+// screen (#268).
+func TestRisksFiltersWrapAtPhoneWidthOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	newScopeOrgFixture(h)
+	h.Clock.Advance(10 * day)
+	ts := newServer(t, h)
+
+	page := getBody(t, signInClient(t, ts.URL, "vera@example.com"), ts.URL+"/risks")
+	choices, _, _ := scopeChoices(scopeSelect(t, page, "risks-scope"))
+	if !slices.ContainsFunc(choices, func(c string) bool { return strings.HasPrefix(c, "Other orgs: ") }) {
+		t.Fatalf("the Scope select lists no Other orgs: %q", choices)
+	}
+	if form := tagAround(t, page, `data-testid="risks-filters"`); !hasClass(form, "rk-filters") {
+		t.Fatalf("the filters form isn't .rk-filters: %s", form)
+	}
+	rule := cssRule(t, page, ".rk-filters")
+	for _, want := range []string{"flex-wrap:wrap", "min-width:0"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".rk-filters{%s} lacks %s, so its selects run off a phone's screen", rule, want)
+		}
+	}
+}
+
 // orgScopedRiskTitles names the Goals the Risks table lists, in order, by matching each
 // row against the Goals it could be.
 func orgScopedRiskTitles(page string, goals ...domain.Goal) []string {
