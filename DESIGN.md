@@ -348,7 +348,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   A card is for something a person acts on or reads as a unit of status,
   such as the Goal page's Check-in, each Metric and Milestones. Reference
   blocks are not cards. On the Goal page these are Action Items, Highlights,
-  History and the sidebar's blocks.
+  Comments, History and the sidebar's blocks.
 - **Canvas block (`.ruled`):** a reference block sits on the canvas with no
   surface, border or shadow. A 1px `--color-border` rule sits above it with
   20px of padding below the rule. The first block in a column has no rule,
@@ -427,7 +427,8 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   a single list, newest first, of every Check-in, So What revision, title
   change, ownership change (a Handoff with its outcome, or an Admin Reassign), change to a
   Dimension value or Field, change to one of its "contributes to" links,
-  Parent suggestion, Nudge, and Milestone added outside a Check-in.
+  Parent suggestion, Nudge, Milestone added outside a Check-in, and Comment
+  or reply about the Goal, made on the Goal itself or on a Report.
   - **Weeks:** entries are grouped by week, Monday to Sunday in the company's
     timezone. Each week is headed by a `.label` "Week of Sep 28", with the
     year added when it isn't this year. Each entry's time is a timestamp in
@@ -443,12 +444,15 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     top, square below) for a link change, a dashed ring for a Parent
     suggestion, a dashed square for a Nudge, a double ring for a Milestone
     added outside a Check-in, a hollow tab (square on the left, round on the
-    right) for an Action Item raised, reassigned or closed, and a hollow
+    right) for an Action Item raised, reassigned or closed, a hollow
+  speech-drop (round but for its bottom-left corner) for a Comment or reply,
+  and a hollow
     square for a Check-in with no Health, such as one that put the Goal On
     Hold. Every entry also opens with its kind as a bold text label (Check-in,
     So What, Title, Handoff, Reassign, Value, Link, Parent suggestion, Nudge,
     Milestone, Action Item raised, Action Item reassigned, Action Item
-    closed), so the marker is never the only signal.
+    closed, Comment for a thread's first Comment, Reply for a reply), so the
+    marker is never the only signal.
   - **A title entry** reads "*old* → *new*", then who changed it, by Name.
   - **A Check-in entry** shows its Health badge and status, then any
     Lifecycle change, Path to Green, and the Date Slips it recorded (the
@@ -475,6 +479,9 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     *Reduce outages*" on the child is "*Migrate displays* asked to contribute
     to this" on the parent. An Undo reads "Undid:" before the change it
     undid. Who made the change follows, by Name.
+  - **A Comment entry** shows the Comment, then a muted line saying who wrote
+    it, by Name. One made on a Report adds " · in" and the Report's name,
+    linking to the Goal's block in that publication.
   - **Health strip (`healthStrip`, `.hs`):** under the History heading, above
     the filter chips, the Goal's Health over its last 11 Check-in periods, one
     cell for each, oldest on the left and the current period on the right. A
@@ -505,11 +512,13 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     Goal that has been Active, and it changes nothing: not Stale, not Health.
   - **Filter chips (`.tl-chips`):** a row of `--radius-full` chips above the
     list, wrapping on narrow screens: All, Check-ins, Date Slips, So What,
-    Title, Ownership, Links, Values, Action Items. Each carries its count.
+    Title, Ownership, Links, Values, Action Items, Comments. Each carries its
+    count.
     Check-ins counts and lists the Check-ins, the Nudges asking for one, and
     the Milestones added outside a Check-in; Date Slips the Check-ins that
     carry one; Links the link changes and Parent suggestions; and Action Items
-    each Action Item about the Goal raised, reassigned and closed. A chip is a plain link to
+    each Action Item about the Goal raised, reassigned and closed; and Comments
+    every Comment and reply about the Goal. A chip is a plain link to
     `/goals/{id}?history=<filter>#history`, so the page reloads with the
     filter in the address and the History block in view. The current chip is
     `aria-current="page"`, with a `--color-primary-light` fill and a
