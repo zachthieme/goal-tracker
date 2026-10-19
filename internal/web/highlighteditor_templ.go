@@ -353,8 +353,9 @@ func itemEditorStyles() templ.Component {
 }
 
 // highlightEditorScript upgrades each [data-highlight-editor] container not
-// yet upgraded, so it runs again on a form or block htmx swaps back in. It shows the container's <details> open without its summary, drops
-// Add another and the blank rows, and turns each row with a note into an item,
+// yet upgraded, so it runs again on a form or block htmx swaps back in. It
+// shows the container's <details> open without its summary, drops Add
+// another and the blank rows, and turns each row with a note into an item,
 // or into an open editor when the row holds an error or a note with no kind (a
 // Draft logged without one). An add button opens an editor for its kind above
 // the items; Save, enabled once the Note (and, where the select shows, the
