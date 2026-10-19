@@ -207,6 +207,34 @@ func TestABlankOIDCClientSecretIsMissing(t *testing.T) {
 	}
 }
 
+// Whitespace around the OIDC values, as from a stray space in an env file,
+// isn't kept.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestOIDCValuesAreTrimmed(t *testing.T) {
+	oidcEnv(t)
+	t.Setenv("GOAL_TRACKER_OIDC_ISSUER", " http://localhost:9000/application/o/goal-tracker/ ")
+	t.Setenv("GOAL_TRACKER_OIDC_CLIENT_ID", "\tgoal-tracker ")
+	t.Setenv("GOAL_TRACKER_OIDC_CLIENT_SECRET", " secret\n")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.oidc == nil {
+		t.Fatal("OIDC is off with all three variables set")
+	}
+	if got, want := cfg.oidc.Issuer, "http://localhost:9000/application/o/goal-tracker/"; got != want {
+		t.Errorf("issuer %q, want %q", got, want)
+	}
+	if got, want := cfg.oidc.ClientID, "goal-tracker"; got != want {
+		t.Errorf("client ID %q, want %q", got, want)
+	}
+	if got, want := cfg.oidc.ClientSecret, "secret"; got != want {
+		t.Errorf("client secret %q, want %q", got, want)
+	}
+}
+
 // OIDC variables of only whitespace aren't set, so the development form
 // doesn't refuse them.
 //
@@ -423,6 +451,22 @@ func TestDirectoryVariablesAreTrimmed(t *testing.T) {
 	}
 }
 
+// Whitespace around the directory file's path isn't kept either.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestTheDirectoryFileIsTrimmed(t *testing.T) {
+	devEnv(t)
+	t.Setenv(directoryFileVar, " /etc/goal-tracker/people.csv\t")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.directory == nil || cfg.directory.file != "/etc/goal-tracker/people.csv" {
+		t.Errorf("directory = %+v, want the file's path trimmed", cfg.directory)
+	}
+}
+
 // passwordEnv is clearAuthEnv with password sign-in chosen and a session key
 // set, as it requires.
 func passwordEnv(t *testing.T) {
@@ -479,6 +523,25 @@ func TestPasswordSignInRefusesOIDCVariables(t *testing.T) {
 				t.Errorf("error %q doesn't name %s", err, set)
 			}
 		})
+	}
+}
+
+// OIDC variables of only whitespace aren't set, so password sign-in doesn't
+// refuse them.
+//
+//nolint:paralleltest // sets the process environment, through clearAuthEnv
+func TestPasswordSignInAcceptsBlankOIDCVariables(t *testing.T) {
+	passwordEnv(t)
+	for _, v := range oidcVars {
+		t.Setenv(v, "  ")
+	}
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig refused GOAL_TRACKER_SIGNIN=password with blank OIDC variables: %v", err)
+	}
+	if cfg.oidc != nil {
+		t.Errorf("OIDC is on with password sign-in chosen: %+v", cfg.oidc)
 	}
 }
 

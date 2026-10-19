@@ -3665,6 +3665,15 @@ func TestPublicationSaysHowItSelects(t *testing.T) {
 		}
 		published := strings.Index(page, `data-testid="report-published"`)
 		selection := strings.Index(page, `data-testid="report-selection"`)
+		if published < 0 {
+			t.Errorf("%s has no report-published line", name)
+		}
+		if selection < 0 {
+			t.Errorf("%s has no report-selection line", name)
+		}
+		if published < 0 || selection < 0 {
+			continue
+		}
 		if selection < published {
 			t.Errorf("%s shows the selection line before the published line", name)
 		}

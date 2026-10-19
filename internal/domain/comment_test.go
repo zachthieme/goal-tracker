@@ -237,7 +237,7 @@ func TestOwnersCommentOnTheirOwnGoalSendsNoEmail(t *testing.T) {
 }
 
 // A comment on a Goal cannot be blank, and the Goal must exist; a refused
-// comment is not kept.
+// comment is kept on neither the Goal nor the unknown one it was posted to.
 func TestGoalCommentRejectsBlankOrUnknownGoal(t *testing.T) {
 	t.Parallel()
 
@@ -250,7 +250,8 @@ func TestGoalCommentRejectsBlankOrUnknownGoal(t *testing.T) {
 	if _, err := h.Service.AddGoalComment(ctx, reader.ID, g.ID, "   "); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("blank comment: err %v, want ErrValidation", err)
 	}
-	if _, err := h.Service.AddGoalComment(ctx, reader.ID, g.ID+100, "Why?"); !errors.Is(err, domain.ErrNotFound) {
+	unknown := g.ID + 100
+	if _, err := h.Service.AddGoalComment(ctx, reader.ID, unknown, "Why?"); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("comment on an unknown Goal: err %v, want ErrNotFound", err)
 	}
 	comments, err := h.Service.GoalComments(ctx, g.ID)
@@ -259,6 +260,13 @@ func TestGoalCommentRejectsBlankOrUnknownGoal(t *testing.T) {
 	}
 	if len(comments) != 0 || len(h.Email.Sent()) != 0 {
 		t.Errorf("comments %+v, emails %+v, want nothing kept or sent", comments, h.Email.Sent())
+	}
+	onUnknown, err := h.Service.GoalComments(ctx, unknown)
+	if err != nil {
+		t.Fatalf("GoalComments on the unknown Goal: %v", err)
+	}
+	if len(onUnknown) != 0 {
+		t.Errorf("comments on the unknown Goal %+v, want none kept", onUnknown)
 	}
 }
 

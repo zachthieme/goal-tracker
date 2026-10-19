@@ -287,6 +287,67 @@ func TestReportPutsItsExceptionsWorstFirst(t *testing.T) {
 	}
 }
 
+// reportExceptionTitles lists the titles of a Report's exceptions, in order.
+func reportExceptionTitles(r domain.Report) []string {
+	titles := make([]string, 0, len(r.Exceptions))
+	for _, b := range r.Exceptions {
+		titles = append(titles, b.Goal.Title)
+	}
+	return titles
+}
+
+// A Yellow exception comes before one with no Health, even where its title
+// sorts after it (CONTEXT.md: Report).
+func TestReportPutsYellowBeforeNoHealth(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	due := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	noHealth := activeGoalDue(h, boss, "A no Health", due)
+	yellow := activeGoalDue(h, boss, "Z Yellow", due)
+	// The Path to Green is six months out, so it isn't overdue once settled.
+	h.Checkin(boss, yellow.ID, domain.HealthYellow, "Off track.", "Add staff.", h.Clock.Now().AddDate(0, 6, 0))
+	settle(h)
+
+	r := draftReport(t, h, boss, time.Time{}, noHealth, yellow)
+
+	if got, want := reportExceptionTitles(r), []string{"Z Yellow", "A no Health"}; !slices.Equal(got, want) {
+		t.Errorf("exceptions in order\n got %q\nwant %q", got, want)
+	}
+}
+
+// A Stale exception comes before an otherwise equal fresh one, even where its
+// title sorts after it (CONTEXT.md: Report).
+func TestReportPutsAStaleExceptionBeforeAFreshOne(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	due := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	stale := activeGoalDue(h, boss, "Z stale", due)
+	fresh := activeGoalDue(h, boss, "A fresh", due)
+	target := h.Clock.Now().AddDate(0, 6, 0)
+	h.Checkin(boss, stale.ID, domain.HealthYellow, "Off track.", "Add staff.", target)
+	h.Checkin(boss, fresh.ID, domain.HealthYellow, "Off track.", "Add staff.", target)
+	h.Clock.Advance(10 * day)
+	h.Checkin(boss, fresh.ID, domain.HealthYellow, "Off track.", "Add staff.", target)
+	h.Clock.Advance(day)
+
+	// Against now, neither Goal changed since the baseline; "Z stale" was
+	// last checked in 11 days ago on a 7-day cadence, "A fresh" one day ago.
+	r := draftReport(t, h, boss, h.Clock.Now(), stale, fresh)
+
+	if got, want := reportExceptionTitles(r), []string{"Z stale", "A fresh"}; !slices.Equal(got, want) {
+		t.Fatalf("exceptions in order\n got %q\nwant %q", got, want)
+	}
+	for _, b := range r.Exceptions {
+		if got, want := slices.Contains(b.Badges, domain.BadgeStale), b.Goal.ID == stale.ID; got != want {
+			t.Errorf("%q Stale = %v, want %v (badges %q)", b.Goal.Title, got, want, b.Badges)
+		}
+	}
+}
+
 // activeGoalDue creates an Active Goal owned by owner, due on due, with a
 // Milestone a month before it, so neither is overdue once the clock settles.
 func activeGoalDue(h *testsupport.Harness, owner domain.Account, title string, due time.Time) domain.Goal {
