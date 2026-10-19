@@ -140,7 +140,7 @@ templ goalList(view goalsListData) {
 templ goalListLayout(view goalsListData) {
 	<div id="goal-list" data-testid="goal-list" class="card">
 		@goalListHead(view)
-		<table>
+		<table class="gl-list">
 			<thead>
 				<tr><th>Health</th><th>Goal</th><th>Owner</th><th>Due</th><th>Last check-in</th><th>Dimension tags</th></tr>
 			</thead>
@@ -233,14 +233,14 @@ templ seeEveryonesGoals(view goalsListData) {
 templ goalListRow(row goalRow, dates displayDates) {
 	{{ g := row.Goal }}
 	<tr data-testid="goal-row">
-		<td>
+		<td class="gl-health">
 			if health := row.health(); health != "" {
 				<span data-testid="goal-row-health" class={ "badge", healthClass(health) }><span class="dot"></span>{ health }</span>
 			} else {
 				<span data-testid="goal-row-health" class="badge lc">{ g.Lifecycle }</span>
 			}
 		</td>
-		<td>
+		<td class="gl-goal">
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
 			if g.Ownerless || row.Freshness.Stale || row.Freshness.PathToGreenOverdue || len(row.Incomplete) > 0 {
 				<div class="gl-marks">
@@ -254,7 +254,7 @@ templ goalListRow(row goalRow, dates displayDates) {
 				</div>
 			}
 		</td>
-		<td>
+		<td class="gl-owner">
 			@person(g.Owner)
 		</td>
 		<td data-testid="goal-row-due" class="num gl-dates">
@@ -265,8 +265,8 @@ templ goalListRow(row goalRow, dates displayDates) {
 				<span>{ dates.date(g.DeliveryDate) }</span>
 			}
 		</td>
-		<td data-testid="goal-row-last-checkin" class="muted">{ row.lastCheckin() }</td>
-		<td>
+		<td data-testid="goal-row-last-checkin" class="muted gl-checkin">{ row.lastCheckin() }</td>
+		<td class="gl-tags">
 			for _, val := range row.Values {
 				<span data-testid="goal-value-tag" class="tag">{ val.Value }</span>
 				if val.Retired || val.DimensionRetired {
@@ -597,6 +597,7 @@ templ goalsStyles() {
 		.gl-values{display:flex;flex-direction:column;gap:4px;border:0;margin:0;padding:0}
 		.gl-values label{display:inline-flex;align-items:center;gap:8px}
 		.gl-cell-error{margin:4px 0 0;max-width:240px;white-space:normal;font-size:13px;color:var(--color-danger-ink)}
+		@media (max-width:600px){.gl-list thead{display:none}.gl-list tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 16px;border-bottom:1px solid var(--color-border)}.gl-list tbody:last-child tr:last-child{border-bottom:none}.gl-list td,.gl-list th{display:block;padding:0;border-bottom:none}.gl-list .gl-group{padding:8px 16px;background:var(--color-surface-alt)}.gl-list [colspan]{grid-column:1/-1}.gl-list .gl-goal{order:-1;grid-column:1/-1}.gl-list .gl-owner{white-space:normal}.gl-list .gl-tags{display:none}.gl-list td::before{color:var(--color-ink-muted);font-family:var(--font-body);font-size:13px;font-weight:400}.gl-dates::before{content:"Due "}.gl-checkin::before{content:"Last check-in "}}
 	</style>
 }
 
