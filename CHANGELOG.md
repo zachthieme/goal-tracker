@@ -13,6 +13,15 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 19, 2026
+
+**Improvements:**
+- [ops] Pages no longer load anything from other hosts: htmx and the fonts are served from the app, so browsers on a network that blocks `unpkg.com` or Google Fonts get the full app (#336).
+
+**Bug fixes:**
+- [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
+- [user] Pressing Enter in a Check-in field submits the Check-in instead of adding a Highlight row (#296).
+
 ### Collected changes — October 18, 2026
 
 **Breaking changes:**
