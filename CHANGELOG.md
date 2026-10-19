@@ -15,12 +15,17 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 ### Collected changes — October 19, 2026
 
+**New features:**
+- [user] Admins can make someone an Admin, or remove another Admin, from the Admins section of the Admin page. Make Admin takes an email and never creates an account; no Admin can remove their own role, so there is always at least one (#335).
+
 **Improvements:**
 - [ops] Pages no longer load anything from other hosts: htmx and the fonts are served from the app, so browsers on a network that blocks `unpkg.com` or Google Fonts get the full app (#336).
+- [ops] `GOAL_TRACKER_ADMINS` is no longer the only way to make an Admin: it still sets the first Admins when their accounts are created, and they can make others Admins later on the Admin page instead of editing the database (#335).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
 - [user] Pressing Enter in a Check-in field submits the Check-in instead of adding a Highlight row (#296).
+- [user] Remove shows on a Goal's link only for an Owner of either linked Goal, and a refused removal shows a "Can't remove link" page inside the app instead of bare text (#251).
 
 ### Collected changes — October 18, 2026
 
