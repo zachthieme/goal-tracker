@@ -1670,6 +1670,29 @@ func TestRisksPageKeepsOwnersOnOneLine(t *testing.T) {
 	}
 }
 
+// A Not Green row's Health badge and its Run off Green stay on one line
+// however the table squeezes the column, so "· 10 wks" never drops its "wks"
+// under the badge.
+func TestRisksPageKeepsHealthAndItsRunOnOneLine(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	yellow := h.ActiveGoal(sam, "Launch in EU", "Expand the market.")
+	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Slipping.", "Add a reviewer.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Clock.Advance(3 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	if cell := between(t, riskRowOf(t, page, yellow), `<td class="rk-health">`, "</td>"); !strings.Contains(cell, `data-testid="risk-run-off-green"`) {
+		t.Fatalf("the rk-health cell doesn't hold the Run off Green: %s", cell)
+	}
+	if rule := cssRule(t, page, ".rk-table .rk-health"); !strings.Contains(rule, "white-space:nowrap") {
+		t.Errorf("the Health cell .rk-table .rk-health{%s} wraps", rule)
+	}
+}
+
 // Below 600px each Risks row stacks as a card rather than hiding its Fix off
 // to the side of a sideways scroller: the Goal and its chips first, then its
 // Health and Owner on one line, then its Fix. The cells run Health, Goal,

@@ -3299,6 +3299,9 @@ func TestLatestStatusShowsAnOpenAsk(t *testing.T) {
 	if !strings.Contains(ask, `href="#comments"`) || !strings.Contains(ask, ">Answer</a>") {
 		t.Errorf("ask has no Answer link to the Comments: %s", ask)
 	}
+	if !strings.Contains(ask, shownAs(f.mia.Email, "Mia Chen")+` <a href="#comments">Answer</a>`) {
+		t.Errorf("ask runs the Addressee into Answer with no space between: %s", ask)
+	}
 
 	f.h.Checkin(f.sam, f.goal.ID, domain.HealthGreen, "Fixed.", "", time.Time{})
 	if page := getBody(t, f.client, goalURL); strings.Contains(page, "goal-ask-for-help") {
