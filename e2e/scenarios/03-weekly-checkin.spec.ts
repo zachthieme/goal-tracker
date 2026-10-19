@@ -12,7 +12,8 @@ type OwnedGoal = { id: number; title: string; metric: number };
 // weekOwners are the Owners who could be the scenario's Priya, most Active
 // Goals first: at least two Active Goals, exactly one with a Metric, and none
 // a No change would be refused on (no accepted children, so no Rolled-up
-// Health to differ from, and no overdue Planned Milestone). Never cto@, whom
+// Health to differ from, no overdue Planned Milestone, and no back-to-Green
+// date passed on the latest Check-in). Never cto@, whom
 // the seed names Priya Raman. Which of their Goals are due is read from Home.
 const weekOwners = `
   select a.email, a.name
@@ -24,6 +25,10 @@ const weekOwners = `
     and sum(exists (select 1 from links l where l.parent_id = g.id and l.status = 'accepted')) = 0
     and sum(exists (select 1 from milestones m
                     where m.goal_id = g.id and m.status = 'Planned' and m.target_date < date($now))) = 0
+    and sum(exists (select 1 from checkins c
+                    where c.id = (select c2.id from checkins c2 where c2.goal_id = g.id
+                                  order by c2.created_at desc, c2.id desc limit 1)
+                      and c.path_target_date <> '' and c.path_target_date < date($now))) = 0
   order by count(*) desc, a.id`;
 
 const activeGoalsOf = `
@@ -193,6 +198,9 @@ test.describe("on the due template", () => {
       if (latest.health !== "Green") {
         await path.getByLabel("Plan").fill("Ship the lazy-init change to everyone.");
         await path.getByLabel("Back to Green by").fill(addDays(appToday(), 28));
+        // A date later than last time's is a Date Slip, so the form asks why.
+        const reason = path.getByLabel("Reason for moving it later");
+        if (await reason.isVisible()) await reason.fill("The lazy-init change needs another load test.");
       }
       // Enter in the reading submits the Check-in, not Add another.
       await reading.press("Enter");
@@ -316,6 +324,9 @@ test("a Delegate checks in for an Owner who's away, and the Goal stops being Sta
     if (await path.isVisible()) {
       await path.getByLabel("Plan").fill(`Keep to ${owner.name}'s plan until they're back.`);
       await path.getByLabel("Back to Green by").fill(addDays(appToday(), 28));
+      // A date later than last time's is a Date Slip, so the form asks why.
+      const reason = path.getByLabel("Reason for moving it later");
+      if (await reason.isVisible()) await reason.fill(`${owner.name} is away, so it waits for them.`);
     }
     await covering.getByRole("button", { name: "Submit check-in" }).click();
     await covering.waitForURL(new RegExp(`/goals/${goal.id}$`));

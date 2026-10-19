@@ -568,6 +568,7 @@ type CheckinInput = {
   status: string;
   pathToGreen?: string;
   backToGreen?: string;
+  backToGreenReason?: string;
   deliveryDate?: string;
   dateReason?: string;
   highlights?: { kind: string; note: string }[];
@@ -580,7 +581,13 @@ async function checkIn(page: Page, goalID: number, c: CheckinInput) {
   const form = page.getByTestId("checkin-form");
   await form.getByTestId("checkin-health").getByText(c.health, { exact: true }).click();
   if (c.pathToGreen) await form.getByRole("textbox", { name: "Plan", exact: true }).fill(c.pathToGreen);
-  if (c.backToGreen) await form.getByLabel("Back to Green by").fill(c.backToGreen);
+  if (c.backToGreen) {
+    await form.getByLabel("Back to Green by").fill(c.backToGreen);
+    // A date later than the last Check-in's is a Date Slip, so the form asks
+    // why.
+    const reason = form.getByLabel("Reason for moving it later");
+    if (await reason.isVisible()) await reason.fill(c.backToGreenReason ?? "The fix takes longer than planned.");
+  }
   await form.getByRole("textbox", { name: /^Status/ }).fill(c.status);
   if (c.deliveryDate) {
     await form.getByTestId("checkin-dates-section").locator("summary").click();

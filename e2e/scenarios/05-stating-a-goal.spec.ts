@@ -292,6 +292,10 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     await expect(health.getByRole("radio", { name: "Red" })).toBeChecked();
     await priya.getByLabel("Plan").fill("Move the pricing cache behind the CDN this sprint.");
     await priya.getByLabel("Back to Green by").fill(isoDaysFromNow(30));
+    // A date later than the last Check-in's is a Date Slip, so the form asks
+    // why.
+    const reason = priya.getByLabel("Reason for moving it later");
+    if (await reason.isVisible()) await reason.fill("The first rollout missed; the CDN change takes a sprint.");
     await priya
       .getByRole("textbox", { name: /^Status/ })
       .fill("The edge cache missed its first rollout; pricing is still slow.");

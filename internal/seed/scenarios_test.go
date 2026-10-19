@@ -728,7 +728,7 @@ func e2eScenario3Week(t *testing.T, o *e2eOrg) {
 			if len(g.metrics) > 0 {
 				metrics++
 			}
-			if len(g.children) > 0 || o.overdueMilestone(g) {
+			if len(g.children) > 0 || o.overdueMilestone(g) || o.pathOverdue(g) {
 				return true
 			}
 		}

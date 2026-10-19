@@ -53,6 +53,7 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     const form = page.getByTestId("checkin-form");
     const path = form.getByTestId("path-to-green-field");
     await path.getByLabel("Back to Green by").fill(addDays(today, 28));
+    await giveBackToGreenReason(path, "The vendor's API slipped three weeks.");
 
     const dates = form.getByTestId("checkin-dates-section");
     await dates.getByText(/^Change dates or milestones/).click();
@@ -172,6 +173,7 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     await expect(path.getByLabel("Plan")).toHaveAttribute("placeholder", plan);
     await path.getByLabel("Plan").fill(plan);
     await path.getByLabel("Back to Green by").fill(addDays(today, -2));
+    await giveBackToGreenReason(path, "Still waiting on the vendor.");
     await statusBox(form).fill("Still waiting on the vendor.");
     await submit(form);
     await page.waitForURL(`**/goals/${project.id}`);
@@ -252,6 +254,8 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     const path = form.getByTestId("path-to-green-field");
     await path.getByLabel("Plan").fill("Swap to the backup vendor; we need Platform's help to integrate.");
     await path.getByLabel("Back to Green by").fill(addDays(today, 42));
+    // Later than the date that passed: a Date Slip, so the form asks why.
+    await giveBackToGreenReason(path, "The backup vendor needs six weeks to integrate.");
     await statusBox(form).fill("The vendor has pulled out.");
     await submit(form);
     await page.waitForURL(`**/goals/${project.id}`);
@@ -449,4 +453,12 @@ function milestoneRow(page: Page, name: string): Locator {
 // goalRow is the Goals list's row for the Goal titled title.
 function goalRow(page: Page, title: string): Locator {
   return page.getByTestId("goal-row").filter({ has: page.getByRole("link", { name: title, exact: true }) });
+}
+
+// giveBackToGreenReason fills the Path to Green's "Reason for moving it later"
+// when the form shows it: a Back to Green by date later than the last
+// Check-in's is a Date Slip, which needs a reason.
+async function giveBackToGreenReason(path: Locator, reason: string) {
+  const field = path.getByLabel("Reason for moving it later");
+  if (await field.isVisible()) await field.fill(reason);
 }
