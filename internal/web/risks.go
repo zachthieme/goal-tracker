@@ -638,13 +638,13 @@ func fixRiskRows(current domain.Account, rows []riskGoalRow, facts riskFixFacts)
 		if nudged {
 			today = &nudge
 		}
-		rows[i].Fix = rows[i].fix(current, facts.delegate[id], today, facts.unreachable[id])
+		rows[i].Fix = rows[i].fix(current, facts.delegate, today, facts.unreachable[id])
 	}
 }
 
-// fix is the row's Fix for current, given whether current is a Delegate on
-// the Goal, its Nudge today, if any, and whether nobody is left to check in on
-// it. It is the first that applies of:
+// fix is the row's Fix for current, given the Goals current is a Delegate on,
+// the row's Goal's Nudge today, if any, and whether nobody is left to check in
+// on it. It is the first that applies of:
 //  1. Reassign, for an Ownerless Goal and an Admin;
 //  2. Check in, for a Stale, Path to Green overdue or Milestone overdue Goal
 //     current Owns or is a Delegate on (an Admin has no Check-in right);
@@ -653,7 +653,9 @@ func fixRiskRows(current domain.Account, rows []riskGoalRow, facts riskFixFacts)
 //     has been nudged today, a disabled "Nudged today by" whoever did.
 //     Freshness outranks alignment, as 2 outranks 4;
 //  4. Link to a parent, for an Unaligned Goal current Owns;
-//  5. Compare dates, the Goal's own page, for a Schedule conflict;
+//  5. For a Schedule conflict, see scheduleConflictFix: Check in, its dates
+//     open, on current's own Goal in the conflict, or Nudge on the row's Goal
+//     for anyone else (CONTEXT.md: Schedule conflict, Nudge);
 //  6. Open parent, for a Goal under a halted parent: the first by title;
 //  7. Suggest a parent, for an Unaligned Goal current doesn't Own, a Delegate
 //     on it included (CONTEXT.md: Parent suggestion);
@@ -661,7 +663,7 @@ func fixRiskRows(current domain.Account, rows []riskGoalRow, facts riskFixFacts)
 //     Item;
 //  9. Open Goal, for anything else, a Stale Goal nobody can check in on and a
 //     Goal flagged only for its Health, Red or Yellow, among them.
-func (r riskGoalRow) fix(current domain.Account, delegate bool, nudged *domain.Nudge, unreachable bool) riskFix {
+func (r riskGoalRow) fix(current domain.Account, delegate map[int64]bool, nudged *domain.Nudge, unreachable bool) riskFix {
 	goal := fmt.Sprintf("/goals/%d", r.Goal.ID)
 	if _, ownerless := r.signal("ownerless"); ownerless && current.IsAdmin {
 		return riskFix{Label: "Reassign", Href: goal + "?open=reassign"}
@@ -670,7 +672,7 @@ func (r riskGoalRow) fix(current domain.Account, delegate bool, nudged *domain.N
 	_, pathOverdue := r.signal("path-overdue")
 	_, milestoneOverdue := r.signal("milestone-overdue")
 	overdue := pathOverdue || milestoneOverdue
-	if (stale || overdue) && (r.Goal.Owner.ID == current.ID || delegate) {
+	if (stale || overdue) && (r.Goal.Owner.ID == current.ID || delegate[r.Goal.ID]) {
 		return riskFix{Label: "Check in", Href: goal + "/checkin", Primary: true}
 	}
 	if (stale || overdue) && nudged != nil {
@@ -682,8 +684,8 @@ func (r riskGoalRow) fix(current domain.Account, delegate bool, nudged *domain.N
 	if _, unaligned := r.signal("unaligned"); unaligned && r.Goal.Owner.ID == current.ID {
 		return riskFix{Label: "Link to a parent", Href: goal + "?open=parent-link"}
 	}
-	if _, conflict := r.signal("schedule-conflicts"); conflict {
-		return riskFix{Label: "Compare dates", Href: goal}
+	if f, ok := r.scheduleConflictFix(current, delegate, nudged, unreachable); ok {
+		return f
 	}
 	var parent *domain.Goal
 	for _, sig := range r.Signals {
@@ -701,6 +703,59 @@ func (r riskGoalRow) fix(current domain.Account, delegate bool, nudged *domain.N
 		return riskFix{Label: "See Action Items", Href: goal + "#action-items"}
 	}
 	return riskFix{Label: "Open Goal", Href: goal}
+}
+
+// scheduleConflictFix is the Fix for a row in a Schedule conflict, and
+// whether it has one. Its candidates are the row's Goal, the child, then each
+// conflict's parent by title; current can act on those they Own or are a
+// Delegate on. It is the first that applies of:
+//  1. Check in, its dates open, on the first candidate current can act on
+//     that is Active;
+//  2. Open Goal on the first candidate current can act on, when none is
+//     Active, as only an Active Goal takes an ordinary Check-in;
+//  3. for anyone else, while the row's Goal is Active, a disabled "Nudged
+//     today by" whoever nudged it today, or else Nudge unless nobody is left
+//     to check in on it.
+//
+// Otherwise the row has none here, and falls through to the later Fixes.
+func (r riskGoalRow) scheduleConflictFix(current domain.Account, delegate map[int64]bool, nudged *domain.Nudge, unreachable bool) (riskFix, bool) {
+	var parents []domain.Goal
+	for _, sig := range r.Signals {
+		if sig.Kind == "schedule-conflicts" {
+			parents = append(parents, *sig.Related)
+		}
+	}
+	if len(parents) == 0 {
+		return riskFix{}, false
+	}
+	slices.SortStableFunc(parents, func(a, b domain.Goal) int {
+		return strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))
+	})
+	var mine *domain.Goal
+	for _, g := range append([]domain.Goal{r.Goal}, parents...) {
+		if g.Owner.ID != current.ID && !delegate[g.ID] {
+			continue
+		}
+		if g.Lifecycle == domain.LifecycleActive {
+			return riskFix{Label: "Check in", Href: fmt.Sprintf("/goals/%d/checkin?open=dates", g.ID), Primary: true}, true
+		}
+		if mine == nil {
+			mine = &g
+		}
+	}
+	if mine != nil {
+		return riskFix{Label: "Open Goal", Href: fmt.Sprintf("/goals/%d", mine.ID)}, true
+	}
+	if r.Goal.Lifecycle != domain.LifecycleActive {
+		return riskFix{}, false
+	}
+	if nudged != nil {
+		return riskFix{Label: "Nudged today by " + nudged.Sender.Label(), Disabled: true}, true
+	}
+	if !unreachable {
+		return riskFix{Label: "Nudge", Href: fmt.Sprintf("/goals/%d/nudge", r.Goal.ID), Post: true}, true
+	}
+	return riskFix{}, false
 }
 
 // riskSignal is one reason a Goal is flagged. Kind names the signal, as the

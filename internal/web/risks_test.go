@@ -2,6 +2,8 @@ package web_test
 
 import (
 	"html"
+	"net/http"
+	"net/url"
 	"regexp"
 	"slices"
 	"strconv"
@@ -977,9 +979,9 @@ func TestRiskFixOnAnUnalignedGoalIsLinkToAParentForItsOwner(t *testing.T) {
 	}
 }
 
-// A Goal due after its parent gets Compare dates, its own page, even when that
-// parent is On Hold too; a Goal under halted parents only gets Open parent,
-// the halted parent first by title. Every row has exactly one Fix.
+// A Goal due after its parent gets Check in, its dates open, for its Owner,
+// even when that parent is On Hold too; a Goal under halted parents only gets
+// Open parent, the halted parent first by title. Every row has exactly one Fix.
 func TestRiskFixOnAStructuralSignal(t *testing.T) {
 	t.Parallel()
 
@@ -1010,24 +1012,134 @@ func TestRiskFixOnAStructuralSignal(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
 	for _, c := range []struct {
-		goal   domain.Goal
-		kinds  []string
-		label  string
-		goesTo domain.Goal
+		goal        domain.Goal
+		kinds       []string
+		label, href string
 	}{
-		{late, []string{"schedule-conflicts", "halted-parents"}, "Compare dates", late},
-		{under, []string{"halted-parents"}, "Open parent", alpha},
+		{late, []string{"schedule-conflicts", "halted-parents"}, "Check in", "/goals/" + strconv.FormatInt(late.ID, 10) + "/checkin?open=dates"},
+		{under, []string{"halted-parents"}, "Open parent", "/goals/" + strconv.FormatInt(alpha.ID, 10)},
 	} {
 		row := riskRowOf(t, page, c.goal)
 		for _, kind := range c.kinds {
 			riskChip(t, row, kind)
 		}
-		if label, href, _ := riskFix(t, row); label != c.label || href != "/goals/"+strconv.FormatInt(c.goesTo.ID, 10) {
-			t.Errorf("%q's Fix is %q → %s, want %q → %q's page", c.goal.Title, label, href, c.label, c.goesTo.Title)
+		if label, href, _ := riskFix(t, row); label != c.label || href != c.href {
+			t.Errorf("%q's Fix is %q → %s, want %q → %s", c.goal.Title, label, href, c.label, c.href)
 		}
 	}
 	for _, row := range riskRows(page) {
 		riskFix(t, row) // every row has exactly one Fix
+	}
+}
+
+// A Schedule conflict's Fix is Check in, its dates open, for the Owner or a
+// Delegate of either Goal, on their own Goal, the child first; anyone else
+// gets Nudge on the child, the row's Goal, and once it's nudged, a disabled
+// "Nudged today by" whoever did (CONTEXT.md: Schedule conflict, Nudge).
+func TestRiskFixOnAScheduleConflict(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	dee := h.SignIn("dee@example.com")
+	lee := h.SignIn("lee@example.com")
+	h.SignInNamed("pat@example.com", "Pat Okafor")
+	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
+	late := h.ActiveGoalDue(kim, "Late piece", june.AddDate(0, 1, 0))
+	link := h.RequestLink(kim, late, launch, "")
+	if _, err := h.Service.AcceptLink(t.Context(), link.ID, sam.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+	h.AddDelegate(sam, dee, launch.ID)
+	h.AddDelegate(kim, lee, late.ID)
+
+	lateCheckin := "/goals/" + strconv.FormatInt(late.ID, 10) + "/checkin?open=dates"
+	launchCheckin := "/goals/" + strconv.FormatInt(launch.ID, 10) + "/checkin?open=dates"
+	nudge := "/goals/" + strconv.FormatInt(late.ID, 10) + "/nudge"
+	for _, c := range []struct {
+		viewer, label, href string
+		primary             bool
+	}{
+		{"kim@example.com", "Check in", lateCheckin, true},
+		{"lee@example.com", "Check in", lateCheckin, true},
+		{"sam@example.com", "Check in", launchCheckin, true},
+		{"dee@example.com", "Check in", launchCheckin, true},
+		{"pat@example.com", "Nudge", nudge, false},
+	} {
+		page := getBody(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/risks?org=all")
+		row := riskRowOf(t, page, late)
+		riskChip(t, row, "schedule-conflicts")
+		label, href, primary := riskFix(t, row)
+		if label != c.label || href != c.href || primary != c.primary {
+			t.Errorf("%s sees Fix %q → %s (primary %v), want %q → %s (primary %v)", c.viewer, label, href, primary, c.label, c.href, c.primary)
+		}
+		if c.label == "Nudge" {
+			nudgeForm(t, row)
+		}
+	}
+
+	checkin := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+lateCheckin)
+	if !strings.Contains(openTag(pageElement(t, checkin, "details", "checkin-dates-section")), " open") {
+		t.Errorf("kim's Check in doesn't open the dates section")
+	}
+
+	pat := signInClient(t, ts.URL, "pat@example.com")
+	resp := postForm(t, noRedirects(pat), ts.URL+nudge, url.Values{})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/risks" {
+		t.Fatalf("nudging got %d → %q, want 303 → /risks", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	cell := pageElement(t, riskRowOf(t, getBody(t, pat, ts.URL+"/risks?org=all"), late), "td", "risk-fix")
+	if !strings.Contains(cell, "disabled") || !strings.Contains(cell, "Nudged today by Pat Okafor") || strings.Contains(cell, "<form") {
+		t.Errorf("pat sees Fix %s, want a disabled Nudged today by Pat Okafor", cell)
+	}
+}
+
+// A Proposed child in a Schedule conflict can't be checked in on or nudged,
+// so its Owner and anyone else get Open Goal, its page, where its Owner
+// finishes defining it; the parent's Owner still gets Check in on the parent.
+func TestRiskFixOnAScheduleConflictWithAProposedChild(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	h.SignIn("pat@example.com")
+	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
+	proposed := h.CreateGoal(kim, "Late plan", "It matters.")
+	if _, err := h.Service.MarkGoalDated(t.Context(), proposed.ID, june.AddDate(0, 1, 0)); err != nil {
+		t.Fatalf("MarkGoalDated: %v", err)
+	}
+	link := h.RequestLink(kim, proposed, launch, "")
+	if _, err := h.Service.AcceptLink(t.Context(), link.ID, sam.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+
+	page := "/goals/" + strconv.FormatInt(proposed.ID, 10)
+	for _, c := range []struct {
+		viewer, label, href string
+		primary             bool
+	}{
+		{"kim@example.com", "Open Goal", page, false},
+		{"pat@example.com", "Open Goal", page, false},
+		{"sam@example.com", "Check in", "/goals/" + strconv.FormatInt(launch.ID, 10) + "/checkin?open=dates", true},
+	} {
+		row := riskRowOf(t, getBody(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/risks?org=all"), proposed)
+		riskChip(t, row, "schedule-conflicts")
+		label, href, primary := riskFix(t, row)
+		if label != c.label || href != c.href || primary != c.primary {
+			t.Errorf("%s sees Fix %q → %s (primary %v), want %q → %s (primary %v)", c.viewer, label, href, primary, c.label, c.href, c.primary)
+		}
+		if strings.Contains(pageElement(t, row, "td", "risk-fix"), "<form") {
+			t.Errorf("%s is offered a Nudge form on a Proposed Goal", c.viewer)
+		}
 	}
 }
 
