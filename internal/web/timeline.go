@@ -442,7 +442,8 @@ func (h history) slots() []historyEntry {
 
 // repeats reports whether the entry is a Check-in that repeats prev, the entry
 // just before it: prev is a Check-in with the same Health, status, Path to
-// Green, target date and explanation, and this one records nothing more — no
+// Green, target date, Ask for help and explanation, so ticking or unticking
+// the ask never folds, and this one records nothing more — no
 // Date Slip, Milestone or Lifecycle change, Highlight, discarded Draft
 // Highlight or Metric reading that differs from the one before it.
 func (e historyEntry) repeats(prev historyEntry) bool {
@@ -451,7 +452,7 @@ func (e historyEntry) repeats(prev historyEntry) bool {
 		return false
 	}
 	if c.Health != p.Health || c.Status != p.Status || c.PathToGreen != p.PathToGreen ||
-		!c.PathTargetDate.Equal(p.PathTargetDate) || c.Explanation != p.Explanation {
+		!c.PathTargetDate.Equal(p.PathTargetDate) || c.AsksForHelp != p.AsksForHelp || c.Explanation != p.Explanation {
 		return false
 	}
 	if len(e.Slips) > 0 || len(c.MilestoneChanges) > 0 || c.LifecycleChange.Changed() ||

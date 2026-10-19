@@ -2180,3 +2180,35 @@ func TestGoalHistoryShowsEveryCommentOnTheGoalOrAReport(t *testing.T) {
 		t.Errorf("the Comments chip on a Goal with none reads %q, want No Comments yet.", got)
 	}
 }
+
+// A Check-in that asks for help says so in its History entry, and one
+// identical to the one before but for the ask doesn't fold into "No change":
+// ticking or unticking the box is news.
+func TestGoalHistoryShowsAnAskAndKeepsItFromFolding(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	path := testsupport.Epoch.AddDate(0, 2, 0)
+	h.Clock.Advance(24 * time.Hour)
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Vendor is late.", "Swap vendors.", path)
+	h.Clock.Advance(7 * 24 * time.Hour)
+	h.AskForHelp(sam, goal.ID, domain.HealthYellow, "Vendor is late.", "Swap vendors.", path)
+	h.Clock.Advance(7 * 24 * time.Hour)
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Vendor is late.", "Swap vendors.", path)
+	ts := newServer(t, h)
+
+	entries := historyEntries(historyBlock(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))))
+	if len(entries) != 4 {
+		t.Fatalf("History lists %d entries, want three full Check-ins and the So What", len(entries))
+	}
+	for i, wantAsk := range []bool{false, true, false} {
+		if n := foldedCount(entries[i]); n != "" {
+			t.Errorf("entry %d folds %s Check-ins, want it in full", i, n)
+		}
+		if got := strings.Contains(entries[i], `<p data-testid="checkin-asks-for-help">Asks for help</p>`); got != wantAsk {
+			t.Errorf("entry %d shows Asks for help = %v, want %v:\n%s", i, got, wantAsk, entries[i])
+		}
+	}
+}
