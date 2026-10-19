@@ -65,6 +65,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Check-in page lists the Goal's children with their Health beside the form (above it on a narrow screen), the Goal page's "Contributed to by" list read-only, so the Owner sees what sets the Rolled-up Health without leaving the form. The form's Rolled-up Health line now names the Goal's Active children, not "your" children, and counts the Red and Yellow ones, e.g. "(2 of 5 Yellow)" (#361).
 - [user] On the New goal and Finish defining pages, Milestones and Metrics are added with + Milestone or + Metric, an inline editor and Save, and shown as items you can edit or remove, with no blank rows. The Ready to activate checklist flags one you started and didn't save ("Save the Milestone you started"), and the page works as before without script (#369).
 - [user] The Check-in page reads top to bottom under clear headings ("How is it going?", "Path to Green", "Metrics"), with No change in the header beside a line naming the week, the Goal's cadence and its last Check-in, fewer boxes, the Run off Green beside the Path to Green, and each Metric's baseline, target, last value and progress beside its input (#364).
+- [user] On the Goal page, + Log a highlight opens the inline Highlight editor, and Save logs the Draft Highlight with no page load. A pending Draft Highlight can now be edited before the next Check-in, and Remove deletes it at once (#363).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
