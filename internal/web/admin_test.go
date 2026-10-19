@@ -629,8 +629,8 @@ func TestAdminPageListsTheAdmins(t *testing.T) {
 	if !strings.Contains(form, `method="post"`) || !strings.Contains(form, `onsubmit="return confirm(`) {
 		t.Errorf("Remove Admin for Kim isn't a confirmed post: %s", form)
 	}
-	if script := html.UnescapeString(attr(form, "onsubmit")); !regexp.MustCompile(`^return confirm\('Remove this person.s Admin role\? They keep their account and their Goals\.'\)$`).MatchString(script) || strings.Count(script, "'") != 2 {
-		t.Errorf("Remove Admin's confirmation isn't one well-quoted message: %s", script)
+	if script, want := html.UnescapeString(attr(form, "onsubmit")), `return confirm("Remove this person’s Admin role? They keep their account and their Goals.")`; script != want {
+		t.Errorf("Remove Admin's confirmation is %s, want %s", script, want)
 	}
 	if class := attr(tagAround(t, section, ">Remove Admin…</button>"), "class"); class != "btn sm" {
 		t.Errorf("the Remove Admin… button's class is %q, want \"btn sm\"", class)

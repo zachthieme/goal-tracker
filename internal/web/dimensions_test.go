@@ -498,6 +498,9 @@ func TestAdminMergesDimensionValueOverHTTP(t *testing.T) {
 	if !strings.Contains(openTag(merge), `onsubmit="return confirm(`) {
 		t.Errorf("Merge doesn't ask for confirmation: %s", openTag(merge))
 	}
+	if script, want := html.UnescapeString(attr(openTag(merge), "onsubmit")), `return confirm("Merge this value? Its Goals and Report filters move to the chosen value, and this value is removed. This can't be undone.")`; script != want {
+		t.Errorf("Merge's confirmation is %s, want %s", script, want)
+	}
 	for _, v := range []domain.DimensionValue{acme, globex} {
 		if !strings.Contains(merge, fmt.Sprintf(`<option value="%d">%s</option>`, v.ID, v.Value)) {
 			t.Errorf("ACME Corp's merge form doesn't offer %s:\n%s", v.Value, merge)
