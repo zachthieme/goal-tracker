@@ -111,6 +111,11 @@ writing to the same Goal at once each see only their own write.
 [`phone-width.spec.ts`](phone-width.spec.ts) checks that at 390px the Goals
 list, Risks, the Admin page, a Report draft and the New goal page don't clip
 or scroll sideways, and keep every control on screen.
+[`highlight-editor.spec.ts`](highlight-editor.spec.ts) checks the Check-in
+form's Highlight editor with script on: the + Insight, + Accomplishment and
++ Miss buttons, the Note editor's Save, Edit, Cancel and Remove, an editor
+left open at submit, and Draft Highlights shown as items or, with no Kind, as
+an open editor.
 
 ## Conventions for the scenario specs
 
