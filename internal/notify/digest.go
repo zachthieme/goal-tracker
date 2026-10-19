@@ -185,10 +185,10 @@ func (n *Notifier) goalURL(goalID int64) string {
 	return fmt.Sprintf("%s/goals/%d", n.baseURL, goalID)
 }
 
-// checkinURL links to a Goal's Check-in form, which the Goal page pre-fills
-// from its latest Check-in.
+// checkinURL links to a Goal's Check-in page, which shows the latest
+// Check-in's answers as ghost text.
 func (n *Notifier) checkinURL(goalID int64) string {
-	return fmt.Sprintf("%s/goals/%d#checkin-form", n.baseURL, goalID)
+	return fmt.Sprintf("%s/goals/%d/checkin", n.baseURL, goalID)
 }
 
 // digestEntry is one item on a parent Owner's digest: a link request waiting

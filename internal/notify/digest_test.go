@@ -60,9 +60,12 @@ func TestReminderListsStaleGoalWithLinkToItsCheckin(t *testing.T) {
 	if !strings.Contains(body, "Stale") {
 		t.Errorf("reminder does not say the Goal is Stale:\n%s", body)
 	}
-	link := fmt.Sprintf("http://goals.test/goals/%d#checkin-form", g.ID)
+	link := fmt.Sprintf("http://goals.test/goals/%d/checkin", g.ID)
 	if !strings.Contains(body, link) {
 		t.Errorf("reminder does not link to %s:\n%s", link, body)
+	}
+	if strings.Contains(body, "#checkin-form") {
+		t.Errorf("reminder links to the Goal page's old #checkin-form anchor:\n%s", body)
 	}
 }
 
@@ -126,9 +129,12 @@ func TestReminderGoesToDelegatesToo(t *testing.T) {
 		t.Fatalf("reminders to the Delegate = %d, want 1", len(msgs))
 	}
 	body := msgs[0].Body
-	link := fmt.Sprintf("http://goals.test/goals/%d#checkin-form", g.ID)
+	link := fmt.Sprintf("http://goals.test/goals/%d/checkin", g.ID)
 	if !strings.Contains(body, "Ship search") || !strings.Contains(body, link) {
 		t.Errorf("Delegate's reminder does not list the Goal with its Check-in link:\n%s", body)
+	}
+	if strings.Contains(body, "#checkin-form") {
+		t.Errorf("Delegate's reminder links to the Goal page's old #checkin-form anchor:\n%s", body)
 	}
 	if !strings.Contains(body, "sam@example.com") {
 		t.Errorf("Delegate's reminder does not say whose Goal it is:\n%s", body)
@@ -559,7 +565,7 @@ func TestReminderListsOpenActionItemsAfterCheckins(t *testing.T) {
 		t.Errorf("subject = %q, want %q", got, want)
 	}
 	body := msgs[0].Body
-	checkin := fmt.Sprintf("These Goals need a Check-in:\n\n- Ship search: Stale, 10 days without a Check-in (cadence: 7 days)\n  http://goals.test/goals/%d#checkin-form\n", g.ID)
+	checkin := fmt.Sprintf("These Goals need a Check-in:\n\n- Ship search: Stale, 10 days without a Check-in (cadence: 7 days)\n  http://goals.test/goals/%d/checkin\n", g.ID)
 	items := fmt.Sprintf("\nAction Items you own:\n\n"+
 		"- Book the legal review (MBR, about Ship search): overdue since 2026-01-05\n  http://goals.test/goals/%d#action-items\n"+
 		"- Move the MBR to Tuesdays (MBR): due 2026-01-20\n  http://goals.test/reports/%d/publications/%d#action-items\n",
