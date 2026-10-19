@@ -3,6 +3,7 @@ package web
 import (
 	"cmp"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -340,8 +341,10 @@ func daysAgo(days int) string {
 	return fmt.Sprintf("%d days ago", days)
 }
 
-// confirmScript asks the reader to confirm msg before a form is sent; msg is a
-// constant with no quotes of its own.
+// confirmScript asks the reader to confirm msg before a form is sent. Any text
+// is safe: msg goes in as a JSON string literal, and the script is escaped for
+// the attribute it's written into.
 func confirmScript(msg string) templ.ComponentScript {
-	return templ.ComponentScript{Call: "return confirm('" + msg + "')"}
+	lit, _ := json.Marshal(msg)
+	return templ.JSUnsafeFuncCall("return confirm(" + string(lit) + ")")
 }
