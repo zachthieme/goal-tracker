@@ -1479,3 +1479,78 @@ func TestHomeLeavesOutClosedAndOthersActionItems(t *testing.T) {
 		}
 	}
 }
+
+// An open Ask for help is listed on its addressee's Home under Needs you, in
+// an "Asks for help" subgroup after Check-ins due: Red first, each row leading
+// to the Goal's Comments to answer and naming the Owner who asked. It counts in
+// the summary and the top bar. It isn't listed for the Owner who asked, nor for
+// a Manager further up while the first one hasn't left, and an answer doesn't
+// clear it: only the Owner's next Check-in that unticks the box, or is Green,
+// does.
+func TestHomeListsAsksForHelpAddressedToTheViewer(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignInNamed("sam@example.com", "Sam Owner")
+	mia := h.SignInNamed("mia@example.com", "Mia Chen")
+	vp := h.SignIn("vp@example.com")
+	h.SetManager(sam, mia)
+	h.SetManager(mia, vp)
+	yellow := h.ActiveGoal(sam, "Alpha yellow", "So what.")
+	h.AskForHelp(sam, yellow.ID, domain.HealthYellow, "Short a reviewer.", "Borrow one.", pathDate)
+	red := h.ActiveGoal(sam, "Zeta red", "So what.")
+	h.AskForHelp(sam, red.ID, domain.HealthRed, "Blocked.", "Need budget.", pathDate)
+	miaClient := signInClient(t, ts.URL, "mia@example.com")
+
+	page := getBody(t, miaClient, ts.URL+"/home")
+	needsYou := pageElement(t, page, "section", "home-needs-you")
+	if !strings.Contains(needsYou, `<h4 class="label">Asks for help</h4>`) {
+		t.Errorf("Needs you has no Asks for help subgroup:\n%s", needsYou)
+	}
+	asks := pageElement(t, page, "ul", "home-asks")
+	rows := strings.Split(asks, `<li data-testid="home-ask">`)[1:]
+	if len(rows) != 2 {
+		t.Fatalf("Asks for help lists %d rows, want 2:\n%s", len(rows), asks)
+	}
+	for i, g := range []struct {
+		goal   domain.Goal
+		health string
+	}{{red, domain.HealthRed}, {yellow, domain.HealthYellow}} {
+		row := rows[i]
+		if !strings.Contains(row, fmt.Sprintf(`href="/goals/%d#comments">%s</a>`, g.goal.ID, g.goal.Title)) {
+			t.Errorf("row %d doesn't link %q to its Comments:\n%s", i, g.goal.Title, row)
+		}
+		if !strings.Contains(row, g.health+"</span>") {
+			t.Errorf("row %d lacks its %s badge:\n%s", i, g.health, row)
+		}
+		if !strings.Contains(row, "from "+shownAs(sam.Email, "Sam Owner")) {
+			t.Errorf("row %d doesn't name the Owner who asked:\n%s", i, row)
+		}
+	}
+	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "2 things need you") {
+		t.Errorf("summary = %s, want 2 things need you for the two asks", got)
+	}
+	if home, _ := topBarCounts(t, getBody(t, miaClient, ts.URL+"/goals")); !strings.Contains(home, `<span class="count needs-you">2</span>`) {
+		t.Errorf("top bar's Home = %s, want a count of 2", home)
+	}
+
+	for _, who := range []string{"sam@example.com", "vp@example.com"} {
+		if page := getBody(t, signInClient(t, ts.URL, who), ts.URL+"/home"); strings.Contains(page, "home-ask") {
+			t.Errorf("%s's Home lists an ask addressed to Mia", who)
+		}
+	}
+
+	if _, err := h.Service.AddGoalComment(context.Background(), mia.ID, red.ID, "Take Lee for two weeks."); err != nil {
+		t.Fatalf("AddGoalComment: %v", err)
+	}
+	if got := len(elementTexts(getBody(t, miaClient, ts.URL+"/home"), "li", "home-ask")); got != 2 {
+		t.Errorf("after Mia's answer Home lists %d asks, want both still open", got)
+	}
+
+	h.Checkin(sam, red.ID, domain.HealthRed, "Still blocked.", "Need budget.", pathDate)
+	h.Checkin(sam, yellow.ID, domain.HealthGreen, "Fixed.", "", time.Time{})
+	if page := getBody(t, miaClient, ts.URL+"/home"); strings.Contains(page, "home-ask") || strings.Contains(page, "Asks for help") {
+		t.Errorf("Home still lists asks the Owner closed:\n%s", pageElement(t, page, "section", "home-needs-you"))
+	}
+}

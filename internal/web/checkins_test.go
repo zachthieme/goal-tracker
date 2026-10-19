@@ -3031,3 +3031,198 @@ func TestCheckinOffTargetConfirmationSurvivesALaterError(t *testing.T) {
 		t.Errorf("history has %d Check-ins, want 2 once the confirmed Green is recorded", len(history))
 	}
 }
+
+// askFixture is sam, an Owner whose Manager is Mia Chen, with an Active Goal,
+// and a client signed in as sam.
+type askFixture struct {
+	h      *testsupport.Harness
+	ts     string
+	sam    domain.Account
+	mia    domain.Account
+	goal   domain.Goal
+	client *http.Client
+}
+
+func newAskFixture(t *testing.T) askFixture {
+	t.Helper()
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	mia := h.SignInNamed("mia@example.com", "Mia Chen")
+	h.SetManager(sam, mia)
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	return askFixture{h: h, ts: ts.URL, sam: sam, mia: mia, goal: goal, client: signInClient(t, ts.URL, "sam@example.com")}
+}
+
+// askBoxChecked reports whether the Check-in form's "This asks for help" box
+// is ticked.
+func askBoxChecked(t *testing.T, page string) bool {
+	t.Helper()
+	tag := tagAround(t, page, `data-testid="checkin-asks-for-help"`)
+	if attr(tag, "name") != "asks_for_help" || attr(tag, "type") != "checkbox" {
+		t.Fatalf("asks-for-help control isn't the asks_for_help checkbox: %s", tag)
+	}
+	return strings.Contains(tag, " checked")
+}
+
+// askHint is the hint under the box naming whom the ask goes to.
+func askHint(t *testing.T, page string) string {
+	t.Helper()
+	return between(t, page, `data-testid="checkin-ask-addressee"`, "</fieldset>")
+}
+
+// While an ask is open the Check-in form starts with its box ticked, so
+// carrying the ask forward takes no effort, and names the Manager it goes to.
+// With no open ask the box starts unticked.
+func TestCheckinFormAsksForHelpTickedWhileOpen(t *testing.T) {
+	t.Parallel()
+
+	f := newAskFixture(t)
+	formURL := fmt.Sprintf("%s/goals/%d/checkin", f.ts, f.goal.ID)
+
+	page := getBody(t, f.client, formURL)
+	if askBoxChecked(t, page) {
+		t.Errorf("box is ticked with no open ask")
+	}
+	if hint := askHint(t, page); !strings.Contains(hint, "Goes to "+shownAs(f.mia.Email, "Mia Chen")+".") {
+		t.Errorf("hint doesn't name Mia Chen as whom the ask goes to: %s", hint)
+	}
+
+	f.h.AskForHelp(f.sam, f.goal.ID, domain.HealthYellow, "Short a reviewer.", "Borrow one.", pathDate)
+	page = getBody(t, f.client, formURL)
+	if !askBoxChecked(t, page) {
+		t.Errorf("box is unticked while the ask is open")
+	}
+}
+
+// With no one above the Owner, the form says the ask has no one to go to.
+func TestCheckinFormAskHintWithNoOneAbove(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	hint := askHint(t, getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)))
+	if !strings.Contains(hint, "No one is above the Owner to ask.") {
+		t.Errorf("hint = %s, want it to say no one is above the Owner", hint)
+	}
+}
+
+// Posting a Yellow Check-in with the box ticked opens an ask; posting the next
+// without it closes the ask.
+func TestCheckinPostOpensAndClosesAnAsk(t *testing.T) {
+	t.Parallel()
+
+	f := newAskFixture(t)
+	post := func(form url.Values) {
+		t.Helper()
+		resp := postForm(t, noRedirects(f.client), fmt.Sprintf("%s/goals/%d/checkins", f.ts, f.goal.ID), form)
+		_ = readBody(t, resp)
+		if resp.StatusCode != http.StatusSeeOther {
+			t.Fatalf("POST check-in = %d, want 303", resp.StatusCode)
+		}
+	}
+	yellow := url.Values{
+		"health":           {domain.HealthYellow},
+		"status":           {"Short a reviewer."},
+		"path_to_green":    {"Borrow one."},
+		"path_target_date": {"2026-06-15"},
+	}
+
+	asking := url.Values{"asks_for_help": {"1"}}
+	for k, v := range yellow {
+		asking[k] = v
+	}
+	post(asking)
+	ask, ok, err := f.h.Service.OpenAskForHelp(context.Background(), f.goal.ID)
+	if err != nil || !ok {
+		t.Fatalf("OpenAskForHelp after posting the ask = ok %v, err %v; want an open ask", ok, err)
+	}
+	if ask.Addressee == nil || ask.Addressee.ID != f.mia.ID {
+		t.Errorf("ask's addressee = %v, want Mia", ask.Addressee)
+	}
+
+	post(yellow)
+	if _, ok, err := f.h.Service.OpenAskForHelp(context.Background(), f.goal.ID); err != nil || ok {
+		t.Errorf("OpenAskForHelp after unticking = ok %v, err %v; want the ask closed", ok, err)
+	}
+}
+
+// A refused submit comes back with the box as posted, still naming whom the
+// ask goes to.
+func TestCheckinRefusedSubmitKeepsAskAsPosted(t *testing.T) {
+	t.Parallel()
+
+	f := newAskFixture(t)
+	f.h.AskForHelp(f.sam, f.goal.ID, domain.HealthYellow, "Short a reviewer.", "Borrow one.", pathDate)
+	submitURL := fmt.Sprintf("%s/goals/%d/checkins", f.ts, f.goal.ID)
+
+	body, _ := postFormHX(t, f.client, submitURL, url.Values{
+		"health":        {domain.HealthYellow},
+		"status":        {"Still short."},
+		"asks_for_help": {"1"},
+	})
+	if !askBoxChecked(t, body) {
+		t.Errorf("re-rendered form lost the ticked box")
+	}
+
+	resp := postForm(t, f.client, submitURL, url.Values{
+		"health": {domain.HealthYellow},
+		"status": {"Still short."},
+	})
+	body = readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("refused plain submit = %d, want 422", resp.StatusCode)
+	}
+	if askBoxChecked(t, body) {
+		t.Errorf("re-rendered form ticked a box posted unticked")
+	}
+	if hint := askHint(t, body); !strings.Contains(hint, shownAs(f.mia.Email, "Mia Chen")) {
+		t.Errorf("422 re-render's hint doesn't name Mia Chen: %s", hint)
+	}
+}
+
+// The Latest status card shows an open ask under the Path to Green, naming
+// whom it asks, with a link to answer it; a Green Check-in closes it.
+func TestLatestStatusShowsAnOpenAsk(t *testing.T) {
+	t.Parallel()
+
+	f := newAskFixture(t)
+	f.h.AskForHelp(f.sam, f.goal.ID, domain.HealthYellow, "Short a reviewer.", "Borrow one.", pathDate)
+	goalURL := fmt.Sprintf("%s/goals/%d", f.ts, f.goal.ID)
+
+	card := pageElement(t, getBody(t, f.client, goalURL), "section", "goal-checkins")
+	_, afterPath, _ := strings.Cut(card, `data-testid="goal-path-to-green"`)
+	ask := between(t, afterPath, `<p data-testid="goal-ask-for-help">`, "</p>")
+	if !strings.Contains(ask, "<strong>Asks for help</strong> of "+shownAs(f.mia.Email, "Mia Chen")) {
+		t.Errorf("ask doesn't read \"Asks for help of Mia Chen\": %s", ask)
+	}
+	if !strings.Contains(ask, `href="#comments"`) || !strings.Contains(ask, ">Answer</a>") {
+		t.Errorf("ask has no Answer link to the Comments: %s", ask)
+	}
+
+	f.h.Checkin(f.sam, f.goal.ID, domain.HealthGreen, "Fixed.", "", time.Time{})
+	if page := getBody(t, f.client, goalURL); strings.Contains(page, "goal-ask-for-help") {
+		t.Errorf("Goal page still shows the ask after a Green Check-in")
+	}
+}
+
+// With no one above the Owner, the open ask says so.
+func TestLatestStatusShowsAnAskWithNoOneAbove(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AskForHelp(sam, goal.ID, domain.HealthRed, "Blocked.", "Need budget.", pathDate)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	got := elementTexts(getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)), "p", "goal-ask-for-help")
+	if len(got) != 1 || !strings.HasPrefix(got[0], "Asks for help · no one above the Owner") {
+		t.Errorf("ask = %q, want it to read \"Asks for help · no one above the Owner\"", got)
+	}
+}

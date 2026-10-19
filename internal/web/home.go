@@ -45,6 +45,9 @@ type homeView struct {
 	// a No change would be refused, so their row offers only Check in. Only
 	// Home's own handler fills it, not the top bar's count.
 	NoChangeRefused map[int64]bool
+	// Asks are the open Asks for help addressed to the person, Red first,
+	// then Yellow, then by Goal title (CONTEXT.md: Ask for help).
+	Asks []domain.AskForHelp
 	// Requests are the link requests waiting on the person as the parent's
 	// Owner, the Handoffs waiting on them as the proposed new Owner, and the
 	// Parent suggestions on the Goals they Own, oldest first.
@@ -103,10 +106,10 @@ func fromField(from string) []toastField {
 }
 
 // NeedsYou counts what's waiting on the person: the Goals to check in on, the
-// Action Items to close, and the link requests, Handoffs and Parent
-// suggestions to decide.
+// Asks for help to answer, the Action Items to close, and the link requests,
+// Handoffs and Parent suggestions to decide.
 func (v homeView) NeedsYou() int {
-	return len(v.Due) + len(v.ActionItems) + len(v.Requests)
+	return len(v.Due) + len(v.Asks) + len(v.ActionItems) + len(v.Requests)
 }
 
 // homeActionItemPlace reads where an Action Item on Home comes from and when
@@ -168,6 +171,9 @@ func (s *Server) loadHome(ctx context.Context, accountID int64) (homeView, error
 		return homeView{}, err
 	}
 	if v.ActionItems, err = s.svc.OpenActionItemsOwnedBy(ctx, accountID); err != nil {
+		return homeView{}, err
+	}
+	if v.Asks, err = s.svc.AsksForHelpTo(ctx, accountID); err != nil {
 		return homeView{}, err
 	}
 	for i := range links {

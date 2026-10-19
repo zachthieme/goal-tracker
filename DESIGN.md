@@ -440,6 +440,9 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   something to say: no Rolled-up cell without Active children and no Back to
   Green cell without a Path to Green. The cells wrap, 32px apart. The status
   text, the Path to Green and the "why this differs" explanation follow below.
+  An open Ask for help sits directly under the Path to Green: a bold "Asks for
+  help", then "of [Name]", or "· no one above the Owner", then an **Answer**
+  link to the Goal's Comments.
   A Goal with no Health shows its message in place of the cells.
 - **History timeline (`goalHistory` in `timeline.templ`):** the Goal page's
   History is one canvas block, open on load with no outer disclosure. It is
@@ -474,14 +477,16 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     marker is never the only signal.
   - **A title entry** reads "*old* → *new*", then who changed it, by Name.
   - **A Check-in entry** shows its Health badge and status, then any
-    Lifecycle change, Path to Green, and the Date Slips it recorded (the
+    Lifecycle change, Path to Green, an "Asks for help" line when it marked
+    its Path to Green as asking, and the Date Slips it recorded (the
     delivery date or a Milestone, ~~old~~ new, and the reason). Last comes who
     wrote it, by Name, "for" the Owner when a Delegate wrote it. Its Metric
     readings and its explanation of a Health that differs from the Rolled-up
     Health sit in a small "Readings and explanation" disclosure on the entry.
   - **A folded "No change" entry (`historyFolded`):** a Check-in that
     repeats the entry just before it — another Check-in with the same Health,
-    status, Path to Green, target date and explanation — while recording
+    status, Path to Green, target date, ask for help and explanation, so
+    ticking or unticking the ask never folds — while recording
     nothing more (no Date Slip, Milestone or Lifecycle change, Highlight,
     discarded Draft Highlight, or Metric reading that differs from the one
     before) is a repeat, as a No change Check-in is. The first Check-in of a
@@ -548,7 +553,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     the page with 20 more under the same filter. Chips and paging are links,
     so History works without script.
 - **Home's Needs you list (`homePage` in `home.templ`):** one card in the main
-  column holding everything waiting on the person, in three subgroups, each a
+  column holding everything waiting on the person, in four subgroups, each a
   `.label` heading over ruled rows (`.hm-list`):
   - **Check-ins due:** the Goals the person owes a Check-in on, most overdue
     first. Each row keeps its Health badge, its Stale mark, a secondary
@@ -559,6 +564,13 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     that isn't Stale, or has no Health yet, keeps its full-colour badge and
     no "as of". A Goal they are a Delegate on
     carries a "for [Owner]" tag, and appears only here.
+  - **Asks for help:** the open Asks for help addressed to the person (see
+    CONTEXT.md: Ask for help), Red first, then Yellow, then by Goal title.
+    Each row has the Goal's Health badge, then its title linking to the
+    Comments on its Goal page (`#comments`), where the answer is written,
+    then a muted line "from [Owner]". It has no action of its own: the row
+    stays until the Owner unticks the ask in a later Check-in or the Goal is
+    no longer Yellow or Red and Active, however it is answered.
   - **Action Items:** the open Action Items the person owns, from every
     Report, soonest due first, so an overdue one leads. Each row has a
     `badge lc` reading "Action Item", the item's text linking to the Action
@@ -576,7 +588,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     **Review** and leads to the Pending handoffs page, where those choices
     are made.
 
-  A subgroup with nothing in it is left out, and with all three empty the card
+  A subgroup with nothing in it is left out, and with all four empty the card
   shows one muted "You're all caught up." line. The summary under the page
   title and the top bar's Home count both count every row. Goals the person is
   a Delegate on aren't listed again elsewhere: the sidebar has one link to the

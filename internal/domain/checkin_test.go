@@ -872,3 +872,88 @@ func TestOffTargetMetricsJudgesTheReadingEntered(t *testing.T) {
 		t.Errorf("off-target Metrics = %+v, want none once the reading entered meets the target", missed)
 	}
 }
+
+// A Yellow Check-in can mark its Path to Green as asking for help, and keeps
+// the mark (CONTEXT.md: Path to Green, Ask for help).
+func TestSubmitCheckinStoresAsksForHelpWhenYellow(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	c, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
+		GoalID:         goal.ID,
+		AuthorID:       sam.ID,
+		Health:         domain.HealthYellow,
+		Status:         "Short a reviewer.",
+		PathToGreen:    "Borrow a reviewer from another team.",
+		PathTargetDate: pathDate,
+		AsksForHelp:    true,
+	})
+	if err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	if !c.AsksForHelp {
+		t.Errorf("AsksForHelp = false, want the ask kept")
+	}
+	latest, _, err := h.Service.LatestCheckin(context.Background(), goal.ID)
+	if err != nil {
+		t.Fatalf("LatestCheckin: %v", err)
+	}
+	if !latest.AsksForHelp {
+		t.Errorf("latest AsksForHelp = false, want the ask stored")
+	}
+}
+
+// A Check-in with no Path to Green stores no ask either: a Green one, and one
+// that puts the Goal On Hold, which records no Health.
+func TestSubmitCheckinDropsAsksForHelpWithoutPathToGreen(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		in   domain.SubmitCheckinInput
+	}{
+		{"Green", domain.SubmitCheckinInput{Health: domain.HealthGreen, Status: "Fine.", AsksForHelp: true}},
+		{"On Hold", domain.SubmitCheckinInput{
+			Health: domain.HealthYellow, Status: "Pausing.", PathToGreen: "Wait.", PathTargetDate: pathDate,
+			Lifecycle: domain.LifecycleOnHold, LifecycleReason: "Waiting on budget.", AsksForHelp: true,
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h := testsupport.New(t)
+			sam := h.SignIn("sam@example.com")
+			goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+			in := tc.in
+			in.GoalID, in.AuthorID = goal.ID, sam.ID
+			c, err := h.Service.SubmitCheckin(context.Background(), in)
+			if err != nil {
+				t.Fatalf("SubmitCheckin: %v", err)
+			}
+			if c.AsksForHelp {
+				t.Errorf("AsksForHelp = true, want false for a %s Check-in", tc.name)
+			}
+		})
+	}
+}
+
+// A No change after a Check-in that asks for help asks too, as it repeats the
+// Path to Green.
+func TestNoChangeCheckinRepeatsAsksForHelp(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AskForHelp(sam, goal.ID, domain.HealthYellow, "Short a reviewer.", "Borrow a reviewer.", pathDate)
+
+	c, err := h.Service.SubmitNoChangeCheckin(context.Background(), goal.ID, sam.ID)
+	if err != nil {
+		t.Fatalf("SubmitNoChangeCheckin: %v", err)
+	}
+	if !c.AsksForHelp {
+		t.Errorf("AsksForHelp = false, want the No change to repeat the ask")
+	}
+}

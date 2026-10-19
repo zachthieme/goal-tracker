@@ -83,6 +83,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	path := r.FormValue("path_to_green")
 	explanation := r.FormValue("explanation")
 	rawDate := r.FormValue("path_target_date")
+	asksForHelp := r.FormValue("asks_for_help") == "1"
 	highlights := highlightsFromForm(r)
 	drafts := draftHighlightsFromForm(r)
 
@@ -121,7 +122,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 			e = checkinError{Field: checkinErrorField(err.Error(), dates, metrics), Message: sentence(plainReasonShown(err, s.displayDates()))}
 		}
 		return checkinFormData{
-			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, Explanation: explanation,
+			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, AsksForHelp: asksForHelp, Explanation: explanation,
 			Metrics: metrics, Readings: rawReadings, DraftHighlights: drafts, Highlights: highlights, Dates: dates, Lifecycle: lifecycle, Error: e,
 			OffTargetConfirmed: offTargetConfirmed, Shown: s.displayDates(),
 		}
@@ -166,6 +167,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		Status:         status,
 		PathToGreen:    path,
 		PathTargetDate: date,
+		AsksForHelp:    asksForHelp,
 		Explanation:    explanation,
 		Readings:       readings,
 		// The Lifecycle fields go through as typed; the domain decides which
@@ -564,13 +566,14 @@ func plainReasonShown(err error, shown displayDates) string {
 // For an htmx request it returns 200 so htmx swaps the form in place (htmx does
 // not swap error statuses by default); a plain post gets 422. It reloads the
 // Goal's Rolled-up Health so the re-rendered form still shows it beside the
-// Owner's Health (ADR-0003), and the latest Check-in's answers so it still
-// shows them as ghost text.
+// Owner's Health (ADR-0003), the latest Check-in's answers so it still
+// shows them as ghost text, and whom an ask would go to.
 func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, goalID int64, data checkinFormData) {
 	if rollup, err := s.svc.RolledUpHealth(r.Context(), goalID); err == nil {
 		data.RolledUp = rollup
 	}
 	data.Previous = s.loadCheckinPrevious(r, goalID, data.Metrics)
+	data.AskAddressee = s.loadCheckinAskAddressee(r, goalID)
 	status := http.StatusUnprocessableEntity
 	if r.Header.Get("HX-Request") == "true" {
 		status = http.StatusOK
@@ -581,12 +584,13 @@ func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, 
 // renderCheckinFormAgain re-renders the Check-in form as typed, with no error
 // (Add another): htmx swaps in the form alone, a plain post gets the whole
 // Check-in page around it. The latest Check-in's answers still show as ghost
-// text.
+// text, and the form still says whom an ask would go to.
 func (s *Server) renderCheckinFormAgain(w http.ResponseWriter, r *http.Request, current domain.Account, data checkinFormData) {
 	if rollup, err := s.svc.RolledUpHealth(r.Context(), data.GoalID); err == nil {
 		data.RolledUp = rollup
 	}
 	data.Previous = s.loadCheckinPrevious(r, data.GoalID, data.Metrics)
+	data.AskAddressee = s.loadCheckinAskAddressee(r, data.GoalID)
 	if r.Header.Get("HX-Request") == "true" {
 		render(w, r, http.StatusOK, checkinForm(data))
 		return
@@ -623,6 +627,24 @@ func (s *Server) loadCheckinPrevious(r *http.Request, goalID int64, metrics []do
 		trends = append(trends, metricTrend{Metric: m, Readings: readings})
 	}
 	return checkinPreviousFrom(latestPtr, trends)
+}
+
+// loadCheckinAskAddressee is whom an Ask for help from the Goal's Owner would
+// go to, for a re-rendered form's hint; nil for no one above the Owner. The
+// hint only helps the reader, so a failure to load it is logged and the hint
+// says no one rather than losing what was typed.
+func (s *Server) loadCheckinAskAddressee(r *http.Request, goalID int64) *domain.Account {
+	goal, err := s.svc.ViewGoal(r.Context(), goalID)
+	if err != nil {
+		s.logServerError(r, err)
+		return nil
+	}
+	addressee, err := s.svc.AskAddressee(r.Context(), goal.Owner)
+	if err != nil {
+		s.logServerError(r, err)
+		return nil
+	}
+	return addressee
 }
 
 // checkinRedirect returns the reader to the Goal page after a successful

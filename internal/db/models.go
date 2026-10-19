@@ -66,6 +66,7 @@ type Checkin struct {
 	LifecycleTo     string
 	LifecycleReason string
 	Outcome         string
+	AsksForHelp     int64
 }
 
 type Comment struct {

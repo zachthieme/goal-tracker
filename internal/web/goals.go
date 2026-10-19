@@ -773,6 +773,18 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("compute rolled-up health: %w", err)
 	}
+	var askPtr *domain.AskForHelp
+	ask, ok, err := s.svc.OpenAskForHelp(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("load ask for help: %w", err)
+	}
+	if ok {
+		askPtr = &ask
+	}
+	askAddressee, err := s.svc.AskAddressee(ctx, g.Owner)
+	if err != nil {
+		return goalView{}, fmt.Errorf("find ask addressee: %w", err)
+	}
 	slips, err := s.svc.ListDateSlips(ctx, id)
 	if err != nil {
 		return goalView{}, fmt.Errorf("load date slips: %w", err)
@@ -923,6 +935,8 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Checkins:           checkins,
 		LatestCheckin:      latestPtr,
 		RolledUp:           rollup,
+		Ask:                askPtr,
+		AskAddressee:       askAddressee,
 		DateSlips:          slips,
 		MilestoneChurn:     churn,
 		Signals:            signals,
@@ -1021,6 +1035,12 @@ type goalView struct {
 	// its Active children — shown next to the Owner-set Health (ADR-0003). Its
 	// Present is false when there is nothing to roll up.
 	RolledUp domain.RolledUpHealth
+	// Ask is the Goal's open Ask for help, nil when it has none. AskAddressee
+	// is whom an ask from its Owner goes to, open or not, for the Check-in
+	// form's hint; nil when no one is above the Owner (CONTEXT.md: Ask for
+	// help).
+	Ask          *domain.AskForHelp
+	AskAddressee *domain.Account
 	// DateSlips is the Goal's Date Slip history, earliest first, covering its
 	// delivery date and its Milestones' dates; its length is the slip count.
 	// MilestoneChurn counts Milestones added or removed since the Goal became

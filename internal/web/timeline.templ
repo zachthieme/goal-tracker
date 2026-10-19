@@ -238,8 +238,8 @@ templ historyMarker(e historyEntry) {
 }
 
 // historyCheckin is a Check-in on the timeline: its Health and status, the
-// Lifecycle change, Path to Green and Date Slips it recorded, and who wrote it
-// for whom. Its Metric readings and the explanation of a Health that differs
+// Lifecycle change, Path to Green, Ask for help (CONTEXT.md: Ask for help)
+// and Date Slips it recorded, and who wrote it for whom. Its Metric readings and the explanation of a Health that differs
 // from the Rolled-up Health sit behind a disclosure. Its Milestone changes are
 // the Milestone Date Slips it recorded and, beside them, the Milestones it
 // added, marked Done or marked Removed. A Check-in from before those were
@@ -270,6 +270,9 @@ templ historyCheckin(h history, e historyEntry) {
 	}
 	if c.PathToGreen != "" {
 		<p>Path to Green: { c.PathToGreen } (by { h.dates().date(c.PathTargetDate) })</p>
+	}
+	if c.AsksForHelp {
+		<p data-testid="checkin-asks-for-help">Asks for help</p>
 	}
 	if len(e.Slips) > 0 {
 		<ul data-testid="entry-slips" class="tl-slips">

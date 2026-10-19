@@ -36,6 +36,16 @@ templ homePage(current *domain.Account, v homeView) {
 							</ul>
 						</div>
 					}
+					if len(v.Asks) > 0 {
+						<div class="hm-group">
+							<h4 class="label">Asks for help</h4>
+							<ul data-testid="home-asks" class="hm-list">
+								for _, a := range v.Asks {
+									@askRow(a)
+								}
+							</ul>
+						</div>
+					}
 					if len(v.ActionItems) > 0 {
 						<div class="hm-group">
 							<h4 class="label">Action Items</h4>
@@ -193,6 +203,22 @@ templ dueRow(g domain.PersonalGoal, noChange bool) {
 				</form>
 			}
 			<a data-testid="home-due-checkin" class="btn primary sm" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", g.Goal.ID)) }>Check in</a>
+		</div>
+	</li>
+}
+
+// askRow is an open Ask for help addressed to the person: the Goal's Health,
+// its title leading to the Comments to answer on, and the Owner who asked
+// (CONTEXT.md: Ask for help).
+templ askRow(a domain.AskForHelp) {
+	<li data-testid="home-ask">
+		<div class="hm-what">
+			<span class={ "badge", healthClass(a.Health) }><span class="dot"></span>{ a.Health }</span>
+			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d#comments", a.Goal.ID)) }>{ a.Goal.Title }</a>
+			<p class="muted small">
+				{ "from " }
+				@person(a.Goal.Owner)
+			</p>
 		</div>
 	</li>
 }

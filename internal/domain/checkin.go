@@ -28,6 +28,10 @@ type Checkin struct {
 	// PathTargetDate is the target date for being back to Green; the zero time
 	// when there is no Path to Green (CONTEXT.md: Path to Green).
 	PathTargetDate time.Time
+	// AsksForHelp marks the Path to Green as asking for help (CONTEXT.md: Path
+	// to Green, Ask for help); never set without a Path to Green. Whether the
+	// ask is still open is the Goal's, see OpenAskForHelp.
+	AsksForHelp bool
 	// Explanation is the Owner's reason their Health differs from the Rolled-up
 	// Health (ADR-0003). Empty when the two match, or when there is nothing to
 	// roll up.
@@ -75,6 +79,10 @@ type SubmitCheckinInput struct {
 	Status         string
 	PathToGreen    string
 	PathTargetDate time.Time
+	// AsksForHelp marks the Path to Green as asking for help (CONTEXT.md: Ask
+	// for help). It is kept only with the Path to Green: a Check-in that is
+	// Green, or takes the Goal out of Active, stores no ask.
+	AsksForHelp bool
 	// Explanation is required only when the Health differs from the Goal's
 	// Rolled-up Health (ADR-0003).
 	Explanation string
@@ -204,10 +212,14 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	}
 
 	pathTargetDate := ""
+	asksForHelp := int64(0)
 	if needsPathToGreen(health) {
 		pathTargetDate = in.PathTargetDate.Format(dateFormat)
+		if in.AsksForHelp {
+			asksForHelp = 1
+		}
 	} else {
-		// A Green Check-in carries no Path to Green.
+		// A Green Check-in carries no Path to Green, so no ask for help.
 		path = ""
 	}
 
@@ -240,6 +252,7 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 			LifecycleTo:     lifecycle.To,
 			LifecycleReason: lifecycle.Reason,
 			Outcome:         lifecycle.Outcome,
+			AsksForHelp:     asksForHelp,
 		})
 		if err != nil {
 			return err
@@ -427,6 +440,7 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 		Status:         prev.Status,
 		PathToGreen:    prev.PathToGreen,
 		PathTargetDate: prev.PathTargetDate,
+		AsksForHelp:    prev.AsksForHelp,
 		Explanation:    explanation,
 	})
 }
@@ -656,6 +670,7 @@ func checkinFromRow(c db.Checkin, author, owner db.Account) Checkin {
 		Status:         c.Status,
 		PathToGreen:    c.PathToGreen,
 		PathTargetDate: pathTargetDate,
+		AsksForHelp:    c.AsksForHelp != 0,
 		Explanation:    c.Explanation,
 		LifecycleChange: LifecycleChange{
 			From:    c.LifecycleFrom,
