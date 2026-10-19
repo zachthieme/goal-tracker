@@ -1,10 +1,10 @@
 package web
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
-	"io"
 	"net/http"
 	"path"
 	"strings"
@@ -53,18 +53,12 @@ func (s *Server) handleStaticFile(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	f, err := staticFS.Open(name)
+	b, err := staticFS.ReadFile(name) // fails on a directory as on a missing file
 	if err != nil {
-		http.NotFound(w, r)
-		return
-	}
-	defer f.Close()
-	info, err := f.Stat()
-	if err != nil || info.IsDir() {
 		http.NotFound(w, r)
 		return
 	}
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Cache-Control", "public, max-age=31536000")
-	http.ServeContent(w, r, name, time.Time{}, f.(io.ReadSeeker))
+	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(b))
 }
