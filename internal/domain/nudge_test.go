@@ -152,9 +152,11 @@ func TestTheOwnerAndDelegatesCantNudge(t *testing.T) {
 	}
 }
 
-// A Goal that is neither Stale nor past its Path to Green can't be nudged; one
-// only past its Path to Green can, its email saying since when.
-func TestOnlyAStaleOrPathOverdueGoalCanBeNudged(t *testing.T) {
+// A Goal with nothing its Owner answers in a Check-in, neither Stale, past its
+// Path to Green, with a Milestone overdue nor in a Schedule conflict, can't be
+// nudged; one only past its Path to Green can, its email saying since when and
+// linking to the plain Check-in.
+func TestOnlyAGoalWithSomethingToAnswerCanBeNudged(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -166,15 +168,19 @@ func TestOnlyAStaleOrPathOverdueGoalCanBeNudged(t *testing.T) {
 	h.Checkin(sam, stalled.ID, domain.HealthRed, "Blocked.", "Escalate.", time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC))
 	h.Clock.Advance(5 * nudgeDay)
 
-	if _, err := h.Service.Nudge(ctx, pat.ID, fresh.ID); !errors.Is(err, domain.ErrValidation) {
-		t.Errorf("nudging a fresh Goal: err = %v, want ErrValidation", err)
+	_, err := h.Service.Nudge(ctx, pat.ID, fresh.ID)
+	if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "only a Goal that is Stale, past its Path to Green, has a Milestone overdue or has a Schedule conflict can be nudged") {
+		t.Errorf("nudging a fresh Goal: err = %v, want ErrValidation naming what can be nudged", err)
 	}
 	if _, err := h.Service.Nudge(ctx, pat.ID, stalled.ID); err != nil {
 		t.Fatalf("nudging a Path-overdue Goal: %v", err)
 	}
 	sent := h.Email.Sent()
 	if len(sent) != 1 || !strings.Contains(sent[0].Body, "Stalled recovery: Path to Green overdue since 2026-01-05") {
-		t.Errorf("sent %+v, want one email saying the Path to Green is overdue since 2026-01-05", sent)
+		t.Fatalf("sent %+v, want one email saying the Path to Green is overdue since 2026-01-05", sent)
+	}
+	if want := "/goals/" + strconv.FormatInt(stalled.ID, 10) + "/checkin\n"; !strings.HasSuffix(sent[0].Body, want) {
+		t.Errorf("email doesn't end with the plain Check-in link %q:\n%s", want, sent[0].Body)
 	}
 }
 
@@ -279,5 +285,105 @@ func TestAGoalMarkedMilestoneOverdueCanBeNudged(t *testing.T) {
 	want := `Ship search: Milestone "Beta" overdue since ` + beta.TargetDate.Format("2006-01-02")
 	if len(sent) != 1 || !strings.Contains(sent[0].Body, want) {
 		t.Errorf("sent %+v, want one email saying %q", sent, want)
+	}
+}
+
+// nudgeConflict arranges a Schedule conflict: kim's Late piece, due July 1,
+// contributes to sam's Launch, due June 1, the link kim asked for and sam
+// accepted. pat is someone else.
+func nudgeConflict(t *testing.T) (h *testsupport.Harness, pat domain.Account, late, launch domain.Goal) {
+	t.Helper()
+	h = testsupport.New(t)
+	sam := h.SignInNamed("sam@example.com", "Sam Lee")
+	kim := h.SignInNamed("kim@example.com", "Kim Wu")
+	pat = h.SignInNamed("pat@example.com", "Pat Okafor")
+	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	launch = h.ActiveGoalDue(sam, "Launch", june)
+	late = h.ActiveGoalDue(kim, "Late piece", june.AddDate(0, 1, 0))
+	link := h.RequestLink(kim, late, launch, "")
+	if _, err := h.Service.AcceptLink(context.Background(), link.ID, sam.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+	return h, pat, late, launch
+}
+
+// A fresh Active Goal in a Schedule conflict can be nudged, as its Owner
+// answers it in a Check-in (CONTEXT.md: Nudge): its email names the conflict
+// in the Goal page banner's words and opens the Check-in's dates.
+func TestAGoalInAScheduleConflictCanBeNudged(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	h, pat, late, _ := nudgeConflict(t)
+
+	if _, err := h.Service.Nudge(ctx, pat.ID, late.ID); err != nil {
+		t.Fatalf("nudging a Goal in a Schedule conflict: %v", err)
+	}
+	if kept, _ := h.Service.Nudges(ctx, late.ID); len(kept) != 1 {
+		t.Errorf("kept %d Nudges, want 1", len(kept))
+	}
+	sent := h.Email.Sent()
+	if got := recipients(sent); !slices.Equal(got, []string{"kim@example.com"}) {
+		t.Fatalf("emailed %v, want the child's Owner", got)
+	}
+	body := sent[0].Body
+	for _, want := range []string{
+		"Late piece: Schedule conflict\n",
+		"Schedule conflict: Late piece (due 2026-07-01) contributes to Launch (due 2026-06-01)\n",
+		"/goals/" + strconv.FormatInt(late.ID, 10) + "/checkin?open=dates\n",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("email doesn't hold %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "Path to Green") {
+		t.Errorf("email names a Path to Green the Goal isn't past:\n%s", body)
+	}
+}
+
+// Either Goal of a Schedule conflict can be nudged, as either Owner can
+// resolve it (CONTEXT.md: Schedule conflict).
+func TestTheParentInAScheduleConflictCanBeNudged(t *testing.T) {
+	t.Parallel()
+
+	h, pat, _, launch := nudgeConflict(t)
+
+	if _, err := h.Service.Nudge(context.Background(), pat.ID, launch.ID); err != nil {
+		t.Fatalf("nudging the parent in a Schedule conflict: %v", err)
+	}
+	if got := recipients(h.Email.Sent()); !slices.Equal(got, []string{"sam@example.com"}) {
+		t.Errorf("emailed %v, want the parent's Owner", got)
+	}
+}
+
+// A Proposed Goal in a Schedule conflict can't be nudged, as only an Active
+// Goal takes an ordinary Check-in.
+func TestAProposedGoalInAScheduleConflictCantBeNudged(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	pat := h.SignIn("pat@example.com")
+	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	launch := h.ActiveGoalDue(sam, "Launch", june)
+	proposed := h.CreateGoal(kim, "Late plan", "It matters.")
+	if _, err := h.Service.MarkGoalDated(ctx, proposed.ID, june.AddDate(0, 1, 0)); err != nil {
+		t.Fatalf("MarkGoalDated: %v", err)
+	}
+	link := h.RequestLink(kim, proposed, launch, "")
+	if _, err := h.Service.AcceptLink(ctx, link.ID, sam.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+	if signals, err := h.Service.GoalSignals(ctx, proposed.ID); err != nil || len(signals.ScheduleConflicts) != 1 {
+		t.Fatalf("GoalSignals = %+v, %v; want the Proposed Goal in one Schedule conflict", signals, err)
+	}
+
+	if _, err := h.Service.Nudge(ctx, pat.ID, proposed.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("nudging a Proposed Goal in a Schedule conflict: err = %v, want ErrValidation", err)
+	}
+	if kept, _ := h.Service.Nudges(ctx, proposed.ID); len(kept) != 0 || len(h.Email.Sent()) != 0 {
+		t.Errorf("kept %d Nudges and sent %d emails, want none", len(kept), len(h.Email.Sent()))
 	}
 }
