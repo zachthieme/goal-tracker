@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -571,15 +572,17 @@ templ noChangeCheckinButton(goalID int64, label, class string) {
 }
 
 // checkinPage is the Check-in on its own page, reached from the Goal page by
-// the Owner or a Delegate: a breadcrumb back to the Goal, then the one-click
-// "no change" card when there is a previous Check-in to repeat, then the form,
-// showing the latest Check-in's answers as ghost text. Where a No change would
-// be refused, the card says why in place of its button. A refusal in the
-// form's error, such as why a No change couldn't be recorded, shows at the top
-// of the form, and the card then leaves the reason to it. A Goal with children
-// shows them, the Goal page's "Contributed to by" list read-only, beside the
-// form, or between the card and the form on a narrow screen, so the Owner sees
-// which set the Rolled-up Health.
+// the Owner or a Delegate: a breadcrumb back to the Goal, then a header with
+// the title, a line saying which week it is, the Goal's cadence and its last
+// Check-in, and, at its right, the one-click No change when there is a
+// previous Check-in to repeat; then the form, showing the latest Check-in's
+// answers as ghost text. Where a No change would be refused, the header says
+// why in place of its button. A refusal in the form's error, such as why a No
+// change couldn't be recorded, shows at the top of the form, and the header
+// then leaves the reason to it. A Goal with children shows them, the Goal
+// page's "Contributed to by" list read-only, beside the form, or between the
+// header and the form on a narrow screen, so the Owner sees which set the
+// Rolled-up Health.
 templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 	{{ g := v.Goal }}
 	@layout("Check in · "+g.Title, current) {
@@ -588,20 +591,22 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 			<nav class="small muted" aria-label="Breadcrumb">
 				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a> › Check in
 			</nav>
-			<h1>Check in</h1>
-			if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
-				<div data-testid="no-change-card" class="card">
-					<div>
-						<h3>{ "Nothing changed since " + v.dates().dayOf(v.LatestCheckin.CreatedAt) + "?" }</h3>
-						<p class="muted">Records the same Health and status with today's date.</p>
-					</div>
-					if v.NoChangeRefusal == "" {
-						@noChangeCheckinButton(g.ID, "No change", "btn")
-					} else if form.Error.Message == "" || form.Error.Field != "" {
-						<p data-testid="no-change-unavailable" class="muted">{ v.NoChangeRefusal }</p>
-					}
+			<div class="checkin-head">
+				<div>
+					<h1>Check in</h1>
+					<p data-testid="checkin-page-meta" class="muted">{ v.checkinPageMeta() }</p>
 				</div>
-			}
+				if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
+					<div data-testid="no-change-card" class="checkin-no-change">
+						<span class="muted">{ "Nothing changed since " + v.dates().dayOf(v.LatestCheckin.CreatedAt) + "?" }</span>
+						if v.NoChangeRefusal == "" {
+							@noChangeCheckinButton(g.ID, "No change", "btn")
+						} else if form.Error.Message == "" || form.Error.Field != "" {
+							<p data-testid="no-change-unavailable" class="muted">{ v.NoChangeRefusal }</p>
+						}
+					</div>
+				}
+			</div>
 			if len(v.Children) > 0 {
 				<aside data-testid="checkin-children" class="checkin-children">
 					<h3>Contributed to by</h3>
@@ -616,6 +621,27 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 			}
 		</div>
 	}
+}
+
+// checkinPageMeta is the line under the Check-in page's title: the week it is,
+// named by its Monday in the org's timezone as History's week headings are
+// ("Week of Oct 19"), how often the Goal checks in, and the day of its latest
+// Check-in when it has one.
+func (v goalView) checkinPageMeta() string {
+	dates := v.dates()
+	y, m, d := v.Now.In(dates.Loc).Date()
+	today := time.Date(y, m, d, 0, 0, 0, 0, dates.Loc)
+	monday := today.AddDate(0, 0, -((int(today.Weekday()) + 6) % 7))
+	parts := []string{"Week of " + dates.date(monday)}
+	if days := v.Goal.CadenceDays; days == 1 {
+		parts = append(parts, "checks in every day")
+	} else {
+		parts = append(parts, fmt.Sprintf("checks in every %d days", days))
+	}
+	if v.LatestCheckin != nil {
+		parts = append(parts, "last check-in "+dates.dayOf(v.LatestCheckin.CreatedAt))
+	}
+	return strings.Join(parts, " · ")
 }
 
 // checkinFormRefused is the Goal's Check-in form, started from its latest
@@ -670,18 +696,47 @@ templ checkinForm(d checkinFormData) {
 				A Metric is off target, so a Green needs confirming. <a href="#checkin-off-target">See below</a>
 			</p>
 		}
-		<fieldset data-testid="checkin-health" class="health-toggle">
-			<legend>Health</legend>
-			for _, health := range []string{domain.HealthGreen, domain.HealthYellow, domain.HealthRed} {
-				<label class={ "badge", healthClass(health) }>
-					<input type="radio" name="health" value={ health } checked?={ d.Health == health }/>
-					<span class="dot"></span>{ health }
-				</label>
+		<section class="checkin-section">
+			<div class="checkin-section-head">
+				<h2>How is it going?</h2>
+			</div>
+			<fieldset data-testid="checkin-health" class="health-toggle">
+				<legend class="sr-only">Health</legend>
+				for _, health := range []string{domain.HealthGreen, domain.HealthYellow, domain.HealthRed} {
+					<label class={ "badge", healthClass(health) }>
+						<input type="radio" name="health" value={ health } checked?={ d.Health == health }/>
+						<span class="dot"></span>{ health }
+					</label>
+				}
+			</fieldset>
+			@checkinFieldError(d.Error, "health")
+			<label>
+				What changed since the last check-in?
+				<textarea name="status" required { checkinGhostText(d.Previous.Status)... }>{ d.Status }</textarea>
+			</label>
+			@checkinFieldError(d.Error, "status")
+			if d.RolledUp.Present {
+				<div class="checkin-rollup">
+					<p data-testid="checkin-form-rollup">
+						<span class="muted">Rolled-up Health:</span>
+						<span class={ "badge", healthClass(d.RolledUp.Health) }><span class="dot"></span>{ d.RolledUp.Health }</span>
+						if count := d.RolledUp.CountLine(); count != "" {
+							<span class="muted">{ count }</span>
+						}
+					</p>
+					<label>
+						<span>Why is your Health different? <span class="hint">Required while it differs from the Rolled-up Health</span></span>
+						<textarea name="explanation" data-testid="checkin-explanation" { checkinGhostText(d.Previous.Explanation)... }>{ d.Explanation }</textarea>
+					</label>
+					@checkinFieldError(d.Error, "explanation")
+				</div>
 			}
-		</fieldset>
-		@checkinFieldError(d.Error, "health")
+		</section>
 		<fieldset data-testid="path-to-green-field" class={ "path-to-green", templ.KV("has-error", d.Error.Field == "path_to_green" || d.Error.Field == "path_target_date_reason") }>
-			<legend>Path to Green (required when Yellow or Red)</legend>
+			<legend class="checkin-section-head">
+				<h2>Path to Green</h2>
+				<span class="hint">Required while Yellow or Red</span>
+			</legend>
 			<label>
 				Plan
 				<textarea name="path_to_green" { checkinGhostText(d.Previous.PathToGreen)... }>{ d.PathToGreen }</textarea>
@@ -713,27 +768,12 @@ templ checkinForm(d checkinFormData) {
 				<span data-testid="checkin-ask-addressee" class="hint">No one is above the Owner to ask. It still shows on Risks and in Reports.</span>
 			}
 		</fieldset>
-		if d.RolledUp.Present {
-			<p data-testid="checkin-form-rollup">
-				Rolled-up Health: <strong>{ d.RolledUp.Health }</strong>, the worst Health among this Goal's Active children.
-				if count := d.RolledUp.CountLine(); count != "" {
-					{ " (" + count + ")" }
-				}
-			</p>
-			<label>
-				Explanation (required if your Health differs from the Rolled-up Health)
-				<textarea name="explanation" data-testid="checkin-explanation" { checkinGhostText(d.Previous.Explanation)... }>{ d.Explanation }</textarea>
-			</label>
-			@checkinFieldError(d.Error, "explanation")
-		}
-		<label>
-			<span>Status <span class="hint">what changed since the last check-in</span></span>
-			<textarea name="status" required { checkinGhostText(d.Previous.Status)... }>{ d.Status }</textarea>
-		</label>
-		@checkinFieldError(d.Error, "status")
 		if len(d.Metrics) > 0 {
 			<fieldset data-testid="checkin-readings" class="checkin-readings">
-				<legend>Metric readings</legend>
+				<legend class="checkin-section-head">
+					<h2>Metrics</h2>
+					<span class="hint">Record each Metric's current value</span>
+				</legend>
 				for _, m := range d.Metrics {
 					<label>
 						<span>{ m.Name } <span class="hint">({ m.Unit }) — target { fmtNum(m.Target) }</span></span>
@@ -749,35 +789,37 @@ templ checkinForm(d checkinFormData) {
 				}
 			</fieldset>
 		}
-		<details data-testid="checkin-highlight-section" class="checkin-more" open?={ d.highlightOpen() }>
-			<summary>{ d.highlightSummary() }</summary>
-			<div data-testid="checkin-highlights" class="checkin-highlights" data-highlight-editor>
-				<h2 class="hl-js-only hl-head">Highlights</h2>
-				@highlightAddButtons()
-				<div class="hl-items" data-hl-items></div>
-				for i, row := range d.DraftHighlights {
-					@checkinDraftHighlightRow(i+1, row, d.Error)
-				}
-				for i, row := range d.highlightRows() {
-					@checkinHighlightRow(len(d.DraftHighlights)+i+1, row, d.Error)
-				}
-				<button type="submit" name="add_highlight" value="1" formnovalidate class="btn quiet">Add another</button>
-			</div>
-		</details>
-		// The editor's parts sit in the form, so an htmx re-render brings
-		// them back and upgrades the rows again.
-		@highlightEditorStyles()
-		@highlightEditorTemplate()
-		@highlightItemTemplate()
-		@highlightEditorScript()
-		<details data-testid="checkin-dates-section" class="checkin-more" open?={ d.datesOpen() }>
-			<summary>{ d.Dates.summary(d.Shown) }</summary>
-			@checkinDateFields(d.Dates, d.Error)
-		</details>
-		<details data-testid="checkin-lifecycle-section" class="checkin-more" open?={ d.lifecycleOpen() }>
-			<summary>{ d.Lifecycle.summary() }</summary>
-			@checkinLifecycleFields(d.Lifecycle, d.Error)
-		</details>
+		<div class="checkin-more-group">
+			<details data-testid="checkin-highlight-section" class="checkin-more" open?={ d.highlightOpen() }>
+				<summary>{ d.highlightSummary() }</summary>
+				<div data-testid="checkin-highlights" class="checkin-highlights" data-highlight-editor>
+					<h2 class="hl-js-only hl-head">Highlights</h2>
+					@highlightAddButtons()
+					<div class="hl-items" data-hl-items></div>
+					for i, row := range d.DraftHighlights {
+						@checkinDraftHighlightRow(i+1, row, d.Error)
+					}
+					for i, row := range d.highlightRows() {
+						@checkinHighlightRow(len(d.DraftHighlights)+i+1, row, d.Error)
+					}
+					<button type="submit" name="add_highlight" value="1" formnovalidate class="btn quiet">Add another</button>
+				</div>
+			</details>
+			// The editor's parts sit in the form, so an htmx re-render brings
+			// them back and upgrades the rows again.
+			@highlightEditorStyles()
+			@highlightEditorTemplate()
+			@highlightItemTemplate()
+			@highlightEditorScript()
+			<details data-testid="checkin-dates-section" class="checkin-more" open?={ d.datesOpen() }>
+				<summary>{ d.Dates.summary(d.Shown) }</summary>
+				@checkinDateFields(d.Dates, d.Error)
+			</details>
+			<details data-testid="checkin-lifecycle-section" class="checkin-more" open?={ d.lifecycleOpen() }>
+				<summary>{ d.Lifecycle.summary() }</summary>
+				@checkinLifecycleFields(d.Lifecycle, d.Error)
+			</details>
+		</div>
 		if d.offTargetWarned() {
 			@checkinOffTargetWarning(d.OffTarget, d.Shown)
 		}
