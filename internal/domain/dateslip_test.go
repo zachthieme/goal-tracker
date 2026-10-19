@@ -300,3 +300,31 @@ func TestBackToGreenPriorDatesCountWithinTheCurrentRun(t *testing.T) {
 		t.Errorf("BackToGreenPriorDates with no run = %v, want nil", got)
 	}
 }
+
+// A date's struck-through prior dates leave out every one on the current date's
+// calendar day, whatever its time of day, keeping the rest earliest first: a
+// date is never shown struck through beside itself (CONTEXT.md: Date Slip).
+func TestStruckDatesLeaveOutTheCurrentDate(t *testing.T) {
+	t.Parallel()
+
+	jun := func(d int) time.Time { return time.Date(2026, 6, d, 0, 0, 0, 0, time.UTC) }
+	nov := func(d int) time.Time { return time.Date(2026, 11, d, 0, 0, 0, 0, time.UTC) }
+	for _, tc := range []struct {
+		name    string
+		current time.Time
+		prior   []time.Time
+		want    []time.Time
+	}{
+		{"the latest equals the current", jun(16), []time.Time{jun(9), jun(16)}, []time.Time{jun(9)}},
+		{"the only one equals the current", jun(16), []time.Time{jun(16)}, nil},
+		{"a middle one equals the current", nov(9), []time.Time{nov(1), nov(9), nov(23)}, []time.Time{nov(1), nov(23)}},
+		{"another time of day", jun(16), []time.Time{jun(9), jun(16).Add(15 * time.Hour)}, []time.Time{jun(9)}},
+		{"none", jun(16), nil, nil},
+		{"all differ", nov(9), []time.Time{nov(23), nov(1), nov(5)}, []time.Time{nov(23), nov(1), nov(5)}},
+	} {
+		got := domain.StruckDates(tc.current, tc.prior)
+		if len(got) != len(tc.want) || !slices.EqualFunc(got, tc.want, time.Time.Equal) {
+			t.Errorf("%s: StruckDates = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
