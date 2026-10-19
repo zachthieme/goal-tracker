@@ -713,6 +713,12 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   it shows each item's mark only, ✓ in a `--health-g-ink` circle or ○ as an
   empty `--color-border-strong` ring, its done or to do for screen readers
   alone. The Finish defining page is the same page.
+- **Check-in page's children (`.checkin-children`):** a Goal with children
+  shows the Goal page's "Contributed to by" list read-only (no Remove), so the
+  Owner sees which children set the Rolled-up Health. Above 900px it is a
+  240–320px column on the right of the form, 32px away, under the breadcrumb
+  and heading. At 900px and below it sits above the form, after the No change
+  card. A Goal with no children keeps the single 760px column.
 - **Check-in form's optional sections:** Highlights, dates and Milestones,
   and Lifecycle each sit in a `<details>` (`.checkin-more`) that starts folded
   and opens by itself when it holds an error or something typed.

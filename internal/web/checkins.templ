@@ -29,7 +29,7 @@ type checkinFormData struct {
 	AsksForHelp  bool
 	AskAddressee *domain.Account
 	// RolledUp is the Goal's Rolled-up Health, shown in the form so the Owner can
-	// see the worst among their Active children while setting their own Health
+	// see the worst among the Goal's Active children while setting their Health
 	// (ADR-0003). Explanation is the Owner's reason for a difference, required
 	// only when their Health differs from the Rolled-up Health.
 	RolledUp    domain.RolledUpHealth
@@ -575,12 +575,15 @@ templ noChangeCheckinButton(goalID int64, label, class string) {
 // showing the latest Check-in's answers as ghost text. Where a No change would
 // be refused, the card says why in place of its button. A refusal in the
 // form's error, such as why a No change couldn't be recorded, shows at the top
-// of the form, and the card then leaves the reason to it.
+// of the form, and the card then leaves the reason to it. A Goal with children
+// shows them, the Goal page's "Contributed to by" list read-only, beside the
+// form, or between the card and the form on a narrow screen, so the Owner sees
+// which set the Rolled-up Health.
 templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 	{{ g := v.Goal }}
 	@layout("Check in · "+g.Title, current) {
 		@checkinStyles()
-		<div class="checkin-page">
+		<div class={ "checkin-page", templ.KV("with-children", len(v.Children) > 0) }>
 			<nav class="small muted" aria-label="Breadcrumb">
 				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a> › Check in
 			</nav>
@@ -597,6 +600,12 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 						<p data-testid="no-change-unavailable" class="muted">{ v.NoChangeRefusal }</p>
 					}
 				</div>
+			}
+			if len(v.Children) > 0 {
+				<aside data-testid="checkin-children" class="checkin-children">
+					<h3>Contributed to by</h3>
+					@linkList(g, nil, v.Children, v.LinkHealth, "no-children", "")
+				</aside>
 			}
 			if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold {
 				@checkinForm(form)
@@ -705,7 +714,10 @@ templ checkinForm(d checkinFormData) {
 		</fieldset>
 		if d.RolledUp.Present {
 			<p data-testid="checkin-form-rollup">
-				Rolled-up Health: <strong>{ d.RolledUp.Health }</strong> — the worst among your Active children.
+				Rolled-up Health: <strong>{ d.RolledUp.Health }</strong>, the worst Health among this Goal's Active children.
+				if count := d.RolledUp.CountLine(); count != "" {
+					{ " (" + count + ")" }
+				}
 			</p>
 			<label>
 				Explanation (required if your Health differs from the Rolled-up Health)
@@ -888,6 +900,13 @@ templ checkinStyles() {
 			.checkin-page{max-width:760px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px}
 			.checkin-page .card{padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 			.checkin-page .card form{margin:0}
+			.checkin-page.with-children{max-width:1112px;display:grid;grid-template-columns:minmax(0,760px) minmax(240px,320px);gap:16px 32px;align-items:start}
+			.checkin-page.with-children>*{grid-column:1}
+			.checkin-page.with-children>nav,.checkin-page.with-children>h1{grid-column:1/-1}
+			.checkin-page>.checkin-children{grid-column:2;grid-row:3}
+			.checkin-page:has(>.card)>.checkin-children{grid-row:3/span 2}
+			.checkin-children{display:flex;flex-direction:column;gap:12px}
+			@media (max-width:900px){.checkin-page.with-children{display:flex}}
 			.checkin-form{display:flex;flex-direction:column;gap:16px}
 			.checkin-default-submit{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 			.checkin-form fieldset{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;margin:0;display:flex;flex-direction:column;gap:8px;background:var(--color-surface)}
