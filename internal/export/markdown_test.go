@@ -579,3 +579,36 @@ func TestMarkdownSaysHowThePublicationSelects(t *testing.T) {
 		t.Errorf("Markdown of a publication with no selection mentions one:\n%s", got)
 	}
 }
+
+// An exception block counts the Red, Yellow and Stale children beside its
+// Rolled-up Health, names the Goals behind it, and under its head the Goals
+// it contributes to, each marked ↓ when the Report holds it and with its
+// Health; with no base URL to link from, it names them without links (#246).
+func TestMarkdownExceptionBlockNamesItsLinkedGoals(t *testing.T) {
+	t.Parallel()
+
+	pub := publication([]domain.ReportBlock{{
+		Goal:     domain.Goal{Title: "Referral program", SoWhat: "Customers bring customers.", Owner: boss, Lifecycle: domain.LifecycleActive},
+		Health:   domain.HealthRed,
+		Fields:   []domain.FieldValue{{Field: domain.Field{Name: "Region", Type: domain.FieldShortText}, Value: "EMEA"}},
+		RolledUp: domain.RolledUpHealth{Health: domain.HealthRed, Present: true, RedChildren: 2, YellowChildren: 1, StaleChildren: 1, ActiveChildren: 6},
+		ContributesTo: []domain.LinkedGoal{
+			{GoalID: 1, Title: "Growth", Health: domain.HealthRed, InReport: true},
+		},
+		Behind: []domain.LinkedGoal{
+			{GoalID: 3, Title: "Alpha ledger", Health: domain.HealthRed, InReport: true},
+			{GoalID: 4, Title: "Beta_payouts", Health: domain.HealthRed},
+		},
+	}}, nil)
+
+	got := export.Markdown(pub)
+	for _, want := range []string{
+		"**Rolled-up Health:** Red · 2 of 6 Red · 1 Yellow · 1 Stale\n",
+		"**Behind it:** Alpha ledger ↓ (Red) · Beta\\_payouts (Red)\n",
+		"boss · Active · Health: **Red**\n\n**Contributes to:** Growth ↓ (Red)\n\n**Region:** EMEA",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Markdown:\n%s\nwant it to contain %q", got, want)
+		}
+	}
+}

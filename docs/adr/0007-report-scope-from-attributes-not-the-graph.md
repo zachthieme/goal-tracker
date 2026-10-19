@@ -6,6 +6,7 @@ A Report definition today selects Goals by starting at root Goals and descending
 
 - New definitions have no Depth. Existing definitions with depth 0 become hand-picked. Those with a depth above 0 are converted once, by migration, to a fixed set of Goals.
 - The Goals in a report change only when a Goal's attributes change or an author edits the lists. Linking or unlinking a Goal doesn't move it in or out of a report.
+- A Report's exception block shows the Contributes to links among the Goals the Report already holds, and names the Red and Yellow children behind its Rolled-up Health (#246). Showing a link never brings a Goal in.
 - The Owner's Chain is a rule attribute (#264): "Owner is in the Chain of Priya" selects by an attribute of the Owner, so it walks no Contributes to links. The only walk is over Managers, from the org's directory (ADR 0008), as they are when the draft is computed.
 - Fields are not a rule attribute. ADR 0005 keeps Fields for describing a Goal, not for slicing, so a report shows Fields but never selects by them. Anything a report needs to select by becomes a Dimension.
 - A group of Goals that has no shared attribute is brought in with a Dimension (for example "In report"), not with links.
