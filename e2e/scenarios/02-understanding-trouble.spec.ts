@@ -97,7 +97,8 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
       await expect(block).toContainText(`· ${goal.lifecycle}`);
       await expect(block.getByTestId("report-so-what")).toHaveText(`So What: ${goal.so_what}`);
       await expect(block.getByTestId("report-status")).toHaveText(`Status: ${goal.status}`);
-      if (goal.delivery_date) await expect(block.getByTestId("report-due")).toContainText(reportDate(goal.delivery_date));
+      if (goal.delivery_date)
+        await expect(block.getByTestId("report-due")).toContainText(reportDate(goal.delivery_date));
       await expect(block.getByTestId("report-milestone")).toHaveCount(goal.milestones);
       await expect(block.getByTestId("report-metric")).toHaveCount(goal.metrics);
       const health = await healthOf(block.getByTestId("report-health"));
@@ -136,7 +137,8 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
     firstPublication = new URL(elena.url()).pathname;
     const published = elena.getByTestId("report-published");
     await expect(published).toContainText("by Priya Raman");
-    firstPublishedOn = /Published ([A-Z][a-z]{2} \d{1,2}, \d{4}), \d{2}:\d{2} /.exec((await published.textContent()) ?? "")?.[1] ?? "";
+    firstPublishedOn =
+      /Published ([A-Z][a-z]{2} \d{1,2}, \d{4}), \d{2}:\d{2} /.exec((await published.textContent()) ?? "")?.[1] ?? "";
     expect(firstPublishedOn, "the publication says the day it was published").not.toBe("");
   });
 

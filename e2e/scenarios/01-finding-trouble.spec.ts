@@ -167,7 +167,9 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     await owner.goto(`/goals/${overdue.id}/checkin`);
     const form = owner.getByTestId("checkin-form");
     await form.getByRole("radio", { name: "Yellow" }).check();
-    await form.getByRole("textbox", { name: "Plan", exact: true }).fill("Move the last two services over before the freeze.");
+    await form
+      .getByRole("textbox", { name: "Plan", exact: true })
+      .fill("Move the last two services over before the freeze.");
     await form.getByLabel("Back to Green by", { exact: true }).fill(isoDate(-2));
     await form.getByRole("textbox", { name: /^Status/ }).fill("The cut-over slipped past the date we gave.");
     await form.getByRole("button", { name: "Submit check-in" }).click();
@@ -230,7 +232,9 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     expect(count, "Risks shows a count from Home").toBeGreaterThan(0);
     // The count is her default scope, My org, as many as a bare /risks lists.
     await page.goto("/risks");
-    await expect(page.getByTestId("risks-attention")).toHaveText(new RegExp(`^${count} Goals need attention in My org`));
+    await expect(page.getByTestId("risks-attention")).toHaveText(
+      new RegExp(`^${count} Goals need attention in My org`),
+    );
     expect(await riskRows(page), "the count is a bare /risks's rows").toHaveLength(count);
   });
 
@@ -242,7 +246,10 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     // Problem order (problemRank): every Red row comes first, and no unmarked
     // Green row comes before a Yellow one.
     const firstNotRed = rows.findIndex((r) => r.health !== "Red");
-    expect(rows.slice(firstNotRed).filter((r) => r.health === "Red"), "every Red row comes first").toEqual([]);
+    expect(
+      rows.slice(firstNotRed).filter((r) => r.health === "Red"),
+      "every Red row comes first",
+    ).toEqual([]);
     const lastYellow = rows.findLastIndex((r) => r.health === "Yellow");
     const unmarkedGreen = rows.findIndex((r) => r.health === "Green" && !marked(r));
     expect(unmarkedGreen, "no unmarked Green row comes before a Yellow one").toBeGreaterThan(lastYellow);
@@ -250,7 +257,9 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     // Marks: the Stale Goal carries its stale mark, the departed Owner's Goal
     // its ownerless mark.
     expect(rows.find((r) => r.title === stale.title)?.stale, `${stale.title} is marked Stale`).toBe(true);
-    expect(rows.find((r) => r.title === departing.title)?.ownerless, `${departing.title} is marked Ownerless`).toBe(true);
+    expect(rows.find((r) => r.title === departing.title)?.ownerless, `${departing.title} is marked Ownerless`).toBe(
+      true,
+    );
     await expect(goalRow(page, stale.title).getByTestId("stale")).toBeVisible();
     await expect(goalRow(page, departing.title).getByTestId("ownerless")).toBeVisible();
 
@@ -370,20 +379,28 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
       r.kinds.includes("stale") ? 0 : 1,
     ]);
     for (let i = 1; i < keys.length; i++) {
-      expect(compareKeys(keys[i - 1], keys[i]), `${rows[i - 1].title} is no better off than ${rows[i].title}`).toBeLessThanOrEqual(0);
+      expect(
+        compareKeys(keys[i - 1], keys[i]),
+        `${rows[i - 1].title} is no better off than ${rows[i].title}`,
+      ).toBeLessThanOrEqual(0);
     }
     for (const { goal, kind } of [
       { goal: departing, kind: "ownerless" },
       { goal: overdue, kind: "path-overdue" },
       { goal: stale, kind: "stale" },
     ]) {
-      expect(rows.find((r) => r.id === goal.id)?.kinds, `${goal.title} is a Platform row with a ${kind} chip`).toContain(kind);
+      expect(
+        rows.find((r) => r.id === goal.id)?.kinds,
+        `${goal.title} is a Platform row with a ${kind} chip`,
+      ).toContain(kind);
     }
 
     // A Goal with two reasons is one row with two chips and one Fix.
     await teamSelect.selectOption({ label: twoReasons.team });
     await expect(teamSelect.locator("option:checked")).toHaveText(twoReasons.team);
-    await expect(page.getByTestId("risks-table").getByRole("link", { name: twoReasons.title, exact: true })).toBeVisible();
+    await expect(
+      page.getByTestId("risks-table").getByRole("link", { name: twoReasons.title, exact: true }),
+    ).toBeVisible();
     const team = await riskRows(page);
     const two = team.filter((r) => r.id === twoReasons.id);
     expect(two, `${twoReasons.title} is one row`).toHaveLength(1);
@@ -409,7 +426,10 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
 
     // The Goal's History shows the Nudge.
     await page.goto(`/goals/${stale.id}`);
-    const nudge = page.getByTestId("goal-history").getByTestId("history-entry").and(page.locator('[data-kind="nudge"]'));
+    const nudge = page
+      .getByTestId("goal-history")
+      .getByTestId("history-entry")
+      .and(page.locator('[data-kind="nudge"]'));
     await expect(nudge).toHaveCount(1);
     await expect(nudge).toContainText(leaderName);
     await expect(nudge).toContainText("nudged for a Check-in");
@@ -458,7 +478,10 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     await expect(row.getByTestId("risk-fix")).toHaveCount(1);
     await expect(page.getByTestId("risks-definitions").getByText(stale.title)).toHaveCount(0);
     await page.getByTestId("risks-group-owner").click();
-    expect((await riskRows(page)).map((r) => r.id), "the owner card counts it").toContain(stale.id);
+    expect(
+      (await riskRows(page)).map((r) => r.id),
+      "the owner card counts it",
+    ).toContain(stale.id);
   });
 
   await test.step("It worked if: she could tell in trouble from silent from badly placed", async () => {
@@ -468,7 +491,10 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     await expect(goalRow(page, redWithChildren.title).getByTestId("goal-row-health")).toHaveText("Red");
     await expect(goalRow(page, overdue.title).getByTestId("goal-row-health")).toHaveText("Yellow");
     await page.goto("/risks?org=all");
-    expect((await riskRows(page)).map((r) => r.id), `${redWithChildren.title} isn't on Risks`).not.toContain(redWithChildren.id);
+    expect(
+      (await riskRows(page)).map((r) => r.id),
+      `${redWithChildren.title} isn't on Risks`,
+    ).not.toContain(redWithChildren.id);
 
     // Silent: Stale, under Owner needs to update, not Plan doesn't fit.
     // Badly placed: Unaligned or a Schedule conflict, under Plan doesn't fit,
@@ -495,7 +521,15 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   });
 });
 
-type RiskRow = { id: number; title: string; health: string; kinds: string[]; fixCells: number; fixes: number; fix: string };
+type RiskRow = {
+  id: number;
+  title: string;
+  health: string;
+  kinds: string[];
+  fixCells: number;
+  fixes: number;
+  fix: string;
+};
 
 // riskRows reads the Risks table's rows in order: each flagged Goal's id and
 // title (its first link; a chip may link its parent), Health, the kinds of its
