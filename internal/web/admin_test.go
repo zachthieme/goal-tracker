@@ -574,3 +574,172 @@ func TestAdminPageHasNoSetPasswordLinksWithoutPasswordSignIn(t *testing.T) {
 		t.Errorf("POST /admin/password-links without password sign-in: status %d, want 404:\n%s", resp.StatusCode, body)
 	}
 }
+
+// adminRemoveAction is the action of the form that takes the Admin role from
+// acc on the Admin page.
+func adminRemoveAction(acc domain.Account) string {
+	return fmt.Sprintf(`action="/admin/admins/%d/remove"`, acc.ID)
+}
+
+// The Admin page lists every Admin by Label, email a click away, before the
+// Ownerless Goals. Each other Admin has a Remove
+// Admin… button that asks for confirmation; the viewer's own row has none, as
+// no Admin can take the role from themselves. A non-Admin isn't listed.
+func TestAdminPageListsTheAdmins(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com", "kim@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	kim := h.SignInNamed("kim@example.com", "Kim Abara")
+	h.SignIn("sam@example.com")
+	client := signInClient(t, ts.URL, "ada@example.com")
+
+	page := getBody(t, client, ts.URL+"/admin")
+	if admins, ownerless := strings.Index(page, `data-testid="admin-admins"`), strings.Index(page, `data-testid="admin-ownerless"`); admins < 0 || admins > ownerless {
+		t.Errorf("the Admins section doesn't come before the Ownerless Goals")
+	}
+	section := pageElement(t, page, "section", "admin-admins")
+	for _, want := range []string{"<h2>Admins</h2>", "Admins define Dimensions and Fields, reassign Ownerless Goals and use this page."} {
+		if !strings.Contains(section, want) {
+			t.Errorf("the Admins section lacks %q:\n%s", want, section)
+		}
+	}
+	rows := elementTexts(section, "tr", "admin-admin-person")
+	if len(rows) != 2 || !strings.HasPrefix(rows[0], "ada") || !strings.HasPrefix(rows[1], "Kim Abara") {
+		t.Errorf("the Admins listed are %q, want ada then Kim Abara", rows)
+	}
+	for _, want := range []string{shownAs("ada@example.com", "ada"), shownAs("kim@example.com", "Kim Abara")} {
+		if !strings.Contains(section, want) {
+			t.Errorf("the Admins section doesn't show %s:\n%s", want, section)
+		}
+	}
+	if strings.Contains(section, "sam@example.com") {
+		t.Errorf("the Admins section lists a non-Admin:\n%s", section)
+	}
+
+	if strings.Contains(section, adminRemoveAction(ada)) {
+		t.Errorf("the viewer's own row has a Remove Admin form:\n%s", section)
+	}
+	if !strings.Contains(rows[0], "you") {
+		t.Errorf("the viewer's own row doesn't say it's them: %q", rows[0])
+	}
+	form := tagAround(t, section, adminRemoveAction(kim))
+	if !strings.Contains(form, `method="post"`) || !strings.Contains(form, `onsubmit="return confirm(`) {
+		t.Errorf("Remove Admin for Kim isn't a confirmed post: %s", form)
+	}
+	if class := attr(tagAround(t, section, ">Remove Admin…</button>"), "class"); class != "btn sm" {
+		t.Errorf("the Remove Admin… button's class is %q, want \"btn sm\"", class)
+	}
+
+	add := tagAround(t, section, `action="/admin/admins"`)
+	if !strings.Contains(add, `method="post"`) || !strings.Contains(add, "ad-link-form") || !strings.Contains(section, `type="email" name="email"`) {
+		t.Errorf("the Admins section has no email form posting to /admin/admins:\n%s", section)
+	}
+	if class := attr(tagAround(t, section, ">Make Admin</button>"), "class"); class != "btn" {
+		t.Errorf("the Make Admin button's class is %q, want \"btn\"", class)
+	}
+}
+
+// With password sign-in, the Admins section comes after the set-password links.
+func TestAdminsSectionFollowsTheSetPasswordLinks(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newPasswordServer(t, h)
+	client := passwordSignInClient(t, h, ts.URL, "ada@example.com")
+
+	page := getBody(t, client, ts.URL+"/admin")
+	if links, admins := strings.Index(page, `data-testid="admin-password-links"`), strings.Index(page, `data-testid="admin-admins"`); links < 0 || admins < links {
+		t.Errorf("the Admins section doesn't follow the set-password links")
+	}
+}
+
+// makeAdmin presses Make Admin on the Admin page for emailAddr as client, and
+// returns the response, unfollowed.
+func makeAdmin(t *testing.T, client *http.Client, base, emailAddr string) *http.Response {
+	t.Helper()
+	return postForm(t, noRedirects(client), base+"/admin/admins", url.Values{"email": {emailAddr}})
+}
+
+// adminPageStatus is the status client gets opening the Admin page.
+func adminPageStatus(t *testing.T, client *http.Client, base string) int {
+	t.Helper()
+	resp, err := client.Get(base + "/admin")
+	if err != nil {
+		t.Fatalf("GET /admin: %v", err)
+	}
+	_ = readBody(t, resp)
+	return resp.StatusCode
+}
+
+// An Admin makes someone an Admin by email from the Admin page, and is brought
+// back to the Admins section; that person can open the Admin page on their
+// next page load.
+func TestAdminMakesSomeoneAnAdminFromTheAdminPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	h.SignIn("ada@example.com")
+	h.SignIn("sam@example.com")
+	ada := signInClient(t, ts.URL, "ada@example.com")
+	sam := signInClient(t, ts.URL, "sam@example.com")
+	if status := adminPageStatus(t, sam, ts.URL); status != http.StatusForbidden {
+		t.Fatalf("Sam, not yet an Admin, GET /admin: status %d, want 403", status)
+	}
+
+	resp := makeAdmin(t, ada, ts.URL, " Sam@Example.com ")
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/admin#admin-admins" {
+		t.Errorf("Make Admin: status %d to %q, want 303 to /admin#admin-admins", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	if status := adminPageStatus(t, sam, ts.URL); status != http.StatusOK {
+		t.Errorf("Sam, made an Admin, GET /admin: status %d, want 200", status)
+	}
+	if section := pageElement(t, getBody(t, ada, ts.URL+"/admin"), "section", "admin-admins"); !strings.Contains(section, shownAs("sam@example.com", "sam")) {
+		t.Errorf("the Admins section doesn't list Sam:\n%s", section)
+	}
+}
+
+// Make Admin never creates an Account: an email no one has is refused in the
+// Admins section, which keeps what was typed. A Departed person, or a blank
+// email, is refused there too, and nobody is made an Admin.
+func TestAdminCantMakeAnAdminOfSomeoneWithoutAnAccount(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	client := signInClient(t, ts.URL, "ada@example.com")
+
+	for _, tc := range []struct{ typed, kept, want string }{
+		{" Nobody@Example.com ", "Nobody@Example.com", "No one with that email has an account yet."},
+		{" Sam@Example.com", "Sam@Example.com", "Sam@Example.com has left the company. Mark them returned first."},
+		{"  ", "", "Enter the person's email."},
+	} {
+		resp := makeAdmin(t, client, ts.URL, tc.typed)
+		page := readBody(t, resp)
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("Make Admin %q: status %d, want 422", tc.typed, resp.StatusCode)
+			continue
+		}
+		section := pageElement(t, page, "section", "admin-admins")
+		if msg := elementTexts(section, "p", "admin-admins-error"); len(msg) != 1 || msg[0] != tc.want {
+			t.Errorf("Make Admin %q: the refusal says %q, want %q", tc.typed, msg, tc.want)
+		}
+		if value := attr(tagAround(t, section, `name="email"`), "value"); value != tc.kept {
+			t.Errorf("Make Admin %q: the email field holds %q, want %q", tc.typed, value, tc.kept)
+		}
+	}
+	if _, err := h.Service.AccountByEmail(t.Context(), "nobody@example.com"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("Make Admin for an email no one has created an Account (err %v)", err)
+	}
+	if acc, err := h.Service.Account(t.Context(), sam.ID); err != nil || acc.IsAdmin {
+		t.Errorf("Sam after the refused Make Admin = %+v, %v; want a non-Admin", acc, err)
+	}
+}
