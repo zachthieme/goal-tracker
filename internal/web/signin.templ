@@ -21,9 +21,9 @@ templ signInPage(failure string) {
 	}
 }
 
-// orgSignInPage is sign-in through the org's provider: the same card as the
-// development form, with one button that starts the sign-in. A failed sign-in
-// shows its reason, and the button offers to try again.
+// orgSignInPage is sign-in through the company's provider: the same card as
+// the development form, with one button that starts the sign-in. A failed
+// sign-in shows its reason, and the button offers to try again.
 templ orgSignInPage(failure string) {
 	@layout("Sign in", nil) {
 		@signInStyles()

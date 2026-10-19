@@ -6,9 +6,9 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// topLevelControl lets an Admin mark a Goal as one of the org's root outcomes,
-// or unmark it (CONTEXT.md: Top-level Goal). It opens in place on the Goal
-// page, so its button takes focus.
+// topLevelControl lets an Admin mark a Goal as one of the company's root
+// outcomes, or unmark it (CONTEXT.md: Top-level Goal). It opens in place on
+// the Goal page, so its button takes focus.
 templ topLevelControl(g domain.Goal) {
 	<section data-testid="mark-top-level">
 		<h3 class="label">Top-level Goal</h3>

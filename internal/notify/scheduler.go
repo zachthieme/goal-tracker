@@ -12,7 +12,7 @@ import (
 )
 
 // Weekly is when in the week the emails go out: a day and a time of day on the
-// org's calendar.
+// company's calendar.
 type Weekly struct {
 	Day          time.Weekday
 	Hour, Minute int
@@ -20,7 +20,7 @@ type Weekly struct {
 }
 
 // ParseWeekly reads a weekday name ("Monday") and a 24-hour time ("09:00") in
-// loc, the org's timezone.
+// loc, the company's timezone.
 func ParseWeekly(day, at string, loc *time.Location) (Weekly, error) {
 	w := Weekly{Loc: loc}
 	found := false

@@ -20,7 +20,7 @@ import (
 // reportsPage lists every saved Report Definition as a row of a status table —
 // its scope, its Goals and their Health, when it was last published and by
 // whom, and how much its draft has changed since — and links New report to the
-// builder (CONTEXT.md: Report Definition). Dates are the org's (loc).
+// builder (CONTEXT.md: Report Definition). Dates are the company's (loc).
 func reportsPage(current *domain.Account, data reportsListData) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -95,7 +95,7 @@ func reportsPage(current *domain.Account, data reportsListData) templ.Component 
 
 // reportRow is one Report Definition in the status table: its name over its
 // scope, its Goal count over a bar of their Health, its last publication's
-// date in the org's timezone (loc) over its publisher, or Never, and its
+// date in the company's timezone (loc) over its publisher, or Never, and its
 // draft's changes since, or Not published.
 func reportRow(sum domain.ReportSummary, loc *time.Location) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -341,7 +341,7 @@ func reportHealthBar(h domain.HealthCounts) templ.Component {
 // reportDraftPage shows a saved Report Definition and its draft Report read
 // against a baseline the reader can change — by default the previous
 // publication. A header, sticky above a phone's width, carries the save status,
-// the baseline chip, the History of its publications (times in the org's
+// the baseline chip, the History of its publications (times in the company's
 // timezone, loc) and Publish; below it the
 // author composes the narrative on the left beside a preview of exactly what
 // readers will see (CONTEXT.md: Report, Report Definition). Paths to Green are
@@ -949,8 +949,8 @@ func publishSummaryText(r domain.Report, chip baselineChip, oob bool) templ.Comp
 }
 
 // reportHistory is the draft header's menu of a Report Definition's
-// publications, newest first, each with when it was published in the org's
-// timezone and who published it.
+// publications, newest first, each with when it was published in the
+// company's timezone and who published it.
 func reportHistory(pubs []domain.Publication, loc *time.Location) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -1659,8 +1659,8 @@ func reportContent(r domain.Report, asOf time.Time, d discussion) templ.Componen
 }
 
 // healthSummary counts the Report's selected Goals by Health — Red, Yellow,
-// Green — and how many are Stale, so a reader sees the shape of the org before
-// reading a block.
+// Green — and how many are Stale, so a reader sees the shape of the Report's
+// Goals before reading a block.
 func healthSummary(r domain.Report) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -1854,7 +1854,7 @@ func reportMovementSince(r domain.Report) string {
 }
 
 // publishedLine says who published a Report and when, and what it read its
-// changes against, its times in the org's timezone (loc).
+// changes against, its times in the company's timezone (loc).
 func publishedLine(p domain.Publication, loc *time.Location) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

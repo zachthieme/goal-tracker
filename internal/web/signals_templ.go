@@ -14,9 +14,9 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// topLevelControl lets an Admin mark a Goal as one of the org's root outcomes,
-// or unmark it (CONTEXT.md: Top-level Goal). It opens in place on the Goal
-// page, so its button takes focus.
+// topLevelControl lets an Admin mark a Goal as one of the company's root
+// outcomes, or unmark it (CONTEXT.md: Top-level Goal). It opens in place on
+// the Goal page, so its button takes focus.
 func topLevelControl(g domain.Goal) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

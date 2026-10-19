@@ -36,7 +36,7 @@ func sentTo(rec *email.Recorder, addr string) []email.Message {
 }
 
 // An Owner whose Goal has gone Stale is reminded, and the reminder links
-// straight to the Goal's pre-filled Check-in form.
+// straight to the Goal's Check-in page.
 func TestReminderListsStaleGoalWithLinkToItsCheckin(t *testing.T) {
 	t.Parallel()
 
