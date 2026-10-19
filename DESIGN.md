@@ -437,7 +437,9 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   a row of cells, each a `.label` over its value: "Owner's Health" (a Health
   badge, with the Run off Green beside it in muted small text while the Goal
   is Yellow or Red: "Red · 5 wks"), "Rolled-up Health" (a Health badge, with the Stale-children count
-  beside it) and "Back to Green by" (a date). A cell shows only when it has
+  beside it) and "Back to Green by" (a date, which shows a slipped date as a
+  Milestone's does, counted within the current Run off Green: "Oct 3
+  ~~Sep 12~~ (3)"). A cell shows only when it has
   something to say: no Rolled-up cell without Active children and no Back to
   Green cell without a Path to Green. The cells wrap, 32px apart. The status
   text, the Path to Green and the "why this differs" explanation follow below.
