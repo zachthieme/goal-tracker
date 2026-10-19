@@ -501,3 +501,136 @@ func TestFrozenActionItemFollowsItsReassignmentOverHTTP(t *testing.T) {
 		t.Errorf("the old owner is still offered to close the carried item; row:\n%s", row)
 	}
 }
+
+// Anyone signed in comments on a Goal from its page, the Owner is emailed,
+// and a reply lands in the same thread there; the Report's discussion doesn't
+// show it (ticket #350).
+func TestSmokeCommentAndReplyOnTheGoalPageOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	author := h.SignIn("author@example.com")
+	h.SignIn("reader@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+
+	ts := newServer(t, h)
+	goalURL := goalPageURL(ts.URL, g)
+	wantBack := fmt.Sprintf("/goals/%d#comments", g.ID)
+	reader := signInClient(t, ts.URL, "reader@example.com")
+
+	page := getBody(t, reader, goalURL)
+	block := pageElement(t, page, "section", "goal-comments")
+	if !strings.Contains(openTag(block), `id="comments"`) {
+		t.Errorf("Comments block is not the #comments anchor: %s", openTag(block))
+	}
+	if c, hist := strings.Index(page, `data-testid="goal-comments"`), strings.Index(page, `data-testid="goal-history"`); c > hist {
+		t.Errorf("Comments block sits below History, want it above")
+	}
+	if !strings.Contains(block, `data-testid="no-goal-comments"`) {
+		t.Errorf("Goal with no Comments doesn't say so; block:\n%s", block)
+	}
+	if form := pageElement(t, block, "form", "goal-comment-form"); !strings.Contains(form, fmt.Sprintf(`action="/goals/%d/comments"`, g.ID)) ||
+		!strings.Contains(form, `name="body"`) {
+		t.Errorf("comment form doesn't post a body to the Goal; form:\n%s", form)
+	}
+
+	resp := postForm(t, noRedirects(reader), goalURL+"/comments", url.Values{"body": {"Is the EU date still real?"}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != wantBack {
+		t.Fatalf("comment: status %d to %q, want 303 to %q", resp.StatusCode, resp.Header.Get("Location"), wantBack)
+	}
+	block = pageElement(t, getBody(t, reader, goalURL), "section", "goal-comments")
+	thread := pageElement(t, block, "div", "comment-thread")
+	if !strings.Contains(thread, "Is the EU date still real?") || !strings.Contains(thread, "reader@example.com") {
+		t.Errorf("Goal page doesn't show the comment and its author; thread:\n%s", thread)
+	}
+	if strings.Contains(block, `data-testid="make-action-item"`) || strings.Contains(block, `data-testid="no-goal-comments"`) {
+		t.Errorf("Comments block offers an Action Item or still says there are none; block:\n%s", block)
+	}
+	if sent := h.Email.Sent(); len(sent) != 1 || sent[0].To != "owner@example.com" {
+		t.Errorf("emails %+v, want one comment alert to the Owner", sent)
+	}
+
+	threads, err := h.Service.GoalThreads(context.Background(), g.ID)
+	if err != nil || len(threads) != 1 {
+		t.Fatalf("GoalThreads: %+v, %v", threads, err)
+	}
+	if !strings.Contains(thread, fmt.Sprintf(`action="/comments/%d/replies"`, threads[0].Comment.ID)) {
+		t.Errorf("thread has no reply form; thread:\n%s", thread)
+	}
+	ownerClient := signInClient(t, ts.URL, "owner@example.com")
+	resp = postForm(t, noRedirects(ownerClient), fmt.Sprintf("%s/comments/%d/replies", ts.URL, threads[0].Comment.ID), url.Values{
+		"body": {"Yes, as of today."},
+	})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != wantBack {
+		t.Fatalf("reply: status %d to %q, want 303 to %q", resp.StatusCode, resp.Header.Get("Location"), wantBack)
+	}
+	block = pageElement(t, getBody(t, reader, goalURL), "section", "goal-comments")
+	if got := strings.Count(block, `data-testid="comment-thread"`); got != 1 {
+		t.Errorf("Comments block has %d threads, want the one", got)
+	}
+	if thread := pageElement(t, block, "div", "comment-thread"); !strings.Contains(thread, "Yes, as of today.") {
+		t.Errorf("thread doesn't show the Owner's reply; thread:\n%s", thread)
+	}
+
+	pubPage := getBody(t, reader, fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID))
+	if discussion := pageElement(t, pubPage, "footer", "goal-discussion"); strings.Contains(discussion, "Is the EU date still real?") {
+		t.Errorf("the Report's discussion shows the Goal's own comment; discussion:\n%s", discussion)
+	}
+}
+
+// A comment on a Goal refused by the domain is a plain error status, as on a
+// Report: blank is 422, an unknown or non-numeric Goal 404.
+func TestGoalCommentRefusalsOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "owner@example.com")
+
+	for _, tc := range []struct {
+		name, path, body string
+		want             int
+	}{
+		{"blank", fmt.Sprintf("/goals/%d/comments", g.ID), "  ", http.StatusUnprocessableEntity},
+		{"unknown Goal", fmt.Sprintf("/goals/%d/comments", g.ID+100), "Why?", http.StatusNotFound},
+		{"non-numeric id", "/goals/eu/comments", "Why?", http.StatusNotFound},
+	} {
+		resp := postForm(t, noRedirects(client), ts.URL+tc.path, url.Values{"body": {tc.body}})
+		_ = readBody(t, resp)
+		if resp.StatusCode != tc.want {
+			t.Errorf("%s: status %d, want %d", tc.name, resp.StatusCode, tc.want)
+		}
+	}
+}
+
+// A reply to a Report's comment still comes back to its publication.
+func TestReplyToAReportCommentReturnsToThePublication(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	owner := h.SignIn("owner@example.com")
+	author := h.SignIn("author@example.com")
+	g := h.ActiveGoal(owner, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(author, def)
+	question, err := h.Service.AddComment(context.Background(), author.ID, pub.ID, g.ID, "Why did the vendor slip?")
+	if err != nil {
+		t.Fatalf("AddComment: %v", err)
+	}
+	ts := newServer(t, h)
+	client := noRedirects(signInClient(t, ts.URL, "owner@example.com"))
+
+	resp := postForm(t, client, fmt.Sprintf("%s/comments/%d/replies", ts.URL, question.ID), url.Values{"body": {"Their factory flooded."}})
+	_ = readBody(t, resp)
+	want := fmt.Sprintf("/reports/%d/publications/%d#goal-%d", def.ID, pub.ID, g.ID)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != want {
+		t.Errorf("reply: status %d to %q, want 303 to %q", resp.StatusCode, resp.Header.Get("Location"), want)
+	}
+}

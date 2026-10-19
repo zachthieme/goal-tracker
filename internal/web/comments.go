@@ -179,7 +179,32 @@ func (s *Server) handleAddComment(w http.ResponseWriter, r *http.Request, curren
 	http.Redirect(w, r, fmt.Sprintf("%s#goal-%d", publicationPath(pub), goalID), http.StatusSeeOther)
 }
 
-// handleReplyToComment replies in a comment's thread and comes back to it.
+// handleAddGoalComment comments on a Goal itself and comes back to its
+// Comments; the Goal's Owner is emailed.
+func (s *Server) handleAddGoalComment(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		s.notFound(w, r)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "could not read the form", http.StatusBadRequest)
+		return
+	}
+	if _, err := s.svc.AddGoalComment(r.Context(), current.ID, id, r.FormValue("body")); err != nil {
+		s.writeCommentError(w, r, err)
+		return
+	}
+	http.Redirect(w, r, goalCommentsPath(id), http.StatusSeeOther)
+}
+
+// goalCommentsPath is the Goal page's Comments block.
+func goalCommentsPath(goalID int64) string {
+	return fmt.Sprintf("/goals/%d#comments", goalID)
+}
+
+// handleReplyToComment replies in a comment's thread and comes back to it: on
+// the Goal page for a thread on the Goal itself, or else the publication.
 func (s *Server) handleReplyToComment(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -193,6 +218,10 @@ func (s *Server) handleReplyToComment(w http.ResponseWriter, r *http.Request, cu
 	reply, err := s.svc.ReplyToComment(r.Context(), current.ID, id, r.FormValue("body"))
 	if err != nil {
 		s.writeCommentError(w, r, err)
+		return
+	}
+	if reply.PublicationID == 0 {
+		http.Redirect(w, r, goalCommentsPath(reply.GoalID), http.StatusSeeOther)
 		return
 	}
 	pub, err := s.svc.GetPublication(r.Context(), reply.PublicationID)
@@ -301,8 +330,8 @@ func localPath(p string) bool {
 	return !strings.ContainsFunc(p, func(r rune) bool { return r <= ' ' || r == 0x7f || r == '\\' })
 }
 
-// writeCommentError maps a domain error from a Report's discussion — a
-// comment or an Action Item — to an HTTP status.
+// writeCommentError maps a domain error from a discussion — a comment on a
+// Goal or a Report, or an Action Item — to an HTTP status.
 func (s *Server) writeCommentError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, domain.ErrValidation):

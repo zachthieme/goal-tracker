@@ -2779,6 +2779,7 @@ func TestGoalPageCanvasBlockHeadings(t *testing.T) {
 	for _, tc := range []struct{ tag, testID, heading string }{
 		{"section", "goal-draft-highlights", "<h2>Draft Highlights</h2>"},
 		{"section", "goal-highlights", "<h2>Highlights</h2>"},
+		{"section", "goal-comments", "<h2>Comments</h2>"},
 		{"div", "goal-history", "<h2>History</h2>"},
 		{"section", "goal-parents", "<h3>Contributes to</h3>"},
 		{"section", "goal-children", "<h3>Contributed to by</h3>"},
@@ -2809,6 +2810,7 @@ func TestGoalPageCanvasBlocksSitUnderARule(t *testing.T) {
 	for _, tc := range []struct{ tag, testID string }{
 		{"section", "goal-draft-highlights"},
 		{"section", "goal-highlights"},
+		{"section", "goal-comments"},
 		{"div", "goal-history"},
 		{"section", "goal-children"},
 		{"div", "goal-people"},
