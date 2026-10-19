@@ -74,13 +74,17 @@ templ goalFreshness(goalID int64, f domain.Freshness, canCheckin bool, dates dis
 }
 
 // goalRowFreshness marks a Goal's row in the Goal list with Stale's dashed grey
-// chip when it is Stale, saying for how long, or its Path to Green is overdue.
+// chip when it is Stale, saying for how long, when its Path to Green is
+// overdue, or when it is Green past a Milestone's date (Milestone overdue).
 templ goalRowFreshness(f domain.Freshness) {
 	if f.Stale {
 		<span data-testid="stale" class="badge st">Stale · { fmt.Sprintf("%d days", f.DaysSince) }</span>
 	}
 	if f.PathToGreenOverdue {
 		<span data-testid="path-overdue" class="badge st">Path to Green overdue</span>
+	}
+	if f.MilestoneOverdue {
+		<span data-testid="milestone-overdue" class="badge st">Milestone overdue</span>
 	}
 }
 

@@ -656,6 +656,40 @@ func TestGoalListSortsProblemsFirst(t *testing.T) {
 	}
 }
 
+// A Goal whose latest Check-in is Green while a Milestone is overdue is marked
+// Milestone overdue beside its Health, in Stale's chip, and sorts with the
+// Stale Goals, above an unmarked Yellow one. Its Health stays Green, and a
+// plain Green Goal carries no such mark.
+func TestGoalListMarksAGreenGoalPastAMilestone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	overdue, _ := h.GreenGoalWithOverdueMilestone(sam, "Zulu launch")
+	yellow := h.ActiveGoal(sam, "Wobbly", "It matters.")
+	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Wobbling.", "Fix it.", h.Clock.Now().AddDate(0, 1, 0))
+	green := h.ActiveGoal(sam, "Alpha green", "It matters.")
+	h.Checkin(sam, green.ID, domain.HealthGreen, "Fine.", "", time.Time{})
+	ts := newServer(t, h)
+
+	rows := goalRows(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals?org=all"))
+	if got, want := rowTitles(rows, overdue, yellow, green), []string{"Zulu launch", "Wobbly", "Alpha green"}; !slices.Equal(got, want) {
+		t.Fatalf("row order = %q, want %q", got, want)
+	}
+	chip := pageElement(t, rows[0], "span", "milestone-overdue")
+	if !strings.Contains(openTag(chip), `class="badge st"`) || !strings.Contains(chip, ">Milestone overdue") {
+		t.Errorf("Milestone overdue chip = %s, want a .badge.st reading \"Milestone overdue\"", chip)
+	}
+	if health := pageElement(t, rows[0], "span", "goal-row-health"); !strings.Contains(openTag(health), `class="badge g"`) {
+		t.Errorf("Health = %s, want the Owner's Green", health)
+	}
+	for _, row := range rows[1:] {
+		if strings.Contains(row, `data-testid="milestone-overdue"`) {
+			t.Errorf("an unmarked row carries a Milestone overdue chip: %s", row)
+		}
+	}
+}
+
 // Each row shows when the Goal is due, with the dates its Date Slips moved it
 // from struck through (wrapping between dates, never mid-date: #180), or a dash
 // for an Ongoing Goal, and how long ago its last Check-in was.
