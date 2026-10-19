@@ -605,15 +605,17 @@ templ noChangeCheckinButton(goalID int64, label, class string) {
 // answers as ghost text. Where a No change would be refused, the header says
 // why in place of its button. A refusal in the form's error, such as why a No
 // change couldn't be recorded, shows at the top of the form, and the header
-// then leaves the reason to it. A Goal with children shows them, the Goal
-// page's "Contributed to by" list read-only, beside the form, or between the
-// header and the form on a narrow screen, so the Owner sees which set the
-// Rolled-up Health.
+// then leaves the reason to it. Beside the form, or between the header and the
+// form on a narrow screen, a column gives the context for checking in: what
+// the latest Check-in said, the Goal's children (the Goal page's "Contributed
+// to by" list, read-only, so the Owner sees which set the Rolled-up Health),
+// and the Goal's dates (checkinContextDates). On a phone it keeps only the
+// children, as the form's ghost text already shows the latest answers.
 templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 	{{ g := v.Goal }}
 	@layout("Check in · "+g.Title, current) {
 		@checkinStyles()
-		<div class={ "checkin-page", templ.KV("with-children", len(v.Children) > 0) }>
+		<div class="checkin-page">
 			<nav class="small muted" aria-label="Breadcrumb">
 				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a> › Check in
 			</nav>
@@ -633,12 +635,34 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 					</div>
 				}
 			</div>
-			if len(v.Children) > 0 {
-				<aside data-testid="checkin-children" class="checkin-children">
-					<h3>Contributed to by</h3>
-					@linkList(g, nil, v.Children, v.LinkHealth, "no-children", "")
-				</aside>
-			}
+			<aside data-testid="checkin-context" class="checkin-context">
+				if c := v.LatestCheckin; c != nil {
+					<section data-testid="checkin-last-time" class="checkin-context-last">
+						<h3 class="label">{ "Last time · " + v.dates().dayOf(c.CreatedAt) }</h3>
+						if c.Health != "" || c.PathToGreen != "" {
+							<p class="checkin-context-health">
+								if c.Health != "" {
+									<span class={ "badge", healthClass(c.Health) }><span class="dot"></span>{ c.Health }</span>
+								}
+								if c.PathToGreen != "" {
+									<span class="muted">{ "back to Green by " + v.dates().date(c.PathTargetDate) }</span>
+								}
+							</p>
+						}
+						<p data-testid="checkin-last-status" class="checkin-last-status">{ c.Status }</p>
+					</section>
+				}
+				if len(v.Children) > 0 {
+					<section data-testid="checkin-children" class="checkin-context-children">
+						<h3>Contributed to by</h3>
+						@linkList(g, nil, v.Children, v.LinkHealth, "no-children", "")
+					</section>
+				}
+				<section data-testid="checkin-context-dates" class="checkin-context-dates">
+					<h3 class="label">Dates</h3>
+					<p>{ checkinContextDates(g, v.Milestones, v.dates()) }</p>
+				</section>
+			</aside>
 			if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold {
 				@checkinForm(form)
 			} else {
@@ -668,6 +692,45 @@ func (v goalView) checkinPageMeta() string {
 		parts = append(parts, "last check-in "+dates.dayOf(v.LatestCheckin.CreatedAt))
 	}
 	return strings.Join(parts, " · ")
+}
+
+// checkinContextDates is the Check-in page's Dates line: the Goal's kind, with
+// its delivery date when Dated ("Not yet Dated or Ongoing", as the Goal page
+// says, when it is neither), then its Planned Milestones and the earliest of
+// them, "Delivers Jul 2 · 2 planned Milestones, next Beta Apr 2". It marks no
+// slipped or overdue date: the form's dates section does that.
+func checkinContextDates(g domain.Goal, milestones []domain.Milestone, dates displayDates) string {
+	kind := "Not yet Dated or Ongoing"
+	switch g.Kind {
+	case domain.GoalDated:
+		kind = "Dated"
+		if !g.DeliveryDate.IsZero() {
+			kind = "Delivers " + dates.date(g.DeliveryDate)
+		}
+	case domain.GoalOngoing:
+		kind = "Ongoing"
+	}
+	if len(milestones) == 0 {
+		return kind + " · no Milestones"
+	}
+	var next *domain.Milestone
+	planned := 0
+	for i, m := range milestones {
+		if m.Status != domain.MilestonePlanned {
+			continue
+		}
+		planned++
+		if next == nil || m.TargetDate.Before(next.TargetDate) {
+			next = &milestones[i]
+		}
+	}
+	switch planned {
+	case 0:
+		return kind + " · no planned Milestones"
+	case 1:
+		return fmt.Sprintf("%s · 1 planned Milestone, next %s %s", kind, next.Name, dates.date(next.TargetDate))
+	}
+	return fmt.Sprintf("%s · %d planned Milestones, next %s %s", kind, planned, next.Name, dates.date(next.TargetDate))
 }
 
 // checkinFormRefused is the Goal's Check-in form, started from its latest
@@ -1084,18 +1147,25 @@ templ checkinStyles() {
 			.gp-cells{display:flex;flex-wrap:wrap;gap:12px 32px;margin:0}
 			.gp-cell{display:flex;flex-direction:column;gap:4px}
 			.gp-cell dd{margin:0;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
-			.checkin-page{max-width:760px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+			.checkin-page{max-width:1112px;width:100%;margin:0 auto;display:grid;grid-template-columns:minmax(0,760px) minmax(240px,320px);gap:16px 32px;align-items:start}
 			.checkin-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px 24px}
 			.checkin-head>div{min-width:0}
 			.checkin-head p{margin:4px 0 0}
 			.checkin-no-change{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
 			.checkin-no-change form, .checkin-no-change p{margin:0}
-			.checkin-page.with-children{max-width:1112px;display:grid;grid-template-columns:minmax(0,760px) minmax(240px,320px);gap:16px 32px;align-items:start}
-			.checkin-page.with-children>*{grid-column:1}
-			.checkin-page.with-children>nav,.checkin-page.with-children>.checkin-head{grid-column:1/-1}
-			.checkin-page>.checkin-children{grid-column:2;grid-row:3}
-			.checkin-children{display:flex;flex-direction:column;gap:12px}
-			@media (max-width:900px){.checkin-page.with-children{display:flex}}
+			.checkin-page>*{grid-column:1}
+			.checkin-page>nav,.checkin-page>.checkin-head{grid-column:1/-1}
+			.checkin-page>.checkin-context{grid-column:2;grid-row:3}
+			.checkin-context{display:flex;flex-direction:column;gap:20px;position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px);overflow-y:auto}
+			.checkin-context>section{display:flex;flex-direction:column;gap:8px}
+			.checkin-context>section+section{border-top:1px solid var(--color-border);padding-top:20px}
+			.checkin-context>.checkin-context-children{gap:12px}
+			.checkin-context p{margin:0}
+			.checkin-context-health{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px}
+			.checkin-last-status{font-size:14px;color:var(--color-ink-muted);overflow-wrap:anywhere}
+			.checkin-context-dates p{font-size:14px;color:var(--color-ink)}
+			@media (max-width:900px){.checkin-page{display:flex;flex-direction:column}.checkin-context{position:static;max-height:none;overflow-y:visible}}
+			@media (max-width:600px){.checkin-context-last,.checkin-context-dates{display:none}.checkin-context>.checkin-context-children{border-top:none;padding-top:0}.checkin-context:not(:has(.checkin-context-children)){display:none}}
 			.checkin-form{display:flex;flex-direction:column;gap:40px}
 			.checkin-default-submit{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0}
 			.checkin-form .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;padding:0;border:0}

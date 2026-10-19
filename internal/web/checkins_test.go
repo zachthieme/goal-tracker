@@ -3581,9 +3581,9 @@ func TestCheckinPageListsTheGoalsChildren(t *testing.T) {
 	f := newCheckinChildrenFixture(h, sam)
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, f.parent.ID))
-	aside := pageElement(t, page, "aside", "checkin-children")
-	if !strings.Contains(aside, "<h3>Contributed to by</h3>") {
-		t.Errorf("children list is not headed Contributed to by; aside:\n%s", aside)
+	list := pageElement(t, page, "section", "checkin-children")
+	if !strings.Contains(list, "<h3>Contributed to by</h3>") {
+		t.Errorf("children list is not headed Contributed to by; list:\n%s", list)
 	}
 	for _, child := range []struct {
 		goal  domain.Goal
@@ -3593,23 +3593,23 @@ func TestCheckinPageListsTheGoalsChildren(t *testing.T) {
 		{f.green, `<span class="badge g"><span class="dot"></span>Green</span>`},
 	} {
 		link := fmt.Sprintf(`<a href="/goals/%d">%s</a>`, child.goal.ID, child.goal.Title)
-		at := strings.Index(aside, link)
+		at := strings.Index(list, link)
 		if at < 0 {
-			t.Errorf("children list has no link %s; aside:\n%s", link, aside)
+			t.Errorf("children list has no link %s; list:\n%s", link, list)
 			continue
 		}
-		item, _, _ := strings.Cut(aside[at:], "</li>")
+		item, _, _ := strings.Cut(list[at:], "</li>")
 		if !strings.Contains(item, child.badge) {
 			t.Errorf("%s shows no %s; item:\n%s", child.goal.Title, child.badge, item)
 		}
 	}
-	if strings.Contains(aside, "/links/") {
-		t.Errorf("children list offers a Remove form; aside:\n%s", aside)
+	if strings.Contains(list, "/links/") {
+		t.Errorf("children list offers a Remove form; list:\n%s", list)
 	}
 }
 
-// A Goal with no children keeps the Check-in page as it was: no children list,
-// and the page stays one column.
+// A Goal with no children has no children list, and the Check-in page carries
+// no modifier for it: the page's column shows for every Goal (ticket #366).
 func TestCheckinPageWithoutChildrenHasNoChildrenList(t *testing.T) {
 	t.Parallel()
 
@@ -3623,7 +3623,7 @@ func TestCheckinPageWithoutChildrenHasNoChildrenList(t *testing.T) {
 		t.Errorf("a Goal with no children shows a children list; body:\n%s", page)
 	}
 	if !strings.Contains(page, `<div class="checkin-page">`) {
-		t.Errorf("a Goal with no children doesn't keep the one-column Check-in page; body:\n%s", page)
+		t.Errorf("a Goal with no children doesn't keep the plain Check-in page; body:\n%s", page)
 	}
 }
 
@@ -4077,5 +4077,136 @@ func TestCheckinRefusedSubmitBringsBackTheSubmitBar(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("the re-rendered form has no script filling the summary:\n%s", form)
+	}
+}
+
+// Beside the form, the Check-in page shows what the last Check-in said, its
+// Health, back-to-Green date and Status, and the Goal's dates, so the Owner
+// checks in without going back to the Goal page (ticket #366).
+func TestCheckinPageShowsLastTimeAndDates(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	const status = "The paywall fix slipped a week."
+	h.Checkin(sam, goal.ID, domain.HealthYellow, status, "Ship the fix behind a flag.", testsupport.Epoch.AddDate(0, 2, 0))
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	aside := pageElement(t, page, "aside", "checkin-context")
+	last := pageElement(t, aside, "section", "checkin-last-time")
+	for _, want := range []string{
+		`<h3 class="label">Last time · Jan 2</h3>`,
+		`<span class="badge y"><span class="dot"></span>Yellow</span>`,
+		`<span class="muted">back to Green by Mar 2</span>`,
+	} {
+		if !strings.Contains(last, want) {
+			t.Errorf("Last time lacks %s:\n%s", want, last)
+		}
+	}
+	if got := elementTexts(last, "p", "checkin-last-status"); !slices.Equal(got, []string{status}) {
+		t.Errorf("Last time's Status = %q, want %q", got, status)
+	}
+	dates := pageElement(t, aside, "section", "checkin-context-dates")
+	if !strings.Contains(dates, `<h3 class="label">Dates</h3>`) {
+		t.Errorf("the Dates section isn't headed Dates:\n%s", dates)
+	}
+	if got, want := checkinPageText(dates), "Dates Delivers Jul 2 · 1 planned Milestone, next Beta Apr 2"; got != want {
+		t.Errorf("the Dates section reads %q, want %q", got, want)
+	}
+}
+
+// A Goal with no Check-in yet still shows the column with its Dates, and leaves
+// out Last time, which would have nothing to say (ticket #366).
+func TestCheckinPageContextWithoutACheckin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	aside := pageElement(t, page, "aside", "checkin-context")
+	pageElement(t, aside, "section", "checkin-context-dates")
+	if strings.Contains(page, `data-testid="checkin-last-time"`) {
+		t.Errorf("a Goal with no Check-in shows Last time:\n%s", aside)
+	}
+}
+
+// The column holds Last time, then a Goal's children, then Dates, as the
+// design has them; a Goal with no children has the column but no children list
+// (ticket #366).
+func TestCheckinPageContextSectionsInOrder(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	f := newCheckinChildrenFixture(h, sam)
+	h.Checkin(sam, f.parent.ID, domain.HealthYellow, "Slipping.", "Fix the paywall.", pathDate)
+	lone := h.ActiveGoal(sam, "Ship it", "It matters.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	aside := pageElement(t, getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, f.parent.ID)), "aside", "checkin-context")
+	last := strings.Index(aside, `data-testid="checkin-last-time"`)
+	children := strings.Index(aside, `data-testid="checkin-children"`)
+	dates := strings.Index(aside, `data-testid="checkin-context-dates"`)
+	if last < 0 || children <= last || dates <= children {
+		t.Errorf("the column's sections are at %d (Last time), %d (children), %d (Dates), want Last time, children, then Dates:\n%s", last, children, dates, aside)
+	}
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, lone.ID))
+	pageElement(t, page, "aside", "checkin-context")
+	if strings.Contains(page, `data-testid="checkin-children"`) {
+		t.Errorf("a Goal with no children shows a children list:\n%s", page)
+	}
+}
+
+// A refused htmx submit swaps back only the form; the column sits outside it,
+// so it isn't sent again (ticket #366).
+func TestCheckinRefusedSubmitLeavesTheContextAlone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	body, status := postFormHX(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health": {domain.HealthGreen},
+		"status": {""},
+	})
+	if status != http.StatusOK {
+		t.Fatalf("htmx validation response status = %d, want 200", status)
+	}
+	fieldError(t, body, `name="status"`)
+	if strings.Contains(body, `data-testid="checkin-context"`) {
+		t.Errorf("refused submit re-renders the column along with the form; body:\n%s", body)
+	}
+}
+
+// The column sticks beside the form on a wide screen, and on a phone drops
+// Last time and Dates, which the form's ghost text already covers (ticket
+// #366).
+func TestCheckinPageContextStyles(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	styles := between(t, page, ".checkin-page{", "</style>")
+	if rule, ok := ruleFor(styles, ".checkin-context"); !ok || !strings.Contains(rule, "position:sticky") {
+		t.Errorf(".checkin-context{%s} isn't sticky", rule)
+	}
+	phone := mediaBlock(t, styles, "@media (max-width:600px)")
+	for _, sel := range []string{".checkin-context-last", ".checkin-context-dates"} {
+		if rule, ok := ruleFor(phone, sel); !ok || !strings.Contains(rule, "display:none") {
+			t.Errorf("at 600px %s{%s} isn't hidden", sel, rule)
+		}
 	}
 }

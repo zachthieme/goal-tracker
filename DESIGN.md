@@ -794,11 +794,28 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     refused submit brings a refused row back as an open editor showing why.
     **Without script,** How you'll know is rows as before: a blank Milestone
     row and a blank Metric row, or those typed.
-- **Check-in page's children (`.checkin-children`):** a Goal with children
-  shows the Goal page's "Contributed to by" list read-only (no Remove), so the
-  Owner sees which children set the Rolled-up Health. Above 900px it is a
-  240–320px column on the right of the form, 32px away, under the breadcrumb
-  and header. At 900px and below it sits above the form, after the header. A Goal with no children keeps the single 760px column.
+- **Check-in page's column (`.checkin-context`):** every Goal's Check-in
+  page has a column of context for checking in, three sections in order,
+  separated by 1px `--color-border` rules with 20px above and below, and no
+  boxes:
+  - **Last time (`.checkin-context-last`):** a `.label` heading "Last time ·
+    Oct 5", the latest Check-in's Health badge and a muted "back to Green by
+    Nov 2" when it had a Path to Green, then its Status in full, 14px in
+    `--color-ink-muted`. Left out before the Goal's first Check-in.
+  - **Contributed to by (`.checkin-context-children`):** with children only,
+    the Goal page's "Contributed to by" list read-only (no Remove), so the
+    Owner sees which children set the Rolled-up Health.
+  - **Dates (`.checkin-context-dates`):** a `.label` heading "Dates" and a
+    14px line, "Delivers Jul 2 · 2 planned Milestones, next Beta Apr 2", or
+    "Ongoing · no Milestones" (`checkinContextDates`). It strikes no slipped
+    date and marks no overdue Milestone; the form's dates section does.
+
+  Above 900px the column is 240–320px on the right of the form, 32px away,
+  under the breadcrumb and header, and sticky (`top: 24px`), scrolling within
+  itself when it is taller than the window. At 900px and below it sits above
+  the form, after the header, and doesn't stick. At 600px and below it drops
+  Last time and Dates, which the form's ghost text already covers, so only
+  Contributed to by stays, and a Goal with no children shows no column.
 - **Check-in form's optional sections:** Highlights, dates and Milestones,
   and Lifecycle each sit in a `<details>` (`.checkin-more`) that starts folded
   and opens by itself when it holds an error or something typed.
