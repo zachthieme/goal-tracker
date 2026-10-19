@@ -249,8 +249,10 @@ templ kindChoice(v goalFormView, kind, means string) {
 	</label>
 }
 
-// goalFormKnow is the "How you'll know" section: the Goal's Milestones and
-// Metrics, a row each. Without script it shows the rows typed, or one blank
+// goalFormKnow is the "How you'll know" section: beside its heading, what
+// activation needs of it, a Metric alone once Ongoing is chosen (by CSS :has,
+// so a browser without it shows the first line); then the Goal's Milestones
+// and Metrics, a row each. Without script it shows the rows typed, or one blank
 // row of each; script adds a row from its <template> and removes one with ×,
 // and shows a Metric's Direction only while its target equals its baseline.
 templ goalFormKnow(v goalFormView) {
@@ -434,21 +436,33 @@ templ goalFormRowsScript() {
 templ goalFormMore(v goalFormView) {
 	<section data-testid="goal-form-more" class="gf-section gf-more">
 		<h2 class="gf-h2-sm">More detail <span class="muted">optional, and editable later</span></h2>
-		<details data-testid="goal-form-parents-row" class="gf-more-row">
-			<summary>
-				<span class="gf-more-name">Contributes to</span>
-			</summary>
+		<details data-testid="goal-form-parents-row" class="gf-more-row" open?={ v.contributesOpen() }>
+			@goalFormMoreSummary("Contributes to", v.contributesNames(), "none")
 			@goalFormParents(v)
 		</details>
 		if len(v.Dimensions) > 0 || len(v.Fields) > 0 {
-			<details data-testid="goal-form-fits-row" class="gf-more-row">
-				<summary>
-					<span class="gf-more-name">Where it fits</span>
-				</summary>
+			<details data-testid="goal-form-fits-row" class="gf-more-row" open?={ v.fitsOpen() }>
+				@goalFormMoreSummary("Where it fits", v.fitsNames(), "not set")
 				@goalFormFits(v)
 			</details>
 		}
 	</section>
+}
+
+// goalFormMoreSummary is a More detail row's one line: its name, what it
+// holds, by name, or empty when it holds nothing, and Set or Change. It's
+// written as the page renders, so it doesn't follow the picker.
+templ goalFormMoreSummary(name string, names []string, empty string) {
+	<summary>
+		<span class="gf-more-name">{ name }</span>
+		if len(names) == 0 {
+			<span class="muted gf-more-value">{ "· " + empty }</span>
+			<span class="gf-more-action">Set</span>
+		} else {
+			<span class="muted gf-more-value">{ "· " + strings.Join(names, ", ") }</span>
+			<span class="gf-more-action">Change</span>
+		}
+	</summary>
 }
 
 // goalFormParents is the Contributes to field: the Goals this one is to

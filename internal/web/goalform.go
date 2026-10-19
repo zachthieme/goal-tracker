@@ -144,6 +144,73 @@ func (v goalFormView) asked() []string {
 	return names
 }
 
+// contributesNames are the titles of the Goals the form contributes to, for
+// Contributes to's row: those the Goal being finished already asked to, then
+// those picked.
+func (v goalFormView) contributesNames() []string {
+	var names []string
+	for _, p := range v.Linked {
+		names = append(names, p.Goal.Title)
+	}
+	for _, p := range v.Parents {
+		names = append(names, p.Goal.Title)
+	}
+	return names
+}
+
+// contributesOpen says Contributes to's row opens by itself: when it holds a
+// refused input.
+func (v goalFormView) contributesOpen() bool {
+	return v.refusedUnder(inputParentID, "parent:")
+}
+
+// fitsNames are what Where it fits' row names: in page order, each
+// Dimension's values chosen and the value typed to add to it, then each
+// Field's value typed.
+func (v goalFormView) fitsNames() []string {
+	var names []string
+	for _, d := range v.Dimensions {
+		for _, val := range v.choices(d) {
+			if v.Chosen[val.ID] {
+				names = append(names, val.Value)
+			}
+		}
+		if typed := strings.TrimSpace(v.NewValues[d.ID]); d.Extendable() && typed != "" {
+			names = append(names, typed)
+		}
+	}
+	for _, f := range v.Fields {
+		if typed := strings.TrimSpace(v.FieldValues[f.ID]); typed != "" {
+			names = append(names, typed)
+		}
+	}
+	return names
+}
+
+// fitsOpen says Where it fits' row opens by itself: when a required Dimension
+// or Field in it isn't set, as the checklist links to it, or it holds a
+// refused input.
+func (v goalFormView) fitsOpen() bool {
+	for _, r := range v.activationFacts().Required {
+		if !r.Set {
+			return true
+		}
+	}
+	return v.refusedUnder("value:", inputNewValue, inputField)
+}
+
+// refusedUnder says a problem refuses an input named by any of prefixes.
+func (v goalFormView) refusedUnder(prefixes ...string) bool {
+	for _, p := range v.Problems {
+		for _, prefix := range prefixes {
+			if p.Input != "" && strings.HasPrefix(p.Input, prefix) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // milestoneRow is one Milestone row of the New goal form, as typed.
 type milestoneRow struct {
 	Name string

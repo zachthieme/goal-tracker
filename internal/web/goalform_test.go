@@ -2516,3 +2516,138 @@ func TestNewGoalPageHowYoullKnowSaysWhatActivationNeeds(t *testing.T) {
 		t.Errorf("choosing Ongoing doesn't show %s: %q", ongoingClass, rule)
 	}
 }
+
+// moreRow is a More detail row of page: its <details> opening tag and its
+// summary's text, markup dropped and whitespace collapsed.
+func moreRow(t *testing.T, page, testID string) (tag, summary string) {
+	t.Helper()
+	tag = tagAround(t, page, `data-testid="`+testID+`"`)
+	if !strings.HasPrefix(tag, "<details") {
+		t.Fatalf("%s isn't a <details>: %s", testID, tag)
+	}
+	text := between(t, page[strings.Index(page, tag):], "<summary", "</summary>")
+	return tag, strings.Join(strings.Fields(html.UnescapeString(regexpTags.ReplaceAllString(text, " "))), " ")
+}
+
+// isOpen says a <details> opening tag renders it open.
+func isOpen(tag string) bool {
+	return regexp.MustCompile(`\sopen[\s>]`).MatchString(tag)
+}
+
+// More detail holds Contributes to as a one-line row, closed with nothing
+// picked, saying so and offering to Set it; arriving with a parent picked, it
+// names the parent and offers to Change it. Its fieldset keeps its accessible
+// name in a visually hidden legend.
+func TestNewGoalPageContributesToIsAMoreDetailRow(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	parent := h.CreateGoal(sam, "Grow revenue", "The business needs it.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals/new")
+	more := pageElement(t, page, "section", "goal-form-more")
+	tag, summary := moreRow(t, more, "goal-form-parents-row")
+	if isOpen(tag) {
+		t.Errorf("Contributes to opens with nothing picked: %s", tag)
+	}
+	if summary != "Contributes to · none Set" {
+		t.Errorf("Contributes to's row reads %q, want Contributes to · none Set", summary)
+	}
+	if fieldset := between(t, more, `data-testid="goal-form-parents-row"`, `data-testid="goal-form-parents"`); !strings.Contains(fieldset, "</summary>") {
+		t.Errorf("the Contributes to field isn't the row's body:\n%s", fieldset)
+	}
+	if !strings.Contains(more, `<legend class="sr-only">Contributes to</legend>`) {
+		t.Errorf("the Contributes to field's legend isn't visually hidden:\n%s", more)
+	}
+
+	page = getBody(t, client, fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, parent.ID))
+	if _, summary = moreRow(t, page, "goal-form-parents-row"); summary != "Contributes to · Grow revenue Change" {
+		t.Errorf("with a parent picked, the row reads %q, want Contributes to · Grow revenue Change", summary)
+	}
+}
+
+// Where it fits is More detail's second row. With only optional Dimensions and
+// Fields it's closed, not set, offering to Set it; with a required one unset,
+// it opens by itself, since the checklist links into it. On the define page it
+// names the values the Goal carries, in page order (Channel, then Pillar),
+// offering to Change them.
+func TestGoalFormWhereItFitsIsAMoreDetailRow(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	fits := arrangeWhereItFits(h)
+	sam := h.SignIn("sam@example.com")
+	g := h.CreateGoal(sam, "Cut checkout latency", "Shoppers abandon slow carts.")
+	h.AssignGoalValue(g, fits.channel.Values[1])
+	h.AssignGoalValue(g, fits.pillar.Values[0])
+	h.SetGoalField(sam, g, fits.budget, "25000")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	tag, summary := moreRow(t, getBody(t, client, ts.URL+"/goals/new"), "goal-form-fits-row")
+	if isOpen(tag) || summary != "Where it fits · not set Set" {
+		t.Errorf("with nothing required, the row is %s reading %q, want closed, Where it fits · not set Set", tag, summary)
+	}
+	if more := pageElement(t, getBody(t, client, ts.URL+"/goals/new"), "section", "goal-form-more"); !strings.Contains(more, `<legend class="sr-only">Where it fits</legend>`) {
+		t.Errorf("the Where it fits field's legend isn't visually hidden:\n%s", more)
+	}
+
+	tag, summary = moreRow(t, getBody(t, client, fmt.Sprintf("%s/goals/%d/define", ts.URL, g.ID)), "goal-form-fits-row")
+	if isOpen(tag) || summary != "Where it fits · Mobile, Growth, 25000 Change" {
+		t.Errorf("on the define page, the row is %s reading %q, want closed, Where it fits · Mobile, Growth, 25000 Change", tag, summary)
+	}
+
+	h.SetDimensionRequired(boss, fits.team, true)
+	if tag, _ = moreRow(t, getBody(t, client, ts.URL+"/goals/new"), "goal-form-fits-row"); !isOpen(tag) {
+		t.Errorf("with Team required and unset, the row is closed: %s", tag)
+	}
+}
+
+// With no Dimensions or Fields, More detail holds Contributes to alone.
+func TestNewGoalPageMoreDetailWithoutWhereItFits(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	more := pageElement(t, getBody(t, client, ts.URL+"/goals/new"), "section", "goal-form-more")
+	if strings.Contains(more, "goal-form-fits") {
+		t.Errorf("More detail offers Where it fits with nothing to set:\n%s", more)
+	}
+}
+
+// A refused submit opens the More detail row holding a refused input, so its
+// message isn't hidden: Contributes to for a parent that isn't a Goal, and
+// Where it fits for a Field value that isn't its type. A row with nothing
+// refused stays closed.
+func TestNewGoalFormRefusalOpensTheRowItRefuses(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	fits := arrangeWhereItFits(h)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	form := refusedNewGoal(t, client, ts.URL, newGoalForm(map[string]string{"parent_id": "first"}))
+	if tag, _ := moreRow(t, form, "goal-form-parents-row"); !isOpen(tag) {
+		t.Errorf("a refused parent leaves Contributes to closed: %s", tag)
+	}
+	if tag, _ := moreRow(t, form, "goal-form-fits-row"); isOpen(tag) {
+		t.Errorf("with nothing refused in it, Where it fits opens: %s", tag)
+	}
+
+	form = refusedNewGoal(t, client, ts.URL, newGoalForm(map[string]string{fmt.Sprintf("field:%d", fits.budget.ID): "lots"}))
+	if tag, _ := moreRow(t, form, "goal-form-fits-row"); !isOpen(tag) {
+		t.Errorf("a refused Budget leaves Where it fits closed: %s", tag)
+	}
+	if tag, _ := moreRow(t, form, "goal-form-parents-row"); isOpen(tag) {
+		t.Errorf("with nothing refused in it, Contributes to opens: %s", tag)
+	}
+}
