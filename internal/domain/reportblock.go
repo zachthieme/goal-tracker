@@ -103,6 +103,22 @@ type ReportBlock struct {
 	// before Reports showed asks has neither.
 	AsksForHelp  bool     `json:",omitempty"`
 	AskAddressee *Account `json:",omitempty"`
+	// Timezone is the IANA name of the zone the Goal was judged in when the
+	// Report was drafted (see Service.GoalTimezone): its Owner's, or the
+	// company's. It is frozen with the snapshot, so a publication marks its
+	// Milestones and Path to Green overdue by the date it was published there,
+	// whatever the Owner's Timezone is later; a block frozen before it has "",
+	// read as UTC (see Location).
+	Timezone string `json:",omitempty"`
+}
+
+// Location is the zone b's Timezone names, the one its Goal's dates are
+// judged in, and UTC for a block with none or a name that doesn't load.
+func (b ReportBlock) Location() *time.Location {
+	if loc, ok := loadTimezone(b.Timezone); ok {
+		return loc
+	}
+	return time.UTC
 }
 
 // ReportMilestone is a Milestone as an exception block shows it: marked New
@@ -387,6 +403,7 @@ func (s *Service) reportBlock(ctx context.Context, h goalHistory, since func(tim
 		PathTargetDate: latest.PathTargetDate,
 		Explanation:    latest.Explanation,
 		AsksForHelp:    h.goal.Lifecycle == LifecycleActive && needsPathToGreen(latest.Health) && latest.AsksForHelp,
+		Timezone:       s.GoalTimezone(h.goal).String(),
 	}
 	if b.AsksForHelp {
 		var err error
