@@ -599,8 +599,12 @@ func riskOverdueGoals(goals []domain.Goal, items []domain.ActionItemListing, tod
 type riskGoalRow struct {
 	Goal domain.Goal
 	// Health is the Goal's latest Check-in's Health, empty when it has none.
-	Health  string
-	Signals []riskSignal
+	Health string
+	// RunOffGreen is how long a Not Green row's Goal has been Yellow or Red,
+	// shown beside its Health; it isn't running on any other row (CONTEXT.md:
+	// Run off Green).
+	RunOffGreen domain.RunOffGreen
+	Signals     []riskSignal
 	// Fix is the one action the row offers its viewer.
 	Fix riskFix
 }
@@ -771,6 +775,13 @@ func (s *Server) riskRows(ctx context.Context, v risksView) ([]riskGoalRow, erro
 		}
 		if ok {
 			rows[i].Health = latest.Health
+		}
+		_, red := rows[i].signal("red")
+		_, yellow := rows[i].signal("yellow")
+		if red || yellow {
+			if rows[i].RunOffGreen, err = s.svc.RunOffGreen(ctx, rows[i].Goal.ID); err != nil {
+				return nil, fmt.Errorf("read not green goal's run off green: %w", err)
+			}
 		}
 	}
 	sortRiskRows(rows)

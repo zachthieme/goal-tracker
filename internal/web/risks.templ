@@ -158,7 +158,8 @@ templ risksTable(current *domain.Account, today time.Time, here string, rows []r
 	</div>
 }
 
-// riskRow is one flagged Goal: its Health, its title with a chip per signal
+// riskRow is one flagged Goal: its Health, with its Run off Green on a Not
+// Green row ("Red · 5 wks"), its title with a chip per signal
 // that flags it, its Owner ("You" for the viewer's own), and a cell for its
 // fix: a link, a form posting back to here, or a disabled button saying why
 // it can't be used.
@@ -166,6 +167,9 @@ templ riskRow(current *domain.Account, today time.Time, here string, r riskGoalR
 	<tr data-testid="risk-row">
 		<td class="rk-health">
 			@healthBadge("risk-health", r.Health)
+			if r.RunOffGreen.Running() {
+				<span data-testid="risk-run-off-green" class="muted small">{ "· " + r.RunOffGreen.Label() }</span>
+			}
 		</td>
 		<td data-testid="risk-goal" class="rk-goal">
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", r.Goal.ID)) }>{ r.Goal.Title }</a>

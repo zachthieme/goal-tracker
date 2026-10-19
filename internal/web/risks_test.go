@@ -2469,6 +2469,46 @@ func TestRisksPageListsRedAndYellowGoalsUnderNotGreen(t *testing.T) {
 	}
 }
 
+// A Not Green row reads its Goal's Run off Green beside its Health ("Red · 2
+// wks"), on the whole page and in the Not Green group; a Green Goal listed for
+// another signal, here Stale, shows none (CONTEXT.md: Run off Green).
+func TestRisksNotGreenRowsShowTheRunOffGreen(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	red := h.ActiveGoal(ada, "Launch in EU", "Expand the market.")
+	stale := h.ActiveGoal(ada, "Cut churn", "Keep customers.")
+	// Red on Mondays 5 and 12 January; the Green Check-in on the 5th is Stale
+	// by Wednesday the 14th, when the page is read.
+	h.Clock.Set(time.Date(2026, time.January, 5, 9, 0, 0, 0, time.UTC))
+	h.Checkin(ada, stale.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Checkin(ada, red.ID, domain.HealthRed, "Blocked.", "Escalate.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Clock.Set(time.Date(2026, time.January, 12, 9, 0, 0, 0, time.UTC))
+	h.Checkin(ada, red.ID, domain.HealthRed, "Still blocked.", "Escalate.", h.Clock.Now().AddDate(0, 1, 0))
+	h.Clock.Set(time.Date(2026, time.January, 14, 9, 0, 0, 0, time.UTC))
+	client := signInClient(t, ts.URL, "ada@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?org=all")
+	for name, body := range map[string]string{
+		"the Risks page": page,
+		"Not Green":      getBody(t, client, ts.URL+"/risks?group=health&org=all"),
+	} {
+		row := riskRowOf(t, body, red)
+		if got := elementTexts(row, "span", "risk-run-off-green"); !slices.Equal(got, []string{"· 2 wks"}) {
+			t.Errorf("on %s, %q's row reads its Run off Green %q, want \"· 2 wks\":\n%s", name, red.Title, got, row)
+		}
+		health, run := strings.Index(row, `data-testid="risk-health"`), strings.Index(row, `data-testid="risk-run-off-green"`)
+		if health < 0 || run < health || strings.Contains(row[health:max(run, health)], "</td>") {
+			t.Errorf("on %s, %q's Run off Green isn't right after its Health badge:\n%s", name, red.Title, row)
+		}
+	}
+	if row := riskRowOf(t, page, stale); strings.Contains(row, `data-testid="risk-run-off-green"`) {
+		t.Errorf("%q, Green and Stale, shows a Run off Green:\n%s", stale.Title, row)
+	}
+}
+
 // A Proposed Goal whose plan doesn't fit is listed, but after every Active
 // Goal: nothing has gone wrong with it yet. Lacking a Health doesn't rank it
 // above a Green Goal that has gone Stale.

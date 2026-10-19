@@ -435,7 +435,8 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     Fields"). The sidebar blocks stay separate canvas blocks under rules.
 - **Status cells (`.gp-cells`):** the Goal page's Latest status card opens with
   a row of cells, each a `.label` over its value: "Owner's Health" (a Health
-  badge), "Rolled-up Health" (a Health badge, with the Stale-children count
+  badge, with the Run off Green beside it in muted small text while the Goal
+  is Yellow or Red: "Red · 5 wks"), "Rolled-up Health" (a Health badge, with the Stale-children count
   beside it) and "Back to Green by" (a date). A cell shows only when it has
   something to say: no Rolled-up cell without Active children and no Back to
   Green cell without a Path to Green. The cells wrap, 32px apart. The status
