@@ -19,7 +19,8 @@ the browser is already there. It needs:
 
 - Go, to build the binaries
 - Node 22.13 or later, for `node:sqlite`
-- outbound network: the pages load htmx from unpkg and fonts from Google Fonts
+- outbound network, to install Playwright and its npm packages. The pages
+  themselves don't need it: the app serves htmx and the fonts
 
 The vetinari image (`vetinari/Dockerfile`) has Playwright's Chromium and its
 system libraries installed, pinned to the version in `package.json`. The two

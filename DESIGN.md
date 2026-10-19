@@ -188,8 +188,9 @@ In the stylesheet, the empty dark `@media` block above repeats the full
 | Micro / badge / `.label` | Inter | 11 | 500, uppercase | — |
 | Numbers (`.num`) | JetBrains Mono | inherit | 500 | — |
 
-Load the fonts with this URL:
-`https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&family=Plus+Jakarta+Sans:wght@600;700&display=swap`
+The app serves the faces itself, from `internal/web/static/fonts/`, by
+`@font-face` rules at the top of `app.css`: Inter and Plus Jakarta Sans as
+variable fonts, JetBrains Mono at 500. No page loads a font from another host.
 
 ## Dates and times
 
@@ -730,8 +731,9 @@ stays black on white whatever is chosen.
 - A Goal's Health sits to the right of its title. Health shows its shape (■ Red,
   ▲ Yellow, ● Green) and its name, never colour.
 - A Goal block and a table row never split across pages.
-- Load the font with this URL:
-  `https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&display=swap`
+- The app serves Source Serif 4 itself, from `internal/web/static/fonts/`, by
+  `@font-face` rules in the print page's own `<style>`: a variable font,
+  upright and italic.
 
 ## Deviations from the source
 

@@ -57,12 +57,12 @@ test-scripts: ## Run the scripts/ tests: shots.mjs and contrast.py's doctest
 
 # The Playwright end-to-end suite in e2e/ (see e2e/README.md): it builds the
 # binaries, seeds template databases, and drives each test's own server in
-# headless Chromium. Not a gate, and needs outbound network (htmx and fonts
-# load from CDNs). Runs `npm ci` in e2e/ when its dependencies are missing or
-# older than its lockfile; with CHROME unset it also installs Playwright's
-# Chromium. E2E_ARGS goes to `playwright test`, e.g. E2E_ARGS=smoke for one
-# spec. Node >= 22.13 (seedLookup uses node:sqlite, whose experimental warning
-# is silenced).
+# headless Chromium. Not a gate. Needs outbound network to install Playwright
+# and its npm packages; the pages themselves load nothing from other hosts.
+# Runs `npm ci` in e2e/ when its dependencies are missing or older than its
+# lockfile; with CHROME unset it also installs Playwright's Chromium. E2E_ARGS
+# goes to `playwright test`, e.g. E2E_ARGS=smoke for one spec. Node >= 22.13
+# (seedLookup uses node:sqlite, whose experimental warning is silenced).
 E2E_ARGS ?=
 e2e: e2e/node_modules/.package-lock.json ## Run the Playwright end-to-end suite in e2e/; not a gate (CHROME, E2E_ARGS)
 	@if [ -z "$$CHROME" ]; then cd e2e && npx playwright install chromium; fi
