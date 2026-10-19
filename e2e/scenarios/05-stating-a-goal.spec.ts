@@ -322,7 +322,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     const reason = priya.getByLabel("Reason for moving it later");
     if (await reason.isVisible()) await reason.fill("The first rollout missed; the CDN change takes a sprint.");
     await priya
-      .getByRole("textbox", { name: /^Status/ })
+      .getByRole("textbox", { name: /^What changed since the last check-in/ })
       .fill("The edge cache missed its first rollout; pricing is still slow.");
     await priya.getByRole("button", { name: "Submit check-in" }).click();
     await expect(priya).toHaveURL(new RegExp(`/goals/${goalCId}$`));

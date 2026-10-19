@@ -588,7 +588,7 @@ async function checkIn(page: Page, goalID: number, c: CheckinInput) {
     const reason = form.getByLabel("Reason for moving it later");
     if (await reason.isVisible()) await reason.fill(c.backToGreenReason ?? "The fix takes longer than planned.");
   }
-  await form.getByRole("textbox", { name: /^Status/ }).fill(c.status);
+  await form.getByRole("textbox", { name: /^What changed since the last check-in/ }).fill(c.status);
   if (c.deliveryDate) {
     await form.getByTestId("checkin-dates-section").locator("summary").click();
     await form.getByLabel("Delivery date", { exact: true }).fill(c.deliveryDate);

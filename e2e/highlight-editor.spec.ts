@@ -167,7 +167,7 @@ test.describe("the Check-in form's Highlight editor", () => {
     // Submitted still open with no Kind, the form comes back with the editor
     // open and the reason in it.
     await form.getByTestId("checkin-health").getByText("Green", { exact: true }).click();
-    await form.getByRole("textbox", { name: /^Status/ }).fill("Steady week.");
+    await form.getByRole("textbox", { name: /^What changed since the last check-in/ }).fill("Steady week.");
     await form.getByRole("button", { name: "Submit check-in" }).click();
     const refused = page.getByTestId("checkin-form").getByTestId("highlight-editor");
     await expect(refused.getByRole("alert")).toContainText("needs a kind");
@@ -202,7 +202,7 @@ async function addHighlight(form: Locator, kind: string, note: string) {
 // page.
 async function submit(page: Page, form: Locator, goal: Goal) {
   await form.getByTestId("checkin-health").getByText("Green", { exact: true }).click();
-  await form.getByRole("textbox", { name: /^Status/ }).fill("Steady week.");
+  await form.getByRole("textbox", { name: /^What changed since the last check-in/ }).fill("Steady week.");
   await form.getByRole("button", { name: "Submit check-in" }).click();
   await page.waitForURL(new RegExp(`/goals/${goal.id}$`));
 }

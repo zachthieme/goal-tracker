@@ -653,6 +653,28 @@ func TestCheckinFormShowsLatestReadingsAsGhostText(t *testing.T) {
 	if want := fmt.Sprintf(`name="reading_%d" value="">`, referrals.ID); !strings.Contains(form, want) {
 		t.Errorf("Referrals has no readings, so its input should be blank with no ghost text (want %s); form:\n%s", want, form)
 	}
+
+	// Each Metric's row shows its unit, baseline, target and target date, its
+	// last reading with progress toward the target, and labels its input for
+	// a screen reader (ticket #364). The harness clock reads Jan 2, 2026.
+	signupsRow := between(t, form, ">Signups<", fmt.Sprintf(`name="reading_%d"`, signups.ID))
+	if got, want := checkinPageText(signupsRow), "Signups per week · 100 → 500 by Jul 2 · last 135.5"; !strings.Contains(got, want) {
+		t.Errorf("Signups row reads %q, want it to contain %q", got, want)
+	}
+	// (135.5 − 100) / (500 − 100) of the way from baseline to target.
+	if !strings.Contains(signupsRow, `<progress class="checkin-metric-progress" aria-hidden="true" max="1" value="0.08875">`) {
+		t.Errorf("Signups row has no progress 0.08875 of the way to its target; row:\n%s", signupsRow)
+	}
+	if !strings.Contains(signupsRow, `aria-label="Signups current value"`) {
+		t.Errorf("Signups input isn't labelled Signups current value; row:\n%s", signupsRow)
+	}
+	referralsRow := between(t, form, ">Referrals<", fmt.Sprintf(`name="reading_%d"`, referrals.ID))
+	if got, want := checkinPageText(referralsRow), "Referrals per week · 100 → 500 by Jul 2"; !strings.Contains(got, want) {
+		t.Errorf("Referrals row reads %q, want it to contain %q", got, want)
+	}
+	if strings.Contains(referralsRow, "· last") || strings.Contains(referralsRow, "<progress") {
+		t.Errorf("Referrals has no reading, so its row should show no last value or progress; row:\n%s", referralsRow)
+	}
 }
 
 // A Green Check-in on a Goal whose Rolled-up Health is Red, sent without an
@@ -1633,12 +1655,15 @@ func TestCheckinPageOffersNoChangeFirst(t *testing.T) {
 	}
 	for _, want := range []string{
 		"Nothing changed since " + latest.CreatedAt.Format("Jan 2") + "?",
-		"Records the same Health and status with today's date.",
 		`data-testid="no-change-checkin"`,
 	} {
 		if !strings.Contains(page[card:], want) {
 			t.Errorf("no-change card missing %q; body:\n%s", want, page)
 		}
+	}
+	// No change sits in the page's header, not in a card of its own.
+	if tag := tagAround(t, page, `data-testid="no-change-card"`); strings.Contains(tag, `class="card"`) {
+		t.Errorf("No change is still a card: %s", tag)
 	}
 }
 
@@ -3150,7 +3175,7 @@ func newAskFixture(t *testing.T) askFixture {
 	return askFixture{h: h, ts: ts.URL, sam: sam, mia: mia, goal: goal, client: signInClient(t, ts.URL, "sam@example.com")}
 }
 
-// askBoxChecked reports whether the Check-in form's "This asks for help" box
+// askBoxChecked reports whether the Check-in form's "Ask for help" box
 // is ticked.
 func askBoxChecked(t *testing.T, page string) bool {
 	t.Helper()
@@ -3180,8 +3205,17 @@ func TestCheckinFormAsksForHelpTickedWhileOpen(t *testing.T) {
 	if askBoxChecked(t, page) {
 		t.Errorf("box is ticked with no open ask")
 	}
-	if hint := askHint(t, page); !strings.Contains(hint, "Goes to "+shownAs(f.mia.Email, "Mia Chen")+".") {
+	// The box's label reads Ask for help, then whom it goes to; a person's
+	// own button can't sit inside a label, so it shows by name alone.
+	label := between(t, page, `<label class="checkin-ask">`, "</label>")
+	if !strings.Contains(label, "<strong>Ask for help</strong>") {
+		t.Errorf("box's label doesn't read Ask for help: %s", label)
+	}
+	if hint := askHint(t, page); !strings.Contains(hint, `· goes to <span class="person" title="`+f.mia.Email+`">Mia Chen</span>`) {
 		t.Errorf("hint doesn't name Mia Chen as whom the ask goes to: %s", hint)
+	}
+	if !strings.Contains(label, `data-testid="checkin-ask-addressee"`) {
+		t.Errorf("whom the ask goes to isn't inside the box's label: %s", label)
 	}
 
 	f.h.AskForHelp(f.sam, f.goal.ID, domain.HealthYellow, "Short a reviewer.", "Borrow one.", pathDate)
@@ -3276,7 +3310,7 @@ func TestCheckinRefusedSubmitKeepsAskAsPosted(t *testing.T) {
 	if askBoxChecked(t, body) {
 		t.Errorf("re-rendered form ticked a box posted unticked")
 	}
-	if hint := askHint(t, body); !strings.Contains(hint, shownAs(f.mia.Email, "Mia Chen")) {
+	if hint := askHint(t, body); !strings.Contains(hint, `<span class="person" title="`+f.mia.Email+`">Mia Chen</span>`) {
 		t.Errorf("422 re-render's hint doesn't name Mia Chen: %s", hint)
 	}
 }
@@ -3593,8 +3627,9 @@ func TestCheckinPageWithoutChildrenHasNoChildrenList(t *testing.T) {
 	}
 }
 
-// The form's Rolled-up Health line names the Goal's children, not the
-// Owner's, and counts the ones that set it.
+// The form's Rolled-up Health line counts the Goal's children that set it, as
+// the badge's count line (ticket #364), and no longer reads as the Owner's
+// children.
 func TestCheckinFormRollupLineCountsTheGoalsChildren(t *testing.T) {
 	t.Parallel()
 
@@ -3605,13 +3640,11 @@ func TestCheckinFormRollupLineCountsTheGoalsChildren(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, f.parent.ID))
 	line := pageElement(t, page, "p", "checkin-form-rollup")
-	got := strings.Join(strings.Fields(html.UnescapeString(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(line, ""))), " ")
-	const want = "Rolled-up Health: Yellow, the worst Health among this Goal's Active children. (1 of 2 Yellow)"
-	if got != want {
+	if got, want := checkinPageText(line), "Rolled-up Health: Yellow 1 of 2 Yellow"; got != want {
 		t.Errorf("rollup line = %q, want %q", got, want)
 	}
-	if !strings.Contains(line, "Rolled-up Health: <strong>Yellow</strong>,") {
-		t.Errorf("rollup line doesn't set the Health in bold; line:\n%s", line)
+	if !strings.Contains(line, `<span class="muted">1 of 2 Yellow</span>`) {
+		t.Errorf("rollup line doesn't show the count as the badge's muted count line; line:\n%s", line)
 	}
 	if strings.Contains(page, "your Active children") {
 		t.Errorf("rollup line still reads as the Owner's children; body:\n%s", page)
@@ -3671,5 +3704,192 @@ func TestChildrenListStylesAreShared(t *testing.T) {
 		if strings.Contains(goalPage, rule) {
 			t.Errorf("Goal page's inline styles still carry %s", rule)
 		}
+	}
+}
+
+// checkinPageText is a page fragment's text, its markup dropped and its
+// whitespace collapsed.
+func checkinPageText(fragment string) string {
+	return strings.Join(strings.Fields(html.UnescapeString(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(fragment, " "))), " ")
+}
+
+// The Check-in page reads top to bottom under headings: the page title, then
+// "How is it going?" over the Status and the Rolled-up Health, then "Path to
+// Green", then "Metrics", none numbered (ticket #364).
+func TestCheckinPageHeadingHierarchy(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Grow the product", "Growth funds the roadmap.")
+	if _, err := h.Service.AddMetric(context.Background(), domain.AddMetricInput{
+		GoalID: goal.ID, Name: "Signups", Unit: "per week", Direction: domain.MetricUp,
+		Baseline: 100, Target: 500, TargetDate: h.Clock.Now().AddDate(0, 6, 0),
+	}); err != nil {
+		t.Fatalf("AddMetric: %v", err)
+	}
+	redChild := h.ActiveChildOf(sam, goal, "Red work", "Red so what.")
+	// The Goal turns Yellow before its child turns Red, so its Check-in
+	// needs no explanation.
+	h.Checkin(sam, goal.ID, domain.HealthYellow, "Slipping.", "Add a second on-call.", pathDate)
+	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	at := 0
+	for _, want := range []string{
+		"<h1>Check in</h1>",
+		"<h2>How is it going?</h2>",
+		`<textarea name="status"`,
+		`data-testid="checkin-form-rollup"`,
+		"<h2>Path to Green</h2>",
+		"<h2>Metrics</h2>",
+	} {
+		i := strings.Index(page[at:], want)
+		if i < 0 {
+			t.Fatalf("page has no %s after what came before it; body:\n%s", want, page)
+		}
+		at += i + len(want)
+	}
+	for _, gone := range []string{"Metric readings", "Path to Green (required"} {
+		if strings.Contains(page, gone) {
+			t.Errorf("page still reads %q", gone)
+		}
+	}
+	if numbered := regexp.MustCompile(`<h2[^>]*>\s*\d`).FindString(page); numbered != "" {
+		t.Errorf("a heading is numbered: %s", numbered)
+	}
+}
+
+// Under its title the Check-in page says which week it is, how often the Goal
+// checks in, and when it was last checked in on, if ever (ticket #364). The
+// harness clock reads Fri Jan 2, 2026 in UTC, the company's timezone.
+func TestCheckinPageMetaLine(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+	checkinURL := fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)
+	meta := func() string {
+		t.Helper()
+		return checkinPageText(pageElement(t, getBody(t, client, checkinURL), "p", "checkin-page-meta"))
+	}
+
+	if got, want := meta(), "Week of Dec 29, 2025 · checks in every 7 days"; got != want {
+		t.Errorf("with no Check-in, meta line = %q, want %q", got, want)
+	}
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	if got, want := meta(), "Week of Dec 29, 2025 · checks in every 7 days · last check-in Jan 2"; got != want {
+		t.Errorf("after a Check-in, meta line = %q, want %q", got, want)
+	}
+}
+
+// The Rolled-up Health sits in a panel of its own under the Status: its badge
+// with the count of children that set it, then the explanation asked for when
+// the Owner's Health differs (ticket #364).
+func TestCheckinFormRolledUpPanel(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	parent := h.ActiveGoal(sam, "Parent", "It matters.")
+	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red so what.")
+	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, parent.ID))
+	if !strings.Contains(page, `type="radio" name="health" value="Green" checked`) {
+		t.Fatalf("the form doesn't start on Green; body:\n%s", page)
+	}
+	line := pageElement(t, page, "p", "checkin-form-rollup")
+	if got, want := checkinPageText(line), "Rolled-up Health: Red 1 of 1 Red"; got != want {
+		t.Errorf("rollup line = %q, want %q", got, want)
+	}
+	if !strings.Contains(line, `<span class="badge r"><span class="dot"></span>Red</span>`) {
+		t.Errorf("rollup line doesn't show Red as a badge; line:\n%s", line)
+	}
+	explanation := between(t, page, `data-testid="checkin-form-rollup"`, `name="explanation"`)
+	label := checkinPageText(explanation[strings.LastIndex(explanation, "<label"):])
+	if want := "Why is your Health different? Required while it differs from the Rolled-up Health"; !strings.Contains(label, want) {
+		t.Errorf("explanation label = %q, want it to read %q", label, want)
+	}
+}
+
+// The Path to Green's heading notes the Goal's Run off Green beside "Required
+// while Yellow or Red", also on a form re-rendered after a refused submit;
+// a Goal that is Green notes none (ticket #364).
+func TestCheckinFormPathToGreenNotesRunOffGreen(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	yellow := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Slipping.", "Add a second on-call.", pathDate)
+	green := h.ActiveGoal(sam, "Ship it", "It matters.")
+	h.Checkin(sam, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	client := signInClient(t, ts.URL, "sam@example.com")
+	legend := func(page string) string {
+		t.Helper()
+		return checkinPageText(between(t, page, `data-testid="path-to-green-field"`, "</legend>"))
+	}
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, yellow.ID))
+	got := legend(page)
+	for _, want := range []string{"Path to Green", "Required while Yellow or Red", "1 wk off Green"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Yellow Goal's Path to Green legend = %q, want it to contain %q", got, want)
+		}
+	}
+	// Beside the Back to Green by date, its last value and that a later one
+	// asks why.
+	if got, want := checkinPageText(between(t, page, `data-testid="checkin-path-target-last"`, `data-testid="checkin-path-target-reason"`)), "Last time: Jun 15 A later date asks why."; !strings.Contains(got, want) {
+		t.Errorf("Back to Green by hints read %q, want %q", got, want)
+	}
+
+	body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, yellow.ID), url.Values{
+		"health": {domain.HealthYellow},
+		"status": {"Still slipping."},
+	})
+	fieldError(t, body, `name="path_target_date"`)
+	if got := legend(body); !strings.Contains(got, "1 wk off Green") {
+		t.Errorf("re-rendered Path to Green legend = %q, want it to keep 1 wk off Green", got)
+	}
+
+	page = getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, green.ID))
+	if got := legend(page); strings.Contains(got, "off Green") {
+		t.Errorf("Green Goal's Path to Green legend = %q, want no Run off Green", got)
+	}
+	if strings.Contains(page, "A later date asks why.") {
+		t.Errorf("a Goal with no previous Back to Green date says a later one asks why")
+	}
+}
+
+// The Check-in page separates its sections by whitespace, not boxes: the Path
+// to Green is no longer filled Yellow or Red, and no fieldset is boxed, while
+// the Path to Green still hides while Green is picked (ticket #364).
+func TestCheckinPageSectionsAreNotBoxed(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	for _, gone := range []string{
+		".checkin-form:has(input[name=health][value=Yellow]:checked) .path-to-green",
+		".checkin-form:has(input[name=health][value=Red]:checked) .path-to-green",
+		".checkin-form fieldset{border:1px",
+	} {
+		if strings.Contains(page, gone) {
+			t.Errorf("styles still carry %s", gone)
+		}
+	}
+	if !strings.Contains(page, `.checkin-form:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error){display:none}`) {
+		t.Errorf("styles no longer hide the Path to Green while Green is picked")
 	}
 }

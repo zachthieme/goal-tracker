@@ -3,7 +3,9 @@ package web
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
@@ -22,7 +24,7 @@ type checkinFormData struct {
 	// Green date later than the latest Check-in's, a Date Slip (CONTEXT.md:
 	// Date Slip). Its field shows only when it is needed; see pathReasonShown.
 	PathTargetDateReason string
-	// AsksForHelp is the Path to Green's "This asks for help" box: ticked
+	// AsksForHelp is the Path to Green's "Ask for help" box: ticked
 	// while the Goal's ask is open, so carrying it forward takes no effort,
 	// or as posted. AskAddressee is whom an ask would go to, nil for no one
 	// above the Owner (CONTEXT.md: Ask for help).
@@ -34,6 +36,9 @@ type checkinFormData struct {
 	// only when their Health differs from the Rolled-up Health.
 	RolledUp    domain.RolledUpHealth
 	Explanation string
+	// RunOffGreen is how long the Goal has been Yellow or Red, noted beside
+	// the Path to Green's heading (CONTEXT.md: Run off Green).
+	RunOffGreen domain.RunOffGreen
 	// Metrics are the Goal's Metrics, one reading input each (CONTEXT.md: a
 	// Metric's current value is recorded at each Check-in). Readings holds each
 	// input's value as typed, keyed by Metric ID, so an error re-render keeps
@@ -228,6 +233,28 @@ func (d checkinFormData) reading(metricID int64) string {
 	return d.Readings[metricID]
 }
 
+// readingRowLine is the line under a Metric's name in the form: its unit,
+// baseline, target and target date, and its last reading when it has one
+// ("per week · 100 → 500 by Jul 2 · last 135.5").
+func (d checkinFormData) readingRowLine(m domain.Metric) string {
+	line := fmt.Sprintf("%s · %s → %s by %s", m.Unit, fmtNum(m.Baseline), fmtNum(m.Target), d.Shown.date(m.TargetDate))
+	if last := d.Previous.Readings[m.ID]; last != "" {
+		line += " · last " + last
+	}
+	return line
+}
+
+// readingProgress is how far a Metric's last reading has come from its
+// baseline toward its target, from 0 to 1 whichever way the Metric moves, and
+// false when there is no last reading or the baseline is the target.
+func (d checkinFormData) readingProgress(m domain.Metric) (float64, bool) {
+	last, err := strconv.ParseFloat(d.Previous.Readings[m.ID], 64)
+	if err != nil || m.Target == m.Baseline {
+		return 0, false
+	}
+	return min(max((last-m.Baseline)/(m.Target-m.Baseline), 0), 1), true
+}
+
 // about reports whether the error is about one of the named fields or a field
 // in its family: "milestone" covers every milestone_*_<id> field.
 func (e checkinError) about(fields ...string) bool {
@@ -394,7 +421,7 @@ func (d lifecycleFormData) summary() string {
 // its Health picked, Green when there is none, and the status, Path to Green,
 // explanation and readings empty, with the latest Check-in's answers and each
 // Metric's latest reading shown as ghost text, so a full Check-in is written
-// fresh (CONTEXT.md: Check-in). Its "This asks for help" box starts ticked
+// fresh (CONTEXT.md: Check-in). Its "Ask for help" box starts ticked
 // while the Goal's ask is open, so closing it is a deliberate act. It also carries the Rolled-up Health so the
 // form can show it beside the Owner's Health, and the Goal's current delivery
 // date and Planned Milestones so the Owner can move or close them. While a
@@ -404,7 +431,7 @@ func (d lifecycleFormData) summary() string {
 // Milestone, marks it Done or removes it.
 func checkinFormFromLatest(v goalView) checkinFormData {
 	g := v.Goal
-	d := checkinFormData{GoalID: g.ID, Health: domain.HealthGreen, RolledUp: v.RolledUp, Metrics: v.Metrics, Shown: v.dates()}
+	d := checkinFormData{GoalID: g.ID, Health: domain.HealthGreen, RolledUp: v.RolledUp, RunOffGreen: v.RunOffGreen, Metrics: v.Metrics, Shown: v.dates()}
 	d.AsksForHelp = v.Ask != nil
 	d.AskAddressee = v.AskAddressee
 	if latest := v.LatestCheckin; latest != nil {
@@ -571,15 +598,17 @@ templ noChangeCheckinButton(goalID int64, label, class string) {
 }
 
 // checkinPage is the Check-in on its own page, reached from the Goal page by
-// the Owner or a Delegate: a breadcrumb back to the Goal, then the one-click
-// "no change" card when there is a previous Check-in to repeat, then the form,
-// showing the latest Check-in's answers as ghost text. Where a No change would
-// be refused, the card says why in place of its button. A refusal in the
-// form's error, such as why a No change couldn't be recorded, shows at the top
-// of the form, and the card then leaves the reason to it. A Goal with children
-// shows them, the Goal page's "Contributed to by" list read-only, beside the
-// form, or between the card and the form on a narrow screen, so the Owner sees
-// which set the Rolled-up Health.
+// the Owner or a Delegate: a breadcrumb back to the Goal, then a header with
+// the title, a line saying which week it is, the Goal's cadence and its last
+// Check-in, and, at its right, the one-click No change when there is a
+// previous Check-in to repeat; then the form, showing the latest Check-in's
+// answers as ghost text. Where a No change would be refused, the header says
+// why in place of its button. A refusal in the form's error, such as why a No
+// change couldn't be recorded, shows at the top of the form, and the header
+// then leaves the reason to it. A Goal with children shows them, the Goal
+// page's "Contributed to by" list read-only, beside the form, or between the
+// header and the form on a narrow screen, so the Owner sees which set the
+// Rolled-up Health.
 templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 	{{ g := v.Goal }}
 	@layout("Check in · "+g.Title, current) {
@@ -588,20 +617,22 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 			<nav class="small muted" aria-label="Breadcrumb">
 				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a> › Check in
 			</nav>
-			<h1>Check in</h1>
-			if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
-				<div data-testid="no-change-card" class="card">
-					<div>
-						<h3>{ "Nothing changed since " + v.dates().dayOf(v.LatestCheckin.CreatedAt) + "?" }</h3>
-						<p class="muted">Records the same Health and status with today's date.</p>
-					</div>
-					if v.NoChangeRefusal == "" {
-						@noChangeCheckinButton(g.ID, "No change", "btn")
-					} else if form.Error.Message == "" || form.Error.Field != "" {
-						<p data-testid="no-change-unavailable" class="muted">{ v.NoChangeRefusal }</p>
-					}
+			<div class="checkin-head">
+				<div>
+					<h1>Check in</h1>
+					<p data-testid="checkin-page-meta" class="muted">{ v.checkinPageMeta() }</p>
 				</div>
-			}
+				if g.Lifecycle == domain.LifecycleActive && v.LatestCheckin != nil {
+					<div data-testid="no-change-card" class="checkin-no-change">
+						<span class="muted">{ "Nothing changed since " + v.dates().dayOf(v.LatestCheckin.CreatedAt) + "?" }</span>
+						if v.NoChangeRefusal == "" {
+							@noChangeCheckinButton(g.ID, "No change", "btn")
+						} else if form.Error.Message == "" || form.Error.Field != "" {
+							<p data-testid="no-change-unavailable" class="muted">{ v.NoChangeRefusal }</p>
+						}
+					</div>
+				}
+			</div>
 			if len(v.Children) > 0 {
 				<aside data-testid="checkin-children" class="checkin-children">
 					<h3>Contributed to by</h3>
@@ -616,6 +647,27 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 			}
 		</div>
 	}
+}
+
+// checkinPageMeta is the line under the Check-in page's title: the week it is,
+// named by its Monday in the org's timezone as History's week headings are
+// ("Week of Oct 19"), how often the Goal checks in, and the day of its latest
+// Check-in when it has one.
+func (v goalView) checkinPageMeta() string {
+	dates := v.dates()
+	y, m, d := v.Now.In(dates.Loc).Date()
+	today := time.Date(y, m, d, 0, 0, 0, 0, dates.Loc)
+	monday := today.AddDate(0, 0, -((int(today.Weekday()) + 6) % 7))
+	parts := []string{"Week of " + dates.date(monday)}
+	if days := v.Goal.CadenceDays; days == 1 {
+		parts = append(parts, "checks in every day")
+	} else {
+		parts = append(parts, fmt.Sprintf("checks in every %d days", days))
+	}
+	if v.LatestCheckin != nil {
+		parts = append(parts, "last check-in "+dates.dayOf(v.LatestCheckin.CreatedAt))
+	}
+	return strings.Join(parts, " · ")
 }
 
 // checkinFormRefused is the Goal's Check-in form, started from its latest
@@ -670,114 +722,149 @@ templ checkinForm(d checkinFormData) {
 				A Metric is off target, so a Green needs confirming. <a href="#checkin-off-target">See below</a>
 			</p>
 		}
-		<fieldset data-testid="checkin-health" class="health-toggle">
-			<legend>Health</legend>
-			for _, health := range []string{domain.HealthGreen, domain.HealthYellow, domain.HealthRed} {
-				<label class={ "badge", healthClass(health) }>
-					<input type="radio" name="health" value={ health } checked?={ d.Health == health }/>
-					<span class="dot"></span>{ health }
-				</label>
+		<section class="checkin-section">
+			<div class="checkin-section-head">
+				<h2>How is it going?</h2>
+			</div>
+			<fieldset data-testid="checkin-health" class="health-toggle">
+				<legend class="sr-only">Health</legend>
+				for _, health := range []string{domain.HealthGreen, domain.HealthYellow, domain.HealthRed} {
+					<label class={ "badge", healthClass(health) }>
+						<input type="radio" name="health" value={ health } checked?={ d.Health == health }/>
+						<span class="dot"></span>{ health }
+					</label>
+				}
+			</fieldset>
+			@checkinFieldError(d.Error, "health")
+			<label>
+				What changed since the last check-in?
+				<textarea name="status" required { checkinGhostText(d.Previous.Status)... }>{ d.Status }</textarea>
+			</label>
+			@checkinFieldError(d.Error, "status")
+			if d.RolledUp.Present {
+				<div class="checkin-rollup">
+					<p data-testid="checkin-form-rollup">
+						<span class="muted">Rolled-up Health:</span>
+						<span class={ "badge", healthClass(d.RolledUp.Health) }><span class="dot"></span>{ d.RolledUp.Health }</span>
+						if count := d.RolledUp.CountLine(); count != "" {
+							<span class="muted">{ count }</span>
+						}
+					</p>
+					<label>
+						<span>Why is your Health different? <span class="hint">Required while it differs from the Rolled-up Health</span></span>
+						<textarea name="explanation" data-testid="checkin-explanation" { checkinGhostText(d.Previous.Explanation)... }>{ d.Explanation }</textarea>
+					</label>
+					@checkinFieldError(d.Error, "explanation")
+				</div>
 			}
-		</fieldset>
-		@checkinFieldError(d.Error, "health")
+		</section>
 		<fieldset data-testid="path-to-green-field" class={ "path-to-green", templ.KV("has-error", d.Error.Field == "path_to_green" || d.Error.Field == "path_target_date_reason") }>
-			<legend>Path to Green (required when Yellow or Red)</legend>
+			<legend class="checkin-section-head">
+				<h2>Path to Green</h2>
+				<span class="hint">
+					Required while Yellow or Red
+					if d.RunOffGreen.Running() {
+						{ " · " + d.RunOffGreen.Label() + " off Green" }
+					}
+				</span>
+			</legend>
 			<label>
 				Plan
 				<textarea name="path_to_green" { checkinGhostText(d.Previous.PathToGreen)... }>{ d.PathToGreen }</textarea>
 			</label>
-			<label>
-				Back to Green by
-				<input type="date" name="path_target_date" value={ d.PathTargetDate } hx-on:input={ showPathReasonScript } { d.pathTargetLastAttrs()... }/>
-			</label>
-			if d.Previous.PathTargetDate != "" {
-				<span data-testid="checkin-path-target-last" id={ d.pathTargetLastID() } class="hint">Last time: { d.Shown.dateText(d.Previous.PathTargetDate) }</span>
-			}
+			<div class="checkin-path-target">
+				<label>
+					Back to Green by
+					<input type="date" name="path_target_date" value={ d.PathTargetDate } hx-on:input={ showPathReasonScript } { d.pathTargetLastAttrs()... }/>
+				</label>
+				if d.Previous.PathTargetDate != "" {
+					<span data-testid="checkin-path-target-last" id={ d.pathTargetLastID() } class="hint">Last time: { d.Shown.dateText(d.Previous.PathTargetDate) }</span>
+					<span class="hint">A later date asks why.</span>
+				}
+			</div>
 			@checkinFieldError(d.Error, "path_to_green")
 			<label data-testid="checkin-path-target-reason" hidden?={ !d.pathReasonShown() }>
 				Reason for moving it later
 				<textarea name="path_target_date_reason">{ d.PathTargetDateReason }</textarea>
 			</label>
 			@checkinFieldError(d.Error, "path_target_date_reason")
+			// person's own button can't sit inside a label, so the addressee
+			// shows by name alone.
 			<label class="checkin-ask">
 				<input type="checkbox" name="asks_for_help" value="1" data-testid="checkin-asks-for-help" checked?={ d.AsksForHelp }/>
-				This asks for help
+				<strong>Ask for help</strong>
+				if d.AskAddressee != nil {
+					<span data-testid="checkin-ask-addressee" class="hint">
+						{ "· goes to " }
+						@personPlain(*d.AskAddressee)
+					</span>
+				}
 			</label>
-			if d.AskAddressee != nil {
-				<span data-testid="checkin-ask-addressee" class="hint">
-					{ "Goes to " }
-					@person(*d.AskAddressee)
-					{ "." }
-				</span>
-			} else {
+			if d.AskAddressee == nil {
 				<span data-testid="checkin-ask-addressee" class="hint">No one is above the Owner to ask. It still shows on Risks and in Reports.</span>
 			}
 		</fieldset>
-		if d.RolledUp.Present {
-			<p data-testid="checkin-form-rollup">
-				Rolled-up Health: <strong>{ d.RolledUp.Health }</strong>, the worst Health among this Goal's Active children.
-				if count := d.RolledUp.CountLine(); count != "" {
-					{ " (" + count + ")" }
-				}
-			</p>
-			<label>
-				Explanation (required if your Health differs from the Rolled-up Health)
-				<textarea name="explanation" data-testid="checkin-explanation" { checkinGhostText(d.Previous.Explanation)... }>{ d.Explanation }</textarea>
-			</label>
-			@checkinFieldError(d.Error, "explanation")
-		}
-		<label>
-			<span>Status <span class="hint">what changed since the last check-in</span></span>
-			<textarea name="status" required { checkinGhostText(d.Previous.Status)... }>{ d.Status }</textarea>
-		</label>
-		@checkinFieldError(d.Error, "status")
 		if len(d.Metrics) > 0 {
 			<fieldset data-testid="checkin-readings" class="checkin-readings">
-				<legend>Metric readings</legend>
+				<legend class="checkin-section-head">
+					<h2>Metrics</h2>
+					<span class="hint">Record each Metric's current value</span>
+				</legend>
 				for _, m := range d.Metrics {
-					<label>
-						<span>{ m.Name } <span class="hint">({ m.Unit }) — target { fmtNum(m.Target) }</span></span>
-						<input
-							type="number"
-							step="any"
-							name={ readingField(m.ID) }
-							value={ d.reading(m.ID) }
-							{ checkinGhostText(d.Previous.Readings[m.ID])... }
-						/>
-					</label>
-					@checkinFieldError(d.Error, readingField(m.ID))
+					<div class="checkin-metric">
+						<div class="checkin-metric-about">
+							<span class="checkin-metric-name">{ m.Name }</span>
+							<span class="hint">{ d.readingRowLine(m) }</span>
+							if progress, ok := d.readingProgress(m); ok {
+								<progress class="checkin-metric-progress" aria-hidden="true" max="1" value={ fmtNum(progress) }></progress>
+							}
+						</div>
+						<label class="checkin-metric-input">
+							<input
+								aria-label={ m.Name + " current value" }
+								type="number"
+								step="any"
+								name={ readingField(m.ID) }
+								value={ d.reading(m.ID) }
+								{ checkinGhostText(d.Previous.Readings[m.ID])... }
+							/>
+						</label>
+						@checkinFieldError(d.Error, readingField(m.ID))
+					</div>
 				}
 			</fieldset>
 		}
-		<details data-testid="checkin-highlight-section" class="checkin-more" open?={ d.highlightOpen() }>
-			<summary>{ d.highlightSummary() }</summary>
-			<div data-testid="checkin-highlights" class="checkin-highlights" data-highlight-editor>
-				<h2 class="hl-js-only hl-head">Highlights</h2>
-				@highlightAddButtons()
-				<div class="hl-items" data-hl-items></div>
-				for i, row := range d.DraftHighlights {
-					@checkinDraftHighlightRow(i+1, row, d.Error)
-				}
-				for i, row := range d.highlightRows() {
-					@checkinHighlightRow(len(d.DraftHighlights)+i+1, row, d.Error)
-				}
-				<button type="submit" name="add_highlight" value="1" formnovalidate class="btn quiet">Add another</button>
-			</div>
-		</details>
-		// The editor's parts sit in the form, so an htmx re-render brings
-		// them back and upgrades the rows again.
-		@highlightEditorStyles()
-		@highlightEditorTemplate()
-		@highlightItemTemplate()
-		@highlightEditorScript()
-		<details data-testid="checkin-dates-section" class="checkin-more" open?={ d.datesOpen() }>
-			<summary>{ d.Dates.summary(d.Shown) }</summary>
-			@checkinDateFields(d.Dates, d.Error)
-		</details>
-		<details data-testid="checkin-lifecycle-section" class="checkin-more" open?={ d.lifecycleOpen() }>
-			<summary>{ d.Lifecycle.summary() }</summary>
-			@checkinLifecycleFields(d.Lifecycle, d.Error)
-		</details>
+		<div class="checkin-more-group">
+			<details data-testid="checkin-highlight-section" class="checkin-more" open?={ d.highlightOpen() }>
+				<summary>{ d.highlightSummary() }</summary>
+				<div data-testid="checkin-highlights" class="checkin-highlights" data-highlight-editor>
+					<h2 class="hl-js-only hl-head">Highlights</h2>
+					@highlightAddButtons()
+					<div class="hl-items" data-hl-items></div>
+					for i, row := range d.DraftHighlights {
+						@checkinDraftHighlightRow(i+1, row, d.Error)
+					}
+					for i, row := range d.highlightRows() {
+						@checkinHighlightRow(len(d.DraftHighlights)+i+1, row, d.Error)
+					}
+					<button type="submit" name="add_highlight" value="1" formnovalidate class="btn quiet">Add another</button>
+				</div>
+			</details>
+			// The editor's parts sit in the form, so an htmx re-render brings
+			// them back and upgrades the rows again.
+			@highlightEditorStyles()
+			@highlightEditorTemplate()
+			@highlightItemTemplate()
+			@highlightEditorScript()
+			<details data-testid="checkin-dates-section" class="checkin-more" open?={ d.datesOpen() }>
+				<summary>{ d.Dates.summary(d.Shown) }</summary>
+				@checkinDateFields(d.Dates, d.Error)
+			</details>
+			<details data-testid="checkin-lifecycle-section" class="checkin-more" open?={ d.lifecycleOpen() }>
+				<summary>{ d.Lifecycle.summary() }</summary>
+				@checkinLifecycleFields(d.Lifecycle, d.Error)
+			</details>
+		</div>
 		if d.offTargetWarned() {
 			@checkinOffTargetWarning(d.OffTarget, d.Shown)
 		}
@@ -899,33 +986,55 @@ templ checkinStyles() {
 			.gp-cell{display:flex;flex-direction:column;gap:4px}
 			.gp-cell dd{margin:0;display:flex;align-items:center;gap:4px;flex-wrap:wrap}
 			.checkin-page{max-width:760px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:16px}
-			.checkin-page .card{padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
-			.checkin-page .card form{margin:0}
+			.checkin-head{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px 24px}
+			.checkin-head>div{min-width:0}
+			.checkin-head p{margin:4px 0 0}
+			.checkin-no-change{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px}
+			.checkin-no-change form, .checkin-no-change p{margin:0}
 			.checkin-page.with-children{max-width:1112px;display:grid;grid-template-columns:minmax(0,760px) minmax(240px,320px);gap:16px 32px;align-items:start}
 			.checkin-page.with-children>*{grid-column:1}
-			.checkin-page.with-children>nav,.checkin-page.with-children>h1{grid-column:1/-1}
+			.checkin-page.with-children>nav,.checkin-page.with-children>.checkin-head{grid-column:1/-1}
 			.checkin-page>.checkin-children{grid-column:2;grid-row:3}
-			.checkin-page:has(>.card)>.checkin-children{grid-row:3/span 2}
 			.checkin-children{display:flex;flex-direction:column;gap:12px}
 			@media (max-width:900px){.checkin-page.with-children{display:flex}}
-			.checkin-form{display:flex;flex-direction:column;gap:16px}
-			.checkin-default-submit{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-			.checkin-form fieldset{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;margin:0;display:flex;flex-direction:column;gap:8px;background:var(--color-surface)}
-			.checkin-form legend{font-weight:600;font-size:13px;padding:0 4px}
-			.checkin-form label{display:flex;flex-direction:column;gap:8px;font-weight:600;font-size:13px}
+			.checkin-form{display:flex;flex-direction:column;gap:40px}
+			.checkin-default-submit{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0}
+			.checkin-form .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;padding:0;border:0}
+			.checkin-form fieldset{border:none;padding:0;margin:0;min-width:0;display:flex;flex-direction:column;gap:8px}
+			.checkin-section, .checkin-form>fieldset{display:flex;flex-direction:column;gap:16px}
+			.checkin-section-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:0}
+			legend.checkin-section-head{width:100%;margin-bottom:16px}
+			.checkin-section-head h2{font-family:var(--font-display);font-size:22px;font-weight:700;line-height:1.3}
+			@media (max-width:600px){.checkin-section-head h2{font-size:20px}}
+			.checkin-form legend{font-weight:600;font-size:14px;padding:0}
+			.checkin-form label{display:flex;flex-direction:column;gap:8px;font-weight:600;font-size:14px}
+			.checkin-form .hint{font-size:14px;color:var(--color-ink-muted)}
+			.checkin-form label textarea, .checkin-form label input, .checkin-form label select{font-weight:400}
 			.checkin-form label[hidden]{display:none}
-			.health-toggle{flex-direction:row!important;flex-wrap:wrap;gap:12px!important;border:none!important;padding:0!important;background:none!important}
-			.health-toggle legend{padding:0;margin-bottom:8px}
-			.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:15px;height:48px;padding:0 20px;border:2px solid currentColor;cursor:pointer}
+			.health-toggle{flex-direction:row!important;flex-wrap:wrap;gap:12px!important}
+			.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:15px;height:56px;padding:0 12px;border:2px solid currentColor;border-radius:var(--radius-lg);cursor:pointer}
 			.health-toggle label.badge .dot{width:12px;height:12px}
 			.health-toggle input{position:absolute;opacity:0;pointer-events:none}
 			.health-toggle label.badge:not(:has(input:checked)){background:var(--color-surface);border-color:var(--color-border-strong)}
 			.health-toggle label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}
 			.checkin-form:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error){display:none}
-			.checkin-form:has(input[name=health][value=Yellow]:checked) .path-to-green{background:var(--health-y-bg)}
-			.checkin-form:has(input[name=health][value=Red]:checked) .path-to-green{background:var(--health-r-bg)}
-			.checkin-readings label{flex-direction:row;align-items:center;justify-content:space-between;gap:12px}
-			.checkin-readings input{width:160px}
+			.checkin-rollup{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:16px;display:flex;flex-direction:column;gap:12px}
+			.checkin-rollup p{margin:0}
+			.checkin-path-target{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 16px}
+			.checkin-path-target>.hint{padding-bottom:8px}
+			.checkin-form>fieldset.checkin-readings{gap:0}
+			.checkin-metric{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 16px;padding:16px 0;border-top:1px solid var(--color-border)}
+			.checkin-metric:last-child{border-bottom:1px solid var(--color-border)}
+			.checkin-metric-about{flex:1 1 200px;min-width:0;display:flex;flex-direction:column;gap:4px}
+			.checkin-metric-name{font-weight:600}
+			.checkin-metric-progress{appearance:none;display:block;width:100%;max-width:240px;height:6px;margin-top:4px;border:none;border-radius:var(--radius-full);background:var(--color-border);overflow:hidden}
+			.checkin-metric-progress::-webkit-progress-bar{background:var(--color-border)}
+			.checkin-metric-progress::-webkit-progress-value{background:var(--color-primary-strong)}
+			.checkin-metric-progress::-moz-progress-bar{background:var(--color-primary-strong)}
+			.checkin-metric-input{flex:none}
+			.checkin-metric-input input{width:120px;font-family:var(--font-mono);text-align:right}
+			.checkin-metric>[data-testid=checkin-error]{flex-basis:100%;margin:0}
+			.checkin-more-group{display:flex;flex-direction:column;gap:12px}
 			.checkin-more{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);padding:0 24px}
 			.checkin-more>summary{font-weight:600}
 			.checkin-more>summary::after{content:"▸";color:var(--color-ink-muted)}
@@ -938,6 +1047,7 @@ templ checkinStyles() {
 			.checkin-highlights>button{align-self:flex-start}
 			.checkin-more:has(>.hl-js){padding-top:16px}
 			.checkin-form .checkin-keep, .checkin-form .checkin-ask{flex-direction:row;align-items:center}
+			.checkin-form .checkin-ask{flex-wrap:wrap;font-weight:400}
 			.ms-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1fr);gap:8px 12px;align-items:start}
 			.ms-row{display:contents}
 			.ms-name{font-weight:600;align-self:center}
