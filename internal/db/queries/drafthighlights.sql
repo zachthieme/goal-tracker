@@ -36,3 +36,9 @@ DELETE FROM draft_highlights WHERE id = ? AND discarded_checkin_id IS NULL;
 -- Discard a pending Draft Highlight with the Check-in that left it out.
 UPDATE draft_highlights SET discarded_checkin_id = ?
 WHERE id = ? AND discarded_checkin_id IS NULL;
+
+-- name: UpdatePendingDraftHighlight :execrows
+-- Edit a pending Draft Highlight's kind and note. One already discarded is
+-- left alone.
+UPDATE draft_highlights SET kind = ?, note = ?
+WHERE id = ? AND discarded_checkin_id IS NULL;

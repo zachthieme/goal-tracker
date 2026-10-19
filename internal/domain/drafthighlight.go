@@ -54,12 +54,9 @@ func (s *Service) LogDraftHighlight(ctx context.Context, in LogDraftHighlightInp
 	if ended(goal) {
 		return DraftHighlight{}, fmt.Errorf("%w: a %s Goal takes no more Check-ins, so it takes no Draft Highlights", ErrValidation, goal.Lifecycle)
 	}
-	note := strings.TrimSpace(in.Note)
-	if note == "" {
-		return DraftHighlight{}, fmt.Errorf("%w: a Draft Highlight needs a note", ErrValidation)
-	}
-	if in.Kind != "" && !validHighlightKind(in.Kind) {
-		return DraftHighlight{}, fmt.Errorf("%w: a Draft Highlight's kind must be an %q, %q, or %q, or none", ErrValidation, HighlightInsight, HighlightAccomplishment, HighlightMiss)
+	note, err := draftHighlightValues(in.Kind, in.Note)
+	if err != nil {
+		return DraftHighlight{}, err
 	}
 	row, err := s.queries.CreateDraftHighlight(ctx, db.CreateDraftHighlightParams{
 		GoalID:    goal.ID,
@@ -111,6 +108,50 @@ func (s *Service) pendingDraftHighlights(ctx context.Context, goalID int64) ([]D
 // Only its Goal's Owner or a Delegate, as actorID, may delete one. One that
 // doesn't exist, or that a Check-in has already discarded, is ErrNotFound.
 func (s *Service) DeleteDraftHighlight(ctx context.Context, actorID, id int64) (DraftHighlight, error) {
+	draft, err := s.draftHighlightFor(ctx, actorID, id)
+	if err != nil {
+		return DraftHighlight{}, err
+	}
+	n, err := s.queries.DeletePendingDraftHighlight(ctx, id)
+	if err != nil {
+		return DraftHighlight{}, fmt.Errorf("delete draft highlight: %w", err)
+	}
+	if n == 0 {
+		return DraftHighlight{}, fmt.Errorf("%w: draft highlight %d is no longer pending", ErrNotFound, id)
+	}
+	return draft, nil
+}
+
+// EditDraftHighlight changes a pending Draft Highlight's kind and note,
+// returning it as edited. Only its Goal's Owner or a Delegate, as actorID, may
+// edit one; who logged it and when stay as they were. The note is trimmed and
+// required, and a kind, if given, must be an Insight, Accomplishment or Miss,
+// as when it was logged. One that doesn't exist, or that a Check-in has
+// already kept or discarded, is ErrNotFound. The edit records nothing in the
+// Goal's History: the Draft Highlight is still pending.
+func (s *Service) EditDraftHighlight(ctx context.Context, actorID, id int64, kind, note string) (DraftHighlight, error) {
+	draft, err := s.draftHighlightFor(ctx, actorID, id)
+	if err != nil {
+		return DraftHighlight{}, err
+	}
+	note, err = draftHighlightValues(kind, note)
+	if err != nil {
+		return DraftHighlight{}, err
+	}
+	n, err := s.queries.UpdatePendingDraftHighlight(ctx, db.UpdatePendingDraftHighlightParams{Kind: kind, Note: note, ID: id})
+	if err != nil {
+		return DraftHighlight{}, fmt.Errorf("edit draft highlight: %w", err)
+	}
+	if n == 0 {
+		return DraftHighlight{}, fmt.Errorf("%w: draft highlight %d is no longer pending", ErrNotFound, id)
+	}
+	draft.Kind, draft.Note = kind, note
+	return draft, nil
+}
+
+// draftHighlightFor loads the Draft Highlight id, pending or not, for actorID
+// to change: only its Goal's Owner or a Delegate may.
+func (s *Service) draftHighlightFor(ctx context.Context, actorID, id int64) (DraftHighlight, error) {
 	row, err := s.queries.GetDraftHighlight(ctx, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -126,14 +167,21 @@ func (s *Service) DeleteDraftHighlight(ctx context.Context, actorID, id int64) (
 	if err := s.authorizeDraftHighlighter(ctx, goal, actorID); err != nil {
 		return DraftHighlight{}, err
 	}
-	n, err := s.queries.DeletePendingDraftHighlight(ctx, id)
-	if err != nil {
-		return DraftHighlight{}, fmt.Errorf("delete draft highlight: %w", err)
-	}
-	if n == 0 {
-		return DraftHighlight{}, fmt.Errorf("%w: draft highlight %d is no longer pending", ErrNotFound, id)
-	}
 	return draft, nil
+}
+
+// draftHighlightValues checks a Draft Highlight's kind and note as logged or
+// edited, returning the note trimmed: the note is required, and a kind, if
+// given, must be an Insight, Accomplishment or Miss.
+func draftHighlightValues(kind, note string) (string, error) {
+	note = strings.TrimSpace(note)
+	if note == "" {
+		return "", fmt.Errorf("%w: a Draft Highlight needs a note", ErrValidation)
+	}
+	if kind != "" && !validHighlightKind(kind) {
+		return "", fmt.Errorf("%w: a Draft Highlight's kind must be an %q, %q, or %q, or none", ErrValidation, HighlightInsight, HighlightAccomplishment, HighlightMiss)
+	}
+	return note, nil
 }
 
 // draftHighlightPicks is what a Check-in does with the Draft Highlights it
@@ -222,12 +270,12 @@ func (s *Service) discardedDraftHighlightsByCheckin(ctx context.Context, goalID 
 }
 
 // authorizeDraftHighlighter allows only those who may write the Goal's
-// Check-ins — its Owner or a Delegate, neither Departed — to log, see or delete
-// its pending Draft Highlights.
+// Check-ins — its Owner or a Delegate, neither Departed — to log, see, edit or
+// delete its pending Draft Highlights.
 func (s *Service) authorizeDraftHighlighter(ctx context.Context, goal Goal, actorID int64) error {
 	if err := s.authorizeCheckinAuthor(ctx, goal.ID, goal.Owner.ID, actorID); err != nil {
 		if errors.Is(err, ErrNotAuthorized) {
-			return fmt.Errorf("%w: only the Goal's Owner or a Delegate may log, see or delete its Draft Highlights", ErrNotAuthorized)
+			return fmt.Errorf("%w: only the Goal's Owner or a Delegate may log, see, edit or delete its Draft Highlights", ErrNotAuthorized)
 		}
 		return err
 	}
