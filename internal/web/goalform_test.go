@@ -1370,8 +1370,11 @@ func TestNewGoalPageRendersTheReadyCardEnabledWithoutScript(t *testing.T) {
 	if save := tagAround(t, card, ">Save as Proposed"); attr(save, "type") != "submit" || attr(save, "name") != "" {
 		t.Errorf("Save as Proposed isn't a plain submit: %s", save)
 	}
-	if !strings.Contains(card, "Only Title and So What are needed to save.") {
+	if !strings.Contains(card, "Saving needs a Title and So What, and a delivery date if Dated is chosen.") {
 		t.Errorf("the card doesn't say what saving needs:\n%s", card)
+	}
+	if strings.Contains(card, "Only Title and So What are needed to save.") {
+		t.Errorf("the card still says only Title and So What are needed to save:\n%s", card)
 	}
 
 	tag := openTag(form)
