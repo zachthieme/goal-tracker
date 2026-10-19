@@ -474,3 +474,36 @@ func passwordSignInClient(t *testing.T, h *testsupport.Harness, baseURL, emailAd
 	}
 	return client
 }
+
+// assertTermHelp checks that within holds a help disclosure for a glossary
+// term: a disclose help button reading label, starting collapsed, carrying
+// text as its title, and controlling a hidden explain paragraph on page that
+// holds text. It returns the button's opening tag.
+func assertTermHelp(t *testing.T, page, within, label, text string) string {
+	t.Helper()
+	end := strings.Index(within, ">"+label+"</button>")
+	if end < 0 {
+		t.Errorf("no button reads %q", label)
+		return ""
+	}
+	start := strings.LastIndex(within[:end], "<button")
+	if start < 0 {
+		t.Errorf("%q is not inside a button", label)
+		return ""
+	}
+	button := within[start:end]
+	if !slices.Contains(strings.Fields(attr(button, "class")), "disclose") || !slices.Contains(strings.Fields(attr(button, "class")), "help") {
+		t.Errorf("%q is not a disclose help button: %s", label, button)
+	}
+	if attr(button, "type") != "button" || attr(button, "aria-expanded") != "false" {
+		t.Errorf("%q button does not start collapsed: %s", label, button)
+	}
+	if got, want := attr(button, "title"), html.EscapeString(text); got != want {
+		t.Errorf("%q button's title = %q, want %q", label, got, want)
+	}
+	id := attr(button, "aria-controls")
+	if want := `<p id="` + id + `" class="explain" hidden>` + html.EscapeString(text) + `</p>`; id == "" || !strings.Contains(page, want) {
+		t.Errorf("%q button controls %q, want the collapsed explanation %s", label, id, want)
+	}
+	return button
+}

@@ -92,13 +92,13 @@ templ reportBuilderPage(current *domain.Account, v reportBuilderView) {
 						}
 						<div><button type="submit" name="do" value="add-rule" class="btn quiet sm rb-add" formnovalidate>+ Add rule</button></div>
 						<p data-testid="rules-hint" class="small muted">
-							Rules can test any Dimension, Owner, Lifecycle, Health or Top-level. An Admin can create a Dimension such as "In report" so Owners tag their own Goals in; you still decide what's in through Leave out.
+							A rule can check a Dimension value, the Owner or whose org they're in, the Lifecycle, the Health, or whether the Goal is Top-level. To let Owners opt their own Goals in, an Admin can add a Dimension such as "In report"; you still decide with Leave out.
 						</p>
-						@reportGoalPicker(v, inputInclude, "Also include", v.Include)
-						@reportGoalPicker(v, inputExclude, "Leave out", v.Exclude)
+						@reportGoalPicker(v, inputInclude, "Also include", alsoIncludeHelp, v.Include)
+						@reportGoalPicker(v, inputExclude, "Leave out", leaveOutHelp, v.Exclude)
 					</section>
 					<section data-testid="report-picked" class="rb-picked">
-						@reportGoalPicker(v, inputPicked, "Goals I pick", v.Picked)
+						@reportGoalPicker(v, inputPicked, "Goals I pick", "", v.Picked)
 					</section>
 					if len(v.Fields) > 0 {
 						<details data-testid="report-fields-to-show" class="rb-fields" open?={ len(v.FieldIDs) > 0 || v.bad(domain.ReportInputFields) != "" }>
@@ -211,14 +211,25 @@ templ reportBuilderError(v reportBuilderView, input string) {
 	}
 }
 
+// alsoIncludeHelp says what the builder's Also include list does.
+const alsoIncludeHelp = "Goals to add by hand, even if they don't meet the rules."
+
+// leaveOutHelp says what the builder's Leave out list does.
+const leaveOutHelp = "Goals to drop, even if they meet the rules."
+
 // reportGoalPicker picks Goals at any level for one of the builder's lists,
 // list naming it. Each Goal in the list is a chip holding its id; script
 // searches every Goal by title as it is typed, picking a result adds its chip
 // and empties the search box, and × removes one. Without script a multiple select offers every Goal not
-// already in the list, and a chip's Remove checkbox takes its Goal out.
-templ reportGoalPicker(v reportBuilderView, list, legend string, chosen []domain.Goal) {
+// already in the list, and a chip's Remove checkbox takes its Goal out. A
+// non-empty help explains the list behind a help button after the legend.
+templ reportGoalPicker(v reportBuilderView, list, legend, help string, chosen []domain.Goal) {
 	<fieldset data-testid={ list + "-picker" } class="rb-picker" data-goal-picker={ list }>
 		<legend>{ legend }</legend>
+		if help != "" {
+			<button type="button" class="disclose help explain" aria-expanded="false" aria-controls={ list + "-help" } title={ help }>{ "What does " + legend + " do?" }</button>
+			<p id={ list + "-help" } class="explain" hidden>{ help }</p>
+		}
 		<ul data-testid={ list + "-chips" } id={ list + "-chips" } class="rb-chips">
 			for _, g := range chosen {
 				@reportGoalChip(list, g)
@@ -418,6 +429,7 @@ templ reportBuilderStyles() {
 		.rb-form.rb-js .rb-no-js{display:none}
 		.rb-form:not(.rb-js) [data-top-level] [data-testid="rule-values"]{display:none}
 		.rb-picker input[type=search]{width:100%}
+		.rb-picker>.help{align-self:flex-start}
 		.rb-results{list-style:none;margin:4px 0 0;padding:0;display:flex;flex-direction:column}
 		.rb-result{display:flex;gap:8px;width:100%;text-align:left;background:none;border:none;padding:4px 8px;cursor:pointer}
 	</style>

@@ -63,6 +63,10 @@ templ delegatePage(current *domain.Account, goals []delegatedGoal) {
 	}
 }
 
+// delegateHelp says what a Delegate is, opened from under the Goal page's
+// Delegates heading (CONTEXT.md: Delegate).
+const delegateHelp = "Someone the Owner authorizes to write Check-ins and set this Goal's Dimension values and Fields. The Owner stays accountable."
+
 // delegatesSection lists a Goal's Delegates, marking a Departed one (CONTEXT.md:
 // Departed), and gives their Owner a Manage link that opens, in place, the
 // form to authorize or revoke one by email (CONTEXT.md: an Owner authorizes a
@@ -73,6 +77,8 @@ templ delegatesSection(v goalView) {
 		@groupHead(v, formDelegates, "Manage", "Manage Delegates") {
 			<h3 class="label">Delegates</h3>
 		}
+		<button type="button" class="disclose help explain" aria-expanded="false" aria-controls="delegate-help" title={ delegateHelp }>What is a Delegate?</button>
+		<p id="delegate-help" class="explain" hidden>{ delegateHelp }</p>
 		<ul data-testid="delegate-list" class="gp-list">
 			if len(v.Delegates) == 0 {
 				<li data-testid="no-delegates" class="muted">No Delegates yet.</li>

@@ -178,8 +178,8 @@ templ goalFormDelivery(v goalFormView) {
 		<fieldset id={ domain.InputKind } class="gf-group">
 			<legend>Kind</legend>
 			<div class="gf-segments">
-				@kindChoice(v, domain.GoalDated, "Has a delivery date; its Health is judged against that date and its Milestones.")
-				@kindChoice(v, domain.GoalOngoing, "Has no delivery date; its Health is judged against its Metrics' targets.")
+				@kindChoice(v, domain.GoalDated, datedHelp)
+				@kindChoice(v, domain.GoalOngoing, ongoingHelp)
 			</div>
 			@goalFormInputError(v, domain.InputKind)
 		</fieldset>

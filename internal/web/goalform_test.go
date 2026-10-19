@@ -767,6 +767,30 @@ func TestNewGoalFormRefusesADatedGoalsDeliveryDateInPageOrder(t *testing.T) {
 }
 
 // The New goal page opens with What and why, its So What hinted, then
+// The New goal form's Dated and Ongoing cards say what each means in the
+// same words the Goal page's kind help uses.
+func TestNewGoalKindCardsUseTheGoalPagesHelpText(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals/new")
+
+	for _, tc := range []struct{ id, means string }{
+		{"kind-dated", "Has a delivery date. Its Health is judged against that date and its Milestones."},
+		{"kind-ongoing", "Has no delivery date. Its Health is judged against its Metrics' targets."},
+	} {
+		label := between(t, page, `id="`+tc.id+`"`, "</label>")
+		if want := `<span class="hint">` + html.EscapeString(tc.means) + `</span>`; !strings.Contains(label, want) {
+			t.Errorf("%s's card doesn't read %s: %s", tc.id, want, label)
+		}
+	}
+	if strings.Contains(page, "Has a delivery date; its Health") {
+		t.Errorf("the New goal form still reads the old semicolon wording")
+	}
+}
+
 // Delivery: Kind and cadence are each a native radio group sharing one name,
 // so arrow keys move within it. Neither Kind is chosen at first and Weekly
 // is. The delivery date shows once Dated is chosen and Custom's days once

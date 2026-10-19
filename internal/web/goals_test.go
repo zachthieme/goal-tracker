@@ -350,7 +350,7 @@ func TestGoalPageDimensionsSectionLinksToDimensionsForNonOwner(t *testing.T) {
 
 	h.CreateDimension(boss, "Quarter", "Q3", "Q4")
 	defined := pageElement(t, getBody(t, otherClient, goalURL), "section", "goal-dimensions")
-	if !strings.Contains(defined, "Quarter") {
+	if listed := elementTexts(defined, "li", "goal-dimension"); len(listed) != 1 || !strings.HasPrefix(listed[0], "Quarter") {
 		t.Fatalf("Dimensions section doesn't list Quarter:\n%s", defined)
 	}
 	if !strings.Contains(defined, `href="/dimensions"`) {
@@ -1483,7 +1483,7 @@ func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
 	}
 	for _, want := range []string{
 		`<span data-testid="goal-lifecycle">Active</span>`,
-		`<span data-testid="goal-kind">Dated</span>`,
+		`<span data-testid="goal-kind"><button type="button" class="disclose help" aria-expanded="false" aria-controls="kind-help" title="Has a delivery date. Its Health is judged against that date and its Milestones.">Dated</button></span>`,
 		`Owner <strong data-testid="goal-owner">` + shownAs("sam@example.com", "sam") + `</strong>`,
 		`Delivers <span data-testid="goal-delivery-date" class="gp-dates"><del>Jul 2</del> <strong>Jul 16</strong></span>`,
 		`Checks in <span data-testid="goal-cadence">every 7 days</span>`,
@@ -2461,6 +2461,91 @@ func TestGoalPageExplainsSoWhatAndTopLevelOnActivation(t *testing.T) {
 	disclosureScript(t, page)
 }
 
+// The Goal page explains Dated or Ongoing from the word in its metadata line,
+// and what a Delegate and Dimension values are under their sidebar headings,
+// each collapsed behind a help button that opens the definition in place. A
+// Goal not yet Dated or Ongoing says so in plain text, with nothing to open.
+func TestGoalPageExplainsKindDelegatesAndDimensionValues(t *testing.T) {
+	t.Parallel()
+
+	const (
+		dated     = "Has a delivery date. Its Health is judged against that date and its Milestones."
+		ongoing   = "Has no delivery date. Its Health is judged against its Metrics' targets."
+		delegate  = "Someone the Owner authorizes to write Check-ins and set this Goal's Dimension values and Fields. The Owner stays accountable."
+		dimension = "Values from lists an Admin defines, such as Pillar or Quarter, used to filter and group Goals."
+	)
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	client := signInClient(t, ts.URL, ada.Email)
+
+	g := h.ActiveGoal(ada, "Grow revenue", "It pays for everything.")
+	page := getBody(t, client, goalPageURL(ts.URL, g))
+	if button := assertTermHelp(t, page, pageElement(t, page, "span", "goal-kind"), "Dated", dated); attr(button, "aria-controls") != "kind-help" {
+		t.Errorf("the Dated button controls %q, want kind-help", attr(button, "aria-controls"))
+	}
+	for _, tc := range []struct{ label, id, text string }{
+		{"What is a Delegate?", "delegate-help", delegate},
+		{"What are Dimension values?", "dimension-values-help", dimension},
+	} {
+		if button := assertTermHelp(t, page, page, tc.label, tc.text); attr(button, "aria-controls") != tc.id {
+			t.Errorf("%q controls %q, want %s", tc.label, attr(button, "aria-controls"), tc.id)
+		}
+	}
+	disclosureScript(t, page)
+
+	o := h.CreateGoal(ada, "Keep the lights on", "Customers expect it.")
+	if _, err := h.Service.MarkGoalOngoing(context.Background(), o.ID); err != nil {
+		t.Fatalf("MarkGoalOngoing: %v", err)
+	}
+	page = getBody(t, client, goalPageURL(ts.URL, o))
+	if button := assertTermHelp(t, page, pageElement(t, page, "span", "goal-kind"), "Ongoing", ongoing); attr(button, "aria-controls") != "kind-help" {
+		t.Errorf("the Ongoing button controls %q, want kind-help", attr(button, "aria-controls"))
+	}
+
+	p := h.CreateGoal(ada, "Find a market", "We need one.")
+	page = getBody(t, client, goalPageURL(ts.URL, p))
+	if kind := pageElement(t, page, "span", "goal-kind"); kind != `<span data-testid="goal-kind">Not yet Dated or Ongoing` {
+		t.Errorf("a Goal with no kind shows %s, want plain Not yet Dated or Ongoing", kind)
+	}
+	if strings.Contains(page, `id="kind-help"`) {
+		t.Errorf("a Goal with no kind has a kind explanation")
+	}
+}
+
+// An Ownerless badge says what Ownerless means on hover, on the Goals list and
+// in a parent Goal's Contributed to by list, where a button in every row would
+// be too heavy.
+func TestOwnerlessBadgesSayWhatOwnerlessMeans(t *testing.T) {
+	t.Parallel()
+
+	const ownerless = "Its Owner has left the company. It gets a new Owner when an Admin reassigns it, or when someone accepts a Handoff its Owner started before leaving."
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	parent := h.ActiveGoal(boss, "Reduce outages", "Outages cost trust.")
+	child := h.ActiveGoal(sam, "Migrate displays", "Displays fail often.")
+	link := h.RequestLink(sam, child, parent, "")
+	if _, err := h.Service.AcceptLink(context.Background(), link.ID, boss.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+	if err := h.Service.MarkDeparted(context.Background(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	client := signInClient(t, ts.URL, boss.Email)
+
+	for _, tc := range []struct{ where, page string }{
+		{"the Goals list", getBody(t, client, ts.URL+"/goals?org=all")},
+		{"the parent's Contributed to by list", getBody(t, client, goalPageURL(ts.URL, parent))},
+	} {
+		badge := tagAround(t, tc.page, `data-testid="ownerless"`)
+		if got, want := attr(badge, "title"), html.EscapeString(ownerless); got != want {
+			t.Errorf("the Ownerless badge on %s has title %q, want %q", tc.where, got, want)
+		}
+	}
+}
+
 // With a seeded company, every page that shows people shows them by Name with
 // their email a click, tap or keypress away, never an email as text until
 // asked for; the Print view, with no hover or controls, introduces them as
@@ -2913,8 +2998,10 @@ func TestRetiredDimensionLeavesGoalPageControlsOverHTTP(t *testing.T) {
 	if !strings.Contains(shown, `data-testid="goal-dimension-value">Growth`) || !strings.Contains(shown, `data-testid="retired"`) {
 		t.Errorf("Growth isn't shown marked retired:\n%s", shown)
 	}
-	if strings.Contains(shown, "Quarter") {
-		t.Errorf("a Retired Dimension the Goal carries no value in is listed:\n%s", shown)
+	for _, listed := range elementTexts(shown, "li", "goal-dimension") {
+		if strings.Contains(listed, "Quarter") {
+			t.Errorf("a Retired Dimension the Goal carries no value in is listed:\n%s", shown)
+		}
 	}
 	edit := openForm(t, page, "dimensions")
 	for _, d := range []domain.Dimension{pillar, quarter} {
