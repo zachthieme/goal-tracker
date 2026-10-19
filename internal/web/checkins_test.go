@@ -860,8 +860,12 @@ func TestCheckinOverdueMilestoneErrorShownNextToMilestoneDate(t *testing.T) {
 		fmt.Sprintf("milestone_date_reason_%d", beta.ID): {"It was really due yesterday."},
 	})
 	marker := fmt.Sprintf(`name="milestone_date_%d"`, beta.ID)
-	if msg := fieldError(t, body, marker); !strings.Contains(msg, "is overdue") {
-		t.Errorf("Milestone date field's error = %q, want the overdue one", msg)
+	msg := html.UnescapeString(fieldError(t, body, marker))
+	if !strings.Contains(msg, "is overdue (due Jan 1), so the Goal can't be Green.") {
+		t.Errorf("Milestone date field's error = %q, want the overdue one, its date as the page shows dates", msg)
+	}
+	if regexp.MustCompile(`\d{4}-\d{2}-\d{2}`).MatchString(msg) {
+		t.Errorf("Milestone date field's error = %q, want no ISO date", msg)
 	}
 }
 
@@ -1701,6 +1705,33 @@ func checkedHealth(page string) string {
 	return "none"
 }
 
+// A No change refused for an overdue Milestone reads the same on the card and,
+// once refused, as the form's top error: a sentence with the due date shown as
+// the page shows dates, not as ISO text (#342).
+func TestNoChangeOverdueRefusalReadsTheSameOnCardAndForm(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := overdueGreenGoal(h, sam)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	const want = `Milestone "Beta" is overdue (due Apr 2): submit a Check-in to move its date, mark it Done or remove it.`
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	card := between(t, page, `data-testid="no-change-card"`, `data-testid="checkin-form"`)
+	unavailable := tagAround(t, card, `data-testid="no-change-unavailable"`)
+	if got := html.UnescapeString(between(t, card[strings.Index(card, unavailable)+len(unavailable):], "", "</p>")); got != want {
+		t.Errorf("the card's reason = %q, want %q", got, want)
+	}
+
+	_, refused := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+	topError := pageElement(t, refused, "p", "checkin-error")
+	if got := html.UnescapeString(topError[strings.Index(topError, ">")+1:]); got != want {
+		t.Errorf("the form's top error = %q, want %q", got, want)
+	}
+}
+
 // While a Milestone is overdue the Check-in page doesn't preselect the latest
 // Check-in's Green — a slip is never hidden behind a Green — but leaves the
 // Health to pick, with the dates and Milestones section open; so does the page
@@ -1890,7 +1921,7 @@ func TestNoChangeRefusedWithoutPreviousCheckinLandsOnCheckinForm(t *testing.T) {
 
 	for _, hx := range []bool{false, true} {
 		_, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), hx)
-		assertNoChangeRefusalOnForm(t, page, "there is no previous Check-in to repeat")
+		assertNoChangeRefusalOnForm(t, page, "There is no previous Check-in to repeat.")
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
 		t.Errorf("a refused No change recorded a Check-in: history has %d, want 0", len(history))
@@ -1909,7 +1940,7 @@ func TestNoChangeRefusedOnGoalNotActive(t *testing.T) {
 	onHold := h.OnHoldGoal(sam, "Ship search", "People can't find things.", "Waiting on budget.")
 	cancelled := closeGoal(t, h, sam, h.ActiveGoal(sam, "Cut churn", "Customers leave."), domain.LifecycleCancelled)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	const reason = "only an Active Goal can be checked in on"
+	const reason = "Only an Active Goal can be checked in on."
 
 	for _, hx := range []bool{false, true} {
 		for _, goal := range []domain.Goal{onHold, cancelled} {
