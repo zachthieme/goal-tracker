@@ -293,8 +293,9 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     reads it without moving focus.
   - **Where:** removing a link (Goal page), retiring a Dimension value
     (Dimensions page), and rejecting a link request or a Handoff (Home, or the
-    request's pending page, whichever the Reject came from). The templ component is `toastNotice` in `layout.templ`;
-    a new Undo reuses it rather than making its own notice.
+    request's pending page, whichever the Reject came from). The templ
+    component is `toastNotice` in `layout.templ`; a new Undo reuses it rather
+    than making its own notice.
 - **Not found page:** like a refused Undo, a missing page shows a page, not
   bare text. A page you open that doesn't exist (an unknown URL, asked with
   any method, or a Goal, Report, publication or other thing that doesn't
@@ -310,8 +311,8 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
 - **Message page (`.message-page`):** a page that only says one thing (Not
   found, Can't undo, Can't remove link, a refused Nudge, a Check-in that
   can't be reached) sets its heading, sentence and way back in a 760px column
-  with 16px gaps. The column starts at the page's left edge, like every other page's content, and
-  isn't centred.
+  with 16px gaps. The column starts at the page's left edge, like every
+  other page's content, and isn't centred.
 - **Primary button (`.btn.primary`):**
   - Resting: `--color-primary-strong` fill, `--color-ink-inverse` text,
     `--radius-md`, 14px, weight 600.
@@ -526,8 +527,8 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     32px tall, and 44px on a coarse pointer.
   - **Paging:** the latest 5 entries show, a folded run counting as one.
     When there are more, a quiet **Show earlier** link (`?shown=25`) reloads
-    the page with 20 more under the same filter. Chips and paging are links, so History works without
-    script.
+    the page with 20 more under the same filter. Chips and paging are links,
+    so History works without script.
 - **Home's Needs you list (`homePage` in `home.templ`):** one card in the main
   column holding everything waiting on the person, in three subgroups, each a
   `.label` heading over ruled rows (`.hm-list`):
