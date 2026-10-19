@@ -36,6 +36,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Risks lists every Active Red and Yellow Goal under a new first card, Not Green, and the top bar's Risks count includes them (#344).
 - [user] The Goal page explains Dated, Ongoing, Delegates and Dimension values with a help button, and Ownerless badges say what Ownerless means on hover. The Report builder explains Also include and Leave out, and its rules hint is in plain words (#282).
 - [ops] The directory sync reads each person's timezone, an IANA name, from an optional `timezone` column in the CSV directory file or a `timezone` attribute in Authentik. A blank or invalid value means none, and an invalid one is logged at WARN. Nothing uses it yet. A new migration (`0050_account_timezones`) adds `accounts.timezone` on startup; no action is needed (#353).
+- [user] People's Names no longer have a dotted underline that made them look like links. Hovering over a Name or focusing it shows a faint tint, and clicking it still shows the email (#278).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
