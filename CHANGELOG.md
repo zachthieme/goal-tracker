@@ -52,6 +52,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The activation checklist, on the New goal form, a Proposed Goal's page and its define page (and the checklist that updates as the form is typed), marks an item not yet met with a neutral ○ "to do" in place of a red ✗ "missing" (#253).
 - [user] A No change is refused once the back-to-Green date has passed, whatever the Health. Move the date, with a reason, or come back to Green (#242).
 - [ops] A new migration (`0052_back_to_green_slips`) adds `date_slips.back_to_green` (default 0) on startup. Existing rows are unchanged, and no action is needed (#242).
+- [user] A back-to-Green date that slipped in the current Run off Green shows as slipped ("Oct 3 ~~Sep 12~~ (3)") on Risks' Not Green rows and on Report exception blocks, where a publication keeps it as published, on Print and in the Markdown export too (#352).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
