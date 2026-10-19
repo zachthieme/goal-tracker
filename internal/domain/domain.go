@@ -25,7 +25,9 @@ type Service struct {
 	clock   clock.Clock
 	email   email.Sender
 	admins  map[string]bool
-	// loc is the org's timezone: the calendar a Goal's cadence is counted in.
+	// loc is the company's timezone, the calendar company-wide dates are read
+	// in. A Goal's own dates are read in it too when its Owner has no Timezone
+	// or it is Ownerless (see GoalTimezone).
 	loc *time.Location
 	// baseURL is where people reach the web app, for the links in the emails
 	// the Service sends itself (a comment alert). Empty leaves links relative.
@@ -42,8 +44,10 @@ type Service struct {
 // Option configures a Service at construction.
 type Option func(*Service)
 
-// WithTimezone sets the org's timezone, the calendar a Goal's Check-in cadence
-// is counted in (CONTEXT.md: Stale). Without it the org runs on UTC.
+// WithTimezone sets the company's timezone, used for company-wide dates, such
+// as a Report's baseline, and for a Goal whose Owner has no Timezone or which is
+// Ownerless (CONTEXT.md: Timezone; see GoalTimezone). Without it the company
+// runs on UTC.
 func WithTimezone(loc *time.Location) Option {
 	return func(s *Service) { s.loc = loc }
 }
@@ -121,8 +125,10 @@ func (s *Service) Now() time.Time {
 	return s.clock.Now()
 }
 
-// Timezone returns the org's timezone, the calendar the pages count days and
-// weeks in.
+// Timezone returns the company's timezone, the calendar company-wide dates are
+// read in and the pages show dates and times in. A Goal's own dates are judged
+// in it only when its Owner has no Timezone or it is Ownerless; see
+// GoalTimezone.
 func (s *Service) Timezone() *time.Location {
 	return s.loc
 }

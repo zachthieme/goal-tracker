@@ -163,6 +163,35 @@ func TestRisksPageListsOverduePathsToGreen(t *testing.T) {
 	}
 }
 
+// A Path to Green overdue chip counts its days in the Goal's Owner's Timezone,
+// as the flag is judged (CONTEXT.md: Timezone): just past midnight in Tokyo it
+// is a day further overdue than for an Owner with no Timezone, counted in the
+// company's UTC.
+func TestRisksPathToGreenDaysAreCountedInTheOwnersTimezone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	kenji := h.SignIn("kenji@example.com")
+	h.SetTimezone(kenji, "Asia/Tokyo")
+	target := time.Date(2026, 1, 5, 0, 0, 0, 0, time.UTC)
+	tokyo := h.ActiveGoal(kenji, "Tokyo recovery", "It matters.")
+	h.Checkin(kenji, tokyo.ID, domain.HealthRed, "Blocked.", "Escalate.", target)
+	plain := h.ActiveGoal(sam, "Stalled recovery", "It matters.")
+	h.Checkin(sam, plain.ID, domain.HealthRed, "Blocked.", "Escalate.", target)
+	h.Clock.Set(time.Date(2026, 1, 7, 15, 4, 0, 0, time.UTC)) // Jan 8, 12:04am in Tokyo
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks?org=all")
+
+	if chip := riskChip(t, riskRowOf(t, page, tokyo), "path-overdue"); !strings.HasSuffix(chip, ">Path to Green 3 days overdue") {
+		t.Errorf("overdue chip of an Owner in Tokyo doesn't say 3 days overdue: %s", chip)
+	}
+	if chip := riskChip(t, riskRowOf(t, page, plain), "path-overdue"); !strings.HasSuffix(chip, ">Path to Green 2 days overdue") {
+		t.Errorf("overdue chip of an Owner with no Timezone doesn't say 2 days overdue: %s", chip)
+	}
+}
+
 // A Path to Green overdue chip says in words how many days overdue it is.
 func TestRisksPathToGreenChipSaysItsDaysInWords(t *testing.T) {
 	t.Parallel()

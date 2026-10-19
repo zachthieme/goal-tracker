@@ -122,6 +122,63 @@ func TestCadenceIsCountedInTheOrgTimezone(t *testing.T) {
 	}
 }
 
+// Stale is counted in days of the Owner's Timezone, not the company's
+// (CONTEXT.md: Stale): a Check-in late on Jan 2 in UTC is Jan 3 in Tokyo, so a
+// Tokyo Owner's Goal is 7 days on, not 8, and isn't yet Stale. An Owner with no
+// Timezone is counted in the company's.
+func TestStaleIsCountedInTheOwnersTimezone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	kenji := h.SignIn("kenji@example.com")
+	h.SetTimezone(kenji, "Asia/Tokyo")
+	g := h.ActiveGoal(kenji, "Ship search", "People can't find things.")
+	h.Clock.Set(time.Date(2026, 1, 2, 16, 0, 0, 0, time.UTC)) // Jan 3, 1am in Tokyo
+	h.Checkin(kenji, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+
+	h.Clock.Set(time.Date(2026, 1, 10, 10, 0, 0, 0, time.UTC))
+	if f := h.Freshness(g.ID); f.Stale || f.DaysSince != 7 {
+		t.Errorf("Stale, DaysSince = %v, %d for an Owner in Tokyo; want not Stale, 7 days", f.Stale, f.DaysSince)
+	}
+	h.SetTimezone(kenji, "")
+	if f := h.Freshness(g.ID); !f.Stale || f.DaysSince != 8 {
+		t.Errorf("Stale, DaysSince = %v, %d for an Owner with no Timezone; want Stale, 8 days in the company's", f.Stale, f.DaysSince)
+	}
+}
+
+// A Path to Green's target date passes in the Owner's Timezone (CONTEXT.md:
+// Timezone): at 4pm UTC on its target date it is already the next day in
+// Tokyo, so a Tokyo Owner's Path to Green is overdue, and listed so, while one
+// whose Owner has no Timezone isn't yet.
+func TestPathToGreenGoesOverdueInTheOwnersTimezone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	kenji := h.SignIn("kenji@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.SetTimezone(kenji, "Asia/Tokyo")
+	tokyo := h.ActiveGoal(kenji, "Ship search", "People can't find things.")
+	plain := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	target := time.Date(2026, 1, 20, 0, 0, 0, 0, time.UTC)
+	h.Checkin(kenji, tokyo.ID, domain.HealthRed, "Blocked.", "Escalate to the vendor.", target)
+	h.Checkin(sam, plain.ID, domain.HealthRed, "Blocked.", "Escalate to the vendor.", target)
+
+	h.Clock.Set(time.Date(2026, 1, 20, 16, 0, 0, 0, time.UTC)) // Jan 21, 1am in Tokyo
+	if f := h.Freshness(tokyo.ID); !f.PathToGreenOverdue {
+		t.Errorf("Path to Green of an Owner in Tokyo isn't overdue the day after its target there")
+	}
+	if f := h.Freshness(plain.ID); f.PathToGreenOverdue {
+		t.Errorf("Path to Green of an Owner with no Timezone is overdue on its target date in the company's")
+	}
+	signals, err := h.Service.FreshnessSignals(context.Background())
+	if err != nil {
+		t.Fatalf("FreshnessSignals: %v", err)
+	}
+	if len(signals.OverduePaths) != 1 || signals.OverduePaths[0].Goal.ID != tokyo.ID {
+		t.Errorf("OverduePaths = %+v, want only the Tokyo Owner's Goal", signals.OverduePaths)
+	}
+}
+
 // A Goal is flagged once its Path to Green's target date has passed and it
 // still isn't Green (CONTEXT.md: Path to Green). The target date itself is not
 // yet overdue, and a Check-in back at Green clears the flag.

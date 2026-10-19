@@ -115,7 +115,7 @@ GOAL_TRACKER_SESSION_KEY=
 # Admin page.
 GOAL_TRACKER_ADMINS=it-admin@example.com,ops-lead@example.com
 
-# The company's timezone. Check-ins fall due and go Stale at its midnight.
+# The company's timezone, and the timezone of anyone the directory gives none.
 GOAL_TRACKER_TIMEZONE=America/New_York
 
 # People and their Managers.

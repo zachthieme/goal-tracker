@@ -38,10 +38,10 @@ func validDirection(d string) bool {
 }
 
 // OffTarget reports whether reading has missed the Metric's target as of
-// today, a calendar date in the org's timezone (see orgDate): the target date
-// has passed and the reading falls short of the target in the Metric's
-// direction. A reading equal to the target is on target, and up to and
-// including its target date a Metric is never off target.
+// today, a calendar date in the Goal's timezone (see Service.GoalTimezone and
+// orgDate): the target date has passed and the reading falls short of the
+// target in the Metric's direction. A reading equal to the target is on target,
+// and up to and including its target date a Metric is never off target.
 func (m Metric) OffTarget(reading float64, today time.Time) bool {
 	if !m.TargetDate.Before(today) {
 		return false
