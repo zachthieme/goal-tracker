@@ -28,9 +28,9 @@ func (q *Queries) CountMilestoneChurn(ctx context.Context, goalID int64) (int64,
 
 const createCheckin = `-- name: CreateCheckin :one
 INSERT INTO checkins (goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, explanation,
-                      lifecycle_from, lifecycle_to, lifecycle_reason, outcome, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-RETURNING id, goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at, explanation, lifecycle_from, lifecycle_to, lifecycle_reason, outcome
+                      lifecycle_from, lifecycle_to, lifecycle_reason, outcome, asks_for_help, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+RETURNING id, goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at, explanation, lifecycle_from, lifecycle_to, lifecycle_reason, outcome, asks_for_help
 `
 
 type CreateCheckinParams struct {
@@ -46,6 +46,7 @@ type CreateCheckinParams struct {
 	LifecycleTo     string
 	LifecycleReason string
 	Outcome         string
+	AsksForHelp     int64
 	CreatedAt       string
 }
 
@@ -63,6 +64,7 @@ func (q *Queries) CreateCheckin(ctx context.Context, arg CreateCheckinParams) (C
 		arg.LifecycleTo,
 		arg.LifecycleReason,
 		arg.Outcome,
+		arg.AsksForHelp,
 		arg.CreatedAt,
 	)
 	var i Checkin
@@ -81,6 +83,7 @@ func (q *Queries) CreateCheckin(ctx context.Context, arg CreateCheckinParams) (C
 		&i.LifecycleTo,
 		&i.LifecycleReason,
 		&i.Outcome,
+		&i.AsksForHelp,
 	)
 	return i, err
 }
@@ -237,7 +240,7 @@ func (q *Queries) CreateMilestoneChange(ctx context.Context, arg CreateMilestone
 }
 
 const getLatestCheckin = `-- name: GetLatestCheckin :one
-SELECT id, goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at, explanation, lifecycle_from, lifecycle_to, lifecycle_reason, outcome FROM checkins WHERE goal_id = ? ORDER BY created_at DESC, id DESC LIMIT 1
+SELECT id, goal_id, author_id, owner_id, health, status, path_to_green, path_target_date, created_at, explanation, lifecycle_from, lifecycle_to, lifecycle_reason, outcome, asks_for_help FROM checkins WHERE goal_id = ? ORDER BY created_at DESC, id DESC LIMIT 1
 `
 
 // The most recent Check-in on a Goal, which carries the Goal's current Health,
@@ -261,12 +264,13 @@ func (q *Queries) GetLatestCheckin(ctx context.Context, goalID int64) (Checkin, 
 		&i.LifecycleTo,
 		&i.LifecycleReason,
 		&i.Outcome,
+		&i.AsksForHelp,
 	)
 	return i, err
 }
 
 const listCheckins = `-- name: ListCheckins :many
-SELECT checkins.id, checkins.goal_id, checkins.author_id, checkins.owner_id, checkins.health, checkins.status, checkins.path_to_green, checkins.path_target_date, checkins.created_at, checkins.explanation, checkins.lifecycle_from, checkins.lifecycle_to, checkins.lifecycle_reason, checkins.outcome, author.id, author.email, author.is_admin, author.created_at, author.departed, author.name, author.manager_id, author.timezone, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed, owner.name, owner.manager_id, owner.timezone
+SELECT checkins.id, checkins.goal_id, checkins.author_id, checkins.owner_id, checkins.health, checkins.status, checkins.path_to_green, checkins.path_target_date, checkins.created_at, checkins.explanation, checkins.lifecycle_from, checkins.lifecycle_to, checkins.lifecycle_reason, checkins.outcome, checkins.asks_for_help, author.id, author.email, author.is_admin, author.created_at, author.departed, author.name, author.manager_id, author.timezone, owner.id, owner.email, owner.is_admin, owner.created_at, owner.departed, owner.name, owner.manager_id, owner.timezone
 FROM checkins
 JOIN accounts author ON author.id = checkins.author_id
 JOIN accounts owner ON owner.id = checkins.owner_id
@@ -306,6 +310,7 @@ func (q *Queries) ListCheckins(ctx context.Context, goalID int64) ([]ListCheckin
 			&i.Checkin.LifecycleTo,
 			&i.Checkin.LifecycleReason,
 			&i.Checkin.Outcome,
+			&i.Checkin.AsksForHelp,
 			&i.Account.ID,
 			&i.Account.Email,
 			&i.Account.IsAdmin,
