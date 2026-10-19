@@ -64,6 +64,12 @@ type ReportBlock struct {
 	// PriorHealth is the Goal's Health at the baseline, set only when its
 	// Health has changed since, shown beside it ("Yellow · was Green").
 	PriorHealth string `json:",omitempty"`
+	// RunOffGreenWeeks is the Goal's Run off Green in weeks when the Report
+	// was drafted, shown beside its Health ("Red · 5 wks"); see RunOffGreen.
+	// It is 0 when the Goal isn't Yellow or Red. It is frozen with the
+	// snapshot, so a later Check-in doesn't change a publication's count; a
+	// snapshot frozen before Reports showed it has 0.
+	RunOffGreenWeeks int `json:",omitempty"`
 	// Changes say in words what changed on the Goal since the baseline, in
 	// the order reportChanges gives them ("Turned Red", "Delivery date
 	// slipped 3 weeks"); a Goal whose trouble is only standing has none.
@@ -393,17 +399,18 @@ func (h goalHistory) badges(since func(time.Time) bool, fresh Freshness) []strin
 func (s *Service) reportBlock(ctx context.Context, h goalHistory, since func(time.Time) bool, fresh Freshness) (ReportBlock, error) {
 	latest := h.latest()
 	b := ReportBlock{
-		Goal:           h.goal,
-		Health:         latest.Health,
-		PriorHealth:    h.priorHealth(since),
-		Badges:         h.badges(since, fresh),
-		PriorDueDates:  h.priorDates(0),
-		Status:         latest.Status,
-		PathToGreen:    latest.PathToGreen,
-		PathTargetDate: latest.PathTargetDate,
-		Explanation:    latest.Explanation,
-		AsksForHelp:    h.goal.Lifecycle == LifecycleActive && needsPathToGreen(latest.Health) && latest.AsksForHelp,
-		Timezone:       s.GoalTimezone(h.goal).String(),
+		Goal:             h.goal,
+		Health:           latest.Health,
+		PriorHealth:      h.priorHealth(since),
+		RunOffGreenWeeks: s.runOffGreen(h.goal, h.checkins).Weeks,
+		Badges:           h.badges(since, fresh),
+		PriorDueDates:    h.priorDates(0),
+		Status:           latest.Status,
+		PathToGreen:      latest.PathToGreen,
+		PathTargetDate:   latest.PathTargetDate,
+		Explanation:      latest.Explanation,
+		AsksForHelp:      h.goal.Lifecycle == LifecycleActive && needsPathToGreen(latest.Health) && latest.AsksForHelp,
+		Timezone:         s.GoalTimezone(h.goal).String(),
 	}
 	if b.AsksForHelp {
 		var err error

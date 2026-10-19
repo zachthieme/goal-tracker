@@ -219,3 +219,36 @@ func TestRunOffGreenCountsWeeksInTheGoalsTimezone(t *testing.T) {
 		t.Errorf("Weeks for an Owner in Los Angeles, UTC company = %d, want 3, counted in the Owner's", r.Weeks)
 	}
 }
+
+// A drafted Report's exception block carries the Goal's Run off Green in
+// weeks, read when it is drafted; a Green exception, here an Ownerless Goal,
+// carries none.
+func TestReportBlockCarriesTheRunOffGreen(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	ownerless := h.ActiveGoal(sam, "Cut churn", "Keep customers.")
+	h.Checkin(sam, ownerless.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	if err := h.Service.MarkDeparted(context.Background(), boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	// Red on Mondays 5, 12 and 19 January, read on the 19th.
+	h.Clock.Set(time.Date(2026, 1, 5, 9, 0, 0, 0, time.UTC))
+	redCheckin(h, boss, red.ID)
+	for range 2 {
+		h.Clock.Advance(7 * day)
+		redCheckin(h, boss, red.ID)
+	}
+
+	r := draftReport(t, h, boss, time.Time{}, red, ownerless)
+	weeks := map[int64]int{}
+	for _, b := range r.Exceptions {
+		weeks[b.Goal.ID] = b.RunOffGreenWeeks
+	}
+	if len(weeks) != 2 || weeks[red.ID] != 3 || weeks[ownerless.ID] != 0 {
+		t.Errorf("RunOffGreenWeeks by Goal = %v, want the Red Goal's 3 and the Ownerless Green Goal's 0", weeks)
+	}
+}
