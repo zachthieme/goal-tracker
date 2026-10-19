@@ -18,6 +18,12 @@ type checkinFormData struct {
 	Status         string
 	PathToGreen    string
 	PathTargetDate string
+	// AsksForHelp is the Path to Green's "This asks for help" box: ticked
+	// while the Goal's ask is open, so carrying it forward takes no effort,
+	// or as posted. AskAddressee is whom an ask would go to, nil for no one
+	// above the Owner (CONTEXT.md: Ask for help).
+	AsksForHelp  bool
+	AskAddressee *domain.Account
 	// RolledUp is the Goal's Rolled-up Health, shown in the form so the Owner can
 	// see the worst among their Active children while setting their own Health
 	// (ADR-0003). Explanation is the Owner's reason for a difference, required
@@ -368,7 +374,8 @@ func (d lifecycleFormData) summary() string {
 // its Health picked, Green when there is none, and the status, Path to Green,
 // explanation and readings empty, with the latest Check-in's answers and each
 // Metric's latest reading shown as ghost text, so a full Check-in is written
-// fresh (CONTEXT.md: Check-in). It also carries the Rolled-up Health so the
+// fresh (CONTEXT.md: Check-in). Its "This asks for help" box starts ticked
+// while the Goal's ask is open, so closing it is a deliberate act. It also carries the Rolled-up Health so the
 // form can show it beside the Owner's Health, and the Goal's current delivery
 // date and Planned Milestones so the Owner can move or close them. While a
 // Milestone is overdue it picks no Health over a latest Green, as a slip is
@@ -378,6 +385,8 @@ func (d lifecycleFormData) summary() string {
 func checkinFormFromLatest(v goalView) checkinFormData {
 	g := v.Goal
 	d := checkinFormData{GoalID: g.ID, Health: domain.HealthGreen, RolledUp: v.RolledUp, Metrics: v.Metrics, Shown: v.dates()}
+	d.AsksForHelp = v.Ask != nil
+	d.AskAddressee = v.AskAddressee
 	if latest := v.LatestCheckin; latest != nil {
 		d.Health = latest.Health
 	}
@@ -409,9 +418,10 @@ func checkinFormFromLatest(v goalView) checkinFormData {
 }
 
 // checkinSection is the Goal page's Latest status card: the Goal's current
-// Health, status, and Path to Green from its latest Check-in, its Rolled-up
-// Health and any explanation of the difference, and who wrote the Check-in and
-// when (CONTEXT.md: Check-in, Rolled-up Health).
+// Health, status, and Path to Green from its latest Check-in, any open Ask for
+// help with whom it asks, its Rolled-up Health and any explanation of the
+// difference, and who wrote the Check-in and when (CONTEXT.md: Check-in, Ask
+// for help, Rolled-up Health).
 templ checkinSection(v goalView) {
 	{{ g := v.Goal }}
 	<section data-testid="goal-checkins" class="card gp-card">
@@ -429,6 +439,18 @@ templ checkinSection(v goalView) {
 			if v.LatestCheckin.PathToGreen != "" {
 				<p data-testid="goal-path-to-green">
 					<strong>Path to Green:</strong> { v.LatestCheckin.PathToGreen } — back to Green by { v.dates().date(v.LatestCheckin.PathTargetDate) }
+				</p>
+			}
+			if v.Ask != nil {
+				<p data-testid="goal-ask-for-help">
+					<strong>Asks for help</strong>
+					if v.Ask.Addressee != nil {
+						{ "of " }
+						@person(*v.Ask.Addressee)
+					} else {
+						{ "· no one above the Owner" }
+					}
+					<a href="#comments">Answer</a>
 				</p>
 			}
 			if v.LatestCheckin.Explanation != "" {
@@ -629,6 +651,16 @@ templ checkinForm(d checkinFormData) {
 			</label>
 			if d.Previous.PathTargetDate != "" {
 				<span data-testid="checkin-path-target-last" id={ d.pathTargetLastID() } class="hint">Last time: { d.Shown.dateText(d.Previous.PathTargetDate) }</span>
+			}
+			<label><input type="checkbox" name="asks_for_help" value="1" data-testid="checkin-asks-for-help" checked?={ d.AsksForHelp }/> This asks for help</label>
+			if d.AskAddressee != nil {
+				<span data-testid="checkin-ask-addressee" class="hint">
+					{ "Goes to " }
+					@person(*d.AskAddressee)
+					{ "." }
+				</span>
+			} else {
+				<span data-testid="checkin-ask-addressee" class="hint">No one is above the Owner to ask. It still shows on Risks and in Reports.</span>
 			}
 			@checkinFieldError(d.Error, "path_to_green")
 		</fieldset>
