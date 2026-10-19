@@ -418,7 +418,8 @@ func checkinFormFromLatest(v goalView) checkinFormData {
 }
 
 // checkinSection is the Goal page's Latest status card: the Goal's current
-// Health, status, and Path to Green from its latest Check-in, any open Ask for
+// Health with its Run off Green, status, and Path to Green from its latest
+// Check-in, any open Ask for
 // help with whom it asks, its Rolled-up Health and any explanation of the
 // difference, and who wrote the Check-in and when (CONTEXT.md: Check-in, Ask
 // for help, Rolled-up Health).
@@ -479,7 +480,8 @@ templ checkinSection(v goalView) {
 }
 
 // statusCells open the Latest status card: a row of cells, each a small label
-// over a value. The Owner's Health is always there; the Rolled-up Health, with
+// over a value. The Owner's Health is always there, with its Run off Green
+// beside it while it has one ("Red · 5 wks"); the Rolled-up Health, with
 // its Stale-children count, only when the Goal has Active children; and the
 // Back to Green date only when there is a Path to Green.
 templ statusCells(v goalView) {
@@ -487,7 +489,12 @@ templ statusCells(v goalView) {
 	<dl data-testid="goal-status-cells" class="gp-cells">
 		<div data-testid="goal-health-cell" class="gp-cell">
 			<dt class="label">Owner's Health</dt>
-			<dd><span class={ "badge", healthClass(c.Health) }><span class="dot"></span><span data-testid="goal-health">{ c.Health }</span></span></dd>
+			<dd>
+				<span class={ "badge", healthClass(c.Health) }><span class="dot"></span><span data-testid="goal-health">{ c.Health }</span></span>
+				if v.RunOffGreen.Running() {
+					<span data-testid="goal-run-off-green" class="muted small">{ "· " + v.RunOffGreen.Label() }</span>
+				}
+			</dd>
 		</div>
 		if v.RolledUp.Present || v.RolledUp.StaleChildren > 0 {
 			<div data-testid="goal-rollup-cell" class="gp-cell">

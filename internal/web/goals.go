@@ -813,6 +813,10 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("read health strip: %w", err)
 	}
+	runOffGreen, err := s.svc.RunOffGreen(ctx, id)
+	if err != nil {
+		return goalView{}, fmt.Errorf("read run off green: %w", err)
+	}
 	suggestions, err := s.svc.ParentSuggestions(ctx, id)
 	if err != nil {
 		return goalView{}, fmt.Errorf("load parent suggestions: %w", err)
@@ -944,6 +948,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Required:           required,
 		Incomplete:         incomplete,
 		HealthStrip:        strip,
+		RunOffGreen:        runOffGreen,
 		Suggestions:        suggestions,
 		Suggested:          suggested,
 		Nudges:             nudges,
@@ -1036,6 +1041,10 @@ type goalView struct {
 	// its Active children — shown next to the Owner-set Health (ADR-0003). Its
 	// Present is false when there is nothing to roll up.
 	RolledUp domain.RolledUpHealth
+	// RunOffGreen is how long the Goal has been Yellow or Red, shown beside
+	// the Owner's Health; it isn't running unless the Goal is Active and off
+	// Green (CONTEXT.md: Run off Green).
+	RunOffGreen domain.RunOffGreen
 	// Ask is the Goal's open Ask for help, nil when it has none. AskAddressee
 	// is whom an ask from its Owner goes to, open or not, for the Check-in
 	// form's hint; nil when no one is above the Owner (CONTEXT.md: Ask for

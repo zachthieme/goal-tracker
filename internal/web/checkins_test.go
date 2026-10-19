@@ -204,6 +204,33 @@ func TestSmokeCheckinDeliveryDateSlipShownStruckThrough(t *testing.T) {
 	}
 }
 
+// The Owner's Health cell of a Red Goal reads its Run off Green beside the
+// badge ("Red · 2 wks"); a Green Goal's shows none (CONTEXT.md: Run off Green).
+func TestLatestStatusShowsTheRunOffGreen(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	red := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	green := h.ActiveGoal(sam, "Cut churn", "Keep customers.")
+	h.Checkin(sam, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	// Red on Mondays 5 and 12 January, read on the 12th.
+	for _, d := range []int{5, 12} {
+		h.Clock.Set(time.Date(2026, time.January, d, 9, 0, 0, 0, time.UTC))
+		h.Checkin(sam, red.ID, domain.HealthRed, "Blocked.", "Escalate.", h.Clock.Now().AddDate(0, 1, 0))
+	}
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	cell := between(t, getBody(t, client, goalPageURL(ts.URL, red)), `data-testid="goal-health-cell"`, "</dd>")
+	if got := elementTexts(cell, "span", "goal-run-off-green"); !slices.Equal(got, []string{"· 2 wks"}) {
+		t.Errorf("Owner's Health cell reads its Run off Green %q, want \"· 2 wks\"; cell:\n%s", got, cell)
+	}
+	if page := getBody(t, client, goalPageURL(ts.URL, green)); strings.Contains(page, `data-testid="goal-run-off-green"`) {
+		t.Errorf("a Green Goal's page shows a Run off Green:\n%s", between(t, page, `data-testid="goal-health-cell"`, "</dd>"))
+	}
+}
+
 // The Latest status card opens with a row of cells, each a small label over a
 // value: the Owner's Health, the Rolled-up Health with its Stale-children count
 // when the Goal has Active children, and the Back to Green date when there is a
