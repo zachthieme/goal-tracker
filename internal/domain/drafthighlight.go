@@ -149,8 +149,14 @@ func (s *Service) EditDraftHighlight(ctx context.Context, actorID, id int64, kin
 	return draft, nil
 }
 
+// DraftHighlight returns the Draft Highlight id, pending or not, with who
+// logged it. Only its Goal's Owner or a Delegate, as viewerID, may see it.
+func (s *Service) DraftHighlight(ctx context.Context, viewerID, id int64) (DraftHighlight, error) {
+	return s.draftHighlightFor(ctx, viewerID, id)
+}
+
 // draftHighlightFor loads the Draft Highlight id, pending or not, for actorID
-// to change: only its Goal's Owner or a Delegate may.
+// to see or change: only its Goal's Owner or a Delegate may.
 func (s *Service) draftHighlightFor(ctx context.Context, actorID, id int64) (DraftHighlight, error) {
 	row, err := s.queries.GetDraftHighlight(ctx, id)
 	if err != nil {
