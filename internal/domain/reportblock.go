@@ -85,6 +85,13 @@ type ReportBlock struct {
 	Milestones     []ReportMilestone
 	Metrics        []ReportMetric
 	RolledUp       RolledUpHealth
+	// ContributesTo are the Goals this one contributes to that the Report
+	// holds. Behind are the Goals that contribute to it that the Report holds,
+	// and the Red and Yellow Active ones it doesn't, which set its Rolled-up
+	// Health (#246). Both are Red first, then Yellow, then the rest, and a
+	// snapshot frozen before Reports named them has neither.
+	ContributesTo []LinkedGoal `json:",omitempty"`
+	Behind        []LinkedGoal `json:",omitempty"`
 	// Fields are the Goal's values in the Fields the definition chose, shown
 	// as labelled values beside the Goal, never in the narrative (ADR 0005).
 	Fields []FieldValue `json:",omitempty"`
@@ -173,6 +180,9 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 	sortReportExceptions(exceptions)
 	for _, x := range exceptions {
 		r.Exceptions = append(r.Exceptions, x.block)
+	}
+	if err := s.linkReportBlocks(ctx, &r); err != nil {
+		return Report{}, err
 	}
 	if err := s.draftNarrative(ctx, &r); err != nil {
 		return Report{}, err

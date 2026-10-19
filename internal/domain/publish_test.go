@@ -725,3 +725,72 @@ func TestSnapshotFromBeforeSelectionsHasNone(t *testing.T) {
 		t.Errorf("pre-selection snapshot's Report %q, want it kept", got.Report.Definition.Name)
 	}
 }
+
+// A publication freezes what its blocks count and name behind their Rolled-up
+// Health and what they contribute to: a later Check-in that turns a Red child
+// Green changes the next draft, not the publication (#246).
+func TestPublicationFreezesItsLinkedGoals(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	s := h.LinkedGoalsReport(boss)
+	pub := h.PublishReport(boss, s.Definition)
+	h.Clock.Advance(day)
+	checkinHealth(h, boss, s.Beta, domain.HealthGreen)
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	b := linkedBlock(t, got.Report, s.Referral)
+	if want := []domain.LinkedGoal{
+		linked(s.Alpha, domain.HealthRed, true),
+		linked(s.Beta, domain.HealthRed, false),
+		linked(s.Gamma, domain.HealthYellow, false),
+		linked(s.Epsilon, domain.HealthGreen, true),
+	}; !slices.Equal(b.Behind, want) {
+		t.Errorf("published Behind = %+v, want %+v as it read when published", b.Behind, want)
+	}
+	if want := []domain.LinkedGoal{linked(s.Growth, domain.HealthRed, true)}; !slices.Equal(b.ContributesTo, want) {
+		t.Errorf("published ContributesTo = %+v, want %+v", b.ContributesTo, want)
+	}
+	if b.RolledUp.RedChildren != 2 || b.RolledUp.YellowChildren != 1 {
+		t.Errorf("published RolledUp = %+v, want 2 Red and 1 Yellow as when published", b.RolledUp)
+	}
+
+	draft, err := h.Service.DraftReport(ctx, s.Definition, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	if ru := linkedBlock(t, draft, s.Referral).RolledUp; ru.RedChildren != 1 {
+		t.Errorf("next draft RolledUp = %+v, want 1 Red now Beta payouts is Green", ru)
+	}
+}
+
+// A snapshot frozen before Reports counted Red and Yellow children or named
+// linked Goals still loads: its blocks name none, and count only their Stale
+// children (#246).
+func TestSnapshotFromBeforeLinkedGoalsCountsOnlyStale(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	s := h.LinkedGoalsReport(boss)
+	pub := h.PublishReport(boss, s.Definition)
+	h.FreezeBeforeLinkedGoals(pub, s.Referral)
+
+	got, err := h.Service.GetPublication(context.Background(), pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	for _, b := range got.Report.Exceptions {
+		if b.Behind != nil || b.ContributesTo != nil {
+			t.Errorf("%q names Behind %+v and ContributesTo %+v, want none", b.Goal.Title, b.Behind, b.ContributesTo)
+		}
+	}
+	if got := linkedBlock(t, got.Report, s.Referral).RolledUp.CountLine(); got != "1 of 3 Stale" {
+		t.Errorf("CountLine() = %q, want %q", got, "1 of 3 Stale")
+	}
+}
