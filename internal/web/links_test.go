@@ -621,6 +621,8 @@ func TestRemoveShowsOnALinkOnlyForAnOwnerOfEitherGoal(t *testing.T) {
 	}{
 		{"sam@example.com", "goal-parents", child, parent, true},
 		{"pat@example.com", "goal-children", parent, child, true},
+		{"pat@example.com", "goal-parents", child, parent, true},
+		{"sam@example.com", "goal-children", parent, child, true},
 		{"lee@example.com", "goal-parents", child, parent, false},
 		{"lee@example.com", "goal-children", parent, child, false},
 	}
@@ -665,5 +667,32 @@ func TestRefusedLinkRemovalShowsAPageSayingWhy(t *testing.T) {
 	}
 	if got := h.ParentsOf(child); len(got) != 1 || got[0].ID != parent.ID {
 		t.Errorf("ParentsOf(child) = %+v after a refused removal, want the parent", got)
+	}
+}
+
+// A refused removal posted without a Goal to go back to, or with one that
+// isn't a number, links Back to Home rather than to a Goal page that isn't
+// there.
+func TestRefusedLinkRemovalWithoutAGoalLinksBackHome(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	_, _, link := linkedAcrossOwners(t, h)
+	h.SignIn("lee@example.com")
+	lee := signInClient(t, ts.URL, "lee@example.com")
+
+	for name, form := range map[string]url.Values{
+		"no goal_id":  {},
+		"goal_id=abc": {"goal_id": {"abc"}},
+	} {
+		resp := postForm(t, lee, fmt.Sprintf("%s/links/%d/remove", ts.URL, link.ID), form)
+		body := readBody(t, resp)
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("%s: status %d, want 403", name, resp.StatusCode)
+		}
+		if want := `<a href="/home">Back</a>`; !strings.Contains(body, want) {
+			t.Errorf("%s: refusal page has no %s:\n%s", name, want, body)
+		}
 	}
 }

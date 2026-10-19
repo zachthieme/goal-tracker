@@ -113,6 +113,41 @@ func TestARequestTheClientAbandonedIsNotLoggedAsAServerError(t *testing.T) {
 	}
 }
 
+// A request the client abandoned is still logged, at DEBUG, as abandoned with
+// its method and path, and without a cause, so an operator debugging can see
+// it went.
+func TestARequestTheClientAbandonedIsLoggedAtDebug(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	var buf bytes.Buffer
+	srv := web.NewServer(h.Service, web.WithLogger(slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelDebug}))))
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	form := url.Values{"email": {"sam@example.com"}}
+	r := httptest.NewRequestWithContext(ctx, http.MethodPost, "/signin", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	srv.ServeHTTP(httptest.NewRecorder(), r)
+
+	var abandoned []map[string]any
+	for _, rec := range logRecords(t, &buf) {
+		if rec["msg"] == "request abandoned" {
+			abandoned = append(abandoned, rec)
+		}
+	}
+	if len(abandoned) != 1 {
+		t.Fatalf("logged %d request abandoned records, want 1:\n%s", len(abandoned), &buf)
+	}
+	rec := abandoned[0]
+	if rec["level"] != "DEBUG" || rec["method"] != http.MethodPost || rec["path"] != "/signin" {
+		t.Errorf("record %v, want a DEBUG for POST /signin", rec)
+	}
+	if _, ok := rec["err"]; ok {
+		t.Errorf("record %v has an err, want none", rec)
+	}
+}
+
 // A refusal the app means to give, like a Departed person's sign-in, is not a
 // server error, so it leaves the server log alone.
 func TestARefusalIsNotLoggedAsAServerError(t *testing.T) {

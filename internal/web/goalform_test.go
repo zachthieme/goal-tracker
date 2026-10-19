@@ -981,6 +981,34 @@ func TestNewGoalPageWhereItFitsIsOptionalWithNothingRequired(t *testing.T) {
 	}
 }
 
+// Arriving with a parent, Where it fits' note says the parent's values come
+// ticked, whether or not anything is required: the sentence follows the
+// Required note as it follows the Optional one.
+func TestNewGoalPageWhereItFitsSaysSuggestedValuesComeTicked(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	fits := arrangeWhereItFits(h)
+	sam := h.SignIn("sam@example.com")
+	revenue := h.CreateGoal(sam, "Grow revenue", "The business needs it.")
+	h.AssignGoalValue(revenue, fits.pillar.Values[0])
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	withParent := fmt.Sprintf("%s/goals/new?parent=%d", ts.URL, revenue.ID)
+
+	note := fitsNote(t, getBody(t, client, withParent))
+	if want := "Optional: the Goal's Dimension values and Fields. Values from the Goals it contributes to come ticked; untick any that don't fit."; note != want {
+		t.Errorf("with nothing required, Where it fits says %q, want %q", note, want)
+	}
+
+	h.SetDimensionRequired(boss, fits.team, true)
+	note = fitsNote(t, getBody(t, client, withParent))
+	if want := "Required: a value in Team. The rest are optional. Values from the Goals it contributes to come ticked; untick any that don't fit."; note != want {
+		t.Errorf("with Team required, Where it fits says %q, want %q", note, want)
+	}
+}
+
 // A required Field is named as a required Dimension is, while a Dimension or
 // Field required and then Retired isn't named, as the checklist doesn't list
 // it.

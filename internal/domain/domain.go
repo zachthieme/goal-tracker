@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -29,6 +30,10 @@ type Service struct {
 	// baseURL is where people reach the web app, for the links in the emails
 	// the Service sends itself (a comment alert). Empty leaves links relative.
 	baseURL string
+	// hashes is the limit every argon2id hash runs under: at most one per CPU
+	// at once, so a burst of sign-ins, each taking argonMemory, can't exhaust
+	// the server's memory.
+	hashes *hashLimiter
 	// inTx says the Service is bound to a transaction WithinTx opened, so a
 	// nested WithinTx joins it rather than opening another.
 	inTx bool
@@ -64,6 +69,7 @@ func NewService(sqlDB *sql.DB, clk clock.Clock, sender email.Sender, adminEmails
 		email:   sender,
 		admins:  admins,
 		loc:     time.UTC,
+		hashes:  newHashLimiter(runtime.GOMAXPROCS(0)),
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -95,6 +101,7 @@ func (s *Service) WithinTx(ctx context.Context, fn func(tx *Service) error) erro
 		admins:  s.admins,
 		loc:     s.loc,
 		baseURL: s.baseURL,
+		hashes:  s.hashes,
 		inTx:    true,
 	}
 	if err := fn(txSvc); err != nil {
