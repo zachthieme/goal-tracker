@@ -478,7 +478,9 @@ func checkinFormFromLatest(v goalView) checkinFormData {
 // Check-in, any open Ask for
 // help with whom it asks, its Rolled-up Health and any explanation of the
 // difference, and who wrote the Check-in and when (CONTEXT.md: Check-in, Ask
-// for help, Rolled-up Health).
+// for help, Rolled-up Health). The ask joins the space before Answer onto its
+// Addressee: templ writes no space after a component call that ends its block,
+// and a comment there would write one.
 templ checkinSection(v goalView) {
 	{{ g := v.Goal }}
 	<section data-testid="goal-checkins" class="card gp-card">
@@ -503,8 +505,7 @@ templ checkinSection(v goalView) {
 					<strong>Asks for help</strong>
 					if v.Ask.Addressee != nil {
 						{ "of " }
-						@person(*v.Ask.Addressee)
-						// templ renders this line break as the one space before Answer.
+						@templ.Join(person(*v.Ask.Addressee), templ.Raw(" "))
 					} else {
 						{ "· no one above the Owner" }
 					}
