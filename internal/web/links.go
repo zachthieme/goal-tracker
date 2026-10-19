@@ -125,13 +125,22 @@ func (s *Server) linkRejectionToast(ctx context.Context, offer undoOffer, curren
 
 // handleRemoveLink removes an accepted link; either linked Goal's Owner may.
 // It returns to the Goal page the remove came from (goal_id, either end of the
-// link), which offers Undo once in a toast.
+// link), which offers Undo once in a toast. Anyone else is refused with a page
+// saying why, linking back to that Goal page (Home without one).
 func (s *Server) handleRemoveLink(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	linkID, ok := s.linkIDFromPath(w, r)
 	if !ok {
 		return
 	}
 	removal, err := s.svc.RemoveLink(r.Context(), linkID, current.ID)
+	if errors.Is(err, domain.ErrNotAuthorized) {
+		back := "/home"
+		if goalID, err := strconv.ParseInt(r.FormValue("goal_id"), 10, 64); err == nil {
+			back = "/goals/" + strconv.FormatInt(goalID, 10)
+		}
+		render(w, r, http.StatusForbidden, linkRefusedPage(&current, sentence(plainReason(err)), back))
+		return
+	}
 	if err != nil {
 		s.writeLinkError(w, r, err)
 		return

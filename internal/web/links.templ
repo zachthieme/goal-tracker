@@ -49,6 +49,18 @@ templ pendingLinksPage(current *domain.Account, pending []domain.Link, toast *to
 	}
 }
 
+// linkRefusedPage says, inside the normal page, why removing a link was
+// refused, with a link back to the Goal page the Remove was on.
+templ linkRefusedPage(current *domain.Account, reason, back string) {
+	@layout("Can't remove link", current) {
+		<div class="message-page">
+			<h1>Can't remove link</h1>
+			<p data-testid="link-refused">{ reason }</p>
+			<p><a href={ templ.SafeURL(back) }>Back</a></p>
+		</div>
+	}
+}
+
 // pendingStyles are the rules the Pending links and Pending handoffs pages share
 // on top of app.css: a list of card rows, the decision buttons at the right.
 templ pendingStyles() {
