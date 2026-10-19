@@ -225,6 +225,7 @@ entries:
       attributes:
         email_verified: true
         manager: cto@example.com
+        timezone: Europe/Madrid
 
   - model: authentik_core.user
     identifiers:
@@ -273,6 +274,7 @@ entries:
       attributes:
         email_verified: true
         manager: cpo@example.com
+        timezone: Asia/Kolkata
 
   - model: authentik_core.user
     identifiers:

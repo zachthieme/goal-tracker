@@ -143,17 +143,21 @@ and when an Admin presses **Sync now** on the Admin page. It re-reads the file
 each time, so replacing the file is how HR changes reach the app.
 
 ```csv
-email,name,manager_email
-ceo@example.com,Dana Whitfield,
-ada@example.com,Ada Lovelace,ceo@example.com
-grace@example.com,Grace Hopper,ada@example.com
+email,name,manager_email,timezone
+ceo@example.com,Dana Whitfield,,
+ada@example.com,Ada Lovelace,ceo@example.com,America/Los_Angeles
+grace@example.com,Grace Hopper,ada@example.com,
 ```
 
 - UTF-8, with a header row naming `email`, `name` and `manager_email`, in any
-  order and any case. Other columns are ignored.
+  order and any case, and optionally `timezone`. Other columns are ignored.
 - Everyone in the file gets an account (without a password) if they don't have
   one. An empty `name` keeps the name they have; an empty `manager_email`
   means no Manager.
+- `timezone` is where the person works, an IANA name such as
+  `America/Los_Angeles`. A blank or invalid one, or no column at all, means
+  they use the company's timezone (`GOAL_TRACKER_TIMEZONE`); an invalid one is
+  logged at `WARN`.
 - A file that's missing, lacks a column, has a row with the wrong number of
   fields, or has a field that runs onto the next line (an unclosed quote)
   fails the sync and changes nothing. The Admin page shows when the last

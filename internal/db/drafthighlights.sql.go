@@ -79,7 +79,7 @@ func (q *Queries) DiscardDraftHighlight(ctx context.Context, arg DiscardDraftHig
 }
 
 const getDraftHighlight = `-- name: GetDraftHighlight :one
-SELECT draft_highlights.id, draft_highlights.goal_id, draft_highlights.kind, draft_highlights.note, draft_highlights.logged_by, draft_highlights.created_at, draft_highlights.discarded_checkin_id, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
+SELECT draft_highlights.id, draft_highlights.goal_id, draft_highlights.kind, draft_highlights.note, draft_highlights.logged_by, draft_highlights.created_at, draft_highlights.discarded_checkin_id, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
 FROM draft_highlights
 JOIN accounts ON accounts.id = draft_highlights.logged_by
 WHERE draft_highlights.id = ?
@@ -108,12 +108,13 @@ func (q *Queries) GetDraftHighlight(ctx context.Context, id int64) (GetDraftHigh
 		&i.Account.Departed,
 		&i.Account.Name,
 		&i.Account.ManagerID,
+		&i.Account.Timezone,
 	)
 	return i, err
 }
 
 const listDiscardedDraftHighlightsByGoal = `-- name: ListDiscardedDraftHighlightsByGoal :many
-SELECT draft_highlights.id, draft_highlights.goal_id, draft_highlights.kind, draft_highlights.note, draft_highlights.logged_by, draft_highlights.created_at, draft_highlights.discarded_checkin_id, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
+SELECT draft_highlights.id, draft_highlights.goal_id, draft_highlights.kind, draft_highlights.note, draft_highlights.logged_by, draft_highlights.created_at, draft_highlights.discarded_checkin_id, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
 FROM draft_highlights
 JOIN accounts ON accounts.id = draft_highlights.logged_by
 WHERE draft_highlights.goal_id = ? AND draft_highlights.discarded_checkin_id IS NOT NULL
@@ -151,6 +152,7 @@ func (q *Queries) ListDiscardedDraftHighlightsByGoal(ctx context.Context, goalID
 			&i.Account.Departed,
 			&i.Account.Name,
 			&i.Account.ManagerID,
+			&i.Account.Timezone,
 		); err != nil {
 			return nil, err
 		}
@@ -166,7 +168,7 @@ func (q *Queries) ListDiscardedDraftHighlightsByGoal(ctx context.Context, goalID
 }
 
 const listPendingDraftHighlights = `-- name: ListPendingDraftHighlights :many
-SELECT draft_highlights.id, draft_highlights.goal_id, draft_highlights.kind, draft_highlights.note, draft_highlights.logged_by, draft_highlights.created_at, draft_highlights.discarded_checkin_id, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
+SELECT draft_highlights.id, draft_highlights.goal_id, draft_highlights.kind, draft_highlights.note, draft_highlights.logged_by, draft_highlights.created_at, draft_highlights.discarded_checkin_id, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
 FROM draft_highlights
 JOIN accounts ON accounts.id = draft_highlights.logged_by
 WHERE draft_highlights.goal_id = ? AND draft_highlights.discarded_checkin_id IS NULL
@@ -203,6 +205,7 @@ func (q *Queries) ListPendingDraftHighlights(ctx context.Context, goalID int64) 
 			&i.Account.Departed,
 			&i.Account.Name,
 			&i.Account.ManagerID,
+			&i.Account.Timezone,
 		); err != nil {
 			return nil, err
 		}

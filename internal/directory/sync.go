@@ -42,7 +42,8 @@ func NewSync(svc *domain.Service, dir domain.Directory, logger *slog.Logger) *Sy
 // Run syncs the directory now and returns how it went, which Last then
 // reports. A failed run changes nothing and logs its cause at ERROR; the next
 // run tries again. Each cycle among the Managers is logged at WARN, naming the
-// people in it.
+// people in it, and so is each timezone the directory gives that isn't an IANA
+// name, naming the person and the value.
 func (s *Sync) Run(ctx context.Context) Outcome {
 	s.running.Lock()
 	defer s.running.Unlock()
@@ -55,6 +56,9 @@ func (s *Sync) Run(ctx context.Context) Outcome {
 		s.log.Info("directory sync read the company's people", "people", res.People)
 		for _, cycle := range res.Cycles {
 			s.log.Warn("the directory's Managers form a cycle; each Org in it stops where it began", "people", cycleNames(cycle))
+		}
+		for _, tz := range res.InvalidTimezones {
+			s.log.Warn("the directory gives a timezone that isn't an IANA name; the person uses the company's", "email", tz.Email, "timezone", tz.Value)
 		}
 	}
 

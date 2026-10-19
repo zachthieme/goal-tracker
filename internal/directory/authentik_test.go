@@ -40,6 +40,13 @@ func person(email, name, manager string) authentikUser {
 	return authentikUser{Username: email, Name: name, Email: email, Type: "internal", Attributes: attrs}
 }
 
+// personIn is person with a timezone attribute.
+func personIn(email, name, manager, timezone string) authentikUser {
+	u := person(email, name, manager)
+	u.Attributes["timezone"] = timezone
+	return u
+}
+
 // fakeAuthentik serves Authentik's users API, /api/v3/core/users/, over users
 // two to a page, to a request bearing fakeToken. failPage, when set, is a page
 // it answers with a 500. truncatePage, when set, is a page whose body it cuts
@@ -511,5 +518,64 @@ func TestSyncStoresCyclesAndWarnsOfThem(t *testing.T) {
 	}
 	if strings.Contains(warns[0]+warns[1], "c@example.com") {
 		t.Errorf("a WARN names c, who is below a cycle but not in it:\n%s", f.log)
+	}
+}
+
+// The sync gives each listed person the Timezone in their timezone attribute,
+// trimmed. A blank one, one that isn't an IANA name, and none at all give no
+// Timezone, and each invalid one is logged at WARN. A later sync that gives
+// someone none clears theirs; someone it doesn't list keeps theirs
+// (CONTEXT.md: Timezone).
+func TestSyncGivesEveryoneTheirTimezone(t *testing.T) {
+	t.Parallel()
+
+	f := newSyncFixture(t,
+		personIn("tokyo@example.com", "Haruki Sato", "", "Asia/Tokyo"),
+		personIn("berlin@example.com", "Lena Vogel", "", " Europe/Berlin "),
+		personIn("blank@example.com", "Blank", "", ""),
+		personIn("mars@example.com", "Mars", "", "Mars/Olympus"),
+		personIn("local@example.com", "Local", "", "Local"),
+		person("none@example.com", "None", ""),
+	)
+	if out := f.sync.Run(t.Context()); out.Err != nil {
+		t.Fatalf("sync: %v", out.Err)
+	}
+
+	for email, want := range map[string]string{
+		"tokyo@example.com":  "Asia/Tokyo",
+		"berlin@example.com": "Europe/Berlin",
+		"blank@example.com":  "",
+		"mars@example.com":   "",
+		"local@example.com":  "",
+		"none@example.com":   "",
+	} {
+		if got := f.account(t, email).Timezone; got != want {
+			t.Errorf("%s: Timezone %q, want %q", email, got, want)
+		}
+	}
+	var warns []string
+	for line := range strings.Lines(f.log.String()) {
+		if strings.Contains(line, "level=WARN") && strings.Contains(line, "timezone") {
+			warns = append(warns, line)
+		}
+	}
+	if len(warns) != 2 {
+		t.Fatalf("want a WARN for each of 2 invalid timezones, got:\n%s", f.log)
+	}
+	for i, want := range []string{"email=mars@example.com timezone=Mars/Olympus", "email=local@example.com timezone=Local"} {
+		if !strings.Contains(warns[i], want) {
+			t.Errorf("WARN %d %q doesn't name %s", i, warns[i], want)
+		}
+	}
+
+	f.fake.set([]authentikUser{person("tokyo@example.com", "Haruki Sato", "")}, 0)
+	if out := f.sync.Run(t.Context()); out.Err != nil {
+		t.Fatalf("second sync: %v", out.Err)
+	}
+	if got := f.account(t, "tokyo@example.com").Timezone; got != "" {
+		t.Errorf("tokyo, listed without a timezone: Timezone %q, want none", got)
+	}
+	if got := f.account(t, "berlin@example.com").Timezone; got != "Europe/Berlin" {
+		t.Errorf("berlin, no longer listed: Timezone %q, want Europe/Berlin kept", got)
 	}
 }

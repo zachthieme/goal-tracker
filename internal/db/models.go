@@ -12,6 +12,7 @@ type Account struct {
 	Departed  int64
 	Name      *string
 	ManagerID *int64
+	Timezone  string
 }
 
 type AccountPassword struct {

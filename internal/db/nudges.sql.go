@@ -41,7 +41,7 @@ func (q *Queries) CreateNudge(ctx context.Context, arg CreateNudgeParams) (Nudge
 }
 
 const listNudgesForGoal = `-- name: ListNudgesForGoal :many
-SELECT nudges.id, nudges.goal_id, nudges.sent_by, nudges.nudged_on, nudges.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
+SELECT nudges.id, nudges.goal_id, nudges.sent_by, nudges.nudged_on, nudges.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
 FROM nudges
 JOIN accounts ON accounts.id = nudges.sent_by
 WHERE nudges.goal_id = ?
@@ -76,6 +76,7 @@ func (q *Queries) ListNudgesForGoal(ctx context.Context, goalID int64) ([]ListNu
 			&i.Account.Departed,
 			&i.Account.Name,
 			&i.Account.ManagerID,
+			&i.Account.Timezone,
 		); err != nil {
 			return nil, err
 		}
@@ -91,7 +92,7 @@ func (q *Queries) ListNudgesForGoal(ctx context.Context, goalID int64) ([]ListNu
 }
 
 const listNudgesOn = `-- name: ListNudgesOn :many
-SELECT nudges.id, nudges.goal_id, nudges.sent_by, nudges.nudged_on, nudges.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
+SELECT nudges.id, nudges.goal_id, nudges.sent_by, nudges.nudged_on, nudges.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
 FROM nudges
 JOIN accounts ON accounts.id = nudges.sent_by
 WHERE nudges.nudged_on = ?
@@ -126,6 +127,7 @@ func (q *Queries) ListNudgesOn(ctx context.Context, nudgedOn string) ([]ListNudg
 			&i.Account.Departed,
 			&i.Account.Name,
 			&i.Account.ManagerID,
+			&i.Account.Timezone,
 		); err != nil {
 			return nil, err
 		}

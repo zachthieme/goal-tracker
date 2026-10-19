@@ -13,7 +13,7 @@ import (
 const createAccount = `-- name: CreateAccount :one
 INSERT INTO accounts (email, is_admin, created_at)
 VALUES (lower(trim(?1)), ?2, ?3)
-RETURNING id, email, is_admin, created_at, departed, name, manager_id
+RETURNING id, email, is_admin, created_at, departed, name, manager_id, timezone
 `
 
 type CreateAccountParams struct {
@@ -33,12 +33,13 @@ func (q *Queries) CreateAccount(ctx context.Context, arg CreateAccountParams) (A
 		&i.Departed,
 		&i.Name,
 		&i.ManagerID,
+		&i.Timezone,
 	)
 	return i, err
 }
 
 const getAccount = `-- name: GetAccount :one
-SELECT id, email, is_admin, created_at, departed, name, manager_id FROM accounts WHERE id = ? LIMIT 1
+SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone FROM accounts WHERE id = ? LIMIT 1
 `
 
 func (q *Queries) GetAccount(ctx context.Context, id int64) (Account, error) {
@@ -52,12 +53,13 @@ func (q *Queries) GetAccount(ctx context.Context, id int64) (Account, error) {
 		&i.Departed,
 		&i.Name,
 		&i.ManagerID,
+		&i.Timezone,
 	)
 	return i, err
 }
 
 const getAccountByEmail = `-- name: GetAccountByEmail :one
-SELECT id, email, is_admin, created_at, departed, name, manager_id FROM accounts WHERE email = lower(trim(?1)) LIMIT 1
+SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone FROM accounts WHERE email = lower(trim(?1)) LIMIT 1
 `
 
 // An email names one Account whatever its case or surrounding spaces
@@ -74,12 +76,13 @@ func (q *Queries) GetAccountByEmail(ctx context.Context, email string) (Account,
 		&i.Departed,
 		&i.Name,
 		&i.ManagerID,
+		&i.Timezone,
 	)
 	return i, err
 }
 
 const listAccountsUnder = `-- name: ListAccountsUnder :many
-SELECT id, email, is_admin, created_at, departed, name, manager_id FROM accounts WHERE manager_id IN (/*SLICE:manager_ids*/?) ORDER BY id
+SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone FROM accounts WHERE manager_id IN (/*SLICE:manager_ids*/?) ORDER BY id
 `
 
 // The people whose Manager is one of the given Accounts: one level of an Org.
@@ -110,6 +113,7 @@ func (q *Queries) ListAccountsUnder(ctx context.Context, managerIds []*int64) ([
 			&i.Departed,
 			&i.Name,
 			&i.ManagerID,
+			&i.Timezone,
 		); err != nil {
 			return nil, err
 		}
@@ -125,7 +129,7 @@ func (q *Queries) ListAccountsUnder(ctx context.Context, managerIds []*int64) ([
 }
 
 const listAdminAccounts = `-- name: ListAdminAccounts :many
-SELECT id, email, is_admin, created_at, departed, name, manager_id FROM accounts WHERE is_admin = 1 ORDER BY email
+SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone FROM accounts WHERE is_admin = 1 ORDER BY email
 `
 
 func (q *Queries) ListAdminAccounts(ctx context.Context) ([]Account, error) {
@@ -145,6 +149,7 @@ func (q *Queries) ListAdminAccounts(ctx context.Context) ([]Account, error) {
 			&i.Departed,
 			&i.Name,
 			&i.ManagerID,
+			&i.Timezone,
 		); err != nil {
 			return nil, err
 		}
@@ -160,7 +165,7 @@ func (q *Queries) ListAdminAccounts(ctx context.Context) ([]Account, error) {
 }
 
 const listDepartedAccounts = `-- name: ListDepartedAccounts :many
-SELECT id, email, is_admin, created_at, departed, name, manager_id FROM accounts WHERE departed = 1 ORDER BY email
+SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone FROM accounts WHERE departed = 1 ORDER BY email
 `
 
 func (q *Queries) ListDepartedAccounts(ctx context.Context) ([]Account, error) {
@@ -180,6 +185,7 @@ func (q *Queries) ListDepartedAccounts(ctx context.Context) ([]Account, error) {
 			&i.Departed,
 			&i.Name,
 			&i.ManagerID,
+			&i.Timezone,
 		); err != nil {
 			return nil, err
 		}
@@ -195,7 +201,7 @@ func (q *Queries) ListDepartedAccounts(ctx context.Context) ([]Account, error) {
 }
 
 const listManagedAccounts = `-- name: ListManagedAccounts :many
-SELECT id, email, is_admin, created_at, departed, name, manager_id FROM accounts WHERE manager_id IS NOT NULL ORDER BY id
+SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone FROM accounts WHERE manager_id IS NOT NULL ORDER BY id
 `
 
 // Every Account with a Manager, for finding the cycles the directory gave.
@@ -216,6 +222,7 @@ func (q *Queries) ListManagedAccounts(ctx context.Context) ([]Account, error) {
 			&i.Departed,
 			&i.Name,
 			&i.ManagerID,
+			&i.Timezone,
 		); err != nil {
 			return nil, err
 		}
@@ -269,5 +276,19 @@ type SetAccountNameParams struct {
 
 func (q *Queries) SetAccountName(ctx context.Context, arg SetAccountNameParams) error {
 	_, err := q.db.ExecContext(ctx, setAccountName, arg.Name, arg.ID)
+	return err
+}
+
+const setAccountTimezone = `-- name: SetAccountTimezone :exec
+UPDATE accounts SET timezone = ? WHERE id = ?
+`
+
+type SetAccountTimezoneParams struct {
+	Timezone string
+	ID       int64
+}
+
+func (q *Queries) SetAccountTimezone(ctx context.Context, arg SetAccountTimezoneParams) error {
+	_, err := q.db.ExecContext(ctx, setAccountTimezone, arg.Timezone, arg.ID)
 	return err
 }

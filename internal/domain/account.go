@@ -29,6 +29,11 @@ type Account struct {
 	// directory records it; nil for someone it gives none (CONTEXT.md:
 	// Manager). Only the directory sync sets it (ADR 0008).
 	ManagerID *int64
+	// Timezone is the IANA name of where the person works, as the company's
+	// directory records it; empty for none, when they use the company's
+	// (CONTEXT.md: Timezone). Only the directory sync sets it, and only to a
+	// name loadTimezone accepts.
+	Timezone string
 }
 
 // ErrNotFound is returned when a requested record does not exist.
@@ -42,7 +47,7 @@ var ErrDeparted = errors.New("account has departed")
 const timeFormat = time.RFC3339Nano
 
 func accountFromRow(a db.Account) Account {
-	acc := Account{ID: a.ID, Email: a.Email, IsAdmin: a.IsAdmin != 0, Departed: a.Departed != 0, ManagerID: a.ManagerID}
+	acc := Account{ID: a.ID, Email: a.Email, IsAdmin: a.IsAdmin != 0, Departed: a.Departed != 0, ManagerID: a.ManagerID, Timezone: a.Timezone}
 	if a.Name != nil {
 		acc.Name = *a.Name
 	}

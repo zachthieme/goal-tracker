@@ -134,13 +134,15 @@ users API, or a CSV file. Set one or the other; startup stops if
 
 With `GOAL_TRACKER_DIRECTORY_URL` and `GOAL_TRACKER_DIRECTORY_TOKEN` set, the
 app reads every user from Authentik's users API. Each user with an email gets
-an Account if they have none, their Name, and their Manager from the `manager`
-attribute (an email); service accounts are skipped. Startup stops if only one
-of the two variables is set.
+an Account if they have none, their Name, their Manager from the `manager`
+attribute (an email), and their timezone from the `timezone` attribute (an
+IANA name such as `America/Los_Angeles`); service accounts are skipped. Startup
+stops if only one of the two variables is set.
 
 With `GOAL_TRACKER_DIRECTORY_FILE` set, the app reads that file instead, afresh
 on every sync, so an edit to it applies at the next hourly sync or **Sync
-now**. It's a UTF-8 CSV whose first row is the header `email,name,manager_email`:
+now**. It's a UTF-8 CSV whose first row is the header `email,name,manager_email`,
+with an optional `timezone` column:
 
 ```csv
 email,name,manager_email
@@ -149,18 +151,21 @@ grace@example.com,Grace Hopper,
 ```
 
 The columns may come in any order, and their names in any case. Other
-columns, empty or repeated, are ignored, but naming `email`, `name` or
-`manager_email` twice is an error. A stray `"` inside an unquoted field is kept
+columns, empty or repeated, are ignored, but naming `email`, `name`,
+`manager_email` or `timezone` twice is an error. A stray `"` inside an unquoted field is kept
 as part of it. A field that runs onto the next line, the sign of a quote that
 isn't closed, fails the whole sync, naming its line. Each later row is one person, who gets an Account if they have
 none. An empty `name` leaves the Name
-they have, and an empty `manager_email` means no Manager. Blank lines and a
+they have, an empty `manager_email` means no Manager, and `timezone` is an
+IANA name such as `America/Los_Angeles`. Blank lines and a
 leading BOM are skipped. A file that's missing, lacks one of the three columns,
 or has a row with the wrong number of fields fails the whole sync, with an
 error naming the file and the bad row's line.
 
-Either way, the sync never marks anyone Departed, and someone the directory
-stops listing keeps their last Manager. A sync that fails changes nothing, logs
+Either way, a blank or invalid timezone means none: the person uses the
+company's timezone (`GOAL_TRACKER_TIMEZONE`), and an invalid one is logged at
+WARN. The sync never marks anyone Departed, and someone the directory stops
+listing keeps their last Manager and their last timezone. A sync that fails changes nothing, logs
 the cause at ERROR, and the next one tries again; Manager cycles are kept and
 logged at WARN. The Admin page shows when it last ran and how it went, with
 **Sync now** to run it at once.
