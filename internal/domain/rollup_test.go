@@ -3,6 +3,7 @@ package domain_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -194,5 +195,49 @@ func TestNoChangeCheckinRefusedWhenItWouldDifferFromRollup(t *testing.T) {
 
 	if _, err := h.Service.SubmitNoChangeCheckin(context.Background(), parent.ID, sam.ID); !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("err = %v, want ErrValidation (no-change would differ from the Rolled-up Health)", err)
+	}
+}
+
+// A Rolled-up Health counts the Active children checked in Red and Yellow
+// beside the Stale ones; a child with no Check-in counts only among the Active
+// (#246).
+func TestRolledUpHealthCountsRedAndYellowChildren(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	parent := h.ActiveGoal(sam, "Parent", "It matters.")
+	for i, health := range []string{domain.HealthRed, domain.HealthRed, domain.HealthYellow, domain.HealthGreen} {
+		child := h.ActiveChildOf(sam, parent, fmt.Sprintf("Child %d", i), "So what.")
+		h.Checkin(sam, child.ID, health, "Status.", "Recover.", pathDate)
+	}
+	h.ActiveChildOf(sam, parent, "Fresh work", "Fresh so what.")
+
+	got, err := h.Service.RolledUpHealth(context.Background(), parent.ID)
+	if err != nil {
+		t.Fatalf("RolledUpHealth: %v", err)
+	}
+	if got.RedChildren != 2 || got.YellowChildren != 1 || got.ActiveChildren != 5 {
+		t.Errorf("RolledUpHealth = %+v, want 2 Red and 1 Yellow of 5 Active children", got)
+	}
+}
+
+// The count line counts Red, Yellow and Stale children, each only when there
+// are some, and the first carries how many Active children there are (#246).
+func TestRolledUpHealthCountLine(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		rollup domain.RolledUpHealth
+		want   string
+	}{
+		{domain.RolledUpHealth{RedChildren: 2, YellowChildren: 1, StaleChildren: 1, ActiveChildren: 6}, "2 of 6 Red · 1 Yellow · 1 Stale"},
+		{domain.RolledUpHealth{YellowChildren: 1, ActiveChildren: 4}, "1 of 4 Yellow"},
+		{domain.RolledUpHealth{StaleChildren: 1, ActiveChildren: 3}, "1 of 3 Stale"},
+		{domain.RolledUpHealth{Health: domain.HealthGreen, Present: true, ActiveChildren: 3}, ""},
+	} {
+		if got := tc.rollup.CountLine(); got != tc.want {
+			t.Errorf("%+v.CountLine() = %q, want %q", tc.rollup, got, tc.want)
+		}
 	}
 }

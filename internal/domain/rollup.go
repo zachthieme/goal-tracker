@@ -1,6 +1,10 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"fmt"
+	"strings"
+)
 
 // RolledUpHealth is a Goal's Rolled-up Health: the worst Owner-set Health among
 // its Active children, computed when read (ADR-0003, CONTEXT.md: Rolled-up
@@ -11,11 +15,43 @@ import "context"
 // StaleChildren counts how many of the ActiveChildren are Stale ("3 of 12
 // Stale"). It is shown beside the color and never changes it: Health stays
 // Owner-set, and being Stale is its own signal (CONTEXT.md: Stale).
+// RedChildren and YellowChildren count the ActiveChildren whose latest
+// Check-in is Red or Yellow, for the count a Report shows beside the color
+// ("2 of 6 Red · 1 Yellow"); a snapshot frozen before Reports counted them has
+// neither.
 type RolledUpHealth struct {
 	Health         string
 	Present        bool
 	StaleChildren  int
 	ActiveChildren int
+	RedChildren    int `json:",omitempty"`
+	YellowChildren int `json:",omitempty"`
+}
+
+// CountLine says what sets the Rolled-up Health: how many of its Active
+// children are Red, Yellow and Stale, each only when there are some, the first
+// out of all of them ("2 of 6 Red · 1 Yellow · 1 Stale"). Green is never
+// counted. It is empty when none are Red, Yellow or Stale.
+func (r RolledUpHealth) CountLine() string {
+	var parts []string
+	for _, c := range []struct {
+		n     int
+		label string
+	}{
+		{r.RedChildren, HealthRed},
+		{r.YellowChildren, HealthYellow},
+		{r.StaleChildren, BadgeStale},
+	} {
+		if c.n == 0 {
+			continue
+		}
+		if len(parts) == 0 {
+			parts = append(parts, fmt.Sprintf("%d of %d %s", c.n, r.ActiveChildren, c.label))
+		} else {
+			parts = append(parts, fmt.Sprintf("%d %s", c.n, c.label))
+		}
+	}
+	return strings.Join(parts, " · ")
 }
 
 // healthRank orders Health from best to worst so the worst is the maximum:
@@ -39,7 +75,7 @@ func healthRank(health string) int {
 // Active children count: a Proposed child has no Health, and a child with no
 // Check-in yet has none either, so both are skipped. When no Active child has a
 // Health, Present is false. Each Active child is also judged Stale or not and
-// counted. The traversal is one level — each parent shows the
+// counted, and counted again when it is Red or Yellow. The traversal is one level — each parent shows the
 // roll-up of its own direct children, which itself already reflects the levels
 // below it.
 func (s *Service) RolledUpHealth(ctx context.Context, goalID int64) (RolledUpHealth, error) {
@@ -66,6 +102,12 @@ func (s *Service) RolledUpHealth(ctx context.Context, goalID int64) (RolledUpHea
 		}
 		if !ok {
 			continue
+		}
+		switch latest.Health {
+		case HealthRed:
+			out.RedChildren++
+		case HealthYellow:
+			out.YellowChildren++
 		}
 		if !out.Present || healthRank(latest.Health) > healthRank(out.Health) {
 			out.Health, out.Present = latest.Health, true
