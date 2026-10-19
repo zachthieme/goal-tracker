@@ -97,9 +97,8 @@ func reportMovement(r Report, exceptions []reportException, since func(time.Time
 // its Path to Green is overdue, its delivery date slipped, and it moved
 // Lifecycle since the baseline.
 type reportException struct {
-	block                ReportBlock
-	pathOverdue, slipped bool
-	movedLifecycle       bool
+	block                                ReportBlock
+	pathOverdue, slipped, movedLifecycle bool
 }
 
 // sortReportExceptions puts the worst-off exceptions first, key by key, as the
