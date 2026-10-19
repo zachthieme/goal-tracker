@@ -60,6 +60,10 @@ type ReportBlock struct {
 	// PriorHealth is the Goal's Health at the baseline, set only when its
 	// Health has changed since, shown beside it ("Yellow · was Green").
 	PriorHealth string `json:",omitempty"`
+	// Changes say in words what changed on the Goal since the baseline, in
+	// the order reportChanges gives them ("Turned Red", "Delivery date
+	// slipped 3 weeks"); a Goal whose trouble is only standing has none.
+	Changes []string `json:",omitempty"`
 	// Badges flag what the reader must not miss, in the order BadgeNew,
 	// BadgeNewDate, BadgeStale, BadgeOwnerless, BadgeOnHold.
 	Badges []string
@@ -130,6 +134,7 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 	if r.ActionItems, err = s.OpenActionItems(ctx, def.ID); err != nil {
 		return Report{}, err
 	}
+	var exceptions []reportException
 	for _, sg := range selected {
 		if sg.Fields, err = s.reportFields(ctx, def, sg.Goal.ID); err != nil {
 			return Report{}, err
@@ -153,7 +158,12 @@ func (s *Service) DraftReport(ctx context.Context, def ReportDefinition, baselin
 			return Report{}, err
 		}
 		b.Fields = sg.Fields
-		r.Exceptions = append(r.Exceptions, b)
+		b.Changes = h.reportChanges(b, since, r.Baseline, fresh)
+		exceptions = append(exceptions, reportException{block: b, pathOverdue: fresh.PathToGreenOverdue})
+	}
+	sortReportExceptions(exceptions)
+	for _, x := range exceptions {
+		r.Exceptions = append(r.Exceptions, x.block)
 	}
 	if err := s.draftNarrative(ctx, &r); err != nil {
 		return Report{}, err
