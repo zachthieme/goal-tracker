@@ -2821,3 +2821,47 @@ func TestRisksPageListsGreenGoalsPastAMilestone(t *testing.T) {
 		}
 	}
 }
+
+// A Not Green row whose back-to-Green date slipped within its Run off Green
+// tags the slip as a Milestone's slipped date reads: the current date, the one
+// it last slipped from struck through, and the count once it slipped more than
+// once. A row whose date never slipped stays quiet, and the tag isn't a signal:
+// the Not Green card counts the Goals as before.
+func TestRisksNotGreenRowsTagASlippedBackToGreenDate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	slipped := h.ActiveGoal(ada, "Launch in EU", "Expand the market.")
+	steady := h.ActiveGoal(ada, "Cut churn", "Keep customers.")
+	h.Clock.Set(time.Date(2026, time.January, 5, 9, 0, 0, 0, time.UTC))
+	h.Checkin(ada, slipped.ID, domain.HealthRed, "Blocked.", "Escalate.", time.Date(2026, time.February, 6, 0, 0, 0, 0, time.UTC))
+	h.Checkin(ada, steady.ID, domain.HealthRed, "Blocked.", "Escalate.", time.Date(2026, time.February, 6, 0, 0, 0, 0, time.UTC))
+	h.Clock.Set(time.Date(2026, time.January, 6, 9, 0, 0, 0, time.UTC))
+	h.CheckinMovingPath(ada, slipped.ID, domain.HealthRed, "Still blocked.", "Escalate.", time.Date(2026, time.February, 13, 0, 0, 0, 0, time.UTC), "Escalation takes longer.")
+	h.Clock.Set(time.Date(2026, time.January, 7, 9, 0, 0, 0, time.UTC))
+	h.CheckinMovingPath(ada, slipped.ID, domain.HealthRed, "Still blocked.", "Escalate.", time.Date(2026, time.March, 3, 0, 0, 0, 0, time.UTC), "The approver is away.")
+	client := signInClient(t, ts.URL, "ada@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?org=all")
+
+	row := riskRowOf(t, page, slipped)
+	tag := between(t, row, `<span data-testid="risk-back-to-green"`, `</td>`)
+	text := strings.Join(strings.Fields(html.UnescapeString(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(tag, ""))), " ")
+	if want := "Back to Green Mar 3 Feb 13 (2)"; text != want {
+		t.Errorf("%q's row tags its back-to-Green date %q, want %q:\n%s", slipped.Title, text, want, row)
+	}
+	if !strings.Contains(tag, "<del>Feb 13</del>") || !strings.Contains(tag, `<span data-testid="risk-back-to-green-slips">(2)</span>`) {
+		t.Errorf("%q's tag doesn't strike Feb 13 through and count 2 slips:\n%s", slipped.Title, tag)
+	}
+	if !strings.Contains(between(t, row, `class="rk-chips"`, `</td>`), `data-testid="risk-back-to-green"`) {
+		t.Errorf("%q's tag isn't among its chips:\n%s", slipped.Title, row)
+	}
+	if row := riskRowOf(t, page, steady); strings.Contains(row, `data-testid="risk-back-to-green"`) {
+		t.Errorf("%q, whose back-to-Green date never slipped, tags one:\n%s", steady.Title, row)
+	}
+	if card := pageElement(t, page, "a", "risks-group-health"); !strings.Contains(card, `<span class="num">2</span>`) {
+		t.Errorf("the Not Green card doesn't count its 2 Goals: %s", card)
+	}
+}

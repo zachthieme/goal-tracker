@@ -604,7 +604,13 @@ type riskGoalRow struct {
 	// shown beside its Health; it isn't running on any other row (CONTEXT.md:
 	// Run off Green).
 	RunOffGreen domain.RunOffGreen
-	Signals     []riskSignal
+	// PathTargetDate is a Not Green row's back-to-Green date, its latest
+	// Check-in's, and PathPriorDates the dates it slipped from within the Run
+	// off Green, earliest first (see domain.BackToGreenPriorDates). Only a
+	// Not Green row reads them.
+	PathTargetDate time.Time
+	PathPriorDates []time.Time
+	Signals        []riskSignal
 	// Fix is the one action the row offers its viewer.
 	Fix riskFix
 }
@@ -837,6 +843,12 @@ func (s *Server) riskRows(ctx context.Context, v risksView) ([]riskGoalRow, erro
 			if rows[i].RunOffGreen, err = s.svc.RunOffGreen(ctx, rows[i].Goal.ID); err != nil {
 				return nil, fmt.Errorf("read not green goal's run off green: %w", err)
 			}
+			slips, err := s.svc.ListDateSlips(ctx, rows[i].Goal.ID)
+			if err != nil {
+				return nil, fmt.Errorf("load not green goal's date slips: %w", err)
+			}
+			rows[i].PathTargetDate = latest.PathTargetDate
+			rows[i].PathPriorDates = domain.BackToGreenPriorDates(slips, rows[i].RunOffGreen)
 		}
 	}
 	sortRiskRows(rows)
