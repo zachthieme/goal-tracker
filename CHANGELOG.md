@@ -68,6 +68,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] On the Goal page, + Log a highlight opens the inline Highlight editor, and Save logs the Draft Highlight with no page load. A pending Draft Highlight can now be edited before the next Check-in, and Remove deletes it at once (#363).
 - [user] Submit check-in stays at the bottom of the window as you fill in a Check-in, beside a live summary of what it will record (Health, Path to Green, Metrics, Highlights, date changes and any Lifecycle change) (#367).
 - [user] The Check-in page shows, beside the form, what the last Check-in said (its Health, back-to-Green date and Status) and the Goal's dates (its delivery date, or Ongoing, and its next Planned Milestone), for every Goal; the column sticks beside the form on a wide screen and, on a phone, keeps only the Goal's children (#366).
+- [user] The Check-in page has an "Add to this check-in" bar under its header, with + Insight, + Accomplishment, + Miss, Move a date or Milestone, and Pause, finish or cancel. The dates and Milestones section and the Lifecycle section show in the page, under their own headings, once opened, in place of the folded panels at the bottom. Sections the page used to open still open: one holding an error, the dates when a Milestone is overdue or you came from a Schedule conflict on Risks, and the Lifecycle when you came from the Goal page's menu. Without script the page is unchanged (#365).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
