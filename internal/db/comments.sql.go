@@ -81,6 +81,121 @@ func (q *Queries) GetComment(ctx context.Context, id int64) (GetCommentRow, erro
 	return i, err
 }
 
+const listGoalComments = `-- name: ListGoalComments :many
+SELECT comments.id, comments.publication_id, comments.goal_id, comments.parent_id, comments.author_id, comments.body, comments.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id,
+       COALESCE(report_definitions.name, '') AS report_name,
+       COALESCE(report_definitions.id, 0) AS definition_id
+FROM comments
+JOIN accounts ON accounts.id = comments.author_id
+LEFT JOIN report_publications ON report_publications.id = comments.publication_id
+LEFT JOIN report_definitions ON report_definitions.id = report_publications.report_definition_id
+WHERE comments.goal_id = ?
+ORDER BY comments.id
+`
+
+type ListGoalCommentsRow struct {
+	Comment      Comment
+	Account      Account
+	ReportName   string
+	DefinitionID int64
+}
+
+// Every Comment about the Goal, on the Goal itself or on any publication, with
+// its author, oldest first, for the Goal's History. A Report Comment carries
+// the Report's name and Definition; a Comment on the Goal has ” and 0.
+func (q *Queries) ListGoalComments(ctx context.Context, goalID int64) ([]ListGoalCommentsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listGoalComments, goalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGoalCommentsRow
+	for rows.Next() {
+		var i ListGoalCommentsRow
+		if err := rows.Scan(
+			&i.Comment.ID,
+			&i.Comment.PublicationID,
+			&i.Comment.GoalID,
+			&i.Comment.ParentID,
+			&i.Comment.AuthorID,
+			&i.Comment.Body,
+			&i.Comment.CreatedAt,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+			&i.Account.ManagerID,
+			&i.ReportName,
+			&i.DefinitionID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listGoalThreadComments = `-- name: ListGoalThreadComments :many
+SELECT comments.id, comments.publication_id, comments.goal_id, comments.parent_id, comments.author_id, comments.body, comments.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
+FROM comments
+JOIN accounts ON accounts.id = comments.author_id
+WHERE comments.goal_id = ? AND comments.publication_id = 0
+ORDER BY comments.id
+`
+
+type ListGoalThreadCommentsRow struct {
+	Comment Comment
+	Account Account
+}
+
+// The Comments made on the Goal itself, not on a Report, with their authors,
+// oldest first, so each thread reads in the order it was written.
+func (q *Queries) ListGoalThreadComments(ctx context.Context, goalID int64) ([]ListGoalThreadCommentsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listGoalThreadComments, goalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListGoalThreadCommentsRow
+	for rows.Next() {
+		var i ListGoalThreadCommentsRow
+		if err := rows.Scan(
+			&i.Comment.ID,
+			&i.Comment.PublicationID,
+			&i.Comment.GoalID,
+			&i.Comment.ParentID,
+			&i.Comment.AuthorID,
+			&i.Comment.Body,
+			&i.Comment.CreatedAt,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+			&i.Account.ManagerID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPublicationComments = `-- name: ListPublicationComments :many
 SELECT comments.id, comments.publication_id, comments.goal_id, comments.parent_id, comments.author_id, comments.body, comments.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id
 FROM comments
