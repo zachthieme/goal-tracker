@@ -1124,8 +1124,6 @@ func TestBuilderChipRemoveDropsItsGoalOnAnySubmitOverHTTP(t *testing.T) {
 	}
 }
 
-// Each chip carries a Remove checkbox for its Goal, which the builder's
-// script hides, as its × removes the chip instead (ticket #168).
 // Without script, a Top-level rule row offers only "is Top-level" and "is not
 // Top-level": its values list, kept in the markup so script can switch the row
 // to another attribute, is hidden by a style that applies only before script
@@ -1165,6 +1163,8 @@ func TestBuilderTopLevelRowHidesItsValuesWithoutScriptOverHTTP(t *testing.T) {
 	}
 }
 
+// Each chip carries a Remove checkbox for its Goal, which the builder's
+// script hides, as its × removes the chip instead (ticket #168).
 func TestBuilderChipHasARemoveCheckboxScriptHidesOverHTTP(t *testing.T) {
 	t.Parallel()
 
