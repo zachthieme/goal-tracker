@@ -373,7 +373,8 @@ func (o *e2eOrg) rollup(t *testing.T, g *e2eGoal) domain.RolledUpHealth {
 }
 
 // riskReasons are the reasons Risks flags g for, sorted: its signals as the
-// domain reads them. A Schedule conflict flags the child, not the parent.
+// domain reads them. A Schedule conflict flags the child, not the parent, and
+// an Active Goal's latest Check-in being Red or Yellow puts it under Not Green.
 func (o *e2eOrg) riskReasons(t *testing.T, g *e2eGoal) []string {
 	t.Helper()
 	f, s := o.freshness(t, g), o.signals(t, g)
@@ -385,9 +386,11 @@ func (o *e2eOrg) riskReasons(t *testing.T, g *e2eGoal) []string {
 		{"Ownerless", g.Ownerless},
 		{"Parent halted", len(s.HaltedParents) > 0},
 		{"Path to Green overdue", f.PathToGreenOverdue},
+		{"Red", g.active() && g.health() == domain.HealthRed},
 		{"Schedule conflict", slices.ContainsFunc(s.ScheduleConflicts, func(c domain.ScheduleConflict) bool { return c.Child.ID == g.ID })},
 		{"Stale", f.Stale},
 		{"Unaligned", s.Unaligned},
+		{"Yellow", g.active() && g.health() == domain.HealthYellow},
 	} {
 		if r.flags {
 			out = append(out, r.reason)
@@ -506,9 +509,10 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 	if got := o.riskReasons(t, twoReasons); !slices.Equal(got, []string{"Schedule conflict", "Stale"}) {
 		t.Errorf("scenario 1: two-reason Goal %q is on Risks for %q, want Schedule conflict and Stale", twoReasons.Title, got)
 	}
-	// redWithChildren isn't on Risks: nothing but its Health is wrong with it.
-	if got := o.riskReasons(t, redWithChildren); len(got) > 0 {
-		t.Errorf("scenario 1: Red Goal %q with Active children is on Risks for %q, want it off Risks", redWithChildren.Title, got)
+	// redWithChildren is on Risks under Not Green only: nothing but its Health
+	// is wrong with it.
+	if got := o.riskReasons(t, redWithChildren); !slices.Equal(got, []string{"Red"}) {
+		t.Errorf("scenario 1: Red Goal %q with Active children is on Risks for %q, want only Red", redWithChildren.Title, got)
 	}
 	// Step 6 reads goal-rollup-health on its page, which renders only when the
 	// rollup is Present.

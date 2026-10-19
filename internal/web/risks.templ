@@ -9,9 +9,10 @@ import (
 )
 
 // risksPage answers "which Goals are in trouble, and how badly?": how many
-// Goals need attention, a card per group of signals by who acts, then one
-// table row per flagged Goal, worst first, narrowed to one group when the
-// address asks for it, and at the bottom what each signal means. The header's
+// Goals need attention, a card per group of signals, Not Green and then by
+// who acts, then one table row per flagged Goal, worst first, narrowed to one
+// group when the address asks for it, and at the bottom what each signal
+// means. The header's
 // form scopes it all to some Goals; #risks-body is what a change of scope
 // swaps. With no Goal left to show, #risks-body says so in one line in place
 // of the count, the cards and the table; for an Admin, the cards follow it
