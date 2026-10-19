@@ -25,6 +25,14 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [ops] `GOAL_TRACKER_ADMINS` is no longer the only way to make an Admin: it still sets the first Admins when their accounts are created, and they can make others Admins later on the Admin page instead of editing the database (#335).
 - [user] A Report's exceptions come worst first by a fixed rule (Ownerless, then Red, Yellow, a missed Path to Green, Stale, then what changed), and each opens with what changed since the baseline ("Turned Red · Delivery date slipped 3 weeks") (#341).
 - [user] Every Comment and reply, on the Goal or on a Report, now shows in the Goal's History, with a Comments filter (#350).
+- [user] Sync now on the Admin page greys out and reads "Syncing…" while the directory sync runs, instead of showing nothing until the page reloads (#271).
+- [ops] A GOAL_TRACKER_DIRECTORY_* or GOAL_TRACKER_OIDC_* variable set to only spaces now counts as unset, so a blank token stops startup with the missing-variable error instead of failing every sync (#271).
+- [api] **Database schema**: `accounts.manager_id`, each Account's Manager, set only by the directory sync and indexed (#262).
+- [api] **Database schema**: `goal_title_revisions`, a record of each change to a Goal's title with the old and new titles, its author and when (#281).
+- [api] **Database schema**: `account_sessions`, each Account's session generation; no row means generation 0 (#299).
+- [api] **Database schema**: `account_passwords`, an Account's password hash, failed sign-ins and lockout, and `password_links`, the one outstanding set-password link per Account, kept as the SHA-256 of its token (#300).
+- [user] The Check-in form's off-target warning is flagged at the top of the form, stays through Add another, and isn't asked again after a later error once you've confirmed Green. The No change refusal reads as a sentence, shows its due date as the rest of the page does, and no longer preselects Green while a Milestone is overdue (#342).
+- [user] Risks lists every Active Red and Yellow Goal under a new first card, Not Green, and the top bar's Risks count includes them (#344).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
@@ -35,6 +43,10 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] The local Authentik's directory puts the Payments lead under the CPO and the Mobile lead under the CTO, as the seed does, so a directory sync under make serve no longer moves them to the other executive (#308).
 - [internal] `scripts/shots.mjs` no longer crashes when `PLAYWRIGHT_BROWSERS_PATH` names a file or an unreadable directory: it looks in the next place, as it does for a missing one (#333).
 - [user] Merge on the Dimensions page asks you to confirm again before merging a value away. An apostrophe in its message had broken the confirmation, so it merged at once. Every confirmation now works whatever its message says (#337).
+- [user] The New goal page no longer says only Title and So What are needed to save: a Dated Goal also needs its delivery date (#252).
+- [user] In a Goal's History, an Action Item's raising, reassignments and closing made at the same instant now read in the order they happened, so a raising never shows as newer than its own reassignment or closing (#331).
+- [user] "Save as Green anyway" always records Green. Before, it could save another Health picked after the warning (#342).
+- [user] Risks' "Worst first" puts Proposed and On Hold Goals after every Active Goal, and among Goals otherwise equal, the one with more reasons first (#344).
 
 **Infrastructure:**
 - [internal] `make lint` now fails on Go code that isn't gofmt-formatted, using golangci-lint's gofmt formatter; generated code stays guarded by `make generate-check` (#328).
@@ -42,9 +54,11 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Testing:**
 - [internal] The seed invariants test now checks scenario 1's Red Goal with Active children shows a Rolled-up Health, and scenario 4's spec reads its candidate links in the same order the test does, so both pick the same chain (#233).
 - [internal] Five fixes that no test caught now have tests that fail without them: the DEBUG "request abandoned" record (#213), the "come ticked" sentence beside Where it fits' Required note (#214), a password sign-in giving up while waiting for a hash slot on each of its three paths (#313; the Service now holds its hash limiter), Remove for the linked Goal's Owner and the refused-removal page's Back to Home (#251) (#347).
+- [internal] The directory sync's hourly run, and its failures on a malformed page, an unreachable server and a page pointing back, have tests (#271).
 
 **Code quality:**
 - [internal] e2e/ has a Prettier config pinning its 120-column style, so a plain npx prettier --check there passes, and the three scenario specs that didn't follow it now do (#346).
+- [internal] Comments in the reminder scheduler, the weekly digest, and the Reports, Top-level, sign-in and History pages say "the company" for the whole company and no longer call the Check-in form pre-filled (#305).
 
 **Documentation:**
 - [internal] CLAUDE.md says `make test` takes about 2 minutes, most of it `internal/web` under the race detector, instead of about 50 seconds, which it no longer does (#310).
