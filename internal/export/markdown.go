@@ -13,8 +13,9 @@ import (
 
 // Markdown renders a published Report as Markdown with the same content as its
 // snapshot page: who published it and when, what it read its changes against,
-// its open Action Items, the introduction, the narrative curated from
-// Highlights, each exception's full MBR block, and every other selected Goal
+// the line counting what moved since then, its open Action Items, the introduction, the narrative curated from
+// Highlights, each exception's full MBR block opening with what changed on it,
+// worst first, and every other selected Goal
 // one line (CONTEXT.md: Report), each Goal with the Fields the Report chose. With no hover to show an email, a person's
 // first mention reads Name (email) and later ones their Name (CONTEXT.md: Name).
 func Markdown(p domain.Publication) string {
@@ -27,6 +28,17 @@ func Markdown(p domain.Publication) string {
 		fmt.Fprintf(&b, "Changes since the previous publication, %s.\n", fmtPublished(r.Previous.PublishedAt))
 	} else {
 		fmt.Fprintf(&b, "Changes since %s.\n", fmtDate(r.Baseline))
+	}
+	if r.Movement != nil {
+		since := fmtDate(r.Baseline)
+		if r.Previous.ID != 0 {
+			since = "the previous publication"
+		}
+		if parts := r.Movement.Parts(); len(parts) > 0 {
+			fmt.Fprintf(&b, "\n**Since %s:** %s\n", since, strings.Join(parts, " · "))
+		} else {
+			fmt.Fprintf(&b, "\nNo movement since %s.\n", since)
+		}
 	}
 	if len(r.ActionItems) > 0 {
 		b.WriteString("\n## Open Action Items\n\n")
@@ -76,7 +88,7 @@ func Markdown(p domain.Publication) string {
 
 // writeBlock writes an exception Goal's full MBR block: title and badges, due
 // date with its history struck through, Health with what it was when it
-// changed since the baseline, the chosen Fields, So What, latest status, Path
+// changed since the baseline, what changed on it since, the chosen Fields, So What, latest status, Path
 // to Green, Milestones, Metrics against target, and the Rolled-up Health with
 // the Owner's explanation. Each Milestone is marked as of asOf, the day the
 // Report was published.
@@ -92,6 +104,9 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 	}
 	if !g.DeliveryDate.IsZero() {
 		fmt.Fprintf(b, " · due %s%s", struck(blk.PriorDueDates), fmtDate(g.DeliveryDate))
+	}
+	if len(blk.Changes) > 0 {
+		fmt.Fprintf(b, "\n\n**Changed:** %s", strings.Join(blk.Changes, " · "))
 	}
 	if len(blk.Fields) > 0 {
 		fmt.Fprintf(b, "\n\n%s", fields(blk.Fields, "**%s:** %s"))

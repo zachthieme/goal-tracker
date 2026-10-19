@@ -188,7 +188,7 @@ A Highlight logged on a Goal between Check-ins, waiting for the next Check-in. O
 _Avoid_: note, jot, log entry
 
 **Report**:
-A document generated from Check-ins for a chosen set of Goals, at whatever cadence the reader needs, in MBR format. Exceptions (Red, Yellow, Stale, slipped, newly Proposed, Lifecycle changes, and Health changes since the baseline, a recovery to Green included) get the full treatment; unchanged Green Goals take one line each. A Goal whose Health changed shows the Health it had at the baseline beside its own ("Yellow · was Green"); its Health at the baseline is that of its latest Check-in before it, so a Goal with no Check-in by then shows none.
+A document generated from Check-ins for a chosen set of Goals, at whatever cadence the reader needs, in MBR format. Exceptions (Red, Yellow, Stale, slipped, newly Proposed, Lifecycle changes, and Health changes since the baseline, a recovery to Green included) get the full treatment; unchanged Green Goals take one line each. Exceptions come worst first: Ownerless, then by Health (Red, Yellow, none, Green), then a Path to Green overdue, then Stale, then those that changed since the baseline, then by delivery date; each opens with what changed since the baseline. A Report opens with a line counting what moved since its baseline: Goals that turned Red or Yellow, came back to Green, slipped, changed Lifecycle, are new, entered or left. A Goal whose Health changed shows the Health it had at the baseline beside its own ("Yellow · was Green"); its Health at the baseline is that of its latest Check-in before it, so a Goal with no Check-in by then shows none.
 _Avoid_: MBR (a Report may be used as one), review, rollup
 
 **Report Definition**:
