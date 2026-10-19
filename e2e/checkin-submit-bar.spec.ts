@@ -148,7 +148,10 @@ test("(h) at 390×800 the bar drops Cancel and fits the window", async ({ page }
         const r = e.getBoundingClientRect();
         return r.width > 0 && r.right > width + 1;
       })
-      .map((e) => `${(e as HTMLElement).dataset.testid || e.className || e.tagName} (${Math.round(e.getBoundingClientRect().right)}px)`);
+      .map((e) => {
+        const name = (e as HTMLElement).dataset.testid || e.className || e.tagName;
+        return `${name} (${Math.round(e.getBoundingClientRect().right)}px)`;
+      });
   }, width);
   expect(outside, `elements in main past the ${width}px window`).toEqual([]);
 });
