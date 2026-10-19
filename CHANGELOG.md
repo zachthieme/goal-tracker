@@ -17,16 +17,37 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **New features:**
 - [user] Admins can make someone an Admin, or remove another Admin, from the Admins section of the Admin page. Make Admin takes an email and never creates an account; no Admin can remove their own role, so there is always at least one (#335).
+- [user] A Report, its Print page and its Markdown export open with a line counting what moved since the baseline: Goals that turned Red or Yellow, came back to Green, slipped, changed Lifecycle, are new, entered or left (#341).
+- [user] Anyone can comment on a Goal from its page and reply in the thread there. The Owner is emailed, as for a Comment on a Report (#350).
 
 **Improvements:**
 - [ops] Pages no longer load anything from other hosts: htmx and the fonts are served from the app, so browsers on a network that blocks `unpkg.com` or Google Fonts get the full app (#336).
 - [ops] `GOAL_TRACKER_ADMINS` is no longer the only way to make an Admin: it still sets the first Admins when their accounts are created, and they can make others Admins later on the Admin page instead of editing the database (#335).
+- [user] A Report's exceptions come worst first by a fixed rule (Ownerless, then Red, Yellow, a missed Path to Green, Stale, then what changed), and each opens with what changed since the baseline ("Turned Red · Delivery date slipped 3 weeks") (#341).
+- [user] Every Comment and reply, on the Goal or on a Report, now shows in the Goal's History, with a Comments filter (#350).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
 - [user] Pressing Enter in a Check-in field submits the Check-in instead of adding a Highlight row (#296).
 - [user] Remove shows on a Goal's link only for an Owner of either linked Goal, and a refused removal shows a "Can't remove link" page inside the app instead of bare text (#251).
 - [ops] A directory file with an unclosed quote fails the sync and names the line, instead of reading the rest of the file as one value and dropping everyone after it (#329).
+- [user] A saved Report's Owner rule keeps a person who no longer owns any Goal, instead of dropping them, or refusing the save, when the Report is edited (#265).
+- [internal] The local Authentik's directory puts the Payments lead under the CPO and the Mobile lead under the CTO, as the seed does, so a directory sync under make serve no longer moves them to the other executive (#308).
+- [internal] `scripts/shots.mjs` no longer crashes when `PLAYWRIGHT_BROWSERS_PATH` names a file or an unreadable directory: it looks in the next place, as it does for a missing one (#333).
+- [user] Merge on the Dimensions page asks you to confirm again before merging a value away. An apostrophe in its message had broken the confirmation, so it merged at once. Every confirmation now works whatever its message says (#337).
+
+**Infrastructure:**
+- [internal] `make lint` now fails on Go code that isn't gofmt-formatted, using golangci-lint's gofmt formatter; generated code stays guarded by `make generate-check` (#328).
+
+**Testing:**
+- [internal] The seed invariants test now checks scenario 1's Red Goal with Active children shows a Rolled-up Health, and scenario 4's spec reads its candidate links in the same order the test does, so both pick the same chain (#233).
+- [internal] Five fixes that no test caught now have tests that fail without them: the DEBUG "request abandoned" record (#213), the "come ticked" sentence beside Where it fits' Required note (#214), a password sign-in giving up while waiting for a hash slot on each of its three paths (#313; the Service now holds its hash limiter), Remove for the linked Goal's Owner and the refused-removal page's Back to Home (#251) (#347).
+
+**Code quality:**
+- [internal] e2e/ has a Prettier config pinning its 120-column style, so a plain npx prettier --check there passes, and the three scenario specs that didn't follow it now do (#346).
+
+**Documentation:**
+- [internal] CLAUDE.md says `make test` takes about 2 minutes, most of it `internal/web` under the race detector, instead of about 50 seconds, which it no longer does (#310).
 
 ### Collected changes — October 18, 2026
 
