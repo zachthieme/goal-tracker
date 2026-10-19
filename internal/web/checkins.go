@@ -493,9 +493,9 @@ func (s *Server) handleNoChangeCheckin(w http.ResponseWriter, r *http.Request, c
 // that means "write a full Check-in" (no previous Check-in, a Goal that isn't
 // Active, a Health the roll-up or an overdue Milestone now rules out) lands the
 // reader on the Goal's Check-in page with the reason as the form's error, a
-// sentence reading as the No change card gives it. For
-// htmx it returns 200, so the page is swapped in, and pushes the Check-in
-// page's URL; a plain post gets 422. A Goal that doesn't exist, or one the
+// sentence reading as the No change card gives it. For htmx it returns 200, so
+// the page is swapped in, and pushes the Check-in page's URL; a plain post gets
+// 422. A Goal that doesn't exist, or one the
 // reader may not check in on, gets 404 or 403 with a page saying so.
 func (s *Server) renderNoChangeRefusal(w http.ResponseWriter, r *http.Request, current domain.Account, goalID int64, err error) {
 	// The Goal is loaded first: the domain checks the Lifecycle before who may
