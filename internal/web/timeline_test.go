@@ -1975,6 +1975,54 @@ func TestGoalHistoryShowsAnActionItemRaisedReassignedAndClosed(t *testing.T) {
 	}
 }
 
+// Action Item entries made at one instant read newest item first, and each
+// item's own events in the order they happen: its closing above its
+// reassignments, latest first, above its raising.
+func TestGoalHistoryOrdersSameInstantActionItemEvents(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	author, goal, pub := timelineActionItemGoal(h)
+	sam := h.SignInNamed("sam@example.com", "Sam First")
+	pat := h.SignInNamed("pat@example.com", "Pat Second")
+	ctx := context.Background()
+	one := timelineRaiseActionItem(t, h, author, pub, sam, "Item one.", goal.ID)
+	two := timelineRaiseActionItem(t, h, author, pub, sam, "Item two.", goal.ID)
+	if _, err := h.Service.ReassignActionItem(ctx, author.ID, two.ID, pat.ID); err != nil {
+		t.Fatalf("ReassignActionItem: %v", err)
+	}
+	if _, err := h.Service.CloseActionItem(ctx, pat.ID, two.ID, "Done."); err != nil {
+		t.Fatalf("CloseActionItem: %v", err)
+	}
+	for _, to := range []domain.Account{pat, sam} {
+		if _, err := h.Service.ReassignActionItem(ctx, author.ID, one.ID, to.ID); err != nil {
+			t.Fatalf("ReassignActionItem: %v", err)
+		}
+	}
+	ts := newServer(t, h)
+
+	items := filteredEntries(t, signInClient(t, ts.URL, "ana@example.com"), goalPageURL(ts.URL, goal), "action-items", "action-item")
+	want := []struct{ event, item, to string }{
+		{"Action Item closed", "Item two.", ""},
+		{"Action Item reassigned", "Item two.", "→ Pat Second"},
+		{"Action Item raised", "Item two.", ""},
+		{"Action Item reassigned", "Item one.", "→ Sam First"},
+		{"Action Item reassigned", "Item one.", "→ Pat Second"},
+		{"Action Item raised", "Item one.", ""},
+	}
+	if len(items) != len(want) {
+		t.Fatalf("?history=action-items lists %d entries, want %d: %q", len(items), len(want), items)
+	}
+	for i, w := range want {
+		text := entryText(items[i])
+		for _, fact := range []string{w.event, w.item, w.to} {
+			if !strings.Contains(text, fact) {
+				t.Errorf("Action Item entry %d lacks %q: %s", i, fact, text)
+			}
+		}
+	}
+}
+
 // The Action Items chip lists only the Action Items' entries, and the other
 // chips leave them out; with none, it says so.
 func TestGoalHistoryActionItemsChipListsOnlyActionItems(t *testing.T) {
