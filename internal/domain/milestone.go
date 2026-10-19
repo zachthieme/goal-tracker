@@ -111,6 +111,20 @@ func overdueMilestone(milestones []db.Milestone, today string) (db.Milestone, bo
 	return db.Milestone{}, false
 }
 
+// MilestoneOverdueError is a refusal because Milestone is overdue — Planned and
+// past its date — naming it so a caller can show its date as a page shows
+// dates. Callers wrap it with what the missed date rules out; it is an
+// ErrValidation.
+type MilestoneOverdueError struct {
+	Milestone Milestone
+}
+
+func (e *MilestoneOverdueError) Error() string {
+	return fmt.Sprintf("%v: Milestone %q is overdue (due %s)", ErrValidation, e.Milestone.Name, e.Milestone.TargetDate.Format(dateFormat))
+}
+
+func (e *MilestoneOverdueError) Unwrap() error { return ErrValidation }
+
 // rejectGreenWhileOverdue refuses a Green Health while any of the Goal's
 // Milestones, as they will stand after the Check-in, is overdue: a slip is
 // never hidden behind a Green (CONTEXT.md: Date Slip).
@@ -119,7 +133,7 @@ func (s *Service) rejectGreenWhileOverdue(health string, milestones []db.Milesto
 		return nil
 	}
 	if m, ok := overdueMilestone(milestones, s.clock.Now().Format(dateFormat)); ok {
-		return fmt.Errorf("%w: Milestone %q is overdue (due %s), so the Goal can't be Green", ErrValidation, m.Name, m.TargetDate)
+		return fmt.Errorf("%w, so the Goal can't be Green", &MilestoneOverdueError{Milestone: milestoneFromRow(m)})
 	}
 	return nil
 }

@@ -402,8 +402,13 @@ func TestGreenRejectedWhileMilestoneOverdue(t *testing.T) {
 	}
 
 	h.Clock.Set(beta.TargetDate.AddDate(0, 0, 1))
-	if _, err := h.Service.SubmitCheckin(context.Background(), green); !errors.Is(err, domain.ErrValidation) {
+	_, err := h.Service.SubmitCheckin(context.Background(), green)
+	if !errors.Is(err, domain.ErrValidation) {
 		t.Fatalf("Green with an overdue Milestone: err = %v, want ErrValidation", err)
+	}
+	assertMilestoneOverdueError(t, err, beta)
+	if want := `validation failed: Milestone "Beta" is overdue (due ` + beta.TargetDate.Format("2006-01-02") + `), so the Goal can't be Green`; err.Error() != want {
+		t.Errorf("err = %q, want %q", err, want)
 	}
 
 	// Yellow is still accepted, with its Path to Green.
@@ -461,6 +466,23 @@ func TestNoChangeGreenRejectedWhileMilestoneOverdue(t *testing.T) {
 		t.Fatalf("no-change Green with an overdue Milestone: err = %v, want ErrValidation", err)
 	}
 	assertOverdueNoChangeRefusal(t, err)
+	assertMilestoneOverdueError(t, err, beta)
+	if want := `validation failed: Milestone "Beta" is overdue (due ` + beta.TargetDate.Format("2006-01-02") + `): submit a Check-in to move its date, mark it Done or remove it`; err.Error() != want {
+		t.Errorf("err = %q, want %q", err, want)
+	}
+}
+
+// assertMilestoneOverdueError checks err is a refusal for the overdue
+// Milestone m that a caller can find with errors.As, naming m and its date.
+func assertMilestoneOverdueError(t *testing.T, err error, m domain.Milestone) {
+	t.Helper()
+	var overdue *domain.MilestoneOverdueError
+	if !errors.As(err, &overdue) {
+		t.Fatalf("err = %v, want a *MilestoneOverdueError", err)
+	}
+	if overdue.Milestone.ID != m.ID || overdue.Milestone.Name != m.Name || !overdue.Milestone.TargetDate.Equal(m.TargetDate) {
+		t.Errorf("overdue Milestone = %+v, want %+v", overdue.Milestone, m)
+	}
 }
 
 // A No change can't repeat a Yellow or Red either while a Milestone is overdue:
@@ -820,5 +842,33 @@ func TestNoChangeGreenRefusedWhileMetricOffTarget(t *testing.T) {
 
 	if _, err := h.Service.SubmitNoChangeCheckin(context.Background(), goal.ID, sam.ID); !errors.Is(err, domain.ErrGreenOffTarget) {
 		t.Fatalf("no-change Green with an off-target Metric: err = %v, want ErrGreenOffTarget", err)
+	}
+}
+
+// OffTargetMetrics judges each of the Goal's Metrics by the reading entered,
+// over the one last recorded: an entered reading still short of the target is
+// off target, with that reading; one that meets the target leaves none.
+func TestOffTargetMetricsJudgesTheReadingEntered(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	goal, idle := offTargetMetricGoal(t, h, sam)
+	ctx := context.Background()
+
+	missed, err := h.Service.OffTargetMetrics(ctx, goal.ID, []domain.MetricReadingInput{{MetricID: idle.ID, Value: 35.5}})
+	if err != nil {
+		t.Fatalf("OffTargetMetrics: %v", err)
+	}
+	if len(missed) != 1 || missed[0].Metric.ID != idle.ID || missed[0].Reading != 35.5 {
+		t.Errorf("off-target Metrics = %+v, want Idle capacity at the 35.5 entered", missed)
+	}
+
+	missed, err = h.Service.OffTargetMetrics(ctx, goal.ID, []domain.MetricReadingInput{{MetricID: idle.ID, Value: 20}})
+	if err != nil {
+		t.Fatalf("OffTargetMetrics: %v", err)
+	}
+	if len(missed) != 0 {
+		t.Errorf("off-target Metrics = %+v, want none once the reading entered meets the target", missed)
 	}
 }
