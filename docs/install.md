@@ -115,7 +115,8 @@ GOAL_TRACKER_SESSION_KEY=
 # Admin page.
 GOAL_TRACKER_ADMINS=it-admin@example.com,ops-lead@example.com
 
-# The company's timezone, and the timezone of anyone the directory gives none.
+# The company's timezone as an IANA name, and the timezone of anyone the
+# directory gives none.
 GOAL_TRACKER_TIMEZONE=America/New_York
 
 # People and their Managers.
@@ -133,8 +134,9 @@ GOAL_TRACKER_REMINDER_TIME=09:00
 
 Startup checks this and stops with a message naming the problem: an unset or
 unknown sign-in method, a missing or short session key, OIDC variables set
-with `password`, a missing OIDC variable with `oidc`, or a bad timezone. Never
-set `GOAL_TRACKER_START_AT`; it's for tests.
+with `password`, a missing OIDC variable with `oidc`, or a
+`GOAL_TRACKER_TIMEZONE` that isn't an IANA name (`Local` included). Never set
+`GOAL_TRACKER_START_AT`; it's for tests.
 
 ## 5. The CSV file
 

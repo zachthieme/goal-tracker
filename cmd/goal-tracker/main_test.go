@@ -617,3 +617,54 @@ func TestThePasswordLinkCommandNeedsAnEmailAddress(t *testing.T) {
 		t.Errorf("password-link not-an-email left an Account (err %v)", err)
 	}
 }
+
+// GOAL_TRACKER_TIMEZONE=Local is the host's zone, not an IANA name: a Report
+// block freezes its Goal's zone by name and couldn't read "Local" back, so
+// startup stops and asks for the zone by name.
+//
+//nolint:paralleltest // sets the process environment, through devEnv
+func TestLocalTimezoneIsRefused(t *testing.T) {
+	devEnv(t)
+	t.Setenv("GOAL_TRACKER_TIMEZONE", "Local")
+
+	_, err := loadConfig()
+	if err == nil {
+		t.Fatal("loadConfig accepted GOAL_TRACKER_TIMEZONE=Local")
+	}
+	for _, want := range []string{"GOAL_TRACKER_TIMEZONE", "IANA", "America/Los_Angeles"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q doesn't name %s", err, want)
+		}
+	}
+}
+
+// A blank GOAL_TRACKER_TIMEZONE is unset, as with every GOAL_TRACKER_*
+// variable, and gives UTC rather than the host's zone.
+//
+//nolint:paralleltest // sets the process environment, through devEnv
+func TestTimezoneDefaultsToUTC(t *testing.T) {
+	devEnv(t)
+	t.Setenv("GOAL_TRACKER_TIMEZONE", "")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.timezone != "UTC" {
+		t.Errorf("timezone %q, want UTC", cfg.timezone)
+	}
+}
+
+//nolint:paralleltest // sets the process environment, through devEnv
+func TestANamedTimezoneIsKept(t *testing.T) {
+	devEnv(t)
+	t.Setenv("GOAL_TRACKER_TIMEZONE", "America/Los_Angeles")
+
+	cfg, err := loadConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.timezone != "America/Los_Angeles" {
+		t.Errorf("timezone %q, want America/Los_Angeles", cfg.timezone)
+	}
+}
