@@ -126,6 +126,12 @@ test("no Playwright Chromium is found in an empty or missing directory", (t) => 
   assert.equal(playwrightChrome(join(root, "missing")), undefined);
 });
 
+test("no Playwright Chromium is found under a root that's a file", (t) => {
+  const file = join(browsersDir(t, []), "browsers");
+  writeFileSync(file, "");
+  assert.equal(playwrightChrome(file), undefined);
+});
+
 const facts = {
   url: "/dimensions",
   title: "Dimensions · Goal Tracker",
