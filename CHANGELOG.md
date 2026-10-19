@@ -47,6 +47,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A Goal whose latest Check-in is Green while a Milestone is overdue, judged by the date in its Owner's timezone, carries a "Milestone overdue" mark on the Goal list, which sorts it with the Stale Goals. Risks lists it under Owner needs to update, where its Fix is Check in for its Owner or a Delegate and Nudge for anyone else, and a Nudge's email names the overdue Milestone. Its Health stays as its Owner set it (#345).
 - [user] A Schedule conflict's Fix on Risks is now "Check in" for the Owner or a Delegate of either Goal. It opens their own Goal's Check-in with the dates section open. Anyone else gets Nudge. "Compare dates" is gone (#257).
 - [user] A Goal in a Schedule conflict can be nudged. The email names each conflict and opens the Check-in's dates (#257).
+- [user] Risks' groups "Owner needs to update" and "Plan doesn't fit" are now "Waiting on a Check-in" and "Placement and dates", and their empty cards now read "Nothing is waiting on a Check-in." and "Every Goal is placed and its dates fit." Their links (`?group=owner`, `?group=plan`) are unchanged (#253).
+- [user] The activation checklist, on the New goal form, a Proposed Goal's page and its define page (and the checklist that updates as the form is typed), marks an item not yet met with a neutral ○ "to do" in place of a red ✗ "missing" (#253).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
