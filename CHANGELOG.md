@@ -45,6 +45,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] People's Names no longer have a dotted underline that made them look like links. Hovering over a Name or focusing it shows a faint tint, and clicking it still shows the email (#278).
 - [user] A Report's exception block counts the Red, Yellow and Stale Goals behind its Rolled-up Health ("2 of 6 Red · 1 Yellow"), names the Red and Yellow ones, and links to the Goals in the same Report it contributes to or that contribute to it. The Markdown export and Print carry the same (#246).
 - [user] A Goal whose latest Check-in is Green while a Milestone is overdue, judged by the date in its Owner's timezone, carries a "Milestone overdue" mark on the Goal list, which sorts it with the Stale Goals. Risks lists it under Owner needs to update, where its Fix is Check in for its Owner or a Delegate and Nudge for anyone else, and a Nudge's email names the overdue Milestone. Its Health stays as its Owner set it (#345).
+- [user] A Schedule conflict's Fix on Risks is now "Check in" for the Owner or a Delegate of either Goal. It opens their own Goal's Check-in with the dates section open. Anyone else gets Nudge. "Compare dates" is gone (#257).
+- [user] A Goal in a Schedule conflict can be nudged. The email names each conflict and opens the Check-in's dates (#257).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
