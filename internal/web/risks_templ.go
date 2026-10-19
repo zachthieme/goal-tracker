@@ -961,7 +961,8 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 	})
 }
 
-// riskChip says why a signal flags g.
+// riskChip says why a signal flags g. Red and Yellow, Not Green's signals,
+// take no chip: the row's Health badge says so already.
 func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -984,6 +985,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		switch sig.Kind {
+		case "red", "yellow":
 		case "stale":
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "<span data-testid=\"risk-signal\" data-kind=\"stale\" class=\"badge st\">")
 			if templ_7745c5c3_Err != nil {
@@ -992,7 +994,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 			var templ_7745c5c3_Var45 string
 			templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs("Stale · " + plural(sig.Days, "day") + ", checks in " + cadenceInWords(g.CadenceDays))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 205, Col: 158}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 207, Col: 158}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 			if templ_7745c5c3_Err != nil {
@@ -1010,7 +1012,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 			var templ_7745c5c3_Var46 string
 			templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs("Path to Green " + plural(sig.Days, "day") + " overdue")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 207, Col: 134}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 209, Col: 134}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 			if templ_7745c5c3_Err != nil {
@@ -1028,7 +1030,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 			var templ_7745c5c3_Var47 string
 			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs("Action Item " + plural(sig.Days, "day") + " overdue")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 209, Col: 139}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 211, Col: 139}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 			if templ_7745c5c3_Err != nil {
@@ -1056,7 +1058,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 			var templ_7745c5c3_Var48 string
 			templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("Schedule conflict · due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), riskDays(sig.Days)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 216, Col: 141}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 218, Col: 141}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 			if templ_7745c5c3_Err != nil {
@@ -1078,7 +1080,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 			var templ_7745c5c3_Var49 string
 			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs("Parent " + sig.Related.Lifecycle + " · ")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 220, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 222, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 			if templ_7745c5c3_Err != nil {
@@ -1126,7 +1128,7 @@ func risksStyles() templ.Component {
 			templ_7745c5c3_Var50 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "<style>\n\t\t.shape{display:none}\n\t\t.rk-body{display:flex;flex-direction:column;gap:inherit}\n\t\t.rk-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}\n\t\t.rk-head p{margin:0}\n\t\t.rk-filters{display:flex;align-items:center;gap:8px}\n\t\t.rk-cards{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}\n\t\t.rk-card{padding:16px;display:flex;flex-direction:column;gap:8px}\n\t\t.rk-card .num{font-size:24px}\n\t\t.rk-chips{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.rk-zero{border:1px dashed var(--color-border-strong);color:var(--color-ink-muted)}\n\t\ttd .rk-chips{margin-top:4px}\n\t\t.rk-table .rk-owner{white-space:nowrap}\n\t\t.rk-defs{padding:12px 16px}\n\t\t.rk-defs summary{cursor:pointer;font-weight:600}\n\t\t.rk-defs dl{margin:8px 0 0;display:grid;grid-template-columns:max-content 1fr;gap:4px 16px}\n\t\t.rk-defs dt{font-weight:600}\n\t\t.rk-defs dd{margin:0}\n\t\t.rk-tag{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;padding:0 8px;border-radius:var(--radius-sm);color:var(--color-ink);font-size:13px;line-height:20px;border:1px solid var(--color-border-strong)}\n\t\t@media (max-width:1151px){.rk-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}\n\t\t@media (max-width:900px){.rk-cards{grid-template-columns:minmax(0,1fr)}}\n\t\t@media (max-width:600px){.rk-table thead{display:none}.rk-table tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rk-table tbody tr:last-child{border-bottom:none}.rk-table td{display:block;padding:0;border-bottom:none}.rk-table .rk-goal{order:-1;grid-column:1/-1}.rk-table .rk-owner{white-space:normal}.rk-table .rk-fix{grid-column:1/-1;margin-top:4px}}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "<style>\n\t\t.shape{display:none}\n\t\t.rk-body{display:flex;flex-direction:column;gap:inherit}\n\t\t.rk-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}\n\t\t.rk-head p{margin:0}\n\t\t.rk-filters{display:flex;align-items:center;gap:8px}\n\t\t.rk-cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}\n\t\t.rk-card{padding:16px;display:flex;flex-direction:column;gap:8px}\n\t\t.rk-card .num{font-size:24px}\n\t\t.rk-chips{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.rk-zero{border:1px dashed var(--color-border-strong);color:var(--color-ink-muted)}\n\t\ttd .rk-chips{margin-top:4px}\n\t\t.rk-table .rk-owner{white-space:nowrap}\n\t\t.rk-defs{padding:12px 16px}\n\t\t.rk-defs summary{cursor:pointer;font-weight:600}\n\t\t.rk-defs dl{margin:8px 0 0;display:grid;grid-template-columns:max-content 1fr;gap:4px 16px}\n\t\t.rk-defs dt{font-weight:600}\n\t\t.rk-defs dd{margin:0}\n\t\t.rk-tag{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;padding:0 8px;border-radius:var(--radius-sm);color:var(--color-ink);font-size:13px;line-height:20px;border:1px solid var(--color-border-strong)}\n\t\t@media (max-width:1151px){.rk-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}\n\t\t@media (max-width:900px){.rk-cards{grid-template-columns:minmax(0,1fr)}}\n\t\t@media (max-width:600px){.rk-table thead{display:none}.rk-table tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rk-table tbody tr:last-child{border-bottom:none}.rk-table td{display:block;padding:0;border-bottom:none}.rk-table .rk-goal{order:-1;grid-column:1/-1}.rk-table .rk-owner{white-space:normal}.rk-table .rk-fix{grid-column:1/-1;margin-top:4px}}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

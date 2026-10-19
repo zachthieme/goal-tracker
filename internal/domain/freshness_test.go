@@ -221,6 +221,37 @@ func TestFreshnessSignalsListStaleGoalsAndOverduePaths(t *testing.T) {
 	}
 }
 
+// The org-wide freshness signals list every Active Goal whose latest Check-in
+// is Red or Yellow as Not Green, each with that Health. A Green Goal and one
+// with no Check-in aren't listed.
+func TestFreshnessSignalsListNotGreenGoals(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	later := h.Clock.Now().AddDate(0, 1, 0)
+	red := h.ActiveGoal(sam, "Red goal", "It matters.")
+	h.Checkin(sam, red.ID, domain.HealthRed, "Blocked.", "Escalate.", later)
+	yellow := h.ActiveGoal(sam, "Yellow goal", "It matters.")
+	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Slipping.", "Add a team.", later)
+	green := h.ActiveGoal(sam, "Green goal", "It matters.")
+	h.Checkin(sam, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.ActiveGoal(sam, "Never checked in", "It matters.")
+
+	got, err := h.Service.FreshnessSignals(context.Background())
+	if err != nil {
+		t.Fatalf("FreshnessSignals: %v", err)
+	}
+	health := map[int64]string{}
+	for _, gf := range got.NotGreen {
+		health[gf.Goal.ID] = gf.Health
+	}
+	want := map[int64]string{red.ID: domain.HealthRed, yellow.ID: domain.HealthYellow}
+	if len(health) != len(got.NotGreen) || len(health) != len(want) || health[red.ID] != want[red.ID] || health[yellow.ID] != want[yellow.ID] {
+		t.Errorf("Not Green = %+v, want only %q Red and %q Yellow", got.NotGreen, red.Title, yellow.Title)
+	}
+}
+
 // Resuming an On Hold Goal is a Check-in, so the count restarts from the resume,
 // not from the Check-in before the Goal was paused.
 func TestResumedGoalIsJudgedFromItsResume(t *testing.T) {

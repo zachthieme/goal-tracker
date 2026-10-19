@@ -93,7 +93,8 @@ func signalOf(t *testing.T, r riskGoalRow, kind string) riskSignal {
 // A row carries its Goal's latest Health, and each signal says how bad it is:
 // a Path to Green counts the days since its target date, the first day after
 // it being 1; a schedule conflict counts the days the child's delivery date
-// falls after its parent's, and names the parent, as a halted parent does.
+// falls after its parent's, and names the parent, as a halted parent does. A
+// parent is flagged for its own Health, never for its children's signals.
 func TestRiskRowsCountDaysAndNameParents(t *testing.T) {
 	t.Parallel()
 
@@ -130,25 +131,29 @@ func TestRiskRowsCountDaysAndNameParents(t *testing.T) {
 	if halted.Days != 0 || halted.Related == nil || halted.Related.ID != paused.ID {
 		t.Errorf("halted parent = %+v, want %q", halted, paused.Title)
 	}
-	for _, g := range []domain.Goal{launch, paused} {
-		for _, r := range rows {
-			if r.Goal.ID == g.ID {
-				t.Errorf("%q, a parent, is flagged: %v", g.Title, kinds(r))
-			}
+	// launch is a parent with nothing wrong in its schedule, but its Yellow
+	// Check-in puts it under Not Green, and its Path to Green isn't due yet.
+	if got := kinds(rowOf(t, rows, launch)); !slices.Equal(got, []string{"yellow"}) {
+		t.Errorf("%q flagged for %v, want only yellow", launch.Title, got)
+	}
+	for _, r := range rows {
+		if r.Goal.ID == paused.ID {
+			t.Errorf("%q, an On Hold parent, is flagged: %v", paused.Title, kinds(r))
 		}
 	}
 }
 
-// row builds a riskGoalRow for the pure tests: a Goal titled title on a
-// cadence of days.
+// row builds a riskGoalRow for the pure tests: an Active Goal titled title on
+// a cadence of days.
 func row(title string, cadence int, health string, signals ...riskSignal) riskGoalRow {
-	return riskGoalRow{Goal: domain.Goal{Title: title, CadenceDays: cadence}, Health: health, Signals: signals}
+	return riskGoalRow{Goal: domain.Goal{Title: title, CadenceDays: cadence, Lifecycle: domain.LifecycleActive}, Health: health, Signals: signals}
 }
 
-// Rows sort worst first, key by key: Ownerless first; then Red, Yellow, no
-// Health, Green; then a Path to Green overdue first, longest overdue first;
-// then Stale first, furthest past its cadence first; then by title, ignoring
-// case. The structural signals don't move a row.
+// Rows sort worst first, key by key: Active Goals before the Proposed and On
+// Hold ones; then Ownerless first; then Red, Yellow, no Health, Green; then a
+// Path to Green overdue first, longest overdue first; then Stale first,
+// furthest past its cadence first; then more kinds of signal first; then by
+// title, ignoring case.
 func TestSortRiskRowsPutsTheWorstFirst(t *testing.T) {
 	t.Parallel()
 
@@ -169,11 +174,13 @@ func TestSortRiskRowsPutsTheWorstFirst(t *testing.T) {
 		row("Yellow plan", 7, domain.HealthYellow, conflict),
 		row("None far past", 3, "", stale(12)),
 		row("None long silent", 14, "", stale(20)),
-		row("alpha conflict", 7, "", conflict),
 		row("Beta halted", 7, "", halted, unaligned),
+		row("alpha conflict", 7, "", conflict),
 		row("Green stale", 7, domain.HealthGreen, stale(9)),
 		row("Alpha", 30, domain.HealthGreen, unaligned),
 		row("Beta", 7, domain.HealthGreen, unaligned),
+		lifecycle(row("Aardvark proposal", 7, "", conflict), domain.LifecycleProposed),
+		lifecycle(row("Abandoned plan", 7, "", halted), domain.LifecycleOnHold),
 	}
 	rows := slices.Clone(want)
 	slices.Reverse(rows)
@@ -187,6 +194,37 @@ func TestSortRiskRowsPutsTheWorstFirst(t *testing.T) {
 	}
 	if !slices.Equal(got, wantTitles) {
 		t.Errorf("sorted rows:\n got %q\nwant %q", got, wantTitles)
+	}
+}
+
+// lifecycle is r with its Goal in lifecycle l.
+func lifecycle(r riskGoalRow, l string) riskGoalRow {
+	r.Goal.Lifecycle = l
+	return r
+}
+
+// Among rows no ranked signal tells apart, the one with more kinds of signal
+// comes first, whatever the titles, and then the title decides.
+func TestSortRiskRowsPutsMoreKindsOfSignalFirst(t *testing.T) {
+	t.Parallel()
+
+	unaligned := riskSignal{Kind: "unaligned"}
+	conflict := riskSignal{Kind: "schedule-conflicts", Days: 30, Related: &domain.Goal{Title: "Launch"}}
+	want := []string{"Zebra", "Apple", "Mango"}
+	rows := []riskGoalRow{
+		row("Mango", 7, domain.HealthGreen, unaligned),
+		row("Apple", 7, domain.HealthGreen, unaligned),
+		row("Zebra", 7, domain.HealthGreen, unaligned, conflict),
+	}
+
+	sortRiskRows(rows)
+
+	var got []string
+	for _, r := range rows {
+		got = append(got, r.Goal.Title)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("sorted rows:\n got %q\nwant %q", got, want)
 	}
 }
 
@@ -230,10 +268,13 @@ func TestRiskGroupsCountUniqueGoals(t *testing.T) {
 		row("Unaligned", 7, domain.HealthGreen, sig("unaligned")),
 		row("Stale with an overdue Action Item", 7, domain.HealthYellow, sig("stale"), sig("action-item-overdue")),
 		row("Overdue Action Item", 7, domain.HealthGreen, sig("action-item-overdue")),
+		row("Red and stale", 7, domain.HealthRed, sig("red"), sig("stale")),
+		row("Yellow only", 7, domain.HealthYellow, sig("yellow")),
 	}
 
 	want := []riskGroup{
-		{Key: "owner", Name: "Owner needs to update", Count: 3},
+		{Key: "health", Name: "Not Green", Count: 2},
+		{Key: "owner", Name: "Owner needs to update", Count: 4},
 		{Key: "followup", Name: "Action Items overdue", Count: 2},
 		{Key: "plan", Name: "Plan doesn't fit", Count: 3},
 		{Key: "admin", Name: "Needs an Admin", Count: 2},
