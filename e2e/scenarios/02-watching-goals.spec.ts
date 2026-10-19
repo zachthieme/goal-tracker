@@ -206,13 +206,23 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
       const values = page.getByTestId("report-rule").first().getByTestId("rule-values");
       const checked = values.locator("option:checked");
       await expect(checked).toHaveAttribute("value", `org=${me.id}`);
-      // It worked if: the selected author shows wholly inside the list.
-      const list = (await values.boundingBox())!;
-      const option = (await checked.boundingBox())!;
-      expect(option.y, `at ${width}px the author's top is inside the list`).toBeGreaterThanOrEqual(list.y);
-      expect(option.y + option.height, `at ${width}px the author's bottom is inside the list`).toBeLessThanOrEqual(
-        list.y + list.height,
-      );
+      // It worked if: the selected author is scrolled to the list's top row.
+      // Left unscrolled, it can sit wholly inside the list on its bottom edge.
+      // The script scrolls again once web fonts load, so poll.
+      await expect
+        .poll(
+          async () =>
+            Math.abs(
+              await values.evaluate(
+                (list: HTMLSelectElement) =>
+                  list.selectedOptions[0].getBoundingClientRect().top -
+                  list.getBoundingClientRect().top -
+                  list.clientTop,
+              ),
+            ),
+          { message: `at ${width}px the author is the list's top row` },
+        )
+        .toBeLessThanOrEqual(1);
     }
     await page.setViewportSize({ width: 1280, height: 720 });
   });

@@ -412,9 +412,15 @@ test("5.2 The live Ready to activate card answers the empty form", async ({ page
   });
 });
 
-// expectRefusedByTheBrowser says submitting leaves the labelled required input
-// missing and posts nothing: the browser's own validation holds the submit.
+// expectRefusedByTheBrowser says submitting fires invalid on the labelled
+// required input and posts nothing: the browser's own validation held the
+// submit. Only a validated submit fires invalid, so a form that skips
+// validation can't pass.
 async function expectRefusedByTheBrowser(page: Page, label: string | RegExp, submit: () => Promise<void>) {
+  const input = page.getByLabel(label);
+  await input.evaluate((el: HTMLInputElement) =>
+    el.addEventListener("invalid", () => (el.dataset.refused = "true"), { once: true }),
+  );
   const posts: string[] = [];
   const record = (r: { method(): string; url(): string }) => {
     const path = new URL(r.url()).pathname;
@@ -422,9 +428,7 @@ async function expectRefusedByTheBrowser(page: Page, label: string | RegExp, sub
   };
   page.on("request", record);
   await submit();
-  await expect
-    .poll(() => page.getByLabel(label).evaluate((el: HTMLInputElement) => el.validity.valueMissing))
-    .toBe(true);
+  await expect(input).toHaveAttribute("data-refused", "true");
   page.off("request", record);
   expect(posts).toEqual([]);
 }
