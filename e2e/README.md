@@ -11,6 +11,7 @@ browser. It isn't a gate: `make check` and vetinari don't run it.
 make e2e                          # from the repo root
 CHROME=/usr/bin/chromium make e2e # on a host where Playwright's Chromium can't run (Arch)
 make e2e E2E_ARGS=smoke           # one spec; E2E_ARGS goes to `playwright test`
+make e2e-typecheck                # type-check every .ts file here; not a gate
 ```
 
 `make e2e` runs `npm ci` here when `e2e/node_modules` is missing. When `CHROME`
@@ -29,6 +30,11 @@ pins move together.
 From `e2e/`, `npx playwright test` runs the suite too, and `npx playwright show-report`
 opens the last run's report. A failed test keeps its trace and has the server's
 log attached.
+
+`make e2e-typecheck` runs `tsc` in strict mode over every `.ts` file here, with
+the settings in `tsconfig.json`. Playwright strips the types without checking
+them, so this is the only check they get. It isn't a gate: `make check` and
+vetinari don't run it. From `e2e/`, `npm run typecheck` does the same.
 
 ## How the fixtures work
 

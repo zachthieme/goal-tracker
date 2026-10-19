@@ -44,7 +44,8 @@ installed it rewrites every inline `<style>` and `<script>` block. Format .templ
 files by hand to match the surrounding code.
 
 `make e2e` runs the Playwright suite in `e2e/` over a freshly seeded app (see
-`e2e/README.md`). It isn't a gate.
+`e2e/README.md`). It isn't a gate. `make e2e-typecheck` type-checks `e2e/`
+with `tsc` in strict mode, and isn't a gate either.
 
 ## Changelog
 
