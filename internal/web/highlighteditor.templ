@@ -30,11 +30,12 @@ templ highlightAddButtons() {
 // add button, or a select where the Kind can change), the Note, and Save and
 // Cancel, or Remove for a Draft with nothing to go back to. Script names its
 // fields as the rows' are named, so an editor still open at submit is sent
-// like an item.
+// like an item. Its ie- classes are the shared look (itemEditorStyles);
+// hl-editor, like an item's hl-item, is how the script finds it.
 templ highlightEditorTemplate() {
 	<template id="highlight-editor">
-		<div data-testid="highlight-editor" class="hl-editor" role="group">
-			<h3 class="hl-editor-head" data-hl-heading></h3>
+		<div data-testid="highlight-editor" class="ie-editor hl-editor" role="group">
+			<h3 class="ie-editor-head" data-hl-heading></h3>
 			<p class="hl-draft muted small" data-hl-draft>Draft · logged by <span data-hl-logged-by></span></p>
 			<input type="hidden" data-hl-kind-hidden/>
 			<label data-hl-kind-select>
@@ -47,7 +48,7 @@ templ highlightEditorTemplate() {
 				Note
 				<textarea data-hl-note></textarea>
 			</label>
-			<div class="hl-actions">
+			<div class="ie-actions">
 				<button type="button" class="btn sm" data-hl-save>Save</button>
 				<button type="button" class="btn quiet sm" data-hl-cancel>Cancel</button>
 				<button type="button" class="btn quiet sm" data-hl-remove>Remove</button>
@@ -61,10 +62,10 @@ templ highlightEditorTemplate() {
 // Edit and Remove.
 templ highlightItemTemplate() {
 	<template id="highlight-item">
-		<div data-testid="highlight-item" class="hl-item">
+		<div data-testid="highlight-item" class="ie-item hl-item">
 			<p class="hl-item-text"><strong data-testid="highlight-item-kind"></strong>: <span data-testid="highlight-item-note"></span></p>
 			<p class="hl-draft muted small" data-hl-draft>Draft · logged by <span data-hl-logged-by></span></p>
-			<div class="hl-actions">
+			<div class="ie-actions">
 				<button type="button" class="btn quiet sm" data-hl-edit>Edit</button>
 				<button type="button" class="btn quiet sm" data-hl-remove>Remove</button>
 			</div>
@@ -81,11 +82,13 @@ templ highlightKindOptions(selected string) {
 	<option value={ domain.HighlightMiss } selected?={ selected == domain.HighlightMiss }>Miss</option>
 }
 
-// highlightEditorStyles lay out the editor and its items. What only script
-// can drive (.hl-js-only) shows once script has marked the container hl-js,
-// and what script replaces (.hl-no-js), and the summary of a <details> the
-// container sits in, hide then.
+// highlightEditorStyles lay out the editor and its items, in the look every
+// item editor shares (itemEditorStyles). What only script can drive
+// (.hl-js-only) shows once script has marked the container hl-js, and what
+// script replaces (.hl-no-js), and the summary of a <details> the container
+// sits in, hide then.
 templ highlightEditorStyles() {
+	@itemEditorStyles()
 	<style>
 		[data-highlight-editor]:not(.hl-js) .hl-js-only{display:none}
 		.hl-js .hl-no-js,details:has(>.hl-js)>summary{display:none}
@@ -93,12 +96,24 @@ templ highlightEditorStyles() {
 		.hl-add{display:flex;flex-wrap:wrap;gap:8px}
 		.hl-items{display:flex;flex-direction:column;gap:8px}
 		.hl-items:empty{display:none}
-		.hl-item,.hl-editor{display:flex;flex-direction:column;gap:8px;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;background:var(--color-surface)}
-		.hl-item p{margin:0}
 		.hl-item-text{white-space:pre-wrap}
-		.hl-editor-head{font-size:15px}
-		.hl-draft[hidden],.hl-editor [hidden]{display:none}
-		.hl-actions{display:flex;flex-wrap:wrap;gap:8px}
+		.hl-draft[hidden]{display:none}
+	</style>
+}
+
+// itemEditorStyles are the look of an item editor, the + → fields → Save
+// pattern the Highlight editor and the New goal form's Milestone and Metric
+// editors share: the editor's box (.ie-editor), its heading
+// (.ie-editor-head), its Save and Cancel row (.ie-actions), and a saved
+// item's row (.ie-item) with its Edit and Remove. Each page lays out its own
+// fields inside.
+templ itemEditorStyles() {
+	<style>
+		.ie-item,.ie-editor{display:flex;flex-direction:column;gap:8px;border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;background:var(--color-surface)}
+		.ie-item p{margin:0}
+		.ie-editor-head{margin:0;font-family:var(--font-display);font-size:15px;font-weight:600;line-height:1.4;color:var(--color-ink)}
+		.ie-editor [hidden]{display:none}
+		.ie-actions{display:flex;flex-wrap:wrap;gap:8px}
 	</style>
 }
 

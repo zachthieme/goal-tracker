@@ -1,7 +1,7 @@
 // Phone width: at 390px the Goals list, Risks, the Admin page, a Report draft
-// and the New goal page fit the screen. Nothing inside main is clipped or
-// scrolls sideways, and every control lies within the window (#343: #258,
-// #268, #338, #229; #368).
+// and the New goal page, with its Metric editor open, fit the screen. Nothing
+// inside main is clipped or scrolls sideways, and every control lies within
+// the window (#343: #258, #268, #338, #229; #368; #369).
 import type { Page } from "@playwright/test";
 
 import { admin, expect, signIn, test } from "./fixtures";
@@ -109,7 +109,7 @@ test("at 390px a Report card's Health drops under its title", async ({ page }) =
   await expectFitsAPhone(page);
 });
 
-test("at 390px the New goal page stacks its Kind tiles and fits its cadence", async ({ page }) => {
+test("at 390px the New goal page stacks its Kind tiles and fits its cadence and Metric editor", async ({ page }) => {
   await signIn(page, admin);
   await page.goto("/goals/new");
   const form = page.getByTestId("goal-form");
@@ -124,6 +124,8 @@ test("at 390px the New goal page stacks its Kind tiles and fits its cadence", as
   const parents = form.getByTestId("goal-form-parents-row");
   await parents.locator("summary").click();
   await expect(form.getByRole("group", { name: "Contributes to" })).toBeVisible();
+  await form.getByRole("button", { name: "+ Metric" }).click();
+  await expect(form.getByTestId("metric-editor")).toBeVisible();
 
   const dated = (await kind.locator(".gf-tile").first().boundingBox())!;
   const ongoing = (await kind.locator(".gf-tile").last().boundingBox())!;

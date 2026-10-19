@@ -132,8 +132,12 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     const know = form.getByTestId("goal-form-know");
     await expect(know.getByRole("heading", { level: 2, name: "How you'll know" })).toBeVisible();
     await expect(know.getByText("At least one Milestone or Metric to activate")).toBeVisible();
-    await expect(know.getByRole("heading", { level: 3, name: "Milestones" })).toBeVisible();
-    await expect(know.getByRole("heading", { level: 3, name: "Metrics" })).toBeVisible();
+    // With nothing added, How you'll know is its + Milestone and + Metric;
+    // the Milestones and Metrics labels show once each has an item (#369).
+    await expect(know.getByRole("button", { name: "+ Milestone" })).toBeVisible();
+    await expect(know.getByRole("button", { name: "+ Metric" })).toBeVisible();
+    await expect(know.getByRole("heading", { level: 3, name: "Milestones" })).toBeHidden();
+    await expect(know.getByRole("heading", { level: 3, name: "Metrics" })).toBeHidden();
     const more = form.getByTestId("goal-form-more");
     await expect(more.getByRole("heading", { level: 2, name: /^More detail/ })).toBeVisible();
     // Contributes to is a closed row, with nothing picked, until it's opened.
@@ -229,9 +233,12 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     await expect(activate).toBeDisabled();
     await expect(count).toHaveText("3 of 6 done");
 
-    const milestone = priya.getByTestId("milestone-row").first();
-    await milestone.getByLabel("Name").fill("Translations reviewed");
-    await milestone.getByLabel("Date").fill(isoDaysFromNow(60));
+    // A Milestone is added through + Milestone, its editor and Save; while
+    // the editor is open the card asks for it to be saved.
+    await priya.getByRole("button", { name: "+ Milestone" }).click();
+    await expectItem(priya, "Save the Milestone you started", false);
+    await expect(count).toHaveText("3 of 6 done");
+    await saveMilestone(priya, "Translations reviewed");
     await expectItem(priya, "A Milestone or Metric", true);
     await expect(count).toHaveText("4 of 6 done");
 
@@ -493,9 +500,18 @@ async function chooseKind(page: Page, kind: "Dated" | "Ongoing") {
 async function fillDated(page: Page, milestone: string) {
   await chooseKind(page, "Dated");
   await page.getByLabel("Delivery date", { exact: true }).fill(isoDaysFromNow(120));
-  const row = page.getByTestId("milestone-row").first();
-  await row.getByLabel("Name").fill(milestone);
-  await row.getByLabel("Date").fill(isoDaysFromNow(60));
+  await page.getByRole("button", { name: "+ Milestone" }).click();
+  await saveMilestone(page, milestone);
+}
+
+// saveMilestone fills the open Milestone editor with name, due in two months,
+// and saves it as an item.
+async function saveMilestone(page: Page, name: string) {
+  const editor = page.getByTestId("milestone-editor");
+  await editor.getByLabel("Name").fill(name);
+  await editor.getByLabel("Date").fill(isoDaysFromNow(60));
+  await editor.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByTestId("milestone-item").filter({ hasText: name })).toBeVisible();
 }
 
 // riskRow is the Risks row of the Goal titled title.

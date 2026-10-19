@@ -31,7 +31,8 @@ type goalFormView struct {
 	ExistingMilestones []domain.Milestone
 	ExistingMetrics    []domain.Metric
 	// Dates is the clock the existing Milestones and Metrics show their dates
-	// against.
+	// against, and whose year script writes the rest's against. Every render
+	// of the page sets it.
 	Dates  displayDates
 	Linked []linkedParent
 	Title  string
@@ -46,6 +47,9 @@ type goalFormView struct {
 	CadenceDays string
 	Milestones  []milestoneRow
 	Metrics     []metricRow
+	// Unsaved is the measure, Milestone or Metric, whose editor script has
+	// open, unsaved, as the form posts it (inputEditing); "" when none is.
+	Unsaved string
 	// Parents are the Goals picked to contribute to, and Candidates every
 	// other Goal, which the no-script select offers.
 	Parents    []parentChoice
@@ -81,6 +85,7 @@ func (v goalFormView) activationFacts() activationFacts {
 		Kind:       v.Kind,
 		Milestones: len(v.ExistingMilestones) + len(v.Milestones),
 		Metrics:    len(v.ExistingMetrics) + len(v.Metrics),
+		Unsaved:    v.Unsaved,
 	}
 	if v.Kind == domain.GoalDated {
 		if d, err := parseDate(strings.TrimSpace(v.DeliveryDate)); err == nil {
@@ -103,6 +108,15 @@ func (v goalFormView) activationFacts() activationFacts {
 		}
 	}
 	return f
+}
+
+// year is the company's current year, as text, for How you'll know's script
+// to write an item's date as showDate does: without its year in this one.
+func (v goalFormView) year() string {
+	if v.Dates.Loc == nil {
+		return strconv.Itoa(v.Dates.Now.Year())
+	}
+	return strconv.Itoa(v.Dates.Now.In(v.Dates.Loc).Year())
 }
 
 // readyCount is how many of the Ready to activate checklist's items are done,
@@ -292,7 +306,7 @@ func (s *Server) handleNewGoalForm(w http.ResponseWriter, r *http.Request, curre
 			ids = append(ids, id)
 		}
 	}
-	var v goalFormView
+	v := goalFormView{Dates: s.displayDates()}
 	var err error
 	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, ids, 0); err != nil {
 		s.serverError(w, r, "could not load goals", err)
@@ -552,6 +566,7 @@ func (s *Server) handleCreateDefinedGoal(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	v.Problems = goalFormProblems(err, unparsed)
+	v.Dates = s.displayDates()
 	if v.Parents, v.Candidates, err = s.pickParents(r.Context(), current, in.ParentIDs, 0); err != nil {
 		s.serverError(w, r, "could not load goals", err)
 		return
@@ -803,6 +818,7 @@ func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain
 		Cadence:      r.FormValue(domain.InputCadence),
 		CadenceDays:  r.FormValue(inputCadenceDays),
 	}
+	v.Unsaved = unsavedMeasure(r.PostForm[inputEditing])
 	in := domain.DefinedGoalInput{
 		Title:   v.Title,
 		SoWhat:  v.SoWhat,
@@ -910,6 +926,24 @@ func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain
 		})
 	}
 	return v, in, unparsed
+}
+
+// inputEditing is the hidden input each open Milestone or Metric editor holds,
+// naming its measure, so the Ready to activate card can ask for it to be saved.
+// It never reaches the domain: an editor open at submit is sent like a row.
+const inputEditing = "editing"
+
+// goalFormEditorID is the id the first open Milestone or Metric editor carries,
+// which the checklist's "Save the … you started" links to.
+const goalFormEditorID = "gf-editor"
+
+// unsavedMeasure is the measure the first editing value names, Milestone or
+// Metric, or "" when none does.
+func unsavedMeasure(editing []string) string {
+	if len(editing) > 0 && (editing[0] == "Milestone" || editing[0] == "Metric") {
+		return editing[0]
+	}
+	return ""
 }
 
 // Where it fits posts each value chosen as value_id, the value typed to add to
