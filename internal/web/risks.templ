@@ -200,10 +200,19 @@ templ riskRow(current *domain.Account, today time.Time, here string, r riskGoalR
 }
 
 // riskChip says why a signal flags g. Red and Yellow, Not Green's signals,
-// take no chip: the row's Health badge says so already.
+// take no chip: the row's Health badge says so already. An Ask for help names
+// whom it asks, or says no one is above the Owner.
 templ riskChip(today time.Time, g domain.Goal, sig riskSignal) {
 	switch sig.Kind {
 		case "red", "yellow":
+		case "asks-for-help":
+			<span data-testid="risk-signal" data-kind="asks-for-help" class="rk-tag">
+				if sig.Person != nil {
+					{ "Asks for help of " }@person(*sig.Person)
+				} else {
+					{ "Asks for help · no one above the Owner" }
+				}
+			</span>
 		case "stale":
 			<span data-testid="risk-signal" data-kind="stale" class="badge st">{ "Stale · " + plural(sig.Days, "day") + ", checks in " + cadenceInWords(g.CadenceDays) }</span>
 		case "path-overdue":

@@ -416,6 +416,8 @@ type risksView struct {
 	OverduePaths []domain.GoalFreshness
 	// NotGreen are the Active Goals whose latest Check-in is Red or Yellow.
 	NotGreen []domain.GoalFreshness
+	// Asks are the open Asks for help, each a Goal NotGreen holds.
+	Asks []domain.AskForHelp
 	// Ownerless are the Active Goals whose Owner has left the company.
 	Ownerless []domain.Goal
 	Unaligned []domain.Goal
@@ -455,6 +457,7 @@ func (v risksView) Types() []riskType {
 	return []riskType{
 		{"red", "Red", red},
 		{"yellow", "Yellow", yellow},
+		{"asks-for-help", "Asks for help", len(v.Asks)},
 		{"stale", "Stale", len(v.Stale)},
 		{"path-overdue", "Path to Green overdue", len(v.OverduePaths)},
 		{"action-item-overdue", "Action Item overdue", len(v.OverdueActionItems)},
@@ -470,6 +473,7 @@ func (v risksView) Types() []riskType {
 var riskDefinitions = []struct{ Name, Means string }{
 	{"Red", "Active Goals whose latest Check-in is Red."},
 	{"Yellow", "Active Goals whose latest Check-in is Yellow."},
+	{"Asks for help", "Red or Yellow Goals whose Path to Green asks for help from the Owner's Manager, until the Owner unmarks it or the Goal is back to Green."},
 	{"Stale", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
 	{"Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green."},
 	{"Action Item overdue", "An Action Item about this Goal, raised in a Report, is past its due date."},
@@ -506,6 +510,9 @@ func (v risksView) Flagged(scope pageOrgScope) int {
 	}
 	for _, og := range v.OverdueActionItems {
 		flag(og.Goal)
+	}
+	for _, ask := range v.Asks {
+		flag(ask.Goal)
 	}
 	return len(flagged)
 }
@@ -556,6 +563,9 @@ func (s *Server) loadRisks(ctx context.Context) (risksView, error) {
 		return risksView{}, err
 	}
 	v.OverdueActionItems = riskOverdueGoals(goals, items, s.svc.Now().In(s.svc.Timezone()))
+	if v.Asks, err = s.svc.OpenAsksForHelp(ctx); err != nil {
+		return risksView{}, err
+	}
 	return v, nil
 }
 
@@ -688,11 +698,13 @@ func (r riskGoalRow) fix(current domain.Account, delegate bool, nudged *domain.N
 // overdue Action Item about the Goal is past its due date, for
 // "schedule-conflicts" the days the child's delivery date falls after the
 // parent's, and 0 otherwise. Related is the parent for "schedule-conflicts"
-// and "halted-parents".
+// and "halted-parents". Person is whom an "asks-for-help" asks, nil when no
+// one is above the Owner.
 type riskSignal struct {
 	Kind    string
 	Days    int
 	Related *domain.Goal
+	Person  *domain.Account
 }
 
 // riskRows merges v's lists into one row per flagged Goal. Unlike loadRisks,
@@ -713,6 +725,9 @@ func (s *Server) riskRows(ctx context.Context, v risksView) ([]riskGoalRow, erro
 	}
 	for _, gf := range v.NotGreen {
 		add(gf.Goal, riskSignal{Kind: riskHealthKind(gf.Health)})
+	}
+	for _, ask := range v.Asks {
+		add(ask.Goal, riskSignal{Kind: "asks-for-help", Person: ask.Addressee})
 	}
 	for _, gf := range v.Stale {
 		add(gf.Goal, riskSignal{Kind: "stale", Days: gf.Freshness.DaysSince})
@@ -878,7 +893,7 @@ var riskGroupKinds = []struct {
 	Kinds     []string
 	Blank     string
 }{
-	{"health", "Not Green", []string{"red", "yellow"}, "No Goal is Red or Yellow."},
+	{"health", "Not Green", []string{"red", "yellow", "asks-for-help"}, "No Goal is Red or Yellow."},
 	{"owner", "Owner needs to update", []string{"stale", "path-overdue"}, "Every Owner is up to date."},
 	{"followup", "Action Items overdue", []string{"action-item-overdue"}, "No Action Item is overdue."},
 	{"plan", "Plan doesn't fit", []string{"unaligned", "schedule-conflicts"}, "Every plan fits."},

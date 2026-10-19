@@ -612,3 +612,58 @@ func TestMarkdownExceptionBlockNamesItsLinkedGoals(t *testing.T) {
 		}
 	}
 }
+
+// An exception block that asks for help says so after its Path to Green,
+// introducing whom it asks at their first mention, or saying no one is above
+// the Owner.
+func TestMarkdownSaysWhomABlockAsksForHelp(t *testing.T) {
+	t.Parallel()
+
+	mia := domain.Account{ID: 2, Email: "mia@example.com", Name: "Mia Chen"}
+	block := func(title string, of *domain.Account) domain.ReportBlock {
+		return domain.ReportBlock{
+			Goal:           domain.Goal{Title: title, Owner: boss, Lifecycle: domain.LifecycleActive, DeliveryDate: date(2026, 6, 1)},
+			Health:         domain.HealthRed,
+			PathToGreen:    "Need counsel budget.",
+			PathTargetDate: date(2026, 3, 1),
+			AsksForHelp:    true,
+			AskAddressee:   of,
+		}
+	}
+	md := export.Markdown(publication([]domain.ReportBlock{block("Launch in EU", &mia), block("Cut churn", nil)}, nil))
+
+	for _, want := range []string{
+		"\n**Path to Green:** Need counsel budget. (back to Green by 2026-03-01)\n\n**Asks for help** of Mia Chen (mia@example.com)\n",
+		"\n**Path to Green:** Need counsel budget. (back to Green by 2026-03-01)\n\n**Asks for help** (no one above the Owner)\n",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("Markdown:\n%s\nwant it to hold:\n%s", md, want)
+		}
+	}
+}
+
+// A block frozen before Reports showed asks says nothing of one.
+func TestMarkdownOfASnapshotFromBeforeAsksSaysNoAsk(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","Lifecycle":"Active",` +
+		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"}},"Health":"Red","PathToGreen":"Hire counsel.","PathTargetDate":"2026-03-01T00:00:00Z"}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+		t.Fatalf("write a pre-asks snapshot: %v", err)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	md := export.Markdown(got)
+	if !strings.Contains(md, "**Path to Green:** Hire counsel.") || strings.Contains(md, "Asks for help") {
+		t.Errorf("Markdown:\n%s\nwant the Path to Green and no ask", md)
+	}
+}

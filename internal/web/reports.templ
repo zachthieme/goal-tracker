@@ -832,7 +832,9 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 // what changed ("Changed: Turned Red · 1 Milestone slipped"), and under that
 // the Goals in the Report it contributes to ("Contributes to: Growth ↓ (Red)");
 // So What, latest status, and Path to Green in a tinted box, marked
-// Overdue when its target date passed before asOf; Milestones, Metrics against
+// Overdue when its target date passed before asOf, and after it an Ask for help
+// open when the Report was drafted, naming whom it asks or saying no one is
+// above the Owner; Milestones, Metrics against
 // target, and the Rolled-up Health with how many children are Red, Yellow and
 // Stale ("2 of 6 Red · 1 Yellow"), the Goals behind it, and the Owner's
 // explanation. Each Goal it names links to its place in the Report, marked ↓,
@@ -901,6 +903,16 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 					<strong>Path to Green:</strong> { b.PathToGreen } (back to Green by { showDateYear(b.PathTargetDate) })
 					if pathOverdueAt(b, asOf) {
 						{ " " }<strong data-testid="path-overdue" class="badge r">Overdue</strong>
+					}
+				</p>
+			}
+			if b.AsksForHelp {
+				<p data-testid="report-ask-for-help">
+					<strong>Asks for help</strong>
+					if b.AskAddressee != nil {
+						{ " of " }@person(*b.AskAddressee)
+					} else {
+						{ " · no one above the Owner" }
 					}
 				</p>
 			}

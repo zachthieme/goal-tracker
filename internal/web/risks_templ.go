@@ -963,7 +963,8 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 }
 
 // riskChip says why a signal flags g. Red and Yellow, Not Green's signals,
-// take no chip: the row's Health badge says so already.
+// take no chip: the row's Health badge says so already. An Ask for help names
+// whom it asks, or says no one is above the Owner.
 func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -987,35 +988,51 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 		ctx = templ.ClearChildren(ctx)
 		switch sig.Kind {
 		case "red", "yellow":
-		case "stale":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "<span data-testid=\"risk-signal\" data-kind=\"stale\" class=\"badge st\">")
+		case "asks-for-help":
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "<span data-testid=\"risk-signal\" data-kind=\"asks-for-help\" class=\"rk-tag\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var45 string
-			templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs("Stale · " + plural(sig.Days, "day") + ", checks in " + cadenceInWords(g.CadenceDays))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 208, Col: 158}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
+			if sig.Person != nil {
+				var templ_7745c5c3_Var45 string
+				templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs("Asks for help of ")
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 211, Col: 26}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = person(*sig.Person).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				var templ_7745c5c3_Var46 string
+				templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs("Asks for help · no one above the Owner")
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 213, Col: 48}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "path-overdue":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "<span data-testid=\"risk-signal\" data-kind=\"path-overdue\" class=\"badge st\">")
+		case "stale":
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 78, "<span data-testid=\"risk-signal\" data-kind=\"stale\" class=\"badge st\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var46 string
-			templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs("Path to Green " + plural(sig.Days, "day") + " overdue")
+			var templ_7745c5c3_Var47 string
+			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs("Stale · " + plural(sig.Days, "day") + ", checks in " + cadenceInWords(g.CadenceDays))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 210, Col: 134}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 217, Col: 158}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1023,17 +1040,17 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "action-item-overdue":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "<span data-testid=\"risk-signal\" data-kind=\"action-item-overdue\" class=\"badge st\">")
+		case "path-overdue":
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 80, "<span data-testid=\"risk-signal\" data-kind=\"path-overdue\" class=\"badge st\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var47 string
-			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs("Action Item " + plural(sig.Days, "day") + " overdue")
+			var templ_7745c5c3_Var48 string
+			templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs("Path to Green " + plural(sig.Days, "day") + " overdue")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 212, Col: 139}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 219, Col: 134}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1041,62 +1058,58 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-		case "ownerless":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "<span data-testid=\"risk-signal\" data-kind=\"ownerless\" class=\"badge ol\" title=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var48 string
-			templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.ResolveAttributeValue(ownerlessHelp)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 214, Col: 95}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var48)
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "\">Ownerless</span>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		case "unaligned":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "<span data-testid=\"risk-signal\" data-kind=\"unaligned\" class=\"rk-tag\">Unaligned · no parent Goal, not Top-level</span>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		case "schedule-conflicts":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "<span data-testid=\"risk-signal\" data-kind=\"schedule-conflicts\" class=\"rk-tag\">")
+		case "action-item-overdue":
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 82, "<span data-testid=\"risk-signal\" data-kind=\"action-item-overdue\" class=\"badge st\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var49 string
-			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("Schedule conflict · due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), riskDays(sig.Days)))
+			templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs("Action Item " + plural(sig.Days, "day") + " overdue")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 219, Col: 141}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 221, Col: 139}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = goalRef(*sig.Related).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 83, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "</span>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		case "halted-parents":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, "<span data-testid=\"risk-signal\" data-kind=\"halted-parents\" class=\"rk-tag\">")
+		case "ownerless":
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "<span data-testid=\"risk-signal\" data-kind=\"ownerless\" class=\"badge ol\" title=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var50 string
-			templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs("Parent " + sig.Related.Lifecycle + " · ")
+			templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.ResolveAttributeValue(ownerlessHelp)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 223, Col: 48}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 223, Col: 95}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var50)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 85, "\">Ownerless</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		case "unaligned":
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "<span data-testid=\"risk-signal\" data-kind=\"unaligned\" class=\"rk-tag\">Unaligned · no parent Goal, not Top-level</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		case "schedule-conflicts":
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 87, "<span data-testid=\"risk-signal\" data-kind=\"schedule-conflicts\" class=\"rk-tag\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var51 string
+			templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("Schedule conflict · due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), riskDays(sig.Days)))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 228, Col: 141}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1105,6 +1118,28 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 88, "</span>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		case "halted-parents":
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "<span data-testid=\"risk-signal\" data-kind=\"halted-parents\" class=\"rk-tag\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var52 string
+			templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs("Parent " + sig.Related.Lifecycle + " · ")
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 232, Col: 48}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = goalRef(*sig.Related).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 90, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1137,12 +1172,12 @@ func risksStyles() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var51 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var51 == nil {
-			templ_7745c5c3_Var51 = templ.NopComponent
+		templ_7745c5c3_Var53 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var53 == nil {
+			templ_7745c5c3_Var53 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "<style>\n\t\t.shape{display:none}\n\t\t.rk-body{display:flex;flex-direction:column;gap:inherit}\n\t\t.rk-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}\n\t\t.rk-head p{margin:0}\n\t\t.rk-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%}\n\t\t.rk-cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}\n\t\t.rk-card{padding:16px;display:flex;flex-direction:column;gap:8px}\n\t\t.rk-card .num{font-size:24px}\n\t\t.rk-chips{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.rk-zero{border:1px dashed var(--color-border-strong);color:var(--color-ink-muted)}\n\t\ttd .rk-chips{margin-top:4px}\n\t\t.rk-table .rk-owner{white-space:nowrap}\n\t\t.rk-defs{padding:12px 16px}\n\t\t.rk-defs summary{cursor:pointer;font-weight:600}\n\t\t.rk-defs dl{margin:8px 0 0;display:grid;grid-template-columns:max-content 1fr;gap:4px 16px}\n\t\t.rk-defs dt{font-weight:600}\n\t\t.rk-defs dd{margin:0}\n\t\t.rk-tag{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;padding:0 8px;border-radius:var(--radius-sm);color:var(--color-ink);font-size:13px;line-height:20px;border:1px solid var(--color-border-strong)}\n\t\t@media (max-width:1151px){.rk-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}\n\t\t@media (max-width:900px){.rk-cards{grid-template-columns:minmax(0,1fr)}}\n\t\t@media (max-width:600px){.rk-table thead{display:none}.rk-table tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rk-table tbody tr:last-child{border-bottom:none}.rk-table td{display:block;padding:0;border-bottom:none}.rk-table .rk-goal{order:-1;grid-column:1/-1}.rk-table .rk-owner{white-space:normal}.rk-table .rk-fix{grid-column:1/-1;margin-top:4px}}\n\t</style>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "<style>\n\t\t.shape{display:none}\n\t\t.rk-body{display:flex;flex-direction:column;gap:inherit}\n\t\t.rk-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}\n\t\t.rk-head p{margin:0}\n\t\t.rk-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%}\n\t\t.rk-cards{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px}\n\t\t.rk-card{padding:16px;display:flex;flex-direction:column;gap:8px}\n\t\t.rk-card .num{font-size:24px}\n\t\t.rk-chips{display:flex;flex-wrap:wrap;gap:8px}\n\t\t.rk-zero{border:1px dashed var(--color-border-strong);color:var(--color-ink-muted)}\n\t\ttd .rk-chips{margin-top:4px}\n\t\t.rk-table .rk-owner{white-space:nowrap}\n\t\t.rk-defs{padding:12px 16px}\n\t\t.rk-defs summary{cursor:pointer;font-weight:600}\n\t\t.rk-defs dl{margin:8px 0 0;display:grid;grid-template-columns:max-content 1fr;gap:4px 16px}\n\t\t.rk-defs dt{font-weight:600}\n\t\t.rk-defs dd{margin:0}\n\t\t.rk-tag{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;padding:0 8px;border-radius:var(--radius-sm);color:var(--color-ink);font-size:13px;line-height:20px;border:1px solid var(--color-border-strong)}\n\t\t@media (max-width:1151px){.rk-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}\n\t\t@media (max-width:900px){.rk-cards{grid-template-columns:minmax(0,1fr)}}\n\t\t@media (max-width:600px){.rk-table thead{display:none}.rk-table tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rk-table tbody tr:last-child{border-bottom:none}.rk-table td{display:block;padding:0;border-bottom:none}.rk-table .rk-goal{order:-1;grid-column:1/-1}.rk-table .rk-owner{white-space:normal}.rk-table .rk-fix{grid-column:1/-1;margin-top:4px}}\n\t</style>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

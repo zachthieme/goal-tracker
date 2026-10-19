@@ -794,3 +794,45 @@ func TestSnapshotFromBeforeLinkedGoalsCountsOnlyStale(t *testing.T) {
 		t.Errorf("CountLine() = %q, want %q", got, "1 of 3 Stale")
 	}
 }
+
+// A publication freezes an exception block's Ask for help as it stood: the
+// Owner unmarking it and the addressee being renamed later leave the snapshot
+// asking of the old Name, while a fresh draft no longer asks.
+func TestPublicationFreezesAnAskForHelp(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	mia := h.SignInNamed("mia@example.com", "Mia Chen")
+	h.SetManager(sam, mia)
+	g := h.ActiveGoal(sam, "Launch in EU", "Expand the market.")
+	later := h.Clock.Now().AddDate(0, 1, 0)
+	h.AskForHelp(sam, g.ID, domain.HealthRed, "Blocked on legal.", "Need counsel budget.", later)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+
+	h.Checkin(sam, g.ID, domain.HealthRed, "Still blocked.", "Hire counsel.", later)
+	if err := h.Service.SetName(ctx, mia.ID, "Mia Renamed"); err != nil {
+		t.Fatalf("SetName: %v", err)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if len(got.Report.Exceptions) != 1 {
+		t.Fatalf("published %d exception blocks, want 1", len(got.Report.Exceptions))
+	}
+	if b := got.Report.Exceptions[0]; !b.AsksForHelp || b.AskAddressee == nil || b.AskAddressee.Label() != "Mia Chen" {
+		t.Errorf("published block AsksForHelp %v of %+v, want an ask of Mia Chen as published", b.AsksForHelp, b.AskAddressee)
+	}
+	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	if len(draft.Exceptions) != 1 || draft.Exceptions[0].AsksForHelp || draft.Exceptions[0].AskAddressee != nil {
+		t.Errorf("a fresh draft's blocks %+v, want one with no ask", draft.Exceptions)
+	}
+}

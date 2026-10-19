@@ -268,7 +268,7 @@ func TestRiskGroupsCountUniqueGoals(t *testing.T) {
 		row("Unaligned", 7, domain.HealthGreen, sig("unaligned")),
 		row("Stale with an overdue Action Item", 7, domain.HealthYellow, sig("stale"), sig("action-item-overdue")),
 		row("Overdue Action Item", 7, domain.HealthGreen, sig("action-item-overdue")),
-		row("Red and stale", 7, domain.HealthRed, sig("red"), sig("stale")),
+		row("Red, asking and stale", 7, domain.HealthRed, sig("red"), sig("asks-for-help"), sig("stale")),
 		row("Yellow only", 7, domain.HealthYellow, sig("yellow")),
 	}
 

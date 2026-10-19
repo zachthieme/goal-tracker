@@ -95,7 +95,8 @@ func Markdown(p domain.Publication) string {
 // date with its history struck through, Health with what it was when it
 // changed since the baseline, what changed on it since, the Goals in the
 // Report it contributes to, the chosen Fields, So What, latest status, Path
-// to Green, Milestones, Metrics against target, and the Rolled-up Health with
+// to Green, whom it asks for help, Milestones, Metrics against target, and
+// the Rolled-up Health with
 // how many children are Red, Yellow and Stale, the Goals behind it, and the
 // Owner's explanation. Each Milestone is marked as of asOf, the day the
 // Report was published.
@@ -127,6 +128,13 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 	}
 	if blk.PathToGreen != "" {
 		fmt.Fprintf(b, "\n**Path to Green:** %s (back to Green by %s)\n", text(blk.PathToGreen), fmtDate(blk.PathTargetDate))
+	}
+	if blk.AsksForHelp {
+		if blk.AskAddressee != nil {
+			fmt.Fprintf(b, "\n**Asks for help** of %s\n", text(people.Of(*blk.AskAddressee)))
+		} else {
+			b.WriteString("\n**Asks for help** (no one above the Owner)\n")
+		}
 	}
 	if len(blk.Milestones) > 0 {
 		b.WriteString("\n**Milestones:**\n\n")
