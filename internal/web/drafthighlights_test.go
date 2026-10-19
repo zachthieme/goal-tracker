@@ -306,3 +306,185 @@ func TestDeleteDraftHighlightFromTheGoalPage(t *testing.T) {
 		t.Errorf("the Goal page lists Draft Highlights %q, want none", got)
 	}
 }
+
+// Editing a pending Draft Highlight posts its kind and note to its own route:
+// a plain post lands back on the Goal page, and an htmx one gets the Draft
+// Highlights block back, showing the edit, to swap in place. Anyone but the
+// Owner and Delegates is refused (403), and an unknown id is not found (404).
+func TestEditDraftHighlightFromTheGoalPage(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("pat@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	draft := h.LogDraftHighlight(sam, goal.ID, "", "Vendor may raise prices.")
+	editURL := fmt.Sprintf("%s/draft-highlights/%d", ts.URL, draft.ID)
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	resp := postForm(t, noRedirects(samClient), editURL, url.Values{"kind": {domain.HighlightMiss}, "note": {"Vendor raised prices 20%."}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != fmt.Sprintf("/goals/%d", goal.ID) {
+		t.Errorf("plain edit: status %d to %q, want 303 to the Goal page", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	if got := elementTexts(getBody(t, samClient, goalPageURL(ts.URL, goal)), "li", "draft-highlight"); len(got) != 1 || !strings.HasPrefix(got[0], "Miss Vendor raised prices 20%.") {
+		t.Errorf("after the plain edit the page lists %q, want it edited", got)
+	}
+
+	body, status := postFormHX(t, samClient, editURL, url.Values{"kind": {""}, "note": {"Vendor raised prices 25%."}})
+	if status != http.StatusOK {
+		t.Errorf("htmx edit: status %d, want 200", status)
+	}
+	if !strings.HasPrefix(body, `<section data-testid="goal-draft-highlights"`) {
+		t.Errorf("htmx edit answers with something other than the block: %.200s", body)
+	}
+	if got := elementTexts(body, "li", "draft-highlight"); len(got) != 1 || !strings.HasPrefix(got[0], "No kind Vendor raised prices 25%.") {
+		t.Errorf("the block answered lists %q, want it edited", got)
+	}
+	if strings.Contains(body, "<html") {
+		t.Errorf("htmx edit answers with a whole page")
+	}
+
+	resp = postForm(t, noRedirects(signInClient(t, ts.URL, "pat@example.com")), editURL, url.Values{"note": {"Mine."}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("someone else editing: status %d, want 403", resp.StatusCode)
+	}
+	resp = postForm(t, noRedirects(samClient), fmt.Sprintf("%s/draft-highlights/%d", ts.URL, draft.ID+100), url.Values{"note": {"Lost."}})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("editing an unknown one: status %d, want 404", resp.StatusCode)
+	}
+	if got := pendingDraftNotes(t, h, sam, goal.ID); !slices.Equal(got, []string{"Vendor raised prices 25%."}) {
+		t.Errorf("pending = %q, want only the Owner's edits", got)
+	}
+}
+
+// The Highlight editor's htmx posts each get the Draft Highlights block back
+// with 200, for htmx to swap in place: a log shows the new one, a delete shows
+// it gone, and a refused log or edit (a blank note) shows the reason with what
+// was typed, the log in the block's open form and the edit on its Draft
+// Highlight, for the editor to open on again. Nothing refused is saved.
+func TestDraftHighlightEditorPostsGetTheBlockBack(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignInNamed("sam@example.com", "Sam Rivera")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+	logURL := fmt.Sprintf("%s/goals/%d/draft-highlights", ts.URL, goal.ID)
+
+	block := func(what string) func(string, int) string {
+		return func(body string, status int) string {
+			t.Helper()
+			if status != http.StatusOK {
+				t.Errorf("%s: status %d, want 200", what, status)
+			}
+			if !strings.HasPrefix(body, `<section data-testid="goal-draft-highlights" id="draft-highlights"`) {
+				t.Fatalf("%s answers with something other than the block: %.200s", what, body)
+			}
+			return body
+		}
+	}
+
+	body := block("log")(postFormHX(t, client, logURL, url.Values{"kind": {""}, "note": {"Vendor may raise prices."}}))
+	want := []string{"No kind Vendor may raise prices. Sam Rivera sam@example.com · Jan 2, 15:04 Delete"}
+	if got := elementTexts(body, "li", "draft-highlight"); !slices.Equal(got, want) {
+		t.Errorf("after the log the block lists %q, want %q", got, want)
+	}
+	if strings.Contains(body, `data-open-form="`) {
+		t.Errorf("after the log the block shows a form open")
+	}
+
+	body = block("refused log")(postFormHX(t, client, logURL, url.Values{"kind": {domain.HighlightMiss}, "note": {"  "}}))
+	open := openForm(t, body, "draft-highlight")
+	if alert := elementTexts(open, "p", "form-error"); !slices.Equal(alert, []string{"A Draft Highlight needs a note."}) {
+		t.Errorf("the refused log's alert reads %q, want the refusal", alert)
+	}
+	if !strings.Contains(open, fmt.Sprintf(`<option value="%s" selected>`, domain.HighlightMiss)) {
+		t.Errorf("the refused log lost the Kind picked: %s", open)
+	}
+
+	draft := h.LogDraftHighlight(sam, goal.ID, domain.HighlightInsight, "Drills find gaps.")
+	body = block("refused edit")(postFormHX(t, client, fmt.Sprintf("%s/draft-highlights/%d", ts.URL, draft.ID), url.Values{"kind": {domain.HighlightMiss}, "note": {""}}))
+	item := tagAround(t, body, fmt.Sprintf(`data-hl-url="/draft-highlights/%d"`, draft.ID))
+	if !strings.Contains(item, "data-hl-refused") || attr(item, "data-hl-typed-kind") != domain.HighlightMiss || attr(item, "data-hl-typed-note") != "" {
+		t.Errorf("the refused edit's Draft Highlight isn't marked with what was typed: %s", item)
+	}
+	if attr(item, "data-hl-kind") != domain.HighlightInsight || attr(item, "data-hl-note") != "Drills find gaps." {
+		t.Errorf("the refused edit's Draft Highlight lost its saved values: %s", item)
+	}
+	if got := strings.Count(body, "A Draft Highlight needs a note."); got != 1 {
+		t.Errorf("the refused edit's reason shows %d times, want once", got)
+	}
+	if strings.Contains(body, `data-open-form="`) {
+		t.Errorf("a refused edit opens the log form")
+	}
+
+	body = block("delete")(postFormHX(t, client, fmt.Sprintf("%s/draft-highlights/%d/delete", ts.URL, draft.ID), url.Values{}))
+	if got := elementTexts(body, "li", "draft-highlight"); !slices.Equal(got, want) {
+		t.Errorf("after the delete the block lists %q, want %q", got, want)
+	}
+	if got := pendingDraftNotes(t, h, sam, goal.ID); !slices.Equal(got, []string{"Vendor may raise prices."}) {
+		t.Errorf("pending = %q, want only the one logged", got)
+	}
+}
+
+// The Goal page's Draft Highlights block carries the Highlight editor for
+// script to upgrade it with: the block is the htmx target, marked for the
+// editor with the Kind optional; "+ Log a highlight" is a button posting
+// nothing that saves to the log route, beside the link that opens the form
+// without script; each Draft Highlight carries its edit route and values, and
+// its Delete posts with htmx too; and the editor's and an item's templates.
+func TestGoalPageDraftHighlightsCarryTheHighlightEditor(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	draft := h.LogDraftHighlight(sam, goal.ID, domain.HighlightMiss, "Runbook was late.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), goalPageURL(ts.URL, goal))
+	section := tagAround(t, page, `data-testid="goal-draft-highlights"`)
+	if attr(section, "id") != "draft-highlights" {
+		t.Errorf("the block's id is %q, want draft-highlights: %s", attr(section, "id"), section)
+	}
+	for _, mark := range []string{" data-highlight-editor", " data-kind-optional"} {
+		if !strings.Contains(section, mark) {
+			t.Errorf("the block lacks %s: %s", mark, section)
+		}
+	}
+
+	add := tagAround(t, page, `data-testid="draft-highlight-add"`)
+	if attr(add, "type") != "button" || !strings.Contains(add, " data-highlight-add") {
+		t.Errorf("+ Log a highlight isn't a button that opens the editor: %s", add)
+	}
+	if got := attr(add, "data-hl-url"); got != fmt.Sprintf("/goals/%d/draft-highlights", goal.ID) {
+		t.Errorf("+ Log a highlight saves to %q, want the log route", got)
+	}
+	if !strings.Contains(page, `>+ Log a highlight</button>`) {
+		t.Errorf("the button doesn't read \"+ Log a highlight\": %s", add)
+	}
+	link := tagAround(t, page, `data-testid="open-draft-highlight"`)
+	if href := html.UnescapeString(attr(link, "href")); href != fmt.Sprintf("/goals/%d?open=draft-highlight", goal.ID) {
+		t.Errorf("the no-script link leads to %q, want the form open in place", href)
+	}
+
+	item := tagAround(t, page, `data-testid="draft-highlight"`)
+	if attr(item, "data-hl-url") != fmt.Sprintf("/draft-highlights/%d", draft.ID) || attr(item, "data-hl-kind") != domain.HighlightMiss || attr(item, "data-hl-note") != "Runbook was late." {
+		t.Errorf("the Draft Highlight doesn't carry its edit route and values: %s", item)
+	}
+	if strings.Contains(item, "data-hl-refused") {
+		t.Errorf("a plain visit marks a Draft Highlight refused: %s", item)
+	}
+	del := tagAround(t, page, `data-testid="delete-draft-highlight"`)
+	if attr(del, "hx-post") != fmt.Sprintf("/draft-highlights/%d/delete", draft.ID) || attr(del, "hx-target") != "#draft-highlights" || attr(del, "hx-swap") != "outerHTML" {
+		t.Errorf("Delete doesn't post with htmx and swap the block: %s", del)
+	}
+
+	highlightEditorPart(t, page, "highlight-editor")
+	highlightEditorPart(t, page, "highlight-item")
+}

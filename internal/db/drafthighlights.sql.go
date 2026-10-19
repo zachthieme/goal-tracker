@@ -219,3 +219,24 @@ func (q *Queries) ListPendingDraftHighlights(ctx context.Context, goalID int64) 
 	}
 	return items, nil
 }
+
+const updatePendingDraftHighlight = `-- name: UpdatePendingDraftHighlight :execrows
+UPDATE draft_highlights SET kind = ?, note = ?
+WHERE id = ? AND discarded_checkin_id IS NULL
+`
+
+type UpdatePendingDraftHighlightParams struct {
+	Kind string
+	Note string
+	ID   int64
+}
+
+// Edit a pending Draft Highlight's kind and note. One already discarded is
+// left alone.
+func (q *Queries) UpdatePendingDraftHighlight(ctx context.Context, arg UpdatePendingDraftHighlightParams) (int64, error) {
+	result, err := q.db.ExecContext(ctx, updatePendingDraftHighlight, arg.Kind, arg.Note, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}

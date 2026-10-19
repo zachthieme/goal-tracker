@@ -418,3 +418,111 @@ func TestNoChangeCheckinLeavesDraftHighlightsPending(t *testing.T) {
 		t.Errorf("discarded = %q, want none", draftNotes(got))
 	}
 }
+
+// The Owner and a Delegate each edit a pending Draft Highlight's kind and
+// note, the note trimmed, and the Goal's pending Draft Highlights show the
+// new values. An edit records nothing else: no Check-in, Highlight or value
+// change, so the Goal's History gains no entry.
+func TestEditDraftHighlightByOwnerAndDelegate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	dee := h.SignIn("dee@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.AddDelegate(sam, dee, goal.ID)
+	draft := h.LogDraftHighlight(sam, goal.ID, "", "Vendor may raise prices.")
+	valuesBefore, err := h.Service.ValueHistory(ctx, goal.ID)
+	if err != nil {
+		t.Fatalf("ValueHistory: %v", err)
+	}
+
+	for _, tc := range []struct {
+		who        domain.Account
+		kind, note string
+	}{
+		{sam, domain.HighlightMiss, "  Vendor raised prices 20%.  "},
+		{dee, "", "Vendor raised prices 25%."},
+	} {
+		edited, err := h.Service.EditDraftHighlight(ctx, tc.who.ID, draft.ID, tc.kind, tc.note)
+		if err != nil {
+			t.Fatalf("EditDraftHighlight by %s: %v", tc.who.Email, err)
+		}
+		want := strings.TrimSpace(tc.note)
+		if edited.ID != draft.ID || edited.Kind != tc.kind || edited.Note != want {
+			t.Errorf("%s edited it to %d %q: %q, want %d %q: %q", tc.who.Email, edited.ID, edited.Kind, edited.Note, draft.ID, tc.kind, want)
+		}
+		pending, err := h.Service.PendingDraftHighlights(ctx, sam.ID, goal.ID)
+		if err != nil {
+			t.Fatalf("PendingDraftHighlights: %v", err)
+		}
+		if len(pending) != 1 || pending[0].Kind != tc.kind || pending[0].Note != want || pending[0].LoggedBy.ID != sam.ID {
+			t.Errorf("after %s's edit pending = %+v, want one %q: %q still logged by the Owner", tc.who.Email, pending, tc.kind, want)
+		}
+	}
+
+	if checkins, _ := h.Service.ListCheckins(ctx, goal.ID); len(checkins) != 0 {
+		t.Errorf("an edit recorded %d Check-ins, want none", len(checkins))
+	}
+	if got := goalHighlightTexts(t, h, goal.ID); len(got) != 0 {
+		t.Errorf("an edit recorded Highlights %q, want none", got)
+	}
+	if valuesAfter, _ := h.Service.ValueHistory(ctx, goal.ID); len(valuesAfter) != len(valuesBefore) {
+		t.Errorf("an edit recorded %d value changes, want none", len(valuesAfter)-len(valuesBefore))
+	}
+}
+
+// An edit is refused, and changes nothing, when it blanks the note or names an
+// unknown kind (ErrValidation), when anyone but the Owner and Delegates sends
+// it (ErrNotAuthorized), and when the Draft Highlight is no longer pending:
+// kept or discarded by a Check-in, or never logged (ErrNotFound).
+func TestEditDraftHighlightRefusals(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	pat := h.SignIn("pat@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	draft := h.LogDraftHighlight(sam, goal.ID, domain.HighlightInsight, "Retries mask the root cause.")
+
+	for _, tc := range []struct{ name, kind, note string }{
+		{"blank note", domain.HighlightInsight, "   "},
+		{"unknown kind", "Triumph", "Retries mask the root cause."},
+	} {
+		_, err := h.Service.EditDraftHighlight(ctx, sam.ID, draft.ID, tc.kind, tc.note)
+		if !errors.Is(err, domain.ErrValidation) {
+			t.Errorf("%s: err = %v, want ErrValidation", tc.name, err)
+		}
+	}
+	if _, err := h.Service.EditDraftHighlight(ctx, sam.ID, draft.ID, "", " "); err == nil || !strings.Contains(err.Error(), "a Draft Highlight needs a note") {
+		t.Errorf("blank note: err = %v, want the note logging asks for", err)
+	}
+	if _, err := h.Service.EditDraftHighlight(ctx, pat.ID, draft.ID, domain.HighlightMiss, "Mine."); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("someone else: err = %v, want ErrNotAuthorized", err)
+	}
+	if pending, _ := h.Service.PendingDraftHighlights(ctx, sam.ID, goal.ID); len(pending) != 1 || pending[0].Kind != domain.HighlightInsight || pending[0].Note != "Retries mask the root cause." {
+		t.Errorf("pending = %+v, want it as logged", pending)
+	}
+
+	kept := h.LogDraftHighlight(sam, goal.ID, domain.HighlightInsight, "Kept.")
+	discarded := h.LogDraftHighlight(sam, goal.ID, domain.HighlightMiss, "Discarded.")
+	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
+		GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "On track.",
+		Highlights: []domain.HighlightInput{
+			{DraftHighlightID: kept.ID, Kind: domain.HighlightInsight, Note: "Kept."},
+			{DraftHighlightID: discarded.ID, Kind: domain.HighlightMiss, Note: "Discarded.", LeftOut: true},
+		},
+	}); err != nil {
+		t.Fatalf("SubmitCheckin: %v", err)
+	}
+	for name, id := range map[string]int64{"kept": kept.ID, "discarded": discarded.ID, "never logged": discarded.ID + 100} {
+		if _, err := h.Service.EditDraftHighlight(ctx, sam.ID, id, domain.HighlightMiss, "Too late."); !errors.Is(err, domain.ErrNotFound) {
+			t.Errorf("editing one %s: err = %v, want ErrNotFound", name, err)
+		}
+	}
+	if got := draftNotes(newestCheckinWithDrafts(t, h, goal.ID).DiscardedDraftHighlights); !slices.Equal(got, []string{"Discarded."}) {
+		t.Errorf("the Check-in discarded %q, want the one left out, unedited", got)
+	}
+}

@@ -184,7 +184,7 @@ An optional note in a Check-in, marked as an Insight, Accomplishment, or Miss, t
 _Avoid_: win, callout, note
 
 **Draft Highlight**:
-A Highlight logged on a Goal between Check-ins, waiting for the next Check-in. Only the Goal's Owner and Delegates can log one or see a pending one. The next Check-in offers each one; those kept become that Check-in's Highlights, and the rest are discarded, which the Goal's history records.
+A Highlight logged on a Goal between Check-ins, waiting for the next Check-in. Only the Goal's Owner and Delegates can log one, or see, edit or delete a pending one; an edit isn't recorded in the history. The next Check-in offers each one; those kept become that Check-in's Highlights, and the rest are discarded, which the Goal's history records.
 _Avoid_: note, jot, log entry
 
 **Report**:

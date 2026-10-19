@@ -14,16 +14,55 @@ import (
 // back with that form open, the reason in it and what was typed still in it.
 // Once the Goal is Done or Cancelled the block is left out unless some are
 // still pending.
+//
+// With script the block is a Highlight editor (highlightEditorScript) whose
+// Saves post at once: "+ Log a highlight" is a button opening the editor at
+// the top of the list, each Draft Highlight gains an Edit that opens it in
+// place, and Delete, relabelled Remove, posts with htmx too. Each answers with
+// the block to swap in, so the list is always the server's. The Kind is
+// optional here, unlike at a Check-in.
 templ draftHighlightSection(v goalView) {
+	@draftHighlightBlock(v, draftHighlightRefusal{})
+}
+
+// draftHighlightBlock is draftHighlightSection with refused, a Save the
+// Highlight editor sent that was refused, marked for the editor to open on
+// again: a refused log is the log form open, and a refused edit marks its
+// Draft Highlight with what was typed and the reason. Its id is the target
+// the editor's htmx posts swap.
+templ draftHighlightBlock(v goalView, refused draftHighlightRefusal) {
 	if v.CanCheckin && (draftHighlightsLoggable(v.Goal) || len(v.DraftHighlights) > 0) {
-		<section data-testid="goal-draft-highlights" class="gp-block ruled">
+		<section
+			data-testid="goal-draft-highlights"
+			id="draft-highlights"
+			class="gp-block ruled"
+			data-highlight-editor
+			data-kind-optional
+			data-hl-noun="Draft Highlight"
+			hx-on:htmx:response-error={ swapErrorPageScript }
+		>
 			@groupHead(v, formDraftHighlight, "+ Log a highlight", "Log a highlight") {
 				<h2>Draft Highlights</h2>
+				if v.offers(formDraftHighlight) {
+					<button type="button" data-testid="draft-highlight-add" data-highlight-add data-hl-url={ fmt.Sprintf("/goals/%d/draft-highlights", v.Goal.ID) } class="btn quiet sm hl-js-only">+ Log a highlight</button>
+				}
 			}
+			<div class="hl-items dh-new" data-hl-items></div>
 			if len(v.DraftHighlights) > 0 {
 				<ul class="gp-list">
 					for _, d := range v.DraftHighlights {
-						<li data-testid="draft-highlight" class="dh-item">
+						<li
+							data-testid="draft-highlight"
+							class="dh-item hl-item"
+							data-hl-url={ fmt.Sprintf("/draft-highlights/%d", d.ID) }
+							data-hl-kind={ d.Kind }
+							data-hl-note={ d.Note }
+							if refused.ID == d.ID {
+								data-hl-refused
+								data-hl-typed-kind={ refused.Kind }
+								data-hl-typed-note={ refused.Note }
+							}
+						>
 							<span>
 								<strong>{ draftHighlightKind(d.Kind) }</strong>
 								{ " " + d.Note }
@@ -32,9 +71,20 @@ templ draftHighlightSection(v goalView) {
 								@person(d.LoggedBy)
 								{ " · " + v.dates().timestamp(d.CreatedAt) }
 							</span>
-							<form data-testid="delete-draft-highlight" method="post" action={ templ.SafeURL(fmt.Sprintf("/draft-highlights/%d/delete", d.ID)) }>
-								<button type="submit" class="btn quiet sm">Delete</button>
+							<form
+								data-testid="delete-draft-highlight"
+								method="post"
+								action={ templ.SafeURL(fmt.Sprintf("/draft-highlights/%d/delete", d.ID)) }
+								hx-post={ fmt.Sprintf("/draft-highlights/%d/delete", d.ID) }
+								hx-target="#draft-highlights"
+								hx-swap="outerHTML"
+								data-hl-actions
+							>
+								<button type="submit" class="btn quiet sm" data-hl-js-label="Remove">Delete</button>
 							</form>
+							if refused.ID == d.ID {
+								<p data-testid="form-error" class="alert r" role="alert">{ refused.Reason }</p>
+							}
 						</li>
 					}
 				</ul>
@@ -57,11 +107,19 @@ templ draftHighlightSection(v goalView) {
 					</form>
 				}
 			}
+			// The editor's parts sit in the block, so a swapped-in block brings
+			// them back and upgrades itself again.
+			@highlightEditorStyles()
+			@highlightEditorTemplate()
+			@highlightItemTemplate()
+			@highlightEditorScript()
 			<style>
 				.dh-item{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}
-				.dh-item form{margin:0 0 0 auto}
+				.dh-item form{display:flex;gap:8px;margin:0 0 0 auto}
 				.dh-form{display:flex;flex-direction:column;gap:8px;align-items:flex-start}
 				.dh-form label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px;align-self:stretch}
+				.dh-new{margin:8px 0}
+				[data-hl-js]>.gp-group-head>a{display:none}
 			</style>
 		</section>
 	}
