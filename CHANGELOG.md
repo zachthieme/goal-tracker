@@ -22,6 +22,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A published Report says how it selects its Goals ("Selection: Owner is in the org of Dana Okafor · Active"), as it read when published, on the publication page, Print and the Markdown export. Publications made before this change show no selection line (#270).
 - [user] A Check-in can mark its Path to Green "This asks for help". The ask goes to the Owner's Manager (past anyone who has left the company), who sees it under Needs you on Home until the Owner unmarks it or the Goal is back to Green (#241).
 - [user] The Goal page and History show the ask (#241).
+- [user] Risks marks a Goal that asks for help with an "Asks for help" chip in Not Green, naming who it asks (#351).
+- [user] A Report's exception block says the Goal asks for help, and of whom, as it stood when published (#351).
 
 **Improvements:**
 - [ops] Pages no longer load anything from other hosts: htmx and the fonts are served from the app, so browsers on a network that blocks `unpkg.com` or Google Fonts get the full app (#336).
