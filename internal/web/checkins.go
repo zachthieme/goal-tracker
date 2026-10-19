@@ -454,8 +454,8 @@ func highlightsFromForm(r *http.Request) []highlightFormData {
 // draftHighlightsFromForm reads the rows offered from Draft Highlights as
 // typed, in the order the form showed them: each posts its Draft Highlight's
 // id in draft_highlight_id, and its Keep box (draft_highlight_keep, whose
-// value is that id, posting nothing when unticked), kind and note are paired
-// with it by id. An id that isn't one still holds its row, as -1, which names
+// value is that id, posting nothing when unticked), kind, note and who logged
+// it are paired with it by id. An id that isn't one still holds its row, as -1, which names
 // no Draft Highlight, so the rows after it keep the numbers the form showed.
 func draftHighlightsFromForm(r *http.Request) []highlightFormData {
 	ids := r.Form["draft_highlight_id"]
@@ -477,6 +477,8 @@ func draftHighlightsFromForm(r *http.Request) []highlightFormData {
 			Keep:    kept[raw],
 			Kind:    r.FormValue("draft_highlight_kind_" + raw),
 			Note:    r.FormValue("draft_highlight_note_" + raw),
+			// Who logged it only labels the row, so it is carried as posted.
+			LoggedBy: r.FormValue("draft_highlight_logged_by_" + raw),
 		}
 		out = append(out, row)
 	}

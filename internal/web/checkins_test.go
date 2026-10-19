@@ -2360,6 +2360,41 @@ func TestCheckinFormRefusesAKeptDraftHighlightWithNoKindInItsRow(t *testing.T) {
 	}
 }
 
+// A Draft Highlight posted by its draft_highlight_id alone, with no Keep, kind
+// or note, is discarded with the Check-in, as an unticked Keep box discards
+// it: that is all the Highlight editor's Remove leaves of a Draft item.
+func TestCheckinDiscardsADraftHighlightPostedByItsIDAlone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	draft := h.LogDraftHighlight(sam, goal.ID, domain.HighlightMiss, "The failover drill slipped.")
+
+	_, status := postFormHX(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
+		"health":             {domain.HealthGreen},
+		"status":             {"On track."},
+		"draft_highlight_id": {strconv.FormatInt(draft.ID, 10)},
+	})
+	if status != http.StatusOK {
+		t.Fatalf("submit: status %d, want 200", status)
+	}
+	if highlights, err := h.Service.ListHighlightsByGoal(context.Background(), goal.ID); err != nil || len(highlights) != 0 {
+		t.Errorf("highlights = %v, %v; want none recorded", highlights, err)
+	}
+	checkins, err := h.Service.ListCheckins(context.Background(), goal.ID)
+	if err != nil || len(checkins) != 1 {
+		t.Fatalf("ListCheckins = %d, %v; want the one Check-in", len(checkins), err)
+	}
+	if d := checkins[0].DiscardedDraftHighlights; len(d) != 1 || d[0].ID != draft.ID {
+		t.Errorf("discarded = %v, want the Draft Highlight", d)
+	}
+	if got := pendingDraftNotes(t, h, sam, goal.ID); len(got) != 0 {
+		t.Errorf("pending = %q, want none", got)
+	}
+}
+
 // Add another keeps every offered row's Keep box, kind and note as typed,
 // adds one empty row after the typed ones, and records nothing.
 func TestCheckinAddAnotherKeepsOfferedDraftHighlightsAsTyped(t *testing.T) {

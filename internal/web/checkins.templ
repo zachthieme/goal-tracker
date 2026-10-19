@@ -137,13 +137,15 @@ func (row milestoneFormRow) planned() bool {
 
 // highlightFormData is one Highlight row in the Check-in form: its kind (empty
 // for none) and note. A row with a blank note flags nothing. A row offered
-// from a Draft Highlight names it by DraftID and says whether its Keep box is
-// ticked.
+// from a Draft Highlight names it by DraftID, says whether its Keep box is
+// ticked, and carries who logged it, by name, for the Highlight editor's
+// "Draft · logged by" line.
 type highlightFormData struct {
-	Kind    string
-	Note    string
-	DraftID int64
-	Keep    bool
+	Kind     string
+	Note     string
+	DraftID  int64
+	Keep     bool
+	LoggedBy string
 }
 
 // checkinPreviousAnswers are the Goal's latest Check-in's status, Path to Green,
@@ -216,7 +218,7 @@ func (d checkinFormData) pathReasonShown() bool {
 func draftHighlightRows(drafts []domain.DraftHighlight) []highlightFormData {
 	out := make([]highlightFormData, 0, len(drafts))
 	for _, d := range drafts {
-		out = append(out, highlightFormData{Kind: d.Kind, Note: d.Note, DraftID: d.ID, Keep: true})
+		out = append(out, highlightFormData{Kind: d.Kind, Note: d.Note, DraftID: d.ID, Keep: true, LoggedBy: d.LoggedBy.Label()})
 	}
 	return out
 }
@@ -631,7 +633,9 @@ templ checkinUnavailablePage(current *domain.Account, title, message string) {
 // itself, so a validation error re-renders it in place with the message next to
 // the field it is about. Health, status, and readings are always shown; the
 // Highlight, dates and Milestones, and Lifecycle each sit in a collapsed
-// section that opens when it holds an error or a value the reader typed. The
+// section that opens when it holds an error or a value the reader typed; with
+// script, the Highlight editor (highlighteditor.templ) upgrades the Highlight
+// section into add buttons, an editor and items. The
 // Path to Green asks for a reason for moving its back-to-Green date only once
 // the date is later than the latest Check-in's (see pathReasonShown).
 templ checkinForm(d checkinFormData) {
@@ -734,7 +738,10 @@ templ checkinForm(d checkinFormData) {
 		}
 		<details data-testid="checkin-highlight-section" class="checkin-more" open?={ d.highlightOpen() }>
 			<summary>{ d.highlightSummary() }</summary>
-			<div data-testid="checkin-highlights" class="checkin-highlights">
+			<div data-testid="checkin-highlights" class="checkin-highlights" data-highlight-editor>
+				<h2 class="hl-js-only hl-head">Highlights</h2>
+				@highlightAddButtons()
+				<div class="hl-items" data-hl-items></div>
 				for i, row := range d.DraftHighlights {
 					@checkinDraftHighlightRow(i+1, row, d.Error)
 				}
@@ -744,6 +751,12 @@ templ checkinForm(d checkinFormData) {
 				<button type="submit" name="add_highlight" value="1" formnovalidate class="btn quiet">Add another</button>
 			</div>
 		</details>
+		// The editor's parts sit in the form, so an htmx re-render brings
+		// them back and upgrades the rows again.
+		@highlightEditorStyles()
+		@highlightEditorTemplate()
+		@highlightItemTemplate()
+		@highlightEditorScript()
 		<details data-testid="checkin-dates-section" class="checkin-more" open?={ d.datesOpen() }>
 			<summary>{ d.Dates.summary(d.Shown) }</summary>
 			@checkinDateFields(d.Dates, d.Error)
@@ -818,6 +831,7 @@ templ checkinDraftHighlightRow(n int, row highlightFormData, e checkinError) {
 	<fieldset data-testid="checkin-highlight-row" class="checkin-draft-row">
 		<legend data-testid="checkin-highlight-legend">{ fmt.Sprintf("Highlight %d · Draft", n) }</legend>
 		<input type="hidden" name="draft_highlight_id" value={ id }/>
+		<input type="hidden" name={ "draft_highlight_logged_by_" + id } value={ row.LoggedBy }/>
 		<label class="checkin-keep">
 			<input type="checkbox" name="draft_highlight_keep" value={ id } checked?={ row.Keep }/>
 			Keep
@@ -834,15 +848,6 @@ templ checkinDraftHighlightRow(n int, row highlightFormData, e checkinError) {
 		</label>
 		@checkinFieldError(e, fmt.Sprintf("highlight_%d", n))
 	</fieldset>
-}
-
-// highlightKindOptions are a Highlight kind select's options, None first, with
-// selected picked.
-templ highlightKindOptions(selected string) {
-	<option value="" selected?={ selected == "" }>None</option>
-	<option value={ domain.HighlightInsight } selected?={ selected == domain.HighlightInsight }>Insight</option>
-	<option value={ domain.HighlightAccomplishment } selected?={ selected == domain.HighlightAccomplishment }>Accomplishment</option>
-	<option value={ domain.HighlightMiss } selected?={ selected == domain.HighlightMiss }>Miss</option>
 }
 
 // confirmCancelScript asks the reader to confirm before a Check-in that
@@ -911,6 +916,7 @@ templ checkinStyles() {
 			.checkin-highlights{display:flex;flex-direction:column;gap:16px}
 			.checkin-more .checkin-highlights fieldset>legend{display:block;padding:0;font-size:13px;color:var(--color-ink-muted)}
 			.checkin-highlights>button{align-self:flex-start}
+			.checkin-more:has(>.hl-js){padding-top:16px}
 			.checkin-form .checkin-keep, .checkin-form .checkin-ask{flex-direction:row;align-items:center}
 			.ms-grid{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1.2fr) minmax(0,1fr);gap:8px 12px;align-items:start}
 			.ms-row{display:contents}

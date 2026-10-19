@@ -48,12 +48,14 @@ test.describe("on the due template", () => {
     // due, her Metric Goal among them.
     let due: OwnedGoal[] = [];
     let metricGoal: OwnedGoal | undefined;
+    let ownerName = "";
     for (const owner of seedLookup<{ email: string; name: string }>(weekOwners)) {
       await signIn(page, owner.email);
       const goals = seedLookup<OwnedGoal>(activeGoalsOf, owner.email);
       const listed = await dueRows(page).getByRole("link").allTextContents();
       due = goals.filter((g) => listed.includes(g.title));
       metricGoal = due.find((g) => g.metric);
+      ownerName = owner.name;
       if (due.length >= 2 && metricGoal) break;
     }
     expect(metricGoal, "an Owner has two Check-ins due, one on her Metric Goal").toBeDefined();
@@ -81,8 +83,15 @@ test.describe("on the due template", () => {
       await page.goto(`/goals/${first.id}/checkin`);
       const form = page.getByTestId("checkin-form");
       await expect(form).toBeVisible();
-      await expect(form.getByText(/^Highlight \d+ · Draft$/)).toHaveCount(0);
-      for (const section of ["checkin-highlight-section", "checkin-dates-section", "checkin-lifecycle-section"]) {
+      // The Highlights are a heading and the add buttons, with no Draft and
+      // no empty Highlight waiting.
+      const highlights = form.getByTestId("checkin-highlight-section");
+      await expect(highlights.getByRole("heading", { name: "Highlights" })).toBeVisible();
+      await expect(highlights.getByTestId("highlight-add")).toHaveText(["+ Insight", "+ Accomplishment", "+ Miss"]);
+      await expect(highlights.getByTestId("highlight-item")).toHaveCount(0);
+      await expect(highlights.getByTestId("highlight-editor")).toHaveCount(0);
+      await expect(highlights.getByRole("textbox")).toHaveCount(0);
+      for (const section of ["checkin-dates-section", "checkin-lifecycle-section"]) {
         await expect(form.getByTestId(section), `${section} is closed`).toHaveJSProperty("open", false);
       }
     });
@@ -181,13 +190,14 @@ test.describe("on the due template", () => {
         await expect(path.getByTestId("checkin-path-target-last")).toHaveText(/^Last time: [A-Z][a-z]{2} \d{1,2}$/);
       }
 
-      // The Highlight section opens to offer the Draft, ticked to keep; the
-      // other optional parts stay folded (It worked if: folded until needed).
-      await expect(form.getByTestId("checkin-highlight-section")).toHaveJSProperty("open", true);
-      const draftRow = form.getByTestId("checkin-highlight-row").filter({ hasText: /Highlight \d+ · Draft/ });
-      await expect(draftRow.getByTestId("checkin-highlight-legend")).toHaveText(/^Highlight \d+ · Draft$/);
-      await expect(draftRow.getByRole("checkbox", { name: "Keep" })).toBeChecked();
-      await expect(draftRow.getByLabel("Note")).toHaveValue(draftNote);
+      // The Highlights offer the Draft as an item already saved, kept unless
+      // she removes it; the other optional parts stay folded (It worked if:
+      // folded until needed).
+      const draftItem = form.getByTestId("highlight-item").filter({ hasText: "Draft · logged by" });
+      await expect(draftItem).toHaveCount(1);
+      await expect(draftItem).toContainText(`Draft · logged by ${ownerName}`);
+      await expect(draftItem.getByTestId("highlight-item-kind")).toHaveText("Accomplishment");
+      await expect(draftItem.getByTestId("highlight-item-note")).toHaveText(draftNote);
       await expect(form.getByTestId("checkin-dates-section")).toHaveJSProperty("open", false);
       await expect(form.getByTestId("checkin-lifecycle-section")).toHaveJSProperty("open", false);
 
@@ -202,7 +212,7 @@ test.describe("on the due template", () => {
         const reason = path.getByLabel("Reason for moving it later");
         if (await reason.isVisible()) await reason.fill("The lazy-init change needs another load test.");
       }
-      // Enter in the reading submits the Check-in, not Add another.
+      // Enter in the reading submits the Check-in.
       await reading.press("Enter");
       await page.waitForURL(new RegExp(`/goals/${metric.id}$`));
 

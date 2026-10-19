@@ -594,16 +594,14 @@ async function checkIn(page: Page, goalID: number, c: CheckinInput) {
     await form.getByLabel("Delivery date", { exact: true }).fill(c.deliveryDate);
     await form.getByLabel("Reason (required if the delivery date changes)").fill(c.dateReason ?? "");
   }
-  for (const [i, h] of (c.highlights ?? []).entries()) {
-    const section = form.getByTestId("checkin-highlight-section");
-    if (i === 0) {
-      await section.locator("summary").click();
-    } else {
-      await section.getByRole("button", { name: "Add another" }).click();
-    }
-    const row = page.getByTestId("checkin-highlight-row").nth(i);
-    await row.getByLabel("Kind").selectOption({ label: h.kind });
-    await row.getByLabel("Note").fill(h.note);
+  // Each Highlight is written through its kind's add button, the Note and
+  // Save.
+  for (const h of c.highlights ?? []) {
+    await form.getByRole("button", { name: `+ ${h.kind}` }).click();
+    const editor = form.getByTestId("highlight-editor");
+    await editor.getByLabel("Note").fill(h.note);
+    await editor.getByRole("button", { name: "Save" }).click();
+    await expect(form.getByTestId("highlight-item").filter({ hasText: h.note })).toBeVisible();
   }
   await page.getByTestId("checkin-form").getByRole("button", { name: "Submit check-in" }).click();
   await page.waitForURL(new RegExp(`/goals/${goalID}$`));

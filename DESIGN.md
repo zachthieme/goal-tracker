@@ -713,6 +713,33 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   it shows each item's mark only, ✓ in a `--health-g-ink` circle or ○ as an
   empty `--color-border-strong` ring, its done or to do for screen readers
   alone. The Finish defining page is the same page.
+- **Check-in form's optional sections:** Highlights, dates and Milestones,
+  and Lifecycle each sit in a `<details>` (`.checkin-more`) that starts folded
+  and opens by itself when it holds an error or something typed.
+  - **Highlights (the Highlight editor, `highlighteditor.templ`):** with
+    script, the Highlights section isn't folded. It is an 18px `<h2>`
+    "Highlights", then three quiet small buttons, **+ Insight**,
+    **+ Accomplishment** and **+ Miss** (`highlightAddButtons`), then the
+    Highlights so far. An add button opens one inline editor above them,
+    headed "New Miss" (or Insight, or Accomplishment), asking only for the
+    Note, with **Save** (`.btn.sm`) and **Cancel** (`.btn.quiet.sm`). Save
+    stays disabled until the Note is filled, and while an editor is open the
+    add buttons and every Edit wait. Save makes it an item: a bordered row
+    with the kind in bold and the full Note, as the Goal page lists
+    Highlights ("**Miss**: …"), and quiet small **Edit** and **Remove**.
+    Edit reopens the editor in place with a Kind select, so a wrong button
+    can be corrected, and Cancel puts the item back as it was. Draft
+    Highlights come in as items already saved, under a muted "Draft · logged
+    by <Name>" line. Removing one discards it with the Check-in. A Draft
+    logged with no Kind comes in as an open editor with the Kind select and
+    Remove, not Cancel. Saving records nothing: the Highlights are sent with
+    the Check-in, and an editor still open with a Note is sent as if saved.
+  - **Without script,** the Highlights section is as before: a folded
+    `<details>`, "Flag a highlight (optional)", with a numbered row of Kind
+    and Note per Highlight, a Keep box on each Draft's row, and **Add
+    another**, which posts the form back for one more row. The script
+    upgrades that markup in place, so the server renders the same form either
+    way.
 - **Sizes and touch targets:** buttons and text, email, date, number and search
   inputs and selects are 40px tall, and `.btn.sm` is 32px. On a coarse pointer
   (`@media (pointer:coarse)`) all of them get a 44px `min-height`, so every
