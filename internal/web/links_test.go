@@ -588,3 +588,82 @@ func TestALinkRemovalUndoCantBeReplayedOverALaterRemoval(t *testing.T) {
 		t.Errorf("ParentsOf(child) = %+v after a replayed Undo, want none", got)
 	}
 }
+
+// linkedAcrossOwners links Sam's child Goal under Pat's parent Goal, accepted.
+func linkedAcrossOwners(t *testing.T, h *testsupport.Harness) (child, parent domain.Goal, link domain.Link) {
+	t.Helper()
+	pat := h.SignIn("pat@example.com")
+	sam := h.SignIn("sam@example.com")
+	parent = h.CreateGoal(pat, "Reduce outages", "Outages cost trust.")
+	child = h.CreateGoal(sam, "Migrate displays", "Displays fail often.")
+	link = h.RequestLink(sam, child, parent, "")
+	if _, err := h.Service.AcceptLink(context.Background(), link.ID, pat.ID); err != nil {
+		t.Fatalf("AcceptLink: %v", err)
+	}
+	return child, parent, link
+}
+
+// Remove shows on a link only to an Owner of either linked Goal, the people
+// allowed to remove it; anyone else still sees the linked Goal, without it.
+func TestRemoveShowsOnALinkOnlyForAnOwnerOfEitherGoal(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	child, parent, link := linkedAcrossOwners(t, h)
+	h.SignIn("lee@example.com")
+	removeForm := fmt.Sprintf(`action="/links/%d/remove"`, link.ID)
+
+	pages := []struct {
+		who, section string
+		goal, linked domain.Goal
+		canRemove    bool
+	}{
+		{"sam@example.com", "goal-parents", child, parent, true},
+		{"pat@example.com", "goal-children", parent, child, true},
+		{"lee@example.com", "goal-parents", child, parent, false},
+		{"lee@example.com", "goal-children", parent, child, false},
+	}
+	for _, p := range pages {
+		client := signInClient(t, ts.URL, p.who)
+		links := pageElement(t, getBody(t, client, goalPageURL(ts.URL, p.goal)), "section", p.section)
+		if !strings.Contains(links, navTo(p.linked.ID)) {
+			t.Errorf("%s on Goal %d: the link to Goal %d is missing:\n%s", p.who, p.goal.ID, p.linked.ID, links)
+		}
+		if got := strings.Contains(links, removeForm); got != p.canRemove {
+			t.Errorf("%s on Goal %d: Remove shown = %v, want %v:\n%s", p.who, p.goal.ID, got, p.canRemove, links)
+		}
+	}
+}
+
+// A removal by someone who owns neither linked Goal is refused with a page
+// inside the app saying why, linking back to the Goal page it came from, and
+// the link stays.
+func TestRefusedLinkRemovalShowsAPageSayingWhy(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	child, parent, link := linkedAcrossOwners(t, h)
+	h.SignIn("lee@example.com")
+	lee := signInClient(t, ts.URL, "lee@example.com")
+
+	resp := postForm(t, lee, fmt.Sprintf("%s/links/%d/remove", ts.URL, link.ID), url.Values{"goal_id": {fmt.Sprint(parent.ID)}})
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("remove by a non-Owner: status %d, want 403", resp.StatusCode)
+	}
+	pageElement(t, body, "a", "nav-home")
+	if got, want := pageElement(t, body, "p", "link-refused"), "Only an Owner of the linked Goals may remove the link."; !strings.Contains(got, want) {
+		t.Errorf("link-refused = %s, want %q", got, want)
+	}
+	if want := fmt.Sprintf(`<a href="/goals/%d">Back</a>`, parent.ID); !strings.Contains(body, want) {
+		t.Errorf("refusal page has no %s:\n%s", want, body)
+	}
+	if strings.Contains(body, "not authorized:") {
+		t.Errorf("refusal page shows the raw error:\n%s", body)
+	}
+	if got := h.ParentsOf(child); len(got) != 1 || got[0].ID != parent.ID {
+		t.Errorf("ParentsOf(child) = %+v after a refused removal, want the parent", got)
+	}
+}
