@@ -166,7 +166,8 @@ type config struct {
 	dbPath      string
 	adminEmails []string
 	// timezone is the org's IANA timezone, the calendar Check-in cadences are
-	// counted in.
+	// counted in. "Local" is refused: it is the host's zone, not a name a
+	// Report block can freeze and read back.
 	timezone string
 	// reminderDay and reminderTime are when in the org's week the Check-in
 	// reminders and parent digests go out.
@@ -221,6 +222,9 @@ func loadConfig() (config, error) {
 		reminderDay:  envOr("GOAL_TRACKER_REMINDER_DAY", "Monday"),
 		reminderTime: envOr("GOAL_TRACKER_REMINDER_TIME", "09:00"),
 		startAt:      os.Getenv("GOAL_TRACKER_START_AT"),
+	}
+	if cfg.timezone == "Local" {
+		return config{}, errors.New("GOAL_TRACKER_TIMEZONE=Local is the host's zone, not an IANA name: set the company's timezone by name, such as America/Los_Angeles")
 	}
 	cfg.baseURL = envOr("GOAL_TRACKER_BASE_URL", defaultBaseURL(cfg.addr))
 	for _, e := range strings.Split(os.Getenv("GOAL_TRACKER_ADMINS"), ",") {
