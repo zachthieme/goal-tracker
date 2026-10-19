@@ -194,7 +194,8 @@ test.describe("on the due template", () => {
         await path.getByLabel("Plan").fill("Ship the lazy-init change to everyone.");
         await path.getByLabel("Back to Green by").fill(addDays(appToday(), 28));
       }
-      await form.getByRole("button", { name: "Submit check-in" }).click();
+      // Enter in the reading submits the Check-in, not Add another.
+      await reading.press("Enter");
       await page.waitForURL(new RegExp(`/goals/${metric.id}$`));
 
       await expect(page.getByTestId("goal-status")).toHaveText(newStatus);

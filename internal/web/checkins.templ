@@ -561,9 +561,9 @@ templ checkinUnavailablePage(current *domain.Account, title, message string) {
 // section that opens when it holds an error or a value the reader typed.
 templ checkinForm(d checkinFormData) {
 	<form
+		data-testid="checkin-form"
 		id="checkin-form"
 		class="checkin-form"
-		data-testid="checkin-form"
 		hx-post={ fmt.Sprintf("/goals/%d/checkins", d.GoalID) }
 		hx-target="#checkin-form"
 		hx-swap="outerHTML"
@@ -571,6 +571,9 @@ templ checkinForm(d checkinFormData) {
 		method="post"
 		action={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkins", d.GoalID)) }
 	>
+		// Enter presses a form's first submit, so it submits the Check-in, not
+		// Add another.
+		<button type="submit" data-testid="checkin-default-submit" class="checkin-default-submit" tabindex="-1" aria-hidden="true">Submit check-in</button>
 		@checkinStyles()
 		@checkinFieldError(d.Error, "")
 		<fieldset data-testid="checkin-health" class="health-toggle">
@@ -664,8 +667,8 @@ templ checkinForm(d checkinFormData) {
 // checkinOffTargetWarning asks the Owner to confirm a Green while Metrics are
 // off target, naming each with its reading and target. Save as Green anyway
 // submits the form as typed, confirmed; the Owner can instead change the
-// Health and submit. It sits by the submit buttons, after Add another, so
-// pressing Enter in a field never confirms.
+// Health and submit. Pressing Enter in a field never confirms: Enter presses
+// the form's first submit, the hidden plain Submit check-in.
 templ checkinOffTargetWarning(missed []domain.OffTargetMetric, shown displayDates) {
 	<section data-testid="checkin-off-target" class="checkin-off-target" role="alert">
 		<p><strong>A Metric is off target. Is the Goal still Green?</strong></p>
@@ -766,6 +769,7 @@ templ checkinStyles() {
 			.checkin-page .card{padding:16px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 			.checkin-page .card form{margin:0}
 			.checkin-form{display:flex;flex-direction:column;gap:16px}
+			.checkin-default-submit{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 			.checkin-form fieldset{border:1px solid var(--color-border);border-radius:var(--radius-md);padding:12px 16px;margin:0;display:flex;flex-direction:column;gap:8px;background:var(--color-surface)}
 			.checkin-form legend{font-weight:600;font-size:13px;padding:0 4px}
 			.checkin-form label{display:flex;flex-direction:column;gap:8px;font-weight:600;font-size:13px}
