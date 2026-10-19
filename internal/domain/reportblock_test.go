@@ -544,3 +544,65 @@ func TestReportBlockMarksAnAskForHelp(t *testing.T) {
 		t.Errorf("%q's block (drafted %v) AsksForHelp %v of %+v, want no ask", quiet.Title, ok, b.AsksForHelp, b.AskAddressee)
 	}
 }
+
+// Each exception block freezes the timezone its Goal is judged in when drafted
+// (CONTEXT.md: Timezone): its Owner's, or the company's for an Owner with none
+// and for an Ownerless Goal, even one whose departed Owner had one.
+func TestReportBlockFreezesTheTimezoneItsGoalIsJudgedIn(t *testing.T) {
+	t.Parallel()
+
+	la, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		t.Fatalf("LoadLocation: %v", err)
+	}
+	h := testsupport.New(t, "boss@example.com")
+	h.Service = domain.NewService(h.DB, h.Clock, h.Email, []string{"boss@example.com"}, domain.WithTimezone(la))
+	boss := h.SignIn("boss@example.com")
+	kenji := h.SignIn("kenji@example.com")
+	sam := h.SignIn("sam@example.com")
+	lee := h.SignIn("lee@example.com")
+	h.SetTimezone(kenji, "Asia/Tokyo")
+	h.SetTimezone(lee, "Asia/Tokyo")
+	tokyo := h.ActiveGoal(kenji, "Ship search", "People can't find things.")
+	plain := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	ownerless := h.ActiveGoal(lee, "Cut churn", "Keep customers.")
+	settle(h)
+	later := h.Clock.Now().AddDate(0, 1, 0)
+	h.Checkin(kenji, tokyo.ID, domain.HealthRed, "Blocked.", "Escalate.", later)
+	h.Checkin(sam, plain.ID, domain.HealthRed, "Blocked.", "Escalate.", later)
+	h.Checkin(lee, ownerless.ID, domain.HealthRed, "Blocked.", "Escalate.", later)
+	if err := h.Service.MarkDeparted(context.Background(), boss.ID, lee.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	r := draftReport(t, h, boss, time.Time{}, tokyo, plain, ownerless)
+
+	zones := map[int64]string{}
+	for _, b := range r.Exceptions {
+		zones[b.Goal.ID] = b.Timezone
+	}
+	for _, want := range []struct {
+		goal domain.Goal
+		tz   string
+	}{{tokyo, "Asia/Tokyo"}, {plain, "America/Los_Angeles"}, {ownerless, "America/Los_Angeles"}} {
+		if got, ok := zones[want.goal.ID]; !ok || got != want.tz {
+			t.Errorf("%q's block (drafted %v) Timezone %q, want %q", want.goal.Title, ok, got, want.tz)
+		}
+	}
+}
+
+// A block's Location is the zone its Timezone names, and UTC for a block
+// frozen without one or with a name that doesn't load.
+func TestReportBlockLocationIsItsTimezoneOrUTC(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ tz, want string }{
+		{"", "UTC"},
+		{"Nope/Zone", "UTC"},
+		{"Asia/Tokyo", "Asia/Tokyo"},
+	} {
+		if got := (domain.ReportBlock{Timezone: tc.tz}).Location().String(); got != tc.want {
+			t.Errorf("ReportBlock{Timezone: %q}.Location() = %s, want %s", tc.tz, got, tc.want)
+		}
+	}
+}

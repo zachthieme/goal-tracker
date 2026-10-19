@@ -182,6 +182,32 @@ func TestMarkdownListsMilestonesAsMarkDateName(t *testing.T) {
 	}
 }
 
+// A Milestone is marked by the date the publication was published in the zone
+// its block's Goal was judged in: at 09:30 UTC on Feb 21 it is still Feb 20 in
+// Honolulu, so a Milestone due Feb 20 has passed only in a block frozen
+// without a timezone, which reads as UTC.
+func TestMarkdownMarksMilestonesInTheBlocksTimezone(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ tz, want string }{
+		{"", "- **[Red]** 2026-02-20 Docs\n"},
+		{"Pacific/Honolulu", "- 2026-02-20 Docs\n"},
+	} {
+		pub := publication([]domain.ReportBlock{{
+			Goal:     domain.Goal{Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
+			Health:   domain.HealthYellow,
+			Timezone: tc.tz,
+			Milestones: []domain.ReportMilestone{
+				{Milestone: domain.Milestone{Name: "Docs", TargetDate: date(2026, 2, 20), Status: domain.MilestonePlanned}},
+			},
+		}}, nil)
+
+		if got := export.Markdown(pub); !strings.Contains(got, tc.want) {
+			t.Errorf("Markdown of a block with Timezone %q:\n%s\nwant the Milestone to read %q", tc.tz, got, tc.want)
+		}
+	}
+}
+
 // A publication frozen before Milestones read mark, date, name exports in that
 // form: its snapshot already holds all the mark needs.
 func TestMarkdownListsTheMilestonesOfAnOlderSnapshotAsMarkDateName(t *testing.T) {

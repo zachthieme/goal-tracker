@@ -98,8 +98,8 @@ func Markdown(p domain.Publication) string {
 // to Green, whom it asks for help, Milestones, Metrics against target, and
 // the Rolled-up Health with
 // how many children are Red, Yellow and Stale, the Goals behind it, and the
-// Owner's explanation. Each Milestone is marked as of asOf, the day the
-// Report was published.
+// Owner's explanation. Each Milestone is marked as of asOf, the instant the
+// Report was published, read in the zone the block's Goal was judged in.
 func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBlock, asOf time.Time) {
 	g := blk.Goal
 	fmt.Fprintf(b, "\n### %s", text(g.Title))
@@ -140,7 +140,7 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 		b.WriteString("\n**Milestones:**\n\n")
 		for _, m := range blk.Milestones {
 			b.WriteString("- ")
-			if mark := domain.MilestoneMarkOf(m.Milestone, m.PriorDates, m.New, asOf); mark != domain.MilestoneMarkNone {
+			if mark := domain.MilestoneMarkOf(m.Milestone, m.PriorDates, m.New, asOf.In(blk.Location())); mark != domain.MilestoneMarkNone {
 				fmt.Fprintf(b, "**[%s]** ", mark)
 			}
 			name := text(m.Milestone.Name)

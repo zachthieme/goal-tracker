@@ -836,3 +836,37 @@ func TestPublicationFreezesAnAskForHelp(t *testing.T) {
 		t.Errorf("a fresh draft's blocks %+v, want one with no ask", draft.Exceptions)
 	}
 }
+
+// A publication keeps the timezone each block's Goal was judged in when it was
+// published, so clearing the Owner's Timezone later doesn't move its marks
+// (CONTEXT.md: Timezone), while a fresh draft reads the Owner as they are now.
+func TestPublicationFreezesTheTimezoneItsGoalWasJudgedIn(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	kenji := h.SignIn("kenji@example.com")
+	h.SetTimezone(kenji, "Asia/Tokyo")
+	g := h.ActiveGoal(kenji, "Ship search", "People can't find things.")
+	h.Checkin(kenji, g.ID, domain.HealthRed, "Blocked.", "Escalate.", h.Clock.Now().AddDate(0, 1, 0))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+
+	h.SetTimezone(kenji, "")
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if len(got.Report.Exceptions) != 1 || got.Report.Exceptions[0].Timezone != "Asia/Tokyo" {
+		t.Errorf("published blocks %+v, want one with Timezone Asia/Tokyo as published", got.Report.Exceptions)
+	}
+	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	if len(draft.Exceptions) != 1 || draft.Exceptions[0].Timezone != "UTC" {
+		t.Errorf("a fresh draft's blocks %+v, want one with Timezone UTC, the company's", draft.Exceptions)
+	}
+}
