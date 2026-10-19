@@ -751,3 +751,31 @@ func TestMarkdownStrikesTheBackToGreenDateItSlippedFrom(t *testing.T) {
 		}
 	}
 }
+
+// A date is never struck through beside itself (CONTEXT.md: Date Slip): a
+// back-to-Green date moved back to one it slipped from strikes the most recent
+// prior date that differs, keeping the count, and a delivery date leaves its
+// own date out of the struck list.
+func TestMarkdownStrikesNoDateEqualToItsOwn(t *testing.T) {
+	t.Parallel()
+
+	got := export.Markdown(publication([]domain.ReportBlock{{
+		Goal: domain.Goal{
+			Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss,
+			Lifecycle: domain.LifecycleActive, DeliveryDate: date(2026, 11, 9),
+		},
+		Health:               domain.HealthRed,
+		PriorDueDates:        []time.Time{date(2026, 11, 1), date(2026, 11, 9), date(2026, 11, 23)},
+		PathToGreen:          "Hire counsel.",
+		PathTargetDate:       date(2026, 6, 16),
+		PriorPathTargetDates: []time.Time{date(2026, 6, 9), date(2026, 6, 16)},
+	}}, nil))
+	for _, want := range []string{
+		" · due ~~2026-11-01~~ ~~2026-11-23~~ 2026-11-09\n",
+		"**Path to Green:** Hire counsel. (back to Green by 2026-06-16 ~~2026-06-09~~ (2))\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Markdown lacks %q:\n%s", want, got)
+		}
+	}
+}

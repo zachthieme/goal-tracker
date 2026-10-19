@@ -117,7 +117,7 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 		fmt.Fprintf(b, " · was %s", blk.PriorHealth)
 	}
 	if !g.DeliveryDate.IsZero() {
-		fmt.Fprintf(b, " · due %s%s", struck(blk.PriorDueDates), fmtDate(g.DeliveryDate))
+		fmt.Fprintf(b, " · due %s%s", struck(g.DeliveryDate, blk.PriorDueDates), fmtDate(g.DeliveryDate))
 	}
 	if len(blk.Changes) > 0 {
 		fmt.Fprintf(b, "\n\n**Changed:** %s", strings.Join(blk.Changes, " · "))
@@ -248,9 +248,10 @@ func text(s string) string {
 
 // struck renders the dates a date held before its Date Slips, each struck
 // through ahead of the current date: ~~10/15~~ 11/03 (CONTEXT.md: Date Slip).
-func struck(dates []time.Time) string {
+// A date equal to the current one is never struck through.
+func struck(current time.Time, prior []time.Time) string {
 	var b strings.Builder
-	for _, d := range dates {
+	for _, d := range domain.StruckDates(current, prior) {
 		fmt.Fprintf(&b, "~~%s~~ ", fmtDate(d))
 	}
 	return b.String()
@@ -259,14 +260,15 @@ func struck(dates []time.Time) string {
 // milestoneDate renders a Milestone's date current first, then the most recent
 // date it slipped from struck through, and the number of times it slipped once
 // that is more than one: 11/20 ~~11/03~~ (3) (CONTEXT.md: Date Slip). Prior
-// dates come earliest first.
+// dates come earliest first. A date equal to the current one is never struck
+// through: the most recent that differs is, or none.
 func milestoneDate(current time.Time, prior []time.Time) string {
 	out := fmtDate(current)
-	if n := len(prior); n > 0 {
-		out += fmt.Sprintf(" ~~%s~~", fmtDate(prior[n-1]))
-		if n > 1 {
-			out += fmt.Sprintf(" (%d)", n)
-		}
+	if struck := domain.StruckDates(current, prior); len(struck) > 0 {
+		out += fmt.Sprintf(" ~~%s~~", fmtDate(struck[len(struck)-1]))
+	}
+	if n := len(prior); n > 1 {
+		out += fmt.Sprintf(" (%d)", n)
 	}
 	return out
 }

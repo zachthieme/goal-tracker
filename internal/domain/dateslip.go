@@ -56,6 +56,19 @@ func BackToGreenPriorDates(slips []DateSlip, run RunOffGreen) []time.Time {
 	return out
 }
 
+// StruckDates returns the prior dates a date shows struck through, earliest
+// first: prior with every date on current's calendar day left out, so a date
+// is never shown struck through beside itself (CONTEXT.md: Date Slip).
+func StruckDates(current time.Time, prior []time.Time) []time.Time {
+	var out []time.Time
+	for _, d := range prior {
+		if d.Format(dateFormat) != current.Format(dateFormat) {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
 // slipPlan is a validated date change waiting to be written with its Check-in.
 type slipPlan struct {
 	milestoneID int64 // 0 for the delivery date or the back-to-Green date

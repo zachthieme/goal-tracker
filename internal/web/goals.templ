@@ -261,7 +261,7 @@ templ goalListRow(row goalRow, dates displayDates) {
 			if g.DeliveryDate.IsZero() {
 				<span class="muted">—</span>
 			} else {
-				@struckDates(row.PriorDates, dates)
+				@struckDates(g.DeliveryDate, row.PriorDates, dates)
 				<span>{ dates.date(g.DeliveryDate) }</span>
 			}
 		</td>
@@ -529,7 +529,7 @@ templ goalTableCell(col tableColumn, row goalTableRow, edit bool, dates displayD
 			<td class="num">
 				if !g.DeliveryDate.IsZero() {
 					@goalLinkIf(edit, g) {
-						@struckDates(row.PriorDates, dates)
+						@struckDates(g.DeliveryDate, row.PriorDates, dates)
 						{ dates.date(g.DeliveryDate) }
 					}
 				}
@@ -797,7 +797,7 @@ templ goalHead(v goalView, owner, admin bool) {
 					<span>
 						Delivers 
 						<span data-testid="goal-delivery-date" class="gp-dates">
-							@struckDates(v.priorDates(0), v.dates())
+							@struckDates(g.DeliveryDate, v.priorDates(0), v.dates())
 							<strong>{ v.dates().date(g.DeliveryDate) }</strong>
 						</span>
 					</span>
@@ -1289,8 +1289,9 @@ templ milestoneList(v goalView, editable bool) {
 
 // struckDates renders the dates a date held before its Date Slips, each struck
 // through ahead of the current date: ~~10/15~~ 11/03 (CONTEXT.md: Date Slip).
-templ struckDates(prior []time.Time, dates displayDates) {
-	for _, d := range prior {
+// A date equal to the current one is never struck through.
+templ struckDates(current time.Time, prior []time.Time, dates displayDates) {
+	for _, d := range domain.StruckDates(current, prior) {
 		<del>{ dates.date(d) }</del>{ " " }
 	}
 }
@@ -1313,11 +1314,12 @@ templ milestoneDates(current time.Time, prior []time.Time, dates displayDates) {
 // slippedDates renders a date current first, then the most recent date it
 // slipped from struck through, and the number of times it slipped once that is
 // more than one, marked with countTestID: 11/20 ~~11/03~~ (3) (CONTEXT.md: Date
-// Slip). prior comes earliest first.
+// Slip). prior comes earliest first. A date equal to the current one is never
+// struck through: the most recent that differs is, or none.
 templ slippedDates(current time.Time, prior []time.Time, dates displayDates, countTestID string) {
 	<span>{ dates.date(current) }</span>
-	if n := len(prior); n > 0 {
-		<del>{ dates.date(prior[n-1]) }</del>
+	if struck := domain.StruckDates(current, prior); len(struck) > 0 {
+		<del>{ dates.date(struck[len(struck)-1]) }</del>
 	}
 	if n := len(prior); n > 1 {
 		<span data-testid={ countTestID }>{ fmt.Sprintf("(%d)", n) }</span>

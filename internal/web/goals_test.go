@@ -6204,3 +6204,99 @@ func TestABackToGreenSlipStrikesNoDeliveryDate(t *testing.T) {
 		t.Errorf("the Goals list strikes a delivery date: %s", due)
 	}
 }
+
+// A back-to-Green date moved back earlier after slipping, which is no Date
+// Slip, is never struck through beside itself: it strikes the most recent date
+// it slipped from that differs, keeping the slip count, and with none that
+// differs strikes nothing (CONTEXT.md: Date Slip).
+func TestAPulledInBackToGreenDateStrikesTheDateItDiffersFrom(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	client := signInClient(t, ts.URL, "sam@example.com")
+	jun := func(d int) time.Time { return time.Date(2026, 6, d, 0, 0, 0, 0, time.UTC) }
+	cell := func(goal domain.Goal) string {
+		t.Helper()
+		cells := pageElement(t, getBody(t, client, goalPageURL(ts.URL, goal)), "dl", "goal-status-cells")
+		return between(t, cells, `data-testid="goal-back-to-green-cell"`, "</dd>")
+	}
+
+	twice := h.ActiveGoal(sam, "Slipped twice", "It matters.")
+	h.Checkin(sam, twice.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(9))
+	h.CheckinMovingPath(sam, twice.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(16), "The vendor is out.")
+	h.CheckinMovingPath(sam, twice.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(23), "The vendor is still out.")
+	h.Checkin(sam, twice.ID, domain.HealthYellow, "Better.", "Escalate.", jun(16))
+	got := cell(twice)
+	if !strings.Contains(got, "<span>Jun 16</span>") || !strings.Contains(got, "<del>Jun 9</del>") || strings.Contains(got, "<del>Jun 16</del>") {
+		t.Errorf("the cell doesn't read Jun 16 ~~Jun 9~~: %s", got)
+	}
+	if slips := elementTexts(got, "span", "back-to-green-slips"); !slices.Equal(slips, []string{"(2)"}) {
+		t.Errorf("the slip count = %q, want (2): %s", slips, got)
+	}
+
+	once := h.ActiveGoal(sam, "Slipped once", "It matters.")
+	h.Checkin(sam, once.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(9))
+	h.CheckinMovingPath(sam, once.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(16), "The vendor is out.")
+	h.Checkin(sam, once.ID, domain.HealthYellow, "Better.", "Escalate.", jun(9))
+	got = cell(once)
+	if !strings.Contains(got, "<span>Jun 9</span>") || strings.Contains(got, "<del>") || strings.Contains(got, "back-to-green-slips") {
+		t.Errorf("a date back where it slipped from strikes a date or shows a count: %s", got)
+	}
+}
+
+// A delivery date moved back to a date it held before strikes only the dates
+// that differ from it, on the Goal page and the Goals list: Nov 1 → Nov 9 →
+// Nov 23 → Nov 9 reads ~~Nov 1~~ ~~Nov 23~~ Nov 9 (CONTEXT.md: Date Slip).
+func TestAPulledBackDeliveryDateIsNotStruckThrough(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	nov := func(d int) time.Time { return time.Date(2026, 11, d, 0, 0, 0, 0, time.UTC) }
+	goal := h.ActiveGoalDue(sam, "Ship v2", nov(1))
+	for _, due := range []time.Time{nov(9), nov(23), nov(9)} {
+		h.Clock.Advance(time.Hour)
+		if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
+			GoalID:             goal.ID,
+			AuthorID:           sam.ID,
+			Health:             domain.HealthYellow,
+			Status:             "Moving.",
+			PathToGreen:        "Rescope.",
+			PathTargetDate:     testsupport.Epoch.AddDate(0, 2, 0),
+			DeliveryDate:       due,
+			DeliveryDateReason: "Scope changed.",
+		}); err != nil {
+			t.Fatalf("SubmitCheckin: %v", err)
+		}
+	}
+	client := signInClient(t, ts.URL, "sam@example.com")
+	struck := func(markup string) []string {
+		var out []string
+		for _, m := range regexp.MustCompile(`<del>([^<]*)</del>`).FindAllStringSubmatch(markup, -1) {
+			out = append(out, m[1])
+		}
+		return out
+	}
+
+	delivery := pageElement(t, getBody(t, client, goalPageURL(ts.URL, goal)), "span", "goal-delivery-date")
+	if got := struck(delivery); !slices.Equal(got, []string{"Nov 1", "Nov 23"}) {
+		t.Errorf("the Goal page strikes %q, want Nov 1 and Nov 23: %s", got, delivery)
+	}
+	if !strings.Contains(delivery, "<strong>Nov 9</strong>") {
+		t.Errorf("the Goal page doesn't deliver Nov 9: %s", delivery)
+	}
+	rows := goalRows(t, getBody(t, client, ts.URL+"/goals"))
+	if len(rows) != 1 {
+		t.Fatalf("Goals list has %d rows, want 1", len(rows))
+	}
+	due := pageElement(t, rows[0], "td", "goal-row-due")
+	if got := struck(due); !slices.Equal(got, []string{"Nov 1", "Nov 23"}) {
+		t.Errorf("the Goals list strikes %q, want Nov 1 and Nov 23: %s", got, due)
+	}
+	if !strings.Contains(due, "<span>Nov 9</span>") {
+		t.Errorf("the Goals list isn't due Nov 9: %s", due)
+	}
+}

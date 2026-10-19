@@ -4020,6 +4020,94 @@ func TestReportBlockStrikesTheBackToGreenDateItSlippedFromOverHTTP(t *testing.T)
 	}
 }
 
+// A back-to-Green date moved back earlier after slipping, which is no Date
+// Slip, strikes no date equal to its own on an exception block: the most recent
+// date it slipped from that differs, keeping the count, or none. The draft, the
+// publication and its print page all show it (CONTEXT.md: Date Slip).
+func TestReportBlockStrikesNoBackToGreenDateEqualToItsOwnOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	jun := func(d int) time.Time { return time.Date(2026, 6, d, 0, 0, 0, 0, time.UTC) }
+	for _, tc := range []struct {
+		name  string
+		slips []time.Time // the dates each slip moved it to
+		back  time.Time   // the date a later Check-in moved it back to
+		prior string      // the struck-through date, "" for none
+		count string      // the count, "" for none
+	}{
+		{"slipped twice, back once", []time.Time{jun(16), jun(23)}, jun(16), "Jun 9, 2026", "(2)"},
+		{"slipped once, back to the start", []time.Time{jun(16)}, jun(9), "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t, "boss@example.com")
+			boss := h.SignIn("boss@example.com")
+			g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+			h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", jun(9))
+			for _, d := range tc.slips {
+				h.Clock.Advance(24 * time.Hour)
+				h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Hire counsel.", d, "Counsel starts later.")
+			}
+			h.Clock.Advance(24 * time.Hour)
+			h.Checkin(boss, g.ID, domain.HealthRed, "Counsel found.", "Hire counsel.", tc.back)
+			def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+			pub := h.PublishReport(boss, def)
+
+			ts := newServer(t, h)
+			client := signInClient(t, ts.URL, "boss@example.com")
+			pubURL := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
+			for name, url := range map[string]string{
+				"draft":       fmt.Sprintf("%s/reports/%d", ts.URL, def.ID),
+				"publication": pubURL,
+				"print page":  pubURL + "/print",
+			} {
+				path := pageElement(t, reportBlockFor(t, getBody(t, client, url), g), "p", "report-path-to-green")
+				if got := elementTexts(path, "del", "report-back-to-green-prior"); !slices.Equal(got, slippedBackToGreenTexts(tc.prior)) {
+					t.Errorf("%s strikes through %q, want %q; path:\n%s", name, got, slippedBackToGreenTexts(tc.prior), path)
+				}
+				if got := elementTexts(path, "span", "report-back-to-green-slips"); !slices.Equal(got, slippedBackToGreenTexts(tc.count)) {
+					t.Errorf("%s counts the slips as %q, want %q; path:\n%s", name, got, slippedBackToGreenTexts(tc.count), path)
+				}
+			}
+		})
+	}
+}
+
+// A publication frozen with a back-to-Green date equal to the last date it
+// slipped from renders under the rule of today, not of when it was frozen: the
+// most recent prior date that differs is struck through, and the count kept.
+func TestPublicationFrozenWithItsOwnBackToGreenDatePriorStrikesTheOneThatDiffersOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", time.Date(2026, 6, 9, 0, 0, 0, 0, time.UTC))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	frozen := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","SoWhat":"Expand the market.",` +
+		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Status":"Blocked.",` +
+		`"PathToGreen":"Hire counsel.","PathTargetDate":"2026-06-16T00:00:00Z",` +
+		`"PriorPathTargetDates":["2026-06-09T00:00:00Z","2026-06-16T00:00:00Z"]}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, frozen, pub.ID); err != nil {
+		t.Fatalf("write a frozen snapshot: %v", err)
+	}
+
+	ts := newServer(t, h)
+	block := reportBlockFor(t, getBody(t, signInClient(t, ts.URL, "boss@example.com"), fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)), g)
+	path := pageElement(t, block, "p", "report-path-to-green")
+	if got, want := elementTexts(path, "del", "report-back-to-green-prior"), []string{"Jun 9, 2026"}; !slices.Equal(got, want) {
+		t.Errorf("the publication strikes through %q, want %q; path:\n%s", got, want, path)
+	}
+	if got, want := elementTexts(path, "span", "report-back-to-green-slips"), []string{"(2)"}; !slices.Equal(got, want) {
+		t.Errorf("the publication counts the slips as %q, want %q; path:\n%s", got, want, path)
+	}
+	if want := `by Jun 16, 2026 <del data-testid="report-back-to-green-prior">Jun 9, 2026</del> <span data-testid="report-back-to-green-slips">(2)</span>)`; !strings.Contains(path, want) {
+		t.Errorf("the path doesn't read %s; path:\n%s", want, path)
+	}
+}
+
 // slippedBackToGreenTexts is s as the texts of the elements that show it: none for "".
 func slippedBackToGreenTexts(s string) []string {
 	if s == "" {

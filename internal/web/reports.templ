@@ -861,7 +861,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 					if !b.Goal.DeliveryDate.IsZero() {
 						{ " · due " }
 						<span data-testid="report-due" class="rp-dates">
-							@struckDates(b.PriorDueDates, d.dates())
+							@struckDates(b.Goal.DeliveryDate, b.PriorDueDates, d.dates())
 							<span>{ showDateYear(b.Goal.DeliveryDate) }</span>
 						</span>
 					}
@@ -911,7 +911,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 			}
 			if b.PathToGreen != "" {
 				<p data-testid="report-path-to-green">
-					<strong>Path to Green:</strong> { b.PathToGreen } (back to Green by { showDateYear(b.PathTargetDate) }@reportBackToGreenPrior(b.PriorPathTargetDates))
+					<strong>Path to Green:</strong> { b.PathToGreen } (back to Green by { showDateYear(b.PathTargetDate) }@reportBackToGreenPrior(b.PathTargetDate, b.PriorPathTargetDates))
 					if pathOverdueAt(b, asOf) {
 						{ " " }<strong data-testid="path-overdue" class="badge r">Overdue</strong>
 					}
@@ -1003,16 +1003,24 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 	</article>
 }
 
-// reportBackToGreenPrior follows a block's back-to-Green date with the date it
-// last slipped from within the Run off Green struck through, and the number of
-// times it slipped once that is more than one, as a Milestone's date reads:
-// Oct 3, 2026 ~~Sep 12, 2026~~ (3). prior comes earliest first; with none it
-// renders nothing.
-templ reportBackToGreenPrior(prior []time.Time) {
-	if n := len(prior); n > 1 {
-		{ " " }<del data-testid="report-back-to-green-prior">{ showDateYear(prior[n-1]) }</del>{ " " }<span data-testid="report-back-to-green-slips">{ fmt.Sprintf("(%d)", n) }</span>
-	} else if n == 1 {
-		{ " " }<del data-testid="report-back-to-green-prior">{ showDateYear(prior[0]) }</del>
+// reportBackToGreenPrior follows a block's back-to-Green date, current, with
+// the date it last slipped from within the Run off Green struck through, and
+// the number of times it slipped once that is more than one, as a Milestone's
+// date reads: Oct 3, 2026 ~~Sep 12, 2026~~ (3). prior comes earliest first; with
+// none it renders nothing. A date equal to the current one is never struck
+// through: the most recent that differs is, or none.
+templ reportBackToGreenPrior(current time.Time, prior []time.Time) {
+	if struck := domain.StruckDates(current, prior); len(struck) > 0 {
+		{ " " }<del data-testid="report-back-to-green-prior">{ showDateYear(struck[len(struck)-1]) }</del>
+	}
+	@reportBackToGreenSlips(len(prior))
+}
+
+// reportBackToGreenSlips is how many times a block's back-to-Green date slipped
+// within the Run off Green, once that is more than one: (3).
+templ reportBackToGreenSlips(n int) {
+	if n > 1 {
+		{ " " }<span data-testid="report-back-to-green-slips">{ fmt.Sprintf("(%d)", n) }</span>
 	}
 }
 
