@@ -6,6 +6,7 @@ import (
 	"html"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -1052,6 +1053,32 @@ func TestCheckinFormShowsOneEmptyHighlightRow(t *testing.T) {
 	section := pageElement(t, page, "details", "checkin-highlight-section")
 	if !strings.Contains(section, `name="add_highlight"`) {
 		t.Errorf("no Add another button; section:\n%s", section)
+	}
+}
+
+// Enter in a field submits the form by its first submit button, so the
+// Check-in form's first is a hidden plain submit, ahead of Add another: Enter
+// records the Check-in rather than adding a Highlight row.
+func TestCheckinFormEnterSubmitsTheCheckin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	form := pageElement(t, page, "form", "checkin-form")
+	first := regexp.MustCompile(`<button[^>]*type="submit"[^>]*>`).FindString(form)
+	if attr(first, "data-testid") != "checkin-default-submit" {
+		t.Fatalf("the form's first submit, which Enter presses, isn't the default submit: %s", first)
+	}
+	if strings.Contains(first, `name=`) {
+		t.Errorf("the default submit posts a name, so it isn't a plain Submit check-in: %s", first)
+	}
+	if strings.Index(form, first) > strings.Index(form, `name="add_highlight"`) {
+		t.Errorf("the default submit comes after Add another:\n%s", form)
 	}
 }
 
