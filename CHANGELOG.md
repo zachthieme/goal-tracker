@@ -43,6 +43,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [ops] The directory sync reads each person's timezone, an IANA name, from an optional `timezone` column in the CSV directory file or a `timezone` attribute in Authentik. A blank or invalid value means none, and an invalid one is logged at WARN. Nothing uses it yet. A new migration (`0050_account_timezones`) adds `accounts.timezone` on startup; no action is needed (#353).
 - [user] People's Names no longer have a dotted underline that made them look like links. Hovering over a Name or focusing it shows a faint tint, and clicking it still shows the email (#278).
 - [user] A Report's exception block counts the Red, Yellow and Stale Goals behind its Rolled-up Health ("2 of 6 Red · 1 Yellow"), names the Red and Yellow ones, and links to the Goals in the same Report it contributes to or that contribute to it. The Markdown export and Print carry the same (#246).
+- [user] A Goal whose latest Check-in is Green while a Milestone is overdue, judged by the date in its Owner's timezone, carries a "Milestone overdue" mark on the Goal list, which sorts it with the Stale Goals. Risks lists it under Owner needs to update, where its Fix is Check in for its Owner or a Delegate and Nudge for anyone else, and a Nudge's email names the overdue Milestone. Its Health stays as its Owner set it (#345).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
@@ -59,6 +60,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Risks' "Worst first" puts Proposed and On Hold Goals after every Active Goal, and among Goals otherwise equal, the one with more reasons first (#344).
 - [user] On a phone, the Goals list stacks each Goal's Health, Owner, Due and Last check-in under its title (Dimension tags are hidden there), a Report card's Health drops under its title, the Risks filters wrap so both selects are on screen, and the Admin page's Make Admin and Issue link buttons fit under their Email field (#343).
 - [user] Whether a Milestone is overdue is now judged by the date in the Goal's Owner's timezone (the company's for an Owner without one), as Stale and Metric targets are. Near midnight, a Green or No change was refused, or allowed, by the UTC date, and the Goal page marked the Milestone Red by that date too (#318).
+- [user] A Report and its Markdown export mark a Milestone Red, and a Path to Green Overdue, by the date in the Goal's Owner's timezone (the company's for an Owner without one), as the Goal page does, frozen with each publication. Near midnight they were judged by the UTC date (#349).
 
 **Infrastructure:**
 - [internal] `make lint` now fails on Go code that isn't gofmt-formatted, using golangci-lint's gofmt formatter; generated code stays guarded by `make generate-check` (#328).
