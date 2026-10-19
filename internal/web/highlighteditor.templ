@@ -87,14 +87,14 @@ templ highlightKindOptions(selected string) {
 
 // highlightEditorStyles lay out the editor and its items, in the look every
 // item editor shares (itemEditorStyles). What only script can drive
-// (.hl-js-only) shows once script has marked the container hl-js, and what
+// (.hl-js-only) shows once script has marked the container data-hl-js, and what
 // script replaces (.hl-no-js), and the summary of a <details> the container
 // sits in, hide then.
 templ highlightEditorStyles() {
 	@itemEditorStyles()
 	<style>
-		[data-highlight-editor]:not(.hl-js) .hl-js-only{display:none}
-		.hl-js .hl-no-js,details:has(>.hl-js)>summary{display:none}
+		[data-highlight-editor]:not([data-hl-js]) .hl-js-only{display:none}
+		[data-hl-js] .hl-no-js,details:has(>[data-hl-js])>summary{display:none}
 		.hl-head{font-size:18px}
 		.hl-add{display:flex;flex-wrap:wrap;gap:8px}
 		.hl-items{display:flex;flex-direction:column;gap:8px}
@@ -134,8 +134,7 @@ templ itemEditorStyles() {
 //
 // A Highlight with a url saves to the server instead (the Goal page's Draft
 // Highlights): Save posts its kind and note there with htmx and swaps the
-// container, or the element its data-hl-target names, for the one the server
-// answers with. The container's items are
+// container for the one the server answers with. The container's items are
 // then the server's, each an .hl-item carrying its url, kind and note, which
 // gains an Edit; one marked data-hl-refused, a refused edit, opens as an
 // editor again with what was typed and the reason, as does a log form the
@@ -149,9 +148,14 @@ templ highlightEditorScript() {
 			var editorTemplate = document.getElementById("highlight-editor");
 			var itemTemplate = document.getElementById("highlight-item");
 			if (!editorTemplate || !itemTemplate) return;
-			document.querySelectorAll("[data-highlight-editor]:not(.hl-js)").forEach(upgrade);
+			document.querySelectorAll("[data-highlight-editor]:not([data-hl-js])").forEach(upgrade);
 
 			function upgrade(box) {
+				// The mark is an attribute: htmx settles a swapped-in container
+				// that has the old one's id by giving it the old class for a
+				// moment, then its own, so a class would be lost. The hl-js
+				// class is for page styles keyed on it.
+				box.setAttribute("data-hl-js", "");
 				box.classList.add("hl-js");
 				var details = box.closest("details");
 				if (details) details.open = true;
@@ -330,14 +334,13 @@ templ highlightEditorScript() {
 				}
 
 				// send saves a Highlight to the server at its url and swaps the
-				// container's data-hl-target, or the container, for what the
-				// server answers with: the items as saved, or the editor again
+				// container for what the server answers with: the items as saved, or the editor again
 				// with why it was refused. Focus then goes where it would after
 				// a Save here: to the editor still open, the edited item's Edit,
 				// or the first add button.
 				function send(el, v) {
 					el.querySelector("[data-hl-save]").disabled = true;
-					var target = box.getAttribute("data-hl-target");
+					var target = box.id ? "#" + box.id : null;
 					htmx.ajax("POST", v.url, { source: el, target: target || box, swap: "outerHTML", values: { kind: v.kind, note: v.note } }).then(function () {
 						var swapped = target && document.querySelector(target);
 						if (!swapped) return;

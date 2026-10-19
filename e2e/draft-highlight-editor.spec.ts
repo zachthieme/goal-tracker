@@ -2,7 +2,8 @@
 // opens the Highlight editor (#362) with an optional Kind, and its Save logs
 // the Draft Highlight at once with htmx, with no page load. Each pending one
 // has Edit, which opens it in the editor in place, and Remove. The list shown
-// is always the server's.
+// is always the server's. Without script the block is as it was: a link to
+// the log form, and Delete.
 import type { Locator, Page } from "@playwright/test";
 
 import { expect, signIn, test } from "./fixtures";
@@ -146,6 +147,31 @@ test.describe("the Goal page's Draft Highlight editor", () => {
     await expect(items(page)).toHaveCount(1);
     await expect(items(page)).toContainText("Insight Drills find gaps.");
     await expectSamePage(page, goal);
+  });
+});
+
+test.describe("the Goal page's Draft Highlights without script", () => {
+  test.use({ javaScriptEnabled: false });
+
+  test("(e) the link opens the log form, and each one has Delete and no Edit", async ({ page, seedLookup }) => {
+    const [goal] = seedLookup<Goal>(draftlessGoal);
+    await signIn(page, goal.email);
+    await page.goto(`/goals/${goal.id}`);
+    const drafts = page.getByTestId("goal-draft-highlights");
+    await expect(drafts.getByRole("button", { name: "+ Log a highlight" })).toBeHidden();
+    await drafts.getByRole("link", { name: "Log a highlight" }).click();
+    const log = drafts.getByTestId("log-draft-highlight");
+    await log.getByLabel("Note").fill("Vendor may raise prices.");
+    await log.getByRole("button", { name: "Log Draft Highlight" }).click();
+    await expect(page).toHaveURL(new RegExp(`/goals/${goal.id}$`));
+    await expect(items(page)).toContainText("No kind Vendor may raise prices.");
+    await expect(items(page).getByRole("button", { name: "Delete" })).toBeVisible();
+    await expect(items(page).getByRole("button", { name: "Edit" })).toHaveCount(0);
+    await expect(items(page).getByRole("button", { name: "Remove" })).toHaveCount(0);
+
+    await items(page).getByRole("button", { name: "Delete" }).click();
+    await expect(page).toHaveURL(new RegExp(`/goals/${goal.id}$`));
+    await expect(items(page)).toHaveCount(0);
   });
 });
 

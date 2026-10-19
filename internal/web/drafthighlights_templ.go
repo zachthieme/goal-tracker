@@ -89,7 +89,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section data-testid=\"goal-draft-highlights\" id=\"draft-highlights\" class=\"gp-block ruled\" hx-on:htmx:response-error=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<section data-testid=\"goal-draft-highlights\" id=\"draft-highlights\" class=\"gp-block ruled\" data-highlight-editor data-kind-optional data-hl-noun=\"Draft Highlight\" hx-on:htmx:response-error=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -98,7 +98,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\"><div data-testid=\"draft-highlight-editor\" data-highlight-editor data-kind-optional data-hl-noun=\"Draft Highlight\" data-hl-target=\"#draft-highlights\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -126,7 +126,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 					var templ_7745c5c3_Var5 string
 					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/goals/%d/draft-highlights", v.Goal.ID))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 43, Col: 147}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 47, Col: 146}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var5)
 					if templ_7745c5c3_Err != nil {
@@ -160,7 +160,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 					var templ_7745c5c3_Var6 string
 					templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/draft-highlights/%d", d.ID))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 53, Col: 63}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 57, Col: 62}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var6)
 					if templ_7745c5c3_Err != nil {
@@ -173,7 +173,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 					var templ_7745c5c3_Var7 string
 					templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.Kind)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 54, Col: 29}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 58, Col: 28}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var7)
 					if templ_7745c5c3_Err != nil {
@@ -186,7 +186,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 					var templ_7745c5c3_Var8 string
 					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.Note)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 55, Col: 29}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 59, Col: 28}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var8)
 					if templ_7745c5c3_Err != nil {
@@ -204,7 +204,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 						var templ_7745c5c3_Var9 string
 						templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.ResolveAttributeValue(refused.Kind)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 58, Col: 42}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 62, Col: 41}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var9)
 						if templ_7745c5c3_Err != nil {
@@ -217,7 +217,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 						var templ_7745c5c3_Var10 string
 						templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.ResolveAttributeValue(refused.Note)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 59, Col: 42}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 63, Col: 41}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var10)
 						if templ_7745c5c3_Err != nil {
@@ -235,7 +235,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 					var templ_7745c5c3_Var11 string
 					templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(draftHighlightKind(d.Kind))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 63, Col: 45}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 67, Col: 44}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 					if templ_7745c5c3_Err != nil {
@@ -248,7 +248,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 					var templ_7745c5c3_Var12 string
 					templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(" " + d.Note)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 64, Col: 23}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 68, Col: 22}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 					if templ_7745c5c3_Err != nil {
@@ -265,7 +265,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 					var templ_7745c5c3_Var13 string
 					templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(" · " + v.dates().timestamp(d.CreatedAt))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 68, Col: 52}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 72, Col: 51}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 					if templ_7745c5c3_Err != nil {
@@ -278,7 +278,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 					var templ_7745c5c3_Var14 templ.SafeURL
 					templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/draft-highlights/%d/delete", d.ID)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 73, Col: 81}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 77, Col: 80}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 					if templ_7745c5c3_Err != nil {
@@ -291,7 +291,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 					var templ_7745c5c3_Var15 string
 					templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.ResolveAttributeValue(fmt.Sprintf("/draft-highlights/%d/delete", d.ID))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 74, Col: 67}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 78, Col: 66}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var15)
 					if templ_7745c5c3_Err != nil {
@@ -309,7 +309,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 						var templ_7745c5c3_Var16 string
 						templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(refused.Reason)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 82, Col: 82}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 86, Col: 81}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 						if templ_7745c5c3_Err != nil {
@@ -350,7 +350,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 					var templ_7745c5c3_Var18 templ.SafeURL
 					templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d/draft-highlights", v.Goal.ID)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 91, Col: 152}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 95, Col: 151}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 					if templ_7745c5c3_Err != nil {
@@ -371,7 +371,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 					var templ_7745c5c3_Var19 string
 					templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(v.FormInput.Get("note"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 100, Col: 74}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/drafthighlights.templ`, Line: 104, Col: 73}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 					if templ_7745c5c3_Err != nil {
@@ -404,7 +404,7 @@ func draftHighlightBlock(v goalView, refused draftHighlightRefusal) templ.Compon
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<style>\n\t\t\t\t\t.dh-item{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}\n\t\t\t\t\t.dh-item form{display:flex;gap:8px;margin:0 0 0 auto}\n\t\t\t\t\t.dh-form{display:flex;flex-direction:column;gap:8px;align-items:flex-start}\n\t\t\t\t\t.dh-form label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px;align-self:stretch}\n\t\t\t\t\t.dh-new{margin:8px 0}\n\t\t\t\t\t.hl-js>.gp-group-head>a{display:none}\n\t\t\t\t</style></div></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<style>\n\t\t\t\t.dh-item{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px}\n\t\t\t\t.dh-item form{display:flex;gap:8px;margin:0 0 0 auto}\n\t\t\t\t.dh-form{display:flex;flex-direction:column;gap:8px;align-items:flex-start}\n\t\t\t\t.dh-form label{display:flex;flex-direction:column;gap:4px;font-weight:600;font-size:13px;align-self:stretch}\n\t\t\t\t.dh-new{margin:8px 0}\n\t\t\t\t[data-hl-js]>.gp-group-head>a{display:none}\n\t\t\t</style></section>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
