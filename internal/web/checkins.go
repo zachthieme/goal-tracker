@@ -574,11 +574,15 @@ func plainReasonShown(err error, shown displayDates) string {
 // For an htmx request it returns 200 so htmx swaps the form in place (htmx does
 // not swap error statuses by default); a plain post gets 422. It reloads the
 // Goal's Rolled-up Health so the re-rendered form still shows it beside the
-// Owner's Health (ADR-0003), the latest Check-in's answers so it still
-// shows them as ghost text, and whom an ask would go to.
+// Owner's Health (ADR-0003), its Run off Green for the Path to Green's
+// heading, the latest Check-in's answers so it still shows them as ghost
+// text, and whom an ask would go to.
 func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, goalID int64, data checkinFormData) {
 	if rollup, err := s.svc.RolledUpHealth(r.Context(), goalID); err == nil {
 		data.RolledUp = rollup
+	}
+	if run, err := s.svc.RunOffGreen(r.Context(), goalID); err == nil {
+		data.RunOffGreen = run
 	}
 	data.Previous = s.loadCheckinPrevious(r, goalID, data.Metrics)
 	data.AskAddressee = s.loadCheckinAskAddressee(r, goalID)
@@ -591,11 +595,15 @@ func (s *Server) renderCheckinFormError(w http.ResponseWriter, r *http.Request, 
 
 // renderCheckinFormAgain re-renders the Check-in form as typed, with no error
 // (Add another): htmx swaps in the form alone, a plain post gets the whole
-// Check-in page around it. The latest Check-in's answers still show as ghost
-// text, and the form still says whom an ask would go to.
+// Check-in page around it. The Rolled-up Health and Run off Green still show,
+// the latest Check-in's answers still show as ghost text, and the form still
+// says whom an ask would go to.
 func (s *Server) renderCheckinFormAgain(w http.ResponseWriter, r *http.Request, current domain.Account, data checkinFormData) {
 	if rollup, err := s.svc.RolledUpHealth(r.Context(), data.GoalID); err == nil {
 		data.RolledUp = rollup
+	}
+	if run, err := s.svc.RunOffGreen(r.Context(), data.GoalID); err == nil {
+		data.RunOffGreen = run
 	}
 	data.Previous = s.loadCheckinPrevious(r, data.GoalID, data.Metrics)
 	data.AskAddressee = s.loadCheckinAskAddressee(r, data.GoalID)

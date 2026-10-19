@@ -653,6 +653,28 @@ func TestCheckinFormShowsLatestReadingsAsGhostText(t *testing.T) {
 	if want := fmt.Sprintf(`name="reading_%d" value="">`, referrals.ID); !strings.Contains(form, want) {
 		t.Errorf("Referrals has no readings, so its input should be blank with no ghost text (want %s); form:\n%s", want, form)
 	}
+
+	// Each Metric's row shows its unit, baseline, target and target date, its
+	// last reading with progress toward the target, and labels its input for
+	// a screen reader (ticket #364). The harness clock reads Jan 2, 2026.
+	signupsRow := between(t, form, ">Signups<", fmt.Sprintf(`name="reading_%d"`, signups.ID))
+	if got, want := checkinPageText(signupsRow), "Signups per week · 100 → 500 by Jul 2 · last 135.5"; !strings.Contains(got, want) {
+		t.Errorf("Signups row reads %q, want it to contain %q", got, want)
+	}
+	// (135.5 − 100) / (500 − 100) of the way from baseline to target.
+	if !strings.Contains(signupsRow, `<progress class="checkin-metric-progress" aria-hidden="true" max="1" value="0.08875">`) {
+		t.Errorf("Signups row has no progress 0.08875 of the way to its target; row:\n%s", signupsRow)
+	}
+	if !strings.Contains(signupsRow, `aria-label="Signups current value"`) {
+		t.Errorf("Signups input isn't labelled Signups current value; row:\n%s", signupsRow)
+	}
+	referralsRow := between(t, form, ">Referrals<", fmt.Sprintf(`name="reading_%d"`, referrals.ID))
+	if got, want := checkinPageText(referralsRow), "Referrals per week · 100 → 500 by Jul 2"; !strings.Contains(got, want) {
+		t.Errorf("Referrals row reads %q, want it to contain %q", got, want)
+	}
+	if strings.Contains(referralsRow, "· last") || strings.Contains(referralsRow, "<progress") {
+		t.Errorf("Referrals has no reading, so its row should show no last value or progress; row:\n%s", referralsRow)
+	}
 }
 
 // A Green Check-in on a Goal whose Rolled-up Health is Red, sent without an
@@ -3153,7 +3175,7 @@ func newAskFixture(t *testing.T) askFixture {
 	return askFixture{h: h, ts: ts.URL, sam: sam, mia: mia, goal: goal, client: signInClient(t, ts.URL, "sam@example.com")}
 }
 
-// askBoxChecked reports whether the Check-in form's "This asks for help" box
+// askBoxChecked reports whether the Check-in form's "Ask for help" box
 // is ticked.
 func askBoxChecked(t *testing.T, page string) bool {
 	t.Helper()
@@ -3183,8 +3205,17 @@ func TestCheckinFormAsksForHelpTickedWhileOpen(t *testing.T) {
 	if askBoxChecked(t, page) {
 		t.Errorf("box is ticked with no open ask")
 	}
-	if hint := askHint(t, page); !strings.Contains(hint, "Goes to "+shownAs(f.mia.Email, "Mia Chen")+".") {
+	// The box's label reads Ask for help, then whom it goes to; a person's
+	// own button can't sit inside a label, so it shows by name alone.
+	label := between(t, page, `<label class="checkin-ask">`, "</label>")
+	if !strings.Contains(label, "<strong>Ask for help</strong>") {
+		t.Errorf("box's label doesn't read Ask for help: %s", label)
+	}
+	if hint := askHint(t, page); !strings.Contains(hint, `· goes to <span class="person" title="`+f.mia.Email+`">Mia Chen</span>`) {
 		t.Errorf("hint doesn't name Mia Chen as whom the ask goes to: %s", hint)
+	}
+	if !strings.Contains(label, `data-testid="checkin-ask-addressee"`) {
+		t.Errorf("whom the ask goes to isn't inside the box's label: %s", label)
 	}
 
 	f.h.AskForHelp(f.sam, f.goal.ID, domain.HealthYellow, "Short a reviewer.", "Borrow one.", pathDate)
@@ -3279,7 +3310,7 @@ func TestCheckinRefusedSubmitKeepsAskAsPosted(t *testing.T) {
 	if askBoxChecked(t, body) {
 		t.Errorf("re-rendered form ticked a box posted unticked")
 	}
-	if hint := askHint(t, body); !strings.Contains(hint, shownAs(f.mia.Email, "Mia Chen")) {
+	if hint := askHint(t, body); !strings.Contains(hint, `<span class="person" title="`+f.mia.Email+`">Mia Chen</span>`) {
 		t.Errorf("422 re-render's hint doesn't name Mia Chen: %s", hint)
 	}
 }
@@ -3784,5 +3815,55 @@ func TestCheckinFormRolledUpPanel(t *testing.T) {
 	label := checkinPageText(explanation[strings.LastIndex(explanation, "<label"):])
 	if want := "Why is your Health different? Required while it differs from the Rolled-up Health"; !strings.Contains(label, want) {
 		t.Errorf("explanation label = %q, want it to read %q", label, want)
+	}
+}
+
+// The Path to Green's heading notes the Goal's Run off Green beside "Required
+// while Yellow or Red", also on a form re-rendered after a refused submit;
+// a Goal that is Green notes none (ticket #364).
+func TestCheckinFormPathToGreenNotesRunOffGreen(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	yellow := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, yellow.ID, domain.HealthYellow, "Slipping.", "Add a second on-call.", pathDate)
+	green := h.ActiveGoal(sam, "Ship it", "It matters.")
+	h.Checkin(sam, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	client := signInClient(t, ts.URL, "sam@example.com")
+	legend := func(page string) string {
+		t.Helper()
+		return checkinPageText(between(t, page, `data-testid="path-to-green-field"`, "</legend>"))
+	}
+
+	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, yellow.ID))
+	got := legend(page)
+	for _, want := range []string{"Path to Green", "Required while Yellow or Red", "1 wk off Green"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Yellow Goal's Path to Green legend = %q, want it to contain %q", got, want)
+		}
+	}
+	// Beside the Back to Green by date, its last value and that a later one
+	// asks why.
+	if got, want := checkinPageText(between(t, page, `data-testid="checkin-path-target-last"`, `data-testid="checkin-path-target-reason"`)), "Last time: Jun 15 A later date asks why."; !strings.Contains(got, want) {
+		t.Errorf("Back to Green by hints read %q, want %q", got, want)
+	}
+
+	body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, yellow.ID), url.Values{
+		"health": {domain.HealthYellow},
+		"status": {"Still slipping."},
+	})
+	fieldError(t, body, `name="path_target_date"`)
+	if got := legend(body); !strings.Contains(got, "1 wk off Green") {
+		t.Errorf("re-rendered Path to Green legend = %q, want it to keep 1 wk off Green", got)
+	}
+
+	page = getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, green.ID))
+	if got := legend(page); strings.Contains(got, "off Green") {
+		t.Errorf("Green Goal's Path to Green legend = %q, want no Run off Green", got)
+	}
+	if strings.Contains(page, "A later date asks why.") {
+		t.Errorf("a Goal with no previous Back to Green date says a later one asks why")
 	}
 }
