@@ -205,6 +205,47 @@ test.describe("the New goal form's Milestone and Metric editor", () => {
     await expect(page.getByTestId("goal-milestone")).toHaveCount(1);
     await expect(page.getByTestId("goal-metric").getByRole("heading")).toHaveText("p95 latency");
   });
+
+  test("(j) with two refused editors open, Cancel moves focus to the other, and the label waits for a saved item", async ({
+    page,
+  }) => {
+    await fillWhat(page, "Launch the EU storefront");
+    await page.getByRole("button", { name: "+ Milestone" }).click();
+    await know(page).getByTestId("milestone-editor").getByLabel("Name").fill("One");
+    // A second Milestone row, with only a Name, is sent beside the editor's.
+    await page.evaluate(() => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "milestones[9].name";
+      input.value = "Two";
+      document.querySelector('[data-testid="goal-form"]')!.appendChild(input);
+    });
+    const refused = page.waitForResponse(
+      (r) => r.request().method() === "POST" && new URL(r.url()).pathname === "/goals/new",
+    );
+    await page.getByRole("button", { name: "Save as Proposed" }).click();
+    expect((await refused).status()).toBe(422);
+
+    const editors = know(page).getByTestId("milestone-editor");
+    await expect(editors).toHaveCount(2);
+    await expect(editors.nth(0).getByLabel("Name")).toHaveValue("One");
+    await expect(editors.nth(1).getByLabel("Name")).toHaveValue("Two");
+    await expect(label(page, "Milestones")).toBeHidden();
+
+    await editors.nth(0).getByRole("button", { name: "Cancel" }).click();
+    await expect(editors).toHaveCount(1);
+    const second = editors.first();
+    await expect(second.getByLabel("Name")).toBeFocused();
+    await expect(label(page, "Milestones")).toBeHidden();
+
+    await second.getByLabel("Date").fill(appToday());
+    await second.getByRole("button", { name: "Save" }).click();
+    await expect(editors).toHaveCount(0);
+    const item = know(page).getByTestId("milestone-item");
+    await expect(item.getByTestId("measure-item-name")).toHaveText("Two");
+    await expect(item.getByRole("button", { name: "Edit" })).toBeFocused();
+    await expect(label(page, "Milestones")).toBeVisible();
+  });
 });
 
 function know(page: Page): Locator {
