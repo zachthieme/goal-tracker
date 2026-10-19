@@ -175,9 +175,10 @@ Goal it serves.
 the graph only by the parent Owner's consent. Without a date or a Metric there
 is nothing for trouble to be measured against.
 
-1. Priya presses **New goal**. One page, in sections: What and why (Title, So
-   What), Delivery (Dated or Ongoing, date, cadence), How you'll know
-   (Milestones, Metrics), Contributes to, Where it fits (Dimensions, Fields).
+1. Priya presses **New goal**. One page, in sections: the Title and So What,
+   Delivery (Dated or Ongoing, date, cadence), How you'll know (Milestones,
+   Metrics), and More detail (Contributes to, Where it fits: Dimensions,
+   Fields).
 2. A **Ready to activate** card stays beside the form and ticks off the
    minimum standard as she types: a So What; Dated with a delivery date and at
    least one Milestone or Metric, or Ongoing with at least one Metric; a value

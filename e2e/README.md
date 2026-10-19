@@ -109,8 +109,8 @@ the reference instant each test's app starts its clock at.
 sign in, one at a time and two at once, and that the `due` template is due. [`isolation.spec.ts`](isolation.spec.ts) checks that two tests
 writing to the same Goal at once each see only their own write.
 [`phone-width.spec.ts`](phone-width.spec.ts) checks that at 390px the Goals
-list, Risks, the Admin page and a Report draft don't clip or scroll sideways,
-and keep every control on screen.
+list, Risks, the Admin page, a Report draft and the New goal page don't clip
+or scroll sideways, and keep every control on screen.
 
 ## Conventions for the scenario specs
 

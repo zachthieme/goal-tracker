@@ -823,7 +823,7 @@ templ goalFormStyles() {
 			.gf-form{grid-template-columns:minmax(0,1fr)}
 			.gf-ready{position:static}
 		}
-		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+		.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;padding:0;border:0}
 		.gf-errors{flex-direction:column;align-items:flex-start;gap:4px}
 		.gf-errors ul{margin:0;padding-left:20px}
 		.gf-errors a{color:inherit}
@@ -896,7 +896,7 @@ templ goalFormStyles() {
 		.gf-more>h2{margin-bottom:8px}
 		.gf-more>h2 .muted{margin-left:4px;font-family:var(--font-body);font-size:14px;font-weight:400;letter-spacing:0}
 		.gf-more-row{border-bottom:1px solid var(--color-border)}
-		.gf-more-row>summary{min-height:48px;justify-content:flex-start;gap:8px;list-style:none}
+		.gf-more-row>summary{min-height:48px;justify-content:flex-start;gap:4px;list-style:none}
 		.gf-more-row>summary::-webkit-details-marker{display:none}
 		.gf-more-name{flex:none;font-weight:600;color:var(--color-ink)}
 		.gf-more-value{min-width:0;overflow-wrap:anywhere}
