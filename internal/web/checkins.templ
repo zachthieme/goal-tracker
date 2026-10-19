@@ -613,7 +613,7 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 	{{ g := v.Goal }}
 	@layout("Check in · "+g.Title, current) {
 		@checkinStyles()
-		<div class={ "checkin-page", templ.KV("with-children", len(v.Children) > 0) }>
+		<div class="checkin-page">
 			<nav class="small muted" aria-label="Breadcrumb">
 				<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a> › Check in
 			</nav>
@@ -633,12 +633,34 @@ templ checkinPage(current *domain.Account, v goalView, form checkinFormData) {
 					</div>
 				}
 			</div>
-			if len(v.Children) > 0 {
-				<aside data-testid="checkin-children" class="checkin-children">
-					<h3>Contributed to by</h3>
-					@linkList(g, nil, v.Children, v.LinkHealth, "no-children", "")
-				</aside>
-			}
+			<aside data-testid="checkin-context" class="checkin-context">
+				if c := v.LatestCheckin; c != nil {
+					<section data-testid="checkin-last-time" class="checkin-context-last">
+						<h3 class="label">{ "Last time · " + v.dates().dayOf(c.CreatedAt) }</h3>
+						if c.Health != "" || c.PathToGreen != "" {
+							<p class="checkin-context-health">
+								if c.Health != "" {
+									<span class={ "badge", healthClass(c.Health) }><span class="dot"></span>{ c.Health }</span>
+								}
+								if c.PathToGreen != "" {
+									<span class="muted">{ "back to Green by " + v.dates().date(c.PathTargetDate) }</span>
+								}
+							</p>
+						}
+						<p data-testid="checkin-last-status" class="checkin-last-status">{ c.Status }</p>
+					</section>
+				}
+				if len(v.Children) > 0 {
+					<section data-testid="checkin-children" class="checkin-context-children">
+						<h3>Contributed to by</h3>
+						@linkList(g, nil, v.Children, v.LinkHealth, "no-children", "")
+					</section>
+				}
+				<section data-testid="checkin-context-dates" class="checkin-context-dates">
+					<h3 class="label">Dates</h3>
+					<p>{ checkinContextDates(g, v.Milestones, v.dates()) }</p>
+				</section>
+			</aside>
 			if g.Lifecycle == domain.LifecycleActive || g.Lifecycle == domain.LifecycleOnHold {
 				@checkinForm(form)
 			} else {
@@ -668,6 +690,45 @@ func (v goalView) checkinPageMeta() string {
 		parts = append(parts, "last check-in "+dates.dayOf(v.LatestCheckin.CreatedAt))
 	}
 	return strings.Join(parts, " · ")
+}
+
+// checkinContextDates is the Check-in page's Dates line: the Goal's kind, with
+// its delivery date when Dated ("Not yet Dated or Ongoing", as the Goal page
+// says, when it is neither), then its Planned Milestones and the earliest of
+// them, "Delivers Jul 2 · 2 planned Milestones, next Beta Apr 2". It marks no
+// slipped or overdue date: the form's dates section does that.
+func checkinContextDates(g domain.Goal, milestones []domain.Milestone, dates displayDates) string {
+	kind := "Not yet Dated or Ongoing"
+	switch g.Kind {
+	case domain.GoalDated:
+		kind = "Dated"
+		if !g.DeliveryDate.IsZero() {
+			kind = "Delivers " + dates.date(g.DeliveryDate)
+		}
+	case domain.GoalOngoing:
+		kind = "Ongoing"
+	}
+	if len(milestones) == 0 {
+		return kind + " · no Milestones"
+	}
+	var next *domain.Milestone
+	planned := 0
+	for i, m := range milestones {
+		if m.Status != domain.MilestonePlanned {
+			continue
+		}
+		planned++
+		if next == nil || m.TargetDate.Before(next.TargetDate) {
+			next = &milestones[i]
+		}
+	}
+	switch planned {
+	case 0:
+		return kind + " · no planned Milestones"
+	case 1:
+		return fmt.Sprintf("%s · 1 planned Milestone, next %s %s", kind, next.Name, dates.date(next.TargetDate))
+	}
+	return fmt.Sprintf("%s · %d planned Milestones, next %s %s", kind, planned, next.Name, dates.date(next.TargetDate))
 }
 
 // checkinFormRefused is the Goal's Check-in form, started from its latest

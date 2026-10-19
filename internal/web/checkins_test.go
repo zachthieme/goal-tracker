@@ -3581,9 +3581,9 @@ func TestCheckinPageListsTheGoalsChildren(t *testing.T) {
 	f := newCheckinChildrenFixture(h, sam)
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, f.parent.ID))
-	aside := pageElement(t, page, "aside", "checkin-children")
-	if !strings.Contains(aside, "<h3>Contributed to by</h3>") {
-		t.Errorf("children list is not headed Contributed to by; aside:\n%s", aside)
+	list := pageElement(t, page, "section", "checkin-children")
+	if !strings.Contains(list, "<h3>Contributed to by</h3>") {
+		t.Errorf("children list is not headed Contributed to by; list:\n%s", list)
 	}
 	for _, child := range []struct {
 		goal  domain.Goal
@@ -3593,18 +3593,18 @@ func TestCheckinPageListsTheGoalsChildren(t *testing.T) {
 		{f.green, `<span class="badge g"><span class="dot"></span>Green</span>`},
 	} {
 		link := fmt.Sprintf(`<a href="/goals/%d">%s</a>`, child.goal.ID, child.goal.Title)
-		at := strings.Index(aside, link)
+		at := strings.Index(list, link)
 		if at < 0 {
-			t.Errorf("children list has no link %s; aside:\n%s", link, aside)
+			t.Errorf("children list has no link %s; list:\n%s", link, list)
 			continue
 		}
-		item, _, _ := strings.Cut(aside[at:], "</li>")
+		item, _, _ := strings.Cut(list[at:], "</li>")
 		if !strings.Contains(item, child.badge) {
 			t.Errorf("%s shows no %s; item:\n%s", child.goal.Title, child.badge, item)
 		}
 	}
-	if strings.Contains(aside, "/links/") {
-		t.Errorf("children list offers a Remove form; aside:\n%s", aside)
+	if strings.Contains(list, "/links/") {
+		t.Errorf("children list offers a Remove form; list:\n%s", list)
 	}
 }
 
@@ -4077,5 +4077,42 @@ func TestCheckinRefusedSubmitBringsBackTheSubmitBar(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("the re-rendered form has no script filling the summary:\n%s", form)
+	}
+}
+
+// Beside the form, the Check-in page shows what the last Check-in said, its
+// Health, back-to-Green date and Status, and the Goal's dates, so the Owner
+// checks in without going back to the Goal page (ticket #366).
+func TestCheckinPageShowsLastTimeAndDates(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	const status = "The paywall fix slipped a week."
+	h.Checkin(sam, goal.ID, domain.HealthYellow, status, "Ship the fix behind a flag.", testsupport.Epoch.AddDate(0, 2, 0))
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	aside := pageElement(t, page, "aside", "checkin-context")
+	last := pageElement(t, aside, "section", "checkin-last-time")
+	for _, want := range []string{
+		`<h3 class="label">Last time · Jan 2</h3>`,
+		`<span class="badge y"><span class="dot"></span>Yellow</span>`,
+		`<span class="muted">back to Green by Mar 2</span>`,
+	} {
+		if !strings.Contains(last, want) {
+			t.Errorf("Last time lacks %s:\n%s", want, last)
+		}
+	}
+	if got := elementTexts(last, "p", "checkin-last-status"); !slices.Equal(got, []string{status}) {
+		t.Errorf("Last time's Status = %q, want %q", got, status)
+	}
+	dates := pageElement(t, aside, "section", "checkin-context-dates")
+	if !strings.Contains(dates, `<h3 class="label">Dates</h3>`) {
+		t.Errorf("the Dates section isn't headed Dates:\n%s", dates)
+	}
+	if got, want := checkinPageText(dates), "Dates Delivers Jul 2 · 1 planned Milestone, next Beta Apr 2"; got != want {
+		t.Errorf("the Dates section reads %q, want %q", got, want)
 	}
 }
