@@ -840,8 +840,9 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 // explanation. It reads asOf in the zone the block's Goal was judged in when
 // drafted (see domain.ReportBlock.Timezone). Each Goal it names links to its
 // place in the Report, marked ↓, or to its Goal page when the Report doesn't
-// hold it (#246). A Health that
-// changed since the baseline reads with what it was ("Yellow · was Green"). The
+// hold it (#246). A Yellow or Red Health reads with its Run off Green as
+// drafted, and one that changed since the baseline with what it was after
+// that ("Yellow · 2 wks · was Green"). The
 // Fields the definition chose sit under the head, beside the Goal rather than
 // in the status box. On a publication it ends with the Goal's discussion.
 templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
@@ -864,10 +865,15 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 				</p>
 			</div>
 			<div class="rp-badges">
-				if b.PriorHealth != "" {
+				if b.RunOffGreenWeeks > 0 || b.PriorHealth != "" {
 					<span class="rp-health">
 						@healthBadge("report-health", b.Health)
-						<span data-testid="report-prior-health" class="small muted">{ "· was " + b.PriorHealth }</span>
+						if b.RunOffGreenWeeks > 0 {
+							<span data-testid="report-run-off-green" class="small muted">{ "· " + domain.RunOffGreenLabel(b.RunOffGreenWeeks) }</span>
+						}
+						if b.PriorHealth != "" {
+							<span data-testid="report-prior-health" class="small muted">{ "· was " + b.PriorHealth }</span>
+						}
 					</span>
 				} else {
 					@healthBadge("report-health", b.Health)

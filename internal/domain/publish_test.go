@@ -870,3 +870,66 @@ func TestPublicationFreezesTheTimezoneItsGoalWasJudgedIn(t *testing.T) {
 		t.Errorf("a fresh draft's blocks %+v, want one with Timezone UTC, the company's", draft.Exceptions)
 	}
 }
+
+// A publication freezes each block's Run off Green: two weeks and another Red
+// Check-in later, the publication still reads the count it was published
+// with, while a fresh draft counts on.
+func TestPublicationFreezesTheRunOffGreen(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	checkinHealth(h, boss, g, domain.HealthRed)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	if len(pub.Report.Exceptions) != 1 || pub.Report.Exceptions[0].RunOffGreenWeeks != 1 {
+		t.Fatalf("published blocks %+v, want one 1 week off Green", pub.Report.Exceptions)
+	}
+
+	h.Clock.Advance(14 * day)
+	checkinHealth(h, boss, g, domain.HealthRed)
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if len(got.Report.Exceptions) != 1 || got.Report.Exceptions[0].RunOffGreenWeeks != 1 {
+		t.Errorf("publication's blocks %+v, want one still 1 week off Green, as published", got.Report.Exceptions)
+	}
+	draft, err := h.Service.DraftReport(ctx, def, time.Time{})
+	if err != nil {
+		t.Fatalf("DraftReport: %v", err)
+	}
+	if len(draft.Exceptions) != 1 || draft.Exceptions[0].RunOffGreenWeeks != 3 {
+		t.Errorf("a fresh draft's blocks %+v, want one 3 weeks off Green", draft.Exceptions)
+	}
+}
+
+// A snapshot frozen before Reports showed the Run off Green loads its blocks
+// with none.
+func TestSnapshotFromBeforeTheRunOffGreenHasNone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	checkinHealth(h, boss, g, domain.HealthRed)
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[` +
+		`{"Goal":{"ID":1,"Title":"Launch in EU"},"Health":"Red","Badges":null,"PriorDueDates":null}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {
+		t.Fatalf("write a pre-run-off-green snapshot: %v", err)
+	}
+
+	got, err := h.Service.GetPublication(ctx, pub.ID)
+	if err != nil {
+		t.Fatalf("GetPublication: %v", err)
+	}
+	if b := got.Report.Exceptions; len(b) != 1 || b[0].Health != domain.HealthRed || b[0].RunOffGreenWeeks != 0 {
+		t.Errorf("pre-run-off-green blocks %+v, want one Red block with no Run off Green", b)
+	}
+}

@@ -92,8 +92,9 @@ func Markdown(p domain.Publication) string {
 }
 
 // writeBlock writes an exception Goal's full MBR block: title and badges, due
-// date with its history struck through, Health with what it was when it
-// changed since the baseline, what changed on it since, the Goals in the
+// date with its history struck through, Health with its Run off Green as
+// published ("Red · 5 wks") and what it was when it changed since the
+// baseline, what changed on it since, the Goals in the
 // Report it contributes to, the chosen Fields, So What, latest status, Path
 // to Green, whom it asks for help, Milestones, Metrics against target, and
 // the Rolled-up Health with
@@ -107,6 +108,9 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 		fmt.Fprintf(b, " **[%s]**", badge)
 	}
 	fmt.Fprintf(b, "\n\n%s · %s · Health: **%s**", text(people.Of(g.Owner)), g.Lifecycle, health(blk.Health))
+	if blk.RunOffGreenWeeks > 0 {
+		fmt.Fprintf(b, " · %s", domain.RunOffGreenLabel(blk.RunOffGreenWeeks))
+	}
 	if blk.PriorHealth != "" {
 		fmt.Fprintf(b, " · was %s", blk.PriorHealth)
 	}

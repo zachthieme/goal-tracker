@@ -3327,10 +3327,10 @@ func TestReportMarksAChangeOfHealthOverHTTP(t *testing.T) {
 		g     domain.Goal
 		reads string
 	}{
-		{worsened, "Yellow · was Green"},
+		{worsened, "Yellow · 1 wk · was Green"},
 		{recovered, "Green · was Yellow"},
-		{staysRed, "Red"},
-		{created, "Yellow"},
+		{staysRed, "Red · 1 wk"},
+		{created, "Yellow · 1 wk"},
 	} {
 		block := reportBlockFor(t, page, tc.g)
 		badges := strings.TrimPrefix(between(t, block, `class="rp-badges">`, "</div>"), `class="rp-badges">`)
@@ -3341,9 +3341,13 @@ func TestReportMarksAChangeOfHealthOverHTTP(t *testing.T) {
 		if marked := strings.Contains(block, `data-testid="report-prior-health"`); marked != strings.Contains(tc.reads, "was") {
 			t.Errorf("%s marks its earlier Health %t; block:\n%s", tc.g.Title, marked, block)
 		}
-		together := regexp.MustCompile(`<span class="rp-health"><span data-testid="report-health"[^>]*>.*?</span><span data-testid="report-prior-health"[^>]*>[^<]*</span></span>`)
+		together := regexp.MustCompile(`<span class="rp-health"><span data-testid="report-health"[^>]*>.*?</span>(<span data-testid="report-run-off-green"[^>]*>[^<]*</span>)?<span data-testid="report-prior-health"[^>]*>[^<]*</span></span>`)
 		if grouped := together.MatchString(regexp.MustCompile(`>\s+<`).ReplaceAllString(badges, "><")); grouped != strings.Contains(tc.reads, "was") {
 			t.Errorf("%s groups its Health badge with its earlier Health %t, so the marker can wrap onto a line of its own; badges:\n%s", tc.g.Title, grouped, badges)
+		}
+		withRun := regexp.MustCompile(`<span class="rp-health"><span data-testid="report-health"[^>]*>.*?</span><span data-testid="report-run-off-green"[^>]*>[^<]*</span>`)
+		if grouped := withRun.MatchString(regexp.MustCompile(`>\s+<`).ReplaceAllString(badges, "><")); grouped != strings.Contains(tc.reads, "wk") {
+			t.Errorf("%s groups its Health badge with its Run off Green %t; badges:\n%s", tc.g.Title, grouped, badges)
 		}
 	}
 	if rule := cssRule(t, page, ".rp-health"); !strings.Contains(rule, "white-space:nowrap") {
@@ -3366,6 +3370,58 @@ func reportBlockFor(t *testing.T, page string, g domain.Goal) string {
 	}
 	end := strings.Index(page[start:], "</article>")
 	return page[start : start+end]
+}
+
+// A Red exception block shows its Run off Green beside its Health, before the
+// Health it was at the baseline ("Red · 2 wks · was Green"), on the draft, the
+// publication and its print page; a publication from before Reports showed it
+// has none (CONTEXT.md: Run off Green).
+func TestReportBlockShowsTheRunOffGreenOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.Checkin(boss, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	// Red on Mondays 16 and 23 February, 30-day baseline after the Green.
+	for _, d := range []int{16, 23} {
+		h.Clock.Set(time.Date(2026, time.February, d, 9, 0, 0, 0, time.UTC))
+		h.Checkin(boss, g.ID, domain.HealthRed, "Blocked.", "Unblock it.", h.Clock.Now().AddDate(0, 1, 0))
+	}
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	pub := h.PublishReport(boss, def)
+	old := h.PublishReport(boss, def)
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","SoWhat":"Expand the market.",` +
+		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Status":"Blocked."}]}`
+	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, old.ID); err != nil {
+		t.Fatalf("write an older snapshot: %v", err)
+	}
+	h.Clock.Advance(14 * 24 * time.Hour)
+	h.Checkin(boss, g.ID, domain.HealthRed, "Still blocked.", "Unblock it.", h.Clock.Now().AddDate(0, 1, 0))
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	pubURL := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
+	for name, tc := range map[string]struct {
+		url, reads string
+	}{
+		"draft":       {fmt.Sprintf("%s/reports/%d?baseline=2026-01-30", ts.URL, def.ID), "· 4 wks"},
+		"publication": {pubURL, "· 2 wks"},
+		"print page":  {pubURL + "/print", "· 2 wks"},
+	} {
+		block := reportBlockFor(t, getBody(t, client, tc.url), g)
+		if got := elementTexts(block, "span", "report-run-off-green"); !slices.Equal(got, []string{tc.reads}) {
+			t.Errorf("%s's Run off Green reads %q, want %q", name, got, tc.reads)
+		}
+		run, prior := strings.Index(block, `data-testid="report-run-off-green"`), strings.Index(block, `data-testid="report-prior-health"`)
+		if run < 0 || prior < 0 || run > prior {
+			t.Errorf("%s does not show the Run off Green before the earlier Health; block:\n%s", name, block)
+		}
+	}
+	block := reportBlockFor(t, getBody(t, client, fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, old.ID)), g)
+	if !strings.Contains(block, "Blocked.") || strings.Contains(block, `data-testid="report-run-off-green"`) {
+		t.Errorf("a publication from before the Run off Green does not render as published; block:\n%s", block)
+	}
 }
 
 // A publication freezes a Goal's earlier Health with the rest of its block, and
