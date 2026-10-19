@@ -834,11 +834,13 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 // So What, latest status, and Path to Green in a tinted box, marked
 // Overdue when its target date passed before asOf, and after it an Ask for help
 // open when the Report was drafted, naming whom it asks or saying no one is
-// above the Owner; Milestones, Metrics against
+// above the Owner; Milestones, each marked as of asOf, Metrics against
 // target, and the Rolled-up Health with how many children are Red, Yellow and
 // Stale ("2 of 6 Red · 1 Yellow"), the Goals behind it, and the Owner's
-// explanation. Each Goal it names links to its place in the Report, marked ↓,
-// or to its Goal page when the Report doesn't hold it (#246). A Health that
+// explanation. It reads asOf in the zone the block's Goal was judged in when
+// drafted (see domain.ReportBlock.Timezone). Each Goal it names links to its
+// place in the Report, marked ↓, or to its Goal page when the Report doesn't
+// hold it (#246). A Health that
 // changed since the baseline reads with what it was ("Yellow · was Green"). The
 // Fields the definition chose sit under the head, beside the Goal rather than
 // in the status box. On a publication it ends with the Goal's discussion.
@@ -923,7 +925,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 				<ul data-testid="report-milestones">
 					for _, m := range b.Milestones {
 						<li data-testid="report-milestone">
-							if mark := domain.MilestoneMarkOf(m.Milestone, m.PriorDates, m.New, asOf); mark != domain.MilestoneMarkNone {
+							if mark := domain.MilestoneMarkOf(m.Milestone, m.PriorDates, m.New, asOf.In(b.Location())); mark != domain.MilestoneMarkNone {
 								@milestoneMarkBadge(mark)
 								{ " " }
 							}
@@ -1106,8 +1108,9 @@ func badgeClass(badge string) string {
 }
 
 // pathOverdueAt reports whether an Active exception's Path to Green had missed
-// its target date as of asOf — the day it was published, or today on the
-// draft (CONTEXT.md: Path to Green).
+// its target date as of asOf — the instant it was published, or now on the
+// draft — in the zone the block's Goal was judged in (CONTEXT.md: Path to
+// Green, Timezone).
 func pathOverdueAt(b domain.ReportBlock, asOf time.Time) bool {
 	if b.Goal.Lifecycle != domain.LifecycleActive || b.PathTargetDate.IsZero() {
 		return false
@@ -1115,7 +1118,7 @@ func pathOverdueAt(b domain.ReportBlock, asOf time.Time) bool {
 	if b.Health != domain.HealthRed && b.Health != domain.HealthYellow {
 		return false
 	}
-	return fmtDate(asOf.UTC()) > fmtDate(b.PathTargetDate)
+	return fmtDate(asOf.In(b.Location())) > fmtDate(b.PathTargetDate)
 }
 
 // reportGoalsShown is how many Goals the draft's Goals panel lists before Show

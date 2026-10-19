@@ -3818,3 +3818,83 @@ func TestReportBlockShowsAnAskForHelpOverHTTP(t *testing.T) {
 		}
 	}
 }
+
+// reportTimezoneGoal arranges an Active Goal owned by someone in tz ("" for no
+// Timezone), its Milestone Beta due 2026-04-02 and a Red Check-in back to Green
+// by then, on a Report Definition, with the clock at 2026-04-02T20:00Z: still
+// Apr 2 in UTC, the company's, but Apr 3, 05:00 in Tokyo.
+func reportTimezoneGoal(t *testing.T, tz string) (*testsupport.Harness, domain.Account, domain.ReportDefinition) {
+	t.Helper()
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	kenji := h.SignIn("kenji@example.com")
+	h.SetTimezone(kenji, tz)
+	g := h.ActiveGoal(kenji, "Ship search", "People can't find things.")
+	h.Clock.Set(time.Date(2026, 3, 30, 12, 0, 0, 0, time.UTC))
+	h.Checkin(kenji, g.ID, domain.HealthRed, "Blocked.", "Escalate to the vendor.", time.Date(2026, 4, 2, 0, 0, 0, 0, time.UTC))
+	h.Clock.Set(time.Date(2026, 4, 2, 20, 0, 0, 0, time.UTC))
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	return h, kenji, def
+}
+
+// assertReportBlockOverdue checks the page's exception block marks Beta Red and
+// its Path to Green Overdue when want is true, and neither when it is false.
+func assertReportBlockOverdue(t *testing.T, page string, want bool) {
+	t.Helper()
+	block := pageElement(t, page, "article", "report-exception")
+	beta := pageElement(t, block, "li", "report-milestone")
+	if red := strings.Contains(beta, `data-testid="milestone-mark"`) && strings.Contains(beta, ">Red</span>"); red != want {
+		t.Errorf("Beta marked Red %v, want %v:\n%s", red, want, beta)
+	}
+	status := pageElement(t, block, "div", "report-status-box")
+	if overdue := slices.Contains(strings.Fields(attr(openTag(status), "class")), "overdue"); overdue != want {
+		t.Errorf("status box has class overdue %v, want %v:\n%s", overdue, want, openTag(status))
+	}
+	if badge := strings.Contains(status, `data-testid="path-overdue"`); badge != want {
+		t.Errorf("status box shows the Overdue badge %v, want %v:\n%s", badge, want, status)
+	}
+}
+
+// A Report marks a Milestone Red, and a Path to Green Overdue, by the date in
+// the Goal's Owner's Timezone, the company's for an Owner with none
+// (CONTEXT.md: Timezone): at 20:00 UTC on Apr 2 it is already Apr 3 in Tokyo.
+func TestReportJudgesOverdueInTheOwnersTimezoneOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, tz string
+		overdue  bool
+	}{
+		{"Owner in Tokyo", "Asia/Tokyo", true},
+		{"Owner with no Timezone", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			h, _, def := reportTimezoneGoal(t, tc.tz)
+			ts := newServer(t, h)
+			client := signInClient(t, ts.URL, "boss@example.com")
+			assertReportBlockOverdue(t, getBody(t, client, fmt.Sprintf("%s/reports/%d", ts.URL, def.ID)), tc.overdue)
+		})
+	}
+}
+
+// A publication keeps the timezone its Goal was judged in when published: the
+// Owner's Timezone cleared and a week on, its page and its Markdown export
+// still mark Beta Red and the Path to Green Overdue as of the day it was
+// published in Tokyo.
+func TestPublicationKeepsTheTimezoneItWasJudgedInOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h, kenji, def := reportTimezoneGoal(t, "Asia/Tokyo")
+	pub := h.PublishReport(h.SignIn("boss@example.com"), def)
+	h.SetTimezone(kenji, "")
+	h.Clock.Advance(7 * 24 * time.Hour)
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	pubPath := fmt.Sprintf("%s/reports/%d/publications/%d", ts.URL, def.ID, pub.ID)
+	assertReportBlockOverdue(t, getBody(t, client, pubPath), true)
+	if md := getBody(t, client, pubPath+"/markdown"); !strings.Contains(md, "- **[Red]** 2026-04-02 Beta\n") {
+		t.Errorf("Markdown export does not mark Beta Red:\n%s", md)
+	}
+}
