@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
-	"runtime"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -144,7 +143,7 @@ func (s *Service) SetPassword(ctx context.Context, token, password string) (Acco
 	if err := checkPasswordRules(password); err != nil {
 		return Account{}, err
 	}
-	hash, err := hashPassword(ctx, password)
+	hash, err := s.hashPassword(ctx, password)
 	if err != nil {
 		return Account{}, err
 	}
@@ -176,7 +175,7 @@ func (s *Service) SetPassword(ctx context.Context, token, password string) (Acco
 func (s *Service) PasswordSignIn(ctx context.Context, emailAddr, password string) (Account, error) {
 	row, err := s.queries.GetAccountByEmail(ctx, emailAddr)
 	if errors.Is(err, sql.ErrNoRows) {
-		if _, err := passwordMatches(ctx, dummyPasswordHash, password); err != nil {
+		if _, err := s.passwordMatches(ctx, dummyPasswordHash, password); err != nil {
 			return Account{}, err
 		}
 		return Account{}, ErrBadCredentials
@@ -186,7 +185,7 @@ func (s *Service) PasswordSignIn(ctx context.Context, emailAddr, password string
 	}
 	stored, err := s.queries.GetAccountPassword(ctx, row.ID)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && stored.PasswordHash == nil {
-		if _, err := passwordMatches(ctx, dummyPasswordHash, password); err != nil {
+		if _, err := s.passwordMatches(ctx, dummyPasswordHash, password); err != nil {
 			return Account{}, err
 		}
 		return Account{}, ErrBadCredentials
@@ -194,7 +193,7 @@ func (s *Service) PasswordSignIn(ctx context.Context, emailAddr, password string
 	if err != nil {
 		return Account{}, fmt.Errorf("get password: %w", err)
 	}
-	matches, err := passwordMatches(ctx, *stored.PasswordHash, password)
+	matches, err := s.passwordMatches(ctx, *stored.PasswordHash, password)
 	if err != nil {
 		return Account{}, err
 	}
@@ -273,11 +272,6 @@ const (
 	argonKeyLen  = 32
 )
 
-// passwordHashes is the limit every argon2id hash runs under: at most one per
-// CPU at once, so a burst of sign-ins, each taking argonMemory, can't exhaust
-// the server's memory.
-var passwordHashes = newHashLimiter(runtime.GOMAXPROCS(0))
-
 // hashLimiter runs at most a fixed number of hashes at once.
 type hashLimiter struct {
 	slots chan struct{}
@@ -306,14 +300,15 @@ func (l *hashLimiter) run(ctx context.Context, hash func()) error {
 
 // hashPassword is password hashed with argon2id under a fresh random salt, as
 // a PHC string: $argon2id$v=19$m=65536,t=1,p=4$<salt>$<hash>. It waits for a
-// passwordHashes slot, and returns ctx's error if ctx ends first.
-func hashPassword(ctx context.Context, password string) (string, error) {
+// slot in the Service's hash limiter, and returns ctx's error if ctx ends
+// first.
+func (s *Service) hashPassword(ctx context.Context, password string) (string, error) {
 	salt := make([]byte, argonSaltLen)
 	if _, err := rand.Read(salt); err != nil {
 		return "", fmt.Errorf("make salt: %w", err)
 	}
 	var key []byte
-	if err := passwordHashes.run(ctx, func() {
+	if err := s.hashes.run(ctx, func() {
 		key = argon2.IDKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
 	}); err != nil {
 		return "", fmt.Errorf("wait to hash password: %w", err)
@@ -324,8 +319,9 @@ func hashPassword(ctx context.Context, password string) (string, error) {
 
 // passwordMatches reports whether password hashes to the PHC string hash,
 // comparing in constant time. A hash it can't read matches nothing. It waits
-// for a passwordHashes slot, and returns ctx's error if ctx ends first.
-func passwordMatches(ctx context.Context, hash, password string) (bool, error) {
+// for a slot in the Service's hash limiter, and returns ctx's error if ctx
+// ends first.
+func (s *Service) passwordMatches(ctx context.Context, hash, password string) (bool, error) {
 	parts := strings.Split(hash, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" {
 		return false, nil
@@ -348,7 +344,7 @@ func passwordMatches(ctx context.Context, hash, password string) (bool, error) {
 		return false, nil
 	}
 	var got []byte
-	if err := passwordHashes.run(ctx, func() {
+	if err := s.hashes.run(ctx, func() {
 		got = argon2.IDKey([]byte(password), salt, iterations, memory, threads, uint32(len(want)))
 	}); err != nil {
 		return false, fmt.Errorf("wait to check password: %w", err)

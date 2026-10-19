@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
@@ -276,9 +277,11 @@ func TestFiveWrongPasswordsLockTheAccountFor15Minutes(t *testing.T) {
 	}
 }
 
-// A sign-in whose context ends before its password is hashed gives up with
-// the context's error, not ErrBadCredentials, and doesn't count toward the
+// A sign-in whose context has ended before it starts gives up with the
+// context's error, not ErrBadCredentials, and doesn't count toward the
 // lockout: five wrong passwords afterwards still lock the Account, not four.
+// It fails at the account lookup, so it never reaches the hash limiter;
+// TestASignInThatGivesUpWaitingForAHashSlotCountsForNothing covers that.
 func TestASignInThatGivesUpBeforeHashingCountsForNothing(t *testing.T) {
 	t.Parallel()
 
@@ -303,6 +306,42 @@ func TestASignInThatGivesUpBeforeHashingCountsForNothing(t *testing.T) {
 	if _, err := h.Service.PasswordSignIn(t.Context(), "sam@example.com", samPassword); !errors.Is(err, domain.ErrBadCredentials) {
 		t.Errorf("the right password after 5 wrong ones: %v, want ErrBadCredentials", err)
 	}
+}
+
+// A sign-in whose context ends while it waits for a hash slot gives up with
+// the context's error, not ErrBadCredentials, on each path that hashes: an
+// unknown email, an Account with no password, and an Account with one. The
+// Account with one is locked, where a sign-in that went on without its hash
+// would answer ErrBadCredentials, which the web layer counts toward the IP
+// hold.
+func TestASignInThatGivesUpWaitingForAHashSlotCountsForNothing(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		h := samWithPassword(t)
+		if _, err := h.Service.EnsureAccount(t.Context(), "ann@example.com"); err != nil {
+			t.Fatal(err)
+		}
+		failSignIns(t, h, 5)
+
+		for _, email := range []string{"nobody@example.com", "ann@example.com", "sam@example.com"} {
+			release := domain.HoldHashSlots(h.Service)
+			ctx, cancel := context.WithCancel(t.Context())
+			done := make(chan error)
+			go func() {
+				_, err := h.Service.PasswordSignIn(ctx, email, "not sam's password")
+				done <- err
+			}()
+			synctest.Wait()
+
+			cancel()
+			err := <-done
+			release()
+			if !errors.Is(err, context.Canceled) || errors.Is(err, domain.ErrBadCredentials) {
+				t.Errorf("%s: PasswordSignIn cancelled waiting for a hash slot = %v, want context.Canceled", email, err)
+			}
+		}
+	})
 }
 
 // A successful sign-in clears the wrong passwords before it, so four, a
