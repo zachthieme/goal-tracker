@@ -84,3 +84,63 @@ func TestReportBlockNamesTheGoalsItLinksTo(t *testing.T) {
 		t.Errorf("exceptions %v, want exactly %v", got, want)
 	}
 }
+
+// Within a Health, a block names its linked Goals by title ignoring case, then
+// by id (#246): lowercase "alpha", made first, comes before "Alpha", and both
+// before "Beta".
+func TestReportBlockOrdersLinkedGoalsByTitleIgnoringCaseThenID(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	hub := h.ActiveGoal(boss, "Hub", "It matters.")
+	beta := h.ActiveChildOf(boss, hub, "Beta", "It matters.")
+	lowerAlpha := h.ActiveChildOf(boss, hub, "alpha", "It matters.")
+	upperAlpha := h.ActiveChildOf(boss, hub, "Alpha", "It matters.")
+	for _, g := range []domain.Goal{hub, beta, lowerAlpha, upperAlpha} {
+		h.Checkin(boss, g.ID, domain.HealthRed, "Off track.", "Add staff.", h.Clock.Now().AddDate(0, 1, 0))
+	}
+
+	r := draftReport(t, h, boss, time.Time{}, hub)
+
+	if got, want := linkedBlock(t, r, hub).Behind, []domain.LinkedGoal{
+		linked(lowerAlpha, domain.HealthRed, false),
+		linked(upperAlpha, domain.HealthRed, false),
+		linked(beta, domain.HealthRed, false),
+	}; !slices.Equal(got, want) {
+		t.Errorf("Hub Behind = %+v, want %+v", got, want)
+	}
+}
+
+// A pending link, parent or child, is never named in "Contributes to" or
+// "Behind" (#246): neither a Goal it would contribute to, nor one that would
+// contribute to it, in the Report or a Red one outside it.
+func TestReportBlockNamesNoPendingLink(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	kim := h.SignIn("kim@example.com")
+	hub := h.ActiveGoal(boss, "Hub", "It matters.")
+	above := h.ActiveGoal(kim, "Above", "It matters.")
+	spoke := h.ActiveGoal(kim, "Spoke", "It matters.")
+	outside := h.ActiveGoal(kim, "Outside", "It matters.")
+	for _, g := range []domain.Goal{hub, above, spoke, outside} {
+		h.Checkin(g.Owner, g.ID, domain.HealthRed, "Off track.", "Add staff.", h.Clock.Now().AddDate(0, 1, 0))
+	}
+	h.RequestLink(boss, hub, above, "")
+	h.RequestLink(kim, spoke, hub, "")
+	h.RequestLink(kim, outside, hub, "")
+
+	r := draftReport(t, h, boss, time.Time{}, hub, above, spoke)
+
+	for _, g := range []domain.Goal{hub, above, spoke} {
+		b := linkedBlock(t, r, g)
+		if b.ContributesTo != nil {
+			t.Errorf("%s ContributesTo = %+v, want none", g.Title, b.ContributesTo)
+		}
+		if b.Behind != nil {
+			t.Errorf("%s Behind = %+v, want none", g.Title, b.Behind)
+		}
+	}
+}

@@ -194,6 +194,34 @@ func TestRisksPathToGreenDaysAreCountedInTheOwnersTimezone(t *testing.T) {
 	}
 }
 
+// A Milestone overdue chip counts its days in the Goal's Owner's Timezone, as
+// the flag is judged (CONTEXT.md: Timezone): at 1am in Tokyo it is a day
+// further overdue than once the Owner has no Timezone, counted in the
+// company's UTC.
+func TestRisksMilestoneOverdueDaysAreCountedInTheOwnersTimezone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	h.SignIn("sam@example.com")
+	kenji := h.SignIn("kenji@example.com")
+	h.SetTimezone(kenji, "Asia/Tokyo")
+	g, beta := h.GreenGoalWithOverdueMilestone(kenji, "Ship search")
+	h.Clock.Set(beta.TargetDate.AddDate(0, 0, 1).Add(16 * time.Hour)) // Beta + 2 days, 1am in Tokyo
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/risks?org=all")
+	if chip := riskChip(t, riskRowOf(t, page, g), "milestone-overdue"); !strings.HasSuffix(chip, ">Milestone 2 days overdue") {
+		t.Errorf("Milestone overdue chip of an Owner in Tokyo doesn't say 2 days overdue: %s", chip)
+	}
+
+	h.SetTimezone(kenji, "")
+	page = getBody(t, client, ts.URL+"/risks?org=all")
+	if chip := riskChip(t, riskRowOf(t, page, g), "milestone-overdue"); !strings.HasSuffix(chip, ">Milestone 1 day overdue") {
+		t.Errorf("Milestone overdue chip of an Owner with no Timezone doesn't say 1 day overdue: %s", chip)
+	}
+}
+
 // A Path to Green overdue chip says in words how many days overdue it is.
 func TestRisksPathToGreenChipSaysItsDaysInWords(t *testing.T) {
 	t.Parallel()
