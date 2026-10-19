@@ -998,7 +998,7 @@ templ checkinStyles() {
 			.checkin-children{display:flex;flex-direction:column;gap:12px}
 			@media (max-width:900px){.checkin-page.with-children{display:flex}}
 			.checkin-form{display:flex;flex-direction:column;gap:40px}
-			.checkin-default-submit{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+			.checkin-default-submit{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0}
 			.checkin-form .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;padding:0;border:0}
 			.checkin-form fieldset{border:none;padding:0;margin:0;min-width:0;display:flex;flex-direction:column;gap:8px}
 			.checkin-section, .checkin-form>fieldset{display:flex;flex-direction:column;gap:16px}
@@ -1009,6 +1009,7 @@ templ checkinStyles() {
 			.checkin-form legend{font-weight:600;font-size:14px;padding:0}
 			.checkin-form label{display:flex;flex-direction:column;gap:8px;font-weight:600;font-size:14px}
 			.checkin-form .hint{font-size:14px;color:var(--color-ink-muted)}
+			.checkin-form label textarea, .checkin-form label input, .checkin-form label select{font-weight:400}
 			.checkin-form label[hidden]{display:none}
 			.health-toggle{flex-direction:row!important;flex-wrap:wrap;gap:12px!important}
 			.health-toggle label.badge{flex:1;flex-direction:row;justify-content:center;align-items:center;font-size:15px;height:56px;padding:0 12px;border:2px solid currentColor;border-radius:var(--radius-lg);cursor:pointer}

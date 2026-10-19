@@ -150,7 +150,10 @@ test("at 390px the Check-in page fits", async ({ page, seedLookup }) => {
   await signIn(page, goal.email);
   await page.goto(`/goals/${goal.id}/checkin`);
   const form = page.getByTestId("checkin-form");
-  await form.getByRole("radio", { name: "Yellow" }).check();
+  // The Health choices are labels over hidden radios, so pick one by its
+  // label, as a tap does.
+  await form.getByRole("group", { name: "Health" }).getByText("Yellow", { exact: true }).click();
+  await expect(form.getByRole("radio", { name: "Yellow" })).toBeChecked();
   await expect(form.getByTestId("path-to-green-field")).toBeVisible();
   await expect(form.getByTestId("checkin-readings")).toBeVisible();
   await expectFitsAPhone(page);
