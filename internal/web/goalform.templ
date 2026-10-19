@@ -19,6 +19,7 @@ import (
 // in from the Goal, posting to /goals/<id>/define.
 templ goalFormPage(current *domain.Account, v goalFormView) {
 	@layout(v.heading(), current) {
+		@itemEditorStyles()
 		@goalFormStyles()
 		<form
 			data-testid="goal-form"
@@ -252,11 +253,15 @@ templ kindChoice(v goalFormView, kind, means string) {
 // goalFormKnow is the "How you'll know" section: beside its heading, what
 // activation needs of it, a Metric alone once Ongoing is chosen (by CSS :has,
 // so a browser without it shows the first line); then the Goal's Milestones
-// and Metrics, a row each. Without script it shows the rows typed, or one blank
-// row of each; script adds a row from its <template> and removes one with ×,
-// and shows a Metric's Direction only while its target equals its baseline.
+// and Metrics. Without script it shows a row each, those typed or one blank
+// row of each. Script upgrades the rows to the item editor the Highlight
+// editor's look shares: + Milestone and + Metric open an editor from its
+// <template> below the items, Save makes it an item posting the row's fields
+// as hidden inputs, and Edit and Remove change an item (goalFormRowsScript).
+// The section carries the company's current year, for script to write an
+// item's date as the app does.
 templ goalFormKnow(v goalFormView) {
-	<section data-testid="goal-form-know" id={ goalFormKnowID } class="gf-know">
+	<section data-testid="goal-form-know" id={ goalFormKnowID } class="gf-know" data-year={ v.year() }>
 		<div class="gf-head-line">
 			<h2 class="gf-h2">How you'll know</h2>
 			<p class="muted small">
@@ -265,7 +270,7 @@ templ goalFormKnow(v goalFormView) {
 			</p>
 		</div>
 		@goalFormExisting(v)
-		<h3 class="gf-know-head">Milestones</h3>
+		<h3 class="gf-know-head label" data-measure-label="milestones">Milestones</h3>
 		<div data-testid="milestone-rows" class="gf-rows" data-rows="milestones">
 			for i, m := range v.milestoneRows() {
 				@milestoneRowFields(v, rowNames(domain.MilestoneInput, i), m)
@@ -274,8 +279,7 @@ templ goalFormKnow(v goalFormView) {
 		<template id="milestones-row">
 			@milestoneRowFields(goalFormView{}, templateRowNames("milestones"), milestoneRow{})
 		</template>
-		<button type="button" class="btn quiet sm gf-js-only" data-add-row="milestones">+ Milestone</button>
-		<h3 class="gf-know-head">Metrics</h3>
+		<h3 class="gf-know-head label" data-measure-label="metrics">Metrics</h3>
 		<div data-testid="metric-rows" class="gf-rows" data-rows="metrics">
 			for i, m := range v.metricRows() {
 				@metricRowFields(v, rowNames(domain.MetricInput, i), m)
@@ -284,9 +288,86 @@ templ goalFormKnow(v goalFormView) {
 		<template id="metrics-row">
 			@metricRowFields(goalFormView{}, templateRowNames("metrics"), metricRow{})
 		</template>
-		<button type="button" class="btn quiet sm gf-js-only" data-add-row="metrics">+ Metric</button>
+		<div class="gf-rows" data-measure-editors></div>
+		<div class="gf-js-only gf-measure-add">
+			<button type="button" class="btn quiet sm" data-add-row="milestones">+ Milestone</button>
+			<button type="button" class="btn quiet sm" data-add-row="metrics">+ Metric</button>
+		</div>
+		@milestoneEditorTemplate()
+		@metricEditorTemplate()
+		@measureItemTemplate("milestones", "milestone-item")
+		@measureItemTemplate("metrics", "metric-item")
 	</section>
 	@goalFormRowsScript()
+}
+
+// milestoneEditorTemplate is the editor script clones to add or edit a
+// Milestone: Name and Date, two-thirds and one-third of the row, the editing
+// marker that asks the checklist for it to be saved, and Save and Cancel.
+// Its inputs are named as a row's are, numbered by script, so an editor still
+// open at submit is sent like a row.
+templ milestoneEditorTemplate() {
+	{{ name := templateRowNames("milestones") }}
+	<template id="milestones-editor">
+		<div data-testid="milestone-editor" class="ie-editor" role="group" data-measure-editor>
+			<h4 class="ie-editor-head" data-measure-heading>New Milestone</h4>
+			<input type="hidden" name={ inputEditing } value="Milestone"/>
+			<div class="gf-milestone-fields">
+				@goalFormRowInput(goalFormView{}, "Name", "text", name("name"), "")
+				@goalFormRowInput(goalFormView{}, "Date", "date", name("date"), "")
+			</div>
+			@measureEditorActions()
+		</div>
+	</template>
+}
+
+// metricEditorTemplate is the editor script clones to add or edit a Metric:
+// Name, Unit, Baseline, Target, Target date, and the Direction that shows
+// only while the target equals the baseline, then the editing marker, and
+// Save and Cancel, as milestoneEditorTemplate's.
+templ metricEditorTemplate() {
+	{{ name := templateRowNames("metrics") }}
+	<template id="metrics-editor">
+		<div data-testid="metric-editor" class="ie-editor" role="group" data-measure-editor>
+			<h4 class="ie-editor-head" data-measure-heading>New Metric</h4>
+			<input type="hidden" name={ inputEditing } value="Metric"/>
+			<div class="gf-metric-fields">
+				@goalFormRowInput(goalFormView{}, "Name", "text", name("name"), "")
+				@goalFormRowInput(goalFormView{}, "Unit", "text", name("unit"), "")
+				@goalFormRowInput(goalFormView{}, "Baseline", "number", name("baseline"), "")
+				@goalFormRowInput(goalFormView{}, "Target", "number", name("target"), "")
+				@goalFormRowInput(goalFormView{}, "Target date", "date", name("target_date"), "")
+				@metricDirectionField(goalFormView{}, name("direction"), "")
+			</div>
+			@measureEditorActions()
+		</div>
+	</template>
+}
+
+// measureEditorActions are a Milestone or Metric editor's Save, enabled by
+// script once the server would take what's typed, and Cancel.
+templ measureEditorActions() {
+	<div class="ie-actions">
+		<button type="button" class="btn primary sm" data-measure-save>Save</button>
+		<button type="button" class="btn sm" data-measure-cancel>Cancel</button>
+	</div>
+}
+
+// measureItemTemplate is a saved Milestone or Metric as script shows it: its
+// name, a muted line with a Milestone's date or a Metric's "baseline → target
+// unit by date", as goalFormExisting writes one, and Edit and Remove. Script
+// adds the hidden inputs it posts.
+templ measureItemTemplate(section, testID string) {
+	<template id={ section + "-item" }>
+		<div data-testid={ testID } class="ie-item">
+			<p><strong data-testid="measure-item-name"></strong></p>
+			<p data-testid="measure-item-detail" class="muted"></p>
+			<div class="ie-actions">
+				<button type="button" class="btn quiet sm" data-measure-edit>Edit</button>
+				<button type="button" class="btn quiet sm" data-measure-remove>Remove</button>
+			</div>
+		</div>
+	</template>
 }
 
 // goalFormExisting lists the Milestones and Metrics the Goal being finished
@@ -313,7 +394,6 @@ templ milestoneRowFields(v goalFormView, name func(part string) string, m milest
 	<div data-testid="milestone-row" class="gf-row">
 		@goalFormRowInput(v, "Name", "text", name("name"), m.Name)
 		@goalFormRowInput(v, "Date", "date", name("date"), m.Date)
-		@goalFormRemoveRow("Remove this Milestone")
 	</div>
 }
 
@@ -326,25 +406,30 @@ templ metricRowFields(v goalFormView, name func(part string) string, m metricRow
 		@goalFormRowInput(v, "Unit", "text", name("unit"), m.Unit)
 		@goalFormRowInput(v, "Baseline", "number", name("baseline"), m.Baseline)
 		@goalFormRowInput(v, "Target", "number", name("target"), m.Target)
-		<label class="field" data-direction>
-			<span>Direction <span class="hint">— when target equals baseline</span></span>
-			<select
-				id={ name("direction") }
-				name={ name("direction") }
-				if v.bad(name("direction")) != "" {
-					aria-invalid="true"
-					aria-describedby={ name("direction") + "-error" }
-				}
-			>
-				<option value="" selected?={ m.Direction == "" }>Choose…</option>
-				<option value={ domain.MetricUp } selected?={ m.Direction == domain.MetricUp }>up</option>
-				<option value={ domain.MetricDown } selected?={ m.Direction == domain.MetricDown }>down</option>
-			</select>
-			@goalFormInputError(v, name("direction"))
-		</label>
+		@metricDirectionField(v, name("direction"), m.Direction)
 		@goalFormRowInput(v, "Target date", "date", name("target_date"), m.TargetDate)
-		@goalFormRemoveRow("Remove this Metric")
 	</div>
+}
+
+// metricDirectionField is a Metric's Direction select, which counts only when
+// the target equals the baseline.
+templ metricDirectionField(v goalFormView, input, direction string) {
+	<label class="field" data-direction>
+		<span>Direction <span class="hint">— when target equals baseline</span></span>
+		<select
+			id={ input }
+			name={ input }
+			if v.bad(input) != "" {
+				aria-invalid="true"
+				aria-describedby={ input + "-error" }
+			}
+		>
+			<option value="" selected?={ direction == "" }>Choose…</option>
+			<option value={ domain.MetricUp } selected?={ direction == domain.MetricUp }>up</option>
+			<option value={ domain.MetricDown } selected?={ direction == domain.MetricDown }>down</option>
+		</select>
+		@goalFormInputError(v, input)
+	</label>
 }
 
 // goalFormRowInput is one input of a row, marked with why it was refused.
@@ -370,60 +455,264 @@ templ goalFormRowInput(v goalFormView, label, kind, input, value string) {
 	</label>
 }
 
-// goalFormRemoveRow is a row's ×, which only script can act on.
-templ goalFormRemoveRow(label string) {
-	<button type="button" class="btn quiet sm gf-js-only gf-remove" data-remove-row aria-label={ label } title={ label }>×</button>
-}
-
-// goalFormRowsScript adds a row by cloning its section's <template>, numbering
-// its inputs past the rows already there, removes the row whose × is pressed,
-// handing focus to its section's add button, and shows a Metric row's Direction only while its baseline and target are
-// equal, leaving it out of the post otherwise.
+// goalFormRowsScript marks the form gf-js and upgrades How you'll know's rows
+// to the item editor, following the Highlight editor's rules
+// (highlightEditorScript): each row with anything typed becomes a saved item,
+// a blank one goes, and one holding a refused input becomes an open editor
+// showing why. + Milestone and + Metric open an editor below the items,
+// numbered past the rows the server rendered; Save, enabled once the server
+// would take its shape, makes it an item at the end of its section, holding
+// the row's fields as hidden inputs; Cancel drops a new editor or puts back
+// the item it edits; Edit swaps an item for an editor in place, and Remove
+// drops it. One editor is open at a time: while any is, the add and Edit
+// buttons are disabled, the first carries goalFormEditorID, and Enter in it
+// presses Save rather than submitting the form. Each change is posted to the
+// live checklist, which asks for an open editor to be saved. A Metric's
+// Direction shows only while its baseline equals its target, and posts only
+// then.
 templ goalFormRowsScript() {
 	<script>
 		(function () {
 			var form = document.querySelector('[data-testid="goal-form"]');
 			if (!form) return;
 			form.classList.add("gf-js");
+			var know = form.querySelector('[data-testid="goal-form-know"]');
+			if (!know) return;
+			var year = know.getAttribute("data-year");
+			var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+			var parts = {
+				milestones: ["name", "date"],
+				metrics: ["name", "unit", "baseline", "target", "target_date", "direction"],
+			};
+			var noun = { milestones: "Milestone", metrics: "Metric" };
+			var editors = know.querySelector("[data-measure-editors]");
 			var next = {};
-			form.querySelectorAll("[data-rows]").forEach(function (list) {
-				next[list.getAttribute("data-rows")] = list.children.length;
+			Object.keys(parts).forEach(function (section) {
+				var list = rows(section);
+				next[section] = list.children.length;
+				Array.prototype.slice.call(list.children).forEach(function (row) {
+					var i = Number(row.querySelector("[name]").name.match(/\[(\d+)\]/)[1]);
+					var values = {};
+					var typed = false;
+					parts[section].forEach(function (part) {
+						values[part] = field(row, section, i, part).value;
+						typed = typed || values[part].trim() !== "";
+					});
+					if (row.querySelector('[aria-invalid="true"]')) {
+						var editor = openEditor(section, i, values, null);
+						showErrors(row, editor, section, i);
+						row.replaceWith(editor);
+					} else if (typed) {
+						row.replaceWith(item(section, i, values));
+					} else {
+						row.remove();
+					}
+				});
 			});
-			function steady(row) {
-				var b = row.querySelector('[name$=".baseline"]').value;
-				var t = row.querySelector('[name$=".target"]').value;
-				var equal = b !== "" && t !== "" && Number(b) === Number(t);
-				var direction = row.querySelector("[data-direction]");
-				direction.hidden = !equal;
-				direction.querySelector("select").disabled = !equal;
+			refresh();
+
+			function rows(section) {
+				return know.querySelector('[data-rows="' + section + '"]');
 			}
-			form.querySelectorAll("[data-metric-row]").forEach(steady);
-			form.addEventListener("input", function (e) {
-				var row = e.target.closest("[data-metric-row]");
-				if (row) steady(row);
+
+			function addButton(section) {
+				return know.querySelector('[data-add-row="' + section + '"]');
+			}
+
+			function field(el, section, i, part) {
+				return el.querySelector('[name="' + section + "[" + i + "]." + part + '"]');
+			}
+
+			function clone(id) {
+				return document.getElementById(id).content.firstElementChild.cloneNode(true);
+			}
+
+			// steady says a Metric's baseline and target are equal numbers,
+			// when only the Direction chosen tells which way it should move.
+			function steady(values) {
+				var b = String(values.baseline).trim();
+				var t = String(values.target).trim();
+				return b !== "" && t !== "" && Number(b) === Number(t);
+			}
+
+			// showDate writes an ISO date as the app does: "Nov 7", or
+			// "Nov 7, 2027" outside the company's current year.
+			function showDate(iso) {
+				var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+				if (!m) return iso;
+				var shown = months[Number(m[2]) - 1] + " " + Number(m[3]);
+				return m[1] === year ? shown : shown + ", " + m[1];
+			}
+
+			function showNumber(n) {
+				return n.trim() === "" || isNaN(Number(n)) ? n : String(Number(n));
+			}
+
+			function detail(section, values) {
+				if (section === "milestones") return showDate(values.date);
+				return showNumber(values.baseline) + " → " + showNumber(values.target) + " " + values.unit + " by " + showDate(values.target_date);
+			}
+
+			function hidden(name, value) {
+				var input = document.createElement("input");
+				input.type = "hidden";
+				input.name = name;
+				input.value = value;
+				return input;
+			}
+
+			// item is a saved Milestone or Metric, holding its row's fields as
+			// hidden inputs: a Metric's direction only when it is steady.
+			function item(section, i, values) {
+				var el = clone(section + "-item");
+				el.section = section;
+				el.index = i;
+				el.values = values;
+				el.querySelector('[data-testid="measure-item-name"]').textContent = values.name;
+				el.querySelector('[data-testid="measure-item-detail"]').textContent = detail(section, values);
+				parts[section].forEach(function (part) {
+					if (part === "direction" && !steady(values)) return;
+					el.appendChild(hidden(section + "[" + i + "]." + part, values[part]));
+				});
+				return el;
+			}
+
+			// openEditor is an editor for the i-th of section, filled with
+			// values; restore is the item Cancel puts back, null for a new one.
+			function openEditor(section, i, values, restore) {
+				var el = clone(section + "-editor");
+				el.section = section;
+				el.index = i;
+				el.restore = restore;
+				if (restore) el.querySelector("[data-measure-heading]").textContent = "Edit " + noun[section];
+				el.querySelectorAll("[name], [id]").forEach(function (input) {
+					["name", "id"].forEach(function (a) {
+						if (input.hasAttribute(a)) input.setAttribute(a, input.getAttribute(a).replace("__i__", String(i)));
+					});
+				});
+				parts[section].forEach(function (part) {
+					field(el, section, i, part).value = values[part] || "";
+				});
+				return el;
+			}
+
+			// showErrors moves why each of row's inputs was refused onto the
+			// editor's input of the same name.
+			function showErrors(row, editor, section, i) {
+				parts[section].forEach(function (part) {
+					var was = field(row, section, i, part);
+					if (was.getAttribute("aria-invalid") !== "true") return;
+					var input = field(editor, section, i, part);
+					input.setAttribute("aria-invalid", "true");
+					input.setAttribute("aria-describedby", was.getAttribute("aria-describedby"));
+					var why = row.querySelector('[id="' + was.getAttribute("aria-describedby") + '"]');
+					if (why) input.after(why);
+				});
+			}
+
+			function editorValues(el) {
+				var values = {};
+				parts[el.section].forEach(function (part) {
+					values[part] = field(el, el.section, el.index, part).value;
+				});
+				return values;
+			}
+
+			// ready says the server would take what el holds: a Milestone
+			// with a Name and Date, a Metric with each of its fields, numbers
+			// for its baseline and target, and a Direction when they're equal.
+			function ready(el) {
+				var v = editorValues(el);
+				var filled = function (part) {
+					return v[part].trim() !== "";
+				};
+				if (el.section === "milestones") return filled("name") && filled("date");
+				var numbers = !isNaN(Number(v.baseline)) && !isNaN(Number(v.target));
+				return ["name", "unit", "baseline", "target", "target_date"].every(filled) && numbers && (!steady(v) || filled("direction"));
+			}
+
+			function refresh() {
+				var open = know.querySelectorAll("[data-measure-editor]");
+				know.querySelectorAll("[data-add-row], [data-measure-edit]").forEach(function (b) {
+					b.disabled = open.length > 0;
+				});
+				open.forEach(function (el, n) {
+					if (n === 0) el.id = "gf-editor";
+					else el.removeAttribute("id");
+					if (el.section === "metrics") {
+						var equal = steady(editorValues(el));
+						var direction = el.querySelector("[data-direction]");
+						direction.hidden = !equal;
+						direction.querySelector("select").disabled = !equal;
+					}
+					el.querySelector("[data-measure-save]").disabled = !ready(el);
+				});
+				know.querySelectorAll("[data-measure-label]").forEach(function (label) {
+					label.hidden = rows(label.getAttribute("data-measure-label")).children.length === 0;
+				});
+			}
+
+			// changed refreshes the editors and posts the form to the live
+			// checklist, which listens for the form's changes.
+			function changed() {
+				refresh();
+				know.dispatchEvent(new Event("change", { bubbles: true }));
+			}
+
+			// settle hands focus to el's Edit, or to section's add button
+			// when there is no item to edit.
+			function settle(el, section) {
+				var edit = el && el.querySelector("[data-measure-edit]");
+				(edit || addButton(section)).focus();
+			}
+
+			know.addEventListener("input", refresh);
+			know.addEventListener("change", refresh);
+			know.addEventListener("keydown", function (e) {
+				var el = e.target.closest("[data-measure-editor]");
+				if (!el || e.key !== "Enter" || !e.target.matches("input, select")) return;
+				e.preventDefault();
+				var save = el.querySelector("[data-measure-save]");
+				if (!save.disabled) save.click();
 			});
-			form.addEventListener("click", function (e) {
+			know.addEventListener("click", function (e) {
 				var add = e.target.closest("[data-add-row]");
 				if (add) {
+					if (add.disabled) return;
 					var section = add.getAttribute("data-add-row");
-					var row = document.getElementById(section + "-row").content.firstElementChild.cloneNode(true);
-					var i = String(next[section]++);
-					row.querySelectorAll("[name], [id]").forEach(function (el) {
-						["name", "id"].forEach(function (a) {
-							if (el.hasAttribute(a)) el.setAttribute(a, el.getAttribute(a).replace("__i__", i));
-						});
-					});
-					form.querySelector('[data-rows="' + section + '"]').appendChild(row);
-					if (row.hasAttribute("data-metric-row")) steady(row);
-					row.querySelector("input").focus();
+					var editor = openEditor(section, next[section]++, {}, null);
+					editors.appendChild(editor);
+					changed();
+					editor.querySelector("input:not([type=hidden])").focus();
 					return;
 				}
-				var remove = e.target.closest("[data-remove-row]");
-				if (remove) {
-					var gone = remove.closest(".gf-row");
-					var section = gone.parentElement.getAttribute("data-rows");
-					gone.remove();
-					form.querySelector('[data-add-row="' + section + '"]').focus();
+				var el = e.target.closest("[data-measure-editor], .ie-item");
+				if (!el || !e.target.closest("button")) return;
+				if (e.target.closest("[data-measure-save]")) {
+					if (!ready(el)) return;
+					var saved = item(el.section, el.index, editorValues(el));
+					if (el.parentElement === editors) {
+						el.remove();
+						rows(el.section).appendChild(saved);
+					} else {
+						el.replaceWith(saved);
+					}
+					changed();
+					settle(saved, el.section);
+				} else if (e.target.closest("[data-measure-cancel]")) {
+					if (el.restore) el.replaceWith(el.restore);
+					else el.remove();
+					changed();
+					settle(el.restore, el.section);
+				} else if (e.target.closest("[data-measure-edit]")) {
+					var editing = openEditor(el.section, el.index, el.values, el);
+					el.replaceWith(editing);
+					changed();
+					editing.querySelector("input:not([type=hidden])").focus();
+				} else if (e.target.closest("[data-measure-remove]")) {
+					el.remove();
+					changed();
+					settle(null, el.section);
 				}
 			});
 		})();
@@ -882,15 +1171,22 @@ templ goalFormStyles() {
 		.gf-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
 		.gf-existing{display:flex;flex-direction:column;gap:4px}
 		.gf-know{display:flex;flex-direction:column;gap:12px;min-width:0}
-		.gf-know-head{font-size:15px;margin:4px 0 0}
+		.gf-know-head{margin:4px 0 0;font-family:var(--font-body)}
 		.gf-rule-ongoing{display:none}
 		.gf-rows{display:flex;flex-direction:column;gap:12px}
 		.gf-row{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 12px}
 		.gf-row .field{flex:1 1 140px;min-width:0}
 		.gf-row .field input,.gf-row .field select{width:100%}
-		.gf-remove{align-self:flex-end}
 		.gf-form:not(.gf-js) .gf-js-only{display:none}
-		.gf-know .gf-js-only[data-add-row]{align-self:flex-start}
+		.gf-rows:empty{display:none}
+		.gf-measure-add{display:flex;flex-wrap:wrap;gap:8px}
+		.gf-milestone-fields,.gf-metric-fields{display:grid;gap:8px 12px}
+		.gf-milestone-fields{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
+		.gf-metric-fields{grid-template-columns:repeat(2,minmax(0,1fr))}
+		.gf-milestone-fields .field input,.gf-metric-fields .field input,.gf-metric-fields .field select{width:100%}
+		@media (max-width:600px){
+			.gf-milestone-fields,.gf-metric-fields{grid-template-columns:minmax(0,1fr)}
+		}
 		.gf-form.gf-js .gf-no-js{display:none}
 		.gf-more{gap:0;border-top:1px solid var(--color-border);padding-top:24px}
 		.gf-more>h2{margin-bottom:8px}

@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -2649,5 +2650,166 @@ func TestNewGoalFormRefusalOpensTheRowItRefuses(t *testing.T) {
 	}
 	if tag, _ := moreRow(t, form, "goal-form-parents-row"); isOpen(tag) {
 		t.Errorf("with nothing refused in it, Contributes to opens: %s", tag)
+	}
+}
+
+// With script, How you'll know's open Milestone or Metric editor posts
+// editing=<Milestone or Metric>, and the Ready to activate card's How you'll
+// know item becomes "Save the Milestone you started", to do, linked to the
+// open editor, in place of "A Milestone or Metric": the count of items stays,
+// and Create and activate waits. Without the marker the Metric typed meets the
+// item as before (#369).
+func TestNewGoalChecklistFlagsAMeasureStartedAndNotSaved(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	form := url.Values{
+		"title": {"Cut checkout latency"}, "so_what": {"Shoppers abandon slow carts."}, "kind": {"Dated"}, "delivery_date": {"2026-12-31"},
+		"metrics[0].name": {"p95 latency"}, "metrics[0].unit": {"ms"}, "metrics[0].baseline": {"1200"}, "metrics[0].target": {"400"}, "metrics[0].target_date": {"2026-12-31"},
+	}
+	checklist := func(form url.Values) (card, activate string) {
+		t.Helper()
+		resp := postForm(t, client, ts.URL+"/goals/new/checklist", form)
+		body := readBody(t, resp)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("the checklist answered %d:\n%s", resp.StatusCode, body)
+		}
+		return readyCard(t, body)
+	}
+
+	card, activate := checklist(form)
+	want := map[string]bool{"So What": true, "Owner": true, "Dated with a delivery date, or Ongoing": true, "A Milestone or Metric": true}
+	if got := activationItems(t, card); !maps.Equal(got, want) {
+		t.Errorf("without an open editor the checklist = %v, want %v", got, want)
+	}
+	if strings.Contains(activate, " disabled") {
+		t.Errorf("Create and activate is disabled with no editor open: %s", activate)
+	}
+
+	editing := url.Values{}
+	maps.Copy(editing, form)
+	editing.Set("editing", "Milestone")
+	card, activate = checklist(editing)
+	want = map[string]bool{"So What": true, "Owner": true, "Dated with a delivery date, or Ongoing": true, "Save the Milestone you started": false}
+	if got := activationItems(t, card); !maps.Equal(got, want) {
+		t.Errorf("with a Milestone editor open the checklist = %v, want %v", got, want)
+	}
+	if !strings.Contains(card, "3 of 4 done") {
+		t.Errorf("the card doesn't say 3 of 4 done:\n%s", card)
+	}
+	if link := tagAround(t, card, ">Save the Milestone you started<"); attr(link, "href") != "#gf-editor" {
+		t.Errorf("the item doesn't link to the open editor: %s", link)
+	}
+	if !strings.Contains(activate, " disabled") {
+		t.Errorf("Create and activate is enabled with an editor open: %s", activate)
+	}
+}
+
+// A Metric editor still open at submit is sent like a saved item: its
+// editing marker changes nothing, and the Metric it holds, numbered past the
+// rows it was opened after, is created with the Goal (#369).
+func TestNewGoalFormCreatesWhatAnOpenEditorHolds(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	resp := postForm(t, client, ts.URL+"/goals/new", newGoalForm(map[string]string{
+		"editing":             "Metric",
+		"metrics[3].name":     "p95 latency",
+		"metrics[3].unit":     "ms",
+		"metrics[3].baseline": "1200", "metrics[3].target": "400", "metrics[3].target_date": "2026-12-31",
+	}))
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Request.URL.Path, "/goals/") {
+		t.Fatalf("the post answered %d at %s:\n%s", resp.StatusCode, resp.Request.URL, page)
+	}
+	goals, err := h.Service.ListGoals(context.Background())
+	if err != nil || len(goals) != 1 {
+		t.Fatalf("ListGoals: %d Goals, %v", len(goals), err)
+	}
+	metrics, err := h.Service.ListMetrics(context.Background(), goals[0].ID)
+	if err != nil {
+		t.Fatalf("ListMetrics: %v", err)
+	}
+	if len(metrics) != 1 || metrics[0].Name != "p95 latency" || metrics[0].Unit != "ms" || metrics[0].Baseline != 1200 || metrics[0].Target != 400 {
+		t.Errorf("created Metrics %+v, want p95 latency 1200 → 400 ms", metrics)
+	}
+}
+
+// How you'll know carries what its script builds Milestones and Metrics from:
+// an editor <template> of each, headed New Milestone or New Metric, holding
+// the editing marker, inputs named as the rows' are, and Save and Cancel that
+// don't submit; and a saved item's <template> of each, with its name, its
+// detail, and Edit and Remove. The section carries the company's current
+// year, for script to write a date as the app does, on the New goal page and
+// on a refused create alike (#369).
+func TestNewGoalPageCarriesTheMeasureEditorsTemplates(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.Clock.Set(time.Date(2027, 6, 1, 12, 0, 0, 0, time.UTC))
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	know := pageElement(t, getBody(t, client, ts.URL+"/goals/new"), "section", "goal-form-know")
+	if year := attr(openTag(know), "data-year"); year != "2027" {
+		t.Errorf("How you'll know carries data-year=%q, want the company's 2027: %s", year, openTag(know))
+	}
+	editors := map[string]struct {
+		measure, testID string
+		parts           []string
+	}{
+		"milestones": {"Milestone", "milestone-editor", []string{"name", "date"}},
+		"metrics":    {"Metric", "metric-editor", []string{"name", "unit", "baseline", "target", "target_date", "direction"}},
+	}
+	for section, want := range editors {
+		template := between(t, know, `<template id="`+section+`-editor">`, "</template>")
+		if !strings.Contains(template, `data-testid="`+want.testID+`"`) {
+			t.Errorf("the %s editor <template> has no %s:\n%s", section, want.testID, template)
+		}
+		if !strings.Contains(template, ">New "+want.measure+"<") {
+			t.Errorf("the %s editor isn't headed New %s:\n%s", section, want.measure, template)
+		}
+		if marker := tagAround(t, template, `name="editing"`); attr(marker, "type") != "hidden" || attr(marker, "value") != want.measure {
+			t.Errorf("the %s editor's editing marker isn't a hidden %s: %s", section, want.measure, marker)
+		}
+		for _, part := range want.parts {
+			tagAround(t, template, `name="`+section+`[__i__].`+part+`"`)
+		}
+		for _, label := range []string{"Save", "Cancel"} {
+			if button := tagAround(t, template, ">"+label+"</button>"); attr(button, "type") != "button" {
+				t.Errorf("the %s editor's %s would submit the form: %s", section, label, button)
+			}
+		}
+	}
+	items := map[string]string{"milestones": "milestone-item", "metrics": "metric-item"}
+	for section, testID := range items {
+		template := between(t, know, `<template id="`+section+`-item">`, "</template>")
+		for _, part := range []string{`data-testid="` + testID + `"`, `data-testid="measure-item-name"`, `data-testid="measure-item-detail"`} {
+			if !strings.Contains(template, part) {
+				t.Errorf("the %s item <template> has no %s:\n%s", section, part, template)
+			}
+		}
+		for _, label := range []string{"Edit", "Remove"} {
+			if button := tagAround(t, template, ">"+label+"</button>"); attr(button, "type") != "button" || attr(button, "class") != "btn quiet sm" {
+				t.Errorf("the %s item's %s isn't a quiet button that doesn't submit: %s", section, label, button)
+			}
+		}
+	}
+
+	resp := postForm(t, client, ts.URL+"/goals/new", newGoalForm(map[string]string{"milestones[0].name": "Beta"}))
+	refused := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("a Milestone with no date answered %d, want 422", resp.StatusCode)
+	}
+	if year := attr(openTag(pageElement(t, refused, "section", "goal-form-know")), "data-year"); year != "2027" {
+		t.Errorf("a refused create's How you'll know carries data-year=%q, want 2027", year)
 	}
 }

@@ -1924,6 +1924,9 @@ type activationFacts struct {
 	Milestones   int
 	Metrics      int
 	Required     []domain.RequiredValue
+	// Unsaved is the measure, Milestone or Metric, whose editor the New goal
+	// form has open and unsaved, "" when none is; the Goal page never sets it.
+	Unsaved string
 }
 
 // checklist restates the minimum standard domain.ActivateGoal enforces, so the
@@ -1933,7 +1936,9 @@ type activationFacts struct {
 // (CONTEXT.md: Incomplete). The server still enforces the rules on activation.
 // Each item names the form's input that meets it: the delivery date once Dated
 // is chosen, the Kind group until then, and How you'll know for a Milestone or
-// Metric; nothing on the form makes its creator the Owner.
+// Metric; nothing on the form makes its creator the Owner. While the form has
+// a Milestone or Metric editor open, How you'll know's item asks for it to be
+// saved, linked to the editor.
 func (f activationFacts) checklist() []activationItem {
 	kindInput := domain.InputKind
 	if f.Kind == domain.GoalDated {
@@ -1944,9 +1949,12 @@ func (f activationFacts) checklist() []activationItem {
 		{"Owner", f.Owned, ""},
 		{"Dated with a delivery date, or Ongoing", f.Kind == domain.GoalOngoing || (f.Kind == domain.GoalDated && !f.DeliveryDate.IsZero()), kindInput},
 	}
-	if f.Kind == domain.GoalOngoing {
+	switch {
+	case f.Unsaved != "":
+		items = append(items, activationItem{"Save the " + f.Unsaved + " you started", false, goalFormEditorID})
+	case f.Kind == domain.GoalOngoing:
 		items = append(items, activationItem{"A Metric", f.Metrics > 0, goalFormKnowID})
-	} else {
+	default:
 		items = append(items, activationItem{"A Milestone or Metric", f.Milestones+f.Metrics > 0, goalFormKnowID})
 	}
 	for _, r := range f.Required {
