@@ -199,7 +199,7 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	if err != nil {
 		return Checkin{}, err
 	}
-	if err := s.rejectGreenWhileOverdue(health, milestones.resulting); err != nil {
+	if err := s.rejectGreenWhileOverdue(goalFromRow(goal.Goal, goal.Account), health, milestones.resulting); err != nil {
 		return Checkin{}, err
 	}
 	// Health is the Owner's call (ADR-0003), so a Metric that missed its target
@@ -503,13 +503,13 @@ func (s *Service) noChangeCheck(ctx context.Context, g Goal) (db.Checkin, string
 	if err != nil {
 		return db.Checkin{}, "", fmt.Errorf("%w — submit a Check-in to explain", err)
 	}
-	// Nor can it repeat any Health once a Milestone has gone overdue: the
-	// missed date needs a response.
+	// Nor can it repeat any Health once a Milestone has gone overdue, as of
+	// today in the Goal's timezone: the missed date needs a response.
 	milestones, err := s.queries.ListMilestones(ctx, g.ID)
 	if err != nil {
 		return db.Checkin{}, "", fmt.Errorf("list milestones: %w", err)
 	}
-	if m, ok := overdueMilestone(milestones, s.clock.Now().Format(dateFormat)); ok {
+	if m, ok := overdueMilestone(milestones, s.goalToday(g).Format(dateFormat)); ok {
 		return db.Checkin{}, "", fmt.Errorf("%w: submit a Check-in to move its date, mark it Done or remove it", &MilestoneOverdueError{Milestone: milestoneFromRow(m)})
 	}
 	// Nor a Green while a Metric is off target: only a full Check-in can

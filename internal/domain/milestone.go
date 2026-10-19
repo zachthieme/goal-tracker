@@ -125,14 +125,15 @@ func (e *MilestoneOverdueError) Error() string {
 
 func (e *MilestoneOverdueError) Unwrap() error { return ErrValidation }
 
-// rejectGreenWhileOverdue refuses a Green Health while any of the Goal's
-// Milestones, as they will stand after the Check-in, is overdue: a slip is
-// never hidden behind a Green (CONTEXT.md: Date Slip).
-func (s *Service) rejectGreenWhileOverdue(health string, milestones []db.Milestone) error {
+// rejectGreenWhileOverdue refuses a Green Health while any of g's Milestones,
+// as they will stand after the Check-in, is overdue as of today in g's
+// timezone (see GoalTimezone): a slip is never hidden behind a Green
+// (CONTEXT.md: Date Slip).
+func (s *Service) rejectGreenWhileOverdue(g Goal, health string, milestones []db.Milestone) error {
 	if health != HealthGreen {
 		return nil
 	}
-	if m, ok := overdueMilestone(milestones, s.clock.Now().Format(dateFormat)); ok {
+	if m, ok := overdueMilestone(milestones, s.goalToday(g).Format(dateFormat)); ok {
 		return fmt.Errorf("%w, so the Goal can't be Green", &MilestoneOverdueError{Milestone: milestoneFromRow(m)})
 	}
 	return nil
