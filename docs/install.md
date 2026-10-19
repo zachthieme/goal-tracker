@@ -18,11 +18,11 @@ Read these first; some may decide whether the install goes ahead now.
   counts are kept in memory, and the weekly email job runs in the process. Run
   exactly one copy against one database file. There is no clustering or
   failover.
-- **Admins are set at account creation.** `GOAL_TRACKER_ADMINS` gives the Admin
-  flag only when an account is first created, and the CSV sync creates an
-  account for everyone in the file on the first start. So list every Admin
-  **before the first start**. There is no page for making someone an Admin
-  later; see [Making someone an Admin later](#making-someone-an-admin-later).
+- **The first Admins come from `GOAL_TRACKER_ADMINS`.** It gives the Admin flag
+  only when an account is first created, and the CSV sync creates an account
+  for everyone in the file on the first start, so list at least one Admin
+  **before the first start**. Admins can make others Admins later on the Admin
+  page; see [Making someone an Admin later](#making-someone-an-admin-later).
 - **Check the CSV for unclosed quotes.** A field that opens with `"` and never
   closes it currently swallows the rest of the file and the sync still
   succeeds, leaving everyone after that line out of the sync (issue #329).
@@ -114,8 +114,9 @@ GOAL_TRACKER_DB=/var/lib/goal-tracker/goal-tracker.db
 # it: changing it signs everyone out.
 GOAL_TRACKER_SESSION_KEY=
 
-# Everyone who should be an Admin, comma-separated. Applies when an account is
-# first created, so set it before the first start.
+# The first Admins, comma-separated. Applies when an account is first created,
+# so set it before the first start; Admins can make others Admins later on the
+# Admin page.
 GOAL_TRACKER_ADMINS=it-admin@example.com,ops-lead@example.com
 
 # The company's timezone. Check-ins fall due and go Stale at its midnight.
@@ -319,15 +320,12 @@ especially a **Breaking changes** entry, may need a settings change.
 
 ### Making someone an Admin later
 
-There's no page for it yet. Add their email to `GOAL_TRACKER_ADMINS` (for any
-future rebuild of the database), then set the flag directly:
-
-```sh
-sudo -u goal-tracker sqlite3 /var/lib/goal-tracker/goal-tracker.db \
-  "UPDATE accounts SET is_admin = 1 WHERE email = 'new-admin@example.com';"
-```
-
-Emails are stored lowercased. It takes effect on their next page load.
+An Admin does it on the Admin page, in the **Admins** section: type the
+person's email and press **Make Admin**. They need an account already (the
+directory sync, a sign-in or a set-password link gives them one); a Departed
+person must be marked returned first. **Remove Admin…** beside another Admin
+takes the role away; no Admin can remove their own, so there is always at
+least one. Either change takes effect on the person's next page load.
 
 ### Signing everyone out
 
@@ -345,5 +343,5 @@ passwords, their passwords still work.
 | OIDC: the provider says the redirect URI doesn't match | `GOAL_TRACKER_BASE_URL` + `/auth/callback` must match what's registered exactly. |
 | Signed out on every request, over https | `GOAL_TRACKER_BASE_URL` is `https`, so cookies are `Secure`; the browser must reach the app over https too. |
 | Nobody has a Manager | The sync failed (Admin page, and `ERROR` in the log), or `GOAL_TRACKER_DIRECTORY_FILE` is unset. |
-| Someone who should be an Admin isn't | They were created before being listed in `GOAL_TRACKER_ADMINS`; see [above](#making-someone-an-admin-later). |
+| Someone who should be an Admin isn't | They were created before being listed in `GOAL_TRACKER_ADMINS`. An Admin can make them one on the Admin page; see [above](#making-someone-an-admin-later). |
 | Emails never arrive | Expected in this release: they're logged, not sent. |

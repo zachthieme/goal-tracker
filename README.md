@@ -24,7 +24,7 @@ The server is configured from the environment:
 | `GOAL_TRACKER_SIGNIN` | _(required)_ | How people sign in: `oidc`, through the company's OpenID Connect provider; `password`, with passwords set through Admin-issued links; or `dev`, the development form that signs anyone in as anyone (see [Sign-in](#sign-in)). Startup stops when it's unset or anything else. |
 | `GOAL_TRACKER_ADDR` | `:8080` | Address to listen on. |
 | `GOAL_TRACKER_DB` | `goal-tracker.db` | SQLite database file; migrations run on start. |
-| `GOAL_TRACKER_ADMINS` | _(none)_ | Comma-separated emails that get the Admin flag when their account is first created. |
+| `GOAL_TRACKER_ADMINS` | _(none)_ | Comma-separated emails that get the Admin flag when their account is first created. Admins can make others Admins later from the Admin page. |
 | `GOAL_TRACKER_TIMEZONE` | `UTC` | The company's IANA timezone (e.g. `America/Los_Angeles`). Check-in cadences are counted in its days, so a Goal turns Stale and a Path to Green goes overdue at its midnight. The pages also show dates and times in it. |
 | `GOAL_TRACKER_REMINDER_DAY` | `Monday` | Day of the week the weekly emails go out (see [Weekly emails](#weekly-emails)). |
 | `GOAL_TRACKER_REMINDER_TIME` | `09:00` | 24-hour time of day, in the company's timezone, the weekly emails go out. |
