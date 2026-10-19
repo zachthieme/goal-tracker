@@ -265,13 +265,15 @@ func loadConfig() (config, error) {
 // variables for the sign-in method: with "oidc", an error naming any that are
 // missing; with any other method, nil, or an error naming those set, so a
 // half-meant organization sign-in can't fall back to the open development
-// form. The redirect URL is baseURL's /auth/callback.
+// form. The redirect URL is baseURL's /auth/callback. A variable of only
+// whitespace counts as unset, and the values kept are trimmed.
 func oidcConfig(signIn, baseURL string) (*web.OIDCConfig, error) {
 	vars := []string{"GOAL_TRACKER_OIDC_ISSUER", "GOAL_TRACKER_OIDC_CLIENT_ID", "GOAL_TRACKER_OIDC_CLIENT_SECRET"}
 	var values, set, missing []string
 	for _, v := range vars {
-		values = append(values, os.Getenv(v))
-		if os.Getenv(v) == "" {
+		value := trimmedEnv(v)
+		values = append(values, value)
+		if value == "" {
 			missing = append(missing, v)
 		} else {
 			set = append(set, v)
@@ -298,18 +300,19 @@ func oidcConfig(signIn, baseURL string) (*web.OIDCConfig, error) {
 // GOAL_TRACKER_DIRECTORY_FILE, or Authentik from GOAL_TRACKER_DIRECTORY_URL
 // and GOAL_TRACKER_DIRECTORY_TOKEN. It is nil when none is set, an error naming
 // both sources when the file is set with either Authentik variable, and an
-// error naming the missing one when only one Authentik variable is.
+// error naming the missing one when only one Authentik variable is. A variable
+// of only whitespace counts as unset, and the values kept are trimmed.
 func loadDirectoryConfig() (*directoryConfig, error) {
 	vars := []string{"GOAL_TRACKER_DIRECTORY_URL", "GOAL_TRACKER_DIRECTORY_TOKEN"}
 	var set, missing []string
 	for _, v := range vars {
-		if os.Getenv(v) == "" {
+		if trimmedEnv(v) == "" {
 			missing = append(missing, v)
 		} else {
 			set = append(set, v)
 		}
 	}
-	if file := os.Getenv("GOAL_TRACKER_DIRECTORY_FILE"); file != "" {
+	if file := trimmedEnv("GOAL_TRACKER_DIRECTORY_FILE"); file != "" {
 		if len(set) > 0 {
 			return nil, errors.New("the directory sync reads one source: GOAL_TRACKER_DIRECTORY_FILE or Authentik; unset GOAL_TRACKER_DIRECTORY_FILE, or unset " + strings.Join(set, ", "))
 		}
@@ -319,9 +322,15 @@ func loadDirectoryConfig() (*directoryConfig, error) {
 	case len(vars):
 		return nil, nil
 	case 0:
-		return &directoryConfig{url: os.Getenv(vars[0]), token: os.Getenv(vars[1])}, nil
+		return &directoryConfig{url: trimmedEnv(vars[0]), token: trimmedEnv(vars[1])}, nil
 	}
 	return nil, errors.New("the directory sync needs both GOAL_TRACKER_DIRECTORY_* variables; missing " + strings.Join(missing, ", "))
+}
+
+// trimmedEnv is the environment variable key without the whitespace around
+// it, so one of only whitespace reads as unset.
+func trimmedEnv(key string) string {
+	return strings.TrimSpace(os.Getenv(key))
 }
 
 func envOr(key, fallback string) string {
