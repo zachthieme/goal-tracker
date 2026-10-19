@@ -28,3 +28,9 @@ SELECT * FROM accounts WHERE manager_id IN (sqlc.slice(manager_ids)) ORDER BY id
 -- name: ListManagedAccounts :many
 -- Every Account with a Manager, for finding the cycles the directory gave.
 SELECT * FROM accounts WHERE manager_id IS NOT NULL ORDER BY id;
+
+-- name: ListAdminAccounts :many
+SELECT * FROM accounts WHERE is_admin = 1 ORDER BY email;
+
+-- name: SetAccountAdmin :exec
+UPDATE accounts SET is_admin = ? WHERE id = ?;

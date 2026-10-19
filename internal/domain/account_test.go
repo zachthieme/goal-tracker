@@ -444,3 +444,163 @@ func TestLookupsByEmailIgnoreCase(t *testing.T) {
 		}
 	})
 }
+
+// adminEmails is who Admins lists, in its order.
+func adminEmails(t *testing.T, h *testsupport.Harness) []string {
+	t.Helper()
+	admins, err := h.Service.Admins(context.Background())
+	if err != nil {
+		t.Fatalf("Admins: %v", err)
+	}
+	var out []string
+	for _, a := range admins {
+		out = append(out, a.Email)
+	}
+	return out
+}
+
+// An Admin makes another person an Admin by their email, whatever its case or
+// surrounding spaces, and Admins then lists them, by Label (CONTEXT.md: Admin).
+func TestMakeAdminGivesAPersonTheAdminRoleByEmail(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignInNamed("sam@example.com", "Abe Sampson")
+
+	got, err := h.Service.MakeAdmin(ctx, boss.ID, "  Sam@Example.COM ")
+	if err != nil {
+		t.Fatalf("MakeAdmin: %v", err)
+	}
+	if got.ID != sam.ID || !got.IsAdmin {
+		t.Errorf("MakeAdmin = %+v, want Sam's Account as an Admin", got)
+	}
+	if want := []string{"sam@example.com", "boss@example.com"}; !slices.Equal(adminEmails(t, h), want) {
+		t.Errorf("Admins = %q, want %q", adminEmails(t, h), want)
+	}
+	if acc, err := h.Service.Account(ctx, sam.ID); err != nil || !acc.IsAdmin {
+		t.Errorf("Sam's Account after MakeAdmin = %+v, %v; want an Admin", acc, err)
+	}
+}
+
+// MakeAdmin never creates an Account: an email no one has, a typo say, is
+// refused and leaves no stray Account behind.
+func TestMakeAdminRefusesAnEmailWithNoAccount(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	before := countAccounts(t, h)
+
+	if _, err := h.Service.MakeAdmin(ctx, boss.ID, "nobody@example.com"); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("MakeAdmin for an email with no Account: err = %v, want ErrValidation", err)
+	}
+	if after := countAccounts(t, h); after != before {
+		t.Errorf("accounts = %d after the refused MakeAdmin, want %d", after, before)
+	}
+}
+
+// A Departed person can't be made an Admin: they can't sign in or act
+// (CONTEXT.md: Departed).
+func TestMakeAdminRefusesADepartedPerson(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	if err := h.Service.MarkDeparted(ctx, boss.ID, sam.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	if _, err := h.Service.MakeAdmin(ctx, boss.ID, "sam@example.com"); !errors.Is(err, domain.ErrDeparted) {
+		t.Errorf("MakeAdmin for a Departed person: err = %v, want ErrDeparted", err)
+	}
+	if acc, err := h.Service.Account(ctx, sam.ID); err != nil || acc.IsAdmin {
+		t.Errorf("Sam's Account after the refused MakeAdmin = %+v, %v; want a non-Admin", acc, err)
+	}
+}
+
+// Making an Admin an Admin again is no error: they simply stay one.
+func TestMakeAdminOfAnAdminIsNoError(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com", "ada@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	ada := h.SignIn("ada@example.com")
+
+	got, err := h.Service.MakeAdmin(ctx, boss.ID, "ada@example.com")
+	if err != nil || got.ID != ada.ID || !got.IsAdmin {
+		t.Errorf("MakeAdmin of an Admin = %+v, %v; want Ada's Account as an Admin, no error", got, err)
+	}
+	if want := []string{"ada@example.com", "boss@example.com"}; !slices.Equal(adminEmails(t, h), want) {
+		t.Errorf("Admins = %q, want %q", adminEmails(t, h), want)
+	}
+}
+
+// Only an Admin may give or take the Admin role; the refusal is enforced in the
+// domain, not just hidden in the UI, and changes nothing.
+func TestMakeAndRemoveAdminOnlyByAdmin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	pat := h.SignIn("pat@example.com")
+	h.SignIn("sam@example.com")
+
+	if _, err := h.Service.MakeAdmin(ctx, pat.ID, "sam@example.com"); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("non-Admin MakeAdmin err = %v, want ErrNotAuthorized", err)
+	}
+	if err := h.Service.RemoveAdmin(ctx, pat.ID, boss.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("non-Admin RemoveAdmin err = %v, want ErrNotAuthorized", err)
+	}
+	if want := []string{"boss@example.com"}; !slices.Equal(adminEmails(t, h), want) {
+		t.Errorf("Admins after the refusals = %q, want %q", adminEmails(t, h), want)
+	}
+}
+
+// An Admin takes the Admin role from another Admin, who is then no longer
+// listed. Taking it from someone who isn't an Admin changes nothing.
+func TestRemoveAdminTakesTheRoleFromAnotherAdmin(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com", "ada@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+
+	if err := h.Service.RemoveAdmin(ctx, boss.ID, ada.ID); err != nil {
+		t.Fatalf("RemoveAdmin: %v", err)
+	}
+	if want := []string{"boss@example.com"}; !slices.Equal(adminEmails(t, h), want) {
+		t.Errorf("Admins = %q, want %q", adminEmails(t, h), want)
+	}
+	if err := h.Service.RemoveAdmin(ctx, boss.ID, sam.ID); err != nil {
+		t.Errorf("RemoveAdmin of a non-Admin: %v, want no error", err)
+	}
+}
+
+// No Admin can take the role from themselves, so there is always at least one
+// (CONTEXT.md: Admin); nor from an Account that doesn't exist.
+func TestRemoveAdminRefusesYourselfAndAnUnknownAccount(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+
+	if err := h.Service.RemoveAdmin(ctx, boss.ID, boss.ID); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("RemoveAdmin of yourself: err = %v, want ErrValidation", err)
+	}
+	if want := []string{"boss@example.com"}; !slices.Equal(adminEmails(t, h), want) {
+		t.Errorf("Admins after removing yourself = %q, want %q", adminEmails(t, h), want)
+	}
+	if err := h.Service.RemoveAdmin(ctx, boss.ID, boss.ID+1000); !errors.Is(err, domain.ErrValidation) {
+		t.Errorf("RemoveAdmin of an unknown account: err = %v, want ErrValidation", err)
+	}
+}
