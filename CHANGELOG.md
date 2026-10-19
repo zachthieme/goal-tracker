@@ -39,6 +39,10 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [api] **Database schema**: `goal_title_revisions`, a record of each change to a Goal's title with the old and new titles, its author and when (#281).
 - [api] **Database schema**: `account_sessions`, each Account's session generation; no row means generation 0 (#299).
 - [api] **Database schema**: `account_passwords`, an Account's password hash, failed sign-ins and lockout, and `password_links`, the one outstanding set-password link per Account, kept as the SHA-256 of its token (#300).
+- [api] **Database schema**: `comments` is rebuilt so a Comment can be on a Goal itself: `publication_id` no longer references `report_publications` and defaults to 0 (a Goal Comment), and `idx_comments_goal` indexes `goal_id`. Existing Comments keep their ids (#350).
+- [api] **Database schema**: `accounts.timezone`, each person's IANA timezone from the directory, blank for none (#353).
+- [api] **Database schema**: `checkins.asks_for_help`, whether a Check-in's Path to Green asks for help (default 0) (#241).
+- [api] **Database schema**: `date_slips.back_to_green`, marking a Date Slip of the back-to-Green date rather than a delivery or Milestone date (default 0) (#242).
 - [user] The Check-in form's off-target warning is flagged at the top of the form, stays through Add another, and isn't asked again after a later error once you've confirmed Green. The No change refusal reads as a sentence, shows its due date as the rest of the page does, and no longer preselects Green while a Milestone is overdue (#342).
 - [user] Risks lists every Active Red and Yellow Goal under a new first card, Not Green, and the top bar's Risks count includes them (#344).
 - [user] The Goal page explains Dated, Ongoing, Delegates and Dimension values with a help button, and Ownerless badges say what Ownerless means on hover. The Report builder explains Also include and Leave out, and its rules hint is in plain words (#282).
@@ -90,6 +94,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Documentation:**
 - [internal] CLAUDE.md says `make test` takes about 2 minutes, most of it `internal/web` under the race detector, instead of about 50 seconds, which it no longer does (#310).
+- [internal] DESIGN.md's History timeline bullet re-wraps the Comment marker text #350 added at the wrong indent (#356).
 
 ### Collected changes — October 18, 2026
 

@@ -470,10 +470,10 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     suggestion, a dashed square for a Nudge, a double ring for a Milestone
     added outside a Check-in, a hollow tab (square on the left, round on the
     right) for an Action Item raised, reassigned or closed, a hollow
-  speech-drop (round but for its bottom-left corner) for a Comment or reply,
-  and a hollow
-    square for a Check-in with no Health, such as one that put the Goal On
-    Hold. Every entry also opens with its kind as a bold text label (Check-in,
+    speech-drop (round but for its bottom-left corner) for a Comment or
+    reply, and a hollow square for a Check-in with no Health, such as one
+    that put the Goal On Hold. Every entry also opens with its kind as a bold
+    text label (Check-in,
     So What, Title, Handoff, Reassign, Value, Link, Parent suggestion, Nudge,
     Milestone, Action Item raised, Action Item reassigned, Action Item
     closed, Comment for a thread's first Comment, Reply for a reply), so the
