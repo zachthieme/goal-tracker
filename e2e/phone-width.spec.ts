@@ -1,7 +1,8 @@
-// Phone width: at 390px the Goals list, Risks, the Admin page, a Report draft
-// and the New goal page, with its Metric editor open, fit the screen. Nothing
-// inside main is clipped or scrolls sideways, and every control lies within
-// the window (#343: #258, #268, #338, #229; #368; #369).
+// Phone width: at 390px the Goals list, Risks, the Admin page, a Report draft,
+// the New goal page, with its Metric editor open, and the Check-in page fit
+// the screen. Nothing inside main is clipped or scrolls sideways, and every
+// control lies within the window (#343: #258, #268, #338, #229; #368; #369;
+// #364).
 import type { Page } from "@playwright/test";
 
 import { admin, expect, signIn, test } from "./fixtures";
@@ -130,5 +131,27 @@ test("at 390px the New goal page stacks its Kind tiles and fits its cadence and 
   const dated = (await kind.locator(".gf-tile").first().boundingBox())!;
   const ongoing = (await kind.locator(".gf-tile").last().boundingBox())!;
   expect(ongoing.y, "the Ongoing tile sits under the Dated one").toBeGreaterThanOrEqual(dated.y + dated.height - 1);
+  await expectFitsAPhone(page);
+});
+
+// goalWithMetric is an Active Goal with a Metric, and its Owner, who can
+// check in on it.
+const goalWithMetric = `
+  select g.id, a.email
+  from goals g join accounts a on a.id = g.owner_id
+  where g.lifecycle = 'Active' and a.departed = 0
+    and exists (select 1 from metrics m where m.goal_id = g.id)
+  order by g.id
+  limit 1`;
+
+test("at 390px the Check-in page fits", async ({ page, seedLookup }) => {
+  const [goal] = seedLookup<{ id: number; email: string }>(goalWithMetric);
+  expect(goal, "the seed has an Active Goal with a Metric").toBeDefined();
+  await signIn(page, goal.email);
+  await page.goto(`/goals/${goal.id}/checkin`);
+  const form = page.getByTestId("checkin-form");
+  await form.getByRole("radio", { name: "Yellow" }).check();
+  await expect(form.getByTestId("path-to-green-field")).toBeVisible();
+  await expect(form.getByTestId("checkin-readings")).toBeVisible();
   await expectFitsAPhone(page);
 });

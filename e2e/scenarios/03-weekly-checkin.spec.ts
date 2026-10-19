@@ -176,7 +176,7 @@ test.describe("on the due template", () => {
       // week's answers are in view as ghost text, none of them sent unless
       // she types it. The Status and reading start empty.
       await expect(form.getByRole("radio", { name: latest.health })).toBeChecked();
-      const status = form.getByRole("textbox", { name: /^Status/ });
+      const status = form.getByRole("textbox", { name: /^What changed since the last check-in/ });
       await expect(status).toHaveValue("");
       await expect(status).toHaveAttribute("placeholder", latest.status);
       const reading = form.getByTestId("checkin-readings").getByRole("spinbutton");
@@ -327,7 +327,7 @@ test("a Delegate checks in for an Owner who's away, and the Goal stops being Sta
     await expect(covering).toHaveURL(new RegExp(`/goals/${goal.id}/checkin$`));
     const status = `Covering while ${owner.name} is away: on track.`;
     const form = covering.getByTestId("checkin-form");
-    await form.getByRole("textbox", { name: /^Status/ }).fill(status);
+    await form.getByRole("textbox", { name: /^What changed since the last check-in/ }).fill(status);
     // The Owner's Health stays picked; a Yellow or Red one needs a Path to
     // Green written afresh, as the form shows last week's only as ghost text.
     const path = form.getByTestId("path-to-green-field");

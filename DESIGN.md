@@ -27,8 +27,9 @@ deliberately; don't override it on one page.
 
 - **Mood:** warm, editorial and calm. A neutral off-white canvas, neutral ink,
   and teal only for what a person can act on: links, buttons, focus and the
-  current top-bar item. The one data accent is a Metric's sparkline, stroked in
-  teal (see § Deviations 6). No neon, and no tint on the canvas, so Health's
+  current top-bar item. The one data accent is a Metric's trend: its sparkline
+  on the Goal page and its progress bar on the Check-in page, both in teal
+  (see § Deviations 6). No neon, and no tint on the canvas, so Health's
   fills stand out from the page (see § Deviations 7). Cards sit on the canvas
   in plain white (see § Accepted audit findings).
 - **Density:** generous. Cards use 24px padding, sections sit 20–32px apart,
@@ -555,6 +556,43 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     When there are more, a quiet **Show earlier** link (`?shown=25`) reloads
     the page with 20 more under the same filter. Chips and paging are links,
     so History works without script.
+- **Check-in page (`checkinPage` in `checkins.templ`):** one form read top
+  to bottom under headings, its sections set apart by whitespace, not boxes.
+  - **Header (`.checkin-head`):** under the breadcrumb, the H1 "Check in" and
+    a muted line, "Week of Oct 19 · checks in every 7 days · last check-in
+    Oct 5" (the week named by its Monday in the company's timezone, as
+    History's weeks are; "every day" for a daily Goal; the last Check-in only
+    when there is one). At the header's right, bottom-aligned and wrapping
+    under the title on a narrow screen, sits No change: a muted "Nothing
+    changed since Oct 5?" beside a secondary **No change** button, or the
+    reason it is refused in its place.
+  - **Sections:** "How is it going?" (the three Health choices at full width,
+    56px tall with `--radius-lg`; then "What changed since the last
+    check-in?"; then the Rolled-up Health panel), "Path to Green" (shown while
+    Yellow or Red is picked) and "Metrics" (when the Goal has any). Each is
+    headed by an `<h2>` in the display face, 22px and 700, 20px at 600px and
+    below, with no step number, and a muted 14px note on its baseline:
+    "Required while Yellow or Red", with " · 3 wks off Green" while the Goal
+    is in a Run off Green, or "Record each Metric's current value". Sections
+    sit 40px apart, wider than the usual 20–32px because the form is long;
+    fields within one sit 16px apart. Field labels are 14px and 600, hints
+    14px in `--color-ink-muted`.
+  - **Rolled-up Health panel (`.checkin-rollup`):** the page's one white
+    panel (`--color-surface`, 1px `--color-border`, `--radius-lg`, 16px
+    padding, no shadow): a muted "Rolled-up Health:", the Health badge and its
+    muted count line ("1 of 5 Red · 1 Yellow"), then "Why is your Health
+    different?", asked whenever there is a Rolled-up Health.
+  - **Path to Green:** Plan; Back to Green by, with "Last time: Oct 3" and "A
+    later date asks why." beside the date on one wrapping row; then the
+    checkbox, "**Ask for help** · goes to <Name>".
+  - **Metrics (`.checkin-metric`):** each Metric is a row between 1px
+    `--color-border` rules, shared by neighbours, 16px above and below. On
+    the left, its name in 600 over a muted "per week · 100 → 500 by Jun 30 ·
+    last 135.5" and, once it has a reading, a 6px progress bar from baseline
+    toward target in `--color-primary-strong`. On the right, a 120px reading
+    input with right-aligned numbers in `--font-mono`.
+  - **Optional sections** follow, as below (Check-in form's optional
+    sections), 12px apart, then Cancel and Submit check-in.
 - **Home's Needs you list (`homePage` in `home.templ`):** one card in the main
   column holding everything waiting on the person, in four subgroups, each a
   `.label` heading over ruled rows (`.hm-list`):
@@ -741,8 +779,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   shows the Goal page's "Contributed to by" list read-only (no Remove), so the
   Owner sees which children set the Rolled-up Health. Above 900px it is a
   240–320px column on the right of the form, 32px away, under the breadcrumb
-  and heading. At 900px and below it sits above the form, after the No change
-  card. A Goal with no children keeps the single 760px column.
+  and header. At 900px and below it sits above the form, after the header. A Goal with no children keeps the single 760px column.
 - **Check-in form's optional sections:** Highlights, dates and Milestones,
   and Lifecycle each sit in a `<details>` (`.checkin-more`) that starts folded
   and opens by itself when it holds an error or something typed.
@@ -937,7 +974,8 @@ stays black on white whatever is chosen.
    (3.29:1 on the surface). Two more marks follow the same rule:
    - A Metric's sparkline, the one data accent allowed teal (§ System), strokes
      in `--color-primary-strong`, not `--color-primary`, which reaches only
-     2.49:1 on white.
+     2.49:1 on white. The Check-in page's Metric progress bar fills in the
+     same token.
    - On the Check-in form, an unselected Health choice is an outline (surface
      fill, `--color-border-strong` edge, Health ink) and the selected one is
      the filled Health badge with an edge in its ink. Nothing is dimmed.

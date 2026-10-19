@@ -437,7 +437,7 @@ function addDays(date: string, n: number): string {
 // statusBox is the Check-in form's Status, which is required in the browser,
 // so every submit fills it.
 function statusBox(form: Locator): Locator {
-  return form.getByRole("textbox", { name: /^Status/ });
+  return form.getByRole("textbox", { name: /^What changed since the last check-in/ });
 }
 
 // fieldError is the Check-in form's refusal shown under the field named name.
