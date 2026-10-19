@@ -54,8 +54,8 @@ func (s *Service) HealthStrip(ctx context.Context, goalID int64) (HealthStrip, e
 }
 
 // healthStrip lays g's Check-ins over its last periods. The periods are counted
-// in days of the org's calendar, as Stale is, each the Goal's cadence long, and
-// the current one ends on the Sunday that closes this week, so a weekly Goal's
+// in days of the company's timezone, each the Goal's cadence long, and the
+// current one ends on the Sunday that closes this week, so a weekly Goal's
 // periods are the weeks its History is grouped by.
 func (s *Service) healthStrip(g Goal, checkins []Checkin) HealthStrip {
 	if g.ActivatedAt.IsZero() {

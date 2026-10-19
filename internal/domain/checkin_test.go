@@ -831,6 +831,33 @@ func TestOffTargetJudgedInOrgTimezone(t *testing.T) {
 	}
 }
 
+// A Metric's target date is judged in the Goal's Owner's Timezone, not the
+// company's (CONTEXT.md: Timezone): with the company on UTC, late on the target
+// date in the Owner's Los Angeles it isn't off target yet, for a Check-in or a
+// No change.
+func TestOffTargetJudgedInTheOwnersTimezone(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+	h.SetTimezone(sam, "America/Los_Angeles")
+	goal, _ := offTargetMetricGoal(t, h, sam)
+
+	green := domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "On track."}
+	h.Clock.Set(time.Date(2026, 1, 31, 5, 0, 0, 0, time.UTC)) // Jan 30, 9pm in Los Angeles
+	if _, err := h.Service.SubmitCheckin(ctx, green); err != nil {
+		t.Fatalf("Green on the Metric's target date in the Owner's timezone: %v", err)
+	}
+	if err := h.Service.NoChangeRefusal(ctx, goal.ID); err != nil {
+		t.Fatalf("No change on the Metric's target date in the Owner's timezone refused: %v", err)
+	}
+	h.Clock.Set(time.Date(2026, 1, 31, 9, 0, 0, 0, time.UTC)) // Jan 31, 1am in Los Angeles
+	if _, err := h.Service.SubmitCheckin(ctx, green); !errors.Is(err, domain.ErrGreenOffTarget) {
+		t.Fatalf("Green the day after the Metric's target date: err = %v, want ErrGreenOffTarget", err)
+	}
+}
+
 // A No change can't repeat a Green while a Metric is off target; the Owner
 // writes a full Check-in instead.
 func TestNoChangeGreenRefusedWhileMetricOffTarget(t *testing.T) {

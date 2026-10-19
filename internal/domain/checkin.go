@@ -206,7 +206,7 @@ func (s *Service) SubmitCheckin(ctx context.Context, in SubmitCheckinInput) (Che
 	// only asks them to confirm a Green; an overdue Milestone, refused above,
 	// wins over it.
 	if health == HealthGreen && !in.ConfirmOffTarget {
-		if err := s.rejectGreenWhileOffTarget(ctx, goal.Goal.ID, in.Readings); err != nil {
+		if err := s.rejectGreenWhileOffTarget(ctx, goalFromRow(goal.Goal, goal.Account), in.Readings); err != nil {
 			return Checkin{}, err
 		}
 	}
@@ -329,11 +329,11 @@ func formatMetricValue(v float64) string {
 	return strconv.FormatFloat(v, 'f', -1, 64)
 }
 
-// rejectGreenWhileOffTarget refuses a Green on goalID with a
-// *GreenOffTargetError while any of its Metrics is off target (see
-// OffTargetMetrics).
-func (s *Service) rejectGreenWhileOffTarget(ctx context.Context, goalID int64, readings []MetricReadingInput) error {
-	missed, err := s.OffTargetMetrics(ctx, goalID, readings)
+// rejectGreenWhileOffTarget refuses a Green on g with a *GreenOffTargetError
+// while any of its Metrics is off target today, in the Goal's timezone; see
+// Service.GoalTimezone and OffTargetMetrics.
+func (s *Service) rejectGreenWhileOffTarget(ctx context.Context, g Goal, readings []MetricReadingInput) error {
+	missed, err := s.offTargetMetricsOf(ctx, g, readings)
 	if err != nil {
 		return err
 	}
@@ -344,12 +344,21 @@ func (s *Service) rejectGreenWhileOffTarget(ctx context.Context, goalID int64, r
 }
 
 // OffTargetMetrics returns goalID's Metrics that are off target today, in the
-// org's timezone, each with the reading that missed; none when none is. Each
-// Metric is judged by the reading in readings (as entered in a Check-in) or,
-// when there is none, its latest recorded one; a Metric never read is not off
-// target.
+// Goal's timezone (see GoalTimezone), each with the reading that missed; none
+// when none is. Each Metric is judged by the reading in readings (as entered in
+// a Check-in) or, when there is none, its latest recorded one; a Metric never
+// read is not off target.
 func (s *Service) OffTargetMetrics(ctx context.Context, goalID int64, readings []MetricReadingInput) ([]OffTargetMetric, error) {
-	metrics, err := s.ListMetrics(ctx, goalID)
+	g, err := s.loadGoal(ctx, goalID)
+	if err != nil {
+		return nil, err
+	}
+	return s.offTargetMetricsOf(ctx, g, readings)
+}
+
+// offTargetMetricsOf is OffTargetMetrics for a Goal already loaded.
+func (s *Service) offTargetMetricsOf(ctx context.Context, g Goal, readings []MetricReadingInput) ([]OffTargetMetric, error) {
+	metrics, err := s.ListMetrics(ctx, g.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -357,7 +366,7 @@ func (s *Service) OffTargetMetrics(ctx context.Context, goalID int64, readings [
 	for _, rd := range readings {
 		entered[rd.MetricID] = rd.Value
 	}
-	today := orgDate(s.clock.Now(), s.loc)
+	today := s.goalToday(g)
 	var missed []OffTargetMetric
 	for _, m := range metrics {
 		reading, ok := entered[m.ID]
@@ -428,7 +437,7 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 		return Checkin{}, err
 	}
 
-	prev, explanation, err := s.noChangeCheck(ctx, goalID)
+	prev, explanation, err := s.noChangeCheck(ctx, goalFromRow(goal.Goal, goal.Account))
 	if err != nil {
 		return Checkin{}, err
 	}
@@ -450,10 +459,11 @@ func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID in
 // gives the error SubmitNoChangeCheckin would, without recording anything, so
 // a page can offer the No change only when it would be taken.
 func (s *Service) NoChangeRefusal(ctx context.Context, goalID int64) error {
-	if _, err := s.activeGoalForNoChange(ctx, goalID); err != nil {
+	goal, err := s.activeGoalForNoChange(ctx, goalID)
+	if err != nil {
 		return err
 	}
-	_, _, err := s.noChangeCheck(ctx, goalID)
+	_, _, err = s.noChangeCheck(ctx, goalFromRow(goal.Goal, goal.Account))
 	return err
 }
 
@@ -473,12 +483,12 @@ func (s *Service) activeGoalForNoChange(ctx context.Context, goalID int64) (db.G
 	return goal, nil
 }
 
-// noChangeCheck runs the checks a No change on goalID must pass once the Goal
-// is known to be Active and the author allowed to check in, none of which
-// depend on who is asking. It returns the previous Check-in to repeat and the
+// noChangeCheck runs the checks a No change on g must pass once the Goal is
+// known to be Active and the author allowed to check in, none of which depend
+// on who is asking. It returns the previous Check-in to repeat and the
 // explanation to record with it.
-func (s *Service) noChangeCheck(ctx context.Context, goalID int64) (db.Checkin, string, error) {
-	prev, err := s.queries.GetLatestCheckin(ctx, goalID)
+func (s *Service) noChangeCheck(ctx context.Context, g Goal) (db.Checkin, string, error) {
+	prev, err := s.queries.GetLatestCheckin(ctx, g.ID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return db.Checkin{}, "", fmt.Errorf("%w: there is no previous Check-in to repeat", ErrValidation)
@@ -489,13 +499,13 @@ func (s *Service) noChangeCheck(ctx context.Context, goalID int64) (db.Checkin, 
 	// roll-up has since changed so the repeated Health would differ from it and
 	// the previous Check-in carried no explanation, refuse it so the Owner uses
 	// the full form to explain (ADR-0003).
-	explanation, err := s.resolveRollupExplanation(ctx, goalID, prev.Health, prev.Explanation)
+	explanation, err := s.resolveRollupExplanation(ctx, g.ID, prev.Health, prev.Explanation)
 	if err != nil {
 		return db.Checkin{}, "", fmt.Errorf("%w — submit a Check-in to explain", err)
 	}
 	// Nor can it repeat any Health once a Milestone has gone overdue: the
 	// missed date needs a response.
-	milestones, err := s.queries.ListMilestones(ctx, goalID)
+	milestones, err := s.queries.ListMilestones(ctx, g.ID)
 	if err != nil {
 		return db.Checkin{}, "", fmt.Errorf("list milestones: %w", err)
 	}
@@ -505,7 +515,7 @@ func (s *Service) noChangeCheck(ctx context.Context, goalID int64) (db.Checkin, 
 	// Nor a Green while a Metric is off target: only a full Check-in can
 	// confirm that.
 	if prev.Health == HealthGreen {
-		if err := s.rejectGreenWhileOffTarget(ctx, goalID, nil); err != nil {
+		if err := s.rejectGreenWhileOffTarget(ctx, g, nil); err != nil {
 			return db.Checkin{}, "", fmt.Errorf("%w — submit a Check-in to confirm or update it", err)
 		}
 	}

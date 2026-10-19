@@ -711,7 +711,6 @@ type riskSignal struct {
 // which every signed-in page runs for the top bar's count, it reads each
 // flagged Goal's latest Check-in, so only the Risks page calls it.
 func (s *Server) riskRows(ctx context.Context, v risksView) ([]riskGoalRow, error) {
-	today := s.svc.Now().In(s.svc.Timezone())
 	var rows []riskGoalRow
 	at := map[int64]int{}
 	add := func(g domain.Goal, sig riskSignal) {
@@ -732,8 +731,10 @@ func (s *Server) riskRows(ctx context.Context, v risksView) ([]riskGoalRow, erro
 	for _, gf := range v.Stale {
 		add(gf.Goal, riskSignal{Kind: "stale", Days: gf.Freshness.DaysSince})
 	}
+	// A Path to Green's overdue days are counted in the Goal's timezone, the
+	// one its flag was judged in.
 	for _, gf := range v.OverduePaths {
-		add(gf.Goal, riskSignal{Kind: "path-overdue", Days: calendarDays(gf.Freshness.PathTargetDate, today)})
+		add(gf.Goal, riskSignal{Kind: "path-overdue", Days: calendarDays(gf.Freshness.PathTargetDate, s.svc.Now().In(s.svc.GoalTimezone(gf.Goal)))})
 	}
 	for _, og := range v.OverdueActionItems {
 		add(og.Goal, riskSignal{Kind: "action-item-overdue", Days: og.Days})

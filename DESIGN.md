@@ -510,10 +510,10 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     the filter chips, the Goal's Health over its last 11 Check-in periods, one
     cell for each, oldest on the left and the current period on the right. A
     period is the Goal's cadence long (a week by default), counted in days of
-    the company's timezone as Stale is, and the current one ends on the Sunday
-    that closes this week, so a weekly Goal's cells are the weeks History is
-    grouped by. How a period ended decides its cell: the last Check-in made in
-    it. If that Check-in left the Goal Active, the cell takes its Health: the
+    the company's timezone, and the current one ends on the Sunday that closes
+    this week, so a weekly Goal's cells are the weeks History is grouped by.
+    How a period ended decides its cell: the last Check-in made in it. If that
+    Check-in left the Goal Active, the cell takes its Health: the
     Health's `--health-*-bg` fill with its dot in the Health's ink and shape
     (● Green, ▲ Yellow, ■ Red), so it reads without colour. A finished period
     the Goal was Active with no Check-in is an empty cell in a 1px dashed

@@ -10,7 +10,8 @@ import (
 )
 
 // Freshness is how current a Goal's updates are (CONTEXT.md: Stale). It is
-// computed when read, from the Goal's last Check-in and the org's calendar.
+// computed when read, from the Goal's last Check-in and the calendar of its
+// Owner's Timezone (see Service.GoalTimezone).
 type Freshness struct {
 	// Stale is true when the Goal is Active and its last Check-in — or its
 	// activation, if it has none — is more than its cadence of days ago. On
@@ -19,8 +20,9 @@ type Freshness struct {
 	// LastUpdate is the Goal's last Check-in, or its activation when it has
 	// none. It is the zero time for a Goal that was never activated.
 	LastUpdate time.Time
-	// DaysSince is how many days of the org's calendar have passed since
-	// LastUpdate, judged against CadenceDays, the Goal's Check-in cadence.
+	// DaysSince is how many days of the Goal's Owner's Timezone (see
+	// Service.GoalTimezone) have passed since LastUpdate, judged against
+	// CadenceDays, the Goal's Check-in cadence.
 	DaysSince   int
 	CadenceDays int
 	// PathToGreenOverdue is true when the Goal is Active, isn't Green, and the
@@ -33,7 +35,8 @@ type Freshness struct {
 }
 
 // reminderIntervalDays is how far apart the weekly Check-in reminders go out,
-// in days of the org's calendar.
+// in days. It is added to Freshness.DaysSince, so it counts days of the Goal's
+// Owner's Timezone (see Service.GoalTimezone) as that does.
 const reminderIntervalDays = 7
 
 // DueBeforeNextReminder reports whether the Goal's Check-in is due: it is Stale
@@ -180,8 +183,8 @@ func lastCheckinFromRow(r db.ListActiveGoalsWithLatestCheckinRow) lastCheckin {
 }
 
 // judgeFreshness applies the Stale and overdue-Path-to-Green rules to g, given
-// its latest Check-in. Days are
-// counted on the org's calendar, so a Check-in late on Monday and one early on
+// its latest Check-in. Days are counted on the calendar of g's Owner's
+// Timezone (see GoalTimezone), so a Check-in late on Monday and one early on
 // Monday both count from Monday, and a Path to Green is overdue from the day
 // after its target date.
 func (s *Service) judgeFreshness(g Goal, latest lastCheckin) Freshness {
@@ -193,23 +196,24 @@ func (s *Service) judgeFreshness(g Goal, latest lastCheckin) Freshness {
 		return Freshness{}
 	}
 	now := s.clock.Now()
+	loc := s.GoalTimezone(g)
 	active := g.Lifecycle == LifecycleActive
-	days := s.daysBetween(last, now)
+	days := daysBetween(last, now, loc)
 	target := latest.pathTargetDate
 	return Freshness{
 		Stale:              active && days > g.CadenceDays,
 		LastUpdate:         last,
 		DaysSince:          days,
 		CadenceDays:        g.CadenceDays,
-		PathToGreenOverdue: active && needsPathToGreen(latest.health) && !target.IsZero() && orgDate(now, s.loc).After(target),
+		PathToGreenOverdue: active && needsPathToGreen(latest.health) && !target.IsZero() && orgDate(now, loc).After(target),
 		PathTargetDate:     target,
 	}
 }
 
 // daysBetween counts the calendar days from one instant to a later one, each
-// read as a date in the org's timezone.
-func (s *Service) daysBetween(from, to time.Time) int {
-	return int(orgDate(to, s.loc).Sub(orgDate(from, s.loc)) / (24 * time.Hour))
+// read as a date in loc, the Goal's Owner's Timezone (see GoalTimezone).
+func daysBetween(from, to time.Time, loc *time.Location) int {
+	return int(orgDate(to, loc).Sub(orgDate(from, loc)) / (24 * time.Hour))
 }
 
 // orgDate is the calendar date t falls on in loc, as midnight UTC so that dates
