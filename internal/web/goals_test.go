@@ -6177,3 +6177,30 @@ func TestGoalPageLetsAnActionItemsOwnerCloseIt(t *testing.T) {
 		t.Errorf("the Goal page still lists the Action Item its owner closed")
 	}
 }
+
+// A slip of the back-to-Green date isn't one of the delivery date: a Goal
+// whose only slip moved its back-to-Green date strikes no delivery date, on its
+// page or on the Goals list.
+func TestABackToGreenSlipStrikesNoDeliveryDate(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+	h.Checkin(sam, goal.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
+	h.CheckinMovingPath(sam, goal.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate.AddDate(0, 0, 7), "The vendor is out.")
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, goalPageURL(ts.URL, goal))
+	if delivery := pageElement(t, page, "span", "goal-delivery-date"); strings.Contains(delivery, "<del>") {
+		t.Errorf("the Goal page strikes a delivery date: %s", delivery)
+	}
+	rows := goalRows(t, getBody(t, client, ts.URL+"/goals"))
+	if len(rows) != 1 {
+		t.Fatalf("Goals list has %d rows, want 1", len(rows))
+	}
+	if due := pageElement(t, rows[0], "td", "goal-row-due"); strings.Contains(due, "<del>") {
+		t.Errorf("the Goals list strikes a delivery date: %s", due)
+	}
+}

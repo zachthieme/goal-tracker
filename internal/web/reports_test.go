@@ -188,7 +188,8 @@ func TestSmokePublishReportOverHTTP(t *testing.T) {
 	}
 
 	h.Clock.Advance(24 * time.Hour)
-	h.Checkin(boss, g.ID, domain.HealthRed, "Vendor is gone.", "Find a new vendor.", h.Clock.Now().AddDate(0, 0, 14))
+	// Two weeks out from a day later moves the back-to-Green date later.
+	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Vendor is gone.", "Find a new vendor.", h.Clock.Now().AddDate(0, 0, 14), "A new vendor takes longer.")
 	published = getBody(t, client, pubURL)
 	if !strings.Contains(published, "Vendor is late.") || strings.Contains(published, "Vendor is gone.") {
 		t.Errorf("publication changed after a later Check-in; body:\n%s", published)
@@ -3297,8 +3298,11 @@ func TestReportMarksAChangeOfHealthOverHTTP(t *testing.T) {
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
+	// Every Path to Green keeps one back-to-Green date: moving it later would
+	// be a Date Slip, a change of its own.
+	backToGreenBy := h.Clock.Now().AddDate(0, 1, 0)
 	checkin := func(g domain.Goal, health string) {
-		h.Checkin(boss, g.ID, health, "Status.", "Path.", h.Clock.Now().AddDate(0, 1, 0))
+		h.Checkin(boss, g.ID, health, "Status.", "Path.", backToGreenBy)
 	}
 	worsened := h.ActiveGoal(boss, "Worsened", "why")
 	recovered := h.ActiveGoal(boss, "Recovered", "why")
@@ -3384,9 +3388,11 @@ func TestReportBlockShowsTheRunOffGreenOverHTTP(t *testing.T) {
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	h.Checkin(boss, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	// Red on Mondays 16 and 23 February, 30-day baseline after the Green.
+	// Each moves the back-to-Green date a week later, with the reason that
+	// needs.
 	for _, d := range []int{16, 23} {
 		h.Clock.Set(time.Date(2026, time.February, d, 9, 0, 0, 0, time.UTC))
-		h.Checkin(boss, g.ID, domain.HealthRed, "Blocked.", "Unblock it.", h.Clock.Now().AddDate(0, 1, 0))
+		h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Blocked.", "Unblock it.", h.Clock.Now().AddDate(0, 1, 0), "Unblocking takes longer.")
 	}
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
@@ -3397,7 +3403,7 @@ func TestReportBlockShowsTheRunOffGreenOverHTTP(t *testing.T) {
 		t.Fatalf("write an older snapshot: %v", err)
 	}
 	h.Clock.Advance(14 * 24 * time.Hour)
-	h.Checkin(boss, g.ID, domain.HealthRed, "Still blocked.", "Unblock it.", h.Clock.Now().AddDate(0, 1, 0))
+	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Unblock it.", h.Clock.Now().AddDate(0, 1, 0), "Unblocking takes longer still.")
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
@@ -3440,7 +3446,8 @@ func TestPublicationFreezesTheEarlierHealthOverHTTP(t *testing.T) {
 	h.Checkin(boss, g.ID, domain.HealthYellow, "Vendor is late.", "Chase the vendor.", h.Clock.Now().AddDate(0, 1, 0))
 	marked := h.PublishReport(boss, def)
 	h.Clock.Advance(24 * time.Hour)
-	h.Checkin(boss, g.ID, domain.HealthRed, "Vendor is gone.", "Find another.", h.Clock.Now().AddDate(0, 1, 0))
+	// A month out from a day later moves the back-to-Green date later.
+	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Vendor is gone.", "Find another.", h.Clock.Now().AddDate(0, 1, 0), "Another vendor takes longer.")
 
 	old := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","SoWhat":"Expand the market.",` +
 		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Yellow","Status":"Vendor is late."}]}`
@@ -3503,12 +3510,15 @@ func TestReportSaysWhatMovedSinceTheBaselineOverHTTP(t *testing.T) {
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
+	// Every Path to Green keeps one back-to-Green date: moving it later would
+	// be a Date Slip, a change of its own.
+	backToGreenBy := h.Clock.Now().AddDate(0, 1, 0)
 	checkin := func(g domain.Goal, health string) {
 		if health == domain.HealthGreen {
 			h.Checkin(boss, g.ID, health, "On track.", "", time.Time{})
 			return
 		}
-		h.Checkin(boss, g.ID, health, "Status.", "Path.", h.Clock.Now().AddDate(0, 1, 0))
+		h.Checkin(boss, g.ID, health, "Status.", "Path.", backToGreenBy)
 	}
 	recovered := h.ActiveGoal(boss, "Recovered", "why")
 	staysRed := h.ActiveGoal(boss, "Stays Red", "why")

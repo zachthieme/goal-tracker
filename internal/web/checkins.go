@@ -84,6 +84,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 	path := r.FormValue("path_to_green")
 	explanation := r.FormValue("explanation")
 	rawDate := r.FormValue("path_target_date")
+	pathReason := r.FormValue("path_target_date_reason")
 	asksForHelp := r.FormValue("asks_for_help") == "1"
 	highlights := highlightsFromForm(r)
 	drafts := draftHighlightsFromForm(r)
@@ -123,7 +124,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 			e = checkinError{Field: checkinErrorField(err.Error(), dates, metrics), Message: sentence(plainReasonShown(err, s.displayDates()))}
 		}
 		return checkinFormData{
-			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, AsksForHelp: asksForHelp, Explanation: explanation,
+			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, PathTargetDateReason: pathReason, AsksForHelp: asksForHelp, Explanation: explanation,
 			Metrics: metrics, Readings: rawReadings, DraftHighlights: drafts, Highlights: highlights, Dates: dates, Lifecycle: lifecycle, Error: e,
 			OffTargetConfirmed: offTargetConfirmed, Shown: s.displayDates(),
 		}
@@ -168,9 +169,11 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		Status:         status,
 		PathToGreen:    path,
 		PathTargetDate: date,
-		AsksForHelp:    asksForHelp,
-		Explanation:    explanation,
-		Readings:       readings,
+		// A reason with an earlier, unchanged or first date is dropped.
+		PathTargetDateReason: pathReason,
+		AsksForHelp:          asksForHelp,
+		Explanation:          explanation,
+		Readings:             readings,
 		// The Lifecycle fields go through as typed; the domain decides which
 		// changes a Check-in may make and what each needs.
 		Lifecycle:       lifecycle.To,
@@ -266,6 +269,8 @@ func checkinErrorField(msg string, dates checkinDatesFormData, metrics []domain.
 		return "delivery_date"
 	case strings.Contains(msg, "changing the delivery date needs a reason"):
 		return "delivery_date_reason"
+	case strings.Contains(msg, "moving the back-to-Green date later needs a reason"):
+		return "path_target_date_reason"
 	case strings.Contains(msg, "needs a Path to Green"), strings.Contains(msg, "Path to Green needs a target date"):
 		return "path_to_green"
 	default:

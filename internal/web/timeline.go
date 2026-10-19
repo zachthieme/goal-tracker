@@ -600,9 +600,13 @@ func (h history) stripSummary() string {
 	return h.stripSpan() + ": " + strings.Join(parts, ", ") + "."
 }
 
-// slipWhat names what a Date Slip moved: the delivery date or a Milestone.
+// slipWhat names what a Date Slip moved: the delivery date, a Milestone or the
+// Path to Green's back-to-Green date.
 func (h history) slipWhat(s domain.DateSlip) string {
-	if s.MilestoneID == 0 {
+	switch {
+	case s.BackToGreen:
+		return "Back to Green date"
+	case s.OnDeliveryDate():
 		return "Delivery date"
 	}
 	for _, m := range h.Milestones {
