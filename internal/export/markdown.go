@@ -16,8 +16,8 @@ import (
 // how it selected its Goals as it read when published (nothing for a
 // publication frozen before selections were), the line counting what moved
 // since then, its open Action Items, the introduction, the narrative curated from
-// Highlights, each exception's full MBR block opening with what changed on it,
-// worst first, and every other selected Goal
+// Highlights, each exception's full MBR block opening with what changed on it
+// and naming the Goals it links to, worst first, and every other selected Goal
 // one line (CONTEXT.md: Report), each Goal with the Fields the Report chose. With no hover to show an email, a person's
 // first mention reads Name (email) and later ones their Name (CONTEXT.md: Name).
 func Markdown(p domain.Publication) string {
@@ -93,9 +93,11 @@ func Markdown(p domain.Publication) string {
 
 // writeBlock writes an exception Goal's full MBR block: title and badges, due
 // date with its history struck through, Health with what it was when it
-// changed since the baseline, what changed on it since, the chosen Fields, So What, latest status, Path
+// changed since the baseline, what changed on it since, the Goals in the
+// Report it contributes to, the chosen Fields, So What, latest status, Path
 // to Green, Milestones, Metrics against target, and the Rolled-up Health with
-// the Owner's explanation. Each Milestone is marked as of asOf, the day the
+// how many children are Red, Yellow and Stale, the Goals behind it, and the
+// Owner's explanation. Each Milestone is marked as of asOf, the day the
 // Report was published.
 func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBlock, asOf time.Time) {
 	g := blk.Goal
@@ -112,6 +114,9 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 	}
 	if len(blk.Changes) > 0 {
 		fmt.Fprintf(b, "\n\n**Changed:** %s", strings.Join(blk.Changes, " · "))
+	}
+	if len(blk.ContributesTo) > 0 {
+		fmt.Fprintf(b, "\n\n**Contributes to:** %s", linkedGoals(blk.ContributesTo))
 	}
 	if len(blk.Fields) > 0 {
 		fmt.Fprintf(b, "\n\n%s", fields(blk.Fields, "**%s:** %s"))
@@ -153,19 +158,41 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 				fmtDate(m.Metric.TargetDate), fmtNum(m.Metric.Baseline), m.Metric.Direction)
 		}
 	}
-	if blk.RolledUp.Present || blk.RolledUp.StaleChildren > 0 {
-		var parts []string
-		if blk.RolledUp.Present {
-			parts = append(parts, "**Rolled-up Health:** "+blk.RolledUp.Health)
-		}
-		if blk.RolledUp.StaleChildren > 0 {
-			parts = append(parts, fmt.Sprintf("%d of %d Stale", blk.RolledUp.StaleChildren, blk.RolledUp.ActiveChildren))
-		}
-		fmt.Fprintf(b, "\n%s\n", strings.Join(parts, " · "))
-		if blk.Explanation != "" {
-			fmt.Fprintf(b, "\n**Why the Health differs:** %s\n", text(blk.Explanation))
-		}
+	var parts []string
+	if blk.RolledUp.Present {
+		parts = append(parts, "**Rolled-up Health:** "+blk.RolledUp.Health)
 	}
+	if count := blk.RolledUp.CountLine(); count != "" {
+		parts = append(parts, count)
+	}
+	if len(parts) > 0 {
+		fmt.Fprintf(b, "\n%s\n", strings.Join(parts, " · "))
+	}
+	if len(blk.Behind) > 0 {
+		fmt.Fprintf(b, "\n**Behind it:** %s\n", linkedGoals(blk.Behind))
+	}
+	if (blk.RolledUp.Present || blk.RolledUp.StaleChildren > 0) && blk.Explanation != "" {
+		fmt.Fprintf(b, "\n**Why the Health differs:** %s\n", text(blk.Explanation))
+	}
+}
+
+// linkedGoals names the Goals an exception block links to, joined by " · ",
+// each marked ↓ when the Report holds it and with its Health in brackets when
+// it has one ("Alpha ledger ↓ (Red)"). With no base URL to link from, they
+// are names, not links.
+func linkedGoals(goals []domain.LinkedGoal) string {
+	names := make([]string, 0, len(goals))
+	for _, g := range goals {
+		name := text(g.Title)
+		if g.InReport {
+			name += " ↓"
+		}
+		if g.Health != "" {
+			name += " (" + g.Health + ")"
+		}
+		names = append(names, name)
+	}
+	return strings.Join(names, " · ")
 }
 
 // fields renders a Goal's values in the Fields its Report chose on one line,
