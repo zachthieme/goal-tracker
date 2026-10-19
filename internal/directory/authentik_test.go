@@ -42,17 +42,28 @@ func person(email, name, manager string) authentikUser {
 
 // fakeAuthentik serves Authentik's users API, /api/v3/core/users/, over users
 // two to a page, to a request bearing fakeToken. failPage, when set, is a page
-// it answers with a 500.
+// it answers with a 500. truncatePage, when set, is a page whose body it cuts
+// off mid-JSON, and backPage one whose next points back to page 1.
 type fakeAuthentik struct {
-	mu       sync.Mutex
-	users    []authentikUser
-	failPage int
+	mu           sync.Mutex
+	users        []authentikUser
+	failPage     int
+	truncatePage int
+	backPage     int
 }
 
 func (f *fakeAuthentik) set(users []authentikUser, failPage int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.users, f.failPage = users, failPage
+}
+
+// breakPages sets the page the fake cuts off mid-JSON, and the page whose next
+// points back to page 1; 0 breaks no page.
+func (f *fakeAuthentik) breakPages(truncatePage, backPage int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.truncatePage, f.backPage = truncatePage, backPage
 }
 
 const fakePageSize = 2
@@ -83,21 +94,33 @@ func (f *fakeAuthentik) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if page < pages {
 		next = page + 1
 	}
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	if page == f.backPage {
+		next = 1
+	}
+	body, err := json.Marshal(map[string]any{
 		"pagination": map[string]any{
 			"next": next, "previous": page - 1, "count": len(f.users),
 			"current": page, "total_pages": pages, "start_index": start + 1, "end_index": end,
 		},
 		"results": f.users[start:end],
 	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if page == f.truncatePage {
+		body = body[:len(body)/2]
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(body)
 }
 
-// syncFixture is a Harness, a fake Authentik, and a Sync reading it, with the
-// Sync's log in a buffer.
+// syncFixture is a Harness, a fake Authentik served by srv, and a Sync reading
+// it, with the Sync's log in a buffer.
 type syncFixture struct {
 	h    *testsupport.Harness
 	fake *fakeAuthentik
+	srv  *httptest.Server
 	sync *directory.Sync
 	log  *bytes.Buffer
 }
@@ -113,6 +136,7 @@ func newSyncFixture(t *testing.T, users ...authentikUser) *syncFixture {
 	return &syncFixture{
 		h:    h,
 		fake: fake,
+		srv:  srv,
 		sync: directory.NewSync(h.Service, directory.NewAuthentik(srv.URL+"/", fakeToken), logger),
 		log:  &log,
 	}
@@ -308,6 +332,123 @@ func TestAFailedSyncLeavesManagersAsTheyWere(t *testing.T) {
 	}
 	if got := f.managerOf(t, "lead@example.com"); got != "ceo@example.com" {
 		t.Errorf("lead: Manager %q after the next sync, want ceo@example.com", got)
+	}
+}
+
+// A sync whose second page is cut off mid-JSON fails part-way too: what the
+// first page said, a new Name among it, isn't applied either.
+func TestASyncWithAMalformedPageChangesNothing(t *testing.T) {
+	t.Parallel()
+
+	f := newSyncFixture(t,
+		person("ceo@example.com", "Dana Whitfield", ""),
+		person("cto@example.com", "Priya Raman", "ceo@example.com"),
+		person("lead@example.com", "Jonas Lindqvist", "cto@example.com"),
+	)
+	if out := f.sync.Run(t.Context()); out.Err != nil {
+		t.Fatalf("first sync: %v", out.Err)
+	}
+
+	f.fake.set([]authentikUser{
+		person("ceo@example.com", "Dana Whitfield-Reyes", ""),
+		person("cto@example.com", "Priya Raman", ""),
+		person("lead@example.com", "Jonas Lindqvist", "ceo@example.com"),
+		person("hire@example.com", "New Hire", "lead@example.com"),
+	}, 0)
+	f.fake.breakPages(2, 0)
+	f.log.Reset()
+
+	out := f.sync.Run(t.Context())
+	if out.Err == nil || !strings.Contains(out.Err.Error(), "page 2") {
+		t.Fatalf("sync with a malformed second page: err %v, want one naming page 2", out.Err)
+	}
+	if last, ok := f.sync.Last(); !ok || last.Err == nil {
+		t.Errorf("Last after a failed sync = %+v, %v; want the failure", last, ok)
+	}
+	if got := f.account(t, "ceo@example.com").Name; got != "Dana Whitfield" {
+		t.Errorf("ceo: Name %q after a failed sync, want Dana Whitfield kept", got)
+	}
+	if got := f.managerOf(t, "cto@example.com"); got != "ceo@example.com" {
+		t.Errorf("cto: Manager %q after a failed sync, want ceo@example.com kept", got)
+	}
+	if got := f.managerOf(t, "lead@example.com"); got != "cto@example.com" {
+		t.Errorf("lead: Manager %q after a failed sync, want cto@example.com kept", got)
+	}
+	if _, err := f.h.Service.AccountByEmail(t.Context(), "hire@example.com"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("a failed sync created an Account for hire@example.com (err %v)", err)
+	}
+	if log := f.log.String(); !strings.Contains(log, "level=ERROR") {
+		t.Errorf("a failed sync didn't log its cause at ERROR:\n%s", log)
+	}
+
+	f.fake.breakPages(0, 0)
+	if out := f.sync.Run(t.Context()); out.Err != nil || out.People != 4 {
+		t.Fatalf("the next sync: %+v, want 4 people read", out)
+	}
+	if got := f.account(t, "ceo@example.com").Name; got != "Dana Whitfield-Reyes" {
+		t.Errorf("ceo: Name %q after the next sync, want Dana Whitfield-Reyes", got)
+	}
+	if got := f.managerOf(t, "lead@example.com"); got != "ceo@example.com" {
+		t.Errorf("lead: Manager %q after the next sync, want ceo@example.com", got)
+	}
+}
+
+// A directory that can't be reached at all is a failed sync.
+func TestASyncWithAnUnreachableDirectoryFails(t *testing.T) {
+	t.Parallel()
+
+	f := newSyncFixture(t, person("ceo@example.com", "Dana Whitfield", ""))
+	f.srv.Close()
+
+	out := f.sync.Run(t.Context())
+	if out.Err == nil {
+		t.Fatal("a sync against a closed server succeeded")
+	}
+	if _, err := f.h.Service.AccountByEmail(t.Context(), "ceo@example.com"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("a failed sync created an Account (err %v)", err)
+	}
+	if log := f.log.String(); !strings.Contains(log, "level=ERROR") {
+		t.Errorf("a failed sync didn't log its cause at ERROR:\n%s", log)
+	}
+}
+
+// A page whose next points back to an earlier page would have the sync read
+// the directory forever, so it fails the sync instead, changing nothing.
+func TestASyncWhosePagesPointBackFails(t *testing.T) {
+	t.Parallel()
+
+	f := newSyncFixture(t,
+		person("ceo@example.com", "Dana Whitfield", ""),
+		person("cto@example.com", "Priya Raman", "ceo@example.com"),
+		person("lead@example.com", "Jonas Lindqvist", "cto@example.com"),
+	)
+	if out := f.sync.Run(t.Context()); out.Err != nil {
+		t.Fatalf("first sync: %v", out.Err)
+	}
+
+	f.fake.set([]authentikUser{
+		person("ceo@example.com", "Dana Whitfield-Reyes", ""),
+		person("cto@example.com", "Priya Raman", ""),
+		person("lead@example.com", "Jonas Lindqvist", "ceo@example.com"),
+		person("hire@example.com", "New Hire", "lead@example.com"),
+	}, 0)
+	f.fake.breakPages(0, 2)
+
+	out := f.sync.Run(t.Context())
+	if out.Err == nil || !strings.Contains(out.Err.Error(), "points back") {
+		t.Fatalf("sync whose second page points back: err %v, want one saying it points back", out.Err)
+	}
+	if got := f.account(t, "ceo@example.com").Name; got != "Dana Whitfield" {
+		t.Errorf("ceo: Name %q after a failed sync, want Dana Whitfield kept", got)
+	}
+	if got := f.managerOf(t, "cto@example.com"); got != "ceo@example.com" {
+		t.Errorf("cto: Manager %q after a failed sync, want ceo@example.com kept", got)
+	}
+	if got := f.managerOf(t, "lead@example.com"); got != "cto@example.com" {
+		t.Errorf("lead: Manager %q after a failed sync, want cto@example.com kept", got)
+	}
+	if _, err := f.h.Service.AccountByEmail(t.Context(), "hire@example.com"); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("a failed sync created an Account for hire@example.com (err %v)", err)
 	}
 }
 
