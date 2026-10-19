@@ -70,6 +70,15 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	health := r.FormValue("health")
+	// Save as Green anyway does what it says, whatever Health was picked after
+	// the warning. Once pressed, a re-rendered form carries the confirmation
+	// (off_target_confirmed) while Green is picked, so the Owner isn't asked
+	// again after a later error or Add another.
+	confirmPressed := r.FormValue("confirm_off_target") != ""
+	if confirmPressed {
+		health = domain.HealthGreen
+	}
+	offTargetConfirmed := confirmPressed || r.FormValue("off_target_confirmed") != ""
 	status := r.FormValue("status")
 	path := r.FormValue("path_to_green")
 	explanation := r.FormValue("explanation")
@@ -114,15 +123,27 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		return checkinFormData{
 			GoalID: goalID, Health: health, Status: status, PathToGreen: path, PathTargetDate: rawDate, Explanation: explanation,
 			Metrics: metrics, Readings: rawReadings, DraftHighlights: drafts, Highlights: highlights, Dates: dates, Lifecycle: lifecycle, Error: e,
-			Shown: s.displayDates(),
+			OffTargetConfirmed: offTargetConfirmed, Shown: s.displayDates(),
 		}
 	}
 
 	// Add another records nothing: it re-renders the form, everything typed
-	// kept, with one more Highlight row.
+	// kept, with one more Highlight row. A form that warned a Metric is off
+	// target warns again while Green is still picked and unconfirmed, judged
+	// by the readings as typed; one that doesn't parse is left for the next
+	// submit to report.
 	if r.FormValue("add_highlight") != "" {
 		d := formData(nil)
 		d.Highlights = append(d.Highlights, highlightFormData{})
+		if r.FormValue("off_target_warned") != "" && health == domain.HealthGreen && !offTargetConfirmed {
+			if readings, err := readingsFromForm(metrics, rawReadings); err == nil {
+				d.OffTarget, err = s.svc.OffTargetMetrics(r.Context(), goalID, readings)
+				if err != nil {
+					s.serverError(w, r, "could not judge metrics", err)
+					return
+				}
+			}
+		}
 		s.renderCheckinFormAgain(w, r, current, d)
 		return
 	}
@@ -152,8 +173,9 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		Lifecycle:       lifecycle.To,
 		LifecycleReason: lifecycle.Reason,
 		Outcome:         lifecycle.Outcome,
-		// Save as Green anyway, on the off-target warning, posts this.
-		ConfirmOffTarget: r.FormValue("confirm_off_target") != "",
+		// Save as Green anyway, on the off-target warning, posts this, and a
+		// form re-rendered since carries it.
+		ConfirmOffTarget: offTargetConfirmed,
 	}
 	if err := dates.applyTo(&in); err != nil {
 		s.renderCheckinFormError(w, r, goalID, formData(err))
