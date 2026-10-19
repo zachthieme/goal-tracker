@@ -67,6 +67,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] The Check-in page reads top to bottom under clear headings ("How is it going?", "Path to Green", "Metrics"), with No change in the header beside a line naming the week, the Goal's cadence and its last Check-in, fewer boxes, the Run off Green beside the Path to Green, and each Metric's baseline, target, last value and progress beside its input (#364).
 - [user] On the Goal page, + Log a highlight opens the inline Highlight editor, and Save logs the Draft Highlight with no page load. A pending Draft Highlight can now be edited before the next Check-in, and Remove deletes it at once (#363).
 - [user] Submit check-in stays at the bottom of the window as you fill in a Check-in, beside a live summary of what it will record (Health, Path to Green, Metrics, Highlights, date changes and any Lifecycle change) (#367).
+- [user] The Check-in page shows, beside the form, what the last Check-in said (its Health, back-to-Green date and Status) and the Goal's dates (its delivery date, or Ongoing, and its next Planned Milestone), for every Goal; the column sticks beside the form on a wide screen and, on a phone, keeps only the Goal's children (#366).
 
 **Bug fixes:**
 - [user] The weekly reminder's Check-in links open the Goal's Check-in page (#290).
