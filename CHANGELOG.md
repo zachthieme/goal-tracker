@@ -58,6 +58,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] "Save as Green anyway" always records Green. Before, it could save another Health picked after the warning (#342).
 - [user] Risks' "Worst first" puts Proposed and On Hold Goals after every Active Goal, and among Goals otherwise equal, the one with more reasons first (#344).
 - [user] On a phone, the Goals list stacks each Goal's Health, Owner, Due and Last check-in under its title (Dimension tags are hidden there), a Report card's Health drops under its title, the Risks filters wrap so both selects are on screen, and the Admin page's Make Admin and Issue link buttons fit under their Email field (#343).
+- [user] Whether a Milestone is overdue is now judged by the date in the Goal's Owner's timezone (the company's for an Owner without one), as Stale and Metric targets are. Near midnight, a Green or No change was refused, or allowed, by the UTC date, and the Goal page marked the Milestone Red by that date too (#318).
 
 **Infrastructure:**
 - [internal] `make lint` now fails on Go code that isn't gofmt-formatted, using golangci-lint's gofmt formatter; generated code stays guarded by `make generate-check` (#328).
