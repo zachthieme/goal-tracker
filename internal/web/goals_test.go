@@ -1600,6 +1600,54 @@ func TestGoalPageMilestonesTable(t *testing.T) {
 	}
 }
 
+// The Goal page marks a Milestone overdue by today's date in the Goal's
+// Owner's Timezone, as the No change it offers beside the mark is judged
+// (CONTEXT.md: Timezone): with the company on UTC, late on Beta's date in the
+// Owner's Los Angeles Beta has no Red mark and No change is offered; early the
+// next day there, Beta is Red and No change is not.
+func TestGoalPageMarksMilestoneOverdueInTheOwnersTimezoneOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	h.SetTimezone(sam, "America/Los_Angeles")
+	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	load := func() (page, beta string) {
+		t.Helper()
+		page = getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+		section := strings.Join(strings.Fields(pageElement(t, page, "section", "goal-milestones")), " ")
+		rows := elementTexts(section, "tr", "goal-milestone")
+		if len(rows) != 1 {
+			t.Fatalf("Milestone rows read %q, want only Beta's", rows)
+		}
+		return page, rows[0]
+	}
+
+	h.Clock.Set(time.Date(2026, 4, 3, 2, 0, 0, 0, time.UTC)) // Apr 2, 7pm in Los Angeles
+	page, beta := load()
+	if beta != "Apr 2 Beta" {
+		t.Errorf("Beta's row reads %q on its date in the Owner's timezone, want no mark", beta)
+	}
+	if strings.Contains(page, `data-testid="no-change-unavailable"`) && strings.Contains(page, `Milestone &#34;Beta&#34; is overdue`) {
+		t.Errorf("the Goal page refuses No change for Beta on its date in the Owner's timezone")
+	}
+	if !strings.Contains(pageElement(t, page, "div", "goal-actions"), `data-testid="no-change-checkin"`) {
+		t.Errorf("the Goal page doesn't offer No change on Beta's date in the Owner's timezone")
+	}
+
+	h.Clock.Set(time.Date(2026, 4, 3, 8, 0, 0, 0, time.UTC)) // Apr 3, 1am in Los Angeles
+	page, beta = load()
+	if beta != "Red Apr 2 Beta" {
+		t.Errorf("Beta's row reads %q the day after its date in the Owner's timezone, want it marked Red", beta)
+	}
+	if strings.Contains(pageElement(t, page, "div", "goal-actions"), `data-testid="no-change-checkin"`) {
+		t.Errorf("the Goal page offers No change with Beta overdue in the Owner's timezone")
+	}
+}
+
 // The Owner or a Delegate adds a Milestone from the Goal page's Milestones
 // card while the Goal is Proposed, Active or On Hold: + Add opens an Add
 // Milestone form in place, and posting it reloads the Goal page with the new

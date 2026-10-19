@@ -48,18 +48,19 @@ const (
 
 // MilestoneMarkOf is the one mark a Milestone shows, the first that applies:
 // Done or Removed by its Status; Red while Planned and past its date as of asOf,
-// compared as calendar dates in UTC; Yellow while Planned and slipped, having
-// prior dates; New while Planned and isNew, added within the window being
-// read. Risk outranks newness, so a new Milestone that slipped is Yellow. It
-// needs only what a frozen Report snapshot holds, so every surface marks a
-// Milestone the same way.
+// compared with the calendar date asOf falls on in its own location, so a
+// caller passes a time in the Goal's timezone to judge by its calendar; Yellow
+// while Planned and slipped, having prior dates; New while Planned and isNew,
+// added within the window being read. Risk outranks newness, so a new
+// Milestone that slipped is Yellow. It needs only what a frozen Report
+// snapshot holds, so every surface marks a Milestone the same way.
 func MilestoneMarkOf(m Milestone, priorDates []time.Time, isNew bool, asOf time.Time) string {
 	switch {
 	case m.Status == MilestoneDone:
 		return MilestoneMarkDone
 	case m.Status == MilestoneRemoved:
 		return MilestoneMarkRemoved
-	case m.TargetDate.Format(dateFormat) < asOf.UTC().Format(dateFormat):
+	case m.TargetDate.Format(dateFormat) < asOf.Format(dateFormat):
 		return MilestoneMarkRed
 	case len(priorDates) > 0:
 		return MilestoneMarkYellow
@@ -125,14 +126,15 @@ func (e *MilestoneOverdueError) Error() string {
 
 func (e *MilestoneOverdueError) Unwrap() error { return ErrValidation }
 
-// rejectGreenWhileOverdue refuses a Green Health while any of the Goal's
-// Milestones, as they will stand after the Check-in, is overdue: a slip is
-// never hidden behind a Green (CONTEXT.md: Date Slip).
-func (s *Service) rejectGreenWhileOverdue(health string, milestones []db.Milestone) error {
+// rejectGreenWhileOverdue refuses a Green Health while any of g's Milestones,
+// as they will stand after the Check-in, is overdue as of today in g's
+// timezone (see GoalTimezone): a slip is never hidden behind a Green
+// (CONTEXT.md: Date Slip).
+func (s *Service) rejectGreenWhileOverdue(g Goal, health string, milestones []db.Milestone) error {
 	if health != HealthGreen {
 		return nil
 	}
-	if m, ok := overdueMilestone(milestones, s.clock.Now().Format(dateFormat)); ok {
+	if m, ok := overdueMilestone(milestones, s.goalToday(g).Format(dateFormat)); ok {
 		return fmt.Errorf("%w, so the Goal can't be Green", &MilestoneOverdueError{Milestone: milestoneFromRow(m)})
 	}
 	return nil

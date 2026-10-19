@@ -954,6 +954,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 		Threads:            threads,
 		Comments:           comments,
 		Now:                s.svc.Now(),
+		Timezone:           s.svc.GoalTimezone(g),
 	}
 	view.History = newHistory(view, s.svc.Timezone(), view.Now)
 	return view, nil
@@ -1097,9 +1098,13 @@ type goalView struct {
 	// removed one of its links or declined one of its Parent suggestions, with
 	// an Undo; nil on any other visit.
 	Toast *toast
-	// Now is when the page was loaded, the day its Milestones are marked
-	// overdue as of.
+	// Now is when the page was loaded; its Milestones are marked overdue as of
+	// its date in Timezone.
 	Now time.Time
+	// Timezone is the Goal's timezone (domain.Service.GoalTimezone), its
+	// Owner's or the company's, that its Milestones are judged in. History
+	// keeps the company's.
+	Timezone *time.Location
 }
 
 // goalForm names a form on the Goal page that opens in place: following
@@ -1300,11 +1305,11 @@ func (v goalView) priorDates(milestoneID int64) []time.Time {
 	return out
 }
 
-// milestoneMark is the mark a Milestone shows on the Goal page as of today
-// (CONTEXT.md: Milestone). It is New when the Goal's latest Check-in added it,
+// milestoneMark is the mark a Milestone shows on the Goal page as of today's
+// date in the Goal's timezone (CONTEXT.md: Milestone, Timezone). It is New when the Goal's latest Check-in added it,
 // or it was added outside a Check-in since then.
 func (v goalView) milestoneMark(m domain.Milestone) string {
-	return domain.MilestoneMarkOf(m, v.priorDates(m.ID), v.addedSinceLatestCheckin(m.ID), v.Now)
+	return domain.MilestoneMarkOf(m, v.priorDates(m.ID), v.addedSinceLatestCheckin(m.ID), v.Now.In(v.Timezone))
 }
 
 // addedSinceLatestCheckin reports whether the Goal's latest Check-in added

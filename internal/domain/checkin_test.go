@@ -858,6 +858,90 @@ func TestOffTargetJudgedInTheOwnersTimezone(t *testing.T) {
 	}
 }
 
+// Whether a Milestone is overdue is judged by today's date in the Goal's
+// Owner's Timezone, the company's for an Owner without one (CONTEXT.md:
+// Timezone): late on Beta's date in Los Angeles a Green or No change is still
+// taken, and early the next day in Tokyo, while still Beta's date in UTC, a
+// Green is refused.
+func TestOverdueMilestoneJudgedInTheOwnersTimezone(t *testing.T) {
+	t.Parallel()
+
+	la, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		t.Fatalf("load timezone: %v", err)
+	}
+	// arrange gives a Green Check-in on a Goal whose only Milestone, Beta, is
+	// due 2026-04-02, with its Owner in tz ("" for none), and the clock at
+	// Beta's date plus after.
+	arrange := func(t *testing.T, h *testsupport.Harness, tz string, after time.Duration) (domain.Account, domain.Goal, domain.Milestone) {
+		t.Helper()
+		sam := h.SignIn("sam@example.com")
+		h.SetTimezone(sam, tz)
+		goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
+		beta := onlyMilestone(t, h, goal.ID)
+		h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
+		h.Clock.Set(beta.TargetDate.Add(after))
+		return sam, goal, beta
+	}
+	green := func(sam domain.Account, goal domain.Goal) domain.SubmitCheckinInput {
+		return domain.SubmitCheckinInput{GoalID: goal.ID, AuthorID: sam.ID, Health: domain.HealthGreen, Status: "On track."}
+	}
+
+	t.Run("late on its date in the Owner's Los Angeles", func(t *testing.T) {
+		t.Parallel()
+		h := testsupport.New(t)
+		ctx := context.Background()
+		sam, goal, _ := arrange(t, h, "America/Los_Angeles", 26*time.Hour) // Apr 2, 7pm in Los Angeles
+		if err := h.Service.NoChangeRefusal(ctx, goal.ID); err != nil {
+			t.Fatalf("No change on Beta's date in the Owner's timezone refused: %v", err)
+		}
+		if _, err := h.Service.SubmitCheckin(ctx, green(sam, goal)); err != nil {
+			t.Fatalf("Green on Beta's date in the Owner's timezone: %v", err)
+		}
+		if _, err := h.Service.SubmitNoChangeCheckin(ctx, goal.ID, sam.ID); err != nil {
+			t.Fatalf("No change on Beta's date in the Owner's timezone: %v", err)
+		}
+	})
+
+	t.Run("the next day in the Owner's Los Angeles", func(t *testing.T) {
+		t.Parallel()
+		h := testsupport.New(t)
+		ctx := context.Background()
+		sam, goal, beta := arrange(t, h, "America/Los_Angeles", 32*time.Hour) // Apr 3, 1am in Los Angeles
+		_, err := h.Service.SubmitCheckin(ctx, green(sam, goal))
+		if !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("Green the day after Beta's date: err = %v, want ErrValidation", err)
+		}
+		assertMilestoneOverdueError(t, err, beta)
+		_, err = h.Service.SubmitNoChangeCheckin(ctx, goal.ID, sam.ID)
+		if !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("No change the day after Beta's date: err = %v, want ErrValidation", err)
+		}
+		assertMilestoneOverdueError(t, err, beta)
+	})
+
+	t.Run("the next day in the Owner's Tokyo", func(t *testing.T) {
+		t.Parallel()
+		h := testsupport.New(t)
+		sam, goal, beta := arrange(t, h, "Asia/Tokyo", 20*time.Hour) // Apr 3, 5am in Tokyo
+		_, err := h.Service.SubmitCheckin(context.Background(), green(sam, goal))
+		if !errors.Is(err, domain.ErrValidation) {
+			t.Fatalf("Green the day after Beta's date in the Owner's timezone: err = %v, want ErrValidation", err)
+		}
+		assertMilestoneOverdueError(t, err, beta)
+	})
+
+	t.Run("an Owner with no Timezone uses the company's", func(t *testing.T) {
+		t.Parallel()
+		h := testsupport.New(t)
+		h.Service = domain.NewService(h.DB, h.Clock, h.Email, nil, domain.WithTimezone(la))
+		sam, goal, _ := arrange(t, h, "", 26*time.Hour) // Apr 2, 7pm in Los Angeles
+		if _, err := h.Service.SubmitCheckin(context.Background(), green(sam, goal)); err != nil {
+			t.Fatalf("Green on Beta's date in the company's timezone: %v", err)
+		}
+	})
+}
+
 // A No change can't repeat a Green while a Metric is off target; the Owner
 // writes a full Check-in instead.
 func TestNoChangeGreenRefusedWhileMetricOffTarget(t *testing.T) {
