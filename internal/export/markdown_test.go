@@ -111,7 +111,7 @@ func TestMarkdownExceptionBlockKeepsStrikethroughsAndBadges(t *testing.T) {
 
 	want := `## Exceptions
 
-### Launch in EU **[New]** **[New Date]** **[Stale]**
+### Launch in EU **[New]** **[New Date]** **[Check-in overdue]**
 
 boss · Active · Health: **Red** · due ~~2026-03-01~~ ~~2026-04-01~~ 2026-05-01
 
@@ -132,7 +132,7 @@ boss · Active · Health: **Red** · due ~~2026-03-01~~ ~~2026-04-01~~ 2026-05-0
 - Countries live: 2 against a target of 5 countries by 2026-06-30 (baseline 0, up)
 - NPS: no reading yet against a target of 50.5 points by 2026-06-30 (baseline 30, up)
 
-**Rolled-up Health:** Yellow · 1 of 3 Stale
+**Rolled-up Health:** Yellow · 1 of 3 overdue
 
 **Why the Health differs:** A child is recovering.
 `
@@ -658,7 +658,7 @@ func TestMarkdownExceptionBlockNamesItsLinkedGoals(t *testing.T) {
 
 	got := export.Markdown(pub)
 	for _, want := range []string{
-		"**Rolled-up Health:** Red · 2 of 6 Red · 1 Yellow · 1 Stale\n",
+		"**Rolled-up Health:** Red · 2 of 6 Red · 1 Yellow · 1 overdue\n",
 		"**Behind it:** Alpha ledger ↓ (Red) · Beta\\_payouts (Red)\n",
 		"boss · Active · Health: **Red**\n\n**Contributes to:** Growth ↓ (Red)\n\n**Region:** EMEA",
 	} {

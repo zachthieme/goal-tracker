@@ -791,8 +791,8 @@ func TestSnapshotFromBeforeLinkedGoalsCountsOnlyCheckinOverdue(t *testing.T) {
 			t.Errorf("%q names Behind %+v and ContributesTo %+v, want none", b.Goal.Title, b.Behind, b.ContributesTo)
 		}
 	}
-	if got := linkedBlock(t, got.Report, s.Referral).RolledUp.CountLine(); got != "1 of 3 Stale" {
-		t.Errorf("CountLine() = %q, want %q", got, "1 of 3 Stale")
+	if got := linkedBlock(t, got.Report, s.Referral).RolledUp.CountLine(); got != "1 of 3 overdue" {
+		t.Errorf("CountLine() = %q, want %q", got, "1 of 3 overdue")
 	}
 }
 

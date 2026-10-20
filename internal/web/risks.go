@@ -330,16 +330,16 @@ func (p risksPageView) attention() string {
 }
 
 // riskChipClass is the class of a signal's chip on a group card, matching the
-// table's: the Red and Yellow Health badges for Not Green's, the Stale badge
-// for the freshness signals (Milestone overdue among them), the Ownerless badge for Ownerless, and the
-// outlined tag for the structural ones.
+// table's: the Red and Yellow Health badges for Not Green's, the Check-in
+// overdue badge for the freshness signals (Milestone overdue among them), the
+// Ownerless badge for Ownerless, and the outlined tag for the structural ones.
 func riskChipClass(kind string) string {
 	switch kind {
 	case "red":
 		return "badge r"
 	case "yellow":
 		return "badge y"
-	case "stale", "path-overdue", "milestone-overdue", "action-item-overdue":
+	case "checkin-overdue", "path-overdue", "milestone-overdue", "action-item-overdue":
 		return "badge st"
 	case "ownerless":
 		return "badge ol"
@@ -461,7 +461,7 @@ func (v risksView) Types() []riskType {
 		{"red", "Red", red},
 		{"yellow", "Yellow", yellow},
 		{"asks-for-help", "Asks for help", len(v.Asks)},
-		{"stale", "Stale", len(v.CheckinOverdue)},
+		{"checkin-overdue", "Check-in overdue", len(v.CheckinOverdue)},
 		{"path-overdue", "Path to Green overdue", len(v.OverduePaths)},
 		{"milestone-overdue", "Milestone overdue", len(v.OverdueMilestones)},
 		{"action-item-overdue", "Action Item overdue", len(v.OverdueActionItems)},
@@ -478,7 +478,7 @@ var riskDefinitions = []struct{ Name, Means string }{
 	{"Red", "Active Goals whose latest Check-in is Red."},
 	{"Yellow", "Active Goals whose latest Check-in is Yellow."},
 	{"Asks for help", "Red or Yellow Goals whose Path to Green asks for help from the Owner's Manager, until the Owner unmarks it or the Goal is back to Green."},
-	{"Stale", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
+	{"Check-in overdue", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
 	{"Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green."},
 	{"Milestone overdue", "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Green can't be repeated until the Owner responds."},
 	{"Action Item overdue", "An Action Item about this Goal, raised in a Report, is past its due date."},
@@ -652,11 +652,13 @@ func fixRiskRows(current domain.Account, rows []riskGoalRow, facts riskFixFacts)
 // the row's Goal's Nudge today, if any, and whether nobody is left to check in
 // on it. It is the first that applies of:
 //  1. Reassign, for an Ownerless Goal and an Admin;
-//  2. Check in, for a Stale, Path to Green overdue or Milestone overdue Goal
-//     current Owns or is a Delegate on (an Admin has no Check-in right);
-//  3. Nudge, for someone else's Stale, Path to Green overdue or Milestone
-//     overdue Goal that someone can check in on (CONTEXT.md: Nudge); once it
-//     has been nudged today, a disabled "Nudged today by" whoever did.
+//  2. Check in, for a Check-in overdue, Path to Green overdue or Milestone
+//     overdue Goal current Owns or is a Delegate on (an Admin has no Check-in
+//     right);
+//  3. Nudge, for someone else's Check-in overdue, Path to Green overdue or
+//     Milestone overdue Goal that someone can check in on (CONTEXT.md:
+//     Nudge); once it has been nudged today, a disabled "Nudged today by"
+//     whoever did.
 //     Freshness outranks alignment, as 2 outranks 4;
 //  4. Link to a parent, for an Unlinked Goal current Owns;
 //  5. For a Schedule conflict, see scheduleConflictFix: Check in, its dates
@@ -667,24 +669,24 @@ func fixRiskRows(current domain.Account, rows []riskGoalRow, facts riskFixFacts)
 //     on it included (CONTEXT.md: Parent suggestion);
 //  8. See Action Items, the Goal page's, for a Goal with an overdue Action
 //     Item;
-//  9. Open Goal, for anything else, a Stale Goal nobody can check in on and a
-//     Goal flagged only for its Health, Red or Yellow, among them.
+//  9. Open Goal, for anything else, a Check-in overdue Goal nobody can check in
+//     on and a Goal flagged only for its Health, Red or Yellow, among them.
 func (r riskGoalRow) fix(current domain.Account, delegate map[int64]bool, nudged *domain.Nudge, unreachable bool) riskFix {
 	goal := fmt.Sprintf("/goals/%d", r.Goal.ID)
 	if _, ownerless := r.signal("ownerless"); ownerless && current.IsAdmin {
 		return riskFix{Label: "Reassign", Href: goal + "?open=reassign"}
 	}
-	_, stale := r.signal("stale")
+	_, checkinOverdue := r.signal("checkin-overdue")
 	_, pathOverdue := r.signal("path-overdue")
 	_, milestoneOverdue := r.signal("milestone-overdue")
 	overdue := pathOverdue || milestoneOverdue
-	if (stale || overdue) && (r.Goal.Owner.ID == current.ID || delegate[r.Goal.ID]) {
+	if (checkinOverdue || overdue) && (r.Goal.Owner.ID == current.ID || delegate[r.Goal.ID]) {
 		return riskFix{Label: "Check in", Href: goal + "/checkin", Primary: true}
 	}
-	if (stale || overdue) && nudged != nil {
+	if (checkinOverdue || overdue) && nudged != nil {
 		return riskFix{Label: "Nudged today by " + nudged.Sender.Label(), Disabled: true}
 	}
-	if (stale || overdue) && !unreachable {
+	if (checkinOverdue || overdue) && !unreachable {
 		return riskFix{Label: "Nudge", Href: goal + "/nudge", Post: true}
 	}
 	if _, unlinked := r.signal("unlinked"); unlinked && r.Goal.Owner.ID == current.ID {
@@ -766,8 +768,8 @@ func (r riskGoalRow) scheduleConflictFix(current domain.Account, delegate map[in
 
 // riskSignal is one reason a Goal is flagged. Kind names the signal, as the
 // chip's data-kind on the Risks page. Days is how long the signal has held: for
-// "stale" the days since the last update, for "path-overdue" the days past
-// the Path to Green's target date, for "milestone-overdue" the days past the
+// "checkin-overdue" the days since the last update, for "path-overdue" the days
+// past the Path to Green's target date, for "milestone-overdue" the days past the
 // earliest overdue Milestone's date, for "action-item-overdue" the days the most
 // overdue Action Item about the Goal is past its due date, for
 // "schedule-conflicts" the days the child's delivery date falls after the
@@ -803,7 +805,7 @@ func (s *Server) riskRows(ctx context.Context, v risksView) ([]riskGoalRow, erro
 		add(ask.Goal, riskSignal{Kind: "asks-for-help", Person: ask.Addressee})
 	}
 	for _, gf := range v.CheckinOverdue {
-		add(gf.Goal, riskSignal{Kind: "stale", Days: gf.Freshness.DaysSince})
+		add(gf.Goal, riskSignal{Kind: "checkin-overdue", Days: gf.Freshness.DaysSince})
 	}
 	// A Path to Green's overdue days are counted in the Goal's timezone, the
 	// one its flag was judged in.
@@ -902,8 +904,8 @@ func riskHealthRank(health string) int {
 // Ownerless first; then by Health (riskHealthRank); then a Path to Green
 // overdue first, longest overdue first; then a Milestone overdue first,
 // longest overdue first; then an overdue Action Item first,
-// longest overdue first; then Stale first, furthest past its cadence first;
-// then more distinct kinds of signal first; then by title, ignoring case.
+// longest overdue first; then Check-in overdue first, furthest past its
+// cadence first; then more distinct kinds of signal first; then by title, ignoring case.
 func sortRiskRows(rows []riskGoalRow) {
 	slices.SortStableFunc(rows, func(a, b riskGoalRow) int {
 		aActive := a.Goal.Lifecycle == domain.LifecycleActive
@@ -943,8 +945,8 @@ func sortRiskRows(rows []riskGoalRow) {
 		if c := cmp.Compare(bItem.Days, aItem.Days); c != 0 {
 			return c
 		}
-		aCheckinOverdue, aIsCheckinOverdue := a.signal("stale")
-		bCheckinOverdue, bIsCheckinOverdue := b.signal("stale")
+		aCheckinOverdue, aIsCheckinOverdue := a.signal("checkin-overdue")
+		bCheckinOverdue, bIsCheckinOverdue := b.signal("checkin-overdue")
 		if c := cmp.Compare(boolRank(!aIsCheckinOverdue), boolRank(!bIsCheckinOverdue)); c != 0 {
 			return c
 		}
@@ -995,7 +997,7 @@ var riskGroupKinds = []struct {
 	Blank     string
 }{
 	{"health", "Not Green", []string{"red", "yellow", "asks-for-help"}, "No Goal is Red or Yellow."},
-	{"owner", "Waiting on a Check-in", []string{"stale", "path-overdue", "milestone-overdue"}, "Nothing is waiting on a Check-in."},
+	{"owner", "Waiting on a Check-in", []string{"checkin-overdue", "path-overdue", "milestone-overdue"}, "Nothing is waiting on a Check-in."},
 	{"followup", "Action Items overdue", []string{"action-item-overdue"}, "No Action Item is overdue."},
 	{"plan", "Placement and dates", []string{"unlinked", "schedule-conflicts"}, "Every Goal is placed and its dates fit."},
 	{riskGroupAdmin, "Needs an Admin", []string{"ownerless", "halted-parents"}, "Nothing needs an Admin."},

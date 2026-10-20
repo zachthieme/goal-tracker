@@ -933,7 +933,7 @@ func draftHighlightID(t *testing.T, h *testsupport.Harness, def domain.ReportDef
 }
 
 // The publication opens with a Health summary: how many of the Report's
-// selected Goals are Red, Yellow, Green, and Stale, so an exec sees the shape
+// selected Goals are Red, Yellow, Green, and Check-in overdue, so an exec sees the shape
 // of the company before reading a block.
 func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 	t.Parallel()
@@ -956,10 +956,16 @@ func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
 
 	summary := pageElement(t, page, "section", "health-summary")
-	for tile, want := range map[string]string{"red": "1", "yellow": "1", "green": "1", "stale": "1"} {
+	for tile, want := range map[string]string{"red": "1", "yellow": "1", "green": "1", "checkin-overdue": "1"} {
 		if count := pageElement(t, summary, "span", "health-count-"+tile); !strings.HasSuffix(count, ">"+want) {
 			t.Errorf("%s tile: %q, want a count of %s", tile, count, want)
 		}
+	}
+	if !strings.Contains(summary, `<span class="dot"></span>Check-in overdue</span>`) {
+		t.Errorf("the summary has no Check-in overdue tile: %s", summary)
+	}
+	if badges := elementTexts(page, "span", "report-badge"); !slices.Contains(badges, "Check-in overdue") {
+		t.Errorf("report badges = %q, want Open Tokyo's Check-in overdue", badges)
 	}
 }
 
@@ -2221,7 +2227,7 @@ func TestDraftPreviewIsThePublicationOverHTTP(t *testing.T) {
 
 	preview := between(t, page, `id="draft-preview"`, "")
 	summary := pageElement(t, preview, "section", "health-summary")
-	for tile, want := range map[string]string{"red": "1", "yellow": "1", "green": "1", "stale": "1"} {
+	for tile, want := range map[string]string{"red": "1", "yellow": "1", "green": "1", "checkin-overdue": "1"} {
 		if count := pageElement(t, summary, "span", "health-count-"+tile); !strings.HasSuffix(count, ">"+want) {
 			t.Errorf("preview's %s tile: %q, want a count of %s", tile, count, want)
 		}
@@ -3793,8 +3799,8 @@ func TestPublicationFromBeforeLinkedGoalsReadsAsItDid(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(s.Definition.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
 	referral := linkedBlockOf(t, page, s.Referral)
-	if got := elementTexts(referral, "p", "report-rollup"); len(got) != 1 || !strings.Contains(got[0], "Red · 1 of 3 Stale") {
-		t.Errorf("Rolled-up Health %q, want Red · 1 of 3 Stale", got)
+	if got := elementTexts(referral, "p", "report-rollup"); len(got) != 1 || !strings.Contains(got[0], "Red · 1 of 3 overdue") {
+		t.Errorf("Rolled-up Health %q, want Red · 1 of 3 overdue", got)
 	}
 	for _, testID := range []string{"report-behind-it", "report-contributes-to"} {
 		if strings.Contains(page, `data-testid="`+testID+`"`) {

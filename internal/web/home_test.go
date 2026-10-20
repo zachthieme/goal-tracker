@@ -146,7 +146,7 @@ func TestHomeListsCheckinOverdueGoalToCheckInOn(t *testing.T) {
 	due := pageElement(t, page, "ul", "home-due")
 	row := homeRow(t, due, stale)
 	for _, want := range []string{
-		`data-testid="home-due-stale"`,
+		`data-testid="home-due-checkin-overdue"`,
 		`data-testid="home-due-health"`,
 		fmt.Sprintf(`action="/goals/%d/checkins/no-change"`, stale.ID),
 		`data-testid="home-due-checkin"`,
@@ -183,7 +183,7 @@ func TestHomeDueRowLeadsWithTheGoal(t *testing.T) {
 	if title, health := strings.Index(row, navTo(stale.ID)), strings.Index(row, `data-testid="home-due-health"`); title > health {
 		t.Errorf("row doesn't lead with the Goal's title:\n%s", row)
 	}
-	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Yellow last check-in 16 days ago · every 14 days Stale" {
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Yellow last check-in 16 days ago · every 14 days Check-in overdue" {
 		t.Errorf("row's status line = %q, want its Health, age, cadence and Stale mark:\n%s", got, row)
 	}
 	if n := strings.Count(row, "16 days ago"); n != 1 {
@@ -217,7 +217,7 @@ func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
 	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Green last check-in 8 days ago · every 14 days" {
 		t.Errorf("due-soon Goal's row does not say why it's listed:\n%s", row)
 	}
-	if strings.Contains(row, `data-testid="home-due-stale"`) {
+	if strings.Contains(row, `data-testid="home-due-checkin-overdue"`) {
 		t.Errorf("due-soon Goal is flagged Stale before it is:\n%s", row)
 	}
 	if strings.Contains(due, navTo(spare.ID)) {
@@ -253,10 +253,10 @@ func TestHomeDatesCheckinOverdueGoalsHealth(t *testing.T) {
 	if !regexp.MustCompile(`data-testid="home-due-health"[^>]*><span class="dot"></span>\s*Green\s*</span>`).MatchString(row) {
 		t.Errorf("Stale Goal's Health badge does not read just Green:\n%s", row)
 	}
-	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Green last check-in 9 days ago · every 7 days Stale" {
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Green last check-in 9 days ago · every 7 days Check-in overdue" {
 		t.Errorf("Stale Goal's Health is dated %q, want by its last Check-in 9 days ago:\n%s", got, row)
 	}
-	if !strings.Contains(row, `data-testid="home-due-stale"`) {
+	if !strings.Contains(row, `data-testid="home-due-checkin-overdue"`) {
 		t.Errorf("Stale Goal is no longer flagged Stale:\n%s", row)
 	}
 
@@ -278,14 +278,14 @@ func TestHomeLeavesNoHealthYetUndated(t *testing.T) {
 	h.Clock.Advance(9 * day)
 
 	row := homeRow(t, pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due"), silent)
-	if !strings.Contains(row, `data-testid="home-due-stale"`) {
+	if !strings.Contains(row, `data-testid="home-due-checkin-overdue"`) {
 		t.Fatalf("Goal 9 days past activation on a weekly cadence isn't Stale:\n%s", row)
 	}
 	badge := tagAround(t, row, `data-testid="home-due-health"`)
 	if hasClass(badge, "as-of") || !strings.Contains(row, "No Health yet") {
 		t.Errorf("Goal with no Check-in doesn't read No Health yet, unmuted: %s", row)
 	}
-	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "No Health yet no check-in since activation 9 days ago · every 7 days Stale" {
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "No Health yet no check-in since activation 9 days ago · every 7 days Check-in overdue" {
 		t.Errorf("Goal with no Check-in has status line %q, want its days counted from activation:\n%s", got, row)
 	}
 }
@@ -1193,7 +1193,7 @@ func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
 	}
 
 	total := pageElement(t, card, "p", "home-org-total")
-	if got := elementTexts(card, "p", "home-org-total"); len(got) != 1 || got[0] != "2 Red · 1 Path to Green overdue · 1 Stale · 1 Yellow" {
+	if got := elementTexts(card, "p", "home-org-total"); len(got) != 1 || got[0] != "2 Red · 1 Path to Green overdue · 1 Check-in overdue · 1 Yellow" {
 		t.Errorf("total line reads %q", got)
 	}
 	if strings.Contains(total, "badge") {
@@ -1217,7 +1217,7 @@ func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 
 	card := homeOrgSection(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
 	total := pageElement(t, card, "p", "home-org-total")
-	wantTotal := []string{"red: 2 Red", "path-overdue: 1 Path to Green overdue", "stale: 1 Stale", "yellow: 1 Yellow"}
+	wantTotal := []string{"red: 2 Red", "path-overdue: 1 Path to Green overdue", "checkin-overdue: 1 Check-in overdue", "yellow: 1 Yellow"}
 	if got := homeOrgCounts(total); !slices.Equal(got, wantTotal) {
 		t.Errorf("total line = %v, want %v", got, wantTotal)
 	}
@@ -1226,7 +1226,7 @@ func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("My org has %d rows, want Ana's and Ben's:\n%s", len(rows), card)
 	}
-	for _, want := range []string{`data-kind="red" class="badge r"`, `data-kind="path-overdue" class="badge st"`, `data-kind="stale" class="badge st"`, `data-kind="yellow" class="badge y"`} {
+	for _, want := range []string{`data-kind="red" class="badge r"`, `data-kind="path-overdue" class="badge st"`, `data-kind="checkin-overdue" class="badge st"`, `data-kind="yellow" class="badge y"`} {
 		if !strings.Contains(rows[0], want) {
 			t.Errorf("Ana's row lacks %s:\n%s", want, rows[0])
 		}
@@ -1235,7 +1235,7 @@ func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 		who    domain.Account
 		counts []string
 	}{
-		{f.ana, []string{"red: 1 Red", "path-overdue: 1 Path to Green overdue", "stale: 1 Stale", "yellow: 1 Yellow"}},
+		{f.ana, []string{"red: 1 Red", "path-overdue: 1 Path to Green overdue", "checkin-overdue: 1 Check-in overdue", "yellow: 1 Yellow"}},
 		{f.ben, []string{"red: 1 Red"}},
 	} {
 		if !strings.Contains(orgPersonLink(t, rows[i]), want.who.Name) {

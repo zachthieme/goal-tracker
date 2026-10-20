@@ -12,9 +12,10 @@ import (
 // Owner has to explain why. Present is false when the Goal has no Active child
 // that has set a Health yet — there is nothing to roll up.
 //
-// CheckinOverdueChildren counts how many of the ActiveChildren are Stale ("3 of 12
-// Stale"). It is shown beside the color and never changes it: Health stays
-// Owner-set, and being Stale is its own signal (CONTEXT.md: Stale).
+// CheckinOverdueChildren counts how many of the ActiveChildren are Check-in
+// overdue ("3 of 12 overdue"). It is shown beside the color and never changes
+// it: Health stays Owner-set, and being Check-in overdue is its own signal
+// (CONTEXT.md: Check-in overdue).
 // RedChildren and YellowChildren count the ActiveChildren whose latest
 // Check-in is Red or Yellow, for the count a Report shows beside the color
 // ("2 of 6 Red · 1 Yellow"); a snapshot frozen before Reports counted them has
@@ -29,9 +30,9 @@ type RolledUpHealth struct {
 }
 
 // CountLine says what sets the Rolled-up Health: how many of its Active
-// children are Red, Yellow and Stale, each only when there are some, the first
-// out of all of them ("2 of 6 Red · 1 Yellow · 1 Stale"). Green is never
-// counted. It is empty when none are Red, Yellow or Stale.
+// children are Red, Yellow and Check-in overdue, each only when there are some,
+// the first out of all of them ("2 of 6 Red · 1 Yellow · 1 overdue"). Green is
+// never counted. It is empty when none are Red, Yellow or Check-in overdue.
 func (r RolledUpHealth) CountLine() string {
 	var parts []string
 	for _, c := range []struct {
@@ -40,7 +41,7 @@ func (r RolledUpHealth) CountLine() string {
 	}{
 		{r.RedChildren, HealthRed},
 		{r.YellowChildren, HealthYellow},
-		{r.CheckinOverdueChildren, BadgeCheckinOverdue},
+		{r.CheckinOverdueChildren, "overdue"},
 	} {
 		if c.n == 0 {
 			continue

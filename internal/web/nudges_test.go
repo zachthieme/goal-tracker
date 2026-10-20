@@ -90,7 +90,7 @@ func TestNudgeOutranksSuggestAParent(t *testing.T) {
 	h.Clock.Advance(10 * day)
 
 	row := riskRowOf(t, getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/risks?org=all"), loner)
-	riskChip(t, row, "stale")
+	riskChip(t, row, "checkin-overdue")
 	riskChip(t, row, "unlinked")
 	nudgeForm(t, row)
 }

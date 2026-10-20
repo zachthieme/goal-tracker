@@ -55,7 +55,7 @@ func TestRiskRowsMergeAGoalsSignals(t *testing.T) {
 	if r.Goal.ID != silent.ID || r.Health != "" {
 		t.Errorf("row = %q Health %q, want %q with no Health", r.Goal.Title, r.Health, silent.Title)
 	}
-	want := []riskSignal{{Kind: "stale", Days: 10}, {Kind: "unlinked"}}
+	want := []riskSignal{{Kind: "checkin-overdue", Days: 10}, {Kind: "unlinked"}}
 	if len(r.Signals) != len(want) {
 		t.Fatalf("signals = %v, want stale and unlinked", kinds(r))
 	}
@@ -158,7 +158,7 @@ func row(title string, cadence int, health string, signals ...riskSignal) riskGo
 func TestSortRiskRowsPutsTheWorstFirst(t *testing.T) {
 	t.Parallel()
 
-	stale := func(days int) riskSignal { return riskSignal{Kind: "stale", Days: days} }
+	stale := func(days int) riskSignal { return riskSignal{Kind: "checkin-overdue", Days: days} }
 	overdue := func(days int) riskSignal { return riskSignal{Kind: "path-overdue", Days: days} }
 	ownerless := riskSignal{Kind: "ownerless"}
 	unlinked := riskSignal{Kind: "unlinked"}
@@ -237,7 +237,7 @@ func TestSortRiskRowsRanksOverdueActionItemsBetweenPathsAndCheckinOverdue(t *tes
 	itemOverdue := func(days int) riskSignal { return riskSignal{Kind: "action-item-overdue", Days: days} }
 	want := []string{"Path overdue", "Item long overdue", "Item overdue", "Stale"}
 	rows := []riskGoalRow{
-		row("Stale", 7, domain.HealthYellow, riskSignal{Kind: "stale", Days: 30}),
+		row("Stale", 7, domain.HealthYellow, riskSignal{Kind: "checkin-overdue", Days: 30}),
 		row("Item overdue", 7, domain.HealthYellow, itemOverdue(2)),
 		row("Item long overdue", 7, domain.HealthYellow, itemOverdue(9)),
 		row("Path overdue", 7, domain.HealthYellow, riskSignal{Kind: "path-overdue", Days: 1}),
@@ -263,7 +263,7 @@ func TestSortRiskRowsRanksMilestoneOverdueAfterPaths(t *testing.T) {
 	milestoneOverdue := func(days int) riskSignal { return riskSignal{Kind: "milestone-overdue", Days: days} }
 	want := []string{"Milestone long overdue", "Milestone overdue", "Item overdue", "Stale"}
 	rows := []riskGoalRow{
-		row("Stale", 7, domain.HealthGreen, riskSignal{Kind: "stale", Days: 30}),
+		row("Stale", 7, domain.HealthGreen, riskSignal{Kind: "checkin-overdue", Days: 30}),
 		row("Item overdue", 7, domain.HealthGreen, riskSignal{Kind: "action-item-overdue", Days: 9}),
 		row("Milestone overdue", 7, domain.HealthGreen, milestoneOverdue(1)),
 		row("Milestone long overdue", 7, domain.HealthGreen, milestoneOverdue(6)),
@@ -287,15 +287,15 @@ func TestRiskGroupsCountUniqueGoals(t *testing.T) {
 
 	sig := func(kind string) riskSignal { return riskSignal{Kind: kind} }
 	rows := []riskGoalRow{
-		row("Stale and overdue", 7, domain.HealthRed, sig("stale"), sig("path-overdue")),
-		row("Stale and unlinked", 7, "", sig("stale"), sig("unlinked")),
+		row("Stale and overdue", 7, domain.HealthRed, sig("checkin-overdue"), sig("path-overdue")),
+		row("Stale and unlinked", 7, "", sig("checkin-overdue"), sig("unlinked")),
 		row("Two conflicts", 7, domain.HealthGreen, sig("schedule-conflicts"), sig("schedule-conflicts")),
 		row("Orphan under two halted parents", 7, "", sig("ownerless"), sig("halted-parents"), sig("halted-parents")),
 		row("Under a halted parent", 7, domain.HealthGreen, sig("halted-parents")),
 		row("Unlinked", 7, domain.HealthGreen, sig("unlinked")),
-		row("Stale with an overdue Action Item", 7, domain.HealthYellow, sig("stale"), sig("action-item-overdue")),
+		row("Stale with an overdue Action Item", 7, domain.HealthYellow, sig("checkin-overdue"), sig("action-item-overdue")),
 		row("Overdue Action Item", 7, domain.HealthGreen, sig("action-item-overdue")),
-		row("Red, asking and stale", 7, domain.HealthRed, sig("red"), sig("asks-for-help"), sig("stale")),
+		row("Red, asking and stale", 7, domain.HealthRed, sig("red"), sig("asks-for-help"), sig("checkin-overdue")),
 		row("Yellow only", 7, domain.HealthYellow, sig("yellow")),
 	}
 

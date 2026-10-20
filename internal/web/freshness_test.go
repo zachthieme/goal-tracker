@@ -30,7 +30,7 @@ func TestFreshnessPageListsCheckinOverdueGoalsAndOverduePaths(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	page := getBody(t, client, ts.URL+"/freshness")
 
-	stale := pageElement(t, page, "ul", "stale-goals")
+	stale := pageElement(t, page, "ul", "checkin-overdue-goals")
 	if !strings.Contains(stale, navTo(silent.ID)) || !strings.Contains(stale, "10 days") {
 		t.Errorf("Stale list does not show %q silent for 10 days; section:\n%s", silent.Title, stale)
 	}
@@ -72,13 +72,13 @@ func TestGoalPageFlagsFreshness(t *testing.T) {
 	}
 
 	parentPage := pageOf(parent)
-	if !strings.Contains(parentPage, `data-testid="goal-stale"`) {
-		t.Errorf("Stale Goal's page does not flag it; body:\n%s", parentPage)
+	if banner := pageElement(t, parentPage, "p", "goal-checkin-overdue"); !strings.Contains(banner, "<strong>Check-in overdue</strong>") {
+		t.Errorf("Check-in overdue Goal's page does not flag it Check-in overdue; banner:\n%s", banner)
 	}
 	if !strings.Contains(parentPage, `data-testid="goal-rollup-health">Green`) {
 		t.Errorf("Stale children changed the Rolled-up Health color; body:\n%s", parentPage)
 	}
-	if !strings.Contains(parentPage, `data-testid="goal-rollup-stale">1 of 2 Stale`) {
+	if !strings.Contains(parentPage, `data-testid="goal-rollup-checkin-overdue">1 of 2 overdue`) {
 		t.Errorf("Rolled-up Health does not say 1 of 2 children are Stale; body:\n%s", parentPage)
 	}
 
@@ -88,7 +88,7 @@ func TestGoalPageFlagsFreshness(t *testing.T) {
 	}
 
 	freshPage := pageOf(fresh)
-	if strings.Contains(freshPage, `data-testid="goal-stale"`) || strings.Contains(freshPage, `data-testid="goal-path-overdue"`) {
+	if strings.Contains(freshPage, `data-testid="goal-checkin-overdue"`) || strings.Contains(freshPage, `data-testid="goal-path-overdue"`) {
 		t.Errorf("fresh Green Goal's page carries a freshness flag")
 	}
 }
@@ -121,13 +121,13 @@ func TestGoalListMarksCheckinOverdueAndPathOverdueGoals(t *testing.T) {
 		return list[start : at+end]
 	}
 
-	if r := row(silent); !strings.Contains(r, `data-testid="stale"`) {
-		t.Errorf("Stale Goal's row is not marked Stale; row:\n%s", r)
+	if r := row(silent); !strings.Contains(r, `data-testid="checkin-overdue" class="badge st">Check-in overdue · 10 days<`) {
+		t.Errorf("Check-in overdue Goal's row is not marked Check-in overdue · 10 days; row:\n%s", r)
 	}
-	if r := row(stalled); !strings.Contains(r, `data-testid="path-overdue"`) || strings.Contains(r, `data-testid="stale"`) {
+	if r := row(stalled); !strings.Contains(r, `data-testid="path-overdue"`) || strings.Contains(r, `data-testid="checkin-overdue"`) {
 		t.Errorf("row of a Goal past its Path to Green target is not marked overdue (and only that); row:\n%s", r)
 	}
-	if r := row(fresh); strings.Contains(r, `data-testid="stale"`) || strings.Contains(r, `data-testid="path-overdue"`) {
+	if r := row(fresh); strings.Contains(r, `data-testid="checkin-overdue"`) || strings.Contains(r, `data-testid="path-overdue"`) {
 		t.Errorf("fresh Goal's row carries a freshness mark; row:\n%s", r)
 	}
 }
@@ -158,8 +158,8 @@ func TestCheckinOverdueBannerOffersCheckInNowToOwnerAndDelegates(t *testing.T) {
 		{"admin@example.com", false},
 	} {
 		page := getBody(t, signInClient(t, ts.URL, viewer.email), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-		banner := pageElement(t, page, "p", "goal-stale")
-		has := strings.Contains(banner, `data-testid="stale-checkin-now"`)
+		banner := pageElement(t, page, "p", "goal-checkin-overdue")
+		has := strings.Contains(banner, `data-testid="checkin-overdue-checkin-now"`)
 		if has != viewer.sees {
 			t.Errorf("%s sees Check in now in the Stale banner: %v, want %v; banner:\n%s", viewer.email, has, viewer.sees, banner)
 			continue
@@ -167,7 +167,7 @@ func TestCheckinOverdueBannerOffersCheckInNowToOwnerAndDelegates(t *testing.T) {
 		if !has {
 			continue
 		}
-		link := tagAround(t, banner, `data-testid="stale-checkin-now"`)
+		link := tagAround(t, banner, `data-testid="checkin-overdue-checkin-now"`)
 		if got, want := attr(link, "href"), fmt.Sprintf("/goals/%d/checkin", goal.ID); got != want {
 			t.Errorf("%s's Check in now leads to %q, want %q", viewer.email, got, want)
 		}

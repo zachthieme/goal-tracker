@@ -153,11 +153,11 @@ type ReportMetric struct {
 
 // Badges a ReportBlock can carry. New marks a Goal created since the baseline
 // and New Date one whose delivery date slipped since it; the rest mirror the
-// Goal's current state (CONTEXT.md: Stale, Ownerless, Lifecycle).
+// Goal's current state (CONTEXT.md: Check-in overdue, Ownerless, Lifecycle).
 const (
 	BadgeNew            = "New"
 	BadgeNewDate        = "New Date"
-	BadgeCheckinOverdue = "Stale"
+	BadgeCheckinOverdue = "Check-in overdue"
 	BadgeOwnerless      = "Ownerless"
 	BadgeOnHold         = LifecycleOnHold
 )

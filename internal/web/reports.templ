@@ -533,7 +533,7 @@ templ reportContent(r domain.Report, asOf time.Time, d discussion) {
 }
 
 // healthSummary counts the Report's selected Goals by Health — Red, Yellow,
-// Green — and how many are Stale, so a reader sees the shape of the Report's
+// Green — and how many are Check-in overdue, so a reader sees the shape of the Report's
 // Goals before reading a block.
 templ healthSummary(r domain.Report) {
 	<section data-testid="health-summary" class="rp-tiles">
@@ -880,7 +880,7 @@ templ highlightCredit(nh domain.NarrativeHighlight) {
 // open when the Report was drafted, naming whom it asks or saying no one is
 // above the Owner; Milestones, each marked as of asOf, Metrics against
 // target, and the Rolled-up Health with how many children are Red, Yellow and
-// Stale ("2 of 6 Red · 1 Yellow"), the Goals behind it, and the Owner's
+// Check-in overdue ("2 of 6 Red · 1 Yellow · 1 overdue"), the Goals behind it, and the Owner's
 // explanation. It reads asOf in the zone the block's Goal was judged in when
 // drafted (see domain.ReportBlock.Timezone). Each Goal it names links to its
 // place in the Report, marked ↓, or to its Goal page when the Report doesn't
@@ -1164,7 +1164,7 @@ func healthClass(health string) string {
 	return "lc"
 }
 
-// badgeClass is a report badge's colour: Stale in its own colour, Ownerless as
+// badgeClass is a report badge's colour: Check-in overdue in its own colour, Ownerless as
 // prominent as Red, a New Date as a warning, and the rest neutral.
 func badgeClass(badge string) string {
 	switch badge {
@@ -1225,15 +1225,16 @@ type healthTile struct {
 	count             int
 }
 
-// healthTiles counts a Report's selected Goals by Health, and its Stale ones —
-// only an exception block can be Stale, since a Stale Goal is an exception.
+// healthTiles counts a Report's selected Goals by Health, and its Check-in
+// overdue ones — only an exception block can be Check-in overdue, since a
+// Check-in overdue Goal is an exception.
 func healthTiles(r domain.Report) []healthTile {
 	byHealth := map[string]int{}
-	stale := 0
+	overdue := 0
 	for _, b := range r.Exceptions {
 		byHealth[b.Health]++
 		if slices.Contains(b.Badges, domain.BadgeCheckinOverdue) {
-			stale++
+			overdue++
 		}
 	}
 	for _, sg := range r.Lines {
@@ -1243,7 +1244,7 @@ func healthTiles(r domain.Report) []healthTile {
 		{"red", domain.HealthRed, "r", byHealth[domain.HealthRed]},
 		{"yellow", domain.HealthYellow, "y", byHealth[domain.HealthYellow]},
 		{"green", domain.HealthGreen, "g", byHealth[domain.HealthGreen]},
-		{"stale", domain.BadgeCheckinOverdue, "st", stale},
+		{"checkin-overdue", domain.BadgeCheckinOverdue, "st", overdue},
 	}
 }
 

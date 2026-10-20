@@ -227,7 +227,7 @@ func (f goalFilter) keeps(row goalRow) bool {
 
 // goalRow is one Goal in the Goal list with what its row shows beyond the Goal
 // and its Dimension values: its latest Check-in, which carries its Health,
-// whether it is Stale or its Path to Green is overdue, and whether it is
+// whether it is Check-in overdue or its Path to Green is overdue, and whether it is
 // Incomplete.
 type goalRow struct {
 	domain.GoalWithValues
@@ -269,8 +269,8 @@ func (r goalRow) lastCheckin() string {
 }
 
 // problemRank orders the Goal list so problems sort to the top: Red, then
-// Ownerless, then Stale, Path to Green overdue or Milestone overdue, then
-// Yellow, then Green, then no Health.
+// Ownerless, then Check-in overdue, Path to Green overdue or Milestone overdue,
+// then Yellow, then Green, then no Health.
 func (r goalRow) problemRank() int {
 	switch {
 	case r.health() == domain.HealthRed:
@@ -1062,8 +1062,9 @@ type goalView struct {
 	// Unlinked, schedule conflicts it is either side of, and parents that are On
 	// Hold or Cancelled.
 	Signals domain.GoalSignals
-	// Freshness says whether the Goal is Stale or its Path to Green is overdue,
-	// flagged as prominently as Red (CONTEXT.md: Stale, Path to Green).
+	// Freshness says whether the Goal is Check-in overdue or its Path to Green
+	// is overdue, flagged as prominently as Red (CONTEXT.md: Check-in overdue,
+	// Path to Green).
 	Freshness domain.Freshness
 	// Required are the Dimensions and Fields an Admin has marked required, each
 	// saying whether the Goal has a value in it, for the activation checklist.

@@ -90,13 +90,13 @@ func TestRisksPageListsCheckinOverdueGoals(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
 	row := riskRowOf(t, page, silent)
-	if chip := riskChip(t, row, "stale"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Stale · 10 days, checks in weekly") {
+	if chip := riskChip(t, row, "checkin-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Check-in overdue · 10 days, checks in weekly") {
 		t.Errorf("Stale chip is not a Stale badge saying 10 days, checks in weekly: %s", chip)
 	}
 	if owner := pageElement(t, row, "td", "risk-owner"); !strings.HasSuffix(owner, ">You") || strings.Contains(owner, "sam@example.com") {
 		t.Errorf("the viewer's own Goal isn't Owned by You: %s", owner)
 	}
-	if row := riskRowOf(t, page, fresh); strings.Contains(row, `data-kind="stale"`) {
+	if row := riskRowOf(t, page, fresh); strings.Contains(row, `data-kind="checkin-overdue"`) {
 		t.Errorf("%q, which checked in today, is Stale:\n%s", fresh.Title, row)
 	}
 }
@@ -111,10 +111,10 @@ func TestRisksCheckinOverdueChipSaysItsCadenceInWords(t *testing.T) {
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
 	want := map[int]string{
-		7:  "Stale · 42 days, checks in weekly",
-		14: "Stale · 42 days, checks in every 2 weeks",
-		30: "Stale · 42 days, checks in monthly",
-		3:  "Stale · 42 days, checks in every 3 days",
+		7:  "Check-in overdue · 42 days, checks in weekly",
+		14: "Check-in overdue · 42 days, checks in every 2 weeks",
+		30: "Check-in overdue · 42 days, checks in monthly",
+		3:  "Check-in overdue · 42 days, checks in every 3 days",
 	}
 	goals := map[int]domain.Goal{}
 	for cadence := range want {
@@ -129,7 +129,7 @@ func TestRisksCheckinOverdueChipSaysItsCadenceInWords(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
 	for cadence, g := range goals {
-		chip := riskChip(t, riskRowOf(t, page, g), "stale")
+		chip := riskChip(t, riskRowOf(t, page, g), "checkin-overdue")
 		if !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">"+want[cadence]) {
 			t.Errorf("on a %d-day cadence, the Stale chip doesn't read %q: %s", cadence, want[cadence], chip)
 		}
@@ -438,7 +438,7 @@ func TestRisksPageListsEachFlaggedGoalOnce(t *testing.T) {
 	if n := strings.Count(row, `data-testid="risk-signal"`); n != 2 {
 		t.Errorf("row has %d chips, want 2:\n%s", n, row)
 	}
-	for _, kind := range []string{"stale", "unlinked"} {
+	for _, kind := range []string{"checkin-overdue", "unlinked"} {
 		riskChip(t, row, kind)
 	}
 	if health := row[strings.Index(row, `data-testid="risk-health"`):strings.Index(row, `data-testid="risk-goal"`)]; !strings.Contains(health, `class="badge lc"`) || !strings.Contains(health, "—") {
@@ -447,7 +447,7 @@ func TestRisksPageListsEachFlaggedGoalOnce(t *testing.T) {
 	if label, href, _ := riskFix(t, row); label != "Check in" || href != "/goals/"+strconv.FormatInt(silent.ID, 10)+"/checkin" {
 		t.Errorf("the Owner's Stale and Unlinked Goal's Fix is %q → %s, want Check in", label, href)
 	}
-	for _, gone := range []string{"risks-nothing-in", `class="rk-empty"`, `data-testid="risks-stale"`, "Why it's flagged"} {
+	for _, gone := range []string{"risks-nothing-in", `class="rk-empty"`, `data-testid="risks-checkin-overdue"`, "Why it's flagged"} {
 		if strings.Contains(page, gone) {
 			t.Errorf("page still has %s", gone)
 		}
@@ -554,7 +554,7 @@ func TestRisksPageDefinesEachRisk(t *testing.T) {
 	for name, means := range map[string]string{
 		"Red":                         "Active Goals whose latest Check-in is Red.",
 		"Yellow":                      "Active Goals whose latest Check-in is Yellow.",
-		"Stale":                       "Active Goals whose last Check-in, or activation if they have none, is older than their cadence.",
+		"Check-in overdue":                       "Active Goals whose last Check-in, or activation if they have none, is older than their cadence.",
 		"Path to Green overdue":       "Active Goals past their Path to Green's target date that still aren't Green.",
 		"Milestone overdue":           "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Green can't be repeated until the Owner responds.",
 		"Action Item overdue":         "An Action Item about this Goal, raised in a Report, is past its due date.",
@@ -614,7 +614,7 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 		chips           []string
 	}{
 		{"health", "Not Green", "/risks?group=health&amp;org=all", 1, []string{"Red · 1"}},
-		{"owner", "Waiting on a Check-in", "/risks?group=owner&amp;org=all", 1, []string{"Stale · 1"}},
+		{"owner", "Waiting on a Check-in", "/risks?group=owner&amp;org=all", 1, []string{"Check-in overdue · 1"}},
 		{"followup", "Action Items overdue", "/risks?group=followup&amp;org=all", 1, []string{"Action Item overdue · 1"}},
 		{"plan", "Placement and dates", "/risks?group=plan&amp;org=all", 3, []string{"Unlinked · 2", "Schedule conflicts · 1"}},
 		{"admin", "Needs an Admin", "/risks?group=admin&amp;org=all", 1, []string{"Ownerless · 1"}},
@@ -640,7 +640,7 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 	}
 	for _, c := range []struct{ group, kind, class string }{
 		{"health", "red", `class="badge r"`},
-		{"owner", "stale", `class="badge st"`},
+		{"owner", "checkin-overdue", `class="badge st"`},
 		{"followup", "action-item-overdue", `class="badge st"`},
 		{"plan", "unlinked", `class="rk-tag"`},
 		{"plan", "schedule-conflicts", `class="rk-tag"`},
@@ -679,7 +679,7 @@ func TestRisksPageFiltersToAGroup(t *testing.T) {
 	page := getBody(t, client, ts.URL+"/risks?group=owner&org=all")
 
 	row := riskRowOf(t, page, silent)
-	riskChip(t, row, "stale")
+	riskChip(t, row, "checkin-overdue")
 	if strings.Contains(row, `data-kind="unlinked"`) {
 		t.Errorf("filtered to owner, %q still has its Unlinked chip:\n%s", silent.Title, row)
 	}
@@ -710,7 +710,7 @@ func TestRisksPageFiltersToAGroup(t *testing.T) {
 	for _, g := range []domain.Goal{silent, orphaned} {
 		row := riskRowOf(t, page, g)
 		riskChip(t, row, "unlinked")
-		for _, other := range []string{"stale", "ownerless"} {
+		for _, other := range []string{"checkin-overdue", "ownerless"} {
 			if strings.Contains(row, `data-kind="`+other+`"`) {
 				t.Errorf("filtered to plan, %q still has its %s chip:\n%s", g.Title, other, row)
 			}
@@ -857,7 +857,7 @@ func TestRiskFlagsUseAlertBannersAndChips(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	silentPage := getBody(t, client, goalPageURL(ts.URL, silent))
 	for testID, class := range map[string]string{
-		"goal-stale":             `class="alert st"`,
+		"goal-checkin-overdue":             `class="alert st"`,
 		"goal-schedule-conflict": `class="alert lc"`,
 	} {
 		if el := pageElement(t, silentPage, "p", testID); !strings.Contains(openTag(el), class) {
@@ -877,7 +877,7 @@ func TestRiskFlagsUseAlertBannersAndChips(t *testing.T) {
 	}
 
 	list := getBody(t, client, ts.URL+"/goals")
-	if chip := pageElement(t, list, "span", "stale"); !strings.Contains(chip, `class="badge st"`) || !strings.Contains(chip, "Stale · 16 days") {
+	if chip := pageElement(t, list, "span", "checkin-overdue"); !strings.Contains(chip, `class="badge st"`) || !strings.Contains(chip, "Check-in overdue · 16 days") {
 		t.Errorf("Stale row chip is not a Stale badge saying how long: %s", chip)
 	}
 	if chip := pageElement(t, list, "span", "path-overdue"); !strings.Contains(chip, `class="badge st"`) || !strings.Contains(chip, "Path to Green overdue") {
@@ -983,7 +983,7 @@ func TestRiskFixOnAnOwnerlessGoalIsReassignForAnAdmin(t *testing.T) {
 		page := getBody(t, client, ts.URL+"/risks?org=all")
 		row := riskRowOf(t, page, orphaned)
 		riskChip(t, row, "ownerless")
-		riskChip(t, row, "stale")
+		riskChip(t, row, "checkin-overdue")
 		label, href, _ := riskFix(t, row)
 		if label != c.label || href != c.href {
 			t.Fatalf("%s sees Fix %q → %s, want %q → %s", c.viewer, label, href, c.label, c.href)
@@ -1223,7 +1223,7 @@ func TestRisksPageScopedToMine(t *testing.T) {
 	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "<strong>2</strong> Goals need attention in Mine. Worst first.") {
 		t.Errorf("the count line doesn't count sam's 2 Goals in Mine: %s", head)
 	}
-	if card := pageElement(t, page, "a", "risks-group-owner"); !strings.Contains(card, `<span class="num">2</span>`) || !strings.Contains(card, "Stale · 2") {
+	if card := pageElement(t, page, "a", "risks-group-owner"); !strings.Contains(card, `<span class="num">2</span>`) || !strings.Contains(card, "Check-in overdue · 2") {
 		t.Errorf("the owner card doesn't count sam's 2 Goals: %s", card)
 	}
 	if risks := pageElement(t, page, "a", "nav-risks"); !strings.Contains(risks, `<span class="count">2</span>`) {
@@ -2720,7 +2720,7 @@ func TestRisksPageListsGoalsThatArentActiveLast(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks?org=all")
 
-	riskChip(t, riskRowOf(t, page, stale), "stale")
+	riskChip(t, riskRowOf(t, page, stale), "checkin-overdue")
 	riskChip(t, riskRowOf(t, page, proposed), "schedule-conflicts")
 	var order []string
 	for _, row := range riskRows(page) {

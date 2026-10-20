@@ -265,7 +265,7 @@ func TestLatestStatusOpensWithCells(t *testing.T) {
 	for _, tc := range []struct{ testID, label, value string }{
 		{"goal-health-cell", "Owner's Health", `data-testid="goal-health">Yellow<`},
 		{"goal-rollup-cell", "Rolled-up Health", `data-testid="goal-rollup-health">Red<`},
-		{"goal-rollup-cell", "Rolled-up Health", `data-testid="goal-rollup-stale">1 of 2 Stale<`},
+		{"goal-rollup-cell", "Rolled-up Health", `data-testid="goal-rollup-checkin-overdue">1 of 2 overdue<`},
 		{"goal-back-to-green-cell", "Back to Green by", "<dd><span>Jun 15</span></dd>"},
 	} {
 		cell := between(t, cells, `data-testid="`+tc.testID+`"`, "")

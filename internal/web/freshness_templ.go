@@ -14,9 +14,9 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// freshnessSignalsPage is the Stale list, with the Goals whose Path to Green is
-// overdue beside it, so both surface as prominently as Red (CONTEXT.md: Stale,
-// Path to Green).
+// freshnessSignalsPage is the Check-in overdue list, with the Goals whose Path
+// to Green is overdue beside it, so both surface as prominently as Red
+// (CONTEXT.md: Check-in overdue, Path to Green).
 func freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSignals, dates displayDates) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -50,18 +50,18 @@ func freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSigna
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1>Freshness signals</h1><p>Stale Goals, and Goals still not Green past their Path to Green's target date.</p><section data-testid=\"stale-section\"><h2>Stale Goals</h2><p>Active Goals whose last Check-in, or activation if they have none, is older than their cadence.</p><ul data-testid=\"stale-goals\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1>Freshness signals</h1><p>Goals whose Check-in is overdue, and Goals still not Green past their Path to Green's target date.</p><section data-testid=\"checkin-overdue-section\"><h2>Check-in overdue</h2><p>Active Goals whose last Check-in, or activation if they have none, is older than their cadence.</p><ul data-testid=\"checkin-overdue-goals\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if len(signals.CheckinOverdue) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<li data-testid=\"no-stale\">No Stale Goals.</li>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<li data-testid=\"no-checkin-overdue\">No Goal's Check-in is overdue.</li>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			for _, gf := range signals.CheckinOverdue {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<li data-testid=\"stale-goal\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<li data-testid=\"checkin-overdue-goal\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -172,9 +172,9 @@ func freshnessItem(g domain.Goal, why string) templ.Component {
 	})
 }
 
-// goalFreshness flags, at the top of a Goal's page, a Goal that is Stale or
-// whose Path to Green is overdue, as a banner in Stale's style. The Stale
-// banner ends with a link to the Check-in form for whoever may check in (the
+// goalFreshness flags, at the top of a Goal's page, a Goal that is Check-in
+// overdue or whose Path to Green is overdue, as a banner in Check-in overdue's
+// style. The Check-in overdue banner ends with a link to the Check-in form for whoever may check in (the
 // Owner or a Delegate). It renders nothing for a fresh Goal.
 func goalFreshness(goalID int64, f domain.Freshness, canCheckin bool, dates displayDates) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -198,14 +198,14 @@ func goalFreshness(goalID int64, f domain.Freshness, canCheckin bool, dates disp
 		}
 		ctx = templ.ClearChildren(ctx)
 		if f.CheckinOverdue {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<p data-testid=\"goal-stale\" class=\"alert st\" role=\"alert\"><strong>Stale</strong><span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<p data-testid=\"goal-checkin-overdue\" class=\"alert st\" role=\"alert\"><strong>Check-in overdue</strong><span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var7 string
 			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(checkinOverdueSince(f))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/freshness.templ`, Line: 65, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/freshness.templ`, Line: 65, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 			if templ_7745c5c3_Err != nil {
@@ -216,14 +216,14 @@ func goalFreshness(goalID int64, f domain.Freshness, canCheckin bool, dates disp
 				return templ_7745c5c3_Err
 			}
 			if canCheckin {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<a data-testid=\"stale-checkin-now\" href=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<a data-testid=\"checkin-overdue-checkin-now\" href=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var8 templ.SafeURL
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", goalID)))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/freshness.templ`, Line: 67, Col: 101}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/freshness.templ`, Line: 67, Col: 111}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -262,8 +262,8 @@ func goalFreshness(goalID int64, f domain.Freshness, canCheckin bool, dates disp
 	})
 }
 
-// goalRowFreshness marks a Goal's row in the Goal list with Stale's dashed grey
-// chip when it is Stale, saying for how long, when its Path to Green is
+// goalRowFreshness marks a Goal's row in the Goal list with Check-in overdue's
+// dashed grey chip when it is Check-in overdue, saying for how long, when its Path to Green is
 // overdue, or when it is Green past a Milestone's date (Milestone overdue).
 func goalRowFreshness(f domain.Freshness) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -287,14 +287,14 @@ func goalRowFreshness(f domain.Freshness) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if f.CheckinOverdue {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<span data-testid=\"stale\" class=\"badge st\">Stale · ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<span data-testid=\"checkin-overdue\" class=\"badge st\">Check-in overdue · ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var11 string
 			templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d days", f.DaysSince))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/freshness.templ`, Line: 81, Col: 91}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/freshness.templ`, Line: 81, Col: 112}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 			if templ_7745c5c3_Err != nil {
@@ -321,8 +321,9 @@ func goalRowFreshness(f domain.Freshness) templ.Component {
 	})
 }
 
-// rolledUpCheckinOverdue says, beside the Rolled-up Health, how many Active children are
-// Stale. It never changes the color, and renders nothing when none are.
+// rolledUpCheckinOverdue says, beside the Rolled-up Health, how many Active
+// children are Check-in overdue ("3 of 12 overdue"). It never changes the
+// color, and renders nothing when none are.
 func rolledUpCheckinOverdue(r domain.RolledUpHealth) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -345,14 +346,14 @@ func rolledUpCheckinOverdue(r domain.RolledUpHealth) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		if r.CheckinOverdueChildren > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "· <span data-testid=\"goal-rollup-stale\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "· <span data-testid=\"goal-rollup-checkin-overdue\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var13 string
-			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d of %d Stale", r.CheckinOverdueChildren, r.ActiveChildren))
+			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf("%d of %d overdue", r.CheckinOverdueChildren, r.ActiveChildren))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/freshness.templ`, Line: 95, Col: 118}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/freshness.templ`, Line: 96, Col: 130}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
@@ -367,8 +368,8 @@ func rolledUpCheckinOverdue(r domain.RolledUpHealth) templ.Component {
 	})
 }
 
-// checkinOverdueSince says how long a Stale Goal has gone without a Check-in, against its
-// cadence.
+// checkinOverdueSince says how long a Check-in overdue Goal has gone without a
+// Check-in, against its cadence.
 func checkinOverdueSince(f domain.Freshness) string {
 	return fmt.Sprintf("no Check-in for %d days on a %d-day cadence", f.DaysSince, f.CadenceDays)
 }
