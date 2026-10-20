@@ -275,6 +275,55 @@ func TestLogDraftHighlightRefusedOnAnEndedGoal(t *testing.T) {
 	}
 }
 
+// A Done or Cancelled Goal's pending Draft Highlights can't be edited, as none
+// can be logged there: its Draft Highlights block is marked for the Highlight
+// editor to offer no Edit, and an edit sent anyway, plain or from the editor,
+// is refused (422) as a log is, and changes nothing. A Goal still taking
+// Check-ins carries no such mark.
+func TestEditDraftHighlightRefusedOnAnEndedGoal(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	samClient := signInClient(t, ts.URL, "sam@example.com")
+
+	active := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+	h.LogDraftHighlight(sam, active.ID, domain.HighlightMiss, "Runbook was late.")
+	if section := tagAround(t, getBody(t, samClient, goalPageURL(ts.URL, active)), `data-testid="goal-draft-highlights"`); strings.Contains(section, "data-hl-no-edit") {
+		t.Errorf("an Active Goal's block is marked to offer no Edit: %s", section)
+	}
+
+	for _, lifecycle := range []string{domain.LifecycleDone, domain.LifecycleCancelled} {
+		goal := h.ActiveGoal(sam, "Migrate billing", "Billing is brittle.")
+		draft := h.LogDraftHighlight(sam, goal.ID, domain.HighlightMiss, "Runbook was late.")
+		h.EndGoalInCheckin(sam, goal.ID, lifecycle)
+
+		section := tagAround(t, getBody(t, samClient, goalPageURL(ts.URL, goal)), `data-testid="goal-draft-highlights"`)
+		if !strings.Contains(section, " data-hl-no-edit") {
+			t.Errorf("a %s Goal's block isn't marked to offer no Edit: %s", lifecycle, section)
+		}
+
+		editURL := fmt.Sprintf("%s/draft-highlights/%d", ts.URL, draft.ID)
+		edit := url.Values{"kind": {domain.HighlightInsight}, "note": {"Too late."}}
+		resp := postForm(t, noRedirects(samClient), editURL, edit)
+		_ = readBody(t, resp)
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Errorf("editing on a %s Goal: status %d, want 422", lifecycle, resp.StatusCode)
+		}
+		body, status := postFormHX(t, samClient, editURL, edit)
+		if status != http.StatusUnprocessableEntity {
+			t.Errorf("the editor editing on a %s Goal: status %d, want 422", lifecycle, status)
+		}
+		if want := "takes no more Check-ins, so it takes no Draft Highlights"; !strings.Contains(body, want) {
+			t.Errorf("the editor's refusal on a %s Goal reads %.200q, want %q", lifecycle, body, want)
+		}
+		if got := pendingDraftNotes(t, h, sam, goal.ID); !slices.Equal(got, []string{"Runbook was late."}) {
+			t.Errorf("a %s Goal has pending %q, want it as logged", lifecycle, got)
+		}
+	}
+}
+
 // Deleting a pending Draft Highlight from the Goal page lands back on it with
 // the Draft Highlight gone and none listed.
 func TestDeleteDraftHighlightFromTheGoalPage(t *testing.T) {

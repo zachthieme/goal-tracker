@@ -1,8 +1,8 @@
 // The Goal page's Draft Highlights with script on (#363): + Log a highlight
 // opens the Highlight editor (#362) with an optional Kind, and its Save logs
 // the Draft Highlight at once with htmx, with no page load. Each pending one
-// has Edit, which opens it in the editor in place, and Remove. The list shown
-// is always the server's. Without script the block is as it was: a link to
+// has Edit, which opens it in the editor in place, and Remove, both disabled
+// while an editor is open (#372). The list shown is always the server's. Without script the block is as it was: a link to
 // the log form, and Delete.
 import type { Locator, Page } from "@playwright/test";
 
@@ -147,6 +147,31 @@ test.describe("the Goal page's Draft Highlight editor", () => {
     await expect(items(page)).toHaveCount(1);
     await expect(items(page)).toContainText("Insight Drills find gaps.");
     await expectSamePage(page, goal);
+  });
+
+  test("(f) Remove is disabled while an editor is open, and enabled again after Cancel", async ({ page }) => {
+    await logDraft(page, "Insight", "Drills find gaps.");
+    await logDraft(page, "Miss", "Runbook was late.");
+    const drafts = page.getByTestId("goal-draft-highlights");
+    const editor = drafts.getByTestId("highlight-editor");
+    const removes = items(page).getByRole("button", { name: "Remove" });
+    await expect(removes).toHaveCount(2);
+
+    // A Remove would swap the block and lose what the open editor holds.
+    await drafts.getByRole("button", { name: "+ Log a highlight" }).click();
+    await editor.getByLabel("Note").fill("Half written.");
+    for (const remove of await removes.all()) await expect(remove).toBeDisabled();
+    await editor.getByRole("button", { name: "Cancel" }).click();
+    for (const remove of await removes.all()) await expect(remove).toBeEnabled();
+
+    await items(page).filter({ hasText: "Drills find gaps." }).getByRole("button", { name: "Edit" }).click();
+    await editor.getByLabel("Note").fill("Drills found a gap.");
+    await expect(removes).toHaveCount(1);
+    await expect(removes).toBeDisabled();
+    await editor.getByRole("button", { name: "Cancel" }).click();
+    await expect(removes).toHaveCount(2);
+    for (const remove of await removes.all()) await expect(remove).toBeEnabled();
+    await expect(items(page)).toHaveCount(2);
   });
 });
 

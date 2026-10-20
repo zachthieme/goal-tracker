@@ -51,8 +51,8 @@ func (s *Service) LogDraftHighlight(ctx context.Context, in LogDraftHighlightInp
 	if err := s.authorizeDraftHighlighter(ctx, goal, in.AuthorID); err != nil {
 		return DraftHighlight{}, err
 	}
-	if ended(goal) {
-		return DraftHighlight{}, fmt.Errorf("%w: a %s Goal takes no more Check-ins, so it takes no Draft Highlights", ErrValidation, goal.Lifecycle)
+	if err := draftHighlightsTaken(goal); err != nil {
+		return DraftHighlight{}, err
 	}
 	note, err := draftHighlightValues(in.Kind, in.Note)
 	if err != nil {
@@ -108,7 +108,7 @@ func (s *Service) pendingDraftHighlights(ctx context.Context, goalID int64) ([]D
 // Only its Goal's Owner or a Delegate, as actorID, may delete one. One that
 // doesn't exist, or that a Check-in has already discarded, is ErrNotFound.
 func (s *Service) DeleteDraftHighlight(ctx context.Context, actorID, id int64) (DraftHighlight, error) {
-	draft, err := s.draftHighlightFor(ctx, actorID, id)
+	draft, _, err := s.draftHighlightFor(ctx, actorID, id)
 	if err != nil {
 		return DraftHighlight{}, err
 	}
@@ -126,12 +126,17 @@ func (s *Service) DeleteDraftHighlight(ctx context.Context, actorID, id int64) (
 // returning it as edited. Only its Goal's Owner or a Delegate, as actorID, may
 // edit one; who logged it and when stay as they were. The note is trimmed and
 // required, and a kind, if given, must be an Insight, Accomplishment or Miss,
-// as when it was logged. One that doesn't exist, or that a Check-in has
-// already kept or discarded, is ErrNotFound. The edit records nothing in the
-// Goal's History: the Draft Highlight is still pending.
+// as when it was logged. As with logging, a Done or Cancelled Goal's Draft
+// Highlights can't be edited: it takes no more Check-ins to offer them at. One
+// that doesn't exist, or that a Check-in has already kept or discarded, is
+// ErrNotFound. The edit records nothing in the Goal's History: the Draft
+// Highlight is still pending.
 func (s *Service) EditDraftHighlight(ctx context.Context, actorID, id int64, kind, note string) (DraftHighlight, error) {
-	draft, err := s.draftHighlightFor(ctx, actorID, id)
+	draft, goal, err := s.draftHighlightFor(ctx, actorID, id)
 	if err != nil {
+		return DraftHighlight{}, err
+	}
+	if err := draftHighlightsTaken(goal); err != nil {
 		return DraftHighlight{}, err
 	}
 	note, err = draftHighlightValues(kind, note)
@@ -152,28 +157,39 @@ func (s *Service) EditDraftHighlight(ctx context.Context, actorID, id int64, kin
 // DraftHighlight returns the Draft Highlight id, pending or not, with who
 // logged it. Only its Goal's Owner or a Delegate, as viewerID, may see it.
 func (s *Service) DraftHighlight(ctx context.Context, viewerID, id int64) (DraftHighlight, error) {
-	return s.draftHighlightFor(ctx, viewerID, id)
+	draft, _, err := s.draftHighlightFor(ctx, viewerID, id)
+	return draft, err
 }
 
-// draftHighlightFor loads the Draft Highlight id, pending or not, for actorID
-// to see or change: only its Goal's Owner or a Delegate may.
-func (s *Service) draftHighlightFor(ctx context.Context, actorID, id int64) (DraftHighlight, error) {
+// draftHighlightFor loads the Draft Highlight id, pending or not, and its Goal
+// for actorID to see or change: only the Goal's Owner or a Delegate may.
+func (s *Service) draftHighlightFor(ctx context.Context, actorID, id int64) (DraftHighlight, Goal, error) {
 	row, err := s.queries.GetDraftHighlight(ctx, id)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return DraftHighlight{}, fmt.Errorf("%w: draft highlight %d", ErrNotFound, id)
+			return DraftHighlight{}, Goal{}, fmt.Errorf("%w: draft highlight %d", ErrNotFound, id)
 		}
-		return DraftHighlight{}, fmt.Errorf("get draft highlight: %w", err)
+		return DraftHighlight{}, Goal{}, fmt.Errorf("get draft highlight: %w", err)
 	}
 	draft := draftHighlightFromRow(row.DraftHighlight, row.Account)
 	goal, err := s.loadGoal(ctx, draft.GoalID)
 	if err != nil {
-		return DraftHighlight{}, err
+		return DraftHighlight{}, Goal{}, err
 	}
 	if err := s.authorizeDraftHighlighter(ctx, goal, actorID); err != nil {
-		return DraftHighlight{}, err
+		return DraftHighlight{}, Goal{}, err
 	}
-	return draft, nil
+	return draft, goal, nil
+}
+
+// draftHighlightsTaken refuses logging or editing a Draft Highlight on a Done
+// or Cancelled Goal with ErrValidation: it takes no more Check-ins to offer
+// one at.
+func draftHighlightsTaken(goal Goal) error {
+	if ended(goal) {
+		return fmt.Errorf("%w: a %s Goal takes no more Check-ins, so it takes no Draft Highlights", ErrValidation, goal.Lifecycle)
+	}
+	return nil
 }
 
 // draftHighlightValues checks a Draft Highlight's kind and note as logged or

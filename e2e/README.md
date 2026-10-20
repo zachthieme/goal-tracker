@@ -124,6 +124,12 @@ form's Highlight editor with script on: the + Insight, + Accomplishment
 and + Miss buttons, the Note editor's Save, Edit, Cancel and Remove, an editor
 left open at submit, and Draft Highlights shown as items or, with no Kind, as
 an open editor.
+[`draft-highlight-editor.spec.ts`](draft-highlight-editor.spec.ts) checks the
+Goal page's Draft Highlights with script on: + Log a highlight opening the
+Highlight editor and its Save logging with no page load, Edit and Cancel,
+Remove, a refused Save coming back in the editor with the reason and what was
+typed, and Remove disabled while an editor is open. Without script, it checks
+the link to the log form and Delete.
 [`checkin-add-bar.spec.ts`](checkin-add-bar.spec.ts) checks the Check-in
 page's "Add to this check-in" bar: the sections it shows and the heading it
 focuses, its buttons marked used, sections the page opens on load and after a

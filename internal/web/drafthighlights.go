@@ -112,8 +112,9 @@ func draftHighlightRefusalOf(r *http.Request, id int64, err error) draftHighligh
 // a refusal, as htmx swaps no error status. A refused log comes back with the
 // block's log form open, its reason and what was typed in it, for the editor
 // to open on; a refused edit marks its Draft Highlight the same way. When the
-// page no longer offers the log form, such as once the Goal is Done, the
-// reason comes back on its own, as renderRefusedForm sends it.
+// page no longer offers the log form, such as once the Goal is Done, a refused
+// log or edit has no editor to open on: the reason comes back on its own, as
+// renderRefusedForm sends it.
 func (s *Server) renderDraftHighlights(w http.ResponseWriter, r *http.Request, goalID int64, current domain.Account, refused draftHighlightRefusal) {
 	view, err := s.goalPageView(r.Context(), goalID, current)
 	if err != nil {
@@ -124,11 +125,11 @@ func (s *Server) renderDraftHighlights(w http.ResponseWriter, r *http.Request, g
 		s.serverError(w, r, "could not load goal", err)
 		return
 	}
+	if refused.Reason != "" && !view.offers(formDraftHighlight) {
+		http.Error(w, refused.Reason, http.StatusUnprocessableEntity)
+		return
+	}
 	if refused.Reason != "" && refused.ID == 0 {
-		if !view.offers(formDraftHighlight) {
-			http.Error(w, refused.Reason, http.StatusUnprocessableEntity)
-			return
-		}
 		view.Open, view.FormError, view.FormInput = formDraftHighlight, refused.Reason, r.PostForm
 	}
 	render(w, r, http.StatusOK, draftHighlightBlock(view, refused))
