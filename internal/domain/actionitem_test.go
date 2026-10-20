@@ -871,3 +871,170 @@ func TestReassigningAnActionItemEmailsItsNewOwner(t *testing.T) {
 		}
 	}
 }
+
+// chaseWorld is a viewer over an Org two levels deep (mid under the viewer,
+// deep under mid) and two outsiders, with Action Items raised on Reports the
+// outsiders and the Org create and publish.
+type chaseWorld struct {
+	h                 *testsupport.Harness
+	viewer, mid, deep domain.Account
+	outA, outB        domain.Account
+	goal              domain.Goal
+	n                 int
+}
+
+func newChaseWorld(t *testing.T) *chaseWorld {
+	t.Helper()
+	h := testsupport.New(t)
+	w := &chaseWorld{h: h}
+	w.viewer = h.SignIn("viewer@example.com")
+	w.mid = h.SignIn("mid@example.com")
+	w.deep = h.SignIn("deep@example.com")
+	w.outA = h.SignIn("out-a@example.com")
+	w.outB = h.SignIn("out-b@example.com")
+	h.SetManager(w.mid, w.viewer)
+	h.SetManager(w.deep, w.mid)
+	w.goal = h.ActiveGoal(w.outA, "Launch in EU", "Expand the market.")
+	return w
+}
+
+// raise saves a Report Definition as creator, publishes it as publisher, and
+// raises text on it as raiser (who must be one of the two), owned by owner and
+// due in dueInDays.
+func (w *chaseWorld) raise(t *testing.T, creator, publisher, raiser, owner domain.Account, text string, dueInDays int) domain.ActionItem {
+	t.Helper()
+	w.n++
+	def := w.h.SaveReportDefinition(creator, domain.SaveReportDefinitionInput{
+		Name: fmt.Sprintf("Report %d", w.n), Mode: domain.ReportModePicked, Picked: []int64{w.goal.ID},
+	})
+	pub := w.h.PublishReport(publisher, def)
+	item, err := w.h.Service.RaiseActionItem(context.Background(), raiser.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, Text: text, OwnerID: owner.ID, DueDate: w.h.Clock.Now().AddDate(0, 0, dueInDays),
+	})
+	if err != nil {
+		t.Fatalf("RaiseActionItem %q: %v", text, err)
+	}
+	return item
+}
+
+// openFor lists the viewer's two groups of open Action Items by their text.
+func (w *chaseWorld) openFor(t *testing.T, viewer domain.Account) (yours, org []string) {
+	t.Helper()
+	y, o, err := w.h.Service.OpenActionItemsToChase(context.Background(), viewer.ID)
+	if err != nil {
+		t.Fatalf("OpenActionItemsToChase: %v", err)
+	}
+	for _, l := range y {
+		yours = append(yours, l.Item.Text)
+	}
+	for _, l := range o {
+		org = append(org, l.Item.Text)
+	}
+	return yours, org
+}
+
+// An open Action Item on a Report Definition the viewer created is theirs to
+// chase, though someone outside their Org published, raised and owns it; one
+// nobody in their Org is party to is left out.
+func TestOpenActionItemsToChaseIncludeThoseOnDefinitionsTheViewerCreated(t *testing.T) {
+	t.Parallel()
+
+	w := newChaseWorld(t)
+	w.raise(t, w.viewer, w.outA, w.outA, w.outB, "On the viewer's Definition.", 5)
+	w.raise(t, w.outA, w.outB, w.outB, w.outA, "Nobody in the Org's.", 5)
+
+	yours, org := w.openFor(t, w.viewer)
+	if want := []string{"On the viewer's Definition."}; !slices.Equal(yours, want) || len(org) != 0 {
+		t.Errorf("yours = %q, org = %q; want yours %q and no org", yours, org, want)
+	}
+}
+
+// An open Action Item is in the viewer's My org group when someone in their
+// Org, at any depth, published the publication it was raised on, raised it,
+// or owns it, though nobody else in the Org is party to it.
+func TestOpenActionItemsToChaseIncludeTheirOrgs(t *testing.T) {
+	t.Parallel()
+
+	for name, raise := range map[string]func(t *testing.T, w *chaseWorld) domain.ActionItem{
+		"published two levels below the viewer": func(t *testing.T, w *chaseWorld) domain.ActionItem {
+			return w.raise(t, w.outA, w.deep, w.outA, w.outB, "The item.", 5)
+		},
+		"raised by someone in the viewer's Org": func(t *testing.T, w *chaseWorld) domain.ActionItem {
+			return w.raise(t, w.mid, w.outA, w.mid, w.outB, "The item.", 5)
+		},
+		"owned by someone in the viewer's Org": func(t *testing.T, w *chaseWorld) domain.ActionItem {
+			return w.raise(t, w.outA, w.outA, w.outA, w.deep, "The item.", 5)
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			w := newChaseWorld(t)
+			raise(t, w)
+
+			yours, org := w.openFor(t, w.viewer)
+			if want := []string{"The item."}; len(yours) != 0 || !slices.Equal(org, want) {
+				t.Errorf("yours = %q, org = %q; want no yours and org %q", yours, org, want)
+			}
+		})
+	}
+}
+
+// An item the viewer owns, published, raised or whose Definition they created
+// is in Yours; one only their Org is party to is in My org; none is in both.
+// A closed item is in neither.
+func TestOpenActionItemsToChaseSplitYoursFromTheirOrgs(t *testing.T) {
+	t.Parallel()
+
+	w := newChaseWorld(t)
+	w.raise(t, w.outA, w.outA, w.outA, w.viewer, "Owned by the viewer.", 5)
+	w.raise(t, w.outA, w.viewer, w.viewer, w.outB, "Published by the viewer.", 6)
+	w.raise(t, w.mid, w.deep, w.mid, w.viewer, "Owned by the viewer, the rest by the Org.", 7)
+	w.raise(t, w.mid, w.deep, w.deep, w.mid, "Only the Org's.", 8)
+	closed := w.raise(t, w.viewer, w.viewer, w.viewer, w.mid, "Closed.", 9)
+	if _, err := w.h.Service.CloseActionItem(context.Background(), w.mid.ID, closed.ID, "Done."); err != nil {
+		t.Fatalf("CloseActionItem: %v", err)
+	}
+
+	yours, org := w.openFor(t, w.viewer)
+	wantYours := []string{"Owned by the viewer.", "Published by the viewer.", "Owned by the viewer, the rest by the Org."}
+	wantOrg := []string{"Only the Org's."}
+	if !slices.Equal(yours, wantYours) || !slices.Equal(org, wantOrg) {
+		t.Errorf("yours = %q, org = %q; want yours %q, org %q", yours, org, wantYours, wantOrg)
+	}
+}
+
+// Within each group, overdue items come first, then the rest soonest due
+// first, each marked overdue or not.
+func TestOpenActionItemsToChaseListOverdueFirstThenSoonestDue(t *testing.T) {
+	t.Parallel()
+
+	w := newChaseWorld(t)
+	w.raise(t, w.viewer, w.viewer, w.viewer, w.outA, "Due in 9.", 9)
+	w.raise(t, w.viewer, w.viewer, w.viewer, w.outA, "Due in 1.", 1)
+	w.raise(t, w.viewer, w.viewer, w.viewer, w.outA, "Due in 4.", 4)
+	w.raise(t, w.viewer, w.viewer, w.viewer, w.outA, "Due in 2.", 2)
+	w.raise(t, w.outA, w.outA, w.outA, w.deep, "Org due in 6.", 6)
+	w.raise(t, w.outA, w.outA, w.outA, w.deep, "Org due in 3.", 3)
+	w.h.Clock.Advance(4 * day)
+
+	yours, org, err := w.h.Service.OpenActionItemsToChase(context.Background(), w.viewer.ID)
+	if err != nil {
+		t.Fatalf("OpenActionItemsToChase: %v", err)
+	}
+	listed := func(ls []domain.ActionItemListing) []string {
+		var out []string
+		for _, l := range ls {
+			out = append(out, fmt.Sprintf("%s overdue=%t", l.Item.Text, l.Overdue))
+		}
+		return out
+	}
+	wantYours := []string{"Due in 1. overdue=true", "Due in 2. overdue=true", "Due in 4. overdue=false", "Due in 9. overdue=false"}
+	if got := listed(yours); !slices.Equal(got, wantYours) {
+		t.Errorf("yours = %q, want %q", got, wantYours)
+	}
+	wantOrg := []string{"Org due in 3. overdue=true", "Org due in 6. overdue=false"}
+	if got := listed(org); !slices.Equal(got, wantOrg) {
+		t.Errorf("org = %q, want %q", got, wantOrg)
+	}
+}

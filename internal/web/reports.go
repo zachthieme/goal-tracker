@@ -18,16 +18,22 @@ import (
 
 // reportsListData is what the reports page needs: a summary of each saved
 // definition, in the order the status table lists them, and the org's
-// timezone to date their publications in.
+// timezone to date their publications in. YourActionItems and
+// OrgActionItems are the open Action Items the viewer has reason to chase:
+// those they are party to, and those only their Org is.
 type reportsListData struct {
-	Reports []domain.ReportSummary
-	Loc     *time.Location
+	Reports         []domain.ReportSummary
+	Loc             *time.Location
+	YourActionItems []domain.ActionItemListing
+	OrgActionItems  []domain.ActionItemListing
 }
 
-// handleReports shows every saved Report Definition as a row of a status
-// table and links to the builder for a new one (CONTEXT.md: Report Definition). Anyone signed in may save one.
+// handleReports lists the open Action Items the viewer has reason to chase,
+// then shows every saved Report Definition as a row of a status table and
+// links to the builder for a new one (CONTEXT.md: Report Definition). Anyone
+// signed in may save one.
 func (s *Server) handleReports(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	data, err := s.reportsList(r)
+	data, err := s.reportsList(r, current)
 	if err != nil {
 		s.serverError(w, r, "could not load reports", err)
 		return
@@ -573,14 +579,19 @@ func publicationPath(p domain.Publication) string {
 	return fmt.Sprintf("/reports/%d/publications/%d", p.DefinitionID, p.ID)
 }
 
-// reportsList summarises the saved definitions.
-func (s *Server) reportsList(r *http.Request) (reportsListData, error) {
+// reportsList summarises the saved definitions and gathers the open Action
+// Items current has reason to chase.
+func (s *Server) reportsList(r *http.Request, current domain.Account) (reportsListData, error) {
 	sums, err := s.svc.ReportSummaries(r.Context())
 	if err != nil {
 		return reportsListData{}, err
 	}
 	slices.SortFunc(sums, byPublishingNeed)
-	return reportsListData{Reports: sums, Loc: s.svc.Timezone()}, nil
+	yours, org, err := s.svc.OpenActionItemsToChase(r.Context(), current.ID)
+	if err != nil {
+		return reportsListData{}, err
+	}
+	return reportsListData{Reports: sums, Loc: s.svc.Timezone(), YourActionItems: yours, OrgActionItems: org}, nil
 }
 
 // byPublishingNeed orders the status table: never-published reports first,

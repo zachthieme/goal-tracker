@@ -23,6 +23,17 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 			</div>
 			<a data-testid="new-report" class="btn primary" href="/reports/new">New report</a>
 		</header>
+		if len(data.YourActionItems) + len(data.OrgActionItems) > 0 {
+			<section data-testid="reports-action-items" class="card rp-chase">
+				<h2>Open Action Items</h2>
+				if len(data.YourActionItems) > 0 {
+					@reportsActionItemGroup("Yours", "reports-action-items-yours", data.YourActionItems)
+				}
+				if len(data.OrgActionItems) > 0 {
+					@reportsActionItemGroup("My org", "reports-action-items-org", data.OrgActionItems)
+				}
+			</section>
+		}
 		if len(data.Reports) == 0 {
 			<p data-testid="no-reports" class="muted">No reports yet.</p>
 		} else {
@@ -40,6 +51,36 @@ templ reportsPage(current *domain.Account, data reportsListData) {
 			</div>
 		}
 	}
+}
+
+// reportsActionItemGroup is one group of the Reports page's Open Action Items,
+// headed label, its list carrying testID.
+templ reportsActionItemGroup(label, testID string, items []domain.ActionItemListing) {
+	<div class="rp-chase-group">
+		<h4 class="label">{ label }</h4>
+		<ul data-testid={ testID } class="rp-chase-list">
+			for _, l := range items {
+				@reportsActionItemRow(l)
+			}
+		</ul>
+	</div>
+}
+
+// reportsActionItemRow is an open Action Item on the Reports page, read as on
+// Home: what it asks, leading where Home's row does, flagged when overdue,
+// with its Report, the Goal it is about, if any, and when it is due, then its
+// owner. It closes and reassigns nothing; that stays on its publication and
+// Home.
+templ reportsActionItemRow(l domain.ActionItemListing) {
+	<li data-testid="reports-action-item">
+		<span class="badge lc">Action Item</span>
+		<a href={ templ.SafeURL(homeActionItemPath(l.Item)) }>{ l.Item.Text }</a>
+		if l.Overdue {
+			<span data-testid="reports-action-item-overdue" class="badge r">Overdue</span>
+		}
+		<span class="muted">{ homeActionItemPlace(l) }</span>
+		@person(l.Item.Owner)
+	</li>
 }
 
 // reportRow is one Report Definition in the status table: its name over its
@@ -1311,6 +1352,15 @@ templ reportStyles() {
 			.rp-sections label:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:-2px}
 		}
 		.rp-card{padding:24px;display:flex;flex-direction:column;gap:12px}
+		.rp-chase{padding:24px;display:flex;flex-direction:column;gap:16px}
+		.rp-chase h2{margin:0}
+		.rp-chase-group{display:flex;flex-direction:column;gap:8px}
+		.rp-chase-group>h4{margin:0}
+		.rp-chase-list{list-style:none;margin:0;padding:0}
+		.rp-chase-list>li{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:12px 0;border-top:1px solid var(--color-border)}
+		.rp-chase-list>li:first-child{border-top:none;padding-top:0}
+		.rp-chase-list>li:last-child{padding-bottom:0}
+		.rp-chase-list>li>a{font-weight:500}
 		.rp-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
 		.rp-card-head h3{font-size:19px}
 		.rp-badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;align-items:center}

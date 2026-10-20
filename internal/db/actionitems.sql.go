@@ -437,6 +437,65 @@ func (q *Queries) ListOpenActionItemsForOwner(ctx context.Context, ownerID int64
 	return items, nil
 }
 
+const listOpenActionItemsWithParties = `-- name: ListOpenActionItemsWithParties :many
+SELECT action_items.id, action_items.report_definition_id, action_items.publication_id, action_items.comment_id, action_items.text, action_items.owner_id, action_items.due_date, action_items.created_by, action_items.created_at, action_items.closed_at, action_items.closing_note, action_items.goal_id, rd.name AS report_name,
+  rd.created_by AS definition_created_by, rp.published_by AS published_by
+FROM action_items
+JOIN report_definitions rd ON rd.id = action_items.report_definition_id
+JOIN report_publications rp ON rp.id = action_items.publication_id
+WHERE action_items.closed_at = ''
+ORDER BY action_items.due_date, action_items.id
+`
+
+type ListOpenActionItemsWithPartiesRow struct {
+	ActionItem          ActionItem
+	ReportName          string
+	DefinitionCreatedBy int64
+	PublishedBy         int64
+}
+
+// Every open Action Item, soonest due first, with who created its Report
+// Definition and who published the publication it was raised on: the people,
+// with its raiser and owner, who decide whose list it is on.
+func (q *Queries) ListOpenActionItemsWithParties(ctx context.Context) ([]ListOpenActionItemsWithPartiesRow, error) {
+	rows, err := q.db.QueryContext(ctx, listOpenActionItemsWithParties)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOpenActionItemsWithPartiesRow
+	for rows.Next() {
+		var i ListOpenActionItemsWithPartiesRow
+		if err := rows.Scan(
+			&i.ActionItem.ID,
+			&i.ActionItem.ReportDefinitionID,
+			&i.ActionItem.PublicationID,
+			&i.ActionItem.CommentID,
+			&i.ActionItem.Text,
+			&i.ActionItem.OwnerID,
+			&i.ActionItem.DueDate,
+			&i.ActionItem.CreatedBy,
+			&i.ActionItem.CreatedAt,
+			&i.ActionItem.ClosedAt,
+			&i.ActionItem.ClosingNote,
+			&i.ActionItem.GoalID,
+			&i.ReportName,
+			&i.DefinitionCreatedBy,
+			&i.PublishedBy,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listOverdueActionItems = `-- name: ListOverdueActionItems :many
 SELECT action_items.id, action_items.report_definition_id, action_items.publication_id, action_items.comment_id, action_items.text, action_items.owner_id, action_items.due_date, action_items.created_by, action_items.created_at, action_items.closed_at, action_items.closing_note, action_items.goal_id, rd.name AS report_name, COALESCE(g.title, '') AS goal_title
 FROM action_items
