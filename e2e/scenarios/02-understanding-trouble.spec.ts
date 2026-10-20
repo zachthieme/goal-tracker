@@ -95,7 +95,7 @@ test("a leader's Report from Definition to publication, Comment and Action Item"
       await expect(block.getByRole("heading", { level: 3 })).toHaveText(goal.title);
       await expect(block.getByTestId("report-owner")).toContainText(goal.owner);
       await expect(block).toContainText(`· ${goal.lifecycle}`);
-      await expect(block.getByTestId("report-so-what")).toHaveText(`So What: ${goal.so_what}`);
+      await expect(block.getByTestId("report-why-it-matters")).toHaveText(`Why it matters: ${goal.why_it_matters}`);
       await expect(block.getByTestId("report-status")).toHaveText(`Status: ${goal.status}`);
       if (goal.delivery_date)
         await expect(block.getByTestId("report-due")).toContainText(reportDate(goal.delivery_date));
@@ -673,7 +673,7 @@ type GoalDetail = Goal & {
   owner: string;
   email: string;
   lifecycle: string;
-  so_what: string;
+  why_it_matters: string;
   delivery_date: string;
   status: string;
   path_to_green: string;
@@ -686,7 +686,7 @@ type GoalDetail = Goal & {
 function goalOfBlock(seedLookup: SeedLookup, anchor: string | null): GoalDetail {
   const id = Number((anchor ?? "").replace("goal-", ""));
   const [goal] = seedLookup<GoalDetail>(
-    `select g.id, g.title, coalesce(a.name, a.email) owner, a.email, g.lifecycle, g.so_what, g.delivery_date,
+    `select g.id, g.title, coalesce(a.name, a.email) owner, a.email, g.lifecycle, g.why_it_matters, g.delivery_date,
             c.status, c.path_to_green,
             (select count(*) from milestones m where m.goal_id = g.id) milestones,
             (select count(*) from metrics m where m.goal_id = g.id) metrics

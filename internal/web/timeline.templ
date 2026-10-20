@@ -85,7 +85,7 @@ templ historyItem(h history, e historyEntry) {
 			case e.Checkin != nil:
 				@historyCheckin(h, e)
 			case e.Revision != nil:
-				<p>{ e.Revision.SoWhat }</p>
+				<p>{ e.Revision.WhyItMatters }</p>
 				<p class="muted small">
 					{ "by " }
 					@person(e.Revision.Author)
@@ -348,7 +348,7 @@ templ timelineStyles() {
 		.tl-mark.y .dot{width:12px;height:11px}
 		.tl-mark.g,.tl-mark.y,.tl-mark.r{background:var(--color-canvas)}
 		.tl-checkin{border:2px solid var(--color-ink-muted);border-radius:2px}
-		.tl-so-what,.tl-title{border:2px solid var(--color-ink-muted);border-radius:50%}
+		.tl-why-it-matters,.tl-title{border:2px solid var(--color-ink-muted);border-radius:50%}
 		.tl-ownership{width:10px;height:10px;border:2px solid var(--color-ink-muted);transform:rotate(45deg)}
 		.tl-value{height:4px;top:8px;background:var(--color-ink-muted);border-radius:2px}
 		.tl-parent-suggestion{border:2px dashed var(--color-ink-muted);border-radius:50%}

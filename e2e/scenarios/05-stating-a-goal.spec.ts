@@ -45,15 +45,15 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
   // to the team Goal.
   const goalA = {
     title: "Shorten the refund wait for EU shoppers",
-    soWhat: "Refunds take nine days and customers write in asking where their money is.",
+    whyItMatters: "Refunds take nine days and customers write in asking where their money is.",
   };
   const goalB = {
     title: "Publish the status page in five languages",
-    soWhat: "Customers outside the US can't read our incident updates during an outage.",
+    whyItMatters: "Customers outside the US can't read our incident updates during an outage.",
   };
   const goalC = {
     title: "Cache the pricing lookups at the edge",
-    soWhat: "Pricing calls add 300ms to every page and slow the whole app at peak.",
+    whyItMatters: "Pricing calls add 300ms to every page and slow the whole app at peak.",
   };
   let goalAId = 0;
   let goalCId = 0;
@@ -115,12 +115,12 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     await expect(priya.getByRole("heading", { level: 1, name: "New goal" })).toBeVisible();
 
     const form = priya.getByTestId("goal-form");
-    // The Title and So What come first, with no heading of their own.
+    // The Title and Why it matters come first, with no heading of their own.
     const what = form.getByTestId("goal-form-what");
     await expect(what.getByRole("heading")).toHaveCount(1);
     await expect(what.getByLabel("Title")).toBeVisible();
     await expect(what.getByLabel("Title")).toHaveAttribute("placeholder", "Name the outcome");
-    await expect(what.getByLabel(/^So What/)).toBeVisible();
+    await expect(what.getByLabel(/^Why it matters/)).toBeVisible();
     const delivery = form.getByTestId("goal-form-delivery");
     await expect(delivery.getByRole("heading", { level: 2, name: "Delivery" })).toBeVisible();
     await expect(delivery.getByRole("group", { name: "Kind" }).getByRole("radio")).toHaveCount(2);
@@ -178,7 +178,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     // It worked if: she always knew what was still missing. The card the page
     // loads with marks every item but Owner to do.
     await expectChecklist(priya, {
-      "So What": false,
+      "Why it matters": false,
       Owner: true,
       "Dated with a delivery date, or Ongoing": false,
       "A Milestone or Metric": false,
@@ -191,9 +191,9 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     // the empty form), and Create and activate follows it.
     await expect(activate).toBeDisabled();
     await priya.getByLabel("Title").fill(goalB.title);
-    await priya.getByLabel(/^So What/).fill(goalB.soWhat);
+    await priya.getByLabel(/^Why it matters/).fill(goalB.whyItMatters);
     await expect(activate).toBeDisabled();
-    await expectItem(priya, "So What", true);
+    await expectItem(priya, "Why it matters", true);
     await expect(count).toHaveText("2 of 6 done");
 
     // Ongoing asks for a Metric, not a Milestone, and How you'll know says so.
@@ -268,7 +268,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
   await test.step("5.3 She saves as Proposed and comes back through Finish defining", async () => {
     await priya.goto("/goals/new");
     await priya.getByLabel("Title").fill(goalA.title);
-    await priya.getByLabel(/^So What/).fill(goalA.soWhat);
+    await priya.getByLabel(/^Why it matters/).fill(goalA.whyItMatters);
     await priya.getByRole("button", { name: "Save as Proposed" }).click();
     await expect(priya).toHaveURL(/\/goals\/\d+$/);
     goalAId = goalIdOf(priya);
@@ -279,7 +279,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     await expect(priya.getByRole("heading", { level: 1, name: "Finish defining" })).toBeVisible();
     const activate = priya.getByRole("button", { name: "Create and activate" });
     await expect(activate).toBeDisabled();
-    await expectItem(priya, "So What", true);
+    await expectItem(priya, "Why it matters", true);
     await fillDated(priya, "Refund flow live in all EU markets");
     await priya.getByRole("combobox", { name: "Team", exact: true }).selectOption({ label: team.team });
     await priya.getByLabel(fieldName, { exact: true }).fill("OPS-115");
@@ -292,7 +292,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
   await test.step("5.4 She picks the team Goal under Contributes to and is told its Owner will be asked", async () => {
     await priya.goto("/goals/new");
     await priya.getByLabel("Title").fill(goalC.title);
-    await priya.getByLabel(/^So What/).fill(goalC.soWhat);
+    await priya.getByLabel(/^Why it matters/).fill(goalC.whyItMatters);
     await fillDated(priya, "Edge cache serving pricing");
     await priya.getByRole("combobox", { name: "Team", exact: true }).selectOption({ label: team.team });
     await priya.getByLabel(fieldName, { exact: true }).fill("OPS-116");
@@ -391,7 +391,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
 // Step 2: "The card is server-rendered on first load. Create and activate is
 // disabled only once htmx's first POST /goals/new/checklist swaps in the live
 // card", and each item "ticks as it's met". That first post goes on the empty
-// form too, and every change after it, with Title and So What still empty:
+// form too, and every change after it, with Title and Why it matters still empty:
 // the card is what says they're missing. A real submit still needs them.
 test("5.2 The live Ready to activate card answers the empty form", async ({ page, seedLookup }) => {
   const [owner] = seedLookup<{ email: string }>(projectOwners, 0);
@@ -404,7 +404,7 @@ test("5.2 The live Ready to activate card answers the empty form", async ({ page
   await test.step("5.2 The first POST /goals/new/checklist disables Create and activate", async () => {
     expect((await live).ok()).toBe(true);
     await expect(activate).toBeDisabled();
-    await expectItem(page, "So What", false);
+    await expectItem(page, "Why it matters", false);
     await expect(count).toHaveText("1 of 4 done");
   });
 
@@ -415,28 +415,28 @@ test("5.2 The live Ready to activate card answers the empty form", async ({ page
   });
 
   await test.step("5.2 Saving with no Title is still refused by the browser", async () => {
-    await page.getByLabel(/^So What/).fill("Refunds take a week to land.");
-    await expectItem(page, "So What", true);
+    await page.getByLabel(/^Why it matters/).fill("Refunds take a week to land.");
+    await expectItem(page, "Why it matters", true);
     await expectRefusedByTheBrowser(page, "Title", () =>
       page.getByRole("button", { name: "Save as Proposed" }).click(),
     );
     await expect(page).toHaveURL(/\/goals\/new$/);
   });
 
-  await test.step("5.2 On the define page, clearing So What still answers", async () => {
+  await test.step("5.2 On the define page, clearing Why it matters still answers", async () => {
     await page.getByLabel("Title").fill("Refunds land in a day");
     await page.getByRole("button", { name: "Save as Proposed" }).click();
     await expect(page).toHaveURL(/\/goals\/\d+$/);
     await page.getByTestId("finish-defining").click();
     await expect(page).toHaveURL(/\/goals\/\d+\/define$/);
-    await expectItem(page, "So What", true);
+    await expectItem(page, "Why it matters", true);
 
     const cleared = page.waitForResponse((r) => /^\/goals\/\d+\/define\/checklist$/.test(new URL(r.url()).pathname));
-    await page.getByLabel(/^So What/).fill("");
+    await page.getByLabel(/^Why it matters/).fill("");
     expect((await cleared).ok()).toBe(true);
-    await expectItem(page, "So What", false);
+    await expectItem(page, "Why it matters", false);
     await expect(activate).toBeDisabled();
-    await expectRefusedByTheBrowser(page, /^So What/, () =>
+    await expectRefusedByTheBrowser(page, /^Why it matters/, () =>
       page.getByRole("button", { name: "Save as Proposed" }).click(),
     );
     await expect(page).toHaveURL(/\/goals\/\d+\/define$/);

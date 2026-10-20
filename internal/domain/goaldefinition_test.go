@@ -16,16 +16,16 @@ import (
 // CreateDefinedGoal (#128) creates a fully defined Goal in one transaction,
 // for the single-page New goal form.
 
-func TestCreateDefinedGoalWithOnlyTitleAndSoWhatIsAProposedGoal(t *testing.T) {
+func TestCreateDefinedGoalWithOnlyTitleAndWhyItMattersIsAProposedGoal(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 
 	g, err := h.Service.CreateDefinedGoal(context.Background(), domain.DefinedGoalInput{
-		Title:   "Ship v2",
-		SoWhat:  "Customers wait too long for v2.",
-		OwnerID: owner.ID,
+		Title:        "Ship v2",
+		WhyItMatters: "Customers wait too long for v2.",
+		OwnerID:      owner.ID,
 	})
 	if err != nil {
 		t.Fatalf("CreateDefinedGoal: %v", err)
@@ -35,8 +35,8 @@ func TestCreateDefinedGoalWithOnlyTitleAndSoWhatIsAProposedGoal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ViewGoal: %v", err)
 	}
-	if got.Title != "Ship v2" || got.SoWhat != "Customers wait too long for v2." {
-		t.Errorf("Goal = %q / %q, want the Title and So What given", got.Title, got.SoWhat)
+	if got.Title != "Ship v2" || got.WhyItMatters != "Customers wait too long for v2." {
+		t.Errorf("Goal = %q / %q, want the Title and Why it matters given", got.Title, got.WhyItMatters)
 	}
 	if got.Lifecycle != domain.LifecycleProposed {
 		t.Errorf("Lifecycle = %q, want %q", got.Lifecycle, domain.LifecycleProposed)
@@ -81,7 +81,7 @@ func newDefinedGoalSetup(t *testing.T) definedGoalSetup {
 func (s definedGoalSetup) fullDefinition() domain.DefinedGoalInput {
 	return domain.DefinedGoalInput{
 		Title:        "Ship v2",
-		SoWhat:       "Customers wait too long for v2.",
+		WhyItMatters: "Customers wait too long for v2.",
 		OwnerID:      s.owner.ID,
 		Kind:         domain.GoalDated,
 		DeliveryDate: futureDate,
@@ -351,10 +351,10 @@ func TestCreateDefinedGoalRequestsALinkToEachParent(t *testing.T) {
 	theirs := h.CreateGoal(kim, "Grow revenue", "Revenue is flat.")
 
 	g, err := h.Service.CreateDefinedGoal(ctx, domain.DefinedGoalInput{
-		Title:     "Ship v2",
-		SoWhat:    "Customers wait too long for v2.",
-		OwnerID:   sam.ID,
-		ParentIDs: []int64{own.ID, theirs.ID},
+		Title:        "Ship v2",
+		WhyItMatters: "Customers wait too long for v2.",
+		OwnerID:      sam.ID,
+		ParentIDs:    []int64{own.ID, theirs.ID},
 	})
 	if err != nil {
 		t.Fatalf("CreateDefinedGoal: %v", err)
@@ -400,7 +400,7 @@ func TestCreateDefinedGoalNamesEveryBadInputAtOnce(t *testing.T) {
 
 	_, err := s.h.Service.CreateDefinedGoal(ctx, domain.DefinedGoalInput{
 		Title:        " ",
-		SoWhat:       "",
+		WhyItMatters: "",
 		OwnerID:      s.owner.ID,
 		Kind:         domain.GoalDated,
 		DeliveryDate: time.Time{},
@@ -431,7 +431,7 @@ func TestCreateDefinedGoalNamesEveryBadInputAtOnce(t *testing.T) {
 		got = append(got, p.Input)
 	}
 	want := []string{
-		"title", "so_what", "delivery_date", "cadence",
+		"title", "why_it_matters", "delivery_date", "cadence",
 		"milestones[1].name", "milestones[1].date",
 		"metrics[1].name", "metrics[1].unit", "metrics[1].direction", "metrics[1].target_date",
 		id("value:", s.team.Values[0].ID), id("value:", s.team.Values[1].ID),
@@ -564,10 +564,10 @@ func TestCreateDefinedGoalAddsANewValueToAnExtendableList(t *testing.T) {
 	ctx := context.Background()
 
 	g, err := s.h.Service.CreateDefinedGoal(ctx, domain.DefinedGoalInput{
-		Title:     "Ship v2",
-		SoWhat:    "Customers wait too long for v2.",
-		OwnerID:   s.owner.ID,
-		NewValues: map[int64]string{s.customer.ID: "Globex"},
+		Title:        "Ship v2",
+		WhyItMatters: "Customers wait too long for v2.",
+		OwnerID:      s.owner.ID,
+		NewValues:    map[int64]string{s.customer.ID: "Globex"},
 	})
 	if err != nil {
 		t.Fatalf("CreateDefinedGoal: %v", err)
@@ -594,10 +594,10 @@ func TestCreateDefinedGoalAddsANewValueToAnExtendableList(t *testing.T) {
 // DefineGoal (#135) finishes defining a Proposed Goal on the New goal form,
 // with CreateDefinedGoal's input.
 
-// definition is the input that leaves g as it is: its Title and So What, and
+// definition is the input that leaves g as it is: its Title and Why it matters, and
 // nothing else changed.
 func definition(g domain.Goal) domain.DefinedGoalInput {
-	return domain.DefinedGoalInput{Title: g.Title, SoWhat: g.SoWhat, OwnerID: g.Owner.ID, Kind: g.Kind, DeliveryDate: g.DeliveryDate}
+	return domain.DefinedGoalInput{Title: g.Title, WhyItMatters: g.WhyItMatters, OwnerID: g.Owner.ID, Kind: g.Kind, DeliveryDate: g.DeliveryDate}
 }
 
 func TestDefineGoalChangesKindAddsAMilestoneAndSwapsAValueInOneCall(t *testing.T) {
@@ -614,7 +614,7 @@ func TestDefineGoalChangesKindAddsAMilestoneAndSwapsAValueInOneCall(t *testing.T
 	s.h.AssignGoalValue(g, area.Values[1])
 	s.h.SetGoalField(s.owner, g, s.headcount, "3")
 	in := definition(g)
-	in.SoWhat = "Customers churn waiting for v2."
+	in.WhyItMatters = "Customers churn waiting for v2."
 	in.Kind, in.DeliveryDate = domain.GoalDated, futureDate
 	in.CadenceDays = 14
 	in.Milestones = []domain.MilestoneDefinition{{Name: "Beta cut", Date: futureDate.AddDate(0, 0, -30)}}
@@ -635,15 +635,15 @@ func TestDefineGoalChangesKindAddsAMilestoneAndSwapsAValueInOneCall(t *testing.T
 	if got.CadenceDays != 14 {
 		t.Errorf("CadenceDays = %d, want 14", got.CadenceDays)
 	}
-	if got.SoWhat != "Customers churn waiting for v2." {
-		t.Errorf("So What = %q, want the new one", got.SoWhat)
+	if got.WhyItMatters != "Customers churn waiting for v2." {
+		t.Errorf("Why it matters = %q, want the new one", got.WhyItMatters)
 	}
-	revisions, err := s.h.Service.ListSoWhatRevisions(ctx, g.ID)
+	revisions, err := s.h.Service.ListWhyItMattersRevisions(ctx, g.ID)
 	if err != nil {
-		t.Fatalf("ListSoWhatRevisions: %v", err)
+		t.Fatalf("ListWhyItMattersRevisions: %v", err)
 	}
-	if len(revisions) == 0 || revisions[0].SoWhat != "Customers churn waiting for v2." || revisions[0].Author.ID != s.owner.ID {
-		t.Errorf("latest revision = %+v, want the new So What by the Owner", revisions)
+	if len(revisions) == 0 || revisions[0].WhyItMatters != "Customers churn waiting for v2." || revisions[0].Author.ID != s.owner.ID {
+		t.Errorf("latest revision = %+v, want the new Why it matters by the Owner", revisions)
 	}
 	milestones, err := s.h.Service.ListMilestones(ctx, g.ID)
 	if err != nil {

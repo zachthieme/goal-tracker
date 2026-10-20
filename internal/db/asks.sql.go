@@ -10,7 +10,7 @@ import (
 )
 
 const getOpenAskForHelp = `-- name: GetOpenAskForHelp :one
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, latest.health, latest.path_to_green
+SELECT goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, latest.health, latest.path_to_green
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 JOIN checkins latest ON latest.id = (
@@ -40,7 +40,7 @@ func (q *Queries) GetOpenAskForHelp(ctx context.Context, goalID int64) (GetOpenA
 	err := row.Scan(
 		&i.Goal.ID,
 		&i.Goal.Title,
-		&i.Goal.SoWhat,
+		&i.Goal.WhyItMatters,
 		&i.Goal.OwnerID,
 		&i.Goal.Lifecycle,
 		&i.Goal.CreatedAt,
@@ -102,7 +102,7 @@ func (q *Queries) ListAskWalkAccounts(ctx context.Context) ([]Account, error) {
 }
 
 const listOpenAsksForHelp = `-- name: ListOpenAsksForHelp :many
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, latest.health, latest.path_to_green
+SELECT goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone, latest.health, latest.path_to_green
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 JOIN checkins latest ON latest.id = (
@@ -141,7 +141,7 @@ func (q *Queries) ListOpenAsksForHelp(ctx context.Context) ([]ListOpenAsksForHel
 		if err := rows.Scan(
 			&i.Goal.ID,
 			&i.Goal.Title,
-			&i.Goal.SoWhat,
+			&i.Goal.WhyItMatters,
 			&i.Goal.OwnerID,
 			&i.Goal.Lifecycle,
 			&i.Goal.CreatedAt,

@@ -970,7 +970,7 @@ func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 }
 
 // The publication splits the selected Goals in two: exceptions as cards under
-// Needs attention, headed by how many there are, each with its Health badge and its So What, Status, and
+// Needs attention, headed by how many there are, each with its Health badge and its Why it matters, Status, and
 // Path to Green — marked Overdue once its target date has passed — and the
 // rest as a table of Health, Goal, Owner, and Due under On track.
 func TestPublicationSplitsNeedsAttentionFromOnTrackOverHTTP(t *testing.T) {
@@ -1002,6 +1002,9 @@ func TestPublicationSplitsNeedsAttentionFromOnTrackOverHTTP(t *testing.T) {
 	if status := pageElement(t, card, "div", "report-status-box"); !strings.Contains(status, "Hire counsel.") ||
 		!strings.Contains(status, `data-testid="path-overdue"`) {
 		t.Errorf("status box does not mark the missed Path to Green Overdue; box:\n%s", status)
+	}
+	if lead := pageElement(t, card, "p", "report-why-it-matters"); !strings.Contains(lead, "<strong>Why it matters:</strong> Expand the market.") {
+		t.Errorf("exception does not lead with its Why it matters: %s", lead)
 	}
 
 	onTrack := pageElement(t, page, "table", "on-track")
@@ -1663,7 +1666,7 @@ func TestPublicationFromBeforeMilestoneMarksListsMarkDateNameOverHTTP(t *testing
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","SoWhat":"Expand the market.",` +
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
 		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Milestones":[` +
 		`{"Milestone":{"ID":1,"Name":"Beta","TargetDate":"2025-12-20T00:00:00Z","Status":"Planned"},"New":false,"PriorDates":["2025-12-01T00:00:00Z"]},` +
 		`{"Milestone":{"ID":2,"Name":"GA","TargetDate":"2026-03-01T00:00:00Z","Status":"Planned"},"New":true,"PriorDates":null},` +
@@ -2732,7 +2735,7 @@ func TestPublishConfirmsWhatItWillFreezeOverHTTP(t *testing.T) {
 // The compose form autosaves: htmx posts it and gets back the preview, showing
 // the narrative as saved, and, out of band, the header's save status saying
 // so, the form's Highlights count and Publish…'s summary, all as saved. The
-// compose fields aren't in the answer, so what the author is typing stays put.
+// compose fields aren't in the answer, so the author's typing stays put.
 // A plain post still reloads the draft (tickets #156, #166).
 func TestAutosaveNarrativeRefreshesThePreviewOverHTTP(t *testing.T) {
 	t.Parallel()
@@ -3403,7 +3406,7 @@ func TestReportBlockShowsTheRunOffGreenOverHTTP(t *testing.T) {
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
 	old := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","SoWhat":"Expand the market.",` +
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
 		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Status":"Blocked."}]}`
 	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, old.ID); err != nil {
 		t.Fatalf("write an older snapshot: %v", err)
@@ -3455,7 +3458,7 @@ func TestPublicationFreezesTheEarlierHealthOverHTTP(t *testing.T) {
 	// A month out from a day later moves the back-to-Green date later.
 	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Vendor is gone.", "Find another.", h.Clock.Now().AddDate(0, 1, 0), "Another vendor takes longer.")
 
-	old := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","SoWhat":"Expand the market.",` +
+	old := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
 		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Yellow","Status":"Vendor is late."}]}`
 	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, old, before.ID); err != nil {
 		t.Fatalf("write an older snapshot: %v", err)
@@ -3616,7 +3619,7 @@ func TestPublicationFromBeforeMovementHasNoMovementLineOverHTTP(t *testing.T) {
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
-	old := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","SoWhat":"Expand the market.",` +
+	old := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
 		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","PriorHealth":"Green","Status":"Vendor is gone."}]}`
 	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, old, pub.ID); err != nil {
 		t.Fatalf("write an older snapshot: %v", err)
@@ -4101,7 +4104,7 @@ func TestPublicationFrozenWithItsOwnBackToGreenDatePriorStrikesTheOneThatDiffers
 	h.Checkin(boss, g.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", time.Date(2026, 6, 9, 0, 0, 0, 0, time.UTC))
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
-	frozen := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","SoWhat":"Expand the market.",` +
+	frozen := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
 		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Status":"Blocked.",` +
 		`"PathToGreen":"Hire counsel.","PathTargetDate":"2026-06-16T00:00:00Z",` +
 		`"PriorPathTargetDates":["2026-06-09T00:00:00Z","2026-06-16T00:00:00Z"]}]}`
@@ -4144,7 +4147,7 @@ func TestPublicationFromBeforeBackToGreenSlipsShowsItsDateOverHTTP(t *testing.T)
 	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Still blocked.", "Hire counsel.", time.Date(2026, 3, 13, 0, 0, 0, 0, time.UTC), "Counsel starts later.")
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","SoWhat":"Expand the market.",` +
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
 		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Status":"Blocked.",` +
 		`"PathToGreen":"Hire counsel.","PathTargetDate":"2026-03-13T00:00:00Z"}]}`
 	if _, err := h.DB.Exec(`UPDATE report_publications SET snapshot = ? WHERE id = ?`, before, pub.ID); err != nil {

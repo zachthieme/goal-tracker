@@ -12,7 +12,7 @@ import (
 )
 
 // The activation gate (CONTEXT.md: Lifecycle; AC on issue #3): Proposed → Active
-// is rejected unless the Goal has a So What, an Owner, and either a delivery
+// is rejected unless the Goal has a Why it matters, an Owner, and either a delivery
 // date plus at least one Milestone or Metric (Dated) or at least one Metric
 // (Ongoing). Each missing item comes back as its own validation error.
 

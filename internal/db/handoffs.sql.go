@@ -169,7 +169,7 @@ func (q *Queries) ListHandoffsForGoal(ctx context.Context, goalID int64) ([]List
 }
 
 const listPendingHandoffsForNewOwner = `-- name: ListPendingHandoffsForNewOwner :many
-SELECT handoffs.id, handoffs.goal_id, handoffs.from_owner, handoffs.to_owner, handoffs.status, handoffs.initiated_by, handoffs.created_at, goal.id, goal.title, goal.so_what, goal.owner_id, goal.lifecycle, goal.created_at, goal.kind, goal.delivery_date, goal.cadence_days, goal.top_level, goal.activated_at, from_acct.id, from_acct.email, from_acct.is_admin, from_acct.created_at, from_acct.departed, from_acct.name, from_acct.manager_id, from_acct.timezone, to_acct.id, to_acct.email, to_acct.is_admin, to_acct.created_at, to_acct.departed, to_acct.name, to_acct.manager_id, to_acct.timezone
+SELECT handoffs.id, handoffs.goal_id, handoffs.from_owner, handoffs.to_owner, handoffs.status, handoffs.initiated_by, handoffs.created_at, goal.id, goal.title, goal.why_it_matters, goal.owner_id, goal.lifecycle, goal.created_at, goal.kind, goal.delivery_date, goal.cadence_days, goal.top_level, goal.activated_at, from_acct.id, from_acct.email, from_acct.is_admin, from_acct.created_at, from_acct.departed, from_acct.name, from_acct.manager_id, from_acct.timezone, to_acct.id, to_acct.email, to_acct.is_admin, to_acct.created_at, to_acct.departed, to_acct.name, to_acct.manager_id, to_acct.timezone
 FROM handoffs
 JOIN goals goal ON goal.id = handoffs.goal_id
 JOIN accounts from_acct ON from_acct.id = handoffs.from_owner
@@ -206,7 +206,7 @@ func (q *Queries) ListPendingHandoffsForNewOwner(ctx context.Context, toOwner in
 			&i.Handoff.CreatedAt,
 			&i.Goal.ID,
 			&i.Goal.Title,
-			&i.Goal.SoWhat,
+			&i.Goal.WhyItMatters,
 			&i.Goal.OwnerID,
 			&i.Goal.Lifecycle,
 			&i.Goal.CreatedAt,

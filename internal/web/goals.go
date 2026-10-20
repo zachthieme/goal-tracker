@@ -74,9 +74,9 @@ func (s *Server) handleDownloadGoals(w http.ResponseWriter, r *http.Request, cur
 
 func (s *Server) handleCreateGoal(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	_, err := s.svc.CreateGoal(r.Context(), domain.CreateGoalInput{
-		Title:   r.FormValue("title"),
-		SoWhat:  r.FormValue("so_what"),
-		OwnerID: current.ID,
+		Title:        r.FormValue("title"),
+		WhyItMatters: r.FormValue("why_it_matters"),
+		OwnerID:      current.ID,
 	})
 	if err != nil {
 		if errors.Is(err, domain.ErrValidation) {
@@ -725,9 +725,9 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 	if err != nil {
 		return goalView{}, fmt.Errorf("load delegates: %w", err)
 	}
-	revisions, err := s.svc.ListSoWhatRevisions(ctx, id)
+	revisions, err := s.svc.ListWhyItMattersRevisions(ctx, id)
 	if err != nil {
-		return goalView{}, fmt.Errorf("load So What history: %w", err)
+		return goalView{}, fmt.Errorf("load Why it matters history: %w", err)
 	}
 	titleRevisions, err := s.svc.ListTitleRevisions(ctx, id)
 	if err != nil {
@@ -966,7 +966,7 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 }
 
 // goalView is everything the single-Goal page renders: the Goal itself, its
-// graph links, and the Milestones, Metrics, Contributors, and So What history an
+// graph links, and the Milestones, Metrics, Contributors, and Why it matters history an
 // Owner fills in before activating it.
 type goalView struct {
 	Goal     domain.Goal
@@ -992,7 +992,7 @@ type goalView struct {
 	// or one of those Delegates (CONTEXT.md: Delegate).
 	Delegates  []domain.Account
 	CanCheckin bool
-	Revisions  []domain.SoWhatRevision
+	Revisions  []domain.WhyItMattersRevision
 	// NoChangeRefusal is why a No change on this Active Goal would be
 	// refused, as a sentence, or "" when one would be recorded or isn't on
 	// offer: there's no Check-in to repeat or the viewer can't check in.
@@ -1139,9 +1139,9 @@ const (
 	// formDraftHighlight is the Draft Highlights block's log form, opened in
 	// place from its "+ Log a highlight" link.
 	formDraftHighlight goalForm = "draft-highlight"
-	// formTitleSoWhat edits the Goal's title and So What together, in the
+	// formTitleWhyItMatters edits the Goal's title and Why it matters together, in the
 	// page head.
-	formTitleSoWhat goalForm = "title-so-what"
+	formTitleWhyItMatters goalForm = "title-why-it-matters"
 )
 
 // offers reports whether the viewer may use form on this Goal: the same people
@@ -1159,7 +1159,7 @@ func (v goalView) offers(form goalForm) bool {
 		return v.Admin && g.Owner.Departed
 	case formTopLevel:
 		return v.Admin
-	case formTitleSoWhat:
+	case formTitleWhyItMatters:
 		return v.Owns || v.Admin
 	case formParentLink, formDelegates:
 		return v.Owns
@@ -1234,7 +1234,7 @@ func (v goalView) actions() []goalAction {
 		form  goalForm
 		href  string
 	}{
-		{"Edit title and So What", formTitleSoWhat, ""},
+		{"Edit title and Why it matters", formTitleWhyItMatters, ""},
 		{"Hand off", formHandoff, ""},
 		{"Add a delegate", formDelegates, ""},
 		{"Link to a parent Goal", formParentLink, ""},
@@ -1559,11 +1559,11 @@ func (s *Server) handleSetCadence(w http.ResponseWriter, r *http.Request, curren
 	s.writeCommandResult(w, r, id, err)
 }
 
-// handleEditSoWhat saves the Edit title and So What form, for the Goal's Owner
-// or an Admin. It changes the title, when the form sends one, and the So What,
+// handleEditWhyItMatters saves the Edit title and Why it matters form, for the Goal's Owner
+// or an Admin. It changes the title, when the form sends one, and the Why it matters,
 // each only when it differs from what the Goal has, all or nothing: an
 // unchanged field records no revision, and a refused save changes neither.
-func (s *Server) handleEditSoWhat(w http.ResponseWriter, r *http.Request, current domain.Account) {
+func (s *Server) handleEditWhyItMatters(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	id, ok := s.goalIDFromPath(w, r)
 	if !ok {
 		return
@@ -1586,14 +1586,14 @@ func (s *Server) handleEditSoWhat(w http.ResponseWriter, r *http.Request, curren
 				return err
 			}
 		}
-		if soWhat := r.PostFormValue("so_what"); strings.TrimSpace(soWhat) != g.SoWhat {
-			if _, err := tx.EditSoWhat(r.Context(), id, soWhat, current.ID); err != nil {
+		if whyItMatters := r.PostFormValue("why_it_matters"); strings.TrimSpace(whyItMatters) != g.WhyItMatters {
+			if _, err := tx.EditWhyItMatters(r.Context(), id, whyItMatters, current.ID); err != nil {
 				return err
 			}
 		}
 		return nil
 	})
-	s.writeFormResult(w, r, id, current, formTitleSoWhat, err)
+	s.writeFormResult(w, r, id, current, formTitleWhyItMatters, err)
 }
 
 func (s *Server) handleAddContributor(w http.ResponseWriter, r *http.Request, current domain.Account) {
@@ -1914,11 +1914,11 @@ type activationItem struct {
 }
 
 // activationFacts are what the activation checklist reads, whether from a
-// saved Goal or from the New goal form as typed: its So What, whether it has
+// saved Goal or from the New goal form as typed: its Why it matters, whether it has
 // an Owner, its Kind and delivery date, how many Milestones and Metrics it
 // has, and every required Dimension and Field, set or not.
 type activationFacts struct {
-	SoWhat       string
+	WhyItMatters string
 	Owned        bool
 	Kind         string
 	DeliveryDate time.Time
@@ -1931,7 +1931,7 @@ type activationFacts struct {
 }
 
 // checklist restates the minimum standard domain.ActivateGoal enforces, so the
-// Owner sees what's missing before they try: a So What, an Owner, Dated with a
+// Owner sees what's missing before they try: a Why it matters, an Owner, Dated with a
 // delivery date or Ongoing, a Milestone or Metric for a Dated Goal or a Metric
 // for an Ongoing one, and a value in each required Dimension and Field
 // (CONTEXT.md: Incomplete). The server still enforces the rules on activation.
@@ -1946,7 +1946,7 @@ func (f activationFacts) checklist() []activationItem {
 		kindInput = domain.InputDeliveryDate
 	}
 	items := []activationItem{
-		{"So What", strings.TrimSpace(f.SoWhat) != "", domain.InputSoWhat},
+		{"Why it matters", strings.TrimSpace(f.WhyItMatters) != "", domain.InputWhyItMatters},
 		{"Owner", f.Owned, ""},
 		{"Dated with a delivery date, or Ongoing", f.Kind == domain.GoalOngoing || (f.Kind == domain.GoalDated && !f.DeliveryDate.IsZero()), kindInput},
 	}
@@ -1987,7 +1987,7 @@ func (f activationFacts) ready() bool {
 func (v goalView) activationFacts() activationFacts {
 	g := v.Goal
 	return activationFacts{
-		SoWhat:       g.SoWhat,
+		WhyItMatters: g.WhyItMatters,
 		Owned:        g.Owner.ID != 0,
 		Kind:         g.Kind,
 		DeliveryDate: g.DeliveryDate,

@@ -16,7 +16,7 @@ const idColumn = "ID"
 
 // goalColumns are the import format's own columns, in the order the download
 // writes them; each Dimension and Field column follows them.
-var goalColumns = []string{"Title", "Owner", "So What", "Kind", "Delivery Date", "Milestones", "Metrics", "Parents"}
+var goalColumns = []string{"Title", "Owner", "Why it matters", "Kind", "Delivery Date", "Milestones", "Metrics", "Parents"}
 
 // entrySeparator joins the entries of a cell holding several, the way the
 // import format writes them.
@@ -102,10 +102,10 @@ func (im *Importer) Download(ctx context.Context, w io.Writer, goals []domain.Go
 // Metrics, and the titles of the Goals it contributes to.
 func goalCells(ctx context.Context, svc *domain.Service, g domain.Goal) (map[string]string, error) {
 	cells := map[string]string{
-		"Title":   g.Title,
-		"Owner":   g.Owner.Email,
-		"So What": g.SoWhat,
-		"Kind":    g.Kind,
+		"Title":          g.Title,
+		"Owner":          g.Owner.Email,
+		"Why it matters": g.WhyItMatters,
+		"Kind":           g.Kind,
 	}
 	if !g.DeliveryDate.IsZero() {
 		cells["Delivery Date"] = g.DeliveryDate.Format(dateFormat)

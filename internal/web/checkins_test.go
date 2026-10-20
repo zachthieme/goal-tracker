@@ -246,7 +246,7 @@ func TestLatestStatusOpensWithCells(t *testing.T) {
 	parent := h.ActiveGoal(sam, "Parent", "It matters.")
 	h.ActiveChildOf(sam, parent, "Silent child", "It matters.")
 	h.Clock.Advance(10 * 24 * time.Hour)
-	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red so what.")
+	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red why it matters.")
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 	if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
 		GoalID:         parent.ID,
@@ -689,7 +689,7 @@ func TestCheckinExplanationErrorShownNextToExplanationField(t *testing.T) {
 
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Parent", "It matters.")
-	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red so what.")
+	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red why it matters.")
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 
 	samClient := signInClient(t, ts.URL, "sam@example.com")
@@ -3730,7 +3730,7 @@ func TestCheckinPageHeadingHierarchy(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("AddMetric: %v", err)
 	}
-	redChild := h.ActiveChildOf(sam, goal, "Red work", "Red so what.")
+	redChild := h.ActiveChildOf(sam, goal, "Red work", "Red why it matters.")
 	// The Goal turns Yellow before its child turns Red, so its Check-in
 	// needs no explanation.
 	h.Checkin(sam, goal.ID, domain.HealthYellow, "Slipping.", "Add a second on-call.", pathDate)
@@ -3798,7 +3798,7 @@ func TestCheckinFormRolledUpPanel(t *testing.T) {
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Parent", "It matters.")
-	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red so what.")
+	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red why it matters.")
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, parent.ID))

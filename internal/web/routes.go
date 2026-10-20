@@ -36,7 +36,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /goals/{id}/dated", s.requireAuth(s.handleMarkGoalDated))
 	s.mux.HandleFunc("POST /goals/{id}/ongoing", s.requireAuth(s.handleMarkGoalOngoing))
 	s.mux.HandleFunc("POST /goals/{id}/cadence", s.requireAuth(s.handleSetCadence))
-	s.mux.HandleFunc("POST /goals/{id}/so-what", s.requireAuth(s.handleEditSoWhat))
+	s.mux.HandleFunc("POST /goals/{id}/why-it-matters", s.requireAuth(s.handleEditWhyItMatters))
 	s.mux.HandleFunc("POST /goals/{id}/contributors", s.requireAuth(s.handleAddContributor))
 	s.mux.HandleFunc("GET /delegates", s.requireAuth(s.handleDelegatePage))
 	s.mux.HandleFunc("POST /goals/{id}/delegates", s.requireAuth(s.handleAddDelegate))

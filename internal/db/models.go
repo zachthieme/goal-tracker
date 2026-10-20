@@ -156,7 +156,7 @@ type Field struct {
 type Goal struct {
 	ID           int64
 	Title        string
-	SoWhat       string
+	WhyItMatters string
 	OwnerID      int64
 	Lifecycle    string
 	CreatedAt    string
@@ -389,14 +389,6 @@ type ReportRuleValue struct {
 	Value        string
 }
 
-type SoWhatRevision struct {
-	ID        int64
-	GoalID    int64
-	SoWhat    string
-	AuthorID  int64
-	CreatedAt string
-}
-
 type UndoToken struct {
 	ID        int64
 	Token     string
@@ -406,4 +398,12 @@ type UndoToken struct {
 	Detail    string
 	IssuedAt  string
 	UsedAt    *string
+}
+
+type WhyItMattersRevision struct {
+	ID           int64
+	GoalID       int64
+	WhyItMatters string
+	AuthorID     int64
+	CreatedAt    string
 }

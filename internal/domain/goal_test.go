@@ -17,9 +17,9 @@ func TestCreateGoalIsProposedAndOwned(t *testing.T) {
 	owner := h.SignIn("sam@example.com")
 
 	g, err := h.Service.CreateGoal(context.Background(), domain.CreateGoalInput{
-		Title:   "Cut checkout latency",
-		SoWhat:  "Shoppers abandon slow carts; faster checkout lifts conversion.",
-		OwnerID: owner.ID,
+		Title:        "Cut checkout latency",
+		WhyItMatters: "Shoppers abandon slow carts; faster checkout lifts conversion.",
+		OwnerID:      owner.ID,
 	})
 	if err != nil {
 		t.Fatalf("CreateGoal: %v", err)
@@ -30,8 +30,8 @@ func TestCreateGoalIsProposedAndOwned(t *testing.T) {
 	if g.Title != "Cut checkout latency" {
 		t.Errorf("Title = %q", g.Title)
 	}
-	if g.SoWhat == "" {
-		t.Error("So What was dropped")
+	if g.WhyItMatters == "" {
+		t.Error("Why it matters was dropped")
 	}
 	if g.Lifecycle != domain.LifecycleProposed {
 		t.Errorf("Lifecycle = %q, want %q", g.Lifecycle, domain.LifecycleProposed)
@@ -44,15 +44,15 @@ func TestCreateGoalIsProposedAndOwned(t *testing.T) {
 	}
 }
 
-func TestCreateGoalRequiresTitleAndSoWhat(t *testing.T) {
+func TestCreateGoalRequiresTitleAndWhyItMatters(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 
 	cases := map[string]domain.CreateGoalInput{
-		"no title":   {Title: "  ", SoWhat: "why", OwnerID: owner.ID},
-		"no so what": {Title: "A goal", SoWhat: "", OwnerID: owner.ID},
+		"no title":          {Title: "  ", WhyItMatters: "why", OwnerID: owner.ID},
+		"no why it matters": {Title: "A goal", WhyItMatters: "", OwnerID: owner.ID},
 	}
 	for name, in := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -74,7 +74,7 @@ func TestViewGoalReturnsWhatWasCreated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ViewGoal: %v", err)
 	}
-	if got.Title != created.Title || got.SoWhat != created.SoWhat {
+	if got.Title != created.Title || got.WhyItMatters != created.WhyItMatters {
 		t.Errorf("ViewGoal = %+v, want %+v", got, created)
 	}
 	if got.Owner.Email != "sam@example.com" {
@@ -249,64 +249,64 @@ func TestAddContributorRejectsDuplicate(t *testing.T) {
 	}
 }
 
-func TestCreateGoalRecordsFirstSoWhatRevision(t *testing.T) {
+func TestCreateGoalRecordsFirstWhyItMattersRevision(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "Customers wait too long for v2.")
 
-	revs, err := h.Service.ListSoWhatRevisions(context.Background(), g.ID)
+	revs, err := h.Service.ListWhyItMattersRevisions(context.Background(), g.ID)
 	if err != nil {
-		t.Fatalf("ListSoWhatRevisions: %v", err)
+		t.Fatalf("ListWhyItMattersRevisions: %v", err)
 	}
 	if len(revs) != 1 {
 		t.Fatalf("len(revs) = %d, want 1 at creation", len(revs))
 	}
-	if revs[0].SoWhat != "Customers wait too long for v2." {
-		t.Errorf("first revision = %q", revs[0].SoWhat)
+	if revs[0].WhyItMatters != "Customers wait too long for v2." {
+		t.Errorf("first revision = %q", revs[0].WhyItMatters)
 	}
 	if revs[0].Author.Email != "sam@example.com" {
 		t.Errorf("author = %q, want the Owner", revs[0].Author.Email)
 	}
 }
 
-func TestEditSoWhatKeepsEveryRevision(t *testing.T) {
+func TestEditWhyItMattersKeepsEveryRevision(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "First why.")
 
-	got, err := h.Service.EditSoWhat(context.Background(), g.ID, "Second why.", owner.ID)
+	got, err := h.Service.EditWhyItMatters(context.Background(), g.ID, "Second why.", owner.ID)
 	if err != nil {
-		t.Fatalf("EditSoWhat: %v", err)
+		t.Fatalf("EditWhyItMatters: %v", err)
 	}
-	if got.SoWhat != "Second why." {
-		t.Errorf("current So What = %q, want the edit", got.SoWhat)
+	if got.WhyItMatters != "Second why." {
+		t.Errorf("current Why it matters = %q, want the edit", got.WhyItMatters)
 	}
 
-	revs, err := h.Service.ListSoWhatRevisions(context.Background(), g.ID)
+	revs, err := h.Service.ListWhyItMattersRevisions(context.Background(), g.ID)
 	if err != nil {
-		t.Fatalf("ListSoWhatRevisions: %v", err)
+		t.Fatalf("ListWhyItMattersRevisions: %v", err)
 	}
 	if len(revs) != 2 {
 		t.Fatalf("len(revs) = %d, want 2 after one edit", len(revs))
 	}
 	// Newest first: the edit, then the original.
-	if revs[0].SoWhat != "Second why." || revs[1].SoWhat != "First why." {
-		t.Errorf("revisions = %q, %q", revs[0].SoWhat, revs[1].SoWhat)
+	if revs[0].WhyItMatters != "Second why." || revs[1].WhyItMatters != "First why." {
+		t.Errorf("revisions = %q, %q", revs[0].WhyItMatters, revs[1].WhyItMatters)
 	}
 }
 
-func TestEditSoWhatRejectsEmpty(t *testing.T) {
+func TestEditWhyItMattersRejectsEmpty(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "First why.")
 
-	if _, err := h.Service.EditSoWhat(context.Background(), g.ID, "   ", owner.ID); !errors.Is(err, domain.ErrValidation) {
+	if _, err := h.Service.EditWhyItMatters(context.Background(), g.ID, "   ", owner.ID); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("err = %v, want ErrValidation", err)
 	}
 }

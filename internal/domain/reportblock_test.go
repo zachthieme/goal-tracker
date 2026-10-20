@@ -289,7 +289,7 @@ func TestReportReadsChangesAgainstBaseline(t *testing.T) {
 }
 
 // An exception block carries the whole MBR treatment: the due date with its
-// struck-through history, Health, badges, So What, latest status, Path to
+// struck-through history, Health, badges, Why it matters, latest status, Path to
 // Green, the Milestones marked New/Done/Removed with their struck dates, the
 // Metrics against target, and the Rolled-up Health with the Owner's
 // explanation (CONTEXT.md: Report, Date Slip, Rolled-up Health).
@@ -350,8 +350,8 @@ func TestReportBlockShowsTheMBRTreatment(t *testing.T) {
 	}
 	b := r.Exceptions[0]
 
-	if b.Goal.Title != "Launch in EU" || b.Goal.SoWhat != "EU shoppers can't pay in euros." {
-		t.Errorf("title and So What %q / %q", b.Goal.Title, b.Goal.SoWhat)
+	if b.Goal.Title != "Launch in EU" || b.Goal.WhyItMatters != "EU shoppers can't pay in euros." {
+		t.Errorf("title and Why it matters %q / %q", b.Goal.Title, b.Goal.WhyItMatters)
 	}
 	if !b.Goal.DeliveryDate.Equal(date(2026, 8, 3)) {
 		t.Errorf("due date %v, want 2026-08-03", b.Goal.DeliveryDate)

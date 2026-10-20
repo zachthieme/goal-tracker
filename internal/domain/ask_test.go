@@ -153,20 +153,20 @@ func TestOpenAsksForHelp(t *testing.T) {
 	_, line := askLine(t, h, "sam@example.com", "mia@example.com")
 	sam, mia := line[0], line[1]
 
-	yellow := h.ActiveGoal(sam, "a yellow ask", "So what.")
+	yellow := h.ActiveGoal(sam, "a yellow ask", "Why it matters.")
 	h.AskForHelp(sam, yellow.ID, domain.HealthYellow, "Short a reviewer.", "Borrow one.", pathDate)
-	red := h.ActiveGoal(sam, "Z red ask", "So what.")
+	red := h.ActiveGoal(sam, "Z red ask", "Why it matters.")
 	h.AskForHelp(sam, red.ID, domain.HealthRed, "Blocked.", "Need budget.", pathDate)
 
-	unasked := h.ActiveGoal(sam, "Unasked since", "So what.")
+	unasked := h.ActiveGoal(sam, "Unasked since", "Why it matters.")
 	h.AskForHelp(sam, unasked.ID, domain.HealthYellow, "Short.", "Borrow one.", pathDate)
 	h.Checkin(sam, unasked.ID, domain.HealthYellow, "Still short.", "Hire.", pathDate)
 
-	green := h.ActiveGoal(sam, "Back to Green", "So what.")
+	green := h.ActiveGoal(sam, "Back to Green", "Why it matters.")
 	h.AskForHelp(sam, green.ID, domain.HealthYellow, "Short.", "Borrow one.", pathDate)
 	h.Checkin(sam, green.ID, domain.HealthGreen, "Fixed.", "", pathDate)
 
-	held := h.ActiveGoal(sam, "Put On Hold", "So what.")
+	held := h.ActiveGoal(sam, "Put On Hold", "Why it matters.")
 	h.AskForHelp(sam, held.ID, domain.HealthRed, "Blocked.", "Need budget.", pathDate)
 	if _, err := h.Service.SubmitCheckin(ctx, domain.SubmitCheckinInput{
 		GoalID: held.ID, AuthorID: sam.ID, Status: "Pausing.",
@@ -210,9 +210,9 @@ func TestAsksForHelpTo(t *testing.T) {
 	_, other := askLine(t, h, "pat@example.com", "dee@example.com", "vp@example.com")
 	pat, dee := other[0], other[1]
 
-	mine := h.ActiveGoal(sam, "Sam's ask", "So what.")
+	mine := h.ActiveGoal(sam, "Sam's ask", "Why it matters.")
 	h.AskForHelp(sam, mine.ID, domain.HealthYellow, "Short.", "Borrow one.", pathDate)
-	theirs := h.ActiveGoal(pat, "Pat's ask", "So what.")
+	theirs := h.ActiveGoal(pat, "Pat's ask", "Why it matters.")
 	h.AskForHelp(pat, theirs.ID, domain.HealthRed, "Blocked.", "Need budget.", pathDate)
 
 	for _, tc := range []struct {
@@ -251,7 +251,7 @@ func TestAskForHelpStaysOpenAfterAnAnswer(t *testing.T) {
 	ctx := context.Background()
 	_, line := askLine(t, h, "sam@example.com", "mia@example.com")
 	sam, mia := line[0], line[1]
-	g := h.ActiveGoal(sam, "Sam's ask", "So what.")
+	g := h.ActiveGoal(sam, "Sam's ask", "Why it matters.")
 	h.AskForHelp(sam, g.ID, domain.HealthYellow, "Short.", "Borrow one.", pathDate)
 
 	if _, err := h.Service.AddGoalComment(ctx, mia.ID, g.ID, "Take Lee for two weeks."); err != nil {

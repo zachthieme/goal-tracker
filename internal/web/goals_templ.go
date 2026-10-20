@@ -2603,7 +2603,7 @@ func goalsStyles() templ.Component {
 }
 
 // goalPage shows a single Goal: a header summarizing it with every action in
-// reach and its So What beneath, then its latest status, Metrics, Milestones,
+// reach and its Why it matters beneath, then its latest status, Metrics, Milestones,
 // Highlights, Comments and history in the main column, and its links, people,
 // Dimension values and Fields in the sidebar. Only the latest status, each Metric and
 // Milestones are cards; the rest sit on the canvas under a rule.
@@ -3340,7 +3340,7 @@ func goalActionItemRow(l domain.ActionItemListing, current *domain.Account, retu
 }
 
 // goalHead is the Goal's summary a reader takes in at a glance: its title, its
-// So What as a lead paragraph, and one metadata line — the Health badge, then
+// Why it matters as a lead paragraph, and one metadata line — the Health badge, then
 // the Lifecycle, Kind, Owner, delivery date with its slips struck, cadence and
 // Top-level as plain text — with Check in and No change top right for whoever
 // may check in. Dimension values and Fields stay in the sidebar.
@@ -3379,40 +3379,40 @@ func goalHead(v goalView, owner, admin bool) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 300, "</h1><article data-testid=\"goal\" class=\"gp-statement\" aria-labelledby=\"so-what-label\"><h2 id=\"so-what-label\" class=\"sr-only\">So What</h2><p data-testid=\"goal-so-what\" class=\"gp-lead\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 300, "</h1><article data-testid=\"goal\" class=\"gp-statement\" aria-labelledby=\"why-it-matters-label\"><h2 id=\"why-it-matters-label\" class=\"sr-only\">Why it matters</h2><p data-testid=\"goal-why-it-matters\" class=\"gp-lead\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var143 string
-		templ_7745c5c3_Var143, templ_7745c5c3_Err = templ.JoinStringErrs(g.SoWhat)
+		templ_7745c5c3_Var143, templ_7745c5c3_Err = templ.JoinStringErrs(g.WhyItMatters)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goals.templ`, Line: 774, Col: 60}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goals.templ`, Line: 774, Col: 73}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var143))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 301, "</p><button type=\"button\" class=\"disclose help explain gp-lead-help\" aria-expanded=\"false\" aria-controls=\"so-what-help\" title=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 301, "</p><button type=\"button\" class=\"disclose help explain gp-lead-help\" aria-expanded=\"false\" aria-controls=\"why-it-matters-help\" title=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var144 string
-		templ_7745c5c3_Var144, templ_7745c5c3_Err = templ.ResolveAttributeValue(soWhatHelp)
+		templ_7745c5c3_Var144, templ_7745c5c3_Err = templ.ResolveAttributeValue(whyItMattersHelp)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goals.templ`, Line: 775, Col: 138}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goals.templ`, Line: 775, Col: 151}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var144)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 302, "\">What is a So What?</button><p id=\"so-what-help\" class=\"explain\" hidden>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 302, "\">What goes here?</button><p id=\"why-it-matters-help\" class=\"explain\" hidden>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var145 string
-		templ_7745c5c3_Var145, templ_7745c5c3_Err = templ.JoinStringErrs(soWhatHelp)
+		templ_7745c5c3_Var145, templ_7745c5c3_Err = templ.JoinStringErrs(whyItMattersHelp)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goals.templ`, Line: 776, Col: 60}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goals.templ`, Line: 776, Col: 73}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var145))
 		if templ_7745c5c3_Err != nil {
@@ -3649,8 +3649,8 @@ func goalHead(v goalView, owner, admin bool) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		if v.opens(formTitleSoWhat) {
-			templ_7745c5c3_Err = titleSoWhatForm(v).Render(ctx, templ_7745c5c3_Buffer)
+		if v.opens(formTitleWhyItMatters) {
+			templ_7745c5c3_Err = titleWhyItMattersForm(v).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -3823,10 +3823,10 @@ func goalMore(v goalView) templ.Component {
 	})
 }
 
-// titleSoWhatForm is the Edit title and So What form, open in the page head
-// for the Owner or an Admin: the Goal's title and So What as they stand, or
+// titleWhyItMattersForm is the Edit title and Why it matters form, open in the page head
+// for the Owner or an Admin: the Goal's title and Why it matters as they stand, or
 // each as typed when a save was refused.
-func titleSoWhatForm(v goalView) templ.Component {
+func titleWhyItMattersForm(v goalView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -3848,12 +3848,12 @@ func titleSoWhatForm(v goalView) templ.Component {
 		}
 		ctx = templ.ClearChildren(ctx)
 		g := v.Goal
-		title, soWhat := g.Title, g.SoWhat
+		title, whyItMatters := g.Title, g.WhyItMatters
 		if typed, ok := v.FormInput["title"]; ok && len(typed) > 0 {
 			title = typed[0]
 		}
-		if typed, ok := v.FormInput["so_what"]; ok && len(typed) > 0 {
-			soWhat = typed[0]
+		if typed, ok := v.FormInput["why_it_matters"]; ok && len(typed) > 0 {
+			whyItMatters = typed[0]
 		}
 		templ_7745c5c3_Var165 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -3867,14 +3867,14 @@ func titleSoWhatForm(v goalView) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 339, "<form data-testid=\"edit-title-so-what\" method=\"post\" action=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 339, "<form data-testid=\"edit-title-why-it-matters\" method=\"post\" action=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var166 templ.SafeURL
-			templ_7745c5c3_Var166, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d/so-what", g.ID)))
+			templ_7745c5c3_Var166, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d/why-it-matters", g.ID)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goals.templ`, Line: 929, Col: 117}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goals.templ`, Line: 929, Col: 131}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var166))
 			if templ_7745c5c3_Err != nil {
@@ -3893,14 +3893,14 @@ func titleSoWhatForm(v goalView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 341, "\" required autofocus></label> <label class=\"field\"><span>So What</span> <textarea name=\"so_what\" rows=\"3\" required>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 341, "\" required autofocus></label> <label class=\"field\"><span>Why it matters</span> <textarea name=\"why_it_matters\" rows=\"3\" required>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var168 string
-			templ_7745c5c3_Var168, templ_7745c5c3_Err = templ.JoinStringErrs(soWhat)
+			templ_7745c5c3_Var168, templ_7745c5c3_Err = templ.JoinStringErrs(whyItMatters)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goals.templ`, Line: 936, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goals.templ`, Line: 936, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var168))
 			if templ_7745c5c3_Err != nil {
@@ -3912,7 +3912,7 @@ func titleSoWhatForm(v goalView) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = openGoalForm(v, formTitleSoWhat, "Edit title and So What").Render(templ.WithChildren(ctx, templ_7745c5c3_Var165), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = openGoalForm(v, formTitleWhyItMatters, "Edit title and Why it matters").Render(templ.WithChildren(ctx, templ_7745c5c3_Var165), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -4460,8 +4460,8 @@ func ownerForms(v goalView) templ.Component {
 	})
 }
 
-// soWhatHelp defines So What on the Goal page, opened from its heading.
-const soWhatHelp = "The customer problem this Goal addresses and what is expected to change when it succeeds."
+// whyItMattersHelp defines Why it matters on the Goal page, opened from its heading.
+const whyItMattersHelp = "The customer problem this Goal addresses and what is expected to change when it succeeds."
 
 // topLevelHelp says what Top-level means, opened from the Goal page's badge.
 const topLevelHelp = "One of the company's root outcomes"
@@ -5083,7 +5083,7 @@ func requestParentLink(v goalView) templ.Component {
 
 // defineGoal is the Owner's toolkit for a Proposed Goal: the activation
 // checklist, Activate Goal once it is done, and Finish defining, which opens
-// the define page to set the Kind, cadence, So What, Milestones, Metrics and
+// the define page to set the Kind, cadence, Why it matters, Milestones, Metrics and
 // the rest on one form. Contributors are added from the sidebar's
 // Contributors group.
 func defineGoal(v goalView) templ.Component {

@@ -1,6 +1,6 @@
 // Package domain is the service boundary for Goal Tracker. Handlers and any
 // other caller go through Service and speak in the domain vocabulary defined in
-// CONTEXT.md (Goal, So What, Owner, Lifecycle); the SQL, the clock, and the
+// CONTEXT.md (Goal, Why it matters, Owner, Lifecycle); the SQL, the clock, and the
 // email sender all sit behind it (ADR 0004: graph traversal stays behind this
 // service so storage can change without touching callers).
 package domain

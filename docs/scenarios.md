@@ -84,7 +84,7 @@ levels up can follow it without knowing her org.
    see: a Health summary, then the exceptions in full (Red, Yellow, Check-in
    overdue, slipped, newly Proposed, Lifecycle changes), then every unchanged
    Green Goal on one line.
-3. "Changes since" reads against her previous publication, so what's marked is
+3. "Changes since" reads against her previous publication, so the marks show
    what moved since the last review, including Goals that entered or left.
 4. She composes the narrative: ticks the Highlights worth pulling into
    Insights, Accomplishments and Misses, each credited to its Goal's Owner, and
@@ -176,12 +176,12 @@ Goal it serves.
 the graph only by the parent Owner's consent. Without a date or a Metric there
 is nothing for trouble to be measured against.
 
-1. Priya presses **New goal**. One page, in sections: the Title and So What,
+1. Priya presses **New goal**. One page, in sections: the Title and Why it matters,
    Delivery (Dated or Ongoing, date, cadence), How you'll know (Milestones,
    Metrics), and More detail (Contributes to, Where it fits: Dimensions,
    Fields).
 2. A **Ready to activate** card stays beside the form and ticks off the
-   minimum standard as she types: a So What; Dated with a delivery date and at
+   minimum standard as she types: Why it matters; Dated with a delivery date and at
    least one Milestone or Metric, or Ongoing with at least one Metric; a value
    in everything an Admin marked required.
 3. She isn't sure of the Metrics yet, so she saves as Proposed and comes back

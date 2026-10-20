@@ -218,14 +218,14 @@ func TestRolledUpHealthCountsCheckinOverdueChildrenWithoutChangingTheColor(t *te
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Org outcome", "It matters.")
-	quiet := h.ActiveChildOf(sam, parent, "Quiet work", "Quiet so what.")
+	quiet := h.ActiveChildOf(sam, parent, "Quiet work", "Quiet why it matters.")
 	h.Checkin(sam, quiet.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	h.ActiveChildOf(sam, parent, "Never checked in", "Silent so what.")
-	paused := h.OnHoldGoal(sam, "Paused work", "Paused so what.", "Budget freeze.")
+	h.ActiveChildOf(sam, parent, "Never checked in", "Silent why it matters.")
+	paused := h.OnHoldGoal(sam, "Paused work", "Paused why it matters.", "Budget freeze.")
 	h.RequestLink(sam, paused, parent, "")
 
 	h.Clock.Advance(10 * day)
-	fresh := h.ActiveChildOf(sam, parent, "Fresh work", "Fresh so what.")
+	fresh := h.ActiveChildOf(sam, parent, "Fresh work", "Fresh why it matters.")
 	h.Checkin(sam, fresh.ID, domain.HealthGreen, "On track.", "", time.Time{})
 
 	got, err := h.Service.RolledUpHealth(context.Background(), parent.ID)

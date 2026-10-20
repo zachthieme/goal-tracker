@@ -49,8 +49,8 @@ func TestSmokeSignInCreateAndViewGoal(t *testing.T) {
 
 	// Create a Proposed Goal.
 	resp = postForm(t, client, ts.URL+"/goals", url.Values{
-		"title":   {"Cut checkout latency"},
-		"so_what": {"Shoppers abandon slow carts."},
+		"title":          {"Cut checkout latency"},
+		"why_it_matters": {"Shoppers abandon slow carts."},
 	})
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("after create goal: status %d", resp.StatusCode)
@@ -89,7 +89,7 @@ func findGoalLink(t *testing.T, body string) string {
 
 // TestSmokeDefineAndActivateGoal is the define-and-activate HTTP smoke test: an
 // Owner marks a Proposed Goal Dated, adds a Milestone and a Metric, sets the
-// cadence, revises the So What, adds a Contributor, and activates it — then sees
+// cadence, revises the Why it matters, adds a Contributor, and activates it — then sees
 // it rendered Active with everything it filled in.
 func TestSmokeDefineAndActivateGoal(t *testing.T) {
 	t.Parallel()
@@ -110,8 +110,8 @@ func TestSmokeDefineAndActivateGoal(t *testing.T) {
 	postForm(t, client, ts.URL+"/signin", url.Values{"email": {"boss@example.com"}})
 
 	resp := postForm(t, client, ts.URL+"/goals", url.Values{
-		"title":   {"Cut checkout latency"},
-		"so_what": {"Shoppers abandon slow carts."},
+		"title":          {"Cut checkout latency"},
+		"why_it_matters": {"Shoppers abandon slow carts."},
 	})
 	goalPath := findGoalLink(t, readBody(t, resp))
 	goalURL := ts.URL + goalPath
@@ -130,7 +130,7 @@ func TestSmokeDefineAndActivateGoal(t *testing.T) {
 		"target_date": {"2026-06-15"},
 	})
 	postForm(t, client, goalURL+"/cadence", url.Values{"cadence_days": {"14"}})
-	postForm(t, client, goalURL+"/so-what", url.Values{"so_what": {"Faster checkout lifts conversion."}})
+	postForm(t, client, goalURL+"/why-it-matters", url.Values{"why_it_matters": {"Faster checkout lifts conversion."}})
 	postForm(t, client, goalURL+"/contributors", url.Values{"email": {"dana@example.com"}})
 
 	resp = postForm(t, client, goalURL+"/activate", nil)
@@ -144,7 +144,7 @@ func TestSmokeDefineAndActivateGoal(t *testing.T) {
 		"p95 checkout latency",
 		"every 14 days",
 		"Faster checkout lifts conversion.",
-		"Shoppers abandon slow carts.", // the original So What, kept as a revision
+		"Shoppers abandon slow carts.", // the original Why it matters, kept as a revision
 		"dana@example.com",
 	} {
 		if !strings.Contains(body, want) {
@@ -168,8 +168,8 @@ func TestActivateProposedGoalReportsGateFailures(t *testing.T) {
 	postForm(t, client, ts.URL+"/signin", url.Values{"email": {"boss@example.com"}})
 
 	resp := postForm(t, client, ts.URL+"/goals", url.Values{
-		"title":   {"Bare goal"},
-		"so_what": {"Some reason."},
+		"title":          {"Bare goal"},
+		"why_it_matters": {"Some reason."},
 	})
 	goalPath := findGoalLink(t, readBody(t, resp))
 
@@ -478,10 +478,10 @@ func TestCreateChildGoalOffersParentDefaults(t *testing.T) {
 
 	// Keeping the default assigns Growth to the child and links it to the parent.
 	resp := postForm(t, samClient, ts.URL+"/goals/new", url.Values{
-		"title":     {"Kept child"},
-		"so_what":   {"Child matters."},
-		"parent_id": {fmt.Sprint(parent.ID)},
-		"value_id":  {fmt.Sprintf("%d", growth.ID)},
+		"title":          {"Kept child"},
+		"why_it_matters": {"Child matters."},
+		"parent_id":      {fmt.Sprint(parent.ID)},
+		"value_id":       {fmt.Sprintf("%d", growth.ID)},
 	})
 	childPage := readBody(t, resp)
 	if !strings.Contains(childPage, `data-testid="goal-dimension-value">Growth`) {
@@ -493,9 +493,9 @@ func TestCreateChildGoalOffersParentDefaults(t *testing.T) {
 
 	// Creating a child without the default leaves it unassigned (not inherited).
 	resp = postForm(t, samClient, ts.URL+"/goals/new", url.Values{
-		"title":     {"Bare child"},
-		"so_what":   {"Child matters."},
-		"parent_id": {fmt.Sprint(parent.ID)},
+		"title":          {"Bare child"},
+		"why_it_matters": {"Child matters."},
+		"parent_id":      {fmt.Sprint(parent.ID)},
 	})
 	barePage := readBody(t, resp)
 	if !strings.Contains(barePage, `data-testid="goal-dimension-unassigned"`) {
@@ -530,10 +530,10 @@ func TestCreateChildGoalWithRetiredValueLeavesNoGoal(t *testing.T) {
 	}
 
 	resp := postForm(t, samClient, ts.URL+"/goals/new", url.Values{
-		"title":     {"GrandKid"},
-		"so_what":   {"Feeds the parent."},
-		"parent_id": {fmt.Sprint(parent.ID)},
-		"value_id":  {fmt.Sprintf("%d", core.ID), fmt.Sprintf("%d", growth.ID)},
+		"title":          {"GrandKid"},
+		"why_it_matters": {"Feeds the parent."},
+		"parent_id":      {fmt.Sprint(parent.ID)},
+		"value_id":       {fmt.Sprintf("%d", core.ID), fmt.Sprintf("%d", growth.ID)},
 	})
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -544,7 +544,7 @@ func TestCreateChildGoalWithRetiredValueLeavesNoGoal(t *testing.T) {
 		t.Errorf("the form does not say the value is retired; form:\n%s", form)
 	}
 	if !strings.Contains(form, `value="GrandKid"`) || !strings.Contains(form, "Feeds the parent.") {
-		t.Errorf("the form lost the title or So What; form:\n%s", form)
+		t.Errorf("the form lost the title or Why it matters; form:\n%s", form)
 	}
 	if !chosen(t, fitsSection(t, body), core) {
 		t.Errorf("the form lost the kept Core default; form:\n%s", form)
@@ -1469,7 +1469,7 @@ func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 	}
 }
 
-// The Goal page opens on its title, then its So What as a lead paragraph, then
+// The Goal page opens on its title, then its Why it matters as a lead paragraph, then
 // one metadata line a reader takes in at a glance: the Health badge, then plain
 // Lifecycle, Kind, Owner, the delivery date with its slips struck (wrapping
 // between dates, never mid-date: #180), the cadence and Top-level. Dimension values stay in the sidebar, out of the head. Check
@@ -1501,16 +1501,16 @@ func TestGoalPageHeaderSummarizesTheGoal(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
 	head := pageElement(t, page, "header", "goal-head")
 	title := strings.Index(head, `data-testid="goal-title"`)
-	soWhat := strings.Index(head, `data-testid="goal-so-what"`)
+	whyItMatters := strings.Index(head, `data-testid="goal-why-it-matters"`)
 	metaAt := strings.Index(head, `data-testid="goal-meta"`)
-	if title < 0 || soWhat < title || metaAt < soWhat {
-		t.Errorf("head should read title, So What, metadata line in that order; at %d, %d, %d", title, soWhat, metaAt)
+	if title < 0 || whyItMatters < title || metaAt < whyItMatters {
+		t.Errorf("head should read title, Why it matters, metadata line in that order; at %d, %d, %d", title, whyItMatters, metaAt)
 	}
 	if title := pageElement(t, head, "h1", "goal-title"); !strings.Contains(title, "Reduce outages") {
 		t.Errorf("header title: %s", title)
 	}
-	if lead := pageElement(t, head, "p", "goal-so-what"); !strings.Contains(lead, "Outages cost trust.") {
-		t.Errorf("header So What: %s", lead)
+	if lead := pageElement(t, head, "p", "goal-why-it-matters"); !strings.Contains(lead, "Outages cost trust.") {
+		t.Errorf("header Why it matters: %s", lead)
 	}
 	meta := strings.Join(strings.Fields(pageElement(t, head, "p", "goal-meta")), " ")
 	if !strings.HasPrefix(meta, `<p data-testid="goal-meta" class="gp-meta"><span class="badge y"><span class="dot"></span>Yellow</span>`) {
@@ -2165,7 +2165,7 @@ func TestGoalPageMetricCardsShowASparkline(t *testing.T) {
 	}
 }
 
-// The Goal page's History — Check-ins, Date Slips, So What revisions,
+// The Goal page's History — Check-ins, Date Slips, Why it matters revisions,
 // ownership changes and value changes — is one timeline under History, open on
 // load, with a filter chip per kind carrying its count.
 func TestGoalPageHistoryIsOpenWithCounts(t *testing.T) {
@@ -2176,8 +2176,8 @@ func TestGoalPageHistoryIsOpenWithCounts(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "Fine.", "", time.Time{})
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "Still fine.", "", time.Time{})
-	if _, err := h.Service.EditSoWhat(t.Context(), goal.ID, "Outages cost trust and money.", sam.ID); err != nil {
-		t.Fatalf("EditSoWhat: %v", err)
+	if _, err := h.Service.EditWhyItMatters(t.Context(), goal.ID, "Outages cost trust and money.", sam.ID); err != nil {
+		t.Fatalf("EditWhyItMatters: %v", err)
 	}
 	ts := newServer(t, h)
 
@@ -2188,12 +2188,12 @@ func TestGoalPageHistoryIsOpenWithCounts(t *testing.T) {
 	}
 	chips := historyChips(t, history)
 	for label, count := range map[string]string{
-		"All":        "4",
-		"Check-ins":  "2",
-		"Date Slips": "0",
-		"So What":    "2", // the original and the edit
-		"Ownership":  "0",
-		"Values":     "0",
+		"All":            "4",
+		"Check-ins":      "2",
+		"Date Slips":     "0",
+		"Why it matters": "2", // the original and the edit
+		"Ownership":      "0",
+		"Values":         "0",
 	} {
 		if chips[label].count != count {
 			t.Errorf("%q chip counts %q, want %s", label, chips[label].count, count)
@@ -2285,7 +2285,7 @@ func TestProposedGoalShowsActivationChecklist(t *testing.T) {
 
 	page := getBody(t, client, goalURL)
 	want := map[string]bool{
-		"So What":                                true,
+		"Why it matters":                         true,
 		"Owner":                                  true,
 		"Dated with a delivery date, or Ongoing": false,
 		"A Milestone or Metric":                  false,
@@ -2331,7 +2331,7 @@ func TestProposedGoalChecklistMarksUnmetItemsToDo(t *testing.T) {
 	for _, li := range strings.Split(list, "<li ")[1:] {
 		mark, label, state := activationItemParts(t, li)
 		want := [2]string{"○", "to do"}
-		if label == "So What" || label == "Owner" {
+		if label == "Why it matters" || label == "Owner" {
 			want = [2]string{"✓", "done"}
 		}
 		if got := [2]string{mark, state}; got != want {
@@ -2356,7 +2356,7 @@ func TestProposedGoalChecklistMarksUnmetItemsToDo(t *testing.T) {
 
 // The Define card on a Proposed Goal's page holds no forms but Activate Goal:
 // the checklist, the Activate Goal button, and a Finish defining link to the
-// define page, where the Kind, cadence, So What, Milestones and Metrics are
+// define page, where the Kind, cadence, Why it matters, Milestones and Metrics are
 // set (#135).
 func TestDefineCardLinksToFinishDefining(t *testing.T) {
 	t.Parallel()
@@ -2368,7 +2368,7 @@ func TestDefineCardLinksToFinishDefining(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	card := pageElement(t, getBody(t, client, goalPageURL(ts.URL, goal)), "section", "define-goal")
-	for _, gone := range []string{"mark-kind", "set-cadence", "edit-so-what", "add-milestone", "add-metric"} {
+	for _, gone := range []string{"mark-kind", "set-cadence", "edit-why-it-matters", "add-milestone", "add-metric"} {
 		if strings.Contains(card, `data-testid="`+gone+`"`) {
 			t.Errorf("the Define card still holds %s:\n%s", gone, card)
 		}
@@ -2393,7 +2393,7 @@ func TestCreateChildGoalRouteIsGone(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/children", ts.URL, goal.ID), url.Values{"title": {"Child"}, "so_what": {"It matters."}})
+	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/children", ts.URL, goal.ID), url.Values{"title": {"Child"}, "why_it_matters": {"It matters."}})
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("POST /goals/%d/children answered %d, want it gone", goal.ID, resp.StatusCode)
@@ -2560,12 +2560,12 @@ func disclosureScript(t *testing.T, page string) string {
 	return ""
 }
 
-// The Goal page's So What definition and Top-level explanation each sit
+// The Goal page's Why it matters definition and Top-level explanation each sit
 // collapsed behind a button that opens them in place on a click, tap, Enter or
 // Space, and reports whether they are open, so neither needs hover. The
-// wording is the one the hover title always carried. The So What shows no
-// heading, but assistive technology still hears it labelled "So What".
-func TestGoalPageExplainsSoWhatAndTopLevelOnActivation(t *testing.T) {
+// wording is the one the hover title always carried. The Why it matters shows no
+// heading, but assistive technology still hears it labelled "Why it matters".
+func TestGoalPageExplainsWhyItMattersAndTopLevelOnActivation(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "ada@example.com")
@@ -2575,7 +2575,7 @@ func TestGoalPageExplainsSoWhatAndTopLevelOnActivation(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, ada.Email), fmt.Sprintf("%s/goals/%d", ts.URL, g.ID))
 
 	for _, tc := range []struct{ label, control, text string }{
-		{"What is a So What?", `<button type="button" class="disclose help explain gp-lead-help"`, "The customer problem this Goal addresses and what is expected to change when it succeeds."},
+		{"What goes here?", `<button type="button" class="disclose help explain gp-lead-help"`, "The customer problem this Goal addresses and what is expected to change when it succeeds."},
 		{"Top-level", `<button type="button" class="disclose help" data-testid="goal-top-level"`, "One of the company's root outcomes"},
 	} {
 		at := strings.Index(page, tc.control)
@@ -2595,8 +2595,8 @@ func TestGoalPageExplainsSoWhatAndTopLevelOnActivation(t *testing.T) {
 	statement := openTag(pageElement(t, page, "article", "goal"))
 	_, label, _ := strings.Cut(statement, `aria-labelledby="`)
 	label, _, _ = strings.Cut(label, `"`)
-	if want := `id="` + label + `" class="sr-only">So What<`; label == "" || !strings.Contains(page, want) {
-		t.Errorf("the So What is not labelled for assistive technology by a visually hidden %s: %s", want, statement)
+	if want := `id="` + label + `" class="sr-only">Why it matters<`; label == "" || !strings.Contains(page, want) {
+		t.Errorf("the Why it matters is not labelled for assistive technology by a visually hidden %s: %s", want, statement)
 	}
 	disclosureScript(t, page)
 }
@@ -2977,7 +2977,7 @@ func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testi
 }
 
 // On the Goal page only what a person acts on or reads as a unit of status is
-// a raised card: the Check-in, each Metric and Milestones. So What, Highlights,
+// a raised card: the Check-in, each Metric and Milestones. Why it matters, Highlights,
 // History and the sidebar's blocks sit on the canvas (DESIGN.md § Components:
 // Card).
 func TestGoalPageCardsOnlyWhatAPersonActsOn(t *testing.T) {
@@ -3743,7 +3743,7 @@ func TestGoalTableDownloadsTheFilteredGoalsAsCSV(t *testing.T) {
 	if cd := resp.Header.Get("Content-Disposition"); !strings.Contains(cd, "attachment") || !strings.Contains(cd, ".csv") {
 		t.Errorf("Content-Disposition = %q, want an attached .csv", cd)
 	}
-	want := "ID,Title,Owner,So What,Kind,Delivery Date,Milestones,Metrics,Parents,Pillar,Budget\n" +
+	want := "ID,Title,Owner,Why it matters,Kind,Delivery Date,Milestones,Metrics,Parents,Pillar,Budget\n" +
 		fmt.Sprintf("%d,Alpha launch,sam@example.com,A matters.,,,,,,Growth; Trust,1200\n", alpha.ID)
 	if body != want {
 		t.Errorf("download =\n%s\nwant\n%s", body, want)
@@ -5139,9 +5139,9 @@ func menuItems(t *testing.T, page string) map[string]string {
 // The action menu lists the actions a person may take, each a plain link to the
 // Goal page with that action's form open, but Add a child Goal, which links to
 // the New goal form with this Goal picked as its parent: an Owner gets Edit
-// title and So What, Hand off, Add a delegate, Link to a parent Goal, Add a child Goal and, with
+// title and Why it matters, Hand off, Add a delegate, Link to a parent Goal, Add a child Goal and, with
 // Dimensions and Fields defined, Edit Dimension values and Edit Fields; an
-// Admin gets Edit title and So What too, and adds Mark Top-level and Mark owner departed…, and on an Ownerless Goal
+// Admin gets Edit title and Why it matters too, and adds Mark Top-level and Mark owner departed…, and on an Ownerless Goal
 // Reassign and Mark returned… in place of Hand off; anyone else only Add a
 // child Goal. Anyone but the Owner gets Suggest a parent, linking to its own
 // form. The Owner also gets the Lifecycle changes, which lead to the Check-in
@@ -5172,36 +5172,36 @@ func TestGoalPageActionMenuListsLinksOverHTTP(t *testing.T) {
 		want map[string]string
 	}{
 		{"sam@example.com", goal, map[string]string{
-			"Edit title and So What": open(goal, "title-so-what"),
-			"Hand off":               open(goal, "handoff"),
-			"Add a delegate":         open(goal, "delegates"),
-			"Link to a parent Goal":  open(goal, "parent-link"),
-			"Add a child Goal":       child(goal),
-			"Edit Dimension values":  open(goal, "dimensions"),
-			"Edit Fields":            open(goal, "fields"),
-			"Put on hold…":           fmt.Sprintf("/goals/%d/checkin?lifecycle=On+Hold", goal.ID),
-			"Mark done…":             fmt.Sprintf("/goals/%d/checkin?lifecycle=Done", goal.ID),
-			"Cancel…":                fmt.Sprintf("/goals/%d/checkin?lifecycle=Cancelled", goal.ID),
+			"Edit title and Why it matters": open(goal, "title-why-it-matters"),
+			"Hand off":                      open(goal, "handoff"),
+			"Add a delegate":                open(goal, "delegates"),
+			"Link to a parent Goal":         open(goal, "parent-link"),
+			"Add a child Goal":              child(goal),
+			"Edit Dimension values":         open(goal, "dimensions"),
+			"Edit Fields":                   open(goal, "fields"),
+			"Put on hold…":                  fmt.Sprintf("/goals/%d/checkin?lifecycle=On+Hold", goal.ID),
+			"Mark done…":                    fmt.Sprintf("/goals/%d/checkin?lifecycle=Done", goal.ID),
+			"Cancel…":                       fmt.Sprintf("/goals/%d/checkin?lifecycle=Cancelled", goal.ID),
 		}},
 		{"ada@example.com", goal, map[string]string{
-			"Edit title and So What": open(goal, "title-so-what"),
-			"Hand off":               open(goal, "handoff"),
-			"Suggest a parent":       suggest(goal),
-			"Add a child Goal":       child(goal),
-			"Edit Dimension values":  open(goal, "dimensions"),
-			"Edit Fields":            open(goal, "fields"),
-			"Mark Top-level":         open(goal, "top-level"),
-			"Mark owner departed…":   open(goal, "depart"),
+			"Edit title and Why it matters": open(goal, "title-why-it-matters"),
+			"Hand off":                      open(goal, "handoff"),
+			"Suggest a parent":              suggest(goal),
+			"Add a child Goal":              child(goal),
+			"Edit Dimension values":         open(goal, "dimensions"),
+			"Edit Fields":                   open(goal, "fields"),
+			"Mark Top-level":                open(goal, "top-level"),
+			"Mark owner departed…":          open(goal, "depart"),
 		}},
 		{"ada@example.com", orphan, map[string]string{
-			"Edit title and So What": open(orphan, "title-so-what"),
-			"Suggest a parent":       suggest(orphan),
-			"Add a child Goal":       child(orphan),
-			"Edit Dimension values":  open(orphan, "dimensions"),
-			"Edit Fields":            open(orphan, "fields"),
-			"Mark Top-level":         open(orphan, "top-level"),
-			"Mark returned…":         open(orphan, "return"),
-			"Reassign":               open(orphan, "reassign"),
+			"Edit title and Why it matters": open(orphan, "title-why-it-matters"),
+			"Suggest a parent":              suggest(orphan),
+			"Add a child Goal":              child(orphan),
+			"Edit Dimension values":         open(orphan, "dimensions"),
+			"Edit Fields":                   open(orphan, "fields"),
+			"Mark Top-level":                open(orphan, "top-level"),
+			"Mark returned…":                open(orphan, "return"),
+			"Reassign":                      open(orphan, "reassign"),
 		}},
 		{"mel@example.com", goal, map[string]string{
 			"Suggest a parent": suggest(goal),
@@ -5349,13 +5349,13 @@ func TestGoalPageMenuItemOpensItsFormInPlaceOverHTTP(t *testing.T) {
 		action      string
 		start, next string
 	}{
-		{"sam", "Edit title and So What", goal, "title-so-what", fmt.Sprintf("/goals/%d/so-what", goal.ID), head, actions},
+		{"sam", "Edit title and Why it matters", goal, "title-why-it-matters", fmt.Sprintf("/goals/%d/why-it-matters", goal.ID), head, actions},
 		{"sam", "Hand off", goal, "handoff", fmt.Sprintf("/goals/%d/handoff", goal.ID), people, dimensions},
 		{"sam", "Add a delegate", goal, "delegates", fmt.Sprintf("/goals/%d/delegates", goal.ID), people, dimensions},
 		{"sam", "Link to a parent Goal", goal, "parent-link", fmt.Sprintf("/goals/%d/links", goal.ID), parents, children},
 		{"sam", "Edit Dimension values", goal, "dimensions", fmt.Sprintf("/goals/%d/dimensions", goal.ID), dimensions, fields},
 		{"sam", "Edit Fields", goal, "fields", fmt.Sprintf("/goals/%d/fields", goal.ID), fields, "</aside>"},
-		{"ada", "Edit title and So What", goal, "title-so-what", fmt.Sprintf("/goals/%d/so-what", goal.ID), head, actions},
+		{"ada", "Edit title and Why it matters", goal, "title-why-it-matters", fmt.Sprintf("/goals/%d/why-it-matters", goal.ID), head, actions},
 		{"ada", "Hand off", goal, "handoff", fmt.Sprintf("/goals/%d/handoff", goal.ID), people, dimensions},
 		{"ada", "Mark Top-level", goal, "top-level", fmt.Sprintf("/goals/%d/top-level", goal.ID), head, actions},
 		{"ada", "Mark owner departed…", goal, "depart", fmt.Sprintf("/accounts/%d/depart", sam.ID), people, dimensions},
@@ -5572,7 +5572,7 @@ func ownerOnlyRoutes() []ownerOnlyRoute {
 			"baseline": {"1500"}, "target": {"500"}, "target_date": {"2026-06-15"},
 		}},
 		{"activate", onGoal("activate"), nil},
-		{"so what", onGoal("so-what"), url.Values{"so_what": {"Faster checkout lifts conversion."}}},
+		{"why it matters", onGoal("why-it-matters"), url.Values{"why_it_matters": {"Faster checkout lifts conversion."}}},
 		{"contributors", onGoal("contributors"), url.Values{"email": {"dana@example.com"}}},
 	}
 }
@@ -5613,15 +5613,15 @@ func ownerOnlyGoalState(t *testing.T, h *testsupport.Harness, goalID int64) stri
 	if err != nil {
 		t.Fatalf("ListMetrics: %v", err)
 	}
-	revisions, err := h.Service.ListSoWhatRevisions(ctx, goalID)
+	revisions, err := h.Service.ListWhyItMattersRevisions(ctx, goalID)
 	if err != nil {
-		t.Fatalf("ListSoWhatRevisions: %v", err)
+		t.Fatalf("ListWhyItMattersRevisions: %v", err)
 	}
 	return fmt.Sprintf("goal %+v\ncontributors %+v\nmetrics %+v\nrevisions %+v", g, contributors, metrics, revisions)
 }
 
 // Setting a Goal's Kind, delivery date, cadence, Contributors and Metrics, and
-// Activating it, are the Owner's alone, and its So What the Owner's or an
+// Activating it, are the Owner's alone, and its Why it matters the Owner's or an
 // Admin's (#281): anyone else, a Delegate included, is refused with 403 and
 // the Goal is left as it was (#191).
 func TestOnlyTheOwnerSetsUpAGoalOverHTTP(t *testing.T) {
@@ -5700,16 +5700,16 @@ func TestOwnerOnlyRoutesNotFoundForAMissingGoal(t *testing.T) {
 	}
 }
 
-// titleSoWhatOpen is the Goal page with the Edit title and So What form open.
-func titleSoWhatOpen(g domain.Goal) string {
-	return fmt.Sprintf("/goals/%d?open=title-so-what", g.ID)
+// titleWhyItMattersOpen is the Goal page with the Edit title and Why it matters form open.
+func titleWhyItMattersOpen(g domain.Goal) string {
+	return fmt.Sprintf("/goals/%d?open=title-why-it-matters", g.ID)
 }
 
-// The Owner and an Admin get Edit title and So What on a Goal in any
+// The Owner and an Admin get Edit title and Why it matters on a Goal in any
 // Lifecycle, opening a form in the page head that holds the current title and
-// So What. A Delegate and another Account get neither the item nor the form
+// Why it matters. A Delegate and another Account get neither the item nor the form
 // (#281).
-func TestEditTitleAndSoWhatIsOfferedToTheOwnerAndAnAdminOverHTTP(t *testing.T) {
+func TestEditTitleAndWhyItMattersIsOfferedToTheOwnerAndAnAdminOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "ada@example.com")
@@ -5727,19 +5727,19 @@ func TestEditTitleAndSoWhatIsOfferedToTheOwnerAndAnAdminOverHTTP(t *testing.T) {
 		h.AddDelegate(sam, tpm, g.ID)
 		for _, who := range []string{"sam@example.com", "ada@example.com"} {
 			client := signInClient(t, ts.URL, who)
-			if got := menuItems(t, getBody(t, client, goalPageURL(ts.URL, g)))["Edit title and So What"]; got != titleSoWhatOpen(g) {
-				t.Errorf("%s on %q: Edit title and So What leads to %q, want %q", who, g.Title, got, titleSoWhatOpen(g))
+			if got := menuItems(t, getBody(t, client, goalPageURL(ts.URL, g)))["Edit title and Why it matters"]; got != titleWhyItMattersOpen(g) {
+				t.Errorf("%s on %q: Edit title and Why it matters leads to %q, want %q", who, g.Title, got, titleWhyItMattersOpen(g))
 			}
-			open := openForm(t, getBody(t, client, ts.URL+titleSoWhatOpen(g)), "title-so-what")
-			if !strings.Contains(open, "Edit title and So What") {
-				t.Errorf("%s on %q: the open form is not labelled Edit title and So What: %s", who, g.Title, open)
+			open := openForm(t, getBody(t, client, ts.URL+titleWhyItMattersOpen(g)), "title-why-it-matters")
+			if !strings.Contains(open, "Edit title and Why it matters") {
+				t.Errorf("%s on %q: the open form is not labelled Edit title and Why it matters: %s", who, g.Title, open)
 			}
 			title := tagAround(t, open, `name="title"`)
 			if attr(title, "type") != "text" || attr(title, "value") != g.Title || !strings.Contains(title, " autofocus") {
 				t.Errorf("%s on %q: the Title input is not a focused text input holding %q: %s", who, g.Title, g.Title, title)
 			}
-			if !strings.Contains(open, `name="so_what"`) || !strings.Contains(open, ">"+g.SoWhat+"</textarea>") {
-				t.Errorf("%s on %q: the So What textarea doesn't hold %q: %s", who, g.Title, g.SoWhat, open)
+			if !strings.Contains(open, `name="why_it_matters"`) || !strings.Contains(open, ">"+g.WhyItMatters+"</textarea>") {
+				t.Errorf("%s on %q: the Why it matters textarea doesn't hold %q: %s", who, g.Title, g.WhyItMatters, open)
 			}
 			if !strings.Contains(open, ">Save</button>") {
 				t.Errorf("%s on %q: the form has no Save button: %s", who, g.Title, open)
@@ -5747,18 +5747,18 @@ func TestEditTitleAndSoWhatIsOfferedToTheOwnerAndAnAdminOverHTTP(t *testing.T) {
 		}
 		for _, who := range []string{"tpm@example.com", "mel@example.com"} {
 			client := signInClient(t, ts.URL, who)
-			if got, ok := menuItems(t, getBody(t, client, goalPageURL(ts.URL, g)))["Edit title and So What"]; ok {
-				t.Errorf("%s on %q is offered Edit title and So What, leading to %q", who, g.Title, got)
+			if got, ok := menuItems(t, getBody(t, client, goalPageURL(ts.URL, g)))["Edit title and Why it matters"]; ok {
+				t.Errorf("%s on %q is offered Edit title and Why it matters, leading to %q", who, g.Title, got)
 			}
-			if n := openForms(getBody(t, client, ts.URL+titleSoWhatOpen(g))); n != 0 {
-				t.Errorf("%s on %q: ?open=title-so-what shows %d forms open, want none", who, g.Title, n)
+			if n := openForms(getBody(t, client, ts.URL+titleWhyItMattersOpen(g))); n != 0 {
+				t.Errorf("%s on %q: ?open=title-why-it-matters shows %d forms open, want none", who, g.Title, n)
 			}
 		}
 	}
 }
 
 // The Owner, and an Admin, change an Active Goal's title from the Edit title
-// and So What form: the save lands on the plain Goal page, which shows the new
+// and Why it matters form: the save lands on the plain Goal page, which shows the new
 // title, and its History carries a Title entry reading old → new, by whoever
 // made it (#281).
 func TestOwnerOrAdminChangesAnActiveGoalsTitleOverHTTP(t *testing.T) {
@@ -5772,9 +5772,9 @@ func TestOwnerOrAdminChangesAnActiveGoalsTitleOverHTTP(t *testing.T) {
 	for _, who := range []string{"sam@example.com", "ada@example.com"} {
 		g := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 		client := signInClient(t, ts.URL, who)
-		resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/so-what", ts.URL, g.ID), url.Values{
-			"title":   {"  Halve outages  "},
-			"so_what": {g.SoWhat},
+		resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID), url.Values{
+			"title":          {"  Halve outages  "},
+			"why_it_matters": {g.WhyItMatters},
 		})
 		page := readBody(t, resp)
 		if resp.StatusCode != http.StatusOK || resp.Request.URL.Path != fmt.Sprintf("/goals/%d", g.ID) || resp.Request.URL.RawQuery != "" {
@@ -5805,12 +5805,12 @@ func TestOwnerOrAdminChangesAnActiveGoalsTitleOverHTTP(t *testing.T) {
 	}
 }
 
-// titleSoWhatHistory counts a Goal's So What revisions and title changes.
-func titleSoWhatHistory(t *testing.T, h *testsupport.Harness, goalID int64) (soWhats, titles int) {
+// titleWhyItMattersHistory counts a Goal's Why it matters revisions and title changes.
+func titleWhyItMattersHistory(t *testing.T, h *testsupport.Harness, goalID int64) (whyItMattersRevisions, titles int) {
 	t.Helper()
-	revisions, err := h.Service.ListSoWhatRevisions(t.Context(), goalID)
+	revisions, err := h.Service.ListWhyItMattersRevisions(t.Context(), goalID)
 	if err != nil {
-		t.Fatalf("ListSoWhatRevisions: %v", err)
+		t.Fatalf("ListWhyItMattersRevisions: %v", err)
 	}
 	titleRevisions, err := h.Service.ListTitleRevisions(t.Context(), goalID)
 	if err != nil {
@@ -5819,10 +5819,10 @@ func titleSoWhatHistory(t *testing.T, h *testsupport.Harness, goalID int64) (soW
 	return len(revisions), len(titleRevisions)
 }
 
-// Saving the Edit title and So What form changes only the field that
-// differs: an unchanged title records no title change, and an unchanged So
-// What no So What revision (#281).
-func TestEditTitleAndSoWhatRecordsOnlyWhatChangedOverHTTP(t *testing.T) {
+// Saving the Edit title and Why it matters form changes only the field that
+// differs: an unchanged title records no title change, and an unchanged Why it
+// matters no Why it matters revision (#281).
+func TestEditTitleAndWhyItMattersRecordsOnlyWhatChangedOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -5831,84 +5831,122 @@ func TestEditTitleAndSoWhatRecordsOnlyWhatChangedOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	g := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	soWhats, titles := titleSoWhatHistory(t, h, g.ID)
-	_ = readBody(t, postForm(t, client, fmt.Sprintf("%s/goals/%d/so-what", ts.URL, g.ID), url.Values{
-		"title": {"Reduce outages"}, "so_what": {"Outages cost us customers."},
+	whyItMattersRevisions, titles := titleWhyItMattersHistory(t, h, g.ID)
+	_ = readBody(t, postForm(t, client, fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID), url.Values{
+		"title": {"Reduce outages"}, "why_it_matters": {"Outages cost us customers."},
 	}))
-	if s, ti := titleSoWhatHistory(t, h, g.ID); s != soWhats+1 || ti != titles {
-		t.Errorf("only the So What changed: %d So What revisions and %d title changes, want %d and %d", s, ti, soWhats+1, titles)
+	if s, ti := titleWhyItMattersHistory(t, h, g.ID); s != whyItMattersRevisions+1 || ti != titles {
+		t.Errorf("only the Why it matters changed: %d Why it matters revisions and %d title changes, want %d and %d", s, ti, whyItMattersRevisions+1, titles)
 	}
 
 	g = h.ActiveGoal(sam, "Grow revenue", "Revenue funds the rest.")
-	soWhats, titles = titleSoWhatHistory(t, h, g.ID)
-	_ = readBody(t, postForm(t, client, fmt.Sprintf("%s/goals/%d/so-what", ts.URL, g.ID), url.Values{
-		"title": {"Grow revenue 20%"}, "so_what": {" Revenue funds the rest. "},
+	whyItMattersRevisions, titles = titleWhyItMattersHistory(t, h, g.ID)
+	_ = readBody(t, postForm(t, client, fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID), url.Values{
+		"title": {"Grow revenue 20%"}, "why_it_matters": {" Revenue funds the rest. "},
 	}))
-	if s, ti := titleSoWhatHistory(t, h, g.ID); s != soWhats || ti != titles+1 {
-		t.Errorf("only the title changed: %d So What revisions and %d title changes, want %d and %d", s, ti, soWhats, titles+1)
+	if s, ti := titleWhyItMattersHistory(t, h, g.ID); s != whyItMattersRevisions || ti != titles+1 {
+		t.Errorf("only the title changed: %d Why it matters revisions and %d title changes, want %d and %d", s, ti, whyItMattersRevisions, titles+1)
 	}
 }
 
-// A blank title is refused as at creation, and a blank So What as ever: the
+// The Edit title and Why it matters form posts to /why-it-matters; the route it
+// had while the term was So What is gone, with no redirect (#381).
+func TestEditWhyItMattersHasOnlyItsNewRouteOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	sam := h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+	g := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
+
+	resp := postForm(t, client, fmt.Sprintf("%s/goals/%d/so-what", ts.URL, g.ID), url.Values{
+		"title": {"Reduce outages"}, "so_what": {"Outages cost us customers."},
+	})
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusNotFound && resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("the old route answers %d, want 404 or 405", resp.StatusCode)
+	}
+
+	resp = postForm(t, client, fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID), url.Values{
+		"title": {"Reduce outages"}, "why_it_matters": {"Outages cost us customers."},
+	})
+	page := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("save is %d, want 200", resp.StatusCode)
+	}
+	if !strings.Contains(page, "Outages cost us customers.") {
+		t.Errorf("the Goal page doesn't show the saved Why it matters:\n%s", page)
+	}
+	got, err := h.Service.ViewGoal(context.Background(), g.ID)
+	if err != nil {
+		t.Fatalf("ViewGoal: %v", err)
+	}
+	if got.WhyItMatters != "Outages cost us customers." {
+		t.Errorf("Why it matters = %q, want the edit saved", got.WhyItMatters)
+	}
+}
+
+// A blank title is refused as at creation, and a blank Why it matters as ever: the
 // page comes back with the form open, the reason beside it and what was typed,
 // and neither field is saved (#281).
-func TestEditTitleAndSoWhatRefusesABlankTitleOverHTTP(t *testing.T) {
+func TestEditTitleAndWhyItMattersRefusesABlankTitleOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	g := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	ts := newServer(t, h)
-	soWhats, titles := titleSoWhatHistory(t, h, g.ID)
+	whyItMattersRevisions, titles := titleWhyItMattersHistory(t, h, g.ID)
 
-	resp := postForm(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/so-what", ts.URL, g.ID), url.Values{
-		"title": {"   "}, "so_what": {"Outages cost us customers."},
+	resp := postForm(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID), url.Values{
+		"title": {"   "}, "why_it_matters": {"Outages cost us customers."},
 	})
 	page := readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("a blank title is %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
 	}
-	open := openForm(t, page, "title-so-what")
+	open := openForm(t, page, "title-why-it-matters")
 	if reason := pageElement(t, open, "p", "form-error"); !strings.Contains(reason, "A Goal needs a title.") {
 		t.Errorf("the open form's error %q doesn't say A Goal needs a title.", reason)
 	}
 	if !strings.Contains(open, ">Outages cost us customers.</textarea>") {
-		t.Errorf("the open form lost the So What as typed: %s", open)
+		t.Errorf("the open form lost the Why it matters as typed: %s", open)
 	}
 	got, err := h.Service.ViewGoal(t.Context(), g.ID)
 	if err != nil {
 		t.Fatalf("ViewGoal: %v", err)
 	}
-	if got.Title != "Reduce outages" || got.SoWhat != "Outages cost trust." {
-		t.Errorf("a refused save changed the Goal to %q / %q", got.Title, got.SoWhat)
+	if got.Title != "Reduce outages" || got.WhyItMatters != "Outages cost trust." {
+		t.Errorf("a refused save changed the Goal to %q / %q", got.Title, got.WhyItMatters)
 	}
-	if s, ti := titleSoWhatHistory(t, h, g.ID); s != soWhats || ti != titles {
-		t.Errorf("a refused save recorded %d So What revisions and %d title changes, want %d and %d", s, ti, soWhats, titles)
+	if s, ti := titleWhyItMattersHistory(t, h, g.ID); s != whyItMattersRevisions || ti != titles {
+		t.Errorf("a refused save recorded %d Why it matters revisions and %d title changes, want %d and %d", s, ti, whyItMattersRevisions, titles)
 	}
 
-	resp = postForm(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/so-what", ts.URL, g.ID), url.Values{
-		"title": {"Halve outages"}, "so_what": {"  "},
+	resp = postForm(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID), url.Values{
+		"title": {"Halve outages"}, "why_it_matters": {"  "},
 	})
 	page = readBody(t, resp)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
-		t.Fatalf("a blank So What is %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
+		t.Fatalf("a blank Why it matters is %d, want %d", resp.StatusCode, http.StatusUnprocessableEntity)
 	}
-	if open := openForm(t, page, "title-so-what"); !strings.Contains(open, `value="Halve outages"`) {
+	if open := openForm(t, page, "title-why-it-matters"); !strings.Contains(open, `value="Halve outages"`) {
 		t.Errorf("the open form lost the title as typed: %s", open)
 	}
 	if got, _ := h.Service.ViewGoal(t.Context(), g.ID); got.Title != "Reduce outages" {
-		t.Errorf("a save refused for its So What still changed the title to %q", got.Title)
+		t.Errorf("a save refused for its Why it matters still changed the title to %q", got.Title)
 	}
-	if s, ti := titleSoWhatHistory(t, h, g.ID); s != soWhats || ti != titles {
-		t.Errorf("a save refused for its So What recorded %d So What revisions and %d title changes, want %d and %d", s, ti, soWhats, titles)
+	if s, ti := titleWhyItMattersHistory(t, h, g.ID); s != whyItMattersRevisions || ti != titles {
+		t.Errorf("a save refused for its Why it matters recorded %d Why it matters revisions and %d title changes, want %d and %d", s, ti, whyItMattersRevisions, titles)
 	}
 }
 
-// Nobody but the Owner or an Admin edits the title and So What: a Delegate or
+// Nobody but the Owner or an Admin edits the title and Why it matters: a Delegate or
 // another Account is refused with 403 and the Goal is left as it was. A post
-// with only a So What, as before the form had a title, still edits the So
-// What and leaves the title (#281).
-func TestEditTitleAndSoWhatIsTheOwnersOrAnAdminsOverHTTP(t *testing.T) {
+// with only a Why it matters, as before the form had a title, still edits the Why it
+// matters and leaves the title (#281).
+func TestEditTitleAndWhyItMattersIsTheOwnersOrAnAdminsOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -5918,31 +5956,31 @@ func TestEditTitleAndSoWhatIsTheOwnersOrAnAdminsOverHTTP(t *testing.T) {
 	g := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.AddDelegate(sam, tpm, g.ID)
 	ts := newServer(t, h)
-	goalURL := fmt.Sprintf("%s/goals/%d/so-what", ts.URL, g.ID)
+	goalURL := fmt.Sprintf("%s/goals/%d/why-it-matters", ts.URL, g.ID)
 
 	for _, who := range []string{"tpm@example.com", "mel@example.com"} {
 		resp := postForm(t, signInClient(t, ts.URL, who), goalURL, url.Values{
-			"title": {"Halve outages"}, "so_what": {"Outages cost us customers."},
+			"title": {"Halve outages"}, "why_it_matters": {"Outages cost us customers."},
 		})
 		_ = readBody(t, resp)
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("%s: status = %d, want 403", who, resp.StatusCode)
 		}
 		got, _ := h.Service.ViewGoal(t.Context(), g.ID)
-		if got.Title != "Reduce outages" || got.SoWhat != "Outages cost trust." {
-			t.Errorf("%s changed the Goal to %q / %q", who, got.Title, got.SoWhat)
+		if got.Title != "Reduce outages" || got.WhyItMatters != "Outages cost trust." {
+			t.Errorf("%s changed the Goal to %q / %q", who, got.Title, got.WhyItMatters)
 		}
-		if _, titles := titleSoWhatHistory(t, h, g.ID); titles != 0 {
+		if _, titles := titleWhyItMattersHistory(t, h, g.ID); titles != 0 {
 			t.Errorf("%s recorded %d title changes", who, titles)
 		}
 	}
 
 	_ = readBody(t, postForm(t, signInClient(t, ts.URL, "sam@example.com"), goalURL, url.Values{
-		"so_what": {"Outages cost us customers."},
+		"why_it_matters": {"Outages cost us customers."},
 	}))
 	got, _ := h.Service.ViewGoal(t.Context(), g.ID)
-	if got.Title != "Reduce outages" || got.SoWhat != "Outages cost us customers." {
-		t.Errorf("a post with only a So What left the Goal at %q / %q, want the title kept and the So What changed", got.Title, got.SoWhat)
+	if got.Title != "Reduce outages" || got.WhyItMatters != "Outages cost us customers." {
+		t.Errorf("a post with only a Why it matters left the Goal at %q / %q, want the title kept and the Why it matters changed", got.Title, got.WhyItMatters)
 	}
 }
 

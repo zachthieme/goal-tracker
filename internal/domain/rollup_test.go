@@ -18,8 +18,8 @@ func TestRolledUpHealthIsWorstAmongActiveChildren(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Org outcome", "It matters.")
-	yellowChild := h.ActiveChildOf(sam, parent, "Yellow work", "Yellow so what.")
-	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red so what.")
+	yellowChild := h.ActiveChildOf(sam, parent, "Yellow work", "Yellow why it matters.")
+	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red why it matters.")
 	h.Checkin(sam, yellowChild.ID, domain.HealthYellow, "Wobbling.", "Recover.", pathDate)
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 
@@ -47,12 +47,12 @@ func TestRolledUpHealthAcrossMultipleParents(t *testing.T) {
 	parentB := h.ActiveGoal(sam, "Parent B", "B matters.")
 
 	// A Red child shared by both parents.
-	shared := h.ActiveChildOf(sam, parentA, "Shared work", "Shared so what.")
+	shared := h.ActiveChildOf(sam, parentA, "Shared work", "Shared why it matters.")
 	h.RequestLink(sam, shared, parentB, "")
 	h.Checkin(sam, shared.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 
 	// A Green child under B only, which must not pull B's roll-up off Red.
-	greenChild := h.ActiveChildOf(sam, parentB, "Green work", "Green so what.")
+	greenChild := h.ActiveChildOf(sam, parentB, "Green work", "Green why it matters.")
 	h.Checkin(sam, greenChild.ID, domain.HealthGreen, "On track.", "", pathDate)
 
 	for _, p := range []domain.Goal{parentA, parentB} {
@@ -77,10 +77,10 @@ func TestRolledUpHealthAbsentWithoutActiveHealthyChildren(t *testing.T) {
 	parent := h.ActiveGoal(sam, "Parent", "It matters.")
 
 	// A Proposed child (never activated), linked to the parent.
-	proposed := h.CreateGoal(sam, "Proposed work", "Proposed so what.")
+	proposed := h.CreateGoal(sam, "Proposed work", "Proposed why it matters.")
 	h.RequestLink(sam, proposed, parent, "")
 	// An Active child with no Check-in yet.
-	h.ActiveChildOf(sam, parent, "Fresh work", "Fresh so what.")
+	h.ActiveChildOf(sam, parent, "Fresh work", "Fresh why it matters.")
 
 	got, err := h.Service.RolledUpHealth(context.Background(), parent.ID)
 	if err != nil {
@@ -100,7 +100,7 @@ func TestCheckinDifferingFromRollupRequiresExplanation(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Parent", "It matters.")
-	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red so what.")
+	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red why it matters.")
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 
 	// Green differs from the Red roll-up, and no explanation is given.
@@ -137,7 +137,7 @@ func TestCheckinMatchingRollupNeedsNoExplanation(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Parent", "It matters.")
-	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red so what.")
+	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red why it matters.")
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 
 	c, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
@@ -190,7 +190,7 @@ func TestNoChangeCheckinRefusedWhenItWouldDifferFromRollup(t *testing.T) {
 	h.Checkin(sam, parent.ID, domain.HealthGreen, "On track.", "", pathDate)
 
 	// Now a Red child appears, making the Rolled-up Health Red.
-	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red so what.")
+	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red why it matters.")
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 
 	if _, err := h.Service.SubmitNoChangeCheckin(context.Background(), parent.ID, sam.ID); !errors.Is(err, domain.ErrValidation) {
@@ -208,10 +208,10 @@ func TestRolledUpHealthCountsRedAndYellowChildren(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Parent", "It matters.")
 	for i, health := range []string{domain.HealthRed, domain.HealthRed, domain.HealthYellow, domain.HealthGreen} {
-		child := h.ActiveChildOf(sam, parent, fmt.Sprintf("Child %d", i), "So what.")
+		child := h.ActiveChildOf(sam, parent, fmt.Sprintf("Child %d", i), "Why it matters.")
 		h.Checkin(sam, child.ID, health, "Status.", "Recover.", pathDate)
 	}
-	h.ActiveChildOf(sam, parent, "Fresh work", "Fresh so what.")
+	h.ActiveChildOf(sam, parent, "Fresh work", "Fresh why it matters.")
 
 	got, err := h.Service.RolledUpHealth(context.Background(), parent.ID)
 	if err != nil {

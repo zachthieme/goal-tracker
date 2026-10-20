@@ -14,12 +14,12 @@ import (
 )
 
 // DefinedGoalInput is the create-a-defined-Goal command's input: everything
-// the single-page New goal form gathers. Title, So What and the Owner are
+// the single-page New goal form gathers. Title, Why it matters and the Owner are
 // required, and a Dated Goal also needs its delivery date; the rest defines as
 // much of the Goal as the Owner has to hand.
 type DefinedGoalInput struct {
-	Title  string
-	SoWhat string
+	Title        string
+	WhyItMatters string
 	// OwnerID is the acting person, who owns the Goal.
 	OwnerID int64
 	// Kind is GoalDated, with DeliveryDate, GoalOngoing, or "" for not chosen.
@@ -98,8 +98,8 @@ func (s *Service) CreateDefinedGoal(ctx context.Context, in DefinedGoalInput) (G
 // Owner may (ErrNotAuthorized), and only while it is Proposed (ErrValidation).
 // The actor is the Owner, whatever in.OwnerID says.
 //
-// The Goal is changed to match the input. A changed So What is kept as a
-// revision (EditSoWhat), a Kind chosen, its delivery date and a cadence given
+// The Goal is changed to match the input. A changed Why it matters is kept as a
+// revision (EditWhyItMatters), a Kind chosen, its delivery date and a cadence given
 // replace the Goal's, and Milestones and Metrics are added to those it has. In
 // each Dimension still offered the Goal carries just the values given, plus a
 // new one typed for it, so a value left out is removed (SetGoalValues); a
@@ -253,8 +253,8 @@ func (s *Service) checkRedefinedGoal(ctx context.Context, current Goal, in Defin
 // Goal current, within the transaction the caller holds.
 func (s *Service) writeRedefinedGoal(ctx context.Context, current Goal, in DefinedGoalInput) (Goal, error) {
 	goalID := current.ID
-	if soWhat := strings.TrimSpace(in.SoWhat); soWhat != current.SoWhat {
-		if _, err := s.EditSoWhat(ctx, goalID, soWhat, in.OwnerID); err != nil {
+	if whyItMatters := strings.TrimSpace(in.WhyItMatters); whyItMatters != current.WhyItMatters {
+		if _, err := s.EditWhyItMatters(ctx, goalID, whyItMatters, in.OwnerID); err != nil {
 			return Goal{}, err
 		}
 	}
@@ -319,7 +319,7 @@ func (s *Service) writeRedefinedGoal(ctx context.Context, current Goal, in Defin
 // writeDefinedGoal creates the Goal and writes each part of its definition,
 // within the transaction the caller holds.
 func (s *Service) writeDefinedGoal(ctx context.Context, in DefinedGoalInput) (Goal, error) {
-	g, err := s.CreateGoal(ctx, CreateGoalInput{Title: in.Title, SoWhat: in.SoWhat, OwnerID: in.OwnerID})
+	g, err := s.CreateGoal(ctx, CreateGoalInput{Title: in.Title, WhyItMatters: in.WhyItMatters, OwnerID: in.OwnerID})
 	if err != nil {
 		return Goal{}, err
 	}
@@ -417,8 +417,8 @@ func (s *Service) checkDefinedGoal(ctx context.Context, in DefinedGoalInput, car
 	if strings.TrimSpace(in.Title) == "" {
 		refuse(InputTitle, "a Goal needs a title")
 	}
-	if strings.TrimSpace(in.SoWhat) == "" {
-		refuse(InputSoWhat, "a Goal needs a So What")
+	if strings.TrimSpace(in.WhyItMatters) == "" {
+		refuse(InputWhyItMatters, "a Goal needs to say why it matters")
 	}
 	switch in.Kind {
 	case GoalDated:
@@ -607,7 +607,7 @@ func (s *Service) activateDefinedGoal(ctx context.Context, goalID int64) (Goal, 
 // is made by its function below.
 const (
 	InputTitle        = "title"
-	InputSoWhat       = "so_what"
+	InputWhyItMatters = "why_it_matters"
 	InputKind         = "kind"
 	InputDeliveryDate = "delivery_date"
 	InputCadence      = "cadence"

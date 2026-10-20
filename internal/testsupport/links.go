@@ -26,9 +26,9 @@ func (h *Harness) RequestLink(requester domain.Account, child, parent domain.Goa
 // contributing to parent, failing the test on error. When owner also owns
 // parent the link is accepted immediately, so the child is a real Active child
 // for Rolled-up Health. It is a scenario builder for arranging a Goal graph.
-func (h *Harness) ActiveChildOf(owner domain.Account, parent domain.Goal, title, soWhat string) domain.Goal {
+func (h *Harness) ActiveChildOf(owner domain.Account, parent domain.Goal, title, whyItMatters string) domain.Goal {
 	h.T.Helper()
-	child := h.ActiveGoal(owner, title, soWhat)
+	child := h.ActiveGoal(owner, title, whyItMatters)
 	h.RequestLink(owner, child, parent, "")
 	return child
 }

@@ -10,10 +10,10 @@ import (
 // ActiveGoal creates a Dated Goal owned by owner, gives it a Milestone, and
 // activates it, failing the test on error. Check-ins can only be written on an
 // Active Goal, so tests that exercise them arrange one through this builder.
-func (h *Harness) ActiveGoal(owner domain.Account, title, soWhat string) domain.Goal {
+func (h *Harness) ActiveGoal(owner domain.Account, title, whyItMatters string) domain.Goal {
 	h.T.Helper()
 	ctx := context.Background()
-	g := h.CreateGoal(owner, title, soWhat)
+	g := h.CreateGoal(owner, title, whyItMatters)
 	if _, err := h.Service.MarkGoalDated(ctx, g.ID, h.Clock.Now().AddDate(0, 6, 0)); err != nil {
 		h.T.Fatalf("MarkGoalDated: %v", err)
 	}
@@ -96,9 +96,9 @@ func (h *Harness) CheckinWithHighlights(author domain.Account, goalID int64, hig
 
 // OnHoldGoal creates an Active Goal owned by owner and puts it On Hold in a
 // Check-in with the given reason, failing the test on error.
-func (h *Harness) OnHoldGoal(owner domain.Account, title, soWhat, reason string) domain.Goal {
+func (h *Harness) OnHoldGoal(owner domain.Account, title, whyItMatters, reason string) domain.Goal {
 	h.T.Helper()
-	g := h.ActiveGoal(owner, title, soWhat)
+	g := h.ActiveGoal(owner, title, whyItMatters)
 	if _, err := h.Service.SubmitCheckin(context.Background(), domain.SubmitCheckinInput{
 		GoalID:          g.ID,
 		AuthorID:        owner.ID,

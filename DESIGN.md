@@ -373,16 +373,16 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   `h2`. **Sidebar exception:** a canvas block in the sidebar keeps the `h3`
   size, so the narrow column reads as one quiet list rather than a stack of
   sections. At 900px and below, the sidebar stacks under the main column, and
-  its first block takes the rule too. The Goal's So What is part of the page
+  its first block takes the rule too. The Goal's Why it matters is part of the page
   head (below). It sits on the canvas with no rule.
 - **Goal page head (`.gp-head`):** read top to bottom, it is the title (H1),
-  then the So What, then one metadata line. The warning banners (Ownerless,
+  then the Why it matters, then one metadata line. The warning banners (Ownerless,
   Check-in overdue, Path to Green overdue, Incomplete) stay above it, and the
   actions sit top right.
-  - **So What lead (`.gp-lead`):** larger body text, 18 / 1.55 in
-    `--color-ink`, at most 720px wide. No "So What" heading shows; a visually
+  - **Why it matters lead (`.gp-lead`):** larger body text, 18 / 1.55 in
+    `--color-ink`, at most 720px wide. No "Why it matters" heading shows; a visually
     hidden one (`.sr-only`) labels it for assistive technology, and a small
-    "What is a So What?" help button under it opens the definition in place.
+    "What goes here?" help button under it opens the definition in place.
   - **Metadata line (`.gp-meta`):** the Health badge leads, then plain
     `--color-ink-muted` text separated by `·`: Lifecycle, Dated or Ongoing,
     Owner (the usual person control), the delivery date with any slipped dates
@@ -393,7 +393,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   - **Help on terms:** a glossary term a reader may meet cold carries a
     `disclose help` button that opens a one-line definition in place
     (`.explain`), with the same text as the button's `title` so it is still
-    reachable without script. So What has one under the lead; Top-level, Dated
+    reachable without script. Why it matters has one under the lead; Top-level, Dated
     and Ongoing are the word in the metadata line itself; Delegates and
     Dimension values have one under their sidebar headings; and the Report
     builder's Also include and Leave out have one after each legend. Ownerless
@@ -424,9 +424,9 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   plain page. A refused submit comes back as the same page with the same form
   open, the reason in an alert at its top and what was typed still in it. It
   is all links and plain form posts, so it works without script.
-  - **Where each opens:** Edit title and So What, for the Owner or an Admin,
-    and Top-level open in the head, under the metadata line. Edit title and So
-    What holds the title and the So What as they stand, with a Save.
+  - **Where each opens:** Edit title and Why it matters, for the Owner or an Admin,
+    and Top-level open in the head, under the metadata line. Edit title and Why it
+    matters holds the title and the Why it matters as they stand, with a Save.
     Hand off, Reassign, Mark owner departed and Mark returned open in People,
     under the Owner. Delegates and Contributors forms open in their groups.
     Link to a parent Goal opens under Contributes to, and the Dimension and
@@ -460,7 +460,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   A Goal with no Health shows its message in place of the cells.
 - **History timeline (`goalHistory` in `timeline.templ`):** the Goal page's
   History is one canvas block, open on load with no outer disclosure. It is
-  a single list, newest first, of every Check-in, So What revision, title
+  a single list, newest first, of every Check-in, Why it matters revision, title
   change, ownership change (a Handoff with its outcome, or an Admin Reassign), change to a
   Dimension value or Field, change to one of its "contributes to" links,
   Parent suggestion, Nudge, Milestone added outside a Check-in, and Comment
@@ -474,7 +474,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     A Check-in's marker is its Health's dot, in the Health's ink and shape:
     ● Green, ▲ Yellow, ■ Red. It reads without colour, and its badge names the
     Health beside it. Every other kind has a neutral `--color-ink-muted`
-    marker with its own shape: a hollow ring for So What and for a title
+    marker with its own shape: a hollow ring for Why it matters and for a title
     change, a hollow diamond for
     an ownership change, a bar for a value change, a hollow arch (round on
     top, square below) for a link change, a dashed ring for a Parent
@@ -485,7 +485,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     reply, and a hollow square for a Check-in with no Health, such as one
     that put the Goal On Hold. Every entry also opens with its kind as a bold
     text label (Check-in,
-    So What, Title, Handoff, Reassign, Value, Link, Parent suggestion, Nudge,
+    Why it matters, Title, Handoff, Reassign, Value, Link, Parent suggestion, Nudge,
     Milestone, Action Item raised, Action Item reassigned, Action Item
     closed, Comment for a thread's first Comment, Reply for a reply), so the
     marker is never the only signal.
@@ -510,7 +510,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     one's time. A small disclosure on it lists each folded Check-in's time and
     who wrote it, "for" the Owner when a Delegate did. Any other entry between
     two Check-ins keeps them apart, so folding follows the filter: two
-    identical Check-ins with a So What revision between them show in full
+    identical Check-ins with a Why it matters revision between them show in full
     under All and fold under Check-ins. Chips still count every Check-in.
   - **A link entry** is on both Goals' timelines, phrased for the Goal it's
     on, with the other Goal's title as a link: "Requested to contribute to
@@ -550,7 +550,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     not yet due." The strip shows for any Goal that has been Active, and it
     changes nothing: not Check-in overdue, not Health.
   - **Filter chips (`.tl-chips`):** a row of `--radius-full` chips above the
-    list, wrapping on narrow screens: All, Check-ins, Date Slips, So What,
+    list, wrapping on narrow screens: All, Check-ins, Date Slips, Why it matters,
     Title, Ownership, Links, Values, Action Items, Comments. Each carries its
     count.
     Check-ins counts and lists the Check-ins, the Nudges asking for one, and
@@ -806,7 +806,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   segment takes the usual ring. The native radio hides only with `:has()`. At
   phone width the control becomes a 2×2 grid the width of the form.
 - **New goal page (`goalFormPage`):** no outer card. The form's column is
-  sections on the canvas, 48px apart: the Title and So What with no heading
+  sections on the canvas, 48px apart: the Title and Why it matters with no heading
   (a muted "New goal · Proposed until it's activated" line holds the `<h1>`,
   and the Title is a 34px display-face input on a 2px `--color-primary-strong`
   underline), then **Delivery** and **How you'll know** as 22px `<h2>`s, then

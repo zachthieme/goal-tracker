@@ -19,14 +19,14 @@ import (
 type historyFilter string
 
 const (
-	historyAll       historyFilter = ""
-	historyCheckins  historyFilter = "checkins"
-	historySlips     historyFilter = "date-slips"
-	historySoWhat    historyFilter = "so-what"
-	historyTitle     historyFilter = "title"
-	historyOwnership historyFilter = "ownership"
-	historyLinks     historyFilter = "links"
-	historyValues    historyFilter = "values"
+	historyAll          historyFilter = ""
+	historyCheckins     historyFilter = "checkins"
+	historySlips        historyFilter = "date-slips"
+	historyWhyItMatters historyFilter = "why-it-matters"
+	historyTitle        historyFilter = "title"
+	historyOwnership    historyFilter = "ownership"
+	historyLinks        historyFilter = "links"
+	historyValues       historyFilter = "values"
 	// historyActionItems lists the Action Items about the Goal: each one
 	// raised, reassigned and closed.
 	historyActionItems historyFilter = "action-items"
@@ -43,7 +43,7 @@ var historyFilters = []struct {
 	{historyAll, "All"},
 	{historyCheckins, "Check-ins"},
 	{historySlips, "Date Slips"},
-	{historySoWhat, "So What"},
+	{historyWhyItMatters, "Why it matters"},
 	{historyTitle, "Title"},
 	{historyOwnership, "Ownership"},
 	{historyLinks, "Links"},
@@ -60,7 +60,7 @@ const (
 )
 
 // historyEntry is one event in a Goal's History: a Check-in with the Date
-// Slips and Metric readings recorded in it, a So What revision, a change to
+// Slips and Metric readings recorded in it, a Why it matters revision, a change to
 // its title, an ownership change (a Handoff or an Admin Reassign), a change to
 // a Dimension value or Field, a Parent suggestion with its outcome, a Nudge, or
 // a change to one of its links, a Milestone added outside a Check-in, an
@@ -79,7 +79,7 @@ type historyEntry struct {
 	Readings   []historyReading
 	Highlights []domain.Highlight
 	Folded     []historyEntry
-	Revision   *domain.SoWhatRevision
+	Revision   *domain.WhyItMattersRevision
 	Title      *domain.TitleRevision
 	Handoff    *domain.Handoff
 	Value      *domain.ValueChange
@@ -120,7 +120,7 @@ func (e historyEntry) kind() string {
 	case e.Checkin != nil:
 		return "checkin"
 	case e.Revision != nil:
-		return "so-what"
+		return "why-it-matters"
 	case e.Title != nil:
 		return "title"
 	case e.Handoff != nil:
@@ -147,7 +147,7 @@ func (e historyEntry) label() string {
 	case e.Checkin != nil:
 		return "Check-in"
 	case e.Revision != nil:
-		return "So What"
+		return "Why it matters"
 	case e.Title != nil:
 		return "Title"
 	case e.Handoff != nil && e.Handoff.Status == domain.HandoffReassigned:
@@ -186,7 +186,7 @@ func (e historyEntry) in(filter historyFilter) bool {
 		return e.Checkin != nil || e.Nudge != nil || e.Milestone != nil
 	case historySlips:
 		return len(e.Slips) > 0
-	case historySoWhat:
+	case historyWhyItMatters:
 		return e.Revision != nil
 	case historyTitle:
 		return e.Title != nil
@@ -220,7 +220,7 @@ type history struct {
 	Strip domain.HealthStrip
 }
 
-// newHistory gathers a Goal's Check-ins, Date Slips, Metric readings, So What
+// newHistory gathers a Goal's Check-ins, Date Slips, Metric readings, Why it matters
 // revisions, title changes, ownership changes, value changes, Parent suggestions, Nudges,
 // link changes, the Milestones added outside a Check-in, its Action Items'
 // raising, reassignments and closing, and every Comment and reply about it into
@@ -727,8 +727,8 @@ func (h history) emptyText() string {
 		return "No Check-ins yet."
 	case historySlips:
 		return "No Date Slips."
-	case historySoWhat:
-		return "No So What revisions."
+	case historyWhyItMatters:
+		return "No Why it matters revisions."
 	case historyOwnership:
 		return "No ownership changes yet."
 	case historyLinks:
