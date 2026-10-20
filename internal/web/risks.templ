@@ -155,6 +155,9 @@ templ risksTable(current *domain.Account, today time.Time, here string, rows []r
 				}
 			</tbody>
 		</table>
+		for _, d := range riskDefinitionsIn(rows) {
+			<div id={ riskMeansID(d.Kind) } popover class="rk-pop"><strong>{ d.Name }</strong> { d.Means }</div>
+		}
 	</div>
 }
 
@@ -213,39 +216,63 @@ templ riskRow(current *domain.Account, today time.Time, here string, r riskGoalR
 
 // riskChip says why a signal flags g. Red and Yellow, Not Green's signals,
 // take no chip: the row's Health badge says so already. An Ask for help names
-// whom it asks, or says no one is above the Owner.
+// whom it asks, or says no one is above the Owner. Each chip's words are a
+// riskTip opening what its signal means; a chip holding a person or a link
+// keeps them after its riskTip, since a button can't hold them.
 templ riskChip(today time.Time, g domain.Goal, sig riskSignal) {
 	switch sig.Kind {
 		case "red", "yellow":
 		case "asks-for-help":
 			<span data-testid="risk-signal" data-kind="asks-for-help" class="rk-tag">
 				if sig.Person != nil {
-					{ "Asks for help of " }@person(*sig.Person)
+					@riskTip(sig.Kind, "Asks for help")
+					{ "of " }@person(*sig.Person)
 				} else {
-					{ "Asks for help · no one above the Owner" }
+					@riskTip(sig.Kind, "Asks for help · no one above the Owner")
 				}
 			</span>
 		case "checkin-overdue":
-			<span data-testid="risk-signal" data-kind="checkin-overdue" class="badge st">{ "Check-in overdue · " + plural(sig.Days, "day") + ", checks in " + cadenceInWords(g.CadenceDays) }</span>
+			<span data-testid="risk-signal" data-kind="checkin-overdue" class="badge st">
+				@riskTip(sig.Kind, "Check-in overdue · "+plural(sig.Days, "day")+", checks in "+cadenceInWords(g.CadenceDays))
+			</span>
 		case "path-overdue":
-			<span data-testid="risk-signal" data-kind="path-overdue" class="badge st">{ "Path to Green " + plural(sig.Days, "day") + " overdue" }</span>
+			<span data-testid="risk-signal" data-kind="path-overdue" class="badge st">
+				@riskTip(sig.Kind, "Path to Green "+plural(sig.Days, "day")+" overdue")
+			</span>
 		case "milestone-overdue":
-			<span data-testid="risk-signal" data-kind="milestone-overdue" class="badge st">{ "Milestone " + plural(sig.Days, "day") + " overdue" }</span>
+			<span data-testid="risk-signal" data-kind="milestone-overdue" class="badge st">
+				@riskTip(sig.Kind, "Milestone "+plural(sig.Days, "day")+" overdue")
+			</span>
 		case "action-item-overdue":
-			<span data-testid="risk-signal" data-kind="action-item-overdue" class="badge st">{ "Action Item " + plural(sig.Days, "day") + " overdue" }</span>
+			<span data-testid="risk-signal" data-kind="action-item-overdue" class="badge st">
+				@riskTip(sig.Kind, "Action Item "+plural(sig.Days, "day")+" overdue")
+			</span>
 		case "ownerless":
-			<span data-testid="risk-signal" data-kind="ownerless" class="badge ol" title={ ownerlessHelp }>Ownerless</span>
+			<span data-testid="risk-signal" data-kind="ownerless" class="badge ol">
+				@riskTip(sig.Kind, "Ownerless")
+			</span>
 		case "unlinked":
-			<span data-testid="risk-signal" data-kind="unlinked" class="rk-tag">Unlinked · no parent Goal, not Top-level</span>
+			<span data-testid="risk-signal" data-kind="unlinked" class="rk-tag">
+				@riskTip(sig.Kind, "Unlinked · no parent Goal, not Top-level")
+			</span>
 		case "schedule-conflicts":
 			<span data-testid="risk-signal" data-kind="schedule-conflicts" class="rk-tag">
-				{ fmt.Sprintf("Schedule conflict · due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), riskDays(sig.Days)) }@goalRef(*sig.Related)
+				@riskTip(sig.Kind, "Schedule conflict")
+				{ fmt.Sprintf(" · due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), riskDays(sig.Days)) }@goalRef(*sig.Related)
 			</span>
 		case "halted-parents":
 			<span data-testid="risk-signal" data-kind="halted-parents" class="rk-tag">
-				{ "Parent " + sig.Related.Lifecycle + " · " }@goalRef(*sig.Related)
+				@riskTip(sig.Kind, "Parent "+sig.Related.Lifecycle)
+				{ " · " }@goalRef(*sig.Related)
 			</span>
 	}
+}
+
+// riskTip is a toggletip: a button reading label that opens, with no script,
+// the popover risksTable holds saying what the signal of kind means, and that
+// takes the meaning as its description.
+templ riskTip(kind, label string) {
+	<button type="button" class="rk-tip" popovertarget={ riskMeansID(kind) } aria-describedby={ riskMeansID(kind) }>{ label }</button>
 }
 
 // risksStyles are the Risks page's own rules on top of app.css: the header

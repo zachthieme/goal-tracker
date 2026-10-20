@@ -472,20 +472,48 @@ func (v risksView) Types() []riskType {
 	}
 }
 
+// riskDefinition is one of the Risks page's signals: the kind its chips
+// carry, its name, and what it means.
+type riskDefinition struct{ Kind, Name, Means string }
+
 // riskDefinitions are the Risks page's signals in the page's order, each with
-// what it means, as the page's "What each risk means" says.
-var riskDefinitions = []struct{ Name, Means string }{
-	{"Red", "Active Goals whose latest Check-in is Red."},
-	{"Yellow", "Active Goals whose latest Check-in is Yellow."},
-	{"Asks for help", "Red or Yellow Goals whose Path to Green asks for help from the Owner's Manager, until the Owner unmarks it or the Goal is back to Green."},
-	{"Check-in overdue", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
-	{"Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green."},
-	{"Milestone overdue", "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Green can't be repeated until the Owner responds."},
-	{"Action Item overdue", "An Action Item about this Goal, raised in a Report, is past its due date."},
-	{"Ownerless", "Active Goals whose Owner has left the company and hasn't been replaced."},
-	{"Unlinked", "Active Goals that contribute to no other Goal and aren't Top-level."},
-	{"Schedule conflicts", "Goals due later than a Goal they contribute to."},
-	{"Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled."},
+// what it means: what a chip's button opens, and what "What each signal
+// means" lists.
+var riskDefinitions = []riskDefinition{
+	{"red", "Red", "Active Goals whose latest Check-in is Red."},
+	{"yellow", "Yellow", "Active Goals whose latest Check-in is Yellow."},
+	{"asks-for-help", "Asks for help", "Red or Yellow Goals whose Path to Green asks for help from the Owner's Manager, until the Owner unmarks it or the Goal is back to Green."},
+	{"checkin-overdue", "Check-in overdue", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
+	{"path-overdue", "Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green."},
+	{"milestone-overdue", "Milestone overdue", "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Green can't be repeated until the Owner responds."},
+	{"action-item-overdue", "Action Item overdue", "An Action Item about this Goal, raised in a Report, is past its due date."},
+	{"ownerless", "Ownerless", "Active Goals whose Owner has left the company and hasn't been replaced."},
+	{"unlinked", "Unlinked", "Active Goals that contribute to no other Goal and aren't Top-level."},
+	{"schedule-conflicts", "Schedule conflicts", "Goals due later than a Goal they contribute to."},
+	{"halted-parents", "Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled."},
+}
+
+// riskDefinitionsIn are the definitions of the signals flagging rows, in the
+// page's order, each once: the popovers the chips' buttons open.
+func riskDefinitionsIn(rows []riskGoalRow) []riskDefinition {
+	chipped := map[string]bool{}
+	for _, r := range rows {
+		for _, sig := range r.Signals {
+			chipped[sig.Kind] = true
+		}
+	}
+	var defs []riskDefinition
+	for _, d := range riskDefinitions {
+		if chipped[d.Kind] {
+			defs = append(defs, d)
+		}
+	}
+	return defs
+}
+
+// riskMeansID is the id of the popover saying what the signal of kind means.
+func riskMeansID(kind string) string {
+	return "risk-means-" + kind
 }
 
 // Flagged counts the Goals the Risks page lists in scope, each once however

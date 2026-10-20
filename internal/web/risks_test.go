@@ -90,7 +90,7 @@ func TestRisksPageListsCheckinOverdueGoals(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
 	row := riskRowOf(t, page, silent)
-	if chip := riskChip(t, row, "checkin-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Check-in overdue · 10 days, checks in weekly") {
+	if chip := riskChip(t, row, "checkin-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Check-in overdue · 10 days, checks in weekly</button>") {
 		t.Errorf("Check-in overdue chip is not a Check-in overdue badge saying 10 days, checks in weekly: %s", chip)
 	}
 	if owner := pageElement(t, row, "td", "risk-owner"); !strings.HasSuffix(owner, ">You") || strings.Contains(owner, "sam@example.com") {
@@ -130,7 +130,7 @@ func TestRisksCheckinOverdueChipSaysItsCadenceInWords(t *testing.T) {
 
 	for cadence, g := range goals {
 		chip := riskChip(t, riskRowOf(t, page, g), "checkin-overdue")
-		if !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">"+want[cadence]) {
+		if !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">"+want[cadence]+"</button>") {
 			t.Errorf("on a %d-day cadence, the Check-in overdue chip doesn't read %q: %s", cadence, want[cadence], chip)
 		}
 	}
@@ -154,7 +154,7 @@ func TestRisksPageListsOverduePathsToGreen(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
 	row := riskRowOf(t, page, stalled)
-	if chip := riskChip(t, row, "path-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Path to Green 2 days overdue") {
+	if chip := riskChip(t, row, "path-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Path to Green 2 days overdue</button>") {
 		t.Errorf("overdue chip is not a Check-in overdue-colored badge saying 2 days overdue: %s", chip)
 	}
 	if health := pageElement(t, row, "span", "risk-health"); !strings.Contains(openTag(health), `class="badge r"`) {
@@ -186,10 +186,10 @@ func TestRisksPathToGreenDaysAreCountedInTheOwnersTimezone(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks?org=all")
 
-	if chip := riskChip(t, riskRowOf(t, page, tokyo), "path-overdue"); !strings.HasSuffix(chip, ">Path to Green 3 days overdue") {
+	if chip := riskChip(t, riskRowOf(t, page, tokyo), "path-overdue"); !strings.HasSuffix(chip, ">Path to Green 3 days overdue</button>") {
 		t.Errorf("overdue chip of an Owner in Tokyo doesn't say 3 days overdue: %s", chip)
 	}
-	if chip := riskChip(t, riskRowOf(t, page, plain), "path-overdue"); !strings.HasSuffix(chip, ">Path to Green 2 days overdue") {
+	if chip := riskChip(t, riskRowOf(t, page, plain), "path-overdue"); !strings.HasSuffix(chip, ">Path to Green 2 days overdue</button>") {
 		t.Errorf("overdue chip of an Owner with no Timezone doesn't say 2 days overdue: %s", chip)
 	}
 }
@@ -211,13 +211,13 @@ func TestRisksMilestoneOverdueDaysAreCountedInTheOwnersTimezone(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	page := getBody(t, client, ts.URL+"/risks?org=all")
-	if chip := riskChip(t, riskRowOf(t, page, g), "milestone-overdue"); !strings.HasSuffix(chip, ">Milestone 2 days overdue") {
+	if chip := riskChip(t, riskRowOf(t, page, g), "milestone-overdue"); !strings.HasSuffix(chip, ">Milestone 2 days overdue</button>") {
 		t.Errorf("Milestone overdue chip of an Owner in Tokyo doesn't say 2 days overdue: %s", chip)
 	}
 
 	h.SetTimezone(kenji, "")
 	page = getBody(t, client, ts.URL+"/risks?org=all")
-	if chip := riskChip(t, riskRowOf(t, page, g), "milestone-overdue"); !strings.HasSuffix(chip, ">Milestone 1 day overdue") {
+	if chip := riskChip(t, riskRowOf(t, page, g), "milestone-overdue"); !strings.HasSuffix(chip, ">Milestone 1 day overdue</button>") {
 		t.Errorf("Milestone overdue chip of an Owner with no Timezone doesn't say 1 day overdue: %s", chip)
 	}
 }
@@ -242,7 +242,7 @@ func TestRisksPathToGreenChipSaysItsDaysInWords(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
 	for overdue, g := range goals {
-		if chip := riskChip(t, riskRowOf(t, page, g), "path-overdue"); !strings.HasSuffix(chip, ">"+want[overdue]) {
+		if chip := riskChip(t, riskRowOf(t, page, g), "path-overdue"); !strings.HasSuffix(chip, ">"+want[overdue]+"</button>") {
 			t.Errorf("%d days overdue, the chip doesn't read %q: %s", overdue, want[overdue], chip)
 		}
 	}
@@ -271,11 +271,8 @@ func TestRisksPageListsOwnerlessGoals(t *testing.T) {
 
 	row := riskRowOf(t, page, orphaned)
 	chip := riskChip(t, row, "ownerless")
-	if !strings.Contains(openTag(chip), `class="badge ol"`) || !strings.HasSuffix(chip, ">Ownerless") {
+	if !strings.Contains(openTag(chip), `class="badge ol"`) || !strings.HasSuffix(chip, ">Ownerless</button>") {
 		t.Errorf("Ownerless chip is not an Ownerless badge: %s", chip)
-	}
-	if got, want := attr(openTag(chip), "title"), html.EscapeString("Its Owner has left the company. It gets a new Owner when an Admin reassigns it, or when someone accepts a Handoff its Owner started before leaving."); got != want {
-		t.Errorf("Ownerless chip's title = %q, want %q", got, want)
 	}
 	if owner := pageElement(t, row, "td", "risk-owner"); !strings.Contains(owner, `title="sam@example.com"`) || strings.Contains(owner, "You") {
 		t.Errorf("row doesn't show the departed Owner: %s", owner)
@@ -304,7 +301,7 @@ func TestRisksPageListsUnlinkedGoals(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
 	row := riskRowOf(t, page, loner)
-	if chip := riskChip(t, row, "unlinked"); !strings.Contains(openTag(chip), `class="rk-tag"`) || !strings.HasSuffix(chip, ">Unlinked · no parent Goal, not Top-level") {
+	if chip := riskChip(t, row, "unlinked"); !strings.Contains(openTag(chip), `class="rk-tag"`) || !strings.HasSuffix(chip, ">Unlinked · no parent Goal, not Top-level</button>") {
 		t.Errorf("Unlinked chip is not an outlined chip saying why: %s", chip)
 	}
 	rule, _, _ := strings.Cut(page[strings.Index(page, ".rk-tag{")+1:], "}")
@@ -344,8 +341,8 @@ func TestRisksPageListsScheduleConflicts(t *testing.T) {
 		child, parent domain.Goal
 		says          string
 	}{
-		{late, launch, ">Schedule conflict · due Jul 1, 30 days after its parent <a "},
-		{slipped, yearEnd, ">Schedule conflict · due Jan 10, 2027, 21 days after its parent <a "},
+		{late, launch, ">Schedule conflict</button> · due Jul 1, 30 days after its parent <a "},
+		{slipped, yearEnd, ">Schedule conflict</button> · due Jan 10, 2027, 21 days after its parent <a "},
 	} {
 		chip := riskChip(t, riskRowOf(t, page, c.child), "schedule-conflicts")
 		if !strings.Contains(openTag(chip), `class="rk-tag"`) || !strings.Contains(chip, c.says) {
@@ -394,8 +391,8 @@ func TestRisksPageListsGoalsUnderHaltedParents(t *testing.T) {
 		child, parent domain.Goal
 		says          string
 	}{
-		{underPaused, paused, ">Parent On Hold · <a "},
-		{underDropped, dropped, ">Parent Cancelled · <a "},
+		{underPaused, paused, ">Parent On Hold</button> · <a "},
+		{underDropped, dropped, ">Parent Cancelled</button> · <a "},
 	} {
 		chip := riskChip(t, riskRowOf(t, page, c.child), "halted-parents")
 		if !strings.Contains(openTag(chip), `class="rk-tag"`) || !strings.Contains(chip, c.says) {
@@ -2368,7 +2365,7 @@ func TestRisksPageListsGoalsWithOverdueActionItems(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
 	row := riskRowOf(t, page, launch)
-	if chip := riskChip(t, row, "action-item-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Action Item 2 days overdue") {
+	if chip := riskChip(t, row, "action-item-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Action Item 2 days overdue</button>") {
 		t.Errorf("overdue Action Item chip is not a Check-in overdue-colored badge saying 2 days overdue: %s", chip)
 	}
 	if health := pageElement(t, row, "span", "risk-health"); !strings.Contains(openTag(health), `class="badge g"`) {
@@ -2540,7 +2537,7 @@ func TestRisksPageScopesOverdueActionItems(t *testing.T) {
 
 	page = getBody(t, client, ts.URL+"/risks?org=all")
 
-	if chip := riskChip(t, riskRowOf(t, page, kims), "action-item-overdue"); !strings.HasSuffix(chip, ">Action Item 3 days overdue") {
+	if chip := riskChip(t, riskRowOf(t, page, kims), "action-item-overdue"); !strings.HasSuffix(chip, ">Action Item 3 days overdue</button>") {
 		t.Errorf("under Everyone, %q's chip doesn't say 3 days overdue: %s", kims.Title, chip)
 	}
 	riskChip(t, riskRowOf(t, page, own), "action-item-overdue")
@@ -2764,8 +2761,8 @@ func TestRisksPageMarksAsksForHelpUnderNotGreen(t *testing.T) {
 	page := getBody(t, client, ts.URL+"/risks?org=all")
 
 	for g, want := range map[*domain.Goal]string{
-		&red:   `<span data-testid="risk-signal" data-kind="asks-for-help" class="rk-tag">Asks for help of ` + shownAs(mia.Email, "Mia Chen") + `</span>`,
-		&alone: `<span data-testid="risk-signal" data-kind="asks-for-help" class="rk-tag">Asks for help · no one above the Owner</span>`,
+		&red:   `<span data-testid="risk-signal" data-kind="asks-for-help" class="rk-tag"><button type="button" class="rk-tip" popovertarget="risk-means-asks-for-help" aria-describedby="risk-means-asks-for-help">Asks for help</button> of ` + shownAs(mia.Email, "Mia Chen") + `</span>`,
+		&alone: `<span data-testid="risk-signal" data-kind="asks-for-help" class="rk-tag"><button type="button" class="rk-tip" popovertarget="risk-means-asks-for-help" aria-describedby="risk-means-asks-for-help">Asks for help · no one above the Owner</button></span>`,
 	} {
 		if row := riskRowOf(t, page, *g); strings.Count(row, `data-kind="asks-for-help"`) != 1 || !strings.Contains(row, want) {
 			t.Errorf("%q's row doesn't carry one chip %s:\n%s", g.Title, want, row)
@@ -2843,7 +2840,7 @@ func TestRisksPageListsGreenGoalsPastAMilestone(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
 	row := riskRowOf(t, page, g)
-	if chip := riskChip(t, row, "milestone-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Milestone 1 day overdue") {
+	if chip := riskChip(t, row, "milestone-overdue"); !strings.Contains(openTag(chip), `class="badge st"`) || !strings.HasSuffix(chip, ">Milestone 1 day overdue</button>") {
 		t.Errorf("Milestone overdue chip is not a Check-in overdue-colored badge saying 1 day overdue: %s", chip)
 	}
 	if health := pageElement(t, row, "span", "risk-health"); !strings.Contains(openTag(health), `class="badge g"`) {
@@ -2916,5 +2913,110 @@ func TestRisksNotGreenRowsTagASlippedBackToGreenDate(t *testing.T) {
 	}
 	if card := pageElement(t, page, "a", "risks-group-health"); !strings.Contains(card, `<span class="num">2</span>`) {
 		t.Errorf("the Not Green card doesn't count its 2 Goals: %s", card)
+	}
+}
+
+// riskMeanings are what each of the Risks page's signals means, keyed by the
+// kind its chip carries, in the page's order.
+var riskMeanings = []struct{ kind, name, means string }{
+	{"red", "Red", "Active Goals whose latest Check-in is Red."},
+	{"yellow", "Yellow", "Active Goals whose latest Check-in is Yellow."},
+	{"asks-for-help", "Asks for help", "Red or Yellow Goals whose Path to Green asks for help from the Owner's Manager, until the Owner unmarks it or the Goal is back to Green."},
+	{"checkin-overdue", "Check-in overdue", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
+	{"path-overdue", "Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green."},
+	{"milestone-overdue", "Milestone overdue", "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Green can't be repeated until the Owner responds."},
+	{"action-item-overdue", "Action Item overdue", "An Action Item about this Goal, raised in a Report, is past its due date."},
+	{"ownerless", "Ownerless", "Active Goals whose Owner has left the company and hasn't been replaced."},
+	{"unlinked", "Unlinked", "Active Goals that contribute to no other Goal and aren't Top-level."},
+	{"schedule-conflicts", "Schedule conflicts", "Goals due later than a Goal they contribute to."},
+	{"halted-parents", "Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled."},
+}
+
+// riskMeaning returns what the signal of kind means.
+func riskMeaning(t *testing.T, kind string) string {
+	t.Helper()
+	for _, m := range riskMeanings {
+		if m.kind == kind {
+			return m.means
+		}
+	}
+	t.Fatalf("no signal of kind %q", kind)
+	return ""
+}
+
+// riskPopover returns the content of the page's native popover with id,
+// failing the test unless one is there.
+func riskPopover(t *testing.T, page, id string) string {
+	t.Helper()
+	tag := tagAround(t, page, ` id="`+id+`"`)
+	if !regexp.MustCompile(`\spopover(="auto")?[\s>]`).MatchString(tag) {
+		t.Fatalf("#%s is not a native popover: %s", id, tag)
+	}
+	name := strings.Fields(tag[1:])[0]
+	return between(t, page[strings.Index(page, tag)+len(tag):], "", "</"+name+">")
+}
+
+// Each signal chip in the Risks table names its signal with a button that,
+// with no script, opens a popover saying what the signal means, so a tap
+// explains it where it's shown. Chips holding a link or a person name the
+// signal with the button and keep the link outside it.
+func TestRisksSignalChipsOpenWhatTheyMean(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	mia := h.SignInNamed("mia@example.com", "Mia Chen")
+	h.SetManager(sam, mia)
+	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Check-in overdue, Unlinked and an overdue Action Item
+	h.Clock.Advance(10 * day)
+	h.Checkin(sam, launch.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	raiseRiskActionItem(t, h, ada, silent, sam, "Break the silence.", -1)
+	orphaned := h.ActiveGoal(kim, "Orphaned work", "It matters.") // Ownerless and Unlinked
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+	late := h.ActiveGoalDue(sam, "Late piece", june.AddDate(0, 1, 0)) // Schedule conflict
+	h.RequestLink(sam, late, launch, "")
+	stalled := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Stalled recovery", "It matters.")) // Asks for help
+	h.AskForHelp(sam, stalled.ID, domain.HealthRed, "Blocked.", "Need budget.", june)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks?org=all")
+
+	for g, kinds := range map[*domain.Goal][]string{
+		&silent:   {"checkin-overdue", "action-item-overdue", "unlinked"},
+		&orphaned: {"ownerless", "unlinked"},
+		&late:     {"schedule-conflicts"},
+		&stalled:  {"asks-for-help"},
+	} {
+		row := riskRowOf(t, page, *g)
+		for _, kind := range kinds {
+			chip := riskChip(t, row, kind)
+			at := strings.Index(chip, "<button")
+			if at < 0 {
+				t.Errorf("%q's %s chip has no button:\n%s", g.Title, kind, chip)
+				continue
+			}
+			button := chip[at:]
+			if attr(openTag(button), "type") != "button" {
+				t.Errorf("%q's %s button isn't type=button: %s", g.Title, kind, openTag(button))
+			}
+			end := strings.Index(button, "</button>")
+			if end < 0 || strings.TrimSpace(button[len(openTag(button))+1:end]) == "" {
+				t.Errorf("%q's %s button has no name: %s", g.Title, kind, button)
+			}
+			target := attr(openTag(button), "popovertarget")
+			if target == "" {
+				t.Errorf("%q's %s button opens no popover: %s", g.Title, kind, openTag(button))
+				continue
+			}
+			if pop := html.UnescapeString(riskPopover(t, page, target)); !strings.Contains(pop, riskMeaning(t, kind)) {
+				t.Errorf("%q's %s popover doesn't say what it means:\n%s", g.Title, kind, pop)
+			}
+		}
 	}
 }
