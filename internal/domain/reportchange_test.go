@@ -319,7 +319,7 @@ func TestReportPutsYellowBeforeNoHealth(t *testing.T) {
 
 // A Stale exception comes before an otherwise equal fresh one, even where its
 // title sorts after it (CONTEXT.md: Report).
-func TestReportPutsAStaleExceptionBeforeAFreshOne(t *testing.T) {
+func TestReportPutsACheckinOverdueExceptionBeforeAFreshOne(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -342,7 +342,7 @@ func TestReportPutsAStaleExceptionBeforeAFreshOne(t *testing.T) {
 		t.Fatalf("exceptions in order\n got %q\nwant %q", got, want)
 	}
 	for _, b := range r.Exceptions {
-		if got, want := slices.Contains(b.Badges, domain.BadgeStale), b.Goal.ID == stale.ID; got != want {
+		if got, want := slices.Contains(b.Badges, domain.BadgeCheckinOverdue), b.Goal.ID == stale.ID; got != want {
 			t.Errorf("%q Stale = %v, want %v (badges %q)", b.Goal.Title, got, want, b.Badges)
 		}
 	}

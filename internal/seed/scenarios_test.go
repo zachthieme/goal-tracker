@@ -305,14 +305,14 @@ func (g *e2eGoal) lastUpdate() time.Time {
 	}
 }
 
-// staleBy is the choosers' Stale test, julianday('now') - julianday(last
+// checkinOverdueBy is the choosers' Stale test, julianday('now') - julianday(last
 // update) > cadence + extra: whole days of time, not of the calendar.
-func (o *e2eOrg) staleBy(g *e2eGoal, extraDays int) bool {
+func (o *e2eOrg) checkinOverdueBy(g *e2eGoal, extraDays int) bool {
 	return o.now.Sub(g.lastUpdate()) > time.Duration(g.CadenceDays+extraDays)*24*time.Hour
 }
 
-// isStale is 01-finding-trouble's isStale.
-func (o *e2eOrg) isStale(g *e2eGoal) bool { return o.staleBy(g, 0) }
+// isCheckinOverdue is 01-finding-trouble's isCheckinOverdue.
+func (o *e2eOrg) isCheckinOverdue(g *e2eGoal) bool { return o.checkinOverdueBy(g, 0) }
 
 // checkedInWithinCadence is pickCheckinGoal's freshness rule: the Goal's last
 // Check-in is less than its cadence ago. A Goal with no Check-in fails it.
@@ -399,7 +399,7 @@ func (o *e2eOrg) riskReasons(t *testing.T, g *e2eGoal) []string {
 		{"Path to Green overdue", f.PathToGreenOverdue},
 		{"Red", g.active() && g.health() == domain.HealthRed},
 		{"Schedule conflict", slices.ContainsFunc(s.ScheduleConflicts, func(c domain.ScheduleConflict) bool { return c.Child.ID == g.ID })},
-		{"Stale", f.Stale},
+		{"Stale", f.CheckinOverdue},
 		{"Unlinked", s.Unlinked},
 		{"Yellow", g.active() && g.health() == domain.HealthYellow},
 	} {
@@ -418,7 +418,7 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 	active := (*e2eGoal).active
 
 	// stale: a Stale Platform Goal the leader doesn't own.
-	stale := o.find(active, platform, o.isStale, func(g *e2eGoal) bool {
+	stale := o.find(active, platform, o.isCheckinOverdue, func(g *e2eGoal) bool {
 		return g.Owner.Email != leader && !g.Owner.Departed
 	})
 	if stale == nil {
@@ -432,7 +432,7 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 			return false
 		}
 		return !slices.ContainsFunc(o.ownedBy(a.ID), func(h *e2eGoal) bool {
-			return h.TopLevel || (h.active() && o.isStale(h))
+			return h.TopLevel || (h.active() && o.isCheckinOverdue(h))
 		})
 	})
 	if departing == nil {
@@ -441,7 +441,7 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 	// overdue: an Active Platform Goal that can take a plain Check-in.
 	overdue := o.find(active, platform, func(g *e2eGoal) bool {
 		return g.Owner.Email != leader && g.Owner.Email != departing.Owner.Email && !g.Owner.Departed &&
-			g != stale && !o.isStale(g) && len(g.activeChildren()) == 0 && !o.overdueMilestone(g)
+			g != stale && !o.isCheckinOverdue(g) && len(g.activeChildren()) == 0 && !o.overdueMilestone(g)
 	})
 	if overdue == nil {
 		t.Fatal("scenario 1: no Platform Goal to put past its Path to Green: not Stale, no Active children, no overdue Milestone (overdue)")
@@ -461,7 +461,7 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 	if unlinked == nil {
 		t.Fatal("scenario 1: no Unlinked Goal (unlinked)")
 	}
-	twoReasons := o.find(active, o.isStale, func(g *e2eGoal) bool {
+	twoReasons := o.find(active, o.isCheckinOverdue, func(g *e2eGoal) bool {
 		return g.Owner.Email != departing.Owner.Email && g.team != "" && !g.DeliveryDate.IsZero() &&
 			slices.ContainsFunc(g.parents, func(p *e2eGoal) bool {
 				return !p.DeliveryDate.IsZero() && g.DeliveryDate.After(p.DeliveryDate)
@@ -471,7 +471,7 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 		t.Fatal("scenario 1: no Stale Goal with a Team and a Schedule conflict, the two-reason row (twoReasons)")
 	}
 	redWithChildren := o.find(active, func(g *e2eGoal) bool {
-		return g.health() == domain.HealthRed && !o.isStale(g) && g.Owner.Email != departing.Owner.Email &&
+		return g.health() == domain.HealthRed && !o.isCheckinOverdue(g) && g.Owner.Email != departing.Owner.Email &&
 			len(g.parents) > 0 && len(g.activeChildren()) > 0
 	})
 	if redWithChildren == nil {
@@ -494,13 +494,13 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 	if err != nil {
 		t.Fatalf("GraphSignals: %v", err)
 	}
-	if len(fs.Stale) == 0 || len(gs.Unlinked) == 0 || len(gs.ScheduleConflicts) == 0 {
+	if len(fs.CheckinOverdue) == 0 || len(gs.Unlinked) == 0 || len(gs.ScheduleConflicts) == 0 {
 		t.Errorf("scenario 1: Risks has %d Stale, %d Unlinked and %d Schedule conflict Goals, want some of each",
-			len(fs.Stale), len(gs.Unlinked), len(gs.ScheduleConflicts))
+			len(fs.CheckinOverdue), len(gs.Unlinked), len(gs.ScheduleConflicts))
 	}
 	// Narrowed to Platform, Risks has fewer rows than the whole org: some
 	// flagged Goal is on another team.
-	offPlatform := slices.ContainsFunc(fs.Stale, func(f domain.GoalFreshness) bool { return o.byID[f.Goal.ID].team != "Platform" }) ||
+	offPlatform := slices.ContainsFunc(fs.CheckinOverdue, func(f domain.GoalFreshness) bool { return o.byID[f.Goal.ID].team != "Platform" }) ||
 		slices.ContainsFunc(gs.Unlinked, func(g domain.Goal) bool { return o.byID[g.ID].team != "Platform" })
 	if !offPlatform {
 		t.Error("scenario 1: no Stale or Unlinked Goal off Platform, so narrowing Risks to Platform wouldn't narrow it")
@@ -673,11 +673,11 @@ func e2eScenario2Watching(t *testing.T, o *e2eOrg) {
 }
 
 // e2eScenario3Delegate is 03-weekly-checkin.spec.ts's second test, on the
-// default template: staleGoal, and someone to delegate it to.
+// default template: checkinOverdueGoal, and someone to delegate it to.
 func e2eScenario3Delegate(t *testing.T, o *e2eOrg) {
 	var goal *e2eGoal
 	for _, g := range o.goals {
-		if !g.active() || g.Owner.Departed || g.Owner.Name == "" || len(g.checkins) == 0 || !o.staleBy(g, 1) ||
+		if !g.active() || g.Owner.Departed || g.Owner.Name == "" || len(g.checkins) == 0 || !o.checkinOverdueBy(g, 1) ||
 			len(g.children) > 0 || o.overdueMilestone(g) || len(g.delegates) > 0 {
 			continue
 		}
@@ -686,10 +686,10 @@ func e2eScenario3Delegate(t *testing.T, o *e2eOrg) {
 		}
 	}
 	if goal == nil {
-		t.Fatal("scenario 3: no Goal Stale by more than its cadence and a day, with a named Owner and no Delegates (staleGoal)")
+		t.Fatal("scenario 3: no Goal Stale by more than its cadence and a day, with a named Owner and no Delegates (checkinOverdueGoal)")
 	}
-	if !o.freshness(t, goal).Stale {
-		t.Errorf("scenario 3: staleGoal %q isn't Stale on Risks and Home", goal.Title)
+	if !o.freshness(t, goal).CheckinOverdue {
+		t.Errorf("scenario 3: checkinOverdueGoal %q isn't Stale on Risks and Home", goal.Title)
 	}
 	if !slices.ContainsFunc(o.goals, func(g *e2eGoal) bool {
 		a := g.Owner
@@ -769,9 +769,9 @@ func e2eScenario3Week(t *testing.T, o *e2eOrg) {
 			t.Errorf("scenario 3: %s's Home lists %d Check-ins due, %d of them their own", w.account.Email, len(listed), len(due))
 		}
 		for _, pg := range listed {
-			if pg.Freshness.Stale || !pg.CheckedIn {
+			if pg.Freshness.CheckinOverdue || !pg.CheckedIn {
 				t.Errorf("scenario 3: %s's due Goal %q is Stale (%t) or has no Check-in to repeat (%t)",
-					w.account.Email, pg.Goal.Title, pg.Freshness.Stale, !pg.CheckedIn)
+					w.account.Email, pg.Goal.Title, pg.Freshness.CheckinOverdue, !pg.CheckedIn)
 			}
 		}
 		links, err := o.h.Service.PendingLinkRequests(ctx, w.account.ID)

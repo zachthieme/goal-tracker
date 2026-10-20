@@ -277,7 +277,7 @@ func (r goalRow) problemRank() int {
 		return 0
 	case r.Goal.Ownerless:
 		return 1
-	case r.Freshness.Stale || r.Freshness.PathToGreenOverdue || r.Freshness.MilestoneOverdue:
+	case r.Freshness.CheckinOverdue || r.Freshness.PathToGreenOverdue || r.Freshness.MilestoneOverdue:
 		return 2
 	case r.health() == domain.HealthYellow:
 		return 3

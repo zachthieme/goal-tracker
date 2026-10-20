@@ -70,25 +70,25 @@ func (h *Harness) checkinLinkedGoal(author domain.Account, goal domain.Goal, hea
 // FreezeBeforeLinkedGoals rewrites pub's snapshot as one frozen before
 // Reports counted Red and Yellow children or named linked Goals (#246): every
 // exception block loses RedChildren, YellowChildren, ContributesTo and Behind,
-// and stale's block is left with the Rolled-up Health "Red · 1 of 3 Stale".
-func (h *Harness) FreezeBeforeLinkedGoals(pub domain.Publication, stale domain.Goal) {
+// and overdue's block is left with the Rolled-up Health "Red · 1 of 3 overdue".
+func (h *Harness) FreezeBeforeLinkedGoals(pub domain.Publication, overdue domain.Goal) {
 	h.T.Helper()
 	var paths []string
-	staleAt := -1
+	overdueAt := -1
 	for i, b := range pub.Report.Exceptions {
 		for _, key := range []string{"RolledUp.RedChildren", "RolledUp.YellowChildren", "ContributesTo", "Behind"} {
 			paths = append(paths, fmt.Sprintf("'$.Exceptions[%d].%s'", i, key))
 		}
-		if b.Goal.ID == stale.ID {
-			staleAt = i
+		if b.Goal.ID == overdue.ID {
+			overdueAt = i
 		}
 	}
-	if staleAt < 0 {
-		h.T.Fatalf("FreezeBeforeLinkedGoals: %q has no exception block", stale.Title)
+	if overdueAt < 0 {
+		h.T.Fatalf("FreezeBeforeLinkedGoals: %q has no exception block", overdue.Title)
 	}
 	q := fmt.Sprintf(`UPDATE report_publications SET snapshot = json_set(json_remove(snapshot, %s), '$.Exceptions[%d].RolledUp', json(?)) WHERE id = ?`,
-		strings.Join(paths, ", "), staleAt)
-	rolledUp := `{"Health":"Red","Present":true,"StaleChildren":1,"ActiveChildren":3}`
+		strings.Join(paths, ", "), overdueAt)
+	rolledUp := `{"Health":"Red","Present":true,"CheckinOverdueChildren":1,"ActiveChildren":3}`
 	if _, err := h.DB.Exec(q, rolledUp, pub.ID); err != nil {
 		h.T.Fatalf("FreezeBeforeLinkedGoals: %v", err)
 	}

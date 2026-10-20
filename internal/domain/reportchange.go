@@ -119,7 +119,7 @@ func sortReportExceptions(xs []reportException) {
 		if c := cmp.Compare(reportFlagRank(a.pathOverdue), reportFlagRank(b.pathOverdue)); c != 0 {
 			return c
 		}
-		if c := cmp.Compare(reportFlagRank(a.block.hasBadge(BadgeStale)), reportFlagRank(b.block.hasBadge(BadgeStale))); c != 0 {
+		if c := cmp.Compare(reportFlagRank(a.block.hasBadge(BadgeCheckinOverdue)), reportFlagRank(b.block.hasBadge(BadgeCheckinOverdue))); c != 0 {
 			return c
 		}
 		if c := cmp.Compare(reportFlagRank(a.block.changedSinceBaseline()), reportFlagRank(b.block.changedSinceBaseline())); c != 0 {

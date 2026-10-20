@@ -17,10 +17,10 @@ const leaderName = "Priya Raman";
 // The second Dimension the Admin defines, and its values.
 const tier = { name: "Tier", values: ["Core", "Edge"] };
 
-// isStale is SQL true for a Goal g whose last Check-in, or activation if it
+// isCheckinOverdue is SQL true for a Goal g whose last Check-in, or activation if it
 // has none, is older than its cadence: the seed's Stale Goals are weeks past
 // it, so the day boundary doesn't matter.
-const isStale = `
+const isCheckinOverdue = `
   julianday($now) - julianday(coalesce(
     (select max(c.created_at) from checkins c where c.goal_id = g.id),
     nullif(g.activated_at, ''), g.created_at)) > g.cadence_days`;
@@ -45,7 +45,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   // A Stale Platform Goal the leader doesn't own, to nudge in step 5.
   const [stale] = seedLookup<Goal>(
     `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
-     where g.lifecycle = 'Active' and a.email <> ? and a.departed = 0 and ${onTeam} and ${isStale}
+     where g.lifecycle = 'Active' and a.email <> ? and a.departed = 0 and ${onTeam} and ${isCheckinOverdue}
      order by g.id limit 1`,
     leader,
     "Platform",
@@ -54,12 +54,12 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
 
   // An Owner to depart: owns an Active Platform Goal, owns no Stale Goal (so
   // not the one nudged) and no Top-level Goal, and is neither the leader nor
-  // the Admin. The Stale subquery names its Goal g, as isStale reads it.
+  // the Admin. The Stale subquery names its Goal g, as isCheckinOverdue reads it.
   const [departing] = seedLookup<Goal>(
     `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
      where g.lifecycle = 'Active' and ${onTeam} and a.email not in (?, ?) and a.is_admin = 0
        and not exists (select 1 from goals g2 where g2.owner_id = a.id and g2.top_level = 1)
-       and not exists (select 1 from goals g where g.owner_id = a.id and g.lifecycle = 'Active' and ${isStale})
+       and not exists (select 1 from goals g where g.owner_id = a.id and g.lifecycle = 'Active' and ${isCheckinOverdue})
      order by g.id limit 1`,
     "Platform",
     leader,
@@ -74,7 +74,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   const [overdue] = seedLookup<Goal>(
     `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
      where g.lifecycle = 'Active' and ${onTeam} and a.email not in (?, ?) and a.departed = 0
-       and g.id <> ? and not (${isStale})
+       and g.id <> ? and not (${isCheckinOverdue})
        and not exists (select 1 from links l join goals c on c.id = l.child_id
                        where l.parent_id = g.id and l.status = 'accepted' and c.lifecycle = 'Active')
        and not exists (select 1 from milestones m
@@ -113,7 +113,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
      join goal_dimension_values gdv on gdv.goal_id = g.id
      join dimension_values v on v.id = gdv.dimension_value_id
      join dimensions d on d.id = v.dimension_id and d.name = 'Team'
-     where g.lifecycle = 'Active' and a.email <> ? and ${isStale} and g.delivery_date <> ''
+     where g.lifecycle = 'Active' and a.email <> ? and ${isCheckinOverdue} and g.delivery_date <> ''
        and exists (select 1 from links l join goals p on p.id = l.parent_id
                    where l.child_id = g.id and l.status = 'accepted'
                      and p.delivery_date <> '' and g.delivery_date > p.delivery_date)
@@ -136,7 +136,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   // it on Risks.
   const [redWithChildren] = seedLookup<Goal>(
     `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
-     where g.lifecycle = 'Active' and ${latestHealth} = 'Red' and not (${isStale}) and a.email <> ?
+     where g.lifecycle = 'Active' and ${latestHealth} = 'Red' and not (${isCheckinOverdue}) and a.email <> ?
        and exists (select 1 from links l where l.child_id = g.id and l.status = 'accepted')
        and exists (select 1 from links l join goals c on c.id = l.child_id
                    where l.parent_id = g.id and l.status = 'accepted' and c.lifecycle = 'Active')

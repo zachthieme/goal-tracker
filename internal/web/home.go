@@ -258,7 +258,7 @@ func homeOrgBadges(c domain.SignalCounts) []homeOrgBadge {
 	}{
 		{c.Red, "red", domain.HealthRed, healthClass(domain.HealthRed)},
 		{c.PathOverdue, "path-overdue", "Path to Green overdue", "st"},
-		{c.Stale, "stale", "Stale", "st"},
+		{c.CheckinOverdue, "stale", "Stale", "st"},
 		{c.Yellow, "yellow", domain.HealthYellow, healthClass(domain.HealthYellow)},
 	} {
 		if b.n > 0 {
@@ -316,7 +316,7 @@ func homeDueCadence(f domain.Freshness) string {
 // ago"), or is "" when the Goal isn't Stale or has no Check-in to date it by,
 // and its Health badge reads as current.
 func healthAsOf(g domain.PersonalGoal) string {
-	if !g.Freshness.Stale || !g.CheckedIn || g.Health == "" {
+	if !g.Freshness.CheckinOverdue || !g.CheckedIn || g.Health == "" {
 		return ""
 	}
 	return "as of " + daysAgo(g.Freshness.DaysSince)

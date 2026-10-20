@@ -109,7 +109,7 @@ func TestReportExceptionTriggers(t *testing.T) {
 				return g
 			},
 			since:  func(_ *testsupport.Harness, _ domain.Account, g domain.Goal) domain.Goal { return g },
-			badges: []string{domain.BadgeStale},
+			badges: []string{domain.BadgeCheckinOverdue},
 		},
 		{
 			// Checked in Green, then its Owner leaves the org.

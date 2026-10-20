@@ -12,7 +12,7 @@ import (
 // Owner has to explain why. Present is false when the Goal has no Active child
 // that has set a Health yet — there is nothing to roll up.
 //
-// StaleChildren counts how many of the ActiveChildren are Stale ("3 of 12
+// CheckinOverdueChildren counts how many of the ActiveChildren are Stale ("3 of 12
 // Stale"). It is shown beside the color and never changes it: Health stays
 // Owner-set, and being Stale is its own signal (CONTEXT.md: Stale).
 // RedChildren and YellowChildren count the ActiveChildren whose latest
@@ -20,12 +20,12 @@ import (
 // ("2 of 6 Red · 1 Yellow"); a snapshot frozen before Reports counted them has
 // neither.
 type RolledUpHealth struct {
-	Health         string
-	Present        bool
-	StaleChildren  int
-	ActiveChildren int
-	RedChildren    int `json:",omitempty"`
-	YellowChildren int `json:",omitempty"`
+	Health                 string
+	Present                bool
+	CheckinOverdueChildren int
+	ActiveChildren         int
+	RedChildren            int `json:",omitempty"`
+	YellowChildren         int `json:",omitempty"`
 }
 
 // CountLine says what sets the Rolled-up Health: how many of its Active
@@ -40,7 +40,7 @@ func (r RolledUpHealth) CountLine() string {
 	}{
 		{r.RedChildren, HealthRed},
 		{r.YellowChildren, HealthYellow},
-		{r.StaleChildren, BadgeStale},
+		{r.CheckinOverdueChildren, BadgeCheckinOverdue},
 	} {
 		if c.n == 0 {
 			continue
@@ -97,8 +97,8 @@ func (s *Service) RolledUpHealth(ctx context.Context, goalID int64) (RolledUpHea
 		if ok {
 			last.at = latest.CreatedAt
 		}
-		if s.judgeFreshness(child, last).Stale {
-			out.StaleChildren++
+		if s.judgeFreshness(child, last).CheckinOverdue {
+			out.CheckinOverdueChildren++
 		}
 		if !ok {
 			continue

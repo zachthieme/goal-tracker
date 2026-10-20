@@ -231,9 +231,9 @@ func TestRolledUpHealthCountLine(t *testing.T) {
 		rollup domain.RolledUpHealth
 		want   string
 	}{
-		{domain.RolledUpHealth{RedChildren: 2, YellowChildren: 1, StaleChildren: 1, ActiveChildren: 6}, "2 of 6 Red · 1 Yellow · 1 Stale"},
+		{domain.RolledUpHealth{RedChildren: 2, YellowChildren: 1, CheckinOverdueChildren: 1, ActiveChildren: 6}, "2 of 6 Red · 1 Yellow · 1 Stale"},
 		{domain.RolledUpHealth{YellowChildren: 1, ActiveChildren: 4}, "1 of 4 Yellow"},
-		{domain.RolledUpHealth{StaleChildren: 1, ActiveChildren: 3}, "1 of 3 Stale"},
+		{domain.RolledUpHealth{CheckinOverdueChildren: 1, ActiveChildren: 3}, "1 of 3 Stale"},
 		{domain.RolledUpHealth{Health: domain.HealthGreen, Present: true, ActiveChildren: 3}, ""},
 	} {
 		if got := tc.rollup.CountLine(); got != tc.want {

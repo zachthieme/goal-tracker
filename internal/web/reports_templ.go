@@ -4020,7 +4020,7 @@ func reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) templ.Compo
 				return templ_7745c5c3_Err
 			}
 		}
-		if b.RolledUp.Present || b.RolledUp.StaleChildren > 0 || len(b.Behind) > 0 {
+		if b.RolledUp.Present || b.RolledUp.CheckinOverdueChildren > 0 || len(b.Behind) > 0 {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 303, "<p data-testid=\"report-rollup\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -4087,7 +4087,7 @@ func reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) templ.Compo
 					return templ_7745c5c3_Err
 				}
 			}
-			if b.Explanation != "" && (b.RolledUp.Present || b.RolledUp.StaleChildren > 0) {
+			if b.Explanation != "" && (b.RolledUp.Present || b.RolledUp.CheckinOverdueChildren > 0) {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 311, "<br><strong>Why the Health differs:</strong> ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -4667,7 +4667,7 @@ func healthClass(health string) string {
 // prominent as Red, a New Date as a warning, and the rest neutral.
 func badgeClass(badge string) string {
 	switch badge {
-	case domain.BadgeStale:
+	case domain.BadgeCheckinOverdue:
 		return "st"
 	case domain.BadgeOwnerless:
 		return "r"
@@ -4731,7 +4731,7 @@ func healthTiles(r domain.Report) []healthTile {
 	stale := 0
 	for _, b := range r.Exceptions {
 		byHealth[b.Health]++
-		if slices.Contains(b.Badges, domain.BadgeStale) {
+		if slices.Contains(b.Badges, domain.BadgeCheckinOverdue) {
 			stale++
 		}
 	}
@@ -4742,7 +4742,7 @@ func healthTiles(r domain.Report) []healthTile {
 		{"red", domain.HealthRed, "r", byHealth[domain.HealthRed]},
 		{"yellow", domain.HealthYellow, "y", byHealth[domain.HealthYellow]},
 		{"green", domain.HealthGreen, "g", byHealth[domain.HealthGreen]},
-		{"stale", domain.BadgeStale, "st", stale},
+		{"stale", domain.BadgeCheckinOverdue, "st", stale},
 	}
 }
 

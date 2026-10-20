@@ -205,7 +205,7 @@ templ dueRow(g domain.PersonalGoal, noChange bool) {
 				<span class="hm-phrase">{ homeDueAge(g) }</span>
 				{ "·" }
 				<span class="hm-phrase">{ homeDueCadence(g.Freshness) }</span>
-				if g.Freshness.Stale {
+				if g.Freshness.CheckinOverdue {
 					<span data-testid="home-due-stale" class="badge st">Stale</span>
 				}
 				if g.AsDelegate {

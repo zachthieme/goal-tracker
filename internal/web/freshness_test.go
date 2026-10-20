@@ -14,7 +14,7 @@ import (
 // The Freshness signals page is the Stale list: every Stale Goal with how long
 // since its last update, and every Goal whose Path to Green is overdue.
 // Fresh Goals aren't listed.
-func TestFreshnessPageListsStaleGoalsAndOverduePaths(t *testing.T) {
+func TestFreshnessPageListsCheckinOverdueGoalsAndOverduePaths(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -96,7 +96,7 @@ func TestGoalPageFlagsFreshness(t *testing.T) {
 // The Goal list marks a Stale Goal and a Goal whose Path to Green is overdue on
 // its own row, as it marks an Ownerless one, so neither hides until someone
 // opens the Goal. A fresh Goal's row carries no mark.
-func TestGoalListMarksStaleAndOverdueGoals(t *testing.T) {
+func TestGoalListMarksCheckinOverdueAndPathOverdueGoals(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -135,7 +135,7 @@ func TestGoalListMarksStaleAndOverdueGoals(t *testing.T) {
 // A Stale Goal's banner ends with a "Check in now" link to its Check-in form
 // for those who may check in on it, its Owner and its Delegates, and for no
 // one else, not even an Admin (#86).
-func TestStaleBannerOffersCheckInNowToOwnerAndDelegates(t *testing.T) {
+func TestCheckinOverdueBannerOffersCheckInNowToOwnerAndDelegates(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "admin@example.com")
@@ -184,7 +184,7 @@ func TestStaleBannerOffersCheckInNowToOwnerAndDelegates(t *testing.T) {
 // to Green overdue banners are a card surface in the same dashed edge, which
 // reaches 3:1 on the canvas around them and the surface inside. A tag's text
 // reaches 4.5:1 on the canvas and the cards it sits on.
-func TestStaleIsADashedGreyChipAndTagsAreOutlined(t *testing.T) {
+func TestCheckinOverdueIsADashedGreyChipAndTagsAreOutlined(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)

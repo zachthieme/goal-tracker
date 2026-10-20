@@ -17,12 +17,12 @@ templ freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSign
 			<h2>Stale Goals</h2>
 			<p>Active Goals whose last Check-in, or activation if they have none, is older than their cadence.</p>
 			<ul data-testid="stale-goals">
-				if len(signals.Stale) == 0 {
+				if len(signals.CheckinOverdue) == 0 {
 					<li data-testid="no-stale">No Stale Goals.</li>
 				}
-				for _, gf := range signals.Stale {
+				for _, gf := range signals.CheckinOverdue {
 					<li data-testid="stale-goal">
-						@freshnessItem(gf.Goal, staleSince(gf.Freshness))
+						@freshnessItem(gf.Goal, checkinOverdueSince(gf.Freshness))
 					</li>
 				}
 			</ul>
@@ -60,9 +60,9 @@ templ freshnessItem(g domain.Goal, why string) {
 // banner ends with a link to the Check-in form for whoever may check in (the
 // Owner or a Delegate). It renders nothing for a fresh Goal.
 templ goalFreshness(goalID int64, f domain.Freshness, canCheckin bool, dates displayDates) {
-	if f.Stale {
+	if f.CheckinOverdue {
 		<p data-testid="goal-stale" class="alert st" role="alert">
-			<strong>Stale</strong><span>{ staleSince(f) }</span>
+			<strong>Stale</strong><span>{ checkinOverdueSince(f) }</span>
 			if canCheckin {
 				<a data-testid="stale-checkin-now" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", goalID)) }>Check in now</a>
 			}
@@ -77,7 +77,7 @@ templ goalFreshness(goalID int64, f domain.Freshness, canCheckin bool, dates dis
 // chip when it is Stale, saying for how long, when its Path to Green is
 // overdue, or when it is Green past a Milestone's date (Milestone overdue).
 templ goalRowFreshness(f domain.Freshness) {
-	if f.Stale {
+	if f.CheckinOverdue {
 		<span data-testid="stale" class="badge st">Stale · { fmt.Sprintf("%d days", f.DaysSince) }</span>
 	}
 	if f.PathToGreenOverdue {
@@ -88,17 +88,17 @@ templ goalRowFreshness(f domain.Freshness) {
 	}
 }
 
-// rolledUpStale says, beside the Rolled-up Health, how many Active children are
+// rolledUpCheckinOverdue says, beside the Rolled-up Health, how many Active children are
 // Stale. It never changes the color, and renders nothing when none are.
-templ rolledUpStale(r domain.RolledUpHealth) {
-	if r.StaleChildren > 0 {
-		· <span data-testid="goal-rollup-stale">{ fmt.Sprintf("%d of %d Stale", r.StaleChildren, r.ActiveChildren) }</span>
+templ rolledUpCheckinOverdue(r domain.RolledUpHealth) {
+	if r.CheckinOverdueChildren > 0 {
+		· <span data-testid="goal-rollup-stale">{ fmt.Sprintf("%d of %d Stale", r.CheckinOverdueChildren, r.ActiveChildren) }</span>
 	}
 }
 
-// staleSince says how long a Stale Goal has gone without a Check-in, against its
+// checkinOverdueSince says how long a Stale Goal has gone without a Check-in, against its
 // cadence.
-func staleSince(f domain.Freshness) string {
+func checkinOverdueSince(f domain.Freshness) string {
 	return fmt.Sprintf("no Check-in for %d days on a %d-day cadence", f.DaysSince, f.CadenceDays)
 }
 

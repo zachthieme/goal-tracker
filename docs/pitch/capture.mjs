@@ -36,7 +36,7 @@ const leader = "cto@example.com";
 // The Owner in the recording has a Stale Goal that No change is allowed on (no
 // overdue Milestone) and a second Goal for the full Check-in.
 const owner = "grace.oduya@example.com";
-const staleGoal = "Macro library for the top 50 issues";
+const checkinOverdueGoal = "Macro library for the top 50 issues";
 const updatedGoal = "Chatbot deflection for billing questions";
 const redGoal = "Launch a referral program";
 
@@ -94,7 +94,7 @@ const page = await videoContext.newPage();
 const pause = (ms) => page.waitForTimeout(ms);
 await signIn(page, owner);
 await pause(2500);
-const due = page.getByTestId("home-due-goal").filter({ hasText: staleGoal });
+const due = page.getByTestId("home-due-goal").filter({ hasText: checkinOverdueGoal });
 await due.getByRole("button", { name: "No change" }).hover();
 await pause(800);
 await due.getByRole("button", { name: "No change" }).click();

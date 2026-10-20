@@ -9,17 +9,19 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/db"
 )
 
-// Freshness is how current a Goal's updates are (CONTEXT.md: Stale). It is
-// computed when read, from the Goal's last Check-in and the calendar of its
-// Owner's Timezone (see Service.GoalTimezone).
+// Freshness is how current a Goal's updates are (CONTEXT.md: Check-in
+// overdue). It is computed when read, from the Goal's last Check-in and the
+// calendar of its Owner's Timezone (see Service.GoalTimezone).
 type Freshness struct {
-	// Stale is true when the Goal is Active and its last Check-in — or its
-	// activation, if it has none — is more than its cadence of days ago. On
-	// Hold, Proposed, Done, and Cancelled Goals are never Stale.
-	Stale bool
+	// CheckinOverdue is true when the Goal is Active and its last Check-in — or
+	// its activation, if it has none — is more than its cadence of days ago. On
+	// Hold, Proposed, Done, and Cancelled Goals are never Check-in overdue.
+	CheckinOverdue bool
 	// LastUpdate is the Goal's last Check-in, or its activation when it has
-	// none. It is the zero time for a Goal that was never activated.
+	// none (CheckedIn is false). It is the zero time for a Goal that was never
+	// activated.
 	LastUpdate time.Time
+	CheckedIn  bool
 	// DaysSince is how many days of the Goal's Owner's Timezone (see
 	// Service.GoalTimezone) have passed since LastUpdate, judged against
 	// CadenceDays, the Goal's Check-in cadence.
@@ -49,12 +51,34 @@ type Freshness struct {
 // Owner's Timezone (see Service.GoalTimezone) as that does.
 const reminderIntervalDays = 7
 
-// DueBeforeNextReminder reports whether the Goal's Check-in is due: it is Stale
-// already, or it would go Stale before next week's reminder if nobody checked
-// in (CONTEXT.md: Stale). The weekly reminder and the Home page both list the
-// Goals it holds for.
+// DueBeforeNextReminder reports whether the Goal's Check-in is due: it is
+// Check-in overdue already, or it would be before next week's reminder if
+// nobody checked in (CONTEXT.md: Check-in overdue). The weekly reminder and the
+// Home page both list the Goals it holds for.
 func (f Freshness) DueBeforeNextReminder() bool {
-	return f.Stale || f.DaysSince+reminderIntervalDays > f.CadenceDays
+	return f.CheckinOverdue || f.DaysSince+reminderIntervalDays > f.CadenceDays
+}
+
+// LastCheckinAge says, as the emails put it, how long ago the Goal's last
+// Check-in was, or its activation when it has none, and how often one is due:
+// "last Check-in 9 days ago (every 7 days)", "no Check-in since activation 10
+// days ago (every 7 days)".
+func (f Freshness) LastCheckinAge() string {
+	ago := "today"
+	switch {
+	case f.DaysSince == 1:
+		ago = "1 day ago"
+	case f.DaysSince > 1:
+		ago = fmt.Sprintf("%d days ago", f.DaysSince)
+	}
+	every := "every day"
+	if f.CadenceDays != 1 {
+		every = fmt.Sprintf("every %d days", f.CadenceDays)
+	}
+	if !f.CheckedIn {
+		return fmt.Sprintf("no Check-in since activation %s (%s)", ago, every)
+	}
+	return fmt.Sprintf("last Check-in %s (%s)", ago, every)
 }
 
 // Freshness reads goalID's freshness signals.
@@ -121,7 +145,7 @@ type GoalFreshness struct {
 // the Active Goals are read. OverdueMilestones is every Goal marked Milestone
 // overdue (see Freshness.MilestoneOverdue), earliest Milestone date first.
 type FreshnessSignals struct {
-	Stale             []GoalFreshness
+	CheckinOverdue    []GoalFreshness
 	OverduePaths      []GoalFreshness
 	NotGreen          []GoalFreshness
 	OverdueMilestones []GoalFreshness
@@ -154,8 +178,8 @@ func (s *Service) FreshnessSignals(ctx context.Context) (FreshnessSignals, error
 		if gf.Freshness.MilestoneOverdue {
 			out.OverdueMilestones = append(out.OverdueMilestones, gf)
 		}
-		if gf.Freshness.Stale {
-			out.Stale = append(out.Stale, gf)
+		if gf.Freshness.CheckinOverdue {
+			out.CheckinOverdue = append(out.CheckinOverdue, gf)
 		}
 		if gf.Freshness.PathToGreenOverdue {
 			out.OverduePaths = append(out.OverduePaths, gf)
@@ -164,7 +188,7 @@ func (s *Service) FreshnessSignals(ctx context.Context) (FreshnessSignals, error
 			out.NotGreen = append(out.NotGreen, gf)
 		}
 	}
-	slices.SortStableFunc(out.Stale, func(a, b GoalFreshness) int {
+	slices.SortStableFunc(out.CheckinOverdue, func(a, b GoalFreshness) int {
 		return a.Freshness.LastUpdate.Compare(b.Freshness.LastUpdate)
 	})
 	slices.SortStableFunc(out.OverduePaths, func(a, b GoalFreshness) int {
@@ -263,8 +287,9 @@ func (s *Service) judgeFreshness(g Goal, latest lastCheckin) Freshness {
 	days := daysBetween(last, now, loc)
 	target := latest.pathTargetDate
 	return Freshness{
-		Stale:              active && days > g.CadenceDays,
+		CheckinOverdue:     active && days > g.CadenceDays,
 		LastUpdate:         last,
+		CheckedIn:          !latest.at.IsZero(),
 		DaysSince:          days,
 		CadenceDays:        g.CadenceDays,
 		PathToGreenOverdue: active && needsPathToGreen(latest.health) && !target.IsZero() && orgDate(now, loc).After(target),

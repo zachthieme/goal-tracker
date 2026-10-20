@@ -62,7 +62,7 @@ func TestSeededOrg(t *testing.T) {
 	t.Run("Check-in history with mixed Health", func(t *testing.T) { checkinHistoryWithMixedHealth(t, h) })
 	t.Run("Date Slips", func(t *testing.T) { dateSlips(t, h) })
 	t.Run("Milestone Churn", func(t *testing.T) { milestoneChurn(t, h) })
-	t.Run("Stale and Unlinked Goals", func(t *testing.T) { staleAndUnlinked(t, h) })
+	t.Run("Stale and Unlinked Goals", func(t *testing.T) { checkinOverdueAndUnlinked(t, h) })
 	t.Run("Lifecycle changes", func(t *testing.T) { lifecycleChanges(t, h) })
 	t.Run("every person has a Name", func(t *testing.T) { everyPersonNamed(t, h) })
 	t.Run("everyone has a place in the Manager tree", func(t *testing.T) { everyoneInTheManagerTree(t, h) })
@@ -269,7 +269,7 @@ func milestoneChurn(t *testing.T, h *testsupport.Harness) {
 // their cadence — while most are up to date. The org outcomes are Top-level
 // Goals, so the Unlinked list the signals page shows is exactly the five side
 // projects.
-func staleAndUnlinked(t *testing.T, h *testsupport.Harness) {
+func checkinOverdueAndUnlinked(t *testing.T, h *testsupport.Harness) {
 	ctx := context.Background()
 	end := h.Clock.Now()
 	var active, stale int

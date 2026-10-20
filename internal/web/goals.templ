@@ -242,7 +242,7 @@ templ goalListRow(row goalRow, dates displayDates) {
 		</td>
 		<td class="gl-goal">
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
-			if g.Ownerless || row.Freshness.Stale || row.Freshness.PathToGreenOverdue || row.Freshness.MilestoneOverdue || len(row.Incomplete) > 0 {
+			if g.Ownerless || row.Freshness.CheckinOverdue || row.Freshness.PathToGreenOverdue || row.Freshness.MilestoneOverdue || len(row.Incomplete) > 0 {
 				<div class="gl-marks">
 					if g.Ownerless {
 						<span data-testid="ownerless" class="badge ol" title={ ownerlessHelp }>Ownerless</span>

@@ -76,7 +76,7 @@ func riskChip(t *testing.T, row, kind string) string {
 // The Risks page lists each Stale Goal once, with its Owner, "You" for the
 // viewer's own, and a Stale chip saying how long it has gone without a
 // Check-in against its cadence. A fresh Goal isn't Stale.
-func TestRisksPageListsStaleGoals(t *testing.T) {
+func TestRisksPageListsCheckinOverdueGoals(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -104,7 +104,7 @@ func TestRisksPageListsStaleGoals(t *testing.T) {
 // A Stale chip says in words how long its Goal has gone without a Check-in and
 // how often it checks in, naming its cadence as the New goal form's chips do,
 // and counting the days of any other.
-func TestRisksStaleChipSaysItsCadenceInWords(t *testing.T) {
+func TestRisksCheckinOverdueChipSaysItsCadenceInWords(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -921,7 +921,7 @@ func riskFix(t *testing.T, row string) (label, href string, primary bool) {
 
 // A stale Goal's Fix is Check in, the primary button, for its Owner and its
 // Delegates, who can check in; anyone else, an Admin included, gets Nudge.
-func TestRiskFixOnAStaleGoalIsCheckInForWhoCanCheckIn(t *testing.T) {
+func TestRiskFixOnACheckinOverdueGoalIsCheckInForWhoCanCheckIn(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "ada@example.com")
@@ -1514,8 +1514,8 @@ func TestRisksPageGroupsWithinScope(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	kim := h.SignIn("kim@example.com")
 	platform := h.CreateDimension(boss, "Team", "Platform").Values[0]
-	ownStale := h.MarkTopLevel(boss, h.ActiveGoal(sam, "Own stale", "It matters.")) // Stale only
-	h.AssignGoalValue(ownStale, platform)
+	ownCheckinOverdue := h.MarkTopLevel(boss, h.ActiveGoal(sam, "Own stale", "It matters.")) // Stale only
+	h.AssignGoalValue(ownCheckinOverdue, platform)
 	ownUnlinked := h.ActiveGoal(sam, "Own unlinked", "It matters.") // Unlinked only
 	h.AssignGoalValue(ownUnlinked, platform)
 	ownUntagged := h.ActiveGoal(sam, "Own untagged", "It matters.")
@@ -1535,7 +1535,7 @@ func TestRisksPageGroupsWithinScope(t *testing.T) {
 
 	page = getBody(t, client, ts.URL+href)
 
-	riskRowOf(t, page, ownStale)
+	riskRowOf(t, page, ownCheckinOverdue)
 	for _, g := range []domain.Goal{ownUnlinked, ownUntagged, kims} {
 		if hasRiskRow(page, g) {
 			t.Errorf("scoped and filtered to owner, the page lists %q", g.Title)

@@ -231,7 +231,7 @@ func TestSortRiskRowsPutsMoreKindsOfSignalFirst(t *testing.T) {
 
 // Among Goals of the same Health, an overdue Action Item ranks a row below a
 // Path to Green overdue and above Stale, the longest overdue first.
-func TestSortRiskRowsRanksOverdueActionItemsBetweenPathsAndStale(t *testing.T) {
+func TestSortRiskRowsRanksOverdueActionItemsBetweenPathsAndCheckinOverdue(t *testing.T) {
 	t.Parallel()
 
 	itemOverdue := func(days int) riskSignal { return riskSignal{Kind: "action-item-overdue", Days: days} }

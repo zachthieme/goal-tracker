@@ -127,7 +127,7 @@ func TestHomeIsOneColumnWithNeedsYouItsOnlyCard(t *testing.T) {
 // long since its last Check-in against its cadence, flagged Stale, with a
 // one-click No change and a Check in link. Fresh Goals and other people's
 // Stale Goals aren't listed.
-func TestHomeListsStaleGoalToCheckInOn(t *testing.T) {
+func TestHomeListsCheckinOverdueGoalToCheckInOn(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -229,7 +229,7 @@ func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
 // as last reported: a muted badge naming just the Health, dated by the "last
 // check-in" beside it, still flagged Stale, and with no "as of" to say the age
 // again. A due Goal that isn't Stale yet keeps its full-colour badge.
-func TestHomeDatesStaleGoalsHealth(t *testing.T) {
+func TestHomeDatesCheckinOverdueGoalsHealth(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -650,7 +650,7 @@ func TestHomeHeadsNotGreenGoals(t *testing.T) {
 // In the Not Green list a Stale Goal's Health is muted and dated as last
 // reported, as in Check-ins due; a Goal checked in on lately keeps its
 // full-colour badge and no "as of".
-func TestHomeDatesStaleNotGreenHealth(t *testing.T) {
+func TestHomeDatesCheckinOverdueNotGreenHealth(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)

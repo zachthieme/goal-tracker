@@ -708,7 +708,7 @@ func checkinSection(v goalView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if v.RolledUp.Present || v.RolledUp.StaleChildren > 0 {
+			if v.RolledUp.Present || v.RolledUp.CheckinOverdueChildren > 0 {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -732,7 +732,7 @@ func checkinSection(v goalView) templ.Component {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = rolledUpStale(v.RolledUp).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = rolledUpCheckinOverdue(v.RolledUp).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -839,7 +839,7 @@ func statusCells(v goalView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if v.RolledUp.Present || v.RolledUp.StaleChildren > 0 {
+		if v.RolledUp.Present || v.RolledUp.CheckinOverdueChildren > 0 {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<div data-testid=\"goal-rollup-cell\" class=\"gp-cell\"><dt class=\"label\">Rolled-up Health</dt><dd>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -886,7 +886,7 @@ func statusCells(v goalView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = rolledUpStale(v.RolledUp).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = rolledUpCheckinOverdue(v.RolledUp).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -35,9 +35,9 @@ func sentTo(rec *email.Recorder, addr string) []email.Message {
 	return out
 }
 
-// An Owner whose Goal has gone Stale is reminded, and the reminder links
+// An Owner whose Goal is Check-in overdue is reminded, and the reminder links
 // straight to the Goal's Check-in page.
-func TestReminderListsStaleGoalWithLinkToItsCheckin(t *testing.T) {
+func TestReminderListsCheckinOverdueGoalWithLinkToItsCheckin(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -57,8 +57,8 @@ func TestReminderListsStaleGoalWithLinkToItsCheckin(t *testing.T) {
 	if !strings.Contains(body, "Ship search") {
 		t.Errorf("reminder does not name the Goal:\n%s", body)
 	}
-	if !strings.Contains(body, "Stale") {
-		t.Errorf("reminder does not say the Goal is Stale:\n%s", body)
+	if !strings.Contains(body, "Ship search: Check-in overdue, no Check-in since activation 10 days ago (every 7 days)") {
+		t.Errorf("reminder does not say the Goal is Check-in overdue:\n%s", body)
 	}
 	link := fmt.Sprintf("http://goals.test/goals/%d/checkin", g.ID)
 	if !strings.Contains(body, link) {
@@ -69,7 +69,7 @@ func TestReminderListsStaleGoalWithLinkToItsCheckin(t *testing.T) {
 	}
 }
 
-// A Goal is due when it would go Stale before next week's reminder if nobody
+// A Goal is due when it would be Check-in overdue before next week's reminder if nobody
 // checked in: on a weekly cadence, a Goal last checked in 3 days ago is due. A
 // Goal on a 14-day cadence checked in 2 days ago is not, and an Owner with
 // nothing due gets no email.
@@ -97,8 +97,8 @@ func TestReminderListsGoalsDueBeforeNextWeek(t *testing.T) {
 	if len(msgs) != 1 {
 		t.Fatalf("reminders to sam = %d, want 1", len(msgs))
 	}
-	if body := msgs[0].Body; !strings.Contains(body, "Ship search") || strings.Contains(body, "Stale") {
-		t.Errorf("want Ship search listed as due, not Stale:\n%s", body)
+	if body := msgs[0].Body; !strings.Contains(body, "Ship search: Check-in due, last Check-in 3 days ago (every 7 days)") || strings.Contains(body, "overdue") {
+		t.Errorf("want Ship search listed as due, not Check-in overdue:\n%s", body)
 	}
 	if got := sentTo(h.Email, "kim@example.com"); len(got) != 0 {
 		t.Errorf("kim has nothing due but was sent %d reminders: %+v", len(got), got)
@@ -326,36 +326,36 @@ func TestDigestListsChildrenThatSlippedThisWeek(t *testing.T) {
 	}
 }
 
-// The digest names a child that turned Stale this week, but not one that was
-// Stale already a week ago, nor one that's fresh.
-func TestDigestListsChildrenThatWentStaleThisWeek(t *testing.T) {
+// The digest names a child whose Check-in went overdue this week, but not one that was
+// overdue already a week ago, nor one that's fresh.
+func TestDigestListsChildrenThatWentCheckinOverdueThisWeek(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	pat := h.SignIn("pat@example.com")
 	kim := h.SignIn("kim@example.com")
 	parent := h.ActiveGoal(pat, "Grow revenue", "It pays for everything.")
-	wentStale := childOf(h, kim, parent, "Launch pricing page")
+	wentOverdue := childOf(h, kim, parent, "Launch pricing page")
 	childOf(h, kim, parent, "Cut churn")
 	fresh := childOf(h, kim, parent, "Upsell annual plans")
 	h.Clock.Advance(11 * day)
-	checkinHealth(h, kim, wentStale.ID, domain.HealthGreen) // 9 days before the digest
+	checkinHealth(h, kim, wentOverdue.ID, domain.HealthGreen) // 9 days before the digest
 	h.Clock.Advance(8 * day)
 	checkinHealth(h, kim, fresh.ID, domain.HealthGreen)
 	h.Clock.Advance(1 * day)
-	// Cut churn has gone 20 days without a Check-in: Stale since day 8.
+	// Cut churn has had no Check-in for 20 days: Check-in overdue since day 8.
 
 	if err := newNotifier(h).SendDigests(context.Background()); err != nil {
 		t.Fatalf("SendDigests: %v", err)
 	}
 
 	body := digestTo(t, h.Email, "pat@example.com")
-	if !strings.Contains(body, "Launch pricing page") || !strings.Contains(body, "went Stale") {
-		t.Errorf("digest does not say Launch pricing page went Stale:\n%s", body)
+	if !strings.Contains(body, "Launch pricing page") || !strings.Contains(body, "Check-in went overdue, last Check-in 9 days ago (every 7 days)") {
+		t.Errorf("digest does not say Launch pricing page's Check-in went overdue:\n%s", body)
 	}
 	for _, unwanted := range []string{"Cut churn", "Upsell annual plans"} {
 		if strings.Contains(body, unwanted) {
-			t.Errorf("digest mentions %q, which didn't go Stale this week:\n%s", unwanted, body)
+			t.Errorf("digest mentions %q, whose Check-in didn't go overdue this week:\n%s", unwanted, body)
 		}
 	}
 }
@@ -570,7 +570,7 @@ func TestReminderListsOpenActionItemsAfterCheckins(t *testing.T) {
 		t.Errorf("subject = %q, want %q", got, want)
 	}
 	body := msgs[0].Body
-	checkin := fmt.Sprintf("These Goals need a Check-in:\n\n- Ship search: Stale, 10 days without a Check-in (cadence: 7 days)\n  http://goals.test/goals/%d/checkin\n", g.ID)
+	checkin := fmt.Sprintf("These Goals need a Check-in:\n\n- Ship search: Check-in overdue, no Check-in since activation 10 days ago (every 7 days)\n  http://goals.test/goals/%d/checkin\n", g.ID)
 	items := fmt.Sprintf("\nAction Items you own:\n\n"+
 		"- Book the legal review (MBR, about Ship search): overdue since 2026-01-05\n  http://goals.test/goals/%d#action-items\n"+
 		"- Move the MBR to Tuesdays (MBR): due 2026-01-20\n  http://goals.test/reports/%d/publications/%d#action-items\n",

@@ -25,10 +25,11 @@ func recipients(msgs []email.Message) []string {
 	return out
 }
 
-// Someone other than its Owner and Delegates nudges a Stale Goal: its Owner
-// and each Delegate get an email asking for a Check-in, a Delegate's naming
-// the Owner they check in for, and the Nudge is kept with who sent it and when.
-func TestNudgeOfAStaleGoalEmailsItsOwnerAndDelegates(t *testing.T) {
+// Someone other than its Owner and Delegates nudges a Check-in overdue Goal:
+// its Owner and each Delegate get an email asking for a Check-in, a Delegate's
+// naming the Owner they check in for, and the Nudge is kept with who sent it
+// and when.
+func TestNudgeOfACheckinOverdueGoalEmailsItsOwnerAndDelegates(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -63,10 +64,10 @@ func TestNudgeOfAStaleGoalEmailsItsOwnerAndDelegates(t *testing.T) {
 			t.Errorf("body to %s doesn't link to the Check-in:\n%s", m.To, m.Body)
 		}
 	}
-	if want := "Silent work: Stale, 10 days without a Check-in (cadence: 7 days)"; !strings.Contains(sent[0].Body, want) {
+	if want := "Silent work: Check-in overdue, no Check-in since activation 10 days ago (every 7 days)"; !strings.Contains(sent[0].Body, want) {
 		t.Errorf("the Owner's body doesn't say %q:\n%s", want, sent[0].Body)
 	}
-	if want := "Silent work, as Delegate for Sam Lee (sam@example.com): Stale, 10 days without a Check-in (cadence: 7 days)"; !strings.Contains(sent[1].Body, want) {
+	if want := "Silent work, as Delegate for Sam Lee (sam@example.com): Check-in overdue, no Check-in since activation 10 days ago (every 7 days)"; !strings.Contains(sent[1].Body, want) {
 		t.Errorf("the Delegate's body doesn't say %q:\n%s", want, sent[1].Body)
 	}
 
@@ -152,7 +153,7 @@ func TestTheOwnerAndDelegatesCantNudge(t *testing.T) {
 	}
 }
 
-// A Goal with nothing its Owner answers in a Check-in, neither Stale, past its
+// A Goal with nothing its Owner answers in a Check-in, neither Check-in overdue, past its
 // Path to Green, with a Milestone overdue nor in a Schedule conflict, can't be
 // nudged; one only past its Path to Green can, its email saying since when and
 // linking to the plain Check-in.
@@ -169,7 +170,7 @@ func TestOnlyAGoalWithSomethingToAnswerCanBeNudged(t *testing.T) {
 	h.Clock.Advance(5 * nudgeDay)
 
 	_, err := h.Service.Nudge(ctx, pat.ID, fresh.ID)
-	if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "only a Goal that is Stale, past its Path to Green, has a Milestone overdue or has a Schedule conflict can be nudged") {
+	if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "only a Goal that is Check-in overdue, past its Path to Green, has a Milestone overdue or has a Schedule conflict can be nudged") {
 		t.Errorf("nudging a fresh Goal: err = %v, want ErrValidation naming what can be nudged", err)
 	}
 	if _, err := h.Service.Nudge(ctx, pat.ID, stalled.ID); err != nil {

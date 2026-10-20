@@ -185,7 +185,7 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 	if len(blk.Behind) > 0 {
 		fmt.Fprintf(b, "\n**Behind it:** %s\n", linkedGoals(blk.Behind))
 	}
-	if (blk.RolledUp.Present || blk.RolledUp.StaleChildren > 0) && blk.Explanation != "" {
+	if (blk.RolledUp.Present || blk.RolledUp.CheckinOverdueChildren > 0) && blk.Explanation != "" {
 		fmt.Fprintf(b, "\n**Why the Health differs:** %s\n", text(blk.Explanation))
 	}
 }

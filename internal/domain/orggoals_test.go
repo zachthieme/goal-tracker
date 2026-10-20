@@ -64,13 +64,13 @@ func TestOrgSignalsCountEachOrgUnderTheViewer(t *testing.T) {
 	h.Checkin(b, fine.ID, domain.HealthGreen, "Fine.", "", time.Time{})
 
 	sig := orgSignals(t, h, viewer.ID)
-	if got, want := signalsFor(t, sig, a.ID), (domain.SignalCounts{Red: 1, PathOverdue: 1, Stale: 1, Yellow: 1}); got != want {
+	if got, want := signalsFor(t, sig, a.ID), (domain.SignalCounts{Red: 1, PathOverdue: 1, CheckinOverdue: 1, Yellow: 1}); got != want {
 		t.Errorf("A's counts = %+v, want %+v", got, want)
 	}
-	if got, want := signalsFor(t, sig, b.ID), (domain.SignalCounts{Red: 1, Stale: 1}); got != want {
+	if got, want := signalsFor(t, sig, b.ID), (domain.SignalCounts{Red: 1, CheckinOverdue: 1}); got != want {
 		t.Errorf("B's counts = %+v, want %+v", got, want)
 	}
-	if got, want := sig.Total, (domain.SignalCounts{Red: 2, PathOverdue: 1, Stale: 2, Yellow: 1}); got != want {
+	if got, want := sig.Total, (domain.SignalCounts{Red: 2, PathOverdue: 1, CheckinOverdue: 2, Yellow: 1}); got != want {
 		t.Errorf("Total = %+v, want %+v", got, want)
 	}
 	if len(sig.Under) != 2 {

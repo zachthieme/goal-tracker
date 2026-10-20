@@ -91,7 +91,7 @@ func TestMarkdownExceptionBlockKeepsStrikethroughsAndBadges(t *testing.T) {
 			Lifecycle: domain.LifecycleActive, DeliveryDate: date(2026, 5, 1),
 		},
 		Health:         domain.HealthRed,
-		Badges:         []string{domain.BadgeNew, domain.BadgeNewDate, domain.BadgeStale},
+		Badges:         []string{domain.BadgeNew, domain.BadgeNewDate, domain.BadgeCheckinOverdue},
 		PriorDueDates:  []time.Time{date(2026, 3, 1), date(2026, 4, 1)},
 		Status:         "Blocked on legal.",
 		PathToGreen:    "Hire counsel.",
@@ -106,7 +106,7 @@ func TestMarkdownExceptionBlockKeepsStrikethroughsAndBadges(t *testing.T) {
 			{Metric: domain.Metric{Name: "Countries live", Unit: "countries", Direction: domain.MetricUp, Baseline: 0, Target: 5, TargetDate: date(2026, 6, 30)}, Current: 2, Read: true},
 			{Metric: domain.Metric{Name: "NPS", Unit: "points", Direction: domain.MetricUp, Baseline: 30, Target: 50.5, TargetDate: date(2026, 6, 30)}},
 		},
-		RolledUp: domain.RolledUpHealth{Health: domain.HealthYellow, Present: true, StaleChildren: 1, ActiveChildren: 3},
+		RolledUp: domain.RolledUpHealth{Health: domain.HealthYellow, Present: true, CheckinOverdueChildren: 1, ActiveChildren: 3},
 	}}, nil)
 
 	want := `## Exceptions
@@ -646,7 +646,7 @@ func TestMarkdownExceptionBlockNamesItsLinkedGoals(t *testing.T) {
 		Goal:     domain.Goal{Title: "Referral program", SoWhat: "Customers bring customers.", Owner: boss, Lifecycle: domain.LifecycleActive},
 		Health:   domain.HealthRed,
 		Fields:   []domain.FieldValue{{Field: domain.Field{Name: "Region", Type: domain.FieldShortText}, Value: "EMEA"}},
-		RolledUp: domain.RolledUpHealth{Health: domain.HealthRed, Present: true, RedChildren: 2, YellowChildren: 1, StaleChildren: 1, ActiveChildren: 6},
+		RolledUp: domain.RolledUpHealth{Health: domain.HealthRed, Present: true, RedChildren: 2, YellowChildren: 1, CheckinOverdueChildren: 1, ActiveChildren: 6},
 		ContributesTo: []domain.LinkedGoal{
 			{GoalID: 1, Title: "Growth", Health: domain.HealthRed, InReport: true},
 		},

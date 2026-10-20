@@ -12,12 +12,12 @@ import (
 // org card shows. A Goal counts under every signal it has, so the counts can
 // add up to more than the Goals behind them.
 type SignalCounts struct {
-	Red, PathOverdue, Stale, Yellow int
+	Red, PathOverdue, CheckinOverdue, Yellow int
 }
 
 // Any reports whether anything is flagged.
 func (c SignalCounts) Any() bool {
-	return c.Red+c.PathOverdue+c.Stale+c.Yellow > 0
+	return c.Red+c.PathOverdue+c.CheckinOverdue+c.Yellow > 0
 }
 
 // add counts one Goal, with its latest Check-in's Health and its freshness.
@@ -28,8 +28,8 @@ func (c *SignalCounts) add(health string, f Freshness) {
 	if f.PathToGreenOverdue {
 		c.PathOverdue++
 	}
-	if f.Stale {
-		c.Stale++
+	if f.CheckinOverdue {
+		c.CheckinOverdue++
 	}
 	if health == HealthYellow {
 		c.Yellow++
@@ -104,7 +104,7 @@ func (s *Service) OrgSignals(ctx context.Context, personID int64) (OrgSignals, e
 		return cmp.Or(
 			cmp.Compare(y.Red, x.Red),
 			cmp.Compare(y.PathOverdue, x.PathOverdue),
-			cmp.Compare(y.Stale, x.Stale),
+			cmp.Compare(y.CheckinOverdue, x.CheckinOverdue),
 			cmp.Compare(y.Yellow, x.Yellow),
 			cmp.Compare(strings.ToLower(a.Person.Label()), strings.ToLower(b.Person.Label())),
 			cmp.Compare(a.Person.Email, b.Person.Email),

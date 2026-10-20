@@ -412,8 +412,8 @@ func (p risksPageView) Cards() []riskCard {
 
 // risksView is what the Risks page shows, one list per problem type.
 type risksView struct {
-	Stale        []domain.GoalFreshness
-	OverduePaths []domain.GoalFreshness
+	CheckinOverdue []domain.GoalFreshness
+	OverduePaths   []domain.GoalFreshness
 	// OverdueMilestones are the Active Goals whose latest Check-in is Green
 	// while a Milestone is overdue (domain.Freshness.MilestoneOverdue).
 	OverdueMilestones []domain.GoalFreshness
@@ -461,7 +461,7 @@ func (v risksView) Types() []riskType {
 		{"red", "Red", red},
 		{"yellow", "Yellow", yellow},
 		{"asks-for-help", "Asks for help", len(v.Asks)},
-		{"stale", "Stale", len(v.Stale)},
+		{"stale", "Stale", len(v.CheckinOverdue)},
 		{"path-overdue", "Path to Green overdue", len(v.OverduePaths)},
 		{"milestone-overdue", "Milestone overdue", len(v.OverdueMilestones)},
 		{"action-item-overdue", "Action Item overdue", len(v.OverdueActionItems)},
@@ -497,7 +497,7 @@ func (v risksView) Flagged(scope pageOrgScope) int {
 			flagged[g.ID] = true
 		}
 	}
-	for _, list := range [][]domain.GoalFreshness{v.NotGreen, v.Stale, v.OverduePaths, v.OverdueMilestones} {
+	for _, list := range [][]domain.GoalFreshness{v.NotGreen, v.CheckinOverdue, v.OverduePaths, v.OverdueMilestones} {
 		for _, gf := range list {
 			flag(gf.Goal)
 		}
@@ -551,7 +551,7 @@ func (s *Server) loadRisks(ctx context.Context) (risksView, error) {
 		return risksView{}, err
 	}
 	v := risksView{
-		Stale:             fresh.Stale,
+		CheckinOverdue:    fresh.CheckinOverdue,
 		OverduePaths:      fresh.OverduePaths,
 		OverdueMilestones: fresh.OverdueMilestones,
 		NotGreen:          fresh.NotGreen,
@@ -802,7 +802,7 @@ func (s *Server) riskRows(ctx context.Context, v risksView) ([]riskGoalRow, erro
 	for _, ask := range v.Asks {
 		add(ask.Goal, riskSignal{Kind: "asks-for-help", Person: ask.Addressee})
 	}
-	for _, gf := range v.Stale {
+	for _, gf := range v.CheckinOverdue {
 		add(gf.Goal, riskSignal{Kind: "stale", Days: gf.Freshness.DaysSince})
 	}
 	// A Path to Green's overdue days are counted in the Goal's timezone, the
@@ -943,13 +943,13 @@ func sortRiskRows(rows []riskGoalRow) {
 		if c := cmp.Compare(bItem.Days, aItem.Days); c != 0 {
 			return c
 		}
-		aStale, aIsStale := a.signal("stale")
-		bStale, bIsStale := b.signal("stale")
-		if c := cmp.Compare(boolRank(!aIsStale), boolRank(!bIsStale)); c != 0 {
+		aCheckinOverdue, aIsCheckinOverdue := a.signal("stale")
+		bCheckinOverdue, bIsCheckinOverdue := b.signal("stale")
+		if c := cmp.Compare(boolRank(!aIsCheckinOverdue), boolRank(!bIsCheckinOverdue)); c != 0 {
 			return c
 		}
-		if aIsStale && bIsStale {
-			if c := cmp.Compare(bStale.Days-b.Goal.CadenceDays, aStale.Days-a.Goal.CadenceDays); c != 0 {
+		if aIsCheckinOverdue && bIsCheckinOverdue {
+			if c := cmp.Compare(bCheckinOverdue.Days-b.Goal.CadenceDays, aCheckinOverdue.Days-a.Goal.CadenceDays); c != 0 {
 				return c
 			}
 		}
