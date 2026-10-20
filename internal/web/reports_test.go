@@ -970,10 +970,10 @@ func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 }
 
 // The publication splits the selected Goals in two: exceptions as cards under
-// Needs attention, headed by how many there are, each with its Health badge and its Why it matters, Status, and
-// Path to Green — marked Overdue once its target date has passed — and the
+// Exceptions, headed by how many there are, each with its Health badge and its
+// Why it matters, Status, and Path to Green — marked Overdue once its target date has passed — and the
 // rest as a table of Health, Goal, Owner, and Due under On track.
-func TestPublicationSplitsNeedsAttentionFromOnTrackOverHTTP(t *testing.T) {
+func TestPublicationSplitsExceptionsFromOnTrackOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -992,8 +992,8 @@ func TestPublicationSplitsNeedsAttentionFromOnTrackOverHTTP(t *testing.T) {
 	page := getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/publications/"+strconv.FormatInt(pub.ID, 10))
 
 	attention := pageElement(t, page, "section", "needs-attention")
-	if heading := between(t, attention, "<h2>", "</h2>"); !strings.HasPrefix(heading, "<h2>Needs attention ") || !strings.HasSuffix(pageElement(t, heading, "span", "needs-attention-count"), ">1") {
-		t.Errorf("Needs attention heading does not count its 1 exception: %s", heading)
+	if heading := between(t, attention, "<h2>", "</h2>"); !strings.HasPrefix(heading, "<h2>Exceptions ") || !strings.HasSuffix(pageElement(t, heading, "span", "needs-attention-count"), ">1") {
+		t.Errorf("Exceptions heading does not count its 1 exception: %s", heading)
 	}
 	card := pageElement(t, attention, "article", "report-exception")
 	if !strings.Contains(card, `class="card`) || !strings.Contains(card, `class="badge r"`) {
@@ -1345,7 +1345,7 @@ func TestPrintPageMarksHealthWithShapesOverHTTP(t *testing.T) {
 		t.Errorf("print page is not set in Source Serif 4 with a Georgia fallback; body:\n%s", printed)
 	}
 	if count := pageElement(t, printed, "span", "needs-attention-count"); !strings.HasSuffix(count, ">1") {
-		t.Errorf("print page's Needs attention does not count its 1 exception: %s", count)
+		t.Errorf("print page's Exceptions does not count its 1 exception: %s", count)
 	}
 	if block := pageElement(t, printed, "article", "report-exception"); !strings.Contains(block, "■</span>Red") {
 		t.Errorf("Red is not marked ■; block:\n%s", block)
@@ -2704,7 +2704,7 @@ func TestPublishConfirmsWhatItWillFreezeOverHTTP(t *testing.T) {
 	if !strings.Contains(confirm, "Publish Platform MBR?") {
 		t.Errorf("the confirmation does not name the Report; disclosure:\n%s", confirm)
 	}
-	const want = "4 Goals · 2 need attention · 1 Highlight · changes since last publication · Sep 22, 2026. Readers can comment on the frozen copy."
+	const want = "4 Goals · 2 exceptions · 1 Highlight · changes since last publication · Sep 22, 2026. Readers can comment on the frozen copy."
 	if got := pageElement(t, confirm, "p", "publish-summary"); !strings.HasSuffix(got, ">"+want) {
 		t.Errorf("publish summary %q, want %q", got, want)
 	}
@@ -3760,20 +3760,20 @@ func TestReportBlockLinksTheGoalsBehindItAndThatItContributesTo(t *testing.T) {
 		behind := pageElement(t, referral, "span", "report-behind-it")
 		alpha := linkedGoalLink(behind, fmt.Sprintf("#goal-%d", s.Alpha.ID))
 		if !strings.HasPrefix(alpha, fmt.Sprintf(`<a data-testid="report-linked-goal" href="#goal-%d">Alpha ledger ↓</a> (Red)`, s.Alpha.ID)) {
-			t.Errorf("%s: Behind it does not link Alpha ledger ↓ (Red) to its block; line:\n%s", page.name, behind)
+			t.Errorf("%s: Supported by does not link Alpha ledger ↓ (Red) to its block; line:\n%s", page.name, behind)
 		}
 		if beta := linkedGoalLink(behind, fmt.Sprintf("/goals/%d", s.Beta.ID)); !strings.HasPrefix(beta, fmt.Sprintf(`<a data-testid="report-linked-goal" href="/goals/%d">Beta payouts</a>`, s.Beta.ID)) {
-			t.Errorf("%s: Behind it does not link Beta payouts to its Goal page; line:\n%s", page.name, behind)
+			t.Errorf("%s: Supported by does not link Beta payouts to its Goal page; line:\n%s", page.name, behind)
 		}
 		epsilon := fmt.Sprintf("#goal-%d", s.Epsilon.ID)
 		if linkedGoalLink(behind, epsilon) == "" {
-			t.Errorf("%s: Behind it does not link Epsilon signup to its line; line:\n%s", page.name, behind)
+			t.Errorf("%s: Supported by does not link Epsilon signup to its line; line:\n%s", page.name, behind)
 		}
 		if !strings.Contains(body, fmt.Sprintf(`<tr data-testid="selected-goal" id="goal-%d">`, s.Epsilon.ID)) {
 			t.Errorf("%s: %s does not resolve to Epsilon signup's on-track line", page.name, epsilon)
 		}
 		if strings.Contains(behind, "Delta copy") {
-			t.Errorf("%s: Behind it names the Green Delta copy outside the Report; line:\n%s", page.name, behind)
+			t.Errorf("%s: Supported by names the Green Delta copy outside the Report; line:\n%s", page.name, behind)
 		}
 		contributes := pageElement(t, referral, "p", "report-contributes-to")
 		if growth := linkedGoalLink(contributes, fmt.Sprintf("#goal-%d", s.Growth.ID)); !strings.HasPrefix(growth, fmt.Sprintf(`<a data-testid="report-linked-goal" href="#goal-%d">Growth ↓</a>`, s.Growth.ID)) {
@@ -3813,9 +3813,9 @@ func TestPublicationFromBeforeLinkedGoalsReadsAsItDid(t *testing.T) {
 }
 
 // A block whose only child has no Health yet has no Rolled-up Health to count,
-// so its Behind it line opens the paragraph rather than breaking a line under
+// so its Supported by line opens the paragraph rather than breaking a line under
 // nothing (#246).
-func TestReportBehindItAloneOpensItsParagraph(t *testing.T) {
+func TestReportSupportedByAloneOpensItsParagraph(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -3829,8 +3829,8 @@ func TestReportBehindItAloneOpensItsParagraph(t *testing.T) {
 	client := signInClient(t, ts.URL, "boss@example.com")
 	block := linkedBlockOf(t, getBody(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)), parent)
 	rollup := pageElement(t, block, "p", "report-rollup")
-	if want := `<p data-testid="report-rollup"><span data-testid="report-behind-it"><strong>Behind it:</strong>`; !strings.HasPrefix(rollup, want) {
-		t.Errorf("Rolled-up Health paragraph does not open with Behind it; paragraph:\n%s", rollup)
+	if want := `<p data-testid="report-rollup"><span data-testid="report-behind-it"><strong>Supported by:</strong>`; !strings.HasPrefix(rollup, want) {
+		t.Errorf("Rolled-up Health paragraph does not open with Supported by; paragraph:\n%s", rollup)
 	}
 }
 

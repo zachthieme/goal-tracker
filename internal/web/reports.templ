@@ -602,7 +602,7 @@ templ publicationSelection(p domain.Publication) {
 
 // reportBody is a Report's content, drafted or published: its open Action
 // Items, the introduction, the narrative curated from Highlights, then the
-// exceptions that need attention, counted and worst first, each a card with
+// exceptions, counted and most urgent first, each a card with
 // the full MBR block opening with what changed on it since the baseline, and
 // every other selected Goal on track, one table row with its Health, title,
 // Owner, and due date (CONTEXT.md: Report), and last the Goals that entered or
@@ -619,7 +619,7 @@ templ reportBody(r domain.Report, asOf time.Time, d discussion) {
 	}
 	if len(r.Exceptions) > 0 {
 		<section data-testid="needs-attention">
-			<h2>Needs attention{ " " }<span data-testid="needs-attention-count" class="num muted">{ fmt.Sprintf("%d", len(r.Exceptions)) }</span></h2>
+			<h2>Exceptions{ " " }<span data-testid="needs-attention-count" class="num muted">{ fmt.Sprintf("%d", len(r.Exceptions)) }</span></h2>
 			for _, b := range r.Exceptions {
 				@reportBlock(b, asOf, d)
 			}
@@ -1030,7 +1030,7 @@ templ reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) {
 						if b.RolledUp.Present || b.RolledUp.CountLine() != "" {
 							<br/>
 						}
-						<strong>Behind it:</strong>{ " " }
+						<strong>Supported by:</strong>{ " " }
 						@linkedGoals(b.Behind)
 					</span>
 				}

@@ -660,7 +660,7 @@ func TestMarkdownExceptionBlockNamesItsLinkedGoals(t *testing.T) {
 	got := export.Markdown(pub)
 	for _, want := range []string{
 		"**Rolled-up Health:** Red · 2 of 6 Red · 1 Yellow · 1 overdue\n",
-		"**Behind it:** Alpha ledger ↓ (Red) · Beta\\_payouts (Red)\n",
+		"**Supported by:** Alpha ledger ↓ (Red) · Beta\\_payouts (Red)\n",
 		"boss · Active · Health: **Red**\n\n**Contributes to:** Growth ↓ (Red)\n\n**Region:** EMEA",
 	} {
 		if !strings.Contains(got, want) {
