@@ -202,7 +202,7 @@ shot(s, "report-published", 6.83, 1.6, 5.9, "Published report", "A published mon
   s.addText(p.body, { x: p.x + 0.38, y: 5.93, w: 5.5, h: 0.62, fontSize: 14, color: MUTED, margin: 0, valign: "top", isTextBox: true, objectName: `Caption ${i + 1} text` });
 });
 demoNote(s, 0.6);
-s.addNotes("Left: any flagged goal opens to the owner's latest status and plan, the worst Health among its child goals beside the owner's own call, and the history of how it got here. Right: a Report built by one rule, Team is Growth, and published as it stands. The author writes only the introduction and their own notes. It shares from the tool, as Markdown, or printed to PDF.");
+s.addNotes("Left: any flagged goal opens to the owner's latest status and plan, the lowest Health among its child goals beside the owner's own call, and the history of how it got here. Right: a Report built by one rule, Team is Growth, and published as it stands. The author writes only the introduction and their own notes. It shares from the tool, as Markdown, or printed to PDF.");
 
 // 8 What it costs managers
 s = pres.addSlide({ masterName: "Content", sectionTitle: "Product" });
@@ -252,7 +252,7 @@ s.addText("Three ways this could fail, and the answer", { placeholder: "title" }
 const risks = [
   { q: "Managers won't check in", a: "A routine week is one click. A weekly reminder lists what's due, and anyone can nudge the owner of a Check-in overdue goal." },
   { q: "It's one more tool", a: "It replaces the status deck. The Report is the review document, and it exports to Markdown or PDF." },
-  { q: "Owners will call it Green", a: "The worst Health among a goal's children shows beside the owner's call, and a difference must be explained. Check-in overdue goals and slipped dates show whatever the owner says." },
+  { q: "Owners will call it Green", a: "The lowest Health among a goal's children shows beside the owner's call, and a difference must be explained. Check-in overdue goals and slipped dates show whatever the owner says." },
 ];
 risks.forEach((r, i) => {
   const y = 1.75 + i * 1.6;

@@ -206,12 +206,12 @@ func TestReportBlockSaysWhatElseChanged(t *testing.T) {
 	}
 }
 
-// A Report's exceptions come worst first, key by key: Ownerless, then Red,
-// Yellow, no Health, Green; then a Path to Green overdue; then Check-in
+// A Report's exceptions come most urgent first, key by key: Ownerless, then
+// Red, Yellow, no Health, Green; then a Path to Green overdue; then Check-in
 // overdue; then those that changed since the baseline; then the soonest
 // delivery date. The order is the same whatever order the Goals were selected
 // in (CONTEXT.md: Report).
-func TestReportPutsItsExceptionsWorstFirst(t *testing.T) {
+func TestReportPutsItsExceptionsMostUrgentFirst(t *testing.T) {
 	t.Parallel()
 
 	date := func(y int, m time.Month, d int) time.Time { return time.Date(y, m, d, 0, 0, 0, 0, time.UTC) }
@@ -238,8 +238,8 @@ func TestReportPutsItsExceptionsWorstFirst(t *testing.T) {
 	reversed := slices.Clone(want)
 	slices.Reverse(reversed)
 	for name, created := range map[string][]goalCase{
-		"created worst first": want,
-		"created best first":  reversed,
+		"created most urgent first":  want,
+		"created least urgent first": reversed,
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := testsupport.New(t, "boss@example.com")

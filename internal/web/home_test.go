@@ -619,8 +619,8 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 }
 
 // Home lists the viewer's Red and Yellow Goals under a "Your Yellow or Red
-// goals" heading, Red first, so the list doesn't read as all their Goals. With only
-// Green Goals there is no such section.
+// goals" heading, Red first, so the list doesn't read as all their Goals. With
+// only Green Goals there is no such section.
 func TestHomeHeadsYellowOrRedGoals(t *testing.T) {
 	t.Parallel()
 
@@ -1206,7 +1206,7 @@ func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
 // that has anything, labelled so it reads without colour, in the order Red,
 // Path to Green overdue, Check-in overdue, Yellow. Each person directly under
 // the viewer with anything flagged gets a row with their whole Org's counts as
-// badges, worst off first, their name linking to Goals scoped to their Org;
+// badges, most urgent first, their name linking to Goals scoped to their Org;
 // someone two levels down counts in the row of the person they're under. The
 // section lists no Goals.
 func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {

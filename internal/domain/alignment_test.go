@@ -136,9 +136,9 @@ func TestTopLevelMarkTakesGoalOffUnlinkedList(t *testing.T) {
 }
 
 // A child whose delivery date is later than its parent's is a schedule conflict
-// the Goal graph flags: the org-wide signals list the pair, and both the child and
-// the parent are flagged on their own. An earlier or equal date is fine, as is
-// an Ongoing child with no delivery date.
+// the Goal graph flags: the org-wide signals list the pair, and both the child
+// and the parent are flagged on their own. An earlier or equal date is fine, as
+// is an Ongoing child with no delivery date.
 func TestChildDeliveringAfterParentFlagsBoth(t *testing.T) {
 	t.Parallel()
 

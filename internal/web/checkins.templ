@@ -30,10 +30,11 @@ type checkinFormData struct {
 	// above the Owner (CONTEXT.md: Ask for help).
 	AsksForHelp  bool
 	AskAddressee *domain.Account
-	// RolledUp is the Goal's Rolled-up Health, shown in the form so the Owner can
-	// see the lowest Health among the Goal's Active children while setting
-	// their Health (ADR-0003). Explanation is the Owner's reason for a difference, required
-	// only when their Health differs from the Rolled-up Health.
+	// RolledUp is the Goal's Rolled-up Health, shown in the form so the Owner
+	// can see the lowest Health among the Goal's Active children while setting
+	// their Health (ADR-0003). Explanation is the Owner's reason for a
+	// difference, required only when their Health differs from the Rolled-up
+	// Health.
 	RolledUp    domain.RolledUpHealth
 	Explanation string
 	// RunOffGreen is how long the Goal has been Yellow or Red, noted beside

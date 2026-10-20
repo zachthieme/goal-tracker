@@ -261,7 +261,7 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     await page.waitForURL(`**/goals/${project.id}`);
     await expect(page.getByTestId("goal-health")).toHaveText("Red");
 
-    // The team Goal's Rolled-up Health is the worst among its direct Active
+    // The team Goal's Rolled-up Health is the lowest among its direct Active
     // children; its Owner's Health stays as set.
     await marcus.goto(`/goals/${chain.team.id}`);
     await expect(marcus.getByTestId("goal-rollup-health")).toHaveText("Red");
@@ -338,7 +338,7 @@ function chooseBadNewsChain(lookup: Lookup): Chain {
   const parents = (g: Goal) => links.filter((l) => l.child_id === g.id).flatMap((l) => byID.get(l.parent_id) ?? []);
   const activeGreen = (g: Goal) => g.lifecycle === "Active" && g.health === "Green";
   // An org outcome rolls up Green over a Green team Goal when every other
-  // Active child with a Health is Green too: Rolled-up Health is the worst
+  // Active child with a Health is Green too: Rolled-up Health is the lowest
   // among them, so one Yellow sibling would keep it Yellow.
   const greenOrgOutcomes = (team: Goal) =>
     parents(team).filter((o) =>

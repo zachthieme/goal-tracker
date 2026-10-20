@@ -76,7 +76,7 @@ type homeOrg struct {
 	// Total counts the flagged Goals across everyone under the viewer.
 	Total domain.SignalCounts
 	// Flagged are the people directly under the viewer whose Org has anything
-	// flagged, worst off first.
+	// flagged, most urgent first.
 	Flagged []domain.PersonSignals
 	// Clear counts the people directly under the viewer with nothing flagged.
 	Clear int

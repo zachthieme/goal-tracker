@@ -971,8 +971,9 @@ func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 
 // The publication splits the selected Goals in two: exceptions as cards under
 // Exceptions, headed by how many there are, each with its Health badge and its
-// Why it matters, Status, and Path to Green — marked Overdue once its target date has passed — and the
-// rest as a table of Health, Goal, Owner, and Due under On track.
+// Why it matters, Status, and Path to Green — marked Overdue once its target
+// date has passed — and the rest as a table of Health, Goal, Owner, and Due
+// under On track.
 func TestPublicationSplitsExceptionsFromOnTrackOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -3513,7 +3514,7 @@ func TestPublicationIsDatedWithItsYearInTheOrgsTimezoneOverHTTP(t *testing.T) {
 // A Report opens with a line counting what moved since its baseline, under its
 // Health tiles on the draft and the publication and under the byline on Print;
 // each exception block opens with what changed on it, and the exceptions come
-// worst first on every page (CONTEXT.md: Report).
+// most urgent first on every page (CONTEXT.md: Report).
 func TestReportSaysWhatMovedSinceTheBaselineOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -3549,7 +3550,7 @@ func TestReportSaysWhatMovedSinceTheBaselineOverHTTP(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
 	reportURL := fmt.Sprintf("%s/reports/%d", ts.URL, def.ID)
-	worstFirst := []string{"Turned Red", "Stays Red", "Recovered"}
+	mostUrgentFirst := []string{"Turned Red", "Stays Red", "Recovered"}
 	exceptions := func(page string) []string {
 		var out []string
 		for _, m := range regexp.MustCompile(`<article data-testid="report-exception"[^>]*>\s*<div class="rp-card-head">\s*<div>\s*<h3><a [^>]*>([^<]*)</a>`).FindAllStringSubmatch(page, -1) {
@@ -3566,8 +3567,8 @@ func TestReportSaysWhatMovedSinceTheBaselineOverHTTP(t *testing.T) {
 	if tiles, line := strings.Index(draft, `data-testid="health-summary"`), strings.Index(draft, `data-testid="report-movement"`); tiles < 0 || line < tiles {
 		t.Errorf("the draft's movement line doesn't come under its Health tiles")
 	}
-	if got := exceptions(draft); !slices.Equal(got, worstFirst) {
-		t.Errorf("the draft's exceptions come %q, want %q", got, worstFirst)
+	if got := exceptions(draft); !slices.Equal(got, mostUrgentFirst) {
+		t.Errorf("the draft's exceptions come %q, want %q", got, mostUrgentFirst)
 	}
 	if got := elementTexts(reportBlockFor(t, draft, turnedRed), "p", "report-changes"); !slices.Equal(got, []string{"Changed: Turned Red"}) {
 		t.Errorf("the changed block's line reads %q, want [Changed: Turned Red]", got)
@@ -3590,8 +3591,8 @@ func TestReportSaysWhatMovedSinceTheBaselineOverHTTP(t *testing.T) {
 	if got := elementTexts(publication, "p", "report-movement"); !slices.Equal(got, []string{movement}) {
 		t.Errorf("the publication's movement line reads %q, want %q", got, movement)
 	}
-	if got := exceptions(publication); !slices.Equal(got, worstFirst) {
-		t.Errorf("the publication's exceptions come %q, want %q", got, worstFirst)
+	if got := exceptions(publication); !slices.Equal(got, mostUrgentFirst) {
+		t.Errorf("the publication's exceptions come %q, want %q", got, mostUrgentFirst)
 	}
 	print := getBody(t, client, pubURL+"/print")
 	if got := elementTexts(print, "p", "report-movement"); !slices.Equal(got, []string{movement}) {
@@ -3600,8 +3601,8 @@ func TestReportSaysWhatMovedSinceTheBaselineOverHTTP(t *testing.T) {
 	if byline, line := strings.Index(print, `data-testid="report-published"`), strings.Index(print, `data-testid="report-movement"`); byline < 0 || line < byline {
 		t.Errorf("the Print page's movement line doesn't come under its byline")
 	}
-	if got := exceptions(print); !slices.Equal(got, worstFirst) {
-		t.Errorf("the Print page's exceptions come %q, want %q", got, worstFirst)
+	if got := exceptions(print); !slices.Equal(got, mostUrgentFirst) {
+		t.Errorf("the Print page's exceptions come %q, want %q", got, mostUrgentFirst)
 	}
 
 	if want := "No movement since the previous publication."; !slices.Equal(elementTexts(getBody(t, client, reportURL), "p", "report-movement"), []string{want}) {
@@ -3813,8 +3814,8 @@ func TestPublicationFromBeforeLinkedGoalsReadsAsItDid(t *testing.T) {
 }
 
 // A block whose only child has no Health yet has no Rolled-up Health to count,
-// so its Supported by line opens the paragraph rather than breaking a line under
-// nothing (#246).
+// so its Supported by line opens the paragraph rather than breaking a line
+// under nothing (#246).
 func TestReportSupportedByAloneOpensItsParagraph(t *testing.T) {
 	t.Parallel()
 

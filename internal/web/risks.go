@@ -912,7 +912,8 @@ func (r riskGoalRow) signalKinds() int {
 	return len(seen)
 }
 
-// riskHealthRank orders Health worst first: Red, Yellow, none, then Green.
+// riskHealthRank orders Health most urgent first: Red, Yellow, none, then
+// Green.
 func riskHealthRank(health string) int {
 	switch health {
 	case domain.HealthRed:
@@ -925,9 +926,9 @@ func riskHealthRank(health string) int {
 	return 2
 }
 
-// sortRiskRows puts the worst-off Goals first, key by key: Active Goals before
-// the Proposed and On Hold ones, which nothing has gone wrong with yet; then
-// Ownerless first; then by Health (riskHealthRank); then a Path to Green
+// sortRiskRows puts the most urgent Goals first, key by key: Active Goals
+// before the Proposed and On Hold ones, which nothing has gone wrong with yet;
+// then Ownerless first; then by Health (riskHealthRank); then a Path to Green
 // overdue first, longest overdue first; then a Milestone overdue first, longest
 // overdue first; then an overdue Action Item first, longest overdue first; then
 // Check-in overdue first, furthest past its cadence first; then more distinct

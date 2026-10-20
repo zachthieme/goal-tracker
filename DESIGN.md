@@ -612,10 +612,10 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   - **Rolled-up Health panel (`.checkin-rollup`):** the page's one white
     panel (`--color-surface`, 1px `--color-border`, `--radius-lg`, 16px
     padding, no shadow): a muted "Rolled-up Health:", the Health badge and its
-    muted count line ("1 of 5 Red · 1 Yellow"), then "Why is your Health
-    different?", asked whenever there is a Rolled-up Health.
+    muted count line ("1 of 5 Red · 1 Yellow"), then "Explain the difference
+    from Rolled-up Health", asked whenever there is a Rolled-up Health.
   - **Path to Green:** Plan; Back to Green by, with "Last time: Oct 3" and "A
-    later date asks why." beside the date on one wrapping row; then the
+    later date needs a reason." beside the date on one wrapping row; then the
     checkbox, "**Ask for help** · goes to <Name>".
   - **Metrics (`.checkin-metric`):** each Metric is a row between 1px
     `--color-border` rules, shared by neighbours, 16px above and below. On
@@ -644,8 +644,8 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     tall. At 600px and below Cancel hides (the breadcrumb goes back to the
     Goal), the summary drops to 13px and Submit check-in grows to 48px.
 - **Home (`homePage` in `home.templ`):** one column, read top to bottom: the
-  page head, then **Needs you**, its one card, then My org and Your goals
-  not Green, plain sections on the canvas (§ System: Cards are earned). A
+  page head, then **Needs you**, its one card, then My org and Your Yellow
+  or Red goals, plain sections on the canvas (§ System: Cards are earned). A
   plain section is an `h3` over a compact list (`.hm-section`), its first row
   ruled off from the heading by a hairline as each row is from the next, so
   the context headings stay quieter than the card's.
@@ -659,7 +659,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     on any Goal, the line ends "· Goals delegated to you N →", leading to the
     Delegate page. The head carries no count of what needs the person: the
     Needs you heading does.
-  - **Your goals not Green:** a plain section after My org listing the Goals
+  - **Your Yellow or Red goals:** a plain section after My org listing the Goals
     the person Owns that are Red, then Yellow, each its Health badge, muted
     and dated "as of 9 days ago" when Check-in overdue, then its title. With
     none, the section is left out.

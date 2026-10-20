@@ -149,13 +149,13 @@ func row(title string, cadence int, health string, signals ...riskSignal) riskGo
 	return riskGoalRow{Goal: domain.Goal{Title: title, CadenceDays: cadence, Lifecycle: domain.LifecycleActive}, Health: health, Signals: signals}
 }
 
-// Rows sort worst first, key by key: Active Goals before the Proposed and On
-// Hold ones; then Ownerless first; then Red, Yellow, no Health, Green; then a
-// Path to Green overdue first, longest overdue first; then Check-in overdue
+// Rows sort most urgent first, key by key: Active Goals before the Proposed and
+// On Hold ones; then Ownerless first; then Red, Yellow, no Health, Green; then
+// a Path to Green overdue first, longest overdue first; then Check-in overdue
 // first, furthest past its cadence first; then more kinds of signal first; then
 // by title, ignoring case. A Milestone overdue and an overdue Action Item rank
 // between the Path to Green and Check-in overdue keys (see the tests below).
-func TestSortRiskRowsPutsTheWorstFirst(t *testing.T) {
+func TestSortRiskRowsPutsTheMostUrgentFirst(t *testing.T) {
 	t.Parallel()
 
 	checkinOverdue := func(days int) riskSignal { return riskSignal{Kind: "checkin-overdue", Days: days} }

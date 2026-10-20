@@ -545,8 +545,8 @@ func (s *Service) noChangeCheck(ctx context.Context, g Goal) (db.Checkin, string
 		return db.Checkin{}, "", fmt.Errorf("%w: submit a Check-in to move its date, mark it Done or remove it", &MilestoneOverdueError{Milestone: milestoneFromRow(m)})
 	}
 	// Nor once the back-to-Green date has passed, as of today in the Goal's
-	// timezone, whatever the Health: the Owner must submit a Check-in with a new
-	// date and reason, or update the Health (CONTEXT.md: Check-in).
+	// timezone, whatever the Health: the Owner must submit a Check-in with a
+	// new date and reason, or update the Health (CONTEXT.md: Check-in).
 	fresh, err := s.Freshness(ctx, g.ID)
 	if err != nil {
 		return db.Checkin{}, "", err
