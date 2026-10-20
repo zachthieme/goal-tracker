@@ -351,15 +351,15 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     await expect(marcus.getByTestId("goal-rollup-health")).toHaveText("Red");
   });
 
-  await test.step("5.6 With no parent, each Active Goal is Unlinked and listed on Risks", async () => {
-    await priya.goto("/risks?group=plan");
+  await test.step("5.6 With no parent, each Active Goal is Unlinked and listed on Follow-ups", async () => {
+    await priya.goto("/follow-ups?group=plan");
     for (const g of [goalA, goalB]) {
-      const unlinked = riskRow(priya, g.title).locator('[data-testid="risk-signal"][data-kind="unlinked"]');
+      const unlinked = followUpRow(priya, g.title).locator('[data-testid="follow-up-signal"][data-kind="unlinked"]');
       await expect(unlinked).toHaveText("Unlinked · no parent Goal, not Top-level");
     }
     // The Goal with a parent isn't Unlinked (it may show another plan signal,
     // such as a Schedule conflict with the team Goal).
-    const linked = riskRow(priya, goalC.title).locator('[data-testid="risk-signal"][data-kind="unlinked"]');
+    const linked = followUpRow(priya, goalC.title).locator('[data-testid="follow-up-signal"][data-kind="unlinked"]');
     await expect(linked).toHaveCount(0);
   });
 
@@ -516,9 +516,9 @@ async function saveMilestone(page: Page, name: string) {
   await expect(page.getByTestId("milestone-item").filter({ hasText: name })).toBeVisible();
 }
 
-// riskRow is the Risks row of the Goal titled title.
-function riskRow(page: Page, title: string) {
-  return page.getByTestId("risk-row").filter({ has: page.getByRole("link", { name: title, exact: true }) });
+// followUpRow is the Follow-ups row of the Goal titled title.
+function followUpRow(page: Page, title: string) {
+  return page.getByTestId("follow-up-row").filter({ has: page.getByRole("link", { name: title, exact: true }) });
 }
 
 function goalIdOf(page: Page): number {

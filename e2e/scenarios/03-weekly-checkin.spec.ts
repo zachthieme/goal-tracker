@@ -263,7 +263,7 @@ function today(): RegExp {
 
 // checkinOverdueGoal is a Goal on the default template whose Owner is away:
 // Active, last checked in more than its cadence (and a day) ago, so Check-in
-// overdue on Risks, with no accepted children or overdue Planned Milestone to
+// overdue on Follow-ups, with no accepted children or overdue Planned Milestone to
 // complicate its Check-in, and no Delegates yet. The oldest first.
 const checkinOverdueGoal = `
   select g.id, g.title, a.email, a.name
@@ -298,9 +298,9 @@ test("a Delegate checks in for an Owner who's away, and the Goal stops being Che
   const [delegate] = seedLookup<Person>(delegateFor, owner.email);
   expect(delegate, "the seed has someone to delegate to").toBeDefined();
 
-  await test.step("3.D1 The Goal is Check-in overdue on Risks and on its Owner's Home", async () => {
+  await test.step("3.D1 The Goal is Check-in overdue on Follow-ups and on its Owner's Home", async () => {
     await signIn(page, owner.email);
-    await page.goto("/risks");
+    await page.goto("/follow-ups");
     await expect(checkinOverdueChip(page, goal.title)).toBeVisible();
     await page.goto("/home");
     const row = dueRows(page).filter({ has: page.getByRole("link", { name: goal.title, exact: true }) });
@@ -358,10 +358,10 @@ test("a Delegate checks in for an Owner who's away, and the Goal stops being Che
     await expect(entry.getByRole("button", { name: owner.name })).toBeVisible();
     await expect(entry).toContainText(`by ${delegate.name} for ${owner.name}`, { useInnerText: true });
 
-    // The Owner's Risks opens on their default scope, which may now hold
+    // The Owner's Follow-ups opens on their default scope, which may now hold
     // nothing: the page has loaded once it shows its count or its empty line.
-    await page.goto("/risks");
-    await expect(page.getByTestId("risks-attention").or(page.getByTestId("risks-empty"))).toBeVisible();
+    await page.goto("/follow-ups");
+    await expect(page.getByTestId("follow-ups-attention").or(page.getByTestId("follow-ups-empty"))).toBeVisible();
     await expect(checkinOverdueChip(page, goal.title)).toHaveCount(0);
     await page.goto("/home");
     await expect(page.getByRole("heading", { level: 1, name: "Your week" })).toBeVisible();
@@ -370,12 +370,12 @@ test("a Delegate checks in for an Owner who's away, and the Goal stops being Che
   });
 });
 
-// checkinOverdueChip is the Check-in overdue signal on title's row on Risks.
+// checkinOverdueChip is the Check-in overdue signal on title's row on Follow-ups.
 function checkinOverdueChip(page: Page, title: string) {
   return page
-    .getByTestId("risk-row")
+    .getByTestId("follow-up-row")
     .filter({ has: page.getByRole("link", { name: title, exact: true }) })
-    .getByTestId("risk-signal")
+    .getByTestId("follow-up-signal")
     .filter({ hasText: /^Check-in overdue/ });
 }
 

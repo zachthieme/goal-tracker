@@ -102,7 +102,7 @@ type reportException struct {
 }
 
 // sortReportExceptions puts the most urgent exceptions first, key by key, as
-// the Risks page ranks Goals: Ownerless first; then by Health, Red, Yellow,
+// the Follow-ups page ranks Goals: Ownerless first; then by Health, Red, Yellow,
 // none, then Green; then a Path to Green overdue first; then Check-in overdue
 // first. Then those that changed since the baseline come first, new trouble
 // ahead of standing trouble; then the soonest delivery date, with none last;

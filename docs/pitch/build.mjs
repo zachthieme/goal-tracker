@@ -92,7 +92,7 @@ let s = pres.addSlide({ masterName: "Dark", sectionTitle: "Pitch" });
 s.addText("Goal Tracker", { placeholder: "title" });
 s.addText("Find the goals that are in trouble before the review does.", { placeholder: "body" });
 mark(s, "green", 0.7, 1.45, 0.3, "Green mark"); mark(s, "yellow", 1.15, 1.45, 0.3, "Yellow mark"); mark(s, "red", 1.6, 1.45, 0.3, "Red mark");
-shot(s, "risks-top", 6.3, 1.6, 6.43, "Risks page", "The Risks page: ten goals need attention, four of them Check-in overdue");
+shot(s, "follow-ups-top", 6.3, 1.6, 6.43, "Follow-ups page", "The Follow-ups page: ten goals need attention, four of them Check-in overdue");
 s.addNotes("Goal Tracker is one place for the org to state its goals, update them weekly, and produce review-ready reports. The pitch in one line: leaders find trouble without waiting for the review or for someone to tell them.");
 
 // 2 The ask, up front
@@ -157,7 +157,7 @@ s = pres.addSlide({ masterName: "Content", sectionTitle: "Pitch" });
 s.addText("One mechanism, from weekly update to review", { placeholder: "title" });
 const steps = [
   { n: "1", head: "Owners check in weekly", body: "Health, a short status, and any date changes. A routine week is one click: No change." },
-  { n: "2", head: "Risks flags what needs attention", body: "Red, Check-in overdue, unlinked and conflicting goals, grouped by who has to act, each with one fix." },
+  { n: "2", head: "Follow-ups flags what needs attention", body: "Red, Check-in overdue, unlinked and conflicting goals, grouped by who has to act, each with one fix." },
   { n: "3", head: "The Report writes itself", body: "Exceptions in full, on-track goals in one line each, with what changed since the last review." },
 ];
 steps.forEach((p, i) => {
@@ -179,7 +179,7 @@ s.addNotes("Two audiences. Frontline and mid-level managers own goals and check 
 pres.addSection({ title: "Product" });
 s = pres.addSlide({ masterName: "Content", sectionTitle: "Product" });
 s.addText("Find trouble: a silent goal is as loud as a Red one", { placeholder: "title" });
-shot(s, "risks", 4.83, 1.6, 7.9, "Risks page", "The Risks page with ten flagged goals in three groups");
+shot(s, "follow-ups", 4.83, 1.6, 7.9, "Follow-ups page", "The Follow-ups page with ten flagged goals in three groups");
 demoNote(s, 4.83);
 points(s, [
   { mark: "overdue", head: "Check-in overdue is a first-class signal", body: "A goal past its check-in cadence is flagged, even when its last status was Green." },
@@ -224,7 +224,7 @@ s.addText("What's built, and what a pilot still needs", { placeholder: "title" }
 const cols = [
   { x: 0.6, mark: "green", head: "Working today", items: [
     "Goals, the links between them, and weekly check-ins",
-    "Risks: Check-in overdue, unlinked, schedule conflicts, ownerless",
+    "Follow-ups: Check-in overdue, unlinked, schedule conflicts, ownerless",
     "Reports by rule or hand-picked, with Markdown and PDF",
     "Comments and Action Items on published reports",
     "Spreadsheet import to load an org's goals",

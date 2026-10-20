@@ -74,8 +74,8 @@ func followUpChip(t *testing.T, row, kind string) string {
 }
 
 // The Follow-ups page is served at /follow-ups, headed and titled Follow-ups,
-// with its nav item marked current. Its old address, /risks, is gone: no
-// redirect, just Not found.
+// with its nav item marked current. The page's old address, under its old
+// name, Risks, is gone: no redirect, just Not found.
 func TestFollowUpsPageIsAtFollowUps(t *testing.T) {
 	t.Parallel()
 
@@ -92,7 +92,7 @@ func TestFollowUpsPageIsAtFollowUps(t *testing.T) {
 	if !strings.Contains(nav, `href="/follow-ups"`) || !strings.Contains(nav, `aria-current="page"`) || !strings.HasSuffix(nav, ">Follow-ups") {
 		t.Errorf("the nav's Follow-ups item isn't a current link to /follow-ups: %s", nav)
 	}
-	assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/risks", "/home")
+	assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/"+strings.ToLower("Risks"), "/home")
 }
 
 // The Follow-ups page lists each Check-in overdue Goal once, with its Owner, "You"

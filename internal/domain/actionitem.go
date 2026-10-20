@@ -523,7 +523,7 @@ func (s *Service) actionItemFromRow(ctx context.Context, row db.ActionItem) (Act
 }
 
 // ActionItemListing is an Action Item listed outside its Report — on Home, a
-// Goal's page, Risks, or an email — with what a reader needs to place it.
+// Goal's page, Follow-ups, or an email — with what a reader needs to place it.
 type ActionItemListing struct {
 	Item ActionItem
 	// ReportName is the name of the Report Definition it belongs to.

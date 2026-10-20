@@ -25,7 +25,7 @@ hide?
 
 | # | Scenario | Who | Role in the product |
 | - | -------- | --- | ------------------- |
-| 1 | Finding trouble between reviews | Leader | **The point.** Goals give the data, Risks gives the context. |
+| 1 | Finding trouble between reviews | Leader | **The point.** Goals give the data, Follow-ups gives the context. |
 | 2 | Understanding trouble at the review | Anyone; here a leader | **The point**, in depth: the detail, the next steps and the surrounding challenges. |
 | 3 | The weekly Check-in | Manager, as Owner | Mechanism. Keeps the data fresh at a cost managers will pay. |
 | 4 | Reporting bad news | Manager, as Owner | Mechanism. Makes trouble stated, planned for and dated. |
@@ -40,15 +40,15 @@ The people below are roles, not Accounts in the seed.
 and each problem sits beside the one action that moves it.
 
 She uses two pages together. **Goals** is the data: what exists and how each
-Goal is doing. **Risks** is the context: which of those need attention, why,
+Goal is doing. **Follow-ups** is the context: which of those need attention, why,
 and who has to act.
 
-1. The top bar shows a count on **Risks** before she clicks anything.
+1. The top bar shows a count on **Follow-ups** before she clicks anything.
 2. She opens **Goals**. The list is led by Health, Goals that need a decision
    or update first. She filters to her org by a Dimension and groups by
    another, and reads the shape: how many Red, how many Yellow, which rows
    carry a Check-in overdue or Ownerless mark.
-3. She opens **Risks** for the reasons. It says how many Goals there are to review,
+3. She opens **Follow-ups** for the reasons. It says how many Goals there are to review,
    in five groups: **Not Green** (Red, Yellow, Asks for help), then by who
    has to act, **Waiting on a Check-in** (Check-in overdue, Path to Green
    overdue, Milestone overdue), **Action Items overdue** (an Action Item from a
@@ -71,7 +71,7 @@ do I do about it?"; she didn't wait for the review to find out.
 
 **Who:** Elena again, publishing her own org's Report. It is shared as far up
 as it needs to go: her boss, and their boss.
-**Promise:** Risks told her which Goals are in trouble. The Report gives the
+**Promise:** Follow-ups told her which Goals are in trouble. The Report gives the
 rest: the detailed data on each, the Owner's next steps, and the context of
 what other challenges sit around it. It writes itself from the managers'
 Check-ins, so Elena curates and doesn't chase or retype, and a reader two
@@ -161,7 +161,7 @@ say what's wrong, what the plan is and by when, and carries it upward.
    turns Yellow, beside the Green he last set. His next Check-in asks him to
    explain if he still says Green.
 6. If Priya's back-to-Green date passes and the Goal still isn't Green, it is
-   flagged as prominently as Red and appears on Elena's Risks page.
+   flagged as prominently as Red and appears on Elena's Follow-ups page.
 
 **It worked if:** she couldn't go Yellow without a plan and a date; the slip
 shows wherever the date does and can't be quietly overwritten; Marcus couldn't
@@ -192,7 +192,7 @@ is nothing for trouble to be measured against.
 5. Marcus sees it on Home under **Requests** and accepts. Her Goal now counts
    toward his Rolled-up Health.
 6. Had she picked no parent, the Active Goal would be Unlinked: allowed, and
-   listed on Risks.
+   listed on Follow-ups.
 
 **It worked if:** she always knew what was still missing; she wasn't asked
 what type of thing it is (objective, key result, project); the Dimensions she
@@ -203,7 +203,7 @@ set are what let Elena filter to her org in scenarios 1 and 2.
 Each of these supports a scenario above rather than standing as one:
 
 - **Handoff, Departed, Ownerless reassignment.** Keeps a Goal answerable when
-  people move. Ownerless itself is a Risks signal in scenario 1.
+  people move. Ownerless itself is a Follow-ups signal in scenario 1.
 - **Admin setup:** Dimensions, Fields, required values, Top-level Goals.
   Occasional. It enables the filters and rules in 1 and 2.
 - **Spreadsheet import.** It may not stay in the product, so no scenario

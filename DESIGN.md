@@ -230,9 +230,9 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   value is the top bar's own, not `--color-ink`, so the bar stays teal while the
   ink is neutral. Resting items use `--nav-ink-2`; hover is the
   translucent-white `--nav-hover`.
-  The nav items read **Home · Goals · Risks · Reports**, then **Admin** for an
-  Admin. Home counts what needs the person and Risks counts the Goals it flags
-  in the person's default scope (see Scope), as many as a bare `/risks` lists
+  The nav items read **Home · Goals · Follow-ups · Reports**, then **Admin** for an
+  Admin. Home counts what needs the person and Follow-ups counts the Goals it flags
+  in the person's default scope (see Scope), as many as a bare `/follow-ups` lists
   for them; Goals and Reports carry no count. The brand link goes to Home.
   The current item (`.on`) gets a `--color-primary` underline or pill. An item
   is current on its own page and every page under it, so a Goal's page, New
@@ -397,7 +397,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     and Ongoing are the word in the metadata line itself; Delegates and
     Dimension values have one under their sidebar headings; and the Report
     builder's Also include and Leave out have one after each legend. Ownerless
-    badges on the Goals list, the Goal page's link lists and the Risks table
+    badges on the Goals list, the Goal page's link lists and the Follow-ups table
     carry the definition as a `title` only, because a button in every row
     would be too heavy.
   - **Header actions (`.gp-actions`):** top right, for whoever may check in
@@ -730,7 +730,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     their Org's badges in the same order. Each reads as a count and a name
     ("1 Red"), so it reads without colour. Red and Yellow take their
     Health's badge; Path to Green overdue and Check-in overdue take the Check-in
-    overdue mark's `badge st`, as on Risks. The most Red come first, then the
+    overdue mark's `badge st`, as on Follow-ups. The most Red come first, then the
     most Path to Green overdue, the most Check-in overdue and the most Yellow,
     then by Name. Someone further down counts in the row of the person directly
     under the viewer they're under, so the rows add up to the total.
@@ -739,12 +739,12 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     clear"), left out when there are none. With nothing flagged anywhere,
     the section shows only one muted "Everyone in My org is all clear." line.
   - **Links:** the section ends with one line, **My org on Goals →** ·
-    **My org on Risks →** (`?org=<viewer ID>`), whose pages include the
+    **My org on Follow-ups →** (`?org=<viewer ID>`), whose pages include the
     person's own Goals.
 
   The section adds nothing to Needs you or the top bar's Home count.
-- **Scope (Goals and Risks, `pageScopeSelect` in `scope.templ`):** the one
-  select scoping the Goal list and the Risks page, submitted as `?org=`:
+- **Scope (Goals and Follow-ups, `pageScopeSelect` in `scope.templ`):** the one
+  select scoping the Goal list and the Follow-ups page, submitted as `?org=`:
   **Everyone** (`all`), **Mine** (`mine`, the Goals the person Owns or is a
   Delegate on), **My org** for someone with anyone under them, then each other
   person's Org under **Other orgs** (their ID).
@@ -752,22 +752,22 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     malformed or names no one, opens on the person's default: My org for
     someone with anyone under them, Mine for everyone else, Admins included.
     The select shows it chosen, and the count lines and empty states read as
-    for that scope chosen. A bare `/goals`, `/goals/download` or `/risks`
+    for that scope chosen. A bare `/goals`, `/goals/download` or `/follow-ups`
     therefore means "my default", and links meant to land there stay bare
-    (the Goals breadcrumb, Back to Goals, the Nudge page's Back to Risks).
-  - **Everyone is explicit:** `?org=all`. Goals' **Clear** and Risks' **Show
+    (the Goals breadcrumb, Back to Goals, the Nudge page's Back to Follow-ups).
+  - **Everyone is explicit:** `?org=all`. Goals' **Clear** and Follow-ups' **Show
     everything** link to it, and a page on Everyone keeps it in every link
     that keeps the page's filters. A chosen scope is never overridden.
   - **An empty default:** the Goal list says "No Goals in My org." or "No
     Goals in Mine." with a **See everyone's →** link to the same view with
-    `?org=all`. Risks keeps its own empty line, whose Show everything is the
+    `?org=all`. Follow-ups keeps its own empty line, whose Show everything is the
     way out.
   - **Needs an Admin is company-wide:** an Admin's job there is the company's,
     so the Needs an Admin card counts, and chips, every Ownerless and
     halted-parent Goal in the company under the page's Dimension values,
     while the other cards count the page's own rows. Its card keeps the
     page's scope in its link like every other card, so Show all and the other
-    cards come back to it. `/risks?group=admin` always lists the company's
+    cards come back to it. `/follow-ups?group=admin` always lists the company's
     rows whatever the scope, as its card counts them, heading "N Goals need an
     Admin across the company." or saying "Nothing needs an Admin." with no
     Show everything. An Admin whose own scope has nothing flagged still sees
@@ -875,7 +875,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     face, 700): "Dates and Milestones" and "Lifecycle". The add bar's buttons
     open them. The server's rules still open them on load, and their bar
     button shows as used: an error in the section, something typed in it, an
-    overdue Milestone, `?open=dates` (a Schedule conflict's Fix on Risks), and
+    overdue Milestone, `?open=dates` (a Schedule conflict's Fix on Follow-ups), and
     a Lifecycle picked by `?lifecycle=` (the Goal page's menu). A shown
     section never hides again; its fields are sent whether it shows or not.
     The script runs again on the form a refused submit swaps back, so the bar
@@ -931,7 +931,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
 - **Phone width (600px and below):** nothing scrolls sideways, and no control
   is clipped. The Goal list's Table layout, a wide data table and the
   Check-in page's add bar buttons may scroll inside their own container. List tables stack each row as a card, the Goal
-  or name first (Risks, the Reports list, On track, the Goal list). The Goal
+  or name first (Follow-ups, the Reports list, On track, the Goal list). The Goal
   list's phone rows show the Goal, then Health and Owner, then Due and Last
   check-in (each led by a small muted label), with Dimension tags hidden. A
   card head's badges drop under its title. Filter bars and field-plus-button
@@ -943,16 +943,16 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   value's tag takes a dashed edge instead, struck through and muted.
 - **Check-in overdue chip (`.badge.st`):** marks a Check-in overdue Goal
   wherever its Health shows (the Goal list, Home, a Report), with its age
-  ("Check-in overdue · 9 days" on the Goal list; on Risks, with its cadence too:
+  ("Check-in overdue · 9 days" on the Goal list; on Follow-ups, with its cadence too:
   "Check-in overdue · 42 days, checks in weekly", naming the cadence as the New
   goal form's segments do, or "every 3 days"). It is a warning about freshness,
   never a tag, so it can't share a tag's look: a `--checkin-overdue-bg` grey
   fill, `--checkin-overdue-ink` text and a 1px dashed `--checkin-overdue-edge`
   border, at a Health badge's `--radius-sm`. The Goal list's "Path to Green
-  overdue" chip takes the same style, as does Risks' ("Path to Green 12 days
+  overdue" chip takes the same style, as does Follow-ups' ("Path to Green 12 days
   overdue"). So does the "Milestone overdue" chip on a Green Goal past a
   Milestone's date: "Milestone overdue" on the Goal list, "Milestone 3 days
-  overdue" on Risks.
+  overdue" on Follow-ups.
 - **Check-in overdue banner (`.alert.st`):** at the top of a Check-in overdue
   Goal's page, a `--color-surface` banner in a 1px dashed
   `--checkin-overdue-edge` border, with `--color-ink` text: **Check-in
@@ -969,7 +969,7 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   - **Home's count (`.count.needs-you`)** counts what needs the person, so it is
     a dark pill: `--nav-needs-bg` (`#18211F`) with `--nav-ink` numbers, ringed
     1px in `--nav-ink` so it shows against the top bar.
-  - **Every other count (`.count`)**, such as Risks, is a neutral grey pill:
+  - **Every other count (`.count`)**, such as Follow-ups, is a neutral grey pill:
     `--nav-count-bg` with `--nav-count-ink` numbers.
 
   The ratios are in § Deviations 2.
