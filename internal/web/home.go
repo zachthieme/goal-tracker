@@ -61,14 +61,14 @@ type homeView struct {
 	AtRisk             []domain.PersonalGoal
 	// Delegated counts the Goals the person is a Delegate on.
 	Delegated int
-	// Org is the My org card, nil for someone with no one under them.
+	// Org is the My org section, nil for someone with no one under them.
 	Org *homeOrg
 	// Toast, when set, offers Undo for the request just rejected, or the
 	// suggestion just declined, from Home.
 	Toast *toast
 }
 
-// homeOrg is Home's My org card: what is in trouble in the viewer's Org,
+// homeOrg is Home's My org section: what is in trouble in the viewer's Org,
 // leaving out the viewer's own Goals, person by person (CONTEXT.md: Org).
 type homeOrg struct {
 	// ViewerID is whose Org it is, for the links to it on Goals and Risks.
@@ -241,7 +241,7 @@ func (s *Server) refusedNoChanges(ctx context.Context, due []domain.PersonalGoal
 	return refused, nil
 }
 
-// homeOrgBadge is one count on the My org card: what it counts, for its
+// homeOrgBadge is one count on the My org section: what it counts, for its
 // data-kind, how it reads, and its badge's class.
 type homeOrgBadge struct {
 	Kind, Label, Class string
@@ -268,7 +268,7 @@ func homeOrgBadges(c domain.SignalCounts) []homeOrgBadge {
 	return out
 }
 
-// loadHomeOrg reads accountID's My org card, or nil when they have no one
+// loadHomeOrg reads accountID's My org section, or nil when they have no one
 // under them.
 func (s *Server) loadHomeOrg(ctx context.Context, accountID int64) (*homeOrg, error) {
 	if under, err := s.svc.HasAnyoneUnder(ctx, accountID); err != nil || !under {
@@ -327,9 +327,9 @@ func healthBarLabel(v homeView) string {
 	return fmt.Sprintf("%d Green, %d Yellow, %d Red", v.Green, v.Yellow, v.Red)
 }
 
-// needsYouHeading titles the Needs you card with the count of what's waiting
+// homeNeedsYouHeading titles the Needs you card with the count of what's waiting
 // on the person ("Needs you · 2"), plain "Needs you" when nothing is.
-func needsYouHeading(n int) string {
+func homeNeedsYouHeading(n int) string {
 	if n == 0 {
 		return "Needs you"
 	}

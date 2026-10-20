@@ -69,9 +69,9 @@ func homePage(current *domain.Account, v homeView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 string
-			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(needsYouHeading(v.NeedsYou()))
+			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(homeNeedsYouHeading(v.NeedsYou()))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 26, Col: 76}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/home.templ`, Line: 26, Col: 80}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -169,7 +169,7 @@ func homePage(current *domain.Account, v homeView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if v.Org != nil {
-				templ_7745c5c3_Err = homeOrgCard(*v.Org).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = homeOrgSection(*v.Org).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -458,12 +458,12 @@ func homeYourGoals(v homeView) templ.Component {
 	})
 }
 
-// homeOrgCard is the My org section, a plain section on the canvas: counts and
+// homeOrgSection is the My org section, a plain section on the canvas: counts and
 // people, never Goals. The total line is plain text, set apart from the
 // badges counting each person's Org, and each person's name leads to their
 // Org on Goals; the section ends with links on to the whole Org's Goals and
 // Risks for the detail.
-func homeOrgCard(org homeOrg) templ.Component {
+func homeOrgSection(org homeOrg) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
