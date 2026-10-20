@@ -51,7 +51,7 @@ and who has to act.
    in five groups: **Not Green** (Red, Yellow, Asks for help), then by who
    has to act, **Waiting on a Check-in** (Stale, Path to Green overdue,
    Milestone overdue), **Action Items overdue** (an Action Item from a Report
-   past its due date), **Placement and dates** (Unaligned, schedule
+   past its due date), **Placement and dates** (Unlinked, schedule
    conflicts), **Needs an Admin** (Ownerless, parent On Hold or Cancelled).
 4. She narrows it to her org. Each flagged Goal is one row, worst first,
    with a chip for each reason, its Health badge saying Red or Yellow, and
@@ -190,7 +190,7 @@ is nothing for trouble to be measured against.
    would be asked. The link is a request until he accepts.
 5. Marcus sees it on Home under **Requests** and accepts. Her Goal now counts
    toward his Rolled-up Health.
-6. Had she picked no parent, the Active Goal would be Unaligned: allowed, and
+6. Had she picked no parent, the Active Goal would be Unlinked: allowed, and
    listed on Risks.
 
 **It worked if:** she always knew what was still missing; she wasn't asked

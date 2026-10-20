@@ -59,7 +59,7 @@ func TestAdminMarksAndUnmarksTopLevelOverHTTP(t *testing.T) {
 	}
 }
 
-// The Graph signals page lists the risks the graph flags on its own: Unaligned
+// The Graph signals page lists the risks the graph flags on its own: Unlinked
 // Goals, children due later than their parents, and children of a parent that
 // is On Hold or Cancelled.
 func TestGraphSignalsPageListsRisks(t *testing.T) {
@@ -90,13 +90,13 @@ func TestGraphSignalsPageListsRisks(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	page := getBody(t, client, ts.URL+"/signals")
 
-	unaligned := pageElement(t, page, "ul", "unaligned-goals")
-	if !strings.Contains(unaligned, navTo(loner.ID)) {
-		t.Errorf("Unaligned list missing %q; section:\n%s", loner.Title, unaligned)
+	unlinked := pageElement(t, page, "ul", "unlinked-goals")
+	if !strings.Contains(unlinked, navTo(loner.ID)) {
+		t.Errorf("Unlinked list missing %q; section:\n%s", loner.Title, unlinked)
 	}
 	for _, g := range []domain.Goal{launch, late, paused, orphaned} {
-		if strings.Contains(unaligned, navTo(g.ID)) {
-			t.Errorf("Unaligned list includes %q, which is Top-level or aligned", g.Title)
+		if strings.Contains(unlinked, navTo(g.ID)) {
+			t.Errorf("Unlinked list includes %q, which is Top-level or aligned", g.Title)
 		}
 	}
 
@@ -113,7 +113,7 @@ func TestGraphSignalsPageListsRisks(t *testing.T) {
 
 // Each Goal's page flags the graph signals that touch it: a schedule conflict
 // shows on both the child and the parent, a halted parent shows on the child,
-// and an Unaligned Goal says so.
+// and an Unlinked Goal says so.
 func TestGoalPageFlagsItsGraphSignals(t *testing.T) {
 	t.Parallel()
 
@@ -149,8 +149,8 @@ func TestGoalPageFlagsItsGraphSignals(t *testing.T) {
 	if !strings.Contains(childPage, `data-testid="goal-halted-parent"`) {
 		t.Errorf("child page does not flag its On Hold parent; body:\n%s", childPage)
 	}
-	if strings.Contains(childPage, `data-testid="goal-unaligned"`) {
-		t.Errorf("aligned child page is flagged Unaligned")
+	if strings.Contains(childPage, `data-testid="goal-unlinked"`) {
+		t.Errorf("aligned child page is flagged Unlinked")
 	}
 
 	parentPage := pageOf(launch)
@@ -162,11 +162,11 @@ func TestGoalPageFlagsItsGraphSignals(t *testing.T) {
 	}
 
 	lonerPage := pageOf(loner)
-	if !strings.Contains(lonerPage, `data-testid="goal-unaligned"`) {
-		t.Errorf("Unaligned Goal's page does not say so; body:\n%s", lonerPage)
+	if !strings.Contains(lonerPage, `data-testid="goal-unlinked"`) {
+		t.Errorf("Unlinked Goal's page does not say so; body:\n%s", lonerPage)
 	}
 	if !strings.Contains(lonerPage, `data-testid="goal-signals"`) {
-		t.Errorf("Unaligned Goal's page has no signals section")
+		t.Errorf("Unlinked Goal's page has no signals section")
 	}
 	if strings.Contains(pageOf(h.ActiveChildOf(sam, loner, "Quiet child", "Fine.")), `data-testid="goal-signals"`) {
 		t.Errorf("a Goal with no signals still shows a signals section")

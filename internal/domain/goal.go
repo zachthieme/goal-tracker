@@ -34,7 +34,7 @@ type Goal struct {
 	// Ownerless). It is derived from the Owner, not stored on the Goal.
 	Ownerless bool
 	// TopLevel is true when an Admin has marked the Goal as one of the org's
-	// root outcomes, so it is never Unaligned (CONTEXT.md: Top-level Goal).
+	// root outcomes, so it is never Unlinked (CONTEXT.md: Top-level Goal).
 	TopLevel bool
 }
 

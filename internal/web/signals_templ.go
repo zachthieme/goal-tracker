@@ -75,7 +75,7 @@ func topLevelControl(g domain.Goal) templ.Component {
 }
 
 // graphSignalsPage lists the risks the Goal graph flags on its own, so
-// leadership sees them without anyone reporting them (CONTEXT.md: Unaligned).
+// leadership sees them without anyone reporting them (CONTEXT.md: Unlinked).
 func graphSignalsPage(current *domain.Account, signals domain.GraphSignals, dates displayDates) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -109,18 +109,18 @@ func graphSignalsPage(current *domain.Account, signals domain.GraphSignals, date
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<h1>Graph signals</h1><p>Risks the Goal graph flags that nobody reported.</p><section data-testid=\"unaligned-section\"><h2>Unaligned Goals</h2><p>Active Goals that contribute to no other Goal and aren't Top-level.</p><ul data-testid=\"unaligned-goals\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<h1>Graph signals</h1><p>Risks the Goal graph flags that nobody reported.</p><section data-testid=\"unlinked-section\"><h2>Unlinked Goals</h2><p>Active Goals that contribute to no other Goal and aren't Top-level.</p><ul data-testid=\"unlinked-goals\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if len(signals.Unaligned) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<li data-testid=\"no-unaligned\">No Unaligned Goals.</li>")
+			if len(signals.Unlinked) == 0 {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<li data-testid=\"no-unlinked\">No Unlinked Goals.</li>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			for _, g := range signals.Unaligned {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<li data-testid=\"unaligned-goal\">")
+			for _, g := range signals.Unlinked {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<li data-testid=\"unlinked-goal\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -446,7 +446,7 @@ func goalSignals(signals domain.GoalSignals, dates displayDates) templ.Component
 			templ_7745c5c3_Var15 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		if signals.Unaligned || len(signals.ScheduleConflicts) > 0 || len(signals.HaltedParents) > 0 {
+		if signals.Unlinked || len(signals.ScheduleConflicts) > 0 || len(signals.HaltedParents) > 0 {
 			templ_7745c5c3_Err = goalSignalsStyles().Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -455,8 +455,8 @@ func goalSignals(signals domain.GoalSignals, dates displayDates) templ.Component
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if signals.Unaligned {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<p data-testid=\"goal-unaligned\" class=\"alert lc\" role=\"alert\"><strong>Unaligned</strong><span>this Active Goal contributes to no other Goal and isn't Top-level.</span></p>")
+			if signals.Unlinked {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<p data-testid=\"goal-unlinked\" class=\"alert lc\" role=\"alert\"><strong>Unlinked</strong><span>this Active Goal contributes to no other Goal and isn't Top-level.</span></p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

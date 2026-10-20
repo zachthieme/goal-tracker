@@ -235,8 +235,8 @@ templ riskChip(today time.Time, g domain.Goal, sig riskSignal) {
 			<span data-testid="risk-signal" data-kind="action-item-overdue" class="badge st">{ "Action Item " + plural(sig.Days, "day") + " overdue" }</span>
 		case "ownerless":
 			<span data-testid="risk-signal" data-kind="ownerless" class="badge ol" title={ ownerlessHelp }>Ownerless</span>
-		case "unaligned":
-			<span data-testid="risk-signal" data-kind="unaligned" class="rk-tag">Unaligned · no parent Goal, not Top-level</span>
+		case "unlinked":
+			<span data-testid="risk-signal" data-kind="unlinked" class="rk-tag">Unlinked · no parent Goal, not Top-level</span>
 		case "schedule-conflicts":
 			<span data-testid="risk-signal" data-kind="schedule-conflicts" class="rk-tag">
 				{ fmt.Sprintf("Schedule conflict · due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), riskDays(sig.Days)) }@goalRef(*sig.Related)

@@ -8,13 +8,13 @@ import (
 )
 
 // MarkTopLevel marks a Goal as a Top-level Goal: one of the org's root outcomes,
-// not expected to contribute to anything and so never Unaligned (CONTEXT.md:
+// not expected to contribute to anything and so never Unlinked (CONTEXT.md:
 // Top-level Goal). Only an Admin may; actorID identifies the acting Account.
 func (s *Service) MarkTopLevel(ctx context.Context, actorID, goalID int64) (Goal, error) {
 	return s.setTopLevel(ctx, actorID, goalID, true)
 }
 
-// UnmarkTopLevel clears a Goal's Top-level mark, so it is Unaligned again if it
+// UnmarkTopLevel clears a Goal's Top-level mark, so it is Unlinked again if it
 // is Active and contributes to nothing. Only an Admin may.
 func (s *Service) UnmarkTopLevel(ctx context.Context, actorID, goalID int64) (Goal, error) {
 	return s.setTopLevel(ctx, actorID, goalID, false)
@@ -40,14 +40,14 @@ func (s *Service) setTopLevel(ctx context.Context, actorID, goalID int64, topLev
 	return s.loadGoal(ctx, goalID)
 }
 
-// UnalignedGoals lists the Unaligned Goals, newest first: Active Goals that
+// UnlinkedGoals lists the Unlinked Goals, newest first: Active Goals that
 // contribute to no other Goal through an accepted link and aren't Top-level.
-// Being Unaligned is allowed, but leadership should see it (CONTEXT.md:
-// Unaligned). A pending link doesn't count until the parent's Owner accepts it.
-func (s *Service) UnalignedGoals(ctx context.Context) ([]Goal, error) {
-	rows, err := s.queries.ListUnalignedGoals(ctx)
+// Being Unlinked is allowed, but leadership should see it (CONTEXT.md:
+// Unlinked). A pending link doesn't count until the parent's Owner accepts it.
+func (s *Service) UnlinkedGoals(ctx context.Context) ([]Goal, error) {
+	rows, err := s.queries.ListUnlinkedGoals(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list unaligned goals: %w", err)
+		return nil, fmt.Errorf("list unlinked goals: %w", err)
 	}
 	goals := make([]Goal, 0, len(rows))
 	for _, r := range rows {
@@ -72,19 +72,19 @@ type HaltedParent struct {
 }
 
 // GraphSignals are the risks the Goal graph flags that nobody reported: the
-// Unaligned Goals, the schedule conflicts between linked Goals, and the Goals
+// Unlinked Goals, the schedule conflicts between linked Goals, and the Goals
 // whose parent is On Hold or Cancelled.
 type GraphSignals struct {
-	Unaligned         []Goal
+	Unlinked          []Goal
 	ScheduleConflicts []ScheduleConflict
 	HaltedParents     []HaltedParent
 }
 
 // GoalSignals are the graph signals that touch one Goal: whether it is
-// Unaligned, every schedule conflict it is the child or the parent in, and each
+// Unlinked, every schedule conflict it is the child or the parent in, and each
 // of its parents that is On Hold or Cancelled.
 type GoalSignals struct {
-	Unaligned         bool
+	Unlinked          bool
 	ScheduleConflicts []ScheduleConflict
 	HaltedParents     []HaltedParent
 }
@@ -96,7 +96,7 @@ type edge struct {
 
 // GraphSignals reads the org-wide graph signals off the current graph.
 func (s *Service) GraphSignals(ctx context.Context) (GraphSignals, error) {
-	unaligned, err := s.UnalignedGoals(ctx)
+	unlinked, err := s.UnlinkedGoals(ctx)
 	if err != nil {
 		return GraphSignals{}, err
 	}
@@ -112,7 +112,7 @@ func (s *Service) GraphSignals(ctx context.Context) (GraphSignals, error) {
 		})
 	}
 	return GraphSignals{
-		Unaligned:         unaligned,
+		Unlinked:          unlinked,
 		ScheduleConflicts: scheduleConflicts(edges),
 		HaltedParents:     haltedParents(edges),
 	}, nil
@@ -142,7 +142,7 @@ func (s *Service) GoalSignals(ctx context.Context, goalID int64) (GoalSignals, e
 		down = append(down, edge{child: c, parent: g})
 	}
 	return GoalSignals{
-		Unaligned:         isUnaligned(g, len(parents)),
+		Unlinked:          isUnlinked(g, len(parents)),
 		ScheduleConflicts: scheduleConflicts(append(up, down...)),
 		// Only the child is flagged when its parent halts, so a Goal's own
 		// halted-parent signals come from its links upward.
@@ -150,9 +150,9 @@ func (s *Service) GoalSignals(ctx context.Context, goalID int64) (GoalSignals, e
 	}, nil
 }
 
-// isUnaligned applies the Unaligned rule to a Goal with the given number of
-// accepted parents (CONTEXT.md: Unaligned).
-func isUnaligned(g Goal, parents int) bool {
+// isUnlinked applies the Unlinked rule to a Goal with the given number of
+// accepted parents (CONTEXT.md: Unlinked).
+func isUnlinked(g Goal, parents int) bool {
 	return g.Lifecycle == LifecycleActive && !g.TopLevel && parents == 0
 }
 

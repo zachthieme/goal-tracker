@@ -400,7 +400,7 @@ func (o *e2eOrg) riskReasons(t *testing.T, g *e2eGoal) []string {
 		{"Red", g.active() && g.health() == domain.HealthRed},
 		{"Schedule conflict", slices.ContainsFunc(s.ScheduleConflicts, func(c domain.ScheduleConflict) bool { return c.Child.ID == g.ID })},
 		{"Stale", f.Stale},
-		{"Unaligned", s.Unaligned},
+		{"Unlinked", s.Unlinked},
 		{"Yellow", g.active() && g.health() == domain.HealthYellow},
 	} {
 		if r.flags {
@@ -455,11 +455,11 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 	if tiered < 2 {
 		t.Errorf("scenario 1: %d Active Platform Goals, want two to carry the second Dimension", tiered)
 	}
-	unaligned := o.find(active, func(g *e2eGoal) bool {
+	unlinked := o.find(active, func(g *e2eGoal) bool {
 		return !g.TopLevel && g.Owner.Email != departing.Owner.Email && len(g.parents) == 0
 	})
-	if unaligned == nil {
-		t.Fatal("scenario 1: no Unaligned Goal (unaligned)")
+	if unlinked == nil {
+		t.Fatal("scenario 1: no Unlinked Goal (unlinked)")
 	}
 	twoReasons := o.find(active, o.isStale, func(g *e2eGoal) bool {
 		return g.Owner.Email != departing.Owner.Email && g.team != "" && !g.DeliveryDate.IsZero() &&
@@ -484,7 +484,7 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 		t.Fatal("scenario 1: no Red Goal with a Date Slip of its delivery date (redSlipped)")
 	}
 
-	// Risks lists Stale, Unaligned and Schedule conflict Goals.
+	// Risks lists Stale, Unlinked and Schedule conflict Goals.
 	ctx := context.Background()
 	fs, err := o.h.Service.FreshnessSignals(ctx)
 	if err != nil {
@@ -494,16 +494,16 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 	if err != nil {
 		t.Fatalf("GraphSignals: %v", err)
 	}
-	if len(fs.Stale) == 0 || len(gs.Unaligned) == 0 || len(gs.ScheduleConflicts) == 0 {
-		t.Errorf("scenario 1: Risks has %d Stale, %d Unaligned and %d Schedule conflict Goals, want some of each",
-			len(fs.Stale), len(gs.Unaligned), len(gs.ScheduleConflicts))
+	if len(fs.Stale) == 0 || len(gs.Unlinked) == 0 || len(gs.ScheduleConflicts) == 0 {
+		t.Errorf("scenario 1: Risks has %d Stale, %d Unlinked and %d Schedule conflict Goals, want some of each",
+			len(fs.Stale), len(gs.Unlinked), len(gs.ScheduleConflicts))
 	}
 	// Narrowed to Platform, Risks has fewer rows than the whole org: some
 	// flagged Goal is on another team.
 	offPlatform := slices.ContainsFunc(fs.Stale, func(f domain.GoalFreshness) bool { return o.byID[f.Goal.ID].team != "Platform" }) ||
-		slices.ContainsFunc(gs.Unaligned, func(g domain.Goal) bool { return o.byID[g.ID].team != "Platform" })
+		slices.ContainsFunc(gs.Unlinked, func(g domain.Goal) bool { return o.byID[g.ID].team != "Platform" })
 	if !offPlatform {
-		t.Error("scenario 1: no Stale or Unaligned Goal off Platform, so narrowing Risks to Platform wouldn't narrow it")
+		t.Error("scenario 1: no Stale or Unlinked Goal off Platform, so narrowing Risks to Platform wouldn't narrow it")
 	}
 
 	// stale is under Waiting on a Check-in and not Placement and dates. On the
@@ -512,11 +512,11 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 	if got := o.riskReasons(t, stale); !slices.Equal(got, []string{"Milestone overdue", "Stale"}) {
 		t.Errorf("scenario 1: stale Goal %q is on Risks for %q, want Milestone overdue and Stale", stale.Title, got)
 	}
-	// unaligned is under Placement and dates and not Waiting on a Check-in,
+	// unlinked is under Placement and dates and not Waiting on a Check-in,
 	// even after the setup puts overdue past its Path to Green.
-	if got := o.riskReasons(t, unaligned); !slices.Equal(got, []string{"Unaligned"}) || unaligned == overdue {
-		t.Errorf("scenario 1: Unaligned Goal %q is on Risks for %q, or is the Goal the setup makes overdue (%t); want only Unaligned",
-			unaligned.Title, got, unaligned == overdue)
+	if got := o.riskReasons(t, unlinked); !slices.Equal(got, []string{"Unlinked"}) || unlinked == overdue {
+		t.Errorf("scenario 1: Unlinked Goal %q is on Risks for %q, or is the Goal the setup makes overdue (%t); want only Unlinked",
+			unlinked.Title, got, unlinked == overdue)
 	}
 	// twoReasons is one row with a chip for each of its two reasons.
 	if got := o.riskReasons(t, twoReasons); !slices.Equal(got, []string{"Schedule conflict", "Stale"}) {

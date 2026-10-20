@@ -25,20 +25,20 @@ templ topLevelControl(g domain.Goal) {
 }
 
 // graphSignalsPage lists the risks the Goal graph flags on its own, so
-// leadership sees them without anyone reporting them (CONTEXT.md: Unaligned).
+// leadership sees them without anyone reporting them (CONTEXT.md: Unlinked).
 templ graphSignalsPage(current *domain.Account, signals domain.GraphSignals, dates displayDates) {
 	@layout("Graph signals", current) {
 		<h1>Graph signals</h1>
 		<p>Risks the Goal graph flags that nobody reported.</p>
-		<section data-testid="unaligned-section">
-			<h2>Unaligned Goals</h2>
+		<section data-testid="unlinked-section">
+			<h2>Unlinked Goals</h2>
 			<p>Active Goals that contribute to no other Goal and aren't Top-level.</p>
-			<ul data-testid="unaligned-goals">
-				if len(signals.Unaligned) == 0 {
-					<li data-testid="no-unaligned">No Unaligned Goals.</li>
+			<ul data-testid="unlinked-goals">
+				if len(signals.Unlinked) == 0 {
+					<li data-testid="no-unlinked">No Unlinked Goals.</li>
 				}
-				for _, g := range signals.Unaligned {
-					<li data-testid="unaligned-goal">
+				for _, g := range signals.Unlinked {
+					<li data-testid="unlinked-goal">
 						@goalRef(g)
 						<span>
 							{ "— Owner " }
@@ -113,11 +113,11 @@ templ goalSignalsStyles() {
 // goalSignals flags, at the top of a Goal's page, the graph signals that touch
 // it, one banner each. It renders nothing when the graph flags nothing.
 templ goalSignals(signals domain.GoalSignals, dates displayDates) {
-	if signals.Unaligned || len(signals.ScheduleConflicts) > 0 || len(signals.HaltedParents) > 0 {
+	if signals.Unlinked || len(signals.ScheduleConflicts) > 0 || len(signals.HaltedParents) > 0 {
 		@goalSignalsStyles()
 		<section data-testid="goal-signals" aria-label="Graph signals" class="gp-signals">
-			if signals.Unaligned {
-				<p data-testid="goal-unaligned" class="alert lc" role="alert"><strong>Unaligned</strong><span>this Active Goal contributes to no other Goal and isn't Top-level.</span></p>
+			if signals.Unlinked {
+				<p data-testid="goal-unlinked" class="alert lc" role="alert"><strong>Unlinked</strong><span>this Active Goal contributes to no other Goal and isn't Top-level.</span></p>
 			}
 			for _, c := range signals.ScheduleConflicts {
 				<p data-testid="goal-schedule-conflict" class="alert lc" role="alert">

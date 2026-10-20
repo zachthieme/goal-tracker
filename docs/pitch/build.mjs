@@ -157,7 +157,7 @@ s = pres.addSlide({ masterName: "Content", sectionTitle: "Pitch" });
 s.addText("One mechanism, from weekly update to review", { placeholder: "title" });
 const steps = [
   { n: "1", head: "Owners check in weekly", body: "Health, a short status, and any date changes. A routine week is one click: No change." },
-  { n: "2", head: "Risks flags what needs attention", body: "Red, Stale, unaligned and conflicting goals, grouped by who has to act, each with one fix." },
+  { n: "2", head: "Risks flags what needs attention", body: "Red, Stale, unlinked and conflicting goals, grouped by who has to act, each with one fix." },
   { n: "3", head: "The Report writes itself", body: "Exceptions in full, on-track goals in one line each, with what changed since the last review." },
 ];
 steps.forEach((p, i) => {
@@ -224,7 +224,7 @@ s.addText("What's built, and what a pilot still needs", { placeholder: "title" }
 const cols = [
   { x: 0.6, mark: "green", head: "Working today", items: [
     "Goals, the links between them, and weekly check-ins",
-    "Risks: Stale, unaligned, schedule conflicts, ownerless",
+    "Risks: Stale, unlinked, schedule conflicts, ownerless",
     "Reports by rule or hand-picked, with Markdown and PDF",
     "Comments and Action Items on published reports",
     "Spreadsheet import to load an org's goals",

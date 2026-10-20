@@ -142,7 +142,7 @@ func TestARefusedSuggestionReRendersTheForm(t *testing.T) {
 	}
 }
 
-// Someone else's Unaligned Goal on the Risks page has Suggest a parent as its
+// Someone else's Unlinked Goal on the Risks page has Suggest a parent as its
 // Fix, and following it suggests a parent the same way.
 func TestSuggestingAParentFromTheRisksFix(t *testing.T) {
 	t.Parallel()

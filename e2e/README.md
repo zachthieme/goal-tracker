@@ -97,7 +97,7 @@ a Manager tree, so Orgs show up: the CEO has no Manager, the CTO, CPO and Admin
 report to the CEO, the Platform, Mobile and Data leads to the CTO, the
 Payments, Growth and Support leads to the CPO, and each team's people to their
 lead. Sign in as `ceo@` to see the whole company as one Org, or as a lead to
-see a team's. A fresh seed has Not Green (Red and Yellow), Stale, Unaligned and
+see a team's. A fresh seed has Not Green (Red and Yellow), Stale, Unlinked and
 Schedule conflict Goals on Risks. **Needs an Admin** is empty, and no Path to Green is overdue: every back-to-Green date is
 3–6 weeks ahead. A test that needs an overdue one makes it. The app accepts a
 back-to-Green date in the past.

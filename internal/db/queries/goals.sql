@@ -114,9 +114,9 @@ ORDER BY goal_title_revisions.created_at DESC, goal_title_revisions.id DESC;
 -- name: SetGoalTopLevel :exec
 UPDATE goals SET top_level = ? WHERE id = ?;
 
--- name: ListUnalignedGoals :many
+-- name: ListUnlinkedGoals :many
 -- Active Goals that contribute to no other Goal through an accepted link and
--- aren't Top-level (CONTEXT.md: Unaligned), newest first.
+-- aren't Top-level (CONTEXT.md: Unlinked), newest first.
 SELECT sqlc.embed(goals), sqlc.embed(accounts)
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id

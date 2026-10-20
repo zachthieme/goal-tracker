@@ -18,12 +18,12 @@ func (h *Harness) MarkTopLevel(admin domain.Account, g domain.Goal) domain.Goal 
 	return marked
 }
 
-// Unaligned returns the Unaligned Goals, failing the test on error.
-func (h *Harness) Unaligned() []domain.Goal {
+// Unlinked returns the Unlinked Goals, failing the test on error.
+func (h *Harness) Unlinked() []domain.Goal {
 	h.T.Helper()
-	goals, err := h.Service.UnalignedGoals(context.Background())
+	goals, err := h.Service.UnlinkedGoals(context.Background())
 	if err != nil {
-		h.T.Fatalf("UnalignedGoals: %v", err)
+		h.T.Fatalf("UnlinkedGoals: %v", err)
 	}
 	return goals
 }
