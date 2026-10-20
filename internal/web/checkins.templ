@@ -528,7 +528,7 @@ templ checkinSection(v goalView) {
 				<p>
 					if v.RolledUp.Present {
 						<strong>Rolled-up Health:</strong> <span data-testid="goal-rollup-health">{ v.RolledUp.Health }</span>
-						<span class="muted">(worst among Active children)</span>
+						<span class="muted">(lowest Health among Active children)</span>
 					}
 					@rolledUpCheckinOverdue(v.RolledUp)
 				</p>
@@ -559,7 +559,7 @@ templ statusCells(v goalView) {
 				<dt class="label">Rolled-up Health</dt>
 				<dd>
 					if v.RolledUp.Present {
-						<span class={ "badge", healthClass(v.RolledUp.Health) } title="Worst among Active children"><span class="dot"></span><span data-testid="goal-rollup-health">{ v.RolledUp.Health }</span></span>
+						<span class={ "badge", healthClass(v.RolledUp.Health) } title="Lowest Health among Active children"><span class="dot"></span><span data-testid="goal-rollup-health">{ v.RolledUp.Health }</span></span>
 					} else {
 						<span class="muted">—</span>
 					}

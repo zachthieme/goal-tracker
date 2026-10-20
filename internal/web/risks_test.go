@@ -428,6 +428,9 @@ func TestRisksPageListsEachFlaggedGoalOnce(t *testing.T) {
 	if !strings.Contains(page, `<div class="card"><table id="risks-table"`) {
 		t.Errorf("the risks table doesn't sit straight inside a card")
 	}
+	if want := `<tr><th>Health</th><th>Goal</th><th>Owner</th><th aria-label="Next step"></th></tr>`; !strings.Contains(page, want) {
+		t.Errorf("the risks table's head isn't Health, Goal, Owner and a Next step column:\n%s", page)
+	}
 	if rows := riskRows(page); len(rows) != 1 {
 		t.Fatalf("the Risks table has %d rows, want 1", len(rows))
 	}
@@ -503,9 +506,9 @@ func TestRisksPageMutesAGroupWithNoGoals(t *testing.T) {
 	}
 }
 
-// The Risks page heads with how many Goals need attention, worst first, in the
-// singular for one Goal, and no longer says what's going wrong.
-func TestRisksPageHeadsWithHowManyGoalsNeedAttention(t *testing.T) {
+// The Risks page heads with how many Goals there are to review, most urgent
+// first, in the singular for one Goal, and no longer says what's going wrong.
+func TestRisksPageHeadsWithHowManyGoalsToReview(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -517,8 +520,8 @@ func TestRisksPageHeadsWithHowManyGoalsNeedAttention(t *testing.T) {
 
 	page := getBody(t, client, ts.URL+"/risks?org=all")
 
-	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "><strong>1</strong> Goal needs attention. Worst first.") {
-		t.Errorf("header doesn't say 1 Goal needs attention, worst first: %s", head)
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "><strong>1</strong> Goal to review, most urgent first.") {
+		t.Errorf("header doesn't say 1 Goal to review, most urgent first: %s", head)
 	}
 	if strings.Contains(html.UnescapeString(page), "What's going wrong") {
 		t.Errorf("page still says what's going wrong")
@@ -528,8 +531,8 @@ func TestRisksPageHeadsWithHowManyGoalsNeedAttention(t *testing.T) {
 	h.Clock.Advance(10 * day)
 	page = getBody(t, client, ts.URL+"/risks?org=all")
 
-	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "><strong>2</strong> Goals need attention. Worst first.") {
-		t.Errorf("header doesn't say 2 Goals need attention, worst first: %s", head)
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "><strong>2</strong> Goals to review, most urgent first.") {
+		t.Errorf("header doesn't say 2 Goals to review, most urgent first: %s", head)
 	}
 }
 
@@ -609,7 +612,7 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks?org=all")
 
-	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>4</strong> Goals need attention.") {
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>4</strong> Goals to review,") {
 		t.Errorf("header does not count the 4 flagged Goals: %s", head)
 	}
 	last := -1
@@ -1226,7 +1229,7 @@ func TestRisksPageScopedToMine(t *testing.T) {
 	if hasRiskRow(page, other) {
 		t.Errorf("the page lists %q, which sam neither Owns nor is a Delegate on", other.Title)
 	}
-	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "<strong>2</strong> Goals need attention in Mine. Worst first.") {
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "<strong>2</strong> Goals to review in Mine, most urgent first.") {
 		t.Errorf("the count line doesn't count sam's 2 Goals in Mine: %s", head)
 	}
 	if card := pageElement(t, page, "a", "risks-group-owner"); !strings.Contains(card, `<span class="num">2</span>`) || !strings.Contains(card, "Check-in overdue · 2") {
@@ -1246,7 +1249,7 @@ func TestRisksPageScopedToMine(t *testing.T) {
 	page = getBody(t, client, ts.URL+"/risks?org=all")
 
 	riskRowOf(t, page, other)
-	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "<strong>3</strong> Goals need attention. Worst first.") {
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "<strong>3</strong> Goals to review, most urgent first.") {
 		t.Errorf("for Everyone, the count line doesn't count all 3 Goals: %s", head)
 	}
 	if _, value, label := scopeChoices(scopeSelect(t, page, "risks-scope")); value != "all" || label != "Everyone" {
@@ -1360,7 +1363,7 @@ func TestRisksPageScopedToADimensionValue(t *testing.T) {
 			t.Errorf("scoped to Platform, the page lists %q", g.Title)
 		}
 	}
-	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>1</strong> Goal needs attention.") {
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.Contains(head, "<strong>1</strong> Goal to review,") {
 		t.Errorf("scoped to Platform, the header doesn't count its 1 Goal: %s", head)
 	}
 	if card := pageElement(t, page, "a", "risks-group-owner"); !strings.Contains(card, `<span class="num">1</span>`) {
@@ -1800,8 +1803,8 @@ func TestRisksPageOpensOnTheViewersDefaultScope(t *testing.T) {
 		defaultTitles                    []string
 		mine                             string
 	}{
-		{"mia@example.com", strconv.FormatInt(org.Mia.ID, 10), "<strong>2</strong> Goals need attention in My org. Worst first.", []string{"Mia's goal", "Pia's goal"}, "Mia's goal"},
-		{"pia@example.com", "mine", "<strong>1</strong> Goal needs attention in Mine. Worst first.", []string{"Pia's goal"}, "Pia's goal"},
+		{"mia@example.com", strconv.FormatInt(org.Mia.ID, 10), "<strong>2</strong> Goals to review in My org, most urgent first.", []string{"Mia's goal", "Pia's goal"}, "Mia's goal"},
+		{"pia@example.com", "mine", "<strong>1</strong> Goal to review in Mine, most urgent first.", []string{"Pia's goal"}, "Pia's goal"},
 	} {
 		client := signInClient(t, ts.URL, viewer.email)
 		page := getBody(t, client, ts.URL+"/risks")
@@ -1895,7 +1898,7 @@ func TestRisksNeedsAnAdminIsCompanyWide(t *testing.T) {
 	if _, value, _ := scopeChoices(scopeSelect(t, page, "risks-scope")); value != "mine" {
 		t.Errorf("Needs an Admin with no scope shows %q chosen, want the Admin's default, Mine", value)
 	}
-	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "><strong>1</strong> Goal needs an Admin across the company. Worst first.") {
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "><strong>1</strong> Goal waiting on an Admin, most urgent first.") {
 		t.Errorf("Needs an Admin's header doesn't say 1 Goal needs an Admin across the company: %s", head)
 	}
 
@@ -2085,7 +2088,7 @@ func TestRisksPageScopedToMyOrg(t *testing.T) {
 	if strings.Contains(page, "rk-scope") || strings.Contains(page, "risks-scope-") {
 		t.Errorf("the Risks page still has a scope toggle")
 	}
-	if head := html.UnescapeString(pageElement(t, page, "p", "risks-attention")); !strings.HasSuffix(head, "</strong> Goals need attention. Worst first.") {
+	if head := html.UnescapeString(pageElement(t, page, "p", "risks-attention")); !strings.HasSuffix(head, "</strong> Goals to review, most urgent first.") {
 		t.Errorf("for Everyone, the count line changed: %s", head)
 	}
 
@@ -2093,7 +2096,7 @@ func TestRisksPageScopedToMyOrg(t *testing.T) {
 	if got, want := orgScopedRiskTitles(page, org.goals()...), []string{"Max's goal", "Mia's goal", "Pax's goal", "Pia's goal", "Vera's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Vera's My org: rows = %q, want %q", got, want)
 	}
-	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "<strong>5</strong> Goals need attention in My org. Worst first.") {
+	if head := pageElement(t, page, "p", "risks-attention"); !strings.HasSuffix(head, "<strong>5</strong> Goals to review in My org, most urgent first.") {
 		t.Errorf("Vera's My org: the count line doesn't count 5 Goals in My org: %s", head)
 	}
 	if _, value, label := scopeChoices(scopeSelect(t, page, "risks-scope")); value != strconv.FormatInt(org.Vera.ID, 10) || label != "My org" {
@@ -2141,7 +2144,7 @@ func TestRisksPageScopedToAnotherPersonsOrg(t *testing.T) {
 	if got, want := orgScopedRiskTitles(page, org.goals()...), []string{"Max's goal", "Pax's goal"}; !slices.Equal(got, want) {
 		t.Errorf("Max's org: rows = %q, want %q (Pax's Ownerless Goal, not Oz's that Pax is a Delegate on)", got, want)
 	}
-	if head := html.UnescapeString(pageElement(t, page, "p", "risks-attention")); !strings.HasSuffix(head, "<strong>2</strong> Goals need attention in Max Marsh's org. Worst first.") {
+	if head := html.UnescapeString(pageElement(t, page, "p", "risks-attention")); !strings.HasSuffix(head, "<strong>2</strong> Goals to review in Max Marsh's org, most urgent first.") {
 		t.Errorf("the count line doesn't name Max's org as its scope: %s", head)
 	}
 	orgSel = scopeSelect(t, page, "risks-scope")
@@ -2925,8 +2928,8 @@ var riskMeanings = []struct{ kind, name, means string }{
 	{"yellow", "Yellow", "Active Goals whose latest Check-in is Yellow."},
 	{"asks-for-help", "Asks for help", "Red or Yellow Goals whose Path to Green asks for help from the Owner's Manager, until the Owner unmarks it or the Goal is back to Green."},
 	{"checkin-overdue", "Check-in overdue", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
-	{"path-overdue", "Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green."},
-	{"milestone-overdue", "Milestone overdue", "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Green can't be repeated until the Owner responds."},
+	{"path-overdue", "Path to Green overdue", "Active Goals past their Path to Green's target date and not yet Green."},
+	{"milestone-overdue", "Milestone overdue", "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Owner confirms or updates the Health at the next Check-in."},
 	{"action-item-overdue", "Action Item overdue", "An Action Item about this Goal, raised in a Report, is past its due date."},
 	{"ownerless", "Ownerless", "Active Goals whose Owner has left the company and hasn't been replaced."},
 	{"unlinked", "Unlinked", "Active Goals that contribute to no other Goal and aren't Top-level."},

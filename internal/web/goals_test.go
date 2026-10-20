@@ -604,10 +604,10 @@ func rowTitles(rows []string, goals ...domain.Goal) []string {
 	return titles
 }
 
-// The Goal list is a table led by each Goal's Health, and problems sort to the
-// top: Red, then Ownerless, then Check-in overdue or Path to Green overdue,
-// then Yellow, then Green, then Goals with no Health, alphabetical within each
-// group.
+// The Goal list is a table led by each Goal's Health, and Goals that need a
+// decision or update come first: Red, then Ownerless, then Check-in overdue or
+// Path to Green overdue, then Yellow, then Green, then Goals with no Health,
+// alphabetical within each group.
 func TestGoalListSortsProblemsFirst(t *testing.T) {
 	t.Parallel()
 
@@ -1453,7 +1453,7 @@ func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 
 	page := getBody(t, client, ts.URL+"/goals")
 	head := pageElement(t, page, "header", "goals-head")
-	for _, want := range []string{"<h1>Goals</h1>", "Problems sort to the top."} {
+	for _, want := range []string{"<h1>Goals</h1>", "Goals that need a decision or update come first."} {
 		if !strings.Contains(head, want) {
 			t.Errorf("header lacks %q: %s", want, head)
 		}

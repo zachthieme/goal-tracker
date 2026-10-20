@@ -59,9 +59,9 @@ func TestAdminMarksAndUnmarksTopLevelOverHTTP(t *testing.T) {
 	}
 }
 
-// The Graph signals page lists the risks the graph flags on its own: Unlinked
-// Goals, children due later than their parents, and children of a parent that
-// is On Hold or Cancelled.
+// The Graph signals page lists the signals found in how Goals are linked and
+// dated: Unlinked Goals, children due later than their parents, and children
+// of a parent that is On Hold or Cancelled.
 func TestGraphSignalsPageListsRisks(t *testing.T) {
 	t.Parallel()
 
@@ -89,6 +89,10 @@ func TestGraphSignalsPageListsRisks(t *testing.T) {
 
 	client := signInClient(t, ts.URL, "sam@example.com")
 	page := getBody(t, client, ts.URL+"/signals")
+
+	if !strings.Contains(page, "<h1>Graph signals</h1><p>Signals found in how Goals are linked and dated.</p>") {
+		t.Errorf("Graph signals page doesn't say where its signals come from; body:\n%s", page)
+	}
 
 	unlinked := pageElement(t, page, "ul", "unlinked-goals")
 	if !strings.Contains(unlinked, navTo(loner.ID)) {

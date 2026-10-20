@@ -14,9 +14,10 @@ import (
 
 var pathDate = time.Date(2026, 6, 15, 0, 0, 0, 0, time.UTC)
 
-// The Goal page and the Check-in form show the Rolled-up Health — the worst
+// The Goal page and the Check-in form show the Rolled-up Health — the lowest
 // Owner-set Health among the Goal's Active children — next to the Owner-set
-// Health (ADR-0003).
+// Health (ADR-0003), saying it is the lowest among them. A Goal with no
+// Check-in of its own shows it the same way.
 func TestSmokeGoalPageShowsRolledUpHealth(t *testing.T) {
 	t.Parallel()
 
@@ -45,6 +46,17 @@ func TestSmokeGoalPageShowsRolledUpHealth(t *testing.T) {
 	}
 	if !strings.Contains(page, `data-testid="goal-rollup-health">Red`) {
 		t.Errorf("Goal page missing Rolled-up Health next to it; body:\n%s", page)
+	}
+	if cell := pageElement(t, page, "div", "goal-rollup-cell"); !strings.Contains(cell, `title="Lowest Health among Active children"`) {
+		t.Errorf("Rolled-up Health doesn't say it is the lowest among Active children: %s", cell)
+	}
+
+	quiet := h.ActiveGoal(sam, "Quiet parent", "It matters.")
+	quietChild := h.ActiveChildOf(sam, quiet, "Yellow work", "Yellow why it matters.")
+	h.Checkin(sam, quietChild.ID, domain.HealthYellow, "Slipping.", "Cut scope.", pathDate)
+	page = getBody(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, quiet.ID))
+	if !strings.Contains(page, `<span data-testid="goal-rollup-health">Yellow</span> <span class="muted">(lowest Health among Active children)</span>`) {
+		t.Errorf("Goal with no Check-in doesn't show its Rolled-up Health as the lowest among Active children; body:\n%s", page)
 	}
 }
 

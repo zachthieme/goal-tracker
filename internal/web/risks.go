@@ -310,23 +310,21 @@ func (p risksPageView) attentionCount() int {
 }
 
 // attention is the header's words after its count, naming Mine or the Org
-// the page is scoped to: "Goals need attention in My org. Worst first." On
-// Needs an Admin they name the company instead.
+// the page is scoped to: "Goals to review in My org, most urgent first." On
+// Needs an Admin they say the Goals wait on an Admin instead.
 func (p risksPageView) attention() string {
+	goals := "Goals"
+	if p.attentionCount() == 1 {
+		goals = "Goal"
+	}
 	if p.Group == riskGroupAdmin {
-		if p.attentionCount() == 1 {
-			return "Goal needs an Admin across the company. Worst first."
-		}
-		return "Goals need an Admin across the company. Worst first."
+		return goals + " waiting on an Admin, most urgent first."
 	}
 	in := ""
 	if name := p.Org.Name(); name != "" {
 		in = " in " + name
 	}
-	if p.attentionCount() == 1 {
-		return "Goal needs attention" + in + ". Worst first."
-	}
-	return "Goals need attention" + in + ". Worst first."
+	return goals + " to review" + in + ", most urgent first."
 }
 
 // riskChipClass is the class of a signal's chip on a group card, matching the
@@ -484,8 +482,8 @@ var riskDefinitions = []riskDefinition{
 	{"yellow", "Yellow", "Active Goals whose latest Check-in is Yellow."},
 	{"asks-for-help", "Asks for help", "Red or Yellow Goals whose Path to Green asks for help from the Owner's Manager, until the Owner unmarks it or the Goal is back to Green."},
 	{"checkin-overdue", "Check-in overdue", "Active Goals whose last Check-in, or activation if they have none, is older than their cadence."},
-	{"path-overdue", "Path to Green overdue", "Active Goals past their Path to Green's target date that still aren't Green."},
-	{"milestone-overdue", "Milestone overdue", "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Green can't be repeated until the Owner responds."},
+	{"path-overdue", "Path to Green overdue", "Active Goals past their Path to Green's target date and not yet Green."},
+	{"milestone-overdue", "Milestone overdue", "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Owner confirms or updates the Health at the next Check-in."},
 	{"action-item-overdue", "Action Item overdue", "An Action Item about this Goal, raised in a Report, is past its due date."},
 	{"ownerless", "Ownerless", "Active Goals whose Owner has left the company and hasn't been replaced."},
 	{"unlinked", "Unlinked", "Active Goals that contribute to no other Goal and aren't Top-level."},

@@ -727,7 +727,7 @@ func risksTable(current *domain.Account, today time.Time, here string, rows []ri
 			templ_7745c5c3_Var32 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<div class=\"card\"><table id=\"risks-table\" class=\"rk-table\" data-testid=\"risks-table\"><thead><tr><th>Health</th><th>Goal</th><th>Owner</th><th aria-label=\"Fix\"></th></tr></thead> <tbody>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<div class=\"card\"><table id=\"risks-table\" class=\"rk-table\" data-testid=\"risks-table\"><thead><tr><th>Health</th><th>Goal</th><th>Owner</th><th aria-label=\"Next step\"></th></tr></thead> <tbody>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

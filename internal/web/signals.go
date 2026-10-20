@@ -8,8 +8,8 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// handleGraphSignals shows the risks the Goal graph flags that nobody reported:
-// the Unlinked Goals, the schedule conflicts, and the Goals whose parent is On
+// handleGraphSignals shows the signals found in how Goals are linked and
+// dated: the Unlinked Goals, the schedule conflicts, and the Goals whose parent is On
 // Hold or Cancelled.
 func (s *Server) handleGraphSignals(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	signals, err := s.svc.GraphSignals(r.Context())
