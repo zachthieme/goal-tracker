@@ -182,7 +182,7 @@ func adminPage(current *domain.Account, dirSync *directorySyncView, links *passw
 				return templ_7745c5c3_Err
 			}
 			if len(departed) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<p data-testid=\"admin-departed-empty\" class=\"muted\">Nobody has left the company.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<p data-testid=\"admin-departed-empty\" class=\"muted\">No departed people.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

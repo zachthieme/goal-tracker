@@ -250,7 +250,7 @@ func (h goalHistory) reportChanges(b ReportBlock, since func(time.Time) bool, ba
 	}
 	switch days := h.deliveryMoveDays(since); {
 	case days > 0:
-		out = append(out, "Delivery date slipped "+changeDuration(days))
+		out = append(out, "Delivery date moved "+changeDuration(days)+" later")
 	case days < 0:
 		out = append(out, "Delivery date moved "+changeDuration(-days)+" earlier")
 	}

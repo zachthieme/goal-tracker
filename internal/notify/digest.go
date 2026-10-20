@@ -357,7 +357,7 @@ func (n *Notifier) digestBody(entries []digestEntry) string {
 		b.WriteString("\n")
 	}
 	if len(problems) > 0 {
-		b.WriteString("Goals contributing to yours that need your attention:\n\n")
+		b.WriteString("Updates on Goals contributing to yours:\n\n")
 		for _, p := range problems {
 			fmt.Fprintf(&b, "- %s, owned by %s, contributing to %s: %s\n  %s\n",
 				p.child.Title, people.Of(p.child.Owner), p.parent.Title, strings.Join(p.reasons, "; "), n.goalURL(p.child.ID))

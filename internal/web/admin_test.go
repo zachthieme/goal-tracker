@@ -156,8 +156,8 @@ func TestAdminPageListsDepartedPeople(t *testing.T) {
 	moved := h.ActiveGoal(sam, "Migrate displays", "Displays fail often.")
 	client := signInClient(t, ts.URL, "ada@example.com")
 
-	if list := pageElement(t, getBody(t, client, ts.URL+"/admin"), "section", "admin-departed"); !strings.Contains(list, `data-testid="admin-departed-empty"`) || !strings.Contains(list, "Nobody has left the company.") || !strings.Contains(list, "People who have left the company.") {
-		t.Errorf("with nobody Departed, the list doesn't say nobody has left the company:\n%s", list)
+	if list := pageElement(t, getBody(t, client, ts.URL+"/admin"), "section", "admin-departed"); !strings.Contains(list, `data-testid="admin-departed-empty"`) || !strings.Contains(list, "No departed people.") || !strings.Contains(list, "People who have left the company.") {
+		t.Errorf("with nobody Departed, the list doesn't say there are no departed people:\n%s", list)
 	}
 
 	for _, acc := range []domain.Account{sam, kim} {

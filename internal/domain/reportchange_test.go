@@ -73,10 +73,10 @@ func TestReportBlockSaysHowFarItsDeliveryDateMoved(t *testing.T) {
 		moves   []int
 		changes []string
 	}{
-		{name: "slipped three weeks in two moves", moves: []int{10, 11}, changes: []string{"Delivery date slipped 3 weeks"}},
-		{name: "slipped 17 days", moves: []int{17}, changes: []string{"Delivery date slipped 2 weeks"}},
-		{name: "slipped 13 days", moves: []int{13}, changes: []string{"Delivery date slipped 13 days"}},
-		{name: "slipped a day", moves: []int{1}, changes: []string{"Delivery date slipped 1 day"}},
+		{name: "slipped three weeks in two moves", moves: []int{10, 11}, changes: []string{"Delivery date moved 3 weeks later"}},
+		{name: "slipped 17 days", moves: []int{17}, changes: []string{"Delivery date moved 2 weeks later"}},
+		{name: "slipped 13 days", moves: []int{13}, changes: []string{"Delivery date moved 13 days later"}},
+		{name: "slipped a day", moves: []int{1}, changes: []string{"Delivery date moved 1 day later"}},
 		{name: "pulled in 5 days", moves: []int{-5}, changes: []string{"Delivery date moved 5 days earlier"}},
 		{name: "moved and back", moves: []int{7, -7}, changes: nil},
 	}

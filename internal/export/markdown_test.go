@@ -582,7 +582,7 @@ func TestMarkdownSaysWhatChangedOnABlock(t *testing.T) {
 		{
 			Goal:    domain.Goal{Title: "Launch in EU", WhyItMatters: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive, DeliveryDate: date(2026, 5, 1)},
 			Health:  domain.HealthRed,
-			Changes: []string{"Turned Red", "Delivery date slipped 3 weeks"},
+			Changes: []string{"Turned Red", "Delivery date moved 3 weeks later"},
 			Fields:  []domain.FieldValue{{Field: domain.Field{Name: "Tier"}, Value: "1"}},
 		},
 		{
@@ -592,7 +592,7 @@ func TestMarkdownSaysWhatChangedOnABlock(t *testing.T) {
 	}, nil)
 
 	got := export.Markdown(pub)
-	if want := "\n\nboss · Active · Health: **Red** · due 2026-05-01\n\n**Changed:** Turned Red · Delivery date slipped 3 weeks\n\n**Tier:** 1\n"; !strings.Contains(got, want) {
+	if want := "\n\nboss · Active · Health: **Red** · due 2026-05-01\n\n**Changed:** Turned Red · Delivery date moved 3 weeks later\n\n**Tier:** 1\n"; !strings.Contains(got, want) {
 		t.Errorf("Markdown lacks %q:\n%s", want, got)
 	}
 	if n := strings.Count(got, "**Changed:**"); n != 1 {
