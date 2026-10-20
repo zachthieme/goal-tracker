@@ -34,6 +34,13 @@ deliberately; don't override it on one page.
   in plain white (see § Accepted audit findings).
 - **Density:** generous. Cards use 24px padding, sections sit 20–32px apart,
   and everything aligns to a 4px grid.
+- **Cards are earned:** a card is for a form, a table, or a page's single
+  primary task list, the one thing the page is there for a person to do now.
+  Every other section is a plain section on the canvas: a heading over rows
+  separated by 1px `--color-border` hairlines, with no surface, border or
+  padding box. So the eye finds the page's job first, and the context around
+  it reads lighter. Home follows the rule (Needs you is its one card); other
+  pages are brought in line one at a time.
 - **Depth:** cards lie flat on the canvas, set off by their surface and a
   1px border. Only menus and popovers float, on `--shadow-pop`, so an open
   one reads as nearer than anything under it (see § Deviations 8).
@@ -354,9 +361,10 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   lighter in dark, so either way the edge stands further out from the card.
   A card's own heading is an `h3` (card title); `h2` is for page sections
   that sit outside cards.
-  A card is for something a person acts on or reads as a unit of status,
-  such as the Goal page's Check-in, each Metric and Milestones. Reference
-  blocks are not cards. On the Goal page these are Action Items, Highlights,
+  Where a card earns its place is § System: Cards are earned. The Goal page
+  predates that rule: there a card is for something a person acts on or
+  reads as a unit of status, such as the Check-in, each Metric and
+  Milestones, and reference blocks are not cards. On the Goal page these are Action Items, Highlights,
   Comments, History and the sidebar's blocks.
 - **Canvas block (`.ruled`):** a reference block sits on the canvas with no
   surface, border or shadow. A 1px `--color-border` rule sits above it with
@@ -634,18 +642,43 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     **Cancel** back to the Goal and **Submit check-in**, primary and 44px
     tall. At 600px and below Cancel hides (the breadcrumb goes back to the
     Goal), the summary drops to 13px and Submit check-in grows to 48px.
-- **Home's Needs you list (`homePage` in `home.templ`):** one card in the main
-  column holding everything waiting on the person, in four subgroups, each a
-  `.label` heading over ruled rows (`.hm-list`):
+- **Home (`homePage` in `home.templ`):** one column, read top to bottom: the
+  page head, then **Needs you**, its one card, then My org and Your goals
+  not Green, plain sections on the canvas (§ System: Cards are earned). A
+  plain section is an `h3` over a compact list (`.hm-section`), its first row
+  ruled off from the heading by a hairline as each row is from the next, so
+  the context headings stay quieter than the card's.
+  - **Page head:** **Your week** (H1), and under it the Your goals line
+    (`.hm-summary`), with **New goal** on the right. The line reads "Your
+    goals:", the Health distribution bar, then plain muted text, "1 Green ·
+    0 Yellow · 0 Red · Goals you own or help with →", counting the Goals the
+    person Owns, a Stale one under its last Health. **Goals you own or help
+    with →** opens the Goals list filtered to Mine (`/goals?org=mine`): the
+    Goals the person Owns or is a Delegate on. For someone who is a Delegate
+    on any Goal, the line ends "· Goals delegated to you N →", leading to the
+    Delegate page. The head carries no count of what needs the person: the
+    Needs you heading does.
+  - **Your goals not Green:** a plain section after My org listing the Goals
+    the person Owns that are Red, then Yellow, each its Health badge, muted
+    and dated "as of 9 days ago" when Stale, then its title. With none, the
+    section is left out.
+- **Home's Needs you list (in `homePage`):** the page's one card, holding
+  everything waiting on the person, titled with how many things that is
+  ("Needs you · 2", plain "Needs you" with nothing waiting), in four
+  subgroups, each a `.label` heading over ruled rows (`.hm-list`):
   - **Check-ins due:** the Goals the person owes a Check-in on, most overdue
-    first. Each row keeps its Health badge, its Stale mark, a secondary
-    **No change** and a primary **Check in**. A Stale Goal's Health is its
-    last Check-in's, so its badge is muted (`.badge.as-of`, Home's own rule:
-    card fill, muted ink, a 1px `--color-border` edge), keeping the Health's
-    name and dot shape, with a muted "as of 9 days ago" beside it. A Goal
-    that isn't Stale, or has no Health yet, keeps its full-colour badge and
-    no "as of". A Goal they are a Delegate on
-    carries a "for [Owner]" tag, and appears only here.
+    first. Each row leads with the Goal's title, linking to the Goal, over
+    one muted status line (`.hm-status`): the Health badge, "last check-in
+    14 days ago" ("no check-in since activation 9 days ago" before the
+    first), "every 7 days", the Stale mark when it applies and, for a Goal
+    they are a Delegate on, a "for [Owner]" tag. The age is said once, and
+    the age and the cadence each wrap whole. A secondary **No change** and a
+    primary **Check in** sit on the right. A Stale Goal's Health is its last
+    Check-in's, so its badge is muted (`.badge.as-of`, Home's own rule: card
+    fill, muted ink, a 1px `--color-border` edge), keeping the Health's name
+    and dot shape; the "last check-in" beside it dates it. A Goal that isn't
+    Stale, or has no Health yet, keeps its full-colour badge. A Goal they
+    are a Delegate on appears only here.
   - **Asks for help:** the open Asks for help addressed to the person (see
     CONTEXT.md: Ask for help), Red first, then Yellow, then by Goal title.
     Each row has the Goal's Health badge, then its title linking to the
@@ -671,43 +704,43 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     are made.
 
   A subgroup with nothing in it is left out, and with all four empty the card
-  shows one muted "You're all caught up." line. The summary under the page
-  title and the top bar's Home count both count every row. Goals the person is
-  a Delegate on aren't listed again elsewhere: the sidebar has one link to the
+  shows one muted "You're all caught up." line. The heading's count and the
+  top bar's Home count both count every row. Goals the person is a Delegate
+  on aren't listed again elsewhere: the Your goals line has one link to the
   Delegate page with their number, shown only above zero.
-- **Home's My org card (`homeOrgCard` in `home.templ`):** shown only to
+- **Home's My org section (`homeOrgCard` in `home.templ`):** shown only to
   someone with anyone under them by Manager, so never before a directory sync
-  (ADR 0008). It sits in the main column directly under Needs you, as its own
-  `card hm-card` titled **My org**, and counts what is in trouble in the
-  person's Org, leaving out the Goals they Own themselves, which Your goals
-  covers. A Goal is in the Org by its Owner, never its Delegates, and an
-  Ownerless Goal stays where its Departed Owner was. It lists people and
-  counts, never Goals:
-  - **Total line:** across everyone under the person, one badge per signal
-    with anything in it, in the order Red · Path to Green overdue · Stale ·
-    Yellow. Each reads as a count and a name ("2 Red", "1 Path to Green
-    overdue", "3 Stale", "1 Yellow"), so it reads without colour. Red and
-    Yellow take their Health's badge; Path to Green overdue and Stale take the
-    Stale mark's `badge st`, as on Risks. A Goal counts under every signal it
+  (ADR 0008). It sits directly under Needs you, a plain section titled **My
+  org**, and counts what is in trouble in the person's Org, leaving out the
+  Goals they Own themselves, which Your goals covers. A Goal is in the Org by
+  its Owner, never its Delegates, and an Ownerless Goal stays where its
+  Departed Owner was. It lists people and counts, never Goals:
+  - **Total line:** across everyone under the person, plain text, one count
+    per signal with anything in it, in the order Red · Path to Green overdue
+    · Stale · Yellow, separated by `·` ("2 Red · 1 Path to Green overdue · 3
+    Stale · 1 Yellow"). It is text, not badges, so the totals stand apart
+    from the per-person badges beneath. A Goal counts under every signal it
     has, so the counts can add up to more than the Goals behind them.
   - **Rows (`.hm-list.hm-compact`):** one per person directly under the
-    viewer whose Org has anything flagged: the person, a `badge lc`
-    "departed" beside a Departed one, their Org's badges in the same order,
-    and **Their org on Goals →** (`/goals?org=<their ID>`). The most Red
-    come first, then the most Path to Green overdue, the most Stale and the
-    most Yellow, then by Name. Someone further down counts in the row of the
-    person directly under the viewer they're under, so the rows add up to the
-    total.
+    viewer whose Org has anything flagged: the person's name, a link to their
+    Org on Goals (`/goals?org=<their ID>`, the name through `personPlain`,
+    email on hover), a `badge lc` "departed" beside a Departed one, then
+    their Org's badges in the same order. Each reads as a count and a name
+    ("1 Red"), so it reads without colour. Red and Yellow take their
+    Health's badge; Path to Green overdue and Stale take the Stale mark's
+    `badge st`, as on Risks. The most Red come first, then the most Path to
+    Green overdue, the most Stale and the most Yellow, then by Name. Someone
+    further down counts in the row of the person directly under the viewer
+    they're under, so the rows add up to the total.
   - **All clear:** the people directly under the viewer with nothing flagged
     share one muted line after the rows, "2 others all clear" ("1 other all
     clear"), left out when there are none. With nothing flagged anywhere,
-    the card shows only one muted "Everyone in My org is all clear." line.
-  - **Links:** the card ends with **My org on Goals →** and **My org on
-    Risks →** (`?org=<viewer ID>`), whose pages include the person's own
-    Goals.
+    the section shows only one muted "Everyone in My org is all clear." line.
+  - **Links:** the section ends with one line, **My org on Goals →** ·
+    **My org on Risks →** (`?org=<viewer ID>`), whose pages include the
+    person's own Goals.
 
-  The card adds nothing to Needs you, the summary under the page title or the
-  top bar's Home count.
+  The section adds nothing to Needs you or the top bar's Home count.
 - **Scope (Goals and Risks, `pageScopeSelect` in `scope.templ`):** the one
   select scoping the Goal list and the Risks page, submitted as `?org=`:
   **Everyone** (`all`), **Mine** (`mine`, the Goals the person Owns or is a
@@ -738,24 +771,15 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     Show everything. An Admin whose own scope has nothing flagged still sees
     the cards after the empty line while the company has a Goal that Needs an
     Admin.
-- **Health distribution bar (`.hm-bar`):** in Home's "Your goals", a 12px
-  `--radius-full` bar of the person's own Active Goals by Health, one equal
-  unit per Goal, Green then Yellow then Red. Units fill with the Health's
-  `--health-*-ink`, which keeps 3:1 on the card in both themes, and a 4px gap
-  of card shows where one Health's run gives way to the next. It counts Goals
-  and never aggregates Metrics (ADR 0003). Goals with no Health yet aren't
-  drawn, and with none to draw the bar is left out. The Health count badges
-  beneath it are its labels, so it reads without colour, and its `aria-label`
-  ("2 Green, 0 Yellow, 1 Red") says the same to a screen reader.
-- **Your goals panel (`homePage` in `home.templ`):** Home's sidebar card. The
-  Health distribution bar and the count badges count the Goals the person
-  Owns, a Stale one under its last Health. Beneath them a `.label` heading,
-  **Not Green**, styled like Needs you's subgroup headings, sits over a
-  compact list of those Goals that are Red, then Yellow. Their Health badges
-  are muted and dated when Stale, as in Check-ins due. With none, neither
-  heading nor list shows. The card ends with **Goals you own or help with →**,
-  which opens the Goals list filtered to Mine (`/goals?org=mine`): the Goals
-  the person Owns or is a Delegate on.
+- **Health distribution bar (`.hm-bar`):** on Home's Your goals line, a 96px
+  × 8px `--radius-full` bar of the person's own Active Goals by Health, one
+  equal unit per Goal, Green then Yellow then Red. Units fill with the
+  Health's `--health-*-ink`, which keeps 3:1 on the canvas in both themes,
+  and a 4px gap shows where one Health's run gives way to the next. It counts
+  Goals and never aggregates Metrics (ADR 0003). Goals with no Health yet
+  aren't drawn, and with none to draw the bar is left out. The counts beside
+  it on the line are its labels, so it reads without colour, and its
+  `aria-label` ("2 Green, 0 Yellow, 1 Red") says the same to a screen reader.
 - **Inputs:** `--color-surface`, 1px `--color-border-strong`, `--radius-md`,
   12px × 16px padding. On focus, the border becomes `--color-focus` and the
   field takes the same ring as everything else, `2px solid var(--color-focus)`,

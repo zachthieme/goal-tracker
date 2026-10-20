@@ -40,7 +40,90 @@ func homeRow(t *testing.T, section string, g domain.Goal) string {
 	return section[start : at+end]
 }
 
-// A Stale Goal the viewer Owns is listed under "Check in on these", saying how
+// needsYouHeading reads the Needs you card's heading, "" when Home has none.
+func needsYouHeading(page string) string {
+	if got := elementTexts(page, "h3", "home-needs-you-heading"); len(got) == 1 {
+		return got[0]
+	}
+	return ""
+}
+
+// The Needs you card's heading carries how many things need the viewer, so
+// the page head doesn't say it again under the title; with nothing waiting it
+// reads plain "Needs you" (#377).
+func TestHomeNeedsYouHeadingCarriesTheCount(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	h.Clock.Advance(10 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	if got := needsYouHeading(page); got != "Needs you · 2" {
+		t.Errorf("Needs you heading = %q, want %q", got, "Needs you · 2")
+	}
+	if strings.Contains(page, "home-summary") || strings.Contains(page, "things need you") {
+		t.Errorf("the page head still says how many things need sam:\n%s", pageElement(t, page, "header", "home-head"))
+	}
+
+	pat := getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/home")
+	if got := needsYouHeading(pat); got != "Needs you" {
+		t.Errorf("pat's Needs you heading = %q, want %q", got, "Needs you")
+	}
+}
+
+// Home is one column with one card, Needs you: My org and the viewer's Goals
+// that aren't Green are plain sections on the canvas, and Your goals is a
+// summary line in the page head, counting by Health and linking on (#377).
+func TestHomeIsOneColumnWithNeedsYouItsOnlyCard(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newHomeOrgFixture(h)
+	mine := h.ActiveGoal(f.lead, "Hire", "We need people.")
+	h.Checkin(f.lead, mine.ID, domain.HealthRed, "No offers.", "Raise the band.", h.Clock.Now().AddDate(0, 1, 0))
+
+	page := getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
+	main := between(t, page, "<main", "</main>")
+
+	var cards []string
+	for _, tag := range regexp.MustCompile(`<[a-z]+ [^>]*>`).FindAllString(main, -1) {
+		if hasClass(tag, "card") {
+			cards = append(cards, tag)
+		}
+	}
+	if len(cards) != 1 || !strings.Contains(cards[0], `data-testid="home-needs-you"`) {
+		t.Errorf("Home's cards = %q, want only Needs you", cards)
+	}
+	for _, testID := range []string{"home-org", "home-not-green"} {
+		if section := openTag(pageElement(t, main, "section", testID)); hasClass(section, "card") {
+			t.Errorf("%s is a card: %s", testID, section)
+		}
+	}
+	if strings.Contains(main, "<aside") {
+		t.Errorf("Home still has a side column:\n%s", main)
+	}
+
+	head := pageElement(t, page, "header", "home-head")
+	if got := elementTexts(page, "header", "home-head"); len(got) != 1 || got[0] != "Your week Your goals: 0 Green · 0 Yellow · 1 Red · Goals you own or help with → New goal" {
+		t.Errorf("page head reads %q, want the title over the Your goals line, beside New goal", got)
+	}
+	if !strings.Contains(head, `data-testid="home-your-goals"`) {
+		t.Errorf("Your goals isn't in the page head:\n%s", head)
+	}
+	if !strings.Contains(head, `<a href="/goals?org=mine">Goals you own or help with →</a>`) {
+		t.Errorf("page head's Your goals line doesn't link to the Goals the lead owns or helps with:\n%s", head)
+	}
+	if notGreen := pageElement(t, main, "section", "home-not-green"); !strings.Contains(notGreen, navTo(mine.ID)) {
+		t.Errorf("the lead's Red Goal isn't listed as not Green:\n%s", notGreen)
+	}
+}
+
+// A Stale Goal the viewer Owns is listed under "Check-ins due", saying how
 // long since its last Check-in against its cadence, flagged Stale, with a
 // one-click No change and a Check in link. Fresh Goals and other people's
 // Stale Goals aren't listed.
@@ -63,7 +146,6 @@ func TestHomeListsStaleGoalToCheckInOn(t *testing.T) {
 	due := pageElement(t, page, "ul", "home-due")
 	row := homeRow(t, due, stale)
 	for _, want := range []string{
-		"Last check-in 16 days ago on a 14-day cadence",
 		`data-testid="home-due-stale"`,
 		`data-testid="home-due-health"`,
 		fmt.Sprintf(`action="/goals/%d/checkins/no-change"`, stale.ID),
@@ -73,10 +155,39 @@ func TestHomeListsStaleGoalToCheckInOn(t *testing.T) {
 			t.Errorf("Stale Goal's row lacks %s:\n%s", want, row)
 		}
 	}
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || !strings.Contains(got[0], "last check-in 16 days ago · every 14 days") {
+		t.Errorf("Stale Goal's status line = %q, want how long since its last Check-in against its cadence", got)
+	}
 	for _, g := range []domain.Goal{fresh, others} {
 		if strings.Contains(due, navTo(g.ID)) {
 			t.Errorf("Check in on these lists %q, which isn't due for sam:\n%s", g.Title, due)
 		}
+	}
+}
+
+// A row in Check-ins due leads with the Goal's title, then one status line: its
+// Health, how long since its last Check-in, its cadence and, when it applies,
+// its Stale mark. The age is said once (#377).
+func TestHomeDueRowLeadsWithTheGoal(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	stale := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	setCadence(t, h, stale, 14)
+	h.Checkin(sam, stale.ID, domain.HealthYellow, "Slipping.", "Cut scope.", testsupport.Epoch.AddDate(0, 1, 0))
+	h.Clock.Advance(16 * day)
+
+	row := homeRow(t, pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due"), stale)
+	if title, health := strings.Index(row, navTo(stale.ID)), strings.Index(row, `data-testid="home-due-health"`); title > health {
+		t.Errorf("row doesn't lead with the Goal's title:\n%s", row)
+	}
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Yellow last check-in 16 days ago · every 14 days Stale" {
+		t.Errorf("row's status line = %q, want its Health, age, cadence and Stale mark:\n%s", got, row)
+	}
+	if n := strings.Count(row, "16 days ago"); n != 1 {
+		t.Errorf("row says the Goal's age %d times, want once:\n%s", n, row)
 	}
 }
 
@@ -103,7 +214,7 @@ func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
 
 	due := pageElement(t, page, "ul", "home-due")
 	row := homeRow(t, due, dueSoon)
-	if !strings.Contains(row, "Last check-in 8 days ago on a 14-day cadence") {
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Green last check-in 8 days ago · every 14 days" {
 		t.Errorf("due-soon Goal's row does not say why it's listed:\n%s", row)
 	}
 	if strings.Contains(row, `data-testid="home-due-stale"`) {
@@ -115,9 +226,9 @@ func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
 }
 
 // A Stale Goal's Health in Check-ins due is its last Check-in's, so it reads
-// as last reported: a muted badge naming just the Health, with "as of" how
-// long ago beside it, still flagged Stale. A due Goal that isn't Stale yet
-// keeps its full-colour badge and no "as of".
+// as last reported: a muted badge naming just the Health, dated by the "last
+// check-in" beside it, still flagged Stale, and with no "as of" to say the age
+// again. A due Goal that isn't Stale yet keeps its full-colour badge.
 func TestHomeDatesStaleGoalsHealth(t *testing.T) {
 	t.Parallel()
 
@@ -142,22 +253,21 @@ func TestHomeDatesStaleGoalsHealth(t *testing.T) {
 	if !regexp.MustCompile(`data-testid="home-due-health"[^>]*><span class="dot"></span>\s*Green\s*</span>`).MatchString(row) {
 		t.Errorf("Stale Goal's Health badge does not read just Green:\n%s", row)
 	}
-	if got := elementTexts(row, "span", "home-due-as-of"); len(got) != 1 || got[0] != "as of 9 days ago" {
-		t.Errorf("Stale Goal's Health is dated %q, want as of 9 days ago:\n%s", got, row)
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Green last check-in 9 days ago · every 7 days Stale" {
+		t.Errorf("Stale Goal's Health is dated %q, want by its last Check-in 9 days ago:\n%s", got, row)
 	}
 	if !strings.Contains(row, `data-testid="home-due-stale"`) {
 		t.Errorf("Stale Goal is no longer flagged Stale:\n%s", row)
 	}
 
 	row = homeRow(t, due, dueSoon)
-	if hasClass(tagAround(t, row, `data-testid="home-due-health"`), "as-of") || strings.Contains(row, `data-testid="home-due-as-of"`) {
-		t.Errorf("due Goal that isn't Stale has its Health dated:\n%s", row)
+	if hasClass(tagAround(t, row, `data-testid="home-due-health"`), "as-of") {
+		t.Errorf("due Goal that isn't Stale has its Health muted:\n%s", row)
 	}
 }
 
 // A Stale Goal never checked in on has no reported Health to date: its badge
-// reads "No Health yet", unmuted, with no "as of", since its days count from
-// activation.
+// reads "No Health yet", unmuted, and its days count from activation.
 func TestHomeLeavesNoHealthYetUndated(t *testing.T) {
 	t.Parallel()
 
@@ -175,8 +285,8 @@ func TestHomeLeavesNoHealthYetUndated(t *testing.T) {
 	if hasClass(badge, "as-of") || !strings.Contains(row, "No Health yet") {
 		t.Errorf("Goal with no Check-in doesn't read No Health yet, unmuted: %s", row)
 	}
-	if strings.Contains(row, `data-testid="home-due-as-of"`) {
-		t.Errorf("Goal with no Check-in has its Health dated:\n%s", row)
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "No Health yet no check-in since activation 9 days ago · every 7 days Stale" {
+		t.Errorf("Goal with no Check-in has status line %q, want its days counted from activation:\n%s", got, row)
 	}
 }
 
@@ -227,9 +337,9 @@ func TestHomeOffersNoChangeOnlyWithAPreviousCheckin(t *testing.T) {
 }
 
 // A Delegate checks in for the Owner, so a due Goal they're a Delegate on is
-// listed once, under "Check-ins due", tagged with whose it is. The sidebar
-// links to the Delegate page with how many Goals they're a Delegate on, in
-// place of a card listing them again; someone with none sees no such link.
+// listed once, under "Check-ins due", tagged with whose it is. The Your goals
+// line links to the Delegate page with how many Goals they're a Delegate on,
+// in place of a card listing them again; someone with none sees no such link.
 func TestHomeListsDelegatedGoalsOnce(t *testing.T) {
 	t.Parallel()
 
@@ -321,8 +431,8 @@ func TestHomeListsRequestsOldestFirst(t *testing.T) {
 
 	page := getBody(t, client, ts.URL+"/home")
 	requests := pageElement(t, page, "ul", "home-requests")
-	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "2 things need you") {
-		t.Errorf("summary = %s, want 2 things need you for the two Requests", got)
+	if got := needsYouHeading(page); got != "Needs you · 2" {
+		t.Errorf("Needs you heading = %q, want %q for the two Requests", got, "Needs you · 2")
 	}
 
 	if older, newer := strings.Index(requests, navTo(handed.ID)), strings.Index(requests, navTo(child.ID)); older < 0 || newer < 0 || older > newer {
@@ -444,9 +554,10 @@ func TestHomeOffersReviewForHandoffWithDelegates(t *testing.T) {
 	}
 }
 
-// The sidebar counts the viewer's own Active Goals by Health and lists the Red
-// and Yellow ones; Goals they're only a Delegate on aren't theirs to count.
-// The heading says how many things need them, beside a New goal link.
+// The Your goals line counts the viewer's own Active Goals by Health, and the
+// section after My org lists the Red and Yellow ones; Goals they're only a
+// Delegate on aren't theirs to count. Needs you's heading says how many things
+// need them, and the page head has a New goal link.
 func TestHomeSummarizesYourGoals(t *testing.T) {
 	t.Parallel()
 
@@ -477,7 +588,7 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 			t.Errorf("%s = %s, want %s", testID, got, want)
 		}
 	}
-	yours := pageElement(t, page, "section", "home-your-goals")
+	yours := pageElement(t, page, "section", "home-not-green")
 	for _, g := range []domain.Goal{yellow, red} {
 		if !strings.Contains(yours, navTo(g.ID)) {
 			t.Errorf("Your goals does not list %q:\n%s", g.Title, yours)
@@ -488,26 +599,27 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 			t.Errorf("Your goals lists %q, which isn't one of sam's Red or Yellow Goals:\n%s", g.Title, yours)
 		}
 	}
-	if !strings.Contains(yours, `<a href="/goals?org=mine">Goals you own or help with →</a>`) {
-		t.Errorf("Your goals does not link to the Goals sam owns or helps with:\n%s", yours)
+	line := between(t, page, `data-testid="home-your-goals"`, "</header>")
+	if !strings.Contains(line, `<a href="/goals?org=mine">Goals you own or help with →</a>`) {
+		t.Errorf("Your goals does not link to the Goals sam owns or helps with:\n%s", line)
 	}
-	if strings.Contains(yours, `href="/goals"`) {
-		t.Errorf("Your goals still links to every Goal in the org:\n%s", yours)
+	if strings.Contains(line, `href="/goals"`) {
+		t.Errorf("Your goals still links to every Goal in the org:\n%s", line)
 	}
 
 	// All four Goals were last checked in 2 days ago on a weekly cadence, so
 	// each is due before next week's reminder.
-	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "4 things need you") {
-		t.Errorf("summary = %s, want 4 things need you", got)
+	if got := needsYouHeading(page); got != "Needs you · 4" {
+		t.Errorf("Needs you heading = %q, want %q", got, "Needs you · 4")
 	}
 	if head := pageElement(t, page, "header", "home-head"); !strings.Contains(head, ">New goal</a>") {
 		t.Errorf("heading has no New goal link:\n%s", head)
 	}
 }
 
-// "Your goals" lists the viewer's Red and Yellow Goals under a "Not Green"
+// Home lists the viewer's Red and Yellow Goals under a "Your goals not Green"
 // heading, Red first, so the list doesn't read as all their Goals. With only
-// Green Goals there is neither heading nor list.
+// Green Goals there is no such section.
 func TestHomeHeadsNotGreenGoals(t *testing.T) {
 	t.Parallel()
 
@@ -523,16 +635,15 @@ func TestHomeHeadsNotGreenGoals(t *testing.T) {
 	green := h.ActiveGoal(kim, "Ship search", "People can't find things.")
 	h.Checkin(kim, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
 
-	yours := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-your-goals")
-	heading := strings.Index(yours, `<h4 class="label">Not Green</h4>`)
+	yours := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-not-green")
+	heading := strings.Index(yours, `<h3>Your goals not Green</h3>`)
 	first, second := strings.Index(yours, navTo(red.ID)), strings.Index(yours, navTo(yellow.ID))
 	if heading < 0 || first < heading || second < first {
 		t.Errorf("Your goals does not list Red then Yellow under a Not Green heading:\n%s", yours)
 	}
 
-	kims := pageElement(t, getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home"), "section", "home-your-goals")
-	if strings.Contains(kims, "Not Green") || strings.Contains(kims, "hm-compact") {
-		t.Errorf("kim has only Green Goals but sees a Not Green list:\n%s", kims)
+	if kims := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home"); strings.Contains(kims, "home-not-green") || strings.Contains(kims, "not Green") {
+		t.Errorf("kim has only Green Goals but sees a not Green list:\n%s", kims)
 	}
 }
 
@@ -552,7 +663,7 @@ func TestHomeDatesStaleNotGreenHealth(t *testing.T) {
 	fresh := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
 	h.Checkin(sam, fresh.ID, domain.HealthYellow, "Slipping.", "Cut scope.", target)
 
-	yours := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-your-goals")
+	yours := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-not-green")
 
 	row := homeRow(t, yours, stale)
 	if badge := tagAround(t, row, `data-testid="home-goal-health"`); !hasClass(badge, "as-of") {
@@ -568,7 +679,7 @@ func TestHomeDatesStaleNotGreenHealth(t *testing.T) {
 	}
 }
 
-// "Your goals" draws the viewer's own Active Goals by Health as a segmented
+// The Your goals line draws the viewer's own Active Goals by Health as a segmented
 // bar, one unit a Goal, Green then Yellow then Red, labelled with each count
 // so it reads without colour. It counts Goals, not Metrics (ADR 0003), and
 // leaves out Goals with no Health yet and those the viewer is only a Delegate
@@ -828,8 +939,8 @@ func TestHomeListsParentSuggestionsToDecide(t *testing.T) {
 
 	client := signInClient(t, ts.URL, "sam@example.com")
 	page := getBody(t, client, ts.URL+"/home")
-	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "1 thing needs you") {
-		t.Errorf("summary = %s, want 1 thing needs you for the suggestion", got)
+	if got := needsYouHeading(page); got != "Needs you · 1" {
+		t.Errorf("Needs you heading = %q, want %q for the suggestion", got, "Needs you · 1")
 	}
 	row := homeRow(t, pageElement(t, page, "ul", "home-requests"), goal)
 	for _, want := range []string{"Pat Lee", navTo(parent.ID), "displays cause outages"} {
@@ -945,13 +1056,13 @@ func TestNavOrderForAnAdmin(t *testing.T) {
 	}
 }
 
-// homeOrgCard is Home's My org card, failing the test when Home has none.
-func homeOrgCard(t *testing.T, page string) string {
+// homeOrgSection is Home's My org section, failing the test when Home has none.
+func homeOrgSection(t *testing.T, page string) string {
 	t.Helper()
 	return pageElement(t, page, "section", "home-org")
 }
 
-// Home shows a My org card only to someone with anyone under them by
+// Home shows a My org section only to someone with anyone under them by
 // Manager: not when no directory has synced any Managers, not to someone with
 // no one under them, and not to someone who manages only themselves. It sits
 // in the main column, under Needs you.
@@ -975,13 +1086,12 @@ func TestHomeShowsMyOrgOnlyToSomeoneWithPeopleUnderThem(t *testing.T) {
 	}
 
 	page := getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
-	card := homeOrgCard(t, page)
+	card := homeOrgSection(t, page)
 	if !strings.Contains(card, "<h3>My org</h3>") {
-		t.Errorf("My org card isn't titled My org:\n%s", card)
+		t.Errorf("My org section isn't titled My org:\n%s", card)
 	}
-	needsYou, org, aside := strings.Index(page, `data-testid="home-needs-you"`), strings.Index(page, `data-testid="home-org"`), strings.Index(page, "<aside")
-	if needsYou >= org || org >= aside {
-		t.Errorf("My org isn't in the main column under Needs you: needs-you at %d, my org at %d, aside at %d", needsYou, org, aside)
+	if needsYou, org := strings.Index(page, `data-testid="home-needs-you"`), strings.Index(page, `data-testid="home-org"`); needsYou >= org {
+		t.Errorf("My org isn't under Needs you: needs-you at %d, my org at %d", needsYou, org)
 	}
 }
 
@@ -1002,7 +1112,7 @@ func homeOrgCounts(section string) []string {
 	}
 }
 
-// homeOrgRows are the My org card's rows, one per flagged person, in order.
+// homeOrgRows are the My org section's rows, one per flagged person, in order.
 func homeOrgRows(card string) []string {
 	var out []string
 	for rest := card; ; {
@@ -1047,12 +1157,57 @@ func newHomeOrgFixture(h *testsupport.Harness) homeOrgFixture {
 	return f
 }
 
+// orgPersonLink is the link a My org row's person is shown by, to their Org
+// on Goals, failing the test when the row has none.
+func orgPersonLink(t *testing.T, row string) string {
+	t.Helper()
+	return pageElement(t, row, "a", "home-org-person-link")
+}
+
+// In My org each person's name is the link to their Org on Goals, so no row
+// repeats a "Their org on Goals" link, and the total line is plain text, set
+// apart from the rows' badges (#377).
+func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newHomeOrgFixture(h)
+
+	card := homeOrgSection(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
+	rows := homeOrgRows(card)
+	if len(rows) != 2 {
+		t.Fatalf("My org has %d rows, want Ana's and Ben's:\n%s", len(rows), card)
+	}
+	for i, who := range []domain.Account{f.ana, f.ben} {
+		link := orgPersonLink(t, rows[i])
+		if href := attr(openTag(link), "href"); href != fmt.Sprintf("/goals?org=%d", who.ID) {
+			t.Errorf("%s's name links to %q, want their org on Goals", who.Name, href)
+		}
+		if got := elementTexts(rows[i], "a", "home-org-person-link"); len(got) != 1 || got[0] != who.Name {
+			t.Errorf("%s's link reads %q, want their name", who.Name, got)
+		}
+	}
+	if strings.Contains(card, "Their org on Goals") {
+		t.Errorf("My org still links each row to Their org on Goals:\n%s", card)
+	}
+
+	total := pageElement(t, card, "p", "home-org-total")
+	if got := elementTexts(card, "p", "home-org-total"); len(got) != 1 || got[0] != "2 Red · 1 Path to Green overdue · 1 Stale · 1 Yellow" {
+		t.Errorf("total line reads %q", got)
+	}
+	if strings.Contains(total, "badge") {
+		t.Errorf("total line is chips, not text:\n%s", total)
+	}
+}
+
 // My org's total line counts, across everyone under the viewer, each signal
 // that has anything, labelled so it reads without colour, in the order Red,
 // Path to Green overdue, Stale, Yellow. Each person directly under the viewer
-// with anything flagged gets a row with their whole Org's counts, worst off
-// first, linking to Goals scoped to their Org; someone two levels down counts
-// in the row of the person they're under. The card lists no Goals.
+// with anything flagged gets a row with their whole Org's counts as badges,
+// worst off first, their name linking to Goals scoped to their Org; someone
+// two levels down counts in the row of the person they're under. The section
+// lists no Goals.
 func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 	t.Parallel()
 
@@ -1060,21 +1215,21 @@ func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 	ts := newServer(t, h)
 	f := newHomeOrgFixture(h)
 
-	card := homeOrgCard(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
+	card := homeOrgSection(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
 	total := pageElement(t, card, "p", "home-org-total")
 	wantTotal := []string{"red: 2 Red", "path-overdue: 1 Path to Green overdue", "stale: 1 Stale", "yellow: 1 Yellow"}
 	if got := homeOrgCounts(total); !slices.Equal(got, wantTotal) {
 		t.Errorf("total line = %v, want %v", got, wantTotal)
 	}
-	for _, want := range []string{`data-kind="red" class="badge r"`, `data-kind="path-overdue" class="badge st"`, `data-kind="stale" class="badge st"`, `data-kind="yellow" class="badge y"`} {
-		if !strings.Contains(total, want) {
-			t.Errorf("total line lacks %s:\n%s", want, total)
-		}
-	}
 
 	rows := homeOrgRows(card)
 	if len(rows) != 2 {
 		t.Fatalf("My org has %d rows, want Ana's and Ben's:\n%s", len(rows), card)
+	}
+	for _, want := range []string{`data-kind="red" class="badge r"`, `data-kind="path-overdue" class="badge st"`, `data-kind="stale" class="badge st"`, `data-kind="yellow" class="badge y"`} {
+		if !strings.Contains(rows[0], want) {
+			t.Errorf("Ana's row lacks %s:\n%s", want, rows[0])
+		}
 	}
 	for i, want := range []struct {
 		who    domain.Account
@@ -1083,7 +1238,7 @@ func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 		{f.ana, []string{"red: 1 Red", "path-overdue: 1 Path to Green overdue", "stale: 1 Stale", "yellow: 1 Yellow"}},
 		{f.ben, []string{"red: 1 Red"}},
 	} {
-		if !strings.Contains(rows[i], shownAs(want.who.Email, want.who.Name)) {
+		if !strings.Contains(orgPersonLink(t, rows[i]), want.who.Name) {
 			t.Errorf("row %d isn't %s's:\n%s", i, want.who.Name, rows[i])
 		}
 		if got := homeOrgCounts(rows[i]); !slices.Equal(got, want.counts) {
@@ -1094,7 +1249,7 @@ func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 		}
 	}
 	if strings.Contains(card, "Cy") {
-		t.Errorf("Cy, two levels down, appears on the card:\n%s", card)
+		t.Errorf("Cy, two levels down, appears on the section:\n%s", card)
 	}
 	for _, href := range []string{fmt.Sprintf(`href="/goals?org=%d"`, f.lead.ID), fmt.Sprintf(`href="/risks?org=%d"`, f.lead.ID)} {
 		if !strings.Contains(card, href) {
@@ -1135,7 +1290,7 @@ func TestHomeMyOrgCountsThoseAllClearInOneLine(t *testing.T) {
 				h.Checkin(fine, g.ID, domain.HealthGreen, "Fine.", "", time.Time{})
 			}
 
-			card := homeOrgCard(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
+			card := homeOrgSection(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
 			if rows := homeOrgRows(card); len(rows) != 2 {
 				t.Errorf("My org has %d rows, want only the 2 flagged people's", len(rows))
 			}
@@ -1176,7 +1331,7 @@ func TestHomeMyOrgSaysWhenEveryoneIsAllClear(t *testing.T) {
 	own := h.ActiveGoal(lead, "Set strategy", "No direction.")
 	h.Checkin(lead, own.ID, domain.HealthRed, "Stuck.", "Offsite.", h.Clock.Now().AddDate(0, 1, 0))
 
-	card := homeOrgCard(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
+	card := homeOrgSection(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
 	allClear := pageElement(t, card, "p", "home-org-all-clear")
 	if !strings.Contains(allClear, ">Everyone in My org is all clear.") || !strings.Contains(openTag(allClear), "muted") {
 		t.Errorf("all-clear line = %s, want a muted %q", allClear, "Everyone in My org is all clear.")
@@ -1209,11 +1364,11 @@ func TestHomeMyOrgMarksADepartedPerson(t *testing.T) {
 		t.Fatalf("MarkDeparted: %v", err)
 	}
 
-	rows := homeOrgRows(homeOrgCard(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")))
+	rows := homeOrgRows(homeOrgSection(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")))
 	if len(rows) != 2 {
 		t.Fatalf("My org has %d rows, want Ana's and Ben's", len(rows))
 	}
-	if !strings.Contains(rows[1], shownAs(f.ben.Email, f.ben.Name)) || !strings.Contains(rows[1], `data-testid="home-org-departed"`) {
+	if !strings.Contains(orgPersonLink(t, rows[1]), f.ben.Name) || !strings.Contains(rows[1], `data-testid="home-org-departed"`) {
 		t.Errorf("Ben's row isn't marked departed:\n%s", rows[1])
 	}
 	if strings.Contains(rows[0], "home-org-departed") {
@@ -1232,12 +1387,12 @@ func TestHomeMyOrgAddsNothingToNeedsYou(t *testing.T) {
 	newHomeOrgFixture(h)
 
 	page := getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
-	homeOrgCard(t, page)
+	homeOrgSection(t, page)
 	if !strings.Contains(page, `data-testid="home-caught-up"`) || !strings.Contains(page, "You're all caught up.") {
 		t.Errorf("Needs you isn't caught up with only the Org's Goals Red")
 	}
-	if summary := pageElement(t, page, "p", "home-summary"); !strings.Contains(summary, "0 things need you") {
-		t.Errorf("summary = %s, want 0 things need you", summary)
+	if got := needsYouHeading(page); got != "Needs you" {
+		t.Errorf("Needs you heading = %q, want %q", got, "Needs you")
 	}
 	if home := pageElement(t, page, "a", "nav-home"); strings.Contains(home, "count") {
 		t.Errorf("Home's nav item counts the Org's Goals: %s", home)
@@ -1403,8 +1558,8 @@ func TestHomeCountsOpenActionItems(t *testing.T) {
 	f.raise(f.sam, "Send the vendor plan.", 7, 0)
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
-	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "1 thing needs you") {
-		t.Errorf("summary = %s, want 1 thing needs you for the Action Item", got)
+	if got := needsYouHeading(page); got != "Needs you · 1" {
+		t.Errorf("Needs you heading = %q, want %q for the Action Item", got, "Needs you · 1")
 	}
 	if home := pageElement(t, page, "a", "nav-home"); !strings.Contains(home, `<span class="count needs-you">1</span>`) {
 		t.Errorf("top bar's Home does not count the Action Item: %s", home)
@@ -1528,8 +1683,8 @@ func TestHomeListsAsksForHelpAddressedToTheViewer(t *testing.T) {
 			t.Errorf("row %d doesn't name the Owner who asked:\n%s", i, row)
 		}
 	}
-	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "2 things need you") {
-		t.Errorf("summary = %s, want 2 things need you for the two asks", got)
+	if got := needsYouHeading(page); got != "Needs you · 2" {
+		t.Errorf("Needs you heading = %q, want %q for the two asks", got, "Needs you · 2")
 	}
 	if home, _ := topBarCounts(t, getBody(t, miaClient, ts.URL+"/goals")); !strings.Contains(home, `<span class="count needs-you">2</span>`) {
 		t.Errorf("top bar's Home = %s, want a count of 2", home)
