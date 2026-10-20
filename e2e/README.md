@@ -135,7 +135,9 @@ goal form's Milestone and Metric editor with script on: + Milestone
 and + Metric, each editor's Save and the fields it waits for, the items with
 Edit, Cancel and Remove, the Ready card's "Save the Milestone you started",
 Enter in an editor, a refused submit reopening its editor, and Finish defining
-adding to a Goal's existing Milestone.
+adding to a Goal's existing Milestone. With two refused editors open, it checks
+where focus goes after Cancel and Save, and that the Milestones label waits for
+a saved item.
 
 ## Conventions for the scenario specs
 

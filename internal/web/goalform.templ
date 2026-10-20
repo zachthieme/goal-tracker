@@ -466,10 +466,12 @@ templ goalFormRowInput(v goalFormView, label, kind, input, value string) {
 // the item it edits; Edit swaps an item for an editor in place, and Remove
 // drops it. One editor is open at a time: while any is, the add and Edit
 // buttons are disabled, the first carries goalFormEditorID, and Enter in it
-// presses Save rather than submitting the form. Each change is posted to the
-// live checklist, which asks for an open editor to be saved. A Metric's
-// Direction shows only while its baseline equals its target, and posts only
-// then.
+// presses Save rather than submitting the form. Save, Cancel and Remove hand
+// focus to the item's Edit or the add button, or, while another editor is
+// still open, to that editor. Each section's label shows only while it has a
+// saved item. Each change is posted to the live checklist, which asks for an
+// open editor to be saved. A Metric's Direction shows only while its baseline
+// equals its target, and posts only then.
 templ goalFormRowsScript() {
 	<script>
 		(function () {
@@ -648,7 +650,7 @@ templ goalFormRowsScript() {
 					el.querySelector("[data-measure-save]").disabled = !ready(el);
 				});
 				know.querySelectorAll("[data-measure-label]").forEach(function (label) {
-					label.hidden = rows(label.getAttribute("data-measure-label")).children.length === 0;
+					label.hidden = !rows(label.getAttribute("data-measure-label")).querySelector(".ie-item");
 				});
 			}
 
@@ -659,11 +661,26 @@ templ goalFormRowsScript() {
 				know.dispatchEvent(new Event("change", { bubbles: true }));
 			}
 
+			// nextEditor is the open editor after el, in document order,
+			// wrapping to the first; null when el is the only one.
+			function nextEditor(el) {
+				var open = Array.prototype.filter.call(know.querySelectorAll("[data-measure-editor]"), function (o) {
+					return o !== el;
+				});
+				var after = open.filter(function (o) {
+					return el.compareDocumentPosition(o) & Node.DOCUMENT_POSITION_FOLLOWING;
+				});
+				return after[0] || open[0] || null;
+			}
+
 			// settle hands focus to el's Edit, or to section's add button
-			// when there is no item to edit.
-			function settle(el, section) {
+			// when there is no item to edit; while another editor is open,
+			// which disables both, to following's first field instead.
+			function settle(el, section, following) {
 				var edit = el && el.querySelector("[data-measure-edit]");
-				(edit || addButton(section)).focus();
+				var target = edit || addButton(section);
+				if (target.disabled && following) target = following.querySelector("input:not([type=hidden])");
+				target.focus();
 			}
 
 			know.addEventListener("input", refresh);
@@ -688,6 +705,7 @@ templ goalFormRowsScript() {
 				}
 				var el = e.target.closest("[data-measure-editor], .ie-item");
 				if (!el || !e.target.closest("button")) return;
+				var following = nextEditor(el);
 				if (e.target.closest("[data-measure-save]")) {
 					if (!ready(el)) return;
 					var saved = item(el.section, el.index, editorValues(el));
@@ -698,12 +716,12 @@ templ goalFormRowsScript() {
 						el.replaceWith(saved);
 					}
 					changed();
-					settle(saved, el.section);
+					settle(saved, el.section, following);
 				} else if (e.target.closest("[data-measure-cancel]")) {
 					if (el.restore) el.replaceWith(el.restore);
 					else el.remove();
 					changed();
-					settle(el.restore, el.section);
+					settle(el.restore, el.section, following);
 				} else if (e.target.closest("[data-measure-edit]")) {
 					var editing = openEditor(el.section, el.index, el.values, el);
 					el.replaceWith(editing);
@@ -712,7 +730,7 @@ templ goalFormRowsScript() {
 				} else if (e.target.closest("[data-measure-remove]")) {
 					el.remove();
 					changed();
-					settle(null, el.section);
+					settle(null, el.section, following);
 				}
 			});
 		})();
