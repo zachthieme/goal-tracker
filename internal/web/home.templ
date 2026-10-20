@@ -130,27 +130,33 @@ templ homeYourGoals(v homeView) {
 }
 
 // homeOrgCard is the My org section, a plain section on the canvas: counts and
-// people, never Goals, with links on to the Org's Goals and Risks for the
-// detail.
+// people, never Goals. The total line is plain text, set apart from the
+// badges counting each person's Org, and each person's name leads to their
+// Org on Goals; the section ends with links on to the whole Org's Goals and
+// Risks for the detail.
 templ homeOrgCard(org homeOrg) {
 	<section data-testid="home-org" class="hm-section">
 		<h3>My org</h3>
 		if org.Total.Any() {
-			<p data-testid="home-org-total" class="hm-counts">
-				@homeOrgCounts(org.Total)
+			<p data-testid="home-org-total">
+				for i, b := range homeOrgBadges(org.Total) {
+					if i > 0 {
+						{ " · " }
+					}
+					<span data-testid="home-org-count" data-kind={ b.Kind }>{ b.Label }</span>
+				}
 			</p>
 			<ul class="hm-list hm-compact">
 				for _, p := range org.Flagged {
 					<li data-testid="home-org-person">
 						<div class="hm-what">
-							@person(p.Person)
+							<a data-testid="home-org-person-link" href={ templ.SafeURL(fmt.Sprintf("/goals?org=%d", p.Person.ID)) }>
+								@personPlain(p.Person)
+							</a>
 							if p.Person.Departed {
 								<span data-testid="home-org-departed" class="badge lc">departed</span>
 							}
 							@homeOrgCounts(p.Counts)
-						</div>
-						<div class="hm-actions">
-							<a href={ templ.SafeURL(fmt.Sprintf("/goals?org=%d", p.Person.ID)) }>Their org on Goals →</a>
 						</div>
 					</li>
 				}
@@ -169,8 +175,9 @@ templ homeOrgCard(org homeOrg) {
 	</section>
 }
 
-// homeOrgCounts badges each of a My org count that has anything, labelled to
-// read without colour, Red, then Path to Green overdue, Stale and Yellow.
+// homeOrgCounts badges each of a My org row's counts that has anything,
+// labelled to read without colour, Red, then Path to Green overdue, Stale and
+// Yellow.
 templ homeOrgCounts(c domain.SignalCounts) {
 	for _, b := range homeOrgBadges(c) {
 		<span data-testid="home-org-count" data-kind={ b.Kind } class={ "badge", b.Class }>{ b.Label }</span>
@@ -373,7 +380,6 @@ templ homeStyles() {
 		.hm-actions form{margin:0}
 		.rp-inline-form{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
 		.rp-inline-form label{display:flex;flex-direction:column;gap:4px;font-size:13px;font-weight:600}
-		.hm-counts{display:flex;flex-wrap:wrap;gap:8px}
 		.hm-bar{display:flex;flex:none;width:96px;height:8px;border-radius:var(--radius-full);overflow:hidden}
 		.hm-bar>span{flex:1 1 0;min-width:2px}
 		.hm-bar>.g{background:var(--health-g-ink)}

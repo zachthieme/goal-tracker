@@ -1154,12 +1154,57 @@ func newHomeOrgFixture(h *testsupport.Harness) homeOrgFixture {
 	return f
 }
 
+// orgPersonLink is the link a My org row's person is shown by, to their Org
+// on Goals, failing the test when the row has none.
+func orgPersonLink(t *testing.T, row string) string {
+	t.Helper()
+	return pageElement(t, row, "a", "home-org-person-link")
+}
+
+// In My org each person's name is the link to their Org on Goals, so no row
+// repeats a "Their org on Goals" link, and the total line is plain text, set
+// apart from the rows' badges (#377).
+func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newHomeOrgFixture(h)
+
+	card := homeOrgCard(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
+	rows := homeOrgRows(card)
+	if len(rows) != 2 {
+		t.Fatalf("My org has %d rows, want Ana's and Ben's:\n%s", len(rows), card)
+	}
+	for i, who := range []domain.Account{f.ana, f.ben} {
+		link := orgPersonLink(t, rows[i])
+		if href := attr(openTag(link), "href"); href != fmt.Sprintf("/goals?org=%d", who.ID) {
+			t.Errorf("%s's name links to %q, want their org on Goals", who.Name, href)
+		}
+		if got := elementTexts(rows[i], "a", "home-org-person-link"); len(got) != 1 || got[0] != who.Name {
+			t.Errorf("%s's link reads %q, want their name", who.Name, got)
+		}
+	}
+	if strings.Contains(card, "Their org on Goals") {
+		t.Errorf("My org still links each row to Their org on Goals:\n%s", card)
+	}
+
+	total := pageElement(t, card, "p", "home-org-total")
+	if got := elementTexts(card, "p", "home-org-total"); len(got) != 1 || got[0] != "2 Red · 1 Path to Green overdue · 1 Stale · 1 Yellow" {
+		t.Errorf("total line reads %q", got)
+	}
+	if strings.Contains(total, "badge") {
+		t.Errorf("total line is chips, not text:\n%s", total)
+	}
+}
+
 // My org's total line counts, across everyone under the viewer, each signal
 // that has anything, labelled so it reads without colour, in the order Red,
 // Path to Green overdue, Stale, Yellow. Each person directly under the viewer
-// with anything flagged gets a row with their whole Org's counts, worst off
-// first, linking to Goals scoped to their Org; someone two levels down counts
-// in the row of the person they're under. The card lists no Goals.
+// with anything flagged gets a row with their whole Org's counts as badges,
+// worst off first, their name linking to Goals scoped to their Org; someone
+// two levels down counts in the row of the person they're under. The section
+// lists no Goals.
 func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 	t.Parallel()
 
@@ -1173,15 +1218,15 @@ func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 	if got := homeOrgCounts(total); !slices.Equal(got, wantTotal) {
 		t.Errorf("total line = %v, want %v", got, wantTotal)
 	}
-	for _, want := range []string{`data-kind="red" class="badge r"`, `data-kind="path-overdue" class="badge st"`, `data-kind="stale" class="badge st"`, `data-kind="yellow" class="badge y"`} {
-		if !strings.Contains(total, want) {
-			t.Errorf("total line lacks %s:\n%s", want, total)
-		}
-	}
 
 	rows := homeOrgRows(card)
 	if len(rows) != 2 {
 		t.Fatalf("My org has %d rows, want Ana's and Ben's:\n%s", len(rows), card)
+	}
+	for _, want := range []string{`data-kind="red" class="badge r"`, `data-kind="path-overdue" class="badge st"`, `data-kind="stale" class="badge st"`, `data-kind="yellow" class="badge y"`} {
+		if !strings.Contains(rows[0], want) {
+			t.Errorf("Ana's row lacks %s:\n%s", want, rows[0])
+		}
 	}
 	for i, want := range []struct {
 		who    domain.Account
@@ -1190,7 +1235,7 @@ func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 		{f.ana, []string{"red: 1 Red", "path-overdue: 1 Path to Green overdue", "stale: 1 Stale", "yellow: 1 Yellow"}},
 		{f.ben, []string{"red: 1 Red"}},
 	} {
-		if !strings.Contains(rows[i], shownAs(want.who.Email, want.who.Name)) {
+		if !strings.Contains(orgPersonLink(t, rows[i]), want.who.Name) {
 			t.Errorf("row %d isn't %s's:\n%s", i, want.who.Name, rows[i])
 		}
 		if got := homeOrgCounts(rows[i]); !slices.Equal(got, want.counts) {
@@ -1320,7 +1365,7 @@ func TestHomeMyOrgMarksADepartedPerson(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("My org has %d rows, want Ana's and Ben's", len(rows))
 	}
-	if !strings.Contains(rows[1], shownAs(f.ben.Email, f.ben.Name)) || !strings.Contains(rows[1], `data-testid="home-org-departed"`) {
+	if !strings.Contains(orgPersonLink(t, rows[1]), f.ben.Name) || !strings.Contains(rows[1], `data-testid="home-org-departed"`) {
 		t.Errorf("Ben's row isn't marked departed:\n%s", rows[1])
 	}
 	if strings.Contains(rows[0], "home-org-departed") {
