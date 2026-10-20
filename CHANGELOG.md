@@ -21,6 +21,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] A Done or Cancelled Goal's pending Draft Highlights can no longer be edited, as none can be logged there: the Goal page offers no Edit on them and an edit sent anyway is refused. They can still be deleted (#372).
 - [user] On the Goal page, Remove on each Draft Highlight is disabled while a Draft Highlight editor is open, like + Log a highlight and Edit, so it can't swap the block and lose what was typed (#372).
 
+**Infrastructure:**
+- [internal] The vetinari agent image pre-creates `~/go/pkg`, `~/.cache` and `~/.cargo` as the agent user, so a cache bind-mounted beneath one of them no longer leaves its parent root-owned and unwritable (e.g. Go's `~/go/pkg/sumdb` beside a mounted `~/go/pkg/mod`). Rebuild with `vetinari build`.
+
 **Testing:**
 - [internal] The e2e suite passes `npx prettier --check .` again: the two scenario specs and the README are reformatted, and a new `e2e/.prettierignore` skips the `test-results/` and `playwright-report/` a run leaves behind. The Check-in add bar's 390px case no longer checks the page's own width, which `app.css` clips so the check could never fail; it still checks that `main`'s content fits `main` (#373).
 - [internal] `scripts/shots.mjs` no longer reports how far the page scrolls sideways, which `app.css` clips so it was always 0; its overflow line comes from the elements past the window's edges alone. The Draft Highlight editor spec's header comment is rewrapped (#374).
