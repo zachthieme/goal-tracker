@@ -367,7 +367,7 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     await priya.goto("/goals?org=all");
     await priya.getByTestId("more-filters").locator("summary").click();
     await priya
-      .getByTestId("more-filters")
+      .getByTestId("more-filters-panel")
       .getByRole("group", { name: "Team" })
       .getByRole("checkbox", { name: team.team, exact: true })
       .check();

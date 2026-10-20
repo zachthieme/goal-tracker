@@ -1246,9 +1246,9 @@ func TestGoalListSaysAnEmptyOrgIsEmpty(t *testing.T) {
 	}
 }
 
-// Everyone is an explicit ?org=all: the Scope select submits it, Clear links
-// to it, and a page showing Everyone keeps it in the links that keep its
-// filters, since a bare /goals is the viewer's default.
+// Everyone is an explicit ?org=all: the Scope select submits it, and a page
+// showing Everyone keeps it in the links that keep its filters, since a bare
+// /goals is the viewer's default.
 func TestGoalListNamesEveryoneAsOrgAll(t *testing.T) {
 	t.Parallel()
 
@@ -1260,9 +1260,6 @@ func TestGoalListNamesEveryoneAsOrgAll(t *testing.T) {
 	page := getBody(t, client, ts.URL+"/goals?health=red")
 	if sel := scopeSelect(t, page, "goal-scope-filter"); !strings.Contains(sel, `<option value="all">Everyone</option>`) {
 		t.Errorf("the Scope select's Everyone doesn't submit org=all: %s", sel)
-	}
-	if clear := between(t, page, `<div class="gl-bar">`, "</div>"); !strings.Contains(clear, `<a href="/goals?org=all" class="btn quiet">Clear</a>`) {
-		t.Errorf("Clear doesn't link to Everyone: %s", clear)
 	}
 
 	page = getBody(t, client, ts.URL+"/goals?org=all")
@@ -1437,6 +1434,106 @@ func TestGoalListFoldsDimensionFiltersAndGroupsIntoSections(t *testing.T) {
 	empty := getBody(t, client, ts.URL+"/goals?org=all&q=nothing+like+it")
 	if none := pageElement(t, empty, "td", "no-goals"); !strings.Contains(none, "No Goals match.") {
 		t.Errorf("a filtered-out list does not say nothing matches: %s", none)
+	}
+}
+
+// Clear is offered only when the filter bar differs from a bare /goals: a
+// Scope other than the viewer's default, search text, Health, Lifecycle,
+// Incomplete, a Dimension value or a grouping. It links to the bare /goals
+// (#376).
+func TestGoalListOffersClearOnlyWhenAFilterIsSet(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	pillar := h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	h.CreateGoal(sam, "Grow revenue", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	for _, path := range []string{"/goals", "/goals?org=mine", "/goals?q=&health=&lifecycle=&group="} {
+		if page := getBody(t, client, ts.URL+path); strings.Contains(page, `data-testid="goal-filters-clear"`) {
+			t.Errorf("%s: Clear is offered with no filter set:\n%s", path, between(t, page, `<div class="gl-bar">`, `</form>`))
+		}
+	}
+	for _, path := range []string{
+		"/goals?org=all",
+		"/goals?q=grow",
+		"/goals?health=red",
+		"/goals?lifecycle=Active",
+		"/goals?incomplete=1",
+		fmt.Sprintf("/goals?value=%d", pillar.Values[0].ID),
+		fmt.Sprintf("/goals?group=%d", pillar.ID),
+	} {
+		page := getBody(t, client, ts.URL+path)
+		if !strings.Contains(page, `data-testid="goal-filters-clear"`) {
+			t.Errorf("%s: Clear isn't offered with a filter set:\n%s", path, between(t, page, `<div class="gl-bar">`, `</form>`))
+			continue
+		}
+		if href := attr(openTag(pageElement(t, page, "a", "goal-filters-clear")), "href"); href != "/goals" {
+			t.Errorf("%s: Clear links to %q, want the bare /goals", path, href)
+		}
+	}
+
+	// With someone under them, the viewer's default is My org, so naming it
+	// is no filter, while Mine is.
+	h.SetManager(sam, boss)
+	bossClient := signInClient(t, ts.URL, "boss@example.com")
+	if page := getBody(t, bossClient, fmt.Sprintf("%s/goals?org=%d", ts.URL, boss.ID)); strings.Contains(page, `data-testid="goal-filters-clear"`) {
+		t.Errorf("My org, the default, offers Clear")
+	}
+	if page := getBody(t, bossClient, ts.URL+"/goals?org=mine"); !strings.Contains(page, `data-testid="goal-filters-clear"`) {
+		t.Errorf("Mine, for someone whose default is My org, doesn't offer Clear")
+	}
+}
+
+// The filter bar is one row: the Scope, search, Health, Lifecycle,
+// Incomplete, More filters' summary and Clear, in that order. More filters'
+// panel, the Dimension filters and Group by, follows the row rather than
+// sitting in it, so opening it adds a row below (#376).
+func TestGoalFilterBarHoldsMoreFiltersSummaryInItsRow(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	h.CreateGoal(sam, "Grow revenue", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals?health=red")
+	form := between(t, page, `data-testid="goal-filters"`, `</form>`)
+	row := between(t, form, `<div class="gl-bar">`, `</div>`)
+	at := -1
+	for _, part := range []string{
+		`data-testid="goal-scope-filter"`,
+		`data-testid="goal-search"`,
+		`data-testid="goal-health-filter"`,
+		`data-testid="goal-lifecycle-filter"`,
+		`data-testid="goal-incomplete-filter"`,
+		`<details data-testid="more-filters"`,
+		`<summary`,
+		`data-testid="goal-filters-clear"`,
+	} {
+		next := strings.Index(row, part)
+		if next <= at {
+			t.Fatalf("the filter row doesn't hold %s after what comes before it:\n%s", part, row)
+		}
+		at = next
+	}
+	if strings.Contains(row, "<fieldset") || strings.Contains(row, `name="group"`) {
+		t.Errorf("More filters' panel sits in the filter row:\n%s", row)
+	}
+
+	panel := pageElement(t, form[strings.Index(form, row)+len(row):], "div", "more-filters-panel")
+	if !strings.Contains(panel, "<legend>Pillar</legend>") || !strings.Contains(panel, `<select name="group">`) {
+		t.Errorf("the panel after the row doesn't hold the Dimension filters and Group by:\n%s", panel)
+	}
+	summary := between(t, row, `<summary`, `>`)
+	if controls := attr(summary, "aria-controls"); controls == "" || attr(openTag(panel), "id") != controls {
+		t.Errorf("More filters' summary doesn't name the panel it shows: %s, %s", summary, openTag(panel))
 	}
 }
 
@@ -3198,7 +3295,7 @@ func TestRetiredDimensionLeavesGoalListFilterAndGroupingOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	page := getBody(t, client, ts.URL+"/goals")
-	more := between(t, page, `<details data-testid="more-filters"`, "</details>")
+	more := pageElement(t, page, "div", "more-filters-panel")
 	if strings.Contains(more, "Pillar") || strings.Contains(more, "Growth") {
 		t.Errorf("the Retired Pillar is offered to filter or group by:\n%s", more)
 	}
@@ -3221,7 +3318,7 @@ func TestRetiredDimensionLeavesGoalListFilterAndGroupingOverHTTP(t *testing.T) {
 	if err := h.Service.RestoreDimension(ctx, boss.ID, pillar.ID); err != nil {
 		t.Fatalf("RestoreDimension: %v", err)
 	}
-	more = between(t, getBody(t, client, ts.URL+"/goals"), `<details data-testid="more-filters"`, "</details>")
+	more = pageElement(t, getBody(t, client, ts.URL+"/goals"), "div", "more-filters-panel")
 	if !strings.Contains(more, "<legend>Pillar</legend>") || !strings.Contains(more, fmt.Sprintf(`<option value="%d"`, pillar.ID)) {
 		t.Errorf("the restored Pillar isn't offered to filter and group by:\n%s", more)
 	}

@@ -459,7 +459,7 @@ func TestValuesListInAdminsOrderEverywhere(t *testing.T) {
 	if got := nameOrder(pageElement(t, goalPage, "section", "goal-dimensions"), "Reliability", "Growth", "Efficiency"); got != want {
 		t.Errorf("Goal page values = %q, want %q", got, want)
 	}
-	filter := pageElement(t, getBody(t, client, ts.URL+"/goals"), "details", "more-filters")
+	filter := pageElement(t, getBody(t, client, ts.URL+"/goals"), "div", "more-filters-panel")
 	if got := nameOrder(filter, "Reliability", "Growth", "Efficiency"); got != want {
 		t.Errorf("filter values = %q, want %q", got, want)
 	}

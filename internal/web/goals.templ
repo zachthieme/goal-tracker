@@ -76,12 +76,18 @@ templ goalFilters(view goalsListData) {
 				<input data-testid="goal-incomplete-filter" type="checkbox" name="incomplete" value="1" checked?={ view.Filter.Incomplete }/>
 				Incomplete
 			</label>
+			if len(view.Dimensions) > 0 {
+				<details data-testid="more-filters" open?={ view.moreFiltersSet() }>
+					<summary aria-controls="goal-more-filters">More filters</summary>
+				</details>
+			}
 			<noscript><button type="submit" class="btn">Apply</button></noscript>
-			<a href="/goals?org=all" class="btn quiet">Clear</a>
+			if view.anyGoalFilterSet() {
+				<a data-testid="goal-filters-clear" href="/goals" class="btn quiet">Clear</a>
+			}
 		</div>
 		if len(view.Dimensions) > 0 {
-			<details data-testid="more-filters" open?={ view.moreFiltersSet() }>
-				<summary>More filters</summary>
+			<div data-testid="more-filters-panel" id="goal-more-filters" class="gl-more">
 				for _, d := range view.Dimensions {
 					<fieldset>
 						<legend>{ d.Name }</legend>
@@ -107,7 +113,7 @@ templ goalFilters(view goalsListData) {
 						</select>
 					</label>
 				}
-			</details>
+			</div>
 		}
 		if view.Table != nil {
 			<input type="hidden" name="layout" value="table"/>
@@ -557,16 +563,20 @@ templ goalLinkIf(link bool, g domain.Goal) {
 }
 
 // goalsStyles are the Goal list's own rules on top of app.css: the one-row
-// filter bar, the table's group headers and marks,
+// filter bar, with More filters' panel shown below it while its summary is
+// open (where :has() isn't supported, the panel always shows), the table's
+// group headers and marks,
 // and the table layout's toggle, Columns control, sort headers and edit mode.
 templ goalsStyles() {
 	<style>
 		.gl-filters{display:flex;flex-direction:column;gap:8px}
 		.gl-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+		.gl-bar select[name=org]{flex:none;field-sizing:content}
 		.gl-bar input[type=search]{flex:1;min-width:200px}
 		.gl-mine{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
-		.gl-filters details{padding:0 4px}
-		.gl-filters details>summary{justify-content:flex-start;color:var(--color-primary-strong);font-weight:600}
+		.gl-bar details>summary{padding:0 4px;color:var(--color-primary-strong);font-weight:600;white-space:nowrap}
+		.gl-more{padding:0 4px}
+		.gl-filters:has(.gl-bar>details:not([open]))>.gl-more{display:none}
 		.gl-filters fieldset{display:inline-flex;flex-wrap:wrap;gap:4px 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);margin:0 8px 8px 0;padding:8px 12px}
 		.gl-count{margin:0;padding:8px 12px}
 		.gl-group th{background:var(--color-surface-alt);color:var(--color-ink);font-size:13px;font-weight:600;letter-spacing:0;text-transform:none}

@@ -280,8 +280,8 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     await expect(goalRow(page, departing.title).getByTestId("ownerless")).toBeVisible();
 
     // Filter: Team = Platform, under More filters. Every row is a Platform Goal.
-    const more = page.getByTestId("more-filters");
-    await more.getByText("More filters").click();
+    await page.getByTestId("more-filters").getByText("More filters").click();
+    const more = page.getByTestId("more-filters-panel");
     await more.getByRole("group", { name: "Team" }).getByLabel("Platform").check();
     await expect(page).toHaveURL(/[?&]value=\d+/);
     const platform = page.getByTestId("goal-row");
