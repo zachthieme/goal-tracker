@@ -9,7 +9,7 @@ import (
 )
 
 // handleGraphSignals shows the risks the Goal graph flags that nobody reported:
-// the Unaligned Goals, the schedule conflicts, and the Goals whose parent is On
+// the Unlinked Goals, the schedule conflicts, and the Goals whose parent is On
 // Hold or Cancelled.
 func (s *Server) handleGraphSignals(w http.ResponseWriter, r *http.Request, current domain.Account) {
 	signals, err := s.svc.GraphSignals(r.Context())

@@ -288,9 +288,9 @@ func TestRisksPageListsOwnerlessGoals(t *testing.T) {
 	}
 }
 
-// The Risks page chips each Unaligned Goal with an outlined chip saying why.
-// A Top-level Goal and a Goal that contributes to it aren't Unaligned.
-func TestRisksPageListsUnalignedGoals(t *testing.T) {
+// The Risks page chips each Unlinked Goal with an outlined chip saying why.
+// A Top-level Goal and a Goal that contributes to it aren't Unlinked.
+func TestRisksPageListsUnlinkedGoals(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "ada@example.com")
@@ -304,8 +304,8 @@ func TestRisksPageListsUnalignedGoals(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
 	row := riskRowOf(t, page, loner)
-	if chip := riskChip(t, row, "unaligned"); !strings.Contains(openTag(chip), `class="rk-tag"`) || !strings.HasSuffix(chip, ">Unaligned · no parent Goal, not Top-level") {
-		t.Errorf("Unaligned chip is not an outlined chip saying why: %s", chip)
+	if chip := riskChip(t, row, "unlinked"); !strings.Contains(openTag(chip), `class="rk-tag"`) || !strings.HasSuffix(chip, ">Unlinked · no parent Goal, not Top-level") {
+		t.Errorf("Unlinked chip is not an outlined chip saying why: %s", chip)
 	}
 	rule, _, _ := strings.Cut(page[strings.Index(page, ".rk-tag{")+1:], "}")
 	if !strings.Contains(rule, "border-radius:var(--radius-sm)") || !strings.Contains(rule, "border:1px solid var(--color-border-strong)") {
@@ -413,14 +413,14 @@ func TestRisksPageListsGoalsUnderHaltedParents(t *testing.T) {
 // The Risks page lists a Goal flagged by two signals once, in one table
 // inside a card that scrolls sideways on a narrow screen: one row with both
 // chips, a neutral dash for no Health, and one Fix: Check in for its Owner,
-// though it is Unaligned too.
+// though it is Unlinked too.
 func TestRisksPageListsEachFlaggedGoalOnce(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
-	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unlinked
 	h.Clock.Advance(10 * day)
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
@@ -438,14 +438,14 @@ func TestRisksPageListsEachFlaggedGoalOnce(t *testing.T) {
 	if n := strings.Count(row, `data-testid="risk-signal"`); n != 2 {
 		t.Errorf("row has %d chips, want 2:\n%s", n, row)
 	}
-	for _, kind := range []string{"stale", "unaligned"} {
+	for _, kind := range []string{"stale", "unlinked"} {
 		riskChip(t, row, kind)
 	}
 	if health := row[strings.Index(row, `data-testid="risk-health"`):strings.Index(row, `data-testid="risk-goal"`)]; !strings.Contains(health, `class="badge lc"`) || !strings.Contains(health, "—") {
 		t.Errorf("row doesn't show a neutral dash for no Health: %s", health)
 	}
 	if label, href, _ := riskFix(t, row); label != "Check in" || href != "/goals/"+strconv.FormatInt(silent.ID, 10)+"/checkin" {
-		t.Errorf("the Owner's Stale and Unaligned Goal's Fix is %q → %s, want Check in", label, href)
+		t.Errorf("the Owner's Stale and Unlinked Goal's Fix is %q → %s, want Check in", label, href)
 	}
 	for _, gone := range []string{"risks-nothing-in", `class="rk-empty"`, `data-testid="risks-stale"`, "Why it's flagged"} {
 		if strings.Contains(page, gone) {
@@ -489,7 +489,7 @@ func TestRisksPageMutesAGroupWithNoGoals(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
-	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unlinked
 	h.Clock.Advance(10 * day)
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
@@ -559,7 +559,7 @@ func TestRisksPageDefinesEachRisk(t *testing.T) {
 		"Milestone overdue":           "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Green can't be repeated until the Owner responds.",
 		"Action Item overdue":         "An Action Item about this Goal, raised in a Report, is past its due date.",
 		"Ownerless":                   "Active Goals whose Owner has left the company and hasn't been replaced.",
-		"Unaligned":                   "Active Goals that contribute to no other Goal and aren't Top-level.",
+		"Unlinked":                    "Active Goals that contribute to no other Goal and aren't Top-level.",
 		"Schedule conflicts":          "Goals due later than a Goal they contribute to.",
 		"Parent On Hold or Cancelled": "Goals contributing to a Goal that is On Hold or Cancelled.",
 	} {
@@ -589,11 +589,11 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 	kim := h.SignIn("kim@example.com")
 	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
-	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Stale, Unaligned and an overdue Action Item
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Stale, Unlinked and an overdue Action Item
 	h.Clock.Advance(10 * day)
 	h.Checkin(sam, launch.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	raiseRiskActionItem(t, h, ada, silent, sam, "Break the silence.", -1)
-	h.ActiveGoal(kim, "Orphaned work", "It matters.") // Ownerless and Unaligned
+	h.ActiveGoal(kim, "Orphaned work", "It matters.") // Ownerless and Unlinked
 	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
 		t.Fatalf("MarkDeparted: %v", err)
 	}
@@ -616,7 +616,7 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 		{"health", "Not Green", "/risks?group=health&amp;org=all", 1, []string{"Red · 1"}},
 		{"owner", "Waiting on a Check-in", "/risks?group=owner&amp;org=all", 1, []string{"Stale · 1"}},
 		{"followup", "Action Items overdue", "/risks?group=followup&amp;org=all", 1, []string{"Action Item overdue · 1"}},
-		{"plan", "Placement and dates", "/risks?group=plan&amp;org=all", 3, []string{"Unaligned · 2", "Schedule conflicts · 1"}},
+		{"plan", "Placement and dates", "/risks?group=plan&amp;org=all", 3, []string{"Unlinked · 2", "Schedule conflicts · 1"}},
 		{"admin", "Needs an Admin", "/risks?group=admin&amp;org=all", 1, []string{"Ownerless · 1"}},
 	} {
 		card := pageElement(t, page, "a", "risks-group-"+g.key)
@@ -642,7 +642,7 @@ func TestRisksPageSummarizesGroupsByWhoActs(t *testing.T) {
 		{"health", "red", `class="badge r"`},
 		{"owner", "stale", `class="badge st"`},
 		{"followup", "action-item-overdue", `class="badge st"`},
-		{"plan", "unaligned", `class="rk-tag"`},
+		{"plan", "unlinked", `class="rk-tag"`},
 		{"plan", "schedule-conflicts", `class="rk-tag"`},
 		{"admin", "ownerless", `class="badge ol"`},
 	} {
@@ -668,9 +668,9 @@ func TestRisksPageFiltersToAGroup(t *testing.T) {
 	ada := h.SignIn("ada@example.com")
 	sam := h.SignIn("sam@example.com")
 	kim := h.SignIn("kim@example.com")
-	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unlinked
 	h.Clock.Advance(10 * day)
-	orphaned := h.ActiveGoal(kim, "Orphaned work", "It matters.") // Ownerless and Unaligned
+	orphaned := h.ActiveGoal(kim, "Orphaned work", "It matters.") // Ownerless and Unlinked
 	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
 		t.Fatalf("MarkDeparted: %v", err)
 	}
@@ -680,8 +680,8 @@ func TestRisksPageFiltersToAGroup(t *testing.T) {
 
 	row := riskRowOf(t, page, silent)
 	riskChip(t, row, "stale")
-	if strings.Contains(row, `data-kind="unaligned"`) {
-		t.Errorf("filtered to owner, %q still has its Unaligned chip:\n%s", silent.Title, row)
+	if strings.Contains(row, `data-kind="unlinked"`) {
+		t.Errorf("filtered to owner, %q still has its Unlinked chip:\n%s", silent.Title, row)
 	}
 	if hasRiskRow(page, orphaned) {
 		t.Errorf("filtered to owner, the page lists %q, flagged only outside it", orphaned.Title)
@@ -709,7 +709,7 @@ func TestRisksPageFiltersToAGroup(t *testing.T) {
 
 	for _, g := range []domain.Goal{silent, orphaned} {
 		row := riskRowOf(t, page, g)
-		riskChip(t, row, "unaligned")
+		riskChip(t, row, "unlinked")
 		for _, other := range []string{"stale", "ownerless"} {
 			if strings.Contains(row, `data-kind="`+other+`"`) {
 				t.Errorf("filtered to plan, %q still has its %s chip:\n%s", g.Title, other, row)
@@ -728,7 +728,7 @@ func TestRisksPageFiltersToAGroup(t *testing.T) {
 
 	page = getBody(t, client, ts.URL+"/risks?group=bogus&org=all")
 
-	riskChip(t, riskRowOf(t, page, silent), "unaligned")
+	riskChip(t, riskRowOf(t, page, silent), "unlinked")
 	riskChip(t, riskRowOf(t, page, orphaned), "ownerless")
 	for _, key := range []string{"owner", "plan", "admin"} {
 		if card := pageElement(t, page, "a", "risks-group-"+key); strings.Contains(openTag(card), "aria-current") {
@@ -754,8 +754,8 @@ func TestRisksPageFilteredToNothingSaysWhere(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	kim := h.SignIn("kim@example.com")
 	platform := h.CreateDimension(boss, "Team", "Platform").Values[0]
-	own := h.ActiveGoal(sam, "Own work", "It matters.") // Unaligned only
-	h.ActiveGoal(kim, "Kim's work", "It matters.")      // Stale and Unaligned
+	own := h.ActiveGoal(sam, "Own work", "It matters.") // Unlinked only
+	h.ActiveGoal(kim, "Kim's work", "It matters.")      // Stale and Unlinked
 	h.Clock.Advance(10 * day)
 	h.Checkin(sam, own.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	client := signInClient(t, ts.URL, "sam@example.com")
@@ -801,10 +801,10 @@ func TestNavCountsFlaggedGoalsOnce(t *testing.T) {
 	h.SetManager(kim, ada)
 	june := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
 	launch := h.MarkTopLevel(ada, h.ActiveGoalDue(sam, "Launch", june))
-	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unlinked
 	h.Clock.Advance(10 * day)
 	h.Checkin(sam, launch.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	h.ActiveGoal(kim, "Orphaned work", "It matters.") // Ownerless and Unaligned
+	h.ActiveGoal(kim, "Orphaned work", "It matters.") // Ownerless and Unlinked
 	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
 		t.Fatalf("MarkDeparted: %v", err)
 	}
@@ -868,8 +868,8 @@ func TestRiskFlagsUseAlertBannersAndChips(t *testing.T) {
 		t.Errorf("Goal page lost its goal-signals group")
 	}
 	parentPage := getBody(t, client, goalPageURL(ts.URL, parent))
-	if el := pageElement(t, parentPage, "p", "goal-unaligned"); !strings.Contains(openTag(el), `class="alert lc"`) {
-		t.Errorf("Unaligned banner is not an alert: %s", openTag(el))
+	if el := pageElement(t, parentPage, "p", "goal-unlinked"); !strings.Contains(openTag(el), `class="alert lc"`) {
+		t.Errorf("Unlinked banner is not an alert: %s", openTag(el))
 	}
 	stalledPage := getBody(t, client, goalPageURL(ts.URL, stalled))
 	if el := pageElement(t, stalledPage, "p", "goal-path-overdue"); !strings.Contains(openTag(el), `class="alert st"`) {
@@ -994,10 +994,10 @@ func TestRiskFixOnAnOwnerlessGoalIsReassignForAnAdmin(t *testing.T) {
 	}
 }
 
-// An Unaligned Goal's Fix for its Owner is Link to a parent, opening the Goal
+// An Unlinked Goal's Fix for its Owner is Link to a parent, opening the Goal
 // page's parent-link form; anyone else, a Delegate included, who can't link
 // it, gets Suggest a parent, opening the Suggest a parent form.
-func TestRiskFixOnAnUnalignedGoalIsLinkToAParentForItsOwner(t *testing.T) {
+func TestRiskFixOnAnUnlinkedGoalIsLinkToAParentForItsOwner(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -1516,13 +1516,13 @@ func TestRisksPageGroupsWithinScope(t *testing.T) {
 	platform := h.CreateDimension(boss, "Team", "Platform").Values[0]
 	ownStale := h.MarkTopLevel(boss, h.ActiveGoal(sam, "Own stale", "It matters.")) // Stale only
 	h.AssignGoalValue(ownStale, platform)
-	ownUnaligned := h.ActiveGoal(sam, "Own unaligned", "It matters.") // Unaligned only
-	h.AssignGoalValue(ownUnaligned, platform)
+	ownUnlinked := h.ActiveGoal(sam, "Own unlinked", "It matters.") // Unlinked only
+	h.AssignGoalValue(ownUnlinked, platform)
 	ownUntagged := h.ActiveGoal(sam, "Own untagged", "It matters.")
 	kims := h.ActiveGoal(kim, "Kim's platform work", "It matters.")
 	h.AssignGoalValue(kims, platform)
 	h.Clock.Advance(10 * day)
-	h.Checkin(sam, ownUnaligned.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	h.Checkin(sam, ownUnlinked.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	client := signInClient(t, ts.URL, "sam@example.com")
 	scope := "org=mine&value=" + strconv.FormatInt(platform.ID, 10)
 
@@ -1536,7 +1536,7 @@ func TestRisksPageGroupsWithinScope(t *testing.T) {
 	page = getBody(t, client, ts.URL+href)
 
 	riskRowOf(t, page, ownStale)
-	for _, g := range []domain.Goal{ownUnaligned, ownUntagged, kims} {
+	for _, g := range []domain.Goal{ownUnlinked, ownUntagged, kims} {
 		if hasRiskRow(page, g) {
 			t.Errorf("scoped and filtered to owner, the page lists %q", g.Title)
 		}
@@ -1941,7 +1941,7 @@ func TestRisksNeedsAnAdminWithNothingSaysSo(t *testing.T) {
 
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
-	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unlinked
 	h.Clock.Advance(10 * day)
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
@@ -2412,7 +2412,7 @@ func TestRisksPageGroupsOverdueActionItems(t *testing.T) {
 	ts := newServer(t, h)
 	ada := h.SignIn("ada@example.com")
 	sam := h.SignIn("sam@example.com")
-	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unlinked
 	h.Clock.Advance(10 * day)
 	launch := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Launch in EU", "Expand the market."))
 	client := signInClient(t, ts.URL, "sam@example.com")
@@ -2495,7 +2495,7 @@ func TestTopBarRisksCountsOverdueActionItems(t *testing.T) {
 	ts := newServer(t, h)
 	ada := h.SignIn("ada@example.com")
 	sam := h.SignIn("sam@example.com")
-	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unaligned
+	h.ActiveGoal(sam, "Silent work", "It matters.") // Stale and Unlinked
 	h.Clock.Advance(10 * day)
 	launch := h.MarkTopLevel(ada, h.ActiveGoal(sam, "Launch in EU", "Expand the market."))
 	client := signInClient(t, ts.URL, "sam@example.com")

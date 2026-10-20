@@ -1059,7 +1059,7 @@ type goalView struct {
 	DateSlips      []domain.DateSlip
 	MilestoneChurn int
 	// Signals are the risks the graph flags on this Goal that nobody reported:
-	// Unaligned, schedule conflicts it is either side of, and parents that are On
+	// Unlinked, schedule conflicts it is either side of, and parents that are On
 	// Hold or Cancelled.
 	Signals domain.GoalSignals
 	// Freshness says whether the Goal is Stale or its Path to Green is overdue,

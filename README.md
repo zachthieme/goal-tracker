@@ -245,7 +245,7 @@ Nothing is written to the database directly.
   remove one, with a reason.
 - **Stale:** a few Owners stop checking in, so those Goals' last Check-in is
   older than their cadence when the seed finishes.
-- **Unaligned:** five side projects contribute to no other Goal.
+- **Unlinked:** five side projects contribute to no other Goal.
 - **Lifecycle:** a few projects are Done with an outcome, one is On Hold, one
   is Cancelled, and two are still Proposed.
 - **Managers:** everyone has a Manager, recorded through the same directory

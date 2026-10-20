@@ -423,7 +423,7 @@ type risksView struct {
 	Asks []domain.AskForHelp
 	// Ownerless are the Active Goals whose Owner has left the company.
 	Ownerless []domain.Goal
-	Unaligned []domain.Goal
+	Unlinked  []domain.Goal
 	// ScheduleConflicts and HaltedParents are listed by their child, the Goal
 	// that needs to change.
 	ScheduleConflicts []domain.ScheduleConflict
@@ -466,7 +466,7 @@ func (v risksView) Types() []riskType {
 		{"milestone-overdue", "Milestone overdue", len(v.OverdueMilestones)},
 		{"action-item-overdue", "Action Item overdue", len(v.OverdueActionItems)},
 		{"ownerless", "Ownerless", len(v.Ownerless)},
-		{"unaligned", "Unaligned", len(v.Unaligned)},
+		{"unlinked", "Unlinked", len(v.Unlinked)},
 		{"schedule-conflicts", "Schedule conflicts", len(v.ScheduleConflicts)},
 		{"halted-parents", "Parent On Hold or Cancelled", len(v.HaltedParents)},
 	}
@@ -483,7 +483,7 @@ var riskDefinitions = []struct{ Name, Means string }{
 	{"Milestone overdue", "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Green can't be repeated until the Owner responds."},
 	{"Action Item overdue", "An Action Item about this Goal, raised in a Report, is past its due date."},
 	{"Ownerless", "Active Goals whose Owner has left the company and hasn't been replaced."},
-	{"Unaligned", "Active Goals that contribute to no other Goal and aren't Top-level."},
+	{"Unlinked", "Active Goals that contribute to no other Goal and aren't Top-level."},
 	{"Schedule conflicts", "Goals due later than a Goal they contribute to."},
 	{"Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled."},
 }
@@ -502,7 +502,7 @@ func (v risksView) Flagged(scope pageOrgScope) int {
 			flag(gf.Goal)
 		}
 	}
-	for _, list := range [][]domain.Goal{v.Ownerless, v.Unaligned} {
+	for _, list := range [][]domain.Goal{v.Ownerless, v.Unlinked} {
 		for _, g := range list {
 			flag(g)
 		}
@@ -555,7 +555,7 @@ func (s *Server) loadRisks(ctx context.Context) (risksView, error) {
 		OverduePaths:      fresh.OverduePaths,
 		OverdueMilestones: fresh.OverdueMilestones,
 		NotGreen:          fresh.NotGreen,
-		Unaligned:         graph.Unaligned,
+		Unlinked:          graph.Unlinked,
 		ScheduleConflicts: graph.ScheduleConflicts,
 		HaltedParents:     graph.HaltedParents,
 	}
@@ -658,12 +658,12 @@ func fixRiskRows(current domain.Account, rows []riskGoalRow, facts riskFixFacts)
 //     overdue Goal that someone can check in on (CONTEXT.md: Nudge); once it
 //     has been nudged today, a disabled "Nudged today by" whoever did.
 //     Freshness outranks alignment, as 2 outranks 4;
-//  4. Link to a parent, for an Unaligned Goal current Owns;
+//  4. Link to a parent, for an Unlinked Goal current Owns;
 //  5. For a Schedule conflict, see scheduleConflictFix: Check in, its dates
 //     open, on current's own Goal in the conflict, or Nudge on the row's Goal
 //     for anyone else (CONTEXT.md: Schedule conflict, Nudge);
 //  6. Open parent, for a Goal under a halted parent: the first by title;
-//  7. Suggest a parent, for an Unaligned Goal current doesn't Own, a Delegate
+//  7. Suggest a parent, for an Unlinked Goal current doesn't Own, a Delegate
 //     on it included (CONTEXT.md: Parent suggestion);
 //  8. See Action Items, the Goal page's, for a Goal with an overdue Action
 //     Item;
@@ -687,7 +687,7 @@ func (r riskGoalRow) fix(current domain.Account, delegate map[int64]bool, nudged
 	if (stale || overdue) && !unreachable {
 		return riskFix{Label: "Nudge", Href: goal + "/nudge", Post: true}
 	}
-	if _, unaligned := r.signal("unaligned"); unaligned && r.Goal.Owner.ID == current.ID {
+	if _, unlinked := r.signal("unlinked"); unlinked && r.Goal.Owner.ID == current.ID {
 		return riskFix{Label: "Link to a parent", Href: goal + "?open=parent-link"}
 	}
 	if f, ok := r.scheduleConflictFix(current, delegate, nudged, unreachable); ok {
@@ -702,7 +702,7 @@ func (r riskGoalRow) fix(current domain.Account, delegate map[int64]bool, nudged
 	if parent != nil {
 		return riskFix{Label: "Open parent", Href: fmt.Sprintf("/goals/%d", parent.ID)}
 	}
-	if _, unaligned := r.signal("unaligned"); unaligned {
+	if _, unlinked := r.signal("unlinked"); unlinked {
 		return riskFix{Label: "Suggest a parent", Href: goal + "/suggest-parent"}
 	}
 	if _, overdue := r.signal("action-item-overdue"); overdue {
@@ -820,8 +820,8 @@ func (s *Server) riskRows(ctx context.Context, v risksView) ([]riskGoalRow, erro
 	for _, g := range v.Ownerless {
 		add(g, riskSignal{Kind: "ownerless"})
 	}
-	for _, g := range v.Unaligned {
-		add(g, riskSignal{Kind: "unaligned"})
+	for _, g := range v.Unlinked {
+		add(g, riskSignal{Kind: "unlinked"})
 	}
 	for _, c := range v.ScheduleConflicts {
 		add(c.Child, riskSignal{Kind: "schedule-conflicts", Days: calendarDays(c.Parent.DeliveryDate, c.Child.DeliveryDate), Related: &c.Parent})
@@ -997,7 +997,7 @@ var riskGroupKinds = []struct {
 	{"health", "Not Green", []string{"red", "yellow", "asks-for-help"}, "No Goal is Red or Yellow."},
 	{"owner", "Waiting on a Check-in", []string{"stale", "path-overdue", "milestone-overdue"}, "Nothing is waiting on a Check-in."},
 	{"followup", "Action Items overdue", []string{"action-item-overdue"}, "No Action Item is overdue."},
-	{"plan", "Placement and dates", []string{"unaligned", "schedule-conflicts"}, "Every Goal is placed and its dates fit."},
+	{"plan", "Placement and dates", []string{"unlinked", "schedule-conflicts"}, "Every Goal is placed and its dates fit."},
 	{riskGroupAdmin, "Needs an Admin", []string{"ownerless", "halted-parents"}, "Nothing needs an Admin."},
 }
 

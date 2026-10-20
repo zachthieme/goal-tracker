@@ -95,15 +95,15 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   );
   expect(tiered, "the seed has two Active Platform Goals").toHaveLength(2);
 
-  // An Unaligned Goal: Active, not Top-level, contributing to no Goal.
-  const [unaligned] = seedLookup<Goal>(
+  // An Unlinked Goal: Active, not Top-level, contributing to no Goal.
+  const [unlinked] = seedLookup<Goal>(
     `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
      where g.lifecycle = 'Active' and g.top_level = 0 and a.email <> ?
        and not exists (select 1 from links l where l.child_id = g.id and l.status = 'accepted')
      order by g.id limit 1`,
     departing.email,
   );
-  expect(unaligned, "the seed has an Unaligned Goal").toBeDefined();
+  expect(unlinked, "the seed has an Unlinked Goal").toBeDefined();
 
   // A Goal with two signals: Stale, and due later than a Goal it contributes
   // to (a Schedule conflict), with its Team.
@@ -306,7 +306,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
       { key: "health", name: "Not Green", kinds: ["red", "yellow"] },
       { key: "owner", name: "Waiting on a Check-in", kinds: ["stale", "path-overdue", "milestone-overdue"] },
       { key: "followup", name: "Action Items overdue", kinds: ["action-item-overdue"] },
-      { key: "plan", name: "Placement and dates", kinds: ["unaligned", "schedule-conflicts"] },
+      { key: "plan", name: "Placement and dates", kinds: ["unlinked", "schedule-conflicts"] },
       { key: "admin", name: "Needs an Admin", kinds: ["ownerless"] },
     ];
     for (const c of cards) {
@@ -331,7 +331,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
       ],
       followup: [{ goal: stale, kind: "action-item-overdue" }],
       plan: [
-        { goal: unaligned, kind: "unaligned" },
+        { goal: unlinked, kind: "unlinked" },
         { goal: twoReasons, kind: "schedule-conflicts" },
       ],
       admin: ownerless.map((goal) => ({ goal, kind: "ownerless" })),
@@ -536,7 +536,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     ).toContain(redWithChildren.id);
 
     // Silent: Stale, under Waiting on a Check-in, not Placement and dates.
-    // Badly placed: Unaligned or a Schedule conflict, under Placement and
+    // Badly placed: Unlinked or a Schedule conflict, under Placement and
     // dates, not Waiting on a Check-in.
     await page.goto("/risks?group=owner&org=all");
     const owner = (await riskRows(page)).map((r) => r.id);
@@ -544,8 +544,8 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     const plan = (await riskRows(page)).map((r) => r.id);
     expect(owner, "Stale is under Waiting on a Check-in").toContain(stale.id);
     expect(plan, "Stale isn't under Placement and dates").not.toContain(stale.id);
-    expect(plan, "Unaligned is under Placement and dates").toContain(unaligned.id);
-    expect(owner, "Unaligned isn't under Waiting on a Check-in").not.toContain(unaligned.id);
+    expect(plan, "Unlinked is under Placement and dates").toContain(unlinked.id);
+    expect(owner, "Unlinked isn't under Waiting on a Check-in").not.toContain(unlinked.id);
     expect(plan, "a Schedule conflict is under Placement and dates").toContain(twoReasons.id);
     expect(owner, "a Red Goal that's up to date isn't under Waiting on a Check-in").not.toContain(redWithChildren.id);
     expect(plan, "a Red Goal that's well placed isn't under Placement and dates").not.toContain(redWithChildren.id);

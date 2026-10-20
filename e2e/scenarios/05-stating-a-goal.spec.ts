@@ -351,15 +351,15 @@ test("5 Stating a Goal and connecting it", async ({ page, as, seedLookup }) => {
     await expect(marcus.getByTestId("goal-rollup-health")).toHaveText("Red");
   });
 
-  await test.step("5.6 With no parent, each Active Goal is Unaligned and listed on Risks", async () => {
+  await test.step("5.6 With no parent, each Active Goal is Unlinked and listed on Risks", async () => {
     await priya.goto("/risks?group=plan");
     for (const g of [goalA, goalB]) {
-      const unaligned = riskRow(priya, g.title).locator('[data-testid="risk-signal"][data-kind="unaligned"]');
-      await expect(unaligned).toHaveText("Unaligned · no parent Goal, not Top-level");
+      const unlinked = riskRow(priya, g.title).locator('[data-testid="risk-signal"][data-kind="unlinked"]');
+      await expect(unlinked).toHaveText("Unlinked · no parent Goal, not Top-level");
     }
-    // The Goal with a parent isn't Unaligned (it may show another plan signal,
+    // The Goal with a parent isn't Unlinked (it may show another plan signal,
     // such as a Schedule conflict with the team Goal).
-    const linked = riskRow(priya, goalC.title).locator('[data-testid="risk-signal"][data-kind="unaligned"]');
+    const linked = riskRow(priya, goalC.title).locator('[data-testid="risk-signal"][data-kind="unlinked"]');
     await expect(linked).toHaveCount(0);
   });
 

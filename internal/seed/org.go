@@ -5,7 +5,7 @@ import "strings"
 // The fake org's shape: three org-wide outcomes, and six teams (a Team
 // Dimension, since teams are not built in — ADR 0002), each with two team Goals
 // contributing to those outcomes and a handful of projects contributing to the
-// team Goals. A few projects contribute to nothing and read as Unaligned. The
+// team Goals. A few projects contribute to nothing and read as Unlinked. The
 // words are fixed here; the random seed decides dates, Owners, and how each
 // Goal's history plays out.
 
@@ -60,7 +60,7 @@ type entry struct {
 
 // outcomes are the org-wide outcomes the team Goals contribute to, owned by the
 // leadership team. The Admin marks them Top-level Goals, so they are never
-// Unaligned.
+// Unlinked.
 var outcomes = []struct {
 	entry
 	owner string
@@ -71,14 +71,14 @@ var outcomes = []struct {
 }
 
 // team is one team: its lead owns the team Goals, its people own the projects,
-// and its unaligned entries are side projects that contribute to nothing.
+// and its unlinked entries are side projects that contribute to nothing.
 type team struct {
-	name      string
-	lead      string
-	people    []string
-	goals     []entry
-	projects  []entry
-	unaligned []entry
+	name     string
+	lead     string
+	people   []string
+	goals    []entry
+	projects []entry
+	unlinked []entry
 }
 
 // The leadership team's addresses: the CEO is at the top of the Manager tree,
@@ -115,7 +115,7 @@ var teams = []team{
 			{title: "Blue-green deploys for the monolith", soWhat: "The monolith still needs a maintenance window, which customers notice.", parents: []int{1}},
 			{title: "Consolidate the logging pipeline", soWhat: "Three log stacks triple the cost and nobody knows which one to search.", parents: []int{0}},
 		},
-		unaligned: []entry{
+		unlinked: []entry{
 			{title: "Evaluate ARM build agents", soWhat: "Builds are slow and ARM agents may be cheaper; worth a spike."},
 		},
 	},
@@ -134,7 +134,7 @@ var teams = []team{
 			{title: "Net-30 terms for enterprise accounts", soWhat: "Enterprise finance teams pay on terms; upfront payment stalls signatures.", parents: []int{1}},
 			{title: "Redesign dunning emails", soWhat: "Our payment-failed emails read like threats and customers ignore them.", parents: []int{0}},
 		},
-		unaligned: []entry{
+		unlinked: []entry{
 			{title: "Spike: instant payouts", soWhat: "A few partners asked for faster payouts; we want to size the work."},
 		},
 	},
@@ -153,7 +153,7 @@ var teams = []team{
 			{title: "Lifecycle email journeys", soWhat: "Trials get one welcome email and then silence until the trial ends.", parents: []int{0}},
 			{title: "Experiment platform v2", soWhat: "Each test takes a sprint to wire up, so we run too few of them.", parents: []int{0}},
 		},
-		unaligned: []entry{
+		unlinked: []entry{
 			{title: "Refresh brand illustrations", soWhat: "Our illustrations predate the rebrand and look inconsistent on the site."},
 		},
 	},
@@ -172,7 +172,7 @@ var teams = []team{
 			{title: "Faster cold start on Android", soWhat: "Low-end Android phones take eight seconds to open the app.", metric: "Cold start p90 | seconds | down | 8 | 3", parents: []int{1}},
 			{title: "Accessible navigation audit", soWhat: "Screen-reader users can't reach half the app's screens.", parents: []int{1}},
 		},
-		unaligned: []entry{
+		unlinked: []entry{
 			{title: "Tablet layout exploration", soWhat: "Some customers use tablets on site; we don't know what they'd need."},
 		},
 	},
@@ -191,7 +191,7 @@ var teams = []team{
 			{title: "Data contracts for event streams", soWhat: "Producers change event shapes and silently break downstream reports.", parents: []int{0}},
 			{title: "PII tagging in the warehouse", soWhat: "We can't answer a deletion request because we don't know where PII lives.", parents: []int{0}},
 		},
-		unaligned: []entry{
+		unlinked: []entry{
 			{title: "Prototype a natural-language query assistant", soWhat: "Might let non-analysts ask questions directly; unproven."},
 		},
 	},

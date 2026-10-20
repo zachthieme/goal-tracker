@@ -206,14 +206,14 @@ func newPlan(rng *rand.Rand, day0 time.Time) *plan {
 			add(2, e, t.name, t.lead, titlesOf(e.parents, outcomeEntries()), 14+rng.IntN(9))
 		}
 	}
-	// Profiles are dealt to the aligned projects only; the Unaligned ones stay
+	// Profiles are dealt to the aligned projects only; the Unlinked ones stay
 	// steady and Active, so they are always there to be seen.
 	var aligned []*plannedGoal
 	for _, t := range teams {
 		for _, e := range t.projects {
 			aligned = append(aligned, add(3, e, t.name, t.people[rng.IntN(len(t.people))], titlesOf(e.parents, t.goals), 14+rng.IntN(11)))
 		}
-		for _, e := range t.unaligned {
+		for _, e := range t.unlinked {
 			add(3, e, t.name, t.people[rng.IntN(len(t.people))], nil, 14+rng.IntN(11)).profile = steady
 		}
 	}

@@ -77,7 +77,7 @@ func TestNudgingFromTheRisksFix(t *testing.T) {
 	}
 }
 
-// A row that is both someone else's Stale Goal and Unaligned gets Nudge, not
+// A row that is both someone else's Stale Goal and Unlinked gets Nudge, not
 // Suggest a parent: freshness outranks alignment.
 func TestNudgeOutranksSuggestAParent(t *testing.T) {
 	t.Parallel()
@@ -91,7 +91,7 @@ func TestNudgeOutranksSuggestAParent(t *testing.T) {
 
 	row := riskRowOf(t, getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/risks?org=all"), loner)
 	riskChip(t, row, "stale")
-	riskChip(t, row, "unaligned")
+	riskChip(t, row, "unlinked")
 	nudgeForm(t, row)
 }
 

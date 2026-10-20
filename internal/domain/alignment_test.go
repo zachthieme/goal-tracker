@@ -77,10 +77,10 @@ func TestMarkTopLevelUnknownGoal(t *testing.T) {
 	}
 }
 
-// The Unaligned list holds the Active Goals that contribute to no other Goal and
-// aren't Top-level (CONTEXT.md: Unaligned). A Goal whose only parent link is
-// still pending is Unaligned: the link exists only once accepted.
-func TestUnalignedListsActiveGoalsWithNoAcceptedParent(t *testing.T) {
+// The Unlinked list holds the Active Goals that contribute to no other Goal and
+// aren't Top-level (CONTEXT.md: Unlinked). A Goal whose only parent link is
+// still pending is Unlinked: the link exists only once accepted.
+func TestUnlinkedListsActiveGoalsWithNoAcceptedParent(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "ada@example.com")
@@ -96,22 +96,22 @@ func TestUnalignedListsActiveGoalsWithNoAcceptedParent(t *testing.T) {
 	h.CreateGoal(sam, "Still proposed", "Not Active yet.")
 	h.OnHoldGoal(sam, "Paused", "Not Active now.", "Waiting on budget.")
 
-	got := h.Unaligned()
+	got := h.Unlinked()
 
 	want := map[int64]string{loner.ID: loner.Title, pending.ID: pending.Title}
 	if len(got) != len(want) {
-		t.Fatalf("Unaligned = %v, want exactly %v", titles(got), want)
+		t.Fatalf("Unlinked = %v, want exactly %v", titles(got), want)
 	}
 	for _, g := range got {
 		if _, ok := want[g.ID]; !ok {
-			t.Errorf("Unaligned includes %q, which should not be listed", g.Title)
+			t.Errorf("Unlinked includes %q, which should not be listed", g.Title)
 		}
 	}
 }
 
-// Unmarking a Top-level Goal that contributes to nothing makes it Unaligned
+// Unmarking a Top-level Goal that contributes to nothing makes it Unlinked
 // again; marking it takes it back off the list.
-func TestTopLevelMarkTakesGoalOffUnalignedList(t *testing.T) {
+func TestTopLevelMarkTakesGoalOffUnlinkedList(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -120,18 +120,18 @@ func TestTopLevelMarkTakesGoalOffUnalignedList(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	g := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
 
-	if got := h.Unaligned(); len(got) != 1 || got[0].ID != g.ID {
-		t.Fatalf("Unaligned before marking = %v, want [%q]", titles(got), g.Title)
+	if got := h.Unlinked(); len(got) != 1 || got[0].ID != g.ID {
+		t.Fatalf("Unlinked before marking = %v, want [%q]", titles(got), g.Title)
 	}
 	h.MarkTopLevel(ada, g)
-	if got := h.Unaligned(); len(got) != 0 {
-		t.Errorf("Unaligned after marking Top-level = %v, want none", titles(got))
+	if got := h.Unlinked(); len(got) != 0 {
+		t.Errorf("Unlinked after marking Top-level = %v, want none", titles(got))
 	}
 	if _, err := h.Service.UnmarkTopLevel(ctx, ada.ID, g.ID); err != nil {
 		t.Fatalf("UnmarkTopLevel: %v", err)
 	}
-	if got := h.Unaligned(); len(got) != 1 || got[0].ID != g.ID {
-		t.Errorf("Unaligned after unmarking = %v, want [%q]", titles(got), g.Title)
+	if got := h.Unlinked(); len(got) != 1 || got[0].ID != g.ID {
+		t.Errorf("Unlinked after unmarking = %v, want [%q]", titles(got), g.Title)
 	}
 }
 

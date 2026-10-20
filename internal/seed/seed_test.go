@@ -62,7 +62,7 @@ func TestSeededOrg(t *testing.T) {
 	t.Run("Check-in history with mixed Health", func(t *testing.T) { checkinHistoryWithMixedHealth(t, h) })
 	t.Run("Date Slips", func(t *testing.T) { dateSlips(t, h) })
 	t.Run("Milestone Churn", func(t *testing.T) { milestoneChurn(t, h) })
-	t.Run("Stale and Unaligned Goals", func(t *testing.T) { staleAndUnaligned(t, h) })
+	t.Run("Stale and Unlinked Goals", func(t *testing.T) { staleAndUnlinked(t, h) })
 	t.Run("Lifecycle changes", func(t *testing.T) { lifecycleChanges(t, h) })
 	t.Run("every person has a Name", func(t *testing.T) { everyPersonNamed(t, h) })
 	t.Run("everyone has a place in the Manager tree", func(t *testing.T) { everyoneInTheManagerTree(t, h) })
@@ -267,9 +267,9 @@ func milestoneChurn(t *testing.T, h *testsupport.Harness) {
 
 // Among the Active Goals, a few are Stale — their last Check-in is older than
 // their cadence — while most are up to date. The org outcomes are Top-level
-// Goals, so the Unaligned list the signals page shows is exactly the five side
+// Goals, so the Unlinked list the signals page shows is exactly the five side
 // projects.
-func staleAndUnaligned(t *testing.T, h *testsupport.Harness) {
+func staleAndUnlinked(t *testing.T, h *testsupport.Harness) {
 	ctx := context.Background()
 	end := h.Clock.Now()
 	var active, stale int
@@ -309,19 +309,19 @@ func staleAndUnaligned(t *testing.T, h *testsupport.Harness) {
 	if err != nil {
 		t.Fatalf("GraphSignals: %v", err)
 	}
-	unaligned := map[string]bool{}
-	for _, g := range signals.Unaligned {
-		unaligned[g.Title] = true
+	unlinked := map[string]bool{}
+	for _, g := range signals.Unlinked {
+		unlinked[g.Title] = true
 	}
-	wantUnaligned := []string{
+	wantUnlinked := []string{
 		"Evaluate ARM build agents",
 		"Prototype a natural-language query assistant",
 		"Refresh brand illustrations",
 		"Spike: instant payouts",
 		"Tablet layout exploration",
 	}
-	if got := sortedKeys(unaligned); len(signals.Unaligned) != len(got) || !slices.Equal(got, wantUnaligned) {
-		t.Errorf("Unaligned Goals = %q, want exactly the side projects %q", got, wantUnaligned)
+	if got := sortedKeys(unlinked); len(signals.Unlinked) != len(got) || !slices.Equal(got, wantUnlinked) {
+		t.Errorf("Unlinked Goals = %q, want exactly the side projects %q", got, wantUnlinked)
 	}
 }
 

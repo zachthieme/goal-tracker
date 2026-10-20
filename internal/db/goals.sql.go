@@ -689,7 +689,7 @@ func (q *Queries) ListSoWhatRevisions(ctx context.Context, goalID int64) ([]List
 	return items, nil
 }
 
-const listUnalignedGoals = `-- name: ListUnalignedGoals :many
+const listUnlinkedGoals = `-- name: ListUnlinkedGoals :many
 SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
@@ -702,22 +702,22 @@ WHERE goals.lifecycle = 'Active'
 ORDER BY goals.created_at DESC, goals.id DESC
 `
 
-type ListUnalignedGoalsRow struct {
+type ListUnlinkedGoalsRow struct {
 	Goal    Goal
 	Account Account
 }
 
 // Active Goals that contribute to no other Goal through an accepted link and
-// aren't Top-level (CONTEXT.md: Unaligned), newest first.
-func (q *Queries) ListUnalignedGoals(ctx context.Context) ([]ListUnalignedGoalsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listUnalignedGoals)
+// aren't Top-level (CONTEXT.md: Unlinked), newest first.
+func (q *Queries) ListUnlinkedGoals(ctx context.Context) ([]ListUnlinkedGoalsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listUnlinkedGoals)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ListUnalignedGoalsRow
+	var items []ListUnlinkedGoalsRow
 	for rows.Next() {
-		var i ListUnalignedGoalsRow
+		var i ListUnlinkedGoalsRow
 		if err := rows.Scan(
 			&i.Goal.ID,
 			&i.Goal.Title,

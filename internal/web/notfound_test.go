@@ -157,7 +157,7 @@ func TestUnknownAddressShowsTopBarCounts(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
-	h.ActiveGoal(sam, "Silent work", "It matters.") // due a Check-in, and Unaligned
+	h.ActiveGoal(sam, "Silent work", "It matters.") // due a Check-in, and Unlinked
 	h.Clock.Advance(10 * day)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
@@ -180,7 +180,7 @@ func TestUnknownAddressShowsNotFoundPageForEveryMethod(t *testing.T) {
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
-	h.ActiveGoal(sam, "Silent work", "It matters.") // due a Check-in, and Unaligned
+	h.ActiveGoal(sam, "Silent work", "It matters.") // due a Check-in, and Unlinked
 	h.Clock.Advance(10 * day)
 	client := signInClient(t, ts.URL, "sam@example.com")
 	wantHome, wantRisks := topBarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/goals/999999", "/home"))

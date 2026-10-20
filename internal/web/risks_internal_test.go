@@ -36,7 +36,7 @@ func kinds(r riskGoalRow) []string {
 	return out
 }
 
-// A Goal that is both Stale and Unaligned is one row carrying both signals,
+// A Goal that is both Stale and Unlinked is one row carrying both signals,
 // the Stale one counting the days since its last update.
 func TestRiskRowsMergeAGoalsSignals(t *testing.T) {
 	t.Parallel()
@@ -55,9 +55,9 @@ func TestRiskRowsMergeAGoalsSignals(t *testing.T) {
 	if r.Goal.ID != silent.ID || r.Health != "" {
 		t.Errorf("row = %q Health %q, want %q with no Health", r.Goal.Title, r.Health, silent.Title)
 	}
-	want := []riskSignal{{Kind: "stale", Days: 10}, {Kind: "unaligned"}}
+	want := []riskSignal{{Kind: "stale", Days: 10}, {Kind: "unlinked"}}
 	if len(r.Signals) != len(want) {
-		t.Fatalf("signals = %v, want stale and unaligned", kinds(r))
+		t.Fatalf("signals = %v, want stale and unlinked", kinds(r))
 	}
 	for i, w := range want {
 		if got := r.Signals[i]; got.Kind != w.Kind || got.Days != w.Days || got.Related != nil {
@@ -161,25 +161,25 @@ func TestSortRiskRowsPutsTheWorstFirst(t *testing.T) {
 	stale := func(days int) riskSignal { return riskSignal{Kind: "stale", Days: days} }
 	overdue := func(days int) riskSignal { return riskSignal{Kind: "path-overdue", Days: days} }
 	ownerless := riskSignal{Kind: "ownerless"}
-	unaligned := riskSignal{Kind: "unaligned"}
+	unlinked := riskSignal{Kind: "unlinked"}
 	conflict := riskSignal{Kind: "schedule-conflicts", Days: 30, Related: &domain.Goal{Title: "Launch"}}
 	halted := riskSignal{Kind: "halted-parents", Related: &domain.Goal{Title: "Paused"}}
 	want := []riskGoalRow{
 		row("Orphan red", 7, domain.HealthRed, ownerless),
 		row("Orphan green", 7, domain.HealthGreen, ownerless, stale(30)),
 		row("Red overdue", 7, domain.HealthRed, overdue(1)),
-		row("Red quiet", 7, domain.HealthRed, unaligned, conflict, halted),
+		row("Red quiet", 7, domain.HealthRed, unlinked, conflict, halted),
 		row("Yellow long overdue", 7, domain.HealthYellow, stale(8), overdue(5)),
 		row("Yellow overdue", 7, domain.HealthYellow, stale(40), overdue(2)),
 		row("Yellow stale", 7, domain.HealthYellow, stale(10)),
 		row("Yellow plan", 7, domain.HealthYellow, conflict),
 		row("None far past", 3, "", stale(12)),
 		row("None long silent", 14, "", stale(20)),
-		row("Beta halted", 7, "", halted, unaligned),
+		row("Beta halted", 7, "", halted, unlinked),
 		row("alpha conflict", 7, "", conflict),
 		row("Green stale", 7, domain.HealthGreen, stale(9)),
-		row("Alpha", 30, domain.HealthGreen, unaligned),
-		row("Beta", 7, domain.HealthGreen, unaligned),
+		row("Alpha", 30, domain.HealthGreen, unlinked),
+		row("Beta", 7, domain.HealthGreen, unlinked),
 		lifecycle(row("Aardvark proposal", 7, "", conflict), domain.LifecycleProposed),
 		lifecycle(row("Abandoned plan", 7, "", halted), domain.LifecycleOnHold),
 	}
@@ -209,13 +209,13 @@ func lifecycle(r riskGoalRow, l string) riskGoalRow {
 func TestSortRiskRowsPutsMoreKindsOfSignalFirst(t *testing.T) {
 	t.Parallel()
 
-	unaligned := riskSignal{Kind: "unaligned"}
+	unlinked := riskSignal{Kind: "unlinked"}
 	conflict := riskSignal{Kind: "schedule-conflicts", Days: 30, Related: &domain.Goal{Title: "Launch"}}
 	want := []string{"Zebra", "Apple", "Mango"}
 	rows := []riskGoalRow{
-		row("Mango", 7, domain.HealthGreen, unaligned),
-		row("Apple", 7, domain.HealthGreen, unaligned),
-		row("Zebra", 7, domain.HealthGreen, unaligned, conflict),
+		row("Mango", 7, domain.HealthGreen, unlinked),
+		row("Apple", 7, domain.HealthGreen, unlinked),
+		row("Zebra", 7, domain.HealthGreen, unlinked, conflict),
 	}
 
 	sortRiskRows(rows)
@@ -288,11 +288,11 @@ func TestRiskGroupsCountUniqueGoals(t *testing.T) {
 	sig := func(kind string) riskSignal { return riskSignal{Kind: kind} }
 	rows := []riskGoalRow{
 		row("Stale and overdue", 7, domain.HealthRed, sig("stale"), sig("path-overdue")),
-		row("Stale and unaligned", 7, "", sig("stale"), sig("unaligned")),
+		row("Stale and unlinked", 7, "", sig("stale"), sig("unlinked")),
 		row("Two conflicts", 7, domain.HealthGreen, sig("schedule-conflicts"), sig("schedule-conflicts")),
 		row("Orphan under two halted parents", 7, "", sig("ownerless"), sig("halted-parents"), sig("halted-parents")),
 		row("Under a halted parent", 7, domain.HealthGreen, sig("halted-parents")),
-		row("Unaligned", 7, domain.HealthGreen, sig("unaligned")),
+		row("Unlinked", 7, domain.HealthGreen, sig("unlinked")),
 		row("Stale with an overdue Action Item", 7, domain.HealthYellow, sig("stale"), sig("action-item-overdue")),
 		row("Overdue Action Item", 7, domain.HealthGreen, sig("action-item-overdue")),
 		row("Red, asking and stale", 7, domain.HealthRed, sig("red"), sig("asks-for-help"), sig("stale")),
