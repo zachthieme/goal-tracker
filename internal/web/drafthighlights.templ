@@ -20,7 +20,9 @@ import (
 // the top of the list, each Draft Highlight gains an Edit that opens it in
 // place, and Delete, relabelled Remove, posts with htmx too. Each answers with
 // the block to swap in, so the list is always the server's. The Kind is
-// optional here, unlike at a Check-in.
+// optional here, unlike at a Check-in. Once the Goal is Done or Cancelled the
+// block is marked data-hl-no-edit, so its Draft Highlights gain no Edit: they
+// can't be edited, only deleted.
 templ draftHighlightSection(v goalView) {
 	@draftHighlightBlock(v, draftHighlightRefusal{})
 }
@@ -39,6 +41,9 @@ templ draftHighlightBlock(v goalView, refused draftHighlightRefusal) {
 			data-highlight-editor
 			data-kind-optional
 			data-hl-noun="Draft Highlight"
+			if !draftHighlightsLoggable(v.Goal) {
+				data-hl-no-edit
+			}
 			hx-on:htmx:response-error={ swapErrorPageScript }
 		>
 			@groupHead(v, formDraftHighlight, "+ Log a highlight", "Log a highlight") {

@@ -145,13 +145,16 @@ templ itemEditorStyles() {
 // Draft's draft_highlight_id so the Check-in discards it. One editor is open
 // at a time: the add and Edit buttons are disabled while one is, as is any
 // copy of an add button outside the container that stands for it (the
-// Check-in page's add bar, through aria-controls).
+// Check-in page's add bar, through aria-controls), and so is a saved item's
+// server-side Remove, whose swap would lose the open editor.
 //
 // A Highlight with a url saves to the server instead (the Goal page's Draft
 // Highlights): Save posts its kind and note there with htmx and swaps the
 // container for the one the server answers with. The container's items are
 // then the server's, each an .hl-item carrying its url, kind and note, which
-// gains an Edit; one marked data-hl-refused, a refused edit, opens as an
+// gains an Edit unless the container is marked data-hl-no-edit (a Done or
+// Cancelled Goal's Draft Highlights, which can't be edited); one marked
+// data-hl-refused, a refused edit, opens as an
 // editor again with what was typed and the reason, as does a log form the
 // server rendered open. A [data-hl-js-label] control takes that label. The
 // container's data-kind-optional lets Save go without a Kind, and its
@@ -180,6 +183,7 @@ templ highlightEditorScript() {
 				if (addAnother) addAnother.remove();
 				var kindOptional = box.hasAttribute("data-kind-optional");
 				var noun = box.getAttribute("data-hl-noun") || "Highlight";
+				var noEdit = box.hasAttribute("data-hl-no-edit");
 				box.querySelectorAll("[data-hl-js-label]").forEach(function (b) {
 					b.textContent = b.getAttribute("data-hl-js-label");
 				});
@@ -198,13 +202,15 @@ templ highlightEditorScript() {
 				});
 				box.querySelectorAll(".hl-item[data-hl-url]").forEach(function (saved) {
 					saved.hl = { url: saved.getAttribute("data-hl-url"), kind: saved.getAttribute("data-hl-kind"), note: saved.getAttribute("data-hl-note") };
-					var edit = document.createElement("button");
-					edit.type = "button";
-					edit.className = "btn quiet sm";
-					edit.setAttribute("data-hl-edit", "");
-					edit.textContent = "Edit";
-					var actions = saved.querySelector("[data-hl-actions]") || saved;
-					actions.prepend(edit);
+					if (!noEdit) {
+						var edit = document.createElement("button");
+						edit.type = "button";
+						edit.className = "btn quiet sm";
+						edit.setAttribute("data-hl-edit", "");
+						edit.textContent = "Edit";
+						var actions = saved.querySelector("[data-hl-actions]") || saved;
+						actions.prepend(edit);
+					}
 					if (saved.hasAttribute("data-hl-refused")) {
 						var typed = { url: saved.hl.url, kind: saved.getAttribute("data-hl-typed-kind"), note: saved.getAttribute("data-hl-typed-note") };
 						saved.replaceWith(openEditor(typed, { select: true, restore: saved, error: saved.querySelector("[role=alert]") }));
@@ -382,6 +388,9 @@ templ highlightEditorScript() {
 						b.disabled = open;
 					});
 					box.querySelectorAll("[data-hl-edit]").forEach(function (b) {
+						b.disabled = open;
+					});
+					box.querySelectorAll("[data-hl-actions] [type=submit]").forEach(function (b) {
 						b.disabled = open;
 					});
 					box.querySelectorAll(".hl-editor").forEach(function (el) {
