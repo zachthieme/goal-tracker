@@ -457,8 +457,8 @@ func (s *Service) recordReadings(ctx context.Context, checkinID int64, readings 
 // also refused, whatever the Health, while a Milestone is overdue: the missed
 // date needs a full Check-in that moves it, marks it Done or removes it. So it
 // is once the Path to Green's back-to-Green date has passed: the Owner must
-// move it later, with a reason, or come back to Green. The new Check-in is
-// still immutable and records its own author and Owner.
+// submit a Check-in with a new date and reason, or update the Health. The new
+// Check-in is still immutable and records its own author and Owner.
 func (s *Service) SubmitNoChangeCheckin(ctx context.Context, goalID, authorID int64) (Checkin, error) {
 	goal, err := s.activeGoalForNoChange(ctx, goalID)
 	if err != nil {
@@ -545,14 +545,14 @@ func (s *Service) noChangeCheck(ctx context.Context, g Goal) (db.Checkin, string
 		return db.Checkin{}, "", fmt.Errorf("%w: submit a Check-in to move its date, mark it Done or remove it", &MilestoneOverdueError{Milestone: milestoneFromRow(m)})
 	}
 	// Nor once the back-to-Green date has passed, as of today in the Goal's
-	// timezone, whatever the Health: the Owner must move it, with a reason, or
-	// come back to Green (CONTEXT.md: Check-in).
+	// timezone, whatever the Health: the Owner must submit a Check-in with a new
+	// date and reason, or update the Health (CONTEXT.md: Check-in).
 	fresh, err := s.Freshness(ctx, g.ID)
 	if err != nil {
 		return db.Checkin{}, "", err
 	}
 	if fresh.PathToGreenOverdue {
-		return db.Checkin{}, "", fmt.Errorf("%w: the back-to-Green date has passed: submit a Check-in to move it later, with a reason, or come back to Green", ErrValidation)
+		return db.Checkin{}, "", fmt.Errorf("%w: the back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health", ErrValidation)
 	}
 	// Nor a Green while a Metric is off target: only a full Check-in can
 	// confirm that.

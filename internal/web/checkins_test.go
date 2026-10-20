@@ -2862,7 +2862,7 @@ func offTargetIdleGoal(t *testing.T, h *testsupport.Harness, owner domain.Accoun
 
 // A Green Check-in while a Metric is off target records nothing: the form comes
 // back as typed with a warning naming the Metric, its reading and unit, its
-// target and target date, and a Save as Green anyway button in the form.
+// target and target date, and a Confirm Green button in the form.
 func TestCheckinGreenWithOffTargetMetricWarnsBeforeSaving(t *testing.T) {
 	t.Parallel()
 
@@ -2886,8 +2886,11 @@ func TestCheckinGreenWithOffTargetMetricWarnsBeforeSaving(t *testing.T) {
 		t.Errorf("warning does not name the Metric, the reading entered, its target and date: %s", warning)
 	}
 	confirm := tagAround(t, warning, `name="confirm_off_target"`)
-	if !strings.Contains(confirm, `type="submit"`) || attr(confirm, "value") != "1" || !strings.Contains(warning, "Save as Green anyway") {
-		t.Errorf("warning offers no Save as Green anyway that submits the form confirmed: %s", warning)
+	if !strings.Contains(confirm, `type="submit"`) || attr(confirm, "value") != "1" || !strings.Contains(warning, ">Confirm Green</button>") {
+		t.Errorf("warning offers no Confirm Green that submits the form confirmed: %s", warning)
+	}
+	if !strings.Contains(warning, "A Metric is off target. Is the Goal still Green?") {
+		t.Errorf("warning doesn't ask whether the Goal is still Green: %s", warning)
 	}
 	if !strings.Contains(body, "Old pool nearly drained.</textarea>") {
 		t.Errorf("the status typed was lost; body:\n%s", body)
@@ -2903,7 +2906,7 @@ func TestCheckinGreenWithOffTargetMetricWarnsBeforeSaving(t *testing.T) {
 	}
 }
 
-// Save as Green anyway posts the form again confirmed, and the Check-in records
+// Confirm Green posts the form again confirmed, and the Check-in records
 // as Green.
 func TestCheckinSaveAsGreenAnywayRecordsGreen(t *testing.T) {
 	t.Parallel()
@@ -2934,7 +2937,8 @@ func TestCheckinSaveAsGreenAnywayRecordsGreen(t *testing.T) {
 }
 
 // A No change can't repeat a Green while a Metric is off target: it lands on
-// the Check-in page with the Metric's miss as the form's error.
+// the Check-in page with the Metric's miss as the form's error, and how to keep
+// Green.
 func TestNoChangeRefusedWhileMetricOffTargetLandsOnCheckinForm(t *testing.T) {
 	t.Parallel()
 
@@ -2949,14 +2953,14 @@ func TestNoChangeRefusedWhileMetricOffTargetLandsOnCheckinForm(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want 422", resp.StatusCode)
 	}
-	assertNoChangeRefusalOnForm(t, page, "Idle capacity is 40.88 percent; its target was 20 by Jan 30.")
+	assertNoChangeRefusalOnForm(t, page, "Idle capacity is 40.88 percent; its target was 20 by Jan 30. To keep Green, submit a Check-in that confirms it, or update the Health.")
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
 		t.Errorf("a refused No change recorded a Check-in: history has %d, want 1", len(history))
 	}
 }
 
 // An overdue Milestone's refusal wins: with a Metric off target too, the form
-// shows the overdue error and offers no Save as Green anyway.
+// shows the overdue error and offers no Confirm Green.
 func TestCheckinOverdueMilestoneRefusalWinsOverOffTargetWarning(t *testing.T) {
 	t.Parallel()
 
@@ -2976,7 +2980,7 @@ func TestCheckinOverdueMilestoneRefusalWinsOverOffTargetWarning(t *testing.T) {
 		t.Errorf("the overdue Milestone's refusal isn't shown; body:\n%s", body)
 	}
 	if strings.Contains(body, "confirm_off_target") {
-		t.Errorf("an overdue Milestone's refusal offers Save as Green anyway; body:\n%s", body)
+		t.Errorf("an overdue Milestone's refusal offers Confirm Green; body:\n%s", body)
 	}
 }
 
@@ -3081,7 +3085,7 @@ func TestCheckinAddAnotherKeepsOffTargetWarning(t *testing.T) {
 	}
 }
 
-// Save as Green anyway records Green, even when another Health was picked
+// Confirm Green records Green, even when another Health was picked
 // after the warning: the button does what it says (#342).
 func TestCheckinSaveAsGreenAnywayRecordsGreenWhateverHealthIsPicked(t *testing.T) {
 	t.Parallel()
@@ -3545,7 +3549,7 @@ func TestCheckinPageRefusesNoChangeOnceTheBackToGreenDateHasPassed(t *testing.T)
 	if strings.Contains(c, `data-testid="no-change-checkin"`) {
 		t.Errorf("the card offers a No change that would be refused:\n%s", c)
 	}
-	const want = "The back-to-Green date has passed: submit a Check-in to move it later, with a reason, or come back to Green."
+	const want = "The back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health."
 	if got := elementTexts(c, "p", "no-change-unavailable"); !slices.Equal(got, []string{want}) {
 		t.Errorf("the card's reason = %q, want %q", got, want)
 	}
@@ -3814,7 +3818,7 @@ func TestCheckinFormRolledUpPanel(t *testing.T) {
 	}
 	explanation := between(t, page, `data-testid="checkin-form-rollup"`, `name="explanation"`)
 	label := checkinPageText(explanation[strings.LastIndex(explanation, "<label"):])
-	if want := "Why is your Health different? Required while it differs from the Rolled-up Health"; !strings.Contains(label, want) {
+	if want := "Explain the difference from Rolled-up Health Required while it differs from the Rolled-up Health"; !strings.Contains(label, want) {
 		t.Errorf("explanation label = %q, want it to read %q", label, want)
 	}
 }
@@ -3846,8 +3850,8 @@ func TestCheckinFormPathToGreenNotesRunOffGreen(t *testing.T) {
 		}
 	}
 	// Beside the Back to Green by date, its last value and that a later one
-	// asks why.
-	if got, want := checkinPageText(between(t, page, `data-testid="checkin-path-target-last"`, `data-testid="checkin-path-target-reason"`)), "Last time: Jun 15 A later date asks why."; !strings.Contains(got, want) {
+	// needs a reason.
+	if got, want := checkinPageText(between(t, page, `data-testid="checkin-path-target-last"`, `data-testid="checkin-path-target-reason"`)), "Last time: Jun 15 A later date needs a reason."; !strings.Contains(got, want) {
 		t.Errorf("Back to Green by hints read %q, want %q", got, want)
 	}
 
@@ -3864,8 +3868,8 @@ func TestCheckinFormPathToGreenNotesRunOffGreen(t *testing.T) {
 	if got := legend(page); strings.Contains(got, "off Green") {
 		t.Errorf("Green Goal's Path to Green legend = %q, want no Run off Green", got)
 	}
-	if strings.Contains(page, "A later date asks why.") {
-		t.Errorf("a Goal with no previous Back to Green date says a later one asks why")
+	if strings.Contains(page, "A later date needs a reason.") {
+		t.Errorf("a Goal with no previous Back to Green date says a later one needs a reason")
 	}
 }
 

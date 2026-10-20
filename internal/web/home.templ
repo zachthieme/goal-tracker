@@ -80,7 +80,7 @@ templ homePage(current *domain.Account, v homeView) {
 			}
 			if len(v.AtRisk) > 0 {
 				<section data-testid="home-not-green" class="hm-section">
-					<h3>Your goals not Green</h3>
+					<h3>Your Yellow or Red goals</h3>
 					<ul class="hm-list hm-compact">
 						for _, g := range v.AtRisk {
 							<li>

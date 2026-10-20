@@ -71,7 +71,7 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		return
 	}
 	health := r.FormValue("health")
-	// Save as Green anyway does what it says, whatever Health was picked after
+	// Confirm Green does what it says, whatever Health was picked after
 	// the warning. Once pressed, a re-rendered form carries the confirmation
 	// (off_target_confirmed) while Green is picked, so the Owner isn't asked
 	// again after a later error or Add another.
@@ -179,8 +179,8 @@ func (s *Server) handleSubmitCheckin(w http.ResponseWriter, r *http.Request, cur
 		Lifecycle:       lifecycle.To,
 		LifecycleReason: lifecycle.Reason,
 		Outcome:         lifecycle.Outcome,
-		// Save as Green anyway, on the off-target warning, posts this, and a
-		// form re-rendered since carries it.
+		// Confirm Green, on the off-target warning, posts this, and a form
+		// re-rendered since carries it.
 		ConfirmOffTarget: offTargetConfirmed,
 	}
 	if err := dates.applyTo(&in); err != nil {
@@ -545,7 +545,7 @@ func (s *Server) noChangeReason(err error) string {
 	for _, o := range offTarget.Metrics {
 		missed = append(missed, offTargetSentence(o, s.displayDates()))
 	}
-	return strings.Join(missed, " ") + " A No change can't repeat Green: submit a Check-in to confirm it or change the Health."
+	return strings.Join(missed, " ") + " To keep Green, submit a Check-in that confirms it, or update the Health."
 }
 
 // plainReason is a domain validation or authorization message without its
