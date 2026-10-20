@@ -23,6 +23,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Infrastructure:**
 - [internal] The vetinari agent image pre-creates `~/go/pkg`, `~/.cache` and `~/.cargo` as the agent user, so a cache bind-mounted beneath one of them no longer leaves its parent root-owned and unwritable (e.g. Go's `~/go/pkg/sumdb` beside a mounted `~/go/pkg/mod`). Rebuild with `vetinari build`.
+- [internal] The vetinari agent image pins Go to 1.27.1 instead of tracking the `golang:1.27` tag: go1.27.2 writes export data golangci-lint v2.13.2 can't read, so the `lint` gate failed every package's typecheck in a freshly built image.
 
 **Testing:**
 - [internal] The e2e suite passes `npx prettier --check .` again: the two scenario specs and the README are reformatted, and a new `e2e/.prettierignore` skips the `test-results/` and `playwright-report/` a run leaves behind. The Check-in add bar's 390px case no longer checks the page's own width, which `app.css` clips so the check could never fail; it still checks that `main`'s content fits `main` (#373).

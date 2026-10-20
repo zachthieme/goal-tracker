@@ -52,11 +52,13 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
 RUN npm install -g @mariozechner/pi-coding-agent @openai/codex
 
 # --- goal-tracker's toolchain ---------------------------------------------
-# Go, copied from the official image rather than installed by hand, so the patch
-# level tracks the golang:1.27 tag. templ and sqlc are NOT installed here:
-# they are pinned as `tool` deps in go.mod and run via `go tool`, so the
-# generator versions travel with the repo, not the image.
-COPY --from=golang:1.27-bookworm /usr/local/go /usr/local/go
+# Go, copied from the official image rather than installed by hand, pinned to a
+# patch release golangci-lint below can read: go1.27.2's export data (version 5)
+# is newer than v2.13.2 (built with go1.27.0) supports, so `lint` fails on every
+# package's typecheck. Move this and GOLANGCI_LINT_VERSION together. templ and
+# sqlc are NOT installed here: they are pinned as `tool` deps in go.mod and run
+# via `go tool`, so the generator versions travel with the repo, not the image.
+COPY --from=golang:1.27.1-bookworm /usr/local/go /usr/local/go
 ENV PATH="/usr/local/go/bin:/home/agent/go/bin:$PATH"
 
 # golangci-lint pinned (same version as pike) so the `lint` gate is stable: a
