@@ -146,7 +146,6 @@ func TestHomeListsStaleGoalToCheckInOn(t *testing.T) {
 	due := pageElement(t, page, "ul", "home-due")
 	row := homeRow(t, due, stale)
 	for _, want := range []string{
-		"last check-in 16 days ago · every 14 days",
 		`data-testid="home-due-stale"`,
 		`data-testid="home-due-health"`,
 		fmt.Sprintf(`action="/goals/%d/checkins/no-change"`, stale.ID),
@@ -155,6 +154,9 @@ func TestHomeListsStaleGoalToCheckInOn(t *testing.T) {
 		if !strings.Contains(row, want) {
 			t.Errorf("Stale Goal's row lacks %s:\n%s", want, row)
 		}
+	}
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || !strings.Contains(got[0], "last check-in 16 days ago · every 14 days") {
+		t.Errorf("Stale Goal's status line = %q, want how long since its last Check-in against its cadence", got)
 	}
 	for _, g := range []domain.Goal{fresh, others} {
 		if strings.Contains(due, navTo(g.ID)) {
@@ -212,7 +214,7 @@ func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
 
 	due := pageElement(t, page, "ul", "home-due")
 	row := homeRow(t, due, dueSoon)
-	if !strings.Contains(row, "last check-in 8 days ago · every 14 days") {
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Green last check-in 8 days ago · every 14 days" {
 		t.Errorf("due-soon Goal's row does not say why it's listed:\n%s", row)
 	}
 	if strings.Contains(row, `data-testid="home-due-stale"`) {
