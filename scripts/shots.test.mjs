@@ -138,7 +138,6 @@ const facts = {
   pin: null,
   osDark: false,
   background: "rgb(246, 246, 243)",
-  scrollsBy: 0,
   past: [],
   width: 1280,
   focus: null,

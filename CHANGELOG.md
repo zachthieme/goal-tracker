@@ -23,6 +23,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Testing:**
 - [internal] The e2e suite passes `npx prettier --check .` again: the two scenario specs and the README are reformatted, and a new `e2e/.prettierignore` skips the `test-results/` and `playwright-report/` a run leaves behind. The Check-in add bar's 390px case no longer checks the page's own width, which `app.css` clips so the check could never fail; it still checks that `main`'s content fits `main` (#373).
+- [internal] `scripts/shots.mjs` no longer reports how far the page scrolls sideways, which `app.css` clips so it was always 0; its overflow line comes from the elements past the window's edges alone. The Draft Highlight editor spec's header comment is rewrapped (#374).
 
 **Code quality:**
 - [internal] The space between an Ask for help's Addressee and "Answer" on the Goal page is now written explicitly, not produced by a comment line in the template. The rendered page is unchanged (#373).

@@ -2,8 +2,8 @@
 // opens the Highlight editor (#362) with an optional Kind, and its Save logs
 // the Draft Highlight at once with htmx, with no page load. Each pending one
 // has Edit, which opens it in the editor in place, and Remove, both disabled
-// while an editor is open (#372). The list shown is always the server's. Without script the block is as it was: a link to
-// the log form, and Delete.
+// while an editor is open (#372). The list shown is always the server's.
+// Without script the block is as it was: a link to the log form, and Delete.
 import type { Locator, Page } from "@playwright/test";
 
 import { expect, signIn, test } from "./fixtures";

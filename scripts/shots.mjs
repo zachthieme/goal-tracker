@@ -330,7 +330,6 @@ function facts() {
     pin: root.dataset.theme ?? null,
     osDark: matchMedia("(prefers-color-scheme: dark)").matches,
     background: getComputedStyle(document.body).backgroundColor,
-    scrollsBy: root.scrollWidth - vw,
     past: past.map((el) => `${describe(el)} (${Math.round(el.getBoundingClientRect().left)}–${Math.round(el.getBoundingClientRect().right)}px)`),
     width: vw,
     focus: !active || active === document.body ? null : `${describe(active)} "${text(active, 40)}"`,
@@ -451,7 +450,6 @@ export function formatReport(shot, { file, facts: f, native }) {
   const who = shot.as ? `as ${shot.as}` : "signed out";
   const pin = f.pin ? `pinned ${f.pin}` : `not pinned, follows the OS (${f.osDark ? "dark" : "light"})`;
   const overflow = [];
-  if (f.scrollsBy > 0) overflow.push(`the page scrolls sideways by ${f.scrollsBy}px`);
   if (f.past.length) overflow.push(`past the ${f.width}px window: ${f.past.slice(0, 5).join(", ")}${f.past.length > 5 ? ` and ${f.past.length - 5} more` : ""}`);
   const dialogs = [...native, ...f.dialogs];
   return `${file}
