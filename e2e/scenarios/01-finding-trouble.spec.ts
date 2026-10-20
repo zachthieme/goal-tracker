@@ -181,7 +181,9 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     // why.
     const reason = form.getByLabel("Reason for moving it later");
     if (await reason.isVisible()) await reason.fill("The cut-over needs another week.");
-    await form.getByRole("textbox", { name: /^What changed since the last check-in/ }).fill("The cut-over slipped past the date we gave.");
+    await form
+      .getByRole("textbox", { name: /^What changed since the last check-in/ })
+      .fill("The cut-over slipped past the date we gave.");
     await form.getByRole("button", { name: "Submit check-in" }).click();
     await owner.waitForURL(`**/goals/${overdue.id}`);
     await expect(owner.getByTestId("goal-path-to-green")).toContainText("Move the last two services over");

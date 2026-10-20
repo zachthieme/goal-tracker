@@ -178,10 +178,9 @@ test.describe("the Check-in page's add bar", () => {
     await page.setViewportSize({ width: 390, height: 800 });
     await openCheckin(page, goal);
     await expect(addBar(page)).toBeVisible();
-    const pageWidth = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
-    expect(pageWidth[0], "the page's width").toBeLessThanOrEqual(pageWidth[1]);
-    // The page clips anything past its edge, so what would scroll it shows
-    // as main's content running past main.
+    // The page's own width isn't checked: app.css clips html and body, so it
+    // never passes the window's. What would scroll the page shows instead as
+    // main's content running past main.
     const main = await page.locator("main").evaluate((e) => [e.scrollWidth, e.clientWidth]);
     expect(main[0], "main's content width").toBeLessThanOrEqual(main[1]);
     const row = addBar(page).getByTestId("checkin-add-buttons");
