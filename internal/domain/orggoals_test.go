@@ -189,7 +189,7 @@ func TestOrgSignalsCountNoOneTwiceInAManagerCycle(t *testing.T) {
 // Under puts the most Red first, then the most Path to Green overdue, the most
 // Check-in overdue, the most Yellow, and then goes by Name, ignoring case;
 // those with nothing flagged come last.
-func TestOrgSignalsOrderTheWorstOffFirst(t *testing.T) {
+func TestOrgSignalsOrderTheMostUrgentFirst(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)

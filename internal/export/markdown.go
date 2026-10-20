@@ -15,11 +15,12 @@ import (
 // snapshot page: who published it and when, what it read its changes against,
 // how it selected its Goals as it read when published (nothing for a
 // publication frozen before selections were), the line counting what moved
-// since then, its open Action Items, the introduction, the narrative curated from
-// Highlights, each exception's full MBR block opening with what changed on it
-// and naming the Goals it links to, worst first, and every other selected Goal
-// one line (CONTEXT.md: Report), each Goal with the Fields the Report chose. With no hover to show an email, a person's
-// first mention reads Name (email) and later ones their Name (CONTEXT.md: Name).
+// since then, its open Action Items, the introduction, the narrative curated
+// from Highlights, each exception's full MBR block opening with what changed on
+// it and naming the Goals it links to, most urgent first, and every other
+// selected Goal one line (CONTEXT.md: Report), each Goal with the Fields the
+// Report chose. With no hover to show an email, a person's first mention reads
+// Name (email) and later ones their Name (CONTEXT.md: Name).
 func Markdown(p domain.Publication) string {
 	var b strings.Builder
 	var people domain.Mentions
@@ -182,7 +183,7 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 		fmt.Fprintf(b, "\n%s\n", strings.Join(parts, " · "))
 	}
 	if len(blk.Behind) > 0 {
-		fmt.Fprintf(b, "\n**Behind it:** %s\n", linkedGoals(blk.Behind))
+		fmt.Fprintf(b, "\n**Supported by:** %s\n", linkedGoals(blk.Behind))
 	}
 	if (blk.RolledUp.Present || blk.RolledUp.CheckinOverdueChildren > 0) && blk.Explanation != "" {
 		fmt.Fprintf(b, "\n**Why the Health differs:** %s\n", text(blk.Explanation))

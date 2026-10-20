@@ -74,7 +74,7 @@ func freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSigna
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</ul></section><section data-testid=\"overdue-paths-section\"><h2>Path to Green overdue</h2><p>Active Goals past their Path to Green's target date that still aren't Green.</p><ul data-testid=\"overdue-paths\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</ul></section><section data-testid=\"overdue-paths-section\"><h2>Path to Green overdue</h2><p>Active Goals past their Path to Green's target date and not yet Green.</p><ul data-testid=\"overdue-paths\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

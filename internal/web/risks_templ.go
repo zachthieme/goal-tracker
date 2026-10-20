@@ -17,14 +17,14 @@ import (
 )
 
 // risksPage answers "which Goals are in trouble, and how badly?": how many
-// Goals need attention, a card per group of signals, Not Green and then by
-// who acts, then one table row per flagged Goal, worst first, narrowed to one
+// Goals need attention, a card per group of signals, Not Green and then by who
+// acts, then one table row per flagged Goal, most urgent first, narrowed to one
 // group when the address asks for it. Beside the count, "What each signal
-// means" opens their definitions. The header's
-// form scopes it all to some Goals; #risks-body is what a change of scope
-// swaps. With no Goal left to show, #risks-body says so in one line in place
-// of the count, the cards and the table; for an Admin, the cards follow it
-// while the company has a Goal that Needs an Admin.
+// means" opens their definitions. The header's form scopes it all to some
+// Goals; #risks-body is what a change of scope swaps. With no Goal left to
+// show, #risks-body says so in one line in place of the count, the cards and
+// the table; for an Admin, the cards follow it while the company has a Goal
+// that Needs an Admin.
 func risksPage(current *domain.Account, v risksPageView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -704,7 +704,7 @@ func riskCardLink(c riskCard) templ.Component {
 	})
 }
 
-// risksTable is the flagged Goals, one row each, worst first. A Fix that
+// risksTable is the flagged Goals, one row each, most urgent first. A Fix that
 // posts returns to here, the page's address.
 func risksTable(current *domain.Account, today time.Time, here string, rows []riskGoalRow) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -727,7 +727,7 @@ func risksTable(current *domain.Account, today time.Time, here string, rows []ri
 			templ_7745c5c3_Var32 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<div class=\"card\"><table id=\"risks-table\" class=\"rk-table\" data-testid=\"risks-table\"><thead><tr><th>Health</th><th>Goal</th><th>Owner</th><th aria-label=\"Fix\"></th></tr></thead> <tbody>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<div class=\"card\"><table id=\"risks-table\" class=\"rk-table\" data-testid=\"risks-table\"><thead><tr><th>Health</th><th>Goal</th><th>Owner</th><th aria-label=\"Next step\"></th></tr></thead> <tbody>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

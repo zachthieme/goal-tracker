@@ -1196,8 +1196,8 @@ func TestBackToGreenDateRecordsNoSlipUnlessLater(t *testing.T) {
 }
 
 // A No change can't repeat a back-to-Green date that has passed, whatever the
-// Health: the Owner must move it, with a reason, or come back to Green
-// (CONTEXT.md: Check-in).
+// Health: the Owner must submit a Check-in with a new date and reason, or
+// update the Health (CONTEXT.md: Check-in).
 func TestNoChangeRefusedOnceTheBackToGreenDateHasPassed(t *testing.T) {
 	t.Parallel()
 
@@ -1211,7 +1211,7 @@ func TestNoChangeRefusedOnceTheBackToGreenDateHasPassed(t *testing.T) {
 			h.Checkin(sam, goal.ID, health, "Behind.", "Add a second reviewer.", h.Clock.Now().AddDate(0, 0, 3))
 
 			h.Clock.Advance(5 * 24 * time.Hour)
-			const want = "the back-to-Green date has passed: submit a Check-in to move it later, with a reason, or come back to Green"
+			const want = "the back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health"
 			refusal := h.Service.NoChangeRefusal(context.Background(), goal.ID)
 			_, err := h.Service.SubmitNoChangeCheckin(context.Background(), goal.ID, sam.ID)
 			if !errors.Is(err, domain.ErrValidation) {

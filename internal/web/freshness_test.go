@@ -40,6 +40,9 @@ func TestFreshnessPageListsCheckinOverdueGoalsAndOverduePaths(t *testing.T) {
 		}
 	}
 
+	if section := pageElement(t, page, "section", "overdue-paths-section"); !strings.Contains(section, "<p>Active Goals past their Path to Green's target date and not yet Green.</p>") {
+		t.Errorf("overdue Paths to Green section doesn't say what's listed; section:\n%s", section)
+	}
 	overdue := pageElement(t, page, "ul", "overdue-paths")
 	if !strings.Contains(overdue, navTo(stalled.ID)) || !strings.Contains(overdue, "back to Green by Jan 5") {
 		t.Errorf("overdue Paths to Green do not show %q due back at Green by Jan 5; section:\n%s", stalled.Title, overdue)

@@ -268,9 +268,9 @@ func (r goalRow) lastCheckin() string {
 	return daysAgo(r.Freshness.DaysSince)
 }
 
-// problemRank orders the Goal list so problems sort to the top: Red, then
-// Ownerless, then Check-in overdue, Path to Green overdue or Milestone overdue,
-// then Yellow, then Green, then no Health.
+// problemRank orders the Goal list so Goals that need a decision or update
+// come first: Red, then Ownerless, then Check-in overdue, Path to Green overdue
+// or Milestone overdue, then Yellow, then Green, then no Health.
 func (r goalRow) problemRank() int {
 	switch {
 	case r.health() == domain.HealthRed:
@@ -1058,7 +1058,7 @@ type goalView struct {
 	// Active (CONTEXT.md: Date Slip, Milestone Churn).
 	DateSlips      []domain.DateSlip
 	MilestoneChurn int
-	// Signals are the risks the graph flags on this Goal that nobody reported:
+	// Signals are those found in how this Goal is linked and dated:
 	// Unlinked, schedule conflicts it is either side of, and parents that are On
 	// Hold or Cancelled.
 	Signals domain.GoalSignals
@@ -2322,11 +2322,11 @@ func (k cellKey) compare(o cellKey) int {
 	return cmp.Compare(k.text, o.text)
 }
 
-// healthOrder sorts Health worst first, the way the list puts problems first.
+// healthOrder sorts Health most urgent first, the way the list does.
 var healthOrder = []string{domain.HealthRed, domain.HealthYellow, domain.HealthGreen}
 
 // sortKey is row's value in col as it sorts, and false when it has none: dates
-// and numbers as numbers, Health worst first, Lifecycle and a Dimension's
+// and numbers as numbers, Health most urgent first, Lifecycle and a Dimension's
 // values in their own order, and text ignoring case.
 func (c tableColumn) sortKey(row goalTableRow) (cellKey, bool) {
 	g := row.Goal

@@ -246,7 +246,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     // The count is her default scope, My org, as many as a bare /risks lists.
     await page.goto("/risks");
     await expect(page.getByTestId("risks-attention")).toHaveText(
-      new RegExp(`^${count} Goals need attention in My org`),
+      new RegExp(`^${count} Goals to review in My org, most urgent first`),
     );
     expect(await riskRows(page), "the count is a bare /risks's rows").toHaveLength(count);
   });
@@ -303,9 +303,9 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     }
   });
 
-  await test.step("3. Risks says how many Goals need attention, in five groups by who has to act", async () => {
+  await test.step("3. Risks says how many Goals there are to review, in five groups by who has to act", async () => {
     await page.goto("/risks?org=all");
-    await expect(page.getByTestId("risks-attention")).toContainText("Goals need attention");
+    await expect(page.getByTestId("risks-attention")).toContainText("Goals to review, most urgent first");
     const cards = [
       { key: "health", name: "Not Green", kinds: ["red", "yellow"] },
       { key: "owner", name: "Waiting on a Check-in", kinds: ["checkin-overdue", "path-overdue", "milestone-overdue"] },
@@ -377,7 +377,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     }
   });
 
-  await test.step("4. Narrowed to her org, each flagged Goal is one row, worst first, with a chip per reason and one Fix", async () => {
+  await test.step("4. Narrowed to her org, each flagged Goal is one row, most urgent first, with a chip per reason and one Fix", async () => {
     // A bare /risks is her default, My org, which the top bar counts.
     await page.goto("/risks");
     const inOrg = await navRisksCount(page);
@@ -387,7 +387,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     await teamSelect.selectOption({ label: "Platform" });
     await expect(page).toHaveURL(/[?&]value=\d+/);
     const rows = await riskRows(page);
-    await expect(page.getByTestId("risks-attention")).toHaveText(new RegExp(`^${rows.length} Goals? needs? attention`));
+    await expect(page.getByTestId("risks-attention")).toHaveText(new RegExp(`^${rows.length} Goals? to review`));
     // The top bar counts her whole org; the narrowed page doesn't.
     expect(rows.length, "Platform has fewer flagged Goals than her org").toBeLessThan(inOrg);
     expect(await navRisksCount(page), "the top bar's count doesn't narrow").toBe(inOrg);
@@ -403,10 +403,10 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
       expect(r.fixCells, `${r.title} has one Fix`).toBe(1);
       expect(r.fixes, `${r.title}'s Fix is one action: ${r.fix}`).toBe(1);
     }
-    // Worst first (sortRiskRows): Active Goals before Proposed and On Hold
-    // ones, then Ownerless, then by Health (Red, Yellow, none, Green), then
-    // Path to Green overdue, then Milestone overdue, then an overdue Action
-    // Item, then Check-in overdue.
+    // Most urgent first (sortRiskRows): Active Goals before Proposed and On
+    // Hold ones, then Ownerless, then by Health (Red, Yellow, none, Green),
+    // then Path to Green overdue, then Milestone overdue, then an overdue
+    // Action Item, then Check-in overdue.
     const keys = rows.map((r) => [
       lifecycles.get(r.id) === "Active" ? 0 : 1,
       r.kinds.includes("ownerless") ? 0 : 1,
@@ -613,7 +613,8 @@ function riskRow(page: Page, id: number): Locator {
     .filter({ has: page.getByTestId("risk-goal").locator(`a[href="/goals/${id}"]`).first() });
 }
 
-// riskHealthRank orders Health on Risks worst first: Red, Yellow, none, Green.
+// riskHealthRank orders Health on Risks most urgent first: Red, Yellow, none,
+// Green.
 function riskHealthRank(health: string): number {
   return { Red: 0, Yellow: 1, Green: 3 }[health] ?? 2;
 }

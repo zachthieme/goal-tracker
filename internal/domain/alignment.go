@@ -71,7 +71,7 @@ type HaltedParent struct {
 	Parent Goal
 }
 
-// GraphSignals are the risks the Goal graph flags that nobody reported: the
+// GraphSignals are the signals found in how Goals are linked and dated: the
 // Unlinked Goals, the schedule conflicts between linked Goals, and the Goals
 // whose parent is On Hold or Cancelled.
 type GraphSignals struct {

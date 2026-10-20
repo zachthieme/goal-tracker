@@ -109,7 +109,7 @@ func graphSignalsPage(current *domain.Account, signals domain.GraphSignals, date
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<h1>Graph signals</h1><p>Risks the Goal graph flags that nobody reported.</p><section data-testid=\"unlinked-section\"><h2>Unlinked Goals</h2><p>Active Goals that contribute to no other Goal and aren't Top-level.</p><ul data-testid=\"unlinked-goals\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<h1>Graph signals</h1><p>Signals found in how Goals are linked and dated.</p><section data-testid=\"unlinked-section\"><h2>Unlinked Goals</h2><p>Active Goals that contribute to no other Goal and aren't Top-level.</p><ul data-testid=\"unlinked-goals\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -101,12 +101,12 @@ type reportException struct {
 	pathOverdue, slipped, movedLifecycle bool
 }
 
-// sortReportExceptions puts the worst-off exceptions first, key by key, as the
-// Risks page ranks Goals: Ownerless first; then by Health, Red, Yellow, none,
-// then Green; then a Path to Green overdue first; then Check-in overdue first.
-// Then those that changed since the baseline come first, new trouble ahead of
-// standing trouble; then the soonest delivery date, with none last; then by
-// title, ignoring case, then by Goal id.
+// sortReportExceptions puts the most urgent exceptions first, key by key, as
+// the Risks page ranks Goals: Ownerless first; then by Health, Red, Yellow,
+// none, then Green; then a Path to Green overdue first; then Check-in overdue
+// first. Then those that changed since the baseline come first, new trouble
+// ahead of standing trouble; then the soonest delivery date, with none last;
+// then by title, ignoring case, then by Goal id.
 func sortReportExceptions(xs []reportException) {
 	slices.SortStableFunc(xs, func(a, b reportException) int {
 		ga, gb := a.block.Goal, b.block.Goal
@@ -146,7 +146,8 @@ func reportFlagRank(holds bool) int {
 	return 1
 }
 
-// reportHealthRank orders Health worst first: Red, Yellow, none, then Green.
+// reportHealthRank orders Health most urgent first: Red, Yellow, none, then
+// Green.
 func reportHealthRank(health string) int {
 	switch health {
 	case HealthRed:
@@ -250,7 +251,7 @@ func (h goalHistory) reportChanges(b ReportBlock, since func(time.Time) bool, ba
 	}
 	switch days := h.deliveryMoveDays(since); {
 	case days > 0:
-		out = append(out, "Delivery date slipped "+changeDuration(days))
+		out = append(out, "Delivery date moved "+changeDuration(days)+" later")
 	case days < 0:
 		out = append(out, "Delivery date moved "+changeDuration(-days)+" earlier")
 	}

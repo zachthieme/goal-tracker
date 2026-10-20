@@ -175,7 +175,7 @@ func homePage(current *domain.Account, v homeView) templ.Component {
 				}
 			}
 			if len(v.AtRisk) > 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<section data-testid=\"home-not-green\" class=\"hm-section\"><h3>Your goals not Green</h3><ul class=\"hm-list hm-compact\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<section data-testid=\"home-not-green\" class=\"hm-section\"><h3>Your Yellow or Red goals</h3><ul class=\"hm-list hm-compact\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

@@ -266,7 +266,7 @@ func TestDigestListsChildrenThatWentYellowOrRedThisWeek(t *testing.T) {
 	}
 
 	body := digestTo(t, h.Email, "pat@example.com")
-	for _, want := range []string{"Launch pricing page", "went Red", "Partner referrals", "went Yellow"} {
+	for _, want := range []string{"Updates on Goals contributing to yours:\n\n", "Launch pricing page", "went Red", "Partner referrals", "went Yellow"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("digest does not mention %q:\n%s", want, body)
 		}

@@ -38,10 +38,11 @@ type checkinFormData struct {
 	// above the Owner (CONTEXT.md: Ask for help).
 	AsksForHelp  bool
 	AskAddressee *domain.Account
-	// RolledUp is the Goal's Rolled-up Health, shown in the form so the Owner can
-	// see the worst among the Goal's Active children while setting their Health
-	// (ADR-0003). Explanation is the Owner's reason for a difference, required
-	// only when their Health differs from the Rolled-up Health.
+	// RolledUp is the Goal's Rolled-up Health, shown in the form so the Owner
+	// can see the lowest Health among the Goal's Active children while setting
+	// their Health (ADR-0003). Explanation is the Owner's reason for a
+	// difference, required only when their Health differs from the Rolled-up
+	// Health.
 	RolledUp    domain.RolledUpHealth
 	Explanation string
 	// RunOffGreen is how long the Goal has been Yellow or Red, noted beside
@@ -75,10 +76,9 @@ type checkinFormData struct {
 	// warns about them, flagged at its top, and offers to save the Green
 	// anyway (CONTEXT.md: Check-in). A confirmed form shows no warning.
 	OffTarget []domain.OffTargetMetric
-	// OffTargetConfirmed is set once the Owner has pressed Save as Green
-	// anyway: while Green is picked, a re-rendered form carries the
-	// confirmation, so the next submit counts as confirmed and the form shows
-	// no warning.
+	// OffTargetConfirmed is set once the Owner has pressed Confirm Green:
+	// while Green is picked, a re-rendered form carries the confirmation, so
+	// the next submit counts as confirmed and the form shows no warning.
 	OffTargetConfirmed bool
 	// Overdue is set when the form starts on a Goal whose No change is
 	// refused for an overdue Milestone: the dates and Milestones section
@@ -727,7 +727,7 @@ func checkinSection(v goalView) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</span> <span class=\"muted\">(worst among Active children)</span>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</span> <span class=\"muted\">(lowest Health among Active children)</span>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -863,14 +863,14 @@ func statusCells(v goalView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\" title=\"Worst among Active children\"><span class=\"dot\"></span><span data-testid=\"goal-rollup-health\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "\" title=\"Lowest Health among Active children\"><span class=\"dot\"></span><span data-testid=\"goal-rollup-health\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var18 string
 				templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(v.RolledUp.Health)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 562, Col: 181}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/checkins.templ`, Line: 562, Col: 189}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 				if templ_7745c5c3_Err != nil {
@@ -1870,7 +1870,7 @@ func checkinForm(d checkinFormData) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, "</p><label><span>Why is your Health different? <span class=\"hint\">Required while it differs from the Rolled-up Health</span></span> <textarea name=\"explanation\" data-testid=\"checkin-explanation\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, "</p><label><span>Explain the difference from Rolled-up Health <span class=\"hint\">Required while it differs from the Rolled-up Health</span></span> <textarea name=\"explanation\" data-testid=\"checkin-explanation\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2031,7 +2031,7 @@ func checkinForm(d checkinFormData) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 126, "</span> <span class=\"hint\">A later date asks why.</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 126, "</span> <span class=\"hint\">A later date needs a reason.</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -2503,7 +2503,7 @@ func checkinSummaryScript() templ.Component {
 }
 
 // checkinOffTargetWarning asks the Owner to confirm a Green while Metrics are
-// off target, naming each with its reading and target. Save as Green anyway
+// off target, naming each with its reading and target. Confirm Green
 // submits the form as typed, confirmed and as Green; the Owner can instead
 // change the Health, which hides the warning, and submit. Pressing Enter in a
 // field doesn't confirm a first warning: Enter presses the form's first
@@ -2554,7 +2554,7 @@ func checkinOffTargetWarning(missed []domain.OffTargetMetric, shown displayDates
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 176, "</ul><p>Change the Health and submit, or confirm it's Green.</p><button type=\"submit\" name=\"confirm_off_target\" value=\"1\" class=\"btn\">Save as Green anyway</button></section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 176, "</ul><p>Change the Health and submit, or confirm it's Green.</p><button type=\"submit\" name=\"confirm_off_target\" value=\"1\" class=\"btn\">Confirm Green</button></section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -618,10 +618,10 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 	}
 }
 
-// Home lists the viewer's Red and Yellow Goals under a "Your goals not Green"
-// heading, Red first, so the list doesn't read as all their Goals. With only
-// Green Goals there is no such section.
-func TestHomeHeadsNotGreenGoals(t *testing.T) {
+// Home lists the viewer's Red and Yellow Goals under a "Your Yellow or Red
+// goals" heading, Red first, so the list doesn't read as all their Goals. With
+// only Green Goals there is no such section.
+func TestHomeHeadsYellowOrRedGoals(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -637,14 +637,14 @@ func TestHomeHeadsNotGreenGoals(t *testing.T) {
 	h.Checkin(kim, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
 
 	yours := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-not-green")
-	heading := strings.Index(yours, `<h3>Your goals not Green</h3>`)
+	heading := strings.Index(yours, `<h3>Your Yellow or Red goals</h3>`)
 	first, second := strings.Index(yours, navTo(red.ID)), strings.Index(yours, navTo(yellow.ID))
 	if heading < 0 || first < heading || second < first {
-		t.Errorf("Your goals does not list Red then Yellow under a Not Green heading:\n%s", yours)
+		t.Errorf("Your goals does not list Red then Yellow under a Yellow or Red heading:\n%s", yours)
 	}
 
-	if kims := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home"); strings.Contains(kims, "home-not-green") || strings.Contains(kims, "not Green") {
-		t.Errorf("kim has only Green Goals but sees a not Green list:\n%s", kims)
+	if kims := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home"); strings.Contains(kims, "home-not-green") || strings.Contains(kims, "Yellow or Red") {
+		t.Errorf("kim has only Green Goals but sees a Yellow or Red list:\n%s", kims)
 	}
 }
 
@@ -1206,7 +1206,7 @@ func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
 // that has anything, labelled so it reads without colour, in the order Red,
 // Path to Green overdue, Check-in overdue, Yellow. Each person directly under
 // the viewer with anything flagged gets a row with their whole Org's counts as
-// badges, worst off first, their name linking to Goals scoped to their Org;
+// badges, most urgent first, their name linking to Goals scoped to their Org;
 // someone two levels down counts in the row of the person they're under. The
 // section lists no Goals.
 func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {

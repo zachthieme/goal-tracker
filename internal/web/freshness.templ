@@ -29,7 +29,7 @@ templ freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSign
 		</section>
 		<section data-testid="overdue-paths-section">
 			<h2>Path to Green overdue</h2>
-			<p>Active Goals past their Path to Green's target date that still aren't Green.</p>
+			<p>Active Goals past their Path to Green's target date and not yet Green.</p>
 			<ul data-testid="overdue-paths">
 				if len(signals.OverduePaths) == 0 {
 					<li data-testid="no-overdue-paths">No overdue Paths to Green.</li>

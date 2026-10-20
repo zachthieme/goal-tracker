@@ -44,17 +44,17 @@ Goal is doing. **Risks** is the context: which of those need attention, why,
 and who has to act.
 
 1. The top bar shows a count on **Risks** before she clicks anything.
-2. She opens **Goals**. The list is led by Health, problems first. She filters
-   to her org by a Dimension and groups by another, and reads the shape: how
-   many Red, how many Yellow, which rows carry a Check-in overdue or Ownerless
-   mark.
-3. She opens **Risks** for the reasons. It says how many Goals need attention,
+2. She opens **Goals**. The list is led by Health, Goals that need a decision
+   or update first. She filters to her org by a Dimension and groups by
+   another, and reads the shape: how many Red, how many Yellow, which rows
+   carry a Check-in overdue or Ownerless mark.
+3. She opens **Risks** for the reasons. It says how many Goals there are to review,
    in five groups: **Not Green** (Red, Yellow, Asks for help), then by who
    has to act, **Waiting on a Check-in** (Check-in overdue, Path to Green
    overdue, Milestone overdue), **Action Items overdue** (an Action Item from a
    Report past its due date), **Placement and dates** (Unlinked, schedule
    conflicts), **Needs an Admin** (Ownerless, parent On Hold or Cancelled).
-4. She narrows it to her org. Each flagged Goal is one row, worst first,
+4. She narrows it to her org. Each flagged Goal is one row, most urgent first,
    with a chip for each reason, its Health badge saying Red or Yellow, and
    one **Fix**.
 5. A Goal she doesn't own is Check-in overdue. The Fix is **Nudge**: its Owner
