@@ -36,8 +36,8 @@ type ListActiveGoalsWithLatestCheckinRow struct {
 
 // Every Active Goal with the parts of its latest Check-in that judge its
 // freshness: when it was written, its Health, and its Path to Green's target
-// date. Each is empty when the Goal has no Check-in yet (CONTEXT.md: Stale,
-// Path to Green).
+// date. Each is empty when the Goal has no Check-in yet (CONTEXT.md: Check-in
+// overdue, Path to Green).
 func (q *Queries) ListActiveGoalsWithLatestCheckin(ctx context.Context) ([]ListActiveGoalsWithLatestCheckinRow, error) {
 	rows, err := q.db.QueryContext(ctx, listActiveGoalsWithLatestCheckin)
 	if err != nil {

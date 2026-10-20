@@ -33,8 +33,8 @@ rmSync(rawVideo, { recursive: true, force: true });
 
 // The seed's people and Goals the deck shows.
 const leader = "cto@example.com";
-// The Owner in the recording has a Stale Goal that No change is allowed on (no
-// overdue Milestone) and a second Goal for the full Check-in.
+// The Owner in the recording has a Check-in overdue Goal that No change is
+// allowed on (no overdue Milestone) and a second Goal for the full Check-in.
 const owner = "grace.oduya@example.com";
 const checkinOverdueGoal = "Macro library for the top 50 issues";
 const updatedGoal = "Chatbot deflection for billing questions";
@@ -64,7 +64,7 @@ async function goalPath(page, title) {
 }
 
 // The leader's pages: Risks and one Red Goal. Taken before the recording's
-// Check-ins, so Risks still lists the Stale Goal.
+// Check-ins, so Risks still lists the Check-in overdue Goal.
 const leaderContext = await browser.newContext({
   baseURL: base,
   viewport: { width: 1440, height: 900 },
@@ -82,8 +82,8 @@ console.log("shot   risks-top.png");
 await cto.goto(redGoalPath);
 await shot(cto, "goal");
 
-// The recording: an Owner lands on Home and clears a Stale Goal with one
-// click on No change, then checks in Yellow on a second Goal. Its poster
+// The recording: an Owner lands on Home and clears a Check-in overdue Goal with
+// one click on No change, then checks in Yellow on a second Goal. Its poster
 // frame is the filled-in form.
 const videoContext = await browser.newContext({
   baseURL: base,

@@ -46,18 +46,19 @@ and who has to act.
 1. The top bar shows a count on **Risks** before she clicks anything.
 2. She opens **Goals**. The list is led by Health, problems first. She filters
    to her org by a Dimension and groups by another, and reads the shape: how
-   many Red, how many Yellow, which rows carry a Stale or Ownerless mark.
+   many Red, how many Yellow, which rows carry a Check-in overdue or Ownerless
+   mark.
 3. She opens **Risks** for the reasons. It says how many Goals need attention,
    in five groups: **Not Green** (Red, Yellow, Asks for help), then by who
-   has to act, **Waiting on a Check-in** (Stale, Path to Green overdue,
-   Milestone overdue), **Action Items overdue** (an Action Item from a Report
-   past its due date), **Placement and dates** (Unlinked, schedule
+   has to act, **Waiting on a Check-in** (Check-in overdue, Path to Green
+   overdue, Milestone overdue), **Action Items overdue** (an Action Item from a
+   Report past its due date), **Placement and dates** (Unlinked, schedule
    conflicts), **Needs an Admin** (Ownerless, parent On Hold or Cancelled).
 4. She narrows it to her org. Each flagged Goal is one row, worst first,
    with a chip for each reason, its Health badge saying Red or Yellow, and
    one **Fix**.
-5. A Goal she doesn't own has gone Stale. The Fix is **Nudge**: its Owner and
-   Delegates are asked to check in, and it can't be nudged again that day.
+5. A Goal she doesn't own is Check-in overdue. The Fix is **Nudge**: its Owner
+   and Delegates are asked to check in, and it can't be nudged again that day.
 6. A Red Goal catches her eye. She opens it: the Owner's latest status and
    Path to Green, Rolled-up Health beside the Owner's Health, struck-through
    dates, and the History of how it got here.
@@ -80,9 +81,9 @@ levels up can follow it without knowing her org.
    rule such as Team is any of Platform. A rail lists the Goals the rules
    select as she types.
 2. Each month she opens the draft. The preview is exactly what readers will
-   see: a Health summary, then the exceptions in full (Red, Yellow, Stale,
-   slipped, newly Proposed, Lifecycle changes), then every unchanged Green
-   Goal on one line.
+   see: a Health summary, then the exceptions in full (Red, Yellow, Check-in
+   overdue, slipped, newly Proposed, Lifecycle changes), then every unchanged
+   Green Goal on one line.
 3. "Changes since" reads against her previous publication, so what's marked is
    what moved since the last review, including Goals that entered or left.
 4. She composes the narrative: ticks the Highlights worth pulling into
@@ -140,7 +141,7 @@ folded away until she needed them.
 
 **When Priya is on holiday,** a Delegate she authorized checks in for her from
 "Goals delegated to you". The Check-in records who wrote it, and the Goal
-doesn't go Stale just because its Owner is away.
+isn't Check-in overdue just because its Owner is away.
 
 ## 4. Reporting bad news
 

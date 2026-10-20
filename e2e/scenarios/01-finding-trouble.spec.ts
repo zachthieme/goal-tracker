@@ -17,9 +17,9 @@ const leaderName = "Priya Raman";
 // The second Dimension the Admin defines, and its values.
 const tier = { name: "Tier", values: ["Core", "Edge"] };
 
-// isCheckinOverdue is SQL true for a Goal g whose last Check-in, or activation if it
-// has none, is older than its cadence: the seed's Stale Goals are weeks past
-// it, so the day boundary doesn't matter.
+// isCheckinOverdue is SQL true for a Goal g whose last Check-in, or activation
+// if it has none, is older than its cadence: the seed's Check-in overdue Goals
+// are weeks past it, so the day boundary doesn't matter.
 const isCheckinOverdue = `
   julianday($now) - julianday(coalesce(
     (select max(c.created_at) from checkins c where c.goal_id = g.id),
@@ -41,20 +41,21 @@ type Goal = { id: number; title: string; email: string };
 test("a leader finds trouble between reviews on Goals and Risks", async ({ page, as, seedLookup, serverLog }) => {
   test.setTimeout(180_000);
 
-  // The actors and Goals, chosen by criteria.
-  // A Stale Platform Goal the leader doesn't own, to nudge in step 5.
-  const [stale] = seedLookup<Goal>(
+  // The actors and Goals, chosen by criteria. A Check-in overdue Platform Goal
+  // the leader doesn't own, to nudge in step 5.
+  const [checkinOverdue] = seedLookup<Goal>(
     `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
      where g.lifecycle = 'Active' and a.email <> ? and a.departed = 0 and ${onTeam} and ${isCheckinOverdue}
      order by g.id limit 1`,
     leader,
     "Platform",
   );
-  expect(stale, "the seed has a Stale Platform Goal the leader doesn't own").toBeDefined();
+  expect(checkinOverdue, "the seed has a Check-in overdue Platform Goal the leader doesn't own").toBeDefined();
 
-  // An Owner to depart: owns an Active Platform Goal, owns no Stale Goal (so
-  // not the one nudged) and no Top-level Goal, and is neither the leader nor
-  // the Admin. The Stale subquery names its Goal g, as isCheckinOverdue reads it.
+  // An Owner to depart: owns an Active Platform Goal, owns no Check-in overdue
+  // Goal (so not the one nudged) and no Top-level Goal, and is neither the
+  // leader nor the Admin. The Check-in overdue subquery names its Goal g, as
+  // isCheckinOverdue reads it.
   const [departing] = seedLookup<Goal>(
     `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
      where g.lifecycle = 'Active' and ${onTeam} and a.email not in (?, ?) and a.is_admin = 0
@@ -69,8 +70,8 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
 
   // A Goal to put past its Path to Green: an Active Platform Goal whose Owner
   // stays, with no Active child Goals (so no Rolled-up Health asking for an
-  // explanation), not Stale, and with no overdue Planned Milestone, so the
-  // Check-in is only Health, status and Path to Green.
+  // explanation), not Check-in overdue, and with no overdue Planned Milestone,
+  // so the Check-in is only Health, status and Path to Green.
   const [overdue] = seedLookup<Goal>(
     `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
      where g.lifecycle = 'Active' and ${onTeam} and a.email not in (?, ?) and a.departed = 0
@@ -83,7 +84,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     "Platform",
     leader,
     departing.email,
-    stale.id,
+    checkinOverdue.id,
   );
   expect(overdue, "the seed has a Platform Goal to put past its Path to Green").toBeDefined();
 
@@ -105,8 +106,8 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   );
   expect(unlinked, "the seed has an Unlinked Goal").toBeDefined();
 
-  // A Goal with two signals: Stale, and due later than a Goal it contributes
-  // to (a Schedule conflict), with its Team.
+  // A Goal with two signals: Check-in overdue, and due later than a Goal it
+  // contributes to (a Schedule conflict), with its Team.
   const [twoReasons] = seedLookup<Goal & { team: string }>(
     `select g.id, g.title, a.email, v.value as team from goals g
      join accounts a on a.id = g.owner_id
@@ -120,7 +121,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
      order by g.id limit 1`,
     departing.email,
   );
-  expect(twoReasons, "the seed has a Stale Goal with a Schedule conflict").toBeDefined();
+  expect(twoReasons, "the seed has a Check-in overdue Goal with a Schedule conflict").toBeDefined();
 
   // The departed Owner's Active Goals, which become Ownerless on Risks.
   const ownerless = seedLookup<Goal>(
@@ -130,10 +131,10 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   );
 
   // Two Red Goals to open: one with Active child Goals contributing to it
-  // (Rolled-up Health), one whose delivery date has slipped. Seed 23 has no
-  // Red Goal with both. The first is otherwise fine: not Stale, contributing to
-  // a Goal, with an Owner who stays, so only its Health, under Not Green, puts
-  // it on Risks.
+  // (Rolled-up Health), one whose delivery date has slipped. Seed 23 has no Red
+  // Goal with both. The first is otherwise fine: not Check-in overdue,
+  // contributing to a Goal, with an Owner who stays, so only its Health, under
+  // Not Green, puts it on Risks.
   const [redWithChildren] = seedLookup<Goal>(
     `select g.id, g.title, a.email from goals g join accounts a on a.id = g.owner_id
      where g.lifecycle = 'Active' and ${latestHealth} = 'Red' and not (${isCheckinOverdue}) and a.email <> ?
@@ -209,7 +210,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     }
   });
 
-  await test.step("Setup 4: the leader publishes a Report and raises an Action Item about the Stale Goal, due two days ago", async () => {
+  await test.step("Setup 4: the leader publishes a Report and raises an Action Item about the Check-in overdue Goal, due two days ago", async () => {
     const leaderPage = await as(leader);
     const reportName = "Platform follow-ups";
     await leaderPage.goto("/reports/new");
@@ -231,11 +232,11 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     await items.locator("summary").click();
     const form = items.getByTestId("action-item-form");
     await form.getByLabel("Action Item").fill("Agree a date for the overdue cut-over.");
-    await form.getByLabel("Owner").fill(stale.email);
+    await form.getByLabel("Owner").fill(checkinOverdue.email);
     await form.getByLabel("Due").fill(isoDate(-2));
-    await form.getByTestId("action-item-goal").selectOption(String(stale.id));
+    await form.getByTestId("action-item-goal").selectOption(String(checkinOverdue.id));
     await form.getByRole("button", { name: "Add Action Item" }).click();
-    await expect(items.getByTestId("raised-action-item")).toContainText(`about ${stale.title}`);
+    await expect(items.getByTestId("raised-action-item")).toContainText(`about ${checkinOverdue.title}`);
   });
 
   await test.step("1. The top bar shows a count on Risks before she clicks anything", async () => {
@@ -266,13 +267,16 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     const unmarkedGreen = rows.findIndex((r) => r.health === "Green" && !marked(r));
     expect(unmarkedGreen, "no unmarked Green row comes before a Yellow one").toBeGreaterThan(lastYellow);
 
-    // Marks: the Stale Goal carries its stale mark, the departed Owner's Goal
-    // its ownerless mark.
-    expect(rows.find((r) => r.title === stale.title)?.stale, `${stale.title} is marked Stale`).toBe(true);
+    // Marks: the Check-in overdue Goal carries its Check-in overdue mark, the
+    // departed Owner's Goal its ownerless mark.
+    expect(
+      rows.find((r) => r.title === checkinOverdue.title)?.checkinOverdue,
+      `${checkinOverdue.title} is marked Check-in overdue`,
+    ).toBe(true);
     expect(rows.find((r) => r.title === departing.title)?.ownerless, `${departing.title} is marked Ownerless`).toBe(
       true,
     );
-    await expect(goalRow(page, stale.title).getByTestId("stale")).toBeVisible();
+    await expect(goalRow(page, checkinOverdue.title).getByTestId("checkin-overdue")).toBeVisible();
     await expect(goalRow(page, departing.title).getByTestId("ownerless")).toBeVisible();
 
     // Filter: Team = Platform, under More filters. Every row is a Platform Goal.
@@ -304,7 +308,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     await expect(page.getByTestId("risks-attention")).toContainText("Goals need attention");
     const cards = [
       { key: "health", name: "Not Green", kinds: ["red", "yellow"] },
-      { key: "owner", name: "Waiting on a Check-in", kinds: ["stale", "path-overdue", "milestone-overdue"] },
+      { key: "owner", name: "Waiting on a Check-in", kinds: ["checkin-overdue", "path-overdue", "milestone-overdue"] },
       { key: "followup", name: "Action Items overdue", kinds: ["action-item-overdue"] },
       { key: "plan", name: "Placement and dates", kinds: ["unlinked", "schedule-conflicts"] },
       { key: "admin", name: "Needs an Admin", kinds: ["ownerless"] },
@@ -326,10 +330,10 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     const expected: Record<string, { goal: Goal; kind: string }[]> = {
       health: [{ goal: redWithChildren, kind: "red" }],
       owner: [
-        { goal: stale, kind: "stale" },
+        { goal: checkinOverdue, kind: "checkin-overdue" },
         { goal: overdue, kind: "path-overdue" },
       ],
-      followup: [{ goal: stale, kind: "action-item-overdue" }],
+      followup: [{ goal: checkinOverdue, kind: "action-item-overdue" }],
       plan: [
         { goal: unlinked, kind: "unlinked" },
         { goal: twoReasons, kind: "schedule-conflicts" },
@@ -362,8 +366,8 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
           expect(row?.kinds, `${goal.title} is under ${c.name} with a ${kind} chip`).toContain(kind);
         }
       }
-      // The Stale chip on the card counts the Stale rows; Not Green's Red and
-      // Yellow chips count the rows of that Health.
+      // The Check-in overdue chip on the card counts the Check-in overdue rows;
+      // Not Green's Red and Yellow chips count the rows of that Health.
       for (const kind of c.kinds) {
         const n = health
           ? rows.filter((r) => r.health === (kind === "red" ? "Red" : "Yellow")).length
@@ -402,7 +406,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     // Worst first (sortRiskRows): Active Goals before Proposed and On Hold
     // ones, then Ownerless, then by Health (Red, Yellow, none, Green), then
     // Path to Green overdue, then Milestone overdue, then an overdue Action
-    // Item, then Stale.
+    // Item, then Check-in overdue.
     const keys = rows.map((r) => [
       lifecycles.get(r.id) === "Active" ? 0 : 1,
       r.kinds.includes("ownerless") ? 0 : 1,
@@ -410,7 +414,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
       r.kinds.includes("path-overdue") ? 0 : 1,
       r.kinds.includes("milestone-overdue") ? 0 : 1,
       r.kinds.includes("action-item-overdue") ? 0 : 1,
-      r.kinds.includes("stale") ? 0 : 1,
+      r.kinds.includes("checkin-overdue") ? 0 : 1,
     ]);
     for (let i = 1; i < keys.length; i++) {
       expect(
@@ -421,7 +425,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     for (const { goal, kind } of [
       { goal: departing, kind: "ownerless" },
       { goal: overdue, kind: "path-overdue" },
-      { goal: stale, kind: "stale" },
+      { goal: checkinOverdue, kind: "checkin-overdue" },
     ]) {
       expect(
         rows.find((r) => r.id === goal.id)?.kinds,
@@ -438,13 +442,13 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     const team = await riskRows(page);
     const two = team.filter((r) => r.id === twoReasons.id);
     expect(two, `${twoReasons.title} is one row`).toHaveLength(1);
-    expect(two[0].kinds.toSorted(), "with a chip for each reason").toEqual(["schedule-conflicts", "stale"]);
+    expect(two[0].kinds.toSorted(), "with a chip for each reason").toEqual(["schedule-conflicts", "checkin-overdue"]);
     expect(two[0].fixes, "and one Fix").toBe(1);
   });
 
-  await test.step("5. Nudge on a Stale Goal she doesn't own asks its Owner to check in, once that day", async () => {
+  await test.step("5. Nudge on a Check-in overdue Goal she doesn't own asks its Owner to check in, once that day", async () => {
     await page.goto("/risks");
-    const row = riskRow(page, stale.id);
+    const row = riskRow(page, checkinOverdue.id);
     const fix = row.getByTestId("risk-fix");
     await fix.getByRole("button", { name: "Nudge" }).click();
     await expect(page).toHaveURL(/\/risks$/);
@@ -454,12 +458,15 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     await expect(fix.getByRole("button")).toBeDisabled();
 
     // A second Nudge the same day is refused.
-    const again = await page.request.post(`/goals/${stale.id}/nudge`, { form: { return: "/risks" }, maxRedirects: 0 });
+    const again = await page.request.post(`/goals/${checkinOverdue.id}/nudge`, {
+      form: { return: "/risks" },
+      maxRedirects: 0,
+    });
     expect(again.status(), "a second Nudge the same day is refused").toBe(422);
     expect(await again.text()).toMatch(/data-testid="nudge-refused">[^<]*already nudged this Goal today/);
 
     // The Goal's History shows the Nudge.
-    await page.goto(`/goals/${stale.id}`);
+    await page.goto(`/goals/${checkinOverdue.id}`);
     const nudge = page
       .getByTestId("goal-history")
       .getByTestId("history-entry")
@@ -469,7 +476,7 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     await expect(nudge).toContainText("nudged for a Check-in");
 
     // The Owner and Delegates are asked only by email.
-    expect(serverLog()).toContain(`Check-in requested: ${stale.title}`);
+    expect(serverLog()).toContain(`Check-in requested: ${checkinOverdue.title}`);
   });
 
   await test.step("6. A Red Goal shows the Owner's status and Path to Green, Rolled-up Health, struck dates and History", async () => {
@@ -495,27 +502,27 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
   });
 
   await test.step("It worked if: a Goal nobody has updated is as loud as a Red one", async () => {
-    // On Goals, the Stale row sorts above every unmarked Yellow and Green row,
-    // and carries its own mark.
+    // On Goals, the Check-in overdue row sorts above every unmarked Yellow and
+    // Green row, and carries its own mark.
     await page.goto("/goals");
     const rows = await goalRows(page);
-    const at = rows.findIndex((r) => r.title === stale.title);
-    expect(rows[at]?.stale, `${stale.title} carries its Stale mark`).toBe(true);
+    const at = rows.findIndex((r) => r.title === checkinOverdue.title);
+    expect(rows[at]?.checkinOverdue, `${checkinOverdue.title} carries its Check-in overdue mark`).toBe(true);
     const quieter = rows.findIndex((r) => (r.health === "Yellow" || r.health === "Green") && !marked(r));
-    expect(at, `${stale.title} sorts above every unmarked Yellow and Green row`).toBeLessThan(quieter);
+    expect(at, `${checkinOverdue.title} sorts above every unmarked Yellow and Green row`).toBeLessThan(quieter);
 
     // On Risks, it's a row in the main table, not in the folded definitions,
     // with its chip and a Fix, and counted on the owner card.
     await page.goto("/risks");
-    const row = riskRow(page, stale.id);
-    await expect(row.locator('[data-testid="risk-signal"][data-kind="stale"]')).toBeVisible();
+    const row = riskRow(page, checkinOverdue.id);
+    await expect(row.locator('[data-testid="risk-signal"][data-kind="checkin-overdue"]')).toBeVisible();
     await expect(row.getByTestId("risk-fix")).toHaveCount(1);
-    await expect(page.getByTestId("risks-definitions").getByText(stale.title)).toHaveCount(0);
+    await expect(page.getByTestId("risks-definitions").getByText(checkinOverdue.title)).toHaveCount(0);
     await page.getByTestId("risks-group-owner").click();
     expect(
       (await riskRows(page)).map((r) => r.id),
       "the owner card counts it",
-    ).toContain(stale.id);
+    ).toContain(checkinOverdue.id);
   });
 
   await test.step("It worked if: she could tell in trouble from silent from badly placed", async () => {
@@ -535,15 +542,15 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
       `${redWithChildren.title} is under Not Green`,
     ).toContain(redWithChildren.id);
 
-    // Silent: Stale, under Waiting on a Check-in, not Placement and dates.
-    // Badly placed: Unlinked or a Schedule conflict, under Placement and
+    // Silent: Check-in overdue, under Waiting on a Check-in, not Placement and
+    // dates. Badly placed: Unlinked or a Schedule conflict, under Placement and
     // dates, not Waiting on a Check-in.
     await page.goto("/risks?group=owner&org=all");
     const owner = (await riskRows(page)).map((r) => r.id);
     await page.goto("/risks?group=plan&org=all");
     const plan = (await riskRows(page)).map((r) => r.id);
-    expect(owner, "Stale is under Waiting on a Check-in").toContain(stale.id);
-    expect(plan, "Stale isn't under Placement and dates").not.toContain(stale.id);
+    expect(owner, "Check-in overdue is under Waiting on a Check-in").toContain(checkinOverdue.id);
+    expect(plan, "Check-in overdue isn't under Placement and dates").not.toContain(checkinOverdue.id);
     expect(plan, "Unlinked is under Placement and dates").toContain(unlinked.id);
     expect(owner, "Unlinked isn't under Waiting on a Check-in").not.toContain(unlinked.id);
     expect(plan, "a Schedule conflict is under Placement and dates").toContain(twoReasons.id);
@@ -623,7 +630,7 @@ function compareKeys(a: number[], b: number[]): number {
 type GoalListRow = {
   title: string;
   health: string;
-  stale: boolean;
+  checkinOverdue: boolean;
   ownerless: boolean;
   overdue: boolean;
   milestoneOverdue: boolean;
@@ -638,7 +645,7 @@ function goalRows(page: Page): Promise<GoalListRow[]> {
       return {
         title: tr.querySelector("a")?.textContent?.trim() ?? "",
         health: tr.querySelector('[data-testid="goal-row-health"]')?.textContent?.trim() ?? "",
-        stale: has("stale"),
+        checkinOverdue: has("checkin-overdue"),
         ownerless: has("ownerless"),
         overdue: has("path-overdue"),
         milestoneOverdue: has("milestone-overdue"),
@@ -649,7 +656,7 @@ function goalRows(page: Page): Promise<GoalListRow[]> {
 
 // marked reports whether a Goal list row carries a problem mark.
 function marked(r: GoalListRow): boolean {
-  return r.stale || r.ownerless || r.overdue || r.milestoneOverdue;
+  return r.checkinOverdue || r.ownerless || r.overdue || r.milestoneOverdue;
 }
 
 // goalRow is the Goal list's row for the Goal titled title, within scope.
