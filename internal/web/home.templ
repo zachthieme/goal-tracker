@@ -15,14 +15,13 @@ templ homePage(current *domain.Account, v homeView) {
 		<header data-testid="home-head" class="page-head">
 			<div>
 				<h1>Your week</h1>
-				<p data-testid="home-summary" class="muted">{ thingsNeedYou(v.NeedsYou()) }</p>
 			</div>
 			<a class="btn primary" href="/goals/new">New goal</a>
 		</header>
 		<div class="grid-main-aside">
 			<div class="hm-col">
 				<section data-testid="home-needs-you" class="card hm-card">
-					<h3>Needs you</h3>
+					<h3 data-testid="home-needs-you-heading">{ needsYouHeading(v.NeedsYou()) }</h3>
 					if v.NeedsYou() == 0 {
 						<p data-testid="home-caught-up" class="muted">You're all caught up.</p>
 					}

@@ -40,6 +40,41 @@ func homeRow(t *testing.T, section string, g domain.Goal) string {
 	return section[start : at+end]
 }
 
+// needsYouHeading reads the Needs you card's heading, "" when Home has none.
+func needsYouHeading(page string) string {
+	if got := elementTexts(page, "h3", "home-needs-you-heading"); len(got) == 1 {
+		return got[0]
+	}
+	return ""
+}
+
+// The Needs you card's heading carries how many things need the viewer, so
+// the page head doesn't say it again under the title; with nothing waiting it
+// reads plain "Needs you" (#377).
+func TestHomeNeedsYouHeadingCarriesTheCount(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
+	h.Clock.Advance(10 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
+	if got := needsYouHeading(page); got != "Needs you · 2" {
+		t.Errorf("Needs you heading = %q, want %q", got, "Needs you · 2")
+	}
+	if strings.Contains(page, "home-summary") || strings.Contains(page, "things need you") {
+		t.Errorf("the page head still says how many things need sam:\n%s", pageElement(t, page, "header", "home-head"))
+	}
+
+	pat := getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/home")
+	if got := needsYouHeading(pat); got != "Needs you" {
+		t.Errorf("pat's Needs you heading = %q, want %q", got, "Needs you")
+	}
+}
+
 // A Stale Goal the viewer Owns is listed under "Check in on these", saying how
 // long since its last Check-in against its cadence, flagged Stale, with a
 // one-click No change and a Check in link. Fresh Goals and other people's
@@ -321,8 +356,8 @@ func TestHomeListsRequestsOldestFirst(t *testing.T) {
 
 	page := getBody(t, client, ts.URL+"/home")
 	requests := pageElement(t, page, "ul", "home-requests")
-	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "2 things need you") {
-		t.Errorf("summary = %s, want 2 things need you for the two Requests", got)
+	if got := needsYouHeading(page); got != "Needs you · 2" {
+		t.Errorf("Needs you heading = %q, want %q for the two Requests", got, "Needs you · 2")
 	}
 
 	if older, newer := strings.Index(requests, navTo(handed.ID)), strings.Index(requests, navTo(child.ID)); older < 0 || newer < 0 || older > newer {
@@ -497,8 +532,8 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 
 	// All four Goals were last checked in 2 days ago on a weekly cadence, so
 	// each is due before next week's reminder.
-	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "4 things need you") {
-		t.Errorf("summary = %s, want 4 things need you", got)
+	if got := needsYouHeading(page); got != "Needs you · 4" {
+		t.Errorf("Needs you heading = %q, want %q", got, "Needs you · 4")
 	}
 	if head := pageElement(t, page, "header", "home-head"); !strings.Contains(head, ">New goal</a>") {
 		t.Errorf("heading has no New goal link:\n%s", head)
@@ -828,8 +863,8 @@ func TestHomeListsParentSuggestionsToDecide(t *testing.T) {
 
 	client := signInClient(t, ts.URL, "sam@example.com")
 	page := getBody(t, client, ts.URL+"/home")
-	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "1 thing needs you") {
-		t.Errorf("summary = %s, want 1 thing needs you for the suggestion", got)
+	if got := needsYouHeading(page); got != "Needs you · 1" {
+		t.Errorf("Needs you heading = %q, want %q for the suggestion", got, "Needs you · 1")
 	}
 	row := homeRow(t, pageElement(t, page, "ul", "home-requests"), goal)
 	for _, want := range []string{"Pat Lee", navTo(parent.ID), "displays cause outages"} {
@@ -1236,8 +1271,8 @@ func TestHomeMyOrgAddsNothingToNeedsYou(t *testing.T) {
 	if !strings.Contains(page, `data-testid="home-caught-up"`) || !strings.Contains(page, "You're all caught up.") {
 		t.Errorf("Needs you isn't caught up with only the Org's Goals Red")
 	}
-	if summary := pageElement(t, page, "p", "home-summary"); !strings.Contains(summary, "0 things need you") {
-		t.Errorf("summary = %s, want 0 things need you", summary)
+	if got := needsYouHeading(page); got != "Needs you" {
+		t.Errorf("Needs you heading = %q, want %q", got, "Needs you")
 	}
 	if home := pageElement(t, page, "a", "nav-home"); strings.Contains(home, "count") {
 		t.Errorf("Home's nav item counts the Org's Goals: %s", home)
@@ -1403,8 +1438,8 @@ func TestHomeCountsOpenActionItems(t *testing.T) {
 	f.raise(f.sam, "Send the vendor plan.", 7, 0)
 
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
-	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "1 thing needs you") {
-		t.Errorf("summary = %s, want 1 thing needs you for the Action Item", got)
+	if got := needsYouHeading(page); got != "Needs you · 1" {
+		t.Errorf("Needs you heading = %q, want %q for the Action Item", got, "Needs you · 1")
 	}
 	if home := pageElement(t, page, "a", "nav-home"); !strings.Contains(home, `<span class="count needs-you">1</span>`) {
 		t.Errorf("top bar's Home does not count the Action Item: %s", home)
@@ -1528,8 +1563,8 @@ func TestHomeListsAsksForHelpAddressedToTheViewer(t *testing.T) {
 			t.Errorf("row %d doesn't name the Owner who asked:\n%s", i, row)
 		}
 	}
-	if got := pageElement(t, page, "p", "home-summary"); !strings.Contains(got, "2 things need you") {
-		t.Errorf("summary = %s, want 2 things need you for the two asks", got)
+	if got := needsYouHeading(page); got != "Needs you · 2" {
+		t.Errorf("Needs you heading = %q, want %q for the two asks", got, "Needs you · 2")
 	}
 	if home, _ := topBarCounts(t, getBody(t, miaClient, ts.URL+"/goals")); !strings.Contains(home, `<span class="count needs-you">2</span>`) {
 		t.Errorf("top bar's Home = %s, want a count of 2", home)
