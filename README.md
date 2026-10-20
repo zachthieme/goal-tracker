@@ -25,7 +25,7 @@ The server is configured from the environment:
 | `GOAL_TRACKER_ADDR` | `:8080` | Address to listen on. |
 | `GOAL_TRACKER_DB` | `goal-tracker.db` | SQLite database file; migrations run on start. |
 | `GOAL_TRACKER_ADMINS` | _(none)_ | Comma-separated emails that get the Admin flag when their account is first created. Admins can make others Admins later from the Admin page. |
-| `GOAL_TRACKER_TIMEZONE` | `UTC` | The company's IANA timezone (e.g. `America/Los_Angeles`). `Local` is refused: name the zone. It is used for company-wide dates (a Report's baseline, the weekly emails' schedule, History's weeks, a Nudge's once a day), and for a Goal whose Owner has no timezone in the directory or which is Ownerless. A Goal's own dates are judged in its Owner's timezone: when it turns Stale, when a Path to Green goes overdue, when a Metric misses its target, when a Milestone passes its date. The pages show dates and times in the company's timezone. |
+| `GOAL_TRACKER_TIMEZONE` | `UTC` | The company's IANA timezone (e.g. `America/Los_Angeles`). `Local` is refused: name the zone. It is used for company-wide dates (a Report's baseline, the weekly emails' schedule, History's weeks, a Nudge's once a day), and for a Goal whose Owner has no timezone in the directory or which is Ownerless. A Goal's own dates are judged in its Owner's timezone: when its Check-in goes overdue, when a Path to Green goes overdue, when a Metric misses its target, when a Milestone passes its date. The pages show dates and times in the company's timezone. |
 | `GOAL_TRACKER_REMINDER_DAY` | `Monday` | Day of the week the weekly emails go out (see [Weekly emails](#weekly-emails)). |
 | `GOAL_TRACKER_REMINDER_TIME` | `09:00` | 24-hour time of day, in the company's timezone, the weekly emails go out. |
 | `GOAL_TRACKER_BASE_URL` | from `GOAL_TRACKER_ADDR`, e.g. `http://localhost:8080` | Where people reach the app. Links in emails (the weekly emails, comment alerts, and Action Item emails) point here. |
@@ -186,16 +186,17 @@ gate, and `CHROME=/usr/bin/chromium make e2e` uses a local Chromium), `make clea
 The server sends two emails once a week, at the configured day and time:
 
 - **Reminder**, to each Owner and Delegate with a Check-in due, and to each
-  owner of an open Action Item. It lists their Active Goals that are Stale, or
-  that will go Stale before next week's reminder unless someone checks in.
-  Each Goal links to its Check-in form, which shows last week's answers. It
-  then lists every open Action Item the person owns, overdue first, each with
-  its Report, the Goal it is about, its due date, and a link to it.
+  owner of an open Action Item. It lists their Active Goals that are Check-in
+  overdue, or whose Check-in will be overdue before next week's reminder unless
+  someone checks in. Each Goal links to its Check-in form, which shows last
+  week's answers. It then lists every open Action Item the person owns, overdue
+  first, each with its Report, the Goal it is about, its due date, and a link to
+  it.
 - **Parent digest**, to each parent Owner. It lists the link requests waiting
   on them. It also lists problems with the Goals that contribute to theirs: a
-  child whose Health went Yellow or Red, that recorded a Date Slip, or that went
-  Stale in the past week. A child that is Ownerless or has a parent On Hold or
-  Cancelled is listed every week until that's resolved.
+  child whose Health went Yellow or Red, that recorded a Date Slip, or whose
+  Check-in went overdue in the past week. A child that is Ownerless or has a
+  parent On Hold or Cancelled is listed every week until that's resolved.
 
 People with nothing to report get no email, and people marked departed get
 none. The prototype has no mail transport, so it logs each email's recipient
@@ -243,8 +244,8 @@ Nothing is written to the database directly.
   that fall due while they're behind, each with a reason.
 - **Milestone Churn:** some projects add a Milestone partway through and later
   remove one, with a reason.
-- **Stale:** a few Owners stop checking in, so those Goals' last Check-in is
-  older than their cadence when the seed finishes.
+- **Check-in overdue:** a few Owners stop checking in, so those Goals' last
+  Check-in is older than their cadence when the seed finishes.
 - **Unlinked:** five side projects contribute to no other Goal.
 - **Lifecycle:** a few projects are Done with an outcome, one is On Hold, one
   is Cancelled, and two are still Proposed.
@@ -270,5 +271,5 @@ already has Goals, so to reseed, delete the database file and run it again.
 | ---- | ------- | ------- |
 | `-db` | `$GOAL_TRACKER_DB`, else `goal-tracker.db` | Database to seed (`make seed SEED_DB=…`). |
 | `-seed` | `23` | Random seed. It decides dates, Owners, and how each project's weeks play out. |
-| `-end` | now | Last day of the history, `YYYY-MM-DD`. The history ends on the day you seed, so Stale is judged against that day. Reseed later on to keep the demo current. |
+| `-end` | now | Last day of the history, `YYYY-MM-DD`. The history ends on the day you seed, so Check-in overdue is judged against that day. Reseed later on to keep the demo current. |
 | `-admin` | `admin@example.com` | The Admin who defines the Team Dimension and runs the import. |

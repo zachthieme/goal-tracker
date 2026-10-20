@@ -51,12 +51,12 @@ type reminderItem struct {
 }
 
 // SendReminders emails each Owner and Delegate the Active Goals whose Check-in
-// is due — it would go Stale before next week's reminder — or that are Stale
-// already, each linking to its Check-in page, which shows the last Check-in's
-// answers as ghost text. It also lists every open Action Item the person owns,
-// overdue first, so the owner of one is emailed even with no Check-in due.
-// Someone with no Check-in due and no open Action Item gets no email, and
-// nobody who has left the company is emailed.
+// is due — it would be overdue before next week's reminder — or that are
+// Check-in overdue already, each linking to its Check-in page, which shows the
+// last Check-in's answers as ghost text. It also lists every open Action Item
+// the person owns, overdue first, so the owner of one is emailed even with no
+// Check-in due. Someone with no Check-in due and no open Action Item gets no
+// email, and nobody who has left the company is emailed.
 func (n *Notifier) SendReminders(ctx context.Context) error {
 	goals, err := n.svc.ListGoals(ctx)
 	if err != nil {
@@ -146,11 +146,10 @@ func (n *Notifier) reminderBody(items []reminderItem) string {
 			title += ", as Delegate for " + people.Of(it.goal.Owner)
 		}
 		state := "Check-in due"
-		if it.freshness.Stale {
-			state = "Stale"
+		if it.freshness.CheckinOverdue {
+			state = "Check-in overdue"
 		}
-		fmt.Fprintf(&b, "- %s: %s, %d days without a Check-in (cadence: %d days)\n  %s\n",
-			title, state, it.freshness.DaysSince, it.freshness.CadenceDays, n.checkinURL(it.goal.ID))
+		fmt.Fprintf(&b, "- %s: %s, %s\n  %s\n", title, state, it.freshness.LastCheckinAge(), n.checkinURL(it.goal.ID))
 	}
 	if len(actionItems) > 0 {
 		if len(checkins) > 0 {
@@ -248,12 +247,13 @@ func (n *Notifier) SendDigests(ctx context.Context) error {
 	return out.send(ctx, n.sender, func([]digestEntry) string { return "Your weekly digest" }, n.digestBody)
 }
 
-// childProblems says what's wrong with child, a Goal that contributes to one
-// of the recipient's. Some are changes since weekStart, a week ago: its Health
-// got worse, to Yellow or to Red; it recorded a Date Slip; it went Stale. Others
-// hold for as long as they last, so the digest names them every week: the child
-// is Ownerless (no record says when its Owner left), or one of its parents is
-// On Hold or Cancelled. A Done or Cancelled child has nothing left at risk.
+// childProblems says what's wrong with child, a Goal that contributes to one of
+// the recipient's. Some are changes since weekStart, a week ago: its Health got
+// worse, to Yellow or to Red; it recorded a Date Slip; its Check-in went
+// overdue. Others hold for as long as they last, so the digest names them every
+// week: the child is Ownerless (no record says when its Owner left), or one of
+// its parents is On Hold or Cancelled. A Done or Cancelled child has nothing
+// left at risk.
 func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekStart time.Time) ([]string, error) {
 	if child.Lifecycle == domain.LifecycleDone || child.Lifecycle == domain.LifecycleCancelled {
 		return nil, nil
@@ -290,8 +290,8 @@ func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekSta
 	if err != nil {
 		return nil, err
 	}
-	if wentStaleThisWeek(f) {
-		reasons = append(reasons, fmt.Sprintf("went Stale, %d days without a Check-in", f.DaysSince))
+	if wentCheckinOverdueThisWeek(f) {
+		reasons = append(reasons, "Check-in went overdue, "+f.LastCheckinAge())
 	}
 	if child.Ownerless {
 		// The digest has already introduced the Owner on the child's line.
@@ -307,10 +307,11 @@ func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekSta
 	return reasons, nil
 }
 
-// wentStaleThisWeek reports whether a Goal is Stale now but wasn't a week ago:
-// it has been Stale for no more than a week's days (CONTEXT.md: Stale).
-func wentStaleThisWeek(f domain.Freshness) bool {
-	return f.Stale && f.DaysSince-daysPerWeek <= f.CadenceDays
+// wentCheckinOverdueThisWeek reports whether a Goal is Check-in overdue now
+// but wasn't a week ago: it has been overdue for no more than a week's days
+// (CONTEXT.md: Check-in overdue).
+func wentCheckinOverdueThisWeek(f domain.Freshness) bool {
+	return f.CheckinOverdue && f.DaysSince-daysPerWeek <= f.CadenceDays
 }
 
 // healthAt is the Health a Goal's Check-ins (newest first) had set as of t, or

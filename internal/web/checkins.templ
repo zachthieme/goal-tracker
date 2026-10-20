@@ -524,13 +524,13 @@ templ checkinSection(v goalView) {
 			} else {
 				<p data-testid="goal-no-health" class="muted">No Check-ins yet.</p>
 			}
-			if v.RolledUp.Present || v.RolledUp.StaleChildren > 0 {
+			if v.RolledUp.Present || v.RolledUp.CheckinOverdueChildren > 0 {
 				<p>
 					if v.RolledUp.Present {
 						<strong>Rolled-up Health:</strong> <span data-testid="goal-rollup-health">{ v.RolledUp.Health }</span>
 						<span class="muted">(worst among Active children)</span>
 					}
-					@rolledUpStale(v.RolledUp)
+					@rolledUpCheckinOverdue(v.RolledUp)
 				</p>
 			}
 		}
@@ -539,9 +539,9 @@ templ checkinSection(v goalView) {
 
 // statusCells open the Latest status card: a row of cells, each a small label
 // over a value. The Owner's Health is always there, with its Run off Green
-// beside it while it has one ("Red · 5 wks"); the Rolled-up Health, with
-// its Stale-children count, only when the Goal has Active children; and the
-// Back to Green date only when there is a Path to Green.
+// beside it while it has one ("Red · 5 wks"); the Rolled-up Health, with its
+// Check-in overdue children count, only when the Goal has Active children; and
+// the Back to Green date only when there is a Path to Green.
 templ statusCells(v goalView) {
 	{{ c := v.LatestCheckin }}
 	<dl data-testid="goal-status-cells" class="gp-cells">
@@ -554,7 +554,7 @@ templ statusCells(v goalView) {
 				}
 			</dd>
 		</div>
-		if v.RolledUp.Present || v.RolledUp.StaleChildren > 0 {
+		if v.RolledUp.Present || v.RolledUp.CheckinOverdueChildren > 0 {
 			<div data-testid="goal-rollup-cell" class="gp-cell">
 				<dt class="label">Rolled-up Health</dt>
 				<dd>
@@ -563,7 +563,7 @@ templ statusCells(v goalView) {
 					} else {
 						<span class="muted">—</span>
 					}
-					@rolledUpStale(v.RolledUp)
+					@rolledUpCheckinOverdue(v.RolledUp)
 				</dd>
 			</div>
 		}

@@ -12,8 +12,8 @@ const healthStripPeriods = 11
 
 // HealthStrip is a Goal's Health over its last Check-in periods, oldest first
 // and the current period last. It is read from the Goal's Check-ins and
-// Lifecycle and changes nothing: not Stale, not Health. It has no periods for a
-// Goal that has never been Active.
+// Lifecycle and changes nothing: not Check-in overdue, not Health. It has no
+// periods for a Goal that has never been Active.
 type HealthStrip struct {
 	// CadenceDays is how long each period is: the Goal's Check-in cadence.
 	CadenceDays int

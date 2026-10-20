@@ -536,9 +536,9 @@ async function trackTyping(page: Page) {
   };
 }
 
-// pickCheckinGoal picks a Platform Goal whose Owner can check in on it
-// plainly, with the Health given first if one has it: Active, its Owner still
-// here, not Stale, with no accepted contributors (so no Rolled-up Health asks
+// pickCheckinGoal picks a Platform Goal whose Owner can check in on it plainly,
+// with the Health given first if one has it: Active, its Owner still here, not
+// Check-in overdue, with no accepted contributors (so no Rolled-up Health asks
 // for an explanation) and no overdue Planned Milestone.
 function pickCheckinGoal(seedLookup: SeedLookup, health: string, extra = ""): GoalDetail & { health: string } {
   const [row] = seedLookup<{ id: number }>(

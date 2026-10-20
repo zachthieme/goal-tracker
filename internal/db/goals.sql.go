@@ -18,8 +18,8 @@ type ActivateGoalParams struct {
 	ID          int64
 }
 
-// Move a Proposed Goal to Active, recording when (CONTEXT.md: Stale is judged
-// from activation until the first Check-in).
+// Move a Proposed Goal to Active, recording when (CONTEXT.md: Check-in overdue
+// is judged from activation until the first Check-in).
 func (q *Queries) ActivateGoal(ctx context.Context, arg ActivateGoalParams) error {
 	_, err := q.db.ExecContext(ctx, activateGoal, arg.ActivatedAt, arg.ID)
 	return err

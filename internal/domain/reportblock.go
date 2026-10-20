@@ -75,7 +75,7 @@ type ReportBlock struct {
 	// slipped 3 weeks"); a Goal whose trouble is only standing has none.
 	Changes []string `json:",omitempty"`
 	// Badges flag what the reader must not miss, in the order BadgeNew,
-	// BadgeNewDate, BadgeStale, BadgeOwnerless, BadgeOnHold.
+	// BadgeNewDate, BadgeCheckinOverdue, BadgeOwnerless, BadgeOnHold.
 	Badges []string
 	// PriorDueDates are the delivery dates the Goal held before each of its
 	// Date Slips, earliest first, shown struck through ahead of its current
@@ -153,13 +153,13 @@ type ReportMetric struct {
 
 // Badges a ReportBlock can carry. New marks a Goal created since the baseline
 // and New Date one whose delivery date slipped since it; the rest mirror the
-// Goal's current state (CONTEXT.md: Stale, Ownerless, Lifecycle).
+// Goal's current state (CONTEXT.md: Check-in overdue, Ownerless, Lifecycle).
 const (
-	BadgeNew       = "New"
-	BadgeNewDate   = "New Date"
-	BadgeStale     = "Stale"
-	BadgeOwnerless = "Ownerless"
-	BadgeOnHold    = LifecycleOnHold
+	BadgeNew            = "New"
+	BadgeNewDate        = "New Date"
+	BadgeCheckinOverdue = "Check-in overdue"
+	BadgeOwnerless      = "Ownerless"
+	BadgeOnHold         = LifecycleOnHold
 )
 
 // defaultBaselineDays is how far back a Report reads changes when the reader
@@ -334,12 +334,12 @@ func (h goalHistory) last() lastCheckin {
 	return lastCheckin{at: c.CreatedAt, health: c.Health, pathTargetDate: c.PathTargetDate}
 }
 
-// exception reports whether the Goal earns the full block: it is Red or
-// Yellow, Stale, or Ownerless, or since the baseline it was created, slipped a
-// date, changed Lifecycle, or changed Health (CONTEXT.md: Report).
+// exception reports whether the Goal earns the full block: it is Red or Yellow,
+// Check-in overdue, or Ownerless, or since the baseline it was created, slipped
+// a date, changed Lifecycle, or changed Health (CONTEXT.md: Report).
 func (h goalHistory) exception(since func(time.Time) bool, fresh Freshness) bool {
 	return needsPathToGreen(h.latest().Health) ||
-		fresh.Stale ||
+		fresh.CheckinOverdue ||
 		h.goal.Ownerless ||
 		h.changed(since)
 }
@@ -390,8 +390,8 @@ func (h goalHistory) badges(since func(time.Time) bool, fresh Freshness) []strin
 	if slices.ContainsFunc(h.slips, func(d DateSlip) bool { return d.OnDeliveryDate() && since(d.CreatedAt) }) {
 		out = append(out, BadgeNewDate)
 	}
-	if fresh.Stale {
-		out = append(out, BadgeStale)
+	if fresh.CheckinOverdue {
+		out = append(out, BadgeCheckinOverdue)
 	}
 	if h.goal.Ownerless {
 		out = append(out, BadgeOwnerless)

@@ -48,10 +48,11 @@ func TestOrgSignalsCountEachOrgUnderTheViewer(t *testing.T) {
 	h.SetManager(c, a)
 
 	// A's Goal goes Red with a Path to Green due in three days, then nobody
-	// checks in for ten: Red, Stale and Path to Green overdue at once.
+	// checks in for ten: Red, Check-in overdue and Path to Green overdue at
+	// once.
 	troubled := h.ActiveGoal(a, "Ship search", "People can't find things.")
 	h.Checkin(a, troubled.ID, domain.HealthRed, "Blocked.", "Escalate.", testsupport.Epoch.AddDate(0, 0, 3))
-	// B's Goal is never checked in on, so goes Stale.
+	// B's Goal is never checked in on, so goes Check-in overdue.
 	h.ActiveGoal(b, "Hire a designer", "No one owns design.")
 	h.Clock.Advance(10 * 24 * time.Hour)
 
@@ -64,13 +65,13 @@ func TestOrgSignalsCountEachOrgUnderTheViewer(t *testing.T) {
 	h.Checkin(b, fine.ID, domain.HealthGreen, "Fine.", "", time.Time{})
 
 	sig := orgSignals(t, h, viewer.ID)
-	if got, want := signalsFor(t, sig, a.ID), (domain.SignalCounts{Red: 1, PathOverdue: 1, Stale: 1, Yellow: 1}); got != want {
+	if got, want := signalsFor(t, sig, a.ID), (domain.SignalCounts{Red: 1, PathOverdue: 1, CheckinOverdue: 1, Yellow: 1}); got != want {
 		t.Errorf("A's counts = %+v, want %+v", got, want)
 	}
-	if got, want := signalsFor(t, sig, b.ID), (domain.SignalCounts{Red: 1, Stale: 1}); got != want {
+	if got, want := signalsFor(t, sig, b.ID), (domain.SignalCounts{Red: 1, CheckinOverdue: 1}); got != want {
 		t.Errorf("B's counts = %+v, want %+v", got, want)
 	}
-	if got, want := sig.Total, (domain.SignalCounts{Red: 2, PathOverdue: 1, Stale: 2, Yellow: 1}); got != want {
+	if got, want := sig.Total, (domain.SignalCounts{Red: 2, PathOverdue: 1, CheckinOverdue: 2, Yellow: 1}); got != want {
 		t.Errorf("Total = %+v, want %+v", got, want)
 	}
 	if len(sig.Under) != 2 {
@@ -186,15 +187,15 @@ func TestOrgSignalsCountNoOneTwiceInAManagerCycle(t *testing.T) {
 }
 
 // Under puts the most Red first, then the most Path to Green overdue, the most
-// Stale, the most Yellow, and then goes by Name, ignoring case; those with
-// nothing flagged come last.
+// Check-in overdue, the most Yellow, and then goes by Name, ignoring case;
+// those with nothing flagged come last.
 func TestOrgSignalsOrderTheWorstOffFirst(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	viewer := h.SignIn("viewer@example.com")
 	people := map[string]domain.Account{}
-	for _, name := range []string{"Clear", "Yellow", "Stale", "Path", "Beta red", "alpha red", "Two red"} {
+	for _, name := range []string{"Clear", "Yellow", "Overdue", "Path", "Beta red", "alpha red", "Two red"} {
 		p := h.SignInNamed(strings.ToLower(strings.ReplaceAll(name, " ", ""))+"@example.com", name)
 		h.SetManager(p, viewer)
 		people[name] = p
@@ -207,10 +208,10 @@ func TestOrgSignalsOrderTheWorstOffFirst(t *testing.T) {
 		}
 		h.Checkin(people[name], g.ID, health, "Trouble.", "Fix it.", target)
 	}
-	// Stale's Goal is never checked in on; by day 8 it is Stale. Path's is
-	// Yellow from day 4 with a Path to Green due on day 5, so by day 8 it is
-	// overdue but not Stale.
-	h.ActiveGoal(people["Stale"], "Stale goal", "It matters.")
+	// Overdue's Goal is never checked in on; by day 8 it is Check-in
+	// overdue. Path's is Yellow from day 4 with a Path to Green due on day 5,
+	// so by day 8 it is overdue but not Check-in overdue.
+	h.ActiveGoal(people["Overdue"], "Overdue goal", "It matters.")
 	h.Clock.Set(testsupport.Epoch.AddDate(0, 0, 4))
 	checkin("Path", domain.HealthYellow, testsupport.Epoch.AddDate(0, 0, 5))
 	h.Clock.Set(testsupport.Epoch.AddDate(0, 0, 8))
@@ -227,7 +228,7 @@ func TestOrgSignalsOrderTheWorstOffFirst(t *testing.T) {
 	for _, p := range orgSignals(t, h, viewer.ID).Under {
 		got = append(got, p.Person.Name)
 	}
-	want := []string{"Two red", "alpha red", "Beta red", "Path", "Stale", "Yellow", "Clear"}
+	want := []string{"Two red", "alpha red", "Beta red", "Path", "Overdue", "Yellow", "Clear"}
 	if !slices.Equal(got, want) {
 		t.Errorf("Under = %v, want %v", got, want)
 	}

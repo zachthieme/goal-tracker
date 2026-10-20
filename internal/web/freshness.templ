@@ -6,23 +6,23 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// freshnessSignalsPage is the Stale list, with the Goals whose Path to Green is
-// overdue beside it, so both surface as prominently as Red (CONTEXT.md: Stale,
-// Path to Green).
+// freshnessSignalsPage is the Check-in overdue list, with the Goals whose Path
+// to Green is overdue beside it, so both surface as prominently as Red
+// (CONTEXT.md: Check-in overdue, Path to Green).
 templ freshnessSignalsPage(current *domain.Account, signals domain.FreshnessSignals, dates displayDates) {
 	@layout("Freshness signals", current) {
 		<h1>Freshness signals</h1>
-		<p>Stale Goals, and Goals still not Green past their Path to Green's target date.</p>
-		<section data-testid="stale-section">
-			<h2>Stale Goals</h2>
+		<p>Goals whose Check-in is overdue, and Goals still not Green past their Path to Green's target date.</p>
+		<section data-testid="checkin-overdue-section">
+			<h2>Check-in overdue</h2>
 			<p>Active Goals whose last Check-in, or activation if they have none, is older than their cadence.</p>
-			<ul data-testid="stale-goals">
-				if len(signals.Stale) == 0 {
-					<li data-testid="no-stale">No Stale Goals.</li>
+			<ul data-testid="checkin-overdue-goals">
+				if len(signals.CheckinOverdue) == 0 {
+					<li data-testid="no-checkin-overdue">No Goal's Check-in is overdue.</li>
 				}
-				for _, gf := range signals.Stale {
-					<li data-testid="stale-goal">
-						@freshnessItem(gf.Goal, staleSince(gf.Freshness))
+				for _, gf := range signals.CheckinOverdue {
+					<li data-testid="checkin-overdue-goal">
+						@freshnessItem(gf.Goal, checkinOverdueSince(gf.Freshness))
 					</li>
 				}
 			</ul>
@@ -55,16 +55,17 @@ templ freshnessItem(g domain.Goal, why string) {
 	</span>
 }
 
-// goalFreshness flags, at the top of a Goal's page, a Goal that is Stale or
-// whose Path to Green is overdue, as a banner in Stale's style. The Stale
-// banner ends with a link to the Check-in form for whoever may check in (the
-// Owner or a Delegate). It renders nothing for a fresh Goal.
+// goalFreshness flags, at the top of a Goal's page, a Goal that is Check-in
+// overdue or whose Path to Green is overdue, as a banner in Check-in overdue's
+// style. The Check-in overdue banner ends with a link to the Check-in form for
+// whoever may check in (the Owner or a Delegate). It renders nothing for a
+// fresh Goal.
 templ goalFreshness(goalID int64, f domain.Freshness, canCheckin bool, dates displayDates) {
-	if f.Stale {
-		<p data-testid="goal-stale" class="alert st" role="alert">
-			<strong>Stale</strong><span>{ staleSince(f) }</span>
+	if f.CheckinOverdue {
+		<p data-testid="goal-checkin-overdue" class="alert st" role="alert">
+			<strong>Check-in overdue</strong><span>{ checkinOverdueSince(f) }</span>
 			if canCheckin {
-				<a data-testid="stale-checkin-now" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", goalID)) }>Check in now</a>
+				<a data-testid="checkin-overdue-checkin-now" href={ templ.SafeURL(fmt.Sprintf("/goals/%d/checkin", goalID)) }>Check in now</a>
 			}
 		</p>
 	}
@@ -73,12 +74,13 @@ templ goalFreshness(goalID int64, f domain.Freshness, canCheckin bool, dates dis
 	}
 }
 
-// goalRowFreshness marks a Goal's row in the Goal list with Stale's dashed grey
-// chip when it is Stale, saying for how long, when its Path to Green is
-// overdue, or when it is Green past a Milestone's date (Milestone overdue).
+// goalRowFreshness marks a Goal's row in the Goal list with Check-in overdue's
+// dashed grey chip when it is Check-in overdue, saying for how long, when its
+// Path to Green is overdue, or when it is Green past a Milestone's date
+// (Milestone overdue).
 templ goalRowFreshness(f domain.Freshness) {
-	if f.Stale {
-		<span data-testid="stale" class="badge st">Stale · { fmt.Sprintf("%d days", f.DaysSince) }</span>
+	if f.CheckinOverdue {
+		<span data-testid="checkin-overdue" class="badge st">Check-in overdue · { fmt.Sprintf("%d days", f.DaysSince) }</span>
 	}
 	if f.PathToGreenOverdue {
 		<span data-testid="path-overdue" class="badge st">Path to Green overdue</span>
@@ -88,17 +90,18 @@ templ goalRowFreshness(f domain.Freshness) {
 	}
 }
 
-// rolledUpStale says, beside the Rolled-up Health, how many Active children are
-// Stale. It never changes the color, and renders nothing when none are.
-templ rolledUpStale(r domain.RolledUpHealth) {
-	if r.StaleChildren > 0 {
-		· <span data-testid="goal-rollup-stale">{ fmt.Sprintf("%d of %d Stale", r.StaleChildren, r.ActiveChildren) }</span>
+// rolledUpCheckinOverdue says, beside the Rolled-up Health, how many Active
+// children are Check-in overdue ("3 of 12 overdue"). It never changes the
+// color, and renders nothing when none are.
+templ rolledUpCheckinOverdue(r domain.RolledUpHealth) {
+	if r.CheckinOverdueChildren > 0 {
+		· <span data-testid="goal-rollup-checkin-overdue">{ fmt.Sprintf("%d of %d overdue", r.CheckinOverdueChildren, r.ActiveChildren) }</span>
 	}
 }
 
-// staleSince says how long a Stale Goal has gone without a Check-in, against its
-// cadence.
-func staleSince(f domain.Freshness) string {
+// checkinOverdueSince says how long a Check-in overdue Goal has gone without a
+// Check-in, against its cadence.
+func checkinOverdueSince(f domain.Freshness) string {
 	return fmt.Sprintf("no Check-in for %d days on a %d-day cadence", f.DaysSince, f.CadenceDays)
 }
 

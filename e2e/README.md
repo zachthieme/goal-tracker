@@ -46,7 +46,7 @@ October 2026**, not the machine's date:
 | Template  | Seeded with       | What it gives                                                                                                                                                                                    |
 | --------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `default` | `-end 2026-10-05` | History ends on the reference date: the seed's last Check-ins land at about 15:49 UTC, a couple of hours before each test's app starts its clock. A Check-in a test writes is the Goal's latest. |
-| `due`     | `-end 2026-10-01` | The last Check-ins are 4 days old at the reference date, so 7-day Goals are due on Home without being Stale.                                                                                     |
+| `due`     | `-end 2026-10-01` | The last Check-ins are 4 days old at the reference date, so 7-day Goals are due on Home without being Check-in overdue.                                                                          |
 
 Every test's app starts its clock at **2026-10-05T18:05:00Z**
 (`GOAL_TRACKER_START_AT`, exported as `startAt`) and ticks on from there, so
@@ -55,8 +55,8 @@ The seed's company isn't the same company shifted in time, so the date can't flo
 #226's follow-up, the seed invariants test in `internal/seed`, pins the same
 date, and the two move together.
 
-On `default`, Home's Needs you lists the Stale Goals, plus any whose next
-Check-in falls due before the next weekly reminder. A test that needs a
+On `default`, Home's Needs you lists the Check-in overdue Goals, plus any whose
+next Check-in falls due before the next weekly reminder. A test that needs a
 Check-in due uses `due`.
 
 [`fixtures.ts`](fixtures.ts) exports `test` and `expect`. Import them from
@@ -97,10 +97,11 @@ a Manager tree, so Orgs show up: the CEO has no Manager, the CTO, CPO and Admin
 report to the CEO, the Platform, Mobile and Data leads to the CTO, the
 Payments, Growth and Support leads to the CPO, and each team's people to their
 lead. Sign in as `ceo@` to see the whole company as one Org, or as a lead to
-see a team's. A fresh seed has Not Green (Red and Yellow), Stale, Unlinked and
-Schedule conflict Goals on Risks. **Needs an Admin** is empty, and no Path to Green is overdue: every back-to-Green date is
-3–6 weeks ahead. A test that needs an overdue one makes it. The app accepts a
-back-to-Green date in the past.
+see a team's. A fresh seed has Not Green (Red and Yellow), Check-in overdue,
+Unlinked and Schedule conflict Goals on Risks. **Needs an Admin** is empty, and
+no Path to Green is overdue: every back-to-Green date is 3–6 weeks ahead. A test
+that needs an overdue one makes it. The app accepts a back-to-Green date in the
+past.
 
 `fixtures.ts` also exports `admin`, the seed's Admin's email, and `startAt`,
 the reference instant each test's app starts its clock at.

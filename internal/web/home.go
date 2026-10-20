@@ -248,8 +248,8 @@ type homeOrgBadge struct {
 }
 
 // homeOrgBadges are c's non-zero counts, Red, then Path to Green overdue,
-// Stale and Yellow. Red and Yellow take their Health's colour, and the
-// freshness signals the Stale mark's, as on Risks.
+// Check-in overdue and Yellow. Red and Yellow take their Health's colour, and
+// the freshness signals the Check-in overdue mark's, as on Risks.
 func homeOrgBadges(c domain.SignalCounts) []homeOrgBadge {
 	var out []homeOrgBadge
 	for _, b := range []struct {
@@ -258,7 +258,7 @@ func homeOrgBadges(c domain.SignalCounts) []homeOrgBadge {
 	}{
 		{c.Red, "red", domain.HealthRed, healthClass(domain.HealthRed)},
 		{c.PathOverdue, "path-overdue", "Path to Green overdue", "st"},
-		{c.Stale, "stale", "Stale", "st"},
+		{c.CheckinOverdue, "checkin-overdue", "Check-in overdue", "st"},
 		{c.Yellow, "yellow", domain.HealthYellow, healthClass(domain.HealthYellow)},
 	} {
 		if b.n > 0 {
@@ -312,11 +312,11 @@ func homeDueCadence(f domain.Freshness) string {
 	return fmt.Sprintf("every %d days", f.CadenceDays)
 }
 
-// healthAsOf dates a Stale Goal's Health as last reported ("as of 9 days
-// ago"), or is "" when the Goal isn't Stale or has no Check-in to date it by,
-// and its Health badge reads as current.
+// healthAsOf dates a Check-in overdue Goal's Health as last reported ("as of 9
+// days ago"), or is "" when the Goal isn't Check-in overdue or has no Check-in
+// to date it by, and its Health badge reads as current.
 func healthAsOf(g domain.PersonalGoal) string {
-	if !g.Freshness.Stale || !g.CheckedIn || g.Health == "" {
+	if !g.Freshness.CheckinOverdue || !g.CheckedIn || g.Health == "" {
 		return ""
 	}
 	return "as of " + daysAgo(g.Freshness.DaysSince)

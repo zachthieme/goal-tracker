@@ -62,7 +62,7 @@ func TestSeededOrg(t *testing.T) {
 	t.Run("Check-in history with mixed Health", func(t *testing.T) { checkinHistoryWithMixedHealth(t, h) })
 	t.Run("Date Slips", func(t *testing.T) { dateSlips(t, h) })
 	t.Run("Milestone Churn", func(t *testing.T) { milestoneChurn(t, h) })
-	t.Run("Stale and Unlinked Goals", func(t *testing.T) { staleAndUnlinked(t, h) })
+	t.Run("Check-in overdue and Unlinked Goals", func(t *testing.T) { checkinOverdueAndUnlinked(t, h) })
 	t.Run("Lifecycle changes", func(t *testing.T) { lifecycleChanges(t, h) })
 	t.Run("every person has a Name", func(t *testing.T) { everyPersonNamed(t, h) })
 	t.Run("everyone has a place in the Manager tree", func(t *testing.T) { everyoneInTheManagerTree(t, h) })
@@ -265,14 +265,14 @@ func milestoneChurn(t *testing.T, h *testsupport.Harness) {
 	}
 }
 
-// Among the Active Goals, a few are Stale — their last Check-in is older than
-// their cadence — while most are up to date. The org outcomes are Top-level
-// Goals, so the Unlinked list the signals page shows is exactly the five side
-// projects.
-func staleAndUnlinked(t *testing.T, h *testsupport.Harness) {
+// Among the Active Goals, a few are Check-in overdue — their last Check-in is
+// older than their cadence — while most are up to date. The org outcomes are
+// Top-level Goals, so the Unlinked list the signals page shows is exactly the
+// five side projects.
+func checkinOverdueAndUnlinked(t *testing.T, h *testsupport.Harness) {
 	ctx := context.Background()
 	end := h.Clock.Now()
-	var active, stale int
+	var active, checkinOverdue int
 	for _, g := range listGoals(t, h) {
 		if g.Lifecycle != domain.LifecycleActive {
 			continue
@@ -283,11 +283,11 @@ func staleAndUnlinked(t *testing.T, h *testsupport.Harness) {
 			t.Fatalf("LatestCheckin: %v", err)
 		}
 		if ok && end.Sub(latest.CreatedAt) > time.Duration(g.CadenceDays)*24*time.Hour {
-			stale++
+			checkinOverdue++
 		}
 	}
-	if stale < 3 || stale > active/4 {
-		t.Errorf("want a few Stale Goals among %d Active, got %d", active, stale)
+	if checkinOverdue < 3 || checkinOverdue > active/4 {
+		t.Errorf("want a few Check-in overdue Goals among %d Active, got %d", active, checkinOverdue)
 	}
 
 	topLevel := map[string]bool{}

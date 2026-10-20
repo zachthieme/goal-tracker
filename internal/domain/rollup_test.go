@@ -199,8 +199,8 @@ func TestNoChangeCheckinRefusedWhenItWouldDifferFromRollup(t *testing.T) {
 }
 
 // A Rolled-up Health counts the Active children checked in Red and Yellow
-// beside the Stale ones; a child with no Check-in counts only among the Active
-// (#246).
+// beside the Check-in overdue ones; a child with no Check-in counts only among
+// the Active (#246).
 func TestRolledUpHealthCountsRedAndYellowChildren(t *testing.T) {
 	t.Parallel()
 
@@ -222,8 +222,9 @@ func TestRolledUpHealthCountsRedAndYellowChildren(t *testing.T) {
 	}
 }
 
-// The count line counts Red, Yellow and Stale children, each only when there
-// are some, and the first carries how many Active children there are (#246).
+// The count line counts Red, Yellow and Check-in overdue children, each only
+// when there are some, and the first carries how many Active children there are
+// (#246).
 func TestRolledUpHealthCountLine(t *testing.T) {
 	t.Parallel()
 
@@ -231,9 +232,9 @@ func TestRolledUpHealthCountLine(t *testing.T) {
 		rollup domain.RolledUpHealth
 		want   string
 	}{
-		{domain.RolledUpHealth{RedChildren: 2, YellowChildren: 1, StaleChildren: 1, ActiveChildren: 6}, "2 of 6 Red · 1 Yellow · 1 Stale"},
+		{domain.RolledUpHealth{RedChildren: 2, YellowChildren: 1, CheckinOverdueChildren: 1, ActiveChildren: 6}, "2 of 6 Red · 1 Yellow · 1 overdue"},
 		{domain.RolledUpHealth{YellowChildren: 1, ActiveChildren: 4}, "1 of 4 Yellow"},
-		{domain.RolledUpHealth{StaleChildren: 1, ActiveChildren: 3}, "1 of 3 Stale"},
+		{domain.RolledUpHealth{CheckinOverdueChildren: 1, ActiveChildren: 3}, "1 of 3 overdue"},
 		{domain.RolledUpHealth{Health: domain.HealthGreen, Present: true, ActiveChildren: 3}, ""},
 	} {
 		if got := tc.rollup.CountLine(); got != tc.want {

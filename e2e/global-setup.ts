@@ -45,7 +45,7 @@ export const startAt = `${referenceDate}T18:05:00Z`;
 // old when each test's app starts.
 //
 // due: 4 days before the reference date, so the last Check-ins are 4 days old
-// and 7-day Goals are due on Home but not Stale.
+// and 7-day Goals are due on Home but not Check-in overdue.
 const templates: Record<Template, string> = {
   default: referenceDate,
   due: "2026-10-01",

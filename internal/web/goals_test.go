@@ -605,8 +605,9 @@ func rowTitles(rows []string, goals ...domain.Goal) []string {
 }
 
 // The Goal list is a table led by each Goal's Health, and problems sort to the
-// top: Red, then Ownerless, then Stale or Path to Green overdue, then Yellow,
-// then Green, then Goals with no Health, alphabetical within each group.
+// top: Red, then Ownerless, then Check-in overdue or Path to Green overdue,
+// then Yellow, then Green, then Goals with no Health, alphabetical within each
+// group.
 func TestGoalListSortsProblemsFirst(t *testing.T) {
 	t.Parallel()
 
@@ -616,7 +617,7 @@ func TestGoalListSortsProblemsFirst(t *testing.T) {
 	kim := h.SignIn("kim@example.com")
 	later := testsupport.Epoch.AddDate(0, 2, 0)
 
-	stale := h.ActiveGoal(sam, "Stale work", "It matters.")
+	checkinOverdue := h.ActiveGoal(sam, "Overdue work", "It matters.")
 	h.Clock.Advance(10 * day)
 	proposed := h.CreateGoal(sam, "Proposed idea", "It matters.")
 	betaGreen := h.ActiveGoal(sam, "Beta green", "It matters.")
@@ -637,8 +638,8 @@ func TestGoalListSortsProblemsFirst(t *testing.T) {
 	list := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals?org=all")
 	rows := goalRows(t, list)
 
-	got := rowTitles(rows, stale, proposed, betaGreen, alphaGreen, yellow, ownerless, red)
-	want := []string{"Zulu fire", "Orphaned", "Stale work", "Wobbly", "Alpha green", "Beta green", "Proposed idea"}
+	got := rowTitles(rows, checkinOverdue, proposed, betaGreen, alphaGreen, yellow, ownerless, red)
+	want := []string{"Zulu fire", "Orphaned", "Overdue work", "Wobbly", "Alpha green", "Beta green", "Proposed idea"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("row order = %q, want %q", got, want)
 	}
@@ -657,9 +658,9 @@ func TestGoalListSortsProblemsFirst(t *testing.T) {
 }
 
 // A Goal whose latest Check-in is Green while a Milestone is overdue is marked
-// Milestone overdue beside its Health, in Stale's chip, and sorts with the
-// Stale Goals, above an unmarked Yellow one. Its Health stays Green, and a
-// plain Green Goal carries no such mark.
+// Milestone overdue beside its Health, in Check-in overdue's chip, and sorts
+// with the Check-in overdue Goals, above an unmarked Yellow one. Its Health
+// stays Green, and a plain Green Goal carries no such mark.
 func TestGoalListMarksAGreenGoalPastAMilestone(t *testing.T) {
 	t.Parallel()
 
@@ -4318,8 +4319,9 @@ func TestActivationNeedsRequiredValues(t *testing.T) {
 }
 
 // An Active Goal lacking a required value shows an Incomplete flag naming what
-// it lacks, in a quieter style than Stale's; setting the value clears it, and
-// a Goal that isn't Active never shows it (CONTEXT.md: Incomplete).
+// it lacks, in a quieter style than Check-in overdue's; setting the value
+// clears it, and a Goal that isn't Active never shows it (CONTEXT.md:
+// Incomplete).
 func TestGoalPageFlagsIncomplete(t *testing.T) {
 	t.Parallel()
 
@@ -4343,7 +4345,7 @@ func TestGoalPageFlagsIncomplete(t *testing.T) {
 		}
 	}
 	if !strings.Contains(openTag(flag), "lc") || strings.Contains(openTag(flag), " st") {
-		t.Errorf("Incomplete flag should be quieter than Stale: %s", openTag(flag))
+		t.Errorf("Incomplete flag should be quieter than Check-in overdue: %s", openTag(flag))
 	}
 	if page := getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, onHold.ID)); strings.Contains(page, `data-testid="goal-incomplete"`) {
 		t.Errorf("On Hold Goal is flagged Incomplete")

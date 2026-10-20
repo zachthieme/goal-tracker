@@ -123,20 +123,20 @@ func TestHomeIsOneColumnWithNeedsYouItsOnlyCard(t *testing.T) {
 	}
 }
 
-// A Stale Goal the viewer Owns is listed under "Check-ins due", saying how
-// long since its last Check-in against its cadence, flagged Stale, with a
-// one-click No change and a Check in link. Fresh Goals and other people's
-// Stale Goals aren't listed.
-func TestHomeListsStaleGoalToCheckInOn(t *testing.T) {
+// A Check-in overdue Goal the viewer Owns is listed under "Check-ins due",
+// saying how long since its last Check-in against its cadence, flagged Check-in
+// overdue, with a one-click No change and a Check in link. Fresh Goals and
+// other people's Check-in overdue Goals aren't listed.
+func TestHomeListsCheckinOverdueGoalToCheckInOn(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
 	kim := h.SignIn("kim@example.com")
-	stale := h.ActiveGoal(sam, "Ship search", "People can't find things.")
-	setCadence(t, h, stale, 14)
-	h.Checkin(sam, stale.ID, domain.HealthYellow, "Slipping.", "Cut scope.", testsupport.Epoch.AddDate(0, 1, 0))
+	checkinOverdue := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	setCadence(t, h, checkinOverdue, 14)
+	h.Checkin(sam, checkinOverdue.ID, domain.HealthYellow, "Slipping.", "Cut scope.", testsupport.Epoch.AddDate(0, 1, 0))
 	others := h.ActiveGoal(kim, "Grow revenue", "It pays for everything.")
 	h.Clock.Advance(16 * day)
 	fresh := h.ActiveGoal(sam, "Fresh work", "It matters.")
@@ -144,19 +144,19 @@ func TestHomeListsStaleGoalToCheckInOn(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home")
 
 	due := pageElement(t, page, "ul", "home-due")
-	row := homeRow(t, due, stale)
+	row := homeRow(t, due, checkinOverdue)
 	for _, want := range []string{
-		`data-testid="home-due-stale"`,
+		`data-testid="home-due-checkin-overdue"`,
 		`data-testid="home-due-health"`,
-		fmt.Sprintf(`action="/goals/%d/checkins/no-change"`, stale.ID),
+		fmt.Sprintf(`action="/goals/%d/checkins/no-change"`, checkinOverdue.ID),
 		`data-testid="home-due-checkin"`,
 	} {
 		if !strings.Contains(row, want) {
-			t.Errorf("Stale Goal's row lacks %s:\n%s", want, row)
+			t.Errorf("Check-in overdue Goal's row lacks %s:\n%s", want, row)
 		}
 	}
 	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || !strings.Contains(got[0], "last check-in 16 days ago · every 14 days") {
-		t.Errorf("Stale Goal's status line = %q, want how long since its last Check-in against its cadence", got)
+		t.Errorf("Check-in overdue Goal's status line = %q, want how long since its last Check-in against its cadence", got)
 	}
 	for _, g := range []domain.Goal{fresh, others} {
 		if strings.Contains(due, navTo(g.ID)) {
@@ -167,34 +167,34 @@ func TestHomeListsStaleGoalToCheckInOn(t *testing.T) {
 
 // A row in Check-ins due leads with the Goal's title, then one status line: its
 // Health, how long since its last Check-in, its cadence and, when it applies,
-// its Stale mark. The age is said once (#377).
+// its Check-in overdue mark. The age is said once (#377).
 func TestHomeDueRowLeadsWithTheGoal(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
-	stale := h.ActiveGoal(sam, "Ship search", "People can't find things.")
-	setCadence(t, h, stale, 14)
-	h.Checkin(sam, stale.ID, domain.HealthYellow, "Slipping.", "Cut scope.", testsupport.Epoch.AddDate(0, 1, 0))
+	checkinOverdue := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	setCadence(t, h, checkinOverdue, 14)
+	h.Checkin(sam, checkinOverdue.ID, domain.HealthYellow, "Slipping.", "Cut scope.", testsupport.Epoch.AddDate(0, 1, 0))
 	h.Clock.Advance(16 * day)
 
-	row := homeRow(t, pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due"), stale)
-	if title, health := strings.Index(row, navTo(stale.ID)), strings.Index(row, `data-testid="home-due-health"`); title > health {
+	row := homeRow(t, pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due"), checkinOverdue)
+	if title, health := strings.Index(row, navTo(checkinOverdue.ID)), strings.Index(row, `data-testid="home-due-health"`); title > health {
 		t.Errorf("row doesn't lead with the Goal's title:\n%s", row)
 	}
-	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Yellow last check-in 16 days ago · every 14 days Stale" {
-		t.Errorf("row's status line = %q, want its Health, age, cadence and Stale mark:\n%s", got, row)
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Yellow last check-in 16 days ago · every 14 days Check-in overdue" {
+		t.Errorf("row's status line = %q, want its Health, age, cadence and Check-in overdue mark:\n%s", got, row)
 	}
 	if n := strings.Count(row, "16 days ago"); n != 1 {
 		t.Errorf("row says the Goal's age %d times, want once:\n%s", n, row)
 	}
 }
 
-// A Goal that would go Stale before next week's reminder is listed too, by the
-// same rule as the reminder email, but not flagged Stale. A Goal with a week
-// to spare isn't listed, and a Goal with no Check-in to repeat offers no No
-// change.
+// A Goal that would go Check-in overdue before next week's reminder is listed
+// too, by the same rule as the reminder email, but not flagged Check-in
+// overdue. A Goal with a week to spare isn't listed, and a Goal with no
+// Check-in to repeat offers no No change.
 func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
 	t.Parallel()
 
@@ -217,26 +217,27 @@ func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
 	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Green last check-in 8 days ago · every 14 days" {
 		t.Errorf("due-soon Goal's row does not say why it's listed:\n%s", row)
 	}
-	if strings.Contains(row, `data-testid="home-due-stale"`) {
-		t.Errorf("due-soon Goal is flagged Stale before it is:\n%s", row)
+	if strings.Contains(row, `data-testid="home-due-checkin-overdue"`) {
+		t.Errorf("due-soon Goal is flagged Check-in overdue before it is:\n%s", row)
 	}
 	if strings.Contains(due, navTo(spare.ID)) {
 		t.Errorf("Check in on these lists %q, which has a week to spare:\n%s", spare.Title, due)
 	}
 }
 
-// A Stale Goal's Health in Check-ins due is its last Check-in's, so it reads
-// as last reported: a muted badge naming just the Health, dated by the "last
-// check-in" beside it, still flagged Stale, and with no "as of" to say the age
-// again. A due Goal that isn't Stale yet keeps its full-colour badge.
-func TestHomeDatesStaleGoalsHealth(t *testing.T) {
+// A Check-in overdue Goal's Health in Check-ins due is its last Check-in's, so
+// it reads as last reported: a muted badge naming just the Health, dated by the
+// "last check-in" beside it, still flagged Check-in overdue, and with no "as
+// of" to say the age again. A due Goal that isn't Check-in overdue yet keeps
+// its full-colour badge.
+func TestHomeDatesCheckinOverdueGoalsHealth(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
-	stale := h.ActiveGoal(sam, "Ship search", "People can't find things.")
-	h.Checkin(sam, stale.ID, domain.HealthGreen, "On track.", "", time.Time{})
+	checkinOverdue := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	h.Checkin(sam, checkinOverdue.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	h.Clock.Advance(day)
 	dueSoon := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
 	setCadence(t, h, dueSoon, 14)
@@ -245,29 +246,29 @@ func TestHomeDatesStaleGoalsHealth(t *testing.T) {
 
 	due := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due")
 
-	row := homeRow(t, due, stale)
+	row := homeRow(t, due, checkinOverdue)
 	badge := tagAround(t, row, `data-testid="home-due-health"`)
 	if !hasClass(badge, "as-of") {
-		t.Errorf("Stale Goal's Health badge is not muted: %s", badge)
+		t.Errorf("Check-in overdue Goal's Health badge is not muted: %s", badge)
 	}
 	if !regexp.MustCompile(`data-testid="home-due-health"[^>]*><span class="dot"></span>\s*Green\s*</span>`).MatchString(row) {
-		t.Errorf("Stale Goal's Health badge does not read just Green:\n%s", row)
+		t.Errorf("Check-in overdue Goal's Health badge does not read just Green:\n%s", row)
 	}
-	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Green last check-in 9 days ago · every 7 days Stale" {
-		t.Errorf("Stale Goal's Health is dated %q, want by its last Check-in 9 days ago:\n%s", got, row)
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Green last check-in 9 days ago · every 7 days Check-in overdue" {
+		t.Errorf("Check-in overdue Goal's Health is dated %q, want by its last Check-in 9 days ago:\n%s", got, row)
 	}
-	if !strings.Contains(row, `data-testid="home-due-stale"`) {
-		t.Errorf("Stale Goal is no longer flagged Stale:\n%s", row)
+	if !strings.Contains(row, `data-testid="home-due-checkin-overdue"`) {
+		t.Errorf("Check-in overdue Goal is no longer flagged Check-in overdue:\n%s", row)
 	}
 
 	row = homeRow(t, due, dueSoon)
 	if hasClass(tagAround(t, row, `data-testid="home-due-health"`), "as-of") {
-		t.Errorf("due Goal that isn't Stale has its Health muted:\n%s", row)
+		t.Errorf("due Goal that isn't Check-in overdue has its Health muted:\n%s", row)
 	}
 }
 
-// A Stale Goal never checked in on has no reported Health to date: its badge
-// reads "No Health yet", unmuted, and its days count from activation.
+// A Check-in overdue Goal never checked in on has no reported Health to date:
+// its badge reads "No Health yet", unmuted, and its days count from activation.
 func TestHomeLeavesNoHealthYetUndated(t *testing.T) {
 	t.Parallel()
 
@@ -278,14 +279,14 @@ func TestHomeLeavesNoHealthYetUndated(t *testing.T) {
 	h.Clock.Advance(9 * day)
 
 	row := homeRow(t, pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due"), silent)
-	if !strings.Contains(row, `data-testid="home-due-stale"`) {
-		t.Fatalf("Goal 9 days past activation on a weekly cadence isn't Stale:\n%s", row)
+	if !strings.Contains(row, `data-testid="home-due-checkin-overdue"`) {
+		t.Fatalf("Goal 9 days past activation on a weekly cadence isn't Check-in overdue:\n%s", row)
 	}
 	badge := tagAround(t, row, `data-testid="home-due-health"`)
 	if hasClass(badge, "as-of") || !strings.Contains(row, "No Health yet") {
 		t.Errorf("Goal with no Check-in doesn't read No Health yet, unmuted: %s", row)
 	}
-	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "No Health yet no check-in since activation 9 days ago · every 7 days Stale" {
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "No Health yet no check-in since activation 9 days ago · every 7 days Check-in overdue" {
 		t.Errorf("Goal with no Check-in has status line %q, want its days counted from activation:\n%s", got, row)
 	}
 }
@@ -647,30 +648,30 @@ func TestHomeHeadsNotGreenGoals(t *testing.T) {
 	}
 }
 
-// In the Not Green list a Stale Goal's Health is muted and dated as last
-// reported, as in Check-ins due; a Goal checked in on lately keeps its
+// In the Not Green list a Check-in overdue Goal's Health is muted and dated as
+// last reported, as in Check-ins due; a Goal checked in on lately keeps its
 // full-colour badge and no "as of".
-func TestHomeDatesStaleNotGreenHealth(t *testing.T) {
+func TestHomeDatesCheckinOverdueNotGreenHealth(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
 	target := testsupport.Epoch.AddDate(0, 1, 0)
-	stale := h.ActiveGoal(sam, "Cut churn", "Customers leave.")
-	h.Checkin(sam, stale.ID, domain.HealthRed, "Blocked.", "Escalate.", target)
+	checkinOverdue := h.ActiveGoal(sam, "Cut churn", "Customers leave.")
+	h.Checkin(sam, checkinOverdue.ID, domain.HealthRed, "Blocked.", "Escalate.", target)
 	h.Clock.Advance(9 * day)
 	fresh := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
 	h.Checkin(sam, fresh.ID, domain.HealthYellow, "Slipping.", "Cut scope.", target)
 
 	yours := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-not-green")
 
-	row := homeRow(t, yours, stale)
+	row := homeRow(t, yours, checkinOverdue)
 	if badge := tagAround(t, row, `data-testid="home-goal-health"`); !hasClass(badge, "as-of") {
-		t.Errorf("Stale Red Goal's Health badge is not muted: %s", badge)
+		t.Errorf("Check-in overdue Red Goal's Health badge is not muted: %s", badge)
 	}
 	if got := elementTexts(row, "span", "home-goal-as-of"); len(got) != 1 || got[0] != "as of 9 days ago" {
-		t.Errorf("Stale Red Goal's Health is dated %q, want as of 9 days ago:\n%s", got, row)
+		t.Errorf("Check-in overdue Red Goal's Health is dated %q, want as of 9 days ago:\n%s", got, row)
 	}
 
 	row = homeRow(t, yours, fresh)
@@ -818,17 +819,17 @@ func TestHomeInlineFormsComeFromTheSharedClass(t *testing.T) {
 	ts := newServer(t, h)
 	sam := h.SignIn("sam@example.com")
 	kim := h.SignIn("kim@example.com")
-	stale := h.ActiveGoal(sam, "Ship search", "People can't find things.")
-	setCadence(t, h, stale, 14)
-	h.Checkin(sam, stale.ID, domain.HealthYellow, "Slipping.", "Cut scope.", testsupport.Epoch.AddDate(0, 1, 0))
+	checkinOverdue := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	setCadence(t, h, checkinOverdue, 14)
+	h.Checkin(sam, checkinOverdue.ID, domain.HealthYellow, "Slipping.", "Cut scope.", testsupport.Epoch.AddDate(0, 1, 0))
 	h.Clock.Advance(16 * day)
-	link := h.RequestLink(kim, h.ActiveGoal(kim, "Cut churn", "Customers leave."), stale, "")
+	link := h.RequestLink(kim, h.ActiveGoal(kim, "Cut churn", "Customers leave."), checkinOverdue, "")
 	client := signInClient(t, ts.URL, "sam@example.com")
 	css := getBody(t, client, ts.URL+"/static/app.css")
 
 	page := getBody(t, client, ts.URL+"/home")
 	for _, action := range []string{
-		fmt.Sprintf("/goals/%d/checkins/no-change", stale.ID),
+		fmt.Sprintf("/goals/%d/checkins/no-change", checkinOverdue.ID),
 		fmt.Sprintf("/links/%d/accept", link.ID),
 		fmt.Sprintf("/links/%d/reject", link.ID),
 	} {
@@ -1012,8 +1013,8 @@ func TestBrandLinkLeadsHome(t *testing.T) {
 	}
 }
 
-// The Goals nav item carries no count, even when the viewer owns Red and Stale
-// Goals that Home and Risks count.
+// The Goals nav item carries no count, even when the viewer owns Red and
+// Check-in overdue Goals that Home and Risks count.
 func TestNavGoalsCarriesNoCount(t *testing.T) {
 	t.Parallel()
 
@@ -1128,8 +1129,8 @@ func homeOrgRows(card string) []string {
 }
 
 // homeOrgFixture is a lead with Ana and Ben directly under them and Cy under
-// Ana. Cy's Goal is Red, Stale and past its Path to Green, Ana's is Yellow,
-// and Ben's is Red.
+// Ana. Cy's Goal is Red, Check-in overdue and past its Path to Green, Ana's is
+// Yellow, and Ben's is Red.
 type homeOrgFixture struct {
 	lead, ana, ben, cy domain.Account
 	goals              []domain.Goal
@@ -1193,7 +1194,7 @@ func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
 	}
 
 	total := pageElement(t, card, "p", "home-org-total")
-	if got := elementTexts(card, "p", "home-org-total"); len(got) != 1 || got[0] != "2 Red · 1 Path to Green overdue · 1 Stale · 1 Yellow" {
+	if got := elementTexts(card, "p", "home-org-total"); len(got) != 1 || got[0] != "2 Red · 1 Path to Green overdue · 1 Check-in overdue · 1 Yellow" {
 		t.Errorf("total line reads %q", got)
 	}
 	if strings.Contains(total, "badge") {
@@ -1203,11 +1204,11 @@ func TestHomeMyOrgNamesLinkToTheirOrg(t *testing.T) {
 
 // My org's total line counts, across everyone under the viewer, each signal
 // that has anything, labelled so it reads without colour, in the order Red,
-// Path to Green overdue, Stale, Yellow. Each person directly under the viewer
-// with anything flagged gets a row with their whole Org's counts as badges,
-// worst off first, their name linking to Goals scoped to their Org; someone
-// two levels down counts in the row of the person they're under. The section
-// lists no Goals.
+// Path to Green overdue, Check-in overdue, Yellow. Each person directly under
+// the viewer with anything flagged gets a row with their whole Org's counts as
+// badges, worst off first, their name linking to Goals scoped to their Org;
+// someone two levels down counts in the row of the person they're under. The
+// section lists no Goals.
 func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 	t.Parallel()
 
@@ -1217,7 +1218,7 @@ func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 
 	card := homeOrgSection(t, getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home"))
 	total := pageElement(t, card, "p", "home-org-total")
-	wantTotal := []string{"red: 2 Red", "path-overdue: 1 Path to Green overdue", "stale: 1 Stale", "yellow: 1 Yellow"}
+	wantTotal := []string{"red: 2 Red", "path-overdue: 1 Path to Green overdue", "checkin-overdue: 1 Check-in overdue", "yellow: 1 Yellow"}
 	if got := homeOrgCounts(total); !slices.Equal(got, wantTotal) {
 		t.Errorf("total line = %v, want %v", got, wantTotal)
 	}
@@ -1226,7 +1227,7 @@ func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 	if len(rows) != 2 {
 		t.Fatalf("My org has %d rows, want Ana's and Ben's:\n%s", len(rows), card)
 	}
-	for _, want := range []string{`data-kind="red" class="badge r"`, `data-kind="path-overdue" class="badge st"`, `data-kind="stale" class="badge st"`, `data-kind="yellow" class="badge y"`} {
+	for _, want := range []string{`data-kind="red" class="badge r"`, `data-kind="path-overdue" class="badge st"`, `data-kind="checkin-overdue" class="badge st"`, `data-kind="yellow" class="badge y"`} {
 		if !strings.Contains(rows[0], want) {
 			t.Errorf("Ana's row lacks %s:\n%s", want, rows[0])
 		}
@@ -1235,7 +1236,7 @@ func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 		who    domain.Account
 		counts []string
 	}{
-		{f.ana, []string{"red: 1 Red", "path-overdue: 1 Path to Green overdue", "stale: 1 Stale", "yellow: 1 Yellow"}},
+		{f.ana, []string{"red: 1 Red", "path-overdue: 1 Path to Green overdue", "checkin-overdue: 1 Check-in overdue", "yellow: 1 Yellow"}},
 		{f.ben, []string{"red: 1 Red"}},
 	} {
 		if !strings.Contains(orgPersonLink(t, rows[i]), want.who.Name) {

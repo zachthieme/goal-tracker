@@ -1852,8 +1852,8 @@ func reportContent(r domain.Report, asOf time.Time, d discussion) templ.Componen
 }
 
 // healthSummary counts the Report's selected Goals by Health — Red, Yellow,
-// Green — and how many are Stale, so a reader sees the shape of the Report's
-// Goals before reading a block.
+// Green — and how many are Check-in overdue, so a reader sees the shape of the
+// Report's Goals before reading a block.
 func healthSummary(r domain.Report) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -3279,26 +3279,26 @@ func highlightCredit(nh domain.NarrativeHighlight) templ.Component {
 
 // reportBlock is an exception Goal's full MBR block, as a card: title, Owner,
 // Lifecycle, and due date with its history struck through; Health and badges
-// top right; under them, when it changed since the baseline, a line saying
-// what changed ("Changed: Turned Red · 1 Milestone slipped"), and under that
-// the Goals in the Report it contributes to ("Contributes to: Growth ↓ (Red)");
-// So What, latest status, and Path to Green in a tinted box, its back-to-Green
+// top right; under them, when it changed since the baseline, a line saying what
+// changed ("Changed: Turned Red · 1 Milestone slipped"), and under that the
+// Goals in the Report it contributes to ("Contributes to: Growth ↓ (Red)"); So
+// What, latest status, and Path to Green in a tinted box, its back-to-Green
 // date followed by the date it last slipped from in the Run off Green struck
 // through and the count of slips once more than one, as drafted (see
-// reportBackToGreenPrior), and marked
-// Overdue when its target date passed before asOf, and after it an Ask for help
-// open when the Report was drafted, naming whom it asks or saying no one is
-// above the Owner; Milestones, each marked as of asOf, Metrics against
-// target, and the Rolled-up Health with how many children are Red, Yellow and
-// Stale ("2 of 6 Red · 1 Yellow"), the Goals behind it, and the Owner's
-// explanation. It reads asOf in the zone the block's Goal was judged in when
-// drafted (see domain.ReportBlock.Timezone). Each Goal it names links to its
-// place in the Report, marked ↓, or to its Goal page when the Report doesn't
-// hold it (#246). A Yellow or Red Health reads with its Run off Green as
-// drafted, and one that changed since the baseline with what it was after
-// that ("Yellow · 2 wks · was Green"). The
-// Fields the definition chose sit under the head, beside the Goal rather than
-// in the status box. On a publication it ends with the Goal's discussion.
+// reportBackToGreenPrior), and marked Overdue when its target date passed
+// before asOf, and after it an Ask for help open when the Report was drafted,
+// naming whom it asks or saying no one is above the Owner; Milestones, each
+// marked as of asOf, Metrics against target, and the Rolled-up Health with how
+// many children are Red, Yellow and Check-in overdue ("2 of 6 Red · 1 Yellow ·
+// 1 overdue"), the Goals behind it, and the Owner's explanation. It reads asOf
+// in the zone the block's Goal was judged in when drafted (see
+// domain.ReportBlock.Timezone). Each Goal it names links to its place in the
+// Report, marked ↓, or to its Goal page when the Report doesn't hold it (#246).
+// A Yellow or Red Health reads with its Run off Green as drafted, and one that
+// changed since the baseline with what it was after that ("Yellow · 2 wks · was
+// Green"). The Fields the definition chose sit under the head, beside the Goal
+// rather than in the status box. On a publication it ends with the Goal's
+// discussion.
 func reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -4020,7 +4020,7 @@ func reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) templ.Compo
 				return templ_7745c5c3_Err
 			}
 		}
-		if b.RolledUp.Present || b.RolledUp.StaleChildren > 0 || len(b.Behind) > 0 {
+		if b.RolledUp.Present || b.RolledUp.CheckinOverdueChildren > 0 || len(b.Behind) > 0 {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 303, "<p data-testid=\"report-rollup\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -4087,7 +4087,7 @@ func reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) templ.Compo
 					return templ_7745c5c3_Err
 				}
 			}
-			if b.Explanation != "" && (b.RolledUp.Present || b.RolledUp.StaleChildren > 0) {
+			if b.Explanation != "" && (b.RolledUp.Present || b.RolledUp.CheckinOverdueChildren > 0) {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 311, "<br><strong>Why the Health differs:</strong> ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
@@ -4663,11 +4663,11 @@ func healthClass(health string) string {
 	return "lc"
 }
 
-// badgeClass is a report badge's colour: Stale in its own colour, Ownerless as
-// prominent as Red, a New Date as a warning, and the rest neutral.
+// badgeClass is a report badge's colour: Check-in overdue in its own colour,
+// Ownerless as prominent as Red, a New Date as a warning, and the rest neutral.
 func badgeClass(badge string) string {
 	switch badge {
-	case domain.BadgeStale:
+	case domain.BadgeCheckinOverdue:
 		return "st"
 	case domain.BadgeOwnerless:
 		return "r"
@@ -4724,15 +4724,16 @@ type healthTile struct {
 	count             int
 }
 
-// healthTiles counts a Report's selected Goals by Health, and its Stale ones —
-// only an exception block can be Stale, since a Stale Goal is an exception.
+// healthTiles counts a Report's selected Goals by Health, and its Check-in
+// overdue ones — only an exception block can be Check-in overdue, since a
+// Check-in overdue Goal is an exception.
 func healthTiles(r domain.Report) []healthTile {
 	byHealth := map[string]int{}
-	stale := 0
+	overdue := 0
 	for _, b := range r.Exceptions {
 		byHealth[b.Health]++
-		if slices.Contains(b.Badges, domain.BadgeStale) {
-			stale++
+		if slices.Contains(b.Badges, domain.BadgeCheckinOverdue) {
+			overdue++
 		}
 	}
 	for _, sg := range r.Lines {
@@ -4742,7 +4743,7 @@ func healthTiles(r domain.Report) []healthTile {
 		{"red", domain.HealthRed, "r", byHealth[domain.HealthRed]},
 		{"yellow", domain.HealthYellow, "y", byHealth[domain.HealthYellow]},
 		{"green", domain.HealthGreen, "g", byHealth[domain.HealthGreen]},
-		{"stale", domain.BadgeStale, "st", stale},
+		{"checkin-overdue", domain.BadgeCheckinOverdue, "st", overdue},
 	}
 }
 

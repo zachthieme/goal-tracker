@@ -948,7 +948,7 @@ func goalListRow(row goalRow, dates displayDates) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if g.Ownerless || row.Freshness.Stale || row.Freshness.PathToGreenOverdue || row.Freshness.MilestoneOverdue || len(row.Incomplete) > 0 {
+		if g.Ownerless || row.Freshness.CheckinOverdue || row.Freshness.PathToGreenOverdue || row.Freshness.MilestoneOverdue || len(row.Incomplete) > 0 {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "<div class=\"gl-marks\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -5197,8 +5197,8 @@ func defineGoal(v goalView) templ.Component {
 
 // goalIncomplete flags an Incomplete Goal at the top of its page, naming the
 // required Dimensions and Fields it has no value in. It is a status, not an
-// alarm: quieter than Red and Stale (CONTEXT.md: Incomplete). It renders
-// nothing when the Goal lacks none.
+// alarm: quieter than Red and Check-in overdue (CONTEXT.md: Incomplete). It
+// renders nothing when the Goal lacks none.
 func goalIncomplete(missing []string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

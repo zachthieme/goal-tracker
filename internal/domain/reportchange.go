@@ -103,10 +103,10 @@ type reportException struct {
 
 // sortReportExceptions puts the worst-off exceptions first, key by key, as the
 // Risks page ranks Goals: Ownerless first; then by Health, Red, Yellow, none,
-// then Green; then a Path to Green overdue first; then Stale first. Then those
-// that changed since the baseline come first, new trouble ahead of standing
-// trouble; then the soonest delivery date, with none last; then by title,
-// ignoring case, then by Goal id.
+// then Green; then a Path to Green overdue first; then Check-in overdue first.
+// Then those that changed since the baseline come first, new trouble ahead of
+// standing trouble; then the soonest delivery date, with none last; then by
+// title, ignoring case, then by Goal id.
 func sortReportExceptions(xs []reportException) {
 	slices.SortStableFunc(xs, func(a, b reportException) int {
 		ga, gb := a.block.Goal, b.block.Goal
@@ -119,7 +119,7 @@ func sortReportExceptions(xs []reportException) {
 		if c := cmp.Compare(reportFlagRank(a.pathOverdue), reportFlagRank(b.pathOverdue)); c != 0 {
 			return c
 		}
-		if c := cmp.Compare(reportFlagRank(a.block.hasBadge(BadgeStale)), reportFlagRank(b.block.hasBadge(BadgeStale))); c != 0 {
+		if c := cmp.Compare(reportFlagRank(a.block.hasBadge(BadgeCheckinOverdue)), reportFlagRank(b.block.hasBadge(BadgeCheckinOverdue))); c != 0 {
 			return c
 		}
 		if c := cmp.Compare(reportFlagRank(a.block.changedSinceBaseline()), reportFlagRank(b.block.changedSinceBaseline())); c != 0 {

@@ -12,26 +12,27 @@ import (
 // Owner has to explain why. Present is false when the Goal has no Active child
 // that has set a Health yet — there is nothing to roll up.
 //
-// StaleChildren counts how many of the ActiveChildren are Stale ("3 of 12
-// Stale"). It is shown beside the color and never changes it: Health stays
-// Owner-set, and being Stale is its own signal (CONTEXT.md: Stale).
+// CheckinOverdueChildren counts how many of the ActiveChildren are Check-in
+// overdue ("3 of 12 overdue"). It is shown beside the color and never changes
+// it: Health stays Owner-set, and being Check-in overdue is its own signal
+// (CONTEXT.md: Check-in overdue).
 // RedChildren and YellowChildren count the ActiveChildren whose latest
 // Check-in is Red or Yellow, for the count a Report shows beside the color
 // ("2 of 6 Red · 1 Yellow"); a snapshot frozen before Reports counted them has
 // neither.
 type RolledUpHealth struct {
-	Health         string
-	Present        bool
-	StaleChildren  int
-	ActiveChildren int
-	RedChildren    int `json:",omitempty"`
-	YellowChildren int `json:",omitempty"`
+	Health                 string
+	Present                bool
+	CheckinOverdueChildren int
+	ActiveChildren         int
+	RedChildren            int `json:",omitempty"`
+	YellowChildren         int `json:",omitempty"`
 }
 
 // CountLine says what sets the Rolled-up Health: how many of its Active
-// children are Red, Yellow and Stale, each only when there are some, the first
-// out of all of them ("2 of 6 Red · 1 Yellow · 1 Stale"). Green is never
-// counted. It is empty when none are Red, Yellow or Stale.
+// children are Red, Yellow and Check-in overdue, each only when there are some,
+// the first out of all of them ("2 of 6 Red · 1 Yellow · 1 overdue"). Green is
+// never counted. It is empty when none are Red, Yellow or Check-in overdue.
 func (r RolledUpHealth) CountLine() string {
 	var parts []string
 	for _, c := range []struct {
@@ -40,7 +41,7 @@ func (r RolledUpHealth) CountLine() string {
 	}{
 		{r.RedChildren, HealthRed},
 		{r.YellowChildren, HealthYellow},
-		{r.StaleChildren, BadgeStale},
+		{r.CheckinOverdueChildren, "overdue"},
 	} {
 		if c.n == 0 {
 			continue
@@ -70,14 +71,14 @@ func healthRank(health string) int {
 }
 
 // RolledUpHealth computes goalID's Rolled-up Health from its Active children's
-// Owner-set Health (ADR-0003). Health is set by the Owner and never computed, so
-// this reads each Active child's latest Check-in and keeps the worst. Only
+// Owner-set Health (ADR-0003). Health is set by the Owner and never computed,
+// so this reads each Active child's latest Check-in and keeps the worst. Only
 // Active children count: a Proposed child has no Health, and a child with no
 // Check-in yet has none either, so both are skipped. When no Active child has a
-// Health, Present is false. Each Active child is also judged Stale or not and
-// counted, and counted again when it is Red or Yellow. The traversal is one level — each parent shows the
-// roll-up of its own direct children, which itself already reflects the levels
-// below it.
+// Health, Present is false. Each Active child is also judged Check-in overdue
+// or not and counted, and counted again when it is Red or Yellow. The traversal
+// is one level — each parent shows the roll-up of its own direct children,
+// which itself already reflects the levels below it.
 func (s *Service) RolledUpHealth(ctx context.Context, goalID int64) (RolledUpHealth, error) {
 	children, err := s.ChildrenOf(ctx, goalID)
 	if err != nil {
@@ -97,8 +98,8 @@ func (s *Service) RolledUpHealth(ctx context.Context, goalID int64) (RolledUpHea
 		if ok {
 			last.at = latest.CreatedAt
 		}
-		if s.judgeFreshness(child, last).Stale {
-			out.StaleChildren++
+		if s.judgeFreshness(child, last).CheckinOverdue {
+			out.CheckinOverdueChildren++
 		}
 		if !ok {
 			continue

@@ -89,10 +89,10 @@ deliberately; don't override it on one page.
   --nav-count-ink: #18211F;
   --nav-needs-bg:  #18211F; /* Home's count, both themes: a dark pill ringed in --nav-ink */
 
-  /* Stale and Path to Green overdue: chip and banner. See Components */
-  --stale-bg:   #E9EAEC; /* chip fill */
-  --stale-ink:  #3B4048; /* chip text */
-  --stale-edge: #888F97; /* dashed edge of chip and banner. See Deviations */
+  /* Check-in overdue and Path to Green overdue: chip and banner. See Components */
+  --checkin-overdue-bg:   #E9EAEC; /* chip fill */
+  --checkin-overdue-ink:  #3B4048; /* chip text */
+  --checkin-overdue-edge: #888F97; /* dashed edge of chip and banner. See Deviations */
 
   /* Goal Health. See Deviations */
   --health-g-bg: #DDEFE3; --health-g-ink: #17593A;
@@ -162,11 +162,11 @@ deliberately; don't override it on one page.
   --nav-count-bg:  #626766; /* (chosen) neutral grey count pill */
   --nav-count-ink: #FFFFFF;
 
-  /* (chosen) Stale: the light chip's ink becomes the fill, and the UX
+  /* (chosen) Check-in overdue: the light chip's ink becomes the fill, and the UX
    * Review's grey the edge */
-  --stale-bg:   #3B4048;
-  --stale-ink:  #E8E8E8;
-  --stale-edge: #8C939C;
+  --checkin-overdue-bg:   #3B4048;
+  --checkin-overdue-ink:  #E8E8E8;
+  --checkin-overdue-edge: #8C939C;
 
   /* (chosen) Health hues on 20%-alpha fills with light text */
   --health-g-bg: rgba(34,160,95,.20); --health-g-ink: #8EDDAF;
@@ -377,8 +377,8 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   head (below). It sits on the canvas with no rule.
 - **Goal page head (`.gp-head`):** read top to bottom, it is the title (H1),
   then the So What, then one metadata line. The warning banners (Ownerless,
-  Stale, Path to Green overdue, Incomplete) stay above it, and the actions sit
-  top right.
+  Check-in overdue, Path to Green overdue, Incomplete) stay above it, and the
+  actions sit top right.
   - **So What lead (`.gp-lead`):** larger body text, 18 / 1.55 in
     `--color-ink`, at most 720px wide. No "So What" heading shows; a visually
     hidden one (`.sr-only`) labels it for assistive technology, and a small
@@ -447,10 +447,10 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
 - **Status cells (`.gp-cells`):** the Goal page's Latest status card opens with
   a row of cells, each a `.label` over its value: "Owner's Health" (a Health
   badge, with the Run off Green beside it in muted small text while the Goal
-  is Yellow or Red: "Red · 5 wks"), "Rolled-up Health" (a Health badge, with the Stale-children count
-  beside it) and "Back to Green by" (a date, which shows a slipped date as a
-  Milestone's does, counted within the current Run off Green: "Oct 3
-  ~~Sep 12~~ (3)"). A cell shows only when it has
+  is Yellow or Red: "Red · 5 wks"), "Rolled-up Health" (a Health badge, with the
+  Check-in overdue children count beside it) and "Back to Green by" (a date,
+  which shows a slipped date as a Milestone's does, counted within the current
+  Run off Green: "Oct 3 ~~Sep 12~~ (3)"). A cell shows only when it has
   something to say: no Rolled-up cell without Active children and no Back to
   Green cell without a Path to Green. The cells wrap, 32px apart. The status
   text, the Path to Green and the "why this differs" explanation follow below.
@@ -531,23 +531,24 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     Health's `--health-*-bg` fill with its dot in the Health's ink and shape
     (● Green, ▲ Yellow, ■ Red), so it reads without colour. A finished period
     the Goal was Active with no Check-in is an empty cell in a 1px dashed
-    `--stale-edge` border, the edge Stale uses, so a skipped week shows at a
-    glance. Only a finished period can be missed: one whose last day is today
-    or later (the one in progress, and any wholly ahead when the cadence is
-    shorter than a week) that the Goal is Active in with no Check-in yet is
-    "not yet due", an empty cell in a 1px solid `--color-border-strong` border,
-    the edge of an input, a slot waiting to be filled. A period before the Goal
-    became Active, or one it spent or ended On Hold, Done or Cancelled, owed no
-    Check-in and is blank, with no edge. Cells are 24px tall, share the row 4px
-    apart up to 480px wide, and take `--radius-sm`. Each cell's text equivalent
-    is visually hidden inside it and repeated as its tooltip: "Week of Sep 28:
-    Yellow", "Week of Sep 21: no Check-in", "Week of Oct 5: not yet due",
-    "Week of Sep 7: On Hold", or "not yet Active". A Goal on another cadence
-    names a period by its first and last days ("Sep 14 – Sep 27"). A muted line
-    under the strip sums it up, counting the periods not yet due apart from the
-    missed ones, and naming them only when there are any: "Last 11 weeks: 7
-    Green, 1 Yellow, 2 with no Check-in, 1 not yet due." The strip shows for any
-    Goal that has been Active, and it changes nothing: not Stale, not Health.
+    `--checkin-overdue-edge` border, the edge Check-in overdue uses, so a
+    skipped week shows at a glance. Only a finished period can be missed: one
+    whose last day is today or later (the one in progress, and any wholly ahead
+    when the cadence is shorter than a week) that the Goal is Active in with no
+    Check-in yet is "not yet due", an empty cell in a 1px solid
+    `--color-border-strong` border, the edge of an input, a slot waiting to be
+    filled. A period before the Goal became Active, or one it spent or ended On
+    Hold, Done or Cancelled, owed no Check-in and is blank, with no edge. Cells
+    are 24px tall, share the row 4px apart up to 480px wide, and take
+    `--radius-sm`. Each cell's text equivalent is visually hidden inside it and
+    repeated as its tooltip: "Week of Sep 28: Yellow", "Week of Sep 21: no
+    Check-in", "Week of Oct 5: not yet due", "Week of Sep 7: On Hold", or "not
+    yet Active". A Goal on another cadence names a period by its first and last
+    days ("Sep 14 – Sep 27"). A muted line under the strip sums it up, counting
+    the periods not yet due apart from the missed ones, and naming them only
+    when there are any: "Last 11 weeks: 7 Green, 1 Yellow, 2 with no Check-in, 1
+    not yet due." The strip shows for any Goal that has been Active, and it
+    changes nothing: not Check-in overdue, not Health.
   - **Filter chips (`.tl-chips`):** a row of `--radius-full` chips above the
     list, wrapping on narrow screens: All, Check-ins, Date Slips, So What,
     Title, Ownership, Links, Values, Action Items, Comments. Each carries its
@@ -652,16 +653,16 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     (`.hm-summary`), with **New goal** on the right. The line reads "Your
     goals:", the Health distribution bar, then plain muted text, "1 Green ·
     0 Yellow · 0 Red · Goals you own or help with →", counting the Goals the
-    person Owns, a Stale one under its last Health. **Goals you own or help
-    with →** opens the Goals list filtered to Mine (`/goals?org=mine`): the
-    Goals the person Owns or is a Delegate on. For someone who is a Delegate
+    person Owns, a Check-in overdue one under its last Health. **Goals you own
+    or help with →** opens the Goals list filtered to Mine (`/goals?org=mine`):
+    the Goals the person Owns or is a Delegate on. For someone who is a Delegate
     on any Goal, the line ends "· Goals delegated to you N →", leading to the
     Delegate page. The head carries no count of what needs the person: the
     Needs you heading does.
   - **Your goals not Green:** a plain section after My org listing the Goals
     the person Owns that are Red, then Yellow, each its Health badge, muted
-    and dated "as of 9 days ago" when Stale, then its title. With none, the
-    section is left out.
+    and dated "as of 9 days ago" when Check-in overdue, then its title. With
+    none, the section is left out.
 - **Home's Needs you list (in `homePage`):** the page's one card, holding
   everything waiting on the person, titled with how many things that is
   ("Needs you · 2", plain "Needs you" with nothing waiting), in four
@@ -670,15 +671,15 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
     first. Each row leads with the Goal's title, linking to the Goal, over
     one muted status line (`.hm-status`): the Health badge, "last check-in
     14 days ago" ("no check-in since activation 9 days ago" before the
-    first), "every 7 days", the Stale mark when it applies and, for a Goal
-    they are a Delegate on, a "for [Owner]" tag. The age is said once, and
+    first), "every 7 days", the Check-in overdue mark when it applies and, for a
+    Goal they are a Delegate on, a "for [Owner]" tag. The age is said once, and
     the age and the cadence each wrap whole. A secondary **No change** and a
-    primary **Check in** sit on the right. A Stale Goal's Health is its last
-    Check-in's, so its badge is muted (`.badge.as-of`, Home's own rule: card
-    fill, muted ink, a 1px `--color-border` edge), keeping the Health's name
-    and dot shape; the "last check-in" beside it dates it. A Goal that isn't
-    Stale, or has no Health yet, keeps its full-colour badge. A Goal they
-    are a Delegate on appears only here.
+    primary **Check in** sit on the right. A Check-in overdue Goal's Health is
+    its last Check-in's, so its badge is muted (`.badge.as-of`, Home's own rule:
+    card fill, muted ink, a 1px `--color-border` edge), keeping the Health's
+    name and dot shape; the "last check-in" beside it dates it. A Goal that
+    isn't Check-in overdue, or has no Health yet, keeps its full-colour badge. A
+    Goal they are a Delegate on appears only here.
   - **Asks for help:** the open Asks for help addressed to the person (see
     CONTEXT.md: Ask for help), Red first, then Yellow, then by Goal title.
     Each row has the Goal's Health badge, then its title linking to the
@@ -717,21 +718,22 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
   Departed Owner was. It lists people and counts, never Goals:
   - **Total line:** across everyone under the person, plain text, one count
     per signal with anything in it, in the order Red · Path to Green overdue
-    · Stale · Yellow, separated by `·` ("2 Red · 1 Path to Green overdue · 3
-    Stale · 1 Yellow"). It is text, not badges, so the totals stand apart
-    from the per-person badges beneath. A Goal counts under every signal it
-    has, so the counts can add up to more than the Goals behind them.
+    · Check-in overdue · Yellow, separated by `·` ("2 Red · 1 Path to Green
+    overdue · 3 Check-in overdue · 1 Yellow"). It is text, not badges, so the
+    totals stand apart from the per-person badges beneath. A Goal counts under
+    every signal it has, so the counts can add up to more than the Goals behind
+    them.
   - **Rows (`.hm-list.hm-compact`):** one per person directly under the
     viewer whose Org has anything flagged: the person's name, a link to their
     Org on Goals (`/goals?org=<their ID>`, the name through `personPlain`,
     email on hover), a `badge lc` "departed" beside a Departed one, then
     their Org's badges in the same order. Each reads as a count and a name
     ("1 Red"), so it reads without colour. Red and Yellow take their
-    Health's badge; Path to Green overdue and Stale take the Stale mark's
-    `badge st`, as on Risks. The most Red come first, then the most Path to
-    Green overdue, the most Stale and the most Yellow, then by Name. Someone
-    further down counts in the row of the person directly under the viewer
-    they're under, so the rows add up to the total.
+    Health's badge; Path to Green overdue and Check-in overdue take the Check-in
+    overdue mark's `badge st`, as on Risks. The most Red come first, then the
+    most Path to Green overdue, the most Check-in overdue and the most Yellow,
+    then by Name. Someone further down counts in the row of the person directly
+    under the viewer they're under, so the rows add up to the total.
   - **All clear:** the people directly under the viewer with nothing flagged
     share one muted line after the rows, "2 others all clear" ("1 other all
     clear"), left out when there are none. With nothing flagged anywhere,
@@ -939,25 +941,26 @@ Every page writes dates and times one way, through `internal/web/dates.go`:
 - **Tags (`.tag`):** `--radius-full`, outlined with no fill: a 1px solid
   `--color-border-strong` edge and `--color-ink` text. A retired Dimension
   value's tag takes a dashed edge instead, struck through and muted.
-- **Stale chip (`.badge.st`):** marks a Stale Goal wherever its Health shows
-  (the Goal list, Home, a Report), with its age ("Stale · 9 days" on the Goal
-  list; on Risks, with its cadence too: "Stale · 42 days, checks in weekly",
-  naming the cadence as the New goal form's segments do, or "every 3 days"). It
-  is a warning about freshness, never a tag, so it can't share a tag's look:
-  a `--stale-bg` grey fill, `--stale-ink` text and a 1px dashed
-  `--stale-edge` border, at a Health badge's `--radius-sm`. The Goal list's
-  "Path to Green overdue" chip takes the same style, as does Risks' ("Path to
-  Green 12 days overdue"). So does the "Milestone overdue" chip on a Green
-  Goal past a Milestone's date: "Milestone overdue" on the Goal list,
-  "Milestone 3 days overdue" on Risks.
-- **Stale banner (`.alert.st`):** at the top of a Stale Goal's page, a
-  `--color-surface` banner in a 1px dashed `--stale-edge` border, with
-  `--color-ink` text: **Stale**, then how long it has gone without a Check-in
-  against its cadence. For whoever may check in (the Owner or a Delegate) it
-  ends, at the right, with a **Check in now** link to the Goal's Check-in
-  page. Anyone else sees no link. The "Path to Green overdue" banner beside it
-  takes the same style with no link, because CONTEXT.md surfaces both the same
-  way.
+- **Check-in overdue chip (`.badge.st`):** marks a Check-in overdue Goal
+  wherever its Health shows (the Goal list, Home, a Report), with its age
+  ("Check-in overdue · 9 days" on the Goal list; on Risks, with its cadence too:
+  "Check-in overdue · 42 days, checks in weekly", naming the cadence as the New
+  goal form's segments do, or "every 3 days"). It is a warning about freshness,
+  never a tag, so it can't share a tag's look: a `--checkin-overdue-bg` grey
+  fill, `--checkin-overdue-ink` text and a 1px dashed `--checkin-overdue-edge`
+  border, at a Health badge's `--radius-sm`. The Goal list's "Path to Green
+  overdue" chip takes the same style, as does Risks' ("Path to Green 12 days
+  overdue"). So does the "Milestone overdue" chip on a Green Goal past a
+  Milestone's date: "Milestone overdue" on the Goal list, "Milestone 3 days
+  overdue" on Risks.
+- **Check-in overdue banner (`.alert.st`):** at the top of a Check-in overdue
+  Goal's page, a `--color-surface` banner in a 1px dashed
+  `--checkin-overdue-edge` border, with `--color-ink` text: **Check-in
+  overdue**, then how long it has gone without a Check-in against its cadence.
+  For whoever may check in (the Owner or a Delegate) it ends, at the right, with
+  a **Check in now** link to the Goal's Check-in page. Anyone else sees no link.
+  The "Path to Green overdue" banner beside it takes the same style with no
+  link, because CONTEXT.md surfaces both the same way.
 
   The ratios are in § Deviations 9.
 - **Nav counts (`.count`):** a `--radius-full` pill after a top-bar item's
@@ -1132,13 +1135,14 @@ stays black on white whatever is chosen.
    (§ Components). Only menus and popovers keep the source's `--shadow-pop`:
    the Theme menu, the Goal page's More menu and the toast. The two card
    shadow tokens are gone.
-9. **Stale, apart from tags.** Stale chips and banners, tags and nav counts
-   all shared the pale teal `--color-primary-light` fill, so "Stale" read like
-   a label such as "Platform" (UX Review). Stale is now a grey chip in a dashed
-   edge, its banners a surface in the same edge, and tags an outline with no
-   fill (§ Components). The UX Review gave the light edge as `#8C939C`, which
-   reaches only 2.87:1 on the canvas the banners sit on. The edge is one step
-   darker in the same hue, `#888F97`, which reaches 3:1 there.
+9. **Check-in overdue, apart from tags.** Check-in overdue chips and banners,
+   tags and nav counts all shared the pale teal `--color-primary-light` fill, so
+   "Check-in overdue" read like a label such as "Platform" (UX Review). Check-in
+   overdue is now a grey chip in a dashed edge, its banners a surface in the
+   same edge, and tags an outline with no fill (§ Components). The UX Review
+   gave the light edge as `#8C939C`, which reaches only 2.87:1 on the canvas the
+   banners sit on. The edge is one step darker in the same hue, `#888F97`, which
+   reaches 3:1 there.
 
    Chip and banner text reaches 4.5:1 on its fill, and the dashed edge 3:1 on
    the surfaces around it. A chip sits on a card, plain or as a hovered row. A

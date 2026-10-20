@@ -67,8 +67,8 @@ pres.defineSlideMaster({
 
 // The app's own Health marks are the deck's motif: circle, triangle, square.
 function mark(slide, kind, x, y, s, name) {
-  const shape = { green: pres.shapes.OVAL, yellow: pres.shapes.ISOSCELES_TRIANGLE, red: pres.shapes.RECTANGLE, stale: pres.shapes.RECTANGLE }[kind];
-  const color = { green: GRN, yellow: YEL, red: RED, stale: MUTED }[kind];
+  const shape = { green: pres.shapes.OVAL, yellow: pres.shapes.ISOSCELES_TRIANGLE, red: pres.shapes.RECTANGLE, overdue: pres.shapes.RECTANGLE }[kind];
+  const color = { green: GRN, yellow: YEL, red: RED, overdue: MUTED }[kind];
   slide.addShape(shape, { x, y, w: s, h: s, fill: { color }, line: { color, width: 0 }, objectName: name });
 }
 function shot(slide, file, x, y, w, name, alt) {
@@ -92,7 +92,7 @@ let s = pres.addSlide({ masterName: "Dark", sectionTitle: "Pitch" });
 s.addText("Goal Tracker", { placeholder: "title" });
 s.addText("Find the goals that are in trouble before the review does.", { placeholder: "body" });
 mark(s, "green", 0.7, 1.45, 0.3, "Green mark"); mark(s, "yellow", 1.15, 1.45, 0.3, "Yellow mark"); mark(s, "red", 1.6, 1.45, 0.3, "Red mark");
-shot(s, "risks-top", 6.3, 1.6, 6.43, "Risks page", "The Risks page: ten goals need attention, four of them Stale");
+shot(s, "risks-top", 6.3, 1.6, 6.43, "Risks page", "The Risks page: ten goals need attention, four of them Check-in overdue");
 s.addNotes("Goal Tracker is one place for the org to state its goals, update them weekly, and produce review-ready reports. The pitch in one line: leaders find trouble without waiting for the review or for someone to tell them.");
 
 // 2 The ask, up front
@@ -116,7 +116,7 @@ s.addNotes("Say the ask first so the rest of the deck is heard as evidence for i
 s = pres.addSlide({ masterName: "Content", sectionTitle: "Pitch" });
 s.addText("Trouble surfaces at the review, or after it", { placeholder: "title" });
 const probs = [
-  { mark: "stale", head: "Silence looks like Green", body: "A goal nobody has updated keeps the colour it had last time. Nothing flags it." },
+  { mark: "overdue", head: "Silence looks like Green", body: "A goal nobody has updated keeps the colour it had last time. Nothing flags it." },
   { mark: "yellow", head: "The deck is rebuilt by hand", body: "Each review, status is collected and retyped into slides. The work goes into assembling, not reading." },
   { mark: "red", head: "Bad news arrives without a plan", body: "A Red status says something is wrong. It rarely says what the owner will do, or by when." },
 ];
@@ -137,7 +137,7 @@ const cmpX = [0.6, 3.35, 8.05], cmpW = [2.55, 4.5, 4.68];
 s.addText("PowerPoint status deck", { x: cmpX[1], y: 1.6, w: cmpW[1], h: 0.5, fontSize: 16, bold: true, color: MUTED, margin: 0, valign: "middle", isTextBox: true, objectName: "Today heading" });
 s.addText("Goal Tracker", { x: cmpX[2], y: 1.6, w: cmpW[2], h: 0.5, fontSize: 16, bold: true, color: TEAL, margin: 0, valign: "middle", isTextBox: true, objectName: "Goal Tracker heading" });
 const rows = [
-  ["A goal nobody updated", "Keeps its last colour. Nobody is told.", "Flagged Stale, as prominently as Red."],
+  ["A goal nobody updated", "Keeps its last colour. Nobody is told.", "Flagged Check-in overdue, as prominently as Red."],
   ["Bad news", "A red box. A plan is optional.", "Needs a Path to Green and a back-to-Green date."],
   ["The review document", "Assembled by hand every cycle.", "Generated from check-ins, marking what changed."],
   ["History and follow-ups", "Spread across old decks and notes.", "Kept on the goal. Action Items carry forward."],
@@ -157,7 +157,7 @@ s = pres.addSlide({ masterName: "Content", sectionTitle: "Pitch" });
 s.addText("One mechanism, from weekly update to review", { placeholder: "title" });
 const steps = [
   { n: "1", head: "Owners check in weekly", body: "Health, a short status, and any date changes. A routine week is one click: No change." },
-  { n: "2", head: "Risks flags what needs attention", body: "Red, Stale, unlinked and conflicting goals, grouped by who has to act, each with one fix." },
+  { n: "2", head: "Risks flags what needs attention", body: "Red, Check-in overdue, unlinked and conflicting goals, grouped by who has to act, each with one fix." },
   { n: "3", head: "The Report writes itself", body: "Exceptions in full, on-track goals in one line each, with what changed since the last review." },
 ];
 steps.forEach((p, i) => {
@@ -182,7 +182,7 @@ s.addText("Find trouble: a silent goal is as loud as a Red one", { placeholder: 
 shot(s, "risks", 4.83, 1.6, 7.9, "Risks page", "The Risks page with ten flagged goals in three groups");
 demoNote(s, 4.83);
 points(s, [
-  { mark: "stale", head: "Stale is a first-class signal", body: "A goal past its check-in cadence is flagged, even when its last status was Green." },
+  { mark: "overdue", head: "Check-in overdue is a first-class signal", body: "A goal past its check-in cadence is flagged, even when its last status was Green." },
   { mark: "yellow", head: "Grouped by who must act", body: "Waiting on a Check-in, placement and dates, or needs an Admin." },
   { mark: "green", head: "One fix per row", body: "Nudge the owner, check in with the dates open, or suggest a parent. No looking up who owns what." },
 ], 0.6, 1.75, 3.85);
@@ -215,7 +215,7 @@ points(s, [
   { mark: "green", head: "No change is one click", body: "A routine week records the same Health and status with today's date." },
   { mark: "yellow", head: "A real update is one form", body: "It starts from last week's answers and asks for a plan only when Health isn't Green." },
 ], 9.1, 1.75, 3.63);
-s.addNotes("The video: an owner lands on Home, clears a Stale goal with one click on No change, then checks in Yellow on another with a Path to Green. No change is refused when it would be wrong, such as a Green goal with an overdue milestone. This is the price of everything on the previous slides, so it has to stay low. We have not measured it with real managers yet; the pilot would.");
+s.addNotes("The video: an owner lands on Home, clears a Check-in overdue goal with one click on No change, then checks in Yellow on another with a Path to Green. No change is refused when it would be wrong, such as a Green goal with an overdue milestone. This is the price of everything on the previous slides, so it has to stay low. We have not measured it with real managers yet; the pilot would.");
 
 // 9 Readiness
 pres.addSection({ title: "Decision" });
@@ -224,7 +224,7 @@ s.addText("What's built, and what a pilot still needs", { placeholder: "title" }
 const cols = [
   { x: 0.6, mark: "green", head: "Working today", items: [
     "Goals, the links between them, and weekly check-ins",
-    "Risks: Stale, unlinked, schedule conflicts, ownerless",
+    "Risks: Check-in overdue, unlinked, schedule conflicts, ownerless",
     "Reports by rule or hand-picked, with Markdown and PDF",
     "Comments and Action Items on published reports",
     "Spreadsheet import to load an org's goals",
@@ -250,9 +250,9 @@ s.addNotes("It is a working prototype. Everything shown in this deck was capture
 s = pres.addSlide({ masterName: "Content", sectionTitle: "Decision" });
 s.addText("Three ways this could fail, and the answer", { placeholder: "title" });
 const risks = [
-  { q: "Managers won't check in", a: "A routine week is one click. A weekly reminder lists what's due, and anyone can nudge the owner of a Stale goal." },
+  { q: "Managers won't check in", a: "A routine week is one click. A weekly reminder lists what's due, and anyone can nudge the owner of a Check-in overdue goal." },
   { q: "It's one more tool", a: "It replaces the status deck. The Report is the review document, and it exports to Markdown or PDF." },
-  { q: "Owners will call it Green", a: "The worst Health among a goal's children shows beside the owner's call, and a difference must be explained. Stale goals and slipped dates show whatever the owner says." },
+  { q: "Owners will call it Green", a: "The worst Health among a goal's children shows beside the owner's call, and a difference must be explained. Check-in overdue goals and slipped dates show whatever the owner says." },
 ];
 risks.forEach((r, i) => {
   const y = 1.75 + i * 1.6;

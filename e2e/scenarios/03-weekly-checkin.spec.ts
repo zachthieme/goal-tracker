@@ -261,11 +261,11 @@ function today(): RegExp {
   return new RegExp(`^${appToday()}T`);
 }
 
-// staleGoal is a Goal on the default template whose Owner is away: Active,
-// last checked in more than its cadence (and a day) ago, so Stale on Risks,
-// with no accepted children or overdue Planned Milestone to complicate its
-// Check-in, and no Delegates yet. The oldest first.
-const staleGoal = `
+// checkinOverdueGoal is a Goal on the default template whose Owner is away:
+// Active, last checked in more than its cadence (and a day) ago, so Check-in
+// overdue on Risks, with no accepted children or overdue Planned Milestone to
+// complicate its Check-in, and no Delegates yet. The oldest first.
+const checkinOverdueGoal = `
   select g.id, g.title, a.email, a.name
   from goals g join accounts a on a.id = g.owner_id
   where g.lifecycle = 'Active' and a.departed = 0 and a.name is not null
@@ -286,25 +286,25 @@ const delegateFor = `
   order by id
   limit 1`;
 
-test("a Delegate checks in for an Owner who's away, and the Goal stops being Stale", async ({
+test("a Delegate checks in for an Owner who's away, and the Goal stops being Check-in overdue", async ({
   page,
   as,
   seedLookup,
 }) => {
   type Person = { email: string; name: string };
-  const [goal] = seedLookup<{ id: number; title: string } & Person>(staleGoal);
-  expect(goal, "the seed has a Stale Goal to delegate").toBeDefined();
+  const [goal] = seedLookup<{ id: number; title: string } & Person>(checkinOverdueGoal);
+  expect(goal, "the seed has a Check-in overdue Goal to delegate").toBeDefined();
   const owner: Person = { email: goal.email, name: goal.name };
   const [delegate] = seedLookup<Person>(delegateFor, owner.email);
   expect(delegate, "the seed has someone to delegate to").toBeDefined();
 
-  await test.step("3.D1 The Goal is Stale on Risks and on its Owner's Home", async () => {
+  await test.step("3.D1 The Goal is Check-in overdue on Risks and on its Owner's Home", async () => {
     await signIn(page, owner.email);
     await page.goto("/risks");
-    await expect(staleChip(page, goal.title)).toBeVisible();
+    await expect(checkinOverdueChip(page, goal.title)).toBeVisible();
     await page.goto("/home");
     const row = dueRows(page).filter({ has: page.getByRole("link", { name: goal.title, exact: true }) });
-    await expect(row.getByTestId("home-due-stale")).toBeVisible();
+    await expect(row.getByTestId("home-due-checkin-overdue")).toBeVisible();
   });
 
   await test.step("3.D2 The Owner authorizes a Delegate from the Goal page", async () => {
@@ -333,7 +333,7 @@ test("a Delegate checks in for an Owner who's away, and the Goal stops being Sta
     await expect(coveringRow.getByTestId("home-due-for")).toHaveText(`for ${owner.name}`, { useInnerText: true });
   });
 
-  await test.step("3.D4 The Delegate checks in; the Check-in records who wrote it, and the Goal isn't Stale", async () => {
+  await test.step("3.D4 The Delegate checks in; the Check-in records who wrote it, and the Goal isn't Check-in overdue", async () => {
     await coveringRow.getByRole("link", { name: "Check in" }).click();
     await expect(covering).toHaveURL(new RegExp(`/goals/${goal.id}/checkin$`));
     const status = `Covering while ${owner.name} is away: on track.`;
@@ -362,21 +362,21 @@ test("a Delegate checks in for an Owner who's away, and the Goal stops being Sta
     // nothing: the page has loaded once it shows its count or its empty line.
     await page.goto("/risks");
     await expect(page.getByTestId("risks-attention").or(page.getByTestId("risks-empty"))).toBeVisible();
-    await expect(staleChip(page, goal.title)).toHaveCount(0);
+    await expect(checkinOverdueChip(page, goal.title)).toHaveCount(0);
     await page.goto("/home");
     await expect(page.getByRole("heading", { level: 1, name: "Your week" })).toBeVisible();
     const row = dueRows(page).filter({ has: page.getByRole("link", { name: goal.title, exact: true }) });
-    await expect(row.getByTestId("home-due-stale")).toHaveCount(0);
+    await expect(row.getByTestId("home-due-checkin-overdue")).toHaveCount(0);
   });
 });
 
-// staleChip is the Stale signal on title's row on Risks.
-function staleChip(page: Page, title: string) {
+// checkinOverdueChip is the Check-in overdue signal on title's row on Risks.
+function checkinOverdueChip(page: Page, title: string) {
   return page
     .getByTestId("risk-row")
     .filter({ has: page.getByRole("link", { name: title, exact: true }) })
     .getByTestId("risk-signal")
-    .filter({ hasText: /^Stale/ });
+    .filter({ hasText: /^Check-in overdue/ });
 }
 
 // dueRows are Home's Check-ins due.

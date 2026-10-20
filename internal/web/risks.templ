@@ -225,8 +225,8 @@ templ riskChip(today time.Time, g domain.Goal, sig riskSignal) {
 					{ "Asks for help · no one above the Owner" }
 				}
 			</span>
-		case "stale":
-			<span data-testid="risk-signal" data-kind="stale" class="badge st">{ "Stale · " + plural(sig.Days, "day") + ", checks in " + cadenceInWords(g.CadenceDays) }</span>
+		case "checkin-overdue":
+			<span data-testid="risk-signal" data-kind="checkin-overdue" class="badge st">{ "Check-in overdue · " + plural(sig.Days, "day") + ", checks in " + cadenceInWords(g.CadenceDays) }</span>
 		case "path-overdue":
 			<span data-testid="risk-signal" data-kind="path-overdue" class="badge st">{ "Path to Green " + plural(sig.Days, "day") + " overdue" }</span>
 		case "milestone-overdue":

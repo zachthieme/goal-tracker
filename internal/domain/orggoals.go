@@ -12,12 +12,12 @@ import (
 // org card shows. A Goal counts under every signal it has, so the counts can
 // add up to more than the Goals behind them.
 type SignalCounts struct {
-	Red, PathOverdue, Stale, Yellow int
+	Red, PathOverdue, CheckinOverdue, Yellow int
 }
 
 // Any reports whether anything is flagged.
 func (c SignalCounts) Any() bool {
-	return c.Red+c.PathOverdue+c.Stale+c.Yellow > 0
+	return c.Red+c.PathOverdue+c.CheckinOverdue+c.Yellow > 0
 }
 
 // add counts one Goal, with its latest Check-in's Health and its freshness.
@@ -28,8 +28,8 @@ func (c *SignalCounts) add(health string, f Freshness) {
 	if f.PathToGreenOverdue {
 		c.PathOverdue++
 	}
-	if f.Stale {
-		c.Stale++
+	if f.CheckinOverdue {
+		c.CheckinOverdue++
 	}
 	if health == HealthYellow {
 		c.Yellow++
@@ -45,21 +45,22 @@ type PersonSignals struct {
 
 // OrgSignals is what is in trouble in someone's Org, person by person: Total
 // counts the Goals Owned by everyone under them, and Under splits it among the
-// people directly under them, so Total is the sum of Under's counts. Under
-// puts the most Red first, then the most Path to Green overdue, the most
-// Stale and the most Yellow, then goes by Name; those with nothing flagged
+// people directly under them, so Total is the sum of Under's counts. Under puts
+// the most Red first, then the most Path to Green overdue, the most Check-in
+// overdue and the most Yellow, then goes by Name; those with nothing flagged
 // come last.
 type OrgSignals struct {
 	Total SignalCounts
 	Under []PersonSignals
 }
 
-// OrgSignals counts the Red, Path to Green overdue, Stale and Yellow Active
-// Goals Owned in personID's Org, leaving out personID's own (CONTEXT.md: Org).
-// A Goal is in the Org by its Owner alone, never its Delegates; an Ownerless
-// Goal stays where its Departed Owner was. Each person below personID counts
-// toward the person directly under personID through whom a level-by-level
-// walk first reaches them, so a Manager cycle (ADR 0008) counts no one twice.
+// OrgSignals counts the Red, Path to Green overdue, Check-in overdue and Yellow
+// Active Goals Owned in personID's Org, leaving out personID's own (CONTEXT.md:
+// Org). A Goal is in the Org by its Owner alone, never its Delegates; an
+// Ownerless Goal stays where its Departed Owner was. Each person below personID
+// counts toward the person directly under personID through whom a
+// level-by-level walk first reaches them, so a Manager cycle (ADR 0008) counts
+// no one twice.
 func (s *Service) OrgSignals(ctx context.Context, personID int64) (OrgSignals, error) {
 	var out OrgSignals
 	// row maps each person under personID to their entry in out.Under.
@@ -104,7 +105,7 @@ func (s *Service) OrgSignals(ctx context.Context, personID int64) (OrgSignals, e
 		return cmp.Or(
 			cmp.Compare(y.Red, x.Red),
 			cmp.Compare(y.PathOverdue, x.PathOverdue),
-			cmp.Compare(y.Stale, x.Stale),
+			cmp.Compare(y.CheckinOverdue, x.CheckinOverdue),
 			cmp.Compare(y.Yellow, x.Yellow),
 			cmp.Compare(strings.ToLower(a.Person.Label()), strings.ToLower(b.Person.Label())),
 			cmp.Compare(a.Person.Email, b.Person.Email),

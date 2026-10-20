@@ -242,7 +242,7 @@ templ goalListRow(row goalRow, dates displayDates) {
 		</td>
 		<td class="gl-goal">
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.ID)) }>{ g.Title }</a>
-			if g.Ownerless || row.Freshness.Stale || row.Freshness.PathToGreenOverdue || row.Freshness.MilestoneOverdue || len(row.Incomplete) > 0 {
+			if g.Ownerless || row.Freshness.CheckinOverdue || row.Freshness.PathToGreenOverdue || row.Freshness.MilestoneOverdue || len(row.Incomplete) > 0 {
 				<div class="gl-marks">
 					if g.Ownerless {
 						<span data-testid="ownerless" class="badge ol" title={ ownerlessHelp }>Ownerless</span>
@@ -1211,8 +1211,8 @@ templ defineGoal(v goalView) {
 
 // goalIncomplete flags an Incomplete Goal at the top of its page, naming the
 // required Dimensions and Fields it has no value in. It is a status, not an
-// alarm: quieter than Red and Stale (CONTEXT.md: Incomplete). It renders
-// nothing when the Goal lacks none.
+// alarm: quieter than Red and Check-in overdue (CONTEXT.md: Incomplete). It
+// renders nothing when the Goal lacks none.
 templ goalIncomplete(missing []string) {
 	if len(missing) > 0 {
 		<p data-testid="goal-incomplete" class="alert lc" role="status"><strong>Incomplete</strong><span>{ "no value yet in " + strings.Join(missing, ", ") }</span></p>

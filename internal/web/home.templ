@@ -176,8 +176,8 @@ templ homeOrgSection(org homeOrg) {
 }
 
 // homeOrgCounts badges each of a My org row's counts that has anything,
-// labelled to read without colour, Red, then Path to Green overdue, Stale and
-// Yellow.
+// labelled to read without colour, Red, then Path to Green overdue, Check-in
+// overdue and Yellow.
 templ homeOrgCounts(c domain.SignalCounts) {
 	for _, b := range homeOrgBadges(c) {
 		<span data-testid="home-org-count" data-kind={ b.Kind } class={ "badge", b.Class }>{ b.Label }</span>
@@ -185,10 +185,10 @@ templ homeOrgCounts(c domain.SignalCounts) {
 }
 
 // dueRow is one Goal to check in on: its title, then a status line of its
-// Health, muted when Stale, how long since its last Check-in and how often one
-// is due, its Stale mark and, for a Delegate, whose Goal it is. When noChange
-// says one would be recorded, the one-click No change sits beside the Check in
-// link to the Goal's Check-in page.
+// Health, muted when Check-in overdue, how long since its last Check-in and how
+// often one is due, its Check-in overdue mark and, for a Delegate, whose Goal
+// it is. When noChange says one would be recorded, the one-click No change sits
+// beside the Check in link to the Goal's Check-in page.
 templ dueRow(g domain.PersonalGoal, noChange bool) {
 	<li data-testid="home-due-goal">
 		<div class="hm-what">
@@ -205,8 +205,8 @@ templ dueRow(g domain.PersonalGoal, noChange bool) {
 				<span class="hm-phrase">{ homeDueAge(g) }</span>
 				{ "·" }
 				<span class="hm-phrase">{ homeDueCadence(g.Freshness) }</span>
-				if g.Freshness.Stale {
-					<span data-testid="home-due-stale" class="badge st">Stale</span>
+				if g.Freshness.CheckinOverdue {
+					<span data-testid="home-due-checkin-overdue" class="badge st">Check-in overdue</span>
 				}
 				if g.AsDelegate {
 					<span data-testid="home-due-for" class="tag">
