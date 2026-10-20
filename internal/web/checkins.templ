@@ -1266,7 +1266,7 @@ templ checkinStyles() {
 			.checkin-last-status{font-size:14px;color:var(--color-ink-muted);overflow-wrap:anywhere}
 			.checkin-context-dates p{font-size:14px;color:var(--color-ink)}
 			@media (max-width:900px){.checkin-page{display:flex;flex-direction:column}.checkin-context{position:static;max-height:none;overflow-y:visible}}
-			@media (max-width:600px){.checkin-context-last,.checkin-context-dates{display:none}.checkin-context>.checkin-context-children{border-top:none;padding-top:0}.checkin-context:not(:has(.checkin-context-children)){display:none}}
+			@media (max-width:600px){.checkin-context>.checkin-context-last,.checkin-context>.checkin-context-dates{display:none}.checkin-context>section.checkin-context-children{border-top:none;padding-top:0}.checkin-context:not(:has(.checkin-context-children)){display:none}}
 			@media (max-width:600px){.checkin-add-bar{flex-direction:column;flex-wrap:nowrap;align-items:stretch}.checkin-add-buttons{flex-wrap:nowrap;overflow-x:auto}.checkin-add-buttons .btn{flex:none}.checkin-add-divider{display:none}}
 			.checkin-form{display:flex;flex-direction:column;gap:40px}
 			.checkin-default-submit{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);padding:0;border:0}

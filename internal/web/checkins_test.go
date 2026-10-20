@@ -4189,7 +4189,7 @@ func TestCheckinRefusedSubmitLeavesTheContextAlone(t *testing.T) {
 
 // The column sticks beside the form on a wide screen, and on a phone drops
 // Last time and Dates, which the form's ghost text already covers (ticket
-// #366).
+// #366), leaving Contributed to by with no rule above it.
 func TestCheckinPageContextStyles(t *testing.T) {
 	t.Parallel()
 
@@ -4204,10 +4204,17 @@ func TestCheckinPageContextStyles(t *testing.T) {
 		t.Errorf(".checkin-context{%s} isn't sticky", rule)
 	}
 	phone := mediaBlock(t, styles, "@media (max-width:600px)")
-	for _, sel := range []string{".checkin-context-last", ".checkin-context-dates"} {
+	// Each phone rule's selector outranks the base rule it overrides
+	// (.checkin-context>section, 0,1,1; ...>section+section, 0,2,1), so it
+	// wins (#370).
+	for _, sel := range []string{".checkin-context>.checkin-context-last", ".checkin-context>.checkin-context-dates"} {
 		if rule, ok := ruleFor(phone, sel); !ok || !strings.Contains(rule, "display:none") {
 			t.Errorf("at 600px %s{%s} isn't hidden", sel, rule)
 		}
+	}
+	if rule, ok := ruleFor(phone, ".checkin-context>section.checkin-context-children"); !ok ||
+		!strings.Contains(rule, "border-top:none") || !strings.Contains(rule, "padding-top:0") {
+		t.Errorf("at 600px .checkin-context>section.checkin-context-children{%s} keeps its top rule", rule)
 	}
 }
 
