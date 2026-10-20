@@ -526,3 +526,40 @@ func TestEditDraftHighlightRefusals(t *testing.T) {
 		t.Errorf("the Check-in discarded %q, want the one left out, unedited", got)
 	}
 }
+
+// A pending Draft Highlight on a Goal that has since ended Done or Cancelled
+// can't be edited, as none can be logged there: the Goal takes no more
+// Check-ins to offer it at. The edit is refused and changes nothing; the
+// Draft Highlight may still be deleted.
+func TestEditDraftHighlightRefusedOnceTheGoalEnds(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	sam := h.SignIn("sam@example.com")
+
+	for _, lifecycle := range []string{domain.LifecycleDone, domain.LifecycleCancelled} {
+		goal := h.ActiveGoal(sam, lifecycle, "Why.")
+		draft := h.LogDraftHighlight(sam, goal.ID, domain.HighlightInsight, "Retries mask the root cause.")
+		h.EndGoalInCheckin(sam, goal.ID, lifecycle)
+
+		_, err := h.Service.EditDraftHighlight(ctx, sam.ID, draft.ID, domain.HighlightMiss, "Too late.")
+		if !errors.Is(err, domain.ErrValidation) {
+			t.Errorf("editing on a %s Goal: err = %v, want ErrValidation", lifecycle, err)
+		}
+		want := "a " + lifecycle + " Goal takes no more Check-ins, so it takes no Draft Highlights"
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("editing on a %s Goal: err = %v, want %q", lifecycle, err, want)
+		}
+		pending, err := h.Service.PendingDraftHighlights(ctx, sam.ID, goal.ID)
+		if err != nil {
+			t.Fatalf("PendingDraftHighlights: %v", err)
+		}
+		if len(pending) != 1 || pending[0].Kind != domain.HighlightInsight || pending[0].Note != "Retries mask the root cause." {
+			t.Errorf("on a %s Goal pending = %+v, want it as logged", lifecycle, pending)
+		}
+		if _, err := h.Service.DeleteDraftHighlight(ctx, sam.ID, draft.ID); err != nil {
+			t.Errorf("deleting on a %s Goal: %v", lifecycle, err)
+		}
+	}
+}
