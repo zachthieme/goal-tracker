@@ -15,6 +15,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 ### Collected changes — October 20, 2026
 
+**Breaking changes:**
+- [user] **Spreadsheet import format**: the `So What` column is now `Why it matters`, in the import and in the CSV download. A spreadsheet still headed `So What` is refused as an unknown column; rename the header and import it again (#381).
+
 **New features:**
 - [user] The Reports page lists, above its table, the open Action Items you have reason to chase across every Report: under Yours, those on Report Definitions you created or that you published, raised or own; under My org, those only someone in your Org published, raised or owns. Overdue items lead each group, then soonest due, and each row reads like Home's with its owner added. The section is left out when you have none (#375).
 
@@ -24,6 +27,10 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] Go identifiers follow: `Service.UnlinkedGoals`, `GoalSignals.Unlinked`, the `ListUnlinkedGoals` query and the test harness's `Unlinked`; `README.md`, `docs/scenarios.md`, `e2e/README.md` and the pitch deck use the new name (#383).
 - [user] A Goal past its cadence is now called **Check-in overdue** instead of Stale, everywhere it shows: its badge on the Goal list, Goal page, Home and Reports; Home's My org counts and Risks' chips, cards and legend ("1 Check-in overdue"); and a Rolled-up Health, which says "3 of 12 overdue". The weekly reminder and a Nudge say "Check-in overdue, last Check-in 9 days ago (every 7 days)", or "no Check-in since activation" for a Goal with none, and the parent digest says a child's "Check-in went overdue". "Stale" suggested the Owner had neglected the Goal; when a Goal counts as overdue hasn't changed (#382).
 - [internal] The signal's `stale` values become `checkin-overdue`: the Risks `data-kind`, the page testids and the Report health tile. Old values aren't accepted. In code, `Freshness.Stale` becomes `CheckinOverdue` (with a new `CheckedIn` and `LastCheckinAge`), `StaleChildren` and `BadgeStale` follow, the CSS `--stale-*` properties become `--checkin-overdue-*`, and the seed's `stale` profile becomes `lapsed`. A Report snapshot published before this change keeps its "Stale" badge and loses its overdue-children count (#382).
+- [user] On Risks, each signal chip in the table opens what its signal means when tapped or clicked, and a **What each signal means** button beside the count opens every definition. Both are popovers that work on touch screens and without script, and fit a 390px phone. The "What each risk means" list at the page's foot is gone, and the Ownerless chip on Risks no longer has a hover title (#378).
+- [internal] A Playwright spec, `e2e/risks-signal-meanings.spec.ts`, opens each signal's popover and the full list at 390px and 1280px and checks they stay within the window (#378).
+- [user] A Goal's lead text is called **Why it matters** instead of So What, which reads as dismissive to someone new to MBR shorthand. The Goal page, its help button (now "What goes here?"), the New goal and Finish defining forms, the activation checklist, History's filter chip, Reports, the Markdown export and the error messages all use the new name. The definition and the rules for editing it are unchanged (#381).
+- [ops] Migration 0053 renames `goals.so_what` to `why_it_matters` and the `so_what_revisions` table, its column and its index to `why_it_matters_revisions`, keeping every row. The edit route is now `/goals/{id}/why-it-matters` with form field `why_it_matters`; the old route is gone, with no redirect (#381).
 
 **Bug fixes:**
 - [user] On the New goal page, with two Milestone or Metric editors open (as a refused submit can reopen them), Save, Cancel or Remove in one now moves focus to the other editor's first field instead of dropping it to the page, and the "Milestones" and "Metrics" labels show only once their section has a saved item, not while it holds only open editors (#371).
