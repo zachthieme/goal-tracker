@@ -15,6 +15,14 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 ### Collected changes — October 20, 2026
 
+**New features:**
+- [user] The Reports page lists, above its table, the open Action Items you have reason to chase across every Report: under Yours, those on Report Definitions you created or that you published, raised or own; under My org, those only someone in your Org published, raised or owns. Overdue items lead each group, then soonest due, and each row reads like Home's with its owner added. The section is left out when you have none (#375).
+
+**Improvements:**
+- [user] Home has a hierarchy: Needs you is its one card, titled with its count ("Needs you · 2"), and the page is one column. Your goals is a line under "Your week" ("Your goals: 1 Green · 0 Yellow · 0 Red · Goals you own or help with →", with its Health bar), and My org and your Goals that aren't Green are plain sections on the canvas. A Check-in due row leads with the Goal's title over one status line ("last check-in 14 days ago · every 7 days"), saying the age once. In My org each person's name links to their org on Goals in place of a "Their org on Goals →" link on every row, and the totals are a plain text line apart from each person's badges (#377).
+- [user] An Active Goal that contributes to no other Goal and isn't Top-level is now called **Unlinked**, not Unaligned, everywhere it shows: the Risks chip, legend and summary card, the Graph signals list, and the Goal page's banner. The chip's `data-kind`, the Graph signals test IDs and the e2e specs say `unlinked` too, and `unaligned` isn't accepted anymore (#383).
+- [internal] Go identifiers follow: `Service.UnlinkedGoals`, `GoalSignals.Unlinked`, the `ListUnlinkedGoals` query and the test harness's `Unlinked`; `README.md`, `docs/scenarios.md`, `e2e/README.md` and the pitch deck use the new name (#383).
+
 **Bug fixes:**
 - [user] On the New goal page, with two Milestone or Metric editors open (as a refused submit can reopen them), Save, Cancel or Remove in one now moves focus to the other editor's first field instead of dropping it to the page, and the "Milestones" and "Metrics" labels show only once their section has a saved item, not while it holds only open editors (#371).
 - [user] On a phone, the Check-in page's context column now shows only "Contributed to by", with no rule above it, as #366 meant: "Last time" and "Dates" no longer push "How is it going?" down the page (#370).
@@ -34,6 +42,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Documentation:**
 - [internal] CONTEXT.md renames three terms that read negative by default: So What becomes **Why it matters**, Stale becomes **Check-in overdue**, and Unaligned becomes **Unlinked**, each keeping its old name on its Avoid list. The Risks page is now called **Follow-ups** there. The code and pages follow in their own issues (#380).
+- [internal] DESIGN.md records where a card earns its place: forms, tables and a page's single primary task list; every other section is a plain section on the canvas. Home follows it, and other pages come in line later (#377).
 
 ### Collected changes — October 19, 2026
 
