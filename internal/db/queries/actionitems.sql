@@ -52,6 +52,18 @@ LEFT JOIN goals g ON g.id = action_items.goal_id
 WHERE action_items.closed_at = ''
 ORDER BY action_items.owner_id, action_items.due_date, action_items.id;
 
+-- name: ListOpenActionItemsWithParties :many
+-- Every open Action Item, soonest due first, with who created its Report
+-- Definition and who published the publication it was raised on: the people,
+-- with its raiser and owner, who decide whose list it is on.
+SELECT sqlc.embed(action_items), rd.name AS report_name,
+  rd.created_by AS definition_created_by, rp.published_by AS published_by
+FROM action_items
+JOIN report_definitions rd ON rd.id = action_items.report_definition_id
+JOIN report_publications rp ON rp.id = action_items.publication_id
+WHERE action_items.closed_at = ''
+ORDER BY action_items.due_date, action_items.id;
+
 -- name: ListOverdueActionItems :many
 -- The open Action Items about a Goal whose due date is before today (a
 -- YYYY-MM-DD date in the org's timezone), soonest due first.

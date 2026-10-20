@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -614,4 +615,43 @@ func (s *Service) actionItemListing(ctx context.Context, row db.ActionItem, repo
 		GoalTitle:  item.GoalTitle,
 		Overdue:    !item.Closed && row.DueDate < today,
 	}, nil
+}
+
+// OpenActionItemsToChase returns the open Action Items viewerID has reason to
+// chase, across every Report, split into two groups. An item is theirs to
+// chase when they created its Report Definition, or someone in their Org
+// (CONTEXT.md: Org) published the publication it was raised on, raised it, or
+// owns it. yours holds those where the viewer is that someone; org holds the
+// rest. Each group is soonest due first, so its overdue items lead.
+func (s *Service) OpenActionItemsToChase(ctx context.Context, viewerID int64) (yours, org []ActionItemListing, err error) {
+	people, err := s.Org(ctx, viewerID)
+	if err != nil {
+		return nil, nil, err
+	}
+	inOrg := make(map[int64]bool, len(people))
+	for _, p := range people {
+		inOrg[p.ID] = true
+	}
+	rows, err := s.queries.ListOpenActionItemsWithParties(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("list open action items with parties: %w", err)
+	}
+	for _, r := range rows {
+		item := r.ActionItem
+		var group *[]ActionItemListing
+		switch {
+		case slices.Contains([]int64{r.DefinitionCreatedBy, r.PublishedBy, item.CreatedBy, item.OwnerID}, viewerID):
+			group = &yours
+		case inOrg[r.PublishedBy] || inOrg[item.CreatedBy] || inOrg[item.OwnerID]:
+			group = &org
+		default:
+			continue
+		}
+		l, err := s.actionItemListing(ctx, item, r.ReportName)
+		if err != nil {
+			return nil, nil, err
+		}
+		*group = append(*group, l)
+	}
+	return yours, org, nil
 }
