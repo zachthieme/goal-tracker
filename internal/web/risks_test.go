@@ -533,42 +533,50 @@ func TestRisksPageHeadsWithHowManyGoalsNeedAttention(t *testing.T) {
 	}
 }
 
-// At its bottom, the Risks page has a "What each risk means" disclosure
-// defining each signal once.
-func TestRisksPageDefinesEachRisk(t *testing.T) {
+// Beside its count line, the Risks page has a "What each signal means"
+// button opening, through a native popover and no script, every signal's
+// definition, once each, in the page's order. No list of them waits at the
+// page's foot.
+func TestRisksPageDefinesEachSignalBesideItsCount(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	ts := newServer(t, h)
-	h.SignIn("sam@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.ActiveGoal(sam, "Silent work", "It matters.")
+	h.Clock.Advance(10 * day)
 
-	page := html.UnescapeString(getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks"))
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
 
-	defs := between(t, page, `<details data-testid="risks-definitions"`, "</details>")
-	if !strings.Contains(defs, "<summary>What each risk means</summary>") {
-		t.Errorf("the definitions aren't titled What each risk means:\n%s", defs)
+	head := between(t, page, `<div class="rk-head">`, "</div>")
+	if !strings.Contains(head, `data-testid="risks-attention"`) {
+		t.Fatalf("the page's head has no count line:\n%s", head)
 	}
-	for name, means := range map[string]string{
-		"Red":                         "Active Goals whose latest Check-in is Red.",
-		"Yellow":                      "Active Goals whose latest Check-in is Yellow.",
-		"Check-in overdue":            "Active Goals whose last Check-in, or activation if they have none, is older than their cadence.",
-		"Path to Green overdue":       "Active Goals past their Path to Green's target date that still aren't Green.",
-		"Milestone overdue":           "Active Goals whose latest Check-in is Green while a Milestone is still Planned past its date. The Green can't be repeated until the Owner responds.",
-		"Action Item overdue":         "An Action Item about this Goal, raised in a Report, is past its due date.",
-		"Ownerless":                   "Active Goals whose Owner has left the company and hasn't been replaced.",
-		"Unlinked":                    "Active Goals that contribute to no other Goal and aren't Top-level.",
-		"Schedule conflicts":          "Goals due later than a Goal they contribute to.",
-		"Parent On Hold or Cancelled": "Goals contributing to a Goal that is On Hold or Cancelled.",
-	} {
-		if n := strings.Count(defs, "<dt>"+name+"</dt><dd>"+means+"</dd>"); n != 1 {
-			t.Errorf("the definitions define %s %d times, want 1:\n%s", name, n, defs)
+	at := strings.Index(head, ">What each signal means</button>")
+	if at < 0 {
+		t.Fatalf("no What each signal means button beside the count line:\n%s", head)
+	}
+	button := head[strings.LastIndex(head[:at], "<button"):at]
+	if attr(button, "type") != "button" || attr(button, "popovertarget") == "" {
+		t.Fatalf("What each signal means isn't a button opening a popover: %s", button)
+	}
+	list := html.UnescapeString(riskPopover(t, page, attr(button, "popovertarget")))
+	last := -1
+	for _, m := range riskMeanings {
+		def := "<dt>" + m.name + "</dt><dd>" + m.means + "</dd>"
+		if n := strings.Count(list, def); n != 1 {
+			t.Errorf("the list defines %s %d times, want 1:\n%s", m.name, n, list)
 		}
-		if n := strings.Count(page, means); n != 1 {
-			t.Errorf("the page defines %s %d times, want 1", name, n)
+		if at := strings.Index(list, def); at < last {
+			t.Errorf("the list defines %s out of order", m.name)
+		} else {
+			last = at
 		}
 	}
-	if rest := page[strings.Index(page, `data-testid="risks-definitions"`)+1:]; strings.Contains(rest, `data-testid="risks-`) {
-		t.Errorf("the definitions aren't at the bottom of the page:\n%s", rest)
+	for _, gone := range []string{`data-testid="risks-definitions"`, "What each risk means"} {
+		if strings.Contains(page, gone) {
+			t.Errorf("the page still has its old list of definitions, %s", gone)
+		}
 	}
 }
 
@@ -2736,9 +2744,8 @@ func TestRisksPageListsGoalsThatArentActiveLast(t *testing.T) {
 
 // A Goal with an open Ask for help carries an "Asks for help" chip in Not
 // Green naming whom it asks, or saying no one is above its Owner; the Not
-// Green card counts the asks, and the definitions say what one means. A
-// Yellow Goal that doesn't ask has no such chip, and an asking Goal is still
-// counted once.
+// Green card counts the asks. A Yellow Goal that doesn't ask has no such
+// chip, and an asking Goal is still counted once.
 func TestRisksPageMarksAsksForHelpUnderNotGreen(t *testing.T) {
 	t.Parallel()
 
@@ -2782,11 +2789,6 @@ func TestRisksPageMarksAsksForHelpUnderNotGreen(t *testing.T) {
 	filtered := getBody(t, client, ts.URL+"/risks?group=health&org=all")
 	if rows := riskRows(filtered); len(rows) != 3 || !hasRiskRow(filtered, red) || !hasRiskRow(filtered, alone) || !hasRiskRow(filtered, yellow) {
 		t.Errorf("Not Green lists %d rows, want %q, %q and %q:\n%s", len(rows), red.Title, alone.Title, yellow.Title, filtered)
-	}
-
-	defs := between(t, html.UnescapeString(page), `<details data-testid="risks-definitions"`, "</details>")
-	if means := "Red or Yellow Goals whose Path to Green asks for help from the Owner's Manager, until the Owner unmarks it or the Goal is back to Green."; !strings.Contains(defs, "<dt>Yellow</dt><dd>Active Goals whose latest Check-in is Yellow.</dd><dt>Asks for help</dt><dd>"+means+"</dd>") {
-		t.Errorf("the definitions don't define Asks for help after Yellow:\n%s", defs)
 	}
 
 	// The top bar counts sam's default scope, their own two Goals, each once.
@@ -3018,5 +3020,65 @@ func TestRisksSignalChipsOpenWhatTheyMean(t *testing.T) {
 				t.Errorf("%q's %s popover doesn't say what it means:\n%s", g.Title, kind, pop)
 			}
 		}
+	}
+}
+
+// A group card stays a link holding no button, though the table's chips for
+// the same signals open what they mean: a button can't sit inside a link.
+func TestRisksGroupCardsHoldNoButton(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "ada@example.com")
+	ts := newServer(t, h)
+	ada := h.SignIn("ada@example.com")
+	sam := h.SignIn("sam@example.com")
+	kim := h.SignIn("kim@example.com")
+	h.ActiveGoal(sam, "Silent work", "It matters.") // Check-in overdue and Unlinked
+	h.Clock.Advance(10 * day)
+	h.ActiveGoal(kim, "Orphaned work", "It matters.") // Ownerless and Unlinked
+	if err := h.Service.MarkDeparted(t.Context(), ada.ID, kim.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	page := getBody(t, signInClient(t, ts.URL, "ada@example.com"), ts.URL+"/risks?org=all")
+
+	for _, key := range []string{"owner", "plan", "admin"} {
+		card := pageElement(t, page, "a", "risks-group-"+key)
+		riskChip(t, card, map[string]string{"owner": "checkin-overdue", "plan": "unlinked", "admin": "ownerless"}[key])
+		if strings.Contains(card, "<button") {
+			t.Errorf("the %s card holds a button:\n%s", key, card)
+		}
+	}
+}
+
+// An open popover saying what a signal means fits a 390px phone: it is never
+// wider than the window less a margin, scrolls rather than grows past its
+// height, and the full list stacks each name over its meaning below 600px.
+func TestRisksSignalPopoversFitAPhoneOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	silent := h.ActiveGoal(sam, "Silent work", "It matters.")
+	h.Clock.Advance(10 * day)
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks")
+
+	tip := attr(openTag(between(t, riskChip(t, riskRowOf(t, page, silent), "checkin-overdue"), "<button", "")), "popovertarget")
+	for _, id := range []string{tip, "risks-meanings"} {
+		if pop := tagAround(t, page, ` id="`+id+`"`); !hasClass(pop, "rk-pop") {
+			t.Errorf("#%s isn't an .rk-pop: %s", id, pop)
+		}
+	}
+	rule := cssRule(t, page, ".rk-pop")
+	for _, want := range []string{"box-sizing:border-box", "max-width:min(360px,calc(100vw - 32px))", "max-height:calc(100dvh - 32px)", "overflow:auto"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".rk-pop{%s} lacks %s, so it can run off a phone's screen", rule, want)
+		}
+	}
+	phone := between(t, page, "@media (max-width:600px){", "}}") + "}"
+	if rule, _ := ruleFor(phone, ".rk-defs dl"); !strings.Contains(rule, "grid-template-columns:minmax(0,1fr)") {
+		t.Errorf("at 600px .rk-defs dl{%s} keeps its names beside their meanings", rule)
 	}
 }

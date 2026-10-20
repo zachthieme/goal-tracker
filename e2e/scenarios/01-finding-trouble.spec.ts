@@ -511,13 +511,12 @@ test("a leader finds trouble between reviews on Goals and Risks", async ({ page,
     const quieter = rows.findIndex((r) => (r.health === "Yellow" || r.health === "Green") && !marked(r));
     expect(at, `${checkinOverdue.title} sorts above every unmarked Yellow and Green row`).toBeLessThan(quieter);
 
-    // On Risks, it's a row in the main table, not in the folded definitions,
-    // with its chip and a Fix, and counted on the owner card.
+    // On Risks, it's a row in the main table, with its chip and a Fix, and
+    // counted on the owner card.
     await page.goto("/risks");
     const row = riskRow(page, checkinOverdue.id);
     await expect(row.locator('[data-testid="risk-signal"][data-kind="checkin-overdue"]')).toBeVisible();
     await expect(row.getByTestId("risk-fix")).toHaveCount(1);
-    await expect(page.getByTestId("risks-definitions").getByText(checkinOverdue.title)).toHaveCount(0);
     await page.getByTestId("risks-group-owner").click();
     expect(
       (await riskRows(page)).map((r) => r.id),

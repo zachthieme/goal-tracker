@@ -11,8 +11,8 @@ import (
 // risksPage answers "which Goals are in trouble, and how badly?": how many
 // Goals need attention, a card per group of signals, Not Green and then by
 // who acts, then one table row per flagged Goal, worst first, narrowed to one
-// group when the address asks for it, and at the bottom what each signal
-// means. The header's
+// group when the address asks for it. Beside the count, "What each signal
+// means" opens their definitions. The header's
 // form scopes it all to some Goals; #risks-body is what a change of scope
 // swaps. With no Goal left to show, #risks-body says so in one line in place
 // of the count, the cards and the table; for an Admin, the cards follow it
@@ -40,6 +40,7 @@ templ risksPage(current *domain.Account, v risksPageView) {
 			} else {
 				<div class="rk-head">
 					<p data-testid="risks-attention" class="muted"><strong>{ strconv.Itoa(v.attentionCount()) }</strong> { v.attention() }</p>
+					@risksMeanings()
 				</div>
 				@riskCardsView(v)
 				if v.Group != "" {
@@ -48,22 +49,21 @@ templ risksPage(current *domain.Account, v risksPageView) {
 				@risksTable(current, v.Today, v.Here(), shown)
 			}
 		</div>
-		@risksDefinitions()
 	}
 }
 
-// risksDefinitions says what each of the Risks page's signals means, folded
-// away at the page's bottom.
-templ risksDefinitions() {
-	<details data-testid="risks-definitions" class="card rk-defs">
-		<summary>What each risk means</summary>
+// risksMeanings is a button opening, through a native popover and no script,
+// what each of the Risks page's signals means.
+templ risksMeanings() {
+	<button type="button" data-testid="risks-meanings" class="btn sm" popovertarget="risks-meanings">What each signal means</button>
+	<div id="risks-meanings" popover class="rk-pop rk-defs">
 		<dl>
 			for _, d := range riskDefinitions {
 				<dt>{ d.Name }</dt>
 				<dd>{ d.Means }</dd>
 			}
 		</dl>
-	</details>
+	</div>
 }
 
 // risksFilters scopes the Risks page by its Scope (Everyone, Mine or an
@@ -156,7 +156,7 @@ templ risksTable(current *domain.Account, today time.Time, here string, rows []r
 			</tbody>
 		</table>
 		for _, d := range riskDefinitionsIn(rows) {
-			<div id={ riskMeansID(d.Kind) } popover class="rk-pop"><strong>{ d.Name }</strong> { d.Means }</div>
+			<div id={ riskMeansID(d.Kind) } popover class="rk-pop rk-means"><strong>{ d.Name }</strong> { d.Means }</div>
 		}
 	</div>
 }
@@ -278,11 +278,13 @@ templ riskTip(kind, label string) {
 // risksStyles are the Risks page's own rules on top of app.css: the header
 // form, the summary cards, the chips under each Goal in the table, the
 // outlined neutral chip the structural signals take: a .tag with the badges'
-// small radius, and the definitions' disclosure. The Health chips' print-only shapes stay hidden, as
+// small radius, the buttons naming the chips' signals, and the popovers saying
+// what they mean, never wider than the window. The Health chips' print-only shapes stay hidden, as
 // on the report pages, and an Owner's name keeps to one line. Below 600px each
 // table row stacks as a card, as the Reports list's do: the Goal cell, ordered
 // first though it comes second in the HTML, then Health and Owner on one line,
-// then the Fix.
+// then the Fix, and the full list of what each signal means stacks each name
+// over its meaning.
 templ risksStyles() {
 	<style>
 		.shape{display:none}
@@ -298,14 +300,16 @@ templ risksStyles() {
 		td .rk-chips{margin-top:4px}
 		.rk-table .rk-owner{white-space:nowrap}
 		.rk-table .rk-health{white-space:nowrap}
-		.rk-defs{padding:12px 16px}
-		.rk-defs summary{cursor:pointer;font-weight:600}
-		.rk-defs dl{margin:8px 0 0;display:grid;grid-template-columns:max-content 1fr;gap:4px 16px}
+		.rk-tip{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:inherit;text-decoration:underline dotted;text-underline-offset:3px}
+		.rk-pop{box-sizing:border-box;max-width:min(360px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:12px 16px;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background:var(--color-surface);color:var(--color-ink);font-size:14px;line-height:20px;box-shadow:var(--shadow-pop)}
+		.rk-defs{max-width:min(560px,calc(100vw - 32px))}
+		@supports (position-area:block-end){@media (min-width:601px){.rk-means{margin:4px 0;position-area:block-end span-inline-end;position-try-fallbacks:flip-inline,flip-block,flip-block flip-inline}}}
+		.rk-defs dl{margin:0;display:grid;grid-template-columns:max-content 1fr;gap:4px 16px}
 		.rk-defs dt{font-weight:600}
 		.rk-defs dd{margin:0}
 		.rk-tag{display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px;padding:0 8px;border-radius:var(--radius-sm);color:var(--color-ink);font-size:13px;line-height:20px;border:1px solid var(--color-border-strong)}
 		@media (max-width:1151px){.rk-cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
 		@media (max-width:900px){.rk-cards{grid-template-columns:minmax(0,1fr)}}
-		@media (max-width:600px){.rk-table thead{display:none}.rk-table tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rk-table tbody tr:last-child{border-bottom:none}.rk-table td{display:block;padding:0;border-bottom:none}.rk-table .rk-goal{order:-1;grid-column:1/-1}.rk-table .rk-owner{white-space:normal}.rk-table .rk-fix{grid-column:1/-1;margin-top:4px}}
+		@media (max-width:600px){.rk-table thead{display:none}.rk-table tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 16px;border-bottom:1px solid var(--color-border)}.rk-table tbody tr:last-child{border-bottom:none}.rk-table td{display:block;padding:0;border-bottom:none}.rk-table .rk-goal{order:-1;grid-column:1/-1}.rk-table .rk-owner{white-space:normal}.rk-table .rk-fix{grid-column:1/-1;margin-top:4px}.rk-defs dl{grid-template-columns:minmax(0,1fr);gap:0}.rk-defs dd{margin-bottom:8px}}
 	</style>
 }
