@@ -149,13 +149,16 @@ test("at 390px the New goal page stacks its Kind tiles and fits its cadence and 
   await expectFitsAPhone(page);
 });
 
-// goalWithMetric is an Active Goal with a Metric, and its Owner, who can
-// check in on it.
+// goalWithMetric is an Active Goal with a Metric, a Check-in and an accepted
+// child, so its Check-in page's context column has Last time, Contributed to
+// by and Dates, and its Owner, who can check in on it.
 const goalWithMetric = `
   select g.id, a.email
   from goals g join accounts a on a.id = g.owner_id
   where g.lifecycle = 'Active' and a.departed = 0
     and exists (select 1 from metrics m where m.goal_id = g.id)
+    and exists (select 1 from checkins c where c.goal_id = g.id)
+    and exists (select 1 from links l where l.parent_id = g.id and l.status = 'accepted')
   order by g.id
   limit 1`;
 
@@ -171,5 +174,16 @@ test("at 390px the Check-in page fits", async ({ page, seedLookup }) => {
   await expect(form.getByRole("radio", { name: "Yellow" })).toBeChecked();
   await expect(form.getByTestId("path-to-green-field")).toBeVisible();
   await expect(form.getByTestId("checkin-readings")).toBeVisible();
+  // The context column keeps only Contributed to by, which the form's ghost
+  // text doesn't cover (#366, #370).
+  const context = page.getByTestId("checkin-context");
+  for (const id of ["checkin-last-time", "checkin-context-dates"]) {
+    await expect(context.getByTestId(id), `${id} is on the page`).toBeAttached();
+    await expect(context.getByTestId(id), `${id} is hidden`).toBeHidden();
+  }
+  const children = context.getByTestId("checkin-children");
+  await expect(children).toBeVisible();
+  await expect(children).toHaveCSS("border-top-style", "none");
+  await expect(children).toHaveCSS("padding-top", "0px");
   await expectFitsAPhone(page, ["checkin-add-buttons"]);
 });
