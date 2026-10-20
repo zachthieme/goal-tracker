@@ -75,6 +75,54 @@ func TestHomeNeedsYouHeadingCarriesTheCount(t *testing.T) {
 	}
 }
 
+// Home is one column with one card, Needs you: My org and the viewer's Goals
+// that aren't Green are plain sections on the canvas, and Your goals is a
+// summary line in the page head, counting by Health and linking on (#377).
+func TestHomeIsOneColumnWithNeedsYouItsOnlyCard(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	f := newHomeOrgFixture(h)
+	mine := h.ActiveGoal(f.lead, "Hire", "We need people.")
+	h.Checkin(f.lead, mine.ID, domain.HealthRed, "No offers.", "Raise the band.", h.Clock.Now().AddDate(0, 1, 0))
+
+	page := getBody(t, signInClient(t, ts.URL, "lead@example.com"), ts.URL+"/home")
+	main := between(t, page, "<main", "</main>")
+
+	var cards []string
+	for _, tag := range regexp.MustCompile(`<[a-z]+ [^>]*>`).FindAllString(main, -1) {
+		if hasClass(tag, "card") {
+			cards = append(cards, tag)
+		}
+	}
+	if len(cards) != 1 || !strings.Contains(cards[0], `data-testid="home-needs-you"`) {
+		t.Errorf("Home's cards = %q, want only Needs you", cards)
+	}
+	for _, testID := range []string{"home-org", "home-not-green"} {
+		if section := openTag(pageElement(t, main, "section", testID)); hasClass(section, "card") {
+			t.Errorf("%s is a card: %s", testID, section)
+		}
+	}
+	if strings.Contains(main, "<aside") {
+		t.Errorf("Home still has a side column:\n%s", main)
+	}
+
+	head := pageElement(t, page, "header", "home-head")
+	if got := elementTexts(page, "header", "home-head"); len(got) != 1 || got[0] != "Your week Your goals: 0 Green · 0 Yellow · 1 Red · Goals you own or help with → New goal" {
+		t.Errorf("page head reads %q, want the title over the Your goals line, beside New goal", got)
+	}
+	if !strings.Contains(head, `data-testid="home-your-goals"`) {
+		t.Errorf("Your goals isn't in the page head:\n%s", head)
+	}
+	if !strings.Contains(head, `<a href="/goals?org=mine">Goals you own or help with →</a>`) {
+		t.Errorf("page head's Your goals line doesn't link to the Goals the lead owns or helps with:\n%s", head)
+	}
+	if notGreen := pageElement(t, main, "section", "home-not-green"); !strings.Contains(notGreen, navTo(mine.ID)) {
+		t.Errorf("the lead's Red Goal isn't listed as not Green:\n%s", notGreen)
+	}
+}
+
 // A Stale Goal the viewer Owns is listed under "Check in on these", saying how
 // long since its last Check-in against its cadence, flagged Stale, with a
 // one-click No change and a Check in link. Fresh Goals and other people's
@@ -512,7 +560,7 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 			t.Errorf("%s = %s, want %s", testID, got, want)
 		}
 	}
-	yours := pageElement(t, page, "section", "home-your-goals")
+	yours := pageElement(t, page, "section", "home-not-green")
 	for _, g := range []domain.Goal{yellow, red} {
 		if !strings.Contains(yours, navTo(g.ID)) {
 			t.Errorf("Your goals does not list %q:\n%s", g.Title, yours)
@@ -523,11 +571,12 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 			t.Errorf("Your goals lists %q, which isn't one of sam's Red or Yellow Goals:\n%s", g.Title, yours)
 		}
 	}
-	if !strings.Contains(yours, `<a href="/goals?org=mine">Goals you own or help with →</a>`) {
-		t.Errorf("Your goals does not link to the Goals sam owns or helps with:\n%s", yours)
+	line := between(t, page, `data-testid="home-your-goals"`, "</header>")
+	if !strings.Contains(line, `<a href="/goals?org=mine">Goals you own or help with →</a>`) {
+		t.Errorf("Your goals does not link to the Goals sam owns or helps with:\n%s", line)
 	}
-	if strings.Contains(yours, `href="/goals"`) {
-		t.Errorf("Your goals still links to every Goal in the org:\n%s", yours)
+	if strings.Contains(line, `href="/goals"`) {
+		t.Errorf("Your goals still links to every Goal in the org:\n%s", line)
 	}
 
 	// All four Goals were last checked in 2 days ago on a weekly cadence, so
@@ -558,16 +607,15 @@ func TestHomeHeadsNotGreenGoals(t *testing.T) {
 	green := h.ActiveGoal(kim, "Ship search", "People can't find things.")
 	h.Checkin(kim, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
 
-	yours := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-your-goals")
-	heading := strings.Index(yours, `<h4 class="label">Not Green</h4>`)
+	yours := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-not-green")
+	heading := strings.Index(yours, `<h3>Your goals not Green</h3>`)
 	first, second := strings.Index(yours, navTo(red.ID)), strings.Index(yours, navTo(yellow.ID))
 	if heading < 0 || first < heading || second < first {
 		t.Errorf("Your goals does not list Red then Yellow under a Not Green heading:\n%s", yours)
 	}
 
-	kims := pageElement(t, getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home"), "section", "home-your-goals")
-	if strings.Contains(kims, "Not Green") || strings.Contains(kims, "hm-compact") {
-		t.Errorf("kim has only Green Goals but sees a Not Green list:\n%s", kims)
+	if kims := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/home"); strings.Contains(kims, "home-not-green") || strings.Contains(kims, "not Green") {
+		t.Errorf("kim has only Green Goals but sees a not Green list:\n%s", kims)
 	}
 }
 
@@ -587,7 +635,7 @@ func TestHomeDatesStaleNotGreenHealth(t *testing.T) {
 	fresh := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
 	h.Checkin(sam, fresh.ID, domain.HealthYellow, "Slipping.", "Cut scope.", target)
 
-	yours := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-your-goals")
+	yours := pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "section", "home-not-green")
 
 	row := homeRow(t, yours, stale)
 	if badge := tagAround(t, row, `data-testid="home-goal-health"`); !hasClass(badge, "as-of") {
@@ -1014,9 +1062,8 @@ func TestHomeShowsMyOrgOnlyToSomeoneWithPeopleUnderThem(t *testing.T) {
 	if !strings.Contains(card, "<h3>My org</h3>") {
 		t.Errorf("My org card isn't titled My org:\n%s", card)
 	}
-	needsYou, org, aside := strings.Index(page, `data-testid="home-needs-you"`), strings.Index(page, `data-testid="home-org"`), strings.Index(page, "<aside")
-	if needsYou >= org || org >= aside {
-		t.Errorf("My org isn't in the main column under Needs you: needs-you at %d, my org at %d, aside at %d", needsYou, org, aside)
+	if needsYou, org := strings.Index(page, `data-testid="home-needs-you"`), strings.Index(page, `data-testid="home-org"`); needsYou >= org {
+		t.Errorf("My org isn't under Needs you: needs-you at %d, my org at %d", needsYou, org)
 	}
 }
 
