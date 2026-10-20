@@ -63,8 +63,8 @@ async function goalPath(page, title) {
   return href;
 }
 
-// The leader's pages: Risks and one Red Goal. Taken before the recording's
-// Check-ins, so Risks still lists the Check-in overdue Goal.
+// The leader's pages: Follow-ups and one Red Goal. Taken before the recording's
+// Check-ins, so Follow-ups still lists the Check-in overdue Goal.
 const leaderContext = await browser.newContext({
   baseURL: base,
   viewport: { width: 1440, height: 900 },
@@ -74,11 +74,11 @@ const cto = await leaderContext.newPage();
 await signIn(cto, leader);
 const redGoalPath = await goalPath(cto, redGoal);
 const updatedGoalPath = await goalPath(cto, updatedGoal);
-await cto.goto("/risks");
-await shot(cto, "risks");
+await cto.goto("/follow-ups");
+await shot(cto, "follow-ups");
 // The title slide's closer view: the counts and the first rows.
-await cto.screenshot({ path: join(shots, "risks-top.png"), clip: { x: 160, y: 150, width: 1120, height: 700 } });
-console.log("shot   risks-top.png");
+await cto.screenshot({ path: join(shots, "follow-ups-top.png"), clip: { x: 160, y: 150, width: 1120, height: 700 } });
+console.log("shot   follow-ups-top.png");
 await cto.goto(redGoalPath);
 await shot(cto, "goal");
 

@@ -126,7 +126,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /action-items/{id}/reassign", s.requireAuth(s.handleReassignActionItem))
 	s.mux.HandleFunc("GET /signals", s.requireAuth(s.handleGraphSignals))
 	s.mux.HandleFunc("GET /freshness", s.requireAuth(s.handleFreshnessSignals))
-	s.mux.HandleFunc("GET /risks", s.requireAuth(s.handleRisks))
+	s.mux.HandleFunc("GET /follow-ups", s.requireAuth(s.handleFollowUps))
 	s.mux.HandleFunc("POST /goals/{id}/nudge", s.requireAuth(s.handleNudge))
 	s.mux.HandleFunc("POST /goals/{id}/top-level", s.requireAuth(s.handleSetTopLevel))
 	s.mux.HandleFunc("GET /admin", s.requireAuth(s.handleAdmin))

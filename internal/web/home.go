@@ -71,7 +71,7 @@ type homeView struct {
 // homeOrg is Home's My org section: what is in trouble in the viewer's Org,
 // leaving out the viewer's own Goals, person by person (CONTEXT.md: Org).
 type homeOrg struct {
-	// ViewerID is whose Org it is, for the links to it on Goals and Risks.
+	// ViewerID is whose Org it is, for the links to it on Goals and Follow-ups.
 	ViewerID int64
 	// Total counts the flagged Goals across everyone under the viewer.
 	Total domain.SignalCounts
@@ -249,7 +249,7 @@ type homeOrgBadge struct {
 
 // homeOrgBadges are c's non-zero counts, Red, then Path to Green overdue,
 // Check-in overdue and Yellow. Red and Yellow take their Health's colour, and
-// the freshness signals the Check-in overdue mark's, as on Risks.
+// the freshness signals the Check-in overdue mark's, as on Follow-ups.
 func homeOrgBadges(c domain.SignalCounts) []homeOrgBadge {
 	var out []homeOrgBadge
 	for _, b := range []struct {

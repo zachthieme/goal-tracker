@@ -133,16 +133,16 @@ func (s *Server) requireAuth(h func(http.ResponseWriter, *http.Request, domain.A
 	}
 }
 
-// withTopBarCounts returns r with what needs acc, and the Goals flagged as
-// risks in acc's default scope, counted into its context, so the top bar's Home and Risks items can
-// show them. A count that can't be read leaves its item uncounted rather than
-// failing the page.
+// withTopBarCounts returns r with what needs acc, and the Goals Follow-ups
+// flags in acc's default scope, counted into its context, so the top bar's
+// Home and Follow-ups items can show them. A count that can't be read leaves
+// its item uncounted rather than failing the page.
 func (s *Server) withTopBarCounts(r *http.Request, acc domain.Account) *http.Request {
 	if v, err := s.loadHome(r.Context(), acc.ID); err == nil {
 		r = r.WithContext(withNeedsYou(r.Context(), v.NeedsYou()))
 	}
-	if n, err := s.countDefaultRisks(r.Context(), acc); err == nil {
-		r = r.WithContext(withRisks(r.Context(), n))
+	if n, err := s.countDefaultFollowUps(r.Context(), acc); err == nil {
+		r = r.WithContext(withFollowUps(r.Context(), n))
 	}
 	return r
 }

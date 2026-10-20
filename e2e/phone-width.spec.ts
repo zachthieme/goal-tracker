@@ -1,4 +1,4 @@
-// Phone width: at 390px the Goals list, Risks, the Admin page, a Report draft,
+// Phone width: at 390px the Goals list, Follow-ups, the Admin page, a Report draft,
 // the New goal page, with its Metric editor open, and the Check-in page fit
 // the screen. Nothing inside main is clipped or scrolls sideways, and every
 // control lies within the window (#343: #258, #268, #338, #229; #368; #369;
@@ -86,11 +86,11 @@ test("at 390px the Goals list stacks each Goal's Owner and Due under its title",
   await expectFitsAPhone(page);
 });
 
-test("at 390px the Risks filters wrap, both selects on screen", async ({ page }) => {
+test("at 390px the Follow-ups filters wrap, both selects on screen", async ({ page }) => {
   await signIn(page, "ceo@example.com");
-  await page.goto("/risks");
-  await expect(page.getByTestId("risks-scope")).toBeVisible();
-  await expect(page.getByTestId("risks-value")).toBeVisible();
+  await page.goto("/follow-ups");
+  await expect(page.getByTestId("follow-ups-scope")).toBeVisible();
+  await expect(page.getByTestId("follow-ups-value")).toBeVisible();
   await expectFitsAPhone(page);
 });
 

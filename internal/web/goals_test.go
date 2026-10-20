@@ -745,7 +745,7 @@ func TestGoalListShowsDueDateAndLastCheckin(t *testing.T) {
 	}
 }
 
-// At phone width the Goal list's rows stack as cards, as Risks' do: the Goal
+// At phone width the Goal list's rows stack as cards, as Follow-ups' do: the Goal
 // across the top, then Health and Owner, then Due and Last check-in, each led
 // by a label only the phone shows, with the Dimension tags hidden (#258).
 func TestGoalListRowsStackAtPhoneWidthOverHTTP(t *testing.T) {
@@ -1538,7 +1538,7 @@ func TestGoalFilterBarHoldsMoreFiltersSummaryInItsRow(t *testing.T) {
 }
 
 // The Goal list's header names the page and offers New goal, a primary
-// button linking to the New goal page. The Risks page has replaced the links to
+// button linking to the New goal page. The Follow-ups page has replaced the links to
 // the signal pages.
 func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 	t.Parallel()
@@ -2536,9 +2536,9 @@ var collapsedEmail = regexp.MustCompile(`<span class="person-email" hidden>[^<]*
 // disclose an email, so the Scope select names people as Name (email) (#275).
 var selectOption = regexp.MustCompile(`<option[^>]*>[^<]*</option>`)
 
-// emailExemptSelect is a Scope select (scope.templ), on the Goal list or the Risks
+// emailExemptSelect is a Scope select (scope.templ), on the Goal list or the Follow-ups
 // page: the only select whose options name people as Name (email).
-var emailExemptSelect = regexp.MustCompile(`(?s)<select\b[^>]*\bdata-testid="(?:goal-scope-filter|risks-scope)"[^>]*>.*?</select>`)
+var emailExemptSelect = regexp.MustCompile(`(?s)<select\b[^>]*\bdata-testid="(?:goal-scope-filter|follow-ups-scope)"[^>]*>.*?</select>`)
 
 // visibleEmails returns every email a page shows as text rather than on hover,
 // in a collapsed expansion, or in a Scope select's option.
@@ -2555,7 +2555,7 @@ func TestVisibleEmailsExemptsOnlyScopeSelectOptions(t *testing.T) {
 
 	page := `<form>` +
 		`<select data-testid="goal-scope-filter" name="org" aria-label="Scope"><option value="all">Everyone</option><optgroup label="Other orgs"><option value="3">Ada Okafor (ada.okafor@example.com)</option></optgroup></select>` +
-		`<select data-testid="risks-scope" name="org" aria-label="Scope"><option value="4" selected>Mei Lin (mei.lin@example.com)</option></select>` +
+		`<select data-testid="follow-ups-scope" name="org" aria-label="Scope"><option value="4" selected>Mei Lin (mei.lin@example.com)</option></select>` +
 		`<select name="parent_id"><option value="5">Owned by tomas.berg@example.com</option></select>` +
 		`</form>`
 	shown := visibleEmails(page)
@@ -2787,7 +2787,7 @@ func TestOwnerlessBadgesSayWhatOwnerlessMeans(t *testing.T) {
 // their email a click, tap or keypress away, never an email as text until
 // asked for; the Print view, with no hover or controls, introduces them as
 // Name (email) (CONTEXT.md: Name). Only the Scope selects' options
-// (goal-scope-filter, risks-scope) are exempt: an option can't hold a control
+// (goal-scope-filter, follow-ups-scope) are exempt: an option can't hold a control
 // to disclose an email, so they name people as Name (email) to tell
 // same-Named people apart (#275). Any other select's options are checked.
 func TestSeededPagesShowPeopleByName(t *testing.T) {
@@ -2863,7 +2863,7 @@ func TestSeededPagesShowPeopleByName(t *testing.T) {
 		{owner.Email, fmt.Sprintf("/goals/%d", g.ID)},
 		{owner.Email, "/home"},
 		{owner.Email, "/links"},
-		{owner.Email, "/risks?org=all"},
+		{owner.Email, "/follow-ups?org=all"},
 		{owner.Email, "/signals"},
 		{owner.Email, "/freshness"},
 		{other.Email, "/home"},

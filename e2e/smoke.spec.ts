@@ -2,12 +2,12 @@
 // sign-in lands an Admin and a lead on Home.
 import { admin, expect, signIn, test } from "./fixtures";
 
-test("an Admin signs in to Home with Risks in the top bar", async ({ page }) => {
+test("an Admin signs in to Home with Follow-ups in the top bar", async ({ page }) => {
   await signIn(page, admin);
   await expect(page).toHaveURL(/\/home$/);
   await expect(page.getByRole("heading", { level: 1, name: "Your week" })).toBeVisible();
   await expect(page.getByTestId("current-user")).toContainText("(Admin)");
-  await expect(page.getByTestId("nav-risks")).toHaveText(/^Risks/);
+  await expect(page.getByTestId("nav-follow-ups")).toHaveText(/^Follow-ups/);
 });
 
 test("a lead signs in and sees Your week", async ({ page }) => {

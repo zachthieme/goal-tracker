@@ -8,26 +8,26 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// risksPage answers "which Goals are in trouble, and how badly?": how many
+// followUpsPage answers "which Goals are in trouble, and how badly?": how many
 // Goals need attention, a card per group of signals, Not Green and then by who
 // acts, then one table row per flagged Goal, most urgent first, narrowed to one
 // group when the address asks for it. Beside the count, "What each signal
 // means" opens their definitions. The header's form scopes it all to some
-// Goals; #risks-body is what a change of scope swaps. With no Goal left to
-// show, #risks-body says so in one line in place of the count, the cards and
+// Goals; #follow-ups-body is what a change of scope swaps. With no Goal left to
+// show, #follow-ups-body says so in one line in place of the count, the cards and
 // the table; for an Admin, the cards follow it while the company has a Goal
 // that Needs an Admin.
-templ risksPage(current *domain.Account, v risksPageView) {
-	@layout("Risks", current) {
-		@risksStyles()
+templ followUpsPage(current *domain.Account, v followUpsPageView) {
+	@layout("Follow-ups", current) {
+		@followUpsStyles()
 		<header class="page-head">
-			<h1>Risks</h1>
-			@risksFilters(v)
+			<h1>Follow-ups</h1>
+			@followUpsFilters(v)
 		</header>
-		<div id="risks-body" class="rk-body">
+		<div id="follow-ups-body" class="rk-body">
 			if shown := v.Shown(); len(shown) == 0 {
 				<div class="rk-head">
-					<p data-testid="risks-empty" class="muted">
+					<p data-testid="follow-ups-empty" class="muted">
 						{ v.Empty() }
 						if v.OffersShowEverything() {
 							<a href={ v.ShowEverythingURL() }>Show everything</a>
@@ -35,30 +35,30 @@ templ risksPage(current *domain.Account, v risksPageView) {
 					</p>
 				</div>
 				if v.CardsWhenEmpty() {
-					@riskCardsView(v)
+					@followUpCardsView(v)
 				}
 			} else {
 				<div class="rk-head">
-					<p data-testid="risks-attention" class="muted"><strong>{ strconv.Itoa(v.attentionCount()) }</strong> { v.attention() }</p>
-					@risksMeanings()
+					<p data-testid="follow-ups-attention" class="muted"><strong>{ strconv.Itoa(v.attentionCount()) }</strong> { v.attention() }</p>
+					@followUpsMeanings()
 				</div>
-				@riskCardsView(v)
+				@followUpCardsView(v)
 				if v.Group != "" {
-					<p><a data-testid="risks-show-all" href={ v.ShowAllURL() }>Show all</a></p>
+					<p><a data-testid="follow-ups-show-all" href={ v.ShowAllURL() }>Show all</a></p>
 				}
-				@risksTable(current, v.Today, v.Here(), shown)
+				@followUpsTable(current, v.Today, v.Here(), shown)
 			}
 		</div>
 	}
 }
 
-// risksMeanings is a button opening, through a native popover and no script,
-// what each of the Risks page's signals means.
-templ risksMeanings() {
-	<button type="button" data-testid="risks-meanings" class="btn sm" popovertarget="risks-meanings">What each signal means</button>
-	<div id="risks-meanings" popover class="rk-pop rk-defs">
+// followUpsMeanings is a button opening, through a native popover and no script,
+// what each of the Follow-ups page's signals means.
+templ followUpsMeanings() {
+	<button type="button" data-testid="follow-ups-meanings" class="btn sm" popovertarget="follow-ups-meanings">What each signal means</button>
+	<div id="follow-ups-meanings" popover class="rk-pop rk-defs">
 		<dl>
-			for _, d := range riskDefinitions {
+			for _, d := range followUpDefinitions {
 				<dt>{ d.Name }</dt>
 				<dd>{ d.Means }</dd>
 			}
@@ -66,24 +66,24 @@ templ risksMeanings() {
 	</div>
 }
 
-// risksFilters scopes the Risks page by its Scope (Everyone, Mine or an
+// followUpsFilters scopes the Follow-ups page by its Scope (Everyone, Mine or an
 // Org), and to the Goals with a value of each Dimension, one select per
 // offered Dimension named for it, submitted as a GET so the scope lives in the
 // address, carrying the page's group along. Under htmx it applies itself on a change, as the Goal list's
-// filter bar does, swapping in only #risks-body so the form keeps its focus,
+// filter bar does, swapping in only #follow-ups-body so the form keeps its focus,
 // and pushes the address; hx-history="false" makes Back load the earlier
 // address afresh rather than a snapshot whose selects would come back
 // unchosen.
-templ risksFilters(v risksPageView) {
+templ followUpsFilters(v followUpsPageView) {
 	<form
 		method="get"
-		action="/risks"
-		data-testid="risks-filters"
+		action="/follow-ups"
+		data-testid="follow-ups-filters"
 		class="rk-filters"
-		hx-get="/risks"
+		hx-get="/follow-ups"
 		hx-trigger="submit, change"
-		hx-target="#risks-body"
-		hx-select="#risks-body"
+		hx-target="#follow-ups-body"
+		hx-select="#follow-ups-body"
 		hx-swap="outerHTML"
 		hx-push-url="true"
 		hx-sync="this:replace"
@@ -92,12 +92,12 @@ templ risksFilters(v risksPageView) {
 		if v.Group != "" {
 			<input type="hidden" name="group" value={ v.Group }/>
 		}
-		@pageScopeSelect("risks-scope", v.Org)
+		@pageScopeSelect("follow-ups-scope", v.Org)
 		for _, d := range v.Dimensions {
-			<select data-testid="risks-value" data-dimension={ d.Name } name="value" aria-label={ d.Name }>
+			<select data-testid="follow-ups-value" data-dimension={ d.Name } name="value" aria-label={ d.Name }>
 				<option value="" selected?={ v.valueIn(d.ID).ID == 0 }>{ d.Name + ": any" }</option>
 				for _, dv := range d.Values {
-					<option value={ strconv.FormatInt(dv.ID, 10) } selected?={ v.valueIn(d.ID).ID == dv.ID }>{ riskValueLabel(dv) }</option>
+					<option value={ strconv.FormatInt(dv.ID, 10) } selected?={ v.valueIn(d.ID).ID == dv.ID }>{ followUpValueLabel(dv) }</option>
 				}
 			</select>
 		}
@@ -105,99 +105,99 @@ templ risksFilters(v risksPageView) {
 	</form>
 }
 
-// riskCardsView is the page's group cards, in the page's order.
-templ riskCardsView(v risksPageView) {
-	<nav data-testid="risks-groups" class="rk-cards" aria-label="Risks by who acts">
+// followUpCardsView is the page's group cards, in the page's order.
+templ followUpCardsView(v followUpsPageView) {
+	<nav data-testid="follow-ups-groups" class="rk-cards" aria-label="Follow-ups by who acts">
 		for _, c := range v.Cards() {
-			@riskCardView(c)
+			@followUpCardView(c)
 		}
 	</nav>
 }
 
-// riskCardView is one group's summary card: its name, how many Goals it
+// followUpCardView is one group's summary card: its name, how many Goals it
 // holds, and a chip per signal that flags one, linking to the page filtered to
 // the group. A group holding none is a muted card saying so, linking nowhere.
-templ riskCardView(c riskCard) {
+templ followUpCardView(c followUpCard) {
 	if c.Count == 0 {
-		<div data-testid={ "risks-group-" + c.Key } class="card rk-card rk-zero">
+		<div data-testid={ "follow-ups-group-" + c.Key } class="card rk-card rk-zero">
 			<span class="label">{ c.Name }</span>
 			<span>{ c.Blank }</span>
 		</div>
 	} else {
-		@riskCardLink(c)
+		@followUpCardLink(c)
 	}
 }
 
-// riskCardLink is a group's card when it holds Goals.
-templ riskCardLink(c riskCard) {
-	<a data-testid={ "risks-group-" + c.Key } href={ c.Href } class="card rk-card" { c.Attrs()... }>
+// followUpCardLink is a group's card when it holds Goals.
+templ followUpCardLink(c followUpCard) {
+	<a data-testid={ "follow-ups-group-" + c.Key } href={ c.Href } class="card rk-card" { c.Attrs()... }>
 		<span class="label">{ c.Name }</span>
 		<span class="num">{ strconv.Itoa(c.Count) }</span>
 		<span class="rk-chips">
 			for _, sig := range c.Signals {
-				<span data-testid="risk-signal" data-kind={ sig.Anchor } class={ riskChipClass(sig.Anchor) }>{ sig.Name + " · " + strconv.Itoa(sig.Count) }</span>
+				<span data-testid="follow-up-signal" data-kind={ sig.Anchor } class={ followUpChipClass(sig.Anchor) }>{ sig.Name + " · " + strconv.Itoa(sig.Count) }</span>
 			}
 		</span>
 	</a>
 }
 
-// risksTable is the flagged Goals, one row each, most urgent first. A Fix that
+// followUpsTable is the flagged Goals, one row each, most urgent first. A Fix that
 // posts returns to here, the page's address.
-templ risksTable(current *domain.Account, today time.Time, here string, rows []riskGoalRow) {
+templ followUpsTable(current *domain.Account, today time.Time, here string, rows []followUpGoalRow) {
 	<div class="card">
-		<table id="risks-table" class="rk-table" data-testid="risks-table">
+		<table id="follow-ups-table" class="rk-table" data-testid="follow-ups-table">
 			<thead>
 				<tr><th>Health</th><th>Goal</th><th>Owner</th><th aria-label="Next step"></th></tr>
 			</thead>
 			<tbody>
 				for _, r := range rows {
-					@riskRow(current, today, here, r)
+					@followUpRow(current, today, here, r)
 				}
 			</tbody>
 		</table>
-		for _, d := range riskDefinitionsIn(rows) {
-			<div id={ riskMeansID(d.Kind) } popover class="rk-pop rk-means"><strong>{ d.Name }</strong> { d.Means }</div>
+		for _, d := range followUpDefinitionsIn(rows) {
+			<div id={ followUpMeansID(d.Kind) } popover class="rk-pop rk-means"><strong>{ d.Name }</strong> { d.Means }</div>
 		}
 	</div>
 }
 
-// riskRow is one flagged Goal: its Health, with its Run off Green on a Not
+// followUpRow is one flagged Goal: its Health, with its Run off Green on a Not
 // Green row ("Red · 5 wks"), its title with a chip per signal
 // that flags it, then on a Not Green row whose back-to-Green date slipped in
 // its Run off Green a tag reading it as a Milestone's slipped date does
 // ("Back to Green Oct 3 ~~Sep 12~~ (3)"), which isn't a signal; its Owner
 // ("You" for the viewer's own), and a cell for its fix: a link, a form
 // posting back to here, or a disabled button saying why it can't be used.
-templ riskRow(current *domain.Account, today time.Time, here string, r riskGoalRow) {
-	<tr data-testid="risk-row">
+templ followUpRow(current *domain.Account, today time.Time, here string, r followUpGoalRow) {
+	<tr data-testid="follow-up-row">
 		<td class="rk-health">
-			@healthBadge("risk-health", r.Health)
+			@healthBadge("follow-up-health", r.Health)
 			if r.RunOffGreen.Running() {
-				<span data-testid="risk-run-off-green" class="muted small">{ "· " + r.RunOffGreen.Label() }</span>
+				<span data-testid="follow-up-run-off-green" class="muted small">{ "· " + r.RunOffGreen.Label() }</span>
 			}
 		</td>
-		<td data-testid="risk-goal" class="rk-goal">
+		<td data-testid="follow-up-goal" class="rk-goal">
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", r.Goal.ID)) }>{ r.Goal.Title }</a>
 			<span class="rk-chips">
 				for _, sig := range r.Signals {
-					@riskChip(today, r.Goal, sig)
+					@followUpChip(today, r.Goal, sig)
 				}
 				if len(r.PathPriorDates) > 0 {
-					<span data-testid="risk-back-to-green" class="rk-tag">
+					<span data-testid="follow-up-back-to-green" class="rk-tag">
 						{ "Back to Green " }
-						@slippedDates(r.PathTargetDate, r.PathPriorDates, displayDates{Now: today, Loc: today.Location()}, "risk-back-to-green-slips")
+						@slippedDates(r.PathTargetDate, r.PathPriorDates, displayDates{Now: today, Loc: today.Location()}, "follow-up-back-to-green-slips")
 					</span>
 				}
 			</span>
 		</td>
-		<td data-testid="risk-owner" class="rk-owner">
+		<td data-testid="follow-up-owner" class="rk-owner">
 			if r.Goal.Owner.ID == current.ID {
 				You
 			} else {
 				@person(r.Goal.Owner)
 			}
 		</td>
-		<td data-testid="risk-fix" class="rk-fix">
+		<td data-testid="follow-up-fix" class="rk-fix">
 			if r.Fix.Disabled {
 				<button type="button" class="btn sm" disabled>{ r.Fix.Label }</button>
 			} else if r.Fix.Post {
@@ -214,68 +214,68 @@ templ riskRow(current *domain.Account, today time.Time, here string, r riskGoalR
 	</tr>
 }
 
-// riskChip says why a signal flags g. Red and Yellow, Not Green's signals,
+// followUpChip says why a signal flags g. Red and Yellow, Not Green's signals,
 // take no chip: the row's Health badge says so already. An Ask for help names
 // whom it asks, or says no one is above the Owner. Each chip's words are a
-// riskTip opening what its signal means; a chip holding a person or a link
-// keeps them after its riskTip, since a button can't hold them.
-templ riskChip(today time.Time, g domain.Goal, sig riskSignal) {
+// followUpTip opening what its signal means; a chip holding a person or a link
+// keeps them after its followUpTip, since a button can't hold them.
+templ followUpChip(today time.Time, g domain.Goal, sig followUpSignal) {
 	switch sig.Kind {
 		case "red", "yellow":
 		case "asks-for-help":
-			<span data-testid="risk-signal" data-kind="asks-for-help" class="rk-tag">
+			<span data-testid="follow-up-signal" data-kind="asks-for-help" class="rk-tag">
 				if sig.Person != nil {
-					@riskTip(sig.Kind, "Asks for help")
+					@followUpTip(sig.Kind, "Asks for help")
 					{ "of " }@person(*sig.Person)
 				} else {
-					@riskTip(sig.Kind, "Asks for help · no one above the Owner")
+					@followUpTip(sig.Kind, "Asks for help · no one above the Owner")
 				}
 			</span>
 		case "checkin-overdue":
-			<span data-testid="risk-signal" data-kind="checkin-overdue" class="badge st">
-				@riskTip(sig.Kind, "Check-in overdue · "+plural(sig.Days, "day")+", checks in "+cadenceInWords(g.CadenceDays))
+			<span data-testid="follow-up-signal" data-kind="checkin-overdue" class="badge st">
+				@followUpTip(sig.Kind, "Check-in overdue · "+plural(sig.Days, "day")+", checks in "+cadenceInWords(g.CadenceDays))
 			</span>
 		case "path-overdue":
-			<span data-testid="risk-signal" data-kind="path-overdue" class="badge st">
-				@riskTip(sig.Kind, "Path to Green "+plural(sig.Days, "day")+" overdue")
+			<span data-testid="follow-up-signal" data-kind="path-overdue" class="badge st">
+				@followUpTip(sig.Kind, "Path to Green "+plural(sig.Days, "day")+" overdue")
 			</span>
 		case "milestone-overdue":
-			<span data-testid="risk-signal" data-kind="milestone-overdue" class="badge st">
-				@riskTip(sig.Kind, "Milestone "+plural(sig.Days, "day")+" overdue")
+			<span data-testid="follow-up-signal" data-kind="milestone-overdue" class="badge st">
+				@followUpTip(sig.Kind, "Milestone "+plural(sig.Days, "day")+" overdue")
 			</span>
 		case "action-item-overdue":
-			<span data-testid="risk-signal" data-kind="action-item-overdue" class="badge st">
-				@riskTip(sig.Kind, "Action Item "+plural(sig.Days, "day")+" overdue")
+			<span data-testid="follow-up-signal" data-kind="action-item-overdue" class="badge st">
+				@followUpTip(sig.Kind, "Action Item "+plural(sig.Days, "day")+" overdue")
 			</span>
 		case "ownerless":
-			<span data-testid="risk-signal" data-kind="ownerless" class="badge ol">
-				@riskTip(sig.Kind, "Ownerless")
+			<span data-testid="follow-up-signal" data-kind="ownerless" class="badge ol">
+				@followUpTip(sig.Kind, "Ownerless")
 			</span>
 		case "unlinked":
-			<span data-testid="risk-signal" data-kind="unlinked" class="rk-tag">
-				@riskTip(sig.Kind, "Unlinked · no parent Goal, not Top-level")
+			<span data-testid="follow-up-signal" data-kind="unlinked" class="rk-tag">
+				@followUpTip(sig.Kind, "Unlinked · no parent Goal, not Top-level")
 			</span>
 		case "schedule-conflicts":
-			<span data-testid="risk-signal" data-kind="schedule-conflicts" class="rk-tag">
-				@riskTip(sig.Kind, "Schedule conflict")
-				{ fmt.Sprintf(" · due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), riskDays(sig.Days)) }@goalRef(*sig.Related)
+			<span data-testid="follow-up-signal" data-kind="schedule-conflicts" class="rk-tag">
+				@followUpTip(sig.Kind, "Schedule conflict")
+				{ fmt.Sprintf(" · due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), followUpDays(sig.Days)) }@goalRef(*sig.Related)
 			</span>
 		case "halted-parents":
-			<span data-testid="risk-signal" data-kind="halted-parents" class="rk-tag">
-				@riskTip(sig.Kind, "Parent "+sig.Related.Lifecycle)
+			<span data-testid="follow-up-signal" data-kind="halted-parents" class="rk-tag">
+				@followUpTip(sig.Kind, "Parent "+sig.Related.Lifecycle)
 				{ " · " }@goalRef(*sig.Related)
 			</span>
 	}
 }
 
-// riskTip is a toggletip: a button reading label that opens, with no script,
-// the popover risksTable holds saying what the signal of kind means, and that
+// followUpTip is a toggletip: a button reading label that opens, with no script,
+// the popover followUpsTable holds saying what the signal of kind means, and that
 // takes the meaning as its description.
-templ riskTip(kind, label string) {
-	<button type="button" class="rk-tip" popovertarget={ riskMeansID(kind) } aria-describedby={ riskMeansID(kind) }>{ label }</button>
+templ followUpTip(kind, label string) {
+	<button type="button" class="rk-tip" popovertarget={ followUpMeansID(kind) } aria-describedby={ followUpMeansID(kind) }>{ label }</button>
 }
 
-// risksStyles are the Risks page's own rules on top of app.css: the header
+// followUpsStyles are the Follow-ups page's own rules on top of app.css: the header
 // form, the summary cards, the chips under each Goal in the table, the
 // outlined neutral chip the structural signals take: a .tag with the badges'
 // small radius, the buttons naming the chips' signals, and the popovers saying
@@ -285,7 +285,7 @@ templ riskTip(kind, label string) {
 // first though it comes second in the HTML, then Health and Owner on one line,
 // then the Fix, and the full list of what each signal means stacks each name
 // over its meaning.
-templ risksStyles() {
+templ followUpsStyles() {
 	<style>
 		.shape{display:none}
 		.rk-body{display:flex;flex-direction:column;gap:inherit}

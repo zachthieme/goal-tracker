@@ -383,10 +383,10 @@ func (o *e2eOrg) rollup(t *testing.T, g *e2eGoal) domain.RolledUpHealth {
 	return r
 }
 
-// riskReasons are the reasons Risks flags g for, sorted: its signals as the
+// followUpReasons are the reasons Follow-ups flags g for, sorted: its signals as the
 // domain reads them. A Schedule conflict flags the child, not the parent, and
 // an Active Goal's latest Check-in being Red or Yellow puts it under Not Green.
-func (o *e2eOrg) riskReasons(t *testing.T, g *e2eGoal) []string {
+func (o *e2eOrg) followUpReasons(t *testing.T, g *e2eGoal) []string {
 	t.Helper()
 	f, s := o.freshness(t, g), o.signals(t, g)
 	var out []string
@@ -412,7 +412,7 @@ func (o *e2eOrg) riskReasons(t *testing.T, g *e2eGoal) []string {
 }
 
 // e2eScenario1 is 01-finding-trouble.spec.ts's choosers, and what it asserts
-// on Risks of the Goals they choose.
+// on Follow-ups of the Goals they choose.
 func e2eScenario1(t *testing.T, o *e2eOrg) {
 	const leader = "cto@example.com"
 	platform := func(g *e2eGoal) bool { return g.team == "Platform" }
@@ -485,7 +485,7 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 		t.Fatal("scenario 1: no Red Goal with a Date Slip of its delivery date (redSlipped)")
 	}
 
-	// Risks lists Check-in overdue, Unlinked and Schedule conflict Goals.
+	// Follow-ups lists Check-in overdue, Unlinked and Schedule conflict Goals.
 	ctx := context.Background()
 	fs, err := o.h.Service.FreshnessSignals(ctx)
 	if err != nil {
@@ -496,37 +496,37 @@ func e2eScenario1(t *testing.T, o *e2eOrg) {
 		t.Fatalf("GraphSignals: %v", err)
 	}
 	if len(fs.CheckinOverdue) == 0 || len(gs.Unlinked) == 0 || len(gs.ScheduleConflicts) == 0 {
-		t.Errorf("scenario 1: Risks has %d Check-in overdue, %d Unlinked and %d Schedule conflict Goals, want some of each",
+		t.Errorf("scenario 1: Follow-ups has %d Check-in overdue, %d Unlinked and %d Schedule conflict Goals, want some of each",
 			len(fs.CheckinOverdue), len(gs.Unlinked), len(gs.ScheduleConflicts))
 	}
-	// Narrowed to Platform, Risks has fewer rows than the whole org: some
+	// Narrowed to Platform, Follow-ups has fewer rows than the whole org: some
 	// flagged Goal is on another team.
 	offPlatform := slices.ContainsFunc(fs.CheckinOverdue, func(f domain.GoalFreshness) bool { return o.byID[f.Goal.ID].team != "Platform" }) ||
 		slices.ContainsFunc(gs.Unlinked, func(g domain.Goal) bool { return o.byID[g.ID].team != "Platform" })
 	if !offPlatform {
-		t.Error("scenario 1: no Check-in overdue or Unlinked Goal off Platform, so narrowing Risks to Platform wouldn't narrow it")
+		t.Error("scenario 1: no Check-in overdue or Unlinked Goal off Platform, so narrowing Follow-ups to Platform wouldn't narrow it")
 	}
 
 	// checkinOverdue is under Waiting on a Check-in and not Placement and
 	// dates. On the default seed it is Green with an overdue Milestone, so it
 	// is marked Milestone overdue too, which Waiting on a Check-in also holds.
-	if got := o.riskReasons(t, checkinOverdue); !slices.Equal(got, []string{"Milestone overdue", "Check-in overdue"}) {
-		t.Errorf("scenario 1: Check-in overdue Goal %q is on Risks for %q, want Milestone overdue and Check-in overdue", checkinOverdue.Title, got)
+	if got := o.followUpReasons(t, checkinOverdue); !slices.Equal(got, []string{"Milestone overdue", "Check-in overdue"}) {
+		t.Errorf("scenario 1: Check-in overdue Goal %q is on Follow-ups for %q, want Milestone overdue and Check-in overdue", checkinOverdue.Title, got)
 	}
 	// unlinked is under Placement and dates and not Waiting on a Check-in,
 	// even after the setup puts overdue past its Path to Green.
-	if got := o.riskReasons(t, unlinked); !slices.Equal(got, []string{"Unlinked"}) || unlinked == overdue {
-		t.Errorf("scenario 1: Unlinked Goal %q is on Risks for %q, or is the Goal the setup makes overdue (%t); want only Unlinked",
+	if got := o.followUpReasons(t, unlinked); !slices.Equal(got, []string{"Unlinked"}) || unlinked == overdue {
+		t.Errorf("scenario 1: Unlinked Goal %q is on Follow-ups for %q, or is the Goal the setup makes overdue (%t); want only Unlinked",
 			unlinked.Title, got, unlinked == overdue)
 	}
 	// twoReasons is one row with a chip for each of its two reasons.
-	if got := o.riskReasons(t, twoReasons); !slices.Equal(got, []string{"Schedule conflict", "Check-in overdue"}) {
-		t.Errorf("scenario 1: two-reason Goal %q is on Risks for %q, want Schedule conflict and Check-in overdue", twoReasons.Title, got)
+	if got := o.followUpReasons(t, twoReasons); !slices.Equal(got, []string{"Schedule conflict", "Check-in overdue"}) {
+		t.Errorf("scenario 1: two-reason Goal %q is on Follow-ups for %q, want Schedule conflict and Check-in overdue", twoReasons.Title, got)
 	}
-	// redWithChildren is on Risks under Not Green only: nothing but its Health
+	// redWithChildren is on Follow-ups under Not Green only: nothing but its Health
 	// is wrong with it.
-	if got := o.riskReasons(t, redWithChildren); !slices.Equal(got, []string{"Red"}) {
-		t.Errorf("scenario 1: Red Goal %q with Active children is on Risks for %q, want only Red", redWithChildren.Title, got)
+	if got := o.followUpReasons(t, redWithChildren); !slices.Equal(got, []string{"Red"}) {
+		t.Errorf("scenario 1: Red Goal %q with Active children is on Follow-ups for %q, want only Red", redWithChildren.Title, got)
 	}
 	// Step 6 reads goal-rollup-health on its page, which renders only when the
 	// rollup is Present.
@@ -690,7 +690,7 @@ func e2eScenario3Delegate(t *testing.T, o *e2eOrg) {
 		t.Fatal("scenario 3: no Goal Check-in overdue by more than its cadence and a day, with a named Owner and no Delegates (checkinOverdueGoal)")
 	}
 	if !o.freshness(t, goal).CheckinOverdue {
-		t.Errorf("scenario 3: checkinOverdueGoal %q isn't Check-in overdue on Risks and Home", goal.Title)
+		t.Errorf("scenario 3: checkinOverdueGoal %q isn't Check-in overdue on Follow-ups and Home", goal.Title)
 	}
 	if !slices.ContainsFunc(o.goals, func(g *e2eGoal) bool {
 		a := g.Owner

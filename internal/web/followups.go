@@ -16,37 +16,37 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// handleRisks answers "what's going wrong?" for leadership: every Goal the
+// handleFollowUps answers "what's going wrong?" for leadership: every Goal the
 // freshness and graph signals flag, by problem type, scoped by its address to
 // Everyone (?org=all), the viewer's own Goals (?org=mine) or an Org's
 // (?org=), else the viewer's default scope, and to the Goals with an offered
 // Dimension's value (?value=, one per Dimension). The scope narrows the rows
-// only after they are built: loadRisks stays company-wide, for Needs an
+// only after they are built: loadFollowUps stays company-wide, for Needs an
 // Admin.
-func (s *Server) handleRisks(w http.ResponseWriter, r *http.Request, current domain.Account) {
-	page, err := s.loadRisksPage(r.Context(), r.URL.Query(), current)
+func (s *Server) handleFollowUps(w http.ResponseWriter, r *http.Request, current domain.Account) {
+	page, err := s.loadFollowUpsPage(r.Context(), r.URL.Query(), current)
 	if err != nil {
-		s.serverError(w, r, "could not read risks", err)
+		s.serverError(w, r, "could not read Follow-ups", err)
 		return
 	}
-	render(w, r, http.StatusOK, risksPage(&current, page))
+	render(w, r, http.StatusOK, followUpsPage(&current, page))
 }
 
-// loadRisksPage builds the Risks page current sees at an address with query q.
-func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain.Account) (risksPageView, error) {
-	v, err := s.loadRisks(ctx)
+// loadFollowUpsPage builds the Follow-ups page current sees at an address with query q.
+func (s *Server) loadFollowUpsPage(ctx context.Context, q url.Values, current domain.Account) (followUpsPageView, error) {
+	v, err := s.loadFollowUps(ctx)
 	if err != nil {
-		return risksPageView{}, err
+		return followUpsPageView{}, err
 	}
-	rows, err := s.riskRows(ctx, v)
+	rows, err := s.followUpRows(ctx, v)
 	if err != nil {
-		return risksPageView{}, err
+		return followUpsPageView{}, err
 	}
 	delegated, err := s.svc.DelegatedGoals(ctx, current.ID)
 	if err != nil {
-		return risksPageView{}, fmt.Errorf("load delegated goals: %w", err)
+		return followUpsPageView{}, fmt.Errorf("load delegated goals: %w", err)
 	}
-	facts := riskFixFacts{delegate: map[int64]bool{}, unreachable: map[int64]bool{}}
+	facts := followUpFixFacts{delegate: map[int64]bool{}, unreachable: map[int64]bool{}}
 	for _, g := range delegated {
 		facts.delegate[g.ID] = true
 	}
@@ -58,40 +58,40 @@ func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain
 		}
 		delegates, err := s.svc.ListDelegates(ctx, row.Goal.ID)
 		if err != nil {
-			return risksPageView{}, err
+			return followUpsPageView{}, err
 		}
 		facts.unreachable[row.Goal.ID] = !slices.ContainsFunc(delegates, func(a domain.Account) bool { return !a.Departed })
 	}
 	if facts.nudged, err = s.svc.NudgedToday(ctx, ids); err != nil {
-		return risksPageView{}, err
+		return followUpsPageView{}, err
 	}
-	fixRiskRows(current, rows, facts)
+	fixFollowUpRows(current, rows, facts)
 	dims, err := s.svc.ListDimensions(ctx)
 	if err != nil {
-		return risksPageView{}, err
+		return followUpsPageView{}, err
 	}
 	goals, err := s.svc.ListGoals(ctx)
 	if err != nil {
-		return risksPageView{}, err
+		return followUpsPageView{}, err
 	}
-	group := riskGroupKey(q.Get("group"))
+	group := followUpGroupKey(q.Get("group"))
 	org, err := s.loadPageOrgScope(ctx, q, current, goals)
 	if err != nil {
-		return risksPageView{}, err
+		return followUpsPageView{}, err
 	}
-	page := risksPageView{
-		risksView:  v,
-		Group:      group,
-		Org:        org,
-		Dimensions: domain.OfferedDimensions(dims),
-		Today:      s.svc.Now().In(s.svc.Timezone()),
+	page := followUpsPageView{
+		followUpsView: v,
+		Group:         group,
+		Org:           org,
+		Dimensions:    domain.OfferedDimensions(dims),
+		Today:         s.svc.Now().In(s.svc.Timezone()),
 	}
-	page.Values = riskValues(q["value"], page.Dimensions)
+	page.Values = followUpValues(q["value"], page.Dimensions)
 	var valued map[int64]bool
 	if len(page.Values) > 0 {
 		goals, err := s.svc.ListGoalsWithValues(ctx)
 		if err != nil {
-			return risksPageView{}, err
+			return followUpsPageView{}, err
 		}
 		byDimension := map[int64][]int64{}
 		for _, v := range page.Values {
@@ -114,10 +114,10 @@ func (s *Server) loadRisksPage(ctx context.Context, q url.Values, current domain
 	return page, nil
 }
 
-// riskValues are the offered Dimensions' values raw names by their IDs, in
+// followUpValues are the offered Dimensions' values raw names by their IDs, in
 // the Dimensions' order, at most one per Dimension: the first raw names there.
 // A raw naming none of them is ignored.
-func riskValues(raw []string, dims []domain.Dimension) []domain.DimensionValue {
+func followUpValues(raw []string, dims []domain.Dimension) []domain.DimensionValue {
 	var values []domain.DimensionValue
 	for _, d := range dims {
 	value:
@@ -137,23 +137,23 @@ func riskValues(raw []string, dims []domain.Dimension) []domain.DimensionValue {
 	return values
 }
 
-// riskValueLabel is how the value select names a value: a Retired one says so.
-func riskValueLabel(v domain.DimensionValue) string {
+// followUpValueLabel is how the value select names a value: a Retired one says so.
+func followUpValueLabel(v domain.DimensionValue) string {
 	if v.Retired {
 		return v.Value + " (retired)"
 	}
 	return v.Value
 }
 
-// risksPageView is the Risks page: its lists, its rows in scope, its rows
+// followUpsPageView is the Follow-ups page: its lists, its rows in scope, its rows
 // with its values in any scope, which Needs an Admin's card and table hold, the
 // group its address filters it to, "" for every group, its Scope, the offered
 // Dimensions and the values of theirs it is scoped to, at most one each, in
 // the Dimensions' order, and today, which its dates are read against.
-type risksPageView struct {
-	risksView
-	Rows        []riskGoalRow
-	CompanyRows []riskGoalRow
+type followUpsPageView struct {
+	followUpsView
+	Rows        []followUpGoalRow
+	CompanyRows []followUpGoalRow
 	Group       string
 	Org         pageOrgScope
 	Dimensions  []domain.Dimension
@@ -163,7 +163,7 @@ type risksPageView struct {
 
 // valueIn is the value of the Dimension dimID the page is scoped to, or the
 // zero value when it is scoped to none of that Dimension's.
-func (p risksPageView) valueIn(dimID int64) domain.DimensionValue {
+func (p followUpsPageView) valueIn(dimID int64) domain.DimensionValue {
 	for _, v := range p.Values {
 		if v.DimensionID == dimID {
 			return v
@@ -172,9 +172,9 @@ func (p risksPageView) valueIn(dimID int64) domain.DimensionValue {
 	return domain.DimensionValue{}
 }
 
-// url is the Risks page's address filtered to group ("" for every group),
+// url is the Follow-ups page's address filtered to group ("" for every group),
 // keeping the page's scope and every value it is scoped to.
-func (p risksPageView) url(group string) string {
+func (p followUpsPageView) url(group string) string {
 	q := url.Values{}
 	if sc := p.Org.Value(); sc != "" {
 		q.Set("org", sc)
@@ -186,33 +186,33 @@ func (p risksPageView) url(group string) string {
 		q.Add("value", strconv.FormatInt(v.ID, 10))
 	}
 	if len(q) == 0 {
-		return "/risks"
+		return "/follow-ups"
 	}
-	return "/risks?" + q.Encode()
+	return "/follow-ups?" + q.Encode()
 }
 
 // Here is the page's own address, with its filters and scope.
-func (p risksPageView) Here() string {
+func (p followUpsPageView) Here() string {
 	return p.url(p.Group)
 }
 
 // ShowAllURL is the page's address unfiltered, keeping its scope.
-func (p risksPageView) ShowAllURL() templ.SafeURL {
+func (p followUpsPageView) ShowAllURL() templ.SafeURL {
 	return templ.SafeURL(p.url(""))
 }
 
-// ShowEverythingURL is the Risks page with no filter and scoped to Everyone.
-func (p risksPageView) ShowEverythingURL() templ.SafeURL {
-	return templ.SafeURL("/risks?org=" + scopeEveryoneValue)
+// ShowEverythingURL is the Follow-ups page with no filter and scoped to Everyone.
+func (p followUpsPageView) ShowEverythingURL() templ.SafeURL {
+	return templ.SafeURL("/follow-ups?org=" + scopeEveryoneValue)
 }
 
 // Shown are the rows the table shows: every row with no filter, else each row
 // a signal of the filtered group flags, chipped with that group's signals
 // only. Needs an Admin's are the company's, whatever the page's scope: an
 // Admin's job there is company-wide.
-func (p risksPageView) Shown() []riskGoalRow {
+func (p followUpsPageView) Shown() []followUpGoalRow {
 	var kinds []string
-	for _, gk := range riskGroupKinds {
+	for _, gk := range followUpGroupKinds {
 		if gk.Key == p.Group {
 			kinds = gk.Kinds
 		}
@@ -221,12 +221,12 @@ func (p risksPageView) Shown() []riskGoalRow {
 		return p.Rows
 	}
 	rows := p.Rows
-	if p.Group == riskGroupAdmin {
+	if p.Group == followUpGroupAdmin {
 		rows = p.CompanyRows
 	}
-	var shown []riskGoalRow
+	var shown []followUpGoalRow
 	for _, r := range rows {
-		var signals []riskSignal
+		var signals []followUpSignal
 		for _, sig := range r.Signals {
 			if slices.Contains(kinds, sig.Kind) {
 				signals = append(signals, sig)
@@ -242,19 +242,19 @@ func (p risksPageView) Shown() []riskGoalRow {
 
 // Filtered reports whether the page is scoped to Mine, an Org or values, or
 // filtered to a group.
-func (p risksPageView) Filtered() bool {
+func (p followUpsPageView) Filtered() bool {
 	return p.Org.Name() != "" || len(p.Values) > 0 || p.Group != ""
 }
 
 // CardsWhenEmpty reports whether the page shows its cards after its empty
 // line: for an Admin, with no group filter, while the company has a Goal
 // Needs an Admin holds, so an Admin's own empty scope doesn't hide it.
-func (p risksPageView) CardsWhenEmpty() bool {
+func (p followUpsPageView) CardsWhenEmpty() bool {
 	if !p.Org.Viewer.IsAdmin || p.Group != "" {
 		return false
 	}
-	for i, g := range riskGroups(p.CompanyRows) {
-		if riskGroupKinds[i].Key == riskGroupAdmin {
+	for i, g := range followUpGroups(p.CompanyRows) {
+		if followUpGroupKinds[i].Key == followUpGroupAdmin {
 			return g.Count > 0
 		}
 	}
@@ -264,8 +264,8 @@ func (p risksPageView) CardsWhenEmpty() bool {
 // OffersShowEverything reports whether the empty line links to everything:
 // when the page is filtered, but not on Needs an Admin, which is company-wide
 // already.
-func (p risksPageView) OffersShowEverything() bool {
-	return p.Filtered() && p.Group != riskGroupAdmin
+func (p followUpsPageView) OffersShowEverything() bool {
+	return p.Filtered() && p.Group != followUpGroupAdmin
 }
 
 // Empty is what the page says when no Goal is left to show: where nothing
@@ -273,9 +273,9 @@ func (p risksPageView) OffersShowEverything() bool {
 // name, in the Dimensions' order, and the group's card's title, in that order.
 // Needs an Admin, company-wide, names only the values: "Nothing needs an
 // Admin in Team Platform."
-func (p risksPageView) Empty() string {
+func (p followUpsPageView) Empty() string {
 	var parts []string
-	if name := p.Org.Name(); name != "" && p.Group != riskGroupAdmin {
+	if name := p.Org.Name(); name != "" && p.Group != followUpGroupAdmin {
 		parts = append(parts, name)
 	}
 	for _, d := range p.Dimensions {
@@ -283,13 +283,13 @@ func (p risksPageView) Empty() string {
 			parts = append(parts, d.Name+" "+v.Value)
 		}
 	}
-	if p.Group == riskGroupAdmin {
+	if p.Group == followUpGroupAdmin {
 		if len(parts) == 0 {
 			return "Nothing needs an Admin."
 		}
 		return "Nothing needs an Admin in " + strings.Join(parts, ", ") + "."
 	}
-	for _, gk := range riskGroupKinds {
+	for _, gk := range followUpGroupKinds {
 		if gk.Key == p.Group {
 			parts = append(parts, gk.Name)
 		}
@@ -302,8 +302,8 @@ func (p risksPageView) Empty() string {
 
 // attentionCount is the header's count: the Goals in the page's scope, or on
 // Needs an Admin the company's Goals its table shows.
-func (p risksPageView) attentionCount() int {
-	if p.Group == riskGroupAdmin {
+func (p followUpsPageView) attentionCount() int {
+	if p.Group == followUpGroupAdmin {
 		return len(p.Shown())
 	}
 	return len(p.Rows)
@@ -312,12 +312,12 @@ func (p risksPageView) attentionCount() int {
 // attention is the header's words after its count, naming Mine or the Org
 // the page is scoped to: "Goals to review in My org, most urgent first." On
 // Needs an Admin they say the Goals wait on an Admin instead.
-func (p risksPageView) attention() string {
+func (p followUpsPageView) attention() string {
 	goals := "Goals"
 	if p.attentionCount() == 1 {
 		goals = "Goal"
 	}
-	if p.Group == riskGroupAdmin {
+	if p.Group == followUpGroupAdmin {
 		return goals + " waiting on an Admin, most urgent first."
 	}
 	in := ""
@@ -327,11 +327,11 @@ func (p risksPageView) attention() string {
 	return goals + " to review" + in + ", most urgent first."
 }
 
-// riskChipClass is the class of a signal's chip on a group card, matching the
+// followUpChipClass is the class of a signal's chip on a group card, matching the
 // table's: the Red and Yellow Health badges for Not Green's, the Check-in
 // overdue badge for the freshness signals (Milestone overdue among them), the
 // Ownerless badge for Ownerless, and the outlined tag for the structural ones.
-func riskChipClass(kind string) string {
+func followUpChipClass(kind string) string {
 	switch kind {
 	case "red":
 		return "badge r"
@@ -345,10 +345,10 @@ func riskChipClass(kind string) string {
 	return "rk-tag"
 }
 
-// riskGroupKey is the group key names, or "" for an unknown one, which shows
+// followUpGroupKey is the group key names, or "" for an unknown one, which shows
 // every group.
-func riskGroupKey(key string) string {
-	for _, gk := range riskGroupKinds {
+func followUpGroupKey(key string) string {
+	for _, gk := range followUpGroupKinds {
 		if gk.Key == key {
 			return key
 		}
@@ -356,20 +356,20 @@ func riskGroupKey(key string) string {
 	return ""
 }
 
-// riskCard is a group's summary card: its count, a count of each of its
+// followUpCard is a group's summary card: its count, a count of each of its
 // signals that flags a Goal, the line it shows when it holds none, whether the
 // page is filtered to it, and the page's address filtered to it, keeping the
 // page's scope.
-type riskCard struct {
-	riskGroup
-	Signals []riskType
+type followUpCard struct {
+	followUpGroup
+	Signals []followUpType
 	Blank   string
 	Current bool
 	Href    templ.SafeURL
 }
 
 // Attrs marks the card of the group the page is filtered to as the current one.
-func (c riskCard) Attrs() templ.Attributes {
+func (c followUpCard) Attrs() templ.Attributes {
 	if c.Current {
 		return templ.Attributes{"aria-current": "page"}
 	}
@@ -379,19 +379,19 @@ func (c riskCard) Attrs() templ.Attributes {
 // Cards are the page's group cards, in the page's order, each counting the
 // page's rows but Needs an Admin, which counts the company's: an Admin's job
 // there is company-wide.
-func (p risksPageView) Cards() []riskCard {
+func (p followUpsPageView) Cards() []followUpCard {
 	names := map[string]string{}
 	for _, rt := range p.Types() {
 		names[rt.Anchor] = rt.Name
 	}
-	groups, company := riskGroups(p.Rows), riskGroups(p.CompanyRows)
-	cards := make([]riskCard, 0, len(groups))
-	for i, gk := range riskGroupKinds {
+	groups, company := followUpGroups(p.Rows), followUpGroups(p.CompanyRows)
+	cards := make([]followUpCard, 0, len(groups))
+	for i, gk := range followUpGroupKinds {
 		rows, group := p.Rows, groups[i]
-		if gk.Key == riskGroupAdmin {
+		if gk.Key == followUpGroupAdmin {
 			rows, group = p.CompanyRows, company[i]
 		}
-		c := riskCard{riskGroup: group, Blank: gk.Blank, Current: gk.Key == p.Group, Href: templ.SafeURL(p.url(gk.Key))}
+		c := followUpCard{followUpGroup: group, Blank: gk.Blank, Current: gk.Key == p.Group, Href: templ.SafeURL(p.url(gk.Key))}
 		for _, kind := range gk.Kinds {
 			n := 0
 			for _, r := range rows {
@@ -400,7 +400,7 @@ func (p risksPageView) Cards() []riskCard {
 				}
 			}
 			if n > 0 {
-				c.Signals = append(c.Signals, riskType{Anchor: kind, Name: names[kind], Count: n})
+				c.Signals = append(c.Signals, followUpType{Anchor: kind, Name: names[kind], Count: n})
 			}
 		}
 		cards = append(cards, c)
@@ -408,8 +408,8 @@ func (p risksPageView) Cards() []riskCard {
 	return cards
 }
 
-// risksView is what the Risks page shows, one list per problem type.
-type risksView struct {
+// followUpsView is what the Follow-ups page shows, one list per problem type.
+type followUpsView struct {
 	CheckinOverdue []domain.GoalFreshness
 	OverduePaths   []domain.GoalFreshness
 	// OverdueMilestones are the Active Goals whose latest Check-in is Green
@@ -428,34 +428,34 @@ type risksView struct {
 	HaltedParents     []domain.HaltedParent
 	// OverdueActionItems are the Active Goals an overdue Action Item is about,
 	// one entry each.
-	OverdueActionItems []riskOverdueGoal
+	OverdueActionItems []followUpOverdueGoal
 }
 
-// riskOverdueGoal is a Goal with an overdue Action Item about it, and how many
+// followUpOverdueGoal is a Goal with an overdue Action Item about it, and how many
 // days the most overdue of them is past its due date.
-type riskOverdueGoal struct {
+type followUpOverdueGoal struct {
 	Goal domain.Goal
 	Days int
 }
 
-// riskType is one of the Risks page's signals, or its chip on a group card:
+// followUpType is one of the Follow-ups page's signals, or its chip on a group card:
 // its kind, its name, and how many Goals it flags.
-type riskType struct {
+type followUpType struct {
 	Anchor, Name string
 	Count        int
 }
 
-// Types are the Risks page's signals in the page's order.
-func (v risksView) Types() []riskType {
+// Types are the Follow-ups page's signals in the page's order.
+func (v followUpsView) Types() []followUpType {
 	red, yellow := 0, 0
 	for _, gf := range v.NotGreen {
-		if riskHealthKind(gf.Health) == "red" {
+		if followUpHealthKind(gf.Health) == "red" {
 			red++
 		} else {
 			yellow++
 		}
 	}
-	return []riskType{
+	return []followUpType{
 		{"red", "Red", red},
 		{"yellow", "Yellow", yellow},
 		{"asks-for-help", "Asks for help", len(v.Asks)},
@@ -470,14 +470,14 @@ func (v risksView) Types() []riskType {
 	}
 }
 
-// riskDefinition is one of the Risks page's signals: the kind its chips
+// followUpDefinition is one of the Follow-ups page's signals: the kind its chips
 // carry, its name, and what it means.
-type riskDefinition struct{ Kind, Name, Means string }
+type followUpDefinition struct{ Kind, Name, Means string }
 
-// riskDefinitions are the Risks page's signals in the page's order, each with
+// followUpDefinitions are the Follow-ups page's signals in the page's order, each with
 // what it means: what a chip's button opens, and what "What each signal
 // means" lists.
-var riskDefinitions = []riskDefinition{
+var followUpDefinitions = []followUpDefinition{
 	{"red", "Red", "Active Goals whose latest Check-in is Red."},
 	{"yellow", "Yellow", "Active Goals whose latest Check-in is Yellow."},
 	{"asks-for-help", "Asks for help", "Red or Yellow Goals whose Path to Green asks for help from the Owner's Manager, until the Owner unmarks it or the Goal is back to Green."},
@@ -491,17 +491,17 @@ var riskDefinitions = []riskDefinition{
 	{"halted-parents", "Parent On Hold or Cancelled", "Goals contributing to a Goal that is On Hold or Cancelled."},
 }
 
-// riskDefinitionsIn are the definitions of the signals flagging rows, in the
+// followUpDefinitionsIn are the definitions of the signals flagging rows, in the
 // page's order, each once: the popovers the chips' buttons open.
-func riskDefinitionsIn(rows []riskGoalRow) []riskDefinition {
+func followUpDefinitionsIn(rows []followUpGoalRow) []followUpDefinition {
 	chipped := map[string]bool{}
 	for _, r := range rows {
 		for _, sig := range r.Signals {
 			chipped[sig.Kind] = true
 		}
 	}
-	var defs []riskDefinition
-	for _, d := range riskDefinitions {
+	var defs []followUpDefinition
+	for _, d := range followUpDefinitions {
 		if chipped[d.Kind] {
 			defs = append(defs, d)
 		}
@@ -509,14 +509,14 @@ func riskDefinitionsIn(rows []riskGoalRow) []riskDefinition {
 	return defs
 }
 
-// riskMeansID is the id of the popover saying what the signal of kind means.
-func riskMeansID(kind string) string {
-	return "risk-means-" + kind
+// followUpMeansID is the id of the popover saying what the signal of kind means.
+func followUpMeansID(kind string) string {
+	return "follow-up-means-" + kind
 }
 
-// Flagged counts the Goals the Risks page lists in scope, each once however
+// Flagged counts the Goals the Follow-ups page lists in scope, each once however
 // many signals flag it.
-func (v risksView) Flagged(scope pageOrgScope) int {
+func (v followUpsView) Flagged(scope pageOrgScope) int {
 	flagged := map[int64]bool{}
 	flag := func(g domain.Goal) {
 		if scope.keeps(g) {
@@ -548,10 +548,10 @@ func (v risksView) Flagged(scope pageOrgScope) int {
 	return len(flagged)
 }
 
-// countDefaultRisks counts the Goals flagged in acc's default scope, as many
-// as the rows a bare /risks lists, for the top bar.
-func (s *Server) countDefaultRisks(ctx context.Context, acc domain.Account) (int, error) {
-	v, err := s.loadRisks(ctx)
+// countDefaultFollowUps counts the Goals flagged in acc's default scope, as many
+// as the rows a bare /follow-ups lists, for the top bar.
+func (s *Server) countDefaultFollowUps(ctx context.Context, acc domain.Account) (int, error) {
+	v, err := s.loadFollowUps(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -562,21 +562,21 @@ func (s *Server) countDefaultRisks(ctx context.Context, acc domain.Account) (int
 	return v.Flagged(scope), nil
 }
 
-// loadRisks reads every Goal the company's signals flag.
-func (s *Server) loadRisks(ctx context.Context) (risksView, error) {
+// loadFollowUps reads every Goal the company's signals flag.
+func (s *Server) loadFollowUps(ctx context.Context) (followUpsView, error) {
 	fresh, err := s.svc.FreshnessSignals(ctx)
 	if err != nil {
-		return risksView{}, err
+		return followUpsView{}, err
 	}
 	goals, err := s.svc.ListGoals(ctx)
 	if err != nil {
-		return risksView{}, err
+		return followUpsView{}, err
 	}
 	graph, err := s.svc.GraphSignals(ctx)
 	if err != nil {
-		return risksView{}, err
+		return followUpsView{}, err
 	}
-	v := risksView{
+	v := followUpsView{
 		CheckinOverdue:    fresh.CheckinOverdue,
 		OverduePaths:      fresh.OverduePaths,
 		OverdueMilestones: fresh.OverdueMilestones,
@@ -592,37 +592,37 @@ func (s *Server) loadRisks(ctx context.Context) (risksView, error) {
 	}
 	items, err := s.svc.OverdueActionItems(ctx)
 	if err != nil {
-		return risksView{}, err
+		return followUpsView{}, err
 	}
-	v.OverdueActionItems = riskOverdueGoals(goals, items, s.svc.Now().In(s.svc.Timezone()))
+	v.OverdueActionItems = followUpOverdueGoals(goals, items, s.svc.Now().In(s.svc.Timezone()))
 	if v.Asks, err = s.svc.OpenAsksForHelp(ctx); err != nil {
-		return risksView{}, err
+		return followUpsView{}, err
 	}
 	return v, nil
 }
 
-// riskOverdueGoals are the Active Goals among goals that an overdue Action
+// followUpOverdueGoals are the Active Goals among goals that an overdue Action
 // Item among items is about, in goals' order, each with the days its most
 // overdue item is past its due date as of today.
-func riskOverdueGoals(goals []domain.Goal, items []domain.ActionItemListing, today time.Time) []riskOverdueGoal {
+func followUpOverdueGoals(goals []domain.Goal, items []domain.ActionItemListing, today time.Time) []followUpOverdueGoal {
 	days := map[int64]int{}
 	for _, l := range items {
 		if d := calendarDays(l.Item.DueDate, today); d > days[l.Item.GoalID] {
 			days[l.Item.GoalID] = d
 		}
 	}
-	var out []riskOverdueGoal
+	var out []followUpOverdueGoal
 	for _, g := range goals {
 		if d, ok := days[g.ID]; ok && g.Lifecycle == domain.LifecycleActive {
-			out = append(out, riskOverdueGoal{Goal: g, Days: d})
+			out = append(out, followUpOverdueGoal{Goal: g, Days: d})
 		}
 	}
 	return out
 }
 
-// riskGoalRow is one flagged Goal on the Risks page with every signal that
+// followUpGoalRow is one flagged Goal on the Follow-ups page with every signal that
 // flags it, so a Goal flagged twice is one row, not two.
-type riskGoalRow struct {
+type followUpGoalRow struct {
 	Goal domain.Goal
 	// Health is the Goal's latest Check-in's Health, empty when it has none.
 	Health string
@@ -636,15 +636,15 @@ type riskGoalRow struct {
 	// Not Green row reads them.
 	PathTargetDate time.Time
 	PathPriorDates []time.Time
-	Signals        []riskSignal
+	Signals        []followUpSignal
 	// Fix is the one action the row offers its viewer.
-	Fix riskFix
+	Fix followUpFix
 }
 
-// riskFix is a row's one Fix button: what it says, where it goes, and whether
+// followUpFix is a row's one Fix button: what it says, where it goes, and whether
 // it is the page's primary kind of action. Post makes it a form posting to
 // Href rather than a link; Disabled shows it without letting it be used.
-type riskFix struct {
+type followUpFix struct {
 	Label    string
 	Href     string
 	Primary  bool
@@ -652,17 +652,17 @@ type riskFix struct {
 	Disabled bool
 }
 
-// riskFixFacts are what the rows' Fixes turn on beyond the rows themselves:
+// followUpFixFacts are what the rows' Fixes turn on beyond the rows themselves:
 // the Goals the viewer is a Delegate on, the Goals nudged today with their
 // Nudge, and the Ownerless Goals with no Delegate left to check in on them.
-type riskFixFacts struct {
+type followUpFixFacts struct {
 	delegate    map[int64]bool
 	nudged      map[int64]domain.Nudge
 	unreachable map[int64]bool
 }
 
-// fixRiskRows sets each row's Fix for current.
-func fixRiskRows(current domain.Account, rows []riskGoalRow, facts riskFixFacts) {
+// fixFollowUpRows sets each row's Fix for current.
+func fixFollowUpRows(current domain.Account, rows []followUpGoalRow, facts followUpFixFacts) {
 	for i := range rows {
 		id := rows[i].Goal.ID
 		nudge, nudged := facts.nudged[id]
@@ -697,26 +697,26 @@ func fixRiskRows(current domain.Account, rows []riskGoalRow, facts riskFixFacts)
 //     Item;
 //  9. Open Goal, for anything else, a Check-in overdue Goal nobody can check in
 //     on and a Goal flagged only for its Health, Red or Yellow, among them.
-func (r riskGoalRow) fix(current domain.Account, delegate map[int64]bool, nudged *domain.Nudge, unreachable bool) riskFix {
+func (r followUpGoalRow) fix(current domain.Account, delegate map[int64]bool, nudged *domain.Nudge, unreachable bool) followUpFix {
 	goal := fmt.Sprintf("/goals/%d", r.Goal.ID)
 	if _, ownerless := r.signal("ownerless"); ownerless && current.IsAdmin {
-		return riskFix{Label: "Reassign", Href: goal + "?open=reassign"}
+		return followUpFix{Label: "Reassign", Href: goal + "?open=reassign"}
 	}
 	_, checkinOverdue := r.signal("checkin-overdue")
 	_, pathOverdue := r.signal("path-overdue")
 	_, milestoneOverdue := r.signal("milestone-overdue")
 	overdue := pathOverdue || milestoneOverdue
 	if (checkinOverdue || overdue) && (r.Goal.Owner.ID == current.ID || delegate[r.Goal.ID]) {
-		return riskFix{Label: "Check in", Href: goal + "/checkin", Primary: true}
+		return followUpFix{Label: "Check in", Href: goal + "/checkin", Primary: true}
 	}
 	if (checkinOverdue || overdue) && nudged != nil {
-		return riskFix{Label: "Nudged today by " + nudged.Sender.Label(), Disabled: true}
+		return followUpFix{Label: "Nudged today by " + nudged.Sender.Label(), Disabled: true}
 	}
 	if (checkinOverdue || overdue) && !unreachable {
-		return riskFix{Label: "Nudge", Href: goal + "/nudge", Post: true}
+		return followUpFix{Label: "Nudge", Href: goal + "/nudge", Post: true}
 	}
 	if _, unlinked := r.signal("unlinked"); unlinked && r.Goal.Owner.ID == current.ID {
-		return riskFix{Label: "Link to a parent", Href: goal + "?open=parent-link"}
+		return followUpFix{Label: "Link to a parent", Href: goal + "?open=parent-link"}
 	}
 	if f, ok := r.scheduleConflictFix(current, delegate, nudged, unreachable); ok {
 		return f
@@ -728,15 +728,15 @@ func (r riskGoalRow) fix(current domain.Account, delegate map[int64]bool, nudged
 		}
 	}
 	if parent != nil {
-		return riskFix{Label: "Open parent", Href: fmt.Sprintf("/goals/%d", parent.ID)}
+		return followUpFix{Label: "Open parent", Href: fmt.Sprintf("/goals/%d", parent.ID)}
 	}
 	if _, unlinked := r.signal("unlinked"); unlinked {
-		return riskFix{Label: "Suggest a parent", Href: goal + "/suggest-parent"}
+		return followUpFix{Label: "Suggest a parent", Href: goal + "/suggest-parent"}
 	}
 	if _, overdue := r.signal("action-item-overdue"); overdue {
-		return riskFix{Label: "See Action Items", Href: goal + "#action-items"}
+		return followUpFix{Label: "See Action Items", Href: goal + "#action-items"}
 	}
-	return riskFix{Label: "Open Goal", Href: goal}
+	return followUpFix{Label: "Open Goal", Href: goal}
 }
 
 // scheduleConflictFix is the Fix for a row in a Schedule conflict, and
@@ -752,7 +752,7 @@ func (r riskGoalRow) fix(current domain.Account, delegate map[int64]bool, nudged
 //     to check in on it.
 //
 // Otherwise the row has none here, and falls through to the later Fixes.
-func (r riskGoalRow) scheduleConflictFix(current domain.Account, delegate map[int64]bool, nudged *domain.Nudge, unreachable bool) (riskFix, bool) {
+func (r followUpGoalRow) scheduleConflictFix(current domain.Account, delegate map[int64]bool, nudged *domain.Nudge, unreachable bool) (followUpFix, bool) {
 	var parents []domain.Goal
 	for _, sig := range r.Signals {
 		if sig.Kind == "schedule-conflicts" {
@@ -760,7 +760,7 @@ func (r riskGoalRow) scheduleConflictFix(current domain.Account, delegate map[in
 		}
 	}
 	if len(parents) == 0 {
-		return riskFix{}, false
+		return followUpFix{}, false
 	}
 	slices.SortStableFunc(parents, func(a, b domain.Goal) int {
 		return strings.Compare(strings.ToLower(a.Title), strings.ToLower(b.Title))
@@ -771,29 +771,29 @@ func (r riskGoalRow) scheduleConflictFix(current domain.Account, delegate map[in
 			continue
 		}
 		if g.Lifecycle == domain.LifecycleActive {
-			return riskFix{Label: "Check in", Href: fmt.Sprintf("/goals/%d/checkin?open=dates", g.ID), Primary: true}, true
+			return followUpFix{Label: "Check in", Href: fmt.Sprintf("/goals/%d/checkin?open=dates", g.ID), Primary: true}, true
 		}
 		if mine == nil {
 			mine = &g
 		}
 	}
 	if mine != nil {
-		return riskFix{Label: "Open Goal", Href: fmt.Sprintf("/goals/%d", mine.ID)}, true
+		return followUpFix{Label: "Open Goal", Href: fmt.Sprintf("/goals/%d", mine.ID)}, true
 	}
 	if r.Goal.Lifecycle != domain.LifecycleActive {
-		return riskFix{}, false
+		return followUpFix{}, false
 	}
 	if nudged != nil {
-		return riskFix{Label: "Nudged today by " + nudged.Sender.Label(), Disabled: true}, true
+		return followUpFix{Label: "Nudged today by " + nudged.Sender.Label(), Disabled: true}, true
 	}
 	if !unreachable {
-		return riskFix{Label: "Nudge", Href: fmt.Sprintf("/goals/%d/nudge", r.Goal.ID), Post: true}, true
+		return followUpFix{Label: "Nudge", Href: fmt.Sprintf("/goals/%d/nudge", r.Goal.ID), Post: true}, true
 	}
-	return riskFix{}, false
+	return followUpFix{}, false
 }
 
-// riskSignal is one reason a Goal is flagged. Kind names the signal, as the
-// chip's data-kind on the Risks page. Days is how long the signal has held: for
+// followUpSignal is one reason a Goal is flagged. Kind names the signal, as the
+// chip's data-kind on the Follow-ups page. Days is how long the signal has held: for
 // "checkin-overdue" the days since the last update, for "path-overdue" the days
 // past the Path to Green's target date, for "milestone-overdue" the days past
 // the earliest overdue Milestone's date, for "action-item-overdue" the days the
@@ -802,60 +802,60 @@ func (r riskGoalRow) scheduleConflictFix(current domain.Account, delegate map[in
 // parent's, and 0 otherwise. Related is the parent for "schedule-conflicts" and
 // "halted-parents". Person is whom an "asks-for-help" asks, nil when no one is
 // above the Owner.
-type riskSignal struct {
+type followUpSignal struct {
 	Kind    string
 	Days    int
 	Related *domain.Goal
 	Person  *domain.Account
 }
 
-// riskRows merges v's lists into one row per flagged Goal. Unlike loadRisks,
+// followUpRows merges v's lists into one row per flagged Goal. Unlike loadFollowUps,
 // which every signed-in page runs for the top bar's count, it reads each
-// flagged Goal's latest Check-in, so only the Risks page calls it.
-func (s *Server) riskRows(ctx context.Context, v risksView) ([]riskGoalRow, error) {
-	var rows []riskGoalRow
+// flagged Goal's latest Check-in, so only the Follow-ups page calls it.
+func (s *Server) followUpRows(ctx context.Context, v followUpsView) ([]followUpGoalRow, error) {
+	var rows []followUpGoalRow
 	at := map[int64]int{}
-	add := func(g domain.Goal, sig riskSignal) {
+	add := func(g domain.Goal, sig followUpSignal) {
 		i, ok := at[g.ID]
 		if !ok {
 			i = len(rows)
 			at[g.ID] = i
-			rows = append(rows, riskGoalRow{Goal: g})
+			rows = append(rows, followUpGoalRow{Goal: g})
 		}
 		rows[i].Signals = append(rows[i].Signals, sig)
 	}
 	for _, gf := range v.NotGreen {
-		add(gf.Goal, riskSignal{Kind: riskHealthKind(gf.Health)})
+		add(gf.Goal, followUpSignal{Kind: followUpHealthKind(gf.Health)})
 	}
 	for _, ask := range v.Asks {
-		add(ask.Goal, riskSignal{Kind: "asks-for-help", Person: ask.Addressee})
+		add(ask.Goal, followUpSignal{Kind: "asks-for-help", Person: ask.Addressee})
 	}
 	for _, gf := range v.CheckinOverdue {
-		add(gf.Goal, riskSignal{Kind: "checkin-overdue", Days: gf.Freshness.DaysSince})
+		add(gf.Goal, followUpSignal{Kind: "checkin-overdue", Days: gf.Freshness.DaysSince})
 	}
 	// A Path to Green's overdue days are counted in the Goal's timezone, the
 	// one its flag was judged in.
 	for _, gf := range v.OverduePaths {
-		add(gf.Goal, riskSignal{Kind: "path-overdue", Days: calendarDays(gf.Freshness.PathTargetDate, s.svc.Now().In(s.svc.GoalTimezone(gf.Goal)))})
+		add(gf.Goal, followUpSignal{Kind: "path-overdue", Days: calendarDays(gf.Freshness.PathTargetDate, s.svc.Now().In(s.svc.GoalTimezone(gf.Goal)))})
 	}
 	// So are a Milestone's.
 	for _, gf := range v.OverdueMilestones {
-		add(gf.Goal, riskSignal{Kind: "milestone-overdue", Days: calendarDays(gf.Freshness.OverdueMilestoneDate, s.svc.Now().In(s.svc.GoalTimezone(gf.Goal)))})
+		add(gf.Goal, followUpSignal{Kind: "milestone-overdue", Days: calendarDays(gf.Freshness.OverdueMilestoneDate, s.svc.Now().In(s.svc.GoalTimezone(gf.Goal)))})
 	}
 	for _, og := range v.OverdueActionItems {
-		add(og.Goal, riskSignal{Kind: "action-item-overdue", Days: og.Days})
+		add(og.Goal, followUpSignal{Kind: "action-item-overdue", Days: og.Days})
 	}
 	for _, g := range v.Ownerless {
-		add(g, riskSignal{Kind: "ownerless"})
+		add(g, followUpSignal{Kind: "ownerless"})
 	}
 	for _, g := range v.Unlinked {
-		add(g, riskSignal{Kind: "unlinked"})
+		add(g, followUpSignal{Kind: "unlinked"})
 	}
 	for _, c := range v.ScheduleConflicts {
-		add(c.Child, riskSignal{Kind: "schedule-conflicts", Days: calendarDays(c.Parent.DeliveryDate, c.Child.DeliveryDate), Related: &c.Parent})
+		add(c.Child, followUpSignal{Kind: "schedule-conflicts", Days: calendarDays(c.Parent.DeliveryDate, c.Child.DeliveryDate), Related: &c.Parent})
 	}
 	for _, hp := range v.HaltedParents {
-		add(hp.Child, riskSignal{Kind: "halted-parents", Related: &hp.Parent})
+		add(hp.Child, followUpSignal{Kind: "halted-parents", Related: &hp.Parent})
 	}
 	for i := range rows {
 		latest, ok, err := s.svc.LatestCheckin(ctx, rows[i].Goal.ID)
@@ -879,13 +879,13 @@ func (s *Server) riskRows(ctx context.Context, v risksView) ([]riskGoalRow, erro
 			rows[i].PathPriorDates = domain.BackToGreenPriorDates(slips, rows[i].RunOffGreen)
 		}
 	}
-	sortRiskRows(rows)
+	sortFollowUpRows(rows)
 	return rows, nil
 }
 
-// riskHealthKind is the signal kind a Not Green Goal's Health flags it with:
+// followUpHealthKind is the signal kind a Not Green Goal's Health flags it with:
 // "red" for Red, "yellow" for Yellow.
-func riskHealthKind(health string) string {
+func followUpHealthKind(health string) string {
 	if health == domain.HealthRed {
 		return "red"
 	}
@@ -893,18 +893,18 @@ func riskHealthKind(health string) string {
 }
 
 // signal is the row's first signal of kind, and whether it has one.
-func (r riskGoalRow) signal(kind string) (riskSignal, bool) {
+func (r followUpGoalRow) signal(kind string) (followUpSignal, bool) {
 	for _, sig := range r.Signals {
 		if sig.Kind == kind {
 			return sig, true
 		}
 	}
-	return riskSignal{}, false
+	return followUpSignal{}, false
 }
 
 // signalKinds counts the distinct kinds of signal that flag the row, so a Goal
 // under two halted parents counts its halted parents once.
-func (r riskGoalRow) signalKinds() int {
+func (r followUpGoalRow) signalKinds() int {
 	seen := map[string]bool{}
 	for _, sig := range r.Signals {
 		seen[sig.Kind] = true
@@ -912,9 +912,9 @@ func (r riskGoalRow) signalKinds() int {
 	return len(seen)
 }
 
-// riskHealthRank orders Health most urgent first: Red, Yellow, none, then
+// followUpHealthRank orders Health most urgent first: Red, Yellow, none, then
 // Green.
-func riskHealthRank(health string) int {
+func followUpHealthRank(health string) int {
 	switch health {
 	case domain.HealthRed:
 		return 0
@@ -926,15 +926,15 @@ func riskHealthRank(health string) int {
 	return 2
 }
 
-// sortRiskRows puts the most urgent Goals first, key by key: Active Goals
+// sortFollowUpRows puts the most urgent Goals first, key by key: Active Goals
 // before the Proposed and On Hold ones, which nothing has gone wrong with yet;
-// then Ownerless first; then by Health (riskHealthRank); then a Path to Green
+// then Ownerless first; then by Health (followUpHealthRank); then a Path to Green
 // overdue first, longest overdue first; then a Milestone overdue first, longest
 // overdue first; then an overdue Action Item first, longest overdue first; then
 // Check-in overdue first, furthest past its cadence first; then more distinct
 // kinds of signal first; then by title, ignoring case.
-func sortRiskRows(rows []riskGoalRow) {
-	slices.SortStableFunc(rows, func(a, b riskGoalRow) int {
+func sortFollowUpRows(rows []followUpGoalRow) {
+	slices.SortStableFunc(rows, func(a, b followUpGoalRow) int {
 		aActive := a.Goal.Lifecycle == domain.LifecycleActive
 		bActive := b.Goal.Lifecycle == domain.LifecycleActive
 		if c := cmp.Compare(boolRank(!aActive), boolRank(!bActive)); c != 0 {
@@ -945,7 +945,7 @@ func sortRiskRows(rows []riskGoalRow) {
 		if c := cmp.Compare(boolRank(!aOwnerless), boolRank(!bOwnerless)); c != 0 {
 			return c
 		}
-		if c := cmp.Compare(riskHealthRank(a.Health), riskHealthRank(b.Health)); c != 0 {
+		if c := cmp.Compare(followUpHealthRank(a.Health), followUpHealthRank(b.Health)); c != 0 {
 			return c
 		}
 		aPath, aOverdue := a.signal("path-overdue")
@@ -989,8 +989,8 @@ func sortRiskRows(rows []riskGoalRow) {
 	})
 }
 
-// riskDays says a count of days in words: "1 day", "22 days".
-func riskDays(n int) string {
+// followUpDays says a count of days in words: "1 day", "22 days".
+func followUpDays(n int) string {
 	if n == 1 {
 		return "1 day"
 	}
@@ -1007,18 +1007,18 @@ func calendarDays(from, to time.Time) int {
 	return int(date(to).Sub(date(from)) / (24 * time.Hour))
 }
 
-// riskGroup is a set of signal kinds grouped by who acts on them: Key names
+// followUpGroup is a set of signal kinds grouped by who acts on them: Key names
 // it, Name says it, and Count is how many Goals it flags, each once however
 // many of its signals flag the Goal.
-type riskGroup struct {
+type followUpGroup struct {
 	Key, Name string
 	Count     int
 }
 
-// riskGroupKinds are the Risks page's groups in the page's order, with the
+// followUpGroupKinds are the Follow-ups page's groups in the page's order, with the
 // signal kinds each holds.
 // Blank is what a group's card says when it holds no Goals.
-var riskGroupKinds = []struct {
+var followUpGroupKinds = []struct {
 	Key, Name string
 	Kinds     []string
 	Blank     string
@@ -1027,20 +1027,20 @@ var riskGroupKinds = []struct {
 	{"owner", "Waiting on a Check-in", []string{"checkin-overdue", "path-overdue", "milestone-overdue"}, "Nothing is waiting on a Check-in."},
 	{"followup", "Action Items overdue", []string{"action-item-overdue"}, "No Action Item is overdue."},
 	{"plan", "Placement and dates", []string{"unlinked", "schedule-conflicts"}, "Every Goal is placed and its dates fit."},
-	{riskGroupAdmin, "Needs an Admin", []string{"ownerless", "halted-parents"}, "Nothing needs an Admin."},
+	{followUpGroupAdmin, "Needs an Admin", []string{"ownerless", "halted-parents"}, "Nothing needs an Admin."},
 }
 
-// riskGroupAdmin is the key of the Needs an Admin group, whose card and table
+// followUpGroupAdmin is the key of the Needs an Admin group, whose card and table
 // hold the company's rows.
-const riskGroupAdmin = "admin"
+const followUpGroupAdmin = "admin"
 
-// riskGroups counts the rows in each group, in the page's order.
-func riskGroups(rows []riskGoalRow) []riskGroup {
-	groups := make([]riskGroup, 0, len(riskGroupKinds))
-	for _, gk := range riskGroupKinds {
-		g := riskGroup{Key: gk.Key, Name: gk.Name}
+// followUpGroups counts the rows in each group, in the page's order.
+func followUpGroups(rows []followUpGoalRow) []followUpGroup {
+	groups := make([]followUpGroup, 0, len(followUpGroupKinds))
+	for _, gk := range followUpGroupKinds {
+		g := followUpGroup{Key: gk.Key, Name: gk.Name}
 		for _, r := range rows {
-			if slices.ContainsFunc(r.Signals, func(sig riskSignal) bool { return slices.Contains(gk.Kinds, sig.Kind) }) {
+			if slices.ContainsFunc(r.Signals, func(sig followUpSignal) bool { return slices.Contains(gk.Kinds, sig.Kind) }) {
 				g.Count++
 			}
 		}

@@ -239,7 +239,7 @@ func TestAFailedNudgeIsLoggedWithItsCause(t *testing.T) {
 	before := len(logRecords(t, buf))
 
 	path := "/goals/" + strconv.FormatInt(silent.ID, 10) + "/nudge"
-	resp := postForm(t, pat, ts.URL+path, url.Values{"return": {"/risks"}})
+	resp := postForm(t, pat, ts.URL+path, url.Values{"return": {"/follow-ups"}})
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("status %d, want 500", resp.StatusCode)

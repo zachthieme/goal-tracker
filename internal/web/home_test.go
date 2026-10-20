@@ -971,8 +971,8 @@ func TestHomeListsParentSuggestionsToDecide(t *testing.T) {
 }
 
 // Every page's top bar offers Goals, the app's main list, between Home and
-// Risks, with Reports after Risks.
-func TestNavOffersGoalsBetweenHomeAndRisks(t *testing.T) {
+// Follow-ups, with Reports after Follow-ups.
+func TestNavOffersGoalsBetweenHomeAndFollowUps(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -980,7 +980,7 @@ func TestNavOffersGoalsBetweenHomeAndRisks(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	for _, path := range []string{"/home", "/goals", "/risks", "/reports"} {
+	for _, path := range []string{"/home", "/goals", "/follow-ups", "/reports"} {
 		page := getBody(t, client, ts.URL+path)
 		nav := page[strings.Index(page, "<nav"):strings.Index(page, "</nav>")]
 		if goals := pageElement(t, page, "a", "nav-goals"); !strings.Contains(openTag(goals), `href="/goals"`) {
@@ -988,10 +988,10 @@ func TestNavOffersGoalsBetweenHomeAndRisks(t *testing.T) {
 		}
 		home := strings.Index(nav, `data-testid="nav-home"`)
 		goals := strings.Index(nav, `data-testid="nav-goals"`)
-		risks := strings.Index(nav, `data-testid="nav-risks"`)
+		followUps := strings.Index(nav, `data-testid="nav-follow-ups"`)
 		reports := strings.Index(nav, `data-testid="nav-reports"`)
-		if home < 0 || goals < home || risks < goals || reports < risks {
-			t.Errorf("on %s, the nav items do not read Home, Goals, Risks, Reports:\n%s", path, nav)
+		if home < 0 || goals < home || followUps < goals || reports < followUps {
+			t.Errorf("on %s, the nav items do not read Home, Goals, Follow-ups, Reports:\n%s", path, nav)
 		}
 	}
 }
@@ -1014,7 +1014,7 @@ func TestBrandLinkLeadsHome(t *testing.T) {
 }
 
 // The Goals nav item carries no count, even when the viewer owns Red and
-// Check-in overdue Goals that Home and Risks count.
+// Check-in overdue Goals that Home and Follow-ups count.
 func TestNavGoalsCarriesNoCount(t *testing.T) {
 	t.Parallel()
 
@@ -1027,7 +1027,7 @@ func TestNavGoalsCarriesNoCount(t *testing.T) {
 	h.Clock.Advance(10 * day)
 
 	client := signInClient(t, ts.URL, "sam@example.com")
-	for _, path := range []string{"/home", "/goals", "/risks"} {
+	for _, path := range []string{"/home", "/goals", "/follow-ups"} {
 		page := getBody(t, client, ts.URL+path)
 		if home := pageElement(t, page, "a", "nav-home"); !strings.Contains(home, `class="count needs-you"`) {
 			t.Fatalf("on %s, Home counts nothing, so the fixture has nothing for Goals to count: %s", path, home)
@@ -1038,7 +1038,7 @@ func TestNavGoalsCarriesNoCount(t *testing.T) {
 	}
 }
 
-// An Admin's top bar reads Home, Goals, Risks, Reports, Admin.
+// An Admin's top bar reads Home, Goals, Follow-ups, Reports, Admin.
 func TestNavOrderForAnAdmin(t *testing.T) {
 	t.Parallel()
 
@@ -1049,10 +1049,10 @@ func TestNavOrderForAnAdmin(t *testing.T) {
 
 	nav := page[strings.Index(page, "<nav"):strings.Index(page, "</nav>")]
 	var order []string
-	for _, m := range regexp.MustCompile(`data-testid="(nav-[a-z]+)"`).FindAllStringSubmatch(nav, -1) {
+	for _, m := range regexp.MustCompile(`data-testid="(nav-[a-z-]+)"`).FindAllStringSubmatch(nav, -1) {
 		order = append(order, m[1])
 	}
-	if got, want := strings.Join(order, " "), "nav-home nav-goals nav-risks nav-reports nav-admin"; got != want {
+	if got, want := strings.Join(order, " "), "nav-home nav-goals nav-follow-ups nav-reports nav-admin"; got != want {
 		t.Errorf("an Admin's nav items read %q, want %q", got, want)
 	}
 }
@@ -1252,7 +1252,7 @@ func TestHomeMyOrgCountsWhatIsInTroubleByPerson(t *testing.T) {
 	if strings.Contains(card, "Cy") {
 		t.Errorf("Cy, two levels down, appears on the section:\n%s", card)
 	}
-	for _, href := range []string{fmt.Sprintf(`href="/goals?org=%d"`, f.lead.ID), fmt.Sprintf(`href="/risks?org=%d"`, f.lead.ID)} {
+	for _, href := range []string{fmt.Sprintf(`href="/goals?org=%d"`, f.lead.ID), fmt.Sprintf(`href="/follow-ups?org=%d"`, f.lead.ID)} {
 		if !strings.Contains(card, href) {
 			t.Errorf("My org doesn't link on with %s:\n%s", href, card)
 		}
@@ -1316,7 +1316,7 @@ func TestHomeMyOrgCountsThoseAllClearInOneLine(t *testing.T) {
 }
 
 // With nothing flagged anywhere under the viewer, My org says so in one line,
-// with no total and no rows, and still links on to the Org's Goals and Risks.
+// with no total and no rows, and still links on to the Org's Goals and Follow-ups.
 func TestHomeMyOrgSaysWhenEveryoneIsAllClear(t *testing.T) {
 	t.Parallel()
 
@@ -1342,12 +1342,12 @@ func TestHomeMyOrgSaysWhenEveryoneIsAllClear(t *testing.T) {
 			t.Errorf("My org with nothing flagged shows %s:\n%s", gone, card)
 		}
 	}
-	for testID, href := range map[string]string{
-		"home-org-goals-link": fmt.Sprintf("/goals?org=%d", lead.ID),
-		"home-org-risks-link": fmt.Sprintf("/risks?org=%d", lead.ID),
+	for _, c := range []struct{ testID, href, label string }{
+		{"home-org-goals-link", fmt.Sprintf("/goals?org=%d", lead.ID), "My org on Goals →"},
+		{"home-org-follow-ups-link", fmt.Sprintf("/follow-ups?org=%d", lead.ID), "My org on Follow-ups →"},
 	} {
-		if link := pageElement(t, card, "a", testID); attr(openTag(link), "href") != href {
-			t.Errorf("%s = %s, want href %s", testID, link, href)
+		if link := pageElement(t, card, "a", c.testID); attr(openTag(link), "href") != c.href || !strings.HasSuffix(link, ">"+c.label) {
+			t.Errorf("%s = %s, want %q linking to %s", c.testID, link, c.label, c.href)
 		}
 	}
 }

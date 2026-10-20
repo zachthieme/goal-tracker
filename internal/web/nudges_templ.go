@@ -11,7 +11,7 @@ import templruntime "github.com/a-h/templ/runtime"
 import "github.com/zachthieme/goal-tracker/internal/domain"
 
 // nudgeRefusedPage says, inside the normal page, why a Nudge was refused or
-// didn't reach everyone, with a link back to the Risks page it was sent from.
+// didn't reach everyone, with a link back to the Follow-ups page it was sent from.
 func nudgeRefusedPage(current *domain.Account, heading, reason string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -71,7 +71,7 @@ func nudgeRefusedPage(current *domain.Account, heading, reason string) templ.Com
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</p><p><a href=\"/risks\">Back</a></p></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "</p><p><a href=\"/follow-ups\">Back</a></p></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

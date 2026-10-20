@@ -2117,7 +2117,7 @@ func checkinForm(d checkinFormData) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if d.AskAddressee == nil {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "<span data-testid=\"checkin-ask-addressee\" class=\"hint\">No one is above the Owner to ask. It still shows on Risks and in Reports.</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "<span data-testid=\"checkin-ask-addressee\" class=\"hint\">No one is above the Owner to ask. It still shows on Follow-ups and in Reports.</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

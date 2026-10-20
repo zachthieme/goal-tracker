@@ -11,24 +11,24 @@ import (
 
 const day = 24 * time.Hour
 
-// rowsFor reads the Risks page's rows the way the page does: the signals
-// loadRisks finds, merged by riskRows.
-func rowsFor(t *testing.T, h *testsupport.Harness) []riskGoalRow {
+// rowsFor reads the Follow-ups page's rows the way the page does: the signals
+// loadFollowUps finds, merged by followUpRows.
+func rowsFor(t *testing.T, h *testsupport.Harness) []followUpGoalRow {
 	t.Helper()
 	s := NewServer(h.Service)
-	v, err := s.loadRisks(t.Context())
+	v, err := s.loadFollowUps(t.Context())
 	if err != nil {
-		t.Fatalf("loadRisks: %v", err)
+		t.Fatalf("loadFollowUps: %v", err)
 	}
-	rows, err := s.riskRows(t.Context(), v)
+	rows, err := s.followUpRows(t.Context(), v)
 	if err != nil {
-		t.Fatalf("riskRows: %v", err)
+		t.Fatalf("followUpRows: %v", err)
 	}
 	return rows
 }
 
 // kinds lists a row's signal kinds in order.
-func kinds(r riskGoalRow) []string {
+func kinds(r followUpGoalRow) []string {
 	var out []string
 	for _, sig := range r.Signals {
 		out = append(out, sig.Kind)
@@ -38,7 +38,7 @@ func kinds(r riskGoalRow) []string {
 
 // A Goal that is both Check-in overdue and Unlinked is one row carrying both
 // signals, the Check-in overdue one counting the days since its last update.
-func TestRiskRowsMergeAGoalsSignals(t *testing.T) {
+func TestFollowUpRowsMergeAGoalsSignals(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -55,7 +55,7 @@ func TestRiskRowsMergeAGoalsSignals(t *testing.T) {
 	if r.Goal.ID != silent.ID || r.Health != "" {
 		t.Errorf("row = %q Health %q, want %q with no Health", r.Goal.Title, r.Health, silent.Title)
 	}
-	want := []riskSignal{{Kind: "checkin-overdue", Days: 10}, {Kind: "unlinked"}}
+	want := []followUpSignal{{Kind: "checkin-overdue", Days: 10}, {Kind: "unlinked"}}
 	if len(r.Signals) != len(want) {
 		t.Fatalf("signals = %v, want checkin-overdue and unlinked", kinds(r))
 	}
@@ -67,7 +67,7 @@ func TestRiskRowsMergeAGoalsSignals(t *testing.T) {
 }
 
 // rowOf finds goal's row, failing the test when it has none.
-func rowOf(t *testing.T, rows []riskGoalRow, goal domain.Goal) riskGoalRow {
+func rowOf(t *testing.T, rows []followUpGoalRow, goal domain.Goal) followUpGoalRow {
 	t.Helper()
 	for _, r := range rows {
 		if r.Goal.ID == goal.ID {
@@ -75,11 +75,11 @@ func rowOf(t *testing.T, rows []riskGoalRow, goal domain.Goal) riskGoalRow {
 		}
 	}
 	t.Fatalf("no row for %q in %+v", goal.Title, rows)
-	return riskGoalRow{}
+	return followUpGoalRow{}
 }
 
 // signalOf finds the row's signal of kind, failing the test when it has none.
-func signalOf(t *testing.T, r riskGoalRow, kind string) riskSignal {
+func signalOf(t *testing.T, r followUpGoalRow, kind string) followUpSignal {
 	t.Helper()
 	for _, sig := range r.Signals {
 		if sig.Kind == kind {
@@ -87,7 +87,7 @@ func signalOf(t *testing.T, r riskGoalRow, kind string) riskSignal {
 		}
 	}
 	t.Fatalf("%q has no %s signal: %v", r.Goal.Title, kind, kinds(r))
-	return riskSignal{}
+	return followUpSignal{}
 }
 
 // A row carries its Goal's latest Health, and each signal says how bad it is:
@@ -95,7 +95,7 @@ func signalOf(t *testing.T, r riskGoalRow, kind string) riskSignal {
 // it being 1; a schedule conflict counts the days the child's delivery date
 // falls after its parent's, and names the parent, as a halted parent does. A
 // parent is flagged for its own Health, never for its children's signals.
-func TestRiskRowsCountDaysAndNameParents(t *testing.T) {
+func TestFollowUpRowsCountDaysAndNameParents(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "ada@example.com")
@@ -143,10 +143,10 @@ func TestRiskRowsCountDaysAndNameParents(t *testing.T) {
 	}
 }
 
-// row builds a riskGoalRow for the pure tests: an Active Goal titled title on
+// row builds a followUpGoalRow for the pure tests: an Active Goal titled title on
 // a cadence of days.
-func row(title string, cadence int, health string, signals ...riskSignal) riskGoalRow {
-	return riskGoalRow{Goal: domain.Goal{Title: title, CadenceDays: cadence, Lifecycle: domain.LifecycleActive}, Health: health, Signals: signals}
+func row(title string, cadence int, health string, signals ...followUpSignal) followUpGoalRow {
+	return followUpGoalRow{Goal: domain.Goal{Title: title, CadenceDays: cadence, Lifecycle: domain.LifecycleActive}, Health: health, Signals: signals}
 }
 
 // Rows sort most urgent first, key by key: Active Goals before the Proposed and
@@ -155,16 +155,16 @@ func row(title string, cadence int, health string, signals ...riskSignal) riskGo
 // first, furthest past its cadence first; then more kinds of signal first; then
 // by title, ignoring case. A Milestone overdue and an overdue Action Item rank
 // between the Path to Green and Check-in overdue keys (see the tests below).
-func TestSortRiskRowsPutsTheMostUrgentFirst(t *testing.T) {
+func TestSortFollowUpRowsPutsTheMostUrgentFirst(t *testing.T) {
 	t.Parallel()
 
-	checkinOverdue := func(days int) riskSignal { return riskSignal{Kind: "checkin-overdue", Days: days} }
-	overdue := func(days int) riskSignal { return riskSignal{Kind: "path-overdue", Days: days} }
-	ownerless := riskSignal{Kind: "ownerless"}
-	unlinked := riskSignal{Kind: "unlinked"}
-	conflict := riskSignal{Kind: "schedule-conflicts", Days: 30, Related: &domain.Goal{Title: "Launch"}}
-	halted := riskSignal{Kind: "halted-parents", Related: &domain.Goal{Title: "Paused"}}
-	want := []riskGoalRow{
+	checkinOverdue := func(days int) followUpSignal { return followUpSignal{Kind: "checkin-overdue", Days: days} }
+	overdue := func(days int) followUpSignal { return followUpSignal{Kind: "path-overdue", Days: days} }
+	ownerless := followUpSignal{Kind: "ownerless"}
+	unlinked := followUpSignal{Kind: "unlinked"}
+	conflict := followUpSignal{Kind: "schedule-conflicts", Days: 30, Related: &domain.Goal{Title: "Launch"}}
+	halted := followUpSignal{Kind: "halted-parents", Related: &domain.Goal{Title: "Paused"}}
+	want := []followUpGoalRow{
 		row("Orphan red", 7, domain.HealthRed, ownerless),
 		row("Orphan green", 7, domain.HealthGreen, ownerless, checkinOverdue(30)),
 		row("Red overdue", 7, domain.HealthRed, overdue(1)),
@@ -186,7 +186,7 @@ func TestSortRiskRowsPutsTheMostUrgentFirst(t *testing.T) {
 	rows := slices.Clone(want)
 	slices.Reverse(rows)
 
-	sortRiskRows(rows)
+	sortFollowUpRows(rows)
 
 	var got, wantTitles []string
 	for i := range want {
@@ -199,26 +199,26 @@ func TestSortRiskRowsPutsTheMostUrgentFirst(t *testing.T) {
 }
 
 // lifecycle is r with its Goal in lifecycle l.
-func lifecycle(r riskGoalRow, l string) riskGoalRow {
+func lifecycle(r followUpGoalRow, l string) followUpGoalRow {
 	r.Goal.Lifecycle = l
 	return r
 }
 
 // Among rows no ranked signal tells apart, the one with more kinds of signal
 // comes first, whatever the titles, and then the title decides.
-func TestSortRiskRowsPutsMoreKindsOfSignalFirst(t *testing.T) {
+func TestSortFollowUpRowsPutsMoreKindsOfSignalFirst(t *testing.T) {
 	t.Parallel()
 
-	unlinked := riskSignal{Kind: "unlinked"}
-	conflict := riskSignal{Kind: "schedule-conflicts", Days: 30, Related: &domain.Goal{Title: "Launch"}}
+	unlinked := followUpSignal{Kind: "unlinked"}
+	conflict := followUpSignal{Kind: "schedule-conflicts", Days: 30, Related: &domain.Goal{Title: "Launch"}}
 	want := []string{"Zebra", "Apple", "Mango"}
-	rows := []riskGoalRow{
+	rows := []followUpGoalRow{
 		row("Mango", 7, domain.HealthGreen, unlinked),
 		row("Apple", 7, domain.HealthGreen, unlinked),
 		row("Zebra", 7, domain.HealthGreen, unlinked, conflict),
 	}
 
-	sortRiskRows(rows)
+	sortFollowUpRows(rows)
 
 	var got []string
 	for _, r := range rows {
@@ -231,19 +231,19 @@ func TestSortRiskRowsPutsMoreKindsOfSignalFirst(t *testing.T) {
 
 // Among Goals of the same Health, an overdue Action Item ranks a row below a
 // Path to Green overdue and above Check-in overdue, the longest overdue first.
-func TestSortRiskRowsRanksOverdueActionItemsBetweenPathsAndCheckinOverdue(t *testing.T) {
+func TestSortFollowUpRowsRanksOverdueActionItemsBetweenPathsAndCheckinOverdue(t *testing.T) {
 	t.Parallel()
 
-	itemOverdue := func(days int) riskSignal { return riskSignal{Kind: "action-item-overdue", Days: days} }
+	itemOverdue := func(days int) followUpSignal { return followUpSignal{Kind: "action-item-overdue", Days: days} }
 	want := []string{"Path overdue", "Item long overdue", "Item overdue", "Check-in overdue"}
-	rows := []riskGoalRow{
-		row("Check-in overdue", 7, domain.HealthYellow, riskSignal{Kind: "checkin-overdue", Days: 30}),
+	rows := []followUpGoalRow{
+		row("Check-in overdue", 7, domain.HealthYellow, followUpSignal{Kind: "checkin-overdue", Days: 30}),
 		row("Item overdue", 7, domain.HealthYellow, itemOverdue(2)),
 		row("Item long overdue", 7, domain.HealthYellow, itemOverdue(9)),
-		row("Path overdue", 7, domain.HealthYellow, riskSignal{Kind: "path-overdue", Days: 1}),
+		row("Path overdue", 7, domain.HealthYellow, followUpSignal{Kind: "path-overdue", Days: 1}),
 	}
 
-	sortRiskRows(rows)
+	sortFollowUpRows(rows)
 
 	var got []string
 	for _, r := range rows {
@@ -257,19 +257,19 @@ func TestSortRiskRowsRanksOverdueActionItemsBetweenPathsAndCheckinOverdue(t *tes
 // Among Green Goals, a Milestone overdue ranks a row above an overdue Action
 // Item and Check-in overdue, the longest overdue first: it takes the place a
 // Path to Green overdue holds among Goals that aren't Green.
-func TestSortRiskRowsRanksMilestoneOverdueAfterPaths(t *testing.T) {
+func TestSortFollowUpRowsRanksMilestoneOverdueAfterPaths(t *testing.T) {
 	t.Parallel()
 
-	milestoneOverdue := func(days int) riskSignal { return riskSignal{Kind: "milestone-overdue", Days: days} }
+	milestoneOverdue := func(days int) followUpSignal { return followUpSignal{Kind: "milestone-overdue", Days: days} }
 	want := []string{"Milestone long overdue", "Milestone overdue", "Item overdue", "Check-in overdue"}
-	rows := []riskGoalRow{
-		row("Check-in overdue", 7, domain.HealthGreen, riskSignal{Kind: "checkin-overdue", Days: 30}),
-		row("Item overdue", 7, domain.HealthGreen, riskSignal{Kind: "action-item-overdue", Days: 9}),
+	rows := []followUpGoalRow{
+		row("Check-in overdue", 7, domain.HealthGreen, followUpSignal{Kind: "checkin-overdue", Days: 30}),
+		row("Item overdue", 7, domain.HealthGreen, followUpSignal{Kind: "action-item-overdue", Days: 9}),
 		row("Milestone overdue", 7, domain.HealthGreen, milestoneOverdue(1)),
 		row("Milestone long overdue", 7, domain.HealthGreen, milestoneOverdue(6)),
 	}
 
-	sortRiskRows(rows)
+	sortFollowUpRows(rows)
 
 	var got []string
 	for _, r := range rows {
@@ -280,13 +280,13 @@ func TestSortRiskRowsRanksMilestoneOverdueAfterPaths(t *testing.T) {
 	}
 }
 
-// The Risks page groups the signals by who acts on them, and each group counts
+// The Follow-ups page groups the signals by who acts on them, and each group counts
 // the Goals it holds once, however many of its signals flag a Goal.
-func TestRiskGroupsCountUniqueGoals(t *testing.T) {
+func TestFollowUpGroupsCountUniqueGoals(t *testing.T) {
 	t.Parallel()
 
-	sig := func(kind string) riskSignal { return riskSignal{Kind: kind} }
-	rows := []riskGoalRow{
+	sig := func(kind string) followUpSignal { return followUpSignal{Kind: kind} }
+	rows := []followUpGoalRow{
 		row("Check-in overdue and overdue", 7, domain.HealthRed, sig("checkin-overdue"), sig("path-overdue")),
 		row("Check-in overdue and unlinked", 7, "", sig("checkin-overdue"), sig("unlinked")),
 		row("Two conflicts", 7, domain.HealthGreen, sig("schedule-conflicts"), sig("schedule-conflicts")),
@@ -299,14 +299,14 @@ func TestRiskGroupsCountUniqueGoals(t *testing.T) {
 		row("Yellow only", 7, domain.HealthYellow, sig("yellow")),
 	}
 
-	want := []riskGroup{
+	want := []followUpGroup{
 		{Key: "health", Name: "Not Green", Count: 2},
 		{Key: "owner", Name: "Waiting on a Check-in", Count: 4},
 		{Key: "followup", Name: "Action Items overdue", Count: 2},
 		{Key: "plan", Name: "Placement and dates", Count: 3},
 		{Key: "admin", Name: "Needs an Admin", Count: 2},
 	}
-	if got := riskGroups(rows); !slices.Equal(got, want) {
-		t.Errorf("riskGroups:\n got %+v\nwant %+v", got, want)
+	if got := followUpGroups(rows); !slices.Equal(got, want) {
+		t.Errorf("followUpGroups:\n got %+v\nwant %+v", got, want)
 	}
 }

@@ -16,16 +16,16 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/domain"
 )
 
-// risksPage answers "which Goals are in trouble, and how badly?": how many
+// followUpsPage answers "which Goals are in trouble, and how badly?": how many
 // Goals need attention, a card per group of signals, Not Green and then by who
 // acts, then one table row per flagged Goal, most urgent first, narrowed to one
 // group when the address asks for it. Beside the count, "What each signal
 // means" opens their definitions. The header's form scopes it all to some
-// Goals; #risks-body is what a change of scope swaps. With no Goal left to
-// show, #risks-body says so in one line in place of the count, the cards and
+// Goals; #follow-ups-body is what a change of scope swaps. With no Goal left to
+// show, #follow-ups-body says so in one line in place of the count, the cards and
 // the table; for an Admin, the cards follow it while the company has a Goal
 // that Needs an Admin.
-func risksPage(current *domain.Account, v risksPageView) templ.Component {
+func followUpsPage(current *domain.Account, v followUpsPageView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -58,31 +58,31 @@ func risksPage(current *domain.Account, v risksPageView) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = risksStyles().Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpsStyles().Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <header class=\"page-head\"><h1>Risks</h1>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, " <header class=\"page-head\"><h1>Follow-ups</h1>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = risksFilters(v).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpsFilters(v).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</header><div id=\"risks-body\" class=\"rk-body\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</header><div id=\"follow-ups-body\" class=\"rk-body\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if shown := v.Shown(); len(shown) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"rk-head\"><p data-testid=\"risks-empty\" class=\"muted\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"rk-head\"><p data-testid=\"follow-ups-empty\" class=\"muted\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(v.Empty())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 31, Col: 17}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 31, Col: 17}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
@@ -100,7 +100,7 @@ func risksPage(current *domain.Account, v risksPageView) templ.Component {
 					var templ_7745c5c3_Var4 templ.SafeURL
 					templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinURLErrs(v.ShowEverythingURL())
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 33, Col: 38}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 33, Col: 38}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 					if templ_7745c5c3_Err != nil {
@@ -116,20 +116,20 @@ func risksPage(current *domain.Account, v risksPageView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				if v.CardsWhenEmpty() {
-					templ_7745c5c3_Err = riskCardsView(v).Render(ctx, templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = followUpCardsView(v).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"rk-head\"><p data-testid=\"risks-attention\" class=\"muted\"><strong>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"rk-head\"><p data-testid=\"follow-ups-attention\" class=\"muted\"><strong>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var5 string
 				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(v.attentionCount()))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 42, Col: 94}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 42, Col: 99}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 				if templ_7745c5c3_Err != nil {
@@ -142,7 +142,7 @@ func risksPage(current *domain.Account, v risksPageView) templ.Component {
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(v.attention())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 42, Col: 121}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 42, Col: 126}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
@@ -152,7 +152,7 @@ func risksPage(current *domain.Account, v risksPageView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = risksMeanings().Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = followUpsMeanings().Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -160,7 +160,7 @@ func risksPage(current *domain.Account, v risksPageView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = riskCardsView(v).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = followUpCardsView(v).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -169,14 +169,14 @@ func risksPage(current *domain.Account, v risksPageView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				if v.Group != "" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<p><a data-testid=\"risks-show-all\" href=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<p><a data-testid=\"follow-ups-show-all\" href=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var7 templ.SafeURL
 					templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinURLErrs(v.ShowAllURL())
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 47, Col: 61}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 47, Col: 66}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 					if templ_7745c5c3_Err != nil {
@@ -191,7 +191,7 @@ func risksPage(current *domain.Account, v risksPageView) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = risksTable(current, v.Today, v.Here(), shown).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = followUpsTable(current, v.Today, v.Here(), shown).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -202,7 +202,7 @@ func risksPage(current *domain.Account, v risksPageView) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = layout("Risks", current).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = layout("Follow-ups", current).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -210,9 +210,9 @@ func risksPage(current *domain.Account, v risksPageView) templ.Component {
 	})
 }
 
-// risksMeanings is a button opening, through a native popover and no script,
-// what each of the Risks page's signals means.
-func risksMeanings() templ.Component {
+// followUpsMeanings is a button opening, through a native popover and no script,
+// what each of the Follow-ups page's signals means.
+func followUpsMeanings() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -233,11 +233,11 @@ func risksMeanings() templ.Component {
 			templ_7745c5c3_Var8 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<button type=\"button\" data-testid=\"risks-meanings\" class=\"btn sm\" popovertarget=\"risks-meanings\">What each signal means</button><div id=\"risks-meanings\" popover class=\"rk-pop rk-defs\"><dl>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<button type=\"button\" data-testid=\"follow-ups-meanings\" class=\"btn sm\" popovertarget=\"follow-ups-meanings\">What each signal means</button><div id=\"follow-ups-meanings\" popover class=\"rk-pop rk-defs\"><dl>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		for _, d := range riskDefinitions {
+		for _, d := range followUpDefinitions {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<dt>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -245,7 +245,7 @@ func risksMeanings() templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(d.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 62, Col: 16}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 62, Col: 16}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -258,7 +258,7 @@ func risksMeanings() templ.Component {
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(d.Means)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 63, Col: 17}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 63, Col: 17}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
@@ -277,15 +277,15 @@ func risksMeanings() templ.Component {
 	})
 }
 
-// risksFilters scopes the Risks page by its Scope (Everyone, Mine or an
+// followUpsFilters scopes the Follow-ups page by its Scope (Everyone, Mine or an
 // Org), and to the Goals with a value of each Dimension, one select per
 // offered Dimension named for it, submitted as a GET so the scope lives in the
 // address, carrying the page's group along. Under htmx it applies itself on a change, as the Goal list's
-// filter bar does, swapping in only #risks-body so the form keeps its focus,
+// filter bar does, swapping in only #follow-ups-body so the form keeps its focus,
 // and pushes the address; hx-history="false" makes Back load the earlier
 // address afresh rather than a snapshot whose selects would come back
 // unchosen.
-func risksFilters(v risksPageView) templ.Component {
+func followUpsFilters(v followUpsPageView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -306,7 +306,7 @@ func risksFilters(v risksPageView) templ.Component {
 			templ_7745c5c3_Var11 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<form method=\"get\" action=\"/risks\" data-testid=\"risks-filters\" class=\"rk-filters\" hx-get=\"/risks\" hx-trigger=\"submit, change\" hx-target=\"#risks-body\" hx-select=\"#risks-body\" hx-swap=\"outerHTML\" hx-push-url=\"true\" hx-sync=\"this:replace\" hx-history=\"false\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<form method=\"get\" action=\"/follow-ups\" data-testid=\"follow-ups-filters\" class=\"rk-filters\" hx-get=\"/follow-ups\" hx-trigger=\"submit, change\" hx-target=\"#follow-ups-body\" hx-select=\"#follow-ups-body\" hx-swap=\"outerHTML\" hx-push-url=\"true\" hx-sync=\"this:replace\" hx-history=\"false\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -318,7 +318,7 @@ func risksFilters(v risksPageView) templ.Component {
 			var templ_7745c5c3_Var12 string
 			templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.ResolveAttributeValue(v.Group)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 93, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 93, Col: 52}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var12)
 			if templ_7745c5c3_Err != nil {
@@ -329,19 +329,19 @@ func risksFilters(v risksPageView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = pageScopeSelect("risks-scope", v.Org).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = pageScopeSelect("follow-ups-scope", v.Org).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, d := range v.Dimensions {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<select data-testid=\"risks-value\" data-dimension=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<select data-testid=\"follow-ups-value\" data-dimension=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var13 string
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 97, Col: 60}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 97, Col: 65}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var13)
 			if templ_7745c5c3_Err != nil {
@@ -354,7 +354,7 @@ func risksFilters(v risksPageView) templ.Component {
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.ResolveAttributeValue(d.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 97, Col: 95}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 97, Col: 100}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var14)
 			if templ_7745c5c3_Err != nil {
@@ -377,7 +377,7 @@ func risksFilters(v risksPageView) templ.Component {
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(d.Name + ": any")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 98, Col: 77}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 98, Col: 77}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
@@ -395,7 +395,7 @@ func risksFilters(v risksPageView) templ.Component {
 				var templ_7745c5c3_Var16 string
 				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.ResolveAttributeValue(strconv.FormatInt(dv.ID, 10))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 100, Col: 49}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 100, Col: 49}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var16)
 				if templ_7745c5c3_Err != nil {
@@ -416,9 +416,9 @@ func risksFilters(v risksPageView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var17 string
-				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(riskValueLabel(dv))
+				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(followUpValueLabel(dv))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 100, Col: 114}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 100, Col: 118}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 				if templ_7745c5c3_Err != nil {
@@ -442,8 +442,8 @@ func risksFilters(v risksPageView) templ.Component {
 	})
 }
 
-// riskCardsView is the page's group cards, in the page's order.
-func riskCardsView(v risksPageView) templ.Component {
+// followUpCardsView is the page's group cards, in the page's order.
+func followUpCardsView(v followUpsPageView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -464,12 +464,12 @@ func riskCardsView(v risksPageView) templ.Component {
 			templ_7745c5c3_Var18 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<nav data-testid=\"risks-groups\" class=\"rk-cards\" aria-label=\"Risks by who acts\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<nav data-testid=\"follow-ups-groups\" class=\"rk-cards\" aria-label=\"Follow-ups by who acts\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, c := range v.Cards() {
-			templ_7745c5c3_Err = riskCardView(c).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpCardView(c).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -482,10 +482,10 @@ func riskCardsView(v risksPageView) templ.Component {
 	})
 }
 
-// riskCardView is one group's summary card: its name, how many Goals it
+// followUpCardView is one group's summary card: its name, how many Goals it
 // holds, and a chip per signal that flags one, linking to the page filtered to
 // the group. A group holding none is a muted card saying so, linking nowhere.
-func riskCardView(c riskCard) templ.Component {
+func followUpCardView(c followUpCard) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -512,9 +512,9 @@ func riskCardView(c riskCard) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var20 string
-			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue("risks-group-" + c.Key)
+			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.ResolveAttributeValue("follow-ups-group-" + c.Key)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 122, Col: 43}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 122, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var20)
 			if templ_7745c5c3_Err != nil {
@@ -527,7 +527,7 @@ func riskCardView(c riskCard) templ.Component {
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(c.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 123, Col: 31}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 123, Col: 31}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
@@ -540,7 +540,7 @@ func riskCardView(c riskCard) templ.Component {
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(c.Blank)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 124, Col: 18}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 124, Col: 18}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
@@ -551,7 +551,7 @@ func riskCardView(c riskCard) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = riskCardLink(c).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpCardLink(c).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -560,8 +560,8 @@ func riskCardView(c riskCard) templ.Component {
 	})
 }
 
-// riskCardLink is a group's card when it holds Goals.
-func riskCardLink(c riskCard) templ.Component {
+// followUpCardLink is a group's card when it holds Goals.
+func followUpCardLink(c followUpCard) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -587,9 +587,9 @@ func riskCardLink(c riskCard) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var24 string
-		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue("risks-group-" + c.Key)
+		templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.ResolveAttributeValue("follow-ups-group-" + c.Key)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 133, Col: 40}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 133, Col: 45}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var24)
 		if templ_7745c5c3_Err != nil {
@@ -602,7 +602,7 @@ func riskCardLink(c riskCard) templ.Component {
 		var templ_7745c5c3_Var25 templ.SafeURL
 		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinURLErrs(c.Href)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 133, Col: 56}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 133, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 		if templ_7745c5c3_Err != nil {
@@ -623,7 +623,7 @@ func riskCardLink(c riskCard) templ.Component {
 		var templ_7745c5c3_Var26 string
 		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(c.Name)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 134, Col: 30}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 134, Col: 30}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 		if templ_7745c5c3_Err != nil {
@@ -636,7 +636,7 @@ func riskCardLink(c riskCard) templ.Component {
 		var templ_7745c5c3_Var27 string
 		templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(strconv.Itoa(c.Count))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 135, Col: 43}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 135, Col: 43}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 		if templ_7745c5c3_Err != nil {
@@ -647,19 +647,19 @@ func riskCardLink(c riskCard) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		for _, sig := range c.Signals {
-			var templ_7745c5c3_Var28 = []any{riskChipClass(sig.Anchor)}
+			var templ_7745c5c3_Var28 = []any{followUpChipClass(sig.Anchor)}
 			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var28...)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<span data-testid=\"risk-signal\" data-kind=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<span data-testid=\"follow-up-signal\" data-kind=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.ResolveAttributeValue(sig.Anchor)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 138, Col: 58}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 138, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var29)
 			if templ_7745c5c3_Err != nil {
@@ -672,7 +672,7 @@ func riskCardLink(c riskCard) templ.Component {
 			var templ_7745c5c3_Var30 string
 			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.ResolveAttributeValue(templ.CSSClasses(templ_7745c5c3_Var28).String())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 1, Col: 0}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 1, Col: 0}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var30)
 			if templ_7745c5c3_Err != nil {
@@ -685,7 +685,7 @@ func riskCardLink(c riskCard) templ.Component {
 			var templ_7745c5c3_Var31 string
 			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(sig.Name + " · " + strconv.Itoa(sig.Count))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 138, Col: 142}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 138, Col: 151}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 			if templ_7745c5c3_Err != nil {
@@ -704,9 +704,9 @@ func riskCardLink(c riskCard) templ.Component {
 	})
 }
 
-// risksTable is the flagged Goals, one row each, most urgent first. A Fix that
+// followUpsTable is the flagged Goals, one row each, most urgent first. A Fix that
 // posts returns to here, the page's address.
-func risksTable(current *domain.Account, today time.Time, here string, rows []riskGoalRow) templ.Component {
+func followUpsTable(current *domain.Account, today time.Time, here string, rows []followUpGoalRow) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -727,12 +727,12 @@ func risksTable(current *domain.Account, today time.Time, here string, rows []ri
 			templ_7745c5c3_Var32 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<div class=\"card\"><table id=\"risks-table\" class=\"rk-table\" data-testid=\"risks-table\"><thead><tr><th>Health</th><th>Goal</th><th>Owner</th><th aria-label=\"Next step\"></th></tr></thead> <tbody>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<div class=\"card\"><table id=\"follow-ups-table\" class=\"rk-table\" data-testid=\"follow-ups-table\"><thead><tr><th>Health</th><th>Goal</th><th>Owner</th><th aria-label=\"Next step\"></th></tr></thead> <tbody>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		for _, r := range rows {
-			templ_7745c5c3_Err = riskRow(current, today, here, r).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpRow(current, today, here, r).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -741,15 +741,15 @@ func risksTable(current *domain.Account, today time.Time, here string, rows []ri
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		for _, d := range riskDefinitionsIn(rows) {
+		for _, d := range followUpDefinitionsIn(rows) {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<div id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var33 string
-			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.ResolveAttributeValue(riskMeansID(d.Kind))
+			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.ResolveAttributeValue(followUpMeansID(d.Kind))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 159, Col: 32}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 159, Col: 36}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var33)
 			if templ_7745c5c3_Err != nil {
@@ -762,7 +762,7 @@ func risksTable(current *domain.Account, today time.Time, here string, rows []ri
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(d.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 159, Col: 83}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 159, Col: 87}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
@@ -775,7 +775,7 @@ func risksTable(current *domain.Account, today time.Time, here string, rows []ri
 			var templ_7745c5c3_Var35 string
 			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(d.Means)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 159, Col: 104}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 159, Col: 108}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 			if templ_7745c5c3_Err != nil {
@@ -794,14 +794,14 @@ func risksTable(current *domain.Account, today time.Time, here string, rows []ri
 	})
 }
 
-// riskRow is one flagged Goal: its Health, with its Run off Green on a Not
+// followUpRow is one flagged Goal: its Health, with its Run off Green on a Not
 // Green row ("Red · 5 wks"), its title with a chip per signal
 // that flags it, then on a Not Green row whose back-to-Green date slipped in
 // its Run off Green a tag reading it as a Milestone's slipped date does
 // ("Back to Green Oct 3 ~~Sep 12~~ (3)"), which isn't a signal; its Owner
 // ("You" for the viewer's own), and a cell for its fix: a link, a form
 // posting back to here, or a disabled button saying why it can't be used.
-func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRow) templ.Component {
+func followUpRow(current *domain.Account, today time.Time, here string, r followUpGoalRow) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -822,23 +822,23 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			templ_7745c5c3_Var36 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "<tr data-testid=\"risk-row\"><td class=\"rk-health\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "<tr data-testid=\"follow-up-row\"><td class=\"rk-health\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = healthBadge("risk-health", r.Health).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = healthBadge("follow-up-health", r.Health).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if r.RunOffGreen.Running() {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<span data-testid=\"risk-run-off-green\" class=\"muted small\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<span data-testid=\"follow-up-run-off-green\" class=\"muted small\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var37 string
 			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs("· " + r.RunOffGreen.Label())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 176, Col: 94}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 176, Col: 99}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 			if templ_7745c5c3_Err != nil {
@@ -849,14 +849,14 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</td><td data-testid=\"risk-goal\" class=\"rk-goal\"><a href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</td><td data-testid=\"follow-up-goal\" class=\"rk-goal\"><a href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var38 templ.SafeURL
 		templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(fmt.Sprintf("/goals/%d", r.Goal.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 180, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 180, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 		if templ_7745c5c3_Err != nil {
@@ -869,7 +869,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 		var templ_7745c5c3_Var39 string
 		templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(r.Goal.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 180, Col: 80}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 180, Col: 80}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 		if templ_7745c5c3_Err != nil {
@@ -880,26 +880,26 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			return templ_7745c5c3_Err
 		}
 		for _, sig := range r.Signals {
-			templ_7745c5c3_Err = riskChip(today, r.Goal, sig).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpChip(today, r.Goal, sig).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if len(r.PathPriorDates) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "<span data-testid=\"risk-back-to-green\" class=\"rk-tag\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "<span data-testid=\"follow-up-back-to-green\" class=\"rk-tag\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs("Back to Green ")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 187, Col: 24}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 187, Col: 24}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = slippedDates(r.PathTargetDate, r.PathPriorDates, displayDates{Now: today, Loc: today.Location()}, "risk-back-to-green-slips").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = slippedDates(r.PathTargetDate, r.PathPriorDates, displayDates{Now: today, Loc: today.Location()}, "follow-up-back-to-green-slips").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -908,7 +908,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "</span></td><td data-testid=\"risk-owner\" class=\"rk-owner\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "</span></td><td data-testid=\"follow-up-owner\" class=\"rk-owner\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -923,7 +923,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "</td><td data-testid=\"risk-fix\" class=\"rk-fix\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "</td><td data-testid=\"follow-up-fix\" class=\"rk-fix\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -935,7 +935,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var41 string
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(r.Fix.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 202, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 202, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 			if templ_7745c5c3_Err != nil {
@@ -953,7 +953,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var42 templ.SafeURL
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(r.Fix.Href))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 204, Col: 78}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 204, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 			if templ_7745c5c3_Err != nil {
@@ -966,7 +966,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var43 string
 			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.ResolveAttributeValue(here)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 205, Col: 52}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 205, Col: 52}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var43)
 			if templ_7745c5c3_Err != nil {
@@ -979,7 +979,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var44 string
 			templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(r.Fix.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 206, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 206, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 			if templ_7745c5c3_Err != nil {
@@ -997,7 +997,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var45 templ.SafeURL
 			templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(r.Fix.Href))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 209, Col: 62}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 209, Col: 62}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 			if templ_7745c5c3_Err != nil {
@@ -1010,7 +1010,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var46 string
 			templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(r.Fix.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 209, Col: 78}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 209, Col: 78}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 			if templ_7745c5c3_Err != nil {
@@ -1028,7 +1028,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var47 templ.SafeURL
 			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(r.Fix.Href))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 211, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 211, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 			if templ_7745c5c3_Err != nil {
@@ -1041,7 +1041,7 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 			var templ_7745c5c3_Var48 string
 			templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(r.Fix.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 211, Col: 70}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 211, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
 			if templ_7745c5c3_Err != nil {
@@ -1060,12 +1060,12 @@ func riskRow(current *domain.Account, today time.Time, here string, r riskGoalRo
 	})
 }
 
-// riskChip says why a signal flags g. Red and Yellow, Not Green's signals,
+// followUpChip says why a signal flags g. Red and Yellow, Not Green's signals,
 // take no chip: the row's Health badge says so already. An Ask for help names
 // whom it asks, or says no one is above the Owner. Each chip's words are a
-// riskTip opening what its signal means; a chip holding a person or a link
-// keeps them after its riskTip, since a button can't hold them.
-func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
+// followUpTip opening what its signal means; a chip holding a person or a link
+// keeps them after its followUpTip, since a button can't hold them.
+func followUpChip(today time.Time, g domain.Goal, sig followUpSignal) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -1089,12 +1089,12 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 		switch sig.Kind {
 		case "red", "yellow":
 		case "asks-for-help":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "<span data-testid=\"risk-signal\" data-kind=\"asks-for-help\" class=\"rk-tag\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 86, "<span data-testid=\"follow-up-signal\" data-kind=\"asks-for-help\" class=\"rk-tag\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if sig.Person != nil {
-				templ_7745c5c3_Err = riskTip(sig.Kind, "Asks for help").Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = followUpTip(sig.Kind, "Asks for help").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1105,7 +1105,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 				var templ_7745c5c3_Var50 string
 				templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs("of ")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 229, Col: 12}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 229, Col: 12}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
 				if templ_7745c5c3_Err != nil {
@@ -1116,7 +1116,7 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = riskTip(sig.Kind, "Asks for help · no one above the Owner").Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = followUpTip(sig.Kind, "Asks for help · no one above the Owner").Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -1126,11 +1126,11 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		case "checkin-overdue":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "<span data-testid=\"risk-signal\" data-kind=\"checkin-overdue\" class=\"badge st\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "<span data-testid=\"follow-up-signal\" data-kind=\"checkin-overdue\" class=\"badge st\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = riskTip(sig.Kind, "Check-in overdue · "+plural(sig.Days, "day")+", checks in "+cadenceInWords(g.CadenceDays)).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpTip(sig.Kind, "Check-in overdue · "+plural(sig.Days, "day")+", checks in "+cadenceInWords(g.CadenceDays)).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1139,11 +1139,11 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		case "path-overdue":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "<span data-testid=\"risk-signal\" data-kind=\"path-overdue\" class=\"badge st\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 91, "<span data-testid=\"follow-up-signal\" data-kind=\"path-overdue\" class=\"badge st\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = riskTip(sig.Kind, "Path to Green "+plural(sig.Days, "day")+" overdue").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpTip(sig.Kind, "Path to Green "+plural(sig.Days, "day")+" overdue").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1152,11 +1152,11 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		case "milestone-overdue":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "<span data-testid=\"risk-signal\" data-kind=\"milestone-overdue\" class=\"badge st\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "<span data-testid=\"follow-up-signal\" data-kind=\"milestone-overdue\" class=\"badge st\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = riskTip(sig.Kind, "Milestone "+plural(sig.Days, "day")+" overdue").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpTip(sig.Kind, "Milestone "+plural(sig.Days, "day")+" overdue").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1165,11 +1165,11 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		case "action-item-overdue":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "<span data-testid=\"risk-signal\" data-kind=\"action-item-overdue\" class=\"badge st\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "<span data-testid=\"follow-up-signal\" data-kind=\"action-item-overdue\" class=\"badge st\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = riskTip(sig.Kind, "Action Item "+plural(sig.Days, "day")+" overdue").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpTip(sig.Kind, "Action Item "+plural(sig.Days, "day")+" overdue").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1178,11 +1178,11 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		case "ownerless":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "<span data-testid=\"risk-signal\" data-kind=\"ownerless\" class=\"badge ol\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "<span data-testid=\"follow-up-signal\" data-kind=\"ownerless\" class=\"badge ol\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = riskTip(sig.Kind, "Ownerless").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpTip(sig.Kind, "Ownerless").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1191,11 +1191,11 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		case "unlinked":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, "<span data-testid=\"risk-signal\" data-kind=\"unlinked\" class=\"rk-tag\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, "<span data-testid=\"follow-up-signal\" data-kind=\"unlinked\" class=\"rk-tag\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = riskTip(sig.Kind, "Unlinked · no parent Goal, not Top-level").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpTip(sig.Kind, "Unlinked · no parent Goal, not Top-level").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1204,18 +1204,18 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		case "schedule-conflicts":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, "<span data-testid=\"risk-signal\" data-kind=\"schedule-conflicts\" class=\"rk-tag\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, "<span data-testid=\"follow-up-signal\" data-kind=\"schedule-conflicts\" class=\"rk-tag\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = riskTip(sig.Kind, "Schedule conflict").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpTip(sig.Kind, "Schedule conflict").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var51 string
-			templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf(" · due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), riskDays(sig.Days)))
+			templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinStringErrs(fmt.Sprintf(" · due %s, %s after its parent ", showDate(g.DeliveryDate, today, today.Location()), followUpDays(sig.Days)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 261, Col: 124}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 261, Col: 128}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 			if templ_7745c5c3_Err != nil {
@@ -1230,18 +1230,18 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		case "halted-parents":
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "<span data-testid=\"risk-signal\" data-kind=\"halted-parents\" class=\"rk-tag\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "<span data-testid=\"follow-up-signal\" data-kind=\"halted-parents\" class=\"rk-tag\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = riskTip(sig.Kind, "Parent "+sig.Related.Lifecycle).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = followUpTip(sig.Kind, "Parent "+sig.Related.Lifecycle).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var52 string
 			templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(" · ")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 266, Col: 12}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 266, Col: 12}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 			if templ_7745c5c3_Err != nil {
@@ -1260,10 +1260,10 @@ func riskChip(today time.Time, g domain.Goal, sig riskSignal) templ.Component {
 	})
 }
 
-// riskTip is a toggletip: a button reading label that opens, with no script,
-// the popover risksTable holds saying what the signal of kind means, and that
+// followUpTip is a toggletip: a button reading label that opens, with no script,
+// the popover followUpsTable holds saying what the signal of kind means, and that
 // takes the meaning as its description.
-func riskTip(kind, label string) templ.Component {
+func followUpTip(kind, label string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -1289,9 +1289,9 @@ func riskTip(kind, label string) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var54 string
-		templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.ResolveAttributeValue(riskMeansID(kind))
+		templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.ResolveAttributeValue(followUpMeansID(kind))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 275, Col: 71}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 275, Col: 75}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var54)
 		if templ_7745c5c3_Err != nil {
@@ -1302,9 +1302,9 @@ func riskTip(kind, label string) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var55 string
-		templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.ResolveAttributeValue(riskMeansID(kind))
+		templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.ResolveAttributeValue(followUpMeansID(kind))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 275, Col: 110}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 275, Col: 118}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var55)
 		if templ_7745c5c3_Err != nil {
@@ -1317,7 +1317,7 @@ func riskTip(kind, label string) templ.Component {
 		var templ_7745c5c3_Var56 string
 		templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/risks.templ`, Line: 275, Col: 120}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/followups.templ`, Line: 275, Col: 128}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
 		if templ_7745c5c3_Err != nil {
@@ -1331,7 +1331,7 @@ func riskTip(kind, label string) templ.Component {
 	})
 }
 
-// risksStyles are the Risks page's own rules on top of app.css: the header
+// followUpsStyles are the Follow-ups page's own rules on top of app.css: the header
 // form, the summary cards, the chips under each Goal in the table, the
 // outlined neutral chip the structural signals take: a .tag with the badges'
 // small radius, the buttons naming the chips' signals, and the popovers saying
@@ -1341,7 +1341,7 @@ func riskTip(kind, label string) templ.Component {
 // first though it comes second in the HTML, then Health and Owner on one line,
 // then the Fix, and the full list of what each signal means stacks each name
 // over its meaning.
-func risksStyles() templ.Component {
+func followUpsStyles() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {

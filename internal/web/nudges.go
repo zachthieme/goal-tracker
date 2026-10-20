@@ -10,7 +10,7 @@ import (
 )
 
 // handleNudge nudges the path's Goal's Owner and Delegates to check in on it
-// (CONTEXT.md: Nudge) and returns to the Risks page it was sent from, keeping
+// (CONTEXT.md: Nudge) and returns to the Follow-ups page it was sent from, keeping
 // that page's filters (return). No toast confirms it: a Nudge can't be undone,
 // and the row's Fix now says the Goal was nudged today. A refusal, or a Nudge
 // recorded whose email couldn't go out, is said on a page of its own.
@@ -22,7 +22,7 @@ func (s *Server) handleNudge(w http.ResponseWriter, r *http.Request, current dom
 	_, err := s.svc.Nudge(r.Context(), current.ID, goalID)
 	switch {
 	case err == nil:
-		http.Redirect(w, r, risksReturn(r.FormValue("return")), http.StatusSeeOther)
+		http.Redirect(w, r, followUpsReturn(r.FormValue("return")), http.StatusSeeOther)
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, r)
 	case errors.Is(err, domain.ErrValidation):
@@ -39,12 +39,12 @@ func (s *Server) handleNudge(w http.ResponseWriter, r *http.Request, current dom
 	}
 }
 
-// risksReturn is where a Nudge returns: the Risks page at back when back is
-// that page, its filters and all, and the plain Risks page otherwise.
-func risksReturn(back string) string {
+// followUpsReturn is where a Nudge returns: the Follow-ups page at back when back is
+// that page, its filters and all, and the plain Follow-ups page otherwise.
+func followUpsReturn(back string) string {
 	u, err := url.Parse(back)
-	if err != nil || !localPath(back) || u.Path != "/risks" || u.RawQuery == "" {
-		return "/risks"
+	if err != nil || !localPath(back) || u.Path != "/follow-ups" || u.RawQuery == "" {
+		return "/follow-ups"
 	}
-	return "/risks?" + u.RawQuery
+	return "/follow-ups?" + u.RawQuery
 }

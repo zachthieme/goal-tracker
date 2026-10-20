@@ -409,7 +409,7 @@ func goalsOfValues(gvs []domain.GoalWithValues) []domain.Goal {
 // way to find Goals, so anyone may scope to anyone's (ADR 0002, ADR 0008).
 // An address naming no scope opens on the viewer's default: My org for
 // someone with anyone under them, Mine for everyone else. The Goals pages and
-// Risks share it.
+// Follow-ups share it.
 type pageOrgScope struct {
 	// Of is the person whose Org the page is scoped to, nil when it isn't.
 	Of *domain.Account

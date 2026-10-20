@@ -1,4 +1,4 @@
-// What each Risks signal means: each signal chip in the table names its
+// What each Follow-ups signal means: each signal chip in the table names its
 // signal with a button opening a popover saying what it means, and "What each
 // signal means" beside the count opens them all. A tap opens one and a second
 // tap, Escape or a tap outside closes it; at 390px an open one stays within
@@ -26,8 +26,8 @@ for (const viewport of [phone, { width: 1280, height: 800 }]) {
   test(`at ${viewport.width}px a signal chip opens what it means within the window`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await signIn(page, "ceo@example.com");
-    await page.goto("/risks");
-    const tips = page.locator('[data-testid="risk-signal"] button.rk-tip');
+    await page.goto("/follow-ups");
+    const tips = page.locator('[data-testid="follow-up-signal"] button.rk-tip');
     await expect(tips.first()).toBeVisible();
     for (const tip of await tips.all()) {
       const pop = page.locator(`#${await tip.getAttribute("popovertarget")}`);
@@ -50,8 +50,8 @@ for (const viewport of [phone, { width: 1280, height: 800 }]) {
   test(`at ${viewport.width}px What each signal means opens every definition within the window`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await signIn(page, "ceo@example.com");
-    await page.goto("/risks");
-    const pop = page.locator("#risks-meanings");
+    await page.goto("/follow-ups");
+    const pop = page.locator("#follow-ups-meanings");
     await page.getByRole("button", { name: "What each signal means" }).click();
     await expect(pop).toBeVisible();
     await expect(pop.locator("dt")).toHaveCount(11);

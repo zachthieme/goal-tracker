@@ -44,17 +44,17 @@ func needsYou(ctx context.Context) int {
 	return n
 }
 
-type risksKey struct{}
+type followUpsKey struct{}
 
-// withRisks records how many Goals the Risks page flags, so the top bar's Risks
+// withFollowUps records how many Goals the Follow-ups page flags, so the top bar's Follow-ups
 // item can count them without every page passing it along.
-func withRisks(ctx context.Context, n int) context.Context {
-	return context.WithValue(ctx, risksKey{}, n)
+func withFollowUps(ctx context.Context, n int) context.Context {
+	return context.WithValue(ctx, followUpsKey{}, n)
 }
 
-// risks is how many Goals the Risks page flags, 0 when uncounted.
-func risks(ctx context.Context) int {
-	n, _ := ctx.Value(risksKey{}).(int)
+// followUps is how many Goals the Follow-ups page flags, 0 when uncounted.
+func followUps(ctx context.Context) int {
+	n, _ := ctx.Value(followUpsKey{}).(int)
 	return n
 }
 
@@ -183,7 +183,7 @@ func layout(title string, current *domain.Account) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = navItem("/risks", "nav-risks", "Risks", risks(ctx), "count").Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = navItem("/follow-ups", "nav-follow-ups", "Follow-ups", followUps(ctx), "count").Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

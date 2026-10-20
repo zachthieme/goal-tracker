@@ -162,7 +162,7 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     await expect(marcus.getByTestId("goal-rollup-explanation")).toContainText(why);
   });
 
-  await test.step("4.6 a passed back-to-Green date is flagged on Risks and on the Goals list", async () => {
+  await test.step("4.6 a passed back-to-Green date is flagged on Follow-ups and on the Goals list", async () => {
     // Two days ago, so it has passed in any org timezone.
     await page.goto(`/goals/${project.id}/checkin`);
     const form = page.getByTestId("checkin-form");
@@ -178,17 +178,17 @@ test("an Owner reports bad news: Path to Green, Date Slips, Rolled-up Health", a
     await submit(form);
     await page.waitForURL(`**/goals/${project.id}`);
 
-    await marcus.goto("/risks");
-    await marcus.getByTestId("risks-group-owner").click();
+    await marcus.goto("/follow-ups");
+    await marcus.getByTestId("follow-ups-group-owner").click();
     await expect(marcus).toHaveURL(/[?&]group=owner\b/);
     const row = marcus
-      .getByTestId("risk-row")
+      .getByTestId("follow-up-row")
       .filter({ has: marcus.getByRole("link", { name: project.title, exact: true }) });
-    await expect(row.getByTestId("risk-owner")).toContainText(project.name);
-    await expect(row.locator('[data-testid="risk-signal"][data-kind="path-overdue"]')).toHaveText(
+    await expect(row.getByTestId("follow-up-owner")).toContainText(project.name);
+    await expect(row.locator('[data-testid="follow-up-signal"][data-kind="path-overdue"]')).toHaveText(
       /^Path to Green \d+ days? overdue$/,
     );
-    await expect(row.getByTestId("risk-fix")).toHaveCount(1);
+    await expect(row.getByTestId("follow-up-fix")).toHaveCount(1);
 
     // On everyone's Goals list it sorts with the Check-in overdue and overdue
     // Goals, a Green one marked Milestone overdue among them, above every

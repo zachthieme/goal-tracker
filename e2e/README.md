@@ -98,7 +98,7 @@ report to the CEO, the Platform, Mobile and Data leads to the CTO, the
 Payments, Growth and Support leads to the CPO, and each team's people to their
 lead. Sign in as `ceo@` to see the whole company as one Org, or as a lead to
 see a team's. A fresh seed has Not Green (Red and Yellow), Check-in overdue,
-Unlinked and Schedule conflict Goals on Risks. **Needs an Admin** is empty, and
+Unlinked and Schedule conflict Goals on Follow-ups. **Needs an Admin** is empty, and
 no Path to Green is overdue: every back-to-Green date is 3–6 weeks ahead. A test
 that needs an overdue one makes it. The app accepts a back-to-Green date in the
 past.
@@ -110,7 +110,7 @@ the reference instant each test's app starts its clock at.
 sign in, one at a time and two at once, and that the `due` template is due. [`isolation.spec.ts`](isolation.spec.ts) checks that two tests
 writing to the same Goal at once each see only their own write.
 [`phone-width.spec.ts`](phone-width.spec.ts) checks that at 390px the Goals
-list, Risks, the Admin page, a Report draft, the New goal page, with its
+list, Follow-ups, the Admin page, a Report draft, the New goal page, with its
 Metric editor open, and the Check-in page, with Yellow picked, don't clip or
 scroll sideways, and keep every control on screen.
 [`checkin-submit-bar.spec.ts`](checkin-submit-bar.spec.ts) checks the
@@ -170,7 +170,7 @@ a saved item.
 - **Find elements by role and visible text**, in `CONTEXT.md`'s terms. Use the
   existing `data-testid`s where text is ambiguous. Don't use CSS classes.
 - **Name each `test.step` after the scenario step it checks**, e.g.
-  `"1.3 Risks groups by who has to act"`. Assert each "It worked if" clause
+  `"1.3 Follow-ups groups by who has to act"`. Assert each "It worked if" clause
   somewhere, and name it in a comment there.
 - **When the product falls short of a step, don't change the app** in that
   issue. Mark that step's test `test.fixme`, with a comment quoting the step and
