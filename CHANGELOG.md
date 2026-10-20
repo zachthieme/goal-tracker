@@ -32,6 +32,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 **Code quality:**
 - [internal] The space between an Ask for help's Addressee and "Answer" on the Goal page is now written explicitly, not produced by a comment line in the template. The rendered page is unchanged (#373).
 
+**Documentation:**
+- [internal] CONTEXT.md renames three terms that read negative by default: So What becomes **Why it matters**, Stale becomes **Check-in overdue**, and Unaligned becomes **Unlinked**, each keeping its old name on its Avoid list. The Risks page is now called **Follow-ups** there. The code and pages follow in their own issues (#380).
+
 ### Collected changes — October 19, 2026
 
 **Breaking changes:**

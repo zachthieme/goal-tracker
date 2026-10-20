@@ -21,7 +21,7 @@ The person someone reports to, as the company's directory records it. It is read
 _Avoid_: boss, supervisor, lead, reports to (it collides with Report)
 
 **Timezone**:
-Where a person works, as the company's directory records it; read from the directory and never set in the tool. A person without one uses the company's. A Goal's own dates and cadence are judged in its Owner's Timezone: whether it is Stale, whether a Milestone or the back-to-Green date has passed, whether a Metric is off target, and its Run off Green. An Ownerless Goal uses the company's. Company-wide dates, such as a Report's baseline, stay in the company's timezone.
+Where a person works, as the company's directory records it; read from the directory and never set in the tool. A person without one uses the company's. A Goal's own dates and cadence are judged in its Owner's Timezone: whether its Check-in is overdue, whether a Milestone or the back-to-Green date has passed, whether a Metric is off target, and its Run off Green. An Ownerless Goal uses the company's. Company-wide dates, such as a Report's baseline, stay in the company's timezone.
 _Avoid_: locale, location, region
 
 **Org**:
@@ -38,9 +38,9 @@ _Avoid_: deactivated, deleted, offboarded
 The single unit of work being tracked, at any level, from a company-wide outcome to a team project. It may carry Metrics and Milestones. Its title can be changed by its Owner or an Admin in any Lifecycle, and each change is kept in the Goal's history with the old and new titles.
 _Avoid_: Objective, Key Result, Project, Initiative (as distinct types)
 
-**So What**:
+**Why it matters**:
 The customer problem a Goal addresses and what is expected to change when it succeeds. Required when the Goal is created; edits are tracked.
-_Avoid_: rationale, description, why
+_Avoid_: so what, rationale, description
 
 **Owner**:
 The one person accountable for a Goal, who writes its Check-ins and answers for it in Reports.
@@ -55,11 +55,11 @@ The transfer of a Goal to a new Owner, which takes effect only when the new Owne
 _Avoid_: reassignment, transfer
 
 **Ownerless**:
-A Goal whose Owner is Departed and hasn't been replaced, either by an Admin reassigning it or by accepting a Handoff the Owner started before leaving. Surfaced as prominently as Red and Stale, and reported to the Owners of its parents.
+A Goal whose Owner is Departed and hasn't been replaced, either by an Admin reassigning it or by accepting a Handoff the Owner started before leaving. Surfaced as prominently as Red and Check-in overdue, and reported to the Owners of its parents.
 _Avoid_: orphaned, unassigned
 
 **Admin**:
-One of a small set of people who define Dimensions and Fields, reassign Ownerless Goals, can edit any Goal's title and So What, and can override links and Lifecycle changes. An Admin can make another person an Admin, or take the role from another Admin, but never from themselves, so there is always at least one.
+One of a small set of people who define Dimensions and Fields, reassign Ownerless Goals, can edit any Goal's title and Why it matters, and can override links and Lifecycle changes. An Admin can make another person an Admin, or take the role from another Admin, but never from themselves, so there is always at least one.
 _Avoid_: moderator, superuser
 
 **Contributor**:
@@ -73,7 +73,7 @@ _Avoid_: KPI, key result, measure
 **Milestone**:
 A dated checkpoint within a Goal. A Milestone slip that doesn't move the Goal's delivery date does not affect Health.
 The Goal's Owner or a Delegate can add a Milestone at any time while the Goal is Proposed, Active or On Hold, from the Goal page or in a Check-in; one added from the Goal page once the Goal is Active is kept in the Goal's history with who added it. Moving a Milestone's date (a Date Slip) and marking it Done or Removed still happen only in a Check-in.
-Wherever Milestones are listed (the Goal page, a Report, its Markdown export), each reads mark, date, name, with one mark, the first that applies: **Done**; **Removed**; **Red**, still Planned and past its date; **Yellow**, still Planned and slipped at least once; **New**, still Planned and added within the window (since the Report's baseline, or on the Goal page by the Goal's latest Check-in or since it). A Planned Milestone with none of these has no mark and reads as on track. The marks are display marks, not a Health (see **Health**): they never feed the Goal's Health, which its Owner sets. An Active Goal whose latest Check-in is Green while a Milestone is overdue is marked Milestone overdue beside its Health on the Goal list and on Risks. The Health stays the Owner's, and a No change is refused until they respond (see **Check-in**).
+Wherever Milestones are listed (the Goal page, a Report, its Markdown export), each reads mark, date, name, with one mark, the first that applies: **Done**; **Removed**; **Red**, still Planned and past its date; **Yellow**, still Planned and slipped at least once; **New**, still Planned and added within the window (since the Report's baseline, or on the Goal page by the Goal's latest Check-in or since it). A Planned Milestone with none of these has no mark and reads as on track. The marks are display marks, not a Health (see **Health**): they never feed the Goal's Health, which its Owner sets. An Active Goal whose latest Check-in is Green while a Milestone is overdue is marked Milestone overdue beside its Health on the Goal list and on Follow-ups. The Health stays the Owner's, and a No change is refused until they respond (see **Check-in**).
 _Avoid_: task, deliverable, phase
 
 **Dated Goal**:
@@ -92,12 +92,12 @@ _Avoid_: rolls up to, parent/child hierarchy, alignment
 A proposal, from someone other than a Goal's Owner, that the Goal contribute to a particular parent. Only the Goal's Owner decides it: accepting it requests the link as if the Owner had, declining it ends it. Each is kept in the Goal's history with its outcome.
 _Avoid_: link suggestion, recommendation, proposed link
 
-**Unaligned**:
+**Unlinked**:
 An Active Goal that contributes to no other Goal and is not a Top-level Goal. Allowed, but listed where leadership can see it.
-_Avoid_: orphan, root
+_Avoid_: unaligned, orphan, root
 
 **Top-level Goal**:
-A Goal an Admin has marked as one of the company's root outcomes. It isn't expected to contribute to anything, so it's never Unaligned.
+A Goal an Admin has marked as one of the company's root outcomes. It isn't expected to contribute to anything, so it's never Unlinked.
 _Avoid_: root, north star, company goal
 
 **Dimension**:
@@ -121,7 +121,7 @@ A Dimension, a Dimension's value, or a Field that an Admin has withdrawn. It is 
 _Avoid_: deleted, archived, disabled
 
 **Incomplete**:
-An Active Goal missing a value in a Dimension or Field that an Admin has marked required. Flagged and listed, but less prominently than Red or Stale. A Proposed Goal can't become Active while it would be Incomplete.
+An Active Goal missing a value in a Dimension or Field that an Admin has marked required. Flagged and listed, but less prominently than Red or Check-in overdue. A Proposed Goal can't become Active while it would be Incomplete.
 _Avoid_: invalid, missing data
 
 Teams are not a built-in concept; a company that wants them adds a Team Dimension. The structure of the goal graph comes only from what Goals drive.
@@ -140,9 +140,9 @@ _Avoid_: computed status, aggregate health
 How long an Active Goal has been Yellow or Red without a Green Check-in in between, counted in weeks of the Owner's Timezone. Moving between Red and Yellow doesn't end it; a Green Check-in does. Shown beside the Health ("Red · 5 wks"), never changing it.
 _Avoid_: time in status, red streak, days red
 
-**Stale**:
-An Active Goal whose last Check-in (or its activation, if it has none) is older than its expected cadence (weekly by default), counted in days of the Owner's Timezone. On Hold Goals are never Stale. Surfaced as prominently as Red; a Rolled-up Health says how many children are Stale ("3 of 12 Stale") without changing its color.
-_Avoid_: overdue, missing update
+**Check-in overdue**:
+An Active Goal whose last Check-in (or its activation, if it has none) is older than its expected cadence (weekly by default), counted in days of the Owner's Timezone. On Hold Goals are never Check-in overdue. Surfaced as prominently as Red; a Rolled-up Health says how many children are Check-in overdue ("3 of 12 overdue") without changing its color.
+_Avoid_: stale, missing update, Check-in due (that's a Check-in coming up within the cadence)
 
 **Lifecycle**:
 Where a Goal is in its existence: Proposed, Active, On Hold, Done, or Cancelled. Independent of Health. Leaving Active for any state other than Done requires a reason; reaching Done requires an outcome.
@@ -163,7 +163,7 @@ _Avoid_: date mismatch, timeline clash
 **Path to Green**:
 The owner's stated plan, or request for help, to return a Yellow or Red Goal to Green.
 It carries a target date for being back to Green; moving that date later is a Date Slip. Once that date has passed and the Goal still isn't Green, the Goal is flagged as prominently as Red.
-A Path to Green marked as asking for help is an **Ask for help**, addressed up the Owner's reporting line: to their Manager, or, past anyone who has left the company or has no account, to the next Manager above. An Owner with no one above them has no addressee; the ask still shows on Risks and in Reports. It stays open until the Owner unmarks it in a later Check-in or the Run off Green ends; an answer alone doesn't close it.
+A Path to Green marked as asking for help is an **Ask for help**, addressed up the Owner's reporting line: to their Manager, or, past anyone who has left the company or has no account, to the next Manager above. An Owner with no one above them has no addressee; the ask still shows on Follow-ups and in Reports. It stays open until the Owner unmarks it in a later Check-in or the Run off Green ends; an answer alone doesn't close it.
 _Avoid_: mitigation, recovery plan, get-well plan
 
 ## Updates
@@ -176,7 +176,7 @@ A No change is refused while a Milestone is overdue, or the Path to Green's back
 _Avoid_: status update, 5-15, report
 
 **Nudge**:
-A one-off request from someone else to a Goal's Owner and Delegates to check in on a Goal with something its Owner answers in a Check-in: Stale, past its Path to Green, a Milestone overdue, or a Schedule conflict. A Goal can be nudged at most once a day, and each Nudge is kept in the Goal's history.
+A one-off request from someone else to a Goal's Owner and Delegates to check in on a Goal with something its Owner answers in a Check-in: Check-in overdue, past its Path to Green, a Milestone overdue, or a Schedule conflict. A Goal can be nudged at most once a day, and each Nudge is kept in the Goal's history.
 _Avoid_: reminder (that's the weekly email), ping, chase
 
 **Highlight**:
@@ -188,7 +188,7 @@ A Highlight logged on a Goal between Check-ins, waiting for the next Check-in. O
 _Avoid_: note, jot, log entry
 
 **Report**:
-A document generated from Check-ins for a chosen set of Goals, at whatever cadence the reader needs, in MBR format. Exceptions (Red, Yellow, Stale, slipped, newly Proposed, Lifecycle changes, and Health changes since the baseline, a recovery to Green included) get the full treatment; unchanged Green Goals take one line each. Exceptions come worst first: Ownerless, then by Health (Red, Yellow, none, Green), then a Path to Green overdue, then Stale, then those that changed since the baseline, then by delivery date; each opens with what changed since the baseline. A Report opens with a line counting what moved since its baseline: Goals that turned Red or Yellow, came back to Green, slipped, changed Lifecycle, are new, entered or left. An exception block counts its Red, Yellow and Stale children beside its Rolled-up Health, names the Red and Yellow ones and the Goals in the same Report it contributes to or that contribute to it, and links to each; these links never decide which Goals are in a Report. A Goal whose Health changed shows the Health it had at the baseline beside its own ("Yellow · was Green"); its Health at the baseline is that of its latest Check-in before it, so a Goal with no Check-in by then shows none.
+A document generated from Check-ins for a chosen set of Goals, at whatever cadence the reader needs, in MBR format. Exceptions (Red, Yellow, Check-in overdue, slipped, newly Proposed, Lifecycle changes, and Health changes since the baseline, a recovery to Green included) get the full treatment; unchanged Green Goals take one line each. Exceptions come most urgent first: Ownerless, then by Health (Red, Yellow, none, Green), then a Path to Green overdue, then Check-in overdue, then those that changed since the baseline, then by delivery date; each opens with what changed since the baseline. A Report opens with a line counting what moved since its baseline: Goals that turned Red or Yellow, came back to Green, slipped, changed Lifecycle, are new, entered or left. An exception block counts its Red, Yellow and Check-in overdue children beside its Rolled-up Health, names the Red and Yellow ones and the Goals in the same Report it contributes to or that contribute to it, and links to each; these links never decide which Goals are in a Report. A Goal whose Health changed shows the Health it had at the baseline beside its own ("Yellow · was Green"); its Health at the baseline is that of its latest Check-in before it, so a Goal with no Check-in by then shows none.
 _Avoid_: MBR (a Report may be used as one), review, rollup
 
 **Report Definition**:
