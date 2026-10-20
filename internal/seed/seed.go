@@ -295,7 +295,7 @@ func titlesOf(indexes []int, entries []entry) []string {
 func (p *plan) csv() []byte {
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"Title", "Owner", "So What", "Kind", "Delivery Date", "Milestones", "Metrics", "Parents", teamDimension})
+	_ = w.Write([]string{"Title", "Owner", "Why it matters", "Kind", "Delivery Date", "Milestones", "Metrics", "Parents", teamDimension})
 	for _, g := range p.goals {
 		kind, delivery := domain.GoalOngoing, ""
 		if !g.ongoing {
@@ -306,7 +306,7 @@ func (p *plan) csv() []byte {
 			milestones[i] = m.name + " @ " + m.date.Format(dateFormat)
 		}
 		_ = w.Write([]string{
-			g.title, g.owner, g.soWhat, kind, delivery,
+			g.title, g.owner, g.whyItMatters, kind, delivery,
 			strings.Join(milestones, "; "), g.metricCell, strings.Join(g.parents, "; "), g.team,
 		})
 	}

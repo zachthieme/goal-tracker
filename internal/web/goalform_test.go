@@ -17,9 +17,9 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
-// The New goal page is a plain form posting to itself: Title, focused, and So
-// What.
-func TestNewGoalPageOffersTitleAndSoWhat(t *testing.T) {
+// The New goal page is a plain form posting to itself: Title, focused, and Why it
+// matters.
+func TestNewGoalPageOffersTitleAndWhyItMatters(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -35,10 +35,10 @@ func TestNewGoalPageOffersTitleAndSoWhat(t *testing.T) {
 	if title := tagAround(t, form, `name="title"`); !strings.Contains(title, " autofocus") {
 		t.Errorf("Title is not focused: %s", title)
 	}
-	tagAround(t, form, `name="so_what"`)
+	tagAround(t, form, `name="why_it_matters"`)
 }
 
-// Submitting the New goal form with a Title and So What creates a Proposed
+// Submitting the New goal form with a Title and Why it matters creates a Proposed
 // Goal the submitter owns and lands on its page, by a plain post with no
 // script. No toast: the Goal's page is the confirmation.
 func TestNewGoalFormCreatesAProposedGoalAndLandsOnIt(t *testing.T) {
@@ -49,7 +49,7 @@ func TestNewGoalFormCreatesAProposedGoalAndLandsOnIt(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	resp := postForm(t, client, ts.URL+"/goals/new", url.Values{"title": {"Cut checkout latency"}, "so_what": {"Shoppers abandon slow carts."}})
+	resp := postForm(t, client, ts.URL+"/goals/new", url.Values{"title": {"Cut checkout latency"}, "why_it_matters": {"Shoppers abandon slow carts."}})
 	page := readBody(t, resp)
 	goals, err := h.Service.ListGoals(context.Background())
 	if err != nil {
@@ -59,7 +59,7 @@ func TestNewGoalFormCreatesAProposedGoalAndLandsOnIt(t *testing.T) {
 		t.Fatalf("the post created %d Goals, want 1", len(goals))
 	}
 	g := goals[0]
-	if g.Title != "Cut checkout latency" || g.SoWhat != "Shoppers abandon slow carts." || g.Lifecycle != domain.LifecycleProposed || g.Owner.Email != "sam@example.com" {
+	if g.Title != "Cut checkout latency" || g.WhyItMatters != "Shoppers abandon slow carts." || g.Lifecycle != domain.LifecycleProposed || g.Owner.Email != "sam@example.com" {
 		t.Errorf("created %+v, want sam's Proposed Goal as typed", g)
 	}
 	if want := fmt.Sprintf("/goals/%d", g.ID); resp.StatusCode != http.StatusOK || resp.Request.URL.Path != want {
@@ -90,13 +90,13 @@ func TestNewGoalFormRefusalMarksEachBadInputAndKeepsValues(t *testing.T) {
 		return page
 	}
 
-	page := refused(url.Values{"title": {""}, "so_what": {""}})
+	page := refused(url.Values{"title": {""}, "why_it_matters": {""}})
 	summary := pageElement(t, page, "div", "goal-form-errors")
 	if !strings.Contains(openTag(summary), `role="alert"`) {
 		t.Errorf("the error summary isn't an alert: %s", openTag(summary))
 	}
 	form := pageElement(t, page, "form", "goal-form")
-	for name, message := range map[string]string{"title": "a Goal needs a title", "so_what": "a Goal needs a So What"} {
+	for name, message := range map[string]string{"title": "a Goal needs a title", "why_it_matters": "a Goal needs to say why it matters"} {
 		if !strings.Contains(summary, message) {
 			t.Errorf("the summary doesn't list %q:\n%s", message, summary)
 		}
@@ -110,14 +110,14 @@ func TestNewGoalFormRefusalMarksEachBadInputAndKeepsValues(t *testing.T) {
 		}
 	}
 
-	page = refused(url.Values{"title": {"Cut checkout latency"}, "so_what": {" "}})
+	page = refused(url.Values{"title": {"Cut checkout latency"}, "why_it_matters": {" "}})
 	form = pageElement(t, page, "form", "goal-form")
 	title := tagAround(t, form, `name="title"`)
 	if attr(title, "value") != "Cut checkout latency" || attr(title, "aria-invalid") != "" {
 		t.Errorf("Title isn't kept as typed and valid: %s", title)
 	}
-	if attr(tagAround(t, form, `name="so_what"`), "aria-invalid") != "true" {
-		t.Errorf("a blank So What isn't marked invalid:\n%s", form)
+	if attr(tagAround(t, form, `name="why_it_matters"`), "aria-invalid") != "true" {
+		t.Errorf("a blank Why it matters isn't marked invalid:\n%s", form)
 	}
 
 	if goals, _ := h.Service.ListGoals(context.Background()); len(goals) != 0 {
@@ -125,9 +125,9 @@ func TestNewGoalFormRefusalMarksEachBadInputAndKeepsValues(t *testing.T) {
 	}
 }
 
-// newGoalForm is a New goal post with a Title and So What, to add rows to.
+// newGoalForm is a New goal post with a Title and Why it matters, to add rows to.
 func newGoalForm(rows map[string]string) url.Values {
-	form := url.Values{"title": {"Cut checkout latency"}, "so_what": {"Shoppers abandon slow carts."}}
+	form := url.Values{"title": {"Cut checkout latency"}, "why_it_matters": {"Shoppers abandon slow carts."}}
 	for name, value := range rows {
 		form.Set(name, value)
 	}
@@ -262,13 +262,13 @@ func TestNewGoalFormRefusesRowValuesThatDontParseKeepingTheRest(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	form := refusedNewGoal(t, client, ts.URL, url.Values{
-		"title": {"Cut checkout latency"}, "so_what": {""},
+		"title": {"Cut checkout latency"}, "why_it_matters": {""},
 		"milestones[0].name": {"Profile checkout"}, "milestones[0].date": {"2026-11-02"},
 		"milestones[1].name": {"Ship the fix"}, "milestones[1].date": {"next week"},
 		"metrics[0].name": {"p95 latency"}, "metrics[0].unit": {"ms"}, "metrics[0].baseline": {"slow"}, "metrics[0].target": {"400"}, "metrics[0].target_date": {"2026-12-31"},
 		"metrics[1].name": {"Conversion"}, "metrics[1].unit": {""}, "metrics[1].baseline": {""}, "metrics[1].target": {"3"}, "metrics[1].target_date": {""},
 	})
-	wantRefused(t, form, "so_what", "a Goal needs a So What")
+	wantRefused(t, form, "why_it_matters", "a Goal needs to say why it matters")
 	wantRefused(t, form, "milestones[1].date", "isn't a date")
 	wantRefused(t, form, "metrics[0].baseline", "must be a number")
 	wantRefused(t, form, "metrics[1].unit", "a Metric needs a unit")
@@ -574,7 +574,7 @@ func TestNewGoalFormRefusalKeepsParentsPicked(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	form := refusedNewGoal(t, client, ts.URL, url.Values{"title": {""}, "so_what": {"Shoppers abandon slow carts."}, "parent_id": {fmt.Sprint(theirs.ID)}})
+	form := refusedNewGoal(t, client, ts.URL, url.Values{"title": {""}, "why_it_matters": {"Shoppers abandon slow carts."}, "parent_id": {fmt.Sprint(theirs.ID)}})
 	chip := between(t, form, `data-testid="parent-chip"`, "</li>")
 	if attr(tagAround(t, chip, `name="parent_id"`), "value") != fmt.Sprint(theirs.ID) {
 		t.Errorf("the refused form lost its parent chip:\n%s", form)
@@ -699,11 +699,11 @@ func TestNewGoalFormRefusesACustomCadenceThatIsntWholeDaysKeepingTheRest(t *test
 			client := signInClient(t, ts.URL, "sam@example.com")
 
 			form := refusedNewGoal(t, client, ts.URL, url.Values{
-				"title": {"Cut checkout latency"}, "so_what": {""},
+				"title": {"Cut checkout latency"}, "why_it_matters": {""},
 				"kind": {"Dated"}, "delivery_date": {"2027-03-31"},
 				"cadence": {"custom"}, "cadence_days": {days},
 			})
-			wantRefused(t, form, "so_what", "a Goal needs a So What")
+			wantRefused(t, form, "why_it_matters", "a Goal needs to say why it matters")
 			wantRefused(t, form, "cadence_days", "cadence")
 			if summary := pageElement(t, form, "div", "goal-form-errors"); !strings.Contains(summary, `href="#cadence"`) {
 				t.Errorf("the summary doesn't link the cadence problem to #cadence:\n%s", summary)
@@ -735,7 +735,7 @@ func TestNewGoalFormRefusesACustomCadenceThatIsntWholeDaysKeepingTheRest(t *test
 
 // A Dated Goal's delivery date, missing or not a date, is refused under
 // delivery_date, and the summary lists each problem in the order the page
-// shows its inputs: the Title and So What, then Delivery, then How you'll know.
+// shows its inputs: the Title and Why it matters, then Delivery, then How you'll know.
 func TestNewGoalFormRefusesADatedGoalsDeliveryDateInPageOrder(t *testing.T) {
 	t.Parallel()
 
@@ -749,7 +749,7 @@ func TestNewGoalFormRefusesADatedGoalsDeliveryDateInPageOrder(t *testing.T) {
 			client := signInClient(t, ts.URL, "sam@example.com")
 
 			form := refusedNewGoal(t, client, ts.URL, url.Values{
-				"title": {"Cut checkout latency"}, "so_what": {""},
+				"title": {"Cut checkout latency"}, "why_it_matters": {""},
 				"kind": {"Dated"}, "delivery_date": {date},
 				"cadence": {"custom"}, "cadence_days": {"0"},
 				"milestones[0].name": {"Profile checkout"}, "milestones[0].date": {""},
@@ -760,11 +760,11 @@ func TestNewGoalFormRefusesADatedGoalsDeliveryDateInPageOrder(t *testing.T) {
 			}
 			summary := pageElement(t, form, "div", "goal-form-errors")
 			var order []int
-			for _, href := range []string{"#so_what", "#delivery_date", "#cadence", "#milestones[0].date"} {
+			for _, href := range []string{"#why_it_matters", "#delivery_date", "#cadence", "#milestones[0].date"} {
 				order = append(order, strings.Index(summary, `href="`+href+`"`))
 			}
 			if slices.Contains(order, -1) || !slices.IsSorted(order) {
-				t.Errorf("the summary doesn't list so_what, delivery_date, cadence, then the Milestone's date (at %v):\n%s", order, summary)
+				t.Errorf("the summary doesn't list why_it_matters, delivery_date, cadence, then the Milestone's date (at %v):\n%s", order, summary)
 			}
 		})
 	}
@@ -810,7 +810,7 @@ func TestNewGoalPageOffersWhatAndWhyAndDelivery(t *testing.T) {
 	form := pageElement(t, page, "form", "goal-form")
 	what := pageElement(t, form, "section", "goal-form-what")
 	if !strings.Contains(what, "the customer problem, and what changes when this succeeds") {
-		t.Errorf("So What isn't hinted:\n%s", what)
+		t.Errorf("Why it matters isn't hinted:\n%s", what)
 	}
 	delivery := between(t, form, `data-testid="goal-form-delivery"`, `data-testid="goal-form-know"`)
 	if h2s := headingTexts(delivery, "h2"); !slices.Equal(h2s, []string{"Delivery"}) {
@@ -822,7 +822,7 @@ func TestNewGoalPageOffersWhatAndWhyAndDelivery(t *testing.T) {
 		}
 	}
 	if strings.Index(form, `data-testid="goal-form-what"`) > strings.Index(form, `data-testid="goal-form-delivery"`) {
-		t.Errorf("Delivery comes before the Title and So What")
+		t.Errorf("Delivery comes before the Title and Why it matters")
 	}
 
 	for _, radio := range []struct{ id, name, value, label string }{
@@ -1224,7 +1224,7 @@ func TestNewGoalFormRefusalShowsWhereItFitsAsPosted(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	posted := url.Values{
-		"title": {""}, "so_what": {"Shoppers abandon slow carts."},
+		"title": {""}, "why_it_matters": {"Shoppers abandon slow carts."},
 		"parent_id": {fmt.Sprint(revenue.ID)},
 		"value_id":  {"", fmt.Sprint(retail.ID)},
 		fmt.Sprintf("new_value:%d", fits.team.ID): {"Search"},
@@ -1268,7 +1268,7 @@ func TestNewGoalFormListsWhereItFitsProblemsInPageOrder(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	form := refusedNewGoal(t, client, ts.URL, url.Values{
-		"title": {""}, "so_what": {"Shoppers abandon slow carts."},
+		"title": {""}, "why_it_matters": {"Shoppers abandon slow carts."},
 		"parent_id":                             {"first"},
 		"value_id":                              {fmt.Sprint(fits.pillar.Values[0].ID), fmt.Sprint(fits.pillar.Values[1].ID)},
 		fmt.Sprintf("field:%d", fits.budget.ID): {"lots"},
@@ -1327,10 +1327,10 @@ func TestNewGoalChecklistRunsOnTheFormAsTyped(t *testing.T) {
 		return body
 	}
 
-	partial := checklist(url.Values{"title": {"Cut checkout latency"}, "so_what": {"Shoppers abandon slow carts."}, "kind": {"Dated"}, "milestones[0].name": {"Beta"}, "value_id": {fmt.Sprint(pillar.Values[0].ID)}})
+	partial := checklist(url.Values{"title": {"Cut checkout latency"}, "why_it_matters": {"Shoppers abandon slow carts."}, "kind": {"Dated"}, "milestones[0].name": {"Beta"}, "value_id": {fmt.Sprint(pillar.Values[0].ID)}})
 	card, activate := readyCard(t, partial)
 	want := map[string]bool{
-		"So What":                                true,
+		"Why it matters":                         true,
 		"Owner":                                  true,
 		"Dated with a delivery date, or Ongoing": false,
 		"A Milestone or Metric":                  true,
@@ -1349,7 +1349,7 @@ func TestNewGoalChecklistRunsOnTheFormAsTyped(t *testing.T) {
 	}
 
 	complete := checklist(url.Values{
-		"title": {"Cut checkout latency"}, "so_what": {"Shoppers abandon slow carts."},
+		"title": {"Cut checkout latency"}, "why_it_matters": {"Shoppers abandon slow carts."},
 		"kind": {"Ongoing"}, "metrics[0].name": {"p95"},
 		"value_id":                           {fmt.Sprint(pillar.Values[1].ID)},
 		fmt.Sprintf("new_value:%d", team.ID): {"Search"},
@@ -1390,8 +1390,8 @@ func TestNewGoalPageRendersTheReadyCardEnabledWithoutScript(t *testing.T) {
 	page := getBody(t, client, ts.URL+"/goals/new")
 	form := pageElement(t, page, "form", "goal-form")
 	card, activate := readyCard(t, form)
-	if got := activationItems(t, card); got["So What"] || !got["Owner"] {
-		t.Errorf("an empty form's checklist = %v, want So What missing and Owner done", got)
+	if got := activationItems(t, card); got["Why it matters"] || !got["Owner"] {
+		t.Errorf("an empty form's checklist = %v, want Why it matters missing and Owner done", got)
 	}
 	if count := elementTexts(card, "p", "goal-form-ready-count"); len(count) != 1 || count[0] != "1 of 4 done" {
 		t.Errorf("an empty form's card counts %q, want 1 of 4 done:\n%s", count, card)
@@ -1412,11 +1412,11 @@ func TestNewGoalPageRendersTheReadyCardEnabledWithoutScript(t *testing.T) {
 	if save := tagAround(t, card, ">Save as Proposed"); attr(save, "type") != "submit" || attr(save, "name") != "" {
 		t.Errorf("Save as Proposed isn't a plain submit: %s", save)
 	}
-	if !strings.Contains(card, "Saving needs a Title and So What, and a delivery date if Dated is chosen.") {
+	if !strings.Contains(card, "Saving needs a Title and Why it matters, and a delivery date if Dated is chosen.") {
 		t.Errorf("the card doesn't say what saving needs:\n%s", card)
 	}
-	if strings.Contains(card, "Only Title and So What are needed to save.") {
-		t.Errorf("the card still says only Title and So What are needed to save:\n%s", card)
+	if strings.Contains(card, "Only Title and Why it matters are needed to save.") {
+		t.Errorf("the card still says only Title and Why it matters are needed to save:\n%s", card)
 	}
 
 	tag := openTag(form)
@@ -1501,10 +1501,10 @@ func TestNewGoalChecklistMarksUnmetItemsToDo(t *testing.T) {
 
 // htmx checks a form's required inputs before a request the form itself
 // makes, so the live checklist posts from an element inside the New goal and
-// define forms, not the form: an empty Title or So What doesn't hold it back,
+// define forms, not the form: an empty Title or Why it matters doesn't hold it back,
 // and the checklist answers such a form, while the form keeps both inputs
 // required for a real submit (#212).
-func TestGoalFormChecklistAnswersAnEmptyTitleAndSoWhat(t *testing.T) {
+func TestGoalFormChecklistAnswersAnEmptyTitleAndWhyItMatters(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -1522,20 +1522,20 @@ func TestGoalFormChecklistAnswersAnEmptyTitleAndSoWhat(t *testing.T) {
 		if strings.HasPrefix(live, "<form") || !strings.Contains(attr(live, "hx-trigger"), "from:closest form") {
 			t.Errorf("%s: the live checklist doesn't post from inside the form: %s", path, live)
 		}
-		for _, input := range []string{`name="title"`, `name="so_what"`} {
+		for _, input := range []string{`name="title"`, `name="why_it_matters"`} {
 			if tag := tagAround(t, form, input); !strings.Contains(tag, " required") {
 				t.Errorf("%s: %s isn't required: %s", path, input, tag)
 			}
 		}
 
-		resp := postForm(t, client, ts.URL+path+"/checklist", url.Values{"title": {""}, "so_what": {""}, "kind": {"Ongoing"}})
+		resp := postForm(t, client, ts.URL+path+"/checklist", url.Values{"title": {""}, "why_it_matters": {""}, "kind": {"Ongoing"}})
 		body := readBody(t, resp)
 		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("%s: the checklist answered an empty Title and So What with %d:\n%s", path, resp.StatusCode, body)
+			t.Fatalf("%s: the checklist answered an empty Title and Why it matters with %d:\n%s", path, resp.StatusCode, body)
 		}
 		card, activate := readyCard(t, body)
-		if got := activationItems(t, card); got["So What"] || !got["Dated with a delivery date, or Ongoing"] {
-			t.Errorf("%s: the empty form's checklist = %v, want So What missing and the Kind done", path, got)
+		if got := activationItems(t, card); got["Why it matters"] || !got["Dated with a delivery date, or Ongoing"] {
+			t.Errorf("%s: the empty form's checklist = %v, want Why it matters missing and the Kind done", path, got)
 		}
 		if !strings.Contains(card, "2 of 4") || !strings.Contains(activate, " disabled") {
 			t.Errorf("%s: the empty form's card isn't 2 of 4 with Create and activate disabled:\n%s", path, card)
@@ -1604,9 +1604,9 @@ func TestNewGoalFormCreateAndActivate(t *testing.T) {
 	}
 }
 
-// Save as Proposed, with only a Title and So What, creates a Proposed Goal
+// Save as Proposed, with only a Title and Why it matters, creates a Proposed Goal
 // even where activation would need more.
-func TestNewGoalFormSaveAsProposedNeedsOnlyTitleAndSoWhat(t *testing.T) {
+func TestNewGoalFormSaveAsProposedNeedsOnlyTitleAndWhyItMatters(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -1623,7 +1623,7 @@ func TestNewGoalFormSaveAsProposedNeedsOnlyTitleAndSoWhat(t *testing.T) {
 
 // GET /goals/<id>/define (#135) is the New goal form for a Proposed Goal,
 // prefilled from it, posting back to the same address: its Title, which
-// can't change here, So What, Kind and delivery date, cadence, Dimension
+// can't change here, Why it matters, Kind and delivery date, cadence, Dimension
 // values and Fields. Its Milestones, Metrics and parents, Accepted and
 // Pending, are listed read-only, and the Milestone and Metric rows only add.
 func TestDefineGoalPageIsTheNewGoalFormPrefilled(t *testing.T) {
@@ -1668,8 +1668,8 @@ func TestDefineGoalPageIsTheNewGoalFormPrefilled(t *testing.T) {
 	if title := tagAround(t, form, `name="title"`); attr(title, "value") != g.Title || !strings.Contains(title, " readonly") {
 		t.Errorf("Title isn't the Goal's, read-only: %s", title)
 	}
-	if !strings.Contains(form, ">"+g.SoWhat+"</textarea>") {
-		t.Errorf("So What isn't prefilled:\n%s", form)
+	if !strings.Contains(form, ">"+g.WhyItMatters+"</textarea>") {
+		t.Errorf("Why it matters isn't prefilled:\n%s", form)
 	}
 	if kind := tagAround(t, form, `id="kind-dated"`); !strings.Contains(kind, " checked") {
 		t.Errorf("Dated isn't chosen: %s", kind)
@@ -1730,7 +1730,7 @@ func TestDefineGoalPageIsTheNewGoalFormPrefilled(t *testing.T) {
 // unchanged but for what change sets.
 func definePost(t *testing.T, client *http.Client, baseURL string, g domain.Goal, change func(url.Values)) *http.Response {
 	t.Helper()
-	form := url.Values{"title": {g.Title}, "so_what": {g.SoWhat}, "kind": {g.Kind}, "cadence": {fmt.Sprint(g.CadenceDays)}}
+	form := url.Values{"title": {g.Title}, "why_it_matters": {g.WhyItMatters}, "kind": {g.Kind}, "cadence": {fmt.Sprint(g.CadenceDays)}}
 	if !g.DeliveryDate.IsZero() {
 		form.Set("delivery_date", g.DeliveryDate.Format("2006-01-02"))
 	}
@@ -1804,7 +1804,7 @@ func TestDefineGoalRoutesAnswerOnlyTheOwnerOfAProposedGoal(t *testing.T) {
 		if method == http.MethodGet {
 			resp, err = client.Get(target)
 		} else {
-			resp, err = client.PostForm(target, url.Values{"title": {g.Title}, "so_what": {"Changed."}, "kind": {domain.GoalOngoing}})
+			resp, err = client.PostForm(target, url.Values{"title": {g.Title}, "why_it_matters": {"Changed."}, "kind": {domain.GoalOngoing}})
 		}
 		if err != nil {
 			t.Fatalf("%s %s: %v", method, target, err)
@@ -1822,7 +1822,7 @@ func TestDefineGoalRoutesAnswerOnlyTheOwnerOfAProposedGoal(t *testing.T) {
 			t.Errorf("%s on an Active Goal answered %d to %q, want 303 to %s", method, resp.StatusCode, resp.Header.Get("Location"), want)
 		}
 	}
-	if got, _ := h.Service.ViewGoal(context.Background(), proposed.ID); got.SoWhat != proposed.SoWhat || got.Kind != "" {
+	if got, _ := h.Service.ViewGoal(context.Background(), proposed.ID); got.WhyItMatters != proposed.WhyItMatters || got.Kind != "" {
 		t.Errorf("a refused post changed the Goal: %+v", got)
 	}
 }
@@ -1887,7 +1887,7 @@ func TestDefineGoalFormCreateAndActivate(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	form := url.Values{"title": {g.Title}, "so_what": {g.SoWhat}, "kind": {domain.GoalDated}, "delivery_date": {"2026-09-01"}}
+	form := url.Values{"title": {g.Title}, "why_it_matters": {g.WhyItMatters}, "kind": {domain.GoalDated}, "delivery_date": {"2026-09-01"}}
 	card, status := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/define/checklist", ts.URL, g.ID), form)
 	if status != http.StatusOK || strings.Contains(tagAround(t, card, `name="activate"`), " disabled") {
 		t.Errorf("the live checklist answered %d with Create and activate disabled:\n%s", status, card)
@@ -2091,8 +2091,8 @@ func assertLinksTo(t *testing.T, what, page string, links map[string]string) {
 }
 
 // Each item of the Ready to activate checklist links to the field, or the
-// section, that would meet it, as the error summary links a refused input: So
-// What to its input, the Kind to its group, a Milestone or Metric to How you'll
+// section, that would meet it, as the error summary links a refused input: Why it
+// matters to its input, the Kind to its group, a Milestone or Metric to How you'll
 // know, and each required Dimension and Field to its input. The Owner is the
 // person creating the Goal, so nothing on the form meets it and it links
 // nowhere.
@@ -2114,7 +2114,7 @@ func TestNewGoalChecklistLinksEachItemToItsField(t *testing.T) {
 	links := readyItemLinks(t, card)
 	know := links["A Milestone or Metric"]
 	want := map[string]string{
-		"So What":                                "#so_what",
+		"Why it matters":                         "#why_it_matters",
 		"Owner":                                  "",
 		"Dated with a delivery date, or Ongoing": "#kind",
 		"A Milestone or Metric":                  know,
@@ -2154,7 +2154,7 @@ func TestGoalFormChecklistLinksSurviveItsSwaps(t *testing.T) {
 		page := getBody(t, client, ts.URL+path)
 		card, _ := readyCard(t, page)
 		want := map[string]string{
-			"So What":                                "#so_what",
+			"Why it matters":                         "#why_it_matters",
 			"Owner":                                  "",
 			"Dated with a delivery date, or Ongoing": "#kind",
 			"A Milestone or Metric":                  "#know",
@@ -2168,7 +2168,7 @@ func TestGoalFormChecklistLinksSurviveItsSwaps(t *testing.T) {
 
 		for kind, want := range map[string]map[string]string{
 			"Dated": {
-				"So What":                                "#so_what",
+				"Why it matters":                         "#why_it_matters",
 				"Owner":                                  "",
 				"Dated with a delivery date, or Ongoing": "#delivery_date",
 				"A Milestone or Metric":                  "#know",
@@ -2176,7 +2176,7 @@ func TestGoalFormChecklistLinksSurviveItsSwaps(t *testing.T) {
 				"A value in Budget":                      budget,
 			},
 			"Ongoing": {
-				"So What":                                "#so_what",
+				"Why it matters":                         "#why_it_matters",
 				"Owner":                                  "",
 				"Dated with a delivery date, or Ongoing": "#kind",
 				"A Metric":                               "#know",
@@ -2184,7 +2184,7 @@ func TestGoalFormChecklistLinksSurviveItsSwaps(t *testing.T) {
 				"A value in Budget":                      budget,
 			},
 		} {
-			body, status := postFormHX(t, client, ts.URL+path+"/checklist", url.Values{"title": {"Cut checkout latency"}, "so_what": {""}, "kind": {kind}})
+			body, status := postFormHX(t, client, ts.URL+path+"/checklist", url.Values{"title": {"Cut checkout latency"}, "why_it_matters": {""}, "kind": {kind}})
 			if status != http.StatusOK {
 				t.Fatalf("%s: the checklist answered %s with %d:\n%s", path, kind, status, body)
 			}
@@ -2282,8 +2282,8 @@ func headingTexts(page, tag string) []string {
 	return out
 }
 
-// The New goal page has no outer card: its column holds the Title and So
-// What, then Delivery, How you'll know and More detail, each a section headed
+// The New goal page has no outer card: its column holds the Title and Why it
+// matters, then Delivery, How you'll know and More detail, each a section headed
 // by an <h2> with no step number, and the Ready to activate aside follows.
 // The <h1> is a muted line above the Title, which reads as a heading itself.
 func TestNewGoalPageIsHeadedSectionsWithoutACard(t *testing.T) {
@@ -2347,8 +2347,8 @@ func TestNewGoalPageIsHeadedSectionsWithoutACard(t *testing.T) {
 	if label := between(t, what, "<label", `name="title"`); !strings.Contains(label, ">Title</span>") {
 		t.Errorf("the Title isn't labelled Title:\n%s", label)
 	}
-	if label := html.UnescapeString(between(t, what, `name="title"`, `name="so_what"`)); !strings.Contains(label, "So What") || !strings.Contains(label, "· the customer problem, and what changes when this succeeds") {
-		t.Errorf("So What isn't labelled with its hint inline:\n%s", label)
+	if label := html.UnescapeString(between(t, what, `name="title"`, `name="why_it_matters"`)); !strings.Contains(label, "Why it matters") || !strings.Contains(label, "· the customer problem, and what changes when this succeeds") {
+		t.Errorf("Why it matters isn't labelled with its hint inline:\n%s", label)
 	}
 }
 
@@ -2667,7 +2667,7 @@ func TestNewGoalChecklistFlagsAMeasureStartedAndNotSaved(t *testing.T) {
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "sam@example.com")
 	form := url.Values{
-		"title": {"Cut checkout latency"}, "so_what": {"Shoppers abandon slow carts."}, "kind": {"Dated"}, "delivery_date": {"2026-12-31"},
+		"title": {"Cut checkout latency"}, "why_it_matters": {"Shoppers abandon slow carts."}, "kind": {"Dated"}, "delivery_date": {"2026-12-31"},
 		"metrics[0].name": {"p95 latency"}, "metrics[0].unit": {"ms"}, "metrics[0].baseline": {"1200"}, "metrics[0].target": {"400"}, "metrics[0].target_date": {"2026-12-31"},
 	}
 	checklist := func(form url.Values) (card, activate string) {
@@ -2681,7 +2681,7 @@ func TestNewGoalChecklistFlagsAMeasureStartedAndNotSaved(t *testing.T) {
 	}
 
 	card, activate := checklist(form)
-	want := map[string]bool{"So What": true, "Owner": true, "Dated with a delivery date, or Ongoing": true, "A Milestone or Metric": true}
+	want := map[string]bool{"Why it matters": true, "Owner": true, "Dated with a delivery date, or Ongoing": true, "A Milestone or Metric": true}
 	if got := activationItems(t, card); !maps.Equal(got, want) {
 		t.Errorf("without an open editor the checklist = %v, want %v", got, want)
 	}
@@ -2693,7 +2693,7 @@ func TestNewGoalChecklistFlagsAMeasureStartedAndNotSaved(t *testing.T) {
 	maps.Copy(editing, form)
 	editing.Set("editing", "Milestone")
 	card, activate = checklist(editing)
-	want = map[string]bool{"So What": true, "Owner": true, "Dated with a delivery date, or Ongoing": true, "Save the Milestone you started": false}
+	want = map[string]bool{"Why it matters": true, "Owner": true, "Dated with a delivery date, or Ongoing": true, "Save the Milestone you started": false}
 	if got := activationItems(t, card); !maps.Equal(got, want) {
 		t.Errorf("with a Milestone editor open the checklist = %v, want %v", got, want)
 	}

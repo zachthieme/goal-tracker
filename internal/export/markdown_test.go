@@ -79,7 +79,7 @@ func TestMarkdownNamesThePreviousPublication(t *testing.T) {
 }
 
 // An exception gets the full MBR block the snapshot page shows: badges, its
-// delivery date with the dates it slipped from struck through, Health, So What,
+// delivery date with the dates it slipped from struck through, Health, Why it matters,
 // status, Path to Green, Milestones — a removed one struck through — Metrics
 // against target, and the Rolled-up Health with the Owner's explanation.
 func TestMarkdownExceptionBlockKeepsStrikethroughsAndBadges(t *testing.T) {
@@ -87,7 +87,7 @@ func TestMarkdownExceptionBlockKeepsStrikethroughsAndBadges(t *testing.T) {
 
 	pub := publication([]domain.ReportBlock{{
 		Goal: domain.Goal{
-			Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss,
+			Title: "Launch in EU", WhyItMatters: "Expand the market.", Owner: boss,
 			Lifecycle: domain.LifecycleActive, DeliveryDate: date(2026, 5, 1),
 		},
 		Health:         domain.HealthRed,
@@ -115,7 +115,7 @@ func TestMarkdownExceptionBlockKeepsStrikethroughsAndBadges(t *testing.T) {
 
 boss · Active · Health: **Red** · due ~~2026-03-01~~ ~~2026-04-01~~ 2026-05-01
 
-**So What:** Expand the market.
+**Why it matters:** Expand the market.
 
 **Status:** Blocked on legal.
 
@@ -150,7 +150,7 @@ func TestMarkdownListsMilestonesAsMarkDateName(t *testing.T) {
 	t.Parallel()
 
 	pub := publication([]domain.ReportBlock{{
-		Goal:   domain.Goal{Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
+		Goal:   domain.Goal{Title: "Launch in EU", WhyItMatters: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
 		Health: domain.HealthYellow,
 		Milestones: []domain.ReportMilestone{
 			{Milestone: domain.Milestone{Name: "Vendor sign-off", TargetDate: date(2026, 4, 20), Status: domain.MilestonePlanned},
@@ -194,7 +194,7 @@ func TestMarkdownMarksMilestonesInTheBlocksTimezone(t *testing.T) {
 		{"Pacific/Honolulu", "- 2026-02-20 Docs\n"},
 	} {
 		pub := publication([]domain.ReportBlock{{
-			Goal:     domain.Goal{Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
+			Goal:     domain.Goal{Title: "Launch in EU", WhyItMatters: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
 			Health:   domain.HealthYellow,
 			Timezone: tc.tz,
 			Milestones: []domain.ReportMilestone{
@@ -219,7 +219,7 @@ func TestMarkdownListsTheMilestonesOfAnOlderSnapshotAsMarkDateName(t *testing.T)
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	pub := h.PublishReport(boss, def)
-	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","SoWhat":"Expand the market.",` +
+	before := `{"Definition":{"ID":1,"Name":"MBR"},"Exceptions":[{"Goal":{"ID":1,"Title":"Launch in EU","WhyItMatters":"Expand the market.",` +
 		`"Owner":{"ID":1,"Email":"boss@example.com","Name":"boss"},"Lifecycle":"Active"},"Health":"Red","Milestones":[` +
 		`{"Milestone":{"ID":1,"Name":"Beta","TargetDate":"2025-12-20T00:00:00Z","Status":"Planned"},"New":false,"PriorDates":["2025-12-01T00:00:00Z"]},` +
 		`{"Milestone":{"ID":2,"Name":"GA","TargetDate":"2026-03-01T00:00:00Z","Status":"Planned"},"New":true,"PriorDates":null}]}]}`
@@ -245,7 +245,7 @@ func TestMarkdownEscapesWhatPeopleType(t *testing.T) {
 	t.Parallel()
 
 	pub := publication([]domain.ReportBlock{{
-		Goal:   domain.Goal{Title: "Ship *fast* ~~now~~", SoWhat: "See [docs](http://x).", Owner: boss, Lifecycle: domain.LifecycleActive},
+		Goal:   domain.Goal{Title: "Ship *fast* ~~now~~", WhyItMatters: "See [docs](http://x).", Owner: boss, Lifecycle: domain.LifecycleActive},
 		Health: domain.HealthYellow,
 		Status: "Line one.\n# not a heading <b>",
 	}}, []domain.SelectedGoal{
@@ -256,7 +256,7 @@ func TestMarkdownEscapesWhatPeopleType(t *testing.T) {
 	got := export.Markdown(pub)
 	for _, want := range []string{
 		"### Ship \\*fast\\* \\~\\~now\\~\\~\n",
-		"**So What:** See \\[docs\\](http://x).\n",
+		"**Why it matters:** See \\[docs\\](http://x).\n",
 		"**Status:** Line one. # not a heading \\<b>\n",
 		"- 1\\. Hire — boss — Green\n",
 		"- \\- Retain \\`all\\` — boss — Green\n",
@@ -434,7 +434,7 @@ func TestMarkdownCarriesTheChosenFields(t *testing.T) {
 	budget := domain.Field{Name: "Budget", Type: domain.FieldNumber, Unit: "$"}
 	notes := domain.Field{Name: "Notes", Type: domain.FieldLongText}
 	pub := publication([]domain.ReportBlock{{
-		Goal:   domain.Goal{Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
+		Goal:   domain.Goal{Title: "Launch in EU", WhyItMatters: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
 		Health: domain.HealthRed,
 		Fields: []domain.FieldValue{{Field: budget, Value: "120"}, {Field: notes, Value: "Counsel hired.\nLegal *unblocked*."}},
 	}}, []domain.SelectedGoal{
@@ -448,7 +448,7 @@ boss · Active · Health: **Red**
 
 **Budget:** 120 $ · **Notes:** Counsel hired. Legal \*unblocked\*.
 
-**So What:** Expand the market.
+**Why it matters:** Expand the market.
 
 ## Other Goals
 
@@ -471,12 +471,12 @@ func TestMarkdownShowsTheEarlierHealthOfAChangedGoal(t *testing.T) {
 
 	pub := publication([]domain.ReportBlock{
 		{
-			Goal:        domain.Goal{Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive, DeliveryDate: date(2026, 5, 1)},
+			Goal:        domain.Goal{Title: "Launch in EU", WhyItMatters: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive, DeliveryDate: date(2026, 5, 1)},
 			Health:      domain.HealthYellow,
 			PriorHealth: domain.HealthGreen,
 		},
 		{
-			Goal:   domain.Goal{Title: "Cut churn", SoWhat: "Keep customers.", Owner: boss, Lifecycle: domain.LifecycleActive},
+			Goal:   domain.Goal{Title: "Cut churn", WhyItMatters: "Keep customers.", Owner: boss, Lifecycle: domain.LifecycleActive},
 			Health: domain.HealthRed,
 		},
 	}, nil)
@@ -500,7 +500,7 @@ func TestMarkdownShowsTheRunOffGreenBesideTheHealth(t *testing.T) {
 
 	pub := publication([]domain.ReportBlock{
 		{
-			Goal:             domain.Goal{Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
+			Goal:             domain.Goal{Title: "Launch in EU", WhyItMatters: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
 			Health:           domain.HealthRed,
 			RunOffGreenWeeks: 5,
 			PriorHealth:      domain.HealthGreen,
@@ -512,7 +512,7 @@ func TestMarkdownShowsTheRunOffGreenBesideTheHealth(t *testing.T) {
 
 	pub = publication([]domain.ReportBlock{
 		{
-			Goal:   domain.Goal{Title: "Cut churn", SoWhat: "Keep customers.", Owner: boss, Lifecycle: domain.LifecycleActive},
+			Goal:   domain.Goal{Title: "Cut churn", WhyItMatters: "Keep customers.", Owner: boss, Lifecycle: domain.LifecycleActive},
 			Health: domain.HealthGreen,
 		},
 	}, nil)
@@ -580,13 +580,13 @@ func TestMarkdownSaysWhatChangedOnABlock(t *testing.T) {
 
 	pub := publication([]domain.ReportBlock{
 		{
-			Goal:    domain.Goal{Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive, DeliveryDate: date(2026, 5, 1)},
+			Goal:    domain.Goal{Title: "Launch in EU", WhyItMatters: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive, DeliveryDate: date(2026, 5, 1)},
 			Health:  domain.HealthRed,
 			Changes: []string{"Turned Red", "Delivery date slipped 3 weeks"},
 			Fields:  []domain.FieldValue{{Field: domain.Field{Name: "Tier"}, Value: "1"}},
 		},
 		{
-			Goal:   domain.Goal{Title: "Cut churn", SoWhat: "Keep customers.", Owner: boss, Lifecycle: domain.LifecycleActive},
+			Goal:   domain.Goal{Title: "Cut churn", WhyItMatters: "Keep customers.", Owner: boss, Lifecycle: domain.LifecycleActive},
 			Health: domain.HealthRed,
 		},
 	}, nil)
@@ -644,7 +644,7 @@ func TestMarkdownExceptionBlockNamesItsLinkedGoals(t *testing.T) {
 	t.Parallel()
 
 	pub := publication([]domain.ReportBlock{{
-		Goal:     domain.Goal{Title: "Referral program", SoWhat: "Customers bring customers.", Owner: boss, Lifecycle: domain.LifecycleActive},
+		Goal:     domain.Goal{Title: "Referral program", WhyItMatters: "Customers bring customers.", Owner: boss, Lifecycle: domain.LifecycleActive},
 		Health:   domain.HealthRed,
 		Fields:   []domain.FieldValue{{Field: domain.Field{Name: "Region", Type: domain.FieldShortText}, Value: "EMEA"}},
 		RolledUp: domain.RolledUpHealth{Health: domain.HealthRed, Present: true, RedChildren: 2, YellowChildren: 1, CheckinOverdueChildren: 1, ActiveChildren: 6},
@@ -732,7 +732,7 @@ func TestMarkdownStrikesTheBackToGreenDateItSlippedFrom(t *testing.T) {
 
 	block := func(prior []time.Time) domain.ReportBlock {
 		return domain.ReportBlock{
-			Goal:                 domain.Goal{Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
+			Goal:                 domain.Goal{Title: "Launch in EU", WhyItMatters: "Expand the market.", Owner: boss, Lifecycle: domain.LifecycleActive},
 			Health:               domain.HealthRed,
 			PathToGreen:          "Hire counsel.",
 			PathTargetDate:       date(2026, 10, 3),
@@ -762,7 +762,7 @@ func TestMarkdownStrikesNoDateEqualToItsOwn(t *testing.T) {
 
 	got := export.Markdown(publication([]domain.ReportBlock{{
 		Goal: domain.Goal{
-			Title: "Launch in EU", SoWhat: "Expand the market.", Owner: boss,
+			Title: "Launch in EU", WhyItMatters: "Expand the market.", Owner: boss,
 			Lifecycle: domain.LifecycleActive, DeliveryDate: date(2026, 11, 9),
 		},
 		Health:               domain.HealthRed,

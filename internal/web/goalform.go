@@ -33,10 +33,10 @@ type goalFormView struct {
 	// Dates is the clock the existing Milestones and Metrics show their dates
 	// against, and whose year script writes the rest's against. Every render
 	// of the page sets it.
-	Dates  displayDates
-	Linked []linkedParent
-	Title  string
-	SoWhat string
+	Dates        displayDates
+	Linked       []linkedParent
+	Title        string
+	WhyItMatters string
 	// Kind is the Kind chosen, "" for not chosen, and DeliveryDate the date
 	// typed, which counts only for a Dated Goal.
 	Kind         string
@@ -80,12 +80,12 @@ type goalFormView struct {
 // Field by a value typed (domain.RequiredValues reads a saved Goal's).
 func (v goalFormView) activationFacts() activationFacts {
 	f := activationFacts{
-		SoWhat:     v.SoWhat,
-		Owned:      true,
-		Kind:       v.Kind,
-		Milestones: len(v.ExistingMilestones) + len(v.Milestones),
-		Metrics:    len(v.ExistingMetrics) + len(v.Metrics),
-		Unsaved:    v.Unsaved,
+		WhyItMatters: v.WhyItMatters,
+		Owned:        true,
+		Kind:         v.Kind,
+		Milestones:   len(v.ExistingMilestones) + len(v.Milestones),
+		Metrics:      len(v.ExistingMetrics) + len(v.Metrics),
+		Unsaved:      v.Unsaved,
 	}
 	if v.Kind == domain.GoalDated {
 		if d, err := parseDate(strings.TrimSpace(v.DeliveryDate)); err == nil {
@@ -676,12 +676,12 @@ func (s *Server) handleDefineGoalForm(w http.ResponseWriter, r *http.Request, cu
 	render(w, r, http.StatusOK, goalFormPage(&current, v))
 }
 
-// definitionForm is the form as the saved Goal g fills it: its Title, So
-// What, Kind and delivery date, cadence, Dimension values and Fields.
+// definitionForm is the form as the saved Goal g fills it: its Title, Why it
+// matters, Kind and delivery date, cadence, Dimension values and Fields.
 func (s *Server) definitionForm(ctx context.Context, g domain.Goal) (goalFormView, error) {
 	v := goalFormView{
 		Title:        g.Title,
-		SoWhat:       g.SoWhat,
+		WhyItMatters: g.WhyItMatters,
 		Kind:         g.Kind,
 		DeliveryDate: fmtDate(g.DeliveryDate),
 		Cadence:      strconv.Itoa(g.CadenceDays),
@@ -812,7 +812,7 @@ func (s *Server) handleGoalFormChecklist(w http.ResponseWriter, r *http.Request,
 func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain.DefinedGoalInput, []*domain.InputError) {
 	v := goalFormView{
 		Title:        r.FormValue(domain.InputTitle),
-		SoWhat:       r.FormValue(domain.InputSoWhat),
+		WhyItMatters: r.FormValue(domain.InputWhyItMatters),
 		Kind:         r.FormValue(domain.InputKind),
 		DeliveryDate: r.FormValue(domain.InputDeliveryDate),
 		Cadence:      r.FormValue(domain.InputCadence),
@@ -820,10 +820,10 @@ func readGoalForm(r *http.Request, current domain.Account) (goalFormView, domain
 	}
 	v.Unsaved = unsavedMeasure(r.PostForm[inputEditing])
 	in := domain.DefinedGoalInput{
-		Title:   v.Title,
-		SoWhat:  v.SoWhat,
-		OwnerID: current.ID,
-		Kind:    v.Kind,
+		Title:        v.Title,
+		WhyItMatters: v.WhyItMatters,
+		OwnerID:      current.ID,
+		Kind:         v.Kind,
 	}
 	var unparsed []*domain.InputError
 	refuse := func(input, format string, args ...any) {
@@ -1065,11 +1065,11 @@ func goalFormProblems(err error, unparsed []*domain.InputError) []*domain.InputE
 }
 
 // goalFormPlace is where an input sits on the New goal page, to sort its
-// problems by: Title, So What, Kind, delivery date, cadence, each Milestone
+// problems by: Title, Why it matters, Kind, delivery date, cadence, each Milestone
 // row's inputs and each Metric row's, in turn, then Contributes to, then Where
 // it fits' Dimension values and its Fields. Any other input sorts after those.
 func goalFormPlace(input string) []int {
-	single := []string{domain.InputTitle, domain.InputSoWhat, domain.InputKind, domain.InputDeliveryDate, domain.InputCadence}
+	single := []string{domain.InputTitle, domain.InputWhyItMatters, domain.InputKind, domain.InputDeliveryDate, domain.InputCadence}
 	if at := slices.Index(single, input); at >= 0 {
 		return []int{at}
 	}

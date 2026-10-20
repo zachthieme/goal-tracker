@@ -22,7 +22,7 @@ import (
 // cleanCSV is a spreadsheet with two Goals: an Ongoing parent carrying a Metric
 // and a Dimension value, and a Dated child carrying two Milestones that
 // contributes to the parent by title.
-const cleanCSV = `Title,Owner,So What,Kind,Delivery Date,Milestones,Metrics,Parents,Pillar
+const cleanCSV = `Title,Owner,Why it matters,Kind,Delivery Date,Milestones,Metrics,Parents,Pillar
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,,,ARR | USD | up | 1000000 | 2000000 | 2026-12-31,,Growth
 Ship checkout v2,eng@example.com,Checkout is slow.,Dated,2026-06-30,Beta @ 2026-05-01; GA @ 2026-06-15,,Grow revenue,Reliability
 `
@@ -123,7 +123,7 @@ func TestCommitCleanImport(t *testing.T) {
 func TestDryRunReportsRowErrorsAndSavesNothing(t *testing.T) {
 	t.Parallel()
 
-	const csv = `Title,Owner,So What,Kind,Delivery Date
+	const csv = `Title,Owner,Why it matters,Kind,Delivery Date
 Good goal,owner@example.com,It matters.,Ongoing,
 Bad goal,owner@example.com,,Sideways,
 ,owner@example.com,No title.,Ongoing,
@@ -146,8 +146,8 @@ Bad goal,owner@example.com,,Sideways,
 	if len(rep.Rows[0].Errors) != 0 {
 		t.Errorf("row 2 should be clean, got errors: %v", rep.Rows[0].Errors)
 	}
-	if joined := strings.Join(rep.Rows[1].Errors, "; "); !strings.Contains(joined, "So What") || !strings.Contains(joined, "Kind") {
-		t.Errorf("row 3 errors = %v, want mention of So What and Kind", rep.Rows[1].Errors)
+	if joined := strings.Join(rep.Rows[1].Errors, "; "); !strings.Contains(joined, "Why it matters") || !strings.Contains(joined, "Kind") {
+		t.Errorf("row 3 errors = %v, want mention of Why it matters and Kind", rep.Rows[1].Errors)
 	}
 	if joined := strings.Join(rep.Rows[2].Errors, "; "); !strings.Contains(joined, "Title") {
 		t.Errorf("row 4 errors = %v, want mention of Title", rep.Rows[2].Errors)
@@ -172,7 +172,7 @@ Bad goal,owner@example.com,,Sideways,
 func TestCommitRollsBackOnAnyRowError(t *testing.T) {
 	t.Parallel()
 
-	const csv = `Title,Owner,So What,Kind,Delivery Date
+	const csv = `Title,Owner,Why it matters,Kind,Delivery Date
 Valid one,owner@example.com,It matters.,Ongoing,
 Valid two,owner@example.com,Also matters.,Dated,2026-06-30
 Broken,owner@example.com,Missing kind.,Nonsense,
@@ -209,7 +209,7 @@ Broken,owner@example.com,Missing kind.,Nonsense,
 func TestCommitRejectsCycleBetweenImportedGoals(t *testing.T) {
 	t.Parallel()
 
-	const csv = `Title,Owner,So What,Kind,Parents
+	const csv = `Title,Owner,Why it matters,Kind,Parents
 Chicken,owner@example.com,Needs the egg.,Ongoing,Egg
 Egg,owner@example.com,Needs the chicken.,Ongoing,Chicken
 `
@@ -273,7 +273,7 @@ func TestCommitCleanImportFromXLSX(t *testing.T) {
 	admin := h.SignIn("admin@example.com")
 
 	rows := [][]string{
-		{"Title", "Owner", "So What", "Kind", "Delivery Date", "Parents"},
+		{"Title", "Owner", "Why it matters", "Kind", "Delivery Date", "Parents"},
 		{"Parent goal", "boss@example.com", "It matters.", "Ongoing", "", ""},
 		{"Child goal", "ic@example.com", "Supports the parent.", "Dated", "2026-06-30", "Parent goal"},
 	}
@@ -391,7 +391,7 @@ func TestXLSXDateCellsImportAsTheirDate(t *testing.T) {
 	admin := h.SignIn("admin@example.com")
 
 	data := xlsxOf(t,
-		[]any{"Title", "Owner", "So What", "Kind", "Delivery Date"},
+		[]any{"Title", "Owner", "Why it matters", "Kind", "Delivery Date"},
 		[]any{"Mid-month goal", "owner@example.com", "It matters.", "Dated", date(2026, time.June, 30)},
 		[]any{"First-of-month goal", "owner@example.com", "It matters.", "Dated", date(2026, time.July, 1)},
 		[]any{"Text-date goal", "owner@example.com", "It matters.", "Dated", "2026-08-15"},
@@ -436,7 +436,7 @@ func TestXLSXCustomFormatDateCells(t *testing.T) {
 	defer func() { _ = f.Close() }()
 	sheet := f.GetSheetName(0)
 	for r, row := range [][]any{
-		{"Title", "Owner", "So What", "Kind", "Delivery Date", "Milestones"},
+		{"Title", "Owner", "Why it matters", "Kind", "Delivery Date", "Milestones"},
 		{"UK goal", "owner@example.com", "It matters.", "Dated", date(2026, time.June, 30), ""},
 		{"Nameless milestone", "owner@example.com", "It matters.", "Ongoing", "", date(2026, time.May, 1)},
 	} {
@@ -480,7 +480,7 @@ func TestXLSXCustomFormatDateCells(t *testing.T) {
 func TestRowsAreNumberedAsInTheSpreadsheet(t *testing.T) {
 	t.Parallel()
 
-	const csv = "Title,Owner,So What,Kind\n" +
+	const csv = "Title,Owner,Why it matters,Kind\n" +
 		"First,owner@example.com,,Ongoing\n" +
 		"Second,owner@example.com,\"Spans\ntwo lines.\",Ongoing\n" +
 		"\n" +
@@ -503,7 +503,7 @@ func TestRowsAreNumberedAsInTheSpreadsheet(t *testing.T) {
 	}
 
 	xlsxRep, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.xlsx", xlsxOf(t,
-		[]any{"Title", "Owner", "So What", "Kind"},
+		[]any{"Title", "Owner", "Why it matters", "Kind"},
 		[]any{"First", "owner@example.com", "", "Ongoing"},
 	))
 	if err != nil {
@@ -519,9 +519,9 @@ func TestRowsAreNumberedAsInTheSpreadsheet(t *testing.T) {
 func TestDryRunReportsEveryErrorOnARow(t *testing.T) {
 	t.Parallel()
 
-	const csv = `Title,Owner,So What,Kind,Milestones,Parents,Pillar
+	const csv = `Title,Owner,Why it matters,Kind,Milestones,Parents,Pillar
 Otherwise fine,owner@example.com,It matters.,Ongoing,,No such parent,Sideways
-Missing so what,owner@example.com,,Ongoing,Beta @ someday,Also missing,Upwards
+Missing why it matters,owner@example.com,,Ongoing,Beta @ someday,Also missing,Upwards
 `
 	h := testsupport.New(t, "admin@example.com")
 	admin := h.SignIn("admin@example.com")
@@ -536,7 +536,7 @@ Missing so what,owner@example.com,,Ongoing,Beta @ someday,Also missing,Upwards
 	}
 	for i, wants := range [][]string{
 		{`"Sideways" is not a value of Dimension "Pillar"`, `parent Goal "No such parent"`},
-		{"So What is required", `bad Milestone date in "Beta @ someday"`, `parent Goal "Also missing"`, `"Upwards" is not a value of Dimension "Pillar"`},
+		{"Why it matters is required", `bad Milestone date in "Beta @ someday"`, `parent Goal "Also missing"`, `"Upwards" is not a value of Dimension "Pillar"`},
 	} {
 		row := rep.Rows[i]
 		joined := strings.Join(row.Errors, "; ")
@@ -556,7 +556,7 @@ Missing so what,owner@example.com,,Ongoing,Beta @ someday,Also missing,Upwards
 func TestCommitSetsFieldColumns(t *testing.T) {
 	t.Parallel()
 
-	const csv = `Title,Owner,So What,Kind,budget,Sponsor note,Background,Review date
+	const csv = `Title,Owner,Why it matters,Kind,budget,Sponsor note,Background,Review date
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,1250000.5,Board asked,"Long story,
 over two lines",2026-11-30
 `
@@ -615,7 +615,7 @@ func commitOneGoal(t *testing.T, h *testsupport.Harness, admin domain.Account, c
 func TestDryRunReportsBadFieldValuesAgainstTheirRow(t *testing.T) {
 	t.Parallel()
 
-	const csv = `Title,Owner,So What,Kind,Budget,Review date
+	const csv = `Title,Owner,Why it matters,Kind,Budget,Review date
 Fine,owner@example.com,It matters.,Ongoing,12,2026-11-30
 Bad budget,owner@example.com,It matters.,Ongoing,lots,
 Bad date,owner@example.com,,Ongoing,,next week
@@ -635,7 +635,7 @@ Bad date,owner@example.com,,Ongoing,,next week
 	for i, wants := range [][]string{
 		nil,
 		{`Budget takes a number, and "lots" isn't one`},
-		{"So What is required", `Review date takes a date as YYYY-MM-DD, and "next week" isn't one`},
+		{"Why it matters is required", `Review date takes a date as YYYY-MM-DD, and "next week" isn't one`},
 	} {
 		row := rep.Rows[i]
 		joined := strings.Join(row.Errors, "; ")
@@ -658,7 +658,7 @@ Bad date,owner@example.com,,Ongoing,,next week
 func TestCommitSetsSeveralValuesFromOneCell(t *testing.T) {
 	t.Parallel()
 
-	const csv = `Title,Owner,So What,Kind,Themes
+	const csv = `Title,Owner,Why it matters,Kind,Themes
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,  Growth ;Trust ;
 `
 	h := testsupport.New(t, "admin@example.com")
@@ -676,7 +676,7 @@ Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,  Growth ;Trust ;
 func TestDryRunRejectsSeveralValuesInAOneValueColumn(t *testing.T) {
 	t.Parallel()
 
-	const csv = `Title,Owner,So What,Kind,Pillar
+	const csv = `Title,Owner,Why it matters,Kind,Pillar
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,Growth; Reliability
 `
 	h := testsupport.New(t, "admin@example.com")
@@ -714,7 +714,7 @@ func goalValueNames(t *testing.T, h *testsupport.Harness, goal domain.Goal) []st
 func TestCommitAddsUnknownValuesToAnExtendableDimension(t *testing.T) {
 	t.Parallel()
 
-	const csv = `Title,Owner,So What,Kind,Customer
+	const csv = `Title,Owner,Why it matters,Kind,Customer
 First,owner@example.com,It matters.,Ongoing,  acme 
 Second,owner@example.com,It matters.,Ongoing,Newco
 Third,owner@example.com,It matters.,Ongoing,NEWCO
@@ -749,7 +749,7 @@ Third,owner@example.com,It matters.,Ongoing,NEWCO
 func TestDryRunRejectsUnknownValuesInAFixedDimension(t *testing.T) {
 	t.Parallel()
 
-	const csv = `Title,Owner,So What,Kind,Pillar
+	const csv = `Title,Owner,Why it matters,Kind,Pillar
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,Moonshots
 `
 	h := testsupport.New(t, "admin@example.com")
@@ -794,7 +794,7 @@ func dimensionValueNames(t *testing.T, h *testsupport.Harness, name string) []st
 func TestImportThatSavesNothingAddsNoValues(t *testing.T) {
 	t.Parallel()
 
-	const clean = `Title,Owner,So What,Kind,Customer
+	const clean = `Title,Owner,Why it matters,Kind,Customer
 First,owner@example.com,It matters.,Ongoing,Newco
 `
 	const broken = clean + `Second,owner@example.com,It matters.,Sideways,Otherco
@@ -836,11 +836,26 @@ func TestRetiredDimensionAndFieldColumnsAreRejected(t *testing.T) {
 	}
 
 	for _, column := range []string{"Pillar", "Budget"} {
-		csv := "Title,Owner,So What,Kind," + column + "\nGrow,owner@example.com,It matters.,Ongoing,12\n"
+		csv := "Title,Owner,Why it matters,Kind," + column + "\nGrow,owner@example.com,It matters.,Ongoing,12\n"
 		_, err := importer.New(h.Service).DryRun(ctx, admin.ID, "goals.csv", []byte(csv))
 		if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), fmt.Sprintf("column %q", column)) {
 			t.Errorf("%s column: DryRun error = %v, want the column rejected", column, err)
 		}
+	}
+}
+
+// A spreadsheet headed with the term's old name, So What, is refused like any
+// unknown column: the import knows only Why it matters (#381).
+func TestOldSoWhatColumnIsRefused(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+
+	csv := "Title,Owner,So What,Kind\nGrow,owner@example.com,It matters.,Ongoing\n"
+	_, err := importer.New(h.Service).DryRun(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), `column "So What"`) {
+		t.Errorf("DryRun error = %v, want the So What column rejected", err)
 	}
 }
 

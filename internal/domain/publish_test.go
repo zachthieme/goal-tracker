@@ -14,7 +14,7 @@ import (
 )
 
 // Publishing freezes the Report as it reads now, and later edits to its Goals —
-// a new Check-in, a revised So What, a slipped date — never change the
+// a new Check-in, a revised Why it matters, a slipped date — never change the
 // published snapshot (CONTEXT.md: Report Definition).
 func TestPublishedReportNeverChanges(t *testing.T) {
 	t.Parallel()
@@ -42,8 +42,8 @@ func TestPublishedReportNeverChanges(t *testing.T) {
 	h.Clock.Advance(day)
 	// Two weeks out from a day later moves the back-to-Green date later.
 	h.CheckinMovingPath(boss, g.ID, domain.HealthRed, "Vendor is gone.", "Find a new vendor.", h.Clock.Now().AddDate(0, 0, 14), "A new vendor takes longer.")
-	if _, err := h.Service.EditSoWhat(ctx, g.ID, "EU shoppers can't pay in euros.", boss.ID); err != nil {
-		t.Fatalf("EditSoWhat: %v", err)
+	if _, err := h.Service.EditWhyItMatters(ctx, g.ID, "EU shoppers can't pay in euros.", boss.ID); err != nil {
+		t.Fatalf("EditWhyItMatters: %v", err)
 	}
 	slipDelivery(h, boss, g, g.DeliveryDate.AddDate(0, 1, 0))
 
@@ -55,9 +55,9 @@ func TestPublishedReportNeverChanges(t *testing.T) {
 		t.Errorf("published snapshot changed after the Goal was edited\n got %+v\nwant %+v", got, pub)
 	}
 	b := got.Report.Exceptions[0]
-	if b.Health != domain.HealthYellow || b.Goal.SoWhat != "Expand the market." || len(b.PriorDueDates) != 0 {
-		t.Errorf("snapshot reads Health %q, So What %q, prior dates %v; want the Goal as published",
-			b.Health, b.Goal.SoWhat, b.PriorDueDates)
+	if b.Health != domain.HealthYellow || b.Goal.WhyItMatters != "Expand the market." || len(b.PriorDueDates) != 0 {
+		t.Errorf("snapshot reads Health %q, Why it matters %q, prior dates %v; want the Goal as published",
+			b.Health, b.Goal.WhyItMatters, b.PriorDueDates)
 	}
 }
 

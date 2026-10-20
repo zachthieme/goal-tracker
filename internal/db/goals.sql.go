@@ -50,23 +50,23 @@ func (q *Queries) AddContributor(ctx context.Context, arg AddContributorParams) 
 }
 
 const createGoal = `-- name: CreateGoal :one
-INSERT INTO goals (title, so_what, owner_id, lifecycle, created_at)
+INSERT INTO goals (title, why_it_matters, owner_id, lifecycle, created_at)
 VALUES (?, ?, ?, ?, ?)
-RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level, activated_at
+RETURNING id, title, why_it_matters, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level, activated_at
 `
 
 type CreateGoalParams struct {
-	Title     string
-	SoWhat    string
-	OwnerID   int64
-	Lifecycle string
-	CreatedAt string
+	Title        string
+	WhyItMatters string
+	OwnerID      int64
+	Lifecycle    string
+	CreatedAt    string
 }
 
 func (q *Queries) CreateGoal(ctx context.Context, arg CreateGoalParams) (Goal, error) {
 	row := q.db.QueryRowContext(ctx, createGoal,
 		arg.Title,
-		arg.SoWhat,
+		arg.WhyItMatters,
 		arg.OwnerID,
 		arg.Lifecycle,
 		arg.CreatedAt,
@@ -75,7 +75,7 @@ func (q *Queries) CreateGoal(ctx context.Context, arg CreateGoalParams) (Goal, e
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
-		&i.SoWhat,
+		&i.WhyItMatters,
 		&i.OwnerID,
 		&i.Lifecycle,
 		&i.CreatedAt,
@@ -201,31 +201,31 @@ func (q *Queries) CreateMilestone(ctx context.Context, arg CreateMilestoneParams
 	return i, err
 }
 
-const createSoWhatRevision = `-- name: CreateSoWhatRevision :one
-INSERT INTO so_what_revisions (goal_id, so_what, author_id, created_at)
+const createWhyItMattersRevision = `-- name: CreateWhyItMattersRevision :one
+INSERT INTO why_it_matters_revisions (goal_id, why_it_matters, author_id, created_at)
 VALUES (?, ?, ?, ?)
-RETURNING id, goal_id, so_what, author_id, created_at
+RETURNING id, goal_id, why_it_matters, author_id, created_at
 `
 
-type CreateSoWhatRevisionParams struct {
-	GoalID    int64
-	SoWhat    string
-	AuthorID  int64
-	CreatedAt string
+type CreateWhyItMattersRevisionParams struct {
+	GoalID       int64
+	WhyItMatters string
+	AuthorID     int64
+	CreatedAt    string
 }
 
-func (q *Queries) CreateSoWhatRevision(ctx context.Context, arg CreateSoWhatRevisionParams) (SoWhatRevision, error) {
-	row := q.db.QueryRowContext(ctx, createSoWhatRevision,
+func (q *Queries) CreateWhyItMattersRevision(ctx context.Context, arg CreateWhyItMattersRevisionParams) (WhyItMattersRevision, error) {
+	row := q.db.QueryRowContext(ctx, createWhyItMattersRevision,
 		arg.GoalID,
-		arg.SoWhat,
+		arg.WhyItMatters,
 		arg.AuthorID,
 		arg.CreatedAt,
 	)
-	var i SoWhatRevision
+	var i WhyItMattersRevision
 	err := row.Scan(
 		&i.ID,
 		&i.GoalID,
-		&i.SoWhat,
+		&i.WhyItMatters,
 		&i.AuthorID,
 		&i.CreatedAt,
 	)
@@ -255,7 +255,7 @@ func (q *Queries) GetContributor(ctx context.Context, arg GetContributorParams) 
 }
 
 const getGoal = `-- name: GetGoal :one
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
+SELECT goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 WHERE goals.id = ? LIMIT 1
@@ -272,7 +272,7 @@ func (q *Queries) GetGoal(ctx context.Context, id int64) (GetGoalRow, error) {
 	err := row.Scan(
 		&i.Goal.ID,
 		&i.Goal.Title,
-		&i.Goal.SoWhat,
+		&i.Goal.WhyItMatters,
 		&i.Goal.OwnerID,
 		&i.Goal.Lifecycle,
 		&i.Goal.CreatedAt,
@@ -335,7 +335,7 @@ func (q *Queries) GetMilestone(ctx context.Context, id int64) (Milestone, error)
 }
 
 const listAcceptedLinkGoals = `-- name: ListAcceptedLinkGoals :many
-SELECT child.id, child.title, child.so_what, child.owner_id, child.lifecycle, child.created_at, child.kind, child.delivery_date, child.cadence_days, child.top_level, child.activated_at, child_owner.id, child_owner.email, child_owner.is_admin, child_owner.created_at, child_owner.departed, child_owner.name, child_owner.manager_id, child_owner.timezone, parent.id, parent.title, parent.so_what, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent.top_level, parent.activated_at, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed, parent_owner.name, parent_owner.manager_id, parent_owner.timezone
+SELECT child.id, child.title, child.why_it_matters, child.owner_id, child.lifecycle, child.created_at, child.kind, child.delivery_date, child.cadence_days, child.top_level, child.activated_at, child_owner.id, child_owner.email, child_owner.is_admin, child_owner.created_at, child_owner.departed, child_owner.name, child_owner.manager_id, child_owner.timezone, parent.id, parent.title, parent.why_it_matters, parent.owner_id, parent.lifecycle, parent.created_at, parent.kind, parent.delivery_date, parent.cadence_days, parent.top_level, parent.activated_at, parent_owner.id, parent_owner.email, parent_owner.is_admin, parent_owner.created_at, parent_owner.departed, parent_owner.name, parent_owner.manager_id, parent_owner.timezone
 FROM links
 JOIN goals child ON child.id = links.child_id
 JOIN accounts child_owner ON child_owner.id = child.owner_id
@@ -366,7 +366,7 @@ func (q *Queries) ListAcceptedLinkGoals(ctx context.Context) ([]ListAcceptedLink
 		if err := rows.Scan(
 			&i.Goal.ID,
 			&i.Goal.Title,
-			&i.Goal.SoWhat,
+			&i.Goal.WhyItMatters,
 			&i.Goal.OwnerID,
 			&i.Goal.Lifecycle,
 			&i.Goal.CreatedAt,
@@ -385,7 +385,7 @@ func (q *Queries) ListAcceptedLinkGoals(ctx context.Context) ([]ListAcceptedLink
 			&i.Account.Timezone,
 			&i.Goal_2.ID,
 			&i.Goal_2.Title,
-			&i.Goal_2.SoWhat,
+			&i.Goal_2.WhyItMatters,
 			&i.Goal_2.OwnerID,
 			&i.Goal_2.Lifecycle,
 			&i.Goal_2.CreatedAt,
@@ -512,7 +512,7 @@ func (q *Queries) ListGoalTitleRevisions(ctx context.Context, goalID int64) ([]L
 }
 
 const listGoals = `-- name: ListGoals :many
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
+SELECT goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 ORDER BY goals.created_at DESC, goals.id DESC
@@ -535,7 +535,7 @@ func (q *Queries) ListGoals(ctx context.Context) ([]ListGoalsRow, error) {
 		if err := rows.Scan(
 			&i.Goal.ID,
 			&i.Goal.Title,
-			&i.Goal.SoWhat,
+			&i.Goal.WhyItMatters,
 			&i.Goal.OwnerID,
 			&i.Goal.Lifecycle,
 			&i.Goal.CreatedAt,
@@ -639,58 +639,8 @@ func (q *Queries) ListMilestones(ctx context.Context, goalID int64) ([]Milestone
 	return items, nil
 }
 
-const listSoWhatRevisions = `-- name: ListSoWhatRevisions :many
-SELECT so_what_revisions.id, so_what_revisions.goal_id, so_what_revisions.so_what, so_what_revisions.author_id, so_what_revisions.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
-FROM so_what_revisions
-JOIN accounts ON accounts.id = so_what_revisions.author_id
-WHERE so_what_revisions.goal_id = ?
-ORDER BY so_what_revisions.created_at DESC, so_what_revisions.id DESC
-`
-
-type ListSoWhatRevisionsRow struct {
-	SoWhatRevision SoWhatRevision
-	Account        Account
-}
-
-func (q *Queries) ListSoWhatRevisions(ctx context.Context, goalID int64) ([]ListSoWhatRevisionsRow, error) {
-	rows, err := q.db.QueryContext(ctx, listSoWhatRevisions, goalID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []ListSoWhatRevisionsRow
-	for rows.Next() {
-		var i ListSoWhatRevisionsRow
-		if err := rows.Scan(
-			&i.SoWhatRevision.ID,
-			&i.SoWhatRevision.GoalID,
-			&i.SoWhatRevision.SoWhat,
-			&i.SoWhatRevision.AuthorID,
-			&i.SoWhatRevision.CreatedAt,
-			&i.Account.ID,
-			&i.Account.Email,
-			&i.Account.IsAdmin,
-			&i.Account.CreatedAt,
-			&i.Account.Departed,
-			&i.Account.Name,
-			&i.Account.ManagerID,
-			&i.Account.Timezone,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const listUnlinkedGoals = `-- name: ListUnlinkedGoals :many
-SELECT goals.id, goals.title, goals.so_what, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
+SELECT goals.id, goals.title, goals.why_it_matters, goals.owner_id, goals.lifecycle, goals.created_at, goals.kind, goals.delivery_date, goals.cadence_days, goals.top_level, goals.activated_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
 FROM goals
 JOIN accounts ON accounts.id = goals.owner_id
 WHERE goals.lifecycle = 'Active'
@@ -721,7 +671,7 @@ func (q *Queries) ListUnlinkedGoals(ctx context.Context) ([]ListUnlinkedGoalsRow
 		if err := rows.Scan(
 			&i.Goal.ID,
 			&i.Goal.Title,
-			&i.Goal.SoWhat,
+			&i.Goal.WhyItMatters,
 			&i.Goal.OwnerID,
 			&i.Goal.Lifecycle,
 			&i.Goal.CreatedAt,
@@ -752,9 +702,59 @@ func (q *Queries) ListUnlinkedGoals(ctx context.Context) ([]ListUnlinkedGoalsRow
 	return items, nil
 }
 
+const listWhyItMattersRevisions = `-- name: ListWhyItMattersRevisions :many
+SELECT why_it_matters_revisions.id, why_it_matters_revisions.goal_id, why_it_matters_revisions.why_it_matters, why_it_matters_revisions.author_id, why_it_matters_revisions.created_at, accounts.id, accounts.email, accounts.is_admin, accounts.created_at, accounts.departed, accounts.name, accounts.manager_id, accounts.timezone
+FROM why_it_matters_revisions
+JOIN accounts ON accounts.id = why_it_matters_revisions.author_id
+WHERE why_it_matters_revisions.goal_id = ?
+ORDER BY why_it_matters_revisions.created_at DESC, why_it_matters_revisions.id DESC
+`
+
+type ListWhyItMattersRevisionsRow struct {
+	WhyItMattersRevision WhyItMattersRevision
+	Account              Account
+}
+
+func (q *Queries) ListWhyItMattersRevisions(ctx context.Context, goalID int64) ([]ListWhyItMattersRevisionsRow, error) {
+	rows, err := q.db.QueryContext(ctx, listWhyItMattersRevisions, goalID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListWhyItMattersRevisionsRow
+	for rows.Next() {
+		var i ListWhyItMattersRevisionsRow
+		if err := rows.Scan(
+			&i.WhyItMattersRevision.ID,
+			&i.WhyItMattersRevision.GoalID,
+			&i.WhyItMattersRevision.WhyItMatters,
+			&i.WhyItMattersRevision.AuthorID,
+			&i.WhyItMattersRevision.CreatedAt,
+			&i.Account.ID,
+			&i.Account.Email,
+			&i.Account.IsAdmin,
+			&i.Account.CreatedAt,
+			&i.Account.Departed,
+			&i.Account.Name,
+			&i.Account.ManagerID,
+			&i.Account.Timezone,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setGoalCadence = `-- name: SetGoalCadence :one
 UPDATE goals SET cadence_days = ? WHERE id = ?
-RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level, activated_at
+RETURNING id, title, why_it_matters, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level, activated_at
 `
 
 type SetGoalCadenceParams struct {
@@ -768,7 +768,7 @@ func (q *Queries) SetGoalCadence(ctx context.Context, arg SetGoalCadenceParams) 
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
-		&i.SoWhat,
+		&i.WhyItMatters,
 		&i.OwnerID,
 		&i.Lifecycle,
 		&i.CreatedAt,
@@ -783,7 +783,7 @@ func (q *Queries) SetGoalCadence(ctx context.Context, arg SetGoalCadenceParams) 
 
 const setGoalKind = `-- name: SetGoalKind :one
 UPDATE goals SET kind = ?, delivery_date = ? WHERE id = ?
-RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level, activated_at
+RETURNING id, title, why_it_matters, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level, activated_at
 `
 
 type SetGoalKindParams struct {
@@ -798,7 +798,7 @@ func (q *Queries) SetGoalKind(ctx context.Context, arg SetGoalKindParams) (Goal,
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
-		&i.SoWhat,
+		&i.WhyItMatters,
 		&i.OwnerID,
 		&i.Lifecycle,
 		&i.CreatedAt,
@@ -813,7 +813,7 @@ func (q *Queries) SetGoalKind(ctx context.Context, arg SetGoalKindParams) (Goal,
 
 const setGoalLifecycle = `-- name: SetGoalLifecycle :one
 UPDATE goals SET lifecycle = ? WHERE id = ?
-RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level, activated_at
+RETURNING id, title, why_it_matters, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level, activated_at
 `
 
 type SetGoalLifecycleParams struct {
@@ -827,36 +827,7 @@ func (q *Queries) SetGoalLifecycle(ctx context.Context, arg SetGoalLifecyclePara
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
-		&i.SoWhat,
-		&i.OwnerID,
-		&i.Lifecycle,
-		&i.CreatedAt,
-		&i.Kind,
-		&i.DeliveryDate,
-		&i.CadenceDays,
-		&i.TopLevel,
-		&i.ActivatedAt,
-	)
-	return i, err
-}
-
-const setGoalSoWhat = `-- name: SetGoalSoWhat :one
-UPDATE goals SET so_what = ? WHERE id = ?
-RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level, activated_at
-`
-
-type SetGoalSoWhatParams struct {
-	SoWhat string
-	ID     int64
-}
-
-func (q *Queries) SetGoalSoWhat(ctx context.Context, arg SetGoalSoWhatParams) (Goal, error) {
-	row := q.db.QueryRowContext(ctx, setGoalSoWhat, arg.SoWhat, arg.ID)
-	var i Goal
-	err := row.Scan(
-		&i.ID,
-		&i.Title,
-		&i.SoWhat,
+		&i.WhyItMatters,
 		&i.OwnerID,
 		&i.Lifecycle,
 		&i.CreatedAt,
@@ -871,7 +842,7 @@ func (q *Queries) SetGoalSoWhat(ctx context.Context, arg SetGoalSoWhatParams) (G
 
 const setGoalTitle = `-- name: SetGoalTitle :one
 UPDATE goals SET title = ? WHERE id = ?
-RETURNING id, title, so_what, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level, activated_at
+RETURNING id, title, why_it_matters, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level, activated_at
 `
 
 type SetGoalTitleParams struct {
@@ -885,7 +856,7 @@ func (q *Queries) SetGoalTitle(ctx context.Context, arg SetGoalTitleParams) (Goa
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
-		&i.SoWhat,
+		&i.WhyItMatters,
 		&i.OwnerID,
 		&i.Lifecycle,
 		&i.CreatedAt,
@@ -910,6 +881,35 @@ type SetGoalTopLevelParams struct {
 func (q *Queries) SetGoalTopLevel(ctx context.Context, arg SetGoalTopLevelParams) error {
 	_, err := q.db.ExecContext(ctx, setGoalTopLevel, arg.TopLevel, arg.ID)
 	return err
+}
+
+const setGoalWhyItMatters = `-- name: SetGoalWhyItMatters :one
+UPDATE goals SET why_it_matters = ? WHERE id = ?
+RETURNING id, title, why_it_matters, owner_id, lifecycle, created_at, kind, delivery_date, cadence_days, top_level, activated_at
+`
+
+type SetGoalWhyItMattersParams struct {
+	WhyItMatters string
+	ID           int64
+}
+
+func (q *Queries) SetGoalWhyItMatters(ctx context.Context, arg SetGoalWhyItMattersParams) (Goal, error) {
+	row := q.db.QueryRowContext(ctx, setGoalWhyItMatters, arg.WhyItMatters, arg.ID)
+	var i Goal
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.WhyItMatters,
+		&i.OwnerID,
+		&i.Lifecycle,
+		&i.CreatedAt,
+		&i.Kind,
+		&i.DeliveryDate,
+		&i.CadenceDays,
+		&i.TopLevel,
+		&i.ActivatedAt,
+	)
+	return i, err
 }
 
 const updateMetric = `-- name: UpdateMetric :one

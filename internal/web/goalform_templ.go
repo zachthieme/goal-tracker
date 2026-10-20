@@ -17,7 +17,7 @@ import (
 
 // goalFormPage is the New goal page: a plain form that creates a Goal, Proposed
 // or activated at once, and lands on it, so it works without script. Its
-// column holds the Title and So What, then Delivery, How you'll know and More
+// column holds the Title and Why it matters, then Delivery, How you'll know and More
 // detail, each a section on the canvas rather than in a card; beside it the
 // Ready to activate card holds the submit buttons. Script posts the form to
 // /goals/new/checklist on load and as it changes, filled in or not, and swaps
@@ -141,7 +141,7 @@ func goalFormPage(current *domain.Account, v goalFormView) templ.Component {
 // changes, swapping the Ready to activate card for the one that comes back.
 // It sits inside the form rather than on it because htmx checks a form's
 // required inputs before a request the form itself makes, so an empty Title
-// or So What would hold back the very card that says what's missing; posted
+// or Why it matters would hold back the very card that says what's missing; posted
 // from here, the enclosing form's values go as they are, while a real submit
 // is still checked.
 func goalFormLiveChecklist(v goalFormView) templ.Component {
@@ -212,7 +212,7 @@ const goalFormReadyID = "goal-form-ready"
 // and a bar, each item's mark, ✓ or ○, with its done or to do for screen
 // readers alone, and the submit buttons. Create and activate posts activate=1
 // and is disabled while the live checklist is incomplete; Save as Proposed
-// needs a Title and So What, plus the delivery date when Dated is chosen. Save
+// needs a Title and Why it matters, plus the delivery date when Dated is chosen. Save
 // as Proposed comes first in the markup, so Enter in a text field saves as
 // Proposed, while CSS order shows Create and activate first.
 func goalFormReady(v goalFormView) templ.Component {
@@ -358,7 +358,7 @@ func goalFormReady(v goalFormView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, ">Create and activate</button></div><p class=\"muted small\">Saving needs a Title and So What, and a delivery date if Dated is chosen.</p><a class=\"small gf-cancel\" href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, ">Create and activate</button></div><p class=\"muted small\">Saving needs a Title and Why it matters, and a delivery date if Dated is chosen.</p><a class=\"small gf-cancel\" href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -458,7 +458,7 @@ func goalFormCheckLabel(item activationItem) templ.Component {
 
 // goalFormWhat opens the form with no heading of its own: the page's <h1> as a
 // muted line, then the Goal's Title, focused, as a heading-style input, and
-// its So What. Finishing a saved Goal, the Title is read-only and the So What
+// its Why it matters. Finishing a saved Goal, the Title is read-only and the Why it matters
 // takes the focus.
 func goalFormWhat(v goalFormView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
@@ -575,14 +575,14 @@ func goalFormWhat(v goalFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</label> <label class=\"field\"><span>So What <span class=\"hint\">· the customer problem, and what changes when this succeeds</span></span> <textarea id=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</label> <label class=\"field\"><span>Why it matters <span class=\"hint\">· the customer problem, and what changes when this succeeds</span></span> <textarea id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var25 string
-		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.InputSoWhat)
+		templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.InputWhyItMatters)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 154, Col: 27}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 154, Col: 33}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var25)
 		if templ_7745c5c3_Err != nil {
@@ -593,9 +593,9 @@ func goalFormWhat(v goalFormView) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var26 string
-		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.InputSoWhat)
+		templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.InputWhyItMatters)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 155, Col: 29}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 155, Col: 35}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var26)
 		if templ_7745c5c3_Err != nil {
@@ -611,15 +611,15 @@ func goalFormWhat(v goalFormView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		if v.bad(domain.InputSoWhat) != "" {
+		if v.bad(domain.InputWhyItMatters) != "" {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, " aria-invalid=\"true\" aria-describedby=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var27 string
-			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.InputSoWhat + "-error")
+			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.ResolveAttributeValue(domain.InputWhyItMatters + "-error")
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 160, Col: 53}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 160, Col: 59}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var27)
 			if templ_7745c5c3_Err != nil {
@@ -635,9 +635,9 @@ func goalFormWhat(v goalFormView) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var28 string
-		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(v.SoWhat)
+		templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(v.WhyItMatters)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 162, Col: 14}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/goalform.templ`, Line: 162, Col: 20}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 		if templ_7745c5c3_Err != nil {
@@ -647,7 +647,7 @@ func goalFormWhat(v goalFormView) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = goalFormInputError(v, domain.InputSoWhat).Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = goalFormInputError(v, domain.InputWhyItMatters).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -95,7 +95,7 @@ func Markdown(p domain.Publication) string {
 // date with its history struck through, Health with its Run off Green as
 // published ("Red · 5 wks") and what it was when it changed since the baseline,
 // what changed on it since, the Goals in the Report it contributes to, the
-// chosen Fields, So What, latest status, Path to Green with its back-to-Green
+// chosen Fields, Why it matters, latest status, Path to Green with its back-to-Green
 // date struck through as a Milestone's is when it slipped in the Run off Green
 // ("2026-10-03 ~~2026-09-12~~ (2)"), whom it asks for help, Milestones, Metrics
 // against target, and the Rolled-up Health with how many children are Red,
@@ -127,7 +127,7 @@ func writeBlock(b *strings.Builder, people *domain.Mentions, blk domain.ReportBl
 	if len(blk.Fields) > 0 {
 		fmt.Fprintf(b, "\n\n%s", fields(blk.Fields, "**%s:** %s"))
 	}
-	fmt.Fprintf(b, "\n\n**So What:** %s\n", text(g.SoWhat))
+	fmt.Fprintf(b, "\n\n**Why it matters:** %s\n", text(g.WhyItMatters))
 	if blk.Status != "" {
 		fmt.Fprintf(b, "\n**Status:** %s\n", text(blk.Status))
 	}

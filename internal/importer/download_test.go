@@ -32,7 +32,7 @@ func downloadCSV(t *testing.T, h *testsupport.Harness, goals ...domain.Goal) str
 func TestDownloadWritesTheImportFormatWithAnIDColumn(t *testing.T) {
 	t.Parallel()
 
-	const csv = `Title,Owner,So What,Kind,Delivery Date,Milestones,Metrics,Parents,Pillar,Theme,Budget,Notes
+	const csv = `Title,Owner,Why it matters,Kind,Delivery Date,Milestones,Metrics,Parents,Pillar,Theme,Budget,Notes
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,,,ARR | USD | up | 1000000 | 2000000 | 2026-12-31,,Growth,Trust; Speed,1250000,
 Ship checkout v2,eng@example.com,Checkout is slow.,Dated,2026-06-30,Beta @ 2026-05-01; GA @ 2026-06-15,,Grow revenue,Reliability,,,"Two
 lines"
@@ -66,7 +66,7 @@ lines"
 	}
 
 	got := downloadCSV(t, h, child, parent)
-	want := "ID,Title,Owner,So What,Kind,Delivery Date,Milestones,Metrics,Parents,Pillar,Theme,Budget,Notes\n" +
+	want := "ID,Title,Owner,Why it matters,Kind,Delivery Date,Milestones,Metrics,Parents,Pillar,Theme,Budget,Notes\n" +
 		strconv.FormatInt(child.ID, 10) + ",Ship checkout v2,eng@example.com,Checkout is slow.,Dated,2026-06-30,Beta @ 2026-05-01; GA @ 2026-06-15,,Grow revenue,Reliability,,,\"Two\nlines\"\n" +
 		strconv.FormatInt(parent.ID, 10) + ",Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,,,ARR | USD | up | 1000000 | 2000000 | 2026-12-31,,Growth,Trust; Speed,1250000,\n"
 	if got != want {
@@ -77,7 +77,7 @@ lines"
 // roundTripCSV is a spreadsheet whose Goals carry a value in a one-value, a
 // several-values and an Extendable several-values Dimension, a number and a long-text Field,
 // Milestones, a Metric and a parent.
-const roundTripCSV = `Title,Owner,So What,Kind,Delivery Date,Milestones,Metrics,Parents,Pillar,Theme,Customer,Budget,Notes
+const roundTripCSV = `Title,Owner,Why it matters,Kind,Delivery Date,Milestones,Metrics,Parents,Pillar,Theme,Customer,Budget,Notes
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,,,ARR | USD | up | 1000000 | 2000000 | 2026-12-31,,Growth,Trust; Speed,Acme,1250000,
 Ship checkout v2,eng@example.com,Checkout is slow.,Dated,2026-06-30,Beta @ 2026-05-01; GA @ 2026-06-15,,Grow revenue,Reliability,,,,"Two
 lines"
@@ -257,7 +257,7 @@ func TestAnUnknownIDFailsTheFileAndWritesNothing(t *testing.T) {
 }
 
 // A row with an ID updates only its Goal's Dimension values and Fields: a
-// changed Title or So What on it is ignored, and the report names each such
+// changed Title or Why it matters on it is ignored, and the report names each such
 // column once for the whole file (#81).
 func TestChangedGoalColumnsOnARowWithAnIDAreIgnoredAndReported(t *testing.T) {
 	t.Parallel()
@@ -273,16 +273,16 @@ func TestChangedGoalColumnsOnARowWithAnIDAreIgnoredAndReported(t *testing.T) {
 	if err != nil || !rep.Committed {
 		t.Fatalf("Commit = %+v, %v", rep, err)
 	}
-	if !slices.Equal(rep.Ignored, []string{"Title", "So What"}) {
-		t.Errorf("Ignored = %v, want [Title So What]", rep.Ignored)
+	if !slices.Equal(rep.Ignored, []string{"Title", "Why it matters"}) {
+		t.Errorf("Ignored = %v, want [Title Why it matters]", rep.Ignored)
 	}
 	for _, g := range []domain.Goal{parent, child} {
 		got, err := h.Service.ViewGoal(context.Background(), g.ID)
 		if err != nil {
 			t.Fatalf("ViewGoal: %v", err)
 		}
-		if got.Title != g.Title || got.SoWhat != g.SoWhat {
-			t.Errorf("Goal %d = %q / %q, want it unchanged as %q / %q", g.ID, got.Title, got.SoWhat, g.Title, g.SoWhat)
+		if got.Title != g.Title || got.WhyItMatters != g.WhyItMatters {
+			t.Errorf("Goal %d = %q / %q, want it unchanged as %q / %q", g.ID, got.Title, got.WhyItMatters, g.Title, g.WhyItMatters)
 		}
 	}
 }

@@ -9,7 +9,7 @@ import (
 
 // goalFormPage is the New goal page: a plain form that creates a Goal, Proposed
 // or activated at once, and lands on it, so it works without script. Its
-// column holds the Title and So What, then Delivery, How you'll know and More
+// column holds the Title and Why it matters, then Delivery, How you'll know and More
 // detail, each a section on the canvas rather than in a card; beside it the
 // Ready to activate card holds the submit buttons. Script posts the form to
 // /goals/new/checklist on load and as it changes, filled in or not, and swaps
@@ -44,7 +44,7 @@ templ goalFormPage(current *domain.Account, v goalFormView) {
 // changes, swapping the Ready to activate card for the one that comes back.
 // It sits inside the form rather than on it because htmx checks a form's
 // required inputs before a request the form itself makes, so an empty Title
-// or So What would hold back the very card that says what's missing; posted
+// or Why it matters would hold back the very card that says what's missing; posted
 // from here, the enclosing form's values go as they are, while a real submit
 // is still checked.
 templ goalFormLiveChecklist(v goalFormView) {
@@ -71,7 +71,7 @@ const goalFormReadyID = "goal-form-ready"
 // and a bar, each item's mark, ✓ or ○, with its done or to do for screen
 // readers alone, and the submit buttons. Create and activate posts activate=1
 // and is disabled while the live checklist is incomplete; Save as Proposed
-// needs a Title and So What, plus the delivery date when Dated is chosen. Save
+// needs a Title and Why it matters, plus the delivery date when Dated is chosen. Save
 // as Proposed comes first in the markup, so Enter in a text field saves as
 // Proposed, while CSS order shows Create and activate first.
 templ goalFormReady(v goalFormView) {
@@ -101,7 +101,7 @@ templ goalFormReady(v goalFormView) {
 			<button type="submit" class="btn">Save as Proposed</button>
 			<button type="submit" id={ domain.InputActivate } name={ domain.InputActivate } value="1" class="btn primary gf-activate" disabled?={ v.activateDisabled() }>Create and activate</button>
 		</div>
-		<p class="muted small">Saving needs a Title and So What, and a delivery date if Dated is chosen.</p>
+		<p class="muted small">Saving needs a Title and Why it matters, and a delivery date if Dated is chosen.</p>
 		<a class="small gf-cancel" href={ v.cancelURL() }>Cancel</a>
 	</aside>
 }
@@ -118,7 +118,7 @@ templ goalFormCheckLabel(item activationItem) {
 
 // goalFormWhat opens the form with no heading of its own: the page's <h1> as a
 // muted line, then the Goal's Title, focused, as a heading-style input, and
-// its So What. Finishing a saved Goal, the Title is read-only and the So What
+// its Why it matters. Finishing a saved Goal, the Title is read-only and the Why it matters
 // takes the focus.
 templ goalFormWhat(v goalFormView) {
 	<section data-testid="goal-form-what" class="gf-section gf-what">
@@ -149,18 +149,18 @@ templ goalFormWhat(v goalFormView) {
 			@goalFormInputError(v, domain.InputTitle)
 		</label>
 		<label class="field">
-			<span>So What <span class="hint">· the customer problem, and what changes when this succeeds</span></span>
+			<span>Why it matters <span class="hint">· the customer problem, and what changes when this succeeds</span></span>
 			<textarea
-				id={ domain.InputSoWhat }
-				name={ domain.InputSoWhat }
+				id={ domain.InputWhyItMatters }
+				name={ domain.InputWhyItMatters }
 				required
 				autofocus?={ v.Goal != nil }
-				if v.bad(domain.InputSoWhat) != "" {
+				if v.bad(domain.InputWhyItMatters) != "" {
 					aria-invalid="true"
-					aria-describedby={ domain.InputSoWhat + "-error" }
+					aria-describedby={ domain.InputWhyItMatters + "-error" }
 				}
-			>{ v.SoWhat }</textarea>
-			@goalFormInputError(v, domain.InputSoWhat)
+			>{ v.WhyItMatters }</textarea>
+			@goalFormInputError(v, domain.InputWhyItMatters)
 		</label>
 	</section>
 }

@@ -602,7 +602,7 @@ templ goalsStyles() {
 }
 
 // goalPage shows a single Goal: a header summarizing it with every action in
-// reach and its So What beneath, then its latest status, Metrics, Milestones,
+// reach and its Why it matters beneath, then its latest status, Metrics, Milestones,
 // Highlights, Comments and history in the main column, and its links, people,
 // Dimension values and Fields in the sidebar. Only the latest status, each Metric and
 // Milestones are cards; the rest sit on the canvas under a rule.
@@ -760,7 +760,7 @@ templ goalActionItemRow(l domain.ActionItemListing, current *domain.Account, ret
 }
 
 // goalHead is the Goal's summary a reader takes in at a glance: its title, its
-// So What as a lead paragraph, and one metadata line — the Health badge, then
+// Why it matters as a lead paragraph, and one metadata line — the Health badge, then
 // the Lifecycle, Kind, Owner, delivery date with its slips struck, cadence and
 // Top-level as plain text — with Check in and No change top right for whoever
 // may check in. Dimension values and Fields stay in the sidebar.
@@ -769,11 +769,11 @@ templ goalHead(v goalView, owner, admin bool) {
 	<header data-testid="goal-head" class="gp-head">
 		<div class="gp-summary">
 			<h1 data-testid="goal-title">{ g.Title }</h1>
-			<article data-testid="goal" class="gp-statement" aria-labelledby="so-what-label">
-				<h2 id="so-what-label" class="sr-only">So What</h2>
-				<p data-testid="goal-so-what" class="gp-lead">{ g.SoWhat }</p>
-				<button type="button" class="disclose help explain gp-lead-help" aria-expanded="false" aria-controls="so-what-help" title={ soWhatHelp }>What is a So What?</button>
-				<p id="so-what-help" class="explain" hidden>{ soWhatHelp }</p>
+			<article data-testid="goal" class="gp-statement" aria-labelledby="why-it-matters-label">
+				<h2 id="why-it-matters-label" class="sr-only">Why it matters</h2>
+				<p data-testid="goal-why-it-matters" class="gp-lead">{ g.WhyItMatters }</p>
+				<button type="button" class="disclose help explain gp-lead-help" aria-expanded="false" aria-controls="why-it-matters-help" title={ whyItMattersHelp }>What goes here?</button>
+				<p id="why-it-matters-help" class="explain" hidden>{ whyItMattersHelp }</p>
 			</article>
 			<p data-testid="goal-meta" class="gp-meta">
 				if health := v.health(); health != "" {
@@ -816,8 +816,8 @@ templ goalHead(v goalView, owner, admin bool) {
 			if note := v.lifecycleNote(); note != "" {
 				<p data-testid="goal-lifecycle-note" class="muted">{ note }</p>
 			}
-			if v.opens(formTitleSoWhat) {
-				@titleSoWhatForm(v)
+			if v.opens(formTitleWhyItMatters) {
+				@titleWhyItMattersForm(v)
 			}
 			if v.opens(formTopLevel) {
 				@openGoalForm(v, formTopLevel, "") {
@@ -913,27 +913,27 @@ templ goalMore(v goalView) {
 	}
 }
 
-// titleSoWhatForm is the Edit title and So What form, open in the page head
-// for the Owner or an Admin: the Goal's title and So What as they stand, or
+// titleWhyItMattersForm is the Edit title and Why it matters form, open in the page head
+// for the Owner or an Admin: the Goal's title and Why it matters as they stand, or
 // each as typed when a save was refused.
-templ titleSoWhatForm(v goalView) {
+templ titleWhyItMattersForm(v goalView) {
 	{{ g := v.Goal }}
-	{{ title, soWhat := g.Title, g.SoWhat }}
+	{{ title, whyItMatters := g.Title, g.WhyItMatters }}
 	if typed, ok := v.FormInput["title"]; ok && len(typed) > 0 {
 		{{ title = typed[0] }}
 	}
-	if typed, ok := v.FormInput["so_what"]; ok && len(typed) > 0 {
-		{{ soWhat = typed[0] }}
+	if typed, ok := v.FormInput["why_it_matters"]; ok && len(typed) > 0 {
+		{{ whyItMatters = typed[0] }}
 	}
-	@openGoalForm(v, formTitleSoWhat, "Edit title and So What") {
-		<form data-testid="edit-title-so-what" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/so-what", g.ID)) } class="gp-form">
+	@openGoalForm(v, formTitleWhyItMatters, "Edit title and Why it matters") {
+		<form data-testid="edit-title-why-it-matters" method="post" action={ templ.SafeURL(fmt.Sprintf("/goals/%d/why-it-matters", g.ID)) } class="gp-form">
 			<label class="field">
 				<span>Title</span>
 				<input type="text" name="title" value={ title } required autofocus/>
 			</label>
 			<label class="field">
-				<span>So What</span>
-				<textarea name="so_what" rows="3" required>{ soWhat }</textarea>
+				<span>Why it matters</span>
+				<textarea name="why_it_matters" rows="3" required>{ whyItMatters }</textarea>
 			</label>
 			<button type="submit" class="btn">Save</button>
 		</form>
@@ -1029,8 +1029,8 @@ templ ownerForms(v goalView) {
 	}
 }
 
-// soWhatHelp defines So What on the Goal page, opened from its heading.
-const soWhatHelp = "The customer problem this Goal addresses and what is expected to change when it succeeds."
+// whyItMattersHelp defines Why it matters on the Goal page, opened from its heading.
+const whyItMattersHelp = "The customer problem this Goal addresses and what is expected to change when it succeeds."
 
 // topLevelHelp says what Top-level means, opened from the Goal page's badge.
 const topLevelHelp = "One of the company's root outcomes"
@@ -1183,7 +1183,7 @@ templ requestParentLink(v goalView) {
 
 // defineGoal is the Owner's toolkit for a Proposed Goal: the activation
 // checklist, Activate Goal once it is done, and Finish defining, which opens
-// the define page to set the Kind, cadence, So What, Milestones, Metrics and
+// the define page to set the Kind, cadence, Why it matters, Milestones, Metrics and
 // the rest on one form. Contributors are added from the sidebar's
 // Contributors group.
 templ defineGoal(v goalView) {

@@ -268,7 +268,7 @@ function showThisYear(iso: string): string {
 
 async function fillWhat(page: Page, title: string) {
   await page.getByLabel("Title").fill(title);
-  await page.getByLabel(/^So What/).fill("Shoppers in the EU can't buy from us yet.");
+  await page.getByLabel(/^Why it matters/).fill("Shoppers in the EU can't buy from us yet.");
 }
 
 async function addMilestone(page: Page, name: string, date: string) {

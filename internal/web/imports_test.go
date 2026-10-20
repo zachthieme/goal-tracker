@@ -13,7 +13,7 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
-const webImportCSV = `Title,Owner,So What,Kind,Delivery Date,Parents
+const webImportCSV = `Title,Owner,Why it matters,Kind,Delivery Date,Parents
 Parent goal,boss@example.com,It matters.,Ongoing,,
 Child goal,ic@example.com,Supports the parent.,Dated,2026-06-30,Parent goal
 `
@@ -63,7 +63,7 @@ func TestAdminDryRunsThenCommitsImportOverHTTP(t *testing.T) {
 func TestAdminSeesRowErrorsOnDryRunOverHTTP(t *testing.T) {
 	t.Parallel()
 
-	const badCSV = `Title,Owner,So What,Kind,Delivery Date
+	const badCSV = `Title,Owner,Why it matters,Kind,Delivery Date
 Fine,owner@example.com,It matters.,Ongoing,
 ,owner@example.com,No title here.,Sideways,
 `
@@ -150,7 +150,7 @@ func postImportRaw(t *testing.T, client *http.Client, rawURL, filename, content,
 func TestImportReportIsAnAlertThenATable(t *testing.T) {
 	t.Parallel()
 
-	const badCSV = `Title,Owner,So What,Kind,Delivery Date
+	const badCSV = `Title,Owner,Why it matters,Kind,Delivery Date
 Fine,owner@example.com,It matters.,Ongoing,
 ,owner@example.com,No title here.,Sideways,
 `
@@ -186,7 +186,7 @@ Fine,owner@example.com,It matters.,Ongoing,
 func TestAdminImportsFieldAndExtendableColumnsOverHTTP(t *testing.T) {
 	t.Parallel()
 
-	const csv = `Title,Owner,So What,Kind,Budget,Customer
+	const csv = `Title,Owner,Why it matters,Kind,Budget,Customer
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,1200,acme; Newco
 `
 	h := testsupport.New(t, "admin@example.com")
@@ -282,7 +282,7 @@ func TestAdminImportsAnExcelCSVAndSeesSemicolonValuesRefusedOverHTTP(t *testing.
 		t.Errorf("committing a CSV with a byte-order mark didn't import it; body:\n%s", body)
 	}
 
-	const semicolonCSV = "Title,Owner,So What,Kind,Pillar\nGrow,owner@example.com,It matters.,Ongoing,R&D; Ops\n"
+	const semicolonCSV = "Title,Owner,Why it matters,Kind,Pillar\nGrow,owner@example.com,It matters.,Ongoing,R&D; Ops\n"
 	body = postImport(t, client, ts.URL+"/imports", "goals.csv", semicolonCSV, "dry-run")
 	if errs := pageElement(t, body, "ul", "import-row-errors"); !strings.Contains(html.UnescapeString(errs), "a value can't contain a semicolon, because the import format uses it to separate values") {
 		t.Errorf("dry run doesn't say why R&D; Ops is refused; body:\n%s", body)
@@ -295,7 +295,7 @@ func TestAdminImportsAnExcelCSVAndSeesSemicolonValuesRefusedOverHTTP(t *testing.
 func TestImportingARowWithoutARequiredValueCreatesTheGoalOverHTTP(t *testing.T) {
 	t.Parallel()
 
-	const csv = `Title,Owner,So What,Kind,Pillar,Budget
+	const csv = `Title,Owner,Why it matters,Kind,Pillar,Budget
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,,
 `
 	h := testsupport.New(t, "admin@example.com")
@@ -320,7 +320,7 @@ Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,,
 func TestImportedExtendableValueIsLoggedAsTheImportersOverHTTP(t *testing.T) {
 	t.Parallel()
 
-	const csv = `Title,Owner,So What,Kind,Customer
+	const csv = `Title,Owner,Why it matters,Kind,Customer
 Grow revenue,ceo@example.com,Revenue is flat.,Ongoing,Newco
 `
 	h := testsupport.New(t, "boss@example.com", "ada@example.com")

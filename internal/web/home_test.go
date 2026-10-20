@@ -1653,9 +1653,9 @@ func TestHomeListsAsksForHelpAddressedToTheViewer(t *testing.T) {
 	vp := h.SignIn("vp@example.com")
 	h.SetManager(sam, mia)
 	h.SetManager(mia, vp)
-	yellow := h.ActiveGoal(sam, "Alpha yellow", "So what.")
+	yellow := h.ActiveGoal(sam, "Alpha yellow", "Why it matters.")
 	h.AskForHelp(sam, yellow.ID, domain.HealthYellow, "Short a reviewer.", "Borrow one.", pathDate)
-	red := h.ActiveGoal(sam, "Zeta red", "So what.")
+	red := h.ActiveGoal(sam, "Zeta red", "Why it matters.")
 	h.AskForHelp(sam, red.ID, domain.HealthRed, "Blocked.", "Need budget.", pathDate)
 	miaClient := signInClient(t, ts.URL, "mia@example.com")
 

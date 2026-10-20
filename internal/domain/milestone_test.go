@@ -763,7 +763,7 @@ func TestDefiningAGoalRecordsNoMilestoneChange(t *testing.T) {
 	ctx := context.Background()
 	date := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	created, err := h.Service.CreateDefinedGoal(ctx, domain.DefinedGoalInput{
-		Title: "Ship v2", SoWhat: "why", OwnerID: sam.ID,
+		Title: "Ship v2", WhyItMatters: "why", OwnerID: sam.ID,
 		Milestones: []domain.MilestoneDefinition{{Name: "Beta", Date: date}},
 	})
 	if err != nil {
@@ -771,7 +771,7 @@ func TestDefiningAGoalRecordsNoMilestoneChange(t *testing.T) {
 	}
 	proposed := h.CreateGoal(sam, "Grow revenue", "why")
 	if _, err := h.Service.DefineGoal(ctx, sam.ID, proposed.ID, domain.DefinedGoalInput{
-		Title: "Grow revenue", SoWhat: "why", OwnerID: sam.ID,
+		Title: "Grow revenue", WhyItMatters: "why", OwnerID: sam.ID,
 		Milestones: []domain.MilestoneDefinition{{Name: "Pricing page", Date: date}},
 	}); err != nil {
 		t.Fatalf("DefineGoal: %v", err)

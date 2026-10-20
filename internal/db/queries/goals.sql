@@ -1,5 +1,5 @@
 -- name: CreateGoal :one
-INSERT INTO goals (title, so_what, owner_id, lifecycle, created_at)
+INSERT INTO goals (title, why_it_matters, owner_id, lifecycle, created_at)
 VALUES (?, ?, ?, ?, ?)
 RETURNING *;
 
@@ -23,8 +23,8 @@ RETURNING *;
 UPDATE goals SET cadence_days = ? WHERE id = ?
 RETURNING *;
 
--- name: SetGoalSoWhat :one
-UPDATE goals SET so_what = ? WHERE id = ?
+-- name: SetGoalWhyItMatters :one
+UPDATE goals SET why_it_matters = ? WHERE id = ?
 RETURNING *;
 
 -- name: SetGoalTitle :one
@@ -87,17 +87,17 @@ ORDER BY accounts.email;
 SELECT * FROM contributors
 WHERE goal_id = ? AND account_id = ? LIMIT 1;
 
--- name: CreateSoWhatRevision :one
-INSERT INTO so_what_revisions (goal_id, so_what, author_id, created_at)
+-- name: CreateWhyItMattersRevision :one
+INSERT INTO why_it_matters_revisions (goal_id, why_it_matters, author_id, created_at)
 VALUES (?, ?, ?, ?)
 RETURNING *;
 
--- name: ListSoWhatRevisions :many
-SELECT sqlc.embed(so_what_revisions), sqlc.embed(accounts)
-FROM so_what_revisions
-JOIN accounts ON accounts.id = so_what_revisions.author_id
-WHERE so_what_revisions.goal_id = ?
-ORDER BY so_what_revisions.created_at DESC, so_what_revisions.id DESC;
+-- name: ListWhyItMattersRevisions :many
+SELECT sqlc.embed(why_it_matters_revisions), sqlc.embed(accounts)
+FROM why_it_matters_revisions
+JOIN accounts ON accounts.id = why_it_matters_revisions.author_id
+WHERE why_it_matters_revisions.goal_id = ?
+ORDER BY why_it_matters_revisions.created_at DESC, why_it_matters_revisions.id DESC;
 
 -- name: CreateGoalTitleRevision :one
 INSERT INTO goal_title_revisions (goal_id, old_title, new_title, author_id, created_at)

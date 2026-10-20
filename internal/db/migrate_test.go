@@ -765,3 +765,66 @@ func draftNotes(t *testing.T, h *testsupport.Harness, def domain.ReportDefinitio
 	}
 	return out
 }
+
+// A Goal's lead text and its revisions, stored under the old names, survive
+// the rename to Why it matters (CONTEXT.md: Why it matters; ticket #381).
+func TestMigrationKeepsAGoalsLeadTextAndRevisionsAsWhyItMatters(t *testing.T) {
+	t.Parallel()
+
+	sqlDB := migratedExcept(t, "migrations/0053_why_it_matters.sql")
+	if _, err := sqlDB.Exec(`
+		DROP INDEX idx_why_it_matters_revisions_goal;
+		ALTER TABLE why_it_matters_revisions RENAME COLUMN why_it_matters TO so_what;
+		ALTER TABLE why_it_matters_revisions RENAME TO so_what_revisions;
+		CREATE INDEX idx_so_what_revisions_goal ON so_what_revisions (goal_id);
+		ALTER TABLE goals RENAME COLUMN why_it_matters TO so_what;`); err != nil {
+		t.Fatalf("undo 0053: %v", err)
+	}
+	if _, err := sqlDB.Exec(`
+		INSERT INTO accounts (id, email, created_at) VALUES (1, 'priya@example.com', '2026-01-02T00:00:00Z');
+		INSERT INTO goals (id, title, so_what, owner_id, lifecycle, created_at)
+			VALUES (1, 'Launch in EU', 'EU shoppers can buy from us.', 1, 'Proposed', '2026-01-02T00:00:00Z');
+		INSERT INTO so_what_revisions (goal_id, so_what, author_id, created_at) VALUES
+			(1, 'EU shoppers cannot buy.', 1, '2026-01-02T00:00:00Z'),
+			(1, 'EU shoppers can buy from us.', 1, '2026-01-03T00:00:00Z');`); err != nil {
+		t.Fatalf("arrange rows under the old names: %v", err)
+	}
+
+	if err := db.Migrate(sqlDB); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	var lead string
+	if err := sqlDB.QueryRow(`SELECT why_it_matters FROM goals WHERE id = 1`).Scan(&lead); err != nil {
+		t.Fatalf("read why_it_matters: %v", err)
+	}
+	if lead != "EU shoppers can buy from us." {
+		t.Errorf("why_it_matters = %q, want the lead text it had", lead)
+	}
+	rows, err := sqlDB.Query(`SELECT why_it_matters FROM why_it_matters_revisions WHERE goal_id = 1 ORDER BY created_at`)
+	if err != nil {
+		t.Fatalf("read revisions: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var revisions []string
+	for rows.Next() {
+		var r string
+		if err := rows.Scan(&r); err != nil {
+			t.Fatalf("scan revision: %v", err)
+		}
+		revisions = append(revisions, r)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("revisions: %v", err)
+	}
+	if want := []string{"EU shoppers cannot buy.", "EU shoppers can buy from us."}; !slices.Equal(revisions, want) {
+		t.Errorf("revisions = %q, want %q", revisions, want)
+	}
+	var indexes int
+	if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_why_it_matters_revisions_goal'`).Scan(&indexes); err != nil {
+		t.Fatalf("read index: %v", err)
+	}
+	if indexes != 1 {
+		t.Error("why_it_matters_revisions has no goal_id index")
+	}
+}

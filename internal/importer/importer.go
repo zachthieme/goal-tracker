@@ -1,7 +1,7 @@
 // Package importer loads a pilot's real Goals from a spreadsheet instead of
 // having an Admin enter them by hand (ticket #22). It reads CSV and XLSX, one
 // Goal per row, and turns each row into the same domain commands a person would
-// run: it gives every named Owner an account, creates the Goal with its So What,
+// run: it gives every named Owner an account, creates the Goal with its Why it matters,
 // marks it Dated or Ongoing, adds its Milestones and Metrics, assigns its
 // Dimension values (adding new ones to an Extendable list), sets its Fields,
 // and links it to its parent Goals — accepting those links automatically, since
@@ -182,17 +182,17 @@ type attributes struct {
 // carry an index; the optional ones are -1 when absent. Every column that is not
 // one of the known headers is a Dimension or a Field column.
 type layout struct {
-	id         int
-	title      int
-	owner      int
-	soWhat     int
-	kind       int
-	delivery   int
-	milestones int
-	metrics    int
-	parents    int
-	dimensions []dimensionColumn
-	fields     []fieldColumn
+	id           int
+	title        int
+	owner        int
+	whyItMatters int
+	kind         int
+	delivery     int
+	milestones   int
+	metrics      int
+	parents      int
+	dimensions   []dimensionColumn
+	fields       []fieldColumn
 }
 
 // dimensionColumn is a spreadsheet column whose header names a Dimension; each
@@ -213,7 +213,7 @@ type fieldColumn struct {
 // has to its index.
 func (lay layout) goalColumns() map[string]int {
 	cols := map[string]int{}
-	for i, idx := range []int{lay.title, lay.owner, lay.soWhat, lay.kind, lay.delivery, lay.milestones, lay.metrics, lay.parents} {
+	for i, idx := range []int{lay.title, lay.owner, lay.whyItMatters, lay.kind, lay.delivery, lay.milestones, lay.metrics, lay.parents} {
 		if idx >= 0 {
 			cols[goalColumns[i]] = idx
 		}
@@ -222,7 +222,7 @@ func (lay layout) goalColumns() map[string]int {
 }
 
 func parseHeader(header []string, attrs attributes) (layout, error) {
-	lay := layout{id: -1, title: -1, owner: -1, soWhat: -1, kind: -1, delivery: -1, milestones: -1, metrics: -1, parents: -1}
+	lay := layout{id: -1, title: -1, owner: -1, whyItMatters: -1, kind: -1, delivery: -1, milestones: -1, metrics: -1, parents: -1}
 	for i, raw := range header {
 		switch normalize(raw) {
 		case "id":
@@ -231,8 +231,8 @@ func parseHeader(header []string, attrs attributes) (layout, error) {
 			lay.title = i
 		case "owner":
 			lay.owner = i
-		case "so what":
-			lay.soWhat = i
+		case "why it matters":
+			lay.whyItMatters = i
 		case "kind":
 			lay.kind = i
 		case "delivery date":
@@ -259,7 +259,7 @@ func parseHeader(header []string, attrs attributes) (layout, error) {
 	for _, req := range []struct {
 		name string
 		idx  int
-	}{{"Title", lay.title}, {"Owner", lay.owner}, {"So What", lay.soWhat}, {"Kind", lay.kind}} {
+	}{{"Title", lay.title}, {"Owner", lay.owner}, {"Why it matters", lay.whyItMatters}, {"Kind", lay.kind}} {
 		if req.idx < 0 {
 			missing = append(missing, req.name)
 		}
@@ -271,7 +271,7 @@ func parseHeader(header []string, attrs attributes) (layout, error) {
 }
 
 // rowSpec is one parsed data row: the Goal to create, plus any errors found while
-// parsing it. A row whose Title, Owner, So What, Kind or Delivery Date is missing
+// parsing it. A row whose Title, Owner, Why it matters, Kind or Delivery Date is missing
 // or bad is incomplete and creates nothing; a bad Milestone, Metric or Dimension
 // value is reported but does not stop the rest of the row being checked.
 //
@@ -288,7 +288,7 @@ type rowSpec struct {
 	cells         map[string]string
 	title         string
 	owner         string
-	soWhat        string
+	whyItMatters  string
 	kind          string
 	delivery      time.Time
 	milestones    []milestoneSpec
@@ -347,10 +347,10 @@ func parseRow(line int, row []string, lay layout) rowSpec {
 		return parseUpdateRow(line, raw, row, lay)
 	}
 	s := rowSpec{
-		line:   line,
-		title:  cell(row, lay.title),
-		owner:  cell(row, lay.owner),
-		soWhat: cell(row, lay.soWhat),
+		line:         line,
+		title:        cell(row, lay.title),
+		owner:        cell(row, lay.owner),
+		whyItMatters: cell(row, lay.whyItMatters),
 	}
 	if s.title == "" {
 		s.errs = append(s.errs, "Title is required")
@@ -360,8 +360,8 @@ func parseRow(line int, row []string, lay layout) rowSpec {
 	} else if !strings.Contains(s.owner, "@") {
 		s.errs = append(s.errs, fmt.Sprintf("Owner %q is not an email address", s.owner))
 	}
-	if s.soWhat == "" {
-		s.errs = append(s.errs, "So What is required")
+	if s.whyItMatters == "" {
+		s.errs = append(s.errs, "Why it matters is required")
 	}
 
 	kindCell := cell(row, lay.kind)
@@ -631,7 +631,7 @@ func createGoal(ctx context.Context, tx *domain.Service, adminID int64, s rowSpe
 	if err != nil {
 		return 0, []string{fmt.Sprintf("could not create Owner account: %v", err)}
 	}
-	g, err := tx.CreateGoal(ctx, domain.CreateGoalInput{Title: s.title, SoWhat: s.soWhat, OwnerID: owner.ID})
+	g, err := tx.CreateGoal(ctx, domain.CreateGoalInput{Title: s.title, WhyItMatters: s.whyItMatters, OwnerID: owner.ID})
 	if err != nil {
 		return 0, []string{message(err)}
 	}

@@ -84,7 +84,7 @@ func (s *Service) ListTitleRevisions(ctx context.Context, goalID int64) ([]Title
 
 // RequireGoalOwnerOrAdmin returns ErrNotAuthorized unless actorID is the Goal's
 // Owner or an Admin (a Delegate is refused), or ErrNotFound if no such Goal
-// exists. The web layer calls it before changing a Goal's title and So What.
+// exists. The web layer calls it before changing a Goal's title and Why it matters.
 func (s *Service) RequireGoalOwnerOrAdmin(ctx context.Context, actorID, goalID int64) error {
 	g, err := s.loadGoal(ctx, goalID)
 	if err != nil {

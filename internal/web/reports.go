@@ -259,7 +259,7 @@ func publishSummary(r domain.Report, chip baselineChip) string {
 // the draft, against the baseline the reader picked (the baseline query
 // parameter), if any. An htmx post is the compose form autosaving: it gets the
 // preview and the save status instead, and a refusal changes only the save
-// status, so what the author typed stays. Add another (add_note={section})
+// status, so the author's typing stays. Add another (add_note={section})
 // saves too, then re-renders the form as posted with one more note box in that
 // section, saved or refused (see renderNarrativeFormAgain).
 func (s *Server) handleCurateNarrative(w http.ResponseWriter, r *http.Request, current domain.Account) {

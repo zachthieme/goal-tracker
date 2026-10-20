@@ -270,7 +270,7 @@ const sub = (text, x, name) => s.addText(text, { x, y: 1.85, w: 5.6, h: 0.4, fon
 sub("THE PLAN", 0.7, "Plan label");
 sub("HOW WE'D JUDGE IT", 6.95, "Measures label");
 const plan = [
-  { head: "Load one org's goals", body: "Each with its So What and what it contributes to." },
+  { head: "Load one org's goals", body: "Each with its Why it matters and what it contributes to." },
   { head: "Check in weekly for a month", body: "Reminders and nudges do the chasing." },
   { head: "Run the review from the Report", body: "No hand-built status deck that cycle." },
 ];

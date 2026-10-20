@@ -3281,8 +3281,8 @@ func highlightCredit(nh domain.NarrativeHighlight) templ.Component {
 // Lifecycle, and due date with its history struck through; Health and badges
 // top right; under them, when it changed since the baseline, a line saying what
 // changed ("Changed: Turned Red · 1 Milestone slipped"), and under that the
-// Goals in the Report it contributes to ("Contributes to: Growth ↓ (Red)"); So
-// What, latest status, and Path to Green in a tinted box, its back-to-Green
+// Goals in the Report it contributes to ("Contributes to: Growth ↓ (Red)"); Why it
+// matters, latest status, and Path to Green in a tinted box, its back-to-Green
 // date followed by the date it last slipped from in the Run off Green struck
 // through and the count of slips once more than one, as drafted (see
 // reportBackToGreenPrior), and marked Overdue when its target date passed
@@ -3629,14 +3629,14 @@ func reportBlock(b domain.ReportBlock, asOf time.Time, d discussion) templ.Compo
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 266, "\"><p data-testid=\"report-so-what\"><strong>So What:</strong> ")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 266, "\"><p data-testid=\"report-why-it-matters\"><strong>Why it matters:</strong> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var163 string
-		templ_7745c5c3_Var163, templ_7745c5c3_Err = templ.JoinStringErrs(b.Goal.SoWhat)
+		templ_7745c5c3_Var163, templ_7745c5c3_Err = templ.JoinStringErrs(b.Goal.WhyItMatters)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reports.templ`, Line: 949, Col: 76}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/reports.templ`, Line: 949, Col: 96}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var163))
 		if templ_7745c5c3_Err != nil {

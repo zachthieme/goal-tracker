@@ -13,11 +13,11 @@ import (
 
 // Goal is the single unit of work being tracked (CONTEXT.md: Goal).
 type Goal struct {
-	ID        int64
-	Title     string
-	SoWhat    string
-	Owner     Account
-	Lifecycle string
+	ID           int64
+	Title        string
+	WhyItMatters string
+	Owner        Account
+	Lifecycle    string
 	// Kind is "" until the Owner marks the Goal GoalDated or GoalOngoing.
 	Kind string
 	// DeliveryDate is the delivery date of a Dated Goal, and the zero time for
@@ -110,26 +110,26 @@ func nearestMonday(d time.Time) time.Time {
 }
 
 // ErrValidation is returned when a command's input is not acceptable, e.g. a
-// Goal created without a title or a So What.
+// Goal created without a title or a Why it matters.
 var ErrValidation = errors.New("validation failed")
 
 // CreateGoalInput is the create-Goal command's input.
 type CreateGoalInput struct {
-	Title   string
-	SoWhat  string
-	OwnerID int64
+	Title        string
+	WhyItMatters string
+	OwnerID      int64
 }
 
-// CreateGoal creates a Proposed Goal owned by OwnerID. Title and So What are
-// required (CONTEXT.md: So What is required when the Goal is created).
+// CreateGoal creates a Proposed Goal owned by OwnerID. Title and Why it matters are
+// required (CONTEXT.md: Why it matters is required when the Goal is created).
 func (s *Service) CreateGoal(ctx context.Context, in CreateGoalInput) (Goal, error) {
 	title := strings.TrimSpace(in.Title)
-	soWhat := strings.TrimSpace(in.SoWhat)
+	whyItMatters := strings.TrimSpace(in.WhyItMatters)
 	if title == "" {
 		return Goal{}, fmt.Errorf("%w: a Goal needs a title", ErrValidation)
 	}
-	if soWhat == "" {
-		return Goal{}, fmt.Errorf("%w: a Goal needs a So What", ErrValidation)
+	if whyItMatters == "" {
+		return Goal{}, fmt.Errorf("%w: a Goal needs to say why it matters", ErrValidation)
 	}
 
 	owner, err := s.queries.GetAccount(ctx, in.OwnerID)
@@ -142,47 +142,47 @@ func (s *Service) CreateGoal(ctx context.Context, in CreateGoalInput) (Goal, err
 
 	now := s.clock.Now()
 	row, err := s.queries.CreateGoal(ctx, db.CreateGoalParams{
-		Title:     title,
-		SoWhat:    soWhat,
-		OwnerID:   in.OwnerID,
-		Lifecycle: LifecycleProposed,
-		CreatedAt: now.Format(timeFormat),
+		Title:        title,
+		WhyItMatters: whyItMatters,
+		OwnerID:      in.OwnerID,
+		Lifecycle:    LifecycleProposed,
+		CreatedAt:    now.Format(timeFormat),
 	})
 	if err != nil {
 		return Goal{}, fmt.Errorf("create goal: %w", err)
 	}
 
-	// Keep the So What as its first revision so later edits are auditable
-	// (CONTEXT.md: So What edits are tracked).
-	if _, err := s.queries.CreateSoWhatRevision(ctx, db.CreateSoWhatRevisionParams{
-		GoalID:    row.ID,
-		SoWhat:    soWhat,
-		AuthorID:  in.OwnerID,
-		CreatedAt: now.Format(timeFormat),
+	// Keep the Why it matters as its first revision so later edits are auditable
+	// (CONTEXT.md: Why it matters edits are tracked).
+	if _, err := s.queries.CreateWhyItMattersRevision(ctx, db.CreateWhyItMattersRevisionParams{
+		GoalID:       row.ID,
+		WhyItMatters: whyItMatters,
+		AuthorID:     in.OwnerID,
+		CreatedAt:    now.Format(timeFormat),
 	}); err != nil {
-		return Goal{}, fmt.Errorf("record so what revision: %w", err)
+		return Goal{}, fmt.Errorf("record why it matters revision: %w", err)
 	}
 
 	return goalFromRow(row, owner), nil
 }
 
-// SoWhatRevision is one version of a Goal's So What, kept so edits are auditable
-// and viewable (CONTEXT.md: So What edits are tracked).
-type SoWhatRevision struct {
-	ID        int64
-	GoalID    int64
-	SoWhat    string
-	Author    Account
-	CreatedAt time.Time
+// WhyItMattersRevision is one version of a Goal's Why it matters, kept so edits are auditable
+// and viewable (CONTEXT.md: Why it matters edits are tracked).
+type WhyItMattersRevision struct {
+	ID           int64
+	GoalID       int64
+	WhyItMatters string
+	Author       Account
+	CreatedAt    time.Time
 }
 
-// EditSoWhat replaces a Goal's So What, keeping the previous text as a revision.
-// The new So What is required (CONTEXT.md: So What). authorID records who made
+// EditWhyItMatters replaces a Goal's Why it matters, keeping the previous text as a revision.
+// The new Why it matters is required (CONTEXT.md: Why it matters). authorID records who made
 // the edit.
-func (s *Service) EditSoWhat(ctx context.Context, goalID int64, soWhat string, authorID int64) (Goal, error) {
-	soWhat = strings.TrimSpace(soWhat)
-	if soWhat == "" {
-		return Goal{}, fmt.Errorf("%w: a Goal needs a So What", ErrValidation)
+func (s *Service) EditWhyItMatters(ctx context.Context, goalID int64, whyItMatters string, authorID int64) (Goal, error) {
+	whyItMatters = strings.TrimSpace(whyItMatters)
+	if whyItMatters == "" {
+		return Goal{}, fmt.Errorf("%w: a Goal needs to say why it matters", ErrValidation)
 	}
 	if _, err := s.queries.GetGoal(ctx, goalID); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -191,46 +191,46 @@ func (s *Service) EditSoWhat(ctx context.Context, goalID int64, soWhat string, a
 		return Goal{}, fmt.Errorf("look up goal: %w", err)
 	}
 
-	if _, err := s.queries.SetGoalSoWhat(ctx, db.SetGoalSoWhatParams{
-		SoWhat: soWhat,
-		ID:     goalID,
+	if _, err := s.queries.SetGoalWhyItMatters(ctx, db.SetGoalWhyItMattersParams{
+		WhyItMatters: whyItMatters,
+		ID:           goalID,
 	}); err != nil {
-		return Goal{}, fmt.Errorf("set so what: %w", err)
+		return Goal{}, fmt.Errorf("set why it matters: %w", err)
 	}
-	if _, err := s.queries.CreateSoWhatRevision(ctx, db.CreateSoWhatRevisionParams{
-		GoalID:    goalID,
-		SoWhat:    soWhat,
-		AuthorID:  authorID,
-		CreatedAt: s.clock.Now().Format(timeFormat),
+	if _, err := s.queries.CreateWhyItMattersRevision(ctx, db.CreateWhyItMattersRevisionParams{
+		GoalID:       goalID,
+		WhyItMatters: whyItMatters,
+		AuthorID:     authorID,
+		CreatedAt:    s.clock.Now().Format(timeFormat),
 	}); err != nil {
-		return Goal{}, fmt.Errorf("record so what revision: %w", err)
+		return Goal{}, fmt.Errorf("record why it matters revision: %w", err)
 	}
 	return s.loadGoal(ctx, goalID)
 }
 
-// ListSoWhatRevisions returns a Goal's So What history, newest first, each with
+// ListWhyItMattersRevisions returns a Goal's Why it matters history, newest first, each with
 // its author resolved.
-func (s *Service) ListSoWhatRevisions(ctx context.Context, goalID int64) ([]SoWhatRevision, error) {
-	rows, err := s.queries.ListSoWhatRevisions(ctx, goalID)
+func (s *Service) ListWhyItMattersRevisions(ctx context.Context, goalID int64) ([]WhyItMattersRevision, error) {
+	rows, err := s.queries.ListWhyItMattersRevisions(ctx, goalID)
 	if err != nil {
-		return nil, fmt.Errorf("list so what revisions: %w", err)
+		return nil, fmt.Errorf("list why it matters revisions: %w", err)
 	}
-	out := make([]SoWhatRevision, 0, len(rows))
+	out := make([]WhyItMattersRevision, 0, len(rows))
 	for _, r := range rows {
-		createdAt, _ := time.Parse(timeFormat, r.SoWhatRevision.CreatedAt)
-		out = append(out, SoWhatRevision{
-			ID:        r.SoWhatRevision.ID,
-			GoalID:    r.SoWhatRevision.GoalID,
-			SoWhat:    r.SoWhatRevision.SoWhat,
-			Author:    accountFromRow(r.Account),
-			CreatedAt: createdAt,
+		createdAt, _ := time.Parse(timeFormat, r.WhyItMattersRevision.CreatedAt)
+		out = append(out, WhyItMattersRevision{
+			ID:           r.WhyItMattersRevision.ID,
+			GoalID:       r.WhyItMattersRevision.GoalID,
+			WhyItMatters: r.WhyItMattersRevision.WhyItMatters,
+			Author:       accountFromRow(r.Account),
+			CreatedAt:    createdAt,
 		})
 	}
 	return out, nil
 }
 
 // ActivateGoal moves a Proposed Goal to Active once it meets the minimum
-// standard (CONTEXT.md: Lifecycle). The Goal must have a So What, an Owner, and
+// standard (CONTEXT.md: Lifecycle). The Goal must have a Why it matters, an Owner, and
 // either a delivery date plus at least one Milestone or Metric (Dated) or at
 // least one Metric (Ongoing), and a value in every Dimension and Field an Admin
 // has marked required (CONTEXT.md: Incomplete). Every unmet requirement comes back as its own
@@ -243,11 +243,11 @@ func (s *Service) ActivateGoal(ctx context.Context, goalID int64) (Goal, error) 
 	}
 
 	var reasons []error
-	// So What and Owner are guaranteed by CreateGoal/EditSoWhat and the schema,
+	// Why it matters and Owner are guaranteed by CreateGoal/EditWhyItMatters and the schema,
 	// but the gate states the full minimum standard so it still holds if those
 	// invariants ever change.
-	if strings.TrimSpace(g.SoWhat) == "" {
-		reasons = append(reasons, fmt.Errorf("%w: a Goal needs a So What to become Active", ErrValidation))
+	if strings.TrimSpace(g.WhyItMatters) == "" {
+		reasons = append(reasons, fmt.Errorf("%w: a Goal must say why it matters to become Active", ErrValidation))
 	}
 	if g.Owner.ID == 0 {
 		reasons = append(reasons, fmt.Errorf("%w: a Goal needs an Owner to become Active", ErrValidation))
@@ -367,7 +367,7 @@ func goalFromRow(g db.Goal, owner db.Account) Goal {
 	return Goal{
 		ID:           g.ID,
 		Title:        g.Title,
-		SoWhat:       g.SoWhat,
+		WhyItMatters: g.WhyItMatters,
 		Owner:        acc,
 		Lifecycle:    g.Lifecycle,
 		Kind:         g.Kind,

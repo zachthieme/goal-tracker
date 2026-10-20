@@ -37,7 +37,7 @@ the whole file.
 | `ID`            | no       | An existing Goal's id. A row with one updates that Goal instead of creating one (see [Updating Goals by ID](#updating-goals-by-id)); a row without one creates a Goal. |
 | `Title`         | yes      | The Goal's title. Titles must be unique within the file so that `Parents` can reference a Goal by title. |
 | `Owner`         | yes      | The Owner's email address. If no account exists for it yet, one is created (people named in the file get accounts). |
-| `So What`       | yes      | The customer problem the Goal addresses (CONTEXT.md: So What). |
+| `Why it matters`       | yes      | The customer problem the Goal addresses (CONTEXT.md: Why it matters). |
 | `Kind`          | yes      | `Dated` or `Ongoing`. |
 | `Delivery Date` | for Dated | `YYYY-MM-DD`, or in XLSX a date cell (see below). Required when `Kind` is `Dated`; must be empty when `Kind` is `Ongoing`. |
 | `Milestones`    | no       | Zero or more Milestones (see below). |
@@ -154,7 +154,7 @@ history, credited to the Admin running the import:
   importing a download unchanged changes nothing.
 - A Dimension or Field the file has no column for is left alone.
 
-**Every other column on such a row is ignored**: `Title`, `Owner`, `So What`,
+**Every other column on such a row is ignored**: `Title`, `Owner`, `Why it matters`,
 `Kind`, `Delivery Date`, `Milestones`, `Metrics` and `Parents` are not changed
 by an import, and a row with an ID is never linked to a parent. When a row's cell
 in one of those columns differs from its Goal, the result says once, for the

@@ -25,7 +25,7 @@ func TestSmokeGoalPageShowsRolledUpHealth(t *testing.T) {
 
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Parent", "It matters.")
-	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red so what.")
+	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red why it matters.")
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 	// The parent Owner checks in Green, explaining the difference.
 	if _, err := h.Service.SubmitCheckin(t.Context(), domain.SubmitCheckinInput{
@@ -59,7 +59,7 @@ func TestSmokeCheckinDifferingFromRollupNeedsExplanation(t *testing.T) {
 
 	sam := h.SignIn("sam@example.com")
 	parent := h.ActiveGoal(sam, "Parent", "It matters.")
-	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red so what.")
+	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red why it matters.")
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 
 	samClient := signInClient(t, ts.URL, "sam@example.com")
