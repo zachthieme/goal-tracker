@@ -13,6 +13,14 @@ and each entry opens with a tag saying who it reaches:
 `**Breaking changes:**` comes first in a milestone and names the contract it broke.
 The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md).
 
+### Collected changes — October 20, 2026
+
+**Testing:**
+- [internal] The e2e suite passes `npx prettier --check .` again: the two scenario specs and the README are reformatted, and a new `e2e/.prettierignore` skips the `test-results/` and `playwright-report/` a run leaves behind. The Check-in add bar's 390px case no longer checks the page's own width, which `app.css` clips so the check could never fail; it still checks that `main`'s content fits `main` (#373).
+
+**Code quality:**
+- [internal] The space between an Ask for help's Addressee and "Answer" on the Goal page is now written explicitly, not produced by a comment line in the template. The rendered page is unchanged (#373).
+
 ### Collected changes — October 19, 2026
 
 **Breaking changes:**
