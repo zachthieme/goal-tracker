@@ -77,7 +77,9 @@ templ goalFilters(view goalsListData) {
 				Incomplete
 			</label>
 			<noscript><button type="submit" class="btn">Apply</button></noscript>
-			<a href="/goals?org=all" class="btn quiet">Clear</a>
+			if view.anyGoalFilterSet() {
+				<a data-testid="goal-filters-clear" href="/goals" class="btn quiet">Clear</a>
+			}
 		</div>
 		if len(view.Dimensions) > 0 {
 			<details data-testid="more-filters" open?={ view.moreFiltersSet() }>

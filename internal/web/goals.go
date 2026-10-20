@@ -118,6 +118,13 @@ func (v goalsListData) moreFiltersSet() bool {
 	return len(v.Selected) > 0 || (v.GroupID != 0 && v.Table == nil)
 }
 
+// anyGoalFilterSet reports whether the filter bar differs from a bare /goals —
+// a Scope other than the viewer's default, or any other filter or grouping —
+// so Clear, which goes back to it, is offered (#376).
+func (v goalsListData) anyGoalFilterSet() bool {
+	return v.moreFiltersSet() || v.Filter != goalFilter{} || !v.Org.isDefault()
+}
+
 // goalCount is the Goal list's total: "1 Goal", "3 Goals".
 func goalCount(n int) string {
 	if n == 1 {
@@ -524,6 +531,19 @@ func (c *pageOrgScope) scopeToOrg(ctx context.Context, svc *domain.Service, id i
 		c.in[a.ID] = true
 	}
 	return true, nil
+}
+
+// isDefault reports whether c is the viewer's default scope, whether the
+// address named no scope or named the same one: My org when they have anyone
+// under them, else Mine.
+func (c pageOrgScope) isDefault() bool {
+	if c.Default {
+		return true
+	}
+	if c.OffersMine {
+		return c.Of != nil && c.Of.ID == c.Viewer.ID
+	}
+	return c.Mine
 }
 
 // scopeMineValue is the ?org= scoping a page of Goals to Mine.
