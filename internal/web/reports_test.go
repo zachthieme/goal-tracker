@@ -4155,3 +4155,134 @@ func TestPublicationFromBeforeBackToGreenSlipsShowsItsDateOverHTTP(t *testing.T)
 		t.Errorf("an older publication strikes a back-to-Green date through; path:\n%s", path)
 	}
 }
+
+// reportsActionItemRows returns the rows of one group of the Reports page's
+// Open Action Items, in order: testID names the group's list.
+func reportsActionItemRows(t *testing.T, page, testID string) []string {
+	t.Helper()
+	list := pageElement(t, page, "ul", testID)
+	var rows []string
+	for _, part := range strings.Split(list, `<li data-testid="reports-action-item"`)[1:] {
+		row, _, _ := strings.Cut(part, "</li>")
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+// The Reports page lists, above its table, the open Action Items its viewer
+// has reason to chase: Yours, where they created the Report Definition,
+// published, raised or own the item, and My org, where only someone in their
+// Org did. Each row reads like Home's, with its owner, and closes nothing.
+func TestReportsPageListsOpenActionItemsToChase(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ctx := context.Background()
+	viewer := h.SignIn("viewer@example.com")
+	mid := h.SignIn("mid@example.com")
+	outsider := h.SignIn("outsider@example.com")
+	stranger := h.SignIn("stranger@example.com")
+	h.SetManager(mid, viewer)
+	goal := h.ActiveGoal(outsider, "Launch in EU", "Expand the market.")
+	raise := func(author domain.Account, report string, goalID int64, owner domain.Account, text string, dueIn int) domain.ActionItem {
+		t.Helper()
+		def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: report, Mode: domain.ReportModePicked, Picked: []int64{goal.ID}})
+		pub := h.PublishReport(author, def)
+		item, err := h.Service.RaiseActionItem(ctx, author.ID, domain.RaiseActionItemInput{
+			PublicationID: pub.ID, GoalID: goalID, Text: text, OwnerID: owner.ID, DueDate: h.Clock.Now().AddDate(0, 0, dueIn),
+		})
+		if err != nil {
+			t.Fatalf("RaiseActionItem %q: %v", text, err)
+		}
+		return item
+	}
+	raise(viewer, "MBR", goal.ID, outsider, "Explain the slip.", -2)
+	orgs := raise(outsider, "QBR", 0, mid, "Send the vendor plan.", 7)
+	raise(outsider, "Ops review", 0, stranger, "Nobody's to chase.", 3)
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "viewer@example.com"), ts.URL+"/reports")
+
+	section := strings.Index(page, `<section data-testid="reports-action-items"`)
+	table := strings.Index(page, `data-testid="report-table"`)
+	if section < 0 || table < 0 || section > table {
+		t.Fatalf("Open Action Items at %d, Reports table at %d; want the section above the table:\n%s", section, table, page)
+	}
+	if !strings.Contains(page[section:table], "<h2>Open Action Items</h2>") {
+		t.Errorf("the section is not headed Open Action Items:\n%s", page[section:table])
+	}
+	if strings.Contains(page, "Nobody's to chase.") {
+		t.Errorf("the page lists an item nobody in the viewer's Org is party to")
+	}
+
+	yours := reportsActionItemRows(t, page, "reports-action-items-yours")
+	org := reportsActionItemRows(t, page, "reports-action-items-org")
+	if len(yours) != 1 || len(org) != 1 {
+		t.Fatalf("Yours lists %d, My org %d; want one each:\n%s", len(yours), len(org), page[section:table])
+	}
+	for _, want := range []string{"<h4 class=\"label\">Yours</h4>", "<h4 class=\"label\">My org</h4>"} {
+		if !strings.Contains(page[section:table], want) {
+			t.Errorf("Open Action Items lacks the group heading %s", want)
+		}
+	}
+	for _, want := range []string{
+		"Explain the slip.",
+		fmt.Sprintf(`href="/goals/%d#action-items"`, goal.ID),
+		`<span data-testid="reports-action-item-overdue" class="badge r">Overdue</span>`,
+		"MBR · Launch in EU · due " + h.Clock.Now().AddDate(0, 0, -2).Format("Jan 2, 2006"),
+		shownAs("outsider@example.com", "outsider"),
+	} {
+		if !strings.Contains(yours[0], want) {
+			t.Errorf("Yours row lacks %s:\n%s", want, yours[0])
+		}
+	}
+	for _, want := range []string{
+		"Send the vendor plan.",
+		fmt.Sprintf(`href="/reports/%d/publications/%d#action-items"`, orgs.DefinitionID, orgs.PublicationID),
+		"QBR · due " + h.Clock.Now().AddDate(0, 0, 7).Format("Jan 2, 2006"),
+		shownAs("mid@example.com", "mid"),
+	} {
+		if !strings.Contains(org[0], want) {
+			t.Errorf("My org row lacks %s:\n%s", want, org[0])
+		}
+	}
+	if strings.Contains(org[0], "reports-action-item-overdue") {
+		t.Errorf("an item due next week is flagged Overdue:\n%s", org[0])
+	}
+	if strings.Contains(page[section:table], "<form") {
+		t.Errorf("Open Action Items offers a form; Close and Reassign stay on the publication and Home:\n%s", page[section:table])
+	}
+	if nav := pageElement(t, page, "a", "nav-reports"); strings.Contains(nav, `class="count"`) {
+		t.Errorf("the Reports nav item carries a count: %s", nav)
+	}
+}
+
+// A viewer with no open Action Items to chase sees the Reports page as
+// before: no Open Action Items section, not even an empty one.
+func TestReportsPageWithoutActionItemsToChaseHasNoSection(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	author := h.SignIn("author@example.com")
+	owner := h.SignIn("owner@example.com")
+	h.SignIn("reader@example.com")
+	goal := h.ActiveGoal(author, "Launch in EU", "Expand the market.")
+	def := h.SaveReportDefinition(author, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{goal.ID}})
+	pub := h.PublishReport(author, def)
+	if _, err := h.Service.RaiseActionItem(context.Background(), author.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, Text: "Send the vendor plan.", OwnerID: owner.ID, DueDate: h.Clock.Now().AddDate(0, 0, 7),
+	}); err != nil {
+		t.Fatalf("RaiseActionItem: %v", err)
+	}
+
+	ts := newServer(t, h)
+	page := getBody(t, signInClient(t, ts.URL, "reader@example.com"), ts.URL+"/reports")
+	if !strings.Contains(page, `data-testid="report-table"`) {
+		t.Fatalf("the Reports page has no table:\n%s", page)
+	}
+	for _, absent := range []string{"reports-action-items", "Open Action Items", "Send the vendor plan."} {
+		if strings.Contains(page, absent) {
+			t.Errorf("a viewer with nothing to chase sees %q on the Reports page", absent)
+		}
+	}
+}
