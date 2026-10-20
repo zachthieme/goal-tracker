@@ -17,6 +17,9 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Bug fixes:**
 - [user] On the New goal page, with two Milestone or Metric editors open (as a refused submit can reopen them), Save, Cancel or Remove in one now moves focus to the other editor's first field instead of dropping it to the page, and the "Milestones" and "Metrics" labels show only once their section has a saved item, not while it holds only open editors (#371).
+- [user] On a phone, the Check-in page's context column now shows only "Contributed to by", with no rule above it, as #366 meant: "Last time" and "Dates" no longer push "How is it going?" down the page (#370).
+- [user] A Done or Cancelled Goal's pending Draft Highlights can no longer be edited, as none can be logged there: the Goal page offers no Edit on them and an edit sent anyway is refused. They can still be deleted (#372).
+- [user] On the Goal page, Remove on each Draft Highlight is disabled while a Draft Highlight editor is open, like + Log a highlight and Edit, so it can't swap the block and lose what was typed (#372).
 
 **Testing:**
 - [internal] The e2e suite passes `npx prettier --check .` again: the two scenario specs and the README are reformatted, and a new `e2e/.prettierignore` skips the `test-results/` and `playwright-report/` a run leaves behind. The Check-in add bar's 390px case no longer checks the page's own width, which `app.css` clips so the check could never fail; it still checks that `main`'s content fits `main` (#373).
