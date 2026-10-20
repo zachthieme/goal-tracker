@@ -1488,6 +1488,55 @@ func TestGoalListOffersClearOnlyWhenAFilterIsSet(t *testing.T) {
 	}
 }
 
+// The filter bar is one row: the Scope, search, Health, Lifecycle,
+// Incomplete, More filters' summary and Clear, in that order. More filters'
+// panel, the Dimension filters and Group by, follows the row rather than
+// sitting in it, so opening it adds a row below (#376).
+func TestGoalFilterBarHoldsMoreFiltersSummaryInItsRow(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	boss := h.SignIn("boss@example.com")
+	sam := h.SignIn("sam@example.com")
+	h.CreateDimension(boss, "Pillar", "Growth", "Reliability")
+	h.CreateGoal(sam, "Grow revenue", "It matters.")
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "sam@example.com")
+
+	page := getBody(t, client, ts.URL+"/goals?health=red")
+	form := between(t, page, `data-testid="goal-filters"`, `</form>`)
+	row := between(t, form, `<div class="gl-bar">`, `</div>`)
+	at := -1
+	for _, part := range []string{
+		`data-testid="goal-scope-filter"`,
+		`data-testid="goal-search"`,
+		`data-testid="goal-health-filter"`,
+		`data-testid="goal-lifecycle-filter"`,
+		`data-testid="goal-incomplete-filter"`,
+		`<details data-testid="more-filters"`,
+		`<summary`,
+		`data-testid="goal-filters-clear"`,
+	} {
+		next := strings.Index(row, part)
+		if next <= at {
+			t.Fatalf("the filter row doesn't hold %s after what comes before it:\n%s", part, row)
+		}
+		at = next
+	}
+	if strings.Contains(row, "<fieldset") || strings.Contains(row, `name="group"`) {
+		t.Errorf("More filters' panel sits in the filter row:\n%s", row)
+	}
+
+	panel := pageElement(t, form[strings.Index(form, row)+len(row):], "div", "more-filters-panel")
+	if !strings.Contains(panel, "<legend>Pillar</legend>") || !strings.Contains(panel, `<select name="group">`) {
+		t.Errorf("the panel after the row doesn't hold the Dimension filters and Group by:\n%s", panel)
+	}
+	summary := between(t, row, `<summary`, `>`)
+	if controls := attr(summary, "aria-controls"); controls == "" || attr(openTag(panel), "id") != controls {
+		t.Errorf("More filters' summary doesn't name the panel it shows: %s, %s", summary, openTag(panel))
+	}
+}
+
 // The Goal list's header names the page and offers New goal, a primary
 // button linking to the New goal page. The Risks page has replaced the links to
 // the signal pages.
@@ -3246,7 +3295,7 @@ func TestRetiredDimensionLeavesGoalListFilterAndGroupingOverHTTP(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	page := getBody(t, client, ts.URL+"/goals")
-	more := between(t, page, `<details data-testid="more-filters"`, "</details>")
+	more := pageElement(t, page, "div", "more-filters-panel")
 	if strings.Contains(more, "Pillar") || strings.Contains(more, "Growth") {
 		t.Errorf("the Retired Pillar is offered to filter or group by:\n%s", more)
 	}
@@ -3269,7 +3318,7 @@ func TestRetiredDimensionLeavesGoalListFilterAndGroupingOverHTTP(t *testing.T) {
 	if err := h.Service.RestoreDimension(ctx, boss.ID, pillar.ID); err != nil {
 		t.Fatalf("RestoreDimension: %v", err)
 	}
-	more = between(t, getBody(t, client, ts.URL+"/goals"), `<details data-testid="more-filters"`, "</details>")
+	more = pageElement(t, getBody(t, client, ts.URL+"/goals"), "div", "more-filters-panel")
 	if !strings.Contains(more, "<legend>Pillar</legend>") || !strings.Contains(more, fmt.Sprintf(`<option value="%d"`, pillar.ID)) {
 		t.Errorf("the restored Pillar isn't offered to filter and group by:\n%s", more)
 	}
