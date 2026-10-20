@@ -31,7 +31,7 @@ test.describe("on the due template", () => {
   // Home with its last Check-in 4 days old.
   test("a lead has a Check-in due, last checked in 4 days ago", async ({ page }) => {
     await signIn(page, "platform-lead@example.com");
-    const fourDaysOld = page.getByTestId("home-due-goal").filter({ hasText: "Last check-in 4 days ago" });
+    const fourDaysOld = page.getByTestId("home-due-goal").filter({ hasText: "last check-in 4 days ago" });
     await expect(fourDaysOld.first()).toBeVisible();
   });
 });

@@ -177,34 +177,35 @@ templ homeOrgCounts(c domain.SignalCounts) {
 	}
 }
 
-// dueRow is one Goal to check in on: its Health, muted and dated when Stale,
-// why it's listed, and, when noChange says one would be recorded, the
-// one-click No change beside the Check in link to the Goal's Check-in page.
+// dueRow is one Goal to check in on: its title, then a status line of its
+// Health, muted when Stale, how long since its last Check-in and how often one
+// is due, its Stale mark and, for a Delegate, whose Goal it is. When noChange
+// says one would be recorded, the one-click No change sits beside the Check in
+// link to the Goal's Check-in page.
 templ dueRow(g domain.PersonalGoal, noChange bool) {
 	<li data-testid="home-due-goal">
 		<div class="hm-what">
-			<span data-testid="home-due-health" class={ "badge", healthClass(g.Health), templ.KV("as-of", healthAsOf(g) != "") }>
-				<span class="dot"></span>
-				if g.Health == "" {
-					No Health yet
-				} else {
-					{ g.Health }
-				}
-			</span>
-			if asOf := healthAsOf(g); asOf != "" {
-				<span data-testid="home-due-as-of" class="muted small">{ asOf }</span>
-			}
 			<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", g.Goal.ID)) }>{ g.Goal.Title }</a>
-			if g.Freshness.Stale {
-				<span data-testid="home-due-stale" class="badge st">Stale</span>
-			}
-			if g.AsDelegate {
-				<span data-testid="home-due-for" class="tag">
-					{ "for " }
-					@person(g.Goal.Owner)
+			<p data-testid="home-due-status" class="hm-status muted small">
+				<span data-testid="home-due-health" class={ "badge", healthClass(g.Health), templ.KV("as-of", healthAsOf(g) != "") }>
+					<span class="dot"></span>
+					if g.Health == "" {
+						No Health yet
+					} else {
+						{ g.Health }
+					}
 				</span>
-			}
-			<p class="muted small">{ dueReason(g) }</p>
+				<span>{ dueReason(g) }</span>
+				if g.Freshness.Stale {
+					<span data-testid="home-due-stale" class="badge st">Stale</span>
+				}
+				if g.AsDelegate {
+					<span data-testid="home-due-for" class="tag">
+						{ "for " }
+						@person(g.Goal.Owner)
+					</span>
+				}
+			</p>
 		</div>
 		<div class="hm-actions">
 			if noChange {
@@ -366,6 +367,7 @@ templ homeStyles() {
 		.hm-compact>li{gap:4px 8px;padding:8px 0}
 		.hm-what{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;flex:1 1 240px;min-width:0}
 		.hm-what>p{flex-basis:100%}
+		.hm-status{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
 		.hm-what>a,.hm-compact a{font-weight:500}
 		.hm-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-left:auto}
 		.hm-actions form{margin:0}

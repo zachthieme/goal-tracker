@@ -123,7 +123,7 @@ func TestHomeIsOneColumnWithNeedsYouItsOnlyCard(t *testing.T) {
 	}
 }
 
-// A Stale Goal the viewer Owns is listed under "Check in on these", saying how
+// A Stale Goal the viewer Owns is listed under "Check-ins due", saying how
 // long since its last Check-in against its cadence, flagged Stale, with a
 // one-click No change and a Check in link. Fresh Goals and other people's
 // Stale Goals aren't listed.
@@ -146,7 +146,7 @@ func TestHomeListsStaleGoalToCheckInOn(t *testing.T) {
 	due := pageElement(t, page, "ul", "home-due")
 	row := homeRow(t, due, stale)
 	for _, want := range []string{
-		"Last check-in 16 days ago on a 14-day cadence",
+		"last check-in 16 days ago · every 14 days",
 		`data-testid="home-due-stale"`,
 		`data-testid="home-due-health"`,
 		fmt.Sprintf(`action="/goals/%d/checkins/no-change"`, stale.ID),
@@ -160,6 +160,32 @@ func TestHomeListsStaleGoalToCheckInOn(t *testing.T) {
 		if strings.Contains(due, navTo(g.ID)) {
 			t.Errorf("Check in on these lists %q, which isn't due for sam:\n%s", g.Title, due)
 		}
+	}
+}
+
+// A row in Check-ins due leads with the Goal's title, then one status line: its
+// Health, how long since its last Check-in, its cadence and, when it applies,
+// its Stale mark. The age is said once (#377).
+func TestHomeDueRowLeadsWithTheGoal(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	stale := h.ActiveGoal(sam, "Ship search", "People can't find things.")
+	setCadence(t, h, stale, 14)
+	h.Checkin(sam, stale.ID, domain.HealthYellow, "Slipping.", "Cut scope.", testsupport.Epoch.AddDate(0, 1, 0))
+	h.Clock.Advance(16 * day)
+
+	row := homeRow(t, pageElement(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/home"), "ul", "home-due"), stale)
+	if title, health := strings.Index(row, navTo(stale.ID)), strings.Index(row, `data-testid="home-due-health"`); title > health {
+		t.Errorf("row doesn't lead with the Goal's title:\n%s", row)
+	}
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Yellow last check-in 16 days ago · every 14 days Stale" {
+		t.Errorf("row's status line = %q, want its Health, age, cadence and Stale mark:\n%s", got, row)
+	}
+	if n := strings.Count(row, "16 days ago"); n != 1 {
+		t.Errorf("row says the Goal's age %d times, want once:\n%s", n, row)
 	}
 }
 
@@ -186,7 +212,7 @@ func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
 
 	due := pageElement(t, page, "ul", "home-due")
 	row := homeRow(t, due, dueSoon)
-	if !strings.Contains(row, "Last check-in 8 days ago on a 14-day cadence") {
+	if !strings.Contains(row, "last check-in 8 days ago · every 14 days") {
 		t.Errorf("due-soon Goal's row does not say why it's listed:\n%s", row)
 	}
 	if strings.Contains(row, `data-testid="home-due-stale"`) {
@@ -198,9 +224,9 @@ func TestHomeListsGoalDueBeforeNextReminder(t *testing.T) {
 }
 
 // A Stale Goal's Health in Check-ins due is its last Check-in's, so it reads
-// as last reported: a muted badge naming just the Health, with "as of" how
-// long ago beside it, still flagged Stale. A due Goal that isn't Stale yet
-// keeps its full-colour badge and no "as of".
+// as last reported: a muted badge naming just the Health, dated by the "last
+// check-in" beside it, still flagged Stale, and with no "as of" to say the age
+// again. A due Goal that isn't Stale yet keeps its full-colour badge.
 func TestHomeDatesStaleGoalsHealth(t *testing.T) {
 	t.Parallel()
 
@@ -225,22 +251,21 @@ func TestHomeDatesStaleGoalsHealth(t *testing.T) {
 	if !regexp.MustCompile(`data-testid="home-due-health"[^>]*><span class="dot"></span>\s*Green\s*</span>`).MatchString(row) {
 		t.Errorf("Stale Goal's Health badge does not read just Green:\n%s", row)
 	}
-	if got := elementTexts(row, "span", "home-due-as-of"); len(got) != 1 || got[0] != "as of 9 days ago" {
-		t.Errorf("Stale Goal's Health is dated %q, want as of 9 days ago:\n%s", got, row)
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "Green last check-in 9 days ago · every 7 days Stale" {
+		t.Errorf("Stale Goal's Health is dated %q, want by its last Check-in 9 days ago:\n%s", got, row)
 	}
 	if !strings.Contains(row, `data-testid="home-due-stale"`) {
 		t.Errorf("Stale Goal is no longer flagged Stale:\n%s", row)
 	}
 
 	row = homeRow(t, due, dueSoon)
-	if hasClass(tagAround(t, row, `data-testid="home-due-health"`), "as-of") || strings.Contains(row, `data-testid="home-due-as-of"`) {
-		t.Errorf("due Goal that isn't Stale has its Health dated:\n%s", row)
+	if hasClass(tagAround(t, row, `data-testid="home-due-health"`), "as-of") {
+		t.Errorf("due Goal that isn't Stale has its Health muted:\n%s", row)
 	}
 }
 
 // A Stale Goal never checked in on has no reported Health to date: its badge
-// reads "No Health yet", unmuted, with no "as of", since its days count from
-// activation.
+// reads "No Health yet", unmuted, and its days count from activation.
 func TestHomeLeavesNoHealthYetUndated(t *testing.T) {
 	t.Parallel()
 
@@ -258,8 +283,8 @@ func TestHomeLeavesNoHealthYetUndated(t *testing.T) {
 	if hasClass(badge, "as-of") || !strings.Contains(row, "No Health yet") {
 		t.Errorf("Goal with no Check-in doesn't read No Health yet, unmuted: %s", row)
 	}
-	if strings.Contains(row, `data-testid="home-due-as-of"`) {
-		t.Errorf("Goal with no Check-in has its Health dated:\n%s", row)
+	if got := elementTexts(row, "p", "home-due-status"); len(got) != 1 || got[0] != "No Health yet no check-in since activation 9 days ago · every 7 days Stale" {
+		t.Errorf("Goal with no Check-in has status line %q, want its days counted from activation:\n%s", got, row)
 	}
 }
 

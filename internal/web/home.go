@@ -295,13 +295,22 @@ func overdueDays(f domain.Freshness) int {
 	return f.DaysSince - f.CadenceDays
 }
 
-// dueReason says why a Goal is listed to check in on.
+// dueReason says why a Goal is listed to check in on: how long since its last
+// Check-in, or its activation, and how often one is due.
 func dueReason(g domain.PersonalGoal) string {
 	f := g.Freshness
 	if !g.CheckedIn {
-		return fmt.Sprintf("No check-in since activation %s on a %d-day cadence", daysAgo(f.DaysSince), f.CadenceDays)
+		return fmt.Sprintf("no check-in since activation %s · every %s", daysAgo(f.DaysSince), homeCadenceDays(f.CadenceDays))
 	}
-	return fmt.Sprintf("Last check-in %s on a %d-day cadence", daysAgo(f.DaysSince), f.CadenceDays)
+	return fmt.Sprintf("last check-in %s · every %s", daysAgo(f.DaysSince), homeCadenceDays(f.CadenceDays))
+}
+
+// homeCadenceDays reads a cadence's count of days ("every 7 days", "every day").
+func homeCadenceDays(days int) string {
+	if days == 1 {
+		return "day"
+	}
+	return fmt.Sprintf("%d days", days)
 }
 
 // healthAsOf dates a Stale Goal's Health as last reported ("as of 9 days

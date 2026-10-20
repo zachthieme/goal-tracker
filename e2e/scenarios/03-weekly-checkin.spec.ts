@@ -70,7 +70,7 @@ test.describe("on the due template", () => {
       for (const g of due) {
         const row = dueRow(page, g);
         await expect(row.getByTestId("home-due-health")).toHaveText(/^\s*(Green|Yellow|Red|No Health yet)\s*$/);
-        await expect(row).toContainText(/(Last check-in|No check-in since activation) .+ on a \d+-day cadence/);
+        await expect(row.getByTestId("home-due-status")).toContainText(/(last check-in|no check-in since activation) .+ · every (\d+ days|day)/);
       }
       // The seed has no pending Requests, so the count is the rows.
       await expect(page.getByTestId("home-requests")).toHaveCount(0);
