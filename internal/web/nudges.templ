@@ -3,13 +3,13 @@ package web
 import "github.com/zachthieme/goal-tracker/internal/domain"
 
 // nudgeRefusedPage says, inside the normal page, why a Nudge was refused or
-// didn't reach everyone, with a link back to the Risks page it was sent from.
+// didn't reach everyone, with a link back to the Follow-ups page it was sent from.
 templ nudgeRefusedPage(current *domain.Account, heading, reason string) {
 	@layout(heading, current) {
 		<div class="message-page">
 			<h1>{ heading }</h1>
 			<p data-testid="nudge-refused">{ reason }</p>
-			<p><a href="/risks">Back</a></p>
+			<p><a href="/follow-ups">Back</a></p>
 		</div>
 	}
 }

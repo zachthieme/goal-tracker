@@ -230,7 +230,7 @@ func TestTopBarMarksTheCurrentPage(t *testing.T) {
 	for _, tc := range []struct{ path, current string }{
 		{"/reports", "nav-reports"},
 		{"/home", "nav-home"},
-		{"/risks", "nav-risks"},
+		{"/follow-ups", "nav-follow-ups"},
 		{"/dimensions", ""},
 		{"/goals", "nav-goals"},
 	} {
@@ -244,7 +244,7 @@ func TestTopBarMarksTheCurrentPage(t *testing.T) {
 		if !strings.Contains(page, `<main class="page">`) {
 			t.Errorf("%s does not wrap its content in the page; body:\n%s", tc.path, page)
 		}
-		for _, item := range []string{"nav-home", "nav-goals", "nav-risks", "nav-reports"} {
+		for _, item := range []string{"nav-home", "nav-goals", "nav-follow-ups", "nav-reports"} {
 			link := pageElement(t, page, "a", item)
 			marked := strings.Contains(link, `aria-current="page"`) && strings.Contains(link, `class="navitem on"`)
 			if item == tc.current && !marked {
@@ -305,7 +305,7 @@ func TestTopBarMarksGoalsOnPagesUnderIt(t *testing.T) {
 		if link := pageElement(t, page, "a", "nav-goals"); !strings.Contains(link, `aria-current="page"`) || !strings.Contains(link, `class="navitem on"`) {
 			t.Errorf("on %s, Goals is not marked current: %s", path, link)
 		}
-		for _, item := range []string{"nav-home", "nav-risks", "nav-reports"} {
+		for _, item := range []string{"nav-home", "nav-follow-ups", "nav-reports"} {
 			if link := pageElement(t, page, "a", item); strings.Contains(link, `aria-current`) {
 				t.Errorf("on %s, %s is marked current: %s", path, item, link)
 			}
@@ -391,7 +391,7 @@ func TestNarrowTopBarPutsNavItemsOnASecondRow(t *testing.T) {
 		t.Fatalf("the top bar does not group its nav items:\n%s", page)
 	}
 	items := page[start : start+strings.Index(page[start:], "</div>")]
-	for _, item := range []string{"nav-home", "nav-goals", "nav-risks", "nav-reports"} {
+	for _, item := range []string{"nav-home", "nav-goals", "nav-follow-ups", "nav-reports"} {
 		if !strings.Contains(items, `data-testid="`+item+`"`) {
 			t.Errorf("%s is not in the nav items' row: %s", item, items)
 		}

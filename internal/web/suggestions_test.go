@@ -142,9 +142,9 @@ func TestARefusedSuggestionReRendersTheForm(t *testing.T) {
 	}
 }
 
-// Someone else's Unlinked Goal on the Risks page has Suggest a parent as its
+// Someone else's Unlinked Goal on the Follow-ups page has Suggest a parent as its
 // Fix, and following it suggests a parent the same way.
-func TestSuggestingAParentFromTheRisksFix(t *testing.T) {
+func TestSuggestingAParentFromTheFollowUpsFix(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -155,7 +155,7 @@ func TestSuggestingAParentFromTheRisksFix(t *testing.T) {
 	parent := h.CreateGoal(kim, "Grow revenue", "It pays for everything.")
 
 	client := signInClient(t, ts.URL, "kim@example.com")
-	label, href, _ := riskFix(t, riskRowOf(t, getBody(t, client, ts.URL+"/risks?org=all"), loner))
+	label, href, _ := followUpFix(t, followUpRowOf(t, getBody(t, client, ts.URL+"/follow-ups?org=all"), loner))
 	if label != "Suggest a parent" {
 		t.Fatalf("Fix = %q, want Suggest a parent", label)
 	}

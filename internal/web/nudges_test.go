@@ -17,22 +17,22 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
-// nudgeForm returns a Risks row's Nudge form, failing the test when its Fix
+// nudgeForm returns a Follow-ups row's Nudge form, failing the test when its Fix
 // isn't one.
 func nudgeForm(t *testing.T, row string) string {
 	t.Helper()
-	cell := pageElement(t, row, "td", "risk-fix")
+	cell := pageElement(t, row, "td", "follow-up-fix")
 	if !strings.Contains(cell, `<form data-testid="nudge"`) {
 		t.Fatalf("the Fix is no Nudge form: %s", cell)
 	}
 	return pageElement(t, cell, "form", "nudge")
 }
 
-// Someone else's Check-in overdue Goal on the Risks page has a Nudge form as
-// its Fix. Once posted, the page returns to the Risks page as it was filtered,
+// Someone else's Check-in overdue Goal on the Follow-ups page has a Nudge form as
+// its Fix. Once posted, the page returns to the Follow-ups page as it was filtered,
 // and anyone else who can't check in sees a disabled "Nudged today by Pat" in
 // its place, while its Owner still sees Check in.
-func TestNudgingFromTheRisksFix(t *testing.T) {
+func TestNudgingFromTheFollowUpsFix(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -44,34 +44,34 @@ func TestNudgingFromTheRisksFix(t *testing.T) {
 	h.Clock.Advance(10 * day)
 
 	pat := signInClient(t, ts.URL, "pat@example.com")
-	form := nudgeForm(t, riskRowOf(t, getBody(t, pat, ts.URL+"/risks?group=owner&org=all"), silent))
+	form := nudgeForm(t, followUpRowOf(t, getBody(t, pat, ts.URL+"/follow-ups?group=owner&org=all"), silent))
 	action := attr(openTag(form)+">", "action")
 	if want := "/goals/" + strconv.FormatInt(silent.ID, 10) + "/nudge"; action != want || !strings.Contains(openTag(form), `method="post"`) {
 		t.Fatalf("Nudge form posts to %q, want %s: %s", action, want, form)
 	}
-	if !strings.Contains(form, `<input type="hidden" name="return" value="/risks?group=owner&amp;org=all">`) {
-		t.Errorf("the Nudge form doesn't return to the Risks page as filtered: %s", form)
+	if !strings.Contains(form, `<input type="hidden" name="return" value="/follow-ups?group=owner&amp;org=all">`) {
+		t.Errorf("the Nudge form doesn't return to the Follow-ups page as filtered: %s", form)
 	}
 	if !strings.Contains(form, ">Nudge</button>") {
 		t.Errorf("the Nudge form's button doesn't say Nudge: %s", form)
 	}
 
-	resp := postForm(t, pat, ts.URL+action, url.Values{"return": {"/risks?group=owner&org=all"}})
+	resp := postForm(t, pat, ts.URL+action, url.Values{"return": {"/follow-ups?group=owner&org=all"}})
 	_ = readBody(t, resp)
-	if got := resp.Request.URL.String(); got != ts.URL+"/risks?group=owner&org=all" {
-		t.Errorf("nudging landed on %s, want the Risks page as filtered", got)
+	if got := resp.Request.URL.String(); got != ts.URL+"/follow-ups?group=owner&org=all" {
+		t.Errorf("nudging landed on %s, want the Follow-ups page as filtered", got)
 	}
 	if n := len(h.Email.Sent()); n != 1 {
 		t.Errorf("sent %d emails, want 1 to the Owner", n)
 	}
 
 	for _, viewer := range []string{"pat@example.com", "kim@example.com"} {
-		cell := pageElement(t, riskRowOf(t, getBody(t, signInClient(t, ts.URL, viewer), ts.URL+"/risks?org=all"), silent), "td", "risk-fix")
+		cell := pageElement(t, followUpRowOf(t, getBody(t, signInClient(t, ts.URL, viewer), ts.URL+"/follow-ups?org=all"), silent), "td", "follow-up-fix")
 		if !strings.Contains(cell, "disabled") || !strings.Contains(cell, "Nudged today by Pat Okafor") || strings.Contains(cell, "<form") {
 			t.Errorf("%s sees Fix %s, want a disabled Nudged today by Pat Okafor", viewer, cell)
 		}
 	}
-	label, _, _ := riskFix(t, riskRowOf(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/risks?org=all"), silent))
+	label, _, _ := followUpFix(t, followUpRowOf(t, getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/follow-ups?org=all"), silent))
 	if label != "Check in" {
 		t.Errorf("the Owner sees Fix %q, want Check in", label)
 	}
@@ -89,9 +89,9 @@ func TestNudgeOutranksSuggestAParent(t *testing.T) {
 	loner := h.ActiveGoal(sam, "Silent side project", "Nobody asked.")
 	h.Clock.Advance(10 * day)
 
-	row := riskRowOf(t, getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/risks?org=all"), loner)
-	riskChip(t, row, "checkin-overdue")
-	riskChip(t, row, "unlinked")
+	row := followUpRowOf(t, getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/follow-ups?org=all"), loner)
+	followUpChip(t, row, "checkin-overdue")
+	followUpChip(t, row, "unlinked")
 	nudgeForm(t, row)
 }
 
@@ -114,15 +114,15 @@ func TestNudgeOfAnOwnerlessGoalOnlyWithAPresentDelegate(t *testing.T) {
 	}
 	h.Clock.Advance(10 * day)
 
-	page := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/risks?org=all")
-	nudgeForm(t, riskRowOf(t, page, delegated))
-	if label, href, _ := riskFix(t, riskRowOf(t, page, alone)); label != "Open Goal" || href != "/goals/"+strconv.FormatInt(alone.ID, 10) {
+	page := getBody(t, signInClient(t, ts.URL, "kim@example.com"), ts.URL+"/follow-ups?org=all")
+	nudgeForm(t, followUpRowOf(t, page, delegated))
+	if label, href, _ := followUpFix(t, followUpRowOf(t, page, alone)); label != "Open Goal" || href != "/goals/"+strconv.FormatInt(alone.ID, 10) {
 		t.Errorf("the Ownerless Goal with nobody to nudge has Fix %q → %s, want Open Goal", label, href)
 	}
 }
 
 // A refused Nudge answers with the app's own page, its reason and a Back link
-// to the Risks page: 422 when the Goal was already nudged today or nobody can
+// to the Follow-ups page: 422 when the Goal was already nudged today or nobody can
 // check in, 403 for its Owner.
 func TestARefusedNudgeSaysWhy(t *testing.T) {
 	t.Parallel()
@@ -154,12 +154,12 @@ func TestARefusedNudgeSaysWhy(t *testing.T) {
 		{"kim@example.com", alone, 422, "Nobody can check in on this Goal; it needs an Admin to reassign it."},
 		{"sam@example.com", silent, 403, "You can check in on this Goal yourself, so there's no one to nudge."},
 	} {
-		resp := postForm(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/goals/"+strconv.FormatInt(c.goal.ID, 10)+"/nudge", url.Values{"return": {"/risks"}})
+		resp := postForm(t, signInClient(t, ts.URL, c.viewer), ts.URL+"/goals/"+strconv.FormatInt(c.goal.ID, 10)+"/nudge", url.Values{"return": {"/follow-ups"}})
 		body := html.UnescapeString(readBody(t, resp))
 		if resp.StatusCode != c.status {
 			t.Errorf("%s nudging %q: status %d, want %d", c.viewer, c.goal.Title, resp.StatusCode, c.status)
 		}
-		if !strings.Contains(body, "<h1>Can't nudge</h1>") || !strings.Contains(body, `<a href="/risks">Back</a>`) {
+		if !strings.Contains(body, "<h1>Can't nudge</h1>") || !strings.Contains(body, `<a href="/follow-ups">Back</a>`) {
 			t.Errorf("%s nudging %q: no Can't nudge page with a Back link:\n%s", c.viewer, c.goal.Title, body)
 		}
 		reason := pageElement(t, body, "p", "nudge-refused")
@@ -187,12 +187,12 @@ func TestANudgeNotEmailedSaysItWasRecorded(t *testing.T) {
 	ts := httptest.NewServer(web.NewServer(domain.NewService(h.DB, h.Clock, failingSender{}, nil)))
 	t.Cleanup(ts.Close)
 
-	resp := postForm(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/goals/"+strconv.FormatInt(silent.ID, 10)+"/nudge", url.Values{"return": {"/risks"}})
+	resp := postForm(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/goals/"+strconv.FormatInt(silent.ID, 10)+"/nudge", url.Values{"return": {"/follow-ups"}})
 	body := html.UnescapeString(readBody(t, resp))
 	if resp.StatusCode != http.StatusBadGateway {
 		t.Errorf("status %d, want 502", resp.StatusCode)
 	}
-	if !strings.Contains(body, "<title>Nudge not emailed · Goal Tracker</title>") || !strings.Contains(body, "<h1>Nudge not emailed</h1>") || !strings.Contains(body, `<a href="/risks">Back</a>`) {
+	if !strings.Contains(body, "<title>Nudge not emailed · Goal Tracker</title>") || !strings.Contains(body, "<h1>Nudge not emailed</h1>") || !strings.Contains(body, `<a href="/follow-ups">Back</a>`) {
 		t.Errorf("no Nudge not emailed page with a Back link:\n%s", body)
 	}
 	reason := pageElement(t, body, "p", "nudge-refused")

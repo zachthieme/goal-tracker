@@ -143,10 +143,10 @@ func TestUnknownAddressShowsNotFoundPage(t *testing.T) {
 	assertNotFoundPage(t, http.DefaultClient, ts.URL+"/no-such-page", "/signin")
 }
 
-// topBarCounts returns the top bar's Home and Risks items on page.
-func topBarCounts(t *testing.T, page string) (home, risks string) {
+// topBarCounts returns the top bar's Home and Follow-ups items on page.
+func topBarCounts(t *testing.T, page string) (home, followUps string) {
 	t.Helper()
-	return pageElement(t, page, "a", "nav-home"), pageElement(t, page, "a", "nav-risks")
+	return pageElement(t, page, "a", "nav-home"), pageElement(t, page, "a", "nav-follow-ups")
 }
 
 // An unknown address's Not found page shows the top bar's counts, the same as
@@ -161,13 +161,13 @@ func TestUnknownAddressShowsTopBarCounts(t *testing.T) {
 	h.Clock.Advance(10 * day)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	wantHome, wantRisks := topBarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/goals/999999", "/home"))
-	if !strings.Contains(wantHome, "count") || !strings.Contains(wantRisks, "count") {
-		t.Fatalf("a missing Goal's top bar lacks the counts this test compares against: %s %s", wantHome, wantRisks)
+	wantHome, wantFollowUps := topBarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/goals/999999", "/home"))
+	if !strings.Contains(wantHome, "count") || !strings.Contains(wantFollowUps, "count") {
+		t.Fatalf("a missing Goal's top bar lacks the counts this test compares against: %s %s", wantHome, wantFollowUps)
 	}
-	home, risks := topBarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/no-such-page", "/home"))
-	if home != wantHome || risks != wantRisks {
-		t.Errorf("unknown address's top bar = %s %s, want %s %s", home, risks, wantHome, wantRisks)
+	home, followUps := topBarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/no-such-page", "/home"))
+	if home != wantHome || followUps != wantFollowUps {
+		t.Errorf("unknown address's top bar = %s %s, want %s %s", home, followUps, wantHome, wantFollowUps)
 	}
 }
 
@@ -183,12 +183,12 @@ func TestUnknownAddressShowsNotFoundPageForEveryMethod(t *testing.T) {
 	h.ActiveGoal(sam, "Silent work", "It matters.") // due a Check-in, and Unlinked
 	h.Clock.Advance(10 * day)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	wantHome, wantRisks := topBarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/goals/999999", "/home"))
+	wantHome, wantFollowUps := topBarCounts(t, assertNotFoundPageFor(t, client, http.MethodGet, ts.URL+"/goals/999999", "/home"))
 
 	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
-		home, risks := topBarCounts(t, assertNotFoundPageFor(t, client, method, ts.URL+"/no-such-page", "/home"))
-		if home != wantHome || risks != wantRisks {
-			t.Errorf("%s /no-such-page: top bar = %s %s, want %s %s", method, home, risks, wantHome, wantRisks)
+		home, followUps := topBarCounts(t, assertNotFoundPageFor(t, client, method, ts.URL+"/no-such-page", "/home"))
+		if home != wantHome || followUps != wantFollowUps {
+			t.Errorf("%s /no-such-page: top bar = %s %s, want %s %s", method, home, followUps, wantHome, wantFollowUps)
 		}
 		assertNotFoundPageFor(t, http.DefaultClient, method, ts.URL+"/no-such-page", "/signin")
 	}
@@ -205,13 +205,13 @@ func TestKnownPathWithWrongMethodIsNotAllowed(t *testing.T) {
 	h.SignIn("sam@example.com")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	resp, err := client.Post(ts.URL+"/risks", "application/x-www-form-urlencoded", nil)
+	resp, err := client.Post(ts.URL+"/follow-ups", "application/x-www-form-urlencoded", nil)
 	if err != nil {
-		t.Fatalf("POST /risks: %v", err)
+		t.Fatalf("POST /follow-ups: %v", err)
 	}
 	_ = readBody(t, resp)
 	if resp.StatusCode != http.StatusMethodNotAllowed || resp.Header.Get("Allow") != "GET, HEAD" {
-		t.Errorf("POST /risks: status %d, Allow %q; want 405, %q", resp.StatusCode, resp.Header.Get("Allow"), "GET, HEAD")
+		t.Errorf("POST /follow-ups: status %d, Allow %q; want 405, %q", resp.StatusCode, resp.Header.Get("Allow"), "GET, HEAD")
 	}
 
 	assertNotFoundPageFor(t, client, http.MethodPost, ts.URL+"/", "/home")
