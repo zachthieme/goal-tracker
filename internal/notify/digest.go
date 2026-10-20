@@ -52,11 +52,11 @@ type reminderItem struct {
 
 // SendReminders emails each Owner and Delegate the Active Goals whose Check-in
 // is due — it would be overdue before next week's reminder — or that are
-// Check-in overdue already, each linking to its Check-in page, which shows the last Check-in's
-// answers as ghost text. It also lists every open Action Item the person owns,
-// overdue first, so the owner of one is emailed even with no Check-in due.
-// Someone with no Check-in due and no open Action Item gets no email, and
-// nobody who has left the company is emailed.
+// Check-in overdue already, each linking to its Check-in page, which shows the
+// last Check-in's answers as ghost text. It also lists every open Action Item
+// the person owns, overdue first, so the owner of one is emailed even with no
+// Check-in due. Someone with no Check-in due and no open Action Item gets no
+// email, and nobody who has left the company is emailed.
 func (n *Notifier) SendReminders(ctx context.Context) error {
 	goals, err := n.svc.ListGoals(ctx)
 	if err != nil {
@@ -247,12 +247,13 @@ func (n *Notifier) SendDigests(ctx context.Context) error {
 	return out.send(ctx, n.sender, func([]digestEntry) string { return "Your weekly digest" }, n.digestBody)
 }
 
-// childProblems says what's wrong with child, a Goal that contributes to one
-// of the recipient's. Some are changes since weekStart, a week ago: its Health
-// got worse, to Yellow or to Red; it recorded a Date Slip; its Check-in went
-// overdue. Others hold for as long as they last, so the digest names them
-// every week: the child is Ownerless (no record says when its Owner left), or
-// one of its parents is On Hold or Cancelled. A Done or Cancelled child has nothing left at risk.
+// childProblems says what's wrong with child, a Goal that contributes to one of
+// the recipient's. Some are changes since weekStart, a week ago: its Health got
+// worse, to Yellow or to Red; it recorded a Date Slip; its Check-in went
+// overdue. Others hold for as long as they last, so the digest names them every
+// week: the child is Ownerless (no record says when its Owner left), or one of
+// its parents is On Hold or Cancelled. A Done or Cancelled child has nothing
+// left at risk.
 func (n *Notifier) childProblems(ctx context.Context, child domain.Goal, weekStart time.Time) ([]string, error) {
 	if child.Lifecycle == domain.LifecycleDone || child.Lifecycle == domain.LifecycleCancelled {
 		return nil, nil

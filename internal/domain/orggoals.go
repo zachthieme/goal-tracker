@@ -45,21 +45,22 @@ type PersonSignals struct {
 
 // OrgSignals is what is in trouble in someone's Org, person by person: Total
 // counts the Goals Owned by everyone under them, and Under splits it among the
-// people directly under them, so Total is the sum of Under's counts. Under
-// puts the most Red first, then the most Path to Green overdue, the most
-// Stale and the most Yellow, then goes by Name; those with nothing flagged
+// people directly under them, so Total is the sum of Under's counts. Under puts
+// the most Red first, then the most Path to Green overdue, the most Check-in
+// overdue and the most Yellow, then goes by Name; those with nothing flagged
 // come last.
 type OrgSignals struct {
 	Total SignalCounts
 	Under []PersonSignals
 }
 
-// OrgSignals counts the Red, Path to Green overdue, Stale and Yellow Active
-// Goals Owned in personID's Org, leaving out personID's own (CONTEXT.md: Org).
-// A Goal is in the Org by its Owner alone, never its Delegates; an Ownerless
-// Goal stays where its Departed Owner was. Each person below personID counts
-// toward the person directly under personID through whom a level-by-level
-// walk first reaches them, so a Manager cycle (ADR 0008) counts no one twice.
+// OrgSignals counts the Red, Path to Green overdue, Check-in overdue and Yellow
+// Active Goals Owned in personID's Org, leaving out personID's own (CONTEXT.md:
+// Org). A Goal is in the Org by its Owner alone, never its Delegates; an
+// Ownerless Goal stays where its Departed Owner was. Each person below personID
+// counts toward the person directly under personID through whom a
+// level-by-level walk first reaches them, so a Manager cycle (ADR 0008) counts
+// no one twice.
 func (s *Service) OrgSignals(ctx context.Context, personID int64) (OrgSignals, error) {
 	var out OrgSignals
 	// row maps each person under personID to their entry in out.Under.

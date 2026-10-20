@@ -11,9 +11,9 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
-// The Freshness signals page is the Stale list: every Stale Goal with how long
-// since its last update, and every Goal whose Path to Green is overdue.
-// Fresh Goals aren't listed.
+// The Freshness signals page is the Check-in overdue list: every Check-in
+// overdue Goal with how long since its last update, and every Goal whose Path
+// to Green is overdue. Fresh Goals aren't listed.
 func TestFreshnessPageListsCheckinOverdueGoalsAndOverduePaths(t *testing.T) {
 	t.Parallel()
 
@@ -30,13 +30,13 @@ func TestFreshnessPageListsCheckinOverdueGoalsAndOverduePaths(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	page := getBody(t, client, ts.URL+"/freshness")
 
-	stale := pageElement(t, page, "ul", "checkin-overdue-goals")
-	if !strings.Contains(stale, navTo(silent.ID)) || !strings.Contains(stale, "10 days") {
-		t.Errorf("Stale list does not show %q silent for 10 days; section:\n%s", silent.Title, stale)
+	checkinOverdue := pageElement(t, page, "ul", "checkin-overdue-goals")
+	if !strings.Contains(checkinOverdue, navTo(silent.ID)) || !strings.Contains(checkinOverdue, "10 days") {
+		t.Errorf("Check-in overdue list does not show %q silent for 10 days; section:\n%s", silent.Title, checkinOverdue)
 	}
 	for _, g := range []domain.Goal{fresh, stalled} {
-		if strings.Contains(stale, navTo(g.ID)) {
-			t.Errorf("Stale list includes %q, which checked in today", g.Title)
+		if strings.Contains(checkinOverdue, navTo(g.ID)) {
+			t.Errorf("Check-in overdue list includes %q, which checked in today", g.Title)
 		}
 	}
 
@@ -49,9 +49,10 @@ func TestFreshnessPageListsCheckinOverdueGoalsAndOverduePaths(t *testing.T) {
 	}
 }
 
-// A Goal's page flags it when it is Stale or its Path to Green is overdue, and
-// beside the Rolled-up Health says how many Active children are Stale without
-// changing the color. A fresh Goal shows no freshness flag.
+// A Goal's page flags it when it is Check-in overdue or its Path to Green is
+// overdue, and beside the Rolled-up Health says how many Active children are
+// Check-in overdue without changing the color. A fresh Goal shows no freshness
+// flag.
 func TestGoalPageFlagsFreshness(t *testing.T) {
 	t.Parallel()
 
@@ -76,10 +77,10 @@ func TestGoalPageFlagsFreshness(t *testing.T) {
 		t.Errorf("Check-in overdue Goal's page does not flag it Check-in overdue; banner:\n%s", banner)
 	}
 	if !strings.Contains(parentPage, `data-testid="goal-rollup-health">Green`) {
-		t.Errorf("Stale children changed the Rolled-up Health color; body:\n%s", parentPage)
+		t.Errorf("Check-in overdue children changed the Rolled-up Health color; body:\n%s", parentPage)
 	}
 	if !strings.Contains(parentPage, `data-testid="goal-rollup-checkin-overdue">1 of 2 overdue`) {
-		t.Errorf("Rolled-up Health does not say 1 of 2 children are Stale; body:\n%s", parentPage)
+		t.Errorf("Rolled-up Health does not say 1 of 2 children are Check-in overdue; body:\n%s", parentPage)
 	}
 
 	stalledPage := pageOf(stalled)
@@ -93,9 +94,9 @@ func TestGoalPageFlagsFreshness(t *testing.T) {
 	}
 }
 
-// The Goal list marks a Stale Goal and a Goal whose Path to Green is overdue on
-// its own row, as it marks an Ownerless one, so neither hides until someone
-// opens the Goal. A fresh Goal's row carries no mark.
+// The Goal list marks a Check-in overdue Goal and a Goal whose Path to Green is
+// overdue on its own row, as it marks an Ownerless one, so neither hides until
+// someone opens the Goal. A fresh Goal's row carries no mark.
 func TestGoalListMarksCheckinOverdueAndPathOverdueGoals(t *testing.T) {
 	t.Parallel()
 
@@ -132,9 +133,9 @@ func TestGoalListMarksCheckinOverdueAndPathOverdueGoals(t *testing.T) {
 	}
 }
 
-// A Stale Goal's banner ends with a "Check in now" link to its Check-in form
-// for those who may check in on it, its Owner and its Delegates, and for no
-// one else, not even an Admin (#86).
+// A Check-in overdue Goal's banner ends with a "Check in now" link to its
+// Check-in form for those who may check in on it, its Owner and its Delegates,
+// and for no one else, not even an Admin (#86).
 func TestCheckinOverdueBannerOffersCheckInNowToOwnerAndDelegates(t *testing.T) {
 	t.Parallel()
 
@@ -161,7 +162,7 @@ func TestCheckinOverdueBannerOffersCheckInNowToOwnerAndDelegates(t *testing.T) {
 		banner := pageElement(t, page, "p", "goal-checkin-overdue")
 		has := strings.Contains(banner, `data-testid="checkin-overdue-checkin-now"`)
 		if has != viewer.sees {
-			t.Errorf("%s sees Check in now in the Stale banner: %v, want %v; banner:\n%s", viewer.email, has, viewer.sees, banner)
+			t.Errorf("%s sees Check in now in the Check-in overdue banner: %v, want %v; banner:\n%s", viewer.email, has, viewer.sees, banner)
 			continue
 		}
 		if !has {
@@ -172,18 +173,18 @@ func TestCheckinOverdueBannerOffersCheckInNowToOwnerAndDelegates(t *testing.T) {
 			t.Errorf("%s's Check in now leads to %q, want %q", viewer.email, got, want)
 		}
 		if !strings.Contains(banner, ">Check in now</a>") {
-			t.Errorf("%s's Stale banner link does not read Check in now; banner:\n%s", viewer.email, banner)
+			t.Errorf("%s's Check-in overdue banner link does not read Check in now; banner:\n%s", viewer.email, banner)
 		}
 	}
 }
 
-// Stale reads as a warning about freshness, never as a tag (#86). In every
-// theme the Stale chip is a grey fill in a dashed edge, and a tag is an
-// outline with no fill, so the two never share a fill. The chip's text reaches
-// 4.5:1 on its fill and its edge 3:1 on the cards it sits on. The Stale and Path
-// to Green overdue banners are a card surface in the same dashed edge, which
-// reaches 3:1 on the canvas around them and the surface inside. A tag's text
-// reaches 4.5:1 on the canvas and the cards it sits on.
+// Check-in overdue reads as a warning about freshness, never as a tag (#86). In
+// every theme the Check-in overdue chip is a grey fill in a dashed edge, and a
+// tag is an outline with no fill, so the two never share a fill. The chip's
+// text reaches 4.5:1 on its fill and its edge 3:1 on the cards it sits on. The
+// Check-in overdue and Path to Green overdue banners are a card surface in the
+// same dashed edge, which reaches 3:1 on the canvas around them and the surface
+// inside. A tag's text reaches 4.5:1 on the canvas and the cards it sits on.
 func TestCheckinOverdueIsADashedGreyChipAndTagsAreOutlined(t *testing.T) {
 	t.Parallel()
 
@@ -195,7 +196,7 @@ func TestCheckinOverdueIsADashedGreyChipAndTagsAreOutlined(t *testing.T) {
 	chipLight := computed(t, css, light, ".badge", ".st")
 	for p, want := range map[string]string{"background": "#E9EAEC", "color": "#3B4048"} {
 		if chipLight[p] != want {
-			t.Errorf("light: the Stale chip's %s is %s, want %s", p, chipLight[p], want)
+			t.Errorf("light: the Check-in overdue chip's %s is %s, want %s", p, chipLight[p], want)
 		}
 	}
 
@@ -208,20 +209,20 @@ func TestCheckinOverdueIsADashedGreyChipAndTagsAreOutlined(t *testing.T) {
 		chip := computed(t, css, theme, ".badge", ".st")
 		tag := computed(t, css, theme, ".tag")
 		if chip["border-style"] != "dashed" || chip["border-width"] != "1px" {
-			t.Errorf("%s: the Stale chip's edge is %s %s, want 1px dashed", name, chip["border-width"], chip["border-style"])
+			t.Errorf("%s: the Check-in overdue chip's edge is %s %s, want 1px dashed", name, chip["border-width"], chip["border-style"])
 		}
 		if bg := tag["background"]; bg != "none" && bg != "transparent" {
 			t.Errorf("%s: a tag is filled with %s, want an outline with no fill", name, bg)
 		}
 		if tag["border-style"] != "solid" {
-			t.Errorf("%s: a tag's edge is %q, want a solid outline unlike the Stale chip's dashes", name, tag["border-style"])
+			t.Errorf("%s: a tag's edge is %q, want a solid outline unlike the Check-in overdue chip's dashes", name, tag["border-style"])
 		}
 		if ratio := contrast(t, chip["color"], chip["background"]); ratio < 4.5 {
-			t.Errorf("%s: the Stale chip's text %s on %s is %.2f:1, under 4.5:1", name, chip["color"], chip["background"], ratio)
+			t.Errorf("%s: the Check-in overdue chip's text %s on %s is %.2f:1, under 4.5:1", name, chip["color"], chip["background"], ratio)
 		}
 		for _, bg := range cards {
 			if ratio := contrast(t, chip["border-color"], bg); ratio < 3 {
-				t.Errorf("%s: the Stale chip's edge %s on the card %s is %.2f:1, under 3:1", name, chip["border-color"], bg, ratio)
+				t.Errorf("%s: the Check-in overdue chip's edge %s on the card %s is %.2f:1, under 3:1", name, chip["border-color"], bg, ratio)
 			}
 		}
 		for _, bg := range append([]string{canvas}, cards...) {
@@ -232,17 +233,17 @@ func TestCheckinOverdueIsADashedGreyChipAndTagsAreOutlined(t *testing.T) {
 
 		banner := computed(t, css, theme, ".alert", ".st", ".alert.st")
 		if surface := resolve(t, theme, "var(--color-surface)"); banner["background"] != surface {
-			t.Errorf("%s: the Stale banner's fill is %s, want the card surface %s", name, banner["background"], surface)
+			t.Errorf("%s: the Check-in overdue banner's fill is %s, want the card surface %s", name, banner["background"], surface)
 		}
 		if banner["border-style"] != "dashed" || banner["border-color"] != chip["border-color"] {
-			t.Errorf("%s: the Stale banner's edge is %s %s, want dashed %s like the chip's", name, banner["border-style"], banner["border-color"], chip["border-color"])
+			t.Errorf("%s: the Check-in overdue banner's edge is %s %s, want dashed %s like the chip's", name, banner["border-style"], banner["border-color"], chip["border-color"])
 		}
 		if ratio := contrast(t, banner["color"], banner["background"]); ratio < 4.5 {
-			t.Errorf("%s: the Stale banner's text %s on %s is %.2f:1, under 4.5:1", name, banner["color"], banner["background"], ratio)
+			t.Errorf("%s: the Check-in overdue banner's text %s on %s is %.2f:1, under 4.5:1", name, banner["color"], banner["background"], ratio)
 		}
 		for _, bg := range []string{canvas, banner["background"]} {
 			if ratio := contrast(t, banner["border-color"], bg); ratio < 3 {
-				t.Errorf("%s: the Stale banner's edge %s on %s is %.2f:1, under 3:1", name, banner["border-color"], bg, ratio)
+				t.Errorf("%s: the Check-in overdue banner's edge %s on %s is %.2f:1, under 3:1", name, banner["border-color"], bg, ratio)
 			}
 		}
 	}

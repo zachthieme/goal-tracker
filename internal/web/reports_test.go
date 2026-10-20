@@ -933,8 +933,8 @@ func draftHighlightID(t *testing.T, h *testsupport.Harness, def domain.ReportDef
 }
 
 // The publication opens with a Health summary: how many of the Report's
-// selected Goals are Red, Yellow, Green, and Check-in overdue, so an exec sees the shape
-// of the company before reading a block.
+// selected Goals are Red, Yellow, Green, and Check-in overdue, so an exec sees
+// the shape of the company before reading a block.
 func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -943,12 +943,12 @@ func TestPublicationSummarisesHealthOverHTTP(t *testing.T) {
 	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	yellow := h.ActiveGoal(boss, "Hire a CFO", "We need one.")
 	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
-	stale := h.ActiveGoal(boss, "Open Tokyo", "Expand east.")
+	checkinOverdue := h.ActiveGoal(boss, "Open Tokyo", "Expand east.")
 	h.Clock.Advance(40 * 24 * time.Hour)
 	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Checkin(boss, yellow.ID, domain.HealthYellow, "Slow.", "Use a recruiter.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, yellow.ID, green.ID, stale.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, yellow.ID, green.ID, checkinOverdue.ID}})
 	pub := h.PublishReport(boss, def)
 
 	ts := newServer(t, h)
@@ -2215,12 +2215,12 @@ func TestDraftPreviewIsThePublicationOverHTTP(t *testing.T) {
 	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	yellow := h.ActiveGoal(boss, "Hire a CFO", "We need one.")
 	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
-	stale := h.ActiveGoal(boss, "Open Tokyo", "Expand east.")
+	checkinOverdue := h.ActiveGoal(boss, "Open Tokyo", "Expand east.")
 	h.Clock.Advance(40 * 24 * time.Hour)
 	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Checkin(boss, yellow.ID, domain.HealthYellow, "Slow.", "Use a recruiter.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Introduction: "Where we stand.", Mode: domain.ReportModePicked, Picked: []int64{red.ID, yellow.ID, green.ID, stale.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Introduction: "Where we stand.", Mode: domain.ReportModePicked, Picked: []int64{red.ID, yellow.ID, green.ID, checkinOverdue.ID}})
 
 	ts := newServer(t, h)
 	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10))
@@ -2256,12 +2256,12 @@ func TestDraftListsTheGoalsInTheReportOverHTTP(t *testing.T) {
 	boss := h.SignIn("boss@example.com")
 	red := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	green := h.ActiveGoal(boss, "Cut churn", "Keep customers.")
-	stale := h.ActiveGoal(boss, "Open Tokyo", "Expand east.")
+	checkinOverdue := h.ActiveGoal(boss, "Open Tokyo", "Expand east.")
 	proposed := h.CreateGoal(boss, "Hire a CFO", "We need one.")
 	h.Clock.Advance(40 * 24 * time.Hour)
 	h.Checkin(boss, red.ID, domain.HealthRed, "Blocked on legal.", "Hire counsel.", h.Clock.Now().AddDate(0, 1, 0))
 	h.Checkin(boss, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, green.ID, stale.ID, proposed.ID}})
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{red.ID, green.ID, checkinOverdue.ID, proposed.ID}})
 	report, err := h.Service.DraftReport(context.Background(), def, time.Time{})
 	if err != nil {
 		t.Fatalf("DraftReport: %v", err)
@@ -2285,7 +2285,7 @@ func TestDraftListsTheGoalsInTheReportOverHTTP(t *testing.T) {
 	if len(items) != 4 {
 		t.Fatalf("Goals panel lists %d Goals, want 4; panel:\n%s", len(items), panel)
 	}
-	for _, g := range []domain.Goal{red, green, stale, proposed} {
+	for _, g := range []domain.Goal{red, green, checkinOverdue, proposed} {
 		if n := strings.Count(panel, ">"+g.Title+"<"); n != 1 {
 			t.Errorf("Goals panel lists %q %d times, want once; panel:\n%s", g.Title, n, panel)
 		}
@@ -3727,11 +3727,11 @@ func linkedGoalLink(s, href string) string {
 	return rest
 }
 
-// An exception block counts the Red, Yellow and Stale children behind its
-// Rolled-up Health, names the Red and Yellow ones and every child the Report
-// holds, and names the Goals in the Report it contributes to, each linking to
-// its place in the Report or, outside it, to its Goal page; the draft, the
-// publication and the print page all show it (#246, #247).
+// An exception block counts the Red, Yellow and Check-in overdue children
+// behind its Rolled-up Health, names the Red and Yellow ones and every child
+// the Report holds, and names the Goals in the Report it contributes to, each
+// linking to its place in the Report or, outside it, to its Goal page; the
+// draft, the publication and the print page all show it (#246, #247).
 func TestReportBlockLinksTheGoalsBehindItAndThatItContributesTo(t *testing.T) {
 	t.Parallel()
 
@@ -3785,7 +3785,7 @@ func TestReportBlockLinksTheGoalsBehindItAndThatItContributesTo(t *testing.T) {
 
 // A publication frozen before Reports counted Red and Yellow children or
 // named linked Goals reads as it did: its Rolled-up Health counts only the
-// Stale children, and it names no other Goal (#246).
+// Check-in overdue children, and it names no other Goal (#246).
 func TestPublicationFromBeforeLinkedGoalsReadsAsItDid(t *testing.T) {
 	t.Parallel()
 

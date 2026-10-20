@@ -12,9 +12,9 @@ import (
 const day = 24 * time.Hour
 
 // An Active Goal with no Check-in is judged from its activation, not its
-// creation: a Goal proposed long ago and activated today isn't Stale, and it
-// turns Stale only once more than its cadence (7 days by default) has passed
-// since activation (CONTEXT.md: Stale).
+// creation: a Goal proposed long ago and activated today isn't Check-in
+// overdue, and it turns Check-in overdue only once more than its cadence (7
+// days by default) has passed since activation (CONTEXT.md: Check-in overdue).
 func TestGoalWithNoCheckinIsCheckinOverdueOnceItsCadencePassesSinceActivation(t *testing.T) {
 	t.Parallel()
 
@@ -36,21 +36,21 @@ func TestGoalWithNoCheckinIsCheckinOverdueOnceItsCadencePassesSinceActivation(t 
 	}
 
 	if f := h.Freshness(g.ID); f.CheckinOverdue {
-		t.Errorf("just-activated Goal is Stale; want it judged from activation, not creation")
+		t.Errorf("just-activated Goal is Check-in overdue; want it judged from activation, not creation")
 	}
 	h.Clock.Advance(7 * day)
 	if f := h.Freshness(g.ID); f.CheckinOverdue {
-		t.Errorf("Goal is Stale exactly one cadence after activation; want Stale only once older than its cadence")
+		t.Errorf("Goal is Check-in overdue exactly one cadence after activation; want Check-in overdue only once older than its cadence")
 	}
 	h.Clock.Advance(1 * day)
 	if f := h.Freshness(g.ID); !f.CheckinOverdue {
-		t.Errorf("Goal is not Stale 8 days after activation with a 7-day cadence")
+		t.Errorf("Goal is not Check-in overdue 8 days after activation with a 7-day cadence")
 	}
 }
 
 // Each Check-in restarts the count, and the count is against the Goal's own
 // cadence: on a 14-day cadence, a Goal last checked in 10 days ago is fresh and
-// one last checked in 15 days ago is Stale.
+// one last checked in 15 days ago is Check-in overdue.
 func TestGoalIsCheckinOverdueWhenItsLastCheckinIsOlderThanItsCadence(t *testing.T) {
 	t.Parallel()
 
@@ -66,19 +66,20 @@ func TestGoalIsCheckinOverdueWhenItsLastCheckinIsOlderThanItsCadence(t *testing.
 	h.Clock.Advance(10 * day)
 	f := h.Freshness(g.ID)
 	if f.CheckinOverdue {
-		t.Errorf("Goal checked in 10 days ago on a 14-day cadence is Stale")
+		t.Errorf("Goal checked in 10 days ago on a 14-day cadence is Check-in overdue")
 	}
 	if !f.LastUpdate.Equal(checkin.CreatedAt) || f.DaysSince != 10 {
 		t.Errorf("LastUpdate, DaysSince = %v, %d; want the Check-in at %v, 10 days ago", f.LastUpdate, f.DaysSince, checkin.CreatedAt)
 	}
 	h.Clock.Advance(5 * day)
 	if f := h.Freshness(g.ID); !f.CheckinOverdue {
-		t.Errorf("Goal checked in 15 days ago on a 14-day cadence is not Stale")
+		t.Errorf("Goal checked in 15 days ago on a 14-day cadence is not Check-in overdue")
 	}
 }
 
-// An On Hold Goal is never Stale, however long since its last Check-in: nobody
-// owes an update on paused work (CONTEXT.md: Stale, Lifecycle).
+// An On Hold Goal is never Check-in overdue, however long since its last
+// Check-in: nobody owes an update on paused work (CONTEXT.md: Check-in overdue,
+// Lifecycle).
 func TestOnHoldGoalIsNeverCheckinOverdue(t *testing.T) {
 	t.Parallel()
 
@@ -87,14 +88,14 @@ func TestOnHoldGoalIsNeverCheckinOverdue(t *testing.T) {
 	g := h.OnHoldGoal(sam, "Paused work", "It mattered.", "Budget freeze.")
 	h.Clock.Advance(90 * day)
 	if f := h.Freshness(g.ID); f.CheckinOverdue {
-		t.Errorf("On Hold Goal is Stale after 90 days")
+		t.Errorf("On Hold Goal is Check-in overdue after 90 days")
 	}
 }
 
 // Cadence is counted in days of the org's configured timezone. A Check-in at
 // 22:00 on Friday 2 January in Los Angeles (Saturday in UTC) is 8 days old at
-// 10:00 on Saturday 10 January there — Stale on a 7-day cadence — although only
-// 7 UTC days have passed.
+// 10:00 on Saturday 10 January there — Check-in overdue on a 7-day cadence —
+// although only 7 UTC days have passed.
 func TestCadenceIsCountedInTheOrgTimezone(t *testing.T) {
 	t.Parallel()
 
@@ -115,17 +116,17 @@ func TestCadenceIsCountedInTheOrgTimezone(t *testing.T) {
 		t.Fatalf("Freshness: %v", err)
 	}
 	if !f.CheckinOverdue || f.DaysSince != 8 {
-		t.Errorf("Stale, DaysSince = %v, %d in Los Angeles; want Stale, 8 days", f.CheckinOverdue, f.DaysSince)
+		t.Errorf("Check-in overdue, DaysSince = %v, %d in Los Angeles; want Check-in overdue, 8 days", f.CheckinOverdue, f.DaysSince)
 	}
 	if f := h.Freshness(g.ID); f.CheckinOverdue {
-		t.Errorf("Goal is Stale in UTC after 7 UTC days; want the default timezone to be UTC")
+		t.Errorf("Goal is Check-in overdue in UTC after 7 UTC days; want the default timezone to be UTC")
 	}
 }
 
-// Stale is counted in days of the Owner's Timezone, not the company's
-// (CONTEXT.md: Stale): a Check-in late on Jan 2 in UTC is Jan 3 in Tokyo, so a
-// Tokyo Owner's Goal is 7 days on, not 8, and isn't yet Stale. An Owner with no
-// Timezone is counted in the company's.
+// Check-in overdue is counted in days of the Owner's Timezone, not the
+// company's (CONTEXT.md: Check-in overdue): a Check-in late on Jan 2 in UTC is
+// Jan 3 in Tokyo, so a Tokyo Owner's Goal is 7 days on, not 8, and isn't yet
+// Check-in overdue. An Owner with no Timezone is counted in the company's.
 func TestCheckinOverdueIsCountedInTheOwnersTimezone(t *testing.T) {
 	t.Parallel()
 
@@ -138,11 +139,11 @@ func TestCheckinOverdueIsCountedInTheOwnersTimezone(t *testing.T) {
 
 	h.Clock.Set(time.Date(2026, 1, 10, 10, 0, 0, 0, time.UTC))
 	if f := h.Freshness(g.ID); f.CheckinOverdue || f.DaysSince != 7 {
-		t.Errorf("Stale, DaysSince = %v, %d for an Owner in Tokyo; want not Stale, 7 days", f.CheckinOverdue, f.DaysSince)
+		t.Errorf("Check-in overdue, DaysSince = %v, %d for an Owner in Tokyo; want not Check-in overdue, 7 days", f.CheckinOverdue, f.DaysSince)
 	}
 	h.SetTimezone(kenji, "")
 	if f := h.Freshness(g.ID); !f.CheckinOverdue || f.DaysSince != 8 {
-		t.Errorf("Stale, DaysSince = %v, %d for an Owner with no Timezone; want Stale, 8 days in the company's", f.CheckinOverdue, f.DaysSince)
+		t.Errorf("Check-in overdue, DaysSince = %v, %d for an Owner with no Timezone; want Check-in overdue, 8 days in the company's", f.CheckinOverdue, f.DaysSince)
 	}
 }
 
@@ -207,10 +208,10 @@ func TestPathToGreenIsOverdueOnceItsTargetDatePassesWithoutGreen(t *testing.T) {
 	}
 }
 
-// Rolled-up Health counts how many of a Goal's Active children are Stale
-// ("2 of 3 Stale") without letting it change the color: two Stale Green
-// children and a fresh Green one still roll up Green. An On Hold child is
-// neither Stale nor counted.
+// Rolled-up Health counts how many of a Goal's Active children are Check-in
+// overdue ("2 of 3 overdue") without letting it change the color: two
+// Check-in overdue Green children and a fresh Green one still roll up Green. An
+// On Hold child is neither Check-in overdue nor counted.
 func TestRolledUpHealthCountsCheckinOverdueChildrenWithoutChangingTheColor(t *testing.T) {
 	t.Parallel()
 
@@ -232,16 +233,16 @@ func TestRolledUpHealthCountsCheckinOverdueChildrenWithoutChangingTheColor(t *te
 		t.Fatalf("RolledUpHealth: %v", err)
 	}
 	if !got.Present || got.Health != domain.HealthGreen {
-		t.Errorf("Rolled-up Health = %q (present %v), want Green: Stale children don't change the color", got.Health, got.Present)
+		t.Errorf("Rolled-up Health = %q (present %v), want Green: Check-in overdue children don't change the color", got.Health, got.Present)
 	}
 	if got.CheckinOverdueChildren != 2 || got.ActiveChildren != 3 {
-		t.Errorf("Stale children = %d of %d, want 2 of 3", got.CheckinOverdueChildren, got.ActiveChildren)
+		t.Errorf("Check-in overdue children = %d of %d, want 2 of 3", got.CheckinOverdueChildren, got.ActiveChildren)
 	}
 }
 
-// The org-wide freshness signals list every Stale Goal, longest-silent first,
-// and every Goal whose Path to Green is overdue. Fresh Goals, On Hold Goals, and
-// Proposed Goals aren't listed.
+// The org-wide freshness signals list every Check-in overdue Goal,
+// longest-silent first, and every Goal whose Path to Green is overdue. Fresh
+// Goals, On Hold Goals, and Proposed Goals aren't listed.
 func TestFreshnessSignalsListCheckinOverdueGoalsAndOverduePaths(t *testing.T) {
 	t.Parallel()
 
@@ -263,12 +264,12 @@ func TestFreshnessSignalsListCheckinOverdueGoalsAndOverduePaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FreshnessSignals: %v", err)
 	}
-	var stale []string
+	var checkinOverdue []string
 	for _, gf := range got.CheckinOverdue {
-		stale = append(stale, gf.Goal.Title)
+		checkinOverdue = append(checkinOverdue, gf.Goal.Title)
 	}
-	if want := []string{"Silent since activation", "Lapsed"}; !equalStrings(stale, want) {
-		t.Errorf("Stale Goals = %q, want %q (longest-silent first)", stale, want)
+	if want := []string{"Silent since activation", "Lapsed"}; !equalStrings(checkinOverdue, want) {
+		t.Errorf("Check-in overdue Goals = %q, want %q (longest-silent first)", checkinOverdue, want)
 	}
 	if len(got.OverduePaths) != 1 || got.OverduePaths[0].Goal.ID != stalled.ID {
 		t.Errorf("overdue Paths to Green = %+v, want only %q", got.OverduePaths, stalled.Title)
@@ -325,12 +326,12 @@ func TestResumedGoalIsJudgedFromItsResume(t *testing.T) {
 	}
 	h.Clock.Advance(3 * day)
 	if f := h.Freshness(g.ID); f.CheckinOverdue || f.DaysSince != 3 {
-		t.Errorf("Stale, DaysSince = %v, %d three days after resuming; want fresh, 3", f.CheckinOverdue, f.DaysSince)
+		t.Errorf("Check-in overdue, DaysSince = %v, %d three days after resuming; want fresh, 3", f.CheckinOverdue, f.DaysSince)
 	}
 }
 
-// A Done Goal owes no more updates, so it is never Stale, and a Red Path to Green
-// it left behind is never flagged.
+// A Done Goal owes no more updates, so it is never Check-in overdue, and a Red
+// Path to Green it left behind is never flagged.
 func TestDoneGoalHasNoCheckinOverdueNorPathOverdue(t *testing.T) {
 	t.Parallel()
 
@@ -345,14 +346,15 @@ func TestDoneGoalHasNoCheckinOverdueNorPathOverdue(t *testing.T) {
 	}
 	h.Clock.Advance(90 * day)
 	if f := h.Freshness(g.ID); f.CheckinOverdue || f.PathToGreenOverdue {
-		t.Errorf("Done Goal: Stale %v, Path to Green overdue %v; want neither", f.CheckinOverdue, f.PathToGreenOverdue)
+		t.Errorf("Done Goal: Check-in overdue %v, Path to Green overdue %v; want neither", f.CheckinOverdue, f.PathToGreenOverdue)
 	}
 }
 
 // Days are calendar days in the org's timezone, so a daylight-saving change
 // inside the cadence neither adds nor loses one: Los Angeles springs forward on
-// 8 March 2026, and a Check-in at 09:00 on 2 March is exactly 7 days old at 08:00
-// on 9 March — not yet Stale — though fewer than 7×24 hours have passed.
+// 8 March 2026, and a Check-in at 09:00 on 2 March is exactly 7 days old at
+// 08:00 on 9 March — not yet Check-in overdue — though fewer than 7×24 hours
+// have passed.
 func TestCadenceCountsCalendarDaysAcrossDaylightSaving(t *testing.T) {
 	t.Parallel()
 
@@ -381,14 +383,14 @@ func TestCadenceCountsCalendarDaysAcrossDaylightSaving(t *testing.T) {
 			t.Fatalf("Freshness: %v", err)
 		}
 		if f.CheckinOverdue != tc.wantCheckinOverdue || f.DaysSince != tc.days {
-			t.Errorf("at %v: Stale, DaysSince = %v, %d; want %v, %d", tc.now, f.CheckinOverdue, f.DaysSince, tc.wantCheckinOverdue, tc.days)
+			t.Errorf("at %v: Check-in overdue, DaysSince = %v, %d; want %v, %d", tc.now, f.CheckinOverdue, f.DaysSince, tc.wantCheckinOverdue, tc.days)
 		}
 	}
 }
 
 // An Active Goal whose latest Check-in is Green while a Milestone is still
-// Planned past its date is marked Milestone overdue, naming that Milestone,
-// and listed so; the Health stays the Owner's, and the Goal isn't Stale.
+// Planned past its date is marked Milestone overdue, naming that Milestone, and
+// listed so; the Health stays the Owner's, and the Goal isn't Check-in overdue.
 func TestGreenGoalWithAnOverdueMilestoneIsMarkedMilestoneOverdue(t *testing.T) {
 	t.Parallel()
 
@@ -398,7 +400,7 @@ func TestGreenGoalWithAnOverdueMilestoneIsMarkedMilestoneOverdue(t *testing.T) {
 
 	f := h.Freshness(g.ID)
 	if !f.MilestoneOverdue || f.OverdueMilestone != "Beta" || !f.OverdueMilestoneDate.Equal(beta.TargetDate) || f.CheckinOverdue {
-		t.Errorf("MilestoneOverdue, OverdueMilestone, OverdueMilestoneDate, Stale = %v, %q, %v, %v; want true, \"Beta\", %v, false",
+		t.Errorf("MilestoneOverdue, OverdueMilestone, OverdueMilestoneDate, Check-in overdue = %v, %q, %v, %v; want true, \"Beta\", %v, false",
 			f.MilestoneOverdue, f.OverdueMilestone, f.OverdueMilestoneDate, f.CheckinOverdue, beta.TargetDate)
 	}
 	got, err := h.Service.FreshnessSignals(context.Background())
@@ -409,7 +411,7 @@ func TestGreenGoalWithAnOverdueMilestoneIsMarkedMilestoneOverdue(t *testing.T) {
 		t.Errorf("OverdueMilestones = %+v, want only %q, its Beta overdue", got.OverdueMilestones, g.Title)
 	}
 	if len(got.CheckinOverdue) != 0 {
-		t.Errorf("Stale = %+v, want none", got.CheckinOverdue)
+		t.Errorf("Check-in overdue = %+v, want none", got.CheckinOverdue)
 	}
 }
 

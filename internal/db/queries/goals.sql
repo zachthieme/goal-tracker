@@ -35,9 +35,9 @@ RETURNING *;
 UPDATE goals SET lifecycle = ? WHERE id = ?
 RETURNING *;
 
--- name: ActivateGoal :exec
--- Move a Proposed Goal to Active, recording when (CONTEXT.md: Stale is judged
--- from activation until the first Check-in).
+-- name: ActivateGoal :exec Move a Proposed Goal to Active, recording when
+-- (CONTEXT.md: Check-in overdue is judged from activation until the first
+-- Check-in).
 UPDATE goals SET lifecycle = 'Active', activated_at = ? WHERE id = ?;
 
 -- name: CreateMilestone :one

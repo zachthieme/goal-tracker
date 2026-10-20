@@ -30,12 +30,13 @@ func loadTimezone(name string) (*time.Location, bool) {
 	return loc, true
 }
 
-// GoalTimezone is the timezone g's own dates are judged in: "A Goal's own
-// dates and cadence are judged in its Owner's Timezone: whether it is Stale,
-// whether a Milestone or the back-to-Green date has passed, whether a Metric is
-// off target, and its Run off Green. An Ownerless Goal uses the company's"
-// (CONTEXT.md: Timezone). It reads g's current Owner, so after a Handoff the
-// new Owner's applies; an Owner with no Timezone uses the company's too.
+// GoalTimezone is the timezone g's own dates are judged in: "A Goal's own dates
+// and cadence are judged in its Owner's Timezone: whether it is Check-in
+// overdue, whether a Milestone or the back-to-Green date has passed, whether a
+// Metric is off target, and its Run off Green. An Ownerless Goal uses the
+// company's" (CONTEXT.md: Timezone). It reads g's current Owner, so after a
+// Handoff the new Owner's applies; an Owner with no Timezone uses the company's
+// too.
 func (s *Service) GoalTimezone(g Goal) *time.Location {
 	if !g.Ownerless {
 		if loc, ok := loadTimezone(g.Owner.Timezone); ok {

@@ -1788,7 +1788,7 @@ func TestGoalHistoryNudgeBetweenIdenticalCheckinsKeepsThemApart(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
 	h.Clock.Advance(24 * time.Hour)
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	h.Clock.Advance(10 * 24 * time.Hour) // Stale
+	h.Clock.Advance(10 * 24 * time.Hour) // Check-in overdue
 	if _, err := h.Service.Nudge(context.Background(), lee.ID, goal.ID); err != nil {
 		t.Fatalf("Nudge: %v", err)
 	}

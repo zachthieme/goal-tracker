@@ -158,8 +158,8 @@ type plannedGoal struct {
 	level      int     // 1 for a company outcome, 2 for a team Goal, 3 for a project
 	profile    profile // how a project's weeks play out
 	// turn is the week a project's profile plays out: a troubled one turns
-	// Yellow, a churning one's scope moves, a stale one's Owner goes quiet, and
-	// a paused or cancelled one goes On Hold.
+	// Yellow, a churning one's scope moves, a lapsed one's Owner goes quiet,
+	// and a paused or cancelled one goes On Hold.
 	turn    int
 	recover int // the week a troubled project recovers to Yellow, or 0
 
@@ -249,7 +249,7 @@ func dealProfile(rng *rand.Rand, day0 time.Time, g *plannedGoal, pr profile) {
 		g.schedule(rng, day0, 5+rng.IntN(3))
 	}
 	g.turn = 3 + rng.IntN(5)
-	if pr == stale {
+	if pr == lapsed {
 		g.turn = weeks - 1 - rng.IntN(5)
 	}
 	if pr == troubled {

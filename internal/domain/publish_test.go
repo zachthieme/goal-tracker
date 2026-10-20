@@ -771,8 +771,8 @@ func TestPublicationFreezesItsLinkedGoals(t *testing.T) {
 }
 
 // A snapshot frozen before Reports counted Red and Yellow children or named
-// linked Goals still loads: its blocks name none, and count only their Stale
-// children (#246).
+// linked Goals still loads: its blocks name none, and count only their Check-in
+// overdue children (#246).
 func TestSnapshotFromBeforeLinkedGoalsCountsOnlyCheckinOverdue(t *testing.T) {
 	t.Parallel()
 

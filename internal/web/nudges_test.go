@@ -28,10 +28,10 @@ func nudgeForm(t *testing.T, row string) string {
 	return pageElement(t, cell, "form", "nudge")
 }
 
-// Someone else's Stale Goal on the Risks page has a Nudge form as its Fix.
-// Once posted, the page returns to the Risks page as it was filtered, and
-// anyone else who can't check in sees a disabled "Nudged today by Pat" in its
-// place, while its Owner still sees Check in.
+// Someone else's Check-in overdue Goal on the Risks page has a Nudge form as
+// its Fix. Once posted, the page returns to the Risks page as it was filtered,
+// and anyone else who can't check in sees a disabled "Nudged today by Pat" in
+// its place, while its Owner still sees Check in.
 func TestNudgingFromTheRisksFix(t *testing.T) {
 	t.Parallel()
 
@@ -77,8 +77,8 @@ func TestNudgingFromTheRisksFix(t *testing.T) {
 	}
 }
 
-// A row that is both someone else's Stale Goal and Unlinked gets Nudge, not
-// Suggest a parent: freshness outranks alignment.
+// A row that is both someone else's Check-in overdue Goal and Unlinked gets
+// Nudge, not Suggest a parent: freshness outranks alignment.
 func TestNudgeOutranksSuggestAParent(t *testing.T) {
 	t.Parallel()
 
@@ -95,8 +95,8 @@ func TestNudgeOutranksSuggestAParent(t *testing.T) {
 	nudgeForm(t, row)
 }
 
-// An Ownerless Stale Goal is nudged to its Delegates; with none left who can
-// check in, its row keeps Open Goal for anyone but an Admin.
+// An Ownerless Check-in overdue Goal is nudged to its Delegates; with none left
+// who can check in, its row keeps Open Goal for anyone but an Admin.
 func TestNudgeOfAnOwnerlessGoalOnlyWithAPresentDelegate(t *testing.T) {
 	t.Parallel()
 

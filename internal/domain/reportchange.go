@@ -103,10 +103,10 @@ type reportException struct {
 
 // sortReportExceptions puts the worst-off exceptions first, key by key, as the
 // Risks page ranks Goals: Ownerless first; then by Health, Red, Yellow, none,
-// then Green; then a Path to Green overdue first; then Stale first. Then those
-// that changed since the baseline come first, new trouble ahead of standing
-// trouble; then the soonest delivery date, with none last; then by title,
-// ignoring case, then by Goal id.
+// then Green; then a Path to Green overdue first; then Check-in overdue first.
+// Then those that changed since the baseline come first, new trouble ahead of
+// standing trouble; then the soonest delivery date, with none last; then by
+// title, ignoring case, then by Goal id.
 func sortReportExceptions(xs []reportException) {
 	slices.SortStableFunc(xs, func(a, b reportException) int {
 		ga, gb := a.block.Goal, b.block.Goal

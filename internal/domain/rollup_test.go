@@ -199,8 +199,8 @@ func TestNoChangeCheckinRefusedWhenItWouldDifferFromRollup(t *testing.T) {
 }
 
 // A Rolled-up Health counts the Active children checked in Red and Yellow
-// beside the Stale ones; a child with no Check-in counts only among the Active
-// (#246).
+// beside the Check-in overdue ones; a child with no Check-in counts only among
+// the Active (#246).
 func TestRolledUpHealthCountsRedAndYellowChildren(t *testing.T) {
 	t.Parallel()
 
@@ -222,8 +222,9 @@ func TestRolledUpHealthCountsRedAndYellowChildren(t *testing.T) {
 	}
 }
 
-// The count line counts Red, Yellow and Check-in overdue children, each only when there
-// are some, and the first carries how many Active children there are (#246).
+// The count line counts Red, Yellow and Check-in overdue children, each only
+// when there are some, and the first carries how many Active children there are
+// (#246).
 func TestRolledUpHealthCountLine(t *testing.T) {
 	t.Parallel()
 

@@ -138,12 +138,13 @@ type GoalFreshness struct {
 	Health    string
 }
 
-// FreshnessSignals are the org-wide freshness signals: every Stale Goal,
-// longest since its last update first, and every Goal whose Path to Green is
-// overdue, longest overdue first. Both surface as prominently as Red. NotGreen
-// is every Active Goal whose latest Check-in is Red or Yellow, in the order
-// the Active Goals are read. OverdueMilestones is every Goal marked Milestone
-// overdue (see Freshness.MilestoneOverdue), earliest Milestone date first.
+// FreshnessSignals are the org-wide freshness signals: every Check-in overdue
+// Goal, longest since its last update first, and every Goal whose Path to Green
+// is overdue, longest overdue first. Both surface as prominently as Red.
+// NotGreen is every Active Goal whose latest Check-in is Red or Yellow, in the
+// order the Active Goals are read. OverdueMilestones is every Goal marked
+// Milestone overdue (see Freshness.MilestoneOverdue), earliest Milestone date
+// first.
 type FreshnessSignals struct {
 	CheckinOverdue    []GoalFreshness
 	OverduePaths      []GoalFreshness
@@ -152,8 +153,9 @@ type FreshnessSignals struct {
 }
 
 // FreshnessSignals reads the freshness signals of every Active Goal: its
-// Stale and overdue-Path-to-Green Goals, its Not Green ones, whose latest
-// Check-in is Red or Yellow, and its Green ones with an overdue Milestone.
+// Check-in overdue and overdue-Path-to-Green Goals, its Not Green ones, whose
+// latest Check-in is Red or Yellow, and its Green ones with an overdue
+// Milestone.
 func (s *Service) FreshnessSignals(ctx context.Context) (FreshnessSignals, error) {
 	rows, err := s.queries.ListActiveGoalsWithLatestCheckin(ctx)
 	if err != nil {
@@ -268,11 +270,11 @@ func lastCheckinFromRow(r db.ListActiveGoalsWithLatestCheckinRow) lastCheckin {
 	return last
 }
 
-// judgeFreshness applies the Stale and overdue-Path-to-Green rules to g, given
-// its latest Check-in. Days are counted on the calendar of g's Owner's
-// Timezone (see GoalTimezone), so a Check-in late on Monday and one early on
-// Monday both count from Monday, and a Path to Green is overdue from the day
-// after its target date.
+// judgeFreshness applies the Check-in overdue and overdue-Path-to-Green rules
+// to g, given its latest Check-in. Days are counted on the calendar of g's
+// Owner's Timezone (see GoalTimezone), so a Check-in late on Monday and one
+// early on Monday both count from Monday, and a Path to Green is overdue from
+// the day after its target date.
 func (s *Service) judgeFreshness(g Goal, latest lastCheckin) Freshness {
 	last := latest.at
 	if last.IsZero() {

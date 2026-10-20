@@ -57,8 +57,9 @@ templ freshnessItem(g domain.Goal, why string) {
 
 // goalFreshness flags, at the top of a Goal's page, a Goal that is Check-in
 // overdue or whose Path to Green is overdue, as a banner in Check-in overdue's
-// style. The Check-in overdue banner ends with a link to the Check-in form for whoever may check in (the
-// Owner or a Delegate). It renders nothing for a fresh Goal.
+// style. The Check-in overdue banner ends with a link to the Check-in form for
+// whoever may check in (the Owner or a Delegate). It renders nothing for a
+// fresh Goal.
 templ goalFreshness(goalID int64, f domain.Freshness, canCheckin bool, dates displayDates) {
 	if f.CheckinOverdue {
 		<p data-testid="goal-checkin-overdue" class="alert st" role="alert">
@@ -74,8 +75,9 @@ templ goalFreshness(goalID int64, f domain.Freshness, canCheckin bool, dates dis
 }
 
 // goalRowFreshness marks a Goal's row in the Goal list with Check-in overdue's
-// dashed grey chip when it is Check-in overdue, saying for how long, when its Path to Green is
-// overdue, or when it is Green past a Milestone's date (Milestone overdue).
+// dashed grey chip when it is Check-in overdue, saying for how long, when its
+// Path to Green is overdue, or when it is Green past a Milestone's date
+// (Milestone overdue).
 templ goalRowFreshness(f domain.Freshness) {
 	if f.CheckinOverdue {
 		<span data-testid="checkin-overdue" class="badge st">Check-in overdue · { fmt.Sprintf("%d days", f.DaysSince) }</span>

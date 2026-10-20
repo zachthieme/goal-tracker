@@ -207,10 +207,10 @@ func TestReportBlockSaysWhatElseChanged(t *testing.T) {
 }
 
 // A Report's exceptions come worst first, key by key: Ownerless, then Red,
-// Yellow, no Health, Green; then a Path to Green overdue; then Stale; then
-// those that changed since the baseline; then the soonest delivery date. The
-// order is the same whatever order the Goals were selected in (CONTEXT.md:
-// Report).
+// Yellow, no Health, Green; then a Path to Green overdue; then Check-in
+// overdue; then those that changed since the baseline; then the soonest
+// delivery date. The order is the same whatever order the Goals were selected
+// in (CONTEXT.md: Report).
 func TestReportPutsItsExceptionsWorstFirst(t *testing.T) {
 	t.Parallel()
 
@@ -317,33 +317,33 @@ func TestReportPutsYellowBeforeNoHealth(t *testing.T) {
 	}
 }
 
-// A Stale exception comes before an otherwise equal fresh one, even where its
-// title sorts after it (CONTEXT.md: Report).
+// A Check-in overdue exception comes before an otherwise equal fresh one, even
+// where its title sorts after it (CONTEXT.md: Report).
 func TestReportPutsACheckinOverdueExceptionBeforeAFreshOne(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
 	boss := h.SignIn("boss@example.com")
 	due := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
-	stale := activeGoalDue(h, boss, "Z stale", due)
+	checkinOverdue := activeGoalDue(h, boss, "Z overdue", due)
 	fresh := activeGoalDue(h, boss, "A fresh", due)
 	target := h.Clock.Now().AddDate(0, 6, 0)
-	h.Checkin(boss, stale.ID, domain.HealthYellow, "Off track.", "Add staff.", target)
+	h.Checkin(boss, checkinOverdue.ID, domain.HealthYellow, "Off track.", "Add staff.", target)
 	h.Checkin(boss, fresh.ID, domain.HealthYellow, "Off track.", "Add staff.", target)
 	h.Clock.Advance(10 * day)
 	h.Checkin(boss, fresh.ID, domain.HealthYellow, "Off track.", "Add staff.", target)
 	h.Clock.Advance(day)
 
-	// Against now, neither Goal changed since the baseline; "Z stale" was
+	// Against now, neither Goal changed since the baseline; "Z overdue" was
 	// last checked in 11 days ago on a 7-day cadence, "A fresh" one day ago.
-	r := draftReport(t, h, boss, h.Clock.Now(), stale, fresh)
+	r := draftReport(t, h, boss, h.Clock.Now(), checkinOverdue, fresh)
 
-	if got, want := reportExceptionTitles(r), []string{"Z stale", "A fresh"}; !slices.Equal(got, want) {
+	if got, want := reportExceptionTitles(r), []string{"Z overdue", "A fresh"}; !slices.Equal(got, want) {
 		t.Fatalf("exceptions in order\n got %q\nwant %q", got, want)
 	}
 	for _, b := range r.Exceptions {
-		if got, want := slices.Contains(b.Badges, domain.BadgeCheckinOverdue), b.Goal.ID == stale.ID; got != want {
-			t.Errorf("%q Stale = %v, want %v (badges %q)", b.Goal.Title, got, want, b.Badges)
+		if got, want := slices.Contains(b.Badges, domain.BadgeCheckinOverdue), b.Goal.ID == checkinOverdue.ID; got != want {
+			t.Errorf("%q Check-in overdue = %v, want %v (badges %q)", b.Goal.Title, got, want, b.Badges)
 		}
 	}
 }

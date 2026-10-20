@@ -737,9 +737,9 @@ func homeOrgCounts(c domain.SignalCounts) templ.Component {
 
 // dueRow is one Goal to check in on: its title, then a status line of its
 // Health, muted when Check-in overdue, how long since its last Check-in and how
-// often one is due, its Check-in overdue mark and, for a Delegate, whose Goal it is. When noChange
-// says one would be recorded, the one-click No change sits beside the Check in
-// link to the Goal's Check-in page.
+// often one is due, its Check-in overdue mark and, for a Delegate, whose Goal
+// it is. When noChange says one would be recorded, the one-click No change sits
+// beside the Check in link to the Goal's Check-in page.
 func dueRow(g domain.PersonalGoal, noChange bool) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

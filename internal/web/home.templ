@@ -186,9 +186,9 @@ templ homeOrgCounts(c domain.SignalCounts) {
 
 // dueRow is one Goal to check in on: its title, then a status line of its
 // Health, muted when Check-in overdue, how long since its last Check-in and how
-// often one is due, its Check-in overdue mark and, for a Delegate, whose Goal it is. When noChange
-// says one would be recorded, the one-click No change sits beside the Check in
-// link to the Goal's Check-in page.
+// often one is due, its Check-in overdue mark and, for a Delegate, whose Goal
+// it is. When noChange says one would be recorded, the one-click No change sits
+// beside the Check in link to the Goal's Check-in page.
 templ dueRow(g domain.PersonalGoal, noChange bool) {
 	<li data-testid="home-due-goal">
 		<div class="hm-what">

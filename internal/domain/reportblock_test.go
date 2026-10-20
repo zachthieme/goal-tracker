@@ -102,9 +102,9 @@ func TestReportExceptionTriggers(t *testing.T) {
 		},
 		{
 			// Checked in Green at Epoch, then nothing for 40 days.
-			name: "Stale",
+			name: "Check-in overdue",
 			arrange: func(h *testsupport.Harness, boss domain.Account) domain.Goal {
-				g := h.ActiveGoal(boss, "Stale", "why")
+				g := h.ActiveGoal(boss, "Check-in overdue", "why")
 				h.Checkin(boss, g.ID, domain.HealthGreen, "On track.", "", time.Time{})
 				return g
 			},
@@ -149,8 +149,8 @@ func TestReportExceptionTriggers(t *testing.T) {
 			badges: []string{domain.BadgeNewDate},
 		},
 		{
-			// Put On Hold since the baseline: On Hold is never Stale and has no
-			// Health.
+			// Put On Hold since the baseline: On Hold is never Check-in overdue
+			// and has no Health.
 			name: "put On Hold",
 			arrange: func(h *testsupport.Harness, boss domain.Account) domain.Goal {
 				return h.ActiveGoal(boss, "On Hold", "why")

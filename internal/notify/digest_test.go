@@ -69,10 +69,10 @@ func TestReminderListsCheckinOverdueGoalWithLinkToItsCheckin(t *testing.T) {
 	}
 }
 
-// A Goal is due when it would be Check-in overdue before next week's reminder if nobody
-// checked in: on a weekly cadence, a Goal last checked in 3 days ago is due. A
-// Goal on a 14-day cadence checked in 2 days ago is not, and an Owner with
-// nothing due gets no email.
+// A Goal is due when it would be Check-in overdue before next week's reminder
+// if nobody checked in: on a weekly cadence, a Goal last checked in 3 days ago
+// is due. A Goal on a 14-day cadence checked in 2 days ago is not, and an Owner
+// with nothing due gets no email.
 func TestReminderListsGoalsDueBeforeNextWeek(t *testing.T) {
 	t.Parallel()
 
@@ -326,8 +326,8 @@ func TestDigestListsChildrenThatSlippedThisWeek(t *testing.T) {
 	}
 }
 
-// The digest names a child whose Check-in went overdue this week, but not one that was
-// overdue already a week ago, nor one that's fresh.
+// The digest names a child whose Check-in went overdue this week, but not one
+// that was overdue already a week ago, nor one that's fresh.
 func TestDigestListsChildrenThatWentCheckinOverdueThisWeek(t *testing.T) {
 	t.Parallel()
 

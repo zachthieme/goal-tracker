@@ -752,9 +752,9 @@ func checkinSection(v goalView) templ.Component {
 
 // statusCells open the Latest status card: a row of cells, each a small label
 // over a value. The Owner's Health is always there, with its Run off Green
-// beside it while it has one ("Red · 5 wks"); the Rolled-up Health, with
-// its Check-in overdue children count, only when the Goal has Active children; and the
-// Back to Green date only when there is a Path to Green.
+// beside it while it has one ("Red · 5 wks"); the Rolled-up Health, with its
+// Check-in overdue children count, only when the Goal has Active children; and
+// the Back to Green date only when there is a Path to Green.
 func statusCells(v goalView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

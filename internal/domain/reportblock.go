@@ -334,9 +334,9 @@ func (h goalHistory) last() lastCheckin {
 	return lastCheckin{at: c.CreatedAt, health: c.Health, pathTargetDate: c.PathTargetDate}
 }
 
-// exception reports whether the Goal earns the full block: it is Red or
-// Yellow, Stale, or Ownerless, or since the baseline it was created, slipped a
-// date, changed Lifecycle, or changed Health (CONTEXT.md: Report).
+// exception reports whether the Goal earns the full block: it is Red or Yellow,
+// Check-in overdue, or Ownerless, or since the baseline it was created, slipped
+// a date, changed Lifecycle, or changed Health (CONTEXT.md: Report).
 func (h goalHistory) exception(since func(time.Time) bool, fresh Freshness) bool {
 	return needsPathToGreen(h.latest().Health) ||
 		fresh.CheckinOverdue ||

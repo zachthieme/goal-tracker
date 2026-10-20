@@ -635,10 +635,11 @@ func TestMarkdownSaysHowThePublicationSelects(t *testing.T) {
 	}
 }
 
-// An exception block counts the Red, Yellow and Stale children beside its
-// Rolled-up Health, names the Goals behind it, and under its head the Goals
-// it contributes to, each marked ↓ when the Report holds it and with its
-// Health; with no base URL to link from, it names them without links (#246).
+// An exception block counts the Red, Yellow and Check-in overdue children
+// beside its Rolled-up Health, names the Goals behind it, and under its head
+// the Goals it contributes to, each marked ↓ when the Report holds it and with
+// its Health; with no base URL to link from, it names them without links
+// (#246).
 func TestMarkdownExceptionBlockNamesItsLinkedGoals(t *testing.T) {
 	t.Parallel()
 

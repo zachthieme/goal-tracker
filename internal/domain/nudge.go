@@ -23,12 +23,12 @@ type Nudge struct {
 }
 
 // Nudge asks the Owner and Delegates of the Goal goalID to check in on it,
-// emailing each who hasn't left the org; actorID is who asks. Only a Goal
-// that is Check-in overdue, past its Path to Green, or marked Milestone overdue
-// (see Freshness.MilestoneOverdue), or an Active Goal in a Schedule conflict as the
-// child or the parent, can be nudged, and only by someone who can't check in
-// on it themselves. A Goal is nudged at most once a
-// calendar day in the org's timezone, whoever asks.
+// emailing each who hasn't left the org; actorID is who asks. Only a Goal that
+// is Check-in overdue, past its Path to Green, or marked Milestone overdue (see
+// Freshness.MilestoneOverdue), or an Active Goal in a Schedule conflict as the
+// child or the parent, can be nudged, and only by someone who can't check in on
+// it themselves. A Goal is nudged at most once a calendar day in the org's
+// timezone, whoever asks.
 //
 // The Nudge is recorded before any email goes out, so a rollback never leaves
 // one sent. When an email can't be sent the Nudge stands, and Nudge returns it

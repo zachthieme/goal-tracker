@@ -71,14 +71,14 @@ func healthRank(health string) int {
 }
 
 // RolledUpHealth computes goalID's Rolled-up Health from its Active children's
-// Owner-set Health (ADR-0003). Health is set by the Owner and never computed, so
-// this reads each Active child's latest Check-in and keeps the worst. Only
+// Owner-set Health (ADR-0003). Health is set by the Owner and never computed,
+// so this reads each Active child's latest Check-in and keeps the worst. Only
 // Active children count: a Proposed child has no Health, and a child with no
 // Check-in yet has none either, so both are skipped. When no Active child has a
-// Health, Present is false. Each Active child is also judged Stale or not and
-// counted, and counted again when it is Red or Yellow. The traversal is one level — each parent shows the
-// roll-up of its own direct children, which itself already reflects the levels
-// below it.
+// Health, Present is false. Each Active child is also judged Check-in overdue
+// or not and counted, and counted again when it is Red or Yellow. The traversal
+// is one level — each parent shows the roll-up of its own direct children,
+// which itself already reflects the levels below it.
 func (s *Service) RolledUpHealth(ctx context.Context, goalID int64) (RolledUpHealth, error) {
 	children, err := s.ChildrenOf(ctx, goalID)
 	if err != nil {

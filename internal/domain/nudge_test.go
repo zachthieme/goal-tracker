@@ -153,10 +153,10 @@ func TestTheOwnerAndDelegatesCantNudge(t *testing.T) {
 	}
 }
 
-// A Goal with nothing its Owner answers in a Check-in, neither Check-in overdue, past its
-// Path to Green, with a Milestone overdue nor in a Schedule conflict, can't be
-// nudged; one only past its Path to Green can, its email saying since when and
-// linking to the plain Check-in.
+// A Goal with nothing its Owner answers in a Check-in, neither Check-in
+// overdue, past its Path to Green, with a Milestone overdue nor in a Schedule
+// conflict, can't be nudged; one only past its Path to Green can, its email
+// saying since when and linking to the plain Check-in.
 func TestOnlyAGoalWithSomethingToAnswerCanBeNudged(t *testing.T) {
 	t.Parallel()
 

@@ -769,13 +769,13 @@ func (r riskGoalRow) scheduleConflictFix(current domain.Account, delegate map[in
 // riskSignal is one reason a Goal is flagged. Kind names the signal, as the
 // chip's data-kind on the Risks page. Days is how long the signal has held: for
 // "checkin-overdue" the days since the last update, for "path-overdue" the days
-// past the Path to Green's target date, for "milestone-overdue" the days past the
-// earliest overdue Milestone's date, for "action-item-overdue" the days the most
-// overdue Action Item about the Goal is past its due date, for
+// past the Path to Green's target date, for "milestone-overdue" the days past
+// the earliest overdue Milestone's date, for "action-item-overdue" the days the
+// most overdue Action Item about the Goal is past its due date, for
 // "schedule-conflicts" the days the child's delivery date falls after the
-// parent's, and 0 otherwise. Related is the parent for "schedule-conflicts"
-// and "halted-parents". Person is whom an "asks-for-help" asks, nil when no
-// one is above the Owner.
+// parent's, and 0 otherwise. Related is the parent for "schedule-conflicts" and
+// "halted-parents". Person is whom an "asks-for-help" asks, nil when no one is
+// above the Owner.
 type riskSignal struct {
 	Kind    string
 	Days    int
@@ -902,10 +902,10 @@ func riskHealthRank(health string) int {
 // sortRiskRows puts the worst-off Goals first, key by key: Active Goals before
 // the Proposed and On Hold ones, which nothing has gone wrong with yet; then
 // Ownerless first; then by Health (riskHealthRank); then a Path to Green
-// overdue first, longest overdue first; then a Milestone overdue first,
-// longest overdue first; then an overdue Action Item first,
-// longest overdue first; then Check-in overdue first, furthest past its
-// cadence first; then more distinct kinds of signal first; then by title, ignoring case.
+// overdue first, longest overdue first; then a Milestone overdue first, longest
+// overdue first; then an overdue Action Item first, longest overdue first; then
+// Check-in overdue first, furthest past its cadence first; then more distinct
+// kinds of signal first; then by title, ignoring case.
 func sortRiskRows(rows []riskGoalRow) {
 	slices.SortStableFunc(rows, func(a, b riskGoalRow) int {
 		aActive := a.Goal.Lifecycle == domain.LifecycleActive

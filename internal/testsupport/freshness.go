@@ -21,7 +21,7 @@ func (h *Harness) Freshness(goalID int64) domain.Freshness {
 // latest Check-in is Green while its Beta Milestone is one day overdue: it
 // moves the clock to two days before Beta, checks in Green, then moves the
 // clock on three days. Checked in three days ago on a weekly cadence, the Goal
-// isn't Stale. It returns the Goal and Beta.
+// isn't Check-in overdue. It returns the Goal and Beta.
 func (h *Harness) GreenGoalWithOverdueMilestone(owner domain.Account, title string) (domain.Goal, domain.Milestone) {
 	h.T.Helper()
 	g := h.ActiveGoal(owner, title, "It matters.")

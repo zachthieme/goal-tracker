@@ -233,9 +233,10 @@ func TestLatestStatusShowsTheRunOffGreen(t *testing.T) {
 }
 
 // The Latest status card opens with a row of cells, each a small label over a
-// value: the Owner's Health, the Rolled-up Health with its Stale-children count
-// when the Goal has Active children, and the Back to Green date when there is a
-// Path to Green. The status, the Path to Green and the explanation follow.
+// value: the Owner's Health, the Rolled-up Health with its Check-in
+// overdue-children count when the Goal has Active children, and the Back to
+// Green date when there is a Path to Green. The status, the Path to Green and
+// the explanation follow.
 func TestLatestStatusOpensWithCells(t *testing.T) {
 	t.Parallel()
 

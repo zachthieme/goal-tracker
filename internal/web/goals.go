@@ -227,8 +227,8 @@ func (f goalFilter) keeps(row goalRow) bool {
 
 // goalRow is one Goal in the Goal list with what its row shows beyond the Goal
 // and its Dimension values: its latest Check-in, which carries its Health,
-// whether it is Check-in overdue or its Path to Green is overdue, and whether it is
-// Incomplete.
+// whether it is Check-in overdue or its Path to Green is overdue, and whether
+// it is Incomplete.
 type goalRow struct {
 	domain.GoalWithValues
 	// Latest is the Goal's most recent Check-in, nil when it has none.

@@ -24,9 +24,9 @@ const (
 	// churning projects stay on track but their scope moves: partway through
 	// they add a Milestone, and two weeks later drop a planned one.
 	churning
-	// stale projects start well and then their Owner stops checking in, so
+	// lapsed projects start well and then their Owner stops checking in, so
 	// their last Check-in ends up older than their cadence.
-	stale
+	lapsed
 	// finished projects stay on track and are marked Done, with an outcome, once
 	// their last Milestone is done.
 	finished
@@ -44,7 +44,7 @@ const (
 var profileDeck = []profile{
 	troubled, troubled, troubled, troubled, troubled, troubled,
 	churning, churning, churning, churning, churning,
-	stale, stale, stale, stale,
+	lapsed, lapsed, lapsed, lapsed,
 	finished, finished, paused, cancelled, proposed, proposed,
 }
 
@@ -108,7 +108,7 @@ func (h *history) run(ctx context.Context, p *plan) (int, error) {
 }
 
 // checksInAt reports whether g's Owner checks in in week w: every week while
-// the Goal is Active — every other week for an org outcome — until a stale
+// the Goal is Active — every other week for an org outcome — until a lapsed
 // project's Owner goes quiet, and once more on an On Hold project to cancel it.
 func (g *plannedGoal) checksInAt(w int) bool {
 	switch g.lifecycle {
@@ -121,7 +121,7 @@ func (g *plannedGoal) checksInAt(w int) bool {
 	if g.team == "" {
 		return (weeks-w)%2 == 0
 	}
-	return g.profile != stale || w < g.turn
+	return g.profile != lapsed || w < g.turn
 }
 
 // checkIn writes one week's Check-in on g: it marks the Milestones that have
