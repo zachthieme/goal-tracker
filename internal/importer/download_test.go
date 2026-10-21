@@ -367,3 +367,102 @@ func TestDownloadQuotesACellThatWouldRunAsAFormula(t *testing.T) {
 		t.Errorf("download =\n%s\nwant\n%s", got, want)
 	}
 }
+
+// A value that really starts with ' and then a formula trigger downloads behind
+// a second ', so re-importing the download unchanged keeps its own ' rather
+// than storing the formula it would otherwise become (#443).
+func TestReimportingAValueStartingWithAQuotedFormulaKeepsItsQuote(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	notes := h.CreateField(admin, "Notes", domain.FieldLongText, "")
+	g := h.CreateGoal(admin, "Alpha", "It matters.")
+	h.SetGoalField(admin, g, notes, "'=x")
+	before := downloadCSV(t, h, g)
+	if !strings.HasSuffix(before, ",''=x\n") {
+		t.Errorf("download = %q, want the Notes cell ''=x", before)
+	}
+	history := historyLen(t, h, g)
+
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "download.csv", []byte(before))
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if !rep.Committed || rep.HasErrors() {
+		t.Fatalf("re-import not committed cleanly: %+v", rep)
+	}
+	if fields, _ := h.Service.GoalFields(context.Background(), g.ID); len(fields) != 1 || fields[0].Value != "'=x" {
+		t.Errorf("Fields = %+v, want Notes '=x", fields)
+	}
+	if got := historyLen(t, h, g); got != history {
+		t.Errorf("history grew from %d to %d", history, got)
+	}
+}
+
+// Each formula trigger quotes a cell on download and is unquoted on import, so a
+// Field value round-trips unchanged. The domain trims a value, so none starts
+// with a tab or a carriage return; one that starts with ' and then one still
+// downloads behind a second ' (#443).
+func TestEachFormulaTriggerRoundTripsAFieldValue(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct{ value, cell string }{
+		{"+x", "'+x"},
+		{"'+x", "''+x"},
+		{"'\tx", "''\tx"},
+		{"'\rx", "\"''\rx\""},
+		{"''=x", "'''=x"},
+	} {
+		t.Run(strconv.Quote(tc.value), func(t *testing.T) {
+			t.Parallel()
+
+			h := testsupport.New(t, "admin@example.com")
+			admin := h.SignIn("admin@example.com")
+			notes := h.CreateField(admin, "Notes", domain.FieldLongText, "")
+			g := h.CreateGoal(admin, "Alpha", "It matters.")
+			h.SetGoalField(admin, g, notes, tc.value)
+			download := downloadCSV(t, h, g)
+			if !strings.HasSuffix(download, ","+tc.cell+"\n") {
+				t.Errorf("download = %q, want the Notes cell %s", download, tc.cell)
+			}
+
+			rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "download.csv", []byte(download))
+			if err != nil {
+				t.Fatalf("Commit: %v", err)
+			}
+			if !rep.Committed || rep.HasErrors() {
+				t.Fatalf("re-import not committed cleanly: %+v", rep)
+			}
+			if fields, _ := h.Service.GoalFields(context.Background(), g.ID); len(fields) != 1 || fields[0].Value != tc.value {
+				t.Errorf("Fields = %+v, want Notes %q", fields, tc.value)
+			}
+		})
+	}
+}
+
+// A cell that is ' and then a tab, a carriage return or a + imports without the
+// ', as the download writes a cell starting with one (#443).
+func TestAQuotedTabCarriageReturnOrPlusImportsWithoutItsQuote(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	h.CreateField(admin, "Budget", domain.FieldNumber, "$")
+	csv := "Title,Owner,Why it matters,Kind,Budget\n" +
+		"Tab,owner@example.com,It matters.,Ongoing,'\t5\n" +
+		"Carriage return,owner@example.com,It matters.,Ongoing,\"'\r6\"\n" +
+		"Plus,owner@example.com,It matters.,Ongoing,'+7\n"
+	rep, err := importer.New(h.Service).Commit(context.Background(), admin.ID, "goals.csv", []byte(csv))
+	if err != nil {
+		t.Fatalf("Commit: %v", err)
+	}
+	if !rep.Committed || rep.HasErrors() {
+		t.Fatalf("import not clean: committed=%v rows=%+v", rep.Committed, rep.Rows)
+	}
+	for i, want := range []string{"5", "6", "+7"} {
+		if fields, _ := h.Service.GoalFields(context.Background(), rep.Rows[i].GoalID); len(fields) != 1 || fields[0].Value != want {
+			t.Errorf("row %d Fields = %+v, want Budget %s", i, fields, want)
+		}
+	}
+}

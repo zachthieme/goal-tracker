@@ -161,19 +161,28 @@ func formatNumber(f float64) string {
 const formulaTriggers = "=+-@\t\r"
 
 // quoteFormula is a download cell written so a spreadsheet opens it as text: a
-// cell starting with a formula trigger gets a leading '.
+// cell starting with a formula trigger gets a leading ', and so does one that
+// already starts with one or more ' and then a trigger, so that unquoteFormula
+// gives it back with its own ' (#443).
 func quoteFormula(text string) string {
-	if text != "" && strings.ContainsRune(formulaTriggers, rune(text[0])) {
+	if startsWithFormula(text) {
 		return "'" + text
 	}
 	return text
 }
 
 // unquoteFormula is an imported cell with the ' that quoteFormula put in front
-// of a formula trigger dropped again. Any other leading ' is part of the cell.
+// of it dropped again. Any other leading ' is part of the cell.
 func unquoteFormula(text string) string {
-	if len(text) > 1 && text[0] == '\'' && strings.ContainsRune(formulaTriggers, rune(text[1])) {
-		return text[1:]
+	if rest, ok := strings.CutPrefix(text, "'"); ok && startsWithFormula(rest) {
+		return rest
 	}
 	return text
+}
+
+// startsWithFormula reports whether text, past any leading ', starts with a
+// formula trigger.
+func startsWithFormula(text string) bool {
+	text = strings.TrimLeft(text, "'")
+	return text != "" && strings.ContainsRune(formulaTriggers, rune(text[0]))
 }
