@@ -990,6 +990,8 @@ func TestTheRetiredValuesRestoreButtonNeedsNoToken(t *testing.T) {
 		t.Fatalf("retire Trust: status %d", resp.StatusCode)
 	}
 	h.Clock.Advance(30 * 24 * time.Hour)
+	// The session from before the clock moved has ended; sign in again.
+	admin = signInClient(t, ts.URL, "boss@example.com")
 
 	page := getBody(t, admin, ts.URL+"/dimensions")
 	restore := fmt.Sprintf(`action="/dimension-values/%d/restore"`, trust.ID)

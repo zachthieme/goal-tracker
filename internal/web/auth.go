@@ -94,9 +94,9 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, acc domain
 func (s *Server) setSessionCookie(w http.ResponseWriter, sess session) {
 	remaining := sess.signedIn.Unix() + int64(sessionLifetime/time.Second) - s.svc.Now().Unix()
 	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookie,
-		Value:    s.sessions.encode(sess),
-		Path:     "/",
+		Name:  sessionCookie,
+		Value: s.sessions.encode(sess),
+		Path:  "/",
 		// A Max-Age of 0 would leave the cookie with none, lasting until the
 		// browser closes; a session at its end gets a second.
 		MaxAge:   int(max(remaining, 1)),

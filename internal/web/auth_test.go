@@ -536,3 +536,24 @@ func TestSigningOutEndsEverySessionOnTheServer(t *testing.T) {
 		t.Error("another browser's cookie from before sign-out still signs sam in")
 	}
 }
+
+// A "<id>.<generation>.<signature>" cookie, the shape issued before cookies
+// carried sign-in and last-seen times, counts as signed out even when signed
+// with the right key (the breaking change: everyone signs in once more).
+func TestAThreePartSessionCookieIsSignedOut(t *testing.T) {
+	t.Parallel()
+
+	key := []byte("0123456789abcdef0123456789abcdef")
+	h := testsupport.New(t)
+	ts := httptest.NewServer(web.NewServer(h.Service, web.WithSessionKey(key)))
+	t.Cleanup(ts.Close)
+	sam := h.SignIn("sam@example.com")
+
+	payload := strconv.FormatInt(sam.ID, 10) + ".0"
+	mac := hmac.New(sha256.New, key)
+	mac.Write([]byte(payload))
+	old := &http.Cookie{Name: "gt_session", Value: payload + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))}
+	if !signedOut(t, ts.URL, old) {
+		t.Errorf("a three-part gt_session=%s signs sam in", old.Value)
+	}
+}
