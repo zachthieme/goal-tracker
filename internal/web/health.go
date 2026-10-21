@@ -17,7 +17,7 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), healthPingTimeout)
 	defer cancel()
 	if err := s.svc.Ping(ctx); err != nil {
-		requestLogger(r.Context()).WarnContext(r.Context(), "health check failed", "err", err)
+		s.requestLog(r).WarnContext(r.Context(), "health check failed", "err", err)
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 		return
 	}

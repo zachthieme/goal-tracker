@@ -128,7 +128,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 		if !errors.As(err, &failure) {
 			failure = signInFailure{sentence: "Signing in with your organization didn't work. Try again, and ask an Admin if it keeps failing."}
 		}
-		s.log.Warn("organization sign-in failed", "err", err)
+		s.requestLog(r).WarnContext(r.Context(), "organization sign-in failed", "err", err)
 		render(w, r, http.StatusBadRequest, orgSignInPage(failure.sentence))
 		return
 	}
@@ -142,7 +142,7 @@ func (s *Server) handleOIDCCallback(w http.ResponseWriter, r *http.Request) {
 	if errors.As(err, &conflict) {
 		// The subject stays out of the log; the Account ID is enough to
 		// find the link.
-		s.log.Warn("organization sign-in refused: email names an Account linked to another subject", "account_id", conflict.AccountID)
+		s.requestLog(r).WarnContext(r.Context(), "organization sign-in refused: email names an Account linked to another subject", "account_id", conflict.AccountID)
 		render(w, r, http.StatusForbidden, orgSignInPage("You can't be signed in as "+claims.Email+": that email belongs to an Account linked to someone else. Ask an Admin."))
 		return
 	}

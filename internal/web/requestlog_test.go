@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -79,5 +80,40 @@ func TestARequestThatMatchesNoRouteIsLoggedAsUnmatched(t *testing.T) {
 	}
 	if line := lines[0]; line["route"] != "unmatched" || line["status"] != float64(http.StatusForbidden) || line["method"] != http.MethodPost {
 		t.Errorf("access line %v, want POST unmatched answered 403", line)
+	}
+}
+
+// An error logged while handling a request carries the request's ID, the same
+// one its access line and the response's X-Request-ID carry, so an operator
+// can tie the failure to the request it failed.
+func TestAnErrorLoggedInAHandlerCarriesItsRequestsID(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	srv, buf := requestLogServer(t, h)
+	if err := h.DB.Close(); err != nil {
+		t.Fatalf("close database: %v", err)
+	}
+
+	form := url.Values{"email": {"sam@example.com"}}
+	r := httptest.NewRequest(http.MethodPost, "/signin", strings.NewReader(form.Encode()))
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+	srv.ServeHTTP(w, r)
+
+	errs := logRecords(t, buf)
+	lines := accessLines(t, buf)
+	if len(errs) != 1 || len(lines) != 1 {
+		t.Fatalf("logged %d records and %d access lines, want 1 of each:\n%s", len(errs), len(lines), buf)
+	}
+	id := w.Header().Get("X-Request-ID")
+	if id == "" {
+		t.Fatal("the response carries no X-Request-ID")
+	}
+	if errs[0]["level"] != "ERROR" || errs[0]["request_id"] != id {
+		t.Errorf("error record %v, want an ERROR with request_id %q", errs[0], id)
+	}
+	if lines[0]["request_id"] != id || lines[0]["status"] != float64(http.StatusInternalServerError) {
+		t.Errorf("access line %v, want request_id %q answered 500", lines[0], id)
 	}
 }

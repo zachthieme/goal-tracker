@@ -290,8 +290,9 @@ func render(w http.ResponseWriter, r *http.Request, status int, c templ.Componen
 
 type loggerKey struct{}
 
-// withRequestLogger records l in ctx, so render can log a page that fails to
-// draw to the Server's logger.
+// withRequestLogger records l, the request's logger, in ctx, so whatever is
+// logged while handling the request, such as a page that fails to draw, goes
+// to the Server's logger carrying the request's ID.
 func withRequestLogger(ctx context.Context, l *slog.Logger) context.Context {
 	return context.WithValue(ctx, loggerKey{}, l)
 }
@@ -302,4 +303,13 @@ func requestLogger(ctx context.Context) *slog.Logger {
 		return l
 	}
 	return slog.Default()
+}
+
+// requestLog is r's logger, carrying its request ID, or the Server's own for a
+// request that didn't come through ServeHTTP.
+func (s *Server) requestLog(r *http.Request) *slog.Logger {
+	if l, ok := r.Context().Value(loggerKey{}).(*slog.Logger); ok {
+		return l
+	}
+	return s.log
 }
