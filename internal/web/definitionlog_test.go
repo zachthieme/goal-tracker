@@ -206,3 +206,15 @@ func TestAnOwnersAdditionIsLoggedAndARefusedChangeIsNotOverHTTP(t *testing.T) {
 		t.Errorf("newest entry isn't pat adding Globex:\n%s", entries[0])
 	}
 }
+
+// The Definition log sits in the flat frame: its name in the header strip,
+// and its list a plain section of hairline rows, with no card.
+func TestDefinitionLogIsInTheFlatFrame(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ts := newServer(t, h)
+	boss := signInClient(t, ts.URL, "boss@example.com")
+
+	assertInFlatFrame(t, getBody(t, boss, ts.URL+"/definition-log"), "Definition log")
+}

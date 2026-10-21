@@ -23,7 +23,7 @@ const confirmMerge = "Merge this value? Its Goals and Report filters move to the
 // set, names the Goals that kept a Dimension from switching to one value;
 // toast, when set, offers Undo for the value just retired. It sits in the flat
 // frame: its title in the page header, and the rest plain sections (DESIGN.md
-// § Direction).
+// § Dimensions page).
 templ dimensionsPage(current *domain.Account, dims []domain.Dimension, refusal *domain.SeveralValuesError, toast *toast) {
 	{{ admin := current != nil && current.IsAdmin }}
 	@framedLayout("Dimensions", current, pageHeader(pageHead{Title: "Dimensions"})) {

@@ -15,7 +15,7 @@ import (
 // builder (CONTEXT.md: Report Definition). Dates are the company's (loc). It
 // sits in the flat frame under a header strip holding New report: the Open
 // Action Items are a section of rows, and the definitions a full-bleed list
-// whose rows are ruled off by hairlines (DESIGN.md § Direction).
+// whose rows are ruled off by hairlines (DESIGN.md § Reports list).
 templ reportsPage(current *domain.Account, data reportsListData) {
 	@framedLayout("Reports", current, reportsListHeader()) {
 		@reportStyles()
@@ -210,8 +210,8 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 
 // reportDraftHeader is the draft's header strip: Reports › its name, marked a
 // Draft, and the save status at the left, then the baseline chip, and History,
-// Edit definition and Publish… at the right (DESIGN.md § Direction: Page
-// header).
+// Edit definition and Publish… at the right (DESIGN.md § A Report's
+// draft page).
 templ reportDraftHeader(r domain.Report, pubs []domain.Publication, loc *time.Location, chip baselineChip, panel goalsPanel, status string) {
 	<header data-testid="draft-header" class="page-header rp-draft-head">
 		<div class="rp-draft-title">
@@ -455,7 +455,7 @@ templ publicationPage(current *domain.Account, p domain.Publication, d discussio
 // publicationHeader is a publication's header strip: Reports › its Report
 // Definition, linking to the draft, › the day it was published in the
 // company's timezone (loc), and its Download menu at the right (DESIGN.md §
-// Direction: Page header).
+// A publication).
 templ publicationHeader(p domain.Publication, loc *time.Location, pdfFile bool) {
 	<div class="page-header">
 		<nav class="ph-title" data-testid="report-breadcrumb" aria-label="Breadcrumb">

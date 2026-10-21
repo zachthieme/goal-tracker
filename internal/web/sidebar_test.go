@@ -17,7 +17,7 @@ func sidebar(t *testing.T, page string) string {
 // Every signed-in page sits in the flat frame: a sidebar on the left holding,
 // in order, the app's name linking Home, a Search that asks the Goal list, the
 // nav with its counts, and the person's menu at its foot, with Theme and Sign
-// out in it. The teal top bar is gone (DESIGN.md § Direction: The frame).
+// out in it. No teal bar runs across the top (DESIGN.md § Sidebar).
 func TestSidebarFramesEverySignedInPage(t *testing.T) {
 	t.Parallel()
 
@@ -31,7 +31,7 @@ func TestSidebarFramesEverySignedInPage(t *testing.T) {
 	for _, path := range []string{"/home", "/goals", "/follow-ups", "/reports"} {
 		page := getBody(t, client, ts.URL+path)
 		if strings.Contains(page, `class="nav"`) {
-			t.Errorf("%s still has the top bar", path)
+			t.Errorf("%s still has the teal nav bar the sidebar replaced", path)
 		}
 		bar := sidebar(t, page)
 		order := []string{`class="brand"`, `<form class="sb-search"`, `data-testid="nav-home"`, `data-testid="nav-reports"`, `data-testid="person-menu"`}

@@ -21,7 +21,7 @@ import (
 // other Goal (ADR 0007). A saved one's id goes with the form, so the rail
 // reads against its baseline. Under its breadcrumb strip it is one centred
 // column of plain sections: the title, the inputs, the Matches rail, and Save
-// report last (DESIGN.md § Direction: Page shapes).
+// report last (DESIGN.md § Report builder).
 func reportBuilderPage(current *domain.Account, v reportBuilderView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

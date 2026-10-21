@@ -431,7 +431,7 @@ func TestGoalListFiltersAndGroupsByDimension(t *testing.T) {
 
 // A grouped Goal list's group headers sit on the neutral group-header surface,
 // not a teal fill: a header row is nothing to act on, and teal is kept for
-// what is (DESIGN.md § Direction: List rows).
+// what is (DESIGN.md § Components: List rows).
 func TestGoalListGroupHeadersAreNeutralOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -1728,7 +1728,7 @@ func TestGoalFilterBarTabOrderFollowsItsDrawnOrder(t *testing.T) {
 
 // The Goal list's header strip names the page with the muted count of the
 // Goals it lists, then offers the List / Table switch and New goal, a primary
-// button linking to the New goal page (DESIGN.md § Direction: Page header).
+// button linking to the New goal page (DESIGN.md § Goal list).
 // The Follow-ups page has replaced the links to the signal pages.
 func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 	t.Parallel()
@@ -1761,11 +1761,11 @@ func TestGoalListHeaderOpensProposeFormThatSwapsTheList(t *testing.T) {
 
 // The Goal page's document column opens on its title, then its Why it matters
 // as a lead paragraph. Its properties sit in the rail as label and value rows,
-// in DESIGN.md § Direction's order: Health as its pill, Lifecycle, Kind, Owner,
-// Delegates, the cadence, the delivery date with its slips struck (wrapping
-// between dates, never mid-date: #180), Top-level as the level, then the
-// Dimension values. The header strip holds the breadcrumb, with Check in and
-// No change at its right for whoever may check in.
+// in DESIGN.md § Properties rail's order: Health as its pill, Lifecycle, Kind,
+// Owner, Delegates, the cadence, the delivery date with its slips struck
+// (wrapping between dates, never mid-date: #180), Top-level as the level, then
+// the Dimension values. The header strip holds the breadcrumb, with Check in
+// and No change at its right for whoever may check in.
 func TestGoalPageRailHoldsTheGoalsProperties(t *testing.T) {
 	t.Parallel()
 
@@ -3320,7 +3320,7 @@ func TestDelegateSetsAndAddsDimensionValuesButContributorCannotOverHTTP(t *testi
 // The Goal page is one flat surface in every Lifecycle: nothing on it is a
 // card, the Proposed Goal's Define this Goal and the More menu included, with
 // a Metric, a Milestone, a Highlight, a Draft Highlight and a parent on show
-// (DESIGN.md § Direction: the flat frame).
+// (DESIGN.md § System: One surface).
 func TestGoalPageHasNoCardInAnyLifecycleOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -3372,8 +3372,8 @@ var goalPageCardClass = regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`)
 // The Goal page stays one flat surface whoever reads it and whatever form is
 // open in place: an Admin's and a stranger's view have no card, as the
 // Owner's hasn't, and nor has the page with any of its ?open= forms open,
-// each opened by someone it is offered to (DESIGN.md § Direction: the flat
-// frame).
+// each opened by someone it is offered to (DESIGN.md § System: One
+// surface).
 func TestGoalPageHasNoCardForAnyViewerOrOpenFormOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -3455,7 +3455,7 @@ func hasClass(openTag, class string) bool {
 // The Goal page's document column reads Latest status, Metrics, Milestones,
 // Highlights, Draft Highlights, Action Items, Comments and History, in that
 // order, each a section opening with its h2; the rail's groups open with an h3
-// (DESIGN.md § Direction: Page shapes).
+// (DESIGN.md § Goal page sections, § Properties rail).
 func TestGoalPageSectionHeadings(t *testing.T) {
 	t.Parallel()
 
@@ -3521,7 +3521,7 @@ func assertOpensWith(t *testing.T, page, tag, testID, heading string) {
 // Each section of the Goal page's document column is a 13/600 heading over a
 // --color-border hairline, with its rows ruled by hairlines too, and none sits
 // in a box or under a rule of its own: the space between sections groups them
-// (DESIGN.md § Direction: Principles).
+// (DESIGN.md § Goal page sections).
 func TestGoalPageSectionsAreHeadingsOverHairlineRows(t *testing.T) {
 	t.Parallel()
 

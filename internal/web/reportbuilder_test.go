@@ -1216,7 +1216,7 @@ func TestBuilderChipKeepsItsPaddingWithoutScriptOverHTTP(t *testing.T) {
 
 // The builder's header strip holds its breadcrumb, the last crumb the page
 // itself, and the page's centred column opens with its title (ticket #277,
-// DESIGN.md § Direction).
+// DESIGN.md § Report builder).
 func TestBuilderHeadStacksTheBreadcrumbAboveTheTitleOverHTTP(t *testing.T) {
 	t.Parallel()
 

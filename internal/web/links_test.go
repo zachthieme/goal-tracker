@@ -118,8 +118,9 @@ func TestLinkRequestPendsThenParentOwnerAcceptsAcrossOwners(t *testing.T) {
 	}
 }
 
-// Each pending link request is a card with Accept as the primary action and a
-// Reject that rejects it at once, with no confirmation (#56).
+// Each pending link request is a hairline row with Accept as the primary
+// action and a Reject that rejects it at once, with no confirmation (#56). The
+// page sits in the flat frame: its name in the header strip, and no card.
 func TestPendingLinkRowsRejectAtOnce(t *testing.T) {
 	t.Parallel()
 
@@ -132,9 +133,7 @@ func TestPendingLinkRowsRejectAtOnce(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/links")
 
 	row := between(t, page, `data-testid="pending-link"`, "")
-	if !strings.Contains(openTag(row), `class="card`) {
-		t.Errorf("the pending link isn't a card: %s", openTag(row))
-	}
+	assertInFlatFrame(t, page, "Pending links")
 	base := fmt.Sprintf("/links/%d", link.ID)
 	assertAcceptReject(t, row, base)
 

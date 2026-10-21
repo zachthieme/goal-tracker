@@ -81,34 +81,17 @@ func TestPrimaryButtonHoverChangesFillOnly(t *testing.T) {
 	}
 }
 
-// A hovered clickable card shows it by a darker border alone, in every theme:
-// cards are flat, so there is no shadow to deepen (#88). In the dark theme the
-// border goes lighter instead, since dark themes show elevation by lightness;
-// either way it stands further out from the card's surface.
-func TestClickableCardHoverChangesBorderOnly(t *testing.T) {
+// The flat frame has no card (DESIGN.md § System: One surface): app.css
+// defines no .card rule, so no page can draw one.
+func TestAppCSSDefinesNoCard(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
 
-	themes := darkThemes(t, css)
-	themes["light"] = tokens(tokenBlock(t, css, ":root"))
-	for name, theme := range themes {
-		rest := computed(t, css, theme, ".card", "a.card")
-		hover := computed(t, css, theme, ".card", "a.card", "a.card:hover")
-		if got := changed(rest, hover); fmt.Sprint(got) != "[border-color]" {
-			t.Errorf("%s: a hovered clickable card changes %v, want only its border colour", name, got)
-		}
-		resting := borderColour(t, theme, rest["border"])
-		surface := rest["background"]
-		if contrast(t, hover["border-color"], surface) <= contrast(t, resting, surface) {
-			t.Errorf("%s: a hovered clickable card's border %s stands out no more than its resting border %s on %s", name, hover["border-color"], resting, surface)
-		}
-	}
-	light := themes["light"]
-	if luminance(t, borderColour(t, light, computed(t, css, light, ".card")["border"])) <= luminance(t, computed(t, css, light, ".card", "a.card", "a.card:hover")["border-color"]) {
-		t.Errorf("light: a hovered clickable card's border doesn't darken")
+	if m := regexp.MustCompile(`[^{}]*\.card\b[^{}]*\{[^{}]*\}`).FindString(css); m != "" {
+		t.Errorf("app.css still styles a card: %s", strings.TrimSpace(m))
 	}
 }
 
@@ -134,19 +117,10 @@ func TestOnlyButtonsHoverToATealBorder(t *testing.T) {
 	}
 }
 
-// borderColour resolves the colour of a "1px solid <colour>" border.
-func borderColour(t *testing.T, theme map[string]string, border string) string {
-	t.Helper()
-	m := regexp.MustCompile(`^1px solid (\S+)$`).FindStringSubmatch(border)
-	if m == nil {
-		t.Fatalf("border %q is not 1px solid", border)
-	}
-	return resolve(t, theme, m[1])
-}
-
-// Cards are flat: only the menus and popovers, and the Check-in's sticky
-// submit bar, float over the page, and they float by --shadow-pop, so an open
-// menu reads as nearer than any card (#88, DESIGN.md § Direction).
+// Cards are flat: only the menus and popovers, and the Check-in's sticky submit
+// bar, float over the page, and they float by --shadow-pop, so an open menu
+// reads as nearer than any card (#88, DESIGN.md § System: Surfaces are for what
+// floats).
 func TestOnlyMenusAndPopoversCastAShadow(t *testing.T) {
 	t.Parallel()
 

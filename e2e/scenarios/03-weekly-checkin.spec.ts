@@ -323,7 +323,7 @@ test("a Delegate checks in for an Owner who's away, and the Goal stops being Che
     const link = covering.getByTestId("home-delegate-link");
     await expect(link).toContainText("Goals delegated to you");
     await link.click();
-    await expect(covering.getByRole("heading", { level: 1, name: "Goals delegated to me" })).toBeVisible();
+    await expect(covering.locator(".page-header").getByRole("heading", { level: 1, name: "Delegated to me" })).toBeVisible();
     await expect(
       covering.getByTestId("delegated-goal").getByRole("link", { name: goal.title, exact: true }),
     ).toBeVisible();

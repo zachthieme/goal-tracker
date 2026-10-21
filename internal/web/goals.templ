@@ -337,7 +337,7 @@ templ goalListRow(row goalRow, dates displayDates) {
 
 // goalHealthMark is a list row's Health: its shape alone — square for Red,
 // triangle for Yellow, circle for Green, an empty ring for none — named by an
-// aria-label, so colour is never the only signal (DESIGN.md § Direction:
+// aria-label, so colour is never the only signal (DESIGN.md § Components:
 // Health).
 templ goalHealthMark(health string) {
 	{{ name := goalHealthGroup{Health: health}.name() }}
@@ -623,7 +623,7 @@ templ goalLinkIf(link bool, g domain.Goal) {
 }
 
 // goalsStyles are the Goal list's own rules on top of app.css, in the flat
-// frame (DESIGN.md § Direction):
+// frame (DESIGN.md § Goal list):
 //   - the page drops its padding and width cap, so the filter bar and the
 //     list run edge to edge with 28px sides;
 //   - the header strip's List / Table switch is a segmented control;
@@ -724,15 +724,15 @@ templ goalsStyles() {
 	</style>
 }
 
-// goalPage shows a single Goal in the flat frame (DESIGN.md § Direction: Page
-// shapes). Its header strip is the breadcrumb, with Check in and the More menu
-// at its right. Under it, any warning banners run as quiet full-width strips,
-// then a document column — the title, Why it matters as a lead paragraph, then
-// Latest status, Metrics, Milestones, Highlights, Draft Highlights, Action
-// Items, Comments and History as sections — beside a properties rail of its
-// Health, Lifecycle, people, cadence, delivery, level, Dimension values and
-// Fields, then what it contributes to and what contributes to it. Nothing on
-// it is a card; at 900px and below the rail stacks under the column.
+// goalPage shows a single Goal in the flat frame (DESIGN.md § Goal page). Its
+// header strip is the breadcrumb, with Check in and the More menu at its right.
+// Under it, any warning banners run as quiet full-width strips, then a document
+// column — the title, Why it matters as a lead paragraph, then Latest status,
+// Metrics, Milestones, Highlights, Draft Highlights, Action Items, Comments and
+// History as sections — beside a properties rail of its Health, Lifecycle,
+// people, cadence, delivery, level, Dimension values and Fields, then what it
+// contributes to and what contributes to it. Nothing on it is a card; at 900px
+// and below the rail stacks under the column.
 templ goalPage(current *domain.Account, v goalView) {
 	{{ g := v.Goal }}
 	{{ owner := current != nil && current.ID == g.Owner.ID }}
@@ -803,7 +803,7 @@ templ goalPage(current *domain.Account, v goalView) {
 // goalPageHeader is the Goal page's header strip: the breadcrumb — Goals, the
 // first Goal it contributes to when it has one, then its own title — with, at
 // its right, Check in and No change for whoever may check in, and the More
-// menu (DESIGN.md § Direction: Page header). The title's own <h1> heads the
+// menu (DESIGN.md § Goal page header strip). The title's own <h1> heads the
 // document column, so the strip has none.
 templ goalPageHeader(v goalView) {
 	{{ g := v.Goal }}
@@ -915,10 +915,10 @@ templ goalRail(current *domain.Account, v goalView) {
 }
 
 // goalProperties are the rail's label and value rows, in the order DESIGN.md §
-// Direction gives them: Health as its pill, Lifecycle, Kind, then the people —
-// the Owner, with the forms about them opened in place under them, the
-// Delegates and the Contributors — then the cadence, the delivery date with
-// its slips struck, and Top-level for a Goal that is one.
+// Properties rail gives them: Health as its pill, Lifecycle, Kind, then the
+// people — the Owner, with the forms about them opened in place under them, the
+// Delegates and the Contributors — then the cadence, the delivery date with its
+// slips struck, and Top-level for a Goal that is one.
 templ goalProperties(v goalView) {
 	{{ g := v.Goal }}
 	<div data-testid="goal-meta" class="gp-props">

@@ -509,3 +509,22 @@ func assertTermHelp(t *testing.T, page, within, label, text string) string {
 	}
 	return button
 }
+
+// cardClass matches a class attribute holding the card class on its own, not
+// as part of another class's name.
+var cardClass = regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`)
+
+// assertInFlatFrame checks page sits in the flat frame (DESIGN.md § Page
+// header, § Components: Sections): its header strip's h1 is title,
+// and nothing on it is a card.
+func assertInFlatFrame(t *testing.T, page, title string) {
+	t.Helper()
+	if !strings.Contains(page, `<div class="page-header">`) {
+		t.Errorf("the %s page has no header strip:\n%s", title, page)
+	} else if header := between(t, page, `<div class="page-header">`, "</h1>"); !strings.HasSuffix(header, "<h1>"+html.EscapeString(title)) {
+		t.Errorf("the %s page's header strip doesn't hold its title as its h1:\n%s", title, header)
+	}
+	if c := cardClass.FindString(page); c != "" {
+		t.Errorf("the %s page still has a card, %s:\n%s", title, c, page)
+	}
+}

@@ -9,21 +9,21 @@ import (
 // suggestParentPage is the form by which someone other than a Goal's Owner
 // suggests a parent for it, with an optional note: the Owner decides it
 // (CONTEXT.md: Parent suggestion). A refused submit comes back with the
-// reason above the form and the form as it was sent.
+// reason above the form and the form as it was sent. It sits in the flat
+// frame: its title in the page header, and the form a plain section
+// (DESIGN.md § Components: Sections).
 templ suggestParentPage(current *domain.Account, v suggestParentView) {
-	@layout("Suggest a parent", current) {
+	@framedLayout("Suggest a parent", current, pageHeader(pageHead{Title: "Suggest a parent"})) {
 		@suggestionStyles()
-		<header class="page-head">
+		<section class="sg-section">
 			<div>
-				<h1>Suggest a parent</h1>
+				<h2>Parent suggestion</h2>
 				<p class="muted">
 					For <a href={ templ.SafeURL(goalPath(v.Goal.ID)) }>{ v.Goal.Title }</a>{ ", owned by " }
 					@person(v.Goal.Owner)
 					{ ", who decides whether to link it." }
 				</p>
 			</div>
-		</header>
-		<section class="card sg-card">
 			if v.Error != "" {
 				<p data-testid="form-error" class="alert r" role="alert">{ v.Error }</p>
 			}
@@ -52,7 +52,7 @@ templ suggestParentPage(current *domain.Account, v suggestParentView) {
 // suggestionStyles are the Suggest a parent page's rules on top of app.css.
 templ suggestionStyles() {
 	<style>
-		.sg-card{display:flex;flex-direction:column;gap:12px;max-width:560px}
+		.sg-section{display:flex;flex-direction:column;gap:12px;max-width:560px}
 		.sg-form{display:flex;flex-direction:column;gap:12px}
 		.sg-actions{display:flex;gap:8px;align-items:center}
 	</style>

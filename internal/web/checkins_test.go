@@ -3769,7 +3769,7 @@ func TestCheckinPageHeadingHierarchy(t *testing.T) {
 // The Check-in page is a form in the flat frame: its page header reads Check
 // in under the Goal's title, which links back to the Goal, and nothing on it
 // is a card, whether it has a No change to offer and Contributed to by to
-// show or not (DESIGN.md § Direction: Forms).
+// show or not (DESIGN.md § Check-in page).
 func TestCheckinPageIsAFlatForm(t *testing.T) {
 	t.Parallel()
 
@@ -3982,11 +3982,11 @@ func TestCheckinFormEndsWithSubmitBar(t *testing.T) {
 	}
 }
 
-// The submit bar sticks just above the bottom of the window while the form
-// runs past it, a floating surface: bordered, rounded and cast by
-// --shadow-pop, as DESIGN.md § Direction keeps it, and the page keeps a field
-// it scrolls to clear of it. At 600px and below Cancel hides, the summary
-// shrinks and Submit check-in grows to a thumb's size (ticket #367).
+// The submit bar sticks just above the bottom of the window while the form runs
+// past it, a floating surface (DESIGN.md § System: Surfaces are for what
+// floats): bordered, rounded and cast by --shadow-pop, and the page keeps a
+// field it scrolls to clear of it. At 600px and below Cancel hides, the
+// summary shrinks and Submit check-in grows to a thumb's size (ticket #367).
 func TestCheckinSubmitBarFloatsAtTheWindowsBottom(t *testing.T) {
 	t.Parallel()
 
@@ -4238,7 +4238,7 @@ func TestCheckinPageContextStyles(t *testing.T) {
 		t.Errorf(".checkin-context{%s} isn't sticky", rule)
 	}
 	// It reads as a quiet rail: behind a hairline, in small text, headed by
-	// small muted labels (DESIGN.md § Direction).
+	// small muted labels (DESIGN.md § Check-in page's column).
 	for sel, want := range map[string]string{
 		".checkin-context":   "border-left:1px solid var(--color-border)",
 		".checkin-rail-head": "color:var(--color-ink-muted)",
@@ -4406,12 +4406,12 @@ func TestCheckinSectionsCarryHeadingsForTheAddBar(t *testing.T) {
 	}
 }
 
-// Without script the add bar and the sections' headings hide, and the
-// sections stay collapsed <details>, rows divided by hairlines; once script
-// marks the page checkin-js, a closed section and every summary hide, so a
-// section shows once opened. Neither the bar nor a section is a box: the bar
-// is a plain row over a hairline. On a phone the bar's buttons keep to one
-// line that scrolls sideways (ticket #365, DESIGN.md § Direction).
+// Without script the add bar and the sections' headings hide, and the sections
+// stay collapsed <details>, rows divided by hairlines; once script marks the
+// page checkin-js, a closed section and every summary hide, so a section shows
+// once opened. Neither the bar nor a section is a box: the bar is a plain row
+// over a hairline. On a phone the bar's buttons keep to one line that scrolls
+// sideways (ticket #365, DESIGN.md § Check-in form's optional sections).
 func TestCheckinAddBarStyles(t *testing.T) {
 	t.Parallel()
 

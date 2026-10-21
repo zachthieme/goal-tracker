@@ -23,7 +23,7 @@ import (
 // builder (CONTEXT.md: Report Definition). Dates are the company's (loc). It
 // sits in the flat frame under a header strip holding New report: the Open
 // Action Items are a section of rows, and the definitions a full-bleed list
-// whose rows are ruled off by hairlines (DESIGN.md § Direction).
+// whose rows are ruled off by hairlines (DESIGN.md § Reports list).
 func reportsPage(current *domain.Account, data reportsListData) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -832,8 +832,8 @@ func reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, p
 
 // reportDraftHeader is the draft's header strip: Reports › its name, marked a
 // Draft, and the save status at the left, then the baseline chip, and History,
-// Edit definition and Publish… at the right (DESIGN.md § Direction: Page
-// header).
+// Edit definition and Publish… at the right (DESIGN.md § A Report's
+// draft page).
 func reportDraftHeader(r domain.Report, pubs []domain.Publication, loc *time.Location, chip baselineChip, panel goalsPanel, status string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -1839,7 +1839,7 @@ func publicationPage(current *domain.Account, p domain.Publication, d discussion
 // publicationHeader is a publication's header strip: Reports › its Report
 // Definition, linking to the draft, › the day it was published in the
 // company's timezone (loc), and its Download menu at the right (DESIGN.md §
-// Direction: Page header).
+// A publication).
 func publicationHeader(p domain.Publication, loc *time.Location, pdfFile bool) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

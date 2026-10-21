@@ -79,9 +79,10 @@ func TestSignedInPersonLandsOnHome(t *testing.T) {
 }
 
 // The sign-in page is a single centred column on the canvas, the app's mark
-// above it and no card (DESIGN.md § Direction): the "Sign in" heading, the
-// development sign-in note, and the email field with its button. The top bar
-// already shows the brand, so the column doesn't repeat its name.
+// above it and no card (DESIGN.md § Sign-in and Set password): the "Sign in"
+// heading, the development sign-in note, and the email field with its button.
+// The signed-out bar already shows the app's name, so the column doesn't
+// repeat it.
 func TestSignInPageIsACentredColumn(t *testing.T) {
 	t.Parallel()
 

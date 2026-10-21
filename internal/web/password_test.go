@@ -237,7 +237,7 @@ func TestFiftyFailuresFromOneIPHoldItsSignInsFor15Minutes(t *testing.T) {
 
 // Password sign-in, the set-password form and a used link's notice are each a
 // single centred column on the canvas, the app's mark above it, and none of
-// them a card (DESIGN.md § Direction).
+// them a card (DESIGN.md § Sign-in and Set password).
 func TestSignedOutPasswordPagesAreAColumnUnderTheMark(t *testing.T) {
 	t.Parallel()
 

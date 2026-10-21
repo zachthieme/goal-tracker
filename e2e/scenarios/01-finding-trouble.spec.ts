@@ -239,7 +239,7 @@ test("a leader finds trouble between reviews on Goals and Follow-ups", async ({ 
     await expect(items.getByTestId("raised-action-item")).toContainText(`about ${checkinOverdue.title}`);
   });
 
-  await test.step("1. The top bar shows a count on Follow-ups before she clicks anything", async () => {
+  await test.step("1. The sidebar shows a count on Follow-ups before she clicks anything", async () => {
     await signIn(page, leader);
     const count = await navFollowUpsCount(page);
     expect(count, "Follow-ups shows a count from Home").toBeGreaterThan(0);
@@ -379,19 +379,19 @@ test("a leader finds trouble between reviews on Goals and Follow-ups", async ({ 
   });
 
   await test.step("4. Narrowed to her org, each flagged Goal is one row, most urgent first, with a chip per reason and one Fix", async () => {
-    // A bare /follow-ups is her default, My org, which the top bar counts.
+    // A bare /follow-ups is her default, My org, which the sidebar counts.
     await page.goto("/follow-ups");
     const inOrg = await navFollowUpsCount(page);
-    expect(await followUpRows(page), "the top bar counts a bare /follow-ups's rows").toHaveLength(inOrg);
+    expect(await followUpRows(page), "the sidebar counts a bare /follow-ups's rows").toHaveLength(inOrg);
     const teamSelect = page.locator('[data-testid="follow-ups-value"][data-dimension="Team"]');
     await expect(teamSelect.locator("option").first()).toHaveText("Team: any");
     await teamSelect.selectOption({ label: "Platform" });
     await expect(page).toHaveURL(/[?&]value=\d+/);
     const rows = await followUpRows(page);
     await expect(page.getByTestId("follow-ups-attention")).toHaveText(new RegExp(`^${rows.length} Goals? to review`));
-    // The top bar counts her whole org; the narrowed page doesn't.
+    // The sidebar counts her whole org; the narrowed page doesn't.
     expect(rows.length, "Platform has fewer flagged Goals than her org").toBeLessThan(inOrg);
-    expect(await navFollowUpsCount(page), "the top bar's count doesn't narrow").toBe(inOrg);
+    expect(await navFollowUpsCount(page), "the sidebar's count doesn't narrow").toBe(inOrg);
 
     expect(new Set(rows.map((r) => r.id)).size, "one row per Goal").toBe(rows.length);
     for (const r of rows) {
@@ -672,7 +672,7 @@ function goalRow(scope: Page | Locator, title: string): Locator {
   return scope.getByTestId("goal-row").filter({ has: page.getByRole("link", { name: title, exact: true }) });
 }
 
-// navFollowUpsCount is the count on the top bar's Follow-ups item.
+// navFollowUpsCount is the count on the sidebar's Follow-ups item.
 async function navFollowUpsCount(page: Page): Promise<number> {
   const text = (await page.getByTestId("nav-follow-ups").textContent()) ?? "";
   const m = text.match(/\d+/);

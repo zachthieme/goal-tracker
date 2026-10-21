@@ -9,22 +9,19 @@ import (
 // definitionLogPage is the Definition log: every change to what Dimensions and
 // Fields exist and how they're shaped, newest first, each with who made it and
 // when. A form narrows it to one Dimension or Field. It is read-only for
-// everyone; values set on Goals are in each Goal's Value history instead.
+// everyone; values set on Goals are in each Goal's Value history instead. It
+// sits in the flat frame: its title in the page header, and the changes a
+// plain section of hairline rows (DESIGN.md § Components: Sections).
 templ definitionLogPage(current *domain.Account, dims []domain.Dimension, fields []domain.Field, scope logScope, changes []domain.DefinitionChange, dates displayDates) {
-	@layout("Definition log", current) {
+	@framedLayout("Definition log", current, pageHeader(pageHead{Title: "Definition log"})) {
 		@definitionLogStyles()
-		<header class="page-head">
-			<div>
-				<h1>Definition log</h1>
-				<p class="muted">
-					if scope.Name != "" {
-						{ "Every change to " + scope.Name + ", newest first." }
-					} else {
-						Every change to the Dimensions and Fields, newest first. Values set on Goals are in each Goal's history.
-					}
-				</p>
-			</div>
-		</header>
+		<p class="muted">
+			if scope.Name != "" {
+				{ "Every change to " + scope.Name + ", newest first." }
+			} else {
+				Every change to the Dimensions and Fields, newest first. Values set on Goals are in each Goal's history.
+			}
+		</p>
 		<form data-testid="definition-log-scope" class="dl-scope" method="get" action="/definition-log">
 			<label class="field">
 				<span>Show changes to</span>
@@ -50,21 +47,24 @@ templ definitionLogPage(current *domain.Account, dims []domain.Dimension, fields
 			</label>
 			<button type="submit" class="btn sm">Show</button>
 		</form>
-		<ol data-testid="definition-log" class="card dl-list">
-			if len(changes) == 0 {
-				<li data-testid="no-definition-changes" class="muted">No changes logged yet.</li>
-			}
-			for _, c := range changes {
-				<li data-testid="definition-change">
-					<span>{ c.Summary }</span>
-					<span class="muted small">
-						{ "— " }
-						@person(c.Actor)
-						{ " at " + dates.timestamp(c.CreatedAt) }
-					</span>
-				</li>
-			}
-		</ol>
+		<section class="dl-section">
+			<h2>Changes</h2>
+			<ol data-testid="definition-log" class="dl-list">
+				if len(changes) == 0 {
+					<li data-testid="no-definition-changes" class="muted">No changes logged yet.</li>
+				}
+				for _, c := range changes {
+					<li data-testid="definition-change">
+						<span>{ c.Summary }</span>
+						<span class="muted small">
+							{ "— " }
+							@person(c.Actor)
+							{ " at " + dates.timestamp(c.CreatedAt) }
+						</span>
+					</li>
+				}
+			</ol>
+		</section>
 	}
 }
 
@@ -73,6 +73,8 @@ templ definitionLogPage(current *domain.Account, dims []domain.Dimension, fields
 templ definitionLogStyles() {
 	<style>
 		.dl-scope{display:flex;align-items:flex-end;gap:12px}
-		.dl-list{list-style:none;margin:0;padding:24px;display:flex;flex-direction:column;gap:12px}
+		.dl-section{display:flex;flex-direction:column;gap:12px}
+		.dl-list{list-style:none;margin:0;padding:0;border-top:1px solid var(--color-border)}
+		.dl-list li{padding:12px 0;border-bottom:1px solid var(--color-border)}
 	</style>
 }

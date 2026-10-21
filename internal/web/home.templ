@@ -11,7 +11,7 @@ import (
 // else is waiting on them. It is one surface with no card: under the page
 // header's "Home" and its New goal, the page title, Your week, over today's
 // date and Your goals, then Needs you, the page's job, My org and Your Yellow
-// or Red goals as sections of ruled rows (DESIGN.md § Direction: Page shapes).
+// or Red goals as sections of ruled rows (DESIGN.md § Home).
 templ homePage(current *domain.Account, v homeView) {
 	@framedLayout("Home", current, homePageHeader()) {
 		@homeStyles()
@@ -383,7 +383,7 @@ templ healthBar(v homeView) {
 	</div>
 }
 
-// homeStyles are Home's own rules on top of app.css (DESIGN.md § Direction).
+// homeStyles are Home's own rules on top of app.css (DESIGN.md § Home).
 // The page title stacks Your week over the date and the Your goals line. Each
 // section stacks its h2, 13px at 600 with its count muted, over hairline-ruled
 // rows at least 44px tall. A row puts what it's about on the left, led by a

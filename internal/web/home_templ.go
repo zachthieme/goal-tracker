@@ -19,7 +19,7 @@ import (
 // else is waiting on them. It is one surface with no card: under the page
 // header's "Home" and its New goal, the page title, Your week, over today's
 // date and Your goals, then Needs you, the page's job, My org and Your Yellow
-// or Red goals as sections of ruled rows (DESIGN.md § Direction: Page shapes).
+// or Red goals as sections of ruled rows (DESIGN.md § Home).
 func homePage(current *domain.Account, v homeView) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -1753,7 +1753,7 @@ func healthBar(v homeView) templ.Component {
 	})
 }
 
-// homeStyles are Home's own rules on top of app.css (DESIGN.md § Direction).
+// homeStyles are Home's own rules on top of app.css (DESIGN.md § Home).
 // The page title stacks Your week over the date and the Your goals line. Each
 // section stacks its h2, 13px at 600 with its count muted, over hairline-ruled
 // rows at least 44px tall. A row puts what it's about on the left, led by a

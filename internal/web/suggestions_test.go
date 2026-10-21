@@ -108,6 +108,22 @@ func TestSuggestAParentPageNamesTheGoalAndOwner(t *testing.T) {
 	}
 }
 
+// The Suggest a parent page sits in the flat frame, as sent and as refused: its
+// name in the header strip, and its form a plain section, with no card.
+func TestSuggestAParentPageIsInTheFlatFrame(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	sam := h.SignIn("sam@example.com")
+	h.SignIn("pat@example.com")
+	goal := h.ActiveGoal(sam, "Migrate displays", "Old displays fail often.")
+	client := signInClient(t, ts.URL, "pat@example.com")
+
+	assertInFlatFrame(t, getBody(t, client, ts.URL+suggestPath(goal)), "Suggest a parent")
+	assertInFlatFrame(t, readBody(t, postForm(t, client, ts.URL+suggestPath(goal), url.Values{"parent_id": {fmt.Sprint(goal.ID)}})), "Suggest a parent")
+}
+
 // A refused suggestion comes back as the form with the reason, as sent, and
 // records nothing more.
 func TestARefusedSuggestionReRendersTheForm(t *testing.T) {

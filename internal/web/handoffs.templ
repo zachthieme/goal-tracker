@@ -7,41 +7,43 @@ import (
 )
 
 // pendingHandoffsPage lists the Handoffs awaiting the current Account's decision
-// as the proposed new Owner, a card each with accept and reject actions; Accept
+// as the proposed new Owner, a row each with accept and reject actions; Accept
 // lists the Delegates to keep and Reject sends at once. A Handoff takes
 // effect only once accepted (CONTEXT.md: Handoff). toast, when set, offers Undo
-// for the Handoff just rejected.
+// for the Handoff just rejected. It sits in the flat frame: its title in the
+// page header, and the Handoffs a plain section of hairline rows (DESIGN.md §
+// Components: Sections).
 templ pendingHandoffsPage(current *domain.Account, pending []domain.Handoff, toast *toast) {
-	@layout("Pending handoffs", current) {
+	@framedLayout("Pending handoffs", current, pageHeader(pageHead{Title: "Pending handoffs"})) {
 		@pendingStyles()
-		<header class="page-head">
+		<section class="pd-section">
 			<div>
-				<h1>Pending handoffs</h1>
+				<h2>Handoffs to you</h2>
 				<p class="muted">Goals someone wants to hand to you. Nothing changes hands until you accept.</p>
 			</div>
-		</header>
-		<ul data-testid="pending-handoffs" class="pd-list">
-			if len(pending) == 0 {
-				<li data-testid="no-pending-handoffs" class="card pd-row muted">No pending handoffs.</li>
-			}
-			for _, ho := range pending {
-				<li data-testid="pending-handoff" class="card pd-row">
-					<p class="pd-what">
-						<span>
-							<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)) }>{ ho.Goal.Title }</a>
-							<span class="muted">
-								{ "— " }
-								@person(ho.From)
-								{ " wants to hand this Goal to you" }
+			<ul data-testid="pending-handoffs" class="pd-list">
+				if len(pending) == 0 {
+					<li data-testid="no-pending-handoffs" class="pd-row muted">No pending handoffs.</li>
+				}
+				for _, ho := range pending {
+					<li data-testid="pending-handoff" class="pd-row">
+						<p class="pd-what">
+							<span>
+								<a href={ templ.SafeURL(fmt.Sprintf("/goals/%d", ho.Goal.ID)) }>{ ho.Goal.Title }</a>
+								<span class="muted">
+									{ "— " }
+									@person(ho.From)
+									{ " wants to hand this Goal to you" }
+								</span>
 							</span>
-						</span>
-					</p>
-					<div class="pd-actions">
-						@handoffAcceptReject(ho)
-					</div>
-				</li>
-			}
-		</ul>
+						</p>
+						<div class="pd-actions">
+							@handoffAcceptReject(ho)
+						</div>
+					</li>
+				}
+			</ul>
+		</section>
 		@toastNotice(toast)
 	}
 }

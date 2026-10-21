@@ -20,7 +20,7 @@ import (
 // runs a dry run or a commit; the row-by-row report renders below the form
 // (ticket #22). A non-Admin sees only a note that imports are Admin-only. It
 // sits in the flat frame: its title in the page header, and its form and
-// report plain sections (DESIGN.md § Direction).
+// report plain sections (DESIGN.md § Import Goals page).
 func importsPage(current *domain.Account, report *importer.Report, flash string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

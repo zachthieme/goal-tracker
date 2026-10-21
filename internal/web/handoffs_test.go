@@ -149,8 +149,9 @@ func TestDepartedGoalOwnerlessSurfacedAndReassigned(t *testing.T) {
 	_ = pat
 }
 
-// Each pending Handoff is a card with Accept as the primary action and a Reject
-// that rejects it at once, with no confirmation (#56).
+// Each pending Handoff is a hairline row with Accept as the primary action and
+// a Reject that rejects it at once, with no confirmation (#56). The page sits
+// in the flat frame: its name in the header strip, and no card.
 func TestPendingHandoffRowsRejectAtOnce(t *testing.T) {
 	t.Parallel()
 
@@ -167,9 +168,7 @@ func TestPendingHandoffRowsRejectAtOnce(t *testing.T) {
 	page := getBody(t, signInClient(t, ts.URL, "pat@example.com"), ts.URL+"/handoffs")
 
 	row := between(t, page, `data-testid="pending-handoff"`, "")
-	if !strings.Contains(openTag(row), `class="card`) {
-		t.Errorf("the pending Handoff isn't a card: %s", openTag(row))
-	}
+	assertInFlatFrame(t, page, "Pending handoffs")
 	base := fmt.Sprintf("/handoffs/%d", ho.ID)
 	assertAcceptReject(t, row, base)
 
