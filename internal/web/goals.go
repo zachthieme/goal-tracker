@@ -745,6 +745,20 @@ func (s *Server) handleViewGoal(w http.ResponseWriter, r *http.Request, current 
 	render(w, r, http.StatusOK, goalPage(&current, view))
 }
 
+// domainPermits reads a domain Require predicate's answer, so a page offers
+// an action by the rule the command enforces: true when it allows, false when
+// it refuses with ErrNotAuthorized, and any other error as it is.
+func domainPermits(err error) (bool, error) {
+	switch {
+	case err == nil:
+		return true, nil
+	case errors.Is(err, domain.ErrNotAuthorized):
+		return false, nil
+	default:
+		return false, err
+	}
+}
+
 // goalPageView loads everything the single-Goal page renders for the viewer. A
 // missing Goal comes back as domain.ErrNotFound.
 func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Account) (goalView, error) {
@@ -954,15 +968,16 @@ func (s *Server) goalPageView(ctx context.Context, id int64, current domain.Acco
 
 	// A Delegate may write Check-ins too, so the Goal page shows the Check-in
 	// form to the Owner or any authorized Delegate (CONTEXT.md: Delegate).
-	canCheckin := current.ID == g.Owner.ID
-	for _, d := range delegates {
-		if d.ID == current.ID {
-			canCheckin = true
-		}
+	canCheckin, err := domainPermits(s.svc.RequireCheckinAuthor(ctx, current.ID, id))
+	if err != nil {
+		return goalView{}, fmt.Errorf("check check-in author: %w", err)
 	}
 	// The Owner's Delegates and Admins set a Goal's Dimension values and Fields
 	// too (CONTEXT.md: Delegate).
-	canSetValues := canCheckin || current.IsAdmin
+	canSetValues, err := domainPermits(s.svc.RequireGoalValueSetter(ctx, current.ID, id))
+	if err != nil {
+		return goalView{}, fmt.Errorf("check value setter: %w", err)
+	}
 	// The Owner and Delegates are offered a No change only where it would be
 	// recorded; where it wouldn't, the Check-in page says why.
 	var noChangeRefusal string

@@ -101,3 +101,67 @@ func importLinkAsAdmin(t *testing.T, h *testsupport.Harness, childID, parentID i
 	}
 	return imp.ImportLink(context.Background(), admin.ID, childID, parentID)
 }
+
+// RequireCheckinAuthor admits a Goal's Owner and its Delegates, as
+// SubmitCheckin does, and refuses anyone else, an Admin and a Departed
+// Delegate included; a missing Goal is not found.
+func TestRequireCheckinAuthor(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	admin := h.SignIn("admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	dana := h.SignIn("dana@example.com")
+	lee := h.SignIn("lee@example.com")
+	g := h.CreateGoal(sam, "Ship v2", "why")
+	h.AddDelegate(sam, dana, g.ID)
+	h.AddDelegate(sam, lee, g.ID)
+	ctx := context.Background()
+	if err := h.Service.MarkDeparted(ctx, admin.ID, lee.ID); err != nil {
+		t.Fatalf("MarkDeparted: %v", err)
+	}
+
+	for name, actor := range map[string]domain.Account{"the Owner": sam, "a Delegate": dana} {
+		if err := h.Service.RequireCheckinAuthor(ctx, actor.ID, g.ID); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	for name, actor := range map[string]domain.Account{
+		"a stranger":          h.SignIn("pat@example.com"),
+		"an Admin":            admin,
+		"a Departed Delegate": lee,
+	} {
+		if err := h.Service.RequireCheckinAuthor(ctx, actor.ID, g.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s: err = %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if err := h.Service.RequireCheckinAuthor(ctx, sam.ID, g.ID+100); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("a missing Goal: err = %v, want ErrNotFound", err)
+	}
+}
+
+// RequireGoalValueSetter admits a Goal's Owner, its Delegates and an Admin, as
+// setting its Dimension values does, and refuses anyone else.
+func TestRequireGoalValueSetter(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	sam := h.SignIn("sam@example.com")
+	dana := h.SignIn("dana@example.com")
+	g := h.CreateGoal(sam, "Ship v2", "why")
+	h.AddDelegate(sam, dana, g.ID)
+	ctx := context.Background()
+
+	for name, actor := range map[string]domain.Account{
+		"the Owner":  sam,
+		"a Delegate": dana,
+		"an Admin":   h.SignIn("admin@example.com"),
+	} {
+		if err := h.Service.RequireGoalValueSetter(ctx, actor.ID, g.ID); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	if err := h.Service.RequireGoalValueSetter(ctx, h.SignIn("pat@example.com").ID, g.ID); !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("a stranger: err = %v, want ErrNotAuthorized", err)
+	}
+}

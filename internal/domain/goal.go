@@ -406,9 +406,9 @@ func (s *Service) loadGoal(ctx context.Context, id int64) (Goal, error) {
 }
 
 // RequireGoalOwner returns ErrNotAuthorized unless actorID is the Goal's Owner
-// (a Delegate is refused too), or ErrNotFound if no such Goal exists. The web
-// layer calls it before the commands that trust their caller — MarkGoalDated,
-// SetCadence, AddMetric and the like — as DefineGoal does for itself.
+// (a Delegate is refused too), or ErrNotFound if no such Goal exists. The
+// commands only the Owner may make — MarkGoalDated, SetCadence, AddMetric and
+// the like — check it for themselves, as DefineGoal does.
 func (s *Service) RequireGoalOwner(ctx context.Context, actorID, goalID int64) error {
 	g, err := s.loadGoal(ctx, goalID)
 	if err != nil {

@@ -2,6 +2,8 @@ package domain
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 )
 
@@ -58,4 +60,27 @@ func (s *Service) authorizeGoalOwnerWrite(ctx context.Context, actorID, goalID i
 		return nil
 	}
 	return s.RequireGoalOwner(ctx, actorID, goalID)
+}
+
+// RequireCheckinAuthor allows actorID to write goalID's Check-ins only if they
+// are its Owner or a Delegate and haven't Departed, by the rule SubmitCheckin
+// applies; anyone else is refused with ErrNotAuthorized, and a missing Goal is
+// ErrNotFound. The Goal page asks it before offering the Check-in form.
+func (s *Service) RequireCheckinAuthor(ctx context.Context, actorID, goalID int64) error {
+	g, err := s.queries.GetGoal(ctx, goalID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: goal %d", ErrNotFound, goalID)
+		}
+		return fmt.Errorf("look up goal: %w", err)
+	}
+	return s.authorizeCheckinAuthor(ctx, goalID, g.Goal.OwnerID, actorID)
+}
+
+// RequireGoalValueSetter allows actorID to set goalID's Dimension values and
+// Fields only if they are its Owner, a Delegate or an Admin, by the rule
+// setting them applies; anyone else is refused with ErrNotAuthorized. The
+// Goal page asks it before offering their forms.
+func (s *Service) RequireGoalValueSetter(ctx context.Context, actorID, goalID int64) error {
+	return s.requireGoalValueSetter(ctx, actorID, goalID)
 }
