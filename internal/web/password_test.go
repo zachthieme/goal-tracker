@@ -304,6 +304,27 @@ func TestABadSetPasswordLinkIsGone(t *testing.T) {
 	}
 }
 
+// The set-password page sends no Referer at all, rather than the app-wide
+// same-origin, so its address, token and all, reaches nothing it loads, the
+// app's own files included (#415).
+func TestTheSetPasswordPageSendsNoReferer(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newPasswordServer(t, h)
+	resp, err := http.Get(ts.URL + "/set-password?token=" + url.QueryEscape(passwordLinkToken(t, h, "sam@example.com")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /set-password: status %d, want 200", resp.StatusCode)
+	}
+	if got := resp.Header.Values("Referrer-Policy"); len(got) != 1 || got[0] != "no-referrer" {
+		t.Errorf("the set-password page's Referrer-Policy is %q, want just no-referrer", got)
+	}
+}
+
 // Fields that don't match, or a password too short or too long, show the
 // form again with the reason, and the link still works.
 func TestARefusedPasswordShowsTheFormAgainWithTheReason(t *testing.T) {
