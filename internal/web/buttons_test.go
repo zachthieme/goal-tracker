@@ -117,16 +117,6 @@ func TestOnlyButtonsHoverToATealBorder(t *testing.T) {
 	}
 }
 
-// borderColour resolves the colour of a "1px solid <colour>" border.
-func borderColour(t *testing.T, theme map[string]string, border string) string {
-	t.Helper()
-	m := regexp.MustCompile(`^1px solid (\S+)$`).FindStringSubmatch(border)
-	if m == nil {
-		t.Fatalf("border %q is not 1px solid", border)
-	}
-	return resolve(t, theme, m[1])
-}
-
 // Cards are flat: only the menus and popovers, and the Check-in's sticky submit
 // bar, float over the page, and they float by --shadow-pop, so an open menu
 // reads as nearer than any card (#88, DESIGN.md § System: Surfaces are for what
