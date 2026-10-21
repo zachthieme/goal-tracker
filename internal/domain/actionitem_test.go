@@ -951,7 +951,12 @@ func TestOpenActionItemsToChaseIncludeThoseOnDefinitionsTheViewerCreated(t *test
 
 // An open Action Item is in the viewer's My org group when someone in their
 // Org, at any depth, published the publication it was raised on, raised it,
-// or owns it, though nobody else in the Org is party to it.
+// or owns it, though nobody else in the Org is party to it. Only a Report's
+// author raises an Action Item: its publication's publisher or its
+// Definition's creator. So an item raised in the Org always has one of those
+// in the Org too, and the raised-by case can't be isolated from both: its
+// raiser created the Definition, which alone doesn't put an item in My org
+// (TestOpenActionItemsToChaseLeaveOutThoseOnlyADefinitionByTheirOrgIsPartyTo).
 func TestOpenActionItemsToChaseIncludeTheirOrgs(t *testing.T) {
 	t.Parallel()
 
@@ -977,6 +982,32 @@ func TestOpenActionItemsToChaseIncludeTheirOrgs(t *testing.T) {
 				t.Errorf("yours = %q, org = %q; want no yours and org %q", yours, org, want)
 			}
 		})
+	}
+}
+
+// An open Action Item on a Report Definition someone in the viewer's Org
+// created, though someone outside the Org published, raised and owns it, is
+// in neither group: only the viewer's own Definitions count. Nor can someone
+// in the Org who neither created the Definition nor published the
+// publication raise an item there, so none is relevant only for its raiser.
+func TestOpenActionItemsToChaseLeaveOutThoseOnlyADefinitionByTheirOrgIsPartyTo(t *testing.T) {
+	t.Parallel()
+
+	w := newChaseWorld(t)
+	w.raise(t, w.mid, w.outA, w.outA, w.outB, "On the Org's Definition.", 5)
+
+	yours, org := w.openFor(t, w.viewer)
+	if len(yours) != 0 || len(org) != 0 {
+		t.Errorf("yours = %q, org = %q; want neither", yours, org)
+	}
+
+	def := w.h.SaveReportDefinition(w.outA, domain.SaveReportDefinitionInput{Name: "Outsiders' report", Mode: domain.ReportModePicked, Picked: []int64{w.goal.ID}})
+	pub := w.h.PublishReport(w.outB, def)
+	_, err := w.h.Service.RaiseActionItem(context.Background(), w.mid.ID, domain.RaiseActionItemInput{
+		PublicationID: pub.ID, Text: "Raised by the Org alone.", OwnerID: w.outB.ID, DueDate: w.h.Clock.Now().AddDate(0, 0, 5),
+	})
+	if !errors.Is(err, domain.ErrNotAuthorized) {
+		t.Errorf("someone in the Org raising on a Report outsiders created and published: err %v, want ErrNotAuthorized", err)
 	}
 }
 
