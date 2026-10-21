@@ -1,13 +1,18 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -565,7 +570,7 @@ func TestThePasswordLinkCommandPrintsALink(t *testing.T) {
 	t.Setenv("GOAL_TRACKER_BASE_URL", "https://goals.example.com")
 
 	var out bytes.Buffer
-	if err := run(discardLogger(), []string{"password-link", "first.admin@example.com"}, &out); err != nil {
+	if err := run(t.Context(), discardLogger(), []string{"password-link", "first.admin@example.com"}, &out); err != nil {
 		t.Fatalf("password-link: %v", err)
 	}
 	if !regexp.MustCompile(`^https://goals\.example\.com/set-password\?token=[A-Za-z0-9_-]{43}\n$`).MatchString(out.String()) {
@@ -582,7 +587,7 @@ func TestThePasswordLinkCommandNeedsPasswordSignIn(t *testing.T) {
 	t.Setenv("GOAL_TRACKER_DB", filepath.Join(t.TempDir(), "goal-tracker.db"))
 
 	var out bytes.Buffer
-	err := run(discardLogger(), []string{"password-link", "first.admin@example.com"}, &out)
+	err := run(t.Context(), discardLogger(), []string{"password-link", "first.admin@example.com"}, &out)
 	if err == nil {
 		t.Fatal("password-link ran with GOAL_TRACKER_SIGNIN=dev")
 	}
@@ -604,7 +609,7 @@ func TestThePasswordLinkCommandNeedsAnEmailAddress(t *testing.T) {
 	t.Setenv("GOAL_TRACKER_DB", dbPath)
 
 	var out bytes.Buffer
-	err := run(discardLogger(), []string{"password-link", "not-an-email"}, &out)
+	err := run(t.Context(), discardLogger(), []string{"password-link", "not-an-email"}, &out)
 	if !errors.Is(err, domain.ErrNotAnEmail) {
 		t.Errorf("password-link not-an-email: %v, want ErrNotAnEmail", err)
 	}
@@ -684,7 +689,7 @@ func TestAMissingChromeStopsStartup(t *testing.T) {
 	t.Setenv("GOAL_TRACKER_CHROME", missing)
 	t.Setenv("GOAL_TRACKER_DB", filepath.Join(t.TempDir(), "goal-tracker.db"))
 
-	err := run(discardLogger(), nil, io.Discard)
+	err := run(t.Context(), discardLogger(), nil, io.Discard)
 	if err == nil {
 		t.Fatal("goal-tracker started with GOAL_TRACKER_CHROME naming a missing file")
 	}
@@ -779,7 +784,7 @@ func TestATMPDIRTooLongForChromiumStopsStartup(t *testing.T) {
 	tmp := "/" + strings.Repeat("t", 62)
 	t.Setenv("TMPDIR", tmp)
 
-	err := run(discardLogger(), nil, io.Discard)
+	err := run(t.Context(), discardLogger(), nil, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), "TMPDIR "+tmp) {
 		t.Errorf("goal-tracker under the %d-byte TMPDIR: %v; want startup stopped, naming the TMPDIR", len(tmp), err)
 	}
@@ -795,7 +800,7 @@ func TestALongTMPDIRStartsWithAWarning(t *testing.T) {
 	t.Setenv("TMPDIR", tmp)
 
 	var log bytes.Buffer
-	err := run(slog.New(slog.NewTextHandler(&log, nil)), nil, io.Discard)
+	err := run(t.Context(), slog.New(slog.NewTextHandler(&log, nil)), nil, io.Discard)
 	if err == nil || !strings.HasPrefix(err.Error(), "serve:") {
 		t.Fatalf("goal-tracker under the %d-byte TMPDIR: %v; want it to start serving", len(tmp), err)
 	}
@@ -862,7 +867,7 @@ func TestAnInvalidTrustedProxyStopsStartup(t *testing.T) {
 			startupEnv(t)
 			t.Setenv(trustedProxiesVar, "10.0.0.0/8,"+bad)
 
-			err := run(discardLogger(), nil, io.Discard)
+			err := run(t.Context(), discardLogger(), nil, io.Discard)
 			if err == nil {
 				t.Fatalf("goal-tracker started with %s=10.0.0.0/8,%s", trustedProxiesVar, bad)
 			}
@@ -884,7 +889,7 @@ func TestTrustedProxiesAreLogged(t *testing.T) {
 	t.Setenv(trustedProxiesVar, "10.0.0.0/8,192.0.2.1")
 
 	var log bytes.Buffer
-	err := run(slog.New(slog.NewTextHandler(&log, nil)), nil, io.Discard)
+	err := run(t.Context(), slog.New(slog.NewTextHandler(&log, nil)), nil, io.Discard)
 	if err == nil || !strings.HasPrefix(err.Error(), "serve:") {
 		t.Fatalf("goal-tracker with trusted proxies: %v; want it to start serving", err)
 	}
@@ -917,5 +922,122 @@ func TestTheHTTPServerTimesOutSlowConnections(t *testing.T) {
 	}
 	if s.WriteTimeout <= web.PDFRenderTimeout {
 		t.Errorf("WriteTimeout %v doesn't outlast a PDF download's %v wait and render", s.WriteTimeout, web.PDFRenderTimeout)
+	}
+}
+
+// listenAddrs is a log handler that sends the address each "goal-tracker
+// listening" record names, so a test learns the port run bound.
+type listenAddrs chan string
+
+func (l listenAddrs) Enabled(context.Context, slog.Level) bool { return true }
+func (l listenAddrs) WithAttrs([]slog.Attr) slog.Handler      { return l }
+func (l listenAddrs) WithGroup(string) slog.Handler           { return l }
+
+func (l listenAddrs) Handle(_ context.Context, r slog.Record) error {
+	if r.Message != "goal-tracker listening" {
+		return nil
+	}
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == "addr" {
+			l <- a.Value.String()
+			return false
+		}
+		return true
+	})
+	return nil
+}
+
+// serveEnv is devEnv with no Chromium, a database, and a free port to listen
+// on.
+func serveEnv(t *testing.T) {
+	t.Helper()
+	devEnv(t)
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("GOAL_TRACKER_DB", filepath.Join(t.TempDir(), "goal-tracker.db"))
+	t.Setenv("GOAL_TRACKER_ADDR", "127.0.0.1:0")
+}
+
+// startRun runs the app until ctx is done, returning the address it listens
+// on and where run's error arrives.
+func startRun(t *testing.T, ctx context.Context) (string, <-chan error) {
+	t.Helper()
+	listening := make(listenAddrs, 1)
+	done := make(chan error, 1)
+	go func() { done <- run(ctx, slog.New(listening), nil, io.Discard) }()
+	select {
+	case addr := <-listening:
+		return addr, done
+	case err := <-done:
+		t.Fatalf("run returned before listening: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("run didn't start listening within 10s")
+	}
+	return "", nil
+}
+
+// Asked to stop, as SIGINT or SIGTERM asks, the app stops taking connections
+// but finishes the request in flight, then run returns nil.
+//
+//nolint:paralleltest // sets the process environment, through devEnv
+func TestStoppingFinishesTheRequestInFlight(t *testing.T) {
+	serveEnv(t)
+	ctx, stop := context.WithCancel(t.Context())
+	defer stop()
+	addr, done := startRun(t, ctx)
+
+	// A sign-in whose body is slow to come: the server asks for it, with a
+	// 100 Continue, once the route has begun reading it.
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	form := url.Values{"email": {"sam@example.com"}}.Encode()
+	if _, err := fmt.Fprintf(conn, "POST /signin HTTP/1.1\r\nHost: %s\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: %d\r\nExpect: 100-continue\r\n\r\n", addr, len(form)); err != nil {
+		t.Fatal(err)
+	}
+	responses := bufio.NewReader(conn)
+	if line, err := responses.ReadString('\n'); err != nil || line != "HTTP/1.1 100 Continue\r\n" {
+		t.Fatalf("the server answered the sign-in's headers with %q (%v), want 100 Continue", line, err)
+	}
+	if _, err := responses.ReadString('\n'); err != nil {
+		t.Fatal(err)
+	}
+
+	stop()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		probe, err := net.Dial("tcp", addr)
+		if err != nil {
+			break // no longer taking connections
+		}
+		_ = probe.Close()
+		if time.Now().After(deadline) {
+			t.Fatal("the app still takes connections 10s after being asked to stop")
+		}
+	}
+	select {
+	case err := <-done:
+		t.Fatalf("run returned %v with a request in flight", err)
+	default:
+	}
+
+	if _, err := io.WriteString(conn, form); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.ReadResponse(responses, nil)
+	if err != nil {
+		t.Fatalf("the sign-in in flight got no response: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Errorf("the sign-in in flight: status %d, want 303", resp.StatusCode)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("run, asked to stop: %v, want nil", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("run didn't return within 10s of its last request finishing")
 	}
 }

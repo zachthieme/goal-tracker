@@ -11,11 +11,15 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/netip"
 	"os"
+	"os/signal"
 	"slices"
 	"strings"
+	"sync"
+	"syscall"
 	"time"
 	_ "time/tzdata" // the org's timezone resolves without the host's zoneinfo
 
@@ -29,11 +33,15 @@ import (
 	"github.com/zachthieme/goal-tracker/internal/web"
 )
 
-// main serves the app, or with the arguments password-link <email>, prints a
-// set-password link for that email and exits.
+// main serves the app until SIGINT or SIGTERM asks it to stop, or with the
+// arguments password-link <email>, prints a set-password link for that email
+// and exits.
 func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	if err := run(logger, os.Args[1:], os.Stdout); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	err := run(ctx, logger, os.Args[1:], os.Stdout)
+	stop()
+	if err != nil {
 		logger.Error("goal-tracker failed", "err", err)
 		os.Exit(1)
 	}
@@ -44,11 +52,12 @@ func main() {
 // the first Admin a password.
 const passwordLinkCommand = "password-link"
 
-// run serves the app, configured from the environment. With args
-// password-link <email>, it instead issues a set-password link for the email,
-// creating the Account if there is none, writes it to stdout, and returns.
-// Any other args are ignored.
-func run(logger *slog.Logger, args []string, stdout io.Writer) error {
+// run serves the app, configured from the environment, until ctx is done. It
+// then shuts down (see serve), stops the weekly emails and the directory sync,
+// and closes the database. With args password-link <email>, it instead issues
+// a set-password link for the email, creating the Account if there is none,
+// writes it to stdout, and returns. Any other args are ignored.
+func run(ctx context.Context, logger *slog.Logger, args []string, stdout io.Writer) error {
 	cfg, err := loadConfig()
 	if err != nil {
 		return err
@@ -86,6 +95,14 @@ func run(logger *slog.Logger, args []string, stdout io.Writer) error {
 		return fmt.Errorf("open database: %w", err)
 	}
 	defer func() { _ = sqlDB.Close() }()
+	// The weekly emails and the directory sync run until ctx is done, or run
+	// returns, and the database closes only once they have stopped.
+	ctx, stopBackground := context.WithCancel(ctx)
+	var background sync.WaitGroup
+	defer func() {
+		stopBackground()
+		background.Wait()
+	}()
 
 	if err := db.Migrate(sqlDB); err != nil {
 		return fmt.Errorf("run migrations: %w", err)
@@ -94,7 +111,7 @@ func run(logger *slog.Logger, args []string, stdout io.Writer) error {
 	sender := email.LogSender{Logger: logger}
 	svc := domain.NewService(sqlDB, clk, sender, cfg.adminEmails, domain.WithTimezone(loc), domain.WithBaseURL(cfg.baseURL))
 	if linkFor != "" {
-		token, _, err := svc.IssuePasswordLink(context.Background(), linkFor)
+		token, _, err := svc.IssuePasswordLink(ctx, linkFor)
 		if err != nil {
 			return fmt.Errorf("issue a set-password link for %s: %w", linkFor, err)
 		}
@@ -123,7 +140,7 @@ func run(logger *slog.Logger, args []string, stdout io.Writer) error {
 		logger.Info("signing in with passwords")
 	}
 	if cfg.oidc != nil {
-		o, err := web.NewOIDC(context.Background(), *cfg.oidc)
+		o, err := web.NewOIDC(ctx, *cfg.oidc)
 		if err != nil {
 			return err
 		}
@@ -134,10 +151,10 @@ func run(logger *slog.Logger, args []string, stdout io.Writer) error {
 	case cfg.directory == nil:
 		logger.Info("neither GOAL_TRACKER_DIRECTORY_FILE nor GOAL_TRACKER_DIRECTORY_URL is set: no directory sync, so no one has a Manager")
 	case cfg.directory.file != "":
-		webOpts = append(webOpts, startDirectorySync(svc, directory.NewFile(cfg.directory.file), logger))
+		webOpts = append(webOpts, startDirectorySync(ctx, &background, svc, directory.NewFile(cfg.directory.file), logger))
 		logger.Info("syncing people and their Managers from the directory file, now and hourly", "file", cfg.directory.file)
 	default:
-		webOpts = append(webOpts, startDirectorySync(svc, directory.NewAuthentik(cfg.directory.url, cfg.directory.token), logger))
+		webOpts = append(webOpts, startDirectorySync(ctx, &background, svc, directory.NewAuthentik(cfg.directory.url, cfg.directory.token), logger))
 		logger.Info("syncing people and their Managers from the org's directory, now and hourly", "url", cfg.directory.url)
 	}
 	pdfOpt, err := pdfDownloads(cfg.chrome, logger)
@@ -149,13 +166,42 @@ func run(logger *slog.Logger, args []string, stdout io.Writer) error {
 
 	notifier := notify.New(svc, sender, cfg.baseURL, loc)
 	scheduler := notify.NewScheduler(clk, weekly, notifier.SendWeekly)
-	go scheduler.Run(context.Background(), time.Minute, logger)
+	background.Go(func() { scheduler.Run(ctx, time.Minute, logger) })
 
-	httpServer := newHTTPServer(cfg.addr, srv)
-	logger.Info("goal-tracker listening", "addr", cfg.addr, "db", cfg.dbPath, "timezone", loc.String(),
-		"weekly_emails", fmt.Sprintf("%s %02d:%02d", weekly.Day, weekly.Hour, weekly.Minute))
-	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	ln, err := net.Listen("tcp", cfg.addr)
+	if err != nil {
 		return fmt.Errorf("serve: %w", err)
+	}
+	logger.Info("goal-tracker listening", "addr", ln.Addr().String(), "db", cfg.dbPath, "timezone", loc.String(),
+		"weekly_emails", fmt.Sprintf("%s %02d:%02d", weekly.Day, weekly.Hour, weekly.Minute))
+	if err := serve(ctx, newHTTPServer(cfg.addr, srv), ln, shutdownTimeout); err != nil {
+		return err
+	}
+	logger.Info("goal-tracker stopped")
+	return nil
+}
+
+// shutdownTimeout is how long, asked to stop, the app gives the requests in
+// flight to finish.
+const shutdownTimeout = 30 * time.Second
+
+// serve serves s on ln until ctx is done, then shuts s down: it stops taking
+// connections and waits up to grace for the requests in flight to finish. It
+// returns nil once they have, an error when they haven't within grace, after
+// cutting them off, or why s stopped serving on its own.
+func serve(ctx context.Context, s *http.Server, ln net.Listener, grace time.Duration) error {
+	served := make(chan error, 1)
+	go func() { served <- s.Serve(ln) }()
+	select {
+	case err := <-served:
+		return fmt.Errorf("serve: %w", err)
+	case <-ctx.Done():
+	}
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), grace)
+	defer cancel()
+	if err := s.Shutdown(shutdownCtx); err != nil {
+		_ = s.Close()
+		return fmt.Errorf("shut down: requests still in flight after %v: %w", grace, err)
 	}
 	return nil
 }
@@ -187,12 +233,12 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 	}
 }
 
-// startDirectorySync syncs from dir now and hourly, and gives the web app the
-// sync for the Admin page's Sync now.
-func startDirectorySync(svc *domain.Service, dir domain.Directory, logger *slog.Logger) web.Option {
-	sync := directory.NewSync(svc, dir, logger)
-	go sync.RunEvery(context.Background(), time.Hour)
-	return web.WithDirectorySync(sync)
+// startDirectorySync syncs from dir now and hourly, in background, until ctx
+// is done, and gives the web app the sync for the Admin page's Sync now.
+func startDirectorySync(ctx context.Context, background *sync.WaitGroup, svc *domain.Service, dir domain.Directory, logger *slog.Logger) web.Option {
+	dirSync := directory.NewSync(svc, dir, logger)
+	background.Go(func() { dirSync.RunEvery(ctx, time.Hour) })
+	return web.WithDirectorySync(dirSync)
 }
 
 // pdfDownloads is how a publication downloads as a PDF: rendered by the
