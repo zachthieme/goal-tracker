@@ -8,21 +8,20 @@ import (
 )
 
 // homePage is the signed-in person's week: the Goals to check in on, and what
-// else is waiting on them. It is one column: Needs you is its one card, the
-// page's job, and the rest is context on the canvas, Your goals as a line in
-// the page head.
+// else is waiting on them. It is one surface with no card: under the page
+// header's "Home" and its New goal, the page title, Your week, over today's
+// date and Your goals, then Needs you, the page's job, My org and Your Yellow
+// or Red goals as sections of ruled rows (DESIGN.md § Direction: Page shapes).
 templ homePage(current *domain.Account, v homeView) {
-	@layout("Home", current) {
+	@framedLayout("Home", current, homePageHeader()) {
 		@homeStyles()
-		<header data-testid="home-head" class="page-head">
-			<div class="hm-head">
-				<h1>Your week</h1>
-				@homeYourGoals(v)
-			</div>
-			<a class="btn primary" href="/goals/new">New goal</a>
+		<header data-testid="home-head" class="hm-head">
+			<h1>Your week</h1>
+			<p class="hm-date"><time datetime={ homeTodayISO(v.Dates) }>{ homeToday(v.Dates) }</time></p>
+			@homeYourGoals(v)
 		</header>
 		<div class="hm-col">
-			<section data-testid="home-needs-you" class="card hm-card">
+			<section data-testid="home-needs-you" class="hm-section">
 				<h2 data-testid="home-needs-you-heading">{ homeNeedsYouHeading(v.NeedsYou()) }</h2>
 				if v.NeedsYou() == 0 {
 					<p data-testid="home-caught-up" class="muted">You're all caught up.</p>
@@ -99,7 +98,15 @@ templ homePage(current *domain.Account, v homeView) {
 	}
 }
 
-// homeYourGoals is the page head's Your goals line: the Health distribution
+// homePageHeader is Home's header strip: "Home", with New goal as its primary
+// action at the right.
+templ homePageHeader() {
+	@pageHeader(pageHead{Title: "Home"}) {
+		<a class="btn primary hm-btn" href="/goals/new">New goal</a>
+	}
+}
+
+// homeYourGoals is the page title's Your goals line: the Health distribution
 // bar of the Goals the person Owns, their counts by Health, and the links on to
 // the Goals they own or help with and, when there are any, those they're a
 // Delegate on.

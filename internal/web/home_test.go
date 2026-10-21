@@ -75,10 +75,12 @@ func TestHomeNeedsYouHeadingCarriesTheCount(t *testing.T) {
 	}
 }
 
-// Home is one column with one card, Needs you: My org and the viewer's Goals
-// that aren't Green are plain sections on the canvas, and Your goals is a
-// summary line in the page head, counting by Health and linking on (#377).
-func TestHomeIsOneColumnWithNeedsYouItsOnlyCard(t *testing.T) {
+// Home is one surface with no card, Needs you included: Needs you, My org and
+// the viewer's Goals that aren't Green are plain sections, under the page
+// header's "Home" and its New goal, and the page title, Your week, over
+// today's date and the Your goals line, counting by Health and linking on
+// (#377, #391).
+func TestHomeIsOneSurfaceWithNoCard(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -91,29 +93,33 @@ func TestHomeIsOneColumnWithNeedsYouItsOnlyCard(t *testing.T) {
 	main := between(t, page, "<main", "</main>")
 
 	var cards []string
-	for _, tag := range regexp.MustCompile(`<[a-z]+ [^>]*>`).FindAllString(main, -1) {
+	for _, tag := range regexp.MustCompile(`<[a-z]+ [^>]*>`).FindAllString(page, -1) {
 		if hasClass(tag, "card") {
 			cards = append(cards, tag)
 		}
 	}
-	if len(cards) != 1 || !strings.Contains(cards[0], `data-testid="home-needs-you"`) {
-		t.Errorf("Home's cards = %q, want only Needs you", cards)
-	}
-	for _, testID := range []string{"home-org", "home-not-green"} {
-		if section := openTag(pageElement(t, main, "section", testID)); hasClass(section, "card") {
-			t.Errorf("%s is a card: %s", testID, section)
-		}
+	if len(cards) != 0 {
+		t.Errorf("Home's cards = %q, want none", cards)
 	}
 	if strings.Contains(main, "<aside") {
 		t.Errorf("Home still has a side column:\n%s", main)
 	}
 
-	head := pageElement(t, page, "header", "home-head")
-	if got := elementTexts(page, "header", "home-head"); len(got) != 1 || got[0] != "Your week Your goals: 0 Green · 0 Yellow · 1 Red · Goals you own or help with → New goal" {
-		t.Errorf("page head reads %q, want the title over the Your goals line, beside New goal", got)
+	strip := between(t, page, `<div class="page-header">`, `<main class="page">`)
+	text := strings.Join(strings.Fields(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(strip, " ")), " ")
+	if text != "Home New goal" {
+		t.Errorf("page header reads %q, want Home beside New goal", text)
 	}
-	if !strings.Contains(head, `data-testid="home-your-goals"`) {
-		t.Errorf("Your goals isn't in the page head:\n%s", head)
+	if newGoal := tagAround(t, strip, `href="/goals/new"`); !hasClass(newGoal, "primary") {
+		t.Errorf("New goal isn't the page header's primary action: %s", newGoal)
+	}
+
+	head := pageElement(t, page, "header", "home-head")
+	if got := elementTexts(page, "header", "home-head"); len(got) != 1 || got[0] != "Your week Monday, Jan 12 Your goals: 0 Green · 0 Yellow · 1 Red · Goals you own or help with →" {
+		t.Errorf("page title reads %q, want Your week over the date and the Your goals line", got)
+	}
+	if !strings.Contains(head, `<h1>Your week</h1>`) || !strings.Contains(head, `datetime="2026-01-12"`) {
+		t.Errorf("Your week isn't the page title over today's date:\n%s", head)
 	}
 	if !strings.Contains(head, `<a href="/goals?org=mine">Goals you own or help with →</a>`) {
 		t.Errorf("page head's Your goals line doesn't link to the Goals the lead owns or helps with:\n%s", head)
@@ -586,7 +592,7 @@ func TestHomeOffersReviewForHandoffWithDelegates(t *testing.T) {
 // The Your goals line counts the viewer's own Active Goals by Health, and the
 // section after My org lists the Red and Yellow ones; Goals they're only a
 // Delegate on aren't theirs to count. Needs you's heading says how many things
-// need them, and the page head has a New goal link.
+// need them, and the page header has a New goal link.
 func TestHomeSummarizesYourGoals(t *testing.T) {
 	t.Parallel()
 
@@ -641,8 +647,8 @@ func TestHomeSummarizesYourGoals(t *testing.T) {
 	if got := needsYouHeading(page); got != "Needs you · 4" {
 		t.Errorf("Needs you heading = %q, want %q", got, "Needs you · 4")
 	}
-	if head := pageElement(t, page, "header", "home-head"); !strings.Contains(head, ">New goal</a>") {
-		t.Errorf("heading has no New goal link:\n%s", head)
+	if head := between(t, page, `<div class="page-header">`, `<main class="page">`); !strings.Contains(head, ">New goal</a>") {
+		t.Errorf("page header has no New goal link:\n%s", head)
 	}
 }
 
@@ -927,8 +933,8 @@ func TestHomeNoChangeRefusedLandsOnCheckinForm(t *testing.T) {
 	}
 }
 
-// Home's New goal links to the New goal page, which opens with the Title
-// focused, so it works without script.
+// Home's New goal, in its page header, links to the New goal page, which opens
+// with the Title focused, so it works without script.
 func TestHomeNewGoalOpensProposeForm(t *testing.T) {
 	t.Parallel()
 
@@ -937,7 +943,7 @@ func TestHomeNewGoalOpensProposeForm(t *testing.T) {
 	h.SignIn("sam@example.com")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	head := pageElement(t, getBody(t, client, ts.URL+"/home"), "header", "home-head")
+	head := between(t, getBody(t, client, ts.URL+"/home"), `<div class="page-header">`, `<main class="page">`)
 	link := tagAround(t, head, ">New goal<")
 	if href := attr(link, "href"); href != "/goals/new" {
 		t.Fatalf("Home's New goal links to %q, want /goals/new:\n%s", href, head)
