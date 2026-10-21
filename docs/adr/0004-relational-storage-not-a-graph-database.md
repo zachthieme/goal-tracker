@@ -1,5 +1,7 @@
 # Relational storage (SQLite, later Postgres), not a graph database
 
+> Note (2026-10-21): "later Postgres" now has conditions: ADR 0009 keeps the tool on SQLite and names what would trigger the move. The decision here is unchanged.
+
 The Goal graph is stored in ordinary relational tables: Goals, plus a table of links between them. We don't use an embedded graph database. We considered embedded graph stores (Kuzu, Cayley, EliasDB, DuckDB with a graph extension) and rejected them for three reasons:
 
 - **The graph is small and simple.** It has no cycles and holds hundreds to low thousands of Goals. The only graph queries are ancestors and descendants to a depth, and a cycle check before accepting a link. SQL's recursive queries (recursive CTEs) handle these easily, and a whole subgraph fits in memory for roll-ups.
