@@ -809,7 +809,8 @@ and so on).
   - **Filter bar (`goalFilters`, `.gl-filters`):** one GET form on the canvas,
     with 12px × 28px padding and 8px gaps, over a 1px `--color-border`
     hairline.
-    - **Chips:** 28px tall with 8px sides, `--radius-md`, a 1px
+    - **Chips (`.filter-chip`, shared in `app.css`; Follow-ups' filters use
+      them too):** 28px tall with 8px sides, `--radius-md`, a 1px
       `--color-border-strong` edge on `--color-canvas`, 13px, 500
       `--color-ink-2`. A chip holding a select draws its own chevron. In
       order: **Scope** (see Scope), **Health** (Any Health, Red, Yellow,
@@ -893,9 +894,9 @@ and so on).
   the person Owns or is a Delegate on), **My org** for someone with anyone
   under them, then each other person whose Org holds Goals under **Other
   orgs** (their ID), by Name with their email so people with the same Name can
-  be told apart. On the Goal list it is a chip (`pageScopeChip`), the same
+  be told apart. On both pages it is a chip (`pageScopeChip`), the same
   select behind a "Scope:" key, always on the set chip's
-  `--color-primary-subtle`. On Follow-ups it is a plain select.
+  `--color-primary-subtle`.
   - **The default scope:** an address naming no scope, or one that is
     malformed or names no one, opens on the person's default: My org for
     someone with anyone under them, Mine for everyone else, Admins included.
@@ -932,9 +933,12 @@ and so on).
     small button that opens, by native `popover` with no script, a panel
     listing every signal by name and meaning. The strip wraps rather than
     overflow.
-  - **Filters (`.rk-filters`):** a bar of plain 32px, 13px selects: the Scope,
-    then one per offered Dimension ("Team: any", a Retired value marked
-    "(retired)"). Under htmx a change swaps in only `#follow-ups-body`, takes
+  - **Filters (`.rk-filters`):** a row of the Goal list's filter chips
+    (Goal list, Filter bar), with its 12px padding and 8px gaps, over a 1px
+    `--color-border` hairline: the Scope chip, then a chip per offered
+    Dimension, reading "Team: any" unset and "Team: Platform" on the set
+    chip's `--color-primary-subtle` once a value is chosen (a Retired value
+    marked "(retired)"). Under htmx a change swaps in only `#follow-ups-body`, takes
     the header out of band and pushes the address. Without script an
     **Apply** button shows.
   - **Groups:** a `<nav>` of five plain blocks in one row, split by vertical

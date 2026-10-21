@@ -297,6 +297,20 @@ del{color:var(--color-ink-muted)}
 details>summary{cursor:pointer;list-style:none;min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 details>summary::-webkit-details-marker{display:none}
 @media (max-width:900px){.grid-main-aside{grid-template-columns:1fr}.page{padding:20px 16px 48px;gap:24px}}
+/* Filter chips: a filter bar's controls, a key and a select or checkbox in
+   one 28px chip, set chips filled. The Goal list and Follow-ups share them
+   (DESIGN.md § Direction: Filter bar). */
+.filter-chip{position:relative;display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 8px;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background:var(--color-canvas);color:var(--color-ink-2);font-size:13px;font-weight:500;line-height:1;white-space:nowrap;box-sizing:border-box;cursor:pointer}
+.filter-chip:has(select){padding-right:24px}
+.filter-chip:has(select)::after{content:"";position:absolute;right:10px;top:50%;width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-75%) rotate(45deg);pointer-events:none}
+.filter-chip select{appearance:none;height:26px;min-height:0;margin:0;padding:0;border:0;background:none;color:inherit;font:inherit;field-sizing:content;cursor:pointer}
+.filter-chip select:focus{outline:none}
+.filter-chip:focus-within{outline:2px solid var(--color-focus);outline-offset:1px}
+.filter-chip input[type=checkbox]{margin:0}
+.chip-key{color:var(--color-ink-muted)}
+.chip-key-set{display:none}
+.filter-chip:has(option:checked:not([value=""])) .chip-key-set{display:inline}
+.filter-chip.on,.filter-chip:has(option:checked:not([value=""])),.filter-chip:has(input:checked){background:var(--color-primary-subtle);color:var(--color-ink)}
 /* Theme: three choices in the person's menu, or, on a signed-out page, in a
  * Theme disclosure whose panel floats over the page, so opening it never
  * widens the page (DESIGN.md § Components) */
@@ -322,4 +336,4 @@ input,textarea,select,img{max-width:100%}
 pre{overflow-x:auto}
 fieldset{min-width:0}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0s!important}.btn:active{transform:none!important}}
-@media (pointer:coarse){.navitem,.sb-org-person,.theme-choice,.sb-person>summary{min-height:44px}.sb-org-person{line-height:44px;height:auto}.btn,.btn.sm,input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],input[type=password],select{min-height:44px}}
+@media (pointer:coarse){.navitem,.sb-org-person,.theme-choice,.sb-person>summary{min-height:44px}.sb-org-person{line-height:44px;height:auto}.btn,.btn.sm,input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],input[type=password],select{min-height:44px}.filter-chip{height:auto;min-height:44px}.filter-chip select{min-height:42px}}

@@ -81,7 +81,9 @@ templ followUpsMeanings() {
 
 // followUpsFilters scopes the Follow-ups page by its Scope (Everyone, Mine or an
 // Org), and to the Goals with a value of each Dimension, one select per
-// offered Dimension named for it, submitted as a GET so the scope lives in the
+// offered Dimension named for it, each a filter chip as on the Goal list: a
+// Dimension's reads "Team: any", or its key before the value once one is
+// chosen ("Team: Platform"), filled while set. It is submitted as a GET so the scope lives in the
 // address, carrying the page's group along. Under htmx it applies itself on a change, as the Goal list's
 // filter bar does, swapping in only #follow-ups-body so the form keeps its focus,
 // and pushes the address; hx-history="false" makes Back load the earlier
@@ -106,14 +108,17 @@ templ followUpsFilters(v followUpsPageView) {
 		if v.Group != "" {
 			<input type="hidden" name="group" value={ v.Group }/>
 		}
-		@pageScopeSelect("follow-ups-scope", v.Org)
+		@pageScopeChip("follow-ups-scope", v.Org)
 		for _, d := range v.Dimensions {
-			<select data-testid="follow-ups-value" data-dimension={ d.Name } name="value" aria-label={ d.Name }>
-				<option value="" selected?={ v.valueIn(d.ID).ID == 0 }>{ d.Name + ": any" }</option>
-				for _, dv := range d.Values {
-					<option value={ strconv.FormatInt(dv.ID, 10) } selected?={ v.valueIn(d.ID).ID == dv.ID }>{ followUpValueLabel(dv) }</option>
-				}
-			</select>
+			<label class="filter-chip">
+				<span class="chip-key chip-key-set" aria-hidden="true">{ d.Name + ":" }</span>
+				<select data-testid="follow-ups-value" data-dimension={ d.Name } name="value" aria-label={ d.Name }>
+					<option value="" selected?={ v.valueIn(d.ID).ID == 0 }>{ d.Name + ": any" }</option>
+					for _, dv := range d.Values {
+						<option value={ strconv.FormatInt(dv.ID, 10) } selected?={ v.valueIn(d.ID).ID == dv.ID }>{ followUpValueLabel(dv) }</option>
+					}
+				</select>
+			</label>
 		}
 		<noscript><button type="submit" class="btn">Apply</button></noscript>
 	</form>
@@ -296,8 +301,9 @@ templ followUpTip(kind, label string) {
 // page is one full-bleed surface (DESIGN.md § Direction): its sections run
 // edge to edge between hairlines, padded --rk-pad from the content column's
 // sides as the header strip is. The header strip wraps rather than overflow a
-// phone. The filters sit in a bar under it, then the group summaries as a row
-// of plain blocks between hairlines, five across, two per row where the page
+// phone. The filters sit in a bar under it, app.css's filter chips spaced as
+// the Goal list's filter bar, then the group summaries as a row of plain
+// blocks between hairlines, five across, two per row where the page
 // is narrower or a phone's, the current one marked by a teal rule along its
 // foot, an empty one muted. The list has muted column labels, 44px rows on
 // hairlines, the Goal's column taking the slack so the Owner and the Fix sit
@@ -320,7 +326,6 @@ templ followUpsStyles() {
 		.rk-body{display:flex;flex-direction:column}
 		.rk-empty{padding:24px var(--rk-pad)}
 		.rk-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;padding:12px var(--rk-pad);border-bottom:1px solid var(--color-border);box-sizing:border-box}
-		.rk-filters select{height:32px;padding:0 12px;font-size:13px}
 		.rk-groups{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));border-bottom:1px solid var(--color-border)}
 		.rk-group{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0;padding:16px 20px;color:var(--color-ink-2);font-size:13px}
 		.rk-group:first-child{padding-left:var(--rk-pad)}
