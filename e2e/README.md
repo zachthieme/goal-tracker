@@ -109,10 +109,11 @@ the reference instant each test's app starts its clock at.
 [`smoke.spec.ts`](smoke.spec.ts) checks that the app comes up, that people can
 sign in, one at a time and two at once, and that the `due` template is due. [`isolation.spec.ts`](isolation.spec.ts) checks that two tests
 writing to the same Goal at once each see only their own write.
-[`phone-width.spec.ts`](phone-width.spec.ts) checks that at 390px the Goals
-list, Follow-ups, the Admin page, a Report draft, the New goal page, with its
-Metric editor open, and the Check-in page, with Yellow picked, don't clip or
-scroll sideways, and keep every control on screen.
+[`phone-width.spec.ts`](phone-width.spec.ts) checks that at 390px Home, with
+a Check-in due in Needs you, the Goals list, Follow-ups, the Admin page, a
+Report draft, the New goal page, with its Metric editor open, and the
+Check-in page, with Yellow picked, don't clip or scroll sideways, and keep
+every control on screen.
 [`checkin-submit-bar.spec.ts`](checkin-submit-bar.spec.ts) checks the
 Check-in page's submit bar: its summary showing the Health picked, Path to
 Green, the Metrics read, a Highlight written, dates changed and a Lifecycle
