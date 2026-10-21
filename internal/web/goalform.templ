@@ -1173,12 +1173,12 @@ templ goalFormStyles() {
 			.gf-seg input,.gf-segment input,.gf-pick input{position:absolute;opacity:0;pointer-events:none}
 			.gf-form:has(#kind-ongoing:checked) .gf-rule-any{display:none}
 			.gf-form:has(#kind-ongoing:checked) .gf-rule-ongoing{display:inline}
-			.gf-seg:has(input:checked){background:var(--color-canvas);border-color:var(--color-border-strong);color:var(--color-ink);font-weight:600}
-			.gf-pick:has(input:checked){border-color:var(--color-primary);background:var(--color-primary-subtle)}
+			.gf-seg:has(input:checked){background:var(--color-canvas);border-color:var(--color-primary-strong);color:var(--color-ink);font-weight:600}
+			.gf-pick:has(input:checked){border-color:var(--color-primary-strong);background:var(--color-primary-subtle)}
 			.gf-tile{border:2px solid var(--color-border-strong)}
-			.gf-tile:has(input:checked){border-color:var(--color-primary);background:var(--color-primary-subtle)}
+			.gf-tile:has(input:checked){border-color:var(--color-primary-strong);background:var(--color-primary-subtle)}
 			.gf-segment::before{content:"";flex:none;box-sizing:border-box;width:16px;height:16px;margin-top:4px;border:2px solid var(--color-border-strong);border-radius:50%}
-			.gf-segment:has(input:checked)::before{border-color:var(--color-primary);background:radial-gradient(circle,var(--color-primary) 0 4px,transparent 4.5px)}
+			.gf-segment:has(input:checked)::before{border-color:var(--color-primary-strong);background:radial-gradient(circle,var(--color-primary-strong) 0 4px,transparent 4.5px)}
 			.gf-tile:has(.gf-segment input:focus-visible),.gf-seg:has(input:focus-visible),label.gf-pick:has(input:focus-visible){outline:2px solid var(--color-focus);outline-offset:2px}
 		}
 		@media (max-width:600px){
