@@ -65,6 +65,8 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [user] Home and Follow-ups load in the same number of database queries however many Goals they show, where Home used to run about one more per Goal due a Check-in (80 for 50 Goals, against 44 for 10) and Follow-ups about three more per flagged Goal (177 for 50, against 69 for 10) (#449).
 - [user] The Goal list's Org picker reads the people above each Goal's Owner a level of the org at a time, so a large company's Goal list no longer slows with how many people own Goals (#451).
 - [user] A Report's draft page builds its draft once, not twice, so it opens faster (#451).
+- [user] Downloading the Goals as CSV reads every Goal's Dimension values, Fields, Milestones, Metrics and parents up front, in as many queries for 50 Goals as for 10 (it was 97 queries for 10 and 317 for 50), so the download no longer slows as the list grows. The file is byte-for-byte unchanged (#450).
+- [internal] `domain.Service` exports `MetricsByGoal`, `MilestonesByGoal`, `ParentsByGoal` and `GoalValuesByGoal` over its existing batch reads, and `GoalValuesByGoal`'s values now carry `DimensionRetired` as `GoalValues`' do (#450).
 
 **Bug fixes:**
 - [internal] The Report log's actor column is indexed, like every other actor column; the Report log (#435) and the foreign-key index check (#427) merged in the same wave and left `main` failing `make test` (#435).
