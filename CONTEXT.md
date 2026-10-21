@@ -47,7 +47,7 @@ The one person accountable for a Goal, who writes its Check-ins and answers for 
 _Avoid_: co-owner, DRI, lead
 
 **Delegate**:
-A person an Owner authorizes to write and submit Check-ins for a Goal and to set its Dimension values and Fields. Accountability stays with the Owner, and each Check-in records who wrote it. When a Goal changes hands through a Handoff, the new Owner chooses which Delegates to keep.
+A person an Owner authorizes to write and submit Check-ins for a Goal and to set its Dimension values and Fields. Accountability stays with the Owner, and each Check-in records who wrote it. When a Goal changes hands through a Handoff, the new Owner chooses which Delegates to keep. A Delegate is always a Goal's; a Report Definition has Report Delegates.
 _Avoid_: proxy, editor, TPM (as a role in the tool)
 
 **Handoff**:
@@ -192,8 +192,16 @@ A document generated from Check-ins for a chosen set of Goals, at whatever caden
 _Avoid_: MBR (a Report may be used as one), review, rollup
 
 **Report Definition**:
-A saved, reusable selection of Goals for a Report, made either by Report rules or by hand-picking Goals, never by following Contributes to links. Each publication freezes a snapshot, and the next publication marks what changed since the previous one, including Goals that entered or left the Report. A Goal that was Done or Cancelled before a Report's baseline leaves it, however it was selected, so finished work is reported once. Only its creator or an Admin may change it.
+A saved, reusable selection of Goals for a Report, made either by Report rules or by hand-picking Goals, never by following Contributes to links. Each publication freezes a snapshot, and the next publication marks what changed since the previous one, including Goals that entered or left the Report. A Goal that was Done or Cancelled before a Report's baseline leaves it, however it was selected, so finished work is reported once. Anyone signed in may create one. Only its creator, its Report Delegates and Admins may change it, curate its narrative or publish it; every change is kept in its Report log. It has a creator, not an Owner, and nothing changes hands when the creator leaves.
 _Avoid_: template, saved view, dashboard
+
+**Report Delegate**:
+A person a Report Definition's creator or an Admin authorizes to change it, curate its narrative and publish it: everything the creator may do except add or remove Report Delegates. Each change they make is kept in the Report log with their name.
+_Avoid_: co-owner, editor, collaborator
+
+**Report log**:
+The record of everything that changed on a Report Definition, newest first, each with who and when: an edit to its title, rules or picked Goals (before and after), a Report Delegate added or removed, a change to the next publication's narrative (Highlights picked or dropped, a section's notes changed), and each publication. Anyone who can open the Report can read it. It records; it doesn't undo.
+_Avoid_: Definition log (a Goal's), history (the Report's list of publications), audit trail
 
 **Report rule**:
 A condition on a Goal's Dimension values, Owner, Owner's org, Lifecycle, Health or whether it's Top-level, that decides which Goals a Report Definition selects. A Goal must meet every rule, and meets a rule by having any of its values. An org rule reads "Owner is in the org of Priya": its Owner is in any named person's org, by the Managers as they are at each draft. Health means the Owner-set Health, and a Goal with no Health meets only "is not" rules on it. A rule-based Definition can also list Goals to **Also include** by hand and Goals to **Leave out** even when they match.
@@ -206,6 +214,6 @@ _Avoid_: feedback, note, annotation
 **Action Item**:
 A follow-up raised while a Report is discussed. It has an owner and a due date, belongs to a Report Definition, and carries into each new publication until closed.
 It may be about one Goal in the Report: one raised from a Comment is about that Comment's Goal, and one raised directly may name a Goal or stay about the Report as a whole.
-Only its owner closes it, with a note. While it is open, it may be handed to a new owner by the Report Definition's creator, whoever published the publication it was raised on, an Admin, or the Definition creator's Manager.
+Only its owner closes it, with a note. While it is open, it may be handed to a new owner by the Report Definition's creator or a Report Delegate, whoever published the publication it was raised on, an Admin, or the Definition creator's Manager.
 An open Action Item past its due date is overdue. It doesn't change any Goal's Health.
 _Avoid_: todo, follow-up, task

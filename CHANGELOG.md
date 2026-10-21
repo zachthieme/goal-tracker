@@ -90,6 +90,7 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 - [internal] DESIGN.md's Print variant describes colour that degrades to black and white, lists the print colour tokens, and tables each badge's contrast on its tint and on paper, which `scripts/contrast.py` checks (#389).
 - [internal] DESIGN.md describes the flat frame as built. § Direction is folded into § System, and the "superseded" and "until its page moves" markers are gone. § Components is rewritten from the templates and `app.css`: the frame, the shared components, and every framed page (Home, the Goal list, Follow-ups, the Goal page, the Check-in page, New goal, the Reports list, a draft, a publication, the Report builder, Admin, Dimensions, Fields, Import Goals). § Deviations 9's banner ratios now measure the Goal page's `--color-group` strip, and § Deviations 3 gains the dark Health badges' ratios; `scripts/contrast.py` checks both (#398).
 - [internal] DESIGN.md describes the Definition log, Delegated to me, Pending links, Pending handoffs and Suggest a parent as built, and drops its note that five pages hadn't moved to the flat frame (#403).
+- [internal] CONTEXT.md defines Report Delegate and Report log: only a Report Definition's creator, its Report Delegates and Admins may change, curate or publish it, and every change is logged (#428).
 - [internal] ADR 0009 records staying on SQLite: the October review's storage gaps are closed on SQLite, and the ADR names what would trigger a move to Postgres (#430).
 
 ### Collected changes — October 20, 2026
