@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"slices"
@@ -477,20 +478,31 @@ func (s *Server) loadPageOrgScope(ctx context.Context, q url.Values, current dom
 	if err != nil || !scope.managed {
 		return scope, err
 	}
-	// Each Owner, then their Manager and on up, stopping at anyone reached: the
-	// directory's cycles are stored as it gives them (ADR 0008).
+	// Each Owner, then their Managers and on up a level at a time, stopping at
+	// anyone reached: the directory's cycles are stored as it gives them (ADR
+	// 0008).
 	reached := map[int64]bool{}
+	level := make([]domain.Account, 0, len(goals))
 	for _, g := range goals {
-		for a := g.Owner; !reached[a.ID]; {
+		level = append(level, g.Owner)
+	}
+	for len(level) > 0 {
+		var managerIDs []int64
+		for _, a := range level {
+			if reached[a.ID] {
+				continue
+			}
 			reached[a.ID] = true
 			scope.People = append(scope.People, a)
-			if a.ManagerID == nil {
-				break
-			}
-			if a, err = s.svc.Account(ctx, *a.ManagerID); err != nil {
-				return pageOrgScope{}, err
+			if a.ManagerID != nil && !reached[*a.ManagerID] {
+				managerIDs = append(managerIDs, *a.ManagerID)
 			}
 		}
+		managers, err := s.svc.AccountsByIDs(ctx, managerIDs)
+		if err != nil {
+			return pageOrgScope{}, err
+		}
+		level = slices.Collect(maps.Values(managers))
 	}
 	scope.People = slices.DeleteFunc(scope.People, func(a domain.Account) bool { return a.ID == current.ID })
 	slices.SortFunc(scope.People, func(a, b domain.Account) int {

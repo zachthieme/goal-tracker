@@ -124,6 +124,54 @@ func (q *Queries) LinkAccountOIDCSubject(ctx context.Context, arg LinkAccountOID
 	return result.RowsAffected()
 }
 
+const listAccountsByIDs = `-- name: ListAccountsByIDs :many
+SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone, oidc_subject FROM accounts WHERE id IN (/*SLICE:ids*/?) ORDER BY id
+`
+
+// The Accounts the given IDs name, for reading a level of Managers at once.
+func (q *Queries) ListAccountsByIDs(ctx context.Context, ids []int64) ([]Account, error) {
+	query := listAccountsByIDs
+	var queryParams []interface{}
+	if len(ids) > 0 {
+		for _, v := range ids {
+			queryParams = append(queryParams, v)
+		}
+		query = strings.Replace(query, "/*SLICE:ids*/?", strings.Repeat(",?", len(ids))[1:], 1)
+	} else {
+		query = strings.Replace(query, "/*SLICE:ids*/?", "NULL", 1)
+	}
+	rows, err := q.db.QueryContext(ctx, query, queryParams...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Account
+	for rows.Next() {
+		var i Account
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.IsAdmin,
+			&i.CreatedAt,
+			&i.Departed,
+			&i.Name,
+			&i.ManagerID,
+			&i.Timezone,
+			&i.OidcSubject,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAccountsUnder = `-- name: ListAccountsUnder :many
 SELECT id, email, is_admin, created_at, departed, name, manager_id, timezone, oidc_subject FROM accounts WHERE manager_id IN (/*SLICE:manager_ids*/?) ORDER BY id
 `

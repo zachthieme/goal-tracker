@@ -310,3 +310,31 @@ func (c countingConn) CheckNamedValue(nv *driver.NamedValue) error {
 	}
 	return driver.ErrSkip
 }
+
+// The Goal list's Org picker reads the people above the Goals' Owners a level
+// at a time, so the list runs as many queries for 30 Owners as for 3 when each
+// sits as deep in the org: under a Manager of their own, under one Director
+// (#451).
+func TestGoalListQueriesDontGrowWithOwnersAtTheSameOrgDepth(t *testing.T) {
+	t.Parallel()
+	countFor := func(n int) int64 {
+		h := testsupport.New(t, queryCountAdmin)
+		h.SignInNamed(queryCountAdmin, "Ada Admin")
+		director := h.SignInNamed("dana@example.com", "Dana Director")
+		for i := range n {
+			manager := h.SignInNamed(fmt.Sprintf("manager%02d@example.com", i), fmt.Sprintf("Manager %02d", i))
+			owner := h.SignInNamed(fmt.Sprintf("owner%02d@example.com", i), fmt.Sprintf("Owner %02d", i))
+			h.SetManager(manager, director)
+			h.SetManager(owner, manager)
+			h.ActiveGoal(owner, fmt.Sprintf("Goal %02d", i), "It matters.")
+		}
+		ts, queries := newQueryCountingServer(t, h)
+		client := signInClient(t, ts.URL, queryCountAdmin)
+		queries.Store(0)
+		getBody(t, client, ts.URL+"/goals?org=all")
+		return queries.Load()
+	}
+	if three, thirty := countFor(3), countFor(30); three != thirty {
+		t.Errorf("the Goal list ran %d queries for 3 Owners and %d for 30 at the same org depth; want the same", three, thirty)
+	}
+}

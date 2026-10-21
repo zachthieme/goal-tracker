@@ -144,6 +144,24 @@ func (s *Service) Account(ctx context.Context, id int64) (Account, error) {
 	return accountFromRow(a), nil
 }
 
+// AccountsByIDs returns the Accounts ids name, as Account reads one, keyed by
+// Account ID; an ID naming no one has no entry. It runs one query however many
+// IDs there are, and none for no IDs.
+func (s *Service) AccountsByIDs(ctx context.Context, ids []int64) (map[int64]Account, error) {
+	out := map[int64]Account{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.queries.ListAccountsByIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list accounts: %w", err)
+	}
+	for _, r := range rows {
+		out[r.ID] = accountFromRow(r)
+	}
+	return out, nil
+}
+
 // AccountByEmail returns the Account with the given email, whatever its case
 // or surrounding spaces (CONTEXT.md: Account), without creating one. It returns
 // ErrNotFound if there is none.
