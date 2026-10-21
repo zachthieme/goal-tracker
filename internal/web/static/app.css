@@ -194,7 +194,7 @@ strong{color:var(--color-ink)}
  * § Page header). At 900px and below the sidebar is a 48px strip whose Menu
  * opens the rest as a sheet. */
 .frame{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:100vh}
-.frame-content{min-width:0;display:flex;flex-direction:column}
+.frame-content{min-width:0}
 .sidebar{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:16px;padding:12px;background:var(--color-sidebar);border-right:1px solid var(--color-border);box-sizing:border-box;overflow-y:auto;font-size:13px}
 .brand{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:0 8px;font-size:14px;font-weight:600;color:var(--color-ink);white-space:nowrap}
 .brand:hover{color:var(--color-ink);text-decoration:none}
@@ -223,7 +223,7 @@ strong{color:var(--color-ink)}
 .who .person{color:var(--color-ink)}
 .sb-person-menu{position:absolute;left:0;right:0;bottom:calc(100% + 4px);z-index:20;display:flex;flex-direction:column;gap:8px;padding:8px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop)}
 .sb-person-menu form{margin:0}
-.sb-signout{width:100%;justify-content:flex-start}
+.sb-person-menu .sb-signout{width:100%;justify-content:flex-start}
 .page-header{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:48px;padding:0 28px;border-bottom:1px solid var(--color-border);box-sizing:border-box}
 .ph-title{display:flex;align-items:center;gap:8px;min-width:0}
 .ph-title h1{font-size:14px;line-height:1.4;letter-spacing:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

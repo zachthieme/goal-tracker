@@ -792,9 +792,9 @@ func TestHomeHealthBarLeavesOutGoalsThatAreNotActive(t *testing.T) {
 	}
 }
 
-// Every page's top bar leads with Home, counting what needs the viewer — the
+// Every page's sidebar leads with Home, counting what needs the viewer — the
 // Goals to check in on plus what's waiting on them — and showing no count when
-// nothing does. Its count is a pill of its own, set apart from the top bar's
+// nothing does. Its count is a pill of its own, set apart from the sidebar's
 // other counts, because it means something needs the person. Home replaces the
 // pending-links, pending-handoffs, and delegated nav items, whose pages stay.
 func TestNavCountsWhatNeedsYou(t *testing.T) {
@@ -826,7 +826,7 @@ func TestNavCountsWhatNeedsYou(t *testing.T) {
 		}
 		for _, gone := range []string{"nav-pending-links", "nav-pending-handoffs", "nav-delegated-goals"} {
 			if strings.Contains(nav, gone) {
-				t.Errorf("on %s, the top bar still has %s", path, gone)
+				t.Errorf("on %s, the sidebar still has %s", path, gone)
 			}
 		}
 	}
@@ -998,7 +998,7 @@ func TestHomeListsParentSuggestionsToDecide(t *testing.T) {
 	}
 }
 
-// Every page's top bar offers Goals, the app's main list, between Home and
+// Every page's sidebar offers Goals, the app's main list, between Home and
 // Follow-ups, with Reports after Follow-ups.
 func TestNavOffersGoalsBetweenHomeAndFollowUps(t *testing.T) {
 	t.Parallel()
@@ -1066,7 +1066,7 @@ func TestNavGoalsCarriesNoCount(t *testing.T) {
 	}
 }
 
-// An Admin's top bar reads Home, Goals, Follow-ups, Reports, Admin.
+// An Admin's sidebar reads Home, Goals, Follow-ups, Reports, Admin.
 func TestNavOrderForAnAdmin(t *testing.T) {
 	t.Parallel()
 
@@ -1576,7 +1576,7 @@ func TestHomeActionItemAboutTheReportLinksToItsPublication(t *testing.T) {
 }
 
 // Open Action Items count toward what needs the reader, in the summary under
-// the page title and the top bar's Home count, and someone whose only open
+// the page title and the sidebar's Home count, and someone whose only open
 // work is one isn't told they're caught up.
 func TestHomeCountsOpenActionItems(t *testing.T) {
 	t.Parallel()
@@ -1591,7 +1591,7 @@ func TestHomeCountsOpenActionItems(t *testing.T) {
 		t.Errorf("Needs you heading = %q, want %q for the Action Item", got, "Needs you · 1")
 	}
 	if home := pageElement(t, page, "a", "nav-home"); !strings.Contains(home, `<span class="count needs-you">1</span>`) {
-		t.Errorf("top bar's Home does not count the Action Item: %s", home)
+		t.Errorf("sidebar's Home does not count the Action Item: %s", home)
 	}
 	if strings.Contains(page, `data-testid="home-caught-up"`) {
 		t.Errorf("Home says sam is caught up with an Action Item open")
@@ -1667,7 +1667,7 @@ func TestHomeLeavesOutClosedAndOthersActionItems(t *testing.T) {
 // An open Ask for help is listed on its addressee's Home under Needs you, in
 // an "Asks for help" subgroup after Check-ins due: Red first, each row leading
 // to the Goal's Comments to answer and naming the Owner who asked. It counts in
-// the summary and the top bar. It isn't listed for the Owner who asked, nor for
+// the summary and the sidebar. It isn't listed for the Owner who asked, nor for
 // a Manager further up while the first one hasn't left, and an answer doesn't
 // clear it: only the Owner's next Check-in that unticks the box, or is Green,
 // does.
@@ -1715,8 +1715,8 @@ func TestHomeListsAsksForHelpAddressedToTheViewer(t *testing.T) {
 	if got := needsYouHeading(page); got != "Needs you · 2" {
 		t.Errorf("Needs you heading = %q, want %q for the two asks", got, "Needs you · 2")
 	}
-	if home, _ := topBarCounts(t, getBody(t, miaClient, ts.URL+"/goals")); !strings.Contains(home, `<span class="count needs-you">2</span>`) {
-		t.Errorf("top bar's Home = %s, want a count of 2", home)
+	if home, _ := sidebarCounts(t, getBody(t, miaClient, ts.URL+"/goals")); !strings.Contains(home, `<span class="count needs-you">2</span>`) {
+		t.Errorf("sidebar's Home = %s, want a count of 2", home)
 	}
 
 	for _, who := range []string{"sam@example.com", "vp@example.com"} {

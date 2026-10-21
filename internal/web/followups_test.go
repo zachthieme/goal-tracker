@@ -811,7 +811,7 @@ func TestFollowUpsPageFilteredToNothingSaysWhere(t *testing.T) {
 	}
 }
 
-// Every page's top bar has Follow-ups after Goals, counting the Goals the Follow-ups page
+// Every page's sidebar has Follow-ups after Goals, counting the Goals the Follow-ups page
 // flags in the viewer's default scope, each once however many sections list
 // it: Ada's org's 3 for Ada, who manages Sam and Kim, Sam's own 2 for Sam. The
 // nav doesn't link to the Graph or Freshness signals pages it replaces.
@@ -854,7 +854,7 @@ func TestNavCountsFlaggedGoalsOnce(t *testing.T) {
 			}
 			for _, gone := range []string{`href="/signals"`, `href="/freshness"`} {
 				if strings.Contains(nav, gone) {
-					t.Errorf("%s on %s: the top bar still links %s", who, path, gone)
+					t.Errorf("%s on %s: the sidebar still links %s", who, path, gone)
 				}
 			}
 		}
@@ -1224,7 +1224,7 @@ func TestFollowUpFixOnAScheduleConflictWithAProposedChild(t *testing.T) {
 
 // Scoped to Mine, by ?org=mine, the Follow-ups page keeps only the Goals the viewer Owns or is a Delegate
 // on, and its count line names Mine and counts those alone, as do its cards,
-// while the top bar still counts every flagged Goal. The Scope select shows
+// while the sidebar still counts every flagged Goal. The Scope select shows
 // the current scope; with no Managers it offers only Everyone and Mine.
 func TestFollowUpsPageScopedToMine(t *testing.T) {
 	t.Parallel()
@@ -1254,7 +1254,7 @@ func TestFollowUpsPageScopedToMine(t *testing.T) {
 		t.Errorf("the owner card doesn't count sam's 2 Goals: %s", card)
 	}
 	if followUps := pageElement(t, page, "a", "nav-follow-ups"); !strings.Contains(followUps, `<span class="count">2</span>`) {
-		t.Errorf("the top bar's Follow-ups count isn't sam's default, Mine's 2: %s", followUps)
+		t.Errorf("the sidebar's Follow-ups count isn't sam's default, Mine's 2: %s", followUps)
 	}
 	choices, value, label := scopeChoices(scopeSelect(t, page, "follow-ups-scope"))
 	if value != "mine" || label != "Mine" {
@@ -1274,7 +1274,7 @@ func TestFollowUpsPageScopedToMine(t *testing.T) {
 		t.Errorf("for Everyone, the Scope select shows %q %q chosen, want Everyone", value, label)
 	}
 	if followUps := pageElement(t, page, "a", "nav-follow-ups"); !strings.Contains(followUps, `<span class="count">2</span>`) {
-		t.Errorf("for Everyone, the top bar's Follow-ups count follows the page's scope: %s", followUps)
+		t.Errorf("for Everyone, the sidebar's Follow-ups count follows the page's scope: %s", followUps)
 	}
 }
 
@@ -1388,7 +1388,7 @@ func TestFollowUpsPageScopedToADimensionValue(t *testing.T) {
 		t.Errorf("scoped to Platform, the owner card doesn't count its 1 Goal: %s", card)
 	}
 	if followUps := pageElement(t, page, "a", "nav-follow-ups"); !strings.Contains(followUps, `<span class="count">3</span>`) {
-		t.Errorf("scoped to Platform, the top bar's Follow-ups count follows scope: %s", followUps)
+		t.Errorf("scoped to Platform, the sidebar's Follow-ups count follows scope: %s", followUps)
 	}
 	if sels := followUpsValueSelects(page); len(sels) != 1 {
 		t.Errorf("with Team the one offered Dimension, the page has %d value selects, want 1", len(sels))
@@ -2032,10 +2032,10 @@ func TestFollowUpsShowsAnAdminTheirCardOnAnEmptyScope(t *testing.T) {
 	}
 }
 
-// The top bar's Follow-ups count is the viewer's default scope, as many as a bare
+// The sidebar's Follow-ups count is the viewer's default scope, as many as a bare
 // /follow-ups lists: My org's for a manager, Mine's, Delegate Goals included, for
 // someone with no one under them, an Admin among them.
-func TestTopBarFollowUpsCountIsTheViewersDefaultScope(t *testing.T) {
+func TestSidebarFollowUpsCountIsTheViewersDefaultScope(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -2513,9 +2513,9 @@ func TestFollowUpsGroupCardsFitFiveAcross(t *testing.T) {
 	}
 }
 
-// A Goal flagged only for an overdue Action Item counts in the top bar's
+// A Goal flagged only for an overdue Action Item counts in the sidebar's
 // Follow-ups count, as it does on the page.
-func TestTopBarFollowUpsCountsOverdueActionItems(t *testing.T) {
+func TestSidebarFollowUpsCountsOverdueActionItems(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "ada@example.com")
@@ -2624,7 +2624,7 @@ func TestFollowUpsPageIgnoresActionItemsNotOverdueAboutAnActiveGoal(t *testing.T
 
 // Not Green is the Follow-ups page's first card: it holds every Active Goal whose
 // latest Check-in is Red or Yellow, chipped like their Health badges, and the
-// top bar counts them. A Red or Yellow row takes no chip of its own, as its
+// sidebar counts them. A Red or Yellow row takes no chip of its own, as its
 // Health badge says so already, and its Fix opens the Goal. A Green Goal with
 // nothing else wrong isn't listed.
 func TestFollowUpsPageListsRedAndYellowGoalsUnderNotGreen(t *testing.T) {
@@ -2812,7 +2812,7 @@ func TestFollowUpsPageMarksAsksForHelpUnderNotGreen(t *testing.T) {
 		t.Errorf("Not Green lists %d rows, want %q, %q and %q:\n%s", len(rows), red.Title, alone.Title, yellow.Title, filtered)
 	}
 
-	// The top bar counts sam's default scope, their own two Goals, each once.
+	// The sidebar counts sam's default scope, their own two Goals, each once.
 	if nav := pageElement(t, getBody(t, client, ts.URL+"/home"), "a", "nav-follow-ups"); !strings.Contains(nav, `<span class="count">2</span>`) {
 		t.Errorf("the nav's Follow-ups count doesn't count each of sam's Goals once: %s", nav)
 	}
@@ -2845,7 +2845,7 @@ func TestFollowUpsPageDropsAnAskTheOwnerUnmarks(t *testing.T) {
 
 // A Goal whose latest Check-in is Green while a Milestone is overdue is listed
 // under Waiting on a Check-in with a Milestone overdue chip in Check-in
-// overdue's style, counted on its card and in the top bar. Its Fix is Check in
+// overdue's style, counted on its card and in the sidebar. Its Fix is Check in
 // for its Owner, and Nudge for anyone else, as its Owner answers it in a
 // Check-in (CONTEXT.md: Nudge).
 func TestFollowUpsPageListsGreenGoalsPastAMilestone(t *testing.T) {
@@ -2877,7 +2877,7 @@ func TestFollowUpsPageListsGreenGoalsPastAMilestone(t *testing.T) {
 		t.Errorf("the card's Milestone overdue chip isn't drawn like the table's: %s", chip)
 	}
 	if followUps := pageElement(t, page, "a", "nav-follow-ups"); !strings.Contains(followUps, `<span class="count">1</span>`) {
-		t.Errorf("the top bar's Follow-ups doesn't count the Goal: %s", followUps)
+		t.Errorf("the sidebar's Follow-ups doesn't count the Goal: %s", followUps)
 	}
 
 	for _, c := range []struct {

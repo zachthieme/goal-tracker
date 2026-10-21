@@ -243,7 +243,7 @@ func TestFontFacesPointAtTheAppsFonts(t *testing.T) {
 
 // Every page links the stylesheet and sits in the sidebar frame, whose nav
 // marks the page you are on — and only that one — as current.
-func TestTopBarMarksTheCurrentPage(t *testing.T) {
+func TestSidebarMarksTheCurrentPage(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -285,7 +285,7 @@ func TestTopBarMarksTheCurrentPage(t *testing.T) {
 }
 
 // A page below a nav item's section — a Report — still marks that item.
-func TestTopBarMarksTheSectionOfANestedPage(t *testing.T) {
+func TestSidebarMarksTheSectionOfANestedPage(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -314,7 +314,7 @@ func TestTopBarMarksTheSectionOfANestedPage(t *testing.T) {
 
 // Every page under Goals — a Goal's page, New goal, a Goal's Check-in page —
 // marks Goals current, and only Goals.
-func TestTopBarMarksGoalsOnPagesUnderIt(t *testing.T) {
+func TestSidebarMarksGoalsOnPagesUnderIt(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)

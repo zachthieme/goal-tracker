@@ -19,7 +19,7 @@ import (
 
 type pathKey struct{}
 
-// withPath records the request path so the top bar can mark the current page
+// withPath records the request path so the sidebar can mark the current page
 // without every page passing it along.
 func withPath(ctx context.Context, path string) context.Context {
 	return context.WithValue(ctx, pathKey{}, path)
@@ -47,7 +47,7 @@ func needsYou(ctx context.Context) int {
 
 type followUpsKey struct{}
 
-// withFollowUps records how many Goals the Follow-ups page flags, so the top bar's Follow-ups
+// withFollowUps records how many Goals the Follow-ups page flags, so the sidebar's Follow-ups
 // item can count them without every page passing it along.
 func withFollowUps(ctx context.Context, n int) context.Context {
 	return context.WithValue(ctx, followUpsKey{}, n)
