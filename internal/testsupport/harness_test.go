@@ -2,6 +2,7 @@ package testsupport_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
@@ -35,5 +36,18 @@ func TestHarnessDatabaseIsMigratedWhateverTheTestsName(t *testing.T) {
 				t.Fatalf("SignIn in %q: %v", t.Name(), err)
 			}
 		})
+	}
+}
+
+// A harness database enforces foreign keys as the app's does: a Contributor
+// can't be added to a Goal that doesn't exist.
+func TestHarnessDatabaseEnforcesForeignKeys(t *testing.T) {
+	t.Parallel()
+	h := testsupport.New(t)
+	acc := h.SignIn("owner@example.com")
+
+	_, err := h.DB.Exec(`INSERT INTO contributors (goal_id, account_id, created_at) VALUES (999, ?, '2026-01-02T15:04:05Z')`, acc.ID)
+	if err == nil || !strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
+		t.Fatalf("insert Contributor for missing Goal: err = %v, want a foreign-key error", err)
 	}
 }

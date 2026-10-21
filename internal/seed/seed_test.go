@@ -2,6 +2,7 @@ package seed_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"maps"
@@ -67,6 +68,7 @@ func TestSeededOrg(t *testing.T) {
 	t.Run("every person has a Name", func(t *testing.T) { everyPersonNamed(t, h) })
 	t.Run("everyone has a place in the Manager tree", func(t *testing.T) { everyoneInTheManagerTree(t, h) })
 	t.Run("every team's lead has an executive", func(t *testing.T) { everyTeamLeadHasAnExecutive(t) })
+	t.Run("no row breaks a foreign key", func(t *testing.T) { noRowBreaksAForeignKey(t, h) })
 	t.Run("only into a fresh database", func(t *testing.T) { onlyIntoAFreshDatabase(t, h) })
 	t.Run("deterministic", func(t *testing.T) { deterministic(t, h) })
 }
@@ -544,6 +546,30 @@ func teamDimensionID(t *testing.T, h *testsupport.Harness) int64 {
 	}
 	t.Fatalf("no Team Dimension in %+v", dims)
 	return 0
+}
+
+// Every row the seed writes points at parents that exist, so the seeded dev
+// database passes the foreign-key check the app runs on startup.
+func noRowBreaksAForeignKey(t *testing.T, h *testsupport.Harness) {
+	rows, err := h.DB.Query(`PRAGMA foreign_key_check`)
+	if err != nil {
+		t.Fatalf("foreign_key_check: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var (
+			table, parent string
+			rowid         sql.NullInt64
+			fkid          int
+		)
+		if err := rows.Scan(&table, &rowid, &parent, &fkid); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		t.Errorf("%s rowid %d points at a missing %s", table, rowid.Int64, parent)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("foreign_key_check: %v", err)
+	}
 }
 
 // Seeding a database that already has Goals is refused, and leaves it as it

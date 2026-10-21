@@ -3,6 +3,7 @@ package db_test
 import (
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -24,6 +25,29 @@ func TestOpenSetsBusyTimeout(t *testing.T) {
 	}
 	if ms != 5000 {
 		t.Errorf("busy_timeout = %d ms, want 5000", ms)
+	}
+}
+
+// A Contributor can't be added to a Goal that doesn't exist: the schema's
+// foreign keys are enforced on the connections Open hands out.
+func TestOpenEnforcesForeignKeys(t *testing.T) {
+	t.Parallel()
+
+	sqlDB, err := db.Open(filepath.Join(t.TempDir(), "app.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := db.Migrate(sqlDB); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if _, err := sqlDB.Exec(`INSERT INTO accounts (id, email, created_at) VALUES (1, 'owner@example.com', '2026-01-02T15:04:05Z')`); err != nil {
+		t.Fatalf("insert account: %v", err)
+	}
+
+	_, err = sqlDB.Exec(`INSERT INTO contributors (goal_id, account_id, created_at) VALUES (999, 1, '2026-01-02T15:04:05Z')`)
+	if err == nil || !strings.Contains(err.Error(), "FOREIGN KEY constraint failed") {
+		t.Fatalf("insert Contributor for missing Goal: err = %v, want a foreign-key error", err)
 	}
 }
 
