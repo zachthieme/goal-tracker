@@ -531,3 +531,40 @@ func TestNamesDoNotLookLikeLinks(t *testing.T) {
 		t.Errorf("the help buttons' dotted edge changed: %s", decls)
 	}
 }
+
+// The filter chip is shared, so its rules live in the shared stylesheet that
+// every page loads, coarse-pointer floor included, and no longer in the Goal
+// list's own styles: Follow-ups draws the same chips (#406).
+func TestFilterChipRulesAreInTheSharedStylesheet(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	h.SignIn("sam@example.com")
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	for sel, want := range map[string]string{
+		".filter-chip":                    "height:28px",
+		".filter-chip select":             "appearance:none",
+		".chip-key":                       "color:var(--color-ink-muted)",
+		".filter-chip:has(select)::after": "border-right:1.5px solid currentColor",
+	} {
+		if decls := cssRule(t, css, "\n"+sel); !strings.Contains(decls, want) {
+			t.Errorf("app.css %s{%s} lacks %s", sel, decls, want)
+		}
+	}
+	coarse := mediaBlock(t, css, "@media (pointer:coarse)")
+	if decls, ok := ruleFor(coarse, ".filter-chip"); !ok || !strings.Contains(decls, "min-height:44px") {
+		t.Errorf("on a coarse pointer app.css doesn't raise .filter-chip to 44px: %s", coarse)
+	}
+
+	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), ts.URL+"/goals")
+	if !strings.Contains(page, `class="filter-chip`) {
+		t.Fatalf("the Goal list draws no filter chip")
+	}
+	for _, sel := range []string{".filter-chip", ".chip-key"} {
+		if strings.Contains(page, sel) {
+			t.Errorf("the Goal list's own styles still define %s", sel)
+		}
+	}
+}

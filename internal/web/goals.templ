@@ -627,12 +627,12 @@ templ goalLinkIf(link bool, g domain.Goal) {
 //   - the page drops its padding and width cap, so the filter bar and the
 //     list run edge to edge with 28px sides;
 //   - the header strip's List / Table switch is a segmented control;
-//   - the filter bar is one row of 28px chips, the search at its right. Its
-//     row and More filters' panel lay their controls out in the form's own
-//     row, so Group by sits among the chips and Clear after them, while the
-//     panel's Dimension filters, shown while its "+ Filter" is open (always,
-//     where :has() isn't supported), wrap onto a line below. A set chip reads
-//     its key ("Health: Red") on the subtle teal;
+//   - the filter bar is one row of 28px chips (their rules shared, in
+//     app.css), the search at its right. Its row and More filters' panel lay
+//     their controls out in the form's own row, so Group by sits among the
+//     chips and Clear after them, while the panel's Dimension filters, shown
+//     while its "+ Filter" is open (always, where :has() isn't supported),
+//     wrap onto a line below;
 //   - the list is 40px rows on hairlines under a muted row of column labels,
 //     each group under a header row on --color-group, a row's Health as its
 //     11px shape, its chips 22px pills, and its dates in tabular figures. At
@@ -649,17 +649,6 @@ templ goalsStyles() {
 		.gl-seg a[aria-current=page]{background:var(--color-canvas);color:var(--color-ink)}
 		.gl-filters{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 28px;border-bottom:1px solid var(--color-border)}
 		.gl-bar,.gl-more,.gl-clear{display:contents}
-		.filter-chip{position:relative;display:inline-flex;align-items:center;gap:4px;height:28px;padding:0 8px;border:1px solid var(--color-border-strong);border-radius:var(--radius-md);background:var(--color-canvas);color:var(--color-ink-2);font-size:13px;font-weight:500;line-height:1;white-space:nowrap;box-sizing:border-box;cursor:pointer}
-		.filter-chip:has(select){padding-right:24px}
-		.filter-chip:has(select)::after{content:"";position:absolute;right:10px;top:50%;width:5px;height:5px;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:translateY(-75%) rotate(45deg);pointer-events:none}
-		.filter-chip select{appearance:none;height:26px;min-height:0;margin:0;padding:0;border:0;background:none;color:inherit;font:inherit;field-sizing:content;cursor:pointer}
-		.filter-chip select:focus{outline:none}
-		.filter-chip:focus-within{outline:2px solid var(--color-focus);outline-offset:1px}
-		.filter-chip input[type=checkbox]{margin:0}
-		.chip-key{color:var(--color-ink-muted)}
-		.chip-key-set{display:none}
-		.filter-chip:has(option:checked:not([value=""])) .chip-key-set{display:inline}
-		.filter-chip.on,.filter-chip:has(option:checked:not([value=""])),.filter-chip:has(input:checked){background:var(--color-primary-subtle);color:var(--color-ink)}
 		.gl-more-toggle>summary{min-height:0;height:28px;gap:4px;padding:0 8px;border:1px dashed var(--color-border-strong);border-radius:var(--radius-md);color:var(--color-ink-2);font-size:13px;font-weight:500;white-space:nowrap;box-sizing:border-box}
 		.gl-more-toggle[open]>summary,.gl-filters:has(.gl-more input:checked) .gl-more-toggle>summary{background:var(--color-primary-subtle);color:var(--color-ink)}
 		.gl-bar noscript{order:2}
@@ -731,7 +720,7 @@ templ goalsStyles() {
 		.gl-values{display:flex;flex-direction:column;gap:4px;border:0;margin:0;padding:0}
 		.gl-values label{display:inline-flex;align-items:center;gap:8px}
 		.gl-cell-error{margin:4px 0 0;max-width:240px;white-space:normal;font-size:13px;color:var(--color-danger-ink)}
-		@media (pointer:coarse){.filter-chip,.gl-more-toggle>summary,.gl-bar input[type=search],.gl-seg{height:auto;min-height:44px}.filter-chip select{min-height:42px}.gl-seg a{min-height:40px}}
+		@media (pointer:coarse){.gl-more-toggle>summary,.gl-bar input[type=search],.gl-seg{height:auto;min-height:44px}.gl-seg a{min-height:40px}}
 		@media (max-width:1200px){.gl-list .gl-col-owner{width:168px}.gl-list .gl-col-due{width:152px}.gl-list .gl-col-checkin{width:136px}}
 		@media (max-width:900px){.gl-filters{padding:12px 16px}.gl-list tr>:first-child,.gl-table tr>:first-child{padding-left:16px}.gl-list tr>:last-child,.gl-table tr>:last-child{padding-right:16px}.gl-list .gl-col-health{width:28px}.gl-list .gl-col-owner{width:160px}.gl-list .gl-col-due{width:136px}.gl-list .gl-col-checkin{width:120px}.gl-columns,.gl-edit-hint,.gl-edit-actions{padding-left:16px;padding-right:16px}.gl-download{padding-left:4px;padding-right:4px}.gl-edit-errors{margin-left:16px;margin-right:16px}}
 		@media (max-width:600px){.gl-ph{flex-wrap:wrap;padding-top:8px;padding-bottom:8px}.gl-bar input[type=search]{flex:1 1 100%;max-width:none;margin-left:0}.gl-list{table-layout:auto}.gl-list thead{display:none}.gl-list tr{display:flex;flex-wrap:wrap;align-items:center;gap:4px 12px;padding:12px 16px 12px 40px;border-bottom:1px solid var(--color-border)}.gl-list td,.gl-list th,.gl-list tr>*,.gl-list tr>:first-child,.gl-list tr>:last-child{display:block;height:auto;padding:0;border-bottom:none}.gl-list .gl-group{padding:8px 16px;background:var(--color-group)}.gl-list [colspan]{flex-basis:100%}.gl-list .gl-health{order:-2;width:12px;margin-left:-24px}.gl-list .gl-goal{order:-1;flex-basis:100%}.gl-title{white-space:normal}.gl-list .gl-owner{white-space:normal}.gl-list .gl-tags{display:none}.gl-list td::before{color:var(--color-ink-muted);font-family:var(--font-body);font-size:13px;font-weight:400}.gl-dates::before{content:"Due "}.gl-checkin::before{content:"Last check-in "}}
