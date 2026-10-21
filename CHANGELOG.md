@@ -45,8 +45,11 @@ The format is in [`docs/changelog-conventions.md`](docs/changelog-conventions.md
 
 **Bug fixes:**
 - [user] On the Goals page, Clear now appears as soon as a filter is chosen and goes away once the last one is unset, without a reload (#385).
+- [user] The Check-in cadence control's segments are 44px tall on a touch screen, as every touch target is; they were 36px (#396).
+- [user] Every message page (Can't undo, Can't remove link, a refused Nudge, a Check-in that can't be reached) is centred like Not found (#397).
 
 **Testing:**
+- [internal] The phone-width e2e test for Admin's Make Admin button finds its form row, since #397 removed the card it looked for (#397).
 - [internal] A domain test pairs #375's "raised by someone in my Org" case with one whose Report Definition someone in the Org created while outsiders published, raised and own its Action Item: that item is in neither of the viewer's groups. The test also shows that someone in the Org who neither created the Definition nor published the publication can't raise an item on it, so no item is relevant only for its raiser (#387).
 - [internal] The Follow-ups page's tests check its popovers against the page's own list of signal definitions, exposed to them by `internal/web/followups_export_test.go`, rather than a hand-written copy. Each of the nine kinds of chip the table can show is checked for opening exactly its signal's name and meaning, including Path to Green overdue, Milestone overdue and Parent On Hold or Cancelled, and the test fails if a signal with a chip goes unchecked (#387).
 - [internal] `e2e/phone-width.spec.ts` checks Home at 390px on the `due` template, with a Check-in due in Needs you showing its No change and Check in: nothing inside main clips or scrolls sideways and every control is on screen. `e2e/README.md` lists Home among the pages the spec covers (#387).

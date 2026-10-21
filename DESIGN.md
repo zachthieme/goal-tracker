@@ -30,7 +30,8 @@ Goal list and the Goal page, which were modelled on Linear. A page is one
 surface, and type, space and hairlines carry the hierarchy.
 
 - **One surface.** The page is a single plain background, `--color-canvas`:
-  white in light, near-black in dark. No section sits in a box. A section is
+  white in light, near-black in dark. No section sits in a box (five pages
+  not yet moved still do; § Components: Sections). A section is
   a heading over rows separated by 1px `--color-border` hairlines, and space
   between sections does the grouping. A form is a plain section too, and its
   fields have their own edges (§ Components: Sections).
@@ -47,8 +48,9 @@ surface, and type, space and hairlines carry the hierarchy.
 
   A draft Report's baseline and History panels float with no shadow, and its
   Publish… panel on a shadow of its own. Nothing else is raised.
-- **Type leads.** One face, Inter (§ Type scale). Every page names itself in
-  its header strip. A page about one thing (Home's week, a Goal, a
+- **Type leads.** One face, Inter (§ Type scale). A page rendered through
+  `framedLayout` names itself in its header strip; the rest keep their own
+  `h1` (§ Page header). A page about one thing (Home's week, a Goal, a
   publication, the Report builder) also opens its content with a 28px title.
   Sections take real `h2` headings at 13/600, and `.label` is a small
   sentence-case label, never caps.
@@ -456,8 +458,8 @@ and so on).
   found, Can't undo, Can't remove link, a refused Nudge, a Check-in that
   can't be reached). It renders through `layout`, with no header strip: its
   28px `h1`, its sentence and its way back sit in a column up to 760px wide,
-  16px apart. The column starts at the content column's left edge, except
-  Not found, which is centred, as is every signed-out page's content.
+  12px apart, centred 64px down with its text centred, as is every
+  signed-out page's content.
 - **Not found page (`notFoundPage` in `notfound.templ`):** like a refused
   Undo, a missing page shows a page, not bare text. A page you open that
   doesn't exist (an unknown URL, asked with any method, or a Goal, Report,
@@ -478,7 +480,11 @@ and so on).
   off by a 1px `--color-border` hairline, with space between sections doing
   the grouping. Each page styles its own sections
   (`.hm-section` on Home, `.gp-section` on the Goal page, `.ad-section` on
-  Admin, and so on); `app.css` has no shared section class.
+  Admin, and so on); `app.css` has no shared section class. Five pages
+  rendered through `layout` haven't moved yet and still hold their content
+  in a `.card` (a `--color-surface` box with a 1px `--color-border` edge,
+  `app.css`): the Definition log, Delegated to me, Pending links, Pending
+  handoffs and Suggest a parent (#403 moves them and retires `.card`).
 - **List rows:** the Goal list (`.gl-list`) is the model, and Home,
   Follow-ups and the Reports list follow it.
   - **Rows:** 40px on the Goal list, 44px elsewhere, separated by
@@ -1570,7 +1576,7 @@ and so on).
 - **Check-in cadence (`.gf-segctl`):** the New goal form's Weekly | Every 2
   weeks | Monthly | Custom, one radio each, Weekly chosen at first: a 30px
   tinted track with 4px inside it (§ Segmented controls), its segments at
-  `--radius-sm`, 36px on a coarse pointer. The focused segment takes the usual
+  `--radius-sm`, 44px on a coarse pointer. The focused segment takes the usual
   ring. Custom shows a "Days between Check-ins" number input under the
   control. At 600px and below the control becomes a 2×2 grid the width of the
   form.

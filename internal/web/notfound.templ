@@ -8,9 +8,6 @@ import "github.com/zachthieme/goal-tracker/internal/domain"
 // (DESIGN.md § Direction).
 templ notFoundPage(current *domain.Account) {
 	@layout("Not found", current) {
-		<style>
-			.nf-message{align-self:center;margin:64px auto 0;text-align:center;gap:12px}
-		</style>
 		<div class="message-page nf-message">
 			<h1>Not found</h1>
 			<p data-testid="not-found">There's nothing here. It may have been removed, or the link may be wrong.</p>

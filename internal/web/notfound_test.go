@@ -154,6 +154,11 @@ func TestNotFoundPageIsPlainCentredText(t *testing.T) {
 	h.SignIn("pat@example.com")
 	card := regexp.MustCompile(`class="(?:[^"]* )?card(?: [^"]*)?"`)
 
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+	if rule := cssRule(t, css, ".message-page"); !strings.Contains(rule, "text-align:center") || !strings.Contains(rule, "margin:64px auto 0") {
+		t.Errorf(".message-page{%s} doesn't centre the message", rule)
+	}
+
 	for who, client := range map[string]*http.Client{"signed in": signInClient(t, ts.URL, "pat@example.com"), "signed out": http.DefaultClient} {
 		resp, err := client.Get(ts.URL + "/no-such-page")
 		if err != nil {
@@ -165,9 +170,6 @@ func TestNotFoundPageIsPlainCentredText(t *testing.T) {
 		}
 		if !strings.Contains(between(t, page, `class="message-page nf-message"`, "</div>"), `data-testid="not-found"`) {
 			t.Errorf("%s, the Not found sentence isn't in the centred message:\n%s", who, page)
-		}
-		if rule := cssRule(t, page, ".nf-message"); !strings.Contains(rule, "text-align:center") {
-			t.Errorf("%s, .nf-message{%s} doesn't centre its text", who, rule)
 		}
 		if c := card.FindString(page); c != "" {
 			t.Errorf("%s, the Not found page has a card, %s:\n%s", who, c, page)

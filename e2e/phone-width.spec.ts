@@ -135,16 +135,16 @@ test("at 390px the Follow-ups filters wrap, both selects on screen", async ({ pa
   await expectFitsAPhone(page);
 });
 
-test("at 390px the Admin page shows the whole Make Admin button inside its card", async ({ page }) => {
+test("at 390px the Admin page shows the whole Make Admin button inside its form row", async ({ page }) => {
   await signIn(page, admin);
   await page.goto("/admin");
-  const card = page.locator("[data-testid=admin-admins] .card.ad-links");
-  const button = card.getByRole("button", { name: "Make Admin" });
+  const row = page.locator("[data-testid=admin-admins] .ad-links");
+  const button = row.getByRole("button", { name: "Make Admin" });
   await expect(button).toBeVisible();
-  const box = (await card.boundingBox())!;
+  const box = (await row.boundingBox())!;
   const b = (await button.boundingBox())!;
-  expect(b.x, "the button's left is inside the card").toBeGreaterThanOrEqual(box.x);
-  expect(b.x + b.width, "the button's right is inside the card").toBeLessThanOrEqual(box.x + box.width);
+  expect(b.x, "the button's left is inside the row").toBeGreaterThanOrEqual(box.x);
+  expect(b.x + b.width, "the button's right is inside the row").toBeLessThanOrEqual(box.x + box.width);
   await expectFitsAPhone(page);
 });
 

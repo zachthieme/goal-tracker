@@ -47,7 +47,7 @@ func notFoundPage(current *domain.Account) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<style>\n\t\t\t.nf-message{align-self:center;margin:64px auto 0;text-align:center;gap:12px}\n\t\t</style> <div class=\"message-page nf-message\"><h1>Not found</h1><p data-testid=\"not-found\">There's nothing here. It may have been removed, or the link may be wrong.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"message-page nf-message\"><h1>Not found</h1><p data-testid=\"not-found\">There's nothing here. It may have been removed, or the link may be wrong.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
