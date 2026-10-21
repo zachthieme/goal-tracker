@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	nethtml "golang.org/x/net/html"
+
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 	"github.com/zachthieme/goal-tracker/internal/web"
@@ -859,8 +861,8 @@ func TestCurationFormFoldsEmptySectionTextOverHTTP(t *testing.T) {
 	if !strings.Contains(empty, `name="text-`+domain.HighlightMiss+`"`) {
 		t.Errorf("empty section has no text box; details:\n%s", empty)
 	}
-	if !strings.Contains(form, `<button type="submit" class="btn">Save`) {
-		t.Errorf("curation form has no Save button for a browser without JS; form:\n%s", form)
+	if save := buttonNamed(parsePage(t, form), "Save narrative"); save == nil || attrOf(save, "type") != "submit" {
+		t.Errorf("curation form has no Save narrative submit button; form:\n%s", form)
 	}
 }
 
@@ -951,12 +953,12 @@ func TestEachSectionOffersAddAnotherNoteOverHTTP(t *testing.T) {
 	}
 }
 
-// Add another saves what was typed and re-renders the curation form as
-// posted, with one more empty box in that section only, everything typed or
-// ticked anywhere on the form kept — over htmx, where the form comes back
-// with the preview, save status and Publish…'s summary out of band, and as a
-// plain post, which gets the whole draft page rather than a redirect
-// (ticket #187).
+// Add another re-renders the curation form as posted, with one more empty box
+// in that section only, everything typed or ticked anywhere on the form kept,
+// and saves nothing: the save status says the form has unsaved changes —
+// over htmx, where the form comes back with the save status out of band, and
+// as a plain post, which gets the whole draft page rather than a redirect
+// (tickets #187, #444).
 func TestAddAnotherNoteKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 	t.Parallel()
 
@@ -981,6 +983,15 @@ func TestAddAnotherNoteKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 			def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 			signed := strconv.FormatInt(draftHighlightID(t, h, def, "Signed the first EU customer."), 10)
 			lost := strconv.FormatInt(draftHighlightID(t, h, def, "Lost the second customer."), 10)
+			if err := h.Service.CurateNarrative(context.Background(), boss.ID, def.ID, domain.CurateNarrativeInput{
+				Notes: map[string][]string{domain.HighlightMiss: {"Slipped a week."}},
+			}); err != nil {
+				t.Fatalf("CurateNarrative: %v", err)
+			}
+			logged, err := h.Service.ReportLog(context.Background(), def.ID)
+			if err != nil {
+				t.Fatalf("ReportLog: %v", err)
+			}
 
 			ts := newServer(t, h)
 			client := signInClient(t, ts.URL, "boss@example.com")
@@ -1020,39 +1031,44 @@ func TestAddAnotherNoteKeepsTheFormAsPostedOverHTTP(t *testing.T) {
 			if radio := formInput(t, form, "pick-"+lost, domain.HighlightInsight); !isChecked(radio) {
 				t.Errorf("the unticked Highlight lost the section picked for it: %s", radio)
 			}
-			if result := pageElement(t, body, "span", "save-result"); !strings.HasSuffix(result, ">Saved") {
-				t.Errorf("the save status does not say Saved; body:\n%s", body)
+			answer := parsePage(t, body)
+			if got := textOf(findByTestID(t, answer, "save-result")); got != "Unsaved changes" {
+				t.Errorf("the save status says %q, want Unsaved changes", got)
+			}
+			if got := textOf(findByTestID(t, answer, "curation-count")); got != "1 of 2 in" {
+				t.Errorf("the Highlights count %q, want 1 of 2 in, as ticked", got)
 			}
 
 			draft, err := h.Service.DraftReport(context.Background(), def, time.Time{})
 			if err != nil {
 				t.Fatalf("DraftReport: %v", err)
 			}
-			if len(draft.Narrative) != 2 || !slices.Equal(draft.Narrative[0].Notes, []string{"Pricing drives churn."}) ||
-				!slices.Equal(draft.Narrative[1].Notes, []string{"EU is open for business."}) {
-				t.Errorf("saved narrative %+v, want what was typed saved", draft.Narrative)
+			if len(draft.Narrative) != 1 || !slices.Equal(draft.Narrative[0].Notes, []string{"Slipped a week."}) {
+				t.Errorf("saved narrative after add another %+v, want the one saved before", draft.Narrative)
+			}
+			if after, err := h.Service.ReportLog(context.Background(), def.ID); err != nil || len(after) != len(logged) {
+				t.Errorf("Report log after add another has %d entries (err %v), want the %d before", len(after), err, len(logged))
 			}
 
 			if tc.name == "plain" {
-				if !strings.Contains(body, "<html") || !strings.Contains(body, `id="draft-preview"`) {
+				if !hasTestID(answer, "draft-header") {
 					t.Errorf("plain add another does not answer the whole draft page; body:\n%s", body)
+				}
+				if got := textsOf(findAllByTestID(findByTestID(t, answer, "report-draft"), "narrative-text")); !slices.Equal(got, []string{"Slipped a week."}) {
+					t.Errorf("plain add another's preview reads notes %q, want the narrative saved", got)
 				}
 				return
 			}
-			if strings.Contains(body, "<html") {
+			if hasTestID(answer, "draft-header") {
 				t.Errorf("htmx add another answers the whole page; body:\n%s", body)
 			}
-			for _, oob := range []string{`id="draft-preview"`, `data-testid="save-status"`, `data-testid="publish-summary"`} {
-				if !strings.Contains(tagAround(t, body, oob), `hx-swap-oob="true"`) {
-					t.Errorf("%s is not swapped out of band; body:\n%s", oob, body)
+			if attrOf(findByTestID(t, answer, "save-status"), "hx-swap-oob") != "true" {
+				t.Errorf("the save status is not swapped out of band; body:\n%s", body)
+			}
+			for _, untouched := range []string{"report-draft", "publish-summary", "report-log"} {
+				if hasTestID(answer, untouched) {
+					t.Errorf("htmx add another answers %s, which nothing saved changed; body:\n%s", untouched, body)
 				}
-			}
-			preview := between(t, body, `id="draft-preview"`, "")
-			if got := narrativeTexts(preview); !slices.Equal(got, []string{"Pricing drives churn.", "EU is open for business."}) {
-				t.Errorf("preview's notes %q, want what was saved", got)
-			}
-			if count := pageElement(t, body, "span", "curation-count"); !strings.HasSuffix(count, ">1 of 2 in") {
-				t.Errorf("the Highlights count %q, want 1 of 2 in", count)
 			}
 		})
 	}
@@ -3122,20 +3138,102 @@ func TestPublishConfirmsWhatItWillFreezeOverHTTP(t *testing.T) {
 	}
 }
 
-// The compose form autosaves: htmx posts it and gets back the preview, showing
-// the narrative as saved, and, out of band, the header's save status saying
-// so, the form's Highlights count and Publish…'s summary, all as saved. The
-// compose fields aren't in the answer, so the author's typing stays put.
-// A plain post still reloads the draft (tickets #156, #166).
-func TestAutosaveNarrativeRefreshesThePreviewOverHTTP(t *testing.T) {
+// The compose form previews as the author types, without saving: htmx posts
+// it to the preview and gets back the preview showing the narrative as
+// posted, and, out of band, the save status saying it is unsaved and the
+// form's Highlights count. The compose fields aren't in the answer, so the
+// author's typing stays put. Nothing is saved: the draft reloads with the
+// narrative saved before, and the Report log records nothing (tickets #156,
+// #166, #444).
+func TestNarrativePreviewRefreshesThePreviewAndSavesNothingOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
 	boss := h.SignIn("boss@example.com")
 	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
 	h.CheckinWithHighlight(boss, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 	signed := strconv.FormatInt(draftHighlightID(t, h, def, "Signed the first EU customer."), 10)
+	if err := h.Service.CurateNarrative(ctx, boss.ID, def.ID, domain.CurateNarrativeInput{
+		Notes: map[string][]string{domain.HighlightMiss: {"Slipped a week."}},
+	}); err != nil {
+		t.Fatalf("CurateNarrative: %v", err)
+	}
+	logged, err := h.Service.ReportLog(ctx, def.ID)
+	if err != nil {
+		t.Fatalf("ReportLog: %v", err)
+	}
+
+	ts := newServer(t, h)
+	client := signInClient(t, ts.URL, "boss@example.com")
+	reportURL := ts.URL + "/reports/" + strconv.FormatInt(def.ID, 10)
+	resp, body := postHX(t, client, reportURL+"/narrative/preview", url.Values{
+		"include-" + signed:                      {"on"},
+		"pick-" + signed:                         {domain.HighlightAccomplishment},
+		"text-" + domain.HighlightAccomplishment: {"EU is open for business."},
+	})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("preview: status %d, want 200; body:\n%s", resp.StatusCode, body)
+	}
+	answer := parsePage(t, body)
+	if hasTestID(answer, "narrative-curation") || hasTestID(answer, "draft-header") {
+		t.Errorf("the preview answers more than the preview; body:\n%s", body)
+	}
+	preview := findByTestID(t, answer, "report-draft")
+	if hasAttr(preview, "hx-swap-oob") {
+		t.Errorf("the preview is swapped out of band, want it in place of the target")
+	}
+	narrative := findByTestID(t, preview, "report-narrative")
+	if got := textsOf(findAllByTestID(narrative, "narrative-text")); !slices.Equal(got, []string{"EU is open for business."}) {
+		t.Errorf("previewed notes %q, want the posted note alone", got)
+	}
+	if !strings.Contains(textOf(narrative), "Signed the first EU customer.") {
+		t.Errorf("the preview leaves out the ticked Highlight: %s", textOf(narrative))
+	}
+	status := findByTestID(t, answer, "save-status")
+	if attrOf(status, "hx-swap-oob") != "true" {
+		t.Errorf("the save status is not swapped out of band")
+	}
+	if got := textOf(findByTestID(t, status, "save-result")); got != "Unsaved changes" {
+		t.Errorf("the save status says %q, want Unsaved changes", got)
+	}
+	count := findByTestID(t, answer, "curation-count")
+	if attrOf(count, "hx-swap-oob") != "true" || textOf(count) != "1 of 1 in" {
+		t.Errorf("the Highlights count reads %q (oob %q), want 1 of 1 in out of band", textOf(count), attrOf(count, "hx-swap-oob"))
+	}
+	if hasTestID(answer, "publish-summary") {
+		t.Errorf("the preview changes Publish…'s summary, which says what is saved")
+	}
+
+	draft := findByTestID(t, getPage(t, client, reportURL), "report-draft")
+	if got := textsOf(findAllByTestID(draft, "narrative-text")); !slices.Equal(got, []string{"Slipped a week."}) {
+		t.Errorf("the draft after a preview reads notes %q, want the narrative saved before", got)
+	}
+	if after, err := h.Service.ReportLog(ctx, def.ID); err != nil || len(after) != len(logged) {
+		t.Errorf("Report log after a preview has %d entries (err %v), want the %d before", len(after), err, len(logged))
+	}
+}
+
+// Save narrative saves the compose form: over htmx it answers the preview
+// showing the narrative as saved and, out of band, the save status saying
+// Saved, the Highlights count, Publish…'s summary and the Report log with the
+// save's one entry — never the form's own fields. Saving again unchanged logs
+// nothing. A plain post still reloads the draft (tickets #156, #166, #444).
+func TestSaveNarrativeLogsOnceAndRefreshesTheReportLogOverHTTP(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "boss@example.com")
+	ctx := context.Background()
+	boss := h.SignIn("boss@example.com")
+	g := h.ActiveGoal(boss, "Launch in EU", "Expand the market.")
+	h.CheckinWithHighlight(boss, g.ID, domain.HighlightAccomplishment, "Signed the first EU customer.")
+	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
+	signed := strconv.FormatInt(draftHighlightID(t, h, def, "Signed the first EU customer."), 10)
+	logged, err := h.Service.ReportLog(ctx, def.ID)
+	if err != nil {
+		t.Fatalf("ReportLog: %v", err)
+	}
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
@@ -3145,39 +3243,45 @@ func TestAutosaveNarrativeRefreshesThePreviewOverHTTP(t *testing.T) {
 		"pick-" + signed:                         {domain.HighlightAccomplishment},
 		"text-" + domain.HighlightAccomplishment: {"EU is open for business."},
 	}
-
 	resp, body := postHX(t, client, reportURL+"/narrative", form)
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("autosave: status %d, want 200; body:\n%s", resp.StatusCode, body)
+		t.Fatalf("save: status %d, want 200; body:\n%s", resp.StatusCode, body)
 	}
-	if strings.Contains(body, "<html") || strings.Contains(body, `data-testid="narrative-curation"`) {
-		t.Errorf("autosave answers more than the preview; body:\n%s", body)
+	answer := parsePage(t, body)
+	if hasTestID(answer, "narrative-curation") || hasTestID(answer, "draft-header") {
+		t.Errorf("the save answers the form or the page; body:\n%s", body)
 	}
-	preview := between(t, body, `id="draft-preview"`, "")
-	narrative := pageElement(t, preview, "section", "report-narrative")
-	for _, want := range []string{"EU is open for business.", "Signed the first EU customer."} {
-		if !strings.Contains(narrative, want) {
-			t.Errorf("autosaved preview missing %q; preview:\n%s", want, preview)
+	preview := findByTestID(t, answer, "report-draft")
+	if got := textsOf(findAllByTestID(preview, "narrative-text")); !slices.Equal(got, []string{"EU is open for business."}) {
+		t.Errorf("saved preview's notes %q, want the saved note", got)
+	}
+	if !strings.Contains(textOf(findByTestID(t, preview, "report-narrative")), "Signed the first EU customer.") {
+		t.Errorf("the saved preview leaves out the ticked Highlight")
+	}
+	for _, oob := range []string{"save-status", "curation-count", "publish-summary", "report-log"} {
+		if attrOf(findByTestID(t, answer, oob), "hx-swap-oob") != "true" {
+			t.Errorf("%s is not swapped out of band; body:\n%s", oob, body)
 		}
 	}
-	status := tagAround(t, body, `data-testid="save-status"`)
-	if !strings.Contains(status, `hx-swap-oob="true"`) {
-		t.Errorf("the save status is not swapped out of band: %s", status)
+	status := findByTestID(t, answer, "save-status")
+	if got := textOf(findByTestID(t, status, "save-result")); got != "Saved" || hasAttr(status, "data-unsaved") {
+		t.Errorf("the save status says %q (unsaved %v), want Saved", got, hasAttr(status, "data-unsaved"))
 	}
-	if result := pageElement(t, body, "span", "save-result"); !strings.HasSuffix(result, ">Saved") {
-		t.Errorf("the save status does not say Saved; body:\n%s", body)
+	if got := textOf(findByTestID(t, answer, "curation-count")); got != "1 of 1 in" {
+		t.Errorf("the Highlights count %q, want 1 of 1 in", got)
 	}
-	if count := tagAround(t, body, `data-testid="curation-count"`); !strings.Contains(count, `hx-swap-oob="true"`) {
-		t.Errorf("the Highlights count is not swapped out of band: %s", count)
+	if got := textOf(findByTestID(t, answer, "publish-summary")); !strings.Contains(got, "· 1 Highlight · changes since 30 days ago · ") {
+		t.Errorf("Publish…'s summary %q, want the saved Highlight against the default baseline", got)
 	}
-	if count := pageElement(t, body, "span", "curation-count"); !strings.HasSuffix(count, ">1 of 1 in") {
-		t.Errorf("the Highlights count %q, want 1 of 1 in", count)
+	entries := textsOf(findAllByTestID(findByTestID(t, answer, "report-log"), "report-log-entry"))
+	if len(entries) != len(logged)+1 || !strings.Contains(entries[0], "Narrative: picked “Signed the first EU customer.” into Accomplishments; Accomplishments notes changed") {
+		t.Errorf("the Report log answered reads %q, want the save's one entry newest above the %d before", entries, len(logged))
 	}
-	if summary := tagAround(t, body, `data-testid="publish-summary"`); !strings.Contains(summary, `hx-swap-oob="true"`) {
-		t.Errorf("Publish…'s summary is not swapped out of band: %s", summary)
-	}
-	if summary := pageElement(t, body, "p", "publish-summary"); !strings.Contains(summary, "· 1 Highlight · changes since 30 days ago · ") {
-		t.Errorf("Publish…'s summary %q, want the saved Highlight against the default baseline", summary)
+
+	_, body = postHX(t, client, reportURL+"/narrative", form)
+	entries = textsOf(findAllByTestID(findByTestID(t, parsePage(t, body), "report-log"), "report-log-entry"))
+	if after, err := h.Service.ReportLog(ctx, def.ID); err != nil || len(after) != len(logged)+1 || len(entries) != len(logged)+1 {
+		t.Errorf("saving again unchanged leaves %d entries, answering %d (err %v), want the %d after the first save", len(after), len(entries), err, len(logged)+1)
 	}
 
 	plain := postForm(t, client, reportURL+"/narrative", form)
@@ -3186,10 +3290,11 @@ func TestAutosaveNarrativeRefreshesThePreviewOverHTTP(t *testing.T) {
 	}
 }
 
-// An autosave the domain refuses — a Highlight not on a Goal the Report
+// A preview the domain refuses — a Highlight not on a Goal the Report
 // selects — changes only the save status, saying why, and tells htmx to swap
-// nothing else: the preview and what the author typed stay (ticket #156).
-func TestAutosaveRefusalOnlyChangesTheSaveStatusOverHTTP(t *testing.T) {
+// nothing else: the preview and what the author typed stay (tickets #156,
+// #444).
+func TestNarrativePreviewRefusalOnlyChangesTheSaveStatusOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -3199,35 +3304,45 @@ func TestAutosaveRefusalOnlyChangesTheSaveStatusOverHTTP(t *testing.T) {
 
 	ts := newServer(t, h)
 	client := signInClient(t, ts.URL, "boss@example.com")
-	resp, body := postHX(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/narrative", url.Values{
+	resp, body := postHX(t, client, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/narrative/preview", url.Values{
 		"include-9999": {"on"},
 		"pick-9999":    {domain.HighlightInsight},
 	})
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("refused autosave: status %d, want 200 so htmx swaps the status; body:\n%s", resp.StatusCode, body)
+		t.Fatalf("refused preview: status %d, want 200 so htmx swaps the status; body:\n%s", resp.StatusCode, body)
 	}
 	if got := resp.Header.Get("HX-Reswap"); got != "none" {
 		t.Errorf("HX-Reswap = %q, want none", got)
 	}
-	if !strings.Contains(tagAround(t, body, `data-testid="save-status"`), `hx-swap-oob="true"`) {
+	answer := parsePage(t, body)
+	if attrOf(findByTestID(t, answer, "save-status"), "hx-swap-oob") != "true" {
 		t.Errorf("the save status is not swapped out of band; body:\n%s", body)
 	}
-	result := pageElement(t, body, "span", "save-result")
-	if !strings.Contains(result, "is not on a Goal this Report selects") || strings.Contains(result, "validation failed") {
-		t.Errorf("the save status %q, want the domain's reason without its prefix", result)
+	result := textOf(findByTestID(t, answer, "save-result"))
+	if !strings.HasPrefix(result, "Not saved: ") || !strings.Contains(result, "is not on a Goal this Report selects") || strings.Contains(result, "validation failed") {
+		t.Errorf("the save status %q, want Not saved and the domain's reason without its prefix", result)
 	}
-	for _, untouched := range []string{`data-testid="narrative-curation"`, `id="draft-preview"`, `data-testid="curation-count"`, `data-testid="publish-summary"`, "<html"} {
-		if strings.Contains(body, untouched) {
-			t.Errorf("refused autosave answers %s; body:\n%s", untouched, body)
+	for _, untouched := range []string{"narrative-curation", "report-draft", "curation-count", "publish-summary", "draft-header"} {
+		if hasTestID(answer, untouched) {
+			t.Errorf("refused preview answers %s; body:\n%s", untouched, body)
 		}
+	}
+
+	// Someone who may not curate the Report can't preview it either.
+	stranger := signInClient(t, ts.URL, "stranger@example.com")
+	if resp, body := postHX(t, stranger, ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"/narrative/preview", url.Values{}); resp.StatusCode != http.StatusForbidden {
+		t.Errorf("a stranger's preview: status %d, want 403; body:\n%s", resp.StatusCode, body)
 	}
 }
 
-// The compose form autosaves as the author types — debounced, the latest edit
-// replacing one in flight — to its own action, the reader's baseline and all,
-// swapping in the preview beside it. The save status says Saving… meanwhile
-// and Not saved when the answer is an error or never comes (ticket #156).
-func TestComposeFormAutosavesOverHTTP(t *testing.T) {
+// The compose form previews as the author types — debounced, a later edit
+// queued behind one in flight — to the preview, the reader's baseline and
+// all, swapping in the preview beside it, and saves nothing by itself: no
+// trigger saves on input or change. Save narrative, shown to everyone, saves
+// it, its own post the plain submit without script; the save status says
+// Saving… meanwhile, and Not saved when an answer is an error or never comes
+// (tickets #156, #444).
+func TestComposeFormPreviewsAndSavesOnlyOnSaveNarrativeOverHTTP(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t, "boss@example.com")
@@ -3236,37 +3351,55 @@ func TestComposeFormAutosavesOverHTTP(t *testing.T) {
 	def := h.SaveReportDefinition(boss, domain.SaveReportDefinitionInput{Name: "MBR", Mode: domain.ReportModePicked, Picked: []int64{g.ID}})
 
 	ts := newServer(t, h)
-	page := getBody(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"?baseline=2025-12-01")
-	form := openTag(pageElement(t, page, "form", "narrative-curation"))
-	action := html.UnescapeString(attr(form, "action"))
-	if want := "/reports/" + strconv.FormatInt(def.ID, 10) + "/narrative?baseline=2025-12-01"; action != want {
-		t.Fatalf("the compose form posts to %q, want %q", action, want)
+	page := getPage(t, signInClient(t, ts.URL, "boss@example.com"), ts.URL+"/reports/"+strconv.FormatInt(def.ID, 10)+"?baseline=2025-12-01")
+	form := findByTestID(t, page, "narrative-curation")
+	save := "/reports/" + strconv.FormatInt(def.ID, 10) + "/narrative?baseline=2025-12-01"
+	if got := attrOf(form, "action"); got != save {
+		t.Fatalf("the compose form submits to %q, want %q", got, save)
 	}
 	for name, want := range map[string]string{
-		"hx-post":      action,
-		"hx-trigger":   "change, input delay:400ms",
-		"hx-target":    "#draft-preview",
-		"hx-swap":      "outerHTML",
-		"hx-sync":      "this:replace",
-		"hx-indicator": "#save-status",
+		"hx-post":    "/reports/" + strconv.FormatInt(def.ID, 10) + "/narrative/preview?baseline=2025-12-01",
+		"hx-trigger": "change, input delay:400ms",
+		"hx-target":  "#draft-preview",
+		"hx-swap":    "outerHTML",
+		"hx-sync":    "this:queue last",
 	} {
-		if got := html.UnescapeString(attr(form, name)); got != want {
+		if got := attrOf(form, name); got != want {
 			t.Errorf("compose form %s = %q, want %q", name, got, want)
 		}
 	}
+	for _, n := range findAll(form, func(n *nethtml.Node) bool { return attrOf(n, "hx-post") == save }) {
+		if trigger := attrOf(n, "hx-trigger"); strings.Contains(trigger, "input") || strings.Contains(trigger, "change") {
+			t.Errorf("<%s> saves the narrative on %q", n.Data, trigger)
+		}
+	}
+	if hasAttr(form, "hx-indicator") {
+		t.Errorf("the compose form's previews show Saving…")
+	}
 	for _, event := range []string{"hx-on:htmx:response-error", "hx-on:htmx:send-error"} {
-		handler := html.UnescapeString(attr(form, event))
-		if !strings.Contains(handler, "save-result") || !strings.Contains(handler, "Not saved") || strings.Contains(handler, "htmx.swap") {
+		if handler := attrOf(form, event); !strings.Contains(handler, "save-result") || !strings.Contains(handler, "Not saved") {
 			t.Errorf("compose form %s = %q, want it to put Not saved in the save status", event, handler)
 		}
 	}
-	if !strings.Contains(pageElement(t, page, "span", "save-status"), "Saving…") {
-		t.Errorf("the save status has no Saving… indicator; page:\n%s", page)
+
+	button := buttonNamed(form, "Save narrative")
+	if button == nil {
+		t.Fatalf("the compose form has no Save narrative button for readers with script")
 	}
-	// Autosave covers readers with JavaScript, so only readers without it see
-	// Save narrative.
-	if !strings.Contains(pageElement(t, page, "form", "narrative-curation"), `<noscript><button type="submit" class="btn">Save narrative</button></noscript>`) {
-		t.Errorf("the compose form's Save button is not there for, and only for, readers without JavaScript")
+	for name, want := range map[string]string{
+		"type":         "submit",
+		"hx-post":      save,
+		"hx-target":    "#draft-preview",
+		"hx-swap":      "outerHTML",
+		"hx-sync":      "closest form:replace",
+		"hx-indicator": "#save-status",
+	} {
+		if got := attrOf(button, name); got != want {
+			t.Errorf("Save narrative %s = %q, want %q", name, got, want)
+		}
+	}
+	if !strings.Contains(textOf(findByTestID(t, page, "save-status")), "Saving…") {
+		t.Errorf("the save status has no Saving… indicator")
 	}
 }
 

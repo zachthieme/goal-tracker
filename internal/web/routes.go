@@ -115,6 +115,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /reports/{id}/edit", s.requireAuth(s.handleEditReportForm))
 	s.mux.HandleFunc("POST /reports/{id}/edit", s.requireAuth(s.handleEditReport))
 	s.mux.HandleFunc("POST /reports/{id}/narrative", s.requireAuth(s.handleCurateNarrative))
+	s.mux.HandleFunc("POST /reports/{id}/narrative/preview", s.requireAuth(s.handlePreviewNarrative))
 	s.mux.HandleFunc("POST /reports/{id}/delegates", s.requireAuth(s.handleAddReportDelegate))
 	s.mux.HandleFunc("POST /reports/{id}/delegates/remove", s.requireAuth(s.handleRemoveReportDelegate))
 	s.mux.HandleFunc("POST /reports/{id}/publications", s.requireAuth(s.handlePublishReport))

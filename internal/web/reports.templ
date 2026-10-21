@@ -204,14 +204,61 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 					@narrativeCuration(form)
 				}
 				@reportDelegates(m)
-				@reportLog(log, loc)
+				@reportLog(log, loc, false)
 			</aside>
 			<div class="rp-body">
 				@reportGoalsPanel(panel)
-				@draftPreview(r, asOf, d, false)
+				@draftPreview(r, asOf, d)
 			</div>
 		</div>
+		if m.Manage {
+			@narrativeSaveScript()
+		}
 	}
+}
+
+// narrativeSaveScript keeps the compose form's unsaved changes in sight. A
+// change to the form marks the save status Unsaved changes at once, before
+// its preview answers saying whether the form still differs from what is
+// saved. While the status is marked (data-unsaved), Publish… says to save the
+// narrative first, its Publish button disabled, and leaving or reloading the
+// page asks the browser's "Leave site?". Without script none of it runs, and
+// Publish works as ever.
+templ narrativeSaveScript() {
+	<script>
+		(function () {
+			document.addEventListener("input", changed);
+			document.addEventListener("change", changed);
+			// toggle doesn't bubble, so Publish… opening is caught on its way down.
+			document.addEventListener("toggle", heed, true);
+			document.addEventListener("htmx:afterSettle", heed);
+			window.addEventListener("beforeunload", function (e) {
+				if (!unsaved()) return;
+				e.preventDefault();
+				e.returnValue = "";
+			});
+			heed();
+
+			function unsaved() {
+				var status = document.getElementById("save-status");
+				return !!status && status.hasAttribute("data-unsaved");
+			}
+			function changed(e) {
+				var status = document.getElementById("save-status");
+				if (!status || !(e.target instanceof Element) || !e.target.closest("#narrative-curation")) return;
+				status.setAttribute("data-unsaved", "");
+				document.getElementById("save-result").textContent = "Unsaved changes";
+				heed();
+			}
+			function heed() {
+				var publish = document.querySelector('[data-testid="publish-confirm"]');
+				if (!publish) return;
+				var refused = unsaved();
+				publish.querySelector('[data-testid="publish-unsaved"]').hidden = !refused;
+				publish.querySelector('[data-testid="report-publish"] button').disabled = refused;
+			}
+		})();
+	</script>
 }
 
 // reportDraftHeader is the draft's header strip: Reports › its name, marked a
@@ -293,9 +340,17 @@ const reportLogShown = 20
 // Definition, newest first, each with who made it and when in the company's
 // timezone (loc), the newest reportLogShown up front and the rest behind Show
 // all. Anyone who can open the Report reads it; nobody can change it
-// (CONTEXT.md: Report log).
-templ reportLog(log []domain.ReportLogEntry, loc *time.Location) {
-	<section data-testid="report-log" class="rp-log">
+// (CONTEXT.md: Report log). Saving the narrative swaps it in out of band
+// (oob), with the save's entry.
+templ reportLog(log []domain.ReportLogEntry, loc *time.Location, oob bool) {
+	<section
+		data-testid="report-log"
+		id="report-log"
+		class="rp-log"
+		if oob {
+			hx-swap-oob="true"
+		}
+	>
 		<h2>Report log</h2>
 		@reportLogList(log[:min(len(log), reportLogShown)], loc)
 		if len(log) > reportLogShown {
@@ -325,30 +380,34 @@ templ reportLogList(entries []domain.ReportLogEntry, loc *time.Location) {
 }
 
 // draftPreview is the draft's preview pane: exactly what readers will see.
-// Autosaving the narrative swaps it in place; Add another swaps it in out of
-// band (oob).
-templ draftPreview(r domain.Report, asOf time.Time, d discussion, oob bool) {
-	<section
-		id="draft-preview"
-		data-testid="report-draft"
-		class="rp-body"
-		if oob {
-			hx-swap-oob="true"
-		}
-	>
+// Saving or previewing the narrative swaps it in place.
+templ draftPreview(r domain.Report, asOf time.Time, d discussion) {
+	<section id="draft-preview" data-testid="report-draft" class="rp-body">
 		<p class="label">Preview: exactly what readers will see</p>
 		@reportContent(r, asOf, d)
 	</section>
 }
 
-// saveStatus is the draft header's save status: "Saving…" while the compose
-// form autosaves (it is the form's indicator), then the outcome, text. An
-// autosave's answer swaps it in out of band.
+// The save status's outcomes, beside "Saving…" while a save runs and a
+// refusal's "Not saved".
+const (
+	narrativeSavedStatus   = "Saved"
+	narrativeUnsavedStatus = "Unsaved changes"
+)
+
+// saveStatus is the draft header's save status: "Saving…" while Save narrative
+// saves (it is the button's indicator), then text: Saved, Unsaved changes, or
+// why the narrative was not saved. Unless it is empty or Saved, it marks the
+// compose form unsaved (data-unsaved), which Publish… and leaving the page
+// heed (narrativeSaveScript). An htmx answer swaps it in out of band.
 templ saveStatus(text string, oob bool) {
 	<span
 		data-testid="save-status"
 		id="save-status"
 		class="small muted rp-save"
+		if text != "" && text != narrativeSavedStatus {
+			data-unsaved
+		}
 		if oob {
 			hx-swap-oob="true"
 		}
@@ -358,29 +417,40 @@ templ saveStatus(text string, oob bool) {
 	</span>
 }
 
-// narrativeSaved answers an autosave of the narrative: the preview showing it,
-// and out of band the save status, the compose form's Highlights count (there
-// is none to swap when there are no Highlights) and Publish…'s summary.
-templ narrativeSaved(r domain.Report, asOf time.Time, d discussion, chip baselineChip) {
-	@draftPreview(r, asOf, d, false)
-	@saveStatus("Saved", true)
+// narrativePreviewed answers the compose form previewing what the author is
+// composing: the preview showing r, the draft with the narrative as posted,
+// and out of band the save status saying status and the form's Highlights
+// count (there is none to swap when there are no Highlights). Publish…'s
+// summary says what is saved, so it stays.
+templ narrativePreviewed(r domain.Report, asOf time.Time, d discussion, status string) {
+	@draftPreview(r, asOf, d)
+	@saveStatus(status, true)
+	if len(r.Highlights) > 0 {
+		@curationCount(pickedHighlights(r), len(r.Highlights), true)
+	}
+}
+
+// narrativeSaved answers Save narrative over htmx: the preview showing the
+// narrative as saved, and out of band the save status, the compose form's
+// Highlights count (there is none to swap when there are no Highlights),
+// Publish…'s summary and the Report log, log, in the company's timezone, loc.
+templ narrativeSaved(r domain.Report, asOf time.Time, d discussion, chip baselineChip, log []domain.ReportLogEntry, loc *time.Location) {
+	@draftPreview(r, asOf, d)
+	@saveStatus(narrativeSavedStatus, true)
 	if len(r.Highlights) > 0 {
 		@curationCount(pickedHighlights(r), len(r.Highlights), true)
 	}
 	@publishSummaryText(r, chip, true)
+	@reportLog(log, loc, true)
 }
 
 // narrativeFormAgain answers Add another over htmx: the compose form as
 // posted, with its added note box, and out of band the save status saying
-// status. When the narrative was saved, the preview and Publish…'s summary
-// come too, showing it; a refusal leaves them as they were.
-templ narrativeFormAgain(form narrativeForm, asOf time.Time, d discussion, status string, saved bool) {
+// status. Add another saves nothing, so the preview and Publish…'s summary
+// stay as they were.
+templ narrativeFormAgain(form narrativeForm, status string) {
 	@narrativeCuration(form)
 	@saveStatus(status, true)
-	if saved {
-		@draftPreview(form.Report, asOf, d, true)
-		@publishSummaryText(form.Report, form.Chip, true)
-	}
 }
 
 // reportBaselineChip is the draft header's "Changes since …" menu: back to the
@@ -415,7 +485,9 @@ templ reportBaselineChip(r domain.Report, chip baselineChip) {
 
 // reportPublish is the draft header's Publish…: a disclosure confirming what
 // the publication will freeze, with Cancel, which reloads the draft as it
-// stands and so closes it, and the publish form. A date the reader picked is
+// stands and so closes it, and the publish form. While the compose form has
+// unsaved changes, script shows "Save the narrative first." and disables
+// Publish (narrativeSaveScript). A date the reader picked is
 // carried on the action; otherwise publishing reads against the previous
 // publication, as the draft does.
 templ reportPublish(r domain.Report, chip baselineChip) {
@@ -425,6 +497,7 @@ templ reportPublish(r domain.Report, chip baselineChip) {
 			<div>
 				<h2>{ "Publish " + r.Definition.Name + "?" }</h2>
 				@publishSummaryText(r, chip, false)
+				<p data-testid="publish-unsaved" role="alert" hidden><strong>Save the narrative first.</strong></p>
 			</div>
 			<div class="rp-actions">
 				<a data-testid="publish-cancel" class="btn quiet" href={ templ.SafeURL(chip.Draft + chip.Query) }>Cancel</a>
@@ -437,7 +510,7 @@ templ reportPublish(r domain.Report, chip baselineChip) {
 }
 
 // publishSummaryText is Publish…'s summary of what the publication will
-// freeze. An autosave's answer swaps it in out of band.
+// freeze. Saving the narrative over htmx swaps it in out of band.
 templ publishSummaryText(r domain.Report, chip baselineChip, oob bool) {
 	<p
 		data-testid="publish-summary"
@@ -869,21 +942,20 @@ templ narrativeCuration(f narrativeForm) {
 	<section data-testid="report-curation" class="rp-body">
 		<h2>Narrative</h2>
 		// A date the reader picked rides on the action, so the draft reloads
-		// against it. With htmx the form autosaves as the author types,
+		// against it. With htmx the form previews as the author types,
 		// swapping in the preview and the save status but never its own
-		// fields; Save narrative is for readers without JavaScript.
+		// fields, and saves nothing; only Save narrative saves.
 		<form
 			data-testid="narrative-curation"
 			id="narrative-curation"
 			class="rp-form"
 			method="post"
 			action={ templ.SafeURL(narrativeAction(f.Report, f.Chip)) }
-			hx-post={ narrativeAction(f.Report, f.Chip) }
+			hx-post={ narrativePreviewAction(f.Report, f.Chip) }
 			hx-trigger="change, input delay:400ms"
 			hx-target="#draft-preview"
 			hx-swap="outerHTML"
-			hx-sync="this:replace"
-			hx-indicator="#save-status"
+			hx-sync="this:queue last"
 			hx-on:htmx:response-error={ notSavedScript }
 			hx-on:htmx:send-error={ notSavedScript }
 		>
@@ -904,14 +976,25 @@ templ narrativeCuration(f narrativeForm) {
 			for _, section := range narrativeSections {
 				@sectionText(section, f.Notes[section], narrativeAction(f.Report, f.Chip))
 			}
-			<noscript><button type="submit" class="btn">Save narrative</button></noscript>
+			// With htmx it saves in place, never swapping the form's own
+			// fields, and cuts short a preview in flight, as its answer
+			// brings the preview; without script it is a plain submit.
+			<button
+				type="submit"
+				class="btn"
+				hx-post={ narrativeAction(f.Report, f.Chip) }
+				hx-target="#draft-preview"
+				hx-swap="outerHTML"
+				hx-sync="closest form:replace"
+				hx-indicator="#save-status"
+			>Save narrative</button>
 		</form>
 	</section>
 }
 
 // curationCount is how many (picked) of the Highlights the compose form offers
-// (offered) are picked into the narrative. An autosave's answer swaps it in out
-// of band.
+// (offered) are picked into the narrative. A save's or a preview's answer
+// swaps it in out of band.
 templ curationCount(picked, offered int, oob bool) {
 	<span
 		data-testid="curation-count"
@@ -929,8 +1012,14 @@ func narrativeAction(r domain.Report, chip baselineChip) string {
 	return fmt.Sprintf("/reports/%d/narrative%s", r.Definition.ID, chip.Query)
 }
 
-// notSavedScript says Not saved in the draft's save status when an autosave
-// gets an error status or no answer at all.
+// narrativePreviewAction is where the curation form posts to preview what the
+// author is composing, against the baseline the reader picked.
+func narrativePreviewAction(r domain.Report, chip baselineChip) string {
+	return fmt.Sprintf("/reports/%d/narrative/preview%s", r.Definition.ID, chip.Query)
+}
+
+// notSavedScript says Not saved in the draft's save status when a save or a
+// preview gets an error status or no answer at all.
 var notSavedScript = templ.ComponentScript{Call: "document.getElementById('save-result').textContent = 'Not saved'"}
 
 // sectionText is a section's own notes on the curation form, each in its own

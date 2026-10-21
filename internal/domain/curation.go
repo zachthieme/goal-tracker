@@ -101,35 +101,9 @@ func (s *Service) CurateNarrative(ctx context.Context, actorID, defID int64, in 
 	if err := s.requireReportManager(ctx, actorID, def, "curate"); err != nil {
 		return err
 	}
-	for section := range in.Notes {
-		if !validHighlightKind(section) {
-			return fmt.Errorf("%w: %q is not a narrative section", ErrValidation, section)
-		}
-	}
-	inScope, err := s.definitionHighlights(ctx, def)
+	notes, err := s.checkCuratedNarrative(ctx, def, in)
 	if err != nil {
 		return err
-	}
-	picked := make(map[int64]bool, len(in.Picks))
-	for _, p := range in.Picks {
-		if !validHighlightKind(p.Section) {
-			return fmt.Errorf("%w: %q is not a narrative section", ErrValidation, p.Section)
-		}
-		if !inScope[p.HighlightID] {
-			return fmt.Errorf("%w: Highlight %d is not on a Goal this Report selects", ErrValidation, p.HighlightID)
-		}
-		if picked[p.HighlightID] {
-			return fmt.Errorf("%w: Highlight %d is picked twice", ErrValidation, p.HighlightID)
-		}
-		picked[p.HighlightID] = true
-	}
-	notes := make(map[string][]string, len(narrativeKinds))
-	for _, section := range narrativeKinds {
-		for _, note := range in.Notes[section] {
-			if note = strings.TrimSpace(note); note != "" {
-				notes[section] = append(notes[section], note)
-			}
-		}
 	}
 	return s.WithinTx(ctx, func(tx *Service) error {
 		edit, err := tx.narrativeEdit(ctx, def.ID, in.Picks, notes)
@@ -168,6 +142,51 @@ func (s *Service) CurateNarrative(ctx context.Context, actorID, defID int64, in 
 		}
 		return nil
 	})
+}
+
+// checkCuratedNarrative refuses a narrative CurateNarrative can't save for
+// def (ErrValidation): a section that isn't one, or a pick of a Highlight not
+// on a Goal def selects, or picked twice. It returns the narrative's notes
+// keyed by section, each trimmed, the blank ones dropped.
+func (s *Service) checkCuratedNarrative(ctx context.Context, def ReportDefinition, in CurateNarrativeInput) (map[string][]string, error) {
+	for section := range in.Notes {
+		if !validHighlightKind(section) {
+			return nil, fmt.Errorf("%w: %q is not a narrative section", ErrValidation, section)
+		}
+	}
+	inScope, err := s.definitionHighlights(ctx, def)
+	if err != nil {
+		return nil, err
+	}
+	picked := make(map[int64]bool, len(in.Picks))
+	for _, p := range in.Picks {
+		if !validHighlightKind(p.Section) {
+			return nil, fmt.Errorf("%w: %q is not a narrative section", ErrValidation, p.Section)
+		}
+		if !inScope[p.HighlightID] {
+			return nil, fmt.Errorf("%w: Highlight %d is not on a Goal this Report selects", ErrValidation, p.HighlightID)
+		}
+		if picked[p.HighlightID] {
+			return nil, fmt.Errorf("%w: Highlight %d is picked twice", ErrValidation, p.HighlightID)
+		}
+		picked[p.HighlightID] = true
+	}
+	return storedNarrativeNotes(in.Notes), nil
+}
+
+// storedNarrativeNotes are a narrative's notes, keyed by section, as they are
+// stored: each trimmed, the blank ones and any of a section that isn't one
+// dropped.
+func storedNarrativeNotes(in map[string][]string) map[string][]string {
+	notes := make(map[string][]string, len(narrativeKinds))
+	for _, section := range narrativeKinds {
+		for _, note := range in[section] {
+			if note = strings.TrimSpace(note); note != "" {
+				notes[section] = append(notes[section], note)
+			}
+		}
+	}
+	return notes
 }
 
 // clearNarrative drops the Report Definition's draft narrative.
@@ -222,11 +241,8 @@ func scopedHighlights(g Goal, hs []Highlight, since func(time.Time) bool) []Narr
 	return out
 }
 
-// draftNarrative marks each of the Report's in-scope Highlights with the
-// section the author picked it into, and builds the Report's narrative from
-// them and the author's notes: its sections in the order Insights,
-// Accomplishments, Misses, leaving out any with neither. A pick of a Highlight
-// outside the Report's scope — written before its baseline — is not shown.
+// draftNarrative builds the Report's narrative from the one saved for its
+// Definition (see narrateReport).
 func (s *Service) draftNarrative(ctx context.Context, r *Report) error {
 	picks, err := s.queries.ListNarrativePicks(ctx, r.Definition.ID)
 	if err != nil {
@@ -244,6 +260,17 @@ func (s *Service) draftNarrative(ctx context.Context, r *Report) error {
 	for _, t := range texts {
 		notesOf[t.Section] = append(notesOf[t.Section], t.Text)
 	}
+	narrateReport(r, sectionOf, notesOf)
+	return nil
+}
+
+// narrateReport marks each of the Report's in-scope Highlights with the
+// section the author picked it into (sectionOf, by Highlight), and builds the
+// Report's narrative from them and the author's notes (notesOf, by section):
+// its sections in the order Insights, Accomplishments, Misses, leaving out
+// any with neither. A pick of a Highlight outside the Report's scope —
+// written before its baseline — is not shown.
+func narrateReport(r *Report, sectionOf map[int64]string, notesOf map[string][]string) {
 	for i := range r.Highlights {
 		r.Highlights[i].Section = sectionOf[r.Highlights[i].Highlight.ID]
 	}
@@ -258,5 +285,4 @@ func (s *Service) draftNarrative(ctx context.Context, r *Report) error {
 			r.Narrative = append(r.Narrative, sec)
 		}
 	}
-	return nil
 }
