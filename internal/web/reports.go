@@ -1,10 +1,13 @@
 package web
 
 import (
+	"bytes"
 	"cmp"
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"slices"
@@ -20,12 +23,16 @@ import (
 // definition, in the order the status table lists them, and the org's
 // timezone to date their publications in. YourActionItems and
 // OrgActionItems are the open Action Items the viewer has reason to chase:
-// those they are party to, and those only their Org is.
+// those they are party to, and those only their Org is. Each published
+// Report's row downloads its last publication.
 type reportsListData struct {
 	Reports         []domain.ReportSummary
 	Loc             *time.Location
 	YourActionItems []domain.ActionItemListing
 	OrgActionItems  []domain.ActionItemListing
+	// PDFFile is whether a publication downloads as a PDF file, or as its
+	// print page to print from the browser.
+	PDFFile bool
 }
 
 // handleReports lists the open Action Items the viewer has reason to chase,
@@ -519,7 +526,7 @@ func (s *Server) handleViewPublication(w http.ResponseWriter, r *http.Request, c
 		s.serverError(w, r, "could not load the discussion", err)
 		return
 	}
-	render(w, r, http.StatusOK, publicationPage(&current, pub, d))
+	render(w, r, http.StatusOK, publicationPage(&current, pub, d, s.pdf != nil))
 }
 
 // handlePrintPublication shows a published Report on a print-friendly page, to
@@ -542,6 +549,78 @@ func (s *Server) handleExportMarkdown(w http.ResponseWriter, r *http.Request, _ 
 	w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="report-%d-publication-%d.md"`, pub.DefinitionID, pub.ID))
 	_, _ = io.WriteString(w, export.Markdown(pub))
+}
+
+// How many PDFs render at once, and how long a download waits for its turn
+// and its render together before it gives up.
+const (
+	pdfRendersAtOnce = 2
+	pdfRenderTimeout = 30 * time.Second
+)
+
+// pdfDownloads renders publications to PDF files: through renderer, at most
+// cap(slots) at once, each within timeout.
+type pdfDownloads struct {
+	renderer PDFRenderer
+	slots    chan struct{}
+	timeout  time.Duration
+}
+
+// handleDownloadPDF downloads a published Report as a PDF file: its print page,
+// rendered. Without a renderer it sends the reader to the print page, to print
+// to PDF from the browser. A download that can't start rendering in time is
+// told the app is busy; one whose render fails gets the server-error page,
+// never a broken PDF.
+func (s *Server) handleDownloadPDF(w http.ResponseWriter, r *http.Request, _ domain.Account) {
+	pub, ok := s.publication(w, r)
+	if !ok {
+		return
+	}
+	printPath := publicationPath(pub) + "/print"
+	if s.pdf == nil {
+		http.Redirect(w, r, printPath, http.StatusSeeOther)
+		return
+	}
+	var page bytes.Buffer
+	if err := publicationPrintPage(pub, s.svc.Timezone()).Render(withPath(withoutHover(r.Context()), printPath), &page); err != nil {
+		s.serverError(w, r, "could not draw the print page", err)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), s.pdf.timeout)
+	defer cancel()
+	select {
+	case s.pdf.slots <- struct{}{}:
+		defer func() { <-s.pdf.slots }()
+	case <-ctx.Done():
+		if r.Context().Err() != nil {
+			return // the reader went away
+		}
+		s.log.WarnContext(r.Context(), "PDF renders all busy", "method", r.Method, "path", r.URL.Path)
+		http.Error(w, "Too many PDFs are being made right now. Try again in a minute.", http.StatusServiceUnavailable)
+		return
+	}
+	b, err := s.pdf.renderer.Render(ctx, page.Bytes(), selfURL(r))
+	if err != nil {
+		s.serverError(w, r, "could not make the PDF", err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="report-%d-publication-%d.pdf"`, pub.DefinitionID, pub.ID))
+	_, _ = w.Write(b)
+}
+
+// selfURL is the app's own address as r reached it: the address it listens on
+// that r's connection arrived at, which the host the app runs on can always
+// reach, unlike a public base URL behind a proxy.
+func selfURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if addr, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr); ok {
+		return scheme + "://" + addr.String()
+	}
+	return scheme + "://" + r.Host
 }
 
 // publication loads the published Report the path names, writing the Not found
@@ -591,7 +670,7 @@ func (s *Server) reportsList(r *http.Request, current domain.Account) (reportsLi
 	if err != nil {
 		return reportsListData{}, err
 	}
-	return reportsListData{Reports: sums, Loc: s.svc.Timezone(), YourActionItems: yours, OrgActionItems: org}, nil
+	return reportsListData{Reports: sums, Loc: s.svc.Timezone(), YourActionItems: yours, OrgActionItems: org, PDFFile: s.pdf != nil}, nil
 }
 
 // byPublishingNeed orders the status table: never-published reports first,
