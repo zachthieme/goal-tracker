@@ -570,6 +570,13 @@ func parsePage(t *testing.T, page string) *html.Node {
 	return doc
 }
 
+// getPage fetches rawURL, failing the test unless it answers 200, and parses
+// the page.
+func getPage(t *testing.T, client *http.Client, rawURL string) *html.Node {
+	t.Helper()
+	return parsePage(t, getBody(t, client, rawURL))
+}
+
 // findAll returns every element under root that match reports, root
 // included, in document order.
 func findAll(root *html.Node, match func(*html.Node) bool) []*html.Node {
@@ -644,6 +651,46 @@ func isHidden(n *html.Node) bool {
 // hidden elements inside n read nothing.
 func textOf(n *html.Node) string {
 	return strings.Join(nodeWords(n, n, isHiddenElement), " ")
+}
+
+// textsOf is what each of nodes reads (textOf), in order.
+func textsOf(nodes []*html.Node) []string {
+	var out []string
+	for _, n := range nodes {
+		out = append(out, textOf(n))
+	}
+	return out
+}
+
+// runningText is n's shown text as a browser runs it together: its text nodes
+// joined as they stand, with no space added between elements, whitespace
+// collapsed. It tells "Mia Chen Answer" from "Mia ChenAnswer", which textOf
+// reads alike.
+func runningText(n *html.Node) string {
+	var b strings.Builder
+	var walk func(*html.Node)
+	walk = func(c *html.Node) {
+		switch {
+		case c.Type == html.TextNode:
+			b.WriteString(c.Data)
+			return
+		case c.Type == html.ElementNode && c != n && isHiddenElement(c):
+			return
+		case c.Type == html.ElementNode && (c.Data == "script" || c.Data == "style" || c.Data == "template"):
+			return
+		}
+		for k := c.FirstChild; k != nil; k = k.NextSibling {
+			walk(k)
+		}
+	}
+	walk(n)
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+// struckThrough is what each date or word under root shown struck through
+// reads, in order: a <del> or <s>, as an earlier date that slipped shows.
+func struckThrough(root *html.Node) []string {
+	return textsOf(findAll(root, func(n *html.Node) bool { return n.Data == "del" || n.Data == "s" }))
 }
 
 // isHiddenElement reports whether n itself carries the hidden attribute.
@@ -752,12 +799,12 @@ func formField(t *testing.T, root *html.Node, name string) pageField {
 	return fields[0]
 }
 
-// checkedRadio is the value of the radio named name ticked under root, or ""
-// when none is.
+// checkedRadio is the label of the radio named name ticked under root, the
+// choice a person sees picked, or "" when none is.
 func checkedRadio(root *html.Node, name string) string {
 	for _, f := range formFields(root, name) {
 		if f.Type == "radio" && f.Checked {
-			return f.Value
+			return f.Label
 		}
 	}
 	return ""
@@ -838,6 +885,16 @@ func precedes(a, b *html.Node) bool {
 			return true
 		case b:
 			return false
+		}
+	}
+	return false
+}
+
+// within reports whether n sits inside root, or is root.
+func within(n, root *html.Node) bool {
+	for p := n; p != nil; p = p.Parent {
+		if p == root {
+			return true
 		}
 	}
 	return false

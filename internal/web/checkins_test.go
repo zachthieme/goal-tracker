@@ -1,9 +1,9 @@
 package web_test
 
 import (
+	"cmp"
 	"context"
 	"fmt"
-	"html"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -12,10 +12,19 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode"
+
+	"golang.org/x/net/html"
 
 	"github.com/zachthieme/goal-tracker/internal/domain"
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
+
+// The tests here assert on what a person sees and can do on the Check-in page
+// and the Goal page's status — text, fields, links, buttons and test IDs — read
+// through the parser helpers in helpers_test.go, so a cosmetic change to the
+// markup breaks none of them. The styles these pages carry are tested in
+// styles_test.go.
 
 // A Yellow Check-in submitted without a Path to Green comes back with the
 // validation error rendered in the form, next to the Path to Green field, so the
@@ -38,14 +47,12 @@ func TestSmokeCheckinValidationErrorReachesForm(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("htmx validation response status = %d, want 200 so htmx swaps the form", status)
 	}
-	if !strings.Contains(body, `data-testid="checkin-error"`) {
-		t.Errorf("response missing the inline error; body:\n%s", body)
-	}
-	if !strings.Contains(body, "Path to Green") {
-		t.Errorf("error does not mention the Path to Green; body:\n%s", body)
-	}
-	if !strings.Contains(body, `data-testid="checkin-form"`) {
+	doc := parsePage(t, body)
+	if !hasTestID(doc, "checkin-form") {
 		t.Errorf("error response is not the re-rendered form; body:\n%s", body)
+	}
+	if msg := fieldError(t, doc, "path_target_date"); !strings.Contains(msg, "Path to Green") {
+		t.Errorf("the error = %q, want it to mention the Path to Green", msg)
 	}
 
 	// Nothing was recorded.
@@ -93,9 +100,9 @@ func TestSmokeNoChangeCheckinButton(t *testing.T) {
 	}
 
 	// The Goal page shows the current Health from the latest Check-in.
-	page := getBody(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	if !strings.Contains(page, `data-testid="goal-health">Green`) {
-		t.Errorf("Goal page missing current Health; body:\n%s", page)
+	page := getPage(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	if got := textOf(findByTestID(t, page, "goal-health")); got != domain.HealthGreen {
+		t.Errorf("Goal page shows Health %q, want Green", got)
 	}
 }
 
@@ -151,10 +158,10 @@ func TestSmokeCheckinRecordsReadingAndHighlight(t *testing.T) {
 		t.Fatalf("highlights = %+v, want the Accomplishment just recorded", highlights)
 	}
 
-	page := getBody(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	reads := textOf(getPage(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)))
 	for _, want := range []string{"850", "Shipped the caching layer.", domain.HighlightAccomplishment} {
-		if !strings.Contains(page, want) {
-			t.Errorf("Goal page missing %q; body:\n%s", want, page)
+		if !strings.Contains(reads, want) {
+			t.Errorf("Goal page missing %q; it reads:\n%s", want, reads)
 		}
 	}
 }
@@ -191,16 +198,16 @@ func TestSmokeCheckinDeliveryDateSlipShownStruckThrough(t *testing.T) {
 		t.Fatalf("recorded %d Date Slips, want 1", len(slips))
 	}
 
-	page := getBody(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	meta := between(t, page, `data-testid="goal-meta"`, `data-testid="goal-dimensions"`)
-	if delivery := pageElement(t, meta, "span", "goal-delivery-date"); !strings.Contains(delivery, fmt.Sprintf("<del>%s</del> <strong>%s</strong>", oldDate, newDate)) {
-		t.Errorf("the rail does not show the delivery date struck through; element:\n%s", delivery)
+	page := getPage(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	delivery := findByTestID(t, findByTestID(t, page, "goal-meta"), "goal-delivery-date")
+	if got, struck := textOf(delivery), struckThrough(delivery); got != oldDate+" "+newDate || !slices.Equal(struck, []string{oldDate}) {
+		t.Errorf("the rail shows the delivery date as %q with %q struck through, want %s struck through, then %s", got, struck, oldDate, newDate)
 	}
-	if slips := between(t, historyBlock(t, page), `data-testid="entry-slips"`, "</ul>"); !strings.Contains(slips, "Vendor API delayed two weeks.") {
-		t.Errorf("the Check-in on the History timeline is missing the Date Slip's reason:\n%s", slips)
+	if slips := textOf(findByTestID(t, findByTestID(t, page, "goal-history"), "entry-slips")); !strings.Contains(slips, "Vendor API delayed two weeks.") {
+		t.Errorf("the Check-in on the History timeline is missing the Date Slip's reason: %q", slips)
 	}
-	if !strings.Contains(page, `data-testid="goal-slip-count">1<`) {
-		t.Errorf("Goal page missing the slip count")
+	if got := textOf(findByTestID(t, page, "goal-slip-count")); got != "1" {
+		t.Errorf("Goal page shows a slip count of %q, want 1", got)
 	}
 }
 
@@ -223,12 +230,12 @@ func TestLatestStatusShowsTheRunOffGreen(t *testing.T) {
 	}
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	cell := between(t, getBody(t, client, goalPageURL(ts.URL, red)), `data-testid="goal-health-cell"`, "</dd>")
-	if got := elementTexts(cell, "span", "goal-run-off-green"); !slices.Equal(got, []string{"· 2 wks"}) {
-		t.Errorf("Owner's Health cell reads its Run off Green %q, want \"· 2 wks\"; cell:\n%s", got, cell)
+	cell := findByTestID(t, getPage(t, client, goalPageURL(ts.URL, red)), "goal-health-cell")
+	if got := textsOf(findAllByTestID(cell, "goal-run-off-green")); !slices.Equal(got, []string{"· 2 wks"}) {
+		t.Errorf("Owner's Health cell reads its Run off Green %q, want \"· 2 wks\"; cell reads %q", got, textOf(cell))
 	}
-	if page := getBody(t, client, goalPageURL(ts.URL, green)); strings.Contains(page, `data-testid="goal-run-off-green"`) {
-		t.Errorf("a Green Goal's page shows a Run off Green:\n%s", between(t, page, `data-testid="goal-health-cell"`, "</dd>"))
+	if page := getPage(t, client, goalPageURL(ts.URL, green)); hasTestID(page, "goal-run-off-green") {
+		t.Errorf("a Green Goal's page shows a Run off Green: %q", textOf(findByTestID(t, page, "goal-health-cell")))
 	}
 }
 
@@ -261,49 +268,72 @@ func TestLatestStatusOpensWithCells(t *testing.T) {
 	}
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	card := pageElement(t, getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, parent.ID)), "section", "goal-checkins")
-	cells := pageElement(t, card, "dl", "goal-status-cells")
+	card := findByTestID(t, getPage(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, parent.ID)), "goal-checkins")
+	cells := findByTestID(t, card, "goal-status-cells")
 	for _, tc := range []struct{ testID, label, value string }{
-		{"goal-health-cell", "Owner's Health", `data-testid="goal-health">Yellow<`},
-		{"goal-rollup-cell", "Rolled-up Health", `data-testid="goal-rollup-health">Red<`},
-		{"goal-rollup-cell", "Rolled-up Health", `data-testid="goal-rollup-checkin-overdue">1 of 2 overdue<`},
-		{"goal-back-to-green-cell", "Back to Green by", "<dd><span>Jun 15</span></dd>"},
+		{"goal-health-cell", "Owner's Health", "Yellow"},
+		{"goal-rollup-cell", "Rolled-up Health", "Red · 1 of 2 overdue"},
+		{"goal-back-to-green-cell", "Back to Green by", "Jun 15"},
 	} {
-		cell := between(t, cells, `data-testid="`+tc.testID+`"`, "")
-		cell, _, _ = strings.Cut(cell, "<div ")
-		// Whitespace before a closing tag shows as nothing.
-		cell = regexp.MustCompile(`\s+</`).ReplaceAllString(cell, "</")
-		if !strings.Contains(cell, `<dt class="label">`+tc.label+`</dt>`) || !strings.Contains(cell, tc.value) {
-			t.Errorf("%s cell lacks label %q over %s: %s", tc.testID, tc.label, tc.value, cell)
+		label, value := statusCell(t, cells, tc.testID)
+		if label != tc.label || !strings.HasPrefix(value, tc.value) {
+			t.Errorf("%s cell reads %q over %q, want %q over %q", tc.testID, label, value, tc.label, tc.value)
 		}
 	}
-	_, rest, _ := strings.Cut(card, `data-testid="goal-status-cells"`)
-	for _, want := range []string{`data-testid="goal-status"`, `data-testid="goal-path-to-green"`, `data-testid="goal-rollup-explanation"`} {
-		if !strings.Contains(rest, want) {
-			t.Errorf("Latest status has no %s below its cells: %s", want, card)
+	for testID, want := range map[string]string{"goal-health": "Yellow", "goal-rollup-health": "Red", "goal-rollup-checkin-overdue": "1 of 2 overdue"} {
+		if got := textsOf(findAllByTestID(cells, testID)); !slices.Equal(got, []string{want}) {
+			t.Errorf("cells show %s %q, want %q", testID, got, want)
+		}
+	}
+	for _, below := range []string{"goal-status", "goal-path-to-green", "goal-rollup-explanation"} {
+		if n := findAllByTestID(card, below); len(n) != 1 || !precedes(cells, n[0]) {
+			t.Errorf("Latest status has no %s below its cells", below)
 		}
 	}
 
 	// A childless Goal with no Path to Green shows only the Owner's Health cell.
 	lone := h.ActiveGoal(sam, "Lone", "It matters.")
 	h.Checkin(sam, lone.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	card = pageElement(t, getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, lone.ID)), "section", "goal-checkins")
-	cells = pageElement(t, card, "dl", "goal-status-cells")
-	if !strings.Contains(cells, `data-testid="goal-health">Green<`) {
-		t.Errorf("Latest status has no Owner's Health cell: %s", cells)
+	card = findByTestID(t, getPage(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, lone.ID)), "goal-checkins")
+	if got := textOf(findByTestID(t, findByTestID(t, card, "goal-status-cells"), "goal-health")); got != "Green" {
+		t.Errorf("Latest status's Owner's Health cell reads %q, want Green", got)
 	}
-	for _, absent := range []string{"goal-rollup-cell", "Rolled-up Health", "goal-back-to-green-cell", "Back to Green"} {
-		if strings.Contains(card, absent) {
-			t.Errorf("a childless Goal with no Path to Green shows %s: %s", absent, card)
+	for _, absent := range []string{"goal-rollup-cell", "goal-back-to-green-cell"} {
+		if hasTestID(card, absent) {
+			t.Errorf("a childless Goal with no Path to Green shows %s", absent)
+		}
+	}
+	for _, absent := range []string{"Rolled-up Health", "Back to Green"} {
+		if strings.Contains(textOf(card), absent) {
+			t.Errorf("a childless Goal with no Path to Green reads %q: %q", absent, textOf(card))
 		}
 	}
 
 	// A Goal with no Health keeps its message in place of the cells.
 	proposed := h.CreateGoal(sam, "Proposed", "It matters.")
-	card = pageElement(t, getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, proposed.ID)), "section", "goal-checkins")
-	if strings.Contains(card, `data-testid="goal-status-cells"`) || !strings.Contains(card, "A Proposed Goal has no Health until it is Active.") {
-		t.Errorf("a Proposed Goal's Latest status should say it has no Health, with no cells: %s", card)
+	card = findByTestID(t, getPage(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, proposed.ID)), "goal-checkins")
+	if hasTestID(card, "goal-status-cells") || !strings.Contains(textOf(card), "A Proposed Goal has no Health until it is Active.") {
+		t.Errorf("a Proposed Goal's Latest status should say it has no Health, with no cells: %q", textOf(card))
 	}
+}
+
+// statusCell reads the Latest status cell carrying testID: its label, the
+// <dt>, and its value, the <dd>.
+func statusCell(t *testing.T, cells *html.Node, testID string) (label, value string) {
+	t.Helper()
+	cell := findByTestID(t, cells, testID)
+	return textOf(firstTag(t, cell, "dt")), textOf(firstTag(t, cell, "dd"))
+}
+
+// firstTag returns the first tag element under root, failing the test if
+// there is none.
+func firstTag(t *testing.T, root *html.Node, tag string) *html.Node {
+	t.Helper()
+	found := findAll(root, func(n *html.Node) bool { return n.Data == tag })
+	if len(found) == 0 {
+		t.Fatalf("no <%s> in:\n%s", tag, renderNode(root))
+	}
+	return found[0]
 }
 
 // A Green Check-in that moves the delivery date later comes back as the form
@@ -327,11 +357,12 @@ func TestSmokeGreenWithLaterDeliveryDateRejectedInForm(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("htmx validation response status = %d, want 200", status)
 	}
-	if msg := fieldError(t, body, `name="delivery_date"`); !strings.Contains(msg, "moves the delivery date later") {
+	doc := parsePage(t, body)
+	if msg := fieldError(t, doc, "delivery_date"); !strings.Contains(msg, "moves the delivery date later") {
 		t.Errorf("delivery date field's error = %q, want the Green one", msg)
 	}
-	if !strings.Contains(body, "Vendor slipped.") {
-		t.Errorf("re-rendered form lost the typed reason; body:\n%s", body)
+	if got := formField(t, doc, "delivery_date_reason").Value; got != "Vendor slipped." {
+		t.Errorf("re-rendered form's reason = %q, want the one typed", got)
 	}
 	if slips, _ := h.Service.ListDateSlips(context.Background(), goal.ID); len(slips) != 0 {
 		t.Errorf("recorded %d Date Slips despite the rejection", len(slips))
@@ -395,19 +426,22 @@ func TestSmokeCheckinChangesMilestones(t *testing.T) {
 		t.Fatalf("second check-in: status %d", resp.StatusCode)
 	}
 
-	page := getBody(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	milestones := pageElement(t, page, "section", "goal-milestones")
-	for _, want := range []string{fmt.Sprintf("<span>%s</span> <del>%s</del>", newBeta, oldBeta), "Docs folded into GA."} {
-		if !strings.Contains(milestones, want) {
-			t.Errorf("Milestone list missing %q; section:\n%s", want, milestones)
+	page := getPage(t, samClient, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	milestones := findByTestID(t, page, "goal-milestones")
+	for _, want := range []string{newBeta + " " + oldBeta, "Docs folded into GA."} {
+		if !strings.Contains(textOf(milestones), want) {
+			t.Errorf("Milestone list missing %q; it reads %q", want, textOf(milestones))
 		}
 	}
-	if slips := between(t, historyBlock(t, page), `data-testid="entry-slips"`, "</ul>"); !strings.Contains(slips, "Design review moved.") {
-		t.Errorf("the Check-in on the History timeline is missing the Date Slip's reason:\n%s", slips)
+	if struck := struckThrough(milestones); !slices.Contains(struck, oldBeta) {
+		t.Errorf("Milestone list strikes through %q, want Beta's old date %s", struck, oldBeta)
 	}
-	for _, want := range []string{`data-testid="goal-slip-count">1<`, `data-testid="goal-milestone-churn">2<`} {
-		if !strings.Contains(page, want) {
-			t.Errorf("Goal page missing %q", want)
+	if slips := textOf(findByTestID(t, findByTestID(t, page, "goal-history"), "entry-slips")); !strings.Contains(slips, "Design review moved.") {
+		t.Errorf("the Check-in on the History timeline is missing the Date Slip's reason: %q", slips)
+	}
+	for testID, want := range map[string]string{"goal-slip-count": "1", "goal-milestone-churn": "2"} {
+		if got := textOf(findByTestID(t, page, testID)); got != want {
+			t.Errorf("Goal page shows %s %q, want %q", testID, got, want)
 		}
 	}
 }
@@ -437,21 +471,21 @@ func TestSmokeCheckinPutsGoalOnHoldAndResumes(t *testing.T) {
 		t.Fatalf("put On Hold: status %d", resp.StatusCode)
 	}
 
-	page := getBody(t, samClient, goalURL)
-	if !strings.Contains(page, `data-testid="goal-lifecycle">On Hold<`) {
-		t.Errorf("Goal page does not show the Goal On Hold")
+	page := getPage(t, samClient, goalURL)
+	if got := textOf(findByTestID(t, page, "goal-lifecycle")); got != domain.LifecycleOnHold {
+		t.Errorf("Goal page shows the Goal %q, want On Hold", got)
 	}
-	if note := pageElement(t, page, "p", "goal-lifecycle-note"); !strings.Contains(note, "Team moved to the payments incident.") {
-		t.Errorf("Goal page missing why it is On Hold; element:\n%s", note)
+	if note := textOf(findByTestID(t, page, "goal-lifecycle-note")); !strings.Contains(note, "Team moved to the payments incident.") {
+		t.Errorf("Goal page missing why it is On Hold; it reads %q", note)
 	}
-	if entry := pageElement(t, page, "span", "checkin-lifecycle"); !strings.Contains(entry, "Active → On Hold") || !strings.Contains(entry, "Team moved to the payments incident.") {
-		t.Errorf("History timeline missing the Lifecycle change; element:\n%s", entry)
+	if entry := textOf(findByTestID(t, page, "checkin-lifecycle")); !strings.Contains(entry, "Active → On Hold") || !strings.Contains(entry, "Team moved to the payments incident.") {
+		t.Errorf("History timeline missing the Lifecycle change; it reads %q", entry)
 	}
-	form := pageElement(t, getBody(t, samClient, goalURL+"/checkin"), "fieldset", "checkin-lifecycle-fields")
-	if !strings.Contains(form, `value="Active"`) || strings.Contains(form, `value="Done"`) {
-		t.Errorf("On Hold form should offer resume and Cancel only; form:\n%s", form)
+	choices := findByTestID(t, getPage(t, samClient, goalURL+"/checkin"), "checkin-lifecycle-fields")
+	if got := radioLabels(choices, "lifecycle"); !slices.Equal(got, []string{"Resume (Active)", "Cancel"}) {
+		t.Errorf("On Hold form offers %q, want resume and Cancel only", got)
 	}
-	if strings.Contains(page, `data-testid="no-change-checkin"`) {
+	if hasTestID(page, "no-change-checkin") {
 		t.Errorf("On Hold Goal offers the no-change Check-in")
 	}
 
@@ -463,13 +497,23 @@ func TestSmokeCheckinPutsGoalOnHoldAndResumes(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("resume: status %d", resp.StatusCode)
 	}
-	page = getBody(t, samClient, goalURL)
-	if !strings.Contains(page, `data-testid="goal-lifecycle">Active<`) {
-		t.Errorf("Goal page does not show the resumed Goal Active")
+	page = getPage(t, samClient, goalURL)
+	if got := textOf(findByTestID(t, page, "goal-lifecycle")); got != domain.LifecycleActive {
+		t.Errorf("Goal page shows the resumed Goal %q, want Active", got)
 	}
-	if !strings.Contains(page, "On Hold → Active") {
+	if !strings.Contains(textOf(page), "On Hold → Active") {
 		t.Errorf("Check-in history missing the resume")
 	}
+}
+
+// radioLabels are the labels of the radios named name under root, in order:
+// the choices a person is offered.
+func radioLabels(root *html.Node, name string) []string {
+	var out []string
+	for _, f := range formFields(root, name) {
+		out = append(out, f.Label)
+	}
+	return out
 }
 
 // Marking a Goal Done through the form without a final value for every Metric
@@ -509,11 +553,12 @@ func TestSmokeCheckinMarksGoalDone(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("htmx validation response status = %d, want 200", status)
 	}
-	if msg := fieldError(t, body, fmt.Sprintf(`name="reading_%d"`, metric.ID)); !strings.Contains(msg, "final value") {
+	doc := parsePage(t, body)
+	if msg := fieldError(t, doc, fmt.Sprintf("reading_%d", metric.ID)); !strings.Contains(msg, "final value") {
 		t.Errorf("reading field's error = %q, want the final-value one", msg)
 	}
-	if !strings.Contains(body, "p95 latency down to 380ms.") {
-		t.Errorf("re-rendered form lost the typed outcome; body:\n%s", body)
+	if got := formField(t, doc, "outcome").Value; got != "p95 latency down to 380ms." {
+		t.Errorf("re-rendered form's outcome = %q, want the one typed", got)
 	}
 
 	done.Set(fmt.Sprintf("reading_%d", metric.ID), "380")
@@ -522,14 +567,14 @@ func TestSmokeCheckinMarksGoalDone(t *testing.T) {
 		t.Fatalf("mark Done: status %d", resp.StatusCode)
 	}
 
-	page := getBody(t, samClient, goalURL)
-	if !strings.Contains(page, `data-testid="goal-lifecycle">Done<`) {
-		t.Errorf("Goal page does not show the Goal Done")
+	page := getPage(t, samClient, goalURL)
+	if got := textOf(findByTestID(t, page, "goal-lifecycle")); got != domain.LifecycleDone {
+		t.Errorf("Goal page shows the Goal %q, want Done", got)
 	}
-	if note := pageElement(t, page, "p", "goal-lifecycle-note"); !strings.Contains(note, "Outcome: p95 latency down to 380ms.") {
-		t.Errorf("Goal page missing the outcome; element:\n%s", note)
+	if note := textOf(findByTestID(t, page, "goal-lifecycle-note")); !strings.Contains(note, "Outcome: p95 latency down to 380ms.") {
+		t.Errorf("Goal page missing the outcome; it reads %q", note)
 	}
-	if strings.Contains(page, `data-testid="checkin-form"`) {
+	if hasTestID(page, "checkin-form") {
 		t.Errorf("a Done Goal still offers the Check-in form")
 	}
 }
@@ -554,7 +599,7 @@ func TestCheckinCancelWithoutReasonErrorReadsNaturally(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("htmx validation response status = %d, want 200", status)
 	}
-	if msg := pageElement(t, body, "p", "checkin-error"); !strings.Contains(msg, "Cancelling a Goal needs a reason") {
+	if msg := textOf(findByTestID(t, parsePage(t, body), "checkin-error")); !strings.Contains(msg, "Cancelling a Goal needs a reason") {
 		t.Errorf("error = %q, want it to say Cancelling a Goal needs a reason", msg)
 	}
 }
@@ -584,23 +629,25 @@ func TestCheckinNonNumericReadingNamesTheMetric(t *testing.T) {
 	}
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 
+	reading := fmt.Sprintf("reading_%d", metric.ID)
 	body, status := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
-		"health":                             {domain.HealthGreen},
-		"status":                             {"On track."},
-		fmt.Sprintf("reading_%d", metric.ID): {"abc"},
+		"health": {domain.HealthGreen},
+		"status": {"On track."},
+		reading:  {"abc"},
 	})
 	if status != http.StatusOK {
 		t.Fatalf("htmx validation response status = %d, want 200", status)
 	}
-	msg := fieldError(t, body, fmt.Sprintf(`name="reading_%d"`, metric.ID))
-	if !strings.Contains(msg, `&#34;Signups&#34; needs a number`) {
+	doc := parsePage(t, body)
+	msg := fieldError(t, doc, reading)
+	if !strings.Contains(msg, `"Signups" needs a number`) {
 		t.Errorf("error = %q, want it to say \"Signups\" needs a number", msg)
 	}
 	if strings.Contains(msg, "metric") {
 		t.Errorf("error = %q, still names the Metric by its id", msg)
 	}
-	if !strings.Contains(body, `value="abc"`) {
-		t.Errorf("re-rendered form lost the typed reading; body:\n%s", body)
+	if got := formField(t, doc, reading).Value; got != "abc" {
+		t.Errorf("re-rendered reading = %q, want the abc typed", got)
 	}
 }
 
@@ -647,35 +694,49 @@ func TestCheckinFormShowsLatestReadingsAsGhostText(t *testing.T) {
 		}
 	}
 
-	form := pageElement(t, getBody(t, samClient, goalURL+"/checkin"), "fieldset", "checkin-readings")
-	if want := fmt.Sprintf(`name="reading_%d" value="" placeholder="135.5"`, signups.ID); !strings.Contains(form, want) {
-		t.Errorf("Signups reading not empty with its latest value as ghost text (want %s); form:\n%s", want, form)
+	readings := findByTestID(t, getPage(t, samClient, goalURL+"/checkin"), "checkin-readings")
+	signupsField := formField(t, readings, fmt.Sprintf("reading_%d", signups.ID))
+	if signupsField.Value != "" || signupsField.Placeholder != "135.5" {
+		t.Errorf("Signups reading = %q with ghost text %q, want it empty with its latest value, 135.5, as ghost text", signupsField.Value, signupsField.Placeholder)
 	}
-	if want := fmt.Sprintf(`name="reading_%d" value="">`, referrals.ID); !strings.Contains(form, want) {
-		t.Errorf("Referrals has no readings, so its input should be blank with no ghost text (want %s); form:\n%s", want, form)
+	referralsField := formField(t, readings, fmt.Sprintf("reading_%d", referrals.ID))
+	if referralsField.Value != "" || hasAttr(referralsField.Node, "placeholder") {
+		t.Errorf("Referrals has no readings, so its input should be blank with no ghost text; got %q with ghost text %q", referralsField.Value, referralsField.Placeholder)
 	}
 
 	// Each Metric's row shows its unit, baseline, target and target date, its
 	// last reading with progress toward the target, and labels its input for
 	// a screen reader (ticket #364). The harness clock reads Jan 2, 2026.
-	signupsRow := between(t, form, ">Signups<", fmt.Sprintf(`name="reading_%d"`, signups.ID))
-	if got, want := checkinPageText(signupsRow), "Signups per week · 100 → 500 by Jul 2 · last 135.5"; !strings.Contains(got, want) {
+	signupsRow := rowAround(signupsField.Node, "Signups")
+	if got, want := textOf(signupsRow), "Signups per week · 100 → 500 by Jul 2 · last 135.5"; !strings.Contains(got, want) {
 		t.Errorf("Signups row reads %q, want it to contain %q", got, want)
 	}
 	// (135.5 − 100) / (500 − 100) of the way from baseline to target.
-	if !strings.Contains(signupsRow, `<progress class="checkin-metric-progress" aria-hidden="true" max="1" value="0.08875">`) {
-		t.Errorf("Signups row has no progress 0.08875 of the way to its target; row:\n%s", signupsRow)
+	if bars := findAll(signupsRow, func(n *html.Node) bool { return n.Data == "progress" }); len(bars) != 1 ||
+		attrOf(bars[0], "value") != "0.08875" || attrOf(bars[0], "max") != "1" || attrOf(bars[0], "aria-hidden") != "true" {
+		t.Errorf("Signups row has no progress 0.08875 of the way to its target, hidden from a screen reader; row:\n%s", renderNode(signupsRow))
 	}
-	if !strings.Contains(signupsRow, `aria-label="Signups current value"`) {
-		t.Errorf("Signups input isn't labelled Signups current value; row:\n%s", signupsRow)
+	if signupsField.Label != "Signups current value" {
+		t.Errorf("Signups input is labelled %q, want Signups current value", signupsField.Label)
 	}
-	referralsRow := between(t, form, ">Referrals<", fmt.Sprintf(`name="reading_%d"`, referrals.ID))
-	if got, want := checkinPageText(referralsRow), "Referrals per week · 100 → 500 by Jul 2"; !strings.Contains(got, want) {
+	referralsRow := rowAround(referralsField.Node, "Referrals")
+	if got, want := textOf(referralsRow), "Referrals per week · 100 → 500 by Jul 2"; !strings.Contains(got, want) {
 		t.Errorf("Referrals row reads %q, want it to contain %q", got, want)
 	}
-	if strings.Contains(referralsRow, "· last") || strings.Contains(referralsRow, "<progress") {
-		t.Errorf("Referrals has no reading, so its row should show no last value or progress; row:\n%s", referralsRow)
+	if strings.Contains(textOf(referralsRow), "· last") || len(findAll(referralsRow, func(n *html.Node) bool { return n.Data == "progress" })) > 0 {
+		t.Errorf("Referrals has no reading, so its row should show no last value or progress; row:\n%s", renderNode(referralsRow))
 	}
+}
+
+// rowAround is the nearest element around field that reads text: the row
+// that names the field, however it is laid out.
+func rowAround(field *html.Node, text string) *html.Node {
+	for p := field.Parent; p != nil; p = p.Parent {
+		if strings.Contains(textOf(p), text) {
+			return p
+		}
+	}
+	return topOf(field)
 }
 
 // A Green Check-in on a Goal whose Rolled-up Health is Red, sent without an
@@ -697,35 +758,62 @@ func TestCheckinExplanationErrorShownNextToExplanationField(t *testing.T) {
 		"health": {domain.HealthGreen},
 		"status": {"Looks fine."},
 	})
+	doc := parsePage(t, body)
 	const want = "This Health differs from the Rolled-up Health (Red); explain why."
-	if msg := fieldError(t, body, `name="explanation"`); !strings.Contains(msg, `">`+want) {
+	if msg := fieldError(t, doc, "explanation"); !strings.HasPrefix(msg, want) {
 		t.Errorf("explanation field's error = %q, want it to read %q", msg, want)
 	}
-	if strings.Contains(body, "validation failed") {
+	if strings.Contains(textOf(doc), "validation failed") {
 		t.Errorf("page shows the internal \"validation failed\" prefix; body:\n%s", body)
 	}
 }
 
-// fieldError returns the form's one validation error, failing unless it sits
-// right after the field matched by fieldMarker — after that field and before
-// the next field's label — so it is shown next to the field it is about.
-func fieldError(t *testing.T, body, fieldMarker string) string {
+// fieldError returns what the form's one validation error says, failing
+// unless it sits beside the field named name — after it, or after a radio
+// group's last radio, and before the next field's label — so it is shown next
+// to the field it is about. A name several fields share means the first.
+func fieldError(t *testing.T, doc *html.Node, name string) string {
 	t.Helper()
-	if n := strings.Count(body, `data-testid="checkin-error"`); n != 1 {
-		t.Fatalf("form shows %d validation errors, want 1; body:\n%s", n, body)
+	fields := formFields(doc, name)
+	if len(fields) == 0 {
+		t.Fatalf("form has no field %s:\n%s", name, renderNode(doc))
 	}
-	field := strings.Index(body, fieldMarker)
-	if field < 0 {
-		t.Fatalf("form has no field %s; body:\n%s", fieldMarker, body)
+	field := fields[0]
+	if field.Type == "radio" {
+		field = fields[len(fields)-1]
 	}
-	after := body[field:]
-	if next := strings.Index(after[1:], "<label"); next >= 0 {
-		after = after[:next+1]
+	return errorAfter(t, doc, field.Node)
+}
+
+// formTopError returns what the form's one validation error says, failing
+// unless it sits at the top of the Check-in form, before its first label.
+func formTopError(t *testing.T, doc *html.Node) string {
+	t.Helper()
+	return errorAfter(t, doc, findByTestID(t, doc, "checkin-form"))
+}
+
+// errorAfter returns what the page's one validation error says, failing unless
+// it is the first thing after from, reading on, before any label.
+func errorAfter(t *testing.T, doc, from *html.Node) string {
+	t.Helper()
+	errs := findAllByTestID(doc, "checkin-error")
+	if len(errs) != 1 {
+		t.Fatalf("form shows %d validation errors, want 1:\n%s", len(errs), renderNode(doc))
 	}
-	if !strings.Contains(after, `data-testid="checkin-error"`) {
-		t.Fatalf("the error is not next to %s; body:\n%s", fieldMarker, body)
+	passed := false
+	for n := range doc.Descendants() {
+		switch {
+		case n == from:
+			passed = true
+		case !passed || n.Type != html.ElementNode:
+		case n == errs[0]:
+			return textOf(n)
+		case n.Data == "label":
+			t.Fatalf("the error %q is not next to the field:\n%s", textOf(errs[0]), renderNode(doc))
+		}
 	}
-	return pageElement(t, after, "p", "checkin-error")
+	t.Fatalf("the error %q comes before the field:\n%s", textOf(errs[0]), renderNode(doc))
+	return ""
 }
 
 // A Yellow Check-in without a Path to Green gets its error next to the Path to
@@ -744,11 +832,12 @@ func TestCheckinPathToGreenErrorShownNextToPathToGreenField(t *testing.T) {
 		"health": {domain.HealthYellow},
 		"status": {"Slipping a little."},
 	})
+	doc := parsePage(t, body)
 	const want = "A Yellow Goal needs a Path to Green"
-	if msg := fieldError(t, body, `name="path_target_date"`); !strings.Contains(msg, `">`+want) {
+	if msg := fieldError(t, doc, "path_target_date"); !strings.HasPrefix(msg, want) {
 		t.Errorf("Path to Green field's error = %q, want it to start %q", msg, want)
 	}
-	if strings.Contains(body, "validation failed") {
+	if strings.Contains(textOf(doc), "validation failed") {
 		t.Errorf("page shows the internal \"validation failed\" prefix; body:\n%s", body)
 	}
 }
@@ -770,7 +859,7 @@ func TestCheckinLifecycleReasonErrorShownNextToReasonField(t *testing.T) {
 		"status":    {"Pausing."},
 		"lifecycle": {domain.LifecycleOnHold},
 	})
-	if msg := fieldError(t, body, `name="lifecycle_reason"`); !strings.Contains(msg, "On Hold needs a reason") {
+	if msg := fieldError(t, parsePage(t, body), "lifecycle_reason"); !strings.Contains(msg, "On Hold needs a reason") {
 		t.Errorf("Lifecycle reason field's error = %q, want the On Hold one", msg)
 	}
 }
@@ -792,7 +881,7 @@ func TestCheckinOutcomeErrorShownNextToOutcomeField(t *testing.T) {
 		"status":    {"Finished."},
 		"lifecycle": {domain.LifecycleDone},
 	})
-	if msg := fieldError(t, body, `name="outcome"`); !strings.Contains(msg, "needs an outcome") {
+	if msg := fieldError(t, parsePage(t, body), "outcome"); !strings.Contains(msg, "needs an outcome") {
 		t.Errorf("outcome field's error = %q, want the outcome one", msg)
 	}
 }
@@ -815,7 +904,7 @@ func TestCheckinLifecycleChangeErrorShownNextToLifecycleField(t *testing.T) {
 		"lifecycle": {domain.LifecycleProposed},
 	})
 	// The Lifecycle is a radio group; its error follows the last radio.
-	if msg := fieldError(t, body, `name="lifecycle" value="Cancelled"`); !strings.Contains(msg, "Active Goal to") {
+	if msg := fieldError(t, parsePage(t, body), "lifecycle"); !strings.Contains(msg, "Active Goal to") {
 		t.Errorf("Lifecycle field's error = %q, want the Lifecycle change one", msg)
 	}
 }
@@ -839,7 +928,7 @@ func TestCheckinDeliveryDateReasonErrorShownNextToReasonField(t *testing.T) {
 		"path_target_date": {"2026-06-15"},
 		"delivery_date":    {goal.DeliveryDate.AddDate(0, 0, 14).Format("2006-01-02")},
 	})
-	if msg := fieldError(t, body, `name="delivery_date_reason"`); !strings.Contains(msg, "delivery date needs a reason") {
+	if msg := fieldError(t, parsePage(t, body), "delivery_date_reason"); !strings.Contains(msg, "delivery date needs a reason") {
 		t.Errorf("delivery date reason field's error = %q, want the Date Slip one", msg)
 	}
 }
@@ -862,8 +951,7 @@ func TestCheckinMilestoneDateReasonErrorShownNextToReasonField(t *testing.T) {
 		"status": {"Beta moves."},
 		fmt.Sprintf("milestone_date_%d", beta.ID): {beta.TargetDate.AddDate(0, 0, 10).Format("2006-01-02")},
 	})
-	marker := fmt.Sprintf(`name="milestone_date_reason_%d"`, beta.ID)
-	if msg := fieldError(t, body, marker); !strings.Contains(msg, "needs a reason") {
+	if msg := fieldError(t, parsePage(t, body), fmt.Sprintf("milestone_date_reason_%d", beta.ID)); !strings.Contains(msg, "needs a reason") {
 		t.Errorf("Milestone reason field's error = %q, want the Date Slip one", msg)
 	}
 }
@@ -886,8 +974,7 @@ func TestCheckinMilestoneRemovedReasonErrorShownNextToReasonField(t *testing.T) 
 		"status": {"Dropping the beta."},
 		fmt.Sprintf("milestone_status_%d", beta.ID): {domain.MilestoneRemoved},
 	})
-	marker := fmt.Sprintf(`name="milestone_removed_reason_%d"`, beta.ID)
-	if msg := fieldError(t, body, marker); !strings.Contains(msg, "Removing Milestone") {
+	if msg := fieldError(t, parsePage(t, body), fmt.Sprintf("milestone_removed_reason_%d", beta.ID)); !strings.Contains(msg, "Removing Milestone") {
 		t.Errorf("Milestone removal field's error = %q, want the removal one", msg)
 	}
 }
@@ -912,8 +999,7 @@ func TestCheckinOverdueMilestoneErrorShownNextToMilestoneDate(t *testing.T) {
 		fmt.Sprintf("milestone_date_%d", beta.ID):        {h.Clock.Now().AddDate(0, 0, -1).Format("2006-01-02")},
 		fmt.Sprintf("milestone_date_reason_%d", beta.ID): {"It was really due yesterday."},
 	})
-	marker := fmt.Sprintf(`name="milestone_date_%d"`, beta.ID)
-	msg := html.UnescapeString(fieldError(t, body, marker))
+	msg := fieldError(t, parsePage(t, body), fmt.Sprintf("milestone_date_%d", beta.ID))
 	if !strings.Contains(msg, "is overdue (due Jan 1), so the Goal can't be Green.") {
 		t.Errorf("Milestone date field's error = %q, want the overdue one, its date as the page shows dates", msg)
 	}
@@ -941,11 +1027,12 @@ func TestCheckinNewMilestoneErrorShownNextToNewMilestone(t *testing.T) {
 		"new_milestone_date": {"2026-05-01", ""},
 	})
 	// The Docs row is the second new Milestone; the error follows its date.
-	_, docs, ok := strings.Cut(body, `value="Docs"`)
-	if !ok {
+	doc := parsePage(t, body)
+	names, dates := formFields(doc, "new_milestone_name"), formFields(doc, "new_milestone_date")
+	if len(names) < 2 || len(dates) < 2 || names[1].Value != "Docs" {
 		t.Fatalf("form lost the Docs row; body:\n%s", body)
 	}
-	if msg := fieldError(t, docs, `name="new_milestone_date"`); !strings.Contains(msg, "needs a date") {
+	if msg := errorAfter(t, doc, dates[1].Node); !strings.Contains(msg, "needs a date") {
 		t.Errorf("new Milestone's error = %q, want the missing date one", msg)
 	}
 }
@@ -968,7 +1055,7 @@ func TestCheckinOverdueNewMilestoneErrorShownNextToNewMilestone(t *testing.T) {
 		"new_milestone_name": {"Docs"},
 		"new_milestone_date": {h.Clock.Now().AddDate(0, 0, -1).Format("2006-01-02")},
 	})
-	if msg := fieldError(t, body, `name="new_milestone_date"`); !strings.Contains(msg, "is overdue") {
+	if msg := fieldError(t, parsePage(t, body), "new_milestone_date"); !strings.Contains(msg, "is overdue") {
 		t.Errorf("new Milestone's error = %q, want the overdue one", msg)
 	}
 }
@@ -991,19 +1078,15 @@ func TestCheckinInvalidMilestoneDateErrorShownNextToMilestoneDate(t *testing.T) 
 		"status": {"All good."},
 		fmt.Sprintf("milestone_date_%d", beta.ID): {"next spring"},
 	})
-	marker := fmt.Sprintf(`name="milestone_date_%d"`, beta.ID)
-	if msg := fieldError(t, body, marker); !strings.Contains(msg, "invalid date") {
+	if msg := fieldError(t, parsePage(t, body), fmt.Sprintf("milestone_date_%d", beta.ID)); !strings.Contains(msg, "invalid date") {
 		t.Errorf("Milestone date field's error = %q, want the invalid date one", msg)
 	}
 }
 
-// highlightRows splits a rendered Check-in form into its Highlight rows, in
-// order.
-func highlightRows(t *testing.T, body string) []string {
+// highlightRows returns a rendered Check-in form's Highlight rows, in order.
+func highlightRows(t *testing.T, doc *html.Node) []*html.Node {
 	t.Helper()
-	section := pageElement(t, body, "details", "checkin-highlight-section")
-	parts := strings.Split(section, `data-testid="checkin-highlight-row"`)
-	return parts[1:]
+	return findAllByTestID(findByTestID(t, doc, "checkin-highlight-section"), "checkin-highlight-row")
 }
 
 // An Owner flags several Highlights in one Check-in, one per row of the form,
@@ -1070,18 +1153,18 @@ func TestCheckinHighlightWithNoKindRefusedInItsRow(t *testing.T) {
 		"highlight_kind": {domain.HighlightInsight, ""},
 		"highlight_note": {"Retries masked the root cause.", "Found a cheaper vendor."},
 	})
-	rows := highlightRows(t, body)
+	rows := highlightRows(t, parsePage(t, body))
 	if len(rows) != 2 {
 		t.Fatalf("form shows %d Highlight rows, want the 2 typed", len(rows))
 	}
-	if strings.Contains(rows[0], `data-testid="checkin-error"`) {
-		t.Errorf("Highlight 1 shows an error; row:\n%s", rows[0])
+	if hasTestID(rows[0], "checkin-error") {
+		t.Errorf("Highlight 1 shows an error: %q", textOf(rows[0]))
 	}
-	if !strings.Contains(rows[1], `data-testid="checkin-error"`) || !strings.Contains(rows[1], "Highlight 2 needs a kind") {
-		t.Errorf("Highlight 2 lacks its error naming it; row:\n%s", rows[1])
+	if errs := textsOf(findAllByTestID(rows[1], "checkin-error")); len(errs) != 1 || !strings.Contains(errs[0], "Highlight 2 needs a kind") {
+		t.Errorf("Highlight 2's errors = %q, want one naming it", errs)
 	}
-	if !strings.Contains(rows[1], "Found a cheaper vendor.") {
-		t.Errorf("Highlight 2 lost its note; row:\n%s", rows[1])
+	if got := formField(t, rows[1], "highlight_note").Value; got != "Found a cheaper vendor." {
+		t.Errorf("Highlight 2's note = %q, want the one typed", got)
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
 		t.Errorf("checkins = %d, want none recorded", len(history))
@@ -1099,17 +1182,17 @@ func TestCheckinFormShowsOneEmptyHighlightRow(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
 	rows := highlightRows(t, page)
 	if len(rows) != 1 {
 		t.Fatalf("form shows %d Highlight rows, want 1", len(rows))
 	}
-	if !strings.Contains(rows[0], `<textarea name="highlight_note"></textarea>`) {
-		t.Errorf("the Highlight row is not empty; row:\n%s", rows[0])
+	if got := formField(t, rows[0], "highlight_note").Value; got != "" {
+		t.Errorf("the Highlight row's note = %q, want it empty", got)
 	}
-	section := pageElement(t, page, "details", "checkin-highlight-section")
-	if !strings.Contains(section, `name="add_highlight"`) {
-		t.Errorf("no Add another button; section:\n%s", section)
+	add := buttonNamed(findByTestID(t, page, "checkin-highlight-section"), "Add another")
+	if add == nil || attrOf(add, "name") != "add_highlight" {
+		t.Errorf("no Add another button posting add_highlight")
 	}
 }
 
@@ -1125,17 +1208,17 @@ func TestCheckinFormEnterSubmitsTheCheckin(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	form := pageElement(t, page, "form", "checkin-form")
-	first := regexp.MustCompile(`<button[^>]*type="submit"[^>]*>`).FindString(form)
-	if attr(first, "data-testid") != "checkin-default-submit" {
-		t.Fatalf("the form's first submit, which Enter presses, isn't the default submit: %s", first)
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	form := findByTestID(t, page, "checkin-form")
+	first := submitButtons(form)[0]
+	if attrOf(first, "data-testid") != "checkin-default-submit" {
+		t.Fatalf("the form's first submit, which Enter presses, isn't the default submit: %s", renderNode(first))
 	}
-	if strings.Contains(first, `name=`) {
-		t.Errorf("the default submit posts a name, so it isn't a plain Submit check-in: %s", first)
+	if hasAttr(first, "name") {
+		t.Errorf("the default submit posts a name, so it isn't a plain Submit check-in: %s", renderNode(first))
 	}
-	if strings.Index(form, first) > strings.Index(form, `name="add_highlight"`) {
-		t.Errorf("the default submit comes after Add another:\n%s", form)
+	if add := buttonNamed(form, "Add another"); add == nil || precedes(add, first) {
+		t.Errorf("the default submit comes after Add another")
 	}
 }
 
@@ -1174,27 +1257,30 @@ func TestCheckinAddAnotherHighlightKeepsTypedAndRecordsNothing(t *testing.T) {
 			if status != http.StatusOK {
 				t.Fatalf("add another: status %d, want 200", status)
 			}
-			if strings.Contains(body, `data-testid="checkin-error"`) {
-				t.Errorf("add another shows a validation error; body:\n%s", body)
+			doc := parsePage(t, body)
+			if hasTestID(doc, "checkin-error") {
+				t.Errorf("add another shows a validation error: %q", textOf(findByTestID(t, doc, "checkin-error")))
 			}
-			rows := highlightRows(t, body)
+			rows := highlightRows(t, doc)
 			if len(rows) != 2 {
 				t.Fatalf("form shows %d Highlight rows, want 2", len(rows))
 			}
-			if !strings.Contains(rows[0], "The runbook was a week late.") || !strings.Contains(rows[0], `value="Miss" selected`) {
-				t.Errorf("Highlight 1 lost what was typed; row:\n%s", rows[0])
+			if note, kind := formField(t, rows[0], "highlight_note"), formField(t, rows[0], "highlight_kind"); note.Value != "The runbook was a week late." || kind.Value != domain.HighlightMiss {
+				t.Errorf("Highlight 1 reads %q of kind %q, want what was typed", note.Value, kind.Value)
 			}
-			if !strings.Contains(rows[1], `<textarea name="highlight_note"></textarea>`) {
-				t.Errorf("the added row is not empty; row:\n%s", rows[1])
+			if got := formField(t, rows[1], "highlight_note").Value; got != "" {
+				t.Errorf("the added row's note = %q, want it empty", got)
 			}
-			section := pageElement(t, body, "details", "checkin-highlight-section")
-			if !strings.Contains(openTag(section), " open") {
+			if !hasAttr(findByTestID(t, doc, "checkin-highlight-section"), "open") {
 				t.Errorf("the Highlight section is collapsed after Add another")
 			}
-			for _, typed := range []string{"Failover slipped a week.", "Drill again on Friday.", `value="Yellow" checked`} {
-				if !strings.Contains(body, typed) {
-					t.Errorf("form lost %q", typed)
+			for name, typed := range map[string]string{"status": "Failover slipped a week.", "path_to_green": "Drill again on Friday."} {
+				if got := formField(t, doc, name).Value; got != typed {
+					t.Errorf("form's %s = %q, want %q as typed", name, got, typed)
 				}
+			}
+			if got := checkedRadio(doc, "health"); got != domain.HealthYellow {
+				t.Errorf("form's Health = %q, want Yellow as picked", got)
 			}
 			if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
 				t.Errorf("checkins = %d, want none recorded by Add another", len(history))
@@ -1218,7 +1304,7 @@ func TestCheckinStatusErrorShownNextToStatusField(t *testing.T) {
 		"health": {domain.HealthGreen},
 		"status": {"  "},
 	})
-	if msg := fieldError(t, body, `name="status"`); !strings.Contains(msg, "needs a status") {
+	if msg := fieldError(t, parsePage(t, body), "status"); !strings.Contains(msg, "needs a status") {
 		t.Errorf("status field's error = %q, want the missing status one", msg)
 	}
 }
@@ -1240,7 +1326,7 @@ func TestCheckinHealthErrorShownNextToHealthField(t *testing.T) {
 		"status": {"On track."},
 	})
 	// Health is a radio group; its error follows the last radio.
-	if msg := fieldError(t, body, `name="health" value="Red"`); !strings.Contains(msg, "Health must be") {
+	if msg := fieldError(t, parsePage(t, body), "health"); !strings.Contains(msg, "Health must be") {
 		t.Errorf("Health field's error = %q, want the Health one", msg)
 	}
 }
@@ -1270,7 +1356,7 @@ func TestCheckinErrorAboutNoOneFieldShownAtTopOfForm(t *testing.T) {
 		"health": {domain.HealthGreen},
 		"status": {"Trying anyway."},
 	})
-	if msg := fieldError(t, body, `data-testid="checkin-form"`); !strings.Contains(msg, "Only an Active Goal") {
+	if msg := formTopError(t, parsePage(t, body)); !strings.Contains(msg, "Only an Active Goal") {
 		t.Errorf("the form's top error = %q, want the Active Goal one", msg)
 	}
 }
@@ -1291,15 +1377,15 @@ func TestCheckinPageForOwnerAndDelegatesOnly(t *testing.T) {
 	checkinURL := fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)
 
 	for _, who := range []string{"sam@example.com", "tpm@example.com"} {
-		page := getBody(t, signInClient(t, ts.URL, who), checkinURL)
-		if !strings.Contains(page, ">Check in</h1>") {
-			t.Errorf("%s: page is not titled Check in; body:\n%s", who, page)
+		page := getPage(t, signInClient(t, ts.URL, who), checkinURL)
+		if h1 := headingNamed(page, "Check in"); h1 == nil || h1.Data != "h1" {
+			t.Errorf("%s: page is not titled Check in", who)
 		}
-		if !strings.Contains(page, fmt.Sprintf(`href="/goals/%d"`, goal.ID)) || !strings.Contains(page, "Reduce outages") {
-			t.Errorf("%s: page has no breadcrumb back to the Goal; body:\n%s", who, page)
+		if crumb := linkTo(page, fmt.Sprintf("/goals/%d", goal.ID)); crumb == nil || textOf(crumb) != "Reduce outages" {
+			t.Errorf("%s: page has no breadcrumb back to the Goal", who)
 		}
-		if !strings.Contains(page, `data-testid="checkin-form"`) {
-			t.Errorf("%s: page has no Check-in form; body:\n%s", who, page)
+		if !hasTestID(page, "checkin-form") {
+			t.Errorf("%s: page has no Check-in form", who)
 		}
 	}
 
@@ -1325,22 +1411,22 @@ func TestGoalPageLinksToCheckinPage(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
-	section := between(t, page, `data-testid="goal-actions"`, `data-testid="goal-more"`)
-	if !strings.Contains(section, fmt.Sprintf(`href="/goals/%d/checkin"`, goal.ID)) {
-		t.Errorf("Goal page does not link to the Check-in page; section:\n%s", section)
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID))
+	actions := findByTestID(t, page, "goal-actions")
+	if link := linkTo(actions, fmt.Sprintf("/goals/%d/checkin", goal.ID)); link == nil || textOf(link) != "Check in" {
+		t.Errorf("Goal page's header does not link to the Check-in page; it reads %q", textOf(actions))
 	}
-	if strings.Contains(page, `data-testid="checkin-form"`) {
+	if hasTestID(page, "checkin-form") {
 		t.Errorf("Goal page still embeds the Check-in form")
 	}
-	if !strings.Contains(section, `data-testid="no-change-checkin"`) {
-		t.Errorf("Goal page lost the no-change button; section:\n%s", section)
+	if !hasTestID(actions, "no-change-checkin") {
+		t.Errorf("Goal page's header lost the no-change button; it reads %q", textOf(actions))
 	}
 }
 
 // Health is picked from a radio group, not a select, picked from the latest
 // Check-in. The Path to Green fieldset stays in the form, hidden by CSS alone
-// while Green is picked.
+// while Green is picked (styles_test.go).
 func TestCheckinPageHealthIsRadioGroup(t *testing.T) {
 	t.Parallel()
 
@@ -1351,46 +1437,19 @@ func TestCheckinPageHealthIsRadioGroup(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.Checkin(sam, goal.ID, domain.HealthYellow, "Slipping.", "Add a second on-call.", pathDate)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	if strings.Contains(page, `<select name="health"`) {
-		t.Errorf("Health is still a select")
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	var got []string
+	for _, f := range formFields(page, "health") {
+		got = append(got, fmt.Sprintf("%s %s=%s", f.Type, f.Label, f.Value))
 	}
-	for _, want := range []string{
-		`type="radio" name="health" value="Green"`,
-		`type="radio" name="health" value="Yellow" checked`,
-		`type="radio" name="health" value="Red"`,
-	} {
-		if !strings.Contains(page, want) {
-			t.Errorf("Health radio group missing %s; body:\n%s", want, page)
-		}
+	if want := []string{"radio Green=Green", "radio Yellow=Yellow", "radio Red=Red"}; !slices.Equal(got, want) {
+		t.Errorf("Health fields = %q, want the radio group %q", got, want)
 	}
-	if !strings.Contains(page, `data-testid="path-to-green-field"`) {
+	if got := checkedRadio(page, "health"); got != domain.HealthYellow {
+		t.Errorf("Health picked = %q, want the latest Check-in's Yellow", got)
+	}
+	if !hasTestID(page, "path-to-green-field") {
 		t.Errorf("Path to Green fieldset left the form")
-	}
-	if !strings.Contains(page, `:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error)`) {
-		t.Errorf("no CSS rule hides the Path to Green while Green is picked; body:\n%s", page)
-	}
-}
-
-// A Path to Green error keeps the fieldset shown whatever Health is picked.
-func TestCheckinPathToGreenFieldShownOnError(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-
-	sam := h.SignIn("sam@example.com")
-	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-	samClient := signInClient(t, ts.URL, "sam@example.com")
-
-	body, _ := postFormHX(t, samClient, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
-		"health":           {domain.HealthGreen},
-		"status":           {"Fine."},
-		"path_target_date": {"not a date"},
-	})
-	field := pageElement(t, body, "fieldset", "path-to-green-field")
-	if !strings.Contains(field, "has-error") {
-		t.Errorf("Path to Green fieldset holding an error is not marked to stay shown; fieldset:\n%s", field)
 	}
 }
 
@@ -1405,20 +1464,26 @@ func TestCheckinPageOptionalSectionsCollapsedByDefault(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
 	for testID, summary := range map[string]string{
 		"checkin-highlight-section": "Flag a highlight",
 		"checkin-dates-section":     "Change dates or milestones · delivers Jul 2 · 1 planned milestone",
 		"checkin-lifecycle-section": "Pause, finish, or cancel this goal · stays Active",
 	} {
-		section := pageElement(t, page, "details", testID)
-		if strings.Contains(openTag(section), " open") {
+		section := findByTestID(t, page, testID)
+		if hasAttr(section, "open") {
 			t.Errorf("%s is open on a fresh Check-in", testID)
 		}
-		if !strings.Contains(section, summary) {
-			t.Errorf("%s summary missing %q; section:\n%s", testID, summary, section)
+		if got := sectionSummary(t, section); !strings.Contains(got, summary) {
+			t.Errorf("%s summary reads %q, want it to read %q", testID, got, summary)
 		}
 	}
+}
+
+// sectionSummary is what a collapsible section's summary line reads.
+func sectionSummary(t *testing.T, section *html.Node) string {
+	t.Helper()
+	return textOf(firstTag(t, section, "summary"))
 }
 
 // The Check-in page opened with ?open=dates, as a Schedule conflict's Fix
@@ -1434,19 +1499,19 @@ func TestCheckinPageOpenDatesOpensTheDatesSection(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	checkin := fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)
 
-	page := getBody(t, client, checkin+"?open=dates")
+	page := getPage(t, client, checkin+"?open=dates")
 	for testID, open := range map[string]bool{
 		"checkin-dates-section":     true,
 		"checkin-highlight-section": false,
 		"checkin-lifecycle-section": false,
 	} {
-		if got := strings.Contains(openTag(pageElement(t, page, "details", testID)), " open"); got != open {
+		if got := hasAttr(findByTestID(t, page, testID), "open"); got != open {
 			t.Errorf("with ?open=dates, %s open = %v, want %v", testID, got, open)
 		}
 	}
 	for _, query := range []string{"?open=other", ""} {
-		page := getBody(t, client, checkin+query)
-		if strings.Contains(openTag(pageElement(t, page, "details", "checkin-dates-section")), " open") {
+		page := getPage(t, client, checkin+query)
+		if hasAttr(findByTestID(t, page, "checkin-dates-section"), "open") {
 			t.Errorf("with %q, the dates section is open, want it collapsed", query)
 		}
 	}
@@ -1481,12 +1546,12 @@ func TestCheckinSectionOpensOnErrorOrSubmittedValue(t *testing.T) {
 			}
 
 			body, _ := postFormHX(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), form)
-			if !strings.Contains(body, `data-testid="checkin-error"`) {
+			doc := parsePage(t, body)
+			if !hasTestID(doc, "checkin-error") {
 				t.Fatalf("expected a validation error; body:\n%s", body)
 			}
-			section := pageElement(t, body, "details", tc.section)
-			if !strings.Contains(openTag(section), " open") {
-				t.Errorf("%s stays collapsed; section:\n%s", tc.section, section)
+			if !hasAttr(findByTestID(t, doc, tc.section), "open") {
+				t.Errorf("%s stays collapsed", tc.section)
 			}
 		})
 	}
@@ -1506,26 +1571,26 @@ func TestCheckinPageOpensWithLifecyclePickedFromQuery(t *testing.T) {
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 
 	for _, tc := range []struct{ query, picked, summary string }{
-		{"On%20Hold", domain.LifecycleOnHold, "Pause, finish, or cancel this goal · On Hold"},
-		{"Done", domain.LifecycleDone, "Pause, finish, or cancel this goal · Done"},
-		{"Cancelled", domain.LifecycleCancelled, "Pause, finish, or cancel this goal · Cancelled"},
+		{"On%20Hold", "Put On Hold", "Pause, finish, or cancel this goal · On Hold"},
+		{"Done", "Mark Done", "Pause, finish, or cancel this goal · Done"},
+		{"Cancelled", "Cancel", "Pause, finish, or cancel this goal · Cancelled"},
 	} {
-		page := getBody(t, samClient, fmt.Sprintf("%s/goals/%d/checkin?lifecycle=%s", ts.URL, goal.ID, tc.query))
-		section := pageElement(t, page, "details", "checkin-lifecycle-section")
-		if !strings.Contains(openTag(section), " open") {
-			t.Errorf("?lifecycle=%s: the Lifecycle section stays collapsed; section:\n%s", tc.query, section)
+		page := getPage(t, samClient, fmt.Sprintf("%s/goals/%d/checkin?lifecycle=%s", ts.URL, goal.ID, tc.query))
+		section := findByTestID(t, page, "checkin-lifecycle-section")
+		if !hasAttr(section, "open") {
+			t.Errorf("?lifecycle=%s: the Lifecycle section stays collapsed", tc.query)
 		}
-		if !strings.Contains(section, tc.summary) {
-			t.Errorf("?lifecycle=%s: summary missing %q; section:\n%s", tc.query, tc.summary, section)
+		if got := sectionSummary(t, section); got != tc.summary {
+			t.Errorf("?lifecycle=%s: summary reads %q, want %q", tc.query, got, tc.summary)
 		}
-		if got := checkedLifecycle(section); got != tc.picked {
-			t.Errorf("?lifecycle=%s: %q is picked, want %q; section:\n%s", tc.query, got, tc.picked, section)
+		if got := checkedRadio(section, "lifecycle"); got != tc.picked {
+			t.Errorf("?lifecycle=%s: %q is picked, want %q", tc.query, got, tc.picked)
 		}
-		if !strings.Contains(section, `<textarea name="lifecycle_reason"></textarea>`) {
-			t.Errorf("?lifecycle=%s: the reason isn't empty; section:\n%s", tc.query, section)
+		if got := formField(t, section, "lifecycle_reason").Value; got != "" {
+			t.Errorf("?lifecycle=%s: the reason reads %q, want it empty", tc.query, got)
 		}
-		if !strings.Contains(section, `<input type="text" name="outcome" value="">`) {
-			t.Errorf("?lifecycle=%s: the outcome isn't empty; section:\n%s", tc.query, section)
+		if outcome := formField(t, section, "outcome"); outcome.Type != "text" || outcome.Value != "" {
+			t.Errorf("?lifecycle=%s: the outcome is a %s reading %q, want an empty text field", tc.query, outcome.Type, outcome.Value)
 		}
 	}
 }
@@ -1545,15 +1610,19 @@ func TestCheckinFromPutOnHoldMenuItemIsStillACheckin(t *testing.T) {
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 	goalURL := fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)
 
-	page := getBody(t, samClient, ts.URL+menuItems(t, getBody(t, samClient, goalURL))["Put on hold…"])
-	picked := checkedLifecycle(pageElement(t, page, "details", "checkin-lifecycle-section"))
-	if picked != domain.LifecycleOnHold {
+	more := findByTestID(t, getPage(t, samClient, goalURL), "goal-more")
+	putOnHold := findAll(more, func(n *html.Node) bool { return n.Data == "a" && textOf(n) == "Put on hold…" })
+	if len(putOnHold) != 1 {
+		t.Fatalf("the Goal page's menu has %d Put on hold… items, want 1: %q", len(putOnHold), textOf(more))
+	}
+	page := getPage(t, samClient, ts.URL+attrOf(putOnHold[0], "href"))
+	if picked := checkedRadio(findByTestID(t, page, "checkin-lifecycle-section"), "lifecycle"); picked != "Put On Hold" {
 		t.Fatalf("Put on hold… opened the Check-in with %q picked", picked)
 	}
-	form := url.Values{"health": {domain.HealthGreen}, "status": {"Pausing for the reorg."}, "lifecycle": {picked}}
+	form := url.Values{"health": {domain.HealthGreen}, "status": {"Pausing for the reorg."}, "lifecycle": {domain.LifecycleOnHold}}
 
 	body, _ := postFormHX(t, samClient, goalURL+"/checkins", form)
-	if msg := fieldError(t, body, `name="lifecycle_reason"`); !strings.Contains(msg, "On Hold needs a reason") {
+	if msg := fieldError(t, parsePage(t, body), "lifecycle_reason"); !strings.Contains(msg, "On Hold needs a reason") {
 		t.Errorf("with no reason the error is %q, want the On Hold one", msg)
 	}
 	if got, err := h.Service.ViewGoal(t.Context(), goal.ID); err != nil || got.Lifecycle != domain.LifecycleActive {
@@ -1564,12 +1633,12 @@ func TestCheckinFromPutOnHoldMenuItemIsStillACheckin(t *testing.T) {
 	if resp := postForm(t, samClient, goalURL+"/checkins", form); resp.StatusCode != http.StatusOK {
 		t.Fatalf("put On Hold: status %d", resp.StatusCode)
 	}
-	page = getBody(t, samClient, goalURL)
-	if !strings.Contains(page, `data-testid="goal-lifecycle">On Hold<`) {
-		t.Errorf("Goal page does not show the Goal On Hold")
+	page = getPage(t, samClient, goalURL)
+	if got := textOf(findByTestID(t, page, "goal-lifecycle")); got != domain.LifecycleOnHold {
+		t.Errorf("Goal page shows the Goal %q, want On Hold", got)
 	}
-	if entry := pageElement(t, page, "span", "checkin-lifecycle"); !strings.Contains(entry, "Active → On Hold") || !strings.Contains(entry, "Team moved to the payments incident.") {
-		t.Errorf("History missing the Lifecycle change; element:\n%s", entry)
+	if entry := textOf(findByTestID(t, page, "checkin-lifecycle")); !strings.Contains(entry, "Active → On Hold") || !strings.Contains(entry, "Team moved to the payments incident.") {
+		t.Errorf("History missing the Lifecycle change; it reads %q", entry)
 	}
 }
 
@@ -1593,38 +1662,27 @@ func TestCheckinPageIgnoresLifecycleQueryItDoesNotOffer(t *testing.T) {
 		query  string
 		picked string
 	}{
-		{onHold, "Done", domain.LifecycleActive},
-		{onHold, "On%20Hold", domain.LifecycleActive},
-		{onHold, "Active", domain.LifecycleActive},
-		{active, "bogus", ""},
-		{active, "Active", ""},
-		{active, "", ""},
+		{onHold, "Done", "Resume (Active)"},
+		{onHold, "On%20Hold", "Resume (Active)"},
+		{onHold, "Active", "Resume (Active)"},
+		{active, "bogus", "Keep Active"},
+		{active, "Active", "Keep Active"},
+		{active, "", "Keep Active"},
 	} {
 		checkinURL := fmt.Sprintf("%s/goals/%d/checkin", ts.URL, tc.goal.ID)
-		plain := between(t, getBody(t, samClient, checkinURL), `data-testid="checkin-form"`, "</form>")
-		form := between(t, getBody(t, samClient, checkinURL+"?lifecycle="+tc.query), `data-testid="checkin-form"`, "</form>")
-		if form != plain {
-			t.Errorf("%s ?lifecycle=%s: the form differs from the one without it:\n%s\nwant:\n%s", tc.goal.Lifecycle, tc.query, form, plain)
+		plain := findByTestID(t, getPage(t, samClient, checkinURL), "checkin-form")
+		form := findByTestID(t, getPage(t, samClient, checkinURL+"?lifecycle="+tc.query), "checkin-form")
+		if got, want := renderNode(form), renderNode(plain); got != want {
+			t.Errorf("%s ?lifecycle=%s: the form differs from the one without it:\n%s\nwant:\n%s", tc.goal.Lifecycle, tc.query, got, want)
 		}
-		section := pageElement(t, form, "details", "checkin-lifecycle-section")
-		if strings.Contains(openTag(section), " open") {
+		section := findByTestID(t, form, "checkin-lifecycle-section")
+		if hasAttr(section, "open") {
 			t.Errorf("%s ?lifecycle=%s: the Lifecycle section is open", tc.goal.Lifecycle, tc.query)
 		}
-		if got := checkedLifecycle(section); got != tc.picked {
+		if got := checkedRadio(section, "lifecycle"); got != tc.picked {
 			t.Errorf("%s ?lifecycle=%s: %q is picked, want the default %q", tc.goal.Lifecycle, tc.query, got, tc.picked)
 		}
 	}
-}
-
-// checkedLifecycle is the value of the Lifecycle radio checked in the section.
-func checkedLifecycle(section string) string {
-	for _, tag := range strings.Split(section, "<input")[1:] {
-		tag, _, _ = strings.Cut(tag, ">")
-		if strings.Contains(tag, `name="lifecycle"`) && strings.Contains(tag, " checked") {
-			return html.UnescapeString(attr(tag, "value"))
-		}
-	}
-	return "none"
 }
 
 // When the Goal is Active and has a previous Check-in, the Check-in page opens
@@ -1641,30 +1699,21 @@ func TestCheckinPageOffersNoChangeFirst(t *testing.T) {
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 	checkinURL := fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)
 
-	if page := getBody(t, samClient, checkinURL); strings.Contains(page, `data-testid="no-change-checkin"`) {
+	if page := getPage(t, samClient, checkinURL); hasTestID(page, "no-change-checkin") {
 		t.Errorf("a Goal with no Check-in offers the no-change card")
 	}
 
 	latest := h.Checkin(sam, goal.ID, domain.HealthGreen, "On track.", "", time.Time{})
-	page := getBody(t, samClient, checkinURL)
-	card := strings.Index(page, `data-testid="no-change-card"`)
-	if card < 0 {
-		t.Fatalf("Check-in page has no no-change card; body:\n%s", page)
-	}
-	if form := strings.Index(page, `data-testid="checkin-form"`); form < card {
+	page := getPage(t, samClient, checkinURL)
+	card := findByTestID(t, page, "no-change-card")
+	if !precedes(card, findByTestID(t, page, "checkin-form")) {
 		t.Errorf("the no-change card does not come before the form")
 	}
-	for _, want := range []string{
-		"Nothing changed since " + latest.CreatedAt.Format("Jan 2") + "?",
-		`data-testid="no-change-checkin"`,
-	} {
-		if !strings.Contains(page[card:], want) {
-			t.Errorf("no-change card missing %q; body:\n%s", want, page)
-		}
+	if want := "Nothing changed since " + latest.CreatedAt.Format("Jan 2") + "?"; !strings.Contains(textOf(card), want) {
+		t.Errorf("no-change card reads %q, want it to ask %q", textOf(card), want)
 	}
-	// No change sits in the page's header, not in a card of its own.
-	if tag := tagAround(t, page, `data-testid="no-change-card"`); strings.Contains(tag, `class="card"`) {
-		t.Errorf("No change is still a card: %s", tag)
+	if button := buttonNamed(findByTestID(t, card, "no-change-checkin"), "No change"); button == nil {
+		t.Errorf("no-change card has no No change button; it reads %q", textOf(card))
 	}
 }
 
@@ -1679,14 +1728,10 @@ func TestCheckinFormConfirmsCancellingTheGoal(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	_, form, ok := strings.Cut(page, `data-testid="checkin-form"`)
-	if !ok {
-		t.Fatalf("Check-in page has no form; body:\n%s", page)
-	}
-	form = openTag(form)
-	if !strings.Contains(form, "hx-on:htmx:confirm=") || !strings.Contains(form, "value=Cancelled]:checked") || !strings.Contains(form, "confirm(") {
-		t.Errorf("the form does not confirm a Cancel before sending; form tag:\n%s", form)
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	confirm := attrOf(findByTestID(t, page, "checkin-form"), "hx-on:htmx:confirm")
+	if !strings.Contains(confirm, "value=Cancelled]:checked") || !strings.Contains(confirm, "confirm(") {
+		t.Errorf("the form does not confirm a Cancel before sending; its htmx confirm handler: %q", confirm)
 	}
 }
 
@@ -1710,7 +1755,7 @@ func TestNoChangeRefusedWhileOverdueLandsOnCheckinForm(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want 422", resp.StatusCode)
 	}
-	assertNoChangeRefusalOnForm(t, page, `Milestone &#34;Beta&#34; is overdue`)
+	assertNoChangeRefusalOnForm(t, page, `Milestone "Beta" is overdue`)
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
 		t.Errorf("a refused No change recorded a Check-in: history has %d, want 1", len(history))
 	}
@@ -1718,25 +1763,22 @@ func TestNoChangeRefusedWhileOverdueLandsOnCheckinForm(t *testing.T) {
 
 // assertNoChangeRefusalOnForm checks a refused No change came back as the
 // Check-in page, inside the site's chrome, with the reason as the form's top
-// error and without the internal "validation failed:" prefix.
+// error and without the internal "validation failed:" prefix. The reason may
+// carry HTML entities, as the page's source does.
 func assertNoChangeRefusalOnForm(t *testing.T, page, reason string) {
 	t.Helper()
-	if !strings.Contains(page, `data-testid="nav-home"`) {
+	reason = html.UnescapeString(reason)
+	doc := parsePage(t, page)
+	if !hasTestID(doc, "nav-home") {
 		t.Errorf("refusal is not inside the normal page; body:\n%s", page)
 	}
-	start := strings.Index(page, `data-testid="checkin-form"`)
-	if start < 0 {
+	if !hasTestID(doc, "checkin-form") {
 		t.Fatalf("refusal does not show the Check-in form; body:\n%s", page)
 	}
-	form := page[start : start+strings.Index(page[start:], "</form>")]
-	errAt := strings.Index(form, `data-testid="checkin-error"`)
-	if errAt < 0 || errAt > strings.Index(form, `data-testid="checkin-health"`) {
-		t.Fatalf("the form has no error at its top; form:\n%s", form)
+	if msg := formTopError(t, doc); !strings.Contains(msg, reason) {
+		t.Errorf("the form's error = %q, want it to give the reason %q", msg, reason)
 	}
-	if !strings.Contains(form[errAt:], reason) {
-		t.Errorf("the form's error does not give the reason %q; form:\n%s", reason, form)
-	}
-	if strings.Contains(page, "validation failed") {
+	if strings.Contains(textOf(doc), "validation failed") {
 		t.Errorf("the reason carries the internal prefix; body:\n%s", page)
 	}
 }
@@ -1780,18 +1822,6 @@ func overdueGoal(h *testsupport.Harness, owner domain.Account, health string) do
 	return goal
 }
 
-// checkedHealth is the value of the Health radio checked on the page, or
-// "none".
-func checkedHealth(page string) string {
-	for _, tag := range strings.Split(page, "<input")[1:] {
-		tag, _, _ = strings.Cut(tag, ">")
-		if strings.Contains(tag, `name="health"`) && strings.Contains(tag, " checked") {
-			return attr(tag, "value")
-		}
-	}
-	return "none"
-}
-
 // A No change refused for an overdue Milestone reads the same on the card and,
 // once refused, as the form's top error: a sentence with the due date shown as
 // the page shows dates, not as ISO text (#342).
@@ -1805,16 +1835,13 @@ func TestNoChangeOverdueRefusalReadsTheSameOnCardAndForm(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	const want = `Milestone "Beta" is overdue (due Apr 2): submit a Check-in to move its date, mark it Done or remove it.`
 
-	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	card := between(t, page, `data-testid="no-change-card"`, `data-testid="checkin-form"`)
-	unavailable := tagAround(t, card, `data-testid="no-change-unavailable"`)
-	if got := html.UnescapeString(between(t, card[strings.Index(card, unavailable)+len(unavailable):], "", "</p>")); got != want {
+	card := findByTestID(t, getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)), "no-change-card")
+	if got := textOf(findByTestID(t, card, "no-change-unavailable")); got != want {
 		t.Errorf("the card's reason = %q, want %q", got, want)
 	}
 
 	_, refused := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
-	topError := pageElement(t, refused, "p", "checkin-error")
-	if got := html.UnescapeString(topError[strings.Index(topError, ">")+1:]); got != want {
+	if got := formTopError(t, parsePage(t, refused)); got != want {
 		t.Errorf("the form's top error = %q, want %q", got, want)
 	}
 }
@@ -1828,7 +1855,7 @@ func TestCheckinPagePreselectsNoGreenWhileMilestoneOverdue(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct{ health, want string }{
-		{domain.HealthGreen, "none"},
+		{domain.HealthGreen, ""},
 		{domain.HealthYellow, domain.HealthYellow},
 	} {
 		t.Run(tc.health, func(t *testing.T) {
@@ -1841,14 +1868,14 @@ func TestCheckinPagePreselectsNoGreenWhileMilestoneOverdue(t *testing.T) {
 			client := signInClient(t, ts.URL, "sam@example.com")
 
 			_, refused := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
-			for name, page := range map[string]string{
-				"Check-in page":     getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)),
-				"refused No change": refused,
+			for name, page := range map[string]*html.Node{
+				"Check-in page":     getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)),
+				"refused No change": parsePage(t, refused),
 			} {
-				if got := checkedHealth(page); got != tc.want {
-					t.Errorf("%s: Health checked = %s, want %s", name, got, tc.want)
+				if got := checkedRadio(page, "health"); got != tc.want {
+					t.Errorf("%s: Health checked = %q, want %q", name, got, tc.want)
 				}
-				if section := pageElement(t, page, "details", "checkin-dates-section"); !strings.Contains(openTag(section), " open") {
+				if !hasAttr(findByTestID(t, page, "checkin-dates-section"), "open") {
 					t.Errorf("%s: the dates and Milestones section is collapsed", name)
 				}
 			}
@@ -1867,8 +1894,8 @@ func TestCheckinPageKeepsGreenWhileMetricOffTarget(t *testing.T) {
 	goal, _ := offTargetIdleGoal(t, h, sam)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	if got := checkedHealth(getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))); got != domain.HealthGreen {
-		t.Errorf("Health checked = %s, want Green", got)
+	if got := checkedRadio(getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)), "health"); got != domain.HealthGreen {
+		t.Errorf("Health checked = %q, want Green", got)
 	}
 }
 
@@ -1887,57 +1914,32 @@ func TestCheckinPageNoChangeCardSaysWhyNoChangeIsUnavailable(t *testing.T) {
 	repeatable := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.Checkin(sam, repeatable.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	client := signInClient(t, ts.URL, "sam@example.com")
-	card := func(page string) string {
-		return between(t, page, `data-testid="no-change-card"`, `data-testid="checkin-form"`)
-	}
 
-	c := card(getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, overdue.ID)))
-	if strings.Contains(c, `data-testid="no-change-checkin"`) {
-		t.Errorf("the overdue Goal's card offers a No change that would be refused:\n%s", c)
+	c := findByTestID(t, getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, overdue.ID)), "no-change-card")
+	if hasTestID(c, "no-change-checkin") {
+		t.Errorf("the overdue Goal's card offers a No change that would be refused: %q", textOf(c))
 	}
-	unavailable := tagAround(t, c, `data-testid="no-change-unavailable"`)
-	if !hasClass(unavailable, "muted") {
-		t.Errorf("the card's reason is not muted: %s", unavailable)
-	}
-	reason := html.UnescapeString(between(t, c[strings.Index(c, unavailable)+len(unavailable):], "", "</p>"))
+	reason := textOf(findByTestID(t, c, "no-change-unavailable"))
 	if !strings.HasPrefix(reason, `Milestone "Beta" is overdue`) || !strings.HasSuffix(reason, ".") {
 		t.Errorf("the card's reason = %q, want the overdue Milestone named, as a sentence", reason)
 	}
 
 	_, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, overdue.ID), false)
-	if c := card(page); strings.Contains(c, `data-testid="no-change-unavailable"`) {
-		t.Errorf("after a refused No change, the card repeats the form's error:\n%s", c)
+	doc := parsePage(t, page)
+	if c := findByTestID(t, doc, "no-change-card"); hasTestID(c, "no-change-unavailable") {
+		t.Errorf("after a refused No change, the card repeats the form's error: %q", textOf(c))
 	}
-	if n := strings.Count(page, `Milestone &#34;Beta&#34; is overdue`); n != 1 {
+	if n := strings.Count(textOf(doc), `Milestone "Beta" is overdue`); n != 1 {
 		t.Errorf("after a refused No change, the reason shows %d times, want once", n)
 	}
-	assertNoChangeRefusalOnForm(t, page, `Milestone &#34;Beta&#34; is overdue`)
+	assertNoChangeRefusalOnForm(t, page, `Milestone "Beta" is overdue`)
 
-	c = card(getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, repeatable.ID)))
-	if !strings.Contains(c, `data-testid="no-change-checkin"`) {
-		t.Errorf("the repeatable Goal's card has no No change:\n%s", c)
+	c = findByTestID(t, getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, repeatable.ID)), "no-change-card")
+	if !hasTestID(c, "no-change-checkin") {
+		t.Errorf("the repeatable Goal's card has no No change: %q", textOf(c))
 	}
-	if strings.Contains(c, `data-testid="no-change-unavailable"`) {
-		t.Errorf("the repeatable Goal's card says No change is unavailable:\n%s", c)
-	}
-}
-
-// A refused No change's reason, at the top of the Check-in form, is styled as
-// an error, as the import page's error flash is, not left as plain text (#235).
-func TestNoChangeRefusalIsStyledAsAnError(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	sam := h.SignIn("sam@example.com")
-	goal := overdueGreenGoal(h, sam)
-	client := signInClient(t, ts.URL, "sam@example.com")
-
-	_, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
-
-	form := between(t, page, `data-testid="checkin-form"`, `data-testid="checkin-health"`)
-	if tag := tagAround(t, form, `data-testid="checkin-error"`); attr(tag, "class") != "alert r" {
-		t.Errorf("the form's top error has class %q, want %q: %s", attr(tag, "class"), "alert r", tag)
+	if hasTestID(c, "no-change-unavailable") {
+		t.Errorf("the repeatable Goal's card says No change is unavailable: %q", textOf(c))
 	}
 }
 
@@ -1961,7 +1963,7 @@ func TestNoChangeRefusedOverHtmxSwapsInCheckinPage(t *testing.T) {
 	if got, want := resp.Header.Get("HX-Push-Url"), fmt.Sprintf("/goals/%d/checkin", goal.ID); got != want {
 		t.Errorf("HX-Push-Url = %q, want %q", got, want)
 	}
-	assertNoChangeRefusalOnForm(t, page, `Milestone &#34;Beta&#34; is overdue`)
+	assertNoChangeRefusalOnForm(t, page, `Milestone "Beta" is overdue`)
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
 		t.Errorf("a refused No change recorded a Check-in: history has %d, want 1", len(history))
 	}
@@ -1987,8 +1989,8 @@ func TestNoChangeRefusedWhenRollupDiffersLandsOnCheckinForm(t *testing.T) {
 		t.Errorf("status = %d, want 422", resp.StatusCode)
 	}
 	assertNoChangeRefusalOnForm(t, page, "differs from the Rolled-up Health (Red)")
-	if tag, typed := checkinGhostTextarea(t, page, "status"); typed != "" || attr(tag, "placeholder") != "On track." {
-		t.Errorf("status = %q with %s, want empty with the last Check-in's as ghost text", typed, tag)
+	if status := formField(t, parsePage(t, page), "status"); status.Value != "" || status.Placeholder != "On track." {
+		t.Errorf("status = %q with ghost text %q, want empty with the last Check-in's as ghost text", status.Value, status.Placeholder)
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), parent.ID); len(history) != 1 {
 		t.Errorf("a refused No change recorded a Check-in: history has %d, want 1", len(history))
@@ -2046,14 +2048,15 @@ func TestNoChangeRefusedOnGoalNotActive(t *testing.T) {
 				assertNoChangeRefusalOnForm(t, page, reason)
 				continue
 			}
-			if !strings.Contains(page, `data-testid="nav-home"`) || strings.Contains(page, `data-testid="checkin-form"`) {
+			doc := parsePage(t, page)
+			if !hasTestID(doc, "nav-home") || hasTestID(doc, "checkin-form") {
 				t.Errorf("Cancelled, hx=%v: want the Check-in page without a form; body:\n%s", hx, page)
 			}
-			if msg := pageElement(t, page, "p", "checkin-error"); !strings.Contains(msg, reason) {
+			if msg := textOf(findByTestID(t, doc, "checkin-error")); !strings.Contains(msg, reason) {
 				t.Errorf("Cancelled, hx=%v: error = %q, want %q", hx, msg, reason)
 			}
-			if !strings.Contains(page, `data-testid="goal-no-health">A Cancelled Goal takes no Check-ins.<`) {
-				t.Errorf("Cancelled, hx=%v: page does not say the Goal takes no Check-ins; body:\n%s", hx, page)
+			if got := textsOf(findAllByTestID(doc, "goal-no-health")); !slices.Contains(got, "A Cancelled Goal takes no Check-ins.") {
+				t.Errorf("Cancelled, hx=%v: page says %q, want it to say the Goal takes no Check-ins", hx, got)
 			}
 		}
 	}
@@ -2082,7 +2085,7 @@ func TestNoChangeByNonDelegateIsForbiddenInsideThePage(t *testing.T) {
 		if resp.StatusCode != http.StatusForbidden {
 			t.Errorf("hx=%v: status = %d, want 403", hx, resp.StatusCode)
 		}
-		assertCheckinUnavailable(t, page, "Only the Goal&#39;s Owner or a Delegate may check in on Ship search.")
+		assertCheckinUnavailable(t, page, "Only the Goal's Owner or a Delegate may check in on Ship search.")
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
 		t.Errorf("a forbidden No change recorded a Check-in: history has %d, want 1", len(history))
@@ -2123,14 +2126,12 @@ func TestNoChangeButtonSwapsInAnyErrorPage(t *testing.T) {
 	samClient := signInClient(t, ts.URL, "sam@example.com")
 
 	for _, path := range []string{fmt.Sprintf("/goals/%d", goal.ID), fmt.Sprintf("/goals/%d/checkin", goal.ID)} {
-		form := html.UnescapeString(tagAround(t, getBody(t, samClient, ts.URL+path), `data-testid="no-change-checkin"`))
-		for _, want := range []string{"hx-on:htmx:response-error=", "htmx.swap('body', event.detail.xhr.responseText"} {
-			if !strings.Contains(form, want) {
-				t.Errorf("on %s, the No change form lacks %q; form tag:\n%s", path, want, form)
-			}
+		handler := attrOf(findByTestID(t, getPage(t, samClient, ts.URL+path), "no-change-checkin"), "hx-on:htmx:response-error")
+		if !strings.Contains(handler, "htmx.swap('body', event.detail.xhr.responseText") {
+			t.Errorf("on %s, the No change form doesn't swap an error page in; its handler: %q", path, handler)
 		}
-		if handler := between(t, form, "hx-on:htmx:response-error=", "htmx.swap"); strings.Contains(handler, "status") {
-			t.Errorf("on %s, the No change form swaps only some error statuses; form tag:\n%s", path, form)
+		if before, _, _ := strings.Cut(handler, "htmx.swap"); strings.Contains(before, "status") {
+			t.Errorf("on %s, the No change form swaps only some error statuses; its handler: %q", path, handler)
 		}
 	}
 
@@ -2138,7 +2139,7 @@ func TestNoChangeButtonSwapsInAnyErrorPage(t *testing.T) {
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("forbidden: status = %d, want 403", resp.StatusCode)
 	}
-	assertCheckinUnavailable(t, page, "Only the Goal&#39;s Owner or a Delegate may check in on Ship search.")
+	assertCheckinUnavailable(t, page, "Only the Goal's Owner or a Delegate may check in on Ship search.")
 
 	resp, page = postNoChange(t, samClient, ts.URL+"/goals/9999/checkins/no-change", true)
 	if resp.StatusCode != http.StatusNotFound {
@@ -2168,7 +2169,7 @@ func TestNoChangeThatFailsSaysSoInsideThePage(t *testing.T) {
 		if resp.StatusCode != http.StatusInternalServerError {
 			t.Errorf("hx=%v: status = %d, want 500", hx, resp.StatusCode)
 		}
-		assertCheckinUnavailable(t, page, "The No change couldn&#39;t be recorded. Try again.")
+		assertCheckinUnavailable(t, page, "The No change couldn't be recorded. Try again.")
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
 		t.Errorf("a failed No change recorded a Check-in: history has %d, want 1", len(history))
@@ -2176,14 +2177,17 @@ func TestNoChangeThatFailsSaysSoInsideThePage(t *testing.T) {
 }
 
 // assertCheckinUnavailable checks a No change failure came back inside the
-// site's chrome with a sentence saying what happened.
+// site's chrome with a sentence saying what happened. The sentence may carry
+// HTML entities, as the page's source does.
 func assertCheckinUnavailable(t *testing.T, page, sentence string) {
 	t.Helper()
-	if !strings.Contains(page, `data-testid="nav-home"`) {
+	sentence = html.UnescapeString(sentence)
+	doc := parsePage(t, page)
+	if !hasTestID(doc, "nav-home") {
 		t.Errorf("failure is not inside the normal page; body:\n%s", page)
 	}
-	if !strings.Contains(pageElement(t, page, "p", "checkin-unavailable"), sentence) {
-		t.Errorf("failure does not say %q; body:\n%s", sentence, page)
+	if got := textOf(findByTestID(t, doc, "checkin-unavailable")); !strings.Contains(got, sentence) {
+		t.Errorf("failure says %q, want %q", got, sentence)
 	}
 }
 
@@ -2212,12 +2216,6 @@ func TestNoChangeOverHtmxRedirectsToGoal(t *testing.T) {
 	}
 }
 
-// checkinHighlightLegends are the Check-in form's Highlight row legends, in
-// order.
-func checkinHighlightLegends(body string) []string {
-	return elementTexts(body, "legend", "checkin-highlight-legend")
-}
-
 // The Check-in form's Highlight section opens with one pre-filled row per
 // pending Draft Highlight, oldest first, each ticked to keep, posting its id
 // in a hidden field and as its Keep box's value, then the usual empty row;
@@ -2233,7 +2231,7 @@ func TestCheckinFormOffersEachPendingDraftHighlightAsATickedRow(t *testing.T) {
 	h.Clock.Advance(time.Hour)
 	second := h.LogDraftHighlight(sam, goal.ID, "", "Vendor may raise prices.")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
 	rows := highlightRows(t, page)
 	if len(rows) != 3 {
 		t.Fatalf("form shows %d Highlight rows, want 2 offered and 1 empty", len(rows))
@@ -2241,33 +2239,36 @@ func TestCheckinFormOffersEachPendingDraftHighlightAsATickedRow(t *testing.T) {
 	for i, tc := range []struct {
 		draft domain.DraftHighlight
 		kind  string
-	}{{first, `value="Accomplishment" selected`}, {second, `value="" selected`}} {
+	}{{first, domain.HighlightAccomplishment}, {second, ""}} {
 		id := strconv.FormatInt(tc.draft.ID, 10)
 		row := rows[i]
-		hidden := tagAround(t, row, `name="draft_highlight_id"`)
-		if attr(hidden, "type") != "hidden" || attr(hidden, "value") != id {
-			t.Errorf("row %d's hidden id = %s, want Draft Highlight %s", i+1, hidden, id)
+		if hidden := formField(t, row, "draft_highlight_id"); hidden.Type != "hidden" || hidden.Value != id {
+			t.Errorf("row %d's id field is a %s holding %q, want a hidden field holding Draft Highlight %s", i+1, hidden.Type, hidden.Value, id)
 		}
-		keep := tagAround(t, row, `name="draft_highlight_keep"`)
-		if attr(keep, "type") != "checkbox" || attr(keep, "value") != id || !strings.Contains(keep, " checked") {
-			t.Errorf("row %d's Keep box = %s, want ticked with value %s", i+1, keep, id)
+		if keep := formField(t, row, "draft_highlight_keep"); keep.Type != "checkbox" || keep.Value != id || !keep.Checked || keep.Label != "Keep" {
+			t.Errorf("row %d's Keep box = %+v, want a ticked checkbox labelled Keep with value %s", i+1, keep, id)
 		}
-		if !strings.Contains(row, `name="draft_highlight_kind_`+id+`"`) || !strings.Contains(row, tc.kind) {
-			t.Errorf("row %d lacks its kind select with %s; row:\n%s", i+1, tc.kind, row)
+		if kind := formField(t, row, "draft_highlight_kind_"+id); kind.Type != "select" || kind.Value != tc.kind {
+			t.Errorf("row %d's kind is a %s set to %q, want a select set to %q", i+1, kind.Type, kind.Value, tc.kind)
 		}
-		if !strings.Contains(row, `<textarea name="draft_highlight_note_`+id+`">`+tc.draft.Note+`</textarea>`) {
-			t.Errorf("row %d lacks its editable note; row:\n%s", i+1, row)
+		if note := formField(t, row, "draft_highlight_note_"+id); note.Type != "textarea" || note.Value != tc.draft.Note {
+			t.Errorf("row %d's note is a %s reading %q, want an editable %q", i+1, note.Type, note.Value, tc.draft.Note)
 		}
 	}
-	if !strings.Contains(rows[2], `<textarea name="highlight_note"></textarea>`) || strings.Contains(rows[2], "draft_highlight") {
-		t.Errorf("the third row isn't the usual empty row; row:\n%s", rows[2])
+	if got := formField(t, rows[2], "highlight_note").Value; got != "" || len(draftHighlightFields(rows[2])) > 0 {
+		t.Errorf("the third row isn't the usual empty row; row:\n%s", renderNode(rows[2]))
 	}
-	if got := checkinHighlightLegends(page); !slices.Equal(got, []string{"Highlight 1 · Draft", "Highlight 2 · Draft", "Highlight 3"}) {
+	if got := textsOf(findAllByTestID(page, "checkin-highlight-legend")); !slices.Equal(got, []string{"Highlight 1 · Draft", "Highlight 2 · Draft", "Highlight 3"}) {
 		t.Errorf("legends = %q, want every row numbered, the offered ones marked Draft", got)
 	}
-	if section := pageElement(t, page, "details", "checkin-highlight-section"); !strings.Contains(openTag(section), " open") {
+	if !hasAttr(findByTestID(t, page, "checkin-highlight-section"), "open") {
 		t.Errorf("the Highlight section is collapsed while it offers Draft Highlights")
 	}
+}
+
+// draftHighlightFields are the fields under root that post a Draft Highlight.
+func draftHighlightFields(root *html.Node) []*html.Node {
+	return findAll(root, func(n *html.Node) bool { return strings.HasPrefix(attrOf(n, "name"), "draft_highlight") })
 }
 
 // Submitting the form with two offered rows kept, one edited, and one
@@ -2359,24 +2360,24 @@ func TestCheckinFormRefusesAKeptDraftHighlightWithNoKindInItsRow(t *testing.T) {
 		"highlight_kind":                {""},
 		"highlight_note":                {""},
 	})
-	rows := highlightRows(t, body)
+	rows := highlightRows(t, parsePage(t, body))
 	if len(rows) != 3 {
 		t.Fatalf("form shows %d Highlight rows, want the 3 posted", len(rows))
 	}
-	if strings.Contains(rows[0], `data-testid="checkin-error"`) {
-		t.Errorf("Highlight 1 shows an error; row:\n%s", rows[0])
+	if hasTestID(rows[0], "checkin-error") {
+		t.Errorf("Highlight 1 shows an error: %q", textOf(rows[0]))
 	}
-	if !strings.Contains(rows[1], `data-testid="checkin-error"`) || !strings.Contains(rows[1], "Highlight 2 needs a kind") {
-		t.Errorf("Highlight 2 lacks its error naming it; row:\n%s", rows[1])
+	if errs := textsOf(findAllByTestID(rows[1], "checkin-error")); len(errs) != 1 || !strings.Contains(errs[0], "Highlight 2 needs a kind") {
+		t.Errorf("Highlight 2's errors = %q, want one naming it", errs)
 	}
-	if keep := tagAround(t, rows[0], `name="draft_highlight_keep"`); strings.Contains(keep, " checked") {
-		t.Errorf("Highlight 1's Keep box came back ticked: %s", keep)
+	if formField(t, rows[0], "draft_highlight_keep").Checked {
+		t.Errorf("Highlight 1's Keep box came back ticked")
 	}
-	if keep := tagAround(t, rows[1], `name="draft_highlight_keep"`); !strings.Contains(keep, " checked") {
-		t.Errorf("Highlight 2's Keep box came back unticked: %s", keep)
+	if !formField(t, rows[1], "draft_highlight_keep").Checked {
+		t.Errorf("Highlight 2's Keep box came back unticked")
 	}
-	if !strings.Contains(rows[0], "First, edited.") || !strings.Contains(rows[1], "No kind yet, edited.") {
-		t.Errorf("the offered rows lost their notes as typed:\n%s\n%s", rows[0], rows[1])
+	if first, second := formField(t, rows[0], "draft_highlight_note_"+id(a)).Value, formField(t, rows[1], "draft_highlight_note_"+id(b)).Value; first != "First, edited." || second != "No kind yet, edited." {
+		t.Errorf("the offered rows' notes = %q and %q, want them as typed", first, second)
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
 		t.Errorf("checkins = %d, want none recorded", len(history))
@@ -2450,24 +2451,29 @@ func TestCheckinAddAnotherKeepsOfferedDraftHighlightsAsTyped(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("add another: status %d, want 200", status)
 	}
-	rows := highlightRows(t, body)
+	rows := highlightRows(t, parsePage(t, body))
 	if len(rows) != 4 {
 		t.Fatalf("form shows %d Highlight rows, want 2 offered, 1 typed and 1 added", len(rows))
 	}
-	if keep := tagAround(t, rows[0], `name="draft_highlight_keep"`); strings.Contains(keep, " checked") {
-		t.Errorf("Highlight 1's Keep box came back ticked: %s", keep)
+	for i, tc := range []struct {
+		draft      domain.DraftHighlight
+		keep       bool
+		kind, note string
+	}{
+		{a, false, domain.HighlightMiss, "First, edited."},
+		{b, true, domain.HighlightAccomplishment, "Second, edited."},
+	} {
+		row := rows[i]
+		if got := formField(t, row, "draft_highlight_keep").Checked; got != tc.keep {
+			t.Errorf("Highlight %d's Keep box ticked = %v, want %v as posted", i+1, got, tc.keep)
+		}
+		kind, note := formField(t, row, "draft_highlight_kind_"+id(tc.draft)).Value, formField(t, row, "draft_highlight_note_"+id(tc.draft)).Value
+		if kind != tc.kind || note != tc.note {
+			t.Errorf("Highlight %d reads %q of kind %q, want %q of kind %q as typed", i+1, note, kind, tc.note, tc.kind)
+		}
 	}
-	if !strings.Contains(rows[0], `value="Miss" selected`) || !strings.Contains(rows[0], "First, edited.") {
-		t.Errorf("Highlight 1 lost its kind or note as typed; row:\n%s", rows[0])
-	}
-	if keep := tagAround(t, rows[1], `name="draft_highlight_keep"`); !strings.Contains(keep, " checked") {
-		t.Errorf("Highlight 2's Keep box came back unticked: %s", keep)
-	}
-	if !strings.Contains(rows[1], `value="Accomplishment" selected`) || !strings.Contains(rows[1], "Second, edited.") {
-		t.Errorf("Highlight 2 lost its kind or note as typed; row:\n%s", rows[1])
-	}
-	if !strings.Contains(rows[2], "Typed.") || !strings.Contains(rows[3], `<textarea name="highlight_note"></textarea>`) {
-		t.Errorf("the typed row or the added empty row is wrong:\n%s\n%s", rows[2], rows[3])
+	if typed, added := formField(t, rows[2], "highlight_note").Value, formField(t, rows[3], "highlight_note").Value; typed != "Typed." || added != "" {
+		t.Errorf("the typed row reads %q and the added row %q, want Typed. and empty", typed, added)
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 0 {
 		t.Errorf("checkins = %d, want none recorded by Add another", len(history))
@@ -2491,7 +2497,7 @@ func TestCheckinFormKeepsSameKindDiscardsBlankedAndLeavesUnofferedPending(t *tes
 	b := h.LogDraftHighlight(sam, goal.ID, domain.HighlightAccomplishment, "Halved alert noise.")
 	c := h.LogDraftHighlight(sam, goal.ID, domain.HighlightMiss, "Runbook was late.")
 	samClient := signInClient(t, ts.URL, "sam@example.com")
-	form := getBody(t, samClient, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	form := getPage(t, samClient, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
 	if n := len(highlightRows(t, form)); n != 4 {
 		t.Fatalf("form shows %d Highlight rows, want 3 offered and 1 empty", n)
 	}
@@ -2592,41 +2598,40 @@ func TestCheckinFormShowsLatestAnswersAsGhostText(t *testing.T) {
 		t.Fatalf("SubmitCheckin: %v", err)
 	}
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, parent.ID))
-	form := between(t, page, `id="checkin-form"`, "</form>")
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, parent.ID))
+	form := findByTestID(t, page, "checkin-form")
 	for name, want := range map[string]string{
 		"status":        "Vendor sign-off is slower than expected.",
 		"path_to_green": "Escalate to the vendor.",
 		"explanation":   "The load tests miss the vendor risk.",
 	} {
-		tag, typed := checkinGhostTextarea(t, form, name)
-		if typed != "" {
-			t.Errorf("%s starts as %q, want empty", name, typed)
+		field := formField(t, form, name)
+		if field.Value != "" {
+			t.Errorf("%s starts as %q, want empty", name, field.Value)
 		}
-		if got := html.UnescapeString(attr(tag, "placeholder")); got != want {
-			t.Errorf("%s placeholder = %q, want %q", name, got, want)
+		if field.Placeholder != want {
+			t.Errorf("%s placeholder = %q, want %q", name, field.Placeholder, want)
 		}
 	}
-	reading := tagAround(t, form, fmt.Sprintf(`name="reading_%d"`, rps.ID))
-	if got := attr(reading, "value"); got != "" {
-		t.Errorf("reading starts as %q, want empty", got)
+	reading := formField(t, form, fmt.Sprintf("reading_%d", rps.ID))
+	if reading.Value != "" {
+		t.Errorf("reading starts as %q, want empty", reading.Value)
 	}
-	if got := attr(reading, "placeholder"); got != "1250.5" {
-		t.Errorf("reading placeholder = %q, want 1250.5", got)
+	if reading.Placeholder != "1250.5" {
+		t.Errorf("reading placeholder = %q, want 1250.5", reading.Placeholder)
 	}
-	date := tagAround(t, form, `name="path_target_date"`)
-	if got := attr(date, "value"); got != "" {
-		t.Errorf("Back to Green by starts as %q, want empty", got)
+	date := formField(t, form, "path_target_date")
+	if date.Value != "" {
+		t.Errorf("Back to Green by starts as %q, want empty", date.Value)
 	}
-	if got := elementTexts(form, "span", "checkin-path-target-last"); !slices.Equal(got, []string{"Last time: Jun 15"}) {
+	if got := textsOf(findAllByTestID(form, "checkin-path-target-last")); !slices.Equal(got, []string{"Last time: Jun 15"}) {
 		t.Errorf("Back to Green by hint = %q, want [Last time: Jun 15]", got)
 	}
-	hint := tagAround(t, form, `data-testid="checkin-path-target-last"`)
-	if described := attr(date, "aria-describedby"); described == "" || described != attr(hint, "id") {
-		t.Errorf("Back to Green by is not described by its hint: input %s, hint %s", date, hint)
+	if date.Description != "Last time: Jun 15" {
+		t.Errorf("Back to Green by is described as %q, want by its hint, Last time: Jun 15", date.Description)
 	}
-	if !strings.Contains(form, `type="radio" name="health" value="Yellow" checked`) {
-		t.Errorf("Yellow is not picked; form:\n%s", form)
+	if got := checkedRadio(form, "health"); got != domain.HealthYellow {
+		t.Errorf("Health picked = %q, want Yellow", got)
 	}
 }
 
@@ -2644,26 +2649,24 @@ func TestCheckinFormWithoutPreviousCheckinShowsNoGhostText(t *testing.T) {
 	h.Checkin(sam, child.ID, domain.HealthGreen, "Done for this quarter.", "", time.Time{})
 	addCheckinGhostMetric(t, h, parent, "Peak requests")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, parent.ID))
-	form := between(t, page, `id="checkin-form"`, "</form>")
-	if !strings.Contains(form, `name="explanation"`) {
-		t.Fatalf("form has no explanation field to check; form:\n%s", form)
-	}
-	for _, field := range []string{"checkin-readings", "path-to-green-field"} {
-		if fieldset := pageElement(t, form, "fieldset", field); strings.Contains(fieldset, "placeholder=") {
-			t.Errorf("%s shows ghost text with no previous Check-in:\n%s", field, fieldset)
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, parent.ID))
+	form := findByTestID(t, page, "checkin-form")
+	formField(t, form, "explanation")
+	for _, part := range []string{"checkin-readings", "path-to-green-field"} {
+		if ghosts := findAll(findByTestID(t, form, part), func(n *html.Node) bool { return hasAttr(n, "placeholder") }); len(ghosts) > 0 {
+			t.Errorf("%s shows ghost text with no previous Check-in: %s", part, renderNode(ghosts[0]))
 		}
 	}
 	for _, name := range []string{"status", "explanation"} {
-		if tag, _ := checkinGhostTextarea(t, form, name); strings.Contains(tag, "placeholder=") {
-			t.Errorf("%s shows ghost text with no previous Check-in: %s", name, tag)
+		if field := formField(t, form, name); hasAttr(field.Node, "placeholder") {
+			t.Errorf("%s shows ghost text %q with no previous Check-in", name, field.Placeholder)
 		}
 	}
-	if strings.Contains(form, `data-testid="checkin-path-target-last"`) {
-		t.Errorf("form shows a Last time hint with no previous Check-in; form:\n%s", form)
+	if hasTestID(form, "checkin-path-target-last") {
+		t.Errorf("form shows a Last time hint with no previous Check-in")
 	}
-	if !strings.Contains(form, `type="radio" name="health" value="Green" checked`) {
-		t.Errorf("a first Check-in does not start on Green; form:\n%s", form)
+	if got := checkedRadio(form, "health"); got != domain.HealthGreen {
+		t.Errorf("a first Check-in starts on %q, want Green", got)
 	}
 }
 
@@ -2717,29 +2720,28 @@ func TestCheckinReRenderKeepsTypedAndGhostText(t *testing.T) {
 		"htmx add another":  htmxAgain,
 		"plain add another": readBody(t, plainAgain),
 	} {
-		form := between(t, body, `id="checkin-form"`, "</form>")
-		if refused := strings.Contains(form, `data-testid="checkin-error"`); refused != strings.HasSuffix(how, "refused") {
-			t.Fatalf("%s: form shows an error = %v; form:\n%s", how, refused, form)
+		form := findByTestID(t, parsePage(t, body), "checkin-form")
+		if refused := hasTestID(form, "checkin-error"); refused != strings.HasSuffix(how, "refused") {
+			t.Fatalf("%s: form shows an error = %v; form:\n%s", how, refused, renderNode(form))
 		}
-		tag, status := checkinGhostTextarea(t, form, "status")
-		if status != "The vendor went quiet." {
-			t.Errorf("%s: status re-rendered as %q, want what was typed", how, status)
+		status := formField(t, form, "status")
+		if status.Value != "The vendor went quiet." {
+			t.Errorf("%s: status re-rendered as %q, want what was typed", how, status.Value)
 		}
-		if got := html.UnescapeString(attr(tag, "placeholder")); got != "Vendor sign-off is slower than expected." {
-			t.Errorf("%s: status placeholder = %q, want the latest Check-in's", how, got)
+		if status.Placeholder != "Vendor sign-off is slower than expected." {
+			t.Errorf("%s: status placeholder = %q, want the latest Check-in's", how, status.Placeholder)
 		}
-		if tag, _ := checkinGhostTextarea(t, form, "path_to_green"); attr(tag, "placeholder") != "Escalate to the vendor." {
-			t.Errorf("%s: Path to Green placeholder lost: %s", how, tag)
+		if got := formField(t, form, "path_to_green").Placeholder; got != "Escalate to the vendor." {
+			t.Errorf("%s: Path to Green placeholder = %q, want the latest Check-in's", how, got)
 		}
-		reading := tagAround(t, form, fmt.Sprintf(`name="reading_%d"`, rps.ID))
-		if attr(reading, "value") != "900" || attr(reading, "placeholder") != "1250.5" {
-			t.Errorf("%s: reading = %s, want value 900 and placeholder 1250.5", how, reading)
+		if reading := formField(t, form, fmt.Sprintf("reading_%d", rps.ID)); reading.Value != "900" || reading.Placeholder != "1250.5" {
+			t.Errorf("%s: reading = %q with ghost text %q, want 900 with 1250.5", how, reading.Value, reading.Placeholder)
 		}
-		if got := elementTexts(form, "span", "checkin-path-target-last"); !slices.Equal(got, []string{"Last time: Jun 15"}) {
+		if got := textsOf(findAllByTestID(form, "checkin-path-target-last")); !slices.Equal(got, []string{"Last time: Jun 15"}) {
 			t.Errorf("%s: Back to Green by hint = %q, want [Last time: Jun 15]", how, got)
 		}
-		if !strings.Contains(form, `type="radio" name="health" value="Red" checked`) {
-			t.Errorf("%s: the Health picked was not kept; form:\n%s", how, form)
+		if got := checkedRadio(form, "health"); got != domain.HealthRed {
+			t.Errorf("%s: the Health picked = %q, want the Red picked", how, got)
 		}
 	}
 }
@@ -2774,7 +2776,7 @@ func TestCheckinGhostTextIsNotSubmitted(t *testing.T) {
 		"status":     {""},
 		blankReading: {""},
 	})
-	if msg := fieldError(t, body, `name="status"`); !strings.Contains(msg, "needs a status") {
+	if msg := fieldError(t, parsePage(t, body), "status"); !strings.Contains(msg, "needs a status") {
 		t.Errorf("status field's error = %q, want the status one", msg)
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
@@ -2819,22 +2821,6 @@ func addCheckinGhostMetric(t *testing.T, h *testsupport.Harness, goal domain.Goa
 	return m
 }
 
-// checkinGhostTextarea returns the named textarea's opening tag and what it
-// holds as typed.
-func checkinGhostTextarea(t *testing.T, form, name string) (tag, typed string) {
-	t.Helper()
-	start := strings.Index(form, `<textarea name="`+name+`"`)
-	if start < 0 {
-		t.Fatalf("form has no textarea %s", name)
-	}
-	rest := form[start:]
-	open, end := strings.Index(rest, ">"), strings.Index(rest, "</textarea>")
-	if end < 0 {
-		t.Fatalf("textarea %s is not closed", name)
-	}
-	return rest[:open+1], html.UnescapeString(rest[open+1 : end])
-}
-
 // offTargetIdleGoal arranges an Active Goal whose Idle capacity Metric (down,
 // target 20 by Jan 30) last read 40.88, with the clock moved to Feb 2: past the
 // Metric's target date, so it is off target, and before the Beta Milestone is
@@ -2872,34 +2858,36 @@ func TestCheckinGreenWithOffTargetMetricWarnsBeforeSaving(t *testing.T) {
 	goal, idle := offTargetIdleGoal(t, h, sam)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
+	reading := fmt.Sprintf("reading_%d", idle.ID)
 	body, status := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
-		"health":                           {domain.HealthGreen},
-		"status":                           {"Old pool nearly drained."},
-		fmt.Sprintf("reading_%d", idle.ID): {"35.5"},
+		"health": {domain.HealthGreen},
+		"status": {"Old pool nearly drained."},
+		reading:  {"35.5"},
 	})
 
 	if status != http.StatusOK {
 		t.Errorf("htmx status = %d, want 200 so the form swaps in", status)
 	}
-	warning := pageElement(t, body, "section", "checkin-off-target")
-	if !strings.Contains(warning, "Idle capacity is 35.5 percent; its target was 20 by Jan 30.") {
-		t.Errorf("warning does not name the Metric, the reading entered, its target and date: %s", warning)
+	doc := parsePage(t, body)
+	warning := findByTestID(t, doc, "checkin-off-target")
+	if !strings.Contains(textOf(warning), "Idle capacity is 35.5 percent; its target was 20 by Jan 30.") {
+		t.Errorf("warning does not name the Metric, the reading entered, its target and date: %q", textOf(warning))
 	}
-	confirm := tagAround(t, warning, `name="confirm_off_target"`)
-	if !strings.Contains(confirm, `type="submit"`) || attr(confirm, "value") != "1" || !strings.Contains(warning, ">Confirm Green</button>") {
-		t.Errorf("warning offers no Confirm Green that submits the form confirmed: %s", warning)
+	confirm := buttonNamed(warning, "Confirm Green")
+	if confirm == nil || cmp.Or(attrOf(confirm, "type"), "submit") != "submit" || attrOf(confirm, "name") != "confirm_off_target" || attrOf(confirm, "value") != "1" {
+		t.Errorf("warning offers no Confirm Green that submits the form confirmed: %s", renderNode(warning))
 	}
-	if !strings.Contains(warning, "A Metric is off target. Is the Goal still Green?") {
-		t.Errorf("warning doesn't ask whether the Goal is still Green: %s", warning)
+	if !strings.Contains(textOf(warning), "A Metric is off target. Is the Goal still Green?") {
+		t.Errorf("warning doesn't ask whether the Goal is still Green: %q", textOf(warning))
 	}
-	if !strings.Contains(body, "Old pool nearly drained.</textarea>") {
-		t.Errorf("the status typed was lost; body:\n%s", body)
+	if got := formField(t, doc, "status").Value; got != "Old pool nearly drained." {
+		t.Errorf("the status typed was lost: %q", got)
 	}
-	if !strings.Contains(body, `value="35.5"`) {
-		t.Errorf("the reading typed was lost; body:\n%s", body)
+	if got := formField(t, doc, reading).Value; got != "35.5" {
+		t.Errorf("the reading typed was lost: %q", got)
 	}
-	if !strings.Contains(tagAround(t, body, `value="Green"`), "checked") {
-		t.Errorf("the Health picked was lost; body:\n%s", body)
+	if got := checkedRadio(doc, "health"); got != domain.HealthGreen {
+		t.Errorf("the Health picked was lost: %q", got)
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
 		t.Errorf("an unconfirmed Green was recorded: history has %d, want 1", len(history))
@@ -2976,10 +2964,11 @@ func TestCheckinOverdueMilestoneRefusalWinsOverOffTargetWarning(t *testing.T) {
 		"status": {"On track."},
 	})
 
-	if !strings.Contains(body, "is overdue") {
+	doc := parsePage(t, body)
+	if !strings.Contains(textOf(doc), "is overdue") {
 		t.Errorf("the overdue Milestone's refusal isn't shown; body:\n%s", body)
 	}
-	if strings.Contains(body, "confirm_off_target") {
+	if buttonNamed(doc, "Confirm Green") != nil || len(findAll(doc, func(n *html.Node) bool { return strings.Contains(attrOf(n, "name"), "off_target") })) > 0 {
 		t.Errorf("an overdue Milestone's refusal offers Confirm Green; body:\n%s", body)
 	}
 }
@@ -3002,44 +2991,29 @@ func TestCheckinOffTargetWarningIsFlaggedAtTopOfForm(t *testing.T) {
 		"status": {"Old pool nearly drained."},
 	})
 
-	notice := pageElement(t, body, "p", "checkin-off-target-notice")
-	if at, health := strings.Index(body, `data-testid="checkin-off-target-notice"`), strings.Index(body, `data-testid="checkin-health"`); at > health {
-		t.Errorf("the notice comes after the Health; body:\n%s", body)
+	doc := parsePage(t, body)
+	notice := findByTestID(t, doc, "checkin-off-target-notice")
+	if !precedes(notice, findByTestID(t, doc, "checkin-health")) {
+		t.Errorf("the notice comes after the Health")
 	}
-	tag := openTag(notice)
-	if !hasClass(tag, "alert") || !hasClass(tag, "y") || !hasClass(tag, "checkin-off-target-notice") || strings.Contains(tag, "role=") {
-		t.Errorf("notice tag = %s, want classes alert y and checkin-off-target-notice, and no role", tag)
+	if hasAttr(notice, "role") {
+		t.Errorf("the notice is announced as role %q; only the warning should be", attrOf(notice, "role"))
 	}
-	if !strings.Contains(notice, "A Metric is off target, so a Green needs confirming.") {
-		t.Errorf("notice = %s, want it to say a Green needs confirming", notice)
+	if !strings.Contains(textOf(notice), "A Metric is off target, so a Green needs confirming.") {
+		t.Errorf("notice reads %q, want it to say a Green needs confirming", textOf(notice))
 	}
-	if link := tagAround(t, notice, `href=`); attr(link, "href") != "#checkin-off-target" || !strings.Contains(notice, "See below</a>") {
-		t.Errorf("notice does not link down to the warning: %s", notice)
+	if link := linkTo(notice, "#checkin-off-target"); link == nil || textOf(link) != "See below" {
+		t.Errorf("notice does not link down to the warning: %s", renderNode(notice))
 	}
-	warning := pageElement(t, body, "section", "checkin-off-target")
-	if attr(openTag(warning)+">", "id") != "checkin-off-target" {
-		t.Errorf("warning has no id the notice can link to: %s", openTag(warning))
+	warning := findByTestID(t, doc, "checkin-off-target")
+	if attrOf(warning, "id") != "checkin-off-target" {
+		t.Errorf("warning has no id the notice can link to: %s", renderNode(warning))
 	}
-	if warned := tagAround(t, warning, `name="off_target_warned"`); attr(warned, "type") != "hidden" || attr(warned, "value") != "1" {
-		t.Errorf("warning carries no hidden off_target_warned: %s", warned)
+	if attrOf(warning, "role") != "alert" {
+		t.Errorf("warning is announced as role %q, want alert", attrOf(warning, "role"))
 	}
-}
-
-// The off-target warning and its notice hide, by CSS alone, while another
-// Health than Green is picked: changing the Health answers the question.
-func TestCheckinOffTargetWarningHidesUnlessGreenPicked(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	sam := h.SignIn("sam@example.com")
-	goal, _ := offTargetIdleGoal(t, h, sam)
-	client := signInClient(t, ts.URL, "sam@example.com")
-
-	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	const notGreen = ".checkin-form:not(:has(input[name=health][value=Green]:checked))"
-	if got := cssRule(t, page, notGreen+" .checkin-off-target, "+notGreen+" .checkin-off-target-notice"); got != "display:none" {
-		t.Errorf("the rule hiding the warning while Green isn't picked declares %q, want display:none", got)
+	if warned := formField(t, warning, "off_target_warned"); warned.Type != "hidden" || warned.Value != "1" {
+		t.Errorf("warning carries off_target_warned as a %s holding %q, want a hidden 1", warned.Type, warned.Value)
 	}
 }
 
@@ -3054,7 +3028,7 @@ func TestCheckinAddAnotherKeepsOffTargetWarning(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	goal, idle := offTargetIdleGoal(t, h, sam)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	addAnother := func(health string) string {
+	addAnother := func(health string) *html.Node {
 		body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
 			"health":                           {health},
 			"status":                           {"Old pool nearly drained."},
@@ -3065,20 +3039,19 @@ func TestCheckinAddAnotherKeepsOffTargetWarning(t *testing.T) {
 			"off_target_warned":                {"1"},
 			"add_highlight":                    {"1"},
 		})
-		return body
+		return parsePage(t, body)
 	}
 
-	body := addAnother(domain.HealthGreen)
-	warning := pageElement(t, body, "section", "checkin-off-target")
-	if !strings.Contains(warning, "Idle capacity is 35.5 percent; its target was 20 by Jan 30.") {
-		t.Errorf("after Add another, the warning doesn't name Idle capacity at the reading typed: %s", warning)
+	doc := addAnother(domain.HealthGreen)
+	if warning := textOf(findByTestID(t, doc, "checkin-off-target")); !strings.Contains(warning, "Idle capacity is 35.5 percent; its target was 20 by Jan 30.") {
+		t.Errorf("after Add another, the warning doesn't name Idle capacity at the reading typed: %q", warning)
 	}
-	if rows := highlightRows(t, body); len(rows) != 2 {
+	if rows := highlightRows(t, doc); len(rows) != 2 {
 		t.Errorf("form shows %d Highlight rows, want 2 after Add another", len(rows))
 	}
 
-	if body := addAnother(domain.HealthYellow); strings.Contains(body, `data-testid="checkin-off-target"`) {
-		t.Errorf("Add another with Yellow picked still warns; body:\n%s", body)
+	if doc := addAnother(domain.HealthYellow); hasTestID(doc, "checkin-off-target") {
+		t.Errorf("Add another with Yellow picked still warns: %q", textOf(findByTestID(t, doc, "checkin-off-target")))
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 1 {
 		t.Errorf("Add another recorded a Check-in: history has %d, want 1", len(history))
@@ -3137,20 +3110,21 @@ func TestCheckinOffTargetConfirmationSurvivesALaterError(t *testing.T) {
 	}
 
 	body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), form)
-	if rows := highlightRows(t, body); len(rows) != 1 || !strings.Contains(rows[0], "Highlight 1 needs a kind") {
+	doc := parsePage(t, body)
+	if rows := highlightRows(t, doc); len(rows) != 1 || !strings.Contains(textOf(rows[0]), "Highlight 1 needs a kind") {
 		t.Fatalf("want the Highlight's error; body:\n%s", body)
 	}
-	if strings.Contains(body, `data-testid="checkin-off-target"`) {
+	if hasTestID(doc, "checkin-off-target") {
 		t.Errorf("a confirmed Green is warned again; body:\n%s", body)
 	}
-	if confirmed := tagAround(t, body, `name="off_target_confirmed"`); attr(confirmed, "type") != "hidden" || attr(confirmed, "value") != "1" {
-		t.Errorf("the form doesn't carry the confirmation: %s", confirmed)
+	if confirmed := formField(t, doc, "off_target_confirmed"); confirmed.Type != "hidden" || confirmed.Value != "1" {
+		t.Errorf("the form carries the confirmation as a %s holding %q, want a hidden 1", confirmed.Type, confirmed.Value)
 	}
 
 	form.Del("confirm_off_target")
 	form.Set("off_target_confirmed", "1")
 	form.Set("highlight_kind", domain.HighlightMiss)
-	if body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), form); strings.Contains(body, "checkin-form") {
+	if body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), form); hasTestID(parsePage(t, body), "checkin-form") {
 		t.Fatalf("the fixed, confirmed Green was refused; body:\n%s", body)
 	}
 	if history, _ := h.Service.ListCheckins(context.Background(), goal.ID); len(history) != 2 {
@@ -3180,21 +3154,21 @@ func newAskFixture(t *testing.T) askFixture {
 	return askFixture{h: h, ts: ts.URL, sam: sam, mia: mia, goal: goal, client: signInClient(t, ts.URL, "sam@example.com")}
 }
 
-// askBoxChecked reports whether the Check-in form's "Ask for help" box
-// is ticked.
-func askBoxChecked(t *testing.T, page string) bool {
+// askBox is the Check-in form's "Ask for help" box, failing the test unless
+// it is the asks_for_help checkbox.
+func askBox(t *testing.T, doc *html.Node) pageField {
 	t.Helper()
-	tag := tagAround(t, page, `data-testid="checkin-asks-for-help"`)
-	if attr(tag, "name") != "asks_for_help" || attr(tag, "type") != "checkbox" {
-		t.Fatalf("asks-for-help control isn't the asks_for_help checkbox: %s", tag)
+	box := formField(t, doc, "asks_for_help")
+	if box.Type != "checkbox" || attrOf(box.Node, "data-testid") != "checkin-asks-for-help" {
+		t.Fatalf("asks-for-help control isn't the checkin-asks-for-help checkbox: %s", renderNode(box.Node))
 	}
-	return strings.Contains(tag, " checked")
+	return box
 }
 
-// askHint is the hint under the box naming whom the ask goes to.
-func askHint(t *testing.T, page string) string {
-	t.Helper()
-	return between(t, page, `data-testid="checkin-ask-addressee"`, "</fieldset>")
+// shownWithEmailOnHover reports whether root shows the person named label
+// with their email on hover.
+func shownWithEmailOnHover(root *html.Node, label, emailAddr string) bool {
+	return len(findAll(root, func(n *html.Node) bool { return attrOf(n, "title") == emailAddr && textOf(n) == label })) > 0
 }
 
 // While an ask is open the Check-in form starts with its box ticked, so
@@ -3206,26 +3180,26 @@ func TestCheckinFormAsksForHelpTickedWhileOpen(t *testing.T) {
 	f := newAskFixture(t)
 	formURL := fmt.Sprintf("%s/goals/%d/checkin", f.ts, f.goal.ID)
 
-	page := getBody(t, f.client, formURL)
-	if askBoxChecked(t, page) {
+	page := getPage(t, f.client, formURL)
+	box := askBox(t, page)
+	if box.Checked {
 		t.Errorf("box is ticked with no open ask")
 	}
 	// The box's label reads Ask for help, then whom it goes to; a person's
 	// own button can't sit inside a label, so it shows by name alone.
-	label := between(t, page, `<label class="checkin-ask">`, "</label>")
-	if !strings.Contains(label, "<strong>Ask for help</strong>") {
-		t.Errorf("box's label doesn't read Ask for help: %s", label)
+	if want := "Ask for help · goes to Mia Chen"; box.Label != want {
+		t.Errorf("box's label reads %q, want %q", box.Label, want)
 	}
-	if hint := askHint(t, page); !strings.Contains(hint, `· goes to <span class="person" title="`+f.mia.Email+`">Mia Chen</span>`) {
-		t.Errorf("hint doesn't name Mia Chen as whom the ask goes to: %s", hint)
+	addressee := findByTestID(t, page, "checkin-ask-addressee")
+	if !shownWithEmailOnHover(addressee, "Mia Chen", f.mia.Email) {
+		t.Errorf("hint doesn't name Mia Chen, her email on hover: %s", renderNode(addressee))
 	}
-	if !strings.Contains(label, `data-testid="checkin-ask-addressee"`) {
-		t.Errorf("whom the ask goes to isn't inside the box's label: %s", label)
+	if len(findAll(addressee, func(n *html.Node) bool { return n.Data == "button" })) > 0 {
+		t.Errorf("whom the ask goes to is a button inside the box's label: %s", renderNode(addressee))
 	}
 
 	f.h.AskForHelp(f.sam, f.goal.ID, domain.HealthYellow, "Short a reviewer.", "Borrow one.", pathDate)
-	page = getBody(t, f.client, formURL)
-	if !askBoxChecked(t, page) {
+	if !askBox(t, getPage(t, f.client, formURL)).Checked {
 		t.Errorf("box is unticked while the ask is open")
 	}
 }
@@ -3240,9 +3214,9 @@ func TestCheckinFormAskHintWithNoOneAbove(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	hint := askHint(t, getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)))
+	hint := textOf(findByTestID(t, getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)), "checkin-ask-addressee"))
 	if !strings.Contains(hint, "No one is above the Owner to ask.") {
-		t.Errorf("hint = %s, want it to say no one is above the Owner", hint)
+		t.Errorf("hint = %q, want it to say no one is above the Owner", hint)
 	}
 }
 
@@ -3300,7 +3274,7 @@ func TestCheckinRefusedSubmitKeepsAskAsPosted(t *testing.T) {
 		"status":        {"Still short."},
 		"asks_for_help": {"1"},
 	})
-	if !askBoxChecked(t, body) {
+	if !askBox(t, parsePage(t, body)).Checked {
 		t.Errorf("re-rendered form lost the ticked box")
 	}
 
@@ -3308,15 +3282,15 @@ func TestCheckinRefusedSubmitKeepsAskAsPosted(t *testing.T) {
 		"health": {domain.HealthYellow},
 		"status": {"Still short."},
 	})
-	body = readBody(t, resp)
+	doc := parsePage(t, readBody(t, resp))
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("refused plain submit = %d, want 422", resp.StatusCode)
 	}
-	if askBoxChecked(t, body) {
+	if askBox(t, doc).Checked {
 		t.Errorf("re-rendered form ticked a box posted unticked")
 	}
-	if hint := askHint(t, body); !strings.Contains(hint, `<span class="person" title="`+f.mia.Email+`">Mia Chen</span>`) {
-		t.Errorf("422 re-render's hint doesn't name Mia Chen: %s", hint)
+	if addressee := findByTestID(t, doc, "checkin-ask-addressee"); !shownWithEmailOnHover(addressee, "Mia Chen", f.mia.Email) {
+		t.Errorf("422 re-render's hint doesn't name Mia Chen: %q", textOf(addressee))
 	}
 }
 
@@ -3329,21 +3303,26 @@ func TestLatestStatusShowsAnOpenAsk(t *testing.T) {
 	f.h.AskForHelp(f.sam, f.goal.ID, domain.HealthYellow, "Short a reviewer.", "Borrow one.", pathDate)
 	goalURL := fmt.Sprintf("%s/goals/%d", f.ts, f.goal.ID)
 
-	card := pageElement(t, getBody(t, f.client, goalURL), "section", "goal-checkins")
-	_, afterPath, _ := strings.Cut(card, `data-testid="goal-path-to-green"`)
-	ask := between(t, afterPath, `<p data-testid="goal-ask-for-help">`, "</p>")
-	if !strings.Contains(ask, "<strong>Asks for help</strong> of "+shownAs(f.mia.Email, "Mia Chen")) {
-		t.Errorf("ask doesn't read \"Asks for help of Mia Chen\": %s", ask)
+	card := findByTestID(t, getPage(t, f.client, goalURL), "goal-checkins")
+	ask := findByTestID(t, card, "goal-ask-for-help")
+	if !precedes(findByTestID(t, card, "goal-path-to-green"), ask) {
+		t.Errorf("the ask isn't under the Path to Green")
 	}
-	if !strings.Contains(ask, `href="#comments"`) || !strings.Contains(ask, ">Answer</a>") {
-		t.Errorf("ask has no Answer link to the Comments: %s", ask)
+	if got := textOf(ask); !strings.HasPrefix(got, "Asks for help of Mia Chen") {
+		t.Errorf("ask reads %q, want \"Asks for help of Mia Chen\"", got)
 	}
-	if !strings.Contains(ask, shownAs(f.mia.Email, "Mia Chen")+` <a href="#comments">Answer</a>`) {
-		t.Errorf("ask runs the Addressee into Answer with no space between: %s", ask)
+	if !shownWithEmailOnHover(ask, "Mia Chen", f.mia.Email) {
+		t.Errorf("ask doesn't show Mia Chen with her email on hover: %s", renderNode(ask))
+	}
+	if answer := linkTo(ask, "#comments"); answer == nil || textOf(answer) != "Answer" {
+		t.Errorf("ask has no Answer link to the Comments: %s", renderNode(ask))
+	}
+	if got := runningText(ask); !strings.Contains(got, "Mia Chen Answer") {
+		t.Errorf("ask runs the Addressee into Answer with no space between: %q", got)
 	}
 
 	f.h.Checkin(f.sam, f.goal.ID, domain.HealthGreen, "Fixed.", "", time.Time{})
-	if page := getBody(t, f.client, goalURL); strings.Contains(page, "goal-ask-for-help") {
+	if page := getPage(t, f.client, goalURL); hasTestID(page, "goal-ask-for-help") {
 		t.Errorf("Goal page still shows the ask after a Green Check-in")
 	}
 }
@@ -3359,22 +3338,10 @@ func TestLatestStatusShowsAnAskWithNoOneAbove(t *testing.T) {
 	h.AskForHelp(sam, goal.ID, domain.HealthRed, "Blocked.", "Need budget.", pathDate)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	got := elementTexts(getBody(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)), "p", "goal-ask-for-help")
+	got := textsOf(findAllByTestID(getPage(t, client, fmt.Sprintf("%s/goals/%d", ts.URL, goal.ID)), "goal-ask-for-help"))
 	if len(got) != 1 || !strings.HasPrefix(got[0], "Asks for help · no one above the Owner") {
 		t.Errorf("ask = %q, want it to read \"Asks for help · no one above the Owner\"", got)
 	}
-}
-
-// pathReasonLabel is the open tag of the Check-in form's "Reason for moving it
-// later" label.
-func pathReasonLabel(t *testing.T, form string) string {
-	t.Helper()
-	return tagAround(t, form, `data-testid="checkin-path-target-reason"`)
-}
-
-// isHidden reports whether an open tag carries the hidden attribute.
-func isHiddenTag(tag string) bool {
-	return regexp.MustCompile(`\shidden(\s|>|=|/)`).MatchString(tag)
 }
 
 // The Check-in form asks for a reason for moving the back-to-Green date only
@@ -3390,35 +3357,30 @@ func TestCheckinFormHidesTheBackToGreenReasonUntilTheDateMovesLater(t *testing.T
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	h.Checkin(sam, goal.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	form := between(t, page, `id="checkin-form"`, "</form>")
-	label := pathReasonLabel(t, form)
-	if !isHiddenTag(label) {
-		t.Errorf("the reason field shows before the date moves: %s", label)
+	form := findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)), "checkin-form")
+	reason := formField(t, form, "path_target_date_reason")
+	if !isHidden(reason.Node) {
+		t.Errorf("the reason field shows before the date moves")
 	}
-	if !strings.Contains(between(t, form, `data-testid="checkin-path-target-reason"`, "</label>"), "Reason for moving it later") {
-		t.Errorf("the reason field isn't labelled \"Reason for moving it later\"; form:\n%s", form)
+	if reason.Label != "Reason for moving it later" {
+		t.Errorf("the reason field is labelled %q, want \"Reason for moving it later\"", reason.Label)
 	}
-	if !strings.Contains(form, `name="path_target_date_reason"`) {
-		t.Errorf("the form has no path_target_date_reason; form:\n%s", form)
+	date := formField(t, form, "path_target_date")
+	if got := attrOf(date.Node, "data-last"); got != "2026-06-15" {
+		t.Errorf("Back to Green by data-last = %q, want 2026-06-15", got)
 	}
-	date := tagAround(t, form, `name="path_target_date"`)
-	if got := attr(date, "data-last"); got != "2026-06-15" {
-		t.Errorf("Back to Green by data-last = %q, want 2026-06-15: %s", got, date)
-	}
-	if !strings.Contains(date, "hx-on:input=") {
-		t.Errorf("Back to Green by has no input handler to show the reason: %s", date)
+	if !hasAttr(date.Node, "hx-on:input") {
+		t.Errorf("Back to Green by has no input handler to show the reason: %s", renderNode(date.Node))
 	}
 
 	// A Goal with no back-to-Green date yet has nothing to slip from.
 	fresh := h.ActiveGoal(sam, "Cut churn", "Keep customers.")
-	page = getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, fresh.ID))
-	form = between(t, page, `id="checkin-form"`, "</form>")
-	if !isHiddenTag(pathReasonLabel(t, form)) {
+	form = findByTestID(t, getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, fresh.ID)), "checkin-form")
+	if !isHidden(formField(t, form, "path_target_date_reason").Node) {
 		t.Errorf("the reason field shows on a Goal with no back-to-Green date")
 	}
-	if date := tagAround(t, form, `name="path_target_date"`); strings.Contains(date, "data-last=") {
-		t.Errorf("Back to Green by carries a data-last with no previous date: %s", date)
+	if date := formField(t, form, "path_target_date"); hasAttr(date.Node, "data-last") {
+		t.Errorf("Back to Green by carries a data-last with no previous date: %s", renderNode(date.Node))
 	}
 }
 
@@ -3445,16 +3407,13 @@ func TestCheckinMovingTheBackToGreenDateLaterNeedsAReasonOverHTTP(t *testing.T) 
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("status = %d, want 422", resp.StatusCode)
 	}
-	body := between(t, readBody(t, resp), `id="checkin-form"`, "</form>")
+	doc := findByTestID(t, parsePage(t, readBody(t, resp)), "checkin-form")
 	const want = "Moving the back-to-Green date later needs a reason."
-	if msg := fieldError(t, body, `name="path_target_date_reason"`); !strings.Contains(msg, `">`+want) {
+	if msg := fieldError(t, doc, "path_target_date_reason"); !strings.HasPrefix(msg, want) {
 		t.Errorf("reason field's error = %q, want it to read %q", msg, want)
 	}
-	if label := pathReasonLabel(t, body); isHiddenTag(label) {
-		t.Errorf("the refused form hides the reason field: %s", label)
-	}
-	if fieldset := tagAround(t, body, `data-testid="path-to-green-field"`); !hasClass(fieldset, "has-error") {
-		t.Errorf("the Path to Green isn't marked as holding the error: %s", fieldset)
+	if isHidden(formField(t, doc, "path_target_date_reason").Node) {
+		t.Errorf("the refused form hides the reason field")
 	}
 
 	form.Set("path_target_date_reason", "The vendor is out until July.")
@@ -3476,10 +3435,10 @@ func TestCheckinMovingTheBackToGreenDateLaterNeedsAReasonOverHTTP(t *testing.T) 
 
 // backToGreenCell is the Latest status's "Back to Green by" cell on goal's
 // page.
-func backToGreenCell(t *testing.T, client *http.Client, base string, goal domain.Goal) string {
+func backToGreenCell(t *testing.T, client *http.Client, base string, goal domain.Goal) *html.Node {
 	t.Helper()
-	cells := pageElement(t, getBody(t, client, goalPageURL(base, goal)), "dl", "goal-status-cells")
-	return between(t, cells, `data-testid="goal-back-to-green-cell"`, "</dd>")
+	cells := findByTestID(t, getPage(t, client, goalPageURL(base, goal)), "goal-status-cells")
+	return findByTestID(t, cells, "goal-back-to-green-cell")
 }
 
 // The Latest status's Back to Green by shows a slipped back-to-Green date as a
@@ -3496,37 +3455,44 @@ func TestLatestStatusShowsASlippedBackToGreenDate(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 	jun := func(d int) time.Time { return time.Date(2026, 6, d, 0, 0, 0, 0, time.UTC) }
 
-	twice := h.ActiveGoal(sam, "Slipped twice", "It matters.")
-	h.Checkin(sam, twice.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(15))
-	h.CheckinMovingPath(sam, twice.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(22), "The vendor is out.")
-	h.CheckinMovingPath(sam, twice.ID, domain.HealthYellow, "Better.", "Escalate.", jun(29), "The vendor is still out.")
-	cell := backToGreenCell(t, client, ts.URL, twice)
-	if want := "<dd><span>Jun 29</span><del>Jun 22</del><span data-testid=\"back-to-green-slips\">(2)</span>"; !strings.Contains(strings.Join(strings.Fields(cell), ""), strings.Join(strings.Fields(want), "")) {
-		t.Errorf("the cell doesn't read Jun 29 ~~Jun 22~~ (2): %s", cell)
-	}
-
-	once := h.ActiveGoal(sam, "Slipped once", "It matters.")
-	h.Checkin(sam, once.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(15))
-	h.CheckinMovingPath(sam, once.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(22), "The vendor is out.")
-	cell = backToGreenCell(t, client, ts.URL, once)
-	if !strings.Contains(cell, "<span>Jun 22</span>") || !strings.Contains(cell, "<del>Jun 15</del>") {
-		t.Errorf("the cell doesn't read Jun 22 ~~Jun 15~~: %s", cell)
-	}
-	if strings.Contains(cell, "back-to-green-slips") {
-		t.Errorf("a date that slipped once shows a count: %s", cell)
-	}
-
-	// A Green Check-in ends the run, and its slips with it.
-	recovered := h.ActiveGoal(sam, "Back and off again", "It matters.")
-	h.Checkin(sam, recovered.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(15))
-	h.CheckinMovingPath(sam, recovered.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(22), "The vendor is out.")
-	h.Clock.Advance(time.Hour)
-	h.Checkin(sam, recovered.ID, domain.HealthGreen, "Unblocked.", "", time.Time{})
-	h.Clock.Advance(time.Hour)
-	h.Checkin(sam, recovered.ID, domain.HealthYellow, "Wobbling.", "Watch it.", jun(29))
-	cell = backToGreenCell(t, client, ts.URL, recovered)
-	if !strings.Contains(cell, "<span>Jun 29</span>") || strings.Contains(cell, "<del>") {
-		t.Errorf("a new Run off Green strikes the last run's date: %s", cell)
+	for _, tc := range []struct {
+		name    string
+		arrange func(domain.Goal)
+		reads   string
+		struck  []string
+		slips   []string
+	}{
+		{"Slipped twice", func(g domain.Goal) {
+			h.Checkin(sam, g.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(15))
+			h.CheckinMovingPath(sam, g.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(22), "The vendor is out.")
+			h.CheckinMovingPath(sam, g.ID, domain.HealthYellow, "Better.", "Escalate.", jun(29), "The vendor is still out.")
+		}, "Jun 29 Jun 22 (2)", []string{"Jun 22"}, []string{"(2)"}},
+		{"Slipped once", func(g domain.Goal) {
+			h.Checkin(sam, g.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(15))
+			h.CheckinMovingPath(sam, g.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(22), "The vendor is out.")
+		}, "Jun 22 Jun 15", []string{"Jun 15"}, nil},
+		// A Green Check-in ends the run, and its slips with it.
+		{"Back and off again", func(g domain.Goal) {
+			h.Checkin(sam, g.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(15))
+			h.CheckinMovingPath(sam, g.ID, domain.HealthRed, "Blocked.", "Escalate.", jun(22), "The vendor is out.")
+			h.Clock.Advance(time.Hour)
+			h.Checkin(sam, g.ID, domain.HealthGreen, "Unblocked.", "", time.Time{})
+			h.Clock.Advance(time.Hour)
+			h.Checkin(sam, g.ID, domain.HealthYellow, "Wobbling.", "Watch it.", jun(29))
+		}, "Jun 29", nil, nil},
+	} {
+		goal := h.ActiveGoal(sam, tc.name, "It matters.")
+		tc.arrange(goal)
+		cell := backToGreenCell(t, client, ts.URL, goal)
+		if _, value := statusCell(t, cell, "goal-back-to-green-cell"); value != tc.reads {
+			t.Errorf("%s: the cell reads %q, want %q", tc.name, value, tc.reads)
+		}
+		if got := struckThrough(cell); !slices.Equal(got, tc.struck) {
+			t.Errorf("%s: the cell strikes through %q, want %q", tc.name, got, tc.struck)
+		}
+		if got := textsOf(findAllByTestID(cell, "back-to-green-slips")); !slices.Equal(got, tc.slips) {
+			t.Errorf("%s: the cell counts slips %q, want %q", tc.name, got, tc.slips)
+		}
 	}
 }
 
@@ -3544,17 +3510,16 @@ func TestCheckinPageRefusesNoChangeOnceTheBackToGreenDateHasPassed(t *testing.T)
 	h.Clock.Advance(5 * day)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	c := between(t, page, `data-testid="no-change-card"`, `data-testid="checkin-form"`)
-	if strings.Contains(c, `data-testid="no-change-checkin"`) {
-		t.Errorf("the card offers a No change that would be refused:\n%s", c)
+	c := findByTestID(t, getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)), "no-change-card")
+	if hasTestID(c, "no-change-checkin") {
+		t.Errorf("the card offers a No change that would be refused: %q", textOf(c))
 	}
 	const want = "The back-to-Green date has passed: submit a Check-in with a new date and reason, or update the Health."
-	if got := elementTexts(c, "p", "no-change-unavailable"); !slices.Equal(got, []string{want}) {
+	if got := textsOf(findAllByTestID(c, "no-change-unavailable")); !slices.Equal(got, []string{want}) {
 		t.Errorf("the card's reason = %q, want %q", got, want)
 	}
 
-	_, page = postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
+	_, page := postNoChange(t, client, fmt.Sprintf("%s/goals/%d/checkins/no-change", ts.URL, goal.ID), false)
 	assertNoChangeRefusalOnForm(t, page, want)
 }
 
@@ -3585,36 +3550,40 @@ func TestCheckinPageListsTheGoalsChildren(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	f := newCheckinChildrenFixture(h, sam)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, f.parent.ID))
-	list := pageElement(t, page, "section", "checkin-children")
-	if !strings.Contains(list, `<h3 class="checkin-rail-head">Contributed to by</h3>`) {
-		t.Errorf("children list is not headed Contributed to by; list:\n%s", list)
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, f.parent.ID))
+	list := findByTestID(t, page, "checkin-children")
+	if headingNamed(list, "Contributed to by") == nil {
+		t.Errorf("children list is not headed Contributed to by: %q", textOf(list))
 	}
 	for _, child := range []struct {
-		goal  domain.Goal
-		badge string
+		goal   domain.Goal
+		health string
 	}{
-		{f.yellow, `<span class="badge y"><span class="dot"></span>Yellow</span>`},
-		{f.green, `<span class="badge g"><span class="dot"></span>Green</span>`},
+		{f.yellow, domain.HealthYellow},
+		{f.green, domain.HealthGreen},
 	} {
-		link := fmt.Sprintf(`<a href="/goals/%d">%s</a>`, child.goal.ID, child.goal.Title)
-		at := strings.Index(list, link)
-		if at < 0 {
-			t.Errorf("children list has no link %s; list:\n%s", link, list)
+		link := linkTo(list, fmt.Sprintf("/goals/%d", child.goal.ID))
+		if link == nil || textOf(link) != child.goal.Title {
+			t.Errorf("children list has no link to %s: %q", child.goal.Title, textOf(list))
 			continue
 		}
-		item, _, _ := strings.Cut(list[at:], "</li>")
-		if !strings.Contains(item, child.badge) {
-			t.Errorf("%s shows no %s; item:\n%s", child.goal.Title, child.badge, item)
+		item := link
+		for item.Parent != nil && item.Data != "li" {
+			item = item.Parent
+		}
+		if !slices.Contains(strings.Fields(textOf(item)), child.health) {
+			t.Errorf("%s shows no %s: %q", child.goal.Title, child.health, textOf(item))
 		}
 	}
-	if strings.Contains(list, "/links/") {
-		t.Errorf("children list offers a Remove form; list:\n%s", list)
+	if removes := findAll(list, func(n *html.Node) bool {
+		return strings.Contains(attrOf(n, "action")+attrOf(n, "hx-post")+attrOf(n, "formaction"), "/links/")
+	}); len(removes) > 0 || buttonNamed(list, "Remove") != nil {
+		t.Errorf("children list offers a Remove form: %s", renderNode(list))
 	}
 }
 
-// A Goal with no children has no children list, and the Check-in page carries
-// no modifier for it: the page's column shows for every Goal (ticket #366).
+// A Goal with no children has no children list: the page's column shows for
+// every Goal (ticket #366).
 func TestCheckinPageWithoutChildrenHasNoChildrenList(t *testing.T) {
 	t.Parallel()
 
@@ -3623,12 +3592,12 @@ func TestCheckinPageWithoutChildrenHasNoChildrenList(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	g := h.ActiveGoal(sam, "Ship it", "It matters.")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, g.ID))
-	if strings.Contains(page, `data-testid="checkin-children"`) {
-		t.Errorf("a Goal with no children shows a children list; body:\n%s", page)
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, g.ID))
+	if hasTestID(page, "checkin-children") {
+		t.Errorf("a Goal with no children shows a children list: %q", textOf(findByTestID(t, page, "checkin-children")))
 	}
-	if !strings.Contains(page, `<div class="checkin-page">`) {
-		t.Errorf("a Goal with no children doesn't keep the plain Check-in page; body:\n%s", page)
+	if !hasTestID(page, "checkin-context") {
+		t.Errorf("a Goal with no children loses the page's column")
 	}
 }
 
@@ -3643,16 +3612,12 @@ func TestCheckinFormRollupLineCountsTheGoalsChildren(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	f := newCheckinChildrenFixture(h, sam)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, f.parent.ID))
-	line := pageElement(t, page, "p", "checkin-form-rollup")
-	if got, want := checkinPageText(line), "Rolled-up Health: Yellow 1 of 2 Yellow"; got != want {
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, f.parent.ID))
+	if got, want := textOf(findByTestID(t, page, "checkin-form-rollup")), "Rolled-up Health: Yellow 1 of 2 Yellow"; got != want {
 		t.Errorf("rollup line = %q, want %q", got, want)
 	}
-	if !strings.Contains(line, `<span class="muted">1 of 2 Yellow</span>`) {
-		t.Errorf("rollup line doesn't show the count as the badge's muted count line; line:\n%s", line)
-	}
-	if strings.Contains(page, "your Active children") {
-		t.Errorf("rollup line still reads as the Owner's children; body:\n%s", page)
+	if strings.Contains(textOf(page), "your Active children") {
+		t.Errorf("rollup line still reads as the Owner's children")
 	}
 }
 
@@ -3674,48 +3639,14 @@ func TestCheckinRefusedSubmitLeavesTheChildrenListAlone(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("htmx validation response status = %d, want 200", status)
 	}
-	fieldError(t, body, `name="status"`)
-	if !strings.Contains(body, `data-testid="checkin-form"`) {
+	doc := parsePage(t, body)
+	fieldError(t, doc, "status")
+	if !hasTestID(doc, "checkin-form") {
 		t.Errorf("refused submit doesn't re-render the form; body:\n%s", body)
 	}
-	if strings.Contains(body, `data-testid="checkin-children"`) {
+	if hasTestID(doc, "checkin-children") {
 		t.Errorf("refused submit re-renders the children list along with the form; body:\n%s", body)
 	}
-}
-
-// The children list's rules live in app.css, shared by the Goal page and the
-// Check-in page, so the two lists can't drift; the Goal page no longer carries
-// its own copy.
-func TestChildrenListStylesAreShared(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	sam := h.SignIn("sam@example.com")
-	f := newCheckinChildrenFixture(h, sam)
-
-	rules := []string{
-		".gp-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}",
-		".gp-link{display:flex;flex-direction:column;gap:4px}",
-		".gp-link-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}",
-		".gp-link-meta form{margin:0 0 0 auto}",
-	}
-	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
-	goalPage := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d", ts.URL, f.parent.ID))
-	for _, rule := range rules {
-		if !strings.Contains(css, rule) {
-			t.Errorf("app.css lacks %s", rule)
-		}
-		if strings.Contains(goalPage, rule) {
-			t.Errorf("Goal page's inline styles still carry %s", rule)
-		}
-	}
-}
-
-// checkinPageText is a page fragment's text, its markup dropped and its
-// whitespace collapsed.
-func checkinPageText(fragment string) string {
-	return strings.Join(strings.Fields(html.UnescapeString(regexp.MustCompile(`<[^>]*>`).ReplaceAllString(fragment, " "))), " ")
 }
 
 // The Check-in page reads top to bottom under headings: the page title, then
@@ -3740,36 +3671,50 @@ func TestCheckinPageHeadingHierarchy(t *testing.T) {
 	h.Checkin(sam, goal.ID, domain.HealthYellow, "Slipping.", "Add a second on-call.", pathDate)
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	at := 0
-	for _, want := range []string{
-		"<h1>Check in</h1>",
-		"<h2>How is it going?</h2>",
-		`<textarea name="status"`,
-		`data-testid="checkin-form-rollup"`,
-		"<h2>Path to Green</h2>",
-		"<h2>Metrics</h2>",
-	} {
-		i := strings.Index(page[at:], want)
-		if i < 0 {
-			t.Fatalf("page has no %s after what came before it; body:\n%s", want, page)
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	heading := func(level, text string) func() *html.Node {
+		return func() *html.Node {
+			if n := headingNamed(page, text); n != nil && n.Data == level {
+				return n
+			}
+			return nil
 		}
-		at += i + len(want)
+	}
+	var last *html.Node
+	for _, part := range []struct {
+		what string
+		find func() *html.Node
+	}{
+		{"<h1> Check in", heading("h1", "Check in")},
+		{"<h2> How is it going?", heading("h2", "How is it going?")},
+		{"the status", func() *html.Node { return formField(t, page, "status").Node }},
+		{"the Rolled-up Health", func() *html.Node { return findByTestID(t, page, "checkin-form-rollup") }},
+		{"<h2> Path to Green", heading("h2", "Path to Green")},
+		{"<h2> Metrics", heading("h2", "Metrics")},
+	} {
+		n := part.find()
+		if n == nil || last != nil && !precedes(last, n) {
+			t.Fatalf("page has no %s after what came before it; it reads:\n%s", part.what, textOf(page))
+		}
+		last = n
 	}
 	for _, gone := range []string{"Metric readings", "Path to Green (required"} {
-		if strings.Contains(page, gone) {
+		if strings.Contains(textOf(page), gone) {
 			t.Errorf("page still reads %q", gone)
 		}
 	}
-	if numbered := regexp.MustCompile(`<h2[^>]*>\s*\d`).FindString(page); numbered != "" {
-		t.Errorf("a heading is numbered: %s", numbered)
+	for _, h2 := range findAll(page, func(n *html.Node) bool { return n.Data == "h2" }) {
+		if text := textOf(h2); text != "" && unicode.IsDigit([]rune(text)[0]) {
+			t.Errorf("a heading is numbered: %q", text)
+		}
 	}
 }
 
-// The Check-in page is a form in the flat frame: its page header reads Check
-// in under the Goal's title, which links back to the Goal, and nothing on it
-// is a card, whether it has a No change to offer and Contributed to by to
-// show or not (DESIGN.md § Check-in page).
+// The Check-in page's header reads Check in under the Goal's title, which
+// links back to the Goal, whether it has a No change to offer and Contributed
+// to by to show or not; it is the page's only title (DESIGN.md § Check-in
+// page). That it sits in the flat frame, with no card, is tested in
+// styles_test.go.
 func TestCheckinPageIsAFlatForm(t *testing.T) {
 	t.Parallel()
 
@@ -3782,12 +3727,16 @@ func TestCheckinPageIsAFlatForm(t *testing.T) {
 	client := signInClient(t, ts.URL, "sam@example.com")
 
 	for _, g := range []domain.Goal{f.parent, lone} {
-		page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, g.ID))
-		assertFlatFormFrame(t, page, g.Title, "Check in")
-		if crumb := tagAround(t, page, `class="ph-parent"`); attr(crumb, "href") != fmt.Sprintf("/goals/%d", g.ID) {
-			t.Errorf("%s: the breadcrumb doesn't link to the Goal: %s", g.Title, crumb)
+		page := getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, g.ID))
+		h1s := findAll(page, func(n *html.Node) bool { return n.Data == "h1" })
+		if got := textsOf(h1s); !slices.Equal(got, []string{"Check in"}) {
+			t.Fatalf("%s: the page's titles read %q, want only Check in", g.Title, got)
 		}
-		if strings.Contains(page, `aria-label="Breadcrumb"`) {
+		crumb := linkTo(page, fmt.Sprintf("/goals/%d", g.ID))
+		if crumb == nil || textOf(crumb) != g.Title || !precedes(crumb, h1s[0]) {
+			t.Errorf("%s: the header has no breadcrumb above Check in reading the Goal's title and linking to it", g.Title)
+		}
+		if breadcrumbs := findAll(page, func(n *html.Node) bool { return attrOf(n, "aria-label") == "Breadcrumb" }); len(breadcrumbs) > 0 {
 			t.Errorf("%s: the page keeps its own breadcrumb under the header", g.Title)
 		}
 	}
@@ -3807,7 +3756,7 @@ func TestCheckinPageMetaLine(t *testing.T) {
 	checkinURL := fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID)
 	meta := func() string {
 		t.Helper()
-		return checkinPageText(pageElement(t, getBody(t, client, checkinURL), "p", "checkin-page-meta"))
+		return textOf(findByTestID(t, getPage(t, client, checkinURL), "checkin-page-meta"))
 	}
 
 	if got, want := meta(), "Week of Dec 29, 2025 · checks in every 7 days"; got != want {
@@ -3832,21 +3781,20 @@ func TestCheckinFormRolledUpPanel(t *testing.T) {
 	redChild := h.ActiveChildOf(sam, parent, "Red work", "Red why it matters.")
 	h.Checkin(sam, redChild.ID, domain.HealthRed, "Blocked.", "Escalate.", pathDate)
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, parent.ID))
-	if !strings.Contains(page, `type="radio" name="health" value="Green" checked`) {
-		t.Fatalf("the form doesn't start on Green; body:\n%s", page)
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, parent.ID))
+	if got := checkedRadio(page, "health"); got != domain.HealthGreen {
+		t.Fatalf("the form starts on %q, want Green", got)
 	}
-	line := pageElement(t, page, "p", "checkin-form-rollup")
-	if got, want := checkinPageText(line), "Rolled-up Health: Red 1 of 1 Red"; got != want {
+	line := findByTestID(t, page, "checkin-form-rollup")
+	if got, want := textOf(line), "Rolled-up Health: Red 1 of 1 Red"; got != want {
 		t.Errorf("rollup line = %q, want %q", got, want)
 	}
-	if !strings.Contains(line, `<span class="badge r"><span class="dot"></span>Red</span>`) {
-		t.Errorf("rollup line doesn't show Red as a badge; line:\n%s", line)
+	explanation := formField(t, page, "explanation")
+	if !precedes(line, explanation.Node) {
+		t.Errorf("the explanation comes before the Rolled-up Health")
 	}
-	explanation := between(t, page, `data-testid="checkin-form-rollup"`, `name="explanation"`)
-	label := checkinPageText(explanation[strings.LastIndex(explanation, "<label"):])
-	if want := "Explain the difference from Rolled-up Health Required while it differs from the Rolled-up Health"; !strings.Contains(label, want) {
-		t.Errorf("explanation label = %q, want it to read %q", label, want)
+	if want := "Explain the difference from Rolled-up Health Required while it differs from the Rolled-up Health"; explanation.Label != want {
+		t.Errorf("explanation label = %q, want %q", explanation.Label, want)
 	}
 }
 
@@ -3864,12 +3812,12 @@ func TestCheckinFormPathToGreenNotesRunOffGreen(t *testing.T) {
 	green := h.ActiveGoal(sam, "Ship it", "It matters.")
 	h.Checkin(sam, green.ID, domain.HealthGreen, "On track.", "", time.Time{})
 	client := signInClient(t, ts.URL, "sam@example.com")
-	legend := func(page string) string {
+	legend := func(doc *html.Node) string {
 		t.Helper()
-		return checkinPageText(between(t, page, `data-testid="path-to-green-field"`, "</legend>"))
+		return textOf(firstTag(t, findByTestID(t, doc, "path-to-green-field"), "legend"))
 	}
 
-	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, yellow.ID))
+	page := getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, yellow.ID))
 	got := legend(page)
 	for _, want := range []string{"Path to Green", "Required while Yellow or Red", "1 wk off Green"} {
 		if !strings.Contains(got, want) {
@@ -3878,61 +3826,42 @@ func TestCheckinFormPathToGreenNotesRunOffGreen(t *testing.T) {
 	}
 	// Beside the Back to Green by date, its last value and that a later one
 	// needs a reason.
-	if got, want := checkinPageText(between(t, page, `data-testid="checkin-path-target-last"`, `data-testid="checkin-path-target-reason"`)), "Last time: Jun 15 A later date needs a reason."; !strings.Contains(got, want) {
-		t.Errorf("Back to Green by hints read %q, want %q", got, want)
+	if got, want := textOf(findByTestID(t, page, "path-to-green-field")), "Last time: Jun 15 A later date needs a reason."; !strings.Contains(got, want) {
+		t.Errorf("the Path to Green reads %q, want Back to Green by's hints %q", got, want)
 	}
 
 	body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, yellow.ID), url.Values{
 		"health": {domain.HealthYellow},
 		"status": {"Still slipping."},
 	})
-	fieldError(t, body, `name="path_target_date"`)
-	if got := legend(body); !strings.Contains(got, "1 wk off Green") {
+	doc := parsePage(t, body)
+	fieldError(t, doc, "path_target_date")
+	if got := legend(doc); !strings.Contains(got, "1 wk off Green") {
 		t.Errorf("re-rendered Path to Green legend = %q, want it to keep 1 wk off Green", got)
 	}
 
-	page = getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, green.ID))
+	page = getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, green.ID))
 	if got := legend(page); strings.Contains(got, "off Green") {
 		t.Errorf("Green Goal's Path to Green legend = %q, want no Run off Green", got)
 	}
-	if strings.Contains(page, "A later date needs a reason.") {
+	if strings.Contains(textOf(page), "A later date needs a reason.") {
 		t.Errorf("a Goal with no previous Back to Green date says a later one needs a reason")
 	}
 }
 
-// The Check-in page separates its sections by whitespace, not boxes: the Path
-// to Green is no longer filled Yellow or Red, and no fieldset is boxed, while
-// the Path to Green still hides while Green is picked (ticket #364).
-func TestCheckinPageSectionsAreNotBoxed(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	sam := h.SignIn("sam@example.com")
-	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	for _, gone := range []string{
-		".checkin-form:has(input[name=health][value=Yellow]:checked) .path-to-green",
-		".checkin-form:has(input[name=health][value=Red]:checked) .path-to-green",
-		".checkin-form fieldset{border:1px",
-	} {
-		if strings.Contains(page, gone) {
-			t.Errorf("styles still carry %s", gone)
+// checkinSubmitBar returns the Check-in form's submit bar, failing unless
+// nothing in the form comes after it.
+func checkinSubmitBar(t *testing.T, form *html.Node) *html.Node {
+	t.Helper()
+	bar := findByTestID(t, form, "checkin-submit-bar")
+	var last *html.Node
+	for n := range form.Descendants() {
+		if n.Type == html.ElementNode {
+			last = n
 		}
 	}
-	if !strings.Contains(page, `.checkin-form:has(input[name=health][value=Green]:checked) .path-to-green:not(.has-error){display:none}`) {
-		t.Errorf("styles no longer hide the Path to Green while Green is picked")
-	}
-}
-
-// checkinSubmitBar returns the Check-in form's submit bar, from its opening
-// tag to the form's end, failing unless it is the form's last element.
-func checkinSubmitBar(t *testing.T, form string) string {
-	t.Helper()
-	bar := between(t, form, `<div data-testid="checkin-submit-bar"`, "")
-	if !strings.HasSuffix(strings.TrimSpace(bar), "</div>") || strings.Count(bar, "<div") != strings.Count(bar, "</div>") {
-		t.Fatalf("the submit bar isn't the form's last element:\n%s", bar)
+	if !within(last, bar) {
+		t.Fatalf("the submit bar isn't the form's last element; %s comes after it", renderNode(last))
 	}
 	return bar
 }
@@ -3949,98 +3878,27 @@ func TestCheckinFormEndsWithSubmitBar(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	form := between(t, page, `data-testid="checkin-form"`, "</form>")
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	form := findByTestID(t, page, "checkin-form")
 	bar := checkinSubmitBar(t, form)
-	if !strings.HasPrefix(bar, `<div data-testid="checkin-submit-bar" class="checkin-submit-bar">`) {
-		t.Errorf("the submit bar's opening tag = %s", openTag(bar))
+	summary := findByTestID(t, bar, "checkin-summary")
+	if attrOf(summary, "aria-live") != "polite" {
+		t.Errorf("the summary isn't announced politely: %s", renderNode(summary))
 	}
-	summary := tagAround(t, bar, `data-testid="checkin-summary"`)
-	if attr(summary, "class") != "checkin-summary" || attr(summary, "aria-live") != "polite" {
-		t.Errorf("the summary = %s, want class checkin-summary and aria-live polite", summary)
+	if summary.FirstChild != nil {
+		t.Errorf("the summary isn't empty from the server: %s", renderNode(summary))
 	}
-	if !strings.Contains(bar, summary+"</div>") {
-		t.Errorf("the summary isn't empty from the server:\n%s", bar)
+	if cancel := linkTo(bar, fmt.Sprintf("/goals/%d", goal.ID)); cancel == nil || textOf(cancel) != "Cancel" {
+		t.Errorf("the submit bar has no Cancel back to the Goal: %q", textOf(bar))
 	}
-	if !strings.Contains(bar, fmt.Sprintf(`<a class="btn quiet" href="/goals/%d">Cancel</a>`, goal.ID)) {
-		t.Errorf("the submit bar has no Cancel back to the Goal:\n%s", bar)
+	if submit := buttonNamed(bar, "Submit check-in"); submit == nil || attrOf(submit, "type") != "submit" || hasAttr(submit, "name") {
+		t.Errorf("the submit bar has no plain Submit check-in: %s", renderNode(bar))
 	}
-	if !strings.Contains(bar, `<button type="submit" class="btn primary">Submit check-in</button>`) {
-		t.Errorf("the submit bar has no Submit check-in:\n%s", bar)
+	if fields := findAll(bar, func(n *html.Node) bool { return n.Data == "input" || n.Data == "select" || n.Data == "textarea" }); len(fields) > 0 {
+		t.Errorf("the submit bar holds a field: %s", renderNode(fields[0]))
 	}
-	for _, field := range []string{"<input", "<select", "<textarea"} {
-		if strings.Contains(bar, field) {
-			t.Errorf("the submit bar holds a field (%s):\n%s", field, bar)
-		}
-	}
-	first := regexp.MustCompile(`<button[^>]*type="submit"[^>]*>`).FindString(form)
-	if attr(first, "data-testid") != "checkin-default-submit" {
-		t.Errorf("the form's first submit isn't the default submit: %s", first)
-	}
-	if strings.Contains(page, `class="checkin-submit"`) {
-		t.Errorf("the page still has the old checkin-submit row")
-	}
-}
-
-// The submit bar sticks just above the bottom of the window while the form runs
-// past it, a floating surface (DESIGN.md § System: Surfaces are for what
-// floats): bordered, rounded and cast by --shadow-pop, and the page keeps a
-// field it scrolls to clear of it. At 600px and below Cancel hides, the
-// summary shrinks and Submit check-in grows to a thumb's size (ticket #367).
-func TestCheckinSubmitBarFloatsAtTheWindowsBottom(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	sam := h.SignIn("sam@example.com")
-	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	bar := cssRule(t, page, ".checkin-submit-bar")
-	for _, want := range []string{
-		"position:sticky", "bottom:16px", "z-index:10",
-		"background:var(--color-surface)", "border:1px solid var(--color-border)",
-		"border-radius:var(--radius-lg)", "box-shadow:var(--shadow-pop)",
-		"padding:12px 16px", "display:flex", "align-items:center", "gap:16px", "flex-wrap:wrap",
-	} {
-		if !strings.Contains(bar, want) {
-			t.Errorf(".checkin-submit-bar declares %q, missing %s", bar, want)
-		}
-	}
-	if strings.Contains(bar, "#") {
-		t.Errorf(".checkin-submit-bar names a colour by hex: %q", bar)
-	}
-	summary := cssRule(t, page, ".checkin-summary")
-	for _, want := range []string{"flex:1", "color:var(--color-ink-2)", "font-size:14px"} {
-		if !strings.Contains(summary, want) {
-			t.Errorf(".checkin-summary declares %q, missing %s", summary, want)
-		}
-	}
-	if part := cssRule(t, page, ".checkin-summary>*"); !strings.Contains(part, "white-space:nowrap") {
-		t.Errorf("the summary's parts break inside themselves rather than wrap whole: %q", part)
-	}
-	if submit := cssRule(t, page, ".checkin-submit-bar .btn.primary"); !strings.Contains(submit, "height:44px") {
-		t.Errorf("Submit check-in isn't 44px tall: %q", submit)
-	}
-	if pad := cssRule(t, page, "html:has(.checkin-submit-bar)"); !strings.Contains(pad, "scroll-padding-bottom:") {
-		t.Errorf("the page doesn't keep a scrolled-to field clear of the bar: %q", pad)
-	}
-
-	phone := map[string]string{
-		".checkin-submit-bar .btn.quiet":   "display:none",
-		".checkin-summary":                 "font-size:13px",
-		".checkin-submit-bar .btn.primary": "height:48px",
-	}
-	for sel, want := range phone {
-		found := false
-		for _, block := range mediaBlocks(page, "@media (max-width:600px)") {
-			if decls, ok := ruleFor(block, sel); ok && strings.Contains(decls, want) {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("at 600px and below %s doesn't declare %s", sel, want)
-		}
+	if first := submitButtons(form)[0]; attrOf(first, "data-testid") != "checkin-default-submit" {
+		t.Errorf("the form's first submit isn't the default submit: %s", renderNode(first))
 	}
 }
 
@@ -4057,13 +3915,13 @@ func TestCheckinDateFieldsCarryTheCurrentDates(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
 	beta := onlyMilestone(t, h, goal)
 	client := signInClient(t, ts.URL, "sam@example.com")
-	betaDate := fmt.Sprintf(`name="milestone_date_%d"`, beta.ID)
+	betaDate := fmt.Sprintf("milestone_date_%d", beta.ID)
 
-	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	if got := attr(tagAround(t, page, `name="delivery_date"`), "data-current"); got != "2026-07-02" {
+	page := getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	if got := attrOf(formField(t, page, "delivery_date").Node, "data-current"); got != "2026-07-02" {
 		t.Errorf("delivery_date's data-current = %q, want 2026-07-02", got)
 	}
-	if got := attr(tagAround(t, page, betaDate), "data-current"); got != "2026-04-02" {
+	if got := attrOf(formField(t, page, betaDate).Node, "data-current"); got != "2026-04-02" {
 		t.Errorf("Beta's date's data-current = %q, want 2026-04-02", got)
 	}
 
@@ -4073,15 +3931,14 @@ func TestCheckinDateFieldsCarryTheCurrentDates(t *testing.T) {
 		"health":        {domain.HealthGreen},
 		"status":        {" "},
 		"delivery_date": {"2026-08-01"},
-		fmt.Sprintf("milestone_date_%d", beta.ID): {"2026-05-01"},
+		betaDate:        {"2026-05-01"},
 	})
-	delivery := tagAround(t, body, `name="delivery_date"`)
-	if attr(delivery, "value") != "2026-08-01" || attr(delivery, "data-current") != "2026-07-02" {
-		t.Errorf("re-rendered delivery_date = %s, want value 2026-08-01 and data-current 2026-07-02", delivery)
+	doc := parsePage(t, body)
+	if delivery := formField(t, doc, "delivery_date"); delivery.Value != "2026-08-01" || attrOf(delivery.Node, "data-current") != "2026-07-02" {
+		t.Errorf("re-rendered delivery_date = %s, want value 2026-08-01 and data-current 2026-07-02", renderNode(delivery.Node))
 	}
-	milestone := tagAround(t, body, betaDate)
-	if attr(milestone, "value") != "2026-05-01" || attr(milestone, "data-current") != "2026-04-02" {
-		t.Errorf("re-rendered Beta date = %s, want value 2026-05-01 and data-current 2026-04-02", milestone)
+	if milestone := formField(t, doc, betaDate); milestone.Value != "2026-05-01" || attrOf(milestone.Node, "data-current") != "2026-04-02" {
+		t.Errorf("re-rendered Beta date = %s, want value 2026-05-01 and data-current 2026-04-02", renderNode(milestone.Node))
 	}
 }
 
@@ -4103,14 +3960,18 @@ func TestCheckinRefusedSubmitBringsBackTheSubmitBar(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("refused htmx submit: status %d, want 200 so htmx swaps the form", status)
 	}
-	form := between(t, body, `data-testid="checkin-form"`, "</form>")
+	form := findByTestID(t, parsePage(t, body), "checkin-form")
 	checkinSubmitBar(t, form)
 	found := false
-	for _, m := range regexp.MustCompile(`(?s)<script>(.*?)</script>`).FindAllStringSubmatch(form, -1) {
-		found = found || strings.Contains(m[1], "checkin-form") && strings.Contains(m[1], "checkin-summary")
+	for _, script := range findAll(form, func(n *html.Node) bool { return n.Data == "script" }) {
+		code := ""
+		for c := script.FirstChild; c != nil; c = c.NextSibling {
+			code += c.Data
+		}
+		found = found || strings.Contains(code, "checkin-form") && strings.Contains(code, "checkin-summary")
 	}
 	if !found {
-		t.Errorf("the re-rendered form has no script filling the summary:\n%s", form)
+		t.Errorf("the re-rendered form has no script filling the summary:\n%s", renderNode(form))
 	}
 }
 
@@ -4127,26 +3988,23 @@ func TestCheckinPageShowsLastTimeAndDates(t *testing.T) {
 	const status = "The paywall fix slipped a week."
 	h.Checkin(sam, goal.ID, domain.HealthYellow, status, "Ship the fix behind a flag.", testsupport.Epoch.AddDate(0, 2, 0))
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	aside := pageElement(t, page, "aside", "checkin-context")
-	last := pageElement(t, aside, "section", "checkin-last-time")
-	for _, want := range []string{
-		`<h3 class="checkin-rail-head">Last time · Jan 2</h3>`,
-		`<span class="badge y"><span class="dot"></span>Yellow</span>`,
-		`<span class="muted">back to Green by Mar 2</span>`,
-	} {
-		if !strings.Contains(last, want) {
-			t.Errorf("Last time lacks %s:\n%s", want, last)
-		}
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	aside := findByTestID(t, page, "checkin-context")
+	last := findByTestID(t, aside, "checkin-last-time")
+	if headingNamed(last, "Last time · Jan 2") == nil {
+		t.Errorf("Last time isn't headed Last time · Jan 2: %q", textOf(last))
 	}
-	if got := elementTexts(last, "p", "checkin-last-status"); !slices.Equal(got, []string{status}) {
+	if got, want := textOf(last), "Last time · Jan 2 Yellow back to Green by Mar 2 "+status; got != want {
+		t.Errorf("Last time reads %q, want %q", got, want)
+	}
+	if got := textsOf(findAllByTestID(last, "checkin-last-status")); !slices.Equal(got, []string{status}) {
 		t.Errorf("Last time's Status = %q, want %q", got, status)
 	}
-	dates := pageElement(t, aside, "section", "checkin-context-dates")
-	if !strings.Contains(dates, `<h3 class="checkin-rail-head">Dates</h3>`) {
-		t.Errorf("the Dates section isn't headed Dates:\n%s", dates)
+	dates := findByTestID(t, aside, "checkin-context-dates")
+	if headingNamed(dates, "Dates") == nil {
+		t.Errorf("the Dates section isn't headed Dates: %q", textOf(dates))
 	}
-	if got, want := checkinPageText(dates), "Dates Delivers Jul 2 · 1 planned Milestone, next Beta Apr 2"; got != want {
+	if got, want := textOf(dates), "Dates Delivers Jul 2 · 1 planned Milestone, next Beta Apr 2"; got != want {
 		t.Errorf("the Dates section reads %q, want %q", got, want)
 	}
 }
@@ -4161,11 +4019,11 @@ func TestCheckinPageContextWithoutACheckin(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	aside := pageElement(t, page, "aside", "checkin-context")
-	pageElement(t, aside, "section", "checkin-context-dates")
-	if strings.Contains(page, `data-testid="checkin-last-time"`) {
-		t.Errorf("a Goal with no Check-in shows Last time:\n%s", aside)
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	aside := findByTestID(t, page, "checkin-context")
+	findByTestID(t, aside, "checkin-context-dates")
+	if hasTestID(page, "checkin-last-time") {
+		t.Errorf("a Goal with no Check-in shows Last time: %q", textOf(aside))
 	}
 }
 
@@ -4183,18 +4041,18 @@ func TestCheckinPageContextSectionsInOrder(t *testing.T) {
 	lone := h.ActiveGoal(sam, "Ship it", "It matters.")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	aside := pageElement(t, getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, f.parent.ID)), "aside", "checkin-context")
-	last := strings.Index(aside, `data-testid="checkin-last-time"`)
-	children := strings.Index(aside, `data-testid="checkin-children"`)
-	dates := strings.Index(aside, `data-testid="checkin-context-dates"`)
-	if last < 0 || children <= last || dates <= children {
-		t.Errorf("the column's sections are at %d (Last time), %d (children), %d (Dates), want Last time, children, then Dates:\n%s", last, children, dates, aside)
+	aside := findByTestID(t, getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, f.parent.ID)), "checkin-context")
+	last := findByTestID(t, aside, "checkin-last-time")
+	children := findByTestID(t, aside, "checkin-children")
+	dates := findByTestID(t, aside, "checkin-context-dates")
+	if !precedes(last, children) || !precedes(children, dates) {
+		t.Errorf("the column reads %q, want Last time, children, then Dates", textOf(aside))
 	}
 
-	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, lone.ID))
-	pageElement(t, page, "aside", "checkin-context")
-	if strings.Contains(page, `data-testid="checkin-children"`) {
-		t.Errorf("a Goal with no children shows a children list:\n%s", page)
+	page := getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, lone.ID))
+	findByTestID(t, page, "checkin-context")
+	if hasTestID(page, "checkin-children") {
+		t.Errorf("a Goal with no children shows a children list")
 	}
 }
 
@@ -4215,72 +4073,29 @@ func TestCheckinRefusedSubmitLeavesTheContextAlone(t *testing.T) {
 	if status != http.StatusOK {
 		t.Fatalf("htmx validation response status = %d, want 200", status)
 	}
-	fieldError(t, body, `name="status"`)
-	if strings.Contains(body, `data-testid="checkin-context"`) {
+	doc := parsePage(t, body)
+	fieldError(t, doc, "status")
+	if hasTestID(doc, "checkin-context") {
 		t.Errorf("refused submit re-renders the column along with the form; body:\n%s", body)
 	}
 }
 
-// The column sticks beside the form on a wide screen as a quiet rail, and on
-// a phone drops Last time and Dates, which the form's ghost text already
-// covers (ticket #366), leaving Contributed to by with no rule above it.
-func TestCheckinPageContextStyles(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	sam := h.SignIn("sam@example.com")
-	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	styles := between(t, page, ".checkin-page{", "</style>")
-	if rule, ok := ruleFor(styles, ".checkin-context"); !ok || !strings.Contains(rule, "position:sticky") {
-		t.Errorf(".checkin-context{%s} isn't sticky", rule)
-	}
-	// It reads as a quiet rail: behind a hairline, in small text, headed by
-	// small muted labels (DESIGN.md § Check-in page's column).
-	for sel, want := range map[string]string{
-		".checkin-context":   "border-left:1px solid var(--color-border)",
-		".checkin-rail-head": "color:var(--color-ink-muted)",
-	} {
-		if rule, ok := ruleFor(styles, sel); !ok || !strings.Contains(rule, want) {
-			t.Errorf("%s{%s} doesn't declare %s", sel, rule, want)
-		}
-	}
-	if rule, _ := ruleFor(styles, ".checkin-context"); !strings.Contains(rule, "font-size:13px") {
-		t.Errorf(".checkin-context{%s} isn't in small text", rule)
-	}
-	phone := mediaBlock(t, styles, "@media (max-width:600px)")
-	// Each phone rule's selector outranks the base rule it overrides
-	// (.checkin-context>section, 0,1,1; ...>section+section, 0,2,1), so it
-	// wins (#370).
-	for _, sel := range []string{".checkin-context>.checkin-context-last", ".checkin-context>.checkin-context-dates"} {
-		if rule, ok := ruleFor(phone, sel); !ok || !strings.Contains(rule, "display:none") {
-			t.Errorf("at 600px %s{%s} isn't hidden", sel, rule)
-		}
-	}
-	if rule, ok := ruleFor(phone, ".checkin-context>section.checkin-context-children"); !ok ||
-		!strings.Contains(rule, "border-top:none") || !strings.Contains(rule, "padding-top:0") {
-		t.Errorf("at 600px .checkin-context>section.checkin-context-children{%s} keeps its top rule", rule)
-	}
-}
-
-// checkinAddBar returns the Check-in page's "Add to this check-in" bar, from
-// its opening tag to the context column after it, failing unless it comes
-// before the form.
-func checkinAddBar(t *testing.T, page string) string {
+// checkinAddBar returns the Check-in page's "Add to this check-in" bar,
+// failing unless it comes before the form.
+func checkinAddBar(t *testing.T, page *html.Node) *html.Node {
 	t.Helper()
-	at := strings.Index(page, `data-testid="checkin-add-bar"`)
-	if form := strings.Index(page, `id="checkin-form"`); at < 0 || form < 0 || at > form {
-		t.Fatalf("the add bar isn't before the form (bar at %d, form at %d):\n%s", at, form, page)
+	bar := findByTestID(t, page, "checkin-add-bar")
+	if !precedes(bar, findByTestID(t, page, "checkin-form")) {
+		t.Fatalf("the add bar isn't before the form")
 	}
-	return between(t, page, `<div data-testid="checkin-add-bar"`, `data-testid="checkin-context"`)
+	return bar
 }
 
 // Above the form, a group of buttons adds to the Check-in: a Highlight of each
 // kind, standing for the Highlights section's own add buttons, then Move a
 // date or Milestone and Pause, finish or cancel, each controlling its section.
-// None submits, and it shows only once script has run (ticket #365).
+// None submits. That it shows only once script has run is tested in
+// styles_test.go (ticket #365).
 func TestCheckinPageHasAddToThisCheckinBar(t *testing.T) {
 	t.Parallel()
 
@@ -4289,21 +4104,17 @@ func TestCheckinPageHasAddToThisCheckinBar(t *testing.T) {
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	page := getPage(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
 	bar := checkinAddBar(t, page)
-	open := openTag(bar)
-	if attr(open, "role") != "group" || attr(open, "aria-label") != "Add to this check-in" {
-		t.Errorf("the bar = %s, want a group labelled Add to this check-in", open)
-	}
-	if !slices.Contains(strings.Fields(attr(open, "class")), "checkin-js-only") {
-		t.Errorf("the bar shows without script: %s", open)
+	if attrOf(bar, "role") != "group" || attrOf(bar, "aria-label") != "Add to this check-in" {
+		t.Errorf("the bar is role %q labelled %q, want a group labelled Add to this check-in", attrOf(bar, "role"), attrOf(bar, "aria-label"))
 	}
 	var kinds []string
-	for _, tag := range regexp.MustCompile(`<button[^>]*data-testid="checkin-add-highlight"[^>]*>`).FindAllString(bar, -1) {
-		if attr(tag, "type") != "button" {
-			t.Errorf("a Highlight button would submit the form: %s", tag)
+	for _, button := range findAllByTestID(bar, "checkin-add-highlight") {
+		if attrOf(button, "type") != "button" {
+			t.Errorf("a Highlight button would submit the form: %s", renderNode(button))
 		}
-		kinds = append(kinds, attr(tag, "data-kind"))
+		kinds = append(kinds, attrOf(button, "data-kind"))
 	}
 	if want := []string{"Insight", "Accomplishment", "Miss"}; !slices.Equal(kinds, want) {
 		t.Errorf("the bar's Highlight kinds = %q, want %q", kinds, want)
@@ -4312,15 +4123,15 @@ func TestCheckinPageHasAddToThisCheckinBar(t *testing.T) {
 		"checkin-add-dates":     {"Move a date or Milestone", "checkin-dates-section"},
 		"checkin-add-lifecycle": {"Pause, finish or cancel", "checkin-lifecycle-section"},
 	} {
-		button := tagAround(t, bar, `data-testid="`+testID+`"`)
-		if attr(button, "type") != "button" || attr(button, "aria-controls") != want.controls {
-			t.Errorf("%s = %s, want a button controlling %s", testID, button, want.controls)
+		button := findByTestID(t, bar, testID)
+		if button.Data != "button" || attrOf(button, "type") != "button" || attrOf(button, "aria-controls") != want.controls {
+			t.Errorf("%s = %s, want a button controlling %s", testID, renderNode(button), want.controls)
 		}
-		if got := elementTexts(bar, "button", testID); !slices.Equal(got, []string{want.text}) {
+		if got := textOf(button); got != want.text {
 			t.Errorf("%s reads %q, want %q", testID, got, want.text)
 		}
 	}
-	if n := strings.Count(page, `data-testid="highlight-add"`); n != 3 {
+	if n := len(findAllByTestID(page, "highlight-add")); n != 3 {
 		t.Errorf("the page has %d highlight-add buttons, want the Highlights section's 3", n)
 	}
 }
@@ -4338,17 +4149,17 @@ func TestCheckinAddBarFollowsTheGoalsLifecycle(t *testing.T) {
 	h.EndGoalInCheckin(sam, done.ID, domain.LifecycleDone)
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	bar := checkinAddBar(t, getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, onHold.ID)))
-	if got := elementTexts(bar, "button", "checkin-add-lifecycle"); !slices.Equal(got, []string{"Resume or cancel"}) {
+	bar := checkinAddBar(t, getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, onHold.ID)))
+	if got := textOf(findByTestID(t, bar, "checkin-add-lifecycle")); got != "Resume or cancel" {
 		t.Errorf("an On Hold Goal's Lifecycle button reads %q, want Resume or cancel", got)
 	}
 
-	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, done.ID))
-	if !strings.Contains(page, `data-testid="goal-no-health"`) {
-		t.Fatalf("the Done Goal's Check-in page doesn't say it takes no Check-ins:\n%s", page)
+	page := getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, done.ID))
+	if !hasTestID(page, "goal-no-health") {
+		t.Fatalf("the Done Goal's Check-in page doesn't say it takes no Check-ins: %q", textOf(page))
 	}
-	if strings.Contains(page, `data-testid="checkin-add-bar"`) {
-		t.Errorf("a Done Goal's Check-in page has an add bar:\n%s", page)
+	if hasTestID(page, "checkin-add-bar") {
+		t.Errorf("a Done Goal's Check-in page has an add bar")
 	}
 }
 
@@ -4365,94 +4176,44 @@ func TestCheckinSectionsCarryHeadingsForTheAddBar(t *testing.T) {
 	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
 	client := signInClient(t, ts.URL, "sam@example.com")
 
-	page := getBody(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
+	page := getPage(t, client, fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
 	body, _ := postFormHX(t, client, fmt.Sprintf("%s/goals/%d/checkins", ts.URL, goal.ID), url.Values{
 		"health": {domain.HealthGreen},
 		"status": {""},
 	})
-	if !strings.Contains(body, `data-testid="checkin-error"`) {
+	refused := parsePage(t, body)
+	if !hasTestID(refused, "checkin-error") {
 		t.Fatalf("a Check-in with no status wasn't refused; body:\n%s", body)
 	}
-	if strings.Contains(body, `data-testid="checkin-add-bar"`) {
-		t.Errorf("the refused submit re-renders the add bar; body:\n%s", body)
+	if hasTestID(refused, "checkin-add-bar") {
+		t.Errorf("the refused submit re-renders the add bar")
 	}
-	for name, html := range map[string]string{"page": page, "re-render": body} {
-		highlights := between(t, html, `<details data-testid="checkin-highlight-section"`, "</details>")
-		if attr(openTag(highlights), "id") != "checkin-highlight-section" {
-			t.Errorf("%s: the Highlights section = %s, want id checkin-highlight-section", name, openTag(highlights))
+	for name, doc := range map[string]*html.Node{"page": page, "re-render": refused} {
+		highlights := findByTestID(t, doc, "checkin-highlight-section")
+		if attrOf(highlights, "id") != "checkin-highlight-section" {
+			t.Errorf("%s: the Highlights section has id %q, want checkin-highlight-section", name, attrOf(highlights, "id"))
 		}
-		if tag := tagAround(t, highlights, `data-testid="checkin-highlights-heading"`); attr(tag, "tabindex") != "-1" {
-			t.Errorf("%s: the Highlights heading = %s, want tabindex -1", name, tag)
+		if heading := findByTestID(t, highlights, "checkin-highlights-heading"); attrOf(heading, "tabindex") != "-1" {
+			t.Errorf("%s: the Highlights heading = %s, want tabindex -1", name, renderNode(heading))
 		}
-		if !strings.Contains(highlights, "A Report author can pull each one in") {
-			t.Errorf("%s: the Highlights heading has no muted line:\n%s", name, highlights)
+		if !strings.Contains(textOf(highlights), "A Report author can pull each one in") {
+			t.Errorf("%s: the Highlights heading has no muted line: %q", name, textOf(highlights))
 		}
 		for section, heading := range map[string]struct{ testID, text string }{
 			"checkin-dates-section":     {"checkin-dates-heading", "Dates and Milestones"},
 			"checkin-lifecycle-section": {"checkin-lifecycle-heading", "Lifecycle"},
 		} {
-			details := between(t, html, `<details data-testid="`+section+`"`, "</details>")
-			if attr(openTag(details), "id") != section {
-				t.Errorf("%s: %s = %s, want id %s", name, section, openTag(details), section)
+			details := findByTestID(t, doc, section)
+			if attrOf(details, "id") != section {
+				t.Errorf("%s: %s has id %q, want %s", name, section, attrOf(details, "id"), section)
 			}
-			tag := tagAround(t, details, `data-testid="`+heading.testID+`"`)
-			if !slices.Contains(strings.Fields(attr(tag, "class")), "checkin-js-only") || attr(tag, "tabindex") != "-1" {
-				t.Errorf("%s: %s = %s, want class checkin-js-only and tabindex -1", name, heading.testID, tag)
+			h2 := findByTestID(t, details, heading.testID)
+			if h2.Data != "h2" || attrOf(h2, "tabindex") != "-1" {
+				t.Errorf("%s: %s = %s, want an <h2> with tabindex -1", name, heading.testID, renderNode(h2))
 			}
-			if got := elementTexts(details, "h2", heading.testID); !slices.Equal(got, []string{heading.text}) {
+			if got := textOf(h2); got != heading.text {
 				t.Errorf("%s: %s reads %q, want %q", name, heading.testID, got, heading.text)
 			}
-		}
-	}
-}
-
-// Without script the add bar and the sections' headings hide, and the sections
-// stay collapsed <details>, rows divided by hairlines; once script marks the
-// page checkin-js, a closed section and every summary hide, so a section shows
-// once opened. Neither the bar nor a section is a box: the bar is a plain row
-// over a hairline. On a phone the bar's buttons keep to one line that scrolls
-// sideways (ticket #365, DESIGN.md § Check-in form's optional sections).
-func TestCheckinAddBarStyles(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	sam := h.SignIn("sam@example.com")
-	goal := h.ActiveGoal(sam, "Reduce outages", "Outages cost trust.")
-
-	page := getBody(t, signInClient(t, ts.URL, "sam@example.com"), fmt.Sprintf("%s/goals/%d/checkin", ts.URL, goal.ID))
-	styles := between(t, page, ".checkin-page{", "</style>")
-	for sel, want := range map[string]string{
-		".checkin-page:not(.checkin-js) .checkin-js-only": "display:none",
-		".checkin-js .checkin-more:not([open])":           "display:none",
-		".checkin-js .checkin-more>summary":               "display:none",
-		".checkin-more~.checkin-more":                     "border-top:1px solid var(--color-border)",
-		".checkin-add-bar":                                "border-bottom:1px solid var(--color-border)",
-		".checkin-add-bar .btn[data-used]":                "background:var(--color-surface-alt)",
-	} {
-		if rule, ok := ruleFor(styles, sel); !ok || !strings.Contains(rule, want) {
-			t.Errorf("%s{%s} doesn't declare %s", sel, rule, want)
-		}
-	}
-	for _, sel := range []string{".checkin-add-bar", ".checkin-more", ".checkin-rollup"} {
-		if rule, _ := ruleFor(styles, sel); strings.Contains(rule, "background") || strings.Contains(rule, "border-radius") || strings.Contains(rule, "border:") {
-			t.Errorf("%s{%s} is a box", sel, rule)
-		}
-	}
-	phone := mediaBlocks(styles, "@media (max-width:600px)")
-	for sel, want := range map[string]string{
-		".checkin-add-buttons":      "overflow-x:auto",
-		".checkin-add-buttons .btn": "flex:none",
-		".checkin-add-divider":      "display:none",
-	} {
-		found := false
-		for _, block := range phone {
-			if rule, ok := ruleFor(block, sel); ok && strings.Contains(rule, want) {
-				found = true
-			}
-		}
-		if !found {
-			t.Errorf("at 600px %s doesn't declare %s", sel, want)
 		}
 	}
 }

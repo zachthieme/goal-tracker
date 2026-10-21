@@ -18,7 +18,10 @@ another area's file.
   `<area>_templ.go`), and its HTTP tests in `<area>_test.go`. Shared page chrome
   lives in `layout.templ`. Shared HTTP and page test helpers live in
   `internal/web/helpers_test.go`; a helper more than one area needs goes there,
-  not in an area's `_test.go`.
+  not in an area's `_test.go`. New web tests assert through its parser
+  helpers (`findByTestID`, `textOf`, `formField`, `linkTo`, `buttonNamed`) on
+  what a person sees and can do, not by matching markup, and style rules and
+  the classes they select are tested in `styles_test.go`.
 - **Domain** (`internal/domain/`): `domain.go` holds only the `Service` and its
   constructor. Each concept's types and `Service` methods live in their own file
   (`account.go`, `goal.go`, …) — a new concept is a new file.
