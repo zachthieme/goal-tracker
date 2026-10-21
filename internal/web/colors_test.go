@@ -3,16 +3,17 @@ package web_test
 import (
 	"fmt"
 	"net/http"
-	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/zachthieme/goal-tracker/internal/testsupport"
 )
 
-// Text is neutral ink so that teal marks only what a person can act on. The
-// light theme's headings, body and secondary text take the UX Review's values,
-// and the top bar keeps its deep teal though --color-ink no longer is (#85).
-func TestLightInkIsNeutralAndTheTopBarStaysTeal(t *testing.T) {
+// The light theme takes the flat frame's tokens (DESIGN.md § Tokens): one white
+// canvas, a grey sidebar with its hover and current fills, and neutral inks
+// and hairlines, so teal marks only what a person can act on. The top bar's
+// --nav-* tokens are gone with it, in every theme.
+func TestLightTokensAreTheFlatFrames(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -21,20 +22,52 @@ func TestLightInkIsNeutralAndTheTopBarStaysTeal(t *testing.T) {
 	light := tokens(tokenBlock(t, css, ":root"))
 
 	for token, want := range map[string]string{
-		"--color-ink":       "#18211F",
-		"--color-ink-2":     "#3E4946",
-		"--color-ink-muted": "#66706D",
-		"--nav-bg":          "#134E4A",
+		"--color-canvas":        "#FFFFFF",
+		"--color-sidebar":       "#F7F7F8",
+		"--color-sidebar-hover": "#EEEEF0",
+		"--color-sidebar-on":    "#E8E8EB",
+		"--color-row-hover":     "#F6F6F7",
+		"--color-group":         "#FAFAFB",
+		"--color-border":        "#EDEDEF",
+		"--color-border-strong": "#8A8D93",
+		"--color-ink":           "#1B1D22",
+		"--color-ink-2":         "#33363C",
+		"--color-ink-muted":     "#5F636B",
+		"--color-chip-bg":       "#F1F1F3",
+		"--color-chip-ink":      "#4A4D54",
+		"--health-r-mark":       "#C62828",
+		"--health-y-mark":       "#B27B00",
+		"--health-g-mark":       "#2E7D4F",
+		"--radius-md":           "6px",
+		"--radius-lg":           "10px",
 	} {
 		if got := resolve(t, light, "var("+token+")"); got != want {
 			t.Errorf("light %s is %s, want %s", token, got, want)
 		}
 	}
+	themes := darkThemes(t, css)
+	themes["light"] = light
+	for name, theme := range themes {
+		for token := range theme {
+			if strings.HasPrefix(token, "--nav-") || token == "--font-display" || token == "--font-mono" {
+				t.Errorf("%s still sets %s", name, token)
+			}
+		}
+	}
+}
+
+// frameSurfaces are the surfaces text and control edges sit on: the canvas,
+// the sidebar, a hovered row and a group header, then the surfaces pages that
+// haven't moved to the flat frame still use — cards, a hovered card, panels
+// and table heads.
+var frameSurfaces = []string{
+	"--color-canvas", "--color-sidebar", "--color-row-hover", "--color-group",
+	"--color-surface", "--color-surface-hover", "--color-surface-alt",
 }
 
 // In every theme the three inks are neutral, with no teal tint, and each reaches
-// WCAG AA's 4.5:1 on every surface text sits on: the canvas, cards, a hovered
-// card, panels and table heads, and the selected-row fill.
+// WCAG AA's 4.5:1 on every surface text sits on, the selected-row fill
+// included.
 func TestInkIsNeutralAndReachesAAOnEverySurface(t *testing.T) {
 	t.Parallel()
 
@@ -50,7 +83,7 @@ func TestInkIsNeutralAndReachesAAOnEverySurface(t *testing.T) {
 			if spread := channelSpread(t, fg); spread > 12 {
 				t.Errorf("%s: %s %s is tinted (its channels differ by %d), want a neutral grey", name, ink, fg, spread)
 			}
-			for _, surface := range []string{"--color-canvas", "--color-surface", "--color-surface-hover", "--color-surface-alt", "--color-primary-light"} {
+			for _, surface := range append(frameSurfaces, "--color-primary-light") {
 				bg := resolve(t, theme, "var("+surface+")")
 				if ratio := contrast(t, fg, bg); ratio < 4.5 {
 					t.Errorf("%s: %s %s on %s %s is %.2f:1, under 4.5:1", name, ink, fg, surface, bg, ratio)
@@ -60,73 +93,40 @@ func TestInkIsNeutralAndReachesAAOnEverySurface(t *testing.T) {
 	}
 }
 
-// The light canvas is a neutral off-white, so Health's fills are the only
-// saturated hues on the page, and the surfaces and rules that sit beside it go
-// neutral with it (#87). Each still reads as its own step: a hovered row sits
-// between a card's white and the canvas, and panels, table heads and rules are
-// darker than the canvas, in that order.
-func TestLightCanvasAndItsSurfacesAreNeutral(t *testing.T) {
+// In every theme the canvas and the surfaces beside it are neutral greys, so
+// Health's colours are the only saturated hues on the page. In light the
+// canvas is white, and the sidebar, a hovered row and a group header each sit
+// a step off it.
+func TestCanvasAndItsSurfacesAreNeutral(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
 	ts := newServer(t, h)
 	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	themes := darkThemes(t, css)
 	light := tokens(tokenBlock(t, css, ":root"))
-
-	if got := resolve(t, light, "var(--color-canvas)"); got != "#F6F6F3" {
-		t.Errorf("light --color-canvas is %s, want #F6F6F3", got)
-	}
-	steps := []string{"--color-surface", "--color-surface-hover", "--color-canvas", "--color-surface-alt", "--color-border"}
-	for _, token := range steps[1:] {
-		hex := resolve(t, light, "var("+token+")")
-		if spread := channelSpread(t, hex); spread > 5 {
-			t.Errorf("light %s %s is tinted (its channels differ by %d), want a neutral off-white", token, hex, spread)
-		}
-	}
-	for i := 1; i < len(steps); i++ {
-		lighter, darker := resolve(t, light, "var("+steps[i-1]+")"), resolve(t, light, "var("+steps[i]+")")
-		if luminance(t, darker) >= luminance(t, lighter) {
-			t.Errorf("light %s %s is not darker than %s %s", steps[i], darker, steps[i-1], lighter)
-		}
-	}
-}
-
-// On the light canvas and every surface beside it, link and destructive text
-// still reach WCAG AA's 4.5:1, and an input's edge and the focus ring still
-// reach the 3:1 that marks a control (#87).
-func TestLightTextEdgesAndFocusHoldOnTheNeutralSurfaces(t *testing.T) {
-	t.Parallel()
-
-	h := testsupport.New(t)
-	ts := newServer(t, h)
-	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
-	light := tokens(tokenBlock(t, css, ":root"))
-
-	for _, mark := range []struct {
-		token string
-		want  float64
-	}{
-		{"--color-primary-strong", 4.5},
-		{"--color-danger-ink", 4.5},
-		{"--color-border-strong", 3},
-		{"--color-focus", 3},
-	} {
-		fg := resolve(t, light, "var("+mark.token+")")
-		for _, surface := range []string{"--color-canvas", "--color-surface", "--color-surface-hover", "--color-surface-alt"} {
-			bg := resolve(t, light, "var("+surface+")")
-			if ratio := contrast(t, fg, bg); ratio < mark.want {
-				t.Errorf("light %s %s on %s %s is %.2f:1, under %.1f:1", mark.token, fg, surface, bg, ratio, mark.want)
+	themes["light"] = light
+	for name, theme := range themes {
+		for _, token := range append(frameSurfaces, "--color-sidebar-hover", "--color-sidebar-on", "--color-border") {
+			hex := resolve(t, theme, "var("+token+")")
+			if spread := channelSpread(t, hex); spread > 8 {
+				t.Errorf("%s %s %s is tinted (its channels differ by %d), want a neutral grey", name, token, hex, spread)
 			}
 		}
 	}
+	canvas := resolve(t, light, "var(--color-canvas)")
+	for _, token := range []string{"--color-sidebar", "--color-row-hover", "--color-group"} {
+		if hex := resolve(t, light, "var("+token+")"); luminance(t, hex) >= luminance(t, canvas) {
+			t.Errorf("light %s %s does not sit a step off the canvas %s", token, hex, canvas)
+		}
+	}
 }
 
-// In every theme the top bar's counts come in two pills: Home's is dark,
-// because it means something needs the person, and every other count is a
-// neutral grey. Each number reaches 4.5:1 on its pill, and each pill's edge —
-// its fill, or its ring where it has one — reaches WCAG's 3:1 for a visible
-// shape against the top bar.
-func TestNavCountPillsReadAndStandOutOnTheTopBar(t *testing.T) {
+// In every theme, on the canvas and every surface beside it, link and
+// destructive text reach WCAG AA's 4.5:1, and an input's edge, the focus ring
+// and each Health mark reach the 3:1 that marks a control or a shape.
+func TestTextEdgesAndMarksHoldOnEverySurface(t *testing.T) {
 	t.Parallel()
 
 	h := testsupport.New(t)
@@ -136,42 +136,64 @@ func TestNavCountPillsReadAndStandOutOnTheTopBar(t *testing.T) {
 	themes := darkThemes(t, css)
 	themes["light"] = tokens(tokenBlock(t, css, ":root"))
 	for name, theme := range themes {
-		bar := resolve(t, theme, "var(--nav-bg)")
-		grey := computed(t, css, theme, ".count")
-		needs := computed(t, css, theme, ".count", ".count.needs-you")
-		if spread := channelSpread(t, grey["background"]); spread > 12 {
-			t.Errorf("%s: a nav count's pill %s is tinted (its channels differ by %d), want a neutral grey", name, grey["background"], spread)
-		}
-		if luminance(t, needs["background"]) >= luminance(t, grey["background"]) {
-			t.Errorf("%s: Home's count pill %s is not darker than the other counts' %s", name, needs["background"], grey["background"])
-		}
-		for pill, style := range map[string]map[string]string{"a nav count": grey, "Home's count": needs} {
-			if ratio := contrast(t, style["color"], style["background"]); ratio < 4.5 {
-				t.Errorf("%s: %s's number %s on its pill %s is %.2f:1, under 4.5:1", name, pill, style["color"], style["background"], ratio)
-			}
-			edge := style["background"]
-			if ring := ringColour(t, theme, style["box-shadow"]); ring != "" {
-				edge = ring
-			}
-			if ratio := contrast(t, edge, bar); ratio < 3 {
-				t.Errorf("%s: %s's pill edge %s on the top bar %s is %.2f:1, under 3:1", name, pill, edge, bar, ratio)
+		for _, mark := range []struct {
+			token string
+			want  float64
+		}{
+			{"--color-primary-strong", 4.5},
+			{"--color-danger-ink", 4.5},
+			{"--color-border-strong", 3},
+			{"--color-focus", 3},
+			{"--health-r-mark", 3},
+			{"--health-y-mark", 3},
+			{"--health-g-mark", 3},
+		} {
+			fg := resolve(t, theme, "var("+mark.token+")")
+			for _, surface := range frameSurfaces {
+				bg := resolve(t, theme, "var("+surface+")")
+				if ratio := contrast(t, fg, bg); ratio < mark.want {
+					t.Errorf("%s: %s %s on %s %s is %.2f:1, under %.1f:1", name, mark.token, fg, surface, bg, ratio, mark.want)
+				}
 			}
 		}
 	}
 }
 
-// ringColour resolves the colour of a "0 0 0 <width> <colour>" ring shadow, ""
-// when there is none.
-func ringColour(t *testing.T, theme map[string]string, shadow string) string {
-	t.Helper()
-	if shadow == "" || shadow == "none" {
-		return ""
+// In every theme a nav count is muted tabular figures that read on the
+// sidebar, hovered or current, and Home's count, because it means something
+// needs the person, is a filled pill whose number reads on it and whose fill
+// stands out from the sidebar.
+func TestNavCountsReadOnTheSidebar(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t)
+	ts := newServer(t, h)
+	css := getBody(t, http.DefaultClient, ts.URL+"/static/app.css")
+
+	themes := darkThemes(t, css)
+	themes["light"] = tokens(tokenBlock(t, css, ":root"))
+	for name, theme := range themes {
+		plain := computed(t, css, theme, ".count")
+		needs := computed(t, css, theme, ".count", ".count.needs-you")
+		if plain["font-variant-numeric"] != "tabular-nums" {
+			t.Errorf("%s: a nav count isn't in tabular figures: %v", name, plain)
+		}
+		if _, filled := plain["background"]; filled {
+			t.Errorf("%s: a plain nav count is a pill: %v", name, plain)
+		}
+		if ratio := contrast(t, needs["color"], needs["background"]); ratio < 4.5 {
+			t.Errorf("%s: Home's count %s on its pill %s is %.2f:1, under 4.5:1", name, needs["color"], needs["background"], ratio)
+		}
+		for _, surface := range []string{"--color-sidebar", "--color-sidebar-hover", "--color-sidebar-on"} {
+			bg := resolve(t, theme, "var("+surface+")")
+			if ratio := contrast(t, plain["color"], bg); ratio < 4.5 {
+				t.Errorf("%s: a nav count %s on %s %s is %.2f:1, under 4.5:1", name, plain["color"], surface, bg, ratio)
+			}
+			if ratio := contrast(t, needs["background"], bg); ratio < 3 {
+				t.Errorf("%s: Home's count pill %s on %s %s is %.2f:1, under 3:1", name, needs["background"], surface, bg, ratio)
+			}
+		}
 	}
-	m := regexp.MustCompile(`^0 0 0 \d+px (\S+)$`).FindStringSubmatch(shadow)
-	if m == nil {
-		t.Fatalf("box-shadow %q is not a ring", shadow)
-	}
-	return resolve(t, theme, m[1])
 }
 
 // channelSpread is how far apart a #RRGGBB colour's channels are: 0 for a pure

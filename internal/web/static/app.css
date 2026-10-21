@@ -1,8 +1,8 @@
 /* Goal Tracker · design-system: DESIGN.md (d3kn Warm Teal, light + dark) */
 
-/* DESIGN.md's faces, served by the app from static/fonts/ (Fontsource's
- * builds; LICENSES.md there). Each has a latin and a latin-ext file, and a
- * browser fetches only the ones a page's characters need. */
+/* DESIGN.md's one face, Inter, served by the app from static/fonts/
+ * (Fontsource's build; LICENSES.md there). It has a latin and a latin-ext
+ * file, and a browser fetches only the ones a page's characters need. */
 @font-face {
   font-family: "Inter";
   font-style: normal;
@@ -19,41 +19,9 @@
   src: url(/static/fonts/inter-latin-ext-wght-normal.woff2) format("woff2");
   unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
 }
-@font-face {
-  font-family: "Plus Jakarta Sans";
-  font-style: normal;
-  font-display: swap;
-  font-weight: 200 800;
-  src: url(/static/fonts/plus-jakarta-sans-latin-wght-normal.woff2) format("woff2");
-  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
-}
-@font-face {
-  font-family: "Plus Jakarta Sans";
-  font-style: normal;
-  font-display: swap;
-  font-weight: 200 800;
-  src: url(/static/fonts/plus-jakarta-sans-latin-ext-wght-normal.woff2) format("woff2");
-  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
-}
-@font-face {
-  font-family: "JetBrains Mono";
-  font-style: normal;
-  font-display: swap;
-  font-weight: 500;
-  src: url(/static/fonts/jetbrains-mono-latin-500-normal.woff2) format("woff2");
-  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
-}
-@font-face {
-  font-family: "JetBrains Mono";
-  font-style: normal;
-  font-display: swap;
-  font-weight: 500;
-  src: url(/static/fonts/jetbrains-mono-latin-ext-500-normal.woff2) format("woff2");
-  unicode-range: U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
-}
 
-/* Tokens, as DESIGN.md § Tokens declares them, plus the roles it names
- * without a token (top bar, Health badges, danger text). */
+/* Tokens, as DESIGN.md § Tokens declares them (the flat frame), plus the
+ * roles it names without a token (Health badges, danger text). */
 :root {
   color-scheme: light;
 
@@ -63,34 +31,35 @@
   --color-primary-light:  #CCFBF1;
   --color-primary-subtle: #F0FDFA;
 
-  --color-canvas:        #F6F6F3; /* neutral off-white (DESIGN.md Deviation 7) */
+  /* One white surface; the sidebar, a hovered row and a group header are the
+   * only steps off it (DESIGN.md § Tokens) */
+  --color-canvas:        #FFFFFF;
+  --color-sidebar:       #F7F7F8;
+  --color-sidebar-hover: #EEEEF0;
+  --color-sidebar-on:    #E8E8EB; /* the current nav item */
+  --color-row-hover:     #F6F6F7;
+  --color-group:         #FAFAFB;
   --color-surface:       #FFFFFF;
-  --color-surface-hover: #FCFCFA;
-  --color-surface-alt:   #F2F2EE;
+  --color-surface-hover: var(--color-row-hover);
+  --color-surface-alt:   var(--color-sidebar);
 
-  --color-ink:         #18211F; /* neutral ink; teal is for actions (DESIGN.md Deviation 2) */
-  --color-ink-2:       #3E4946;
-  --color-ink-muted:   #66706D;
+  --color-ink:         #1B1D22; /* neutral ink; teal is for actions (DESIGN.md Deviation 2) */
+  --color-ink-2:       #33363C;
+  --color-ink-muted:   #5F636B;
   --color-ink-inverse: #FFFFFF;
 
-  --color-border:        #E1E1DC;
-  --color-border-strong: #7B908C; /* 3.4:1 on white, so an input's edge is visible (DESIGN.md Deviation 6) */
-  --color-focus:         #0D9488; /* Teal 600: 3.5:1 on the canvas (DESIGN.md Deviation 5) */
+  --color-border:        #EDEDEF; /* hairlines */
+  --color-border-strong: #8A8D93; /* inputs and chip edges: 3:1 on every surface (DESIGN.md Deviation 6) */
+  --color-focus:         #0D9488; /* Teal 600: 3:1 on every surface (DESIGN.md Deviation 5) */
 
   --color-success: #2DD4BF;
   --color-warning: #EAB308;
   --color-error:   #EF4444;
   --color-danger-ink: #9A231B; /* destructive text; --color-error is too light for 13–15px text */
 
-  /* Top bar: deep teal (Teal 900) in light, --color-surface-alt in dark */
-  --nav-bg:       #134E4A;
-  --nav-ink:      #FFFFFF;
-  --nav-ink-2:    rgba(255,255,255,.78);
-  --nav-hover:    rgba(255,255,255,.10);
-  --nav-focus:    #2DD4BF; /* 5.1:1 on the teal top bar */
-  --nav-count-bg:  #E3E6E5; /* neutral grey count pill */
-  --nav-count-ink: #18211F;
-  --nav-needs-bg:  #18211F; /* Home's count, both themes: a dark pill ringed in --nav-ink */
+  /* Signal chips and tags */
+  --color-chip-bg:  #F1F1F3;
+  --color-chip-ink: #4A4D54;
 
   /* Check-in overdue (and Path to Green overdue): a dashed grey chip and banner,
    * never a tag's look (DESIGN.md § Components). The edge is a step darker than the
@@ -99,18 +68,17 @@
   --checkin-overdue-ink:  #3B4048;
   --checkin-overdue-edge: #888F97;
 
-  /* Goal Health (DESIGN.md § Deviations 3) */
-  --health-g-bg: #DDEFE3; --health-g-ink: #17593A;
-  --health-y-bg: #FAEBC4; --health-y-ink: #6B4800;
-  --health-r-bg: #F9DEDB; --health-r-ink: #9A231B;
+  /* Goal Health: a pill's fill and ink, and the shape a list shows alone
+   * (DESIGN.md § Deviations 3) */
+  --health-g-bg: #E5F3EA; --health-g-ink: #1C6435; --health-g-mark: #2E7D4F;
+  --health-y-bg: #FFF3D1; --health-y-ink: #7A4F00; --health-y-mark: #B27B00;
+  --health-r-bg: #FDECEC; --health-r-ink: #A61B1B; --health-r-mark: #C62828;
 
-  --font-display: "Plus Jakarta Sans", system-ui, sans-serif;
-  --font-body:    "Inter", system-ui, sans-serif;
-  --font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --font-body: "Inter", system-ui, sans-serif;
 
   --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  --radius-md: 6px;  /* buttons, inputs, chips, nav items */
+  --radius-lg: 10px; /* menus, dialogs, the toast, cards */
   --radius-full: 9999px;
 
   --shadow-pop:        0 25px 50px -12px rgba(19,78,74,.25);
@@ -134,34 +102,34 @@
     --color-primary-strong: #14B8A6;
     --color-primary-light:  #063530;
     --color-primary-subtle: #031613;
-    --color-canvas:        #020E0C;
-    --color-surface:       #052E29;
-    --color-surface-hover: #063530;
-    --color-surface-alt:   #031613;
-    --color-ink:         #E8E8E8;
-    --color-ink-2:       #C2C2C2;
-    --color-ink-muted:   #9E9E9E;
+    --color-canvas:        #0F1012;
+    --color-sidebar:       #151618;
+    --color-sidebar-hover: #1C1D20;
+    --color-sidebar-on:    #222327;
+    --color-row-hover:     #1A1B1E;
+    --color-group:         #17181B;
+    --color-surface:       var(--color-sidebar);
+    --color-surface-hover: var(--color-sidebar-hover);
+    --color-surface-alt:   var(--color-canvas);
+    --color-ink:         #EDEEF0;
+    --color-ink-2:       #C9CBD0;
+    --color-ink-muted:   #9A9EA6;
     --color-ink-inverse: #042F2E;
-    --color-border:        #0A3F39;
-    --color-border-strong: #2F8479;
+    --color-border:        #26282C;
+    --color-border-strong: #6B6F77;
     --color-focus:         #2DD4BF;
     --color-success: #2DD4BF;
     --color-warning: #EAB308;
     --color-error:   #F87171;
     --color-danger-ink: #F87171;
-    --nav-bg:    var(--color-surface-alt);
-    --nav-ink:   var(--color-ink);
-    --nav-ink-2: var(--color-ink-2);
-    --nav-hover: rgba(255,255,255,.06);
-    --nav-focus: var(--color-focus);
-    --nav-count-bg:  #626766;
-    --nav-count-ink: #FFFFFF;
+    --color-chip-bg:  #222327;
+    --color-chip-ink: #C9CBD0;
     --checkin-overdue-bg:   #3B4048;
     --checkin-overdue-ink:  #E8E8E8;
     --checkin-overdue-edge: #8C939C;
-    --health-g-bg: rgba(34,160,95,.20);  --health-g-ink: #8EDDAF;
-    --health-y-bg: rgba(234,179,8,.20);  --health-y-ink: #F5D06B;
-    --health-r-bg: rgba(239,68,68,.20);  --health-r-ink: #F8A39B;
+    --health-g-bg: rgba(34,160,95,.20);  --health-g-ink: #8EDDAF; --health-g-mark: #4CC38A;
+    --health-y-bg: rgba(234,179,8,.20);  --health-y-ink: #F5D06B; --health-y-mark: #E0B23A;
+    --health-r-bg: rgba(239,68,68,.20);  --health-r-ink: #F8A39B; --health-r-mark: #F07171;
     --shadow-pop:        0 25px 50px -12px rgba(0,0,0,.65);
     --btn-primary-hover: var(--color-primary-hover);
   }
@@ -173,66 +141,100 @@
   --color-primary-strong: #14B8A6;
   --color-primary-light:  #063530;
   --color-primary-subtle: #031613;
-  --color-canvas:        #020E0C;
-  --color-surface:       #052E29;
-  --color-surface-hover: #063530;
-  --color-surface-alt:   #031613;
-  --color-ink:         #E8E8E8;
-  --color-ink-2:       #C2C2C2;
-  --color-ink-muted:   #9E9E9E;
+  --color-canvas:        #0F1012;
+  --color-sidebar:       #151618;
+  --color-sidebar-hover: #1C1D20;
+  --color-sidebar-on:    #222327;
+  --color-row-hover:     #1A1B1E;
+  --color-group:         #17181B;
+  --color-surface:       var(--color-sidebar);
+  --color-surface-hover: var(--color-sidebar-hover);
+  --color-surface-alt:   var(--color-canvas);
+  --color-ink:         #EDEEF0;
+  --color-ink-2:       #C9CBD0;
+  --color-ink-muted:   #9A9EA6;
   --color-ink-inverse: #042F2E;
-  --color-border:        #0A3F39;
-  --color-border-strong: #2F8479;
+  --color-border:        #26282C;
+  --color-border-strong: #6B6F77;
   --color-focus:         #2DD4BF;
   --color-success: #2DD4BF;
   --color-warning: #EAB308;
   --color-error:   #F87171;
   --color-danger-ink: #F87171;
-  --nav-bg:    var(--color-surface-alt);
-  --nav-ink:   var(--color-ink);
-  --nav-ink-2: var(--color-ink-2);
-  --nav-hover: rgba(255,255,255,.06);
-  --nav-focus: var(--color-focus);
-  --nav-count-bg:  #626766;
-  --nav-count-ink: #FFFFFF;
+  --color-chip-bg:  #222327;
+  --color-chip-ink: #C9CBD0;
   --checkin-overdue-bg:   #3B4048;
   --checkin-overdue-ink:  #E8E8E8;
   --checkin-overdue-edge: #8C939C;
-  --health-g-bg: rgba(34,160,95,.20);  --health-g-ink: #8EDDAF;
-  --health-y-bg: rgba(234,179,8,.20);  --health-y-ink: #F5D06B;
-  --health-r-bg: rgba(239,68,68,.20);  --health-r-ink: #F8A39B;
+  --health-g-bg: rgba(34,160,95,.20);  --health-g-ink: #8EDDAF; --health-g-mark: #4CC38A;
+  --health-y-bg: rgba(234,179,8,.20);  --health-y-ink: #F5D06B; --health-y-mark: #E0B23A;
+  --health-r-bg: rgba(239,68,68,.20);  --health-r-ink: #F8A39B; --health-r-mark: #F07171;
   --shadow-pop:        0 25px 50px -12px rgba(0,0,0,.65);
   --btn-primary-hover: var(--color-primary-hover);
 }
 
 html{overflow-x:clip}
-body{margin:0;overflow-x:clip;font-family:var(--font-body);color:var(--color-ink-2);background:var(--color-canvas);font-size:15px;line-height:1.6}
+body{margin:0;overflow-x:clip;font-family:var(--font-body);color:var(--color-ink-2);background:var(--color-canvas);font-size:14px;line-height:1.5}
 a{color:var(--color-primary-strong);text-decoration:none}a:hover{color:var(--color-primary-strong);text-decoration:underline}
-h1,h2,h3{font-family:var(--font-display);color:var(--color-ink);margin:0}
-h1{font-weight:700;font-size:36px;line-height:1.2;letter-spacing:-0.02em}
-h2{font-size:26px;font-weight:600;line-height:1.3;letter-spacing:-0.01em}
-h3{font-size:19px;font-weight:600;line-height:1.4}
+h1,h2,h3{color:var(--color-ink);margin:0}
+h1{font-size:28px;font-weight:600;line-height:1.2;letter-spacing:-0.02em}
+h2{font-size:13px;font-weight:600;line-height:1.4}
+h3{font-size:14px;font-weight:600;line-height:1.4}
 p{margin:0}
 strong{color:var(--color-ink)}
 :focus-visible{outline:2px solid var(--color-focus);outline-offset:2px}
-.nav :focus-visible{outline-color:var(--nav-focus)}
 .disclose{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;text-align:inherit;cursor:pointer}
 .person>.disclose{padding:0 4px;margin:0 -4px;border-radius:var(--radius-sm)}
 .person>.disclose:hover,.person>.disclose:focus-visible{background:var(--color-primary-subtle)}
 .person-email{margin-left:4px;color:var(--color-ink-muted);font-size:13px;font-weight:400;overflow-wrap:anywhere}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;padding:0;border:0}
 .explain{color:var(--color-ink-muted);font-size:13px;font-weight:400;line-height:1.5}
-.nav{display:flex;align-items:center;gap:4px;height:56px;padding:0 32px;background:var(--nav-bg);color:var(--nav-ink);box-sizing:border-box;border-bottom:1px solid var(--color-border)}
-.brand{font-family:var(--font-display);font-weight:700;font-size:19px;letter-spacing:-0.01em;color:var(--nav-ink);margin-right:28px}
-.brand:hover{color:var(--nav-ink);text-decoration:none}
-.navitems{display:flex;align-items:center;gap:4px}
-.navitem{display:inline-flex;align-items:center;height:36px;color:var(--nav-ink-2);padding:0 12px;border-radius:var(--radius-md);font-weight:500;white-space:nowrap;transition:background var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out)}
-.navitem:hover{color:var(--nav-ink);background:var(--nav-hover);text-decoration:none}
-.navitem.on{color:var(--nav-ink);box-shadow:inset 0 -2px 0 var(--color-primary);border-radius:var(--radius-md) var(--radius-md) 0 0}
-.count{display:inline-block;min-width:18px;padding:0 8px;margin-left:8px;border-radius:var(--radius-full);background:var(--nav-count-bg);color:var(--nav-count-ink);font-size:11px;font-weight:600;text-align:center;line-height:18px;box-sizing:border-box}
-.count.needs-you{background:var(--nav-needs-bg);color:var(--nav-ink);box-shadow:0 0 0 1px var(--nav-ink)}
-.me{margin-left:auto;display:flex;align-items:center;gap:12px;color:var(--nav-ink-2)}
-.me strong,.me .person{color:var(--nav-ink)}
-.me .person-email{color:var(--nav-ink-2)}
+/* The flat frame: a 240px sidebar beside the content column, which opens
+ * with the page's 48px header strip when it has one (DESIGN.md § Sidebar,
+ * § Page header). At 900px and below the sidebar is a 48px strip whose Menu
+ * opens the rest as a sheet. */
+.frame{display:grid;grid-template-columns:240px minmax(0,1fr);min-height:100vh}
+.frame-content{min-width:0;display:flex;flex-direction:column}
+.sidebar{position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:16px;padding:12px;background:var(--color-sidebar);border-right:1px solid var(--color-border);box-sizing:border-box;overflow-y:auto;font-size:13px}
+.brand{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:0 8px;font-size:14px;font-weight:600;color:var(--color-ink);white-space:nowrap}
+.brand:hover{color:var(--color-ink);text-decoration:none}
+.brand-mark{flex:none;width:18px;height:18px;border-radius:5px;background:var(--color-primary-strong)}
+.sb-strip-home,.sb-menu{display:none}
+.sb-body{flex:1 0 auto;display:flex;flex-direction:column;gap:16px}
+.sb-search input[type=search]{width:100%;height:32px;padding:0 12px;font-size:13px;background:var(--color-canvas)}
+.navitems{display:flex;flex-direction:column;gap:4px}
+.navitem{display:flex;align-items:center;gap:12px;height:32px;padding:0 8px;border-radius:var(--radius-md);color:var(--color-ink-2);font-weight:500;white-space:nowrap;transition:background var(--dur-fast) var(--ease-out),color var(--dur-fast) var(--ease-out)}
+.navitem:hover{color:var(--color-ink);background:var(--color-sidebar-hover);text-decoration:none}
+.navitem.on{color:var(--color-ink);background:var(--color-sidebar-on)}
+.navicon{flex:none;color:var(--color-ink-muted)}
+.navitem:hover .navicon,.navitem.on .navicon{color:var(--color-ink)}
+.count{margin-left:auto;color:var(--color-ink-muted);font-size:12px;font-weight:500;font-variant-numeric:tabular-nums}
+.count.needs-you{min-width:20px;padding:0 4px;border-radius:var(--radius-full);background:var(--color-ink);color:var(--color-canvas);font-weight:600;line-height:18px;text-align:center;box-sizing:border-box}
+.sb-head{margin:0 0 4px;padding:0 8px;font-size:12px;font-weight:500;line-height:1.5;letter-spacing:0;color:var(--color-ink-muted)}
+.sb-org ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
+.sb-org-person{display:block;height:30px;padding:0 8px;border-radius:var(--radius-md);color:var(--color-ink-2);line-height:30px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sb-org-person:hover{color:var(--color-ink);background:var(--color-sidebar-hover);text-decoration:none}
+.sb-person{position:relative;margin-top:auto}
+.sb-person>summary{min-height:40px;justify-content:flex-start;gap:8px;padding:0 8px;border-radius:var(--radius-md);color:var(--color-ink);font-weight:500}
+.sb-person>summary:hover,.sb-person[open]>summary{background:var(--color-sidebar-hover)}
+.sb-person .avatar{width:24px;height:24px;flex:none}
+.sb-person-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.who{padding:0 8px;color:var(--color-ink-muted);font-size:12px}
+.who .person{color:var(--color-ink)}
+.sb-person-menu{position:absolute;left:0;right:0;bottom:calc(100% + 4px);z-index:20;display:flex;flex-direction:column;gap:8px;padding:8px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop)}
+.sb-person-menu form{margin:0}
+.sb-signout{width:100%;justify-content:flex-start}
+.page-header{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:48px;padding:0 28px;border-bottom:1px solid var(--color-border);box-sizing:border-box}
+.ph-title{display:flex;align-items:center;gap:8px;min-width:0}
+.ph-title h1{font-size:14px;line-height:1.4;letter-spacing:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ph-parent,.ph-sep,.ph-count{color:var(--color-ink-muted);white-space:nowrap}
+.ph-count{font-variant-numeric:tabular-nums}
+.ph-actions{display:flex;align-items:center;gap:8px;flex:none}
+/* A signed-out page has no sidebar: the app's name and Theme sit over its
+ * content, which is centred on the canvas */
+.signed-out-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:56px;padding:0 24px;box-sizing:border-box}
+.signed-out .page{align-items:center}
+@media (max-width:900px){.frame{display:block}.sidebar{position:relative;z-index:25;height:48px;flex-direction:row;align-items:center;gap:8px;padding:0 12px;border-right:0;border-bottom:1px solid var(--color-border);overflow:visible}.sb-strip-home{display:inline-flex;align-items:center;min-height:44px;margin-left:auto}.sb-strip-home:hover{text-decoration:none}.sb-menu{display:block;margin-left:auto}.sb-strip-home+.sb-menu{margin-left:0}.sb-menu>summary{min-height:36px}.sb-body{display:none}.sb-menu[open]~.sb-body{display:flex;position:absolute;left:0;right:0;top:100%;max-height:calc(100vh - 48px);overflow-y:auto;padding:12px;background:var(--color-sidebar);border-bottom:1px solid var(--color-border);box-shadow:var(--shadow-pop);box-sizing:border-box}.sb-person{margin-top:0}.sb-person-menu{position:static;box-shadow:none}.page-header{padding:0 16px}.signed-out-bar{padding:0 16px}}
 .avatar{width:32px;height:32px;border-radius:var(--radius-full);background:var(--color-primary-strong);color:var(--color-ink-inverse);display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600}
 .badge{display:inline-flex;align-items:center;gap:8px;padding:1px 8px;border-radius:var(--radius-sm);font-size:13px;font-weight:600;line-height:20px;white-space:nowrap;box-sizing:border-box}
 .dot{width:8px;height:8px;display:inline-block;background:currentColor;flex:none}
@@ -266,8 +268,8 @@ a.card:hover{text-decoration:none;color:var(--color-ink-2);border-color:var(--co
 .btn[disabled]{opacity:.5;cursor:not-allowed;transform:none}
 .muted{color:var(--color-ink-muted)}
 .small{font-size:13px;line-height:1.5}
-.label,th{font-size:11px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--color-ink-muted)}
-.num{font-family:var(--font-mono);font-weight:500}
+.label,th{font-size:12px;font-weight:500;color:var(--color-ink-muted)}
+.num{font-variant-numeric:tabular-nums;font-weight:500}
 table{border-collapse:collapse;width:100%}
 th{text-align:left;padding:12px 16px;border-bottom:1px solid var(--color-border);background:var(--color-surface-alt);white-space:nowrap}
 .card:has(table){overflow:clip}
@@ -294,16 +296,14 @@ del{color:var(--color-ink-muted)}
 .grid-main-aside{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:28px;align-items:start}
 details>summary{cursor:pointer;list-style:none;min-height:44px;display:flex;align-items:center;justify-content:space-between;gap:12px}
 details>summary::-webkit-details-marker{display:none}
-@media (max-width:900px){.grid-main-aside{grid-template-columns:1fr}.page{padding:20px 16px 48px;gap:24px}h1{font-size:30px}h2{font-size:22px}}
-.nav>*{flex:none}
-.me form{margin:0}
-.me .btn.quiet{color:var(--nav-ink-2)}.me .btn.quiet:hover{color:var(--nav-ink);background:var(--nav-hover)}
-.me .person>.disclose:hover,.me .person>.disclose:focus-visible{background:var(--nav-hover)}
-/* Theme menu: a disclosure beside Sign out whose panel floats over the page,
- * so opening it never widens the top bar (DESIGN.md § Components) */
+@media (max-width:900px){.grid-main-aside{grid-template-columns:1fr}.page{padding:20px 16px 48px;gap:24px}}
+/* Theme: three choices in the person's menu, or, on a signed-out page, in a
+ * Theme disclosure whose panel floats over the page, so opening it never
+ * widens the page (DESIGN.md § Components) */
 .theme{position:relative}
 .theme>summary{min-height:0}
-.theme-menu{position:absolute;right:0;top:calc(100% + 8px);z-index:20;display:flex;flex-direction:column;gap:4px;width:160px;max-width:calc(100vw - 32px);margin:0;padding:8px;box-shadow:var(--shadow-pop);box-sizing:border-box}
+.theme-menu{display:flex;flex-direction:column;gap:4px;margin:0}
+.theme-float{position:absolute;right:0;top:calc(100% + 8px);z-index:20;width:160px;max-width:calc(100vw - 32px);padding:8px;background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-pop);box-sizing:border-box}
 .theme-menu :focus-visible{outline-color:var(--color-focus)}
 .theme-choice{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:36px;padding:0 12px;border:0;border-radius:var(--radius-md);background:none;font:inherit;font-weight:500;color:var(--color-ink);text-align:left;cursor:pointer}
 .theme-choice:hover{background:var(--color-primary-subtle)}
@@ -321,7 +321,5 @@ details>summary::-webkit-details-marker{display:none}
 input,textarea,select,img{max-width:100%}
 pre{overflow-x:auto}
 fieldset{min-width:0}
-@media (max-width:900px){.nav{flex-wrap:wrap;height:auto;min-height:56px;padding:0 16px;column-gap:12px}.brand{margin-right:0}.me{flex:1 1 0;justify-content:flex-end;min-width:0;min-height:56px}.who{display:flex;min-width:0;font-size:0}.who .person{display:flex;flex-direction:column;align-items:flex-start;min-width:0;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.who .person>.disclose{max-width:100%;overflow:hidden;text-overflow:ellipsis}.who .person-email{margin-left:0;white-space:normal}.navitems{order:1;flex:1 0 100%;flex-wrap:wrap;margin:0 -8px 8px}.navitems .navitem{padding:0 8px}.card:has(table){overflow-x:auto}}
-@media (max-width:360px){.navitems .navitem{padding:0 4px}.navitems .count{margin-left:8px}.me{gap:4px}.me .btn.sm{padding:0 8px}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition-duration:0s!important}.btn:active{transform:none!important}}
-@media (pointer:coarse){.btn,.btn.sm,input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],input[type=password],select{min-height:44px}}
+@media (pointer:coarse){.navitem,.sb-org-person,.theme-choice,.sb-person>summary{min-height:44px}.sb-org-person{line-height:44px;height:auto}.btn,.btn.sm,input[type=text],input[type=email],input[type=date],input[type=number],input[type=search],input[type=password],select{min-height:44px}}

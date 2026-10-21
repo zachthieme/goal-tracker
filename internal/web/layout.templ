@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -66,8 +67,51 @@ func mentions(ctx context.Context) *domain.Mentions {
 	return m
 }
 
-// layout is the shared page chrome. htmx drives the in-place create-Goal swap.
+type orgPeopleKey struct{}
+
+// withOrgPeople records the people directly under the signed-in person by
+// Manager, so the sidebar's My org can list them without every page passing
+// them along.
+func withOrgPeople(ctx context.Context, people []domain.Account) context.Context {
+	return context.WithValue(ctx, orgPeopleKey{}, people)
+}
+
+// orgPeople is the people directly under the signed-in person, none when
+// unread.
+func orgPeople(ctx context.Context) []domain.Account {
+	people, _ := ctx.Value(orgPeopleKey{}).([]domain.Account)
+	return people
+}
+
+// initials is the one or two letters a person's avatar shows: the first
+// letters of their Name's first and last words, or of their label when it is
+// one word.
+func initials(a domain.Account) string {
+	words := strings.Fields(a.Label())
+	if len(words) == 0 {
+		return ""
+	}
+	first := []rune(words[0])[:1]
+	if len(words) == 1 {
+		return strings.ToUpper(string(first))
+	}
+	last := []rune(words[len(words)-1])[:1]
+	return strings.ToUpper(string(first) + string(last))
+}
+
+// layout is the shared page chrome with no page header: the page's own head
+// stays in its content. htmx drives the in-place create-Goal swap.
 templ layout(title string, current *domain.Account) {
+	@framedLayout(title, current, nil) {
+		{ children... }
+	}
+}
+
+// framedLayout is the shared page chrome. A signed-in page sits in the flat
+// frame: the sidebar, then the content column, which opens with header, the
+// page's 48px header strip, when it has one (DESIGN.md § Direction: The
+// frame). A signed-out page has no sidebar and centres its content.
+templ framedLayout(title string, current *domain.Account, header templ.Component) {
 	<!DOCTYPE html>
 	<html
 		lang="en"
@@ -83,60 +127,171 @@ templ layout(title string, current *domain.Account) {
 			<script src={ htmxURL }></script>
 			@disclosure()
 		</head>
-		<body>
-			<nav class="nav">
-				<a class="brand" href="/home">Goal Tracker</a>
-				if current != nil {
-					<div class="navitems">
-						@navItem("/home", "nav-home", "Home", needsYou(ctx), "count needs-you")
-						@navItem("/goals", "nav-goals", "Goals", 0, "count")
-						@navItem("/follow-ups", "nav-follow-ups", "Follow-ups", followUps(ctx), "count")
-						@navItem("/reports", "nav-reports", "Reports", 0, "count")
-						if current.IsAdmin {
-							@navItem("/admin", "nav-admin", "Admin", 0, "count")
+		if current != nil {
+			<body class="framed">
+				<div class="frame">
+					@sidebar(*current)
+					<div class="frame-content">
+						if header != nil {
+							@header
 						}
+						<main class="page">
+							{ children... }
+						</main>
 					</div>
-				}
-				<div class="me">
-					if current != nil {
-						<span data-testid="current-user" class="who">
-							{ "Signed in as " }
-							@person(*current)
-							if current.IsAdmin {
-								{ " (Admin)" }
-							}
-						</span>
-					}
-					@themeMenu()
-					if current != nil {
-						<form method="post" action="/signout">
-							<button type="submit" class="btn quiet sm">Sign out</button>
-						</form>
-					}
 				</div>
-			</nav>
-			<main class="page">
-				{ children... }
-			</main>
-		</body>
+			</body>
+		} else {
+			<body class="signed-out">
+				<header class="signed-out-bar">
+					@brand()
+					<details data-testid="theme-picker" class="theme">
+						<summary class="btn quiet sm">Theme</summary>
+						@themeMenu("theme-menu theme-float")
+					</details>
+				</header>
+				<main class="page">
+					{ children... }
+				</main>
+			</body>
+		}
 	</html>
 }
 
-// navItem is a top-bar link, marked current when the request is in its section,
-// with a count of what's there for the reader when it's above zero. countClass
-// styles the count: Home's needs-you pill, or every other item's plain one.
+// pageHead is what a page's header strip shows: its title, under its parent
+// page as a breadcrumb when Parent is set, and an optional muted count.
+type pageHead struct {
+	Parent, ParentHref string
+	Title              string
+	Count              string
+}
+
+// pageHeader is a page's 48px header strip, for framedLayout's header: the
+// title or breadcrumb and count at the left, and the page's actions, its
+// children, at the right (DESIGN.md § Direction: Page header).
+templ pageHeader(h pageHead) {
+	<div class="page-header">
+		<div class="ph-title">
+			if h.Parent != "" {
+				<a class="ph-parent" href={ templ.SafeURL(h.ParentHref) }>{ h.Parent }</a>
+				<span class="ph-sep" aria-hidden="true">›</span>
+			}
+			<h1>{ h.Title }</h1>
+			if h.Count != "" {
+				<span class="ph-count">{ h.Count }</span>
+			}
+		</div>
+		<div class="ph-actions">
+			{ children... }
+		</div>
+	</div>
+}
+
+// brand is the app's name with its teal mark, linking Home.
+templ brand() {
+	<a class="brand" href="/home"><span class="brand-mark" aria-hidden="true"></span>Goal Tracker</a>
+}
+
+// sidebar is the signed-in page's left column: the app's name, Search, the
+// nav with its counts, My org for someone with people under them, and the
+// person's menu at its foot (DESIGN.md § Direction: The frame). At phone width
+// it is a 48px strip whose Menu opens the rest as a sheet; the sheet is
+// .sb-body, shown by the Menu <details> beside it, so it needs no script.
+templ sidebar(current domain.Account) {
+	<header class="sidebar">
+		@brand()
+		if n := needsYou(ctx); n > 0 {
+			<a class="sb-strip-home" href="/home"><span class="sr-only">Home </span><span class="count needs-you">{ strconv.Itoa(n) }</span></a>
+		}
+		<details class="sb-menu">
+			<summary class="btn sm">Menu</summary>
+		</details>
+		<div class="sb-body">
+			<form class="sb-search" method="get" action="/goals" role="search">
+				<label class="sr-only" for="sb-search-q">Search Goals</label>
+				<input id="sb-search-q" type="search" name="q" placeholder="Search"/>
+			</form>
+			<nav class="navitems" aria-label="Main">
+				@navItem("/home", "nav-home", "Home", needsYou(ctx), "count needs-you")
+				@navItem("/goals", "nav-goals", "Goals", 0, "count")
+				@navItem("/follow-ups", "nav-follow-ups", "Follow-ups", followUps(ctx), "count")
+				@navItem("/reports", "nav-reports", "Reports", 0, "count")
+				if current.IsAdmin {
+					@navItem("/admin", "nav-admin", "Admin", 0, "count")
+				}
+			</nav>
+			if people := orgPeople(ctx); len(people) > 0 {
+				<section data-testid="sidebar-org" class="sb-org" aria-labelledby="sb-org-head">
+					<h2 id="sb-org-head" class="sb-head">My org</h2>
+					<ul>
+						for _, p := range people {
+							<li><a data-testid="sidebar-org-person" class="sb-org-person" href={ templ.SafeURL(fmt.Sprintf("/goals?org=%d", p.ID)) } title={ p.Email }>{ p.Label() }</a></li>
+						}
+					</ul>
+				</section>
+			}
+			<details data-testid="person-menu" class="sb-person">
+				<summary>
+					<span class="avatar" aria-hidden="true">{ initials(current) }</span>
+					<span class="sb-person-name">
+						@personPlain(current)
+					</span>
+				</summary>
+				<div class="sb-person-menu">
+					<p data-testid="current-user" class="who">
+						{ "Signed in as " }
+						@person(current)
+						if current.IsAdmin {
+							{ " (Admin)" }
+						}
+					</p>
+					@themeMenu("theme-menu")
+					<form method="post" action="/signout">
+						<button type="submit" class="btn quiet sm sb-signout">Sign out</button>
+					</form>
+				</div>
+			</details>
+		</div>
+	</header>
+}
+
+// navItem is a sidebar link with its icon, marked current when the request is
+// in its section, with a count of what's there for the reader when it's above
+// zero. countClass styles the count: Home's needs-you pill, or every other
+// item's plain one.
 templ navItem(href, testID, label string, count int, countClass string) {
 	if onSection(ctx, href) {
 		<a data-testid={ testID } class="navitem on" aria-current="page" href={ templ.SafeURL(href) }>
+			@navIcon(href)
 			{ label }
 			@navCount(count, countClass)
 		</a>
 	} else {
 		<a data-testid={ testID } class="navitem" href={ templ.SafeURL(href) }>
+			@navIcon(href)
 			{ label }
 			@navCount(count, countClass)
 		</a>
 	}
+}
+
+// navIcon is the 16px stroke icon beside the nav item at href.
+templ navIcon(href string) {
+	<svg class="navicon" viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+		switch href {
+			case "/home":
+				<path d="M2.5 7.5 8 3l5.5 4.5V13.5H10v-4H6v4H2.5z"></path>
+			case "/goals":
+				<circle cx="8" cy="8" r="5.5"></circle>
+				<circle cx="8" cy="8" r="2"></circle>
+			case "/follow-ups":
+				<path d="M3.5 14.5v-12M3.5 3h8.5l-1.75 3L12 9H3.5"></path>
+			case "/reports":
+				<path d="M4 1.5h5.5L12 4v10.5H4zM9.5 1.5V4H12M6 8h4M6 11h4"></path>
+			default:
+				<path d="M8 1.5 13 3.5v4c0 3-2.2 5.3-5 7-2.8-1.7-5-4-5-7v-4z"></path>
+		}
+	</svg>
 }
 
 templ navCount(count int, class string) {
@@ -145,29 +300,27 @@ templ navCount(count int, class string) {
 	}
 }
 
-// themeMenu is the top bar's Theme menu: System, Light and Dark, the current
-// choice marked. It opens and closes as a <details>, and each choice is a
-// plain form post, so it works without script. The choice comes back to this
-// page.
-templ themeMenu() {
-	<details data-testid="theme-menu" class="theme">
-		<summary class="btn quiet sm">Theme</summary>
-		<form class="card theme-menu" method="post" action="/theme">
-			<input type="hidden" name="return" value={ themeReturn(ctx) }/>
-			for _, c := range themeChoices {
-				<button
-					data-testid={ "theme-" + string(c.theme) }
-					type="submit"
-					class="theme-choice"
-					name="theme"
-					value={ string(c.theme) }
-					if c.theme == currentTheme(ctx) {
-						aria-current="true"
-					}
-				>{ c.label }</button>
-			}
-		</form>
-	</details>
+// themeMenu is the Theme choices: System, Light and Dark, the current one
+// marked, each a plain form post, so they work without script. The choice
+// comes back to this page. A signed-in page shows them in the person's menu;
+// a signed-out page in a Theme disclosure of their own.
+templ themeMenu(class string) {
+	<form data-testid="theme-menu" class={ class } method="post" action="/theme" aria-label="Theme">
+		<p class="sb-head" aria-hidden="true">Theme</p>
+		<input type="hidden" name="return" value={ themeReturn(ctx) }/>
+		for _, c := range themeChoices {
+			<button
+				data-testid={ "theme-" + string(c.theme) }
+				type="submit"
+				class="theme-choice"
+				name="theme"
+				value={ string(c.theme) }
+				if c.theme == currentTheme(ctx) {
+					aria-current="true"
+				}
+			>{ c.label }</button>
+		}
+	</form>
 }
 
 // toast is the one-time notice the page shown straight after an action

@@ -100,8 +100,8 @@ func TestAdminPageListsOwnerlessGoals(t *testing.T) {
 	}
 }
 
-// The top bar ends with Admin for an Admin, marked current on the Admin page,
-// and has no Admin item for anyone else. Dimensions has left the top bar for
+// The sidebar's nav ends with Admin for an Admin, marked current on the Admin
+// page, and has no Admin item for anyone else. Dimensions has left the nav for
 // the Admin page, but /dimensions still opens for everyone.
 func TestAdminNavItemIsForAdminsOnly(t *testing.T) {
 	t.Parallel()
@@ -114,7 +114,7 @@ func TestAdminNavItemIsForAdminsOnly(t *testing.T) {
 	sam := signInClient(t, ts.URL, "sam@example.com")
 
 	page := getBody(t, ada, ts.URL+"/admin")
-	nav := page[strings.Index(page, `<nav class="nav">`):strings.Index(page, `<div class="me">`)]
+	nav := between(t, page, `<nav class="navitems"`, "</nav>")
 	item := pageElement(t, nav, "a", "nav-admin")
 	if !strings.Contains(item, `href="/admin"`) || !strings.Contains(item, `aria-current="page"`) {
 		t.Errorf("on /admin, the Admin item doesn't link there marked current: %s", item)
@@ -129,10 +129,10 @@ func TestAdminNavItemIsForAdminsOnly(t *testing.T) {
 	for who, client := range map[string]*http.Client{"Admin": ada, "non-Admin": sam} {
 		page := getBody(t, client, ts.URL+"/dimensions")
 		if strings.Contains(page, `data-testid="nav-dimensions"`) || strings.Contains(page, `class="navitem" href="/dimensions"`) {
-			t.Errorf("the %s's top bar still has Dimensions", who)
+			t.Errorf("the %s's nav still has Dimensions", who)
 		}
 		if strings.Contains(page, `data-testid="nav-admin"`) != (who == "Admin") {
-			t.Errorf("the %s's top bar has the Admin item: %v", who, who != "Admin")
+			t.Errorf("the %s's nav has the Admin item: %v", who, who != "Admin")
 		}
 	}
 }
