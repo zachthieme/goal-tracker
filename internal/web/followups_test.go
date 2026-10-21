@@ -142,7 +142,7 @@ func TestFollowUpsCheckinOverdueChipSaysItsCadenceInWords(t *testing.T) {
 	goals := map[int]domain.Goal{}
 	for cadence := range want {
 		g := h.ActiveGoal(sam, "Every "+strconv.Itoa(cadence)+" days", "It matters.")
-		if _, err := h.Service.SetCadence(t.Context(), g.ID, cadence); err != nil {
+		if _, err := h.Service.SetCadence(t.Context(), g.Owner.ID, g.ID, cadence); err != nil {
 			t.Fatalf("SetCadence: %v", err)
 		}
 		goals[cadence] = g

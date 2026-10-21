@@ -438,8 +438,12 @@ func (s *Service) MarkGoalDated(ctx context.Context, goalID int64, deliveryDate 
 }
 
 // SetCadence sets how often a Check-in is expected on the Goal, in days. It
-// must be positive (CONTEXT.md: Check-in cadence, 7 days by default).
-func (s *Service) SetCadence(ctx context.Context, goalID int64, days int) (Goal, error) {
+// must be positive (CONTEXT.md: Check-in cadence, 7 days by default). Only the
+// Goal's Owner may set it (ErrNotAuthorized).
+func (s *Service) SetCadence(ctx context.Context, actorID, goalID int64, days int) (Goal, error) {
+	if err := s.authorizeGoalOwnerWrite(ctx, actorID, goalID); err != nil {
+		return Goal{}, err
+	}
 	if days <= 0 {
 		return Goal{}, fmt.Errorf("%w: the Check-in cadence must be a positive number of days", ErrValidation)
 	}

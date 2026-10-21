@@ -57,7 +57,7 @@ func TestGoalIsCheckinOverdueWhenItsLastCheckinIsOlderThanItsCadence(t *testing.
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	g := h.ActiveGoal(sam, "Grow revenue", "It pays for everything.")
-	if _, err := h.Service.SetCadence(context.Background(), g.ID, 14); err != nil {
+	if _, err := h.Service.SetCadence(context.Background(), g.Owner.ID, g.ID, 14); err != nil {
 		t.Fatalf("SetCadence: %v", err)
 	}
 	h.Clock.Advance(20 * day)

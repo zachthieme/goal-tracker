@@ -192,12 +192,48 @@ func TestSetCadenceChangesTheCheckInInterval(t *testing.T) {
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")
 
-	got, err := h.Service.SetCadence(context.Background(), g.ID, 14)
+	got, err := h.Service.SetCadence(context.Background(), g.Owner.ID, g.ID, 14)
 	if err != nil {
 		t.Fatalf("SetCadence: %v", err)
 	}
 	if got.CadenceDays != 14 {
 		t.Errorf("CadenceDays = %d, want 14", got.CadenceDays)
+	}
+}
+
+// Only a Goal's Owner may set its cadence: anyone else, a Delegate and an
+// Admin included, is refused and the cadence stays as it was.
+func TestSetCadenceAdmitsOnlyTheOwner(t *testing.T) {
+	t.Parallel()
+
+	h := testsupport.New(t, "admin@example.com")
+	owner := h.SignIn("sam@example.com")
+	g := h.CreateGoal(owner, "Ship v2", "why")
+	ctx := context.Background()
+
+	for name, actor := range notTheOwner(h, owner, g.ID) {
+		if _, err := h.Service.SetCadence(ctx, actor.ID, g.ID, 14); !errors.Is(err, domain.ErrNotAuthorized) {
+			t.Errorf("%s: err = %v, want ErrNotAuthorized", name, err)
+		}
+	}
+	if got, _ := h.Service.ViewGoal(ctx, g.ID); got.CadenceDays != 7 {
+		t.Errorf("CadenceDays after refusals = %d, want 7", got.CadenceDays)
+	}
+	if _, err := h.Service.SetCadence(ctx, owner.ID, g.ID, 14); err != nil {
+		t.Errorf("Owner: %v", err)
+	}
+}
+
+// notTheOwner signs in the people an Owner-only command refuses on goalID: a
+// stranger, one of its Delegates, and an Admin. The harness must list
+// admin@example.com as an Admin.
+func notTheOwner(h *testsupport.Harness, owner domain.Account, goalID int64) map[string]domain.Account {
+	delegate := h.SignIn("tpm@example.com")
+	h.AddDelegate(owner, delegate, goalID)
+	return map[string]domain.Account{
+		"a stranger": h.SignIn("pat@example.com"),
+		"a Delegate": delegate,
+		"an Admin":   h.SignIn("admin@example.com"),
 	}
 }
 
@@ -208,7 +244,7 @@ func TestSetCadenceRejectsNonPositive(t *testing.T) {
 	owner := h.SignIn("sam@example.com")
 	g := h.CreateGoal(owner, "Ship v2", "why")
 
-	if _, err := h.Service.SetCadence(context.Background(), g.ID, 0); !errors.Is(err, domain.ErrValidation) {
+	if _, err := h.Service.SetCadence(context.Background(), g.Owner.ID, g.ID, 0); !errors.Is(err, domain.ErrValidation) {
 		t.Errorf("err = %v, want ErrValidation", err)
 	}
 }

@@ -77,7 +77,7 @@ func (h *history) run(ctx context.Context, p *plan) (int, error) {
 		g.lifecycle = domain.LifecycleActive
 		if g.team == "" {
 			// Org outcomes move slowly and are reviewed every other week.
-			if _, err := h.svc.SetCadence(ctx, g.id, 14); err != nil {
+			if _, err := h.svc.SetCadence(ctx, owner.ID, g.id, 14); err != nil {
 				return 0, fmt.Errorf("set cadence of %q: %w", g.title, err)
 			}
 		}

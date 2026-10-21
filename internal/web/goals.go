@@ -1634,7 +1634,7 @@ func (s *Server) handleSetCadence(w http.ResponseWriter, r *http.Request, curren
 		http.Error(w, "invalid cadence", http.StatusUnprocessableEntity)
 		return
 	}
-	_, err = s.svc.SetCadence(r.Context(), id, days)
+	_, err = s.svc.SetCadence(r.Context(), current.ID, id, days)
 	s.writeCommandResult(w, r, id, err)
 }
 

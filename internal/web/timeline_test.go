@@ -761,7 +761,7 @@ func TestHealthStripPeriodsFollowTheGoalsCadence(t *testing.T) {
 	h := testsupport.New(t)
 	sam := h.SignIn("sam@example.com")
 	goal := h.ActiveGoal(sam, "Ship v2", "Customers wait too long.")
-	if _, err := h.Service.SetCadence(context.Background(), goal.ID, 14); err != nil {
+	if _, err := h.Service.SetCadence(context.Background(), goal.Owner.ID, goal.ID, 14); err != nil {
 		t.Fatalf("SetCadence: %v", err)
 	}
 	h.Clock.Advance(7 * 24 * time.Hour)

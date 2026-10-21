@@ -269,7 +269,7 @@ func (s *Service) writeRedefinedGoal(ctx context.Context, current Goal, in Defin
 		return Goal{}, err
 	}
 	if in.CadenceDays != 0 && in.CadenceDays != current.CadenceDays {
-		if _, err := s.SetCadence(ctx, goalID, in.CadenceDays); err != nil {
+		if _, err := s.SetCadence(ctx, in.OwnerID, goalID, in.CadenceDays); err != nil {
 			return Goal{}, err
 		}
 	}
@@ -333,7 +333,7 @@ func (s *Service) writeDefinedGoal(ctx context.Context, in DefinedGoalInput) (Go
 		return Goal{}, err
 	}
 	if in.CadenceDays != 0 {
-		if _, err := s.SetCadence(ctx, g.ID, in.CadenceDays); err != nil {
+		if _, err := s.SetCadence(ctx, in.OwnerID, g.ID, in.CadenceDays); err != nil {
 			return Goal{}, err
 		}
 	}

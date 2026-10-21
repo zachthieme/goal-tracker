@@ -1638,7 +1638,7 @@ func TestDefineGoalPageIsTheNewGoalFormPrefilled(t *testing.T) {
 	if _, err := h.Service.MarkGoalDated(ctx, g.ID, testsupport.Epoch.AddDate(0, 6, 0)); err != nil {
 		t.Fatalf("MarkGoalDated: %v", err)
 	}
-	if _, err := h.Service.SetCadence(ctx, g.ID, 14); err != nil {
+	if _, err := h.Service.SetCadence(ctx, g.Owner.ID, g.ID, 14); err != nil {
 		t.Fatalf("SetCadence: %v", err)
 	}
 	if _, err := h.Service.AddMilestone(ctx, domain.AddMilestoneInput{GoalID: g.ID, Name: "Beta cut", TargetDate: testsupport.Epoch.AddDate(0, 3, 0)}); err != nil {

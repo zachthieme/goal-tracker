@@ -22,7 +22,7 @@ const day = 24 * time.Hour
 // error.
 func setCadence(t *testing.T, h *testsupport.Harness, g domain.Goal, days int) {
 	t.Helper()
-	if _, err := h.Service.SetCadence(context.Background(), g.ID, days); err != nil {
+	if _, err := h.Service.SetCadence(context.Background(), g.Owner.ID, g.ID, days); err != nil {
 		t.Fatalf("SetCadence: %v", err)
 	}
 }
