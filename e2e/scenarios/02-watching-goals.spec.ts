@@ -2,8 +2,8 @@
 // the decisions under "Settled along the way" that go with it. A manager
 // builds one Report by a rule over their own team's Goals and another from a
 // hand-picked list of Goals they don't own; putting a Goal in a Report gives
-// them nothing over it, and another lead can read both Reports but not change
-// them.
+// them nothing over it, and another lead can read both Reports but not change,
+// curate or publish them until the manager makes them a Report Delegate.
 //
 // The scenario's Marcus is growth-lead@example.com, whom the seed names Elena
 // Petrova (cpo@ is the seed's Marcus Bell).
@@ -319,7 +319,7 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
     expect(await latestCheckin.textContent(), "the latest Check-in is unchanged").toBe(before);
   });
 
-  await test.step("5 Every Report Definition is visible to everyone; only its creator or an Admin changes it", async () => {
+  await test.step("5 Every Report Definition is visible to everyone; only its creator, a Report Delegate or an Admin changes it", async () => {
     const reports = [
       { id: ruleReport, name: ruleReportName },
       { id: pickedReport, name: pickedReportName },
@@ -332,11 +332,16 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
       await expect(lead.getByTestId("report-row").getByRole("link", { name: r.name, exact: true })).toBeVisible();
     }
 
-    // Only its creator or an Admin may change it.
+    // Only its creator, a Report Delegate or an Admin may change it, curate
+    // its narrative or publish it; anyone else still reads the draft.
     for (const r of reports) {
       await lead.goto(`/reports/${r.id}`);
       await expect(lead.getByTestId("report-name")).toHaveText(r.name);
+      await expect(lead.getByTestId("report-draft")).toBeVisible();
       await expect(lead.getByTestId("edit-definition")).toHaveCount(0);
+      await expect(lead.getByTestId("narrative-curation")).toHaveCount(0);
+      await expect(lead.getByTestId("publish-confirm")).toHaveCount(0);
+      await expect(lead.getByTestId("add-report-delegate")).toHaveCount(0);
       expect((await lead.request.get(`/reports/${r.id}/edit`)).status(), `GET edit of "${r.name}"`).toBe(403);
       const post = await lead.request.post(`/reports/${r.id}/edit`, {
         form: {
@@ -349,13 +354,27 @@ test("a manager builds Reports over Goals they don't own, and gets nothing over 
         maxRedirects: 0,
       });
       expect(post.status(), `POST edit of "${r.name}"`).toBe(403);
-      // Anyone signed in may compose the narrative and publish.
-      await expect(lead.getByTestId("narrative-curation")).toBeVisible();
-      await expect(lead.getByTestId("publish-confirm")).toBeVisible();
+      const curate = await lead.request.post(`/reports/${r.id}/narrative`, {
+        form: { "text-Insight": "Taken over" },
+        maxRedirects: 0,
+      });
+      expect(curate.status(), `POST narrative of "${r.name}"`).toBe(403);
+      const publish = await lead.request.post(`/reports/${r.id}/publications`, { maxRedirects: 0 });
+      expect(publish.status(), `POST publish of "${r.name}"`).toBe(403);
     }
 
-    // The other lead composes a note and publishes the manager's Report.
+    // The manager makes the other lead a Report Delegate on the picked Report.
+    await page.goto(`/reports/${pickedReport}`);
+    const delegates = page.getByTestId("report-delegates");
+    await expect(delegates.getByTestId("no-report-delegates")).toBeVisible();
+    await delegates.getByLabel("Report Delegate email").fill(otherLead);
+    await delegates.getByRole("button", { name: "Add Delegate" }).click();
+    await expect(page.getByTestId("report-delegates").getByTestId("report-delegate")).toHaveCount(1);
+
+    // The other lead, now a Report Delegate, composes a note and publishes it.
     await lead.goto(`/reports/${pickedReport}`);
+    await expect(lead.getByTestId("edit-definition").first()).toBeVisible();
+    await expect(lead.getByTestId("add-report-delegate")).toHaveCount(0);
     const curation = lead.getByTestId("narrative-curation");
     await curation.getByTestId("section-text-Insight").getByTestId("section-text-summary").click();
     await curation.getByLabel("Insights, note 1").fill("Two of these are what our launch waits on.");

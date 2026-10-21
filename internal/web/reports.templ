@@ -184,9 +184,11 @@ templ reportHealthBar(h domain.HealthCounts) {
 // preview of exactly what readers will see, the two plain panes split by a
 // hairline (CONTEXT.md: Report, Report Definition). Paths to Green are judged
 // overdue as of asOf, today.
-// The compose form shows form, and the save status says status.
-templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion, loc *time.Location, chip baselineChip, panel goalsPanel, form narrativeForm, status string) {
-	@framedLayout(r.Definition.Name, current, reportDraftHeader(r, pubs, loc, chip, panel, status)) {
+// The compose form shows form, and the save status says status. Only a reader
+// m lets manage the Report gets Edit definition, the compose form and
+// Publish…; everyone gets its Delegates.
+templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, pubs []domain.Publication, d discussion, loc *time.Location, chip baselineChip, panel goalsPanel, m reportManagement, form narrativeForm, status string) {
+	@framedLayout(r.Definition.Name, current, reportDraftHeader(r, pubs, loc, chip, panel, m, status)) {
 		@reportStyles()
 		<div data-testid="draft-panes" class="rp-panes">
 			<aside data-testid="compose-panel" class="rp-body rp-compose">
@@ -198,7 +200,10 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 						<p class="muted">No introduction.</p>
 					}
 				</section>
-				@narrativeCuration(form)
+				if m.Manage {
+					@narrativeCuration(form)
+				}
+				@reportDelegates(m)
 			</aside>
 			<div class="rp-body">
 				@reportGoalsPanel(panel)
@@ -210,9 +215,9 @@ templ reportDraftPage(current *domain.Account, r domain.Report, asOf time.Time, 
 
 // reportDraftHeader is the draft's header strip: Reports › its name, marked a
 // Draft, and the save status at the left, then the baseline chip, and History,
-// Edit definition and Publish… at the right (DESIGN.md § A Report's
-// draft page).
-templ reportDraftHeader(r domain.Report, pubs []domain.Publication, loc *time.Location, chip baselineChip, panel goalsPanel, status string) {
+// Edit definition and Publish…, for a reader who may manage the Report, at the
+// right (DESIGN.md § A Report's draft page).
+templ reportDraftHeader(r domain.Report, pubs []domain.Publication, loc *time.Location, chip baselineChip, panel goalsPanel, m reportManagement, status string) {
 	<header data-testid="draft-header" class="page-header rp-draft-head">
 		<div class="rp-draft-title">
 			<div class="ph-title">
@@ -227,9 +232,56 @@ templ reportDraftHeader(r domain.Report, pubs []domain.Publication, loc *time.Lo
 		<div class="rp-head-actions">
 			@reportHistory(pubs, loc)
 			@editDefinitionLink(panel.Edit, "btn sm")
-			@reportPublish(r, chip)
+			if m.Manage {
+				@reportPublish(r, chip)
+			}
 		</div>
 	</header>
+}
+
+// reportDelegateHelp says what a Report Delegate is.
+const reportDelegateHelp = "Someone its creator or an Admin authorizes to change this Report, curate its narrative and publish it. Only its creator and Admins add and remove them."
+
+// reportDelegates is the compose pane's Delegates: the Report Definition's
+// Report Delegates, marking a Departed one, and for its creator and Admins a
+// Remove on each and a form to add one by email, with why a refused one was
+// refused (CONTEXT.md: Report Delegate).
+templ reportDelegates(m reportManagement) {
+	<section data-testid="report-delegates" class="rp-delegates">
+		<h2>Delegates</h2>
+		<ul data-testid="report-delegate-list" class="rp-list">
+			if len(m.Delegates) == 0 {
+				<li data-testid="no-report-delegates" class="muted">No Report Delegates yet.</li>
+			}
+			for _, d := range m.Delegates {
+				<li data-testid="report-delegate" class="rp-delegate">
+					<span>
+						@person(d)
+						if d.Departed {
+							{ " " }<span data-testid="report-delegate-departed" class="badge lc">departed</span>
+						}
+					</span>
+					if m.ManageDelegates {
+						<form method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/delegates/remove", m.DefID)) }>
+							<input type="hidden" name="account" value={ fmt.Sprint(d.ID) }/>
+							<button data-testid="remove-report-delegate" type="submit" class="btn quiet sm">Remove</button>
+						</form>
+					}
+				</li>
+			}
+		</ul>
+		<button type="button" class="disclose help explain" aria-expanded="false" aria-controls="report-delegate-help" title={ reportDelegateHelp }>What is a Report Delegate?</button>
+		<p id="report-delegate-help" class="explain" hidden>{ reportDelegateHelp }</p>
+		if m.ManageDelegates {
+			if m.Refused != "" {
+				<p data-testid="report-delegate-refused" class="alert r" role="alert">{ m.Refused }</p>
+			}
+			<form data-testid="add-report-delegate" class="rp-delegate-add" method="post" action={ templ.SafeURL(fmt.Sprintf("/reports/%d/delegates", m.DefID)) }>
+				<input type="email" name="email" value={ m.Email } aria-label="Report Delegate email" placeholder="Delegate email" required/>
+				<button type="submit" class="btn sm">Add Delegate</button>
+			</form>
+		}
+	</section>
 }
 
 // draftPreview is the draft's preview pane: exactly what readers will see.
@@ -1543,6 +1595,10 @@ templ reportStyles() {
 		.rp-panes{display:grid;grid-template-columns:380px minmax(0,1fr);gap:0;align-items:stretch}
 		.rp-panes>*{min-width:0}
 		.rp-compose{padding-right:24px;border-right:1px solid var(--color-border)}
+		.rp-delegates{margin-top:24px}
+		.rp-delegate{display:flex;align-items:center;justify-content:space-between;gap:8px}
+		.rp-delegate-add{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+		.rp-delegate-add input{flex:1 1 200px}
 		.rp-compose+.rp-body{padding-left:24px}
 		@media (max-width:600px){.rp-card-head{flex-direction:column;gap:8px}.rp-badges{justify-content:flex-start}.rp-table thead{display:none}.rp-table tr{display:block;padding:8px var(--rp-gutter);border-bottom:1px solid var(--color-border)}.rp-table tbody tr:first-child{border-top:1px solid var(--color-border)}.rp-table td{display:block;height:auto;padding:4px 0;border-bottom:none;white-space:normal}.rp-table td:first-child,.rp-table td:last-child{padding:4px 0}.rp-table tbody tr:last-child>td{border-bottom:none}.rp-name{width:auto;max-width:none}.rp-name>a{display:block}.rp-name>span{margin-left:0}.rp-table .rp-draft,.rp-table .rp-download-cell{text-align:left}.rp-table td:empty{display:none}.rp-publish{position:fixed;left:16px;right:16px;width:auto}.rp-draft-head{position:static}.rp-draft-title{display:flex;flex-basis:100%;align-items:flex-end;gap:8px 16px;min-width:0}.rp-draft-title>div{min-width:0}.rp-head-actions{flex-basis:100%;flex-wrap:nowrap;margin-left:0;gap:8px}.rp-head-actions .rp-menu>ul{left:0;right:auto}.rp-track thead{display:none}.rp-track tr{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:4px 12px;padding:12px 0;border-bottom:1px solid var(--color-border)}.rp-track tr:has(+tr>.rp-track-talk){border-bottom:none}.rp-track td,.rp-track tbody tr:last-child>td{display:block;padding:0;border-bottom:none}.rp-track .rp-track-goal{order:-1;grid-column:1/-1}.rp-track .rp-track-due,.rp-track .rp-track-talk{grid-column:1/-1}}
 		@media (max-width:900px){.page:has(>.rp-index){padding:20px 0 48px}.rp-index{--rp-gutter:16px}.rp-draft-head{padding:8px 16px}.rp-tiles,.rp-body .rp-tiles{grid-template-columns:repeat(2,minmax(0,1fr))}.rp-tile:nth-child(odd){border-left:none;padding-left:0}.rp-tile:nth-child(n+3){border-top:1px solid var(--color-border)}.rp-panes{grid-template-columns:minmax(0,1fr)}.rp-compose{padding:0 0 24px;border-right:none;border-bottom:1px solid var(--color-border)}.rp-compose+.rp-body{padding:24px 0 0}.rp-goal-list{grid-template-columns:minmax(0,1fr)}}

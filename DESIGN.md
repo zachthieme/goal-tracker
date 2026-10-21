@@ -1657,8 +1657,9 @@ and so on).
     with a muted "Draft"; the save status (`.rp-save`), small and muted, which
     reads "Saving…" while an autosave runs, then "Saved", or "Not saved"; the
     baseline chip; then **History (N)**, **Edit definition** (a secondary
-    small button, for those who may edit the Report Definition) and
-    **Publish…** (`.btn.primary.sm`). At 600px and below it stops sticking
+    small button) and **Publish…** (`.btn.primary.sm`), both only for those
+    who may manage the Report Definition: its creator, a Report Delegate or
+    an Admin. At 600px and below it stops sticking
     and stacks into three rows.
   - **Baseline chip (`.rp-chip`):** a `<details>` whose summary is a 32px
     `--radius-full` pill in a 1px `--color-border-strong` edge, "Changes since
@@ -1683,7 +1684,9 @@ and so on).
     rule with 24px each side, then the preview pane. At 900px and below they
     stack, compose first, with a hairline between them.
   - **Compose pane:** **Introduction** (the Report Definition's, or a muted
-    "No introduction."), then **Narrative**:
+    "No introduction."), then **Narrative**, then **Delegates**. Only those
+    who may manage the Report get Narrative; anyone else reads the narrative
+    in the preview. **Narrative**:
     - **Highlights since <baseline>**, with a small muted "2 of 5 in" at its
       right. Each Highlight is a hairline row: a checkbox and its Note, then a
       small muted Owner's Name · Goal link · kind. Ticking it shows, in place of
@@ -1699,6 +1702,17 @@ and so on).
       typing stops, and swaps in the preview, the save status, the Highlights
       count and Publish…'s summary, never its own fields. Without script a
       secondary **Save narrative** shows.
+  - **Delegates (`reportDelegates`, `.rp-delegates`):** 24px under the
+    narrative, a "Delegates" `h2` over the Report Delegates as hairline rows,
+    each its person, a `badge lc` "departed" on a Departed one, and for the
+    creator and Admins a quiet small **Remove** at the right; "No Report
+    Delegates yet." when there are none. Then the "What is a Report
+    Delegate?" help disclosure, and for the creator and Admins an add form: an
+    email field ("Delegate email") and a secondary small **Add Delegate**,
+    wrapping 8px apart. A refused email comes back on the page, 422, in an
+    `alert r` above the form, the email kept in its field. Everyone sees the
+    list; a Report Delegate gets neither form, as only the creator and Admins
+    add and remove them.
   - **Preview pane:** first the Goals panel (`.rp-goals`), for the author:
     "N Goals in this report" as its `h2`, the selection in small muted text and
     a quiet small **Edit definition**, then each Goal in two columns (one at
