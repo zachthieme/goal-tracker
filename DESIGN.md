@@ -1518,8 +1518,9 @@ and so on).
     opens by itself when it holds a refused input or, for Where it fits, a
     required value not set. Where it fits shows only when there are
     Dimensions or Fields. A Dimension taking several values offers a pill
-    checkbox for each (`.gf-pick`); a chosen one takes a
-    `--color-primary-subtle` fill and a 1px `--color-primary-strong` edge. Contributes to is a search, with a chip for each
+    checkbox for each (`.gf-pick`) in a 1px `--color-border-strong` edge; a
+    chosen one takes a `--color-primary-subtle` fill and a 1px
+    `--color-primary-strong` edge. Contributes to is a search, with a chip for each
     Goal picked (its Health badge, its title and ×); without script it is a
     multiple select, with a Remove box on each chip.
   - **Ready to activate (`goalFormReady`, `.gf-ready`):** a rail, not a raised
@@ -2159,6 +2160,14 @@ given):
      | Light | Current chip edge `--color-primary-strong` `#0F766E` | canvas / primary light | 5.47 / 4.86 |
      | Dark | Resting chip edge `--color-border-strong` `#6B6F77` | canvas / surface / primary subtle | 3.78 / 3.59 / 3.69 |
      | Dark | Current chip edge `--color-primary-strong` `#14B8A6` | canvas / primary light | 7.65 / 5.41 |
+   - An unticked Where it fits pick on New goal (§ Pages) rests in a 1px
+     `--color-border-strong` edge, with no fill of its own, on the canvas.
+     `--color-border` (1.17:1) missed in light.
+
+     | Theme | Mark | On | Ratio |
+     | --- | --- | --- | --- |
+     | Light | Resting pick edge `--color-border-strong` `#8A8D93` | canvas | 3.33 |
+     | Dark | Resting pick edge `--color-border-strong` `#6B6F77` | canvas | 3.78 |
 
 7. **Neutral canvas.** The source's light canvas is a pale yellow
    (`#FEFCE8`), and its panel, hover and rule tokens carry the same ivory

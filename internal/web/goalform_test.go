@@ -2260,6 +2260,11 @@ func TestNewGoalPageKindCardsShowWhichIsChosen(t *testing.T) {
 			}
 		}
 	}
+	// An unticked Where it fits pick's edge needs no :has, so it's drawn
+	// outside the block, 3:1 on the canvas (#431).
+	if rule, ok := ruleFor(style, ".gf-pick"); !ok || !strings.Contains(rule, "border:1px solid var(--color-border-strong)") {
+		t.Errorf(".gf-pick declares %q, want border:1px solid var(--color-border-strong)", rule)
+	}
 	if rule, _ := ruleFor(block, ".gf-tile:has(input:checked)"); strings.Contains(rule, "border-width") || strings.Contains(rule, "padding") || strings.Contains(rule, "border:") {
 		t.Errorf("choosing a Kind tile resizes it: %s", rule)
 	}
