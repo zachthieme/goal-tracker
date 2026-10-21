@@ -177,7 +177,8 @@ unknown sign-in method, a missing or short session key, OIDC variables set
 with `password`, a missing OIDC variable with `oidc`, or a
 `GOAL_TRACKER_TIMEZONE` that isn't an IANA name (`Local` included), a
 `GOAL_TRACKER_CHROME` that isn't there or can't run, a
-`GOAL_TRACKER_TRUSTED_PROXIES` entry that is neither a CIDR nor an IP, or, with
+`GOAL_TRACKER_TRUSTED_PROXIES` entry that is neither a CIDR nor an IP (or is
+an IPv4-mapped CIDR, `::ffff:a.b.c.d/n`, wider than `/96`), or, with
 a Chromium, a `TMPDIR` too long for it (see § PDF downloads). Never set
 `GOAL_TRACKER_START_AT`; it's for tests.
 
@@ -415,6 +416,13 @@ directory sync, a sign-in or a set-password link gives them one); a Departed
 person must be marked returned first. **Remove Admin…** beside another Admin
 takes the role away; no Admin can remove their own, so there is always at
 least one. Either change takes effect on the person's next page load.
+
+### How long a session lasts
+
+A session lasts 30 days from sign-in, however often it is used, and ends
+sooner after 7 days without a signed-in page. Only pages behind sign-in count:
+the sign-in page, `/` and a page that isn't there don't keep a session from
+idling.
 
 ### Signing everyone out
 

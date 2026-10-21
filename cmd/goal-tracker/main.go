@@ -469,10 +469,11 @@ func loadDirectoryConfig() (*directoryConfig, error) {
 }
 
 // parseTrustedProxies is the comma-separated list of CIDRs and bare IPs in v,
-// a bare IP being a range of just that address, and an IPv4-mapped IPv6 one
-// its IPv4 address. Blank entries are skipped, and
-// the space around each is trimmed; any other entry that isn't a CIDR or an IP
-// is an error naming it.
+// a bare IP being a range of just that address, an IPv4-mapped IPv6 one its
+// IPv4 address, and an IPv4-mapped CIDR (::ffff:a.b.c.d/n, n ≥ 96) the IPv4
+// range a.b.c.d/(n-96). Blank entries are skipped, and the space around each
+// is trimmed; an IPv4-mapped CIDR wider than /96, or any other entry that
+// isn't a CIDR or an IP, is an error naming it.
 func parseTrustedProxies(v string) ([]netip.Prefix, error) {
 	var proxies []netip.Prefix
 	for _, entry := range strings.Split(v, ",") {
@@ -481,6 +482,14 @@ func parseTrustedProxies(v string) ([]netip.Prefix, error) {
 			continue
 		}
 		if p, err := netip.ParsePrefix(entry); err == nil {
+			// the address clientIP compares is unmapped, so a mapped range
+			// is its IPv4 one
+			if p.Addr().Is4In6() {
+				if p.Bits() < 96 {
+					return nil, fmt.Errorf("%q is an IPv4-mapped CIDR wider than ::ffff:0.0.0.0/96", entry)
+				}
+				p = netip.PrefixFrom(p.Addr().Unmap(), p.Bits()-96)
+			}
 			proxies = append(proxies, p.Masked())
 			continue
 		}

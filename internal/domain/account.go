@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/zachthieme/goal-tracker/internal/db"
+	"modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
 
 // Account is a person who can sign in and own Goals.
@@ -375,7 +377,8 @@ func (s *Service) SignIn(ctx context.Context, emailAddr string) (Account, error)
 //  1. The Account linked to subject, whatever its email now.
 //  2. Else the Account emailAddr names, created as SignIn would if there is
 //     none, which is then linked to subject.
-//  3. Else, when that Account is linked to another subject, nothing: the
+//  3. Else, when that Account is linked to another subject, or a sign-in
+//     racing this one links subject to another Account first, nothing: the
 //     sign-in is refused with an *OIDCSubjectConflictError.
 //
 // A Departed Account is refused with ErrDeparted, and isn't linked.
@@ -400,6 +403,12 @@ func (s *Service) SignInWithOIDC(ctx context.Context, subject, emailAddr string)
 		return Account{}, err
 	}
 	n, err := s.queries.LinkAccountOIDCSubject(ctx, db.LinkAccountOIDCSubjectParams{OidcSubject: &subject, ID: acc.ID})
+	var sqliteErr *sqlite.Error
+	if errors.As(err, &sqliteErr) && sqliteErr.Code() == sqlite3.SQLITE_CONSTRAINT_UNIQUE {
+		// A sign-in racing this one linked subject to another Account
+		// between the lookup and this link.
+		return Account{}, &OIDCSubjectConflictError{AccountID: acc.ID}
+	}
 	if err != nil {
 		return Account{}, fmt.Errorf("link account to OIDC subject: %w", err)
 	}

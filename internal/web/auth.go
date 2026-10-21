@@ -69,7 +69,10 @@ const (
 	// sessionLifetime is how long a session lasts from sign-in, however often
 	// it is used.
 	sessionLifetime = 30 * 24 * time.Hour
-	// sessionIdleLimit is how long a session lasts without a request.
+	// sessionIdleLimit is how long a session lasts without a page behind
+	// sign-in. Only requireAuth slides it: a page that only reads
+	// currentAccount (/, GET /signin, a 404) leaves it be, as those only
+	// redirect a signed-in person on (#442).
 	sessionIdleLimit = 7 * 24 * time.Hour
 	// sessionSlideAfter is how stale a session's last-seen time gets before a
 	// request re-issues its cookie, so not every request sets one.
